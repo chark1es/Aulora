@@ -20,6 +20,7 @@ import type {
   PresenceRow,
   ReactionRow,
   ReadStateRow,
+  StoredFileView,
   TypingRow,
 } from "./port.js";
 
@@ -232,6 +233,11 @@ export interface MockPortState {
   readonly typing: Map<string, TypingRow[]>;
   readonly readStates: Map<string, ReadStateRow>;
   readonly members: Map<string, string[]>;
+  readonly files: Map<string, StoredFileView>;
+  /** Ciphertext bytes by storage id (between upload and record). */
+  readonly storage: Map<string, Uint8Array>;
+  /** Ciphertext bytes by download URL (after record). */
+  readonly blobs: Map<string, Uint8Array>;
   deviceId: string;
 }
 
@@ -265,6 +271,9 @@ export function createMockPort(): MockPort {
     typing: new Map(),
     readStates: new Map(),
     members: new Map(),
+    files: new Map(),
+    storage: new Map(),
+    blobs: new Map(),
     deviceId: "device-1",
   };
 
@@ -421,6 +430,54 @@ export function createMockPort(): MockPort {
     async getChannelMemberIds(args) {
       record("getChannelMemberIds", args);
       return state.members.get(args.channelId) ?? [];
+    },
+    async generateUploadUrl() {
+      record("generateUploadUrl", {});
+      return `upload://${nextId("upload")}`;
+    },
+    async uploadCiphertext(args) {
+      record("uploadCiphertext", { uploadUrl: args.uploadUrl, size: args.bytes.length });
+      const storageId = nextId("storage");
+      state.storage.set(storageId, new Uint8Array(args.bytes));
+      return storageId;
+    },
+    async recordFile(args) {
+      record("recordFile", args);
+      const fileId = nextId("file");
+      const url = `blob://${fileId}`;
+      state.files.set(fileId, {
+        id: fileId,
+        uploaderId: "me",
+        sizeBytes: args.sizeBytes,
+        nameCiphertext: args.nameCiphertext ?? null,
+        mimeCiphertext: args.mimeCiphertext ?? null,
+        dimensionsCiphertext: args.dimensionsCiphertext ?? null,
+        blurhashCiphertext: args.blurhashCiphertext ?? null,
+        url,
+      });
+      const bytes = state.storage.get(args.storageId);
+      if (bytes !== undefined) {
+        state.blobs.set(url, bytes);
+      }
+      return fileId;
+    },
+    async fetchCiphertext(args) {
+      record("fetchCiphertext", { url: args.url });
+      const bytes = state.blobs.get(args.url);
+      if (bytes === undefined) {
+        throw new Error("blob not found");
+      }
+      return new Uint8Array(bytes);
+    },
+    async getFile(args) {
+      record("getFile", args);
+      return state.files.get(args.fileId) ?? null;
+    },
+    async getFiles(args) {
+      record("getFiles", args);
+      return args.fileIds
+        .map((fileId) => state.files.get(fileId))
+        .filter((file): file is StoredFileView => file !== undefined);
     },
     async appendCommit(args) {
       record("appendCommit", args);

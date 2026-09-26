@@ -235,6 +235,29 @@ describe("ChatSession two-device flow", () => {
     await expect(bob.decrypt(decodeMlsBytes(afterRemoval))).rejects.toBeInstanceOf(Error);
   });
 
+  it("carries attachment descriptors inside the MLS payload", async () => {
+    const port = createMockPort();
+    const alice = makeSession(port, "alice");
+    await alice.start();
+    await alice.openChannel(channelFor("c1"));
+
+    const descriptor = {
+      fileId: "file-1",
+      key: btoa("k".repeat(32)),
+      iv: btoa("i".repeat(12)),
+      mime: "image/png",
+      name: "secret.png",
+      size: 123,
+    };
+    const messageId = await alice.sendMessage("c1", "", { attachments: [descriptor] });
+    const stored = port.state.messages.get(messageId);
+    expect(stored?.ciphertext).not.toContain("secret.png");
+
+    await alice.receiveMessages([...port.state.messages.values()]);
+    expect(alice.decryptedBody(messageId)?.attachments?.length).toBe(1);
+    expect(alice.attachmentsFor(messageId)[0]?.name).toBe("secret.png");
+  });
+
   it("edits, deletes and reacts through the port", async () => {
     const port = createMockPort();
     const alice = makeSession(port, "alice");

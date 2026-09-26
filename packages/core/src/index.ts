@@ -1,4 +1,22 @@
+export {
+  downloadAttachment,
+  downloadThumbnail,
+  type ThumbnailUpload,
+  type UploadAttachmentInput,
+  uploadEncryptedAttachment,
+} from "./attachments";
 export * from "./chat/index";
+export {
+  type EnqueueInput,
+  type FlushOptions,
+  type FlushResult,
+  memoryOutboxStore,
+  Outbox,
+  type OutboxItem,
+  type OutboxOptions,
+  type OutboxStatus,
+  type OutboxStore,
+} from "./outbox/index";
 export {
   ADMINISTRATOR,
   ALL_PERMISSIONS,
@@ -32,6 +50,15 @@ export {
   type WebLocalStorageStoreOptions,
   webLocalStorageStore,
 } from "./profiles";
+export {
+  memorySearchStore,
+  type SearchDocument,
+  type SearchHit,
+  SearchIndex,
+  type SearchOptions,
+  type SearchStore,
+  tokenize,
+} from "./search/index";
 export {
   isLocalHostname,
   normalizeServerUrl,

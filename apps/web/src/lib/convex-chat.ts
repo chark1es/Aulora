@@ -9,6 +9,7 @@ import type {
   PresenceRow,
   ReactionRow,
   ReadStateRow,
+  StoredFileView,
   TypingRow,
 } from "@aulora/core";
 import type { ConvexReactClient } from "convex/react";
@@ -47,6 +48,29 @@ function toSummary(channel: {
     archived: channel.archived,
     currentEpoch: channel.currentEpoch,
     ...(channel.memberIds !== undefined ? { memberIds: channel.memberIds } : {}),
+  };
+}
+
+/** Maps a Convex `files` view onto the framework-agnostic stored-file shape. */
+function toStoredFile(file: {
+  id: string;
+  uploaderId: string;
+  sizeBytes: number;
+  nameCiphertext: string | null;
+  mimeCiphertext: string | null;
+  dimensionsCiphertext: string | null;
+  blurhashCiphertext: string | null;
+  url: string | null;
+}): StoredFileView {
+  return {
+    id: file.id,
+    uploaderId: file.uploaderId,
+    sizeBytes: file.sizeBytes,
+    nameCiphertext: file.nameCiphertext,
+    mimeCiphertext: file.mimeCiphertext,
+    dimensionsCiphertext: file.dimensionsCiphertext,
+    blurhashCiphertext: file.blurhashCiphertext,
+    url: file.url,
   };
 }
 
@@ -117,6 +141,55 @@ export function convexPort(client: ConvexReactClient): ChatPort {
     async getChannelMemberIds(args) {
       const channel = await client.query(api.channels.get, { channelId: args.channelId as never });
       return channel.memberIds ?? [];
+    },
+    async generateUploadUrl() {
+      return await client.mutation(api.files.generateUploadUrl, {});
+    },
+    async uploadCiphertext(args) {
+      const response = await fetch(args.uploadUrl, {
+        method: "POST",
+        headers: { "Content-Type": args.contentType ?? "application/octet-stream" },
+        body: args.bytes as unknown as BodyInit,
+      });
+      if (!response.ok) {
+        throw new Error(`Upload failed with status ${response.status}`);
+      }
+      const body = (await response.json()) as { storageId?: unknown };
+      if (typeof body.storageId !== "string") {
+        throw new Error("Upload response did not include a storageId");
+      }
+      return body.storageId;
+    },
+    async recordFile(args) {
+      return await client.mutation(api.files.record, {
+        storageId: args.storageId as never,
+        sizeBytes: args.sizeBytes,
+        ...(args.nameCiphertext !== undefined ? { nameCiphertext: args.nameCiphertext } : {}),
+        ...(args.mimeCiphertext !== undefined ? { mimeCiphertext: args.mimeCiphertext } : {}),
+        ...(args.dimensionsCiphertext !== undefined
+          ? { dimensionsCiphertext: args.dimensionsCiphertext }
+          : {}),
+        ...(args.blurhashCiphertext !== undefined
+          ? { blurhashCiphertext: args.blurhashCiphertext }
+          : {}),
+      });
+    },
+    async fetchCiphertext(args) {
+      const response = await fetch(args.url);
+      if (!response.ok) {
+        throw new Error(`Download failed with status ${response.status}`);
+      }
+      return new Uint8Array(await response.arrayBuffer());
+    },
+    async getFile(args) {
+      const view = await client.query(api.files.get, { fileId: args.fileId as never });
+      return view === null ? null : toStoredFile(view);
+    },
+    async getFiles(args) {
+      const views = await client.query(api.files.getMany, {
+        fileIds: args.fileIds as never[],
+      });
+      return views.map(toStoredFile);
     },
     async appendCommit(args) {
       return await client.mutation(api.mls.appendCommit, {

@@ -34,6 +34,7 @@ export type {
   PresenceRow,
   ReactionRow,
   ReadStateRow,
+  StoredFileView,
   TypingRow,
 } from "./port.js";
 export {

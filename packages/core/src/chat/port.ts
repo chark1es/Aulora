@@ -97,6 +97,22 @@ export interface DeviceRow {
 }
 
 /**
+ * Opaque file metadata as stored server-side. `*Ciphertext` fields are never
+ * parsed by the server; `url` is a short-lived storage download URL for the
+ * ciphertext blob.
+ */
+export interface StoredFileView {
+  readonly id: string;
+  readonly uploaderId: string;
+  readonly sizeBytes: number;
+  readonly nameCiphertext: string | null;
+  readonly mimeCiphertext: string | null;
+  readonly dimensionsCiphertext: string | null;
+  readonly blurhashCiphertext: string | null;
+  readonly url: string | null;
+}
+
+/**
  * Imperative reads and writes against one workspace. Secrets in, ciphertext
  * out; the session never logs either.
  */
@@ -133,6 +149,28 @@ export interface ChatPort {
     created: boolean;
   }>;
   getChannelMemberIds(args: { channelId: string }): Promise<readonly string[]>;
+
+  // Files. Ciphertext in, ciphertext out; the server never sees a file key.
+  generateUploadUrl(): Promise<string>;
+  /** POSTs ciphertext to a storage upload URL; returns the storage id. */
+  uploadCiphertext(args: {
+    uploadUrl: string;
+    bytes: Uint8Array;
+    contentType?: string;
+  }): Promise<string>;
+  /** Records opaque ciphertext metadata; returns the `files` id. */
+  recordFile(args: {
+    storageId: string;
+    sizeBytes: number;
+    nameCiphertext?: string;
+    mimeCiphertext?: string;
+    dimensionsCiphertext?: string;
+    blurhashCiphertext?: string;
+  }): Promise<string>;
+  /** GETs ciphertext bytes from a storage download URL. */
+  fetchCiphertext(args: { url: string }): Promise<Uint8Array>;
+  getFile(args: { fileId: string }): Promise<StoredFileView | null>;
+  getFiles(args: { fileIds: readonly string[] }): Promise<readonly StoredFileView[]>;
 
   // MLS.
   appendCommit(args: {

@@ -20,8 +20,8 @@
  * The session never logs plaintext, keys or tokens.
  */
 
-import type { AddMembersResult, MlsEngine, MlsMember } from "@aulora/crypto";
-import { MlsEngineError } from "@aulora/crypto";
+import type { AddMembersResult, AttachmentDescriptor, MlsEngine, MlsMember } from "@aulora/crypto";
+import { MlsEngineError, parseAttachmentDescriptor } from "@aulora/crypto";
 import {
   channelGroupId,
   decodeMlsBytes,
@@ -45,6 +45,11 @@ export interface MessagePayloadBody {
   readonly t: string;
   readonly edited?: boolean;
   readonly threadRootId?: string;
+  /**
+   * Attachment descriptors, including the per-file AES-GCM key + IV. These ride
+   * inside the MLS ciphertext; the server only ever sees the opaque `fileId`.
+   */
+  readonly attachments?: readonly AttachmentDescriptor[];
 }
 
 export interface SessionUser {
@@ -139,6 +144,8 @@ export class ChatSession {
 
   private readonly channels = new Map<string, ChannelState>();
   private readonly decrypted = new Map<string, string>();
+  /** Full decrypted body per message id (text + attachments + thread info). */
+  private readonly bodies = new Map<string, MessagePayloadBody>();
   /** Ciphertext last decrypted per message id, so edits are reopened once. */
   private readonly messageCiphertexts = new Map<string, string>();
   /** In-flight decryption per message id, so concurrent calls do not race. */
@@ -544,7 +551,9 @@ export class ChatSession {
   private async decryptMessage(engine: MlsEngine, message: MessagePayload): Promise<void> {
     try {
       const bytes = await engine.decrypt(decodeMlsBytes(message.ciphertext));
-      this.decrypted.set(message.id, decodePayload<MessagePayloadBody>(bytes).t);
+      const body = decodePayload<MessagePayloadBody>(bytes);
+      this.decrypted.set(message.id, body.t);
+      this.bodies.set(message.id, body);
       this.messageCiphertexts.set(message.id, message.ciphertext);
     } catch (error) {
       if (error instanceof MlsEngineError || error instanceof Error) {
@@ -557,6 +566,30 @@ export class ChatSession {
   /** Decrypted plaintext for a message id, or `undefined` if not openable. */
   decryptedText(messageId: string): string | undefined {
     return this.decrypted.get(messageId);
+  }
+
+  /** Full decrypted body for a message id, including any attachment descriptors. */
+  decryptedBody(messageId: string): MessagePayloadBody | undefined {
+    return this.bodies.get(messageId);
+  }
+
+  /**
+   * Validated attachment descriptors for a message, or an empty list. Each
+   * descriptor is re-checked so a hostile payload cannot inject a bad key/IV.
+   */
+  attachmentsFor(messageId: string): readonly AttachmentDescriptor[] {
+    const attachments = this.bodies.get(messageId)?.attachments;
+    if (attachments === undefined) {
+      return [];
+    }
+    const parsed: AttachmentDescriptor[] = [];
+    for (const attachment of attachments) {
+      const descriptor = parseAttachmentDescriptor(attachment);
+      if (descriptor !== null) {
+        parsed.push(descriptor);
+      }
+    }
+    return parsed;
   }
 
   /**
@@ -653,13 +686,18 @@ export class ChatSession {
       readonly mentionUserIds?: readonly string[];
       readonly threadRootId?: string;
       readonly attachmentIds?: readonly string[];
+      readonly attachments?: readonly AttachmentDescriptor[];
     } = {},
   ): Promise<string> {
     const state = this.requireGroup(channelId);
     const epoch = Number(await state.engine.epoch());
-    const body: MessagePayloadBody = options.threadRootId
-      ? { t: text, threadRootId: options.threadRootId }
-      : { t: text };
+    const body: MessagePayloadBody = {
+      t: text,
+      ...(options.threadRootId !== undefined ? { threadRootId: options.threadRootId } : {}),
+      ...(options.attachments !== undefined && options.attachments.length > 0
+        ? { attachments: options.attachments }
+        : {}),
+    };
     const ciphertext = encodeMlsBytes(await state.engine.encrypt(encodePayload(body)));
     const messageId = await this.port.sendMessage({
       channelId,
@@ -671,6 +709,7 @@ export class ChatSession {
       ...(this.deviceId !== undefined ? { authorDeviceId: this.deviceId } : {}),
     });
     this.decrypted.set(messageId, text);
+    this.bodies.set(messageId, body);
     this.messageCiphertexts.set(messageId, ciphertext);
     await this.port.clearTyping({ channelId });
     void state;
@@ -681,15 +720,20 @@ export class ChatSession {
   async editMessage(channelId: string, messageId: string, text: string): Promise<void> {
     const state = this.requireGroup(channelId);
     const existing = this.latestMessages.find((message) => message.id === messageId);
+    const existingAttachments = this.bodies.get(messageId)?.attachments;
     const epoch = Number(await state.engine.epoch());
     const body: MessagePayloadBody = {
       t: text,
       edited: true,
       ...(existing?.threadRootId ? { threadRootId: existing.threadRootId } : {}),
+      ...(existingAttachments !== undefined && existingAttachments.length > 0
+        ? { attachments: existingAttachments }
+        : {}),
     };
     const ciphertext = encodeMlsBytes(await state.engine.encrypt(encodePayload(body)));
     await this.port.editMessage({ messageId, ciphertext, epoch });
     this.decrypted.set(messageId, text);
+    this.bodies.set(messageId, body);
     this.messageCiphertexts.set(messageId, ciphertext);
   }
 
@@ -698,6 +742,7 @@ export class ChatSession {
     this.requireGroup(channelId);
     await this.port.deleteMessage({ messageId });
     this.decrypted.delete(messageId);
+    this.bodies.delete(messageId);
     this.messageCiphertexts.delete(messageId);
   }
 
