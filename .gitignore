@@ -18,6 +18,9 @@ out/
 # convex local state
 .convex/
 
+# generated per-instance well-known document (infra mounts the real one)
+apps/web/public/.well-known/aulora.json
+
 # turbo / vite / expo caches
 coverage/
 .vite/

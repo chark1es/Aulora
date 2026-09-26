@@ -1,0 +1,48 @@
+{
+  "name": "@aulora/web",
+  "version": "0.0.0",
+  "private": true,
+  "description": "Aulora web client: Vite + React SPA with TanStack Router, Tailwind v3 and Convex + Better Auth.",
+  "type": "module",
+  "scripts": {
+    "well-known": "bun run scripts/write-well-known.ts",
+    "dev": "bun run well-known && vite",
+    "build": "bun run well-known && vite build",
+    "preview": "vite preview",
+    "typecheck": "tsc --noEmit",
+    "lint": "biome check .",
+    "test": "vitest run",
+    "format": "biome format --write .",
+    "clean": "node -e \"require('node:fs').rmSync('dist',{recursive:true,force:true})\""
+  },
+  "dependencies": {
+    "@aulora/avatars": "workspace:*",
+    "@aulora/core": "workspace:*",
+    "@aulora/tokens": "workspace:*",
+    "@aulora/ui-web": "workspace:*",
+    "@convex-dev/better-auth": "0.12.5",
+    "@tanstack/react-router": "1.170.39",
+    "better-auth": "1.6.15",
+    "convex": "1.46.0",
+    "react": "19.3.0",
+    "react-dom": "19.3.0"
+  },
+  "devDependencies": {
+    "@aulora/config": "workspace:*",
+    "@testing-library/dom": "10.4.2",
+    "@testing-library/jest-dom": "7.0.1",
+    "@testing-library/react": "16.3.3",
+    "@testing-library/user-event": "14.6.7",
+    "@types/node": "26.6.3",
+    "@types/react": "19.3.0",
+    "@types/react-dom": "19.3.0",
+    "@vitejs/plugin-react": "6.1.1",
+    "autoprefixer": "10.6.1",
+    "jsdom": "30.1.1",
+    "postcss": "8.5.28",
+    "tailwindcss": "3.4.19",
+    "typescript": "5.9.3",
+    "vite": "8.3.1",
+    "vitest": "5.0.2"
+  }
+}
