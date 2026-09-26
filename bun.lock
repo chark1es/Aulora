@@ -17,6 +17,7 @@
       "dependencies": {
         "@aulora/avatars": "workspace:*",
         "@aulora/core": "workspace:*",
+        "@aulora/crypto": "workspace:*",
         "@aulora/tokens": "workspace:*",
         "@aulora/ui-web": "workspace:*",
         "@convex-dev/better-auth": "0.12.5",

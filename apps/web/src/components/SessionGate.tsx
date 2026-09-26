@@ -1,17 +1,19 @@
 import type { ServerProfile } from "@aulora/core";
-import { Spinner, Text } from "@aulora/ui-web";
+import { Button, Spinner, Text } from "@aulora/ui-web";
+import type { ConvexReactClient } from "convex/react";
 import { useMemo } from "react";
 import { type AuloraAuthClient, authActionsFromClient } from "../lib/auth-client";
-import { SignedInShell } from "./SignedInShell";
+import { ChatSessionShell } from "./chat/ChatSessionShell";
 import { SignInScreen } from "./SignInScreen";
 
 export interface SessionGateProps {
   readonly profile: ServerProfile;
   readonly authClient: AuloraAuthClient;
+  readonly client: ConvexReactClient;
 }
 
 /** Chooses between the sign-in screen and the signed-in shell from the session. */
-export function SessionGate({ profile, authClient }: SessionGateProps) {
+export function SessionGate({ profile, authClient, client }: SessionGateProps) {
   const session = authClient.useSession();
   const actions = useMemo(() => authActionsFromClient(authClient), [authClient]);
 
@@ -28,18 +30,33 @@ export function SessionGate({ profile, authClient }: SessionGateProps) {
 
   const user = session.data?.user;
   if (user !== undefined && user !== null) {
+    const signedInUser = {
+      id: user.id,
+      ...(typeof user.name === "string" ? { name: user.name } : {}),
+      ...(typeof user.email === "string" ? { email: user.email } : {}),
+    };
     return (
-      <SignedInShell
-        profileName={profile.name}
-        user={{
-          id: user.id,
-          ...(typeof user.name === "string" ? { name: user.name } : {}),
-          ...(typeof user.email === "string" ? { email: user.email } : {}),
-        }}
-        onSignOut={() => {
-          void actions.signOut();
-        }}
-      />
+      <div className="relative">
+        <div className="absolute right-4 top-3 z-10">
+          <Button
+            size="sm"
+            variant="ghost"
+            onClick={() => {
+              void actions.signOut();
+            }}
+          >
+            Sign out
+          </Button>
+        </div>
+        <ChatSessionShell
+          client={client}
+          workspaceName={profile.name}
+          user={signedInUser}
+          onSignOut={() => {
+            void actions.signOut();
+          }}
+        />
+      </div>
     );
   }
 

@@ -16,7 +16,7 @@ export function ProfileSession({ profile }: { readonly profile: ServerProfile })
 
   return (
     <ConvexBetterAuthProvider client={convex} authClient={authClient}>
-      <SessionGate profile={profile} authClient={authClient} />
+      <SessionGate profile={profile} authClient={authClient} client={convex} />
     </ConvexBetterAuthProvider>
   );
 }
