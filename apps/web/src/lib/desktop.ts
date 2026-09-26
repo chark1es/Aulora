@@ -61,6 +61,24 @@ export async function listenDesktopEvent(
   return api.listen(event, (incoming) => handler(incoming.payload));
 }
 
+/**
+ * Pulls deep links the shell received before the webview subscribed (e.g. the
+ * link that launched the app). Returns an empty list outside the shell.
+ */
+export async function takeDesktopDeepLinks(): Promise<string[]> {
+  if (!isDesktop()) {
+    return [];
+  }
+  try {
+    const value = await invokeCommand("take_deep_links");
+    return Array.isArray(value)
+      ? value.filter((entry): entry is string => typeof entry === "string")
+      : [];
+  } catch {
+    return [];
+  }
+}
+
 /** Updates the Dock/taskbar unread badge; best-effort outside the shell. */
 export async function setDesktopUnreadBadge(count: number): Promise<void> {
   if (!isDesktop()) {
