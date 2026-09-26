@@ -4,6 +4,7 @@ import { ServerRail } from "./components/ServerRail";
 import { ProfileProvider } from "./providers/ProfileProvider";
 import { ConnectRoute } from "./routes/ConnectRoute";
 import { HomeRoute } from "./routes/HomeRoute";
+import { RedeemRoute } from "./routes/RedeemRoute";
 
 function RootLayout() {
   return (
@@ -33,7 +34,13 @@ const connectRoute = createRoute({
   component: ConnectRoute,
 });
 
-const routeTree = rootRoute.addChildren([indexRoute, connectRoute]);
+const redeemRoute = createRoute({
+  getParentRoute: () => rootRoute,
+  path: "/invite/$code",
+  component: RedeemRoute,
+});
+
+const routeTree = rootRoute.addChildren([indexRoute, connectRoute, redeemRoute]);
 
 export const router = createRouter({ routeTree });
 
