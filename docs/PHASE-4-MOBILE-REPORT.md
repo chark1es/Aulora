@@ -110,3 +110,17 @@ phases.
 - `feat(crypto,avatars): expo secure-store key store, OpenMLS native engine boundary, RN avatars`
 - `feat(mobile): scaffold Expo Router + NativeWind app that exports for iOS and Android`
 - `feat(mobile): connect, native auth, chat UI, notifications and uploads`
+
+## Addendum (2026-09-26): native MLS via `react-native-quick-crypto`
+
+The OpenMLS blocker above is closed without Rust. `react-native-quick-crypto`
+1.1.7 ships a native `crypto.subtle` covering every primitive ts-mls and
+`@hpke/core` use (X25519, Ed25519, HKDF, HMAC, AES-GCM, SHA-256,
+`getRandomValues`), so `createReactNativeMlsEngine()` installs that polyfill and
+reuses the web ts-mls engine. `createMobileChatRuntime()` now builds a live
+`ChatSession` (identity from `ensureDeviceIdentity()`), and
+`probeReactNativeCrypto()` gates the build on the primitives actually working.
+The OpenMLS bridge remains as a typed alternative. See `packages/crypto/MOBILE.md`
+for the coverage table and the on-device verification checklist;
+`registerDevicePushToken()` is now unblocked because `MobileChatRuntime.identityKey`
+exists. Device/simulator verification is still pending.

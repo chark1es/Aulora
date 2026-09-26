@@ -37,7 +37,7 @@ export interface ChatSendResult {
 }
 
 export interface MobileChatContextValue {
-  /** `undefined` until the OpenMLS native engine is available. */
+  /** `undefined` when mobile E2EE is unavailable (e.g. Expo Go). */
   readonly runtime: MobileChatRuntime | undefined;
   /** A clear, user-facing reason E2EE is unavailable, or `null`. */
   readonly mlsError: string | null;
@@ -63,9 +63,10 @@ export interface ChatProviderProps {
 
 /**
  * Owns the mobile chat runtime, device-local search and the offline outbox.
- * When the OpenMLS bridge is absent the provider still exposes the server's
- * channel list and per-channel presence, plus a clear `mlsError`, so the UI can
- * show the real workspace while stating plainly that message E2EE is pending.
+ * When the native crypto polyfill is absent the provider still exposes the
+ * server's channel list and per-channel presence, plus a clear `mlsError`, so the
+ * UI can show the real workspace while stating plainly that message E2EE is
+ * unavailable.
  */
 export function ChatProvider({ client, userId, displayName, children }: ChatProviderProps) {
   const [runtime, setRuntime] = useState<MobileChatRuntime | undefined>(undefined);
@@ -192,7 +193,7 @@ export function ChatProvider({ client, userId, displayName, children }: ChatProv
       const chat = runtimeRef.current;
       const active = outboxRef.current;
       if (chat === undefined || active === undefined) {
-        throw new Error("The OpenMLS native engine is not available on this build.");
+        throw new Error("Encryption is not available on this build.");
       }
       const hasPayload = text.trim().length > 0 || (options.attachments?.length ?? 0) > 0;
       if (!hasPayload) {

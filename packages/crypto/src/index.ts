@@ -82,6 +82,16 @@ export {
   tauriKeychainTransport,
 } from "./native-keystores.js";
 export {
+  createReactNativeMlsEngine,
+  installReactNativeCrypto,
+  isReactNativeCryptoSufficient,
+  probeReactNativeCrypto,
+  REACT_NATIVE_MLS_UNAVAILABLE,
+  type ReactNativeCryptoReport,
+  type ReactNativeMlsEngineOptions,
+  type ReactNativeQuickCrypto,
+} from "./react-native-engine.js";
+export {
   computeSafetyNumber,
   decodeVerificationQr,
   encodeVerificationQr,

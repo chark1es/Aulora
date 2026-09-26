@@ -1,21 +1,22 @@
 /**
- * Native (iOS / Android) MLS engine boundary, backed by OpenMLS.
+ * Native (iOS / Android) OpenMLS engine boundary.
  *
- * ## Why this is a boundary and not a ts-mls build
+ * ## Status
  *
- * `ts-mls@1.6.4` cannot run under Hermes/Expo: both of its crypto providers
- * (default WebCrypto and `nobleCryptoProvider`) need `crypto.subtle` X25519
- * key generation through `@hpke/core`. Expo/Hermes exposes `getRandomValues`
- * but no `subtle`, so both fail at the first X25519 key generation. This is
- * recorded in `packages/crypto/MOBILE.md` and proven by
- * `spikes/mls-demo/src/rn-probe.ts`.
+ * Mobile E2EE does **not** wait on this boundary: the supported iOS/Android path
+ * is {@link createReactNativeMlsEngine} in `react-native-engine.ts`, which
+ * installs `react-native-quick-crypto`'s `crypto.subtle` and reuses the same
+ * ts-mls engine as web. This module remains as the typed alternative for a
+ * future OpenMLS (Rust) core.
  *
- * The fix is a real OpenMLS (Rust) engine compiled for iOS/Android behind this
- * same {@link MlsEngine} interface. This module is the native boundary: it is
- * implementation-complete over an injected {@link NativeMlsBridge}, and the
- * bridge is what the UniFFI/JSI module will provide.
+ * ## Why OpenMLS was originally chosen
  *
- * ## TODO (Phase 4 on the macOS host)
+ * `ts-mls@1.6.4` needs `crypto.subtle` X25519/Ed25519/HKDF support that bare
+ * Hermes/Expo does not provide, so the Phase 4 boundary was built for a real
+ * OpenMLS build. That gap is now closed by `react-native-quick-crypto`
+ * (see `packages/crypto/MOBILE.md`), which covers every primitive ts-mls uses.
+ *
+ * ## OpenMLS TODO (future work on the macOS host)
  *
  * 1. Build OpenMLS for `aarch64-apple-ios`, `aarch64-apple-darwin` and the
  *    Android ABIs via `cargo-ndk`.
@@ -29,7 +30,7 @@
  *    `packages/crypto/test/scenario.ts` plus an interop run against a `ts-mls`
  *    web peer.
  *
- * Until that build lands, `createNativeMlsEngine()` throws a typed
+ * Without a bridge, `createNativeMlsEngine()` throws a typed
  * {@link MlsEngineError} (`not-implemented`) rather than silently pretending a
  * channel is encrypted.
  */
@@ -37,11 +38,12 @@
 import type { AddMembersResult, MlsEngine, MlsMember } from "./engine.js";
 import { MlsEngineError } from "./errors.js";
 
-/** Human-readable status of the OpenMLS native build. */
+/** Human-readable status of the optional OpenMLS native build. */
 export const NATIVE_MLS_TODO =
-  "OpenMLS native engine is not built in this environment. Build OpenMLS for iOS/Android via " +
-  "UniFFI and inject a NativeMlsBridge (see packages/crypto/src/native-engine.ts). The web " +
-  "ts-mls engine cannot run on Hermes because crypto.subtle is unavailable.";
+  "OpenMLS native engine is not built in this environment. Mobile E2EE uses " +
+  "createReactNativeMlsEngine() (ts-mls over react-native-quick-crypto's crypto.subtle) " +
+  "instead; this OpenMLS bridge remains for a future Rust core. See " +
+  "packages/crypto/src/native-engine.ts and packages/crypto/MOBILE.md.";
 
 /**
  * The native operations the OpenMLS module must expose. Every wire value is an

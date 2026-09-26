@@ -200,9 +200,9 @@ export function ChatScreen({
       {mlsError !== null && (
         <View className="border-b border-border bg-accent-soft px-3 py-2">
           <Text size="xs" tone="accent">
-            End-to-end encryption is not active on this build: the OpenMLS native engine is not
-            compiled yet. Channels and presence are live, but messages stay unreadable until the
-            macOS build lands (see packages/crypto/src/native-engine.ts).
+            End-to-end encryption is not active on this build: the native crypto module
+            (react-native-quick-crypto) is unavailable. Channels and presence are live, but messages
+            stay unreadable. Use an Expo dev build, not Expo Go.
           </Text>
         </View>
       )}
