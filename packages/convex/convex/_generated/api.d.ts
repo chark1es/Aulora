@@ -8,19 +8,23 @@
  * @module
  */
 
+import type * as auditLog from "../auditLog.js";
 import type * as auth from "../auth.js";
 import type * as authActions from "../authActions.js";
+import type * as categories from "../categories.js";
 import type * as channels from "../channels.js";
 import type * as crons from "../crons.js";
 import type * as devices from "../devices.js";
 import type * as files from "../files.js";
 import type * as http from "../http.js";
+import type * as invites from "../invites.js";
 import type * as lib_audit from "../lib/audit.js";
 import type * as lib_auth from "../lib/auth.js";
 import type * as lib_channels from "../lib/channels.js";
 import type * as lib_crypto from "../lib/crypto.js";
 import type * as lib_env from "../lib/env.js";
 import type * as lib_oidc from "../lib/oidc.js";
+import type * as lib_overrides from "../lib/overrides.js";
 import type * as lib_permissions from "../lib/permissions.js";
 import type * as lib_rateLimit from "../lib/rateLimit.js";
 import type * as members from "../members.js";
@@ -29,6 +33,7 @@ import type * as mls from "../mls.js";
 import type * as presence from "../presence.js";
 import type * as reactions from "../reactions.js";
 import type * as readStates from "../readStates.js";
+import type * as roles from "../roles.js";
 import type * as server from "../server.js";
 import type * as setup from "../setup.js";
 import type * as setupState from "../setupState.js";
@@ -41,19 +46,23 @@ import type {
 } from "convex/server";
 
 declare const fullApi: ApiFromModules<{
+  auditLog: typeof auditLog;
   auth: typeof auth;
   authActions: typeof authActions;
+  categories: typeof categories;
   channels: typeof channels;
   crons: typeof crons;
   devices: typeof devices;
   files: typeof files;
   http: typeof http;
+  invites: typeof invites;
   "lib/audit": typeof lib_audit;
   "lib/auth": typeof lib_auth;
   "lib/channels": typeof lib_channels;
   "lib/crypto": typeof lib_crypto;
   "lib/env": typeof lib_env;
   "lib/oidc": typeof lib_oidc;
+  "lib/overrides": typeof lib_overrides;
   "lib/permissions": typeof lib_permissions;
   "lib/rateLimit": typeof lib_rateLimit;
   members: typeof members;
@@ -62,6 +71,7 @@ declare const fullApi: ApiFromModules<{
   presence: typeof presence;
   reactions: typeof reactions;
   readStates: typeof readStates;
+  roles: typeof roles;
   server: typeof server;
   setup: typeof setup;
   setupState: typeof setupState;
