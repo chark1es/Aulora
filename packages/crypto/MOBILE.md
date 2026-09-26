@@ -49,8 +49,11 @@ on ts-mls.
    scenario** used by this package's tests (create → KeyPackage → add+welcome →
    join → bidirectional messages → epoch advance → remove → removed decrypt
    fails), plus interop against a `ts-mls` web peer.
-2. Phase 4: implement `tauriKeychainKeyStore()` over the OS keychain (stub in
-   `src/native-keystores.ts`).
+2. Phase 4: `tauriKeychainKeyStore()` over the OS keychain is implemented in
+   `src/native-keystores.ts`. It stores each record as its own macOS Keychain /
+   Windows Credential Manager / Linux Secret Service entry through the Tauri
+   shell's `keychain_*` commands. The contract is unit-tested with an injected
+   transport; on-device keychain behaviour is verified by the desktop CI build.
 3. Phase 5: implement `expoSecureStoreKeyStore()` over `expo-secure-store`
    (iOS Keychain / Android Keystore) (stub in `src/native-keystores.ts`).
 

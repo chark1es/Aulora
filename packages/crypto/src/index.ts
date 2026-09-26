@@ -30,7 +30,14 @@ export {
   type KeyStore,
   memoryKeyStore,
 } from "./keystore.js";
-export { expoSecureStoreKeyStore, tauriKeychainKeyStore } from "./native-keystores.js";
+export {
+  expoSecureStoreKeyStore,
+  TAURI_KEYSTORE_PREFIX,
+  type TauriKeychainKeyStoreOptions,
+  type TauriKeychainTransport,
+  tauriKeychainKeyStore,
+  tauriKeychainTransport,
+} from "./native-keystores.js";
 export {
   AULORA_CIPHER_SUITE,
   createWebMlsEngine,
