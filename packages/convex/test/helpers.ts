@@ -88,6 +88,7 @@ export async function seedWorkspace(t: Test, options: SeedOptions = {}) {
 export interface ChannelSeed {
   readonly kind?: "text" | "announcement" | "dm" | "group_dm";
   readonly nameCiphertext?: string;
+  readonly categoryId?: Id<"categories">;
   readonly overrides?: {
     targetId: string;
     targetType: "role" | "member";
@@ -106,6 +107,7 @@ export async function seedChannel(t: Test, seed: ChannelSeed = {}): Promise<Id<"
       overrides: seed.overrides ?? [],
       archived: seed.archived ?? false,
       ...(seed.nameCiphertext !== undefined ? { nameCiphertext: seed.nameCiphertext } : {}),
+      ...(seed.categoryId !== undefined ? { categoryId: seed.categoryId } : {}),
       ...(seed.dmKey !== undefined ? { dmKey: seed.dmKey } : {}),
     });
     const now = Date.now();
