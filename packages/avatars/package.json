@@ -9,18 +9,27 @@
     "./native": "./src/native.tsx"
   },
   "scripts": {
-    "typecheck": "tsc --noEmit",
+    "typecheck": "tsc --noEmit && tsc --noEmit -p tsconfig.native.json",
     "lint": "biome check .",
     "test": "vitest run",
     "format": "biome format --write .",
     "clean": "node -e \"require('node:fs').rmSync('dist',{recursive:true,force:true})\""
   },
   "dependencies": {
+    "@aulora/tokens": "workspace:*",
     "@blobatar/react": "2.7.0",
     "blobatar": "2.7.0"
   },
   "peerDependencies": {
     "react": "^19.0.0"
+  },
+  "peerDependenciesMeta": {
+    "react-native": {
+      "optional": true
+    },
+    "react-native-svg": {
+      "optional": true
+    }
   },
   "devDependencies": {
     "@aulora/config": "workspace:*",
@@ -32,6 +41,8 @@
     "jsdom": "30.1.1",
     "react": "19.3.0",
     "react-dom": "19.3.0",
+    "react-native": "0.86.3",
+    "react-native-svg": "15.15.5",
     "typescript": "5.9.3",
     "vitest": "5.0.2"
   }

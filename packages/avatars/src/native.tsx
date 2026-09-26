@@ -1,22 +1,50 @@
+import { darkPalette } from "@aulora/tokens";
+import { type StyleProp, StyleSheet, View, type ViewStyle } from "react-native";
+import { SvgXml } from "react-native-svg";
+import { avatarSvg } from "./svg";
+
+export interface NativeAvatarProps {
+  /**
+   * Stable seed: use a user id (`userAvatarSeed`) or a server icon seed from
+   * the well-known document. Never the display name.
+   */
+  seed: string;
+  /** Rendered size in pixels. */
+  size?: number;
+  /** Role color; when set, draws a 2px ring around the avatar. */
+  roleColor?: string;
+  /** Accessible label. When omitted the avatar is decorative. */
+  title?: string;
+  style?: StyleProp<ViewStyle>;
+}
+
 /**
- * Phase 4 — React Native avatar entrypoint (not built yet).
- *
- * The approved native path is the core string API rendered through
- * `react-native-svg`'s `<SvgXml>`:
- *
- * ```tsx
- * import { SvgXml } from "react-native-svg";
- * import { avatarSvg } from "@aulora/avatars"; // raw `<svg>` string
- *
- * export function NativeAvatar({ seed, size = 32 }: { seed: string; size?: number }) {
- *   return <SvgXml xml={avatarSvg(seed, { size })} width={size} height={size} />;
- * }
- * ```
- *
- * Why this file exists now: it is a clearly-named placeholder so the mobile
- * adapter is not forgotten, and so the web bundle never imports
- * `react-native-svg`. Phase 0 Spike C proved the parser and element tree; the
- * RN and `react-native-svg` dependencies (and animation) land with the Expo app
- * in Phase 4. Do not export this from the package root.
+ * The Aulora avatar on iOS/Android: the deterministic Blobatar `<svg>` string
+ * (`avatarSvg`) rendered through `react-native-svg`'s `SvgXml`, with an
+ * optional 2px role-color ring. The web entrypoint (`Avatar`) renders the same
+ * seed through `@blobatar/react`, so a user looks identical on every client.
  */
-export {};
+export function NativeAvatar({ seed, size = 32, roleColor, title, style }: NativeAvatarProps) {
+  const ring: ViewStyle | null =
+    roleColor !== undefined && roleColor.length > 0
+      ? { borderColor: roleColor, borderWidth: 2 }
+      : null;
+  return (
+    <View
+      accessible={title !== undefined}
+      accessibilityLabel={title}
+      style={[styles.frame, { width: size, height: size, borderRadius: size / 2 }, ring, style]}
+    >
+      <SvgXml xml={avatarSvg(seed, { size })} width={size} height={size} />
+    </View>
+  );
+}
+
+const styles = StyleSheet.create({
+  frame: {
+    alignItems: "center",
+    justifyContent: "center",
+    overflow: "hidden",
+    backgroundColor: darkPalette["surface-3"],
+  },
+});

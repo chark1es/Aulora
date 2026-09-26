@@ -12,7 +12,9 @@
  *
  * Both adapters satisfy the same {@link KeyStore} contract. The Tauri adapter is
  * injectable with a transport so the contract is unit-tested without touching a
- * real OS keychain.
+ * real OS keychain. The Phase 4 mobile adapter, {@link expoSecureStoreKeyStore},
+ * is injectable with the `expo-secure-store` module for the same reason, and
+ * keeps a JSON key index because SecureStore has no enumeration API.
  */
 
 import { base64ToBytes, bytesToBase64 } from "./binary.js";
@@ -126,10 +128,148 @@ export function tauriKeychainKeyStore(options: TauriKeychainKeyStoreOptions = {}
 }
 
 const PHASE_5_MESSAGE =
-  "expoSecureStoreKeyStore() arrives in Phase 5 (Expo iOS/Android): implement KeyStore over " +
-  "expo-secure-store (iOS Keychain / Android Keystore). Not implemented yet.";
+  "expoSecureStoreKeyStore() needs the expo-secure-store module injected (iOS Keychain / Android Keystore). " +
+  "Pass { secureStore } from the Expo app; expo-secure-store has no built-in enumeration, so an explicit key index is kept.";
 
-/** Phase 5 stub. See {@link PHASE_5_MESSAGE}. */
-export function expoSecureStoreKeyStore(): KeyStore {
-  throw new MlsEngineError("not-implemented", PHASE_5_MESSAGE);
+/**
+ * The tiny surface of `expo-secure-store` this adapter needs. Kept structural so
+ * `@aulora/crypto` never has to depend on Expo: the mobile app passes
+ * `import * as SecureStore from "expo-secure-store"` at construction.
+ */
+export interface ExpoSecureStoreLike {
+  getItemAsync(key: string): Promise<string | null>;
+  setItemAsync(key: string, value: string): Promise<void>;
+  deleteItemAsync(key: string): Promise<void>;
+}
+
+/** Prefix under which every Aulora MLS record is stored on mobile. */
+export const EXPO_SECURE_STORE_PREFIX = "aulora.mls.";
+
+/** Records larger than one SecureStore entry are split on this marker. */
+const CHUNK_MARKER = "#";
+
+/**
+ * expo-secure-store values are capped (2048 bytes on Android in practice), so
+ * records are base64-encoded and split into chunks below that limit.
+ */
+const MAX_CHUNK_CHARS = 1800;
+
+export interface ExpoSecureStoreKeyStoreOptions {
+  /**
+   * The `expo-secure-store` module (or a compatible transport). Required: the
+   * adapter never imports Expo itself so this package stays platform-agnostic.
+   */
+  readonly secureStore?: ExpoSecureStoreLike;
+  /** Prefix Aulora records live under. Defaults to {@link EXPO_SECURE_STORE_PREFIX}. */
+  readonly prefix?: string;
+}
+
+/**
+ * Phase 4 mobile {@link KeyStore} over `expo-secure-store` (iOS Keychain /
+ * Android Keystore). Values are base64-encoded and chunked; because
+ * SecureStore has no enumeration API, a JSON key index is maintained in a
+ * dedicated record so {@link KeyStore.keys} works.
+ */
+export function expoSecureStoreKeyStore(options: ExpoSecureStoreKeyStoreOptions = {}): KeyStore {
+  const provided = options.secureStore;
+  if (!provided) {
+    throw new MlsEngineError("not-implemented", PHASE_5_MESSAGE);
+  }
+  const secureStore: ExpoSecureStoreLike = provided;
+  const prefix = options.prefix ?? EXPO_SECURE_STORE_PREFIX;
+  const indexKey = `${prefix}__keys__`;
+  const scoped = (key: string) => `${prefix}${key}`;
+  const chunkKey = (key: string, chunk: number) => `${scoped(key)}${CHUNK_MARKER}${chunk}`;
+
+  function assertNoMarker(key: string): void {
+    if (key.includes(CHUNK_MARKER)) {
+      throw new MlsEngineError("decode", "key store keys must not contain the chunk marker");
+    }
+  }
+
+  async function readIndex(): Promise<string[]> {
+    const raw = await secureStore.getItemAsync(indexKey);
+    if (raw === null) {
+      return [];
+    }
+    try {
+      const parsed: unknown = JSON.parse(raw);
+      return Array.isArray(parsed)
+        ? parsed.filter((key): key is string => typeof key === "string")
+        : [];
+    } catch {
+      return [];
+    }
+  }
+
+  async function writeIndex(keys: readonly string[]): Promise<void> {
+    await secureStore.setItemAsync(indexKey, JSON.stringify([...keys].sort()));
+  }
+
+  return {
+    async get(key) {
+      assertNoMarker(key);
+      const meta = await secureStore.getItemAsync(scoped(key));
+      if (meta === null) {
+        return undefined;
+      }
+      let chunks: number;
+      try {
+        const parsed = JSON.parse(meta) as { chunks?: unknown };
+        chunks = typeof parsed.chunks === "number" ? parsed.chunks : 1;
+      } catch {
+        chunks = 1;
+      }
+      let encoded = "";
+      for (let chunk = 0; chunk < chunks; chunk += 1) {
+        const part = await secureStore.getItemAsync(chunkKey(key, chunk));
+        if (part === null) {
+          throw new MlsEngineError("decode", "stored crypto record is missing a chunk");
+        }
+        encoded += part;
+      }
+      return base64ToBytes(encoded);
+    },
+    async set(key, value) {
+      assertNoMarker(key);
+      const encoded = bytesToBase64(value);
+      const chunks = Math.max(1, Math.ceil(encoded.length / MAX_CHUNK_CHARS));
+      for (let chunk = 0; chunk < chunks; chunk += 1) {
+        await secureStore.setItemAsync(
+          chunkKey(key, chunk),
+          encoded.slice(chunk * MAX_CHUNK_CHARS, (chunk + 1) * MAX_CHUNK_CHARS),
+        );
+      }
+      await secureStore.setItemAsync(scoped(key), JSON.stringify({ chunks }));
+      const index = await readIndex();
+      if (!index.includes(key)) {
+        await writeIndex([...index, key]);
+      }
+    },
+    async delete(key) {
+      assertNoMarker(key);
+      const meta = await secureStore.getItemAsync(scoped(key));
+      if (meta !== null) {
+        let chunks = 1;
+        try {
+          const parsed = JSON.parse(meta) as { chunks?: unknown };
+          chunks = typeof parsed.chunks === "number" ? parsed.chunks : 1;
+        } catch {
+          chunks = 1;
+        }
+        for (let chunk = 0; chunk < chunks; chunk += 1) {
+          await secureStore.deleteItemAsync(chunkKey(key, chunk));
+        }
+        await secureStore.deleteItemAsync(scoped(key));
+      }
+      const index = await readIndex();
+      if (index.includes(key)) {
+        await writeIndex(index.filter((existing) => existing !== key));
+      }
+    },
+    async keys(filter) {
+      const index = await readIndex();
+      return index.filter((key) => filter === undefined || key.startsWith(filter));
+    },
+  };
 }

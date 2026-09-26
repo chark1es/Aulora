@@ -1,7 +1,9 @@
-# Mobile MLS decision (recorded, not built)
+# Mobile MLS decision (Phase 4 boundary built)
 
-Status: decided in Phase 0 (Spike B); this package ships the web engine only.
+Status: the ts-mls limitation was decided in Phase 0 (Spike B); this package
+ships the web engine plus the Phase 4 native boundary and the Expo key store.
 Source of truth: `spikes/mls-demo/REPORT.md` and `spikes/PHASE-0-REPORT.md`.
+See `docs/PHASE-4-MOBILE-REPORT.md` for what is built vs. still needs the Mac.
 
 ## Finding: `ts-mls` cannot run on Expo / React Native as-is
 
@@ -31,6 +33,11 @@ only fixes randomness, `expo-crypto` does not expose `subtle`, and
 `react-native-quick-crypto`'s Secure-Curves coverage is not guaranteed. This is
 heavy shims territory for the exact primitives ts-mls needs.
 
+**The gap, precisely:** Hermes/Expo gives `crypto.getRandomValues` but no
+`crypto.subtle`, so there is no X25519 keygen/DH, Ed25519 signing or HKDF.
+Any MLS stack on mobile must supply those itself. That is why the mobile engine
+is OpenMLS (Rust) rather than ts-mls plus shims.
+
 ## Decision
 
 Keep the swap point: every caller depends on `MlsEngine` (`src/engine.ts`), never
@@ -40,25 +47,29 @@ on ts-mls.
 | --- | --- |
 | Web (Vite SPA) | `createWebMlsEngine()` — `ts-mls@1.6.4` (this package) |
 | Tauri desktop | same web engine in the webview; optionally OpenMLS in the Rust core later |
-| iOS / Android | OpenMLS (Rust) behind the same `MlsEngine` interface |
+| iOS / Android | OpenMLS (Rust) behind `createNativeMlsEngine()` (`src/native-engine.ts`) |
 
-## Phase 4 / 5 plan (to implement and verify on the macOS host)
+## Phase 4 status
 
-1. Phase 4: build OpenMLS for the native targets (UniFFI/WASM) and implement
-   `MlsEngine` on top of it. Verify with the **same two-device conformance
-   scenario** used by this package's tests (create → KeyPackage → add+welcome →
-   join → bidirectional messages → epoch advance → remove → removed decrypt
-   fails), plus interop against a `ts-mls` web peer.
-2. Phase 4: `tauriKeychainKeyStore()` over the OS keychain is implemented in
-   `src/native-keystores.ts`. It stores each record as its own macOS Keychain /
-   Windows Credential Manager / Linux Secret Service entry through the Tauri
-   shell's `keychain_*` commands. The contract is unit-tested with an injected
-   transport; on-device keychain behaviour is verified by the desktop CI build.
-3. Phase 5: implement `expoSecureStoreKeyStore()` over `expo-secure-store`
-   (iOS Keychain / Android Keystore) (stub in `src/native-keystores.ts`).
+1. **Native boundary — built.** `createNativeMlsEngine({ bridge })` implements
+   the full `MlsEngine` interface over an injected `NativeMlsBridge`; without a
+   bridge it throws a typed `not-implemented` error instead of pretending a
+   channel is encrypted. The twelve bridge operations mirror the engine and use
+   the same MLS TLS wire format as the web engine.
+2. **OpenMLS itself — TODO (macOS host).** Build OpenMLS for iOS/Android,
+   UniFFI-wrap `MlsGroup`, and provide the bridge. Verify with the two-device
+   conformance scenario in `test/scenario.ts` plus a `ts-mls` web-peer interop
+   run. `NATIVE_MLS_TODO` in `src/native-engine.ts` is the exact checklist.
+3. **`expoSecureStoreKeyStore()` — built** (`src/native-keystores.ts`). Each
+   record is base64-encoded, chunked under the SecureStore value cap, and
+   indexed in a dedicated record (SecureStore has no enumeration API). The
+   `expo-secure-store` module is injected by the app, so this package stays
+   Expo-free and the adapter is unit-tested with a fake store.
+4. **`tauriKeychainKeyStore()` — built** (Phase 4.1) over the desktop shell's
+   `keychain_*` commands, with an injected transport.
 
 ## Not now
 
-No React Native / OpenMLS dependencies are added to this package in Phase 2.
-The mobile engine is a deliberate, separate implementation behind the stable
-interface.
+No React Native / OpenMLS dependencies are added to this package. The mobile
+engine is a deliberate, separate implementation behind the stable interface.
+

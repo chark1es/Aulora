@@ -31,6 +31,15 @@ export {
   memoryKeyStore,
 } from "./keystore.js";
 export {
+  createNativeMlsEngine,
+  NATIVE_MLS_TODO,
+  type NativeMlsBridge,
+  type NativeMlsEngineOptions,
+} from "./native-engine.js";
+export {
+  EXPO_SECURE_STORE_PREFIX,
+  type ExpoSecureStoreKeyStoreOptions,
+  type ExpoSecureStoreLike,
   expoSecureStoreKeyStore,
   TAURI_KEYSTORE_PREFIX,
   type TauriKeychainKeyStoreOptions,

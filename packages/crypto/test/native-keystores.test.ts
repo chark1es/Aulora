@@ -2,6 +2,8 @@ import { describe, expect, it, vi } from "vitest";
 import {
   base64ToBytes,
   bytesToBase64,
+  EXPO_SECURE_STORE_PREFIX,
+  type ExpoSecureStoreLike,
   expoSecureStoreKeyStore,
   MlsEngineError,
   TAURI_KEYSTORE_PREFIX,
@@ -117,7 +119,67 @@ describe("tauriKeychainTransport", () => {
 });
 
 describe("expoSecureStoreKeyStore", () => {
-  it("is still an explicit Phase 5 stub", () => {
+  function fakeSecureStore(): { store: ExpoSecureStoreLike; entries: Map<string, string> } {
+    const entries = new Map<string, string>();
+    return {
+      entries,
+      store: {
+        getItemAsync: async (key) => entries.get(key) ?? null,
+        setItemAsync: async (key, value) => {
+          entries.set(key, value);
+        },
+        deleteItemAsync: async (key) => {
+          entries.delete(key);
+        },
+      },
+    };
+  }
+
+  it("throws a typed error when no expo-secure-store module is injected", () => {
     expect(() => expoSecureStoreKeyStore()).toThrow(MlsEngineError);
+  });
+
+  it("round-trips, scopes and deletes records through the injected store", async () => {
+    const fake = fakeSecureStore();
+    const store = expoSecureStoreKeyStore({ secureStore: fake.store });
+
+    await store.set("identity", bytes("private-key-material"));
+    await store.set("group/abc", bytes("group-state"));
+
+    expect(await store.get("identity")).toEqual(bytes("private-key-material"));
+    expect(await store.get("missing")).toBeUndefined();
+    expect(await store.keys()).toEqual(["group/abc", "identity"]);
+    expect(await store.keys("group/")).toEqual(["group/abc"]);
+    expect([...fake.entries.keys()].some((key) => key.startsWith(EXPO_SECURE_STORE_PREFIX))).toBe(
+      true,
+    );
+
+    await store.delete("identity");
+    expect(await store.get("identity")).toBeUndefined();
+    expect(await store.keys()).toEqual(["group/abc"]);
+  });
+
+  it("chunks values larger than one SecureStore entry", async () => {
+    const fake = fakeSecureStore();
+    const store = expoSecureStoreKeyStore({ secureStore: fake.store });
+    const large = new Uint8Array(5000).fill(7);
+
+    await store.set("group/large", large);
+    expect(await store.get("group/large")).toEqual(large);
+
+    const chunkEntries = [...fake.entries.keys()].filter((key) => key.includes("#"));
+    expect(chunkEntries.length).toBeGreaterThan(1);
+    // Every chunk stays under the SecureStore value cap once base64-decoded.
+    for (const key of chunkEntries) {
+      expect((fake.entries.get(key) ?? "").length).toBeLessThanOrEqual(1800);
+    }
+  });
+
+  it("allows a custom prefix", async () => {
+    const fake = fakeSecureStore();
+    const store = expoSecureStoreKeyStore({ secureStore: fake.store, prefix: "aulora/test." });
+    await store.set("one", bytes("1"));
+    expect(await store.keys()).toEqual(["one"]);
+    expect([...fake.entries.keys()].every((key) => key.startsWith("aulora/test."))).toBe(true);
   });
 });
