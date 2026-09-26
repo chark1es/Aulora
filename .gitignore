@@ -1,0 +1,27 @@
+# dependencies
+node_modules/
+.pnp
+.pnp.js
+
+# secrets and env
+.env
+.env.*
+!.env.example
+
+# build output
+dist/
+build/
+out/
+.turbo/
+*.tsbuildinfo
+
+# convex local state
+.convex/
+
+# spike build artifacts
+spikes/mls-demo/public/worker.js
+
+# logs and OS files
+*.log
+.DS_Store
+Thumbs.db
