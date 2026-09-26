@@ -72,6 +72,7 @@ export function ChatView({
   const [threadRoot, setThreadRoot] = useState<MessagePayload | null>(null);
   const [customStatuses, setCustomStatuses] = useState<ReadonlyMap<string, string>>(new Map());
   const [searchOpen, setSearchOpen] = useState(false);
+  const [sidebarHidden, setSidebarHidden] = useState(false);
   const [searchQuery, setSearchQuery] = useState("");
   const [searchResults, setSearchResults] = useState<readonly ChatSearchHit[]>([]);
   const [searching, setSearching] = useState(false);
@@ -154,6 +155,13 @@ export function ChatView({
     const onQuickSwitcher = () => setSearchOpen(true);
     window.addEventListener("aulora:quick-switcher", onQuickSwitcher);
     return () => window.removeEventListener("aulora:quick-switcher", onQuickSwitcher);
+  }, []);
+
+  // The native View > Toggle Sidebar menu item hides/shows the channel rail.
+  useEffect(() => {
+    const onToggleSidebar = () => setSidebarHidden((hidden) => !hidden);
+    window.addEventListener("aulora:toggle-sidebar", onToggleSidebar);
+    return () => window.removeEventListener("aulora:toggle-sidebar", onToggleSidebar);
   }, []);
 
   useEffect(() => {
@@ -347,33 +355,35 @@ export function ChatView({
 
   return (
     <div className="relative flex h-screen min-h-0">
-      <ChannelSidebar
-        workspaceName={workspaceName}
-        channels={channels}
-        activeChannelId={activeChannelId}
-        unreadByChannel={unreadByChannel}
-        members={members.map((member) => ({
-          userId: member.userId,
-          displayName: member.displayName,
-        }))}
-        showAdmin={showAdmin}
-        onOpenAdmin={() => setAdminOpen(true)}
-        onSelect={(channelId) => void openChannel(channelId)}
-        onCreateChannel={({ name, kind }) => {
-          void createChannel(runtime, name, kind).then((channelId) => {
-            if (channelId !== undefined) {
-              setActiveChannelId(channelId);
-            }
-          });
-        }}
-        onCreateDm={(userId) => {
-          void createDm(runtime, userId).then((channelId) => {
-            if (channelId !== undefined) {
-              setActiveChannelId(channelId);
-            }
-          });
-        }}
-      />
+      {!sidebarHidden && (
+        <ChannelSidebar
+          workspaceName={workspaceName}
+          channels={channels}
+          activeChannelId={activeChannelId}
+          unreadByChannel={unreadByChannel}
+          members={members.map((member) => ({
+            userId: member.userId,
+            displayName: member.displayName,
+          }))}
+          showAdmin={showAdmin}
+          onOpenAdmin={() => setAdminOpen(true)}
+          onSelect={(channelId) => void openChannel(channelId)}
+          onCreateChannel={({ name, kind }) => {
+            void createChannel(runtime, name, kind).then((channelId) => {
+              if (channelId !== undefined) {
+                setActiveChannelId(channelId);
+              }
+            });
+          }}
+          onCreateDm={(userId) => {
+            void createDm(runtime, userId).then((channelId) => {
+              if (channelId !== undefined) {
+                setActiveChannelId(channelId);
+              }
+            });
+          }}
+        />
+      )}
 
       <main className="flex min-w-0 flex-1 flex-col bg-bg">
         {(!online || outbox.length > 0) && (

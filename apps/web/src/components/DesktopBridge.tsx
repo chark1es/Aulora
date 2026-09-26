@@ -1,11 +1,6 @@
 import { useNavigate } from "@tanstack/react-router";
 import { useEffect } from "react";
-import {
-  isDesktop,
-  listenDesktopEvent,
-  parseDeepLink,
-  takeDesktopDeepLinks,
-} from "../lib/desktop";
+import { isDesktop, listenDesktopEvent, parseDeepLink, takeDesktopDeepLinks } from "../lib/desktop";
 
 /**
  * Runs inside the router so deep links and native menu commands can navigate.
@@ -48,9 +43,13 @@ export function DesktopBridge() {
       const offQuickSwitcher = await listenDesktopEvent("aulora://quick-switcher", () => {
         window.dispatchEvent(new Event("aulora:quick-switcher"));
       });
+      const offToggleSidebar = await listenDesktopEvent("aulora://toggle-sidebar", () => {
+        window.dispatchEvent(new Event("aulora:toggle-sidebar"));
+      });
       const combined = () => {
         offDeepLink();
         offQuickSwitcher();
+        offToggleSidebar();
       };
       if (disposed) {
         combined();
