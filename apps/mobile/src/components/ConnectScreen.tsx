@@ -31,9 +31,16 @@ interface Preview {
  * First-launch entry point: enter a host, read `/.well-known/aulora.json`,
  * confirm the workspace and API version, then save the server profile.
  */
-export function ConnectScreen({ onConnected }: { readonly onConnected: () => void }) {
+export function ConnectScreen({
+  onConnected,
+  initialHost,
+}: {
+  readonly onConnected: () => void;
+  /** Host prefilled from an `aulora://connect?server=…` deep link. */
+  readonly initialHost?: string;
+}) {
   const { addProfile } = useProfiles();
-  const [host, setHost] = useState("");
+  const [host, setHost] = useState(initialHost ?? "");
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [preview, setPreview] = useState<Preview | null>(null);
