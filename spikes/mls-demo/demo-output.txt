@@ -1,0 +1,47 @@
+﻿==============================================================================
+Aulora Spike B - ts-mls two-device MLS (RFC 9420) demo
+==============================================================================
+         runtime       : bun 1.4.0 / node 26.3.0
+         crypto global : object  subtle=object
+         ciphersuite   : MLS_128_DHKEMX25519_AES128GCM_SHA256_Ed25519
+  [PROOF] ciphersuite impl loaded: MLS_128_DHKEMX25519_AES128GCM_SHA256_Ed25519
+
+[STEP 01] Alice creates the MLS group with a Basic (self-asserted) credential identity
+  [PROOF] group created by alice, epoch=0, members=[alice (leaf 0)]
+  [PROOF] alice credential signature public key (ed25519, binds identity->key): a7abd668edea4c5d5d2b5cea14710b20...
+
+[STEP 02] Bob creates a KeyPackage
+         wire mls_key_package: encoded 317 bytes, decoded 317 bytes  first16=000100050001000120d2799c18ad0b6f
+  [PROOF] bob KeyPackage generated and transmitted (1 member currently in group)
+
+[STEP 03] Alice adds Bob (Add proposal + Commit) and produces a Welcome
+  [PROOF] alice committed Add at epoch=1, members=[alice (leaf 0), bob (leaf 1)]
+         wire mls_welcome: encoded 795 bytes, decoded 795 bytes  first16=000100030001407620495a5e82956dce
+
+[STEP 04] Bob processes the Welcome and joins the group
+  [PROOF] bob joined at epoch=1 (alice epoch=1), members=[alice (leaf 0), bob (leaf 1)]
+
+[STEP 05] Alice encrypts an application message; Bob decrypts it
+         wire mls_private_message: encoded 341 bytes, decoded 341 bytes  first16=000100021761756c6f72612d70686173
+  [PROOF] bob decrypted plaintext: "hello bob, this is an MLS application message from alice"
+
+[STEP 06] Bob encrypts a reply; Alice decrypts it
+         wire mls_private_message: encoded 341 bytes, decoded 341 bytes  first16=000100021761756c6f72612d70686173
+  [PROOF] alice decrypted plaintext: "hi alice, bob got it and replies over MLS"
+
+[STEP 07] Alice removes Bob (Remove proposal + public Commit)
+         bob is at leaf index 1
+  [PROOF] alice committed Remove at epoch=2, members=[alice (leaf 0)]
+
+[STEP 08] Bob processes the removal commit
+         wire mls_public_message: encoded 393 bytes, decoded 393 bytes  first16=000100011761756c6f72612d70686173
+  [PROOF] bob processed the removal commit; groupActiveState=removedFromGroup
+
+[STEP 09] Alice sends a new application message; Bob's decrypt MUST fail
+         wire mls_private_message: encoded 341 bytes, decoded 341 bytes  first16=000100021761756c6f72612d70686173
+  [PROOF] bob's post-removal decrypt FAILED as expected: CryptoError: OperationError: The operation failed for an operation-specific reason
+         bobRemovedFromGroup=true
+
+==============================================================================
+RESULT: all steps completed. Add/Welcome/messaging/Remove all verified.
+==============================================================================

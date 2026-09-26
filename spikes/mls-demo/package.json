@@ -1,0 +1,18 @@
+{
+  "name": "aulora-mls-demo",
+  "version": "0.0.1",
+  "private": true,
+  "type": "module",
+  "description": "Spike B Phase 0: two-device MLS (RFC 9420) demo using ts-mls, run with bun.",
+  "scripts": {
+    "start": "bun run src/demo.ts",
+    "rn:probe": "bun run src/rn-probe.ts",
+    "browser:build": "bun build src/browser-worker.ts --target browser --format esm --outfile public/worker.js",
+    "browser:serve": "bun run src/serve.ts"
+  },
+  "dependencies": {
+    "@noble/curves": "2.0.1",
+    "@noble/hashes": "2.3.0",
+    "ts-mls": "1.6.4"
+  }
+}
