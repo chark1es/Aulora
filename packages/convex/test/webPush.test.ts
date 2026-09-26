@@ -101,7 +101,7 @@ describe("buildVapidJwt", () => {
     const valid = await crypto.subtle.verify(
       { name: "ECDSA", hash: "SHA-256" },
       verifyKey,
-      base64UrlToBytes(signature as string),
+      base64UrlToBytes(signature as string) as unknown as BufferSource,
       new TextEncoder().encode(`${header}.${payload}`),
     );
     expect(valid).toBe(true);

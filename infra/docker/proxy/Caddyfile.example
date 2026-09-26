@@ -20,7 +20,7 @@ chat.example.com {
 		# Adjust to the origins you actually use. `connect-src` needs the Convex
 		# cloud origin (wss + https). There are no inline scripts: the theme
 		# bootstrap lives in /theme-boot.js, so `script-src 'self'` is enough.
-		Content-Security-Policy "default-src 'self'; base-uri 'self'; frame-ancestors 'none'; object-src 'none'; img-src 'self' data: blob:; style-src 'self' 'unsafe-inline'; script-src 'self'; connect-src 'self' https://convex.example.com wss://convex.example.com"
+		Content-Security-Policy "default-src 'self'; base-uri 'self'; frame-ancestors 'none'; object-src 'none'; img-src 'self' data: blob:; style-src 'self' 'unsafe-inline'; script-src 'self'; worker-src 'self'; connect-src 'self' https://convex.example.com wss://convex.example.com"
 	}
 
 	# Better Auth must be same-origin as the web app so the session cookie is

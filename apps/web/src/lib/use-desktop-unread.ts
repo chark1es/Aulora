@@ -16,7 +16,7 @@ interface AppBadgeNavigator {
  */
 export function useLiveUnreadBadge(): number {
   const desktop = isDesktop();
-  const summary = useQuery(api.notifications.unreadSummary, desktop ? {} : "skip");
+  const summary = useQuery(api.notifications.unreadSummary, {});
   const total = summary?.total ?? 0;
 
   useEffect(() => {
