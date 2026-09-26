@@ -17,6 +17,8 @@ export interface MessageListProps {
   readonly permissions: bigint;
   readonly ownUserId: string;
   readonly memberNames: ReadonlyMap<string, string>;
+  /** Highest-position role color per user id, for rings and tinted names. */
+  readonly memberColors?: ReadonlyMap<string, string>;
   readonly firstUnreadId: string | null;
   readonly onReply: (message: MessagePayload) => void;
   readonly onEdit: (message: MessagePayload, text: string) => void;
@@ -39,6 +41,7 @@ export function MessageList({
   permissions,
   ownUserId,
   memberNames,
+  memberColors,
   firstUnreadId,
   onReply,
   onEdit,
@@ -84,6 +87,7 @@ export function MessageList({
               permissions={permissions}
               ownUserId={ownUserId}
               authorName={memberNames.get(message.authorId) ?? message.authorId}
+              authorColor={memberColors?.get(message.authorId)}
               onReply={onReply}
               onEdit={onEdit}
               onDelete={onDelete}
@@ -107,6 +111,7 @@ function MessageRow({
   permissions,
   ownUserId,
   authorName,
+  authorColor,
   onReply,
   onEdit,
   onDelete,
@@ -122,6 +127,7 @@ function MessageRow({
   permissions: bigint;
   ownUserId: string;
   authorName: string;
+  authorColor: string | undefined;
   onReply(message: MessagePayload): void;
   onEdit(message: MessagePayload, text: string): void;
   onDelete(message: MessagePayload): void;
@@ -174,10 +180,18 @@ function MessageRow({
       className="group relative flex gap-3 rounded-input px-3 py-1.5 hover:bg-surface-2"
       data-testid={`message-${message.id}`}
     >
-      <Avatar seed={userAvatarSeed(message.authorId)} size={32} />
+      <Avatar
+        seed={userAvatarSeed(message.authorId)}
+        size={32}
+        {...(authorColor !== undefined && authorColor.length > 0 ? { roleColor: authorColor } : {})}
+      />
       <div className="min-w-0 flex-1">
         <div className="flex items-baseline gap-2">
-          <Text size="sm" className="font-medium">
+          <Text
+            size="sm"
+            className="font-medium"
+            style={authorColor !== undefined ? { color: authorColor } : undefined}
+          >
             {authorName}
           </Text>
           <Text size="xs" tone="muted" mono>

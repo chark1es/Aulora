@@ -7,6 +7,8 @@ export interface MemberEntry {
   readonly displayName: string;
   readonly roleIds?: readonly string[];
   readonly isOwner?: boolean;
+  /** Highest-position role color; tints the ring and the username. */
+  readonly roleColor?: string | null;
 }
 
 export interface MembersPanelProps {
@@ -58,7 +60,15 @@ export function MembersPanel({
           return (
             <li key={member.userId} className="flex items-center gap-2 rounded-pill px-1 py-0.5">
               <span className="relative">
-                <Avatar seed={userAvatarSeed(member.userId)} size={24} />
+                <Avatar
+                  seed={userAvatarSeed(member.userId)}
+                  size={24}
+                  {...(member.roleColor !== null &&
+                  member.roleColor !== undefined &&
+                  member.roleColor.length > 0
+                    ? { roleColor: member.roleColor }
+                    : {})}
+                />
                 <span
                   role="status"
                   aria-label={status}
@@ -69,7 +79,15 @@ export function MembersPanel({
                 />
               </span>
               <span className="min-w-0 flex-1">
-                <Text size="sm" className="truncate">
+                <Text
+                  size="sm"
+                  className="truncate"
+                  style={
+                    member.roleColor !== null && member.roleColor !== undefined
+                      ? { color: member.roleColor }
+                      : undefined
+                  }
+                >
                   {member.displayName}
                   {member.isOwner ? " · owner" : ""}
                 </Text>

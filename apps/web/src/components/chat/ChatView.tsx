@@ -1,5 +1,6 @@
 import {
   type AttachmentDescriptor,
+  hasPermission,
   type MentionTarget,
   type MessagePayload,
   Permission,
@@ -9,7 +10,9 @@ import { Button, Heading, Spinner, Text } from "@aulora/ui-web";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { uploadFiles } from "../../lib/attachments";
 import { useChannelSession } from "../../lib/use-channel";
+import type { CategoryView, MemberView, RoleView } from "../../lib/workspace-admin";
 import { type ChatSearchHit, useChat } from "../../providers/ChatProvider";
+import { AdminPanel, type AdminPanelViewer } from "../admin/AdminPanel";
 import { ChannelSidebar } from "./ChannelSidebar";
 import { Composer } from "./Composer";
 import { MembersPanel } from "./MembersPanel";
@@ -26,8 +29,16 @@ export interface ChatViewProps {
     displayName: string;
     roleIds?: readonly string[];
     isOwner?: boolean;
+    roleColor?: string | null;
   }[];
   readonly roles: readonly RoleMentionTarget[];
+  readonly admin: {
+    readonly viewer: AdminPanelViewer;
+    readonly ownerId: string | null;
+    readonly roleViews: readonly RoleView[];
+    readonly memberViews: readonly MemberView[];
+    readonly categories: readonly CategoryView[];
+  };
 }
 
 /**
@@ -35,10 +46,18 @@ export interface ChatViewProps {
  * members, local search and the offline outbox. Reads the MLS session from
  * {@link useChat} and keeps every payload decrypted through it.
  */
-export function ChatView({ workspaceName, ownUserId, permissions, members, roles }: ChatViewProps) {
+export function ChatView({
+  workspaceName,
+  ownUserId,
+  permissions,
+  members,
+  roles,
+  admin,
+}: ChatViewProps) {
   const {
     runtime,
     channels,
+    channelNames,
     presence,
     reportChannelNames,
     ready,
@@ -48,6 +67,7 @@ export function ChatView({ workspaceName, ownUserId, permissions, members, roles
     search,
   } = useChat();
   const [activeChannelId, setActiveChannelId] = useState<string | undefined>(undefined);
+  const [adminOpen, setAdminOpen] = useState(false);
   const [threadRoot, setThreadRoot] = useState<MessagePayload | null>(null);
   const [customStatuses, setCustomStatuses] = useState<ReadonlyMap<string, string>>(new Map());
   const [searchOpen, setSearchOpen] = useState(false);
@@ -156,6 +176,36 @@ export function ChatView({ workspaceName, ownUserId, permissions, members, roles
     }
     return map;
   }, [members]);
+
+  const memberColors = useMemo(() => {
+    const map = new Map<string, string>();
+    for (const member of members) {
+      if (
+        member.roleColor !== null &&
+        member.roleColor !== undefined &&
+        member.roleColor.length > 0
+      ) {
+        map.set(member.userId, member.roleColor);
+      }
+    }
+    return map;
+  }, [members]);
+
+  const showAdmin = useMemo(
+    () =>
+      [
+        Permission.ManageRoles,
+        Permission.ManageChannels,
+        Permission.ManageWorkspace,
+        Permission.ViewAuditLog,
+        Permission.CreateInvites,
+        Permission.Kick,
+        Permission.Ban,
+        Permission.Timeout,
+        Permission.ManageNicknames,
+      ].some((flag) => hasPermission(permissions, flag)),
+    [permissions],
+  );
 
   const mentionMembers: readonly MentionTarget[] = useMemo(
     () =>
@@ -296,6 +346,8 @@ export function ChatView({ workspaceName, ownUserId, permissions, members, roles
           userId: member.userId,
           displayName: member.displayName,
         }))}
+        showAdmin={showAdmin}
+        onOpenAdmin={() => setAdminOpen(true)}
         onSelect={(channelId) => void openChannel(channelId)}
         onCreateChannel={({ name, kind }) => {
           void createChannel(runtime, name, kind).then((channelId) => {
@@ -360,6 +412,7 @@ export function ChatView({ workspaceName, ownUserId, permissions, members, roles
               permissions={permissions}
               ownUserId={ownUserId}
               memberNames={memberNames}
+              memberColors={memberColors}
               firstUnreadId={sessionState.unread.firstUnreadId}
               onReply={(message) => setThreadRoot(message)}
               onEdit={(message, text) => {
@@ -467,6 +520,20 @@ export function ChatView({ workspaceName, ownUserId, permissions, members, roles
           onQueryChange={setSearchQuery}
           onSelect={selectSearchHit}
           onClose={() => setSearchOpen(false)}
+        />
+      )}
+
+      {adminOpen && showAdmin && (
+        <AdminPanel
+          viewer={admin.viewer}
+          ownerId={admin.ownerId}
+          roles={admin.roleViews}
+          members={admin.memberViews}
+          categories={admin.categories}
+          channels={channels}
+          channelNames={channelNames}
+          origin={typeof window === "undefined" ? "" : window.location.origin}
+          onClose={() => setAdminOpen(false)}
         />
       )}
     </div>

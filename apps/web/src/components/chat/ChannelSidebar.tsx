@@ -9,6 +9,9 @@ export interface ChannelSidebarProps {
   readonly activeChannelId: string | undefined;
   readonly unreadByChannel: ReadonlyMap<string, { mentions: number; unread: boolean }>;
   readonly members: readonly { userId: string; displayName: string }[];
+  /** Show the workspace admin control (the viewer has at least one admin flag). */
+  readonly showAdmin?: boolean;
+  readonly onOpenAdmin?: () => void;
   readonly onSelect: (channelId: string) => void;
   readonly onCreateChannel: (input: { name: string; kind: "text" | "announcement" }) => void;
   readonly onCreateDm: (userId: string) => void;
@@ -28,6 +31,8 @@ export function ChannelSidebar({
   activeChannelId,
   unreadByChannel,
   members,
+  showAdmin = false,
+  onOpenAdmin,
   onSelect,
   onCreateChannel,
   onCreateDm,
@@ -150,6 +155,20 @@ export function ChannelSidebar({
           ))}
         </ul>
       </section>
+
+      {showAdmin && onOpenAdmin !== undefined && (
+        <div className="mt-auto">
+          <Button
+            size="sm"
+            variant="secondary"
+            className="w-full"
+            aria-label="Workspace settings"
+            onClick={onOpenAdmin}
+          >
+            Workspace settings
+          </Button>
+        </div>
+      )}
     </aside>
   );
 }
