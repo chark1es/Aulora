@@ -117,10 +117,11 @@ export interface ChatPort {
     kind: "text" | "announcement";
     nameCiphertext: string;
     topicCiphertext?: string;
-    mlsGroupId: string;
+    mlsGroupId?: string;
     categoryId?: string;
   }): Promise<string>;
   setMlsGroupId(args: { channelId: string; mlsGroupId: string }): Promise<null>;
+  renameChannel(args: { channelId: string; nameCiphertext: string }): Promise<null>;
   joinChannel(args: { channelId: string }): Promise<null>;
   leaveChannel(args: { channelId: string }): Promise<null>;
   createDm(args: { otherUserId: string; mlsGroupId?: string }): Promise<{

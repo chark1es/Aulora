@@ -62,7 +62,13 @@ export interface SessionMember extends SessionUser {
 export interface SessionOptions {
   readonly port: ChatPort;
   readonly subscriptions: ChatSubscriptions;
-  readonly engine: MlsEngine;
+  /**
+   * Creates one MLS engine per channel. The `ts-mls` engine holds a single
+   * active group at a time, so a channel-per-engine keeps concurrent channels
+   * independent. Each call should return a fresh engine over the same device
+   * key store (a Worker on web).
+   */
+  readonly createEngine: () => MlsEngine;
   readonly user: SessionUser;
   /** Public half of this device's MLS identity, stored on the device record. */
   readonly identityKey: string;
@@ -71,6 +77,9 @@ export interface SessionOptions {
   /** How many unused KeyPackages to keep published. Defaults to 3. */
   readonly keyPackageTarget?: number;
 }
+
+/** How long a joiner waits for an existing member to approve its Join. */
+const JOIN_WAIT_MS = 15_000;
 
 interface ChannelState {
   readonly channelId: string;
@@ -84,6 +93,16 @@ interface ChannelState {
   joinedResolve: (() => void) | undefined;
   starting: Promise<void> | undefined;
   ready: boolean;
+  /** One engine per channel, so concurrent groups never share an active state. */
+  engine: MlsEngine;
+  /**
+   * The decrypted channel name, when this device owns it. Retained so the name
+   * can be re-encrypted at the new epoch whenever the group changes, because a
+   * device that joins later cannot read ciphertext from before it joined.
+   */
+  name: string | undefined;
+  /** The epoch `name` was last published at, to avoid redundant rewrites. */
+  nameEpoch: number | undefined;
 }
 
 export interface OpenChannelResult {
@@ -107,7 +126,8 @@ export class MlsSessionError extends Error {
 export class ChatSession {
   private readonly port: ChatPort;
   private readonly subscriptions: ChatSubscriptions;
-  private readonly engine: MlsEngine;
+  private readonly createEngine: () => MlsEngine;
+  private readonly deviceEngine: MlsEngine;
   private readonly user: SessionUser;
   private readonly identityKey: string;
   private readonly platform: string;
@@ -119,6 +139,14 @@ export class ChatSession {
 
   private readonly channels = new Map<string, ChannelState>();
   private readonly decrypted = new Map<string, string>();
+  /** Ciphertext last decrypted per message id, so edits are reopened once. */
+  private readonly messageCiphertexts = new Map<string, string>();
+  /** In-flight decryption per message id, so concurrent calls do not race. */
+  private readonly decrypting = new Map<string, Promise<void>>();
+  /** Plaintext for payloads this device produced (MLS cannot reopen its own). */
+  private readonly selfPayloads = new Map<string, unknown>();
+  /** Plaintext for payloads this device opened, so each generation is consumed once. */
+  private readonly payloadCache = new Map<string, unknown>();
   private readonly messageListeners = new Set<(messages: readonly MessagePayload[]) => void>();
   private readonly decryptedListeners = new Set<(messages: readonly MessagePayload[]) => void>();
   private readonly reactionListeners = new Map<
@@ -132,7 +160,8 @@ export class ChatSession {
   private constructor(options: SessionOptions) {
     this.port = options.port;
     this.subscriptions = options.subscriptions;
-    this.engine = options.engine;
+    this.createEngine = options.createEngine;
+    this.deviceEngine = options.createEngine();
     this.user = options.user;
     this.identityKey = options.identityKey;
     this.platform = options.platform ?? "web";
@@ -180,7 +209,7 @@ export class ChatSession {
       return;
     }
     for (let index = 0; index < this.keyPackageTarget; index += 1) {
-      const keyPackage = await this.engine.generateKeyPackage();
+      const keyPackage = await this.deviceEngine.generateKeyPackage();
       await this.port.publishKeyPackage({
         deviceId: this.deviceId,
         keyPackage: encodeMlsBytes(keyPackage),
@@ -216,12 +245,13 @@ export class ChatSession {
       }
       return {
         role: existing.groupKeyPackage === undefined ? "joiner" : "creator",
-        epoch: Number(await this.engine.epoch()),
+        epoch: Number(await existing.engine.epoch()),
       };
     }
 
     const state: ChannelState = {
       channelId: channel.id,
+      engine: this.createEngine(),
       groupId: channel.mlsGroupId ?? encodeMlsBytes(channelGroupId(channel.id)),
       unsubscribers: [],
       pendingWelcomeKeyPackage: undefined,
@@ -229,12 +259,14 @@ export class ChatSession {
       joinedResolve: undefined,
       starting: undefined,
       ready: false,
+      name: undefined,
+      nameEpoch: undefined,
     };
     this.channels.set(channel.id, state);
     state.starting = this.bootstrapChannel(channel, state);
     await state.starting;
     const role = state.groupKeyPackage === undefined ? "joiner" : "creator";
-    return { role, epoch: Number(await this.engine.epoch()) };
+    return { role, epoch: Number(await state.engine.epoch()) };
   }
 
   private async bootstrapChannel(channel: ChannelSummary, state: ChannelState): Promise<void> {
@@ -242,24 +274,43 @@ export class ChatSession {
 
     // 1. Reuse a locally persisted group for this channel, if the engine holds
     //    one (its active group is re-provisioned from the key store on demand).
-    if (await this.hasLocalGroup()) {
+    if (await this.hasLocalGroup(state)) {
       state.ready = true;
       return;
     }
 
     // 2. Otherwise publish a join intent and wait for a Welcome. A member's
     //    client services the intent with `addMembers` + `appendCommit`; the
-    //    Welcome arrives through the commits subscription above.
-    const keyPackage = await this.engine.generateKeyPackage();
+    //    Welcome arrives through the commits subscription above. A channel
+    //    that already has a group id belongs to someone else, so wait longer
+    //    for that member to approve; a channel with no group id means this
+    //    device is the first joiner.
+    const keyPackage = await state.engine.generateKeyPackage();
     state.pendingWelcomeKeyPackage = keyPackage;
-    const joined = this.waitForWelcome(channel.id, state);
-    await this.port.publishJoinIntent({
-      channelId: channel.id,
-      deviceId: this.requireDeviceId(),
-      keyPackage: encodeMlsBytes(keyPackage),
-    });
-    if (await joined) {
+    // Only an existing group needs a join intent; a channel with no group id
+    // means this device is the first joiner and will create the group below.
+    const needsApproval = channel.mlsGroupId !== null;
+    const joined = needsApproval
+      ? this.waitForWelcome(channel.id, state, JOIN_WAIT_MS)
+      : Promise.resolve(false);
+    if (needsApproval) {
+      await this.port.publishJoinIntent({
+        channelId: channel.id,
+        deviceId: this.requireDeviceId(),
+        keyPackage: encodeMlsBytes(keyPackage),
+      });
+    }
+    if ((await joined) || state.ready) {
       return;
+    }
+
+    // A channel that already has a group but did not send us a Welcome means no
+    // online member approved us yet; never fork it by creating our own group.
+    if (channel.mlsGroupId !== null) {
+      throw new MlsSessionError(
+        "group-open-failed",
+        "waiting for a member to approve this device's join",
+      );
     }
 
     // 3. Otherwise this device is the first joiner: create the group, persist
@@ -268,12 +319,12 @@ export class ChatSession {
     if (createKeyPackage === undefined) {
       throw new MlsSessionError("no-key-package", "no KeyPackage available to create the group");
     }
-    await this.engine.createGroup(channelGroupId(channel.id), createKeyPackage);
+    await state.engine.createGroup(channelGroupId(channel.id), createKeyPackage);
     state.pendingWelcomeKeyPackage = undefined;
     state.groupKeyPackage = createKeyPackage;
     state.groupId = encodeMlsBytes(channelGroupId(channel.id));
-    const epoch = Number(await this.engine.epoch());
-    const initialState = await this.engine.exportState();
+    const epoch = Number(await state.engine.epoch());
+    const initialState = await state.engine.exportState();
     if (channel.mlsGroupId === null) {
       await this.port.setMlsGroupId({ channelId: channel.id, mlsGroupId: state.groupId });
     }
@@ -285,17 +336,24 @@ export class ChatSession {
     state.ready = true;
   }
 
-  private async hasLocalGroup(): Promise<boolean> {
+  private async hasLocalGroup(state: ChannelState): Promise<boolean> {
     try {
-      await this.engine.members();
+      await state.engine.members();
       return true;
     } catch {
       return false;
     }
   }
 
-  /** Resolves `true` when the Welcome subscription joins this device. */
-  private waitForWelcome(channelId: string, state: ChannelState): Promise<boolean> {
+  /**
+   * Resolves `true` when the Welcome subscription joins this device, `false`
+   * when `timeoutMs` elapses first (or immediately when it is `0`).
+   */
+  private waitForWelcome(
+    channelId: string,
+    state: ChannelState,
+    timeoutMs: number,
+  ): Promise<boolean> {
     return new Promise<boolean>((resolve) => {
       let settled = false;
       const finish = (value: boolean) => {
@@ -307,8 +365,11 @@ export class ChatSession {
         resolve(value);
       };
       state.joinedResolve = () => finish(true);
-      // A tick with no Welcome means this device is the first joiner.
-      queueMicrotask(() => finish(false));
+      if (timeoutMs <= 0) {
+        queueMicrotask(() => finish(false));
+        return;
+      }
+      setTimeout(() => finish(false), timeoutMs);
       void channelId;
     });
   }
@@ -344,7 +405,7 @@ export class ChatSession {
       const welcome = latestWelcome(commits);
       if (welcome !== null) {
         try {
-          await this.engine.joinFromWelcome(
+          await state.engine.joinFromWelcome(
             decodeMlsBytes(welcome),
             state.pendingWelcomeKeyPackage,
           );
@@ -367,6 +428,9 @@ export class ChatSession {
       return;
     }
     const ownDevice = this.deviceId;
+    // A creator's group starts at epoch 0, before anyone has been added, so an
+    // epoch of 0 is a valid approval candidate. Only an already-joined group
+    // can service intents, and `state.ready` above guarantees that.
     const keyPackages: Uint8Array[] = [];
     const accepted: JoinIntentRow[] = [];
     for (const intent of intents) {
@@ -381,11 +445,11 @@ export class ChatSession {
     }
     let result: AddMembersResult;
     try {
-      result = await this.engine.addMembers(keyPackages);
+      result = await state.engine.addMembers(keyPackages);
     } catch {
       return;
     }
-    const epoch = Number(await this.engine.epoch());
+    const epoch = Number(await state.engine.epoch());
     await this.port.appendCommit({
       channelId: state.channelId,
       epoch,
@@ -395,6 +459,9 @@ export class ChatSession {
     for (const intent of accepted) {
       await this.port.markJoinIntentServiced({ intentId: intent.id });
     }
+    // Re-encrypt the channel name at the new epoch so the devices that just
+    // joined (and could not read the pre-join ciphertext) can read it.
+    await this.publishChannelName(state);
   }
 
   /** Applies incoming handshake commits after the local epoch. */
@@ -404,7 +471,7 @@ export class ChatSession {
     }
     let local: bigint;
     try {
-      local = await this.engine.epoch();
+      local = await state.engine.epoch();
     } catch {
       return;
     }
@@ -413,11 +480,22 @@ export class ChatSession {
       .sort((a, b) => a.epoch - b.epoch);
     for (const commit of pending) {
       try {
-        await this.engine.processCommit(decodeMlsBytes(commit.commitCiphertext));
+        await state.engine.processCommit(decodeMlsBytes(commit.commitCiphertext));
       } catch {
         // A commit we cannot process (already applied, or not for us) is
         // skipped; the epoch guard above keeps this bounded.
       }
+    }
+    // If another member advanced the epoch, re-publish the name so the new
+    // group can read it (and so a removed member cannot read later rewrites).
+    let advanced = false;
+    try {
+      advanced = (await state.engine.epoch()) > local;
+    } catch {
+      advanced = false;
+    }
+    if (advanced) {
+      await this.publishChannelName(state);
     }
   }
 
@@ -425,19 +503,29 @@ export class ChatSession {
   async receiveMessages(messages: readonly MessagePayload[]): Promise<void> {
     this.latestMessages = messages;
     for (const message of messages) {
-      if (this.decrypted.has(message.id) || message.deletedAt !== null) {
+      if (message.deletedAt !== null) {
         continue;
       }
+      const engine = this.channels.get(message.channelId)?.engine;
+      if (engine === undefined) {
+        continue;
+      }
+      // Skip a message only when we already decrypted this exact ciphertext;
+      // an edit produces a new ciphertext for the same id and must be reopened.
+      if (this.messageCiphertexts.get(message.id) === message.ciphertext) {
+        continue;
+      }
+      const inFlight = this.decrypting.get(message.id);
+      if (inFlight !== undefined) {
+        await inFlight;
+        continue;
+      }
+      const task = this.decryptMessage(engine, message);
+      this.decrypting.set(message.id, task);
       try {
-        const bytes = await this.engine.decrypt(decodeMlsBytes(message.ciphertext));
-        this.decrypted.set(message.id, decodePayload<MessagePayloadBody>(bytes).t);
-      } catch (error) {
-        if (error instanceof MlsEngineError || error instanceof Error) {
-          // Undecryptable (e.g. history before this device joined): keep the
-          // row but leave it blank rather than crashing the list.
-          continue;
-        }
-        throw error;
+        await task;
+      } finally {
+        this.decrypting.delete(message.id);
       }
     }
     for (const listener of this.messageListeners) {
@@ -448,9 +536,94 @@ export class ChatSession {
     }
   }
 
+  /**
+   * Opens one message's ciphertext once and records the plaintext. A failure
+   * (history before this device joined, or a message not addressed to it) is
+   * swallowed so the list renders rather than throwing.
+   */
+  private async decryptMessage(engine: MlsEngine, message: MessagePayload): Promise<void> {
+    try {
+      const bytes = await engine.decrypt(decodeMlsBytes(message.ciphertext));
+      this.decrypted.set(message.id, decodePayload<MessagePayloadBody>(bytes).t);
+      this.messageCiphertexts.set(message.id, message.ciphertext);
+    } catch (error) {
+      if (error instanceof MlsEngineError || error instanceof Error) {
+        return;
+      }
+      throw error;
+    }
+  }
+
   /** Decrypted plaintext for a message id, or `undefined` if not openable. */
   decryptedText(messageId: string): string | undefined {
     return this.decrypted.get(messageId);
+  }
+
+  /**
+   * Encrypts an arbitrary JSON payload at the channel's current epoch. The
+   * plaintext is cached under the produced ciphertext because MLS ratchets make
+   * a sender unable to reopen its own application message.
+   */
+  async encryptPayload(channelId: string, payload: unknown): Promise<string> {
+    const state = this.requireGroup(channelId);
+    const ciphertext = encodeMlsBytes(await state.engine.encrypt(encodePayload(payload)));
+    this.selfPayloads.set(ciphertext, payload);
+    return ciphertext;
+  }
+
+  /**
+   * Encrypts and publishes a channel's name, remembering the plaintext so it
+   * can be re-encrypted at a later epoch. A device that joins after the name
+   * was first written cannot read that earlier ciphertext (MLS forward
+   * secrecy), so every membership change re-publishes the name at the new
+   * epoch for the current members.
+   */
+  async setChannelName(channelId: string, name: string): Promise<void> {
+    const state = this.requireGroup(channelId);
+    state.name = name;
+    state.nameEpoch = undefined;
+    await this.publishChannelName(state);
+  }
+
+  private async publishChannelName(state: ChannelState): Promise<void> {
+    if (state.name === undefined) {
+      return;
+    }
+    const epoch = Number(await state.engine.epoch());
+    if (state.nameEpoch === epoch) {
+      return;
+    }
+    const ciphertext = encodeMlsBytes(
+      await state.engine.encrypt(encodePayload({ text: state.name })),
+    );
+    this.selfPayloads.set(ciphertext, { text: state.name });
+    await this.port.renameChannel({ channelId: state.channelId, nameCiphertext: ciphertext });
+    state.nameEpoch = epoch;
+  }
+
+  /**
+   * Decrypts an arbitrary payload (channel name, topic, custom status) using
+   * the given channel's group. Payloads this device produced are served from
+   * the local cache. Returns `undefined` instead of throwing when the payload
+   * is not openable.
+   */
+  async decryptPayload<T>(channelId: string, ciphertext: string): Promise<T | undefined> {
+    const cached = this.selfPayloads.get(ciphertext) ?? this.payloadCache.get(ciphertext);
+    if (cached !== undefined) {
+      return cached as T;
+    }
+    const state = this.channels.get(channelId);
+    if (state === undefined || !state.ready) {
+      return undefined;
+    }
+    try {
+      const bytes = await state.engine.decrypt(decodeMlsBytes(ciphertext));
+      const decoded = decodePayload<T>(bytes);
+      this.payloadCache.set(ciphertext, decoded);
+      return decoded;
+    } catch {
+      return undefined;
+    }
   }
 
   onMessages(listener: (messages: readonly MessagePayload[]) => void): () => void {
@@ -483,11 +656,11 @@ export class ChatSession {
     } = {},
   ): Promise<string> {
     const state = this.requireGroup(channelId);
-    const epoch = Number(await this.engine.epoch());
+    const epoch = Number(await state.engine.epoch());
     const body: MessagePayloadBody = options.threadRootId
       ? { t: text, threadRootId: options.threadRootId }
       : { t: text };
-    const ciphertext = encodeMlsBytes(await this.engine.encrypt(encodePayload(body)));
+    const ciphertext = encodeMlsBytes(await state.engine.encrypt(encodePayload(body)));
     const messageId = await this.port.sendMessage({
       channelId,
       ciphertext,
@@ -498,6 +671,7 @@ export class ChatSession {
       ...(this.deviceId !== undefined ? { authorDeviceId: this.deviceId } : {}),
     });
     this.decrypted.set(messageId, text);
+    this.messageCiphertexts.set(messageId, ciphertext);
     await this.port.clearTyping({ channelId });
     void state;
     return messageId;
@@ -505,17 +679,18 @@ export class ChatSession {
 
   /** Edits a message with a fresh encryption at the current epoch. */
   async editMessage(channelId: string, messageId: string, text: string): Promise<void> {
-    this.requireGroup(channelId);
+    const state = this.requireGroup(channelId);
     const existing = this.latestMessages.find((message) => message.id === messageId);
-    const epoch = Number(await this.engine.epoch());
+    const epoch = Number(await state.engine.epoch());
     const body: MessagePayloadBody = {
       t: text,
       edited: true,
       ...(existing?.threadRootId ? { threadRootId: existing.threadRootId } : {}),
     };
-    const ciphertext = encodeMlsBytes(await this.engine.encrypt(encodePayload(body)));
+    const ciphertext = encodeMlsBytes(await state.engine.encrypt(encodePayload(body)));
     await this.port.editMessage({ messageId, ciphertext, epoch });
     this.decrypted.set(messageId, text);
+    this.messageCiphertexts.set(messageId, ciphertext);
   }
 
   /** Soft-deletes a message and drops its local plaintext. */
@@ -523,6 +698,7 @@ export class ChatSession {
     this.requireGroup(channelId);
     await this.port.deleteMessage({ messageId });
     this.decrypted.delete(messageId);
+    this.messageCiphertexts.delete(messageId);
   }
 
   async pinMessage(channelId: string, messageId: string): Promise<void> {
@@ -537,8 +713,9 @@ export class ChatSession {
 
   /** Toggles a reaction, encrypting the emoji and caching its plaintext. */
   async toggleReaction(channelId: string, messageId: string, emoji: string): Promise<void> {
-    this.requireGroup(channelId);
-    const emojiCiphertext = encodeMlsBytes(await this.engine.encrypt(encodeText(emoji)));
+    const state = this.requireGroup(channelId);
+    const emojiCiphertext = encodeMlsBytes(await state.engine.encrypt(encodeText(emoji)));
+    this.selfPayloads.set(emojiCiphertext, { text: emoji });
     await this.port.toggleReaction({ messageId, emojiCiphertext });
 
     const existing = this.reactionCache.get(messageId) ?? [];
@@ -556,27 +733,46 @@ export class ChatSession {
   }
 
   private async decryptReactions(
-    messageId: string,
+    channelId: string,
     rows: readonly ReactionRow[],
   ): Promise<ReactionPayload[]> {
+    const state = this.channels.get(channelId);
+    if (state === undefined || !state.ready) {
+      return [];
+    }
     const resolved: ReactionPayload[] = [];
     for (const row of rows) {
-      try {
-        const bytes = await this.engine.decrypt(decodeMlsBytes(row.emojiCiphertext));
+      const cached =
+        this.selfPayloads.get(row.emojiCiphertext) ?? this.payloadCache.get(row.emojiCiphertext);
+      if (cached !== undefined) {
         resolved.push({
           userId: row.userId,
-          emoji: decodePayload<{ text: string }>(bytes).text,
+          emoji: (cached as { text: string }).text,
+          emojiCiphertext: row.emojiCiphertext,
+        });
+        continue;
+      }
+      try {
+        const bytes = await state.engine.decrypt(decodeMlsBytes(row.emojiCiphertext));
+        const emoji = decodePayload<{ text: string }>(bytes).text;
+        this.payloadCache.set(row.emojiCiphertext, { text: emoji });
+        resolved.push({
+          userId: row.userId,
+          emoji,
           emojiCiphertext: row.emojiCiphertext,
         });
       } catch {}
     }
-    void messageId;
     return resolved;
   }
 
   /** Decrypts and groups the reactions on a message, emitting the result. */
-  async loadReactions(messageId: string, rows: readonly ReactionRow[]): Promise<ReactionPayload[]> {
-    const resolved = await this.decryptReactions(messageId, rows);
+  async loadReactions(
+    channelId: string,
+    messageId: string,
+    rows: readonly ReactionRow[],
+  ): Promise<ReactionPayload[]> {
+    const resolved = await this.decryptReactions(channelId, rows);
     this.emitReactions(messageId, resolved);
     return resolved;
   }
@@ -603,14 +799,12 @@ export class ChatSession {
 
   /** Current members of the channel's MLS group (local view). */
   async groupMembers(channelId: string): Promise<readonly MlsMember[]> {
-    this.requireGroup(channelId);
-    return await this.engine.members();
+    return await this.requireGroup(channelId).engine.members();
   }
 
   /** Current local MLS epoch for a channel. */
   async epoch(channelId: string): Promise<number> {
-    this.requireGroup(channelId);
-    return Number(await this.engine.epoch());
+    return Number(await this.requireGroup(channelId).engine.epoch());
   }
 
   /** Closes subscriptions and forgets channel state. */
@@ -623,6 +817,11 @@ export class ChatSession {
       unsubscribe();
     }
     this.channels.delete(channelId);
+  }
+
+  /** Exposes the channel engine so callers can decrypt channel-scoped payloads. */
+  engineFor(channelId: string): MlsEngine | undefined {
+    return this.channels.get(channelId)?.engine;
   }
 
   /** Releases every subscription (e.g. on sign-out). */

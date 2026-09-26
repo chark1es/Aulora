@@ -1,6 +1,18 @@
 import { describe, expect, it } from "vitest";
-import { ChatSession, type ChatSubscriptions, decodeMlsBytes } from "../src/chat/index.js";
-import { createMemoryMlsEngine, createMockPort, type MockPort } from "../src/chat/testing.js";
+import {
+  ChatSession,
+  type ChatSubscriptions,
+  decodeMlsBytes,
+  encodeMlsBytes,
+  encodePayload,
+  type MessagePayload,
+} from "../src/chat/index.js";
+import {
+  createMemoryMlsEngine,
+  createMockPort,
+  decodeForTest,
+  type MockPort,
+} from "../src/chat/testing.js";
 
 function silentSubscriptions(port: MockPort): ChatSubscriptions {
   return port;
@@ -10,7 +22,7 @@ function makeSession(port: MockPort, secret: string, displayName = "Alice"): Cha
   return ChatSession.create({
     port,
     subscriptions: silentSubscriptions(port),
-    engine: createMemoryMlsEngine(secret),
+    createEngine: () => createMemoryMlsEngine(secret),
     user: { id: `user-${secret}`, displayName },
     identityKey: `pub-${secret}`,
   });
@@ -145,6 +157,82 @@ describe("ChatSession two-device flow", () => {
     });
     await new Promise((resolve) => setTimeout(resolve, 0));
     expect(await alice.epoch("c1")).toBe(1);
+  });
+
+  it("adds a device, round-trips both ways, then removes and locks it out", async () => {
+    const port = createMockPort();
+    const alice = makeSession(port, "alice");
+    await alice.start();
+    await alice.openChannel(channelFor("c1"));
+
+    // Bob is a separate MLS engine joining through the creator's Welcome.
+    const bob = createMemoryMlsEngine("bob");
+    const bobKeyPackage = await bob.generateKeyPackage();
+    await port.publishJoinIntent({
+      channelId: "c1",
+      deviceId: "device-2",
+      keyPackage: encodeMlsBytes(bobKeyPackage),
+    });
+    await waitFor(() =>
+      (port.state.commits.get("c1") ?? []).some((commit) => commit.welcomeCiphertext !== null),
+    );
+    const welcome = (port.state.commits.get("c1") ?? []).find(
+      (commit) => commit.welcomeCiphertext !== null,
+    )?.welcomeCiphertext;
+    expect(welcome).toBeTruthy();
+    if (welcome === undefined || welcome === null) {
+      throw new Error("expected a Welcome commit");
+    }
+    await bob.joinFromWelcome(decodeMlsBytes(welcome), bobKeyPackage);
+    expect(await bob.epoch()).toBe(1n);
+    expect(await alice.epoch("c1")).toBe(1);
+
+    // Creator -> joiner.
+    const aliceCiphertext = await alice.encryptPayload("c1", { text: "hello bob" });
+    expect(JSON.parse(decodeForTest(await bob.decrypt(decodeMlsBytes(aliceCiphertext))))).toEqual({
+      text: "hello bob",
+    });
+
+    // Joiner -> creator, through the normal receive pipeline.
+    const bobCiphertext = encodeMlsBytes(await bob.encrypt(encodePayload({ t: "hi alice" })));
+    const incoming: MessagePayload = {
+      id: "m-bob",
+      channelId: "c1",
+      authorId: "user-bob",
+      authorDeviceId: "device-2",
+      ciphertext: bobCiphertext,
+      epoch: 1,
+      threadRootId: null,
+      attachmentIds: [],
+      mentionUserIds: [],
+      editedAt: null,
+      deletedAt: null,
+      pinnedAt: null,
+      createdAt: 1,
+    };
+    await alice.receiveMessages([incoming]);
+    expect(alice.decryptedText("m-bob")).toBe("hi alice");
+
+    // Removing Bob advances the epoch and locks him out of later ciphertext.
+    const engine = alice.engineFor("c1");
+    if (engine === undefined) {
+      throw new Error("expected an engine for c1");
+    }
+    const bobMember = (await engine.members()).find(
+      (member) => member.identity === "aulora:device:bob",
+    );
+    expect(bobMember).toBeDefined();
+    const removeCommit = await engine.removeMembers([bobMember?.leafIndex ?? 0]);
+    await port.appendCommit({
+      channelId: "c1",
+      epoch: 2,
+      commitCiphertext: encodeMlsBytes(removeCommit),
+    });
+    await bob.processCommit(removeCommit);
+    expect(await alice.epoch("c1")).toBe(2);
+
+    const afterRemoval = await alice.encryptPayload("c1", { text: "after removal" });
+    await expect(bob.decrypt(decodeMlsBytes(afterRemoval))).rejects.toBeInstanceOf(Error);
   });
 
   it("edits, deletes and reacts through the port", async () => {

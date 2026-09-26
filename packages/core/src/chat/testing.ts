@@ -338,7 +338,7 @@ export function createMockPort(): MockPort {
         categoryId: args.categoryId ?? null,
         nameCiphertext: args.nameCiphertext,
         topicCiphertext: args.topicCiphertext ?? null,
-        mlsGroupId: args.mlsGroupId,
+        mlsGroupId: args.mlsGroupId ?? null,
         archived: false,
         currentEpoch: null,
       });
@@ -360,6 +360,18 @@ export function createMockPort(): MockPort {
       };
       state.channels.set(args.channelId, { ...channel, mlsGroupId: args.mlsGroupId });
       emitChannels();
+      return null;
+    },
+    async renameChannel(args) {
+      record("renameChannel", args);
+      const channel = state.channels.get(args.channelId);
+      if (channel !== undefined) {
+        state.channels.set(args.channelId, {
+          ...channel,
+          nameCiphertext: args.nameCiphertext,
+        });
+        emitChannels();
+      }
       return null;
     },
     async joinChannel(args) {
