@@ -1,0 +1,29 @@
+# Docker build context excludes (contexts are the repo root).
+# Keep secrets, dependencies and build output out of every image.
+
+**/node_modules
+**/dist
+**/build
+**/.turbo
+**/.convex
+**/.vite
+**/.expo
+**/coverage
+**/test-results
+**/playwright-report
+**/blob-report
+**/.git
+**/.gitattributes
+**/*.log
+
+# Secrets and local env files (templates stay).
+.env
+.env.*
+!**/.env.example
+
+# Generated per-instance well-known document; infra writes the real one at runtime.
+apps/web/public/.well-known
+
+# Spikes and docs are not needed to build or run the stack.
+spikes
+docs
