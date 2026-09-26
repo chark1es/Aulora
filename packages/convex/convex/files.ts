@@ -13,8 +13,15 @@ export function maxUploadBytes(): number {
   return Number.isFinite(configured) && configured > 0 ? configured : 25 * 1024 * 1024;
 }
 
-const UPLOAD_LIMIT = Number(process.env.UPLOAD_RATE_LIMIT ?? 30);
-const UPLOAD_WINDOW_MS = Number(process.env.UPLOAD_RATE_WINDOW_MS ?? 60_000);
+function uploadLimit(): number {
+  const configured = Number(process.env.UPLOAD_RATE_LIMIT);
+  return Number.isFinite(configured) && configured > 0 ? configured : 30;
+}
+
+function uploadWindowMs(): number {
+  const configured = Number(process.env.UPLOAD_RATE_WINDOW_MS);
+  return Number.isFinite(configured) && configured > 0 ? configured : 60_000;
+}
 
 /**
  * Creates a short-lived Convex storage upload URL. `AttachFiles` is required,
@@ -26,13 +33,13 @@ export const generateUploadUrl = mutation({
     const { userId } = await requireWorkspacePermission(ctx, Permission.AttachFiles);
     await enforceRateLimit(ctx, {
       key: userRateLimitKey("upload", userId),
-      limit: UPLOAD_LIMIT,
-      windowMs: UPLOAD_WINDOW_MS,
+      limit: uploadLimit(),
+      windowMs: uploadWindowMs(),
     });
     await enforceRateLimit(ctx, {
       key: ipRateLimitKey("upload", await requestIp(ctx)),
-      limit: UPLOAD_LIMIT * 5,
-      windowMs: UPLOAD_WINDOW_MS,
+      limit: uploadLimit() * 5,
+      windowMs: uploadWindowMs(),
     });
     return await ctx.storage.generateUploadUrl();
   },
@@ -56,8 +63,8 @@ export const record = mutation({
     const { userId } = await requireWorkspacePermission(ctx, Permission.AttachFiles);
     await enforceRateLimit(ctx, {
       key: userRateLimitKey("upload", userId),
-      limit: UPLOAD_LIMIT,
-      windowMs: UPLOAD_WINDOW_MS,
+      limit: uploadLimit(),
+      windowMs: uploadWindowMs(),
     });
     const metadata = await ctx.db.system.get("_storage", args.storageId);
     if (metadata === null) {

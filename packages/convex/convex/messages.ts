@@ -8,8 +8,15 @@ import { requireChannelAccess } from "./lib/channels";
 import { enforceRateLimit, userRateLimitKey } from "./lib/rateLimit";
 
 /** Per-user send budget: 30 messages per 10 seconds unless overridden. */
-const SEND_LIMIT = Number(process.env.SEND_RATE_LIMIT ?? 30);
-const SEND_WINDOW_MS = Number(process.env.SEND_RATE_WINDOW_MS ?? 10_000);
+function sendLimit(): number {
+  const configured = Number(process.env.SEND_RATE_LIMIT);
+  return Number.isFinite(configured) && configured > 0 ? configured : 30;
+}
+
+function sendWindowMs(): number {
+  const configured = Number(process.env.SEND_RATE_WINDOW_MS);
+  return Number.isFinite(configured) && configured > 0 ? configured : 10_000;
+}
 
 interface MessageView {
   readonly id: Id<"messages">;
@@ -72,8 +79,8 @@ export const send = mutation({
     }
     await enforceRateLimit(ctx, {
       key: userRateLimitKey("send", access.userId),
-      limit: SEND_LIMIT,
-      windowMs: SEND_WINDOW_MS,
+      limit: sendLimit(),
+      windowMs: sendWindowMs(),
     });
     const messageId = await ctx.db.insert("messages", {
       channelId: args.channelId,
