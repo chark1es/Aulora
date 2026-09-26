@@ -205,6 +205,22 @@ describe("channels mutations", () => {
       "Missing permission",
     );
   });
+
+  it("sets an MLS group id once and refuses to fork it", async () => {
+    const t = newTest();
+    await seedWorkspace(t, { members: [{ userId: "user-1" }] });
+    const channelId = await seedChannel(t);
+    const asUser = t.withIdentity({ subject: "user-1" });
+
+    await asUser.mutation(api.channels.setMlsGroupId, { channelId, mlsGroupId: "group-1" });
+    await asUser.mutation(api.channels.setMlsGroupId, { channelId, mlsGroupId: "group-1" });
+    await expect(
+      asUser.mutation(api.channels.setMlsGroupId, { channelId, mlsGroupId: "group-2" }),
+    ).rejects.toThrow("already has an MLS group");
+
+    const channel = await t.run(async (ctx) => await ctx.db.get(channelId));
+    expect(channel?.mlsGroupId).toBe("group-1");
+  });
 });
 
 describe("channels DM dedupe", () => {

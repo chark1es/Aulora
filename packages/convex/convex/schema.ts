@@ -163,6 +163,24 @@ export default defineSchema({
     usedAt: v.optional(v.number()),
   }).index("by_device_unused", ["deviceId", "usedAt"]),
 
+  /**
+   * A device asking to be added to a channel's MLS group. `keyPackage` is a
+   * public KeyPackage; an online member's client reads it, builds the Add
+   * commit + Welcome, appends them through `mls.appendCommit`, then marks the
+   * intent serviced. The server never sees a private key.
+   */
+  joinIntents: defineTable({
+    channelId: v.id("channels"),
+    userId: v.string(),
+    deviceId: v.id("devices"),
+    keyPackage: v.string(),
+    createdAt: v.number(),
+    servicedAt: v.optional(v.number()),
+  })
+    .index("by_channel", ["channelId"])
+    .index("by_channel_serviced", ["channelId", "servicedAt"])
+    .index("by_device", ["deviceId"]),
+
   mlsCommits: defineTable({
     channelId: v.id("channels"),
     epoch: v.number(),

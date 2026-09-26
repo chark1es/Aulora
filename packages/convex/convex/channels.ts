@@ -167,6 +167,36 @@ export const setTopic = mutation({
   },
 });
 
+/**
+ * Records the MLS group id for a channel that does not have one yet. This is
+ * the first-joiner bootstrap: only ViewChannel is required (the creator of a
+ * public channel may not hold ManageChannels), and a channel that already has
+ * a different group id is rejected so a second client cannot fork the group.
+ */
+export const setMlsGroupId = mutation({
+  args: { channelId: v.id("channels"), mlsGroupId: v.string() },
+  handler: async (ctx, args) => {
+    const { userId, channel } = await requirePermission(
+      ctx,
+      args.channelId,
+      Permission.ViewChannel,
+    );
+    if (channel.mlsGroupId !== undefined) {
+      if (channel.mlsGroupId !== args.mlsGroupId) {
+        throw new ConvexError("Channel already has an MLS group");
+      }
+      return null;
+    }
+    await ctx.db.patch(args.channelId, { mlsGroupId: args.mlsGroupId });
+    await writeAudit(ctx, {
+      actorId: userId,
+      action: "channel.setMlsGroupId",
+      targetId: args.channelId,
+    });
+    return null;
+  },
+});
+
 export const archive = mutation({
   args: { channelId: v.id("channels") },
   handler: async (ctx, args) => {

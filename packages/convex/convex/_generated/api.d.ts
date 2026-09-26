@@ -12,6 +12,7 @@ import type * as auth from "../auth.js";
 import type * as authActions from "../authActions.js";
 import type * as channels from "../channels.js";
 import type * as crons from "../crons.js";
+import type * as devices from "../devices.js";
 import type * as files from "../files.js";
 import type * as http from "../http.js";
 import type * as lib_audit from "../lib/audit.js";
@@ -44,6 +45,7 @@ declare const fullApi: ApiFromModules<{
   authActions: typeof authActions;
   channels: typeof channels;
   crons: typeof crons;
+  devices: typeof devices;
   files: typeof files;
   http: typeof http;
   "lib/audit": typeof lib_audit;

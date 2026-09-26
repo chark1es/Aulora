@@ -34,6 +34,47 @@ describe("mls key packages", () => {
   });
 });
 
+describe("mls join intents", () => {
+  it("publishes idempotently, lists for online members and marks serviced", async () => {
+    const t = newTest();
+    await seedWorkspace(t, { members: [{ userId: "user-1" }, { userId: "user-2" }] });
+    const channelId = await seedChannel(t);
+    const deviceId = await seedDevice(t, "user-2");
+    const asUser2 = t.withIdentity({ subject: "user-2" });
+    const asUser1 = t.withIdentity({ subject: "user-1" });
+
+    const first = await asUser2.mutation(api.mls.publishJoinIntent, {
+      channelId,
+      deviceId,
+      keyPackage: "a2V5",
+    });
+    const again = await asUser2.mutation(api.mls.publishJoinIntent, {
+      channelId,
+      deviceId,
+      keyPackage: "a2V5",
+    });
+    expect(again).toBe(first);
+
+    const pending = await asUser1.query(api.mls.listJoinIntents, { channelId });
+    expect(pending.map((row) => row.keyPackage)).toEqual(["a2V5"]);
+    expect(pending[0]?.userId).toBe("user-2");
+
+    await asUser1.mutation(api.mls.markJoinIntentServiced, { intentId: first });
+    expect(await asUser1.query(api.mls.listJoinIntents, { channelId })).toEqual([]);
+  });
+
+  it("refuses to publish for another user's device", async () => {
+    const t = newTest();
+    await seedWorkspace(t, { members: [{ userId: "user-1" }, { userId: "user-2" }] });
+    const channelId = await seedChannel(t);
+    const deviceId = await seedDevice(t, "user-2");
+    const asUser1 = t.withIdentity({ subject: "user-1" });
+    await expect(
+      asUser1.mutation(api.mls.publishJoinIntent, { channelId, deviceId, keyPackage: "a2V5" }),
+    ).rejects.toThrow("Unknown device");
+  });
+});
+
 describe("mls commits", () => {
   it("orders commits by epoch and tracks the current epoch", async () => {
     const t = newTest();

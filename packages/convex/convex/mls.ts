@@ -72,6 +72,78 @@ export const consume = mutation({
 });
 
 /**
+ * Publishes (idempotently) a device's request to join a channel's MLS group.
+ * The KeyPackage is public; an online member's client turns it into an Add
+ * commit + Welcome. Requires `ViewChannel` and ownership of the device.
+ */
+export const publishJoinIntent = mutation({
+  args: {
+    channelId: v.id("channels"),
+    deviceId: v.id("devices"),
+    keyPackage: v.string(),
+  },
+  handler: async (ctx, args) => {
+    const { userId } = await requireChannelAccess(ctx, args.channelId, Permission.ViewChannel);
+    await requireOwnedDevice(ctx, args.deviceId, userId);
+    const rows = await ctx.db
+      .query("joinIntents")
+      .withIndex("by_channel", (q) => q.eq("channelId", args.channelId))
+      .collect();
+    const outstanding = rows.find(
+      (row) => row.deviceId === args.deviceId && row.servicedAt === undefined,
+    );
+    if (outstanding !== undefined) {
+      return outstanding._id;
+    }
+    return await ctx.db.insert("joinIntents", {
+      channelId: args.channelId,
+      userId,
+      deviceId: args.deviceId,
+      keyPackage: args.keyPackage,
+      createdAt: Date.now(),
+    });
+  },
+});
+
+/** Lists unserviced join intents for a channel so online members can approve. */
+export const listJoinIntents = query({
+  args: { channelId: v.id("channels") },
+  handler: async (ctx, args) => {
+    await requireChannelAccess(ctx, args.channelId, Permission.ViewChannel);
+    const rows = await ctx.db
+      .query("joinIntents")
+      .withIndex("by_channel", (q) => q.eq("channelId", args.channelId))
+      .collect();
+    return rows
+      .filter((row) => row.servicedAt === undefined)
+      .sort((a, b) => a.createdAt - b.createdAt)
+      .map((row) => ({
+        id: row._id,
+        userId: row.userId,
+        deviceId: row.deviceId,
+        keyPackage: row.keyPackage,
+        createdAt: row.createdAt,
+      }));
+  },
+});
+
+/** Marks a join intent serviced once its Welcome has been appended. */
+export const markJoinIntentServiced = mutation({
+  args: { intentId: v.id("joinIntents") },
+  handler: async (ctx, args) => {
+    const intent = await ctx.db.get(args.intentId);
+    if (intent === null) {
+      return null;
+    }
+    await requireChannelAccess(ctx, intent.channelId, Permission.ViewChannel);
+    if (intent.servicedAt === undefined) {
+      await ctx.db.patch(args.intentId, { servicedAt: Date.now() });
+    }
+    return null;
+  },
+});
+
+/**
  * Appends an MLS commit (optionally with its Welcome) for a channel epoch and
  * advances the channel's tracked current epoch to the max seen. The server
  * never decrypts or builds commits.
