@@ -18,9 +18,8 @@ chat.example.com {
 		Referrer-Policy "strict-origin-when-cross-origin"
 		Permissions-Policy "camera=(), microphone=(), geolocation=()"
 		# Adjust to the origins you actually use. `connect-src` needs the Convex
-		# cloud origin (wss + https). No inline scripts: the theme bootstrap in
-		# index.html is an inline script, so either hash it or keep 'self' only
-		# if you move it to a file.
+		# cloud origin (wss + https). There are no inline scripts: the theme
+		# bootstrap lives in /theme-boot.js, so `script-src 'self'` is enough.
 		Content-Security-Policy "default-src 'self'; base-uri 'self'; frame-ancestors 'none'; object-src 'none'; img-src 'self' data: blob:; style-src 'self' 'unsafe-inline'; script-src 'self'; connect-src 'self' https://convex.example.com wss://convex.example.com"
 	}
 
