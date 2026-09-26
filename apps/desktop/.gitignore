@@ -1,0 +1,5 @@
+# Rust build output and generated Tauri artifacts
+src-tauri/target/
+src-tauri/gen/
+# Icon set is generated from src-tauri/app-icon.png by `bun run icons`
+src-tauri/icons/

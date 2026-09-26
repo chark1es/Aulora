@@ -1,0 +1,20 @@
+{
+  "name": "@aulora/desktop",
+  "version": "0.0.0",
+  "private": true,
+  "description": "Aulora desktop: Tauri 2 shell wrapping the web client with native menus, tray, notifications, an unread badge, aulora:// deep links and an OS keychain key store.",
+  "type": "module",
+  "scripts": {
+    "tauri": "tauri",
+    "tauri:dev": "tauri dev",
+    "tauri:build": "tauri build",
+    "icons": "tauri icon src-tauri/app-icon.png",
+    "make:icons": "node scripts/make-icon.mjs",
+    "verify": "node scripts/verify-config.mjs",
+    "lint": "biome check .",
+    "format": "biome format --write ."
+  },
+  "devDependencies": {
+    "@tauri-apps/cli": "^2.9.0"
+  }
+}
