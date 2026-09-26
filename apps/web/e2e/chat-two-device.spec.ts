@@ -1,4 +1,5 @@
-import { type BrowserContext, expect, type Page, test } from "@playwright/test";
+import { expect, test } from "@playwright/test";
+import { createChannel, hasOwnerCredentials, signIn } from "./helpers";
 
 /**
  * Phase 2, task 3a gate: two devices, one workspace owner.
@@ -13,32 +14,7 @@ import { type BrowserContext, expect, type Page, test } from "@playwright/test";
  * This runs against a real `docker compose` stack. Nothing here is mocked.
  * Credentials come from the environment and are never committed.
  */
-const baseURL = process.env.AULORA_E2E_BASE_URL ?? "http://localhost:8080";
-const ownerEmail = process.env.AULORA_E2E_OWNER_EMAIL ?? "";
-const ownerPassword = process.env.AULORA_E2E_OWNER_PASSWORD ?? "";
-
-test.skip(
-  ownerEmail === "" || ownerPassword === "",
-  "set AULORA_E2E_OWNER_EMAIL and AULORA_E2E_OWNER_PASSWORD",
-);
-
-async function signIn(context: BrowserContext, deviceName: string): Promise<Page> {
-  const page = await context.newPage();
-  await page.goto(`${baseURL}/`);
-  await expect(page.getByRole("heading", { name: "Connect to a server" })).toBeVisible();
-  await page.getByLabel("Server address").fill(baseURL);
-  await page.getByRole("button", { name: "Connect" }).click();
-  await expect(page.getByRole("button", { name: "Continue" })).toBeVisible();
-  await page.getByRole("button", { name: "Continue" }).click();
-  await expect(page.getByRole("heading", { name: /^Sign in to / })).toBeVisible();
-  await page.getByLabel("Email").fill(ownerEmail);
-  await page.getByLabel("Password").fill(ownerPassword);
-  await page.getByRole("button", { name: "Sign in" }).click();
-  await expect(page.getByRole("button", { name: "Sign out" })).toBeVisible({ timeout: 30_000 });
-  await expect(page.getByTestId("message-list")).toBeVisible({ timeout: 30_000 });
-  test.info().annotations.push({ type: "device", description: deviceName });
-  return page;
-}
+test.skip(!hasOwnerCredentials, "set AULORA_E2E_OWNER_EMAIL and AULORA_E2E_OWNER_PASSWORD");
 
 test.describe("two-device encrypted chat", () => {
   test("A creates a channel and B decrypts the message; edits, delete and a reaction reflect live", async ({
@@ -49,14 +25,10 @@ test.describe("two-device encrypted chat", () => {
     const pageA = await signIn(contextA, "A");
     const pageB = await signIn(contextB, "B");
 
-    // Device A creates a fresh channel.
+    // Device A creates a fresh channel through the UI from the zero-state
+    // workspace; the helper also waits for the channel to be open.
     const channelName = `e2e-${Date.now()}`;
-    await pageA.getByRole("button", { name: "Create channel" }).click();
-    await pageA.getByLabel("Channel name").fill(channelName);
-    await pageA.getByRole("button", { name: "Create", exact: true }).click();
-    await expect(pageA.getByRole("heading", { name: channelName })).toBeVisible({
-      timeout: 30_000,
-    });
+    await createChannel(pageA, channelName);
 
     // B cannot read the encrypted channel name until it joins the group, so it
     // opens the newest channel (A's, appended last) and then sees the decrypted
