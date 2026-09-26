@@ -1,0 +1,62 @@
+# Aulora — ready-made Traefik v3 labels for the compose stack.
+#
+# This file is documentation-as-code, not auto-loaded by docker-compose.yml.
+# To use it, merge the `labels:` blocks into the matching services in
+# docker-compose.yml (or add them via a compose override) and run Traefik with
+# an entrypoint named `websecure` and a certresolver named `letsencrypt`.
+#
+# Replace:
+#   chat.example.com   -> your public web origin (SITE_URL)
+#   convex.example.com -> the public Convex API/WS origin (CONVEX_CLOUD_ORIGIN)
+#
+# Key point: Traefik must NOT add a second layer of auth-cookie rewriting, and
+# /api/auth/* must reach the Convex HTTP-actions port (3211), not the API port.
+
+# --- service: web ----------------------------------------------------------
+# The web container already proxies /api/auth/* itself and serves the SPA.
+# If you prefer Traefik to own that route, add the auth router below and point
+# it at convex-backend:3211 directly; the nginx location is harmless either way.
+services:
+  web:
+    labels:
+      traefik.enable: "true"
+      traefik.docker.network: "aulora"
+      traefik.http.routers.aulora-web.rule: "Host(`chat.example.com`)"
+      traefik.http.routers.aulora-web.entrypoints: "websecure"
+      traefik.http.routers.aulora-web.tls.certresolver: "letsencrypt"
+      traefik.http.services.aulora-web.loadbalancer.server.port: "80"
+      # Redirect http -> https.
+      traefik.http.routers.aulora-web-http.rule: "Host(`chat.example.com`)"
+      traefik.http.routers.aulora-web-http.entrypoints: "web"
+      traefik.http.routers.aulora-web-http.middlewares: "aulora-redirect"
+      traefik.http.middlewares.aulora-redirect.redirectscheme.scheme: "https"
+      traefik.http.middlewares.aulora-redirect.redirectscheme.permanent: "true"
+
+  # Same-origin auth: route /api/auth/* on the web host to Convex HTTP actions.
+  convex-backend:
+    labels:
+      traefik.enable: "true"
+      traefik.docker.network: "aulora"
+      traefik.http.routers.aulora-auth.rule: "Host(`chat.example.com`) && PathPrefix(`/api/auth`)"
+      traefik.http.routers.aulora-auth.entrypoints: "websecure"
+      traefik.http.routers.aulora-auth.tls.certresolver: "letsencrypt"
+      traefik.http.routers.aulora-auth.priority: "100"
+      traefik.http.services.aulora-auth.loadbalancer.server.port: "3211"
+      # Convex API + WebSocket origin (clients connect here directly).
+      traefik.http.routers.aulora-convex.rule: "Host(`convex.example.com`)"
+      traefik.http.routers.aulora-convex.entrypoints: "websecure"
+      traefik.http.routers.aulora-convex.tls.certresolver: "letsencrypt"
+      traefik.http.services.aulora-convex.loadbalancer.server.port: "3210"
+
+  # Keep the dashboard off the public internet or behind strong auth.
+  convex-dashboard:
+    labels:
+      traefik.enable: "true"
+      traefik.docker.network: "aulora"
+      traefik.http.routers.aulora-dash.rule: "Host(`dashboard.example.com`)"
+      traefik.http.routers.aulora-dash.entrypoints: "websecure"
+      traefik.http.routers.aulora-dash.tls.certresolver: "letsencrypt"
+      traefik.http.services.aulora-dash.loadbalancer.server.port: "6791"
+      # Basic-auth is the minimum; prefer a VPN or an SSO middleware.
+      # traefik.http.routers.aulora-dash.middlewares: "aulora-dash-auth"
+      # traefik.http.middlewares.aulora-dash-auth.basicauth.users: "admin:$apr1$..."

@@ -1,0 +1,47 @@
+# Aulora — example Caddyfile for the edge.
+#
+# Terminates TLS, serves the web origin, and routes the two special paths.
+# This is a reference, not part of the compose stack.
+#
+# Replace:
+#   chat.example.com  with your public web origin
+#   convex-backend    with the service/upstream for Convex HTTP actions (3211)
+
+chat.example.com {
+	encode zstd gzip
+
+	# Security headers (see README.md for the full policy and CSP notes).
+	header {
+		Strict-Transport-Security "max-age=31536000; includeSubDomains; preload"
+		X-Content-Type-Options "nosniff"
+		X-Frame-Options "DENY"
+		Referrer-Policy "strict-origin-when-cross-origin"
+		Permissions-Policy "camera=(), microphone=(), geolocation=()"
+		# Adjust to the origins you actually use. `connect-src` needs the Convex
+		# cloud origin (wss + https). No inline scripts: the theme bootstrap in
+		# index.html is an inline script, so either hash it or keep 'self' only
+		# if you move it to a file.
+		Content-Security-Policy "default-src 'self'; base-uri 'self'; frame-ancestors 'none'; object-src 'none'; img-src 'self' data: blob:; style-src 'self' 'unsafe-inline'; script-src 'self'; connect-src 'self' https://convex.example.com wss://convex.example.com"
+	}
+
+	# Better Auth must be same-origin as the web app so the session cookie is
+	# first-party. Forward it to the Convex HTTP-actions upstream.
+	handle /api/auth/* {
+		reverse_proxy convex-backend:3211 {
+			header_up Origin {http.request.header.Origin}
+			header_up X-Forwarded-Proto {scheme}
+		}
+	}
+
+	# The per-instance well-known document (mounted in the web container).
+	handle /.well-known/* {
+		header Content-Type application/json
+		header Cache-Control "public, max-age=300"
+		reverse_proxy web:80
+	}
+
+	# Everything else: the SPA.
+	handle {
+		reverse_proxy web:80
+	}
+}
