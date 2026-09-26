@@ -33,6 +33,8 @@ export interface ChatRuntime {
   readonly port: ChatPort;
   readonly subscriptions: Subscriptions;
   readonly client: ConvexReactClient;
+  /** Public device identity, hex-encoded; used to key `devices.upsert`. */
+  readonly identityKey: string;
   /** Live replies for a thread root, oldest first. */
   watchThread(
     threadRootId: string,
@@ -70,6 +72,7 @@ function createEngine(keyStore: ReturnType<typeof indexedDbKeyStore>): MlsEngine
 export async function createChatRuntime(options: CreateChatRuntimeOptions): Promise<ChatRuntime> {
   const keyStore = options.keyStore ?? indexedDbKeyStore();
   const identity = await ensureDeviceIdentity(keyStore);
+  const identityKey = bytesToHex(identity.signaturePublicKey);
   const port = convexPort(options.client);
   const subscriptions: Subscriptions = convexSubscriptions(options.client);
   const session = ChatSession.create({
@@ -77,7 +80,7 @@ export async function createChatRuntime(options: CreateChatRuntimeOptions): Prom
     subscriptions,
     createEngine: () => createEngine(keyStore),
     user: { id: options.userId, displayName: options.displayName },
-    identityKey: bytesToHex(identity.signaturePublicKey),
+    identityKey,
     platform: isDesktop() ? "desktop" : "web",
   });
   await session.start();
@@ -101,7 +104,7 @@ export async function createChatRuntime(options: CreateChatRuntimeOptions): Prom
     };
   }
 
-  return { session, port, subscriptions, client: options.client, watchThread };
+  return { session, port, subscriptions, client: options.client, identityKey, watchThread };
 }
 
 function bytesToHex(bytes: Uint8Array): string {

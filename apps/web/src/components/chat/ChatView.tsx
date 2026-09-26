@@ -11,6 +11,8 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { uploadFiles } from "../../lib/attachments";
 import { useChannelSession } from "../../lib/use-channel";
 import { useDesktopNotifications } from "../../lib/use-desktop-notifications";
+import { useLiveUnreadBadge } from "../../lib/use-desktop-unread";
+import { useWebPush } from "../../lib/use-web-push";
 import type { CategoryView, MemberView, RoleView } from "../../lib/workspace-admin";
 import { type ChatSearchHit, useChat } from "../../providers/ChatProvider";
 import { AdminPanel, type AdminPanelViewer } from "../admin/AdminPanel";
@@ -79,6 +81,8 @@ export function ChatView({
   const reported = useRef(new Set<string>());
 
   useDesktopNotifications(runtime, ownUserId, channelNames);
+  useWebPush(runtime);
+  useLiveUnreadBadge();
 
   useEffect(() => {
     if (activeChannelId === undefined && channels.length > 0) {
