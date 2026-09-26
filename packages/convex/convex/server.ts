@@ -15,6 +15,7 @@ async function buildPublicConfig(ctx: QueryCtx) {
   const env = process.env;
   const server = await ctx.db.query("server").first();
   const signupEnabled = server?.settings.signupEnabled ?? true;
+  const vapidPublicKey = env.VAPID_PUBLIC_KEY?.trim();
   return {
     name: server?.name ?? "Aulora",
     iconSeed: server?.iconSeed ?? "aulora:server:default",
@@ -23,6 +24,12 @@ async function buildPublicConfig(ctx: QueryCtx) {
     convexUrl: env.CONVEX_CLOUD_URL ?? "",
     siteUrl: env.SITE_URL ?? env.CONVEX_SITE_URL ?? "",
     auth: getPublicAuthConfig(env, signupEnabled),
+    // The VAPID public key is public by definition; the private half never
+    // leaves the deployment environment.
+    webPush:
+      vapidPublicKey !== undefined && vapidPublicKey.length > 0
+        ? { publicKey: vapidPublicKey }
+        : null,
   };
 }
 

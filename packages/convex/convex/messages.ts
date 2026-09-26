@@ -1,6 +1,7 @@
 import { hasPermission, Permission } from "@aulora/core";
 import { paginationOptsValidator } from "convex/server";
 import { ConvexError, v } from "convex/values";
+import { internal } from "./_generated/api";
 import type { Doc, Id } from "./_generated/dataModel";
 import { mutation, query } from "./_generated/server";
 import { writeAudit } from "./lib/audit";
@@ -92,6 +93,9 @@ export const send = mutation({
       ...(args.threadRootId !== undefined ? { threadRootId: args.threadRootId } : {}),
       ...(args.authorDeviceId !== undefined ? { authorDeviceId: args.authorDeviceId } : {}),
     });
+    // Resolve recipients and send content-free Web Push wakes asynchronously;
+    // the action no-ops when VAPID is not configured.
+    await ctx.scheduler.runAfter(0, internal.notifications.dispatchForMessage, { messageId });
     return messageId;
   },
 });
