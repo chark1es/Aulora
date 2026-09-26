@@ -1,0 +1,14 @@
+{
+  "name": "aulora-spike-app",
+  "private": true,
+  "version": "0.0.0",
+  "type": "module",
+  "scripts": {
+    "deploy": "convex deploy"
+  },
+  "dependencies": {
+    "@convex-dev/better-auth": "0.12.5",
+    "better-auth": "1.6.15",
+    "convex": "1.46.0"
+  }
+}
