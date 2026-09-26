@@ -50,6 +50,45 @@ export default defineSchema({
     licenseKey: v.optional(v.string()),
   }),
 
+  /**
+   * Instance-level (operator) settings surfaced by the instance admin panel:
+   * storage quotas, the push-relay target and the backup policy. A single row;
+   * the workspace owner from setup is the instance admin. The relay **token**
+   * is never stored here, only its presence in the deployment environment.
+   */
+  instanceSettings: defineTable({
+    /** Total upload quota in bytes; 0 means unlimited. */
+    storageQuotaBytes: v.number(),
+    /** Largest single upload in bytes. */
+    maxUploadBytes: v.number(),
+    pushRelayEnabled: v.boolean(),
+    pushRelayUrl: v.optional(v.string()),
+    /** Stable opaque server id echoed in wakeups. */
+    serverId: v.optional(v.string()),
+    backupsEnabled: v.boolean(),
+  }),
+
+  /**
+   * Backup run log for the instance admin panel. The Convex cron and the manual
+   * control write the intent; the outside backup runner writes the result. Rows
+   * never hold key material or database contents.
+   */
+  backups: defineTable({
+    trigger: v.union(v.literal("cron"), v.literal("manual")),
+    status: v.union(
+      v.literal("requested"),
+      v.literal("running"),
+      v.literal("succeeded"),
+      v.literal("failed"),
+    ),
+    startedAt: v.number(),
+    finishedAt: v.optional(v.number()),
+    sizeBytes: v.optional(v.number()),
+    /** Opaque S3 key or label; never a credential. */
+    location: v.optional(v.string()),
+    message: v.optional(v.string()),
+  }).index("by_started", ["startedAt"]),
+
   members: defineTable({
     userId: v.string(),
     nickname: v.optional(v.string()),

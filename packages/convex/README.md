@@ -65,3 +65,22 @@ bunx convex run setup:initialize '{\"token\":\"<token>\",\"name\":\"Acme\",\"ema
 
 It refuses a second run and returns `{ serverId, roleId, ownerId }`. Remove
 `SETUP_TOKEN` afterwards.
+
+## Instance admin (Phase 6)
+
+`convex/instance.ts` backs the operator-only admin panel: `settings` and
+`overview` queries plus `updateStorage`, `updatePushRelay` and `updateBackups`
+mutations. Every function calls `requireInstanceAdmin`, which accepts only the
+workspace owner created by setup — roles never grant instance authority. Secrets
+are reported as booleans; the OIDC client secret, `PUSH_RELAY_TOKEN` and
+`BACKUP_TOKEN` are never returned.
+
+- `instanceSettings` stores the total storage quota, the per-upload cap, the
+  relay enabled flag/URL/server id and the backup on/off flag.
+- `convex/license.ts` reads and writes `server.licenseKey`. The pure parser in
+  `lib/license.ts` validates the `AULORA1.<TIER>.<EXPIRY>.<ISSUED>.<LICENSEE>.<CHECK>`
+  format and reports unlicensed / active / expired / invalid. No DRM.
+- `convex/backups.ts` records backup runs. A cron at `0 3 * * *` writes the
+  nightly intent unless backups are disabled; the outside runner
+  (`infra/docker/backup`) does the export + dump + upload and reports the result
+  through `backups.record`, gated by the constant-time `BACKUP_TOKEN` check.
