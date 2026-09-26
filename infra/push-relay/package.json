@@ -1,0 +1,15 @@
+{
+  "name": "aulora-push-relay",
+  "version": "0.0.0",
+  "private": true,
+  "description": "Aulora push relay: forwards content-free APNs/FCM/UnifiedPush wakeups. Self-hosted option for official mobile builds.",
+  "type": "module",
+  "main": "src/server.mjs",
+  "scripts": {
+    "start": "node src/server.mjs",
+    "test": "node --test \"test/**/*.test.mjs\""
+  },
+  "engines": {
+    "node": ">=20.19.0"
+  }
+}

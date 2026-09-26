@@ -241,13 +241,23 @@ services:
         condition: service_completed_successfully
     logging: *logging
 
-  # Optional project push relay for official store builds (Phase 5). Stub only:
-  # there is no implementation yet. Enable with `--profile push-relay`.
+  # Optional project push relay for official store builds. Holds APNs/FCM
+  # credentials and forwards content-free wakeups only. Enable with
+  # `--profile push-relay`; configure PUSH_RELAY_* and any provider keys in .env.
   push-relay:
-    image: busybox:1.36
+    build:
+      context: ../push-relay
+      dockerfile: Dockerfile
+    image: aulora-push-relay:local
     profiles: ["push-relay"]
     restart: unless-stopped
-    command: ["sh", "-c", "echo 'push-relay is not implemented yet (phase 5)'; sleep infinity"]
+    env_file:
+      - path: .env
+        required: false
+    environment:
+      PUSH_RELAY_PORT: 8790
+    ports:
+      - "${PUSH_RELAY_PORT:-8790}:8790"
     logging: *logging
 
 volumes:
