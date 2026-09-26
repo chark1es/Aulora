@@ -1,17 +1,20 @@
 import {
+  type AttachmentDescriptor,
   type MentionTarget,
   type MessagePayload,
   Permission,
   type RoleMentionTarget,
 } from "@aulora/core";
-import { Heading, Spinner, Text } from "@aulora/ui-web";
+import { Button, Heading, Spinner, Text } from "@aulora/ui-web";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { uploadFiles } from "../../lib/attachments";
 import { useChannelSession } from "../../lib/use-channel";
-import { useChat } from "../../providers/ChatProvider";
+import { type ChatSearchHit, useChat } from "../../providers/ChatProvider";
 import { ChannelSidebar } from "./ChannelSidebar";
 import { Composer } from "./Composer";
 import { MembersPanel } from "./MembersPanel";
 import { MessageList } from "./MessageList";
+import { SearchPanel } from "./SearchPanel";
 import { ThreadsPanel } from "./ThreadsPanel";
 
 export interface ChatViewProps {
@@ -28,15 +31,29 @@ export interface ChatViewProps {
 }
 
 /**
- * The signed-in chat surface: sidebar, message list, composer, threads and
- * members. Reads the MLS session from {@link useChat} and keeps every payload
- * decrypted through it.
+ * The signed-in chat surface: sidebar, message list, composer, threads,
+ * members, local search and the offline outbox. Reads the MLS session from
+ * {@link useChat} and keeps every payload decrypted through it.
  */
 export function ChatView({ workspaceName, ownUserId, permissions, members, roles }: ChatViewProps) {
-  const { runtime, channels, presence, reportChannelNames, ready } = useChat();
+  const {
+    runtime,
+    channels,
+    presence,
+    reportChannelNames,
+    ready,
+    online,
+    outbox,
+    sendMessage,
+    search,
+  } = useChat();
   const [activeChannelId, setActiveChannelId] = useState<string | undefined>(undefined);
   const [threadRoot, setThreadRoot] = useState<MessagePayload | null>(null);
   const [customStatuses, setCustomStatuses] = useState<ReadonlyMap<string, string>>(new Map());
+  const [searchOpen, setSearchOpen] = useState(false);
+  const [searchQuery, setSearchQuery] = useState("");
+  const [searchResults, setSearchResults] = useState<readonly ChatSearchHit[]>([]);
+  const [searching, setSearching] = useState(false);
   const reported = useRef(new Set<string>());
 
   useEffect(() => {
@@ -95,6 +112,40 @@ export function ChatView({ workspaceName, ownUserId, permissions, members, roles
     }
   }, [runtime, presence, activeChannelId]);
 
+  useEffect(() => {
+    const onKeyDown = (event: KeyboardEvent) => {
+      if ((event.metaKey || event.ctrlKey) && event.key.toLowerCase() === "k") {
+        event.preventDefault();
+        setSearchOpen((open) => !open);
+      }
+      if (event.key === "Escape") {
+        setSearchOpen(false);
+      }
+    };
+    window.addEventListener("keydown", onKeyDown);
+    return () => window.removeEventListener("keydown", onKeyDown);
+  }, []);
+
+  useEffect(() => {
+    if (!searchOpen) {
+      return;
+    }
+    const trimmed = searchQuery.trim();
+    if (trimmed.length === 0) {
+      setSearchResults([]);
+      setSearching(false);
+      return;
+    }
+    setSearching(true);
+    const timer = setTimeout(() => {
+      void search(trimmed).then((hits) => {
+        setSearchResults(hits);
+        setSearching(false);
+      });
+    }, 120);
+    return () => clearTimeout(timer);
+  }, [searchOpen, searchQuery, search]);
+
   const channel = channels.find((entry) => entry.id === activeChannelId);
   const sessionState = useChannelSession(runtime, activeChannelId, ownUserId);
 
@@ -129,6 +180,67 @@ export function ChatView({ workspaceName, ownUserId, permissions, members, roles
     return map;
   }, [activeChannelId, sessionState.unread]);
 
+  const pendingItems = useMemo(
+    () => outbox.filter((item) => item.channelId === activeChannelId),
+    [outbox, activeChannelId],
+  );
+
+  const pendingMessages = useMemo<readonly MessagePayload[]>(
+    () =>
+      pendingItems.map((item) => ({
+        id: `pending:${item.id}`,
+        channelId: item.channelId,
+        authorId: ownUserId,
+        authorDeviceId: null,
+        ciphertext: "",
+        epoch: 0,
+        threadRootId: item.threadRootId ?? null,
+        attachmentIds: [],
+        mentionUserIds: [...item.mentionUserIds],
+        editedAt: null,
+        deletedAt: null,
+        pinnedAt: null,
+        createdAt: item.createdAt,
+      })),
+    [pendingItems, ownUserId],
+  );
+
+  const mergedMessages = useMemo(
+    () => [...sessionState.messages, ...pendingMessages],
+    [sessionState.messages, pendingMessages],
+  );
+
+  const mergedDecrypted = useMemo(() => {
+    const next = new Map(sessionState.decrypted);
+    for (const item of pendingItems) {
+      next.set(`pending:${item.id}`, item.text);
+    }
+    return next;
+  }, [sessionState.decrypted, pendingItems]);
+
+  const attachmentsByMessage = useMemo(() => {
+    const map = new Map<string, readonly AttachmentDescriptor[]>();
+    if (runtime !== undefined) {
+      for (const message of sessionState.messages) {
+        const list = runtime.session.attachmentsFor(message.id);
+        if (list.length > 0) {
+          map.set(message.id, list);
+        }
+      }
+    }
+    for (const item of pendingItems) {
+      if (item.attachments !== undefined && item.attachments.length > 0) {
+        map.set(`pending:${item.id}`, item.attachments);
+      }
+    }
+    return map;
+  }, [runtime, sessionState.messages, pendingItems]);
+
+  const pendingIds = useMemo(
+    () => new Set(pendingItems.map((item) => `pending:${item.id}`)),
+    [pendingItems],
+  );
+
   const openChannel = useCallback(
     async (channelId: string) => {
       setActiveChannelId(channelId);
@@ -147,6 +259,21 @@ export function ChatView({ workspaceName, ownUserId, permissions, members, roles
     [runtime, channels, reportChannelNames],
   );
 
+  const selectSearchHit = useCallback(
+    (hit: ChatSearchHit) => {
+      setSearchOpen(false);
+      void openChannel(hit.channelId).then(() => {
+        setTimeout(() => {
+          document.getElementById(`message-${hit.messageId}`)?.scrollIntoView({
+            behavior: "smooth",
+            block: "center",
+          });
+        }, 120);
+      });
+    },
+    [openChannel],
+  );
+
   if (!ready || runtime === undefined) {
     return (
       <div className="flex min-h-screen items-center justify-center gap-3">
@@ -159,7 +286,7 @@ export function ChatView({ workspaceName, ownUserId, permissions, members, roles
   }
 
   return (
-    <div className="flex h-screen min-h-0">
+    <div className="relative flex h-screen min-h-0">
       <ChannelSidebar
         workspaceName={workspaceName}
         channels={channels}
@@ -187,6 +314,17 @@ export function ChatView({ workspaceName, ownUserId, permissions, members, roles
       />
 
       <main className="flex min-w-0 flex-1 flex-col bg-bg">
+        {(!online || outbox.length > 0) && (
+          <div
+            data-testid="reconnecting"
+            className="flex items-center gap-2 border-b border-border bg-accent-soft px-4 py-1"
+          >
+            <Spinner size={16} label="Reconnecting" />
+            <Text size="xs" tone="accent">
+              {online ? "Sending queued messages…" : "Reconnecting…"}
+            </Text>
+          </div>
+        )}
         {channel === undefined ? (
           <div className="flex flex-1 items-center justify-center">
             <Text tone="muted">Select a channel to start.</Text>
@@ -194,7 +332,17 @@ export function ChatView({ workspaceName, ownUserId, permissions, members, roles
         ) : (
           <>
             <header className="flex items-center justify-between border-b border-border px-4 py-3">
-              <Heading level={3}>{channel.name}</Heading>
+              <div className="flex items-center gap-3">
+                <Heading level={3}>{channel.name}</Heading>
+                <Button
+                  size="sm"
+                  variant="ghost"
+                  aria-label="Search messages"
+                  onClick={() => setSearchOpen(true)}
+                >
+                  Search
+                </Button>
+              </div>
               <Text size="xs" tone="secondary" mono>
                 E2EE · epoch{" "}
                 {sessionState.messages.length > 0
@@ -205,8 +353,10 @@ export function ChatView({ workspaceName, ownUserId, permissions, members, roles
             <MessageList
               runtime={runtime}
               channelId={channel.id}
-              messages={sessionState.messages}
-              decrypted={sessionState.decrypted}
+              messages={mergedMessages}
+              decrypted={mergedDecrypted}
+              attachments={attachmentsByMessage}
+              pendingIds={pendingIds}
               permissions={permissions}
               ownUserId={ownUserId}
               memberNames={memberNames}
@@ -247,11 +397,22 @@ export function ChatView({ workspaceName, ownUserId, permissions, members, roles
               onTyping={(channelId) => {
                 void runtime.port.setTyping({ channelId });
               }}
-              onSend={async ({ text, mentionUserIds }) => {
-                const messageId = await runtime.session.sendMessage(channel.id, text, {
+              onSend={async ({ text, mentionUserIds, files }) => {
+                let attachments: readonly AttachmentDescriptor[] | undefined;
+                if (files.length > 0) {
+                  try {
+                    attachments = await uploadFiles(runtime.port, files);
+                  } catch {
+                    return;
+                  }
+                }
+                const result = await sendMessage(channel.id, text, {
                   mentionUserIds,
+                  ...(attachments !== undefined && attachments.length > 0 ? { attachments } : {}),
                 });
-                await runtime.session.markRead(channel.id, messageId);
+                if (!result.queued && result.messageId !== undefined) {
+                  void runtime.session.markRead(channel.id, result.messageId);
+                }
               }}
             />
           </>
@@ -275,15 +436,15 @@ export function ChatView({ workspaceName, ownUserId, permissions, members, roles
           }}
           onSendReply={async ({ text, mentionUserIds, replyInThread }) => {
             if (replyInThread) {
-              await runtime.session.sendMessage(channel.id, text, {
+              await sendMessage(channel.id, text, {
                 mentionUserIds,
                 threadRootId: threadRoot.id,
               });
             } else {
-              const messageId = await runtime.session.sendMessage(channel.id, text, {
-                mentionUserIds,
-              });
-              await runtime.session.markRead(channel.id, messageId);
+              const result = await sendMessage(channel.id, text, { mentionUserIds });
+              if (!result.queued && result.messageId !== undefined) {
+                void runtime.session.markRead(channel.id, result.messageId);
+              }
             }
           }}
         />
@@ -297,6 +458,17 @@ export function ChatView({ workspaceName, ownUserId, permissions, members, roles
           void runtime.port.setStatus({ status });
         }}
       />
+
+      {searchOpen && (
+        <SearchPanel
+          query={searchQuery}
+          results={searchResults}
+          searching={searching}
+          onQueryChange={setSearchQuery}
+          onSelect={selectSearchHit}
+          onClose={() => setSearchOpen(false)}
+        />
+      )}
     </div>
   );
 }

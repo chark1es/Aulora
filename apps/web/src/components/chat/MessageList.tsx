@@ -1,9 +1,10 @@
 import { Avatar, userAvatarSeed } from "@aulora/avatars";
-import type { MessagePayload, ReactionRow } from "@aulora/core";
+import type { AttachmentDescriptor, MessagePayload, ReactionRow } from "@aulora/core";
 import { gridDays, hasPermission, Permission } from "@aulora/core";
 import { IconButton, Text } from "@aulora/ui-web";
 import { useEffect, useState } from "react";
 import type { ChatRuntime } from "../../lib/chat-runtime";
+import { AttachmentView } from "./AttachmentView";
 import { ReactionChips, type ReactionGroup } from "./ReactionChips";
 
 export interface MessageListProps {
@@ -11,6 +12,8 @@ export interface MessageListProps {
   readonly channelId: string;
   readonly messages: readonly MessagePayload[];
   readonly decrypted: ReadonlyMap<string, string>;
+  readonly attachments: ReadonlyMap<string, readonly AttachmentDescriptor[]>;
+  readonly pendingIds: ReadonlySet<string>;
   readonly permissions: bigint;
   readonly ownUserId: string;
   readonly memberNames: ReadonlyMap<string, string>;
@@ -31,6 +34,8 @@ export function MessageList({
   channelId,
   messages,
   decrypted,
+  attachments,
+  pendingIds,
   permissions,
   ownUserId,
   memberNames,
@@ -74,6 +79,8 @@ export function MessageList({
               channelId={channelId}
               message={message}
               text={decrypted.get(message.id)}
+              attachments={attachments.get(message.id) ?? []}
+              pending={pendingIds.has(message.id)}
               permissions={permissions}
               ownUserId={ownUserId}
               authorName={memberNames.get(message.authorId) ?? message.authorId}
@@ -95,6 +102,8 @@ function MessageRow({
   channelId,
   message,
   text,
+  attachments,
+  pending,
   permissions,
   ownUserId,
   authorName,
@@ -108,6 +117,8 @@ function MessageRow({
   channelId: string;
   message: MessagePayload;
   text: string | undefined;
+  attachments: readonly AttachmentDescriptor[];
+  pending: boolean;
   permissions: bigint;
   ownUserId: string;
   authorName: string;
@@ -159,6 +170,7 @@ function MessageRow({
 
   return (
     <article
+      id={`message-${message.id}`}
       className="group relative flex gap-3 rounded-input px-3 py-1.5 hover:bg-surface-2"
       data-testid={`message-${message.id}`}
     >
@@ -215,53 +227,67 @@ function MessageRow({
         ) : (
           <MessageBody text={text} />
         )}
+        {attachments.length > 0 && (
+          <div className="mt-1 flex flex-col gap-1">
+            {attachments.map((attachment) => (
+              <AttachmentView key={attachment.fileId} runtime={runtime} descriptor={attachment} />
+            ))}
+          </div>
+        )}
+        {pending && (
+          <Text size="xs" tone="muted" data-testid={`pending-${message.id}`}>
+            Sending…
+          </Text>
+        )}
         {reactions.length > 0 && (
           <ReactionChips groups={reactions} onToggle={(emoji) => onReact(message, emoji)} />
         )}
       </div>
 
-      <div className="absolute right-3 -top-3 hidden items-center gap-1 rounded-pill border border-border bg-surface-3 p-1 group-hover:flex">
-        {canReact &&
-          QUICK_REACTIONS.map((emoji) => (
+      {!pending && (
+        <div className="absolute right-3 -top-3 hidden items-center gap-1 rounded-pill border border-border bg-surface-3 p-1 group-hover:flex">
+          {canReact &&
+            QUICK_REACTIONS.map((emoji) => (
+              <IconButton
+                key={emoji}
+                size="sm"
+                label={`React ${emoji}`}
+                onClick={() => onReact(message, emoji)}
+              >
+                <span aria-hidden="true">{emoji}</span>
+              </IconButton>
+            ))}
+          <IconButton size="sm" label="Reply in thread" onClick={() => onReply(message)}>
+            <span aria-hidden="true">↩</span>
+          </IconButton>
+          {canEdit && (
             <IconButton
-              key={emoji}
               size="sm"
-              label={`React ${emoji}`}
-              onClick={() => onReact(message, emoji)}
+              label="Edit message"
+              onClick={() => {
+                setDraft(text ?? "");
+                setEditing(true);
+              }}
             >
-              <span aria-hidden="true">{emoji}</span>
+              <span aria-hidden="true">✎</span>
             </IconButton>
-          ))}
-        <IconButton size="sm" label="Reply in thread" onClick={() => onReply(message)}>
-          <span aria-hidden="true">↩</span>
-        </IconButton>
-        {canEdit && (
-          <IconButton
-            size="sm"
-            label="Edit message"
-            onClick={() => {
-              setDraft(text ?? "");
-              setEditing(true);
-            }}
-          >
-            <span aria-hidden="true">✎</span>
-          </IconButton>
-        )}
-        {canEdit && (
-          <IconButton
-            size="sm"
-            label={message.pinnedAt ? "Unpin" : "Pin"}
-            onClick={() => onPinToggle(message)}
-          >
-            <span aria-hidden="true">📌</span>
-          </IconButton>
-        )}
-        {canDelete && (
-          <IconButton size="sm" label="Delete message" onClick={() => onDelete(message)}>
-            <span aria-hidden="true">🗑</span>
-          </IconButton>
-        )}
-      </div>
+          )}
+          {canEdit && (
+            <IconButton
+              size="sm"
+              label={message.pinnedAt ? "Unpin" : "Pin"}
+              onClick={() => onPinToggle(message)}
+            >
+              <span aria-hidden="true">📌</span>
+            </IconButton>
+          )}
+          {canDelete && (
+            <IconButton size="sm" label="Delete message" onClick={() => onDelete(message)}>
+              <span aria-hidden="true">🗑</span>
+            </IconButton>
+          )}
+        </div>
+      )}
     </article>
   );
 }

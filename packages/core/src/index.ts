@@ -5,6 +5,12 @@ export {
   type UploadAttachmentInput,
   uploadEncryptedAttachment,
 } from "./attachments";
+export type {
+  AttachmentCryptoOptions,
+  AttachmentDescriptor,
+  AttachmentDimensions,
+  EncryptedObjectRef,
+} from "@aulora/crypto";
 export * from "./chat/index";
 export {
   type EnqueueInput,

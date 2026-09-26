@@ -34,6 +34,8 @@ test.describe("connect and sign in", () => {
     await page.getByRole("button", { name: "Sign in" }).click();
 
     await expect(page.getByRole("button", { name: "Sign out" })).toBeVisible();
-    await expect(page.getByText(/Connected to /)).toBeVisible();
+    // The Phase 2 shell renders the encrypted chat surface, not a "Connected
+    // to" line, so assert the message list and the sign-out control.
+    await expect(page.getByTestId("message-list")).toBeVisible({ timeout: 30_000 });
   });
 });
