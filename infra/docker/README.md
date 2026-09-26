@@ -17,13 +17,17 @@ Copy-Item .env.example .env
 #    Set at least: INSTANCE_NAME, WORKSPACE_NAME, OWNER_EMAIL, OWNER_PASSWORD,
 #    SITE_URL and (for a public deploy) the CONVEX_*_ORIGIN values.
 
-# 2. Build and start the stack.
+# 2. Build and start the stack. The one-shot `setup` service starts on its own
+#    once the backend is healthy; it is idempotent, so this is safe on every up.
 docker compose up -d --build
 
-# 3. Run first-run setup (idempotent — safe to re-run any time).
+# 3. Wait for first-run setup to finish before signing in.
+docker compose logs -f setup
+
+# 4. Optional: re-run setup explicitly at any time (idempotent).
 docker compose run --rm setup
 
-# 4. Open the web app and sign in as the owner.
+# 5. Open the web app and sign in as the owner.
 #    http://localhost:8080   (host WEB_PORT; default 8080)
 ```
 
@@ -45,12 +49,12 @@ functions, creates the workspace + owner account, and writes the public
 
 ## Why `setup` rather than manual steps
 
-The self-hosted Convex backend image ships `/convex/generate_key`, and the admin
-key is just `generate_key "$INSTANCE_NAME" "$INSTANCE_SECRET"` — deterministic
-from the instance name and secret. So the `setup` image copies that binary out
-of the exact backend image digest we run, mints the key **without `docker exec`**,
-and uses it to deploy and configure the deployment. Everything it does is
-idempotent:
+The self-hosted Convex backend image ships `/convex/generate_key`. The admin key
+is an authorization token minted from the instance secret; each mint adds a
+random nonce, so successive outputs differ but any minted key is valid for that
+instance. The `setup` image copies that binary out of the exact backend image
+digest we run, mints a key **without `docker exec`**, and uses it to deploy and
+configure the deployment. Everything it does is idempotent:
 
 - instance name/secret are resolved from the running backend;
 - secrets are generated only when absent (`BETTER_AUTH_SECRET`, a one-time
