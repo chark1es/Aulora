@@ -216,13 +216,30 @@ export default defineSchema({
     keywordsCiphertext: v.optional(v.string()),
   }).index("by_user_scope", ["userId", "scope"]),
 
+  /**
+   * Invite links. `code` stores the SHA-256 hex digest of the plaintext code,
+   * never the code itself; the plaintext is returned only once, at creation.
+   * `maxUses` of 0 means unlimited.
+   */
   invites: defineTable({
     code: v.string(),
     createdBy: v.string(),
     maxUses: v.number(),
     uses: v.number(),
     expiresAt: v.optional(v.number()),
+    revokedAt: v.optional(v.number()),
   }).index("by_code", ["code"]),
+
+  /**
+   * Permanently banned users. A ban removes the member and their channel
+   * memberships; the row here is what blocks a later invite redemption.
+   */
+  bans: defineTable({
+    userId: v.string(),
+    actorId: v.string(),
+    reason: v.optional(v.string()),
+    at: v.number(),
+  }).index("by_user", ["userId"]),
 
   auditLog: defineTable({
     actorId: v.string(),
