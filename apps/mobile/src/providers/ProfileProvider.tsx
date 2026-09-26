@@ -1,0 +1,123 @@
+import {
+  createServerProfile,
+  type ProfileStore,
+  type ServerProfile,
+  type WellKnown,
+} from "@aulora/core";
+import AsyncStorage from "@react-native-async-storage/async-storage";
+import {
+  createContext,
+  type ReactNode,
+  useCallback,
+  useContext,
+  useEffect,
+  useMemo,
+  useState,
+} from "react";
+import { createMobileProfileStore } from "../lib/profiles";
+
+export interface ProfileContextValue {
+  readonly store: ProfileStore;
+  readonly profiles: readonly ServerProfile[];
+  readonly activeProfile: ServerProfile | undefined;
+  readonly ready: boolean;
+  /** Saves a validated well-known document as a profile and makes it active. */
+  addProfile(baseUrl: string, wellKnown: WellKnown): Promise<ServerProfile>;
+  setActive(id: string): Promise<void>;
+  remove(id: string): Promise<void>;
+  refresh(): Promise<void>;
+}
+
+const ProfileContext = createContext<ProfileContextValue | null>(null);
+
+export interface ProfileProviderProps {
+  /** Injectable for tests; defaults to the AsyncStorage-backed store. */
+  readonly store?: ProfileStore;
+  readonly children: ReactNode;
+}
+
+export function ProfileProvider({ store, children }: ProfileProviderProps) {
+  const profileStore = useMemo(() => store ?? createMobileProfileStore(AsyncStorage), [store]);
+  const [profiles, setProfiles] = useState<readonly ServerProfile[]>([]);
+  const [activeId, setActiveId] = useState<string | undefined>(undefined);
+  const [ready, setReady] = useState(false);
+
+  const refresh = useCallback(async () => {
+    const [list, active] = await Promise.all([profileStore.list(), profileStore.getActive()]);
+    setProfiles(list);
+    setActiveId(active?.id);
+  }, [profileStore]);
+
+  useEffect(() => {
+    let cancelled = false;
+    void (async () => {
+      const [list, active] = await Promise.all([profileStore.list(), profileStore.getActive()]);
+      if (cancelled) {
+        return;
+      }
+      setProfiles(list);
+      setActiveId(active?.id);
+      setReady(true);
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, [profileStore]);
+
+  const addProfile = useCallback(
+    async (baseUrl: string, wellKnown: WellKnown) => {
+      const profile = createServerProfile(baseUrl, wellKnown);
+      await profileStore.add(profile);
+      await profileStore.setActive(profile.id);
+      await refresh();
+      return profile;
+    },
+    [profileStore, refresh],
+  );
+
+  const setActive = useCallback(
+    async (id: string) => {
+      await profileStore.setActive(id);
+      setActiveId(id);
+    },
+    [profileStore],
+  );
+
+  const remove = useCallback(
+    async (id: string) => {
+      await profileStore.remove(id);
+      await refresh();
+    },
+    [profileStore, refresh],
+  );
+
+  const activeProfile = useMemo(
+    () => profiles.find((profile) => profile.id === activeId),
+    [profiles, activeId],
+  );
+
+  const value = useMemo<ProfileContextValue>(
+    () => ({
+      store: profileStore,
+      profiles,
+      activeProfile,
+      ready,
+      addProfile,
+      setActive,
+      remove,
+      refresh,
+    }),
+    [profileStore, profiles, activeProfile, ready, addProfile, setActive, remove, refresh],
+  );
+
+  return <ProfileContext.Provider value={value}>{children}</ProfileContext.Provider>;
+}
+
+/** Reads the profile context; throws when used outside a {@link ProfileProvider}. */
+export function useProfiles(): ProfileContextValue {
+  const value = useContext(ProfileContext);
+  if (value === null) {
+    throw new Error("useProfiles must be used within a ProfileProvider.");
+  }
+  return value;
+}

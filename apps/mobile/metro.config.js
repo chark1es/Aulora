@@ -16,4 +16,22 @@ config.resolver.nodeModulesPaths = [
   path.resolve(workspaceRoot, "node_modules"),
 ];
 
+// The `@aulora/*` packages are plain TypeScript (Vite resolves their ESM
+// `./foo.js` specifiers onto `./foo.ts`). Metro does not rewrite extensions, so
+// retry a `.js`/`.jsx`/`.mjs` request without the extension before failing.
+config.resolver.resolveRequest = (context, moduleName, platform) => {
+  try {
+    return context.resolveRequest(context, moduleName, platform);
+  } catch (error) {
+    if (/\.(js|jsx|mjs)$/.test(moduleName)) {
+      try {
+        return context.resolveRequest(context, moduleName.replace(/\.(js|jsx|mjs)$/, ""), platform);
+      } catch {
+        throw error;
+      }
+    }
+    throw error;
+  }
+};
+
 module.exports = withNativeWind(config, { input: "./global.css" });
