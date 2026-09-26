@@ -13,7 +13,10 @@ export {
   AULORA_CIPHER_SUITE,
   createWebMlsEngine,
   type DeviceIdentity,
+  ensureDeviceIdentity,
+  readDeviceIdentity,
   type WebMlsEngineOptions,
+  writeDeviceIdentity,
 } from "./web-engine.js";
 export { createWorkerMlsEngine, type WorkerMlsEngineOptions } from "./worker-engine.js";
 export {

@@ -2,6 +2,7 @@ import { describe, expect, it } from "vitest";
 import {
   AULORA_CIPHER_SUITE,
   createWebMlsEngine,
+  ensureDeviceIdentity,
   type MlsEngine,
   MlsEngineError,
   memoryKeyStore,
@@ -65,6 +66,19 @@ describe("web MLS engine (ts-mls)", () => {
 
     const ciphertext = await creator.encrypt(encoder.encode("survives restore"));
     expect(decoder.decode(await restored.decrypt(ciphertext))).toBe("survives restore");
+  });
+
+  it("persists one device identity per key store", async () => {
+    const store = memoryKeyStore();
+    const first = await ensureDeviceIdentity(store);
+    expect(first.deviceId).toHaveLength(32);
+    expect(first.credentialIdentity).toEqual(
+      new TextEncoder().encode(`aulora:device:${first.deviceId}`),
+    );
+
+    const second = await ensureDeviceIdentity(store);
+    expect(second.signaturePublicKey).toEqual(first.signaturePublicKey);
+    expect(second.signaturePrivateKey).toEqual(first.signaturePrivateKey);
   });
 
   it("rejects a public commit passed to decrypt instead of processCommit", async () => {

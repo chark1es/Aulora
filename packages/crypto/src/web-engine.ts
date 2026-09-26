@@ -125,30 +125,12 @@ class WebMlsEngine implements MlsEngine {
     return identity;
   }
 
-  private async readIdentity(): Promise<DeviceIdentity | undefined> {
-    const record = await this.keyStore.get(IDENTITY_RECORD);
-    if (!record) {
-      return undefined;
-    }
-    const parts = unpack(record, 4);
-    return {
-      deviceId: utf8Decode(requirePart(parts, 0)),
-      credentialIdentity: requirePart(parts, 1),
-      signaturePublicKey: requirePart(parts, 2),
-      signaturePrivateKey: requirePart(parts, 3),
-    };
+  private readIdentity(): Promise<DeviceIdentity | undefined> {
+    return readDeviceIdentity(this.keyStore);
   }
 
-  private async persistIdentity(identity: DeviceIdentity): Promise<void> {
-    await this.keyStore.set(
-      IDENTITY_RECORD,
-      pack([
-        utf8Encode(identity.deviceId),
-        identity.credentialIdentity,
-        identity.signaturePublicKey,
-        identity.signaturePrivateKey,
-      ]),
-    );
+  private persistIdentity(identity: DeviceIdentity): Promise<void> {
+    return writeDeviceIdentity(this.keyStore, identity);
   }
 
   async generateKeyPackage(): Promise<Uint8Array> {
@@ -419,6 +401,68 @@ class WebMlsEngine implements MlsEngine {
 /** Create the web/desktop MLS engine. See {@link MlsEngine}. */
 export function createWebMlsEngine(options: WebMlsEngineOptions): MlsEngine {
   return new WebMlsEngine(options);
+}
+
+/**
+ * Reads the persisted device identity (public and private parts), or
+ * `undefined` when this install has not created one yet. Exposed so callers
+ * can register the public identity with the server without touching ts-mls.
+ */
+export async function readDeviceIdentity(keyStore: KeyStore): Promise<DeviceIdentity | undefined> {
+  const record = await keyStore.get(IDENTITY_RECORD);
+  if (!record) {
+    return undefined;
+  }
+  const parts = unpack(record, 4);
+  return {
+    deviceId: utf8Decode(requirePart(parts, 0)),
+    credentialIdentity: requirePart(parts, 1),
+    signaturePublicKey: requirePart(parts, 2),
+    signaturePrivateKey: requirePart(parts, 3),
+  };
+}
+
+/** Persists the device identity record encrypted through `keyStore`. */
+export async function writeDeviceIdentity(
+  keyStore: KeyStore,
+  identity: DeviceIdentity,
+): Promise<void> {
+  await keyStore.set(
+    IDENTITY_RECORD,
+    pack([
+      utf8Encode(identity.deviceId),
+      identity.credentialIdentity,
+      identity.signaturePublicKey,
+      identity.signaturePrivateKey,
+    ]),
+  );
+}
+
+/**
+ * Loads this install's MLS device identity, creating and persisting one on
+ * first use. The Ed25519 key pair is generated once per install and is the
+ * credential bound to every KeyPackage. Call this on the main thread before
+ * spawning Worker engines so every engine shares one identity record.
+ */
+export async function ensureDeviceIdentity(
+  keyStore: KeyStore,
+  cryptoImpl: Crypto = globalThis.crypto,
+): Promise<DeviceIdentity> {
+  const stored = await readDeviceIdentity(keyStore);
+  if (stored) {
+    return stored;
+  }
+  const cipherSuite = await getCiphersuiteImpl(getCiphersuiteFromName(AULORA_CIPHER_SUITE));
+  const keyPair = await cipherSuite.signature.keygen();
+  const deviceId = bytesToHex(cryptoImpl.getRandomValues(new Uint8Array(16)));
+  const identity: DeviceIdentity = {
+    deviceId,
+    credentialIdentity: utf8Encode(`aulora:device:${deviceId}`),
+    signaturePublicKey: keyPair.publicKey,
+    signaturePrivateKey: keyPair.signKey,
+  };
+  await writeDeviceIdentity(keyStore, identity);
+  return identity;
 }
 
 function decodeMessage(bytes: Uint8Array): MLSMessage {
