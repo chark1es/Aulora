@@ -76,7 +76,7 @@ export function convexPort(client: ConvexReactClient): ChatPort {
       return await client.mutation(api.channels.create, {
         kind: args.kind,
         nameCiphertext: args.nameCiphertext,
-        mlsGroupId: args.mlsGroupId,
+        ...(args.mlsGroupId !== undefined ? { mlsGroupId: args.mlsGroupId } : {}),
         ...(args.topicCiphertext !== undefined ? { topicCiphertext: args.topicCiphertext } : {}),
         ...(args.categoryId !== undefined ? { categoryId: args.categoryId as never } : {}),
       });

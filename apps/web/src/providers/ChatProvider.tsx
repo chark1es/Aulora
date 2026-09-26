@@ -121,7 +121,10 @@ async function decryptNames(
 ): Promise<Map<string, string>> {
   const result = new Map<string, string>();
   for (const entry of entries) {
-    const payload = await runtime.session.decryptPayload<{ text: string }>(entry.ciphertext);
+    const payload = await runtime.session.decryptPayload<{ text: string }>(
+      entry.id,
+      entry.ciphertext,
+    );
     if (payload !== undefined) {
       result.set(entry.id, payload.text);
     }

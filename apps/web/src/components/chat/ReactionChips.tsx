@@ -21,6 +21,7 @@ export function ReactionChips({ groups, onToggle }: ReactionChipsProps) {
           type="button"
           onClick={() => onToggle(group.emoji)}
           aria-pressed={group.mine}
+          aria-label={`${group.emoji} ${group.count}`}
           className={cn(
             "inline-flex items-center gap-1 rounded-pill border px-2 py-0.5 text-xs",
             group.mine

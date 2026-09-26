@@ -42,23 +42,30 @@ export function useChannelSession(
     }
     const offMessages = runtime.subscriptions.watchMessages(channelId, (incoming) => {
       setMessages(incoming);
-      void runtime.session.receiveMessages(incoming).then(() => {
-        setDecrypted((current) => {
-          const next = new Map(current);
-          for (const message of incoming) {
-            const text = runtime.session.decryptedText(message.id);
-            if (text !== undefined) {
-              next.set(message.id, text);
-            }
+      void runtime.session.receiveMessages(incoming);
+    });
+    // The session owns decrypting; mirror its decrypted events into React state
+    // so a message opened by any subscription path (not just this one) renders.
+    const offDecrypted = runtime.session.onDecrypted((messages) => {
+      setDecrypted((current) => {
+        const next = new Map(current);
+        for (const message of messages) {
+          if (message.channelId !== channelId) {
+            continue;
           }
-          return next;
-        });
+          const text = runtime.session.decryptedText(message.id);
+          if (text !== undefined) {
+            next.set(message.id, text);
+          }
+        }
+        return next;
       });
     });
     const offTyping = runtime.subscriptions.watchTyping(channelId, setTypers);
     const offRead = runtime.subscriptions.watchReadState(channelId, setReadState);
     return () => {
       offMessages();
+      offDecrypted();
       offTyping();
       offRead();
     };

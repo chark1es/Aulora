@@ -46,6 +46,10 @@ export interface CreateChatRuntimeOptions {
   readonly keyStore?: ReturnType<typeof indexedDbKeyStore>;
 }
 
+/**
+ * Creates one MLS engine over the shared device key store. Each channel gets
+ * its own engine so concurrent groups never share an active ratchet state.
+ */
 function createEngine(keyStore: ReturnType<typeof indexedDbKeyStore>): MlsEngine {
   return createWorkerMlsEngine({
     workerFactory: (): WorkerLike | undefined => {
@@ -67,11 +71,10 @@ export async function createChatRuntime(options: CreateChatRuntimeOptions): Prom
   const identity = await ensureDeviceIdentity(keyStore);
   const port = convexPort(options.client);
   const subscriptions: Subscriptions = convexSubscriptions(options.client);
-  const engine = createEngine(keyStore);
   const session = ChatSession.create({
     port,
     subscriptions,
-    engine,
+    createEngine: () => createEngine(keyStore),
     user: { id: options.userId, displayName: options.displayName },
     identityKey: bytesToHex(identity.signaturePublicKey),
     platform: "web",

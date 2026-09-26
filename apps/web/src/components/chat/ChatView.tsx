@@ -50,25 +50,38 @@ export function ChatView({ workspaceName, ownUserId, permissions, members, roles
       return;
     }
     const pending = channels
-      .filter((channel) => channel.nameCiphertext !== null && !reported.current.has(channel.id))
-      .map((channel) => ({ id: channel.id, ciphertext: channel.nameCiphertext as string }));
+      .filter(
+        (channel) =>
+          channel.nameCiphertext !== null &&
+          channel.nameCiphertext.length > 0 &&
+          !reported.current.has(`${channel.id}:${channel.nameCiphertext}`),
+      )
+      .map((channel) => ({
+        id: channel.id,
+        ciphertext: channel.nameCiphertext as string,
+        key: `${channel.id}:${channel.nameCiphertext}`,
+      }));
     if (pending.length === 0) {
       return;
     }
     for (const entry of pending) {
-      reported.current.add(entry.id);
+      reported.current.add(entry.key);
     }
-    reportChannelNames(pending);
+    reportChannelNames(pending.map(({ id, ciphertext }) => ({ id, ciphertext })));
   }, [runtime, channels, reportChannelNames]);
 
   useEffect(() => {
     if (runtime === undefined) {
       return;
     }
+    const statusChannelId = activeChannelId;
+    if (statusChannelId === undefined) {
+      return;
+    }
     for (const row of presence) {
       if (row.customStatusCiphertext !== null) {
         void runtime.session
-          .decryptPayload<{ text: string }>(row.customStatusCiphertext)
+          .decryptPayload<{ text: string }>(statusChannelId, row.customStatusCiphertext)
           .then((payload) => {
             if (payload !== undefined) {
               setCustomStatuses((current) => {
@@ -80,7 +93,7 @@ export function ChatView({ workspaceName, ownUserId, permissions, members, roles
           });
       }
     }
-  }, [runtime, presence]);
+  }, [runtime, presence, activeChannelId]);
 
   const channel = channels.find((entry) => entry.id === activeChannelId);
   const sessionState = useChannelSession(runtime, activeChannelId, ownUserId);
@@ -123,9 +136,15 @@ export function ChatView({ workspaceName, ownUserId, permissions, members, roles
       const summary = channels.find((entry) => entry.id === channelId);
       if (runtime !== undefined && summary !== undefined) {
         await runtime.session.openChannel(summary);
+        // The group is now open, so a name encrypted at an earlier epoch (or
+        // re-encrypted for this member) can be retried even if an earlier
+        // attempt ran before the Welcome arrived.
+        if (summary.nameCiphertext !== null && summary.nameCiphertext.length > 0) {
+          reportChannelNames([{ id: summary.id, ciphertext: summary.nameCiphertext }]);
+        }
       }
     },
-    [runtime, channels],
+    [runtime, channels, reportChannelNames],
   );
 
   if (!ready || runtime === undefined) {
@@ -152,10 +171,18 @@ export function ChatView({ workspaceName, ownUserId, permissions, members, roles
         }))}
         onSelect={(channelId) => void openChannel(channelId)}
         onCreateChannel={({ name, kind }) => {
-          void createChannel(runtime, name, kind);
+          void createChannel(runtime, name, kind).then((channelId) => {
+            if (channelId !== undefined) {
+              setActiveChannelId(channelId);
+            }
+          });
         }}
         onCreateDm={(userId) => {
-          void createDm(runtime, userId);
+          void createDm(runtime, userId).then((channelId) => {
+            if (channelId !== undefined) {
+              setActiveChannelId(channelId);
+            }
+          });
         }}
       />
 
@@ -283,57 +310,42 @@ async function createChannel(
   runtime: NonNullable<ReturnType<typeof useChat>["runtime"]>,
   name: string,
   kind: "text" | "announcement",
-): Promise<void> {
-  const { channelGroupId, encodeMlsBytes } = await import("@aulora/core");
-  // The channel is created with a placeholder group id, then the real
-  // deterministic id is set while the group opens; both are ciphertext-free.
-  const provisional = encodeMlsBytes(new TextEncoder().encode(`pending:${Date.now()}`));
-  const channelId = await runtime.port.createChannel({
-    kind,
-    nameCiphertext: "",
-    mlsGroupId: provisional,
-  });
-  const realGroupId = encodeMlsBytes(channelGroupId(channelId));
-  await runtime.port.setMlsGroupId({ channelId, mlsGroupId: realGroupId });
-  const summary = {
+): Promise<string | undefined> {
+  // Create without a group id, then let the creator bootstrap derive the
+  // deterministic group id and publish it.
+  const channelId = await runtime.port.createChannel({ kind, nameCiphertext: "" });
+  await runtime.session.openChannel({
     id: channelId,
     kind,
     categoryId: null,
     nameCiphertext: "",
     topicCiphertext: null,
-    mlsGroupId: realGroupId,
+    mlsGroupId: null,
     archived: false,
     currentEpoch: null,
-  } as const;
-  await runtime.session.openChannel(summary);
-  const nameCiphertext = await runtime.session.encryptPayload(channelId, { text: name });
-  await runtime.port.renameChannel({ channelId, nameCiphertext });
+  });
+  await runtime.session.setChannelName(channelId, name);
+  return channelId;
 }
 
 async function createDm(
   runtime: NonNullable<ReturnType<typeof useChat>["runtime"]>,
   userId: string,
-): Promise<void> {
-  const { channelGroupId, encodeMlsBytes } = await import("@aulora/core");
-  // DMs need a group; the deterministic id is derived from the channel id after
-  // creation, so create then set the group id and open.
-  const provisional = encodeMlsBytes(new TextEncoder().encode(`pending:${Date.now()}`));
-  const { channelId } = await runtime.port.createDm({
-    otherUserId: userId,
-    mlsGroupId: provisional,
-  });
-  const realGroupId = encodeMlsBytes(channelGroupId(channelId));
-  await runtime.port.setMlsGroupId({ channelId, mlsGroupId: realGroupId });
+): Promise<string | undefined> {
+  // DMs need a group; create it, then let the creator bootstrap the group and
+  // publish its id.
+  const { channelId } = await runtime.port.createDm({ otherUserId: userId });
   await runtime.session.openChannel({
     id: channelId,
     kind: "dm",
     categoryId: null,
     nameCiphertext: null,
     topicCiphertext: null,
-    mlsGroupId: realGroupId,
+    mlsGroupId: null,
     archived: false,
     currentEpoch: null,
   });
+  return channelId;
 }
 
 export { Permission };

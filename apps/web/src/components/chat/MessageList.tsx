@@ -71,6 +71,7 @@ export function MessageList({
             <MessageRow
               key={message.id}
               runtime={runtime}
+              channelId={channelId}
               message={message}
               text={decrypted.get(message.id)}
               permissions={permissions}
@@ -91,6 +92,7 @@ export function MessageList({
 
 function MessageRow({
   runtime,
+  channelId,
   message,
   text,
   permissions,
@@ -103,6 +105,7 @@ function MessageRow({
   onReact,
 }: {
   runtime: ChatRuntime | undefined;
+  channelId: string;
   message: MessagePayload;
   text: string | undefined;
   permissions: bigint;
@@ -125,13 +128,14 @@ function MessageRow({
   const canReact = hasPermission(permissions, Permission.AddReactions);
   void canPin;
 
+  // biome-ignore lint/correctness/useExhaustiveDependencies: re-subscribe only when the message/runtime changes
   useEffect(() => {
     if (runtime === undefined) {
       return;
     }
     let cancelled = false;
     const off = runtime.subscriptions.watchReactions(message.id, (rows: readonly ReactionRow[]) => {
-      void runtime.session.loadReactions(message.id, rows).then((resolved) => {
+      void runtime.session.loadReactions(channelId, message.id, rows).then((resolved) => {
         if (!cancelled) {
           setReactions(groupReactions(resolved, ownUserId));
         }
