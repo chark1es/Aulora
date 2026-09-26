@@ -1,0 +1,7 @@
+{
+  "extends": "@aulora/config/tsconfig.react.json",
+  "compilerOptions": {
+    "types": ["react", "react-dom"]
+  },
+  "include": ["src", "test"]
+}
