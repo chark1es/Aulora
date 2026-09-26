@@ -2,7 +2,11 @@ import { memoryKeyStore } from "@aulora/crypto";
 import { afterEach, describe, expect, it, vi } from "vitest";
 
 const { install } = vi.hoisted(() => ({ install: vi.fn() }));
-vi.mock("react-native-quick-crypto", () => ({ install }));
+vi.mock("react-native-quick-crypto", () => ({
+  install,
+  subtle: undefined,
+  getRandomValues: undefined,
+}));
 
 import { ensureReactNativeCrypto, mobileMlsEngine } from "../src/lib/mls-engine";
 

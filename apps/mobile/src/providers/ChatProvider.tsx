@@ -97,16 +97,30 @@ export function ChatProvider({ client, userId, displayName, children }: ChatProv
       userId,
       displayName,
       keyStore: mobileKeyStore(),
-    }).then((result) => {
-      if (cancelled) {
-        result.runtime?.session.dispose();
-        return;
-      }
-      setMlsError(result.mlsError);
-      runtimeRef.current = result.runtime ?? undefined;
-      setRuntime(result.runtime ?? undefined);
-      setReady(true);
-    });
+    })
+      .then((result) => {
+        if (cancelled) {
+          result.runtime?.session.dispose();
+          return;
+        }
+        if (result.mlsError !== null) {
+          console.warn(`[aulora] E2EE unavailable: ${result.mlsError}`);
+        }
+        setMlsError(result.mlsError);
+        runtimeRef.current = result.runtime ?? undefined;
+        setRuntime(result.runtime ?? undefined);
+        setReady(true);
+      })
+      .catch((error: unknown) => {
+        if (cancelled) {
+          return;
+        }
+        // A failed session start must not leave the shell spinning forever.
+        const message = error instanceof Error ? error.message : String(error);
+        console.warn(`[aulora] chat runtime failed to start: ${message}`);
+        setMlsError(message);
+        setReady(true);
+      });
     return () => {
       cancelled = true;
       runtimeRef.current?.session.dispose();

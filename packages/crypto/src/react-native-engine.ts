@@ -33,13 +33,22 @@ import { MlsEngineError } from "./errors.js";
 import type { KeyStore } from "./keystore.js";
 import { createWebMlsEngine, type DeviceIdentity, type WebMlsEngineOptions } from "./web-engine.js";
 
-/** The `install` export of `react-native-quick-crypto` (and nothing else). */
+/** The parts of `react-native-quick-crypto` the engine uses. */
 export interface ReactNativeQuickCrypto {
   /**
    * Patches `globalThis.crypto` with the native WebCrypto (and `globalThis`).
    * Idempotent: only called when `crypto.subtle` is missing.
    */
   readonly install?: () => void;
+  /**
+   * The module's native `subtle`. Used as a fallback when `install()` cannot
+   * replace `globalThis.crypto` (a runtime that defines it as an accessor or
+   * non-writable property makes the plain assignment inside `install()` a
+   * no-op), so the engine never depends on that assignment sticking.
+   */
+  readonly subtle?: SubtleCrypto;
+  /** The module's native `getRandomValues`, paired with {@link subtle}. */
+  readonly getRandomValues?: Crypto["getRandomValues"];
 }
 
 /**
@@ -60,11 +69,39 @@ export function installReactNativeCrypto(quickCrypto: ReactNativeQuickCrypto): C
   if (globalThis.crypto?.subtle === undefined) {
     quickCrypto.install?.();
   }
+  if (globalThis.crypto?.subtle === undefined && quickCrypto.subtle !== undefined) {
+    defineGlobalCrypto(quickCrypto.subtle, quickCrypto.getRandomValues);
+  }
   const crypto = globalThis.crypto as Crypto | undefined;
   if (crypto?.subtle === undefined) {
     throw new MlsEngineError("not-implemented", REACT_NATIVE_MLS_UNAVAILABLE);
   }
   return crypto;
+}
+
+/**
+ * Forces `globalThis.crypto` to a WebCrypto built from the native `subtle`,
+ * keeping any existing `getRandomValues`. `defineProperty` succeeds where a
+ * plain assignment is silently dropped (accessor without setter, or a
+ * non-writable but configurable property).
+ */
+function defineGlobalCrypto(
+  subtle: SubtleCrypto,
+  getRandomValues: Crypto["getRandomValues"] | undefined,
+): void {
+  const existing = globalThis.crypto as Partial<Crypto> | undefined;
+  const random = getRandomValues ?? existing?.getRandomValues?.bind(existing);
+  const patched = { ...existing, subtle, getRandomValues: random } as Crypto;
+  try {
+    Object.defineProperty(globalThis, "crypto", {
+      value: patched,
+      configurable: true,
+      enumerable: true,
+      writable: true,
+    });
+  } catch {
+    // Non-configurable global: nothing more can be done; the caller throws.
+  }
 }
 
 export interface ReactNativeMlsEngineOptions {

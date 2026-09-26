@@ -60,6 +60,51 @@ describe("installReactNativeCrypto", () => {
   });
 });
 
+describe("installReactNativeCrypto fallback", () => {
+  it("defines crypto from the module's subtle when install() cannot replace the global", async () => {
+    const real = globalThis.crypto;
+    // Mimic a runtime whose `crypto` is an accessor without a setter: the
+    // assignment inside quick-crypto's install() is silently dropped.
+    const hermes = { getRandomValues: (array: Uint8Array) => real.getRandomValues(array) };
+    const original = Object.getOwnPropertyDescriptor(globalThis, "crypto");
+    Object.defineProperty(globalThis, "crypto", { get: () => hermes, configurable: true });
+    try {
+      const install = vi.fn(() => {
+        try {
+          (globalThis as { crypto: unknown }).crypto = real;
+        } catch {
+          // Sloppy-mode native code drops the write without throwing.
+        }
+      });
+
+      const crypto = installReactNativeCrypto({
+        install,
+        subtle: real.subtle,
+        getRandomValues: real.getRandomValues.bind(real),
+      });
+
+      expect(install).toHaveBeenCalledTimes(1);
+      expect(crypto.subtle).toBe(real.subtle);
+      expect(globalThis.crypto.subtle).toBe(real.subtle);
+      expect(isReactNativeCryptoSufficient(await probeReactNativeCrypto(crypto))).toBe(true);
+    } finally {
+      if (original !== undefined) {
+        Object.defineProperty(globalThis, "crypto", original);
+      }
+    }
+  });
+
+  it("keeps the existing getRandomValues when the module does not pass one", () => {
+    const real = globalThis.crypto;
+    const getRandomValues = vi.fn((array: Uint8Array) => real.getRandomValues(array));
+    vi.stubGlobal("crypto", { getRandomValues });
+    const crypto = installReactNativeCrypto({ subtle: real.subtle });
+    crypto.getRandomValues(new Uint8Array(4));
+    expect(getRandomValues).toHaveBeenCalledTimes(1);
+    expect(crypto.subtle).toBe(real.subtle);
+  });
+});
+
 describe("probeReactNativeCrypto", () => {
   it("reports every ts-mls / @hpke primitive as supported on the platform WebCrypto", async () => {
     const report = await probeReactNativeCrypto(globalThis.crypto);

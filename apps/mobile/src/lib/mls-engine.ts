@@ -4,7 +4,18 @@ import {
   type KeyStore,
   type MlsEngine,
 } from "@aulora/crypto";
-import { install } from "react-native-quick-crypto";
+import { getRandomValues, install, subtle } from "react-native-quick-crypto";
+
+/**
+ * The quick-crypto pieces the engine needs. `subtle` and `getRandomValues` let
+ * `installReactNativeCrypto` define `globalThis.crypto` itself when the
+ * runtime ignores `install()`'s plain `global.crypto =` assignment.
+ */
+const quickCrypto = {
+  install,
+  subtle: subtle as unknown as SubtleCrypto,
+  getRandomValues: getRandomValues as unknown as Crypto["getRandomValues"],
+};
 
 /**
  * Installs `react-native-quick-crypto`'s native WebCrypto polyfill. Hermes has
@@ -15,7 +26,7 @@ import { install } from "react-native-quick-crypto";
  * `crypto.subtle` is missing, so this is safe to call on every engine.
  */
 export function ensureReactNativeCrypto(): void {
-  installReactNativeCrypto({ install });
+  installReactNativeCrypto(quickCrypto);
 }
 
 /**
@@ -25,5 +36,5 @@ export function ensureReactNativeCrypto(): void {
  */
 export function mobileMlsEngine(keyStore: KeyStore): MlsEngine {
   ensureReactNativeCrypto();
-  return createReactNativeMlsEngine({ keyStore, quickCrypto: { install } });
+  return createReactNativeMlsEngine({ keyStore, quickCrypto });
 }
