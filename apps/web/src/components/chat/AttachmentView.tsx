@@ -28,6 +28,7 @@ function formatBytes(size: number): string {
 export function AttachmentView({ runtime, descriptor }: AttachmentViewProps) {
   const isImage = descriptor.mime.startsWith("image/") || descriptor.thumbnail !== undefined;
   const [thumbnailUrl, setThumbnailUrl] = useState<string | undefined>(undefined);
+  const [thumbnailError, setThumbnailError] = useState(false);
   const [fullUrl, setFullUrl] = useState<string | undefined>(undefined);
   const [error, setError] = useState<string | undefined>(undefined);
   const [busy, setBusy] = useState(false);
@@ -46,7 +47,9 @@ export function AttachmentView({ runtime, descriptor }: AttachmentViewProps) {
         }
       })
       .catch(() => {
-        // Thumbnail is best-effort; the full image still works.
+        if (!cancelled) {
+          setThumbnailError(true);
+        }
       });
     return () => {
       cancelled = true;
@@ -64,6 +67,7 @@ export function AttachmentView({ runtime, descriptor }: AttachmentViewProps) {
     void loadAttachmentUrl(runtime.port, descriptor)
       .then((url) => {
         setFullUrl(url);
+        setThumbnailError(false);
       })
       .catch(() => {
         setError("Unable to decrypt this attachment.");
@@ -72,11 +76,50 @@ export function AttachmentView({ runtime, descriptor }: AttachmentViewProps) {
   }, [runtime, descriptor, fullUrl]);
 
   const closeFull = useCallback(() => {
-    if (fullUrl !== undefined) {
-      URL.revokeObjectURL(fullUrl);
+    setFullUrl((current) => {
+      if (current !== undefined) {
+        URL.revokeObjectURL(current);
+      }
+      return undefined;
+    });
+  }, []);
+
+  // Close the lightbox on Escape while it is open.
+  useEffect(() => {
+    if (fullUrl === undefined) {
+      return;
     }
-    setFullUrl(undefined);
-  }, [fullUrl]);
+    const onKeyDown = (event: KeyboardEvent) => {
+      if (event.key === "Escape") {
+        closeFull();
+      }
+    };
+    window.addEventListener("keydown", onKeyDown);
+    return () => window.removeEventListener("keydown", onKeyDown);
+  }, [fullUrl, closeFull]);
+
+  // If the dedicated thumbnail is unavailable, show the decrypted full image
+  // as the inline preview instead, so an image always renders.
+  useEffect(() => {
+    if (runtime === undefined || !isImage || !thumbnailError) {
+      return;
+    }
+    let cancelled = false;
+    void loadAttachmentUrl(runtime.port, descriptor)
+      .then((url) => {
+        if (!cancelled) {
+          setThumbnailUrl(url);
+        }
+      })
+      .catch(() => {
+        if (!cancelled) {
+          setError("Unable to decrypt this attachment.");
+        }
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [runtime, descriptor, isImage, thumbnailError]);
 
   const download = useCallback(() => {
     if (runtime === undefined) {
@@ -140,18 +183,12 @@ export function AttachmentView({ runtime, descriptor }: AttachmentViewProps) {
           {descriptor.name}
         </Text>
         {fullUrl !== undefined && (
+          // biome-ignore lint/a11y/noStaticElementInteractions: backdrop click closes the lightbox; Escape already handled
           <div
             data-testid="attachment-lightbox"
             className="fixed inset-0 z-50 flex items-center justify-center bg-bg/90 p-6"
             onClick={closeFull}
-            onKeyDown={(event) => {
-              if (event.key === "Escape") {
-                closeFull();
-              }
-            }}
-            role="dialog"
-            aria-modal="true"
-            aria-label={descriptor.name}
+            role="presentation"
           >
             <img
               src={fullUrl}
