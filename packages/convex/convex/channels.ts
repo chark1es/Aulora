@@ -14,20 +14,16 @@ import {
   removeChannelMember,
   requireChannelAccess,
 } from "./lib/channels";
+import { overwriteValidator, validateOverrides } from "./lib/overrides";
 import {
   categoryOverridesFor,
+  channelOverrideRemovals,
   channelPermissions,
   loadPermissionContext,
+  mlsSignal,
   requirePermission,
   requireWorkspacePermission,
 } from "./lib/permissions";
-
-const overwriteValidator = v.object({
-  targetId: v.string(),
-  targetType: v.union(v.literal("role"), v.literal("member")),
-  allow: v.int64(),
-  deny: v.int64(),
-});
 
 const createKindValidator = v.union(v.literal("text"), v.literal("announcement"));
 
@@ -79,6 +75,7 @@ export const create = mutation({
       Permission.ManageChannels,
       args.categoryId,
     );
+    validateOverrides(args.overrides ?? []);
     const channelId = await ctx.db.insert("channels", {
       kind: args.kind,
       overrides: args.overrides ?? [],
@@ -218,6 +215,61 @@ export const unarchive = mutation({
       targetId: args.channelId,
     });
     return null;
+  },
+});
+
+/**
+ * Replaces a channel's permission overrides. Members who lose `ViewChannel` as
+ * a result are returned as MLS removals for the client to commit. Requires
+ * `ManageChannels` (resolved against the channel and its category overrides).
+ */
+export const setOverrides = mutation({
+  args: { channelId: v.id("channels"), overrides: v.array(overwriteValidator) },
+  handler: async (ctx, args) => {
+    const { userId } = await requirePermission(ctx, args.channelId, Permission.ManageChannels);
+    validateOverrides(args.overrides);
+    const channel = await ctx.db.get(args.channelId);
+    if (channel === null) {
+      throw new ConvexError("Channel not found");
+    }
+    const removals = await channelOverrideRemovals(ctx, channel, args.overrides);
+    await ctx.db.patch(args.channelId, { overrides: args.overrides });
+    await writeAudit(ctx, {
+      actorId: userId,
+      action: "channel.setOverrides",
+      targetId: args.channelId,
+      meta: JSON.stringify({ count: args.overrides.length }),
+    });
+    return mlsSignal(removals);
+  },
+});
+
+/** Clears one override target from a channel. Returns any MLS removals. */
+export const clearOverride = mutation({
+  args: {
+    channelId: v.id("channels"),
+    targetId: v.string(),
+    targetType: v.union(v.literal("role"), v.literal("member")),
+  },
+  handler: async (ctx, args) => {
+    const { userId } = await requirePermission(ctx, args.channelId, Permission.ManageChannels);
+    const channel = await ctx.db.get(args.channelId);
+    if (channel === null) {
+      throw new ConvexError("Channel not found");
+    }
+    const nextOverrides = channel.overrides.filter(
+      (override) =>
+        !(override.targetId === args.targetId && override.targetType === args.targetType),
+    );
+    const removals = await channelOverrideRemovals(ctx, channel, nextOverrides);
+    await ctx.db.patch(args.channelId, { overrides: nextOverrides });
+    await writeAudit(ctx, {
+      actorId: userId,
+      action: "channel.clearOverride",
+      targetId: args.channelId,
+      meta: JSON.stringify({ targetId: args.targetId, targetType: args.targetType }),
+    });
+    return mlsSignal(removals);
   },
 });
 
