@@ -1,0 +1,37 @@
+{
+  "name": "@aulora/ui-native",
+  "version": "0.0.0",
+  "private": true,
+  "description": "Aulora React Native design-system primitives mirroring @aulora/ui-web, styled with NativeWind and the shared token preset.",
+  "type": "module",
+  "exports": {
+    ".": "./src/index.ts"
+  },
+  "scripts": {
+    "typecheck": "tsc --noEmit",
+    "lint": "biome check .",
+    "test": "vitest run",
+    "format": "biome format --write .",
+    "clean": "node -e \"require('node:fs').rmSync('dist',{recursive:true,force:true})\""
+  },
+  "peerDependencies": {
+    "nativewind": "^4.2.7",
+    "react": "^19.0.0",
+    "react-native": ">=0.86.0",
+    "react-native-svg": ">=15.0.0"
+  },
+  "dependencies": {
+    "@aulora/tokens": "workspace:*"
+  },
+  "devDependencies": {
+    "@aulora/config": "workspace:*",
+    "@types/react": "19.3.0",
+    "nativewind": "4.2.7",
+    "react": "19.2.3",
+    "react-native": "0.86.3",
+    "react-native-svg": "15.15.5",
+    "tailwindcss": "3.4.19",
+    "typescript": "5.9.3",
+    "vitest": "5.0.2"
+  }
+}
