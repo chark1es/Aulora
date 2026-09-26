@@ -1,0 +1,45 @@
+{
+  "expo": {
+    "name": "Aulora",
+    "slug": "aulora",
+    "version": "0.0.0",
+    "orientation": "portrait",
+    "scheme": "aulora",
+    "userInterfaceStyle": "automatic",
+    "newArchEnabled": true,
+    "ios": {
+      "supportsTablet": true,
+      "bundleIdentifier": "app.aulora.ios"
+    },
+    "android": {
+      "package": "app.aulora.android",
+      "adaptiveIcon": {
+        "backgroundColor": "#0A0A0C"
+      }
+    },
+    "web": {
+      "bundler": "metro",
+      "output": "single"
+    },
+    "plugins": [
+      "expo-router",
+      "expo-secure-store",
+      [
+        "expo-notifications",
+        {
+          "color": "#F5A45B"
+        }
+      ],
+      [
+        "expo-image-picker",
+        {
+          "photosPermission": "Aulora uses your photos so you can share them in encrypted messages.",
+          "cameraPermission": "Aulora uses the camera so you can take a photo to share in an encrypted message."
+        }
+      ]
+    ],
+    "experiments": {
+      "typedRoutes": false
+    }
+  }
+}

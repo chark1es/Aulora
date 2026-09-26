@@ -1,0 +1,16 @@
+{
+  "extends": "expo/tsconfig.base",
+  "compilerOptions": {
+    "strict": true,
+    "noUncheckedIndexedAccess": true,
+    "noImplicitOverride": true,
+    "noUnusedLocals": true,
+    "noUnusedParameters": true,
+    "types": ["react", "nativewind/types"],
+    "paths": {
+      "@/*": ["./src/*"]
+    },
+    "noEmit": true
+  },
+  "include": ["app", "src", "test", "nativewind-env.d.ts"]
+}
