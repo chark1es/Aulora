@@ -74,6 +74,43 @@ export function channelPermissions(
   });
 }
 
+export interface WorkspacePermissionResult {
+  readonly userId: string;
+  readonly permissions: bigint;
+}
+
+/**
+ * Gate for actions that are not scoped to an existing channel yet (creating a
+ * channel, generating an upload URL). Category overrides are applied when a
+ * target category is supplied.
+ */
+export async function requireWorkspacePermission(
+  ctx: ReadCtx,
+  flag: bigint,
+  categoryId?: Id<"categories">,
+): Promise<WorkspacePermissionResult> {
+  const { userId } = await requireAuth(ctx);
+  const context = await loadPermissionContext(ctx, userId);
+  let categoryOverrides: Doc<"categories">["overrides"] = [];
+  if (categoryId !== undefined) {
+    const category = await ctx.db.get(categoryId);
+    categoryOverrides = category?.overrides ?? [];
+  }
+  const permissions = resolvePermissions({
+    actor: {
+      userId: context.userId,
+      roleIds: context.roleIds,
+      isOwner: context.isOwner,
+    },
+    roles: context.roles,
+    categoryOverrides,
+  });
+  if (!hasPermission(permissions, flag)) {
+    throw new ConvexError("Missing permission");
+  }
+  return { userId, permissions };
+}
+
 export interface ChannelPermissionResult {
   readonly userId: string;
   readonly channel: ChannelDoc;

@@ -70,6 +70,14 @@ export const createAuthOptions = (
     trustedOrigins: getTrustedOrigins(env),
     database: authComponent.adapter(ctx),
     socialProviders: getSocialProviderCredentials(env),
+    // Better Auth's built-in limiter protects sign-in/sign-up/OAuth endpoints.
+    // The `rateLimits` table in `lib/rateLimit.ts` covers our own send/upload
+    // mutations, which the auth HTTP surface does not pass through.
+    rateLimit: {
+      enabled: true,
+      window: 60,
+      max: Number(env.AUTH_RATE_LIMIT_MAX ?? 120),
+    },
     emailAndPassword: {
       enabled: true,
       requireEmailVerification: false,

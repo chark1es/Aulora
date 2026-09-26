@@ -85,12 +85,30 @@ export default defineSchema({
     archived: v.boolean(),
     /** Dedupe key for DMs and group DMs. */
     dmKey: v.optional(v.string()),
+    /** Latest MLS epoch published for the channel, if any. */
+    currentEpoch: v.optional(v.number()),
   })
     .index("by_category", ["categoryId"])
     .index("by_dm_key", ["dmKey"]),
 
+  /**
+   * MLS group membership, kept separate from `ViewChannel`: a member can see a
+   * public channel without being in its MLS group yet. DMs and group DMs add
+   * every participant on creation.
+   */
+  channelMembers: defineTable({
+    channelId: v.id("channels"),
+    userId: v.string(),
+    joinedAt: v.number(),
+  })
+    .index("by_channel", ["channelId"])
+    .index("by_user", ["userId"])
+    .index("by_channel_user", ["channelId", "userId"]),
+
   messages: defineTable({
     channelId: v.id("channels"),
+    /** Plaintext metadata: the user who authored the message. */
+    authorId: v.string(),
     authorDeviceId: v.optional(v.id("devices")),
     ciphertext: v.string(),
     epoch: v.number(),
@@ -99,11 +117,14 @@ export default defineSchema({
     mentionUserIds: v.array(v.string()),
     editedAt: v.optional(v.number()),
     deletedAt: v.optional(v.number()),
+    /** Set while the message is pinned; cleared on unpin. */
+    pinnedAt: v.optional(v.number()),
   })
     // Convex appends `_creationTime` to every index, so this is
     // (channelId, _creationTime): chronological messages per channel.
     .index("by_channel_created", ["channelId"])
-    .index("by_thread", ["threadRootId"]),
+    .index("by_thread", ["threadRootId"])
+    .index("by_channel_pinned", ["channelId", "pinnedAt"]),
 
   reactions: defineTable({
     messageId: v.id("messages"),
@@ -192,4 +213,15 @@ export default defineSchema({
     meta: v.optional(v.string()),
     at: v.number(),
   }).index("by_at", ["at"]),
+
+  /**
+   * Fixed-window rate-limit counters. `key` is namespaced by action and actor,
+   * for example `send:user:<id>` or `upload:ip:<addr>`. Server-only; never
+   * returned to clients.
+   */
+  rateLimits: defineTable({
+    key: v.string(),
+    windowStart: v.number(),
+    count: v.number(),
+  }).index("by_key", ["key"]),
 });
