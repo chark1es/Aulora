@@ -30,6 +30,19 @@ describe("parseDeepLink", () => {
     expect(parseDeepLink("aulora://connect")).toBeNull();
     expect(parseDeepLink("not a url")).toBeNull();
   });
+
+  it("parses https universal links for connect and invite", () => {
+    expect(parseDeepLink("https://chat.acme.com/connect?server=chat.acme.com")).toEqual({
+      kind: "connect",
+      server: "chat.acme.com",
+    });
+    expect(parseDeepLink("https://chat.acme.com/invite/ABC123")).toEqual({
+      kind: "invite",
+      code: "ABC123",
+    });
+    expect(parseDeepLink("https://chat.acme.com/other")).toBeNull();
+    expect(parseDeepLink("ftp://chat.acme.com/connect?server=x")).toBeNull();
+  });
 });
 
 describe("isDesktop", () => {

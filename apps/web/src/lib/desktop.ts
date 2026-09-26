@@ -104,13 +104,16 @@ export async function showDesktopNotification(title: string, body: string): Prom
 }
 
 /**
- * Parses an `aulora://` deep link into a router target.
+ * Parses a deep link into a router target.
  *
- * Accepted forms:
+ * Accepts both the custom `aulora://` scheme (desktop + native) and https
+ * universal links (web), so one parser serves every client:
  *   aulora://connect?server=chat.acme.com
  *   aulora://connect/chat.acme.com
  *   aulora://invite?code=ABCD
  *   aulora://invite/ABCD
+ *   https://chat.acme.com/connect?server=chat.acme.com
+ *   https://chat.acme.com/invite/ABCD
  */
 export function parseDeepLink(raw: string): DeepLinkTarget | null {
   let url: URL;
@@ -119,13 +122,23 @@ export function parseDeepLink(raw: string): DeepLinkTarget | null {
   } catch {
     return null;
   }
-  if (url.protocol !== "aulora:") {
+  const isCustom = url.protocol === "aulora:";
+  const isHttp = url.protocol === "https:" || url.protocol === "http:";
+  if (!isCustom && !isHttp) {
     return null;
   }
 
   const path = url.pathname.replace(/^\/+/, "");
   const segments = path.length > 0 ? path.split("/").filter((part) => part.length > 0) : [];
-  const action = (url.hostname.length > 0 ? url.hostname : (segments.shift() ?? "")).toLowerCase();
+  // `aulora://connect/...` puts the action in the hostname; a universal link
+  // puts it in the first path segment.
+  const action = (
+    isCustom
+      ? url.hostname.length > 0
+        ? url.hostname
+        : (segments.shift() ?? "")
+      : (segments.shift() ?? "")
+  ).toLowerCase();
 
   if (action === "connect") {
     const server = (url.searchParams.get("server") ?? segments[0] ?? "").trim();
