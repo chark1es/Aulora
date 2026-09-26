@@ -40,6 +40,25 @@ Test suite at this revision: **466 Vitest tests**, plus a `node:test` push-relay
   single React). A clean rebuild with those deps was still compiling at hand-off.
 - **Web:** no baked-in backend; the built bundle contains no owner/server origin.
 
+## Follow-up (same day)
+
+- **iOS toolchain fixed.** The CocoaPods crash was the environment's locale: with `LANG`/`LC_ALL`
+  unset, CocoaPods normalizes the project path as ASCII-8BIT and throws
+  `Encoding::CompatibilityError: Unicode Normalization not appropriate for ASCII-8BIT`. Running
+  with `LANG=en_US.UTF-8 LC_ALL=en_US.UTF-8` makes `pod install` succeed; iOS prebuild, pod
+  install, and `expo run:ios` then build and install **Aulora.app on the iPhone 17 Pro simulator**
+  (0 errors).
+- **Native MLS resolved without OpenMLS.** `react-native-quick-crypto@1.1.7`'s `crypto.subtle`
+  covers every primitive ts-mls and `@hpke/core` need (X25519, Ed25519, HKDF, HMAC, AES-GCM,
+  SHA-256, `getRandomValues`), so mobile runs the **same ts-mls engine** behind `MlsEngine` via
+  `createReactNativeMlsEngine()` (commit `c4e38ea`). No Rust/UniFFI build is required. Remaining:
+  confirm the primitive probe on a real Hermes build and mobile↔web interop.
+- **Runtime capture caveat.** The simulator is shared with another React Native project whose
+  Metro (port 8081) and error screen interfere with the Aulora dev client; the app loads a stale/
+  wrong JS bundle and shows an old `ExpoScreenOrientation` error that no longer exists in source.
+  A clean capture needs a dedicated simulator and a single Metro (port 8082). Android builds and
+  installs (`BUILD SUCCESSFUL`); iOS builds and installs.
+
 ## Blocked / not yet verified (with causes)
 
 1. **iOS build** — CocoaPods 1.17.0 crashes under the Mac's Ruby 4.0.5
