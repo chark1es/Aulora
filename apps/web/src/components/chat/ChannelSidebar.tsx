@@ -12,6 +12,9 @@ export interface ChannelSidebarProps {
   /** Show the workspace admin control (the viewer has at least one admin flag). */
   readonly showAdmin?: boolean;
   readonly onOpenAdmin?: () => void;
+  /** Show the instance admin control (the viewer is the operator/owner). */
+  readonly showInstanceAdmin?: boolean;
+  readonly onOpenInstance?: () => void;
   readonly onSelect: (channelId: string) => void;
   readonly onCreateChannel: (input: { name: string; kind: "text" | "announcement" }) => void;
   readonly onCreateDm: (userId: string) => void;
@@ -33,6 +36,8 @@ export function ChannelSidebar({
   members,
   showAdmin = false,
   onOpenAdmin,
+  showInstanceAdmin = false,
+  onOpenInstance,
   onSelect,
   onCreateChannel,
   onCreateDm,
@@ -156,19 +161,33 @@ export function ChannelSidebar({
         </ul>
       </section>
 
-      {showAdmin && onOpenAdmin !== undefined && (
-        <div className="mt-auto">
-          <Button
-            size="sm"
-            variant="secondary"
-            className="w-full"
-            aria-label="Workspace settings"
-            onClick={onOpenAdmin}
-          >
-            Workspace settings
-          </Button>
+      {(showAdmin && onOpenAdmin !== undefined) ||
+      (showInstanceAdmin && onOpenInstance !== undefined) ? (
+        <div className="mt-auto flex flex-col gap-1.5">
+          {showAdmin && onOpenAdmin !== undefined && (
+            <Button
+              size="sm"
+              variant="secondary"
+              className="w-full"
+              aria-label="Workspace settings"
+              onClick={onOpenAdmin}
+            >
+              Workspace settings
+            </Button>
+          )}
+          {showInstanceAdmin && onOpenInstance !== undefined && (
+            <Button
+              size="sm"
+              variant="ghost"
+              className="w-full"
+              aria-label="Instance admin"
+              onClick={onOpenInstance}
+            >
+              Instance admin
+            </Button>
+          )}
         </div>
-      )}
+      ) : null}
     </aside>
   );
 }

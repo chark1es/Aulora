@@ -16,6 +16,7 @@ import { useWebPush } from "../../lib/use-web-push";
 import type { CategoryView, MemberView, RoleView } from "../../lib/workspace-admin";
 import { type ChatSearchHit, useChat } from "../../providers/ChatProvider";
 import { AdminPanel, type AdminPanelViewer } from "../admin/AdminPanel";
+import { InstanceAdminPanel } from "../admin/instance/InstanceAdminPanel";
 import { ChannelSidebar } from "./ChannelSidebar";
 import { Composer } from "./Composer";
 import { MembersPanel } from "./MembersPanel";
@@ -71,6 +72,7 @@ export function ChatView({
   } = useChat();
   const [activeChannelId, setActiveChannelId] = useState<string | undefined>(undefined);
   const [adminOpen, setAdminOpen] = useState(false);
+  const [instanceOpen, setInstanceOpen] = useState(false);
   const [threadRoot, setThreadRoot] = useState<MessagePayload | null>(null);
   const [customStatuses, setCustomStatuses] = useState<ReadonlyMap<string, string>>(new Map());
   const [searchOpen, setSearchOpen] = useState(false);
@@ -371,6 +373,8 @@ export function ChatView({
           }))}
           showAdmin={showAdmin}
           onOpenAdmin={() => setAdminOpen(true)}
+          showInstanceAdmin={admin.viewer.isOwner}
+          onOpenInstance={() => setInstanceOpen(true)}
           onSelect={(channelId) => void openChannel(channelId)}
           onCreateChannel={({ name, kind }) => {
             void createChannel(runtime, name, kind).then((channelId) => {
@@ -558,6 +562,13 @@ export function ChatView({
           channelNames={channelNames}
           origin={typeof window === "undefined" ? "" : window.location.origin}
           onClose={() => setAdminOpen(false)}
+        />
+      )}
+
+      {instanceOpen && (
+        <InstanceAdminPanel
+          canManage={admin.viewer.isOwner}
+          onClose={() => setInstanceOpen(false)}
         />
       )}
     </div>
