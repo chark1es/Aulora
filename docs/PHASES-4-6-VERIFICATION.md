@@ -59,6 +59,25 @@ Test suite at this revision: **466 Vitest tests**, plus a `node:test` push-relay
   A clean capture needs a dedicated simulator and a single Metro (port 8082). Android builds and
   installs (`BUILD SUCCESSFUL`); iOS builds and installs.
 
+## Follow-up 2 (Android release capture — signed in)
+
+A Metro-independent **release** build was driven on the emulator via `adb` against the stack
+(exposed to the emulator with `adb reverse` + a Windows→Mac reverse SSH tunnel, origins set back
+to `localhost`):
+
+- The app launches, fetches the well-known, and shows the workspace-confirmation card with the
+  real **Blobatar** server icon and `Aulora v0.1.0 · API v1`.
+- Signing in as the owner reaches the **signed-in chat shell**: server rail, `Aulora`, presence
+  (`0 online`), `Sign out`, `Select a channel to start.`
+- So **one account signs in on the Android native client**.
+
+One remaining defect: the shell shows "End-to-end encryption is not active on this build …
+react-native-quick-crypto is unavailable", even though the rebuilt APK **does** contain
+`lib/arm64-v8a/libQuickCrypto.so` + `libNitroModules.so` (all four ABIs) and
+`newArchEnabled=true`. So the native module is built in and the failure is in the app's
+**JS-side detection/wiring** (`isReactNativeCryptoSufficient()` / the runtime check), not the
+build. Fixing and re-verifying needs one more code pass + ~9 min rebuild.
+
 ## Blocked / not yet verified (with causes)
 
 1. **iOS build** — CocoaPods 1.17.0 crashes under the Mac's Ruby 4.0.5
