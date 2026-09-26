@@ -26,8 +26,8 @@
     "@tanstack/react-router": "1.170.39",
     "better-auth": "1.6.15",
     "convex": "1.46.0",
-    "react": "19.3.0",
-    "react-dom": "19.3.0"
+    "react": "19.2.3",
+    "react-dom": "19.2.3"
   },
   "devDependencies": {
     "@aulora/config": "workspace:*",

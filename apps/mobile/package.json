@@ -4,6 +4,14 @@
   "private": true,
   "description": "Aulora mobile: Expo (iOS + Android) client with Expo Router, NativeWind, MLS over an OpenMLS boundary, and expo-notifications.",
   "main": "expo-router/entry",
+  "expo": {
+    "install": {
+      "exclude": [
+        "typescript",
+        "@types/react"
+      ]
+    }
+  },
   "scripts": {
     "start": "expo start",
     "android": "expo start --android",
@@ -23,7 +31,7 @@
     "@aulora/tokens": "workspace:*",
     "@aulora/ui-native": "workspace:*",
     "@convex-dev/better-auth": "0.12.5",
-    "@react-native-async-storage/async-storage": "3.1.1",
+    "@react-native-async-storage/async-storage": "2.2.0",
     "better-auth": "1.6.15",
     "convex": "1.46.0",
     "expo": "~57.0.25",
@@ -51,7 +59,7 @@
     "react-native-reanimated": "4.5.1",
     "react-native-safe-area-context": "~5.7.0",
     "react-native-screens": "~4.26.0",
-    "react-native-svg": "15.15.5",
+    "react-native-svg": "15.15.4",
     "react-native-web": "~0.21.0",
     "react-native-worklets": "0.10.1"
   },
