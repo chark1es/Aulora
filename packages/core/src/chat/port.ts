@@ -8,6 +8,7 @@
  *
  * Ids are opaque strings: `@aulora/core` never imports Convex `Id<>` types.
  */
+import type { Overwrite } from "../permissions";
 
 /** What the server sends for every message. `ciphertext` is opaque. */
 export interface MessagePayload {
@@ -35,6 +36,8 @@ export interface ChannelSummary {
   readonly mlsGroupId: string | null;
   readonly archived: boolean;
   readonly currentEpoch: number | null;
+  /** Present when the server includes the channel's own overrides. */
+  readonly overrides?: readonly Overwrite[];
   readonly memberIds?: readonly string[];
 }
 

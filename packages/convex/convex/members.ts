@@ -130,6 +130,28 @@ export const list = query({
 });
 
 /**
+ * The caller's own membership plus the workspace owner id. Used by clients to
+ * gate admin UI and to protect the owner from moderation controls.
+ */
+export const me = query({
+  args: {},
+  handler: async (ctx) => {
+    const { userId } = await requireAuth(ctx);
+    const server = await ctx.db.query("server").first();
+    const member = await ctx.db
+      .query("members")
+      .withIndex("by_user", (q) => q.eq("userId", userId))
+      .unique();
+    return {
+      userId,
+      ownerId: server?.ownerId ?? null,
+      isOwner: server !== null && server.ownerId === userId,
+      member: member === null ? null : toMemberView(member),
+    };
+  },
+});
+
+/**
  * Assigns a role to a member. Requires `ManageRoles`, the role must be below
  * the actor's top role, the actor must hold every permission the role grants,
  * and the target must be below the actor in the hierarchy.

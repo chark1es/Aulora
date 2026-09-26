@@ -36,6 +36,12 @@ function toSummary(channel: {
   mlsGroupId: string | null;
   archived: boolean;
   currentEpoch: number | null;
+  overrides?: readonly {
+    targetId: string;
+    targetType: "role" | "member";
+    allow: bigint;
+    deny: bigint;
+  }[];
   memberIds?: readonly string[];
 }): ChannelSummary {
   return {
@@ -47,6 +53,7 @@ function toSummary(channel: {
     mlsGroupId: channel.mlsGroupId,
     archived: channel.archived,
     currentEpoch: channel.currentEpoch,
+    ...(channel.overrides !== undefined ? { overrides: channel.overrides } : {}),
     ...(channel.memberIds !== undefined ? { memberIds: channel.memberIds } : {}),
   };
 }

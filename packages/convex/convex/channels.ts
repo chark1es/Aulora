@@ -39,6 +39,8 @@ interface ChannelSummary {
   readonly mlsGroupId: string | null;
   readonly archived: boolean;
   readonly currentEpoch: number | null;
+  /** Current role/member permission overrides, read-only for the editors. */
+  readonly overrides: Doc<"channels">["overrides"];
   readonly memberIds?: string[];
 }
 
@@ -52,6 +54,7 @@ function toSummary(channel: Doc<"channels">, memberIds?: string[]): ChannelSumma
     mlsGroupId: channel.mlsGroupId ?? null,
     archived: channel.archived,
     currentEpoch: channel.currentEpoch ?? null,
+    overrides: channel.overrides,
     ...(memberIds !== undefined ? { memberIds } : {}),
   };
 }

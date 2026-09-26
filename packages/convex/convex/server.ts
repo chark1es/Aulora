@@ -39,6 +39,27 @@ export const get = query({
 });
 
 /**
+ * Full workspace settings for the admin UI. Requires `ManageWorkspace`; the
+ * public `get` query deliberately exposes only the safe subset.
+ */
+export const settings = query({
+  args: {},
+  handler: async (ctx) => {
+    await requireWorkspacePermission(ctx, Permission.ManageWorkspace);
+    const server = await ctx.db.query("server").first();
+    if (server === null) {
+      throw new ConvexError("Workspace is not initialized");
+    }
+    return {
+      name: server.name,
+      iconSeed: server.iconSeed,
+      ownerId: server.ownerId,
+      settings: server.settings,
+    };
+  },
+});
+
+/**
  * Updates workspace settings. Requires `ManageWorkspace` and writes an audit
  * row so access-policy changes are traceable.
  */
