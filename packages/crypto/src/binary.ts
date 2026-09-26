@@ -25,6 +25,25 @@ export function bytesToHex(bytes: Uint8Array): string {
   return hex;
 }
 
+/** Standard base64 for small blobs (keys, IVs, hashes). Not for large files. */
+export function bytesToBase64(bytes: Uint8Array): string {
+  let binary = "";
+  for (const byte of bytes) {
+    binary += String.fromCharCode(byte);
+  }
+  return btoa(binary);
+}
+
+/** Inverse of {@link bytesToBase64}. */
+export function base64ToBytes(encoded: string): Uint8Array {
+  const binary = atob(encoded);
+  const bytes = new Uint8Array(binary.length);
+  for (let index = 0; index < binary.length; index += 1) {
+    bytes[index] = binary.charCodeAt(index);
+  }
+  return bytes;
+}
+
 /** Concatenate parts as `[length][bytes]...` with 4-byte big-endian lengths. */
 export function pack(parts: readonly Uint8Array[]): Uint8Array {
   let size = 0;

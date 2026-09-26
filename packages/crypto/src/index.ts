@@ -1,4 +1,26 @@
-export { bytesToHex, pack, unpack, utf8Decode, utf8Encode } from "./binary.js";
+export {
+  ATTACHMENT_IV_BYTES,
+  ATTACHMENT_KEY_BYTES,
+  type AttachmentCryptoOptions,
+  type AttachmentDescriptor,
+  type AttachmentDimensions,
+  decryptAttachmentBytes,
+  type EncryptedObjectRef,
+  encryptAttachmentBytes,
+  generateAttachmentKey,
+  parseAttachmentDescriptor,
+  sealAttachmentBytes,
+} from "./attachment.js";
+export {
+  base64ToBytes,
+  bytesToBase64,
+  bytesToHex,
+  pack,
+  unpack,
+  utf8Decode,
+  utf8Encode,
+} from "./binary.js";
+export { blurhashDecode, blurhashEncode } from "./blurhash.js";
 export type { AddMembersResult, MlsEngine, MlsMember } from "./engine.js";
 export { MlsEngineError, type MlsEngineErrorCode } from "./errors.js";
 export { type IndexedDbKeyStoreOptions, indexedDbKeyStore } from "./indexeddb.js";
