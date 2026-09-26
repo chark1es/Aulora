@@ -26,6 +26,8 @@ export {
 export {
   ADMINISTRATOR,
   ALL_PERMISSIONS,
+  canGrantPermissions,
+  canManageRole,
   canModerate,
   canModerateMember,
   EVERYONE_ROLE_ID,

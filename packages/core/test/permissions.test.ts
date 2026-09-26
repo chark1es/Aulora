@@ -2,6 +2,8 @@ import { describe, expect, it } from "vitest";
 import {
   ADMINISTRATOR,
   ALL_PERMISSIONS,
+  canGrantPermissions,
+  canManageRole,
   canModerate,
   canModerateMember,
   EVERYONE_ROLE_ID,
@@ -242,6 +244,37 @@ describe("resolvePermissions — overwrite order", () => {
       categoryOverrides: [overwrite("member", "bob", 0n, Permission.ViewChannel)],
     });
     expect(hasPermission(result, Permission.ViewChannel)).toBe(true);
+  });
+});
+
+describe("grant ceiling and role management", () => {
+  it("allows granting only permissions the actor already holds", () => {
+    const held = Permission.Kick | Permission.ViewChannel;
+    expect(canGrantPermissions(held, Permission.Kick)).toBe(true);
+    expect(canGrantPermissions(held, held)).toBe(true);
+    expect(canGrantPermissions(held, Permission.Ban)).toBe(false);
+    expect(canGrantPermissions(held, Permission.Kick | Permission.Ban)).toBe(false);
+    expect(canGrantPermissions(0n, Permission.ViewChannel)).toBe(false);
+  });
+
+  it("lets an Administrator grant anything", () => {
+    expect(canGrantPermissions(Permission.Administrator, ALL_PERMISSIONS)).toBe(true);
+    expect(canGrantPermissions(Permission.Administrator | Permission.Ban, Permission.Kick)).toBe(
+      true,
+    );
+  });
+
+  it("only lets an actor manage roles strictly below their top role", () => {
+    const actor = { userId: "a", topRolePosition: 5 };
+    expect(canManageRole(actor, 4)).toBe(true);
+    expect(canManageRole(actor, 0)).toBe(true);
+    expect(canManageRole(actor, 5)).toBe(false);
+    expect(canManageRole(actor, 6)).toBe(false);
+    expect(canManageRole({ userId: "a", topRolePosition: -1 }, 0)).toBe(false);
+  });
+
+  it("lets an owner manage any role, including one above their roles", () => {
+    expect(canManageRole({ userId: "a", topRolePosition: -1, isOwner: true }, 100)).toBe(true);
   });
 });
 

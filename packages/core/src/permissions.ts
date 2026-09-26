@@ -205,6 +205,30 @@ export function canModerate(actor: ModeratorLike, target: ModeratorLike): boolea
   return actor.topRolePosition > target.topRolePosition;
 }
 
+/**
+ * Whether an actor holding `actorPermissions` may grant `requested`. An
+ * Administrator may grant anything; otherwise every requested bit must already
+ * be held, so nobody can hand out power they do not have.
+ */
+export function canGrantPermissions(actorPermissions: bigint, requested: bigint): boolean {
+  if ((actorPermissions & Permission.Administrator) !== 0n) {
+    return true;
+  }
+  return (requested & ~actorPermissions) === 0n;
+}
+
+/**
+ * Whether an actor may manage (edit, assign or delete) a role at
+ * `targetPosition`. Owners may manage any role; everyone else may only manage
+ * roles strictly below their own top role.
+ */
+export function canManageRole(actor: ModeratorLike, targetPosition: number): boolean {
+  if (actor.isOwner === true) {
+    return true;
+  }
+  return actor.topRolePosition > targetPosition;
+}
+
 export interface ModerateMemberInput {
   readonly actor: PermissionActor;
   readonly target: PermissionActor;
