@@ -36,6 +36,7 @@ async function upsertPresence(
   const status = patch.status ?? existing?.status ?? "online";
   const customStatusCiphertext =
     patch.customStatusCiphertext ?? existing?.customStatusCiphertext ?? "";
+  const hasCustomPatch = patch.customStatusCiphertext !== undefined;
 
   if (existing === null) {
     await ctx.db.insert("presence", {
@@ -48,7 +49,7 @@ async function upsertPresence(
     await ctx.db.patch(existing._id, {
       status,
       lastHeartbeat: now,
-      ...(customStatusCiphertext.length > 0 ? { customStatusCiphertext } : {}),
+      ...(hasCustomPatch ? { customStatusCiphertext } : {}),
     });
   }
   return { status, lastHeartbeat: now };
