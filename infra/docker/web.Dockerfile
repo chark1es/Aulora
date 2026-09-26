@@ -24,6 +24,7 @@ ENV CONVEX_URL=$CONVEX_URL
 # Manifests first for a cacheable install.
 COPY package.json bun.lock turbo.json tsconfig.json biome.json ./
 COPY apps/web/package.json apps/web/
+COPY apps/docs/package.json apps/docs/
 COPY packages ./packages
 COPY apps/web ./apps/web
 RUN bun install --frozen-lockfile

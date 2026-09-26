@@ -28,6 +28,7 @@ WORKDIR /app
 # Workspace manifests for a cacheable, frozen install.
 COPY package.json bun.lock turbo.json ./
 COPY apps/web/package.json apps/web/
+COPY apps/docs/package.json apps/docs/
 COPY packages ./packages
 
 RUN bun install --frozen-lockfile

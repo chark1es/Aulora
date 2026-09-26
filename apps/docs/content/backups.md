@@ -1,0 +1,61 @@
+# Backups
+
+Three things hold state, and all three matter:
+
+1. **Convex data** — exported with `convex export` (it also covers S3-backed
+   file storage).
+2. **Postgres** — the relational store behind Convex, dumped with `pg_dump`.
+3. **Secrets** — `infra/docker/.env`, which holds `INSTANCE_SECRET`. Losing it
+   makes the existing data unreadable, so keep it separately and securely.
+
+## Nightly runner
+
+Enable the `backups` profile and the discrete service does all of it for you:
+
+```sh
+cd infra/docker
+docker compose --profile backups up -d --build
+docker compose logs -f backup
+```
+
+Each run:
+
+1. waits for the backend and `setup` to finish;
+2. mints the admin key with the backend's own `generate_key`;
+3. runs `pg_dump` and `convex export`;
+4. uploads both artifacts to `s3://<BACKUP_BUCKET>/backups/<timestamp>/`;
+5. records the result, which the [admin panel](admin.md) shows.
+
+The Convex cron in `packages/convex/convex/crons.ts` records the nightly intent
+at 03:00 UTC; the runner performs the work. Neither side sees plaintext or keys.
+
+### Configuration
+
+| Variable | Default | Meaning |
+| --- | --- | --- |
+| `BACKUP_HOUR_UTC` | `3` | hour (0–23, UTC) to start the run |
+| `BACKUP_ENABLED` | `true` | set `false` to idle the container |
+| `BACKUP_BUCKET` | `aulora-backups` | destination bucket |
+| `BACKUP_RETENTION` | `7` | local run directories to keep |
+| `BACKUP_TOKEN` | generated | shared secret for recording results |
+| `BACKUP_RUN_ONCE` | unset | `1` runs one backup and exits |
+| `BACKUP_SKIP_UPLOAD` | unset | `1` keeps artifacts local |
+
+Result recording is best-effort: if the token or deployment is missing the run
+still completes and is logged.
+
+## Restore
+
+Bring up a fresh stack and restore `infra/docker/.env` first, then:
+
+```sh
+# Postgres (custom-format dump)
+docker compose exec -T postgres pg_restore -U convex -d <db> --clean postgres.dump
+
+# Convex
+docker compose run --rm setup bash -lc \
+  "cd /app/packages/convex && bunx convex import --path /backup/convex.zip"
+```
+
+Then run `docker compose run --rm setup` to refresh the deployment and the
+well-known document.

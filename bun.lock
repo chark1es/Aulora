@@ -18,6 +18,10 @@
         "@tauri-apps/cli": "^2.9.0",
       },
     },
+    "apps/docs": {
+      "name": "@aulora/docs",
+      "version": "0.0.0",
+    },
     "apps/mobile": {
       "name": "@aulora/mobile",
       "version": "0.0.0",
@@ -272,6 +276,8 @@
     "@aulora/crypto": ["@aulora/crypto@workspace:packages/crypto"],
 
     "@aulora/desktop": ["@aulora/desktop@workspace:apps/desktop"],
+
+    "@aulora/docs": ["@aulora/docs@workspace:apps/docs"],
 
     "@aulora/mobile": ["@aulora/mobile@workspace:apps/mobile"],
 
