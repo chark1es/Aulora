@@ -74,9 +74,13 @@ to `localhost`):
 One remaining defect: the shell shows "End-to-end encryption is not active on this build …
 react-native-quick-crypto is unavailable", even though the rebuilt APK **does** contain
 `lib/arm64-v8a/libQuickCrypto.so` + `libNitroModules.so` (all four ABIs) and
-`newArchEnabled=true`. So the native module is built in and the failure is in the app's
-**JS-side detection/wiring** (`isReactNativeCryptoSufficient()` / the runtime check), not the
-build. Fixing and re-verifying needs one more code pass + ~9 min rebuild.
+`newArchEnabled=true`. `adb logcat` confirms the native side works:
+`QuickCrypto: Loading C++ library... / Successfully loaded C++ library!` and `libNitroModules.so`
++ `libQuickCrypto.so` loaded. So the failure is in the app's **JS-side install/detection**
+(`installReactNativeCrypto` → `globalThis.crypto.subtle` still missing, or a probe primitive
+failing), not the build. The likely culprit is the `install` named import / global patching under
+Hermes. Fixing and re-verifying needs one focused code pass + an ~9 min rebuild; optionally add a
+one-line `mlsError` log to make the next diagnosis instant.
 
 ## Blocked / not yet verified (with causes)
 
