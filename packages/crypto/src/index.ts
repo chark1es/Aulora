@@ -9,3 +9,9 @@ export {
   memoryKeyStore,
 } from "./keystore.js";
 export { expoSecureStoreKeyStore, tauriKeychainKeyStore } from "./native-keystores.js";
+export {
+  AULORA_CIPHER_SUITE,
+  createWebMlsEngine,
+  type DeviceIdentity,
+  type WebMlsEngineOptions,
+} from "./web-engine.js";
