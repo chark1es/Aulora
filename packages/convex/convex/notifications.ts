@@ -6,6 +6,13 @@ import { action, internalAction, internalQuery, mutation, query } from "./_gener
 import { requireAuth } from "./lib/auth";
 import { requireChannelAccess } from "./lib/channels";
 import {
+  type MobilePlatform,
+  type MobilePushTarget,
+  type PushRelayConfig,
+  pushRelayConfigFromEnv,
+  sendWake,
+} from "./lib/pushRelay";
+import {
   parseSubscription,
   sendWebPush,
   type VapidConfig,
@@ -308,5 +315,102 @@ export const dispatchNow = action({
     return await ctx.runAction(internal.notifications.dispatchForMessage, {
       messageId: args.messageId,
     });
+  },
+});
+
+const MOBILE_PLATFORMS: readonly MobilePlatform[] = ["ios", "android", "unifiedpush"];
+
+function isMobilePlatform(value: string): value is MobilePlatform {
+  return (MOBILE_PLATFORMS as readonly string[]).includes(value);
+}
+
+export interface MobileTargetRow extends MobilePushTarget {
+  readonly userId: string;
+}
+
+/**
+ * Native push targets for the given users: devices whose `pushToken` is a
+ * native APNs/FCM token or a UnifiedPush endpoint (not a web Push subscription)
+ * on a mobile platform.
+ */
+export const mobilePushTargets = internalQuery({
+  args: { userIds: v.array(v.string()) },
+  handler: async (ctx, args) => {
+    const targets: MobileTargetRow[] = [];
+    for (const userId of args.userIds) {
+      const devices = await ctx.db
+        .query("devices")
+        .withIndex("by_user", (q) => q.eq("userId", userId))
+        .collect();
+      for (const device of devices) {
+        const token = device.pushToken;
+        if (token === undefined || token.length === 0 || !isMobilePlatform(device.platform)) {
+          continue;
+        }
+        // A parseable web Push subscription is handled by `deviceSubscriptions`.
+        if (parseSubscription(token) !== null) {
+          continue;
+        }
+        targets.push({ userId, platform: device.platform, token });
+      }
+    }
+    return targets;
+  },
+});
+
+/** The channel id for a message, used to label a content-free wake. */
+export const messageChannelId = internalQuery({
+  args: { messageId: v.id("messages") },
+  handler: async (ctx, args) => {
+    const message = await ctx.db.get(args.messageId);
+    return message?.channelId ?? null;
+  },
+});
+
+/**
+ * Routes content-free mobile wakes for one message to the project push relay.
+ * No-ops when `PUSH_RELAY_URL`/`PUSH_RELAY_TOKEN` are unset, so a deployment
+ * without mobile push never fails on send. Scheduled alongside the web push
+ * dispatch by `messages.send`.
+ */
+export const dispatchMobileForMessage = internalAction({
+  args: { messageId: v.id("messages") },
+  handler: async (ctx, args): Promise<DispatchResult> => {
+    const config: PushRelayConfig | null = pushRelayConfigFromEnv();
+    if (config === null) {
+      return { sent: 0, skipped: "unconfigured" };
+    }
+    const channelId = await ctx.runQuery(internal.notifications.messageChannelId, {
+      messageId: args.messageId,
+    });
+    if (channelId === null) {
+      return { sent: 0, skipped: "no-message" };
+    }
+    const recipients = await ctx.runQuery(internal.notifications.resolveRecipients, {
+      messageId: args.messageId,
+    });
+    if (recipients.length === 0) {
+      return { sent: 0, skipped: "no-message" };
+    }
+    const targets = await ctx.runQuery(internal.notifications.mobilePushTargets, {
+      userIds: recipients,
+    });
+    let sent = 0;
+    for (const target of targets) {
+      const result = await sendWake(
+        {
+          serverId: config.serverId,
+          channelId,
+          messageId: args.messageId,
+          platform: target.platform,
+          token: target.token,
+        },
+        config,
+      );
+      if (result.ok) {
+        sent += 1;
+      }
+    }
+    return { sent };
   },
 });

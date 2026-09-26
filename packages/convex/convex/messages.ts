@@ -96,6 +96,9 @@ export const send = mutation({
     // Resolve recipients and send content-free Web Push wakes asynchronously;
     // the action no-ops when VAPID is not configured.
     await ctx.scheduler.runAfter(0, internal.notifications.dispatchForMessage, { messageId });
+    // Route content-free mobile wakes (APNs/FCM/UnifiedPush) via the push relay;
+    // also a no-op when the relay is unconfigured.
+    await ctx.scheduler.runAfter(0, internal.notifications.dispatchMobileForMessage, { messageId });
     return messageId;
   },
 });

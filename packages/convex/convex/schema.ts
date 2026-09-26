@@ -154,8 +154,34 @@ export default defineSchema({
     platform: v.string(),
     pushToken: v.optional(v.string()),
     identityKey: v.string(),
+    /** X25519 public key a sender seals a history bundle to (Phase 5). */
+    sharingKey: v.optional(v.string()),
     lastSeen: v.number(),
+    /** Set once an existing verified device (or bootstrap) approves it. */
+    verifiedAt: v.optional(v.number()),
+    /** The device that approved this one, when approval was device-to-device. */
+    verifiedByDeviceId: v.optional(v.id("devices")),
+    verificationMethod: v.optional(
+      v.union(v.literal("safety_number"), v.literal("qr"), v.literal("bootstrap")),
+    ),
   }).index("by_user", ["userId"]),
+
+  /**
+   * Append-only record of device approvals. The `devices` row carries the
+   * current state; this table is the audit trail of who verified whom.
+   */
+  deviceApprovals: defineTable({
+    userId: v.string(),
+    deviceId: v.id("devices"),
+    /** The verifying device, or the device itself for a bootstrap approval. */
+    approverDeviceId: v.id("devices"),
+    method: v.union(v.literal("safety_number"), v.literal("qr"), v.literal("bootstrap")),
+    /** 60-digit safety number the approver confirmed (empty for bootstrap). */
+    safetyNumber: v.string(),
+    approvedAt: v.number(),
+  })
+    .index("by_user", ["userId"])
+    .index("by_device", ["deviceId"]),
 
   keyPackages: defineTable({
     deviceId: v.id("devices"),
@@ -192,7 +218,51 @@ export default defineSchema({
     userId: v.string(),
     backupCiphertext: v.string(),
     kdfParams: v.string(),
+    updatedAt: v.optional(v.number()),
   }).index("by_user", ["userId"]),
+
+  /**
+   * Opaque history bundles: an existing device seals a channel history key to a
+   * new device's X25519 `sharingKey`. The server relays the envelope and can
+   * never open it. `consumedAt` lets a device mark a bundle imported.
+   */
+  historyBundles: defineTable({
+    channelId: v.id("channels"),
+    recipientUserId: v.string(),
+    recipientDeviceId: v.id("devices"),
+    envelope: v.string(),
+    createdAt: v.number(),
+    consumedAt: v.optional(v.number()),
+  })
+    .index("by_recipient_device", ["recipientDeviceId"])
+    .index("by_channel", ["channelId"]),
+
+  /**
+   * Encrypted channel-history snapshots. The ciphertext is encrypted under the
+   * channel history key, so only devices that received the key via a bundle can
+   * read it. At most one snapshot per (channel, epoch).
+   */
+  historyArchives: defineTable({
+    channelId: v.id("channels"),
+    epoch: v.number(),
+    archiveCiphertext: v.string(),
+    createdAt: v.number(),
+  }).index("by_channel_epoch", ["channelId", "epoch"]),
+
+  /**
+   * A new device asking an online member to share a channel's history key. The
+   * member reads the requester's `sharingKey`, seals the key and writes a
+   * `historyBundles` row, then marks the request serviced.
+   */
+  historyRequests: defineTable({
+    channelId: v.id("channels"),
+    userId: v.string(),
+    deviceId: v.id("devices"),
+    createdAt: v.number(),
+    servicedAt: v.optional(v.number()),
+  })
+    .index("by_channel", ["channelId"])
+    .index("by_device", ["deviceId"]),
 
   presence: defineTable({
     userId: v.string(),
