@@ -245,6 +245,36 @@ describe("resolvePermissions — overwrite order", () => {
     });
     expect(hasPermission(result, Permission.ViewChannel)).toBe(true);
   });
+
+  it("runs all four stages per scope with channel overrides applied last", () => {
+    const result = resolvePermissions({
+      actor,
+      roles: ROLES,
+      categoryOverrides: [
+        overwrite("role", "mod", 0n, SEND),
+        overwrite("role", "mod", SEND, 0n),
+        overwrite("member", "alice", 0n, SEND),
+        overwrite("member", "alice", 0n, SEND),
+      ],
+      channelOverrides: [
+        overwrite("role", "mod", 0n, SEND),
+        overwrite("role", "mod", 0n, SEND),
+        overwrite("member", "alice", 0n, SEND),
+        overwrite("member", "alice", SEND, 0n),
+      ],
+    });
+    expect(hasPermission(result, SEND)).toBe(true);
+  });
+
+  it("lets a channel member allow re-grant what the category member deny removed", () => {
+    const result = resolvePermissions({
+      actor,
+      roles: ROLES,
+      categoryOverrides: [overwrite("member", "alice", 0n, SEND)],
+      channelOverrides: [overwrite("member", "alice", SEND, 0n)],
+    });
+    expect(hasPermission(result, SEND)).toBe(true);
+  });
 });
 
 describe("grant ceiling and role management", () => {
