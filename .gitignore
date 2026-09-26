@@ -18,6 +18,15 @@ out/
 # convex local state
 .convex/
 
+# turbo / vite / expo caches
+coverage/
+.vite/
+.expo/
+.expo-shared/
+.tauri/
+src-tauri/target/
+apps/mobile/.expo/
+
 # spike build artifacts
 spikes/mls-demo/public/worker.js
 

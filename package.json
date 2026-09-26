@@ -1,0 +1,27 @@
+{
+  "name": "aulora",
+  "version": "0.0.0",
+  "private": true,
+  "description": "Aulora — secure team chat on your own server. Bun + Turborepo monorepo.",
+  "license": "SEE LICENSE IN LICENSE AND COMMERCIAL.md",
+  "packageManager": "bun@1.4.0",
+  "workspaces": [
+    "apps/*",
+    "packages/*"
+  ],
+  "scripts": {
+    "dev": "turbo run dev",
+    "build": "turbo run build",
+    "typecheck": "turbo run typecheck",
+    "lint": "turbo run lint",
+    "format": "turbo run format",
+    "test": "turbo run test",
+    "clean": "turbo run clean"
+  },
+  "devDependencies": {
+    "@biomejs/biome": "2.5.14",
+    "turbo": "2.11.4",
+    "typescript": "5.9.3",
+    "vitest": "5.0.2"
+  }
+}
