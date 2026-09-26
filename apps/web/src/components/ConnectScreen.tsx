@@ -10,12 +10,14 @@ import {
   WellKnownError,
 } from "@aulora/core";
 import { Button, Card, Heading, Input, Spinner, Text } from "@aulora/ui-web";
-import { type FormEvent, useState } from "react";
+import { type FormEvent, useEffect, useState } from "react";
 import { SUPPORTED_API_VERSION } from "../lib/api-version";
 
 export interface ConnectScreenProps {
   readonly store: ProfileStore;
   readonly onConnected?: (profile: ServerProfile) => void;
+  /** Host prefilled from an `aulora://connect?server=…` deep link. */
+  readonly initialHost?: string;
 }
 
 interface Preview {
@@ -51,11 +53,17 @@ function messageForError(error: unknown): string {
  * fetches and validates `/.well-known/aulora.json`, shows the workspace and
  * checks the API version, then saves the server profile.
  */
-export function ConnectScreen({ store, onConnected }: ConnectScreenProps) {
-  const [host, setHost] = useState("");
+export function ConnectScreen({ store, onConnected, initialHost }: ConnectScreenProps) {
+  const [host, setHost] = useState(initialHost ?? "");
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [preview, setPreview] = useState<Preview | null>(null);
+
+  useEffect(() => {
+    if (initialHost !== undefined) {
+      setHost(initialHost);
+    }
+  }, [initialHost]);
 
   async function handleSubmit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();

@@ -21,3 +21,27 @@
     @apply bg-bg font-sans text-base text-text antialiased;
   }
 }
+
+/*
+ * Desktop (Tauri) shell polish. Scoped to the marker set by DesktopBridge, so
+ * the web build is untouched. The macOS window is transparent with a Sidebar
+ * vibrancy effect, and the two left rails become translucent so it shows
+ * through; the dot grid keeps its dots but drops its opaque canvas.
+ */
+html[data-desktop="tauri"],
+html[data-desktop="tauri"] body {
+  background-color: transparent;
+}
+
+html[data-desktop="tauri"] .desktop-dot-grid {
+  background-color: transparent !important;
+}
+
+html[data-desktop="tauri"] .desktop-vibrancy {
+  background-color: color-mix(in srgb, var(--aulora-surface-1, #111114) 68%, transparent);
+}
+
+/* Room for the overlay traffic lights on macOS. */
+html[data-desktop="tauri"] nav[aria-label="Servers"] {
+  padding-top: 2.25rem;
+}

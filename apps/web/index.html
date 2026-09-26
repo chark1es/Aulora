@@ -5,27 +5,9 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <meta name="color-scheme" content="dark light" />
     <title>Aulora</title>
-    <script>
-      // Apply the persisted theme before first paint to avoid a flash. The
-      // palette variables themselves are injected by Vite from @aulora/tokens.
-      (() => {
-        var stored;
-        var pref;
-        var dark;
-        try {
-          stored = window.localStorage.getItem("aulora.theme.v1");
-          pref = stored === "dark" || stored === "light" ? stored : "system";
-          dark =
-            pref === "dark" ||
-            (pref === "system" &&
-              window.matchMedia("(prefers-color-scheme: dark)").matches);
-          document.documentElement.classList.toggle("dark", dark);
-          document.documentElement.style.colorScheme = dark ? "dark" : "light";
-        } catch {
-          document.documentElement.classList.add("dark");
-        }
-      })();
-    </script>
+    <!-- External so the desktop shell can enforce `script-src 'self'`. The
+         palette variables themselves are injected by Vite from @aulora/tokens. -->
+    <script src="/theme-boot.js"></script>
   </head>
   <body>
     <div id="root"></div>

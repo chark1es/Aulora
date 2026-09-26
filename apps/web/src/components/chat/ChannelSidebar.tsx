@@ -49,7 +49,7 @@ export function ChannelSidebar({
   );
 
   return (
-    <aside className="flex w-64 shrink-0 flex-col gap-4 border-r border-border bg-surface-1 p-3">
+    <aside className="desktop-vibrancy flex w-64 shrink-0 flex-col gap-4 border-r border-border bg-surface-1 p-3">
       <div className="flex items-center gap-2 px-1 py-1">
         <Avatar seed={`aulora:server:${workspaceName}`} size={28} />
         <Text size="sm" className="truncate font-medium">

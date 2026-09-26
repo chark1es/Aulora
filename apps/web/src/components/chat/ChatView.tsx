@@ -10,6 +10,7 @@ import { Button, Heading, Spinner, Text } from "@aulora/ui-web";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { uploadFiles } from "../../lib/attachments";
 import { useChannelSession } from "../../lib/use-channel";
+import { useDesktopNotifications } from "../../lib/use-desktop-notifications";
 import type { CategoryView, MemberView, RoleView } from "../../lib/workspace-admin";
 import { type ChatSearchHit, useChat } from "../../providers/ChatProvider";
 import { AdminPanel, type AdminPanelViewer } from "../admin/AdminPanel";
@@ -75,6 +76,8 @@ export function ChatView({
   const [searchResults, setSearchResults] = useState<readonly ChatSearchHit[]>([]);
   const [searching, setSearching] = useState(false);
   const reported = useRef(new Set<string>());
+
+  useDesktopNotifications(runtime, ownUserId, channelNames);
 
   useEffect(() => {
     if (activeChannelId === undefined && channels.length > 0) {
@@ -144,6 +147,13 @@ export function ChatView({
     };
     window.addEventListener("keydown", onKeyDown);
     return () => window.removeEventListener("keydown", onKeyDown);
+  }, []);
+
+  // The native Cmd+K menu item emits a shell event; open the same search panel.
+  useEffect(() => {
+    const onQuickSwitcher = () => setSearchOpen(true);
+    window.addEventListener("aulora:quick-switcher", onQuickSwitcher);
+    return () => window.removeEventListener("aulora:quick-switcher", onQuickSwitcher);
   }, []);
 
   useEffect(() => {

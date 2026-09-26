@@ -16,6 +16,7 @@ import {
 import type { ConvexReactClient } from "convex/react";
 import { api } from "../../../../packages/convex/convex/_generated/api";
 import { convexPort, convexSubscriptions } from "./convex-chat";
+import { isDesktop } from "./desktop";
 
 /**
  * Wires the MLS engine and the chat session for one signed-in device.
@@ -77,7 +78,7 @@ export async function createChatRuntime(options: CreateChatRuntimeOptions): Prom
     createEngine: () => createEngine(keyStore),
     user: { id: options.userId, displayName: options.displayName },
     identityKey: bytesToHex(identity.signaturePublicKey),
-    platform: "web",
+    platform: isDesktop() ? "desktop" : "web",
   });
   await session.start();
 

@@ -12,7 +12,7 @@ export function ServerRail() {
   return (
     <nav
       aria-label="Servers"
-      className="sticky top-0 flex h-screen w-16 shrink-0 flex-col items-center gap-2 border-r border-border bg-surface-1 py-3"
+      className="desktop-vibrancy sticky top-0 flex h-screen w-16 shrink-0 flex-col items-center gap-2 border-r border-border bg-surface-1 py-3"
     >
       <IconButton label="Aulora home" variant="ghost" onClick={() => void navigate({ to: "/" })}>
         <Logo size={28} />

@@ -1,5 +1,6 @@
 import { DotGrid } from "@aulora/ui-web";
 import { createRootRoute, createRoute, createRouter, Outlet } from "@tanstack/react-router";
+import { DesktopBridge } from "./components/DesktopBridge";
 import { ServerRail } from "./components/ServerRail";
 import { ProfileProvider } from "./providers/ProfileProvider";
 import { ConnectRoute } from "./routes/ConnectRoute";
@@ -9,7 +10,8 @@ import { RedeemRoute } from "./routes/RedeemRoute";
 function RootLayout() {
   return (
     <ProfileProvider>
-      <DotGrid />
+      <DotGrid className="desktop-dot-grid" />
+      <DesktopBridge />
       <div className="relative flex min-h-screen text-text">
         <ServerRail />
         <main className="min-w-0 flex-1">
@@ -31,6 +33,10 @@ const indexRoute = createRoute({
 const connectRoute = createRoute({
   getParentRoute: () => rootRoute,
   path: "/connect",
+  validateSearch: (search: Record<string, unknown>): { server?: string } => {
+    const server = search.server;
+    return typeof server === "string" ? { server } : {};
+  },
   component: ConnectRoute,
 });
 
