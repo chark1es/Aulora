@@ -1,0 +1,31 @@
+{
+  "name": "@aulora/convex",
+  "version": "0.0.0",
+  "private": true,
+  "description": "Aulora Convex backend: schema, auth, queries, mutations, HTTP routes.",
+  "type": "module",
+  "scripts": {
+    "dev": "convex dev",
+    "deploy": "convex deploy --yes",
+    "codegen": "convex codegen",
+    "typecheck": "tsc --noEmit",
+    "lint": "biome check .",
+    "test": "vitest run",
+    "format": "biome format --write .",
+    "clean": "node -e \"require('node:fs').rmSync('.turbo',{recursive:true,force:true})\""
+  },
+  "dependencies": {
+    "@aulora/core": "workspace:*",
+    "@convex-dev/better-auth": "0.12.5",
+    "better-auth": "1.6.15",
+    "convex": "1.46.0"
+  },
+  "devDependencies": {
+    "@aulora/config": "workspace:*",
+    "@edge-runtime/vm": "5.0.0",
+    "@types/node": "26.6.3",
+    "convex-test": "0.0.60",
+    "typescript": "5.9.3",
+    "vitest": "5.0.2"
+  }
+}

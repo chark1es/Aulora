@@ -1,0 +1,4 @@
+{
+  "extends": "@aulora/config/tsconfig.node.json",
+  "include": ["convex", "test"]
+}
