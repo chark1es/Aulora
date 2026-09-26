@@ -166,6 +166,22 @@ Three things hold state; back all of them:
 Restore: bring up a fresh stack, restore Postgres/`convex export`, restore
 `.env`, then run `setup`.
 
+### Nightly runner (optional)
+
+Instead of doing the above by hand, enable the `backups` profile. It runs
+`pg_dump` + `convex export` at `BACKUP_HOUR_UTC` (default 03:00 UTC), uploads
+both to the S3/MinIO bucket `BACKUP_BUCKET` and records the result for the
+instance admin panel:
+
+```powershell
+docker compose --profile backups up -d --build
+docker compose logs -f backup
+```
+
+The Convex cron records the nightly intent; the runner performs the work. Run
+one immediately with `docker compose run --rm -e BACKUP_RUN_ONCE=1 backup`, or
+use the panel's "Request backup now". See `backup/README.md`.
+
 ## Teardown
 
 ```powershell

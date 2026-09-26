@@ -260,8 +260,54 @@ services:
       - "${PUSH_RELAY_PORT:-8790}:8790"
     logging: *logging
 
+  # Optional nightly backup runner: `convex export` + `pg_dump` uploaded to S3
+  # (MinIO by default). Enable with `--profile backups`; it waits for `setup`,
+  # then runs at BACKUP_HOUR_UTC and records each result in Convex.
+  backup:
+    build:
+      context: ../..
+      dockerfile: infra/docker/backup/backup.Dockerfile
+    image: aulora-backup:local
+    profiles: ["backups"]
+    restart: unless-stopped
+    env_file:
+      - path: .env
+        required: false
+    environment:
+      DATA_DIR: /convex/data
+      CONVEX_SELF_HOSTED_URL: http://convex-backend:3210
+      CONVEX_PROJECT_DIR: /app/packages/convex
+      HOST_ENV_FILE: /host/.env
+      BACKUP_DIR: /backup
+      BACKUP_PLAN: /app/backup/backup-plan.mjs
+      BACKUP_HOUR_UTC: ${BACKUP_HOUR_UTC:-3}
+      BACKUP_ENABLED: ${BACKUP_ENABLED:-true}
+      BACKUP_BUCKET: ${BACKUP_BUCKET:-aulora-backups}
+      BACKUP_RETENTION: ${BACKUP_RETENTION:-7}
+      POSTGRES_HOST: postgres
+      POSTGRES_PORT: "5432"
+      POSTGRES_USER: ${POSTGRES_USER:-convex}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-aulora-postgres}
+      S3_ENDPOINT_URL: ${S3_ENDPOINT_URL:-http://minio:9000}
+      AWS_ACCESS_KEY_ID: ${MINIO_ROOT_USER:-aulora}
+      AWS_SECRET_ACCESS_KEY: ${MINIO_ROOT_PASSWORD:-aulora-minio-secret}
+    volumes:
+      - convex-data:/convex/data
+      - backup-data:/backup
+      # Persist a generated BACKUP_TOKEN back to infra/docker/.env on the host.
+      - ./:/host
+    depends_on:
+      convex-backend:
+        condition: service_healthy
+      postgres:
+        condition: service_healthy
+      setup:
+        condition: service_completed_successfully
+    logging: *logging
+
 volumes:
   pgdata:
   convex-data:
   minio-data:
   web-well-known:
+  backup-data:
