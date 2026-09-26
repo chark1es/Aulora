@@ -14,6 +14,9 @@
     "format": "biome format --write .",
     "clean": "node -e \"require('node:fs').rmSync('dist',{recursive:true,force:true})\""
   },
+  "dependencies": {
+    "@aulora/crypto": "workspace:*"
+  },
   "devDependencies": {
     "@aulora/config": "workspace:*",
     "@types/node": "26.6.3",

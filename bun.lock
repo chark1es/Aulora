@@ -95,6 +95,9 @@
     "packages/core": {
       "name": "@aulora/core",
       "version": "0.0.0",
+      "dependencies": {
+        "@aulora/crypto": "workspace:*",
+      },
       "devDependencies": {
         "@aulora/config": "workspace:*",
         "@types/node": "26.6.3",

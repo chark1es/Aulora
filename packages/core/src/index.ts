@@ -1,3 +1,4 @@
+export * from "./chat/index";
 export {
   ADMINISTRATOR,
   ALL_PERMISSIONS,
