@@ -4,13 +4,69 @@
  * Sends attempted while offline (or that fail) are persisted as plaintext
  * items in a {@link OutboxStore} (IndexedDB on web). Plaintext lives only on
  * the device; nothing is transmitted until {@link Outbox.flush} hands an item
- * back to the caller, which encrypts it through MLS before it ever reaches the
- * server. Retries use exponential backoff.
+ * back to the caller, which sends it through the chat port. Retries use
+ * exponential backoff.
  */
 
-import type { AttachmentDescriptor } from "@aulora/crypto";
+import type { AttachmentDescriptor } from "../chat/port.js";
 
 export type OutboxStatus = "pending" | "sending" | "failed";
+
+/**
+ * Substrings that mark an error as a connectivity failure rather than a server
+ * rejection. A fetch/WebSocket failure or an offline browser should queue the
+ * send; a validation or permission error should surface to the caller.
+ */
+const CONNECTIVITY_PATTERNS = [
+  "failed to fetch",
+  "fetch failed",
+  "networkerror",
+  "network error",
+  "network request failed",
+  "network connection",
+  "connection lost",
+  "connection error",
+  "load failed",
+  "websocket",
+  "socket",
+  "offline",
+  "chat is not ready",
+  "not connected",
+  "disconnected",
+  "temporarily unavailable",
+  "service unavailable",
+  "timed out",
+  "timeout",
+  "econnrefused",
+  "econnreset",
+  "err_internet",
+  "internet",
+  "unreachable",
+] as const;
+
+/**
+ * Whether `error` looks like a connectivity failure (network/fetch/WebSocket
+ * error, or the browser reporting offline) rather than a server-side rejection.
+ * Used to decide between queueing a send and surfacing an error.
+ */
+export function isConnectivityError(error: unknown): boolean {
+  if (typeof navigator !== "undefined" && navigator.onLine === false) {
+    return true;
+  }
+  const message =
+    error instanceof Error
+      ? error.message
+      : typeof error === "string"
+        ? error
+        : error === null || error === undefined
+          ? ""
+          : String(error);
+  const haystack = message.toLowerCase();
+  if (haystack.length === 0) {
+    return false;
+  }
+  return CONNECTIVITY_PATTERNS.some((pattern) => haystack.includes(pattern));
+}
 
 /** One queued send. Plaintext is device-local until flushed. */
 export interface OutboxItem {
@@ -19,6 +75,7 @@ export interface OutboxItem {
   readonly text: string;
   readonly mentionUserIds: readonly string[];
   readonly threadRootId?: string;
+  readonly replyToId?: string;
   readonly attachments?: readonly AttachmentDescriptor[];
   readonly createdAt: number;
   readonly attempts: number;
@@ -59,6 +116,7 @@ export interface EnqueueInput {
   readonly text: string;
   readonly mentionUserIds?: readonly string[];
   readonly threadRootId?: string;
+  readonly replyToId?: string;
   readonly attachments?: readonly AttachmentDescriptor[];
 }
 
@@ -115,6 +173,7 @@ export class Outbox {
       text: input.text,
       mentionUserIds: [...(input.mentionUserIds ?? [])],
       ...(input.threadRootId !== undefined ? { threadRootId: input.threadRootId } : {}),
+      ...(input.replyToId !== undefined ? { replyToId: input.replyToId } : {}),
       ...(input.attachments !== undefined ? { attachments: input.attachments } : {}),
       createdAt: now,
       attempts: 0,
@@ -138,6 +197,27 @@ export class Outbox {
 
   async remove(id: string): Promise<void> {
     await this.store.delete(id);
+  }
+
+  /**
+   * Resets a queued item (including a permanently `failed` one) so it is due
+   * for another send: clears its attempt count and returns it to `pending`.
+   * Returns `undefined` when no item has that id.
+   */
+  async retry(id: string, now: number = Date.now()): Promise<OutboxItem | undefined> {
+    const items = await this.store.readAll();
+    const item = items.find((entry) => entry.id === id);
+    if (item === undefined) {
+      return undefined;
+    }
+    const next: OutboxItem = {
+      ...item,
+      attempts: 0,
+      status: "pending",
+      nextAttemptAt: now,
+    };
+    await this.store.put(next);
+    return next;
   }
 
   /** Items eligible to send at `now`, oldest first. */

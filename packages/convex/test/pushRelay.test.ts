@@ -94,8 +94,7 @@ describe("notifications.dispatchMobileForMessage", () => {
     const asUser1 = t.withIdentity({ subject: "user-1" });
     const messageId = await asUser1.mutation(api.messages.send, {
       channelId,
-      ciphertext: "bXNn",
-      epoch: 0,
+      body: "bXNn",
     });
     const result = await t.action(internal.notifications.dispatchMobileForMessage, { messageId });
     expect(result).toEqual({ sent: 0, skipped: "unconfigured" });
@@ -115,14 +114,12 @@ describe("notifications.dispatchMobileForMessage", () => {
       await ctx.db.insert("devices", {
         userId: "user-2",
         platform: "ios",
-        identityKey: "ios-device",
         pushToken: "apns-token",
         lastSeen: Date.now(),
       });
       await ctx.db.insert("devices", {
         userId: "user-3",
         platform: "web",
-        identityKey: "web-device",
         pushToken: JSON.stringify({
           endpoint: "https://push.example.com/sub",
           keys: { p256dh: "p", auth: "a" },
@@ -140,8 +137,7 @@ describe("notifications.dispatchMobileForMessage", () => {
     const asUser1 = t.withIdentity({ subject: "user-1" });
     const messageId = await asUser1.mutation(api.messages.send, {
       channelId,
-      ciphertext: "bXNn",
-      epoch: 0,
+      body: "bXNn",
     });
     const result = await t.action(internal.notifications.dispatchMobileForMessage, { messageId });
     expect(result).toEqual({ sent: 1 });

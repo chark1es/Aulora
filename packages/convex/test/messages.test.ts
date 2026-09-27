@@ -1,6 +1,7 @@
 import { Permission } from "@aulora/core";
 import { afterEach, describe, expect, it } from "vitest";
 import { api } from "../convex/_generated/api";
+import { isSealed, openString } from "../convex/lib/sse";
 import { newTest, seedChannel, seedWorkspace } from "./helpers";
 
 const PAGE = { numItems: 10, cursor: null } as const;
@@ -9,35 +10,133 @@ afterEach(() => {
   delete process.env.SEND_RATE_LIMIT;
 });
 
+function bodyContext(channelId: string) {
+  return { scope: "message", recordId: channelId };
+}
+
 describe("messages.send and list", () => {
-  it("stores ciphertext and paginates the channel timeline", async () => {
+  it("seals the body at rest and pages backwards from the newest message", async () => {
     const t = newTest();
     await seedWorkspace(t, { members: [{ userId: "user-1" }] });
     const channelId = await seedChannel(t);
     const asUser = t.withIdentity({ subject: "user-1" });
 
     for (let i = 0; i < 3; i += 1) {
-      await asUser.mutation(api.messages.send, {
-        channelId,
-        ciphertext: `Y2lwaGVyLXRleHQt${i}`,
-        epoch: 0,
-      });
+      await asUser.mutation(api.messages.send, { channelId, body: `Y2lwaGVyLXRleHQt${i}` });
     }
 
+    // The first page is the live tail, rendered oldest first, in plaintext.
     const first = await asUser.query(api.messages.list, {
       channelId,
       paginationOpts: { numItems: 2, cursor: null },
     });
-    expect(first.page).toHaveLength(2);
-    expect(first.page[0]?.ciphertext).toBe("Y2lwaGVyLXRleHQt0");
+    expect(first.page.map((m) => m.body)).toEqual(["Y2lwaGVyLXRleHQt1", "Y2lwaGVyLXRleHQt2"]);
     expect(first.isDone).toBe(false);
 
+    // The continuation cursor walks into older history.
     const second = await asUser.query(api.messages.list, {
       channelId,
       paginationOpts: { numItems: 2, cursor: first.continueCursor },
     });
-    expect(second.page).toHaveLength(1);
+    expect(second.page.map((m) => m.body)).toEqual(["Y2lwaGVyLXRleHQt0"]);
     expect(second.isDone).toBe(true);
+
+    // The stored row is a sealed envelope, not the plaintext.
+    const rows = await t.run(async (ctx) =>
+      (await ctx.db.query("messages").collect()).filter((row) => row.channelId === channelId),
+    );
+    expect(rows).toHaveLength(3);
+    for (const row of rows) {
+      expect(isSealed(row.ciphertext)).toBe(true);
+      expect(row.ciphertext).not.toContain("Y2lwaGVy");
+    }
+    await expect(openString(bodyContext(channelId), rows[0]?.ciphertext ?? "")).resolves.toBe(
+      "Y2lwaGVyLXRleHQt0",
+    );
+  });
+
+  it("keeps showing new messages once a channel outgrows one page", async () => {
+    const t = newTest();
+    await seedWorkspace(t, { members: [{ userId: "user-1" }] });
+    const channelId = await seedChannel(t);
+    const asUser = t.withIdentity({ subject: "user-1" });
+
+    for (let i = 0; i < 12; i += 1) {
+      await asUser.mutation(api.messages.send, { channelId, body: `m${i}` });
+    }
+    const page = await asUser.query(api.messages.list, { channelId, paginationOpts: PAGE });
+    expect(page.page).toHaveLength(10);
+    expect(page.page.at(-1)?.body).toBe("m11");
+    expect(page.page[0]?.body).toBe("m2");
+  });
+
+  it("does not let thread replies crowd roots out of a page", async () => {
+    const t = newTest();
+    await seedWorkspace(t, { members: [{ userId: "user-1" }] });
+    const channelId = await seedChannel(t);
+    const asUser = t.withIdentity({ subject: "user-1" });
+
+    const older = await asUser.mutation(api.messages.send, { channelId, body: "older" });
+    const root = await asUser.mutation(api.messages.send, { channelId, body: "root" });
+    for (let i = 0; i < 5; i += 1) {
+      await asUser.mutation(api.messages.send, {
+        channelId,
+        body: `reply${i}`,
+        threadRootId: root,
+      });
+    }
+    const page = await asUser.query(api.messages.list, {
+      channelId,
+      paginationOpts: { numItems: 2, cursor: null },
+    });
+    expect(page.page.map((m) => m.id)).toEqual([older, root]);
+  });
+
+  it("tracks reply counts on thread roots", async () => {
+    const t = newTest();
+    await seedWorkspace(t, { members: [{ userId: "user-1" }] });
+    const channelId = await seedChannel(t);
+    const asUser = t.withIdentity({ subject: "user-1" });
+
+    const root = await asUser.mutation(api.messages.send, { channelId, body: "root" });
+    let listed = await asUser.query(api.messages.list, { channelId, paginationOpts: PAGE });
+    expect(listed.page[0]?.replyCount).toBe(0);
+    expect(listed.page[0]?.lastReplyAt).toBeNull();
+
+    await asUser.mutation(api.messages.send, {
+      channelId,
+      body: "a",
+      threadRootId: root,
+    });
+    await asUser.mutation(api.messages.send, {
+      channelId,
+      body: "b",
+      threadRootId: root,
+    });
+    listed = await asUser.query(api.messages.list, { channelId, paginationOpts: PAGE });
+    expect(listed.page[0]?.replyCount).toBe(2);
+    expect(listed.page[0]?.lastReplyAt).toBeGreaterThanOrEqual(listed.page[0]?.createdAt ?? 0);
+  });
+
+  it("rejects replies to a reply (threads are one level deep)", async () => {
+    const t = newTest();
+    await seedWorkspace(t, { members: [{ userId: "user-1" }] });
+    const channelId = await seedChannel(t);
+    const asUser = t.withIdentity({ subject: "user-1" });
+
+    const root = await asUser.mutation(api.messages.send, { channelId, body: "root" });
+    const reply = await asUser.mutation(api.messages.send, {
+      channelId,
+      body: "reply",
+      threadRootId: root,
+    });
+    await expect(
+      asUser.mutation(api.messages.send, {
+        channelId,
+        body: "nested",
+        threadRootId: reply,
+      }),
+    ).rejects.toThrow("Threads cannot be nested");
   });
 
   it("excludes thread replies from the main list and returns them from listThread", async () => {
@@ -46,26 +145,83 @@ describe("messages.send and list", () => {
     const channelId = await seedChannel(t);
     const asUser = t.withIdentity({ subject: "user-1" });
 
-    const rootId = await asUser.mutation(api.messages.send, {
-      channelId,
-      ciphertext: "cm9vdA==",
-      epoch: 0,
-    });
+    const rootId = await asUser.mutation(api.messages.send, { channelId, body: "cm9vdA==" });
     await asUser.mutation(api.messages.send, {
       channelId,
-      ciphertext: "cmVwbHk=",
-      epoch: 0,
+      body: "cmVwbHk=",
       threadRootId: rootId,
     });
 
     const main = await asUser.query(api.messages.list, { channelId, paginationOpts: PAGE });
-    expect(main.page.map((m) => m.ciphertext)).toEqual(["cm9vdA=="]);
+    expect(main.page.map((m) => m.body)).toEqual(["cm9vdA=="]);
 
     const thread = await asUser.query(api.messages.listThread, {
       threadRootId: rootId,
       paginationOpts: PAGE,
     });
-    expect(thread.page.map((m) => m.ciphertext)).toEqual(["cmVwbHk="]);
+    expect(thread.page.map((m) => m.body)).toEqual(["cmVwbHk="]);
+  });
+
+  it("stores replyToId and returns it from the list query", async () => {
+    const t = newTest();
+    await seedWorkspace(t, { members: [{ userId: "user-1" }] });
+    const channelId = await seedChannel(t);
+    const asUser = t.withIdentity({ subject: "user-1" });
+
+    const original = await asUser.mutation(api.messages.send, { channelId, body: "b3JpZ2luYWw=" });
+    const reply = await asUser.mutation(api.messages.send, {
+      channelId,
+      body: "cmVwbHk=",
+      replyToId: original,
+    });
+
+    const listed = await asUser.query(api.messages.list, { channelId, paginationOpts: PAGE });
+    const byId = new Map(listed.page.map((m) => [m.id, m]));
+    expect(byId.get(reply)?.replyToId).toBe(original);
+    expect(byId.get(original)?.replyToId).toBeNull();
+
+    const row = await t.run(async (ctx) => await ctx.db.get(reply));
+    expect(row?.replyToId).toBe(original);
+  });
+
+  it("rejects a reply whose target is in another channel", async () => {
+    const t = newTest();
+    await seedWorkspace(t, { members: [{ userId: "user-1" }] });
+    const channelId = await seedChannel(t);
+    const otherChannelId = await seedChannel(t);
+    const asUser = t.withIdentity({ subject: "user-1" });
+
+    const original = await asUser.mutation(api.messages.send, {
+      channelId: otherChannelId,
+      body: "b3RoZXI=",
+    });
+    await expect(
+      asUser.mutation(api.messages.send, {
+        channelId,
+        body: "cmVwbHk=",
+        replyToId: original,
+      }),
+    ).rejects.toThrow("Reply target not found in channel");
+  });
+
+  it("allows a message to carry both threadRootId and replyToId", async () => {
+    const t = newTest();
+    await seedWorkspace(t, { members: [{ userId: "user-1" }] });
+    const channelId = await seedChannel(t);
+    const asUser = t.withIdentity({ subject: "user-1" });
+
+    const root = await asUser.mutation(api.messages.send, { channelId, body: "cm9vdA==" });
+    const other = await asUser.mutation(api.messages.send, { channelId, body: "b3RoZXI=" });
+    const reply = await asUser.mutation(api.messages.send, {
+      channelId,
+      body: "cmVwbHk=",
+      threadRootId: root,
+      replyToId: other,
+    });
+
+    const row = await t.run(async (ctx) => await ctx.db.get(reply));
+    expect(row?.threadRootId).toBe(root);
+    expect(row?.replyToId).toBe(other);
   });
 
   it("requires SendMessages to send", async () => {
@@ -76,9 +232,9 @@ describe("messages.send and list", () => {
     });
     const channelId = await seedChannel(t);
     const asUser = t.withIdentity({ subject: "user-1" });
-    await expect(
-      asUser.mutation(api.messages.send, { channelId, ciphertext: "eA==", epoch: 0 }),
-    ).rejects.toThrow("Missing permission");
+    await expect(asUser.mutation(api.messages.send, { channelId, body: "eA==" })).rejects.toThrow(
+      "Missing permission",
+    );
   });
 
   it("requires SendInThreads to reply in a thread", async () => {
@@ -90,16 +246,11 @@ describe("messages.send and list", () => {
     });
     const channelId = await seedChannel(t);
     const asUser = t.withIdentity({ subject: "user-1" });
-    const rootId = await asUser.mutation(api.messages.send, {
-      channelId,
-      ciphertext: "cm9vdA==",
-      epoch: 0,
-    });
+    const rootId = await asUser.mutation(api.messages.send, { channelId, body: "cm9vdA==" });
     await expect(
       asUser.mutation(api.messages.send, {
         channelId,
-        ciphertext: "cmVwbHk=",
-        epoch: 0,
+        body: "cmVwbHk=",
         threadRootId: rootId,
       }),
     ).rejects.toThrow("Missing permission");
@@ -112,11 +263,11 @@ describe("messages.send and list", () => {
     const channelId = await seedChannel(t);
     const asUser = t.withIdentity({ subject: "user-1" });
 
-    await asUser.mutation(api.messages.send, { channelId, ciphertext: "MQ==", epoch: 0 });
-    await asUser.mutation(api.messages.send, { channelId, ciphertext: "Mg==", epoch: 0 });
-    await expect(
-      asUser.mutation(api.messages.send, { channelId, ciphertext: "Mw==", epoch: 0 }),
-    ).rejects.toThrow("Rate limit exceeded");
+    await asUser.mutation(api.messages.send, { channelId, body: "MQ==" });
+    await asUser.mutation(api.messages.send, { channelId, body: "Mg==" });
+    await expect(asUser.mutation(api.messages.send, { channelId, body: "Mw==" })).rejects.toThrow(
+      "Rate limit exceeded",
+    );
   });
 });
 
@@ -127,18 +278,20 @@ describe("messages.edit and delete", () => {
     const asUser1 = t.withIdentity({ subject: "user-1" });
     const messageId = await asUser1.mutation(api.messages.send, {
       channelId,
-      ciphertext: "b3JpZ2luYWw=",
-      epoch: 0,
+      body: "b3JpZ2luYWw=",
     });
     return { channelId, messageId, asUser1 };
   }
 
-  it("lets the author edit and sets editedAt", async () => {
+  it("lets the author edit, re-seals and sets editedAt", async () => {
     const t = newTest();
-    const { messageId, asUser1 } = await sendAsUser1(t);
-    await asUser1.mutation(api.messages.edit, { messageId, ciphertext: "ZWRpdGVk" });
+    const { channelId, messageId, asUser1 } = await sendAsUser1(t);
+    await asUser1.mutation(api.messages.edit, { messageId, body: "ZWRpdGVk" });
     const message = await t.run(async (ctx) => await ctx.db.get(messageId));
-    expect(message?.ciphertext).toBe("ZWRpdGVk");
+    expect(isSealed(message?.ciphertext ?? "")).toBe(true);
+    await expect(openString(bodyContext(channelId), message?.ciphertext ?? "")).resolves.toBe(
+      "ZWRpdGVk",
+    );
     expect(message?.editedAt).toBeTypeOf("number");
   });
 
@@ -147,7 +300,7 @@ describe("messages.edit and delete", () => {
     const { messageId } = await sendAsUser1(t);
     const asUser2 = t.withIdentity({ subject: "user-2" });
     await expect(
-      asUser2.mutation(api.messages.edit, { messageId, ciphertext: "aGFjaw==" }),
+      asUser2.mutation(api.messages.edit, { messageId, body: "aGFjaw==" }),
     ).rejects.toThrow("Missing permission");
   });
 
@@ -161,22 +314,25 @@ describe("messages.edit and delete", () => {
     const asUser1 = t.withIdentity({ subject: "user-1" });
     const messageId = await asUser1.mutation(api.messages.send, {
       channelId,
-      ciphertext: "b3JpZ2luYWw=",
-      epoch: 0,
+      body: "b3JpZ2luYWw=",
     });
     const asMod = t.withIdentity({ subject: "user-2" });
-    await asMod.mutation(api.messages.edit, { messageId, ciphertext: "bW9kLWVkaXQ=" });
+    await asMod.mutation(api.messages.edit, { messageId, body: "bW9kLWVkaXQ=" });
     const message = await t.run(async (ctx) => await ctx.db.get(messageId));
-    expect(message?.ciphertext).toBe("bW9kLWVkaXQ=");
+    await expect(openString(bodyContext(channelId), message?.ciphertext ?? "")).resolves.toBe(
+      "bW9kLWVkaXQ=",
+    );
   });
 
   it("soft-deletes as the author and writes an audit row", async () => {
     const t = newTest();
-    const { messageId, asUser1 } = await sendAsUser1(t);
+    const { channelId, messageId, asUser1 } = await sendAsUser1(t);
     await asUser1.mutation(api.messages.remove, { messageId });
     const message = await t.run(async (ctx) => await ctx.db.get(messageId));
     expect(message?.deletedAt).toBeTypeOf("number");
-    expect(message?.ciphertext).toBe("b3JpZ2luYWw=");
+    await expect(openString(bodyContext(channelId), message?.ciphertext ?? "")).resolves.toBe(
+      "b3JpZ2luYWw=",
+    );
     const audit = await t.run(async (ctx) => await ctx.db.query("auditLog").collect());
     expect(audit.some((row) => row.action === "message.delete")).toBe(true);
   });
@@ -188,6 +344,125 @@ describe("messages.edit and delete", () => {
     await expect(asUser2.mutation(api.messages.remove, { messageId })).rejects.toThrow(
       "Missing permission",
     );
+  });
+});
+
+describe("messages.threadInbox", () => {
+  it("returns a thread the viewer replied in, with the root body opened as plaintext", async () => {
+    const t = newTest();
+    await seedWorkspace(t, { members: [{ userId: "user-1" }, { userId: "user-2" }] });
+    const channelId = await seedChannel(t);
+    const asUser1 = t.withIdentity({ subject: "user-1" });
+    const asUser2 = t.withIdentity({ subject: "user-2" });
+
+    const root = await asUser1.mutation(api.messages.send, { channelId, body: "cm9vdA==" });
+    await asUser2.mutation(api.messages.send, {
+      channelId,
+      body: "cmVwbHk=",
+      threadRootId: root,
+    });
+
+    const rows = await asUser2.query(api.messages.threadInbox, {});
+    expect(rows.map((row) => row.id)).toEqual([root]);
+    expect(rows[0]?.body).toBe("cm9vdA==");
+    expect(rows[0]?.viewerParticipated).toBe(true);
+    expect(rows[0]?.viewerMentioned).toBe(false);
+    expect(rows[0]?.participantIds).toEqual(["user-2"]);
+    expect(rows[0]?.replyCount).toBe(1);
+    expect(rows[0]?.lastReplyAt).toBeTypeOf("number");
+
+    // The stored root is sealed; the query never returns the ciphertext.
+    const stored = await t.run(async (ctx) => await ctx.db.get(root));
+    expect(isSealed(stored?.ciphertext ?? "")).toBe(true);
+    expect(rows[0]?.body).not.toContain("aulora-sse-");
+  });
+
+  it("returns a thread where the viewer is only mentioned in a reply", async () => {
+    const t = newTest();
+    await seedWorkspace(t, { members: [{ userId: "user-1" }, { userId: "user-2" }] });
+    const channelId = await seedChannel(t);
+    const asUser1 = t.withIdentity({ subject: "user-1" });
+    const asUser2 = t.withIdentity({ subject: "user-2" });
+
+    const root = await asUser1.mutation(api.messages.send, { channelId, body: "cm9vdA==" });
+    await asUser1.mutation(api.messages.send, {
+      channelId,
+      body: "aGk=",
+      threadRootId: root,
+      mentionUserIds: ["user-2"],
+    });
+
+    const rows = await asUser2.query(api.messages.threadInbox, {});
+    expect(rows.map((row) => row.id)).toEqual([root]);
+    expect(rows[0]?.viewerMentioned).toBe(true);
+    expect(rows[0]?.viewerParticipated).toBe(false);
+    expect(rows[0]?.mentionedUserIds).toEqual(["user-2"]);
+  });
+
+  it("returns a thread where the viewer is only mentioned in the root", async () => {
+    const t = newTest();
+    await seedWorkspace(t, { members: [{ userId: "user-1" }, { userId: "user-2" }] });
+    const channelId = await seedChannel(t);
+    const asUser1 = t.withIdentity({ subject: "user-1" });
+    const asUser2 = t.withIdentity({ subject: "user-2" });
+
+    const root = await asUser1.mutation(api.messages.send, {
+      channelId,
+      body: "cm9vdA==",
+      mentionUserIds: ["user-2"],
+    });
+    await asUser1.mutation(api.messages.send, { channelId, body: "aGk=", threadRootId: root });
+
+    const rows = await asUser2.query(api.messages.threadInbox, {});
+    expect(rows.map((row) => row.id)).toEqual([root]);
+    expect(rows[0]?.viewerMentioned).toBe(true);
+    expect(rows[0]?.viewerParticipated).toBe(false);
+  });
+
+  it("omits threads the viewer neither replied in nor was mentioned in", async () => {
+    const t = newTest();
+    await seedWorkspace(t, {
+      members: [{ userId: "user-1" }, { userId: "user-2" }, { userId: "user-3" }],
+    });
+    const channelId = await seedChannel(t);
+    const asUser1 = t.withIdentity({ subject: "user-1" });
+    const asUser2 = t.withIdentity({ subject: "user-2" });
+    const asUser3 = t.withIdentity({ subject: "user-3" });
+
+    const root = await asUser1.mutation(api.messages.send, { channelId, body: "cm9vdA==" });
+    await asUser3.mutation(api.messages.send, {
+      channelId,
+      body: "cmVwbHk=",
+      threadRootId: root,
+    });
+
+    const rows = await asUser2.query(api.messages.threadInbox, {});
+    expect(rows).toHaveLength(0);
+  });
+
+  it("sorts threads by most recent activity, newest first", async () => {
+    const t = newTest();
+    await seedWorkspace(t, { members: [{ userId: "user-1" }] });
+    const channelId = await seedChannel(t);
+    const asUser = t.withIdentity({ subject: "user-1" });
+
+    const olderRoot = await asUser.mutation(api.messages.send, { channelId, body: "b2xkZXI=" });
+    await asUser.mutation(api.messages.send, {
+      channelId,
+      body: "b2xkLXJlcGx5",
+      threadRootId: olderRoot,
+    });
+
+    const newerRoot = await asUser.mutation(api.messages.send, { channelId, body: "bmV3ZXI=" });
+    await asUser.mutation(api.messages.send, {
+      channelId,
+      body: "bmV3LXJlcGx5",
+      threadRootId: newerRoot,
+    });
+
+    const rows = await asUser.query(api.messages.threadInbox, {});
+    expect(rows.map((row) => row.id)).toEqual([newerRoot, olderRoot]);
+    expect(rows[0]?.lastReplyAt ?? 0).toBeGreaterThanOrEqual(rows[1]?.lastReplyAt ?? 0);
   });
 });
 
@@ -204,8 +479,7 @@ describe("messages pins", () => {
     const asUser1 = t.withIdentity({ subject: "user-1" });
     const messageId = await asUser1.mutation(api.messages.send, {
       channelId,
-      ciphertext: "cGluLW1l",
-      epoch: 0,
+      body: "cGluLW1l",
     });
     return { t, channelId, messageId };
   }
@@ -220,6 +494,7 @@ describe("messages pins", () => {
       paginationOpts: PAGE,
     });
     expect(pins.page.map((m) => m.id)).toContain(messageId);
+    expect(pins.page[0]?.body).toBe("cGluLW1l");
 
     await asPinner.mutation(api.messages.unpin, { messageId });
     const after = await asPinner.query(api.messages.listPins, {

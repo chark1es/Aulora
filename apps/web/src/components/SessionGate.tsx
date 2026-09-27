@@ -1,5 +1,5 @@
 import type { ServerProfile } from "@aulora/core";
-import { Button, Spinner, Text } from "@aulora/ui-web";
+import { Spinner, Text } from "@aulora/ui-web";
 import type { ConvexReactClient } from "convex/react";
 import { useMemo } from "react";
 import { type AuloraAuthClient, authActionsFromClient } from "../lib/auth-client";
@@ -19,7 +19,7 @@ export function SessionGate({ profile, authClient, client }: SessionGateProps) {
 
   if (session.isPending) {
     return (
-      <div className="flex min-h-screen flex-col items-center justify-center gap-3">
+      <div className="pane flex flex-1 flex-col items-center justify-center gap-3">
         <Spinner size={28} label="Checking your session" />
         <Text tone="muted" size="sm">
           Checking your session…
@@ -36,27 +36,15 @@ export function SessionGate({ profile, authClient, client }: SessionGateProps) {
       ...(typeof user.email === "string" ? { email: user.email } : {}),
     };
     return (
-      <div className="relative">
-        <div className="absolute right-4 top-3 z-10">
-          <Button
-            size="sm"
-            variant="ghost"
-            onClick={() => {
-              void actions.signOut();
-            }}
-          >
-            Sign out
-          </Button>
-        </div>
-        <ChatSessionShell
-          client={client}
-          workspaceName={profile.name}
-          user={signedInUser}
-          onSignOut={() => {
-            void actions.signOut();
-          }}
-        />
-      </div>
+      <ChatSessionShell
+        client={client}
+        workspaceName={profile.name}
+        workspaceIconSeed={profile.iconSeed}
+        user={signedInUser}
+        onSignOut={() => {
+          void actions.signOut();
+        }}
+      />
     );
   }
 

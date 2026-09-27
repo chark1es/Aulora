@@ -5,9 +5,9 @@ import { isDesktop } from "./desktop";
 import { isWebPushSupported, registerWebPushDevice } from "./web-push";
 
 /**
- * Registers this browser for Web Push once the chat runtime (and therefore the
- * device identity) is ready. No-op on desktop, where notifications go through
- * the native Tauri bridge instead, and on browsers without Push support.
+ * Registers this browser for Web Push once the chat runtime is ready. No-op on
+ * desktop, where notifications go through the native Tauri bridge instead, and
+ * on browsers without Push support.
  */
 export function useWebPush(runtime: ChatRuntime | undefined): void {
   useEffect(() => {
@@ -34,7 +34,7 @@ export function useWebPush(runtime: ChatRuntime | undefined): void {
         if (cancelled) {
           return;
         }
-        await registerWebPushDevice(runtime.client, runtime.identityKey, publicKey);
+        await registerWebPushDevice(runtime.client, publicKey);
       } catch {
         // Web Push is best-effort; never surface a registration failure.
       }

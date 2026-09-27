@@ -8,6 +8,37 @@ const http = httpRouter();
 // Mounts the full Better Auth HTTP surface (sign-in/up, callbacks, OAuth, ...).
 authComponent.registerRoutes(http, createAuth, { cors: true });
 
+/**
+ * Serves decrypted file bytes for a signed short-lived token. Files are sealed
+ * at rest (`file.bytes`), so the plain Convex storage URL is useless to a
+ * client; this route is the `files.get` `url`. The token itself authorizes the
+ * request, so no session is required (which lets `<img>`/`<video>` fetch bytes
+ * directly). The alternative programmatic path is `files.download`.
+ */
+http.route({
+  path: "/files/download",
+  method: "GET",
+  handler: httpAction(async (ctx, request) => {
+    const token = new URL(request.url).searchParams.get("token");
+    if (token === null || token.length === 0) {
+      return new Response("Missing token", { status: 400 });
+    }
+    try {
+      const { bytes } = await ctx.runAction(api.files.download, { token });
+      return new Response(bytes, {
+        status: 200,
+        headers: {
+          "content-type": "application/octet-stream",
+          "content-length": String(bytes.byteLength),
+          "cache-control": "private, no-store",
+        },
+      });
+    } catch {
+      return new Response("Invalid or expired token", { status: 403 });
+    }
+  }),
+});
+
 function json(body: unknown, status: number): Response {
   return new Response(JSON.stringify(body), {
     status,

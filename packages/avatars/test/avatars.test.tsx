@@ -1,6 +1,6 @@
 import { render, screen } from "@testing-library/react";
 import { describe, expect, it } from "vitest";
-import { Avatar, avatarSvg, serverAvatarSeed, userAvatarSeed } from "../src";
+import { Avatar, avatarRadius, avatarSvg, serverAvatarSeed, userAvatarSeed } from "../src";
 
 describe("avatarSvg", () => {
   it("returns a deterministic raw SVG string", () => {
@@ -45,5 +45,14 @@ describe("Avatar", () => {
     const { container } = render(<Avatar seed="aulora:user:8f3a1c" animate="always" />);
     expect(container.querySelector("img")).toBeNull();
     expect(container.querySelector("svg")).not.toBeNull();
+  });
+});
+
+describe("avatar shape", () => {
+  it("rounds people fully and servers as a squircle", () => {
+    expect(avatarRadius(40)).toBe(20);
+    expect(avatarRadius(40, "squircle")).toBe(12);
+    const { container } = render(<Avatar seed="aulora:server:acme" size={40} shape="squircle" />);
+    expect(container.querySelector("span")?.style.borderRadius).toBe("12px");
   });
 });

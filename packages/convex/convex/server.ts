@@ -3,7 +3,7 @@ import { ConvexError, v } from "convex/values";
 import type { QueryCtx } from "./_generated/server";
 import { mutation, query } from "./_generated/server";
 import { writeAudit } from "./lib/audit";
-import { API_VERSION, AULORA_VERSION, getPublicAuthConfig } from "./lib/env";
+import { API_VERSION, AULORA_VERSION, getEncryptionSettings, getPublicAuthConfig } from "./lib/env";
 import { requireWorkspacePermission } from "./lib/permissions";
 
 /**
@@ -16,6 +16,7 @@ async function buildPublicConfig(ctx: QueryCtx) {
   const server = await ctx.db.query("server").first();
   const signupEnabled = server?.settings.signupEnabled ?? true;
   const vapidPublicKey = env.VAPID_PUBLIC_KEY?.trim();
+  const encryption = getEncryptionSettings(env);
   return {
     name: server?.name ?? "Aulora",
     iconSeed: server?.iconSeed ?? "aulora:server:default",
@@ -24,6 +25,14 @@ async function buildPublicConfig(ctx: QueryCtx) {
     convexUrl: env.CONVEX_CLOUD_URL ?? "",
     siteUrl: env.SITE_URL ?? env.CONVEX_SITE_URL ?? "",
     auth: getPublicAuthConfig(env, signupEnabled),
+    // Non-secret encryption descriptor: mode, algorithm, key version and the
+    // key-manager provider only. Key material never leaves the environment.
+    encryption: {
+      mode: "server" as const,
+      algorithm: "AES-256-GCM",
+      keyVersion: encryption.keyVersion,
+      provider: encryption.provider,
+    },
     // The VAPID public key is public by definition; the private half never
     // leaves the deployment environment.
     webPush:

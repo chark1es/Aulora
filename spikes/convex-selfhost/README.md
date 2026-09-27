@@ -1,6 +1,6 @@
 # Spike A — Convex self-hosted + Postgres + Better Auth + Keycloak
 
-De-risks the backend/auth hosting story for Aulora (self-hosted, E2EE team chat).
+De-risks the backend/auth hosting story for Aulora (self-hosted, server-side encrypted team chat).
 Everything runs locally in Docker. **Never commit `.env` or `app/.env.local`.**
 
 Versions proven in this spike:

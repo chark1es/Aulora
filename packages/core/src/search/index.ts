@@ -2,7 +2,7 @@
  * Local, on-device inverted search index over **decrypted** message text.
  *
  * The index never sends text anywhere: callers feed it plaintext that was
- * opened by the MLS session, and only ids and snippets come back. It is
+ * server-decrypted, and only ids and snippets come back. It is
  * persistent through a {@link SearchStore} adapter (IndexedDB on web, an
  * in-memory store in tests) and backfills from decrypted history in the
  * background via {@link SearchIndex.load}.
@@ -21,6 +21,7 @@ export interface SearchDocument {
 export interface SearchHit {
   readonly messageId: string;
   readonly channelId: string;
+  readonly authorId: string;
   readonly snippet: string;
   readonly score: number;
   readonly createdAt: number;
@@ -173,6 +174,7 @@ export class SearchIndex {
       hits.push({
         messageId,
         channelId: document.channelId,
+        authorId: document.authorId,
         snippet: contextSnippet(document.text, terms),
         score,
         createdAt: document.createdAt,

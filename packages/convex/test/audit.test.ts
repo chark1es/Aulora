@@ -18,8 +18,11 @@ describe("audit log", () => {
       permissions: Permission.Kick,
     });
     await asOwner.mutation(api.members.assignRole, { userId: "user-1", roleId });
-    const channelId = await asOwner.mutation(api.channels.create, { kind: "text" });
-    await asOwner.mutation(api.channels.rename, { channelId, nameCiphertext: "eA==" });
+    const channelId = await asOwner.mutation(api.channels.create, {
+      kind: "text",
+      name: "general",
+    });
+    await asOwner.mutation(api.channels.rename, { channelId, name: "eA==" });
     const invite = await asOwner.mutation(api.invites.create, {});
     await asOwner.mutation(api.invites.revoke, { inviteId: invite.inviteId });
     await asOwner.mutation(api.server.updateSettings, { inviteOnly: false });

@@ -44,10 +44,7 @@ export function ThreadModal({
         setDecrypted((current) => {
           const next = new Map(current);
           for (const reply of incoming) {
-            const text = runtime.session.decryptedText(reply.id);
-            if (text !== undefined) {
-              next.set(reply.id, text);
-            }
+            next.set(reply.id, runtime.session.decryptedText(reply.id));
           }
           return next;
         });
@@ -71,7 +68,7 @@ export function ThreadModal({
               <Text size="sm" className="font-medium">
                 {memberNames.get(root.authorId) ?? root.authorId}
               </Text>
-              <Text size="sm">{rootText ?? "Unable to decrypt this message."}</Text>
+              <Text size="sm">{rootText ?? "Unable to load this message."}</Text>
             </Card>
             {replies.map((reply) => (
               <View key={reply.id} className="px-1">
@@ -79,9 +76,7 @@ export function ThreadModal({
                   {memberNames.get(reply.authorId) ?? reply.authorId}
                   {reply.authorId === ownUserId ? " (you)" : ""}
                 </Text>
-                <Text size="sm">
-                  {decrypted.get(reply.id) ?? "Unable to decrypt this message."}
-                </Text>
+                <Text size="sm">{decrypted.get(reply.id) ?? "Unable to load this message."}</Text>
               </View>
             ))}
             {replies.length === 0 && (

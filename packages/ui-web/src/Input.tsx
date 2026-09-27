@@ -10,7 +10,7 @@ export interface InputProps extends InputHTMLAttributes<HTMLInputElement> {
   error?: string;
 }
 
-/** Text input with a 14px radius, hairline border and accent focus ring. */
+/** Text input with a 10px radius, hairline border and accent focus ring. */
 export const Input = forwardRef<HTMLInputElement, InputProps>(function Input(
   { label, hint, error, className, id, ...rest },
   ref,
@@ -23,7 +23,7 @@ export const Input = forwardRef<HTMLInputElement, InputProps>(function Input(
 
   return (
     <div className="flex w-full flex-col gap-1.5">
-      <label htmlFor={inputId} className="text-sm font-medium text-text-muted">
+      <label htmlFor={inputId} className="text-[13px] font-medium text-text-muted">
         {label}
       </label>
       <input
@@ -32,8 +32,8 @@ export const Input = forwardRef<HTMLInputElement, InputProps>(function Input(
         aria-invalid={error !== undefined || undefined}
         aria-describedby={describedBy.length > 0 ? describedBy.join(" ") : undefined}
         className={cn(
-          "h-10 w-full rounded-input border bg-surface-3 px-3 text-base text-text placeholder:text-text-muted",
-          "transition focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent focus-visible:ring-offset-2 focus-visible:ring-offset-bg",
+          "h-10 w-full rounded-input border bg-surface-3 px-3 text-[14px] text-text placeholder:text-text-muted",
+          "transition focus-visible:border-accent focus-visible:bg-surface-2 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent-soft",
           "disabled:pointer-events-none disabled:opacity-50",
           error !== undefined ? "border-danger" : "border-border",
           className,

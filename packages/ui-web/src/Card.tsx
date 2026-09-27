@@ -6,7 +6,7 @@ export interface CardProps extends HTMLAttributes<HTMLDivElement> {
   elevated?: boolean;
 }
 
-/** Soft 20px-radius surface with a hairline border and no heavy shadow. */
+/** Soft-cornered surface with a hairline border and no heavy shadow. */
 export function Card({ elevated = false, className, children, ...rest }: CardProps) {
   return (
     <div

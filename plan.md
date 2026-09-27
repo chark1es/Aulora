@@ -27,7 +27,7 @@ Aulora v1 ships one Docker Compose stack that hosts exactly one workspace, and f
 - OAuth and OIDC sign-in, plus local email/password as a fallback
 - Live updates everywhere (typing, presence, unread counts, edits)
 - Real notifications: desktop, web push, iOS and Android push
-- End-to-end encryption on every channel, DM and file
+- Server-side encryption on every channel, DM and file, with a locally generated master key (`AULORA_ENCRYPTION_KEY`) by default and external key managers as an optional upgrade
 - Light and dark themes, blobatars as the default avatar
 - Free for personal and noncommercial use; paid license for businesses
 
@@ -49,7 +49,7 @@ Convex is the backend, Expo covers iOS and Android, and one React DOM app powers
 | Web | Vite + React SPA, TanStack Router | Convex is client-driven, so SSR adds little; ships as static files behind Caddy |
 | macOS, Windows, Linux | Tauri 2 wrapping the web app | Native webview, small binaries, native menus, tray, notifications, deep links, OS keychain |
 | Auth | Better Auth on Convex | Generic OAuth and OIDC plugins, email/password, sessions |
-| Crypto | MLS (RFC 9420) via `ts-mls`, OpenMLS in Tauri's Rust core as an option | Modern group E2EE standard |
+| Crypto | AES-256-GCM envelope encryption with HKDF-derived per-scope DEKs; KEK derived from a locally generated `AULORA_ENCRYPTION_KEY` by default, with optional external custody (Vault/AWS KMS/GCP KMS/HTTP proxy) | Server-side encryption with a zero-dependency default and pluggable key custody and versioned rotation |
 | Styling | Tailwind (web/desktop), NativeWind (mobile), shared token package | One palette, two renderers |
 | Tooling | Bun, Turborepo, Biome | Matches existing workflow |
 
@@ -63,12 +63,11 @@ One Bun + Turborepo workspace; apps stay thin and everything reusable lives in `
 aulora/
   apps/
     web/            Vite + React SPA (also the Tauri frontend)
-    desktop/        Tauri 2 shell (src-tauri/ Rust: keychain, notifications, tray, MLS option)
+    desktop/        Tauri 2 shell (src-tauri/ Rust: native shell, notifications, tray, deep links)
     mobile/         Expo app (iOS + Android)
   packages/
-    convex/         schema, queries, mutations, actions, http routes, crons
+    convex/         schema, queries, mutations, actions, http routes, crons, server-side encryption
     core/           shared hooks + client logic (server URL store, unread math, permission checks)
-    crypto/         MLS wrapper, key storage adapters (web IndexedDB, Tauri keychain, Expo SecureStore)
     ui-web/         React DOM components (message list, composer, sidebar)
     ui-native/      React Native components mirroring ui-web
     tokens/         colors, radii, spacing, type scale -> Tailwind + NativeWind configs
@@ -96,10 +95,11 @@ A single `docker compose up` starts five core services (plus two optional) behin
 | `minio` (optional) | MinIO or any S3 | Uploads, exports, snapshots when files outgrow the local volume |
 | `web` | built from `apps/web` | Static SPA served by Caddy |
 | `push-relay` (optional) | built from `infra/push-relay` | Holds APNs/FCM credentials for mobile push |
+| `vault` (optional) | HashiCorp Vault | Optional/advanced external key manager holding the KEK via Transit; the default is a locally generated `AULORA_ENCRYPTION_KEY`, with AWS/GCP KMS or an HTTP proxy as alternatives |
 
 - Convex serves the API on port 3210, HTTP actions on 3211 and the dashboard on 6791, and can use Postgres and S3 instead of the defaults ([self-hosting guide](https://github.com/get-convex/convex-backend/tree/main/self-hosted), [own infra](https://github.com/get-convex/convex-backend/blob/main/self-hosted/advanced/hosting_on_own_infra.md))
 - First-run flow: `docker compose up -d`, run the admin key script, then `bun run deploy:convex` from `infra/`
-- Ship a `aulora` CLI container that does first-run setup: generates `INSTANCE_SECRET`, admin key, VAPID keys, names the workspace and creates its owner account
+- Ship a `aulora` CLI container that does first-run setup: generates `INSTANCE_SECRET`, admin key, VAPID keys and the local encryption master key `AULORA_ENCRYPTION_KEY`, names the workspace and creates its owner account
 - Backups: nightly `convex export` to the S3 bucket plus Postgres dumps
 - Well-known endpoint `https://site.<domain>/.well-known/aulora.json` returns workspace name, icon seed, version, auth providers and the Convex URL, so clients only need the base domain
 
@@ -158,56 +158,62 @@ Permissions work like Discord: a member's power is the union of their roles' bit
 
 ## Messaging features
 
-v1 covers the everyday Slack surface, with every message and file encrypted on the sender's device; features that normally read message text on the server move to the client.
+v1 covers the everyday Slack surface. The server seals content with server-side encryption before it is stored, so features that need message text (search, moderation) can run on the server over decrypted content.
 
 - **Channels**: public, private, read-only announcement; grouped into collapsible categories; archive and unarchive
 - **DMs and group DMs** (up to 10 people)
 - **Threads**: reply in thread with "also send to channel" option
-- **Messages**: Markdown subset, code blocks with highlighting, edits (with "edited" marker), deletes, reactions, pins, mentions (`@user`, `@role`, `@here`, `@everyone`), link previews (fetched by the sender's client and sent encrypted)
-- **Uploads**: drag and drop, paste, camera on mobile; images get thumbnails and blurhash placeholders; per-workspace size limit; every file and thumbnail is encrypted client-side before upload
+- **Messages**: Markdown subset, code blocks with highlighting, edits (with "edited" marker), deletes, reactions, pins, mentions (`@user`, `@role`, `@here`, `@everyone`), link previews
+- **Uploads**: drag and drop, paste, camera on mobile; images get thumbnails and blurhash placeholders; per-workspace size limit; every file and thumbnail is sealed server-side (AES-256-GCM) before it is stored
 - **History**: infinite scroll with Convex paginated queries, jump to date, jump to first unread, per-channel read cursor
-- **Search**: local on-device index built as messages decrypt (SQLite FTS5 on mobile and desktop, IndexedDB on web); older history is backfilled in the background
+- **Search**: server-side full-text index over decrypted content; the client keeps a local cache of recent history for offline use
 - **Presence and typing**: online, idle, DND, custom status with emoji; typing indicators via a short-TTL table
-- **Drafts**: per-channel, synced across a user's own devices as ciphertext
+- **Drafts**: per-channel, synced across a user's own devices (sealed server-side)
 - **Offline**: optimistic sends with a local outbox and retry
 
 ## Encryption and security
 
-Every channel, DM, thread, reaction, edit and file is end-to-end encrypted with MLS; the server stores and relays ciphertext and never holds a key that can read a message.
+Every channel, DM, thread, reaction, edit and file is encrypted by the server with server-side envelope encryption. Nothing readable is stored at rest; the server decrypts only for authorized clients, and the root key (the KEK) is never written to the database or a backup. By default the KEK is derived from a locally generated `AULORA_ENCRYPTION_KEY`; an external key manager is an optional/advanced upgrade.
+
+**The envelope**
+
+- Algorithm: AES-256-GCM with a 12-byte random IV and a 128-bit authentication tag
+- Each sealed value carries a header naming its key version, so reads survive a rotation while writes always use the current version; older values are re-sealed lazily
+- The per-record data key (DEK) is derived with HKDF-SHA256 from the master key, the workspace salt and the record scope
+- Scope, record id and key version are bound into the GCM additional data, so a ciphertext cannot be moved to a different scope or record without failing authentication
+- Files are sealed server-side too, with the same envelope and a per-file DEK
+
+**Key management**
+
+- The master key (KEK) is the root of confidentiality. The default `local` provider derives it from a base64 32-byte `AULORA_ENCRYPTION_KEY` that `setup` generates once and persists in `.env`, so a default install needs no extra services; `INSTANCE_SECRET` is only a legacy fallback when that key is unset
+- External key managers (HashiCorp Vault Transit, AWS KMS, GCP KMS or a small HTTP unwrap proxy) are an optional/advanced upgrade for custody across nodes; the provider interface accepts them without code changes
+- Remote providers are unwrap-only: the server stores `AULORA_KEK_WRAPPED` (the KEK encrypted by the manager) and asks the manager to unwrap it from an action/setup/cron; key material stays in memory and never in a query or mutation
+- Provider, key id and key version are configurable (`AULORA_EKM_PROVIDER`, `AULORA_EKM_KEY_ID`, `AULORA_ENCRYPTION_KEY_VERSION`); bump the version to rotate the KEK and mark the new version active
+- `encryptionKeys` rows record which version exists, which provider guards it and whether it is active — never key material
+- Losing the KEK makes the existing data unreadable, so it must be backed up separately from the database (the `AULORA_ENCRYPTION_KEY` in `.env`, or the EKM's KEK if you upgrade to one); the database, its dumps and the `convex export` hold only ciphertext
 
 **Why realtime stays fast**
 
-- Each message is one AES-GCM encryption with the channel's current MLS epoch key: microseconds on any modern device, so send and receive latency is unchanged
-- Convex still does what it is good at: ordering, pagination, subscriptions, read cursors and permissions all work on metadata (channel, author, timestamps, IDs), not on message text
-- MLS membership changes cost O(log n) per commit, so a 1,000-member channel re-keys in one small commit rather than 1,000 separate key sends
-- Decryption happens in a worker (Web Worker on web and desktop, JSI module on mobile) so scrolling long history never blocks the UI
+- Decrypting one value is a cheap in-process AES-GCM operation, so send and receive latency is effectively unchanged
+- Convex still does what it is good at: ordering, pagination, subscriptions, read cursors and permissions all work on metadata (channel, author, timestamps, IDs)
+- Search and moderation run server-side over decrypted content, so they cover all history without a per-device index
+- Notification text and mention detection run server-side
 
-**How it works**
+**What stays true**
 
-- Protocol: MLS (RFC 9420) with forward secrecy and post-compromise security
-- Every channel and DM is an MLS group; each device is an MLS member with its own identity key
-- Convex stores KeyPackages, encrypted commits, Welcome messages and ciphertext only
-- Role or permission changes that remove View channel trigger an MLS Remove commit; joins trigger Add
-- Public channels: any member with View channel can request to join the group; an online member's client auto-approves the Add (the server only proves the requester has the permission)
-- Keys live in the OS keystore: iOS Keychain / Android Keystore via `expo-secure-store`, macOS Keychain / Windows Credential Manager via Tauri, non-extractable WebCrypto keys in IndexedDB on web
-- Device verification: safety numbers or QR scan; new devices are approved from an existing device
-- Key backup: recovery passphrase (Argon2id) encrypts the user's identity keys and channel history keys; the encrypted blob is stored on the server
-- History for new members and new devices: existing members' clients share encrypted history-key bundles, so joining a channel can show its past messages
-
-**What moves to the client**
-
-- Search, link previews, notification text and mention detection all run on-device
-- Moderation: reports carry the decrypted message from the reporter's device, signed so it cannot be forged
-- Data at rest on the server is ciphertext by design; Postgres and S3 encryption at rest is still on as defense in depth
+- Data at rest is ciphertext by design; Postgres and S3 encryption at rest stay on as defense in depth
+- The push relay still forwards only content-free wakeups (no message text), because the app fetches and decrypts content from its own server
+- Transport is TLS end to end at the edge
 
 **Hardening checklist**
 
 - [ ] TLS 1.3 via Caddy, HSTS, WebSocket over TLS only
 - [ ] Rate limits on auth, message send and upload endpoints
-- [ ] Upload size caps; EXIF stripping on the client before encryption
+- [ ] Upload size caps; EXIF stripping before sealing
 - [ ] CSP on web and in the Tauri webview; no remote code in the desktop shell
 - [ ] Session revocation and a device list per user
-- [ ] Third-party crypto review before 1.0
+- [ ] KEK custody runbook: backup, rotation and restore drills
+- [ ] Third-party security review before 1.0
 
 ## Realtime and notifications
 
@@ -237,30 +243,32 @@ Live updates come from Convex reactive queries; notifications are the one place 
 
 ## Design system
 
-The reference look (near-black canvas, faint dot grid, soft rounded cards, hairline borders, mono metadata) carries over, with a warm ember accent and a moss secondary so Aulora does not read as Slack purple or Discord blurple.
+The reference look is native macOS, not a generated dashboard: flat panes with hairline dividers, Apple system neutrals for surfaces, and Ember kept as a signal, not a wash. No ornamental dot grid and no floating cards; the window reads as one object, with translucency reserved for the sidebar and toolbar over live content.
 
 **Palettes**
 
 | Token | Dark (Loam) | Light (Linen) | Use |
 | --- | --- | --- | --- |
-| `bg` | #0A0A0C | #F4F2EE | App canvas behind the dot grid |
-| `grid-dot` | #1A1A1F | #E2DED6 | 1px dots on a 16px grid |
-| `surface-1` | #111114 | #FBFAF7 | Sidebar, server rail |
-| `surface-2` | #17171B | #FFFFFF | Cards, message hover, composer |
-| `surface-3` | #1F1F24 | #EEEBE5 | Inputs, code blocks, pills |
-| `border` | #26262C | #DDD8CF | Hairlines, card outlines |
-| `text` | #ECEBEF | #18171B | Primary text |
-| `text-muted` | #8B8A94 | #6B6873 | Timestamps, meta, placeholders |
-| `accent` (Ember) | #F5A45B | #A8530F | Unread dot, mentions, primary buttons, focus ring |
-| `accent-soft` | #F5A45B1F | #A8530F14 | Mention highlight background |
-| `secondary` (Moss) | #8FD19E | #2F7A45 | Online presence, success, E2EE lock icon |
-| `danger` | #F2777A | #C23A3E | Delete, errors, DND |
+| `bg` | #1C1C1E | #F2F2F7 | Window canvas behind the panes |
+| `grid-dot` | #2C2C2E | #E5E5EA | Reserved; no dot grid is drawn by default |
+| `surface-1` | #242426 | #F7F7FA | Sidebar, server rail |
+| `surface-2` | #2C2C2E | #FFFFFF | Content, message rows, composer |
+| `surface-3` | #3A3A3C | #EFEFF4 | Inputs, hover, selected rows, code blocks |
+| `border` | #38383A | #D9D9DE | Hairlines, pane dividers, card outlines |
+| `text` | #F5F5F7 | #1C1C1E | Primary text |
+| `text-muted` | #A6A6AE | #636366 | Timestamps, meta, placeholders |
+| `accent` (Ember) | #E4571C | #C2410C | Primary buttons, focus ring, unread count |
+| `accent-soft` | #E4571C24 | #C2410C14 | Mentions, selected icon tint, own-bubble surface |
+| `secondary` (Moss) | #4CD964 | #248A3D | Online presence, success, encryption lock icon |
+| `danger` | #FF6B6B | #D70015 | Delete, errors, DND |
 
 **Shape and type**
 
-- Radii: 20px cards, 14px bubbles and inputs, 999px pills; hairline 1px borders, no heavy shadows
-- UI font: Geist or Inter; metadata, file names, code and the channel header in Geist Mono or JetBrains Mono (echoing the reference's `projects/main` header)
+- Radii: 12px cards and panels, 10px inputs and buttons, 16px message bubbles, 999px pills; hairline 1px borders, no heavy shadows
+- UI font: the platform system face (SF Pro on Apple platforms, Segoe UI Variable on Windows, Inter/Geist elsewhere); metadata, file names and code in the platform mono face (SF Mono, Geist Mono, JetBrains Mono)
 - Chat layout is flat rows, not bubbles, on desktop and web; mobile uses softly rounded grouped rows
+- Accent discipline: Ember marks the primary action, focus, unread and mentions. Selection uses `surface-3` plus a 3px accent leading bar, not a full accent fill. Own messages use the `accent-soft` tint so a long conversation never becomes a wall of orange
+- The sidebar and conversation header are translucent materials (`material-chrome`, `backdrop-filter: blur(20px)`); content surfaces stay opaque
 - "Thinking" style particle spinner reused as the reconnecting and loading indicator
 
 **Blobatars**
@@ -274,7 +282,7 @@ The reference look (near-black canvas, faint dot grid, soft rounded cards, hairl
 
 ## Data model sketch
 
-These Convex tables cover v1; since one server is one workspace, no table needs a `workspaceId`. Better Auth manages its own user, session and account tables through its component. Every `*Ciphertext` field is opaque to the server.
+These Convex tables cover v1; since one server is one workspace, no table needs a `workspaceId`. Better Auth manages its own user, session and account tables through its component. Every `*Ciphertext` field holds a server-sealed `aulora-sse-*` envelope, opened with the master key only for authorized clients.
 
 | Table | Key fields | Indexes |
 | --- | --- | --- |
@@ -282,35 +290,33 @@ These Convex tables cover v1; since one server is one workspace, no table needs 
 | `members` | userId, nickname, roleIds\[\], joinedAt, timeoutUntil | by\_user |
 | `roles` | name, color, position, permissions (bigint bitfield), hoisted, mentionable | by\_position |
 | `categories` | name, position, overrides\[\] | by\_position |
-| `channels` | categoryId, kind (text, announcement, dm, group\_dm), nameCiphertext, topicCiphertext, mlsGroupId, overrides\[\], archived | by\_category, by\_dm\_key |
-| `messages` | channelId, authorDeviceId, ciphertext, epoch, threadRootId, attachmentIds\[\], mentionUserIds\[\], editedAt, deletedAt | by\_channel\_created, by\_thread |
+| `channels` | categoryId, kind (text, announcement, dm, group\_dm), nameCiphertext, topicCiphertext, overrides\[\], archived | by\_category, by\_dm\_key |
+| `messages` | channelId, authorId, ciphertext, threadRootId, attachmentIds\[\], mentionUserIds\[\], editedAt, deletedAt | by\_channel\_created, by\_thread |
 | `reactions` | messageId, userId, emojiCiphertext | by\_message |
 | `readStates` | userId, channelId, lastReadMessageId, mentionCount | by\_user\_channel |
-| `files` | storageId, uploaderId, sizeBytes, encrypted metadata (name, mime, dimensions, blurhash) | by\_uploader |
-| `devices` | userId, platform, pushToken, identityKey, lastSeen | by\_user |
-| `keyPackages` | deviceId, keyPackage, usedAt | by\_device\_unused |
-| `mlsCommits` | channelId, epoch, commitCiphertext, welcomeCiphertext | by\_channel\_epoch |
-| `keyBackups` | userId, backupCiphertext, kdfParams | by\_user |
+| `files` | storageId, uploaderId, sizeBytes, sealed metadata (name, mime, dimensions, blurhash) | by\_uploader |
+| `devices` | userId, platform, pushToken, lastSeen | by\_user |
+| `encryptionKeys` | keyVersion, provider, kekId, status (active/retired), createdAt, retiredAt | by\_key\_version |
 | `presence` | userId, status, customStatusCiphertext, lastHeartbeat | by\_user |
 | `typing` | channelId, userId, expiresAt | by\_channel |
 | `notificationPrefs` | userId, scope (server or channel), level, muteUntil, keywordsCiphertext | by\_user\_scope |
 | `invites` | code, createdBy, maxUses, uses, expiresAt | by\_code |
 | `auditLog` | actorId, action, targetId, meta, at | by\_at |
 
-- `mentionUserIds[]` is plaintext metadata by design so the server can count mentions and route push; the mention text itself stays encrypted
+- `mentionUserIds[]` is plaintext metadata by design so the server can count mentions and route push; the mention text itself is sealed server-side
 
 ## Milestones
 
-Seven phases take Aulora from a compose file to beta; because every message is encrypted, MLS goes in with core chat rather than being bolted on later.
+Seven phases take Aulora from a compose file to beta; the server-side encryption layer and its `local` key provider go in with core chat, and external key managers land before beta.
 
 | Phase | Scope | Done when |
 | --- | --- | --- |
-| 0. Spikes | Convex self-hosted + Better Auth generic OIDC, `ts-mls` two-device demo, Blobatar in React Native | All three risks proven or replaced |
+| 0. Spikes | Convex self-hosted + Better Auth generic OIDC, server-side envelope encryption + EKM provider spike, Blobatar in React Native | All three risks proven or replaced |
 | 1. Foundation | Monorepo, tokens, compose stack, server-connect screen, local + OIDC login | Sign in on web from a fresh `docker compose up` |
-| 2. Core chat | MLS groups per channel, encrypted messages, threads, reactions, encrypted uploads, read state, local search | A team uses web daily and the database holds only ciphertext |
+| 2. Core chat | Server-side envelope encryption with the local provider, messages, threads, reactions, server-sealed uploads, read state, server-side search | A team uses web daily and the database holds only ciphertext |
 | 3. Roles | Role editor, bitfield checks in every mutation, channel overrides, audit log, invites | Permission test suite passes |
 | 4. Clients | Tauri desktop (macOS polish first), Expo iOS/Android, deep links, desktop + web push | Same account works on all five clients |
-| 5. Keys + mobile push | Device verification, key backup, history sharing for new members, project push relay for APNs/FCM | New phone restores history from backup and gets push |
+| 5. External EKM + mobile push | Vault/AWS KMS/GCP KMS/HTTP providers, key versioning and rotation, project push relay for APNs/FCM | A deployment unwraps its KEK from an external key manager and mobile push works |
 | 6. Beta | Admin panel, backups, license key check, docs site, one-command installer | Outside tester self-hosts without help |
 |  |  |  |
 
@@ -320,7 +326,7 @@ Seven phases take Aulora from a compose file to beta; because every message is e
 
 - Name: Aulora
 - Mobile push: the project runs its own relay for official store builds
-- Encryption: E2EE on every channel, DM and file
+- Encryption: server-side AES-256-GCM envelope encryption on every channel, DM and file, with the master key (KEK) derived from a locally generated `AULORA_ENCRYPTION_KEY` by default; external key managers (Vault, AWS/GCP KMS or an HTTP proxy) are optional
 - Tenancy: one workspace per server; clients join many servers
 - Database: Postgres
 - License: free for personal and noncommercial use, paid for commercial use (see Licensing)
@@ -330,7 +336,9 @@ Seven phases take Aulora from a compose file to beta; because every message is e
 - [ ] Trademark and domain check for Aulora
 - [ ] Pricing model for commercial licenses: per server, per seat, or flat annual
 - [ ] Should the push relay be free for noncommercial servers and metered for licensed ones?
-- [ ] Max members per channel to test MLS against (1,000? 10,000?)
+- [ ] Max message and upload volume per workspace to size Postgres and S3
+- [ ] KEK rotation runbook: drain, re-seal old key versions, retire a version
+- [ ] Which external key managers to prioritize beyond Vault (AWS KMS, GCP KMS, HTTP proxy)
 
 ## Licensing
 
@@ -341,12 +349,15 @@ Aulora uses a dual license: the [PolyForm Noncommercial License 1.0.0](https://p
 - It is source-available, not OSI open source; say so plainly in the README
 - Contributors sign a CLA so the project can keep selling commercial licenses
 - Enforcement is by license terms, not DRM; the admin panel just shows license status and a nag for unlicensed commercial installs
-- Check third-party licenses (Convex backend, Better Auth, `ts-mls`, Blobatar is MIT) for compatibility before release
+- Check third-party licenses (Convex backend, Better Auth, Blobatar is MIT) for compatibility before release
 
 ## Sources
 
 - [Convex self-hosting README](https://github.com/get-convex/convex-backend/tree/main/self-hosted)
 - [Convex: hosting on your own infrastructure](https://github.com/get-convex/convex-backend/blob/main/self-hosted/advanced/hosting_on_own_infra.md)
+- [HashiCorp Vault Transit secrets engine](https://developer.hashicorp.com/vault/docs/secrets/transit)
+- [AWS KMS](https://docs.aws.amazon.com/kms/latest/developerguide/overview.html)
+- [Google Cloud KMS](https://cloud.google.com/kms/docs)
 - [Blobatar](https://blobatar.dev)
 - [Better Auth issue #5314 (OIDC/SSO plugins in Convex)](https://github.com/better-auth/better-auth/issues/5314)
 

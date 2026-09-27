@@ -1,21 +1,17 @@
 /**
  * Test doubles for the chat session.
  *
- * `createMemoryMlsEngine()` is a real two-party-capable MLS engine stand-in
- * with the same observable contract as `@aulora/crypto`'s `MlsEngine`
- * (epochs, add/remove, welcome exchange, forward secrecy around removed
- * members) but with no cryptography. `createMockPort()` is an in-memory
- * `ChatPort` plus subscription plumbing so session behaviour can be tested
- * without a backend.
+ * `createMockPort()` is an in-memory `ChatPort` plus subscription plumbing that
+ * stores plaintext rows and emits watch callbacks, so session behaviour can be
+ * tested without a backend. `createMemoryMlsEngine()` is a no-op stub kept only
+ * for the dev preview, which still wires an engine factory at construction time
+ * even though MLS is gone and the server now seals content.
  */
 
-import type { MlsEngine, MlsMember } from "@aulora/crypto";
-import { utf8Decode, utf8Encode } from "@aulora/crypto";
 import type {
   ChannelSummary,
   ChatPort,
   ChatSubscriptions,
-  JoinIntentRow,
   MessagePayload,
   PresenceRow,
   ReactionRow,
@@ -24,219 +20,17 @@ import type {
   TypingRow,
 } from "./port.js";
 
-const encoder = new TextEncoder();
-const decoder = new TextDecoder();
-
-interface MemoryGroup {
-  members: { identity: string; signingKey: string }[];
-  epoch: bigint;
-}
-
-/** Formats a raw secret key into the MLS identity string for a device. */
-function identityFor(secret: string): { credential: string; groupId: string } {
-  return { credential: `aulora:device:${secret}`, groupId: secret };
-}
-
-/** A decryption failure for a member who was removed from the group. */
-export class MemoryDecryptError extends Error {
-  constructor() {
-    super("not a group member");
-    this.name = "MemoryDecryptError";
-  }
-}
-
-class MemoryEngine implements MlsEngine {
-  private readonly secret: string;
-  private group: MemoryGroup | undefined;
-  private readonly onVoid: () => void;
-
-  constructor(secret: string, onVoid: () => void) {
-    this.secret = secret;
-    this.onVoid = onVoid;
-  }
-
-  get identity(): string {
-    return identityFor(this.secret).credential;
-  }
-
-  private requireGroup(): MemoryGroup {
-    if (!this.group) {
-      throw new Error("no active MLS group; create or join one first");
-    }
-    return this.group;
-  }
-
-  private isMember(): boolean {
-    const group = this.requireGroup();
-    return group.members.some((member) => member.identity === this.identity);
-  }
-
-  async generateKeyPackage(): Promise<Uint8Array> {
-    return encoder.encode(this.secret);
-  }
-
-  async createGroup(_groupId: Uint8Array, _keyPackage: Uint8Array): Promise<void> {
-    this.onVoid();
-    this.group = {
-      members: [{ identity: this.identity, signingKey: this.secret }],
-      epoch: 0n,
-    };
-  }
-
-  async joinFromWelcome(welcome: Uint8Array, keyPackage: Uint8Array): Promise<void> {
-    this.onVoid();
-    const payload = JSON.parse(decoder.decode(welcome)) as {
-      epoch: string;
-      members: { identity: string; signingKey: string }[];
-    };
-    const mySecret = decoder.decode(keyPackage);
-    const invited = payload.members.some((member) => member.signingKey === mySecret);
-    if (!invited) {
-      throw new Error("welcome does not address this KeyPackage");
-    }
-    this.group = {
-      members: payload.members.slice(),
-      epoch: BigInt(payload.epoch),
-    };
-  }
-
-  async addMembers(keyPackages: readonly Uint8Array[]): Promise<{
-    commit: Uint8Array;
-    welcome: Uint8Array;
-  }> {
-    this.onVoid();
-    const group = this.requireGroup();
-    const additions = keyPackages.map((keyPackage) => {
-      const secret = decoder.decode(keyPackage);
-      return { identity: identityFor(secret).credential, signingKey: secret };
-    });
-    const next = { members: [...group.members, ...additions], epoch: group.epoch + 1n };
-    this.group = next;
-    const commit = encoder.encode(
-      JSON.stringify({ members: next.members, epoch: next.epoch.toString() }),
-    );
-    const welcome = encoder.encode(
-      JSON.stringify({ members: next.members, epoch: next.epoch.toString() }),
-    );
-    return { commit, welcome };
-  }
-
-  async removeMembers(leafIndexes: readonly number[]): Promise<Uint8Array> {
-    this.onVoid();
-    const group = this.requireGroup();
-    const removed = new Set(leafIndexes);
-    const next = {
-      members: group.members.filter((_, index) => !removed.has(index)),
-      epoch: group.epoch + 1n,
-    };
-    this.group = next;
-    return encoder.encode(JSON.stringify({ members: next.members, epoch: next.epoch.toString() }));
-  }
-
-  async processCommit(commit: Uint8Array): Promise<void> {
-    this.onVoid();
-    this.requireGroup();
-    const payload = JSON.parse(decoder.decode(commit)) as {
-      members: { identity: string; signingKey: string }[];
-      epoch: string;
-    };
-    this.group = { members: payload.members, epoch: BigInt(payload.epoch) };
-  }
-
-  async encrypt(plaintext: Uint8Array): Promise<Uint8Array> {
-    const group = this.requireGroup();
-    if (!this.isMember()) {
-      throw new MemoryDecryptError();
-    }
-    return encoder.encode(
-      JSON.stringify({
-        group: group.members.map((m) => m.signingKey),
-        body: decoder.decode(plaintext),
-      }),
-    );
-  }
-
-  async decrypt(ciphertext: Uint8Array): Promise<Uint8Array> {
-    const group = this.requireGroup();
-    const payload = JSON.parse(decoder.decode(ciphertext)) as {
-      group: string[];
-      body: string;
-    };
-    if (!payload.group.includes(this.secret) || !this.isMember()) {
-      throw new MemoryDecryptError();
-    }
-    void group;
-    return encoder.encode(payload.body);
-  }
-
-  async epoch(): Promise<bigint> {
-    return this.requireGroup().epoch;
-  }
-
-  async members(): Promise<readonly MlsMember[]> {
-    const group = this.requireGroup();
-    return group.members.map((member, leafIndex) => ({ leafIndex, identity: member.identity }));
-  }
-
-  async exportState(): Promise<Uint8Array> {
-    const group = this.requireGroup();
-    return encoder.encode(
-      JSON.stringify({ members: group.members, epoch: group.epoch.toString() }),
-    );
-  }
-
-  async importState(state: Uint8Array): Promise<void> {
-    const parsed = JSON.parse(decoder.decode(state)) as {
-      members: { identity: string; signingKey: string }[];
-      epoch: string;
-    };
-    this.group = { members: parsed.members, epoch: BigInt(parsed.epoch) };
-  }
-}
-
-export interface MemoryEngineHandle {
-  readonly engine: MlsEngine;
-  /** Devices this engine has seen and could build a group for. */
-  readonly registry: MemoryEngineRegistry;
-}
-
-/** Creates a pair of engines that share a registry so add/join line up. */
-export class MemoryEngineRegistry {
-  private readonly devices: MlsEngine[] = [];
-
-  create(secret: string): MlsEngine {
-    const engine = new MemoryEngine(secret, () => {
-      if (!this.devices.includes(engine)) {
-        this.devices.push(engine);
-      }
-    });
-    return engine;
-  }
-}
-
-export function createMemoryMlsEngine(secret: string): MlsEngine {
-  return new MemoryEngine(secret, () => {});
-}
-
 export interface MockPortState {
   readonly calls: { method: string; args: unknown }[];
   readonly channels: Map<string, ChannelSummary>;
   readonly messages: Map<string, MessagePayload>;
-  readonly commits: Map<
-    string,
-    { id: string; epoch: number; commitCiphertext: string; welcomeCiphertext: string | null }[]
-  >;
-  readonly joinIntents: Map<string, JoinIntentRow[]>;
-  readonly keyPackages: Map<string, string[]>;
   readonly reactions: Map<string, ReactionRow[]>;
   readonly presence: PresenceRow[];
   readonly typing: Map<string, TypingRow[]>;
   readonly readStates: Map<string, ReadStateRow>;
   readonly members: Map<string, string[]>;
   readonly files: Map<string, StoredFileView>;
-  /** Ciphertext bytes by storage id (between upload and record). */
-  readonly storage: Map<string, Uint8Array>;
-  /** Ciphertext bytes by download URL (after record). */
+  /** Plaintext bytes by file id (the mock's "sealed at rest" storage). */
   readonly blobs: Map<string, Uint8Array>;
   deviceId: string;
 }
@@ -263,24 +57,18 @@ export function createMockPort(): MockPort {
     calls: [],
     channels: new Map(),
     messages: new Map(),
-    commits: new Map(),
-    joinIntents: new Map(),
-    keyPackages: new Map(),
     reactions: new Map(),
     presence: [],
     typing: new Map(),
     readStates: new Map(),
     members: new Map(),
     files: new Map(),
-    storage: new Map(),
     blobs: new Map(),
     deviceId: "device-1",
   };
 
   const channelListeners: ((channels: readonly ChannelSummary[]) => void)[] = [];
   const messageListeners = new Map<string, ((m: readonly MessagePayload[]) => void)[]>();
-  const commitListeners = new Map<string, ((c: readonly unknown[]) => void)[]>();
-  const intentListeners = new Map<string, ((i: readonly JoinIntentRow[]) => void)[]>();
   const reactionListeners = new Map<string, ((r: readonly ReactionRow[]) => void)[]>();
   const presenceListeners: ((p: readonly PresenceRow[]) => void)[] = [];
   const typingListeners = new Map<string, ((t: readonly TypingRow[]) => void)[]>();
@@ -304,16 +92,6 @@ export function createMockPort(): MockPort {
       listener(list);
     }
   };
-  const emitCommits = (channelId: string) => {
-    for (const listener of commitListeners.get(channelId) ?? []) {
-      listener(state.commits.get(channelId) ?? []);
-    }
-  };
-  const emitIntents = (channelId: string) => {
-    for (const listener of intentListeners.get(channelId) ?? []) {
-      listener(state.joinIntents.get(channelId) ?? []);
-    }
-  };
   const emitTyping = (channelId: string) => {
     for (const listener of typingListeners.get(channelId) ?? []) {
       listener(state.typing.get(channelId) ?? []);
@@ -326,18 +104,6 @@ export function createMockPort(): MockPort {
       record("upsertDevice", args);
       return { deviceId: state.deviceId };
     },
-    async publishKeyPackage(args) {
-      record("publishKeyPackage", args);
-      const list = state.keyPackages.get(args.deviceId) ?? [];
-      list.push(args.keyPackage);
-      state.keyPackages.set(args.deviceId, list);
-      return nextId("kp");
-    },
-    async consumeKeyPackages(args) {
-      record("consumeKeyPackages", args);
-      const list = state.keyPackages.get(args.deviceId) ?? [];
-      return list.splice(0, args.count);
-    },
     async createChannel(args) {
       record("createChannel", args);
       const id = nextId("channel");
@@ -345,29 +111,27 @@ export function createMockPort(): MockPort {
         id,
         kind: args.kind,
         categoryId: args.categoryId ?? null,
-        nameCiphertext: args.nameCiphertext,
-        topicCiphertext: args.topicCiphertext ?? null,
-        mlsGroupId: args.mlsGroupId ?? null,
+        name: args.name,
+        topic: args.topic ?? null,
         archived: false,
-        currentEpoch: null,
+        ...(args.private === true ? { isPrivate: true } : {}),
       });
-      state.members.set(id, []);
+      state.members.set(id, args.private === true ? ["me"] : []);
       emitChannels();
       return id;
     },
-    async setMlsGroupId(args) {
-      record("setMlsGroupId", args);
-      const channel = state.channels.get(args.channelId) ?? {
-        id: args.channelId,
-        kind: "text" as const,
-        categoryId: null,
-        nameCiphertext: null,
-        topicCiphertext: null,
-        mlsGroupId: null,
-        archived: false,
-        currentEpoch: null,
-      };
-      state.channels.set(args.channelId, { ...channel, mlsGroupId: args.mlsGroupId });
+    async reorderChannels(args) {
+      record("reorderChannels", args);
+      for (const move of args.moves) {
+        const channel = state.channels.get(move.channelId);
+        if (channel !== undefined) {
+          state.channels.set(move.channelId, {
+            ...channel,
+            position: move.position,
+            ...(move.categoryId !== undefined ? { categoryId: move.categoryId } : {}),
+          });
+        }
+      }
       emitChannels();
       return null;
     },
@@ -375,10 +139,16 @@ export function createMockPort(): MockPort {
       record("renameChannel", args);
       const channel = state.channels.get(args.channelId);
       if (channel !== undefined) {
-        state.channels.set(args.channelId, {
-          ...channel,
-          nameCiphertext: args.nameCiphertext,
-        });
+        state.channels.set(args.channelId, { ...channel, name: args.name });
+        emitChannels();
+      }
+      return null;
+    },
+    async setChannelTopic(args) {
+      record("setChannelTopic", args);
+      const channel = state.channels.get(args.channelId);
+      if (channel !== undefined) {
+        state.channels.set(args.channelId, { ...channel, topic: args.topic ?? null });
         emitChannels();
       }
       return null;
@@ -391,6 +161,45 @@ export function createMockPort(): MockPort {
       record("leaveChannel", args);
       return null;
     },
+    async addChannelMember(args) {
+      record("addChannelMember", args);
+      const list = state.members.get(args.channelId) ?? [];
+      if (list.includes(args.userId)) {
+        return { added: false };
+      }
+      state.members.set(args.channelId, [...list, args.userId]);
+      return { added: true };
+    },
+    async removeChannelMember(args) {
+      record("removeChannelMember", args);
+      const list = state.members.get(args.channelId) ?? [];
+      if (!list.includes(args.userId)) {
+        return { removed: false };
+      }
+      state.members.set(
+        args.channelId,
+        list.filter((id) => id !== args.userId),
+      );
+      return { removed: true };
+    },
+    async archiveChannel(args) {
+      record("archiveChannel", args);
+      const channel = state.channels.get(args.channelId);
+      if (channel !== undefined) {
+        state.channels.set(args.channelId, { ...channel, archived: true });
+        emitChannels();
+      }
+      return null;
+    },
+    async unarchiveChannel(args) {
+      record("unarchiveChannel", args);
+      const channel = state.channels.get(args.channelId);
+      if (channel !== undefined) {
+        state.channels.set(args.channelId, { ...channel, archived: false });
+        emitChannels();
+      }
+      return null;
+    },
     async createDm(args) {
       record("createDm", args);
       const id = nextId("channel");
@@ -398,11 +207,9 @@ export function createMockPort(): MockPort {
         id,
         kind: "dm",
         categoryId: null,
-        nameCiphertext: null,
-        topicCiphertext: null,
-        mlsGroupId: args.mlsGroupId ?? null,
+        name: null,
+        topic: null,
         archived: false,
-        currentEpoch: null,
         memberIds: ["me", args.otherUserId],
       });
       state.members.set(id, ["me", args.otherUserId]);
@@ -416,11 +223,9 @@ export function createMockPort(): MockPort {
         id,
         kind: "group_dm",
         categoryId: null,
-        nameCiphertext: null,
-        topicCiphertext: null,
-        mlsGroupId: args.mlsGroupId ?? null,
+        name: null,
+        topic: null,
         archived: false,
-        currentEpoch: null,
         memberIds: ["me", ...args.memberIds],
       });
       state.members.set(id, ["me", ...args.memberIds]);
@@ -431,43 +236,21 @@ export function createMockPort(): MockPort {
       record("getChannelMemberIds", args);
       return state.members.get(args.channelId) ?? [];
     },
-    async generateUploadUrl() {
-      record("generateUploadUrl", {});
-      return `upload://${nextId("upload")}`;
-    },
-    async uploadCiphertext(args) {
-      record("uploadCiphertext", { uploadUrl: args.uploadUrl, size: args.bytes.length });
-      const storageId = nextId("storage");
-      state.storage.set(storageId, new Uint8Array(args.bytes));
-      return storageId;
-    },
-    async recordFile(args) {
-      record("recordFile", args);
+    async uploadFile(args) {
+      record("uploadFile", { ...args, bytes: args.bytes.length });
       const fileId = nextId("file");
-      const url = `blob://${fileId}`;
+      state.blobs.set(fileId, new Uint8Array(args.bytes));
       state.files.set(fileId, {
         id: fileId,
         uploaderId: "me",
-        sizeBytes: args.sizeBytes,
-        nameCiphertext: args.nameCiphertext ?? null,
-        mimeCiphertext: args.mimeCiphertext ?? null,
-        dimensionsCiphertext: args.dimensionsCiphertext ?? null,
-        blurhashCiphertext: args.blurhashCiphertext ?? null,
-        url,
+        sizeBytes: args.bytes.length,
+        name: args.name,
+        mime: args.mime,
+        dimensions: args.dimensions !== undefined ? JSON.stringify(args.dimensions) : null,
+        blurhash: args.blurhash ?? null,
+        url: `blob://${fileId}`,
       });
-      const bytes = state.storage.get(args.storageId);
-      if (bytes !== undefined) {
-        state.blobs.set(url, bytes);
-      }
       return fileId;
-    },
-    async fetchCiphertext(args) {
-      record("fetchCiphertext", { url: args.url });
-      const bytes = state.blobs.get(args.url);
-      if (bytes === undefined) {
-        throw new Error("blob not found");
-      }
-      return new Uint8Array(bytes);
     },
     async getFile(args) {
       record("getFile", args);
@@ -479,47 +262,13 @@ export function createMockPort(): MockPort {
         .map((fileId) => state.files.get(fileId))
         .filter((file): file is StoredFileView => file !== undefined);
     },
-    async appendCommit(args) {
-      record("appendCommit", args);
-      const list = state.commits.get(args.channelId) ?? [];
-      list.push({
-        id: nextId("commit"),
-        epoch: args.epoch,
-        commitCiphertext: args.commitCiphertext,
-        welcomeCiphertext: args.welcomeCiphertext ?? null,
-      });
-      state.commits.set(args.channelId, list);
-      emitCommits(args.channelId);
-      return nextId("commit");
-    },
-    async publishJoinIntent(args) {
-      record("publishJoinIntent", args);
-      const list = state.joinIntents.get(args.channelId) ?? [];
-      const existing = list.find((intent) => intent.deviceId === args.deviceId);
-      if (existing !== undefined) {
-        return existing.id;
+    async downloadFile(args) {
+      record("downloadFile", args);
+      const bytes = state.blobs.get(args.fileId);
+      if (bytes === undefined) {
+        throw new Error("file is no longer available");
       }
-      const intent: JoinIntentRow = {
-        id: nextId("intent"),
-        userId: "me",
-        deviceId: args.deviceId,
-        keyPackage: args.keyPackage,
-        createdAt: Date.now(),
-      };
-      list.push(intent);
-      state.joinIntents.set(args.channelId, list);
-      emitIntents(args.channelId);
-      return intent.id;
-    },
-    async markJoinIntentServiced(args) {
-      record("markJoinIntentServiced", args);
-      for (const [channelId, list] of state.joinIntents) {
-        const next = list.filter((intent) => intent.id !== args.intentId);
-        state.joinIntents.set(channelId, next);
-        // Defer so we never re-enter auto-approve from inside its own write.
-        queueMicrotask(() => emitIntents(channelId));
-      }
-      return null;
+      return new Uint8Array(bytes);
     },
     async sendMessage(args) {
       record("sendMessage", args);
@@ -529,10 +278,9 @@ export function createMockPort(): MockPort {
         id,
         channelId: args.channelId,
         authorId: "me",
-        authorDeviceId: args.authorDeviceId ?? null,
-        ciphertext: args.ciphertext,
-        epoch: args.epoch,
+        body: args.body,
         threadRootId: args.threadRootId ?? null,
+        ...(args.replyToId !== undefined ? { replyToId: args.replyToId } : {}),
         attachmentIds: [...(args.attachmentIds ?? [])],
         mentionUserIds: [...(args.mentionUserIds ?? [])],
         editedAt: null,
@@ -540,6 +288,16 @@ export function createMockPort(): MockPort {
         pinnedAt: null,
         createdAt: messageSeq,
       });
+      if (args.threadRootId !== undefined) {
+        const root = state.messages.get(args.threadRootId);
+        if (root !== undefined) {
+          state.messages.set(root.id, {
+            ...root,
+            replyCount: (root.replyCount ?? 0) + 1,
+            lastReplyAt: messageSeq,
+          });
+        }
+      }
       emitMessages(args.channelId);
       return id;
     },
@@ -549,8 +307,7 @@ export function createMockPort(): MockPort {
       if (message !== undefined) {
         state.messages.set(args.messageId, {
           ...message,
-          ciphertext: args.ciphertext,
-          epoch: args.epoch,
+          body: args.body,
           editedAt: Date.now(),
         });
         emitMessages(message.channelId);
@@ -588,7 +345,7 @@ export function createMockPort(): MockPort {
       record("toggleReaction", args);
       const list = state.reactions.get(args.messageId) ?? [];
       const index = list.findIndex(
-        (reaction) => reaction.userId === "me" && reaction.emojiCiphertext === args.emojiCiphertext,
+        (reaction) => reaction.userId === "me" && reaction.emoji === args.emoji,
       );
       const next = [...list];
       if (index >= 0) {
@@ -599,7 +356,7 @@ export function createMockPort(): MockPort {
         }
         return { added: false };
       }
-      next.push({ id: nextId("reaction"), userId: "me", emojiCiphertext: args.emojiCiphertext });
+      next.push({ id: nextId("reaction"), userId: "me", emoji: args.emoji });
       state.reactions.set(args.messageId, next);
       for (const listener of reactionListeners.get(args.messageId) ?? []) {
         listener(next);
@@ -619,7 +376,7 @@ export function createMockPort(): MockPort {
         {
           userId: "me",
           status: args.status,
-          customStatusCiphertext: args.customStatusCiphertext ?? null,
+          customStatus: args.customStatus ?? null,
           lastHeartbeat: Date.now(),
         },
       );
@@ -650,14 +407,14 @@ export function createMockPort(): MockPort {
     },
     async setReadState(args) {
       record("setReadState", args);
-      const state0: ReadStateRow = {
+      const next: ReadStateRow = {
         channelId: args.channelId,
         lastReadMessageId: args.lastReadMessageId,
         mentionCount: 0,
       };
-      state.readStates.set(args.channelId, state0);
+      state.readStates.set(args.channelId, next);
       for (const listener of readStateListeners.get(args.channelId) ?? []) {
-        listener(state0);
+        listener(next);
       }
       return null;
     },
@@ -671,11 +428,15 @@ export function createMockPort(): MockPort {
         }
       };
     },
-    watchMessages(channelId, onChange) {
+    watchMessages(channelId, onChange, options) {
+      // Like the server: the newest `limit` roots, oldest first.
+      const limit = options?.limit;
+      const listener = (messages: readonly MessagePayload[]) =>
+        onChange(limit === undefined ? messages : messages.slice(-limit));
       const list = messageListeners.get(channelId) ?? [];
-      list.push(onChange);
+      list.push(listener);
       messageListeners.set(channelId, list);
-      onChange(
+      listener(
         [...state.messages.values()]
           .filter((message) => message.channelId === channelId && message.threadRootId === null)
           .sort((a, b) => a.createdAt - b.createdAt),
@@ -683,7 +444,7 @@ export function createMockPort(): MockPort {
       return () => {
         messageListeners.set(
           channelId,
-          (messageListeners.get(channelId) ?? []).filter((listener) => listener !== onChange),
+          (messageListeners.get(channelId) ?? []).filter((entry) => entry !== listener),
         );
       };
     },
@@ -696,33 +457,6 @@ export function createMockPort(): MockPort {
         reactionListeners.set(
           messageId,
           (reactionListeners.get(messageId) ?? []).filter((listener) => listener !== onChange),
-        );
-      };
-    },
-    watchCommits(channelId, _afterEpoch, onChange) {
-      const list = (commitListeners.get(channelId) ?? []) as ((c: readonly unknown[]) => void)[];
-      const typed = onChange as (c: readonly unknown[]) => void;
-      list.push(typed);
-      commitListeners.set(channelId, list);
-      typed(state.commits.get(channelId) ?? []);
-      return () => {
-        commitListeners.set(
-          channelId,
-          ((commitListeners.get(channelId) ?? []) as ((c: readonly unknown[]) => void)[]).filter(
-            (listener) => listener !== typed,
-          ),
-        );
-      };
-    },
-    watchJoinIntents(channelId, onChange) {
-      const list = intentListeners.get(channelId) ?? [];
-      list.push(onChange);
-      intentListeners.set(channelId, list);
-      onChange(state.joinIntents.get(channelId) ?? []);
-      return () => {
-        intentListeners.set(
-          channelId,
-          (intentListeners.get(channelId) ?? []).filter((listener) => listener !== onChange),
         );
       };
     },
@@ -765,12 +499,16 @@ export function createMockPort(): MockPort {
   return port;
 }
 
-/** Encodes plaintext the way the session does, for assertions. */
-export function encodeForTest(text: string): Uint8Array {
-  return utf8Encode(text);
-}
-
-/** Decodes decrypted bytes the way the session does, for assertions. */
-export function decodeForTest(bytes: Uint8Array): string {
-  return utf8Decode(bytes);
+/**
+ * No-op stand-in for the removed MLS engine factory.
+ *
+ * MLS is gone: the session no longer takes an engine and the server seals
+ * content. This exists only so the dev preview, which still calls
+ * `ChatSession.create({ createEngine: () => … })`, keeps compiling until the
+ * apps drop their engine wiring.
+ *
+ * @deprecated The session is encryption-agnostic; the server seals content.
+ */
+export function createMemoryMlsEngine(_secret = "memory"): Record<string, never> {
+  return {};
 }

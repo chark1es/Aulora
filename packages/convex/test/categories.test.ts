@@ -66,7 +66,7 @@ describe("categories CRUD", () => {
 });
 
 describe("category overrides", () => {
-  it("returns MLS removals and hides the channel when ViewChannel is lost", async () => {
+  it("hides the channel when ViewChannel is lost and shows it again when cleared", async () => {
     const t = newTest();
     await seedWorkspace(t, { members: [{ userId: "user-1" }] });
     const asOwner = t.withIdentity({ subject: "owner-1" });
@@ -79,8 +79,7 @@ describe("category overrides", () => {
         { targetId: EVERYONE_ROLE_ID, targetType: "role", allow: 0n, deny: Permission.ViewChannel },
       ],
     });
-    expect(signal.mlsAction).toBe("remove");
-    expect(signal.mlsRemovals.some((entry) => entry.userId === "user-1")).toBe(true);
+    expect(signal).toBeNull();
 
     const asUser = t.withIdentity({ subject: "user-1" });
     const hidden = await asUser.query(api.channels.list, { paginationOpts: PAGE });

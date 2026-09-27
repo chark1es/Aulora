@@ -5,8 +5,11 @@ Three things hold state, and all three matter:
 1. **Convex data** — exported with `convex export` (it also covers S3-backed
    file storage).
 2. **Postgres** — the relational store behind Convex, dumped with `pg_dump`.
-3. **Secrets** — `infra/docker/.env`, which holds `INSTANCE_SECRET`. Losing it
-   makes the existing data unreadable, so keep it separately and securely.
+3. **Secrets** — `infra/docker/.env`, which holds `INSTANCE_SECRET` and the
+   default encryption key `AULORA_ENCRYPTION_KEY` (plus any optional external EKM
+   settings). That key is the KEK; the data and its backups are ciphertext at
+   rest, and the KEK is what makes them readable. Keep it separately and securely
+   and never commit it. Losing the KEK makes the existing data unreadable.
 
 ## Nightly runner
 
@@ -27,7 +30,9 @@ Each run:
 5. records the result, which the [admin panel](admin.md) shows.
 
 The Convex cron in `packages/convex/convex/crons.ts` records the nightly intent
-at 03:00 UTC; the runner performs the work. Neither side sees plaintext or keys.
+at 03:00 UTC; the runner performs the work. The artifacts hold only ciphertext
+and a non-secret `encryption.json` manifest naming the EKM provider and key
+version; no key material is included.
 
 ### Configuration
 
@@ -46,7 +51,10 @@ still completes and is logged.
 
 ## Restore
 
-Bring up a fresh stack and restore `infra/docker/.env` first, then:
+Bring up a fresh stack and restore `infra/docker/.env` first, then make sure the
+KEK is available (the `AULORA_ENCRYPTION_KEY` value or, if you moved to an
+external key manager, its KEK); without it the restored data is unreadable
+ciphertext. Then:
 
 ```sh
 # Postgres (custom-format dump)

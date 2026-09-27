@@ -1,12 +1,15 @@
 # Aulora
 
-Aulora (pronounced aw-LOR-uh) is self-hosted, end-to-end encrypted team chat: one
-`docker compose up` gives your team one workspace with channels, DMs, threads,
-reactions, uploads, roles, and live updates, and five clients (web, macOS/Windows/Linux
-desktop, iOS, Android) can each join many servers. Every message, reaction, edit and
-file is encrypted on the sender's device with MLS (RFC 9420); the server stores
-ciphertext and metadata only. The reference look is a near-black canvas with a faint
-dot grid, soft rounded cards, a warm ember accent and a moss secondary.
+Aulora (pronounced aw-LOR-uh) is self-hosted team chat with server-side
+encryption: one `docker compose up` gives your team one workspace with channels,
+DMs, threads, reactions, uploads, roles, and live updates, and five clients
+(web, macOS/Windows/Linux desktop, iOS, Android) can each join many servers. The
+server seals every message, reaction, edit and file with AES-256-GCM envelope
+encryption using a locally generated master key (`AULORA_ENCRYPTION_KEY`),
+decrypting for authorized clients; external key managers (Vault, AWS KMS, GCP KMS
+or an HTTP proxy) are an optional upgrade. The reference look is a near-black
+canvas with a faint dot grid, soft rounded cards, a warm ember accent and a moss
+secondary.
 
 Aulora is source-available under the [PolyForm Noncommercial License 1.0.0](LICENSE)
 for personal, charity, school, research, public-safety and government use. Companies
@@ -52,7 +55,7 @@ build), `bun run dev`, `bun run format`, `bun run clean`.
 
 ```
 apps/      web (Vite SPA), docs (static site), desktop (Tauri), mobile (Expo)
-packages/  config, tokens, core, convex, crypto, ui-web, ui-native, avatars
+packages/  config, tokens, core, convex, ui-web, ui-native, avatars
 infra/     docker-compose + setup + backup runner, push-relay
 docs/      phase gate reports
 spikes/    Phase 0 proofs (kept for reference)

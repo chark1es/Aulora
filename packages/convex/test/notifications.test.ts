@@ -82,13 +82,11 @@ describe("notifications.unreadSummary", () => {
 
     const first = await asUser1.mutation(api.messages.send, {
       channelId,
-      ciphertext: "bXNn",
-      epoch: 0,
+      body: "bXNn",
     });
     await asUser1.mutation(api.messages.send, {
       channelId,
-      ciphertext: "bXNn",
-      epoch: 0,
+      body: "bXNn",
       mentionUserIds: ["user-2"],
     });
 
@@ -117,8 +115,7 @@ describe("notifications.resolveRecipients", () => {
     const asAuthor = t.withIdentity({ subject: "author" });
     const messageId = await asAuthor.mutation(api.messages.send, {
       channelId,
-      ciphertext: "bXNn",
-      epoch: 0,
+      body: "bXNn",
       mentionUserIds: ["mentions-only"],
     });
 
@@ -135,8 +132,7 @@ describe("notifications.resolveRecipients", () => {
     const asAuthor = t.withIdentity({ subject: "author" });
     const messageId = await asAuthor.mutation(api.messages.send, {
       channelId,
-      ciphertext: "bXNn",
-      epoch: 0,
+      body: "bXNn",
     });
     const recipients = await t.query(internal.notifications.resolveRecipients, { messageId });
     expect(recipients).toEqual([]);
@@ -151,8 +147,7 @@ describe("notifications.dispatchForMessage", () => {
     const asUser1 = t.withIdentity({ subject: "user-1" });
     const messageId = await asUser1.mutation(api.messages.send, {
       channelId,
-      ciphertext: "bXNn",
-      epoch: 0,
+      body: "bXNn",
     });
     const result = await t.action(internal.notifications.dispatchForMessage, { messageId });
     expect(result).toEqual({ sent: 0, skipped: "unconfigured" });
@@ -171,7 +166,6 @@ describe("notifications.dispatchForMessage", () => {
       await ctx.db.insert("devices", {
         userId: "user-2",
         platform: "web",
-        identityKey: "device-2",
         lastSeen: Date.now(),
         pushToken: JSON.stringify({
           endpoint: "https://push.example.com/sub/device-2",
@@ -189,9 +183,13 @@ describe("notifications.dispatchForMessage", () => {
     const asUser1 = t.withIdentity({ subject: "user-1" });
     const messageId = await asUser1.mutation(api.messages.send, {
       channelId,
-      ciphertext: "bXNn",
-      epoch: 0,
+      body: "bXNn",
     });
+    // `messages.send` also schedules `dispatchForMessage` on a `runAfter(0)`
+    // timer. Drain it deterministically before measuring, otherwise that
+    // background dispatch races the explicit one below and double-counts.
+    await t.finishAllScheduledFunctions(() => {});
+    calls.length = 0;
     const result = await t.action(internal.notifications.dispatchForMessage, { messageId });
     expect(result).toEqual({ sent: 1 });
     expect(calls).toEqual(["https://push.example.com/sub/device-2"]);

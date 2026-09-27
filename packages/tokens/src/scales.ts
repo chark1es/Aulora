@@ -1,10 +1,10 @@
 export const radii = {
-  card: "20px",
-  input: "14px",
-  bubble: "14px",
+  card: "12px",
+  input: "10px",
+  bubble: "16px",
   pill: "999px",
-  sm: "8px",
-  md: "12px",
+  sm: "6px",
+  md: "10px",
   full: "9999px",
 } as const;
 
@@ -27,8 +27,27 @@ export const spacing = {
 export type SpacingToken = keyof typeof spacing;
 
 export const fontFamilies = {
-  sans: ['"Geist"', '"Inter"', "system-ui", "-apple-system", "sans-serif"],
-  mono: ['"Geist Mono"', '"JetBrains Mono"', "ui-monospace", "SFMono-Regular", "monospace"],
+  // Native first: SF Pro on Apple platforms, Segoe UI Variable on Windows, then
+  // Inter/Geist where installed. Each OS renders its own system face.
+  sans: [
+    "-apple-system",
+    "BlinkMacSystemFont",
+    '"Segoe UI Variable Text"',
+    '"Segoe UI"',
+    '"Inter"',
+    '"Geist"',
+    "system-ui",
+    "sans-serif",
+  ],
+  mono: [
+    "ui-monospace",
+    '"SF Mono"',
+    '"Geist Mono"',
+    '"JetBrains Mono"',
+    '"Cascadia Code"',
+    "SFMono-Regular",
+    "monospace",
+  ],
 } as const;
 
 export type FontFamilyToken = keyof typeof fontFamilies;

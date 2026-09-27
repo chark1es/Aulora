@@ -1,6 +1,7 @@
 import { darkPalette } from "@aulora/tokens";
 import { type StyleProp, StyleSheet, View, type ViewStyle } from "react-native";
 import { SvgXml } from "react-native-svg";
+import { type AvatarShape, avatarRadius } from "./shape";
 import { avatarSvg } from "./svg";
 
 export interface NativeAvatarProps {
@@ -15,6 +16,8 @@ export interface NativeAvatarProps {
   roleColor?: string;
   /** Accessible label. When omitted the avatar is decorative. */
   title?: string;
+  /** `circle` for people, `squircle` for servers and workspaces. */
+  shape?: AvatarShape;
   style?: StyleProp<ViewStyle>;
 }
 
@@ -24,7 +27,14 @@ export interface NativeAvatarProps {
  * optional 2px role-color ring. The web entrypoint (`Avatar`) renders the same
  * seed through `@blobatar/react`, so a user looks identical on every client.
  */
-export function NativeAvatar({ seed, size = 32, roleColor, title, style }: NativeAvatarProps) {
+export function NativeAvatar({
+  seed,
+  size = 32,
+  roleColor,
+  title,
+  shape = "circle",
+  style,
+}: NativeAvatarProps) {
   const ring: ViewStyle | null =
     roleColor !== undefined && roleColor.length > 0
       ? { borderColor: roleColor, borderWidth: 2 }
@@ -33,7 +43,12 @@ export function NativeAvatar({ seed, size = 32, roleColor, title, style }: Nativ
     <View
       accessible={title !== undefined}
       accessibilityLabel={title}
-      style={[styles.frame, { width: size, height: size, borderRadius: size / 2 }, ring, style]}
+      style={[
+        styles.frame,
+        { width: size, height: size, borderRadius: avatarRadius(size, shape) },
+        ring,
+        style,
+      ]}
     >
       <SvgXml xml={avatarSvg(seed, { size })} width={size} height={size} />
     </View>

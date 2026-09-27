@@ -1,3 +1,5 @@
+> **Historical note:** Aulora has since moved from client-side E2EE (MLS, RFC 9420) to server-side encryption backed by an external key manager (EKM). This report is a historical record of the earlier MLS design.
+
 # Phases 4–6 — Verification Status
 
 Date: 2026-09-26. This closes the source work for Phases 4–6 and records exactly what was

@@ -87,7 +87,9 @@ export async function seedWorkspace(t: Test, options: SeedOptions = {}) {
 
 export interface ChannelSeed {
   readonly kind?: "text" | "announcement" | "dm" | "group_dm";
-  readonly nameCiphertext?: string;
+  /** Plaintext name; stored directly, exercising the legacy pass-through read. */
+  readonly name?: string;
+  readonly topic?: string;
   readonly categoryId?: Id<"categories">;
   readonly overrides?: {
     targetId: string;
@@ -96,6 +98,7 @@ export interface ChannelSeed {
     deny: bigint;
   }[];
   readonly archived?: boolean;
+  readonly private?: boolean;
   readonly memberIds?: readonly string[];
   readonly dmKey?: string;
 }
@@ -106,7 +109,9 @@ export async function seedChannel(t: Test, seed: ChannelSeed = {}): Promise<Id<"
       kind: seed.kind ?? "text",
       overrides: seed.overrides ?? [],
       archived: seed.archived ?? false,
-      ...(seed.nameCiphertext !== undefined ? { nameCiphertext: seed.nameCiphertext } : {}),
+      ...(seed.private === true ? { private: true } : {}),
+      ...(seed.name !== undefined ? { nameCiphertext: seed.name } : {}),
+      ...(seed.topic !== undefined ? { topicCiphertext: seed.topic } : {}),
       ...(seed.categoryId !== undefined ? { categoryId: seed.categoryId } : {}),
       ...(seed.dmKey !== undefined ? { dmKey: seed.dmKey } : {}),
     });
@@ -127,13 +132,17 @@ export async function storeBlob(t: Test, bytes: number): Promise<Id<"_storage">>
 }
 
 /** Registers a device for a user and returns its id. */
-export async function seedDevice(t: Test, userId: string): Promise<Id<"devices">> {
+export async function seedDevice(
+  t: Test,
+  userId: string,
+  options: { platform?: string; pushToken?: string } = {},
+): Promise<Id<"devices">> {
   return await t.run(async (ctx) => {
     return await ctx.db.insert("devices", {
       userId,
-      platform: "web",
-      identityKey: `aulora:device:${userId}`,
+      platform: options.platform ?? "web",
       lastSeen: Date.now(),
+      ...(options.pushToken !== undefined ? { pushToken: options.pushToken } : {}),
     });
   });
 }

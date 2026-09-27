@@ -106,7 +106,6 @@ export async function ensurePushSubscription(
  */
 export async function registerWebPushDevice(
   client: ConvexReactClient,
-  identityKey: string,
   publicKey: string,
 ): Promise<boolean> {
   const registration = await registerPushServiceWorker();
@@ -124,7 +123,6 @@ export async function registerWebPushDevice(
   try {
     await client.mutation(api.devices.upsert, {
       platform: "web",
-      identityKey,
       pushToken: serialized,
     });
     return true;

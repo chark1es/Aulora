@@ -1,3 +1,5 @@
+> **Historical note:** Aulora has since moved from client-side E2EE (MLS, RFC 9420) to server-side encryption backed by an external key manager (EKM). This report is a historical record of the earlier design, including its restore/secret guidance.
+
 # Phase 6 — Beta: Gate Report
 
 Date: 2026-09-26. Scope: the instance admin panel, nightly backups, license

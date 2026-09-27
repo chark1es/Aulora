@@ -10,7 +10,7 @@ export interface HeadingProps extends HTMLAttributes<HTMLHeadingElement> {
 const LEVEL_CLASSES: Record<HeadingLevel, string> = {
   1: "text-3xl font-semibold tracking-tight",
   2: "text-2xl font-semibold tracking-tight",
-  3: "text-xl font-semibold",
+  3: "text-lg font-semibold tracking-tight",
 };
 
 /** Section heading; `level` picks both the tag and the type size. */

@@ -8,8 +8,10 @@
 #   3. mints the admin key with the backend's own /convex/generate_key
 #   4. sleeps until BACKUP_HOUR_UTC (default 03:00) every day and runs backup.sh
 #
-# Set BACKUP_RUN_ONCE=1 to run a single backup and exit. Set BACKUP_ENABLED=false
-# to idle. Secrets are never printed.
+# Backups hold only already-sealed (ciphertext) data and never key material: the
+# KEK is needed at *restore* time, not here. Set BACKUP_RUN_ONCE=1 to run a
+# single backup and exit. Set BACKUP_ENABLED=false to idle. Secrets are never
+# printed.
 
 set -euo pipefail
 
@@ -90,6 +92,10 @@ if [ -f "$HOST_ENV_FILE" ]; then
 fi
 
 mkdir -p "$BACKUP_DIR"
+
+# A backup reads from the backend and never decrypts, so hold no key material
+# while it runs. Provider/keyId/version are non-secret and stay for the manifest.
+unset AULORA_ENCRYPTION_KEY AULORA_KEK_WRAPPED VAULT_TOKEN EKM_PROXY_TOKEN
 
 run_backup() {
   if ! /app/backup/backup.sh "$1"; then

@@ -1,6 +1,6 @@
 import type { AttachmentDescriptor, MessagePayload } from "@aulora/core";
 import { Button, Heading, Spinner, Text } from "@aulora/ui-native";
-import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 import { Modal, Pressable, ScrollView, View } from "react-native";
 import { uploadPickedFiles } from "../../lib/attachments";
 import { useLocalNotifications } from "../../lib/notifications";
@@ -20,8 +20,8 @@ export interface ChatScreenProps {
 }
 
 /**
- * The signed-in mobile chat surface: channel drawer, decrypted message list,
- * composer, threads, reactions, presence, typing and the E2EE status banner.
+ * The signed-in mobile chat surface: channel drawer, plaintext message list,
+ * composer, threads, reactions, presence and typing.
  */
 export function ChatScreen({
   workspaceName,
@@ -29,22 +29,19 @@ export function ChatScreen({
   ownDisplayName,
   onSignOut,
 }: ChatScreenProps) {
-  const {
-    runtime,
-    mlsError,
-    ready,
-    channels,
-    presence,
-    outbox,
-    channelNames,
-    reportChannelNames,
-    sendMessage,
-  } = useChat();
+  const { runtime, ready, channels, presence, outbox, sendMessage } = useChat();
   const [activeChannelId, setActiveChannelId] = useState<string | undefined>(undefined);
   const [drawerOpen, setDrawerOpen] = useState(false);
   const [membersOpen, setMembersOpen] = useState(false);
   const [threadRoot, setThreadRoot] = useState<MessagePayload | null>(null);
-  const reported = useRef(new Set<string>());
+
+  const channelNames = useMemo(() => {
+    const map = new Map<string, string>();
+    for (const entry of channels) {
+      map.set(entry.id, entry.name);
+    }
+    return map;
+  }, [channels]);
 
   useLocalNotifications(runtime, ownUserId, channelNames);
 
@@ -53,31 +50,6 @@ export function ChatScreen({
       setActiveChannelId(channels[0]?.id);
     }
   }, [channels, activeChannelId]);
-
-  useEffect(() => {
-    if (runtime === undefined) {
-      return;
-    }
-    const pending = channels
-      .filter(
-        (channel) =>
-          channel.nameCiphertext !== null &&
-          channel.nameCiphertext.length > 0 &&
-          !reported.current.has(`${channel.id}:${channel.nameCiphertext}`),
-      )
-      .map((channel) => ({
-        id: channel.id,
-        ciphertext: channel.nameCiphertext as string,
-        key: `${channel.id}:${channel.nameCiphertext}`,
-      }));
-    if (pending.length === 0) {
-      return;
-    }
-    for (const entry of pending) {
-      reported.current.add(entry.key);
-    }
-    reportChannelNames(pending.map(({ id, ciphertext }) => ({ id, ciphertext })));
-  }, [runtime, channels, reportChannelNames]);
 
   const channel = channels.find((entry) => entry.id === activeChannelId);
   const sessionState = useChannelSession(runtime, activeChannelId, ownUserId);
@@ -117,9 +89,7 @@ export function ChatScreen({
         id: `pending:${item.id}`,
         channelId: item.channelId,
         authorId: ownUserId,
-        authorDeviceId: null,
-        ciphertext: "",
-        epoch: 0,
+        body: item.text,
         threadRootId: item.threadRootId ?? null,
         attachmentIds: [],
         mentionUserIds: [...item.mentionUserIds],
@@ -156,18 +126,10 @@ export function ChatScreen({
       setDrawerOpen(false);
       const summary = channels.find((entry) => entry.id === channelId);
       if (runtime !== undefined && summary !== undefined) {
-        try {
-          await runtime.session.openChannel(summary);
-        } catch {
-          // The channel group is not open yet (native engine pending); the
-          // banner already explains why.
-        }
-        if (summary.nameCiphertext !== null && summary.nameCiphertext.length > 0) {
-          reportChannelNames([{ id: summary.id, ciphertext: summary.nameCiphertext }]);
-        }
+        await runtime.session.openChannel(summary);
       }
     },
-    [runtime, channels, reportChannelNames],
+    [runtime, channels],
   );
 
   const typing = typingLabel(
@@ -197,21 +159,11 @@ export function ChatScreen({
         </View>
       </View>
 
-      {mlsError !== null && (
-        <View className="border-b border-border bg-accent-soft px-3 py-2">
-          <Text size="xs" tone="accent">
-            End-to-end encryption is not active on this build: the native crypto module
-            (react-native-quick-crypto) is unavailable. Channels and presence are live, but messages
-            stay unreadable. Use an Expo dev build, not Expo Go.
-          </Text>
-        </View>
-      )}
-
       {!ready ? (
         <View className="flex-1 items-center justify-center gap-3">
-          <Spinner size={28} label="Opening encrypted channels" />
+          <Spinner size={28} label="Opening channels" />
           <Text size="sm" tone="muted">
-            Opening encrypted channels…
+            Opening channels…
           </Text>
         </View>
       ) : channel === undefined ? (
@@ -222,10 +174,7 @@ export function ChatScreen({
         <>
           <View className="items-center border-b border-border px-3 py-1">
             <Text size="xs" tone="secondary" mono>
-              E2EE · epoch{" "}
-              {sessionState.messages.length > 0
-                ? (sessionState.messages[sessionState.messages.length - 1]?.epoch ?? 0)
-                : 0}
+              Server-side encryption
             </Text>
           </View>
           <MessageList
@@ -255,7 +204,6 @@ export function ChatScreen({
           )}
           <Composer
             channelId={channel.id}
-            disabled={mlsError !== null}
             onTyping={(channelId) => {
               void runtime?.port.setTyping({ channelId });
             }}

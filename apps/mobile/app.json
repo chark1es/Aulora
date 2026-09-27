@@ -32,8 +32,8 @@
       [
         "expo-image-picker",
         {
-          "photosPermission": "Aulora uses your photos so you can share them in encrypted messages.",
-          "cameraPermission": "Aulora uses the camera so you can take a photo to share in an encrypted message."
+          "photosPermission": "Aulora uses your photos so you can share them in messages.",
+          "cameraPermission": "Aulora uses the camera so you can take a photo to share in a message."
         }
       ]
     ],

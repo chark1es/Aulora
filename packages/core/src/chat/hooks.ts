@@ -47,25 +47,18 @@ function startOfUtcDay(timestamp: number): number {
   );
 }
 
-/** Decrypts channel names/topics from the session and returns display views. */
+/** Builds display views from plaintext channel summaries. */
 export async function toChannelViews(
-  session: ChatSession,
+  _session: ChatSession,
   channels: readonly ChannelSummary[],
 ): Promise<ChannelView[]> {
-  const views: ChannelView[] = [];
-  for (const channel of channels) {
-    views.push({ ...channel, name: channelName(channel, session) });
-  }
-  return views;
+  return channels.map((channel) => ({ ...channel, name: channelName(channel) }));
 }
 
-/** Best-effort display name for a channel: decrypted name or a placeholder. */
-export function channelName(channel: ChannelSummary, session?: ChatSession): string {
-  if (channel.nameCiphertext !== null && session !== undefined) {
-    const decoded = session.decryptedText(`channel-name:${channel.id}`);
-    if (decoded !== undefined) {
-      return decoded;
-    }
+/** Best-effort display name for a channel: its plaintext name or a placeholder. */
+export function channelName(channel: ChannelSummary, _session?: ChatSession): string {
+  if (channel.name !== null && channel.name.length > 0) {
+    return channel.name;
   }
   if (channel.kind === "dm") {
     return "Direct message";

@@ -4,13 +4,19 @@ A small long-running service that produces a portable Aulora backup every night:
 
 1. `pg_dump` of the Convex Postgres database (custom format);
 2. `convex export` of the deployment (data + S3-backed file storage);
-3. both artifacts uploaded to S3/MinIO under `backups/<timestamp>/`;
-4. the result recorded back in Convex, where the instance admin panel shows it.
+3. a non-secret `encryption.json` manifest naming the EKM provider/key version;
+4. all artifacts uploaded to S3/MinIO under `backups/<timestamp>/`;
+5. the result recorded back in Convex, where the instance admin panel shows it.
+
+The server seals content with server-side encryption, so the artifacts are
+ciphertext at rest: the DB dump and export contain only encrypted content. They
+do **not** contain the EKM master key (the KEK) or any key material. Restoring
+requires that KEK — from the external key manager, or `AULORA_ENCRYPTION_KEY`
+for the `local` provider. Keep it backed up separately and never commit it.
 
 The Convex cron in `packages/convex/convex/crons.ts` records the nightly *intent*
 at 03:00 UTC (unless the operator disabled backups); this runner performs the
-actual work. Neither side ever sees message plaintext or key material — data at
-rest is ciphertext by design.
+actual work and holds no key material while it runs.
 
 ## Enable it
 
@@ -33,8 +39,10 @@ until `BACKUP_HOUR_UTC`.
 
 ## Restore
 
-Bring up a fresh stack, restore `.env` (it holds `INSTANCE_SECRET`, which is
-required to read the data), then:
+Bring up a fresh stack and restore `.env` first (it holds `INSTANCE_SECRET` and
+the EKM settings), then make sure the KEK is available: either the
+`AULORA_ENCRYPTION_KEY` value from `.env` or the KEK held by the external key
+manager. Without it the restored data is unreadable ciphertext. Then:
 
 ```sh
 # Postgres

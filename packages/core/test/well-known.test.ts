@@ -30,6 +30,12 @@ const validWellKnown = {
       },
     ],
   },
+  encryption: {
+    mode: "server" as const,
+    algorithm: "AES-256-GCM",
+    keyVersion: "1",
+    provider: "local",
+  },
 };
 
 describe("parseWellKnown", () => {
@@ -44,6 +50,39 @@ describe("parseWellKnown", () => {
       auth: { local: { enabled: false, signup: false }, providers: [] },
     };
     expect(isWellKnown(doc)).toBe(true);
+  });
+
+  it("accepts an absent encryption block", () => {
+    const { encryption: _encryption, ...withoutEncryption } = validWellKnown;
+    expect(isWellKnown(withoutEncryption)).toBe(true);
+  });
+
+  it("rejects malformed encryption blocks", () => {
+    expect(
+      isWellKnown({
+        ...validWellKnown,
+        encryption: { ...validWellKnown.encryption, mode: "client" },
+      }),
+    ).toBe(false);
+    expect(
+      isWellKnown({
+        ...validWellKnown,
+        encryption: { ...validWellKnown.encryption, keyVersion: 1 },
+      }),
+    ).toBe(false);
+    expect(
+      isWellKnown({ ...validWellKnown, encryption: { ...validWellKnown.encryption, extra: true } }),
+    ).toBe(false);
+    expect(isWellKnown({ ...validWellKnown, encryption: null })).toBe(false);
+  });
+
+  it("rejects secret-shaped fields inside the encryption block", () => {
+    const doc = {
+      ...validWellKnown,
+      encryption: { ...validWellKnown.encryption, privateKey: "s3cr3t" },
+    };
+    expect(isWellKnown(doc)).toBe(false);
+    expect(() => parseWellKnown(doc)).toThrow(expect.objectContaining({ code: "SECRET_FIELD" }));
   });
 
   it("rejects missing required fields", () => {

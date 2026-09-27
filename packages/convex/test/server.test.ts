@@ -21,6 +21,8 @@ const ENV_KEYS = [
   "OIDC_DISPLAY_NAME",
   "OIDC_SCOPES",
   "AUTH_LOCAL_ENABLED",
+  "AULORA_EKM_PROVIDER",
+  "AULORA_ENCRYPTION_KEY_VERSION",
 ] as const;
 
 function clearEnv(): void {
@@ -42,6 +44,29 @@ describe("server.publicConfig", () => {
     expect(config.apiVersion).toBe(1);
     expect(config.auth.local).toEqual({ enabled: true, signup: true });
     expect(config.auth.providers).toEqual([]);
+    expect(config.encryption).toEqual({
+      mode: "server",
+      algorithm: "AES-256-GCM",
+      keyVersion: "1",
+      provider: "local",
+    });
+    expect(containsSecretField(config)).toBe(false);
+  });
+
+  it("advertises the EKM provider and key version without secrets", async () => {
+    clearEnv();
+    process.env.AULORA_EKM_PROVIDER = "vault";
+    process.env.AULORA_ENCRYPTION_KEY_VERSION = "4";
+
+    const t = convexTest(schema, modules);
+    const config = await t.query(api.server.publicConfig);
+
+    expect(config.encryption).toEqual({
+      mode: "server",
+      algorithm: "AES-256-GCM",
+      keyVersion: "4",
+      provider: "vault",
+    });
     expect(containsSecretField(config)).toBe(false);
   });
 

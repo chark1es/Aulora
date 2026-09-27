@@ -10,8 +10,8 @@ import { api } from "../../../../packages/convex/convex/_generated/api";
  * Deliberately uses `getDevicePushTokenAsync()` — the native APNs/FCM token —
  * and **not** Expo's hosted push service, so a self-hosted Aulora server can
  * send wakes through the operator's own push relay (or the project relay for
- * official store builds). Payloads carry only opaque ids; the app decrypts and
- * rewrites the notification locally.
+ * official store builds). Payloads carry only opaque ids; the app rewrites the
+ * notification locally.
  */
 
 export interface PushRegistration {
@@ -59,19 +59,17 @@ export async function registerForPushNotifications(): Promise<PushRegistration |
 }
 
 /**
- * Records the push token on this device's server row. Keyed by the MLS
- * identity, so re-registering refreshes rather than duplicates (see
- * `devices.upsert`).
+ * Records the push token on this device's server row. Upsert matches an
+ * existing row by push token, so re-registering refreshes rather than
+ * duplicates (see `devices.upsert`).
  */
 export async function registerDevicePushToken(
   client: ConvexReactClient,
-  identityKey: string,
   registration: PushRegistration,
   platformTag: string,
 ): Promise<void> {
   await client.mutation(api.devices.upsert, {
     platform: platformTag,
-    identityKey,
     pushToken: registration.token,
   });
 }

@@ -1,291 +1,266 @@
 import { describe, expect, it } from "vitest";
-import {
-  ChatSession,
-  type ChatSubscriptions,
-  decodeMlsBytes,
-  encodeMlsBytes,
-  encodePayload,
-  type MessagePayload,
-} from "../src/chat/index.js";
-import {
-  createMemoryMlsEngine,
-  createMockPort,
-  decodeForTest,
-  type MockPort,
-} from "../src/chat/testing.js";
+import type { ChannelSummary, ChatSubscriptions, MessagePayload } from "../src/chat/index.js";
+import { ChatSession } from "../src/chat/index.js";
+import { createMockPort, type MockPort } from "../src/chat/testing.js";
 
-function silentSubscriptions(port: MockPort): ChatSubscriptions {
-  return port;
+function makeSession(port: MockPort): ChatSession {
+  return ChatSession.create({ port, subscriptions: port });
 }
 
-function makeSession(port: MockPort, secret: string, displayName = "Alice"): ChatSession {
-  return ChatSession.create({
-    port,
-    subscriptions: silentSubscriptions(port),
-    createEngine: () => createMemoryMlsEngine(secret),
-    user: { id: `user-${secret}`, displayName },
-    identityKey: `pub-${secret}`,
-  });
+function channelFor(id: string, name: string | null = null): ChannelSummary {
+  return { id, kind: "text", categoryId: null, name, topic: null, archived: false };
 }
 
-async function waitFor(predicate: () => boolean, attempts = 20): Promise<void> {
-  for (let index = 0; index < attempts; index += 1) {
-    if (predicate()) {
-      return;
-    }
-    await new Promise((resolve) => setTimeout(resolve, 0));
-  }
-}
-
-function channelFor(id: string, mlsGroupId: string | null = null) {
+function incoming(
+  overrides: Partial<MessagePayload> & { id: string; channelId: string },
+): MessagePayload {
   return {
-    id,
-    kind: "text" as const,
-    categoryId: null,
-    nameCiphertext: null,
-    topicCiphertext: null,
-    mlsGroupId,
-    archived: false,
-    currentEpoch: null,
+    authorId: "user-other",
+    body: "",
+    threadRootId: null,
+    attachmentIds: [],
+    mentionUserIds: [],
+    editedAt: null,
+    deletedAt: null,
+    pinnedAt: null,
+    createdAt: 1,
+    ...overrides,
   };
 }
 
-describe("ChatSession sign-in", () => {
-  it("registers the device and publishes unused KeyPackages", async () => {
+function tick(): Promise<void> {
+  return new Promise((resolve) => setTimeout(resolve, 0));
+}
+
+describe("ChatSession start", () => {
+  it("operates without any crypto engine or device setup", async () => {
     const port = createMockPort();
-    const session = makeSession(port, "alice");
+    const session = makeSession(port);
+    await session.start();
     await session.start();
 
-    expect(session.id).toBe("device-1");
-    expect(port.state.calls.filter((call) => call.method === "upsertDevice")).toHaveLength(1);
-    expect(port.state.calls.filter((call) => call.method === "publishKeyPackage")).toHaveLength(3);
+    expect(port.state.calls.some((call) => call.method === "upsertDevice")).toBe(false);
+    expect(port.state.calls.some((call) => call.method.includes("KeyPackage"))).toBe(false);
   });
 
-  it("is idempotent across concurrent start calls", async () => {
+  it("hydrates channel names from the channel subscription", async () => {
     const port = createMockPort();
-    const session = makeSession(port, "alice");
-    await Promise.all([session.start(), session.start()]);
-    expect(port.state.calls.filter((call) => call.method === "upsertDevice")).toHaveLength(1);
+    const channelId = await port.createChannel({ kind: "text", name: "general" });
+    const session = makeSession(port);
+    await session.start();
+
+    expect(session.channelNameFor(channelId, null)).toBe("general");
   });
 });
 
-describe("ChatSession channel bootstrap", () => {
-  it("creates the group as the first joiner, persists the id and appends a commit", async () => {
+describe("ChatSession plaintext messages", () => {
+  it("sends the plaintext body through the port and caches it", async () => {
     const port = createMockPort();
-    const session = makeSession(port, "alice");
-    await session.start();
-    const result = await session.openChannel(channelFor("c1"));
-
-    expect(result.role).toBe("creator");
-    expect(result.epoch).toBe(0);
-    expect(port.state.channels.get("c1")?.mlsGroupId).toBeTruthy();
-    const commits = port.state.commits.get("c1") ?? [];
-    expect(commits).toHaveLength(1);
-    expect(commits[0]?.epoch).toBe(0);
-  });
-
-  it("encrypts and decrypts a round-trip on the creator device", async () => {
-    const port = createMockPort();
-    const session = makeSession(port, "alice");
+    const session = makeSession(port);
     await session.start();
     await session.openChannel(channelFor("c1"));
 
-    await session.sendMessage("c1", "hello world");
-    const messages = [...port.state.messages.values()];
-    expect(messages).toHaveLength(1);
-    const stored = messages[0];
-    expect(stored?.ciphertext).not.toContain("hello world");
-
-    await session.receiveMessages(messages);
-    expect(session.decryptedText(stored?.id ?? "")).toBe("hello world");
-  });
-});
-
-describe("ChatSession two-device flow", () => {
-  it("rejects ciphertext from a group this device is not part of", async () => {
-    const port = createMockPort();
-    const alice = makeSession(port, "alice");
-    await alice.start();
-    await alice.openChannel(channelFor("c1"));
-    await alice.sendMessage("c1", "for alice only");
-
-    const ciphertext = [...port.state.messages.values()][0]?.ciphertext ?? "";
-    const outsider = createMemoryMlsEngine("mallory");
-    await outsider.createGroup(
-      new TextEncoder().encode("aulora:channel:c1"),
-      await outsider.generateKeyPackage(),
-    );
-    await expect(outsider.decrypt(decodeMlsBytes(ciphertext))).rejects.toBeInstanceOf(Error);
-  });
-
-  it("auto-approves a join intent with an add commit and welcome", async () => {
-    const port = createMockPort();
-    const alice = makeSession(port, "alice");
-    await alice.start();
-    await alice.openChannel(channelFor("c1"));
-
-    // Simulate B's KeyPackage published as a join intent for another device.
-    const bobKeyPackage = await createMemoryMlsEngine("bob").generateKeyPackage();
-    const intentId = await port.publishJoinIntent({
-      channelId: "c1",
-      deviceId: "device-2",
-      keyPackage: encodeForAssert(bobKeyPackage),
-    });
-    expect(intentId).toBeTruthy();
-
-    // The intents subscription fires asynchronously after the write.
-    await waitFor(() =>
-      (port.state.commits.get("c1") ?? []).some((commit) => commit.welcomeCiphertext !== null),
-    );
-
-    const remaining = (port.state.joinIntents.get("c1") ?? []).map((intent) => intent.deviceId);
-    expect(remaining).not.toContain("device-2");
-  });
-
-  it("advances the epoch on add and reflects removes", async () => {
-    const port = createMockPort();
-    const alice = makeSession(port, "alice");
-    await alice.start();
-    await alice.openChannel(channelFor("c1"));
-    expect(await alice.epoch("c1")).toBe(0);
-
-    const bobKeyPackage = await createMemoryMlsEngine("bob").generateKeyPackage();
-    await port.publishJoinIntent({
-      channelId: "c1",
-      deviceId: "device-2",
-      keyPackage: encodeForAssert(bobKeyPackage),
-    });
-    await new Promise((resolve) => setTimeout(resolve, 0));
-    expect(await alice.epoch("c1")).toBe(1);
-  });
-
-  it("adds a device, round-trips both ways, then removes and locks it out", async () => {
-    const port = createMockPort();
-    const alice = makeSession(port, "alice");
-    await alice.start();
-    await alice.openChannel(channelFor("c1"));
-
-    // Bob is a separate MLS engine joining through the creator's Welcome.
-    const bob = createMemoryMlsEngine("bob");
-    const bobKeyPackage = await bob.generateKeyPackage();
-    await port.publishJoinIntent({
-      channelId: "c1",
-      deviceId: "device-2",
-      keyPackage: encodeMlsBytes(bobKeyPackage),
-    });
-    await waitFor(() =>
-      (port.state.commits.get("c1") ?? []).some((commit) => commit.welcomeCiphertext !== null),
-    );
-    const welcome = (port.state.commits.get("c1") ?? []).find(
-      (commit) => commit.welcomeCiphertext !== null,
-    )?.welcomeCiphertext;
-    expect(welcome).toBeTruthy();
-    if (welcome === undefined || welcome === null) {
-      throw new Error("expected a Welcome commit");
-    }
-    await bob.joinFromWelcome(decodeMlsBytes(welcome), bobKeyPackage);
-    expect(await bob.epoch()).toBe(1n);
-    expect(await alice.epoch("c1")).toBe(1);
-
-    // Creator -> joiner.
-    const aliceCiphertext = await alice.encryptPayload("c1", { text: "hello bob" });
-    expect(JSON.parse(decodeForTest(await bob.decrypt(decodeMlsBytes(aliceCiphertext))))).toEqual({
-      text: "hello bob",
-    });
-
-    // Joiner -> creator, through the normal receive pipeline.
-    const bobCiphertext = encodeMlsBytes(await bob.encrypt(encodePayload({ t: "hi alice" })));
-    const incoming: MessagePayload = {
-      id: "m-bob",
-      channelId: "c1",
-      authorId: "user-bob",
-      authorDeviceId: "device-2",
-      ciphertext: bobCiphertext,
-      epoch: 1,
-      threadRootId: null,
-      attachmentIds: [],
-      mentionUserIds: [],
-      editedAt: null,
-      deletedAt: null,
-      pinnedAt: null,
-      createdAt: 1,
-    };
-    await alice.receiveMessages([incoming]);
-    expect(alice.decryptedText("m-bob")).toBe("hi alice");
-
-    // Removing Bob advances the epoch and locks him out of later ciphertext.
-    const engine = alice.engineFor("c1");
-    if (engine === undefined) {
-      throw new Error("expected an engine for c1");
-    }
-    const bobMember = (await engine.members()).find(
-      (member) => member.identity === "aulora:device:bob",
-    );
-    expect(bobMember).toBeDefined();
-    const removeCommit = await engine.removeMembers([bobMember?.leafIndex ?? 0]);
-    await port.appendCommit({
-      channelId: "c1",
-      epoch: 2,
-      commitCiphertext: encodeMlsBytes(removeCommit),
-    });
-    await bob.processCommit(removeCommit);
-    expect(await alice.epoch("c1")).toBe(2);
-
-    const afterRemoval = await alice.encryptPayload("c1", { text: "after removal" });
-    await expect(bob.decrypt(decodeMlsBytes(afterRemoval))).rejects.toBeInstanceOf(Error);
-  });
-
-  it("carries attachment descriptors inside the MLS payload", async () => {
-    const port = createMockPort();
-    const alice = makeSession(port, "alice");
-    await alice.start();
-    await alice.openChannel(channelFor("c1"));
-
-    const descriptor = {
-      fileId: "file-1",
-      key: btoa("k".repeat(32)),
-      iv: btoa("i".repeat(12)),
-      mime: "image/png",
-      name: "secret.png",
-      size: 123,
-    };
-    const messageId = await alice.sendMessage("c1", "", { attachments: [descriptor] });
+    const messageId = await session.sendMessage("c1", "hello world");
     const stored = port.state.messages.get(messageId);
-    expect(stored?.ciphertext).not.toContain("secret.png");
+    expect(stored?.body).toBe("hello world");
+    expect(session.decryptedText(messageId)).toBe("hello world");
 
-    await alice.receiveMessages([...port.state.messages.values()]);
-    expect(alice.decryptedBody(messageId)?.attachments?.length).toBe(1);
-    expect(alice.attachmentsFor(messageId)[0]?.name).toBe("secret.png");
+    const sendCall = port.state.calls.find((call) => call.method === "sendMessage");
+    expect(sendCall?.args).toMatchObject({ channelId: "c1", body: "hello world" });
+  });
+
+  it("forwards replyToId through the port and caches it in the body", async () => {
+    const port = createMockPort();
+    const session = makeSession(port);
+    await session.start();
+    await session.openChannel(channelFor("c1"));
+
+    const original = await session.sendMessage("c1", "original");
+    const reply = await session.sendMessage("c1", "reply", { replyToId: original });
+
+    const sendCall = port.state.calls
+      .filter((call) => call.method === "sendMessage")
+      .find((call) => (call.args as { body?: string }).body === "reply");
+    expect(sendCall?.args).toMatchObject({ channelId: "c1", body: "reply", replyToId: original });
+    expect(port.state.messages.get(reply)?.replyToId).toBe(original);
+    expect(session.decryptedBody(reply)?.replyToId).toBe(original);
+  });
+
+  it("ingests received plaintext and notifies onDecrypted", async () => {
+    const port = createMockPort();
+    const session = makeSession(port);
+    await session.start();
+    await session.openChannel(channelFor("c1"));
+
+    const seen: string[] = [];
+    session.onDecrypted((messages) => {
+      for (const message of messages) {
+        seen.push(message.id);
+      }
+    });
+
+    const result = session.receiveMessages([
+      incoming({ id: "m1", channelId: "c1", body: "hi alice" }),
+    ]);
+    expect(typeof result.then).toBe("function");
+    await result;
+
+    expect(session.decryptedText("m1")).toBe("hi alice");
+    expect(session.decryptedBody("m1")?.t).toBe("hi alice");
+    expect(seen).toContain("m1");
+  });
+
+  it("ignores deleted messages", async () => {
+    const port = createMockPort();
+    const session = makeSession(port);
+    await session.start();
+    await session.openChannel(channelFor("c1"));
+
+    await session.receiveMessages([
+      incoming({ id: "m1", channelId: "c1", body: "gone", deletedAt: 123 }),
+    ]);
+    expect(session.decryptedText("m1")).toBe("");
+    expect(session.decryptedBody("m1")).toBeUndefined();
+  });
+
+  it("ingests the live tail when a channel is opened", async () => {
+    const port = createMockPort();
+    const messageId = await port.sendMessage({ channelId: "c1", body: "existing" });
+    const session = makeSession(port);
+    await session.start();
+    await session.openChannel(channelFor("c1"));
+    await tick();
+
+    expect(session.decryptedText(messageId)).toBe("existing");
   });
 
   it("edits, deletes and reacts through the port", async () => {
     const port = createMockPort();
-    const alice = makeSession(port, "alice");
-    await alice.start();
-    await alice.openChannel(channelFor("c1"));
-    const messageId = await alice.sendMessage("c1", "first");
+    const session = makeSession(port);
+    await session.start();
+    await session.openChannel(channelFor("c1"));
+    const messageId = await session.sendMessage("c1", "first");
 
-    await alice.editMessage("c1", messageId, "second");
-    expect(port.state.messages.get(messageId)?.editedAt).not.toBeNull();
-    await alice.receiveMessages([...port.state.messages.values()]);
-    expect(alice.decryptedText(messageId)).toBe("second");
+    await session.editMessage("c1", messageId, "second");
+    expect(port.state.messages.get(messageId)?.body).toBe("second");
+    expect(session.decryptedText(messageId)).toBe("second");
 
-    await alice.toggleReaction("c1", messageId, "thumbs-up");
-    const reactions: unknown[] = [];
-    alice.onReactions(messageId, (value) => reactions.push(value));
-    await alice.toggleReaction("c1", messageId, "thumbs-up");
-    expect(reactions.length).toBeGreaterThan(0);
+    await session.toggleReaction("c1", messageId, "thumbs-up");
+    expect(port.state.reactions.get(messageId)?.[0]?.emoji).toBe("thumbs-up");
+    const resolved = await session.loadReactions(
+      "c1",
+      messageId,
+      port.state.reactions.get(messageId) ?? [],
+    );
+    expect(resolved[0]?.emoji).toBe("thumbs-up");
 
-    await alice.deleteMessage("c1", messageId);
+    const reactionEvents: number[] = [];
+    session.onReactions(messageId, (rows) => reactionEvents.push(rows.length));
+    expect(reactionEvents.length).toBeGreaterThan(0);
+
+    await session.deleteMessage("c1", messageId);
     expect(port.state.messages.get(messageId)?.deletedAt).not.toBeNull();
-    expect(alice.decryptedText(messageId)).toBeUndefined();
+    expect(session.decryptedText(messageId)).toBe("");
   });
 });
 
-function encodeForAssert(bytes: Uint8Array): string {
-  let binary = "";
-  for (const byte of bytes) {
-    binary += String.fromCharCode(byte);
-  }
-  return btoa(binary);
-}
+describe("ChatSession attachments", () => {
+  it("resolves descriptors from the message's attachment ids", async () => {
+    const port = createMockPort();
+    const session = makeSession(port);
+    await session.start();
+    await session.openChannel(channelFor("c1"));
+
+    const fileId = await port.uploadFile({
+      name: "secret.png",
+      mime: "image/png",
+      bytes: new Uint8Array([1, 2, 3, 4]),
+      dimensions: { width: 64, height: 32 },
+    });
+    const messageId = await session.sendMessage("c1", "", { attachmentIds: [fileId] });
+
+    expect(port.state.messages.get(messageId)?.attachmentIds).toEqual([fileId]);
+    expect(session.decryptedBody(messageId)?.attachments?.length).toBe(1);
+    expect(session.attachmentsFor(messageId)[0]?.name).toBe("secret.png");
+    expect(session.attachmentsFor(messageId)[0]?.dimensions).toEqual({ width: 64, height: 32 });
+  });
+
+  it("resolves attachments for received messages", async () => {
+    const port = createMockPort();
+    const session = makeSession(port);
+    await session.start();
+    await session.openChannel(channelFor("c1"));
+
+    const fileId = await port.uploadFile({
+      name: "report.pdf",
+      mime: "application/pdf",
+      bytes: new Uint8Array([9, 8, 7]),
+    });
+    await session.receiveMessages([
+      incoming({ id: "m1", channelId: "c1", body: "see file", attachmentIds: [fileId] }),
+    ]);
+
+    expect(session.attachmentsFor("m1")[0]?.name).toBe("report.pdf");
+  });
+});
+
+describe("ChatSession channel names", () => {
+  it("falls back to a placeholder when the name is unknown", () => {
+    const port = createMockPort();
+    const session = makeSession(port);
+    expect(session.channelNameFor("c1", null)).toBe("channel");
+  });
+
+  it("renames a channel with its plaintext name", async () => {
+    const port = createMockPort();
+    const session = makeSession(port);
+    await session.start();
+    await session.openChannel(channelFor("c1", "general"));
+
+    await session.setChannelName("c1", "renamed");
+    const renameCall = port.state.calls.find((call) => call.method === "renameChannel");
+    expect(renameCall?.args).toMatchObject({ channelId: "c1", name: "renamed" });
+    expect(session.channelNameFor("c1", null)).toBe("renamed");
+  });
+
+  it("caches names from hydrateChannelNames", () => {
+    const port = createMockPort();
+    const session = makeSession(port);
+    session.hydrateChannelNames([channelFor("c3", "three")]);
+    expect(session.channelNameFor("c3", null)).toBe("three");
+  });
+});
+
+describe("mock port message window", () => {
+  it("returns the newest `limit` roots, oldest first, and keeps the tail live", async () => {
+    const port = createMockPort();
+    for (let index = 0; index < 5; index += 1) {
+      await port.sendMessage({ channelId: "c1", body: `m${index}` });
+    }
+    const seen: string[][] = [];
+    const off = port.watchMessages(
+      "c1",
+      (messages) => seen.push(messages.map((message) => message.body)),
+      { limit: 2 },
+    );
+    expect(seen.at(-1)).toEqual(["m3", "m4"]);
+    await port.sendMessage({ channelId: "c1", body: "m5" });
+    expect(seen.at(-1)).toEqual(["m4", "m5"]);
+    off();
+  });
+
+  it("bumps the reply count on a thread root", async () => {
+    const port = createMockPort();
+    const root = await port.sendMessage({ channelId: "c1", body: "root" });
+    await port.sendMessage({ channelId: "c1", body: "reply", threadRootId: root });
+    expect(port.state.messages.get(root)?.replyCount).toBe(1);
+  });
+});
+
+describe("ChatSubscriptions passthrough", () => {
+  it("is directly usable as the session's subscriptions", () => {
+    const port = createMockPort();
+    const subscriptions: ChatSubscriptions = port;
+    expect(typeof subscriptions.watchChannels).toBe("function");
+  });
+});

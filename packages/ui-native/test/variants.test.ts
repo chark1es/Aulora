@@ -1,6 +1,6 @@
 import { darkPalette, lightPalette } from "@aulora/tokens";
 import { describe, expect, it } from "vitest";
-import { paletteForScheme, presenceColor, roleRing } from "../src/colors";
+import { IDLE_COLOR, paletteForScheme, presenceColor, roleRing } from "../src/colors";
 import {
   buttonClass,
   buttonLabelClass,
@@ -25,7 +25,8 @@ describe("paletteForScheme", () => {
 describe("presenceColor", () => {
   it("maps the four statuses and falls back to muted", () => {
     expect(presenceColor("online")).toBe(darkPalette.secondary);
-    expect(presenceColor("idle")).toBe(darkPalette.accent);
+    expect(presenceColor("idle")).toBe(IDLE_COLOR);
+    expect(presenceColor("idle")).not.toBe(darkPalette.accent);
     expect(presenceColor("dnd")).toBe(darkPalette.danger);
     expect(presenceColor("offline")).toBe(darkPalette["text-muted"]);
     expect(presenceColor("away")).toBe(darkPalette["text-muted"]);
@@ -46,7 +47,7 @@ describe("class composers", () => {
     const primary = buttonClass({ variant: "primary", size: "sm" });
     expect(primary).toContain("bg-accent");
     expect(primary).toContain("h-8");
-    expect(primary).toContain("rounded-pill");
+    expect(primary).toContain("rounded-input");
 
     const disabled = buttonClass({ variant: "danger", size: "lg", disabled: true });
     expect(disabled).toContain("bg-danger");
@@ -54,7 +55,7 @@ describe("class composers", () => {
   });
 
   it("keeps button labels legible per variant", () => {
-    expect(buttonLabelClass("primary")).toBe("text-bg");
+    expect(buttonLabelClass("primary")).toBe("text-on-accent");
     expect(buttonLabelClass("ghost")).toBe("text-text-muted");
   });
 

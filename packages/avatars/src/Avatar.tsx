@@ -1,6 +1,7 @@
 import { Blobatar } from "@blobatar/react";
 import type { CSSProperties } from "react";
 import { cn } from "./cn";
+import { type AvatarShape, avatarRadius } from "./shape";
 
 export interface AvatarProps {
   /**
@@ -16,6 +17,8 @@ export interface AvatarProps {
   animate?: "hover" | "always";
   /** Optional accessible label. When omitted the avatar is decorative. */
   title?: string;
+  /** `circle` for people, `squircle` for servers and workspaces. */
+  shape?: AvatarShape;
   className?: string;
 }
 
@@ -24,7 +27,15 @@ export interface AvatarProps {
  * role-color ring. Presentational and dependency-light; animation is opt-in
  * because it switches Blobatar from an `<img>` to inline SVG.
  */
-export function Avatar({ seed, size = 32, roleColor, animate, title, className }: AvatarProps) {
+export function Avatar({
+  seed,
+  size = 32,
+  roleColor,
+  animate,
+  title,
+  shape = "circle",
+  className,
+}: AvatarProps) {
   const content =
     animate === undefined ? (
       <Blobatar name={seed} size={size} {...(title !== undefined ? { title } : {})} />
@@ -37,14 +48,18 @@ export function Avatar({ seed, size = 32, roleColor, animate, title, className }
       />
     );
 
-  const style: CSSProperties = { width: size, height: size };
+  const style: CSSProperties = {
+    width: size,
+    height: size,
+    borderRadius: avatarRadius(size, shape),
+  };
   if (roleColor !== undefined) {
     style.boxShadow = `0 0 0 2px ${roleColor}`;
   }
 
   return (
     <span
-      className={cn("inline-flex shrink-0 overflow-hidden rounded-pill bg-surface-3", className)}
+      className={cn("inline-flex shrink-0 overflow-hidden bg-surface-3", className)}
       style={style}
     >
       {content}

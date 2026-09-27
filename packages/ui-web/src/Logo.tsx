@@ -9,8 +9,8 @@ export interface LogoProps extends Omit<SVGProps<SVGSVGElement>, "children"> {
 }
 
 /**
- * The Aulora mark: a soft arched doorway (the hall) in Ember with a small
- * speech dot. `title` makes it a labelled image; otherwise it is decorative.
+ * The Aulora mark: a soft arched doorway (the hall) in Ember with a speech
+ * dot at the threshold. `title` makes it a labelled image; otherwise it is decorative.
  */
 export function Logo({ size = 32, title, className, ...rest }: LogoProps) {
   const labelled = title !== undefined;
@@ -27,9 +27,8 @@ export function Logo({ size = 32, title, className, ...rest }: LogoProps) {
       {...rest}
     >
       <path className="fill-accent" d="M9 43V25a15 15 0 0 1 30 0v18H9Z" />
-      <path className="fill-bg" d="M16 43V26a8 8 0 0 1 16 0v17H16Z" />
-      <circle className="fill-secondary" cx="37.5" cy="11.5" r="4" />
-      <circle className="fill-bg" cx="37.5" cy="11.5" r="1.4" />
+      <path className="fill-on-accent" d="M16 43V26a8 8 0 0 1 16 0v17H16Z" opacity="0.92" />
+      <circle className="fill-accent" cx="24" cy="31" r="3" />
     </svg>
   );
 }

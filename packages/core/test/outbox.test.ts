@@ -1,5 +1,5 @@
 import { describe, expect, it, vi } from "vitest";
-import { Outbox } from "../src/index.js";
+import { isConnectivityError, Outbox } from "../src/index.js";
 
 describe("Outbox", () => {
   it("queues items in order and reports pending count", async () => {
@@ -92,6 +92,13 @@ describe("Outbox", () => {
     expect(item?.mentionUserIds).toEqual(["u2"]);
   });
 
+  it("preserves replyToId on the queued item", async () => {
+    const outbox = new Outbox({ createId: ids("a") });
+    await outbox.enqueue({ channelId: "c1", text: "reply", replyToId: "message-1" }, 1);
+    const item = (await outbox.list())[0];
+    expect(item?.replyToId).toBe("message-1");
+  });
+
   it("does not run two flushes concurrently", async () => {
     const outbox = new Outbox({ createId: ids("a") });
     await outbox.enqueue({ channelId: "c1", text: "once" }, 1);
@@ -114,6 +121,54 @@ describe("Outbox", () => {
     release();
     await active;
     expect(send).toHaveBeenCalledTimes(1);
+  });
+
+  it("retries a failed item back to pending, then sends it", async () => {
+    const outbox = new Outbox({ createId: ids("a") });
+    await outbox.enqueue({ channelId: "c1", text: "recoverable" }, 0);
+    const failing = async () => {
+      throw new Error("network error");
+    };
+
+    // Exhaust the attempts so the item is parked as failed.
+    let now = 0;
+    await outbox.flush(failing, { now: () => now, maxAttempts: 1 });
+    const failedItem = (await outbox.list())[0];
+    expect(failedItem?.status).toBe("failed");
+    expect(await outbox.pendingCount()).toBe(0);
+
+    // `retry` clears the attempt budget and makes it due again.
+    const retried = await outbox.retry("a", 500);
+    expect(retried?.status).toBe("pending");
+    expect(retried?.attempts).toBe(0);
+    expect(retried?.nextAttemptAt).toBe(500);
+
+    // Failed items are not auto-flushed; after an explicit retry they are.
+    now = 500;
+    const send = vi.fn(async () => {});
+    const result = await outbox.flush(send, { now: () => now });
+    expect(result.sent).toEqual(["a"]);
+    expect(await outbox.list()).toHaveLength(0);
+  });
+
+  it("retry returns undefined for an unknown id", async () => {
+    const outbox = new Outbox({ createId: ids("a") });
+    expect(await outbox.retry("missing")).toBeUndefined();
+  });
+
+  it("classifies connectivity failures, not server rejections", () => {
+    expect(isConnectivityError(new TypeError("Failed to fetch"))).toBe(true);
+    expect(isConnectivityError(new Error("NetworkError when attempting to fetch resource"))).toBe(
+      true,
+    );
+    expect(isConnectivityError(new Error("WebSocket closed"))).toBe(true);
+    expect(isConnectivityError(new Error("Chat is not ready"))).toBe(true);
+    expect(isConnectivityError(new Error("offline"))).toBe(true);
+
+    expect(isConnectivityError(new Error("You do not have permission to post here"))).toBe(false);
+    expect(isConnectivityError(new Error("Message is too long"))).toBe(false);
+    expect(isConnectivityError(new Error("Rate limit exceeded"))).toBe(false);
+    expect(isConnectivityError(undefined)).toBe(false);
   });
 });
 

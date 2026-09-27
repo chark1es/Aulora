@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { parseDomains } from "../components/admin/WorkspaceSettings";
-import { auditActionLabel, describeAuditAction } from "../lib/audit-format";
+import { auditActionLabel, auditCategory, describeAuditAction, shortId } from "../lib/audit-format";
 import { inviteUrl, parseInviteCode, redeemErrorMessage } from "../lib/invites";
 
 describe("audit-format", () => {
@@ -11,10 +11,28 @@ describe("audit-format", () => {
 
   it("summarizes parseable metadata without leaking it raw", () => {
     expect(describeAuditAction("member.ban", '{"reason":"spam"}')).toBe(
-      "Banned member (reason: spam)",
+      "Banned member (Reason: spam)",
     );
     expect(describeAuditAction("role.delete", "not-json")).toBe("Deleted role");
     expect(describeAuditAction("role.delete", null)).toBe("Deleted role");
+  });
+
+  it("drops opaque ids and maps known metadata to friendly copy", () => {
+    expect(describeAuditAction("member.role.add", '{"roleId":"abc123"}')).toBe("Added member role");
+    expect(describeAuditAction("role.create", '{"name":"Moderator","position":3}')).toBe(
+      "Created role (Moderator, Position 3)",
+    );
+    expect(describeAuditAction("channel.create", '{"kind":"text","private":true}')).toBe(
+      "Created channel (Kind: text, Private)",
+    );
+  });
+
+  it("groups actions into categories and shortens opaque ids", () => {
+    expect(auditCategory("member.ban")).toBe("member");
+    expect(auditCategory("channel.rename")).toBe("channel");
+    expect(auditCategory("mystery.action")).toBe("other");
+    expect(shortId("abcdefghij")).toBe("abcdef…");
+    expect(shortId("abc")).toBe("abc");
   });
 });
 

@@ -86,7 +86,7 @@ describe("permission overrides", () => {
     expect(forTwo.page.map((channel) => channel.id)).toContain(channelId);
   });
 
-  it("returns an MLS remove signal when ViewChannel is lost", async () => {
+  it("hides the channel when a channel override removes ViewChannel", async () => {
     const t = newTest();
     await seedWorkspace(t, {
       everyonePermissions: Permission.ViewChannel | Permission.ReadHistory,
@@ -101,8 +101,7 @@ describe("permission overrides", () => {
         { targetId: EVERYONE_ROLE_ID, targetType: "role", allow: 0n, deny: Permission.ViewChannel },
       ],
     });
-    expect(signal.mlsAction).toBe("remove");
-    expect(signal.mlsRemovals.some((entry) => entry.userId === "user-1")).toBe(true);
+    expect(signal).toBeNull();
   });
 
   it("clears a channel override", async () => {

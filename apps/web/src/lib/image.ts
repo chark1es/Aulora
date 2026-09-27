@@ -3,15 +3,15 @@
  *
  * Images are re-drawn onto a canvas and re-encoded, which drops EXIF and every
  * other metadata block from the original file; the bytes that are then
- * encrypted and uploaded contain only pixels. A blurhash placeholder and a
- * small thumbnail are produced for progressive display.
+ * uploaded contain only pixels. A blurhash placeholder and a small thumbnail
+ * are produced for progressive display.
  *
  * This module is browser-only (canvas + `createImageBitmap`). The pure helpers
  * (`fitWithin`, `outputMimeFor`, `isProcessableImage`) are unit-tested; the
  * canvas pipeline itself is covered by the live-browser Playwright test.
  */
 
-import { blurhashDecode, blurhashEncode } from "@aulora/crypto";
+import { blurhashDecode, blurhashEncode } from "@aulora/core";
 
 /** Longest edge of the re-encoded full image. */
 export const MAX_IMAGE_EDGE = 4096;
@@ -144,7 +144,7 @@ export function blurhashToDataUrl(hash: string, width = 32, height = 32): string
 /**
  * Reads a picked/dropped file: images are EXIF-stripped, re-encoded and
  * thumbnailed; everything else is returned as raw bytes. The caller then
- * encrypts the result before it can leave the device.
+ * uploads the result, which the server seals at rest.
  */
 export async function processAttachmentFile(file: File): Promise<ProcessedAttachment> {
   const name = file.name.length > 0 ? file.name : "attachment";

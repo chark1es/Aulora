@@ -36,6 +36,13 @@ describe("SearchIndex", () => {
     expect(hits[0]?.snippet.toLowerCase()).toContain("release");
   });
 
+  it("reports the author of each hit so results can show who said it", async () => {
+    const index = new SearchIndex();
+    await index.load();
+    await index.index(doc({ messageId: "m1", authorId: "u7", text: "ship it" }));
+    expect(index.query("ship")[0]?.authorId).toBe("u7");
+  });
+
   it("supports prefix matching for as-you-type search", async () => {
     const index = new SearchIndex();
     await index.load();

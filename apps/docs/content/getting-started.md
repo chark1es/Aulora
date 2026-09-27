@@ -21,6 +21,11 @@ email and owner password, then runs `docker compose up -d --build` and the
 one-shot `setup` service. It prints the URL to open when it finishes. See
 [Self-hosting](self-hosting.md) for every option.
 
+Server-side encryption is on by default: `setup` generates a local master key
+(`AULORA_ENCRYPTION_KEY`), so the default stack needs no extra services. An
+external key manager (Vault, AWS KMS, GCP KMS or an HTTP proxy) is an optional,
+advanced alternative. See [Self-hosting → Encryption](self-hosting.md).
+
 ## Work on the monorepo
 
 ```sh

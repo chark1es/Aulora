@@ -3,12 +3,14 @@ export { Card, type CardProps } from "./Card";
 export { cn } from "./cn";
 export {
   type ColorScheme,
+  IDLE_COLOR,
   paletteForScheme,
   presenceColor,
   type RoleRing,
   roleRing,
 } from "./colors";
 export { Heading, type HeadingLevel, type HeadingProps } from "./Heading";
+export { Icon, type IconProps } from "./Icon";
 export { IconButton, type IconButtonProps } from "./IconButton";
 export { Input, type InputProps } from "./Input";
 export { Logo, type LogoProps } from "./Logo";

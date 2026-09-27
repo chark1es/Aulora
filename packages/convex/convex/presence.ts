@@ -2,6 +2,8 @@ import { v } from "convex/values";
 import type { MutationCtx } from "./_generated/server";
 import { internalMutation, mutation, query } from "./_generated/server";
 import { requireAuth } from "./lib/auth";
+import { openContentOptional } from "./lib/sealed";
+import { sealString } from "./lib/sse";
 
 export const PRESENCE_HEARTBEAT_MS = 30_000;
 /** Older than this marks an `online` session idle. */
@@ -18,9 +20,14 @@ const presenceStatusValidator = v.union(
 
 type PresenceStatus = "online" | "idle" | "dnd" | "offline";
 
+const CUSTOM_STATUS_CONTEXT = { scope: "presence.status" } as const;
+
 interface PresencePatch {
   readonly status?: PresenceStatus;
-  readonly customStatusCiphertext?: string;
+  /** Sealed custom status; `undefined` means "no change to the field". */
+  readonly customStatusCiphertext?: string | undefined;
+  /** True when the caller explicitly set (or cleared) the custom status. */
+  readonly setCustomStatus?: boolean;
 }
 
 async function upsertPresence(
@@ -34,22 +41,23 @@ async function upsertPresence(
     .withIndex("by_user", (q) => q.eq("userId", userId))
     .unique();
   const status = patch.status ?? existing?.status ?? "online";
-  const customStatusCiphertext =
-    patch.customStatusCiphertext ?? existing?.customStatusCiphertext ?? "";
-  const hasCustomPatch = patch.customStatusCiphertext !== undefined;
+  const setCustomStatus = patch.setCustomStatus === true;
+  const customStatusCiphertext = setCustomStatus
+    ? patch.customStatusCiphertext
+    : existing?.customStatusCiphertext;
 
   if (existing === null) {
     await ctx.db.insert("presence", {
       userId,
       status,
       lastHeartbeat: now,
-      ...(customStatusCiphertext.length > 0 ? { customStatusCiphertext } : {}),
+      ...(customStatusCiphertext !== undefined ? { customStatusCiphertext } : {}),
     });
   } else {
     await ctx.db.patch(existing._id, {
       status,
       lastHeartbeat: now,
-      ...(hasCustomPatch ? { customStatusCiphertext } : {}),
+      ...(setCustomStatus ? { customStatusCiphertext } : {}),
     });
   }
   return { status, lastHeartbeat: now };
@@ -68,19 +76,23 @@ export const heartbeat = mutation({
   },
 });
 
-/** Sets a deliberate status and optional custom status ciphertext (opaque). */
+/** Sets a deliberate status and an optional custom status (sealed server-side). */
 export const setStatus = mutation({
   args: {
     status: presenceStatusValidator,
-    customStatusCiphertext: v.optional(v.string()),
+    customStatus: v.optional(v.string()),
   },
   handler: async (ctx, args) => {
     const { userId } = await requireAuth(ctx);
-    const patch: PresencePatch =
-      args.customStatusCiphertext !== undefined
-        ? { status: args.status, customStatusCiphertext: args.customStatusCiphertext }
-        : { status: args.status };
-    return await upsertPresence(ctx, userId, patch, Date.now());
+    const trimmed = args.customStatus?.trim() ?? "";
+    const customStatusCiphertext =
+      trimmed.length > 0 ? await sealString(CUSTOM_STATUS_CONTEXT, trimmed) : undefined;
+    return await upsertPresence(
+      ctx,
+      userId,
+      { status: args.status, setCustomStatus: true, customStatusCiphertext },
+      Date.now(),
+    );
   },
 });
 
@@ -90,12 +102,14 @@ export const list = query({
   handler: async (ctx) => {
     await requireAuth(ctx);
     const rows = await ctx.db.query("presence").collect();
-    return rows.map((row) => ({
-      userId: row.userId,
-      status: row.status,
-      customStatusCiphertext: row.customStatusCiphertext ?? null,
-      lastHeartbeat: row.lastHeartbeat,
-    }));
+    return await Promise.all(
+      rows.map(async (row) => ({
+        userId: row.userId,
+        status: row.status,
+        customStatus: await openContentOptional(CUSTOM_STATUS_CONTEXT, row.customStatusCiphertext),
+        lastHeartbeat: row.lastHeartbeat,
+      })),
+    );
   },
 });
 
@@ -114,7 +128,7 @@ export const get = query({
     return {
       userId: row.userId,
       status: row.status,
-      customStatusCiphertext: row.customStatusCiphertext ?? null,
+      customStatus: await openContentOptional(CUSTOM_STATUS_CONTEXT, row.customStatusCiphertext),
       lastHeartbeat: row.lastHeartbeat,
     };
   },

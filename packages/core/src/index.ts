@@ -1,21 +1,27 @@
-export type {
-  AttachmentCryptoOptions,
-  AttachmentDescriptor,
-  AttachmentDimensions,
-  EncryptedObjectRef,
-} from "@aulora/crypto";
 export {
   downloadAttachment,
   downloadThumbnail,
-  type ThumbnailUpload,
+  parseAttachmentDescriptor,
   type UploadAttachmentInput,
-  uploadEncryptedAttachment,
+  uploadAttachment,
 } from "./attachments";
+export {
+  base64ToBytes,
+  base64UrlToBytes,
+  bytesToBase64,
+  bytesToBase64Url,
+  concatBytes,
+  timingSafeEqual,
+  utf8Decode,
+  utf8Encode,
+} from "./binary";
+export { blurhashDecode, blurhashEncode } from "./blurhash";
 export * from "./chat/index";
 export {
   type EnqueueInput,
   type FlushOptions,
   type FlushResult,
+  isConnectivityError,
   memoryOutboxStore,
   Outbox,
   type OutboxItem,
@@ -98,6 +104,7 @@ export {
   WELL_KNOWN_PATH,
   type WellKnown,
   type WellKnownAuth,
+  type WellKnownEncryption,
   WellKnownError,
   type WellKnownErrorCode,
   type WellKnownLocalAuth,

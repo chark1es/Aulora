@@ -1,3 +1,5 @@
+> **Historical note:** Aulora has since moved from client-side E2EE (MLS, RFC 9420) to server-side encryption backed by an external key manager (EKM). This report is a historical record of the earlier MLS design.
+
 # Phase 4.3 — Aulora push + deep links: Gate Report
 
 Date: 2026-09-26. Scope: web push (VAPID), deep links across web/desktop, and

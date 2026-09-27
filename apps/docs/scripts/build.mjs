@@ -44,7 +44,7 @@ function layout({ title, body, currentFile }) {
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1" />
     <title>${title} · Aulora Docs</title>
-    <meta name="description" content="Aulora self-hosted, end-to-end encrypted team chat documentation." />
+    <meta name="description" content="Aulora self-hosted, server-side encrypted team chat documentation." />
     <link rel="stylesheet" href="style.css" />
   </head>
   <body>

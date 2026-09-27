@@ -3,6 +3,8 @@ import { internal } from "./_generated/api";
 import type { Id } from "./_generated/dataModel";
 import { action, query } from "./_generated/server";
 import { verifySetupToken } from "./lib/crypto";
+import { getEkmSettings } from "./lib/ekm";
+import { primeMasterKey } from "./lib/sse";
 
 interface SetupResult {
   readonly serverId: Id<"server">;
@@ -53,9 +55,22 @@ export const initialize = action({
       name: args.displayName ?? args.name,
     });
 
-    return await ctx.runMutation(internal.setupState.finalize, {
+    const result = await ctx.runMutation(internal.setupState.finalize, {
       name: args.name,
       ownerId: credential.ownerId,
     });
+
+    // Prime the master key (the only network step for remote key managers) and
+    // record the active key version so the encryption status surface is exact.
+    const settings = getEkmSettings(process.env);
+    await primeMasterKey({ env: process.env });
+    await ctx.runMutation(internal.encryptionKeys.register, {
+      keyVersion: settings.keyVersion,
+      provider: settings.provider,
+      kekId: settings.kekId,
+      status: "active",
+    });
+
+    return result;
   },
 });

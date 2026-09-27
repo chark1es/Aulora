@@ -31,9 +31,8 @@ bun run test
 | --- | --- |
 | `apps/web` | Vite + React SPA |
 | `apps/mobile`, `apps/desktop` | Expo and Tauri clients |
-| `packages/convex` | schema, queries, mutations, actions, HTTP routes, crons |
+| `packages/convex` | schema, queries, mutations, actions, HTTP routes, crons, server-side encryption |
 | `packages/core` | shared hooks, permissions, well-known parsing |
-| `packages/crypto` | MLS wrapper and key storage |
 | `infra/docker` | Compose stack, setup and the backup runner |
 | `apps/docs` | this site |
 

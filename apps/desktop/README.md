@@ -2,7 +2,9 @@
 
 A Tauri 2 shell that wraps the `apps/web` Vite SPA. The webview is the same
 React client as the browser build; this crate contributes only the native
-surface and the OS integrations.
+surface and the OS integrations. Message encryption is server-side behind an
+external key manager, so the client stores no keys and the shell has no key
+store of its own.
 
 ## What the shell adds
 
@@ -12,14 +14,13 @@ surface and the OS integrations.
 | System tray / menu-bar item with open, connect and quit | `src-tauri/src/tray.rs` |
 | Native notifications with device-computed text | `commands.rs` (`show_notification`) |
 | Dock/taskbar unread badge (macOS/Linux count, Windows overlay icon) | `commands.rs`, `window.rs` |
-| OS keychain key store (macOS Keychain / Windows Credential Manager / Secret Service) | `keychain.rs` |
 | `aulora://connect` and `aulora://invite` deep links, single instance | `deep_link.rs` |
 | macOS Sidebar vibrancy behind translucent rails | `window.rs`, `tauri.macos.conf.json` |
 | Locked-down CSP: bundled code only, no remote script origins | `tauri.conf.json` |
 
 The web player (`apps/web`) talks to the shell through `window.__TAURI__`
-(commands `set_unread_badge`, `show_notification`, `take_deep_links`,
-`keychain_*`; events `aulora://deep-link`, `aulora://quick-switcher`). It carries
+(commands `set_unread_badge`, `show_notification`, `take_deep_links`;
+events `aulora://deep-link`, `aulora://quick-switcher`). It carries
 no `@tauri-apps/*` npm dependency, so the web build is unchanged.
 
 ## Requirements
@@ -51,12 +52,9 @@ path, building the shell on macOS, Windows and Linux and uploading the bundles.
 
 ## Caveats
 
-- On-device behaviour (menus, tray, badge, keychain, deep links, vibrancy) has
+- On-device behaviour (menus, tray, badge, deep links, vibrancy) has
   **not** been verified locally: no Rust toolchain was available when this
   landed. CI builds only prove it compiles and bundles.
-- Windows Credential Manager caps a generic credential at 2560 bytes; very
-  large MLS group states may exceed that. The keychain is best for the device
-  identity and small records.
 - The dev CSP is strict (`script-src 'self'`); if Vite's HMR needs more during
   `tauri:dev`, pass a relaxed `--config` override rather than weakening the
   production policy.

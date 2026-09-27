@@ -63,6 +63,43 @@ function cloneAuth(auth: WellKnownAuth): WellKnownAuth {
   };
 }
 
+/** Loopback hosts, including bracketed IPv6 literals returned by `URL`. */
+function isLoopbackHost(hostname: string): boolean {
+  const host = hostname.toLowerCase().replace(/^\[|\]$/g, "");
+  if (host === "localhost" || host === "::1" || host === "0.0.0.0") {
+    return true;
+  }
+  return host.endsWith(".localhost") || /^127\./.test(host);
+}
+
+/** True when `advertised` parses as a URL pointing at a loopback host. */
+function isLoopbackUrl(advertised: string): boolean {
+  try {
+    return isLoopbackHost(new URL(advertised).hostname);
+  } catch {
+    return false;
+  }
+}
+
+/**
+ * Retargets a loopback URL from a well-known document onto `baseHost`, keeping
+ * the advertised protocol and port. Unparseable URLs and non-loopback hosts are
+ * returned unchanged.
+ */
+function retargetLoopbackHost(advertised: string, baseHost: string): string {
+  let url: URL;
+  try {
+    url = new URL(advertised);
+  } catch {
+    return advertised;
+  }
+  if (!isLoopbackHost(url.hostname)) {
+    return advertised;
+  }
+  url.hostname = baseHost;
+  return url.toString().replace(/\/+$/, "");
+}
+
 /** Stable profile id: the canonical base URL is already unique per server. */
 export function profileId(baseUrl: string): string {
   return normalizeServerUrl(baseUrl);
@@ -75,6 +112,11 @@ export function createServerProfile(
   addedAt: number = Date.now(),
 ): ServerProfile {
   const canonical = normalizeServerUrl(baseUrl);
+  const base = new URL(canonical);
+  const convexUrl = retargetLoopbackHost(wellKnown.convexUrl, base.hostname);
+  const siteUrl = isLoopbackUrl(wellKnown.siteUrl)
+    ? `${base.protocol}//${base.host}`
+    : wellKnown.siteUrl;
   return {
     id: canonical,
     baseUrl: canonical,
@@ -82,8 +124,8 @@ export function createServerProfile(
     iconSeed: wellKnown.iconSeed,
     version: wellKnown.version,
     apiVersion: wellKnown.apiVersion,
-    convexUrl: wellKnown.convexUrl,
-    siteUrl: wellKnown.siteUrl,
+    convexUrl,
+    siteUrl,
     auth: cloneAuth(wellKnown.auth),
     addedAt,
   };

@@ -1,5 +1,5 @@
 import type { ChannelSummary, RoleMentionTarget } from "@aulora/core";
-import { Spinner, Text } from "@aulora/ui-web";
+import { Spinner } from "@aulora/ui-web";
 import type { ConvexReactClient } from "convex/react";
 import { useQuery } from "convex/react";
 import { useMemo } from "react";
@@ -12,10 +12,12 @@ import {
   type RoleView,
   resolveViewerPermissions,
   roleColorFor,
+  roleNamesFor,
   roleRef,
   topPositionForRefs,
 } from "../../lib/workspace-admin";
 import { ChatProvider } from "../../providers/ChatProvider";
+import type { ChannelUnread } from "./ChannelSidebar";
 import { ChatView } from "./ChatView";
 
 const PAGE = { numItems: 100, cursor: null } as const;
@@ -23,17 +25,24 @@ const PAGE = { numItems: 100, cursor: null } as const;
 export interface ChatSessionShellProps {
   readonly client: ConvexReactClient;
   readonly workspaceName: string;
+  readonly workspaceIconSeed: string;
   readonly user: { readonly id: string; readonly name?: string; readonly email?: string };
   readonly onSignOut: () => void;
 }
 
 /**
  * Loads the workspace's channels, roles, members and the caller's own
- * permissions, then hands them to the encrypted {@link ChatView}. Channel
- * metadata arrives as ciphertext and is only decrypted inside the MLS session.
- * Admin controls are gated by the resolved bitfield; the server re-checks.
+ * permissions, then hands them to {@link ChatView}. Channel metadata arrives
+ * as plaintext; the server seals it at rest. Admin controls are gated by the
+ * resolved bitfield; the server re-checks.
  */
-export function ChatSessionShell({ client, workspaceName, user }: ChatSessionShellProps) {
+export function ChatSessionShell({
+  client,
+  workspaceName,
+  workspaceIconSeed,
+  user,
+  onSignOut,
+}: ChatSessionShellProps) {
   const channelResult = useQuery(api.channels.list, { paginationOpts: PAGE });
   const dmResult = useQuery(api.channels.listDms, { paginationOpts: PAGE });
   const rolesResult = useQuery(api.roles.list, {});
@@ -52,10 +61,28 @@ export function ChatSessionShell({ client, workspaceName, user }: ChatSessionShe
     return list;
   }, [channelResult, dmResult]);
 
+  const channelIds = useMemo(() => channels.map((channel) => channel.id), [channels]);
+  const summaryResult = useQuery(
+    api.readStates.summary,
+    channelIds.length > 0 ? { channelIds: channelIds as never[] } : "skip",
+  );
+  const unreadByChannel = useMemo(() => {
+    const map = new Map<string, ChannelUnread>();
+    for (const row of summaryResult ?? []) {
+      map.set(row.channelId, {
+        unread: row.unread,
+        mentionCount: row.mentionCount,
+        lastActivityAt: row.lastActivityAt,
+      });
+    }
+    return map;
+  }, [summaryResult]);
+
   const roles = (rolesResult ?? []) as readonly RoleView[];
   const memberViews = (membersResult ?? []) as readonly MemberView[];
   const categories = (categoriesResult ?? []) as readonly CategoryView[];
   const viewerMember = meResult?.member ?? null;
+  const ownName = memberDisplayName(viewerMember, user.name ?? user.email ?? "You");
   const isOwner = meResult?.isOwner ?? false;
   const ownerId = meResult?.ownerId ?? null;
 
@@ -75,12 +102,16 @@ export function ChatSessionShell({ client, workspaceName, user }: ChatSessionShe
     () =>
       memberViews.map((member) => ({
         userId: member.userId,
-        displayName: memberDisplayName(member, member.userId),
+        displayName: memberDisplayName(
+          member,
+          member.userId === user.id ? (user.name ?? user.email ?? "You") : "Member",
+        ),
         roleIds: member.roleIds,
+        roleNames: roleNamesFor(member, roles),
         isOwner: member.userId === ownerId,
         roleColor: roleColorFor(member, roles),
       })),
-    [memberViews, roles, ownerId],
+    [memberViews, roles, ownerId, user.id, user.name, user.email],
   );
 
   const mentionRoles = useMemo<readonly RoleMentionTarget[]>(
@@ -101,25 +132,22 @@ export function ChatSessionShell({ client, workspaceName, user }: ChatSessionShe
 
   if (channelResult === undefined || meResult === undefined) {
     return (
-      <div className="flex min-h-screen flex-col items-center justify-center gap-3">
+      <div className="pane flex flex-1 flex-col items-center justify-center gap-3">
         <Spinner size={28} label="Loading workspace" />
-        <Text tone="muted" size="sm">
-          Loading workspace…
-        </Text>
+        <p className="text-[13px] text-text-muted">Loading {workspaceName}…</p>
       </div>
     );
   }
 
   return (
-    <ChatProvider
-      client={client}
-      userId={user.id}
-      displayName={user.name ?? user.email ?? "You"}
-      channels={channels}
-    >
+    <ChatProvider client={client} userId={user.id} displayName={ownName} channels={channels}>
       <ChatView
         workspaceName={workspaceName}
+        workspaceIconSeed={workspaceIconSeed}
         ownUserId={user.id}
+        ownName={ownName}
+        unreadByChannel={unreadByChannel}
+        onSignOut={onSignOut}
         permissions={permissions}
         members={members}
         roles={mentionRoles}

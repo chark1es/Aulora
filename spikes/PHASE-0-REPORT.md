@@ -1,3 +1,5 @@
+> **Historical note:** Aulora has since moved from client-side E2EE (MLS, RFC 9420) to server-side encryption backed by an external key manager (EKM).
+
 # Phase 0 — Spikes: Findings
 
 Date: 2026-09-26. Each spike was run in its own directory under `spikes/`, with a

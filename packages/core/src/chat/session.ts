@@ -1,54 +1,35 @@
 /**
  * The framework-agnostic chat session.
  *
- * This owns the whole MLS lifecycle and the send/receive pipeline:
+ * This is a plaintext conversation store and orchestrator: it caches message
+ * bodies, attachment descriptors, reactions and channel names, and forwards
+ * reads and writes to a {@link ChatPort}. It holds no keys and never imports a
+ * crypto or MLS module — the server seals content at rest with its External Key
+ * Manager and returns plaintext to the client.
  *
- * 1. **Sign-in** — register the device (public identity only), generate a
- *    batch of KeyPackages and publish them for other devices to consume.
- * 2. **Channel bootstrap** — when a channel is opened: reuse the locally
- *    persisted group if there is one; otherwise publish a join intent and wait
- *    for a Welcome; otherwise, as the first joiner, create the group, persist
- *    the group id and append the initial commit.
- * 3. **Auto-approve** — while a channel is open, watch join intents, consume
- *    the requester's KeyPackage, build `addMembers` and append the commit +
- *    Welcome so a joining device can complete on its next poll.
- * 4. **Send/receive** — encrypt through the engine, store ciphertext + current
- *    epoch, decrypt every incoming message, and advance the epoch as commits
- *    arrive. All engine work happens off the UI thread (Worker on web, direct
- *    fallback otherwise).
- *
- * The session never logs plaintext, keys or tokens.
+ * The public method names match the previous MLS-backed session so the apps
+ * only need to change the shape of what they pass, not the UI.
  */
 
-import type { AddMembersResult, AttachmentDescriptor, MlsEngine, MlsMember } from "@aulora/crypto";
-import { MlsEngineError, parseAttachmentDescriptor } from "@aulora/crypto";
-import {
-  channelGroupId,
-  decodeMlsBytes,
-  decodePayload,
-  encodeMlsBytes,
-  encodePayload,
-  encodeText,
-} from "./mls-encoding.js";
+import { parseAttachmentDescriptor } from "../attachments.js";
 import type {
+  AttachmentDescriptor,
   ChannelSummary,
   ChatPort,
   ChatSubscriptions,
-  JoinIntentRow,
   MessagePayload,
-  MlsCommitRow,
+  PresenceRow,
   ReactionRow,
+  StoredFileView,
 } from "./port.js";
 
-/** Plaintext application payload for one message. Never sent to the server. */
+/** Plaintext application payload for one message. */
 export interface MessagePayloadBody {
   readonly t: string;
   readonly edited?: boolean;
   readonly threadRootId?: string;
-  /**
-   * Attachment descriptors, including the per-file AES-GCM key + IV. These ride
-   * inside the MLS ciphertext; the server only ever sees the opaque `fileId`.
-   */
+  readonly replyToId?: string;
+  /** Attachment descriptors resolved from the message's `attachmentIds`. */
   readonly attachments?: readonly AttachmentDescriptor[];
 }
 
@@ -67,472 +48,181 @@ export interface SessionMember extends SessionUser {
 export interface SessionOptions {
   readonly port: ChatPort;
   readonly subscriptions: ChatSubscriptions;
-  /**
-   * Creates one MLS engine per channel. The `ts-mls` engine holds a single
-   * active group at a time, so a channel-per-engine keeps concurrent channels
-   * independent. Each call should return a fresh engine over the same device
-   * key store (a Worker on web).
-   */
-  readonly createEngine: () => MlsEngine;
-  readonly user: SessionUser;
-  /** Public half of this device's MLS identity, stored on the device record. */
-  readonly identityKey: string;
-  /** Platform tag for the device record. Defaults to `"web"`. */
-  readonly platform?: string;
-  /** How many unused KeyPackages to keep published. Defaults to 3. */
-  readonly keyPackageTarget?: number;
 }
 
-/** How long a joiner waits for an existing member to approve its Join. */
-const JOIN_WAIT_MS = 15_000;
+/** A reaction as the session exposes it to listeners. */
+export interface ReactionPayload {
+  readonly userId: string;
+  readonly emoji: string;
+}
 
-interface ChannelState {
-  readonly channelId: string;
-  groupId: string;
+/** Placeholder label for a channel whose plaintext name is not known. */
+const FALLBACK_CHANNEL_NAME = "channel";
+
+interface OpenChannelState {
   readonly unsubscribers: (() => void)[];
-  /** The KeyPackage reserved for a Welcome, when waiting to be added. */
-  pendingWelcomeKeyPackage: Uint8Array | undefined;
-  /** KeyPackage backing each local group, retained for rejoins. */
-  groupKeyPackage: Uint8Array | undefined;
-  /** Resolved by the Welcome handler when this device joins mid-bootstrap. */
-  joinedResolve: (() => void) | undefined;
-  starting: Promise<void> | undefined;
-  ready: boolean;
-  /** One engine per channel, so concurrent groups never share an active state. */
-  engine: MlsEngine;
-  /**
-   * The decrypted channel name, when this device owns it. Retained so the name
-   * can be re-encrypted at the new epoch whenever the group changes, because a
-   * device that joins later cannot read ciphertext from before it joined.
-   */
-  name: string | undefined;
-  /** The epoch `name` was last published at, to avoid redundant rewrites. */
-  nameEpoch: number | undefined;
 }
 
-export interface OpenChannelResult {
-  readonly role: "creator" | "joiner";
-  readonly epoch: number;
-}
-
-export class MlsSessionError extends Error {
-  readonly code: "not-started" | "no-key-package" | "group-open-failed" | "no-group";
-  constructor(code: MlsSessionError["code"], message: string) {
-    super(message);
-    this.name = "MlsSessionError";
-    this.code = code;
+function parseDimensions(value: string | null): AttachmentDescriptor["dimensions"] {
+  if (value === null || value.length === 0) {
+    return undefined;
+  }
+  try {
+    const parsed = JSON.parse(value) as { width?: unknown; height?: unknown };
+    if (
+      typeof parsed.width === "number" &&
+      typeof parsed.height === "number" &&
+      parsed.width > 0 &&
+      parsed.height > 0
+    ) {
+      return { width: parsed.width, height: parsed.height };
+    }
+    return undefined;
+  } catch {
+    return undefined;
   }
 }
 
+function descriptorFromStoredFile(file: StoredFileView): AttachmentDescriptor | null {
+  if (file.name === null || file.name.length === 0) {
+    return null;
+  }
+  const dimensions = parseDimensions(file.dimensions);
+  const blurhash = file.blurhash ?? undefined;
+  return {
+    fileId: file.id,
+    name: file.name,
+    mime: file.mime ?? "application/octet-stream",
+    size: file.sizeBytes,
+    ...(dimensions !== undefined ? { dimensions } : {}),
+    ...(blurhash !== undefined ? { blurhash } : {}),
+  };
+}
+
 /**
- * Owns MLS state for one signed-in device. One instance per browser tab /
- * client; it is cheap to construct and holds no module-level state.
+ * Owns the plaintext cache for one signed-in client. One instance per browser
+ * tab / app session; it is cheap to construct and holds no module-level state.
  */
 export class ChatSession {
   private readonly port: ChatPort;
   private readonly subscriptions: ChatSubscriptions;
-  private readonly createEngine: () => MlsEngine;
-  private readonly deviceEngine: MlsEngine;
-  private readonly user: SessionUser;
-  private readonly identityKey: string;
-  private readonly platform: string;
-  private readonly keyPackageTarget: number;
 
-  private deviceId: string | undefined;
   private started: Promise<void> | undefined;
-  private startedResolve: (() => void) | undefined;
+  private readonly startUnsubscribers: (() => void)[] = [];
 
-  private readonly channels = new Map<string, ChannelState>();
+  private readonly openChannels = new Map<string, OpenChannelState>();
+  private readonly channelNames = new Map<string, string>();
+  private channelSummaries: readonly ChannelSummary[] = [];
+  private latestPresence: readonly PresenceRow[] = [];
+
+  private latestMessages: readonly MessagePayload[] = [];
   private readonly decrypted = new Map<string, string>();
-  /** Full decrypted body per message id (text + attachments + thread info). */
   private readonly bodies = new Map<string, MessagePayloadBody>();
-  /** Ciphertext last decrypted per message id, so edits are reopened once. */
-  private readonly messageCiphertexts = new Map<string, string>();
-  /** In-flight decryption per message id, so concurrent calls do not race. */
-  private readonly decrypting = new Map<string, Promise<void>>();
-  /** Plaintext for payloads this device produced (MLS cannot reopen its own). */
-  private readonly selfPayloads = new Map<string, unknown>();
-  /** Plaintext for payloads this device opened, so each generation is consumed once. */
-  private readonly payloadCache = new Map<string, unknown>();
   private readonly messageListeners = new Set<(messages: readonly MessagePayload[]) => void>();
   private readonly decryptedListeners = new Set<(messages: readonly MessagePayload[]) => void>();
   private readonly reactionListeners = new Map<
     string,
-    Set<(reactions: readonly ReactionPayload[]) => void>
+    Set<(reactions: readonly ReactionRow[]) => void>
   >();
-  private readonly reactionCache = new Map<string, ReactionPayload[]>();
-  private readonly reactionUnsubscribers = new Map<string, () => void>();
-  private latestMessages: readonly MessagePayload[] = [];
+  private readonly reactionCache = new Map<string, ReactionRow[]>();
 
   private constructor(options: SessionOptions) {
     this.port = options.port;
     this.subscriptions = options.subscriptions;
-    this.createEngine = options.createEngine;
-    this.deviceEngine = options.createEngine();
-    this.user = options.user;
-    this.identityKey = options.identityKey;
-    this.platform = options.platform ?? "web";
-    this.keyPackageTarget = options.keyPackageTarget ?? 3;
   }
 
-  /** Builds a session. The engine should already be connected to the Worker. */
+  /** Builds a session. No device or key setup is required. */
   static create(options: SessionOptions): ChatSession {
     return new ChatSession(options);
   }
 
-  /** This device's server-side id, available after {@link start}. */
-  get id(): string | undefined {
-    return this.deviceId;
-  }
-
   /**
-   * Sign-in lifecycle: register the device and publish unused KeyPackages.
+   * Starts the session: subscribes to the workspace channel list and presence.
    * Idempotent; concurrent callers await the same work.
    */
-  async start(): Promise<void> {
-    if (this.started) {
+  start(): Promise<void> {
+    if (this.started !== undefined) {
       return this.started;
     }
-    this.started = new Promise<void>((resolve) => {
-      this.startedResolve = resolve;
-    });
-    void this.runStart();
+    this.startUnsubscribers.push(
+      this.subscriptions.watchChannels((channels) => {
+        this.hydrateChannelNames(channels);
+      }),
+    );
+    this.startUnsubscribers.push(
+      this.subscriptions.watchPresence((presence) => {
+        this.latestPresence = presence;
+      }),
+    );
+    this.started = Promise.resolve();
     return this.started;
   }
 
-  private async runStart(): Promise<void> {
-    const { deviceId } = await this.port.upsertDevice({
-      platform: this.platform,
-      identityKey: this.identityKey,
-    });
-    this.deviceId = deviceId;
-    await this.replenishKeyPackages();
-    this.startedResolve?.();
+  /** The latest channel summaries observed by {@link start}. */
+  channels(): readonly ChannelSummary[] {
+    return this.channelSummaries;
   }
 
-  /** Publishes KeyPackages until `keyPackageTarget` are unused. */
-  async replenishKeyPackages(): Promise<void> {
-    if (this.deviceId === undefined) {
-      return;
-    }
-    for (let index = 0; index < this.keyPackageTarget; index += 1) {
-      const keyPackage = await this.deviceEngine.generateKeyPackage();
-      await this.port.publishKeyPackage({
-        deviceId: this.deviceId,
-        keyPackage: encodeMlsBytes(keyPackage),
-      });
-    }
-  }
-
-  private requireDeviceId(): string {
-    if (this.deviceId === undefined) {
-      throw new MlsSessionError("not-started", "ChatSession.start() has not completed");
-    }
-    return this.deviceId;
-  }
-
-  private requireGroup(channelId: string): ChannelState {
-    const state = this.channels.get(channelId);
-    if (state === undefined || !state.ready) {
-      throw new MlsSessionError("no-group", `no MLS group for channel ${channelId}`);
-    }
-    return state;
+  /** The latest presence rows observed by {@link start}. */
+  presence(): readonly PresenceRow[] {
+    return this.latestPresence;
   }
 
   /**
-   * Opens (or reuses) the MLS group for a channel and wires its
-   * subscriptions. Safe to call repeatedly for the same channel.
+   * Opens a channel: subscribes to its message stream and remembers its
+   * plaintext name. Safe to call repeatedly for the same channel.
    */
-  async openChannel(channel: ChannelSummary): Promise<OpenChannelResult> {
-    const existing = this.channels.get(channel.id);
-    if (existing !== undefined) {
-      await existing.starting;
-      if (!existing.ready) {
-        throw new MlsSessionError("group-open-failed", "channel group is not ready");
-      }
-      return {
-        role: existing.groupKeyPackage === undefined ? "joiner" : "creator",
-        epoch: Number(await existing.engine.epoch()),
-      };
-    }
-
-    const state: ChannelState = {
-      channelId: channel.id,
-      engine: this.createEngine(),
-      groupId: channel.mlsGroupId ?? encodeMlsBytes(channelGroupId(channel.id)),
-      unsubscribers: [],
-      pendingWelcomeKeyPackage: undefined,
-      groupKeyPackage: undefined,
-      joinedResolve: undefined,
-      starting: undefined,
-      ready: false,
-      name: undefined,
-      nameEpoch: undefined,
-    };
-    this.channels.set(channel.id, state);
-    state.starting = this.bootstrapChannel(channel, state);
-    await state.starting;
-    const role = state.groupKeyPackage === undefined ? "joiner" : "creator";
-    return { role, epoch: Number(await state.engine.epoch()) };
-  }
-
-  private async bootstrapChannel(channel: ChannelSummary, state: ChannelState): Promise<void> {
-    this.wireChannelSubscriptions(channel, state);
-
-    // 1. Reuse a locally persisted group for this channel, if the engine holds
-    //    one (its active group is re-provisioned from the key store on demand).
-    if (await this.hasLocalGroup(state)) {
-      state.ready = true;
+  async openChannel(channel: ChannelSummary): Promise<void> {
+    this.rememberName(channel.id, channel.name);
+    if (this.openChannels.has(channel.id)) {
       return;
     }
-
-    // 2. Otherwise publish a join intent and wait for a Welcome. A member's
-    //    client services the intent with `addMembers` + `appendCommit`; the
-    //    Welcome arrives through the commits subscription above. A channel
-    //    that already has a group id belongs to someone else, so wait longer
-    //    for that member to approve; a channel with no group id means this
-    //    device is the first joiner.
-    const keyPackage = await state.engine.generateKeyPackage();
-    state.pendingWelcomeKeyPackage = keyPackage;
-    // Only an existing group needs a join intent; a channel with no group id
-    // means this device is the first joiner and will create the group below.
-    const needsApproval = channel.mlsGroupId !== null;
-    const joined = needsApproval
-      ? this.waitForWelcome(channel.id, state, JOIN_WAIT_MS)
-      : Promise.resolve(false);
-    if (needsApproval) {
-      await this.port.publishJoinIntent({
-        channelId: channel.id,
-        deviceId: this.requireDeviceId(),
-        keyPackage: encodeMlsBytes(keyPackage),
-      });
-    }
-    if ((await joined) || state.ready) {
-      return;
-    }
-
-    // A channel that already has a group but did not send us a Welcome means no
-    // online member approved us yet; never fork it by creating our own group.
-    if (channel.mlsGroupId !== null) {
-      throw new MlsSessionError(
-        "group-open-failed",
-        "waiting for a member to approve this device's join",
-      );
-    }
-
-    // 3. Otherwise this device is the first joiner: create the group, persist
-    //    the group id and append the initial commit (zero members added).
-    const createKeyPackage = state.pendingWelcomeKeyPackage;
-    if (createKeyPackage === undefined) {
-      throw new MlsSessionError("no-key-package", "no KeyPackage available to create the group");
-    }
-    await state.engine.createGroup(channelGroupId(channel.id), createKeyPackage);
-    state.pendingWelcomeKeyPackage = undefined;
-    state.groupKeyPackage = createKeyPackage;
-    state.groupId = encodeMlsBytes(channelGroupId(channel.id));
-    const epoch = Number(await state.engine.epoch());
-    const initialState = await state.engine.exportState();
-    if (channel.mlsGroupId === null) {
-      await this.port.setMlsGroupId({ channelId: channel.id, mlsGroupId: state.groupId });
-    }
-    await this.port.appendCommit({
-      channelId: channel.id,
-      epoch,
-      commitCiphertext: encodeMlsBytes(initialState),
-    });
-    state.ready = true;
-  }
-
-  private async hasLocalGroup(state: ChannelState): Promise<boolean> {
-    try {
-      await state.engine.members();
-      return true;
-    } catch {
-      return false;
-    }
-  }
-
-  /**
-   * Resolves `true` when the Welcome subscription joins this device, `false`
-   * when `timeoutMs` elapses first (or immediately when it is `0`).
-   */
-  private waitForWelcome(
-    channelId: string,
-    state: ChannelState,
-    timeoutMs: number,
-  ): Promise<boolean> {
-    return new Promise<boolean>((resolve) => {
-      let settled = false;
-      const finish = (value: boolean) => {
-        if (settled) {
-          return;
-        }
-        settled = true;
-        state.joinedResolve = undefined;
-        resolve(value);
-      };
-      state.joinedResolve = () => finish(true);
-      if (timeoutMs <= 0) {
-        queueMicrotask(() => finish(false));
-        return;
-      }
-      setTimeout(() => finish(false), timeoutMs);
-      void channelId;
-    });
-  }
-
-  private wireChannelSubscriptions(channel: ChannelSummary, state: ChannelState): void {
+    const state: OpenChannelState = { unsubscribers: [] };
+    this.openChannels.set(channel.id, state);
     state.unsubscribers.push(
       this.subscriptions.watchMessages(channel.id, (messages) => {
         void this.receiveMessages(messages);
       }),
     );
-    state.unsubscribers.push(
-      this.subscriptions.watchCommits(channel.id, -1, (commits) => {
-        void this.onCommitSnapshot(channel.id, state, commits);
-      }),
-    );
-    state.unsubscribers.push(
-      this.subscriptions.watchJoinIntents(channel.id, (intents) => {
-        void this.autoApproveJoins(state, intents);
-      }),
-    );
+  }
+
+  /** Closes subscriptions and forgets channel state. */
+  closeChannel(channelId: string): void {
+    const state = this.openChannels.get(channelId);
+    if (state === undefined) {
+      return;
+    }
+    for (const unsubscribe of state.unsubscribers) {
+      unsubscribe();
+    }
+    this.openChannels.delete(channelId);
   }
 
   /**
-   * Handles a commit snapshot: a Welcome addressed to a still-waiting device
-   * is joined first, then any remaining commits are applied as handshakes.
+   * Ingests a plaintext message list: caches each body, resolves attachments,
+   * and notifies subscribers. Deleted messages are skipped.
    */
-  private async onCommitSnapshot(
-    channelId: string,
-    state: ChannelState,
-    commits: readonly MlsCommitRow[],
-  ): Promise<void> {
-    if (!state.ready && state.pendingWelcomeKeyPackage !== undefined) {
-      const welcome = latestWelcome(commits);
-      if (welcome !== null) {
-        try {
-          await state.engine.joinFromWelcome(
-            decodeMlsBytes(welcome),
-            state.pendingWelcomeKeyPackage,
-          );
-          state.pendingWelcomeKeyPackage = undefined;
-          state.groupKeyPackage = undefined;
-          state.groupId = encodeMlsBytes(channelGroupId(channelId));
-          state.ready = true;
-          state.joinedResolve?.();
-        } catch {
-          // Not addressed to this device (or already consumed); keep waiting.
-        }
-      }
-    }
-    await this.applyCommits(state, commits);
-  }
-
-  /** Auto-approve: an online member services pending joins with add + welcome. */
-  async autoApproveJoins(state: ChannelState, intents: readonly JoinIntentRow[]): Promise<void> {
-    if (!state.ready || intents.length === 0) {
-      return;
-    }
-    const ownDevice = this.deviceId;
-    // A creator's group starts at epoch 0, before anyone has been added, so an
-    // epoch of 0 is a valid approval candidate. Only an already-joined group
-    // can service intents, and `state.ready` above guarantees that.
-    const keyPackages: Uint8Array[] = [];
-    const accepted: JoinIntentRow[] = [];
-    for (const intent of intents) {
-      if (intent.deviceId === ownDevice) {
-        continue;
-      }
-      keyPackages.push(decodeMlsBytes(intent.keyPackage));
-      accepted.push(intent);
-    }
-    if (keyPackages.length === 0) {
-      return;
-    }
-    let result: AddMembersResult;
-    try {
-      result = await state.engine.addMembers(keyPackages);
-    } catch {
-      return;
-    }
-    const epoch = Number(await state.engine.epoch());
-    await this.port.appendCommit({
-      channelId: state.channelId,
-      epoch,
-      commitCiphertext: encodeMlsBytes(result.commit),
-      welcomeCiphertext: encodeMlsBytes(result.welcome),
-    });
-    for (const intent of accepted) {
-      await this.port.markJoinIntentServiced({ intentId: intent.id });
-    }
-    // Re-encrypt the channel name at the new epoch so the devices that just
-    // joined (and could not read the pre-join ciphertext) can read it.
-    await this.publishChannelName(state);
-  }
-
-  /** Applies incoming handshake commits after the local epoch. */
-  async applyCommits(state: ChannelState, commits: readonly MlsCommitRow[]): Promise<void> {
-    if (!state.ready) {
-      return;
-    }
-    let local: bigint;
-    try {
-      local = await state.engine.epoch();
-    } catch {
-      return;
-    }
-    const pending = [...commits]
-      .filter((commit) => BigInt(commit.epoch) > local)
-      .sort((a, b) => a.epoch - b.epoch);
-    for (const commit of pending) {
-      try {
-        await state.engine.processCommit(decodeMlsBytes(commit.commitCiphertext));
-      } catch {
-        // A commit we cannot process (already applied, or not for us) is
-        // skipped; the epoch guard above keeps this bounded.
-      }
-    }
-    // If another member advanced the epoch, re-publish the name so the new
-    // group can read it (and so a removed member cannot read later rewrites).
-    let advanced = false;
-    try {
-      advanced = (await state.engine.epoch()) > local;
-    } catch {
-      advanced = false;
-    }
-    if (advanced) {
-      await this.publishChannelName(state);
-    }
-  }
-
-  /** Decrypts an incoming message list and notifies subscribers. */
   async receiveMessages(messages: readonly MessagePayload[]): Promise<void> {
     this.latestMessages = messages;
     for (const message of messages) {
       if (message.deletedAt !== null) {
         continue;
       }
-      const engine = this.channels.get(message.channelId)?.engine;
-      if (engine === undefined) {
-        continue;
-      }
-      // Skip a message only when we already decrypted this exact ciphertext;
-      // an edit produces a new ciphertext for the same id and must be reopened.
-      if (this.messageCiphertexts.get(message.id) === message.ciphertext) {
-        continue;
-      }
-      const inFlight = this.decrypting.get(message.id);
-      if (inFlight !== undefined) {
-        await inFlight;
-        continue;
-      }
-      const task = this.decryptMessage(engine, message);
-      this.decrypting.set(message.id, task);
-      try {
-        await task;
-      } finally {
-        this.decrypting.delete(message.id);
+      const base: MessagePayloadBody = {
+        t: message.body,
+        ...(message.editedAt !== null ? { edited: true } : {}),
+        ...(message.threadRootId !== null ? { threadRootId: message.threadRootId } : {}),
+        ...(message.replyToId !== null && message.replyToId !== undefined
+          ? { replyToId: message.replyToId }
+          : {}),
+      };
+      this.decrypted.set(message.id, message.body);
+      this.bodies.set(message.id, base);
+      if (message.attachmentIds.length > 0) {
+        const attachments = await this.resolveAttachments(message.attachmentIds);
+        if (attachments.length > 0) {
+          this.bodies.set(message.id, { ...base, attachments });
+        }
       }
     }
     for (const listener of this.messageListeners) {
@@ -540,122 +230,6 @@ export class ChatSession {
     }
     for (const listener of this.decryptedListeners) {
       listener(messages);
-    }
-  }
-
-  /**
-   * Opens one message's ciphertext once and records the plaintext. A failure
-   * (history before this device joined, or a message not addressed to it) is
-   * swallowed so the list renders rather than throwing.
-   */
-  private async decryptMessage(engine: MlsEngine, message: MessagePayload): Promise<void> {
-    try {
-      const bytes = await engine.decrypt(decodeMlsBytes(message.ciphertext));
-      const body = decodePayload<MessagePayloadBody>(bytes);
-      this.decrypted.set(message.id, body.t);
-      this.bodies.set(message.id, body);
-      this.messageCiphertexts.set(message.id, message.ciphertext);
-    } catch (error) {
-      if (error instanceof MlsEngineError || error instanceof Error) {
-        return;
-      }
-      throw error;
-    }
-  }
-
-  /** Decrypted plaintext for a message id, or `undefined` if not openable. */
-  decryptedText(messageId: string): string | undefined {
-    return this.decrypted.get(messageId);
-  }
-
-  /** Full decrypted body for a message id, including any attachment descriptors. */
-  decryptedBody(messageId: string): MessagePayloadBody | undefined {
-    return this.bodies.get(messageId);
-  }
-
-  /**
-   * Validated attachment descriptors for a message, or an empty list. Each
-   * descriptor is re-checked so a hostile payload cannot inject a bad key/IV.
-   */
-  attachmentsFor(messageId: string): readonly AttachmentDescriptor[] {
-    const attachments = this.bodies.get(messageId)?.attachments;
-    if (attachments === undefined) {
-      return [];
-    }
-    const parsed: AttachmentDescriptor[] = [];
-    for (const attachment of attachments) {
-      const descriptor = parseAttachmentDescriptor(attachment);
-      if (descriptor !== null) {
-        parsed.push(descriptor);
-      }
-    }
-    return parsed;
-  }
-
-  /**
-   * Encrypts an arbitrary JSON payload at the channel's current epoch. The
-   * plaintext is cached under the produced ciphertext because MLS ratchets make
-   * a sender unable to reopen its own application message.
-   */
-  async encryptPayload(channelId: string, payload: unknown): Promise<string> {
-    const state = this.requireGroup(channelId);
-    const ciphertext = encodeMlsBytes(await state.engine.encrypt(encodePayload(payload)));
-    this.selfPayloads.set(ciphertext, payload);
-    return ciphertext;
-  }
-
-  /**
-   * Encrypts and publishes a channel's name, remembering the plaintext so it
-   * can be re-encrypted at a later epoch. A device that joins after the name
-   * was first written cannot read that earlier ciphertext (MLS forward
-   * secrecy), so every membership change re-publishes the name at the new
-   * epoch for the current members.
-   */
-  async setChannelName(channelId: string, name: string): Promise<void> {
-    const state = this.requireGroup(channelId);
-    state.name = name;
-    state.nameEpoch = undefined;
-    await this.publishChannelName(state);
-  }
-
-  private async publishChannelName(state: ChannelState): Promise<void> {
-    if (state.name === undefined) {
-      return;
-    }
-    const epoch = Number(await state.engine.epoch());
-    if (state.nameEpoch === epoch) {
-      return;
-    }
-    const ciphertext = encodeMlsBytes(
-      await state.engine.encrypt(encodePayload({ text: state.name })),
-    );
-    this.selfPayloads.set(ciphertext, { text: state.name });
-    await this.port.renameChannel({ channelId: state.channelId, nameCiphertext: ciphertext });
-    state.nameEpoch = epoch;
-  }
-
-  /**
-   * Decrypts an arbitrary payload (channel name, topic, custom status) using
-   * the given channel's group. Payloads this device produced are served from
-   * the local cache. Returns `undefined` instead of throwing when the payload
-   * is not openable.
-   */
-  async decryptPayload<T>(channelId: string, ciphertext: string): Promise<T | undefined> {
-    const cached = this.selfPayloads.get(ciphertext) ?? this.payloadCache.get(ciphertext);
-    if (cached !== undefined) {
-      return cached as T;
-    }
-    const state = this.channels.get(channelId);
-    if (state === undefined || !state.ready) {
-      return undefined;
-    }
-    try {
-      const bytes = await state.engine.decrypt(decodeMlsBytes(ciphertext));
-      const decoded = decodePayload<T>(bytes);
-      this.payloadCache.set(ciphertext, decoded);
-      return decoded;
-    } catch {
-      return undefined;
     }
   }
 
@@ -675,154 +249,129 @@ export class ChatSession {
     };
   }
 
+  /** Cached plaintext body for a message id; `""` when unknown. */
+  decryptedText(messageId: string): string {
+    return this.decrypted.get(messageId) ?? "";
+  }
+
+  /** Full body for a message id, including attachments and thread info. */
+  decryptedBody(messageId: string): MessagePayloadBody | undefined {
+    return this.bodies.get(messageId);
+  }
+
+  /** Validated attachment descriptors for a message, or an empty list. */
+  attachmentsFor(messageId: string): readonly AttachmentDescriptor[] {
+    const attachments = this.bodies.get(messageId)?.attachments;
+    if (attachments === undefined) {
+      return [];
+    }
+    const parsed: AttachmentDescriptor[] = [];
+    for (const attachment of attachments) {
+      const descriptor = parseAttachmentDescriptor(attachment);
+      if (descriptor !== null) {
+        parsed.push(descriptor);
+      }
+    }
+    return parsed;
+  }
+
+  private async resolveAttachments(
+    fileIds: readonly string[],
+  ): Promise<readonly AttachmentDescriptor[]> {
+    const files = await this.port.getFiles({ fileIds });
+    const descriptors: AttachmentDescriptor[] = [];
+    for (const file of files) {
+      const descriptor = descriptorFromStoredFile(file);
+      if (descriptor !== null) {
+        descriptors.push(descriptor);
+      }
+    }
+    return descriptors;
+  }
+
   /**
-   * Sends `text` to a channel: encrypt, store ciphertext + epoch, and clear
-   * the caller's typing row.
+   * Sends `text` to a channel: persists the plaintext body and caches it
+   * locally so the caller's own message renders immediately.
    */
   async sendMessage(
     channelId: string,
     text: string,
     options: {
-      readonly mentionUserIds?: readonly string[];
       readonly threadRootId?: string;
+      readonly replyToId?: string;
+      readonly mentionUserIds?: readonly string[];
       readonly attachmentIds?: readonly string[];
-      readonly attachments?: readonly AttachmentDescriptor[];
     } = {},
   ): Promise<string> {
-    const state = this.requireGroup(channelId);
-    const epoch = Number(await state.engine.epoch());
-    const body: MessagePayloadBody = {
-      t: text,
-      ...(options.threadRootId !== undefined ? { threadRootId: options.threadRootId } : {}),
-      ...(options.attachments !== undefined && options.attachments.length > 0
-        ? { attachments: options.attachments }
-        : {}),
-    };
-    const ciphertext = encodeMlsBytes(await state.engine.encrypt(encodePayload(body)));
+    const attachmentIds = options.attachmentIds ?? [];
     const messageId = await this.port.sendMessage({
       channelId,
-      ciphertext,
-      epoch,
+      body: text,
       ...(options.threadRootId !== undefined ? { threadRootId: options.threadRootId } : {}),
+      ...(options.replyToId !== undefined ? { replyToId: options.replyToId } : {}),
       ...(options.mentionUserIds !== undefined ? { mentionUserIds: options.mentionUserIds } : {}),
-      ...(options.attachmentIds !== undefined ? { attachmentIds: options.attachmentIds } : {}),
-      ...(this.deviceId !== undefined ? { authorDeviceId: this.deviceId } : {}),
+      ...(attachmentIds.length > 0 ? { attachmentIds } : {}),
     });
+    let body: MessagePayloadBody = {
+      t: text,
+      ...(options.threadRootId !== undefined ? { threadRootId: options.threadRootId } : {}),
+      ...(options.replyToId !== undefined ? { replyToId: options.replyToId } : {}),
+    };
+    if (attachmentIds.length > 0) {
+      const attachments = await this.resolveAttachments(attachmentIds);
+      if (attachments.length > 0) {
+        body = { ...body, attachments };
+      }
+    }
     this.decrypted.set(messageId, text);
     this.bodies.set(messageId, body);
-    this.messageCiphertexts.set(messageId, ciphertext);
-    await this.port.clearTyping({ channelId });
-    void state;
     return messageId;
   }
 
-  /** Edits a message with a fresh encryption at the current epoch. */
-  async editMessage(channelId: string, messageId: string, text: string): Promise<void> {
-    const state = this.requireGroup(channelId);
-    const existing = this.latestMessages.find((message) => message.id === messageId);
-    const existingAttachments = this.bodies.get(messageId)?.attachments;
-    const epoch = Number(await state.engine.epoch());
-    const body: MessagePayloadBody = {
+  /** Edits a message, preserving its thread and attachment metadata. */
+  async editMessage(_channelId: string, messageId: string, text: string): Promise<void> {
+    await this.port.editMessage({ messageId, body: text });
+    const existing = this.bodies.get(messageId);
+    this.bodies.set(messageId, {
+      ...(existing ?? {}),
       t: text,
       edited: true,
-      ...(existing?.threadRootId ? { threadRootId: existing.threadRootId } : {}),
-      ...(existingAttachments !== undefined && existingAttachments.length > 0
-        ? { attachments: existingAttachments }
-        : {}),
-    };
-    const ciphertext = encodeMlsBytes(await state.engine.encrypt(encodePayload(body)));
-    await this.port.editMessage({ messageId, ciphertext, epoch });
+    });
     this.decrypted.set(messageId, text);
-    this.bodies.set(messageId, body);
-    this.messageCiphertexts.set(messageId, ciphertext);
   }
 
   /** Soft-deletes a message and drops its local plaintext. */
-  async deleteMessage(channelId: string, messageId: string): Promise<void> {
-    this.requireGroup(channelId);
+  async deleteMessage(_channelId: string, messageId: string): Promise<void> {
     await this.port.deleteMessage({ messageId });
     this.decrypted.delete(messageId);
     this.bodies.delete(messageId);
-    this.messageCiphertexts.delete(messageId);
   }
 
-  async pinMessage(channelId: string, messageId: string): Promise<void> {
-    this.requireGroup(channelId);
+  async pinMessage(_channelId: string, messageId: string): Promise<void> {
     await this.port.pinMessage({ messageId });
   }
 
-  async unpinMessage(channelId: string, messageId: string): Promise<void> {
-    this.requireGroup(channelId);
+  async unpinMessage(_channelId: string, messageId: string): Promise<void> {
     await this.port.unpinMessage({ messageId });
   }
 
-  /** Toggles a reaction, encrypting the emoji and caching its plaintext. */
-  async toggleReaction(channelId: string, messageId: string, emoji: string): Promise<void> {
-    const state = this.requireGroup(channelId);
-    const emojiCiphertext = encodeMlsBytes(await state.engine.encrypt(encodeText(emoji)));
-    this.selfPayloads.set(emojiCiphertext, { text: emoji });
-    await this.port.toggleReaction({ messageId, emojiCiphertext });
-
-    const existing = this.reactionCache.get(messageId) ?? [];
-    const index = existing.findIndex(
-      (reaction) =>
-        reaction.userId === this.user.id && reaction.emojiCiphertext === emojiCiphertext,
-    );
-    const next = [...existing];
-    if (index >= 0) {
-      next.splice(index, 1);
-    } else {
-      next.push({ userId: this.user.id, emoji, emojiCiphertext });
-    }
-    this.emitReactions(messageId, next);
+  /** Toggles a plaintext emoji reaction for the caller. */
+  async toggleReaction(_channelId: string, messageId: string, emoji: string): Promise<void> {
+    await this.port.toggleReaction({ messageId, emoji });
   }
 
-  private async decryptReactions(
-    channelId: string,
-    rows: readonly ReactionRow[],
-  ): Promise<ReactionPayload[]> {
-    const state = this.channels.get(channelId);
-    if (state === undefined || !state.ready) {
-      return [];
-    }
-    const resolved: ReactionPayload[] = [];
-    for (const row of rows) {
-      const cached =
-        this.selfPayloads.get(row.emojiCiphertext) ?? this.payloadCache.get(row.emojiCiphertext);
-      if (cached !== undefined) {
-        resolved.push({
-          userId: row.userId,
-          emoji: (cached as { text: string }).text,
-          emojiCiphertext: row.emojiCiphertext,
-        });
-        continue;
-      }
-      try {
-        const bytes = await state.engine.decrypt(decodeMlsBytes(row.emojiCiphertext));
-        const emoji = decodePayload<{ text: string }>(bytes).text;
-        this.payloadCache.set(row.emojiCiphertext, { text: emoji });
-        resolved.push({
-          userId: row.userId,
-          emoji,
-          emojiCiphertext: row.emojiCiphertext,
-        });
-      } catch {}
-    }
-    return resolved;
-  }
-
-  /** Decrypts and groups the reactions on a message, emitting the result. */
-  async loadReactions(
-    channelId: string,
+  /** Records the reactions for a message and emits them to listeners. */
+  loadReactions(
+    _channelId: string,
     messageId: string,
     rows: readonly ReactionRow[],
-  ): Promise<ReactionPayload[]> {
-    const resolved = await this.decryptReactions(channelId, rows);
+  ): Promise<readonly ReactionRow[]> {
+    const resolved = [...rows];
     this.emitReactions(messageId, resolved);
-    return resolved;
+    return Promise.resolve(resolved);
   }
 
-  private emitReactions(messageId: string, reactions: readonly ReactionPayload[]): void {
+  private emitReactions(messageId: string, reactions: readonly ReactionRow[]): void {
     this.reactionCache.set(messageId, [...reactions]);
     for (const listener of this.reactionListeners.get(messageId) ?? []) {
       listener(reactions);
@@ -831,7 +380,7 @@ export class ChatSession {
 
   onReactions(
     messageId: string,
-    listener: (reactions: readonly ReactionPayload[]) => void,
+    listener: (reactions: readonly ReactionRow[]) => void,
   ): () => void {
     const set = this.reactionListeners.get(messageId) ?? new Set();
     set.add(listener);
@@ -842,67 +391,52 @@ export class ChatSession {
     };
   }
 
-  /** Current members of the channel's MLS group (local view). */
-  async groupMembers(channelId: string): Promise<readonly MlsMember[]> {
-    return await this.requireGroup(channelId).engine.members();
+  /** Renames a channel with its plaintext name. */
+  async setChannelName(channelId: string, name: string): Promise<void> {
+    this.rememberName(channelId, name);
+    await this.port.renameChannel({ channelId, name });
   }
 
-  /** Current local MLS epoch for a channel. */
-  async epoch(channelId: string): Promise<number> {
-    return Number(await this.requireGroup(channelId).engine.epoch());
+  /** The plaintext name for a channel, or a fallback label. */
+  channelNameFor(channelId: string, name: string | null | undefined): string {
+    if (name !== null && name !== undefined && name.length > 0) {
+      return name;
+    }
+    return this.channelNames.get(channelId) ?? FALLBACK_CHANNEL_NAME;
   }
 
-  /** Closes subscriptions and forgets channel state. */
-  closeChannel(channelId: string): void {
-    const state = this.channels.get(channelId);
-    if (state === undefined) {
+  /** Remembers plaintext names from channel summaries. */
+  hydrateChannelNames(channels: readonly ChannelSummary[]): void {
+    this.channelSummaries = channels;
+    for (const channel of channels) {
+      this.rememberName(channel.id, channel.name);
+    }
+  }
+
+  private rememberName(channelId: string, name: string | null | undefined): void {
+    if (name === null || name === undefined || name.length === 0) {
       return;
     }
-    for (const unsubscribe of state.unsubscribers) {
-      unsubscribe();
-    }
-    this.channels.delete(channelId);
-  }
-
-  /** Exposes the channel engine so callers can decrypt channel-scoped payloads. */
-  engineFor(channelId: string): MlsEngine | undefined {
-    return this.channels.get(channelId)?.engine;
-  }
-
-  /** Releases every subscription (e.g. on sign-out). */
-  dispose(): void {
-    for (const channelId of [...this.channels.keys()]) {
-      this.closeChannel(channelId);
-    }
-    for (const unsubscribe of this.reactionUnsubscribers.values()) {
-      unsubscribe();
-    }
-    this.reactionUnsubscribers.clear();
-    this.messageListeners.clear();
-    this.decryptedListeners.clear();
-    this.reactionListeners.clear();
-  }
-
-  /** Leaves a channel; the caller's client then publishes the Remove commit. */
-  async leaveChannel(channelId: string): Promise<void> {
-    await this.port.leaveChannel({ channelId });
+    this.channelNames.set(channelId, name);
   }
 
   /** Marks a message as the caller's read cursor. */
   async markRead(channelId: string, messageId: string): Promise<void> {
     await this.port.setReadState({ channelId, lastReadMessageId: messageId });
   }
-}
 
-export interface ReactionPayload {
-  readonly userId: string;
-  readonly emoji: string;
-  readonly emojiCiphertext: string;
-}
-
-function latestWelcome(commits: readonly MlsCommitRow[]): string | null {
-  const withWelcome = commits
-    .filter((commit) => commit.welcomeCiphertext !== null)
-    .sort((a, b) => b.epoch - a.epoch);
-  return withWelcome[0]?.welcomeCiphertext ?? null;
+  /** Releases every subscription (e.g. on sign-out). */
+  dispose(): void {
+    for (const channelId of [...this.openChannels.keys()]) {
+      this.closeChannel(channelId);
+    }
+    for (const unsubscribe of this.startUnsubscribers) {
+      unsubscribe();
+    }
+    this.startUnsubscribers.length = 0;
+    this.messageListeners.clear();
+    this.decryptedListeners.clear();
+    this.reactionListeners.clear();
+    this.reactionCache.clear();
+  }
 }

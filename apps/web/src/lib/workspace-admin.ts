@@ -33,6 +33,8 @@ export interface MemberView {
   readonly id: string;
   readonly userId: string;
   readonly nickname: string | null;
+  /** The account's own name from the server (absent on older servers). */
+  readonly accountName?: string | null;
   readonly roleIds: readonly string[];
   readonly joinedAt: number;
   readonly timeoutUntil: number | null;
@@ -139,10 +141,32 @@ export function roleColorFor(member: MemberView | null, roles: readonly RoleView
   return best?.color ?? null;
 }
 
+/**
+ * The names of the roles a member holds, highest position first, skipping
+ * `@everyone` (which every member has and which adds no signal).
+ */
+export function roleNamesFor(member: MemberView | null, roles: readonly RoleView[]): string[] {
+  if (member === null) {
+    return [];
+  }
+  const held = new Set(member.roleIds);
+  return roles
+    .filter((role) => !role.isEveryone && held.has(roleRef(role)))
+    .sort((a, b) => b.position - a.position)
+    .map((role) => role.name);
+}
+
 /** Display name honoring a nickname override, falling back to the base name. */
+/** Nickname first, then the account's own name, then `fallback`. */
 export function memberDisplayName(member: MemberView | null, fallback: string): string {
   const nickname = member?.nickname;
-  return nickname !== undefined && nickname !== null && nickname.length > 0 ? nickname : fallback;
+  if (nickname !== undefined && nickname !== null && nickname.length > 0) {
+    return nickname;
+  }
+  const accountName = member?.accountName;
+  return accountName !== undefined && accountName !== null && accountName.length > 0
+    ? accountName
+    : fallback;
 }
 
 /** Whether the viewer may edit/assign/delete `role`. UI copy of the server. */

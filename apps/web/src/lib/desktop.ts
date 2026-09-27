@@ -50,6 +50,25 @@ async function invokeCommand(command: string, args?: Record<string, unknown>): P
  * Subscribes to a shell event. Returns a no-op unsubscribe outside the desktop
  * shell so callers do not need to branch.
  */
+export type DesktopPlatform = "macos" | "windows" | "linux";
+
+/**
+ * The OS the shell runs on, from the webview's user agent. Only macOS gets a
+ * transparent, vibrancy-backed window with overlay traffic lights, so styling
+ * that depends on that is scoped with `html[data-platform="macos"]`.
+ */
+export function desktopPlatform(
+  userAgent: string = typeof navigator === "undefined" ? "" : navigator.userAgent,
+): DesktopPlatform {
+  if (/Mac OS X|Macintosh/i.test(userAgent)) {
+    return "macos";
+  }
+  if (/Windows/i.test(userAgent)) {
+    return "windows";
+  }
+  return "linux";
+}
+
 export async function listenDesktopEvent(
   event: string,
   handler: (payload: unknown) => void,

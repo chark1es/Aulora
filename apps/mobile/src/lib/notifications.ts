@@ -5,10 +5,9 @@ import type { MobileChatRuntime } from "./chat-runtime";
 import { notificationContent, shouldNotify } from "./notifications-format";
 
 /**
- * Local display of incoming messages: the server only has ciphertext, so this
- * device decides what to show. Messages that predate mount are ignored so
- * opening the app does not replay history, and the body is decrypted text that
- * never leaves the device.
+ * Local display of incoming messages. The server holds message bodies only
+ * sealed at rest and returns them to this device; opening the app does not
+ * replay history. The body shown is the message text for this device.
  */
 export function useLocalNotifications(
   runtime: MobileChatRuntime | undefined,
@@ -57,7 +56,7 @@ export function useLocalNotifications(
           continue;
         }
         added += 1;
-        const content = notificationContent(namesRef.current.get(message.channelId), text ?? "");
+        const content = notificationContent(namesRef.current.get(message.channelId), text);
         void Notifications.scheduleNotificationAsync({
           content: { title: content.title, body: content.body },
           trigger: null,

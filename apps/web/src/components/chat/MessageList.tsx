@@ -1,11 +1,34 @@
-import { Avatar, userAvatarSeed } from "@aulora/avatars";
-import type { AttachmentDescriptor, MessagePayload, ReactionRow } from "@aulora/core";
-import { gridDays, hasPermission, Permission } from "@aulora/core";
-import { IconButton, Text } from "@aulora/ui-web";
-import { useEffect, useState } from "react";
+import type {
+  AttachmentDescriptor,
+  MessagePayload,
+  ReactionRow,
+  TimelineItem,
+  TypingRow,
+} from "@aulora/core";
+import {
+  activityLabel,
+  buildTimeline,
+  dayLabel,
+  hasPermission,
+  messageTime,
+  Permission,
+} from "@aulora/core";
+import { type ContextMenuItem, cn, Icon, Spinner, useContextMenu } from "@aulora/ui-web";
+import {
+  type ReactNode,
+  useCallback,
+  useEffect,
+  useLayoutEffect,
+  useMemo,
+  useRef,
+  useState,
+} from "react";
 import type { ChatRuntime } from "../../lib/chat-runtime";
 import { AttachmentView } from "./AttachmentView";
+import { EmojiPicker } from "./EmojiPicker";
+import { PresenceAvatar } from "./PresenceAvatar";
 import { ReactionChips, type ReactionGroup } from "./ReactionChips";
+import { RichText } from "./RichText";
 
 export interface MessageListProps {
   readonly runtime: ChatRuntime | undefined;
@@ -14,140 +37,411 @@ export interface MessageListProps {
   readonly decrypted: ReadonlyMap<string, string>;
   readonly attachments: ReadonlyMap<string, readonly AttachmentDescriptor[]>;
   readonly pendingIds: ReadonlySet<string>;
+  /** Optimistic ids (`pending:<outboxItemId>`) that permanently failed to send. */
+  readonly failedIds?: ReadonlySet<string>;
+  /** Re-queues a failed optimistic send; receives the `pending:<id>` key. */
+  readonly onRetrySend?: (pendingId: string) => void;
+  /** Drops a failed optimistic send; receives the `pending:<id>` key. */
+  readonly onDiscardSend?: (pendingId: string) => void;
   readonly permissions: bigint;
   readonly ownUserId: string;
+  readonly ownName: string;
   readonly memberNames: ReadonlyMap<string, string>;
   /** Highest-position role color per user id, for rings and tinted names. */
   readonly memberColors?: ReadonlyMap<string, string>;
+  /** Names `@mentions` may refer to, for highlighting. */
+  readonly mentionNames: readonly string[];
+  /** Where the "New messages" divider goes; fixed when the channel opens. */
   readonly firstUnreadId: string | null;
+  readonly typers: readonly TypingRow[];
+  readonly hasOlder: boolean;
+  readonly loading: boolean;
+  readonly onLoadOlder: () => void;
   readonly onReply: (message: MessagePayload) => void;
   readonly onEdit: (message: MessagePayload, text: string) => void;
   readonly onDelete: (message: MessagePayload) => void;
   readonly onPinToggle: (message: MessagePayload) => void;
   readonly onReact: (message: MessagePayload, emoji: string) => void;
-  readonly onJumpToFirstUnread: () => void;
+  /** Shown when the channel has no messages yet. */
+  readonly emptyState?: ReactNode;
+  /** Rendering a thread: no nested-thread actions or reply summaries. */
+  readonly inThread?: boolean;
+  /** Starts an inline (quoted) reply to the message. */
+  readonly onReplyTo?: (message: MessagePayload) => void;
+  /** Quoted previews for inline replies, keyed by the target message id. */
+  readonly replyPreviews?: ReadonlyMap<
+    string,
+    { readonly authorName: string; readonly text: string; readonly authorId?: string }
+  >;
+  /** Which side the viewer's own messages render on. Defaults to "left". */
+  readonly ownSide?: "left" | "right";
 }
 
-const QUICK_REACTIONS = ["👍", "🎉", "👀", "❤️"] as const;
+const QUICK_REACTIONS = ["👍", "❤️", "😂", "🎉", "👀"] as const;
 
-/** Flat, realtime, decrypted message list with day separators. */
-export function MessageList({
-  runtime,
-  channelId,
-  messages,
-  decrypted,
-  attachments,
-  pendingIds,
-  permissions,
-  ownUserId,
-  memberNames,
-  memberColors,
-  firstUnreadId,
-  onReply,
-  onEdit,
-  onDelete,
-  onPinToggle,
-  onReact,
-  onJumpToFirstUnread,
-}: MessageListProps) {
-  const days = gridDays(messages);
+/** Within this distance of the bottom the list follows new messages. */
+const STICK_THRESHOLD_PX = 96;
+/** Within this distance of the top the list fetches older history. */
+const LOAD_OLDER_THRESHOLD_PX = 160;
+
+/**
+ * The conversation timeline: message bubbles grouped into author runs, day
+ * separators, the unread divider and a typing bubble. It follows the live tail
+ * while the reader is at the bottom, loads older history when they scroll up
+ * (keeping their place), and offers a jump back to the latest message.
+ */
+export function MessageList(props: MessageListProps) {
+  const {
+    channelId,
+    messages,
+    firstUnreadId,
+    typers,
+    hasOlder,
+    loading,
+    onLoadOlder,
+    memberNames,
+    memberColors,
+  } = props;
+  const scrollRef = useRef<HTMLDivElement | null>(null);
+  const contentRef = useRef<HTMLDivElement | null>(null);
+  const stickRef = useRef(true);
+  const olderAnchorRef = useRef<{ height: number; top: number } | null>(null);
+  const positionedChannelRef = useRef<string | null>(null);
+  const [atBottom, setAtBottom] = useState(true);
+
+  const items = useMemo(
+    () => buildTimeline(messages, { firstUnreadId }),
+    [messages, firstUnreadId],
+  );
+
+  const scrollToBottom = useCallback((behavior: ScrollBehavior = "auto") => {
+    const node = scrollRef.current;
+    if (node !== null) {
+      node.scrollTo({ top: node.scrollHeight, behavior });
+    }
+  }, []);
+
+  // A new channel starts pinned to the bottom until it is first positioned.
+  // biome-ignore lint/correctness/useExhaustiveDependencies: channelId is the reset trigger
+  useEffect(() => {
+    stickRef.current = true;
+    olderAnchorRef.current = null;
+    positionedChannelRef.current = null;
+    setAtBottom(true);
+  }, [channelId]);
+
+  // After each render: restore the reader's place when older history was
+  // prepended, open a fresh channel at the unread divider (or the bottom), and
+  // otherwise follow the tail while pinned.
+  useLayoutEffect(() => {
+    const node = scrollRef.current;
+    if (node === null) {
+      return;
+    }
+    const anchor = olderAnchorRef.current;
+    if (anchor !== null) {
+      node.scrollTop = anchor.top + (node.scrollHeight - anchor.height);
+      olderAnchorRef.current = null;
+      return;
+    }
+    if (positionedChannelRef.current !== channelId && messages.length > 0) {
+      positionedChannelRef.current = channelId;
+      const divider = node.querySelector<HTMLElement>("[data-unread-divider]");
+      if (divider !== null) {
+        node.scrollTop = Math.max(0, divider.offsetTop - node.clientHeight / 3);
+        stickRef.current = false;
+        setAtBottom(false);
+        return;
+      }
+    }
+    if (stickRef.current) {
+      node.scrollTop = node.scrollHeight;
+    }
+  });
+
+  // Late-loading images and thumbnails change the height; stay pinned.
+  useEffect(() => {
+    const content = contentRef.current;
+    if (content === null || typeof ResizeObserver === "undefined") {
+      return;
+    }
+    const observer = new ResizeObserver(() => {
+      if (stickRef.current) {
+        scrollToBottom();
+      }
+    });
+    observer.observe(content);
+    return () => observer.disconnect();
+  }, [scrollToBottom]);
+
+  const onScroll = () => {
+    const node = scrollRef.current;
+    if (node === null) {
+      return;
+    }
+    const distance = node.scrollHeight - node.scrollTop - node.clientHeight;
+    const pinned = distance < STICK_THRESHOLD_PX;
+    stickRef.current = pinned;
+    setAtBottom(pinned);
+    if (
+      node.scrollTop < LOAD_OLDER_THRESHOLD_PX &&
+      hasOlder &&
+      !loading &&
+      olderAnchorRef.current === null &&
+      positionedChannelRef.current === channelId
+    ) {
+      olderAnchorRef.current = { height: node.scrollHeight, top: node.scrollTop };
+      onLoadOlder();
+    }
+  };
+
   return (
-    <div
-      className="flex min-h-0 flex-1 flex-col gap-4 overflow-y-auto px-4 py-3"
-      data-testid="message-list"
-      data-channel={channelId}
-    >
-      {firstUnreadId !== null && (
+    <div className="relative flex min-h-0 flex-1 flex-col">
+      <div
+        ref={scrollRef}
+        onScroll={onScroll}
+        className="min-h-0 flex-1 overflow-y-auto overscroll-contain"
+        data-testid="message-list"
+        data-channel={channelId}
+      >
+        <div
+          ref={contentRef}
+          className="flex min-h-full flex-col justify-end px-4 pb-4 pt-5 sm:px-6"
+        >
+          {hasOlder && (
+            <div className="flex justify-center py-3">
+              <button
+                type="button"
+                onClick={() => {
+                  const node = scrollRef.current;
+                  if (node !== null) {
+                    olderAnchorRef.current = { height: node.scrollHeight, top: node.scrollTop };
+                  }
+                  onLoadOlder();
+                }}
+                className="rounded-full border border-border bg-surface-2 px-3 py-1 text-xs font-medium text-text-muted transition hover:bg-surface-3 hover:text-text"
+              >
+                Load earlier messages
+              </button>
+            </div>
+          )}
+          {loading && messages.length === 0 ? (
+            <div className="flex flex-1 items-center justify-center py-16">
+              <Spinner size={24} label="Loading messages" />
+            </div>
+          ) : messages.length === 0 ? (
+            props.emptyState
+          ) : (
+            items.map((item) => <TimelineRow key={item.key} item={item} list={props} />)
+          )}
+          {typers.length > 0 && (
+            <TypingBubble typers={typers} memberNames={memberNames} memberColors={memberColors} />
+          )}
+        </div>
+      </div>
+
+      {!atBottom && messages.length > 0 && (
         <button
           type="button"
-          onClick={onJumpToFirstUnread}
-          className="self-start rounded-pill bg-accent-soft px-3 py-1 text-xs font-medium text-accent"
+          onClick={() => {
+            stickRef.current = true;
+            setAtBottom(true);
+            scrollToBottom("smooth");
+          }}
+          className="absolute bottom-3 left-1/2 flex -translate-x-1/2 animate-pop-in items-center gap-1.5 rounded-full border border-border bg-surface-2 px-3.5 py-1.5 text-xs font-semibold text-text shadow-lg shadow-black/15 transition hover:bg-surface-3"
         >
-          Jump to first unread
+          <Icon name="arrow-down" size={14} />
+          Jump to latest
         </button>
       )}
-      {days.map(([day, dayMessages]) => (
-        <section key={day} className="flex flex-col gap-1">
-          <div className="flex items-center gap-3 py-1">
-            <span className="h-px flex-1 bg-border" />
-            <Text size="xs" tone="muted" mono>
-              {new Date(day).toDateString()}
-            </Text>
-            <span className="h-px flex-1 bg-border" />
-          </div>
-          {dayMessages.map((message) => (
-            <MessageRow
-              key={message.id}
-              runtime={runtime}
-              channelId={channelId}
-              message={message}
-              text={decrypted.get(message.id)}
-              attachments={attachments.get(message.id) ?? []}
-              pending={pendingIds.has(message.id)}
-              permissions={permissions}
-              ownUserId={ownUserId}
-              authorName={memberNames.get(message.authorId) ?? message.authorId}
-              authorColor={memberColors?.get(message.authorId)}
-              onReply={onReply}
-              onEdit={onEdit}
-              onDelete={onDelete}
-              onPinToggle={onPinToggle}
-              onReact={onReact}
-            />
-          ))}
-        </section>
-      ))}
     </div>
   );
 }
 
-function MessageRow({
-  runtime,
-  channelId,
-  message,
-  text,
-  attachments,
-  pending,
-  permissions,
-  ownUserId,
-  authorName,
-  authorColor,
-  onReply,
-  onEdit,
-  onDelete,
-  onPinToggle,
-  onReact,
+function TimelineRow({
+  item,
+  list,
 }: {
-  runtime: ChatRuntime | undefined;
-  channelId: string;
-  message: MessagePayload;
-  text: string | undefined;
-  attachments: readonly AttachmentDescriptor[];
-  pending: boolean;
-  permissions: bigint;
-  ownUserId: string;
-  authorName: string;
-  authorColor: string | undefined;
-  onReply(message: MessagePayload): void;
-  onEdit(message: MessagePayload, text: string): void;
-  onDelete(message: MessagePayload): void;
-  onPinToggle(message: MessagePayload): void;
-  onReact(message: MessagePayload, emoji: string): void;
+  readonly item: TimelineItem;
+  readonly list: MessageListProps;
 }) {
+  if (item.kind === "day") {
+    return (
+      <div className="flex items-center gap-3 py-3">
+        <span className="h-px flex-1 bg-border" />
+        <span className="text-[11px] font-semibold uppercase tracking-[0.06em] text-text-muted">
+          {dayLabel(item.dayStart)}
+        </span>
+        <span className="h-px flex-1 bg-border" />
+      </div>
+    );
+  }
+  if (item.kind === "unread") {
+    return (
+      <div className="flex items-center gap-3 py-2" data-unread-divider>
+        <span className="h-px flex-1 bg-accent/60" />
+        <span className="text-[11px] font-semibold uppercase tracking-wider text-accent">
+          New messages
+        </span>
+        <span className="h-px flex-1 bg-accent/60" />
+      </div>
+    );
+  }
+  return <MessageRow list={list} message={item.message} startsGroup={item.startsGroup} />;
+}
+
+function MessageRow({
+  list,
+  message,
+  startsGroup,
+}: {
+  readonly list: MessageListProps;
+  readonly message: MessagePayload;
+  readonly startsGroup: boolean;
+}) {
+  const {
+    runtime,
+    channelId,
+    ownUserId,
+    ownName,
+    permissions,
+    memberNames,
+    memberColors,
+    mentionNames,
+  } = list;
+  const own = message.authorId === ownUserId;
+  const mirror = (list.ownSide ?? "left") === "right" && own;
+  const pending = list.pendingIds.has(message.id);
+  const failed = list.failedIds?.has(message.id) ?? false;
+  const unsent = pending || failed;
+  const text = list.decrypted.get(message.id) ?? message.body;
+  const attachments = list.attachments.get(message.id) ?? [];
+  const authorName = own ? "You" : (memberNames.get(message.authorId) ?? "Unknown member");
+  const authorColor = memberColors?.get(message.authorId);
+  const replyToId = message.replyToId ?? null;
+  const replyPreview = replyToId !== null ? list.replyPreviews?.get(replyToId) : undefined;
+
+  const scrollToOriginal = (id: string): void => {
+    const node = document.getElementById(`message-${id}`);
+    node?.scrollIntoView({
+      behavior: "smooth",
+      block: "center",
+    });
+    if (node !== null && typeof node.animate === "function") {
+      node.animate(
+        [{ backgroundColor: "var(--aulora-accent-soft)" }, { backgroundColor: "transparent" }],
+        { duration: 1600, easing: "ease-out" },
+      );
+    }
+  };
+
   const [editing, setEditing] = useState(false);
   const [draft, setDraft] = useState(text ?? "");
+  const [confirmDelete, setConfirmDelete] = useState(false);
+  const [pickerOpen, setPickerOpen] = useState(false);
   const [reactions, setReactions] = useState<readonly ReactionGroup[]>([]);
-  const canEdit =
-    message.authorId === ownUserId || hasPermission(permissions, Permission.ManageMessages);
-  const canDelete =
-    message.authorId === ownUserId || hasPermission(permissions, Permission.ManageMessages);
+
+  const canModerate = hasPermission(permissions, Permission.ManageMessages);
+  const canEdit = own;
+  const canDelete = own || canModerate;
   const canPin = hasPermission(permissions, Permission.PinMessages);
   const canReact = hasPermission(permissions, Permission.AddReactions);
-  void canPin;
+  const canThread = list.inThread !== true && hasPermission(permissions, Permission.SendInThreads);
+  const openMenu = useContextMenu();
+
+  const openContextMenu = (event: React.MouseEvent) => {
+    if (unsent || editing) {
+      return;
+    }
+    event.preventDefault();
+    const items: ContextMenuItem[] = [];
+    if (canReact) {
+      items.push({
+        id: "react",
+        label: "Add reaction",
+        icon: <Icon name="smile" size={14} />,
+        onSelect: () => setPickerOpen(true),
+      });
+      for (const emoji of QUICK_REACTIONS.slice(0, 3)) {
+        items.push({
+          id: `react-${emoji}`,
+          label: `React ${emoji}`,
+          onSelect: () => list.onReact(message, emoji),
+        });
+      }
+    }
+    if (list.onReplyTo !== undefined) {
+      items.push({
+        id: "reply",
+        label: "Reply",
+        icon: <Icon name="reply" size={14} />,
+        separatorBefore: items.length > 0,
+        onSelect: () => list.onReplyTo?.(message),
+      });
+    }
+    if (canThread) {
+      items.push({
+        id: "thread",
+        label: "Reply in thread",
+        icon: <Icon name="thread" size={14} />,
+        separatorBefore: items.length > 0,
+        onSelect: () => list.onReply(message),
+      });
+    }
+    if (canEdit) {
+      items.push({
+        id: "edit",
+        label: "Edit message",
+        icon: <Icon name="pencil" size={14} />,
+        separatorBefore: items.length > 0,
+        onSelect: () => {
+          setDraft(text);
+          setEditing(true);
+        },
+      });
+    }
+    if (canPin) {
+      items.push({
+        id: "pin",
+        label: message.pinnedAt !== null ? "Unpin message" : "Pin message",
+        icon: <Icon name="pin" size={14} />,
+        onSelect: () => list.onPinToggle(message),
+      });
+    }
+    if (text.trim().length > 0) {
+      items.push({
+        id: "copy",
+        label: "Copy text",
+        icon: <Icon name="file" size={14} />,
+        separatorBefore: items.length > 0,
+        onSelect: () => {
+          void navigator.clipboard?.writeText(text).catch(() => undefined);
+        },
+      });
+    }
+    if (canDelete) {
+      items.push({
+        id: "delete",
+        label: "Delete message",
+        icon: <Icon name="trash" size={14} />,
+        danger: true,
+        separatorBefore: items.length > 0,
+        onSelect: () => list.onDelete(message),
+      });
+    }
+    if (items.length > 0) {
+      openMenu({
+        clientX: event.clientX,
+        clientY: event.clientY,
+        items,
+        label: `Message from ${authorName}`,
+      });
+    }
+  };
 
   // biome-ignore lint/correctness/useExhaustiveDependencies: re-subscribe only when the message/runtime changes
   useEffect(() => {
-    if (runtime === undefined) {
+    if (runtime === undefined || unsent) {
       return;
     }
     let cancelled = false;
@@ -162,196 +456,428 @@ function MessageRow({
       cancelled = true;
       off();
     };
-  }, [runtime, message.id, ownUserId]);
+  }, [runtime, message.id, ownUserId, unsent]);
+
+  useEffect(() => {
+    if (!confirmDelete) {
+      return;
+    }
+    const timer = setTimeout(() => setConfirmDelete(false), 4_000);
+    return () => clearTimeout(timer);
+  }, [confirmDelete]);
 
   if (message.deletedAt !== null) {
     return (
-      <div className="rounded-input bg-surface-2/50 px-3 py-2">
-        <Text size="sm" tone="muted" className="italic">
-          This message was deleted.
-        </Text>
-      </div>
+      <article
+        id={`message-${message.id}`}
+        data-testid={`message-${message.id}`}
+        className={cn("w-full py-0.5", startsGroup ? "mt-3" : "mt-0.5")}
+      >
+        <div className={cn("flex w-full items-start gap-2.5", mirror && "flex-row-reverse")}>
+          <div className="w-8 shrink-0 pt-0.5">
+            {startsGroup && (
+              <PresenceAvatar userId={message.authorId} size={32} roleColor={authorColor} />
+            )}
+          </div>
+          <div className={cn("flex min-w-0 flex-1", mirror ? "justify-end" : "justify-start")}>
+            <span className="flex items-center gap-1.5 rounded-full border border-dashed border-border px-3 py-1 text-xs italic text-text-muted">
+              <Icon name="trash" size={12} />
+              This message was deleted.
+            </span>
+          </div>
+        </div>
+      </article>
     );
   }
+
+  const hasText = text.trim().length > 0;
+  const time = messageTime(message.createdAt);
+  const replyCount = message.replyCount ?? 0;
+
+  const body = editing ? (
+    <form
+      className="flex w-[min(560px,100%)] flex-col gap-2 rounded-[10px] border border-accent bg-surface-2 p-2 shadow-lg shadow-black/10"
+      onSubmit={(event) => {
+        event.preventDefault();
+        if (draft.trim().length > 0 && draft !== text) {
+          list.onEdit(message, draft);
+        }
+        setEditing(false);
+      }}
+    >
+      <textarea
+        aria-label="Edit message"
+        // biome-ignore lint/a11y/noAutofocus: editing was explicitly requested
+        autoFocus
+        className="min-h-[64px] resize-none bg-transparent px-1.5 py-1 text-[14px] leading-relaxed text-text focus-visible:outline-none"
+        value={draft}
+        onChange={(event) => setDraft(event.target.value)}
+        onKeyDown={(event) => {
+          if (event.key === "Escape") {
+            setEditing(false);
+          }
+          if (event.key === "Enter" && !event.shiftKey) {
+            event.preventDefault();
+            event.currentTarget.form?.requestSubmit();
+          }
+        }}
+      />
+      <div className="flex items-center justify-end gap-2 text-xs">
+        <span className="mr-auto pl-1.5 text-text-muted">Esc to cancel · Enter to save</span>
+        <button
+          type="button"
+          className="rounded-[8px] px-2.5 py-1 font-medium text-text-muted hover:bg-surface-3 hover:text-text"
+          onClick={() => setEditing(false)}
+        >
+          Cancel
+        </button>
+        <button
+          type="submit"
+          className="rounded-[8px] bg-accent px-2.5 py-1 font-semibold text-on-accent"
+        >
+          Save
+        </button>
+      </div>
+    </form>
+  ) : hasText ? (
+    <div
+      className={cn(
+        "min-w-0 max-w-full whitespace-pre-wrap break-words text-[14px] leading-relaxed text-text [overflow-wrap:anywhere]",
+        unsent && "opacity-70",
+      )}
+    >
+      <RichText text={text} mentionNames={mentionNames} viewerName={ownName} />
+    </div>
+  ) : null;
+
+  const replyAuthorId = replyPreview?.authorId;
+  const replyAuthorColor =
+    replyAuthorId !== undefined ? memberColors?.get(replyAuthorId) : undefined;
+
+  const replyLine = replyToId !== null && (
+    <button
+      type="button"
+      onClick={() => scrollToOriginal(replyToId)}
+      aria-label="Jump to replied message"
+      className={cn(
+        "relative mb-0.5 flex min-w-0 max-w-full items-center gap-1.5 pl-3 text-left transition hover:opacity-80",
+        mirror && "flex-row-reverse pl-0 pr-3 text-right",
+      )}
+    >
+      <span
+        aria-hidden
+        className={cn(
+          "pointer-events-none absolute top-1/2 h-4 w-4 border-border/70",
+          mirror
+            ? "-right-2.5 rounded-br-[7px] border-b border-r"
+            : "-left-2.5 rounded-bl-[7px] border-b border-l",
+        )}
+      />
+      <span className="min-w-0 truncate text-[12px] leading-4">
+        {replyPreview !== undefined ? (
+          <>
+            <span
+              className={cn("font-semibold", replyAuthorColor === undefined && "text-accent")}
+              style={replyAuthorColor !== undefined ? { color: replyAuthorColor } : undefined}
+            >
+              {replyPreview.authorName}
+            </span>{" "}
+            <span className="text-text-muted">{replyPreview.text}</span>
+          </>
+        ) : (
+          <span className="italic text-text-muted">Replying to a message</span>
+        )}
+      </span>
+    </button>
+  );
+
+  const toolbar = !unsent && !editing && (
+    <div
+      className={cn(
+        // Pinned to the far edge of the full-width row and revealed on hover or
+        // keyboard focus. Mirrored own messages pin it to the left instead.
+        "absolute top-0 z-20 hidden items-center gap-0.5 rounded-[9px] border border-border bg-surface-2 p-0.5 shadow-lg shadow-black/20 group-focus-within/message:flex group-hover/message:flex",
+        mirror ? "left-2" : "right-2",
+        pickerOpen && "flex",
+      )}
+    >
+      {canReact &&
+        QUICK_REACTIONS.slice(0, 3).map((emoji) => (
+          <ToolbarButton
+            key={emoji}
+            label={`React ${emoji}`}
+            onClick={() => list.onReact(message, emoji)}
+          >
+            <span className="text-[15px] leading-none">{emoji}</span>
+          </ToolbarButton>
+        ))}
+      {canReact && (
+        <span className="relative">
+          <ToolbarButton label="Add reaction" onClick={() => setPickerOpen((open) => !open)}>
+            <Icon name="smile" size={16} />
+          </ToolbarButton>
+          {pickerOpen && (
+            <EmojiPicker
+              className={cn("absolute top-full mt-1", mirror ? "left-0" : "right-0")}
+              onPick={(emoji) => list.onReact(message, emoji)}
+              onClose={() => setPickerOpen(false)}
+            />
+          )}
+        </span>
+      )}
+      {list.onReplyTo !== undefined && (
+        <ToolbarButton label="Reply" onClick={() => list.onReplyTo?.(message)}>
+          <Icon name="reply" size={16} />
+        </ToolbarButton>
+      )}
+      {canThread && (
+        <ToolbarButton label="Reply in thread" onClick={() => list.onReply(message)}>
+          <Icon name="thread" size={16} />
+        </ToolbarButton>
+      )}
+      {canEdit && (
+        <ToolbarButton
+          label="Edit message"
+          onClick={() => {
+            setDraft(text);
+            setEditing(true);
+          }}
+        >
+          <Icon name="pencil" size={15} />
+        </ToolbarButton>
+      )}
+      {canPin && (
+        <ToolbarButton
+          label={message.pinnedAt !== null ? "Unpin message" : "Pin message"}
+          active={message.pinnedAt !== null}
+          onClick={() => list.onPinToggle(message)}
+        >
+          <Icon name="pin" size={15} />
+        </ToolbarButton>
+      )}
+      {canDelete &&
+        (confirmDelete ? (
+          <button
+            type="button"
+            aria-label="Confirm delete"
+            onClick={() => {
+              setConfirmDelete(false);
+              list.onDelete(message);
+            }}
+            className="h-7 rounded-[7px] bg-danger px-2 text-xs font-semibold text-on-accent"
+          >
+            Delete?
+          </button>
+        ) : (
+          <ToolbarButton label="Delete message" danger onClick={() => setConfirmDelete(true)}>
+            <Icon name="trash" size={15} />
+          </ToolbarButton>
+        ))}
+    </div>
+  );
 
   return (
     <article
       id={`message-${message.id}`}
-      className="group relative flex gap-3 rounded-input px-3 py-1.5 hover:bg-surface-2"
       data-testid={`message-${message.id}`}
+      onContextMenu={openContextMenu}
+      className={cn(
+        "group/message relative flex w-full gap-2.5 py-0.5 transition-colors",
+        mirror && "flex-row-reverse",
+        startsGroup ? "mt-3" : "mt-0.5",
+      )}
     >
-      <Avatar
-        seed={userAvatarSeed(message.authorId)}
-        size={32}
-        {...(authorColor !== undefined && authorColor.length > 0 ? { roleColor: authorColor } : {})}
-      />
-      <div className="min-w-0 flex-1">
-        <div className="flex items-baseline gap-2">
-          <Text
-            size="sm"
-            className="font-medium"
-            style={authorColor !== undefined ? { color: authorColor } : undefined}
-          >
-            {authorName}
-          </Text>
-          <Text size="xs" tone="muted" mono>
-            {new Date(message.createdAt).toLocaleTimeString([], {
-              hour: "2-digit",
-              minute: "2-digit",
-            })}
-          </Text>
-          {message.editedAt !== null && (
-            <Text size="xs" tone="muted" mono>
-              (edited)
-            </Text>
-          )}
-          {message.pinnedAt !== null && (
-            <Text size="xs" tone="accent" mono>
-              pinned
-            </Text>
-          )}
-        </div>
-        {editing ? (
-          <form
-            className="flex flex-col gap-2 py-1"
-            onSubmit={(event) => {
-              event.preventDefault();
-              onEdit(message, draft);
-              setEditing(false);
-            }}
-          >
-            <textarea
-              className="min-h-[60px] rounded-input border border-border bg-surface-3 p-2 text-sm text-text"
-              value={draft}
-              onChange={(event) => setDraft(event.target.value)}
-            />
-            <div className="flex gap-2">
-              <button type="submit" className="rounded-pill bg-accent px-3 py-1 text-xs text-bg">
-                Save
-              </button>
-              <button
-                type="button"
-                className="rounded-pill px-3 py-1 text-xs text-text-muted"
-                onClick={() => setEditing(false)}
-              >
-                Cancel
-              </button>
-            </div>
-          </form>
+      <div className="w-8 shrink-0 pt-0.5">
+        {startsGroup ? (
+          <PresenceAvatar userId={message.authorId} size={32} roleColor={authorColor} />
         ) : (
-          <MessageBody text={text} />
+          !editing && (
+            <time
+              className={cn(
+                "pointer-events-none hidden whitespace-nowrap text-[10px] text-text-muted group-hover/message:block",
+                mirror ? "text-left" : "text-right",
+              )}
+              dateTime={new Date(message.createdAt).toISOString()}
+            >
+              {time}
+            </time>
+          )
         )}
+      </div>
+      <div className={cn("flex min-w-0 flex-1 flex-col", mirror ? "items-end" : "items-start")}>
+        {startsGroup && replyLine}
+        {startsGroup && (
+          <div className={cn("mb-0.5 flex items-baseline gap-2", mirror && "flex-row-reverse")}>
+            <span
+              className="text-[13px] font-semibold text-text"
+              style={authorColor !== undefined ? { color: authorColor } : undefined}
+            >
+              {authorName}
+            </span>
+            <time
+              className="text-[11px] text-text-muted"
+              dateTime={new Date(message.createdAt).toISOString()}
+            >
+              {time}
+            </time>
+          </div>
+        )}
+        {message.pinnedAt !== null && (
+          <span className="mb-1 flex items-center gap-1 text-[11px] font-medium text-accent">
+            <Icon name="pin" size={12} />
+            Pinned
+          </span>
+        )}
+        {!startsGroup && replyLine}
+        {body}
         {attachments.length > 0 && (
-          <div className="mt-1 flex flex-col gap-1">
+          <div className={cn("mt-1.5 flex flex-col gap-1.5", mirror && "items-end")}>
             {attachments.map((attachment) => (
               <AttachmentView key={attachment.fileId} runtime={runtime} descriptor={attachment} />
             ))}
           </div>
         )}
-        {pending && (
-          <Text size="xs" tone="muted" data-testid={`pending-${message.id}`}>
-            Sending…
-          </Text>
-        )}
-        {reactions.length > 0 && (
-          <ReactionChips groups={reactions} onToggle={(emoji) => onReact(message, emoji)} />
-        )}
-      </div>
-
-      {!pending && (
-        <div className="absolute right-3 -top-3 hidden items-center gap-1 rounded-pill border border-border bg-surface-3 p-1 group-hover:flex">
-          {canReact &&
-            QUICK_REACTIONS.map((emoji) => (
-              <IconButton
-                key={emoji}
-                size="sm"
-                label={`React ${emoji}`}
-                onClick={() => onReact(message, emoji)}
+        {failed ? (
+          <span
+            className={cn(
+              "mt-0.5 flex items-center gap-2 text-[11px] text-text-muted",
+              mirror && "flex-row-reverse",
+            )}
+          >
+            <span data-testid={`failed-${message.id}`} className="font-medium text-danger">
+              Not sent
+            </span>
+            {list.onRetrySend !== undefined && (
+              <button
+                type="button"
+                onClick={() => list.onRetrySend?.(message.id)}
+                className="rounded-[6px] border border-border px-1.5 py-0.5 font-semibold text-text transition hover:bg-surface-3"
               >
-                <span aria-hidden="true">{emoji}</span>
-              </IconButton>
-            ))}
-          <IconButton size="sm" label="Reply in thread" onClick={() => onReply(message)}>
-            <span aria-hidden="true">↩</span>
-          </IconButton>
-          {canEdit && (
-            <IconButton
-              size="sm"
-              label="Edit message"
-              onClick={() => {
-                setDraft(text ?? "");
-                setEditing(true);
-              }}
-            >
-              <span aria-hidden="true">✎</span>
-            </IconButton>
-          )}
-          {canEdit && (
-            <IconButton
-              size="sm"
-              label={message.pinnedAt ? "Unpin" : "Pin"}
-              onClick={() => onPinToggle(message)}
-            >
-              <span aria-hidden="true">📌</span>
-            </IconButton>
-          )}
-          {canDelete && (
-            <IconButton size="sm" label="Delete message" onClick={() => onDelete(message)}>
-              <span aria-hidden="true">🗑</span>
-            </IconButton>
-          )}
-        </div>
-      )}
+                Retry
+              </button>
+            )}
+            {list.onDiscardSend !== undefined && (
+              <button
+                type="button"
+                onClick={() => list.onDiscardSend?.(message.id)}
+                className="rounded-[6px] px-1.5 py-0.5 font-medium text-text-muted transition hover:bg-surface-3 hover:text-text"
+              >
+                Discard
+              </button>
+            )}
+          </span>
+        ) : pending ? (
+          <span className="mt-0.5 text-[11px] text-text-muted">
+            <span data-testid={`pending-${message.id}`}>Sending…</span>
+          </span>
+        ) : message.editedAt !== null ? (
+          <span className="mt-0.5 text-[11px] text-text-muted">(edited)</span>
+        ) : null}
+        {reactions.length > 0 && (
+          <ReactionChips
+            groups={reactions}
+            align={mirror ? "end" : own ? "end" : "start"}
+            onToggle={(emoji) => list.onReact(message, emoji)}
+          />
+        )}
+        {replyCount > 0 && list.inThread !== true && (
+          <button
+            type="button"
+            onClick={() => list.onReply(message)}
+            className="mt-1 flex items-center gap-1.5 rounded-full px-2 py-0.5 text-xs font-semibold text-accent transition hover:bg-accent-soft"
+          >
+            <Icon name="thread" size={14} />
+            {replyCount === 1 ? "1 reply" : `${replyCount} replies`}
+            {message.lastReplyAt != null && (
+              <span className="font-normal text-text-muted">
+                · {activityLabel(message.lastReplyAt)}
+              </span>
+            )}
+          </button>
+        )}
+        {toolbar}
+      </div>
     </article>
   );
 }
 
-function MessageBody({ text }: { readonly text: string | undefined }) {
-  if (text === undefined) {
-    return (
-      <Text size="sm" tone="muted" className="italic">
-        Unable to decrypt this message.
-      </Text>
-    );
-  }
-  const segments = splitCodeBlocks(text);
+function ToolbarButton({
+  label,
+  onClick,
+  children,
+  active = false,
+  danger = false,
+}: {
+  readonly label: string;
+  readonly onClick: () => void;
+  readonly children: ReactNode;
+  readonly active?: boolean;
+  readonly danger?: boolean;
+}) {
   return (
-    <div className="flex flex-col gap-1">
-      {segments.map((segment, index) => {
-        const key = `${segment.code ? "code" : "text"}:${index}`;
-        return segment.code ? (
-          <pre
-            key={key}
-            className="overflow-x-auto rounded-input bg-surface-3 p-2 font-mono text-xs text-text"
-          >
-            {segment.value}
-          </pre>
-        ) : (
-          <Text key={key} size="sm" className="whitespace-pre-wrap break-words">
-            {segment.value}
-          </Text>
-        );
-      })}
-    </div>
+    <button
+      type="button"
+      aria-label={label}
+      title={label}
+      onClick={onClick}
+      className={cn(
+        "flex h-7 w-7 items-center justify-center rounded-[7px] text-text-muted transition focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent",
+        danger ? "hover:bg-danger/10 hover:text-danger" : "hover:bg-surface-3 hover:text-text",
+        active && "text-accent",
+      )}
+    >
+      {children}
+    </button>
   );
 }
 
-function splitCodeBlocks(text: string): { value: string; code: boolean }[] {
-  const parts: { value: string; code: boolean }[] = [];
-  const pattern = /```([\s\S]*?)```/g;
-  let lastIndex = 0;
-  for (const match of text.matchAll(pattern)) {
-    const index = match.index ?? 0;
-    if (index > lastIndex) {
-      parts.push({ value: text.slice(lastIndex, index), code: false });
-    }
-    parts.push({ value: (match[1] ?? "").replace(/^\n/, ""), code: true });
-    lastIndex = index + match[0].length;
+function TypingBubble({
+  typers,
+  memberNames,
+  memberColors,
+}: {
+  readonly typers: readonly TypingRow[];
+  readonly memberNames: ReadonlyMap<string, string>;
+  readonly memberColors: ReadonlyMap<string, string> | undefined;
+}) {
+  const first = typers[0];
+  if (first === undefined) {
+    return null;
   }
-  if (lastIndex < text.length) {
-    parts.push({ value: text.slice(lastIndex), code: false });
-  }
-  return parts.length > 0 ? parts : [{ value: text, code: false }];
+  const names = typers.map((typer) => memberNames.get(typer.userId) ?? "Someone");
+  const label =
+    names.length === 1
+      ? names[0]
+      : names.length === 2
+        ? `${names[0]} and ${names[1]}`
+        : `${names.length} people`;
+  return (
+    <div className="mt-3 flex animate-fade-in gap-2.5" aria-live="polite">
+      <div className="w-8 shrink-0 pt-0.5">
+        <PresenceAvatar
+          userId={first.userId}
+          size={32}
+          roleColor={memberColors?.get(first.userId)}
+        />
+      </div>
+      <div className="flex flex-col items-start">
+        <span className="mb-1 text-[13px] font-semibold text-text">{label}</span>
+        <span
+          className="flex h-6 items-center gap-1"
+          role="status"
+          aria-label={`${label} ${names.length === 1 ? "is" : "are"} typing`}
+        >
+          {[0, 1, 2].map((dot) => (
+            <span
+              key={dot}
+              className="h-1.5 w-1.5 animate-typing-dot rounded-full bg-text-muted"
+              style={{ animationDelay: `${dot * 160}ms` }}
+            />
+          ))}
+        </span>
+      </div>
+    </div>
+  );
 }
 
 function groupReactions(

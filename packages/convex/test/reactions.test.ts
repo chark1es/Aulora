@@ -1,6 +1,7 @@
 import { Permission } from "@aulora/core";
 import { describe, expect, it } from "vitest";
 import { api } from "../convex/_generated/api";
+import { isSealed, openString } from "../convex/lib/sse";
 import { newTest, seedChannel, seedWorkspace } from "./helpers";
 
 async function setup(everyonePermissions?: bigint) {
@@ -13,35 +14,46 @@ async function setup(everyonePermissions?: bigint) {
   const asUser1 = t.withIdentity({ subject: "user-1" });
   const messageId = await asUser1.mutation(api.messages.send, {
     channelId,
-    ciphertext: "bWVzc2FnZQ==",
-    epoch: 0,
+    body: "bWVzc2FnZQ==",
   });
   return { t, channelId, messageId, asUser1 };
 }
 
 describe("reactions.toggle", () => {
-  it("adds then removes with the same opaque ciphertext", async () => {
+  it("adds then removes the same plaintext emoji", async () => {
     const { asUser1, messageId } = await setup();
 
-    expect(
-      await asUser1.mutation(api.reactions.toggle, {
-        messageId,
-        emojiCiphertext: "ZW1vamk=",
-      }),
-    ).toEqual({ added: true });
-    expect(
-      await asUser1.mutation(api.reactions.toggle, {
-        messageId,
-        emojiCiphertext: "ZW1vamk=",
-      }),
-    ).toEqual({ added: false });
+    expect(await asUser1.mutation(api.reactions.toggle, { messageId, emoji: "👍" })).toEqual({
+      added: true,
+    });
+    expect(await asUser1.mutation(api.reactions.toggle, { messageId, emoji: "👍" })).toEqual({
+      added: false,
+    });
   });
 
-  it("lists reactions by message", async () => {
+  it("stores the emoji sealed and lists it decrypted", async () => {
+    const { t, messageId, asUser1 } = await setup();
+    await asUser1.mutation(api.reactions.toggle, { messageId, emoji: "👍" });
+
+    const rows = await t.run(async (ctx) =>
+      (await ctx.db.query("reactions").collect()).filter((row) => row.messageId === messageId),
+    );
+    expect(rows).toHaveLength(1);
+    expect(isSealed(rows[0]?.emojiCiphertext ?? "")).toBe(true);
+    expect(rows[0]?.emojiCiphertext).not.toContain("👍");
+    await expect(
+      openString({ scope: "reaction", recordId: messageId }, rows[0]?.emojiCiphertext ?? ""),
+    ).resolves.toBe("👍");
+
+    const reactions = await asUser1.query(api.reactions.list, { messageId });
+    expect(reactions).toEqual([{ id: rows[0]?._id, userId: "user-1", emoji: "👍" }]);
+  });
+
+  it("lists reactions by message for multiple users", async () => {
     const { t, messageId, asUser1 } = await setup();
     const asUser2 = t.withIdentity({ subject: "user-2" });
-    await asUser1.mutation(api.reactions.toggle, { messageId, emojiCiphertext: "ZW1vamk=" });
-    await asUser2.mutation(api.reactions.toggle, { messageId, emojiCiphertext: "ZW1vamk=" });
+    await asUser1.mutation(api.reactions.toggle, { messageId, emoji: "🎉" });
+    await asUser2.mutation(api.reactions.toggle, { messageId, emoji: "🎉" });
 
     const reactions = await asUser1.query(api.reactions.list, { messageId });
     expect(reactions).toHaveLength(2);
@@ -53,7 +65,7 @@ describe("reactions.toggle", () => {
       Permission.ViewChannel | Permission.SendMessages | Permission.ReadHistory,
     );
     await expect(
-      asUser1.mutation(api.reactions.toggle, { messageId, emojiCiphertext: "ZW1vamk=" }),
+      asUser1.mutation(api.reactions.toggle, { messageId, emoji: "👍" }),
     ).rejects.toThrow("Missing permission");
   });
 });

@@ -4,20 +4,19 @@ import { createChannel, hasOwnerCredentials, signIn } from "./helpers";
 /**
  * Phase 2, task 3a gate: two devices, one workspace owner.
  *
- * Two isolated browser contexts sign in as the same owner (two devices, each
- * with its own MLS identity in IndexedDB). Device A creates a channel and sends
- * a message; device B opens the same channel, joins its MLS group via a
- * published KeyPackage + Welcome, decrypts the ciphertext and displays the
- * plaintext. An edit, a reaction and a delete then have to be visible on both
- * devices, proving the live Convex subscriptions and the MLS ratchet work.
+ * Two isolated browser contexts sign in as the same owner (two devices). Device
+ * A creates a channel and sends a message; device B opens the same channel and
+ * displays the same plaintext the server returns. An edit, a reaction and a
+ * delete then have to be visible on both devices, proving the live Convex
+ * subscriptions work.
  *
  * This runs against a real `docker compose` stack. Nothing here is mocked.
  * Credentials come from the environment and are never committed.
  */
 test.skip(!hasOwnerCredentials, "set AULORA_E2E_OWNER_EMAIL and AULORA_E2E_OWNER_PASSWORD");
 
-test.describe("two-device encrypted chat", () => {
-  test("A creates a channel and B decrypts the message; edits, delete and a reaction reflect live", async ({
+test.describe("two-device chat", () => {
+  test("A creates a channel and B shows the message; edits, delete and a reaction reflect live", async ({
     browser,
   }) => {
     const contextA = await browser.newContext();
@@ -30,10 +29,14 @@ test.describe("two-device encrypted chat", () => {
     const channelName = `e2e-${Date.now()}`;
     await createChannel(pageA, channelName);
 
-    // B cannot read the encrypted channel name until it joins the group, so it
-    // opens the newest channel (A's, appended last) and then sees the decrypted
-    // name once its Welcome is approved.
-    const bChannels = pageB.locator("aside button").filter({ hasText: /^#/ });
+    // B sees the same plaintext channel name. It opens the newest channel (A's,
+    // appended last). New uncategorized channels land at the end of the first
+    // sidebar section.
+    const bChannels = pageB
+      .getByRole("complementary", { name: "Conversations" })
+      .locator("nav section")
+      .first()
+      .locator('[data-testid^="channel-row-"]');
     await expect(bChannels.last()).toBeVisible({ timeout: 30_000 });
     const channelCount = await bChannels.count();
     await bChannels.nth(channelCount - 1).click();
@@ -41,21 +44,14 @@ test.describe("two-device encrypted chat", () => {
       timeout: 45_000,
     });
 
-    // A sends an encrypted message.
+    // A sends a message.
     const plaintext = `secret-${Date.now()}`;
     await pageA.getByRole("textbox", { name: "Message" }).fill(plaintext);
     await pageA.getByRole("button", { name: "Send" }).click();
     await expect(pageA.getByText(plaintext)).toBeVisible({ timeout: 30_000 });
 
-    // B decrypts and displays the same plaintext, live.
+    // B shows the same plaintext, live.
     await expect(pageB.getByText(plaintext)).toBeVisible({ timeout: 45_000 });
-
-    // The server only ever stored ciphertext: the message text is not present
-    // in B's serialized Convex payloads.
-    const leaked = await pageB.evaluate((needle) => {
-      return JSON.stringify(window.localStorage).includes(needle);
-    }, plaintext);
-    expect(leaked).toBe(false);
 
     // A edits the message; the update reflects on A and B.
     const edited = `${plaintext}-edited`;
@@ -78,6 +74,7 @@ test.describe("two-device encrypted chat", () => {
     // A deletes the message; both devices show the tombstone.
     await messageA.hover();
     await pageA.getByRole("button", { name: "Delete message" }).first().click();
+    await pageA.getByRole("button", { name: "Confirm delete" }).first().click();
     await expect(pageA.getByText("This message was deleted.")).toBeVisible({ timeout: 30_000 });
     await expect(pageB.getByText("This message was deleted.")).toBeVisible({ timeout: 45_000 });
 

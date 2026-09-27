@@ -1,13 +1,29 @@
-import { render, screen } from "@testing-library/react";
-import { describe, expect, it } from "vitest";
-import { Button, Card, DotGrid, Heading, IconButton, Input, Logo, Spinner, Text } from "../src";
+import { fireEvent, render, screen, waitFor } from "@testing-library/react";
+import { describe, expect, it, vi } from "vitest";
+import {
+  Button,
+  Card,
+  DotGrid,
+  Heading,
+  Icon,
+  IconButton,
+  Input,
+  Logo,
+  Modal,
+  SegmentedControl,
+  Select,
+  Spinner,
+  Switch,
+  Text,
+} from "../src";
 
 describe("Button", () => {
-  it("renders a pill button and defaults to type=button", () => {
+  it("renders a soft-cornered button and defaults to type=button", () => {
     render(<Button>Connect</Button>);
     const button = screen.getByRole("button", { name: "Connect" });
     expect(button).toHaveAttribute("type", "button");
-    expect(button.className).toContain("rounded-pill");
+    expect(button.className).toContain("rounded-input");
+    expect(button.className).toContain("text-on-accent");
   });
 
   it("shows the particle spinner and blocks interaction while loading", () => {
@@ -92,5 +108,86 @@ describe("Spinner and Logo", () => {
     expect(screen.queryByRole("img")).not.toBeInTheDocument();
     rerender(<Logo title="Aulora" />);
     expect(screen.getByRole("img", { name: "Aulora" })).toBeInTheDocument();
+  });
+});
+
+describe("Icon", () => {
+  it("renders the shared path data as a decorative stroke icon", () => {
+    const { container } = render(<Icon name="send" size={18} />);
+    const svg = container.querySelector("svg");
+    expect(svg).toHaveAttribute("aria-hidden", "true");
+    expect(svg).toHaveAttribute("width", "18");
+    expect(svg).toHaveAttribute("stroke", "currentColor");
+    expect(svg?.querySelectorAll("path").length).toBe(2);
+  });
+});
+
+describe("Switch", () => {
+  it("exposes switch semantics and toggles", () => {
+    const onChange = vi.fn();
+    render(<Switch checked={false} onChange={onChange} label="Make private" />);
+    const control = screen.getByRole("switch", { name: "Make private" });
+    expect(control).toHaveAttribute("aria-checked", "false");
+    fireEvent.click(control);
+    expect(onChange).toHaveBeenCalledWith(true);
+  });
+});
+
+describe("SegmentedControl", () => {
+  it("marks the active option with radio semantics", () => {
+    render(
+      <SegmentedControl
+        label="Appearance"
+        value="dark"
+        onChange={() => undefined}
+        options={[
+          { value: "light", label: "Light" },
+          { value: "dark", label: "Dark" },
+        ]}
+      />,
+    );
+    expect(screen.getByRole("radio", { name: "Dark" })).toBeChecked();
+    expect(screen.getByRole("radio", { name: "Light" })).not.toBeChecked();
+  });
+});
+
+describe("Select", () => {
+  it("opens a listbox and reports the chosen value", () => {
+    const onChange = vi.fn();
+    render(
+      <Select
+        label="Timeout"
+        value="a"
+        onChange={onChange}
+        options={[
+          { value: "a", label: "60s" },
+          { value: "b", label: "5m" },
+        ]}
+      />,
+    );
+    fireEvent.click(screen.getByRole("button", { name: /Timeout/ }));
+    fireEvent.click(screen.getByRole("option", { name: "5m" }));
+    expect(onChange).toHaveBeenCalledWith("b");
+  });
+});
+
+describe("Modal", () => {
+  it("renders a labelled dialog and closes on Escape", async () => {
+    const onClose = vi.fn();
+    const { rerender } = render(
+      <Modal open onClose={onClose} label="Create a channel" title="Create a channel">
+        <p>Body</p>
+      </Modal>,
+    );
+    expect(screen.getByRole("dialog", { name: "Create a channel" })).toBeInTheDocument();
+    fireEvent.keyDown(screen.getByRole("dialog"), { key: "Escape" });
+    expect(onClose).toHaveBeenCalled();
+    // Closing keeps the element mounted through its exit transition.
+    rerender(
+      <Modal open={false} onClose={onClose} label="Create a channel" title="Create a channel">
+        <p>Body</p>
+      </Modal>,
+    );
+    await waitFor(() => expect(screen.queryByRole("dialog")).not.toBeInTheDocument());
   });
 });

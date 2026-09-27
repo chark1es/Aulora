@@ -1,9 +1,11 @@
 import { v } from "convex/values";
+import type { QueryCtx } from "./_generated/server";
 import { mutation, query } from "./_generated/server";
 import { writeAudit } from "./lib/audit";
 import {
   API_VERSION,
   AULORA_VERSION,
+  getEncryptionSettings,
   getOidcSettings,
   getPublicAuthConfig,
   SOCIAL_PROVIDER_DEFINITIONS,
@@ -17,6 +19,7 @@ import {
   validateStorageQuotaBytes,
 } from "./lib/instance";
 import { licenseStatus, maskLicenseKey } from "./lib/license";
+import { encryptionConfigured } from "./lib/sse";
 
 /**
  * Instance admin surface: read-only status plus the storage, push-relay and
@@ -27,6 +30,25 @@ import { licenseStatus, maskLicenseKey } from "./lib/license";
 
 function nonEmpty(value: string | undefined): boolean {
   return value !== undefined && value.trim().length > 0;
+}
+
+type Env = Record<string, string | undefined>;
+
+/**
+ * Public-safe encryption status. Reads the key-version registry for the active
+ * version and the EKM settings for provider/enabled; never returns a secret.
+ */
+async function encryptionStatus(ctx: QueryCtx, env: Env) {
+  const settings = getEncryptionSettings(env);
+  const versions = await ctx.db.query("encryptionKeys").collect();
+  const active = versions.find((row) => row.status === "active");
+  return {
+    mode: settings.mode,
+    enabled: settings.enabled,
+    provider: settings.provider,
+    keyVersion: active?.keyVersion ?? settings.keyVersion,
+    configured: encryptionConfigured(env),
+  };
 }
 
 /** Storage quotas, relay target and backup policy, plus where secrets live. */
@@ -44,6 +66,7 @@ export const settings = query({
       // The relay token and backup token live only in the deployment env.
       pushRelayConfigured: nonEmpty(env.PUSH_RELAY_URL) && nonEmpty(env.PUSH_RELAY_TOKEN),
       backupRunnerConfigured: nonEmpty(env.BACKUP_TOKEN),
+      encryption: await encryptionStatus(ctx, env),
     };
   },
 });
@@ -118,6 +141,7 @@ export const overview = query({
         ...licenseStatus(server.licenseKey),
         maskedKey: maskLicenseKey(server.licenseKey),
       },
+      encryption: await encryptionStatus(ctx, env),
     };
   },
 });

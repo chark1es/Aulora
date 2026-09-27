@@ -18,13 +18,20 @@ function stripPort(hostPort: string): string {
   return colon === -1 ? value : value.slice(0, colon);
 }
 
-/** True for localhost, loopback and RFC 1918 / link-local IPv4 literals. */
+/**
+ * True for localhost, loopback, RFC 1918 / link-local IPv4 literals, the
+ * IPv4 CGNAT range used by Tailscale (`100.64.0.0/10`) and the IPv6 Tailscale
+ * ULA prefix (`fd7a:115c:a1e0::/48`).
+ */
 export function isLocalHostname(hostname: string): boolean {
   const host = hostname.toLowerCase().replace(/^\[|\]$/g, "");
   if (host === "localhost" || host === "::1" || host === "0.0.0.0") {
     return true;
   }
   if (host.endsWith(".localhost")) {
+    return true;
+  }
+  if (host.startsWith("fd7a:115c:a1e0")) {
     return true;
   }
   const parts = host.split(".");
@@ -37,6 +44,9 @@ export function isLocalHostname(hostname: string): boolean {
   }
   const [a, b] = octets as [number, number, number, number];
   if (a === 127 || a === 10 || a === 0) {
+    return true;
+  }
+  if (a === 100 && b >= 64 && b <= 127) {
     return true;
   }
   if (a === 172 && b >= 16 && b <= 31) {

@@ -5,7 +5,7 @@ import { mutation, query } from "./_generated/server";
 import { writeAudit } from "./lib/audit";
 import { requireAuth } from "./lib/auth";
 import { overwriteValidator, validateOverrides } from "./lib/overrides";
-import { categoryOverrideRemovals, mlsSignal, requireWorkspacePermission } from "./lib/permissions";
+import { requireWorkspacePermission } from "./lib/permissions";
 
 interface CategoryView {
   readonly id: Doc<"categories">["_id"];
@@ -83,8 +83,7 @@ export const update = mutation({
 });
 
 /**
- * Replaces a category's overrides. Members who lose `ViewChannel` as a result
- * are returned as MLS removals for the client to commit.
+ * Replaces a category's overrides. Requires `ManageChannels`.
  */
 export const setOverrides = mutation({
   args: { categoryId: v.id("categories"), overrides: v.array(overwriteValidator) },
@@ -99,7 +98,6 @@ export const setOverrides = mutation({
     if (category === null) {
       throw new ConvexError("Category not found");
     }
-    const removals = await categoryOverrideRemovals(ctx, args.categoryId, args.overrides);
     await ctx.db.patch(args.categoryId, { overrides: args.overrides });
     await writeAudit(ctx, {
       actorId: userId,
@@ -107,7 +105,7 @@ export const setOverrides = mutation({
       targetId: args.categoryId,
       meta: JSON.stringify({ count: args.overrides.length }),
     });
-    return mlsSignal(removals);
+    return null;
   },
 });
 
@@ -132,7 +130,6 @@ export const clearOverride = mutation({
       (override) =>
         !(override.targetId === args.targetId && override.targetType === args.targetType),
     );
-    const removals = await categoryOverrideRemovals(ctx, args.categoryId, nextOverrides);
     await ctx.db.patch(args.categoryId, { overrides: nextOverrides });
     await writeAudit(ctx, {
       actorId: userId,
@@ -140,7 +137,7 @@ export const clearOverride = mutation({
       targetId: args.categoryId,
       meta: JSON.stringify({ targetId: args.targetId, targetType: args.targetType }),
     });
-    return mlsSignal(removals);
+    return null;
   },
 });
 

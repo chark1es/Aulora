@@ -90,7 +90,8 @@ export async function removeChannelMember(
 /**
  * The common access gate for channel-scoped reads and writes: `requirePermission`
  * for the flag, plus a membership check for DMs and group DMs (whose
- * `@everyone` baseline would otherwise make every DM visible).
+ * `@everyone` baseline would otherwise make every DM visible) and for private
+ * channels (whose membership, not the permission bitfield, decides access).
  */
 export async function requireChannelAccess(
   ctx: QueryCtx | MutationCtx,
@@ -98,7 +99,7 @@ export async function requireChannelAccess(
   flag: bigint,
 ) {
   const result = await requirePermission(ctx, channelId, flag);
-  if (isDmKind(result.channel.kind)) {
+  if (isDmKind(result.channel.kind) || result.channel.private === true) {
     await requireChannelMember(ctx, channelId, result.userId);
   }
   return result;

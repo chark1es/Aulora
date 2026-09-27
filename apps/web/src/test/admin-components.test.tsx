@@ -41,7 +41,9 @@ describe("OverridesEditor", () => {
       />,
     );
 
-    await user.selectOptions(screen.getByLabelText("Channel overrides target"), "role:Moderator");
+    await user.click(screen.getByLabelText("Target"));
+    await user.type(screen.getByRole("combobox"), "Moderator");
+    await user.keyboard("{Enter}");
     await user.click(screen.getByLabelText("Kick members allow"));
     await user.click(screen.getByRole("button", { name: "Save overrides" }));
 
@@ -66,7 +68,8 @@ describe("OverridesEditor", () => {
       />,
     );
 
-    await user.selectOptions(screen.getByLabelText("Channel overrides target"), "role:Moderator");
+    await user.click(screen.getByLabelText("Target"));
+    await user.click(screen.getByRole("option", { name: /Moderator/ }));
     await user.click(screen.getByLabelText("Kick members inherit"));
     await user.click(screen.getByRole("button", { name: "Save overrides" }));
 

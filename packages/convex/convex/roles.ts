@@ -8,11 +8,9 @@ import {
   actorTopPosition,
   assertValidPermissionBits,
   isEveryoneRole,
-  mlsSignal,
   requireCanGrant,
   requireRoleManageable,
   requireWorkspaceContext,
-  roleChangeRemovals,
 } from "./lib/permissions";
 
 interface RoleView {
@@ -121,8 +119,6 @@ export const create = mutation({
 
 /**
  * Updates a manageable role's name, color, display flags or permissions.
- * Changing permissions returns the MLS removals for members who lose
- * `ViewChannel`; the server never builds the commit itself.
  */
 export const update = mutation({
   args: {
@@ -146,11 +142,6 @@ export const update = mutation({
       requireCanGrant(context, args.permissions);
     }
 
-    const removals =
-      args.permissions !== undefined && args.permissions !== role.permissions
-        ? await roleChangeRemovals(ctx, args.roleId, role.permissions, args.permissions)
-        : [];
-
     await ctx.db.patch(args.roleId, {
       ...(args.name !== undefined ? { name: args.name } : {}),
       ...(args.color !== undefined ? { color: args.color } : {}),
@@ -164,7 +155,7 @@ export const update = mutation({
       targetId: args.roleId,
       meta: JSON.stringify({ changed: Object.keys(args).filter((key) => key !== "roleId") }),
     });
-    return mlsSignal(removals);
+    return null;
   },
 });
 
@@ -185,7 +176,6 @@ export const remove = mutation({
     }
     requireRoleManageable(context, role);
 
-    const removals = await roleChangeRemovals(ctx, args.roleId, role.permissions, null);
     const roleRef = role.key ?? role._id;
     const members = await ctx.db.query("members").collect();
     for (const member of members) {
@@ -202,14 +192,13 @@ export const remove = mutation({
       targetId: args.roleId,
       meta: JSON.stringify({ name: role.name }),
     });
-    return mlsSignal(removals);
+    return null;
   },
 });
 
 /**
  * Applies explicit positions sent by the role editor. Each role must be
- * manageable and `@everyone` must remain at position 0. Position changes do not
- * alter permissions, so no MLS signal is returned.
+ * manageable and `@everyone` must remain at position 0.
  */
 export const reorder = mutation({
   args: {

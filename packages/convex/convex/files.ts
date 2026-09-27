@@ -1,13 +1,17 @@
 import { Permission } from "@aulora/core";
 import { ConvexError, v } from "convex/values";
+import { internal } from "./_generated/api";
 import type { Doc, Id } from "./_generated/dataModel";
-import type { QueryCtx } from "./_generated/server";
-import { mutation, query } from "./_generated/server";
+import { action, internalMutation, internalQuery, mutation, query } from "./_generated/server";
 import { requireAuth } from "./lib/auth";
+import { getEkmSettings } from "./lib/ekm";
+import { DOWNLOAD_TOKEN_TTL_MS, signDownloadToken, verifyDownloadToken } from "./lib/fileTokens";
 import { requireWorkspacePermission } from "./lib/permissions";
 import { enforceRateLimit, ipRateLimitKey, requestIp, userRateLimitKey } from "./lib/rateLimit";
+import { openContentOptional } from "./lib/sealed";
+import { openBytes, sealBytes, sealString } from "./lib/sse";
 
-/** Maximum plaintext/ciphertext upload size, overridable per deployment. */
+/** Maximum plaintext upload size, overridable per deployment. */
 export function maxUploadBytes(): number {
   const configured = Number(process.env.UPLOAD_MAX_BYTES);
   return Number.isFinite(configured) && configured > 0 ? configured : 25 * 1024 * 1024;
@@ -23,9 +27,16 @@ function uploadWindowMs(): number {
   return Number.isFinite(configured) && configured > 0 ? configured : 60_000;
 }
 
+const BYTES_CONTEXT = { scope: "file.bytes" } as const;
+const NAME_CONTEXT = { scope: "file.name" } as const;
+const MIME_CONTEXT = { scope: "file.mime" } as const;
+const DIMENSIONS_CONTEXT = { scope: "file.dimensions" } as const;
+const BLURHASH_CONTEXT = { scope: "file.blurhash" } as const;
+
 /**
  * Creates a short-lived Convex storage upload URL. `AttachFiles` is required,
- * and both the caller and the request IP are rate limited.
+ * and both the caller and the request IP are rate limited. The client PUTs
+ * plaintext bytes; `finalize` seals them.
  */
 export const generateUploadUrl = mutation({
   args: {},
@@ -46,24 +57,22 @@ export const generateUploadUrl = mutation({
 });
 
 /**
- * Records metadata for a file already placed in Convex storage. The size cap is
- * enforced against the authoritative stored size, not the client's claim.
- * All `*Ciphertext` values are opaque.
+ * Authorizes a finalize and enforces the size cap against the authoritative
+ * `_storage` metadata (not the client's claim). Internal so the sealing action
+ * can run it with the caller's identity.
  */
-export const record = mutation({
-  args: {
-    storageId: v.id("_storage"),
-    sizeBytes: v.number(),
-    nameCiphertext: v.optional(v.string()),
-    mimeCiphertext: v.optional(v.string()),
-    dimensionsCiphertext: v.optional(v.string()),
-    blurhashCiphertext: v.optional(v.string()),
-  },
+export const authorizeUpload = internalMutation({
+  args: { storageId: v.id("_storage") },
   handler: async (ctx, args) => {
     const { userId } = await requireWorkspacePermission(ctx, Permission.AttachFiles);
     await enforceRateLimit(ctx, {
       key: userRateLimitKey("upload", userId),
       limit: uploadLimit(),
+      windowMs: uploadWindowMs(),
+    });
+    await enforceRateLimit(ctx, {
+      key: ipRateLimitKey("upload", await requestIp(ctx)),
+      limit: uploadLimit() * 5,
       windowMs: uploadWindowMs(),
     });
     const metadata = await ctx.db.system.get("_storage", args.storageId);
@@ -73,70 +82,191 @@ export const record = mutation({
     if (metadata.size > maxUploadBytes()) {
       throw new ConvexError("File exceeds the upload size cap");
     }
-    const fileId = await ctx.db.insert("files", {
+    return { userId, sizeBytes: metadata.size };
+  },
+});
+
+/** Inserts the finalized row; the action has already sealed every field. */
+export const insertFinalized = internalMutation({
+  args: {
+    storageId: v.id("_storage"),
+    sealedStorageId: v.id("_storage"),
+    uploaderId: v.string(),
+    sizeBytes: v.number(),
+    keyVersion: v.string(),
+    nameCiphertext: v.string(),
+    mimeCiphertext: v.string(),
+    dimensionsCiphertext: v.optional(v.string()),
+    blurhashCiphertext: v.optional(v.string()),
+    channelId: v.optional(v.id("channels")),
+  },
+  handler: async (ctx, args) => {
+    return await ctx.db.insert("files", {
       storageId: args.storageId,
-      uploaderId: userId,
-      sizeBytes: metadata.size,
-      ...(args.nameCiphertext !== undefined ? { nameCiphertext: args.nameCiphertext } : {}),
-      ...(args.mimeCiphertext !== undefined ? { mimeCiphertext: args.mimeCiphertext } : {}),
+      sealedStorageId: args.sealedStorageId,
+      uploaderId: args.uploaderId,
+      sizeBytes: args.sizeBytes,
+      keyVersion: args.keyVersion,
+      nameCiphertext: args.nameCiphertext,
+      mimeCiphertext: args.mimeCiphertext,
       ...(args.dimensionsCiphertext !== undefined
         ? { dimensionsCiphertext: args.dimensionsCiphertext }
         : {}),
       ...(args.blurhashCiphertext !== undefined
         ? { blurhashCiphertext: args.blurhashCiphertext }
         : {}),
+      ...(args.channelId !== undefined ? { channelId: args.channelId } : {}),
     });
+  },
+});
+
+/**
+ * Seals an uploaded blob: reads the plaintext bytes from Convex storage, seals
+ * them with `file.bytes` bound to the upload's storage id, stores the sealed
+ * blob under a new storage id, records sealed metadata and deletes the original.
+ * The client never handles a key.
+ */
+export const finalize = action({
+  args: {
+    storageId: v.id("_storage"),
+    name: v.string(),
+    mime: v.string(),
+    sizeBytes: v.optional(v.number()),
+    dimensions: v.optional(v.string()),
+    blurhash: v.optional(v.string()),
+    channelId: v.optional(v.id("channels")),
+  },
+  handler: async (ctx, args): Promise<Id<"files">> => {
+    const { userId, sizeBytes } = await ctx.runMutation(internal.files.authorizeUpload, {
+      storageId: args.storageId,
+    });
+    const blob = await ctx.storage.get(args.storageId);
+    if (blob === null) {
+      throw new ConvexError("Upload not found");
+    }
+    const plaintext = new Uint8Array(await blob.arrayBuffer());
+    const sealed = await sealBytes({ ...BYTES_CONTEXT, recordId: args.storageId }, plaintext);
+    const sealedStorageId = await ctx.storage.store(new Blob([sealed]));
+    const keyVersion = getEkmSettings(process.env).keyVersion;
+    const nameCiphertext = await sealString(NAME_CONTEXT, args.name);
+    const mimeCiphertext = await sealString(MIME_CONTEXT, args.mime);
+    const dimensionsCiphertext =
+      args.dimensions !== undefined
+        ? await sealString(DIMENSIONS_CONTEXT, args.dimensions)
+        : undefined;
+    const blurhashCiphertext =
+      args.blurhash !== undefined ? await sealString(BLURHASH_CONTEXT, args.blurhash) : undefined;
+    const fileId = await ctx.runMutation(internal.files.insertFinalized, {
+      storageId: sealedStorageId,
+      sealedStorageId: args.storageId,
+      uploaderId: userId,
+      sizeBytes,
+      keyVersion,
+      nameCiphertext,
+      mimeCiphertext,
+      ...(dimensionsCiphertext !== undefined ? { dimensionsCiphertext } : {}),
+      ...(blurhashCiphertext !== undefined ? { blurhashCiphertext } : {}),
+      ...(args.channelId !== undefined ? { channelId: args.channelId } : {}),
+    });
+    await ctx.storage.delete(args.storageId);
     return fileId;
   },
 });
+
+/** The storage pointers a download needs; internal so no metadata leaks. */
+export const getSealed = internalQuery({
+  args: { fileId: v.string() },
+  handler: async (ctx, args) => {
+    const row = await ctx.db.get(args.fileId as Id<"files">);
+    if (row === null) {
+      return null;
+    }
+    return { storageId: row.storageId, sealedStorageId: row.sealedStorageId };
+  },
+});
+
+/**
+ * Opens one file's sealed bytes. The token is the sole authorization; it is
+ * signed over `fileId|userId|exp` and short-lived. Convex carries bytes as
+ * `ArrayBuffer` (`v.bytes()`), so that is what clients receive.
+ */
+export const download = action({
+  args: { token: v.string() },
+  handler: async (ctx, args): Promise<{ bytes: ArrayBuffer }> => {
+    const payload = await verifyDownloadToken(args.token);
+    const row = await ctx.runQuery(internal.files.getSealed, { fileId: payload.fileId });
+    if (row === null) {
+      throw new ConvexError("File not found");
+    }
+    const blob = await ctx.storage.get(row.storageId);
+    if (blob === null) {
+      throw new ConvexError("Sealed file bytes not found");
+    }
+    const sealed = new Uint8Array(await blob.arrayBuffer());
+    const bytes = await openBytes({ ...BYTES_CONTEXT, recordId: row.sealedStorageId }, sealed);
+    return { bytes: bytes.buffer };
+  },
+});
+
+async function downloadUrl(fileId: Id<"files">, userId: string): Promise<string> {
+  const token = await signDownloadToken({
+    fileId,
+    userId,
+    exp: Date.now() + DOWNLOAD_TOKEN_TTL_MS,
+  });
+  const path = `/files/download?token=${encodeURIComponent(token)}`;
+  const site = process.env.CONVEX_SITE_URL?.trim().replace(/\/+$/, "");
+  return site !== undefined && site.length > 0 ? `${site}${path}` : path;
+}
 
 interface FileView {
   readonly id: Id<"files">;
   readonly uploaderId: string;
   readonly sizeBytes: number;
-  readonly nameCiphertext: string | null;
-  readonly mimeCiphertext: string | null;
-  readonly dimensionsCiphertext: string | null;
-  readonly blurhashCiphertext: string | null;
-  readonly url: string | null;
+  readonly name: string | null;
+  readonly mime: string | null;
+  readonly dimensions: string | null;
+  readonly blurhash: string | null;
+  /** Signed, short-lived URL that yields decrypted bytes. */
+  readonly url: string;
 }
 
-async function toFileView(ctx: QueryCtx, row: Doc<"files">): Promise<FileView> {
+async function toFileView(row: Doc<"files">, userId: string): Promise<FileView> {
   return {
     id: row._id,
     uploaderId: row.uploaderId,
     sizeBytes: row.sizeBytes,
-    nameCiphertext: row.nameCiphertext ?? null,
-    mimeCiphertext: row.mimeCiphertext ?? null,
-    dimensionsCiphertext: row.dimensionsCiphertext ?? null,
-    blurhashCiphertext: row.blurhashCiphertext ?? null,
-    url: await ctx.storage.getUrl(row.storageId),
+    name: await openContentOptional(NAME_CONTEXT, row.nameCiphertext),
+    mime: await openContentOptional(MIME_CONTEXT, row.mimeCiphertext),
+    dimensions: await openContentOptional(DIMENSIONS_CONTEXT, row.dimensionsCiphertext),
+    blurhash: await openContentOptional(BLURHASH_CONTEXT, row.blurhashCiphertext),
+    url: await downloadUrl(row._id, userId),
   };
 }
 
-/** Returns one file's metadata plus a fresh download URL. */
+/** Returns one file's plaintext metadata plus a signed download URL. */
 export const get = query({
   args: { fileId: v.id("files") },
   handler: async (ctx, args) => {
-    await requireAuth(ctx);
+    const { userId } = await requireAuth(ctx);
     const row = await ctx.db.get(args.fileId);
     if (row === null) {
       return null;
     }
-    return await toFileView(ctx, row);
+    return await toFileView(row, userId);
   },
 });
 
-/** Returns metadata plus download URLs for a batch of files. */
+/** Returns plaintext metadata plus signed download URLs for a batch of files. */
 export const getMany = query({
   args: { fileIds: v.array(v.id("files")) },
   handler: async (ctx, args) => {
-    await requireAuth(ctx);
+    const { userId } = await requireAuth(ctx);
     const views: FileView[] = [];
     for (const fileId of args.fileIds) {
       const row = await ctx.db.get(fileId);
       if (row !== null) {
-        views.push(await toFileView(ctx, row));
+        views.push(await toFileView(row, userId));
       }
     }
     return views;

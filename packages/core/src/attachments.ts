@@ -1,113 +1,65 @@
 /**
  * High-level attachment flow shared by every client.
  *
- * Encrypt locally with a fresh per-file AES-GCM key, upload only ciphertext,
- * record opaque metadata, and return the {@link AttachmentDescriptor} that the
- * caller embeds inside the MLS-encrypted message. Downloads reverse the flow.
- * The port boundary never sees a key or plaintext.
+ * Bytes and metadata cross the port as plaintext; the server seals them at
+ * rest with its External Key Manager. Uploads return the
+ * {@link AttachmentDescriptor} the caller embeds in a message body, and
+ * downloads reverse the flow through a signed server URL.
  */
 
-import {
-  type AttachmentCryptoOptions,
-  type AttachmentDescriptor,
-  decryptAttachmentBytes,
-  sealAttachmentBytes,
-} from "@aulora/crypto";
-import type { ChatPort, StoredFileView } from "./chat/port.js";
-
-export interface ThumbnailUpload {
-  readonly bytes: Uint8Array;
-  readonly width: number;
-  readonly height: number;
-  readonly blurhash?: string;
-  /** MIME of the thumbnail; defaults to the parent's MIME. */
-  readonly mime?: string;
-}
+import type {
+  AttachmentDescriptor,
+  AttachmentDimensions,
+  AttachmentThumbnail,
+  ChatPort,
+} from "./chat/port.js";
 
 export interface UploadAttachmentInput {
   readonly bytes: Uint8Array;
   readonly name: string;
   readonly mime: string;
-  readonly dimensions?: { readonly width: number; readonly height: number };
+  /** Plaintext byte length; defaults to `bytes.length` when omitted. */
+  readonly size?: number;
+  readonly dimensions?: AttachmentDimensions;
   readonly blurhash?: string;
-  readonly thumbnail?: ThumbnailUpload;
-  readonly crypto?: Crypto;
+  readonly channelId?: string;
 }
 
 /**
- * Encrypts and uploads one attachment (plus an optional thumbnail), returning
- * the descriptor to embed in a message payload.
+ * Uploads one attachment, returning the descriptor to embed in a message
+ * payload. The server is responsible for sealing the bytes and metadata.
  */
-export async function uploadEncryptedAttachment(
+export async function uploadAttachment(
   port: ChatPort,
   input: UploadAttachmentInput,
 ): Promise<AttachmentDescriptor> {
-  const options: AttachmentCryptoOptions =
-    input.crypto !== undefined ? { crypto: input.crypto } : {};
-  const sealed = await sealAttachmentBytes(input.bytes, options);
-  const uploadUrl = await port.generateUploadUrl();
-  const storageId = await port.uploadCiphertext({ uploadUrl, bytes: sealed.ciphertext });
-  const fileId = await port.recordFile({
-    storageId,
-    sizeBytes: sealed.ciphertext.length,
-  });
-
-  let thumbnail: AttachmentDescriptor["thumbnail"] | undefined;
-  if (input.thumbnail !== undefined) {
-    const sealedThumb = await sealAttachmentBytes(input.thumbnail.bytes, options);
-    const thumbUrl = await port.generateUploadUrl();
-    const thumbStorage = await port.uploadCiphertext({
-      uploadUrl: thumbUrl,
-      bytes: sealedThumb.ciphertext,
-    });
-    const thumbFileId = await port.recordFile({
-      storageId: thumbStorage,
-      sizeBytes: sealedThumb.ciphertext.length,
-    });
-    thumbnail = {
-      fileId: thumbFileId,
-      key: sealedThumb.key,
-      iv: sealedThumb.iv,
-      width: input.thumbnail.width,
-      height: input.thumbnail.height,
-      ...(input.thumbnail.blurhash !== undefined ? { blurhash: input.thumbnail.blurhash } : {}),
-    };
-  }
-
-  return {
-    fileId,
-    key: sealed.key,
-    iv: sealed.iv,
-    mime: input.mime,
+  const fileId = await port.uploadFile({
     name: input.name,
-    size: sealed.ciphertext.length,
+    mime: input.mime,
+    bytes: input.bytes,
     ...(input.dimensions !== undefined ? { dimensions: input.dimensions } : {}),
     ...(input.blurhash !== undefined ? { blurhash: input.blurhash } : {}),
-    ...(thumbnail !== undefined ? { thumbnail } : {}),
+    ...(input.channelId !== undefined ? { channelId: input.channelId } : {}),
+  });
+  return {
+    fileId,
+    name: input.name,
+    mime: input.mime,
+    size: input.size ?? input.bytes.length,
+    ...(input.dimensions !== undefined ? { dimensions: input.dimensions } : {}),
+    ...(input.blurhash !== undefined ? { blurhash: input.blurhash } : {}),
   };
 }
 
-async function download(
-  port: ChatPort,
-  ref: { readonly fileId: string; readonly key: string; readonly iv: string },
-): Promise<Uint8Array> {
-  const file: StoredFileView | null = await port.getFile({ fileId: ref.fileId });
-  if (file === null || file.url === null) {
-    throw new Error("attachment is no longer available");
-  }
-  const ciphertext = await port.fetchCiphertext({ url: file.url });
-  return await decryptAttachmentBytes(ciphertext, ref.key, ref.iv);
-}
-
-/** Fetches and decrypts the full attachment. */
+/** Fetches the full attachment bytes. */
 export async function downloadAttachment(
   port: ChatPort,
   descriptor: AttachmentDescriptor,
 ): Promise<Uint8Array> {
-  return await download(port, descriptor);
+  return await port.downloadFile({ fileId: descriptor.fileId });
 }
 
-/** Fetches and decrypts the thumbnail, when present. */
+/** Fetches the thumbnail bytes, when the descriptor carries one. */
 export async function downloadThumbnail(
   port: ChatPort,
   descriptor: AttachmentDescriptor,
@@ -115,5 +67,69 @@ export async function downloadThumbnail(
   if (descriptor.thumbnail === undefined) {
     return undefined;
   }
-  return await download(port, descriptor.thumbnail);
+  return await port.downloadFile({ fileId: descriptor.thumbnail.fileId });
+}
+
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return typeof value === "object" && value !== null && !Array.isArray(value);
+}
+
+function readString(value: unknown): string | undefined {
+  return typeof value === "string" ? value : undefined;
+}
+
+function parseDimensions(value: unknown): AttachmentDimensions | undefined {
+  if (!isRecord(value)) {
+    return undefined;
+  }
+  const width = value.width;
+  const height = value.height;
+  if (typeof width !== "number" || typeof height !== "number" || width <= 0 || height <= 0) {
+    return undefined;
+  }
+  return { width, height };
+}
+
+function parseThumbnail(value: unknown): AttachmentThumbnail | undefined {
+  if (!isRecord(value)) {
+    return undefined;
+  }
+  const fileId = readString(value.fileId);
+  const width = value.width;
+  const height = value.height;
+  if (fileId === undefined || typeof width !== "number" || typeof height !== "number") {
+    return undefined;
+  }
+  const blurhash = readString(value.blurhash);
+  return { fileId, width, height, ...(blurhash !== undefined ? { blurhash } : {}) };
+}
+
+/**
+ * Validates an untrusted descriptor decoded from a message payload. Returns
+ * `null` (never throws) when the shape is wrong. Unknown legacy fields such as
+ * `key`/`iv` from the previous client-side encryption are ignored.
+ */
+export function parseAttachmentDescriptor(value: unknown): AttachmentDescriptor | null {
+  if (!isRecord(value)) {
+    return null;
+  }
+  const fileId = readString(value.fileId);
+  const name = readString(value.name);
+  const mime = readString(value.mime);
+  const size = typeof value.size === "number" && value.size >= 0 ? value.size : null;
+  if (fileId === undefined || name === undefined || mime === undefined || size === null) {
+    return null;
+  }
+  const dimensions = parseDimensions(value.dimensions);
+  const blurhash = readString(value.blurhash);
+  const thumbnail = parseThumbnail(value.thumbnail);
+  return {
+    fileId,
+    name,
+    mime,
+    size,
+    ...(dimensions !== undefined ? { dimensions } : {}),
+    ...(blurhash !== undefined ? { blurhash } : {}),
+    ...(thumbnail !== undefined ? { thumbnail } : {}),
+  };
 }

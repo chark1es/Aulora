@@ -44,7 +44,7 @@
     ],
     "category": "SocialNetworking",
     "shortDescription": "Secure team chat on your own server.",
-    "longDescription": "Aulora is a self-hosted team chat client. The desktop shell adds native menus, a tray, notifications, an unread badge, OS keychain key storage and aulora:// deep links.",
+    "longDescription": "Aulora is a self-hosted team chat client. Message encryption is handled server-side behind an external key manager, so the client holds no keys. The desktop shell adds native menus, a tray, notifications, an unread badge and aulora:// deep links.",
     "copyright": "Copyright 2026 Aulora",
     "macOS": {
       "minimumSystemVersion": "10.15"

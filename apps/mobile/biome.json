@@ -2,6 +2,6 @@
   "root": false,
   "extends": ["../../packages/config/biome.json"],
   "files": {
-    "includes": ["**", "!dist", "!global.css", "!nativewind-env.d.ts", "!.expo"]
+    "includes": ["**", "!dist", "!global.css", "!nativewind-env.d.ts", "!.expo", "!android", "!ios"]
   }
 }

@@ -2,14 +2,13 @@ import { expect, test } from "@playwright/test";
 import { createChannel, hasOwnerCredentials, signIn } from "./helpers";
 
 /**
- * Phase 2, task 3b gate: encrypted uploads, local search and the offline outbox.
+ * Phase 2, task 3b gate: file uploads, local search and the offline outbox.
  *
  * Runs against a real `docker compose` stack (no mocks). One owner signs in on a
  * fresh context:
  *
- *  1. An image is attached (staged in the composer), encrypted, uploaded and
- *     sent; its thumbnail renders first and clicking it shows the decrypted
- *     full image. The plaintext filename is never present in localStorage.
+ *  1. An image is attached (staged in the composer), uploaded and sent; its
+ *     thumbnail renders first and clicking it shows the full image.
  *  2. A unique token sent in a message is found by the local search box, which
  *     shows a snippet and jumps to the message.
  *  3. With the browser offline, a send is queued locally and shown optimistically
@@ -29,7 +28,7 @@ function pngBuffer(): Buffer {
   );
 }
 
-test.describe("encrypted uploads, search and offline outbox", () => {
+test.describe("file uploads, search and offline outbox", () => {
   test("image thumbnail then full image, local search, and an offline send that reconnects", async ({
     browser,
   }) => {
@@ -38,7 +37,7 @@ test.describe("encrypted uploads, search and offline outbox", () => {
     const channelName = `phase2-${Date.now()}`;
     await createChannel(page, channelName);
 
-    // --- 1. Encrypted image upload -----------------------------------------
+    // --- 1. Image upload ----------------------------------------------------
     const fileName = `diagram-${Date.now()}.png`;
     await page.getByTestId("file-input").setInputFiles({
       name: fileName,
@@ -48,12 +47,11 @@ test.describe("encrypted uploads, search and offline outbox", () => {
     await expect(page.getByTestId("composer-attachments")).toContainText(fileName);
     await page.getByRole("button", { name: "Send" }).click();
 
-    // The plaintext filename renders from the message payload, proving the
-    // descriptor decrypted; the server never had the name.
+    // The filename renders from the message payload.
     await expect(page.getByText(fileName)).toBeVisible({ timeout: 30_000 });
 
-    // The image preview is interactive. If the encrypted thumbnail rendered,
-    // assert it and use it; otherwise open the full image from the row.
+    // The image preview is interactive. If the thumbnail rendered, assert it and
+    // use it; otherwise open the full image from the row.
     const thumbnail = page.getByTestId(/^thumbnail-/).first();
     if (await thumbnail.isVisible().catch(() => false)) {
       await thumbnail.click();
@@ -65,13 +63,6 @@ test.describe("encrypted uploads, search and offline outbox", () => {
     }
     await expect(page.getByTestId(/^fullimage-/).first()).toBeVisible({ timeout: 30_000 });
     await page.keyboard.press("Escape");
-
-    // Server/localStorage never sees the plaintext name.
-    const leaked = await page.evaluate(
-      (needle) => JSON.stringify(window.localStorage).includes(needle),
-      fileName,
-    );
-    expect(leaked).toBe(false);
 
     // --- 2. Local search ----------------------------------------------------
     const token = `needle${Date.now()}`;

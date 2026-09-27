@@ -1,7 +1,9 @@
+import { Avatar } from "@aulora/avatars";
 import type { ServerProfile } from "@aulora/core";
-import { Button, Card, Heading, Input, Text } from "@aulora/ui-web";
+import { Button, Heading, Input, Text } from "@aulora/ui-web";
 import { type FormEvent, useState } from "react";
 import type { AuthActions } from "../lib/auth-client";
+import { AuthCard, AuthFrame } from "./AuthFrame";
 
 export interface SignInScreenProps {
   readonly profile: ServerProfile;
@@ -65,10 +67,13 @@ export function SignInScreen({ profile, actions }: SignInScreenProps) {
   const hasProviders = providers.length > 0;
 
   return (
-    <div className="mx-auto w-full max-w-md p-6">
-      <Card className="flex flex-col gap-5">
-        <div className="flex flex-col gap-1">
-          <Heading level={2}>Sign in to {profile.name}</Heading>
+    <AuthFrame>
+      <AuthCard>
+        <div className="flex flex-col items-center gap-3 text-center">
+          <Avatar seed={profile.iconSeed} size={64} shape="squircle" title={profile.name} />
+          <Heading level={2}>
+            {mode === "sign-up" ? "Join" : "Sign in to"} {profile.name}
+          </Heading>
           <Text tone="muted" size="sm">
             {hasProviders || local.enabled
               ? "Use one of the methods this server allows."
@@ -132,7 +137,12 @@ export function SignInScreen({ profile, actions }: SignInScreenProps) {
               value={password}
               onChange={(event) => setPassword(event.currentTarget.value)}
             />
-            <Button type="submit" loading={pending === "local"} disabled={pending !== null}>
+            <Button
+              size="lg"
+              type="submit"
+              loading={pending === "local"}
+              disabled={pending !== null}
+            >
               {mode === "sign-up" ? "Create account" : "Sign in"}
             </Button>
             {local.signup && (
@@ -149,7 +159,7 @@ export function SignInScreen({ profile, actions }: SignInScreenProps) {
             )}
           </form>
         )}
-      </Card>
-    </div>
+      </AuthCard>
+    </AuthFrame>
   );
 }

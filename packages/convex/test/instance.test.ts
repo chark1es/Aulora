@@ -92,10 +92,13 @@ describe("instance.overview", () => {
   it("reports counts, storage and license state without secrets", async () => {
     const { t, asOwner } = await ownerTest();
     await t.run(async (ctx) => {
+      const storageId = await ctx.storage.store(new Blob([new Uint8Array(10)]));
       await ctx.db.insert("files", {
-        storageId: await ctx.storage.store(new Blob([new Uint8Array(10)])),
+        storageId,
+        sealedStorageId: storageId,
         uploaderId: "owner-1",
         sizeBytes: 2048,
+        keyVersion: "1",
       });
     });
 

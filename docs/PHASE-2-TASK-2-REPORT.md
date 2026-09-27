@@ -1,3 +1,5 @@
+> **Historical note:** Aulora has since moved from client-side E2EE (MLS, RFC 9420) to server-side encryption backed by an external key manager (EKM). This report is a historical record of the earlier MLS design.
+
 # Phase 2, Task 2 — Core chat backend: evidence
 
 Date: 2026-09-26. Scope: `packages/convex` only. Apps and infra untouched.

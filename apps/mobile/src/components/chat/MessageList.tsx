@@ -29,7 +29,7 @@ type Row =
 
 const QUICK_REACTIONS = ["👍", "🎉", "👀", "❤️"] as const;
 
-/** Flat, realtime, decrypted message list with day separators. */
+/** Flat, realtime, plaintext message list with day separators. */
 export function MessageList({
   runtime,
   channelId,
@@ -164,7 +164,7 @@ function MessageRow({
           )}
         </View>
         <Text size="sm" className="text-text">
-          {text ?? (pending ? "" : "Unable to decrypt this message.")}
+          {text ?? (pending ? "" : "Unable to load this message.")}
         </Text>
         {attachments.map((attachment) => (
           <AttachmentView key={attachment.fileId} runtime={runtime} descriptor={attachment} />

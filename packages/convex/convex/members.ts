@@ -3,11 +3,10 @@ import { ConvexError, v } from "convex/values";
 import type { Doc, Id } from "./_generated/dataModel";
 import type { MutationCtx, QueryCtx } from "./_generated/server";
 import { internalMutation, mutation, query } from "./_generated/server";
+import { accountNames } from "./lib/accountNames";
 import { writeAudit } from "./lib/audit";
 import { requireAuth } from "./lib/auth";
 import {
-  memberDeltaRemovals,
-  mlsSignal,
   requireCanGrant,
   requireModerator,
   requireRoleManageable,
@@ -103,16 +102,19 @@ interface MemberView {
   readonly id: Id<"members">;
   readonly userId: string;
   readonly nickname: string | null;
+  /** The account's own name (or email local part); `null` if unavailable. */
+  readonly accountName: string | null;
   readonly roleIds: string[];
   readonly joinedAt: number;
   readonly timeoutUntil: number | null;
 }
 
-function toMemberView(member: Doc<"members">): MemberView {
+function toMemberView(member: Doc<"members">, accountName: string | null = null): MemberView {
   return {
     id: member._id,
     userId: member.userId,
     nickname: member.nickname ?? null,
+    accountName,
     roleIds: member.roleIds,
     joinedAt: member.joinedAt,
     timeoutUntil: member.timeoutUntil ?? null,
@@ -125,7 +127,13 @@ export const list = query({
   handler: async (ctx) => {
     await requireAuth(ctx);
     const members = await ctx.db.query("members").collect();
-    return members.sort((a, b) => a.joinedAt - b.joinedAt).map(toMemberView);
+    const names = await accountNames(
+      ctx,
+      members.map((member) => member.userId),
+    );
+    return members
+      .sort((a, b) => a.joinedAt - b.joinedAt)
+      .map((member) => toMemberView(member, names.get(member.userId) ?? null));
   },
 });
 
@@ -146,7 +154,10 @@ export const me = query({
       userId,
       ownerId: server?.ownerId ?? null,
       isOwner: server !== null && server.ownerId === userId,
-      member: member === null ? null : toMemberView(member),
+      member:
+        member === null
+          ? null
+          : toMemberView(member, (await accountNames(ctx, [userId])).get(userId) ?? null),
     };
   },
 });
@@ -171,7 +182,7 @@ export const assignRole = mutation({
 
     const roleRef = role.key ?? role._id;
     if (member.roleIds.includes(roleRef)) {
-      return mlsSignal([]);
+      return null;
     }
     await ctx.db.patch(member._id, { roleIds: [...member.roleIds, roleRef] });
     await writeAudit(ctx, {
@@ -180,13 +191,13 @@ export const assignRole = mutation({
       targetId: args.userId,
       meta: JSON.stringify({ roleId: roleRef }),
     });
-    return mlsSignal([]);
+    return null;
   },
 });
 
 /**
  * Removes a role from a member. Losing a role can drop `ViewChannel` on a
- * channel, so any resulting MLS removals are returned for the client.
+ * channel, so future per-content access decisions must honour the new role set.
  */
 export const removeRole = mutation({
   args: { userId: v.string(), roleId: v.id("roles") },
@@ -202,10 +213,9 @@ export const removeRole = mutation({
 
     const roleRef = role.key ?? role._id;
     if (!member.roleIds.includes(roleRef)) {
-      return mlsSignal([]);
+      return null;
     }
     const nextRoleIds = member.roleIds.filter((roleId) => roleId !== roleRef);
-    const removals = await memberDeltaRemovals(ctx, args.userId, member.roleIds, nextRoleIds);
     await ctx.db.patch(member._id, { roleIds: nextRoleIds });
     await writeAudit(ctx, {
       actorId: userId,
@@ -213,7 +223,7 @@ export const removeRole = mutation({
       targetId: args.userId,
       meta: JSON.stringify({ roleId: roleRef }),
     });
-    return mlsSignal(removals);
+    return null;
   },
 });
 
@@ -265,11 +275,10 @@ export const kick = mutation({
     const { userId, context } = await requireWorkspaceContext(ctx, Permission.Kick);
     await requireModerator(ctx, context, args.userId);
     const member = await requireMember(ctx, args.userId);
-    const removals = await memberDeltaRemovals(ctx, args.userId, member.roleIds, null);
     await detachFromChannels(ctx, args.userId);
     await ctx.db.delete(member._id);
     await writeAudit(ctx, { actorId: userId, action: "member.kick", targetId: args.userId });
-    return mlsSignal(removals);
+    return null;
   },
 });
 
@@ -280,7 +289,6 @@ export const ban = mutation({
     const { userId, context } = await requireWorkspaceContext(ctx, Permission.Ban);
     await requireModerator(ctx, context, args.userId);
     const member = await requireMember(ctx, args.userId);
-    const removals = await memberDeltaRemovals(ctx, args.userId, member.roleIds, null);
     const existing = await ctx.db
       .query("bans")
       .withIndex("by_user", (q) => q.eq("userId", args.userId))
@@ -301,7 +309,7 @@ export const ban = mutation({
       targetId: args.userId,
       ...(args.reason !== undefined ? { meta: JSON.stringify({ reason: args.reason }) } : {}),
     });
-    return mlsSignal(removals);
+    return null;
   },
 });
 

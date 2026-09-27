@@ -91,6 +91,39 @@ describe("createServerProfile", () => {
   });
 });
 
+describe("createServerProfile loopback retargeting", () => {
+  const localWellKnown: WellKnown = {
+    ...wellKnown,
+    convexUrl: "http://localhost:3210",
+    siteUrl: "http://localhost:8080",
+  };
+
+  it("retargets loopback convex/site URLs onto a Tailscale base host", () => {
+    const profile = createServerProfile("http://100.64.0.10:8080", localWellKnown);
+    expect(profile.baseUrl).toBe("http://100.64.0.10:8080");
+    expect(profile.convexUrl).toBe("http://100.64.0.10:3210");
+    expect(profile.siteUrl).toBe("http://100.64.0.10:8080");
+  });
+
+  it("retargets loopback URLs onto a LAN base host", () => {
+    const profile = createServerProfile("http://192.168.1.20:8080", localWellKnown);
+    expect(profile.convexUrl).toBe("http://192.168.1.20:3210");
+    expect(profile.siteUrl).toBe("http://192.168.1.20:8080");
+  });
+
+  it("keeps loopback URLs when the base itself is localhost", () => {
+    const profile = createServerProfile("http://localhost:8080", localWellKnown);
+    expect(profile.convexUrl).toBe("http://localhost:3210");
+    expect(profile.siteUrl).toBe("http://localhost:8080");
+  });
+
+  it("leaves a public https well-known document untouched", () => {
+    const profile = createServerProfile("https://chat.acme.com", wellKnown);
+    expect(profile.convexUrl).toBe("https://convex.acme.com");
+    expect(profile.siteUrl).toBe("https://chat.acme.com");
+  });
+});
+
 describe("createMemoryProfileStore", () => {
   const profile = createServerProfile("chat.acme.com", wellKnown, 1);
 

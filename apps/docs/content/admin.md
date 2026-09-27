@@ -28,6 +28,11 @@ instance-level concerns live:
   shown, only whether each provider is configured.
 - **Storage** — the total upload quota (`0` means unlimited) and the largest
   single upload. Both are validated server-side.
+- **Encryption** — the EKM provider (default `local`), the KEK id and the active
+  key version, and whether a master key is configured. Key-version rows show
+  which versions exist and which is active; no key material is ever shown. Set
+  the provider in `infra/docker/.env` and re-run `setup` to change it; the
+  external providers are optional and advanced.
 - **Backups** — enable or disable the nightly intent, request a backup now, and
   see recent runs with their status, size and S3 location.
 - **Push relay** — enable the optional mobile push relay and set its URL and

@@ -49,6 +49,22 @@ describe("normalizeServerUrl", () => {
     expect(normalizeServerUrl("169.254.10.10")).toBe("http://169.254.10.10");
   });
 
+  it("uses http for CGNAT / Tailscale IPv4 and the Tailscale IPv6 ULA prefix", () => {
+    expect(normalizeServerUrl("100.64.0.10:8080")).toBe("http://100.64.0.10:8080");
+    expect(normalizeServerUrl("http://100.64.0.10:8080")).toBe("http://100.64.0.10:8080");
+    expect(normalizeServerUrl("100.64.0.1")).toBe("http://100.64.0.1");
+    expect(normalizeServerUrl("100.127.255.254")).toBe("http://100.127.255.254");
+    expect(normalizeServerUrl("[fd7a:115c:a1e0::1]:8080")).toBe("http://[fd7a:115c:a1e0::1]:8080");
+  });
+
+  it("rejects insecure http just outside CGNAT and for global IPv6", () => {
+    expect(normalizeServerUrl("100.128.0.1")).toBe("https://100.128.0.1");
+    expect(() => normalizeServerUrl("http://100.128.0.1")).toThrow(ServerUrlError);
+    expect(() => normalizeServerUrl("http://100.63.0.1")).toThrow(ServerUrlError);
+    expect(normalizeServerUrl("[2001:db8::1]")).toBe("https://[2001:db8::1]");
+    expect(() => normalizeServerUrl("http://[2001:db8::1]")).toThrow(ServerUrlError);
+  });
+
   it("rejects insecure http for public hosts", () => {
     expect(() => normalizeServerUrl("http://chat.acme.com")).toThrow(ServerUrlError);
     expect(() => normalizeServerUrl("http://172.15.0.1")).toThrow(ServerUrlError);
@@ -93,7 +109,15 @@ describe("isLocalHostname", () => {
     expect(isLocalHostname("10.1.2.3")).toBe(true);
     expect(isLocalHostname("172.20.0.1")).toBe(true);
     expect(isLocalHostname("192.168.0.10")).toBe(true);
+    expect(isLocalHostname("100.64.0.1")).toBe(true);
+    expect(isLocalHostname("100.64.0.10")).toBe(true);
+    expect(isLocalHostname("100.127.255.254")).toBe(true);
+    expect(isLocalHostname("[fd7a:115c:a1e0::1]")).toBe(true);
+    expect(isLocalHostname("FD7A:115C:A1E0::1")).toBe(true);
     expect(isLocalHostname("[::1]")).toBe(true);
+    expect(isLocalHostname("100.63.0.1")).toBe(false);
+    expect(isLocalHostname("100.128.0.1")).toBe(false);
+    expect(isLocalHostname("[2001:db8::1]")).toBe(false);
     expect(isLocalHostname("172.32.0.1")).toBe(false);
     expect(isLocalHostname("chat.acme.com")).toBe(false);
     expect(isLocalHostname("8.8.8.8")).toBe(false);

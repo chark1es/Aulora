@@ -16,7 +16,19 @@ export default defineConfig(({ mode }) => {
     plugins: [react()],
     server: {
       proxy: {
-        "/api/auth": { target: authProxyTarget, changeOrigin: true },
+        "/api/auth": {
+          target: authProxyTarget,
+          changeOrigin: true,
+          // Better Auth validates the request `Origin` against the server's
+          // trusted origins. In local dev the app is served from Vite (5173)
+          // while the server trusts its own site origin, so rewrite the header
+          // to the server's origin for the auth surface only.
+          configure: (proxy) => {
+            proxy.on("proxyReq", (proxyReq) => {
+              proxyReq.setHeader("Origin", authProxyTarget);
+            });
+          },
+        },
       },
     },
     build: {

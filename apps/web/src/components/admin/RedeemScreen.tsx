@@ -10,6 +10,7 @@ import {
   createAuloraAuthClient,
 } from "../../lib/auth-client";
 import { redeemErrorMessage } from "../../lib/invites";
+import { AuthFrame } from "../AuthFrame";
 import { SignInScreen } from "../SignInScreen";
 
 export interface RedeemCardProps {
@@ -24,8 +25,11 @@ export interface RedeemCardProps {
 /** Presentational redeem card: join, retry, or continue after success. */
 export function RedeemCard({ state, message, error, onJoin, onContinue }: RedeemCardProps) {
   return (
-    <div className="mx-auto w-full max-w-md p-6">
-      <Card className="flex flex-col gap-4" data-testid="redeem-card">
+    <AuthFrame>
+      <Card
+        className="flex flex-col gap-4 rounded-[12px] p-6 shadow-xl shadow-black/[0.08]"
+        data-testid="redeem-card"
+      >
         <Heading level={2}>Join workspace</Heading>
         {state === "done" ? (
           <>
@@ -50,7 +54,7 @@ export function RedeemCard({ state, message, error, onJoin, onContinue }: Redeem
           </>
         )}
       </Card>
-    </div>
+    </AuthFrame>
   );
 }
 
@@ -92,7 +96,7 @@ function RedeemGate({
 
   if (session.isPending) {
     return (
-      <div className="flex min-h-screen flex-col items-center justify-center gap-3">
+      <div className="pane flex flex-1 flex-col items-center justify-center gap-3">
         <Spinner size={28} label="Checking your session" />
         <Text tone="muted" size="sm">
           Checking your session…

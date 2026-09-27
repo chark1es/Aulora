@@ -29,6 +29,18 @@ export interface WellKnownAuth {
 }
 
 /**
+ * Non-secret description of the content-encryption mode. It advertises only
+ * the algorithm, key version and key-manager provider; it never carries key
+ * material.
+ */
+export interface WellKnownEncryption {
+  readonly mode: "server";
+  readonly algorithm: string;
+  readonly keyVersion: string;
+  readonly provider: string;
+}
+
+/**
  * The exact contract served at `<base>/.well-known/aulora.json`.
  *
  * This document is public: it must never carry a `clientSecret`, `secret`,
@@ -42,6 +54,7 @@ export interface WellKnown {
   readonly siteUrl: string;
   readonly iconSeed: string;
   readonly auth: WellKnownAuth;
+  readonly encryption?: WellKnownEncryption;
 }
 
 export type WellKnownErrorCode =
@@ -71,8 +84,10 @@ const TOP_LEVEL_KEYS = new Set([
   "siteUrl",
   "iconSeed",
   "auth",
+  "encryption",
 ]);
 const AUTH_KEYS = new Set(["local", "providers"]);
+const ENCRYPTION_KEYS = new Set(["mode", "algorithm", "keyVersion", "provider"]);
 const LOCAL_KEYS = new Set(["enabled", "signup"]);
 const OAUTH_KEYS = new Set(["id", "type", "displayName"]);
 const OIDC_KEYS = new Set([
@@ -242,6 +257,23 @@ function parseAuth(value: unknown, path: string): WellKnownAuth {
   };
 }
 
+function parseEncryption(value: unknown, path: string): WellKnownEncryption {
+  if (!isRecord(value)) {
+    fail(path, "an object");
+  }
+  assertOnlyKeys(value, ENCRYPTION_KEYS, path);
+  const mode = readString(value, "mode", `${path}.mode`);
+  if (mode !== "server") {
+    fail(`${path}.mode`, '"server"');
+  }
+  return {
+    mode: "server",
+    algorithm: readString(value, "algorithm", `${path}.algorithm`),
+    keyVersion: readString(value, "keyVersion", `${path}.keyVersion`),
+    provider: readString(value, "provider", `${path}.provider`),
+  };
+}
+
 /**
  * Validates an unknown payload into a {@link WellKnown}. Throws
  * {@link WellKnownError} on any structural problem or secret-shaped field.
@@ -258,6 +290,8 @@ export function parseWellKnown(value: unknown): WellKnown {
     fail("document", "an object");
   }
   assertOnlyKeys(value, TOP_LEVEL_KEYS, "");
+  const encryption =
+    value.encryption === undefined ? undefined : parseEncryption(value.encryption, "encryption");
   return {
     name: readString(value, "name", "name"),
     version: readString(value, "version", "version"),
@@ -266,6 +300,7 @@ export function parseWellKnown(value: unknown): WellKnown {
     siteUrl: readString(value, "siteUrl", "siteUrl"),
     iconSeed: readString(value, "iconSeed", "iconSeed"),
     auth: parseAuth(value.auth, "auth"),
+    ...(encryption !== undefined ? { encryption } : {}),
   };
 }
 

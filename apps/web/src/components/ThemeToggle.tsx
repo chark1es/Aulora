@@ -1,4 +1,4 @@
-import { IconButton } from "@aulora/ui-web";
+import { cn, Icon } from "@aulora/ui-web";
 import { useEffect, useState } from "react";
 import {
   applyTheme,
@@ -8,54 +8,111 @@ import {
   writeThemePreference,
 } from "../lib/theme";
 
-function ThemeGlyph({ preference }: { readonly preference: ThemePreference }) {
-  if (preference === "light") {
+function ThemeGlyph({
+  preference,
+  size = 20,
+}: {
+  readonly preference: ThemePreference;
+  readonly size?: number;
+}) {
+  if (preference === "system") {
     return (
-      <svg viewBox="0 0 24 24" width="18" height="18" aria-hidden="true" fill="none">
-        <circle cx="12" cy="12" r="4.2" fill="currentColor" />
-        <path
-          d="M12 3v2.4M12 18.6V21M3 12h2.4M18.6 12H21M5.6 5.6l1.7 1.7M16.7 16.7l1.7 1.7M18.4 5.6l-1.7 1.7M7.3 16.7l-1.7 1.7"
+      <svg viewBox="0 0 24 24" width={size} height={size} aria-hidden="true" fill="none">
+        <rect
+          x="3"
+          y="4"
+          width="18"
+          height="12.5"
+          rx="2.5"
           stroke="currentColor"
-          strokeWidth="1.6"
+          strokeWidth="1.75"
+        />
+        <path
+          d="M9 20.5h6M12 16.5v4"
+          stroke="currentColor"
+          strokeWidth="1.75"
           strokeLinecap="round"
         />
       </svg>
     );
   }
-  if (preference === "dark") {
-    return (
-      <svg viewBox="0 0 24 24" width="18" height="18" aria-hidden="true" fill="none">
-        <path d="M20 14.5A8 8 0 1 1 9.5 4a6.5 6.5 0 0 0 10.5 10.5Z" fill="currentColor" />
-      </svg>
-    );
-  }
-  return (
-    <svg viewBox="0 0 24 24" width="18" height="18" aria-hidden="true" fill="none">
-      <rect x="3.5" y="4.5" width="17" height="12" rx="2" stroke="currentColor" strokeWidth="1.6" />
-      <path d="M9 20h6M12 16.5V20" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" />
-    </svg>
-  );
+  return <Icon name={preference === "light" ? "sun" : "moon"} size={size} />;
 }
 
 /** Cycles system -> light -> dark, applying and persisting the choice. */
-export function ThemeToggle() {
+export function ThemeToggle({ variant = "rail" }: { readonly variant?: "rail" | "inline" }) {
   const [preference, setPreference] = useState<ThemePreference>(() => readThemePreference());
 
   useEffect(() => {
     applyTheme(preference);
+    if (preference !== "system" || typeof window.matchMedia !== "function") {
+      return;
+    }
+    // Follow the OS live while on "system" (e.g. macOS auto appearance at dusk).
+    const query = window.matchMedia("(prefers-color-scheme: dark)");
+    const onChange = () => applyTheme("system");
+    query.addEventListener("change", onChange);
+    return () => query.removeEventListener("change", onChange);
   }, [preference]);
 
   const next = nextThemePreference(preference);
+  const label = preference === "system" ? "System" : preference === "light" ? "Light" : "Dark";
+
+  if (variant === "inline") {
+    return (
+      <fieldset
+        aria-label="Appearance"
+        className="inline-flex items-center gap-0.5 rounded-[7px] bg-surface-3 p-0.5"
+      >
+        {THEME_OPTIONS.map((option) => {
+          const active = preference === option.value;
+          return (
+            <label
+              key={option.value}
+              aria-label={option.label}
+              title={option.label}
+              className={cn(
+                "flex h-6 w-7 cursor-pointer items-center justify-center rounded-[5px] transition",
+                active ? "bg-surface-2 text-text shadow-sm" : "text-text-muted hover:text-text",
+              )}
+            >
+              <input
+                type="radio"
+                name="aulora-appearance"
+                value={option.value}
+                checked={active}
+                onChange={() => {
+                  writeThemePreference(option.value);
+                  setPreference(option.value);
+                }}
+                className="sr-only"
+              />
+              <ThemeGlyph preference={option.value} size={15} />
+            </label>
+          );
+        })}
+      </fieldset>
+    );
+  }
+
   return (
-    <IconButton
-      label={`Theme: ${preference}. Switch to ${next}.`}
-      variant="ghost"
+    <button
+      type="button"
+      aria-label={`Theme: ${preference}. Switch to ${next}.`}
+      title={`Theme: ${label}`}
+      className="flex h-9 w-9 items-center justify-center rounded-[8px] text-rail-text transition hover:bg-white/10 hover:text-white focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent"
       onClick={() => {
         writeThemePreference(next);
         setPreference(next);
       }}
     >
       <ThemeGlyph preference={preference} />
-    </IconButton>
+    </button>
   );
 }
+
+const THEME_OPTIONS: readonly { value: ThemePreference; label: string }[] = [
+  { value: "system", label: "System" },
+  { value: "light", label: "Light" },
+  { value: "dark", label: "Dark" },
+];

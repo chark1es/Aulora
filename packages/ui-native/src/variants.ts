@@ -17,10 +17,10 @@ const BUTTON_VARIANTS: Record<ButtonVariant, string> = {
 };
 
 const BUTTON_LABEL_CLASSES: Record<ButtonVariant, string> = {
-  primary: "text-bg",
+  primary: "text-on-accent",
   secondary: "text-text",
   ghost: "text-text-muted",
-  danger: "text-bg",
+  danger: "text-on-accent",
 };
 
 const BUTTON_SIZES: Record<ButtonSize, string> = {
@@ -44,7 +44,7 @@ export function buttonClass(options: {
   const variant = options.variant ?? "primary";
   const size = options.size ?? "md";
   return [
-    "flex-row items-center justify-center gap-2 rounded-pill",
+    "flex-row items-center justify-center gap-2 rounded-input",
     BUTTON_VARIANTS[variant],
     BUTTON_SIZES[size],
     options.disabled ? "opacity-50" : "",
@@ -68,7 +68,7 @@ export function iconButtonClass(options: {
   const variant = options.variant ?? "ghost";
   const size = options.size ?? "md";
   return [
-    "items-center justify-center rounded-pill",
+    "items-center justify-center rounded-input",
     BUTTON_VARIANTS[variant],
     ICON_SIZES[size],
     options.disabled ? "opacity-50" : "",

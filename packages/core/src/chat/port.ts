@@ -6,24 +6,58 @@
  * simple mock. Keeping the port here means `@aulora/core` stays Convex-agnostic
  * and every session behaviour is unit-testable without a backend.
  *
- * Ids are opaque strings: `@aulora/core` never imports Convex `Id<>` types.
+ * Everything crossing this boundary is plaintext. The server seals content at
+ * rest with its External Key Manager; the client never sees a key or an
+ * encrypted envelope. Ids are opaque strings: `@aulora/core` never imports
+ * Convex `Id<>` types.
  */
 import type { Overwrite } from "../permissions";
 
-/** What the server sends for every message. `ciphertext` is opaque. */
+export interface AttachmentDimensions {
+  readonly width: number;
+  readonly height: number;
+}
+
+/** A small image preview of an attachment. */
+export interface AttachmentThumbnail {
+  readonly fileId: string;
+  readonly width: number;
+  readonly height: number;
+  readonly blurhash?: string;
+}
+
+/**
+ * Plaintext attachment reference embedded in a message body. The server stores
+ * the bytes sealed; `fileId` is all the message row carries.
+ */
+export interface AttachmentDescriptor {
+  readonly fileId: string;
+  readonly name: string;
+  readonly mime: string;
+  readonly size: number;
+  readonly dimensions?: AttachmentDimensions;
+  readonly blurhash?: string;
+  readonly thumbnail?: AttachmentThumbnail;
+}
+
+/** What the server sends for every message. `body` is already plaintext. */
 export interface MessagePayload {
   readonly id: string;
   readonly channelId: string;
   readonly authorId: string;
-  readonly authorDeviceId: string | null;
-  readonly ciphertext: string;
-  readonly epoch: number;
+  readonly body: string;
   readonly threadRootId: string | null;
+  /** The message this one is a quoted inline reply to, if any. */
+  readonly replyToId?: string | null;
   readonly attachmentIds: readonly string[];
   readonly mentionUserIds: readonly string[];
   readonly editedAt: number | null;
   readonly deletedAt: number | null;
   readonly pinnedAt: number | null;
+  /** Thread roots: number of replies (absent on older servers and replies). */
+  readonly replyCount?: number;
+  /** Thread roots: creation time of the newest reply. */
+  readonly lastReplyAt?: number | null;
   readonly createdAt: number;
 }
 
@@ -31,13 +65,15 @@ export interface ChannelSummary {
   readonly id: string;
   readonly kind: "text" | "announcement" | "dm" | "group_dm";
   readonly categoryId: string | null;
-  readonly nameCiphertext: string | null;
-  readonly topicCiphertext: string | null;
-  readonly mlsGroupId: string | null;
+  readonly name: string | null;
+  readonly topic: string | null;
   readonly archived: boolean;
-  readonly currentEpoch: number | null;
+  /** A private channel: membership, not the permission bitfield, decides access. */
+  readonly isPrivate?: boolean;
   /** Present when the server includes the channel's own overrides. */
   readonly overrides?: readonly Overwrite[];
+  /** Display order within its category; falls back to creation order when unset. */
+  readonly position?: number;
   readonly memberIds?: readonly string[];
 }
 
@@ -53,31 +89,16 @@ export interface ChannelMemberRow {
   readonly joinedAt: number;
 }
 
-export interface MlsCommitRow {
-  readonly id: string;
-  readonly epoch: number;
-  readonly commitCiphertext: string;
-  readonly welcomeCiphertext: string | null;
-}
-
-export interface JoinIntentRow {
-  readonly id: string;
-  readonly userId: string;
-  readonly deviceId: string;
-  readonly keyPackage: string;
-  readonly createdAt: number;
-}
-
 export interface ReactionRow {
   readonly id: string;
   readonly userId: string;
-  readonly emojiCiphertext: string;
+  readonly emoji: string;
 }
 
 export interface PresenceRow {
   readonly userId: string;
   readonly status: "online" | "idle" | "dnd" | "offline";
-  readonly customStatusCiphertext: string | null;
+  readonly customStatus: string | null;
   readonly lastHeartbeat: number;
 }
 
@@ -95,121 +116,102 @@ export interface ReadStateRow {
 export interface DeviceRow {
   readonly id: string;
   readonly platform: string;
-  readonly identityKey: string;
   readonly lastSeen: number;
 }
 
 /**
- * Opaque file metadata as stored server-side. `*Ciphertext` fields are never
- * parsed by the server; `url` is a short-lived storage download URL for the
- * ciphertext blob.
+ * Plaintext file metadata as stored server-side. `dimensions` is the decoded
+ * `{"width":…,"height":…}` JSON string the uploader recorded; `url` is a
+ * short-lived link that yields the decrypted bytes.
  */
 export interface StoredFileView {
   readonly id: string;
   readonly uploaderId: string;
   readonly sizeBytes: number;
-  readonly nameCiphertext: string | null;
-  readonly mimeCiphertext: string | null;
-  readonly dimensionsCiphertext: string | null;
-  readonly blurhashCiphertext: string | null;
+  readonly name: string | null;
+  readonly mime: string | null;
+  readonly dimensions: string | null;
+  readonly blurhash: string | null;
   readonly url: string | null;
 }
 
 /**
- * Imperative reads and writes against one workspace. Secrets in, ciphertext
- * out; the session never logs either.
+ * Imperative reads and writes against one workspace. Plaintext in, plaintext
+ * out; the session never logs content or tokens.
  */
 export interface ChatPort {
   // Devices.
-  upsertDevice(args: {
-    platform: string;
-    identityKey: string;
-    pushToken?: string;
-  }): Promise<{ deviceId: string }>;
-
-  // Key material.
-  publishKeyPackage(args: { deviceId: string; keyPackage: string }): Promise<string>;
-  consumeKeyPackages(args: { deviceId: string; count: number }): Promise<readonly string[]>;
+  upsertDevice(args: { platform: string; pushToken?: string }): Promise<{ deviceId: string }>;
 
   // Channels.
   createChannel(args: {
     kind: "text" | "announcement";
-    nameCiphertext: string;
-    topicCiphertext?: string;
-    mlsGroupId?: string;
+    name: string;
+    topic?: string;
     categoryId?: string;
+    private?: boolean;
+    /** Private channels only: explicit members to add and grant access. */
+    memberIds?: readonly string[];
+    /** Private channels only: roles whose members are added and granted access. */
+    roleIds?: readonly string[];
   }): Promise<string>;
-  setMlsGroupId(args: { channelId: string; mlsGroupId: string }): Promise<null>;
-  renameChannel(args: { channelId: string; nameCiphertext: string }): Promise<null>;
+  /** Applies drag-and-drop moves; `categoryId` `null` means uncategorised. */
+  reorderChannels(args: {
+    readonly moves: readonly {
+      readonly channelId: string;
+      readonly categoryId?: string | null;
+      readonly position: number;
+    }[];
+  }): Promise<null>;
+  renameChannel(args: { channelId: string; name: string }): Promise<null>;
+  setChannelTopic(args: { channelId: string; topic?: string }): Promise<null>;
   joinChannel(args: { channelId: string }): Promise<null>;
   leaveChannel(args: { channelId: string }): Promise<null>;
-  createDm(args: { otherUserId: string; mlsGroupId?: string }): Promise<{
-    channelId: string;
-    created: boolean;
-  }>;
-  createGroupDm(args: { memberIds: readonly string[]; mlsGroupId?: string }): Promise<{
-    channelId: string;
-    created: boolean;
-  }>;
+  addChannelMember(args: { channelId: string; userId: string }): Promise<{ added: boolean }>;
+  removeChannelMember(args: { channelId: string; userId: string }): Promise<{ removed: boolean }>;
+  archiveChannel(args: { channelId: string }): Promise<null>;
+  unarchiveChannel(args: { channelId: string }): Promise<null>;
+  createDm(args: { otherUserId: string }): Promise<{ channelId: string; created: boolean }>;
+  createGroupDm(args: {
+    memberIds: readonly string[];
+  }): Promise<{ channelId: string; created: boolean }>;
   getChannelMemberIds(args: { channelId: string }): Promise<readonly string[]>;
 
-  // Files. Ciphertext in, ciphertext out; the server never sees a file key.
-  generateUploadUrl(): Promise<string>;
-  /** POSTs ciphertext to a storage upload URL; returns the storage id. */
-  uploadCiphertext(args: {
-    uploadUrl: string;
+  // Files. Plaintext in; the server seals the bytes and metadata at rest.
+  /** Uploads plaintext to a generated URL, finalizes it, and returns the `files` id. */
+  uploadFile(args: {
+    name: string;
+    mime: string;
     bytes: Uint8Array;
-    contentType?: string;
+    dimensions?: AttachmentDimensions;
+    blurhash?: string;
+    channelId?: string;
   }): Promise<string>;
-  /** Records opaque ciphertext metadata; returns the `files` id. */
-  recordFile(args: {
-    storageId: string;
-    sizeBytes: number;
-    nameCiphertext?: string;
-    mimeCiphertext?: string;
-    dimensionsCiphertext?: string;
-    blurhashCiphertext?: string;
-  }): Promise<string>;
-  /** GETs ciphertext bytes from a storage download URL. */
-  fetchCiphertext(args: { url: string }): Promise<Uint8Array>;
   getFile(args: { fileId: string }): Promise<StoredFileView | null>;
   getFiles(args: { fileIds: readonly string[] }): Promise<readonly StoredFileView[]>;
-
-  // MLS.
-  appendCommit(args: {
-    channelId: string;
-    epoch: number;
-    commitCiphertext: string;
-    welcomeCiphertext?: string;
-  }): Promise<string>;
-  publishJoinIntent(args: {
-    channelId: string;
-    deviceId: string;
-    keyPackage: string;
-  }): Promise<string>;
-  markJoinIntentServiced(args: { intentId: string }): Promise<null>;
+  /** Downloads the decrypted bytes for a file via its signed `url`. */
+  downloadFile(args: { fileId: string }): Promise<Uint8Array>;
 
   // Messages.
   sendMessage(args: {
     channelId: string;
-    ciphertext: string;
-    epoch: number;
+    body: string;
     threadRootId?: string;
+    replyToId?: string;
     mentionUserIds?: readonly string[];
     attachmentIds?: readonly string[];
-    authorDeviceId?: string;
   }): Promise<string>;
-  editMessage(args: { messageId: string; ciphertext: string; epoch: number }): Promise<null>;
+  editMessage(args: { messageId: string; body: string }): Promise<null>;
   deleteMessage(args: { messageId: string }): Promise<null>;
   pinMessage(args: { messageId: string }): Promise<null>;
   unpinMessage(args: { messageId: string }): Promise<null>;
-  toggleReaction(args: { messageId: string; emojiCiphertext: string }): Promise<{ added: boolean }>;
+  toggleReaction(args: { messageId: string; emoji: string }): Promise<{ added: boolean }>;
 
   // Presence / typing / read state.
   heartbeat(args: { status?: "online" | "idle" | "dnd" }): Promise<unknown>;
   setStatus(args: {
     status: "online" | "idle" | "dnd" | "offline";
-    customStatusCiphertext?: string;
+    customStatus?: string;
   }): Promise<unknown>;
   setTyping(args: { channelId: string }): Promise<{ expiresAt: number }>;
   clearTyping(args: { channelId: string }): Promise<null>;
@@ -220,26 +222,20 @@ export interface ChatPort {
 export interface ChatSubscriptions {
   /** Live channels visible to the signed-in member. */
   watchChannels(onChange: (channels: readonly ChannelSummary[]) => void): () => void;
-  /** Live root messages for a channel, oldest first. */
+  /**
+   * Live root messages for a channel, oldest first: the newest `limit` roots
+   * (the adapter's default page when omitted). Raising `limit` loads older
+   * history while the live tail keeps updating.
+   */
   watchMessages(
     channelId: string,
     onChange: (messages: readonly MessagePayload[]) => void,
+    options?: { readonly limit?: number },
   ): () => void;
   /** Live reactions for one message. */
   watchReactions(
     messageId: string,
     onChange: (reactions: readonly ReactionRow[]) => void,
-  ): () => void;
-  /** Live MLS commits after a given epoch. */
-  watchCommits(
-    channelId: string,
-    afterEpoch: number,
-    onChange: (commits: readonly MlsCommitRow[]) => void,
-  ): () => void;
-  /** Live unserviced join intents for a channel. */
-  watchJoinIntents(
-    channelId: string,
-    onChange: (intents: readonly JoinIntentRow[]) => void,
   ): () => void;
   /** Live presence for the workspace. */
   watchPresence(onChange: (presence: readonly PresenceRow[]) => void): () => void;

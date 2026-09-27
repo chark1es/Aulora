@@ -25,8 +25,7 @@ async function senderSetup(t: Test) {
   const asUser1 = t.withIdentity({ subject: "user-1" });
   const messageId = await asUser1.mutation(api.messages.send, {
     channelId,
-    ciphertext: "bXNn",
-    epoch: 0,
+    body: "bXNn",
   });
   return { t, channelId, messageId, asUser1, asUser2: t.withIdentity({ subject: "user-2" }) };
 }
@@ -34,18 +33,18 @@ async function senderSetup(t: Test) {
 describe("permission denials", () => {
   it("channels.create needs ManageChannels", async () => {
     const { asUser1 } = await deniedSetup();
-    await expect(asUser1.mutation(api.channels.create, { kind: "text" })).rejects.toThrow(
-      "Missing permission",
-    );
+    await expect(
+      asUser1.mutation(api.channels.create, { kind: "text", name: "chan" }),
+    ).rejects.toThrow("Missing permission");
   });
 
   it("channels.rename/setTopic/archive/unarchive need ManageChannels", async () => {
     const { channelId, asUser1 } = await deniedSetup();
     await expect(
-      asUser1.mutation(api.channels.rename, { channelId, nameCiphertext: "eA==" }),
+      asUser1.mutation(api.channels.rename, { channelId, name: "eA==" }),
     ).rejects.toThrow("Missing permission");
     await expect(
-      asUser1.mutation(api.channels.setTopic, { channelId, topicCiphertext: "eA==" }),
+      asUser1.mutation(api.channels.setTopic, { channelId, topic: "eA==" }),
     ).rejects.toThrow("Missing permission");
     await expect(asUser1.mutation(api.channels.archive, { channelId })).rejects.toThrow(
       "Missing permission",
@@ -67,9 +66,9 @@ describe("permission denials", () => {
 
   it("messages.send needs SendMessages", async () => {
     const { channelId, asUser1 } = await deniedSetup();
-    await expect(
-      asUser1.mutation(api.messages.send, { channelId, ciphertext: "eA==", epoch: 0 }),
-    ).rejects.toThrow("Missing permission");
+    await expect(asUser1.mutation(api.messages.send, { channelId, body: "eA==" })).rejects.toThrow(
+      "Missing permission",
+    );
   });
 
   it("threaded messages.send needs SendInThreads", async () => {
@@ -77,8 +76,7 @@ describe("permission denials", () => {
     await expect(
       asUser2.mutation(api.messages.send, {
         channelId,
-        ciphertext: "eA==",
-        epoch: 0,
+        body: "eA==",
         threadRootId: messageId,
       }),
     ).rejects.toThrow("Missing permission");
@@ -87,9 +85,9 @@ describe("permission denials", () => {
   it("messages.edit and messages.remove need author or ManageMessages", async () => {
     const { t, messageId } = await senderSetup(newTest());
     const asUser2 = t.withIdentity({ subject: "user-2" });
-    await expect(
-      asUser2.mutation(api.messages.edit, { messageId, ciphertext: "eA==" }),
-    ).rejects.toThrow("Missing permission");
+    await expect(asUser2.mutation(api.messages.edit, { messageId, body: "eA==" })).rejects.toThrow(
+      "Missing permission",
+    );
     await expect(asUser2.mutation(api.messages.remove, { messageId })).rejects.toThrow(
       "Missing permission",
     );
@@ -108,28 +106,22 @@ describe("permission denials", () => {
   it("reactions.toggle needs AddReactions", async () => {
     const { messageId, asUser1 } = await senderSetup(newTest());
     await expect(
-      asUser1.mutation(api.reactions.toggle, { messageId, emojiCiphertext: "eA==" }),
+      asUser1.mutation(api.reactions.toggle, { messageId, emoji: "eA==" }),
     ).rejects.toThrow("Missing permission");
   });
 
-  it("files.generateUploadUrl and files.record need AttachFiles", async () => {
+  it("files.generateUploadUrl and files.finalize need AttachFiles", async () => {
     const { t, asUser1 } = await deniedSetup();
     await expect(asUser1.mutation(api.files.generateUploadUrl, {})).rejects.toThrow(
       "Missing permission",
     );
     const storageId = await storeBlob(t, 8);
-    await expect(asUser1.mutation(api.files.record, { storageId, sizeBytes: 8 })).rejects.toThrow(
-      "Missing permission",
-    );
-  });
-
-  it("mls.appendCommit needs ViewChannel", async () => {
-    const { channelId, asUser1 } = await deniedSetup();
     await expect(
-      asUser1.mutation(api.mls.appendCommit, {
-        channelId,
-        epoch: 1,
-        commitCiphertext: "eA==",
+      asUser1.action(api.files.finalize, {
+        storageId,
+        name: "nope",
+        mime: "text/plain",
+        sizeBytes: 8,
       }),
     ).rejects.toThrow("Missing permission");
   });

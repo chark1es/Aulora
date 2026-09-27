@@ -4,5 +4,6 @@ export default defineConfig({
   test: {
     environment: "edge-runtime",
     include: ["test/**/*.test.ts"],
+    setupFiles: ["./test/setupEnv.ts"],
   },
 });

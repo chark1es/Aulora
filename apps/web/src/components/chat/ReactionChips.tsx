@@ -9,12 +9,14 @@ export interface ReactionGroup {
 export interface ReactionChipsProps {
   readonly groups: readonly ReactionGroup[];
   readonly onToggle: (emoji: string) => void;
+  /** Which side of the bubble the chips hug. */
+  readonly align?: "start" | "end";
 }
 
-/** Compact reaction pills; the caller's own reactions are accented. */
-export function ReactionChips({ groups, onToggle }: ReactionChipsProps) {
+/** Compact reaction pills under a bubble; the viewer's own reactions are accented. */
+export function ReactionChips({ groups, onToggle, align = "start" }: ReactionChipsProps) {
   return (
-    <div className="mt-1 flex flex-wrap gap-1">
+    <div className={cn("mt-1 flex flex-wrap gap-1", align === "end" && "justify-end")}>
       {groups.map((group) => (
         <button
           key={group.emoji}
@@ -23,13 +25,15 @@ export function ReactionChips({ groups, onToggle }: ReactionChipsProps) {
           aria-pressed={group.mine}
           aria-label={`${group.emoji} ${group.count}`}
           className={cn(
-            "inline-flex items-center gap-1 rounded-pill border px-2 py-0.5 text-xs",
+            "inline-flex h-6 items-center gap-1 rounded-full border px-2 text-xs font-semibold transition",
             group.mine
-              ? "border-accent bg-accent-soft text-accent"
-              : "border-border bg-surface-3 text-text-muted hover:text-text",
+              ? "border-accent/50 bg-accent-soft text-accent"
+              : "border-border bg-surface-2 text-text-muted hover:border-text-muted/40 hover:text-text",
           )}
         >
-          <span aria-hidden="true">{group.emoji}</span>
+          <span aria-hidden="true" className="text-[14px] leading-none">
+            {group.emoji}
+          </span>
           <span>{group.count}</span>
         </button>
       ))}

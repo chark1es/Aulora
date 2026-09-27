@@ -11,19 +11,19 @@ export interface IconButtonProps extends ButtonHTMLAttributes<HTMLButtonElement>
 }
 
 const VARIANT_CLASSES: Record<ButtonVariant, string> = {
-  primary: "bg-accent text-bg hover:brightness-105",
-  secondary: "border border-border bg-surface-3 text-text hover:bg-surface-2",
+  primary: "bg-accent text-on-accent hover:brightness-110",
+  secondary: "border border-border bg-surface-2 text-text hover:bg-surface-3",
   ghost: "bg-transparent text-text-muted hover:bg-surface-3 hover:text-text",
-  danger: "bg-danger text-bg hover:brightness-105",
+  danger: "bg-transparent text-text-muted hover:bg-danger/10 hover:text-danger",
 };
 
 const SIZE_CLASSES: Record<ButtonSize, string> = {
-  sm: "h-8 w-8 text-sm",
-  md: "h-10 w-10 text-base",
-  lg: "h-12 w-12 text-md",
+  sm: "h-7 w-7 rounded-[7px] text-[13px]",
+  md: "h-9 w-9 rounded-input text-[14px]",
+  lg: "h-11 w-11 rounded-input text-[15px]",
 };
 
-/** Square pill-shaped button for a single icon. Always labeled for a11y. */
+/** Square soft-cornered button for a single icon. Always labeled for a11y. */
 export const IconButton = forwardRef<HTMLButtonElement, IconButtonProps>(function IconButton(
   { label, variant = "ghost", size = "md", className, children, type = "button", ...rest },
   ref,
@@ -34,7 +34,7 @@ export const IconButton = forwardRef<HTMLButtonElement, IconButtonProps>(functio
       type={type}
       aria-label={label}
       className={cn(
-        "inline-flex items-center justify-center rounded-pill transition",
+        "inline-flex shrink-0 items-center justify-center transition",
         "focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent focus-visible:ring-offset-2 focus-visible:ring-offset-bg",
         "disabled:pointer-events-none disabled:opacity-50",
         VARIANT_CLASSES[variant],

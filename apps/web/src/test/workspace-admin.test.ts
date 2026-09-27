@@ -137,6 +137,21 @@ describe("workspace-admin helpers", () => {
     expect(memberDisplayName(null, "Base")).toBe("Base");
   });
 
+  it("falls back to the account name, never the raw user id, when no nickname is set", () => {
+    const member = {
+      id: "m1",
+      userId: "u1",
+      nickname: null,
+      accountName: "Ada Lovelace",
+      roleIds: [],
+      joinedAt: 0,
+      timeoutUntil: null,
+    };
+    expect(memberDisplayName(member, "Member")).toBe("Ada Lovelace");
+    expect(memberDisplayName({ ...member, accountName: null }, "Member")).toBe("Member");
+    expect(memberDisplayName({ ...member, nickname: "" }, "Member")).toBe("Ada Lovelace");
+  });
+
   it("toggles permission bits", () => {
     const on = togglePermissionBit(0n, "Kick", true);
     expect(on).toBe(Permission.Kick);

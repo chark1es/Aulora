@@ -11,11 +11,15 @@ import {
   formatTimestamp,
   parseByteInput,
 } from "../../../lib/instance-admin";
+import { SettingsSectionHeader } from "../SettingsSection";
 import { LicensePanel } from "./LicensePanel";
 
 export interface InstanceAdminPanelProps {
   readonly canManage: boolean;
-  readonly onClose: () => void;
+  /** Only used by the overlay variant's Close affordance. */
+  readonly onClose?: () => void;
+  /** `overlay` renders the fixed dialog; `inline` embeds in a settings page. */
+  readonly variant?: "overlay" | "inline";
 }
 
 type TabId = "overview" | "auth" | "storage" | "backups" | "push" | "license";
@@ -33,10 +37,31 @@ const TABS: readonly { id: TabId; label: string }[] = [
  * Instance admin console for the operator: auth provider status, storage
  * quotas, backups and push relay settings, plus the license status. Every write
  * is re-checked server-side against the workspace owner.
+ *
+ * Renders as the classic right-side overlay by default, or inline (the new
+ * home inside workspace settings) when `variant="inline"`.
  */
-export function InstanceAdminPanel({ canManage, onClose }: InstanceAdminPanelProps) {
-  const overview = useQuery(api.instance.overview, canManage ? {} : "skip");
-  const [active, setActive] = useState<TabId>("overview");
+export function InstanceAdminPanel({
+  canManage,
+  onClose,
+  variant = "overlay",
+}: InstanceAdminPanelProps) {
+  if (variant === "inline") {
+    return (
+      <section
+        className="flex flex-col gap-5"
+        data-testid="instance-admin-panel"
+        aria-label="Instance admin"
+      >
+        <SettingsSectionHeader
+          icon="shield"
+          title="Instance"
+          description="Server status, storage quotas, backups, push relay and licensing. Visible to the workspace owner only."
+        />
+        <InstanceAdminContent canManage={canManage} bodyClassName="flex flex-col gap-4" />
+      </section>
+    );
+  }
 
   return (
     <div
@@ -49,57 +74,82 @@ export function InstanceAdminPanel({ canManage, onClose }: InstanceAdminPanelPro
       <div className="flex h-full w-full max-w-3xl flex-col border-l border-border bg-surface-1">
         <header className="flex items-center justify-between border-b border-border px-5 py-3">
           <Heading level={2}>Instance admin</Heading>
-          <IconButton label="Close instance admin" onClick={onClose}>
+          <IconButton label="Close instance admin" onClick={() => onClose?.()}>
             <span aria-hidden="true">✕</span>
           </IconButton>
         </header>
-        <nav
-          className="flex flex-wrap gap-1 border-b border-border px-4 py-2"
-          aria-label="Instance admin sections"
-        >
-          {TABS.map((tab) => (
-            <button
-              key={tab.id}
-              type="button"
-              aria-current={active === tab.id ? "page" : undefined}
-              className={
-                active === tab.id
-                  ? "rounded-pill bg-surface-3 px-3 py-1 text-sm text-text"
-                  : "rounded-pill px-3 py-1 text-sm text-text-muted hover:bg-surface-2 hover:text-text"
-              }
-              onClick={() => setActive(tab.id)}
-            >
-              {tab.label}
-            </button>
-          ))}
-        </nav>
-        <div className="min-h-0 flex-1 overflow-y-auto p-5">
-          {!canManage ? (
-            <Text tone="muted" size="sm" data-testid="instance-admin-locked">
-              Only the instance administrator can open this panel.
-            </Text>
-          ) : overview === undefined ? (
-            <Text tone="muted" size="sm">
-              Loading instance status…
-            </Text>
-          ) : (
-            <>
-              {active === "overview" && <OverviewSection overview={overview} />}
-              {active === "auth" && <AuthSection overview={overview} />}
-              {active === "storage" && <StorageSection overview={overview} />}
-              {active === "backups" && <BackupsSection overview={overview} />}
-              {active === "push" && <PushRelaySection overview={overview} />}
-              {active === "license" && <LicensePanel canManage={canManage} />}
-            </>
-          )}
+        <InstanceAdminContent
+          canManage={canManage}
+          {...(onClose !== undefined ? { onClose } : {})}
+          bodyClassName="min-h-0 flex-1 overflow-y-auto p-5"
+        />
+      </div>
+    </div>
+  );
+}
+
+function InstanceAdminContent({
+  canManage,
+  onClose,
+  bodyClassName,
+}: {
+  readonly canManage: boolean;
+  readonly onClose?: () => void;
+  readonly bodyClassName: string;
+}) {
+  const overview = useQuery(api.instance.overview, canManage ? {} : "skip");
+  const [active, setActive] = useState<TabId>("overview");
+
+  return (
+    <>
+      <nav
+        className="flex flex-wrap gap-1 border-b border-border px-4 py-2"
+        aria-label="Instance admin sections"
+      >
+        {TABS.map((tab) => (
+          <button
+            key={tab.id}
+            type="button"
+            aria-current={active === tab.id ? "page" : undefined}
+            className={
+              active === tab.id
+                ? "rounded-[7px] bg-surface-3 px-3 py-1 text-[13px] font-medium text-text"
+                : "rounded-[7px] px-3 py-1 text-[13px] text-text-muted hover:bg-surface-2 hover:text-text"
+            }
+            onClick={() => setActive(tab.id)}
+          >
+            {tab.label}
+          </button>
+        ))}
+      </nav>
+      <div className={bodyClassName}>
+        {!canManage ? (
+          <Text tone="muted" size="sm" data-testid="instance-admin-locked">
+            Only the instance administrator can open this panel.
+          </Text>
+        ) : overview === undefined ? (
+          <Text tone="muted" size="sm">
+            Loading instance status…
+          </Text>
+        ) : (
+          <>
+            {active === "overview" && <OverviewSection overview={overview} />}
+            {active === "auth" && <AuthSection overview={overview} />}
+            {active === "storage" && <StorageSection overview={overview} />}
+            {active === "backups" && <BackupsSection overview={overview} />}
+            {active === "push" && <PushRelaySection overview={overview} />}
+            {active === "license" && <LicensePanel canManage={canManage} />}
+          </>
+        )}
+        {onClose !== undefined && (
           <div className="mt-6">
             <Button variant="secondary" onClick={onClose}>
               Close
             </Button>
           </div>
-        </div>
+        )}
       </div>
-    </div>
+    </>
   );
 }
 

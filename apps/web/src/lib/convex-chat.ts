@@ -2,9 +2,7 @@ import type {
   ChannelSummary,
   ChatPort,
   ChatSubscriptions,
-  JoinIntentRow,
   MessagePayload,
-  MlsCommitRow,
   Paginated,
   PresenceRow,
   ReactionRow,
@@ -20,40 +18,42 @@ import { api } from "../../../../packages/convex/convex/_generated/api";
  *
  * This is the only place the web app maps Convex functions onto the
  * framework-agnostic chat contract, so the session and hooks stay testable and
- * the mobile app can reuse them with its own adapter. Every value crossing this
- * boundary is ciphertext or plaintext metadata; no keys or plaintext text go
- * the other way.
+ * the mobile app can reuse them with its own adapter. Everything crossing this
+ * boundary is plaintext: the server seals content at rest and hands plaintext
+ * back, so no keys or envelopes ever reach this client.
  */
 
 const PAGE = { numItems: 100, cursor: null } as const;
 
-function toSummary(channel: {
-  id: string;
-  kind: ChannelSummary["kind"];
-  categoryId: string | null;
-  nameCiphertext: string | null;
-  topicCiphertext: string | null;
-  mlsGroupId: string | null;
-  archived: boolean;
-  currentEpoch: number | null;
-  overrides?: readonly {
+interface ServerChannel {
+  readonly id: string;
+  readonly kind: ChannelSummary["kind"];
+  readonly categoryId: string | null;
+  readonly name: string | null;
+  readonly topic: string | null;
+  readonly archived: boolean;
+  readonly isPrivate?: boolean;
+  readonly overrides?: readonly {
     targetId: string;
     targetType: "role" | "member";
     allow: bigint;
     deny: bigint;
   }[];
-  memberIds?: readonly string[];
-}): ChannelSummary {
+  readonly position?: number;
+  readonly memberIds?: readonly string[];
+}
+
+function toSummary(channel: ServerChannel): ChannelSummary {
   return {
     id: channel.id,
     kind: channel.kind,
     categoryId: channel.categoryId,
-    nameCiphertext: channel.nameCiphertext,
-    topicCiphertext: channel.topicCiphertext,
-    mlsGroupId: channel.mlsGroupId,
+    name: channel.name,
+    topic: channel.topic,
     archived: channel.archived,
-    currentEpoch: channel.currentEpoch,
+    ...(channel.isPrivate !== undefined ? { isPrivate: channel.isPrivate } : {}),
     ...(channel.overrides !== undefined ? { overrides: channel.overrides } : {}),
+    ...(channel.position !== undefined ? { position: channel.position } : {}),
     ...(channel.memberIds !== undefined ? { memberIds: channel.memberIds } : {}),
   };
 }
@@ -63,20 +63,20 @@ function toStoredFile(file: {
   id: string;
   uploaderId: string;
   sizeBytes: number;
-  nameCiphertext: string | null;
-  mimeCiphertext: string | null;
-  dimensionsCiphertext: string | null;
-  blurhashCiphertext: string | null;
+  name: string | null;
+  mime: string | null;
+  dimensions: string | null;
+  blurhash: string | null;
   url: string | null;
 }): StoredFileView {
   return {
     id: file.id,
     uploaderId: file.uploaderId,
     sizeBytes: file.sizeBytes,
-    nameCiphertext: file.nameCiphertext,
-    mimeCiphertext: file.mimeCiphertext,
-    dimensionsCiphertext: file.dimensionsCiphertext,
-    blurhashCiphertext: file.blurhashCiphertext,
+    name: file.name,
+    mime: file.mime,
+    dimensions: file.dimensions,
+    blurhash: file.blurhash,
     url: file.url,
   };
 }
@@ -87,41 +87,43 @@ export function convexPort(client: ConvexReactClient): ChatPort {
     async upsertDevice(args) {
       return await client.mutation(api.devices.upsert, {
         platform: args.platform,
-        identityKey: args.identityKey,
         ...(args.pushToken !== undefined ? { pushToken: args.pushToken } : {}),
-      });
-    },
-    async publishKeyPackage(args) {
-      return await client.mutation(api.mls.publishKeyPackage, {
-        deviceId: args.deviceId as never,
-        keyPackage: args.keyPackage,
-      });
-    },
-    async consumeKeyPackages(args) {
-      return await client.mutation(api.mls.consume, {
-        deviceId: args.deviceId as never,
-        count: args.count,
       });
     },
     async createChannel(args) {
       return await client.mutation(api.channels.create, {
         kind: args.kind,
-        nameCiphertext: args.nameCiphertext,
-        ...(args.mlsGroupId !== undefined ? { mlsGroupId: args.mlsGroupId } : {}),
-        ...(args.topicCiphertext !== undefined ? { topicCiphertext: args.topicCiphertext } : {}),
+        name: args.name,
+        ...(args.topic !== undefined ? { topic: args.topic } : {}),
         ...(args.categoryId !== undefined ? { categoryId: args.categoryId as never } : {}),
+        ...(args.private === true ? { private: true } : {}),
+        ...(args.memberIds !== undefined ? { memberIds: [...args.memberIds] as never[] } : {}),
+        ...(args.roleIds !== undefined ? { roleIds: [...args.roleIds] as never[] } : {}),
       });
     },
-    async setMlsGroupId(args) {
-      return await client.mutation(api.channels.setMlsGroupId, {
-        channelId: args.channelId as never,
-        mlsGroupId: args.mlsGroupId,
+    async reorderChannels(args) {
+      await client.mutation(api.channels.reorder, {
+        moves: args.moves.map((move) => ({
+          channelId: move.channelId as never,
+          position: move.position,
+          ...(move.categoryId !== undefined
+            ? { categoryId: move.categoryId === null ? null : (move.categoryId as never) }
+            : {}),
+        })),
       });
+      return null;
     },
     async renameChannel(args) {
       await client.mutation(api.channels.rename, {
         channelId: args.channelId as never,
-        nameCiphertext: args.nameCiphertext,
+        name: args.name,
+      });
+      return null;
+    },
+    async setChannelTopic(args) {
+      await client.mutation(api.channels.setTopic, {
+        channelId: args.channelId as never,
+        ...(args.topic !== undefined ? { topic: args.topic } : {}),
       });
       return null;
     },
@@ -133,29 +135,43 @@ export function convexPort(client: ConvexReactClient): ChatPort {
       await client.mutation(api.channels.leave, { channelId: args.channelId as never });
       return null;
     },
-    async createDm(args) {
-      return await client.mutation(api.channels.createDm, {
-        otherUserId: args.otherUserId,
-        ...(args.mlsGroupId !== undefined ? { mlsGroupId: args.mlsGroupId } : {}),
+    async addChannelMember(args) {
+      const result = await client.mutation(api.channels.addMember, {
+        channelId: args.channelId as never,
+        userId: args.userId,
       });
+      return { added: result.added };
+    },
+    async removeChannelMember(args) {
+      const result = await client.mutation(api.channels.removeMember, {
+        channelId: args.channelId as never,
+        userId: args.userId,
+      });
+      return { removed: result.removed };
+    },
+    async archiveChannel(args) {
+      await client.mutation(api.channels.archive, { channelId: args.channelId as never });
+      return null;
+    },
+    async unarchiveChannel(args) {
+      await client.mutation(api.channels.unarchive, { channelId: args.channelId as never });
+      return null;
+    },
+    async createDm(args) {
+      return await client.mutation(api.channels.createDm, { otherUserId: args.otherUserId });
     },
     async createGroupDm(args) {
-      return await client.mutation(api.channels.createGroupDm, {
-        memberIds: [...args.memberIds],
-        ...(args.mlsGroupId !== undefined ? { mlsGroupId: args.mlsGroupId } : {}),
-      });
+      return await client.mutation(api.channels.createGroupDm, { memberIds: [...args.memberIds] });
     },
     async getChannelMemberIds(args) {
       const channel = await client.query(api.channels.get, { channelId: args.channelId as never });
       return channel.memberIds ?? [];
     },
-    async generateUploadUrl() {
-      return await client.mutation(api.files.generateUploadUrl, {});
-    },
-    async uploadCiphertext(args) {
-      const response = await fetch(args.uploadUrl, {
+    async uploadFile(args) {
+      const uploadUrl = await client.mutation(api.files.generateUploadUrl, {});
+      const response = await fetch(uploadUrl, {
         method: "POST",
-        headers: { "Content-Type": args.contentType ?? "application/octet-stream" },
+        headers: { "Content-Type": args.mime },
         body: args.bytes as unknown as BodyInit,
       });
       if (!response.ok) {
@@ -165,28 +181,15 @@ export function convexPort(client: ConvexReactClient): ChatPort {
       if (typeof body.storageId !== "string") {
         throw new Error("Upload response did not include a storageId");
       }
-      return body.storageId;
-    },
-    async recordFile(args) {
-      return await client.mutation(api.files.record, {
-        storageId: args.storageId as never,
-        sizeBytes: args.sizeBytes,
-        ...(args.nameCiphertext !== undefined ? { nameCiphertext: args.nameCiphertext } : {}),
-        ...(args.mimeCiphertext !== undefined ? { mimeCiphertext: args.mimeCiphertext } : {}),
-        ...(args.dimensionsCiphertext !== undefined
-          ? { dimensionsCiphertext: args.dimensionsCiphertext }
-          : {}),
-        ...(args.blurhashCiphertext !== undefined
-          ? { blurhashCiphertext: args.blurhashCiphertext }
-          : {}),
+      return await client.action(api.files.finalize, {
+        storageId: body.storageId as never,
+        name: args.name,
+        mime: args.mime,
+        sizeBytes: args.bytes.length,
+        ...(args.dimensions !== undefined ? { dimensions: JSON.stringify(args.dimensions) } : {}),
+        ...(args.blurhash !== undefined ? { blurhash: args.blurhash } : {}),
+        ...(args.channelId !== undefined ? { channelId: args.channelId as never } : {}),
       });
-    },
-    async fetchCiphertext(args) {
-      const response = await fetch(args.url);
-      if (!response.ok) {
-        throw new Error(`Download failed with status ${response.status}`);
-      }
-      return new Uint8Array(await response.arrayBuffer());
     },
     async getFile(args) {
       const view = await client.query(api.files.get, { fileId: args.fileId as never });
@@ -198,47 +201,34 @@ export function convexPort(client: ConvexReactClient): ChatPort {
       });
       return views.map(toStoredFile);
     },
-    async appendCommit(args) {
-      return await client.mutation(api.mls.appendCommit, {
-        channelId: args.channelId as never,
-        epoch: args.epoch,
-        commitCiphertext: args.commitCiphertext,
-        ...(args.welcomeCiphertext !== undefined
-          ? { welcomeCiphertext: args.welcomeCiphertext }
-          : {}),
-      });
-    },
-    async publishJoinIntent(args) {
-      return await client.mutation(api.mls.publishJoinIntent, {
-        channelId: args.channelId as never,
-        deviceId: args.deviceId as never,
-        keyPackage: args.keyPackage,
-      });
-    },
-    async markJoinIntentServiced(args) {
-      await client.mutation(api.mls.markJoinIntentServiced, { intentId: args.intentId as never });
-      return null;
+    async downloadFile(args) {
+      const view = await client.query(api.files.get, { fileId: args.fileId as never });
+      const url = view?.url ?? null;
+      if (url === null) {
+        throw new Error("File is no longer available");
+      }
+      const response = await fetch(url);
+      if (!response.ok) {
+        throw new Error(`Download failed with status ${response.status}`);
+      }
+      return new Uint8Array(await response.arrayBuffer());
     },
     async sendMessage(args) {
       return await client.mutation(api.messages.send, {
         channelId: args.channelId as never,
-        ciphertext: args.ciphertext,
-        epoch: args.epoch,
+        body: args.body,
         ...(args.threadRootId !== undefined ? { threadRootId: args.threadRootId as never } : {}),
+        ...(args.replyToId !== undefined ? { replyToId: args.replyToId as never } : {}),
         ...(args.mentionUserIds !== undefined ? { mentionUserIds: [...args.mentionUserIds] } : {}),
         ...(args.attachmentIds !== undefined
-          ? { attachmentIds: args.attachmentIds as never[] }
-          : {}),
-        ...(args.authorDeviceId !== undefined
-          ? { authorDeviceId: args.authorDeviceId as never }
+          ? { attachmentIds: [...args.attachmentIds] as never[] }
           : {}),
       });
     },
     async editMessage(args) {
       await client.mutation(api.messages.edit, {
         messageId: args.messageId as never,
-        ciphertext: args.ciphertext,
-        epoch: args.epoch,
+        body: args.body,
       });
       return null;
     },
@@ -257,7 +247,7 @@ export function convexPort(client: ConvexReactClient): ChatPort {
     async toggleReaction(args) {
       return await client.mutation(api.reactions.toggle, {
         messageId: args.messageId as never,
-        emojiCiphertext: args.emojiCiphertext,
+        emoji: args.emoji,
       });
     },
     async heartbeat(args) {
@@ -268,9 +258,7 @@ export function convexPort(client: ConvexReactClient): ChatPort {
     async setStatus(args) {
       return await client.mutation(api.presence.setStatus, {
         status: args.status,
-        ...(args.customStatusCiphertext !== undefined
-          ? { customStatusCiphertext: args.customStatusCiphertext }
-          : {}),
+        ...(args.customStatus !== undefined ? { customStatus: args.customStatus } : {}),
       });
     },
     async setTyping(args) {
@@ -310,27 +298,21 @@ export function convexSubscriptions(client: ConvexReactClient): ChatSubscription
 
   return {
     watchChannels(onChange) {
-      return watch<Paginated<ChannelSummary>>(
+      return watch<Paginated<ServerChannel>>(
         api.channels.list,
         { paginationOpts: PAGE },
         (result) => onChange(result.page.map(toSummary)),
       );
     },
-    watchMessages(channelId, onChange) {
+    watchMessages(channelId, onChange, options) {
       return watch<Paginated<MessagePayload>>(
         api.messages.list,
-        { channelId, paginationOpts: PAGE },
+        { channelId, paginationOpts: { numItems: options?.limit ?? PAGE.numItems, cursor: null } },
         (result) => onChange(result.page),
       );
     },
     watchReactions(messageId, onChange) {
       return watch<ReactionRow[]>(api.reactions.list, { messageId }, onChange);
-    },
-    watchCommits(channelId, afterEpoch, onChange) {
-      return watch<MlsCommitRow[]>(api.mls.listCommits, { channelId, afterEpoch }, onChange);
-    },
-    watchJoinIntents(channelId, onChange) {
-      return watch<JoinIntentRow[]>(api.mls.listJoinIntents, { channelId }, onChange);
     },
     watchPresence(onChange) {
       return watch<PresenceRow[]>(api.presence.list, {}, onChange);

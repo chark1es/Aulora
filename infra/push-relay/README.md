@@ -15,7 +15,8 @@ credentials and a real device, so that step is delegated to an operator.
 iOS and stock Android only deliver push through APNs and FCM, whose credentials
 belong to the **app builder**, not the self-hoster. The relay holds those
 credentials and forwards only an opaque `{ serverId, channelId, messageId }`.
-Aulora is end-to-end encrypted, so the relay never sees message text and cannot
+That wakeup carries no message content: Aulora encrypts server-side and the app
+fetches and decrypts authorized content from its own server, so the relay cannot
 read anything it carries. Self-hosters building their own apps can point
 `PUSH_RELAY_URL` at their own relay, or disable mobile push entirely.
 

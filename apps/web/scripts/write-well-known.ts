@@ -18,6 +18,8 @@ import { dirname, resolve } from "node:path";
  *   ICON_SEED                avatar seed for the workspace       (aulora:server:local)
  *   AUTH_LOCAL_ENABLED       local email/password                (true)
  *   AUTH_LOCAL_SIGNUP        allow local sign-up                 (true)
+ *   AULORA_EKM_PROVIDER      external key manager provider       (local)
+ *   AULORA_ENCRYPTION_KEY_VERSION  content key version            (1)
  *   GITHUB_CLIENT_ID/SECRET, GOOGLE_*, MICROSOFT_*, APPLE_*      built-in OAuth
  *   OIDC_ISSUER/OIDC_DISCOVERY_URL/OIDC_CLIENT_ID/OIDC_CLIENT_SECRET/OIDC_DISPLAY_NAME/OIDC_SCOPES
  *
@@ -164,6 +166,14 @@ export function buildWellKnown(env: Env): Record<string, unknown> {
         signup: readBoolean(env, "AUTH_LOCAL_SIGNUP", true),
       },
       providers: buildProviders(env),
+    },
+    // Non-secret encryption descriptor, mirroring `@aulora/convex`
+    // `getEncryptionSettings`; no key material is read or emitted.
+    encryption: {
+      mode: "server",
+      algorithm: "AES-256-GCM",
+      keyVersion: read(env, "AULORA_ENCRYPTION_KEY_VERSION") ?? "1",
+      provider: read(env, "AULORA_EKM_PROVIDER") ?? "local",
     },
   };
 }

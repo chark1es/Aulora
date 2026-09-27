@@ -1,5 +1,9 @@
-import { type AttachmentDescriptor, type ChatPort, uploadEncryptedAttachment } from "@aulora/core";
-import { base64ToBytes } from "@aulora/crypto";
+import {
+  type AttachmentDescriptor,
+  base64ToBytes,
+  type ChatPort,
+  uploadAttachment,
+} from "@aulora/core";
 import * as Clipboard from "expo-clipboard";
 import * as DocumentPicker from "expo-document-picker";
 import { ImageManipulator, SaveFormat } from "expo-image-manipulator";
@@ -7,9 +11,8 @@ import * as ImagePicker from "expo-image-picker";
 
 /**
  * Mobile uploads: camera, photo library, document picker and clipboard paste.
- * Images are re-encoded (which strips EXIF) before encryption; every byte is
- * encrypted client-side by `uploadEncryptedAttachment`, and only ciphertext is
- * uploaded.
+ * Images are re-encoded (which strips EXIF) before upload; the server seals
+ * every attachment at rest, so only plaintext crosses the wire.
  */
 export interface PickedFile {
   readonly uri: string;
@@ -115,13 +118,13 @@ function bytesFor(file: PickedFile): Promise<Uint8Array> {
   return readBytes(file.uri);
 }
 
-/** Encrypts and uploads one picked file; returns the descriptor for the payload. */
+/** Uploads one picked file; returns the descriptor for the payload. */
 export async function uploadPickedFile(
   port: ChatPort,
   file: PickedFile,
 ): Promise<AttachmentDescriptor> {
   const bytes = await bytesFor(file);
-  return await uploadEncryptedAttachment(port, {
+  return await uploadAttachment(port, {
     bytes,
     name: file.name,
     mime: file.mime,
@@ -131,7 +134,7 @@ export async function uploadPickedFile(
   });
 }
 
-/** Encrypts and uploads several picked files in order. */
+/** Uploads several picked files in order. */
 export async function uploadPickedFiles(
   port: ChatPort,
   files: readonly PickedFile[],

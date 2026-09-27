@@ -3,16 +3,15 @@ import { useEffect, useRef } from "react";
 import type { ChatRuntime } from "./chat-runtime";
 import { isDesktop, showDesktopNotification } from "./desktop";
 
-/** How much decrypted text a native notification may carry. */
+/** How much message text a native notification may carry. */
 const NOTIFICATION_BODY_LIMIT = 240;
 
 /**
  * Desktop-only integration for incoming messages: a native notification when
- * the window is unfocused. The notification body is the decrypted message
- * text, computed on this device, never sent to the server. Messages that
- * predate mount are ignored so opening the app does not replay history as
- * notifications. The unread badge is owned by {@link useLiveUnreadBadge}, which
- * reads live read cursors.
+ * the window is unfocused. The notification body is the message text the server
+ * returned to this device. Messages that predate mount are ignored so opening
+ * the app does not replay history as notifications. The unread badge is owned
+ * by {@link useLiveUnreadBadge}, which reads live read cursors.
  */
 export function useDesktopNotifications(
   runtime: ChatRuntime | undefined,
@@ -47,7 +46,7 @@ export function useDesktopNotifications(
           continue;
         }
         const text = runtime.session.decryptedText(message.id);
-        if (text === undefined || text.trim().length === 0) {
+        if (text.trim().length === 0) {
           continue;
         }
         if (!document.hasFocus()) {

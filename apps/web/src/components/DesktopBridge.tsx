@@ -1,6 +1,12 @@
 import { useNavigate } from "@tanstack/react-router";
 import { useEffect } from "react";
-import { isDesktop, listenDesktopEvent, parseDeepLink, takeDesktopDeepLinks } from "../lib/desktop";
+import {
+  desktopPlatform,
+  isDesktop,
+  listenDesktopEvent,
+  parseDeepLink,
+  takeDesktopDeepLinks,
+} from "../lib/desktop";
 
 /**
  * Runs inside the router so deep links and native menu commands can navigate.
@@ -14,6 +20,7 @@ export function DesktopBridge() {
       return;
     }
     document.documentElement.dataset.desktop = "tauri";
+    document.documentElement.dataset.platform = desktopPlatform();
     let disposed = false;
     let unlisten: (() => void) | undefined;
 
@@ -63,6 +70,7 @@ export function DesktopBridge() {
       disposed = true;
       unlisten?.();
       delete document.documentElement.dataset.desktop;
+      delete document.documentElement.dataset.platform;
     };
   }, [navigate]);
 

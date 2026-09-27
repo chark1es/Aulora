@@ -23,7 +23,6 @@ import {
 } from "react";
 import { createMobileChatRuntime, type MobileChatRuntime } from "../lib/chat-runtime";
 import { convexSubscriptions } from "../lib/convex-chat";
-import { mobileKeyStore } from "../lib/keystore";
 
 export interface ChatSendOptions {
   readonly mentionUserIds?: readonly string[];
@@ -37,17 +36,11 @@ export interface ChatSendResult {
 }
 
 export interface MobileChatContextValue {
-  /** `undefined` when mobile E2EE is unavailable (e.g. Expo Go). */
   readonly runtime: MobileChatRuntime | undefined;
-  /** A clear, user-facing reason E2EE is unavailable, or `null`. */
-  readonly mlsError: string | null;
   readonly ready: boolean;
   readonly channels: readonly ChannelView[];
   readonly presence: readonly PresenceRow[];
   readonly outbox: readonly OutboxItem[];
-  /** Decrypted channel names, keyed by channel id. */
-  readonly channelNames: ReadonlyMap<string, string>;
-  reportChannelNames(entries: readonly { id: string; ciphertext: string }[]): void;
   sendMessage(channelId: string, text: string, options?: ChatSendOptions): Promise<ChatSendResult>;
   search(query: string): Promise<readonly SearchHit[]>;
 }
@@ -56,24 +49,17 @@ const ChatContext = createContext<MobileChatContextValue | null>(null);
 
 export interface ChatProviderProps {
   readonly client: ConvexReactClient;
-  readonly userId: string;
-  readonly displayName: string;
   readonly children: ReactNode;
 }
 
 /**
  * Owns the mobile chat runtime, device-local search and the offline outbox.
- * When the native crypto polyfill is absent the provider still exposes the
- * server's channel list and per-channel presence, plus a clear `mlsError`, so the
- * UI can show the real workspace while stating plainly that message E2EE is
- * unavailable.
+ * The server seals content at rest; this provider only ever handles plaintext.
  */
-export function ChatProvider({ client, userId, displayName, children }: ChatProviderProps) {
+export function ChatProvider({ client, children }: ChatProviderProps) {
   const [runtime, setRuntime] = useState<MobileChatRuntime | undefined>(undefined);
-  const [mlsError, setMlsError] = useState<string | null>(null);
   const [ready, setReady] = useState(false);
   const [summaries, setSummaries] = useState<readonly ChannelSummary[]>([]);
-  const [channelNames, setChannelNames] = useState<ReadonlyMap<string, string>>(new Map());
   const [presence, setPresence] = useState<readonly PresenceRow[]>([]);
   const [outbox, setOutbox] = useState<readonly OutboxItem[]>([]);
   const runtimeRef = useRef<MobileChatRuntime | undefined>(undefined);
@@ -92,23 +78,14 @@ export function ChatProvider({ client, userId, displayName, children }: ChatProv
         setOutbox(items);
       }
     });
-    void createMobileChatRuntime({
-      client,
-      userId,
-      displayName,
-      keyStore: mobileKeyStore(),
-    })
+    void createMobileChatRuntime({ client })
       .then((result) => {
         if (cancelled) {
-          result.runtime?.session.dispose();
+          result.session.dispose();
           return;
         }
-        if (result.mlsError !== null) {
-          console.warn(`[aulora] E2EE unavailable: ${result.mlsError}`);
-        }
-        setMlsError(result.mlsError);
-        runtimeRef.current = result.runtime ?? undefined;
-        setRuntime(result.runtime ?? undefined);
+        runtimeRef.current = result;
+        setRuntime(result);
         setReady(true);
       })
       .catch((error: unknown) => {
@@ -118,7 +95,6 @@ export function ChatProvider({ client, userId, displayName, children }: ChatProv
         // A failed session start must not leave the shell spinning forever.
         const message = error instanceof Error ? error.message : String(error);
         console.warn(`[aulora] chat runtime failed to start: ${message}`);
-        setMlsError(message);
         setReady(true);
       });
     return () => {
@@ -128,7 +104,7 @@ export function ChatProvider({ client, userId, displayName, children }: ChatProv
       outboxRef.current = undefined;
       searchRef.current = undefined;
     };
-  }, [client, userId, displayName]);
+  }, [client]);
 
   useEffect(() => {
     const subs = convexSubscriptions(client);
@@ -151,7 +127,7 @@ export function ChatProvider({ client, userId, displayName, children }: ChatProv
       }
       for (const message of messages) {
         const text = runtime.session.decryptedText(message.id);
-        if (text === undefined) {
+        if (text.length === 0) {
           continue;
         }
         void index.index({
@@ -165,39 +141,6 @@ export function ChatProvider({ client, userId, displayName, children }: ChatProv
     });
   }, [runtime]);
 
-  const reportChannelNames = useCallback(
-    (entries: readonly { id: string; ciphertext: string }[]) => {
-      const active = runtimeRef.current;
-      if (active === undefined || entries.length === 0) {
-        return;
-      }
-      void Promise.all(
-        entries.map(async (entry) => {
-          const payload = await active.session.decryptPayload<{ text: string }>(
-            entry.id,
-            entry.ciphertext,
-          );
-          return payload === undefined ? null : ([entry.id, payload.text] as const);
-        }),
-      ).then((resolved) => {
-        const found = resolved.filter(
-          (value): value is readonly [string, string] => value !== null,
-        );
-        if (found.length === 0) {
-          return;
-        }
-        setChannelNames((current) => {
-          const next = new Map(current);
-          for (const [id, name] of found) {
-            next.set(id, name);
-          }
-          return next;
-        });
-      });
-    },
-    [],
-  );
-
   const sendMessage = useCallback(
     async (
       channelId: string,
@@ -207,14 +150,21 @@ export function ChatProvider({ client, userId, displayName, children }: ChatProv
       const chat = runtimeRef.current;
       const active = outboxRef.current;
       if (chat === undefined || active === undefined) {
-        throw new Error("Encryption is not available on this build.");
+        throw new Error("Chat is not ready yet.");
       }
       const hasPayload = text.trim().length > 0 || (options.attachments?.length ?? 0) > 0;
       if (!hasPayload) {
         return { queued: false };
       }
+      const attachmentIds = (options.attachments ?? []).map((attachment) => attachment.fileId);
       try {
-        const messageId = await chat.session.sendMessage(channelId, text, options);
+        const messageId = await chat.session.sendMessage(channelId, text, {
+          ...(options.mentionUserIds !== undefined
+            ? { mentionUserIds: options.mentionUserIds }
+            : {}),
+          ...(options.threadRootId !== undefined ? { threadRootId: options.threadRootId } : {}),
+          ...(attachmentIds.length > 0 ? { attachmentIds } : {}),
+        });
         return { queued: false, messageId };
       } catch {
         await active.enqueue(
@@ -248,36 +198,22 @@ export function ChatProvider({ client, userId, displayName, children }: ChatProv
     () =>
       summaries.map((channel) => ({
         ...channel,
-        name: channelNames.get(channel.id) ?? placeholder(channel),
+        name: channel.name ?? placeholder(channel),
       })),
-    [summaries, channelNames],
+    [summaries],
   );
 
   const value = useMemo<MobileChatContextValue>(
     () => ({
       runtime,
-      mlsError,
       ready,
       channels: views,
       presence,
       outbox,
-      channelNames,
-      reportChannelNames,
       sendMessage,
       search,
     }),
-    [
-      runtime,
-      mlsError,
-      ready,
-      views,
-      presence,
-      outbox,
-      channelNames,
-      reportChannelNames,
-      sendMessage,
-      search,
-    ],
+    [runtime, ready, views, presence, outbox, sendMessage, search],
   );
 
   return <ChatContext.Provider value={value}>{children}</ChatContext.Provider>;

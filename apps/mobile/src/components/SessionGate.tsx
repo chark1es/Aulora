@@ -34,7 +34,7 @@ export function SessionGate({ profile, authClient, cookieStore, client }: Sessio
   if (user !== undefined && user !== null) {
     const displayName = user.name ?? user.email ?? "You";
     return (
-      <ChatProvider client={client} userId={user.id} displayName={displayName}>
+      <ChatProvider client={client}>
         <ChatScreen
           workspaceName={profile.name}
           ownUserId={user.id}

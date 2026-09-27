@@ -2,6 +2,7 @@ import {
   type AttachmentDescriptor,
   type ChannelSummary,
   type ChannelView,
+  isConnectivityError,
   type MessagePayload,
   Outbox,
   type OutboxItem,
@@ -31,6 +32,7 @@ export interface ChatSearchHit extends SearchHit {
 export interface ChatSendOptions {
   readonly mentionUserIds?: readonly string[];
   readonly threadRootId?: string;
+  readonly replyToId?: string;
   readonly attachments?: readonly AttachmentDescriptor[];
 }
 
@@ -38,15 +40,17 @@ export interface ChatSendResult {
   /** `true` when the send was queued locally because the device is offline. */
   readonly queued: boolean;
   readonly messageId?: string;
+  /** Set when a live send was rejected by the server while online. */
+  readonly error?: string;
 }
 
 export interface ChatContextValue {
-  /** `undefined` until the runtime and device identity are ready. */
+  /** `undefined` until the runtime is ready. */
   readonly runtime: ChatRuntime | undefined;
-  /** Decrypted channel names, keyed by channel id. */
+  /** Channel names, keyed by channel id. */
   readonly channelNames: ReadonlyMap<string, string>;
-  /** Decrypts and caches channel names for the given channels. */
-  reportChannelNames(entries: readonly { id: string; ciphertext: string }[]): void;
+  /** Caches plaintext channel names for the given channels. */
+  reportChannelNames(entries: readonly { id: string; name: string }[]): void;
   readonly presence: readonly PresenceRow[];
   readonly channels: readonly ChannelView[];
   readonly ready: boolean;
@@ -54,9 +58,13 @@ export interface ChatContextValue {
   readonly online: boolean;
   /** Queued offline sends, oldest first; rendered optimistically. */
   readonly outbox: readonly OutboxItem[];
-  /** Encrypts and sends, or queues locally when offline. */
+  /** Sends, or queues locally when offline. */
   sendMessage(channelId: string, text: string, options?: ChatSendOptions): Promise<ChatSendResult>;
-  /** Queries the local decrypted search index. */
+  /** Re-queues a failed send and immediately attempts to flush it. */
+  retrySend?(id: string): Promise<void>;
+  /** Drops a queued or failed send without sending it. */
+  discardSend?(id: string): Promise<void>;
+  /** Queries the local search index. */
   search(query: string): Promise<readonly ChatSearchHit[]>;
 }
 
@@ -72,8 +80,8 @@ export interface ChatProviderProps {
 
 /**
  * Owns the chat runtime, the device-local search index and the offline outbox
- * for one signed-in device. Channel names and message text are only ever
- * decrypted here or in the session; plaintext never leaves the device.
+ * for one signed-in device. Messages and channel names arrive as plaintext
+ * (the server seals content at rest); nothing is re-encrypted on the client.
  */
 export function ChatProvider({
   client,
@@ -101,9 +109,20 @@ export function ChatProvider({
     outboxRef.current = outboxStore;
     searchRef.current = searchIndex;
     void searchIndex.load();
-    void outboxStore.list().then((items) => {
+    void outboxStore.list().then(async (items) => {
+      if (cancelled) {
+        return;
+      }
+      // Recover sends left mid-flight by a crash so they can be retried; a
+      // permanently failed item stays surfaced (not "Sending…") for the UI.
+      for (const item of items) {
+        if (item.status === "sending") {
+          await outboxStore.retry(item.id);
+        }
+      }
+      const loaded = await outboxStore.list();
       if (!cancelled) {
-        setOutbox(items);
+        setOutbox(loaded);
       }
     });
     void createChatRuntime({ client, userId, displayName }).then((created) => {
@@ -124,7 +143,7 @@ export function ChatProvider({
     };
   }, [client, userId, displayName]);
 
-  // Index every message the session opens, feeding only decrypted text.
+  // Index every message the session opens with its plaintext body.
   useEffect(() => {
     if (runtime === undefined) {
       return;
@@ -136,7 +155,7 @@ export function ChatProvider({
       }
       for (const message of messages) {
         const text = runtime.session.decryptedText(message.id);
-        if (text === undefined) {
+        if (text.length === 0) {
           continue;
         }
         void index.index({
@@ -171,13 +190,20 @@ export function ChatProvider({
     if (active === undefined || chat === undefined) {
       return;
     }
-    await active.flush(async (item) => {
-      await chat.session.sendMessage(item.channelId, item.text, {
-        mentionUserIds: item.mentionUserIds,
-        ...(item.threadRootId !== undefined ? { threadRootId: item.threadRootId } : {}),
-        ...(item.attachments !== undefined ? { attachments: item.attachments } : {}),
+    try {
+      await active.flush(async (item) => {
+        await chat.session.sendMessage(item.channelId, item.text, {
+          mentionUserIds: item.mentionUserIds,
+          ...(item.threadRootId !== undefined ? { threadRootId: item.threadRootId } : {}),
+          ...(item.replyToId !== undefined ? { replyToId: item.replyToId } : {}),
+          ...(item.attachments !== undefined && item.attachments.length > 0
+            ? { attachmentIds: item.attachments.map((attachment) => attachment.fileId) }
+            : {}),
+        });
       });
-    });
+    } catch {
+      // Keep the queue intact; the ticker retries on the next tick.
+    }
     await refreshOutbox();
   }, [refreshOutbox]);
 
@@ -218,27 +244,57 @@ export function ChatProvider({
     return () => clearInterval(timer);
   }, [flush]);
 
-  const reportChannelNames = useCallback(
-    (entries: readonly { id: string; ciphertext: string }[]) => {
-      const active = runtimeRef.current;
-      if (active === undefined || entries.length === 0) {
-        return;
-      }
-      void decryptNames(active, entries).then((decrypted) => {
-        if (decrypted.size === 0) {
-          return;
+  const reportChannelNames = useCallback((entries: readonly { id: string; name: string }[]) => {
+    if (entries.length === 0) {
+      return;
+    }
+    setChannelNames((current) => {
+      const next = new Map(current);
+      for (const entry of entries) {
+        if (entry.name.length > 0) {
+          next.set(entry.id, entry.name);
         }
-        setChannelNames((current) => {
-          const next = new Map(current);
-          for (const [id, name] of decrypted) {
-            next.set(id, name);
+      }
+      return next;
+    });
+  }, []);
+
+  // Open each channel once the runtime is ready and cache its plaintext name.
+  useEffect(() => {
+    const active = runtimeRef.current;
+    if (runtime === undefined || active === undefined || channels.length === 0) {
+      return;
+    }
+    let cancelled = false;
+    void Promise.allSettled(
+      channels.map((channel) =>
+        (async () => {
+          if (cancelled) {
+            return;
           }
-          return next;
-        });
-      });
-    },
-    [],
-  );
+          await active.session.openChannel(channel);
+          if (cancelled) {
+            return;
+          }
+          await active.session.hydrateChannelNames([channel]);
+          if (cancelled) {
+            return;
+          }
+          if (channel.kind !== "dm" && channel.kind !== "group_dm") {
+            const name = active.session.channelNameFor(channel.id, channel.name);
+            setChannelNames((current) => {
+              const next = new Map(current);
+              next.set(channel.id, name);
+              return next;
+            });
+          }
+        })(),
+      ),
+    );
+    return () => {
+      cancelled = true;
+    };
+  }, [runtime, channels]);
 
   const sendMessage = useCallback(
     async (
@@ -248,37 +304,92 @@ export function ChatProvider({
     ): Promise<ChatSendResult> => {
       const chat = runtimeRef.current;
       const active = outboxRef.current;
-      if (chat === undefined || active === undefined) {
-        throw new Error("Chat is not ready");
-      }
       const hasPayload = text.trim().length > 0 || (options.attachments?.length ?? 0) > 0;
       if (!hasPayload) {
         return { queued: false };
       }
-      if (online) {
-        try {
-          const messageId = await chat.session.sendMessage(channelId, text, options);
-          return { queued: false, messageId };
-        } catch {
-          // Network failure: fall through and queue the ciphertext payload.
-        }
+      if (active === undefined) {
+        return { queued: false, error: "Chat is not ready" };
       }
-      await active.enqueue(
-        {
-          channelId,
-          text,
+      const enqueue = async (): Promise<ChatSendResult> => {
+        await active.enqueue(
+          {
+            channelId,
+            text,
+            ...(options.mentionUserIds !== undefined
+              ? { mentionUserIds: options.mentionUserIds }
+              : {}),
+            ...(options.threadRootId !== undefined ? { threadRootId: options.threadRootId } : {}),
+            ...(options.replyToId !== undefined ? { replyToId: options.replyToId } : {}),
+            ...(options.attachments !== undefined ? { attachments: options.attachments } : {}),
+          },
+          Date.now(),
+        );
+        await refreshOutbox();
+        // Try right away in case the connection is actually usable; on a
+        // genuine outage the item backs off and the ticker retries later.
+        void flush();
+        return { queued: true };
+      };
+      // No runtime yet, or the browser is known to be offline: queue directly.
+      if (chat === undefined || !online) {
+        return enqueue();
+      }
+      const attachOptions =
+        options.attachments !== undefined && options.attachments.length > 0
+          ? { attachmentIds: options.attachments.map((attachment) => attachment.fileId) }
+          : {};
+      try {
+        const messageId = await chat.session.sendMessage(channelId, text, {
           ...(options.mentionUserIds !== undefined
             ? { mentionUserIds: options.mentionUserIds }
             : {}),
           ...(options.threadRootId !== undefined ? { threadRootId: options.threadRootId } : {}),
-          ...(options.attachments !== undefined ? { attachments: options.attachments } : {}),
-        },
-        Date.now(),
-      );
-      await refreshOutbox();
-      return { queued: true };
+          ...(options.replyToId !== undefined ? { replyToId: options.replyToId } : {}),
+          ...attachOptions,
+        });
+        return { queued: false, messageId };
+      } catch (error) {
+        // Only a real connectivity failure is parked in the outbox; a server
+        // rejection while online is surfaced so the caller can show it.
+        if (isConnectivityError(error)) {
+          return enqueue();
+        }
+        return {
+          queued: false,
+          error:
+            error instanceof Error && error.message.length > 0
+              ? error.message
+              : "Message couldn't be sent. Please try again.",
+        };
+      }
     },
-    [online, refreshOutbox],
+    [online, refreshOutbox, flush],
+  );
+
+  const retrySend = useCallback(
+    async (id: string) => {
+      const active = outboxRef.current;
+      if (active === undefined) {
+        return;
+      }
+      await active.retry(id);
+      await refreshOutbox();
+      void flush();
+    },
+    [refreshOutbox, flush],
+  );
+
+  const discardSend = useCallback(
+    async (id: string) => {
+      const active = outboxRef.current;
+      if (active === undefined) {
+        return;
+      }
+      await active.remove(id);
+      await refreshOutbox();
+    },
+    [refreshOutbox],
   );
 
   const search = useCallback(
@@ -315,6 +426,8 @@ export function ChatProvider({
       online,
       outbox,
       sendMessage,
+      retrySend,
+      discardSend,
       search,
     }),
     [
@@ -327,28 +440,13 @@ export function ChatProvider({
       online,
       outbox,
       sendMessage,
+      retrySend,
+      discardSend,
       search,
     ],
   );
 
   return <ChatContext.Provider value={value}>{children}</ChatContext.Provider>;
-}
-
-async function decryptNames(
-  runtime: ChatRuntime,
-  entries: readonly { id: string; ciphertext: string }[],
-): Promise<Map<string, string>> {
-  const result = new Map<string, string>();
-  for (const entry of entries) {
-    const payload = await runtime.session.decryptPayload<{ text: string }>(
-      entry.id,
-      entry.ciphertext,
-    );
-    if (payload !== undefined) {
-      result.set(entry.id, payload.text);
-    }
-  }
-  return result;
 }
 
 function placeholder(channel: ChannelSummary): string {
@@ -371,3 +469,10 @@ export function useChat(): ChatContextValue {
 }
 
 export type { MessagePayload };
+
+/**
+ * Supplies a ready-made chat context. Used by the dev-only UI preview, which
+ * runs the real chat surface against the in-memory port; production code goes
+ * through {@link ChatProvider}.
+ */
+export const ChatContextProvider = ChatContext.Provider;

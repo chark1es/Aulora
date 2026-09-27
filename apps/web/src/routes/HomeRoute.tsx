@@ -9,7 +9,7 @@ export function HomeRoute() {
 
   if (!ready) {
     return (
-      <div className="flex min-h-screen items-center justify-center">
+      <div className="pane flex flex-1 items-center justify-center">
         <Spinner size={28} label="Loading servers" />
       </div>
     );

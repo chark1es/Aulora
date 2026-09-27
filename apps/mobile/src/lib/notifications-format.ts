@@ -1,8 +1,8 @@
 /**
  * Pure notification decisions for mobile. Local display only: the server never
- * sends message text (it only has ciphertext), so this device decides whether an
- * incoming decrypted message should raise an OS notification. Kept free of
- * `expo-notifications` imports so it is unit-testable on any host.
+ * pushes message text, so this device decides whether an incoming message
+ * should raise an OS notification. Kept free of `expo-notifications` imports so
+ * it is unit-testable on any host.
  */
 
 export interface NotificationContent {
@@ -10,10 +10,10 @@ export interface NotificationContent {
   readonly body: string;
 }
 
-/** How much decrypted text a notification may carry. */
+/** How much message text a notification may carry. */
 export const NOTIFICATION_BODY_LIMIT = 240;
 
-/** Formats the local notification for one decrypted message. */
+/** Formats the local notification for one message. */
 export function notificationContent(
   channelName: string | undefined,
   text: string,
@@ -36,7 +36,7 @@ export interface NotifiableMessage {
 /**
  * Decides whether one incoming message should raise a notification: not authored
  * by this device, created after the app mounted (so opening the app does not
- * replay history), and carrying non-empty decrypted text.
+ * replay history), and carrying non-empty text.
  */
 export function shouldNotify(
   message: NotifiableMessage,

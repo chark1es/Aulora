@@ -34,7 +34,8 @@ docker compose run --rm setup
 `setup` mints the admin key, generates the missing secrets, deploys the Convex
 functions, creates the workspace + owner account, and writes the public
 `/.well-known/aulora.json`. It also persists generated secrets
-(`INSTANCE_SECRET`, `BETTER_AUTH_SECRET`, VAPID keys) back into `infra/docker/.env`.
+(`INSTANCE_SECRET`, `BETTER_AUTH_SECRET`, VAPID keys, the default encryption key
+`AULORA_ENCRYPTION_KEY`) back into `infra/docker/.env`.
 
 ### Local URL map
 
@@ -79,6 +80,7 @@ Reproducibility matters more than freshness here, so every image is pinned:
 | `oven/bun` (build + setup) | `oven/bun:1.4.0` | matches `packageManager` |
 | `sourcemation/minio` | `RELEASE.2025-10-15T17-29-55Z-20260920` | last AGPL MinIO release (see below) |
 | `pgsty/mc` | digest `sha256:cfc831…` | MinIO client used for bucket init |
+| `hashicorp/vault` | `1.18` | optional EKM for the `ekm` profile (see below) |
 
 To bump the Convex digest:
 
@@ -110,6 +112,68 @@ S3.
 `minio-init` waits for MinIO and creates the buckets idempotently on every
 `up`.
 
+## Encryption
+
+Aulora encrypts content **server-side**: structured content and files are sealed
+with AES-256-GCM envelope encryption, using a per-scope data key (DEK) derived
+with HKDF-SHA256 from a single master key, the workspace salt and the record
+scope. The scope, record id and key version are bound into the GCM additional
+data, so a ciphertext cannot be moved to another record. Envelope headers name
+the key version, so rotation does not require rewriting history in one pass.
+
+The default is the **local** provider: the server derives the master key — the
+**KEK** — from `AULORA_ENCRYPTION_KEY` (base64, 32 bytes). `setup` generates
+that key on the first run and persists it to `.env`, so the default
+`docker compose up` needs no extra services.
+
+| Provider | Environment | Notes |
+| --- | --- | --- |
+| `local` (default) | `AULORA_ENCRYPTION_KEY` (fallback: `INSTANCE_SECRET`) | Key in `.env`, no extra service |
+
+The KEK is the root of data confidentiality and lives outside the database. The
+server holds it only in memory and decrypts for authorized clients; it never
+writes key material to disk or to a backup. **If the KEK is lost, the existing
+data is unreadable**, so back up `AULORA_ENCRYPTION_KEY` (or, if you move to an
+external key manager, its KEK) separately and never commit it.
+`INSTANCE_SECRET` is only a legacy fallback the `local` provider uses when
+`AULORA_ENCRYPTION_KEY` is unset.
+
+### Optional / advanced: external key manager (EKM)
+
+To delegate custody of the KEK, set `AULORA_EKM_PROVIDER` to a remote provider
+and supply its settings. The provider interface accepts them without code
+changes, and the default `docker compose up` starts none of this. Remote
+providers are **unwrap-only**: `AULORA_KEK_WRAPPED` is the master key encrypted
+by that key manager, and the server asks it to unwrap the key on startup/cron.
+
+| Provider | Environment | Notes |
+| --- | --- | --- |
+| `vault` | `VAULT_ADDR`, `VAULT_TOKEN`, `VAULT_TRANSIT_MOUNT`, `AULORA_KEK_WRAPPED` | Vault Transit unwrap |
+| `aws-kms` | `AWS_REGION`, `AWS_KMS_KEY_ID`, `AULORA_KEK_WRAPPED` | AWS KMS unwrap |
+| `gcp-kms` | `GCP_KMS_KEY_NAME`, `AULORA_KEK_WRAPPED` | GCP KMS unwrap |
+| `http` | `EKM_PROXY_URL`, `EKM_PROXY_TOKEN`, `AULORA_KEK_WRAPPED` | Your own unwrap proxy |
+
+Set `AULORA_EKM_PROVIDER` accordingly; `AULORA_EKM_KEY_ID` names the KEK and
+`AULORA_ENCRYPTION_KEY_VERSION` bumps on rotation. See `.env.example` for every
+variable and `packages/convex/convex/lib/ekm.ts` for the contract.
+
+#### Bundled Vault (optional)
+
+For a quick Vault-backed setup, start the `ekm` profile (the default
+`docker compose up` does not start Vault):
+
+```powershell
+docker compose --profile ekm up -d
+docker compose logs -f vault-init
+```
+
+This starts a HashiCorp Vault in **dev mode** plus a one-shot `vault-init` that
+enables the transit secrets engine, creates the KEK, and (when a local key is
+present) wraps `AULORA_ENCRYPTION_KEY` into `AULORA_KEK_WRAPPED` in `.env`. Set
+`AULORA_EKM_PROVIDER=vault` and re-run `docker compose run --rm setup` to apply
+it. Dev mode stores data in memory, so its KEK is lost on restart: use a
+persistent Vault for production and back up the KEK separately.
+
 ## The auth proxy contract
 
 The browser must see Better Auth as **same-origin** so the session cookie is
@@ -122,6 +186,12 @@ HTTP-actions port (`convex-backend:3211`, never `3210`):
 - `CONVEX_SITE_ORIGIN` must be the **public web origin**, and the Convex backend
   must be able to resolve + fetch `<CONVEX_SITE_ORIGIN>/api/auth/convex/jwks`
   (it is the token issuer). Keep client and backend consistent.
+
+Better Auth checks the browser `Origin` against `SITE_URL`, the built-in
+`aulora://` scheme and the comma-separated `TRUSTED_ORIGINS`. If you reach the
+web app on a LAN or Tailscale IP (e.g. `http://100.64.0.10:8080`), add that
+origin to `TRUSTED_ORIGINS` in `.env` and re-run
+`docker compose run --rm setup` to push it to the deployment.
 
 ## `/.well-known/aulora.json`
 
@@ -159,12 +229,16 @@ Three things hold state; back all of them:
    `docker compose exec postgres pg_dump …`.
 
 2. **Postgres** — `docker compose exec postgres pg_dump -U convex <db> > dump.sql`.
-3. **Secrets** — `infra/docker/.env` (it holds `INSTANCE_SECRET`,
-   `BETTER_AUTH_SECRET`, VAPID keys). Losing `INSTANCE_SECRET` makes the existing
-   data unreadable, so back it up separately and securely.
+3. **Secrets** — `infra/docker/.env`, which holds `INSTANCE_SECRET`,
+   `BETTER_AUTH_SECRET`, VAPID keys and the default `AULORA_ENCRYPTION_KEY`. That
+   encryption key is the KEK and is what makes the ciphertext-at-rest data
+   readable; **losing it makes the existing data unreadable**, so back up `.env`
+   (and, if you use an optional external key manager, its KEK) separately and
+   securely, and never commit it. `INSTANCE_SECRET` remains required for the
+   Convex admin key.
 
 Restore: bring up a fresh stack, restore Postgres/`convex export`, restore
-`.env`, then run `setup`.
+`.env` (and make sure the KEK is available), then run `setup`.
 
 ### Nightly runner (optional)
 

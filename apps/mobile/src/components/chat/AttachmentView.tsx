@@ -1,5 +1,4 @@
-import { type AttachmentDescriptor, downloadAttachment } from "@aulora/core";
-import { bytesToBase64 } from "@aulora/crypto";
+import { type AttachmentDescriptor, bytesToBase64, downloadAttachment } from "@aulora/core";
 import { Text } from "@aulora/ui-native";
 import { useEffect, useState } from "react";
 import { Image, View } from "react-native";
@@ -11,9 +10,9 @@ export interface AttachmentViewProps {
 }
 
 /**
- * Renders one decrypted attachment. Images are downloaded, decrypted and shown
- * inline from a `data:` URI; other files show their name (saving/sharing is a
- * later phase). Decryption happens through the channel's MLS-derived file key.
+ * Renders one attachment. Images are downloaded and shown inline from a
+ * `data:` URI; other files show their name (saving/sharing is a later phase).
+ * The server returns the bytes already opened.
  */
 export function AttachmentView({ runtime, descriptor }: AttachmentViewProps) {
   const [dataUri, setDataUri] = useState<string | null>(null);
@@ -54,7 +53,7 @@ export function AttachmentView({ runtime, descriptor }: AttachmentViewProps) {
   return (
     <View className="flex-row items-center gap-2 rounded-pill border border-border bg-surface-3 px-3 py-1.5">
       <Text size="xs" tone="muted" numberOfLines={1} className="max-w-[12rem]">
-        {isImage && failed ? "Could not decrypt image" : descriptor.name}
+        {isImage && failed ? "Could not load image" : descriptor.name}
       </Text>
       <Text size="xs" tone="muted" mono>
         {formatBytes(descriptor.size)}

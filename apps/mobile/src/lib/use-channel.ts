@@ -18,10 +18,10 @@ export interface ChannelSessionState {
 }
 
 /**
- * Subscribes to one channel's live messages, typing and read state, and routes
- * incoming ciphertext through the MLS session for decryption. Mirrors the web
- * hook so both clients behave identically. Decrypted text never leaves here
- * except as rendered text.
+ * Subscribes to one channel's live messages, typing and read state. The server
+ * returns message bodies as plaintext, so no decryption happens here; the map
+ * is just a stable id-to-text view for rendering. Mirrors the web hook so both
+ * clients behave identically.
  */
 export function useChannelSession(
   runtime: MobileChatRuntime | undefined,
@@ -52,10 +52,7 @@ export function useChannelSession(
           if (message.channelId !== channelId) {
             continue;
           }
-          const text = runtime.session.decryptedText(message.id);
-          if (text !== undefined) {
-            next.set(message.id, text);
-          }
+          next.set(message.id, runtime.session.decryptedText(message.id));
         }
         return next;
       });

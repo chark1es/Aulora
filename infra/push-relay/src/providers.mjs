@@ -3,8 +3,9 @@
  *
  * The relay only ever forwards **content-free wakeups**: an opaque server id,
  * channel id and message id (plus the platform/scheme). It never carries
- * message text, sender names or any other payload, because Aulora is
- * end-to-end encrypted and the server does not hold plaintext.
+ * message text, sender names or any other payload. Aulora encrypts content
+ * server-side, so the relay cannot read anything it carries; the app fetches
+ * and decrypts authorized content from its own server.
  *
  * Each provider takes the validated wake and builds its own provider-specific
  * envelope. Providers are injectable so the contract is unit-tested without

@@ -1,15 +1,14 @@
 //! Aulora desktop shell.
 //!
 //! A thin Tauri 2 host around the web client. It owns the native surface
-//! (menus, tray, notifications, unread badge, deep links, macOS vibrancy and
-//! the OS keychain adapter) while the webview stays the single React app.
+//! (menus, tray, notifications, unread badge, deep links and macOS vibrancy)
+//! while the webview stays the single React app.
 //!
 //! Security posture: the webview loads only bundled assets, the CSP forbids
 //! remote code, and every native capability is a narrowly-scoped command.
 
 mod commands;
 mod deep_link;
-mod keychain;
 mod menu;
 mod tray;
 mod window;
@@ -33,16 +32,11 @@ pub fn run() {
     builder
         .plugin(tauri_plugin_deep_link::init())
         .plugin(tauri_plugin_notification::init())
-        .manage(keychain::KeychainState::new())
         .manage(deep_link::DeepLinkState::default())
         .invoke_handler(tauri::generate_handler![
             commands::set_unread_badge,
             commands::show_notification,
             commands::take_deep_links,
-            commands::keychain_get,
-            commands::keychain_set,
-            commands::keychain_delete,
-            commands::keychain_list,
         ])
         .setup(|app| {
             menu::install(app)?;

@@ -157,6 +157,25 @@ services:
       S3_STORAGE_MODULES_BUCKET: ${S3_STORAGE_MODULES_BUCKET:-convex-modules}
       S3_STORAGE_FILES_BUCKET: ${S3_STORAGE_FILES_BUCKET:-convex-user-files}
       S3_STORAGE_SEARCH_BUCKET: ${S3_STORAGE_SEARCH_BUCKET:-convex-search-indexes}
+      # Server-side envelope encryption (AES-256-GCM) and the external key
+      # manager. The default `local` provider needs only AULORA_ENCRYPTION_KEY,
+      # which `setup` generates on first run; every remote provider is optional
+      # and unwraps AULORA_KEK_WRAPPED. See .env.example and README.md.
+      # NOTE: AWS_REGION (set above for S3) is also read by the aws-kms provider.
+      AULORA_ENCRYPTION_ENABLED: ${AULORA_ENCRYPTION_ENABLED:-true}
+      AULORA_EKM_PROVIDER: ${AULORA_EKM_PROVIDER:-local}
+      AULORA_EKM_KEY_ID: ${AULORA_EKM_KEY_ID:-aulora-kek}
+      AULORA_ENCRYPTION_KEY_VERSION: ${AULORA_ENCRYPTION_KEY_VERSION:-1}
+      AULORA_ENCRYPTION_KEY: ${AULORA_ENCRYPTION_KEY:-}
+      AULORA_KEK_WRAPPED: ${AULORA_KEK_WRAPPED:-}
+      VAULT_ADDR: ${VAULT_ADDR:-}
+      VAULT_TOKEN: ${VAULT_TOKEN:-}
+      VAULT_TRANSIT_MOUNT: ${VAULT_TRANSIT_MOUNT:-transit}
+      VAULT_NAMESPACE: ${VAULT_NAMESPACE:-}
+      AWS_KMS_KEY_ID: ${AWS_KMS_KEY_ID:-}
+      GCP_KMS_KEY_NAME: ${GCP_KMS_KEY_NAME:-}
+      EKM_PROXY_URL: ${EKM_PROXY_URL:-}
+      EKM_PROXY_TOKEN: ${EKM_PROXY_TOKEN:-}
     volumes:
       - convex-data:/convex/data
     ports:
@@ -229,6 +248,14 @@ services:
       CONVEX_PROJECT_DIR: /app/packages/convex
       HOST_ENV_FILE: /host/.env
       WELL_KNOWN_DIR: /web-well-known
+      # EKM config, in addition to `.env` (env_file). `setup` generates the
+      # master key when AULORA_ENCRYPTION_KEY is empty and applies the settings
+      # to the deployment with `convex env set`.
+      AULORA_ENCRYPTION_ENABLED: ${AULORA_ENCRYPTION_ENABLED:-true}
+      AULORA_EKM_PROVIDER: ${AULORA_EKM_PROVIDER:-local}
+      AULORA_EKM_KEY_ID: ${AULORA_EKM_KEY_ID:-aulora-kek}
+      AULORA_ENCRYPTION_KEY_VERSION: ${AULORA_ENCRYPTION_KEY_VERSION:-1}
+      AULORA_ENCRYPTION_KEY: ${AULORA_ENCRYPTION_KEY:-}
     volumes:
       - convex-data:/convex/data
       - web-well-known:/web-well-known
@@ -303,6 +330,59 @@ services:
         condition: service_healthy
       setup:
         condition: service_completed_successfully
+    logging: *logging
+
+  # Optional external key manager: HashiCorp Vault running in dev mode, behind
+  # the `ekm` profile. Transit holds the KEK, the root of data confidentiality.
+  # The default deployment uses the `local` provider and starts none of this;
+  # enable with `docker compose --profile ekm up -d`. Dev mode is in-memory: for
+  # production point VAULT_ADDR at a persistent Vault instead and back up the
+  # KEK. See README.md "Encryption and the external key manager".
+  vault:
+    image: hashicorp/vault:1.18
+    profiles: ["ekm"]
+    restart: unless-stopped
+    environment:
+      VAULT_DEV_ROOT_TOKEN_ID: ${VAULT_TOKEN:-aulora-dev-root}
+      VAULT_DEV_LISTEN_ADDRESS: 0.0.0.0:8200
+    command: ["server", "-dev"]
+    cap_add:
+      - IPC_LOCK
+    ports:
+      - "${VAULT_PORT:-8200}:8200"
+    healthcheck:
+      test: ["CMD", "vault", "status"]
+      interval: 5s
+      timeout: 5s
+      retries: 30
+      start_period: 5s
+    logging: *logging
+
+  # One-shot: waits for Vault, enables the transit secrets engine and creates
+  # the KEK, then wraps AULORA_ENCRYPTION_KEY into AULORA_KEK_WRAPPED when a
+  # local key is present, writing the result back to infra/docker/.env. Re-run
+  # `setup` afterwards so the deployment picks the new provider settings up.
+  vault-init:
+    image: hashicorp/vault:1.18
+    profiles: ["ekm"]
+    restart: "no"
+    env_file:
+      - path: .env
+        required: false
+    environment:
+      VAULT_ADDR: ${VAULT_ADDR:-http://vault:8200}
+      VAULT_TOKEN: ${VAULT_TOKEN:-aulora-dev-root}
+      VAULT_TRANSIT_MOUNT: ${VAULT_TRANSIT_MOUNT:-transit}
+      AULORA_EKM_KEY_ID: ${AULORA_EKM_KEY_ID:-aulora-kek}
+      HOST_ENV_FILE: /host/.env
+    volumes:
+      - ./vault:/vault:ro
+      # Write AULORA_KEK_WRAPPED back to infra/docker/.env on the host.
+      - ./:/host
+    entrypoint: ["/bin/sh", "/vault/init.sh"]
+    depends_on:
+      vault:
+        condition: service_healthy
     logging: *logging
 
 volumes:

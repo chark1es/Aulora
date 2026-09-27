@@ -1,13 +1,14 @@
-import { Button, Heading, Input, Text } from "@aulora/ui-web";
+import { Button, Icon, Input, SegmentedControl, Text } from "@aulora/ui-web";
 import { useMutation, useQuery } from "convex/react";
 import { useEffect, useState } from "react";
 import { api } from "../../../../../packages/convex/convex/_generated/api";
+import { SettingsSectionHeader } from "./SettingsSection";
 
 export interface WorkspaceSettingsProps {
   readonly canManageWorkspace: boolean;
 }
 
-/** Parses the textarea into a trimmed, de-duplicated domain list. */
+/** Parses free text into a trimmed, de-duplicated domain list. */
 export function parseDomains(value: string): string[] {
   return [
     ...new Set(
@@ -19,14 +20,41 @@ export function parseDomains(value: string): string[] {
   ];
 }
 
-/** Workspace access policy: signup, invite-only and allowed email domains. */
+type JoinMode = "anyone" | "invite";
+
+/*
+ * One "How people join" choice maps onto the two stored booleans like this:
+ *   Anyone can join -> { signupEnabled: true,  inviteOnly: false }
+ *   Invite only     -> { signupEnabled: true,  inviteOnly: true  }
+ * Sign-up stays enabled in both modes because invited people still have to
+ * create their account; `inviteOnly` is what additionally requires an invite.
+ */
+const JOIN_MODE_VALUES: Record<JoinMode, { signupEnabled: boolean; inviteOnly: boolean }> = {
+  anyone: { signupEnabled: true, inviteOnly: false },
+  invite: { signupEnabled: true, inviteOnly: true },
+};
+
+function sameDomains(a: readonly string[], b: readonly string[]): boolean {
+  if (a.length !== b.length) {
+    return false;
+  }
+  const set = new Set(b);
+  return a.every((entry) => set.has(entry));
+}
+
+/**
+ * Workspace access policy: how people join and which email domains may join.
+ * The joining mode and its domain allow-list live in one surface so the policy
+ * reads as a single control; save state is reflected inline rather than by a
+ * page-level banner.
+ */
 export function WorkspaceSettings({ canManageWorkspace }: WorkspaceSettingsProps) {
   const server = useQuery(api.server.settings, canManageWorkspace ? {} : "skip");
   const updateSettings = useMutation(api.server.updateSettings);
 
-  const [signupEnabled, setSignupEnabled] = useState(true);
-  const [inviteOnly, setInviteOnly] = useState(false);
-  const [domains, setDomains] = useState("");
+  const [joinMode, setJoinMode] = useState<JoinMode>("anyone");
+  const [domains, setDomains] = useState<readonly string[]>([]);
+  const [domainInput, setDomainInput] = useState("");
   const [error, setError] = useState<string | null>(null);
   const [saved, setSaved] = useState(false);
   const [busy, setBusy] = useState(false);
@@ -35,10 +63,17 @@ export function WorkspaceSettings({ canManageWorkspace }: WorkspaceSettingsProps
     if (server === undefined) {
       return;
     }
-    setSignupEnabled(server.settings.signupEnabled);
-    setInviteOnly(server.settings.inviteOnly);
-    setDomains(server.settings.allowedEmailDomains.join(", "));
+    setJoinMode(server.settings.inviteOnly ? "invite" : "anyone");
+    setDomains(server.settings.allowedEmailDomains);
   }, [server]);
+
+  useEffect(() => {
+    if (!saved) {
+      return;
+    }
+    const timeout = setTimeout(() => setSaved(false), 1800);
+    return () => clearTimeout(timeout);
+  }, [saved]);
 
   if (!canManageWorkspace) {
     return (
@@ -56,9 +91,23 @@ export function WorkspaceSettings({ canManageWorkspace }: WorkspaceSettingsProps
     );
   }
 
+  const storedMode: JoinMode = server.settings.inviteOnly ? "invite" : "anyone";
+  const dirty =
+    joinMode !== storedMode || !sameDomains(domains, server.settings.allowedEmailDomains);
+
+  function addDomains() {
+    const parsed = parseDomains(domainInput);
+    if (parsed.length === 0) {
+      return;
+    }
+    setDomains((current) => [...new Set([...current, ...parsed])]);
+    setDomainInput("");
+    setSaved(false);
+  }
+
   return (
     <form
-      className="flex flex-col gap-4"
+      className="flex max-w-[600px] flex-col gap-5"
       data-testid="workspace-settings"
       onSubmit={(event) => {
         event.preventDefault();
@@ -66,9 +115,8 @@ export function WorkspaceSettings({ canManageWorkspace }: WorkspaceSettingsProps
         setSaved(false);
         setBusy(true);
         void updateSettings({
-          signupEnabled,
-          inviteOnly,
-          allowedEmailDomains: parseDomains(domains),
+          ...JOIN_MODE_VALUES[joinMode],
+          allowedEmailDomains: [...domains],
         })
           .then(() => setSaved(true))
           .catch((cause: unknown) =>
@@ -77,48 +125,124 @@ export function WorkspaceSettings({ canManageWorkspace }: WorkspaceSettingsProps
           .finally(() => setBusy(false));
       }}
     >
-      <Heading level={3}>Workspace settings</Heading>
-      <Text tone="muted" size="sm">
-        {server.name}
-      </Text>
-      {error !== null && (
-        <Text tone="danger" size="sm" role="alert">
-          {error}
-        </Text>
-      )}
-      {saved && (
-        <Text tone="secondary" size="sm" role="status">
-          Settings saved.
-        </Text>
-      )}
-      <label className="flex items-center gap-2 text-sm">
-        <input
-          type="checkbox"
-          className="h-4 w-4 accent-accent"
-          checked={signupEnabled}
-          onChange={(event) => setSignupEnabled(event.currentTarget.checked)}
-        />
-        Allow new accounts to sign up
-      </label>
-      <label className="flex items-center gap-2 text-sm">
-        <input
-          type="checkbox"
-          className="h-4 w-4 accent-accent"
-          checked={inviteOnly}
-          onChange={(event) => setInviteOnly(event.currentTarget.checked)}
-        />
-        Invite only
-      </label>
-      <Input
-        label="Allowed email domains"
-        hint="Comma separated; empty allows any domain."
-        value={domains}
-        onChange={(event) => setDomains(event.currentTarget.value)}
+      <SettingsSectionHeader
+        icon="user-plus"
+        title="Joining"
+        description={`Who can become a member of ${server.name}, and how they get in.`}
       />
-      <div>
-        <Button type="submit" loading={busy}>
-          Save settings
+
+      <div className="overflow-hidden rounded-[14px] border border-border bg-surface-2">
+        <div className="flex items-center justify-between gap-4 px-4 py-3.5">
+          <div className="min-w-0">
+            <span className="block text-[13px] font-medium text-text">
+              {joinMode === "anyone" ? "Open to anyone" : "Invite only"}
+            </span>
+            <span className="mt-0.5 block text-[11px] leading-snug text-text-muted">
+              {joinMode === "anyone"
+                ? "People with an allowed email domain can create an account."
+                : "New members must redeem an invite before they can join."}
+            </span>
+          </div>
+          <SegmentedControl<JoinMode>
+            label="How people join"
+            value={joinMode}
+            onChange={(value) => {
+              setJoinMode(value);
+              setSaved(false);
+            }}
+            options={[
+              { value: "anyone", label: "Anyone" },
+              { value: "invite", label: "Invite only" },
+            ]}
+          />
+        </div>
+
+        <div className="h-px bg-border" />
+
+        <div className="flex flex-col gap-3 px-4 py-3.5">
+          <div className="flex flex-col gap-0.5">
+            <span className="text-[13px] font-medium text-text">Allowed email domains</span>
+            <span className="text-[11px] text-text-muted">
+              Restrict sign-ups to specific domains, or leave empty to allow any.
+            </span>
+          </div>
+
+          <div className="flex items-end gap-2">
+            <div className="flex-1">
+              <Input
+                label="Add a domain"
+                placeholder="example.com"
+                value={domainInput}
+                onChange={(event) => setDomainInput(event.currentTarget.value)}
+                onKeyDown={(event) => {
+                  if (event.key === "Enter") {
+                    event.preventDefault();
+                    addDomains();
+                  }
+                }}
+              />
+            </div>
+            <Button
+              type="button"
+              variant="secondary"
+              onClick={addDomains}
+              disabled={domainInput.trim().length === 0}
+            >
+              Add
+            </Button>
+          </div>
+
+          {domains.length === 0 ? (
+            <span className="text-[12px] text-text-muted">Any email domain can join.</span>
+          ) : (
+            <ul className="flex flex-wrap gap-1.5" data-testid="domain-list">
+              {domains.map((domain) => (
+                <li
+                  key={domain}
+                  className="flex animate-pop-in items-center gap-1.5 rounded-full border border-border bg-surface-3 py-0.5 pl-2.5 pr-1 text-[11px] text-text-muted"
+                >
+                  <span className="font-mono">@{domain}</span>
+                  <button
+                    type="button"
+                    aria-label={`Remove ${domain}`}
+                    onClick={() => {
+                      setDomains((current) => current.filter((entry) => entry !== domain));
+                      setSaved(false);
+                    }}
+                    className="flex h-4 w-4 items-center justify-center rounded-full transition hover:bg-danger/15 hover:text-danger focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent"
+                  >
+                    <Icon name="x" size={10} />
+                  </button>
+                </li>
+              ))}
+            </ul>
+          )}
+        </div>
+      </div>
+
+      <div className="flex items-center gap-3">
+        <Button type="submit" loading={busy} disabled={busy || !dirty}>
+          Save changes
         </Button>
+        {saved && (
+          <span
+            className="flex animate-fade-in items-center gap-1 text-[12px] font-medium text-secondary"
+            role="status"
+          >
+            <Icon name="check" size={13} />
+            Saved
+          </span>
+        )}
+        {!saved && dirty && !busy && (
+          <Text size="xs" tone="muted">
+            Unsaved changes
+          </Text>
+        )}
+        {error !== null && (
+          <Text tone="danger" size="sm" role="alert">
+            {error}
+          </Text>
+        )}
       </div>
     </form>
   );

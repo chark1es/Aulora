@@ -21,9 +21,9 @@ function formatBytes(size: number): string {
 }
 
 /**
- * One decrypted attachment. Images show an encrypted thumbnail (with a blurhash
- * placeholder) and open the decrypted full image on click; other files download
- * locally after decrypting.
+ * One attachment. Images show a small thumbnail (with a blurhash placeholder)
+ * and open the full image on click; other files download locally. The server
+ * seals the bytes at rest and returns them to this device decrypted.
  */
 export function AttachmentView({ runtime, descriptor }: AttachmentViewProps) {
   const isImage = descriptor.mime.startsWith("image/") || descriptor.thumbnail !== undefined;
@@ -70,7 +70,7 @@ export function AttachmentView({ runtime, descriptor }: AttachmentViewProps) {
         setThumbnailError(false);
       })
       .catch(() => {
-        setError("Unable to decrypt this attachment.");
+        setError("Unable to open this attachment.");
       })
       .finally(() => setBusy(false));
   }, [runtime, descriptor, fullUrl]);
@@ -98,7 +98,7 @@ export function AttachmentView({ runtime, descriptor }: AttachmentViewProps) {
     return () => window.removeEventListener("keydown", onKeyDown);
   }, [fullUrl, closeFull]);
 
-  // If the dedicated thumbnail is unavailable, show the decrypted full image
+  // If the dedicated thumbnail is unavailable, show the full image
   // as the inline preview instead, so an image always renders.
   useEffect(() => {
     if (runtime === undefined || !isImage || !thumbnailError) {
@@ -113,7 +113,7 @@ export function AttachmentView({ runtime, descriptor }: AttachmentViewProps) {
       })
       .catch(() => {
         if (!cancelled) {
-          setError("Unable to decrypt this attachment.");
+          setError("Unable to open this attachment.");
         }
       });
     return () => {
@@ -134,7 +134,7 @@ export function AttachmentView({ runtime, descriptor }: AttachmentViewProps) {
         anchor.click();
         setTimeout(() => URL.revokeObjectURL(url), 10_000);
       })
-      .catch(() => setError("Unable to decrypt this attachment."))
+      .catch(() => setError("Unable to open this attachment."))
       .finally(() => setBusy(false));
   }, [runtime, descriptor]);
 
@@ -175,7 +175,7 @@ export function AttachmentView({ runtime, descriptor }: AttachmentViewProps) {
           )}
           {busy && (
             <span className="absolute bottom-1 right-1 rounded-pill bg-bg/80 px-2 py-0.5 text-xs text-text-muted">
-              Decrypting…
+              Loading…
             </span>
           )}
         </button>

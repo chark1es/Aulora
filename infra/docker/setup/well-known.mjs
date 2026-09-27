@@ -6,6 +6,9 @@
 //   NAME_VALUE     instance/workspace name
 //   SITE_URL_VALUE public web origin
 //   CONVEX_URL_VALUE public Convex API origin
+//
+// The encryption descriptor is non-secret: it comes from the public config or,
+// failing that, from the key-manager env (provider and key version only).
 
 const read = (value) => (typeof value === "string" && value.trim() ? value.trim() : undefined);
 
@@ -16,6 +19,14 @@ try {
   config = {};
 }
 
+const encryption =
+  config.encryption ?? {
+    mode: "server",
+    algorithm: "AES-256-GCM",
+    keyVersion: read(process.env.AULORA_ENCRYPTION_KEY_VERSION) ?? "1",
+    provider: read(process.env.AULORA_EKM_PROVIDER) ?? "local",
+  };
+
 const document = {
   name: read(process.env.NAME_VALUE) ?? read(config.name) ?? "Aulora",
   version: read(config.version) ?? "0.1.0",
@@ -24,6 +35,7 @@ const document = {
   siteUrl: read(process.env.SITE_URL_VALUE) ?? read(config.siteUrl) ?? "",
   iconSeed: read(config.iconSeed) ?? "aulora:server:default",
   auth: config.auth ?? { local: { enabled: false, signup: false }, providers: [] },
+  encryption,
 };
 
 process.stdout.write(`${JSON.stringify(document, null, 2)}\n`);

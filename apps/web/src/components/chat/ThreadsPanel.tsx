@@ -1,44 +1,48 @@
-import { Avatar, userAvatarSeed } from "@aulora/avatars";
-import type { MentionTarget, MessagePayload, RoleMentionTarget } from "@aulora/core";
-import { IconButton, Text } from "@aulora/ui-web";
-import { useEffect, useState } from "react";
+import type {
+  AttachmentDescriptor,
+  MentionTarget,
+  MessagePayload,
+  RoleMentionTarget,
+} from "@aulora/core";
+import { Icon } from "@aulora/ui-web";
+import { useEffect, useMemo, useState } from "react";
 import type { ChatRuntime } from "../../lib/chat-runtime";
 import { Composer } from "./Composer";
+import { MessageList } from "./MessageList";
 
 export interface ThreadsPanelProps {
   readonly runtime: ChatRuntime | undefined;
   readonly channelId: string;
+  readonly channelTitle: string;
   readonly root: MessagePayload;
   readonly rootText: string | undefined;
   readonly members: readonly MentionTarget[];
   readonly roles: readonly RoleMentionTarget[];
   readonly memberIds: readonly string[];
+  readonly permissions: bigint;
   readonly ownUserId: string;
+  readonly ownName: string;
   readonly memberNames: ReadonlyMap<string, string>;
+  readonly memberColors: ReadonlyMap<string, string>;
+  readonly mentionNames: readonly string[];
   readonly onClose: () => void;
   readonly onTyping: (channelId: string) => void;
   readonly onSendReply: (input: {
     text: string;
     mentionUserIds: readonly string[];
-    replyInThread: boolean;
+    files: readonly File[];
+    /** Also post the reply to the channel timeline, not only the thread. */
+    alsoSendToChannel: boolean;
   }) => void | Promise<void>;
+  readonly onEdit: (message: MessagePayload, text: string) => void;
+  readonly onDelete: (message: MessagePayload) => void;
+  readonly onPinToggle: (message: MessagePayload) => void;
+  readonly onReact: (message: MessagePayload, emoji: string) => void;
 }
 
-/** Side panel showing one thread's replies with a reply composer. */
-export function ThreadsPanel({
-  runtime,
-  channelId,
-  root,
-  rootText,
-  members,
-  roles,
-  memberIds,
-  ownUserId,
-  memberNames,
-  onClose,
-  onTyping,
-  onSendReply,
-}: ThreadsPanelProps) {
+/** Side panel with one thread: the root message, its replies and a reply composer. */
+export function ThreadsPanel(props: ThreadsPanelProps) {
+  const { runtime, channelId, root, rootText } = props;
   const [replies, setReplies] = useState<readonly MessagePayload[]>([]);
   const [decrypted, setDecrypted] = useState<ReadonlyMap<string, string>>(new Map());
   const [alsoSend, setAlsoSend] = useState(false);
@@ -49,7 +53,7 @@ export function ThreadsPanel({
       return;
     }
     let cancelled = false;
-    const offThread = watchThread(runtime, root.id, (incoming) => {
+    const off = runtime.watchThread(root.id, (incoming) => {
       void runtime.session.receiveMessages(incoming).then(() => {
         if (cancelled) {
           return;
@@ -58,10 +62,7 @@ export function ThreadsPanel({
         setDecrypted((current) => {
           const next = new Map(current);
           for (const reply of incoming) {
-            const text = runtime.session.decryptedText(reply.id);
-            if (text !== undefined) {
-              next.set(reply.id, text);
-            }
+            next.set(reply.id, runtime.session.decryptedText(reply.id));
           }
           return next;
         });
@@ -69,122 +70,110 @@ export function ThreadsPanel({
     });
     return () => {
       cancelled = true;
-      offThread();
+      off();
     };
   }, [runtime, channelId, root.id]);
 
+  const messages = useMemo(() => [root, ...replies], [root, replies]);
+  const texts = useMemo(() => {
+    const next = new Map(decrypted);
+    if (rootText !== undefined) {
+      next.set(root.id, rootText);
+    }
+    return next;
+  }, [decrypted, root.id, rootText]);
+  const attachments = useMemo(() => {
+    const map = new Map<string, readonly AttachmentDescriptor[]>();
+    if (runtime !== undefined) {
+      for (const message of messages) {
+        const list = runtime.session.attachmentsFor(message.id);
+        if (list.length > 0) {
+          map.set(message.id, list);
+        }
+      }
+    }
+    return map;
+  }, [runtime, messages]);
+
   return (
-    <aside className="flex w-80 shrink-0 flex-col border-l border-border bg-surface-1">
-      <header className="flex items-center justify-between border-b border-border px-3 py-2">
-        <Text size="sm" mono>
-          THREAD
-        </Text>
-        <IconButton size="sm" label="Close thread" onClick={onClose}>
-          <span aria-hidden="true">×</span>
-        </IconButton>
+    <aside
+      aria-label="Thread"
+      className="pane chat-canvas flex h-full w-[352px] shrink-0 animate-slide-in-right flex-col border-l border-border"
+    >
+      <header className="material-chrome flex h-[52px] shrink-0 items-center gap-3 border-b border-border px-4">
+        <span className="flex h-7 w-7 items-center justify-center rounded-[7px] bg-accent-soft text-accent">
+          <Icon name="thread" size={16} />
+        </span>
+        <div className="min-w-0 flex-1">
+          <h2 className="text-[14px] font-semibold tracking-[-0.01em] text-text">Thread</h2>
+          <p className="truncate text-xs text-text-muted">
+            {replies.length === 1 ? "1 reply" : `${replies.length} replies`} · {props.channelTitle}
+          </p>
+        </div>
+        <button
+          type="button"
+          aria-label="Close thread"
+          onClick={props.onClose}
+          className="flex h-8 w-8 items-center justify-center rounded-[7px] text-text-muted hover:bg-surface-3 hover:text-text"
+        >
+          <Icon name="x" size={18} />
+        </button>
       </header>
 
-      <div className="flex min-h-0 flex-1 flex-col gap-3 overflow-y-auto p-3">
-        <ThreadMessage
-          message={root}
-          text={rootText}
-          authorName={memberNames.get(root.authorId) ?? root.authorId}
-          ownUserId={ownUserId}
-        />
-        <div className="h-px bg-border" />
-        {replies.map((reply) => (
-          <ThreadMessage
-            key={reply.id}
-            message={reply}
-            text={decrypted.get(reply.id)}
-            authorName={memberNames.get(reply.authorId) ?? reply.authorId}
-            ownUserId={ownUserId}
-          />
-        ))}
-        {replies.length === 0 && (
-          <Text size="sm" tone="muted">
-            No replies yet.
-          </Text>
-        )}
-      </div>
+      <MessageList
+        runtime={runtime}
+        channelId={`${channelId}:thread:${root.id}`}
+        messages={messages}
+        decrypted={texts}
+        attachments={attachments}
+        pendingIds={new Set()}
+        permissions={props.permissions}
+        ownUserId={props.ownUserId}
+        ownName={props.ownName}
+        memberNames={props.memberNames}
+        memberColors={props.memberColors}
+        mentionNames={props.mentionNames}
+        firstUnreadId={null}
+        typers={[]}
+        hasOlder={false}
+        loading={false}
+        onLoadOlder={() => undefined}
+        onReply={() => undefined}
+        onEdit={props.onEdit}
+        onDelete={props.onDelete}
+        onPinToggle={props.onPinToggle}
+        onReact={props.onReact}
+        inThread
+      />
 
-      <label className="flex items-center gap-2 px-3 py-1 text-xs text-text-muted">
-        <input
-          type="checkbox"
-          checked={alsoSend}
-          onChange={(event) => setAlsoSend(event.target.checked)}
-        />
-        Also send to channel
-      </label>
       <Composer
         channelId={channelId}
-        members={members}
-        roles={roles}
-        memberIds={memberIds}
-        placeholder="Reply"
-        onTyping={onTyping}
+        draftKey={`thread:${root.id}`}
+        members={props.members}
+        roles={props.roles}
+        memberIds={props.memberIds}
+        placeholder="Reply in thread…"
+        onTyping={props.onTyping}
         onSend={(input) =>
-          onSendReply({
+          props.onSendReply({
             text: input.text,
             mentionUserIds: input.mentionUserIds,
-            replyInThread: !alsoSend,
+            files: input.files,
+            alsoSendToChannel: alsoSend,
           })
         }
-        threadHint="Replying in thread"
+        toolbarExtra={
+          <label className="ml-1 flex cursor-pointer select-none items-center gap-1.5 rounded-[7px] px-1.5 py-1 text-xs text-text-muted hover:text-text">
+            <input
+              type="checkbox"
+              className="h-3.5 w-3.5 accent-[var(--aulora-accent)]"
+              checked={alsoSend}
+              onChange={(event) => setAlsoSend(event.target.checked)}
+            />
+            Also send to channel
+          </label>
+        }
       />
     </aside>
   );
-}
-
-function ThreadMessage({
-  message,
-  text,
-  authorName,
-  ownUserId,
-}: {
-  message: MessagePayload;
-  text: string | undefined;
-  authorName: string;
-  ownUserId: string;
-}) {
-  if (message.deletedAt !== null) {
-    return (
-      <Text size="sm" tone="muted" className="italic">
-        Deleted.
-      </Text>
-    );
-  }
-  return (
-    <div className="flex gap-2">
-      <Avatar seed={userAvatarSeed(message.authorId)} size={24} />
-      <div className="min-w-0 flex-1">
-        <div className="flex items-baseline gap-2">
-          <Text size="sm" className="font-medium">
-            {authorName}
-            {message.authorId === ownUserId ? " (you)" : ""}
-          </Text>
-          <Text size="xs" tone="muted" mono>
-            {new Date(message.createdAt).toLocaleTimeString([], {
-              hour: "2-digit",
-              minute: "2-digit",
-            })}
-          </Text>
-        </div>
-        <Text size="sm" className="whitespace-pre-wrap break-words">
-          {text ?? "Unable to decrypt this message."}
-        </Text>
-      </div>
-    </div>
-  );
-}
-
-function watchThread(
-  runtime: ChatRuntime,
-  rootId: string,
-  onChange: (messages: readonly MessagePayload[]) => void,
-): () => void {
-  // Thread replies are fetched through the runtime's message subscription for
-  // the root id. The adapter queries `messages.listThread` via a dedicated
-  // path added in the web port; here we reuse the session's decryption.
-  return runtime.watchThread(rootId, onChange);
 }

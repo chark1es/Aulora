@@ -12,24 +12,16 @@ export {
   type RoleMentionTarget,
   resolveMentions,
 } from "./mentions.js";
-export {
-  channelGroupId,
-  decodeMlsBytes,
-  decodePayload,
-  encodeMlsBytes,
-  encodePayload,
-  encodeText,
-  type TextPayload,
-} from "./mls-encoding.js";
 export type {
+  AttachmentDescriptor,
+  AttachmentDimensions,
+  AttachmentThumbnail,
   ChannelMemberRow,
   ChannelSummary,
   ChatPort,
   ChatSubscriptions,
   DeviceRow,
-  JoinIntentRow,
   MessagePayload,
-  MlsCommitRow,
   Paginated,
   PresenceRow,
   ReactionRow,
@@ -38,12 +30,36 @@ export type {
   TypingRow,
 } from "./port.js";
 export {
+  type InlineSegment,
+  inlineToPlainText,
+  mentionsViewer,
+  parseInline,
+  parseRichText,
+  type RichBlock,
+  type RichTextOptions,
+} from "./rich-text.js";
+export {
   ChatSession,
   type MessagePayloadBody,
-  MlsSessionError,
-  type OpenChannelResult,
   type ReactionPayload,
   type SessionMember,
   type SessionOptions,
   type SessionUser,
 } from "./session.js";
+export {
+  activeTypers,
+  activityLabel,
+  badgeCount,
+  buildTimeline,
+  conversationTitle,
+  createTypingThrottle,
+  dayLabel,
+  dmPartnerId,
+  GROUP_WINDOW_MS,
+  messageTime,
+  startOfLocalDay,
+  type TimelineItem,
+  type TimelineOptions,
+  TYPING_THROTTLE_MS,
+  typingLabel,
+} from "./timeline.js";

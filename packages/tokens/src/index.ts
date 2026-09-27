@@ -73,3 +73,4 @@ export const scales = {
   lineHeights,
   typography,
 } as const;
+export { ICON_NAMES, type IconName, iconPaths } from "./icons";

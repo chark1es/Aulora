@@ -7,9 +7,12 @@ export function paletteForScheme(scheme: string | null | undefined): Palette {
   return scheme === "light" ? lightPalette : darkPalette;
 }
 
+/** Amber for idle, kept distinct from the Ember accent that marks unread. */
+export const IDLE_COLOR = "#E8A33B";
+
 const PRESENCE_COLORS: Record<string, string> = {
   online: darkPalette.secondary,
-  idle: darkPalette.accent,
+  idle: IDLE_COLOR,
   dnd: darkPalette.danger,
   offline: darkPalette["text-muted"],
 };

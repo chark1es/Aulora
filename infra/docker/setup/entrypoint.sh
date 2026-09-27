@@ -3,7 +3,8 @@
 #
 # It:
 #   1. waits for the Convex backend and resolves the instance name/secret
-#   2. generates any missing secrets (BETTER_AUTH_SECRET, SETUP_TOKEN, VAPID)
+#   2. generates any missing secrets (BETTER_AUTH_SECRET, SETUP_TOKEN, VAPID,
+#      and the default local master key AULORA_ENCRYPTION_KEY)
 #   3. mints the admin key with /convex/generate_key (needed for every CLI call)
 #   4. sets the Convex deployment env vars
 #   5. deploys packages/convex
@@ -123,6 +124,27 @@ if [ -z "$VAPID_PUBLIC_KEY_VALUE" ] || [ -z "$VAPID_PRIVATE_KEY_VALUE" ]; then
   log "generated VAPID key pair"
 fi
 
+# --- 3. server-side encryption: local master key (default) ------------------
+
+# The server seals all content with AES-256-GCM; the master key (the KEK) is the
+# root of that confidentiality. AULORA_ENCRYPTION_KEY is the default root:
+# generate a base64 32-byte key on first run and persist it. The `local` provider
+# reads it directly and uses INSTANCE_SECRET only as a legacy fallback when it is
+# absent. The remote providers (vault/aws-kms/gcp-kms/http) are optional/advanced
+# and unwrap AULORA_KEK_WRAPPED instead, leaving the direct key unused.
+AULORA_ENCRYPTION_KEY_VALUE="${AULORA_ENCRYPTION_KEY:-}"
+ENCRYPTION_KEY_GENERATED=0
+if [ -z "$AULORA_ENCRYPTION_KEY_VALUE" ]; then
+  AULORA_ENCRYPTION_KEY_VALUE="$(random_b64 32)"
+  ENCRYPTION_KEY_GENERATED=1
+  log "generated AULORA_ENCRYPTION_KEY (32-byte base64 master key)"
+fi
+
+AULORA_EKM_PROVIDER_VALUE="${AULORA_EKM_PROVIDER:-local}"
+AULORA_EKM_KEY_ID_VALUE="${AULORA_EKM_KEY_ID:-aulora-kek}"
+AULORA_ENCRYPTION_KEY_VERSION_VALUE="${AULORA_ENCRYPTION_KEY_VERSION:-1}"
+AULORA_ENCRYPTION_ENABLED_VALUE="${AULORA_ENCRYPTION_ENABLED:-true}"
+
 # --- 4. admin key (must exist before any `convex env set`) ------------------
 
 # Mint the admin key with the backend's own binary. It writes the
@@ -171,6 +193,25 @@ set_env_if_present OIDC_GROUP_ROLE_MAP "$(env_get OIDC_GROUP_ROLE_MAP "$HOST_ENV
 set_env_if_present VAPID_SUBJECT "$VAPID_SUBJECT_VALUE"
 set_env_if_present VAPID_PUBLIC_KEY "$VAPID_PUBLIC_KEY_VALUE"
 set_env_if_present VAPID_PRIVATE_KEY "$VAPID_PRIVATE_KEY_VALUE" 1
+
+# Server-side encryption: the default local master key is set as a secret.
+# Optional/advanced external-provider settings are read from the host .env and
+# applied only when present. No key material is ever logged.
+set_env_if_present AULORA_ENCRYPTION_ENABLED "$AULORA_ENCRYPTION_ENABLED_VALUE"
+set_env_if_present AULORA_EKM_PROVIDER "$AULORA_EKM_PROVIDER_VALUE"
+set_env_if_present AULORA_EKM_KEY_ID "$AULORA_EKM_KEY_ID_VALUE"
+set_env_if_present AULORA_ENCRYPTION_KEY_VERSION "$AULORA_ENCRYPTION_KEY_VERSION_VALUE"
+set_env_if_present AULORA_ENCRYPTION_KEY "$AULORA_ENCRYPTION_KEY_VALUE" 1
+set_env_if_present AULORA_KEK_WRAPPED "$(env_get AULORA_KEK_WRAPPED "$HOST_ENV_FILE")" 1
+set_env_if_present VAULT_ADDR "$(env_get VAULT_ADDR "$HOST_ENV_FILE")"
+set_env_if_present VAULT_TOKEN "$(env_get VAULT_TOKEN "$HOST_ENV_FILE")" 1
+set_env_if_present VAULT_TRANSIT_MOUNT "$(env_get VAULT_TRANSIT_MOUNT "$HOST_ENV_FILE")"
+set_env_if_present VAULT_NAMESPACE "$(env_get VAULT_NAMESPACE "$HOST_ENV_FILE")"
+set_env_if_present AWS_REGION "$(env_get AWS_REGION "$HOST_ENV_FILE")"
+set_env_if_present AWS_KMS_KEY_ID "$(env_get AWS_KMS_KEY_ID "$HOST_ENV_FILE")"
+set_env_if_present GCP_KMS_KEY_NAME "$(env_get GCP_KMS_KEY_NAME "$HOST_ENV_FILE")"
+set_env_if_present EKM_PROXY_URL "$(env_get EKM_PROXY_URL "$HOST_ENV_FILE")"
+set_env_if_present EKM_PROXY_TOKEN "$(env_get EKM_PROXY_TOKEN "$HOST_ENV_FILE")" 1
 
 # --- 6. deploy --------------------------------------------------------------
 
@@ -250,6 +291,15 @@ if [ -f "$HOST_ENV_FILE" ]; then
   [ -n "$VAPID_PUBLIC_KEY_VALUE" ] && env_set VAPID_PUBLIC_KEY "$VAPID_PUBLIC_KEY_VALUE" "$HOST_ENV_FILE"
   [ -n "$VAPID_PRIVATE_KEY_VALUE" ] && env_set VAPID_PRIVATE_KEY "$VAPID_PRIVATE_KEY_VALUE" "$HOST_ENV_FILE"
   env_set VAPID_SUBJECT "$VAPID_SUBJECT_VALUE" "$HOST_ENV_FILE"
+  env_set AULORA_EKM_PROVIDER "$AULORA_EKM_PROVIDER_VALUE" "$HOST_ENV_FILE"
+  env_set AULORA_EKM_KEY_ID "$AULORA_EKM_KEY_ID_VALUE" "$HOST_ENV_FILE"
+  env_set AULORA_ENCRYPTION_KEY_VERSION "$AULORA_ENCRYPTION_KEY_VERSION_VALUE" "$HOST_ENV_FILE"
+  env_set AULORA_ENCRYPTION_ENABLED "$AULORA_ENCRYPTION_ENABLED_VALUE" "$HOST_ENV_FILE"
+  # Only write the master key back when this run generated it; an operator-set
+  # key stays where they put it. Never echo it.
+  if [ "$ENCRYPTION_KEY_GENERATED" = "1" ]; then
+    env_set AULORA_ENCRYPTION_KEY "$AULORA_ENCRYPTION_KEY_VALUE" "$HOST_ENV_FILE"
+  fi
   log "persisted generated secrets to ${HOST_ENV_FILE}"
 else
   log "host .env not mounted; skipped persisting generated secrets"

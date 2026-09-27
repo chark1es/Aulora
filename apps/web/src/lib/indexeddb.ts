@@ -1,9 +1,9 @@
 /**
  * Tiny promise-based IndexedDB key/value helper for the web client.
  *
- * Used only for device-local data: the decrypted search index and the offline
- * outbox. Nothing here is ever sent to a server; ciphertext storage goes
- * through Convex instead.
+ * Used only for device-local data: the search index and the offline outbox.
+ * Nothing here is ever sent to a server; message storage goes through Convex
+ * instead.
  */
 
 export interface KeyValueStore<T> {

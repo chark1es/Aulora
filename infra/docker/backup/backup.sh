@@ -7,6 +7,9 @@
 #
 #   backup.sh [cron|manual]
 #
+# Artifacts hold only ciphertext (the data is sealed at rest); the EKM-held KEK
+# is required to read them at restore time and is never copied in here. A small
+# non-secret encryption manifest records which provider/key version is needed.
 # Exit code is 0 on success and 1 on failure; a failure is also recorded so the
 # admin panel shows it. Nothing here prints secret values.
 
@@ -81,6 +84,15 @@ if ! convex export --path "$RUN_DIR/convex.zip" >/dev/null 2>&1; then
   fail "convex export failed"
 fi
 
+# 2b. Non-secret encryption manifest: records which EKM holds the KEK and which
+# key version sealed the data, so a restore knows what it needs. Deliberately
+# contains no key material (never AULORA_ENCRYPTION_KEY / AULORA_KEK_WRAPPED).
+printf '{"provider":"%s","kekId":"%s","keyVersion":"%s","algorithm":"AES-256-GCM","keyMaterialIncluded":false,"note":"Backups contain ciphertext; restoring requires the EKM-held KEK (or AULORA_ENCRYPTION_KEY)."}\n' \
+  "${AULORA_EKM_PROVIDER:-local}" \
+  "${AULORA_EKM_KEY_ID:-aulora-kek}" \
+  "${AULORA_ENCRYPTION_KEY_VERSION:-1}" \
+  > "$RUN_DIR/encryption.json"
+
 SIZE_BYTES="$(du -sb "$RUN_DIR" 2>/dev/null | cut -f1)"
 SIZE_BYTES="${SIZE_BYTES:-0}"
 
@@ -98,6 +110,9 @@ if [ "${BACKUP_SKIP_UPLOAD:-0}" != "1" ]; then
   fi
   if ! mc cp "$RUN_DIR/convex.zip" "aulora/$BACKUP_BUCKET/$LOCATION/convex.zip" >/dev/null 2>&1; then
     fail "uploading the Convex export failed"
+  fi
+  if ! mc cp "$RUN_DIR/encryption.json" "aulora/$BACKUP_BUCKET/$LOCATION/encryption.json" >/dev/null 2>&1; then
+    fail "uploading the encryption manifest failed"
   fi
 fi
 

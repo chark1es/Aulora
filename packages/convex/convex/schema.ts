@@ -4,11 +4,14 @@ import { v } from "convex/values";
 /**
  * Aulora data model (one server = one workspace, so no `workspaceId`).
  *
- * Every `*Ciphertext`, `keyPackage`, `identityKey`, `backupCiphertext` and
- * `commitCiphertext` value is an opaque string produced by a client. Server
- * code stores, relays and indexes it, but never parses or decrypts it.
- * `mentionUserIds` stays plaintext by design so the server can count mentions
- * and route push notifications.
+ * Content is encrypted server-side with an external key manager (EKM): the
+ * server seals structured values into AES-256-GCM `aulora-sse-v1` envelopes
+ * (see `lib/ekm.ts` and `lib/sse.ts`) using a root key the deployment holds
+ * outside the database. Columns that read as ciphertext/envelope hold those
+ * server-produced sealed strings, never client-produced ciphertext. Clients
+ * send and receive plaintext; the server seals on write and opens on read.
+ * Plaintext metadata (`mentionUserIds`, authorship, timestamps, indexes) stays
+ * readable so the server can route, count and page without the key.
  */
 
 const permissionOverwrite = v.object({
@@ -89,6 +92,20 @@ export default defineSchema({
     message: v.optional(v.string()),
   }).index("by_started", ["startedAt"]),
 
+  /**
+   * Key-version registry for server-side encryption. Rows record which key
+   * versions exist, their provider and whether they are still active; they
+   * never hold key material or wrapped keys.
+   */
+  encryptionKeys: defineTable({
+    keyVersion: v.string(),
+    provider: v.string(),
+    kekId: v.string(),
+    status: v.union(v.literal("active"), v.literal("retired")),
+    createdAt: v.number(),
+    retiredAt: v.optional(v.number()),
+  }).index("by_key_version", ["keyVersion"]),
+
   members: defineTable({
     userId: v.string(),
     nickname: v.optional(v.string()),
@@ -117,22 +134,33 @@ export default defineSchema({
   channels: defineTable({
     categoryId: v.optional(v.id("categories")),
     kind: channelKind,
+    /**
+     * Display order within its category; falls back to creation order when
+     * unset.
+     */
+    position: v.optional(v.number()),
+    /**
+     * A private channel is invisible in `list` unless the viewer is an explicit
+     * member (`channelMembers`), regardless of `ViewChannel` overrides. Joining
+     * is by invite or by an admin adding them, never by the public join path.
+     */
+    private: v.optional(v.boolean()),
+    /** Server-sealed channel name (`aulora-sse-v1` envelope). */
     nameCiphertext: v.optional(v.string()),
+    /** Server-sealed channel topic (`aulora-sse-v1` envelope). */
     topicCiphertext: v.optional(v.string()),
-    mlsGroupId: v.optional(v.string()),
     overrides: v.array(permissionOverwrite),
     archived: v.boolean(),
     /** Dedupe key for DMs and group DMs. */
     dmKey: v.optional(v.string()),
-    /** Latest MLS epoch published for the channel, if any. */
-    currentEpoch: v.optional(v.number()),
   })
     .index("by_category", ["categoryId"])
     .index("by_dm_key", ["dmKey"]),
 
   /**
-   * MLS group membership, kept separate from `ViewChannel`: a member can see a
-   * public channel without being in its MLS group yet. DMs and group DMs add
+   * Private-channel membership, kept separate from `ViewChannel`: a member can
+   * see a public channel without being in `channelMembers`, but a private
+   * channel is only visible to its explicit members. DMs and group DMs add
    * every participant on creation.
    */
   channelMembers: defineTable({
@@ -148,16 +176,21 @@ export default defineSchema({
     channelId: v.id("channels"),
     /** Plaintext metadata: the user who authored the message. */
     authorId: v.string(),
-    authorDeviceId: v.optional(v.id("devices")),
+    /** Server-sealed message body (`aulora-sse-v1` envelope). */
     ciphertext: v.string(),
-    epoch: v.number(),
     threadRootId: v.optional(v.id("messages")),
+    /** The message this one is a quoted inline reply to. */
+    replyToId: v.optional(v.id("messages")),
     attachmentIds: v.array(v.id("files")),
     mentionUserIds: v.array(v.string()),
     editedAt: v.optional(v.number()),
     deletedAt: v.optional(v.number()),
     /** Set while the message is pinned; cleared on unpin. */
     pinnedAt: v.optional(v.number()),
+    /** Thread roots only: number of replies, bumped on each reply send. */
+    replyCount: v.optional(v.number()),
+    /** Thread roots only: creation time of the newest reply. */
+    lastReplyAt: v.optional(v.number()),
   })
     // Convex appends `_creationTime` to every index, so this is
     // (channelId, _creationTime): chronological messages per channel.
@@ -168,6 +201,7 @@ export default defineSchema({
   reactions: defineTable({
     messageId: v.id("messages"),
     userId: v.string(),
+    /** Server-sealed emoji (`aulora-sse-v1` envelope). */
     emojiCiphertext: v.string(),
   }).index("by_message", ["messageId"]),
 
@@ -179,129 +213,33 @@ export default defineSchema({
   }).index("by_user_channel", ["userId", "channelId"]),
 
   files: defineTable({
+    /** Storage id of the server-sealed bytes. */
     storageId: v.id("_storage"),
+    /**
+     * Storage id whose bytes were sealed. It is the SSE `recordId` for
+     * `file.bytes`, so `openBytes` needs it to authenticate and decrypt.
+     */
+    sealedStorageId: v.id("_storage"),
     uploaderId: v.string(),
+    /** Plaintext byte length of the original upload. */
     sizeBytes: v.number(),
+    /** Master-key version used when the bytes were sealed. */
+    keyVersion: v.string(),
     nameCiphertext: v.optional(v.string()),
     mimeCiphertext: v.optional(v.string()),
     dimensionsCiphertext: v.optional(v.string()),
     blurhashCiphertext: v.optional(v.string()),
-  }).index("by_uploader", ["uploaderId"]),
+    channelId: v.optional(v.id("channels")),
+  })
+    .index("by_uploader", ["uploaderId"])
+    .index("by_channel", ["channelId"]),
 
   devices: defineTable({
     userId: v.string(),
     platform: v.string(),
     pushToken: v.optional(v.string()),
-    identityKey: v.string(),
-    /** X25519 public key a sender seals a history bundle to (Phase 5). */
-    sharingKey: v.optional(v.string()),
     lastSeen: v.number(),
-    /** Set once an existing verified device (or bootstrap) approves it. */
-    verifiedAt: v.optional(v.number()),
-    /** The device that approved this one, when approval was device-to-device. */
-    verifiedByDeviceId: v.optional(v.id("devices")),
-    verificationMethod: v.optional(
-      v.union(v.literal("safety_number"), v.literal("qr"), v.literal("bootstrap")),
-    ),
   }).index("by_user", ["userId"]),
-
-  /**
-   * Append-only record of device approvals. The `devices` row carries the
-   * current state; this table is the audit trail of who verified whom.
-   */
-  deviceApprovals: defineTable({
-    userId: v.string(),
-    deviceId: v.id("devices"),
-    /** The verifying device, or the device itself for a bootstrap approval. */
-    approverDeviceId: v.id("devices"),
-    method: v.union(v.literal("safety_number"), v.literal("qr"), v.literal("bootstrap")),
-    /** 60-digit safety number the approver confirmed (empty for bootstrap). */
-    safetyNumber: v.string(),
-    approvedAt: v.number(),
-  })
-    .index("by_user", ["userId"])
-    .index("by_device", ["deviceId"]),
-
-  keyPackages: defineTable({
-    deviceId: v.id("devices"),
-    keyPackage: v.string(),
-    usedAt: v.optional(v.number()),
-  }).index("by_device_unused", ["deviceId", "usedAt"]),
-
-  /**
-   * A device asking to be added to a channel's MLS group. `keyPackage` is a
-   * public KeyPackage; an online member's client reads it, builds the Add
-   * commit + Welcome, appends them through `mls.appendCommit`, then marks the
-   * intent serviced. The server never sees a private key.
-   */
-  joinIntents: defineTable({
-    channelId: v.id("channels"),
-    userId: v.string(),
-    deviceId: v.id("devices"),
-    keyPackage: v.string(),
-    createdAt: v.number(),
-    servicedAt: v.optional(v.number()),
-  })
-    .index("by_channel", ["channelId"])
-    .index("by_channel_serviced", ["channelId", "servicedAt"])
-    .index("by_device", ["deviceId"]),
-
-  mlsCommits: defineTable({
-    channelId: v.id("channels"),
-    epoch: v.number(),
-    commitCiphertext: v.string(),
-    welcomeCiphertext: v.optional(v.string()),
-  }).index("by_channel_epoch", ["channelId", "epoch"]),
-
-  keyBackups: defineTable({
-    userId: v.string(),
-    backupCiphertext: v.string(),
-    kdfParams: v.string(),
-    updatedAt: v.optional(v.number()),
-  }).index("by_user", ["userId"]),
-
-  /**
-   * Opaque history bundles: an existing device seals a channel history key to a
-   * new device's X25519 `sharingKey`. The server relays the envelope and can
-   * never open it. `consumedAt` lets a device mark a bundle imported.
-   */
-  historyBundles: defineTable({
-    channelId: v.id("channels"),
-    recipientUserId: v.string(),
-    recipientDeviceId: v.id("devices"),
-    envelope: v.string(),
-    createdAt: v.number(),
-    consumedAt: v.optional(v.number()),
-  })
-    .index("by_recipient_device", ["recipientDeviceId"])
-    .index("by_channel", ["channelId"]),
-
-  /**
-   * Encrypted channel-history snapshots. The ciphertext is encrypted under the
-   * channel history key, so only devices that received the key via a bundle can
-   * read it. At most one snapshot per (channel, epoch).
-   */
-  historyArchives: defineTable({
-    channelId: v.id("channels"),
-    epoch: v.number(),
-    archiveCiphertext: v.string(),
-    createdAt: v.number(),
-  }).index("by_channel_epoch", ["channelId", "epoch"]),
-
-  /**
-   * A new device asking an online member to share a channel's history key. The
-   * member reads the requester's `sharingKey`, seals the key and writes a
-   * `historyBundles` row, then marks the request serviced.
-   */
-  historyRequests: defineTable({
-    channelId: v.id("channels"),
-    userId: v.string(),
-    deviceId: v.id("devices"),
-    createdAt: v.number(),
-    servicedAt: v.optional(v.number()),
-  })
-    .index("by_channel", ["channelId"])
-    .index("by_device", ["deviceId"]),
 
   presence: defineTable({
     userId: v.string(),
@@ -322,7 +260,6 @@ export default defineSchema({
     channelId: v.optional(v.id("channels")),
     level: notificationLevel,
     muteUntil: v.optional(v.number()),
-    keywordsCiphertext: v.optional(v.string()),
   }).index("by_user_scope", ["userId", "scope"]),
 
   /**

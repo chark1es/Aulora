@@ -51,7 +51,6 @@ bun run build      # Turborepo build (dist/** where a package builds)
 | `apps/mobile`, `apps/desktop` | Expo and Tauri clients |
 | `packages/convex` | Schema, queries, mutations, actions, HTTP routes, crons |
 | `packages/core` | Shared hooks, permission resolution, well-known parsing |
-| `packages/crypto` | MLS wrapper and key storage adapters |
 | `packages/ui-web`, `packages/ui-native` | Design-system components |
 | `infra/docker` | Compose stack, first-run setup, backup runner |
 | `infra/push-relay` | Content-free APNs/FCM/UnifiedPush relay |
@@ -69,5 +68,6 @@ tests, and re-check all authority server-side in `packages/convex`.
 ## Security
 
 Report vulnerabilities privately to the maintainers rather than in a public
-issue. Never include real credentials, message plaintext or key material in an
-issue, pull request or test fixture.
+issue. Never include real credentials, message content, or any key material —
+including the EKM master key (KEK) or a per-scope data key (DEK) — in an issue,
+pull request or test fixture.

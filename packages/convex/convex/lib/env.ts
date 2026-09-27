@@ -4,6 +4,7 @@ import type {
   WellKnownOidcProvider,
   WellKnownProvider,
 } from "@aulora/core";
+import { getEkmSettings } from "./ekm";
 import { type GroupRoleMap, parseGroupRoleMap } from "./oidc";
 
 /** Version advertised through `server:publicConfig` and the well-known doc. */
@@ -200,4 +201,29 @@ export function getTrustedOrigins(env: Env): string[] {
 
 export function getBetterAuthSecret(env: Env): string | undefined {
   return read(env, "BETTER_AUTH_SECRET");
+}
+
+/** Content-encryption mode advertised to clients and setup. */
+export type EncryptionMode = "server";
+
+export interface EncryptionSettings {
+  readonly enabled: boolean;
+  readonly mode: EncryptionMode;
+  readonly provider: string;
+  readonly keyVersion: string;
+}
+
+/**
+ * Public-safe encryption settings. `AULORA_ENCRYPTION_ENABLED` defaults to on
+ * and is disabled only by the exact value `"false"`. Provider and key version
+ * are delegated to the EKM settings; no secret is returned.
+ */
+export function getEncryptionSettings(env: Env): EncryptionSettings {
+  const ekm = getEkmSettings(env);
+  return {
+    enabled: read(env, "AULORA_ENCRYPTION_ENABLED") !== "false",
+    mode: "server",
+    provider: ekm.provider,
+    keyVersion: ekm.keyVersion,
+  };
 }

@@ -1,3 +1,5 @@
+> **Historical note:** Aulora has since moved from client-side E2EE (MLS, RFC 9420) to server-side encryption backed by an external key manager (EKM). This report is a historical record of the earlier MLS design.
+
 # Phase 4.2 — Aulora mobile: Gate Report
 
 Date: 2026-09-26. Scope: the Expo (iOS + Android) client and its native
