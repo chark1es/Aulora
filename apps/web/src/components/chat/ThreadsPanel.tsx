@@ -153,6 +153,7 @@ export function ThreadsPanel(props: ThreadsPanelProps) {
         roles={props.roles}
         memberIds={props.memberIds}
         placeholder="Reply in thread…"
+        windowDropEnabled={false}
         onTyping={props.onTyping}
         onSend={(input) =>
           props.onSendReply({

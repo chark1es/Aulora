@@ -554,42 +554,53 @@ function MessageRow({
   const replyAuthorColor =
     replyAuthorId !== undefined ? memberColors?.get(replyAuthorId) : undefined;
 
-  const replyLine = replyToId !== null && (
-    <button
-      type="button"
-      onClick={() => scrollToOriginal(replyToId)}
-      aria-label="Jump to replied message"
-      className={cn(
-        "relative mb-0.5 flex min-w-0 max-w-full items-center gap-1.5 pl-3 text-left transition hover:opacity-80",
-        mirror && "flex-row-reverse pl-0 pr-3 text-right",
-      )}
-    >
-      <span
-        aria-hidden
+  // The quoted line, shared by grouped replies (whose elbow replaces the bar)
+  // and consecutive replies (which stay inline with their small color bar).
+  const renderReplyLine = (showBar: boolean): ReactNode =>
+    replyToId !== null && (
+      <button
+        type="button"
+        onClick={() => scrollToOriginal(replyToId)}
+        aria-label="Jump to replied message"
         className={cn(
-          "pointer-events-none absolute top-1/2 h-4 w-4 border-border/70",
-          mirror
-            ? "-right-2.5 rounded-br-[7px] border-b border-r"
-            : "-left-2.5 rounded-bl-[7px] border-b border-l",
+          "flex min-w-0 max-w-full items-center gap-2 text-left transition hover:opacity-80",
+          showBar && "mb-0.5",
+          mirror && "flex-row-reverse text-right",
         )}
-      />
-      <span className="min-w-0 truncate text-[12px] leading-4">
-        {replyPreview !== undefined ? (
-          <>
-            <span
-              className={cn("font-semibold", replyAuthorColor === undefined && "text-accent")}
-              style={replyAuthorColor !== undefined ? { color: replyAuthorColor } : undefined}
-            >
-              {replyPreview.authorName}
-            </span>{" "}
-            <span className="text-text-muted">{replyPreview.text}</span>
-          </>
-        ) : (
-          <span className="italic text-text-muted">Replying to a message</span>
+      >
+        {showBar && (
+          <span
+            aria-hidden
+            className={cn(
+              "h-4 w-[2px] shrink-0 rounded-full",
+              replyAuthorColor === undefined && "bg-border",
+            )}
+            style={
+              replyAuthorColor !== undefined ? { backgroundColor: replyAuthorColor } : undefined
+            }
+          />
         )}
-      </span>
-    </button>
-  );
+        <span className="min-w-0 truncate text-[12px] leading-4">
+          {replyPreview !== undefined ? (
+            <>
+              <span
+                className={cn("font-semibold", replyAuthorColor === undefined && "text-accent")}
+                style={replyAuthorColor !== undefined ? { color: replyAuthorColor } : undefined}
+              >
+                {replyPreview.authorName}
+              </span>{" "}
+              <span className="text-text-muted">{replyPreview.text}</span>
+            </>
+          ) : (
+            <span className="italic text-text-muted">Replying to a message</span>
+          )}
+        </span>
+      </button>
+    );
+
+  // A reply that opens a group pulls the quote onto its own row above the
+  // avatar + name + body row, joined to the avatar by an elbow connector.
+  const showReplyElbow = replyToId !== null && startsGroup;
 
   const toolbar = !unsent && !editing && (
     <div
@@ -682,120 +693,148 @@ function MessageRow({
       data-testid={`message-${message.id}`}
       onContextMenu={openContextMenu}
       className={cn(
-        "group/message relative flex w-full gap-2.5 py-0.5 transition-colors",
-        mirror && "flex-row-reverse",
+        "group/message relative w-full py-0.5 transition-colors",
         startsGroup ? "mt-3" : "mt-0.5",
       )}
     >
-      <div className="w-8 shrink-0 pt-0.5">
-        {startsGroup ? (
-          <PresenceAvatar userId={message.authorId} size={32} roleColor={authorColor} />
-        ) : (
-          !editing && (
-            <time
-              className={cn(
-                "pointer-events-none hidden whitespace-nowrap text-[10px] text-text-muted group-hover/message:block",
-                mirror ? "text-left" : "text-right",
-              )}
-              dateTime={new Date(message.createdAt).toISOString()}
-            >
-              {time}
-            </time>
-          )
-        )}
-      </div>
-      <div className={cn("flex min-w-0 flex-1 flex-col", mirror ? "items-end" : "items-start")}>
-        {startsGroup && replyLine}
-        {startsGroup && (
-          <div className={cn("mb-0.5 flex items-baseline gap-2", mirror && "flex-row-reverse")}>
-            <span
-              className="text-[13px] font-semibold text-text"
-              style={authorColor !== undefined ? { color: authorColor } : undefined}
-            >
-              {authorName}
-            </span>
-            <time
-              className="text-[11px] text-text-muted"
-              dateTime={new Date(message.createdAt).toISOString()}
-            >
-              {time}
-            </time>
+      {showReplyElbow && (
+        <>
+          <div className={cn("mb-1.5 flex w-full gap-2.5", mirror && "flex-row-reverse")}>
+            <div className="w-8 shrink-0" />
+            <div className={cn("flex min-w-0 flex-1", mirror ? "justify-end" : "justify-start")}>
+              {renderReplyLine(false)}
+            </div>
           </div>
-        )}
-        {message.pinnedAt !== null && (
-          <span className="mb-1 flex items-center gap-1 text-[11px] font-medium text-accent">
-            <Icon name="pin" size={12} />
-            Pinned
-          </span>
-        )}
-        {!startsGroup && replyLine}
-        {body}
-        {attachments.length > 0 && (
-          <div className={cn("mt-1.5 flex flex-col gap-1.5", mirror && "items-end")}>
-            {attachments.map((attachment) => (
-              <AttachmentView key={attachment.fileId} runtime={runtime} descriptor={attachment} />
-            ))}
-          </div>
-        )}
-        {failed ? (
-          <span
+          <svg
+            aria-hidden
+            viewBox="15 9 28 18"
+            fill="none"
             className={cn(
-              "mt-0.5 flex items-center gap-2 text-[11px] text-text-muted",
-              mirror && "flex-row-reverse",
+              "pointer-events-none absolute top-[9px] h-[18px] w-[28px] overflow-visible",
+              mirror ? "right-[15px] -scale-x-100" : "left-[15px]",
+              replyAuthorColor === undefined && "text-text-muted",
             )}
+            style={replyAuthorColor !== undefined ? { color: replyAuthorColor } : undefined}
           >
-            <span data-testid={`failed-${message.id}`} className="font-medium text-danger">
-              Not sent
-            </span>
-            {list.onRetrySend !== undefined && (
-              <button
-                type="button"
-                onClick={() => list.onRetrySend?.(message.id)}
-                className="rounded-[6px] border border-border px-1.5 py-0.5 font-semibold text-text transition hover:bg-surface-3"
+            <path
+              d="M 16 23 L 16 18 Q 16 10 24 10 L 39 10"
+              stroke="currentColor"
+              strokeWidth={1.5}
+              strokeLinecap="round"
+            />
+          </svg>
+        </>
+      )}
+      <div className={cn("relative flex w-full gap-2.5", mirror && "flex-row-reverse")}>
+        <div className="w-8 shrink-0 pt-0.5">
+          {startsGroup ? (
+            <PresenceAvatar userId={message.authorId} size={32} roleColor={authorColor} />
+          ) : (
+            !editing && (
+              <time
+                className={cn(
+                  "pointer-events-none hidden whitespace-nowrap text-[10px] text-text-muted group-hover/message:block",
+                  mirror ? "text-left" : "text-right",
+                )}
+                dateTime={new Date(message.createdAt).toISOString()}
               >
-                Retry
-              </button>
-            )}
-            {list.onDiscardSend !== undefined && (
-              <button
-                type="button"
-                onClick={() => list.onDiscardSend?.(message.id)}
-                className="rounded-[6px] px-1.5 py-0.5 font-medium text-text-muted transition hover:bg-surface-3 hover:text-text"
+                {time}
+              </time>
+            )
+          )}
+        </div>
+        <div className={cn("flex min-w-0 flex-1 flex-col", mirror ? "items-end" : "items-start")}>
+          {startsGroup && (
+            <div className={cn("mb-0.5 flex items-baseline gap-2", mirror && "flex-row-reverse")}>
+              <span
+                className="text-[13px] font-semibold text-text"
+                style={authorColor !== undefined ? { color: authorColor } : undefined}
               >
-                Discard
-              </button>
-            )}
-          </span>
-        ) : pending ? (
-          <span className="mt-0.5 text-[11px] text-text-muted">
-            <span data-testid={`pending-${message.id}`}>Sending…</span>
-          </span>
-        ) : message.editedAt !== null ? (
-          <span className="mt-0.5 text-[11px] text-text-muted">(edited)</span>
-        ) : null}
-        {reactions.length > 0 && (
-          <ReactionChips
-            groups={reactions}
-            align={mirror ? "end" : own ? "end" : "start"}
-            onToggle={(emoji) => list.onReact(message, emoji)}
-          />
-        )}
-        {replyCount > 0 && list.inThread !== true && (
-          <button
-            type="button"
-            onClick={() => list.onReply(message)}
-            className="mt-1 flex items-center gap-1.5 rounded-full px-2 py-0.5 text-xs font-semibold text-accent transition hover:bg-accent-soft"
-          >
-            <Icon name="thread" size={14} />
-            {replyCount === 1 ? "1 reply" : `${replyCount} replies`}
-            {message.lastReplyAt != null && (
-              <span className="font-normal text-text-muted">
-                · {activityLabel(message.lastReplyAt)}
+                {authorName}
               </span>
-            )}
-          </button>
-        )}
-        {toolbar}
+              <time
+                className="text-[11px] text-text-muted"
+                dateTime={new Date(message.createdAt).toISOString()}
+              >
+                {time}
+              </time>
+            </div>
+          )}
+          {message.pinnedAt !== null && (
+            <span className="mb-1 flex items-center gap-1 text-[11px] font-medium text-accent">
+              <Icon name="pin" size={12} />
+              Pinned
+            </span>
+          )}
+          {!startsGroup && renderReplyLine(true)}
+          {body}
+          {attachments.length > 0 && (
+            <div className={cn("mt-1.5 flex flex-col gap-1.5", mirror && "items-end")}>
+              {attachments.map((attachment) => (
+                <AttachmentView key={attachment.fileId} runtime={runtime} descriptor={attachment} />
+              ))}
+            </div>
+          )}
+          {failed ? (
+            <span
+              className={cn(
+                "mt-0.5 flex items-center gap-2 text-[11px] text-text-muted",
+                mirror && "flex-row-reverse",
+              )}
+            >
+              <span data-testid={`failed-${message.id}`} className="font-medium text-danger">
+                Not sent
+              </span>
+              {list.onRetrySend !== undefined && (
+                <button
+                  type="button"
+                  onClick={() => list.onRetrySend?.(message.id)}
+                  className="rounded-[6px] border border-border px-1.5 py-0.5 font-semibold text-text transition hover:bg-surface-3"
+                >
+                  Retry
+                </button>
+              )}
+              {list.onDiscardSend !== undefined && (
+                <button
+                  type="button"
+                  onClick={() => list.onDiscardSend?.(message.id)}
+                  className="rounded-[6px] px-1.5 py-0.5 font-medium text-text-muted transition hover:bg-surface-3 hover:text-text"
+                >
+                  Discard
+                </button>
+              )}
+            </span>
+          ) : pending ? (
+            <span className="mt-0.5 text-[11px] text-text-muted">
+              <span data-testid={`pending-${message.id}`}>Sending…</span>
+            </span>
+          ) : message.editedAt !== null ? (
+            <span className="mt-0.5 text-[11px] text-text-muted">(edited)</span>
+          ) : null}
+          {reactions.length > 0 && (
+            <ReactionChips
+              groups={reactions}
+              align={mirror ? "end" : own ? "end" : "start"}
+              onToggle={(emoji) => list.onReact(message, emoji)}
+            />
+          )}
+          {replyCount > 0 && list.inThread !== true && (
+            <button
+              type="button"
+              onClick={() => list.onReply(message)}
+              className="mt-1 flex items-center gap-1.5 rounded-full px-2 py-0.5 text-xs font-semibold text-accent transition hover:bg-accent-soft"
+            >
+              <Icon name="thread" size={14} />
+              {replyCount === 1 ? "1 reply" : `${replyCount} replies`}
+              {message.lastReplyAt != null && (
+                <span className="font-normal text-text-muted">
+                  · {activityLabel(message.lastReplyAt)}
+                </span>
+              )}
+            </button>
+          )}
+          {toolbar}
+        </div>
       </div>
     </article>
   );

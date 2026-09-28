@@ -8,6 +8,7 @@
  * even though MLS is gone and the server now seals content.
  */
 
+import { type Overwrite, Permission } from "../permissions.js";
 import type {
   ChannelSummary,
   ChatPort,
@@ -149,6 +150,46 @@ export function createMockPort(): MockPort {
       const channel = state.channels.get(args.channelId);
       if (channel !== undefined) {
         state.channels.set(args.channelId, { ...channel, topic: args.topic ?? null });
+        emitChannels();
+      }
+      return null;
+    },
+    async setChannelPrivate(args) {
+      record("setChannelPrivate", args);
+      const channel = state.channels.get(args.channelId);
+      if (channel !== undefined) {
+        const memberIds = args.private ? [...new Set(["me", ...(args.memberIds ?? [])])] : [];
+        state.members.set(args.channelId, memberIds);
+        state.channels.set(args.channelId, {
+          ...channel,
+          isPrivate: args.private,
+          memberIds,
+        });
+        emitChannels();
+      }
+      return null;
+    },
+    async setChannelBlocked(args) {
+      record("setChannelBlocked", args);
+      const channel = state.channels.get(args.channelId);
+      if (channel !== undefined) {
+        const blocked = new Set(args.userIds);
+        const overrides: Overwrite[] = (channel.overrides ?? []).filter(
+          (override) => override.targetType !== "member" || !blocked.has(override.targetId),
+        );
+        for (const userId of blocked) {
+          overrides.push({
+            targetId: userId,
+            targetType: "member",
+            allow: 0n,
+            deny: Permission.ViewChannel,
+          });
+        }
+        state.channels.set(args.channelId, {
+          ...channel,
+          overrides,
+          memberIds: (channel.memberIds ?? []).filter((id) => !blocked.has(id)),
+        });
         emitChannels();
       }
       return null;

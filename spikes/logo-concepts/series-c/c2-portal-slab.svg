@@ -1,0 +1,13 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 48 48" fill="none" role="img" aria-label="Aulora concept C2, Portal Slab">
+  <!-- Portal Slab: a dense rounded-square "wall" with an arched doorway carved
+       straight through it (the hall, the threshold) and one Moss voice resting in
+       the mouth of the arch. The slab is itself app-icon shaped, so the mark fills
+       the tile edge to edge. -->
+  <path
+    fill-rule="evenodd"
+    clip-rule="evenodd"
+    style="fill: var(--ember, #C2410C)"
+    d="M16 6 H32 A10 10 0 0 1 42 16 V32 A10 10 0 0 1 32 42 H16 A10 10 0 0 1 6 32 V16 A10 10 0 0 1 16 6 Z M15 42 V25 A9 9 0 0 1 33 25 V42 Z"
+  />
+  <circle cx="24" cy="31.5" r="3.4" style="fill: var(--moss, #248A3D)" />
+</svg>

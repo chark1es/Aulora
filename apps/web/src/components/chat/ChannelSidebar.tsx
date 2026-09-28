@@ -27,6 +27,12 @@ export interface ChannelSidebarProps {
   readonly activeChannelId: string | undefined;
   readonly unreadByChannel: ReadonlyMap<string, ChannelUnread>;
   readonly canCreateChannel: boolean;
+  /** Which main pane is showing; drives the sidebar Threads row. */
+  readonly mainView?: "chat" | "threads";
+  /** Mentions across the viewer's threads; badges the Threads row. */
+  readonly threadMentionCount?: number;
+  /** Opens the Threads inbox from the sidebar row. */
+  readonly onOpenThreads?: () => void;
   /** Create a category from the Channels header "+" chooser. */
   readonly onCreateCategory?: () => void;
   /** Whether the viewer may manage categories (adds "New category" to the chooser). */
@@ -41,6 +47,11 @@ export interface ChannelSidebarProps {
    * sidebar stays testable without a {@link ProfileProvider}.
    */
   readonly workspaceMenu?: ReactNode;
+  /**
+   * Full workspace switcher (trigger + menu) for the header. When set, it
+   * replaces the static identity block and the `workspaceMenu` control.
+   */
+  readonly workspaceSwitcher?: ReactNode;
   readonly onSelect: (channelId: string) => void;
   readonly onCreateChannel: () => void;
   readonly onNewConversation: () => void;
@@ -66,6 +77,7 @@ export interface ChannelSidebarProps {
     readonly open?: (channel: ChannelView) => void;
     readonly invite?: (channel: ChannelView) => void;
     readonly rename?: (channel: ChannelView) => void;
+    readonly edit?: (channel: ChannelView) => void;
     readonly markRead?: (channel: ChannelView) => void;
     readonly leave?: (channel: ChannelView) => void;
     readonly archive?: (channel: ChannelView) => void;
@@ -355,6 +367,14 @@ export function ChannelSidebar(props: ChannelSidebarProps) {
         onSelect: () => actions.rename?.(channel),
       });
     }
+    if (actions?.edit !== undefined) {
+      items.push({
+        id: "edit",
+        label: "Edit channel…",
+        icon: <Icon name="pencil" size={14} />,
+        onSelect: () => actions.edit?.(channel),
+      });
+    }
     if (actions?.markRead !== undefined && !active) {
       items.push({
         id: "markRead",
@@ -433,22 +453,28 @@ export function ChannelSidebar(props: ChannelSidebarProps) {
       aria-label="Conversations"
     >
       <div className="desktop-drag flex items-center gap-2.5 px-3 pb-2 pt-3">
-        <Avatar seed={workspaceIconSeed} size={32} shape="squircle" title={workspaceName} />
-        <div className="min-w-0 flex-1">
-          <h1 className="truncate text-[14px] font-semibold tracking-[-0.01em] text-text">
-            {workspaceName}
-          </h1>
-          <p className="flex items-center gap-1.5 text-[11px] text-text-muted">
-            <span className="h-1.5 w-1.5 rounded-full bg-secondary" aria-hidden="true" />
-            {props.onlineCount} online
-          </p>
-        </div>
+        {props.workspaceSwitcher !== undefined ? (
+          <div className="min-w-0 flex-1">{props.workspaceSwitcher}</div>
+        ) : (
+          <>
+            <Avatar seed={workspaceIconSeed} size={32} shape="squircle" title={workspaceName} />
+            <div className="min-w-0 flex-1">
+              <h1 className="truncate text-[14px] font-semibold tracking-[-0.01em] text-text">
+                {workspaceName}
+              </h1>
+              <p className="flex items-center gap-1.5 text-[11px] text-text-muted">
+                <span className="h-1.5 w-1.5 rounded-full bg-secondary" aria-hidden="true" />
+                {props.onlineCount} online
+              </p>
+            </div>
+          </>
+        )}
         {props.showAdmin === true && props.onOpenAdmin !== undefined && (
           <HeaderButton label="Workspace settings" onClick={props.onOpenAdmin}>
             <Icon name="settings" size={17} />
           </HeaderButton>
         )}
-        {props.workspaceMenu}
+        {props.workspaceSwitcher === undefined && props.workspaceMenu}
       </div>
 
       <div className="px-3 pb-2">
@@ -464,6 +490,35 @@ export function ChannelSidebar(props: ChannelSidebarProps) {
           </kbd>
         </button>
       </div>
+
+      {props.onOpenThreads !== undefined && (
+        <div className="px-3 pb-2">
+          <button
+            type="button"
+            data-testid="sidebar-threads"
+            aria-current={props.mainView === "threads" ? "page" : undefined}
+            onClick={props.onOpenThreads}
+            className={cn(
+              "relative flex h-8 w-full items-center gap-2.5 rounded-[8px] pl-3 pr-2 text-left text-[13px] transition",
+              props.mainView === "threads"
+                ? "bg-surface-3 font-semibold text-text"
+                : "text-text-muted hover:bg-surface-3 hover:text-text",
+            )}
+          >
+            <Icon
+              name="thread"
+              size={16}
+              className={cn(props.mainView === "threads" && "text-accent")}
+            />
+            <span className="min-w-0 flex-1 truncate">Threads</span>
+            {(props.threadMentionCount ?? 0) > 0 && (
+              <span className="flex h-4 min-w-4 items-center justify-center rounded-full bg-accent px-1 text-[10px] font-bold text-on-accent">
+                {(props.threadMentionCount ?? 0) > 9 ? "9+" : String(props.threadMentionCount)}
+              </span>
+            )}
+          </button>
+        </div>
+      )}
 
       <nav className="min-h-0 flex-1 overflow-y-auto px-2 pb-3">
         {groups.map((group) => {

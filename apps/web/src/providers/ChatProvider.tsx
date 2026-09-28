@@ -24,6 +24,7 @@ import {
 import { type ChatRuntime, createChatRuntime } from "../lib/chat-runtime";
 import { webOutboxStore } from "../lib/outbox-store";
 import { webSearchStore } from "../lib/search-store";
+import { usePresenceHeartbeat } from "../lib/use-presence-heartbeat";
 
 export interface ChatSearchHit extends SearchHit {
   readonly channelName: string;
@@ -101,6 +102,8 @@ export function ChatProvider({
   const runtimeRef = useRef<ChatRuntime | undefined>(undefined);
   const outboxRef = useRef<Outbox | undefined>(undefined);
   const searchRef = useRef<SearchIndex | undefined>(undefined);
+
+  usePresenceHeartbeat(runtime);
 
   useEffect(() => {
     let cancelled = false;

@@ -54,19 +54,27 @@ so the deployment and the well-known document pick up the public origins.
 
 ## Coolify
 
-Coolify already terminates TLS and sets `X-Forwarded-*`.
+Coolify already terminates TLS and sets `X-Forwarded-*`. The ready-made
+`../docker-compose.coolify.yml` is the file to point Coolify at: it publishes no
+host ports, keeps generated secrets in a named volume, and marks the one-shot
+services so they do not fail Coolify's health check. The full operator guide is
+in [Deploy on Coolify](../../../apps/docs/content/coolify.md).
 
-1. Create a **Docker Compose** resource pointing at this repository and
-   `infra/docker/docker-compose.yml`.
+1. Create a **Docker Compose** resource pointing at this repository, with Base
+   Directory `infra/docker` and Compose Location
+   `docker-compose.coolify.yml`. Turn on **Preserve Repository During
+   Deployment**, which the repo-relative bind mounts require.
 2. Set the environment variables from `.env.example` in Coolify's UI; do not
    commit a real `.env`.
-3. Expose only the `web` service (port 80) as the public application. Leave
-   `postgres`, `minio`, `convex-backend` and `convex-dashboard` on the internal
-   Docker network, or publish them on a private interface only.
-4. Add the `convex-backend` host as a second domain with the path
-   `/api/auth` if you want Coolify's proxy (Traefik) to own that route; the
-   `web` container already handles it if you do not.
-5. `docker compose run --rm setup` once, then point clients at the web domain.
+3. Add two domains: the web host -> service `web`, container port `80`, and the
+   Convex API/WS host -> service `convex-backend`, container port `3210`.
+   Postgres, MinIO, the dashboard and the push relay stay internal.
+4. Keep `/api/auth/*` on the web origin: the `web` nginx container proxies it to
+   `convex-backend:3211`, so the Better Auth cookie stays first-party. Do not
+   route `/api/auth` on the Convex domain.
+5. Coolify runs the one-shot `setup` service on each deploy; re-run it with
+   `docker compose -f docker-compose.coolify.yml run --rm setup` after changing
+   origins or auth settings, then point clients at the web domain.
 
 Coolify sets `X-Forwarded-Proto`; the shipped nginx config already passes it to
 the auth upstream.

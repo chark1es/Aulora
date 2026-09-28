@@ -7,6 +7,12 @@ the web SPA, and a one-shot `setup` container for first-run provisioning.
 There is **no TLS terminator here** on purpose. Put the stack behind your own
 edge proxy (Coolify, Traefik, Caddy, nginx, a cloud LB) — see `proxy/`.
 
+For [Coolify](https://coolify.io), use `docker-compose.coolify.yml` instead of
+`docker-compose.yml` and follow `../../../apps/docs/content/coolify.md`. It
+publishes no host ports, marks the one-shot services for Coolify's health
+check, and keeps generated secrets in the `setup-state` named volume so a
+redeploy never regenerates the encryption master key.
+
 ## First run
 
 ```powershell
@@ -222,7 +228,10 @@ Three things hold state; back all of them:
    ```powershell
    docker compose run --rm setup bash -lc `
      "cd /app/packages/convex && bunx convex export --path /convex/data/backup.zip"
-   docker cp aulora-convex-backend-1:/convex/data/backup.zip ./backup.zip
+   # Use `docker compose cp` rather than a hardcoded container name: the
+   # generated name (<project>-convex-backend-1) changes with the Compose
+   # project name, which Coolify and COMPOSE_PROJECT_NAME both control.
+   docker compose cp convex-backend:/convex/data/backup.zip ./backup.zip
    ```
 
    (`convex export` also covers S3-backed file storage.) Alternatively

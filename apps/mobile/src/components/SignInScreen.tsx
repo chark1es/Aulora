@@ -1,18 +1,41 @@
+import { NativeAvatar } from "@aulora/avatars/native";
 import type { ServerProfile } from "@aulora/core";
-import { Button, Card, Heading, Input, Text } from "@aulora/ui-native";
+import { Button, Heading, Input, Text } from "@aulora/ui-native";
 import { useState } from "react";
-import { View } from "react-native";
+import {
+  Animated,
+  KeyboardAvoidingView,
+  Platform,
+  Pressable,
+  ScrollView,
+  StyleSheet,
+  useWindowDimensions,
+} from "react-native";
 import {
   type AuloraAuthClient,
   authActionsFromClient,
   startProviderSignIn,
 } from "../lib/auth-client";
 import type { CookieStore } from "../lib/cookie-fetch";
+import { useEntrance, useReduceMotion } from "../lib/use-entrance";
+import { AuthScaffold } from "./AuthScaffold";
+import { ThresholdAura } from "./ThresholdAura";
 
 export interface SignInScreenProps {
   readonly profile: ServerProfile;
   readonly authClient: AuloraAuthClient;
   readonly cookieStore: CookieStore;
+  /** Opens the workspace switcher; omitted when no switcher is available. */
+  readonly onOpenWorkspaces?: () => void;
+}
+
+/** The host (with port) of a profile's base URL, for the quiet server caption. */
+function profileHost(baseUrl: string): string {
+  try {
+    return new URL(baseUrl).host;
+  } catch {
+    return baseUrl;
+  }
 }
 
 /**
@@ -22,7 +45,12 @@ export interface SignInScreenProps {
  * providers open Authorization Code + PKCE in the system browser and return via
  * `aulora://auth/callback`.
  */
-export function SignInScreen({ profile, authClient, cookieStore }: SignInScreenProps) {
+export function SignInScreen({
+  profile,
+  authClient,
+  cookieStore,
+  onOpenWorkspaces,
+}: SignInScreenProps) {
   const local = profile.auth.local;
   const providers = profile.auth.providers;
   const actions = authActionsFromClient(authClient);
@@ -32,6 +60,11 @@ export function SignInScreen({ profile, authClient, cookieStore }: SignInScreenP
   const [name, setName] = useState("");
   const [pending, setPending] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
+  const reduceMotion = useReduceMotion();
+  const { animatedStyle } = useEntrance(reduceMotion);
+  const { width } = useWindowDimensions();
+  const compact = width < 480;
+  const host = profileHost(profile.baseUrl);
 
   async function run(key: string, task: () => Promise<{ error: { message?: string } | null }>) {
     setError(null);
@@ -74,83 +107,134 @@ export function SignInScreen({ profile, authClient, cookieStore }: SignInScreenP
   const hasProviders = providers.length > 0;
 
   return (
-    <View className="flex-1 justify-center p-6">
-      <Card className="gap-5">
-        <View className="gap-1">
-          <Heading level={2}>Sign in to {profile.name}</Heading>
-          <Text size="sm" tone="muted">
-            {hasProviders || local.enabled
-              ? "Use one of the methods this server allows."
-              : "This server has no sign-in methods enabled yet."}
-          </Text>
-        </View>
-
-        {error !== null && (
-          <Text size="sm" tone="danger" accessibilityRole="alert">
-            {error}
-          </Text>
-        )}
-
-        {providers.map((provider) => (
-          <Button
-            key={provider.id}
-            variant="secondary"
-            loading={pending === provider.id}
-            disabled={pending !== null && pending !== provider.id}
-            onPress={() => void signInWithProvider(provider.id, provider.type)}
-          >
-            Continue with {provider.displayName}
-          </Button>
-        ))}
-
-        {hasProviders && local.enabled && (
-          <Text size="xs" tone="muted" className="text-center">
-            or
-          </Text>
-        )}
-
-        {local.enabled && (
-          <View className="gap-4">
-            {mode === "sign-up" && (
-              <Input label="Name" autoComplete="name" value={name} onChangeText={setName} />
-            )}
-            <Input
-              label="Email"
-              keyboardType="email-address"
-              autoCapitalize="none"
-              autoComplete="email"
-              value={email}
-              onChangeText={setEmail}
-            />
-            <Input
-              label="Password"
-              secureTextEntry
-              autoComplete={mode === "sign-up" ? "new-password" : "current-password"}
-              value={password}
-              onChangeText={setPassword}
-            />
-            <Button
-              loading={pending === "local"}
-              disabled={pending !== null}
-              onPress={() => void submitLocal()}
-            >
-              {mode === "sign-up" ? "Create account" : "Sign in"}
-            </Button>
-            {local.signup && (
-              <Button
-                variant="ghost"
-                disabled={pending !== null}
-                onPress={() => {
-                  setError(null);
-                  setMode(mode === "sign-up" ? "sign-in" : "sign-up");
-                }}
+    <KeyboardAvoidingView
+      className="flex-1"
+      behavior={Platform.OS === "ios" ? "padding" : "height"}
+    >
+      <ScrollView
+        className="flex-1"
+        contentContainerStyle={styles.scrollContent}
+        keyboardShouldPersistTaps="handled"
+        showsVerticalScrollIndicator={false}
+      >
+        <AuthScaffold
+          aura={
+            <ThresholdAura size={compact ? 96 : 108} breathing>
+              <NativeAvatar seed={profile.iconSeed} size={40} shape="squircle" />
+            </ThresholdAura>
+          }
+        >
+          <Animated.View className="gap-2" style={animatedStyle}>
+            <Heading level={1}>Sign in to {profile.name}</Heading>
+            <Text size="base" tone="muted" className="leading-relaxed">
+              {hasProviders || local.enabled
+                ? "Use one of the methods this server allows."
+                : "This server has no sign-in methods enabled yet."}
+            </Text>
+            {onOpenWorkspaces !== undefined ? (
+              <Pressable
+                accessibilityRole="button"
+                accessibilityLabel={`Switch workspace, current ${profile.name}`}
+                onPress={onOpenWorkspaces}
+                className="flex-row items-center gap-1"
               >
-                {mode === "sign-up" ? "Already have an account? Sign in" : "Create an account"}
-              </Button>
+                <Text size="xs" tone="muted" mono numberOfLines={1} ellipsizeMode="tail">
+                  {host}
+                </Text>
+                <Text size="xs" tone="muted">
+                  ⌄
+                </Text>
+              </Pressable>
+            ) : (
+              <Text size="xs" tone="muted" mono numberOfLines={1} ellipsizeMode="tail">
+                {host}
+              </Text>
             )}
-          </View>
-        )}
-      </Card>
-    </View>
+          </Animated.View>
+
+          {error !== null && (
+            <Text size="sm" tone="danger" accessibilityRole="alert">
+              {error}
+            </Text>
+          )}
+
+          {providers.map((provider) => (
+            <Button
+              key={provider.id}
+              variant="secondary"
+              size="lg"
+              loading={pending === provider.id}
+              disabled={pending !== null && pending !== provider.id}
+              onPress={() => void signInWithProvider(provider.id, provider.type)}
+            >
+              Continue with {provider.displayName}
+            </Button>
+          ))}
+
+          {hasProviders && local.enabled && (
+            <Text size="xs" tone="muted" className="text-center">
+              or
+            </Text>
+          )}
+
+          {local.enabled && (
+            <Animated.View className="gap-4" style={animatedStyle}>
+              {mode === "sign-up" && (
+                <Input
+                  size="lg"
+                  label="Name"
+                  autoComplete="name"
+                  value={name}
+                  onChangeText={setName}
+                />
+              )}
+              <Input
+                size="lg"
+                label="Email"
+                keyboardType="email-address"
+                autoCapitalize="none"
+                autoComplete="email"
+                value={email}
+                onChangeText={setEmail}
+              />
+              <Input
+                size="lg"
+                label="Password"
+                secureTextEntry
+                autoComplete={mode === "sign-up" ? "new-password" : "current-password"}
+                value={password}
+                onChangeText={setPassword}
+              />
+              <Button
+                size="lg"
+                loading={pending === "local"}
+                disabled={pending !== null}
+                onPress={() => void submitLocal()}
+              >
+                {mode === "sign-up" ? "Create account" : "Sign in"}
+              </Button>
+              {local.signup && (
+                <Button
+                  variant="ghost"
+                  disabled={pending !== null}
+                  onPress={() => {
+                    setError(null);
+                    setMode(mode === "sign-up" ? "sign-in" : "sign-up");
+                  }}
+                >
+                  {mode === "sign-up" ? "Already have an account? Sign in" : "Create an account"}
+                </Button>
+              )}
+            </Animated.View>
+          )}
+        </AuthScaffold>
+      </ScrollView>
+    </KeyboardAvoidingView>
   );
 }
+
+const styles = StyleSheet.create({
+  scrollContent: {
+    flexGrow: 1,
+  },
+});

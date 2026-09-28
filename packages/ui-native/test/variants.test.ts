@@ -65,6 +65,19 @@ describe("class composers", () => {
     expect(inputClass()).toContain("border-border");
   });
 
+  it("keeps the default input size identical and adds an additive large size", () => {
+    const defaultMd = inputClass();
+    expect(inputClass({ size: "md" })).toBe(defaultMd);
+    expect(defaultMd).toContain("h-10");
+    expect(defaultMd).toContain("text-base");
+
+    const lg = inputClass({ size: "lg" });
+    expect(lg).not.toContain("h-10");
+    expect(lg).toContain("min-h-[52px]");
+    expect(lg).toContain("text-[17px]");
+    expect(inputClass({ size: "lg", error: true })).toContain("border-danger");
+  });
+
   it("appends custom class names and applies the mono font", () => {
     expect(textClass({ size: "xs", mono: true, className: "px-2" })).toContain("font-mono");
     expect(textClass({ size: "xs", mono: true, className: "px-2" })).toContain("px-2");

@@ -44,4 +44,5 @@ The docs site builds with `bun run --cwd apps/docs build` and lands in
 
 - Gave it a server URL and a login? Open the [admin panel](admin.md).
 - Want off-machine copies of your data? Set up [backups](backups.md).
+- Deploying to a server with Coolify? Follow [Deploy on Coolify](coolify.md).
 - Running it for a company? Read [Licensing](licensing.md).

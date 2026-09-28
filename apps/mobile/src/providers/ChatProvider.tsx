@@ -10,7 +10,7 @@ import {
   type SearchHit,
   SearchIndex,
 } from "@aulora/core";
-import type { ConvexReactClient } from "convex/react";
+import { type ConvexReactClient, useQuery } from "convex/react";
 import {
   createContext,
   type ReactNode,
@@ -21,8 +21,20 @@ import {
   useRef,
   useState,
 } from "react";
+import { api } from "../../../../packages/convex/convex/_generated/api";
 import { createMobileChatRuntime, type MobileChatRuntime } from "../lib/chat-runtime";
 import { convexSubscriptions } from "../lib/convex-chat";
+import {
+  canManageChannels,
+  type MemberView,
+  type MobileMemberEntry,
+  memberViewToEntry,
+  type RoleView,
+  resolveViewerPermissions,
+} from "../lib/permissions";
+import { usePresenceHeartbeat } from "../lib/use-presence-heartbeat";
+
+export type { MobileMemberEntry } from "../lib/permissions";
 
 export interface ChatSendOptions {
   readonly mentionUserIds?: readonly string[];
@@ -41,6 +53,13 @@ export interface MobileChatContextValue {
   readonly channels: readonly ChannelView[];
   readonly presence: readonly PresenceRow[];
   readonly outbox: readonly OutboxItem[];
+  /** Workspace members, flattened for the channel-edit picker. */
+  readonly members: readonly MobileMemberEntry[];
+  /** The viewer's effective permission bitfield, resolved like the server. */
+  readonly viewerPermissions: bigint;
+  readonly isOwner: boolean;
+  /** Owner or `ManageChannels`; gates the channel-edit surfaces. */
+  readonly canManageChannels: boolean;
   sendMessage(channelId: string, text: string, options?: ChatSendOptions): Promise<ChatSendResult>;
   search(query: string): Promise<readonly SearchHit[]>;
 }
@@ -65,6 +84,8 @@ export function ChatProvider({ client, children }: ChatProviderProps) {
   const runtimeRef = useRef<MobileChatRuntime | undefined>(undefined);
   const outboxRef = useRef<Outbox | undefined>(undefined);
   const searchRef = useRef<SearchIndex | undefined>(undefined);
+
+  usePresenceHeartbeat(runtime?.port);
 
   useEffect(() => {
     let cancelled = false;
@@ -194,6 +215,51 @@ export function ChatProvider({ client, children }: ChatProviderProps) {
     return index.query(query, { limit: 20 });
   }, []);
 
+  const membersResult = useQuery(api.members.list, {});
+  const rolesResult = useQuery(api.roles.list, {});
+  const meResult = useQuery(api.members.me, {});
+
+  const roleViews = useMemo<readonly RoleView[]>(
+    () => (rolesResult ?? []) as readonly RoleView[],
+    [rolesResult],
+  );
+
+  const memberViews = useMemo<readonly MemberView[]>(
+    () => (membersResult ?? []) as readonly MemberView[],
+    [membersResult],
+  );
+
+  const viewerUserId = meResult?.userId;
+  const ownerId = meResult?.ownerId ?? null;
+  const isOwner = meResult?.isOwner ?? false;
+  const viewerMember = meResult?.member ?? null;
+
+  const viewerPermissions = useMemo<bigint>(() => {
+    if (viewerUserId === undefined) {
+      return 0n;
+    }
+    return resolveViewerPermissions({
+      viewer: { userId: viewerUserId, isOwner },
+      member: viewerMember,
+      roles: roleViews,
+    });
+  }, [viewerUserId, isOwner, viewerMember, roleViews]);
+
+  const members = useMemo<readonly MobileMemberEntry[]>(
+    () =>
+      memberViews.map((member) =>
+        memberViewToEntry(
+          member,
+          roleViews,
+          ownerId,
+          member.userId === viewerUserId ? "You" : "Member",
+        ),
+      ),
+    [memberViews, roleViews, ownerId, viewerUserId],
+  );
+
+  const canManageChannelsForViewer = canManageChannels(isOwner, viewerPermissions);
+
   const views = useMemo<readonly ChannelView[]>(
     () =>
       summaries.map((channel) => ({
@@ -210,10 +276,26 @@ export function ChatProvider({ client, children }: ChatProviderProps) {
       channels: views,
       presence,
       outbox,
+      members,
+      viewerPermissions,
+      isOwner,
+      canManageChannels: canManageChannelsForViewer,
       sendMessage,
       search,
     }),
-    [runtime, ready, views, presence, outbox, sendMessage, search],
+    [
+      runtime,
+      ready,
+      views,
+      presence,
+      outbox,
+      members,
+      viewerPermissions,
+      isOwner,
+      canManageChannelsForViewer,
+      sendMessage,
+      search,
+    ],
   );
 
   return <ChatContext.Provider value={value}>{children}</ChatContext.Provider>;

@@ -233,13 +233,6 @@ function MemberGroup({
                     <span className="block truncate text-[11px] text-text-muted">{custom}</span>
                   )}
                 </span>
-                {!self && (
-                  <Icon
-                    name="message"
-                    size={15}
-                    className="text-text-muted opacity-0 transition group-hover:opacity-100"
-                  />
-                )}
               </button>
             </li>
           );

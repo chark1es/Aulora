@@ -19,6 +19,7 @@ const PAGES = [
   { file: "index.md", label: "Overview" },
   { file: "getting-started.md", label: "Getting started" },
   { file: "self-hosting.md", label: "Self-hosting" },
+  { file: "coolify.md", label: "Coolify" },
   { file: "admin.md", label: "Admin panel" },
   { file: "backups.md", label: "Backups" },
   { file: "licensing.md", label: "Licensing" },

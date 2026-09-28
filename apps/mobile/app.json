@@ -13,7 +13,7 @@
     "android": {
       "package": "app.aulora.android",
       "adaptiveIcon": {
-        "backgroundColor": "#0A0A0C"
+        "backgroundColor": "#18181A"
       }
     },
     "web": {

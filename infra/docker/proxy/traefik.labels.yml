@@ -11,6 +11,13 @@
 #
 # Key point: Traefik must NOT add a second layer of auth-cookie rewriting, and
 # /api/auth/* must reach the Convex HTTP-actions port (3211), not the API port.
+#
+# `traefik.docker.network` below is `aulora_default`: Docker Compose's implicit
+# network is `<project>_default`, and the standalone file pins the project name
+# to `aulora`. If you change COMPOSE_PROJECT_NAME, update the three labels to
+# match, or drop the labels entirely and let Traefik auto-detect the network.
+# Under Coolify the network is Coolify-managed, so do not reuse these labels
+# there; Coolify generates its own proxy labels from the domains you configure.
 
 # --- service: web ----------------------------------------------------------
 # The web container already proxies /api/auth/* itself and serves the SPA.
@@ -20,7 +27,7 @@ services:
   web:
     labels:
       traefik.enable: "true"
-      traefik.docker.network: "aulora"
+      traefik.docker.network: "aulora_default"
       traefik.http.routers.aulora-web.rule: "Host(`chat.example.com`)"
       traefik.http.routers.aulora-web.entrypoints: "websecure"
       traefik.http.routers.aulora-web.tls.certresolver: "letsencrypt"
@@ -36,7 +43,7 @@ services:
   convex-backend:
     labels:
       traefik.enable: "true"
-      traefik.docker.network: "aulora"
+      traefik.docker.network: "aulora_default"
       traefik.http.routers.aulora-auth.rule: "Host(`chat.example.com`) && PathPrefix(`/api/auth`)"
       traefik.http.routers.aulora-auth.entrypoints: "websecure"
       traefik.http.routers.aulora-auth.tls.certresolver: "letsencrypt"
@@ -52,7 +59,7 @@ services:
   convex-dashboard:
     labels:
       traefik.enable: "true"
-      traefik.docker.network: "aulora"
+      traefik.docker.network: "aulora_default"
       traefik.http.routers.aulora-dash.rule: "Host(`dashboard.example.com`)"
       traefik.http.routers.aulora-dash.entrypoints: "websecure"
       traefik.http.routers.aulora-dash.tls.certresolver: "letsencrypt"

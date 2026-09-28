@@ -28,6 +28,11 @@ interface PresencePatch {
   readonly customStatusCiphertext?: string | undefined;
   /** True when the caller explicitly set (or cleared) the custom status. */
   readonly setCustomStatus?: boolean;
+  /**
+   * The {@link PresenceRow.manual} flag to store. `undefined` leaves the field
+   * untouched (used when a caller should not change automatic/manual state).
+   */
+  readonly manual?: boolean;
 }
 
 async function upsertPresence(
@@ -51,12 +56,14 @@ async function upsertPresence(
       userId,
       status,
       lastHeartbeat: now,
+      ...(patch.manual !== undefined ? { manual: patch.manual } : {}),
       ...(customStatusCiphertext !== undefined ? { customStatusCiphertext } : {}),
     });
   } else {
     await ctx.db.patch(existing._id, {
       status,
       lastHeartbeat: now,
+      ...(patch.manual !== undefined ? { manual: patch.manual } : {}),
       ...(setCustomStatus ? { customStatusCiphertext } : {}),
     });
   }
@@ -65,18 +72,39 @@ async function upsertPresence(
 
 /**
  * Presence heartbeat (clients call every ~30s). Optionally updates the status;
- * does not change the custom status.
+ * does not change the custom status. A manually chosen status (anything other
+ * than `online`) is preserved: the heartbeat only refreshes its timestamp.
  */
 export const heartbeat = mutation({
   args: { status: v.optional(presenceStatusValidator) },
   handler: async (ctx, args) => {
     const { userId } = await requireAuth(ctx);
-    const patch: PresencePatch = args.status !== undefined ? { status: args.status } : {};
-    return await upsertPresence(ctx, userId, patch, Date.now());
+    const now = Date.now();
+    const existing = await ctx.db
+      .query("presence")
+      .withIndex("by_user", (q) => q.eq("userId", userId))
+      .unique();
+    // A deliberate status is never overwritten by a heartbeat; only the
+    // liveness timestamp moves so the row stays out of the offline sweep.
+    if (existing?.manual === true) {
+      await ctx.db.patch(existing._id, { lastHeartbeat: now });
+      return { status: existing.status, lastHeartbeat: now };
+    }
+    return await upsertPresence(
+      ctx,
+      userId,
+      { status: args.status ?? "online", manual: false },
+      now,
+    );
   },
 });
 
-/** Sets a deliberate status and an optional custom status (sealed server-side). */
+/**
+ * Sets a deliberate status and an optional custom status (sealed server-side).
+ * Any status other than `online` marks the row manual so it survives both
+ * heartbeats and the staleness sweep; setting `online` clears the flag so
+ * automatic behaviour resumes.
+ */
 export const setStatus = mutation({
   args: {
     status: presenceStatusValidator,
@@ -84,13 +112,21 @@ export const setStatus = mutation({
   },
   handler: async (ctx, args) => {
     const { userId } = await requireAuth(ctx);
+    const customStatusProvided = args.customStatus !== undefined;
     const trimmed = args.customStatus?.trim() ?? "";
     const customStatusCiphertext =
-      trimmed.length > 0 ? await sealString(CUSTOM_STATUS_CONTEXT, trimmed) : undefined;
+      customStatusProvided && trimmed.length > 0
+        ? await sealString(CUSTOM_STATUS_CONTEXT, trimmed)
+        : undefined;
     return await upsertPresence(
       ctx,
       userId,
-      { status: args.status, setCustomStatus: true, customStatusCiphertext },
+      {
+        status: args.status,
+        manual: args.status !== "online",
+        setCustomStatus: customStatusProvided,
+        customStatusCiphertext,
+      },
       Date.now(),
     );
   },
@@ -136,7 +172,8 @@ export const get = query({
 
 /**
  * Cron hook: moves stale `online` sessions to `idle`, then any stale session to
- * `offline`. Deliberate `dnd` is preserved until the offline threshold.
+ * `offline`. Rows the user set manually are skipped entirely so a deliberate
+ * `dnd`/`idle`/`offline` survives inactivity.
  */
 export const sweepStale = internalMutation({
   args: {},
@@ -145,6 +182,9 @@ export const sweepStale = internalMutation({
     const rows = await ctx.db.query("presence").collect();
     let changed = 0;
     for (const row of rows) {
+      if (row.manual === true) {
+        continue;
+      }
       const age = now - row.lastHeartbeat;
       if (age >= PRESENCE_OFFLINE_MS) {
         if (row.status !== "offline") {

@@ -9,8 +9,8 @@ import {
 } from "@tanstack/react-router";
 import { lazy, Suspense, useEffect, useState } from "react";
 import { DesktopBridge } from "./components/DesktopBridge";
-import { ServerRail } from "./components/ServerRail";
-import { ProfileProvider } from "./providers/ProfileProvider";
+import { WorkspaceMenu } from "./components/WorkspaceMenu";
+import { ProfileProvider, useProfiles } from "./providers/ProfileProvider";
 import { ConnectRoute } from "./routes/ConnectRoute";
 import { HomeRoute } from "./routes/HomeRoute";
 import { RedeemRoute } from "./routes/RedeemRoute";
@@ -38,14 +38,32 @@ function RootLayout() {
     <ProfileProvider {...(previewing && previewStore !== undefined ? { store: previewStore } : {})}>
       <ContextMenuProvider>
         <DesktopBridge />
-        <div className="desktop-canvas flex h-full bg-bg text-text">
-          <ServerRail />
-          <main className="flex min-h-0 min-w-0 flex-1">
-            <Outlet />
-          </main>
-        </div>
+        <AppShell />
       </ContextMenuProvider>
     </ProfileProvider>
+  );
+}
+
+function AppShell() {
+  const { profiles, activeProfile } = useProfiles();
+  const pathname = useRouterState({ select: (state) => state.location.pathname });
+  // Pre-session screens have no sidebar, so surface the switcher here instead of
+  // the removed rail: on the connect route, or on home before a workspace is
+  // chosen — but only once at least one workspace has been joined.
+  const showSwitcher =
+    profiles.length >= 1 &&
+    (pathname === "/connect" || (pathname === "/" && activeProfile === undefined));
+  return (
+    <div className="desktop-canvas relative flex h-full bg-bg text-text">
+      <main className="flex min-h-0 min-w-0 flex-1">
+        <Outlet />
+      </main>
+      {showSwitcher && (
+        <div className="absolute right-3 top-3 z-40">
+          <WorkspaceMenu variant="compact" align="right" />
+        </div>
+      )}
+    </div>
   );
 }
 

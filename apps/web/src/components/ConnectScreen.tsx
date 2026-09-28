@@ -9,10 +9,10 @@ import {
   type WellKnown,
   WellKnownError,
 } from "@aulora/core";
-import { Button, Heading, Input, Logo, Text } from "@aulora/ui-web";
+import { Button, Heading, Input, Text } from "@aulora/ui-web";
 import { type FormEvent, useEffect, useState } from "react";
 import { SUPPORTED_API_VERSION } from "../lib/api-version";
-import { AuthCard, AuthFrame } from "./AuthFrame";
+import { AuthCard, AuthColumns, AuthFrame } from "./AuthFrame";
 
 export interface ConnectScreenProps {
   readonly store: ProfileStore;
@@ -30,21 +30,21 @@ function messageForError(error: unknown): string {
   if (error instanceof WellKnownError) {
     switch (error.code) {
       case "HTTP_ERROR":
-        return "That server answered, but did not serve an Aulora well-known document.";
+        return "That address answered, but it isn't an Aulora server.";
       case "INVALID_JSON":
         return "That server returned a response this client could not read.";
       case "SECRET_FIELD":
-        return "That server's well-known document contained a field Aulora refuses to use.";
+        return "That server's configuration isn't one this client can use.";
       case "NETWORK_ERROR":
         return "Could not reach that server. Check the address and your connection.";
       case "INVALID_SHAPE":
-        return "That server's well-known document has an unexpected shape.";
+        return "That server's configuration isn't in a format this client understands.";
       default:
         return "That server could not be used.";
     }
   }
   if (error instanceof ServerUrlError) {
-    return "Enter a valid server address, like chat.acme.com or 100.64.0.10:8080.";
+    return "Enter a valid server address, like chat.acme.com.";
   }
   return "Something went wrong while connecting.";
 }
@@ -112,84 +112,86 @@ export function ConnectScreen({ store, onConnected, initialHost }: ConnectScreen
   if (preview !== null) {
     const { wellKnown } = preview;
     return (
-      <AuthFrame>
-        <AuthCard>
-          <div className="flex flex-col items-center gap-4 text-center">
-            <Avatar seed={wellKnown.iconSeed} size={80} shape="squircle" title={wellKnown.name} />
-            <div className="flex flex-col gap-1">
-              <Heading level={2}>{wellKnown.name}</Heading>
-              <Text tone="muted" size="sm" mono>
-                {preview.baseUrl}
+      <AuthFrame layout="split">
+        <AuthColumns keyhole={<Avatar seed={wellKnown.iconSeed} size={72} shape="squircle" />}>
+          <AuthCard>
+            <div className="flex flex-col gap-1.5">
+              <Heading level={1} className="text-[30px] leading-[1.15] sm:text-[32px]">
+                {wellKnown.name}
+              </Heading>
+              <Text tone="muted" size="md" className="leading-normal">
+                This is the workspace on that server.
               </Text>
             </div>
-            <div className="flex flex-wrap justify-center gap-1.5 text-xs font-medium">
-              <span className="rounded-full bg-surface-3 px-2.5 py-1 text-text-muted">
-                Aulora v{wellKnown.version} · API v{wellKnown.apiVersion}
-              </span>
+            <div className="flex flex-col gap-2">
+              <Text tone="muted" size="sm" mono className="truncate">
+                {preview.baseUrl}
+              </Text>
+              <div className="flex flex-wrap gap-1.5 text-xs font-medium">
+                <span className="rounded-full bg-surface-3 px-2.5 py-1 text-text-muted">
+                  Aulora v{wellKnown.version} · API v{wellKnown.apiVersion}
+                </span>
+              </div>
             </div>
-          </div>
-          {error !== null && (
-            <Text tone="danger" size="sm" role="alert" className="text-center">
-              {error}
-            </Text>
-          )}
-          <div className="flex w-full flex-col gap-2">
-            <Button size="lg" onClick={handleContinue} loading={busy}>
-              Continue
-            </Button>
-            <Button
-              variant="ghost"
-              onClick={() => {
-                setPreview(null);
-                setError(null);
-              }}
-            >
-              Use a different server
-            </Button>
-          </div>
-        </AuthCard>
+            {error !== null && (
+              <Text tone="danger" size="sm" role="alert">
+                {error}
+              </Text>
+            )}
+            <div className="flex w-full flex-col gap-2">
+              <Button size="lg" onClick={handleContinue} loading={busy}>
+                <span className="text-[17px] font-semibold">Continue</span>
+              </Button>
+              <Button
+                size="lg"
+                variant="ghost"
+                onClick={() => {
+                  setPreview(null);
+                  setError(null);
+                }}
+              >
+                Use a different server
+              </Button>
+            </div>
+          </AuthCard>
+        </AuthColumns>
       </AuthFrame>
     );
   }
 
   return (
-    <AuthFrame>
-      <AuthCard>
-        <div className="flex flex-col gap-4">
-          <span className="flex h-12 w-12 items-center justify-center rounded-[11px] bg-accent">
-            <Logo
-              size={28}
-              className="[&_.fill-accent]:fill-on-accent [&_.fill-on-accent]:fill-accent"
-            />
-          </span>
+    <AuthFrame layout="split">
+      <AuthColumns>
+        <AuthCard>
           <div className="flex flex-col gap-1.5">
-            <Heading level={1} className="text-[26px]">
+            <Heading level={1} className="text-[30px] leading-[1.15] sm:text-[32px]">
               Connect to a server
             </Heading>
-            <Text tone="muted" size="sm">
-              Enter the address your team gave you — a domain, or a LAN/Tailscale address like
-              100.64.0.10:8080. Aulora checks the server and shows you the workspace before anything
-              is saved.
+            <Text tone="muted" size="md" className="leading-normal">
+              Point Aulora at your team's server. Nothing is saved until you confirm.
             </Text>
           </div>
-        </div>
-        <form className="flex flex-col gap-4" onSubmit={handleSubmit} noValidate>
-          <Input
-            label="Server address"
-            placeholder="chat.acme.com or 100.64.0.10:8080"
-            autoComplete="off"
-            autoCapitalize="none"
-            spellCheck={false}
-            autoFocus
-            value={host}
-            onChange={(event) => setHost(event.currentTarget.value)}
-            {...(error !== null ? { error } : {})}
-          />
-          <Button size="lg" type="submit" loading={busy} disabled={host.trim().length === 0}>
-            {busy ? "Connecting" : "Connect"}
-          </Button>
-        </form>
-      </AuthCard>
+          <form className="flex flex-col gap-4" onSubmit={handleSubmit} noValidate>
+            <Input
+              label="Server address"
+              size="lg"
+              placeholder="chat.acme.com"
+              hint="Your server's host, e.g. chat.acme.com."
+              autoComplete="off"
+              autoCapitalize="none"
+              spellCheck={false}
+              inputMode="url"
+              autoFocus
+              value={host}
+              onChange={(event) => setHost(event.currentTarget.value)}
+              {...(error !== null ? { error } : {})}
+            />
+            <Button size="lg" type="submit" loading={busy} disabled={host.trim().length === 0}>
+              <span className="text-[17px] font-semibold">{busy ? "Connecting…" : "Connect"}</span>
+            </Button>
+          </form>
+        </AuthCard>
+      </AuthColumns>
     </AuthFrame>
   );
 }

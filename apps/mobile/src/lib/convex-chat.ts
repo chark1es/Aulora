@@ -147,6 +147,21 @@ export function convexPort(client: ConvexReactClient): ChatPort {
       });
       return null;
     },
+    async setChannelPrivate(args) {
+      await client.mutation(api.channels.setPrivate, {
+        channelId: args.channelId as never,
+        private: args.private,
+        ...(args.memberIds !== undefined ? { memberIds: [...args.memberIds] } : {}),
+      });
+      return null;
+    },
+    async setChannelBlocked(args) {
+      await client.mutation(api.channels.setBlockedUsers, {
+        channelId: args.channelId as never,
+        userIds: [...args.userIds],
+      });
+      return null;
+    },
     async joinChannel(args) {
       await client.mutation(api.channels.join, { channelId: args.channelId as never });
       return null;

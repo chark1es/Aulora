@@ -52,6 +52,10 @@ if (config !== null) {
   );
   check("withGlobalTauri must be enabled", config.app?.withGlobalTauri === true);
   check("windows[0] must be the main window", config.app?.windows?.[0]?.label === "main");
+  check(
+    "windows[0] must set dragDropEnabled to false so the app-wide web file drop reaches the webview",
+    config.app?.windows?.[0]?.dragDropEnabled === false,
+  );
 
   const csp = config.app?.security?.csp;
   check("a CSP string must be set", typeof csp === "string");
@@ -89,6 +93,10 @@ if (macos !== null) {
   const window = macos.app?.windows?.[0];
   check("macOS window must be transparent for vibrancy", window?.transparent === true);
   check("macOS window must use the overlay title bar", window?.titleBarStyle === "Overlay");
+  check(
+    "macOS window must set dragDropEnabled to false so the app-wide web file drop reaches the webview",
+    window?.dragDropEnabled === false,
+  );
   check(
     "macOS bundles must be app + dmg",
     JSON.stringify(macos.bundle?.targets) === JSON.stringify(["app", "dmg"]),

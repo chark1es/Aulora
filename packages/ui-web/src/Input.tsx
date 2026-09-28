@@ -1,18 +1,27 @@
 import { forwardRef, type InputHTMLAttributes, useId } from "react";
 import { cn } from "./cn";
 
-export interface InputProps extends InputHTMLAttributes<HTMLInputElement> {
+export type InputSize = "md" | "lg";
+
+export interface InputProps extends Omit<InputHTMLAttributes<HTMLInputElement>, "size"> {
   /** Visible field label; wired to the input with `htmlFor`. */
   label: string;
   /** Optional helper text shown below the field. */
   hint?: string;
   /** Error message; switches the field to an error state. */
   error?: string;
+  /** Control height and text size. `md` (default) is unchanged; `lg` is taller. */
+  size?: InputSize;
 }
+
+const SIZE_CLASSES: Record<InputSize, string> = {
+  md: "h-10 px-3 text-[14px]",
+  lg: "h-12 px-3.5 text-[17px]",
+};
 
 /** Text input with a 10px radius, hairline border and accent focus ring. */
 export const Input = forwardRef<HTMLInputElement, InputProps>(function Input(
-  { label, hint, error, className, id, ...rest },
+  { label, hint, error, size = "md", className, id, ...rest },
   ref,
 ) {
   const generatedId = useId();
@@ -32,7 +41,8 @@ export const Input = forwardRef<HTMLInputElement, InputProps>(function Input(
         aria-invalid={error !== undefined || undefined}
         aria-describedby={describedBy.length > 0 ? describedBy.join(" ") : undefined}
         className={cn(
-          "h-10 w-full rounded-input border bg-surface-3 px-3 text-[14px] text-text placeholder:text-text-muted",
+          "w-full rounded-input border bg-surface-3 text-text placeholder:text-text-muted",
+          SIZE_CLASSES[size],
           "transition focus-visible:border-accent focus-visible:bg-surface-2 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent-soft",
           "disabled:pointer-events-none disabled:opacity-50",
           error !== undefined ? "border-danger" : "border-border",

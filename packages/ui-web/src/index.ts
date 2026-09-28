@@ -11,7 +11,7 @@ export { DOT_GRID_PITCH, DotGrid, type DotGridProps } from "./DotGrid";
 export { Heading, type HeadingLevel, type HeadingProps } from "./Heading";
 export { Icon, type IconProps } from "./Icon";
 export { IconButton, type IconButtonProps } from "./IconButton";
-export { Input, type InputProps } from "./Input";
+export { Input, type InputProps, type InputSize } from "./Input";
 export { Logo, type LogoProps } from "./Logo";
 export { Field, Modal, type ModalProps } from "./Modal";
 export { Select, type SelectOption, type SelectProps } from "./Select";

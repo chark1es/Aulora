@@ -1,5 +1,5 @@
-import { darkPalette } from "@aulora/tokens";
-import { type StyleProp, StyleSheet, View, type ViewStyle } from "react-native";
+import { darkPalette, lightPalette } from "@aulora/tokens";
+import { type StyleProp, StyleSheet, useColorScheme, View, type ViewStyle } from "react-native";
 import { SvgXml } from "react-native-svg";
 import { type AvatarShape, avatarRadius } from "./shape";
 import { avatarSvg } from "./svg";
@@ -39,13 +39,20 @@ export function NativeAvatar({
     roleColor !== undefined && roleColor.length > 0
       ? { borderColor: roleColor, borderWidth: 2 }
       : null;
+  const frameColor =
+    useColorScheme() === "light" ? lightPalette["surface-3"] : darkPalette["surface-3"];
   return (
     <View
       accessible={title !== undefined}
       accessibilityLabel={title}
       style={[
         styles.frame,
-        { width: size, height: size, borderRadius: avatarRadius(size, shape) },
+        {
+          width: size,
+          height: size,
+          borderRadius: avatarRadius(size, shape),
+          backgroundColor: frameColor,
+        },
         ring,
         style,
       ]}
@@ -60,6 +67,5 @@ const styles = StyleSheet.create({
     alignItems: "center",
     justifyContent: "center",
     overflow: "hidden",
-    backgroundColor: darkPalette["surface-3"],
   },
 });

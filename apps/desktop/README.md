@@ -17,6 +17,7 @@ store of its own.
 | `aulora://connect` and `aulora://invite` deep links, single instance | `deep_link.rs` |
 | macOS Sidebar vibrancy behind translucent rails | `window.rs`, `tauri.macos.conf.json` |
 | Locked-down CSP: bundled code only, no remote script origins | `tauri.conf.json` |
+| Native drag-drop disabled (`dragDropEnabled: false`) so the web composer accepts files dropped anywhere in the window | `tauri.conf.json`, `tauri.macos.conf.json` |
 
 The web player (`apps/web`) talks to the shell through `window.__TAURI__`
 (commands `set_unread_badge`, `show_notification`, `take_deep_links`;

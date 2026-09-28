@@ -1,0 +1,16 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 48 48" fill="none" role="img" aria-label="Aulora concept C1, Monogram A">
+  <!-- Monogram A: three heavy round-capped strokes forming a wide, low, geometric
+       A — a compact lettermark with a real counter and a low crossbar. One Ember
+       fill, no accent dot, so it is monochrome by construction. -->
+  <g
+    fill="none"
+    stroke="var(--ember, #C2410C)"
+    stroke-width="8"
+    stroke-linecap="round"
+    stroke-linejoin="round"
+  >
+    <path d="M10 40 24 8" />
+    <path d="M38 40 24 8" />
+    <path d="M17 30H31" />
+  </g>
+</svg>

@@ -1,10 +1,21 @@
 import { NativeAvatar } from "@aulora/avatars/native";
 import { fetchWellKnown, type WellKnown, WellKnownError } from "@aulora/core";
-import { Button, Card, Heading, Input, Spinner, Text } from "@aulora/ui-native";
+import { Button, Heading, Input, Text } from "@aulora/ui-native";
 import { useState } from "react";
-import { View } from "react-native";
+import {
+  Animated,
+  KeyboardAvoidingView,
+  Platform,
+  ScrollView,
+  StyleSheet,
+  useWindowDimensions,
+  View,
+} from "react-native";
 import { SUPPORTED_API_VERSION } from "../lib/api-version";
+import { useEntrance, useReduceMotion } from "../lib/use-entrance";
 import { useProfiles } from "../providers/ProfileProvider";
+import { AuthScaffold } from "./AuthScaffold";
+import { ThresholdAura } from "./ThresholdAura";
 
 function messageForError(error: unknown): string {
   if (error instanceof WellKnownError) {
@@ -44,6 +55,10 @@ export function ConnectScreen({
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [preview, setPreview] = useState<Preview | null>(null);
+  const reduceMotion = useReduceMotion();
+  const { animatedStyle } = useEntrance(reduceMotion);
+  const { width } = useWindowDimensions();
+  const compact = width < 480;
 
   async function connect() {
     setError(null);
@@ -84,76 +99,102 @@ export function ConnectScreen({
 
   if (preview !== null) {
     return (
-      <View className="flex-1 items-center justify-center p-6">
-        <Card className="w-full items-center gap-4">
-          <NativeAvatar
-            seed={preview.wellKnown.iconSeed}
-            size={72}
-            title={preview.wellKnown.name}
-          />
-          <Heading level={2}>{preview.wellKnown.name}</Heading>
-          <Text size="sm" tone="muted" mono>
+      <AuthScaffold
+        aura={
+          <ThresholdAura size={compact ? 124 : 140} breathing>
+            <NativeAvatar
+              seed={preview.wellKnown.iconSeed}
+              size={56}
+              title={preview.wellKnown.name}
+            />
+          </ThresholdAura>
+        }
+      >
+        <View className="items-center gap-1.5">
+          <Heading level={1} className="text-center">
+            {preview.wellKnown.name}
+          </Heading>
+          <Text size="sm" tone="muted" mono className="text-center">
             {preview.baseUrl}
           </Text>
-          <Text size="sm" tone="secondary">
+          <Text size="sm" tone="muted" className="text-center">
             Aulora v{preview.wellKnown.version} · API v{preview.wellKnown.apiVersion}
           </Text>
-          {error !== null && (
-            <Text size="sm" tone="danger" accessibilityRole="alert">
-              {error}
-            </Text>
-          )}
-          <View className="w-full gap-2">
-            <Button loading={busy} onPress={() => void save()}>
-              Continue
-            </Button>
-            <Button
-              variant="ghost"
-              disabled={busy}
-              onPress={() => {
-                setPreview(null);
-                setError(null);
-              }}
-            >
-              Use a different server
-            </Button>
-          </View>
-        </Card>
-      </View>
+        </View>
+        {error !== null && (
+          <Text size="sm" tone="danger" accessibilityRole="alert" className="text-center">
+            {error}
+          </Text>
+        )}
+        <View className="w-full gap-3">
+          <Button size="lg" loading={busy} onPress={() => void save()}>
+            Continue
+          </Button>
+          <Button
+            variant="ghost"
+            disabled={busy}
+            onPress={() => {
+              setPreview(null);
+              setError(null);
+            }}
+          >
+            Use a different server
+          </Button>
+        </View>
+      </AuthScaffold>
     );
   }
 
   return (
-    <View className="flex-1 items-center justify-center p-6">
-      <Card className="w-full gap-5">
-        <View className="gap-1">
-          <Heading level={1}>Connect to a server</Heading>
-          <Text size="sm" tone="muted">
-            Enter the host your team gave you. Aulora reads its well-known document to find the
-            workspace and sign-in methods.
-          </Text>
-        </View>
-        <Input
-          label="Server address"
-          placeholder="chat.acme.com"
-          autoCapitalize="none"
-          autoCorrect={false}
-          keyboardType="url"
-          value={host}
-          onChangeText={setHost}
-          onSubmitEditing={() => void connect()}
-          returnKeyType="go"
-          {...(error !== null ? { error } : {})}
-        />
-        <Button loading={busy} disabled={host.trim().length === 0} onPress={() => void connect()}>
-          Connect
-        </Button>
-        {busy && (
-          <View className="items-center">
-            <Spinner size={20} label="Connecting" />
-          </View>
-        )}
-      </Card>
-    </View>
+    <KeyboardAvoidingView
+      className="flex-1"
+      behavior={Platform.OS === "ios" ? "padding" : "height"}
+    >
+      <ScrollView
+        className="flex-1"
+        contentContainerStyle={styles.scrollContent}
+        keyboardShouldPersistTaps="handled"
+        showsVerticalScrollIndicator={false}
+      >
+        <AuthScaffold aura={<ThresholdAura size={compact ? 124 : 140} breathing />}>
+          <Animated.View className="gap-2" style={animatedStyle}>
+            <Heading level={1}>Connect to a server</Heading>
+            <Text size="base" tone="muted" className="leading-relaxed">
+              Point Aulora at your team's server to open the hall.
+            </Text>
+          </Animated.View>
+          <Animated.View className="gap-4" style={animatedStyle}>
+            <Input
+              size="lg"
+              label="Server address"
+              hint="Your server's host, e.g. chat.acme.com."
+              placeholder="chat.acme.com"
+              autoCapitalize="none"
+              autoCorrect={false}
+              keyboardType="url"
+              value={host}
+              onChangeText={setHost}
+              onSubmitEditing={() => void connect()}
+              returnKeyType="go"
+              {...(error !== null ? { error } : {})}
+            />
+            <Button
+              size="lg"
+              loading={busy}
+              disabled={host.trim().length === 0}
+              onPress={() => void connect()}
+            >
+              Connect
+            </Button>
+          </Animated.View>
+        </AuthScaffold>
+      </ScrollView>
+    </KeyboardAvoidingView>
   );
 }
+
+const styles = StyleSheet.create({
+  scrollContent: {
+    flexGrow: 1,
+  },
+});

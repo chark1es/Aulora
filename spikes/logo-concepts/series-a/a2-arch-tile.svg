@@ -1,0 +1,6 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 96 96" fill="none" role="img" aria-label="Aulora concept A2, A-arch, app icon tile">
+  <!-- Squircle app-icon treatment: the A-arch mark reversed out of an Ember tile. -->
+  <rect width="96" height="96" rx="22" fill="#C2410C" />
+  <path fill="#FFFFFF" d="M39 27 A9 9 0 0 1 57 27 L82 84 L66 84 L51.5 36 A3.5 3.5 0 0 0 44.5 36 L30 84 L14 84 Z" />
+  <rect x="28" y="59" width="40" height="7" rx="3.5" fill="#FFFFFF" />
+</svg>

@@ -5,12 +5,22 @@ import { useEffect, useRef, useState } from "react";
 import { useProfiles } from "../providers/ProfileProvider";
 import { ThemeToggle } from "./ThemeToggle";
 
+export interface WorkspaceMenuProps {
+  /** Live member count for the header trigger's "N online" line. */
+  readonly onlineCount?: number;
+  /** `header` (identity trigger) or `compact` (name-only, pre-session). */
+  readonly variant?: "header" | "compact";
+  /** Which edge the dropdown aligns to; defaults to the trigger's own edge. */
+  readonly align?: "left" | "right";
+}
+
 /**
- * The workspace menu: shows every joined server, switches the active one, and
- * adds a new server. It lives in the sidebar header so a person with a single
- * workspace never sees a rail built for many. Also carries the theme control.
+ * The workspace switcher: the workspace name itself is the trigger, opening a
+ * menu of every joined server with the active one checked, an "Add a workspace"
+ * action, and the appearance control. Rendered in the sidebar header
+ * (`variant="header"`) and on the pre-session screens (`variant="compact"`).
  */
-export function WorkspaceMenu() {
+export function WorkspaceMenu({ onlineCount, variant = "header", align }: WorkspaceMenuProps) {
   const { profiles, activeProfile, setActive } = useProfiles();
   const navigate = useNavigate();
   const [open, setOpen] = useState(false);
@@ -29,28 +39,71 @@ export function WorkspaceMenu() {
     return () => document.removeEventListener("pointerdown", onPointer);
   }, [open]);
 
+  const resolvedAlign = align ?? (variant === "header" ? "left" : "right");
   const multiple = profiles.length > 1;
+  const name = activeProfile?.name ?? "Choose a workspace";
+  const toggle = () => setOpen((value) => !value);
 
   return (
-    <div ref={ref} className="relative">
-      <button
-        type="button"
-        aria-haspopup="menu"
-        aria-expanded={open}
-        aria-label="Workspace menu"
-        onClick={() => setOpen((value) => !value)}
-        className={cn(
-          "flex h-7 w-7 items-center justify-center rounded-[7px] text-text-muted transition hover:bg-surface-3 hover:text-text focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent",
-        )}
-      >
-        <Icon name="more-vertical" size={17} />
-      </button>
+    <div ref={ref} className="relative min-w-0">
+      {variant === "header" ? (
+        <button
+          type="button"
+          aria-haspopup="menu"
+          aria-expanded={open}
+          aria-label="Workspace menu"
+          onClick={toggle}
+          className="flex w-full min-w-0 items-center gap-2.5 rounded-[8px] px-1 py-1.5 text-left transition hover:bg-surface-3 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent"
+        >
+          {activeProfile !== undefined ? (
+            <Avatar seed={activeProfile.iconSeed} size={32} shape="squircle" />
+          ) : (
+            <span className="flex h-8 w-8 shrink-0 items-center justify-center rounded-[10px] border border-dashed border-border text-text-muted">
+              <Icon name="plus" size={16} />
+            </span>
+          )}
+          <span className="min-w-0 flex-1">
+            <span className="block truncate text-[14px] font-semibold tracking-[-0.01em] text-text">
+              {name}
+            </span>
+            {activeProfile !== undefined && (
+              <span className="flex items-center gap-1.5 text-[11px] text-text-muted">
+                <span className="h-1.5 w-1.5 rounded-full bg-secondary" aria-hidden="true" />
+                {onlineCount ?? 0} online
+              </span>
+            )}
+          </span>
+          <Icon name="chevron-down" size={16} className="shrink-0 text-text-muted" />
+        </button>
+      ) : (
+        <button
+          type="button"
+          aria-haspopup="menu"
+          aria-expanded={open}
+          aria-label="Workspace menu"
+          onClick={toggle}
+          className="flex max-w-[240px] min-w-0 items-center gap-2 rounded-[9px] border border-border bg-surface-2/90 px-2 py-1.5 text-left shadow-sm backdrop-blur transition hover:bg-surface-3 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent"
+        >
+          {activeProfile !== undefined ? (
+            <Avatar seed={activeProfile.iconSeed} size={22} shape="squircle" />
+          ) : (
+            <span className="flex h-[22px] w-[22px] shrink-0 items-center justify-center rounded-[7px] border border-dashed border-border text-text-muted">
+              <Icon name="plus" size={13} />
+            </span>
+          )}
+          <span className="truncate text-[13px] font-semibold text-text">{name}</span>
+          <Icon name="chevron-down" size={15} className="shrink-0 text-text-muted" />
+        </button>
+      )}
 
       {open && (
         <div
           role="menu"
           aria-label="Workspaces"
-          className="absolute right-0 top-[calc(100%+6px)] z-40 w-[260px] animate-pop-in overflow-hidden rounded-[10px] border border-border bg-surface-2 p-1 shadow-2xl shadow-black/25"
+          className={cn(
+            "absolute top-[calc(100%+6px)] z-40 w-[260px] animate-pop-in overflow-hidden rounded-[10px] border border-border bg-surface-2 p-1 shadow-2xl shadow-black/25",
+            resolvedAlign === "right" ? "right-0" : "left-0",
+          )}
         >
           <p className="px-2.5 pb-1 pt-2 text-[11px] font-semibold uppercase tracking-[0.06em] text-text-muted">
             {multiple ? "Workspaces" : "Workspace"}

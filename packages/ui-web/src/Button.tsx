@@ -15,10 +15,11 @@ export interface ButtonProps extends ButtonHTMLAttributes<HTMLButtonElement> {
 }
 
 const VARIANT_CLASSES: Record<ButtonVariant, string> = {
-  primary: "bg-accent text-on-accent hover:brightness-110 active:brightness-95",
-  secondary: "border border-border bg-surface-2 text-text hover:bg-surface-3",
-  ghost: "bg-transparent text-text-muted hover:bg-surface-3 hover:text-text",
-  danger: "bg-danger text-on-accent hover:brightness-110 active:brightness-95",
+  primary:
+    "bg-accent text-on-accent hover:brightness-110 active:brightness-95 disabled:bg-surface-3 disabled:text-text-muted disabled:opacity-100",
+  secondary: "border border-border bg-surface-2 text-text hover:bg-surface-3 disabled:opacity-50",
+  ghost: "bg-transparent text-text-muted hover:bg-surface-3 hover:text-text disabled:opacity-50",
+  danger: "bg-danger text-on-accent hover:brightness-110 active:brightness-95 disabled:opacity-50",
 };
 
 const SIZE_CLASSES: Record<ButtonSize, string> = {
@@ -52,7 +53,7 @@ export const Button = forwardRef<HTMLButtonElement, ButtonProps>(function Button
       className={cn(
         "inline-flex select-none items-center justify-center font-medium transition",
         "focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent focus-visible:ring-offset-2 focus-visible:ring-offset-bg",
-        "disabled:pointer-events-none disabled:opacity-50",
+        "disabled:pointer-events-none",
         VARIANT_CLASSES[variant],
         SIZE_CLASSES[size],
         className,

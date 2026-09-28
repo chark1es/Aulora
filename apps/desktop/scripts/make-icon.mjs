@@ -1,17 +1,32 @@
-// Generates the source app icon and the Windows taskbar overlay badge as PNGs,
-// with no image dependencies (Node's zlib only). Run `bun run make:icons` to
-// regenerate; `bun run icons` then fans app-icon.png out into the platform icon
-// set via the Tauri CLI.
-import { mkdirSync, writeFileSync } from "node:fs";
+// Generates the source app icon and the Windows taskbar overlay badge as PNGs.
+//
+// The 1024x1024 app icon is rasterized from src-tauri/app-icon.svg (a rounded
+// dark tile carrying the gradient "A" on a transparent canvas) with a headless
+// Chromium through Playwright, so the gradients and paths match the mark
+// exactly. A procedural gradient would be impractical to sample by hand, so the
+// SVG is the single source of truth. `rsvg-convert` is used as a fallback.
+//
+// The badge is still drawn procedurally with Node's zlib only. Run
+// `bun run make:icons` to regenerate; `bun run icons` then fans app-icon.png out
+// into the platform icon set via the Tauri CLI.
+import { spawnSync } from "node:child_process";
+import { mkdirSync, readFileSync, writeFileSync } from "node:fs";
+import { createRequire } from "node:module";
 import { dirname, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 import { deflateSync } from "node:zlib";
 
 const root = resolve(dirname(fileURLToPath(import.meta.url)), "..");
 
-const BG = [0x0a, 0x0a, 0x0c];
-const EMBER = [0xf5, 0xa4, 0x5b];
+const BG = [0x1c, 0x1c, 0x1e]; // Loam
+const EMBER = [0xe4, 0x57, 0x1c]; // dark Ember
 const CLEAR = [0, 0, 0, 0];
+
+const APP_SVG = resolve(root, "src-tauri/app-icon.svg");
+const APP_PNG = resolve(root, "src-tauri/app-icon.png");
+const APP_SIZE = 1024;
+
+const BADGE_SIZE = 64;
 
 const CRC_TABLE = (() => {
   const table = new Int32Array(256);
@@ -63,48 +78,13 @@ function encodePng(width, height, rgba) {
   ]);
 }
 
-function inRoundedRect(x, y, left, top, right, bottom, radius) {
-  if (x < left || x > right || y < top || y > bottom) {
-    return false;
-  }
-  const cx = Math.min(Math.max(x, left + radius), right - radius);
-  const cy = Math.min(Math.max(y, top + radius), bottom - radius);
-  const dx = x - cx;
-  const dy = y - cy;
-  return dx * dx + dy * dy <= radius * radius;
-}
-
-function inArch(x, y, centerX, topCenterY, halfWidth, bottomY) {
-  if (y > bottomY) {
-    return false;
-  }
-  if (y >= topCenterY) {
-    return Math.abs(x - centerX) <= halfWidth;
-  }
-  const dx = x - centerX;
-  const dy = y - topCenterY;
-  return dx * dx + dy * dy <= halfWidth * halfWidth;
-}
-
 function inCircle(x, y, centerX, centerY, radius) {
   const dx = x - centerX;
   const dy = y - centerY;
   return dx * dx + dy * dy <= radius * radius;
 }
 
-function sampleAppIcon(x, y) {
-  if (inRoundedRect(x, y, 64, 64, 960, 960, 220)) {
-    if (inArch(x, y, 512, 430, 250, 800)) {
-      if (inArch(x, y, 512, 470, 150, 800)) {
-        return inCircle(x, y, 512, 610, 52) ? [...EMBER, 255] : [...BG, 255];
-      }
-      return [...EMBER, 255];
-    }
-    return [...BG, 255];
-  }
-  return CLEAR;
-}
-
+// The Windows taskbar badge: a legible glyph — an Ember core in a Loam ring.
 function sampleBadge(x, y, size) {
   const center = size / 2;
   if (inCircle(x, y, center, center, size * 0.46)) {
@@ -156,10 +136,65 @@ function write(relative, buffer) {
   process.stdout.write(`wrote ${path}\n`);
 }
 
-const APP_SIZE = 1024;
-write("src-tauri/app-icon.png", encodePng(APP_SIZE, APP_SIZE, render(APP_SIZE, sampleAppIcon, 2)));
+// Playwright is a devDependency of @aulora/web, not @aulora/desktop, so resolve
+// it explicitly from the web workspace (or the root) rather than relying on
+// this package's own node_modules.
+function loadPlaywright() {
+  const require = createRequire(import.meta.url);
+  for (const base of [resolve(root, "../web"), root]) {
+    try {
+      return require(require.resolve("@playwright/test", { paths: [base] }));
+    } catch {
+      // Fall through to the next candidate workspace.
+    }
+  }
+  return null;
+}
 
-const BADGE_SIZE = 64;
+async function rasterizeWithPlaywright(svgMarkup, outPath, size) {
+  const { chromium } = loadPlaywright();
+  const browser = await chromium.launch();
+  try {
+    const page = await browser.newPage({
+      viewport: { width: size, height: size },
+      deviceScaleFactor: 1,
+    });
+    await page.setContent(
+      `<!doctype html><html><head><style>html,body{margin:0;padding:0;background:transparent}</style></head><body>${svgMarkup}</body></html>`,
+      { waitUntil: "load" },
+    );
+    await page.locator("svg").screenshot({ omitBackground: true, path: outPath });
+  } finally {
+    await browser.close();
+  }
+}
+
+function rasterizeWithRsvg(svgPath, outPath, size) {
+  const result = spawnSync(
+    "rsvg-convert",
+    ["-w", String(size), "-h", String(size), svgPath, "-o", outPath],
+    { stdio: "ignore" },
+  );
+  return result.status === 0;
+}
+
+async function makeAppIcon() {
+  if (loadPlaywright() !== null) {
+    await rasterizeWithPlaywright(readFileSync(APP_SVG, "utf8"), APP_PNG, APP_SIZE);
+    process.stdout.write(`wrote ${APP_PNG} (Playwright/Chromium)\n`);
+    return;
+  }
+  if (rasterizeWithRsvg(APP_SVG, APP_PNG, APP_SIZE)) {
+    process.stdout.write(`wrote ${APP_PNG} (rsvg-convert)\n`);
+    return;
+  }
+  throw new Error(
+    "no SVG rasterizer available: install Playwright's Chromium (via @aulora/web) or rsvg-convert",
+  );
+}
+
+await makeAppIcon();
+
 write(
   "src-tauri/assets/badge.png",
   encodePng(

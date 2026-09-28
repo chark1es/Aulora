@@ -111,6 +111,17 @@ function mergeGrantOverride(
   );
 }
 
+/** Removes every membership row for a channel. */
+async function clearChannelMembers(ctx: MutationCtx, channelId: Id<"channels">): Promise<void> {
+  const rows = await ctx.db
+    .query("channelMembers")
+    .withIndex("by_channel", (q) => q.eq("channelId", channelId))
+    .collect();
+  for (const row of rows) {
+    await ctx.db.delete(row._id);
+  }
+}
+
 /**
  * Creates a text or announcement channel. ManageChannels is resolved against
  * the workspace baseline plus the target category's overrides. A private
@@ -349,6 +360,127 @@ export const setTopic = mutation({
       actorId: userId,
       action: "channel.setTopic",
       targetId: args.channelId,
+    });
+    return null;
+  },
+});
+
+/**
+ * Switches a channel between private and public. Making it private resets
+ * membership to the actor plus the supplied members; making it public clears
+ * every membership row and removes the `private` flag.
+ */
+export const setPrivate = mutation({
+  args: {
+    channelId: v.id("channels"),
+    private: v.boolean(),
+    memberIds: v.optional(v.array(v.string())),
+  },
+  handler: async (ctx, args) => {
+    const { userId, channel } = await requirePermission(
+      ctx,
+      args.channelId,
+      Permission.ManageChannels,
+    );
+    if (isDmKind(channel.kind)) {
+      throw new ConvexError("Cannot change the privacy of a DM");
+    }
+    await clearChannelMembers(ctx, args.channelId);
+    if (args.private) {
+      await ctx.db.patch(args.channelId, { private: true });
+      await insertChannelMember(ctx, args.channelId, userId);
+      for (const memberId of new Set(args.memberIds ?? [])) {
+        await insertChannelMember(ctx, args.channelId, memberId);
+      }
+    } else {
+      await ctx.db.patch(args.channelId, { private: undefined });
+    }
+    await writeAudit(ctx, {
+      actorId: userId,
+      action: "channel.setPrivate",
+      targetId: args.channelId,
+      meta: JSON.stringify({ private: args.private }),
+    });
+    return null;
+  },
+});
+
+/**
+ * Replaces the members denied `ViewChannel` on a channel. The deny bit is
+ * toggled surgically so other allow/deny bits on each member override are
+ * preserved; role overrides are untouched. On a private channel, blocking also
+ * removes membership and unblocking restores it.
+ */
+export const setBlockedUsers = mutation({
+  args: { channelId: v.id("channels"), userIds: v.array(v.string()) },
+  handler: async (ctx, args) => {
+    const { userId, channel } = await requirePermission(
+      ctx,
+      args.channelId,
+      Permission.ManageChannels,
+    );
+    if (isDmKind(channel.kind)) {
+      throw new ConvexError("Cannot block users from a DM");
+    }
+    const blocked = new Set(args.userIds);
+    const previouslyBlocked = new Set(
+      channel.overrides
+        .filter(
+          (override) =>
+            override.targetType === "member" && (override.deny & Permission.ViewChannel) !== 0n,
+        )
+        .map((override) => override.targetId),
+    );
+    const next: Doc<"channels">["overrides"] = channel.overrides
+      .map((override) => {
+        if (override.targetType !== "member") {
+          return override;
+        }
+        if (blocked.has(override.targetId)) {
+          return {
+            ...override,
+            allow: override.allow & ~Permission.ViewChannel,
+            deny: override.deny | Permission.ViewChannel,
+          };
+        }
+        if ((override.deny & Permission.ViewChannel) !== 0n) {
+          return { ...override, deny: override.deny & ~Permission.ViewChannel };
+        }
+        return override;
+      })
+      .filter((override) => override.allow !== 0n || override.deny !== 0n);
+    for (const blockedId of blocked) {
+      const exists = next.some(
+        (override) => override.targetType === "member" && override.targetId === blockedId,
+      );
+      if (!exists) {
+        next.push({
+          targetId: blockedId,
+          targetType: "member",
+          allow: 0n,
+          deny: Permission.ViewChannel,
+        });
+      }
+    }
+    validateOverrides(next);
+    await ctx.db.patch(args.channelId, { overrides: next });
+    if (channel.private === true) {
+      for (const blockedId of blocked) {
+        if (!previouslyBlocked.has(blockedId)) {
+          await deleteChannelMember(ctx, args.channelId, blockedId);
+        }
+      }
+      for (const unblockedId of previouslyBlocked) {
+        if (!blocked.has(unblockedId)) {
+          await insertChannelMember(ctx, args.channelId, unblockedId);
+        }
+      }
+    }
+    await writeAudit(ctx, {
+      actorId: userId,
+      action: "channel.setBlocked",
+      targetId: args.channelId,
+      meta: JSON.stringify({ count: blocked.size }),
     });
     return null;
   },

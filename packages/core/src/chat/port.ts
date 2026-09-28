@@ -165,6 +165,14 @@ export interface ChatPort {
   }): Promise<null>;
   renameChannel(args: { channelId: string; name: string }): Promise<null>;
   setChannelTopic(args: { channelId: string; topic?: string }): Promise<null>;
+  /** Makes a channel private (with explicit members) or public again. */
+  setChannelPrivate(args: {
+    channelId: string;
+    private: boolean;
+    memberIds?: readonly string[];
+  }): Promise<null>;
+  /** Replaces the set of members denied `ViewChannel` on a channel. */
+  setChannelBlocked(args: { channelId: string; userIds: readonly string[] }): Promise<null>;
   joinChannel(args: { channelId: string }): Promise<null>;
   leaveChannel(args: { channelId: string }): Promise<null>;
   addChannelMember(args: { channelId: string; userId: string }): Promise<{ added: boolean }>;

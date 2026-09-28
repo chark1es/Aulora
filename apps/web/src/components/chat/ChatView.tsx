@@ -29,6 +29,7 @@ import { Composer } from "./Composer";
 import { ConversationHeader } from "./ConversationHeader";
 import { CreateCategoryModal } from "./CreateCategoryModal";
 import { type CreateChannelInput, CreateChannelModal } from "./CreateChannelModal";
+import { EditChannelModal, type EditChannelPatch } from "./EditChannelModal";
 import { MembersPanel } from "./MembersPanel";
 import { MessageList } from "./MessageList";
 import { NewConversationDialog } from "./NewConversationDialog";
@@ -82,6 +83,13 @@ function errorMessage(error: unknown): string {
   return error instanceof Error && error.message.length > 0
     ? error.message
     : "Something went wrong. Please try again.";
+}
+
+/** Whether two id lists hold the same distinct values, order-insensitive. */
+function sameStringSet(a: readonly string[], b: readonly string[]): boolean {
+  const left = [...new Set(a)].sort();
+  const right = [...new Set(b)].sort();
+  return left.length === right.length && left.every((value, index) => value === right[index]);
 }
 
 function readLocal(key: string): string | null {
@@ -172,6 +180,9 @@ export function ChatView({
   const [categoryError, setCategoryError] = useState<string | null>(null);
   const [membersModalChannel, setMembersModalChannel] = useState<ChannelView | null>(null);
   const [renameModalChannel, setRenameModalChannel] = useState<ChannelView | null>(null);
+  const [editChannelModal, setEditChannelModal] = useState<ChannelView | null>(null);
+  const [editChannelError, setEditChannelError] = useState<string | null>(null);
+  const [editChannelBusy, setEditChannelBusy] = useState(false);
   const [threadRoot, setThreadRoot] = useState<MessagePayload | null>(null);
   const [replyTarget, setReplyTarget] = useState<MessagePayload | null>(null);
   const [userSettingsOpen, setUserSettingsOpen] = useState(false);
@@ -358,8 +369,16 @@ export function ChatView({
   }, []);
 
   // The native View > Toggle Sidebar menu item hides/shows the channel list.
+  // The Threads inbox is reachable only through the sidebar, so hiding it while
+  // Threads is open would strand the user; fall back to the chat view instead.
   useEffect(() => {
-    const onToggleSidebar = () => setSidebarHidden((hidden) => !hidden);
+    const onToggleSidebar = () =>
+      setSidebarHidden((hidden) => {
+        if (!hidden) {
+          setMainView("chat");
+        }
+        return !hidden;
+      });
     window.addEventListener("aulora:toggle-sidebar", onToggleSidebar);
     return () => window.removeEventListener("aulora:toggle-sidebar", onToggleSidebar);
   }, []);
@@ -458,6 +477,8 @@ export function ChatView({
   ]);
 
   const canCreateChannel = hasPermission(permissions, Permission.ManageChannels);
+  const canManageChannels =
+    admin.viewer.isOwner || hasPermission(permissions, Permission.ManageChannels);
   const canManageCategories =
     admin.viewer.isOwner || hasPermission(permissions, Permission.ManageChannels);
   const canEditNickname =
@@ -771,6 +792,62 @@ export function ChatView({
     setUserSettingsOpen(false);
   };
 
+  const submitChannelEdit = async (patch: EditChannelPatch) => {
+    const target = editChannelModal;
+    if (target === null) {
+      return;
+    }
+    const originalName = titles.get(target.id) ?? target.name;
+    const originalTopic = target.topic ?? "";
+    const originallyPrivate = target.isPrivate === true;
+    const originalMemberIds = target.memberIds ?? [];
+    const originalBlocked = (target.overrides ?? [])
+      .filter((override) => override.targetType === "member")
+      .filter((override) => (override.deny & Permission.ViewChannel) !== 0n)
+      .map((override) => override.targetId);
+    const nextName = patch.name.trim();
+    setEditChannelBusy(true);
+    setEditChannelError(null);
+    try {
+      if (nextName.length > 0 && nextName !== originalName) {
+        await runtime.session.setChannelName(target.id, nextName);
+      }
+      if (patch.topic !== originalTopic) {
+        await runtime.port.setChannelTopic({ channelId: target.id, topic: patch.topic });
+      }
+      const membership =
+        patch.private && patch.memberIds.length > 0
+          ? [...new Set([ownUserId, ...patch.memberIds])]
+          : patch.private
+            ? [ownUserId]
+            : [];
+      if (patch.private !== originallyPrivate) {
+        await runtime.port.setChannelPrivate({
+          channelId: target.id,
+          private: patch.private,
+          memberIds: membership,
+        });
+      } else if (patch.private && !sameStringSet(patch.memberIds, originalMemberIds)) {
+        await runtime.port.setChannelPrivate({
+          channelId: target.id,
+          private: true,
+          memberIds: membership,
+        });
+      }
+      if (!sameStringSet(patch.blockedUserIds, originalBlocked)) {
+        await runtime.port.setChannelBlocked({
+          channelId: target.id,
+          userIds: [...new Set(patch.blockedUserIds)],
+        });
+      }
+      setEditChannelModal(null);
+    } catch (error) {
+      setEditChannelError(errorMessage(error));
+    } finally {
+      setEditChannelBusy(false);
+    }
+  };
+
   const showList = mobilePane === "list" || channel === undefined;
   const adminView = adminOpen && showAdmin;
   const rightPanel =
@@ -794,6 +871,14 @@ export function ChatView({
             activeChannelId={activeChannelId}
             unreadByChannel={sidebarUnread}
             canCreateChannel={canCreateChannel}
+            mainView={mainView}
+            threadMentionCount={threadMentionCount}
+            onOpenThreads={() => {
+              setMainView("threads");
+              setThreadRoot(null);
+              setAdminOpen(false);
+              setUserSettingsOpen(false);
+            }}
             onCreateCategory={() => setCreateCategoryOpen(true)}
             canManageCategories={canManageCategories}
             onOpenUserSettings={() => {
@@ -805,7 +890,7 @@ export function ChatView({
               setUserSettingsOpen(false);
               setAdminOpen(true);
             }}
-            workspaceMenu={<WorkspaceMenu />}
+            workspaceSwitcher={<WorkspaceMenu onlineCount={onlineCount} variant="header" />}
             onSelect={(channelId) => void openChannel(channelId)}
             onCreateChannel={() => setCreateChannelOpen(true)}
             categoryActions={{
@@ -821,6 +906,17 @@ export function ChatView({
               invite: (channel) => setMembersModalChannel(channel),
               ...(admin.viewer.isOwner || hasPermission(permissions, Permission.ManageChannels)
                 ? { rename: (channel: ChannelView) => setRenameModalChannel(channel) }
+                : {}),
+              ...(canManageChannels
+                ? {
+                    edit: (channel: ChannelView) => {
+                      if (channel.kind !== "text" && channel.kind !== "announcement") {
+                        return;
+                      }
+                      setEditChannelError(null);
+                      setEditChannelModal(channel);
+                    },
+                  }
                 : {}),
               markRead: (channel) => {
                 const newestId = channel.id === activeChannelId ? newest?.id : undefined;
@@ -904,18 +1000,6 @@ export function ChatView({
           )}
           aria-label={mainView === "threads" ? "Threads inbox" : "Conversation"}
         >
-          <MainTabs
-            view={mainView}
-            mentionCount={threadMentionCount}
-            onSelect={(view) => {
-              setMainView(view);
-              if (view === "threads") {
-                setAdminOpen(false);
-                setUserSettingsOpen(false);
-                setThreadRoot(null);
-              }
-            }}
-          />
           {mainView === "threads" ? (
             <ThreadsInbox
               threads={threadRows ?? []}
@@ -1230,64 +1314,33 @@ export function ChatView({
           onClose={() => setMembersModalChannel(null)}
         />
       )}
-    </div>
-  );
-}
 
-function MainTabs({
-  view,
-  mentionCount,
-  onSelect,
-}: {
-  readonly view: "chat" | "threads";
-  readonly mentionCount: number;
-  readonly onSelect: (view: "chat" | "threads") => void;
-}) {
-  const tabs: readonly {
-    readonly id: "chat" | "threads";
-    readonly label: string;
-    readonly icon: "message" | "thread";
-  }[] = [
-    { id: "chat", label: "Chat", icon: "message" },
-    { id: "threads", label: "Threads", icon: "thread" },
-  ];
-  const badge = mentionCount > 9 ? "9+" : String(mentionCount);
-  return (
-    <div
-      role="tablist"
-      aria-label="Main view"
-      className="material-chrome flex h-10 shrink-0 items-center gap-1 border-b border-border px-2"
-    >
-      {tabs.map((tab) => {
-        const active = view === tab.id;
-        return (
-          <button
-            key={tab.id}
-            type="button"
-            role="tab"
-            aria-selected={active}
-            data-testid={`main-tab-${tab.id}`}
-            onClick={() => onSelect(tab.id)}
-            className={cn(
-              "flex h-7 items-center gap-1.5 rounded-[7px] px-3 text-[13px] font-medium transition",
-              active
-                ? "bg-surface-3 text-text"
-                : "text-text-muted hover:bg-surface-2 hover:text-text",
-            )}
-          >
-            <Icon name={tab.icon} size={15} />
-            {tab.label}
-            {tab.id === "threads" && mentionCount > 0 && (
-              <span
-                data-testid="threads-tab-badge"
-                className="flex h-4 min-w-4 items-center justify-center rounded-full bg-accent px-1 text-[10px] font-bold text-on-accent"
-              >
-                {badge}
-              </span>
-            )}
-          </button>
-        );
-      })}
+      {editChannelModal !== null && (
+        <EditChannelModal
+          open
+          channelName={titles.get(editChannelModal.id) ?? editChannelModal.name}
+          channelTopic={editChannelModal.topic ?? ""}
+          isPrivate={editChannelModal.isPrivate === true}
+          initialMemberIds={
+            editChannelModal.isPrivate === true
+              ? [...new Set([ownUserId, ...(editChannelModal.memberIds ?? [])])]
+              : (editChannelModal.memberIds ?? [])
+          }
+          initialBlockedUserIds={(editChannelModal.overrides ?? [])
+            .filter((override) => override.targetType === "member")
+            .filter((override) => (override.deny & Permission.ViewChannel) !== 0n)
+            .map((override) => override.targetId)}
+          ownUserId={ownUserId}
+          members={members}
+          busy={editChannelBusy}
+          error={editChannelError}
+          onClose={() => {
+            setEditChannelModal(null);
+            setEditChannelError(null);
+          }}
+          onSave={submitChannelEdit}
+        />
+      )}
     </div>
   );
 }

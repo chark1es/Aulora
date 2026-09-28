@@ -28,7 +28,9 @@ pwsh ./install.ps1      # Windows (PowerShell)
 ```
 
 The full operator guides live in the docs site (`apps/docs`) and in
-[infra/docker/README.md](infra/docker/README.md).
+[infra/docker/README.md](infra/docker/README.md). To deploy on Coolify, use
+[infra/docker/docker-compose.coolify.yml](infra/docker/docker-compose.coolify.yml)
+and follow the guide in [apps/docs/content/coolify.md](apps/docs/content/coolify.md).
 
 ## Prerequisites
 

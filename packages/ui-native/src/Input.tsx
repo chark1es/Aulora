@@ -2,7 +2,7 @@ import { TextInput, type TextInputProps, View } from "react-native";
 import { cn } from "./cn";
 import { Text } from "./Text";
 import { usePalette } from "./theme";
-import { inputClass } from "./variants";
+import { type InputSize, inputClass } from "./variants";
 
 export interface InputProps extends TextInputProps {
   /** Visible field label. */
@@ -11,10 +11,15 @@ export interface InputProps extends TextInputProps {
   hint?: string;
   /** Error message; switches the field to an error state. */
   error?: string;
+  /**
+   * Field height/type scale. `md` (default) is unchanged; `lg` uses 17px text
+   * on a >=44pt target for Apple-appropriate entry screens.
+   */
+  size?: InputSize;
 }
 
 /** Text input with a 14px radius, hairline border and token placeholder color. */
-export function Input({ label, hint, error, className, ...rest }: InputProps) {
+export function Input({ label, hint, error, size, className, ...rest }: InputProps) {
   const palette = usePalette();
   return (
     <View className="w-full gap-1.5">
@@ -24,7 +29,13 @@ export function Input({ label, hint, error, className, ...rest }: InputProps) {
       <TextInput
         accessibilityLabel={label}
         placeholderTextColor={palette["text-muted"]}
-        className={cn(inputClass({ error: error !== undefined, className: className ?? "" }))}
+        className={cn(
+          inputClass({
+            error: error !== undefined,
+            ...(size !== undefined ? { size } : {}),
+            className: className ?? "",
+          }),
+        )}
         {...rest}
       />
       {hint !== undefined && (

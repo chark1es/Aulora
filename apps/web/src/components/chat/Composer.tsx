@@ -2,7 +2,7 @@ import { Avatar, userAvatarSeed } from "@aulora/avatars";
 import type { MentionTarget, RoleMentionTarget } from "@aulora/core";
 import { expandBroadcast, resolveMentions } from "@aulora/core";
 import { cn, Icon } from "@aulora/ui-web";
-import { type ReactNode, useEffect, useLayoutEffect, useRef, useState } from "react";
+import { type ReactNode, useCallback, useEffect, useLayoutEffect, useRef, useState } from "react";
 import { readDraft, writeDraft } from "../../lib/drafts";
 import { EmojiPicker } from "./EmojiPicker";
 
@@ -26,6 +26,13 @@ export interface ComposerProps {
   /** Extra controls rendered in the toolbar (e.g. "Also send to channel"). */
   readonly toolbarExtra?: ReactNode;
   readonly disabled?: boolean;
+  /**
+   * When true (default) this composer accepts a file dropped anywhere in the
+   * window; when false it only accepts drops within its own bounds. Only the
+   * primary (main chat) composer should own the app-wide drop target, so a
+   * secondary composer (e.g. the thread reply box) passes `false`.
+   */
+  readonly windowDropEnabled?: boolean;
   /** The message being replied to inline; shows a dismissible quote banner. */
   readonly replyTo?: { readonly authorName: string; readonly preview: string } | null;
   /** Clears the inline reply (banner X or Escape). */
@@ -48,11 +55,23 @@ const BROADCAST_SUGGESTIONS: Suggestion[] = [
 const MAX_TEXTAREA_PX = 220;
 const MENTION_QUERY = /(^|\s)@([^\s@]*)$/;
 
-function collectFiles(list: FileList | null): File[] {
+function collectFiles(list: FileList | ArrayLike<File> | null): File[] {
   if (list === null) {
     return [];
   }
   return Array.from(list);
+}
+
+/**
+ * True only when a drag carries files, so channel/sidebar reordering (which
+ * uses `text/plain`) is left alone. Firefox advertises `application/x-moz-file`.
+ */
+function isFileDrag(dataTransfer: DataTransfer | null | undefined): boolean {
+  const types = dataTransfer?.types;
+  if (!types) {
+    return false;
+  }
+  return Array.from(types).some((type) => type === "Files" || type === "application/x-moz-file");
 }
 
 let fileRefSeq = 0;
@@ -88,12 +107,14 @@ export function Composer({
   threadHint,
   toolbarExtra,
   disabled = false,
+  windowDropEnabled = true,
   replyTo = null,
   onCancelReply,
 }: ComposerProps) {
   const [value, setValue] = useState(() => (draftKey !== undefined ? readDraft(draftKey) : ""));
   const [files, setFiles] = useState<readonly File[]>([]);
   const [dragging, setDragging] = useState(false);
+  const [windowDragging, setWindowDragging] = useState(false);
   const [suggestions, setSuggestions] = useState<readonly Suggestion[]>([]);
   const [activeSuggestion, setActiveSuggestion] = useState(0);
   const [emojiOpen, setEmojiOpen] = useState(false);
@@ -102,6 +123,10 @@ export function Composer({
   const imageInputRef = useRef<HTMLInputElement | null>(null);
   /** Selection to restore right after the next value commit (mention/emoji inserts). */
   const pendingSelection = useRef<[number, number] | null>(null);
+  /** Depth of nested dragenter/dragleave pairs, so child elements don't flicker. */
+  const dragDepth = useRef(0);
+  /** Safety timer that clears the overlay if no further drag event arrives. */
+  const dragSafetyTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   // Switching conversations swaps in that conversation's draft.
   useEffect(() => {
@@ -192,11 +217,110 @@ export function Composer({
     setValue(next);
   }
 
-  function addFiles(incoming: readonly File[]): void {
+  const addFiles = useCallback((incoming: readonly File[]): void => {
     if (incoming.length > 0) {
       setFiles((current) => [...current, ...incoming]);
     }
-  }
+  }, []);
+
+  // A file drag can be dropped anywhere in the app, so watch the window rather
+  // than the composer's own box. Non-file drags (e.g. channel reordering) fall
+  // straight through: no preventDefault, no overlay.
+  useEffect(() => {
+    if (typeof window === "undefined" || !windowDropEnabled) {
+      return;
+    }
+
+    const resetWindowDrag = (): void => {
+      if (dragSafetyTimer.current !== null) {
+        clearTimeout(dragSafetyTimer.current);
+        dragSafetyTimer.current = null;
+      }
+      dragDepth.current = 0;
+      setWindowDragging(false);
+      setDragging(false);
+    };
+
+    // A file drag can stop emitting events (e.g. the pointer sits still) or
+    // lose its `dragend`; clear the overlay if nothing arrives for a while.
+    const armSafetyTimer = (): void => {
+      if (dragSafetyTimer.current !== null) {
+        clearTimeout(dragSafetyTimer.current);
+      }
+      dragSafetyTimer.current = setTimeout(resetWindowDrag, 2000);
+    };
+
+    const onDragEnter = (event: DragEvent): void => {
+      if (!isFileDrag(event.dataTransfer)) {
+        return;
+      }
+      event.preventDefault();
+      dragDepth.current += 1;
+      if (!disabled) {
+        setWindowDragging(true);
+        armSafetyTimer();
+      }
+    };
+
+    const onDragOver = (event: DragEvent): void => {
+      if (!isFileDrag(event.dataTransfer)) {
+        return;
+      }
+      event.preventDefault();
+      if (!disabled) {
+        armSafetyTimer();
+      }
+    };
+
+    const onDragLeave = (event: DragEvent): void => {
+      // Some browsers report empty `types` on the dragleave that fires as the
+      // pointer leaves the window, and never fire `dragend`, so a leave with no
+      // related target always ends the drag whatever the event advertises.
+      // (`== null` also covers environments that leave `relatedTarget` undefined.)
+      if (event.relatedTarget == null) {
+        resetWindowDrag();
+        return;
+      }
+      if (!isFileDrag(event.dataTransfer)) {
+        return;
+      }
+      dragDepth.current = Math.max(0, dragDepth.current - 1);
+      if (dragDepth.current === 0) {
+        if (dragSafetyTimer.current !== null) {
+          clearTimeout(dragSafetyTimer.current);
+          dragSafetyTimer.current = null;
+        }
+        setWindowDragging(false);
+      }
+    };
+
+    const onDrop = (event: DragEvent): void => {
+      if (!isFileDrag(event.dataTransfer)) {
+        return;
+      }
+      event.preventDefault();
+      resetWindowDrag();
+      if (!disabled) {
+        addFiles(collectFiles(event.dataTransfer?.files ?? null));
+      }
+    };
+
+    window.addEventListener("dragenter", onDragEnter);
+    window.addEventListener("dragover", onDragOver);
+    window.addEventListener("dragleave", onDragLeave);
+    window.addEventListener("drop", onDrop);
+    window.addEventListener("dragend", resetWindowDrag);
+    window.addEventListener("blur", resetWindowDrag);
+    return () => {
+      resetWindowDrag();
+      window.removeEventListener("dragenter", onDragEnter);
+      window.removeEventListener("dragover", onDragOver);
+      window.removeEventListener("dragleave", onDragLeave);
+      window.removeEventListener("drop", onDrop);
+      window.removeEventListener("dragend", resetWindowDrag);
+      window.removeEventListener("blur", resetWindowDrag);
+    };
+  }, [addFiles, disabled, windowDropEnabled]);
 
   function send(): void {
     const text = value.trim();
@@ -221,14 +345,28 @@ export function Composer({
     <div
       className="relative px-4 pb-3 pt-1 sm:px-6 sm:pb-4"
       onDragOver={(event) => {
+        if (!isFileDrag(event.dataTransfer)) {
+          return;
+        }
         event.preventDefault();
         setDragging(true);
       }}
-      onDragLeave={() => setDragging(false)}
+      onDragLeave={(event) => {
+        if (!isFileDrag(event.dataTransfer)) {
+          return;
+        }
+        setDragging(false);
+      }}
       onDrop={(event) => {
+        if (!isFileDrag(event.dataTransfer)) {
+          return;
+        }
         event.preventDefault();
         setDragging(false);
-        addFiles(collectFiles(event.dataTransfer?.files ?? null));
+        if (!windowDropEnabled) {
+          addFiles(collectFiles(event.dataTransfer?.files ?? null));
+          event.stopPropagation();
+        }
       }}
     >
       {suggestions.length > 0 && (
@@ -475,6 +613,17 @@ export function Composer({
           {toolbarExtra}
         </div>
       </div>
+
+      {windowDragging && !disabled && (
+        <div
+          data-testid="composer-drop-overlay"
+          className="pointer-events-none fixed inset-0 z-[60] flex items-center justify-center border-2 border-dashed border-accent bg-accent-soft/80"
+        >
+          <span className="rounded-[10px] bg-surface-2 px-4 py-2 text-sm font-medium text-accent shadow-lg shadow-black/20">
+            Drop files to attach
+          </span>
+        </div>
+      )}
     </div>
   );
 }

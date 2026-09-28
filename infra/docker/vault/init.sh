@@ -75,6 +75,18 @@ fi
 
 # --- 3. wrap the local master key, if one is configured ----------------------
 
+# The host .env must exist to persist AULORA_KEK_WRAPPED. `setup` creates it in
+# the documented order; create it here too when the directory is mounted so this
+# works standalone. 0600: the file carries key material.
+HOST_ENV_DIR="$(dirname "$HOST_ENV_FILE")"
+if [ ! -f "$HOST_ENV_FILE" ] && [ -d "$HOST_ENV_DIR" ]; then
+  if ! ( umask 077; : > "$HOST_ENV_FILE" ); then
+    log "cannot create ${HOST_ENV_FILE}"
+    exit 1
+  fi
+  log "created ${HOST_ENV_FILE}"
+fi
+
 PLAINTEXT="$(env_get AULORA_ENCRYPTION_KEY "$HOST_ENV_FILE")"
 WRAPPED="$(env_get AULORA_KEK_WRAPPED "$HOST_ENV_FILE")"
 if [ -n "$WRAPPED" ]; then
@@ -85,14 +97,16 @@ elif [ -n "$PLAINTEXT" ]; then
       "${VAULT_TRANSIT_MOUNT}/encrypt/${AULORA_EKM_KEY_ID}" \
       plaintext="$PLAINTEXT" 2>/dev/null || true
   )"
-  if [ -n "$CIPHERTEXT" ]; then
+  if [ -z "$CIPHERTEXT" ]; then
+    log "could not wrap the master key; no AULORA_KEK_WRAPPED written"
+  elif [ ! -f "$HOST_ENV_FILE" ]; then
+    log "wrapped the master key but cannot persist it: ${HOST_ENV_FILE} is not mounted"
+  else
     env_set AULORA_KEK_WRAPPED "$CIPHERTEXT" "$HOST_ENV_FILE"
     env_set VAULT_ADDR "$VAULT_ADDR" "$HOST_ENV_FILE"
     env_set VAULT_TRANSIT_MOUNT "$VAULT_TRANSIT_MOUNT" "$HOST_ENV_FILE"
     log "wrapped AULORA_ENCRYPTION_KEY into AULORA_KEK_WRAPPED"
     log "set AULORA_EKM_PROVIDER=vault in ${HOST_ENV_FILE}, then re-run setup"
-  else
-    log "could not wrap the master key; no AULORA_KEK_WRAPPED written"
   fi
 else
   log "no AULORA_ENCRYPTION_KEY or AULORA_KEK_WRAPPED in ${HOST_ENV_FILE}; nothing to wrap"

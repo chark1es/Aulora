@@ -4,6 +4,7 @@ import * as Linking from "expo-linking";
 import { useLocalSearchParams, useRouter } from "expo-router";
 import { useEffect } from "react";
 import { View } from "react-native";
+import { ThresholdAura } from "../../src/components/ThresholdAura";
 import { AUTH_COOKIE_KEY, storeRedirectCookie } from "../../src/lib/cookie-fetch";
 
 /**
@@ -31,9 +32,10 @@ export default function AuthCallbackRoute() {
   }, [params.cookie, router]);
 
   return (
-    <View className="flex-1 items-center justify-center gap-3 bg-bg">
+    <View className="flex-1 items-center justify-center gap-4 bg-bg">
+      <ThresholdAura size={132} breathing />
       <Spinner size={28} label="Completing sign-in" />
-      <Text size="sm" tone="muted">
+      <Text size="base" tone="muted">
         Completing sign-in…
       </Text>
     </View>

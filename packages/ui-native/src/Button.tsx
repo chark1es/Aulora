@@ -3,7 +3,13 @@ import { ActivityIndicator, Pressable, type PressableProps } from "react-native"
 import { cn } from "./cn";
 import { Text } from "./Text";
 import { usePalette } from "./theme";
-import { type ButtonSize, type ButtonVariant, buttonClass, buttonLabelClass } from "./variants";
+import {
+  type ButtonSize,
+  type ButtonVariant,
+  buttonClass,
+  buttonLabelClass,
+  buttonRippleColor,
+} from "./variants";
 
 export interface ButtonProps extends Omit<PressableProps, "children"> {
   variant?: ButtonVariant;
@@ -28,13 +34,25 @@ export function Button({
 }: ButtonProps) {
   const isDisabled = disabled === true || loading;
   const palette = usePalette();
-  const spinnerColor = variant === "primary" || variant === "danger" ? palette.bg : palette.accent;
+  const neutralDisabled = isDisabled && variant === "primary";
+  const spinnerColor =
+    variant === "primary" || variant === "danger"
+      ? neutralDisabled
+        ? palette["text-muted"]
+        : palette.bg
+      : palette.accent;
   const render = useCallback(
     () => (
       <>
         {loading ? <ActivityIndicator size="small" color={spinnerColor} /> : leading}
         {typeof children === "string" ? (
-          <Text size="sm" className={cn(buttonLabelClass(variant), "font-medium")}>
+          <Text
+            size="sm"
+            className={cn(
+              buttonLabelClass(variant, isDisabled),
+              size === "lg" ? "!text-[17px] font-semibold" : "font-medium",
+            )}
+          >
             {children}
           </Text>
         ) : (
@@ -42,7 +60,7 @@ export function Button({
         )}
       </>
     ),
-    [loading, leading, children, variant, spinnerColor],
+    [loading, leading, children, variant, size, isDisabled, spinnerColor],
   );
 
   return (
@@ -50,6 +68,7 @@ export function Button({
       accessibilityRole="button"
       accessibilityState={{ disabled: isDisabled, busy: loading }}
       disabled={isDisabled}
+      android_ripple={{ color: buttonRippleColor(palette, variant) }}
       className={cn(
         buttonClass({ variant, size, disabled: isDisabled, className: className ?? "" }),
       )}

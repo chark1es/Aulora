@@ -10,7 +10,9 @@
 #   5. deploys packages/convex
 #   6. initializes the workspace + owner once (refused by Convex otherwise)
 #   7. writes the secret-free /.well-known/aulora.json into the web volume
-#   8. persists generated secrets back to infra/docker/.env
+#   8. persists generated secrets to HOST_ENV_FILE (infra/docker/.env on a plain
+#      install, the `setup-state` volume under Coolify) and re-reads them on
+#      later runs so a redeploy never regenerates the encryption master key
 #
 # Secrets are never printed. HTTP uses Node 26's built-in fetch and `convex run`
 # drives the CLI, so there is no dependency on curl or on Node import rules.
@@ -50,6 +52,45 @@ env_set() {
     printf '%s=%s\n' "$key" "$value" >> "$file"
   fi
 }
+
+# --- 0. reuse persisted secrets and read optional settings -------------------
+# `setup` writes generated secrets to ${HOST_ENV_FILE} so later runs stay
+# consistent. On a plain `docker compose` the operator's .env is re-injected via
+# `env_file`; under an orchestrator that does not provide that file (Coolify),
+# the persisted values must be re-read here. Otherwise a redeploy would
+# regenerate AULORA_ENCRYPTION_KEY and make existing ciphertext unreadable.
+# Only variables the environment left empty are filled, so an explicit value
+# always wins over the persisted file.
+
+restore_persisted_secret() {
+  local key="$1" current persisted
+  eval "current=\${$key:-}"
+  if [ -z "$current" ]; then
+    persisted="$(env_get "$key" "$HOST_ENV_FILE")"
+    if [ -n "$persisted" ]; then
+      export "$key=$persisted"
+    fi
+  fi
+  return 0
+}
+
+# Optional settings live in the host .env on a plain install; fall back to the
+# container environment so an orchestrator can pass them directly.
+host_value() {
+  local key="$1" value
+  eval "value=\${$key:-}"
+  if [ -n "$value" ]; then
+    printf '%s' "$value"
+    return 0
+  fi
+  env_get "$key" "$HOST_ENV_FILE"
+}
+
+for _persisted in \
+  INSTANCE_SECRET BETTER_AUTH_SECRET VAPID_SUBJECT VAPID_PUBLIC_KEY \
+  VAPID_PRIVATE_KEY AULORA_ENCRYPTION_KEY AULORA_KEK_WRAPPED; do
+  restore_persisted_secret "$_persisted"
+done
 
 # --- 1. wait for the backend and resolve identity ---------------------------
 
@@ -177,18 +218,18 @@ set_env_if_present AUTH_LOCAL_ENABLED "${AUTH_LOCAL_ENABLED:-}"
 set_env_if_present AUTH_LOCAL_SIGNUP "${AUTH_LOCAL_SIGNUP:-}"
 
 for prefix in GITHUB GOOGLE MICROSOFT APPLE; do
-  set_env_if_present "${prefix}_CLIENT_ID" "$(env_get "${prefix}_CLIENT_ID" "$HOST_ENV_FILE")"
-  set_env_if_present "${prefix}_CLIENT_SECRET" "$(env_get "${prefix}_CLIENT_SECRET" "$HOST_ENV_FILE")" 1
+  set_env_if_present "${prefix}_CLIENT_ID" "$(host_value "${prefix}_CLIENT_ID")"
+  set_env_if_present "${prefix}_CLIENT_SECRET" "$(host_value "${prefix}_CLIENT_SECRET")" 1
 done
 
-set_env_if_present OIDC_DISPLAY_NAME "$(env_get OIDC_DISPLAY_NAME "$HOST_ENV_FILE")"
-set_env_if_present OIDC_ISSUER "$(env_get OIDC_ISSUER "$HOST_ENV_FILE")"
-set_env_if_present OIDC_DISCOVERY_URL "$(env_get OIDC_DISCOVERY_URL "$HOST_ENV_FILE")"
-set_env_if_present OIDC_CLIENT_ID "$(env_get OIDC_CLIENT_ID "$HOST_ENV_FILE")"
-set_env_if_present OIDC_CLIENT_SECRET "$(env_get OIDC_CLIENT_SECRET "$HOST_ENV_FILE")" 1
-set_env_if_present OIDC_SCOPES "$(env_get OIDC_SCOPES "$HOST_ENV_FILE")"
-set_env_if_present OIDC_GROUP_CLAIM "$(env_get OIDC_GROUP_CLAIM "$HOST_ENV_FILE")"
-set_env_if_present OIDC_GROUP_ROLE_MAP "$(env_get OIDC_GROUP_ROLE_MAP "$HOST_ENV_FILE")"
+set_env_if_present OIDC_DISPLAY_NAME "$(host_value OIDC_DISPLAY_NAME)"
+set_env_if_present OIDC_ISSUER "$(host_value OIDC_ISSUER)"
+set_env_if_present OIDC_DISCOVERY_URL "$(host_value OIDC_DISCOVERY_URL)"
+set_env_if_present OIDC_CLIENT_ID "$(host_value OIDC_CLIENT_ID)"
+set_env_if_present OIDC_CLIENT_SECRET "$(host_value OIDC_CLIENT_SECRET)" 1
+set_env_if_present OIDC_SCOPES "$(host_value OIDC_SCOPES)"
+set_env_if_present OIDC_GROUP_CLAIM "$(host_value OIDC_GROUP_CLAIM)"
+set_env_if_present OIDC_GROUP_ROLE_MAP "$(host_value OIDC_GROUP_ROLE_MAP)"
 
 set_env_if_present VAPID_SUBJECT "$VAPID_SUBJECT_VALUE"
 set_env_if_present VAPID_PUBLIC_KEY "$VAPID_PUBLIC_KEY_VALUE"
@@ -202,16 +243,16 @@ set_env_if_present AULORA_EKM_PROVIDER "$AULORA_EKM_PROVIDER_VALUE"
 set_env_if_present AULORA_EKM_KEY_ID "$AULORA_EKM_KEY_ID_VALUE"
 set_env_if_present AULORA_ENCRYPTION_KEY_VERSION "$AULORA_ENCRYPTION_KEY_VERSION_VALUE"
 set_env_if_present AULORA_ENCRYPTION_KEY "$AULORA_ENCRYPTION_KEY_VALUE" 1
-set_env_if_present AULORA_KEK_WRAPPED "$(env_get AULORA_KEK_WRAPPED "$HOST_ENV_FILE")" 1
-set_env_if_present VAULT_ADDR "$(env_get VAULT_ADDR "$HOST_ENV_FILE")"
-set_env_if_present VAULT_TOKEN "$(env_get VAULT_TOKEN "$HOST_ENV_FILE")" 1
-set_env_if_present VAULT_TRANSIT_MOUNT "$(env_get VAULT_TRANSIT_MOUNT "$HOST_ENV_FILE")"
-set_env_if_present VAULT_NAMESPACE "$(env_get VAULT_NAMESPACE "$HOST_ENV_FILE")"
-set_env_if_present AWS_REGION "$(env_get AWS_REGION "$HOST_ENV_FILE")"
-set_env_if_present AWS_KMS_KEY_ID "$(env_get AWS_KMS_KEY_ID "$HOST_ENV_FILE")"
-set_env_if_present GCP_KMS_KEY_NAME "$(env_get GCP_KMS_KEY_NAME "$HOST_ENV_FILE")"
-set_env_if_present EKM_PROXY_URL "$(env_get EKM_PROXY_URL "$HOST_ENV_FILE")"
-set_env_if_present EKM_PROXY_TOKEN "$(env_get EKM_PROXY_TOKEN "$HOST_ENV_FILE")" 1
+set_env_if_present AULORA_KEK_WRAPPED "$(host_value AULORA_KEK_WRAPPED)" 1
+set_env_if_present VAULT_ADDR "$(host_value VAULT_ADDR)"
+set_env_if_present VAULT_TOKEN "$(host_value VAULT_TOKEN)" 1
+set_env_if_present VAULT_TRANSIT_MOUNT "$(host_value VAULT_TRANSIT_MOUNT)"
+set_env_if_present VAULT_NAMESPACE "$(host_value VAULT_NAMESPACE)"
+set_env_if_present AWS_REGION "$(host_value AWS_REGION)"
+set_env_if_present AWS_KMS_KEY_ID "$(host_value AWS_KMS_KEY_ID)"
+set_env_if_present GCP_KMS_KEY_NAME "$(host_value GCP_KMS_KEY_NAME)"
+set_env_if_present EKM_PROXY_URL "$(host_value EKM_PROXY_URL)"
+set_env_if_present EKM_PROXY_TOKEN "$(host_value EKM_PROXY_TOKEN)" 1
 
 # --- 6. deploy --------------------------------------------------------------
 
@@ -284,7 +325,26 @@ log "well-known written to ${WELL_KNOWN_DIR}/aulora.json"
 
 # --- 9. persist generated secrets -------------------------------------------
 
-if [ -f "$HOST_ENV_FILE" ]; then
+# On a plain install /host is the repo checkout and .env already exists. On a
+# named volume (Coolify) it is empty on the first run; create it so the
+# generated secrets are actually written and can be reused on the next deploy.
+# Creation (and env_set's temp-file swap) run under a restrictive umask so the
+# generated secrets are never world-readable. Failing to create or write the
+# file is fatal: silently skipping persistence would let a redeploy regenerate
+# AULORA_ENCRYPTION_KEY and make existing ciphertext unreadable.
+HOST_ENV_DIR="$(dirname "$HOST_ENV_FILE")"
+if [ -d "$HOST_ENV_DIR" ]; then
+  UMASK_PREV="$(umask)"
+  umask 077
+  if [ ! -f "$HOST_ENV_FILE" ]; then
+    if ! : > "$HOST_ENV_FILE"; then
+      die "cannot create ${HOST_ENV_FILE}"
+    fi
+    log "created ${HOST_ENV_FILE}"
+  fi
+  if ! : >> "$HOST_ENV_FILE"; then
+    die "cannot write ${HOST_ENV_FILE}"
+  fi
   env_set INSTANCE_NAME "$INSTANCE_NAME_RESOLVED" "$HOST_ENV_FILE"
   env_set INSTANCE_SECRET "$INSTANCE_SECRET_RESOLVED" "$HOST_ENV_FILE"
   env_set BETTER_AUTH_SECRET "$BETTER_AUTH_SECRET_VALUE" "$HOST_ENV_FILE"
@@ -300,9 +360,10 @@ if [ -f "$HOST_ENV_FILE" ]; then
   if [ "$ENCRYPTION_KEY_GENERATED" = "1" ]; then
     env_set AULORA_ENCRYPTION_KEY "$AULORA_ENCRYPTION_KEY_VALUE" "$HOST_ENV_FILE"
   fi
+  umask "$UMASK_PREV"
   log "persisted generated secrets to ${HOST_ENV_FILE}"
 else
-  log "host .env not mounted; skipped persisting generated secrets"
+  log "host .env directory not mounted; skipped persisting generated secrets"
 fi
 
 # The one-time setup token is not needed after a successful init.

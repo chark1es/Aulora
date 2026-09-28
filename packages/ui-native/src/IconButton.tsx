@@ -1,7 +1,13 @@
 import type { ReactNode } from "react";
 import { Pressable, type PressableProps } from "react-native";
 import { cn } from "./cn";
-import { type ButtonSize, type ButtonVariant, iconButtonClass } from "./variants";
+import { usePalette } from "./theme";
+import {
+  type ButtonSize,
+  type ButtonVariant,
+  buttonRippleColor,
+  iconButtonClass,
+} from "./variants";
 
 export interface IconButtonProps extends Omit<PressableProps, "children"> {
   /** Required accessible name; rendered as `accessibilityLabel`. */
@@ -21,12 +27,14 @@ export function IconButton({
   disabled,
   ...rest
 }: IconButtonProps) {
+  const palette = usePalette();
   return (
     <Pressable
       accessibilityRole="button"
       accessibilityLabel={label}
       accessibilityState={{ disabled: disabled === true }}
       disabled={disabled}
+      android_ripple={{ color: buttonRippleColor(palette, variant) }}
       className={cn(
         iconButtonClass({ variant, size, disabled: disabled === true, className: className ?? "" }),
       )}

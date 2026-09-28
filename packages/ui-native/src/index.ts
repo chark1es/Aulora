@@ -22,6 +22,7 @@ export {
   type ButtonVariant,
   buttonClass,
   buttonLabelClass,
+  type InputSize,
   iconButtonClass,
   inputClass,
   textClass,

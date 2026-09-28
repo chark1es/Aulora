@@ -115,7 +115,7 @@
  * Desktop (Tauri) shell polish, scoped to the markers DesktopBridge sets so
  * the web build is untouched. Only the macOS window is transparent with a
  * Sidebar vibrancy effect and overlay traffic lights: there the canvas drops
- * most of its fill so vibrancy shows through, and the rail clears the lights.
+ * most of its fill so vibrancy shows through.
  * Windows and Linux keep an opaque canvas.
  */
 html[data-desktop="tauri"][data-platform="macos"],
@@ -125,12 +125,4 @@ html[data-desktop="tauri"][data-platform="macos"] body {
 
 html[data-desktop="tauri"][data-platform="macos"] .desktop-canvas {
   background-color: color-mix(in srgb, var(--aulora-bg) 62%, transparent) !important;
-}
-
-html[data-desktop="tauri"][data-platform="macos"] .desktop-vibrancy {
-  background-color: color-mix(in srgb, var(--aulora-rail) 86%, transparent);
-}
-
-html[data-desktop="tauri"][data-platform="macos"] nav[aria-label="Servers"] {
-  padding-top: 2.25rem;
 }

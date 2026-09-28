@@ -246,6 +246,13 @@ export default defineSchema({
     status: presenceStatus,
     customStatusCiphertext: v.optional(v.string()),
     lastHeartbeat: v.number(),
+    /**
+     * True when the user picked a status deliberately (anything other than
+     * `online`). A manual status is immune to heartbeats and the staleness
+     * sweep until the user explicitly sets `online` again. Absent/false means
+     * the row follows automatic online/idle/offline behaviour.
+     */
+    manual: v.optional(v.boolean()),
   }).index("by_user", ["userId"]),
 
   typing: defineTable({

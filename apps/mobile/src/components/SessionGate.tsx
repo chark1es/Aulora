@@ -1,11 +1,13 @@
 import type { ServerProfile } from "@aulora/core";
 import { Spinner, Text } from "@aulora/ui-native";
 import type { ConvexReactClient } from "convex/react";
+import { useState } from "react";
 import { View } from "react-native";
 import type { AuloraAuthClient } from "../lib/auth-client";
 import type { CookieStore } from "../lib/cookie-fetch";
 import { ChatProvider } from "../providers/ChatProvider";
 import { ChatScreen } from "./chat/ChatScreen";
+import { WorkspaceSwitcherSheet } from "./chat/WorkspaceSwitcherSheet";
 import { SignInScreen } from "./SignInScreen";
 
 export interface SessionGateProps {
@@ -18,6 +20,7 @@ export interface SessionGateProps {
 /** Chooses between the sign-in screen and the signed-in chat surface. */
 export function SessionGate({ profile, authClient, cookieStore, client }: SessionGateProps) {
   const session = authClient.useSession();
+  const [switcherOpen, setSwitcherOpen] = useState(false);
 
   if (session.isPending) {
     return (
@@ -47,5 +50,15 @@ export function SessionGate({ profile, authClient, cookieStore, client }: Sessio
     );
   }
 
-  return <SignInScreen profile={profile} authClient={authClient} cookieStore={cookieStore} />;
+  return (
+    <>
+      <SignInScreen
+        profile={profile}
+        authClient={authClient}
+        cookieStore={cookieStore}
+        onOpenWorkspaces={() => setSwitcherOpen(true)}
+      />
+      <WorkspaceSwitcherSheet visible={switcherOpen} onClose={() => setSwitcherOpen(false)} />
+    </>
+  );
 }

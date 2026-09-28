@@ -6,7 +6,10 @@ dashboard, MinIO object storage, the web SPA, and a one-shot `setup` container
 that provisions everything on first run.
 
 There is deliberately no TLS terminator in the stack. Put it behind your own
-edge proxy (Coolify, Traefik, Caddy, nginx or a cloud load balancer).
+edge proxy (Coolify, Traefik, Caddy, nginx or a cloud load balancer). For a
+guided deploy on [Coolify](https://coolify.io) see
+[Deploy on Coolify](coolify.md), which uses the ready-made
+`infra/docker/docker-compose.coolify.yml`.
 
 ## The installer
 

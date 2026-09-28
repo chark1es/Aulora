@@ -9,6 +9,7 @@ an optional upgrade for key custody.
 
 - [Getting started](getting-started.md) — run it locally, or self-host it.
 - [Self-hosting](self-hosting.md) — the one-command installer and the stack.
+- [Deploy on Coolify](coolify.md) — Git-based deploy with Coolify's TLS edge.
 - [Admin panel](admin.md) — auth providers, storage quotas, push relay, license.
 - [Backups](backups.md) — nightly `convex export` + Postgres dump to S3.
 - [Licensing](licensing.md) — PolyForm Noncommercial and commercial use.

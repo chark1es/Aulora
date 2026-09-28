@@ -17,6 +17,11 @@ const config: Config = {
   theme: {
     extend: {
       colors: Object.fromEntries(COLOR_TOKENS.map((token) => [token, `var(--aulora-${token})`])),
+      maxWidth: {
+        // Caps the pre-session content column on tablet/regular widths so a
+        // primary button never stretches edge to edge (HIG: layout).
+        content: "420px",
+      },
     },
   },
 };

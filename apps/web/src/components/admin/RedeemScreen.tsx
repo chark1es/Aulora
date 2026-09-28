@@ -27,7 +27,7 @@ export function RedeemCard({ state, message, error, onJoin, onContinue }: Redeem
   return (
     <AuthFrame>
       <Card
-        className="flex flex-col gap-4 rounded-[12px] p-6 shadow-xl shadow-black/[0.08]"
+        className="flex flex-col gap-4 rounded-[12px] p-6 shadow-[0_1px_2px_rgba(0,0,0,0.05),0_10px_30px_-16px_rgba(0,0,0,0.25)] dark:shadow-[0_1px_2px_rgba(0,0,0,0.5),0_12px_32px_-20px_rgba(0,0,0,0.85)]"
         data-testid="redeem-card"
       >
         <Heading level={2}>Join workspace</Heading>
