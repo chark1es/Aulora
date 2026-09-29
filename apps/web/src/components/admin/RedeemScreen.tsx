@@ -1,6 +1,6 @@
 import type { ServerProfile } from "@aulora/core";
 import { Button, Card, Heading, Spinner, Text } from "@aulora/ui-web";
-import { ConvexBetterAuthProvider } from "@convex-dev/better-auth/react";
+import { type AuthClient, ConvexBetterAuthProvider } from "@convex-dev/better-auth/react";
 import { ConvexReactClient, useMutation } from "convex/react";
 import { useMemo, useState } from "react";
 import { api } from "../../../../../packages/convex/convex/_generated/api";
@@ -69,7 +69,12 @@ export function RedeemSession({ profile, code, onDone }: RedeemSessionProps) {
   const convex = useMemo(() => new ConvexReactClient(profile.convexUrl), [profile.convexUrl]);
   const authClient = useMemo(() => createAuloraAuthClient(profile.siteUrl), [profile.siteUrl]);
   return (
-    <ConvexBetterAuthProvider client={convex} authClient={authClient}>
+    <ConvexBetterAuthProvider
+      client={convex}
+      // Same upstream prop-generation friction as ProfileSession; runtime is
+      // unchanged.
+      authClient={authClient as unknown as AuthClient}
+    >
       <RedeemGate authClient={authClient} profile={profile} code={code} onDone={onDone} />
     </ConvexBetterAuthProvider>
   );

@@ -1,5 +1,5 @@
 import type { ServerProfile } from "@aulora/core";
-import { ConvexBetterAuthProvider } from "@convex-dev/better-auth/react";
+import { type AuthClient, ConvexBetterAuthProvider } from "@convex-dev/better-auth/react";
 import { ConvexReactClient } from "convex/react";
 import { useMemo } from "react";
 import { createAuloraAuthClient } from "../lib/auth-client";
@@ -15,7 +15,13 @@ export function ProfileSession({ profile }: { readonly profile: ServerProfile })
   const authClient = useMemo(() => createAuloraAuthClient(profile.siteUrl), [profile.siteUrl]);
 
   return (
-    <ConvexBetterAuthProvider client={convex} authClient={authClient}>
+    <ConvexBetterAuthProvider
+      client={convex}
+      // The provider's `AuthClient` prop erases plugin generics (`useSession`
+      // collapses to `never`), which our concrete client doesn't match. Narrow
+      // only for the prop; runtime is unchanged.
+      authClient={authClient as unknown as AuthClient}
+    >
       <SessionGate profile={profile} authClient={authClient} client={convex} />
     </ConvexBetterAuthProvider>
   );

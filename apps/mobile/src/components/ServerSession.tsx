@@ -1,5 +1,5 @@
 import type { ServerProfile } from "@aulora/core";
-import { ConvexBetterAuthProvider } from "@convex-dev/better-auth/react";
+import { type AuthClient, ConvexBetterAuthProvider } from "@convex-dev/better-auth/react";
 import AsyncStorage from "@react-native-async-storage/async-storage";
 import { ConvexReactClient } from "convex/react";
 import { useMemo } from "react";
@@ -19,7 +19,13 @@ export function ServerSession({ profile }: { readonly profile: ServerProfile }) 
   );
 
   return (
-    <ConvexBetterAuthProvider client={convex} authClient={authClient}>
+    <ConvexBetterAuthProvider
+      client={convex}
+      // The provider's `AuthClient` prop erases plugin generics (`useSession`
+      // collapses to `never`), which our browser-cookie client doesn't match.
+      // The runtime contract is identical; narrow only for the prop.
+      authClient={authClient as unknown as AuthClient}
+    >
       <SessionGate
         profile={profile}
         authClient={authClient}
