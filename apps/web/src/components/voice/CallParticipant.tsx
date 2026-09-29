@@ -73,9 +73,9 @@ const CONNECTION_LABEL: Record<CallParticipantView["connection"], string> = {
 };
 
 const CONNECTION_COLOR: Record<CallParticipantView["connection"], string> = {
-  connecting: "bg-[#E8A33B]",
+  connecting: "bg-idle",
   connected: "bg-secondary",
-  reconnecting: "bg-[#E8A33B]",
+  reconnecting: "bg-idle",
   failed: "bg-danger",
 };
 
@@ -88,6 +88,7 @@ export function ParticipantTile({
   stream,
   localVideoTrack,
   settings,
+  speaking,
   className,
   avatarSize = 64,
 }: {
@@ -98,6 +99,8 @@ export function ParticipantTile({
   readonly stream: MediaStream | null;
   readonly localVideoTrack: MediaStreamTrack | null;
   readonly settings: VoiceDeviceSettings;
+  /** Local override from the remote level meter; wins over the server field. */
+  readonly speaking?: boolean;
   readonly className?: string;
   readonly avatarSize?: number;
 }) {
@@ -105,12 +108,13 @@ export function ParticipantTile({
     participant.video &&
     participant.connection === "connected" &&
     (isSelf ? localVideoTrack !== null : stream !== null && stream.getVideoTracks().length > 0);
+  const isSpeaking = speaking ?? participant.speaking;
 
   return (
     <div
       className={cn(
         "relative flex min-h-0 min-w-0 items-center justify-center overflow-hidden rounded-card border bg-surface-2 transition",
-        participant.speaking && !participant.muted
+        isSpeaking && !participant.muted
           ? "border-secondary/70 shadow-[0_0_0_2px_var(--aulora-secondary)]"
           : "border-border",
         className,
@@ -135,7 +139,7 @@ export function ParticipantTile({
 
       <div className="pointer-events-none absolute inset-x-0 bottom-0 flex items-center gap-1.5 bg-gradient-to-t from-black/65 via-black/25 to-transparent px-2.5 pb-1.5 pt-5">
         {participant.muted && (
-          <span className="flex h-5 w-5 items-center justify-center rounded-full bg-danger/90 text-white">
+          <span className="flex h-5 w-5 items-center justify-center rounded-full bg-danger/90 text-on-accent">
             <Icon name="mic-off" size={12} strokeWidth={2.25} />
           </span>
         )}
@@ -183,6 +187,7 @@ export function CallGrid({
   localVideoTrack,
   settings,
   identity,
+  speakingIds,
   className,
 }: {
   readonly participants: readonly CallParticipantView[];
@@ -191,6 +196,8 @@ export function CallGrid({
   readonly localVideoTrack: MediaStreamTrack | null;
   readonly settings: VoiceDeviceSettings;
   readonly identity: CallIdentity;
+  /** Remote users currently speaking, from the local audio level meter. */
+  readonly speakingIds?: ReadonlySet<string>;
   readonly className?: string;
 }) {
   const sorted = useMemo(() => sortParticipants(participants), [participants]);
@@ -208,6 +215,7 @@ export function CallGrid({
       stream={streams.get(participant.userId) ?? null}
       localVideoTrack={localVideoTrack}
       settings={settings}
+      {...(speakingIds !== undefined ? { speaking: speakingIds.has(participant.userId) } : {})}
     />
   );
 
@@ -222,6 +230,7 @@ export function CallGrid({
           stream={streams.get(sharer.userId) ?? null}
           localVideoTrack={localVideoTrack}
           settings={settings}
+          {...(speakingIds !== undefined ? { speaking: speakingIds.has(sharer.userId) } : {})}
           className="min-h-0 flex-1"
         />
         {rest.length > 0 && (
@@ -236,6 +245,9 @@ export function CallGrid({
                   stream={streams.get(participant.userId) ?? null}
                   localVideoTrack={localVideoTrack}
                   settings={settings}
+                  {...(speakingIds !== undefined
+                    ? { speaking: speakingIds.has(participant.userId) }
+                    : {})}
                   className="h-full w-full"
                   avatarSize={40}
                 />

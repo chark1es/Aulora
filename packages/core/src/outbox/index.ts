@@ -74,6 +74,8 @@ export interface OutboxItem {
   readonly channelId: string;
   readonly text: string;
   readonly mentionUserIds: readonly string[];
+  readonly mentionChannelIds?: readonly string[];
+  readonly mentionCategoryIds?: readonly string[];
   readonly threadRootId?: string;
   readonly replyToId?: string;
   readonly attachments?: readonly AttachmentDescriptor[];
@@ -115,6 +117,8 @@ export interface EnqueueInput {
   readonly channelId: string;
   readonly text: string;
   readonly mentionUserIds?: readonly string[];
+  readonly mentionChannelIds?: readonly string[];
+  readonly mentionCategoryIds?: readonly string[];
   readonly threadRootId?: string;
   readonly replyToId?: string;
   readonly attachments?: readonly AttachmentDescriptor[];
@@ -172,6 +176,12 @@ export class Outbox {
       channelId: input.channelId,
       text: input.text,
       mentionUserIds: [...(input.mentionUserIds ?? [])],
+      ...(input.mentionChannelIds !== undefined
+        ? { mentionChannelIds: [...input.mentionChannelIds] }
+        : {}),
+      ...(input.mentionCategoryIds !== undefined
+        ? { mentionCategoryIds: [...input.mentionCategoryIds] }
+        : {}),
       ...(input.threadRootId !== undefined ? { threadRootId: input.threadRootId } : {}),
       ...(input.replyToId !== undefined ? { replyToId: input.replyToId } : {}),
       ...(input.attachments !== undefined ? { attachments: input.attachments } : {}),

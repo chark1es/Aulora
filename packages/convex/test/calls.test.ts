@@ -234,3 +234,39 @@ describe("calls sweep", () => {
     expect(call?.status).toBe("ended");
   });
 });
+
+describe("calls target validation", () => {
+  it("refuses a signal addressed to a non-participant", async () => {
+    const t = await seed({
+      members: [{ userId: "user-1" }, { userId: "user-2" }, { userId: "user-3" }],
+    });
+    const channelId = await seedChannel(t, { kind: "voice", name: "Lounge" });
+    const { callId } = await t
+      .withIdentity({ subject: "user-1" })
+      .mutation(api.calls.start, { channelId, kind: "voice" });
+    await t.withIdentity({ subject: "user-2" }).mutation(api.calls.join, { callId });
+
+    await expect(
+      t.withIdentity({ subject: "user-1" }).mutation(api.calls.signal, {
+        callId,
+        toUserId: "user-3",
+        kind: "offer",
+        payload: "v=0",
+      }),
+    ).rejects.toThrow("not in this call");
+  });
+
+  it("intersects explicit ringing targets with current channel members", async () => {
+    const t = await seed({
+      members: [{ userId: "user-1" }, { userId: "user-2" }, { userId: "stranger" }],
+    });
+    const channelId = await seedChannel(t, { kind: "dm", memberIds: ["user-1", "user-2"] });
+    const { callId } = await t.withIdentity({ subject: "user-1" }).mutation(api.calls.start, {
+      channelId,
+      kind: "voice",
+      ringingUserIds: ["user-2", "stranger"],
+    });
+    const call = await t.run(async (ctx) => await ctx.db.get(callId));
+    expect(call?.ringingUserIds).toEqual(["user-2"]);
+  });
+});

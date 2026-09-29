@@ -1,9 +1,11 @@
 import { hasPermission, Permission } from "@aulora/core";
 import { ConvexError, v } from "convex/values";
+import { internal } from "./_generated/api";
 import type { Doc, Id } from "./_generated/dataModel";
 import type { MutationCtx, QueryCtx } from "./_generated/server";
 import { internalMutation, mutation, query } from "./_generated/server";
 import { requireAuth } from "./lib/auth";
+import { assertMayParticipate } from "./lib/bans";
 import { isDmKind, requireChannelAccess } from "./lib/channels";
 import { categoryOverridesFor, channelPermissions, loadPermissionContext } from "./lib/permissions";
 
@@ -193,6 +195,7 @@ export const start = mutation({
   },
   handler: async (ctx, args) => {
     const { userId, channel } = await requireChannelAccess(ctx, args.channelId, Permission.Connect);
+    await assertMayParticipate(ctx, userId);
     assertCallableKind(channel.kind);
     const policy = await loadVoicePolicy(ctx);
     if (!policy.enabled) {
@@ -247,14 +250,18 @@ export const start = mutation({
     // DM/group-DM calls ring the other participants; voice channels do not.
     let ringingUserIds: string[] = [];
     if (isDmKind(channel.kind)) {
+      const membership = await ctx.db
+        .query("channelMembers")
+        .withIndex("by_channel", (q) => q.eq("channelId", args.channelId))
+        .collect();
+      // Only current channel members may be rung: an arbitrary id supplied by
+      // the caller is dropped rather than turned into a ringing target.
+      const memberIds = new Set(membership.map((row) => row.userId));
+      memberIds.delete(userId);
       if (args.ringingUserIds !== undefined) {
-        ringingUserIds = args.ringingUserIds.filter((id) => id !== userId);
+        ringingUserIds = args.ringingUserIds.filter((id) => memberIds.has(id));
       } else {
-        const membership = await ctx.db
-          .query("channelMembers")
-          .withIndex("by_channel", (q) => q.eq("channelId", args.channelId))
-          .collect();
-        ringingUserIds = membership.map((row) => row.userId).filter((id) => id !== userId);
+        ringingUserIds = [...memberIds];
       }
     }
 
@@ -279,6 +286,14 @@ export const start = mutation({
       joinedAt: now,
       lastSeen: now,
     });
+    if (ringingUserIds.length > 0) {
+      await ctx.scheduler.runAfter(0, internal.notifications.dispatchCallRinging, { callId });
+      // Native mobile devices need their own wake path (web push targets web
+      // subscriptions; this targets APNs/FCM/UnifiedPush tokens).
+      await ctx.scheduler.runAfter(0, internal.notifications.dispatchMobileCallRinging, {
+        callId,
+      });
+    }
     return { callId, created: true };
   },
 });
@@ -293,6 +308,7 @@ export const join = mutation({
       throw new ConvexError("This call has ended");
     }
     await requireChannelAccess(ctx, call.channelId, Permission.Connect);
+    await assertMayParticipate(ctx, userId);
     const policy = await loadVoicePolicy(ctx);
     if (!policy.enabled) {
       throw new ConvexError("Voice and video calls are disabled in this workspace");
@@ -495,6 +511,10 @@ export const signal = mutation({
     const sender = await findParticipant(ctx, call._id, userId);
     if (sender === null) {
       throw new ConvexError("You are not in this call");
+    }
+    const receiver = await findParticipant(ctx, call._id, args.toUserId);
+    if (receiver === null) {
+      throw new ConvexError("Signalling target is not in this call");
     }
     if (args.payload.length > MAX_SIGNAL_BYTES) {
       throw new ConvexError("Signalling payload is too large");

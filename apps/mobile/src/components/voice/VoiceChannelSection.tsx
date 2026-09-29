@@ -7,6 +7,8 @@ export interface VoiceChannelSectionProps {
   readonly activeCalls: readonly CallView[];
   readonly memberNames: ReadonlyMap<string, string>;
   readonly selfUserId: string;
+  /** Per-participant remote audio level, 0..1, when available. */
+  readonly remoteLevels?: ReadonlyMap<string, number>;
   readonly onJoin: (channelId: string) => void;
 }
 
@@ -20,6 +22,7 @@ export function VoiceChannelSection({
   activeCalls,
   memberNames,
   selfUserId,
+  remoteLevels,
   onJoin,
 }: VoiceChannelSectionProps) {
   const palette = usePalette();
@@ -71,7 +74,11 @@ export function VoiceChannelSection({
                     <Icon
                       name={participant.muted ? "mic-off" : "mic"}
                       size={12}
-                      color={palette["text-muted"]}
+                      color={
+                        !participant.muted && (remoteLevels?.get(participant.userId) ?? 0) > 0.06
+                          ? palette.secondary
+                          : palette["text-muted"]
+                      }
                     />
                     <Text size="xs" tone="muted">
                       {memberNames.get(participant.userId) ?? participant.userId}

@@ -1,4 +1,4 @@
-import { Button, Icon, Input, SegmentedControl, Switch, Text } from "@aulora/ui-web";
+import { Button, Icon, Input, SegmentedControl, Spinner, Switch, Text } from "@aulora/ui-web";
 import { useMutation, useQuery } from "convex/react";
 import { useEffect, useState } from "react";
 import { api } from "../../../../../packages/convex/convex/_generated/api";
@@ -53,6 +53,7 @@ export function WorkspaceSettings({ canManageWorkspace }: WorkspaceSettingsProps
   const updateSettings = useMutation(api.server.updateSettings);
 
   const [joinMode, setJoinMode] = useState<JoinMode>("anyone");
+  const [signupEnabled, setSignupEnabled] = useState(true);
   const [domains, setDomains] = useState<readonly string[]>([]);
   const [domainInput, setDomainInput] = useState("");
   const [voiceEnabled, setVoiceEnabled] = useState(true);
@@ -68,6 +69,7 @@ export function WorkspaceSettings({ canManageWorkspace }: WorkspaceSettingsProps
       return;
     }
     setJoinMode(server.settings.inviteOnly ? "invite" : "anyone");
+    setSignupEnabled(server.settings.signupEnabled ?? true);
     setDomains(server.settings.allowedEmailDomains);
     setVoiceEnabled(server.settings.voiceEnabled ?? true);
     setVideoEnabled(server.settings.videoEnabled ?? true);
@@ -93,15 +95,17 @@ export function WorkspaceSettings({ canManageWorkspace }: WorkspaceSettingsProps
 
   if (server === undefined) {
     return (
-      <Text tone="muted" size="sm">
-        Loading settings…
-      </Text>
+      <div className="flex justify-center py-8">
+        <Spinner size={22} label="Loading settings" />
+      </div>
     );
   }
 
   const storedMode: JoinMode = server.settings.inviteOnly ? "invite" : "anyone";
+  const storedSignup = server.settings.signupEnabled ?? true;
   const dirty =
     joinMode !== storedMode ||
+    signupEnabled !== storedSignup ||
     !sameDomains(domains, server.settings.allowedEmailDomains) ||
     voiceEnabled !== (server.settings.voiceEnabled ?? true) ||
     videoEnabled !== (server.settings.videoEnabled ?? true) ||
@@ -129,6 +133,7 @@ export function WorkspaceSettings({ canManageWorkspace }: WorkspaceSettingsProps
         setBusy(true);
         void updateSettings({
           ...JOIN_MODE_VALUES[joinMode],
+          signupEnabled,
           allowedEmailDomains: [...domains],
           voiceEnabled,
           videoEnabled,
@@ -235,6 +240,18 @@ export function WorkspaceSettings({ canManageWorkspace }: WorkspaceSettingsProps
             </ul>
           )}
         </div>
+      </div>
+
+      <div className="overflow-hidden rounded-[14px] border border-border bg-surface-2 px-4 py-2.5">
+        <Switch
+          checked={signupEnabled}
+          onChange={(value) => {
+            setSignupEnabled(value);
+            setSaved(false);
+          }}
+          label="Allow account creation"
+          description="When off, no one can create an account here — existing members keep full access."
+        />
       </div>
 
       <SettingsSectionHeader

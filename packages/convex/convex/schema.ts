@@ -69,6 +69,8 @@ export default defineSchema({
     ownerId: v.string(),
     settings: serverSettings,
     licenseKey: v.optional(v.string()),
+    description: v.optional(v.string()),
+    logoStorageId: v.optional(v.id("_storage")),
   }),
 
   /**
@@ -87,6 +89,20 @@ export default defineSchema({
     /** Stable opaque server id echoed in wakeups. */
     serverId: v.optional(v.string()),
     backupsEnabled: v.boolean(),
+    /**
+     * Per-provider auth toggles. Absent means "inherits the deployment
+     * environment"; an explicit `false` hides a provider even when its
+     * credentials are present.
+     */
+    authProviders: v.optional(
+      v.object({
+        github: v.optional(v.boolean()),
+        google: v.optional(v.boolean()),
+        microsoft: v.optional(v.boolean()),
+        apple: v.optional(v.boolean()),
+        oidc: v.optional(v.boolean()),
+      }),
+    ),
   }),
 
   /**
@@ -201,6 +217,10 @@ export default defineSchema({
     replyToId: v.optional(v.id("messages")),
     attachmentIds: v.array(v.id("files")),
     mentionUserIds: v.array(v.string()),
+    /** Plaintext ids of channels/categories mentioned as `#name`. */
+    mentionChannelIds: v.array(v.string()),
+    /** Plaintext ids of categories mentioned; absent on legacy rows. */
+    mentionCategoryIds: v.optional(v.array(v.string())),
     editedAt: v.optional(v.number()),
     deletedAt: v.optional(v.number()),
     /** Set while the message is pinned; cleared on unpin. */
@@ -350,7 +370,11 @@ export default defineSchema({
     channelId: v.optional(v.id("channels")),
     level: notificationLevel,
     muteUntil: v.optional(v.number()),
-  }).index("by_user_scope", ["userId", "scope"]),
+    /** Hidden from the sidebar for this viewer (per-channel only). */
+    hidden: v.optional(v.boolean()),
+  })
+    .index("by_user_scope", ["userId", "scope"])
+    .index("by_user_channel", ["userId", "channelId"]),
 
   /**
    * Invite links. `code` stores the SHA-256 hex digest of the plaintext code,
@@ -375,7 +399,24 @@ export default defineSchema({
     actorId: v.string(),
     reason: v.optional(v.string()),
     at: v.number(),
+    /** Absent means permanent; `expiresAt <= Date.now()` is no longer banned. */
+    expiresAt: v.optional(v.number()),
   }).index("by_user", ["userId"]),
+
+  /**
+   * A private, per-author note about another member. The body is
+   * server-sealed (`userNote` scope); the target and author stay plaintext so
+   * the row can be looked up and shown without the key.
+   */
+  userNotes: defineTable({
+    authorId: v.string(),
+    targetUserId: v.string(),
+    bodyCiphertext: v.string(),
+    updatedAt: v.number(),
+  })
+    .index("by_author", ["authorId"])
+    .index("by_author_target", ["authorId", "targetUserId"])
+    .index("by_target", ["targetUserId"]),
 
   auditLog: defineTable({
     actorId: v.string(),

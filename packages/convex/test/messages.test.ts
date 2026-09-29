@@ -218,6 +218,68 @@ describe("messages.send and list", () => {
     expect(row?.replyToId).toBe(original);
   });
 
+  it("stores plaintext mentionChannelIds", async () => {
+    const t = newTest();
+    await seedWorkspace(t, { members: [{ userId: "user-1" }] });
+    const channelId = await seedChannel(t);
+    const mentionedChannelId = await seedChannel(t, { name: "mentioned" });
+    const asUser = t.withIdentity({ subject: "user-1" });
+
+    const messageId = await asUser.mutation(api.messages.send, {
+      channelId,
+      body: "aGk=",
+      mentionChannelIds: [mentionedChannelId],
+    });
+
+    const row = await t.run(async (ctx) => await ctx.db.get(messageId));
+    expect(row?.mentionChannelIds).toEqual([mentionedChannelId]);
+
+    const page = await asUser.query(api.messages.list, { channelId, paginationOpts: PAGE });
+    expect(page.page.find((m) => m.id === messageId)?.mentionChannelIds).toEqual([
+      mentionedChannelId,
+    ]);
+  });
+
+  it("stores and returns plaintext mentionCategoryIds", async () => {
+    const t = newTest();
+    await seedWorkspace(t, { members: [{ userId: "user-1" }] });
+    const channelId = await seedChannel(t);
+    const categoryId = await t.run(
+      async (ctx) => await ctx.db.insert("categories", { name: "cat", position: 0, overrides: [] }),
+    );
+    const asUser = t.withIdentity({ subject: "user-1" });
+
+    const messageId = await asUser.mutation(api.messages.send, {
+      channelId,
+      body: "aGk=",
+      mentionCategoryIds: [categoryId],
+    });
+
+    const row = await t.run(async (ctx) => await ctx.db.get(messageId));
+    expect(row?.mentionCategoryIds).toEqual([categoryId]);
+    const page = await asUser.query(api.messages.list, { channelId, paginationOpts: PAGE });
+    expect(page.page.find((m) => m.id === messageId)?.mentionCategoryIds).toEqual([categoryId]);
+  });
+
+  it("drops mention ids that do not resolve to a member, channel or category", async () => {
+    const t = newTest();
+    await seedWorkspace(t, { members: [{ userId: "user-1" }] });
+    const channelId = await seedChannel(t);
+    const asUser = t.withIdentity({ subject: "user-1" });
+
+    const messageId = await asUser.mutation(api.messages.send, {
+      channelId,
+      body: "aGk=",
+      mentionUserIds: ["ghost"],
+      mentionChannelIds: ["not-a-channel-id"],
+      mentionCategoryIds: ["not-a-category-id"],
+    });
+    const row = await t.run(async (ctx) => await ctx.db.get(messageId));
+    expect(row?.mentionUserIds).toEqual([]);
+    expect(row?.mentionChannelIds).toEqual([]);
+    expect(row?.mentionCategoryIds).toEqual([]);
+  });
+
   it("rejects a reply whose target is in another channel", async () => {
     const t = newTest();
     await seedWorkspace(t, { members: [{ userId: "user-1" }] });
@@ -358,7 +420,7 @@ describe("messages.edit and delete", () => {
     );
   });
 
-  it("soft-deletes as the author and writes an audit row", async () => {
+  it("soft-deletes as the author without a routine audit row", async () => {
     const t = newTest();
     const { channelId, messageId, asUser1 } = await sendAsUser1(t);
     await asUser1.mutation(api.messages.remove, { messageId });
@@ -368,7 +430,33 @@ describe("messages.edit and delete", () => {
       "b3JpZ2luYWw=",
     );
     const audit = await t.run(async (ctx) => await ctx.db.query("auditLog").collect());
-    expect(audit.some((row) => row.action === "message.delete")).toBe(true);
+    expect(audit.some((row) => row.action === "message.delete")).toBe(false);
+  });
+
+  it("audits a moderator edit and delete but not a self-delete", async () => {
+    const t = newTest();
+    await seedWorkspace(t, {
+      extraRoles: [{ key: "mod", permissions: Permission.ViewChannel | Permission.ManageMessages }],
+      members: [{ userId: "author" }, { userId: "mod-1", roleIds: ["mod"] }],
+    });
+    const channelId = await seedChannel(t);
+    const asAuthor = t.withIdentity({ subject: "author" });
+    const messageId = await asAuthor.mutation(api.messages.send, {
+      channelId,
+      body: "b3JpZ2luYWw=",
+    });
+    const asMod = t.withIdentity({ subject: "mod-1" });
+    await asMod.mutation(api.messages.edit, { messageId, body: "bW9k" });
+    await asMod.mutation(api.messages.remove, { messageId });
+
+    const selfId = await asAuthor.mutation(api.messages.send, { channelId, body: "bWU=" });
+    await asAuthor.mutation(api.messages.remove, { messageId: selfId });
+
+    const audit = await t.run(async (ctx) => await ctx.db.query("auditLog").collect());
+    const actions = audit.map((row) => row.action);
+    expect(actions).toContain("message.edit");
+    expect(actions.filter((action) => action === "message.delete")).toHaveLength(1);
+    expect(audit.find((row) => row.action === "message.delete")?.targetId).toBe(messageId);
   });
 
   it("refuses a delete by a non-author without ManageMessages", async () => {

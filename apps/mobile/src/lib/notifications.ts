@@ -1,8 +1,17 @@
-import type { MessagePayload } from "@aulora/core";
+import type { CallView, MessagePayload, SoundEvent } from "@aulora/core";
 import * as Notifications from "expo-notifications";
 import { useEffect, useRef } from "react";
+import { AppState, Platform } from "react-native";
 import type { MobileChatRuntime } from "./chat-runtime";
 import { notificationContent, shouldNotify } from "./notifications-format";
+import { CALL_CHANNEL_ID } from "./push";
+
+export interface LocalNotificationOptions {
+  /** Channels the viewer muted: never cue or notify for them. */
+  readonly mutedChannelIds?: ReadonlySet<string>;
+  /** Plays the device sound cue for a message or mention. */
+  readonly onCue?: (event: SoundEvent) => void;
+}
 
 /**
  * Local display of incoming messages. The server holds message bodies only
@@ -13,9 +22,12 @@ export function useLocalNotifications(
   runtime: MobileChatRuntime | undefined,
   ownUserId: string,
   channelNames: ReadonlyMap<string, string>,
+  options: LocalNotificationOptions = {},
 ): void {
   const namesRef = useRef(channelNames);
   namesRef.current = channelNames;
+  const optionsRef = useRef(options);
+  optionsRef.current = options;
 
   useEffect(() => {
     if (runtime === undefined) {
@@ -55,8 +67,15 @@ export function useLocalNotifications(
         ) {
           continue;
         }
+        if (optionsRef.current.mutedChannelIds?.has(message.channelId) === true) {
+          continue;
+        }
+        const mentioned = message.mentionUserIds.includes(ownUserId);
+        optionsRef.current.onCue?.(mentioned ? "mention" : "message");
         added += 1;
-        const content = notificationContent(namesRef.current.get(message.channelId), text);
+        const content = notificationContent(namesRef.current.get(message.channelId), text, {
+          mention: mentioned,
+        });
         void Notifications.scheduleNotificationAsync({
           content: { title: content.title, body: content.body },
           trigger: null,
@@ -73,4 +92,41 @@ export function useLocalNotifications(
       void Notifications.setBadgeCountAsync(0);
     };
   }, [runtime, ownUserId]);
+}
+
+/**
+ * Raises a local notification for an incoming call when the app is not in the
+ * foreground. In-app ringing is handled by {@link IncomingCallModal}; this is
+ * the backgrounded-device path (push wakes are handled server-side).
+ */
+export function useIncomingCallNotification(
+  incoming: readonly CallView[],
+  callerName: (call: CallView) => string,
+): void {
+  const announced = useRef(new Set<string>());
+  useEffect(() => {
+    for (const call of incoming) {
+      if (announced.current.has(call.id)) {
+        continue;
+      }
+      announced.current.add(call.id);
+      if (AppState.currentState === "active") {
+        continue;
+      }
+      void Notifications.scheduleNotificationAsync({
+        content: {
+          title: `Incoming call from ${callerName(call)}`,
+          body: call.kind === "video" ? "Video call" : "Voice call",
+          sound: "default",
+          // Lets the notification handler ring for calls (and only calls).
+          data: { kind: "call", callId: call.id },
+          ...(Platform.OS === "android" ? { channelId: CALL_CHANNEL_ID } : {}),
+          ...(Platform.OS === "android"
+            ? { priority: Notifications.AndroidNotificationPriority.MAX }
+            : {}),
+        },
+        trigger: null,
+      });
+    }
+  }, [incoming, callerName]);
 }

@@ -85,6 +85,7 @@ export function CallScreen({ channelName, memberNames, memberColors }: CallScree
               name={displayName(sharer.userId, memberNames)}
               color={memberColors.get(sharer.userId)}
               stream={voice.remoteStreams.get(sharer.userId) ?? null}
+              level={voice.remoteLevels.get(sharer.userId)}
               prominent
             />
           )}
@@ -100,6 +101,7 @@ export function CallScreen({ channelName, memberNames, memberColors }: CallScree
                   stream={
                     isSelf ? localStream : (voice.remoteStreams.get(participant.userId) ?? null)
                   }
+                  level={isSelf ? voice.micLevel : voice.remoteLevels.get(participant.userId)}
                   mirror={isSelf}
                 />
               );
@@ -113,6 +115,7 @@ export function CallScreen({ channelName, memberNames, memberColors }: CallScree
             deafened={local.deafened}
             video={local.video}
             sharingScreen={local.sharingScreen}
+            canSpeak={voice.canSpeak}
             canVideo={voice.canVideo}
             canStream={voice.canStream}
             pipPinned={voice.pipPinned}
@@ -134,6 +137,7 @@ interface ParticipantTileProps {
   readonly name: string;
   readonly color: string | undefined;
   readonly stream: VoiceStream | null;
+  readonly level?: number;
   readonly prominent?: boolean;
   readonly mirror?: boolean;
 }
@@ -143,12 +147,14 @@ function ParticipantTile({
   name,
   color,
   stream,
+  level = 0,
   prominent = false,
   mirror = false,
 }: ParticipantTileProps) {
   const palette = usePalette();
   const showVideo = participant.video || participant.sharingScreen;
-  const ring = participant.speaking ? palette.secondary : palette.border;
+  const talking = !participant.muted && (participant.speaking || level > 0.06);
+  const ring = talking ? palette.secondary : palette.border;
   return (
     <View
       className={
@@ -156,7 +162,7 @@ function ParticipantTile({
           ? "h-64 w-full overflow-hidden rounded-card border bg-surface-2"
           : "h-40 flex-1 overflow-hidden rounded-card border bg-surface-2"
       }
-      style={{ borderColor: ring, minWidth: 150 }}
+      style={{ borderColor: ring, borderWidth: talking ? 2 : 1, minWidth: 150 }}
     >
       {showVideo && stream !== null ? (
         <CallVideo
@@ -168,6 +174,12 @@ function ParticipantTile({
         <AvatarFallback seed={participant.userId} color={color} />
       )}
       <View className="absolute bottom-2 left-2 right-2 flex-row items-center gap-1.5">
+        {talking && (
+          <View
+            className="h-1.5 w-1.5 rounded-pill"
+            style={{ backgroundColor: palette.secondary }}
+          />
+        )}
         <Text size="xs" numberOfLines={1} className="flex-1 font-medium">
           {name}
         </Text>

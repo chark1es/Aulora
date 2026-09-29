@@ -317,6 +317,8 @@ describe("ChannelSidebar", () => {
     await user.click(screen.getByRole("menuitemradio", { name: /Do not disturb/ }));
     expect(onSetStatus).toHaveBeenCalledWith("dnd");
     await user.click(screen.getByRole("button", { name: "Sign out" }));
+    const dialog = screen.getByRole("dialog", { name: /Sign out of/ });
+    await user.click(within(dialog).getByRole("button", { name: "Sign out" }));
     expect(onSignOut).toHaveBeenCalled();
   });
 
@@ -356,6 +358,8 @@ describe("Composer", () => {
     expect(onSend).toHaveBeenCalledWith({
       text: "hi @Ada Lovelace line one\nline two",
       mentionUserIds: ["u-ada"],
+      mentionChannelIds: [],
+      mentionCategoryIds: [],
       files: [],
     });
     expect(input).toHaveValue("");

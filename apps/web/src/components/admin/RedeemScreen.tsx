@@ -1,7 +1,7 @@
 import type { ServerProfile } from "@aulora/core";
 import { Button, Card, Heading, Spinner, Text } from "@aulora/ui-web";
 import { type AuthClient, ConvexBetterAuthProvider } from "@convex-dev/better-auth/react";
-import { ConvexReactClient, useMutation } from "convex/react";
+import { ConvexReactClient, useMutation, useQuery } from "convex/react";
 import { useMemo, useState } from "react";
 import { api } from "../../../../../packages/convex/convex/_generated/api";
 import {
@@ -94,10 +94,12 @@ function RedeemGate({
   const session = authClient.useSession();
   const actions = useMemo(() => authActionsFromClient(authClient), [authClient]);
   const redeem = useMutation(api.invites.redeem);
+  const inspect = useQuery(api.invites.inspect, { code });
 
   const [state, setState] = useState<"idle" | "pending" | "done">("idle");
   const [error, setError] = useState<string | null>(null);
   const [message, setMessage] = useState<string | null>(null);
+  const [forceSignIn, setForceSignIn] = useState(false);
 
   if (session.isPending) {
     return (
@@ -112,6 +114,21 @@ function RedeemGate({
 
   const user = session.data?.user;
   if (user === undefined || user === null) {
+    if (inspect !== undefined && !inspect.valid && !forceSignIn) {
+      return (
+        <AuthFrame>
+          <Card className="flex flex-col gap-3 rounded-[12px] p-6" data-testid="redeem-invalid">
+            <Heading level={2}>Invite unavailable</Heading>
+            <Text tone="muted" size="sm">
+              This invite to {inspect.workspaceName} is no longer valid
+              {inspect.reason === "expired" ? " (it has expired)" : ""}. Ask an admin for a new
+              link.
+            </Text>
+            <Button onClick={() => setForceSignIn(true)}>Sign in anyway</Button>
+          </Card>
+        </AuthFrame>
+      );
+    }
     return <SignInScreen profile={profile} actions={actions} />;
   }
 

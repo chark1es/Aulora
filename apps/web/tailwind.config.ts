@@ -1,4 +1,4 @@
-import { COLOR_TOKENS, cssVariables, tailwindPresets } from "@aulora/tokens";
+import { COLOR_TOKENS, cssVariables, IDLE_COLOR, tailwindPresets } from "@aulora/tokens";
 import type { Config } from "tailwindcss";
 import plugin from "tailwindcss/plugin";
 
@@ -21,12 +21,15 @@ const config: Config = {
     extend: {
       // `color-mix` keeps opacity modifiers (`bg-accent/10`) working on top of
       // CSS variables, so themes switch without duplicating hex values.
-      colors: Object.fromEntries(
-        COLOR_TOKENS.map((token) => [
-          token,
-          `color-mix(in srgb, var(--aulora-${token}) calc(<alpha-value> * 100%), transparent)`,
-        ]),
-      ),
+      colors: {
+        ...Object.fromEntries(
+          COLOR_TOKENS.map((token) => [
+            token,
+            `color-mix(in srgb, var(--aulora-${token}) calc(<alpha-value> * 100%), transparent)`,
+          ]),
+        ),
+        idle: IDLE_COLOR,
+      },
       keyframes: {
         "typing-dot": {
           "0%, 60%, 100%": { transform: "translateY(0)", opacity: "0.45" },

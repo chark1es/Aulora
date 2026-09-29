@@ -1,9 +1,9 @@
 import { ConvexError, v } from "convex/values";
 import { internal } from "./_generated/api";
 import { internalAction, internalMutation, query } from "./_generated/server";
-import { requireAuth } from "./lib/auth";
 import { getEkmSettings } from "./lib/ekm";
 import { getEncryptionSettings } from "./lib/env";
+import { requireInstanceAdmin } from "./lib/instance";
 import { clearKeyCache, encryptionConfigured, primeMasterKey } from "./lib/sse";
 
 /**
@@ -20,7 +20,7 @@ import { clearKeyCache, encryptionConfigured, primeMasterKey } from "./lib/sse";
 export const status = query({
   args: {},
   handler: async (ctx) => {
-    await requireAuth(ctx);
+    await requireInstanceAdmin(ctx);
     const env = process.env;
     const settings = getEkmSettings(env);
     const versions = await ctx.db.query("encryptionKeys").withIndex("by_key_version").collect();

@@ -12,6 +12,28 @@ interface IceServerConfig {
   readonly credential?: string;
 }
 
+/** Workspace logo cap; mirrors the client-side limit. */
+const MAX_LOGO_BYTES = 4 * 1024 * 1024;
+
+/**
+ * True when a stored object looks like a workspace image asset: non-empty,
+ * within the logo size cap, and either untagged or tagged `image/*`. Read from
+ * `_storage` metadata so an empty or absurdly large object cannot be
+ * republished as the workspace logo. Actual bytes are not readable from a
+ * mutation (only actions can download a blob), so the content type is the
+ * strongest in-mutation signal.
+ */
+function isImageAsset(metadata: {
+  readonly size: number;
+  readonly contentType?: string | null;
+}): boolean {
+  if (metadata.size <= 0 || metadata.size > MAX_LOGO_BYTES) {
+    return false;
+  }
+  const contentType = (metadata.contentType ?? "").toLowerCase();
+  return contentType.length === 0 || contentType.startsWith("image/");
+}
+
 /**
  * Parses `AULORA_ICE_SERVERS` (JSON array of `RTCIceServer`-shaped objects) so
  * a self-hosted deployment can point clients at its own STUN/TURN. Invalid
@@ -60,7 +82,10 @@ function parseIceServers(raw: string | undefined): readonly IceServerConfig[] {
 async function buildPublicConfig(ctx: QueryCtx) {
   const env = process.env;
   const server = await ctx.db.query("server").first();
+  const instance = await ctx.db.query("instanceSettings").first();
   const signupEnabled = server?.settings.signupEnabled ?? true;
+  const logoUrl =
+    server?.logoStorageId !== undefined ? await ctx.storage.getUrl(server.logoStorageId) : null;
   const vapidPublicKey = env.VAPID_PUBLIC_KEY?.trim();
   const encryption = getEncryptionSettings(env);
   // Voice policy is a capability, not a secret: every client needs it to
@@ -75,11 +100,15 @@ async function buildPublicConfig(ctx: QueryCtx) {
   return {
     name: server?.name ?? "Aulora",
     iconSeed: server?.iconSeed ?? "aulora:server:default",
+    description: server?.description ?? "",
+    logoUrl,
+    inviteOnly: server?.settings.inviteOnly ?? true,
+    signupEnabled,
     version: AULORA_VERSION,
     apiVersion: API_VERSION,
     convexUrl: env.CONVEX_CLOUD_URL ?? "",
     siteUrl: env.SITE_URL ?? env.CONVEX_SITE_URL ?? "",
-    auth: getPublicAuthConfig(env, signupEnabled),
+    auth: getPublicAuthConfig(env, signupEnabled, instance?.authProviders ?? undefined),
     // Non-secret encryption descriptor: mode, algorithm, key version and the
     // key-manager provider only. Key material never leaves the environment.
     encryption: {
@@ -125,9 +154,93 @@ export const settings = query({
     return {
       name: server.name,
       iconSeed: server.iconSeed,
+      description: server.description ?? "",
+      logoStorageId: server.logoStorageId ?? null,
+      logoUrl:
+        server.logoStorageId !== undefined ? await ctx.storage.getUrl(server.logoStorageId) : null,
       ownerId: server.ownerId,
       settings: server.settings,
     };
+  },
+});
+
+/**
+ * Updates workspace branding (name, icon seed and description). Requires
+ * `ManageWorkspace` and writes an audit row.
+ */
+export const updateBranding = mutation({
+  args: {
+    name: v.optional(v.string()),
+    iconSeed: v.optional(v.string()),
+    description: v.optional(v.string()),
+  },
+  handler: async (ctx, args) => {
+    const { userId } = await requireWorkspacePermission(ctx, Permission.ManageWorkspace);
+    const server = await ctx.db.query("server").first();
+    if (server === null) {
+      throw new ConvexError("Workspace is not initialized");
+    }
+    const name = args.name?.trim();
+    if (args.name !== undefined && (name === undefined || name.length === 0)) {
+      throw new ConvexError("Workspace name cannot be empty");
+    }
+    const changed: string[] = [];
+    if (name !== undefined) {
+      changed.push("name");
+    }
+    if (args.iconSeed !== undefined) {
+      changed.push("iconSeed");
+    }
+    if (args.description !== undefined) {
+      changed.push("description");
+    }
+    if (changed.length === 0) {
+      return null;
+    }
+    await ctx.db.patch(server._id, {
+      ...(name !== undefined ? { name } : {}),
+      ...(args.iconSeed !== undefined ? { iconSeed: args.iconSeed } : {}),
+      ...(args.description !== undefined ? { description: args.description } : {}),
+    });
+    await writeAudit(ctx, {
+      actorId: userId,
+      action: "server.updateBranding",
+      targetId: server._id,
+      meta: JSON.stringify({ changed }),
+    });
+    return null;
+  },
+});
+
+/** Sets or clears the workspace logo. Requires `ManageWorkspace`. */
+export const setLogo = mutation({
+  args: { storageId: v.optional(v.id("_storage")) },
+  handler: async (ctx, args) => {
+    const { userId } = await requireWorkspacePermission(ctx, Permission.ManageWorkspace);
+    const server = await ctx.db.query("server").first();
+    if (server === null) {
+      throw new ConvexError("Workspace is not initialized");
+    }
+    if (args.storageId !== undefined) {
+      const url = await ctx.storage.getUrl(args.storageId);
+      if (url === null) {
+        throw new ConvexError("Logo file not found");
+      }
+      const metadata = await ctx.db.system.get("_storage", args.storageId);
+      if (metadata === null || !isImageAsset(metadata)) {
+        throw new ConvexError("Logo must be an image under 4 MB");
+      }
+      await ctx.db.patch(server._id, { logoStorageId: args.storageId });
+    } else {
+      await ctx.db.patch(server._id, { logoStorageId: undefined });
+    }
+    await writeAudit(ctx, {
+      actorId: userId,
+      action: "server.setLogo",
+      targetId: server._id,
+      meta: JSON.stringify({ set: args.storageId !== undefined }),
+    });
+    return null;
   },
 });
 

@@ -1,0 +1,139 @@
+import type { PresenceRow } from "@aulora/core";
+import { Button, Heading, Icon, Text, usePalette } from "@aulora/ui-native";
+import { useState } from "react";
+import { Modal, Pressable, ScrollView, View } from "react-native";
+import type { PushRegistrationState } from "../../lib/use-push-registration";
+import { DeviceSettingsSection } from "../voice/DeviceSettingsSection";
+import { SoundSettingsSection } from "./SoundSettingsSection";
+import { StatusEditor } from "./StatusEditor";
+
+type SettingsCategory = "profile" | "notifications" | "voice" | "appearance";
+
+const CATEGORIES: readonly { readonly key: SettingsCategory; readonly label: string }[] = [
+  { key: "profile", label: "Account" },
+  { key: "notifications", label: "Notifications & sounds" },
+  { key: "voice", label: "Voice & video" },
+  { key: "appearance", label: "Appearance" },
+];
+
+type PresenceStatus = PresenceRow["status"];
+
+const PUSH_LABELS: Record<PushRegistrationState, string> = {
+  idle: "Checking…",
+  registering: "Registering…",
+  registered: "Push notifications are registered on this device.",
+  denied: "Notifications are off for Aulora. Enable them in system settings.",
+  unavailable: "Push registration is unavailable on this build.",
+};
+
+export interface SettingsSheetProps {
+  readonly visible: boolean;
+  readonly ownDisplayName: string;
+  readonly ownStatus: PresenceStatus;
+  readonly ownCustomStatus: string;
+  readonly pushState: PushRegistrationState;
+  readonly onSetStatus: (status: PresenceStatus, customStatus?: string) => void;
+  readonly onSignOut: () => void;
+  readonly onClose: () => void;
+}
+
+/** The general settings surface: profile, notifications & sounds, voice, appearance. */
+export function SettingsSheet({
+  visible,
+  ownDisplayName,
+  ownStatus,
+  ownCustomStatus,
+  pushState,
+  onSetStatus,
+  onSignOut,
+  onClose,
+}: SettingsSheetProps) {
+  const palette = usePalette();
+  const [category, setCategory] = useState<SettingsCategory>("profile");
+
+  return (
+    <Modal visible={visible} transparent animationType="slide" onRequestClose={onClose}>
+      <Pressable className="flex-1 justify-end bg-black/50" onPress={onClose}>
+        <Pressable onPress={() => {}} className="max-h-[88%] rounded-t-card bg-surface-1 p-4">
+          <View className="flex-row items-center justify-between">
+            <Heading level={3}>Settings</Heading>
+            <Button size="sm" variant="ghost" onPress={onClose}>
+              Done
+            </Button>
+          </View>
+
+          <View className="mt-3 flex-row flex-wrap gap-2">
+            {CATEGORIES.map((entry) => {
+              const active = entry.key === category;
+              return (
+                <Pressable
+                  key={entry.key}
+                  accessibilityRole="button"
+                  accessibilityState={{ selected: active }}
+                  onPress={() => setCategory(entry.key)}
+                  className={
+                    active
+                      ? "rounded-pill border border-accent bg-accent-soft px-3 py-1"
+                      : "rounded-pill border border-border bg-surface-3 px-3 py-1"
+                  }
+                >
+                  <Text size="xs" tone={active ? "accent" : "default"}>
+                    {entry.label}
+                  </Text>
+                </Pressable>
+              );
+            })}
+          </View>
+
+          <View className="mt-4 flex-1">
+            {category === "profile" && (
+              <ScrollView contentContainerStyle={{ gap: 12, paddingBottom: 24 }}>
+                <Text size="sm" className="font-medium">
+                  {ownDisplayName}
+                </Text>
+                <StatusEditor
+                  status={ownStatus}
+                  customStatus={ownCustomStatus}
+                  onSetStatus={onSetStatus}
+                />
+                <View className="mt-4 border-t border-border pt-4">
+                  <Button variant="danger" onPress={onSignOut}>
+                    Sign out
+                  </Button>
+                </View>
+              </ScrollView>
+            )}
+
+            {category === "notifications" && (
+              <ScrollView contentContainerStyle={{ gap: 12, paddingBottom: 24 }}>
+                <View className="rounded-input border border-border bg-surface-2 p-3">
+                  <View className="flex-row items-center gap-2">
+                    <Icon name="bell" size={16} color={palette.accent} />
+                    <Text size="sm" className="font-medium">
+                      Push notifications
+                    </Text>
+                  </View>
+                  <Text size="xs" tone="muted" className="mt-1">
+                    {PUSH_LABELS[pushState]}
+                  </Text>
+                </View>
+                <SoundSettingsSection />
+              </ScrollView>
+            )}
+
+            {category === "voice" && <DeviceSettingsSection />}
+
+            {category === "appearance" && (
+              <ScrollView contentContainerStyle={{ gap: 8, paddingBottom: 24 }}>
+                <Text size="sm">Theme</Text>
+                <Text size="xs" tone="muted">
+                  Aulora follows your device's light or dark appearance automatically.
+                </Text>
+              </ScrollView>
+            )}
+          </View>
+        </Pressable>
+      </Pressable>
+    </Modal>
+  );
+}

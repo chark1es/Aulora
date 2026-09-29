@@ -55,6 +55,8 @@ export interface VoiceTrack {
   stop(): void;
   getSettings?(): { readonly deviceId?: string };
   addEventListener?(type: string, listener: () => void): void;
+  /** Native gain control where the platform exposes it. */
+  _setVolume?(volume: number): void;
 }
 
 export interface VoiceStream {
@@ -88,6 +90,8 @@ export interface VoiceRtpReceiver {
   readonly track: VoiceTrack | null;
   playoutDelayHint?: number;
   jitterBufferTarget?: number;
+  /** Present on newer native builds; yields per-receiver RTP stats. */
+  getStats?(): Promise<unknown>;
 }
 
 export interface VoiceTransceiver {
@@ -379,13 +383,94 @@ export function onDeviceChange(listener: () => void): () => void {
   return () => devices.removeEventListener?.("devicechange", listener);
 }
 
+export interface LevelMeter {
+  /** Stops polling. Safe to call more than once. */
+  stop(): void;
+  /** Whether this build exposes per-track stats at all. */
+  readonly available: boolean;
+}
+
 /**
- * Live microphone level. Native WebRTC ships no WebAudio graph, so the level
- * stays flat and the speaking indicator relies on the participant flags.
+ * Live microphone level. Native WebRTC ships no WebAudio graph, so this polls
+ * any per-track stats the build exposes (some expose `getStats`) and reports a
+ * 0..1 level. `react-native-webrtc` tracks do not implement `getStats`, so
+ * `available` is `false` there and callers must not treat the mic as gated:
+ * the UI marks push-to-talk as unavailable rather than silently transmitting.
  */
 export function createLevelMeter(
-  _stream: VoiceStream,
-  _onLevel: (level: number) => void,
-): () => void {
-  return () => {};
+  stream: VoiceStream,
+  onLevel: (level: number) => void,
+  intervalMs = 400,
+): LevelMeter {
+  const track = stream.getAudioTracks()[0] as
+    | (VoiceTrack & { getStats?: () => Promise<unknown> })
+    | undefined;
+  if (track === undefined || typeof (track as { getStats?: unknown }).getStats !== "function") {
+    return { stop: () => {}, available: false };
+  }
+  let stopped = false;
+  const timer = setInterval(() => {
+    if (stopped) {
+      return;
+    }
+    void Promise.resolve(track.getStats?.())
+      .then((stats) => {
+        if (stopped) {
+          return;
+        }
+        const level = extractAudioLevel(stats);
+        if (level !== null) {
+          onLevel(level);
+        }
+      })
+      .catch(() => undefined);
+  }, intervalMs);
+  return {
+    stop: () => {
+      stopped = true;
+      clearInterval(timer);
+    },
+    available: true,
+  };
+}
+
+/**
+ * Best-effort audio level from an RTP stats blob. Accepts either a `Map` or a
+ * plain object of stat records and picks the highest `audioLevel` it finds.
+ */
+export function extractAudioLevel(stats: unknown): number | null {
+  if (stats === null || stats === undefined) {
+    return null;
+  }
+  const records: unknown[] = [];
+  if (stats instanceof Map) {
+    for (const value of stats.values()) {
+      records.push(value);
+    }
+  } else if (typeof stats === "object") {
+    for (const value of Object.values(stats as Record<string, unknown>)) {
+      records.push(value);
+    }
+  }
+  let best: number | null = null;
+  for (const record of records) {
+    if (record === null || typeof record !== "object") {
+      continue;
+    }
+    const value = (record as { audioLevel?: unknown }).audioLevel;
+    if (typeof value === "number" && Number.isFinite(value)) {
+      const clamped = Math.min(1, Math.max(0, value));
+      best = best === null ? clamped : Math.max(best, clamped);
+    }
+  }
+  return best;
+}
+
+/** Applies a native gain to a track where supported; otherwise a no-op. */
+export function setTrackVolume(track: VoiceTrack, volume: number): void {
+  try {
+    track._setVolume?.(volume);
+  } catch {
+    // The platform does not expose per-track gain.
+  }
 }

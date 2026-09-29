@@ -51,6 +51,10 @@ export interface MessagePayload {
   readonly replyToId?: string | null;
   readonly attachmentIds: readonly string[];
   readonly mentionUserIds: readonly string[];
+  /** Plaintext ids of channels/categories mentioned as `#name`. */
+  readonly mentionChannelIds?: readonly string[];
+  /** Plaintext ids of categories mentioned as `#name`. */
+  readonly mentionCategoryIds?: readonly string[];
   readonly editedAt: number | null;
   readonly deletedAt: number | null;
   readonly pinnedAt: number | null;
@@ -75,6 +79,10 @@ export interface ChannelSummary {
   /** Display order within its category; falls back to creation order when unset. */
   readonly position?: number;
   readonly memberIds?: readonly string[];
+  /** Hidden by the viewer: kept out of the sidebar until shown again. */
+  readonly hidden?: boolean;
+  /** Muted by the viewer: no notification sound/badge for this channel. */
+  readonly muted?: boolean;
 }
 
 export interface Paginated<T> {
@@ -189,6 +197,12 @@ export interface ChatPort {
     memberIds: readonly string[];
   }): Promise<{ channelId: string; created: boolean }>;
   getChannelMemberIds(args: { channelId: string }): Promise<readonly string[]>;
+  /** Hides or unhides a channel for the caller, keeping it out of the sidebar. */
+  setChannelHidden?(args: { channelId: string; hidden: boolean }): Promise<null>;
+  /** Mutes or unmutes notifications for a channel for the caller. */
+  setChannelMuted?(args: { channelId: string; muted: boolean }): Promise<null>;
+  /** Stores the caller's private note about another member. */
+  setUserNote?(args: { targetUserId: string; body: string }): Promise<null>;
 
   // Files. Plaintext in; the server seals the bytes and metadata at rest.
   /** Uploads plaintext to a generated URL, finalizes it, and returns the `files` id. */
@@ -212,6 +226,8 @@ export interface ChatPort {
     threadRootId?: string;
     replyToId?: string;
     mentionUserIds?: readonly string[];
+    mentionChannelIds?: readonly string[];
+    mentionCategoryIds?: readonly string[];
     attachmentIds?: readonly string[];
   }): Promise<string>;
   editMessage(args: { messageId: string; body: string }): Promise<null>;

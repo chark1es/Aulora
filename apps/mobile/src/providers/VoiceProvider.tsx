@@ -83,7 +83,9 @@ const EMPTY_SNAPSHOT: MobileVoiceSnapshot = {
   micStream: null,
   localVideoTrack: null,
   remoteStreams: new Map(),
+  remoteLevels: new Map(),
   micLevel: 0,
+  micLevelAvailable: false,
   pending: false,
   error: null,
 };
@@ -325,7 +327,11 @@ export function VoiceProvider({ client, userId, children }: VoiceProviderProps) 
   return (
     <VoiceContext.Provider value={value}>
       {children}
-      <RemoteAudio streams={snapshot.remoteStreams} deafened={snapshot.local.deafened} />
+      <RemoteAudio
+        streams={snapshot.remoteStreams}
+        deafened={snapshot.local.deafened}
+        volume={settings.outputVolume}
+      />
     </VoiceContext.Provider>
   );
 }
@@ -355,17 +361,25 @@ function normalizeIceServers(
 function RemoteAudio({
   streams,
   deafened,
+  volume,
 }: {
   readonly streams: ReadonlyMap<string, { getAudioTracks(): { enabled: boolean }[] }>;
   readonly deafened: boolean;
+  readonly volume: number;
 }) {
   useEffect(() => {
     for (const stream of streams.values()) {
       for (const track of stream.getAudioTracks()) {
         track.enabled = !deafened;
+        const adjustable = track as { _setVolume?: (value: number) => void };
+        try {
+          adjustable._setVolume?.(deafened ? 0 : volume);
+        } catch {
+          // Per-track gain is not exposed on every platform.
+        }
       }
     }
-  }, [streams, deafened]);
+  }, [streams, deafened, volume]);
   return null;
 }
 

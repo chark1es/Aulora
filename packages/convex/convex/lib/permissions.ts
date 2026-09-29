@@ -40,19 +40,47 @@ export interface PermissionContext {
   readonly roles: readonly Role[];
 }
 
+async function memberRow(ctx: ReadCtx, userId: string): Promise<MemberDoc | null> {
+  return await ctx.db
+    .query("members")
+    .withIndex("by_user", (q) => q.eq("userId", userId))
+    .unique();
+}
+
+/**
+ * Membership gate for the whole authorization layer. An authenticated identity
+ * is not a member until it has a `members` row (created by invite redemption or
+ * the IdP role attach). The workspace owner is treated as a member even
+ * without a stored row so owner/setup flows are never locked out; an empty
+ * `@everyone` baseline must never make a non-member look privileged.
+ */
+export async function requireMember(ctx: ReadCtx, userId: string): Promise<void> {
+  if ((await memberRow(ctx, userId)) !== null) {
+    return;
+  }
+  const server = await ctx.db.query("server").first();
+  if (server !== null && server.ownerId === userId) {
+    return;
+  }
+  throw new ConvexError("Not a member of this workspace");
+}
+
 export async function loadPermissionContext(
   ctx: ReadCtx,
   userId: string,
 ): Promise<PermissionContext> {
   const server = await ctx.db.query("server").first();
-  const member = await ctx.db
-    .query("members")
-    .withIndex("by_user", (q) => q.eq("userId", userId))
-    .unique();
+  const isOwner = server !== null && server.ownerId === userId;
+  const member = await memberRow(ctx, userId);
+  // Fail closed: without a member row (or owner status) the actor holds no
+  // roles, so resolving `@everyone` would otherwise grant a non-member access.
+  if (member === null && !isOwner) {
+    throw new ConvexError("Not a member of this workspace");
+  }
   const roleDocs = await ctx.db.query("roles").collect();
   return {
     userId,
-    isOwner: server !== null && server.ownerId === userId,
+    isOwner,
     roleIds: member?.roleIds ?? [],
     roles: roleDocs.map(toCoreRole),
   };
@@ -234,6 +262,21 @@ export async function requirePermission(
   flag: bigint,
 ): Promise<ChannelPermissionResult> {
   const { userId } = await requireAuth(ctx);
+  return await requirePermissionForUser(ctx, userId, channelId, flag);
+}
+
+/**
+ * {@link requirePermission} for an explicit actor, used where the identity is
+ * not the Convex session (for example a signed download token re-validated in
+ * an internal function). Fails closed for a non-member via
+ * {@link loadPermissionContext}.
+ */
+export async function requirePermissionForUser(
+  ctx: ReadCtx,
+  userId: string,
+  channelId: Id<"channels">,
+  flag: bigint,
+): Promise<ChannelPermissionResult> {
   const channel = await ctx.db.get(channelId);
   if (channel === null) {
     throw new ConvexError("Channel not found");

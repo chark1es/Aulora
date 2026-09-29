@@ -1,5 +1,6 @@
 import type { ServerProfile } from "@aulora/core";
 import { Spinner, Text } from "@aulora/ui-web";
+import { useNavigate } from "@tanstack/react-router";
 import type { ConvexReactClient } from "convex/react";
 import { useMemo } from "react";
 import { type AuloraAuthClient, authActionsFromClient } from "../lib/auth-client";
@@ -15,6 +16,7 @@ export interface SessionGateProps {
 /** Chooses between the sign-in screen and the signed-in shell from the session. */
 export function SessionGate({ profile, authClient, client }: SessionGateProps) {
   const session = authClient.useSession();
+  const navigate = useNavigate();
   const actions = useMemo(() => authActionsFromClient(authClient), [authClient]);
 
   if (session.isPending) {
@@ -48,5 +50,11 @@ export function SessionGate({ profile, authClient, client }: SessionGateProps) {
     );
   }
 
-  return <SignInScreen profile={profile} actions={actions} />;
+  return (
+    <SignInScreen
+      profile={profile}
+      actions={actions}
+      onSwitchServer={() => void navigate({ to: "/connect" })}
+    />
+  );
 }

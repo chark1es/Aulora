@@ -57,6 +57,19 @@ export const isInitialized = internalQuery({
   },
 });
 
+/** The workspace access policy consulted by the Better Auth create hooks. */
+export const authPolicy = internalQuery({
+  args: {},
+  handler: async (ctx) => {
+    const server = await ctx.db.query("server").first();
+    return {
+      signupEnabled: server?.settings.signupEnabled ?? true,
+      inviteOnly: server?.settings.inviteOnly ?? true,
+      allowedEmailDomains: server?.settings.allowedEmailDomains ?? [],
+    };
+  },
+});
+
 /**
  * Writes the one-time workspace state: the server singleton, the `@everyone`
  * role and the owner member. Refuses to run twice.

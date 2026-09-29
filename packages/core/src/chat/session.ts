@@ -363,6 +363,8 @@ export class ChatSession {
       readonly threadRootId?: string;
       readonly replyToId?: string;
       readonly mentionUserIds?: readonly string[];
+      readonly mentionChannelIds?: readonly string[];
+      readonly mentionCategoryIds?: readonly string[];
       readonly attachmentIds?: readonly string[];
     } = {},
   ): Promise<string> {
@@ -373,6 +375,12 @@ export class ChatSession {
       ...(options.threadRootId !== undefined ? { threadRootId: options.threadRootId } : {}),
       ...(options.replyToId !== undefined ? { replyToId: options.replyToId } : {}),
       ...(options.mentionUserIds !== undefined ? { mentionUserIds: options.mentionUserIds } : {}),
+      ...(options.mentionChannelIds !== undefined
+        ? { mentionChannelIds: options.mentionChannelIds }
+        : {}),
+      ...(options.mentionCategoryIds !== undefined
+        ? { mentionCategoryIds: options.mentionCategoryIds }
+        : {}),
       ...(attachmentIds.length > 0 ? { attachmentIds } : {}),
     });
     let body: MessagePayloadBody = {

@@ -2,11 +2,12 @@ import { userAvatarSeed } from "@aulora/avatars";
 import { NativeAvatar } from "@aulora/avatars/native";
 import type { AttachmentDescriptor, MessagePayload } from "@aulora/core";
 import { gridDays } from "@aulora/core";
-import { Text } from "@aulora/ui-native";
+import { Text, usePalette } from "@aulora/ui-native";
 import { useEffect, useMemo, useState } from "react";
 import { FlatList, Pressable, View } from "react-native";
 import type { MobileChatRuntime } from "../../lib/chat-runtime";
 import { AttachmentView } from "./AttachmentView";
+import { RichText } from "./RichText";
 
 export interface MessageListProps {
   readonly runtime: MobileChatRuntime | undefined;
@@ -18,8 +19,11 @@ export interface MessageListProps {
   readonly ownUserId: string;
   readonly memberNames: ReadonlyMap<string, string>;
   readonly memberColors: ReadonlyMap<string, string>;
+  readonly channelNames?: ReadonlyMap<string, string>;
   readonly firstUnreadId: string | null;
   readonly onReply: (message: MessagePayload) => void;
+  /** Opens the channel behind a `#channel` mention. */
+  readonly onChannelPress?: (name: string) => void;
   readonly onJumpToFirstUnread: () => void;
 }
 
@@ -40,10 +44,18 @@ export function MessageList({
   ownUserId,
   memberNames,
   memberColors,
+  channelNames,
   firstUnreadId,
   onReply,
+  onChannelPress,
   onJumpToFirstUnread,
 }: MessageListProps) {
+  const viewerName = memberNames.get(ownUserId) ?? "You";
+  const mentionNames = useMemo(() => [...memberNames.values()], [memberNames]);
+  const channelNameList = useMemo(
+    () => (channelNames === undefined ? [] : [...channelNames.values()]),
+    [channelNames],
+  );
   const rows = useMemo<Row[]>(() => {
     const output: Row[] = [];
     for (const [day, dayMessages] of gridDays(messages)) {
@@ -84,12 +96,28 @@ export function MessageList({
             channelId={channelId}
             message={item.message}
             text={decrypted.get(item.message.id)}
+            quotedText={
+              item.message.replyToId !== null && item.message.replyToId !== undefined
+                ? decrypted.get(item.message.replyToId)
+                : undefined
+            }
+            quotedAuthor={
+              item.message.replyToId !== null && item.message.replyToId !== undefined
+                ? memberNames.get(
+                    messages.find((entry) => entry.id === item.message.replyToId)?.authorId ?? "",
+                  )
+                : undefined
+            }
             attachments={attachments.get(item.message.id) ?? []}
             pending={pendingIds.has(item.message.id)}
             ownUserId={ownUserId}
             authorName={memberNames.get(item.message.authorId) ?? item.message.authorId}
             authorColor={memberColors.get(item.message.authorId)}
+            viewerName={viewerName}
+            mentionNames={mentionNames}
+            channelNames={channelNameList}
             onReply={onReply}
+            onChannelPress={onChannelPress}
           />
         )
       }
@@ -102,24 +130,37 @@ function MessageRow({
   channelId,
   message,
   text,
+  quotedText,
+  quotedAuthor,
   attachments,
   pending,
   ownUserId,
   authorName,
   authorColor,
+  viewerName,
+  mentionNames,
+  channelNames,
   onReply,
+  onChannelPress,
 }: {
   runtime: MobileChatRuntime | undefined;
   channelId: string;
   message: MessagePayload;
   text: string | undefined;
+  quotedText: string | undefined;
+  quotedAuthor: string | undefined;
   attachments: readonly AttachmentDescriptor[];
   pending: boolean;
   ownUserId: string;
   authorName: string;
   authorColor: string | undefined;
+  viewerName: string;
+  mentionNames: readonly string[];
+  channelNames: readonly string[];
   onReply(message: MessagePayload): void;
+  onChannelPress?: ((name: string) => void) | undefined;
 }) {
+  const palette = usePalette();
   if (message.deletedAt !== null) {
     return (
       <View className="rounded-input bg-surface-2/50 px-3 py-2">
@@ -163,9 +204,40 @@ function MessageRow({
             </Text>
           )}
         </View>
-        <Text size="sm" className="text-text">
-          {text ?? (pending ? "" : "Unable to load this message.")}
-        </Text>
+        {quotedText !== undefined && (
+          <View className="mb-0.5 flex-row items-stretch gap-2 rounded-input bg-surface-2 px-2 py-1">
+            <View className="w-0.5 rounded-pill" style={{ backgroundColor: palette.accent }} />
+            <View className="min-w-0 flex-1">
+              {quotedAuthor !== undefined && (
+                <Text size="xs" className="font-medium">
+                  {quotedAuthor}
+                </Text>
+              )}
+              <RichText
+                text={quotedText}
+                mentionNames={mentionNames}
+                channelNames={channelNames}
+                viewerName={viewerName}
+                onChannelPress={onChannelPress}
+              />
+            </View>
+          </View>
+        )}
+        {text !== undefined ? (
+          <RichText
+            text={text}
+            mentionNames={mentionNames}
+            channelNames={channelNames}
+            viewerName={viewerName}
+            onChannelPress={onChannelPress}
+          />
+        ) : (
+          !pending && (
+            <Text size="sm" tone="muted">
+              Unable to load this message.
+            </Text>
+          )
+        )}
         {attachments.map((attachment) => (
           <AttachmentView key={attachment.fileId} runtime={runtime} descriptor={attachment} />
         ))}

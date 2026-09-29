@@ -10,6 +10,7 @@ import {
   roleRef,
 } from "../../lib/workspace-admin";
 import { AuditLogViewer } from "./AuditLogViewer";
+import { InviteManager } from "./InviteManager";
 import { MemberManager } from "./MemberManager";
 import { PermissionsPanel, type ScopePage } from "./PermissionsPanel";
 import { RoleEditor, type RolePage } from "./RoleEditor";
@@ -35,7 +36,7 @@ export interface AdminPanelProps {
   readonly onClose: () => void;
 }
 
-type TabId = "roles" | "members" | "permissions" | "audit" | "settings";
+type TabId = "roles" | "members" | "invites" | "permissions" | "audit" | "settings";
 
 type AdminPage = RolePage | ScopePage | SettingsPage;
 
@@ -47,6 +48,7 @@ interface Nav {
 const TAB_LABELS: Record<TabId, string> = {
   roles: "Roles",
   members: "Members",
+  invites: "Invites",
   permissions: "Permissions",
   audit: "Audit log",
   settings: "Settings",
@@ -78,6 +80,9 @@ export function AdminPanel({
     permission("ManageNicknames")
   ) {
     tabs.push({ id: "members", label: "Members" });
+  }
+  if (permission("CreateInvites")) {
+    tabs.push({ id: "invites", label: "Invites" });
   }
   if (permission("ManageChannels")) {
     tabs.push({ id: "permissions", label: "Permissions" });
@@ -199,6 +204,9 @@ export function AdminPanel({
               }}
             />
           )}
+          {nav.tab === "invites" && (
+            <InviteManager canCreateInvites={permission("CreateInvites")} origin={origin} />
+          )}
           {nav.tab === "permissions" && (
             <PermissionsPanel
               roles={roles}
@@ -225,7 +233,6 @@ export function AdminPanel({
               isInstanceAdmin={viewer.isOwner}
               page={isSettingsPage(nav.page) ? nav.page : null}
               onNavigate={(page) => setNav({ tab: "settings", page })}
-              onGoToTab={(tab) => goToTab(tab)}
             />
           )}
           {tabs.length === 0 && (

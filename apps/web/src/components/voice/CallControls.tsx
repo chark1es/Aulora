@@ -7,6 +7,8 @@ export interface CallControlsProps {
   readonly deafened: boolean;
   readonly video: boolean;
   readonly sharingScreen: boolean;
+  /** Mic and deafen controls are only offered to members who may speak. */
+  readonly canSpeak?: boolean;
   readonly canVideo: boolean;
   readonly canStream: boolean;
   readonly onToggleMute: () => void;
@@ -32,6 +34,7 @@ export function CallControls({
   deafened,
   video,
   sharingScreen,
+  canSpeak = true,
   canVideo,
   canStream,
   onToggleMute,
@@ -48,25 +51,29 @@ export function CallControls({
   const icon = compact ? 16 : 19;
   return (
     <div className={cn("flex items-center justify-center gap-1.5", compact ? "gap-1" : "gap-1.5")}>
-      <CallButton
-        label={muted ? "Unmute" : "Mute"}
-        active={!muted}
-        tone={muted ? "danger" : "neutral"}
-        size={size}
-        onClick={onToggleMute}
-      >
-        <Icon name={muted ? "mic-off" : "mic"} size={icon} />
-      </CallButton>
+      {canSpeak && (
+        <CallButton
+          label={muted ? "Unmute" : "Mute"}
+          active={!muted}
+          tone={muted ? "danger" : "neutral"}
+          size={size}
+          onClick={onToggleMute}
+        >
+          <Icon name={muted ? "mic-off" : "mic"} size={icon} />
+        </CallButton>
+      )}
 
-      <CallButton
-        label={deafened ? "Undeafen" : "Deafen"}
-        active={!deafened}
-        tone={deafened ? "danger" : "neutral"}
-        size={size}
-        onClick={onToggleDeafen}
-      >
-        <Icon name={deafened ? "headphones-off" : "headphones"} size={icon} />
-      </CallButton>
+      {canSpeak && (
+        <CallButton
+          label={deafened ? "Undeafen" : "Deafen"}
+          active={!deafened}
+          tone={deafened ? "danger" : "neutral"}
+          size={size}
+          onClick={onToggleDeafen}
+        >
+          <Icon name={deafened ? "headphones-off" : "headphones"} size={icon} />
+        </CallButton>
+      )}
 
       {canVideo && (
         <CallButton
@@ -149,7 +156,7 @@ function CallButton({
         "flex shrink-0 items-center justify-center rounded-full transition focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent active:scale-95",
         size,
         tone === "danger-solid"
-          ? "bg-danger text-white hover:brightness-110"
+          ? "bg-danger text-on-accent hover:brightness-110"
           : tone === "danger"
             ? "bg-danger/15 text-danger hover:bg-danger/25"
             : tone === "accent"

@@ -13,7 +13,7 @@ import {
   messageTime,
   Permission,
 } from "@aulora/core";
-import { type ContextMenuItem, cn, Icon, Spinner, useContextMenu } from "@aulora/ui-web";
+import { Button, type ContextMenuItem, cn, Icon, Spinner, useContextMenu } from "@aulora/ui-web";
 import {
   type ReactNode,
   useCallback,
@@ -51,6 +51,10 @@ export interface MessageListProps {
   readonly memberColors?: ReadonlyMap<string, string>;
   /** Names `@mentions` may refer to, for highlighting. */
   readonly mentionNames: readonly string[];
+  /** Channel/category names `#mentions` may refer to. */
+  readonly channelNames?: readonly string[];
+  /** Navigates to a channel when its `#mention` is clicked. */
+  readonly onChannelClick?: (name: string) => void;
   /** Where the "New messages" divider goes; fixed when the channel opens. */
   readonly firstUnreadId: string | null;
   readonly typers: readonly TypingRow[];
@@ -128,6 +132,12 @@ export function MessageList(props: MessageListProps) {
   >(() => new Map());
   const subscriptions = props.runtime?.subscriptions;
   const ownUserId = props.ownUserId;
+  // Reactions are per-channel; drop the previous channel's groups immediately
+  // so switching never flashes them onto the new timeline.
+  // biome-ignore lint/correctness/useExhaustiveDependencies: channelId is the reset trigger
+  useEffect(() => {
+    setReactionsByMessage((current) => (current.size === 0 ? current : new Map()));
+  }, [channelId]);
   useEffect(() => {
     if (subscriptions?.watchReactionsBatch === undefined || messageIds.length === 0) {
       setReactionsByMessage((current) => (current.size === 0 ? current : new Map()));
@@ -539,19 +549,12 @@ function MessageRow({
       />
       <div className="flex items-center justify-end gap-2 text-xs">
         <span className="mr-auto pl-1.5 text-text-muted">Esc to cancel · Enter to save</span>
-        <button
-          type="button"
-          className="rounded-[8px] px-2.5 py-1 font-medium text-text-muted hover:bg-surface-3 hover:text-text"
-          onClick={() => setEditing(false)}
-        >
+        <Button type="button" size="sm" variant="ghost" onClick={() => setEditing(false)}>
           Cancel
-        </button>
-        <button
-          type="submit"
-          className="rounded-[8px] bg-accent px-2.5 py-1 font-semibold text-on-accent"
-        >
+        </Button>
+        <Button type="submit" size="sm">
           Save
-        </button>
+        </Button>
       </div>
     </form>
   ) : hasText ? (
@@ -561,7 +564,13 @@ function MessageRow({
         unsent && "opacity-70",
       )}
     >
-      <RichText text={text} mentionNames={mentionNames} viewerName={ownName} />
+      <RichText
+        text={text}
+        mentionNames={mentionNames}
+        {...(list.channelNames !== undefined ? { channelNames: list.channelNames } : {})}
+        {...(list.onChannelClick !== undefined ? { onChannelClick: list.onChannelClick } : {})}
+        viewerName={ownName}
+      />
     </div>
   ) : null;
 
@@ -604,7 +613,15 @@ function MessageRow({
               >
                 {replyPreview.authorName}
               </span>{" "}
-              <span className="text-text-muted">{replyPreview.text}</span>
+              <span className="min-w-0 text-text-muted">
+                <RichText
+                  variant="inline"
+                  text={replyPreview.text}
+                  mentionNames={list.mentionNames}
+                  {...(list.channelNames !== undefined ? { channelNames: list.channelNames } : {})}
+                  viewerName={list.ownName}
+                />
+              </span>
             </>
           ) : (
             <span className="italic text-text-muted">Replying to a message</span>
@@ -640,7 +657,7 @@ function MessageRow({
       {canReact && (
         <span className="relative">
           <ToolbarButton label="Add reaction" onClick={() => setPickerOpen((open) => !open)}>
-            <Icon name="smile" size={16} />
+            <Icon name="smile" size={18} />
           </ToolbarButton>
           {pickerOpen && (
             <EmojiPicker
@@ -653,12 +670,12 @@ function MessageRow({
       )}
       {list.onReplyTo !== undefined && (
         <ToolbarButton label="Reply" onClick={() => list.onReplyTo?.(message)}>
-          <Icon name="reply" size={16} />
+          <Icon name="reply" size={18} />
         </ToolbarButton>
       )}
       {canThread && (
         <ToolbarButton label="Reply in thread" onClick={() => list.onReply(message)}>
-          <Icon name="thread" size={16} />
+          <Icon name="thread" size={18} />
         </ToolbarButton>
       )}
       {canEdit && (
@@ -669,7 +686,7 @@ function MessageRow({
             setEditing(true);
           }}
         >
-          <Icon name="pencil" size={15} />
+          <Icon name="pencil" size={18} />
         </ToolbarButton>
       )}
       {canPin && (
@@ -678,25 +695,26 @@ function MessageRow({
           active={message.pinnedAt !== null}
           onClick={() => list.onPinToggle(message)}
         >
-          <Icon name="pin" size={15} />
+          <Icon name="pin" size={18} />
         </ToolbarButton>
       )}
       {canDelete &&
         (confirmDelete ? (
-          <button
+          <Button
             type="button"
+            size="sm"
+            variant="danger"
             aria-label="Confirm delete"
             onClick={() => {
               setConfirmDelete(false);
               list.onDelete(message);
             }}
-            className="h-7 rounded-[7px] bg-danger px-2 text-xs font-semibold text-on-accent"
           >
             Delete?
-          </button>
+          </Button>
         ) : (
           <ToolbarButton label="Delete message" danger onClick={() => setConfirmDelete(true)}>
-            <Icon name="trash" size={15} />
+            <Icon name="trash" size={18} />
           </ToolbarButton>
         ))}
     </div>

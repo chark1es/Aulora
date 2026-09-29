@@ -2,11 +2,14 @@ import { Permission } from "@aulora/core";
 import { ConvexError, v } from "convex/values";
 import { internal } from "./_generated/api";
 import type { Doc, Id } from "./_generated/dataModel";
+import type { QueryCtx } from "./_generated/server";
 import { action, internalMutation, internalQuery, mutation, query } from "./_generated/server";
 import { requireAuth } from "./lib/auth";
+import { assertMayParticipate, listActiveBans } from "./lib/bans";
+import { requireChannelAccessForUser } from "./lib/channels";
 import { getEkmSettings } from "./lib/ekm";
 import { DOWNLOAD_TOKEN_TTL_MS, signDownloadToken, verifyDownloadToken } from "./lib/fileTokens";
-import { requireWorkspacePermission } from "./lib/permissions";
+import { requireMember, requireWorkspacePermission } from "./lib/permissions";
 import { enforceRateLimit, ipRateLimitKey, requestIp, userRateLimitKey } from "./lib/rateLimit";
 import { openContentOptional } from "./lib/sealed";
 import { openBytes, sealBytes, sealString } from "./lib/sse";
@@ -42,6 +45,7 @@ export const generateUploadUrl = mutation({
   args: {},
   handler: async (ctx) => {
     const { userId } = await requireWorkspacePermission(ctx, Permission.AttachFiles);
+    await assertMayParticipate(ctx, userId);
     await enforceRateLimit(ctx, {
       key: userRateLimitKey("upload", userId),
       limit: uploadLimit(),
@@ -65,6 +69,7 @@ export const authorizeUpload = internalMutation({
   args: { storageId: v.id("_storage") },
   handler: async (ctx, args) => {
     const { userId } = await requireWorkspacePermission(ctx, Permission.AttachFiles);
+    await assertMayParticipate(ctx, userId);
     await enforceRateLimit(ctx, {
       key: userRateLimitKey("upload", userId),
       limit: uploadLimit(),
@@ -173,13 +178,28 @@ export const finalize = action({
   },
 });
 
-/** The storage pointers a download needs; internal so no metadata leaks. */
-export const getSealed = internalQuery({
-  args: { fileId: v.string() },
+/**
+ * Re-validates the download token's user against current membership, ban state
+ * and the file's channel, then returns the storage pointers. The signed token
+ * proves identity at mint time, not standing, so a user kicked or banned after
+ * the URL was issued must not keep downloading. Internal: callers reach it only
+ * through the action, which passes the verified token subject.
+ */
+export const authorizeDownload = internalQuery({
+  args: { fileId: v.string(), userId: v.string() },
   handler: async (ctx, args) => {
     const row = await ctx.db.get(args.fileId as Id<"files">);
     if (row === null) {
       return null;
+    }
+    if ((await listActiveBans(ctx, args.userId)).length > 0) {
+      throw new ConvexError("You are banned from this workspace");
+    }
+    await requireMember(ctx, args.userId);
+    if (row.channelId !== undefined) {
+      await requireChannelAccessForUser(ctx, args.userId, row.channelId, Permission.ViewChannel);
+    } else if (row.uploaderId !== args.userId) {
+      throw new ConvexError("You do not have access to this file");
     }
     return { storageId: row.storageId, sealedStorageId: row.sealedStorageId };
   },
@@ -194,7 +214,10 @@ export const download = action({
   args: { token: v.string() },
   handler: async (ctx, args): Promise<{ bytes: ArrayBuffer }> => {
     const payload = await verifyDownloadToken(args.token);
-    const row = await ctx.runQuery(internal.files.getSealed, { fileId: payload.fileId });
+    const row = await ctx.runQuery(internal.files.authorizeDownload, {
+      fileId: payload.fileId,
+      userId: payload.userId,
+    });
     if (row === null) {
       throw new ConvexError("File not found");
     }
@@ -244,14 +267,31 @@ async function toFileView(row: Doc<"files">, userId: string): Promise<FileView> 
   };
 }
 
+/** True when `userId` may read `row`'s metadata and bytes. */
+async function canAccessFile(ctx: QueryCtx, userId: string, row: Doc<"files">): Promise<boolean> {
+  if (row.channelId !== undefined) {
+    try {
+      await requireChannelAccessForUser(ctx, userId, row.channelId, Permission.ViewChannel);
+      return true;
+    } catch {
+      return false;
+    }
+  }
+  return row.uploaderId === userId;
+}
+
 /** Returns one file's plaintext metadata plus a signed download URL. */
 export const get = query({
   args: { fileId: v.id("files") },
   handler: async (ctx, args) => {
     const { userId } = await requireAuth(ctx);
+    await requireMember(ctx, userId);
     const row = await ctx.db.get(args.fileId);
     if (row === null) {
       return null;
+    }
+    if (!(await canAccessFile(ctx, userId, row))) {
+      throw new ConvexError("You do not have access to this file");
     }
     return await toFileView(row, userId);
   },
@@ -262,10 +302,11 @@ export const getMany = query({
   args: { fileIds: v.array(v.id("files")) },
   handler: async (ctx, args) => {
     const { userId } = await requireAuth(ctx);
+    await requireMember(ctx, userId);
     const views: FileView[] = [];
     for (const fileId of args.fileIds) {
       const row = await ctx.db.get(fileId);
-      if (row !== null) {
+      if (row !== null && (await canAccessFile(ctx, userId, row))) {
         views.push(await toFileView(row, userId));
       }
     }

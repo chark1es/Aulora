@@ -26,7 +26,13 @@ import {
   writeVoiceSettings,
 } from "../lib/voice/device-settings";
 import { sendLeaveBeacon } from "../lib/voice/leave-beacon";
-import { applySinkId, listMediaDevices, onDeviceChange } from "../lib/voice/media";
+import {
+  applySinkId,
+  createOutputGain,
+  listMediaDevices,
+  type OutputGain,
+  onDeviceChange,
+} from "../lib/voice/media";
 
 /** How often the cached unload token is refreshed while a call is active. */
 const TOKEN_REFRESH_MS = 60_000;
@@ -85,6 +91,7 @@ const EMPTY_SNAPSHOT: VoiceSnapshot = {
   micStream: null,
   localVideoTrack: null,
   remoteStreams: new Map(),
+  remoteSpeaking: new Set(),
   micLevel: 0,
   pending: false,
   error: null,
@@ -426,6 +433,7 @@ export function VoiceProvider({
         streams={snapshot.remoteStreams}
         deafened={snapshot.local.deafened}
         outputDeviceId={settings.outputDeviceId}
+        outputVolume={settings.outputVolume}
       />
     </VoiceContext.Provider>
   );
@@ -436,10 +444,12 @@ function RemoteAudio({
   streams,
   deafened,
   outputDeviceId,
+  outputVolume,
 }: {
   readonly streams: ReadonlyMap<string, MediaStream>;
   readonly deafened: boolean;
   readonly outputDeviceId: string | null;
+  readonly outputVolume: number;
 }) {
   return (
     <>
@@ -449,6 +459,7 @@ function RemoteAudio({
           stream={stream}
           deafened={deafened}
           outputDeviceId={outputDeviceId}
+          outputVolume={outputVolume}
         />
       ))}
     </>
@@ -459,12 +470,16 @@ function RemoteAudioElement({
   stream,
   deafened,
   outputDeviceId,
+  outputVolume,
 }: {
   readonly stream: MediaStream;
   readonly deafened: boolean;
   readonly outputDeviceId: string | null;
+  readonly outputVolume: number;
 }) {
   const ref = useRef<HTMLAudioElement | null>(null);
+  const boostRef = useRef<OutputGain | null>(null);
+
   useEffect(() => {
     const element = ref.current;
     if (element === null) {
@@ -476,11 +491,43 @@ function RemoteAudioElement({
       element.srcObject = null;
     };
   }, [stream]);
+
   useEffect(() => {
     if (ref.current !== null) {
       void applySinkId(ref.current, outputDeviceId);
     }
   }, [outputDeviceId]);
+
+  // Past unity the element's `volume` cannot go, so route through a WebAudio
+  // gain instead; at or below unity the element plays directly and keeps the
+  // chosen output device.
+  useEffect(() => {
+    const element = ref.current;
+    if (element === null) {
+      return;
+    }
+    if (outputVolume <= 1) {
+      boostRef.current?.stop();
+      boostRef.current = null;
+      element.volume = Math.max(0, outputVolume);
+    } else {
+      element.volume = 1;
+      if (boostRef.current === null) {
+        boostRef.current = createOutputGain(stream, outputVolume);
+      } else {
+        boostRef.current.setVolume(outputVolume);
+      }
+    }
+  }, [outputVolume, stream]);
+
+  useEffect(
+    () => () => {
+      boostRef.current?.stop();
+      boostRef.current = null;
+    },
+    [],
+  );
+
   return <audio ref={ref} autoPlay playsInline muted={deafened} className="hidden" />;
 }
 

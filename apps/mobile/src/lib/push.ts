@@ -19,16 +19,46 @@ export interface PushRegistration {
   readonly platform: "ios" | "android";
 }
 
-/** Shows foreground notifications; without this, they are silent. */
+/**
+ * The device record's platform tag. The server targets push by the real
+ * platform (`ios`/`android`/`unifiedpush`), never a generic `mobile`, so this
+ * must always be the concrete `Platform.OS`.
+ */
+export function devicePushPlatform(): "ios" | "android" {
+  return Platform.OS === "ios" ? "ios" : "android";
+}
+
+/** Android channel id for ringing calls, separate from message notifications. */
+export const CALL_CHANNEL_ID = "calls";
+
+/**
+ * Shows foreground notifications; without this, they are silent. Also declares
+ * the high-importance Android `calls` channel so a backgrounded incoming call
+ * rings and pops, rather than arriving as a quiet default notification.
+ */
 export function configureNotificationHandler(): void {
   Notifications.setNotificationHandler({
-    handleNotification: async () => ({
-      shouldShowBanner: true,
-      shouldShowList: true,
-      shouldPlaySound: false,
-      shouldSetBadge: true,
-    }),
+    handleNotification: async (notification) => {
+      const isCall = notification.request.content.data?.kind === "call";
+      return {
+        shouldShowBanner: true,
+        shouldShowList: true,
+        // Only calls ring; message cues are synthesized separately, so a
+        // foreground message notification must not double up with them.
+        shouldPlaySound: isCall,
+        shouldSetBadge: true,
+      };
+    },
   });
+  if (Platform.OS === "android") {
+    void Notifications.setNotificationChannelAsync(CALL_CHANNEL_ID, {
+      name: "Calls",
+      importance: Notifications.AndroidImportance.MAX,
+      vibrationPattern: [0, 400, 200, 400],
+      lockscreenVisibility: Notifications.AndroidNotificationVisibility.PUBLIC,
+      sound: "default",
+    });
+  }
 }
 
 /**
@@ -53,9 +83,11 @@ export async function registerForPushNotifications(): Promise<PushRegistration |
       importance: Notifications.AndroidImportance.DEFAULT,
     });
   }
+  // `getDevicePushTokenAsync` reaches APNs/FCM directly. On a build without
+  // `google-services.json` (Android) this rejects; callers treat that as
+  // "push unavailable" and the app keeps running normally.
   const token = await Notifications.getDevicePushTokenAsync();
-  const platform = Platform.OS === "ios" ? "ios" : "android";
-  return { token: token.data, platform };
+  return { token: token.data, platform: devicePushPlatform() };
 }
 
 /**

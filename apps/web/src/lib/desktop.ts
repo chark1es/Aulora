@@ -175,8 +175,10 @@ export function parseDeepLink(raw: string): DeepLinkTarget | null {
   ).toLowerCase();
 
   if (action === "connect") {
+    // `aulora://connect` from the tray/menu carries no server: the connect
+    // screen opens empty so the person can type one.
     const server = (url.searchParams.get("server") ?? segments[0] ?? "").trim();
-    return server.length > 0 ? { kind: "connect", server } : null;
+    return { kind: "connect", server };
   }
   if (action === "invite") {
     const code = (url.searchParams.get("code") ?? segments[0] ?? "").trim();

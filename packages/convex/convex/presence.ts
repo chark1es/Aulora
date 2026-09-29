@@ -2,6 +2,7 @@ import { v } from "convex/values";
 import type { MutationCtx } from "./_generated/server";
 import { internalMutation, mutation, query } from "./_generated/server";
 import { requireAuth } from "./lib/auth";
+import { requireMember } from "./lib/permissions";
 import { openContentOptional } from "./lib/sealed";
 import { sealString } from "./lib/sse";
 
@@ -79,6 +80,7 @@ export const heartbeat = mutation({
   args: { status: v.optional(presenceStatusValidator) },
   handler: async (ctx, args) => {
     const { userId } = await requireAuth(ctx);
+    await requireMember(ctx, userId);
     const now = Date.now();
     const existing = await ctx.db
       .query("presence")
@@ -112,6 +114,7 @@ export const setStatus = mutation({
   },
   handler: async (ctx, args) => {
     const { userId } = await requireAuth(ctx);
+    await requireMember(ctx, userId);
     const customStatusProvided = args.customStatus !== undefined;
     const trimmed = args.customStatus?.trim() ?? "";
     const customStatusCiphertext =
@@ -136,7 +139,8 @@ export const setStatus = mutation({
 export const list = query({
   args: {},
   handler: async (ctx) => {
-    await requireAuth(ctx);
+    const { userId } = await requireAuth(ctx);
+    await requireMember(ctx, userId);
     const rows = await ctx.db.query("presence").collect();
     return await Promise.all(
       rows.map(async (row) => ({
@@ -153,7 +157,8 @@ export const list = query({
 export const get = query({
   args: { userId: v.string() },
   handler: async (ctx, args) => {
-    await requireAuth(ctx);
+    const { userId } = await requireAuth(ctx);
+    await requireMember(ctx, userId);
     const row = await ctx.db
       .query("presence")
       .withIndex("by_user", (q) => q.eq("userId", args.userId))

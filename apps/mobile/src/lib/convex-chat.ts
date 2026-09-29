@@ -53,6 +53,8 @@ function toSummary(channel: {
   }[];
   position?: number;
   memberIds?: readonly string[];
+  hidden?: boolean;
+  muted?: boolean;
 }): ChannelSummary {
   return {
     id: channel.id,
@@ -65,6 +67,8 @@ function toSummary(channel: {
     ...(channel.overrides !== undefined ? { overrides: channel.overrides } : {}),
     ...(channel.position !== undefined ? { position: channel.position } : {}),
     ...(channel.memberIds !== undefined ? { memberIds: channel.memberIds } : {}),
+    ...(channel.hidden !== undefined ? { hidden: channel.hidden } : {}),
+    ...(channel.muted !== undefined ? { muted: channel.muted } : {}),
   };
 }
 
@@ -218,6 +222,27 @@ export function convexPort(client: ConvexReactClient): ChatPort {
       const channel = await client.query(api.channels.get, { channelId: args.channelId as never });
       return channel.memberIds ?? [];
     },
+    async setChannelHidden(args) {
+      await client.mutation(api.notifications.setChannelHidden, {
+        channelId: args.channelId as never,
+        hidden: args.hidden,
+      });
+      return null;
+    },
+    async setChannelMuted(args) {
+      await client.mutation(api.notifications.setChannelMuted, {
+        channelId: args.channelId as never,
+        muted: args.muted,
+      });
+      return null;
+    },
+    async setUserNote(args) {
+      await client.mutation(api.notes.upsert, {
+        targetUserId: args.targetUserId,
+        body: args.body,
+      });
+      return null;
+    },
     async uploadFile(args) {
       const uploadUrl = await client.mutation(api.files.generateUploadUrl, {});
       const response = await fetch(uploadUrl, {
@@ -267,7 +292,11 @@ export function convexPort(client: ConvexReactClient): ChatPort {
         channelId: args.channelId as never,
         body: args.body,
         ...(args.threadRootId !== undefined ? { threadRootId: args.threadRootId as never } : {}),
+        ...(args.replyToId !== undefined ? { replyToId: args.replyToId as never } : {}),
         ...(args.mentionUserIds !== undefined ? { mentionUserIds: [...args.mentionUserIds] } : {}),
+        ...(args.mentionChannelIds !== undefined
+          ? { mentionChannelIds: [...args.mentionChannelIds] }
+          : {}),
         ...(args.attachmentIds !== undefined
           ? { attachmentIds: args.attachmentIds as never[] }
           : {}),

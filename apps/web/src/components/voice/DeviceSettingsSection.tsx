@@ -83,7 +83,7 @@ export function DeviceSettingsSection() {
             <div
               className={cn(
                 "h-full rounded-full transition-[width] duration-75",
-                level > 0.85 ? "bg-danger" : level > 0.6 ? "bg-[#E8A33B]" : "bg-secondary",
+                level > 0.85 ? "bg-danger" : level > 0.6 ? "bg-idle" : "bg-secondary",
               )}
               style={{ width: `${Math.round(level * 100)}%` }}
             />
@@ -134,6 +134,16 @@ export function DeviceSettingsSection() {
         max={2}
         onChange={(outputVolume) => void updateSettings({ outputVolume })}
       />
+      <RangeSetting
+        label="Noise gate"
+        value={settings.noiseGateThreshold}
+        max={0.5}
+        step={0.01}
+        onChange={(noiseGateThreshold) => void updateSettings({ noiseGateThreshold })}
+      />
+      <Text tone="muted" size="xs">
+        The gate silences input below this level. Set it to zero to leave the mic open.
+      </Text>
 
       <div className="rounded-[10px] border border-border bg-surface-1 px-3.5">
         <Switch
@@ -209,11 +219,13 @@ function RangeSetting({
   label,
   value,
   max,
+  step = 0.05,
   onChange,
 }: {
   readonly label: string;
   readonly value: number;
   readonly max: number;
+  readonly step?: number;
   readonly onChange: (value: number) => void;
 }) {
   return (
@@ -226,10 +238,10 @@ function RangeSetting({
         type="range"
         min={0}
         max={max}
-        step={0.05}
+        step={step}
         value={value}
         onChange={(event) => onChange(Number(event.target.value))}
-        className="h-1.5 w-full cursor-pointer appearance-none rounded-full bg-surface-3 accent-[var(--aulora-accent)]"
+        className="h-1.5 w-full cursor-pointer appearance-none rounded-full bg-surface-3 accent-accent"
       />
     </label>
   );

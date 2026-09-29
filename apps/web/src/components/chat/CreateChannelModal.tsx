@@ -1,4 +1,4 @@
-import { cn, Icon, Input, Modal, Switch } from "@aulora/ui-web";
+import { Button, cn, Icon, Input, Modal, Switch } from "@aulora/ui-web";
 import { useEffect, useMemo, useRef, useState } from "react";
 
 export interface CreateChannelInput {
@@ -29,6 +29,7 @@ export interface CreateChannelModalProps {
   readonly onClose: () => void;
   readonly onCreate: (input: CreateChannelInput) => void | Promise<void>;
   readonly initialCategoryId?: string;
+  readonly initialKind?: Kind;
   /** Workspace members offered by the private whitelist picker. */
   readonly members?: readonly CreateChannelMemberOption[];
   /** Roles offered by the private whitelist picker. */
@@ -59,11 +60,12 @@ export function CreateChannelModal({
   onClose,
   onCreate,
   initialCategoryId,
+  initialKind = "text",
   members = EMPTY_MEMBERS,
   roles = EMPTY_ROLES,
 }: CreateChannelModalProps) {
   const [name, setName] = useState("");
-  const [kind, setKind] = useState<Kind>("text");
+  const [kind, setKind] = useState<Kind>(initialKind);
   const [isPrivate, setIsPrivate] = useState(false);
   const [categoryId, setCategoryId] = useState<string | undefined>(initialCategoryId);
   const [selectedMembers, setSelectedMembers] = useState<readonly string[]>([]);
@@ -76,7 +78,7 @@ export function CreateChannelModal({
   useEffect(() => {
     if (open) {
       setName("");
-      setKind("text");
+      setKind(initialKind);
       setIsPrivate(false);
       setCategoryId(initialCategoryId);
       setSelectedMembers([]);
@@ -87,7 +89,7 @@ export function CreateChannelModal({
       return () => cancelAnimationFrame(frame);
     }
     return undefined;
-  }, [open, initialCategoryId]);
+  }, [open, initialCategoryId, initialKind]);
 
   const slug = slugify(name);
   const canSubmit = slug.length > 0 && !busy;
@@ -164,21 +166,12 @@ export function CreateChannelModal({
       }
       footer={
         <>
-          <button
-            type="button"
-            onClick={onClose}
-            className="h-9 rounded-[8px] px-3 text-[13px] font-medium text-text-muted transition hover:bg-surface-3 hover:text-text"
-          >
+          <Button type="button" variant="ghost" onClick={onClose}>
             Cancel
-          </button>
-          <button
-            type="button"
-            disabled={!canSubmit}
-            onClick={submit}
-            className="h-9 rounded-[8px] bg-accent px-3.5 text-[13px] font-semibold text-on-accent transition hover:brightness-110 disabled:pointer-events-none disabled:opacity-40"
-          >
-            {busy ? "Creating…" : "Create channel"}
-          </button>
+          </Button>
+          <Button type="button" disabled={!canSubmit} loading={busy} onClick={submit}>
+            Create channel
+          </Button>
         </>
       }
     >

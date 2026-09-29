@@ -11,7 +11,7 @@
  * credentials. Nothing here logs the token or the shared secret.
  */
 
-export type MobilePlatform = "ios" | "android" | "unifiedpush";
+export type MobilePlatform = "ios" | "android" | "unifiedpush" | "mobile";
 
 export interface PushRelayConfig {
   /** Base URL of the relay, e.g. `https://push.aulora.app`. */

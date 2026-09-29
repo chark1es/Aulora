@@ -6,8 +6,10 @@ import { internalMutation, mutation, query } from "./_generated/server";
 import { accountNames } from "./lib/accountNames";
 import { writeAudit } from "./lib/audit";
 import { requireAuth } from "./lib/auth";
+import { pruneExpiredBans } from "./lib/bans";
 import {
   requireCanGrant,
+  requireMember,
   requireModerator,
   requireRoleManageable,
   requireWorkspaceContext,
@@ -22,7 +24,7 @@ async function findRoleByName(ctx: MutationCtx, name: string): Promise<Doc<"role
   return match ?? null;
 }
 
-async function requireMember(ctx: ReadCtx, userId: string): Promise<Doc<"members">> {
+async function requireMemberRow(ctx: ReadCtx, userId: string): Promise<Doc<"members">> {
   const member = await ctx.db
     .query("members")
     .withIndex("by_user", (q) => q.eq("userId", userId))
@@ -55,6 +57,11 @@ export const attachRolesFromAuth = internalMutation({
   },
   returns: v.null(),
   handler: async (ctx, args) => {
+    // A banned account never re-joins through the auth hook, even when the
+    // workspace is not invite-only; an expired temp ban is pruned here.
+    if (await pruneExpiredBans(ctx, args.userId)) {
+      return null;
+    }
     const existing = await ctx.db
       .query("members")
       .withIndex("by_user", (q) => q.eq("userId", args.userId))
@@ -121,11 +128,12 @@ function toMemberView(member: Doc<"members">, accountName: string | null = null)
   };
 }
 
-/** Every member with their roles and moderation state. */
+/** Every member with their roles and moderation state. Members only. */
 export const list = query({
   args: {},
   handler: async (ctx) => {
-    await requireAuth(ctx);
+    const { userId } = await requireAuth(ctx);
+    await requireMember(ctx, userId);
     const members = await ctx.db.query("members").collect();
     const names = await accountNames(
       ctx,
@@ -171,7 +179,7 @@ export const assignRole = mutation({
   args: { userId: v.string(), roleId: v.id("roles") },
   handler: async (ctx, args) => {
     const { userId, context } = await requireWorkspaceContext(ctx, Permission.ManageRoles);
-    const member = await requireMember(ctx, args.userId);
+    const member = await requireMemberRow(ctx, args.userId);
     const role = await ctx.db.get(args.roleId);
     if (role === null) {
       throw new ConvexError("Role not found");
@@ -203,7 +211,7 @@ export const removeRole = mutation({
   args: { userId: v.string(), roleId: v.id("roles") },
   handler: async (ctx, args) => {
     const { userId, context } = await requireWorkspaceContext(ctx, Permission.ManageRoles);
-    const member = await requireMember(ctx, args.userId);
+    const member = await requireMemberRow(ctx, args.userId);
     const role = await ctx.db.get(args.roleId);
     if (role === null) {
       throw new ConvexError("Role not found");
@@ -239,7 +247,7 @@ export const setNickname = mutation({
       const { context } = await requireWorkspaceContext(ctx, Permission.ManageNicknames);
       await requireModerator(ctx, context, args.userId);
     }
-    const member = await requireMember(ctx, args.userId);
+    const member = await requireMemberRow(ctx, args.userId);
     await ctx.db.patch(member._id, { nickname: args.nickname });
     await writeAudit(ctx, {
       actorId: userId,
@@ -256,7 +264,7 @@ export const timeout = mutation({
   handler: async (ctx, args) => {
     const { userId, context } = await requireWorkspaceContext(ctx, Permission.Timeout);
     await requireModerator(ctx, context, args.userId);
-    const member = await requireMember(ctx, args.userId);
+    const member = await requireMemberRow(ctx, args.userId);
     await ctx.db.patch(member._id, { timeoutUntil: args.until });
     await writeAudit(ctx, {
       actorId: userId,
@@ -274,7 +282,7 @@ export const kick = mutation({
   handler: async (ctx, args) => {
     const { userId, context } = await requireWorkspaceContext(ctx, Permission.Kick);
     await requireModerator(ctx, context, args.userId);
-    const member = await requireMember(ctx, args.userId);
+    const member = await requireMemberRow(ctx, args.userId);
     await detachFromChannels(ctx, args.userId);
     await ctx.db.delete(member._id);
     await writeAudit(ctx, { actorId: userId, action: "member.kick", targetId: args.userId });
@@ -282,13 +290,28 @@ export const kick = mutation({
   },
 });
 
-/** Bans a member: writes a ban row and removes the member. */
+/**
+ * Bans a member: writes a ban row and removes the member. `durationMs` makes
+ * the ban temporary; absent it is permanent.
+ */
 export const ban = mutation({
-  args: { userId: v.string(), reason: v.optional(v.string()) },
+  args: {
+    userId: v.string(),
+    reason: v.optional(v.string()),
+    durationMs: v.optional(v.number()),
+  },
   handler: async (ctx, args) => {
     const { userId, context } = await requireWorkspaceContext(ctx, Permission.Ban);
     await requireModerator(ctx, context, args.userId);
-    const member = await requireMember(ctx, args.userId);
+    if (
+      args.durationMs !== undefined &&
+      (!Number.isFinite(args.durationMs) || args.durationMs <= 0)
+    ) {
+      throw new ConvexError("durationMs must be a positive number of milliseconds");
+    }
+    const member = await requireMemberRow(ctx, args.userId);
+    const now = Date.now();
+    const expiresAt = args.durationMs !== undefined ? now + args.durationMs : undefined;
     const existing = await ctx.db
       .query("bans")
       .withIndex("by_user", (q) => q.eq("userId", args.userId))
@@ -297,8 +320,16 @@ export const ban = mutation({
       await ctx.db.insert("bans", {
         userId: args.userId,
         actorId: userId,
-        at: Date.now(),
+        at: now,
         ...(args.reason !== undefined ? { reason: args.reason } : {}),
+        ...(expiresAt !== undefined ? { expiresAt } : {}),
+      });
+    } else {
+      await ctx.db.patch(existing._id, {
+        actorId: userId,
+        at: now,
+        reason: args.reason,
+        expiresAt,
       });
     }
     await detachFromChannels(ctx, args.userId);
@@ -307,7 +338,10 @@ export const ban = mutation({
       actorId: userId,
       action: "member.ban",
       targetId: args.userId,
-      ...(args.reason !== undefined ? { meta: JSON.stringify({ reason: args.reason }) } : {}),
+      meta: JSON.stringify({
+        reason: args.reason ?? null,
+        expiresAt: expiresAt ?? null,
+      }),
     });
     return null;
   },
@@ -351,6 +385,7 @@ export const listBans = query({
         actorId: row.actorId,
         reason: row.reason ?? null,
         at: row.at,
+        expiresAt: row.expiresAt ?? null,
       }));
   },
 });

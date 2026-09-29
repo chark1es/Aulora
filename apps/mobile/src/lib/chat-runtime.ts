@@ -8,6 +8,7 @@ import {
 import type { ConvexReactClient } from "convex/react";
 import { api } from "../../../../packages/convex/convex/_generated/api";
 import { convexPort, convexSubscriptions } from "./convex-chat";
+import { devicePushPlatform } from "./push";
 
 /**
  * Wires the chat session for one signed-in mobile device.
@@ -26,7 +27,7 @@ export interface MobileChatRuntime {
 
 export interface CreateMobileChatRuntimeOptions {
   readonly client: ConvexReactClient;
-  /** Platform tag for the device record. Defaults to `"mobile"`. */
+  /** Platform tag for the device record. Defaults to the real `Platform.OS`. */
   readonly platform?: string;
 }
 
@@ -36,7 +37,7 @@ export async function createMobileChatRuntime(
   const port = convexPort(options.client);
   const subscriptions = convexSubscriptions(options.client);
   const session = ChatSession.create({ port, subscriptions });
-  await port.upsertDevice({ platform: options.platform ?? "mobile" });
+  await port.upsertDevice({ platform: options.platform ?? devicePushPlatform() });
   await session.start();
   return { session, port, subscriptions, client: options.client };
 }

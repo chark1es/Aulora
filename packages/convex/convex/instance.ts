@@ -2,6 +2,7 @@ import { v } from "convex/values";
 import type { QueryCtx } from "./_generated/server";
 import { mutation, query } from "./_generated/server";
 import { writeAudit } from "./lib/audit";
+import { parseEmailConfig } from "./lib/email";
 import {
   API_VERSION,
   AULORA_VERSION,
@@ -87,14 +88,22 @@ export const overview = query({
     const lastBackup =
       (await ctx.db.query("backups").withIndex("by_started").order("desc").first()) ?? null;
 
-    const auth = getPublicAuthConfig(env, server.settings.signupEnabled);
+    const auth = getPublicAuthConfig(
+      env,
+      server.settings.signupEnabled,
+      settings.authProviders ?? undefined,
+    );
     const oidc = getOidcSettings(env);
     const availableProviders = SOCIAL_PROVIDER_DEFINITIONS.map((definition) => ({
       id: definition.id,
       displayName: definition.displayName,
       configured:
         nonEmpty(env[definition.clientIdEnv]) && nonEmpty(env[definition.clientSecretEnv]),
+      enabled:
+        settings.authProviders?.[definition.id as "github" | "google" | "microsoft" | "apple"] !==
+        false,
     }));
+    const email = parseEmailConfig(env);
 
     return {
       name: server.name,
@@ -116,6 +125,7 @@ export const overview = query({
         local: auth.local,
         providers: auth.providers,
         availableProviders,
+        providersConfigured: settings.authProviders,
         oidc:
           oidc === null
             ? null
@@ -125,6 +135,11 @@ export const overview = query({
                 discoveryUrl: oidc.discoveryUrl,
                 scopes: [...oidc.scopes],
               },
+      },
+      email: {
+        provider: email.provider,
+        from: email.from,
+        configured: email.provider !== "none",
       },
       pushRelay: {
         enabled: settings.pushRelayEnabled,
@@ -207,6 +222,33 @@ export const updateBackups = mutation({
       actorId: userId,
       action: "instance.backups.update",
       meta: JSON.stringify({ enabled: args.enabled }),
+    });
+    return settings;
+  },
+});
+
+/**
+ * Sets per-provider auth toggles. An explicit `false` hides a provider from
+ * `server.publicConfig` even when its credentials are configured; absent
+ * values inherit the deployment environment.
+ */
+export const updateAuthProviders = mutation({
+  args: {
+    providers: v.object({
+      github: v.optional(v.boolean()),
+      google: v.optional(v.boolean()),
+      microsoft: v.optional(v.boolean()),
+      apple: v.optional(v.boolean()),
+      oidc: v.optional(v.boolean()),
+    }),
+  },
+  handler: async (ctx, args) => {
+    const { userId } = await requireInstanceAdmin(ctx);
+    const settings = await saveInstanceSettings(ctx, { authProviders: args.providers });
+    await writeAudit(ctx, {
+      actorId: userId,
+      action: "instance.authProviders.update",
+      meta: JSON.stringify(args.providers),
     });
     return settings;
   },

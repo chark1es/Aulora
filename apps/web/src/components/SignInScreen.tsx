@@ -1,13 +1,17 @@
 import { Avatar } from "@aulora/avatars";
 import type { ServerProfile } from "@aulora/core";
-import { Button, Heading, Input, Text } from "@aulora/ui-web";
+import { Button, Heading, Icon, Input, Text } from "@aulora/ui-web";
+import { useQuery } from "convex/react";
 import { type FormEvent, useState } from "react";
+import { api } from "../../../../packages/convex/convex/_generated/api";
 import type { AuthActions } from "../lib/auth-client";
 import { AuthCard, AuthColumns, AuthFrame } from "./AuthFrame";
 
 export interface SignInScreenProps {
   readonly profile: ServerProfile;
   readonly actions: AuthActions;
+  /** Returns to the connect screen to enter a different server. */
+  readonly onSwitchServer?: () => void;
 }
 
 function callbackUrl(): string {
@@ -20,9 +24,12 @@ function callbackUrl(): string {
  * only when `auth.local.signup`, and exactly one button per `auth.providers`
  * entry. No provider is hardcoded here.
  */
-export function SignInScreen({ profile, actions }: SignInScreenProps) {
+export function SignInScreen({ profile, actions, onSwitchServer }: SignInScreenProps) {
   const local = profile.auth.local;
   const providers = profile.auth.providers;
+  const config = useQuery(api.server.publicConfig, {});
+  const description = config?.description ?? "";
+  const logoUrl = config?.logoUrl ?? null;
   const [mode, setMode] = useState<"sign-in" | "sign-up">("sign-in");
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
@@ -68,16 +75,26 @@ export function SignInScreen({ profile, actions }: SignInScreenProps) {
 
   return (
     <AuthFrame layout="split">
-      <AuthColumns keyhole={<Avatar seed={profile.iconSeed} size={72} shape="squircle" />}>
+      <AuthColumns
+        keyhole={
+          logoUrl !== null ? (
+            <img src={logoUrl} alt="" className="h-[72px] w-[72px] rounded-[18px] object-cover" />
+          ) : (
+            <Avatar seed={profile.iconSeed} size={72} shape="squircle" />
+          )
+        }
+      >
         <AuthCard>
           <div className="flex flex-col gap-1.5">
             <Heading level={1} className="text-[30px] leading-[1.15] sm:text-[32px]">
               {mode === "sign-up" ? "Create your account" : `Sign in to ${profile.name}`}
             </Heading>
             <Text tone="muted" size="md" className="leading-normal">
-              {hasProviders || local.enabled
-                ? "Use one of the methods this server allows."
-                : "This server has no sign-in methods enabled yet."}
+              {description.length > 0
+                ? description
+                : hasProviders || local.enabled
+                  ? "Use one of the methods this server allows."
+                  : "This server has no sign-in methods enabled yet."}
             </Text>
           </div>
 
@@ -166,6 +183,17 @@ export function SignInScreen({ profile, actions }: SignInScreenProps) {
             >
               {mode === "sign-up" ? "Already have an account? Sign in" : "Create an account"}
             </Button>
+          )}
+
+          {onSwitchServer !== undefined && (
+            <button
+              type="button"
+              onClick={onSwitchServer}
+              className="mx-auto flex items-center gap-1.5 rounded-[8px] px-2 py-1 text-[13px] font-medium text-text-muted transition hover:text-text"
+            >
+              <Icon name="chevron-left" size={15} />
+              Use a different server
+            </button>
           )}
         </AuthCard>
       </AuthColumns>

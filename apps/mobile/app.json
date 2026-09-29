@@ -14,7 +14,14 @@
       "package": "app.aulora.android",
       "adaptiveIcon": {
         "backgroundColor": "#18181A"
-      }
+      },
+      "permissions": [
+        "android.permission.CAMERA",
+        "android.permission.RECORD_AUDIO",
+        "android.permission.MODIFY_AUDIO_SETTINGS",
+        "android.permission.FOREGROUND_SERVICE",
+        "android.permission.FOREGROUND_SERVICE_MEDIA_PROJECTION"
+      ]
     },
     "web": {
       "bundler": "metro",
@@ -35,7 +42,8 @@
           "photosPermission": "Aulora uses your photos so you can share them in messages.",
           "cameraPermission": "Aulora uses the camera so you can take a photo to share in a message."
         }
-      ]
+      ],
+      "expo-audio"
     ],
     "experiments": {
       "typedRoutes": false

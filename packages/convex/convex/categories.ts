@@ -5,7 +5,7 @@ import { mutation, query } from "./_generated/server";
 import { writeAudit } from "./lib/audit";
 import { requireAuth } from "./lib/auth";
 import { overwriteValidator, validateOverrides } from "./lib/overrides";
-import { requireWorkspacePermission } from "./lib/permissions";
+import { requireMember, requireWorkspacePermission } from "./lib/permissions";
 
 interface CategoryView {
   readonly id: Doc<"categories">["_id"];
@@ -27,7 +27,8 @@ function toCategoryView(category: Doc<"categories">): CategoryView {
 export const list = query({
   args: {},
   handler: async (ctx) => {
-    await requireAuth(ctx);
+    const { userId } = await requireAuth(ctx);
+    await requireMember(ctx, userId);
     const categories = await ctx.db.query("categories").collect();
     return categories.sort((a, b) => a.position - b.position).map(toCategoryView);
   },

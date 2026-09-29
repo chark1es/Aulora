@@ -13,7 +13,7 @@ export const PRESENCE_LABEL: Record<PresenceStatus, string> = {
 
 const DOT_CLASS: Record<PresenceStatus, string> = {
   online: "bg-secondary",
-  idle: "bg-[#E8A33B]",
+  idle: "bg-idle",
   dnd: "bg-danger",
   offline: "bg-text-muted/60",
 };

@@ -62,6 +62,7 @@ export function VoiceChannelView({
             localVideoTrack={voice.localVideoTrack}
             settings={voice.settings}
             identity={identity}
+            speakingIds={voice.remoteSpeaking}
             className="h-full"
           />
         </div>
@@ -71,6 +72,7 @@ export function VoiceChannelView({
             deafened={voice.local.deafened}
             video={voice.local.video}
             sharingScreen={voice.local.sharingScreen}
+            canSpeak={voice.canSpeak}
             canVideo={voice.canVideo}
             canStream={voice.canStream}
             onToggleMute={() => void voice.setMuted(!voice.local.muted)}

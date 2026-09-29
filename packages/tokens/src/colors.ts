@@ -23,6 +23,9 @@ export type ColorToken = (typeof COLOR_TOKENS)[number];
 
 export type Palette = { readonly [K in ColorToken]: string };
 
+/** Amber for presence idle, kept distinct from the Ember accent that marks unread. */
+export const IDLE_COLOR = "#E8A33B";
+
 /**
  * Dark theme ("Loam"): Apple-style system neutrals (near-black window, lighter
  * elevated surfaces) with Ember kept as a signal, not a wash. `accent` is dark

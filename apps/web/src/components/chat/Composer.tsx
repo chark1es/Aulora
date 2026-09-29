@@ -1,16 +1,35 @@
 import { Avatar, userAvatarSeed } from "@aulora/avatars";
 import type { MentionTarget, RoleMentionTarget } from "@aulora/core";
-import { expandBroadcast, resolveMentions } from "@aulora/core";
+import { expandBroadcast, resolveChannelMentions, resolveMentions } from "@aulora/core";
 import { cn, Icon } from "@aulora/ui-web";
-import { type ReactNode, useCallback, useEffect, useLayoutEffect, useRef, useState } from "react";
+import {
+  type ReactNode,
+  useCallback,
+  useEffect,
+  useLayoutEffect,
+  useMemo,
+  useRef,
+  useState,
+} from "react";
 import { readDraft, writeDraft } from "../../lib/drafts";
 import { EmojiPicker } from "./EmojiPicker";
+import { RichText } from "./RichText";
 
 export interface ComposerProps {
   readonly channelId: string;
   readonly members: readonly MentionTarget[];
   readonly roles: readonly RoleMentionTarget[];
   readonly memberIds: readonly string[];
+  /** Channels and categories offered by `#` autocomplete. */
+  readonly channels?: readonly { readonly channelId: string; readonly name: string }[];
+  /** Categories offered by `#` autocomplete and resolved on send. */
+  readonly categories?: readonly { readonly categoryId: string; readonly name: string }[];
+  /** Whether the viewer may attach files; hides the pickers when false. */
+  readonly canAttach?: boolean;
+  /** Whether the viewer may broadcast `@here`/`@everyone`. */
+  readonly canMentionEveryone?: boolean;
+  /** The viewer's display name, so previews highlight self-mentions. */
+  readonly ownName?: string;
   /** Visible placeholder, e.g. "Message #general". */
   readonly placeholder?: string;
   /** Storage key for this composer's draft; omit to keep no draft. */
@@ -19,6 +38,8 @@ export interface ComposerProps {
   readonly onSend: (input: {
     text: string;
     mentionUserIds: readonly string[];
+    mentionChannelIds: readonly string[];
+    mentionCategoryIds: readonly string[];
     files: readonly File[];
   }) => void | Promise<void>;
   /** Optional thread mode label, e.g. "Replying in thread". */
@@ -44,16 +65,14 @@ interface Suggestion {
   readonly label: string;
   readonly insert: string;
   readonly detail: string;
+  readonly kind: "mention" | "channel";
   readonly userId?: string;
+  readonly channelId?: string;
 }
-
-const BROADCAST_SUGGESTIONS: Suggestion[] = [
-  { key: "here", label: "here", insert: "@here", detail: "Notify everyone online" },
-  { key: "everyone", label: "everyone", insert: "@everyone", detail: "Notify everyone" },
-];
 
 const MAX_TEXTAREA_PX = 220;
 const MENTION_QUERY = /(^|\s)@([^\s@]*)$/;
+const CHANNEL_QUERY = /(^|\s)#([^\s#]*)$/;
 
 function collectFiles(list: FileList | ArrayLike<File> | null): File[] {
   if (list === null) {
@@ -100,6 +119,11 @@ export function Composer({
   members,
   roles,
   memberIds,
+  channels = [],
+  categories = [],
+  canAttach = true,
+  canMentionEveryone = true,
+  ownName,
   placeholder = "Message",
   draftKey,
   onTyping,
@@ -118,6 +142,7 @@ export function Composer({
   const [suggestions, setSuggestions] = useState<readonly Suggestion[]>([]);
   const [activeSuggestion, setActiveSuggestion] = useState(0);
   const [emojiOpen, setEmojiOpen] = useState(false);
+  const [previewOpen, setPreviewOpen] = useState(false);
   const textareaRef = useRef<HTMLTextAreaElement | null>(null);
   const fileInputRef = useRef<HTMLInputElement | null>(null);
   const imageInputRef = useRef<HTMLInputElement | null>(null);
@@ -161,46 +186,98 @@ export function Composer({
     }
   }, [value]);
 
-  const allSuggestions: Suggestion[] = [
-    ...BROADCAST_SUGGESTIONS,
-    ...members.map((member) => ({
-      key: `user:${member.userId}`,
-      label: member.displayName,
-      insert: `@${member.displayName}`,
-      detail: "Member",
-      userId: member.userId,
-    })),
-    ...roles
-      .filter((role) => role.mentionable)
-      .map((role) => ({
-        key: `role:${role.roleId}`,
-        label: role.name,
-        insert: `@${role.name}`,
-        detail: "Role",
+  const mentionSuggestions: Suggestion[] = useMemo(() => {
+    const broadcast: Suggestion[] = canMentionEveryone
+      ? [
+          {
+            key: "here",
+            label: "here",
+            insert: "@here",
+            detail: "Notify everyone online",
+            kind: "mention",
+          },
+          {
+            key: "everyone",
+            label: "everyone",
+            insert: "@everyone",
+            detail: "Notify everyone",
+            kind: "mention",
+          },
+        ]
+      : [];
+    return [
+      ...broadcast,
+      ...members.map((member) => ({
+        key: `user:${member.userId}`,
+        label: member.displayName,
+        insert: `@${member.displayName}`,
+        detail: "Member",
+        kind: "mention" as const,
+        userId: member.userId,
       })),
-  ];
+      ...roles
+        .filter((role) => role.mentionable)
+        .map((role) => ({
+          key: `role:${role.roleId}`,
+          label: role.name,
+          insert: `@${role.name}`,
+          detail: "Role",
+          kind: "mention" as const,
+        })),
+    ];
+  }, [canMentionEveryone, members, roles]);
+
+  const channelSuggestions: Suggestion[] = useMemo(
+    () =>
+      channels.map((entry) => ({
+        key: `channel:${entry.channelId}`,
+        label: entry.name,
+        insert: `#${entry.name}`,
+        detail: "Channel",
+        kind: "channel" as const,
+        channelId: entry.channelId,
+      })),
+    [channels],
+  );
+
+  const suggestionQuery = useRef<"mention" | "channel">("mention");
 
   function updateSuggestions(next: string, caret: number): void {
-    const match = MENTION_QUERY.exec(next.slice(0, caret));
-    if (match === null) {
-      setSuggestions([]);
+    const slice = next.slice(0, caret);
+    const mention = MENTION_QUERY.exec(slice);
+    if (mention !== null) {
+      suggestionQuery.current = "mention";
+      const query = (mention[2] ?? "").toLowerCase();
+      setSuggestions(
+        mentionSuggestions
+          .filter((suggestion) => suggestion.label.toLowerCase().includes(query))
+          .slice(0, 6),
+      );
+      setActiveSuggestion(0);
       return;
     }
-    const query = (match[2] ?? "").toLowerCase();
-    setSuggestions(
-      allSuggestions
-        .filter((suggestion) => suggestion.label.toLowerCase().includes(query))
-        .slice(0, 6),
-    );
-    setActiveSuggestion(0);
+    const channel = CHANNEL_QUERY.exec(slice);
+    if (channel !== null && channelSuggestions.length > 0) {
+      suggestionQuery.current = "channel";
+      const query = (channel[2] ?? "").toLowerCase();
+      setSuggestions(
+        channelSuggestions
+          .filter((suggestion) => suggestion.label.toLowerCase().includes(query))
+          .slice(0, 6),
+      );
+      setActiveSuggestion(0);
+      return;
+    }
+    setSuggestions([]);
   }
 
   function applySuggestion(suggestion: Suggestion): void {
     const node = textareaRef.current;
     const caret = node?.selectionStart ?? value.length;
+    const pattern = suggestionQuery.current === "channel" ? CHANNEL_QUERY : MENTION_QUERY;
     const before = value
       .slice(0, caret)
-      .replace(MENTION_QUERY, (_all, lead: string) => `${lead}${suggestion.insert} `);
+      .replace(pattern, (_all, lead: string) => `${lead}${suggestion.insert} `);
     const next = before + value.slice(caret);
     pendingSelection.current = [before.length, before.length];
     setValue(next);
@@ -217,11 +294,14 @@ export function Composer({
     setValue(next);
   }
 
-  const addFiles = useCallback((incoming: readonly File[]): void => {
-    if (incoming.length > 0) {
-      setFiles((current) => [...current, ...incoming]);
-    }
-  }, []);
+  const addFiles = useCallback(
+    (incoming: readonly File[]): void => {
+      if (canAttach && incoming.length > 0) {
+        setFiles((current) => [...current, ...incoming]);
+      }
+    },
+    [canAttach],
+  );
 
   // A file drag can be dropped anywhere in the app, so watch the window rather
   // than the composer's own box. Non-file drags (e.g. channel reordering) fall
@@ -329,7 +409,16 @@ export function Composer({
     }
     const resolution = resolveMentions(text, members, roles);
     const mentionUserIds = expandBroadcast(resolution, memberIds);
-    void onSend({ text, mentionUserIds, files });
+    const channelMentionResolution = resolveChannelMentions(text, channels, categories);
+    const mentionChannelIds = channelMentionResolution.channelIds;
+    const mentionCategoryIds = channelMentionResolution.categoryIds;
+    void onSend({
+      text,
+      mentionUserIds,
+      mentionChannelIds,
+      mentionCategoryIds,
+      files,
+    });
     setValue("");
     setFiles([]);
     setSuggestions([]);
@@ -418,7 +507,15 @@ export function Composer({
             <Icon name="reply" size={14} className="shrink-0 text-accent" />
             <span className="min-w-0 flex-1 truncate text-xs">
               <span className="font-semibold text-text">{replyTo.authorName}</span>{" "}
-              <span className="text-text-muted">{replyTo.preview}</span>
+              <span className="text-text-muted">
+                <RichText
+                  variant="inline"
+                  text={replyTo.preview}
+                  mentionNames={members.map((member) => member.displayName)}
+                  channelNames={channels.map((entry) => entry.name)}
+                  viewerName={ownName ?? ""}
+                />
+              </span>
             </span>
             <button
               type="button"
@@ -470,7 +567,7 @@ export function Composer({
               className="flex h-8 w-8 items-center justify-center rounded-[8px] text-text-muted transition hover:bg-surface-3 hover:text-text"
               onClick={() => setEmojiOpen((open) => !open)}
             >
-              <Icon name="smile" size={19} />
+              <Icon name="smile" size={18} />
             </button>
             {emojiOpen && (
               <EmojiPicker
@@ -554,9 +651,23 @@ export function Composer({
                 : "bg-surface-3 text-text-muted",
             )}
           >
-            <Icon name="send" size={16} strokeWidth={2} />
+            <Icon name="send" size={18} />
           </button>
         </div>
+
+        {previewOpen && value.trim().length > 0 && (
+          <div
+            data-testid="composer-preview"
+            className="mx-2 mb-1.5 rounded-[8px] border border-border bg-surface-1 px-3 py-2"
+          >
+            <RichText
+              text={value}
+              mentionNames={members.map((member) => member.displayName)}
+              channelNames={channels.map((entry) => entry.name)}
+              viewerName={ownName ?? ""}
+            />
+          </div>
+        )}
 
         <div className="flex items-center gap-0.5 px-2 pb-1.5">
           <input
@@ -583,16 +694,20 @@ export function Composer({
               event.target.value = "";
             }}
           />
-          <ToolButton
-            label="Attach files"
-            icon="paperclip"
-            onClick={() => fileInputRef.current?.click()}
-          />
-          <ToolButton
-            label="Attach images"
-            icon="image"
-            onClick={() => imageInputRef.current?.click()}
-          />
+          {canAttach && (
+            <>
+              <ToolButton
+                label="Attach files"
+                icon="paperclip"
+                onClick={() => fileInputRef.current?.click()}
+              />
+              <ToolButton
+                label="Attach images"
+                icon="image"
+                onClick={() => imageInputRef.current?.click()}
+              />
+            </>
+          )}
           <ToolButton
             label="Code block"
             icon="code"
@@ -609,6 +724,26 @@ export function Composer({
               updateSuggestions(next, next.length);
               node?.focus();
             }}
+          />
+          {channels.length > 0 && (
+            <ToolButton
+              label="Mention a channel"
+              icon="hash"
+              onClick={() => {
+                const lead = value.length > 0 && !/\s$/.test(value) ? " #" : "#";
+                insertAtCaret(lead);
+                const node = textareaRef.current;
+                const next = value + lead;
+                updateSuggestions(next, next.length);
+                node?.focus();
+              }}
+            />
+          )}
+          <ToolButton
+            label={previewOpen ? "Hide preview" : "Preview markdown"}
+            icon={previewOpen ? "eye-off" : "eye"}
+            active={previewOpen}
+            onClick={() => setPreviewOpen((open) => !open)}
           />
           {toolbarExtra}
         </div>
@@ -632,18 +767,24 @@ function ToolButton({
   label,
   icon,
   onClick,
+  active = false,
 }: {
   readonly label: string;
-  readonly icon: "paperclip" | "image" | "code" | "at";
+  readonly icon: "paperclip" | "image" | "code" | "at" | "hash" | "eye" | "eye-off";
   readonly onClick: () => void;
+  readonly active?: boolean;
 }) {
   return (
     <button
       type="button"
       aria-label={label}
       title={label}
+      aria-pressed={active || undefined}
       onClick={onClick}
-      className="flex h-8 w-8 items-center justify-center rounded-[7px] text-text-muted transition hover:bg-surface-3 hover:text-text"
+      className={cn(
+        "flex h-8 w-8 items-center justify-center rounded-[7px] transition",
+        active ? "bg-surface-3 text-accent" : "text-text-muted hover:bg-surface-3 hover:text-text",
+      )}
     >
       <Icon name={icon} size={18} />
     </button>

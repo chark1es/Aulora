@@ -6,10 +6,14 @@ export {
   type UseChatSessionResult,
 } from "./hooks.js";
 export {
+  type CategoryMentionTarget,
+  type ChannelMentionResolution,
+  type ChannelMentionTarget,
   expandBroadcast,
   type MentionResolution,
   type MentionTarget,
   type RoleMentionTarget,
+  resolveChannelMentions,
   resolveMentions,
 } from "./mentions.js";
 export type {

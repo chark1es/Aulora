@@ -5,6 +5,7 @@ import type { Doc, Id } from "./_generated/dataModel";
 import { action, internalAction, internalQuery, mutation, query } from "./_generated/server";
 import { requireAuth } from "./lib/auth";
 import { requireChannelAccess } from "./lib/channels";
+import { requireMember } from "./lib/permissions";
 import {
   type MobilePlatform,
   type MobilePushTarget,
@@ -70,6 +71,8 @@ export const getPrefs = query({
   args: {},
   handler: async (ctx) => {
     const { userId } = await requireAuth(ctx);
+    await requireMember(ctx, userId);
+    const now = Date.now();
     const rows = await ctx.db
       .query("notificationPrefs")
       .withIndex("by_user_scope", (q) => q.eq("userId", userId))
@@ -78,8 +81,72 @@ export const getPrefs = query({
       scope: row.scope,
       channelId: row.channelId ?? null,
       level: row.level,
+      hidden: row.hidden === true,
+      muted: row.level === "nothing" || (row.muteUntil !== undefined && row.muteUntil > now),
       muteUntil: row.muteUntil ?? null,
     }));
+  },
+});
+
+/** Looks up one channel-scoped preference row for a viewer. */
+async function findChannelPref(
+  ctx: Parameters<typeof requireChannelAccess>[0],
+  userId: string,
+  channelId: Id<"channels">,
+) {
+  return await ctx.db
+    .query("notificationPrefs")
+    .withIndex("by_user_channel", (q) => q.eq("userId", userId).eq("channelId", channelId))
+    .unique();
+}
+
+/** Hides or shows a channel for the caller only. Requires `ViewChannel`. */
+export const setChannelHidden = mutation({
+  args: { channelId: v.id("channels"), hidden: v.boolean() },
+  handler: async (ctx, args) => {
+    const { userId } = await requireChannelAccess(ctx, args.channelId, Permission.ViewChannel);
+    const existing = await findChannelPref(ctx, userId, args.channelId);
+    if (existing === null) {
+      await ctx.db.insert("notificationPrefs", {
+        userId,
+        scope: "channel",
+        channelId: args.channelId,
+        level: "all",
+        hidden: args.hidden,
+      });
+    } else {
+      await ctx.db.patch(existing._id, { hidden: args.hidden });
+    }
+    return null;
+  },
+});
+
+/** Roughly one century; the sentinel that makes `muted` outlive the session. */
+const MUTE_FAR_FUTURE_MS = 100 * 365 * 24 * 60 * 60 * 1000;
+
+/**
+ * Mutes or unmutes a channel for the caller. Muting stores `level:"nothing"`
+ * with a far-future `muteUntil`; unmuting restores `level:"all"`.
+ */
+export const setChannelMuted = mutation({
+  args: { channelId: v.id("channels"), muted: v.boolean() },
+  handler: async (ctx, args) => {
+    const { userId } = await requireChannelAccess(ctx, args.channelId, Permission.ViewChannel);
+    const existing = await findChannelPref(ctx, userId, args.channelId);
+    const level = args.muted ? ("nothing" as const) : ("all" as const);
+    const muteUntil = args.muted ? Date.now() + MUTE_FAR_FUTURE_MS : undefined;
+    if (existing === null) {
+      await ctx.db.insert("notificationPrefs", {
+        userId,
+        scope: "channel",
+        channelId: args.channelId,
+        level,
+        ...(muteUntil !== undefined ? { muteUntil } : {}),
+      });
+    } else {
+      await ctx.db.patch(existing._id, { level, muteUntil });
+    }
+    return null;
   },
 });
 
@@ -93,9 +160,11 @@ export const setPref = mutation({
     channelId: v.optional(v.id("channels")),
     level: levelValidator,
     muteUntil: v.optional(v.number()),
+    hidden: v.optional(v.boolean()),
   },
   handler: async (ctx, args) => {
     const { userId } = await requireAuth(ctx);
+    await requireMember(ctx, userId);
     if (args.scope === "channel") {
       if (args.channelId === undefined) {
         throw new ConvexError("Channel scope requires a channelId");
@@ -117,6 +186,7 @@ export const setPref = mutation({
     const patch = {
       level: args.level,
       ...(args.muteUntil !== undefined ? { muteUntil: args.muteUntil } : {}),
+      ...(args.hidden !== undefined ? { hidden: args.hidden } : {}),
     };
     if (existing === undefined) {
       await ctx.db.insert("notificationPrefs", {
@@ -125,6 +195,7 @@ export const setPref = mutation({
         level: args.level,
         ...(args.channelId !== undefined ? { channelId: args.channelId } : {}),
         ...(args.muteUntil !== undefined ? { muteUntil: args.muteUntil } : {}),
+        ...(args.hidden !== undefined ? { hidden: args.hidden } : {}),
       });
     } else {
       await ctx.db.patch(existing._id, patch);
@@ -141,6 +212,7 @@ export const unreadSummary = query({
   args: {},
   handler: async (ctx) => {
     const { userId } = await requireAuth(ctx);
+    await requireMember(ctx, userId);
     const memberships = await ctx.db
       .query("channelMembers")
       .withIndex("by_user", (q) => q.eq("userId", userId))
@@ -183,9 +255,10 @@ export const unreadSummary = query({
 });
 
 /**
- * Resolves the users who should be woken for a message: channel members other
- * than the author, who are not muted, meet their preference level (mention-gated
- * when set) and are not currently active.
+ * Resolves the users who should be woken for a message: members of the
+ * message's channel, plus members of any `#channel` mentioned and of every
+ * channel in a mentioned category. Excludes the author, applies per-user
+ * preferences (mention-gated when set) and skips anyone currently active.
  */
 export const resolveRecipients = internalQuery({
   args: { messageId: v.id("messages") },
@@ -195,33 +268,96 @@ export const resolveRecipients = internalQuery({
       return [];
     }
     const channelId = message.channelId;
+    const now = Date.now();
+
+    // Candidate recipients keyed by user id. The value records which channel's
+    // preference governs the wake (the message's channel for direct members,
+    // the mentioned channel/category's channel otherwise) and whether the user
+    // was explicitly mentioned.
+    const candidates = new Map<string, { channelId: Id<"channels">; mentioned: boolean }>();
+    const addCandidate = (
+      userId: string,
+      prefChannelId: Id<"channels">,
+      mentioned: boolean,
+    ): void => {
+      const existing = candidates.get(userId);
+      if (existing === undefined) {
+        candidates.set(userId, { channelId: prefChannelId, mentioned });
+        return;
+      }
+      // A later mention upgrades a plain member to mentioned.
+      existing.mentioned = existing.mentioned || mentioned;
+    };
+
     const members = await ctx.db
       .query("channelMembers")
       .withIndex("by_channel", (q) => q.eq("channelId", channelId))
       .collect();
+    for (const member of members) {
+      addCandidate(member.userId, channelId, message.mentionUserIds.includes(member.userId));
+    }
+
+    // `#channel` mentions notify that channel's members too, even when they are
+    // not members of the message's own channel.
+    for (const mentioned of new Set(message.mentionChannelIds)) {
+      let mentionedChannelId: Id<"channels">;
+      try {
+        mentionedChannelId = mentioned as Id<"channels">;
+        if ((await ctx.db.get(mentionedChannelId)) === null) {
+          continue;
+        }
+      } catch {
+        continue;
+      }
+      const rows = await ctx.db
+        .query("channelMembers")
+        .withIndex("by_channel", (q) => q.eq("channelId", mentionedChannelId))
+        .collect();
+      for (const row of rows) {
+        addCandidate(row.userId, mentionedChannelId, true);
+      }
+    }
+
+    // Category mentions notify members of every channel in those categories.
+    const categoryIds = new Set(message.mentionCategoryIds ?? []);
+    if (categoryIds.size > 0) {
+      const allChannels = await ctx.db.query("channels").collect();
+      for (const channel of allChannels) {
+        if (channel.categoryId === undefined || !categoryIds.has(channel.categoryId)) {
+          continue;
+        }
+        const rows = await ctx.db
+          .query("channelMembers")
+          .withIndex("by_channel", (q) => q.eq("channelId", channel._id))
+          .collect();
+        for (const row of rows) {
+          addCandidate(row.userId, channel._id, true);
+        }
+      }
+    }
+
     const presenceRows = await ctx.db.query("presence").collect();
     const presenceByUser = new Map<string, Doc<"presence">>();
     for (const row of presenceRows) {
       presenceByUser.set(row.userId, row);
     }
-    const now = Date.now();
 
     const recipients: string[] = [];
-    for (const member of members) {
-      if (member.userId === message.authorId) {
+    for (const [userId, info] of candidates) {
+      if (userId === message.authorId) {
         continue;
       }
-      const pref = await resolvePref(ctx, member.userId, channelId);
+      const pref = await resolvePref(ctx, userId, info.channelId);
       if (pref.level === "nothing") {
         continue;
       }
       if (pref.muteUntil !== undefined && pref.muteUntil > now) {
         continue;
       }
-      if (pref.level === "mentions" && !message.mentionUserIds.includes(member.userId)) {
+      if (pref.level === "mentions" && !info.mentioned) {
         continue;
       }
-      const presence = presenceByUser.get(member.userId);
+      const presence = presenceByUser.get(userId);
       if (
         presence !== undefined &&
         presence.status !== "offline" &&
@@ -229,7 +365,7 @@ export const resolveRecipients = internalQuery({
       ) {
         continue;
       }
-      recipients.push(member.userId);
+      recipients.push(userId);
     }
     return recipients;
   },
@@ -268,10 +404,127 @@ export const deviceSubscriptions = internalQuery({
   },
 });
 
+/**
+ * Ring targets for a call: the users still being rung, minus anyone whose
+ * channel/server preference is `nothing` or currently muted. A call counts as
+ * mention-level or above, so `mentions` preferences still ring.
+ */
+export const resolveCallRecipients = internalQuery({
+  args: { callId: v.id("calls") },
+  handler: async (ctx, args) => {
+    const call = await ctx.db.get(args.callId);
+    if (call === null || call.ringingUserIds.length === 0) {
+      return [];
+    }
+    const now = Date.now();
+    const recipients: string[] = [];
+    for (const userId of call.ringingUserIds) {
+      const pref = await resolvePref(ctx, userId, call.channelId);
+      if (pref.level === "nothing") {
+        continue;
+      }
+      if (pref.muteUntil !== undefined && pref.muteUntil > now) {
+        continue;
+      }
+      recipients.push(userId);
+    }
+    return recipients;
+  },
+});
+
 export interface DispatchResult {
   readonly sent: number;
   readonly skipped?: "unconfigured" | "no-message";
 }
+
+/**
+ * Sends content-free Web Push wakes to the users a call is ringing. Scheduled
+ * by `calls.start`; no-ops when VAPID is not configured.
+ */
+export const dispatchCallRinging = internalAction({
+  args: { callId: v.id("calls") },
+  handler: async (ctx, args): Promise<DispatchResult> => {
+    const config: VapidConfig | null = vapidConfigFromEnv();
+    if (config === null) {
+      return { sent: 0, skipped: "unconfigured" };
+    }
+    const recipients = await ctx.runQuery(internal.notifications.resolveCallRecipients, {
+      callId: args.callId,
+    });
+    if (recipients.length === 0) {
+      return { sent: 0, skipped: "no-message" };
+    }
+    const subscriptions = await ctx.runQuery(internal.notifications.deviceSubscriptions, {
+      userIds: recipients,
+    });
+    let sent = 0;
+    for (const { subscription } of subscriptions) {
+      const result = await sendWebPush(subscription, config);
+      if (result.ok) {
+        sent += 1;
+      }
+    }
+    return { sent };
+  },
+});
+
+/** The channel a call belongs to, used to label a content-free call wake. */
+export const callChannelId = internalQuery({
+  args: { callId: v.id("calls") },
+  handler: async (ctx, args) => {
+    const call = await ctx.db.get(args.callId);
+    return call?.channelId ?? null;
+  },
+});
+
+/**
+ * Routes content-free mobile wakes for an incoming call to the project push
+ * relay, mirroring {@link dispatchMobileForMessage}. No-ops when
+ * `PUSH_RELAY_URL`/`PUSH_RELAY_TOKEN` are unset. The wake's `messageId` field
+ * carries the call id (there is no message), which the app resolves through
+ * `calls.incoming`; scheduled alongside Web Push by `calls.start`.
+ */
+export const dispatchMobileCallRinging = internalAction({
+  args: { callId: v.id("calls") },
+  handler: async (ctx, args): Promise<DispatchResult> => {
+    const config: PushRelayConfig | null = pushRelayConfigFromEnv();
+    if (config === null) {
+      return { sent: 0, skipped: "unconfigured" };
+    }
+    const channelId = await ctx.runQuery(internal.notifications.callChannelId, {
+      callId: args.callId,
+    });
+    if (channelId === null) {
+      return { sent: 0, skipped: "no-message" };
+    }
+    const recipients = await ctx.runQuery(internal.notifications.resolveCallRecipients, {
+      callId: args.callId,
+    });
+    if (recipients.length === 0) {
+      return { sent: 0, skipped: "no-message" };
+    }
+    const targets = await ctx.runQuery(internal.notifications.mobilePushTargets, {
+      userIds: recipients,
+    });
+    let sent = 0;
+    for (const target of targets) {
+      const result = await sendWake(
+        {
+          serverId: config.serverId,
+          channelId,
+          messageId: args.callId,
+          platform: target.platform,
+          token: target.token,
+        },
+        config,
+      );
+      if (result.ok) {
+        sent += 1;
+      }
+    }
+    return { sent };
+  },
+});
 
 /**
  * Sends content-free Web Push wakes for one message. Scheduled by
@@ -318,7 +571,9 @@ export const dispatchNow = action({
   },
 });
 
-const MOBILE_PLATFORMS: readonly MobilePlatform[] = ["ios", "android", "unifiedpush"];
+// "mobile" is accepted as a defensive alias for a client that mis-tags its
+// platform; the concrete `ios`/`android` tags remain the intended values.
+const MOBILE_PLATFORMS: readonly MobilePlatform[] = ["ios", "android", "unifiedpush", "mobile"];
 
 function isMobilePlatform(value: string): value is MobilePlatform {
   return (MOBILE_PLATFORMS as readonly string[]).includes(value);

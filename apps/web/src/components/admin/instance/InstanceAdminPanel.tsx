@@ -1,7 +1,7 @@
-import { Button, Heading, IconButton, Input, Text } from "@aulora/ui-web";
-import { useMutation, useQuery } from "convex/react";
+import { Button, Card, Heading, Icon, IconButton, Input, Switch, Text } from "@aulora/ui-web";
+import { useAction, useMutation, useQuery } from "convex/react";
 import type { FunctionReturnType } from "convex/server";
-import { type ReactNode, useEffect, useState } from "react";
+import { useEffect, useState } from "react";
 import { api } from "../../../../../../packages/convex/convex/_generated/api";
 import {
   backupStatusLabel,
@@ -22,11 +22,12 @@ export interface InstanceAdminPanelProps {
   readonly variant?: "overlay" | "inline";
 }
 
-type TabId = "overview" | "auth" | "storage" | "backups" | "push" | "license";
+type TabId = "overview" | "auth" | "email" | "storage" | "backups" | "push" | "license";
 
 const TABS: readonly { id: TabId; label: string }[] = [
   { id: "overview", label: "Overview" },
   { id: "auth", label: "Auth providers" },
+  { id: "email", label: "Email" },
   { id: "storage", label: "Storage" },
   { id: "backups", label: "Backups" },
   { id: "push", label: "Push relay" },
@@ -75,7 +76,7 @@ export function InstanceAdminPanel({
         <header className="flex items-center justify-between border-b border-border px-5 py-3">
           <Heading level={2}>Instance admin</Heading>
           <IconButton label="Close instance admin" onClick={() => onClose?.()}>
-            <span aria-hidden="true">✕</span>
+            <Icon name="x" size={16} />
           </IconButton>
         </header>
         <InstanceAdminContent
@@ -135,6 +136,7 @@ function InstanceAdminContent({
           <>
             {active === "overview" && <OverviewSection overview={overview} />}
             {active === "auth" && <AuthSection overview={overview} />}
+            {active === "email" && <EmailSection overview={overview} />}
             {active === "storage" && <StorageSection overview={overview} />}
             {active === "backups" && <BackupsSection overview={overview} />}
             {active === "push" && <PushRelaySection overview={overview} />}
@@ -168,14 +170,14 @@ function OverviewSection({ overview }: { overview: Overview }) {
         <Stat label="Devices" value={String(overview.counts.devices)} />
         <Stat label="Files" value={String(overview.counts.files)} />
       </dl>
-      <Card>
+      <Card className="flex flex-col gap-1">
         <Text size="sm">Storage used: {formatBytes(overview.storage.usedBytes)}</Text>
         <Text size="sm" tone="muted">
           Quota: {formatQuota(overview.storage.quotaBytes)} · Max upload:{" "}
           {formatBytes(overview.storage.maxUploadBytes)}
         </Text>
       </Card>
-      <Card>
+      <Card className="flex flex-col gap-1">
         <Text size="sm">
           License: <span className="uppercase">{overview.license.state}</span>
         </Text>
@@ -183,7 +185,7 @@ function OverviewSection({ overview }: { overview: Overview }) {
           {overview.license.note}
         </Text>
       </Card>
-      <Card>
+      <Card className="flex flex-col gap-1">
         <Text size="sm">Backups: {overview.backups.enabled ? "enabled" : "disabled"}</Text>
         <Text size="sm" tone="muted">
           {overview.backups.lastRun === null
@@ -196,34 +198,76 @@ function OverviewSection({ overview }: { overview: Overview }) {
 }
 
 function AuthSection({ overview }: { overview: Overview }) {
+  const updateAuthProviders = useMutation(api.instance.updateAuthProviders);
+  const stored = (overview.auth.providersConfigured ?? {}) as Record<string, boolean | undefined>;
+  const [toggles, setToggles] = useState<Record<string, boolean | undefined>>(stored);
+  const [error, setError] = useState<string | null>(null);
+  const [saved, setSaved] = useState(false);
+  const [busy, setBusy] = useState(false);
+
+  async function save(): Promise<void> {
+    setError(null);
+    setSaved(false);
+    setBusy(true);
+    try {
+      const providers = {
+        ...(toggles.github !== undefined ? { github: toggles.github } : {}),
+        ...(toggles.google !== undefined ? { google: toggles.google } : {}),
+        ...(toggles.microsoft !== undefined ? { microsoft: toggles.microsoft } : {}),
+        ...(toggles.apple !== undefined ? { apple: toggles.apple } : {}),
+        ...(toggles.oidc !== undefined ? { oidc: toggles.oidc } : {}),
+      };
+      await updateAuthProviders({ providers });
+      setSaved(true);
+    } catch (cause) {
+      setError(cause instanceof Error ? cause.message : "Could not save providers.");
+    } finally {
+      setBusy(false);
+    }
+  }
+
   return (
     <div className="flex flex-col gap-4" data-testid="instance-auth">
       <Heading level={3}>Auth providers</Heading>
       <Text tone="muted" size="sm">
-        Providers come from the deployment environment. Set credentials in infra/docker/.env and
-        re-run setup; secrets never reach this panel.
+        Credentials come from the deployment environment; a provider is offered only when it is both
+        configured and switched on here.
       </Text>
-      <Card>
+      <Card className="flex flex-col gap-1">
         <Text size="sm">
           Local email/password: {overview.auth.local.enabled ? "enabled" : "disabled"} · signup{" "}
           {overview.auth.local.signup ? "open" : "closed"}
         </Text>
       </Card>
       <ul className="flex flex-col gap-1" data-testid="instance-auth-providers">
-        {overview.auth.availableProviders.map((provider) => (
-          <li
-            key={provider.id}
-            className="flex items-center justify-between rounded-input border border-border bg-surface-2 px-3 py-2"
-          >
-            <Text size="sm">{provider.displayName}</Text>
-            <Text size="xs" tone={provider.configured ? "secondary" : "muted"} mono>
-              {provider.configured ? "CONFIGURED" : "not set"}
-            </Text>
-          </li>
-        ))}
+        {overview.auth.availableProviders.map((provider) => {
+          const enabled = toggles[provider.id] ?? provider.enabled;
+          return (
+            <li
+              key={provider.id}
+              className="rounded-input border border-border bg-surface-2 px-3 py-2"
+            >
+              <Switch
+                checked={enabled}
+                disabled={!provider.configured}
+                onChange={(value) => {
+                  setToggles((current) => ({ ...current, [provider.id]: value }));
+                  setSaved(false);
+                }}
+                label={provider.displayName}
+                {...(provider.configured
+                  ? {}
+                  : {
+                      description:
+                        "Not configured — set credentials in the deployment environment.",
+                    })}
+              />
+            </li>
+          );
+        })}
       </ul>
       {overview.auth.oidc !== null && (
-        <Card>
+        <Card className="flex flex-col gap-1">
           <Text size="sm">OIDC: {overview.auth.oidc.displayName}</Text>
           <Text size="xs" tone="muted" mono>
             {overview.auth.oidc.discoveryUrl}
@@ -233,7 +277,100 @@ function AuthSection({ overview }: { overview: Overview }) {
           </Text>
         </Card>
       )}
+      <div className="flex items-center gap-3">
+        <Button loading={busy} disabled={busy} onClick={() => void save()}>
+          Save providers
+        </Button>
+        {saved && (
+          <Text tone="secondary" size="sm" role="status">
+            Saved.
+          </Text>
+        )}
+        {error !== null && (
+          <Text tone="danger" size="sm" role="alert">
+            {error}
+          </Text>
+        )}
+      </div>
     </div>
+  );
+}
+
+interface EmailStatus {
+  readonly provider?: string;
+  readonly from?: string;
+  readonly configured?: boolean;
+}
+
+function EmailSection({ overview }: { overview: Overview }) {
+  const sendTest = useAction(api.email.sendTest);
+  const [to, setTo] = useState("");
+  const [status, setStatus] = useState<string | null>(null);
+  const [error, setError] = useState<string | null>(null);
+  const [busy, setBusy] = useState(false);
+  const email = (overview as { email?: EmailStatus }).email ?? {};
+  const provider = email.provider ?? "environment";
+  const from = email.from ?? "AULORA_EMAIL_FROM";
+
+  return (
+    <form
+      className="flex flex-col gap-4"
+      data-testid="instance-email"
+      onSubmit={(event) => {
+        event.preventDefault();
+        setError(null);
+        setStatus(null);
+        setBusy(true);
+        void sendTest({ to: to.trim() })
+          .then((result) => {
+            const sent = (result as { sent?: boolean }).sent;
+            setStatus(
+              sent === true ? "Test email sent." : "Email is not configured; nothing was sent.",
+            );
+          })
+          .catch((cause: unknown) =>
+            setError(cause instanceof Error ? cause.message : "Could not send the test email."),
+          )
+          .finally(() => setBusy(false));
+      }}
+    >
+      <Heading level={3}>Email</Heading>
+      <Text tone="muted" size="sm">
+        Invites and notifications are delivered through Resend or an SMTP HTTP gateway. Credentials
+        live only in the deployment environment.
+      </Text>
+      <Card className="flex flex-col gap-1">
+        <Text size="sm">
+          Provider: <span className="uppercase">{provider}</span>
+        </Text>
+        <Text size="sm" tone="muted">
+          From: {from}
+        </Text>
+      </Card>
+      <Input
+        label="Send a test email to"
+        type="email"
+        placeholder="you@example.com"
+        value={to}
+        onChange={(event) => setTo(event.currentTarget.value)}
+        autoComplete="off"
+      />
+      {status !== null && (
+        <Text tone="secondary" size="sm" role="status">
+          {status}
+        </Text>
+      )}
+      {error !== null && (
+        <Text tone="danger" size="sm" role="alert">
+          {error}
+        </Text>
+      )}
+      <div>
+        <Button type="submit" loading={busy} disabled={busy || to.trim().length === 0}>
+          Send test email
+        </Button>
+      </div>
+    </form>
   );
 }
 
@@ -438,15 +575,14 @@ function PushRelaySection({ overview }: { overview: Overview }) {
           ? "Relay URL and token are set in the environment."
           : "Relay token is not set in the environment."}
       </Text>
-      <label className="flex items-center gap-2 text-sm">
-        <input
-          type="checkbox"
-          className="h-4 w-4 accent-accent"
+      <div className="rounded-[10px] border border-border bg-surface-1 px-3.5">
+        <Switch
           checked={enabled}
-          onChange={(event) => setEnabled(event.currentTarget.checked)}
+          onChange={setEnabled}
+          label="Enable mobile push relay"
+          description="Forward pushes for store-built mobile apps through the relay."
         />
-        Enable mobile push relay
-      </label>
+      </div>
       <Input
         label="Relay URL"
         hint="Base URL the Convex action calls, e.g. https://relay.example.com."
@@ -479,14 +615,6 @@ function PushRelaySection({ overview }: { overview: Overview }) {
         </Button>
       </div>
     </form>
-  );
-}
-
-function Card({ children }: { children: ReactNode }) {
-  return (
-    <div className="flex flex-col gap-1 rounded-card border border-border bg-surface-2 p-3">
-      {children}
-    </div>
   );
 }
 

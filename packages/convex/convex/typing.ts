@@ -1,6 +1,7 @@
 import { Permission } from "@aulora/core";
 import { v } from "convex/values";
 import { internalMutation, mutation, query } from "./_generated/server";
+import { assertMayParticipate } from "./lib/bans";
 import { requireChannelAccess } from "./lib/channels";
 
 /** Typing rows go stale quickly; clients re-send while still typing. */
@@ -11,6 +12,7 @@ export const set = mutation({
   args: { channelId: v.id("channels") },
   handler: async (ctx, args) => {
     const access = await requireChannelAccess(ctx, args.channelId, Permission.ViewChannel);
+    await assertMayParticipate(ctx, access.userId);
     const expiresAt = Date.now() + TYPING_TTL_MS;
     const existing = await ctx.db
       .query("typing")

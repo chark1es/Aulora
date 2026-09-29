@@ -1,9 +1,11 @@
 import { NativeAvatar } from "@aulora/avatars/native";
 import { fetchWellKnown, type WellKnown, WellKnownError } from "@aulora/core";
 import { Button, Heading, Input, Text } from "@aulora/ui-native";
+import { ConvexReactClient } from "convex/react";
 import { useState } from "react";
 import {
   Animated,
+  Image,
   KeyboardAvoidingView,
   Platform,
   ScrollView,
@@ -11,6 +13,7 @@ import {
   useWindowDimensions,
   View,
 } from "react-native";
+import { api } from "../../../../packages/convex/convex/_generated/api";
 import { SUPPORTED_API_VERSION } from "../lib/api-version";
 import { useEntrance, useReduceMotion } from "../lib/use-entrance";
 import { useProfiles } from "../providers/ProfileProvider";
@@ -38,6 +41,24 @@ interface Preview {
   readonly wellKnown: WellKnown;
 }
 
+interface Branding {
+  readonly description: string;
+  readonly logoUrl: string | null;
+}
+
+/** Best-effort branding (description/logo) read from the server's public config. */
+async function fetchBranding(convexUrl: string): Promise<Branding> {
+  const client = new ConvexReactClient(convexUrl);
+  try {
+    const config = await client.query(api.server.publicConfig, {});
+    return { description: config.description ?? "", logoUrl: config.logoUrl ?? null };
+  } catch {
+    return { description: "", logoUrl: null };
+  } finally {
+    client.close();
+  }
+}
+
 /**
  * First-launch entry point: enter a host, read `/.well-known/aulora.json`,
  * confirm the workspace and API version, then save the server profile.
@@ -55,6 +76,7 @@ export function ConnectScreen({
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [preview, setPreview] = useState<Preview | null>(null);
+  const [branding, setBranding] = useState<Branding | null>(null);
   const reduceMotion = useReduceMotion();
   const { animatedStyle } = useEntrance(reduceMotion);
   const { width } = useWindowDimensions();
@@ -75,6 +97,8 @@ export function ConnectScreen({
         return;
       }
       setPreview({ baseUrl: host, wellKnown });
+      setBranding(null);
+      void fetchBranding(wellKnown.convexUrl).then(setBranding);
     } catch (caught) {
       setError(messageForError(caught));
     } finally {
@@ -101,19 +125,36 @@ export function ConnectScreen({
     return (
       <AuthScaffold
         aura={
-          <ThresholdAura size={compact ? 124 : 140} breathing>
-            <NativeAvatar
-              seed={preview.wellKnown.iconSeed}
-              size={56}
-              title={preview.wellKnown.name}
+          branding?.logoUrl != null ? (
+            <Image
+              source={{ uri: branding.logoUrl }}
+              accessibilityLabel={`${preview.wellKnown.name} logo`}
+              style={{
+                width: compact ? 124 : 140,
+                height: compact ? 124 : 140,
+                borderRadius: 24,
+              }}
             />
-          </ThresholdAura>
+          ) : (
+            <ThresholdAura size={compact ? 124 : 140} breathing>
+              <NativeAvatar
+                seed={preview.wellKnown.iconSeed}
+                size={56}
+                title={preview.wellKnown.name}
+              />
+            </ThresholdAura>
+          )
         }
       >
         <View className="items-center gap-1.5">
           <Heading level={1} className="text-center">
             {preview.wellKnown.name}
           </Heading>
+          {branding !== null && branding.description.length > 0 && (
+            <Text size="sm" tone="muted" className="text-center">
+              {branding.description}
+            </Text>
+          )}
           <Text size="sm" tone="muted" mono className="text-center">
             {preview.baseUrl}
           </Text>

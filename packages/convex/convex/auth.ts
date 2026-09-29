@@ -7,6 +7,7 @@ import { components, internal } from "./_generated/api";
 import type { DataModel } from "./_generated/dataModel";
 import { query } from "./_generated/server";
 import authConfig from "./auth.config";
+import { type SignupPolicy, shouldAutoAttachRoles, signupBlocked } from "./lib/authPolicy";
 import {
   getBetterAuthSecret,
   getOidcSettings,
@@ -99,7 +100,23 @@ export const createAuthOptions = (
     databaseHooks: {
       user: {
         create: {
+          before: async (user): Promise<boolean> => {
+            const policy: SignupPolicy = await requireActionCtx(ctx).runQuery(
+              internal.setupState.authPolicy,
+              {},
+            );
+            return !signupBlocked(policy, user.email);
+          },
           after: async (user) => {
+            const policy: SignupPolicy = await requireActionCtx(ctx).runQuery(
+              internal.setupState.authPolicy,
+              {},
+            );
+            // Invite-only workspaces attach roles only on invitation redemption.
+            if (!shouldAutoAttachRoles(policy)) {
+              pendingGroups.delete(user.email);
+              return;
+            }
             const groups = pendingGroups.get(user.email);
             pendingGroups.delete(user.email);
             const roleNames =

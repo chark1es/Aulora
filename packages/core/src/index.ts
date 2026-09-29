@@ -82,6 +82,19 @@ export {
 } from "./server-url";
 
 export {
+  DEFAULT_SOUND_SETTINGS,
+  loadSoundSettings,
+  memorySoundSettingsStore,
+  mergeSoundSettings,
+  SOUND_EVENTS,
+  SOUND_SETTINGS_KEY,
+  type SoundEvent,
+  type SoundSettings,
+  saveSoundSettings,
+  soundVolume,
+} from "./sounds";
+
+export {
   advanceCursor,
   countMentions,
   countUnread,

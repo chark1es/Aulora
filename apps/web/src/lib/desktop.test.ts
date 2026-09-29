@@ -24,10 +24,14 @@ describe("parseDeepLink", () => {
     });
   });
 
+  it("opens the connect screen with an empty server when none is given", () => {
+    expect(parseDeepLink("aulora://connect")).toEqual({ kind: "connect", server: "" });
+  });
+
   it("rejects other schemes, hosts and missing parameters", () => {
     expect(parseDeepLink("https://connect?server=chat.acme.com")).toBeNull();
     expect(parseDeepLink("aulora://unknown?x=1")).toBeNull();
-    expect(parseDeepLink("aulora://connect")).toBeNull();
+    expect(parseDeepLink("aulora://invite")).toBeNull();
     expect(parseDeepLink("not a url")).toBeNull();
   });
 

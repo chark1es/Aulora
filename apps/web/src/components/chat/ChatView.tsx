@@ -15,8 +15,12 @@ import { useMutation, useQuery } from "convex/react";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { api } from "../../../../../packages/convex/convex/_generated/api";
 import { uploadFiles } from "../../lib/attachments";
+import { playSound } from "../../lib/sounds";
 import { useChannelSession } from "../../lib/use-channel";
-import { useDesktopNotifications } from "../../lib/use-desktop-notifications";
+import {
+  showUnfocusedNotification,
+  useDesktopNotifications,
+} from "../../lib/use-desktop-notifications";
 import { useLiveUnreadBadge } from "../../lib/use-desktop-unread";
 import { useWebPush } from "../../lib/use-web-push";
 import type { CategoryView, MemberView, RoleView } from "../../lib/workspace-admin";
@@ -40,6 +44,7 @@ import { EditChannelModal, type EditChannelPatch } from "./EditChannelModal";
 import { MembersPanel } from "./MembersPanel";
 import { MessageList } from "./MessageList";
 import { NewConversationDialog } from "./NewConversationDialog";
+import { NotificationsSettingsSection } from "./NotificationsSettingsSection";
 import type { PresenceStatus } from "./PresenceAvatar";
 import { RenameChannelModal } from "./RenameChannelModal";
 import { SearchPanel } from "./SearchPanel";
@@ -182,6 +187,9 @@ export function ChatView({
   const [createChannelCategoryId, setCreateChannelCategoryId] = useState<string | undefined>(
     undefined,
   );
+  const [createChannelKind, setCreateChannelKind] = useState<"text" | "voice" | undefined>(
+    undefined,
+  );
   const [createCategoryOpen, setCreateCategoryOpen] = useState(false);
   const [categoryModal, setCategoryModal] = useState<{ category: CategoryView } | null>(null);
   const [categoryBusy, setCategoryBusy] = useState(false);
@@ -219,6 +227,8 @@ export function ChatView({
   const updateCategory = useMutation(api.categories.update);
   const removeCategory = useMutation(api.categories.remove);
   const setNickname = useMutation(api.members.setNickname);
+  const kickMember = useMutation(api.members.kick);
+  const banMember = useMutation(api.members.ban);
 
   // The Threads inbox is always subscribed so its tab can badge mentions.
   const threadRows = useQuery(api.messages.threadInbox, {});
@@ -227,9 +237,97 @@ export function ChatView({
     [threadRows],
   );
 
-  useDesktopNotifications(runtime, ownUserId, channelNames);
+  const mutedChannelIds = useMemo(
+    () =>
+      new Set(channels.filter((channel) => channel.muted === true).map((channel) => channel.id)),
+    [channels],
+  );
+  useDesktopNotifications(runtime, ownUserId, channelNames, mutedChannelIds);
   useWebPush(runtime);
   useLiveUnreadBadge();
+
+  // Synthesized cues: a message/mention chime for new messages in channels that
+  // are not muted. Background channels notify too, so this mirrors the OS
+  // notification path rather than only the open conversation.
+  useEffect(() => {
+    if (runtime === undefined) {
+      return;
+    }
+    const mountedAt = Date.now();
+    const seen = new Set<string>();
+    let seeded = false;
+    const off = runtime.session.onDecrypted((messages) => {
+      if (!seeded) {
+        seeded = true;
+        for (const message of messages) {
+          seen.add(message.id);
+        }
+        return;
+      }
+      for (const message of messages) {
+        if (
+          seen.has(message.id) ||
+          message.authorId === ownUserId ||
+          message.createdAt < mountedAt
+        ) {
+          continue;
+        }
+        seen.add(message.id);
+        if (channels.some((entry) => entry.id === message.channelId && entry.muted === true)) {
+          continue;
+        }
+        playSound(message.mentionUserIds.includes(ownUserId) ? "mention" : "message");
+      }
+    });
+    return off;
+  }, [runtime, ownUserId, channels]);
+
+  // Ring for an incoming call and raise an OS notification while unfocused.
+  const incomingCallId = voice.incoming[0]?.id ?? null;
+  const incomingCallChannelId = voice.incoming[0]?.channelId ?? null;
+  useEffect(() => {
+    if (incomingCallId === null) {
+      return;
+    }
+    const stop = playSound("call-ring");
+    if (!document.hasFocus()) {
+      const channelName =
+        incomingCallChannelId === null ? undefined : channelNames.get(incomingCallChannelId);
+      showUnfocusedNotification(
+        "Incoming call",
+        channelName === undefined ? "Someone is calling" : `Call in #${channelName}`,
+      );
+    }
+    return stop;
+  }, [incomingCallId, incomingCallChannelId, channelNames]);
+
+  // Cue when the call connects and as participants come and go.
+  const callParticipantCount = voice.call?.participants.length ?? 0;
+  const connectedRef = useRef(false);
+  const participantCountRef = useRef(0);
+  useEffect(() => {
+    if (callParticipantCount === 0) {
+      connectedRef.current = false;
+      participantCountRef.current = 0;
+      return;
+    }
+    if (!connectedRef.current) {
+      connectedRef.current = true;
+      participantCountRef.current = callParticipantCount;
+      playSound("call-connect");
+      return;
+    }
+    const previous = participantCountRef.current;
+    participantCountRef.current = callParticipantCount;
+    if (callParticipantCount > previous) {
+      playSound("call-join");
+      if (!document.hasFocus()) {
+        showUnfocusedNotification("Someone joined the call", "A participant joined your call.");
+      }
+    } else if (callParticipantCount < previous) {
+      playSound("call-leave");
+    }
+  }, [callParticipantCount]);
 
   const typing = useMemo(
     () =>
@@ -299,6 +397,33 @@ export function ChatView({
       ...roles.filter((r) => r.mentionable).map((r) => r.name),
     ],
     [members, roles],
+  );
+
+  const channelMentions = useMemo(
+    () =>
+      channels
+        .filter(
+          (entry) =>
+            entry.kind !== "dm" &&
+            entry.kind !== "group_dm" &&
+            !entry.archived &&
+            entry.name !== null &&
+            entry.name.length > 0,
+        )
+        .map((entry) => ({ channelId: entry.id, name: entry.name as string })),
+    [channels],
+  );
+  const channelMentionNames = useMemo(
+    () => channelMentions.map((entry) => entry.name),
+    [channelMentions],
+  );
+  const categoryMentions = useMemo(
+    () =>
+      (admin?.categories ?? []).map((entry) => ({
+        categoryId: entry.id,
+        name: entry.name,
+      })),
+    [admin?.categories],
   );
 
   // Fall back to the first channel when nothing (or a vanished channel) is selected.
@@ -504,6 +629,12 @@ export function ChatView({
     channel.kind === "dm" ||
     channel.kind === "group_dm" ||
     hasPermission(permissions, Permission.SendMessages);
+  const canAttach =
+    channel === undefined ||
+    channel.kind === "dm" ||
+    channel.kind === "group_dm" ||
+    hasPermission(permissions, Permission.AttachFiles);
+  const canMentionEveryone = hasPermission(permissions, Permission.MentionEveryone);
 
   const showAdmin = useMemo(
     () =>
@@ -747,7 +878,13 @@ export function ChatView({
 
   const sendWithFiles = async (
     targetChannelId: string,
-    input: { text: string; mentionUserIds: readonly string[]; files: readonly File[] },
+    input: {
+      text: string;
+      mentionUserIds: readonly string[];
+      mentionChannelIds?: readonly string[];
+      mentionCategoryIds?: readonly string[];
+      files: readonly File[];
+    },
     extra: { threadRootId?: string; replyToId?: string } = {},
   ): Promise<string | undefined> => {
     let attachments: readonly AttachmentDescriptor[] | undefined;
@@ -764,6 +901,12 @@ export function ChatView({
     void runtime.port.clearTyping({ channelId: targetChannelId }).catch(() => undefined);
     const result = await sendMessage(targetChannelId, input.text, {
       mentionUserIds: input.mentionUserIds,
+      ...(input.mentionChannelIds !== undefined
+        ? { mentionChannelIds: input.mentionChannelIds }
+        : {}),
+      ...(input.mentionCategoryIds !== undefined
+        ? { mentionCategoryIds: input.mentionCategoryIds }
+        : {}),
       ...(extra.threadRootId !== undefined ? { threadRootId: extra.threadRootId } : {}),
       ...(extra.replyToId !== undefined ? { replyToId: extra.replyToId } : {}),
       ...(attachments !== undefined && attachments.length > 0 ? { attachments } : {}),
@@ -912,11 +1055,16 @@ export function ChatView({
             }}
             workspaceSwitcher={<WorkspaceMenu onlineCount={onlineCount} variant="header" />}
             onSelect={(channelId) => void openChannel(channelId)}
-            onCreateChannel={() => setCreateChannelOpen(true)}
+            onCreateChannel={(kind) => {
+              setCreateChannelKind(kind);
+              setCreateChannelCategoryId(undefined);
+              setCreateChannelOpen(true);
+            }}
             categoryActions={{
               rename: (category) => setCategoryModal({ category }),
               delete: (category) => void removeCategory({ categoryId: category.id as never }),
               createChannel: (category) => {
+                setCreateChannelKind("text");
                 setCreateChannelCategoryId(category.id);
                 setCreateChannelOpen(true);
               },
@@ -949,7 +1097,37 @@ export function ChatView({
                 void navigator.clipboard?.writeText(url).catch(() => undefined);
               },
               leave: (channel) => {
-                void runtime.port.leaveChannel({ channelId: channel.id }).catch(() => undefined);
+                if (
+                  channel.kind === "dm" ||
+                  channel.kind === "group_dm" ||
+                  channel.isPrivate === true
+                ) {
+                  void runtime.port.leaveChannel({ channelId: channel.id }).catch(() => undefined);
+                } else {
+                  void runtime.port
+                    .setChannelHidden?.({ channelId: channel.id, hidden: true })
+                    .catch(() => undefined);
+                }
+              },
+              hide: (channel) => {
+                void runtime.port
+                  .setChannelHidden?.({ channelId: channel.id, hidden: true })
+                  .catch(() => undefined);
+              },
+              unhide: (channel) => {
+                void runtime.port
+                  .setChannelHidden?.({ channelId: channel.id, hidden: false })
+                  .catch(() => undefined);
+              },
+              mute: (channel) => {
+                void runtime.port
+                  .setChannelMuted?.({ channelId: channel.id, muted: true })
+                  .catch(() => undefined);
+              },
+              unmute: (channel) => {
+                void runtime.port
+                  .setChannelMuted?.({ channelId: channel.id, muted: false })
+                  .catch(() => undefined);
               },
               ...(admin.viewer.isOwner || hasPermission(permissions, Permission.ManageChannels)
                 ? {
@@ -1012,6 +1190,7 @@ export function ChatView({
           onBack={() => setUserSettingsOpen(false)}
           onSignOut={onSignOut}
           voiceSettings={<DeviceSettingsSection />}
+          soundSettings={<NotificationsSettingsSection />}
         />
       ) : (
         <section
@@ -1073,6 +1252,7 @@ export function ChatView({
                 }}
               />
               <MessageList
+                key={channel.id}
                 runtime={runtime}
                 channelId={channel.id}
                 messages={mergedMessages}
@@ -1092,6 +1272,13 @@ export function ChatView({
                 memberNames={memberNames}
                 memberColors={memberColors}
                 mentionNames={mentionNames}
+                channelNames={channelMentionNames}
+                onChannelClick={(name) => {
+                  const target = channelMentions.find((entry) => entry.name === name);
+                  if (target !== undefined) {
+                    void openChannel(target.channelId);
+                  }
+                }}
                 firstUnreadId={
                   unreadAnchor?.channelId === channel.id ? unreadAnchor.messageId : null
                 }
@@ -1137,6 +1324,11 @@ export function ChatView({
                   members={mentionMembers}
                   roles={roles}
                   memberIds={memberIds}
+                  channels={channelMentions}
+                  categories={categoryMentions}
+                  canAttach={canAttach}
+                  canMentionEveryone={canMentionEveryone}
+                  ownName={ownName}
                   placeholder={placeholder}
                   onTyping={(channelId) => typing.ping(channelId)}
                   onSend={async (input) => {
@@ -1233,7 +1425,15 @@ export function ChatView({
                 onClose={() => setMembersOpen(false)}
                 memberActions={{
                   message: (userId) => void startConversation([userId]),
-                  ...(showAdmin ? { assignRoles: () => setAdminOpen(true) } : {}),
+                  ...(hasPermission(permissions, Permission.ManageRoles)
+                    ? { assignRoles: () => setAdminOpen(true) }
+                    : {}),
+                  ...(hasPermission(permissions, Permission.Kick)
+                    ? { kick: (userId: string) => void kickMember({ userId }) }
+                    : {}),
+                  ...(hasPermission(permissions, Permission.Ban)
+                    ? { ban: (userId: string) => void banMember({ userId }) }
+                    : {}),
                 }}
               />
             )}
@@ -1305,15 +1505,18 @@ export function ChatView({
         {...(createChannelCategoryId !== undefined
           ? { initialCategoryId: createChannelCategoryId }
           : {})}
+        {...(createChannelKind !== undefined ? { initialKind: createChannelKind } : {})}
         members={members}
         roles={channelRoleOptions}
         onClose={() => {
           setCreateChannelOpen(false);
           setCreateChannelCategoryId(undefined);
+          setCreateChannelKind(undefined);
         }}
         onCreate={async (input: CreateChannelInput) => {
           setCreateChannelOpen(false);
           setCreateChannelCategoryId(undefined);
+          setCreateChannelKind(undefined);
           const channelId = await createChannel(runtime, input);
           if (channelId !== undefined) {
             setActiveChannelId(channelId);

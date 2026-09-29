@@ -1,7 +1,8 @@
 import { ConvexError } from "convex/values";
 import type { Id } from "../_generated/dataModel";
 import type { MutationCtx, QueryCtx } from "../_generated/server";
-import { requirePermission } from "./permissions";
+import { requireAuth } from "./auth";
+import { requirePermissionForUser } from "./permissions";
 
 export type ChannelKind = "text" | "announcement" | "voice" | "dm" | "group_dm";
 
@@ -98,7 +99,22 @@ export async function requireChannelAccess(
   channelId: Id<"channels">,
   flag: bigint,
 ) {
-  const result = await requirePermission(ctx, channelId, flag);
+  const { userId } = await requireAuth(ctx);
+  return await requireChannelAccessForUser(ctx, userId, channelId, flag);
+}
+
+/**
+ * {@link requireChannelAccess} for an explicit actor, used where the identity
+ * is not the Convex session (for example a signed download token re-validated
+ * in an internal function).
+ */
+export async function requireChannelAccessForUser(
+  ctx: QueryCtx | MutationCtx,
+  userId: string,
+  channelId: Id<"channels">,
+  flag: bigint,
+) {
+  const result = await requirePermissionForUser(ctx, userId, channelId, flag);
   if (isDmKind(result.channel.kind) || result.channel.private === true) {
     await requireChannelMember(ctx, channelId, result.userId);
   }
