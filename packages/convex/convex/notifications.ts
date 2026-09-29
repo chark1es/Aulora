@@ -299,7 +299,7 @@ export const resolveRecipients = internalQuery({
 
     // `#channel` mentions notify that channel's members too, even when they are
     // not members of the message's own channel.
-    for (const mentioned of new Set(message.mentionChannelIds)) {
+    for (const mentioned of new Set(message.mentionChannelIds ?? [])) {
       let mentionedChannelId: Id<"channels">;
       try {
         mentionedChannelId = mentioned as Id<"channels">;

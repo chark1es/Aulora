@@ -218,7 +218,7 @@ export default defineSchema({
     attachmentIds: v.array(v.id("files")),
     mentionUserIds: v.array(v.string()),
     /** Plaintext ids of channels/categories mentioned as `#name`. */
-    mentionChannelIds: v.array(v.string()),
+    mentionChannelIds: v.optional(v.array(v.string())),
     /** Plaintext ids of categories mentioned; absent on legacy rows. */
     mentionCategoryIds: v.optional(v.array(v.string())),
     editedAt: v.optional(v.number()),

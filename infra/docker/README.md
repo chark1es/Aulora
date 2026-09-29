@@ -210,14 +210,42 @@ gitignored and must not be committed.
 
 ```powershell
 cd infra/docker
-docker compose pull            # new upstream tags/digests
-docker compose up -d --build   # rebuild web + setup, recreate changed services
-docker compose run --rm setup  # re-deploy functions, refresh well-known
+./deploy.sh --pull
+```
+
+`deploy.sh` always rebuilds the `web` and `setup` images before recreating the
+web container and redeploying the Convex functions. Do not skip the rebuild:
+`docker compose run --rm setup` reuses whatever `aulora-setup` image already
+exists, so a stale image would redeploy an **old API** against a new client.
+`setup` self-checks after deploying and fails loudly if any module in
+`packages/convex` is missing from the deployment.
+
+The manual equivalent, if you prefer explicit commands:
+
+```powershell
+docker compose pull             # new upstream tags/digests
+docker compose build web setup  # ALWAYS rebuild local images
+docker compose up -d web        # recreate the web container with the new build
+docker compose run --rm setup   # re-deploy functions, refresh well-known
 ```
 
 `setup` re-runs are no-ops for data. Before switching database or storage
 providers, migrate with `convex export` / `convex import` (see the Convex
 self-hosting docs).
+
+### HTTP caching
+
+The web container sends cache headers that make a redeploy safe without a hard
+refresh:
+
+- `/assets/*` (vite content-hashed filenames) — `Cache-Control: max-age=31536000`.
+  A new build ships new names, so cached files are never reused.
+- `/index.html`, `/push-sw.js`, `/theme-boot.js` — `Cache-Control: no-cache`
+  (revalidated with a 304 while unchanged). These unhashed shell files must
+  never be served stale, or a service worker or the theme bootstrap would pin
+  clients to an old build.
+- `/.well-known/*` — `no-cache`, so workspace name, auth providers and the
+  Convex URL refresh as soon as `setup` rewrites the document.
 
 ## Backup and restore
 

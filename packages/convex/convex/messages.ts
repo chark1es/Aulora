@@ -63,7 +63,7 @@ async function toMessage(message: Doc<"messages">): Promise<MessageView> {
     replyToId: message.replyToId ?? null,
     attachmentIds: message.attachmentIds,
     mentionUserIds: message.mentionUserIds,
-    mentionChannelIds: message.mentionChannelIds,
+    mentionChannelIds: message.mentionChannelIds ?? [],
     mentionCategoryIds: message.mentionCategoryIds ?? [],
     editedAt: message.editedAt ?? null,
     deletedAt: message.deletedAt ?? null,

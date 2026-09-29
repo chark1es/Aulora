@@ -267,6 +267,39 @@ set_env_if_present EKM_PROXY_TOKEN "$(host_value EKM_PROXY_TOKEN)" 1
 log "deploying ${CONVEX_PROJECT_DIR}"
 convex deploy --yes
 
+# Self-check: every local module that defines a Convex function must be present
+# on the deployment. This catches a stale `aulora-setup` image (one that predates
+# a code change) instead of silently serving an old API to a new client.
+verify_deployed_functions() {
+  local spec_file missing=""
+  spec_file="$(mktemp)"
+  # Stream to a file: `$(...)` truncates this >64 KiB document at the 64 KiB
+  # pipe boundary, which would make later modules look missing.
+  if ! convex function-spec >"$spec_file" 2>/dev/null || [ ! -s "$spec_file" ]; then
+    rm -f "$spec_file"
+    log "warning: could not read the deployment's function spec; skipping self-check"
+    return 0
+  fi
+  local file mod
+  for file in "${CONVEX_PROJECT_DIR}"/convex/*.ts; do
+    [ -e "$file" ] || continue
+    mod="$(basename "$file" .ts)"
+    # Only modules that actually export a Convex function (query/mutation/action).
+    if grep -qE 'export const [A-Za-z0-9_]+ = (query|mutation|action|internalQuery|internalMutation|internalAction)\(' "$file"; then
+      if ! grep -qF "\"${mod}.js:" "$spec_file"; then
+        missing="${missing} ${mod}"
+      fi
+    fi
+  done
+  rm -f "$spec_file"
+  if [ -n "$missing" ]; then
+    die "the deployment is missing functions for:${missing} — the setup image is stale. Rebuild it: docker compose build setup"
+  fi
+  log "deployed functions match the local source"
+}
+
+verify_deployed_functions
+
 # Idempotent data upgrades for workspaces that predate a feature. Safe to run
 # on every deploy.
 if convex run setupState:ensureVoicePermissions '{}' >/dev/null 2>&1; then
