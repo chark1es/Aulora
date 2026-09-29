@@ -1,11 +1,11 @@
 # Aulora — example Caddyfile for the edge.
 #
-# Terminates TLS, serves the web origin, and routes the two special paths.
+# Terminates TLS, serves the web origin, and routes the special paths.
 # This is a reference, not part of the compose stack.
 #
 # Replace:
 #   chat.example.com  with your public web origin
-#   convex-backend    with the service/upstream for Convex HTTP actions (3211)
+#   convex-backend    with the service/upstream for Convex (3211 auth, 3210 API)
 
 chat.example.com {
 	encode zstd gzip
@@ -16,11 +16,13 @@ chat.example.com {
 		X-Content-Type-Options "nosniff"
 		X-Frame-Options "DENY"
 		Referrer-Policy "strict-origin-when-cross-origin"
-		Permissions-Policy "camera=(), microphone=(), geolocation=()"
+		Permissions-Policy "camera=(self), microphone=(self), display-capture=(self), geolocation=()"
 		# Adjust to the origins you actually use. `connect-src` needs the Convex
-		# cloud origin (wss + https). There are no inline scripts: the theme
-		# bootstrap lives in /theme-boot.js, so `script-src 'self'` is enough.
-		Content-Security-Policy "default-src 'self'; base-uri 'self'; frame-ancestors 'none'; object-src 'none'; img-src 'self' data: blob:; style-src 'self' 'unsafe-inline'; script-src 'self'; worker-src 'self'; connect-src 'self' https://convex.example.com wss://convex.example.com"
+		# cloud origin (wss + https) for signalling; `media-src` allows the blob:
+		# URLs the call UI plays local/streamed tracks from. There are no inline
+		# scripts: the theme bootstrap lives in /theme-boot.js, so `script-src
+		# 'self'` is enough.
+		Content-Security-Policy "default-src 'self'; base-uri 'self'; frame-ancestors 'none'; object-src 'none'; img-src 'self' data: blob:; media-src 'self' blob:; style-src 'self' 'unsafe-inline'; script-src 'self'; worker-src 'self'; connect-src 'self' https://convex.example.com wss://convex.example.com"
 	}
 
 	# Better Auth must be same-origin as the web app so the session cookie is
@@ -29,6 +31,15 @@ chat.example.com {
 		reverse_proxy convex-backend:3211 {
 			header_up Origin {http.request.header.Origin}
 			header_up X-Forwarded-Proto {scheme}
+		}
+	}
+
+	# Convex's client API + WebSocket, same-origin (single-host). Must come after
+	# /api/auth/* (more specific wins) and must not buffer the sync connection.
+	# Skip this block if you set CONVEX_CLOUD_ORIGIN to a separate Convex host.
+	handle /api/* {
+		reverse_proxy convex-backend:3210 {
+			flush_interval -1
 		}
 	}
 

@@ -25,6 +25,14 @@ const serverSettings = v.object({
   signupEnabled: v.boolean(),
   inviteOnly: v.boolean(),
   allowedEmailDomains: v.array(v.string()),
+  /**
+   * Voice policy. Optional so workspaces created before calling existed remain
+   * valid; readers treat an absent value as enabled (`?? true`).
+   */
+  voiceEnabled: v.optional(v.boolean()),
+  videoEnabled: v.optional(v.boolean()),
+  screenShareEnabled: v.optional(v.boolean()),
+  maxCallParticipants: v.optional(v.number()),
 });
 
 const notificationScope = v.union(v.literal("server"), v.literal("channel"));
@@ -40,8 +48,18 @@ const presenceStatus = v.union(
 const channelKind = v.union(
   v.literal("text"),
   v.literal("announcement"),
+  v.literal("voice"),
   v.literal("dm"),
   v.literal("group_dm"),
+);
+
+const callKind = v.union(v.literal("voice"), v.literal("video"));
+const callStatus = v.union(v.literal("ringing"), v.literal("active"), v.literal("ended"));
+const callSignalKind = v.union(
+  v.literal("offer"),
+  v.literal("answer"),
+  v.literal("ice"),
+  v.literal("renegotiate"),
 );
 
 export default defineSchema({
@@ -264,6 +282,67 @@ export default defineSchema({
     userId: v.string(),
     expiresAt: v.number(),
   }).index("by_channel", ["channelId"]),
+
+  /**
+   * An active (or recently ended) voice/video call on a channel. Media never
+   * touches the database: this row plus `callSignals` is only the WebRTC
+   * signalling and presence layer. Voice channels keep one call at a time;
+   * DM/group-DM calls start `ringing` until someone answers.
+   */
+  calls: defineTable({
+    channelId: v.id("channels"),
+    kind: callKind,
+    initiatorId: v.string(),
+    status: callStatus,
+    /** Users still being rung; empty once answered or for voice channels. */
+    ringingUserIds: v.array(v.string()),
+    startedAt: v.number(),
+    endedAt: v.optional(v.number()),
+    /** Plaintext id of the participant currently sharing their screen. */
+    screenShareUserId: v.optional(v.string()),
+    updatedAt: v.number(),
+  })
+    .index("by_channel", ["channelId"])
+    .index("by_status", ["status"])
+    .index("by_channel_status", ["channelId", "status"]),
+
+  /**
+   * Who is currently in a call, and their live media flags. `lastSeen` is the
+   * heartbeat the sweep uses to drop abandoned participants (a client crash).
+   */
+  callParticipants: defineTable({
+    callId: v.id("calls"),
+    channelId: v.id("channels"),
+    userId: v.string(),
+    muted: v.boolean(),
+    deafened: v.boolean(),
+    video: v.boolean(),
+    sharingScreen: v.boolean(),
+    joinedAt: v.number(),
+    lastSeen: v.number(),
+  })
+    .index("by_call", ["callId"])
+    .index("by_call_user", ["callId", "userId"])
+    .index("by_user", ["userId"])
+    .index("by_channel", ["channelId"]),
+
+  /**
+   * Short-lived WebRTC signalling envelopes (SDP offers/answers and ICE
+   * candidates) addressed to one participant. Rows are deleted once the
+   * recipient has processed them; the sweep clears orphans from dropped peers.
+   */
+  callSignals: defineTable({
+    callId: v.id("calls"),
+    channelId: v.id("channels"),
+    fromUserId: v.string(),
+    toUserId: v.string(),
+    kind: callSignalKind,
+    payload: v.string(),
+    createdAt: v.number(),
+  })
+    .index("by_call", ["callId"])
+    .index("by_to", ["toUserId"])
+    .index("by_call_to", ["callId", "toUserId"]),
 
   notificationPrefs: defineTable({
     userId: v.string(),

@@ -10,6 +10,9 @@ const crons = cronJobs();
 
 crons.interval("presence sweep", { seconds: 30 }, internal.presence.sweepStale, {});
 crons.interval("typing purge", { seconds: 30 }, internal.typing.purgeExpired, {});
+// Drops participants/signalling from crashed clients and ends abandoned or
+// timed-out calls, so a voice channel never shows a ghost participant.
+crons.interval("call sweep", { seconds: 30 }, internal.calls.sweep, {});
 
 // Records the nightly backup intent at 03:00 UTC. The outside backup runner
 // (`infra/docker/backup`) performs the actual export + dump + upload.

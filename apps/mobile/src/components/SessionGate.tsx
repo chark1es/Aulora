@@ -6,6 +6,7 @@ import { View } from "react-native";
 import type { AuloraAuthClient } from "../lib/auth-client";
 import type { CookieStore } from "../lib/cookie-fetch";
 import { ChatProvider } from "../providers/ChatProvider";
+import { VoiceProvider } from "../providers/VoiceProvider";
 import { ChatScreen } from "./chat/ChatScreen";
 import { WorkspaceSwitcherSheet } from "./chat/WorkspaceSwitcherSheet";
 import { SignInScreen } from "./SignInScreen";
@@ -38,14 +39,16 @@ export function SessionGate({ profile, authClient, cookieStore, client }: Sessio
     const displayName = user.name ?? user.email ?? "You";
     return (
       <ChatProvider client={client}>
-        <ChatScreen
-          workspaceName={profile.name}
-          ownUserId={user.id}
-          ownDisplayName={displayName}
-          onSignOut={() => {
-            void authClient.signOut();
-          }}
-        />
+        <VoiceProvider client={client} userId={user.id}>
+          <ChatScreen
+            workspaceName={profile.name}
+            ownUserId={user.id}
+            ownDisplayName={displayName}
+            onSignOut={() => {
+              void authClient.signOut();
+            }}
+          />
+        </VoiceProvider>
       </ChatProvider>
     );
   }

@@ -12,6 +12,7 @@ import type * as auditLog from "../auditLog.js";
 import type * as auth from "../auth.js";
 import type * as authActions from "../authActions.js";
 import type * as backups from "../backups.js";
+import type * as calls from "../calls.js";
 import type * as categories from "../categories.js";
 import type * as channels from "../channels.js";
 import type * as crons from "../crons.js";
@@ -63,6 +64,7 @@ declare const fullApi: ApiFromModules<{
   auth: typeof auth;
   authActions: typeof authActions;
   backups: typeof backups;
+  calls: typeof calls;
   categories: typeof categories;
   channels: typeof channels;
   crons: typeof crons;

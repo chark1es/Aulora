@@ -1,5 +1,5 @@
 import { Field, Icon, IconButton, Input, SegmentedControl, Text } from "@aulora/ui-web";
-import { useEffect, useState } from "react";
+import { type ReactNode, useEffect, useState } from "react";
 import { PresenceAvatar } from "./PresenceAvatar";
 
 export interface UserSettingsViewProps {
@@ -16,6 +16,8 @@ export interface UserSettingsViewProps {
   }) => void | Promise<void>;
   readonly onBack: () => void;
   readonly onSignOut?: () => void;
+  /** Extra settings content (e.g. voice devices), injected to keep this view decoupled. */
+  readonly voiceSettings?: ReactNode;
 }
 
 /**
@@ -34,6 +36,7 @@ export function UserSettingsView({
   onSave,
   onBack,
   onSignOut,
+  voiceSettings,
 }: UserSettingsViewProps) {
   const [nextAlignment, setNextAlignment] = useState<"left" | "right">(alignment);
   const [nickname, setNickname] = useState("");
@@ -162,6 +165,13 @@ export function UserSettingsView({
               </button>
             </div>
           </form>
+
+          {voiceSettings !== undefined && (
+            <>
+              <div className="h-px bg-border" />
+              {voiceSettings}
+            </>
+          )}
         </div>
       </div>
     </section>

@@ -1,0 +1,494 @@
+import {
+  type MediaDeviceInfo as AuloraMediaDevice,
+  type CallKind,
+  type CallView,
+  hasPermission,
+  mergeVoiceSettings,
+  Permission,
+  type VoiceDeviceSettings,
+} from "@aulora/core";
+import type { ConvexReactClient } from "convex/react";
+import {
+  createContext,
+  type ReactNode,
+  useCallback,
+  useContext,
+  useEffect,
+  useMemo,
+  useRef,
+  useState,
+} from "react";
+import { VoiceEngine, type VoiceSnapshot } from "../lib/voice/call-engine";
+import { convexVoicePort, convexVoiceSubscriptions } from "../lib/voice/convex-voice";
+import {
+  DEFAULT_VOICE_SETTINGS,
+  readVoiceSettings,
+  writeVoiceSettings,
+} from "../lib/voice/device-settings";
+import { sendLeaveBeacon } from "../lib/voice/leave-beacon";
+import { applySinkId, listMediaDevices, onDeviceChange } from "../lib/voice/media";
+
+/** How often the cached unload token is refreshed while a call is active. */
+const TOKEN_REFRESH_MS = 60_000;
+
+/** The workspace's voice policy, mirrored from `server.publicConfig`. */
+export interface VoicePolicy {
+  readonly enabled: boolean;
+  readonly videoEnabled: boolean;
+  readonly screenShareEnabled: boolean;
+  readonly maxParticipants: number;
+  readonly iceServers: readonly RTCIceServer[];
+}
+
+export type CallViewMode = "hidden" | "dock" | "stage";
+
+export interface VoiceContextValue extends VoiceSnapshot {
+  readonly selfUserId: string;
+  readonly policy: VoicePolicy;
+  readonly incoming: readonly CallView[];
+  readonly activeCalls: readonly CallView[];
+  readonly settings: VoiceDeviceSettings;
+  readonly devices: readonly AuloraMediaDevice[];
+  readonly canConnect: boolean;
+  readonly canSpeak: boolean;
+  readonly canStream: boolean;
+  readonly canVideo: boolean;
+  readonly view: CallViewMode;
+  readonly pipPinned: boolean;
+  setView(view: CallViewMode): void;
+  setPipPinned(pinned: boolean): void;
+  startCall(
+    channelId: string,
+    kind: CallKind,
+    ringingUserIds?: readonly string[],
+  ): Promise<string | null>;
+  joinCall(callId: string): Promise<boolean>;
+  acceptCall(call: CallView): Promise<void>;
+  declineCall(callId: string): Promise<void>;
+  leave(): Promise<void>;
+  endCall(): Promise<void>;
+  setMuted(muted: boolean): Promise<void>;
+  setDeafened(deafened: boolean): void;
+  setCamera(on: boolean): Promise<void>;
+  setScreenSharing(on: boolean): Promise<void>;
+  updateSettings(partial: Partial<VoiceDeviceSettings>): Promise<void>;
+  refreshDevices(): Promise<void>;
+  clearError(): void;
+}
+
+const VoiceContext = createContext<VoiceContextValue | null>(null);
+
+const EMPTY_SNAPSHOT: VoiceSnapshot = {
+  callId: null,
+  call: null,
+  local: { muted: false, deafened: false, video: false, sharingScreen: false },
+  micStream: null,
+  localVideoTrack: null,
+  remoteStreams: new Map(),
+  micLevel: 0,
+  pending: false,
+  error: null,
+  mediaError: null,
+};
+
+export interface VoiceProviderProps {
+  readonly client: ConvexReactClient;
+  readonly userId: string;
+  readonly permissions: bigint;
+  readonly policy: VoicePolicy;
+  readonly children: ReactNode;
+}
+
+/**
+ * Owns the call engine for one signed-in device: the WebRTC mesh, the media
+ * devices and the call UI mode. Everything else in the app talks to calls
+ * through {@link useVoice}.
+ */
+export function VoiceProvider({
+  client,
+  userId,
+  permissions,
+  policy,
+  children,
+}: VoiceProviderProps) {
+  const engineRef = useRef<VoiceEngine | null>(null);
+  const [snapshot, setSnapshot] = useState<VoiceSnapshot>(EMPTY_SNAPSHOT);
+  const [incoming, setIncoming] = useState<readonly CallView[]>([]);
+  const [activeCalls, setActiveCalls] = useState<readonly CallView[]>([]);
+  const [settings, setSettings] = useState<VoiceDeviceSettings>(DEFAULT_VOICE_SETTINGS);
+  const [devices, setDevices] = useState<readonly AuloraMediaDevice[]>([]);
+  const [view, setView] = useState<CallViewMode>("hidden");
+  const [pipPinned, setPipPinned] = useState(false);
+  const settingsRef = useRef<VoiceDeviceSettings>(settings);
+  settingsRef.current = settings;
+  const iceServersRef = useRef(policy.iceServers);
+  iceServersRef.current = policy.iceServers;
+  // A fresh Convex JWT, cached so the unload beacon can authenticate without
+  // awaiting anything once the page is going away.
+  const authTokenRef = useRef<string | null>(null);
+
+  // Engine lifetime is tied to the signed-in client + identity.
+  useEffect(() => {
+    const engine = new VoiceEngine({
+      port: convexVoicePort(client),
+      subscriptions: convexVoiceSubscriptions(client),
+      userId,
+      getSettings: () => settingsRef.current,
+      getIceServers: () => iceServersRef.current,
+    });
+    engineRef.current = engine;
+    setSnapshot(engine.getSnapshot());
+    const unsubscribe = engine.subscribe(() => setSnapshot(engine.getSnapshot()));
+    const offIncoming = convexVoiceSubscriptions(client).watchIncoming((calls) =>
+      setIncoming(calls),
+    );
+    const offActive = convexVoiceSubscriptions(client).watchActiveCalls((calls) =>
+      setActiveCalls(calls),
+    );
+    return () => {
+      unsubscribe();
+      offIncoming();
+      offActive();
+      // Signing out (or switching profile) unmounts the engine mid-call: leave
+      // immediately instead of waiting for the heartbeat sweep to reclaim us.
+      const callId = engine.getSnapshot().callId;
+      if (callId !== null) {
+        sendLeaveBeacon({ convexUrl: client.url, token: authTokenRef.current, callId });
+      }
+      engine.dispose();
+      engineRef.current = null;
+    };
+  }, [client, userId]);
+
+  // Load local device settings, enumerate devices and follow device changes.
+  useEffect(() => {
+    const initial = readVoiceSettings();
+    setSettings(initial);
+    settingsRef.current = initial;
+    void listMediaDevices().then(setDevices);
+    return onDeviceChange(() => {
+      void listMediaDevices().then(setDevices);
+    });
+  }, []);
+
+  // Push-to-talk: hold Space to transmit. Ignored while typing in a field.
+  useEffect(() => {
+    if (!settings.pushToTalk) {
+      return;
+    }
+    const isTyping = (target: EventTarget | null): boolean =>
+      target instanceof HTMLElement &&
+      (target.tagName === "INPUT" || target.tagName === "TEXTAREA" || target.isContentEditable);
+    const onKeyDown = (event: KeyboardEvent) => {
+      if (event.code === "Space" && !event.repeat && !isTyping(event.target)) {
+        event.preventDefault();
+        engineRef.current?.setTalking(true);
+      }
+    };
+    const onKeyUp = (event: KeyboardEvent) => {
+      if (event.code === "Space" && !isTyping(event.target)) {
+        engineRef.current?.setTalking(false);
+      }
+    };
+    window.addEventListener("keydown", onKeyDown);
+    window.addEventListener("keyup", onKeyUp);
+    return () => {
+      window.removeEventListener("keydown", onKeyDown);
+      window.removeEventListener("keyup", onKeyUp);
+      engineRef.current?.setTalking(false);
+    };
+  }, [settings.pushToTalk]);
+
+  // Reveal the dock when a call starts; hide it when the call ends.
+  const callActive = snapshot.callId !== null;
+  useEffect(() => {
+    setView((current) => {
+      if (callActive) {
+        return current === "hidden" ? "dock" : current;
+      }
+      return "hidden";
+    });
+    if (!callActive) {
+      setPipPinned(false);
+    }
+  }, [callActive]);
+
+  // Keep a Convex token cached so the unload beacon can authenticate without
+  // awaiting anything once the page is going away. Fetched on mount so it is
+  // warm before the first call, then refreshed well inside the token lifetime.
+  useEffect(() => {
+    let cancelled = false;
+    const refresh = async () => {
+      try {
+        const response = await fetch("/api/auth/convex/token", { credentials: "include" });
+        if (!response.ok) {
+          return;
+        }
+        const data = (await response.json()) as { token?: string };
+        if (!cancelled) {
+          authTokenRef.current = data.token ?? null;
+        }
+      } catch {
+        // Best-effort; without a token the heartbeat sweep is the backstop.
+      }
+    };
+    void refresh();
+    const timer = setInterval(() => void refresh(), TOKEN_REFRESH_MS);
+    return () => {
+      cancelled = true;
+      clearInterval(timer);
+    };
+  }, []);
+
+  // Closing the tab, navigating away or quitting the desktop app drops the
+  // caller out of the call right away. `beforeunload` covers the exits browsers
+  // report there; `pagehide` is the backstop for the ones they don't. A bfcache
+  // entry (`persisted`) keeps the seat. The mobile app backgrounds without ever
+  // reaching either event, so a sleeping phone stays in the call. Neither
+  // listener prompts on unload.
+  useEffect(() => {
+    let departed = false;
+    const leaveNow = () => {
+      if (departed) {
+        return;
+      }
+      const callId = engineRef.current?.getSnapshot().callId;
+      if (callId === null || callId === undefined) {
+        return;
+      }
+      departed = true;
+      sendLeaveBeacon({ convexUrl: client.url, token: authTokenRef.current, callId });
+      engineRef.current?.abandon();
+    };
+    const onPageHide = (event: PageTransitionEvent) => {
+      if (!event.persisted) {
+        leaveNow();
+      }
+    };
+    window.addEventListener("beforeunload", leaveNow);
+    window.addEventListener("pagehide", onPageHide);
+    return () => {
+      window.removeEventListener("beforeunload", leaveNow);
+      window.removeEventListener("pagehide", onPageHide);
+    };
+  }, [client]);
+
+  const refreshDevices = useCallback(async () => {
+    setDevices(await listMediaDevices());
+  }, []);
+
+  const updateSettings = useCallback(async (partial: Partial<VoiceDeviceSettings>) => {
+    const next = mergeVoiceSettings({ ...settingsRef.current, ...partial });
+    setSettings(next);
+    settingsRef.current = next;
+    writeVoiceSettings(next);
+    await engineRef.current?.applySettings(next);
+  }, []);
+
+  const startCall = useCallback(
+    async (channelId: string, kind: CallKind, ringingUserIds?: readonly string[]) => {
+      const engine = engineRef.current;
+      if (engine === null) {
+        return null;
+      }
+      const callId = await engine.startCall({
+        channelId,
+        kind,
+        ...(ringingUserIds !== undefined ? { ringingUserIds } : {}),
+      });
+      if (callId !== null) {
+        setView("dock");
+      }
+      return callId;
+    },
+    [],
+  );
+
+  const joinCall = useCallback(async (callId: string) => {
+    const ok = (await engineRef.current?.joinCall(callId)) ?? false;
+    if (ok) {
+      setView("dock");
+    }
+    return ok;
+  }, []);
+
+  const acceptCall = useCallback(
+    async (call: CallView) => {
+      await joinCall(call.id);
+    },
+    [joinCall],
+  );
+
+  const declineCall = useCallback(async (callId: string) => {
+    await engineRef.current?.declineCall(callId);
+  }, []);
+
+  const leave = useCallback(async () => {
+    await engineRef.current?.leave();
+    setView("hidden");
+  }, []);
+
+  const endCall = useCallback(async () => {
+    await engineRef.current?.endCall();
+    setView("hidden");
+  }, []);
+
+  const setMuted = useCallback(async (muted: boolean) => {
+    await engineRef.current?.setMuted(muted);
+  }, []);
+
+  const setDeafened = useCallback((deafened: boolean) => {
+    engineRef.current?.setDeafened(deafened);
+  }, []);
+
+  const setCamera = useCallback(async (on: boolean) => {
+    await engineRef.current?.setCamera(on);
+  }, []);
+
+  const setScreenSharing = useCallback(async (on: boolean) => {
+    await engineRef.current?.setScreenSharing(on);
+  }, []);
+
+  const clearError = useCallback(() => {
+    engineRef.current?.clearError();
+  }, []);
+
+  const canConnect = policy.enabled && hasPermission(permissions, Permission.Connect);
+  const canSpeak = hasPermission(permissions, Permission.Speak);
+  const canStream = policy.screenShareEnabled && hasPermission(permissions, Permission.Stream);
+  const canVideo = policy.videoEnabled && hasPermission(permissions, Permission.UseVideo);
+
+  const value = useMemo<VoiceContextValue>(
+    () => ({
+      ...snapshot,
+      selfUserId: userId,
+      policy,
+      incoming,
+      activeCalls,
+      settings,
+      devices,
+      canConnect,
+      canSpeak,
+      canStream,
+      canVideo,
+      view,
+      pipPinned,
+      setView,
+      setPipPinned,
+      startCall,
+      joinCall,
+      acceptCall,
+      declineCall,
+      leave,
+      endCall,
+      setMuted,
+      setDeafened,
+      setCamera,
+      setScreenSharing,
+      updateSettings,
+      refreshDevices,
+      clearError,
+    }),
+    [
+      snapshot,
+      userId,
+      policy,
+      incoming,
+      activeCalls,
+      settings,
+      devices,
+      canConnect,
+      canSpeak,
+      canStream,
+      canVideo,
+      view,
+      pipPinned,
+      startCall,
+      joinCall,
+      acceptCall,
+      declineCall,
+      leave,
+      endCall,
+      setMuted,
+      setDeafened,
+      setCamera,
+      setScreenSharing,
+      updateSettings,
+      refreshDevices,
+      clearError,
+    ],
+  );
+
+  return (
+    <VoiceContext.Provider value={value}>
+      {children}
+      <RemoteAudio
+        streams={snapshot.remoteStreams}
+        deafened={snapshot.local.deafened}
+        outputDeviceId={settings.outputDeviceId}
+      />
+    </VoiceContext.Provider>
+  );
+}
+
+/** Hidden audio elements for every remote participant, honouring the speaker choice. */
+function RemoteAudio({
+  streams,
+  deafened,
+  outputDeviceId,
+}: {
+  readonly streams: ReadonlyMap<string, MediaStream>;
+  readonly deafened: boolean;
+  readonly outputDeviceId: string | null;
+}) {
+  return (
+    <>
+      {[...streams.entries()].map(([userId, stream]) => (
+        <RemoteAudioElement
+          key={userId}
+          stream={stream}
+          deafened={deafened}
+          outputDeviceId={outputDeviceId}
+        />
+      ))}
+    </>
+  );
+}
+
+function RemoteAudioElement({
+  stream,
+  deafened,
+  outputDeviceId,
+}: {
+  readonly stream: MediaStream;
+  readonly deafened: boolean;
+  readonly outputDeviceId: string | null;
+}) {
+  const ref = useRef<HTMLAudioElement | null>(null);
+  useEffect(() => {
+    const element = ref.current;
+    if (element === null) {
+      return;
+    }
+    element.srcObject = stream;
+    void element.play().catch(() => undefined);
+    return () => {
+      element.srcObject = null;
+    };
+  }, [stream]);
+  useEffect(() => {
+    if (ref.current !== null) {
+      void applySinkId(ref.current, outputDeviceId);
+    }
+  }, [outputDeviceId]);
+  return <audio ref={ref} autoPlay playsInline muted={deafened} className="hidden" />;
+}
+
+/** Reads the voice context; throws outside a {@link VoiceProvider}. */
+export function useVoice(): VoiceContextValue {
+  const value = useContext(VoiceContext);
+  if (value === null) {
+    throw new Error("useVoice must be used within a VoiceProvider.");
+  }
+  return value;
+}

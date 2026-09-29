@@ -91,30 +91,35 @@ describe("createServerProfile", () => {
   });
 });
 
-describe("createServerProfile loopback retargeting", () => {
+describe("createServerProfile loopback resolution", () => {
   const localWellKnown: WellKnown = {
     ...wellKnown,
     convexUrl: "http://localhost:3210",
     siteUrl: "http://localhost:8080",
   };
 
-  it("retargets loopback convex/site URLs onto a Tailscale base host", () => {
+  it("serves Convex from the Tailscale origin the server was reached on", () => {
     const profile = createServerProfile("http://100.64.0.10:8080", localWellKnown);
     expect(profile.baseUrl).toBe("http://100.64.0.10:8080");
-    expect(profile.convexUrl).toBe("http://100.64.0.10:3210");
+    expect(profile.convexUrl).toBe("http://100.64.0.10:8080");
     expect(profile.siteUrl).toBe("http://100.64.0.10:8080");
   });
 
-  it("retargets loopback URLs onto a LAN base host", () => {
+  it("serves Convex from the LAN origin the server was reached on", () => {
     const profile = createServerProfile("http://192.168.1.20:8080", localWellKnown);
-    expect(profile.convexUrl).toBe("http://192.168.1.20:3210");
+    expect(profile.convexUrl).toBe("http://192.168.1.20:8080");
     expect(profile.siteUrl).toBe("http://192.168.1.20:8080");
   });
 
-  it("keeps loopback URLs when the base itself is localhost", () => {
+  it("serves Convex from localhost when the base is localhost", () => {
     const profile = createServerProfile("http://localhost:8080", localWellKnown);
-    expect(profile.convexUrl).toBe("http://localhost:3210");
+    expect(profile.convexUrl).toBe("http://localhost:8080");
     expect(profile.siteUrl).toBe("http://localhost:8080");
+  });
+
+  it("serves Convex from an HTTPS tunnel origin", () => {
+    const profile = createServerProfile("https://cool-wren.slim.show", localWellKnown);
+    expect(profile.convexUrl).toBe("https://cool-wren.slim.show");
   });
 
   it("leaves a public https well-known document untouched", () => {

@@ -26,6 +26,8 @@ export interface MembersSheetProps {
   readonly ownUserId: string;
   readonly onClose: () => void;
   readonly onSetStatus: (status: PresenceRow["status"], customStatus?: string) => void;
+  /** Opens the voice/video device settings; omitted hides the entry. */
+  readonly onOpenVoiceSettings?: () => void;
 }
 
 /** Bottom sheet with presence and a status switcher. */
@@ -36,6 +38,7 @@ export function MembersSheet({
   ownUserId,
   onClose,
   onSetStatus,
+  onOpenVoiceSettings,
 }: MembersSheetProps) {
   const ownPresence = presence.find((row) => row.userId === ownUserId);
   const ownStatus: PresenceStatus = ownPresence?.status ?? "offline";
@@ -61,7 +64,14 @@ export function MembersSheet({
     <Modal visible={visible} transparent animationType="slide" onRequestClose={onClose}>
       <Pressable className="flex-1 justify-end bg-black/50" onPress={onClose}>
         <Pressable onPress={() => {}} className="max-h-[70%] rounded-t-card bg-surface-1 p-4">
-          <Heading level={3}>Members</Heading>
+          <View className="flex-row items-center justify-between">
+            <Heading level={3}>Members</Heading>
+            {onOpenVoiceSettings !== undefined && (
+              <Button size="sm" variant="secondary" onPress={onOpenVoiceSettings}>
+                Voice &amp; video
+              </Button>
+            )}
+          </View>
           <View className="mt-2 flex-row flex-wrap gap-2">
             {STATUS_OPTIONS.map((option) => {
               const active = option.value === ownStatus;

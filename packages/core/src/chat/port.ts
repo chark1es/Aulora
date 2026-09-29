@@ -63,7 +63,7 @@ export interface MessagePayload {
 
 export interface ChannelSummary {
   readonly id: string;
-  readonly kind: "text" | "announcement" | "dm" | "group_dm";
+  readonly kind: "text" | "announcement" | "voice" | "dm" | "group_dm";
   readonly categoryId: string | null;
   readonly name: string | null;
   readonly topic: string | null;
@@ -150,7 +150,7 @@ export interface ChatPort {
 
   // Channels.
   createChannel(args: {
-    kind: "text" | "announcement";
+    kind: "text" | "announcement" | "voice";
     name: string;
     topic?: string;
     categoryId?: string;

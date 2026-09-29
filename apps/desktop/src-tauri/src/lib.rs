@@ -34,6 +34,7 @@ pub fn run() {
         .plugin(tauri_plugin_notification::init())
         .manage(deep_link::DeepLinkState::default())
         .invoke_handler(tauri::generate_handler![
+            commands::set_always_on_top,
             commands::set_unread_badge,
             commands::show_notification,
             commands::take_deep_links,

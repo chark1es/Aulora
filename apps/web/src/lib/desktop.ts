@@ -110,6 +110,21 @@ export async function setDesktopUnreadBadge(count: number): Promise<void> {
   }
 }
 
+/**
+ * Pins or unpins the window above every other window; best-effort outside the
+ * shell. Keeps a pinned call PiP window above other windows.
+ */
+export async function setDesktopAlwaysOnTop(on: boolean): Promise<void> {
+  if (!isDesktop()) {
+    return;
+  }
+  try {
+    await invokeCommand("set_always_on_top", { on });
+  } catch {
+    // Always-on-top is a nicety; a missing platform API must never break calls.
+  }
+}
+
 /** Shows a native notification with device-computed text; best-effort. */
 export async function showDesktopNotification(title: string, body: string): Promise<void> {
   if (!isDesktop()) {

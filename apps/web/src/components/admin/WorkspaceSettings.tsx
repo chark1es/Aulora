@@ -1,4 +1,4 @@
-import { Button, Icon, Input, SegmentedControl, Text } from "@aulora/ui-web";
+import { Button, Icon, Input, SegmentedControl, Switch, Text } from "@aulora/ui-web";
 import { useMutation, useQuery } from "convex/react";
 import { useEffect, useState } from "react";
 import { api } from "../../../../../packages/convex/convex/_generated/api";
@@ -55,6 +55,10 @@ export function WorkspaceSettings({ canManageWorkspace }: WorkspaceSettingsProps
   const [joinMode, setJoinMode] = useState<JoinMode>("anyone");
   const [domains, setDomains] = useState<readonly string[]>([]);
   const [domainInput, setDomainInput] = useState("");
+  const [voiceEnabled, setVoiceEnabled] = useState(true);
+  const [videoEnabled, setVideoEnabled] = useState(true);
+  const [screenShareEnabled, setScreenShareEnabled] = useState(true);
+  const [maxParticipants, setMaxParticipants] = useState(10);
   const [error, setError] = useState<string | null>(null);
   const [saved, setSaved] = useState(false);
   const [busy, setBusy] = useState(false);
@@ -65,6 +69,10 @@ export function WorkspaceSettings({ canManageWorkspace }: WorkspaceSettingsProps
     }
     setJoinMode(server.settings.inviteOnly ? "invite" : "anyone");
     setDomains(server.settings.allowedEmailDomains);
+    setVoiceEnabled(server.settings.voiceEnabled ?? true);
+    setVideoEnabled(server.settings.videoEnabled ?? true);
+    setScreenShareEnabled(server.settings.screenShareEnabled ?? true);
+    setMaxParticipants(server.settings.maxCallParticipants ?? 10);
   }, [server]);
 
   useEffect(() => {
@@ -93,7 +101,12 @@ export function WorkspaceSettings({ canManageWorkspace }: WorkspaceSettingsProps
 
   const storedMode: JoinMode = server.settings.inviteOnly ? "invite" : "anyone";
   const dirty =
-    joinMode !== storedMode || !sameDomains(domains, server.settings.allowedEmailDomains);
+    joinMode !== storedMode ||
+    !sameDomains(domains, server.settings.allowedEmailDomains) ||
+    voiceEnabled !== (server.settings.voiceEnabled ?? true) ||
+    videoEnabled !== (server.settings.videoEnabled ?? true) ||
+    screenShareEnabled !== (server.settings.screenShareEnabled ?? true) ||
+    maxParticipants !== (server.settings.maxCallParticipants ?? 10);
 
   function addDomains() {
     const parsed = parseDomains(domainInput);
@@ -117,6 +130,10 @@ export function WorkspaceSettings({ canManageWorkspace }: WorkspaceSettingsProps
         void updateSettings({
           ...JOIN_MODE_VALUES[joinMode],
           allowedEmailDomains: [...domains],
+          voiceEnabled,
+          videoEnabled,
+          screenShareEnabled,
+          maxCallParticipants: maxParticipants,
         })
           .then(() => setSaved(true))
           .catch((cause: unknown) =>
@@ -217,6 +234,67 @@ export function WorkspaceSettings({ canManageWorkspace }: WorkspaceSettingsProps
               ))}
             </ul>
           )}
+        </div>
+      </div>
+
+      <SettingsSectionHeader
+        icon="volume"
+        title="Voice &amp; video"
+        description="Turn calling on or off, and choose which parts members can use."
+      />
+
+      <div className="overflow-hidden rounded-[14px] border border-border bg-surface-2">
+        <div className="px-4 py-2.5">
+          <Switch
+            checked={voiceEnabled}
+            onChange={(value) => {
+              setVoiceEnabled(value);
+              setSaved(false);
+            }}
+            label="Enable voice and video calling"
+            description="Adds voice channels and call buttons. When off, no one can place a call."
+          />
+        </div>
+        <div className="h-px bg-border" />
+        <div className="px-4 py-2.5">
+          <Switch
+            checked={videoEnabled}
+            onChange={(value) => {
+              setVideoEnabled(value);
+              setSaved(false);
+            }}
+            label="Allow video"
+            description="Members can turn on their cameras in calls."
+            disabled={!voiceEnabled}
+          />
+        </div>
+        <div className="h-px bg-border" />
+        <div className="px-4 py-2.5">
+          <Switch
+            checked={screenShareEnabled}
+            onChange={(value) => {
+              setScreenShareEnabled(value);
+              setSaved(false);
+            }}
+            label="Allow screen sharing"
+            description="Members can stream a screen, window or application into a call."
+            disabled={!voiceEnabled}
+          />
+        </div>
+        <div className="h-px bg-border" />
+        <div className="px-4 py-3.5">
+          <Input
+            label="Maximum call participants"
+            type="number"
+            min={2}
+            max={50}
+            value={String(maxParticipants)}
+            onChange={(event) => {
+              setMaxParticipants(Number(event.currentTarget.value) || 2);
+              setSaved(false);
+            }}
+            hint="Calls are peer-to-peer; keep this modest for reliable quality."
+          />
         </div>
       </div>
 

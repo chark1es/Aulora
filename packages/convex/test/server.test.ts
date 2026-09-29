@@ -107,7 +107,15 @@ describe("server.publicConfig", () => {
         name: "Acme",
         iconSeed: "seed",
         ownerId: "owner-1",
-        settings: { signupEnabled: false, inviteOnly: true, allowedEmailDomains: [] },
+        settings: {
+          signupEnabled: false,
+          inviteOnly: true,
+          allowedEmailDomains: [],
+          voiceEnabled: true,
+          videoEnabled: true,
+          screenShareEnabled: true,
+          maxCallParticipants: 10,
+        },
       });
     });
 

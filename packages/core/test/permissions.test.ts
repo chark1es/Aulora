@@ -68,8 +68,15 @@ describe("Permission bitfield", () => {
       "PinMessages",
       "ReadHistory",
       "Administrator",
+      "Connect",
+      "Speak",
+      "Stream",
+      "UseVideo",
+      "MuteMembers",
+      "DeafenMembers",
+      "MoveMembers",
     ]);
-    expect(PERMISSION_NAMES).toHaveLength(23);
+    expect(PERMISSION_NAMES).toHaveLength(30);
   });
 
   it("gives every flag exactly one independent bit", () => {

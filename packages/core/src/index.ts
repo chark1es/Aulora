@@ -95,6 +95,7 @@ export {
   summarizeUnread,
   type UnreadSummary,
 } from "./unread";
+export * from "./voice/index";
 export {
   containsSecretField,
   type FetchWellKnownOptions,

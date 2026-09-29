@@ -21,7 +21,14 @@ import { useLiveUnreadBadge } from "../../lib/use-desktop-unread";
 import { useWebPush } from "../../lib/use-web-push";
 import type { CategoryView, MemberView, RoleView } from "../../lib/workspace-admin";
 import { type ChatSearchHit, useChat } from "../../providers/ChatProvider";
+import { useVoice } from "../../providers/VoiceProvider";
 import { AdminPanel, type AdminPanelViewer } from "../admin/AdminPanel";
+import { CallDock } from "../voice/CallDock";
+import { CallStage } from "../voice/CallStage";
+import { DeviceSettingsSection } from "../voice/DeviceSettingsSection";
+import { IncomingCallModal } from "../voice/IncomingCallModal";
+import type { CallIdentity } from "../voice/identity";
+import { VoiceChannelView } from "../voice/VoiceChannelView";
 import { WorkspaceMenu } from "../WorkspaceMenu";
 import { ChannelMembersModal } from "./ChannelMembersModal";
 import { ChannelSidebar, type ChannelUnread } from "./ChannelSidebar";
@@ -162,6 +169,7 @@ export function ChatView({
     discardSend,
     search,
   } = useChat();
+  const voice = useVoice();
   const lastChannelKey = `${LAST_CHANNEL_KEY}${workspaceName}`;
   const [activeChannelId, setActiveChannelId] = useState<string | undefined>(
     () => readLocal(lastChannelKey) ?? undefined,
@@ -252,6 +260,14 @@ export function ChatView({
     }
     return map;
   }, [members]);
+
+  const callIdentity = useMemo<CallIdentity>(
+    () => ({
+      nameOf: (id: string) => (id === ownUserId ? ownName : (memberNames.get(id) ?? "Member")),
+      colorOf: (id: string) => memberColors.get(id) ?? null,
+    }),
+    [ownUserId, ownName, memberNames, memberColors],
+  );
 
   const presenceByUser = useMemo(
     () => new Map(presence.map((row) => [row.userId, row.status] as const)),
@@ -852,6 +868,9 @@ export function ChatView({
   const adminView = adminOpen && showAdmin;
   const rightPanel =
     threadRoot !== null && channel !== undefined ? "thread" : membersOpen ? "members" : null;
+  const callTitle =
+    voice.call !== null ? (titles.get(voice.call.channelId) ?? channel?.name ?? "") : "";
+  const incomingCall = voice.incoming[0];
 
   return (
     <div className="relative flex min-h-0 min-w-0 flex-1 gap-2.5">
@@ -868,6 +887,7 @@ export function ChatView({
             categories={admin.categories}
             titles={titles}
             presenceOf={presenceOf}
+            memberNameOf={(id) => (id === ownUserId ? ownName : (memberNames.get(id) ?? "Member"))}
             activeChannelId={activeChannelId}
             unreadByChannel={sidebarUnread}
             canCreateChannel={canCreateChannel}
@@ -910,7 +930,7 @@ export function ChatView({
               ...(canManageChannels
                 ? {
                     edit: (channel: ChannelView) => {
-                      if (channel.kind !== "text" && channel.kind !== "announcement") {
+                      if (channel.kind === "dm" || channel.kind === "group_dm") {
                         return;
                       }
                       setEditChannelError(null);
@@ -991,6 +1011,7 @@ export function ChatView({
           onSave={saveUserSettings}
           onBack={() => setUserSettingsOpen(false)}
           onSignOut={onSignOut}
+          voiceSettings={<DeviceSettingsSection />}
         />
       ) : (
         <section
@@ -1027,6 +1048,8 @@ export function ChatView({
                   : "Choose a channel or direct message from the sidebar."}
               </p>
             </div>
+          ) : channel.kind === "voice" ? (
+            <VoiceChannelView channel={channel} title={title} identity={callIdentity} />
           ) : (
             <>
               <ConversationHeader
@@ -1042,6 +1065,12 @@ export function ChatView({
                 }}
                 onOpenSearch={() => setSearchOpen(true)}
                 onBack={() => setMobilePane("list")}
+                canStartCall={voice.canConnect}
+                canStartVideoCall={voice.canVideo}
+                onStartCall={(kind) => {
+                  setNewConversationOpen(false);
+                  void voice.startCall(channel.id, kind);
+                }}
               />
               <MessageList
                 runtime={runtime}
@@ -1210,6 +1239,37 @@ export function ChatView({
             )}
           </div>
         )}
+
+      {incomingCall !== undefined && (
+        <IncomingCallModal
+          call={incomingCall}
+          title={titles.get(incomingCall.channelId) ?? ""}
+          identity={callIdentity}
+        />
+      )}
+
+      {voice.error !== null && (
+        <div
+          role="alert"
+          className="fixed bottom-4 left-1/2 z-[75] flex -translate-x-1/2 items-center gap-3 rounded-[10px] border border-danger/30 bg-surface-2 px-4 py-2.5 text-[13px] text-text shadow-2xl shadow-black/30"
+        >
+          <Icon name="phone-off" size={16} className="shrink-0 text-danger" />
+          <span className="max-w-[420px]">{voice.error}</span>
+          <button
+            type="button"
+            aria-label="Dismiss call error"
+            onClick={() => voice.clearError()}
+            className="shrink-0 text-text-muted transition hover:text-text"
+          >
+            <Icon name="x" size={15} />
+          </button>
+        </div>
+      )}
+
+      {!(channel?.kind === "voice" && voice.call?.channelId === channel.id) && (
+        <CallDock title={callTitle} identity={callIdentity} />
+      )}
+      {voice.view === "stage" && <CallStage title={callTitle} identity={callIdentity} />}
 
       {searchOpen && (
         <SearchPanel

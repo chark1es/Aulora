@@ -3,7 +3,7 @@ import { useEffect, useMemo, useRef, useState } from "react";
 
 export interface CreateChannelInput {
   readonly name: string;
-  readonly kind: "text" | "announcement";
+  readonly kind: "text" | "announcement" | "voice";
   readonly private: boolean;
   readonly categoryId?: string;
   /** Private channels only: explicit members granted read + write access. */
@@ -35,7 +35,7 @@ export interface CreateChannelModalProps {
   readonly roles?: readonly CreateChannelRoleOption[];
 }
 
-type Kind = "text" | "announcement";
+type Kind = "text" | "announcement" | "voice";
 
 const EMPTY_MEMBERS: readonly CreateChannelMemberOption[] = [];
 const EMPTY_ROLES: readonly CreateChannelRoleOption[] = [];
@@ -142,12 +142,22 @@ export function CreateChannelModal({
       description={
         kind === "announcement"
           ? "Anyone with access can read; only some roles can post."
-          : "In a text channel, everyone with access can talk."
+          : kind === "voice"
+            ? "Drop in for voice and video calls with everyone here."
+            : "In a text channel, everyone with access can talk."
       }
       icon={
         <span className="flex h-9 w-9 items-center justify-center rounded-[9px] bg-accent-soft text-accent">
           <Icon
-            name={kind === "announcement" ? "announce" : isPrivate ? "lock" : "hash"}
+            name={
+              kind === "announcement"
+                ? "announce"
+                : kind === "voice"
+                  ? "volume"
+                  : isPrivate
+                    ? "lock"
+                    : "hash"
+            }
             size={18}
           />
         </span>
@@ -207,6 +217,13 @@ export function CreateChannelModal({
               title="Announcements"
               description="Read-only for most members"
               onClick={() => setKind("announcement")}
+            />
+            <KindOption
+              active={kind === "voice"}
+              icon={<Icon name="volume" size={17} />}
+              title="Voice"
+              description="Voice and video calls"
+              onClick={() => setKind("voice")}
             />
           </fieldset>
         </div>

@@ -3,7 +3,7 @@ import type { Id } from "../_generated/dataModel";
 import type { MutationCtx, QueryCtx } from "../_generated/server";
 import { requirePermission } from "./permissions";
 
-export type ChannelKind = "text" | "announcement" | "dm" | "group_dm";
+export type ChannelKind = "text" | "announcement" | "voice" | "dm" | "group_dm";
 
 export const DM_CHANNEL_KINDS: readonly ChannelKind[] = ["dm", "group_dm"];
 

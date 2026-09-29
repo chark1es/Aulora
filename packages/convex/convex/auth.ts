@@ -22,6 +22,15 @@ function publicSiteUrl(): string {
   return process.env.SITE_URL ?? process.env.CONVEX_SITE_URL ?? "http://localhost:3211";
 }
 
+/** Better Auth's minimum password length; clamped to a sane range, default 8. */
+function minPasswordLength(raw: string | undefined): number {
+  const parsed = Number(raw);
+  if (!Number.isFinite(parsed)) {
+    return 8;
+  }
+  return Math.min(128, Math.max(1, Math.floor(parsed)));
+}
+
 /**
  * Builds the Better Auth options. Kept separate from `betterAuth(...)` so the
  * same options can be reused for schema generation / tests.
@@ -82,6 +91,9 @@ export const createAuthOptions = (
       enabled: true,
       requireEmailVerification: false,
       disableSignUp: env.AUTH_LOCAL_SIGNUP === "false",
+      // Safe default of 8; an operator running a throwaway test deployment can
+      // lower it via AUTH_MIN_PASSWORD_LENGTH (e.g. short demo accounts).
+      minPasswordLength: minPasswordLength(env.AUTH_MIN_PASSWORD_LENGTH),
     },
     plugins,
     databaseHooks: {

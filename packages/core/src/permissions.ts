@@ -28,6 +28,13 @@ export const Permission = {
   PinMessages: 1n << 20n,
   ReadHistory: 1n << 21n,
   Administrator: 1n << 22n,
+  Connect: 1n << 23n,
+  Speak: 1n << 24n,
+  Stream: 1n << 25n,
+  UseVideo: 1n << 26n,
+  MuteMembers: 1n << 27n,
+  DeafenMembers: 1n << 28n,
+  MoveMembers: 1n << 29n,
 } as const satisfies Record<string, bigint>;
 
 export type PermissionName = keyof typeof Permission;

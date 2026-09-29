@@ -82,22 +82,17 @@ function isLoopbackUrl(advertised: string): boolean {
 }
 
 /**
- * Retargets a loopback URL from a well-known document onto `baseHost`, keeping
- * the advertised protocol and port. Unparseable URLs and non-loopback hosts are
- * returned unchanged.
+ * Resolves the Convex URL a client should talk to.
+ *
+ * When the server advertises a loopback Convex URL it means "this deployment's
+ * default", not a reachable address: the client uses the very origin it reached
+ * the server on. The web edge serves Convex under that same origin at `/api`
+ * (see `infra/docker/nginx/default.conf`), so one URL works for localhost, the
+ * LAN, Tailscale, a tunnel or the operator's own HTTPS proxy. A public
+ * (non-loopback) advertised URL is trusted as-is.
  */
-function retargetLoopbackHost(advertised: string, baseHost: string): string {
-  let url: URL;
-  try {
-    url = new URL(advertised);
-  } catch {
-    return advertised;
-  }
-  if (!isLoopbackHost(url.hostname)) {
-    return advertised;
-  }
-  url.hostname = baseHost;
-  return url.toString().replace(/\/+$/, "");
+function resolveConvexUrl(advertised: string, base: URL): string {
+  return isLoopbackUrl(advertised) ? `${base.protocol}//${base.host}` : advertised;
 }
 
 /** Stable profile id: the canonical base URL is already unique per server. */
@@ -113,7 +108,7 @@ export function createServerProfile(
 ): ServerProfile {
   const canonical = normalizeServerUrl(baseUrl);
   const base = new URL(canonical);
-  const convexUrl = retargetLoopbackHost(wellKnown.convexUrl, base.hostname);
+  const convexUrl = resolveConvexUrl(wellKnown.convexUrl, base);
   const siteUrl = isLoopbackUrl(wellKnown.siteUrl)
     ? `${base.protocol}//${base.host}`
     : wellKnown.siteUrl;

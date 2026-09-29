@@ -15,6 +15,12 @@ export interface ConversationHeaderProps {
   readonly onOpenSearch: () => void;
   /** Narrow layouts: returns to the conversation list. */
   readonly onBack?: () => void;
+  /** Whether the viewer may start a call in this conversation. */
+  readonly canStartCall?: boolean;
+  /** Whether a video call is permitted (voice allowed implies audio). */
+  readonly canStartVideoCall?: boolean;
+  /** Starts a call in this conversation. */
+  readonly onStartCall?: (kind: "voice" | "video") => void;
 }
 
 /**
@@ -31,8 +37,12 @@ export function ConversationHeader({
   onToggleMembers,
   onOpenSearch,
   onBack,
+  canStartCall = false,
+  canStartVideoCall = false,
+  onStartCall,
 }: ConversationHeaderProps) {
   const isDm = channel.kind === "dm";
+  const isConversation = channel.kind === "dm" || channel.kind === "group_dm";
   const partner = dmPartnerId(channel, ownUserId);
   const others = (channel.memberIds ?? []).filter((id) => id !== ownUserId);
   const status = partner !== undefined ? presenceOf(partner) : undefined;
@@ -81,6 +91,16 @@ export function ConversationHeader({
         <p className="truncate text-[11px] text-text-muted">{subtitle}</p>
       </div>
       <div className="flex items-center gap-0.5">
+        {isConversation && canStartCall && onStartCall !== undefined && (
+          <HeaderAction label="Start voice call" onClick={() => onStartCall("voice")}>
+            <Icon name="phone" size={18} />
+          </HeaderAction>
+        )}
+        {isConversation && canStartVideoCall && onStartCall !== undefined && (
+          <HeaderAction label="Start video call" onClick={() => onStartCall("video")}>
+            <Icon name="video" size={18} />
+          </HeaderAction>
+        )}
         <HeaderAction label="Search messages" onClick={onOpenSearch}>
           <Icon name="search" size={18} />
         </HeaderAction>

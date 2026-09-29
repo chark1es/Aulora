@@ -64,12 +64,14 @@ export async function createChatRuntime(options: CreateChatRuntimeOptions): Prom
       threadRootId: threadRootId as never,
       paginationOpts: { numItems: 100, cursor: null },
     });
-    const unsubscribe = watch.onUpdate(() => {
+    const emit = () => {
       const value = watch.localQueryResult();
       if (value !== undefined) {
         onChange(value.page);
       }
-    });
+    };
+    const unsubscribe = watch.onUpdate(emit);
+    emit();
     return () => {
       unsubscribe();
     };
@@ -87,12 +89,15 @@ export async function createChatRuntime(options: CreateChatRuntimeOptions): Prom
         cursor: watchOptions.cursor ?? null,
       },
     });
-    const unsubscribe = watch.onUpdate(() => {
+    const emit = () => {
       const value = watch.localQueryResult();
       if (value !== undefined) {
         onChange(value);
       }
-    });
+    };
+    const unsubscribe = watch.onUpdate(emit);
+    // Catch a result delivered before `onUpdate` was attached.
+    emit();
     return () => {
       unsubscribe();
     };

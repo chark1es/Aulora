@@ -1,0 +1,113 @@
+import { callKindLabel, callStatusLabel, isParticipant } from "@aulora/core";
+import { cn, Icon } from "@aulora/ui-web";
+import { useVoice } from "../../providers/VoiceProvider";
+import { CallControls } from "./CallControls";
+import { CallMediaNotice } from "./CallMediaNotice";
+import { CallGrid } from "./CallParticipant";
+import { useCallDuration } from "./hooks";
+import { type CallIdentity, UNKNOWN_IDENTITY } from "./identity";
+
+/** The full call surface: a top bar, the participant grid, and controls below. */
+export function CallStage({
+  title,
+  identity = UNKNOWN_IDENTITY,
+}: {
+  readonly title: string;
+  readonly identity?: CallIdentity;
+}) {
+  const voice = useVoice();
+  const duration = useCallDuration(voice.call?.startedAt ?? null);
+  const call = voice.call;
+  if (call === null) {
+    return null;
+  }
+  const inCall = isParticipant(call, voice.selfUserId);
+  const sharer = call.screenShareUserId !== null ? identity.nameOf(call.screenShareUserId) : null;
+
+  return (
+    <div
+      className="fixed inset-0 z-[80] flex flex-col bg-bg/95 backdrop-blur-xl"
+      role="dialog"
+      aria-modal="true"
+      aria-label={`${callKindLabel(call.kind)} in ${title}`}
+    >
+      <header className="flex h-14 shrink-0 items-center gap-3 border-b border-border px-4">
+        <span className="flex h-8 w-8 items-center justify-center rounded-[8px] bg-accent-soft text-accent">
+          <Icon name={call.kind === "video" ? "video" : "volume"} size={17} />
+        </span>
+        <div className="min-w-0 flex-1">
+          <h2 className="truncate text-[14px] font-semibold text-text">{title}</h2>
+          <p className="truncate text-[11px] text-text-muted">
+            {callStatusLabel(call.status)} · {duration} · {call.participants.length} in call
+            {sharer !== null ? ` · ${sharer} is sharing` : ""}
+          </p>
+        </div>
+        {voice.canStream && (
+          <button
+            type="button"
+            aria-label={voice.local.sharingScreen ? "Stop sharing" : "Share screen"}
+            title={voice.local.sharingScreen ? "Stop sharing" : "Share screen"}
+            onClick={() => void voice.setScreenSharing(!voice.local.sharingScreen)}
+            className={cn(
+              "flex h-8 items-center gap-1.5 rounded-[8px] px-2.5 text-[12px] font-medium transition",
+              voice.local.sharingScreen
+                ? "bg-accent/15 text-accent"
+                : "text-text-muted hover:bg-surface-3 hover:text-text",
+            )}
+          >
+            <Icon name={voice.local.sharingScreen ? "monitor-off" : "monitor"} size={15} />
+            {voice.local.sharingScreen ? "Stop" : "Share"}
+          </button>
+        )}
+        <button
+          type="button"
+          aria-label="Minimize call"
+          title="Minimize call"
+          onClick={() => voice.setView("dock")}
+          className="flex h-8 w-8 items-center justify-center rounded-[8px] text-text-muted transition hover:bg-surface-3 hover:text-text"
+        >
+          <Icon name="chevron-down" size={18} />
+        </button>
+      </header>
+
+      <CallMediaNotice />
+
+      <div className="min-h-0 flex-1 p-3">
+        <CallGrid
+          participants={call.participants}
+          streams={voice.remoteStreams}
+          localUserId={voice.selfUserId}
+          localVideoTrack={voice.localVideoTrack}
+          settings={voice.settings}
+          identity={identity}
+          className="h-full"
+        />
+      </div>
+
+      <footer className="flex shrink-0 items-center justify-center gap-3 border-t border-border px-4 py-3">
+        {!inCall && (
+          <button
+            type="button"
+            onClick={() => void voice.joinCall(call.id)}
+            className="mr-2 h-10 rounded-[10px] bg-secondary px-4 text-[13px] font-semibold text-white transition hover:brightness-110"
+          >
+            Join
+          </button>
+        )}
+        <CallControls
+          muted={voice.local.muted}
+          deafened={voice.local.deafened}
+          video={voice.local.video}
+          sharingScreen={voice.local.sharingScreen}
+          canVideo={voice.canVideo}
+          canStream={voice.canStream}
+          onToggleMute={() => void voice.setMuted(!voice.local.muted)}
+          onToggleDeafen={() => voice.setDeafened(!voice.local.deafened)}
+          onToggleCamera={() => void voice.setCamera(!voice.local.video)}
+          onToggleScreen={() => void voice.setScreenSharing(!voice.local.sharingScreen)}
+          onLeave={() => void voice.leave()}
+        />
+      </footer>
+    </div>
+  );
+}

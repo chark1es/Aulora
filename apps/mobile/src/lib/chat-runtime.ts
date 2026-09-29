@@ -53,12 +53,14 @@ export function watchThread(
     threadRootId: threadRootId as never,
     paginationOpts: { numItems: 100, cursor: null },
   });
-  const unsubscribe = watch.onUpdate(() => {
+  const emit = () => {
     const value = watch.localQueryResult();
     if (value !== undefined) {
       onChange(value.page);
     }
-  });
+  };
+  const unsubscribe = watch.onUpdate(emit);
+  emit();
   return () => {
     unsubscribe();
   };

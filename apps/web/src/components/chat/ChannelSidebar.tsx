@@ -4,6 +4,7 @@ import { activityLabel, badgeCount, dmPartnerId } from "@aulora/core";
 import { type ContextMenuItem, cn, Icon, useContextMenu } from "@aulora/ui-web";
 import { Fragment, type ReactNode, useEffect, useMemo, useRef, useState } from "react";
 import type { CategoryView } from "../../lib/workspace-admin";
+import { VoiceChannelRow } from "../voice/VoiceChannelRow";
 import { GroupAvatar, PRESENCE_LABEL, PresenceAvatar, type PresenceStatus } from "./PresenceAvatar";
 
 export interface ChannelUnread {
@@ -83,6 +84,8 @@ export interface ChannelSidebarProps {
     readonly archive?: (channel: ChannelView) => void;
     readonly copyLink?: (channel: ChannelView) => void;
   };
+  /** Resolves a member's display name for voice-channel participant lists. */
+  readonly memberNameOf?: (userId: string) => string;
   /** Category context-menu actions; absent entries are hidden. */
   readonly categoryActions?: {
     readonly rename?: (category: CategoryView) => void;
@@ -177,7 +180,8 @@ export function ChannelSidebar(props: ChannelSidebarProps) {
   const groups = useMemo(() => {
     const chat = channels.filter(
       (channel) =>
-        (channel.kind === "text" || channel.kind === "announcement") && !channel.archived,
+        (channel.kind === "text" || channel.kind === "announcement" || channel.kind === "voice") &&
+        !channel.archived,
     );
     const known = new Set(categories.map((category) => category.id));
     const sorted = [...categories].sort((a, b) => a.position - b.position);
@@ -578,32 +582,53 @@ export function ChannelSidebar(props: ChannelSidebarProps) {
                         <DropLine />
                       )}
                       <li className="animate-message-in">
-                        <ChannelRow
-                          channel={channel}
-                          title={props.titles.get(channel.id) ?? channel.name}
-                          active={channel.id === activeChannelId}
-                          unread={unreadByChannel.get(channel.id)}
-                          onSelect={selectChannel}
-                          {...(canReorder ? { dragIndex: index } : {})}
-                          dragging={canReorder && dragChannelId === channel.id}
-                          {...(canReorder
-                            ? {
-                                onDragStart: () => startDrag(channel.id),
-                                onDragEnd: endDrag,
+                        {channel.kind === "voice" ? (
+                          <VoiceChannelRow
+                            channel={channel}
+                            title={props.titles.get(channel.id) ?? channel.name}
+                            active={channel.id === activeChannelId}
+                            onSelect={selectChannel}
+                            nameOf={props.memberNameOf ?? ((id: string) => id)}
+                            onContextMenu={(event) => {
+                              const items = channelMenu(channel, channel.id === activeChannelId);
+                              if (items.length > 0) {
+                                openMenu({
+                                  clientX: event.clientX,
+                                  clientY: event.clientY,
+                                  items,
+                                  label: `Channel ${props.titles.get(channel.id) ?? channel.name}`,
+                                });
                               }
-                            : {})}
-                          onContextMenu={(event) => {
-                            const items = channelMenu(channel, channel.id === activeChannelId);
-                            if (items.length > 0) {
-                              openMenu({
-                                clientX: event.clientX,
-                                clientY: event.clientY,
-                                items,
-                                label: `Channel ${props.titles.get(channel.id) ?? channel.name}`,
-                              });
-                            }
-                          }}
-                        />
+                            }}
+                          />
+                        ) : (
+                          <ChannelRow
+                            channel={channel}
+                            title={props.titles.get(channel.id) ?? channel.name}
+                            active={channel.id === activeChannelId}
+                            unread={unreadByChannel.get(channel.id)}
+                            onSelect={selectChannel}
+                            {...(canReorder ? { dragIndex: index } : {})}
+                            dragging={canReorder && dragChannelId === channel.id}
+                            {...(canReorder
+                              ? {
+                                  onDragStart: () => startDrag(channel.id),
+                                  onDragEnd: endDrag,
+                                }
+                              : {})}
+                            onContextMenu={(event) => {
+                              const items = channelMenu(channel, channel.id === activeChannelId);
+                              if (items.length > 0) {
+                                openMenu({
+                                  clientX: event.clientX,
+                                  clientY: event.clientY,
+                                  items,
+                                  label: `Channel ${props.titles.get(channel.id) ?? channel.name}`,
+                                });
+                              }
+                            }}
+                          />
+                        )}
                       </li>
                     </Fragment>
                   ))}

@@ -12,7 +12,40 @@ const EVERYONE_PERMISSIONS: bigint =
   Permission.EmbedLinks |
   Permission.AddReactions |
   Permission.ReadHistory |
-  Permission.ChangeOwnNickname;
+  Permission.ChangeOwnNickname |
+  Permission.Connect |
+  Permission.Speak |
+  Permission.Stream |
+  Permission.UseVideo;
+
+/** Voice bits added to the `@everyone` baseline after calling shipped. */
+const VOICE_EVERYONE_BITS: bigint =
+  Permission.Connect | Permission.Speak | Permission.Stream | Permission.UseVideo;
+
+/**
+ * Idempotent upgrade for workspaces created before calling existed: the stored
+ * `@everyone` role predates the voice permission flags, so existing members
+ * would not be able to join a call. Adds the missing bits once; a no-op when
+ * they are already present. Returns whether anything changed.
+ */
+export const ensureVoicePermissions = internalMutation({
+  args: {},
+  returns: v.boolean(),
+  handler: async (ctx) => {
+    const roles = await ctx.db.query("roles").collect();
+    const everyone = roles.find((role) => role.key === EVERYONE_ROLE_ID);
+    if (everyone === undefined) {
+      return false;
+    }
+    if ((VOICE_EVERYONE_BITS & ~everyone.permissions) === 0n) {
+      return false;
+    }
+    await ctx.db.patch(everyone._id, {
+      permissions: everyone.permissions | VOICE_EVERYONE_BITS,
+    });
+    return true;
+  },
+});
 
 /** Whether the server singleton has been created. */
 export const isInitialized = internalQuery({
@@ -61,6 +94,10 @@ export const finalize = internalMutation({
         signupEnabled: true,
         inviteOnly: true,
         allowedEmailDomains: [],
+        voiceEnabled: true,
+        videoEnabled: true,
+        screenShareEnabled: true,
+        maxCallParticipants: 10,
       },
     });
 

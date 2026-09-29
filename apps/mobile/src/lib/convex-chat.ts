@@ -333,12 +333,15 @@ export function convexSubscriptions(client: ConvexReactClient): ChatSubscription
     onChange: (value: T) => void,
   ): () => void {
     const handle = client.watchQuery(query as never, args as never);
-    const unsubscribe = handle.onUpdate(() => {
+    const emit = () => {
       const value = handle.localQueryResult();
       if (value !== undefined) {
         onChange(value as T);
       }
-    });
+    };
+    const unsubscribe = handle.onUpdate(emit);
+    // A warm client can deliver before `onUpdate` is attached; read it once.
+    emit();
     return () => {
       unsubscribe();
     };

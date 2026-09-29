@@ -258,6 +258,18 @@ export const PERMISSION_GROUPS: readonly PermissionGroup[] = [
       "ReadHistory",
     ],
   },
+  {
+    label: "Voice",
+    permissions: [
+      "Connect",
+      "Speak",
+      "Stream",
+      "UseVideo",
+      "MuteMembers",
+      "DeafenMembers",
+      "MoveMembers",
+    ],
+  },
   { label: "Special", permissions: ["Administrator"] },
 ];
 
@@ -285,6 +297,13 @@ export const PERMISSION_LABELS: Record<PermissionName, string> = {
   ManageMessages: "Manage messages",
   PinMessages: "Pin messages",
   ReadHistory: "Read history",
+  Connect: "Join voice",
+  Speak: "Speak",
+  Stream: "Share screen",
+  UseVideo: "Turn on camera",
+  MuteMembers: "Mute members",
+  DeafenMembers: "Deafen members",
+  MoveMembers: "Move members",
   Administrator: "Administrator",
 };
 

@@ -30,13 +30,31 @@ Three things must be true at the public edge:
    > `web` container proxy it (see `Caddyfile.example` and
    > `traefik.labels.yml`). Either way the upstream is `3211`, never `3210`.
 
+4. **`<web origin>/api/*` (the Convex client API + WebSocket) is forwarded to the
+   Convex cloud origin (`convex-backend:3210`), on the same origin as the web
+   app.**
+   The SPA opens `wss://<web origin>/api/<version>/sync` for subscriptions and
+   `POST /api/{query,mutation,action}` for the rest. The proxy **must** forward
+   the `Upgrade`/`Connection` headers so the sync connection upgrades, and must
+   not buffer it (nginx `proxy_buffering off`, Caddy `flush_interval -1`). This
+   is what allows a **single-host** deployment: when the well-known document
+   advertises a loopback `convexUrl` (e.g. `http://localhost:3210`), clients
+   resolve it to the page origin, so the web origin doubles as the Convex
+   origin. The `web` container already does this; the edge must too, placed
+   *after* the more specific `/api/auth/*` route.
+
+   > Operators who prefer to keep Convex on its own host (`convex.example.com`)
+   > can skip this route and set `CONVEX_CLOUD_ORIGIN` to that host — clients
+   > then connect there directly and need it in `connect-src`.
+
 ### Origin reference
 
 | Public host              | Upstream                 | Port  | Notes |
 | ------------------------ | ------------------------ | ----- | ----- |
 | `chat.example.com`       | `web`                    | `80`  | SPA + `/.well-known` |
 | `chat.example.com/api/auth/*` | `convex-backend`   | `3211`| First-party auth |
-| `convex.example.com`     | `convex-backend`         | `3210`| Convex API + WebSocket |
+| `chat.example.com/api/*` | `convex-backend`         | `3210`| Convex API + WebSocket (single-host) |
+| `convex.example.com`     | `convex-backend`         | `3210`| Convex API + WebSocket (split-host) |
 | `dashboard.example.com`  | `convex-dashboard`       | `6791`| Keep private or behind auth |
 
 Set `SITE_URL=https://chat.example.com`,
@@ -98,7 +116,7 @@ Strict-Transport-Security: max-age=31536000; includeSubDomains
 X-Content-Type-Options: nosniff
 X-Frame-Options: DENY
 Referrer-Policy: strict-origin-when-cross-origin
-Permissions-Policy: camera=(), microphone=(), geolocation=()
+Permissions-Policy: camera=(self), microphone=(self), display-capture=(self), geolocation=()
 ```
 
 Content-Security-Policy needs care because the SPA talks to Convex over HTTPS
@@ -111,16 +129,24 @@ Content-Security-Policy:
   frame-ancestors 'none';
   object-src 'none';
   img-src 'self' data: blob:;
+  media-src 'self' blob:;
   style-src 'self' 'unsafe-inline';
   script-src 'self';
-  connect-src 'self' https://convex.example.com wss://convex.example.com
+  connect-src 'self' https://convex.example.com wss://convex.example.com wss:
 ```
 
 `style-src` needs `'unsafe-inline'` for the Tailwind runtime-injected theme
 variables; `script-src` is `'self'` only. The theme bootstrap in `index.html`
 is an inline script — either hash it, serve it as a file, or add a nonce before
 locking `script-src` down to `'self'` (see `Caddyfile.example` for the note).
-Tighten `connect-src` to exactly your Convex origins.
+Tighten `connect-src` to exactly your Convex origins. For a **single-host**
+deployment (Convex proxied at `<web origin>/api/*`, see contract item 4),
+`connect-src 'self' wss:` is sufficient and no Convex host is needed. Calls are
+peer-to-peer
+WebRTC with signalling over Convex, so `connect-src` must allow `wss:` and
+`media-src` must allow `blob:` for the call UI's local/recorded tracks;
+`Permissions-Policy` must allow `camera`, `microphone` and `display-capture`
+from self.
 
 The `web` container already sets `X-Content-Type-Options`, `Referrer-Policy`,
 `X-Frame-Options` and `Permissions-Policy` as a safe baseline; the edge should

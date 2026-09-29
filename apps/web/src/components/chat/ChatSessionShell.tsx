@@ -17,6 +17,7 @@ import {
   topPositionForRefs,
 } from "../../lib/workspace-admin";
 import { ChatProvider } from "../../providers/ChatProvider";
+import { type VoicePolicy, VoiceProvider } from "../../providers/VoiceProvider";
 import type { ChannelUnread } from "./ChannelSidebar";
 import { ChatView } from "./ChatView";
 
@@ -49,6 +50,18 @@ export function ChatSessionShell({
   const membersResult = useQuery(api.members.list, {});
   const categoriesResult = useQuery(api.categories.list, {});
   const meResult = useQuery(api.members.me, {});
+  const publicConfig = useQuery(api.server.publicConfig, {});
+
+  const voicePolicy = useMemo<VoicePolicy>(() => {
+    const voice = publicConfig?.voice;
+    return {
+      enabled: voice?.enabled ?? true,
+      videoEnabled: voice?.videoEnabled ?? true,
+      screenShareEnabled: voice?.screenShareEnabled ?? true,
+      maxParticipants: voice?.maxParticipants ?? 10,
+      iceServers: (voice?.iceServers ?? []) as readonly RTCIceServer[],
+    };
+  }, [publicConfig]);
 
   const channels = useMemo<readonly ChannelSummary[]>(() => {
     const list: ChannelSummary[] = [];
@@ -141,30 +154,37 @@ export function ChatSessionShell({
 
   return (
     <ChatProvider client={client} userId={user.id} displayName={ownName} channels={channels}>
-      <ChatView
-        workspaceName={workspaceName}
-        workspaceIconSeed={workspaceIconSeed}
-        ownUserId={user.id}
-        ownName={ownName}
-        unreadByChannel={unreadByChannel}
-        onSignOut={onSignOut}
+      <VoiceProvider
+        client={client}
+        userId={user.id}
         permissions={permissions}
-        members={members}
-        roles={mentionRoles}
-        admin={{
-          viewer: {
-            userId: user.id,
-            isOwner,
-            roleIds: viewerRoleIds,
-            permissions,
-            topPosition,
-          },
-          ownerId,
-          roleViews: roles,
-          memberViews,
-          categories,
-        }}
-      />
+        policy={voicePolicy}
+      >
+        <ChatView
+          workspaceName={workspaceName}
+          workspaceIconSeed={workspaceIconSeed}
+          ownUserId={user.id}
+          ownName={ownName}
+          unreadByChannel={unreadByChannel}
+          onSignOut={onSignOut}
+          permissions={permissions}
+          members={members}
+          roles={mentionRoles}
+          admin={{
+            viewer: {
+              userId: user.id,
+              isOwner,
+              roleIds: viewerRoleIds,
+              permissions,
+              topPosition,
+            },
+            ownerId,
+            roleViews: roles,
+            memberViews,
+            categories,
+          }}
+        />
+      </VoiceProvider>
     </ChatProvider>
   );
 }

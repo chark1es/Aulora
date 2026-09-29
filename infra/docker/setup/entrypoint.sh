@@ -216,6 +216,9 @@ set_env_if_present CONVEX_SITE_ORIGIN "$CONVEX_SITE_ORIGIN_VALUE"
 set_env_if_present TRUSTED_ORIGINS "${TRUSTED_ORIGINS:-}"
 set_env_if_present AUTH_LOCAL_ENABLED "${AUTH_LOCAL_ENABLED:-}"
 set_env_if_present AUTH_LOCAL_SIGNUP "${AUTH_LOCAL_SIGNUP:-}"
+# Optional override of Better Auth's minimum password length (default 8); set to
+# a small number only for throwaway test deployments with easy demo accounts.
+set_env_if_present AUTH_MIN_PASSWORD_LENGTH "${AUTH_MIN_PASSWORD_LENGTH:-}"
 
 for prefix in GITHUB GOOGLE MICROSOFT APPLE; do
   set_env_if_present "${prefix}_CLIENT_ID" "$(host_value "${prefix}_CLIENT_ID")"
@@ -234,6 +237,11 @@ set_env_if_present OIDC_GROUP_ROLE_MAP "$(host_value OIDC_GROUP_ROLE_MAP)"
 set_env_if_present VAPID_SUBJECT "$VAPID_SUBJECT_VALUE"
 set_env_if_present VAPID_PUBLIC_KEY "$VAPID_PUBLIC_KEY_VALUE"
 set_env_if_present VAPID_PRIVATE_KEY "$VAPID_PRIVATE_KEY_VALUE" 1
+
+# Optional WebRTC ICE servers (JSON array of RTCIceServer objects) so a
+# self-hosted deployment can point calls at its own STUN/TURN. Blank leaves
+# clients on their built-in public STUN defaults; calls need no media server.
+set_env_if_present AULORA_ICE_SERVERS "$(host_value AULORA_ICE_SERVERS)"
 
 # Server-side encryption: the default local master key is set as a secret.
 # Optional/advanced external-provider settings are read from the host .env and
@@ -258,6 +266,14 @@ set_env_if_present EKM_PROXY_TOKEN "$(host_value EKM_PROXY_TOKEN)" 1
 
 log "deploying ${CONVEX_PROJECT_DIR}"
 convex deploy --yes
+
+# Idempotent data upgrades for workspaces that predate a feature. Safe to run
+# on every deploy.
+if convex run setupState:ensureVoicePermissions '{}' >/dev/null 2>&1; then
+  log "voice permissions on @everyone are up to date"
+else
+  log "voice permission migration skipped"
+fi
 
 # --- 7. one-time initialize -------------------------------------------------
 

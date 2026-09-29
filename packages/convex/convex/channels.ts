@@ -26,7 +26,11 @@ import {
 import { openContentOptional } from "./lib/sealed";
 import { sealString } from "./lib/sse";
 
-const createKindValidator = v.union(v.literal("text"), v.literal("announcement"));
+const createKindValidator = v.union(
+  v.literal("text"),
+  v.literal("announcement"),
+  v.literal("voice"),
+);
 
 /** Maximum participants in a group DM, including the caller. */
 export const MAX_GROUP_DM_MEMBERS = 10;
@@ -123,11 +127,11 @@ async function clearChannelMembers(ctx: MutationCtx, channelId: Id<"channels">):
 }
 
 /**
- * Creates a text or announcement channel. ManageChannels is resolved against
- * the workspace baseline plus the target category's overrides. A private
- * channel starts with its creator plus any whitelisted members and roles
- * (granted `ViewChannel | SendMessages`). The channel gets the next position
- * within its category.
+ * Creates a text, announcement or voice channel. ManageChannels is resolved
+ * against the workspace baseline plus the target category's overrides. A
+ * private channel starts with its creator plus any whitelisted members and
+ * roles (granted `ViewChannel | SendMessages`, or the voice flags for a voice
+ * channel). The channel gets the next position within its category.
  */
 export const create = mutation({
   args: {
@@ -162,7 +166,14 @@ export const create = mutation({
           }
         }
       }
-      const grant = Permission.ViewChannel | Permission.SendMessages;
+      const grant =
+        args.kind === "voice"
+          ? Permission.ViewChannel |
+            Permission.Connect |
+            Permission.Speak |
+            Permission.Stream |
+            Permission.UseVideo
+          : Permission.ViewChannel | Permission.SendMessages;
       for (const roleId of roleIds) {
         overrides = mergeGrantOverride(overrides, "role", roleId, grant);
       }

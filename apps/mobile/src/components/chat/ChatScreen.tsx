@@ -6,7 +6,7 @@ import {
   type MessagePayload,
   Permission,
 } from "@aulora/core";
-import { Button, Heading, Spinner, Text, usePalette } from "@aulora/ui-native";
+import { Button, Heading, Icon, IconButton, Spinner, Text, usePalette } from "@aulora/ui-native";
 import { useQuery } from "convex/react";
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { Modal, Pressable, ScrollView, View } from "react-native";
@@ -18,6 +18,11 @@ import { typingLabel } from "../../lib/presence";
 import { useChannelSession } from "../../lib/use-channel";
 import { useChat } from "../../providers/ChatProvider";
 import { useProfiles } from "../../providers/ProfileProvider";
+import { useVoice } from "../../providers/VoiceProvider";
+import { CallScreen } from "../voice/CallScreen";
+import { IncomingCallModal } from "../voice/IncomingCallModal";
+import { VoiceChannelSection } from "../voice/VoiceChannelSection";
+import { VoiceSettingsSheet } from "../voice/VoiceSettingsSheet";
 import { Composer } from "./Composer";
 import { EditChannelSheet } from "./EditChannelSheet";
 import { MembersSheet } from "./MembersSheet";
@@ -47,11 +52,13 @@ export function ChatScreen({
   const { runtime, ready, channels, presence, outbox, members, canManageChannels, sendMessage } =
     useChat();
   const { activeProfile } = useProfiles();
+  const voice = useVoice();
   const [activeChannelId, setActiveChannelId] = useState<string | undefined>(undefined);
   const [mainView, setMainView] = useState<"channels" | "threads">("channels");
   const [drawerOpen, setDrawerOpen] = useState(false);
   const [workspaceSwitcherOpen, setWorkspaceSwitcherOpen] = useState(false);
   const [membersOpen, setMembersOpen] = useState(false);
+  const [voiceSettingsOpen, setVoiceSettingsOpen] = useState(false);
   const [threadRoot, setThreadRoot] = useState<MessagePayload | null>(null);
   const [channelAction, setChannelAction] = useState<ChannelView | null>(null);
   const [editChannelModal, setEditChannelModal] = useState<ChannelView | null>(null);
@@ -91,8 +98,11 @@ export function ChatScreen({
   useLocalNotifications(runtime, ownUserId, channelNames);
 
   useEffect(() => {
-    if (activeChannelId === undefined && channels.length > 0) {
-      setActiveChannelId(channels[0]?.id);
+    if (activeChannelId === undefined) {
+      const firstText = channels.find((entry) => entry.kind !== "voice");
+      if (firstText !== undefined) {
+        setActiveChannelId(firstText.id);
+      }
     }
   }, [channels, activeChannelId]);
 
@@ -202,6 +212,19 @@ export function ChatScreen({
     [runtime, channels],
   );
 
+  const joinVoiceChannel = useCallback(
+    (channelId: string) => {
+      setDrawerOpen(false);
+      const live = voice.activeCalls.find((entry) => entry.channelId === channelId);
+      if (live !== undefined) {
+        void voice.joinCall(live.id);
+      } else {
+        void voice.startCall(channelId, "voice");
+      }
+    },
+    [voice],
+  );
+
   // A Threads-inbox row opens the existing thread sheet for its root message.
   const openThreadFromInbox = useCallback(
     (thread: ThreadInboxItem) => {
@@ -305,6 +328,31 @@ export function ChatScreen({
           </Heading>
         </View>
         <View className="flex-row items-center gap-2">
+          {mainView === "channels" &&
+            channel !== undefined &&
+            (channel.kind === "dm" || channel.kind === "group_dm") &&
+            voice.canConnect && (
+              <>
+                <IconButton
+                  label="Start voice call"
+                  variant="ghost"
+                  size="sm"
+                  onPress={() => void voice.startCall(channel.id, "voice")}
+                >
+                  <Icon name="phone" size={18} color={palette.text} />
+                </IconButton>
+                {voice.canVideo && (
+                  <IconButton
+                    label="Start video call"
+                    variant="ghost"
+                    size="sm"
+                    onPress={() => void voice.startCall(channel.id, "video")}
+                  >
+                    <Icon name="video" size={18} color={palette.text} />
+                  </IconButton>
+                )}
+              </>
+            )}
           <Pressable accessibilityLabel="Members" onPress={() => setMembersOpen(true)}>
             <Text size="sm" tone="muted">
               {presence.length} online
@@ -449,38 +497,47 @@ export function ChatScreen({
               )}
             </Pressable>
             <ScrollView contentContainerStyle={{ gap: 6, paddingVertical: 12 }}>
-              {channels.map((entry) => {
-                const active = entry.id === activeChannelId;
-                return (
-                  <Pressable
-                    key={entry.id}
-                    accessibilityRole="button"
-                    onPress={() => void openChannel(entry.id)}
-                    onLongPress={() => {
-                      if (
-                        (entry.kind === "text" || entry.kind === "announcement") &&
-                        canManageChannels
-                      ) {
-                        setChannelAction(entry);
+              {channels
+                .filter((entry) => entry.kind !== "voice")
+                .map((entry) => {
+                  const active = entry.id === activeChannelId;
+                  return (
+                    <Pressable
+                      key={entry.id}
+                      accessibilityRole="button"
+                      onPress={() => void openChannel(entry.id)}
+                      onLongPress={() => {
+                        if (
+                          (entry.kind === "text" || entry.kind === "announcement") &&
+                          canManageChannels
+                        ) {
+                          setChannelAction(entry);
+                        }
+                      }}
+                      delayLongPress={300}
+                      className={
+                        active ? "rounded-input bg-surface-3 px-3 py-2" : "rounded-input px-3 py-2"
                       }
-                    }}
-                    delayLongPress={300}
-                    className={
-                      active ? "rounded-input bg-surface-3 px-3 py-2" : "rounded-input px-3 py-2"
-                    }
-                  >
-                    <Text size="sm" tone={active ? "default" : "muted"}>
-                      {entry.kind === "dm" || entry.kind === "group_dm" ? "@ " : "# "}
-                      {entry.name}
-                    </Text>
-                  </Pressable>
-                );
-              })}
+                    >
+                      <Text size="sm" tone={active ? "default" : "muted"}>
+                        {entry.kind === "dm" || entry.kind === "group_dm" ? "@ " : "# "}
+                        {entry.name}
+                      </Text>
+                    </Pressable>
+                  );
+                })}
               {channels.length === 0 && (
                 <Text size="sm" tone="muted">
                   No channels yet.
                 </Text>
               )}
+              <VoiceChannelSection
+                channels={channels}
+                activeCalls={voice.activeCalls}
+                memberNames={memberNames}
+                selfUserId={ownUserId}
+                onJoin={joinVoiceChannel}
+              />
             </ScrollView>
           </View>
         </Pressable>
@@ -590,12 +647,28 @@ export function ChatScreen({
         memberNames={memberNames}
         ownUserId={ownUserId}
         onClose={() => setMembersOpen(false)}
+        onOpenVoiceSettings={() => {
+          setMembersOpen(false);
+          setVoiceSettingsOpen(true);
+        }}
         onSetStatus={(status, customStatus) => {
           void runtime?.port.setStatus({
             status,
             ...(customStatus !== undefined ? { customStatus } : {}),
           });
         }}
+      />
+
+      <VoiceSettingsSheet visible={voiceSettingsOpen} onClose={() => setVoiceSettingsOpen(false)} />
+
+      <IncomingCallModal
+        callerName={(call) => memberNames.get(call.initiatorId) ?? call.initiatorId}
+      />
+
+      <CallScreen
+        channelName={channel?.name ?? workspaceName}
+        memberNames={memberNames}
+        memberColors={memberColors}
       />
 
       <WorkspaceSwitcherSheet

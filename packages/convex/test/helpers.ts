@@ -10,6 +10,10 @@ export const SERVER_SETTINGS = {
   signupEnabled: true,
   inviteOnly: true,
   allowedEmailDomains: [],
+  voiceEnabled: true,
+  videoEnabled: true,
+  screenShareEnabled: true,
+  maxCallParticipants: 10,
 };
 
 /** The `@everyone` baseline used by most Phase 2 tests. */
@@ -20,7 +24,11 @@ export const EVERYONE_BASE: bigint =
   Permission.CreateThreads |
   Permission.AttachFiles |
   Permission.AddReactions |
-  Permission.ReadHistory;
+  Permission.ReadHistory |
+  Permission.Connect |
+  Permission.Speak |
+  Permission.Stream |
+  Permission.UseVideo;
 
 export function newTest(): Test {
   return convexTest(schema, modules);
@@ -86,7 +94,7 @@ export async function seedWorkspace(t: Test, options: SeedOptions = {}) {
 }
 
 export interface ChannelSeed {
-  readonly kind?: "text" | "announcement" | "dm" | "group_dm";
+  readonly kind?: "text" | "announcement" | "voice" | "dm" | "group_dm";
   /** Plaintext name; stored directly, exercising the legacy pass-through read. */
   readonly name?: string;
   readonly topic?: string;
