@@ -6,11 +6,11 @@ import type {
   TypingRow,
 } from "@aulora/core";
 import { activeTypers, summarizeUnread, type UnreadSummary } from "@aulora/core";
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import type { ChatRuntime } from "./chat-runtime";
 
-/** Roots fetched per page; `loadOlder` grows the window by this much. */
-export const MESSAGE_PAGE_SIZE = 50;
+/** Roots per page: the live tail, and each older history page loaded on scroll. */
+export const MESSAGE_PAGE_SIZE = 100;
 
 export interface ChannelSessionState {
   readonly messages: readonly MessagePayload[];
@@ -25,55 +25,84 @@ export interface ChannelSessionState {
   readonly hasOlder: boolean;
   /** `true` until the first page for the channel arrives. */
   readonly loading: boolean;
-  /** Extends the live window by one page of older messages. */
+  /** `true` while an older history page is in flight. */
+  readonly loadingOlder: boolean;
+  /** Loads the next older page of history, keeping the live tail intact. */
   loadOlder(): void;
 }
 
+interface OlderPage {
+  readonly cursor: string;
+  readonly messages: readonly MessagePayload[];
+  readonly nextCursor: string | null;
+}
+
 /**
- * Subscribes to one channel's live messages, typing and read state, and mirrors
- * the session's plaintext bodies into React state. The bodies never leave this
- * hook except as rendered text.
+ * Subscribes to one channel's live messages, typing and read state.
+ *
+ * History is walked with Convex cursors rather than by growing the query's
+ * `limit`: the live tail is one small subscription, and each older page is
+ * fetched by `continueCursor`, so scrolling up N pages costs N small queries
+ * instead of re-reading and re-sending the entire window every time. The server
+ * keeps each loaded page live, so edits to loaded history still arrive.
  */
 export function useChannelSession(
   runtime: ChatRuntime | undefined,
   channelId: string | undefined,
   userId: string,
 ): ChannelSessionState {
-  const [messages, setMessages] = useState<readonly MessagePayload[]>([]);
+  const [tail, setTail] = useState<readonly MessagePayload[]>([]);
+  const [olderPages, setOlderPages] = useState<readonly OlderPage[]>([]);
   const [decrypted, setDecrypted] = useState<ReadonlyMap<string, string>>(new Map());
   const [typers, setTypers] = useState<readonly TypingRow[]>([]);
   const [readState, setReadState] = useState<ReadStateRow | null>(null);
   const [readStateLoaded, setReadStateLoaded] = useState(false);
-  const [limit, setLimit] = useState(MESSAGE_PAGE_SIZE);
   const [loading, setLoading] = useState(true);
+  const [loadingOlder, setLoadingOlder] = useState(false);
+  const [tailNext, setTailNext] = useState<string | null>(null);
   const [now, setNow] = useState(() => Date.now());
 
-  // A new channel starts from the live tail again.
-  // biome-ignore lint/correctness/useExhaustiveDependencies: channelId is the reset trigger
+  const olderOffs = useRef<Map<string, () => void>>(new Map());
+  const channelRef = useRef<string | undefined>(channelId);
+
+  const releaseOlder = useCallback(() => {
+    for (const off of olderOffs.current.values()) {
+      off();
+    }
+    olderOffs.current.clear();
+  }, []);
+
+  // A new channel starts from the live tail again: tear down older pages so the
+  // next scroll load begins from the tail's cursor.
   useEffect(() => {
-    setLimit(MESSAGE_PAGE_SIZE);
+    channelRef.current = channelId;
+    releaseOlder();
+    setTail([]);
+    setOlderPages([]);
     setLoading(true);
-    setMessages([]);
+    setLoadingOlder(false);
+    setTailNext(null);
     setReadState(null);
     setReadStateLoaded(false);
-  }, [channelId]);
+  }, [channelId, releaseOlder]);
 
   useEffect(() => {
     if (runtime === undefined || channelId === undefined) {
-      setMessages([]);
+      setTail([]);
       setDecrypted(new Map());
       setTypers([]);
       setReadState(null);
       return;
     }
-    const offMessages = runtime.subscriptions.watchMessages(
+    const offTail = runtime.watchChannelMessages(
       channelId,
-      (incoming) => {
-        setMessages(incoming);
+      (page) => {
+        setTail(page.page);
+        setTailNext(page.isDone ? null : page.continueCursor);
         setLoading(false);
-        void runtime.session.receiveMessages(incoming);
+        void runtime.session.receiveMessages(page.page);
       },
-      { limit },
+      { limit: MESSAGE_PAGE_SIZE },
     );
     // The session owns the plaintext cache; mirror its events into React state
     // so a message opened by any subscription path (not just this one) renders.
@@ -95,12 +124,15 @@ export function useChannelSession(
       setReadStateLoaded(true);
     });
     return () => {
-      offMessages();
+      offTail();
       offDecrypted();
       offTyping();
       offRead();
     };
-  }, [runtime, channelId, limit]);
+  }, [runtime, channelId]);
+
+  // Release any remaining history subscriptions on unmount.
+  useEffect(() => releaseOlder, [releaseOlder]);
 
   // Typing rows carry an expiry the server cannot push; tick while anyone is
   // typing so stale "is typing…" lines disappear on time.
@@ -112,8 +144,49 @@ export function useChannelSession(
     return () => clearInterval(timer);
   }, [typers]);
 
+  const loadOlder = useCallback(() => {
+    if (runtime === undefined || channelId === undefined || loadingOlder) {
+      return;
+    }
+    const last = olderPages.at(-1);
+    const cursor = last === undefined ? tailNext : last.nextCursor;
+    if (cursor === null || cursor === undefined || olderOffs.current.has(cursor)) {
+      return;
+    }
+    setLoadingOlder(true);
+    const off = runtime.watchChannelMessages(
+      channelId,
+      (page) => {
+        if (channelRef.current !== channelId) {
+          return;
+        }
+        const entry: OlderPage = {
+          cursor,
+          messages: page.page,
+          nextCursor: page.isDone ? null : page.continueCursor,
+        };
+        setOlderPages((current) => [...current.filter((item) => item.cursor !== cursor), entry]);
+        setLoadingOlder(false);
+        void runtime.session.receiveMessages(page.page);
+      },
+      { limit: MESSAGE_PAGE_SIZE, cursor },
+    );
+    olderOffs.current.set(cursor, off);
+  }, [runtime, channelId, loadingOlder, olderPages, tailNext]);
+
+  const messages = useMemo(() => {
+    const merged: MessagePayload[] = [];
+    for (let index = olderPages.length - 1; index >= 0; index -= 1) {
+      const page = olderPages[index];
+      if (page !== undefined) {
+        merged.push(...page.messages);
+      }
+    }
+    merged.push(...tail);
+    return merged;
+  }, [olderPages, tail]);
+
   const visibleTypers = useMemo(() => activeTypers(typers, userId, now), [typers, userId, now]);
-  const loadOlder = useCallback(() => setLimit((current) => current + MESSAGE_PAGE_SIZE), []);
 
   const unread = useMemo(
     () =>
@@ -134,6 +207,8 @@ export function useChannelSession(
     [messages, readState, userId],
   );
 
+  const hasOlder = (olderPages.length === 0 ? tailNext : olderPages.at(-1)?.nextCursor) !== null;
+
   return {
     messages,
     decrypted,
@@ -141,8 +216,9 @@ export function useChannelSession(
     readState,
     readStateLoaded,
     unread,
-    hasOlder: messages.length >= limit,
+    hasOlder,
     loading,
+    loadingOlder,
     loadOlder,
   };
 }

@@ -69,3 +69,40 @@ describe("reactions.toggle", () => {
     ).rejects.toThrow("Missing permission");
   });
 });
+
+describe("reactions.listForMessages", () => {
+  it("batches reactions, dedupes ids and skips messages in unviewable channels", async () => {
+    const { t, channelId, messageId, asUser1 } = await setup();
+    const asUser2 = t.withIdentity({ subject: "user-2" });
+
+    const secondMessageId = await asUser1.mutation(api.messages.send, {
+      channelId,
+      body: "c2Vjb25k",
+    });
+    await asUser1.mutation(api.reactions.toggle, { messageId, emoji: "👍" });
+    await asUser2.mutation(api.reactions.toggle, { messageId, emoji: "🎉" });
+    await asUser1.mutation(api.reactions.toggle, { messageId: secondMessageId, emoji: "👍" });
+
+    // A private channel user-1 is not a member of; its message must be skipped.
+    const privateChannelId = await seedChannel(t, { private: true, memberIds: ["user-2"] });
+    const hiddenMessageId = await asUser2.mutation(api.messages.send, {
+      channelId: privateChannelId,
+      body: "aGlkZGVu",
+    });
+    await asUser2.mutation(api.reactions.toggle, { messageId: hiddenMessageId, emoji: "🔥" });
+
+    const reactions = await asUser1.query(api.reactions.listForMessages, {
+      messageIds: [messageId, messageId, secondMessageId, hiddenMessageId],
+    });
+
+    // `messageId` is passed twice but its two reactions appear exactly once each.
+    expect(reactions).toHaveLength(3);
+    expect(reactions.filter((r) => r.messageId === hiddenMessageId)).toHaveLength(0);
+    const first = reactions.filter((r) => r.messageId === messageId);
+    expect(first.map((r) => r.emoji).sort()).toEqual(["🎉", "👍"]);
+    expect(first.map((r) => r.userId).sort()).toEqual(["user-1", "user-2"]);
+    expect(reactions.filter((r) => r.messageId === secondMessageId).map((r) => r.emoji)).toEqual([
+      "👍",
+    ]);
+  });
+});

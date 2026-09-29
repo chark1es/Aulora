@@ -1,0 +1,25 @@
+# Cargo configuration for the Aulora desktop shell.
+#
+# `git-fetch-with-cli` fetches crates through the system `git` instead of
+# libgit2, which avoids stalls behind proxies and on corporate networks.
+[net]
+git-fetch-with-cli = true
+
+# Keep incremental artifacts between builds. scripts/build.mjs layers sccache on
+# top of this for cross-run compiler caching.
+[build]
+incremental = true
+
+# ---------------------------------------------------------------------------
+# Cross-compiling the Windows NSIS installer from macOS/Linux with cargo-xwin.
+#
+# Leave this commented out: CI and native Windows builds must use the real MSVC
+# toolchain. `scripts/build.mjs --target windows` passes the runner and target on
+# the command line instead, which is the recommended path. Uncomment only if you
+# want a bare `cargo build` on a non-Windows host to cross-compile.
+#
+# [target.x86_64-pc-windows-msvc]
+# # llvm's lld-link does the linking; cargo-xwin supplies the MSVC CRT/SDK.
+# linker = "lld-link"
+# runner = "cargo-xwin"
+# ---------------------------------------------------------------------------

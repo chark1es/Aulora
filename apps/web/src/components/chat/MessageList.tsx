@@ -1,7 +1,7 @@
 import type {
   AttachmentDescriptor,
   MessagePayload,
-  ReactionRow,
+  MessageReactionRow,
   TimelineItem,
   TypingRow,
 } from "@aulora/core";
@@ -79,6 +79,9 @@ export interface MessageListProps {
 
 const QUICK_REACTIONS = ["👍", "❤️", "😂", "🎉", "👀"] as const;
 
+/** Stable empty value so rows without reactions do not re-render needlessly. */
+const NO_REACTIONS: readonly ReactionGroup[] = [];
+
 /** Within this distance of the bottom the list follows new messages. */
 const STICK_THRESHOLD_PX = 96;
 /** Within this distance of the top the list fetches older history. */
@@ -113,6 +116,27 @@ export function MessageList(props: MessageListProps) {
     () => buildTimeline(messages, { firstUnreadId }),
     [messages, firstUnreadId],
   );
+
+  // One batched reactions subscription for the whole timeline, chunked by the
+  // adapter, instead of one live query per rendered message.
+  const messageIds = useMemo(
+    () => items.flatMap((item) => (item.kind === "message" ? [item.message.id] : [])),
+    [items],
+  );
+  const [reactionsByMessage, setReactionsByMessage] = useState<
+    ReadonlyMap<string, readonly ReactionGroup[]>
+  >(() => new Map());
+  const subscriptions = props.runtime?.subscriptions;
+  const ownUserId = props.ownUserId;
+  useEffect(() => {
+    if (subscriptions?.watchReactionsBatch === undefined || messageIds.length === 0) {
+      setReactionsByMessage((current) => (current.size === 0 ? current : new Map()));
+      return;
+    }
+    return subscriptions.watchReactionsBatch(messageIds, (rows: readonly MessageReactionRow[]) => {
+      setReactionsByMessage(groupReactionsByMessage(rows, ownUserId));
+    });
+  }, [subscriptions, messageIds, ownUserId]);
 
   const scrollToBottom = useCallback((behavior: ScrollBehavior = "auto") => {
     const node = scrollRef.current;
@@ -232,7 +256,14 @@ export function MessageList(props: MessageListProps) {
           ) : messages.length === 0 ? (
             props.emptyState
           ) : (
-            items.map((item) => <TimelineRow key={item.key} item={item} list={props} />)
+            items.map((item) => (
+              <TimelineRow
+                key={item.key}
+                item={item}
+                list={props}
+                reactionsByMessage={reactionsByMessage}
+              />
+            ))
           )}
           {typers.length > 0 && (
             <TypingBubble typers={typers} memberNames={memberNames} memberColors={memberColors} />
@@ -261,9 +292,11 @@ export function MessageList(props: MessageListProps) {
 function TimelineRow({
   item,
   list,
+  reactionsByMessage,
 }: {
   readonly item: TimelineItem;
   readonly list: MessageListProps;
+  readonly reactionsByMessage: ReadonlyMap<string, readonly ReactionGroup[]>;
 }) {
   if (item.kind === "day") {
     return (
@@ -287,28 +320,29 @@ function TimelineRow({
       </div>
     );
   }
-  return <MessageRow list={list} message={item.message} startsGroup={item.startsGroup} />;
+  return (
+    <MessageRow
+      list={list}
+      message={item.message}
+      startsGroup={item.startsGroup}
+      reactions={reactionsByMessage.get(item.message.id) ?? NO_REACTIONS}
+    />
+  );
 }
 
 function MessageRow({
   list,
   message,
   startsGroup,
+  reactions,
 }: {
   readonly list: MessageListProps;
   readonly message: MessagePayload;
   readonly startsGroup: boolean;
+  readonly reactions: readonly ReactionGroup[];
 }) {
-  const {
-    runtime,
-    channelId,
-    ownUserId,
-    ownName,
-    permissions,
-    memberNames,
-    memberColors,
-    mentionNames,
-  } = list;
+  const { runtime, ownUserId, ownName, permissions, memberNames, memberColors, mentionNames } =
+    list;
   const own = message.authorId === ownUserId;
   const mirror = (list.ownSide ?? "left") === "right" && own;
   const pending = list.pendingIds.has(message.id);
@@ -339,7 +373,6 @@ function MessageRow({
   const [draft, setDraft] = useState(text ?? "");
   const [confirmDelete, setConfirmDelete] = useState(false);
   const [pickerOpen, setPickerOpen] = useState(false);
-  const [reactions, setReactions] = useState<readonly ReactionGroup[]>([]);
 
   const canModerate = hasPermission(permissions, Permission.ManageMessages);
   const canEdit = own;
@@ -439,25 +472,6 @@ function MessageRow({
     }
   };
 
-  // biome-ignore lint/correctness/useExhaustiveDependencies: re-subscribe only when the message/runtime changes
-  useEffect(() => {
-    if (runtime === undefined || unsent) {
-      return;
-    }
-    let cancelled = false;
-    const off = runtime.subscriptions.watchReactions(message.id, (rows: readonly ReactionRow[]) => {
-      void runtime.session.loadReactions(channelId, message.id, rows).then((resolved) => {
-        if (!cancelled) {
-          setReactions(groupReactions(resolved, ownUserId));
-        }
-      });
-    });
-    return () => {
-      cancelled = true;
-      off();
-    };
-  }, [runtime, message.id, ownUserId, unsent]);
-
   useEffect(() => {
     if (!confirmDelete) {
       return;
@@ -471,6 +485,7 @@ function MessageRow({
       <article
         id={`message-${message.id}`}
         data-testid={`message-${message.id}`}
+        data-message-row
         className={cn("w-full py-0.5", startsGroup ? "mt-3" : "mt-0.5")}
       >
         <div className={cn("flex w-full items-start gap-2.5", mirror && "flex-row-reverse")}>
@@ -691,6 +706,7 @@ function MessageRow({
     <article
       id={`message-${message.id}`}
       data-testid={`message-${message.id}`}
+      data-message-row
       onContextMenu={openContextMenu}
       className={cn(
         "group/message relative w-full py-0.5 transition-colors",
@@ -931,4 +947,25 @@ function groupReactions(
     groups.set(reaction.emoji, group);
   }
   return [...groups.values()];
+}
+
+/** Groups a batched reactions page by message id for the timeline rows. */
+function groupReactionsByMessage(
+  rows: readonly MessageReactionRow[],
+  ownUserId: string,
+): Map<string, readonly ReactionGroup[]> {
+  const byMessage = new Map<string, { userId: string; emoji: string }[]>();
+  for (const row of rows) {
+    const list = byMessage.get(row.messageId);
+    if (list === undefined) {
+      byMessage.set(row.messageId, [{ userId: row.userId, emoji: row.emoji }]);
+    } else {
+      list.push({ userId: row.userId, emoji: row.emoji });
+    }
+  }
+  const grouped = new Map<string, readonly ReactionGroup[]>();
+  for (const [messageId, list] of byMessage) {
+    grouped.set(messageId, groupReactions(list, ownUserId));
+  }
+  return grouped;
 }

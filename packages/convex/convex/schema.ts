@@ -195,6 +195,10 @@ export default defineSchema({
     // Convex appends `_creationTime` to every index, so this is
     // (channelId, _creationTime): chronological messages per channel.
     .index("by_channel_created", ["channelId"])
+    // Roots-only timeline: `threadRootId` is absent for roots, and Convex
+    // indexes a missing optional field as `undefined`, so an equality of
+    // `undefined` selects exactly the roots without scanning replies.
+    .index("by_channel_thread", ["channelId", "threadRootId"])
     .index("by_thread", ["threadRootId"])
     .index("by_channel_pinned", ["channelId", "pinnedAt"]),
 

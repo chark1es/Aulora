@@ -55,6 +55,40 @@ describe("messages.send and list", () => {
     );
   });
 
+  it("lists only root messages oldest-first and pages into older history", async () => {
+    const t = newTest();
+    await seedWorkspace(t, { members: [{ userId: "user-1" }] });
+    const channelId = await seedChannel(t);
+    const asUser = t.withIdentity({ subject: "user-1" });
+
+    const oldest = await asUser.mutation(api.messages.send, { channelId, body: "b2xkZXN0" });
+    const middle = await asUser.mutation(api.messages.send, { channelId, body: "bWlkZGxl" });
+    const root = await asUser.mutation(api.messages.send, { channelId, body: "cm9vdA==" });
+    const reply = await asUser.mutation(api.messages.send, {
+      channelId,
+      body: "cmVwbHk=",
+      threadRootId: root,
+    });
+
+    const first = await asUser.query(api.messages.list, {
+      channelId,
+      paginationOpts: { numItems: 2, cursor: null },
+    });
+    // Oldest-first within the page, and the thread reply is never a root row.
+    expect(first.page.map((m) => m.id)).toEqual([middle, root]);
+    expect(first.page.map((m) => m.body)).toEqual(["bWlkZGxl", "cm9vdA=="]);
+    expect(first.isDone).toBe(false);
+
+    // The continuation cursor walks into older root history.
+    const second = await asUser.query(api.messages.list, {
+      channelId,
+      paginationOpts: { numItems: 2, cursor: first.continueCursor },
+    });
+    expect(second.page.map((m) => m.id)).toEqual([oldest]);
+    expect(second.isDone).toBe(true);
+    expect(second.page.some((m) => m.id === reply)).toBe(false);
+  });
+
   it("keeps showing new messages once a channel outgrows one page", async () => {
     const t = newTest();
     await seedWorkspace(t, { members: [{ userId: "user-1" }] });

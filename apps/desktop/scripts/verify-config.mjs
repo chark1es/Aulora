@@ -40,7 +40,7 @@ function parseCsp(csp) {
 const config = readJson("tauri.conf.json");
 if (config !== null) {
   check("productName must be Aulora", config.productName === "Aulora");
-  check("identifier must be app.aulora.desktop", config.identifier === "app.aulora.desktop");
+  check("identifier must be dev.spwnd.aulora", config.identifier === "dev.spwnd.aulora");
   check(
     "frontendDist must point at the web build",
     typeof config.build?.frontendDist === "string" &&

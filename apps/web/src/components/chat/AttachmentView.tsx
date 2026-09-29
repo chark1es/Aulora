@@ -1,6 +1,6 @@
 import type { AttachmentDescriptor } from "@aulora/core";
 import { Text } from "@aulora/ui-web";
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { loadAttachmentUrl, loadThumbnailUrl } from "../../lib/attachments";
 import type { ChatRuntime } from "../../lib/chat-runtime";
 import { blurhashToDataUrl } from "../../lib/image";
@@ -32,9 +32,35 @@ export function AttachmentView({ runtime, descriptor }: AttachmentViewProps) {
   const [fullUrl, setFullUrl] = useState<string | undefined>(undefined);
   const [error, setError] = useState<string | undefined>(undefined);
   const [busy, setBusy] = useState(false);
+  // Defer thumbnail download until the image is near the viewport, so a long
+  // channel does not fetch every image's bytes as soon as it loads.
+  const [visible, setVisible] = useState(false);
+  const buttonRef = useRef<HTMLButtonElement | null>(null);
 
   useEffect(() => {
-    if (runtime === undefined || !isImage) {
+    if (visible) {
+      return;
+    }
+    const node = buttonRef.current;
+    if (node === null || typeof IntersectionObserver === "undefined") {
+      setVisible(true);
+      return;
+    }
+    const observer = new IntersectionObserver(
+      (entries) => {
+        if (entries.some((entry) => entry.isIntersecting)) {
+          setVisible(true);
+          observer.disconnect();
+        }
+      },
+      { rootMargin: "600px 0px" },
+    );
+    observer.observe(node);
+    return () => observer.disconnect();
+  }, [visible]);
+
+  useEffect(() => {
+    if (runtime === undefined || !isImage || !visible) {
       return;
     }
     let cancelled = false;
@@ -57,7 +83,7 @@ export function AttachmentView({ runtime, descriptor }: AttachmentViewProps) {
         URL.revokeObjectURL(objectUrl);
       }
     };
-  }, [runtime, descriptor, isImage]);
+  }, [runtime, descriptor, isImage, visible]);
 
   const openFull = useCallback(() => {
     if (runtime === undefined || fullUrl !== undefined) {
@@ -101,7 +127,7 @@ export function AttachmentView({ runtime, descriptor }: AttachmentViewProps) {
   // If the dedicated thumbnail is unavailable, show the full image
   // as the inline preview instead, so an image always renders.
   useEffect(() => {
-    if (runtime === undefined || !isImage || !thumbnailError) {
+    if (runtime === undefined || !isImage || !thumbnailError || !visible) {
       return;
     }
     let cancelled = false;
@@ -119,7 +145,7 @@ export function AttachmentView({ runtime, descriptor }: AttachmentViewProps) {
     return () => {
       cancelled = true;
     };
-  }, [runtime, descriptor, isImage, thumbnailError]);
+  }, [runtime, descriptor, isImage, thumbnailError, visible]);
 
   const download = useCallback(() => {
     if (runtime === undefined) {
@@ -152,6 +178,7 @@ export function AttachmentView({ runtime, descriptor }: AttachmentViewProps) {
     return (
       <>
         <button
+          ref={buttonRef}
           type="button"
           onClick={openFull}
           data-testid={`attachment-${descriptor.fileId}`}
@@ -168,6 +195,8 @@ export function AttachmentView({ runtime, descriptor }: AttachmentViewProps) {
               src={thumbnailUrl}
               alt={descriptor.name}
               data-testid={`thumbnail-${descriptor.fileId}`}
+              loading="lazy"
+              decoding="async"
               className="h-auto w-full"
             />
           ) : (
@@ -194,6 +223,7 @@ export function AttachmentView({ runtime, descriptor }: AttachmentViewProps) {
               src={fullUrl}
               alt={descriptor.name}
               data-testid={`fullimage-${descriptor.fileId}`}
+              decoding="async"
               className="max-h-full max-w-full rounded-card"
             />
           </div>

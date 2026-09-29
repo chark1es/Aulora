@@ -39,6 +39,7 @@ coverage/
 .expo-shared/
 .tauri/
 src-tauri/target/
+.cache/
 apps/mobile/.expo/
 
 # spike build artifacts

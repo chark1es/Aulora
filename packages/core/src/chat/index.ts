@@ -22,6 +22,7 @@ export type {
   ChatSubscriptions,
   DeviceRow,
   MessagePayload,
+  MessageReactionRow,
   Paginated,
   PresenceRow,
   ReactionRow,

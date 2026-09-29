@@ -95,6 +95,17 @@
 
 @layer utilities {
   /*
+   * Off-screen message rows skip layout and paint while staying in the DOM, so
+   * a channel can hold thousands of loaded messages without every row costing
+   * render time. `contain-intrinsic-size: auto` remembers each row's last
+   * measured height, which keeps scroll position and anchoring stable.
+   */
+  [data-message-row] {
+    content-visibility: auto;
+    contain-intrinsic-size: auto 56px;
+  }
+
+  /*
    * Stagger helper: apply `.stagger` to a list and each direct child animates
    * in sequence. The delay caps at 8 items so long lists never feel slow.
    */

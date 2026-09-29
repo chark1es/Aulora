@@ -121,6 +121,14 @@ export const send = mutation({
         lastReplyAt: reply?._creationTime ?? Date.now(),
       });
     }
+    // Burst behavior: every message enqueues two zero-delay jobs (web push and
+    // mobile push), so a burst of thousands of messages enqueues two jobs per
+    // message. `notifications.ts` has no safe coalescing helper — each dispatch
+    // resolves recipients and targets per message and swallows delivery when the
+    // transport is unconfigured — so we intentionally leave the two independent
+    // jobs rather than invent one. The cost is scheduler fan-out, not delivery
+    // semantics.
+    //
     // Resolve recipients and send content-free Web Push wakes asynchronously;
     // the action no-ops when VAPID is not configured.
     await ctx.scheduler.runAfter(0, internal.notifications.dispatchForMessage, { messageId });
@@ -145,8 +153,9 @@ export const list = query({
     await requireChannelAccess(ctx, args.channelId, Permission.ReadHistory);
     const result = await ctx.db
       .query("messages")
-      .withIndex("by_channel_created", (q) => q.eq("channelId", args.channelId))
-      .filter((q) => q.eq(q.field("threadRootId"), undefined))
+      .withIndex("by_channel_thread", (q) =>
+        q.eq("channelId", args.channelId).eq("threadRootId", undefined),
+      )
       .order("desc")
       .paginate(args.paginationOpts);
     return { ...result, page: (await toMessages(result.page)).reverse() };

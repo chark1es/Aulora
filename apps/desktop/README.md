@@ -44,6 +44,34 @@ bun run tauri:build  # production bundle for the current OS
 `src-tauri/icons/` is generated and gitignored; run `bun run icons` before a
 local `tauri:build`. CI runs it automatically.
 
+## Building
+
+```sh
+bun run build:macos            # native macOS .app + .dmg
+bun run build:windows          # Windows NSIS installer, cross-built from macOS
+bun run build:windows:native   # Windows NSIS on a Windows host
+node scripts/build.mjs --target linux  # Linux .deb (cross from macOS via cargo-zigbuild)
+bun run build:all              # macOS, then Windows
+bun run cache:setup            # report sccache / print install instructions
+```
+
+`scripts/build.mjs` wraps `tauri build` and injects sccache when it is on `PATH`
+or at `~/.cargo/bin/sccache`; install it with `cargo install --locked sccache`.
+The cache lives in `.cache/sccache` (gitignored); pass `--no-cache` to disable it.
+
+Cross-compiling the Windows NSIS installer from macOS:
+
+```sh
+cargo install --locked cargo-xwin
+rustup target add x86_64-pc-windows-msvc
+brew install llvm && export PATH="/opt/homebrew/opt/llvm/bin:$PATH"
+bun run build:windows
+```
+
+The installer lands in
+`src-tauri/target/x86_64-pc-windows-msvc/release/bundle/nsis/`. **MSI/WiX needs a
+Windows host**; cargo-xwin only produces NSIS.
+
 ## Verification
 
 `bun run verify` checks the configs and CSP locally. The Rust shell itself can

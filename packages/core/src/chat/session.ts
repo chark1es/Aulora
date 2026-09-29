@@ -11,7 +11,6 @@
  * only need to change the shape of what they pass, not the UI.
  */
 
-import { parseAttachmentDescriptor } from "../attachments.js";
 import type {
   AttachmentDescriptor,
   ChannelSummary,
@@ -58,6 +57,9 @@ export interface ReactionPayload {
 
 /** Placeholder label for a channel whose plaintext name is not known. */
 const FALLBACK_CHANNEL_NAME = "channel";
+
+/** Shared empty list so a message without attachments returns a stable value. */
+const EMPTY_ATTACHMENTS: readonly AttachmentDescriptor[] = [];
 
 interface OpenChannelState {
   readonly unsubscribers: (() => void)[];
@@ -118,6 +120,15 @@ export class ChatSession {
   private latestMessages: readonly MessagePayload[] = [];
   private readonly decrypted = new Map<string, string>();
   private readonly bodies = new Map<string, MessagePayloadBody>();
+  /**
+   * Resolved attachment descriptors keyed by file id, and per-message parsed
+   * lists. Caching both means a live message update never re-fetches file
+   * metadata or re-validates descriptors that have not changed: a channel with
+   * thousands of messages still resolves each file at most once.
+   */
+  private readonly fileDescriptors = new Map<string, AttachmentDescriptor | null>();
+  private readonly messageAttachments = new Map<string, readonly AttachmentDescriptor[]>();
+  private readonly pendingFileIds = new Set<string>();
   private readonly messageListeners = new Set<(messages: readonly MessagePayload[]) => void>();
   private readonly decryptedListeners = new Set<(messages: readonly MessagePayload[]) => void>();
   private readonly reactionListeners = new Map<
@@ -204,6 +215,7 @@ export class ChatSession {
    */
   async receiveMessages(messages: readonly MessagePayload[]): Promise<void> {
     this.latestMessages = messages;
+    await this.hydrateAttachments(messages);
     for (const message of messages) {
       if (message.deletedAt !== null) {
         continue;
@@ -216,20 +228,82 @@ export class ChatSession {
           ? { replyToId: message.replyToId }
           : {}),
       };
+      const attachments = this.messageAttachments.get(message.id);
       this.decrypted.set(message.id, message.body);
-      this.bodies.set(message.id, base);
-      if (message.attachmentIds.length > 0) {
-        const attachments = await this.resolveAttachments(message.attachmentIds);
-        if (attachments.length > 0) {
-          this.bodies.set(message.id, { ...base, attachments });
-        }
-      }
+      this.bodies.set(
+        message.id,
+        attachments !== undefined && attachments.length > 0 ? { ...base, attachments } : base,
+      );
     }
     for (const listener of this.messageListeners) {
       listener(messages);
     }
     for (const listener of this.decryptedListeners) {
       listener(messages);
+    }
+  }
+
+  /**
+   * Resolves the attachment descriptors for a page of messages in one batched
+   * file read, reusing anything already cached. Files that are gone are cached
+   * as `null` so a missing upload is not retried on every live tick.
+   */
+  private async hydrateAttachments(messages: readonly MessagePayload[]): Promise<void> {
+    const needed: string[] = [];
+    for (const message of messages) {
+      if (message.deletedAt !== null || message.attachmentIds.length === 0) {
+        continue;
+      }
+      for (const fileId of message.attachmentIds) {
+        if (!this.fileDescriptors.has(fileId) && !this.pendingFileIds.has(fileId)) {
+          needed.push(fileId);
+        }
+      }
+    }
+    await this.ensureFileDescriptors(needed);
+    for (const message of messages) {
+      if (message.deletedAt !== null || message.attachmentIds.length === 0) {
+        continue;
+      }
+      const list: AttachmentDescriptor[] = [];
+      for (const fileId of message.attachmentIds) {
+        const descriptor = this.fileDescriptors.get(fileId);
+        if (descriptor !== undefined && descriptor !== null) {
+          list.push(descriptor);
+        }
+      }
+      this.messageAttachments.set(message.id, list);
+    }
+  }
+
+  private async ensureFileDescriptors(fileIds: readonly string[]): Promise<void> {
+    const needed = new Set<string>();
+    for (const fileId of fileIds) {
+      if (!this.fileDescriptors.has(fileId) && !this.pendingFileIds.has(fileId)) {
+        needed.add(fileId);
+      }
+    }
+    if (needed.size === 0) {
+      return;
+    }
+    const ids = [...needed];
+    for (const id of ids) {
+      this.pendingFileIds.add(id);
+    }
+    try {
+      const files = await this.port.getFiles({ fileIds: ids });
+      for (const file of files) {
+        this.fileDescriptors.set(file.id, descriptorFromStoredFile(file));
+      }
+      for (const id of ids) {
+        if (!this.fileDescriptors.has(id)) {
+          this.fileDescriptors.set(id, null);
+        }
+      }
+    } finally {
+      for (const id of ids) {
+        this.pendingFileIds.delete(id);
+      }
     }
   }
 
@@ -261,28 +335,17 @@ export class ChatSession {
 
   /** Validated attachment descriptors for a message, or an empty list. */
   attachmentsFor(messageId: string): readonly AttachmentDescriptor[] {
-    const attachments = this.bodies.get(messageId)?.attachments;
-    if (attachments === undefined) {
-      return [];
-    }
-    const parsed: AttachmentDescriptor[] = [];
-    for (const attachment of attachments) {
-      const descriptor = parseAttachmentDescriptor(attachment);
-      if (descriptor !== null) {
-        parsed.push(descriptor);
-      }
-    }
-    return parsed;
+    return this.messageAttachments.get(messageId) ?? EMPTY_ATTACHMENTS;
   }
 
   private async resolveAttachments(
     fileIds: readonly string[],
   ): Promise<readonly AttachmentDescriptor[]> {
-    const files = await this.port.getFiles({ fileIds });
+    await this.ensureFileDescriptors(fileIds);
     const descriptors: AttachmentDescriptor[] = [];
-    for (const file of files) {
-      const descriptor = descriptorFromStoredFile(file);
-      if (descriptor !== null) {
+    for (const fileId of fileIds) {
+      const descriptor = this.fileDescriptors.get(fileId);
+      if (descriptor !== undefined && descriptor !== null) {
         descriptors.push(descriptor);
       }
     }
@@ -345,6 +408,7 @@ export class ChatSession {
     await this.port.deleteMessage({ messageId });
     this.decrypted.delete(messageId);
     this.bodies.delete(messageId);
+    this.messageAttachments.delete(messageId);
   }
 
   async pinMessage(_channelId: string, messageId: string): Promise<void> {

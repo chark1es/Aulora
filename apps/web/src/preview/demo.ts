@@ -386,6 +386,12 @@ export async function createDemoWorkspace(): Promise<DemoWorkspace> {
       emit();
       return off;
     },
+    watchChannelMessages(channelId, onChange) {
+      // The demo seed fits in one page, so there is no older cursor.
+      return port.watchMessages(channelId, (messages) => {
+        onChange({ page: messages, isDone: true, continueCursor: "" });
+      });
+    },
   };
 
   return {

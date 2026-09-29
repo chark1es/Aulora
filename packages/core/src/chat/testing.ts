@@ -501,6 +501,35 @@ export function createMockPort(): MockPort {
         );
       };
     },
+    watchReactionsBatch(messageIds, onChange) {
+      const unique = [...new Set(messageIds)];
+      const emit = () =>
+        onChange(
+          unique.flatMap((messageId) =>
+            (state.reactions.get(messageId) ?? []).map((reaction) => ({
+              messageId,
+              ...reaction,
+            })),
+          ),
+        );
+      const registered = new Map<string, () => void>();
+      for (const messageId of unique) {
+        const listener = () => emit();
+        const list = reactionListeners.get(messageId) ?? [];
+        list.push(listener);
+        reactionListeners.set(messageId, list);
+        registered.set(messageId, listener);
+      }
+      emit();
+      return () => {
+        for (const [messageId, listener] of registered) {
+          reactionListeners.set(
+            messageId,
+            (reactionListeners.get(messageId) ?? []).filter((entry) => entry !== listener),
+          );
+        }
+      };
+    },
     watchPresence(onChange) {
       presenceListeners.push(onChange);
       onChange(state.presence);

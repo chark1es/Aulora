@@ -95,6 +95,11 @@ export interface ReactionRow {
   readonly emoji: string;
 }
 
+/** One reaction keyed by the message it belongs to, for batched reads. */
+export interface MessageReactionRow extends ReactionRow {
+  readonly messageId: string;
+}
+
 export interface PresenceRow {
   readonly userId: string;
   readonly status: "online" | "idle" | "dnd" | "offline";
@@ -244,6 +249,15 @@ export interface ChatSubscriptions {
   watchReactions(
     messageId: string,
     onChange: (reactions: readonly ReactionRow[]) => void,
+  ): () => void;
+  /**
+   * Live reactions for a page of messages in one subscription, so a long
+   * timeline does not open one query per rendered message. Optional: adapters
+   * that do not implement it fall back to {@link watchReactions} per message.
+   */
+  watchReactionsBatch?(
+    messageIds: readonly string[],
+    onChange: (rows: readonly MessageReactionRow[]) => void,
   ): () => void;
   /** Live presence for the workspace. */
   watchPresence(onChange: (presence: readonly PresenceRow[]) => void): () => void;

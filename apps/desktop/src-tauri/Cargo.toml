@@ -26,3 +26,16 @@ serde_json = "1"
 # Used by `tauri build` for production; the desktop shell loads the bundled web
 # client instead of the dev server.
 custom-protocol = ["tauri/custom-protocol"]
+
+# Reuse build artifacts between debug builds for fast edit/compile loops.
+[profile.dev]
+incremental = true
+
+# Small, fast release binaries for `tauri build` (Tauri's recommended profile).
+[profile.release]
+codegen-units = 1
+lto = true
+opt-level = "s"
+panic = "abort"
+strip = true
+incremental = false

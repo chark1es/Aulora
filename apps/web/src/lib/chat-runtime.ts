@@ -3,6 +3,7 @@ import {
   type ChatPort,
   ChatSession,
   type MessagePayload,
+  type Paginated,
   type ChatSubscriptions as Subscriptions,
 } from "@aulora/core";
 import type { ConvexReactClient } from "convex/react";
@@ -26,6 +27,18 @@ export interface ChatRuntime {
   watchThread(
     threadRootId: string,
     onChange: (messages: readonly MessagePayload[]) => void,
+  ): () => void;
+  /**
+   * Live page of root messages, walking backwards from the newest when `cursor`
+   * is `null` or from `cursor` when loading older history. Unlike the plain
+   * `watchMessages` subscription this exposes `isDone`/`continueCursor`, so the
+   * viewer can walk history page by page instead of re-requesting a growing
+   * window on every scroll (which re-decrypts and re-sends the whole history).
+   */
+  watchChannelMessages(
+    channelId: string,
+    onChange: (page: Paginated<MessagePayload>) => void,
+    options?: { readonly limit?: number; readonly cursor?: string | null },
   ): () => void;
 }
 
@@ -62,7 +75,37 @@ export async function createChatRuntime(options: CreateChatRuntimeOptions): Prom
     };
   }
 
-  return { session, port, subscriptions, client: options.client, watchThread };
+  function watchChannelMessages(
+    channelId: string,
+    onChange: (page: Paginated<MessagePayload>) => void,
+    watchOptions: { readonly limit?: number; readonly cursor?: string | null } = {},
+  ): () => void {
+    const watch = options.client.watchQuery(api.messages.list, {
+      channelId: channelId as never,
+      paginationOpts: {
+        numItems: watchOptions.limit ?? 100,
+        cursor: watchOptions.cursor ?? null,
+      },
+    });
+    const unsubscribe = watch.onUpdate(() => {
+      const value = watch.localQueryResult();
+      if (value !== undefined) {
+        onChange(value);
+      }
+    });
+    return () => {
+      unsubscribe();
+    };
+  }
+
+  return {
+    session,
+    port,
+    subscriptions,
+    client: options.client,
+    watchThread,
+    watchChannelMessages,
+  };
 }
 
 export type { ChannelSummary };

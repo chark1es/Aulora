@@ -3,6 +3,7 @@ import type {
   ChatPort,
   ChatSubscriptions,
   MessagePayload,
+  MessageReactionRow,
   Paginated,
   PresenceRow,
   ReactionRow,
@@ -24,6 +25,9 @@ import { api } from "../../../../packages/convex/convex/_generated/api";
  */
 
 const PAGE = { numItems: 100, cursor: null } as const;
+
+/** Message ids per reactions batch; matches the server's `listForMessages` cap. */
+const REACTION_BATCH_SIZE = 100;
 
 interface ServerChannel {
   readonly id: string;
@@ -328,6 +332,35 @@ export function convexSubscriptions(client: ConvexReactClient): ChatSubscription
     },
     watchReactions(messageId, onChange) {
       return watch<ReactionRow[]>(api.reactions.list, { messageId }, onChange);
+    },
+    watchReactionsBatch(messageIds, onChange) {
+      // One subscription per 100-message chunk, so a timeline of thousands of
+      // messages costs a handful of queries instead of one per row.
+      const unique = [...new Set(messageIds)];
+      if (unique.length === 0) {
+        onChange([]);
+        return () => undefined;
+      }
+      const chunks: string[][] = [];
+      for (let index = 0; index < unique.length; index += REACTION_BATCH_SIZE) {
+        chunks.push(unique.slice(index, index + REACTION_BATCH_SIZE));
+      }
+      const latest = new Map<number, readonly MessageReactionRow[]>();
+      const offs = chunks.map((chunk, index) =>
+        watch<MessageReactionRow[]>(
+          api.reactions.listForMessages,
+          { messageIds: chunk as never[] },
+          (rows) => {
+            latest.set(index, rows);
+            onChange([...latest.values()].flat());
+          },
+        ),
+      );
+      return () => {
+        for (const off of offs) {
+          off();
+        }
+      };
     },
     watchPresence(onChange) {
       return watch<PresenceRow[]>(api.presence.list, {}, onChange);
