@@ -16,6 +16,8 @@
     "icons": "tauri icon src-tauri/app-icon.png",
     "make:icons": "node scripts/make-icon.mjs",
     "verify": "node scripts/verify-config.mjs",
+    "winget": "node scripts/winget.mjs",
+    "test:winget": "bun test scripts/winget.test.mjs",
     "lint": "biome check .",
     "format": "biome format --write ."
   },

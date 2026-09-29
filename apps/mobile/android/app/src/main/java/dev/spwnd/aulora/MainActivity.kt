@@ -1,4 +1,4 @@
-package app.aulora.android
+package dev.spwnd.aulora
 
 import android.os.Build
 import android.os.Bundle

@@ -186,7 +186,7 @@ test("loadRelayConfig enables only fully configured providers", () => {
     PUSH_RELAY_PORT: "9000",
     APNS_KEY_ID: "kid",
     APNS_TEAM_ID: "team",
-    APNS_TOPIC: "app.aulora.ios",
+    APNS_TOPIC: "dev.spwnd.aulora",
     APNS_KEY_PATH: "/keys/apns.p8",
     FCM_PROJECT_ID: "proj",
     FCM_ACCESS_TOKEN: "fcm-token",

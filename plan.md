@@ -11,7 +11,7 @@ One-line pitch: *Secure team chat on your own server.*
 - A search on Sep 25, 2026 found no app or software product named Aulora (only a Malaysian clothing line, a novel and a baby-name listing)
 - Because it is coined, domains, store names and trademarks are far more likely to be free than any dictionary word
 - Before committing: USPTO search in the software class, `aulora.app` / `aulora.chat` / `getaulora.com` domains, `@aulora` npm and GitHub orgs, reserve the App Store name early
-- Bundle IDs: `app.aulora.ios`, `app.aulora.android`, URL scheme `aulora://`
+- Bundle ID on all platforms: `dev.spwnd.aulora`, URL scheme `aulora://`
 
 ## Goals and non-goals
 

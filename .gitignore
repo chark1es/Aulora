@@ -8,6 +8,22 @@ node_modules/
 .env.*
 !.env.example
 
+# Private release credentials. Keep signing and push files out of Git even
+# when native build tools copy them outside the private credentials directory.
+/.secrets/
+*.p8
+*.p12
+*.pfx
+*.jks
+*.keystore
+*.mobileprovision
+*.provisionprofile
+google-services.json
+GoogleService-Info.plist
+credentials.json
+*service-account*.json
+*firebase-adminsdk*.json
+
 # infra/generated secrets and well-known documents (never commit real values)
 infra/docker/.env
 infra/docker/.env.generated

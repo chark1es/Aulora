@@ -28,7 +28,7 @@
 			<key>CFBundleURLSchemes</key>
 			<array>
 				<string>aulora</string>
-				<string>app.aulora.ios</string>
+				<string>dev.spwnd.aulora</string>
 			</array>
 		</dict>
 	</array>

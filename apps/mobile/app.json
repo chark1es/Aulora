@@ -8,10 +8,10 @@
     "userInterfaceStyle": "automatic",
     "ios": {
       "supportsTablet": true,
-      "bundleIdentifier": "app.aulora.ios"
+      "bundleIdentifier": "dev.spwnd.aulora"
     },
     "android": {
-      "package": "app.aulora.android",
+      "package": "dev.spwnd.aulora",
       "adaptiveIcon": {
         "backgroundColor": "#18181A"
       },
