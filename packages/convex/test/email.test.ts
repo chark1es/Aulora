@@ -18,10 +18,13 @@ describe("email config", () => {
       smtpGatewayUrl: undefined,
     });
 
-    expect(parseEmailConfig({ SMTP_GATEWAY_URL: "http://bridge/send" })).toMatchObject({
+    expect(
+      parseEmailConfig({ SMTP_GATEWAY_URL: "http://bridge/send", SMTP_HOST: "smtp.example.com" }),
+    ).toMatchObject({
       provider: "smtp",
       smtpGatewayUrl: "http://bridge/send",
     });
+    expect(parseEmailConfig({ SMTP_GATEWAY_URL: "http://bridge/send" }).provider).toBe("none");
   });
 
   it("infers `none` and falls back to a default sender", () => {

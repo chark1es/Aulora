@@ -48,7 +48,7 @@ export function CallControls({
   compact = false,
 }: CallControlsProps) {
   const size = compact ? "h-9 w-9" : "h-11 w-11";
-  const icon = compact ? 16 : 19;
+  const icon = compact ? 18 : 21;
   return (
     <div className={cn("flex items-center justify-center gap-1.5", compact ? "gap-1" : "gap-1.5")}>
       {canSpeak && (
@@ -124,7 +124,7 @@ export function CallControls({
       )}
 
       <CallButton label="Leave call" active tone="danger-solid" size={size} onClick={onLeave}>
-        <Icon name="phone-off" size={icon} />
+        <Icon name="phone-hangup" size={icon} />
       </CallButton>
     </div>
   );

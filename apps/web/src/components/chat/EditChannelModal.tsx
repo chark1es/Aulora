@@ -274,7 +274,7 @@ export function EditChannelModal({
                             checked ? "border-accent bg-accent text-on-accent" : "border-border",
                           )}
                         >
-                          {checked && <Icon name="check" size={13} strokeWidth={2.5} />}
+                          {checked && <Icon name="check" size={13} />}
                         </span>
                       </button>
                     </li>
@@ -363,7 +363,7 @@ export function EditChannelModal({
                           checked ? "border-danger bg-danger text-on-accent" : "border-border",
                         )}
                       >
-                        {checked && <Icon name="check" size={13} strokeWidth={2.5} />}
+                        {checked && <Icon name="check" size={13} />}
                       </span>
                     </button>
                   </li>

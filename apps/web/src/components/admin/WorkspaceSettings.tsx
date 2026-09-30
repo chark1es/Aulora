@@ -124,7 +124,7 @@ export function WorkspaceSettings({ canManageWorkspace }: WorkspaceSettingsProps
 
   return (
     <form
-      className="flex max-w-[600px] flex-col gap-5"
+      className="flex w-full flex-col gap-5"
       data-testid="workspace-settings"
       onSubmit={(event) => {
         event.preventDefault();

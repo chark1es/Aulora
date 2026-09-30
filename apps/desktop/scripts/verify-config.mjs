@@ -2,6 +2,8 @@
 // the no-remote-code CSP posture, the deep-link scheme and the platform
 // overrides. Run `bun run verify`. This is a structural check, not a schema
 // validator; `tauri build` in CI is the final authority.
+
+import { Buffer } from "node:buffer";
 import { readFileSync } from "node:fs";
 import { dirname, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
@@ -81,6 +83,36 @@ if (config !== null) {
     (config.plugins?.["deep-link"]?.desktop?.schemes ?? []).includes("aulora"),
   );
 
+  const updater = config.plugins?.updater;
+  const pubkey = updater?.pubkey;
+  check("updater pubkey must be embedded", typeof pubkey === "string" && pubkey.length > 0);
+  if (typeof pubkey === "string") {
+    check(
+      "updater pubkey must not be a file path",
+      !pubkey.includes("/") && !pubkey.includes("\\"),
+    );
+    let decoded = "";
+    try {
+      decoded = Buffer.from(pubkey, "base64").toString("utf8");
+    } catch {
+      decoded = "";
+    }
+    check(
+      "updater pubkey must be the base64 minisign public key",
+      decoded.includes("untrusted comment: minisign public key:") && /\nRW/.test(decoded),
+    );
+  }
+  check(
+    "updater endpoint must be the GitHub latest.json feed",
+    (updater?.endpoints ?? []).includes(
+      "https://github.com/chark1es/Aulora/releases/latest/download/latest.json",
+    ),
+  );
+  check(
+    "default bundles must not require the updater signing key",
+    config.bundle?.createUpdaterArtifacts !== true,
+  );
+
   const icons = config.bundle?.icon ?? [];
   check(
     "bundle.icon must reference .icns and .ico",
@@ -116,6 +148,14 @@ if (linux !== null) {
   check(
     "Linux bundle target must be deb",
     JSON.stringify(linux.bundle?.targets) === JSON.stringify(["deb"]),
+  );
+}
+
+const release = readJson("tauri.release.conf.json");
+if (release !== null) {
+  check(
+    "release bundles must create updater artifacts",
+    release.bundle?.createUpdaterArtifacts === true,
   );
 }
 

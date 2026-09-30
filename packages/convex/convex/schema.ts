@@ -63,15 +63,75 @@ const callSignalKind = v.union(
 );
 
 export default defineSchema({
+  workspaceUpdate: defineTable({
+    currentVersion: v.string(),
+    latestVersion: v.union(v.string(), v.null()),
+    updateAvailable: v.boolean(),
+    notes: v.union(v.string(), v.null()),
+    error: v.union(v.string(), v.null()),
+    autoUpdate: v.boolean(),
+    phase: v.union(
+      v.literal("idle"),
+      v.literal("checking"),
+      v.literal("downloading"),
+      v.literal("ready"),
+      v.literal("restarting"),
+    ),
+    hostSeenAt: v.number(),
+    checkedAt: v.number(),
+    request: v.optional(v.union(v.literal("check"), v.literal("download"), v.literal("restart"))),
+  }),
   server: defineTable({
     name: v.string(),
     iconSeed: v.string(),
     ownerId: v.string(),
     settings: serverSettings,
     licenseKey: v.optional(v.string()),
+    licenseValidation: v.optional(
+      v.object({
+        keyHash: v.string(),
+        licenseId: v.optional(v.string()),
+        billingModel: v.optional(v.literal("monthly-active-users")),
+        state: v.union(
+          v.literal("unlicensed"),
+          v.literal("active"),
+          v.literal("expired"),
+          v.literal("invalid"),
+        ),
+        tier: v.union(v.literal("commercial"), v.literal("noncommercial"), v.null()),
+        licensee: v.union(v.string(), v.null()),
+        issuedAt: v.union(v.number(), v.null()),
+        expiresAt: v.union(v.number(), v.null()),
+        checkedAt: v.number(),
+        validUntil: v.number(),
+        note: v.string(),
+        tags: v.array(v.string()),
+        seats: v.number(),
+      }),
+    ),
     description: v.optional(v.string()),
     logoStorageId: v.optional(v.id("_storage")),
   }),
+
+  licenseReportKeys: defineTable({
+    licenseId: v.string(),
+    keyHash: v.string(),
+    ciphertext: v.string(),
+    instanceId: v.id("server"),
+  }).index("by_license", ["licenseId"]),
+  licenseActivity: defineTable({
+    licenseId: v.string(),
+    month: v.string(),
+    userId: v.string(),
+  }).index("by_license_month_user", ["licenseId", "month", "userId"]),
+  licenseUsageMonths: defineTable({
+    licenseId: v.string(),
+    month: v.string(),
+    activeUsers: v.number(),
+    reportedAt: v.optional(v.number()),
+    reportedUsers: v.optional(v.number()),
+    finalReported: v.optional(v.boolean()),
+  }).index("by_license_month", ["licenseId", "month"]),
 
   /**
    * Instance-level (operator) settings surfaced by the instance admin panel:
@@ -103,6 +163,18 @@ export default defineSchema({
         oidc: v.optional(v.boolean()),
       }),
     ),
+  }),
+
+  /** Owner-managed mail transport. Secrets are server-sealed and never returned by public queries. */
+  emailSettings: defineTable({
+    provider: v.union(v.literal("none"), v.literal("resend"), v.literal("smtp")),
+    from: v.string(),
+    resendApiKeyCiphertext: v.optional(v.string()),
+    smtpHost: v.optional(v.string()),
+    smtpPort: v.optional(v.number()),
+    smtpSecure: v.optional(v.boolean()),
+    smtpUser: v.optional(v.string()),
+    smtpPasswordCiphertext: v.optional(v.string()),
   }),
 
   /**
@@ -143,6 +215,9 @@ export default defineSchema({
   members: defineTable({
     userId: v.string(),
     nickname: v.optional(v.string()),
+    bioCiphertext: v.optional(v.string()),
+    /** Profile picture for this workspace. Absent means the generated avatar. */
+    avatarStorageId: v.optional(v.id("_storage")),
     roleIds: v.array(v.string()),
     joinedAt: v.number(),
     timeoutUntil: v.optional(v.number()),
@@ -288,6 +363,8 @@ export default defineSchema({
     status: presenceStatus,
     customStatusCiphertext: v.optional(v.string()),
     lastHeartbeat: v.number(),
+    /** Last heartbeat while visibly online, idle, or in do-not-disturb. */
+    lastOnlineAt: v.optional(v.number()),
     /**
      * True when the user picked a status deliberately (anything other than
      * `online`). A manual status is immune to heartbeats and the staleness
@@ -329,11 +406,17 @@ export default defineSchema({
   /**
    * Who is currently in a call, and their live media flags. `lastSeen` is the
    * heartbeat the sweep uses to drop abandoned participants (a client crash).
+   * A user has at most one row: `clientId` is the device that holds it, and
+   * `session` bumps when a different device takes over.
    */
   callParticipants: defineTable({
     callId: v.id("calls"),
     channelId: v.id("channels"),
     userId: v.string(),
+    /** Install id of the device in the call. Absent on rows from before device seats. */
+    clientId: v.optional(v.string()),
+    /** Increments when another device takes this seat, so peers renegotiate. */
+    session: v.optional(v.number()),
     muted: v.boolean(),
     deafened: v.boolean(),
     video: v.boolean(),
@@ -358,6 +441,8 @@ export default defineSchema({
     toUserId: v.string(),
     kind: callSignalKind,
     payload: v.string(),
+    /** Sender's seat generation. Receivers drop envelopes from an older one. */
+    session: v.optional(v.number()),
     createdAt: v.number(),
   })
     .index("by_call", ["callId"])

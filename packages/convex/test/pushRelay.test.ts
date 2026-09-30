@@ -44,6 +44,7 @@ describe("sendWake", () => {
 
     const result = await sendWake(
       {
+        kind: "message",
         serverId: "srv-1",
         channelId: "chan-1",
         messageId: "msg-1",
@@ -58,6 +59,7 @@ describe("sendWake", () => {
     expect(calls[0]?.auth).toBe("Bearer secret");
     expect(calls[0]?.body).toEqual({
       v: 1,
+      kind: "message",
       serverId: "srv-1",
       channelId: "chan-1",
       messageId: "msg-1",
@@ -73,6 +75,7 @@ describe("sendWake", () => {
     }) as typeof fetch;
     const result = await sendWake(
       {
+        kind: "call",
         serverId: "srv-1",
         channelId: "c",
         messageId: "m",
@@ -156,7 +159,7 @@ describe("notifications.dispatchMobileCallRinging", () => {
     const channelId = await seedChannel(t, { kind: "dm", memberIds: ["user-1", "user-2"] });
     const { callId } = await t
       .withIdentity({ subject: "user-1" })
-      .mutation(api.calls.start, { channelId, kind: "voice" });
+      .mutation(api.calls.start, { channelId, kind: "voice", clientId: "device-a" });
     const result = await t.action(internal.notifications.dispatchMobileCallRinging, { callId });
     expect(result).toEqual({ sent: 0, skipped: "unconfigured" });
   });
@@ -189,7 +192,7 @@ describe("notifications.dispatchMobileCallRinging", () => {
 
     const { callId } = await t
       .withIdentity({ subject: "user-1" })
-      .mutation(api.calls.start, { channelId, kind: "voice" });
+      .mutation(api.calls.start, { channelId, kind: "voice", clientId: "device-a" });
     // `calls.start` schedules the mobile ring; drain that background dispatch
     // before measuring, then invoke the action explicitly for a deterministic
     // count (mirrors the dispatchMobileForMessage test).

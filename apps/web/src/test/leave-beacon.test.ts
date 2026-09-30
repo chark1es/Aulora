@@ -11,7 +11,12 @@ describe("sendLeaveBeacon", () => {
     const fetchMock = vi.fn();
     vi.stubGlobal("fetch", fetchMock);
 
-    sendLeaveBeacon({ convexUrl: "https://chat.example.com", token: null, callId: "abc" });
+    sendLeaveBeacon({
+      convexUrl: "https://chat.example.com",
+      token: null,
+      callId: "abc",
+      clientId: "device-a",
+    });
 
     expect(fetchMock).not.toHaveBeenCalled();
   });
@@ -20,7 +25,12 @@ describe("sendLeaveBeacon", () => {
     const fetchMock = vi.fn().mockResolvedValue(undefined);
     vi.stubGlobal("fetch", fetchMock);
 
-    sendLeaveBeacon({ convexUrl: "https://chat.example.com", token: "jwt", callId: "call-1" });
+    sendLeaveBeacon({
+      convexUrl: "https://chat.example.com",
+      token: "jwt",
+      callId: "call-1",
+      clientId: "device-a",
+    });
 
     expect(fetchMock).toHaveBeenCalledTimes(1);
     const [url, init] = fetchMock.mock.calls[0] as [string, RequestInit];
@@ -36,6 +46,9 @@ describe("sendLeaveBeacon", () => {
     };
     expect(body.path).toBe("calls:leave");
     expect(body.format).toBe("convex_encoded_json");
-    expect(jsonToConvex(body.args[0] as never)).toEqual({ callId: "call-1" });
+    expect(jsonToConvex(body.args[0] as never)).toEqual({
+      callId: "call-1",
+      clientId: "device-a",
+    });
   });
 });

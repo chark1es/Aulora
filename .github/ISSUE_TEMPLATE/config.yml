@@ -1,0 +1,11 @@
+blank_issues_enabled: true
+contact_links:
+  - name: Private security report
+    url: https://github.com/chark1es/Aulora/blob/main/SECURITY.md
+    about: Email cnguyen@spwnd.dev with vulnerability details. Do not report them publicly.
+  - name: Setup and troubleshooting
+    url: https://github.com/chark1es/Aulora/blob/main/apps/docs/content/troubleshooting.md
+    about: Check the operator guide before reporting a setup problem.
+  - name: Commercial licensing
+    url: https://github.com/chark1es/Aulora/blob/main/COMMERCIAL.md
+    about: Business use needs a paid agreement. Email cnguyen@spwnd.dev for a quote.

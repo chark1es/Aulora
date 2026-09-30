@@ -17,7 +17,7 @@ import { createSign, timingSafeEqual } from "node:crypto";
 export const MOBILE_PLATFORMS = ["ios", "android", "unifiedpush"];
 
 /** Wake fields, already validated to contain only opaque identifiers. */
-export const WAKE_FIELDS = ["serverId", "channelId", "messageId", "platform", "token"];
+export const WAKE_FIELDS = ["serverId", "channelId", "messageId", "platform", "token", "kind"];
 const MAX_ID_LENGTH = 512;
 
 export class RelayError extends Error {
@@ -36,7 +36,7 @@ export class RelayError extends Error {
 
 /** The ids passed downstream to a provider; deliberately no message text. */
 export function contentFreePayload(wake) {
-  return { serverId: wake.serverId, channelId: wake.channelId, messageId: wake.messageId };
+  return { serverId: wake.serverId, channelId: wake.channelId, messageId: wake.messageId, kind: wake.kind };
 }
 
 function requireId(value, field) {
@@ -63,6 +63,10 @@ export function validateWake(body) {
   if (typeof platform !== "string" || !MOBILE_PLATFORMS.includes(platform)) {
     throw new RelayError("bad-request", "unsupported platform", 400);
   }
+  const kind = body.kind ?? "message";
+  if (kind !== "message" && kind !== "call") {
+    throw new RelayError("bad-request", "unsupported notification kind", 400);
+  }
   const token = requireId(body.token, "token");
   if (platform !== "unifiedpush" && token.length > MAX_ID_LENGTH) {
     throw new RelayError("bad-request", "token is too long", 400);
@@ -73,6 +77,7 @@ export function validateWake(body) {
     messageId: requireId(body.messageId, "messageId"),
     platform,
     token,
+    kind,
   };
 }
 
@@ -174,7 +179,11 @@ export function createApnsProvider({
     async deliver(wake) {
       const jwt = buildApnsJwt({ keyId, teamId, key, nowSeconds: now() });
       const body = JSON.stringify({
-        aps: { "content-available": 1, "mutable-content": 1 },
+        aps: {
+          alert: wake.kind === "call" ? "Incoming Aulora call" : "New Aulora message",
+          sound: wake.kind === "call" ? "default" : undefined,
+          "mutable-content": 1,
+        },
         aulora: contentFreePayload(wake),
       });
       return await request({
@@ -182,8 +191,8 @@ export function createApnsProvider({
         headers: {
           authorization: `bearer ${jwt}`,
           "apns-topic": topic,
-          "apns-push-type": "background",
-          "apns-priority": "5",
+          "apns-push-type": "alert",
+          "apns-priority": "10",
           "content-type": "application/json",
         },
         body,
@@ -215,26 +224,70 @@ async function defaultApnsRequest({ url, headers, body }) {
 }
 
 /** FCM HTTP v1 adapter. The OAuth access token is supplied by the operator. */
-export function createFcmProvider({ projectId, accessToken, fetchImpl = fetch } = {}) {
+export function createFcmProvider({ projectId, accessToken, serviceAccount, fetchImpl = fetch, now = () => Date.now() } = {}) {
   if (typeof projectId !== "string" || projectId.length === 0) {
     throw new RelayError("config-error", "FCM projectId is required", 500);
+  }
+  if (!accessToken && (typeof serviceAccount?.client_email !== "string" || typeof serviceAccount?.private_key !== "string")) {
+    throw new RelayError("config-error", "FCM access token or service account is required", 500);
+  }
+  let cachedToken;
+  let tokenExpiresAt = 0;
+  async function bearerToken() {
+    if (cachedToken && now() < tokenExpiresAt - 60_000) return cachedToken;
+    if (accessToken) return accessToken;
+    const issuedAt = Math.floor(now() / 1000);
+    const jwtHeader = base64Url(JSON.stringify({ alg: "RS256", typ: "JWT" }));
+    const jwtClaims = base64Url(JSON.stringify({
+      iss: serviceAccount.client_email,
+      scope: "https://www.googleapis.com/auth/firebase.messaging",
+      aud: "https://oauth2.googleapis.com/token",
+      iat: issuedAt,
+      exp: issuedAt + 3600,
+    }));
+    const input = `${jwtHeader}.${jwtClaims}`;
+    const signer = createSign("RSA-SHA256");
+    signer.update(input);
+    signer.end();
+    const assertion = `${input}.${base64Url(signer.sign(serviceAccount.private_key))}`;
+    const response = await fetchImpl("https://oauth2.googleapis.com/token", {
+      method: "POST",
+      headers: { "content-type": "application/x-www-form-urlencoded" },
+      body: new URLSearchParams({ grant_type: "urn:ietf:params:oauth:grant-type:jwt-bearer", assertion }),
+    });
+    if (!response.ok) throw new RelayError("provider-error", "FCM token request failed", 502);
+    const data = await response.json();
+    if (typeof data.access_token !== "string" || typeof data.expires_in !== "number") {
+      throw new RelayError("provider-error", "FCM token response is invalid", 502);
+    }
+    cachedToken = data.access_token;
+    tokenExpiresAt = now() + data.expires_in * 1000;
+    return cachedToken;
   }
   return {
     name: "fcm",
     async deliver(wake) {
+      const token = await bearerToken();
       const response = await fetchImpl(
         `https://fcm.googleapis.com/v1/projects/${projectId}/messages:send`,
         {
           method: "POST",
           headers: {
-            authorization: `Bearer ${accessToken ?? ""}`,
+            authorization: `Bearer ${token}`,
             "content-type": "application/json",
           },
           body: JSON.stringify({
             message: {
               token: wake.token,
               data: contentFreePayload(wake),
-              android: { priority: "normal" },
+              notification: {
+                title: "Aulora",
+                body: wake.kind === "call" ? "Incoming call" : "New message",
+              },
+              android: {
+                priority: wake.kind === "call" ? "high" : "normal",
+                notification: { channel_id: wake.kind === "call" ? "calls" : "default" },
+              },
             },
           }),
         },

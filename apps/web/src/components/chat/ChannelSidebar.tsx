@@ -41,6 +41,8 @@ export interface ChannelSidebarProps {
   readonly canManageCategories?: boolean;
   /** Open the user settings surface from the account footer. */
   readonly onOpenUserSettings?: () => void;
+  readonly appUpdateAvailable?: boolean;
+  readonly workspaceUpdateAvailable?: boolean;
   /** Show the workspace admin control (the viewer has at least one admin flag). */
   readonly showAdmin?: boolean;
   readonly onOpenAdmin?: () => void;
@@ -82,7 +84,6 @@ export interface ChannelSidebarProps {
     readonly rename?: (channel: ChannelView) => void;
     readonly edit?: (channel: ChannelView) => void;
     readonly markRead?: (channel: ChannelView) => void;
-    readonly leave?: (channel: ChannelView) => void;
     readonly archive?: (channel: ChannelView) => void;
     readonly copyLink?: (channel: ChannelView) => void;
     readonly hide?: (channel: ChannelView) => void;
@@ -445,25 +446,14 @@ export function ChannelSidebar(props: ChannelSidebarProps) {
         onSelect: () => actions.unhide?.(channel),
       });
     }
-    if (actions?.archive !== undefined || actions?.leave !== undefined) {
-      if (actions.archive !== undefined) {
-        items.push({
-          id: "archive",
-          label: "Archive channel",
-          icon: <Icon name="trash" size={14} />,
-          separatorBefore: items.length > 0,
-          onSelect: () => actions.archive?.(channel),
-        });
-      }
-      if (actions.leave !== undefined) {
-        items.push({
-          id: "leave",
-          label: "Leave channel",
-          icon: <Icon name="logout" size={14} />,
-          danger: true,
-          onSelect: () => actions.leave?.(channel),
-        });
-      }
+    if (actions?.archive !== undefined) {
+      items.push({
+        id: "archive",
+        label: "Archive channel",
+        icon: <Icon name="trash" size={14} />,
+        separatorBefore: items.length > 0,
+        onSelect: () => actions.archive?.(channel),
+      });
     }
     return items;
   };
@@ -523,8 +513,24 @@ export function ChannelSidebar(props: ChannelSidebarProps) {
           </>
         )}
         {props.showAdmin === true && props.onOpenAdmin !== undefined && (
-          <HeaderButton label="Workspace settings" onClick={props.onOpenAdmin}>
-            <Icon name="settings" size={17} />
+          <HeaderButton
+            label={
+              props.workspaceUpdateAvailable
+                ? "Workspace settings (update available)"
+                : "Workspace settings"
+            }
+            onClick={props.onOpenAdmin}
+          >
+            <span className="relative inline-flex">
+              <Icon name="settings" size={17} />
+              {props.workspaceUpdateAvailable && (
+                <span
+                  className="absolute -right-0.5 -top-0.5 h-1.5 w-1.5 rounded-full bg-accent ring-2 ring-surface-1"
+                  role="img"
+                  aria-label="Workspace update available"
+                />
+              )}
+            </span>
           </HeaderButton>
         )}
         {props.workspaceSwitcher === undefined && props.workspaceMenu}
@@ -810,7 +816,6 @@ function SectionHeader({
         <Icon
           name="chevron-down"
           size={11}
-          strokeWidth={2.25}
           className={cn("transition-transform", collapsed && "-rotate-90")}
         />
         {title}
@@ -1045,6 +1050,7 @@ function ChannelRow({
           : isUnread
             ? "font-semibold text-text hover:bg-surface-3"
             : "text-text-muted hover:bg-surface-3 hover:text-text",
+        channel.muted === true && !active && !isUnread && "opacity-60",
         dragging && "opacity-40",
       )}
     >
@@ -1052,7 +1058,7 @@ function ChannelRow({
       <Icon
         name={channel.kind === "announcement" ? "announce" : isPrivate ? "lock" : "hash"}
         size={16}
-        className={cn(active && "text-accent")}
+        className={cn("shrink-0", active && "text-accent")}
       />
       <span className="min-w-0 flex-1 truncate">{title}</span>
       {channel.muted === true && (
@@ -1290,8 +1296,20 @@ function AccountFooter(props: ChannelSidebarProps) {
           </span>
         </button>
         {props.onOpenUserSettings !== undefined && (
-          <HeaderButton label="User settings" onClick={props.onOpenUserSettings}>
-            <Icon name="settings" size={17} />
+          <HeaderButton
+            label={props.appUpdateAvailable ? "User settings (update available)" : "User settings"}
+            onClick={props.onOpenUserSettings}
+          >
+            <span className="relative inline-flex">
+              <Icon name="settings" size={17} />
+              {props.appUpdateAvailable && (
+                <span
+                  className="absolute -right-0.5 -top-0.5 h-1.5 w-1.5 rounded-full bg-accent ring-2 ring-surface-1"
+                  role="img"
+                  aria-label="Update available"
+                />
+              )}
+            </span>
           </HeaderButton>
         )}
         <HeaderButton label="Sign out" onClick={() => setConfirmSignOut(true)}>

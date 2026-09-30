@@ -1,9 +1,8 @@
-import { userAvatarSeed } from "@aulora/avatars";
-import { NativeAvatar } from "@aulora/avatars/native";
 import type { PresenceRow } from "@aulora/core";
 import { Button, Heading, Icon, presenceColor, Text, usePalette } from "@aulora/ui-native";
 import { Modal, Pressable, ScrollView, View } from "react-native";
 import { presenceLabel } from "../../lib/presence";
+import { MemberAvatar } from "./MemberAvatar";
 import { StatusEditor } from "./StatusEditor";
 
 type PresenceStatus = PresenceRow["status"];
@@ -87,7 +86,7 @@ export function MembersSheet({
                 row.userId !== ownerUserId;
               return (
                 <View key={row.userId} className="flex-row items-center gap-3">
-                  <NativeAvatar seed={userAvatarSeed(row.userId)} size={32} />
+                  <MemberAvatar userId={row.userId} size={32} />
                   <View className="flex-1">
                     <Text size="sm">
                       {memberNames.get(row.userId) ?? row.userId}

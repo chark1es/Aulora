@@ -1,4 +1,20 @@
 export {
+  type AsyncKeyValueStore,
+  createVoiceClientId,
+  ensureVoiceClientId,
+  ensureVoiceClientIdAsync,
+  isVoiceClientId,
+  VOICE_CLIENT_KEY,
+} from "./client";
+export {
+  CALL_ELSEWHERE,
+  CallElsewhereError,
+  type CallSeatResult,
+  callElsewhereFromUnknown,
+  claimCallSeat,
+  isCallElsewhereError,
+} from "./seat";
+export {
   DEFAULT_VOICE_SETTINGS,
   loadVoiceSettings,
   memoryVoiceSettingsStore,
@@ -9,12 +25,17 @@ export {
 } from "./settings";
 export {
   callKindLabel,
+  callOnAnotherDevice,
   callStatusLabel,
   formatCallDuration,
+  isOnAnotherDevice,
+  isOnThisDevice,
   isParticipant,
   isRinging,
+  joinedElsewhere,
   networkQuality,
   screenSharer,
+  selfParticipant,
   shouldOffer,
   sortParticipants,
 } from "./state";

@@ -21,6 +21,10 @@
     "apps/docs": {
       "name": "@aulora/docs",
       "version": "0.0.0",
+      "devDependencies": {
+        "@aulora/avatars": "workspace:*",
+        "@aulora/tokens": "workspace:*",
+      },
     },
     "apps/mobile": {
       "name": "@aulora/mobile",
@@ -157,6 +161,7 @@
         "@convex-dev/better-auth": "0.12.5",
         "better-auth": "1.6.22",
         "convex": "1.46.0",
+        "jose": "6.2.12",
       },
       "devDependencies": {
         "@aulora/config": "workspace:*",
@@ -182,6 +187,7 @@
       "version": "0.0.0",
       "devDependencies": {
         "@aulora/config": "workspace:*",
+        "@iconify-json/material-symbols": "1.2.93",
         "@types/node": "26.6.3",
         "typescript": "5.9.3",
         "vitest": "5.0.2",
@@ -592,6 +598,10 @@
     "@expo/ws-tunnel": ["@expo/ws-tunnel@2.0.0", "", { "peerDependencies": { "ws": "^8.0.0" } }, "sha512-j+JfTRdCk820J9dU0sA2SqshQIKFOMo7ED84w9MJFcebfbNQgsLztEY/SABDkGnjatrW4xGqnUhVRxSBVyCkXw=="],
 
     "@expo/xcpretty": ["@expo/xcpretty@4.4.5", "", { "dependencies": { "@babel/code-frame": "^7.20.0", "chalk": "^4.1.0", "js-yaml": "^4.1.0" }, "bin": { "excpretty": "build/cli.js" } }, "sha512-J3eL4n4h5QTwfD0SIz8OIk6/+sOL/hFZAMacgCM07UNlxBQfJipEpIC2AQxvGkbYeStByJ0TVhQAJo+DeNgaSQ=="],
+
+    "@iconify-json/material-symbols": ["@iconify-json/material-symbols@1.2.93", "", { "dependencies": { "@iconify/types": "*" } }, "sha512-IfbpRixmEdeBrl2Bc+RtNZGb3NcTnMiPP4WausCParQYpIdezEYYbgMggJC1cYzm1q0f77p53t5tppy9PWsrvQ=="],
+
+    "@iconify/types": ["@iconify/types@2.0.0", "", {}, "sha512-+wluvCrRhXrhyOmRDJ3q8mux9JkKy5SJ/v8ol2tu4FVjyYvtEzkc/3pK15ET6RKg4b4w4BmTk1+gsCUhf21Ykg=="],
 
     "@isaacs/ttlcache": ["@isaacs/ttlcache@1.4.1", "", {}, "sha512-RQgQ4uQ+pLbqXfOmieB91ejmLwvSgv9nLx6sT6sD83s7umBypgg+OIBOBbEUiJXrfpnp9j0mRhYYdzp9uqq3lA=="],
 

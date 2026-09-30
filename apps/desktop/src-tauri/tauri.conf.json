@@ -45,16 +45,32 @@
     ],
     "category": "SocialNetworking",
     "shortDescription": "Secure team chat on your own server.",
-    "longDescription": "Aulora is a self-hosted team chat client. Message encryption is handled server-side behind an external key manager, so the client holds no keys. The desktop shell adds native menus, a tray, notifications, an unread badge and aulora:// deep links.",
+    "longDescription": "Aulora is self-hosted team chat with server-side content encryption. The desktop client adds native menus, a tray, notifications, an unread badge, signed updates, and aulora:// deep links.",
     "copyright": "Copyright 2026 Aulora",
     "macOS": {
       "minimumSystemVersion": "10.15"
+    },
+    "license": "PolyForm-Noncommercial-1.0.0",
+    "licenseFile": "../../../LICENSE",
+    "resources": {
+      "../../../LICENSE": "legal/LICENSE",
+      "../../../NOTICE": "legal/NOTICE",
+      "../../../COMMERCIAL.md": "legal/COMMERCIAL.md",
+      "../../../THIRD_PARTY_NOTICES.md": "legal/THIRD_PARTY_NOTICES.md",
+      "../../../licenses/": "legal/third-party/"
     }
   },
   "plugins": {
     "deep-link": {
       "desktop": {
         "schemes": ["aulora"]
+      }
+    },
+    "updater": {
+      "pubkey": "dW50cnVzdGVkIGNvbW1lbnQ6IG1pbmlzaWduIHB1YmxpYyBrZXk6IEJFM0JBMjU0MTk1MkE4NDgKUldSSXFGSVpWS0k3dnUyQTU3MDRoTWRPNEd1bnYrKzZIeE5PdUVNS2RkazdBejdlNTYvYjh3NDAK",
+      "endpoints": ["https://github.com/chark1es/Aulora/releases/latest/download/latest.json"],
+      "windows": {
+        "installMode": "passive"
       }
     }
   }

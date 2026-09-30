@@ -1,9 +1,8 @@
-import { userAvatarSeed } from "@aulora/avatars";
-import { NativeAvatar } from "@aulora/avatars/native";
 import { type CallView, callKindLabel } from "@aulora/core";
 import { Button, Heading, Text, usePalette } from "@aulora/ui-native";
 import { Modal, View } from "react-native";
 import { useVoice } from "../../providers/VoiceProvider";
+import { MemberAvatar } from "../chat/MemberAvatar";
 
 export interface IncomingCallModalProps {
   readonly callerName: (call: CallView) => string;
@@ -26,7 +25,7 @@ export function IncomingCallModal({ callerName }: IncomingCallModalProps) {
         <View className="w-full items-center gap-4 rounded-card border border-border bg-surface-1 p-6">
           {call !== null && (
             <>
-              <NativeAvatar seed={userAvatarSeed(call.initiatorId)} size={72} />
+              <MemberAvatar userId={call.initiatorId} size={72} />
               <View className="items-center gap-1">
                 <Heading level={3} numberOfLines={1}>
                   {callerName(call)}

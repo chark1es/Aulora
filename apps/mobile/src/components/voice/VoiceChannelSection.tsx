@@ -1,4 +1,4 @@
-import type { CallView, ChannelView } from "@aulora/core";
+import { type CallView, type ChannelView, joinedElsewhere } from "@aulora/core";
 import { Icon, Text, usePalette } from "@aulora/ui-native";
 import { Pressable, View } from "react-native";
 
@@ -7,6 +7,8 @@ export interface VoiceChannelSectionProps {
   readonly activeCalls: readonly CallView[];
   readonly memberNames: ReadonlyMap<string, string>;
   readonly selfUserId: string;
+  readonly clientId: string | null;
+  readonly localCallId: string | null;
   /** Per-participant remote audio level, 0..1, when available. */
   readonly remoteLevels?: ReadonlyMap<string, number>;
   readonly onJoin: (channelId: string) => void;
@@ -22,6 +24,8 @@ export function VoiceChannelSection({
   activeCalls,
   memberNames,
   selfUserId,
+  clientId,
+  localCallId,
   remoteLevels,
   onJoin,
 }: VoiceChannelSectionProps) {
@@ -39,6 +43,8 @@ export function VoiceChannelSection({
         const call = activeCalls.find((entry) => entry.channelId === channel.id);
         const connected = call?.participants ?? [];
         const selfConnected = connected.some((participant) => participant.userId === selfUserId);
+        const elsewhere =
+          call !== undefined && joinedElsewhere(call, selfUserId, clientId, localCallId);
         return (
           <Pressable
             key={channel.id}
@@ -58,7 +64,7 @@ export function VoiceChannelSection({
               </Text>
               {selfConnected && (
                 <Text size="xs" tone="accent">
-                  Joined
+                  {elsewhere ? "Other device" : "Joined"}
                 </Text>
               )}
               {connected.length > 0 && (

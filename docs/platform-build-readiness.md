@@ -2,7 +2,9 @@
 
 Checked 2026-09-29 against the current working tree and official documentation. This is a setup checklist, not evidence that signed releases or live push delivery have passed. Credentials may already exist outside Git; their availability was not inspected.
 
-## What the repository currently provides
+The release and PR workflows have since been added. See [GitHub Actions builds and releases](github-actions.md) for the implemented automation and signing secret setup. The assessment below records the initial readiness findings.
+
+## What the repository initially provided
 
 - Desktop is Tauri 2 around the web client. Native notifications come from live message events in `apps/web/src/lib/use-desktop-notifications.ts` through `apps/desktop/src-tauri/src/commands.rs`. Closing the window hides it and keeps the process running in the tray. Quitting stops this delivery path. The notification plugin displays local OS notifications; it does not add a remote delivery service to a stopped process.
 - Mobile uses Expo and native APNs/FCM tokens through `getDevicePushTokenAsync()` in `apps/mobile/src/lib/push.ts`. It does not use the Expo Push Service. The relay in `infra/push-relay` currently sends generic, visible message/call alerts, including while the mobile UI is suspended. Rich message previews before opening the app need additional client work.

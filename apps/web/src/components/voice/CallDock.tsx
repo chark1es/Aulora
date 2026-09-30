@@ -231,6 +231,7 @@ function DockBody({
           settings={voice.settings}
           identity={identity}
           speakingIds={voice.remoteSpeaking}
+          localSpeaking={voice.localSpeaking}
           className="h-full"
         />
       </div>

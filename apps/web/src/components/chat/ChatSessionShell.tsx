@@ -20,6 +20,7 @@ import { ChatProvider } from "../../providers/ChatProvider";
 import { type VoicePolicy, VoiceProvider } from "../../providers/VoiceProvider";
 import type { ChannelUnread } from "./ChannelSidebar";
 import { ChatView } from "./ChatView";
+import { MemberAvatarProvider } from "./member-avatars";
 
 const PAGE = { numItems: 100, cursor: null } as const;
 
@@ -153,38 +154,40 @@ export function ChatSessionShell({
   }
 
   return (
-    <ChatProvider client={client} userId={user.id} displayName={ownName} channels={channels}>
-      <VoiceProvider
-        client={client}
-        userId={user.id}
-        permissions={permissions}
-        policy={voicePolicy}
-      >
-        <ChatView
-          workspaceName={workspaceName}
-          workspaceIconSeed={workspaceIconSeed}
-          ownUserId={user.id}
-          ownName={ownName}
-          unreadByChannel={unreadByChannel}
-          onSignOut={onSignOut}
+    <MemberAvatarProvider members={memberViews}>
+      <ChatProvider client={client} userId={user.id} displayName={ownName} channels={channels}>
+        <VoiceProvider
+          client={client}
+          userId={user.id}
           permissions={permissions}
-          members={members}
-          roles={mentionRoles}
-          admin={{
-            viewer: {
-              userId: user.id,
-              isOwner,
-              roleIds: viewerRoleIds,
-              permissions,
-              topPosition,
-            },
-            ownerId,
-            roleViews: roles,
-            memberViews,
-            categories,
-          }}
-        />
-      </VoiceProvider>
-    </ChatProvider>
+          policy={voicePolicy}
+        >
+          <ChatView
+            workspaceName={workspaceName}
+            workspaceIconSeed={workspaceIconSeed}
+            ownUserId={user.id}
+            ownName={ownName}
+            unreadByChannel={unreadByChannel}
+            onSignOut={onSignOut}
+            permissions={permissions}
+            members={members}
+            roles={mentionRoles}
+            admin={{
+              viewer: {
+                userId: user.id,
+                isOwner,
+                roleIds: viewerRoleIds,
+                permissions,
+                topPosition,
+              },
+              ownerId,
+              roleViews: roles,
+              memberViews,
+              categories,
+            }}
+          />
+        </VoiceProvider>
+      </ChatProvider>
+    </MemberAvatarProvider>
   );
 }

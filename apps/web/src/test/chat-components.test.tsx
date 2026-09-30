@@ -1,15 +1,19 @@
 import type { ChannelView, MessagePayload } from "@aulora/core";
-import { Permission } from "@aulora/core";
+import { ChatSession, Permission } from "@aulora/core";
 import { act, render, screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
+import { ConvexReactClient } from "convex/react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import { createMockPort } from "../../../../packages/core/src/chat/testing";
 import { ChannelSidebar, type ChannelSidebarProps } from "../components/chat/ChannelSidebar";
 import { Composer } from "../components/chat/Composer";
 import { CreateChannelModal } from "../components/chat/CreateChannelModal";
 import { MessageList, type MessageListProps } from "../components/chat/MessageList";
 import { NewConversationDialog } from "../components/chat/NewConversationDialog";
 import { RichText } from "../components/chat/RichText";
+import type { ChatRuntime } from "../lib/chat-runtime";
 import { readDraft, writeDraft } from "../lib/drafts";
+import { useChannelSession } from "../lib/use-channel";
 
 const NOW = new Date(2026, 8, 25, 12, 0, 0).getTime();
 
@@ -71,6 +75,62 @@ function listProps(overrides: Partial<MessageListProps> = {}): MessageListProps 
 }
 
 describe("MessageList", () => {
+  it("removes New messages after the displayed messages are marked read", async () => {
+    const port = createMockPort();
+    const session = ChatSession.create({ port, subscriptions: port });
+    const firstId = await port.sendMessage({ channelId: "c1", body: "first" });
+    const latestId = await port.sendMessage({ channelId: "c1", body: "latest" });
+    const runtime: ChatRuntime = {
+      port,
+      subscriptions: port,
+      session,
+      client: new ConvexReactClient("https://example.convex.cloud"),
+      watchThread: () => () => {},
+      watchChannelMessages: (channelId, onChange) =>
+        port.watchMessages(channelId, (messages) =>
+          onChange({ page: messages, isDone: true, continueCursor: "" }),
+        ),
+    };
+    function Conversation() {
+      const state = useChannelSession(runtime, "c1", "me");
+      return (
+        <MessageList
+          {...listProps({
+            messages: state.messages,
+            decrypted: state.decrypted,
+            firstUnreadId: state.unread.firstUnreadId,
+          })}
+        />
+      );
+    }
+    const { container } = render(<Conversation />);
+    await waitFor(() => expect(screen.getByText("New messages")).toBeInTheDocument());
+    expect(container.querySelector("[data-unread-divider]")?.nextElementSibling).toHaveAttribute(
+      "data-testid",
+      `message-${firstId}`,
+    );
+
+    await act(() => session.markRead("c1", firstId));
+    expect(container.querySelector("[data-unread-divider]")?.nextElementSibling).toHaveAttribute(
+      "data-testid",
+      `message-${latestId}`,
+    );
+
+    await act(() => session.markRead("c1", latestId));
+
+    expect(screen.queryByText("New messages")).not.toBeInTheDocument();
+
+    let newId = "";
+    await act(async () => {
+      newId = await port.sendMessage({ channelId: "c1", body: "new arrival" });
+    });
+    expect(screen.getByText("New messages")).toBeInTheDocument();
+    expect(container.querySelector("[data-unread-divider]")?.nextElementSibling).toHaveAttribute(
+      "data-testid",
+      `message-${newId}`,
+    );
+  });
+
   it("shows the author name once per run and labels the viewer as You", () => {
     render(<MessageList {...listProps()} />);
     const list = screen.getByTestId("message-list");
@@ -79,10 +139,82 @@ describe("MessageList", () => {
     expect(within(list).getByText("text of m2")).toBeInTheDocument();
   });
 
+  it.each(["left", "right"] as const)(
+    "keeps consecutive replies' avatars and names with branched previews above them on the %s",
+    (ownSide) => {
+      const messages = [
+        message("original", "u-ada", 0),
+        message("m1", "me", 1),
+        message("m2", "me", 2, { replyToId: "original" }),
+        message("m3", "me", 3, { replyToId: "original" }),
+      ];
+      render(
+        <MessageList
+          {...listProps({
+            messages,
+            ownSide,
+            replyPreviews: new Map([
+              [
+                "original",
+                { authorId: "u-ada", authorName: "Ada Lovelace", text: "Original message" },
+              ],
+            ]),
+          })}
+        />,
+      );
+
+      for (const id of ["m2", "m3"]) {
+        const row = screen.getByTestId(`message-${id}`);
+        const author = within(row).getByText("You");
+        const preview = within(row).getByRole("button", { name: "Jump to replied message" });
+        expect(
+          preview.compareDocumentPosition(author) & Node.DOCUMENT_POSITION_FOLLOWING,
+        ).toBeTruthy();
+        expect(author.parentElement).not.toContainElement(preview);
+        expect(row.querySelector(":scope > svg")).toBeInTheDocument();
+        expect(within(row).getByRole("presentation")).toBeInTheDocument();
+        expect(within(row).getByText(`text of ${id}`)).toBeInTheDocument();
+        expect(within(preview).getByText("Ada Lovelace")).toBeInTheDocument();
+        expect(within(preview).getByText("Original message")).toBeInTheDocument();
+      }
+    },
+  );
+
   it("never shows raw user ids for unknown authors", () => {
     render(<MessageList {...listProps({ messages: [message("m1", "u-ghost", 0)] })} />);
     expect(screen.getByText("Unknown member")).toBeInTheDocument();
     expect(screen.queryByText("u-ghost")).not.toBeInTheDocument();
+  });
+
+  it("keeps branched reply context above the author when the original preview is unavailable", () => {
+    render(
+      <MessageList
+        {...listProps({
+          messages: [message("m1", "u-ada", 0, { replyToId: "older-message" })],
+        })}
+      />,
+    );
+    const author = screen.getByText("Ada Lovelace");
+    const preview = screen.getByRole("button", { name: "Jump to replied message" });
+    expect(preview.compareDocumentPosition(author) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
+    expect(screen.getByTestId("message-m1").querySelector(":scope > svg")).toBeInTheDocument();
+    expect(preview).toHaveTextContent("Replying to a message");
+  });
+
+  it("jumps to the original message from the reply preview", async () => {
+    const user = userEvent.setup();
+    render(
+      <MessageList
+        {...listProps({
+          messages: [message("m1", "u-ada", 0), message("m2", "me", 1, { replyToId: "m1" })],
+        })}
+      />,
+    );
+    const original = screen.getByTestId("message-m1");
+    const scrollIntoView = vi.fn();
+    original.scrollIntoView = scrollIntoView;
+    await user.click(screen.getByRole("button", { name: "Jump to replied message" }));
+    expect(scrollIntoView).toHaveBeenCalledWith({ behavior: "smooth", block: "center" });
   });
 
   it("offers edit only on the viewer's own messages", () => {
@@ -368,6 +500,21 @@ describe("Composer", () => {
   it("disables Send until there is something to send", () => {
     render(<Composer {...base} onSend={vi.fn()} />);
     expect(screen.getByRole("button", { name: "Send" })).toBeDisabled();
+  });
+
+  it("offers mentions without showing a duplicate message preview below the input", async () => {
+    const user = userEvent.setup();
+    render(<Composer {...base} onSend={vi.fn()} />);
+    const input = screen.getByRole("textbox", { name: "Message" });
+
+    await user.type(input, "@Ada");
+    expect(screen.getByRole("list", { name: "Mention suggestions" })).toBeInTheDocument();
+    expect(screen.queryByTestId("composer-preview")).not.toBeInTheDocument();
+
+    await user.keyboard("{Tab}");
+    expect(input).toHaveValue("@Ada Lovelace ");
+    expect(screen.queryByRole("list", { name: "Mention suggestions" })).not.toBeInTheDocument();
+    expect(screen.queryByTestId("composer-preview")).not.toBeInTheDocument();
   });
 
   it("keeps a separate draft per conversation", async () => {

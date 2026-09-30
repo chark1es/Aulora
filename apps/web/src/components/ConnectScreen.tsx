@@ -9,10 +9,10 @@ import {
   type WellKnown,
   WellKnownError,
 } from "@aulora/core";
-import { Button, Heading, Input, Text } from "@aulora/ui-web";
+import { Button, Icon, Input, Logo, Text } from "@aulora/ui-web";
 import { type FormEvent, useEffect, useState } from "react";
 import { SUPPORTED_API_VERSION } from "../lib/api-version";
-import { AuthCard, AuthColumns, AuthFrame } from "./AuthFrame";
+import { AuthCard, AuthFrame, AuthHeader, AuthLink } from "./AuthFrame";
 
 export interface ConnectScreenProps {
   readonly store: ProfileStore;
@@ -47,6 +47,15 @@ function messageForError(error: unknown): string {
     return "Enter a valid server address, like chat.acme.com.";
   }
   return "Something went wrong while connecting.";
+}
+
+/** The host (with port) of a server's base URL, for the quiet caption. */
+function serverHost(baseUrl: string): string {
+  try {
+    return new URL(baseUrl).host;
+  } catch {
+    return baseUrl;
+  }
 }
 
 /**
@@ -112,86 +121,69 @@ export function ConnectScreen({ store, onConnected, initialHost }: ConnectScreen
   if (preview !== null) {
     const { wellKnown } = preview;
     return (
-      <AuthFrame layout="split">
-        <AuthColumns keyhole={<Avatar seed={wellKnown.iconSeed} size={72} shape="squircle" />}>
-          <AuthCard>
-            <div className="flex flex-col gap-1.5">
-              <Heading level={1} className="text-[30px] leading-[1.15] sm:text-[32px]">
-                {wellKnown.name}
-              </Heading>
-              <Text tone="muted" size="md" className="leading-normal">
-                This is the workspace on that server.
-              </Text>
-            </div>
-            <div className="flex flex-col gap-2">
-              <Text tone="muted" size="sm" mono className="truncate">
-                {preview.baseUrl}
-              </Text>
-              <div className="flex flex-wrap gap-1.5 text-xs font-medium">
-                <span className="rounded-full bg-surface-3 px-2.5 py-1 text-text-muted">
-                  Aulora v{wellKnown.version} · API v{wellKnown.apiVersion}
-                </span>
-              </div>
-            </div>
-            {error !== null && (
-              <Text tone="danger" size="sm" role="alert">
-                {error}
-              </Text>
-            )}
-            <div className="flex w-full flex-col gap-2">
-              <Button size="lg" onClick={handleContinue} loading={busy}>
-                <span className="text-[17px] font-semibold">Continue</span>
-              </Button>
-              <Button
-                size="lg"
-                variant="ghost"
-                onClick={() => {
-                  setPreview(null);
-                  setError(null);
-                }}
-              >
-                Use a different server
-              </Button>
-            </div>
-          </AuthCard>
-        </AuthColumns>
+      <AuthFrame>
+        <AuthHeader
+          mark={<Avatar seed={wellKnown.iconSeed} size={64} shape="squircle" />}
+          title={wellKnown.name}
+          subtitle="Is this the workspace you're looking for?"
+          caption={serverHost(preview.baseUrl)}
+        />
+        <AuthCard>
+          <div className="flex items-center justify-between gap-3 rounded-[10px] bg-surface-3 px-3 py-2.5 text-xs text-text-muted">
+            <span className="flex items-center gap-1.5">
+              <Icon name="lock" size={13} />
+              Aulora v{wellKnown.version}
+            </span>
+            <span className="font-mono">API v{wellKnown.apiVersion}</span>
+          </div>
+          {error !== null && (
+            <Text tone="danger" size="sm" role="alert">
+              {error}
+            </Text>
+          )}
+          <Button size="lg" onClick={handleContinue} loading={busy}>
+            <span className="text-[15px] font-semibold">Continue</span>
+          </Button>
+        </AuthCard>
+        <AuthLink
+          onClick={() => {
+            setPreview(null);
+            setError(null);
+          }}
+        >
+          Use a different server
+        </AuthLink>
       </AuthFrame>
     );
   }
 
   return (
-    <AuthFrame layout="split">
-      <AuthColumns>
-        <AuthCard>
-          <div className="flex flex-col gap-1.5">
-            <Heading level={1} className="text-[30px] leading-[1.15] sm:text-[32px]">
-              Connect to a server
-            </Heading>
-            <Text tone="muted" size="md" className="leading-normal">
-              Point Aulora at your team's server. Nothing is saved until you confirm.
-            </Text>
-          </div>
-          <form className="flex flex-col gap-4" onSubmit={handleSubmit} noValidate>
-            <Input
-              label="Server address"
-              size="lg"
-              placeholder="chat.acme.com"
-              hint="Your server's host, e.g. chat.acme.com."
-              autoComplete="off"
-              autoCapitalize="none"
-              spellCheck={false}
-              inputMode="url"
-              autoFocus
-              value={host}
-              onChange={(event) => setHost(event.currentTarget.value)}
-              {...(error !== null ? { error } : {})}
-            />
-            <Button size="lg" type="submit" loading={busy} disabled={host.trim().length === 0}>
-              <span className="text-[17px] font-semibold">{busy ? "Connecting…" : "Connect"}</span>
-            </Button>
-          </form>
-        </AuthCard>
-      </AuthColumns>
+    <AuthFrame>
+      <AuthHeader
+        mark={<Logo size={64} />}
+        title="Connect to your server"
+        subtitle="Enter the address your team gave you. Nothing is saved until you confirm."
+      />
+      <AuthCard>
+        <form className="flex flex-col gap-4" onSubmit={handleSubmit} noValidate>
+          <Input
+            label="Server address"
+            size="lg"
+            placeholder="chat.acme.com"
+            autoComplete="off"
+            autoCapitalize="none"
+            spellCheck={false}
+            inputMode="url"
+            autoFocus
+            value={host}
+            onChange={(event) => setHost(event.currentTarget.value)}
+            {...(error !== null ? { error } : {})}
+          />
+          <Button size="lg" type="submit" loading={busy} disabled={host.trim().length === 0}>
+            <span className="text-[15px] font-semibold">{busy ? "Connecting…" : "Connect"}</span>
+          </Button>
+        </form>
+      </AuthCard>
     </AuthFrame>
   );
 }

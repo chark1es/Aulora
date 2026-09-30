@@ -1,5 +1,5 @@
 import type { ServerProfile } from "@aulora/core";
-import { Spinner, Text } from "@aulora/ui-web";
+import { Button, Spinner, Text } from "@aulora/ui-web";
 import { useNavigate } from "@tanstack/react-router";
 import type { ConvexReactClient } from "convex/react";
 import { useMemo } from "react";
@@ -31,6 +31,30 @@ export function SessionGate({ profile, authClient, client }: SessionGateProps) {
   }
 
   const user = session.data?.user;
+
+  // A failed lookup is not a signed-out session: the stored login is still
+  // valid, so offer a retry instead of sending the person to the sign-in form.
+  if ((user === undefined || user === null) && session.error) {
+    return (
+      <div className="pane flex flex-1 flex-col items-center justify-center gap-3 px-6 text-center">
+        <Text size="md" className="font-medium">
+          Can't reach {profile.name}
+        </Text>
+        <Text tone="muted" size="sm">
+          You're still signed in. Check your connection and try again.
+        </Text>
+        <div className="flex gap-2">
+          <Button size="md" onClick={() => void session.refetch()}>
+            Try again
+          </Button>
+          <Button size="md" variant="ghost" onClick={() => void navigate({ to: "/connect" })}>
+            Use a different server
+          </Button>
+        </div>
+      </div>
+    );
+  }
+
   if (user !== undefined && user !== null) {
     const signedInUser = {
       id: user.id,

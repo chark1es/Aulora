@@ -1,12 +1,13 @@
-import { Avatar, userAvatarSeed } from "@aulora/avatars";
 import type { ChannelView } from "@aulora/core";
-import { isParticipant } from "@aulora/core";
+import { joinedElsewhere } from "@aulora/core";
 import { cn, Icon } from "@aulora/ui-web";
 import { useVoice } from "../../providers/VoiceProvider";
+import { PersonAvatar } from "../chat/member-avatars";
 import { CallControls } from "./CallControls";
 import { CallMediaNotice } from "./CallMediaNotice";
 import { CallGrid } from "./CallParticipant";
 import { type CallIdentity, UNKNOWN_IDENTITY } from "./identity";
+import { JoinedElsewhere } from "./JoinedElsewhere";
 
 /**
  * The main pane for a voice channel. Before joining it is a calm pre-join
@@ -27,7 +28,19 @@ export function VoiceChannelView({
     voice.call?.channelId === channel.id
       ? voice.call
       : (voice.activeCalls.find((entry) => entry.channelId === channel.id) ?? null);
-  const inCall = call !== null && isParticipant(call, voice.selfUserId);
+  const elsewhere = joinedElsewhere(call, voice.selfUserId, voice.clientId, voice.callId);
+  const inCall = call !== null && voice.callId === call.id && !elsewhere;
+
+  if (call !== null && elsewhere) {
+    return (
+      <JoinedElsewhere
+        title={title}
+        pending={voice.pending}
+        canConnect={voice.canConnect}
+        onJoin={() => void voice.joinCall(call.id)}
+      />
+    );
+  }
 
   if (call !== null && inCall) {
     return (
@@ -63,6 +76,7 @@ export function VoiceChannelView({
             settings={voice.settings}
             identity={identity}
             speakingIds={voice.remoteSpeaking}
+            localSpeaking={voice.localSpeaking}
             className="h-full"
           />
         </div>
@@ -111,9 +125,9 @@ export function VoiceChannelView({
         <div className="mt-5 flex flex-col items-center gap-2">
           <div className="flex items-center -space-x-2">
             {participants.slice(0, 5).map((participant) => (
-              <Avatar
+              <PersonAvatar
                 key={participant.userId}
-                seed={userAvatarSeed(participant.userId)}
+                userId={participant.userId}
                 size={30}
                 className="ring-2 ring-surface-1"
               />

@@ -93,7 +93,7 @@ export function InviteManager({ canCreateInvites, origin }: InviteManagerProps) 
         {created !== null && link !== null && (
           <div className="flex flex-col gap-2 rounded-[10px] border border-accent/30 bg-accent-soft/40 p-3">
             <Text size="xs" tone="secondary">
-              {created.emailed ? "Invite created and emailed. " : "Invite created. "}
+              {created.emailed ? "Invite created; email delivery is queued. " : "Invite created. "}
               Copy the link now — it is only shown once.
             </Text>
             <div className="flex items-center gap-2">

@@ -18,7 +18,10 @@ pub struct DeepLinkState {
 
 impl DeepLinkState {
     pub fn push(&self, urls: Vec<String>) {
-        let mut pending = self.pending.lock().unwrap_or_else(|poison| poison.into_inner());
+        let mut pending = self
+            .pending
+            .lock()
+            .unwrap_or_else(|poison| poison.into_inner());
         for url in urls {
             if !pending.contains(&url) {
                 pending.push(url);
@@ -27,7 +30,10 @@ impl DeepLinkState {
     }
 
     pub fn take(&self) -> Vec<String> {
-        let mut pending = self.pending.lock().unwrap_or_else(|poison| poison.into_inner());
+        let mut pending = self
+            .pending
+            .lock()
+            .unwrap_or_else(|poison| poison.into_inner());
         std::mem::take(&mut *pending)
     }
 }

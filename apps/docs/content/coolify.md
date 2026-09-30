@@ -113,13 +113,9 @@ public `/.well-known/aulora.json`. It is idempotent and safe on every deploy.
 To watch it, open the `setup` service logs (or the deployment logs) and wait for
 `[setup] done`. Then open `https://chat.example.com` and sign in as the owner.
 
-To re-run `setup` later (for example after changing auth providers or
-`TRUSTED_ORIGINS`), either redeploy the resource or run it on the host from the
-repository's `infra/docker` directory:
+To re-run `setup` after changing auth providers or `TRUSTED_ORIGINS`, redeploy the same Coolify resource.
 
-```sh
-docker compose -f docker-compose.coolify.yml run --rm setup
-```
+This file uses Coolify-specific `exclude_from_hc` fields. Plain Docker Compose rejects the raw source file. If using host commands, use Coolify's rendered Compose configuration and its existing project/environment, not the source template. See [Coolify's Compose documentation](https://coolify.io/docs/applications/builds/docker-compose).
 
 ## How the generated secrets persist
 
@@ -132,32 +128,28 @@ and re-reads it each run). A redeploy therefore reuses the same
 set it yourself, the same generated `AULORA_ENCRYPTION_KEY`.
 
 Do not delete the `setup-state` volume, and keep an offline copy of
-`AULORA_ENCRYPTION_KEY`: the database, its backups and `convex export` hold only
-ciphertext, so losing the KEK makes that data unreadable. The same warning as
+`AULORA_ENCRYPTION_KEY`: encrypted content in the database and exports needs that key to be readable. Other metadata may remain readable. The same warning as
 [Self-hosting → Encryption](self-hosting.md) applies.
 
-## Optional services (profiles)
+## Optional services
 
-Coolify does not start services behind a Compose `profile`. The `backups`,
-`ekm` and `push-relay` profiles are off by default. To run one, create a second
-Coolify resource from the same repository and Base Directory, and run it with
-the profile, or start it on the host:
+The backup runner, push relay, and development Vault have Compose profiles and are off by default. To enable an optional service in this resource, remove its `profiles` entry in your deployment branch and redeploy the same Coolify resource. Configure its environment values in Coolify first. Keep the project and named volumes unchanged so the service joins the existing deployment.
 
-```sh
-docker compose -f docker-compose.coolify.yml --profile backups up -d
-```
+Do not create a second independent stack for backups; it would have different named volumes and could back up a fresh deployment instead. If managing profiles through host commands, use Coolify's rendered configuration, project name, and environment.
 
-- `backups` — the nightly `convex export` + `pg_dump` runner; see
-  [Backups](backups.md).
-- `push-relay` — the optional mobile push relay.
-- `ekm` — a bundled dev-mode Vault; for production use a persistent Vault
-  instead and back up the KEK.
+- Backups require a working destination and an off-machine copy; see [backups](backups.md).
+- Mobile push requires relay authentication and publisher APNs/FCM credentials.
+- The bundled Vault runs in memory for development. Use a persistent external key manager in production.
 
 ## Upgrade
 
 Redeploy the resource (Coolify pulls the branch and rebuilds `web` and `setup`).
 The named volumes, including `setup-state`, are kept, so data and secrets
 survive. If you changed origins or auth settings, re-run `setup` as above.
+
+The instance admin panel reports when a newer Aulora release is published.
+Coolify owns the git checkout, so apply that release by redeploying the new
+ref here. Do not run `infra/docker/update.sh` inside Coolify's source directory.
 
 ## Teardown
 

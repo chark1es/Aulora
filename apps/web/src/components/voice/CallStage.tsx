@@ -1,4 +1,4 @@
-import { callKindLabel, callStatusLabel, isParticipant } from "@aulora/core";
+import { callKindLabel, callStatusLabel, isOnThisDevice } from "@aulora/core";
 import { Button, cn, Icon } from "@aulora/ui-web";
 import { useVoice } from "../../providers/VoiceProvider";
 import { CallControls } from "./CallControls";
@@ -21,7 +21,7 @@ export function CallStage({
   if (call === null) {
     return null;
   }
-  const inCall = isParticipant(call, voice.selfUserId);
+  const inCall = isOnThisDevice(call, voice.selfUserId, voice.clientId);
   const sharer = call.screenShareUserId !== null ? identity.nameOf(call.screenShareUserId) : null;
 
   return (
@@ -81,6 +81,7 @@ export function CallStage({
           settings={voice.settings}
           identity={identity}
           speakingIds={voice.remoteSpeaking}
+          localSpeaking={voice.localSpeaking}
           className="h-full"
         />
       </div>

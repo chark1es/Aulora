@@ -219,6 +219,11 @@ set_env_if_present AUTH_LOCAL_SIGNUP "${AUTH_LOCAL_SIGNUP:-}"
 # Optional override of Better Auth's minimum password length (default 8); set to
 # a small number only for throwaway test deployments with easy demo accounts.
 set_env_if_present AUTH_MIN_PASSWORD_LENGTH "${AUTH_MIN_PASSWORD_LENGTH:-}"
+set_env_if_present SMTP_GATEWAY_URL "http://smtp-gateway:8787/send"
+set_env_if_present SMTP_GATEWAY_TOKEN "$INSTANCE_SECRET_RESOLVED" 1
+set_env_if_present AULORA_EMAIL_PROVIDER "$(host_value AULORA_EMAIL_PROVIDER)"
+set_env_if_present AULORA_EMAIL_FROM "$(host_value AULORA_EMAIL_FROM)"
+set_env_if_present RESEND_API_KEY "$(host_value RESEND_API_KEY)" 1
 
 for prefix in GITHUB GOOGLE MICROSOFT APPLE; do
   set_env_if_present "${prefix}_CLIENT_ID" "$(host_value "${prefix}_CLIENT_ID")"
@@ -242,6 +247,17 @@ set_env_if_present VAPID_PRIVATE_KEY "$VAPID_PRIVATE_KEY_VALUE" 1
 # self-hosted deployment can point calls at its own STUN/TURN. Blank leaves
 # clients on their built-in public STUN defaults; calls need no media server.
 set_env_if_present AULORA_ICE_SERVERS "$(host_value AULORA_ICE_SERVERS)"
+
+set_env_if_present AULORA_LICENSE_SERVER_URL "$(host_value AULORA_LICENSE_SERVER_URL)"
+set_env_if_present AULORA_LICENSE_PUBLIC_KEY "$(host_value AULORA_LICENSE_PUBLIC_KEY)"
+
+# Update checks. The host updater reads the same values from .env; copying
+# them into the deployment lets the instance admin panel say whether
+# auto-update is on and which feed it uses.
+set_env_if_present AULORA_UPDATE_MANIFEST_URL "$(host_value AULORA_UPDATE_MANIFEST_URL)"
+set_env_if_present AULORA_UPDATE_GITHUB_REPO "$(host_value AULORA_UPDATE_GITHUB_REPO)"
+set_env_if_present AULORA_UPDATE_CHANNEL "$(host_value AULORA_UPDATE_CHANNEL)"
+set_env_if_present AULORA_AUTO_UPDATE "$(host_value AULORA_AUTO_UPDATE)"
 
 # Server-side encryption: the default local master key is set as a secret.
 # Optional/advanced external-provider settings are read from the host .env and

@@ -42,7 +42,8 @@ export function startOfLocalDay(timestamp: number): number {
  * local-day boundary, an unread divider above `firstUnreadId`, and messages
  * tagged with where their author run starts and ends. A run breaks on a new
  * author, a day boundary, the unread divider, a gap over the group window, or
- * a deleted message (tombstones always stand alone).
+ * a deleted message (tombstones always stand alone). Inline replies always
+ * start a new run so their author and reply context remain visible.
  */
 export function buildTimeline(
   messages: readonly MessagePayload[],
@@ -58,6 +59,7 @@ export function buildTimeline(
       previous === undefined ||
       previous.authorId !== message.authorId ||
       message.createdAt - previous.createdAt > windowMs ||
+      message.replyToId != null ||
       previous.deletedAt !== null ||
       message.deletedAt !== null;
     const day = startOfLocalDay(message.createdAt);

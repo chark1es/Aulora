@@ -9,7 +9,7 @@ server config and one-time setup. Deployed to the self-hosted Convex backend.
 | --- | --- |
 | `convex` | `1.46.0` |
 | `@convex-dev/better-auth` | `0.12.5` (peer `better-auth >=1.6.11 <1.7.0`) |
-| `better-auth` | `1.6.15` (do **not** bump to `1.7.x`, it is outside the peer range) |
+| `better-auth` | `1.6.22` (do **not** bump to `1.7.x`, it is outside the peer range) |
 
 ## Scripts
 
@@ -66,7 +66,7 @@ bunx convex run setup:initialize '{\"token\":\"<token>\",\"name\":\"Acme\",\"ema
 It refuses a second run and returns `{ serverId, roleId, ownerId }`. Remove
 `SETUP_TOKEN` afterwards.
 
-## Instance admin (Phase 6)
+## Instance admin
 
 `convex/instance.ts` backs the operator-only admin panel: `settings` and
 `overview` queries plus `updateStorage`, `updatePushRelay` and `updateBackups`
@@ -77,10 +77,19 @@ are reported as booleans; the OIDC client secret, `PUSH_RELAY_TOKEN` and
 
 - `instanceSettings` stores the total storage quota, the per-upload cap, the
   relay enabled flag/URL/server id and the backup on/off flag.
-- `convex/license.ts` reads and writes `server.licenseKey`. The pure parser in
-  `lib/license.ts` validates the `AULORA1.<TIER>.<EXPIRY>.<ISSUED>.<LICENSEE>.<CHECK>`
-  format and reports unlicensed / active / expired / invalid. No DRM.
+- `convex/license.ts` accepts opaque `AULORA2_` subscription keys for the instance
+  owner. `licenseActions.ts` validates them over HTTPS with the Aulora licensing
+  server, and `lib/licenseProof.ts` verifies the signed response, nonce, key hash,
+  installation, and one-hour lease. A cron refreshes every 30 minutes. Historical
+  checksum keys are no longer accepted. Status does not interrupt chat access.
+  Company subscriptions cost $1/member/month or $10/member/year; see [COMMERCIAL.md](../../COMMERCIAL.md).
 - `convex/backups.ts` records backup runs. A cron at `0 3 * * *` writes the
   nightly intent unless backups are disabled; the outside runner
   (`infra/docker/backup`) does the export + dump + upload and reports the result
   through `backups.record`, gated by the constant-time `BACKUP_TOKEN` check.
+
+## Monthly active-user billing
+
+Version-2 licenses report distinct monthly active users rather than enforcing a purchased member cap. Successful auth session creation/refresh, presence mutations, and message sends call the same server-side deduplication helper. `licenseActivity` stores local identities per license and UTC month; `licenseUsageMonths` stores counts. Collection begins only after signed activation and stops at the verified paid expiration or explicit invalidation. A transient validation outage cannot discard activity in that paid term.
+
+`licenseUsageActions.report` sends aggregate snapshots hourly over HTTPS, authenticating with the license key. Queued reports use purpose-bound encrypted `licenseReportKeys`, so expiry or local key removal cannot discard the final reporting obligation. Acknowledgment preserves aggregates and purges local identity rows after a final report. All reporting queries/mutations are internal; only the instance administrator can view aggregate summaries. The licensing authority rejects decreasing counts and locks final reports, calculates partial license-month coverage, and adds report-based charges or credits to later recurring Stripe invoices. New subscriptions are monthly only.

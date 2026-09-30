@@ -225,6 +225,11 @@ export function getTrustedOrigins(env: Env): string[] {
   }
   origins.add("aulora://auth/callback");
   origins.add("aulora://");
+  // The desktop shell's webview origins (macOS/Linux, Windows). Its session
+  // rides on a bearer token, so it must be allowed to call the auth surface.
+  origins.add("tauri://localhost");
+  origins.add("http://tauri.localhost");
+  origins.add("https://tauri.localhost");
   return [...origins];
 }
 

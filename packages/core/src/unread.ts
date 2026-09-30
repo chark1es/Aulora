@@ -81,14 +81,21 @@ export function hasUnread(cursor: ReadCursor, latestMessage: MessageMeta | null)
   return !isMessageRead(cursor, latestMessage);
 }
 
+/** Resolves an id-only read cursor from the loaded messages before counting. */
 export function summarizeUnread(
   messages: readonly MessageMeta[],
   cursor: ReadCursor,
   userId: string,
 ): UnreadSummary {
-  const first = firstUnreadMessage(messages, cursor);
-  const unreadCount = first === undefined ? 0 : countUnread(messages, cursor);
-  const mentionCount = first === undefined ? 0 : countMentions(messages, cursor, userId);
+  const cursorMessage =
+    cursor.lastReadAt === null && cursor.lastReadMessageId !== null
+      ? messages.find((message) => message.id === cursor.lastReadMessageId)
+      : undefined;
+  const resolvedCursor =
+    cursorMessage === undefined ? cursor : { ...cursor, lastReadAt: cursorMessage.createdAt };
+  const first = firstUnreadMessage(messages, resolvedCursor);
+  const unreadCount = first === undefined ? 0 : countUnread(messages, resolvedCursor);
+  const mentionCount = first === undefined ? 0 : countMentions(messages, resolvedCursor, userId);
   return {
     unread: first !== undefined,
     unreadCount,

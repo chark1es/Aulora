@@ -9,12 +9,13 @@ import {
   SegmentedControl,
   Text,
 } from "@aulora/ui-web";
-import { type ReactNode, useEffect, useState } from "react";
+import { type ReactNode, useEffect, useRef, useState } from "react";
 import { PresenceAvatar } from "./PresenceAvatar";
 
 export interface UserSettingsViewProps {
   readonly ownUserId: string;
   readonly ownName: string;
+  readonly ownBio?: string;
   readonly alignment: "left" | "right";
   readonly canEditNickname: boolean;
   readonly isOwner: boolean;
@@ -23,16 +24,23 @@ export interface UserSettingsViewProps {
   readonly onSave: (input: {
     readonly alignment: "left" | "right";
     readonly nickname?: string;
+    readonly bio?: string;
   }) => void | Promise<void>;
   readonly onBack: () => void;
   readonly onSignOut?: () => void;
+  /** This workspace's picture, when one is set. */
+  readonly hasAvatar?: boolean;
+  readonly onChangeAvatar?: (file: File) => Promise<void>;
+  readonly onClearAvatar?: () => Promise<void>;
   /** Voice device settings, injected to keep this view decoupled. */
   readonly voiceSettings?: ReactNode;
   /** Notifications & sounds settings, injected to keep this view decoupled. */
   readonly soundSettings?: ReactNode;
+  readonly updateSettings?: ReactNode;
+  readonly updateAvailable?: boolean;
 }
 
-type Category = "account" | "notifications" | "voice" | "appearance";
+type Category = "account" | "notifications" | "voice" | "appearance" | "updates";
 
 const CATEGORIES: readonly {
   readonly id: Category;
@@ -43,6 +51,7 @@ const CATEGORIES: readonly {
   { id: "notifications", label: "Notifications & sounds", icon: "bell" },
   { id: "voice", label: "Voice & video", icon: "headphones" },
   { id: "appearance", label: "Appearance", icon: "eye" },
+  { id: "updates", label: "Updates", icon: "download" },
 ];
 
 /**
@@ -54,6 +63,7 @@ const CATEGORIES: readonly {
 export function UserSettingsView({
   ownUserId,
   ownName,
+  ownBio = "",
   alignment,
   canEditNickname,
   isOwner,
@@ -62,35 +72,89 @@ export function UserSettingsView({
   onSave,
   onBack,
   onSignOut,
+  hasAvatar = false,
+  onChangeAvatar,
+  onClearAvatar,
   voiceSettings,
   soundSettings,
+  updateSettings,
+  updateAvailable = false,
 }: UserSettingsViewProps) {
-  const [category, setCategory] = useState<Category>("account");
+  const [category, setCategory] = useState<Category>(
+    updateAvailable && updateSettings !== undefined ? "updates" : "account",
+  );
   const [nextAlignment, setNextAlignment] = useState<"left" | "right">(alignment);
   const [nickname, setNickname] = useState("");
+  const [bio, setBio] = useState(ownBio);
+  const [bioEdited, setBioEdited] = useState(false);
+  const [saveError, setSaveError] = useState<string | null>(null);
   const [submitting, setSubmitting] = useState(false);
   const [confirmSignOut, setConfirmSignOut] = useState(false);
+  const [avatarError, setAvatarError] = useState<string | null>(null);
+  const [avatarBusy, setAvatarBusy] = useState(false);
+  const avatarInputRef = useRef<HTMLInputElement | null>(null);
 
   // Track live alignment changes without clobbering the nickname field.
   useEffect(() => {
     setNextAlignment(alignment);
   }, [alignment]);
 
+  useEffect(() => {
+    if (!bioEdited) {
+      setBio(ownBio);
+    }
+  }, [ownBio, bioEdited]);
+
   const isBusy = busy || submitting;
   const trimmedNickname = nickname.trim();
   const nicknameProvided = canEditNickname && trimmedNickname.length > 0;
+
+  const changeAvatar = (file: File) => {
+    if (onChangeAvatar === undefined || avatarBusy) {
+      return;
+    }
+    if (!file.type.startsWith("image/")) {
+      setAvatarError("Choose an image.");
+      return;
+    }
+    if (file.size > 4 * 1024 * 1024) {
+      setAvatarError("Choose an image under 4 MB.");
+      return;
+    }
+    setAvatarBusy(true);
+    setAvatarError(null);
+    void onChangeAvatar(file)
+      .catch(() => setAvatarError("Couldn't update your profile picture."))
+      .finally(() => setAvatarBusy(false));
+  };
+
+  const clearAvatar = () => {
+    if (onClearAvatar === undefined || avatarBusy) {
+      return;
+    }
+    setAvatarBusy(true);
+    setAvatarError(null);
+    void onClearAvatar()
+      .catch(() => setAvatarError("Couldn't remove your profile picture."))
+      .finally(() => setAvatarBusy(false));
+  };
 
   const submit = (includeNickname: boolean) => {
     if (isBusy) {
       return;
     }
     setSubmitting(true);
-    void Promise.resolve(
-      onSave({
-        alignment: nextAlignment,
-        ...(includeNickname && nicknameProvided ? { nickname: trimmedNickname } : {}),
-      }),
-    ).finally(() => setSubmitting(false));
+    setSaveError(null);
+    void Promise.resolve()
+      .then(() =>
+        onSave({
+          alignment: nextAlignment,
+          ...(includeNickname && nicknameProvided ? { nickname: trimmedNickname } : {}),
+          ...(includeNickname ? { bio: bio.trim() } : {}),
+        }),
+      )
+      .catch(() => setSaveError("Couldn't save your settings. Please try again."))
+      .finally(() => setSubmitting(false));
   };
 
   return (
@@ -113,55 +177,102 @@ export function UserSettingsView({
           aria-label="Settings categories"
           className="flex shrink-0 gap-1 overflow-x-auto border-b border-border p-2 sm:w-[212px] sm:flex-col sm:overflow-visible sm:border-b-0 sm:border-r sm:p-3"
         >
-          <div className="mb-2 hidden items-center gap-2.5 rounded-[10px] border border-border bg-surface-2 p-2.5 sm:flex">
-            <PresenceAvatar userId={ownUserId} size={40} />
-            <div className="min-w-0 flex-1">
-              <div className="flex min-w-0 items-center gap-1.5">
-                <span className="truncate text-[13px] font-semibold text-text">{ownName}</span>
-                {isOwner && (
-                  <span
-                    className="shrink-0 rounded-full bg-accent-soft px-1.5 py-0.5 text-[10px] font-medium text-accent"
-                    data-testid="user-settings-admin-badge"
-                  >
-                    Admin
-                  </span>
+          {CATEGORIES.filter((entry) => entry.id !== "updates" || updateSettings !== undefined).map(
+            (entry) => (
+              <button
+                key={entry.id}
+                type="button"
+                aria-current={category === entry.id ? "page" : undefined}
+                onClick={() => setCategory(entry.id)}
+                className={cn(
+                  "flex shrink-0 items-center gap-2.5 whitespace-nowrap rounded-[8px] px-2.5 py-2 text-left text-[13px]",
+                  category === entry.id
+                    ? "bg-surface-3 font-medium text-text"
+                    : "text-text-muted transition hover:bg-surface-2 hover:text-text",
                 )}
-              </div>
-              <p className="truncate text-[11px] text-text-muted">Manage your account</p>
-            </div>
-          </div>
-          {CATEGORIES.map((entry) => (
-            <button
-              key={entry.id}
-              type="button"
-              aria-current={category === entry.id ? "page" : undefined}
-              onClick={() => setCategory(entry.id)}
-              className={cn(
-                "flex shrink-0 items-center gap-2.5 whitespace-nowrap rounded-[8px] px-2.5 py-2 text-left text-[13px]",
-                category === entry.id
-                  ? "bg-surface-3 font-medium text-text"
-                  : "text-text-muted transition hover:bg-surface-2 hover:text-text",
-              )}
-            >
-              <Icon name={entry.icon} size={16} className="shrink-0" />
-              <span className="min-w-0 flex-1 truncate">{entry.label}</span>
-            </button>
-          ))}
+              >
+                <Icon name={entry.icon} size={16} className="shrink-0" />
+                <span className="min-w-0 flex-1 truncate">{entry.label}</span>
+                {entry.id === "updates" && updateAvailable && (
+                  <span
+                    className="h-1.5 w-1.5 shrink-0 rounded-full bg-accent"
+                    role="img"
+                    aria-label="Update available"
+                  />
+                )}
+              </button>
+            ),
+          )}
         </nav>
 
         <div className="min-h-0 flex-1 overflow-y-auto">
           <div className="mx-auto flex w-full max-w-[760px] flex-col gap-6 p-6">
+            {category === "updates" && updateSettings}
             {category === "account" && (
               <>
                 <div className="flex items-center gap-3">
                   <PresenceAvatar userId={ownUserId} size={56} />
                   <div className="min-w-0 flex-1">
-                    <span className="truncate text-[17px] font-semibold text-text">{ownName}</span>
+                    <span className="flex items-center gap-2 truncate text-[17px] font-semibold text-text">
+                      {ownName}
+                      {isOwner && (
+                        <span
+                          className="rounded-full bg-accent-soft px-2 py-0.5 text-[10px] font-medium text-accent"
+                          data-testid="user-settings-admin-badge"
+                        >
+                          Admin
+                        </span>
+                      )}
+                    </span>
                     <p className="truncate text-[13px] text-text-muted">
                       Your profile in this workspace.
                     </p>
                   </div>
                 </div>
+
+                {onChangeAvatar !== undefined && (
+                  <div className="flex flex-wrap items-center gap-2">
+                    <input
+                      ref={avatarInputRef}
+                      type="file"
+                      accept="image/*"
+                      className="hidden"
+                      aria-label="Change profile picture"
+                      onChange={(event) => {
+                        const file = event.target.files?.[0];
+                        event.target.value = "";
+                        if (file !== undefined) {
+                          changeAvatar(file);
+                        }
+                      }}
+                    />
+                    <Button
+                      type="button"
+                      variant="secondary"
+                      loading={avatarBusy}
+                      disabled={avatarBusy}
+                      leading={<Icon name="image" size={15} />}
+                      onClick={() => avatarInputRef.current?.click()}
+                    >
+                      Change picture
+                    </Button>
+                    {hasAvatar && onClearAvatar !== undefined && (
+                      <Button
+                        type="button"
+                        variant="ghost"
+                        disabled={avatarBusy}
+                        onClick={clearAvatar}
+                      >
+                        Use generated avatar
+                      </Button>
+                    )}
+                    {avatarError !== null && (
+                      <Text tone="danger" size="sm" role="alert">
+                        {avatarError}
+                      </Text>
+                    )}
+                  </div>
+                )}
 
                 <form
                   className="flex flex-col gap-5"
@@ -186,9 +297,25 @@ export function UserSettingsView({
                     </Text>
                   )}
 
-                  {error !== null && error.length > 0 && (
+                  <label className="flex flex-col gap-1.5 text-[12px] font-medium text-text-muted">
+                    Bio
+                    <textarea
+                      value={bio}
+                      maxLength={500}
+                      rows={4}
+                      placeholder="Tell other members a little about yourself."
+                      onChange={(event) => {
+                        setBioEdited(true);
+                        setBio(event.target.value);
+                      }}
+                      className="w-full resize-y rounded-input border border-border bg-surface-2 px-3 py-2 text-[13px] font-normal text-text placeholder:text-text-muted focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent"
+                    />
+                    <span className="text-[11px] font-normal">{bio.length}/500 characters</span>
+                  </label>
+
+                  {(saveError !== null || (error !== null && error.length > 0)) && (
                     <Text tone="danger" size="sm" role="alert">
-                      {error}
+                      {saveError ?? error}
                     </Text>
                   )}
 

@@ -19,6 +19,7 @@ export interface MembersPanelProps {
   readonly presence: readonly PresenceRow[];
   readonly customStatuses: ReadonlyMap<string, string>;
   readonly ownUserId: string;
+  readonly onViewProfile: (userId: string, anchor: HTMLButtonElement) => void;
   readonly onMessage: (userId: string) => void;
   readonly onClose: () => void;
   /** Optional member actions surfaced in the right-click menu. */
@@ -32,13 +33,14 @@ export interface MembersPanelProps {
 
 /**
  * The member list, split into who is around and who is offline. Clicking a
- * member opens a direct message with them.
+ * member opens their profile summary.
  */
 export function MembersPanel({
   members,
   presence,
   customStatuses,
   ownUserId,
+  onViewProfile,
   onMessage,
   onClose,
   memberActions,
@@ -129,7 +131,7 @@ export function MembersPanel({
           statusOf={statusOf}
           customStatuses={customStatuses}
           ownUserId={ownUserId}
-          onMessage={onMessage}
+          onViewProfile={onViewProfile}
           onContextMenu={memberMenu}
         />
         <MemberGroup
@@ -138,7 +140,7 @@ export function MembersPanel({
           statusOf={statusOf}
           customStatuses={customStatuses}
           ownUserId={ownUserId}
-          onMessage={onMessage}
+          onViewProfile={onViewProfile}
           onContextMenu={memberMenu}
           dim
         />
@@ -153,7 +155,7 @@ function MemberGroup({
   statusOf,
   customStatuses,
   ownUserId,
-  onMessage,
+  onViewProfile,
   onContextMenu,
   dim = false,
 }: {
@@ -162,7 +164,7 @@ function MemberGroup({
   readonly statusOf: (userId: string) => PresenceRow["status"];
   readonly customStatuses: ReadonlyMap<string, string>;
   readonly ownUserId: string;
-  readonly onMessage: (userId: string) => void;
+  readonly onViewProfile: (userId: string, anchor: HTMLButtonElement) => void;
   readonly onContextMenu: (member: MemberEntry, event: React.MouseEvent) => void;
   readonly dim?: boolean;
 }) {
@@ -184,9 +186,10 @@ function MemberGroup({
                 type="button"
                 data-testid={`presence-row-${member.userId}`}
                 disabled={self}
-                onClick={() => onMessage(member.userId)}
+                onClick={(event) => onViewProfile(member.userId, event.currentTarget)}
                 onContextMenu={(event) => onContextMenu(member, event)}
-                title={self ? undefined : `Message ${member.displayName}`}
+                title={self ? undefined : `View ${member.displayName}'s profile`}
+                aria-haspopup={self ? undefined : "dialog"}
                 className={cn(
                   "group flex w-full items-center gap-2.5 rounded-[8px] px-2 py-1.5 text-left transition enabled:hover:bg-surface-3",
                   dim && "opacity-60 hover:opacity-100",

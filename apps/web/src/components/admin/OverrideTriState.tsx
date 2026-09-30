@@ -75,7 +75,7 @@ export function OverrideTriState({
             {segment === "inherit" ? (
               <span aria-hidden="true" className="h-0.5 w-2.5 rounded-full bg-current" />
             ) : (
-              <Icon name={segment === "allow" ? "check" : "x"} size={12} strokeWidth={2.25} />
+              <Icon name={segment === "allow" ? "check" : "x"} size={12} />
             )}
           </button>
         );

@@ -8,6 +8,7 @@ import { writeAudit } from "./lib/audit";
 import { requireAuth } from "./lib/auth";
 import { assertMayParticipate } from "./lib/bans";
 import { findChannelMember, isDmKind, requireChannelAccess } from "./lib/channels";
+import { recordLicenseActivity } from "./lib/licenseActivity";
 import {
   categoryOverridesFor,
   channelPermissions,
@@ -157,6 +158,12 @@ export const send = mutation({
       if (threadRoot.threadRootId !== undefined) {
         throw new ConvexError("Threads cannot be nested");
       }
+      if (
+        (threadRoot.replyCount ?? 0) === 0 &&
+        !hasPermission(access.permissions, Permission.CreateThreads)
+      ) {
+        throw new ConvexError("Missing permission to create threads");
+      }
     }
     if (args.replyToId !== undefined) {
       const replyTo = await ctx.db.get(args.replyToId);
@@ -208,6 +215,7 @@ export const send = mutation({
     // Route content-free mobile wakes (APNs/FCM/UnifiedPush) via the push relay;
     // also a no-op when the relay is unconfigured.
     await ctx.scheduler.runAfter(0, internal.notifications.dispatchMobileForMessage, { messageId });
+    await recordLicenseActivity(ctx, access.userId);
     return messageId;
   },
 });

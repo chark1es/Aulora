@@ -8,7 +8,7 @@ Checked against official documentation on 2026-09-29. Dashboard links require yo
 | iOS | `dev.spwnd.aulora` |
 | Android | `dev.spwnd.aulora` |
 
-Keep private downloads under `.secrets/release/apple/`, `.secrets/release/android/`, or `.secrets/release/windows/`. Those local directories and `.secrets/release/credentials.env` have been created for supplied files and metadata. The worksheet does not automatically configure builds. Keep passwords in a password manager, Keychain or CI secret store; do not paste account passwords or private key contents into chat or documentation.
+Keep private downloads under `.secrets/release/apple/`, `.secrets/release/android/`, or `.secrets/release/windows/`. Those local directories and `.secrets/release/credentials.env` have been created for supplied files and metadata. The local worksheet does not automatically configure builds. GitHub release builds use the restricted Actions environment described in [the CI guide](github-actions.md). Keep passwords in a password manager, Keychain or CI secret store; do not paste account passwords or private key contents into chat or documentation.
 
 ## Apple account and macOS signing
 
@@ -31,7 +31,7 @@ Configure the relay using `APNS_KEY_PATH` or `APNS_KEY_P8`, `APNS_KEY_ID`, `APNS
 
 ## Android signing
 
-Open [Google Play Console](https://play.google.com/console/) for Play distribution. Generate or reuse an Android release/upload keystore through Android Studio **Build > Generate Signed Bundle/APK**, or let EAS manage it. Save an exported keystore as `.secrets/release/android/aulora-upload.jks`. Keep the **key alias**, **keystore password** and **key password** separately. Replace the current Gradle release debug-key configuration before publishing.
+Open [Google Play Console](https://play.google.com/console/) for Play distribution. Generate or reuse an Android release/upload keystore through Android Studio **Build > Generate Signed Bundle/APK**, or let EAS manage it. Save an exported keystore as `.secrets/release/android/aulora-upload.jks`. Keep the **key alias**, **keystore password** and **key password** separately. Gradle release builds now use the keystore supplied through environment variables. Distribution CI requires its signing secrets and Firebase client configuration and fails if either is absent.
 
 With Play App Signing, Google signs installed releases using the **app signing key**; your **upload key** signs submissions. For directly distributed APKs, choose a stable release signing key and preserve it for future updates. If you want direct APKs and Play installs to update one another, decide their shared signing strategy before the first release. A public `.pem` signing certificate does not contain the private signing key. [Android signing and keystore instructions](https://developer.android.com/studio/publish/app-signing)
 
@@ -50,7 +50,8 @@ below is optional future work.
 
 Windows installers are distributed through GitHub Releases, with public downloads
 available after this repository becomes public for v1. Building the unsigned
-installer does not require a signing credential.
+installer does not require a signing credential. See the
+[GitHub Actions release guide](github-actions.md).
 
 Choose a public-trust code-signing provider and its supported signing workflow. Current providers commonly use cloud signing or a hardware token/HSM, so there is no universal downloadable certificate file to request. Tauri's legacy `.pfx` tutorial explicitly applies only to OV certificates issued before June 2023. A website TLS certificate or self-signed certificate is unsuitable for a publicly trusted installer. [Tauri Windows signing and provider integration](https://v2.tauri.app/distribute/sign/windows/)
 

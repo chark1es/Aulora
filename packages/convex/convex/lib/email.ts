@@ -15,6 +15,13 @@ export interface EmailConfig {
   readonly from: string;
   readonly resendApiKey: string | undefined;
   readonly smtpGatewayUrl: string | undefined;
+  readonly smtp?: {
+    readonly host: string;
+    readonly port: number;
+    readonly secure: boolean;
+    readonly user: string;
+    readonly password: string;
+  };
 }
 
 export type EmailSkipReason = "unconfigured" | "error";
@@ -55,7 +62,8 @@ function normalizeProvider(raw: string | undefined): EmailProvider | null {
 /**
  * Resolves the email transport from the environment. An explicit
  * `AULORA_EMAIL_PROVIDER` wins; otherwise the presence of `RESEND_API_KEY` or
- * `SMTP_GATEWAY_URL` is inferred. A configured provider without its required
+ * SMTP is inferred only when both the bridge and an SMTP host are configured.
+ * A configured provider without its required
  * endpoint degrades to `none`.
  */
 export function parseEmailConfig(env: Env = process.env): EmailConfig {
@@ -66,7 +74,11 @@ export function parseEmailConfig(env: Env = process.env): EmailConfig {
   let provider = normalizeProvider(read(env, "AULORA_EMAIL_PROVIDER")?.toLowerCase());
   if (provider === null) {
     provider =
-      resendApiKey !== undefined ? "resend" : smtpGatewayUrl !== undefined ? "smtp" : "none";
+      resendApiKey !== undefined
+        ? "resend"
+        : smtpGatewayUrl !== undefined && read(env, "SMTP_HOST") !== undefined
+          ? "smtp"
+          : "none";
   }
   if (provider === "resend" && resendApiKey === undefined) {
     provider = "none";
@@ -81,6 +93,7 @@ export function parseEmailConfig(env: Env = process.env): EmailConfig {
 export interface SendEmailDeps {
   readonly env?: Env;
   readonly fetch?: typeof fetch;
+  readonly config?: EmailConfig;
 }
 
 /**
@@ -93,7 +106,7 @@ export async function sendEmail(
   deps: SendEmailDeps = {},
 ): Promise<SendEmailResult> {
   const env = deps.env ?? process.env;
-  const config = parseEmailConfig(env);
+  const config = deps.config ?? parseEmailConfig(env);
   if (config.provider === "none") {
     console.info(`[email] no provider configured; skipping message to ${message.to}`);
     return { sent: false, provider: "none", skipped: "unconfigured" };
@@ -127,13 +140,19 @@ export async function sendEmail(
 
     const response = await fetchImpl(config.smtpGatewayUrl ?? "", {
       method: "POST",
-      headers: { "content-type": "application/json" },
+      headers: {
+        "content-type": "application/json",
+        ...(read(env, "SMTP_GATEWAY_TOKEN") !== undefined
+          ? { authorization: `Bearer ${read(env, "SMTP_GATEWAY_TOKEN")}` }
+          : {}),
+      },
       body: JSON.stringify({
         from: config.from,
         to: message.to,
         subject: message.subject,
         text: message.text,
         ...(message.html !== undefined ? { html: message.html } : {}),
+        ...(config.smtp !== undefined ? { smtp: config.smtp } : {}),
       }),
     });
     return response.ok

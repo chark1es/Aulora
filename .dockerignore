@@ -13,13 +13,33 @@
 **/playwright-report
 **/blob-report
 **/.git
+infra/docker/.update-stage
+infra/docker/.update-host.lock
+infra/docker/.update.lock
+infra/docker/.update-ready.json
+infra/docker/.update-status.json
 **/.gitattributes
 **/*.log
 
 # Secrets and local env files (templates stay).
 .env
 .env.*
+**/.env
+**/.env.*
 !**/.env.example
+**/.secrets
+**/*.p8
+**/*.p12
+**/*.pfx
+**/*.jks
+**/*.keystore
+**/*.mobileprovision
+**/*.provisionprofile
+**/google-services.json
+**/GoogleService-Info.plist
+**/credentials.json
+**/*service-account*.json
+**/*firebase-adminsdk*.json
 
 # Generated per-instance well-known document; infra writes the real one at runtime.
 apps/web/public/.well-known

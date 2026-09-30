@@ -1,7 +1,7 @@
-import { Avatar, userAvatarSeed } from "@aulora/avatars";
 import { type CallParticipantView, sortParticipants, type VoiceDeviceSettings } from "@aulora/core";
 import { cn, Icon } from "@aulora/ui-web";
 import { useEffect, useMemo, useRef } from "react";
+import { PersonAvatar } from "../chat/member-avatars";
 import { type CallIdentity, shouldMirror } from "./identity";
 
 /**
@@ -100,7 +100,7 @@ export function ParticipantTile({
   readonly localVideoTrack: MediaStreamTrack | null;
   readonly settings: VoiceDeviceSettings;
   /** Local override from the remote level meter; wins over the server field. */
-  readonly speaking?: boolean;
+  readonly speaking?: boolean | undefined;
   readonly className?: string;
   readonly avatarSize?: number;
 }) {
@@ -129,18 +129,14 @@ export function ParticipantTile({
         />
       ) : (
         <div className="flex h-full w-full items-center justify-center">
-          <Avatar
-            seed={userAvatarSeed(participant.userId)}
-            size={avatarSize}
-            {...(roleColor !== null && roleColor.length > 0 ? { roleColor } : {})}
-          />
+          <PersonAvatar userId={participant.userId} size={avatarSize} roleColor={roleColor} />
         </div>
       )}
 
       <div className="pointer-events-none absolute inset-x-0 bottom-0 flex items-center gap-1.5 bg-gradient-to-t from-black/65 via-black/25 to-transparent px-2.5 pb-1.5 pt-5">
         {participant.muted && (
           <span className="flex h-5 w-5 items-center justify-center rounded-full bg-danger/90 text-on-accent">
-            <Icon name="mic-off" size={12} strokeWidth={2.25} />
+            <Icon name="mic-off" size={12} />
           </span>
         )}
         {participant.sharingScreen && (
@@ -148,7 +144,7 @@ export function ParticipantTile({
             className="flex items-center gap-1 rounded-full bg-accent px-1.5 py-0.5 text-[10px] font-semibold text-on-accent"
             title="Sharing screen"
           >
-            <Icon name="monitor" size={11} strokeWidth={2.25} />
+            <Icon name="monitor" size={11} />
             Screen
           </span>
         )}
@@ -156,6 +152,11 @@ export function ParticipantTile({
           {name}
           {isSelf ? " (you)" : ""}
         </span>
+        {isSelf && isSpeaking && !participant.muted && (
+          <span className="shrink-0 rounded-full bg-secondary/90 px-1.5 py-0.5 text-[10px] font-semibold text-white">
+            Speaking
+          </span>
+        )}
         {participant.connection !== "connected" && (
           <span
             title={CONNECTION_LABEL[participant.connection]}
@@ -169,7 +170,7 @@ export function ParticipantTile({
 
       {participant.deafened && (
         <span className="absolute right-2 top-2 flex h-6 w-6 items-center justify-center rounded-full bg-black/55 text-white">
-          <Icon name="headphones-off" size={13} strokeWidth={2.25} />
+          <Icon name="headphones-off" size={13} />
         </span>
       )}
     </div>
@@ -188,6 +189,7 @@ export function CallGrid({
   settings,
   identity,
   speakingIds,
+  localSpeaking = false,
   className,
 }: {
   readonly participants: readonly CallParticipantView[];
@@ -198,6 +200,7 @@ export function CallGrid({
   readonly identity: CallIdentity;
   /** Remote users currently speaking, from the local audio level meter. */
   readonly speakingIds?: ReadonlySet<string>;
+  readonly localSpeaking?: boolean;
   readonly className?: string;
 }) {
   const sorted = useMemo(() => sortParticipants(participants), [participants]);
@@ -215,7 +218,9 @@ export function CallGrid({
       stream={streams.get(participant.userId) ?? null}
       localVideoTrack={localVideoTrack}
       settings={settings}
-      {...(speakingIds !== undefined ? { speaking: speakingIds.has(participant.userId) } : {})}
+      speaking={
+        participant.userId === localUserId ? localSpeaking : speakingIds?.has(participant.userId)
+      }
     />
   );
 
@@ -230,7 +235,7 @@ export function CallGrid({
           stream={streams.get(sharer.userId) ?? null}
           localVideoTrack={localVideoTrack}
           settings={settings}
-          {...(speakingIds !== undefined ? { speaking: speakingIds.has(sharer.userId) } : {})}
+          speaking={sharer.userId === localUserId ? localSpeaking : speakingIds?.has(sharer.userId)}
           className="min-h-0 flex-1"
         />
         {rest.length > 0 && (
@@ -245,9 +250,11 @@ export function CallGrid({
                   stream={streams.get(participant.userId) ?? null}
                   localVideoTrack={localVideoTrack}
                   settings={settings}
-                  {...(speakingIds !== undefined
-                    ? { speaking: speakingIds.has(participant.userId) }
-                    : {})}
+                  speaking={
+                    participant.userId === localUserId
+                      ? localSpeaking
+                      : speakingIds?.has(participant.userId)
+                  }
                   className="h-full w-full"
                   avatarSize={40}
                 />

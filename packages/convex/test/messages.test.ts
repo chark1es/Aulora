@@ -352,6 +352,39 @@ describe("messages.send and list", () => {
     ).rejects.toThrow("Missing permission");
   });
 
+  it("requires CreateThreads only for the first thread reply", async () => {
+    const t = newTest();
+    await seedWorkspace(t, {
+      everyonePermissions:
+        Permission.ViewChannel |
+        Permission.SendMessages |
+        Permission.SendInThreads |
+        Permission.ReadHistory,
+      members: [{ userId: "user-1" }],
+    });
+    const channelId = await seedChannel(t);
+    const asUser = t.withIdentity({ subject: "user-1" });
+    const asOwner = t.withIdentity({ subject: "owner-1" });
+    const rootId = await asOwner.mutation(api.messages.send, { channelId, body: "root" });
+
+    await expect(
+      asUser.mutation(api.messages.send, {
+        channelId,
+        body: "first",
+        threadRootId: rootId,
+      }),
+    ).rejects.toThrow("Missing permission to create threads");
+
+    await asOwner.mutation(api.messages.send, { channelId, body: "first", threadRootId: rootId });
+    await expect(
+      asUser.mutation(api.messages.send, {
+        channelId,
+        body: "second",
+        threadRootId: rootId,
+      }),
+    ).resolves.toBeDefined();
+  });
+
   it("enforces the per-user send rate limit", async () => {
     process.env.SEND_RATE_LIMIT = "2";
     const t = newTest();

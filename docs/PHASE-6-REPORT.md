@@ -79,3 +79,7 @@ proven here without pulling the pinned images and a human tester.
 - Enable the `backups` profile and confirm the first upload to the operator's
   real S3 bucket; keep `infra/docker/.env` (especially `INSTANCE_SECRET`) safe.
 - Trademark/domain checks and the Apple/Google store steps from `plan.md`.
+
+## Subscription licensing update
+
+The historical checksum-only format above has been replaced by AULORA2 subscription keys. The instance server validates these over HTTPS with Aulora's private licensing authority and verifies signed, nonce-bound responses with a one-hour maximum lease. Company pricing is $1/member/month or $10/member/year, without lifetime or one-time licenses. See [COMMERCIAL.md](../COMMERCIAL.md) for current pricing and behavior.

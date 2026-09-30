@@ -1,48 +1,60 @@
 # Getting started
 
-There are two paths: run the whole stack from a checkout, or build and test the
-monorepo.
+## Join an existing server
 
-## Self-host in one command
+Ask your workspace administrator for the server's web URL and an invitation if registration is restricted. Open it in a browser, or enter that URL in the desktop or mobile client's connect screen. Choose a sign-in method offered by the server. Follow the [user guide](user-guide.md) for everyday use.
 
-From a clone of the repository:
+You do not need Docker or developer tools to join someone else's server.
+
+## Install a local server
+
+Install Git and Docker with Compose v2.24 or newer. Start Docker first. On Windows use PowerShell 7 and Docker Desktop in Linux-container mode.
+
+On macOS, Linux, or WSL:
 
 ```sh
-# macOS / Linux
+git clone https://github.com/chark1es/Aulora.git
+cd Aulora
 ./install.sh
+```
 
-# Windows
+On Windows:
+
+```powershell
+git clone https://github.com/chark1es/Aulora.git
+Set-Location Aulora
 pwsh ./install.ps1
 ```
 
-The installer checks Docker, writes `infra/docker/.env` from the template (or
-uses `AULORA_*` environment variables), prompts for the workspace name, owner
-email and owner password, then runs `docker compose up -d --build` and the
-one-shot `setup` service. It prints the URL to open when it finishes. See
-[Self-hosting](self-hosting.md) for every option.
+The installer asks for an owner email and password of at least 16 characters. It creates `infra/docker/.env`, builds the stack, and provisions the workspace. The first build can take several minutes.
 
-Server-side encryption is on by default: `setup` generates a local master key
-(`AULORA_ENCRYPTION_KEY`), so the default stack needs no extra services. An
-external key manager (Vault, AWS KMS, GCP KMS or an HTTP proxy) is an optional,
-advanced alternative. See [Self-hosting → Encryption](self-hosting.md).
+Open the printed URL, normally `http://localhost:8080`, and sign in with the owner account. The installer creates that account, so you do not need to register it again.
 
-## Work on the monorepo
+## Check the installation
+
+From the repository root:
 
 ```sh
-bun install        # install all workspaces, writes the single root bun.lock
-bun run typecheck  # strict tsc --noEmit across every package
-bun run lint       # Biome across every package
-bun run test       # Vitest suites across every package
-bun run build      # Turborepo build
-bun run dev        # run the dev servers
+cd infra/docker
+docker compose ps
+docker compose logs --tail=100 setup
+curl --fail http://localhost:8080/.well-known/aulora.json
 ```
 
-The docs site builds with `bun run --cwd apps/docs build` and lands in
-`apps/docs/dist`.
+On PowerShell use `curl.exe` for the last command. Setup should finish successfully and discovery should return JSON with the workspace name and a reachable Convex URL. Create a channel, send a message, upload a small file, and invite a second test account.
 
-## Where to go next
+Keep `infra/docker/.env` private and back it up securely. It contains the encryption key needed to recover your messages. Database backups alone are insufficient.
 
-- Gave it a server URL and a login? Open the [admin panel](admin.md).
-- Want off-machine copies of your data? Set up [backups](backups.md).
-- Deploying to a server with Coolify? Follow [Deploy on Coolify](coolify.md).
-- Running it for a company? Read [Licensing](licensing.md).
+## Make it available to your team
+
+`localhost` only works on the machine hosting the server. A phone or another computer needs a reachable hostname and matching public URLs. For a public deployment, configure DNS, HTTPS, origin settings, private administration ports, and non-default database/storage credentials. Follow [self-hosting](self-hosting.md) or [Coolify](coolify.md) before inviting users.
+
+Voice/video requires microphone/camera permissions and a secure origin. Some networks also need TURN. Mobile push requires a configured relay; it is optional.
+
+## Next steps
+
+- Configure [workspace access, roles, and invitations](admin.md).
+- Set up [off-machine backups and test a restore](backups.md).
+- Read [privacy](privacy.md) and [licensing](licensing.md).
+- If something fails, use [troubleshooting](troubleshooting.md).
+- To modify the code, follow [development setup](https://github.com/chark1es/Aulora/blob/main/docs/development.md).

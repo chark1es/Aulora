@@ -73,6 +73,7 @@ const ACTION_LABELS: Record<string, string> = {
   "instance.authProviders.update": "updated sign-in providers",
   "instance.backups.update": "updated backup settings",
   "email.sendTest": "sent a test email",
+  "email.settings.update": "updated email settings",
   "license.setKey": "updated the license key",
 };
 

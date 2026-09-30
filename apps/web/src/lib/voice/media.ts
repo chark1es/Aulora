@@ -285,6 +285,7 @@ export function createLevelMeter(
   const data = new Uint8Array(analyser.frequencyBinCount);
   let smoothed = 0;
   let frame = 0;
+  void context.resume().catch(() => undefined);
   const tick = () => {
     analyser.getByteFrequencyData(data);
     let sum = 0;

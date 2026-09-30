@@ -103,7 +103,12 @@ export const overview = query({
         settings.authProviders?.[definition.id as "github" | "google" | "microsoft" | "apple"] !==
         false,
     }));
-    const email = parseEmailConfig(env);
+    const emailFallback = parseEmailConfig(env);
+    const emailSettings = await ctx.db.query("emailSettings").first();
+    const email = {
+      provider: emailSettings?.provider ?? emailFallback.provider,
+      from: emailSettings?.from ?? emailFallback.from,
+    };
 
     return {
       name: server.name,

@@ -18,10 +18,13 @@
     "verify": "node scripts/verify-config.mjs",
     "release-version": "node scripts/release-version.mjs",
     "test:release-version": "bun test scripts/release-version.test.mjs",
+    "release-manifest": "node scripts/release-manifest.mjs",
+    "test:release-manifest": "bun test scripts/release-manifest.test.mjs",
     "lint": "biome check .",
     "format": "biome format --write ."
   },
   "devDependencies": {
     "@tauri-apps/cli": "^2.9.0"
-  }
+  },
+  "license": "PolyForm-Noncommercial-1.0.0"
 }

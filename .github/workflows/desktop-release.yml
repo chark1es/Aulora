@@ -1,0 +1,122 @@
+name: Desktop release artifacts
+
+on:
+  workflow_call:
+    inputs:
+      version:
+        required: true
+        type: string
+  workflow_dispatch:
+    inputs:
+      version:
+        description: Candidate version, without the v prefix. Builds main only.
+        required: true
+        type: string
+
+permissions:
+  contents: read
+
+jobs:
+  build:
+    name: Signed desktop (${{ matrix.name }})
+    runs-on: ${{ matrix.os }}
+    environment: release-signing
+    timeout-minutes: 90
+    defaults:
+      run:
+        shell: bash
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - os: macos-latest
+            name: darwin-aarch64
+            target: aarch64-apple-darwin
+          - os: macos-latest
+            name: darwin-x86_64
+            target: x86_64-apple-darwin
+          - os: windows-latest
+            name: windows-x86_64
+            target: x86_64-pc-windows-msvc
+          - os: ubuntu-22.04
+            name: linux-x86_64
+            target: x86_64-unknown-linux-gnu
+    env:
+      RELEASE_VERSION: ${{ inputs.version }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - name: Require main
+        run: test "$GITHUB_REF" = refs/heads/main
+      - uses: ./.github/actions/setup-js
+      - name: Install Linux dependencies
+        if: runner.os == 'Linux'
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y libwebkit2gtk-4.1-dev libayatana-appindicator3-dev librsvg2-dev libgtk-3-dev libsoup-3.0-dev libdbus-1-dev libssl-dev patchelf pkg-config build-essential file libfuse2
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: ${{ matrix.target }}
+      - uses: swatinem/rust-cache@v2
+        with:
+          workspaces: apps/desktop/src-tauri -> target
+      - uses: ./.github/actions/apple-signing
+        if: runner.os == 'macOS'
+        with:
+          platform: macos
+          certificate: ${{ secrets.MACOS_CERTIFICATE_BASE64 }}
+          password: ${{ secrets.MACOS_CERTIFICATE_PASSWORD }}
+          team: ${{ secrets.APPLE_TEAM_ID }}
+          identity: ${{ secrets.APPLE_SIGNING_IDENTITY }}
+      - name: Install notarization key
+        if: runner.os == 'macOS'
+        env:
+          APPLE_API_PRIVATE_KEY: ${{ secrets.APPLE_API_PRIVATE_KEY }}
+        run: |
+          python3 - <<'PY'
+          import os
+          from pathlib import Path
+          key = os.environ['APPLE_API_PRIVATE_KEY']
+          if not key: raise SystemExit('Missing APPLE_API_PRIVATE_KEY')
+          path = Path(os.environ['RUNNER_TEMP']) / 'aulora-signing' / 'notarization.p8'
+          path.write_text(key)
+          path.chmod(0o600)
+          with open(os.environ['GITHUB_ENV'], 'a') as output: output.write('APPLE_API_KEY_PATH=' + str(path) + '\n')
+          PY
+      - name: Configure release
+        working-directory: apps/desktop
+        env:
+          RELEASE_TARGET: ${{ matrix.target }}
+        run: |
+          bun run verify
+          bun run test:release-manifest
+          bun run icons
+          bun run release-version --version "$RELEASE_VERSION" --output "$RUNNER_TEMP/version.json"
+          node -e 'const fs=require("node:fs"); const bundle={createUpdaterArtifacts:true}; if(process.env.RELEASE_TARGET.includes("linux")) bundle.targets=["appimage","deb"]; fs.writeFileSync(process.env.RUNNER_TEMP+"/updater.json",JSON.stringify({bundle}));'
+      - name: Build release artifacts
+        working-directory: apps/desktop
+        env:
+          RELEASE_TARGET: ${{ matrix.target }}
+          TAURI_SIGNING_PRIVATE_KEY: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY }}
+          TAURI_SIGNING_PRIVATE_KEY_PASSWORD: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY_PASSWORD }}
+          APPLE_API_KEY: ${{ runner.os == 'macOS' && secrets.APPLE_API_KEY || '' }}
+          APPLE_API_ISSUER: ${{ runner.os == 'macOS' && secrets.APPLE_API_ISSUER || '' }}
+        run: |
+          test -n "$TAURI_SIGNING_PRIVATE_KEY"
+          if [ "$RUNNER_OS" = macOS ]; then test -n "$APPLE_API_KEY" && test -n "$APPLE_API_ISSUER"; fi
+          bunx tauri build --target "$RELEASE_TARGET" --config "$RUNNER_TEMP/updater.json" --config "$RUNNER_TEMP/version.json"
+      - name: Collect distributable files
+        env:
+          RELEASE_TARGET: ${{ matrix.target }}
+          RELEASE_PLATFORM: ${{ matrix.name }}
+        run: node scripts/ci/collect-desktop.mjs
+      - uses: actions/upload-artifact@v4
+        with:
+          name: release-desktop-${{ matrix.name }}
+          path: dist/release-desktop/*
+          if-no-files-found: error
+          retention-days: 14
+      - name: Remove Apple signing material
+        if: always() && runner.os == 'macOS'
+        run: python3 scripts/ci/apple-signing.py cleanup

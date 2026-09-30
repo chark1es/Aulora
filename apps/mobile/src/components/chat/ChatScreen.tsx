@@ -4,17 +4,18 @@ import {
   type ChannelView,
   conversationTitle,
   expandBroadcast,
+  joinedElsewhere,
   type MessagePayload,
   Permission,
   resolveChannelMentions,
   resolveMentions,
 } from "@aulora/core";
 import { Heading, Icon, IconButton, Spinner, Text, usePalette } from "@aulora/ui-native";
-import { useQuery } from "convex/react";
+import { useMutation, useQuery } from "convex/react";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { Alert, Modal, Platform, Pressable, ScrollView, View } from "react-native";
 import { api } from "../../../../../packages/convex/convex/_generated/api";
-import { uploadPickedFiles } from "../../lib/attachments";
+import { pickFromLibrary, uploadPickedFiles } from "../../lib/attachments";
 import {
   banMember,
   createCategory,
@@ -34,6 +35,7 @@ import { useSound } from "../../providers/SoundProvider";
 import { useVoice } from "../../providers/VoiceProvider";
 import { CallScreen } from "../voice/CallScreen";
 import { IncomingCallModal } from "../voice/IncomingCallModal";
+import { JoinedElsewhereScreen } from "../voice/JoinedElsewhereScreen";
 import { VoiceChannelSection } from "../voice/VoiceChannelSection";
 import { BannedMembersSheet } from "./BannedMembersSheet";
 import { Composer } from "./Composer";
@@ -83,7 +85,10 @@ export function ChatScreen({
     canMentionEveryone,
     ownerUserId,
     sendMessage,
+    avatarUrls,
   } = useChat();
+  const generateAvatarUploadUrl = useMutation(api.members.generateAvatarUploadUrl);
+  const setAvatar = useMutation(api.members.setAvatar);
   const { activeProfile } = useProfiles();
   const voice = useVoice();
   const sound = useSound();
@@ -360,6 +365,7 @@ export function ChatScreen({
   const joinVoiceChannel = useCallback(
     (channelId: string) => {
       setDrawerOpen(false);
+      void openChannel(channelId);
       const live = voice.activeCalls.find((entry) => entry.channelId === channelId);
       if (live !== undefined) {
         void voice.joinCall(live.id);
@@ -367,7 +373,7 @@ export function ChatScreen({
         void voice.startCall(channelId, "voice");
       }
     },
-    [voice],
+    [openChannel, voice],
   );
 
   const create = useCallback(
@@ -461,20 +467,6 @@ export function ChatScreen({
     }
     setChannelAction(null);
   }, [runtime, activeChannelId, sessionState.messages]);
-
-  const leaveChannel = useCallback(
-    async (target: ChannelView) => {
-      if (runtime === undefined) {
-        return;
-      }
-      await runtime.port.leaveChannel({ channelId: target.id });
-      if (activeChannelId === target.id) {
-        setActiveChannelId(undefined);
-      }
-      setChannelAction(null);
-    },
-    [runtime, activeChannelId],
-  );
 
   const runModeration = useCallback(
     async (task: (client: NonNullable<typeof runtime>["client"]) => Promise<void>) => {
@@ -667,6 +659,19 @@ export function ChatScreen({
         <View className="flex-1 items-center justify-center">
           <Text tone="muted">Select a channel to start.</Text>
         </View>
+      ) : channel.kind === "voice" &&
+        joinedElsewhere(
+          voice.activeCalls.find((entry) => entry.channelId === channel.id) ?? null,
+          ownUserId,
+          voice.clientId,
+          voice.callId,
+        ) ? (
+        <JoinedElsewhereScreen
+          channelName={channel.name}
+          pending={voice.pending}
+          canJoin={voice.canConnect}
+          onJoin={() => joinVoiceChannel(channel.id)}
+        />
       ) : (
         <>
           <View className="items-center border-b border-border px-3 py-1">
@@ -869,6 +874,8 @@ export function ChatScreen({
                 activeCalls={voice.activeCalls}
                 memberNames={memberNames}
                 selfUserId={ownUserId}
+                clientId={voice.clientId}
+                localCallId={voice.callId}
                 remoteLevels={voice.remoteLevels}
                 onJoin={joinVoiceChannel}
               />
@@ -916,13 +923,6 @@ export function ChatScreen({
                     <Text>Mark as read</Text>
                   </Pressable>
                 )}
-                <Pressable
-                  accessibilityRole="button"
-                  className="rounded-input px-3 py-3"
-                  onPress={() => void leaveChannel(channelAction)}
-                >
-                  <Text tone="danger">Leave channel</Text>
-                </Pressable>
                 {canManageChannels &&
                   (channelAction.kind === "text" || channelAction.kind === "announcement") && (
                     <Pressable
@@ -1054,7 +1054,41 @@ export function ChatScreen({
 
       <SettingsSheet
         visible={settingsOpen}
+        ownUserId={ownUserId}
         ownDisplayName={ownDisplayName}
+        hasAvatar={avatarUrls.has(ownUserId)}
+        onChangeAvatar={() => {
+          void (async () => {
+            const [file] = await pickFromLibrary();
+            if (file === undefined) {
+              return;
+            }
+            const bytes = await fetch(file.uri).then((response) => response.blob());
+            if (bytes.size > 4 * 1024 * 1024) {
+              Alert.alert("Image too large", "Choose an image under 4 MB.");
+              return;
+            }
+            const uploadUrl = await generateAvatarUploadUrl({});
+            const uploaded = await fetch(uploadUrl, {
+              method: "POST",
+              headers: { "Content-Type": file.mime },
+              body: bytes,
+            });
+            if (!uploaded.ok) {
+              Alert.alert("Couldn't update your profile picture.");
+              return;
+            }
+            const body = (await uploaded.json()) as { storageId?: unknown };
+            if (typeof body.storageId !== "string") {
+              Alert.alert("Couldn't update your profile picture.");
+              return;
+            }
+            await setAvatar({ storageId: body.storageId as never });
+          })().catch(() => Alert.alert("Couldn't update your profile picture."));
+        }}
+        onClearAvatar={() => {
+          void setAvatar({}).catch(() => Alert.alert("Couldn't remove your profile picture."));
+        }}
         ownStatus={ownStatus}
         ownCustomStatus={ownCustomStatus}
         pushState={pushState}

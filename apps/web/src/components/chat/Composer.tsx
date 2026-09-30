@@ -1,4 +1,3 @@
-import { Avatar, userAvatarSeed } from "@aulora/avatars";
 import type { MentionTarget, RoleMentionTarget } from "@aulora/core";
 import { expandBroadcast, resolveChannelMentions, resolveMentions } from "@aulora/core";
 import { cn, Icon } from "@aulora/ui-web";
@@ -13,6 +12,7 @@ import {
 } from "react";
 import { readDraft, writeDraft } from "../../lib/drafts";
 import { EmojiPicker } from "./EmojiPicker";
+import { PersonAvatar } from "./member-avatars";
 import { RichText } from "./RichText";
 
 export interface ComposerProps {
@@ -142,7 +142,6 @@ export function Composer({
   const [suggestions, setSuggestions] = useState<readonly Suggestion[]>([]);
   const [activeSuggestion, setActiveSuggestion] = useState(0);
   const [emojiOpen, setEmojiOpen] = useState(false);
-  const [previewOpen, setPreviewOpen] = useState(false);
   const textareaRef = useRef<HTMLTextAreaElement | null>(null);
   const fileInputRef = useRef<HTMLInputElement | null>(null);
   const imageInputRef = useRef<HTMLInputElement | null>(null);
@@ -458,50 +457,50 @@ export function Composer({
         }
       }}
     >
-      {suggestions.length > 0 && (
-        <ul
-          aria-label="Mention suggestions"
-          className="absolute bottom-full left-4 z-30 mb-1 w-72 animate-pop-in overflow-hidden rounded-[10px] border border-border bg-surface-2 p-1 shadow-xl shadow-black/20"
-        >
-          {suggestions.map((suggestion, index) => (
-            <li key={suggestion.key}>
-              <button
-                type="button"
-                className={cn(
-                  "flex w-full items-center gap-2.5 rounded-[8px] px-2 py-1.5 text-left text-[13px]",
-                  index === activeSuggestion ? "bg-accent-soft text-text" : "text-text-muted",
-                )}
-                onMouseEnter={() => setActiveSuggestion(index)}
-                onMouseDown={(event) => {
-                  event.preventDefault();
-                  applySuggestion(suggestion);
-                }}
-              >
-                {suggestion.userId !== undefined ? (
-                  <Avatar seed={userAvatarSeed(suggestion.userId)} size={24} />
-                ) : (
-                  <span className="flex h-6 w-6 items-center justify-center rounded-full bg-surface-3 text-accent">
-                    <Icon name="at" size={14} />
-                  </span>
-                )}
-                <span className="flex-1 truncate font-medium text-text">{suggestion.label}</span>
-                <span className="text-xs text-text-muted">{suggestion.detail}</span>
-              </button>
-            </li>
-          ))}
-        </ul>
-      )}
-
       <div
         className={cn(
           // A flat composer: a hairline top rule and a quiet rounded focus
           // surface behind the text, not a boxed card around every message.
-          "rounded-[10px] border bg-surface-2/60 transition-colors",
+          "relative rounded-[10px] border bg-surface-2/60 transition-colors",
           dragging
             ? "border-accent bg-accent-soft"
             : "border-border focus-within:border-accent/50 focus-within:bg-surface-2",
         )}
       >
+        {suggestions.length > 0 && (
+          <ul
+            aria-label="Mention suggestions"
+            className="absolute bottom-full left-0 z-30 mb-1 w-72 max-w-full animate-pop-in overflow-hidden rounded-[10px] border border-border bg-surface-2 p-1 shadow-xl shadow-black/20"
+          >
+            {suggestions.map((suggestion, index) => (
+              <li key={suggestion.key}>
+                <button
+                  type="button"
+                  className={cn(
+                    "flex w-full items-center gap-2.5 rounded-[8px] px-2 py-1.5 text-left text-[13px]",
+                    index === activeSuggestion ? "bg-accent-soft text-text" : "text-text-muted",
+                  )}
+                  onMouseEnter={() => setActiveSuggestion(index)}
+                  onMouseDown={(event) => {
+                    event.preventDefault();
+                    applySuggestion(suggestion);
+                  }}
+                >
+                  {suggestion.userId !== undefined ? (
+                    <PersonAvatar userId={suggestion.userId} size={24} />
+                  ) : (
+                    <span className="flex h-6 w-6 items-center justify-center rounded-full bg-surface-3 text-accent">
+                      <Icon name="at" size={14} />
+                    </span>
+                  )}
+                  <span className="flex-1 truncate font-medium text-text">{suggestion.label}</span>
+                  <span className="text-xs text-text-muted">{suggestion.detail}</span>
+                </button>
+              </li>
+            ))}
+          </ul>
+        )}
+
         {replyTo !== null && (
           <div className="flex items-center gap-2 border-b border-border px-3 py-2">
             <Icon name="reply" size={14} className="shrink-0 text-accent" />
@@ -655,20 +654,6 @@ export function Composer({
           </button>
         </div>
 
-        {previewOpen && value.trim().length > 0 && (
-          <div
-            data-testid="composer-preview"
-            className="mx-2 mb-1.5 rounded-[8px] border border-border bg-surface-1 px-3 py-2"
-          >
-            <RichText
-              text={value}
-              mentionNames={members.map((member) => member.displayName)}
-              channelNames={channels.map((entry) => entry.name)}
-              viewerName={ownName ?? ""}
-            />
-          </div>
-        )}
-
         <div className="flex items-center gap-0.5 px-2 pb-1.5">
           <input
             ref={fileInputRef}
@@ -739,12 +724,6 @@ export function Composer({
               }}
             />
           )}
-          <ToolButton
-            label={previewOpen ? "Hide preview" : "Preview markdown"}
-            icon={previewOpen ? "eye-off" : "eye"}
-            active={previewOpen}
-            onClick={() => setPreviewOpen((open) => !open)}
-          />
           {toolbarExtra}
         </div>
       </div>

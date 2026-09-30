@@ -90,8 +90,7 @@ in [Deploy on Coolify](../../../apps/docs/content/coolify.md).
 4. Keep `/api/auth/*` on the web origin: the `web` nginx container proxies it to
    `convex-backend:3211`, so the Better Auth cookie stays first-party. Do not
    route `/api/auth` on the Convex domain.
-5. Coolify runs the one-shot `setup` service on each deploy; re-run it with
-   `docker compose -f docker-compose.coolify.yml run --rm setup` after changing
+5. Coolify runs the one-shot `setup` service on each deploy; redeploy the same Coolify resource after changing
    origins or auth settings, then point clients at the web domain.
 
 Coolify sets `X-Forwarded-Proto`; the shipped nginx config already passes it to

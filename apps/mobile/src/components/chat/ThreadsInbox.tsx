@@ -1,8 +1,7 @@
-import { userAvatarSeed } from "@aulora/avatars";
-import { NativeAvatar } from "@aulora/avatars/native";
 import { activityLabel } from "@aulora/core";
 import { Spinner, Text } from "@aulora/ui-native";
 import { Pressable, ScrollView, View } from "react-native";
+import { MemberAvatar } from "./MemberAvatar";
 
 /** One row of the Threads inbox, as returned by `api.messages.threadInbox`. */
 export interface ThreadInboxItem {
@@ -100,11 +99,7 @@ export function ThreadsInbox({
             onPress={() => onOpen(thread)}
             className="flex-row items-start gap-3 rounded-input px-2.5 py-2"
           >
-            <NativeAvatar
-              seed={userAvatarSeed(thread.authorId)}
-              size={32}
-              {...(roleColor !== undefined && roleColor.length > 0 ? { roleColor } : {})}
-            />
+            <MemberAvatar userId={thread.authorId} size={32} roleColor={roleColor} />
             <View className="min-w-0 flex-1 gap-0.5">
               <View className="flex-row items-baseline gap-2">
                 <Text size="xs" className="font-semibold" numberOfLines={1}>

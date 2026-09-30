@@ -42,6 +42,9 @@ import type * as lib_sealed from "../lib/sealed.js";
 import type * as lib_sse from "../lib/sse.js";
 import type * as lib_webPush from "../lib/webPush.js";
 import type * as license from "../license.js";
+import type * as licenseUsage from "../licenseUsage.js";
+import type * as licenseUsageActions from "../licenseUsageActions.js";
+import type * as licenseActions from "../licenseActions.js";
 import type * as members from "../members.js";
 import type * as messages from "../messages.js";
 import type * as notes from "../notes.js";
@@ -54,6 +57,7 @@ import type * as server from "../server.js";
 import type * as setup from "../setup.js";
 import type * as setupState from "../setupState.js";
 import type * as typing from "../typing.js";
+import type * as updates from "../updates.js";
 
 import type {
   ApiFromModules,
@@ -96,6 +100,9 @@ declare const fullApi: ApiFromModules<{
   "lib/sse": typeof lib_sse;
   "lib/webPush": typeof lib_webPush;
   license: typeof license;
+  licenseActions: typeof licenseActions;
+  licenseUsage: typeof licenseUsage;
+  licenseUsageActions: typeof licenseUsageActions;
   members: typeof members;
   messages: typeof messages;
   notes: typeof notes;
@@ -108,6 +115,7 @@ declare const fullApi: ApiFromModules<{
   setup: typeof setup;
   setupState: typeof setupState;
   typing: typeof typing;
+  updates: typeof updates;
 }>;
 
 /**

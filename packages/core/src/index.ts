@@ -93,7 +93,6 @@ export {
   saveSoundSettings,
   soundVolume,
 } from "./sounds";
-
 export {
   advanceCursor,
   countMentions,
@@ -108,6 +107,26 @@ export {
   summarizeUnread,
   type UnreadSummary,
 } from "./unread";
+export {
+  autoUpdateEnabled,
+  compareSemver,
+  DEFAULT_UPDATE_GITHUB_REPO,
+  DEFAULT_UPDATE_MANIFEST_URL,
+  isReleaseTag,
+  loadPublishedRelease,
+  type PublishedRelease,
+  parseSemver,
+  planWorkspaceUpdate,
+  readDeclaredVersion,
+  releaseTag,
+  resolveGitHubRepo,
+  resolveManifestUrl,
+  type Semver,
+  type UpdateChannel,
+  updateChannel,
+  type WorkspaceApply,
+  type WorkspaceUpdatePlan,
+} from "./updates";
 export * from "./voice/index";
 export {
   containsSecretField,

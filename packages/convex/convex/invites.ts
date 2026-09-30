@@ -9,6 +9,7 @@ import { writeAudit } from "./lib/audit";
 import { requireAuth } from "./lib/auth";
 import { assertNotBanned } from "./lib/bans";
 import { randomToken, sha256Hex } from "./lib/crypto";
+import { parseEmailConfig } from "./lib/email";
 import { requireWorkspacePermission } from "./lib/permissions";
 import { enforceRateLimit, userRateLimitKey } from "./lib/rateLimit";
 
@@ -88,6 +89,14 @@ export const create = mutation({
     const recipient = args.email?.trim();
     if (recipient !== undefined && recipient.length > 0 && !EMAIL_PATTERN.test(recipient)) {
       throw new ConvexError("Invite email is not a valid address");
+    }
+    if (recipient !== undefined && recipient.length > 0) {
+      const siteUrl = process.env.SITE_URL?.trim() || process.env.CONVEX_SITE_URL?.trim();
+      if (!siteUrl) throw new ConvexError("Set SITE_URL before emailing invites");
+      const configured = await ctx.db.query("emailSettings").first();
+      if ((configured?.provider ?? parseEmailConfig().provider) === "none") {
+        throw new ConvexError("Configure email delivery before emailing invites");
+      }
     }
 
     // Cap the creator's live invites so one actor cannot mint unbounded links

@@ -1,7 +1,10 @@
 import {
   type CallKind,
+  type CallSeatResult,
   type CallSignalRow,
   type CallView,
+  isCallElsewhereError,
+  isOnThisDevice,
   type PeerConnectionState,
   shouldOffer,
   type VoiceDeviceSettings,
@@ -57,6 +60,8 @@ export interface VoiceSnapshot {
   /** Remote users whose audio is currently above the speaking threshold. */
   readonly remoteSpeaking: ReadonlySet<string>;
   readonly micLevel: number;
+  /** Whether this device is currently transmitting speech. */
+  readonly localSpeaking: boolean;
   readonly pending: boolean;
   readonly error: string | null;
   /** Set when the microphone/camera could not be acquired for this call. */
@@ -67,6 +72,8 @@ export interface VoiceEngineOptions {
   readonly port: VoicePort;
   readonly subscriptions: VoiceSubscriptions;
   readonly userId: string;
+  /** This install. A seat held by any other id is not ours. */
+  readonly clientId: string;
   readonly getSettings: () => VoiceDeviceSettings;
   /** Read lazily on each peer so late-loaded deployment config still applies. */
   readonly getIceServers?: () => readonly RTCIceServer[];
@@ -83,6 +90,8 @@ interface Peer {
   videoTx?: RTCRtpTransceiver;
   connection: PeerConnectionState;
   levelUnsub: (() => void) | null;
+  /** Seat generation this connection was opened against. */
+  session: number;
 }
 
 const DEFAULT_ICE: readonly RTCIceServer[] = [
@@ -103,6 +112,7 @@ export class VoiceEngine {
   private readonly port: VoicePort;
   private readonly subscriptions: VoiceSubscriptions;
   private readonly userId: string;
+  private readonly clientId: string;
   private readonly getSettings: () => VoiceDeviceSettings;
   private readonly getIceServers: () => readonly RTCIceServer[];
   private readonly onError: (message: string) => void;
@@ -122,6 +132,7 @@ export class VoiceEngine {
   private cameraTrack: MediaStreamTrack | null = null;
   private screenTrack: MediaStreamTrack | null = null;
   private micLevel = 0;
+  private localSpeaking = false;
   private levelUnsub: (() => void) | null = null;
   private pending = false;
   private error: string | null = null;
@@ -142,6 +153,7 @@ export class VoiceEngine {
     this.port = options.port;
     this.subscriptions = options.subscriptions;
     this.userId = options.userId;
+    this.clientId = options.clientId;
     this.getSettings = options.getSettings;
     this.getIceServers = options.getIceServers ?? (() => DEFAULT_ICE);
     this.onError = options.onError ?? (() => {});
@@ -170,6 +182,7 @@ export class VoiceEngine {
       remoteStreams: this.remoteStreams,
       remoteSpeaking: this.remoteSpeaking,
       micLevel: this.micLevel,
+      localSpeaking: this.localSpeaking,
       pending: this.pending,
       error: this.error,
       mediaError: this.mediaError,
@@ -186,34 +199,47 @@ export class VoiceEngine {
     readonly channelId: string;
     readonly kind: CallKind;
     readonly ringingUserIds?: readonly string[];
-  }): Promise<string | null> {
+    readonly takeover?: boolean;
+  }): Promise<Exclude<CallSeatResult, { status: "cancelled" }>> {
     this.setError(null);
     this.pending = true;
     this.emit();
     try {
       const result = await this.port.startCall(args);
       await this.enter(result.callId);
-      return result.callId;
+      return { status: "joined", callId: result.callId };
     } catch (error) {
+      if (isCallElsewhereError(error)) {
+        return { status: "elsewhere", callId: error.callId, channelId: error.channelId };
+      }
       this.setError(messageOf(error));
-      return null;
+      return { status: "failed" };
     } finally {
       this.pending = false;
       this.emit();
     }
   }
 
-  async joinCall(callId: string): Promise<boolean> {
+  async joinCall(
+    callId: string,
+    options?: { readonly takeover?: boolean },
+  ): Promise<Exclude<CallSeatResult, { status: "cancelled" }>> {
     this.setError(null);
     this.pending = true;
     this.emit();
     try {
-      await this.port.joinCall({ callId });
+      await this.port.joinCall({
+        callId,
+        ...(options?.takeover === true ? { takeover: true } : {}),
+      });
       await this.enter(callId);
-      return true;
+      return { status: "joined", callId };
     } catch (error) {
+      if (isCallElsewhereError(error)) {
+        return { status: "elsewhere", callId: error.callId, channelId: error.channelId };
+      }
       this.setError(messageOf(error));
-      return false;
+      return { status: "failed" };
     } finally {
       this.pending = false;
       this.emit();
@@ -268,7 +294,11 @@ export class VoiceEngine {
     this.enterTeardown();
     this.callId = callId;
     this.processedSignals.clear();
+    const watched = callId;
     this.callUnsub = this.subscriptions.watchCallById(callId, (call) => {
+      if (this.callId !== watched) {
+        return;
+      }
       void this.onCallUpdate(call);
     });
     this.signalUnsub = this.subscriptions.watchSignals(callId, (signals) => {
@@ -354,6 +384,8 @@ export class VoiceEngine {
     }
     this.levelUnsub = createLevelMeter(this.micStream, (level) => {
       this.micLevel = level;
+      const transmitting = !this.local.muted && (!this.pushToTalk || this.talking);
+      this.localSpeaking = transmitting && (this.localSpeaking ? level > 0.035 : level > 0.08);
       this.emit();
     });
   }
@@ -362,6 +394,7 @@ export class VoiceEngine {
     this.levelUnsub?.();
     this.levelUnsub = null;
     this.micLevel = 0;
+    this.localSpeaking = false;
   }
 
   /**
@@ -405,6 +438,10 @@ export class VoiceEngine {
     const enabled = !this.local.muted && (!this.pushToTalk || this.talking);
     for (const track of this.micStream.getAudioTracks()) {
       track.enabled = enabled;
+    }
+    if (!enabled && this.localSpeaking) {
+      this.localSpeaking = false;
+      this.emit();
     }
   }
 
@@ -553,8 +590,9 @@ export class VoiceEngine {
       return;
     }
     this.call = call;
-    if (!call.participants.some((participant) => participant.userId === this.userId)) {
-      // We were removed (e.g. the call ended from another device).
+    if (!isOnThisDevice(call, this.userId, this.clientId)) {
+      // Removed, or another device took the seat. Do not leave: that would
+      // disconnect the device that just joined.
       this.enterTeardown();
       return;
     }
@@ -573,24 +611,33 @@ export class VoiceEngine {
     if (this.call === null) {
       return;
     }
-    const remoteIds = this.call.participants
-      .map((participant) => participant.userId)
-      .filter((id) => id !== this.userId);
+    const remote = this.call.participants.filter(
+      (participant) => participant.userId !== this.userId,
+    );
     for (const [id, peer] of this.peers) {
-      if (!remoteIds.includes(id)) {
+      const participant = remote.find((entry) => entry.userId === id);
+      if (participant === undefined || participant.session !== peer.session) {
         this.closePeer(id, peer);
       }
     }
-    for (const id of remoteIds) {
-      if (!this.peers.has(id) && shouldOffer(this.userId, id)) {
-        void this.createPeer(id, true);
+    for (const participant of remote) {
+      if (!this.peers.has(participant.userId) && shouldOffer(this.userId, participant.userId)) {
+        void this.createPeer(participant.userId, true, participant.session);
       }
     }
   }
 
-  private async createPeer(remoteId: string, initiator: boolean): Promise<Peer | null> {
-    if (this.peers.has(remoteId)) {
-      return this.peers.get(remoteId) ?? null;
+  private async createPeer(
+    remoteId: string,
+    initiator: boolean,
+    session: number,
+  ): Promise<Peer | null> {
+    const existing = this.peers.get(remoteId);
+    if (existing !== undefined) {
+      if (existing.session === session) {
+        return existing;
+      }
+      this.closePeer(remoteId, existing);
     }
     const configured = this.getIceServers();
     const pc = new RTCPeerConnection({
@@ -605,6 +652,7 @@ export class VoiceEngine {
       pendingCandidates: [],
       connection: "connecting",
       levelUnsub: null,
+      session,
     };
     this.peers.set(remoteId, peer);
     this.remoteStreams.set(remoteId, peer.stream);
@@ -780,8 +828,12 @@ export class VoiceEngine {
 
   private async handleSignal(signal: CallSignalRow): Promise<void> {
     const existing = this.peers.get(signal.fromUserId);
+    if (existing !== undefined && existing.session !== signal.session && signal.kind !== "offer") {
+      this.closePeer(signal.fromUserId, existing);
+      return;
+    }
     if (signal.kind === "offer") {
-      const peer = existing ?? (await this.createPeer(signal.fromUserId, false));
+      const peer = await this.createPeer(signal.fromUserId, false, signal.session);
       if (peer === null) {
         return;
       }

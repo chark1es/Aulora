@@ -23,12 +23,12 @@ describe("LicenseStatusCard", () => {
         state="active"
         tier="commercial"
         licensee="ACME_CORP"
-        maskedKey="AULORA1.…ABCD"
+        maskedKey="AULORA2_…ABCD"
         note="Commercial license for ACME_CORP."
       />,
     );
     expect(screen.getByTestId("license-state")).toHaveTextContent("Active");
     expect(screen.getByText("ACME_CORP")).toBeInTheDocument();
-    expect(screen.getByText("AULORA1.…ABCD")).toBeInTheDocument();
+    expect(screen.getByText("AULORA2_…ABCD")).toBeInTheDocument();
   });
 });

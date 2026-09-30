@@ -1,73 +1,42 @@
 # Contributing to Aulora
 
-Thanks for helping build Aulora. This guide covers the workflow and the one
-legal requirement: a Contributor License Agreement.
+Read the [development guide](docs/development.md) for a working local frontend and backend. Use GitHub Issues to discuss substantial changes before implementing them. Small fixes and documentation corrections can go directly into a pull request.
 
-## Contributor License Agreement (CLA)
+## Contributor agreement
 
-Aulora is dual-licensed: the [PolyForm Noncommercial License 1.0.0](LICENSE)
-for personal and noncommercial use, and a paid [commercial license](COMMERCIAL.md)
-for businesses. To keep selling commercial licenses, the project must hold
-sufficient rights in every contribution.
+Read [CLA.md](CLA.md), then follow the CLA bot's comment on your pull request. It checks the author and commit co-authors, records acceptance, and publishes the `CLA` status. Previous acceptance is reused while the agreement text is unchanged. The [bot guide](docs/cla-bot.md) covers missing identities and rechecks.
 
-**Every contributor must agree to the [Aulora CLA](CLA.md) before their first
-change is merged.** The CLA keeps you the author of your contribution and grants
-the project the right to license it under both the noncommercial and the
-commercial terms. Sign by adding your name to the contributor list in a pull
-request comment when a maintainer asks, or by following the CLA bot's prompt
-once the automated check lands. The CLA text is a stub until the commercial
-license is finalized; ask a maintainer if anything is unclear.
+## Setup and checks
 
-This is not legal advice; ask a lawyer if you need counsel.
-
-## Setup
-
-You need [Bun](https://bun.sh) 1.4.0 (pinned by `packageManager`), Node.js
-22.18.0, and Git. Docker is only needed to run the self-hosted stack.
+Use Bun 1.4.0, Node.js 22.18.0, and Git. Docker is needed for a live local backend. Native clients also need platform SDKs.
 
 ```sh
-bun install        # writes the single root bun.lock
-bun run typecheck  # tsc --noEmit across every package
-bun run lint       # Biome across every package
-bun run test       # Vitest suites across every package
-bun run build      # Turborepo build (dist/** where a package builds)
+bun install --frozen-lockfile
+bun run check
 ```
 
-## Workflow
+The aggregate check includes lint, types, workspace tests, web/docs builds, infrastructure tests, release-script tests, and public documentation checks. It does not compile native clients. CI separately compiles desktop, Android, and iOS; see [GitHub Actions](docs/github-actions.md).
 
-- Branch from `main`; use small, single-purpose commits.
-- Follow Conventional Commits (`feat(scope): …`, `fix(scope): …`,
-  `docs(phase-6): …`), matching the existing history.
-- Keep the tree green: `bun run lint`, `bun run typecheck` and `bun run test`
-  must all pass before you open a pull request.
-- Never commit secrets or real `.env` values. Use `.env.example` as the template.
+## Pull requests
+
+- Branch from `main` and keep each pull request focused on one change.
+- Use Conventional Commits, such as `fix(auth): preserve sessions` or `docs: explain setup`.
+- Explain the problem, resulting behavior, and how you verified it. Include screenshots for UI changes and migration steps for schema or deployment changes.
+- Update user-facing docs and `CHANGELOG.md` when behavior changes.
+- Add tests for meaningful behavior changes. Keep permissions and validation on the server even when the UI also checks them.
+- Run the relevant checks and resolve failures before requesting review.
+- Commit dependency changes with `bun.lock`. Do not introduce another workspace lockfile.
+- Never commit real `.env` files, credentials, user data, or private messages. Native debug keystores are public testing material and must never sign releases.
 - Do not force-push shared branches.
 
-## Where things live
+Keep shared client logic in `packages/core`, backend behavior in `packages/convex`, and reusable UI in `packages/ui-web` or `packages/ui-native`. The [repository map](README.md#repository-map) explains the rest.
 
-| Path | What |
-| --- | --- |
-| `apps/web` | Vite + React SPA (web admin, chat, connect screens) |
-| `apps/mobile`, `apps/desktop` | Expo and Tauri clients |
-| `packages/convex` | Schema, queries, mutations, actions, HTTP routes, crons |
-| `packages/core` | Shared hooks, permission resolution, well-known parsing |
-| `packages/ui-web`, `packages/ui-native` | Design-system components |
-| `infra/docker` | Compose stack, first-run setup, backup runner |
-| `infra/push-relay` | Content-free APNs/FCM/UnifiedPush relay |
-| `apps/docs` | Static docs site |
-| `docs` | Phase gate reports |
+## Documentation
 
-## Adding an admin surface
+Public pages live in `apps/docs/content`. Register new pages in `apps/docs/scripts/build.mjs`. Run `bun run docs:dev` and read the generated page; the renderer supports a defined Markdown subset rather than arbitrary HTML. `bun run docs:check` checks local links in the public guides and generated site.
 
-Workspace admin lives in `apps/web/src/components/admin` and is gated by the
-permission bitfield; the server re-checks every mutation. Instance admin
-(operator-only) lives in `apps/web/src/components/admin/instance` and is gated
-on the workspace owner. Keep pure view logic in `apps/web/src/lib` with unit
-tests, and re-check all authority server-side in `packages/convex`.
+Historical phase reports in `docs/` record past findings. Current setup and release instructions take precedence over them.
 
-## Security
+## Security and conduct
 
-Report vulnerabilities privately to the maintainers rather than in a public
-issue. Never include real credentials, message content, or any key material —
-including the EKM master key (KEK) or a per-scope data key (DEK) — in an issue,
-pull request or test fixture.
+Report vulnerabilities privately using [SECURITY.md](SECURITY.md). Discuss ideas respectfully, give specific feedback, and avoid harassment or sharing another person's private information. Report conduct concerns to [cnguyen@spwnd.dev](mailto:cnguyen@spwnd.dev); maintainers may remove content or restrict participation.

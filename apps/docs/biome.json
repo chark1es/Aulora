@@ -1,0 +1,7 @@
+{
+  "root": false,
+  "extends": ["../../packages/config/biome.json"],
+  "files": {
+    "includes": ["**", "!dist"]
+  }
+}

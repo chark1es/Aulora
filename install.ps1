@@ -56,6 +56,8 @@ if (-not (Get-Command docker -ErrorAction SilentlyContinue)) {
 }
 docker compose version *> $null
 if ($LASTEXITCODE -ne 0) { Stop-Install "Docker Compose v2 is required (docker compose)" }
+docker compose wait --help *> $null
+if ($LASTEXITCODE -ne 0) { Stop-Install "update Docker Compose: the installer requires the wait command" }
 if (-not (Test-Path -LiteralPath $EnvExample)) { Stop-Install "missing $EnvExample" }
 
 function Set-EnvValue([string]$Path, [string]$Key, [string]$Value) {
@@ -71,6 +73,16 @@ function Set-EnvValue([string]$Path, [string]$Key, [string]$Value) {
 
 if (Test-Path -LiteralPath $EnvFile) {
   Write-Log "using the existing $EnvFile (idempotent re-run)"
+  foreach ($line in (Get-Content -LiteralPath $EnvFile)) {
+    if ($line -match '^\s*(?:export\s+)?(SITE_URL|WEB_PORT|OWNER_EMAIL)=(.*)$') {
+      $value = $Matches[2].Trim().Trim('"').Trim("'")
+      switch ($Matches[1]) {
+        'SITE_URL' { $SiteUrl = $value }
+        'WEB_PORT' { if ($value) { $Port = $value } }
+        'OWNER_EMAIL' { $Email = $value }
+      }
+    }
+  }
 } else {
   if (-not $Name) { $Name = "Aulora" }
   if (-not $Instance) { $Instance = Get-Slug $Name; if (-not $Instance) { $Instance = "aulora" } }
@@ -102,7 +114,7 @@ if ($DryRun) {
     Write-Log "DRY RUN: would write $EnvFile (workspace=$Name, instance=$Instance, site=$SiteUrl, port=$Port)"
   }
   Write-Log "DRY RUN: docker compose up -d --build"
-  Write-Log "DRY RUN: docker compose run --rm setup"
+  Write-Log "DRY RUN: docker compose wait setup"
   if ($Backups) { Write-Log "DRY RUN: docker compose --profile backups up -d --build" }
   Write-Log "DRY RUN: done; no changes made"
   exit 0
@@ -127,8 +139,8 @@ if ($NoStart) {
 
 Write-Log "building and starting the stack (this can take a few minutes)..."
 Invoke-Compose @("up", "-d", "--build")
-Write-Log "running first-run setup (idempotent)..."
-Invoke-Compose @("run", "--rm", "setup")
+Write-Log "waiting for first-run setup (idempotent)..."
+Invoke-Compose @("wait", "setup")
 if ($Backups) {
   Write-Log "starting the nightly backup runner..."
   Invoke-Compose @("--profile", "backups", "up", "-d", "--build")

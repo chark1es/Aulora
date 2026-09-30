@@ -125,6 +125,78 @@ export async function setDesktopAlwaysOnTop(on: boolean): Promise<void> {
   }
 }
 
+export interface DesktopUpdateStatus {
+  readonly updateAvailable: boolean;
+  readonly version: string | null;
+  readonly currentVersion: string;
+  readonly notes: string | null;
+  readonly error: string | null;
+  readonly source?: "menu" | "auto";
+  readonly downloaded?: boolean;
+}
+
+export interface DesktopUpdateProgress {
+  readonly downloaded: number;
+  readonly contentLength: number | null;
+}
+
+function isUpdateStatus(value: unknown): value is DesktopUpdateStatus {
+  if (typeof value !== "object" || value === null) {
+    return false;
+  }
+  const record = value as Record<string, unknown>;
+  return typeof record.updateAvailable === "boolean" && typeof record.currentVersion === "string";
+}
+
+/**
+ * Asks the shell whether a signed update is published. Outside the desktop
+ * shell this is a no-op so the web client can call it unconditionally.
+ */
+export async function checkDesktopUpdate(): Promise<DesktopUpdateStatus | null> {
+  if (!isDesktop()) {
+    return null;
+  }
+  try {
+    const value = await invokeCommand("check_for_app_update");
+    if (!isUpdateStatus(value)) {
+      return null;
+    }
+    return {
+      updateAvailable: value.updateAvailable,
+      version: typeof value.version === "string" ? value.version : null,
+      currentVersion: value.currentVersion,
+      notes: typeof value.notes === "string" ? value.notes : null,
+      error: typeof value.error === "string" ? value.error : null,
+      ...(typeof value.downloaded === "boolean" ? { downloaded: value.downloaded } : {}),
+    };
+  } catch (error) {
+    return {
+      updateAvailable: false,
+      version: null,
+      currentVersion: "",
+      notes: null,
+      error: error instanceof Error ? error.message : "Update check failed.",
+    };
+  }
+}
+
+/** Reads the installed version without needing a successful network check. */
+export async function desktopVersion(): Promise<string> {
+  const value = await invokeCommand("app_version");
+  if (typeof value !== "string") throw new Error("Desktop version is unavailable.");
+  return value;
+}
+
+/** Downloads and verifies the update without interrupting the app. */
+export async function downloadDesktopUpdate(): Promise<void> {
+  await invokeCommand("download_app_update");
+}
+
+/** Installs the verified download and restarts the shell. */
+export async function installDesktopUpdate(): Promise<void> {
+  await invokeCommand("install_app_update");
+}
+
 /** Shows a native notification with device-computed text; best-effort. */
 export async function showDesktopNotification(title: string, body: string): Promise<void> {
   if (!isDesktop()) {

@@ -2,7 +2,7 @@
 
 A Tauri 2 shell that wraps the `apps/web` Vite SPA. The webview is the same
 React client as the browser build; this crate contributes only the native
-surface and the OS integrations. Message encryption is server-side behind an
+surface and the OS integrations. Message encryption is server-side using a local key or an optional
 external key manager, so the client stores no keys and the shell has no key
 store of its own.
 
@@ -15,6 +15,7 @@ store of its own.
 | Native notifications with device-computed text | `commands.rs` (`show_notification`) |
 | Dock/taskbar unread badge (macOS/Linux count, Windows overlay icon) | `commands.rs`, `window.rs` |
 | `aulora://connect` and `aulora://invite` deep links, single instance | `deep_link.rs` |
+| Signed in-app updates from the GitHub `latest.json` feed | `updater.rs`, `tauri.conf.json` |
 | macOS Sidebar vibrancy behind translucent rails | `window.rs`, `tauri.macos.conf.json` |
 | Locked-down CSP: bundled code only, no remote script origins | `tauri.conf.json` |
 | Native drag-drop disabled (`dragDropEnabled: false`) so the web composer accepts files dropped anywhere in the window | `tauri.conf.json`, `tauri.macos.conf.json` |
@@ -66,7 +67,8 @@ warning when users install a downloaded release. Signing can be added later.
 
 Windows installers are distributed through GitHub Releases. The manual Windows
 release candidate workflow builds an installer, computes its checksum, and
-checks silent installation and uninstallation.
+checks silent installation and uninstallation. See the
+[GitHub Actions release guide](../../docs/github-actions.md).
 
 Cross-compiling the Windows NSIS installer from macOS:
 
@@ -80,6 +82,28 @@ bun run build:windows
 The installer lands in
 `src-tauri/target/x86_64-pc-windows-msvc/release/bundle/nsis/`. **MSI/WiX needs a
 Windows host**; cargo-xwin only produces NSIS.
+
+## Updates
+
+Release builds check `https://github.com/chark1es/Aulora/releases/latest/download/latest.json`,
+check automatically at startup and every six hours. **Your settings → Updates**
+shows the installed version and offers **Check for updates**, **Download update**,
+and then **Restart to update**. Download verifies the minisign signature and keeps
+the running app open; installation happens only on restart. A dot on settings
+indicates an available update. Check for Updates is also in the app menu and tray. The public key is embedded in `tauri.conf.json`. The
+private key and password originals are kept in `.secrets/release/desktop/` (gitignored).
+Back them up. A lost private key cannot update installs that already shipped
+with this public key.
+
+`tauri build` signs updater artifacts only when `TAURI_SIGNING_PRIVATE_KEY` is
+set. That passes `src-tauri/tauri.release.conf.json`, which turns on
+`createUpdaterArtifacts`. CI bundle builds leave it off, so they do not need the
+key. Releases are built by `.github/workflows/release.yml` when the version in
+`tauri.conf.json` increases on `main`. Signing credentials are held in the
+`main`-only `release-signing` Actions environment. The desktop release workflow
+builds candidates separately. See the [GitHub Actions guide](../../docs/github-actions.md).
+
+Linux in-app updates use the AppImage. The `.deb` package is a manual install.
 
 ## Verification
 

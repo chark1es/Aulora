@@ -2,7 +2,7 @@ import { createClient, type GenericCtx } from "@convex-dev/better-auth";
 import { convex } from "@convex-dev/better-auth/plugins";
 import { requireActionCtx } from "@convex-dev/better-auth/utils";
 import { type BetterAuthOptions, betterAuth } from "better-auth/minimal";
-import { genericOAuth, twoFactor } from "better-auth/plugins";
+import { bearer, genericOAuth, twoFactor } from "better-auth/plugins";
 import { components, internal } from "./_generated/api";
 import type { DataModel } from "./_generated/dataModel";
 import { query } from "./_generated/server";
@@ -18,6 +18,9 @@ import { extractGroups, roleNamesForGroups } from "./lib/oidc";
 
 /** Component client mounted in `convex.config.ts`. */
 export const authComponent = createClient<DataModel>(components.betterAuth);
+
+const SESSION_MAX_AGE_SECONDS = 60 * 60 * 24 * 30;
+const SESSION_REFRESH_SECONDS = 60 * 60 * 24;
 
 function publicSiteUrl(): string {
   return process.env.SITE_URL ?? process.env.CONVEX_SITE_URL ?? "http://localhost:3211";
@@ -47,7 +50,13 @@ export const createAuthOptions = (
   const secret = getBetterAuthSecret(env);
   const oidc = getOidcSettings(env);
 
-  const plugins: NonNullable<BetterAuthOptions["plugins"]> = [convex({ authConfig }), twoFactor()];
+  // `bearer()` lets clients on another origin (the desktop app) keep a stored
+  // session token instead of a cross-site cookie that dies on restart.
+  const plugins: NonNullable<BetterAuthOptions["plugins"]> = [
+    convex({ authConfig }),
+    twoFactor(),
+    bearer(),
+  ];
 
   if (oidc !== null) {
     const groupClaim = oidc.groupClaim;
@@ -88,6 +97,12 @@ export const createAuthOptions = (
       window: 60,
       max: Number(env.AUTH_RATE_LIMIT_MAX ?? 120),
     },
+    // People stay signed in across restarts: a 30-day session that slides
+    // forward (at most once a day) while the app is in use.
+    session: {
+      expiresIn: SESSION_MAX_AGE_SECONDS,
+      updateAge: SESSION_REFRESH_SECONDS,
+    },
     emailAndPassword: {
       enabled: true,
       requireEmailVerification: false,
@@ -98,6 +113,22 @@ export const createAuthOptions = (
     },
     plugins,
     databaseHooks: {
+      session: {
+        create: {
+          after: async (session) => {
+            await requireActionCtx(ctx).runMutation(internal.licenseUsage.recordLogin, {
+              userId: session.userId,
+            });
+          },
+        },
+        update: {
+          after: async (session) => {
+            await requireActionCtx(ctx).runMutation(internal.licenseUsage.recordLogin, {
+              userId: session.userId,
+            });
+          },
+        },
+      },
       user: {
         create: {
           before: async (user): Promise<boolean> => {

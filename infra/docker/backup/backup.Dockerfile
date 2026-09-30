@@ -12,16 +12,16 @@
 
 # Source of the `generate_key` binary only.
 FROM ghcr.io/get-convex/convex-backend@sha256:b756b06641d15a55b5ec0692897ce5ad3715ddccfd02e1e213621e9e764255c8 AS backend
+FROM docker.io/pgsty/mc@sha256:cfc83108c3abb371f8fb84d99c1fdc88f8c237e022409b0081fb7c0a3be634dd AS minio-client
 
 FROM oven/bun:1.4.0
 
 RUN apt-get update \
   && apt-get install -y --no-install-recommends postgresql-client ca-certificates curl \
-  && rm -rf /var/lib/apt/lists/* \
-  && curl -fsSL https://dl.min.io/client/mc/release/linux-amd64/mc -o /usr/local/bin/mc \
-  && chmod +x /usr/local/bin/mc
+  && rm -rf /var/lib/apt/lists/*
 
 COPY --from=backend /convex/generate_key /usr/local/bin/generate_key
+COPY --from=minio-client /usr/bin/mc /usr/local/bin/mc
 
 WORKDIR /app
 
@@ -30,6 +30,8 @@ COPY package.json bun.lock turbo.json ./
 COPY apps/web/package.json apps/web/
 COPY apps/docs/package.json apps/docs/
 COPY packages ./packages
+COPY LICENSE NOTICE COMMERCIAL.md THIRD_PARTY_NOTICES.md /app/legal/
+COPY licenses /app/legal/third-party/
 
 RUN bun install --frozen-lockfile
 

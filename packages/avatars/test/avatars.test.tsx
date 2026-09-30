@@ -41,6 +41,15 @@ describe("Avatar", () => {
     expect(wrapper?.style.boxShadow).toContain("#F5A45B");
   });
 
+  it("uses an uploaded picture instead of the generated avatar", () => {
+    render(
+      <Avatar seed="aulora:user:8f3a1c" size={40} title="Ada" src="https://cdn.example/ada.png" />,
+    );
+    const image = screen.getByRole("img", { name: "Ada" });
+    expect(image).toHaveAttribute("src", "https://cdn.example/ada.png");
+    expect(image.tagName).toBe("IMG");
+  });
+
   it("renders inline SVG when animated", () => {
     const { container } = render(<Avatar seed="aulora:user:8f3a1c" animate="always" />);
     expect(container.querySelector("img")).toBeNull();

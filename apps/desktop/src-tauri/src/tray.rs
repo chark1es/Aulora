@@ -1,6 +1,6 @@
 //! System tray / menu-bar item.
 //!
-//! Closing the window hides it here; the tray offers reopen, connect and quit.
+//! Closing the window hides it here; the tray offers reopen, connect, update and quit.
 
 use tauri::menu::{Menu, MenuItem, PredefinedMenuItem};
 use tauri::tray::{MouseButton, MouseButtonState, TrayIconBuilder, TrayIconEvent};
@@ -15,12 +15,20 @@ pub fn install<R: Runtime>(app: &App<R>) -> tauri::Result<()> {
         true,
         None::<&str>,
     )?;
+    let updates = MenuItem::with_id(
+        app,
+        "tray_updates",
+        "Check for Updates…",
+        true,
+        None::<&str>,
+    )?;
     let quit = MenuItem::with_id(app, "tray_quit", "Quit Aulora", true, None::<&str>)?;
     let menu = Menu::with_items(
         app,
         &[
             &open,
             &connect,
+            &updates,
             &PredefinedMenuItem::separator(app)?,
             &quit,
         ],
@@ -35,6 +43,7 @@ pub fn install<R: Runtime>(app: &App<R>) -> tauri::Result<()> {
             "tray_connect" => {
                 let _ = app.emit("aulora://deep-link", vec![String::from("aulora://connect")]);
             }
+            "tray_updates" => crate::updater::spawn_menu_check(app),
             "tray_quit" => app.exit(0),
             _ => {}
         })

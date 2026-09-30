@@ -68,6 +68,8 @@ export interface MobileChatContextValue {
   readonly outbox: readonly OutboxItem[];
   /** Workspace members, flattened for the channel-edit picker. */
   readonly members: readonly MobileMemberEntry[];
+  /** Profile pictures set in this workspace, keyed by user id. */
+  readonly avatarUrls: ReadonlyMap<string, string>;
   /** Mentionable roles with their member ids, for `@role` resolution. */
   readonly roles: readonly RoleMentionTarget[];
   /** The viewer's effective permission bitfield, resolved like the server. */
@@ -263,6 +265,20 @@ export function ChatProvider({ client, children }: ChatProviderProps) {
     [membersResult],
   );
 
+  const avatarUrls = useMemo(() => {
+    const map = new Map<string, string>();
+    for (const member of memberViews) {
+      if (
+        member.avatarUrl !== undefined &&
+        member.avatarUrl !== null &&
+        member.avatarUrl.length > 0
+      ) {
+        map.set(member.userId, member.avatarUrl);
+      }
+    }
+    return map;
+  }, [memberViews]);
+
   const viewerUserId = meResult?.userId;
   const ownerId = meResult?.ownerId ?? null;
   const isOwner = meResult?.isOwner ?? false;
@@ -345,6 +361,7 @@ export function ChatProvider({ client, children }: ChatProviderProps) {
       presence,
       outbox,
       members,
+      avatarUrls,
       roles: mentionRoles,
       viewerPermissions,
       isOwner,
@@ -366,6 +383,7 @@ export function ChatProvider({ client, children }: ChatProviderProps) {
       presence,
       outbox,
       members,
+      avatarUrls,
       mentionRoles,
       viewerPermissions,
       isOwner,

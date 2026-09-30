@@ -1,0 +1,33 @@
+name: Install Apple signing identity
+description: Import one release identity into a temporary runner keychain.
+inputs:
+  certificate:
+    description: Base64 encoded PKCS12 certificate and private key
+    required: true
+  password:
+    description: PKCS12 export password
+    required: true
+  profile:
+    description: Base64 encoded iOS provisioning profile, for iOS only
+    default: ""
+  team:
+    description: Apple developer team ID
+    required: true
+  identity:
+    description: Signing identity name
+    required: true
+  platform:
+    description: macos or ios
+    required: true
+runs:
+  using: composite
+  steps:
+    - shell: bash
+      env:
+        APPLE_CERTIFICATE_BASE64: ${{ inputs.certificate }}
+        APPLE_CERTIFICATE_PASSWORD: ${{ inputs.password }}
+        IOS_PROFILE_BASE64: ${{ inputs.profile }}
+        APPLE_TEAM_ID: ${{ inputs.team }}
+        APPLE_SIGNING_IDENTITY: ${{ inputs.identity }}
+        SIGNING_PLATFORM: ${{ inputs.platform }}
+      run: python3 scripts/ci/apple-signing.py install

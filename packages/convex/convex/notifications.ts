@@ -510,6 +510,7 @@ export const dispatchMobileCallRinging = internalAction({
     for (const target of targets) {
       const result = await sendWake(
         {
+          kind: "call",
           serverId: config.serverId,
           channelId,
           messageId: args.callId,
@@ -654,6 +655,7 @@ export const dispatchMobileForMessage = internalAction({
     for (const target of targets) {
       const result = await sendWake(
         {
+          kind: "message",
           serverId: config.serverId,
           channelId,
           messageId: args.messageId,

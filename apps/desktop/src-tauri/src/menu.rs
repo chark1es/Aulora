@@ -8,8 +8,17 @@ use tauri::menu::{MenuBuilder, MenuItem, SubmenuBuilder};
 use tauri::{App, Emitter, Runtime};
 
 pub fn install<R: Runtime>(app: &App<R>) -> tauri::Result<()> {
+    let check_updates = MenuItem::with_id(
+        app,
+        "check_for_updates",
+        "Check for Updates…",
+        true,
+        None::<&str>,
+    )?;
     let about = SubmenuBuilder::new(app, "Aulora")
         .about(None)
+        .separator()
+        .item(&check_updates)
         .separator()
         .services()
         .separator()
@@ -68,6 +77,7 @@ pub fn install<R: Runtime>(app: &App<R>) -> tauri::Result<()> {
     app.set_menu(menu)?;
 
     app.on_menu_event(|app, event| match event.id().0.as_str() {
+        "check_for_updates" => crate::updater::spawn_menu_check(app),
         "connect_server" => {
             let _ = app.emit("aulora://deep-link", vec![String::from("aulora://connect")]);
         }

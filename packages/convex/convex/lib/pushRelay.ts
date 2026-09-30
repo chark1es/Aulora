@@ -29,6 +29,7 @@ export interface MobilePushTarget {
 }
 
 export interface WakePayload {
+  readonly kind: "message" | "call";
   readonly serverId: string;
   readonly channelId: string;
   readonly messageId: string;
@@ -73,6 +74,7 @@ export async function sendWake(
   const fetchImpl = deps.fetch ?? fetch;
   const body = {
     v: 1,
+    kind: payload.kind,
     serverId: payload.serverId,
     channelId: payload.channelId,
     messageId: payload.messageId,

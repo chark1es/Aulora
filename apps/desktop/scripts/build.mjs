@@ -112,6 +112,9 @@ function setupCache(disabled) {
 
 function runTauri(extraArgs, debug) {
   const args = ["tauri", "build", ...extraArgs];
+  if (process.env.TAURI_SIGNING_PRIVATE_KEY) {
+    args.push("--config", "src-tauri/tauri.release.conf.json");
+  }
   if (debug) {
     args.push("--debug");
   }

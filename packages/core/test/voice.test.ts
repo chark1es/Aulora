@@ -2,12 +2,20 @@ import { describe, expect, it } from "vitest";
 import {
   type CallParticipantView,
   type CallView,
+  callElsewhereFromUnknown,
   callKindLabel,
+  callOnAnotherDevice,
   callStatusLabel,
+  claimCallSeat,
   DEFAULT_VOICE_SETTINGS,
+  ensureVoiceClientId,
   formatCallDuration,
+  isOnAnotherDevice,
+  isOnThisDevice,
   isParticipant,
   isRinging,
+  isVoiceClientId,
+  joinedElsewhere,
   loadVoiceSettings,
   memoryVoiceSettingsStore,
   mergeVoiceSettings,
@@ -29,6 +37,8 @@ function participant(
     video: false,
     sharingScreen: false,
     joinedAt: 0,
+    clientId: null,
+    session: 1,
     speaking: false,
     audioLevel: 0,
     connection: "connected",
@@ -123,5 +133,99 @@ describe("voice state helpers", () => {
     expect(networkQuality(0, 30)).toBe("good");
     expect(networkQuality(0.05, 250)).toBe("fair");
     expect(networkQuality(0.2, 700)).toBe("poor");
+  });
+
+  it("tells this device from another one", () => {
+    const here = call({
+      participants: [participant("user-1", { clientId: "device-a" })],
+    });
+    const there = call({
+      id: "call-2",
+      participants: [participant("user-1", { clientId: "device-b" })],
+    });
+    expect(isOnThisDevice(here, "user-1", "device-a")).toBe(true);
+    expect(isOnAnotherDevice(here, "user-1", "device-a")).toBe(false);
+    expect(isOnAnotherDevice(there, "user-1", "device-a")).toBe(true);
+    expect(isOnAnotherDevice(there, "user-1", null)).toBe(false);
+    expect(callOnAnotherDevice([here, there], "user-1", "device-a")?.id).toBe("call-2");
+  });
+
+  it("treats an unclaimed seat as elsewhere unless this install is connected", () => {
+    const unclaimed = call({
+      participants: [participant("user-1", { clientId: null })],
+    });
+    expect(joinedElsewhere(unclaimed, "user-1", "device-b", null)).toBe(true);
+    expect(joinedElsewhere(unclaimed, "user-1", "device-a", "call-1")).toBe(false);
+    expect(joinedElsewhere(unclaimed, "user-2", "device-b", null)).toBe(false);
+    const held = call({
+      participants: [participant("user-1", { clientId: "device-a" })],
+    });
+    expect(joinedElsewhere(held, "user-1", "device-b", "call-1")).toBe(true);
+    expect(joinedElsewhere(held, "user-1", "device-a", "call-1")).toBe(false);
+  });
+});
+
+describe("call seat", () => {
+  it("persists a client id", () => {
+    const store = memoryVoiceSettingsStore();
+    const first = ensureVoiceClientId(store);
+    expect(isVoiceClientId(first)).toBe(true);
+    expect(ensureVoiceClientId(store)).toBe(first);
+  });
+
+  it("asks before taking a seat held by another device, then retries on a stale roster", async () => {
+    const elsewhere = call({
+      participants: [participant("user-1", { clientId: "device-b" })],
+    });
+    const answers: boolean[] = [];
+    const confirm = async () => {
+      answers.push(true);
+      return true;
+    };
+    let runs = 0;
+    const result = await claimCallSeat({
+      calls: [elsewhere],
+      userId: "user-1",
+      clientId: "device-a",
+      confirm,
+      run: async (takeover) => {
+        runs += 1;
+        if (runs === 1) {
+          return { status: "elsewhere", callId: "call-1", channelId: "channel-1" };
+        }
+        expect(takeover).toBe(true);
+        return { status: "joined", callId: "call-1" };
+      },
+    });
+    expect(result).toEqual({ status: "joined", callId: "call-1" });
+    expect(answers).toEqual([true, true]);
+  });
+
+  it("cancels when the user declines the switch", async () => {
+    const elsewhere = call({
+      participants: [participant("user-1", { clientId: "device-b" })],
+    });
+    let ran = false;
+    const result = await claimCallSeat({
+      calls: [elsewhere],
+      userId: "user-1",
+      clientId: "device-a",
+      confirm: async () => false,
+      run: async () => {
+        ran = true;
+        return { status: "joined", callId: "call-1" };
+      },
+    });
+    expect(result.status).toBe("cancelled");
+    expect(ran).toBe(false);
+  });
+
+  it("reads a call_elsewhere payload", () => {
+    const error = callElsewhereFromUnknown({
+      data: { code: "call_elsewhere", callId: "call-9", channelId: "channel-9" },
+    });
+    expect(error?.callId).toBe("call-9");
+    expect(error?.channelId).toBe("channel-9");
+    expect(callElsewhereFromUnknown(new Error("nope"))).toBeNull();
   });
 });

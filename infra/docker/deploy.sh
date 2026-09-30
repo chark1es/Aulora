@@ -50,13 +50,17 @@ if [ "${pull}" = 1 ]; then
   "${compose[@]}" pull --ignore-buildable
 fi
 
-echo "==> Rebuilding local images (web, setup)"
-"${compose[@]}" build web setup
+echo "==> Rebuilding local images (web, setup, smtp-gateway)"
+"${compose[@]}" build web setup smtp-gateway
 
 echo "==> Recreating the web container"
 "${compose[@]}" up -d --no-deps --force-recreate web
 
 echo "==> Deploying Convex functions and refreshing the well-known document"
 "${compose[@]}" run --rm setup
+"${compose[@]}" up -d --no-deps --force-recreate smtp-gateway
+
+version="$(sed -n 's/^export const AULORA_VERSION = "\([^"]*\)";.*/\1/p' ../../packages/convex/convex/lib/env.ts)"
+[ -n "$version" ] && printf '%s\n' "$version" > .deployed-version
 
 echo "==> Done. Open http://localhost:${WEB_PORT:-8080}"

@@ -1,5 +1,3 @@
-import { userAvatarSeed } from "@aulora/avatars";
-import { NativeAvatar } from "@aulora/avatars/native";
 import type { AttachmentDescriptor, MessagePayload } from "@aulora/core";
 import { gridDays } from "@aulora/core";
 import { Text, usePalette } from "@aulora/ui-native";
@@ -7,6 +5,7 @@ import { useEffect, useMemo, useState } from "react";
 import { FlatList, Pressable, View } from "react-native";
 import type { MobileChatRuntime } from "../../lib/chat-runtime";
 import { AttachmentView } from "./AttachmentView";
+import { MemberAvatar } from "./MemberAvatar";
 import { RichText } from "./RichText";
 
 export interface MessageListProps {
@@ -173,11 +172,7 @@ function MessageRow({
 
   return (
     <View className="flex-row gap-2 rounded-input px-2 py-1.5">
-      <NativeAvatar
-        seed={userAvatarSeed(message.authorId)}
-        size={32}
-        {...(authorColor !== undefined ? { roleColor: authorColor } : {})}
-      />
+      <MemberAvatar userId={message.authorId} size={32} roleColor={authorColor} />
       <View className="min-w-0 flex-1 gap-0.5">
         <View className="flex-row items-baseline gap-2">
           <Text

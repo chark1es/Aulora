@@ -101,17 +101,32 @@ const SOURCES: Record<SoundEvent, unknown> = {
   "call-join": require("../../assets/sounds/call-join.wav"),
   "call-leave": require("../../assets/sounds/call-leave.wav"),
 };
+// expo-audio caps player.volume at 1. These assets have 6–9 dB of headroom,
+// so a second set with doubled sample amplitude makes 100–200% real on mobile.
+const BOOSTED_SOURCES: Record<SoundEvent, unknown> = {
+  message: require("../../assets/sounds/message-boosted.wav"),
+  mention: require("../../assets/sounds/mention-boosted.wav"),
+  "call-ring": require("../../assets/sounds/call-ring-boosted.wav"),
+  "call-connect": require("../../assets/sounds/call-connect-boosted.wav"),
+  "call-join": require("../../assets/sounds/call-join-boosted.wav"),
+  "call-leave": require("../../assets/sounds/call-leave-boosted.wav"),
+};
 
-const players = new Map<SoundEvent, AudioPlayerLike>();
+const players = new Map<string, AudioPlayerLike>();
 
-function playerFor(module: AudioModule, event: SoundEvent): AudioPlayerLike | null {
-  const existing = players.get(event);
+function playerFor(
+  module: AudioModule,
+  event: SoundEvent,
+  boosted: boolean,
+): AudioPlayerLike | null {
+  const key = `${event}:${boosted}`;
+  const existing = players.get(key);
   if (existing !== undefined) {
     return existing;
   }
   try {
-    const player = module.createAudioPlayer(SOURCES[event]);
-    players.set(event, player);
+    const player = module.createAudioPlayer(boosted ? BOOSTED_SOURCES[event] : SOURCES[event]);
+    players.set(key, player);
     return player;
   } catch {
     return null;
@@ -128,14 +143,13 @@ export function playSound(event: SoundEvent, settings: SoundSettings): boolean {
   if (module === null) {
     return false;
   }
-  const player = playerFor(module, event);
+  const boosted = volume > 1;
+  const player = playerFor(module, event, boosted);
   if (player === null) {
     return false;
   }
   try {
-    // The settings expose 0–200% for parity with web, but expo-audio caps
-    // playback volume at 1.0; clamp here rather than setting an invalid value.
-    player.volume = Math.min(1, Math.max(0, volume));
+    player.volume = boosted ? volume / 2 : volume;
     player.seekTo(0);
     player.play();
     return true;

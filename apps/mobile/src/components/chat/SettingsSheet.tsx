@@ -4,6 +4,7 @@ import { useState } from "react";
 import { Modal, Pressable, ScrollView, View } from "react-native";
 import type { PushRegistrationState } from "../../lib/use-push-registration";
 import { DeviceSettingsSection } from "../voice/DeviceSettingsSection";
+import { MemberAvatar } from "./MemberAvatar";
 import { SoundSettingsSection } from "./SoundSettingsSection";
 import { StatusEditor } from "./StatusEditor";
 
@@ -28,7 +29,11 @@ const PUSH_LABELS: Record<PushRegistrationState, string> = {
 
 export interface SettingsSheetProps {
   readonly visible: boolean;
+  readonly ownUserId: string;
   readonly ownDisplayName: string;
+  readonly hasAvatar?: boolean;
+  readonly onChangeAvatar?: () => void;
+  readonly onClearAvatar?: () => void;
   readonly ownStatus: PresenceStatus;
   readonly ownCustomStatus: string;
   readonly pushState: PushRegistrationState;
@@ -40,7 +45,11 @@ export interface SettingsSheetProps {
 /** The general settings surface: profile, notifications & sounds, voice, appearance. */
 export function SettingsSheet({
   visible,
+  ownUserId,
   ownDisplayName,
+  hasAvatar = false,
+  onChangeAvatar,
+  onClearAvatar,
   ownStatus,
   ownCustomStatus,
   pushState,
@@ -88,9 +97,27 @@ export function SettingsSheet({
           <View className="mt-4 flex-1">
             {category === "profile" && (
               <ScrollView contentContainerStyle={{ gap: 12, paddingBottom: 24 }}>
-                <Text size="sm" className="font-medium">
-                  {ownDisplayName}
-                </Text>
+                <View className="flex-row items-center gap-3">
+                  <MemberAvatar userId={ownUserId} size={56} title={ownDisplayName} />
+                  <View className="min-w-0 flex-1 gap-2">
+                    <Text size="sm" className="font-medium">
+                      {ownDisplayName}
+                    </Text>
+                    <Text size="xs" tone="muted">
+                      Profile picture for this workspace.
+                    </Text>
+                    {onChangeAvatar !== undefined && (
+                      <Button size="sm" variant="secondary" onPress={onChangeAvatar}>
+                        Change picture
+                      </Button>
+                    )}
+                    {hasAvatar && onClearAvatar !== undefined && (
+                      <Button size="sm" variant="ghost" onPress={onClearAvatar}>
+                        Use generated avatar
+                      </Button>
+                    )}
+                  </View>
+                </View>
                 <StatusEditor
                   status={ownStatus}
                   customStatus={ownCustomStatus}

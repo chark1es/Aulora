@@ -1,4 +1,3 @@
-import { Avatar, userAvatarSeed } from "@aulora/avatars";
 import { EVERYONE_ROLE_ID } from "@aulora/core";
 import { Button, Heading, Icon, Input, Modal, Spinner, Text } from "@aulora/ui-web";
 import { useMutation, useQuery } from "convex/react";
@@ -14,6 +13,7 @@ import {
   roleNamesFor,
   roleRef,
 } from "../../lib/workspace-admin";
+import { PersonAvatar } from "../chat/member-avatars";
 import { Combobox, type ComboboxOption } from "./Combobox";
 
 export interface MemberManagerViewer {
@@ -170,11 +170,7 @@ export function MemberManager({ viewer, ownerId, permissions }: MemberManagerPro
                   }}
                   className="flex w-full items-center gap-3 rounded-[12px] border border-border bg-surface-2 p-3 text-left transition hover:border-text-muted/30 hover:bg-surface-3/60"
                 >
-                  <Avatar
-                    seed={userAvatarSeed(member.userId)}
-                    size={34}
-                    {...(color !== null && color.length > 0 ? { roleColor: color } : {})}
-                  />
+                  <PersonAvatar userId={member.userId} size={34} roleColor={color} />
                   <span className="min-w-0 flex-1">
                     <span className="flex items-center gap-1.5">
                       <Text
@@ -235,7 +231,7 @@ export function MemberManager({ viewer, ownerId, permissions }: MemberManagerPro
               ? "No roles"
               : roleNamesFor(selected, roleList).join(", ")
           }
-          icon={<Avatar seed={userAvatarSeed(selected.userId)} size={36} />}
+          icon={<PersonAvatar userId={selected.userId} size={36} />}
           footer={
             <Button variant="secondary" onClick={() => setMemberOpen(false)}>
               Done

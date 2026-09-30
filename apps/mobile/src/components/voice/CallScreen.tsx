@@ -1,5 +1,3 @@
-import { userAvatarSeed } from "@aulora/avatars";
-import { NativeAvatar } from "@aulora/avatars/native";
 import {
   type CallParticipantView,
   callKindLabel,
@@ -11,6 +9,7 @@ import { useEffect, useMemo, useState } from "react";
 import { Modal, ScrollView, View } from "react-native";
 import { tryCreateMediaStream, type VoiceStream } from "../../lib/voice/webrtc";
 import { useVoice } from "../../providers/VoiceProvider";
+import { MemberAvatar } from "../chat/MemberAvatar";
 import { CallControls } from "./CallControls";
 import { CallVideo } from "./CallVideo";
 
@@ -201,11 +200,7 @@ function ParticipantTile({
 function AvatarFallback({ seed, color }: { readonly seed: string; readonly color?: string }) {
   return (
     <View className="flex-1 items-center justify-center">
-      <NativeAvatar
-        seed={userAvatarSeed(seed)}
-        size={56}
-        {...(color !== undefined ? { roleColor: color } : {})}
-      />
+      <MemberAvatar userId={seed} size={56} roleColor={color} />
     </View>
   );
 }

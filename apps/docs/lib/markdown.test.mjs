@@ -43,3 +43,15 @@ test("renderMarkdown links .md docs to .html", () => {
   const { html } = renderMarkdown("See [self-hosting](self-hosting.md).");
   assert.match(html, /<a href="self-hosting.html">self-hosting<\/a>/);
 });
+
+test("tables render readable headers, inline formatting, links and escaped cells", () => {
+  const { html } = renderMarkdown(
+    "| Platform | Install |\n| --- | --- |\n| **Web** | [Guide](getting-started.md) |\n| A\\|B | <script> |\n",
+  );
+  assert.match(html, /<th scope="col">Platform<\/th>/);
+  assert.match(html, /<td><strong>Web<\/strong><\/td>/);
+  assert.match(html, /href="getting-started.html"/);
+  assert.match(html, /<td>A\|B<\/td>/);
+  assert.match(html, /&lt;script&gt;/);
+  assert.ok(!html.includes("<script>"));
+});

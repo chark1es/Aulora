@@ -22,6 +22,9 @@ import { categoryOverridesFor, channelPermissions, loadPermissionContext } from 
  * swept by a cron so a crashed client cannot strand a call.
  */
 
+/** Client install ids are opaque tokens, not free-form strings. */
+const CLIENT_ID_PATTERN = /^[A-Za-z0-9_-]{8,80}$/;
+
 /** A participant is considered gone after this long without a heartbeat. */
 export const PARTICIPANT_STALE_MS = 45_000;
 /** How long a ringing DM call waits for an answer before giving up. */
@@ -42,6 +45,9 @@ interface CallParticipantSummary {
   readonly video: boolean;
   readonly sharingScreen: boolean;
   readonly joinedAt: number;
+  /** Present only for the viewer's own row. */
+  readonly clientId: string | null;
+  readonly session: number;
   readonly speaking: boolean;
   readonly audioLevel: number;
   readonly connection: "connecting" | "connected" | "reconnecting" | "failed";
@@ -63,6 +69,7 @@ interface CallSummary {
 async function loadParticipants(
   ctx: ReadCtx,
   callId: Id<"calls">,
+  viewerId: string,
 ): Promise<CallParticipantSummary[]> {
   const rows = await ctx.db
     .query("callParticipants")
@@ -77,13 +84,19 @@ async function loadParticipants(
       video: row.video,
       sharingScreen: row.sharingScreen,
       joinedAt: row.joinedAt,
+      clientId: row.userId === viewerId ? (row.clientId ?? null) : null,
+      session: row.session ?? 0,
       speaking: false,
       audioLevel: 0,
       connection: "connected" as const,
     }));
 }
 
-async function toCallSummary(ctx: ReadCtx, call: Doc<"calls">): Promise<CallSummary> {
+async function toCallSummary(
+  ctx: ReadCtx,
+  call: Doc<"calls">,
+  viewerId: string,
+): Promise<CallSummary> {
   return {
     id: call._id,
     channelId: call.channelId,
@@ -93,8 +106,21 @@ async function toCallSummary(ctx: ReadCtx, call: Doc<"calls">): Promise<CallSumm
     ringingUserIds: call.ringingUserIds,
     screenShareUserId: call.screenShareUserId ?? null,
     startedAt: call.startedAt,
-    participants: await loadParticipants(ctx, call._id),
+    participants: await loadParticipants(ctx, call._id, viewerId),
   };
+}
+
+function assertClientId(clientId: string): string {
+  const trimmed = clientId.trim();
+  if (!CLIENT_ID_PATTERN.test(trimmed)) {
+    throw new ConvexError("Invalid client");
+  }
+  return trimmed;
+}
+
+/** True when this row is held by a different install than `clientId`. */
+function heldByOtherDevice(row: Doc<"callParticipants">, clientId: string): boolean {
+  return row.clientId !== undefined && row.clientId !== clientId;
 }
 
 /** The workspace voice policy, defaulting to enabled for pre-voice rows. */
@@ -183,6 +209,129 @@ async function endCall(ctx: MutationCtx, call: Doc<"calls">): Promise<void> {
   });
 }
 
+async function finishIfEmpty(ctx: MutationCtx, callId: Id<"calls">): Promise<void> {
+  const call = await ctx.db.get(callId);
+  if (call === null || call.status === "ended") {
+    return;
+  }
+  const remaining = await ctx.db
+    .query("callParticipants")
+    .withIndex("by_call", (q) => q.eq("callId", callId))
+    .collect();
+  if (remaining.length === 0) {
+    await endCall(ctx, call);
+  }
+}
+
+async function insertParticipant(
+  ctx: MutationCtx,
+  callId: Id<"calls">,
+  channelId: Id<"channels">,
+  userId: string,
+  clientId: string,
+): Promise<void> {
+  const now = Date.now();
+  await ctx.db.insert("callParticipants", {
+    callId,
+    channelId,
+    userId,
+    clientId,
+    session: 1,
+    muted: false,
+    deafened: false,
+    video: false,
+    sharingScreen: false,
+    joinedAt: now,
+    lastSeen: now,
+  });
+}
+
+/**
+ * A user is in one call, from one device. The same device switching calls
+ * drops the previous seat. A different device must pass `takeover`, which
+ * disconnects the other one. Returns whether this call already had a seat
+ * for the user (so the caller must not insert a second row).
+ */
+async function prepareSeat(
+  ctx: MutationCtx,
+  args: {
+    readonly userId: string;
+    readonly clientId: string;
+    readonly takeover: boolean;
+    readonly call: Doc<"calls"> | null;
+    readonly maxParticipants: number;
+  },
+): Promise<"present" | "absent"> {
+  const clientId = assertClientId(args.clientId);
+  const rows = await ctx.db
+    .query("callParticipants")
+    .withIndex("by_user", (q) => q.eq("userId", args.userId))
+    .collect();
+  const foreign = rows.filter((row) => row.clientId !== clientId);
+  if (foreign.length > 0 && !args.takeover) {
+    const other = foreign[0];
+    if (other === undefined) {
+      throw new ConvexError("You are already in a call on another device");
+    }
+    throw new ConvexError({
+      code: "call_elsewhere",
+      message: "You are already in a call on another device",
+      callId: other.callId,
+      channelId: other.channelId,
+    });
+  }
+
+  const target = args.call;
+  const here = target === null ? undefined : rows.find((row) => row.callId === target._id);
+  if (target !== null && here === undefined) {
+    const occupied = await ctx.db
+      .query("callParticipants")
+      .withIndex("by_call", (q) => q.eq("callId", target._id))
+      .collect();
+    if (occupied.length >= args.maxParticipants) {
+      throw new ConvexError("This call is full");
+    }
+  }
+
+  for (const row of rows) {
+    if (target !== null && row.callId === target._id) {
+      const takingOver = row.clientId !== clientId;
+      await ctx.db.patch(row._id, {
+        clientId,
+        lastSeen: Date.now(),
+        ...(takingOver
+          ? {
+              session: (row.session ?? 0) + 1,
+              muted: false,
+              deafened: false,
+              video: false,
+              sharingScreen: false,
+            }
+          : {}),
+      });
+      if (takingOver) {
+        await clearSignalsFor(ctx, target._id, args.userId);
+        if (target.screenShareUserId === args.userId) {
+          await ctx.db.patch(target._id, {
+            screenShareUserId: undefined,
+            updatedAt: Date.now(),
+          });
+        }
+      }
+      continue;
+    }
+    const other = await ctx.db.get(row.callId);
+    if (other !== null && other.status !== "ended") {
+      await removeParticipant(ctx, other, args.userId);
+      await finishIfEmpty(ctx, other._id);
+    } else {
+      await ctx.db.delete(row._id);
+    }
+  }
+
+  return here === undefined ? "absent" : "present";
+}
+
 /**
  * Starts (or reuses) the call on a channel. A DM/group-DM call begins ringing;
  * a voice-channel call is active immediately and others join when they want.
@@ -192,6 +341,8 @@ export const start = mutation({
     channelId: v.id("channels"),
     kind: v.union(v.literal("voice"), v.literal("video")),
     ringingUserIds: v.optional(v.array(v.string())),
+    clientId: v.string(),
+    takeover: v.optional(v.boolean()),
   },
   handler: async (ctx, args) => {
     const { userId, channel } = await requireChannelAccess(ctx, args.channelId, Permission.Connect);
@@ -217,25 +368,24 @@ export const start = mutation({
         q.eq("channelId", args.channelId).eq("status", "ringing"),
       )
       .first();
-    const live = existing ?? ringing;
+    const live = existing ?? ringing ?? null;
+    const seat = await prepareSeat(ctx, {
+      userId,
+      clientId: args.clientId,
+      takeover: args.takeover === true,
+      call: live,
+      maxParticipants: policy.maxParticipants,
+    });
 
-    if (live !== null && live !== undefined) {
-      const already = await findParticipant(ctx, live._id, userId);
-      if (already === null) {
-        if ((await loadParticipants(ctx, live._id)).length >= policy.maxParticipants) {
-          throw new ConvexError("This call is full");
-        }
-        await ctx.db.insert("callParticipants", {
-          callId: live._id,
-          channelId: live.channelId,
+    if (live !== null) {
+      if (seat === "absent") {
+        await insertParticipant(
+          ctx,
+          live._id,
+          live.channelId,
           userId,
-          muted: false,
-          deafened: false,
-          video: false,
-          sharingScreen: false,
-          joinedAt: Date.now(),
-          lastSeen: Date.now(),
-        });
+          assertClientId(args.clientId),
+        );
       }
       if (live.status === "ringing") {
         await ctx.db.patch(live._id, {
@@ -275,17 +425,7 @@ export const start = mutation({
       startedAt: now,
       updatedAt: now,
     });
-    await ctx.db.insert("callParticipants", {
-      callId,
-      channelId: args.channelId,
-      userId,
-      muted: false,
-      deafened: false,
-      video: false,
-      sharingScreen: false,
-      joinedAt: now,
-      lastSeen: now,
-    });
+    await insertParticipant(ctx, callId, args.channelId, userId, assertClientId(args.clientId));
     if (ringingUserIds.length > 0) {
       await ctx.scheduler.runAfter(0, internal.notifications.dispatchCallRinging, { callId });
       // Native mobile devices need their own wake path (web push targets web
@@ -300,7 +440,7 @@ export const start = mutation({
 
 /** Joins a call. The first person to answer a ringing call activates it. */
 export const join = mutation({
-  args: { callId: v.id("calls") },
+  args: { callId: v.id("calls"), clientId: v.string(), takeover: v.optional(v.boolean()) },
   handler: async (ctx, args) => {
     const { userId } = await requireAuth(ctx);
     const call = await ctx.db.get(args.callId);
@@ -316,22 +456,15 @@ export const join = mutation({
     if (call.kind === "video" && !policy.videoEnabled) {
       throw new ConvexError("Video calling is disabled in this workspace");
     }
-    const already = await findParticipant(ctx, call._id, userId);
-    if (already === null) {
-      if ((await loadParticipants(ctx, call._id)).length >= policy.maxParticipants) {
-        throw new ConvexError("This call is full");
-      }
-      await ctx.db.insert("callParticipants", {
-        callId: call._id,
-        channelId: call.channelId,
-        userId,
-        muted: false,
-        deafened: false,
-        video: false,
-        sharingScreen: false,
-        joinedAt: Date.now(),
-        lastSeen: Date.now(),
-      });
+    const seat = await prepareSeat(ctx, {
+      userId,
+      clientId: args.clientId,
+      takeover: args.takeover === true,
+      call,
+      maxParticipants: policy.maxParticipants,
+    });
+    if (seat === "absent") {
+      await insertParticipant(ctx, call._id, call.channelId, userId, assertClientId(args.clientId));
     }
     if (call.status === "ringing") {
       await ctx.db.patch(call._id, { status: "active", ringingUserIds: [], updatedAt: Date.now() });
@@ -347,11 +480,17 @@ export const join = mutation({
 
 /** Leaves a call; the last participant out ends it. */
 export const leave = mutation({
-  args: { callId: v.id("calls") },
+  args: { callId: v.id("calls"), clientId: v.string() },
   handler: async (ctx, args) => {
     const { userId } = await requireAuth(ctx);
+    const clientId = assertClientId(args.clientId);
     const call = await ctx.db.get(args.callId);
     if (call === null) {
+      return null;
+    }
+    const participant = await findParticipant(ctx, call._id, userId);
+    // A device that was kicked must not take the new device with it.
+    if (participant !== null && heldByOtherDevice(participant, clientId)) {
       return null;
     }
     await removeParticipant(ctx, call, userId);
@@ -359,13 +498,7 @@ export const leave = mutation({
       ringingUserIds: call.ringingUserIds.filter((id) => id !== userId),
       updatedAt: Date.now(),
     });
-    const remaining = await ctx.db
-      .query("callParticipants")
-      .withIndex("by_call", (q) => q.eq("callId", call._id))
-      .collect();
-    if (remaining.length === 0) {
-      await endCall(ctx, call);
-    }
+    await finishIfEmpty(ctx, call._id);
     return null;
   },
 });
@@ -423,6 +556,7 @@ export const end = mutation({
 export const updateParticipant = mutation({
   args: {
     callId: v.id("calls"),
+    clientId: v.string(),
     muted: v.optional(v.boolean()),
     deafened: v.optional(v.boolean()),
     video: v.optional(v.boolean()),
@@ -436,7 +570,7 @@ export const updateParticipant = mutation({
     }
     const { permissions } = await requireChannelAccess(ctx, call.channelId, Permission.Connect);
     const participant = await findParticipant(ctx, call._id, userId);
-    if (participant === null) {
+    if (participant === null || heldByOtherDevice(participant, assertClientId(args.clientId))) {
       throw new ConvexError("You are not in this call");
     }
     if (args.video === true && !hasPermission(permissions, Permission.UseVideo)) {
@@ -475,13 +609,22 @@ export const updateParticipant = mutation({
 
 /** Keeps the participant row fresh so the sweep does not drop a live client. */
 export const heartbeat = mutation({
-  args: { callId: v.id("calls") },
+  args: { callId: v.id("calls"), clientId: v.string() },
   handler: async (ctx, args) => {
     const { userId } = await requireAuth(ctx);
     const participant = await findParticipant(ctx, args.callId, userId);
-    if (participant !== null) {
-      await ctx.db.patch(participant._id, { lastSeen: Date.now() });
+    const clientId = assertClientId(args.clientId);
+    if (participant === null || heldByOtherDevice(participant, clientId)) {
+      return null;
     }
+    // A seat from before device tracking has no client id. The install that
+    // is actually heartbeating claims it so other devices can see the mismatch.
+    await ctx.db.patch(participant._id, {
+      lastSeen: Date.now(),
+      ...(participant.clientId === undefined
+        ? { clientId, session: participant.session ?? 1 }
+        : {}),
+    });
     return null;
   },
 });
@@ -490,6 +633,7 @@ export const heartbeat = mutation({
 export const signal = mutation({
   args: {
     callId: v.id("calls"),
+    clientId: v.string(),
     toUserId: v.string(),
     kind: v.union(
       v.literal("offer"),
@@ -509,7 +653,7 @@ export const signal = mutation({
       throw new ConvexError("Cannot signal yourself");
     }
     const sender = await findParticipant(ctx, call._id, userId);
-    if (sender === null) {
+    if (sender === null || heldByOtherDevice(sender, assertClientId(args.clientId))) {
       throw new ConvexError("You are not in this call");
     }
     const receiver = await findParticipant(ctx, call._id, args.toUserId);
@@ -526,6 +670,7 @@ export const signal = mutation({
       toUserId: args.toUserId,
       kind: args.kind,
       payload: args.payload,
+      session: sender.session ?? 0,
       createdAt: Date.now(),
     });
     return null;
@@ -552,7 +697,7 @@ export const ack = mutation({
 export const forChannel = query({
   args: { channelId: v.id("channels") },
   handler: async (ctx, args) => {
-    await requireChannelAccess(ctx, args.channelId, Permission.ViewChannel);
+    const { userId } = await requireChannelAccess(ctx, args.channelId, Permission.ViewChannel);
     const active = await ctx.db
       .query("calls")
       .withIndex("by_channel_status", (q) =>
@@ -567,7 +712,9 @@ export const forChannel = query({
           q.eq("channelId", args.channelId).eq("status", "ringing"),
         )
         .first());
-    return ringing === null || ringing === undefined ? null : await toCallSummary(ctx, ringing);
+    return ringing === null || ringing === undefined
+      ? null
+      : await toCallSummary(ctx, ringing, userId);
   },
 });
 
@@ -579,8 +726,8 @@ export const get = query({
     if (call === null) {
       return null;
     }
-    await requireChannelAccess(ctx, call.channelId, Permission.ViewChannel);
-    return await toCallSummary(ctx, call);
+    const { userId } = await requireChannelAccess(ctx, call.channelId, Permission.ViewChannel);
+    return await toCallSummary(ctx, call, userId);
   },
 });
 
@@ -594,7 +741,7 @@ export const incoming = query({
       .withIndex("by_status", (q) => q.eq("status", "ringing"))
       .collect();
     const mine = ringing.filter((call) => call.ringingUserIds.includes(userId));
-    return await Promise.all(mine.map((call) => toCallSummary(ctx, call)));
+    return await Promise.all(mine.map((call) => toCallSummary(ctx, call, userId)));
   },
 });
 
@@ -635,7 +782,7 @@ export const activeCalls = query({
           continue;
         }
       }
-      visible.push(await toCallSummary(ctx, call));
+      visible.push(await toCallSummary(ctx, call, userId));
     }
     return visible;
   },
@@ -659,6 +806,7 @@ export const signals = query({
         toUserId: row.toUserId,
         kind: row.kind,
         payload: row.payload,
+        session: row.session ?? 0,
         createdAt: row.createdAt,
       }));
   },

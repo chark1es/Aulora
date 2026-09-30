@@ -377,7 +377,7 @@ function KindOption({
       <span className="text-[11px] leading-snug text-text-muted">{description}</span>
       {active && (
         <span className="absolute right-2.5 top-2.5 flex h-4 w-4 items-center justify-center rounded-full bg-accent text-on-accent">
-          <Icon name="check" size={11} strokeWidth={2.5} />
+          <Icon name="check" size={11} />
         </span>
       )}
     </label>
@@ -457,7 +457,7 @@ function WhitelistOption({
           checked ? "border-accent bg-accent text-on-accent" : "border-border",
         )}
       >
-        {checked && <Icon name="check" size={13} strokeWidth={2.5} />}
+        {checked && <Icon name="check" size={13} />}
       </span>
     </button>
   );

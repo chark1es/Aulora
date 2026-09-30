@@ -11,10 +11,12 @@ import {
 } from "../../lib/workspace-admin";
 import { AuditLogViewer } from "./AuditLogViewer";
 import { InviteManager } from "./InviteManager";
+import { InstanceAdminPanel } from "./instance/InstanceAdminPanel";
 import { MemberManager } from "./MemberManager";
 import { PermissionsPanel, type ScopePage } from "./PermissionsPanel";
 import { RoleEditor, type RolePage } from "./RoleEditor";
-import { SettingsHub, type SettingsPage } from "./SettingsHub";
+import { WorkspaceBranding } from "./WorkspaceBranding";
+import { WorkspaceSettings } from "./WorkspaceSettings";
 
 export interface AdminPanelViewer {
   readonly userId: string;
@@ -36,9 +38,9 @@ export interface AdminPanelProps {
   readonly onClose: () => void;
 }
 
-type TabId = "roles" | "members" | "invites" | "permissions" | "audit" | "settings";
+type TabId = "roles" | "members" | "invites" | "permissions" | "audit" | "workspace" | "instance";
 
-type AdminPage = RolePage | ScopePage | SettingsPage;
+type AdminPage = RolePage | ScopePage;
 
 interface Nav {
   readonly tab: TabId;
@@ -51,7 +53,8 @@ const TAB_LABELS: Record<TabId, string> = {
   invites: "Invites",
   permissions: "Permissions",
   audit: "Audit log",
-  settings: "Settings",
+  workspace: "Workspace",
+  instance: "Instance",
 };
 
 /** The workspace admin console: roles, members, overrides and audit. */
@@ -91,7 +94,10 @@ export function AdminPanel({
     tabs.push({ id: "audit", label: "Audit log" });
   }
   if (permission("ManageWorkspace")) {
-    tabs.push({ id: "settings", label: "Settings" });
+    tabs.push({ id: "workspace", label: "Workspace" });
+  }
+  if (viewer.isOwner) {
+    tabs.push({ id: "instance", label: "Instance" });
   }
 
   const memberNames = useMemo(() => {
@@ -181,7 +187,7 @@ export function AdminPanel({
       </nav>
 
       <div className="min-h-0 flex-1 overflow-y-auto">
-        <div className="mx-auto flex w-full max-w-[760px] flex-col gap-6 p-5">
+        <div className="mx-auto flex w-full max-w-[1120px] flex-col gap-6 p-5">
           {nav.tab === "roles" && (
             <RoleEditor
               viewer={viewer}
@@ -227,13 +233,14 @@ export function AdminPanel({
               {...(channelNames !== undefined ? { channelNames } : {})}
             />
           )}
-          {nav.tab === "settings" && (
-            <SettingsHub
-              canManageWorkspace={permission("ManageWorkspace")}
-              isInstanceAdmin={viewer.isOwner}
-              page={isSettingsPage(nav.page) ? nav.page : null}
-              onNavigate={(page) => setNav({ tab: "settings", page })}
-            />
+          {nav.tab === "workspace" && (
+            <div className="flex flex-col gap-8" data-testid="settings-workspace">
+              <WorkspaceBranding canManageWorkspace={permission("ManageWorkspace")} />
+              <WorkspaceSettings canManageWorkspace={permission("ManageWorkspace")} />
+            </div>
+          )}
+          {nav.tab === "instance" && (
+            <InstanceAdminPanel canManage={viewer.isOwner} variant="inline" />
           )}
           {tabs.length === 0 && (
             <Text tone="muted" size="sm">
@@ -252,8 +259,4 @@ function isRolePage(page: AdminPage | null): page is RolePage {
 
 function isScopePage(page: AdminPage | null): page is ScopePage {
   return page !== null && page.kind === "scope";
-}
-
-function isSettingsPage(page: AdminPage | null): page is SettingsPage {
-  return page !== null && page.kind === "settings";
 }

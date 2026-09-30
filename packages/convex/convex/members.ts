@@ -15,8 +15,123 @@ import {
   requireWorkspaceContext,
   requireWorkspacePermission,
 } from "./lib/permissions";
+import { enforceRateLimit, userRateLimitKey } from "./lib/rateLimit";
+import { openContentOptional } from "./lib/sealed";
+import { sealString } from "./lib/sse";
 
 type ReadCtx = QueryCtx | MutationCtx;
+
+const BIO_CONTEXT = { scope: "member.bio" } as const;
+const MAX_BIO_LENGTH = 500;
+const MAX_AVATAR_BYTES = 4 * 1024 * 1024;
+
+function isAvatarImage(metadata: {
+  readonly size: number;
+  readonly contentType?: string | null;
+}): boolean {
+  if (metadata.size <= 0 || metadata.size > MAX_AVATAR_BYTES) {
+    return false;
+  }
+  const contentType = (metadata.contentType ?? "").toLowerCase();
+  return contentType.length === 0 || contentType.startsWith("image/");
+}
+
+/** A workspace member's public summary. */
+export const profile = query({
+  args: { userId: v.string() },
+  handler: async (ctx, args) => {
+    const { userId } = await requireAuth(ctx);
+    await requireMember(ctx, userId);
+    const member = await ctx.db
+      .query("members")
+      .withIndex("by_user", (q) => q.eq("userId", args.userId))
+      .unique();
+    if (member === null) {
+      return null;
+    }
+    const presence = await ctx.db
+      .query("presence")
+      .withIndex("by_user", (q) => q.eq("userId", args.userId))
+      .unique();
+    return {
+      userId: member.userId,
+      bio: await openContentOptional(BIO_CONTEXT, member.bioCiphertext),
+      avatarUrl:
+        member.avatarStorageId !== undefined
+          ? await ctx.storage.getUrl(member.avatarStorageId)
+          : null,
+      lastOnlineAt:
+        presence?.lastOnlineAt ??
+        (presence !== null && !(presence.manual === true && presence.status === "offline")
+          ? presence.lastHeartbeat
+          : null),
+    };
+  },
+});
+
+/** Edits only the caller's bio, sealed at rest. An empty value clears it. */
+export const setBio = mutation({
+  args: { bio: v.string() },
+  handler: async (ctx, args) => {
+    const { userId } = await requireAuth(ctx);
+    await requireMember(ctx, userId);
+    const bio = args.bio.trim();
+    if (bio.length > MAX_BIO_LENGTH) {
+      throw new ConvexError(`Bio must be ${MAX_BIO_LENGTH} characters or fewer`);
+    }
+    const member = await requireMemberRow(ctx, userId);
+    await ctx.db.patch(member._id, {
+      bioCiphertext: bio.length > 0 ? await sealString(BIO_CONTEXT, bio) : undefined,
+    });
+    return null;
+  },
+});
+
+/** Upload URL for the caller's workspace profile picture. Membership is enough. */
+export const generateAvatarUploadUrl = mutation({
+  args: {},
+  handler: async (ctx) => {
+    const { userId } = await requireAuth(ctx);
+    await requireMember(ctx, userId);
+    await enforceRateLimit(ctx, {
+      key: userRateLimitKey("avatar", userId),
+      limit: 10,
+      windowMs: 60_000,
+    });
+    return await ctx.storage.generateUploadUrl();
+  },
+});
+
+/**
+ * Sets or clears the caller's profile picture in this workspace. Other
+ * workspaces keep their own picture because each server has its own member row.
+ */
+export const setAvatar = mutation({
+  args: { storageId: v.optional(v.id("_storage")) },
+  handler: async (ctx, args) => {
+    const { userId } = await requireAuth(ctx);
+    await requireMember(ctx, userId);
+    const member = await requireMemberRow(ctx, userId);
+    const previous = member.avatarStorageId;
+    if (args.storageId !== undefined) {
+      const url = await ctx.storage.getUrl(args.storageId);
+      if (url === null) {
+        throw new ConvexError("Avatar file not found");
+      }
+      const metadata = await ctx.db.system.get("_storage", args.storageId);
+      if (metadata === null || !isAvatarImage(metadata)) {
+        throw new ConvexError("Avatar must be an image under 4 MB");
+      }
+      await ctx.db.patch(member._id, { avatarStorageId: args.storageId });
+    } else {
+      await ctx.db.patch(member._id, { avatarStorageId: undefined });
+    }
+    if (previous !== undefined && previous !== args.storageId) {
+      await ctx.storage.delete(previous);
+    }
+    return null;
+  },
+});
 
 async function findRoleByName(ctx: MutationCtx, name: string): Promise<Doc<"roles"> | null> {
   const roles = await ctx.db.query("roles").collect();
@@ -114,9 +229,15 @@ interface MemberView {
   readonly roleIds: string[];
   readonly joinedAt: number;
   readonly timeoutUntil: number | null;
+  /** This workspace's profile picture, or null for the generated avatar. */
+  readonly avatarUrl: string | null;
 }
 
-function toMemberView(member: Doc<"members">, accountName: string | null = null): MemberView {
+async function toMemberView(
+  ctx: ReadCtx,
+  member: Doc<"members">,
+  accountName: string | null = null,
+): Promise<MemberView> {
   return {
     id: member._id,
     userId: member.userId,
@@ -125,6 +246,10 @@ function toMemberView(member: Doc<"members">, accountName: string | null = null)
     roleIds: member.roleIds,
     joinedAt: member.joinedAt,
     timeoutUntil: member.timeoutUntil ?? null,
+    avatarUrl:
+      member.avatarStorageId !== undefined
+        ? await ctx.storage.getUrl(member.avatarStorageId)
+        : null,
   };
 }
 
@@ -139,9 +264,11 @@ export const list = query({
       ctx,
       members.map((member) => member.userId),
     );
-    return members
-      .sort((a, b) => a.joinedAt - b.joinedAt)
-      .map((member) => toMemberView(member, names.get(member.userId) ?? null));
+    return await Promise.all(
+      members
+        .sort((a, b) => a.joinedAt - b.joinedAt)
+        .map((member) => toMemberView(ctx, member, names.get(member.userId) ?? null)),
+    );
   },
 });
 
@@ -165,7 +292,11 @@ export const me = query({
       member:
         member === null
           ? null
-          : toMemberView(member, (await accountNames(ctx, [userId])).get(userId) ?? null),
+          : await toMemberView(
+              ctx,
+              member,
+              (await accountNames(ctx, [userId])).get(userId) ?? null,
+            ),
     };
   },
 });
@@ -254,7 +385,7 @@ export const setNickname = mutation({
       action: "member.nickname",
       targetId: args.userId,
     });
-    return { ...toMemberView(member), nickname: args.nickname ?? null };
+    return { ...(await toMemberView(ctx, member)), nickname: args.nickname ?? null };
   },
 });
 
@@ -272,7 +403,7 @@ export const timeout = mutation({
       targetId: args.userId,
       meta: JSON.stringify({ until: args.until ?? null }),
     });
-    return { ...toMemberView(member), timeoutUntil: args.until ?? null };
+    return { ...(await toMemberView(ctx, member)), timeoutUntil: args.until ?? null };
   },
 });
 

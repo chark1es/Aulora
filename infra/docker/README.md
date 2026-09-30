@@ -8,7 +8,7 @@ There is **no TLS terminator here** on purpose. Put the stack behind your own
 edge proxy (Coolify, Traefik, Caddy, nginx, a cloud LB) — see `proxy/`.
 
 For [Coolify](https://coolify.io), use `docker-compose.coolify.yml` instead of
-`docker-compose.yml` and follow `../../../apps/docs/content/coolify.md`. It
+`docker-compose.yml` and follow [the Coolify guide](../../apps/docs/content/coolify.md). It
 publishes no host ports, marks the one-shot services for Coolify's health
 check, and keeps generated secrets in the `setup-state` named volume so a
 redeploy never regenerates the encryption master key.
@@ -28,7 +28,8 @@ Copy-Item .env.example .env
 docker compose up -d --build
 
 # 3. Wait for first-run setup to finish before signing in.
-docker compose logs -f setup
+docker compose wait setup
+docker compose logs --tail=100 setup
 
 # 4. Optional: re-run setup explicitly at any time (idempotent).
 docker compose run --rm setup
@@ -136,11 +137,8 @@ that key on the first run and persists it to `.env`, so the default
 | --- | --- | --- |
 | `local` (default) | `AULORA_ENCRYPTION_KEY` (fallback: `INSTANCE_SECRET`) | Key in `.env`, no extra service |
 
-The KEK is the root of data confidentiality and lives outside the database. The
-server holds it only in memory and decrypts for authorized clients; it never
-writes key material to disk or to a backup. **If the KEK is lost, the existing
-data is unreadable**, so back up `AULORA_ENCRYPTION_KEY` (or, if you move to an
-external key manager, its KEK) separately and never commit it.
+Setup persists the local key in `.env` and configures it in the Convex deployment environment. The server uses it to decrypt content for authorized clients. Protect the host file, backend state, and raw database backups as potentially secret-bearing. Losing the key makes encrypted content unreadable. Back up `AULORA_ENCRYPTION_KEY` separately and never commit it. For an external key manager, preserve the original KEK and credentials needed to recover it.
+
 `INSTANCE_SECRET` is only a legacy fallback the `local` provider uses when
 `AULORA_ENCRYPTION_KEY` is unset.
 
@@ -249,49 +247,7 @@ refresh:
 
 ## Backup and restore
 
-Three things hold state; back all of them:
-
-1. **Convex data** — a logical export is the portable backup:
-
-   ```powershell
-   docker compose run --rm setup bash -lc `
-     "cd /app/packages/convex && bunx convex export --path /convex/data/backup.zip"
-   # Use `docker compose cp` rather than a hardcoded container name: the
-   # generated name (<project>-convex-backend-1) changes with the Compose
-   # project name, which Coolify and COMPOSE_PROJECT_NAME both control.
-   docker compose cp convex-backend:/convex/data/backup.zip ./backup.zip
-   ```
-
-   (`convex export` also covers S3-backed file storage.) Alternatively
-   `docker compose exec postgres pg_dump …`.
-
-2. **Postgres** — `docker compose exec postgres pg_dump -U convex <db> > dump.sql`.
-3. **Secrets** — `infra/docker/.env`, which holds `INSTANCE_SECRET`,
-   `BETTER_AUTH_SECRET`, VAPID keys and the default `AULORA_ENCRYPTION_KEY`. That
-   encryption key is the KEK and is what makes the ciphertext-at-rest data
-   readable; **losing it makes the existing data unreadable**, so back up `.env`
-   (and, if you use an optional external key manager, its KEK) separately and
-   securely, and never commit it. `INSTANCE_SECRET` remains required for the
-   Convex admin key.
-
-Restore: bring up a fresh stack, restore Postgres/`convex export`, restore
-`.env` (and make sure the KEK is available), then run `setup`.
-
-### Nightly runner (optional)
-
-Instead of doing the above by hand, enable the `backups` profile. It runs
-`pg_dump` + `convex export` at `BACKUP_HOUR_UTC` (default 03:00 UTC), uploads
-both to the S3/MinIO bucket `BACKUP_BUCKET` and records the result for the
-instance admin panel:
-
-```powershell
-docker compose --profile backups up -d --build
-docker compose logs -f backup
-```
-
-The Convex cron records the nightly intent; the runner performs the work. Run
-one immediately with `docker compose run --rm -e BACKUP_RUN_ONCE=1 backup`, or
-use the panel's "Request backup now". See `backup/README.md`.
+Follow the [current backup and restore guide](../../apps/docs/content/backups.md). It includes uploaded files, container mounts, and an isolated recovery procedure. Keep off-machine copies and the original encryption key.
 
 ## Teardown
 
@@ -304,6 +260,48 @@ Tearing down with `down` (no `-v`) is the safe default: the named volumes
 `pgdata`, `convex-data`, `minio-data` and `web-well-known` survive, so a later
 `up` resumes exactly where you left off.
 
+## Updates
+
+Desktop settings show the installed app version, check for signed releases, and
+provide **Download update**, followed by **Restart to update**.
+
+For the workspace instance, run the watcher on the Docker host from a clean git
+clone with Bun dependencies installed with `bun install --frozen-lockfile`:
+
+```sh
+./update.sh --watch     # enables owner-only update controls in settings
+./update.sh --check     # print the plan; exit 10 when a release is newer
+./update.sh --download  # fetch the release and build images without downtime
+./update.sh --restart   # install the prepared images and redeploy functions
+./update.sh --apply     # immediate host update using deploy.sh
+```
+
+The workspace owner can then use **Workspace settings → Instance**. An available
+workspace update adds a dot to the workspace settings icon, visible only to the
+owner. Desktop app updates live separately in **Your settings → Updates** and
+mark only the user settings icon. Downloading builds in an isolated git worktree while the current containers
+keep running. Restart briefly interrupts the workspace. Messages, named volumes,
+and `.env` are kept. A failed installation keeps the prepared release and the
+previous `.deployed-version` stamp so the owner can retry.
+
+The watcher polls owner requests every five seconds and checks the release feed
+every six hours by default. `AULORA_AUTO_UPDATE=true` automatically prepares new
+releases; installation still waits for **Restart to update**. A one-shot
+`update.sh` with that flag retains its immediate-update behavior. Run the watcher
+under your host's service manager for persistence, with this checkout as its
+working directory and `bun` on PATH. After changing environment settings, restart
+the watcher and re-run `setup`.
+
+The watcher uses a locally minted Convex deployment key to call internal functions.
+The browser can queue only check, download, or restart operations, and the server
+rechecks workspace-owner authority for each request. No shell commands, release
+URLs, or deployment keys are accepted from the browser. If the watcher is offline,
+settings still show the version and can check releases, with installation disabled.
+
+Coolify should redeploy the new git ref from Coolify; do not point `update.sh` at
+Coolify's source checkout. Its settings show the version and available releases,
+with instructions to use the hosting provider's redeploy controls.
+
 ## Troubleshooting
 
 - **`setup` says "OWNER_EMAIL is not set"** — edit `.env` and re-run.
@@ -315,3 +313,7 @@ Tearing down with `down` (no `-v`) is the safe default: the named volumes
   name.
 - **Well-known 404** — run `setup`; it writes the document after a successful
   deploy.
+
+## Public release operations
+
+The [public self-hosting guide](../../apps/docs/content/self-hosting.md) covers HTTPS, reachable URLs, and private administration ports. Default passwords are for local trials; replace database and MinIO credentials before a public deployment. The [updates guide](../../apps/docs/content/updates.md) distinguishes rebuilding source, updating from release tags, and Coolify redeploys.

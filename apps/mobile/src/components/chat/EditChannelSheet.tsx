@@ -1,9 +1,8 @@
-import { userAvatarSeed } from "@aulora/avatars";
-import { NativeAvatar } from "@aulora/avatars/native";
 import { Button, Heading, Icon, Input, Text, usePalette } from "@aulora/ui-native";
 import { useEffect, useMemo, useState } from "react";
 import { Modal, Pressable, ScrollView, TextInput, View } from "react-native";
 import type { MobileMemberEntry } from "../../lib/permissions";
+import { MemberAvatar } from "./MemberAvatar";
 
 export interface EditChannelPatch {
   readonly name: string;
@@ -259,13 +258,7 @@ export function EditChannelSheet({
                       }
                       onPress={() => toggleMember(member.userId)}
                     >
-                      <NativeAvatar
-                        seed={userAvatarSeed(member.userId)}
-                        size={26}
-                        {...(member.roleColor !== null && member.roleColor.length > 0
-                          ? { roleColor: member.roleColor }
-                          : {})}
-                      />
+                      <MemberAvatar userId={member.userId} size={26} roleColor={member.roleColor} />
                       <Text size="sm" className="min-w-0 flex-1" numberOfLines={1}>
                         {member.displayName}
                         {self ? " (you)" : ""}
@@ -277,14 +270,7 @@ export function EditChannelSheet({
                             : "h-5 w-5 items-center justify-center rounded-pill border border-border"
                         }
                       >
-                        {checked && (
-                          <Icon
-                            name="check"
-                            size={13}
-                            strokeWidth={2.5}
-                            color={palette["on-accent"]}
-                          />
-                        )}
+                        {checked && <Icon name="check" size={13} color={palette["on-accent"]} />}
                       </View>
                     </Pressable>
                   );
@@ -377,14 +363,7 @@ export function EditChannelSheet({
                           : "h-5 w-5 items-center justify-center rounded-pill border border-border"
                       }
                     >
-                      {checked && (
-                        <Icon
-                          name="check"
-                          size={13}
-                          strokeWidth={2.5}
-                          color={palette["on-accent"]}
-                        />
-                      )}
+                      {checked && <Icon name="check" size={13} color={palette["on-accent"]} />}
                     </View>
                   </Pressable>
                 );

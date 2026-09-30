@@ -25,7 +25,7 @@ function notificationFromEvent(event) {
     data = {};
   }
   const title = typeof data.title === "string" && data.title.length > 0 ? data.title : "Aulora";
-  const body = typeof data.body === "string" && data.body.length > 0 ? data.body : "New message";
+  const body = typeof data.body === "string" && data.body.length > 0 ? data.body : "New activity";
   const url = typeof data.url === "string" && data.url.length > 0 ? data.url : "/";
   return {
     title,
