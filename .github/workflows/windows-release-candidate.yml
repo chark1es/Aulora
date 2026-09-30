@@ -32,50 +32,42 @@ jobs:
         with:
           workspaces: "apps/desktop/src-tauri -> target"
       - run: bun install --frozen-lockfile
-      - name: Check configuration and manifest generator
+      - name: Check configuration and release version
         working-directory: apps/desktop
         run: |
           bun run verify
           if ($LASTEXITCODE -ne 0) { throw 'Desktop configuration check failed' }
-          bun run test:winget
-          if ($LASTEXITCODE -ne 0) { throw 'Manifest generator tests failed' }
+          bun run test:release-version
+          if ($LASTEXITCODE -ne 0) { throw 'Release version tests failed' }
       - name: Build unsigned x64 NSIS installer
         working-directory: apps/desktop
         shell: pwsh
         run: |
           $config = Join-Path $env:RUNNER_TEMP 'aulora-release-version.json'
-          bun run winget --version $env:RELEASE_VERSION --build-config $config
+          bun run release-version --version $env:RELEASE_VERSION --output $config
           if ($LASTEXITCODE -ne 0) { throw 'Invalid release version' }
           bun run icons
           if ($LASTEXITCODE -ne 0) { throw 'Icon generation failed' }
           bun run tauri:build --target x86_64-pc-windows-msvc --config $config
           if ($LASTEXITCODE -ne 0) { throw 'Windows build failed' }
-      - name: Generate candidate manifests and test installed metadata
+      - name: Generate checksum and test installed metadata
         working-directory: apps/desktop
         shell: pwsh
         run: |
           $installer = "src-tauri/target/x86_64-pc-windows-msvc/release/bundle/nsis/Aulora_$($env:RELEASE_VERSION)_x64-setup.exe"
           New-Item -ItemType Directory -Force dist/windows-release | Out-Null
           Copy-Item $installer dist/windows-release/
-          bun run winget --installer $installer --version $env:RELEASE_VERSION --output dist/windows-release
-          if ($LASTEXITCODE -ne 0) { throw 'Manifest generation failed' }
+          $checksum = (Get-FileHash $installer -Algorithm SHA256).Hash
+          "$checksum  $(Split-Path $installer -Leaf)" | Set-Content -Path dist/windows-release/SHA256SUMS -Encoding utf8
           $process = Start-Process -FilePath (Resolve-Path $installer) -ArgumentList '/S' -Wait -PassThru
           if ($process.ExitCode -ne 0) { throw "Silent install failed: $($process.ExitCode)" }
           $entry = Get-ItemProperty 'HKCU:\Software\Microsoft\Windows\CurrentVersion\Uninstall\Aulora'
           if ($entry.DisplayName -ne 'Aulora' -or $entry.Publisher -ne 'SPWND' -or $entry.DisplayVersion -ne $env:RELEASE_VERSION) {
-            throw 'Installed metadata does not match the winget manifest'
+            throw 'Installed metadata does not match the release version'
           }
           $uninstaller = Join-Path $env:LOCALAPPDATA 'Aulora/uninstall.exe'
           $process = Start-Process -FilePath $uninstaller -ArgumentList '/S' -Wait -PassThru
           if ($process.ExitCode -ne 0) { throw "Silent uninstall failed: $($process.ExitCode)" }
-      - name: Validate manifests with winget
-        working-directory: apps/desktop
-        shell: powershell
-        run: |
-          Install-Module -Name Microsoft.WinGet.Client -Force -Repository PSGallery -Scope CurrentUser
-          Repair-WinGetPackageManager -AllUsers
-          winget validate --manifest "dist/windows-release/manifests/d/dev/spwnd/aulora/$env:RELEASE_VERSION"
-          if ($LASTEXITCODE -ne 0) { throw 'winget validation failed' }
       - uses: actions/upload-artifact@v4
         with:
           name: aulora-windows-${{ inputs.version }}

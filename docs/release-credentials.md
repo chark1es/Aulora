@@ -48,9 +48,9 @@ subscription or signing credentials are required for the current NSIS build.
 Users may see an unknown-publisher or SmartScreen warning. The provider setup
 below is optional future work.
 
-The Windows distribution plan is GitHub Releases plus winget after this
-repository becomes public for v1. Building the installer and manifests does not
-require a signing credential. See the [winget release guide](windows-winget-release.md).
+Windows installers are distributed through GitHub Releases, with public downloads
+available after this repository becomes public for v1. Building the unsigned
+installer does not require a signing credential.
 
 Choose a public-trust code-signing provider and its supported signing workflow. Current providers commonly use cloud signing or a hardware token/HSM, so there is no universal downloadable certificate file to request. Tauri's legacy `.pfx` tutorial explicitly applies only to OV certificates issued before June 2023. A website TLS certificate or self-signed certificate is unsuitable for a publicly trusted installer. [Tauri Windows signing and provider integration](https://v2.tauri.app/distribute/sign/windows/)
 

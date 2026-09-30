@@ -64,10 +64,9 @@ current Tauri configuration and CI workflow need no Windows certificate or
 Azure signing credentials. Windows may show an unknown-publisher or SmartScreen
 warning when users install a downloaded release. Signing can be added later.
 
-Windows releases will also be listed in winget as `dev.spwnd.aulora` after the
-repository becomes public for v1 and the community submission is accepted. The
-manual Windows release candidate workflow builds an installer and generates
-manifests with its actual checksum. See the [winget release guide](../../docs/windows-winget-release.md).
+Windows installers are distributed through GitHub Releases. The manual Windows
+release candidate workflow builds an installer, computes its checksum, and
+checks silent installation and uninstallation.
 
 Cross-compiling the Windows NSIS installer from macOS:
 
