@@ -19,7 +19,7 @@ Read the [Aulora contributor agreement](legal/CLA.md), then follow the CLA bot's
 
 - Branch from `main` and keep each change focused.
 - Describe the resulting behavior and how you tested it.
-- Update public docs and the changelog when behavior changes.
+- Update public docs when behavior changes.
 - Run the relevant checks before requesting review.
 - Keep real credentials, encryption keys, and user data out of Git.
 

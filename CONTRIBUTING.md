@@ -22,7 +22,7 @@ The aggregate check includes lint, types, workspace tests, web/docs builds, infr
 - Branch from `main` and keep each pull request focused on one change.
 - Use Conventional Commits, such as `fix(auth): preserve sessions` or `docs: explain setup`.
 - Explain the problem, resulting behavior, and how you verified it. Include screenshots for UI changes and migration steps for schema or deployment changes.
-- Update user-facing docs and `CHANGELOG.md` when behavior changes.
+- Update user-facing docs when behavior changes. Release notes live in GitHub Releases.
 - Add tests for meaningful behavior changes. Keep permissions and validation on the server even when the UI also checks them.
 - Run the relevant checks and resolve failures before requesting review.
 - Commit dependency changes with `bun.lock`. Do not introduce another workspace lockfile.
