@@ -2,10 +2,10 @@ import { type AttachmentDescriptor, bytesToBase64, downloadAttachment } from "@a
 import { Text } from "@aulora/ui-native";
 import { useEffect, useState } from "react";
 import { Image, View } from "react-native";
-import type { MobileChatRuntime } from "../../lib/chat-runtime";
+import type { ChatSurfaceRuntime } from "../../lib/chat-surface";
 
 export interface AttachmentViewProps {
-  readonly runtime: MobileChatRuntime | undefined;
+  readonly runtime: ChatSurfaceRuntime | undefined;
   readonly descriptor: AttachmentDescriptor;
 }
 

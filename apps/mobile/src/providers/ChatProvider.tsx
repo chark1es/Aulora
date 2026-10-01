@@ -37,6 +37,7 @@ import {
   roleRef,
 } from "../lib/permissions";
 import { usePresenceHeartbeat } from "../lib/use-presence-heartbeat";
+import { AvatarProvider } from "./AvatarProvider";
 
 export type { MobileMemberEntry } from "../lib/permissions";
 
@@ -399,7 +400,11 @@ export function ChatProvider({ client, children }: ChatProviderProps) {
     ],
   );
 
-  return <ChatContext.Provider value={value}>{children}</ChatContext.Provider>;
+  return (
+    <AvatarProvider urls={avatarUrls}>
+      <ChatContext.Provider value={value}>{children}</ChatContext.Provider>
+    </AvatarProvider>
+  );
 }
 
 function placeholder(channel: ChannelSummary): string {

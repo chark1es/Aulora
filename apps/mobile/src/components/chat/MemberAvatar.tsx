@@ -1,6 +1,6 @@
 import { userAvatarSeed } from "@aulora/avatars";
 import { NativeAvatar } from "@aulora/avatars/native";
-import { useChat } from "../../providers/ChatProvider";
+import { useAvatarUrls } from "../../providers/AvatarProvider";
 
 /** A person, using this workspace's picture when they have set one. */
 export function MemberAvatar({
@@ -14,7 +14,7 @@ export function MemberAvatar({
   readonly roleColor?: string | null;
   readonly title?: string;
 }) {
-  const { avatarUrls } = useChat();
+  const avatarUrls = useAvatarUrls();
   const src = avatarUrls.get(userId);
   return (
     <NativeAvatar

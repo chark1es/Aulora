@@ -2,6 +2,7 @@ import { NativeAvatar } from "@aulora/avatars/native";
 import { fetchWellKnown, type WellKnown, WellKnownError } from "@aulora/core";
 import { Button, Heading, Input, Text } from "@aulora/ui-native";
 import { ConvexReactClient } from "convex/react";
+import { useRouter } from "expo-router";
 import { useState } from "react";
 import {
   Animated,
@@ -71,7 +72,8 @@ export function ConnectScreen({
   /** Host prefilled from an `aulora://connect?server=…` deep link. */
   readonly initialHost?: string;
 }) {
-  const { addProfile } = useProfiles();
+  const { addProfile, profiles } = useProfiles();
+  const router = useRouter();
   const [host, setHost] = useState(initialHost ?? "");
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -227,6 +229,16 @@ export function ConnectScreen({
             >
               Connect
             </Button>
+            {Platform.OS === "ios" && profiles.length === 0 && (
+              <View className="gap-1">
+                <Button variant="ghost" disabled={busy} onPress={() => router.push("/review-demo")}>
+                  Try App Review demo
+                </Button>
+                <Text size="sm" tone="muted" className="text-center">
+                  Explore a sample workspace offline. No account needed.
+                </Text>
+              </View>
+            )}
           </Animated.View>
         </AuthScaffold>
       </ScrollView>
