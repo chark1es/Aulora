@@ -5,8 +5,13 @@
  * server-decrypted, and only ids and snippets come back. It is
  * persistent through a {@link SearchStore} adapter (IndexedDB on web, an
  * in-memory store in tests) and backfills from decrypted history in the
- * background via {@link SearchIndex.load}.
+ * background via {@link SearchIndex.load}. {@link ArchiveBackfill} pages the
+ * rest of the server archive into it, so a search covers every message the
+ * viewer can read while the query itself stays on the device.
  */
+
+import type { MessagePayload, Paginated } from "../chat/port.js";
+import { isConnectivityError } from "../outbox/index.js";
 
 /** One indexed, already-decrypted message. */
 export interface SearchDocument {
@@ -15,6 +20,8 @@ export interface SearchDocument {
   readonly authorId: string;
   readonly text: string;
   readonly createdAt: number;
+  /** Set for thread replies, so a result can open the thread it belongs to. */
+  readonly threadRootId?: string;
 }
 
 /** A ranked result with a context snippet. */
@@ -25,6 +32,7 @@ export interface SearchHit {
   readonly snippet: string;
   readonly score: number;
   readonly createdAt: number;
+  readonly threadRootId?: string;
 }
 
 /** Optional persistence for the index. */
@@ -120,7 +128,16 @@ export class SearchIndex {
 
   /** Indexes or replaces one decrypted message. */
   async index(document: SearchDocument): Promise<void> {
-    if (this.documents.has(document.messageId)) {
+    const existing = this.documents.get(document.messageId);
+    if (existing !== undefined) {
+      // Re-reading unchanged history must not rewrite the backing store.
+      if (
+        existing.text === document.text &&
+        existing.channelId === document.channelId &&
+        existing.threadRootId === document.threadRootId
+      ) {
+        return;
+      }
       this.removeFromPostings(document.messageId);
     }
     this.insert(document);
@@ -178,6 +195,7 @@ export class SearchIndex {
         snippet: contextSnippet(document.text, terms),
         score,
         createdAt: document.createdAt,
+        ...(document.threadRootId !== undefined ? { threadRootId: document.threadRootId } : {}),
       });
     }
     hits.sort((a, b) => b.score - a.score || b.createdAt - a.createdAt);
@@ -219,6 +237,136 @@ export class SearchIndex {
       if (posting.delete(messageId) && posting.size === 0) {
         this.postings.delete(token);
       }
+    }
+  }
+}
+
+/** The search document for one server message. */
+export function searchDocumentFor(message: MessagePayload): SearchDocument {
+  return {
+    messageId: message.id,
+    channelId: message.channelId,
+    authorId: message.authorId,
+    text: message.body,
+    createdAt: message.createdAt,
+    ...(message.threadRootId !== null ? { threadRootId: message.threadRootId } : {}),
+  };
+}
+
+/** Paged history reads the backfill walks. A `null` cursor is the newest page. */
+export interface ArchiveSource {
+  /** Root messages of a channel, newest page first. */
+  listMessages(args: {
+    channelId: string;
+    cursor: string | null;
+  }): Promise<Paginated<MessagePayload>>;
+  /** Replies of one thread root. */
+  listThreadMessages(args: {
+    threadRootId: string;
+    cursor: string | null;
+  }): Promise<Paginated<MessagePayload>>;
+}
+
+interface ChannelProgress {
+  cursor: string | null;
+  pages: number;
+  done: boolean;
+}
+
+/**
+ * Pages server history into a {@link SearchIndex} so search reaches messages
+ * the device never displayed. Each {@link ArchiveBackfill.step} reads one page
+ * of roots, plus the replies of the threads on it, from the channel that is
+ * furthest behind, so recent history of every channel is searchable first.
+ * Progress lasts for the lifetime of the instance.
+ */
+export class ArchiveBackfill {
+  private readonly index: SearchIndex;
+  private readonly source: ArchiveSource;
+  private readonly progress = new Map<string, ChannelProgress>();
+
+  constructor(index: SearchIndex, source: ArchiveSource) {
+    this.index = index;
+    this.source = source;
+  }
+
+  /** Whether every given channel has been read back to its first message. */
+  isComplete(channelIds: readonly string[]): boolean {
+    return channelIds.every((channelId) => this.progress.get(channelId)?.done === true);
+  }
+
+  /**
+   * Indexes one more page. Resolves `true` once every given channel is
+   * complete. A connectivity failure rejects and leaves progress untouched so
+   * the step can be retried; a channel the viewer may not read is skipped.
+   */
+  async step(channelIds: readonly string[]): Promise<boolean> {
+    let channelId: string | undefined;
+    let state: ChannelProgress | undefined;
+    for (const candidate of channelIds) {
+      const current = this.progress.get(candidate) ?? { cursor: null, pages: 0, done: false };
+      this.progress.set(candidate, current);
+      if (!current.done && (state === undefined || current.pages < state.pages)) {
+        channelId = candidate;
+        state = current;
+      }
+    }
+    if (channelId === undefined || state === undefined) {
+      return true;
+    }
+    let result: Paginated<MessagePayload>;
+    try {
+      result = await this.source.listMessages({ channelId, cursor: state.cursor });
+    } catch (error) {
+      if (isConnectivityError(error)) {
+        throw error;
+      }
+      state.done = true;
+      return this.isComplete(channelIds);
+    }
+    for (const message of result.page) {
+      await this.ingest(message);
+      if ((message.replyCount ?? 0) > 0) {
+        await this.ingestThread(message.id);
+      }
+    }
+    state.cursor = result.continueCursor;
+    state.pages += 1;
+    state.done = result.isDone;
+    return this.isComplete(channelIds);
+  }
+
+  private async ingestThread(threadRootId: string): Promise<void> {
+    let cursor: string | null = null;
+    for (;;) {
+      let result: Paginated<MessagePayload>;
+      try {
+        result = await this.source.listThreadMessages({ threadRootId, cursor });
+      } catch (error) {
+        if (isConnectivityError(error)) {
+          throw error;
+        }
+        return;
+      }
+      for (const reply of result.page) {
+        await this.ingest(reply);
+      }
+      if (result.isDone) {
+        return;
+      }
+      cursor = result.continueCursor;
+    }
+  }
+
+  private async ingest(message: MessagePayload): Promise<void> {
+    if (message.deletedAt !== null) {
+      if (this.index.has(message.id)) {
+        await this.index.remove(message.id);
+      }
+      return;
+    }
+    if (message.body.length > 0) {
+      await this.index.index(searchDocumentFor(message));
     }
   }
 }

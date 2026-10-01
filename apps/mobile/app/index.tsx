@@ -37,7 +37,7 @@ export default function IndexScreen() {
           <ConnectScreen onConnected={() => void refresh()} />
         </View>
       ) : (
-        <ServerSession profile={activeProfile} />
+        <ServerSession key={activeProfile.id} profile={activeProfile} />
       )}
 
       <WorkspaceSwitcherSheet visible={switcherOpen} onClose={() => setSwitcherOpen(false)} />

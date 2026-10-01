@@ -58,8 +58,8 @@ export function StatusEditor({ status, customStatus, onSetStatus }: StatusEditor
               onPress={() => onSetStatus(option.value)}
               className={
                 active
-                  ? "rounded-pill border border-accent bg-accent-soft px-3 py-1"
-                  : "rounded-pill border border-border bg-surface-3 px-3 py-1"
+                  ? "min-h-12 items-center justify-center rounded-pill border border-accent bg-accent-soft px-3 py-1"
+                  : "min-h-12 items-center justify-center rounded-pill border border-border bg-surface-3 px-3 py-1"
               }
             >
               <Text size="xs" tone={active ? "accent" : "default"}>

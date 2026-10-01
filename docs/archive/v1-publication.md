@@ -1,3 +1,5 @@
+> Archived work record. This file can describe removed code or unresolved work that has since changed. Use [the current documentation](../README.md) and [project status](../project-status.md).
+
 # V1 publication review
 
 Reviewed 2026-09-30 against `c6ed2fe8cff075d3805511ed70056ffcfece8326` and the isolated `release/v1.0.0` worktree. This record distinguishes build evidence from acceptance checks that still need a person or a deployed service.

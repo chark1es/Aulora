@@ -1,7 +1,7 @@
 /**
  * Discord-style permission bitfield.
  *
- * Bit positions follow the order documented in plan.md. All values are bigints
+ * Bit positions are stable across clients and the server. All values are bigints
  * so the workspace can grow past 32 flags without a migration.
  */
 export const Permission = {
@@ -132,7 +132,7 @@ function applyOverwrites(
 /**
  * Resolves the effective permissions for an actor in a channel.
  *
- * Order (per plan.md):
+ * Override resolution order:
  * 1. Owner or Administrator -> all permissions.
  * 2. Start from `@everyone`, OR in every held role.
  * 3. Apply category overrides, then channel overrides; within each set the

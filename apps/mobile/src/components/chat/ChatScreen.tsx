@@ -4,16 +4,26 @@ import {
   type ChannelView,
   conversationTitle,
   expandBroadcast,
+  hasPermission,
   joinedElsewhere,
   type MessagePayload,
   Permission,
   resolveChannelMentions,
   resolveMentions,
 } from "@aulora/core";
-import { Heading, Icon, IconButton, Spinner, Text, usePalette } from "@aulora/ui-native";
+import { Button, Heading, Icon, IconButton, Spinner, Text, usePalette } from "@aulora/ui-native";
 import { useMutation, useQuery } from "convex/react";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { Alert, Modal, Platform, Pressable, ScrollView, View } from "react-native";
+import {
+  Alert,
+  KeyboardAvoidingView,
+  Modal,
+  Platform,
+  Pressable,
+  ScrollView,
+  View,
+} from "react-native";
+import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { api } from "../../../../../packages/convex/convex/_generated/api";
 import { pickFromLibrary, uploadPickedFiles } from "../../lib/attachments";
 import {
@@ -42,8 +52,12 @@ import { Composer } from "./Composer";
 import { CreateChannelSheet, type NewChannelKind } from "./CreateChannelSheet";
 import { EditChannelSheet } from "./EditChannelSheet";
 import { MemberActionsSheet } from "./MemberActionsSheet";
+import { MemberProfileSheet } from "./MemberProfileSheet";
 import { MembersSheet } from "./MembersSheet";
 import { MessageList } from "./MessageList";
+import { NewConversationSheet } from "./NewConversationSheet";
+import { PinnedMessagesSheet } from "./PinnedMessagesSheet";
+import { SearchView } from "./SearchView";
 import { SettingsSheet } from "./SettingsSheet";
 import { ThreadModal } from "./ThreadModal";
 import { type ThreadInboxItem, ThreadsInbox } from "./ThreadsInbox";
@@ -54,7 +68,7 @@ export interface ChatScreenProps {
   readonly workspaceName: string;
   readonly ownUserId: string;
   readonly ownDisplayName: string;
-  readonly onSignOut: () => void;
+  readonly onSignOut: () => void | Promise<void>;
 }
 
 /**
@@ -68,9 +82,12 @@ export function ChatScreen({
   onSignOut,
 }: ChatScreenProps) {
   const palette = usePalette();
+  const insets = useSafeAreaInsets();
   const {
     runtime,
     ready,
+    startupError,
+    retryStartup,
     channels,
     categories,
     presence,
@@ -86,15 +103,29 @@ export function ChatScreen({
     ownerUserId,
     sendMessage,
     avatarUrls,
+    search,
+    loadSearchHistory,
+    retrySend,
+    discardSend,
+    permissionsFor,
+    viewerPermissions,
   } = useChat();
   const generateAvatarUploadUrl = useMutation(api.members.generateAvatarUploadUrl);
   const setAvatar = useMutation(api.members.setAvatar);
   const { activeProfile } = useProfiles();
   const voice = useVoice();
   const sound = useSound();
-  const pushState = usePushRegistration(runtime?.client, Platform.OS === "ios" ? "ios" : "android");
+  const { state: pushState, unregister: unregisterPush } = usePushRegistration(
+    runtime?.client,
+    Platform.OS === "ios" ? "ios" : "android",
+  );
   const [activeChannelId, setActiveChannelId] = useState<string | undefined>(undefined);
-  const [mainView, setMainView] = useState<"channels" | "threads">("channels");
+  const [mainView, setMainView] = useState<"channels" | "threads" | "search">("channels");
+  const [newMessageOpen, setNewMessageOpen] = useState(false);
+  const [pinsOpen, setPinsOpen] = useState(false);
+  const [profileFor, setProfileFor] = useState<string | null>(null);
+  const [quote, setQuote] = useState<MessagePayload | null>(null);
+  const [jumpToMessageId, setJumpToMessageId] = useState<string | null>(null);
   const [drawerOpen, setDrawerOpen] = useState(false);
   const [showHidden, setShowHidden] = useState(false);
   const [workspaceSwitcherOpen, setWorkspaceSwitcherOpen] = useState(false);
@@ -116,10 +147,7 @@ export function ChatScreen({
 
   // Subscribe only while the drawer badge or Threads view needs it; the query
   // fetches on open.
-  const threadRows = useQuery(
-    api.messages.threadInbox,
-    drawerOpen || mainView === "threads" ? {} : "skip",
-  );
+  const threadRows = useQuery(api.messages.threadInbox, {});
   const threadMentionCount = useMemo(
     () => (threadRows ?? []).filter((row) => row.viewerMentioned).length,
     [threadRows],
@@ -213,7 +241,21 @@ export function ChatScreen({
   }, [channels, activeChannelId]);
 
   const channel = channels.find((entry) => entry.id === activeChannelId);
-  const sessionState = useChannelSession(runtime, activeChannelId, ownUserId);
+  const channelPermissions = channel === undefined ? viewerPermissions : permissionsFor(channel);
+  const sessionState = useChannelSession(
+    runtime,
+    hasPermission(channelPermissions, Permission.ReadHistory) ? activeChannelId : undefined,
+    ownUserId,
+  );
+  const messageContext = useQuery(
+    api.messages.context,
+    jumpToMessageId === null ? "skip" : { messageId: jumpToMessageId as never },
+  );
+  useEffect(() => {
+    if (messageContext !== undefined && messageContext !== null)
+      void runtime?.session.receiveMessages(messageContext.history);
+    if (messageContext?.message.threadRootId != null) setThreadRoot(messageContext.root);
+  }, [messageContext, runtime]);
 
   // Call cues: connect on the first participant, then join/leave as the roster
   // changes, mirroring web.
@@ -290,10 +332,10 @@ export function ChatScreen({
     return map;
   }, [channels, ownUserId, memberNames]);
 
-  const attachmentsByMessage = useMemo(() => {
+  const attachmentsByMessage = (() => {
     const map = new Map<string, readonly AttachmentDescriptor[]>();
     if (runtime !== undefined) {
-      for (const message of sessionState.messages) {
+      for (const message of [...(messageContext?.history ?? []), ...sessionState.messages]) {
         const list = runtime.session.attachmentsFor(message.id);
         if (list.length > 0) {
           map.set(message.id, list);
@@ -301,7 +343,7 @@ export function ChatScreen({
       }
     }
     return map;
-  }, [runtime, sessionState.messages]);
+  })();
 
   const pendingItems = useMemo(
     () => outbox.filter((item) => item.channelId === activeChannelId),
@@ -316,7 +358,8 @@ export function ChatScreen({
         authorId: ownUserId,
         body: item.text,
         threadRootId: item.threadRootId ?? null,
-        attachmentIds: [],
+        attachmentIds: (item.attachments ?? []).map((file) => file.fileId),
+        replyToId: item.replyToId ?? null,
         mentionUserIds: [...item.mentionUserIds],
         editedAt: null,
         deletedAt: null,
@@ -326,18 +369,30 @@ export function ChatScreen({
     [pendingItems, ownUserId],
   );
 
-  const mergedMessages = useMemo(
-    () => [...sessionState.messages, ...pendingMessages],
-    [sessionState.messages, pendingMessages],
-  );
+  const mergedMessages = useMemo(() => {
+    const all = new Map(
+      (messageContext?.history ?? []).map((message) => [
+        message.id as string,
+        message as MessagePayload,
+      ]),
+    );
+    for (const message of sessionState.messages) all.set(message.id, message);
+    return [
+      ...all.values(),
+      ...pendingMessages.filter((message) => message.threadRootId === null),
+    ].sort((a, b) => a.createdAt - b.createdAt);
+  }, [sessionState.messages, pendingMessages, messageContext]);
 
   const mergedDecrypted = useMemo(() => {
-    const next = new Map(sessionState.decrypted);
+    const next = new Map(
+      (messageContext?.history ?? []).map((message) => [message.id as string, message.body]),
+    );
+    for (const [id, text] of sessionState.decrypted) next.set(id, text);
     for (const item of pendingItems) {
       next.set(`pending:${item.id}`, item.text);
     }
     return next;
-  }, [sessionState.decrypted, pendingItems]);
+  }, [sessionState.decrypted, pendingItems, messageContext]);
 
   const pendingIds = useMemo(
     () => new Set(pendingItems.map((item) => `pending:${item.id}`)),
@@ -352,6 +407,8 @@ export function ChatScreen({
     async (channelId: string) => {
       setActiveChannelId(channelId);
       setThreadRoot(null);
+      setQuote(null);
+      setJumpToMessageId(null);
       setMainView("channels");
       setDrawerOpen(false);
       const summary = channels.find((entry) => entry.id === channelId);
@@ -580,19 +637,51 @@ export function ChatScreen({
   const confirmSignOut = useCallback(() => {
     Alert.alert(`Sign out of ${workspaceName}?`, "You can sign back in at any time.", [
       { text: "Cancel", style: "cancel" },
-      { text: "Sign out", style: "destructive", onPress: onSignOut },
+      {
+        text: "Sign out",
+        style: "destructive",
+        onPress: () => {
+          void unregisterPush()
+            .then(onSignOut)
+            .catch(() =>
+              Alert.alert(
+                "Couldn't sign out",
+                "Connect to your workspace and try again so notifications can be removed from this device.",
+              ),
+            );
+        },
+      },
     ]);
-  }, [workspaceName, onSignOut]);
+  }, [workspaceName, onSignOut, unregisterPush]);
 
   return (
-    <View className="flex-1 bg-bg">
+    <KeyboardAvoidingView
+      className="flex-1 bg-bg"
+      behavior={Platform.OS === "ios" ? "padding" : "height"}
+    >
       <View className="flex-row items-center justify-between border-b border-border px-3 py-3">
-        <View className="flex-row items-center gap-3">
-          <Pressable accessibilityLabel="Open channels" onPress={() => setDrawerOpen(true)}>
+        <View className="min-w-0 flex-1 flex-row items-center gap-2">
+          <Pressable
+            accessibilityRole="button"
+            className="h-12 w-12 items-center justify-center"
+            accessibilityLabel="Open conversations"
+            onPress={() => setDrawerOpen(true)}
+          >
             <Icon name="menu" size={20} color={palette.text} />
           </Pressable>
-          <Heading level={3}>
-            {mainView === "threads" ? "Threads" : (channel?.name ?? workspaceName)}
+          <Heading
+            level={3}
+            className="min-w-0 flex-1"
+            numberOfLines={1}
+            maxFontSizeMultiplier={1.5}
+          >
+            {mainView === "threads"
+              ? "Threads"
+              : mainView === "search"
+                ? "Search"
+                : channel === undefined
+                  ? workspaceName
+                  : (titles.get(channel.id) ?? channel.name)}
           </Heading>
         </View>
         <View className="flex-row items-center gap-2">
@@ -621,11 +710,9 @@ export function ChatScreen({
                 )}
               </>
             )}
-          <Pressable accessibilityLabel="Members" onPress={() => setMembersOpen(true)}>
-            <Text size="sm" tone="muted">
-              {presence.length} online
-            </Text>
-          </Pressable>
+          <IconButton label="Members" size="sm" onPress={() => setMembersOpen(true)}>
+            <Icon name="users" size={20} color={palette.text} />
+          </IconButton>
           <IconButton
             label="Settings"
             variant="ghost"
@@ -644,6 +731,28 @@ export function ChatScreen({
             Opening channels…
           </Text>
         </View>
+      ) : startupError !== null ? (
+        <View className="flex-1 items-center justify-center gap-4 px-6">
+          <Text tone="danger" accessibilityRole="alert">
+            {startupError}
+          </Text>
+          <Button onPress={retryStartup}>Try again</Button>
+        </View>
+      ) : mainView === "search" ? (
+        <SearchView
+          channels={channels}
+          titles={titles}
+          memberNames={memberNames}
+          search={search}
+          loadHistory={loadSearchHistory}
+          onOpen={(id, messageId) => {
+            void openChannel(id)
+              .then(() => setJumpToMessageId(messageId ?? null))
+              .catch((cause: unknown) =>
+                Alert.alert("Couldn't open conversation", errorMessage(cause)),
+              );
+          }}
+        />
       ) : mainView === "threads" ? (
         <ThreadsInbox
           threads={threadRows ?? []}
@@ -674,10 +783,18 @@ export function ChatScreen({
         />
       ) : (
         <>
-          <View className="items-center border-b border-border px-3 py-1">
-            <Text size="xs" tone="secondary" mono>
-              Server-side encryption
+          <View className="flex-row items-center border-b border-border px-4 py-1">
+            <Text size="sm" tone="muted" className="flex-1">
+              {channel.topic ?? (channel.kind === "announcement" ? "Announcements" : "")}
             </Text>
+            <IconButton
+              disabled={!hasPermission(channelPermissions, Permission.ReadHistory)}
+              label="Pinned messages"
+              size="sm"
+              onPress={() => setPinsOpen(true)}
+            >
+              <Icon name="pin" size={18} color={palette.text} />
+            </IconButton>
           </View>
           <MessageList
             key={channel.id}
@@ -691,7 +808,14 @@ export function ChatScreen({
             memberNames={memberNames}
             memberColors={memberColors}
             channelNames={mentionNames}
+            hasOlder={sessionState.hasOlder}
+            loadingOlder={sessionState.loadingOlder}
+            onLoadOlder={sessionState.loadOlder}
             firstUnreadId={sessionState.unread.firstUnreadId}
+            permissions={channelPermissions}
+            jumpToMessageId={messageContext?.root.id ?? jumpToMessageId}
+            onQuote={setQuote}
+            onMemberPress={setProfileFor}
             onReply={(message) => setThreadRoot(message)}
             onChannelPress={(name) => {
               const target = mentionChannelTargets.find((entry) => entry.name === name);
@@ -712,7 +836,52 @@ export function ChatScreen({
               </Text>
             </View>
           )}
+          {pendingItems
+            .filter((item) => item.status === "failed")
+            .map((item) => (
+              <View key={item.id} className="flex-row flex-wrap items-center gap-2 px-4 py-2">
+                <Text tone="danger" accessibilityRole="alert">
+                  Message couldn't be sent.
+                </Text>
+                <Pressable
+                  accessibilityRole="button"
+                  className="min-h-12 justify-center px-3"
+                  onPress={() =>
+                    void retrySend(item.id).catch((cause: unknown) =>
+                      Alert.alert("Couldn't retry message", errorMessage(cause)),
+                    )
+                  }
+                >
+                  <Text>Retry</Text>
+                </Pressable>
+                <Pressable
+                  accessibilityRole="button"
+                  className="min-h-12 justify-center px-3"
+                  onPress={() =>
+                    void discardSend(item.id).catch((cause: unknown) =>
+                      Alert.alert("Couldn't discard message", errorMessage(cause)),
+                    )
+                  }
+                >
+                  <Text>Discard</Text>
+                </Pressable>
+              </View>
+            ))}
+          {quote !== null && (
+            <View className="flex-row items-center gap-2 bg-surface-2 px-4 py-2">
+              <Text size="sm" className="flex-1" numberOfLines={2}>
+                Replying to {memberNames.get(quote.authorId) ?? "Member"}:{" "}
+                {sessionState.decrypted.get(quote.id) ?? quote.body}
+              </Text>
+              <IconButton label="Cancel reply" onPress={() => setQuote(null)}>
+                <Icon name="x" size={18} color={palette.text} />
+              </IconButton>
+            </View>
+          )}
           <Composer
+            disabled={
+              channel.archived || !hasPermission(channelPermissions, Permission.SendMessages)
+            }
             channelId={channel.id}
             members={mentionUserTargets}
             roles={roles}
@@ -738,6 +907,7 @@ export function ChatScreen({
                 mentionCategoryTargets,
               );
               const result = await sendMessage(channel.id, text, {
+                ...(quote !== null ? { replyToId: quote.id } : {}),
                 ...(mentionUserIds.length > 0 ? { mentionUserIds } : {}),
                 ...(channelMentions.channelIds.length > 0
                   ? { mentionChannelIds: channelMentions.channelIds }
@@ -747,12 +917,93 @@ export function ChatScreen({
                   : {}),
                 ...(attachments !== undefined && attachments.length > 0 ? { attachments } : {}),
               });
+              setQuote(null);
               if (!result.queued && result.messageId !== undefined) {
                 void runtime.session.markRead(channel.id, result.messageId);
               }
             }}
           />
         </>
+      )}
+
+      <View accessibilityRole="tablist" className="flex-row border-t border-border bg-surface-1">
+        {(
+          [
+            { key: "channels", label: "Chats", icon: "message" },
+            { key: "threads", label: "Threads", icon: "hash" },
+            { key: "search", label: "Search", icon: "search" },
+          ] as const
+        ).map((tab) => (
+          <Pressable
+            key={tab.key}
+            accessibilityRole="tab"
+            accessibilityState={{ selected: mainView === tab.key }}
+            className="min-h-16 flex-1 items-center justify-center gap-1 px-2 py-2"
+            onPress={() => setMainView(tab.key)}
+          >
+            <Icon
+              name={tab.icon}
+              size={22}
+              color={mainView === tab.key ? palette.text : palette["text-muted"]}
+            />
+            <Text
+              size="sm"
+              maxFontSizeMultiplier={1.5}
+              className={mainView === tab.key ? "font-semibold" : ""}
+              tone={mainView === tab.key ? "default" : "muted"}
+            >
+              {tab.label}
+              {tab.key === "threads" && threadMentionCount > 0 ? ` (${threadMentionCount})` : ""}
+            </Text>
+          </Pressable>
+        ))}
+      </View>
+
+      {newMessageOpen && (
+        <NewConversationSheet
+          members={members}
+          ownUserId={ownUserId}
+          onClose={() => setNewMessageOpen(false)}
+          onCreate={async (ids) => {
+            if (runtime === undefined) throw new Error("Wait for the workspace to connect.");
+            const result =
+              ids.length === 1
+                ? await runtime.port.createDm({ otherUserId: ids[0] ?? "" })
+                : await runtime.port.createGroupDm({ memberIds: ids });
+            setNewMessageOpen(false);
+            await openChannel(result.channelId);
+          }}
+        />
+      )}
+      {pinsOpen && channel !== undefined && (
+        <PinnedMessagesSheet
+          channelId={channel.id}
+          memberNames={memberNames}
+          onClose={() => setPinsOpen(false)}
+          onOpen={setJumpToMessageId}
+        />
+      )}
+      {profileFor !== null && (
+        <MemberProfileSheet
+          userId={profileFor}
+          displayName={memberNames.get(profileFor) ?? "Member"}
+          ownUserId={ownUserId}
+          onClose={() => setProfileFor(null)}
+          onNote={() => {
+            setNoteFor(profileFor);
+            setProfileFor(null);
+          }}
+          onMessage={() => {
+            const userId = profileFor;
+            setProfileFor(null);
+            void runtime?.port
+              .createDm({ otherUserId: userId })
+              .then((result) => openChannel(result.channelId))
+              .catch((cause: unknown) =>
+                Alert.alert("Couldn't start message", errorMessage(cause)),
+              );
+          }}
+        />
       )}
 
       <Modal
@@ -762,7 +1013,11 @@ export function ChatScreen({
         onRequestClose={() => setDrawerOpen(false)}
       >
         <Pressable className="flex-1 flex-row bg-black/50" onPress={() => setDrawerOpen(false)}>
-          <View className="h-full w-72 bg-surface-1 p-4">
+          <Pressable
+            onPress={(event) => event.stopPropagation()}
+            className="h-full w-[85%] max-w-sm bg-surface-1 p-4"
+            style={{ paddingTop: insets.top + 16, paddingBottom: insets.bottom + 16 }}
+          >
             <Pressable
               accessibilityRole="button"
               accessibilityLabel={`Switch workspace, current ${workspaceName}`}
@@ -781,6 +1036,16 @@ export function ChatScreen({
                 {workspaceName}
               </Heading>
               <Icon name="chevron-down" size={16} color={palette["text-muted"]} />
+            </Pressable>
+            <Pressable
+              accessibilityRole="button"
+              className="min-h-12 justify-center rounded-input bg-surface-2 px-3 mt-3"
+              onPress={() => {
+                setDrawerOpen(false);
+                setNewMessageOpen(true);
+              }}
+            >
+              <Text>New message</Text>
             </Pressable>
             <View className="mt-2 flex-row items-center gap-2">
               <Pressable
@@ -814,6 +1079,7 @@ export function ChatScreen({
                   variant="secondary"
                   size="sm"
                   onPress={() => {
+                    setDrawerOpen(false);
                     setCreateError(null);
                     setCreateOpen(true);
                   }}
@@ -832,16 +1098,21 @@ export function ChatScreen({
                       key={entry.id}
                       accessibilityRole="button"
                       onPress={() => void openChannel(entry.id)}
-                      onLongPress={() => setChannelAction(entry)}
+                      onLongPress={() => {
+                        setDrawerOpen(false);
+                        setChannelAction(entry);
+                      }}
                       delayLongPress={300}
                       className={
-                        active ? "rounded-input bg-surface-3 px-3 py-2" : "rounded-input px-3 py-2"
+                        active
+                          ? "min-h-12 justify-center rounded-input bg-surface-3 px-3 py-2"
+                          : "min-h-12 justify-center rounded-input px-3 py-2"
                       }
                     >
                       <View className="flex-row items-center gap-2">
                         <Text size="sm" tone={active ? "default" : "muted"} className="flex-1">
                           {entry.kind === "dm" || entry.kind === "group_dm" ? "@ " : "# "}
-                          {entry.name}
+                          {titles.get(entry.id) ?? entry.name}
                         </Text>
                         {entry.muted === true && (
                           <Icon name="bell-off" size={13} color={palette["text-muted"]} />
@@ -880,7 +1151,7 @@ export function ChatScreen({
                 onJoin={joinVoiceChannel}
               />
             </ScrollView>
-          </View>
+          </Pressable>
         </Pressable>
       </Modal>
 
@@ -985,9 +1256,11 @@ export function ChatScreen({
       {threadRoot !== null && channel !== undefined && runtime !== undefined && (
         <ThreadModal
           runtime={runtime}
+          permissions={channelPermissions}
           channelId={channel.id}
           root={threadRoot}
-          rootText={sessionState.decrypted.get(threadRoot.id)}
+          outbox={outbox}
+          rootText={mergedDecrypted.get(threadRoot.id) ?? threadRoot.body}
           ownUserId={ownUserId}
           memberNames={memberNames}
           roles={roles}
@@ -1040,7 +1313,12 @@ export function ChatScreen({
               },
             }
           : {})}
+        onMemberPress={(userId) => {
+          setMembersOpen(false);
+          setProfileFor(userId);
+        }}
         onMemberActions={(userId) => {
+          setMembersOpen(false);
           setModerationError(null);
           setMemberActionsFor(userId);
         }}
@@ -1055,7 +1333,8 @@ export function ChatScreen({
       <SettingsSheet
         visible={settingsOpen}
         ownUserId={ownUserId}
-        ownDisplayName={ownDisplayName}
+        ownDisplayName={memberNames.get(ownUserId) ?? ownDisplayName}
+        canChangeNickname={hasPermission(viewerPermissions, Permission.ChangeOwnNickname)}
         hasAvatar={avatarUrls.has(ownUserId)}
         onChangeAvatar={() => {
           void (async () => {
@@ -1193,7 +1472,7 @@ export function ChatScreen({
         visible={workspaceSwitcherOpen}
         onClose={() => setWorkspaceSwitcherOpen(false)}
       />
-    </View>
+    </KeyboardAvoidingView>
   );
 }
 

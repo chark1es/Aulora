@@ -5,10 +5,15 @@ import { useEffect, useMemo, useRef, useState } from "react";
 import type { ChatSearchHit } from "../../providers/ChatProvider";
 import { GroupAvatar, PresenceAvatar } from "./PresenceAvatar";
 
+/** Progress of reading older server history into the device-local index. */
+export type SearchArchiveState = "loading" | "complete" | "failed";
+
 export interface SearchPanelProps {
   readonly query: string;
   readonly results: readonly ChatSearchHit[];
   readonly searching: boolean;
+  /** Defaults to `complete`, for hosts whose whole history is already local. */
+  readonly archive?: SearchArchiveState;
   readonly conversations: readonly ChannelView[];
   readonly titles: ReadonlyMap<string, string>;
   readonly ownUserId: string;
@@ -26,12 +31,14 @@ type Entry =
 /**
  * Cmd/Ctrl+K palette: jump to a conversation by name, or search messages in the
  * device-local index. The index holds content the server decrypted for this
- * device; nothing typed here leaves the device.
+ * device, including older history paged in while a search runs; nothing typed
+ * here leaves the device.
  */
 export function SearchPanel({
   query,
   results,
   searching,
+  archive = "complete",
   conversations,
   titles,
   ownUserId,
@@ -179,7 +186,7 @@ export function SearchPanel({
           ) : (
             <>
               <SectionTitle>Messages</SectionTitle>
-              {results.length === 0 && !searching ? (
+              {results.length === 0 && !searching && archive !== "loading" ? (
                 <p data-testid="search-empty" className="px-3 py-3 text-sm text-text-muted">
                   No messages match “{query.trim()}”.
                 </p>
@@ -221,6 +228,21 @@ export function SearchPanel({
                     );
                   })}
                 </ul>
+              )}
+              {!searching && archive === "loading" && (
+                <p
+                  data-testid="search-archive-loading"
+                  className="flex items-center gap-2 px-3 py-2 text-xs text-text-muted"
+                >
+                  <Spinner size={14} label="Searching earlier messages" />
+                  Searching earlier messages…
+                </p>
+              )}
+              {archive === "failed" && (
+                <p role="alert" className="px-3 py-2 text-xs text-text-muted">
+                  Couldn't reach earlier messages. These results cover history already on this
+                  device.
+                </p>
               )}
             </>
           )}

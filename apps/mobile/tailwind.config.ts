@@ -17,6 +17,7 @@ const config: Config = {
   theme: {
     extend: {
       colors: Object.fromEntries(COLOR_TOKENS.map((token) => [token, `var(--aulora-${token})`])),
+      fontSize: { xs: "13px", sm: "15px", base: "17px", md: "17px", lg: "20px" },
       maxWidth: {
         // Caps the pre-session content column on tablet/regular widths so a
         // primary button never stretches edge to edge (HIG: layout).

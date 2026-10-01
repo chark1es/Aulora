@@ -27,22 +27,23 @@ export async function recordLicenseActivity(ctx: MutationCtx, userId: string, no
   )
     return;
   const month = utcMonth(now);
+  const licenseId = proof.licenseId;
   const existing = await ctx.db
     .query("licenseActivity")
     .withIndex("by_license_month_user", (q) =>
-      q.eq("licenseId", proof.licenseId!).eq("month", month).eq("userId", userId),
+      q.eq("licenseId", licenseId).eq("month", month).eq("userId", userId),
     )
     .unique();
   if (existing) return;
-  await ctx.db.insert("licenseActivity", { licenseId: proof.licenseId, month, userId });
+  await ctx.db.insert("licenseActivity", { licenseId, month, userId });
   const aggregate = await ctx.db
     .query("licenseUsageMonths")
-    .withIndex("by_license_month", (q) => q.eq("licenseId", proof.licenseId!).eq("month", month))
+    .withIndex("by_license_month", (q) => q.eq("licenseId", licenseId).eq("month", month))
     .unique();
   if (aggregate) await ctx.db.patch(aggregate._id, { activeUsers: aggregate.activeUsers + 1 });
   else
     await ctx.db.insert("licenseUsageMonths", {
-      licenseId: proof.licenseId,
+      licenseId,
       month,
       activeUsers: 1,
     });

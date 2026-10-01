@@ -1,6 +1,5 @@
-import { cssVariables, type ThemeName } from "@aulora/tokens";
+import { usePalette } from "@aulora/ui-native";
 import { vars } from "nativewind";
-import { useColorScheme } from "react-native";
 
 /**
  * NativeWind runtime theme variables. The Tailwind preset maps every color to
@@ -8,7 +7,10 @@ import { useColorScheme } from "react-native";
  * without duplicating a single class name.
  */
 export function useThemeVars() {
-  const scheme = useColorScheme();
-  const theme: ThemeName = scheme === "light" ? "light" : "dark";
-  return vars(cssVariables(theme));
+  const palette = usePalette();
+  return vars(
+    Object.fromEntries(
+      Object.entries(palette).map(([token, value]) => [`--aulora-${token}`, value]),
+    ),
+  );
 }

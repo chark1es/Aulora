@@ -1,4 +1,5 @@
 import {
+  ArchiveBackfill,
   type AttachmentDescriptor,
   type ChannelSummary,
   type ChannelView,
@@ -9,6 +10,7 @@ import {
   type PresenceRow,
   type SearchHit,
   SearchIndex,
+  searchDocumentFor,
 } from "@aulora/core";
 import type { ConvexReactClient } from "convex/react";
 import {
@@ -69,6 +71,11 @@ export interface ChatContextValue {
   discardSend?(id: string): Promise<void>;
   /** Queries the local search index. */
   search(query: string): Promise<readonly ChatSearchHit[]>;
+  /**
+   * Reads one more page of server history into the search index. Resolves
+   * `true` once every conversation is indexed back to its first message.
+   */
+  loadSearchHistory?(): Promise<boolean>;
 }
 
 const ChatContext = createContext<ChatContextValue | null>(null);
@@ -104,6 +111,9 @@ export function ChatProvider({
   const runtimeRef = useRef<ChatRuntime | undefined>(undefined);
   const outboxRef = useRef<Outbox | undefined>(undefined);
   const searchRef = useRef<SearchIndex | undefined>(undefined);
+  const backfillRef = useRef<ArchiveBackfill | undefined>(undefined);
+  const channelsRef = useRef(channels);
+  channelsRef.current = channels;
 
   usePresenceHeartbeat(runtime);
 
@@ -136,6 +146,13 @@ export function ChatProvider({
         return;
       }
       runtimeRef.current = created;
+      const { listMessages, listThreadMessages } = created.port;
+      if (listMessages !== undefined && listThreadMessages !== undefined) {
+        backfillRef.current = new ArchiveBackfill(searchIndex, {
+          listMessages,
+          listThreadMessages,
+        });
+      }
       setRuntime(created);
       setReady(true);
     });
@@ -145,6 +162,7 @@ export function ChatProvider({
       runtimeRef.current = undefined;
       outboxRef.current = undefined;
       searchRef.current = undefined;
+      backfillRef.current = undefined;
     };
   }, [client, userId, displayName]);
 
@@ -163,13 +181,7 @@ export function ChatProvider({
         if (text.length === 0) {
           continue;
         }
-        void index.index({
-          messageId: message.id,
-          channelId: message.channelId,
-          authorId: message.authorId,
-          text,
-          createdAt: message.createdAt,
-        });
+        void index.index({ ...searchDocumentFor(message), text });
       }
     });
   }, [runtime]);
@@ -420,13 +432,21 @@ export function ChatProvider({
       if (index === undefined) {
         return [];
       }
-      return index.query(query, { limit: 20 }).map((hit) => ({
+      return index.query(query, { limit: 50 }).map((hit) => ({
         ...hit,
         channelName: channelNames.get(hit.channelId) ?? "channel",
       }));
     },
     [channelNames],
   );
+
+  const loadSearchHistory = useCallback(async (): Promise<boolean> => {
+    const backfill = backfillRef.current;
+    if (backfill === undefined) {
+      return true;
+    }
+    return await backfill.step(channelsRef.current.map((channel) => channel.id));
+  }, []);
 
   const views = useMemo<readonly ChannelView[]>(
     () =>
@@ -451,6 +471,7 @@ export function ChatProvider({
       retrySend,
       discardSend,
       search,
+      loadSearchHistory,
     }),
     [
       runtime,
@@ -465,6 +486,7 @@ export function ChatProvider({
       retrySend,
       discardSend,
       search,
+      loadSearchHistory,
     ],
   );
 

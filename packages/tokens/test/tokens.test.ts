@@ -18,7 +18,7 @@ import { describe, expect, it } from "vitest";
 const HEX = /^#[0-9a-fA-F]{6}([0-9a-fA-F]{2})?$/;
 
 describe("color tokens", () => {
-  it("documents exactly the plan.md token set", () => {
+  it("exports the complete semantic token set", () => {
     expect([...COLOR_TOKENS]).toEqual([
       "bg",
       "grid-dot",

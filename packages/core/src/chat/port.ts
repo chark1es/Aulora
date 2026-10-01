@@ -235,6 +235,19 @@ export interface ChatPort {
   pinMessage(args: { messageId: string }): Promise<null>;
   unpinMessage(args: { messageId: string }): Promise<null>;
   toggleReaction(args: { messageId: string; emoji: string }): Promise<{ added: boolean }>;
+  /**
+   * One page of a channel's root messages, walking back from the newest; a
+   * `null` cursor is the newest page. Read once, not subscribed.
+   */
+  listMessages?(args: {
+    channelId: string;
+    cursor: string | null;
+  }): Promise<Paginated<MessagePayload>>;
+  /** One page of a thread's replies, oldest first. Read once, not subscribed. */
+  listThreadMessages?(args: {
+    threadRootId: string;
+    cursor: string | null;
+  }): Promise<Paginated<MessagePayload>>;
 
   // Presence / typing / read state.
   heartbeat(args: { status?: "online" | "idle" | "dnd" }): Promise<unknown>;

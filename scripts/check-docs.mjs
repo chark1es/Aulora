@@ -1,35 +1,21 @@
+import { execFileSync } from "node:child_process";
 import { existsSync, readdirSync, readFileSync, statSync } from "node:fs";
 import { dirname, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 
 const root = resolve(dirname(fileURLToPath(import.meta.url)), "..");
 const failures = [];
-const docs = [
-  "README.md",
-  "CONTRIBUTING.md",
-  "COMMERCIAL.md",
-  "CLA.md",
-  "SECURITY.md",
-  "SUPPORT.md",
-  "THIRD_PARTY_NOTICES.md",
-  "CHANGELOG.md",
-  "docs/README.md",
-  "docs/development.md",
-  "docs/release-notes-v1.md",
-  "docs/releasing.md",
-  "docs/v1-readiness.md",
-  "docs/github-actions.md",
-  "docs/cla-bot.md",
-  "apps/web/README.md",
-  "apps/mobile/README.md",
-  "apps/desktop/README.md",
-  "apps/docs/README.md",
-  "infra/docker/README.md",
-  "infra/docker/backup/README.md",
-  ...readdirSync(resolve(root, "apps/docs/content"))
-    .filter((file) => file.endsWith(".md"))
-    .map((file) => `apps/docs/content/${file}`),
-];
+// Every current source guide participates, including newly added untracked guides.
+// Historical investigations preserve obsolete paths and are indexed by their README.
+const docs = execFileSync("git", ["ls-files", "--cached", "--others", "--exclude-standard", "-z"], {
+  cwd: root,
+  encoding: "utf8",
+})
+  .split("\0")
+  .filter((file) => file.endsWith(".md") && existsSync(resolve(root, file)))
+  .filter((file) => !file.startsWith("docs/archive/") || file === "docs/archive/README.md")
+  .filter((file) => !/^spikes\/.*(?:REPORT|PHASE-.*)\.md$/.test(file));
+
 function headings(source) {
   return new Set(
     [...source.matchAll(/^#{1,6}\s+(.+)$/gm)].map((match) =>

@@ -1,10 +1,20 @@
 import { darkPalette, IDLE_COLOR, lightPalette, type Palette } from "@aulora/tokens";
 
+/** Ember needs a lighter foreground on native dark surfaces and dark button text. */
+export const nativeDarkPalette: Palette = {
+  ...darkPalette,
+  accent: "#FF9B68",
+  "accent-soft": "#FF9B6824",
+  "on-accent": "#1C1C1E",
+  danger: "#FF8585",
+};
+export const nativeLightPalette: Palette = { ...lightPalette, secondary: "#1E7935" };
+
 export type ColorScheme = "dark" | "light";
 
 /** Maps a color scheme (which can be `null` on native) onto an Aulora theme. */
 export function paletteForScheme(scheme: string | null | undefined): Palette {
-  return scheme === "light" ? lightPalette : darkPalette;
+  return scheme === "light" ? nativeLightPalette : nativeDarkPalette;
 }
 
 /** Amber for idle, kept distinct from the Ember accent that marks unread. */

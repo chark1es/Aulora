@@ -111,19 +111,12 @@ export function convexPort(client: ConvexReactClient): ChatPort {
         ...(args.topic !== undefined ? { topic: args.topic } : {}),
         ...(args.categoryId !== undefined ? { categoryId: args.categoryId as never } : {}),
       };
-      try {
-        return await client.mutation(api.channels.create, {
-          ...base,
-          ...(args.private === true ? { private: true } : {}),
-        });
-      } catch (cause) {
-        // An older server does not know the `private` argument. Fall back to a
-        // public channel rather than failing the create entirely.
-        if (args.private !== true || !isUnknownArgument(cause)) {
-          throw cause;
-        }
-        return await client.mutation(api.channels.create, base);
-      }
+      return await client.mutation(api.channels.create, {
+        ...base,
+        ...(args.private === true ? { private: true } : {}),
+        ...(args.memberIds !== undefined ? { memberIds: [...args.memberIds] as never[] } : {}),
+        ...(args.roleIds !== undefined ? { roleIds: [...args.roleIds] as never[] } : {}),
+      });
     },
     async reorderChannels(args) {
       await client.mutation(api.channels.reorder, {
@@ -325,6 +318,18 @@ export function convexPort(client: ConvexReactClient): ChatPort {
       return await client.mutation(api.reactions.toggle, {
         messageId: args.messageId as never,
         emoji: args.emoji,
+      });
+    },
+    async listMessages(args) {
+      return await client.query(api.messages.list, {
+        channelId: args.channelId as never,
+        paginationOpts: { numItems: PAGE.numItems, cursor: args.cursor },
+      });
+    },
+    async listThreadMessages(args) {
+      return await client.query(api.messages.listThread, {
+        threadRootId: args.threadRootId as never,
+        paginationOpts: { numItems: PAGE.numItems, cursor: args.cursor },
       });
     },
     async heartbeat(args) {

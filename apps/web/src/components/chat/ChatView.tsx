@@ -61,7 +61,7 @@ import { NotificationsSettingsSection } from "./NotificationsSettingsSection";
 import { PinnedMessagesPanel } from "./PinnedMessagesPanel";
 import type { PresenceStatus } from "./PresenceAvatar";
 import { RenameChannelModal } from "./RenameChannelModal";
-import { SearchPanel } from "./SearchPanel";
+import { type SearchArchiveState, SearchPanel } from "./SearchPanel";
 import { type ThreadInboxItem, ThreadsInbox } from "./ThreadsInbox";
 import { ThreadsPanel } from "./ThreadsPanel";
 import { UserSettingsView } from "./UserSettingsView";
@@ -195,6 +195,7 @@ function ChatViewContent({
     retrySend,
     discardSend,
     search,
+    loadSearchHistory,
   } = useChat();
   const voice = useVoice();
   const desktopUpdate = useDesktopUpdates();
@@ -246,6 +247,15 @@ function ChatViewContent({
   const [searchQuery, setSearchQuery] = useState("");
   const [searchResults, setSearchResults] = useState<readonly ChatSearchHit[]>([]);
   const [searching, setSearching] = useState(false);
+  const [searchArchive, setSearchArchive] = useState<SearchArchiveState>("loading");
+  // A search result waiting for its message to load into the open timeline.
+  const [pendingJump, setPendingJump] = useState<{
+    readonly channelId: string;
+    readonly messageId: string;
+    readonly opensThread: boolean;
+    /** Creation time of a root message; history older than this cannot hold it. */
+    readonly createdAt?: number;
+  } | null>(null);
   const [sendError, setSendError] = useState<string | null>(null);
   const reported = useRef(new Set<string>());
   const attentive = useAttentive();
@@ -576,14 +586,41 @@ function ChatViewContent({
       return;
     }
     setSearching(true);
+    setSearchArchive("loading");
+    let cancelled = false;
     const timer = setTimeout(() => {
-      void search(trimmed).then((hits) => {
-        setSearchResults(hits);
+      void (async () => {
+        const local = await search(trimmed);
+        if (cancelled) {
+          return;
+        }
+        setSearchResults(local);
         setSearching(false);
-      });
+        // Loaded history answers at once; older pages refine the results.
+        try {
+          for (;;) {
+            const complete = (await loadSearchHistory?.()) ?? true;
+            if (cancelled) {
+              return;
+            }
+            setSearchResults(await search(trimmed));
+            if (complete) {
+              break;
+            }
+          }
+          setSearchArchive("complete");
+        } catch {
+          if (!cancelled) {
+            setSearchArchive("failed");
+          }
+        }
+      })();
     }, 120);
-    return () => clearTimeout(timer);
-  }, [searchOpen, searchQuery, search]);
+    return () => {
+      cancelled = true;
+      clearTimeout(timer);
+    };
+  }, [searchOpen, searchQuery, search, loadSearchHistory]);
 
   useEffect(() => {
     writeLocal(MEMBERS_OPEN_KEY, String(membersOpen));
@@ -907,19 +944,71 @@ function ChatViewContent({
   const selectSearchHit = useCallback(
     (hit: ChatSearchHit) => {
       setSearchOpen(false);
-      void openChannel(hit.channelId).then(() => {
-        setTimeout(() => {
-          const node = document.getElementById(`message-${hit.messageId}`);
-          node?.scrollIntoView({ behavior: "smooth", block: "center" });
-          node?.animate(
-            [{ backgroundColor: "var(--aulora-accent-soft)" }, { backgroundColor: "transparent" }],
-            { duration: 1600, easing: "ease-out" },
-          );
-        }, 160);
+      void openChannel(hit.channelId);
+      setPendingJump({
+        channelId: hit.channelId,
+        messageId: hit.threadRootId ?? hit.messageId,
+        opensThread: hit.threadRootId !== undefined,
+        ...(hit.threadRootId === undefined ? { createdAt: hit.createdAt } : {}),
       });
     },
     [openChannel],
   );
+
+  // Walk history back until the search result is on screen, then reveal it.
+  const {
+    messages: loadedMessages,
+    loading: historyLoading,
+    loadingOlder,
+    hasOlder,
+    loadOlder,
+  } = sessionState;
+  useEffect(() => {
+    if (pendingJump === null) {
+      return;
+    }
+    if (activeChannelId !== pendingJump.channelId) {
+      setPendingJump(null);
+      return;
+    }
+    if (historyLoading || loadingOlder) {
+      return;
+    }
+    const target = loadedMessages.find((message) => message.id === pendingJump.messageId);
+    if (target === undefined) {
+      const oldest = loadedMessages[0];
+      const passed =
+        pendingJump.createdAt !== undefined &&
+        oldest !== undefined &&
+        oldest.createdAt < pendingJump.createdAt;
+      if (hasOlder && !passed) {
+        loadOlder();
+      } else {
+        setPendingJump(null);
+      }
+      return;
+    }
+    setPendingJump(null);
+    if (pendingJump.opensThread) {
+      setThreadRoot(target);
+    }
+    setTimeout(() => {
+      const node = document.getElementById(`message-${target.id}`);
+      node?.scrollIntoView({ behavior: "smooth", block: "center" });
+      node?.animate(
+        [{ backgroundColor: "var(--aulora-accent-soft)" }, { backgroundColor: "transparent" }],
+        { duration: 1600, easing: "ease-out" },
+      );
+    }, 160);
+  }, [
+    pendingJump,
+    activeChannelId,
+    loadedMessages,
+    historyLoading,
+    loadingOlder,
+    hasOlder,
+    loadOlder,
+  ]);
 
   if (!ready || runtime === undefined) {
     return (
@@ -1596,6 +1685,7 @@ function ChatViewContent({
           query={searchQuery}
           results={searchResults}
           searching={searching}
+          archive={searchArchive}
           conversations={channels}
           titles={titles}
           ownUserId={ownUserId}

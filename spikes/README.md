@@ -7,6 +7,7 @@ not built or tested by Turborepo.
 | --- | --- |
 | `convex-selfhost` | Proceed: Convex self-hosting + Better Auth generic OIDC. |
 | `blobatar-rn` | Proceed: Blobatar deterministic avatars in React Native. |
+| `logo-concepts` | Archived visual explorations: [series A](logo-concepts/series-a/README.md), [series B](logo-concepts/series-b/README.md), [series C](logo-concepts/series-c/README.md). These do not replace the shipped logo. |
 | `mls-demo` | **Deleted.** The client-side MLS (`ts-mls`, RFC 9420) spike is superseded by the move to server-side encryption with an External Key Manager. |
 
 The `mls-demo` directory (a two-device MLS demo depending on `ts-mls` and

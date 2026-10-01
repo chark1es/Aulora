@@ -42,14 +42,15 @@ export function SessionGate({ profile, authClient, cookieStore, client }: Sessio
     const displayName = user.name ?? user.email ?? "You";
     return (
       <SoundProvider>
-        <ChatProvider client={client}>
+        <ChatProvider key={user.id} client={client} userId={user.id}>
           <VoiceProvider client={client} userId={user.id}>
             <ChatScreen
               workspaceName={profile.name}
               ownUserId={user.id}
               ownDisplayName={displayName}
-              onSignOut={() => {
-                void authClient.signOut();
+              onSignOut={async () => {
+                const result = await authClient.signOut();
+                if (result.error) throw new Error(result.error.message ?? "Couldn't sign out");
               }}
             />
           </VoiceProvider>
