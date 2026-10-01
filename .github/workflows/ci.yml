@@ -2,11 +2,25 @@ name: CI
 
 on:
   pull_request:
+    types: [opened, synchronize, reopened, labeled]
   push:
     branches: [main]
   merge_group:
   workflow_call:
+    inputs:
+      native:
+        description: Build the desktop, Android and iOS apps
+        type: boolean
+        default: true
   workflow_dispatch:
+    inputs:
+      native:
+        description: Build the desktop, Android and iOS apps
+        type: boolean
+        default: true
+
+# Native builds are slow and expensive. They run for releases, manual runs, and
+# pull requests labeled `build-native`.
 
 permissions:
   contents: read
@@ -53,10 +67,12 @@ jobs:
           actionlint
 
   desktop:
+    if: ${{ inputs.native || (github.event_name == 'pull_request' && contains(github.event.pull_request.labels.*.name, 'build-native')) }}
     uses: ./.github/workflows/desktop.yml
 
   android:
     name: Android compile
+    if: ${{ inputs.native || (github.event_name == 'pull_request' && contains(github.event.pull_request.labels.*.name, 'build-native')) }}
     runs-on: ubuntu-22.04
     timeout-minutes: 60
     env:
@@ -82,6 +98,7 @@ jobs:
 
   ios:
     name: iOS compile
+    if: ${{ inputs.native || (github.event_name == 'pull_request' && contains(github.event.pull_request.labels.*.name, 'build-native')) }}
     runs-on: macos-latest
     timeout-minutes: 60
     env:
@@ -125,9 +142,11 @@ jobs:
         run: |
           python3 - <<'PY'
           import json, os, sys
-          failures = [name for name, job in json.loads(os.environ['RESULTS']).items() if job['result'] != 'success']
+          optional = {'desktop', 'android', 'ios'}
+          allowed = lambda name, job: job['result'] == 'success' or (name in optional and job['result'] == 'skipped')
+          failures = [name for name, job in json.loads(os.environ['RESULTS']).items() if not allowed(name, job)]
           if failures:
-              print('Required checks failed or were skipped: ' + ', '.join(failures))
+              print('Required checks failed: ' + ', '.join(failures))
               sys.exit(1)
           print('All required checks passed.')
           PY
