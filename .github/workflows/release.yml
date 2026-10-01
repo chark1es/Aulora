@@ -117,7 +117,8 @@ jobs:
       - name: Create updater manifest and checksums
         run: |
           if [ -z "$RELEASE_NOTES" ]; then
-            export RELEASE_NOTES="$(cat docs/release-notes-v1.md)"
+            RELEASE_NOTES="$(cat docs/release-notes-v1.md)"
+            export RELEASE_NOTES
           fi
           printf '%s\n' "$RELEASE_NOTES" > dist/release/RELEASE_NOTES.md
           node scripts/ci/assemble-release.mjs
