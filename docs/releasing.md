@@ -62,7 +62,7 @@ For a candidate, run [Actions, Release](https://github.com/chark1es/Aulora/actio
 
 ## Final artifacts and announcement
 
-- [ ] Write the release notes (GitHub Releases is the changelog), including known limitations and any migration steps.
+- [ ] Review the release notes (GitHub Releases is the changelog). Later versions generate notes automatically; supply the manual Release workflow's `notes` input to include known limitations and any migration steps.
 - [ ] Download the candidate `complete-release` artifact and inspect every distributable.
 - [ ] Verify `latest.json` has all four desktop updater targets and valid signatures.
 - [ ] Verify `SHA256SUMS`, license/notice files, and the web/docs and legal ZIP contents.
