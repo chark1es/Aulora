@@ -90,6 +90,8 @@ and uploads the complete release as an Actions artifact. Turning `publish` on
 creates the GitHub release after successful builds. The desktop-only candidate
 workflow remains available for testing desktop artifacts separately.
 
+For an initial release that needs artifact inspection before publication, set the repository Actions variable `RELEASE_AUTO_PUBLISH=false` before merging the version bump. The push still runs all checks and produces `complete-release`, but skips public release creation. Inspect that exact version's artifacts, then publish the verified files at the built commit. Remove the variable to restore automatic publication for later version bumps. Manual `publish=true` remains an explicit publication request and rebuilds the current main version.
+
 Mobile version strings match the desktop release. The release workflow run
 number becomes the Android version code and iOS build number. Re-running the
 same workflow run keeps that number; start a new manual run if a store needs a

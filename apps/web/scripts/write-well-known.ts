@@ -155,7 +155,7 @@ function buildProviders(env: Env): Array<OAuthProvider | OidcProvider> {
 export function buildWellKnown(env: Env): Record<string, unknown> {
   return {
     name: read(env, "INSTANCE_NAME") ?? "Aulora",
-    version: read(env, "AULORA_VERSION") ?? "0.1.0",
+    version: read(env, "AULORA_VERSION") ?? "1.0.0",
     apiVersion: readInt(env, "API_VERSION", 1),
     convexUrl: read(env, "CONVEX_URL") ?? "http://127.0.0.1:3210",
     siteUrl: read(env, "SITE_URL") ?? "http://localhost:5173",

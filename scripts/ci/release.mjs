@@ -13,6 +13,7 @@ export function releasePlan({
   previousVersion,
   alreadyReleased,
   publish,
+  autoPublish = true,
 }) {
   validateVersion(version);
   if (ref !== "refs/heads/main") throw new Error("Releases must build main.");
@@ -29,7 +30,7 @@ export function releasePlan({
   return {
     version,
     build: eventName === "workflow_dispatch" || (previousVersion !== version && !alreadyReleased),
-    publish: eventName === "push" || publish === true,
+    publish: (eventName === "push" && autoPublish) || publish === true,
   };
 }
 
@@ -81,6 +82,7 @@ function main() {
     previousVersion,
     alreadyReleased: lookup.status === 0 && !JSON.parse(lookup.stdout).draft,
     publish: event.inputs?.publish === "true" || event.inputs?.publish === true,
+    autoPublish: process.env.RELEASE_AUTO_PUBLISH !== "false",
   });
   for (const [name, value] of Object.entries(plan))
     appendFileSync(process.env.GITHUB_OUTPUT, `${name}=${value}\n`);

@@ -6,6 +6,7 @@ Current contributor and maintainer guides:
 
 - [Development setup](development.md)
 - [Release checklist](releasing.md)
+- [Android and TestFlight testing](mobile-testing.md)
 - [V1 verification and remaining publication checks](v1-readiness.md)
 - [GitHub Actions builds and releases](github-actions.md)
 - [CLA bot tracking and maintenance](cla-bot.md)

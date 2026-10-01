@@ -8,7 +8,7 @@ import { getEkmSettings } from "./ekm";
 import { type GroupRoleMap, parseGroupRoleMap } from "./oidc";
 
 /** Version advertised through `server:publicConfig` and the well-known doc. */
-export const AULORA_VERSION = "0.1.0";
+export const AULORA_VERSION = "1.0.0";
 
 /** Shape version of the public config / well-known document. */
 export const API_VERSION = 1;
