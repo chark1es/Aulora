@@ -104,7 +104,10 @@ jobs:
     name: Assemble release files
     needs: [plan, desktop, mobile, web]
     runs-on: ubuntu-22.04
+    permissions:
+      contents: write # Required by GitHub's release notes generation API.
     env:
+      GH_TOKEN: ${{ github.token }}
       RELEASE_VERSION: ${{ needs.plan.outputs.version }}
       RELEASE_NOTES: ${{ inputs.notes }}
     steps:
@@ -117,13 +120,10 @@ jobs:
           pattern: release-*
           merge-multiple: true
           path: dist/release
+      - name: Prepare release notes
+        run: node scripts/ci/release-notes.mjs
       - name: Create updater manifest and checksums
         run: |
-          if [ -z "$RELEASE_NOTES" ] && [ "$RELEASE_VERSION" = 1.0.0 ]; then
-            RELEASE_NOTES="$(cat docs/release-notes-v1.md)"
-            export RELEASE_NOTES
-          fi
-          printf '%s\n' "$RELEASE_NOTES" > dist/release/RELEASE_NOTES.md
           node scripts/ci/assemble-release.mjs
           node scripts/ci/assemble-release.mjs checksums
       - uses: actions/upload-artifact@v4
@@ -144,7 +144,6 @@ jobs:
       GH_TOKEN: ${{ github.token }}
       GH_REPO: ${{ github.repository }}
       RELEASE_VERSION: ${{ needs.plan.outputs.version }}
-      RELEASE_NOTES: ${{ inputs.notes }}
     steps:
       - uses: actions/download-artifact@v4
         with:
@@ -158,10 +157,6 @@ jobs:
             test "$(cat "$state")" = true
             gh release upload "$tag" dist/release/* --clobber
           else
-            if [ -s dist/release/RELEASE_NOTES.md ] && grep -q '[^[:space:]]' dist/release/RELEASE_NOTES.md; then
-              gh release create "$tag" --draft --target "$GITHUB_SHA" --title "Aulora ${RELEASE_VERSION}" --notes-file dist/release/RELEASE_NOTES.md dist/release/*
-            else
-              gh release create "$tag" --draft --target "$GITHUB_SHA" --title "Aulora ${RELEASE_VERSION}" --generate-notes dist/release/*
-            fi
+            gh release create "$tag" --draft --target "$GITHUB_SHA" --title "Aulora ${RELEASE_VERSION}" --notes-file dist/release/RELEASE_NOTES.md dist/release/*
           fi
-          gh release edit "$tag" --draft=false --latest
+          gh release edit "$tag" --notes-file dist/release/RELEASE_NOTES.md --draft=false --latest

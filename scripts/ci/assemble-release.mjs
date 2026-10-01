@@ -72,6 +72,6 @@ if (process.argv[1] && resolve(process.argv[1]) === fileURLToPath(import.meta.ur
       directory,
       process.env.RELEASE_VERSION,
       process.env.GITHUB_REPOSITORY,
-      process.env.RELEASE_NOTES,
+      readFileSync(join(directory, "RELEASE_NOTES.md"), "utf8"),
     );
 }

@@ -41,8 +41,10 @@ test("release assembly keeps both Mac architectures and refuses incomplete relea
       "THIRD_PARTY_JAVASCRIPT.txt",
     ])
       writeFileSync(join(directory, file), "test notice");
-    await assembleRelease(directory, "1.0.0", "chark1es/Aulora");
+    const notes = "## Changes\n\n- Release notes shared with GitHub.\n";
+    await assembleRelease(directory, "1.0.0", "chark1es/Aulora", notes);
     const manifest = JSON.parse(readFileSync(join(directory, "latest.json"), "utf8"));
+    expect(manifest.notes).toBe(notes);
     expect(Object.keys(manifest.platforms)).toHaveLength(4);
     expect(manifest.platforms["darwin-aarch64"].url).not.toBe(
       manifest.platforms["darwin-x86_64"].url,
