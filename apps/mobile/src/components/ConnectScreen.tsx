@@ -231,7 +231,12 @@ export function ConnectScreen({
             </Button>
             {Platform.OS === "ios" && profiles.length === 0 && (
               <View className="gap-1">
-                <Button variant="ghost" disabled={busy} onPress={() => router.push("/review-demo")}>
+                <Button
+                  style={{ minHeight: 44 }}
+                  variant="ghost"
+                  disabled={busy}
+                  onPress={() => router.push("/review-demo")}
+                >
                   Try App Review demo
                 </Button>
                 <Text size="sm" tone="muted" className="text-center">

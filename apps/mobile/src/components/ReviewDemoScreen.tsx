@@ -102,7 +102,7 @@ export function ReviewDemoScreen({ onExit }: { readonly onExit: () => void }) {
     <KeyboardAvoidingView className="flex-1 bg-bg" behavior="padding">
       <View className="flex-row items-center justify-between border-b border-border px-4 py-2">
         <Heading level={3}>Acme Studio</Heading>
-        <Button variant="ghost" onPress={onExit}>
+        <Button style={{ minHeight: 44 }} variant="ghost" onPress={onExit}>
           Exit demo
         </Button>
       </View>
@@ -125,14 +125,18 @@ export function ReviewDemoScreen({ onExit }: { readonly onExit: () => void }) {
       ) : (
         <>
           <View className="flex-row flex-wrap items-center justify-between border-b border-border px-2 py-1">
-            <Button variant="ghost" onPress={() => setSheet("channels")}>
+            <Button style={{ minHeight: 44 }} variant="ghost" onPress={() => setSheet("channels")}>
               {`${channel?.kind === "text" || channel?.kind === "announcement" ? "# " : ""}${channel === undefined ? "Channels" : reviewChannelTitle(channel)}`}
             </Button>
             <View className="flex-row">
-              <Button variant="ghost" onPress={() => setSearchOpen((current) => !current)}>
+              <Button
+                style={{ minHeight: 44 }}
+                variant="ghost"
+                onPress={() => setSearchOpen((current) => !current)}
+              >
                 Search
               </Button>
-              <Button variant="ghost" onPress={() => setSheet("members")}>
+              <Button style={{ minHeight: 44 }} variant="ghost" onPress={() => setSheet("members")}>
                 Members
               </Button>
             </View>
@@ -150,6 +154,7 @@ export function ReviewDemoScreen({ onExit }: { readonly onExit: () => void }) {
                 <ScrollView style={{ maxHeight: 180 }} keyboardShouldPersistTaps="handled">
                   {demo.search(query).map((hit) => (
                     <Button
+                      style={{ minHeight: 44 }}
                       key={hit.messageId}
                       variant="ghost"
                       onPress={() => openChannel(hit.channelId)}
@@ -188,6 +193,7 @@ export function ReviewDemoScreen({ onExit }: { readonly onExit: () => void }) {
                   Calls and push need your own server.
                 </Text>
                 <Button
+                  style={{ minHeight: 44 }}
                   variant="ghost"
                   onPress={() =>
                     Alert.alert(
@@ -223,7 +229,7 @@ export function ReviewDemoScreen({ onExit }: { readonly onExit: () => void }) {
           <View className="max-h-[80%] rounded-t-card bg-surface-1 pb-8">
             <View className="flex-row items-center justify-between border-b border-border px-4 py-2">
               <Heading level={3}>{sheet === "members" ? "Demo members" : "Conversations"}</Heading>
-              <Button variant="ghost" onPress={() => setSheet(null)}>
+              <Button style={{ minHeight: 44 }} variant="ghost" onPress={() => setSheet(null)}>
                 Done
               </Button>
             </View>
@@ -245,6 +251,7 @@ export function ReviewDemoScreen({ onExit }: { readonly onExit: () => void }) {
                   ))
                 : channels.map((row) => (
                     <Button
+                      style={{ minHeight: 44 }}
                       key={row.id}
                       variant={row.id === channelId ? "secondary" : "ghost"}
                       onPress={() => openChannel(row.id)}
