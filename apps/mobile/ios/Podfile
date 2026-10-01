@@ -2,6 +2,7 @@
 ENV['RNS_GAMMA_ENABLED'] ||= '1'
 require File.join(File.dirname(`node --print "require.resolve('expo/package.json')"`), "scripts/autolinking")
 require File.join(File.dirname(`node --print "require.resolve('react-native/package.json')"`), "scripts/react_native_pods")
+require_relative './podspec_checksums'
 
 require 'json'
 podfile_properties = JSON.parse(File.read(File.join(__dir__, 'Podfile.properties.json'))) rescue {}
@@ -28,6 +29,7 @@ prepare_react_native_project!
 
 target 'Aulora' do
   use_expo_modules!
+  Pod::Sandbox.prepend(AuloraPodspecChecksums)
 
   if ENV['EXPO_USE_COMMUNITY_AUTOLINKING'] == '1'
     config_command = ['node', '-e', "process.argv=['', '', 'config'];require('@react-native-community/cli').run()"];
