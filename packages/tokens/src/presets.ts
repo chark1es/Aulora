@@ -60,7 +60,7 @@ export const nativewindPresets: AuloraPresets = {
   light: createPreset(paletteFor("light")),
 };
 
-/** Default presets use the dark theme, matching plan.md. */
+/** Default presets use the dark theme. */
 export const tailwindPreset: AuloraPreset = tailwindPresets.dark;
 export const nativewindPreset: AuloraPreset = nativewindPresets.dark;
 

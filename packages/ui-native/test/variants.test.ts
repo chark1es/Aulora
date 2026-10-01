@@ -1,6 +1,13 @@
-import { darkPalette, lightPalette } from "@aulora/tokens";
+import { darkPalette } from "@aulora/tokens";
 import { describe, expect, it } from "vitest";
-import { IDLE_COLOR, paletteForScheme, presenceColor, roleRing } from "../src/colors";
+import {
+  IDLE_COLOR,
+  nativeDarkPalette,
+  nativeLightPalette,
+  paletteForScheme,
+  presenceColor,
+  roleRing,
+} from "../src/colors";
 import {
   buttonClass,
   buttonLabelClass,
@@ -10,15 +17,15 @@ import {
 } from "../src/variants";
 
 describe("paletteForScheme", () => {
-  it("uses the dark Loam palette by default and for `null`", () => {
-    expect(paletteForScheme("dark")).toBe(darkPalette);
-    expect(paletteForScheme(null)).toBe(darkPalette);
-    expect(paletteForScheme(undefined)).toBe(darkPalette);
+  it("uses the native dark palette by default and for `null`", () => {
+    expect(paletteForScheme("dark")).toBe(nativeDarkPalette);
+    expect(paletteForScheme(null)).toBe(nativeDarkPalette);
+    expect(paletteForScheme(undefined)).toBe(nativeDarkPalette);
   });
 
-  it("uses the light Linen palette only for `light`", () => {
-    expect(paletteForScheme("light")).toBe(lightPalette);
-    expect(paletteForScheme("unspecified")).toBe(darkPalette);
+  it("uses the native light palette only for `light`", () => {
+    expect(paletteForScheme("light")).toBe(nativeLightPalette);
+    expect(paletteForScheme("unspecified")).toBe(nativeDarkPalette);
   });
 });
 
@@ -46,7 +53,7 @@ describe("class composers", () => {
   it("includes the variant, size and disabled state for buttons", () => {
     const primary = buttonClass({ variant: "primary", size: "sm" });
     expect(primary).toContain("bg-accent");
-    expect(primary).toContain("h-8");
+    expect(primary).toContain("min-h-12");
     expect(primary).toContain("rounded-input");
 
     const disabled = buttonClass({ variant: "danger", size: "lg", disabled: true });
@@ -60,16 +67,16 @@ describe("class composers", () => {
   });
 
   it("composes icon button and input classes", () => {
-    expect(iconButtonClass({ variant: "secondary", size: "md" })).toContain("h-10");
+    expect(iconButtonClass({ variant: "secondary", size: "md" })).toContain("h-12");
     expect(inputClass({ error: true })).toContain("border-danger");
     expect(inputClass()).toContain("border-border");
   });
 
-  it("keeps the default input size identical and adds an additive large size", () => {
+  it("lets both input sizes grow with system text size", () => {
     const defaultMd = inputClass();
     expect(inputClass({ size: "md" })).toBe(defaultMd);
-    expect(defaultMd).toContain("h-10");
-    expect(defaultMd).toContain("text-base");
+    expect(defaultMd).toContain("min-h-12");
+    expect(defaultMd).toContain("text-[17px]");
 
     const lg = inputClass({ size: "lg" });
     expect(lg).not.toContain("h-10");

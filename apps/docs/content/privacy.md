@@ -8,7 +8,7 @@ The server stores accounts, workspace membership, messages, attachments, reactio
 
 Message content and uploads use server-side encryption. Authorized clients receive decrypted content. The operator's server has access to the key, so administrators with control of the application can read content. Account information and other metadata may remain readable. This is not end-to-end encryption.
 
-Clients store server profiles and session information on the device so you can return to your workspaces. Sign out on shared devices. OS backups and local device security can affect that information.
+Clients store server profiles, session information, and local message caches on the device so you can return to your workspaces. The mobile app also stores unsent messages and attachment references locally until they are sent or discarded. Downloaded attachments can remain in the application's temporary cache. Sign out on shared devices. OS backups and local device security can affect that information.
 
 ## Optional external services
 

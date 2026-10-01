@@ -99,6 +99,8 @@ PODS:
     - RNScreens
   - ExpoSecureStore (57.0.4):
     - ExpoModulesCore
+  - ExpoSharing (57.0.22):
+    - ExpoModulesCore
   - ExpoSymbols (57.0.3):
     - ExpoModulesCore
   - ExpoSystemUI (57.0.4):
@@ -107,6 +109,8 @@ PODS:
     - ExpoModulesCore
     - ExpoModulesWorklets
     - React-RCTFabric
+  - ExpoVideo (57.0.5):
+    - ExpoModulesCore
   - ExpoWebBrowser (57.0.3):
     - ExpoModulesCore
   - FBLazyVector (0.86.3)
@@ -2361,9 +2365,11 @@ DEPENDENCIES:
   - "ExpoNotifications (from `../../../node_modules/.bun/expo-notifications@57.0.21+b817be16a090ddc2/node_modules/expo-notifications/ios`)"
   - "ExpoRouter (from `../../../node_modules/.bun/expo-router@57.0.23+dd958a39c168facc/node_modules/expo-router/ios`)"
   - "ExpoSecureStore (from `../../../node_modules/.bun/expo-secure-store@57.0.4+b817be16a090ddc2/node_modules/expo-secure-store/ios`)"
+  - "ExpoSharing (from `../../../node_modules/.bun/expo-sharing@57.0.22+b817be16a090ddc2/node_modules/expo-sharing/ios`)"
   - "ExpoSymbols (from `../../../node_modules/.bun/expo-symbols@57.0.3+1e9324a6a6bcf640/node_modules/expo-symbols/ios`)"
   - "ExpoSystemUI (from `../../../node_modules/.bun/expo-system-ui@57.0.4+b817be16a090ddc2/node_modules/expo-system-ui/ios`)"
   - "ExpoUI (from `../../../node_modules/.bun/@expo+ui@57.0.20+5f3b15b34a02a271/node_modules/@expo/ui/ios`)"
+  - "ExpoVideo (from `../../../node_modules/.bun/expo-video@57.0.5+b817be16a090ddc2/node_modules/expo-video/ios/ExpoVideo.podspec`)"
   - "ExpoWebBrowser (from `../../../node_modules/.bun/expo-web-browser@57.0.3+b817be16a090ddc2/node_modules/expo-web-browser/ios`)"
   - "FBLazyVector (from `../../../node_modules/.bun/react-native@0.86.3+59d180ce70216a52/node_modules/react-native/Libraries/FBLazyVector`)"
   - "hermes-engine (from `../../../node_modules/.bun/react-native@0.86.3+59d180ce70216a52/node_modules/react-native/sdks/hermes-engine/hermes-engine.podspec`)"
@@ -2504,12 +2510,16 @@ EXTERNAL SOURCES:
     :path: "../../../node_modules/.bun/expo-router@57.0.23+dd958a39c168facc/node_modules/expo-router/ios"
   ExpoSecureStore:
     :path: "../../../node_modules/.bun/expo-secure-store@57.0.4+b817be16a090ddc2/node_modules/expo-secure-store/ios"
+  ExpoSharing:
+    :path: "../../../node_modules/.bun/expo-sharing@57.0.22+b817be16a090ddc2/node_modules/expo-sharing/ios"
   ExpoSymbols:
     :path: "../../../node_modules/.bun/expo-symbols@57.0.3+1e9324a6a6bcf640/node_modules/expo-symbols/ios"
   ExpoSystemUI:
     :path: "../../../node_modules/.bun/expo-system-ui@57.0.4+b817be16a090ddc2/node_modules/expo-system-ui/ios"
   ExpoUI:
     :path: "../../../node_modules/.bun/@expo+ui@57.0.20+5f3b15b34a02a271/node_modules/@expo/ui/ios"
+  ExpoVideo:
+    :podspec: "../../../node_modules/.bun/expo-video@57.0.5+b817be16a090ddc2/node_modules/expo-video/ios/ExpoVideo.podspec"
   ExpoWebBrowser:
     :path: "../../../node_modules/.bun/expo-web-browser@57.0.3+b817be16a090ddc2/node_modules/expo-web-browser/ios"
   FBLazyVector:
@@ -2707,9 +2717,11 @@ SPEC CHECKSUMS:
   ExpoNotifications: d432d5b2904f700a6a2dc29eca52e531c4cc1611
   ExpoRouter: e94e22e9806d0a731d8636bddd882ac2039e4f74
   ExpoSecureStore: ff1fd5e073957417ba8f9dec0bebcbd55a60e747
+  ExpoSharing: 5cc46810cfba71e331f649d947660213082094c1
   ExpoSymbols: 37a3a6e5847edb08b83a5ee04d3b46525e205f00
   ExpoSystemUI: 05ee8d4aaba1b6af330f3621e19b39ff9f21e718
   ExpoUI: d99ab879624d247bf4e19659a3b3c3e01bd3b428
+  ExpoVideo: 31d5dc617d913808aeba05c3ab900712637b0e47
   ExpoWebBrowser: a4d7c382116fbe33c1ec7f60293f02b7e97042e4
   FBLazyVector: 2138c6c2ab66c31bf5754dc18097fbc498a49c7f
   hermes-engine: 1d1364aef43f16448ba890d64226be0ef32516fe

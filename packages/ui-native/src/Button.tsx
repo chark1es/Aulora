@@ -47,7 +47,19 @@ export function Button({
         {loading ? <ActivityIndicator size="small" color={spinnerColor} /> : leading}
         {typeof children === "string" ? (
           <Text
-            size="sm"
+            size="base"
+            maxFontSizeMultiplier={2}
+            style={{
+              color: neutralDisabled
+                ? palette["text-muted"]
+                : variant === "primary"
+                  ? palette["on-accent"]
+                  : variant === "danger"
+                    ? palette.bg
+                    : variant === "ghost"
+                      ? palette["text-muted"]
+                      : palette.text,
+            }}
             className={cn(
               buttonLabelClass(variant, isDisabled),
               size === "lg" ? "!text-[17px] font-semibold" : "font-medium",
@@ -60,7 +72,7 @@ export function Button({
         )}
       </>
     ),
-    [loading, leading, children, variant, size, isDisabled, spinnerColor],
+    [loading, leading, children, variant, size, isDisabled, spinnerColor, neutralDisabled, palette],
   );
 
   return (

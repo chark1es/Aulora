@@ -287,6 +287,18 @@ export function convexPort(client: ConvexReactClient): ChatPort {
         emoji: args.emoji,
       });
     },
+    async listMessages(args) {
+      return await client.query(api.messages.list, {
+        channelId: args.channelId as never,
+        paginationOpts: { numItems: PAGE.numItems, cursor: args.cursor },
+      });
+    },
+    async listThreadMessages(args) {
+      return await client.query(api.messages.listThread, {
+        threadRootId: args.threadRootId as never,
+        paginationOpts: { numItems: PAGE.numItems, cursor: args.cursor },
+      });
+    },
     async heartbeat(args) {
       return await client.mutation(api.presence.heartbeat, {
         ...(args.status !== undefined ? { status: args.status } : {}),

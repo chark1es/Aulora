@@ -1,3 +1,5 @@
+> Archived work record. This file can describe removed code or unresolved work that has since changed. Use [the current documentation](../README.md) and [project status](../project-status.md).
+
 # Deploying the new backend to the test server
 
 The web/desktop UI now uses backend functions that the running test server does

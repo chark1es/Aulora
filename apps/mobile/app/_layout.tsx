@@ -5,6 +5,7 @@ import { View } from "react-native";
 import { GestureHandlerRootView } from "react-native-gesture-handler";
 import { SafeAreaProvider } from "react-native-safe-area-context";
 import "../global.css";
+import { usePalette } from "@aulora/ui-native";
 import { configureNotificationHandler } from "../src/lib/push";
 import { useThemeVars } from "../src/lib/theme";
 import { ProfileProvider } from "../src/providers/ProfileProvider";
@@ -38,9 +39,12 @@ if (__DEV__) {
 
 function ThemedStack() {
   const theme = useThemeVars();
+  const palette = usePalette();
   return (
     <View className="flex-1 bg-bg" style={theme}>
-      <Stack screenOptions={{ headerShown: false, contentStyle: { backgroundColor: "#0A0A0C" } }} />
+      <Stack
+        screenOptions={{ headerShown: false, contentStyle: { backgroundColor: palette.bg } }}
+      />
       <StatusBar style="auto" />
     </View>
   );

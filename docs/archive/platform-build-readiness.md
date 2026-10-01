@@ -1,3 +1,5 @@
+> Archived work record. This file can describe removed code or unresolved work that has since changed. Use [the current documentation](../README.md) and [project status](../project-status.md).
+
 # Platform build and notification readiness
 
 Checked 2026-09-29 against the current working tree and official documentation. This is a setup checklist, not evidence that signed releases or live push delivery have passed. Credentials may already exist outside Git; their availability was not inspected.
