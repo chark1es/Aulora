@@ -31,18 +31,23 @@ jobs:
               "action": "created",
               "sender": {"type": "User"},
               "issue": {"pull_request": {"url": f"https://api.github.com/repos/{os.environ['EVALUATION_REPOSITORY']}/pulls/4"}},
-              "comment": {"body": "/review"},
+              "comment": {"body": "/review", "id": 5922866711},
           }
           with open(os.environ['EVALUATION_EVENT_PATH'], 'w') as event_file:
               json.dump(payload, event_file)
           PY
       - name: Review the draft evaluation PR with DeepSeek
-        uses: docker://pragent/pr-agent@sha256:65e5b196e38cecd7df8a71fe29942052e081a0c6645132c2ac874df60b1760c7 # 0.46.0-github_action
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           OPENROUTER__KEY: ${{ secrets.OPENROUTER_API_KEY }}
           CONFIG__MODEL: openrouter/deepseek/deepseek-v4.1-flash
           CONFIG__MODEL_WEAK: openrouter/deepseek/deepseek-v4.1-flash
           CONFIG__FALLBACK_MODELS: '[]'
-          GITHUB_EVENT_NAME: issue_comment
-          GITHUB_EVENT_PATH: ${{ runner.temp }}/pr-agent-smoke-event.json
+        run: |
+          docker run --rm \
+            -e GITHUB_TOKEN -e OPENROUTER__KEY \
+            -e CONFIG__MODEL -e CONFIG__MODEL_WEAK -e CONFIG__FALLBACK_MODELS \
+            -e GITHUB_EVENT_NAME=issue_comment \
+            -e GITHUB_EVENT_PATH=/events/event.json \
+            -v "$RUNNER_TEMP/pr-agent-smoke-event.json:/events/event.json:ro" \
+            pragent/pr-agent@sha256:65e5b196e38cecd7df8a71fe29942052e081a0c6645132c2ac874df60b1760c7

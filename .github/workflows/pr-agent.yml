@@ -37,7 +37,7 @@ jobs:
           OPENROUTER_API_KEY: ${{ secrets.OPENROUTER_API_KEY }}
         run: |
           if [ -z "$OPENROUTER_API_KEY" ]; then
-            echo '::error::Add the OPENROUTER_API_KEY repository secret. See docs/github-actions.md#pr-agent-reviews.'
+            echo '::error::Add OPENROUTER_API_KEY to the pr-review environment. See docs/github-actions.md#pr-agent-reviews.'
             exit 1
           fi
       # Fetch PR data through the GitHub API. Never check out or execute PR code
