@@ -91,6 +91,8 @@ jobs:
         with:
           persist-credentials: false
       - uses: ./.github/actions/setup-js
+      - name: Verify portable podspec checksums
+        run: ruby scripts/ci/podspec-checksums.test.rb
       - name: Install CocoaPods dependencies
         working-directory: apps/mobile/ios
         run: pod install --deployment
