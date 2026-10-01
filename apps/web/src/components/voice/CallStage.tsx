@@ -1,5 +1,5 @@
-import { callKindLabel, callStatusLabel, isParticipant } from "@aulora/core";
-import { cn, Icon } from "@aulora/ui-web";
+import { callKindLabel, callStatusLabel, isOnThisDevice } from "@aulora/core";
+import { Button, cn, Icon } from "@aulora/ui-web";
 import { useVoice } from "../../providers/VoiceProvider";
 import { CallControls } from "./CallControls";
 import { CallMediaNotice } from "./CallMediaNotice";
@@ -21,7 +21,7 @@ export function CallStage({
   if (call === null) {
     return null;
   }
-  const inCall = isParticipant(call, voice.selfUserId);
+  const inCall = isOnThisDevice(call, voice.selfUserId, voice.clientId);
   const sharer = call.screenShareUserId !== null ? identity.nameOf(call.screenShareUserId) : null;
 
   return (
@@ -80,25 +80,30 @@ export function CallStage({
           localVideoTrack={voice.localVideoTrack}
           settings={voice.settings}
           identity={identity}
+          speakingIds={voice.remoteSpeaking}
+          localSpeaking={voice.localSpeaking}
           className="h-full"
         />
       </div>
 
       <footer className="flex shrink-0 items-center justify-center gap-3 border-t border-border px-4 py-3">
         {!inCall && (
-          <button
+          <Button
             type="button"
+            variant="success"
+            size="lg"
+            className="mr-2"
             onClick={() => void voice.joinCall(call.id)}
-            className="mr-2 h-10 rounded-[10px] bg-secondary px-4 text-[13px] font-semibold text-white transition hover:brightness-110"
           >
             Join
-          </button>
+          </Button>
         )}
         <CallControls
           muted={voice.local.muted}
           deafened={voice.local.deafened}
           video={voice.local.video}
           sharingScreen={voice.local.sharingScreen}
+          canSpeak={voice.canSpeak}
           canVideo={voice.canVideo}
           canStream={voice.canStream}
           onToggleMute={() => void voice.setMuted(!voice.local.muted)}

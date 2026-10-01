@@ -1,32 +1,31 @@
-# Aulora docs
+# Aulora documentation
 
-Aulora is self-hosted team chat with server-side encryption: one server is one
-workspace, the server encrypts every message, reaction, edit and file with
-AES-256-GCM envelope encryption using a locally generated master key
-(`AULORA_ENCRYPTION_KEY`), and the master key (the KEK) is never stored in the
-database. External key managers (Vault, AWS KMS, GCP KMS or an HTTP proxy) are
-an optional upgrade for key custody.
+Aulora is self-hosted team chat. Each server hosts one workspace; clients can join several servers. Personal and noncommercial use is free. Businesses need a paid commercial agreement.
 
-- [Getting started](getting-started.md) — run it locally, or self-host it.
-- [Self-hosting](self-hosting.md) — the one-command installer and the stack.
-- [Deploy on Coolify](coolify.md) — Git-based deploy with Coolify's TLS edge.
-- [Admin panel](admin.md) — auth providers, storage quotas, push relay, license.
-- [Backups](backups.md) — nightly `convex export` + Postgres dump to S3.
-- [Licensing](licensing.md) — PolyForm Noncommercial and commercial use.
-- [Contributing](contributing.md) — workflow and the CLA.
+## Start here
 
-## What one server gives you
+- Joining a team? Read the [user guide](user-guide.md).
+- Installing your own server? Start with [getting started](getting-started.md).
+- Deploying publicly? Read [self-hosting](self-hosting.md) or [Coolify](coolify.md).
+- Managing a workspace? Read the [admin guide](admin.md).
+- Keeping it running? Set up [backups](backups.md), [updates](updates.md), and read [troubleshooting](troubleshooting.md).
+- Building from source? Read [contributing](contributing.md) and the [development guide](https://github.com/chark1es/Aulora/blob/main/docs/development.md).
 
-Channels, DMs, group DMs, threads, reactions, server-encrypted uploads, full history,
-Discord-style roles with per-channel overrides, server-side search, live updates, and
-five clients (web, macOS/Windows/Linux desktop, iOS, Android) that can each
-join many servers.
+## What Aulora provides
+
+Channels, direct and group messages, threads, reactions, file sharing, search, permissions, and voice/video calls. Browser, desktop, and mobile clients connect to the same server.
+
+Content encryption happens on the server. The operator can decrypt content for authorized users. This is not end-to-end encryption. See [privacy](privacy.md) for the trust model and optional external services.
 
 ## Requirements
 
-| Tool | Version | Needed for |
-| --- | --- | --- |
-| Docker + Compose | recent | self-hosting |
-| Bun | 1.4.0 | building from source |
-| Node.js | 22.18.0 | building from source |
-| Git | any | building from source |
+| Task | Requirements |
+| --- | --- |
+| Join a workspace | A server URL, an account or invitation, and a supported client |
+| Run a server | Git, Docker, and Compose v2.24 or newer |
+| Build JavaScript apps | Bun 1.4.0 and Node.js 22.18.0 |
+| Build native clients | Platform SDKs, plus Rust for desktop |
+
+Release binaries and store listings become available when published. A successful source build does not establish store availability or live push delivery.
+
+[Licensing](licensing.md) explains free and paid use. Contact [cnguyen@spwnd.dev](mailto:cnguyen@spwnd.dev) for commercial licensing or private security reports.

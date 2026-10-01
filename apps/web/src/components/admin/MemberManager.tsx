@@ -1,6 +1,5 @@
-import { Avatar, userAvatarSeed } from "@aulora/avatars";
 import { EVERYONE_ROLE_ID } from "@aulora/core";
-import { cn, Heading, Icon, Input, Modal, Text } from "@aulora/ui-web";
+import { Button, Heading, Icon, Input, Modal, Spinner, Text } from "@aulora/ui-web";
 import { useMutation, useQuery } from "convex/react";
 import { useEffect, useState } from "react";
 import { api } from "../../../../../packages/convex/convex/_generated/api";
@@ -14,6 +13,7 @@ import {
   roleNamesFor,
   roleRef,
 } from "../../lib/workspace-admin";
+import { PersonAvatar } from "../chat/member-avatars";
 import { Combobox, type ComboboxOption } from "./Combobox";
 
 export interface MemberManagerViewer {
@@ -43,6 +43,16 @@ const TIMEOUTS: readonly { readonly label: string; readonly ms: number }[] = [
   { label: "1d", ms: 24 * 60 * 60_000 },
 ];
 
+/** Ban durations; `null` means permanent. */
+const BAN_DURATIONS: readonly { readonly label: string; readonly ms: number | null }[] = [
+  { label: "60 seconds", ms: 60_000 },
+  { label: "1 hour", ms: 60 * 60_000 },
+  { label: "1 day", ms: 24 * 60 * 60_000 },
+  { label: "7 days", ms: 7 * 24 * 60 * 60_000 },
+  { label: "30 days", ms: 30 * 24 * 60 * 60_000 },
+  { label: "Permanent", ms: null },
+];
+
 const ANY_MANAGE = (p: MemberManagerProps["permissions"]): boolean =>
   p.manageRoles || p.kick || p.ban || p.timeout || p.manageNicknames;
 
@@ -56,6 +66,7 @@ export function MemberManager({ viewer, ownerId, permissions }: MemberManagerPro
   const members = useQuery(api.members.list, {});
   const roles = useQuery(api.roles.list, {});
   const bans = useQuery(api.members.listBans, permissions.ban ? {} : "skip");
+  const notes = useQuery(api.notes.list, {});
 
   const assignRole = useMutation(api.members.assignRole);
   const removeRole = useMutation(api.members.removeRole);
@@ -84,6 +95,11 @@ export function MemberManager({ viewer, ownerId, permissions }: MemberManagerPro
   const roleList = roles ?? [];
   const memberList = members ?? [];
   const selected = memberList.find((entry) => entry.userId === selectedId) ?? null;
+  const notedUserIds = new Set(
+    (notes ?? [])
+      .filter((entry) => entry.body.trim().length > 0)
+      .map((entry) => entry.targetUserId),
+  );
 
   async function run(task: () => Promise<unknown>) {
     setError(null);
@@ -124,59 +140,72 @@ export function MemberManager({ viewer, ownerId, permissions }: MemberManagerPro
         </Text>
       )}
 
-      <ul className="flex flex-col gap-2">
-        {memberList.map((member) => {
-          const displayName = memberDisplayName(member, member.userId);
-          const color = roleColorFor(member, roleList);
-          const names = roleNamesFor(member, roleList);
-          return (
-            <li key={member.userId}>
-              <button
-                type="button"
-                data-testid={`member-row-${member.userId}`}
-                onClick={() => {
-                  setSelectedId(member.userId);
-                  setError(null);
-                  setMemberOpen(true);
-                }}
-                className="flex w-full items-center gap-3 rounded-[12px] border border-border bg-surface-2 p-3 text-left transition hover:border-text-muted/30 hover:bg-surface-3/60"
-              >
-                <Avatar
-                  seed={userAvatarSeed(member.userId)}
-                  size={34}
-                  {...(color !== null && color.length > 0 ? { roleColor: color } : {})}
-                />
-                <span className="min-w-0 flex-1">
-                  <span className="flex items-center gap-1.5">
-                    <Text
-                      as="span"
-                      size="sm"
-                      className="truncate font-medium"
-                      style={color !== null ? { color } : undefined}
-                    >
-                      {displayName}
+      {members === undefined && (
+        <div className="flex justify-center py-8">
+          <Spinner size={22} label="Loading members" />
+        </div>
+      )}
+
+      {members !== undefined && memberList.length === 0 && (
+        <Text tone="muted" size="sm">
+          No members yet.
+        </Text>
+      )}
+
+      {members !== undefined && (
+        <ul className="flex flex-col gap-2">
+          {memberList.map((member) => {
+            const displayName = memberDisplayName(member, member.userId);
+            const color = roleColorFor(member, roleList);
+            const names = roleNamesFor(member, roleList);
+            return (
+              <li key={member.userId}>
+                <button
+                  type="button"
+                  data-testid={`member-row-${member.userId}`}
+                  onClick={() => {
+                    setSelectedId(member.userId);
+                    setError(null);
+                    setMemberOpen(true);
+                  }}
+                  className="flex w-full items-center gap-3 rounded-[12px] border border-border bg-surface-2 p-3 text-left transition hover:border-text-muted/30 hover:bg-surface-3/60"
+                >
+                  <PersonAvatar userId={member.userId} size={34} roleColor={color} />
+                  <span className="min-w-0 flex-1">
+                    <span className="flex items-center gap-1.5">
+                      <Text
+                        as="span"
+                        size="sm"
+                        className="truncate font-medium"
+                        style={color !== null ? { color } : undefined}
+                      >
+                        {displayName}
+                      </Text>
+                      {member.userId === ownerId && (
+                        <span className="rounded-[5px] bg-accent-soft px-1 text-[10px] font-semibold uppercase text-accent">
+                          Owner
+                        </span>
+                      )}
+                      {notedUserIds.has(member.userId) && (
+                        <Icon name="note" size={12} className="shrink-0 text-text-muted" />
+                      )}
+                    </span>
+                    <Text as="span" size="xs" tone="muted" className="block truncate">
+                      {names.length === 0 ? "No roles" : names.join(", ")}
                     </Text>
-                    {member.userId === ownerId && (
-                      <span className="rounded-[5px] bg-accent-soft px-1 text-[10px] font-semibold uppercase text-accent">
-                        Owner
-                      </span>
-                    )}
                   </span>
-                  <Text as="span" size="xs" tone="muted" className="block truncate">
-                    {names.length === 0 ? "No roles" : names.join(", ")}
-                  </Text>
-                </span>
-                <Icon
-                  name="chevron-right"
-                  size={14}
-                  className="shrink-0 text-text-muted/50"
-                  aria-hidden="true"
-                />
-              </button>
-            </li>
-          );
-        })}
-      </ul>
+                  <Icon
+                    name="chevron-right"
+                    size={14}
+                    className="shrink-0 text-text-muted/50"
+                    aria-hidden="true"
+                  />
+                </button>
+              </li>
+            );
+          })}
+        </ul>
+      )}
 
       {permissions.ban && (
         <button
@@ -202,15 +231,11 @@ export function MemberManager({ viewer, ownerId, permissions }: MemberManagerPro
               ? "No roles"
               : roleNamesFor(selected, roleList).join(", ")
           }
-          icon={<Avatar seed={userAvatarSeed(selected.userId)} size={36} />}
+          icon={<PersonAvatar userId={selected.userId} size={36} />}
           footer={
-            <button
-              type="button"
-              onClick={() => setMemberOpen(false)}
-              className="h-9 rounded-[8px] bg-surface-3 px-3.5 text-[13px] font-semibold text-text transition hover:bg-surface-2"
-            >
+            <Button variant="secondary" onClick={() => setMemberOpen(false)}>
               Done
-            </button>
+            </Button>
           }
         >
           <MemberDetail
@@ -247,8 +272,14 @@ export function MemberManager({ viewer, ownerId, permissions }: MemberManagerPro
             onKick={() =>
               void run(() => kick({ userId: selected.userId })).then(() => setMemberOpen(false))
             }
-            onBan={() =>
-              void run(() => ban({ userId: selected.userId })).then(() => setMemberOpen(false))
+            onBan={(durationMs, reason) =>
+              void run(() =>
+                ban({
+                  userId: selected.userId,
+                  ...(reason !== undefined && reason.length > 0 ? { reason } : {}),
+                  ...(durationMs !== undefined ? { durationMs } : {}),
+                }),
+              ).then(() => setMemberOpen(false))
             }
           />
         </Modal>
@@ -267,13 +298,9 @@ export function MemberManager({ viewer, ownerId, permissions }: MemberManagerPro
           </span>
         }
         footer={
-          <button
-            type="button"
-            onClick={() => setBansOpen(false)}
-            className="h-9 rounded-[8px] bg-surface-3 px-3.5 text-[13px] font-semibold text-text transition hover:bg-surface-2"
-          >
+          <Button variant="secondary" onClick={() => setBansOpen(false)}>
             Done
-          </button>
+          </Button>
         }
       >
         <section className="flex flex-col gap-2" data-testid="ban-list">
@@ -297,6 +324,11 @@ export function MemberManager({ viewer, ownerId, permissions }: MemberManagerPro
                         {entry.reason}
                       </Text>
                     )}
+                    <Text size="xs" tone="muted" className="block truncate">
+                      {(entry.expiresAt ?? null) === null
+                        ? "Permanent"
+                        : `Expires ${new Date(entry.expiresAt as number).toLocaleString()}`}
+                    </Text>
                   </span>
                   <ActionButton
                     disabled={busy}
@@ -328,7 +360,7 @@ interface MemberDetailProps {
   onNickname(nickname: string): void;
   onTimeout(until: number | undefined): void;
   onKick(): void;
-  onBan(): void;
+  onBan(durationMs?: number, reason?: string): void;
 }
 
 function MemberDetail({
@@ -521,15 +553,84 @@ function MemberDetail({
                 Kick
               </ActionButton>
             )}
-            {canBan && (
-              <ActionButton danger disabled={busy} onClick={onBan}>
-                Ban
-              </ActionButton>
-            )}
+            {canBan && <BanMenu disabled={busy} onPick={onBan} />}
           </div>
         </section>
       )}
+
+      <MemberNote userId={member.userId} />
     </div>
+  );
+}
+
+function MemberNote({ userId }: { readonly userId: string }) {
+  const note = useQuery(api.notes.get, { targetUserId: userId });
+  const upsert = useMutation(api.notes.upsert);
+  const [body, setBody] = useState("");
+  const [busy, setBusy] = useState(false);
+  const [saved, setSaved] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+
+  useEffect(() => {
+    setBody(note?.body ?? "");
+  }, [note?.body]);
+
+  const dirty = body !== (note?.body ?? "");
+
+  return (
+    <section
+      className="flex flex-col gap-2 border-t border-border pt-4"
+      data-testid={`member-note-${userId}`}
+    >
+      <div className="flex items-center gap-1.5">
+        <Icon name="note" size={14} className="text-text-muted" />
+        <Text as="h4" size="xs" tone="muted" className="font-semibold uppercase tracking-[0.06em]">
+          Private note
+        </Text>
+        {(note?.body ?? "").trim().length > 0 && (
+          <span className="flex h-1.5 w-1.5 rounded-full bg-accent" title="Note saved" />
+        )}
+      </div>
+      <textarea
+        aria-label="Private note"
+        rows={3}
+        value={body}
+        maxLength={1000}
+        placeholder="Only you can see this note about this member."
+        onChange={(event) => {
+          setBody(event.currentTarget.value);
+          setSaved(false);
+        }}
+        className="resize-none rounded-[8px] border border-border bg-surface-1 px-2.5 py-2 text-[13px] text-text placeholder:text-text-muted focus:border-accent focus:outline-none"
+      />
+      <div className="flex items-center gap-2">
+        <ActionButton
+          disabled={busy || !dirty}
+          onClick={() => {
+            setError(null);
+            setBusy(true);
+            void upsert({ targetUserId: userId, body: body.trim() })
+              .then(() => setSaved(true))
+              .catch((cause: unknown) =>
+                setError(cause instanceof Error ? cause.message : "Could not save the note."),
+              )
+              .finally(() => setBusy(false));
+          }}
+        >
+          Save note
+        </ActionButton>
+        {saved && !dirty && (
+          <Text size="xs" tone="secondary">
+            Saved
+          </Text>
+        )}
+        {error !== null && (
+          <Text size="xs" tone="danger" role="alert">
+            {error}
+          </Text>
+        )}
+      </div>
+    </section>
   );
 }
 
@@ -545,19 +646,61 @@ function ActionButton({
   readonly danger?: boolean;
 }) {
   return (
-    <button
+    <Button
       type="button"
+      size="sm"
+      variant={danger ? "danger" : "secondary"}
       disabled={disabled}
       onClick={onClick}
-      className={cn(
-        "h-8 rounded-[7px] border px-2.5 text-[12px] font-medium transition disabled:opacity-50",
-        danger
-          ? "border-danger/30 text-danger hover:bg-danger/10"
-          : "border-border bg-surface-1 text-text-muted hover:bg-surface-3 hover:text-text",
-      )}
     >
       {children}
-    </button>
+    </Button>
+  );
+}
+
+function BanMenu({
+  disabled,
+  onPick,
+}: {
+  readonly disabled: boolean;
+  readonly onPick: (durationMs?: number, reason?: string) => void;
+}) {
+  const [open, setOpen] = useState(false);
+  const [reason, setReason] = useState("");
+  return (
+    <div className="relative">
+      <ActionButton danger disabled={disabled} onClick={() => setOpen((value) => !value)}>
+        Ban…
+      </ActionButton>
+      {open && (
+        <div className="absolute bottom-full right-0 z-30 mb-1 w-[220px] animate-pop-in rounded-[9px] border border-border bg-surface-2 p-1.5 shadow-2xl shadow-black/25">
+          <input
+            aria-label="Ban reason"
+            value={reason}
+            maxLength={200}
+            placeholder="Reason (optional)"
+            onChange={(event) => setReason(event.target.value)}
+            className="mb-1 h-8 w-full rounded-[7px] border border-border bg-surface-1 px-2 text-[12px] text-text placeholder:text-text-muted focus:border-accent focus:outline-none"
+          />
+          {BAN_DURATIONS.map((duration) => (
+            <button
+              key={duration.label}
+              type="button"
+              onClick={() => {
+                setOpen(false);
+                onPick(
+                  duration.ms ?? undefined,
+                  reason.trim().length > 0 ? reason.trim() : undefined,
+                );
+              }}
+              className="flex w-full items-center rounded-[7px] px-2.5 py-1.5 text-left text-[12px] text-danger transition hover:bg-danger/10"
+            >
+              {duration.label}
+            </button>
+          ))}
+        </div>
+      )}
+    </div>
   );
 }
 

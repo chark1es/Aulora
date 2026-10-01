@@ -3,32 +3,51 @@ import {
   type AttachmentDescriptor,
   type ChannelView,
   conversationTitle,
+  expandBroadcast,
+  joinedElsewhere,
   type MessagePayload,
   Permission,
+  resolveChannelMentions,
+  resolveMentions,
 } from "@aulora/core";
-import { Button, Heading, Icon, IconButton, Spinner, Text, usePalette } from "@aulora/ui-native";
-import { useQuery } from "convex/react";
-import { useCallback, useEffect, useMemo, useState } from "react";
-import { Modal, Pressable, ScrollView, View } from "react-native";
+import { Heading, Icon, IconButton, Spinner, Text, usePalette } from "@aulora/ui-native";
+import { useMutation, useQuery } from "convex/react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { Alert, Modal, Platform, Pressable, ScrollView, View } from "react-native";
 import { api } from "../../../../../packages/convex/convex/_generated/api";
-import { uploadPickedFiles } from "../../lib/attachments";
-import { useLocalNotifications } from "../../lib/notifications";
+import { pickFromLibrary, uploadPickedFiles } from "../../lib/attachments";
+import {
+  banMember,
+  createCategory,
+  getUserNote,
+  kickMember,
+  setUserNote,
+  timeoutMember,
+} from "../../lib/backend-actions";
+import { useIncomingCallNotification, useLocalNotifications } from "../../lib/notifications";
 import { planChannelEdit } from "../../lib/permissions";
 import { typingLabel } from "../../lib/presence";
 import { useChannelSession } from "../../lib/use-channel";
+import { usePushRegistration } from "../../lib/use-push-registration";
 import { useChat } from "../../providers/ChatProvider";
 import { useProfiles } from "../../providers/ProfileProvider";
+import { useSound } from "../../providers/SoundProvider";
 import { useVoice } from "../../providers/VoiceProvider";
 import { CallScreen } from "../voice/CallScreen";
 import { IncomingCallModal } from "../voice/IncomingCallModal";
+import { JoinedElsewhereScreen } from "../voice/JoinedElsewhereScreen";
 import { VoiceChannelSection } from "../voice/VoiceChannelSection";
-import { VoiceSettingsSheet } from "../voice/VoiceSettingsSheet";
+import { BannedMembersSheet } from "./BannedMembersSheet";
 import { Composer } from "./Composer";
+import { CreateChannelSheet, type NewChannelKind } from "./CreateChannelSheet";
 import { EditChannelSheet } from "./EditChannelSheet";
+import { MemberActionsSheet } from "./MemberActionsSheet";
 import { MembersSheet } from "./MembersSheet";
 import { MessageList } from "./MessageList";
+import { SettingsSheet } from "./SettingsSheet";
 import { ThreadModal } from "./ThreadModal";
 import { type ThreadInboxItem, ThreadsInbox } from "./ThreadsInbox";
+import { UserNoteSheet } from "./UserNoteSheet";
 import { WorkspaceSwitcherSheet } from "./WorkspaceSwitcherSheet";
 
 export interface ChatScreenProps {
@@ -49,21 +68,51 @@ export function ChatScreen({
   onSignOut,
 }: ChatScreenProps) {
   const palette = usePalette();
-  const { runtime, ready, channels, presence, outbox, members, canManageChannels, sendMessage } =
-    useChat();
+  const {
+    runtime,
+    ready,
+    channels,
+    categories,
+    presence,
+    outbox,
+    members,
+    roles,
+    canManageChannels,
+    canKick,
+    canBan,
+    canTimeout,
+    canModerateMembers,
+    canMentionEveryone,
+    ownerUserId,
+    sendMessage,
+    avatarUrls,
+  } = useChat();
+  const generateAvatarUploadUrl = useMutation(api.members.generateAvatarUploadUrl);
+  const setAvatar = useMutation(api.members.setAvatar);
   const { activeProfile } = useProfiles();
   const voice = useVoice();
+  const sound = useSound();
+  const pushState = usePushRegistration(runtime?.client, Platform.OS === "ios" ? "ios" : "android");
   const [activeChannelId, setActiveChannelId] = useState<string | undefined>(undefined);
   const [mainView, setMainView] = useState<"channels" | "threads">("channels");
   const [drawerOpen, setDrawerOpen] = useState(false);
+  const [showHidden, setShowHidden] = useState(false);
   const [workspaceSwitcherOpen, setWorkspaceSwitcherOpen] = useState(false);
   const [membersOpen, setMembersOpen] = useState(false);
-  const [voiceSettingsOpen, setVoiceSettingsOpen] = useState(false);
+  const [bansOpen, setBansOpen] = useState(false);
+  const [settingsOpen, setSettingsOpen] = useState(false);
+  const [createOpen, setCreateOpen] = useState(false);
+  const [createBusy, setCreateBusy] = useState(false);
+  const [createError, setCreateError] = useState<string | null>(null);
   const [threadRoot, setThreadRoot] = useState<MessagePayload | null>(null);
   const [channelAction, setChannelAction] = useState<ChannelView | null>(null);
   const [editChannelModal, setEditChannelModal] = useState<ChannelView | null>(null);
   const [editChannelBusy, setEditChannelBusy] = useState(false);
   const [editChannelError, setEditChannelError] = useState<string | null>(null);
+  const [memberActionsFor, setMemberActionsFor] = useState<string | null>(null);
+  const [moderationBusy, setModerationBusy] = useState(false);
+  const [moderationError, setModerationError] = useState<string | null>(null);
+  const [noteFor, setNoteFor] = useState<string | null>(null);
 
   // Subscribe only while the drawer badge or Threads view needs it; the query
   // fetches on open.
@@ -95,11 +144,68 @@ export function ChatScreen({
     return map;
   }, [channels]);
 
-  useLocalNotifications(runtime, ownUserId, channelNames);
+  const mentionChannelTargets = useMemo(
+    () =>
+      channels
+        .filter((entry) => entry.kind === "text" || entry.kind === "announcement")
+        .map((entry) => ({ channelId: entry.id, name: entry.name })),
+    [channels],
+  );
+
+  const mentionChannelOptions = useMemo(
+    () => mentionChannelTargets.map((target) => ({ id: target.channelId, name: target.name })),
+    [mentionChannelTargets],
+  );
+
+  const mentionCategoryTargets = useMemo(
+    () => categories.map((category) => ({ categoryId: category.id, name: category.name })),
+    [categories],
+  );
+
+  // Names `#` autocomplete and the message renderer should recognise: real
+  // channels resolve to a destination, categories are highlighted only.
+  const mentionNames = useMemo(() => {
+    const map = new Map<string, string>();
+    for (const target of mentionChannelTargets) {
+      map.set(target.channelId, target.name);
+    }
+    for (const target of mentionCategoryTargets) {
+      map.set(`category:${target.categoryId}`, target.name);
+    }
+    return map;
+  }, [mentionChannelTargets, mentionCategoryTargets]);
+
+  const mentionUserTargets = useMemo(
+    () => members.map((member) => ({ userId: member.userId, displayName: member.displayName })),
+    [members],
+  );
+  const mentionMemberIds = useMemo(() => members.map((member) => member.userId), [members]);
+
+  const visibleChannels = useMemo(() => {
+    if (showHidden) {
+      return channels;
+    }
+    return channels.filter((entry) => entry.hidden !== true || entry.id === activeChannelId);
+  }, [channels, showHidden, activeChannelId]);
+
+  const hiddenCount = useMemo(
+    () => channels.filter((entry) => entry.hidden === true).length,
+    [channels],
+  );
+
+  const mutedChannelIds = useMemo(
+    () => new Set(channels.filter((entry) => entry.muted === true).map((entry) => entry.id)),
+    [channels],
+  );
+
+  useLocalNotifications(runtime, ownUserId, channelNames, {
+    mutedChannelIds,
+    onCue: (event) => sound?.play(event),
+  });
 
   useEffect(() => {
     if (activeChannelId === undefined) {
-      const firstText = channels.find((entry) => entry.kind !== "voice");
+      const firstText = channels.find((entry) => entry.kind !== "voice" && entry.hidden !== true);
       if (firstText !== undefined) {
         setActiveChannelId(firstText.id);
       }
@@ -108,6 +214,41 @@ export function ChatScreen({
 
   const channel = channels.find((entry) => entry.id === activeChannelId);
   const sessionState = useChannelSession(runtime, activeChannelId, ownUserId);
+
+  // Call cues: connect on the first participant, then join/leave as the roster
+  // changes, mirroring web.
+  const callParticipantCount = voice.call?.participants.length ?? 0;
+  const connectedRef = useRef(false);
+  const participantCountRef = useRef(0);
+  // biome-ignore lint/correctness/useExhaustiveDependencies: fire on roster changes only
+  useEffect(() => {
+    if (callParticipantCount === 0) {
+      connectedRef.current = false;
+      participantCountRef.current = 0;
+      return;
+    }
+    if (!connectedRef.current) {
+      connectedRef.current = true;
+      participantCountRef.current = callParticipantCount;
+      sound?.play("call-connect");
+      return;
+    }
+    const previous = participantCountRef.current;
+    participantCountRef.current = callParticipantCount;
+    if (callParticipantCount > previous) {
+      sound?.play("call-join");
+    } else if (callParticipantCount < previous) {
+      sound?.play("call-leave");
+    }
+  }, [callParticipantCount]);
+
+  const incomingCount = voice.incoming.length;
+  // biome-ignore lint/correctness/useExhaustiveDependencies: fire on arrival only
+  useEffect(() => {
+    if (incomingCount > 0) {
+      sound?.play("call-ring");
+    }
+  }, [incomingCount]);
 
   const memberNames = useMemo(() => {
     const map = new Map<string, string>();
@@ -132,6 +273,11 @@ export function ChatScreen({
     }
     return map;
   }, [members]);
+
+  useIncomingCallNotification(
+    voice.incoming,
+    (call) => memberNames.get(call.initiatorId) ?? call.initiatorId,
+  );
 
   const titles = useMemo(() => {
     const map = new Map<string, string>();
@@ -198,6 +344,10 @@ export function ChatScreen({
     [pendingItems],
   );
 
+  const ownPresence = presence.find((row) => row.userId === ownUserId);
+  const ownStatus = ownPresence?.status ?? "offline";
+  const ownCustomStatus = ownPresence?.customStatus ?? "";
+
   const openChannel = useCallback(
     async (channelId: string) => {
       setActiveChannelId(channelId);
@@ -215,6 +365,7 @@ export function ChatScreen({
   const joinVoiceChannel = useCallback(
     (channelId: string) => {
       setDrawerOpen(false);
+      void openChannel(channelId);
       const live = voice.activeCalls.find((entry) => entry.channelId === channelId);
       if (live !== undefined) {
         void voice.joinCall(live.id);
@@ -222,10 +373,120 @@ export function ChatScreen({
         void voice.startCall(channelId, "voice");
       }
     },
-    [voice],
+    [openChannel, voice],
   );
 
-  // A Threads-inbox row opens the existing thread sheet for its root message.
+  const create = useCallback(
+    async (input: {
+      readonly kind: NewChannelKind;
+      readonly name: string;
+      readonly topic?: string;
+      readonly categoryId?: string;
+      readonly private: boolean;
+    }) => {
+      if (runtime === undefined) {
+        return;
+      }
+      setCreateBusy(true);
+      setCreateError(null);
+      try {
+        const newId = await runtime.port.createChannel({
+          kind: input.kind,
+          name: input.name,
+          ...(input.topic !== undefined ? { topic: input.topic } : {}),
+          ...(input.categoryId !== undefined ? { categoryId: input.categoryId } : {}),
+          private: input.private,
+        });
+        setCreateOpen(false);
+        if (input.kind !== "voice") {
+          await openChannel(newId);
+        }
+      } catch (error) {
+        setCreateError(errorMessage(error));
+      } finally {
+        setCreateBusy(false);
+      }
+    },
+    [runtime, openChannel],
+  );
+
+  const createNewCategory = useCallback(
+    async (name: string) => {
+      if (runtime === undefined) {
+        return;
+      }
+      setCreateBusy(true);
+      setCreateError(null);
+      try {
+        await createCategory(runtime.client, name);
+        setCreateOpen(false);
+      } catch (error) {
+        setCreateError(errorMessage(error));
+      } finally {
+        setCreateBusy(false);
+      }
+    },
+    [runtime],
+  );
+
+  const toggleMute = useCallback(
+    async (target: ChannelView) => {
+      if (runtime === undefined) {
+        return;
+      }
+      await runtime.port.setChannelMuted?.({
+        channelId: target.id,
+        muted: target.muted !== true,
+      });
+      setChannelAction(null);
+    },
+    [runtime],
+  );
+
+  const toggleHide = useCallback(
+    async (target: ChannelView) => {
+      if (runtime === undefined) {
+        return;
+      }
+      await runtime.port.setChannelHidden?.({
+        channelId: target.id,
+        hidden: target.hidden !== true,
+      });
+      setChannelAction(null);
+    },
+    [runtime],
+  );
+
+  const markChannelRead = useCallback(async () => {
+    if (runtime === undefined || activeChannelId === undefined) {
+      return;
+    }
+    const latest = sessionState.messages[sessionState.messages.length - 1];
+    if (latest !== undefined) {
+      await runtime.session.markRead(activeChannelId, latest.id);
+    }
+    setChannelAction(null);
+  }, [runtime, activeChannelId, sessionState.messages]);
+
+  const runModeration = useCallback(
+    async (task: (client: NonNullable<typeof runtime>["client"]) => Promise<void>) => {
+      if (runtime === undefined) {
+        return;
+      }
+      setModerationBusy(true);
+      setModerationError(null);
+      try {
+        await task(runtime.client);
+        setMemberActionsFor(null);
+      } catch (error) {
+        setModerationError(errorMessage(error));
+      } finally {
+        setModerationBusy(false);
+      }
+    },
+    [runtime],
+  );
+
   const openThreadFromInbox = useCallback(
     (thread: ThreadInboxItem) => {
       const root: MessagePayload = {
@@ -316,12 +577,19 @@ export function ChatScreen({
     (userId) => memberNames.get(userId) ?? userId,
   );
 
+  const confirmSignOut = useCallback(() => {
+    Alert.alert(`Sign out of ${workspaceName}?`, "You can sign back in at any time.", [
+      { text: "Cancel", style: "cancel" },
+      { text: "Sign out", style: "destructive", onPress: onSignOut },
+    ]);
+  }, [workspaceName, onSignOut]);
+
   return (
     <View className="flex-1 bg-bg">
       <View className="flex-row items-center justify-between border-b border-border px-3 py-3">
         <View className="flex-row items-center gap-3">
           <Pressable accessibilityLabel="Open channels" onPress={() => setDrawerOpen(true)}>
-            <Text size="lg">☰</Text>
+            <Icon name="menu" size={20} color={palette.text} />
           </Pressable>
           <Heading level={3}>
             {mainView === "threads" ? "Threads" : (channel?.name ?? workspaceName)}
@@ -358,9 +626,14 @@ export function ChatScreen({
               {presence.length} online
             </Text>
           </Pressable>
-          <Button size="sm" variant="ghost" onPress={onSignOut}>
-            Sign out
-          </Button>
+          <IconButton
+            label="Settings"
+            variant="ghost"
+            size="sm"
+            onPress={() => setSettingsOpen(true)}
+          >
+            <Icon name="settings" size={18} color={palette.text} />
+          </IconButton>
         </View>
       </View>
 
@@ -386,6 +659,19 @@ export function ChatScreen({
         <View className="flex-1 items-center justify-center">
           <Text tone="muted">Select a channel to start.</Text>
         </View>
+      ) : channel.kind === "voice" &&
+        joinedElsewhere(
+          voice.activeCalls.find((entry) => entry.channelId === channel.id) ?? null,
+          ownUserId,
+          voice.clientId,
+          voice.callId,
+        ) ? (
+        <JoinedElsewhereScreen
+          channelName={channel.name}
+          pending={voice.pending}
+          canJoin={voice.canConnect}
+          onJoin={() => joinVoiceChannel(channel.id)}
+        />
       ) : (
         <>
           <View className="items-center border-b border-border px-3 py-1">
@@ -394,6 +680,7 @@ export function ChatScreen({
             </Text>
           </View>
           <MessageList
+            key={channel.id}
             runtime={runtime}
             channelId={channel.id}
             messages={mergedMessages}
@@ -403,8 +690,15 @@ export function ChatScreen({
             ownUserId={ownUserId}
             memberNames={memberNames}
             memberColors={memberColors}
+            channelNames={mentionNames}
             firstUnreadId={sessionState.unread.firstUnreadId}
             onReply={(message) => setThreadRoot(message)}
+            onChannelPress={(name) => {
+              const target = mentionChannelTargets.find((entry) => entry.name === name);
+              if (target !== undefined) {
+                void openChannel(target.channelId);
+              }
+            }}
             onJumpToFirstUnread={() => {
               if (sessionState.unread.firstUnreadId !== null) {
                 void runtime?.session.markRead(channel.id, sessionState.unread.firstUnreadId);
@@ -420,6 +714,11 @@ export function ChatScreen({
           )}
           <Composer
             channelId={channel.id}
+            members={mentionUserTargets}
+            roles={roles}
+            channels={mentionChannelOptions}
+            canMentionEveryone={canMentionEveryone}
+            viewerName={ownDisplayName}
             onTyping={(channelId) => {
               void runtime?.port.setTyping({ channelId });
             }}
@@ -431,7 +730,21 @@ export function ChatScreen({
               if (files.length > 0) {
                 attachments = await uploadPickedFiles(runtime.port, files);
               }
+              const resolution = resolveMentions(text, mentionUserTargets, roles);
+              const mentionUserIds = expandBroadcast(resolution, mentionMemberIds);
+              const channelMentions = resolveChannelMentions(
+                text,
+                mentionChannelTargets,
+                mentionCategoryTargets,
+              );
               const result = await sendMessage(channel.id, text, {
+                ...(mentionUserIds.length > 0 ? { mentionUserIds } : {}),
+                ...(channelMentions.channelIds.length > 0
+                  ? { mentionChannelIds: channelMentions.channelIds }
+                  : {}),
+                ...(channelMentions.categoryIds.length > 0
+                  ? { mentionCategoryIds: channelMentions.categoryIds }
+                  : {}),
                 ...(attachments !== undefined && attachments.length > 0 ? { attachments } : {}),
               });
               if (!result.queued && result.messageId !== undefined) {
@@ -467,37 +780,50 @@ export function ChatScreen({
               <Heading level={3} className="flex-1" numberOfLines={1}>
                 {workspaceName}
               </Heading>
-              <Text size="sm" tone="muted">
-                ⌄
-              </Text>
+              <Icon name="chevron-down" size={16} color={palette["text-muted"]} />
             </Pressable>
-            <Pressable
-              accessibilityRole="button"
-              accessibilityState={{ selected: mainView === "threads" }}
-              onPress={() => {
-                setMainView("threads");
-                setThreadRoot(null);
-                setDrawerOpen(false);
-              }}
-              className={
-                mainView === "threads"
-                  ? "mt-2 flex-row items-center gap-2 rounded-input bg-surface-3 px-3 py-2"
-                  : "mt-2 flex-row items-center gap-2 rounded-input px-3 py-2"
-              }
-            >
-              <Text size="sm" tone={mainView === "threads" ? "default" : "muted"}>
-                # Threads
-              </Text>
-              {threadMentionCount > 0 && (
-                <View className="rounded-pill bg-accent px-1.5 py-0.5">
-                  <Text size="xs" className="font-bold" style={{ color: palette["on-accent"] }}>
-                    {threadMentionCount > 9 ? "9+" : String(threadMentionCount)}
-                  </Text>
-                </View>
+            <View className="mt-2 flex-row items-center gap-2">
+              <Pressable
+                accessibilityRole="button"
+                accessibilityState={{ selected: mainView === "threads" }}
+                onPress={() => {
+                  setMainView("threads");
+                  setThreadRoot(null);
+                  setDrawerOpen(false);
+                }}
+                className={
+                  mainView === "threads"
+                    ? "flex-1 flex-row items-center gap-2 rounded-input bg-surface-3 px-3 py-2"
+                    : "flex-1 flex-row items-center gap-2 rounded-input px-3 py-2"
+                }
+              >
+                <Text size="sm" tone={mainView === "threads" ? "default" : "muted"}>
+                  # Threads
+                </Text>
+                {threadMentionCount > 0 && (
+                  <View className="rounded-pill bg-accent px-1.5 py-0.5">
+                    <Text size="xs" className="font-bold" style={{ color: palette["on-accent"] }}>
+                      {threadMentionCount > 9 ? "9+" : String(threadMentionCount)}
+                    </Text>
+                  </View>
+                )}
+              </Pressable>
+              {canManageChannels && (
+                <IconButton
+                  label="Create channel"
+                  variant="secondary"
+                  size="sm"
+                  onPress={() => {
+                    setCreateError(null);
+                    setCreateOpen(true);
+                  }}
+                >
+                  <Icon name="plus" size={18} color={palette.text} />
+                </IconButton>
               )}
-            </Pressable>
+            </View>
             <ScrollView contentContainerStyle={{ gap: 6, paddingVertical: 12 }}>
-              {channels
+              {visibleChannels
                 .filter((entry) => entry.kind !== "voice")
                 .map((entry) => {
                   const active = entry.id === activeChannelId;
@@ -506,36 +832,51 @@ export function ChatScreen({
                       key={entry.id}
                       accessibilityRole="button"
                       onPress={() => void openChannel(entry.id)}
-                      onLongPress={() => {
-                        if (
-                          (entry.kind === "text" || entry.kind === "announcement") &&
-                          canManageChannels
-                        ) {
-                          setChannelAction(entry);
-                        }
-                      }}
+                      onLongPress={() => setChannelAction(entry)}
                       delayLongPress={300}
                       className={
                         active ? "rounded-input bg-surface-3 px-3 py-2" : "rounded-input px-3 py-2"
                       }
                     >
-                      <Text size="sm" tone={active ? "default" : "muted"}>
-                        {entry.kind === "dm" || entry.kind === "group_dm" ? "@ " : "# "}
-                        {entry.name}
-                      </Text>
+                      <View className="flex-row items-center gap-2">
+                        <Text size="sm" tone={active ? "default" : "muted"} className="flex-1">
+                          {entry.kind === "dm" || entry.kind === "group_dm" ? "@ " : "# "}
+                          {entry.name}
+                        </Text>
+                        {entry.muted === true && (
+                          <Icon name="bell-off" size={13} color={palette["text-muted"]} />
+                        )}
+                        {entry.hidden === true && (
+                          <Icon name="eye-off" size={13} color={palette["text-muted"]} />
+                        )}
+                      </View>
                     </Pressable>
                   );
                 })}
-              {channels.length === 0 && (
+              {visibleChannels.length === 0 && (
                 <Text size="sm" tone="muted">
                   No channels yet.
                 </Text>
               )}
+              {hiddenCount > 0 && (
+                <Pressable
+                  accessibilityRole="button"
+                  className="rounded-input px-3 py-2"
+                  onPress={() => setShowHidden(!showHidden)}
+                >
+                  <Text size="xs" tone="muted">
+                    {showHidden ? "Hide hidden channels" : `Show ${hiddenCount} hidden`}
+                  </Text>
+                </Pressable>
+              )}
               <VoiceChannelSection
-                channels={channels}
+                channels={visibleChannels}
                 activeCalls={voice.activeCalls}
                 memberNames={memberNames}
                 selfUserId={ownUserId}
+                clientId={voice.clientId}
+                localCallId={voice.callId}
+                remoteLevels={voice.remoteLevels}
                 onJoin={joinVoiceChannel}
               />
             </ScrollView>
@@ -554,26 +895,54 @@ export function ChatScreen({
           onPress={() => setChannelAction(null)}
         >
           <View className="gap-1 rounded-t-card bg-surface-2 p-4">
-            <Text size="sm" className="px-3 pb-1 font-medium">
+            <Heading level={3} className="px-3 pb-1">
               {channelAction?.name}
-            </Text>
-            {canManageChannels && (
-              <Pressable
-                accessibilityRole="button"
-                className="rounded-input px-3 py-3"
-                onPress={() => {
-                  const target = channelAction;
-                  if (target === null) {
-                    return;
-                  }
-                  setEditChannelError(null);
-                  setEditChannelModal(target);
-                  setChannelAction(null);
-                  setDrawerOpen(false);
-                }}
-              >
-                <Text>Edit channel…</Text>
-              </Pressable>
+            </Heading>
+            {channelAction !== null && (
+              <>
+                <Pressable
+                  accessibilityRole="button"
+                  className="rounded-input px-3 py-3"
+                  onPress={() => void toggleMute(channelAction)}
+                >
+                  <Text>{channelAction.muted === true ? "Unmute channel" : "Mute channel"}</Text>
+                </Pressable>
+                <Pressable
+                  accessibilityRole="button"
+                  className="rounded-input px-3 py-3"
+                  onPress={() => void toggleHide(channelAction)}
+                >
+                  <Text>{channelAction.hidden === true ? "Show channel" : "Hide channel"}</Text>
+                </Pressable>
+                {channelAction.id === activeChannelId && (
+                  <Pressable
+                    accessibilityRole="button"
+                    className="rounded-input px-3 py-3"
+                    onPress={() => void markChannelRead()}
+                  >
+                    <Text>Mark as read</Text>
+                  </Pressable>
+                )}
+                {canManageChannels &&
+                  (channelAction.kind === "text" || channelAction.kind === "announcement") && (
+                    <Pressable
+                      accessibilityRole="button"
+                      className="rounded-input px-3 py-3"
+                      onPress={() => {
+                        const target = channelAction;
+                        if (target === null) {
+                          return;
+                        }
+                        setEditChannelError(null);
+                        setEditChannelModal(target);
+                        setChannelAction(null);
+                        setDrawerOpen(false);
+                      }}
+                    >
+                      <Text>Edit channel…</Text>
+                    </Pressable>
+                  )}
+              </>
             )}
             <Pressable
               accessibilityRole="button"
@@ -621,6 +990,16 @@ export function ChatScreen({
           rootText={sessionState.decrypted.get(threadRoot.id)}
           ownUserId={ownUserId}
           memberNames={memberNames}
+          roles={roles}
+          channels={mentionChannelOptions}
+          channelNames={mentionNames}
+          onChannelPress={(name) => {
+            const target = mentionChannelTargets.find((entry) => entry.name === name);
+            if (target !== undefined) {
+              setThreadRoot(null);
+              void openChannel(target.channelId);
+            }
+          }}
           onClose={() => setThreadRoot(null)}
           onSendReply={async ({ text, files, replyInThread }) => {
             let attachments: readonly AttachmentDescriptor[] | undefined;
@@ -646,10 +1025,24 @@ export function ChatScreen({
         presence={presence}
         memberNames={memberNames}
         ownUserId={ownUserId}
+        ownerUserId={ownerUserId}
+        canModerateMembers={canModerateMembers}
         onClose={() => setMembersOpen(false)}
-        onOpenVoiceSettings={() => {
+        onOpenSettings={() => {
           setMembersOpen(false);
-          setVoiceSettingsOpen(true);
+          setSettingsOpen(true);
+        }}
+        {...(canBan
+          ? {
+              onOpenBans: () => {
+                setMembersOpen(false);
+                setBansOpen(true);
+              },
+            }
+          : {})}
+        onMemberActions={(userId) => {
+          setModerationError(null);
+          setMemberActionsFor(userId);
         }}
         onSetStatus={(status, customStatus) => {
           void runtime?.port.setStatus({
@@ -659,7 +1052,132 @@ export function ChatScreen({
         }}
       />
 
-      <VoiceSettingsSheet visible={voiceSettingsOpen} onClose={() => setVoiceSettingsOpen(false)} />
+      <SettingsSheet
+        visible={settingsOpen}
+        ownUserId={ownUserId}
+        ownDisplayName={ownDisplayName}
+        hasAvatar={avatarUrls.has(ownUserId)}
+        onChangeAvatar={() => {
+          void (async () => {
+            const [file] = await pickFromLibrary();
+            if (file === undefined) {
+              return;
+            }
+            const bytes = await fetch(file.uri).then((response) => response.blob());
+            if (bytes.size > 4 * 1024 * 1024) {
+              Alert.alert("Image too large", "Choose an image under 4 MB.");
+              return;
+            }
+            const uploadUrl = await generateAvatarUploadUrl({});
+            const uploaded = await fetch(uploadUrl, {
+              method: "POST",
+              headers: { "Content-Type": file.mime },
+              body: bytes,
+            });
+            if (!uploaded.ok) {
+              Alert.alert("Couldn't update your profile picture.");
+              return;
+            }
+            const body = (await uploaded.json()) as { storageId?: unknown };
+            if (typeof body.storageId !== "string") {
+              Alert.alert("Couldn't update your profile picture.");
+              return;
+            }
+            await setAvatar({ storageId: body.storageId as never });
+          })().catch(() => Alert.alert("Couldn't update your profile picture."));
+        }}
+        onClearAvatar={() => {
+          void setAvatar({}).catch(() => Alert.alert("Couldn't remove your profile picture."));
+        }}
+        ownStatus={ownStatus}
+        ownCustomStatus={ownCustomStatus}
+        pushState={pushState}
+        onSetStatus={(status, customStatus) => {
+          void runtime?.port.setStatus({
+            status,
+            ...(customStatus !== undefined ? { customStatus } : {}),
+          });
+        }}
+        onSignOut={() => {
+          setSettingsOpen(false);
+          confirmSignOut();
+        }}
+        onClose={() => setSettingsOpen(false)}
+      />
+
+      {canBan && (
+        <BannedMembersSheet
+          visible={bansOpen}
+          memberNames={memberNames}
+          onClose={() => setBansOpen(false)}
+        />
+      )}
+
+      <CreateChannelSheet
+        visible={createOpen}
+        categories={categories}
+        busy={createBusy}
+        error={createError}
+        onCreateChannel={create}
+        onCreateCategory={createNewCategory}
+        onClose={() => setCreateOpen(false)}
+      />
+
+      <MemberActionsSheet
+        visible={memberActionsFor !== null}
+        memberName={
+          memberActionsFor === null ? "" : (memberNames.get(memberActionsFor) ?? memberActionsFor)
+        }
+        canKick={canKick}
+        canBan={canBan}
+        canTimeout={canTimeout}
+        busy={moderationBusy}
+        error={moderationError}
+        onKick={() => {
+          const target = memberActionsFor;
+          if (target !== null) {
+            void runModeration((client) => kickMember(client, target));
+          }
+        }}
+        onBan={(options) => {
+          const target = memberActionsFor;
+          if (target !== null) {
+            void runModeration((client) => banMember(client, target, options));
+          }
+        }}
+        onTimeout={(durationMs) => {
+          const target = memberActionsFor;
+          if (target !== null) {
+            void runModeration((client) =>
+              timeoutMember(
+                client,
+                target,
+                durationMs === undefined ? undefined : Date.now() + durationMs,
+              ),
+            );
+          }
+        }}
+        onOpenNote={() => {
+          const target = memberActionsFor;
+          if (target !== null) {
+            setNoteFor(target);
+          }
+        }}
+        onClose={() => {
+          setMemberActionsFor(null);
+          setModerationError(null);
+        }}
+      />
+
+      {noteFor !== null && runtime !== undefined && (
+        <UserNoteSheet
+          visible
+          memberName={memberNames.get(noteFor) ?? noteFor}
+          loadNote={() => getUserNote(runtime.client, noteFor)}
+          onSave={(body) => setUserNote(runtime.client, noteFor, body)}
+          onClose={() => setNoteFor(null)}
+        />
+      )}
 
       <IncomingCallModal
         callerName={(call) => memberNames.get(call.initiatorId) ?? call.initiatorId}

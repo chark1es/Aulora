@@ -2,7 +2,7 @@
   "name": "@aulora/avatars",
   "version": "0.0.0",
   "private": true,
-  "description": "Deterministic Blobatar avatars for Aulora web, seeded by stable user/icon id. Native entrypoint is Phase 4.",
+  "description": "Deterministic Blobatar avatars for Aulora web and native clients.",
   "type": "module",
   "exports": {
     ".": "./src/index.ts",
@@ -47,5 +47,6 @@
     "react-native-svg": "15.15.4",
     "typescript": "5.9.3",
     "vitest": "5.0.2"
-  }
+  },
+  "license": "PolyForm-Noncommercial-1.0.0"
 }

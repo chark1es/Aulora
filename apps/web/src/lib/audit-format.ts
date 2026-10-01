@@ -1,43 +1,13 @@
-/** Human labels for the audit actions the server records. */
-const AUDIT_ACTION_LABELS: Record<string, string> = {
-  "role.create": "Created role",
-  "role.update": "Updated role",
-  "role.delete": "Deleted role",
-  "role.reorder": "Reordered roles",
-  "member.role.add": "Added member role",
-  "member.role.remove": "Removed member role",
-  "member.nickname": "Changed nickname",
-  "member.timeout": "Set timeout",
-  "member.kick": "Kicked member",
-  "member.ban": "Banned member",
-  "member.unban": "Unbanned member",
-  "invite.create": "Created invite",
-  "invite.revoke": "Revoked invite",
-  "invite.redeem": "Redeemed invite",
-  "category.create": "Created category",
-  "category.update": "Updated category",
-  "category.delete": "Deleted category",
-  "category.setOverrides": "Set category overrides",
-  "category.clearOverride": "Cleared category override",
-  "channel.create": "Created channel",
-  "channel.rename": "Renamed channel",
-  "channel.setTopic": "Set channel topic",
-  "channel.archive": "Archived channel",
-  "channel.unarchive": "Unarchived channel",
-  "channel.setOverrides": "Set channel overrides",
-  "channel.clearOverride": "Cleared channel override",
-  "channel.join": "Joined channel",
-  "channel.leave": "Left channel",
-  "channel.member.add": "Added channel member",
-  "channel.member.remove": "Removed channel member",
-  "channel.createDm": "Opened a direct message",
-  "channel.createGroupDm": "Opened a group message",
-  "server.updateSettings": "Updated workspace settings",
-};
+/**
+ * Friendly, human sentences for audit events. The backend now resolves the
+ * actor and target to display names; this module turns an opaque action code
+ * plus its metadata into a plain sentence ("Ada banned Bob — spam"), and never
+ * leaks raw ids or developer-style labels.
+ */
 
 /** A readable label for an opaque audit action string. */
 export function auditActionLabel(action: string): string {
-  return AUDIT_ACTION_LABELS[action] ?? action;
+  return ACTION_LABELS[action] ?? humanize(action);
 }
 
 /** A coarse grouping used to tint and icon an event. */
@@ -54,6 +24,7 @@ export function auditCategory(action: string): AuditCategory {
     case "channel":
       return "channel";
     case "server":
+    case "instance":
       return "server";
     default:
       return "other";
@@ -65,66 +36,175 @@ export function shortId(id: string, length = 6): string {
   return id.length <= length ? id : `${id.slice(0, length)}…`;
 }
 
-/**
- * Formats one metadata value. Known scalar keys get friendly copy; opaque ids
- * (roleId, userId, targetId, …) return `null` so they are never surfaced raw.
- */
-function formatMetaValue(key: string, value: unknown): string | null {
-  switch (key) {
-    case "name":
-      return typeof value === "string" && value.length > 0 ? value : null;
-    case "reason":
-      return typeof value === "string" && value.length > 0 ? `Reason: ${value}` : null;
-    case "changed":
-      return Array.isArray(value) && value.length > 0
-        ? `Changed ${value.filter((entry) => typeof entry === "string").join(", ")}`
-        : null;
-    case "kind":
-      return typeof value === "string" ? `Kind: ${value}` : null;
-    case "private":
-      return typeof value === "boolean" ? (value ? "Private" : "Public") : null;
-    case "count":
-      return typeof value === "number" ? `${value} item${value === 1 ? "" : "s"}` : null;
-    case "position":
-      return typeof value === "number" ? `Position ${value}` : null;
-    case "targetType":
-      return value === "role" || value === "member" ? `Target: ${value}` : null;
-    case "until":
-      if (value === null) {
-        return "Cleared";
-      }
-      return typeof value === "number" ? `Until ${new Date(value).toLocaleString()}` : null;
-    default:
-      return null;
+const ACTION_LABELS: Record<string, string> = {
+  "role.create": "created a role",
+  "role.update": "updated a role",
+  "role.delete": "deleted a role",
+  "role.reorder": "reordered roles",
+  "member.role.add": "gave a member a role",
+  "member.role.remove": "removed a role from a member",
+  "member.nickname": "changed a nickname",
+  "member.timeout": "timed out a member",
+  "member.kick": "kicked a member",
+  "member.ban": "banned a member",
+  "member.unban": "unbanned a member",
+  "invite.create": "created an invite",
+  "invite.revoke": "revoked an invite",
+  "invite.redeem": "redeemed an invite",
+  "category.create": "created a category",
+  "category.update": "renamed a category",
+  "category.delete": "deleted a category",
+  "category.setOverrides": "changed category permissions",
+  "category.clearOverride": "cleared a category override",
+  "channel.create": "created a channel",
+  "channel.rename": "renamed a channel",
+  "channel.setTopic": "updated a channel topic",
+  "channel.archive": "archived a channel",
+  "channel.unarchive": "restored a channel",
+  "channel.setOverrides": "changed channel permissions",
+  "channel.clearOverride": "cleared a channel override",
+  "channel.member.add": "added someone to a channel",
+  "channel.member.remove": "removed someone from a channel",
+  "server.updateSettings": "updated workspace settings",
+  "server.updateBranding": "updated the workspace branding",
+  "server.setLogo": "changed the workspace logo",
+  "instance.storage.update": "updated storage limits",
+  "instance.pushRelay.update": "updated the push relay",
+  "instance.authProviders.update": "updated sign-in providers",
+  "instance.backups.update": "updated backup settings",
+  "email.sendTest": "sent a test email",
+  "email.settings.update": "updated email settings",
+  "license.setKey": "updated the license key",
+};
+
+function humanize(action: string): string {
+  const words = action.replace(/[._]/g, " ").trim();
+  return words.length === 0 ? "did something" : words;
+}
+
+const META_LABELS: Record<string, string> = {
+  name: "name",
+  reason: "reason",
+  domain: "domain",
+  email: "email",
+  kind: "kind",
+  position: "position",
+  provider: "provider",
+};
+
+interface EventNames {
+  readonly actorName?: string | null;
+  readonly targetName?: string | null;
+}
+
+function nonEmpty(value: unknown): string | null {
+  return typeof value === "string" && value.trim().length > 0 ? value.trim() : null;
+}
+
+function parseMeta(meta: string | null): Record<string, unknown> | null {
+  if (meta === null) {
+    return null;
+  }
+  try {
+    const parsed = JSON.parse(meta) as unknown;
+    return parsed !== null && typeof parsed === "object" && !Array.isArray(parsed)
+      ? (parsed as Record<string, unknown>)
+      : null;
+  } catch {
+    return null;
+  }
+}
+
+function metaDetail(action: string, meta: Record<string, unknown> | null): string | null {
+  if (meta === null) {
+    return null;
+  }
+  const name = nonEmpty(meta.name);
+  const changed = Array.isArray(meta.changed)
+    ? meta.changed.filter((entry): entry is string => typeof entry === "string")
+    : [];
+  switch (action) {
+    case "role.create":
+    case "role.delete":
+    case "category.create":
+    case "category.update":
+    case "category.delete":
+    case "channel.rename":
+    case "channel.setTopic":
+      return name !== null ? name : null;
+    case "role.update":
+      return changed.length > 0 ? changed.join(", ") : name;
+    case "server.updateSettings":
+    case "instance.authProviders.update":
+      return changed.length > 0 ? changed.join(", ") : null;
+    case "member.nickname":
+      return name !== null ? name : null;
+    case "channel.create": {
+      const kind = nonEmpty(meta.kind);
+      const isPrivate = meta.private === true;
+      const parts = [kind, isPrivate ? "private" : null].filter(
+        (entry): entry is string => entry !== null,
+      );
+      return parts.length > 0 ? parts.join(", ") : name;
+    }
+    case "member.ban": {
+      const reason = nonEmpty(meta.reason);
+      const expiresAt = typeof meta.expiresAt === "number" ? meta.expiresAt : null;
+      const parts = [
+        reason,
+        expiresAt !== null ? `until ${new Date(expiresAt).toLocaleDateString()}` : null,
+      ].filter((entry): entry is string => entry !== null);
+      return parts.length > 0 ? parts.join(" · ") : null;
+    }
+    case "member.timeout":
+      return typeof meta.until === "number"
+        ? `until ${new Date(meta.until).toLocaleString()}`
+        : "cleared";
+    case "invite.create": {
+      const expiresAt = typeof meta.expiresAt === "number" ? meta.expiresAt : null;
+      return expiresAt !== null ? `expires ${new Date(expiresAt).toLocaleDateString()}` : null;
+    }
+    default: {
+      const keys = Object.keys(meta).filter((key) => META_LABELS[key] !== undefined);
+      return keys.length > 0 ? null : null;
+    }
   }
 }
 
 /**
- * A one-line, non-leaky summary. Metadata is opaque JSON produced by the
- * server; unknown keys (including raw ids) are dropped rather than shown, and
- * anything that fails to parse is ignored.
+ * A friendly sentence for one audit event: the actor, what they did and the
+ * resolved target or metadata detail. Unknown actions fall back to a readable
+ * humanized phrase rather than the raw code.
+ */
+export function formatAuditEvent(
+  action: string,
+  meta: string | null,
+  names: EventNames = {},
+): string {
+  const actor = nonEmpty(names.actorName) ?? "Someone";
+  const label = auditActionLabel(action);
+  const target = nonEmpty(names.targetName);
+  const detail = metaDetail(action, parseMeta(meta));
+  const bits: string[] = [`${actor} ${label}`];
+  if (target !== null) {
+    bits.push(target);
+  }
+  if (detail !== null) {
+    bits.push(detail);
+  }
+  return bits.join(" · ");
+}
+
+/**
+ * Meta-only summary, retained for callers that have not resolved names yet.
+ * `formatAuditEvent` is preferred wherever actor/target names are available.
  */
 export function describeAuditAction(action: string, meta: string | null): string {
   const label = auditActionLabel(action);
-  if (meta === null) {
-    return label;
-  }
-  try {
-    const parsed = JSON.parse(meta) as unknown;
-    if (parsed !== null && typeof parsed === "object" && !Array.isArray(parsed)) {
-      const parts: string[] = [];
-      for (const [key, value] of Object.entries(parsed as Record<string, unknown>)) {
-        const formatted = formatMetaValue(key, value);
-        if (formatted !== null) {
-          parts.push(formatted);
-        }
-      }
-      if (parts.length > 0) {
-        return `${label} (${parts.join(", ")})`;
-      }
-    }
-  } catch {
-    // Ignore unparseable metadata.
-  }
-  return label;
+  const detail = metaDetail(action, parseMeta(meta));
+  return detail === null ? capitalize(label) : `${capitalize(label)}: ${detail}`;
+}
+
+function capitalize(value: string): string {
+  return value.length === 0 ? value : value.charAt(0).toUpperCase() + value.slice(1);
 }

@@ -30,6 +30,8 @@ export interface ThreadsPanelProps {
   readonly onSendReply: (input: {
     text: string;
     mentionUserIds: readonly string[];
+    mentionChannelIds?: readonly string[];
+    mentionCategoryIds?: readonly string[];
     files: readonly File[];
     /** Also post the reply to the channel timeline, not only the thread. */
     alsoSendToChannel: boolean;
@@ -159,6 +161,8 @@ export function ThreadsPanel(props: ThreadsPanelProps) {
           props.onSendReply({
             text: input.text,
             mentionUserIds: input.mentionUserIds,
+            mentionChannelIds: input.mentionChannelIds,
+            mentionCategoryIds: input.mentionCategoryIds,
             files: input.files,
             alsoSendToChannel: alsoSend,
           })
@@ -167,7 +171,7 @@ export function ThreadsPanel(props: ThreadsPanelProps) {
           <label className="ml-1 flex cursor-pointer select-none items-center gap-1.5 rounded-[7px] px-1.5 py-1 text-xs text-text-muted hover:text-text">
             <input
               type="checkbox"
-              className="h-3.5 w-3.5 accent-[var(--aulora-accent)]"
+              className="h-3.5 w-3.5 accent-accent"
               checked={alsoSend}
               onChange={(event) => setAlsoSend(event.target.checked)}
             />

@@ -17,6 +17,7 @@ import type * as categories from "../categories.js";
 import type * as channels from "../channels.js";
 import type * as crons from "../crons.js";
 import type * as devices from "../devices.js";
+import type * as email from "../email.js";
 import type * as encryptionKeys from "../encryptionKeys.js";
 import type * as files from "../files.js";
 import type * as http from "../http.js";
@@ -41,8 +42,12 @@ import type * as lib_sealed from "../lib/sealed.js";
 import type * as lib_sse from "../lib/sse.js";
 import type * as lib_webPush from "../lib/webPush.js";
 import type * as license from "../license.js";
+import type * as licenseUsage from "../licenseUsage.js";
+import type * as licenseUsageActions from "../licenseUsageActions.js";
+import type * as licenseActions from "../licenseActions.js";
 import type * as members from "../members.js";
 import type * as messages from "../messages.js";
+import type * as notes from "../notes.js";
 import type * as notifications from "../notifications.js";
 import type * as presence from "../presence.js";
 import type * as reactions from "../reactions.js";
@@ -52,6 +57,7 @@ import type * as server from "../server.js";
 import type * as setup from "../setup.js";
 import type * as setupState from "../setupState.js";
 import type * as typing from "../typing.js";
+import type * as updates from "../updates.js";
 
 import type {
   ApiFromModules,
@@ -69,6 +75,7 @@ declare const fullApi: ApiFromModules<{
   channels: typeof channels;
   crons: typeof crons;
   devices: typeof devices;
+  email: typeof email;
   encryptionKeys: typeof encryptionKeys;
   files: typeof files;
   http: typeof http;
@@ -93,8 +100,12 @@ declare const fullApi: ApiFromModules<{
   "lib/sse": typeof lib_sse;
   "lib/webPush": typeof lib_webPush;
   license: typeof license;
+  licenseActions: typeof licenseActions;
+  licenseUsage: typeof licenseUsage;
+  licenseUsageActions: typeof licenseUsageActions;
   members: typeof members;
   messages: typeof messages;
+  notes: typeof notes;
   notifications: typeof notifications;
   presence: typeof presence;
   reactions: typeof reactions;
@@ -104,6 +115,7 @@ declare const fullApi: ApiFromModules<{
   setup: typeof setup;
   setupState: typeof setupState;
   typing: typeof typing;
+  updates: typeof updates;
 }>;
 
 /**

@@ -1,6 +1,6 @@
-import { Avatar, userAvatarSeed } from "@aulora/avatars";
 import { activityLabel } from "@aulora/core";
 import { Spinner } from "@aulora/ui-web";
+import { PersonAvatar } from "./member-avatars";
 
 /** One row of the Threads inbox, as returned by `api.messages.threadInbox`. */
 export interface ThreadInboxItem {
@@ -103,13 +103,7 @@ export function ThreadsInbox({
                 onClick={() => onOpen(thread)}
                 className="flex w-full items-start gap-3 rounded-[8px] px-2.5 py-2 text-left transition hover:bg-surface-3"
               >
-                <Avatar
-                  seed={userAvatarSeed(thread.authorId)}
-                  size={32}
-                  {...(roleColor !== null && roleColor !== undefined && roleColor.length > 0
-                    ? { roleColor }
-                    : {})}
-                />
+                <PersonAvatar userId={thread.authorId} size={32} roleColor={roleColor} />
                 <span className="min-w-0 flex-1">
                   <span className="flex items-baseline gap-2 text-xs">
                     <span className="truncate font-semibold text-text">{authorName}</span>

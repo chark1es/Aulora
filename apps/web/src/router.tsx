@@ -9,7 +9,9 @@ import {
 } from "@tanstack/react-router";
 import { lazy, Suspense, useEffect, useState } from "react";
 import { DesktopBridge } from "./components/DesktopBridge";
+import { DesktopUpdateNotice } from "./components/DesktopUpdateNotice";
 import { WorkspaceMenu } from "./components/WorkspaceMenu";
+import { DesktopUpdateProvider } from "./providers/DesktopUpdateProvider";
 import { ProfileProvider, useProfiles } from "./providers/ProfileProvider";
 import { ConnectRoute } from "./routes/ConnectRoute";
 import { HomeRoute } from "./routes/HomeRoute";
@@ -36,10 +38,13 @@ function RootLayout() {
   }
   return (
     <ProfileProvider {...(previewing && previewStore !== undefined ? { store: previewStore } : {})}>
-      <ContextMenuProvider>
-        <DesktopBridge />
-        <AppShell />
-      </ContextMenuProvider>
+      <DesktopUpdateProvider>
+        <ContextMenuProvider>
+          <DesktopBridge />
+          <DesktopUpdateNotice />
+          <AppShell />
+        </ContextMenuProvider>
+      </DesktopUpdateProvider>
     </ProfileProvider>
   );
 }

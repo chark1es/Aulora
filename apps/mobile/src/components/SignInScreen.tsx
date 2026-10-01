@@ -1,9 +1,11 @@
 import { NativeAvatar } from "@aulora/avatars/native";
 import type { ServerProfile } from "@aulora/core";
 import { Button, Heading, Input, Text } from "@aulora/ui-native";
+import { useQuery } from "convex/react";
 import { useState } from "react";
 import {
   Animated,
+  Image,
   KeyboardAvoidingView,
   Platform,
   Pressable,
@@ -11,6 +13,7 @@ import {
   StyleSheet,
   useWindowDimensions,
 } from "react-native";
+import { api } from "../../../../packages/convex/convex/_generated/api";
 import {
   type AuloraAuthClient,
   authActionsFromClient,
@@ -27,6 +30,8 @@ export interface SignInScreenProps {
   readonly cookieStore: CookieStore;
   /** Opens the workspace switcher; omitted when no switcher is available. */
   readonly onOpenWorkspaces?: () => void;
+  /** Leaves this server and returns to the connect screen. */
+  readonly onConnectDifferentServer?: () => void;
 }
 
 /** The host (with port) of a profile's base URL, for the quiet server caption. */
@@ -50,10 +55,15 @@ export function SignInScreen({
   authClient,
   cookieStore,
   onOpenWorkspaces,
+  onConnectDifferentServer,
 }: SignInScreenProps) {
   const local = profile.auth.local;
   const providers = profile.auth.providers;
   const actions = authActionsFromClient(authClient);
+  const config = useQuery(api.server.publicConfig, {});
+  const workspaceDescription = config?.description ?? "";
+  const workspaceLogo = config?.logoUrl ?? null;
+  const signupEnabled = config?.signupEnabled ?? local.signup;
   const [mode, setMode] = useState<"sign-in" | "sign-up">("sign-in");
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
@@ -119,17 +129,27 @@ export function SignInScreen({
       >
         <AuthScaffold
           aura={
-            <ThresholdAura size={compact ? 96 : 108} breathing>
-              <NativeAvatar seed={profile.iconSeed} size={40} shape="squircle" />
-            </ThresholdAura>
+            workspaceLogo !== null ? (
+              <Image
+                source={{ uri: workspaceLogo }}
+                accessibilityLabel={`${profile.name} logo`}
+                style={{ width: compact ? 96 : 108, height: compact ? 96 : 108, borderRadius: 20 }}
+              />
+            ) : (
+              <ThresholdAura size={compact ? 96 : 108} breathing>
+                <NativeAvatar seed={profile.iconSeed} size={40} shape="squircle" />
+              </ThresholdAura>
+            )
           }
         >
           <Animated.View className="gap-2" style={animatedStyle}>
             <Heading level={1}>Sign in to {profile.name}</Heading>
             <Text size="base" tone="muted" className="leading-relaxed">
-              {hasProviders || local.enabled
-                ? "Use one of the methods this server allows."
-                : "This server has no sign-in methods enabled yet."}
+              {workspaceDescription.length > 0
+                ? workspaceDescription
+                : hasProviders || local.enabled
+                  ? "Use one of the methods this server allows."
+                  : "This server has no sign-in methods enabled yet."}
             </Text>
             {onOpenWorkspaces !== undefined ? (
               <Pressable
@@ -213,7 +233,7 @@ export function SignInScreen({
               >
                 {mode === "sign-up" ? "Create account" : "Sign in"}
               </Button>
-              {local.signup && (
+              {signupEnabled && (
                 <Button
                   variant="ghost"
                   disabled={pending !== null}
@@ -226,6 +246,12 @@ export function SignInScreen({
                 </Button>
               )}
             </Animated.View>
+          )}
+
+          {onConnectDifferentServer !== undefined && (
+            <Button variant="ghost" disabled={pending !== null} onPress={onConnectDifferentServer}>
+              Use a different server
+            </Button>
           )}
         </AuthScaffold>
       </ScrollView>

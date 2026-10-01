@@ -112,13 +112,14 @@ describe("Spinner and Logo", () => {
 });
 
 describe("Icon", () => {
-  it("renders the shared path data as a decorative stroke icon", () => {
+  it("renders the shared path data as a decorative filled icon", () => {
     const { container } = render(<Icon name="send" size={18} />);
     const svg = container.querySelector("svg");
     expect(svg).toHaveAttribute("aria-hidden", "true");
     expect(svg).toHaveAttribute("width", "18");
-    expect(svg).toHaveAttribute("stroke", "currentColor");
-    expect(svg?.querySelectorAll("path").length).toBe(2);
+    expect(svg).toHaveAttribute("viewBox", "0 0 24 24");
+    expect(svg).toHaveAttribute("fill", "currentColor");
+    expect(svg?.querySelectorAll("path").length).toBe(1);
   });
 });
 

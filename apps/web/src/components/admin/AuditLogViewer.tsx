@@ -1,12 +1,12 @@
 import type { IconName } from "@aulora/tokens";
-import { Button, Heading, Icon, Text } from "@aulora/ui-web";
+import { Button, Heading, Icon, Spinner, Text } from "@aulora/ui-web";
 import { useQuery } from "convex/react";
 import { useState } from "react";
 import { api } from "../../../../../packages/convex/convex/_generated/api";
 import {
   type AuditCategory,
   auditCategory,
-  describeAuditAction,
+  formatAuditEvent,
   shortId,
 } from "../../lib/audit-format";
 
@@ -107,7 +107,11 @@ export function AuditLogViewer({
         </Text>
       </header>
 
-      {rows.length === 0 ? (
+      {result === undefined ? (
+        <div className="flex justify-center py-8">
+          <Spinner size={22} label="Loading audit log" />
+        </div>
+      ) : rows.length === 0 ? (
         <Text tone="muted" size="sm">
           Nothing recorded yet.
         </Text>
@@ -115,8 +119,8 @@ export function AuditLogViewer({
         <ul className="divide-y divide-border overflow-hidden rounded-[12px] border border-border bg-surface-2">
           {rows.map((row) => {
             const category = auditCategory(row.action);
-            const actor = memberNames?.get(row.actorId) ?? shortId(row.actorId);
-            const target = resolveTarget(row.targetId);
+            const actor = row.actorName || memberNames?.get(row.actorId) || shortId(row.actorId);
+            const target = row.targetName || resolveTarget(row.targetId) || null;
             return (
               <li
                 key={row.id}
@@ -130,11 +134,10 @@ export function AuditLogViewer({
                 </span>
                 <div className="min-w-0 flex-1">
                   <Text size="sm" className="truncate">
-                    {describeAuditAction(row.action, row.meta)}
-                  </Text>
-                  <Text size="xs" tone="muted" className="truncate">
-                    {actor}
-                    {target !== null ? ` → ${target}` : ""}
+                    {formatAuditEvent(row.action, row.meta, {
+                      actorName: actor,
+                      targetName: target,
+                    })}
                   </Text>
                 </div>
                 <Text

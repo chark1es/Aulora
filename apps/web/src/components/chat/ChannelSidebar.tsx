@@ -1,10 +1,11 @@
 import { Avatar } from "@aulora/avatars";
 import type { ChannelView } from "@aulora/core";
 import { activityLabel, badgeCount, dmPartnerId } from "@aulora/core";
-import { type ContextMenuItem, cn, Icon, useContextMenu } from "@aulora/ui-web";
+import { ConfirmDialog, type ContextMenuItem, cn, Icon, useContextMenu } from "@aulora/ui-web";
 import { Fragment, type ReactNode, useEffect, useMemo, useRef, useState } from "react";
 import type { CategoryView } from "../../lib/workspace-admin";
 import { VoiceChannelRow } from "../voice/VoiceChannelRow";
+import { ActiveBar } from "./ActiveBar";
 import { GroupAvatar, PRESENCE_LABEL, PresenceAvatar, type PresenceStatus } from "./PresenceAvatar";
 
 export interface ChannelUnread {
@@ -40,6 +41,8 @@ export interface ChannelSidebarProps {
   readonly canManageCategories?: boolean;
   /** Open the user settings surface from the account footer. */
   readonly onOpenUserSettings?: () => void;
+  readonly appUpdateAvailable?: boolean;
+  readonly workspaceUpdateAvailable?: boolean;
   /** Show the workspace admin control (the viewer has at least one admin flag). */
   readonly showAdmin?: boolean;
   readonly onOpenAdmin?: () => void;
@@ -54,7 +57,8 @@ export interface ChannelSidebarProps {
    */
   readonly workspaceSwitcher?: ReactNode;
   readonly onSelect: (channelId: string) => void;
-  readonly onCreateChannel: () => void;
+  /** Opens the create dialog, optionally pre-selecting the channel kind. */
+  readonly onCreateChannel: (kind?: "text" | "voice") => void;
   readonly onNewConversation: () => void;
   readonly onOpenSearch: () => void;
   readonly onSetStatus: (status: PresenceStatus) => void;
@@ -80,9 +84,12 @@ export interface ChannelSidebarProps {
     readonly rename?: (channel: ChannelView) => void;
     readonly edit?: (channel: ChannelView) => void;
     readonly markRead?: (channel: ChannelView) => void;
-    readonly leave?: (channel: ChannelView) => void;
     readonly archive?: (channel: ChannelView) => void;
     readonly copyLink?: (channel: ChannelView) => void;
+    readonly hide?: (channel: ChannelView) => void;
+    readonly unhide?: (channel: ChannelView) => void;
+    readonly mute?: (channel: ChannelView) => void;
+    readonly unmute?: (channel: ChannelView) => void;
   };
   /** Resolves a member's display name for voice-channel participant lists. */
   readonly memberNameOf?: (userId: string) => string;
@@ -181,7 +188,8 @@ export function ChannelSidebar(props: ChannelSidebarProps) {
     const chat = channels.filter(
       (channel) =>
         (channel.kind === "text" || channel.kind === "announcement" || channel.kind === "voice") &&
-        !channel.archived,
+        !channel.archived &&
+        channel.hidden !== true,
     );
     const known = new Set(categories.map((category) => category.id));
     const sorted = [...categories].sort((a, b) => a.position - b.position);
@@ -332,10 +340,18 @@ export function ChannelSidebar(props: ChannelSidebarProps) {
     setDropTarget((current) => (current?.groupKey === groupKey ? null : current));
   };
 
+  const hiddenChannels = useMemo(
+    () => channels.filter((channel) => channel.hidden === true),
+    [channels],
+  );
+
   const dms = useMemo(
     () =>
       channels
-        .filter((channel) => channel.kind === "dm" || channel.kind === "group_dm")
+        .filter(
+          (channel) =>
+            (channel.kind === "dm" || channel.kind === "group_dm") && channel.hidden !== true,
+        )
         .sort(
           (a, b) =>
             (unreadByChannel.get(b.id)?.lastActivityAt ?? 0) -
@@ -396,25 +412,48 @@ export function ChannelSidebar(props: ChannelSidebarProps) {
         onSelect: () => actions.copyLink?.(channel),
       });
     }
-    if (actions?.archive !== undefined || actions?.leave !== undefined) {
-      if (actions.archive !== undefined) {
-        items.push({
-          id: "archive",
-          label: "Archive channel",
-          icon: <Icon name="trash" size={14} />,
-          separatorBefore: items.length > 0,
-          onSelect: () => actions.archive?.(channel),
-        });
-      }
-      if (actions.leave !== undefined) {
-        items.push({
-          id: "leave",
-          label: "Leave channel",
-          icon: <Icon name="logout" size={14} />,
-          danger: true,
-          onSelect: () => actions.leave?.(channel),
-        });
-      }
+    if (actions?.mute !== undefined && channel.muted !== true) {
+      items.push({
+        id: "mute",
+        label: "Mute channel",
+        icon: <Icon name="bell-off" size={14} />,
+        separatorBefore: items.length > 0,
+        onSelect: () => actions.mute?.(channel),
+      });
+    }
+    if (actions?.unmute !== undefined && channel.muted === true) {
+      items.push({
+        id: "unmute",
+        label: "Unmute channel",
+        icon: <Icon name="bell" size={14} />,
+        separatorBefore: items.length > 0,
+        onSelect: () => actions.unmute?.(channel),
+      });
+    }
+    if (actions?.hide !== undefined) {
+      items.push({
+        id: "hide",
+        label: "Hide channel",
+        icon: <Icon name="eye-off" size={14} />,
+        onSelect: () => actions.hide?.(channel),
+      });
+    }
+    if (actions?.unhide !== undefined && channel.hidden === true) {
+      items.push({
+        id: "unhide",
+        label: "Unhide channel",
+        icon: <Icon name="eye" size={14} />,
+        onSelect: () => actions.unhide?.(channel),
+      });
+    }
+    if (actions?.archive !== undefined) {
+      items.push({
+        id: "archive",
+        label: "Archive channel",
+        icon: <Icon name="trash" size={14} />,
+        separatorBefore: items.length > 0,
+        onSelect: () => actions.archive?.(channel),
+      });
     }
     return items;
   };
@@ -474,8 +513,24 @@ export function ChannelSidebar(props: ChannelSidebarProps) {
           </>
         )}
         {props.showAdmin === true && props.onOpenAdmin !== undefined && (
-          <HeaderButton label="Workspace settings" onClick={props.onOpenAdmin}>
-            <Icon name="settings" size={17} />
+          <HeaderButton
+            label={
+              props.workspaceUpdateAvailable
+                ? "Workspace settings (update available)"
+                : "Workspace settings"
+            }
+            onClick={props.onOpenAdmin}
+          >
+            <span className="relative inline-flex">
+              <Icon name="settings" size={17} />
+              {props.workspaceUpdateAvailable && (
+                <span
+                  className="absolute -right-0.5 -top-0.5 h-1.5 w-1.5 rounded-full bg-accent ring-2 ring-surface-1"
+                  role="img"
+                  aria-label="Workspace update available"
+                />
+              )}
+            </span>
           </HeaderButton>
         )}
         {props.workspaceSwitcher === undefined && props.workspaceMenu}
@@ -683,6 +738,49 @@ export function ChannelSidebar(props: ChannelSidebarProps) {
             </ul>
           )}
         </section>
+
+        {hiddenChannels.length > 0 && (
+          <section className="mt-4">
+            <SectionHeader
+              title="Hidden channels"
+              collapsed={collapsed.has("hidden")}
+              onToggle={() => toggle("hidden")}
+              action={null}
+            />
+            {!collapsed.has("hidden") && (
+              <ul className="flex flex-col gap-px">
+                {hiddenChannels.map((channel) => (
+                  <li key={channel.id} className="flex items-center gap-px">
+                    <button
+                      type="button"
+                      data-testid={`hidden-channel-row-${channel.id}`}
+                      onClick={() => onSelect(channel.id)}
+                      className="flex h-8 min-w-0 flex-1 items-center gap-2.5 rounded-[8px] pl-3 pr-1 text-left text-[13px] text-text-muted transition hover:bg-surface-3 hover:text-text"
+                    >
+                      <Icon
+                        name={channel.kind === "voice" ? "volume" : "hash"}
+                        size={15}
+                        className="text-text-muted"
+                      />
+                      <span className="min-w-0 flex-1 truncate">
+                        {props.titles.get(channel.id) ?? channel.name}
+                      </span>
+                    </button>
+                    {props.channelActions?.unhide !== undefined && (
+                      <HeaderButton
+                        label={`Unhide ${props.titles.get(channel.id) ?? channel.name}`}
+                        small
+                        onClick={() => props.channelActions?.unhide?.(channel)}
+                      >
+                        <Icon name="eye" size={14} />
+                      </HeaderButton>
+                    )}
+                  </li>
+                ))}
+              </ul>
+            )}
+          </section>
+        )}
       </nav>
 
       <AccountFooter {...props} />
@@ -718,7 +816,6 @@ function SectionHeader({
         <Icon
           name="chevron-down"
           size={11}
-          strokeWidth={2.25}
           className={cn("transition-transform", collapsed && "-rotate-90")}
         />
         {title}
@@ -769,7 +866,7 @@ function CreateMenuButton({
 }: {
   readonly canCreateChannel: boolean;
   readonly canManageCategories: boolean;
-  readonly onCreateChannel: () => void;
+  readonly onCreateChannel: (kind?: "text" | "voice") => void;
   readonly onCreateCategory?: (() => void) | undefined;
 }) {
   const [open, setOpen] = useState(false);
@@ -797,10 +894,7 @@ function CreateMenuButton({
     };
   }, [open]);
 
-  const options: readonly ("channel" | "category")[] = [
-    ...(canCreateChannel ? (["channel"] as const) : []),
-    ...(canManageCategories ? (["category"] as const) : []),
-  ];
+  const hasExtras = canManageCategories;
   const label = canManageCategories ? "Create channel or category" : "Create channel";
 
   return (
@@ -808,14 +902,11 @@ function CreateMenuButton({
       <HeaderButton
         label={label}
         small
-        {...(options.length > 1 ? { hasPopup: "menu" as const, expanded: open } : {})}
+        hasPopup="menu"
+        expanded={open}
         onClick={() => {
-          if (options.length <= 1) {
-            if (options[0] === "channel") {
-              onCreateChannel();
-            } else if (options[0] === "category") {
-              onCreateCategory?.();
-            }
+          if (!hasExtras) {
+            onCreateChannel("text");
             return;
           }
           setOpen((current) => !current);
@@ -823,7 +914,7 @@ function CreateMenuButton({
       >
         <Icon name="plus" size={15} />
       </HeaderButton>
-      {open && options.length > 1 && (
+      {open && hasExtras && (
         <div
           role="menu"
           aria-label="Create"
@@ -835,12 +926,26 @@ function CreateMenuButton({
               role="menuitem"
               onClick={() => {
                 setOpen(false);
-                onCreateChannel();
+                onCreateChannel("text");
               }}
               className="flex w-full items-center gap-2.5 rounded-[7px] px-2.5 py-1.5 text-left text-[13px] text-text transition hover:bg-surface-3"
             >
               <Icon name="hash" size={14} className="text-text-muted" />
-              New channel
+              New text channel
+            </button>
+          )}
+          {canCreateChannel && (
+            <button
+              type="button"
+              role="menuitem"
+              onClick={() => {
+                setOpen(false);
+                onCreateChannel("voice");
+              }}
+              className="flex w-full items-center gap-2.5 rounded-[7px] px-2.5 py-1.5 text-left text-[13px] text-text transition hover:bg-surface-3"
+            >
+              <Icon name="volume" size={14} className="text-text-muted" />
+              New voice channel
             </button>
           )}
           {canManageCategories && (
@@ -880,18 +985,6 @@ function UnreadBadge({ unread }: { readonly unread: ChannelUnread | undefined })
     );
   }
   return null;
-}
-
-function ActiveBar({ active }: { readonly active: boolean }) {
-  return (
-    <span
-      aria-hidden="true"
-      className={cn(
-        "absolute left-0 top-1/2 w-[3px] -translate-y-1/2 rounded-r-full bg-accent transition-all",
-        active ? "h-5" : "h-0",
-      )}
-    />
-  );
 }
 
 function DropLine() {
@@ -957,6 +1050,7 @@ function ChannelRow({
           : isUnread
             ? "font-semibold text-text hover:bg-surface-3"
             : "text-text-muted hover:bg-surface-3 hover:text-text",
+        channel.muted === true && !active && !isUnread && "opacity-60",
         dragging && "opacity-40",
       )}
     >
@@ -964,9 +1058,12 @@ function ChannelRow({
       <Icon
         name={channel.kind === "announcement" ? "announce" : isPrivate ? "lock" : "hash"}
         size={16}
-        className={cn(active && "text-accent")}
+        className={cn("shrink-0", active && "text-accent")}
       />
       <span className="min-w-0 flex-1 truncate">{title}</span>
+      {channel.muted === true && (
+        <Icon name="bell-off" size={13} className="shrink-0 text-text-muted" />
+      )}
       {!active && <UnreadBadge unread={unread} />}
     </button>
   );
@@ -1061,6 +1158,7 @@ function AccountFooter(props: ChannelSidebarProps) {
   const [menuOpen, setMenuOpen] = useState(false);
   const [editingStatus, setEditingStatus] = useState(false);
   const [statusDraft, setStatusDraft] = useState("");
+  const [confirmSignOut, setConfirmSignOut] = useState(false);
   const menuRef = useRef<HTMLDivElement | null>(null);
   const statusInputRef = useRef<HTMLInputElement | null>(null);
   useEffect(() => {
@@ -1198,14 +1296,39 @@ function AccountFooter(props: ChannelSidebarProps) {
           </span>
         </button>
         {props.onOpenUserSettings !== undefined && (
-          <HeaderButton label="User settings" onClick={props.onOpenUserSettings}>
-            <Icon name="settings" size={17} />
+          <HeaderButton
+            label={props.appUpdateAvailable ? "User settings (update available)" : "User settings"}
+            onClick={props.onOpenUserSettings}
+          >
+            <span className="relative inline-flex">
+              <Icon name="settings" size={17} />
+              {props.appUpdateAvailable && (
+                <span
+                  className="absolute -right-0.5 -top-0.5 h-1.5 w-1.5 rounded-full bg-accent ring-2 ring-surface-1"
+                  role="img"
+                  aria-label="Update available"
+                />
+              )}
+            </span>
           </HeaderButton>
         )}
-        <HeaderButton label="Sign out" onClick={props.onSignOut}>
+        <HeaderButton label="Sign out" onClick={() => setConfirmSignOut(true)}>
           <Icon name="logout" size={17} />
         </HeaderButton>
       </div>
+
+      <ConfirmDialog
+        open={confirmSignOut}
+        onClose={() => setConfirmSignOut(false)}
+        title={`Sign out of ${props.workspaceName}?`}
+        description="You can sign back in at any time."
+        confirmLabel="Sign out"
+        variant="danger"
+        onConfirm={() => {
+          setConfirmSignOut(false);
+          props.onSignOut();
+        }}
+      />
     </div>
   );
 }
@@ -1217,7 +1340,7 @@ export function StatusDot({ status }: { readonly status: PresenceStatus }) {
       className={cn(
         "h-2.5 w-2.5 rounded-full",
         status === "online" && "bg-secondary",
-        status === "idle" && "bg-[#E8A33B]",
+        status === "idle" && "bg-idle",
         status === "dnd" && "bg-danger",
         status === "offline" && "border-2 border-text-muted",
       )}

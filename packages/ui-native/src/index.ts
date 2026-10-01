@@ -2,6 +2,7 @@ export { Button, type ButtonProps } from "./Button";
 export { Card, type CardProps } from "./Card";
 export { cn } from "./cn";
 export {
+  ACCENT_OVERLAY,
   type ColorScheme,
   IDLE_COLOR,
   paletteForScheme,

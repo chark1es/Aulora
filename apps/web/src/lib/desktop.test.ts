@@ -1,5 +1,5 @@
 import { afterEach, describe, expect, it } from "vitest";
-import { desktopPlatform, isDesktop, parseDeepLink } from "./desktop";
+import { checkDesktopUpdate, desktopPlatform, isDesktop, parseDeepLink } from "./desktop";
 
 describe("parseDeepLink", () => {
   it("parses connect deep links in query and path forms", () => {
@@ -24,10 +24,14 @@ describe("parseDeepLink", () => {
     });
   });
 
+  it("opens the connect screen with an empty server when none is given", () => {
+    expect(parseDeepLink("aulora://connect")).toEqual({ kind: "connect", server: "" });
+  });
+
   it("rejects other schemes, hosts and missing parameters", () => {
     expect(parseDeepLink("https://connect?server=chat.acme.com")).toBeNull();
     expect(parseDeepLink("aulora://unknown?x=1")).toBeNull();
-    expect(parseDeepLink("aulora://connect")).toBeNull();
+    expect(parseDeepLink("aulora://invite")).toBeNull();
     expect(parseDeepLink("not a url")).toBeNull();
   });
 
@@ -65,6 +69,46 @@ describe("isDesktop", () => {
   it("is true with the Tauri global", () => {
     globalWithTauri.__TAURI__ = { core: { invoke: () => Promise.resolve() } };
     expect(isDesktop()).toBe(true);
+  });
+});
+
+describe("checkDesktopUpdate", () => {
+  const globalWithTauri = globalThis as { __TAURI__?: unknown };
+  const saved = globalWithTauri.__TAURI__;
+
+  afterEach(() => {
+    if (saved === undefined) {
+      delete globalWithTauri.__TAURI__;
+    } else {
+      globalWithTauri.__TAURI__ = saved;
+    }
+  });
+
+  it("does nothing outside the shell", async () => {
+    delete globalWithTauri.__TAURI__;
+    await expect(checkDesktopUpdate()).resolves.toBeNull();
+  });
+
+  it("reads the shell status", async () => {
+    globalWithTauri.__TAURI__ = {
+      core: {
+        invoke: () =>
+          Promise.resolve({
+            updateAvailable: true,
+            version: "0.2.0",
+            currentVersion: "0.1.0",
+            notes: "Faster calls.",
+            error: null,
+          }),
+      },
+    };
+    await expect(checkDesktopUpdate()).resolves.toEqual({
+      updateAvailable: true,
+      version: "0.2.0",
+      currentVersion: "0.1.0",
+      notes: "Faster calls.",
+      error: null,
+    });
   });
 });
 

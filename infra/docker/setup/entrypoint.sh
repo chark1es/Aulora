@@ -219,6 +219,11 @@ set_env_if_present AUTH_LOCAL_SIGNUP "${AUTH_LOCAL_SIGNUP:-}"
 # Optional override of Better Auth's minimum password length (default 8); set to
 # a small number only for throwaway test deployments with easy demo accounts.
 set_env_if_present AUTH_MIN_PASSWORD_LENGTH "${AUTH_MIN_PASSWORD_LENGTH:-}"
+set_env_if_present SMTP_GATEWAY_URL "http://smtp-gateway:8787/send"
+set_env_if_present SMTP_GATEWAY_TOKEN "$INSTANCE_SECRET_RESOLVED" 1
+set_env_if_present AULORA_EMAIL_PROVIDER "$(host_value AULORA_EMAIL_PROVIDER)"
+set_env_if_present AULORA_EMAIL_FROM "$(host_value AULORA_EMAIL_FROM)"
+set_env_if_present RESEND_API_KEY "$(host_value RESEND_API_KEY)" 1
 
 for prefix in GITHUB GOOGLE MICROSOFT APPLE; do
   set_env_if_present "${prefix}_CLIENT_ID" "$(host_value "${prefix}_CLIENT_ID")"
@@ -243,6 +248,17 @@ set_env_if_present VAPID_PRIVATE_KEY "$VAPID_PRIVATE_KEY_VALUE" 1
 # clients on their built-in public STUN defaults; calls need no media server.
 set_env_if_present AULORA_ICE_SERVERS "$(host_value AULORA_ICE_SERVERS)"
 
+set_env_if_present AULORA_LICENSE_SERVER_URL "$(host_value AULORA_LICENSE_SERVER_URL)"
+set_env_if_present AULORA_LICENSE_PUBLIC_KEY "$(host_value AULORA_LICENSE_PUBLIC_KEY)"
+
+# Update checks. The host updater reads the same values from .env; copying
+# them into the deployment lets the instance admin panel say whether
+# auto-update is on and which feed it uses.
+set_env_if_present AULORA_UPDATE_MANIFEST_URL "$(host_value AULORA_UPDATE_MANIFEST_URL)"
+set_env_if_present AULORA_UPDATE_GITHUB_REPO "$(host_value AULORA_UPDATE_GITHUB_REPO)"
+set_env_if_present AULORA_UPDATE_CHANNEL "$(host_value AULORA_UPDATE_CHANNEL)"
+set_env_if_present AULORA_AUTO_UPDATE "$(host_value AULORA_AUTO_UPDATE)"
+
 # Server-side encryption: the default local master key is set as a secret.
 # Optional/advanced external-provider settings are read from the host .env and
 # applied only when present. No key material is ever logged.
@@ -266,6 +282,39 @@ set_env_if_present EKM_PROXY_TOKEN "$(host_value EKM_PROXY_TOKEN)" 1
 
 log "deploying ${CONVEX_PROJECT_DIR}"
 convex deploy --yes
+
+# Self-check: every local module that defines a Convex function must be present
+# on the deployment. This catches a stale `aulora-setup` image (one that predates
+# a code change) instead of silently serving an old API to a new client.
+verify_deployed_functions() {
+  local spec_file missing=""
+  spec_file="$(mktemp)"
+  # Stream to a file: `$(...)` truncates this >64 KiB document at the 64 KiB
+  # pipe boundary, which would make later modules look missing.
+  if ! convex function-spec >"$spec_file" 2>/dev/null || [ ! -s "$spec_file" ]; then
+    rm -f "$spec_file"
+    log "warning: could not read the deployment's function spec; skipping self-check"
+    return 0
+  fi
+  local file mod
+  for file in "${CONVEX_PROJECT_DIR}"/convex/*.ts; do
+    [ -e "$file" ] || continue
+    mod="$(basename "$file" .ts)"
+    # Only modules that actually export a Convex function (query/mutation/action).
+    if grep -qE 'export const [A-Za-z0-9_]+ = (query|mutation|action|internalQuery|internalMutation|internalAction)\(' "$file"; then
+      if ! grep -qF "\"${mod}.js:" "$spec_file"; then
+        missing="${missing} ${mod}"
+      fi
+    fi
+  done
+  rm -f "$spec_file"
+  if [ -n "$missing" ]; then
+    die "the deployment is missing functions for:${missing} — the setup image is stale. Rebuild it: docker compose build setup"
+  fi
+  log "deployed functions match the local source"
+}
+
+verify_deployed_functions
 
 # Idempotent data upgrades for workspaces that predate a feature. Safe to run
 # on every deploy.

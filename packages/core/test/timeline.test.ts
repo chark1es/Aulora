@@ -71,6 +71,16 @@ describe("buildTimeline", () => {
     expect(shape(items)).toEqual(["day", "a^$", "b^$"]);
   });
 
+  it("starts a new run for every inline reply by the same author", () => {
+    const items = buildTimeline([
+      message("a", "u1", BASE),
+      message("b", "u1", BASE + 1_000, { replyToId: "a" }),
+      message("c", "u1", BASE + 2_000, { replyToId: "a" }),
+      message("d", "u1", BASE + 3_000),
+    ]);
+    expect(shape(items)).toEqual(["day", "a^$", "b^$", "c^", "d$"]);
+  });
+
   it("inserts a separator at each local day boundary and restarts the run", () => {
     const lateNight = new Date(2026, 8, 25, 23, 59, 0).getTime();
     const afterMidnight = new Date(2026, 8, 26, 0, 1, 0).getTime();

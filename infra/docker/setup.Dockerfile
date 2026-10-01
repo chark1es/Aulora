@@ -25,6 +25,8 @@ COPY package.json bun.lock turbo.json ./
 COPY apps/web/package.json apps/web/
 COPY apps/docs/package.json apps/docs/
 COPY packages ./packages
+COPY LICENSE NOTICE COMMERCIAL.md THIRD_PARTY_NOTICES.md /app/legal/
+COPY licenses /app/legal/third-party/
 
 RUN bun install --frozen-lockfile
 

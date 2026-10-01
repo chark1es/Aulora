@@ -9,6 +9,7 @@ import {
   assertValidPermissionBits,
   isEveryoneRole,
   requireCanGrant,
+  requireMember,
   requireRoleManageable,
   requireWorkspaceContext,
 } from "./lib/permissions";
@@ -43,7 +44,8 @@ function toRoleView(role: Doc<"roles">): RoleView {
 export const list = query({
   args: {},
   handler: async (ctx) => {
-    await requireAuth(ctx);
+    const { userId } = await requireAuth(ctx);
+    await requireMember(ctx, userId);
     const roles = await ctx.db.query("roles").collect();
     return roles.sort((a, b) => b.position - a.position).map(toRoleView);
   },
@@ -136,6 +138,11 @@ export const update = mutation({
       throw new ConvexError("Role not found");
     }
     requireRoleManageable(context, role);
+    // The @everyone baseline is position 0, so a non-owner can outrank it in
+    // the hierarchy; only the owner may change its permission bitfield.
+    if (isEveryoneRole(role) && !context.isOwner && args.permissions !== undefined) {
+      throw new ConvexError("Only the owner can change the @everyone permissions");
+    }
 
     if (args.permissions !== undefined) {
       assertValidPermissionBits(args.permissions);

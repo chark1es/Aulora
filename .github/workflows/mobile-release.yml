@@ -1,0 +1,154 @@
+name: Mobile release artifacts
+
+on:
+  workflow_call:
+    inputs:
+      version:
+        required: true
+        type: string
+      build-number:
+        required: true
+        type: string
+
+permissions:
+  contents: read
+
+jobs:
+  android:
+    name: Signed Android
+    runs-on: ubuntu-22.04
+    environment: release-signing
+    timeout-minutes: 90
+    env:
+      RELEASE_VERSION: ${{ inputs.version }}
+      BUILD_NUMBER: ${{ inputs.build-number }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - uses: ./.github/actions/setup-js
+      - name: Prepare bundled license notices
+        run: node scripts/legal-notices.mjs --mobile
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '17'
+      - uses: android-actions/setup-android@v3
+        with:
+          packages: platform-tools
+      - uses: gradle/actions/setup-gradle@v4
+        with:
+          cache-disabled: true
+      - name: Prepare private Android build files
+        env:
+          ANDROID_KEYSTORE_BASE64: ${{ secrets.ANDROID_KEYSTORE_BASE64 }}
+          ANDROID_GOOGLE_SERVICES_JSON: ${{ secrets.ANDROID_GOOGLE_SERVICES_JSON }}
+        run: |
+          test "$GITHUB_REF" = refs/heads/main
+          node scripts/ci/release.mjs mobile
+          python3 - <<'PY'
+          import base64, json, os
+          from pathlib import Path
+          key = os.environ['ANDROID_KEYSTORE_BASE64']
+          config = os.environ['ANDROID_GOOGLE_SERVICES_JSON']
+          if not key or not config: raise SystemExit('Missing Android build secrets')
+          info = json.loads(config)
+          if not any(c['client_info']['android_client_info']['package_name'] == 'dev.spwnd.aulora' for c in info['client']): raise SystemExit('Firebase package ID mismatch')
+          path = Path(os.environ['RUNNER_TEMP']) / 'aulora-release.jks'
+          path.write_bytes(base64.b64decode(key, validate=True))
+          path.chmod(0o600)
+          config_path = Path('apps/mobile/android/app/google-services.json')
+          config_path.write_text(config)
+          config_path.chmod(0o600)
+          with open(os.environ['GITHUB_ENV'], 'a') as output: output.write('ANDROID_KEYSTORE_PATH=' + str(path) + '\n')
+          PY
+      - name: Build signed APK and Play Store bundle
+        working-directory: apps/mobile/android
+        env:
+          NODE_ENV: production
+          AULORA_RELEASE_BUILD: 'true'
+          ANDROID_KEYSTORE_PASSWORD: ${{ secrets.ANDROID_KEYSTORE_PASSWORD }}
+          ANDROID_KEY_ALIAS: ${{ secrets.ANDROID_KEY_ALIAS }}
+          ANDROID_KEY_PASSWORD: ${{ secrets.ANDROID_KEY_PASSWORD }}
+        run: ./gradlew :app:assembleRelease :app:bundleRelease --no-daemon
+      - name: Verify signatures and collect mobile files
+        run: |
+          build_tools="$(find "$ANDROID_HOME/build-tools" -mindepth 1 -maxdepth 1 -type d | sort -V | tail -n 1)"
+          "$build_tools/apksigner" verify apps/mobile/android/app/build/outputs/apk/release/app-release.apk
+          jarsigner -verify apps/mobile/android/app/build/outputs/bundle/release/app-release.aab > "$RUNNER_TEMP/aab-verification.txt"
+          grep -q 'jar verified.' "$RUNNER_TEMP/aab-verification.txt"
+          python3 - <<'PY'
+          import zipfile
+          with zipfile.ZipFile('apps/mobile/android/app/build/outputs/apk/release/app-release.apk') as apk:
+              for filename in ('LICENSE', 'NOTICE', 'THIRD_PARTY_JAVASCRIPT.txt'):
+                  assert 'assets/legal/' + filename in apk.namelist(), 'Missing bundled notice: ' + filename
+          PY
+          mkdir -p dist/release-android
+          cp apps/mobile/android/app/build/outputs/apk/release/app-release.apk "dist/release-android/Aulora_${RELEASE_VERSION}_android.apk"
+          cp apps/mobile/android/app/build/outputs/bundle/release/app-release.aab "dist/release-android/Aulora_${RELEASE_VERSION}_android.aab"
+      - uses: actions/upload-artifact@v4
+        with:
+          name: release-mobile-android
+          path: dist/release-android/*
+          if-no-files-found: error
+          retention-days: 14
+      - name: Remove Android signing material
+        if: always()
+        run: rm -f "$RUNNER_TEMP/aulora-release.jks" apps/mobile/android/app/google-services.json
+
+  ios:
+    name: Signed iOS
+    runs-on: macos-latest
+    environment: release-signing
+    timeout-minutes: 90
+    env:
+      RELEASE_VERSION: ${{ inputs.version }}
+      BUILD_NUMBER: ${{ inputs.build-number }}
+      APPLE_TEAM_ID: ${{ secrets.APPLE_TEAM_ID }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - uses: ./.github/actions/setup-js
+      - name: Prepare bundled license notices
+        run: node scripts/legal-notices.mjs --mobile
+      - name: Install CocoaPods dependencies
+        working-directory: apps/mobile/ios
+        run: pod install --deployment
+      - uses: ./.github/actions/apple-signing
+        with:
+          platform: ios
+          certificate: ${{ secrets.IOS_CERTIFICATE_BASE64 }}
+          password: ${{ secrets.IOS_CERTIFICATE_PASSWORD }}
+          profile: ${{ secrets.IOS_PROVISIONING_PROFILE_BASE64 }}
+          team: ${{ secrets.APPLE_TEAM_ID }}
+          identity: ${{ secrets.IOS_SIGNING_IDENTITY }}
+      - name: Configure iOS release signing and version
+        run: |
+          test "$GITHUB_REF" = refs/heads/main
+          node scripts/ci/release.mjs mobile
+          ruby scripts/ci/ios-signing.rb
+      - name: Archive signed iOS app
+        working-directory: apps/mobile/ios
+        env:
+          NODE_ENV: production
+        run: |
+          xcodebuild -workspace Aulora.xcworkspace -scheme Aulora -configuration Release -destination 'generic/platform=iOS' -archivePath "$RUNNER_TEMP/Aulora.xcarchive" archive
+          xcodebuild -exportArchive -archivePath "$RUNNER_TEMP/Aulora.xcarchive" -exportOptionsPlist "$IOS_EXPORT_OPTIONS_PATH" -exportPath "$RUNNER_TEMP/ios-export"
+          mkdir -p ../../../dist/release-ios
+          cp "$RUNNER_TEMP/ios-export/Aulora.ipa" "../../../dist/release-ios/Aulora_${RELEASE_VERSION}_ios.ipa"
+          python3 - <<'PY'
+          import os, zipfile
+          with zipfile.ZipFile(os.environ['RUNNER_TEMP'] + '/ios-export/Aulora.ipa') as ipa:
+              for filename in ('LICENSE', 'NOTICE', 'THIRD_PARTY_JAVASCRIPT.txt'):
+                  assert any(path.endswith('.app/Legal/' + filename) for path in ipa.namelist()), 'Missing bundled notice: ' + filename
+          PY
+      - uses: actions/upload-artifact@v4
+        with:
+          name: release-mobile-ios
+          path: dist/release-ios/*.ipa
+          if-no-files-found: error
+          retention-days: 14
+      - name: Remove Apple signing material
+        if: always()
+        run: python3 scripts/ci/apple-signing.py cleanup

@@ -1,40 +1,26 @@
 # Contributing
 
-Contributions are welcome. The repository root has the full guide in
-`CONTRIBUTING.md`; this page is the short version.
+The [repository contribution guide](https://github.com/chark1es/Aulora/blob/main/CONTRIBUTING.md) describes pull requests, tests, and documentation changes. Follow the [development guide](https://github.com/chark1es/Aulora/blob/main/docs/development.md) to run a working local backend and client.
 
-## The CLA
+Use Bun 1.4.0 and Node.js 22.18.0, then run from the repository root:
 
-Every contributor agrees to the Aulora CLA (`CLA.md`) before a change is
-merged. Aulora is dual-licensed — noncommercial for everyone and commercial for
-businesses — so the project must hold enough rights in each contribution to
-keep selling commercial licenses. You keep your copyright.
+```sh
+bun install --frozen-lockfile
+bun run check
+```
+
+Native builds require additional SDKs and are checked separately in CI. `bun run dev` does not install or provision a server.
+
+## Contributor agreement
+
+Read the [Aulora contributor agreement](legal/CLA.md), then follow the CLA bot's comment on your pull request. It records acceptance from each contributor and publishes the `CLA` status. See the [bot guide](https://github.com/chark1es/Aulora/blob/main/docs/cla-bot.md) for tracking and troubleshooting.
 
 ## Workflow
 
-```sh
-bun install
-bun run typecheck
-bun run lint
-bun run test
-```
+- Branch from `main` and keep each change focused.
+- Describe the resulting behavior and how you tested it.
+- Update public docs and the changelog when behavior changes.
+- Run the relevant checks before requesting review.
+- Keep real credentials, encryption keys, and user data out of Git.
 
-- Branch from `main`; keep commits small and single-purpose.
-- Use Conventional Commits (`feat(scope): …`, `fix(scope): …`, `docs(phase-6): …`).
-- Keep the tree green before opening a pull request.
-- Never commit secrets or real `.env` values.
-- Do not force-push shared branches.
-
-## Layout
-
-| Path | What |
-| --- | --- |
-| `apps/web` | Vite + React SPA |
-| `apps/mobile`, `apps/desktop` | Expo and Tauri clients |
-| `packages/convex` | schema, queries, mutations, actions, HTTP routes, crons, server-side encryption |
-| `packages/core` | shared hooks, permissions, well-known parsing |
-| `infra/docker` | Compose stack, setup and the backup runner |
-| `apps/docs` | this site |
-
-Keep pure view logic in `apps/web/src/lib` with unit tests, and re-check all
-authority server-side in `packages/convex`.
+Report vulnerabilities privately to [cnguyen@spwnd.dev](mailto:cnguyen@spwnd.dev), following the [security policy](https://github.com/chark1es/Aulora/blob/main/SECURITY.md).

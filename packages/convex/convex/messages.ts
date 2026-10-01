@@ -6,8 +6,15 @@ import type { Doc, Id } from "./_generated/dataModel";
 import { mutation, type QueryCtx, query } from "./_generated/server";
 import { writeAudit } from "./lib/audit";
 import { requireAuth } from "./lib/auth";
+import { assertMayParticipate } from "./lib/bans";
 import { findChannelMember, isDmKind, requireChannelAccess } from "./lib/channels";
-import { categoryOverridesFor, channelPermissions, loadPermissionContext } from "./lib/permissions";
+import { recordLicenseActivity } from "./lib/licenseActivity";
+import {
+  categoryOverridesFor,
+  channelPermissions,
+  loadPermissionContext,
+  requireMember,
+} from "./lib/permissions";
 import { enforceRateLimit, userRateLimitKey } from "./lib/rateLimit";
 import { openContent } from "./lib/sealed";
 import { sealString } from "./lib/sse";
@@ -37,6 +44,8 @@ interface MessageView {
   readonly replyToId: Id<"messages"> | null;
   readonly attachmentIds: Id<"files">[];
   readonly mentionUserIds: string[];
+  readonly mentionChannelIds: string[];
+  readonly mentionCategoryIds: string[];
   readonly editedAt: number | null;
   readonly deletedAt: number | null;
   readonly pinnedAt: number | null;
@@ -55,6 +64,8 @@ async function toMessage(message: Doc<"messages">): Promise<MessageView> {
     replyToId: message.replyToId ?? null,
     attachmentIds: message.attachmentIds,
     mentionUserIds: message.mentionUserIds,
+    mentionChannelIds: message.mentionChannelIds ?? [],
+    mentionCategoryIds: message.mentionCategoryIds ?? [],
     editedAt: message.editedAt ?? null,
     deletedAt: message.deletedAt ?? null,
     pinnedAt: message.pinnedAt ?? null,
@@ -68,6 +79,58 @@ async function toMessages(messages: readonly Doc<"messages">[]): Promise<Message
   return await Promise.all(messages.map(toMessage));
 }
 
+/**
+ * Drops mention ids that do not resolve: a stored mention must point at a real
+ * member, channel or category, so a client can never route a notification wake
+ * to an arbitrary string. Unknown ids are filtered rather than stored.
+ */
+async function filterMentionIds(
+  ctx: Parameters<typeof requireChannelAccess>[0],
+  mentionUserIds: readonly string[],
+  mentionChannelIds: readonly string[],
+  mentionCategoryIds: readonly string[],
+): Promise<{
+  mentionUserIds: string[];
+  mentionChannelIds: string[];
+  mentionCategoryIds: string[];
+}> {
+  const users: string[] = [];
+  for (const userId of new Set(mentionUserIds)) {
+    const member = await ctx.db
+      .query("members")
+      .withIndex("by_user", (q) => q.eq("userId", userId))
+      .unique();
+    if (member !== null) {
+      users.push(userId);
+    }
+  }
+  const channels: string[] = [];
+  for (const channelId of new Set(mentionChannelIds)) {
+    try {
+      if ((await ctx.db.get(channelId as Id<"channels">)) !== null) {
+        channels.push(channelId);
+      }
+    } catch {
+      // A malformed id is not a known channel; drop it.
+    }
+  }
+  const categories: string[] = [];
+  for (const categoryId of new Set(mentionCategoryIds)) {
+    try {
+      if ((await ctx.db.get(categoryId as Id<"categories">)) !== null) {
+        categories.push(categoryId);
+      }
+    } catch {
+      // A malformed id is not a known category; drop it.
+    }
+  }
+  return {
+    mentionUserIds: users,
+    mentionChannelIds: channels,
+    mentionCategoryIds: categories,
+  };
+}
+
 /** Sends a message: the server seals the plaintext body before storing it. */
 export const send = mutation({
   args: {
@@ -77,9 +140,12 @@ export const send = mutation({
     replyToId: v.optional(v.id("messages")),
     attachmentIds: v.optional(v.array(v.id("files"))),
     mentionUserIds: v.optional(v.array(v.string())),
+    mentionChannelIds: v.optional(v.array(v.string())),
+    mentionCategoryIds: v.optional(v.array(v.string())),
   },
   handler: async (ctx, args) => {
     const access = await requireChannelAccess(ctx, args.channelId, Permission.SendMessages);
+    await assertMayParticipate(ctx, access.userId);
     let threadRoot: Doc<"messages"> | null = null;
     if (args.threadRootId !== undefined) {
       if (!hasPermission(access.permissions, Permission.SendInThreads)) {
@@ -91,6 +157,12 @@ export const send = mutation({
       }
       if (threadRoot.threadRootId !== undefined) {
         throw new ConvexError("Threads cannot be nested");
+      }
+      if (
+        (threadRoot.replyCount ?? 0) === 0 &&
+        !hasPermission(access.permissions, Permission.CreateThreads)
+      ) {
+        throw new ConvexError("Missing permission to create threads");
       }
     }
     if (args.replyToId !== undefined) {
@@ -104,13 +176,21 @@ export const send = mutation({
       limit: sendLimit(),
       windowMs: sendWindowMs(),
     });
+    const mentions = await filterMentionIds(
+      ctx,
+      args.mentionUserIds ?? [],
+      args.mentionChannelIds ?? [],
+      args.mentionCategoryIds ?? [],
+    );
     const ciphertext = await sealString(messageContext(args.channelId), args.body);
     const messageId = await ctx.db.insert("messages", {
       channelId: args.channelId,
       authorId: access.userId,
       ciphertext,
       attachmentIds: args.attachmentIds ?? [],
-      mentionUserIds: args.mentionUserIds ?? [],
+      mentionUserIds: mentions.mentionUserIds,
+      mentionChannelIds: mentions.mentionChannelIds,
+      mentionCategoryIds: mentions.mentionCategoryIds,
       ...(args.threadRootId !== undefined ? { threadRootId: args.threadRootId } : {}),
       ...(args.replyToId !== undefined ? { replyToId: args.replyToId } : {}),
     });
@@ -135,6 +215,7 @@ export const send = mutation({
     // Route content-free mobile wakes (APNs/FCM/UnifiedPush) via the push relay;
     // also a no-op when the relay is unconfigured.
     await ctx.scheduler.runAfter(0, internal.notifications.dispatchMobileForMessage, { messageId });
+    await recordLicenseActivity(ctx, access.userId);
     return messageId;
   },
 });
@@ -198,6 +279,16 @@ export const edit = mutation({
     }
     const ciphertext = await sealString(messageContext(message.channelId), args.body);
     await ctx.db.patch(args.messageId, { ciphertext, editedAt: Date.now() });
+    // A moderator editing someone else's message is a moderation act worth an
+    // audit row; the author editing their own message is routine.
+    if (!isAuthor) {
+      await writeAudit(ctx, {
+        actorId: access.userId,
+        action: "message.edit",
+        targetId: args.messageId,
+        meta: JSON.stringify({ authorId: message.authorId }),
+      });
+    }
     return null;
   },
 });
@@ -217,11 +308,15 @@ export const remove = mutation({
     }
     if (message.deletedAt === undefined) {
       await ctx.db.patch(args.messageId, { deletedAt: Date.now() });
+    }
+    // A moderator deleting someone else's message is a moderation act; a
+    // self-delete stays out of the audit log.
+    if (!isAuthor) {
       await writeAudit(ctx, {
         actorId: access.userId,
         action: "message.delete",
         targetId: args.messageId,
-        meta: JSON.stringify({ channelId: message.channelId }),
+        meta: JSON.stringify({ authorId: message.authorId }),
       });
     }
     return null;
@@ -236,15 +331,9 @@ export const pin = mutation({
     if (message === null) {
       throw new ConvexError("Message not found");
     }
-    const access = await requireChannelAccess(ctx, message.channelId, Permission.PinMessages);
+    await requireChannelAccess(ctx, message.channelId, Permission.PinMessages);
     if (message.pinnedAt === undefined) {
       await ctx.db.patch(args.messageId, { pinnedAt: Date.now() });
-      await writeAudit(ctx, {
-        actorId: access.userId,
-        action: "message.pin",
-        targetId: args.messageId,
-        meta: JSON.stringify({ channelId: message.channelId }),
-      });
     }
     return null;
   },
@@ -258,15 +347,9 @@ export const unpin = mutation({
     if (message === null) {
       throw new ConvexError("Message not found");
     }
-    const access = await requireChannelAccess(ctx, message.channelId, Permission.PinMessages);
+    await requireChannelAccess(ctx, message.channelId, Permission.PinMessages);
     if (message.pinnedAt !== undefined) {
       await ctx.db.patch(args.messageId, { pinnedAt: undefined });
-      await writeAudit(ctx, {
-        actorId: access.userId,
-        action: "message.unpin",
-        targetId: args.messageId,
-        meta: JSON.stringify({ channelId: message.channelId }),
-      });
     }
     return null;
   },
@@ -364,6 +447,7 @@ export const threadInbox = query({
   args: {},
   handler: async (ctx): Promise<ThreadInboxRow[]> => {
     const { userId } = await requireAuth(ctx);
+    await requireMember(ctx, userId);
     const recent = await ctx.db.query("messages").order("desc").take(THREAD_INBOX_SCAN_LIMIT);
 
     interface ThreadAccumulator {

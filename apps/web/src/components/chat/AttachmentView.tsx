@@ -1,5 +1,5 @@
 import type { AttachmentDescriptor } from "@aulora/core";
-import { Text } from "@aulora/ui-web";
+import { Icon, Text } from "@aulora/ui-web";
 import { useCallback, useEffect, useRef, useState } from "react";
 import { loadAttachmentUrl, loadThumbnailUrl } from "../../lib/attachments";
 import type { ChatRuntime } from "../../lib/chat-runtime";
@@ -237,9 +237,7 @@ export function AttachmentView({ runtime, descriptor }: AttachmentViewProps) {
       data-testid={`attachment-${descriptor.fileId}`}
       className="flex w-72 items-center gap-2 rounded-input border border-border bg-surface-2 px-3 py-2"
     >
-      <span aria-hidden="true" className="text-lg">
-        📎
-      </span>
+      <Icon name="paperclip" size={20} className="text-text-muted" />
       <div className="min-w-0 flex-1">
         <Text size="sm" className="truncate">
           {descriptor.name}

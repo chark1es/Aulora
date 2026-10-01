@@ -1,7 +1,7 @@
-import { Button, Heading, IconButton, Input, Text } from "@aulora/ui-web";
-import { useMutation, useQuery } from "convex/react";
+import { Button, Card, Heading, Icon, IconButton, Input, Switch, Text } from "@aulora/ui-web";
+import { useAction, useMutation, useQuery } from "convex/react";
 import type { FunctionReturnType } from "convex/server";
-import { type ReactNode, useEffect, useState } from "react";
+import { useEffect, useState } from "react";
 import { api } from "../../../../../../packages/convex/convex/_generated/api";
 import {
   backupStatusLabel,
@@ -13,6 +13,7 @@ import {
 } from "../../../lib/instance-admin";
 import { SettingsSectionHeader } from "../SettingsSection";
 import { LicensePanel } from "./LicensePanel";
+import { UpdatesCard } from "./UpdatesCard";
 
 export interface InstanceAdminPanelProps {
   readonly canManage: boolean;
@@ -22,11 +23,12 @@ export interface InstanceAdminPanelProps {
   readonly variant?: "overlay" | "inline";
 }
 
-type TabId = "overview" | "auth" | "storage" | "backups" | "push" | "license";
+type TabId = "overview" | "auth" | "email" | "storage" | "backups" | "push" | "license";
 
 const TABS: readonly { id: TabId; label: string }[] = [
   { id: "overview", label: "Overview" },
   { id: "auth", label: "Auth providers" },
+  { id: "email", label: "Email" },
   { id: "storage", label: "Storage" },
   { id: "backups", label: "Backups" },
   { id: "push", label: "Push relay" },
@@ -58,7 +60,7 @@ export function InstanceAdminPanel({
           title="Instance"
           description="Server status, storage quotas, backups, push relay and licensing. Visible to the workspace owner only."
         />
-        <InstanceAdminContent canManage={canManage} bodyClassName="flex flex-col gap-4" />
+        <InstanceAdminContent canManage={canManage} bodyClassName="flex flex-col gap-8" inline />
       </section>
     );
   }
@@ -75,7 +77,7 @@ export function InstanceAdminPanel({
         <header className="flex items-center justify-between border-b border-border px-5 py-3">
           <Heading level={2}>Instance admin</Heading>
           <IconButton label="Close instance admin" onClick={() => onClose?.()}>
-            <span aria-hidden="true">✕</span>
+            <Icon name="x" size={16} />
           </IconButton>
         </header>
         <InstanceAdminContent
@@ -92,36 +94,40 @@ function InstanceAdminContent({
   canManage,
   onClose,
   bodyClassName,
+  inline = false,
 }: {
   readonly canManage: boolean;
   readonly onClose?: () => void;
   readonly bodyClassName: string;
+  readonly inline?: boolean;
 }) {
   const overview = useQuery(api.instance.overview, canManage ? {} : "skip");
   const [active, setActive] = useState<TabId>("overview");
 
   return (
     <>
-      <nav
-        className="flex flex-wrap gap-1 border-b border-border px-4 py-2"
-        aria-label="Instance admin sections"
-      >
-        {TABS.map((tab) => (
-          <button
-            key={tab.id}
-            type="button"
-            aria-current={active === tab.id ? "page" : undefined}
-            className={
-              active === tab.id
-                ? "rounded-[7px] bg-surface-3 px-3 py-1 text-[13px] font-medium text-text"
-                : "rounded-[7px] px-3 py-1 text-[13px] text-text-muted hover:bg-surface-2 hover:text-text"
-            }
-            onClick={() => setActive(tab.id)}
-          >
-            {tab.label}
-          </button>
-        ))}
-      </nav>
+      {!inline && (
+        <nav
+          className="flex flex-wrap gap-1 border-b border-border px-4 py-2"
+          aria-label="Instance admin sections"
+        >
+          {TABS.map((tab) => (
+            <button
+              key={tab.id}
+              type="button"
+              aria-current={active === tab.id ? "page" : undefined}
+              className={
+                active === tab.id
+                  ? "rounded-[7px] bg-surface-3 px-3 py-1 text-[13px] font-medium text-text"
+                  : "rounded-[7px] px-3 py-1 text-[13px] text-text-muted hover:bg-surface-2 hover:text-text"
+              }
+              onClick={() => setActive(tab.id)}
+            >
+              {tab.label}
+            </button>
+          ))}
+        </nav>
+      )}
       <div className={bodyClassName}>
         {!canManage ? (
           <Text tone="muted" size="sm" data-testid="instance-admin-locked">
@@ -133,12 +139,13 @@ function InstanceAdminContent({
           </Text>
         ) : (
           <>
-            {active === "overview" && <OverviewSection overview={overview} />}
-            {active === "auth" && <AuthSection overview={overview} />}
-            {active === "storage" && <StorageSection overview={overview} />}
-            {active === "backups" && <BackupsSection overview={overview} />}
-            {active === "push" && <PushRelaySection overview={overview} />}
-            {active === "license" && <LicensePanel canManage={canManage} />}
+            {(inline || active === "overview") && <OverviewSection overview={overview} />}
+            {(inline || active === "auth") && <AuthSection overview={overview} />}
+            {(inline || active === "email") && <EmailSection />}
+            {(inline || active === "storage") && <StorageSection overview={overview} />}
+            {(inline || active === "backups") && <BackupsSection overview={overview} />}
+            {(inline || active === "push") && <PushRelaySection overview={overview} />}
+            {(inline || active === "license") && <LicensePanel canManage={canManage} />}
           </>
         )}
         {onClose !== undefined && (
@@ -162,20 +169,21 @@ function OverviewSection({ overview }: { overview: Overview }) {
       <Text tone="muted" size="sm" mono>
         Aulora v{overview.version} · API v{overview.apiVersion}
       </Text>
+      <UpdatesCard />
       <dl className="grid grid-cols-2 gap-x-4 gap-y-2 text-sm sm:grid-cols-4">
         <Stat label="Members" value={String(overview.counts.members)} />
         <Stat label="Channels" value={String(overview.counts.channels)} />
         <Stat label="Devices" value={String(overview.counts.devices)} />
         <Stat label="Files" value={String(overview.counts.files)} />
       </dl>
-      <Card>
+      <Card className="flex flex-col gap-1">
         <Text size="sm">Storage used: {formatBytes(overview.storage.usedBytes)}</Text>
         <Text size="sm" tone="muted">
           Quota: {formatQuota(overview.storage.quotaBytes)} · Max upload:{" "}
           {formatBytes(overview.storage.maxUploadBytes)}
         </Text>
       </Card>
-      <Card>
+      <Card className="flex flex-col gap-1">
         <Text size="sm">
           License: <span className="uppercase">{overview.license.state}</span>
         </Text>
@@ -183,7 +191,7 @@ function OverviewSection({ overview }: { overview: Overview }) {
           {overview.license.note}
         </Text>
       </Card>
-      <Card>
+      <Card className="flex flex-col gap-1">
         <Text size="sm">Backups: {overview.backups.enabled ? "enabled" : "disabled"}</Text>
         <Text size="sm" tone="muted">
           {overview.backups.lastRun === null
@@ -196,34 +204,76 @@ function OverviewSection({ overview }: { overview: Overview }) {
 }
 
 function AuthSection({ overview }: { overview: Overview }) {
+  const updateAuthProviders = useMutation(api.instance.updateAuthProviders);
+  const stored = (overview.auth.providersConfigured ?? {}) as Record<string, boolean | undefined>;
+  const [toggles, setToggles] = useState<Record<string, boolean | undefined>>(stored);
+  const [error, setError] = useState<string | null>(null);
+  const [saved, setSaved] = useState(false);
+  const [busy, setBusy] = useState(false);
+
+  async function save(): Promise<void> {
+    setError(null);
+    setSaved(false);
+    setBusy(true);
+    try {
+      const providers = {
+        ...(toggles.github !== undefined ? { github: toggles.github } : {}),
+        ...(toggles.google !== undefined ? { google: toggles.google } : {}),
+        ...(toggles.microsoft !== undefined ? { microsoft: toggles.microsoft } : {}),
+        ...(toggles.apple !== undefined ? { apple: toggles.apple } : {}),
+        ...(toggles.oidc !== undefined ? { oidc: toggles.oidc } : {}),
+      };
+      await updateAuthProviders({ providers });
+      setSaved(true);
+    } catch (cause) {
+      setError(cause instanceof Error ? cause.message : "Could not save providers.");
+    } finally {
+      setBusy(false);
+    }
+  }
+
   return (
     <div className="flex flex-col gap-4" data-testid="instance-auth">
       <Heading level={3}>Auth providers</Heading>
       <Text tone="muted" size="sm">
-        Providers come from the deployment environment. Set credentials in infra/docker/.env and
-        re-run setup; secrets never reach this panel.
+        Credentials come from the deployment environment; a provider is offered only when it is both
+        configured and switched on here.
       </Text>
-      <Card>
+      <Card className="flex flex-col gap-1">
         <Text size="sm">
           Local email/password: {overview.auth.local.enabled ? "enabled" : "disabled"} · signup{" "}
           {overview.auth.local.signup ? "open" : "closed"}
         </Text>
       </Card>
       <ul className="flex flex-col gap-1" data-testid="instance-auth-providers">
-        {overview.auth.availableProviders.map((provider) => (
-          <li
-            key={provider.id}
-            className="flex items-center justify-between rounded-input border border-border bg-surface-2 px-3 py-2"
-          >
-            <Text size="sm">{provider.displayName}</Text>
-            <Text size="xs" tone={provider.configured ? "secondary" : "muted"} mono>
-              {provider.configured ? "CONFIGURED" : "not set"}
-            </Text>
-          </li>
-        ))}
+        {overview.auth.availableProviders.map((provider) => {
+          const enabled = toggles[provider.id] ?? provider.enabled;
+          return (
+            <li
+              key={provider.id}
+              className="rounded-input border border-border bg-surface-2 px-3 py-2"
+            >
+              <Switch
+                checked={enabled}
+                disabled={!provider.configured}
+                onChange={(value) => {
+                  setToggles((current) => ({ ...current, [provider.id]: value }));
+                  setSaved(false);
+                }}
+                label={provider.displayName}
+                {...(provider.configured
+                  ? {}
+                  : {
+                      description:
+                        "Not configured — set credentials in the deployment environment.",
+                    })}
+              />
+            </li>
+          );
+        })}
       </ul>
       {overview.auth.oidc !== null && (
-        <Card>
+        <Card className="flex flex-col gap-1">
           <Text size="sm">OIDC: {overview.auth.oidc.displayName}</Text>
           <Text size="xs" tone="muted" mono>
             {overview.auth.oidc.discoveryUrl}
@@ -233,7 +283,204 @@ function AuthSection({ overview }: { overview: Overview }) {
           </Text>
         </Card>
       )}
+      <div className="flex items-center gap-3">
+        <Button loading={busy} disabled={busy} onClick={() => void save()}>
+          Save providers
+        </Button>
+        {saved && (
+          <Text tone="secondary" size="sm" role="status">
+            Saved.
+          </Text>
+        )}
+        {error !== null && (
+          <Text tone="danger" size="sm" role="alert">
+            {error}
+          </Text>
+        )}
+      </div>
     </div>
+  );
+}
+
+function EmailSection() {
+  const current = useQuery(api.email.settings, {});
+  const update = useMutation(api.email.updateSettings);
+  const sendTest = useAction(api.email.sendTest);
+  const [provider, setProvider] = useState<"none" | "resend" | "smtp">("none");
+  const [from, setFrom] = useState("");
+  const [resendApiKey, setResendApiKey] = useState("");
+  const [smtpHost, setSmtpHost] = useState("");
+  const [smtpPort, setSmtpPort] = useState("587");
+  const [smtpSecure, setSmtpSecure] = useState(false);
+  const [smtpUser, setSmtpUser] = useState("");
+  const [smtpPassword, setSmtpPassword] = useState("");
+  const [to, setTo] = useState("");
+  const [status, setStatus] = useState<string | null>(null);
+  const [error, setError] = useState<string | null>(null);
+  const [busy, setBusy] = useState(false);
+  useEffect(() => {
+    if (current === undefined) return;
+    setProvider(current.provider);
+    setFrom(current.from);
+    setSmtpHost(current.smtpHost);
+    setSmtpPort(String(current.smtpPort));
+    setSmtpSecure(current.smtpSecure);
+    setSmtpUser(current.smtpUser);
+  }, [current]);
+
+  return (
+    <section className="flex flex-col gap-4" data-testid="instance-email">
+      <Heading level={3}>Email</Heading>
+      <Text tone="muted" size="sm">
+        Configure invite delivery. Credentials are encrypted on the server and are never shown
+        again.
+      </Text>
+      <form
+        className="grid gap-4 md:grid-cols-2"
+        onSubmit={(event) => {
+          event.preventDefault();
+          setError(null);
+          setStatus(null);
+          setBusy(true);
+          void update({
+            provider,
+            from,
+            ...(resendApiKey ? { resendApiKey } : {}),
+            smtpHost,
+            smtpPort: Number(smtpPort),
+            smtpSecure,
+            smtpUser,
+            ...(smtpPassword ? { smtpPassword } : {}),
+          })
+            .then(() => {
+              setResendApiKey("");
+              setSmtpPassword("");
+              setStatus("Email settings saved. Send a test message to verify delivery.");
+            })
+            .catch((cause: unknown) =>
+              setError(cause instanceof Error ? cause.message : "Could not save email settings."),
+            )
+            .finally(() => setBusy(false));
+        }}
+      >
+        <label className="flex flex-col gap-1.5 text-[13px] font-medium text-text">
+          Provider
+          <select
+            value={provider}
+            onChange={(event) => setProvider(event.target.value as typeof provider)}
+            className="h-10 rounded-[8px] border border-border bg-surface-2 px-3 text-text"
+          >
+            <option value="none">Disabled</option>
+            <option value="resend">Resend</option>
+            <option value="smtp">SMTP</option>
+          </select>
+        </label>
+        <Input
+          label="From address"
+          value={from}
+          onChange={(event) => setFrom(event.currentTarget.value)}
+          placeholder="Aulora <hello@example.com>"
+          required
+        />
+        {provider === "resend" && (
+          <Input
+            label="Resend API key"
+            type="password"
+            value={resendApiKey}
+            onChange={(event) => setResendApiKey(event.currentTarget.value)}
+            placeholder={current?.hasResendApiKey ? "Saved key" : "re_..."}
+            autoComplete="off"
+          />
+        )}
+        {provider === "smtp" && (
+          <>
+            <Input
+              label="SMTP host"
+              value={smtpHost}
+              onChange={(event) => setSmtpHost(event.currentTarget.value)}
+              required
+            />
+            <Input
+              label="SMTP port"
+              type="number"
+              value={smtpPort}
+              onChange={(event) => setSmtpPort(event.currentTarget.value)}
+              required
+            />
+            <Input
+              label="SMTP username"
+              value={smtpUser}
+              onChange={(event) => setSmtpUser(event.currentTarget.value)}
+              autoComplete="off"
+            />
+            <Input
+              label="SMTP password"
+              type="password"
+              value={smtpPassword}
+              onChange={(event) => setSmtpPassword(event.currentTarget.value)}
+              placeholder={
+                current?.hasSmtpPassword ? "Saved password" : "Optional if server needs no login"
+              }
+              autoComplete="new-password"
+            />
+            <Switch
+              checked={smtpSecure}
+              onChange={setSmtpSecure}
+              label="Use TLS immediately"
+              description="Enable for port 465. Port 587 uses STARTTLS automatically."
+            />
+          </>
+        )}
+        <div className="md:col-span-2">
+          <Button type="submit" loading={busy} disabled={busy || current === undefined}>
+            Save email settings
+          </Button>
+        </div>
+      </form>
+      <form
+        className="flex flex-wrap items-end gap-3 border-t border-border pt-4"
+        onSubmit={(event) => {
+          event.preventDefault();
+          setError(null);
+          setStatus(null);
+          setBusy(true);
+          void sendTest({ to: to.trim() })
+            .then((result) => {
+              setStatus(
+                result.sent
+                  ? "Test email sent."
+                  : "Delivery failed. Check the provider settings and server logs.",
+              );
+            })
+            .catch((cause: unknown) =>
+              setError(cause instanceof Error ? cause.message : "Could not send the test email."),
+            )
+            .finally(() => setBusy(false));
+        }}
+      >
+        <Input
+          label="Send a test email to"
+          type="email"
+          placeholder="you@example.com"
+          value={to}
+          onChange={(event) => setTo(event.currentTarget.value)}
+          autoComplete="off"
+        />
+        <Button type="submit" loading={busy} disabled={busy || to.trim().length === 0}>
+          Send test email
+        </Button>
+      </form>
+      {status !== null && (
+        <Text tone="secondary" size="sm" role="status">
+          {status}
+        </Text>
+      )}
+      {error !== null && (
+        <Text tone="danger" size="sm" role="alert">
+          {error}
+        </Text>
+      )}
+    </section>
   );
 }
 
@@ -438,15 +685,14 @@ function PushRelaySection({ overview }: { overview: Overview }) {
           ? "Relay URL and token are set in the environment."
           : "Relay token is not set in the environment."}
       </Text>
-      <label className="flex items-center gap-2 text-sm">
-        <input
-          type="checkbox"
-          className="h-4 w-4 accent-accent"
+      <div className="rounded-[10px] border border-border bg-surface-1 px-3.5">
+        <Switch
           checked={enabled}
-          onChange={(event) => setEnabled(event.currentTarget.checked)}
+          onChange={setEnabled}
+          label="Enable mobile push relay"
+          description="Forward pushes for store-built mobile apps through the relay."
         />
-        Enable mobile push relay
-      </label>
+      </div>
       <Input
         label="Relay URL"
         hint="Base URL the Convex action calls, e.g. https://relay.example.com."
@@ -479,14 +725,6 @@ function PushRelaySection({ overview }: { overview: Overview }) {
         </Button>
       </div>
     </form>
-  );
-}
-
-function Card({ children }: { children: ReactNode }) {
-  return (
-    <div className="flex flex-col gap-1 rounded-card border border-border bg-surface-2 p-3">
-      {children}
-    </div>
   );
 }
 

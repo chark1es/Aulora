@@ -15,28 +15,8 @@ function ThemeGlyph({
   readonly preference: ThemePreference;
   readonly size?: number;
 }) {
-  if (preference === "system") {
-    return (
-      <svg viewBox="0 0 24 24" width={size} height={size} aria-hidden="true" fill="none">
-        <rect
-          x="3"
-          y="4"
-          width="18"
-          height="12.5"
-          rx="2.5"
-          stroke="currentColor"
-          strokeWidth="1.75"
-        />
-        <path
-          d="M9 20.5h6M12 16.5v4"
-          stroke="currentColor"
-          strokeWidth="1.75"
-          strokeLinecap="round"
-        />
-      </svg>
-    );
-  }
-  return <Icon name={preference === "light" ? "sun" : "moon"} size={size} />;
+  const name = preference === "system" ? "desktop" : preference === "light" ? "sun" : "moon";
+  return <Icon name={name} size={size} />;
 }
 
 /** Cycles system -> light -> dark, applying and persisting the choice. */

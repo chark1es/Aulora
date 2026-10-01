@@ -3,6 +3,7 @@ import { convexTest } from "convex-test";
 import { afterEach, describe, expect, it } from "vitest";
 import { api } from "../convex/_generated/api";
 import schema from "../convex/schema";
+import { newTest, seedWorkspace } from "./helpers";
 import { modules } from "./setup";
 
 const ENV_KEYS = [
@@ -97,6 +98,85 @@ describe("server.publicConfig", () => {
     });
     expect(JSON.stringify(config)).not.toContain("should-not-leak");
     expect(containsSecretField(config)).toBe(false);
+  });
+
+  it("honors instance auth-provider toggles and reports the access policy", async () => {
+    clearEnv();
+    process.env.GITHUB_CLIENT_ID = "gh-id";
+    process.env.GITHUB_CLIENT_SECRET = "gh-secret";
+    const t = newTest();
+    await seedWorkspace(t, { ownerId: "owner-1", members: [{ userId: "owner-1" }] });
+    const asOwner = t.withIdentity({ subject: "owner-1" });
+
+    const before = await t.query(api.server.publicConfig);
+    expect(before.auth.providers.map((provider) => provider.id)).toContain("github");
+
+    await asOwner.mutation(api.instance.updateAuthProviders, { providers: { github: false } });
+    const after = await t.query(api.server.publicConfig);
+    expect(after.auth.providers.map((provider) => provider.id)).not.toContain("github");
+
+    await asOwner.mutation(api.server.updateSettings, { inviteOnly: false, signupEnabled: false });
+    const policy = await t.query(api.server.publicConfig);
+    expect(policy).toMatchObject({ inviteOnly: false, signupEnabled: false });
+    expect(policy.auth.local.signup).toBe(false);
+  });
+
+  it("updates branding under ManageWorkspace and audits the change", async () => {
+    clearEnv();
+    const t = newTest();
+    await seedWorkspace(t, { members: [{ userId: "user-1" }] });
+    const asOwner = t.withIdentity({ subject: "owner-1" });
+    await asOwner.mutation(api.server.updateBranding, {
+      name: "Renamed",
+      description: "hello",
+      iconSeed: "seed-2",
+    });
+
+    const config = await t.query(api.server.publicConfig);
+    expect(config).toMatchObject({ name: "Renamed", description: "hello" });
+    const admin = await asOwner.query(api.server.settings);
+    expect(admin).toMatchObject({
+      name: "Renamed",
+      description: "hello",
+      iconSeed: "seed-2",
+    });
+
+    const log = await asOwner.query(api.auditLog.list, {
+      paginationOpts: { numItems: 50, cursor: null },
+    });
+    expect(log.page.map((row) => row.action)).toContain("server.updateBranding");
+
+    const asUser = t.withIdentity({ subject: "user-1" });
+    await expect(asUser.mutation(api.server.updateBranding, { name: "Nope" })).rejects.toThrow(
+      "Missing permission",
+    );
+  });
+
+  it("only accepts a non-empty image asset under the size cap as the logo", async () => {
+    clearEnv();
+    const t = newTest();
+    await seedWorkspace(t, { members: [{ userId: "user-1" }] });
+    const asOwner = t.withIdentity({ subject: "owner-1" });
+
+    const imageId = await t.run(async (ctx) => {
+      const bytes = new Uint8Array([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a]);
+      return await ctx.storage.store(new Blob([bytes], { type: "image/png" }));
+    });
+    await asOwner.mutation(api.server.setLogo, { storageId: imageId });
+    expect((await asOwner.query(api.server.settings)).logoStorageId).toBe(imageId);
+
+    // An empty object is never a valid logo.
+    const emptyId = await t.run(
+      async (ctx) => await ctx.storage.store(new Blob([new Uint8Array(0)])),
+    );
+    await expect(asOwner.mutation(api.server.setLogo, { storageId: emptyId })).rejects.toThrow(
+      "image",
+    );
+
+    const asUser = t.withIdentity({ subject: "user-1" });
+    await expect(asUser.mutation(api.server.setLogo, { storageId: imageId })).rejects.toThrow(
+      "Missing permission",
+    );
   });
 
   it("uses the stored server name and signup setting", async () => {

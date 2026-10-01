@@ -147,6 +147,127 @@ function applyContentHint(track: MediaStreamTrack, codec: VoiceDeviceSettings["s
   }
 }
 
+/**
+ * The client-side microphone chain: input gain, an optional noise gate and a
+ * processed output stream the call engine sends instead of the raw capture.
+ * Applied with WebAudio so `inputVolume` and `noiseGateThreshold` actually
+ * change what peers hear. Degrades to the raw stream when WebAudio is absent
+ * (jsdom, older browsers).
+ */
+export interface MicPipeline {
+  readonly stream: MediaStream;
+  setSettings(settings: VoiceDeviceSettings): void;
+  stop(): void;
+}
+
+function audioContextCtor(): typeof AudioContext | null {
+  if (typeof AudioContext !== "undefined") {
+    return AudioContext;
+  }
+  const legacy = (globalThis as { webkitAudioContext?: typeof AudioContext }).webkitAudioContext;
+  return legacy ?? null;
+}
+
+export function createMicPipeline(stream: MediaStream, settings: VoiceDeviceSettings): MicPipeline {
+  const Ctor = audioContextCtor();
+  if (Ctor === null || stream.getAudioTracks().length === 0) {
+    return { stream, setSettings: () => {}, stop: () => {} };
+  }
+  let context: AudioContext;
+  try {
+    context = new Ctor();
+  } catch {
+    return { stream, setSettings: () => {}, stop: () => {} };
+  }
+  const source = context.createMediaStreamSource(stream);
+  const analyser = context.createAnalyser();
+  analyser.fftSize = 512;
+  analyser.smoothingTimeConstant = 0.6;
+  const gate = context.createGain();
+  const gain = context.createGain();
+  const destination = context.createMediaStreamDestination();
+  source.connect(analyser);
+  source.connect(gate);
+  gate.connect(gain);
+  gain.connect(destination);
+
+  let threshold = settings.noiseGateThreshold;
+  let open = true;
+  gain.gain.value = settings.inputVolume;
+  const data = new Uint8Array(analyser.frequencyBinCount);
+  let frame = 0;
+  const tick = () => {
+    analyser.getByteFrequencyData(data);
+    let sum = 0;
+    for (const value of data) {
+      sum += value * value;
+    }
+    const rms = Math.sqrt(sum / data.length) / 255;
+    const wantOpen = threshold <= 0 || rms >= threshold;
+    if (wantOpen !== open) {
+      open = wantOpen;
+      gate.gain.setTargetAtTime(wantOpen ? 1 : 0, context.currentTime, wantOpen ? 0.01 : 0.08);
+    }
+    frame = requestAnimationFrame(tick);
+  };
+  frame = requestAnimationFrame(tick);
+  void context.resume().catch(() => undefined);
+
+  return {
+    stream: destination.stream,
+    setSettings(next) {
+      threshold = next.noiseGateThreshold;
+      gain.gain.setTargetAtTime(next.inputVolume, context.currentTime, 0.02);
+    },
+    stop() {
+      cancelAnimationFrame(frame);
+      source.disconnect();
+      analyser.disconnect();
+      gate.disconnect();
+      gain.disconnect();
+      for (const track of stream.getTracks()) {
+        track.stop();
+      }
+      void context.close().catch(() => undefined);
+    },
+  };
+}
+
+/** A WebAudio playback path for one remote stream, used to boost past unity. */
+export interface OutputGain {
+  setVolume(volume: number): void;
+  stop(): void;
+}
+
+export function createOutputGain(stream: MediaStream, volume: number): OutputGain | null {
+  const Ctor = audioContextCtor();
+  if (Ctor === null) {
+    return null;
+  }
+  let context: AudioContext;
+  try {
+    context = new Ctor();
+  } catch {
+    return null;
+  }
+  const source = context.createMediaStreamSource(stream);
+  const gain = context.createGain();
+  gain.gain.value = volume;
+  source.connect(gain);
+  gain.connect(context.destination);
+  void context.resume().catch(() => undefined);
+  return {
+    setVolume(next) {
+      gain.gain.setTargetAtTime(next, context.currentTime, 0.02);
+    },
+    stop() {
+      source.disconnect();
+      gain.disconnect();
+      void context.close().catch(() => undefined);
+    },
+  };
+}
+
 /** Live microphone level, 0..1, with a fast attack and a slow decay. */
 export function createLevelMeter(
   stream: MediaStream,
@@ -164,6 +285,7 @@ export function createLevelMeter(
   const data = new Uint8Array(analyser.frequencyBinCount);
   let smoothed = 0;
   let frame = 0;
+  void context.resume().catch(() => undefined);
   const tick = () => {
     analyser.getByteFrequencyData(data);
     let sum = 0;

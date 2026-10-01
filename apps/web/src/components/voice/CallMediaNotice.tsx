@@ -15,7 +15,7 @@ export function CallMediaNotice({ compact = false }: { readonly compact?: boolea
     <div
       role="status"
       className={cn(
-        "flex items-center gap-2 rounded-[8px] border border-[#E8A33B]/30 bg-[#E8A33B]/10 text-[#E8A33B]",
+        "flex items-center gap-2 rounded-[8px] border border-idle/30 bg-idle/10 text-idle",
         compact ? "px-2 py-1 text-[11px]" : "mx-3 mt-2 px-3 py-2 text-[12px]",
       )}
     >

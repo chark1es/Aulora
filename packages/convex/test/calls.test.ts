@@ -25,12 +25,12 @@ describe("calls.start", () => {
 
     const first = await t
       .withIdentity({ subject: "user-1" })
-      .mutation(api.calls.start, { channelId, kind: "voice" });
+      .mutation(api.calls.start, { channelId, kind: "voice", clientId: "device-a" });
     expect(first.created).toBe(true);
 
     const second = await t
       .withIdentity({ subject: "user-1" })
-      .mutation(api.calls.start, { channelId, kind: "voice" });
+      .mutation(api.calls.start, { channelId, kind: "voice", clientId: "device-a" });
     expect(second.created).toBe(false);
     expect(second.callId).toBe(first.callId);
 
@@ -45,7 +45,9 @@ describe("calls.start", () => {
     const t = await seed({ members: [{ userId: "user-1" }] });
     const channelId = await seedChannel(t, { kind: "text", name: "general" });
     await expect(
-      t.withIdentity({ subject: "user-1" }).mutation(api.calls.start, { channelId, kind: "voice" }),
+      t
+        .withIdentity({ subject: "user-1" })
+        .mutation(api.calls.start, { channelId, kind: "voice", clientId: "device-a" }),
     ).rejects.toThrow(/voice channels and direct messages/);
   });
 
@@ -54,12 +56,16 @@ describe("calls.start", () => {
     const channelId = await seedChannel(t, { kind: "voice", name: "Lounge" });
     await patchSettings(t, { voiceEnabled: false });
     await expect(
-      t.withIdentity({ subject: "user-1" }).mutation(api.calls.start, { channelId, kind: "voice" }),
+      t
+        .withIdentity({ subject: "user-1" })
+        .mutation(api.calls.start, { channelId, kind: "voice", clientId: "device-a" }),
     ).rejects.toThrow(/disabled/);
 
     await patchSettings(t, { voiceEnabled: true, videoEnabled: false });
     await expect(
-      t.withIdentity({ subject: "user-1" }).mutation(api.calls.start, { channelId, kind: "video" }),
+      t
+        .withIdentity({ subject: "user-1" })
+        .mutation(api.calls.start, { channelId, kind: "video", clientId: "device-a" }),
     ).rejects.toThrow(/Video calling is disabled/);
   });
 
@@ -71,7 +77,7 @@ describe("calls.start", () => {
     });
     const { callId } = await t
       .withIdentity({ subject: "user-1" })
-      .mutation(api.calls.start, { channelId, kind: "voice" });
+      .mutation(api.calls.start, { channelId, kind: "voice", clientId: "device-a" });
 
     const incoming = await t.withIdentity({ subject: "user-2" }).query(api.calls.incoming, {});
     expect(incoming.map((call) => call.id)).toContain(callId);
@@ -86,18 +92,24 @@ describe("calls lifecycle", () => {
     const channelId = await seedChannel(t, { kind: "dm", memberIds: ["user-1", "user-2"] });
     const { callId } = await t
       .withIdentity({ subject: "user-1" })
-      .mutation(api.calls.start, { channelId, kind: "voice" });
+      .mutation(api.calls.start, { channelId, kind: "voice", clientId: "device-a" });
 
-    await t.withIdentity({ subject: "user-2" }).mutation(api.calls.join, { callId });
+    await t
+      .withIdentity({ subject: "user-2" })
+      .mutation(api.calls.join, { callId, clientId: "device-a" });
     let call = await t.withIdentity({ subject: "user-1" }).query(api.calls.get, { callId });
     expect(call?.status).toBe("active");
     expect(call?.participants).toHaveLength(2);
 
-    await t.withIdentity({ subject: "user-1" }).mutation(api.calls.leave, { callId });
+    await t
+      .withIdentity({ subject: "user-1" })
+      .mutation(api.calls.leave, { callId, clientId: "device-a" });
     call = await t.withIdentity({ subject: "user-2" }).query(api.calls.get, { callId });
     expect(call?.participants).toHaveLength(1);
 
-    await t.withIdentity({ subject: "user-2" }).mutation(api.calls.leave, { callId });
+    await t
+      .withIdentity({ subject: "user-2" })
+      .mutation(api.calls.leave, { callId, clientId: "device-a" });
     call = await t.withIdentity({ subject: "user-2" }).query(api.calls.get, { callId });
     expect(call?.status).toBe("ended");
   });
@@ -107,7 +119,7 @@ describe("calls lifecycle", () => {
     const channelId = await seedChannel(t, { kind: "dm", memberIds: ["user-1", "user-2"] });
     const { callId } = await t
       .withIdentity({ subject: "user-1" })
-      .mutation(api.calls.start, { channelId, kind: "voice" });
+      .mutation(api.calls.start, { channelId, kind: "voice", clientId: "device-a" });
 
     await t.withIdentity({ subject: "user-2" }).mutation(api.calls.decline, { callId });
     const incoming = await t.withIdentity({ subject: "user-2" }).query(api.calls.incoming, {});
@@ -119,11 +131,14 @@ describe("calls lifecycle", () => {
     const channelId = await seedChannel(t, { kind: "voice", name: "Lounge" });
     const { callId } = await t
       .withIdentity({ subject: "user-1" })
-      .mutation(api.calls.start, { channelId, kind: "voice" });
-    await t.withIdentity({ subject: "user-2" }).mutation(api.calls.join, { callId });
+      .mutation(api.calls.start, { channelId, kind: "voice", clientId: "device-a" });
+    await t
+      .withIdentity({ subject: "user-2" })
+      .mutation(api.calls.join, { callId, clientId: "device-a" });
 
     await t.withIdentity({ subject: "user-1" }).mutation(api.calls.signal, {
       callId,
+      clientId: "device-a",
       toUserId: "user-2",
       kind: "offer",
       payload: "v=0",
@@ -152,17 +167,19 @@ describe("calls lifecycle", () => {
     const channelId = await seedChannel(t, { kind: "voice", name: "Lounge" });
     const { callId } = await t
       .withIdentity({ subject: "user-1" })
-      .mutation(api.calls.start, { channelId, kind: "voice" });
+      .mutation(api.calls.start, { channelId, kind: "voice", clientId: "device-a" });
 
     await expect(
       t.withIdentity({ subject: "user-1" }).mutation(api.calls.updateParticipant, {
         callId,
+        clientId: "device-a",
         video: true,
       }),
     ).rejects.toThrow(/camera/);
     await expect(
       t.withIdentity({ subject: "user-1" }).mutation(api.calls.updateParticipant, {
         callId,
+        clientId: "device-a",
         sharingScreen: true,
       }),
     ).rejects.toThrow(/share your screen/);
@@ -173,23 +190,27 @@ describe("calls lifecycle", () => {
     const channelId = await seedChannel(t, { kind: "voice", name: "Lounge" });
     const { callId } = await t
       .withIdentity({ subject: "user-1" })
-      .mutation(api.calls.start, { channelId, kind: "voice" });
-    await t.withIdentity({ subject: "user-2" }).mutation(api.calls.join, { callId });
+      .mutation(api.calls.start, { channelId, kind: "voice", clientId: "device-a" });
+    await t
+      .withIdentity({ subject: "user-2" })
+      .mutation(api.calls.join, { callId, clientId: "device-a" });
 
     await t
       .withIdentity({ subject: "user-1" })
-      .mutation(api.calls.updateParticipant, { callId, sharingScreen: true });
+      .mutation(api.calls.updateParticipant, { callId, clientId: "device-a", sharingScreen: true });
     await t
       .withIdentity({ subject: "user-2" })
-      .mutation(api.calls.updateParticipant, { callId, sharingScreen: true });
+      .mutation(api.calls.updateParticipant, { callId, clientId: "device-a", sharingScreen: true });
 
     let call = await t.withIdentity({ subject: "user-1" }).query(api.calls.get, { callId });
     expect(call?.screenShareUserId).toBe("user-2");
     expect(call?.participants.filter((p) => p.sharingScreen)).toHaveLength(1);
 
-    await t
-      .withIdentity({ subject: "user-2" })
-      .mutation(api.calls.updateParticipant, { callId, sharingScreen: false });
+    await t.withIdentity({ subject: "user-2" }).mutation(api.calls.updateParticipant, {
+      callId,
+      clientId: "device-a",
+      sharingScreen: false,
+    });
     call = await t.withIdentity({ subject: "user-1" }).query(api.calls.get, { callId });
     expect(call?.screenShareUserId).toBeNull();
   });
@@ -201,7 +222,7 @@ describe("calls sweep", () => {
     const channelId = await seedChannel(t, { kind: "voice", name: "Lounge" });
     const { callId } = await t
       .withIdentity({ subject: "user-1" })
-      .mutation(api.calls.start, { channelId, kind: "voice" });
+      .mutation(api.calls.start, { channelId, kind: "voice", clientId: "device-a" });
 
     await t.run(async (ctx) => {
       const participant = await ctx.db.query("callParticipants").first();
@@ -221,7 +242,7 @@ describe("calls sweep", () => {
     const channelId = await seedChannel(t, { kind: "dm", memberIds: ["user-1", "user-2"] });
     const { callId } = await t
       .withIdentity({ subject: "user-1" })
-      .mutation(api.calls.start, { channelId, kind: "voice" });
+      .mutation(api.calls.start, { channelId, kind: "voice", clientId: "device-a" });
 
     await t.run(async (ctx) => {
       const call = await ctx.db.get(callId);
@@ -232,5 +253,199 @@ describe("calls sweep", () => {
     await t.mutation(internal.calls.sweep, {});
     const call = await t.withIdentity({ subject: "user-1" }).query(api.calls.get, { callId });
     expect(call?.status).toBe("ended");
+  });
+});
+
+describe("calls target validation", () => {
+  it("refuses a signal addressed to a non-participant", async () => {
+    const t = await seed({
+      members: [{ userId: "user-1" }, { userId: "user-2" }, { userId: "user-3" }],
+    });
+    const channelId = await seedChannel(t, { kind: "voice", name: "Lounge" });
+    const { callId } = await t
+      .withIdentity({ subject: "user-1" })
+      .mutation(api.calls.start, { channelId, kind: "voice", clientId: "device-a" });
+    await t
+      .withIdentity({ subject: "user-2" })
+      .mutation(api.calls.join, { callId, clientId: "device-a" });
+
+    await expect(
+      t.withIdentity({ subject: "user-1" }).mutation(api.calls.signal, {
+        callId,
+        clientId: "device-a",
+        toUserId: "user-3",
+        kind: "offer",
+        payload: "v=0",
+      }),
+    ).rejects.toThrow("not in this call");
+  });
+
+  it("intersects explicit ringing targets with current channel members", async () => {
+    const t = await seed({
+      members: [{ userId: "user-1" }, { userId: "user-2" }, { userId: "stranger" }],
+    });
+    const channelId = await seedChannel(t, { kind: "dm", memberIds: ["user-1", "user-2"] });
+    const { callId } = await t.withIdentity({ subject: "user-1" }).mutation(api.calls.start, {
+      channelId,
+      kind: "voice",
+      clientId: "device-a",
+      ringingUserIds: ["user-2", "stranger"],
+    });
+    const call = await t.run(async (ctx) => await ctx.db.get(callId));
+    expect(call?.ringingUserIds).toEqual(["user-2"]);
+  });
+});
+
+describe("one call per user", () => {
+  it("moves the same device out of its other call", async () => {
+    const t = await seed({ members: [{ userId: "user-1" }] });
+    const lounge = await seedChannel(t, { kind: "voice", name: "Lounge" });
+    const focus = await seedChannel(t, { kind: "voice", name: "Focus" });
+    const first = await t
+      .withIdentity({ subject: "user-1" })
+      .mutation(api.calls.start, { channelId: lounge, kind: "voice", clientId: "device-a" });
+    const second = await t
+      .withIdentity({ subject: "user-1" })
+      .mutation(api.calls.start, { channelId: focus, kind: "voice", clientId: "device-a" });
+
+    const left = await t.withIdentity({ subject: "user-1" }).query(api.calls.get, {
+      callId: first.callId,
+    });
+    const joined = await t.withIdentity({ subject: "user-1" }).query(api.calls.get, {
+      callId: second.callId,
+    });
+    expect(left?.status).toBe("ended");
+    expect(joined?.participants.map((participant) => participant.userId)).toEqual(["user-1"]);
+    expect(joined?.participants[0]?.clientId).toBe("device-a");
+
+    const rows = await t.run(async (ctx) => await ctx.db.query("callParticipants").collect());
+    expect(rows).toHaveLength(1);
+  });
+
+  it("refuses another device until it confirms the takeover", async () => {
+    const t = await seed({ members: [{ userId: "user-1" }, { userId: "user-2" }] });
+    const channelId = await seedChannel(t, { kind: "voice", name: "Lounge" });
+    const { callId } = await t
+      .withIdentity({ subject: "user-1" })
+      .mutation(api.calls.start, { channelId, kind: "voice", clientId: "device-a" });
+    await t
+      .withIdentity({ subject: "user-2" })
+      .mutation(api.calls.join, { callId, clientId: "device-b" });
+
+    await expect(
+      t.withIdentity({ subject: "user-1" }).mutation(api.calls.join, {
+        callId,
+        clientId: "device-b",
+      }),
+    ).rejects.toThrow(/another device/);
+
+    await t.withIdentity({ subject: "user-1" }).mutation(api.calls.join, {
+      callId,
+      clientId: "device-b",
+      takeover: true,
+    });
+    const call = await t.withIdentity({ subject: "user-1" }).query(api.calls.get, { callId });
+    expect(call?.participants).toHaveLength(2);
+    expect(
+      call?.participants.find((participant) => participant.userId === "user-1")?.clientId,
+    ).toBe("device-b");
+    expect(
+      call?.participants.find((participant) => participant.userId === "user-2")?.clientId,
+    ).toBeNull();
+  });
+
+  it("does not let the displaced device leave or signal the new seat", async () => {
+    const t = await seed({ members: [{ userId: "user-1" }, { userId: "user-2" }] });
+    const channelId = await seedChannel(t, { kind: "voice", name: "Lounge" });
+    const { callId } = await t
+      .withIdentity({ subject: "user-1" })
+      .mutation(api.calls.start, { channelId, kind: "voice", clientId: "device-a" });
+    await t
+      .withIdentity({ subject: "user-2" })
+      .mutation(api.calls.join, { callId, clientId: "device-c" });
+    await t.withIdentity({ subject: "user-1" }).mutation(api.calls.join, {
+      callId,
+      clientId: "device-b",
+      takeover: true,
+    });
+
+    await t
+      .withIdentity({ subject: "user-1" })
+      .mutation(api.calls.leave, { callId, clientId: "device-a" });
+    const call = await t.withIdentity({ subject: "user-1" }).query(api.calls.get, { callId });
+    expect(call?.status).toBe("active");
+    expect(call?.participants.map((participant) => participant.userId)).toEqual([
+      "user-1",
+      "user-2",
+    ]);
+
+    await expect(
+      t.withIdentity({ subject: "user-1" }).mutation(api.calls.signal, {
+        callId,
+        clientId: "device-a",
+        toUserId: "user-2",
+        kind: "offer",
+        payload: "v=0",
+      }),
+    ).rejects.toThrow(/not in this call/);
+  });
+
+  it("ignores a heartbeat from the device that no longer holds the seat", async () => {
+    const t = await seed({ members: [{ userId: "user-1" }] });
+    const channelId = await seedChannel(t, { kind: "voice", name: "Lounge" });
+    const { callId } = await t
+      .withIdentity({ subject: "user-1" })
+      .mutation(api.calls.start, { channelId, kind: "voice", clientId: "device-a" });
+    await t.withIdentity({ subject: "user-1" }).mutation(api.calls.join, {
+      callId,
+      clientId: "device-b",
+      takeover: true,
+    });
+    await t.run(async (ctx) => {
+      const participant = await ctx.db.query("callParticipants").first();
+      if (participant !== null) {
+        await ctx.db.patch(participant._id, { lastSeen: 1 });
+      }
+    });
+
+    await t
+      .withIdentity({ subject: "user-1" })
+      .mutation(api.calls.heartbeat, { callId, clientId: "device-a" });
+    const stale = await t.run(async (ctx) => await ctx.db.query("callParticipants").first());
+    expect(stale?.lastSeen).toBe(1);
+
+    await t
+      .withIdentity({ subject: "user-1" })
+      .mutation(api.calls.heartbeat, { callId, clientId: "device-b" });
+    const fresh = await t.run(async (ctx) => await ctx.db.query("callParticipants").first());
+    expect(fresh?.lastSeen).not.toBe(1);
+  });
+
+  it("lets the live device claim a seat that has no client id", async () => {
+    const t = await seed({ members: [{ userId: "user-1" }] });
+    const channelId = await seedChannel(t, { kind: "voice", name: "Lounge" });
+    const { callId } = await t
+      .withIdentity({ subject: "user-1" })
+      .mutation(api.calls.start, { channelId, kind: "voice", clientId: "device-a" });
+    await t.run(async (ctx) => {
+      const participant = await ctx.db.query("callParticipants").first();
+      if (participant !== null) {
+        const { _id, _creationTime, clientId: _clientId, ...fields } = participant;
+        await ctx.db.replace(_id, fields);
+      }
+    });
+
+    await t
+      .withIdentity({ subject: "user-1" })
+      .mutation(api.calls.heartbeat, { callId, clientId: "device-a" });
+    const claimed = await t.withIdentity({ subject: "user-1" }).query(api.calls.get, { callId });
+    expect(claimed?.participants[0]?.clientId).toBe("device-a");
+
+    await expect(
+      t.withIdentity({ subject: "user-1" }).mutation(api.calls.join, {
+        callId,
+        clientId: "device-b",
+      }),
+    ).rejects.toThrow(/another device/);
   });
 });

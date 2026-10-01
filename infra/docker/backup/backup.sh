@@ -7,9 +7,9 @@
 #
 #   backup.sh [cron|manual]
 #
-# Artifacts hold only ciphertext (the data is sealed at rest); the EKM-held KEK
-# is required to read them at restore time and is never copied in here. A small
-# non-secret encryption manifest records which provider/key version is needed.
+# Message content stays encrypted, but artifacts include sensitive metadata.
+# Raw database dumps can also contain backend configuration. A non-secret
+# encryption manifest records which provider/key version recovery requires.
 # Exit code is 0 on success and 1 on failure; a failure is also recorded so the
 # admin panel shows it. Nothing here prints secret values.
 
@@ -80,14 +80,14 @@ if ! PGPASSWORD="$POSTGRES_PASSWORD" pg_dump \
 fi
 
 # 2. Convex logical export (also covers S3-backed file storage).
-if ! convex export --path "$RUN_DIR/convex.zip" >/dev/null 2>&1; then
+if ! convex export --include-file-storage --path "$RUN_DIR/convex.zip" >/dev/null 2>&1; then
   fail "convex export failed"
 fi
 
 # 2b. Non-secret encryption manifest: records which EKM holds the KEK and which
 # key version sealed the data, so a restore knows what it needs. Deliberately
 # contains no key material (never AULORA_ENCRYPTION_KEY / AULORA_KEK_WRAPPED).
-printf '{"provider":"%s","kekId":"%s","keyVersion":"%s","algorithm":"AES-256-GCM","keyMaterialIncluded":false,"note":"Backups contain ciphertext; restoring requires the EKM-held KEK (or AULORA_ENCRYPTION_KEY)."}\n' \
+printf '{"provider":"%s","kekId":"%s","keyVersion":"%s","algorithm":"AES-256-GCM","keyMaterialIncluded":false,"note":"Encrypted content requires its original key to restore. Treat all backup artifacts as sensitive."}\n' \
   "${AULORA_EKM_PROVIDER:-local}" \
   "${AULORA_EKM_KEY_ID:-aulora-kek}" \
   "${AULORA_ENCRYPTION_KEY_VERSION:-1}" \

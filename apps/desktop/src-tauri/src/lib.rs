@@ -11,6 +11,7 @@ mod commands;
 mod deep_link;
 mod menu;
 mod tray;
+mod updater;
 mod window;
 
 use tauri::Manager;
@@ -33,13 +34,22 @@ pub fn run() {
         .plugin(tauri_plugin_deep_link::init())
         .plugin(tauri_plugin_notification::init())
         .manage(deep_link::DeepLinkState::default())
+        .manage(updater::AppUpdateState::default())
         .invoke_handler(tauri::generate_handler![
             commands::set_always_on_top,
             commands::set_unread_badge,
             commands::show_notification,
             commands::take_deep_links,
+            updater::app_version,
+            updater::check_for_app_update,
+            updater::download_app_update,
+            updater::install_app_update,
         ])
         .setup(|app| {
+            // The updater plugin reads the pubkey and endpoints from the
+            // Tauri context, which is only available once the app is built.
+            app.handle()
+                .plugin(tauri_plugin_updater::Builder::new().build())?;
             menu::install(app)?;
             tray::install(app)?;
             window::configure(app)?;

@@ -2,6 +2,9 @@ import {
   type MediaDeviceInfo as AuloraMediaDevice,
   type CallKind,
   type CallView,
+  claimCallSeat,
+  createVoiceClientId,
+  ensureVoiceClientId,
   hasPermission,
   mergeVoiceSettings,
   Permission,
@@ -18,6 +21,7 @@ import {
   useRef,
   useState,
 } from "react";
+import { SwitchDeviceCallModal } from "../components/voice/SwitchDeviceCallModal";
 import { VoiceEngine, type VoiceSnapshot } from "../lib/voice/call-engine";
 import { convexVoicePort, convexVoiceSubscriptions } from "../lib/voice/convex-voice";
 import {
@@ -26,7 +30,13 @@ import {
   writeVoiceSettings,
 } from "../lib/voice/device-settings";
 import { sendLeaveBeacon } from "../lib/voice/leave-beacon";
-import { applySinkId, listMediaDevices, onDeviceChange } from "../lib/voice/media";
+import {
+  applySinkId,
+  createOutputGain,
+  listMediaDevices,
+  type OutputGain,
+  onDeviceChange,
+} from "../lib/voice/media";
 
 /** How often the cached unload token is refreshed while a call is active. */
 const TOKEN_REFRESH_MS = 60_000;
@@ -44,6 +54,8 @@ export type CallViewMode = "hidden" | "dock" | "stage";
 
 export interface VoiceContextValue extends VoiceSnapshot {
   readonly selfUserId: string;
+  /** This install's id, used to tell a local seat from one on another device. */
+  readonly clientId: string;
   readonly policy: VoicePolicy;
   readonly incoming: readonly CallView[];
   readonly activeCalls: readonly CallView[];
@@ -85,7 +97,9 @@ const EMPTY_SNAPSHOT: VoiceSnapshot = {
   micStream: null,
   localVideoTrack: null,
   remoteStreams: new Map(),
+  remoteSpeaking: new Set(),
   micLevel: 0,
+  localSpeaking: false,
   pending: false,
   error: null,
   mediaError: null,
@@ -111,6 +125,7 @@ export function VoiceProvider({
   policy,
   children,
 }: VoiceProviderProps) {
+  const [clientId] = useState(loadBrowserVoiceClientId);
   const engineRef = useRef<VoiceEngine | null>(null);
   const [snapshot, setSnapshot] = useState<VoiceSnapshot>(EMPTY_SNAPSHOT);
   const [incoming, setIncoming] = useState<readonly CallView[]>([]);
@@ -119,6 +134,9 @@ export function VoiceProvider({
   const [devices, setDevices] = useState<readonly AuloraMediaDevice[]>([]);
   const [view, setView] = useState<CallViewMode>("hidden");
   const [pipPinned, setPipPinned] = useState(false);
+  const [switchPrompt, setSwitchPrompt] = useState<{
+    resolve: (accepted: boolean) => void;
+  } | null>(null);
   const settingsRef = useRef<VoiceDeviceSettings>(settings);
   settingsRef.current = settings;
   const iceServersRef = useRef(policy.iceServers);
@@ -126,13 +144,16 @@ export function VoiceProvider({
   // A fresh Convex JWT, cached so the unload beacon can authenticate without
   // awaiting anything once the page is going away.
   const authTokenRef = useRef<string | null>(null);
+  const activeCallsRef = useRef(activeCalls);
+  activeCallsRef.current = activeCalls;
 
   // Engine lifetime is tied to the signed-in client + identity.
   useEffect(() => {
     const engine = new VoiceEngine({
-      port: convexVoicePort(client),
+      port: convexVoicePort(client, clientId),
       subscriptions: convexVoiceSubscriptions(client),
       userId,
+      clientId,
       getSettings: () => settingsRef.current,
       getIceServers: () => iceServersRef.current,
     });
@@ -153,12 +174,17 @@ export function VoiceProvider({
       // immediately instead of waiting for the heartbeat sweep to reclaim us.
       const callId = engine.getSnapshot().callId;
       if (callId !== null) {
-        sendLeaveBeacon({ convexUrl: client.url, token: authTokenRef.current, callId });
+        sendLeaveBeacon({
+          convexUrl: client.url,
+          token: authTokenRef.current,
+          callId,
+          clientId,
+        });
       }
       engine.dispose();
       engineRef.current = null;
     };
-  }, [client, userId]);
+  }, [client, clientId, userId]);
 
   // Load local device settings, enumerate devices and follow device changes.
   useEffect(() => {
@@ -257,7 +283,12 @@ export function VoiceProvider({
         return;
       }
       departed = true;
-      sendLeaveBeacon({ convexUrl: client.url, token: authTokenRef.current, callId });
+      sendLeaveBeacon({
+        convexUrl: client.url,
+        token: authTokenRef.current,
+        callId,
+        clientId,
+      });
       engineRef.current?.abandon();
     };
     const onPageHide = (event: PageTransitionEvent) => {
@@ -271,7 +302,7 @@ export function VoiceProvider({
       window.removeEventListener("beforeunload", leaveNow);
       window.removeEventListener("pagehide", onPageHide);
     };
-  }, [client]);
+  }, [client, clientId]);
 
   const refreshDevices = useCallback(async () => {
     setDevices(await listMediaDevices());
@@ -285,32 +316,71 @@ export function VoiceProvider({
     await engineRef.current?.applySettings(next);
   }, []);
 
+  const confirmSwitch = useCallback(() => {
+    return new Promise<boolean>((resolve) => {
+      setSwitchPrompt((current) => {
+        current?.resolve(false);
+        return { resolve };
+      });
+    });
+  }, []);
+
+  const settleSwitch = useCallback((accepted: boolean) => {
+    setSwitchPrompt((current) => {
+      current?.resolve(accepted);
+      return null;
+    });
+  }, []);
+
   const startCall = useCallback(
     async (channelId: string, kind: CallKind, ringingUserIds?: readonly string[]) => {
       const engine = engineRef.current;
       if (engine === null) {
         return null;
       }
-      const callId = await engine.startCall({
-        channelId,
-        kind,
-        ...(ringingUserIds !== undefined ? { ringingUserIds } : {}),
+      const result = await claimCallSeat({
+        calls: activeCallsRef.current,
+        userId,
+        clientId,
+        confirm: confirmSwitch,
+        run: (takeover) =>
+          engine.startCall({
+            channelId,
+            kind,
+            ...(ringingUserIds !== undefined ? { ringingUserIds } : {}),
+            ...(takeover ? { takeover: true } : {}),
+          }),
       });
-      if (callId !== null) {
+      if (result.status === "joined") {
         setView("dock");
+        return result.callId;
       }
-      return callId;
+      return null;
     },
-    [],
+    [clientId, confirmSwitch, userId],
   );
 
-  const joinCall = useCallback(async (callId: string) => {
-    const ok = (await engineRef.current?.joinCall(callId)) ?? false;
-    if (ok) {
-      setView("dock");
-    }
-    return ok;
-  }, []);
+  const joinCall = useCallback(
+    async (callId: string) => {
+      const engine = engineRef.current;
+      if (engine === null) {
+        return false;
+      }
+      const result = await claimCallSeat({
+        calls: activeCallsRef.current,
+        userId,
+        clientId,
+        confirm: confirmSwitch,
+        run: (takeover) => engine.joinCall(callId, takeover ? { takeover: true } : {}),
+      });
+      if (result.status === "joined") {
+        setView("dock");
+        return true;
+      }
+      return false;
+    },
+    [clientId, confirmSwitch, userId],
+  );
 
   const acceptCall = useCallback(
     async (call: CallView) => {
@@ -362,6 +432,7 @@ export function VoiceProvider({
     () => ({
       ...snapshot,
       selfUserId: userId,
+      clientId,
       policy,
       incoming,
       activeCalls,
@@ -392,6 +463,7 @@ export function VoiceProvider({
     [
       snapshot,
       userId,
+      clientId,
       policy,
       incoming,
       activeCalls,
@@ -422,10 +494,16 @@ export function VoiceProvider({
   return (
     <VoiceContext.Provider value={value}>
       {children}
+      <SwitchDeviceCallModal
+        open={switchPrompt !== null}
+        onCancel={() => settleSwitch(false)}
+        onConfirm={() => settleSwitch(true)}
+      />
       <RemoteAudio
         streams={snapshot.remoteStreams}
         deafened={snapshot.local.deafened}
         outputDeviceId={settings.outputDeviceId}
+        outputVolume={settings.outputVolume}
       />
     </VoiceContext.Provider>
   );
@@ -436,10 +514,12 @@ function RemoteAudio({
   streams,
   deafened,
   outputDeviceId,
+  outputVolume,
 }: {
   readonly streams: ReadonlyMap<string, MediaStream>;
   readonly deafened: boolean;
   readonly outputDeviceId: string | null;
+  readonly outputVolume: number;
 }) {
   return (
     <>
@@ -449,6 +529,7 @@ function RemoteAudio({
           stream={stream}
           deafened={deafened}
           outputDeviceId={outputDeviceId}
+          outputVolume={outputVolume}
         />
       ))}
     </>
@@ -459,12 +540,16 @@ function RemoteAudioElement({
   stream,
   deafened,
   outputDeviceId,
+  outputVolume,
 }: {
   readonly stream: MediaStream;
   readonly deafened: boolean;
   readonly outputDeviceId: string | null;
+  readonly outputVolume: number;
 }) {
   const ref = useRef<HTMLAudioElement | null>(null);
+  const boostRef = useRef<OutputGain | null>(null);
+
   useEffect(() => {
     const element = ref.current;
     if (element === null) {
@@ -476,12 +561,56 @@ function RemoteAudioElement({
       element.srcObject = null;
     };
   }, [stream]);
+
   useEffect(() => {
     if (ref.current !== null) {
       void applySinkId(ref.current, outputDeviceId);
     }
   }, [outputDeviceId]);
+
+  // Past unity the element's `volume` cannot go, so route through a WebAudio
+  // gain instead; at or below unity the element plays directly and keeps the
+  // chosen output device.
+  useEffect(() => {
+    const element = ref.current;
+    if (element === null) {
+      return;
+    }
+    if (outputVolume <= 1) {
+      boostRef.current?.stop();
+      boostRef.current = null;
+      element.volume = Math.max(0, outputVolume);
+    } else {
+      element.volume = 1;
+      if (boostRef.current === null) {
+        boostRef.current = createOutputGain(stream, outputVolume);
+      } else {
+        boostRef.current.setVolume(outputVolume);
+      }
+    }
+  }, [outputVolume, stream]);
+
+  useEffect(
+    () => () => {
+      boostRef.current?.stop();
+      boostRef.current = null;
+    },
+    [],
+  );
+
   return <audio ref={ref} autoPlay playsInline muted={deafened} className="hidden" />;
+}
+
+function loadBrowserVoiceClientId(): string {
+  try {
+    if (typeof localStorage !== "undefined") {
+      return ensureVoiceClientId(localStorage);
+    }
+  } catch {
+    // Private mode can throw on access. A session-only id still separates tabs
+    // that do not share storage, which is enough to keep seats apart.
+  }
+  return createVoiceClientId();
 }
 
 /** Reads the voice context; throws outside a {@link VoiceProvider}. */

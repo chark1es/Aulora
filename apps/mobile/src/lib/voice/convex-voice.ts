@@ -1,33 +1,58 @@
-import type {
-  CallSignalKind,
-  CallSignalRow,
-  CallView,
-  VoicePort,
-  VoiceSubscriptions,
+import {
+  type CallSignalKind,
+  type CallSignalRow,
+  type CallView,
+  callElsewhereFromUnknown,
+  type VoicePort,
+  type VoiceSubscriptions,
 } from "@aulora/core";
 import type { ConvexReactClient } from "convex/react";
 import { api } from "../../../../../packages/convex/convex/_generated/api";
+
+async function translate<T>(work: Promise<T>): Promise<T> {
+  try {
+    return await work;
+  } catch (error) {
+    const elsewhere = callElsewhereFromUnknown(error);
+    if (elsewhere !== null) {
+      throw elsewhere;
+    }
+    throw error;
+  }
+}
 
 /**
  * Live Convex adapter for `@aulora/core`'s `VoicePort` and `VoiceSubscriptions`,
  * mirroring the web adapter so `apps/mobile` reuses the exact same call state
  * and signalling contract. Media is peer-to-peer and never reaches the server.
  */
-export function convexVoicePort(client: ConvexReactClient): VoicePort {
+export function convexVoicePort(client: ConvexReactClient, clientId: string): VoicePort {
   return {
     async startCall(args) {
-      return await client.mutation(api.calls.start, {
-        channelId: args.channelId as never,
-        kind: args.kind,
-        ...(args.ringingUserIds !== undefined ? { ringingUserIds: [...args.ringingUserIds] } : {}),
-      });
+      return await translate(
+        client.mutation(api.calls.start, {
+          channelId: args.channelId as never,
+          kind: args.kind,
+          clientId,
+          ...(args.takeover === true ? { takeover: true } : {}),
+          ...(args.ringingUserIds !== undefined
+            ? { ringingUserIds: [...args.ringingUserIds] }
+            : {}),
+        }),
+      );
     },
     async joinCall(args) {
-      await client.mutation(api.calls.join, { callId: args.callId as never });
+      await translate(
+        client.mutation(api.calls.join, {
+          callId: args.callId as never,
+          clientId,
+          ...(args.takeover === true ? { takeover: true } : {}),
+        }),
+      );
       return null;
     },
     async leaveCall(args) {
-      await client.mutation(api.calls.leave, { callId: args.callId as never });
+      await client.mutation(api.calls.leave, { callId: args.callId as never, clientId });
       return null;
     },
     async endCall(args) {
@@ -41,6 +66,7 @@ export function convexVoicePort(client: ConvexReactClient): VoicePort {
     async updateParticipant(args) {
       await client.mutation(api.calls.updateParticipant, {
         callId: args.callId as never,
+        clientId,
         ...(args.muted !== undefined ? { muted: args.muted } : {}),
         ...(args.deafened !== undefined ? { deafened: args.deafened } : {}),
         ...(args.video !== undefined ? { video: args.video } : {}),
@@ -49,12 +75,13 @@ export function convexVoicePort(client: ConvexReactClient): VoicePort {
       return null;
     },
     async callHeartbeat(args) {
-      await client.mutation(api.calls.heartbeat, { callId: args.callId as never });
+      await client.mutation(api.calls.heartbeat, { callId: args.callId as never, clientId });
       return null;
     },
     async sendSignal(args) {
       await client.mutation(api.calls.signal, {
         callId: args.callId as never,
+        clientId,
         toUserId: args.toUserId,
         kind: args.kind as CallSignalKind,
         payload: args.payload,

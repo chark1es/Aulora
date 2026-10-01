@@ -1,7 +1,10 @@
 import {
   type CallKind,
+  type CallSeatResult,
   type CallSignalRow,
   type CallView,
+  isCallElsewhereError,
+  isOnThisDevice,
   type PeerConnectionState,
   shouldOffer,
   type VoiceDeviceSettings,
@@ -17,6 +20,8 @@ import {
   createMediaStream,
   createPeerConnection,
   createSessionDescription,
+  extractAudioLevel,
+  setTrackVolume,
   type VoiceIceCandidateInit,
   type VoicePeerConnection,
   type VoiceSessionDescriptionInit,
@@ -55,7 +60,11 @@ export interface MobileVoiceSnapshot {
   /** The track to show in the local tile: screen while sharing, else camera. */
   readonly localVideoTrack: VoiceTrack | null;
   readonly remoteStreams: ReadonlyMap<string, VoiceStream>;
+  /** Per-remote-participant audio level, 0..1, derived from RTP stats. */
+  readonly remoteLevels: ReadonlyMap<string, number>;
   readonly micLevel: number;
+  /** Whether this build exposes live mic levels (needed by push-to-talk). */
+  readonly micLevelAvailable: boolean;
   readonly pending: boolean;
   readonly error: string | null;
 }
@@ -64,6 +73,8 @@ export interface MobileVoiceEngineOptions {
   readonly port: VoicePort;
   readonly subscriptions: VoiceSubscriptions;
   readonly userId: string;
+  /** This install. A seat held by any other id is not ours. */
+  readonly clientId: string;
   readonly getSettings: () => VoiceDeviceSettings;
   readonly iceServers?: readonly { urls: string | readonly string[] }[];
   readonly onError?: (message: string) => void;
@@ -78,6 +89,8 @@ interface Peer {
   /** The offerer's own transceivers; the answerer inherits the remote's. */
   audioTx?: VoiceTransceiver;
   videoTx?: VoiceTransceiver;
+  /** Seat generation this connection was opened against. */
+  session: number;
 }
 
 const DEFAULT_ICE: readonly { urls: readonly string[] }[] = [
@@ -98,6 +111,7 @@ export class MobileVoiceEngine {
   private readonly port: VoicePort;
   private readonly subscriptions: VoiceSubscriptions;
   private readonly userId: string;
+  private readonly clientId: string;
   private readonly getSettings: () => VoiceDeviceSettings;
   private readonly iceServers: readonly { urls: string | readonly string[] }[];
   private readonly onError: (message: string) => void;
@@ -115,21 +129,25 @@ export class MobileVoiceEngine {
   private cameraTrack: VoiceTrack | null = null;
   private screenTrack: VoiceTrack | null = null;
   private micLevel = 0;
+  private micLevelAvailable = false;
   private levelUnsub: (() => void) | null = null;
   private pending = false;
   private error: string | null = null;
 
   private readonly peers = new Map<string, Peer>();
   private readonly remoteStreams = new Map<string, VoiceStream>();
+  private readonly remoteLevels = new Map<string, number>();
   private readonly processedSignals = new Set<string>();
   private callUnsub: (() => void) | null = null;
   private signalUnsub: (() => void) | null = null;
   private heartbeat: ReturnType<typeof setInterval> | null = null;
+  private levelHunt: ReturnType<typeof setInterval> | null = null;
 
   constructor(options: MobileVoiceEngineOptions) {
     this.port = options.port;
     this.subscriptions = options.subscriptions;
     this.userId = options.userId;
+    this.clientId = options.clientId;
     this.getSettings = options.getSettings;
     this.iceServers =
       options.iceServers !== undefined && options.iceServers.length > 0
@@ -159,7 +177,9 @@ export class MobileVoiceEngine {
       micStream: this.micStream,
       localVideoTrack: this.screenTrack ?? this.cameraTrack,
       remoteStreams: this.remoteStreams,
+      remoteLevels: this.remoteLevels,
       micLevel: this.micLevel,
+      micLevelAvailable: this.micLevelAvailable,
       pending: this.pending,
       error: this.error,
     };
@@ -175,34 +195,47 @@ export class MobileVoiceEngine {
     readonly channelId: string;
     readonly kind: CallKind;
     readonly ringingUserIds?: readonly string[];
-  }): Promise<string | null> {
+    readonly takeover?: boolean;
+  }): Promise<Exclude<CallSeatResult, { status: "cancelled" }>> {
     this.setError(null);
     this.pending = true;
     this.emit();
     try {
       const result = await this.port.startCall(args);
       await this.enter(result.callId);
-      return result.callId;
+      return { status: "joined", callId: result.callId };
     } catch (error) {
+      if (isCallElsewhereError(error)) {
+        return { status: "elsewhere", callId: error.callId, channelId: error.channelId };
+      }
       this.setError(messageOf(error));
-      return null;
+      return { status: "failed" };
     } finally {
       this.pending = false;
       this.emit();
     }
   }
 
-  async joinCall(callId: string): Promise<boolean> {
+  async joinCall(
+    callId: string,
+    options?: { readonly takeover?: boolean },
+  ): Promise<Exclude<CallSeatResult, { status: "cancelled" }>> {
     this.setError(null);
     this.pending = true;
     this.emit();
     try {
-      await this.port.joinCall({ callId });
+      await this.port.joinCall({
+        callId,
+        ...(options?.takeover === true ? { takeover: true } : {}),
+      });
       await this.enter(callId);
-      return true;
+      return { status: "joined", callId };
     } catch (error) {
+      if (isCallElsewhereError(error)) {
+        return { status: "elsewhere", callId: error.callId, channelId: error.channelId };
+      }
       this.setError(messageOf(error));
-      return false;
+      return { status: "failed" };
     } finally {
       this.pending = false;
       this.emit();
@@ -248,7 +281,11 @@ export class MobileVoiceEngine {
     this.enterTeardown();
     this.callId = callId;
     this.processedSignals.clear();
+    const watched = callId;
     this.callUnsub = this.subscriptions.watchCallById(callId, (call) => {
+      if (this.callId !== watched) {
+        return;
+      }
       void this.onCallUpdate(call);
     });
     this.signalUnsub = this.subscriptions.watchSignals(callId, (signals) => {
@@ -259,6 +296,7 @@ export class MobileVoiceEngine {
         void this.port.callHeartbeat({ callId: this.callId }).catch(() => undefined);
       }
     }, HEARTBEAT_MS);
+    this.startRemoteLevelHunt();
     await this.acquireMic();
     const settings = this.getSettings();
     this.local = { ...this.local, muted: settings.joinMuted };
@@ -280,6 +318,11 @@ export class MobileVoiceEngine {
       clearInterval(this.heartbeat);
       this.heartbeat = null;
     }
+    if (this.levelHunt !== null) {
+      clearInterval(this.levelHunt);
+      this.levelHunt = null;
+    }
+    this.remoteLevels.clear();
     this.closeAllPeers();
     this.stopLevelMeter();
     this.micStream?.getTracks().forEach((track) => {
@@ -320,16 +363,120 @@ export class MobileVoiceEngine {
     if (this.micStream === null) {
       return;
     }
-    this.levelUnsub = createLevelMeter(this.micStream, (level) => {
+    this.applyInputVolume();
+    const meter = createLevelMeter(this.micStream, (level) => {
       this.micLevel = level;
+      this.applyNoiseGate(level);
       this.emit();
     });
+    this.micLevelAvailable = meter.available;
+    this.levelUnsub = meter.stop;
+    this.enforceGateSafety();
   }
 
   private stopLevelMeter(): void {
     this.levelUnsub?.();
     this.levelUnsub = null;
+    this.micLevelAvailable = false;
     this.micLevel = 0;
+  }
+
+  /**
+   * Push-to-talk needs live level data to know when the key is effectively
+   * held. `react-native-webrtc` exposes none, so when the meter is unavailable
+   * the mic is kept closed rather than left hot; the settings UI surfaces the
+   * feature as unsupported instead of pretending it works.
+   */
+  private enforceGateSafety(): void {
+    if (this.micStream === null || this.micLevelAvailable) {
+      return;
+    }
+    if (!this.getSettings().pushToTalk) {
+      return;
+    }
+    for (const track of this.micStream.getAudioTracks()) {
+      track.enabled = false;
+    }
+  }
+
+  /** Applies the configured microphone gain to every local audio track. */
+  private applyInputVolume(): void {
+    if (this.micStream === null) {
+      return;
+    }
+    const volume = this.getSettings().inputVolume;
+    for (const track of this.micStream.getAudioTracks()) {
+      setTrackVolume(track, volume);
+    }
+  }
+
+  /**
+   * Push-to-talk / noise gate. When either is on, the mic only transmits while
+   * the level clears the threshold; otherwise it follows the mute flag. Native
+   * level data is best-effort, so an unknown level keeps the mic audible.
+   */
+  private applyNoiseGate(level: number): void {
+    const settings = this.getSettings();
+    if (
+      this.micStream === null ||
+      !this.micLevelAvailable ||
+      (!settings.pushToTalk && settings.noiseGateThreshold <= 0)
+    ) {
+      return;
+    }
+    if (this.local.muted) {
+      return;
+    }
+    const open = settings.pushToTalk ? level > settings.noiseGateThreshold : true;
+    for (const track of this.micStream.getAudioTracks()) {
+      track.enabled = open;
+    }
+  }
+
+  /**
+   * Polls remote audio receivers for their RTP `audioLevel` and publishes a
+   * per-participant map. Native engines without `getStats` simply produce an
+   * empty map and the UI falls back to mute flags.
+   */
+  private startRemoteLevelHunt(): void {
+    if (this.levelHunt !== null) {
+      clearInterval(this.levelHunt);
+    }
+    this.levelHunt = setInterval(() => {
+      void this.pollRemoteLevels();
+    }, 500);
+  }
+
+  private async pollRemoteLevels(): Promise<void> {
+    if (this.peers.size === 0) {
+      return;
+    }
+    let changed = false;
+    await Promise.all(
+      [...this.peers.entries()].map(async ([remoteId, peer]) => {
+        const receiver = this.transceiversFor(peer, "audio")[0]?.receiver;
+        if (receiver === undefined || typeof receiver.getStats !== "function") {
+          return;
+        }
+        try {
+          const stats = await receiver.getStats();
+          const level = extractAudioLevel(stats);
+          if (level === null) {
+            return;
+          }
+          const previous = this.remoteLevels.get(remoteId) ?? -1;
+          if (Math.abs(previous - level) > 0.02) {
+            this.remoteLevels.set(remoteId, level);
+            changed = true;
+          }
+        } catch {
+          // Receiver stats are best-effort.
+        }
+      }),
+    );
+    if (changed) {
+      this.emit();
+    }
   }
 
   // ---- Media controls ------------------------------------------------------
@@ -410,8 +557,22 @@ export class MobileVoiceEngine {
   async applySettings(settings: VoiceDeviceSettings): Promise<void> {
     const previousInput = this.currentInputId();
     const nextInput = settings.inputDeviceId;
-    if (this.micStream !== null && previousInput !== nextInput) {
+    const previous = this.previousAudioProcessing;
+    const audioProcessingChanged =
+      previous === null ||
+      previous.echoCancellation !== settings.echoCancellation ||
+      previous.noiseSuppression !== settings.noiseSuppression ||
+      previous.autoGainControl !== settings.autoGainControl;
+    this.previousAudioProcessing = {
+      echoCancellation: settings.echoCancellation,
+      noiseSuppression: settings.noiseSuppression,
+      autoGainControl: settings.autoGainControl,
+    };
+    if (this.micStream !== null && (previousInput !== nextInput || audioProcessingChanged)) {
       await this.reacquireMic();
+    } else {
+      this.applyInputVolume();
+      this.enforceGateSafety();
     }
     if (this.local.video && this.cameraTrack !== null && !this.local.sharingScreen) {
       try {
@@ -424,6 +585,12 @@ export class MobileVoiceEngine {
     }
     this.emit();
   }
+
+  private previousAudioProcessing: {
+    echoCancellation: boolean;
+    noiseSuppression: boolean;
+    autoGainControl: boolean;
+  } | null = null;
 
   private currentInputId(): string | null {
     const track = this.micStream?.getAudioTracks()[0];
@@ -456,8 +623,9 @@ export class MobileVoiceEngine {
       return;
     }
     this.call = call;
-    if (!call.participants.some((participant) => participant.userId === this.userId)) {
-      // We were removed (e.g. the call ended from another device).
+    if (!isOnThisDevice(call, this.userId, this.clientId)) {
+      // Removed, or another device took the seat. Do not leave: that would
+      // disconnect the device that just joined.
       this.enterTeardown();
       return;
     }
@@ -469,24 +637,33 @@ export class MobileVoiceEngine {
     if (this.call === null) {
       return;
     }
-    const remoteIds = this.call.participants
-      .map((participant) => participant.userId)
-      .filter((id) => id !== this.userId);
+    const remote = this.call.participants.filter(
+      (participant) => participant.userId !== this.userId,
+    );
     for (const [id, peer] of this.peers) {
-      if (!remoteIds.includes(id)) {
+      const participant = remote.find((entry) => entry.userId === id);
+      if (participant === undefined || participant.session !== peer.session) {
         this.closePeer(id, peer);
       }
     }
-    for (const id of remoteIds) {
-      if (!this.peers.has(id) && shouldOffer(this.userId, id)) {
-        void this.createPeer(id, true);
+    for (const participant of remote) {
+      if (!this.peers.has(participant.userId) && shouldOffer(this.userId, participant.userId)) {
+        void this.createPeer(participant.userId, true, participant.session);
       }
     }
   }
 
-  private async createPeer(remoteId: string, initiator: boolean): Promise<Peer | null> {
-    if (this.peers.has(remoteId)) {
-      return this.peers.get(remoteId) ?? null;
+  private async createPeer(
+    remoteId: string,
+    initiator: boolean,
+    session: number,
+  ): Promise<Peer | null> {
+    const existing = this.peers.get(remoteId);
+    if (existing !== undefined) {
+      if (existing.session === session) {
+        return existing;
+      }
+      this.closePeer(remoteId, existing);
     }
     const pc = createPeerConnection({
       iceServers: [...this.iceServers],
@@ -499,6 +676,7 @@ export class MobileVoiceEngine {
       initiator,
       pendingCandidates: [],
       connection: "connecting",
+      session,
     };
     this.peers.set(remoteId, peer);
     this.remoteStreams.set(remoteId, peer.stream);
@@ -656,8 +834,12 @@ export class MobileVoiceEngine {
 
   private async handleSignal(signal: CallSignalRow): Promise<void> {
     const existing = this.peers.get(signal.fromUserId);
+    if (existing !== undefined && existing.session !== signal.session && signal.kind !== "offer") {
+      this.closePeer(signal.fromUserId, existing);
+      return;
+    }
     if (signal.kind === "offer") {
-      const peer = existing ?? (await this.createPeer(signal.fromUserId, false));
+      const peer = await this.createPeer(signal.fromUserId, false, signal.session);
       if (peer === null) {
         return;
       }
@@ -731,6 +913,7 @@ export class MobileVoiceEngine {
     }
     this.peers.delete(remoteId);
     this.remoteStreams.delete(remoteId);
+    this.remoteLevels.delete(remoteId);
     this.emit();
   }
 

@@ -1,6 +1,6 @@
 # @aulora/web
 
-The Aulora web client: a Vite + React 19 SPA (also the Tauri frontend in Phase 4)
+The Aulora web client: a Vite + React 19 SPA (also the Tauri frontend)
 using TanStack Router, Tailwind v3.4 from the shared `@aulora/tokens` preset, and
 Convex + Better Auth.
 
@@ -43,7 +43,7 @@ from the same `*_CLIENT_ID` / `*_CLIENT_SECRET` pairs the backend uses (only
 presence is checked), and the generic OIDC entry carries issuer, discovery URL,
 client id and scopes — never `*_CLIENT_SECRET`.
 
-> **The generated file is dev-only.** The infra wave generates the real
+> **The generated file is dev-only.** Docker setup generates the real
 > per-instance `/.well-known/aulora.json` and mounts it over this path in the web
 > container; do not commit it.
 
@@ -73,12 +73,12 @@ createAuthClient({
   (`https://<convex-site>/api/auth/callback/<provider>`), because that is where
   Better Auth serves `/api/auth/*`.
 
-## What the infra wave must provide
+## Deployment contract
 
 **1. Reverse proxy `/api/auth/*` to the Convex HTTP-actions port.**
 The browser must see auth requests as same-origin (`https://site.<domain>/api/auth/*`)
 so the Better Auth session cookie is first-party and `credentials: "include"`
-works. In production Caddy must forward that path on the site origin to the
+works. In production the reverse proxy must forward that path on the site origin to the
 Convex HTTP-actions upstream (`convex-backend:3211`, not the API port `3210`).
 Use HTTPS end to end and preserve `Set-Cookie`; do not strip the `Origin` header.
 The Vite dev server does the same locally via `AULORA_AUTH_PROXY_TARGET`.
@@ -99,3 +99,5 @@ writes a dev stand-in; infra replaces it for real deployments.
 - Browser calls to `convexUrl` (WebSocket + HTTP) come from the site origin, so
   the Convex deployment must allow it; self-hosted Convex accepts the configured
   origins/CORS. Keep `convexUrl` and `siteUrl` on HTTPS in production.
+
+For an end-to-end local setup, follow the [development guide](../../docs/development.md). The web build also copies source-license and installed JavaScript dependency notices to `dist/legal`.

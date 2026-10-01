@@ -1,5 +1,5 @@
 import { Button, Heading, Input, Text } from "@aulora/ui-web";
-import { useMutation, useQuery } from "convex/react";
+import { useAction, useMutation, useQuery } from "convex/react";
 import { useEffect, useState } from "react";
 import { api } from "../../../../../../packages/convex/convex/_generated/api";
 import { LicenseStatusCard } from "./LicenseStatusCard";
@@ -9,13 +9,13 @@ export interface LicensePanelProps {
 }
 
 /**
- * License status screen. Shows the parsed state, tier and licensee, and lets the
- * operator paste or clear a key. Enforcement is by the license terms; this
- * screen only reports and nags.
+ * Reports server-verified subscription status and lets the instance owner manage a key.
  */
 export function LicensePanel({ canManage }: LicensePanelProps) {
   const status = useQuery(api.license.status, canManage ? {} : "skip");
+  const usage = useQuery(api.licenseUsage.summary, canManage ? {} : "skip");
   const saveLicenseKey = useMutation(api.license.setKey);
+  const verifyLicense = useAction(api.licenseActions.validate);
 
   const [key, setKey] = useState("");
   const [error, setError] = useState<string | null>(null);
@@ -70,6 +70,31 @@ export function LicensePanel({ canManage }: LicensePanelProps) {
         note={status.note}
       />
 
+      {(status.billingModel === "monthly-active-users" || !!usage?.length) && (
+        <section className="flex flex-col gap-2" aria-label="Monthly licensed activity">
+          <Heading level={3}>Monthly active users</Heading>
+          <Text size="sm" tone="muted">
+            A member counts once per UTC month after logging in, being present, or sending a
+            message. Reports contain aggregate counts, not member identities or messages.
+          </Text>
+          {(usage ?? []).map((month) => (
+            <Text size="sm" key={month._id}>
+              {month.month}: {month.activeUsers} active users.{" "}
+              {month.finalReported
+                ? "Final report delivered."
+                : month.reportedAt
+                  ? "Provisional report delivered; final report follows month-end."
+                  : "Awaiting report delivery."}
+            </Text>
+          ))}
+          {!usage?.length && (
+            <Text size="sm" tone="muted">
+              Counting starts after this license activates.
+            </Text>
+          )}
+        </section>
+      )}
+
       <form
         className="flex flex-col gap-3"
         onSubmit={(event) => {
@@ -79,12 +104,13 @@ export function LicensePanel({ canManage }: LicensePanelProps) {
       >
         <Heading level={3}>Set a license key</Heading>
         <Text tone="muted" size="sm">
-          Personal and noncommercial use is free. A company running Aulora for work needs a
-          commercial license (see COMMERCIAL.md).
+          Personal and noncommercial use is free. A company running Aulora for work needs a monthly
+          subscription at $1 per active user. Inactive users cost $0; only partial license months
+          are prorated.
         </Text>
         <Input
           label="License key"
-          hint="AULORA1.… Paste the full key; it stays on your server."
+          hint="AULORA2_… Your server sends the key to Aulora’s licensing server over HTTPS for validation."
           value={key}
           onChange={(event) => setKey(event.currentTarget.value)}
           autoComplete="off"
@@ -97,12 +123,34 @@ export function LicensePanel({ canManage }: LicensePanelProps) {
         )}
         {saved && (
           <Text tone="secondary" size="sm" role="status">
-            License saved.
+            License saved. Server validation runs automatically.
           </Text>
         )}
         <div className="flex gap-2">
           <Button type="submit" loading={busy} disabled={busy}>
             Save license
+          </Button>
+          <Button
+            variant="secondary"
+            disabled={busy || status.maskedKey === null}
+            onClick={() => {
+              setBusy(true);
+              setError(null);
+              void verifyLicense({})
+                .then((result) => {
+                  if (!result.verified)
+                    setError(
+                      result.error ??
+                        "The licensing server rejected this key. Check the license status.",
+                    );
+                })
+                .catch((cause) =>
+                  setError(cause instanceof Error ? cause.message : "Could not verify license."),
+                )
+                .finally(() => setBusy(false));
+            }}
+          >
+            Verify now
           </Button>
           <Button
             variant="secondary"

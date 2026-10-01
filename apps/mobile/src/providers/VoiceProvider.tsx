@@ -2,11 +2,14 @@ import {
   type MediaDeviceInfo as AuloraMediaDevice,
   type CallKind,
   type CallView,
+  claimCallSeat,
+  ensureVoiceClientIdAsync,
   hasPermission,
   mergeVoiceSettings,
   Permission,
   type VoiceDeviceSettings,
 } from "@aulora/core";
+import AsyncStorage from "@react-native-async-storage/async-storage";
 import { type ConvexReactClient, useQuery } from "convex/react";
 import {
   createContext,
@@ -18,6 +21,7 @@ import {
   useRef,
   useState,
 } from "react";
+import { Alert } from "react-native";
 import { api } from "../../../../packages/convex/convex/_generated/api";
 import { MobileVoiceEngine, type MobileVoiceSnapshot } from "../lib/voice/call-engine";
 import { convexVoicePort, convexVoiceSubscriptions } from "../lib/voice/convex-voice";
@@ -42,6 +46,8 @@ export type CallViewMode = "hidden" | "stage";
 
 export interface VoiceContextValue extends MobileVoiceSnapshot {
   readonly selfUserId: string;
+  /** This install's id, or null until it has been read from storage. */
+  readonly clientId: string | null;
   readonly policy: VoicePolicy;
   readonly incoming: readonly CallView[];
   readonly activeCalls: readonly CallView[];
@@ -83,7 +89,9 @@ const EMPTY_SNAPSHOT: MobileVoiceSnapshot = {
   micStream: null,
   localVideoTrack: null,
   remoteStreams: new Map(),
+  remoteLevels: new Map(),
   micLevel: 0,
+  micLevelAvailable: false,
   pending: false,
   error: null,
 };
@@ -102,6 +110,7 @@ export interface VoiceProviderProps {
  */
 export function VoiceProvider({ client, userId, children }: VoiceProviderProps) {
   const { viewerPermissions } = useChat();
+  const [clientId, setClientId] = useState<string | null>(null);
   const engineRef = useRef<MobileVoiceEngine | null>(null);
   const [snapshot, setSnapshot] = useState<MobileVoiceSnapshot>(EMPTY_SNAPSHOT);
   const [incoming, setIncoming] = useState<readonly CallView[]>([]);
@@ -112,6 +121,20 @@ export function VoiceProvider({ client, userId, children }: VoiceProviderProps) 
   const [pipPinned, setPipPinned] = useState(false);
   const settingsRef = useRef<VoiceDeviceSettings>(settings);
   settingsRef.current = settings;
+  const activeCallsRef = useRef(activeCalls);
+  activeCallsRef.current = activeCalls;
+
+  useEffect(() => {
+    let cancelled = false;
+    void ensureVoiceClientIdAsync(AsyncStorage).then((id) => {
+      if (!cancelled) {
+        setClientId(id);
+      }
+    });
+    return () => {
+      cancelled = true;
+    };
+  }, []);
 
   const config = useQuery(api.server.publicConfig, {});
   const policy = useMemo<VoicePolicy>(() => {
@@ -127,10 +150,14 @@ export function VoiceProvider({ client, userId, children }: VoiceProviderProps) 
 
   // Engine lifetime is tied to the signed-in client + identity.
   useEffect(() => {
+    if (clientId === null) {
+      return;
+    }
     const engine = new MobileVoiceEngine({
-      port: convexVoicePort(client),
+      port: convexVoicePort(client, clientId),
       subscriptions: convexVoiceSubscriptions(client),
       userId,
+      clientId,
       getSettings: () => settingsRef.current,
       iceServers: policy.iceServers,
     });
@@ -147,7 +174,7 @@ export function VoiceProvider({ client, userId, children }: VoiceProviderProps) 
       engine.dispose();
       engineRef.current = null;
     };
-  }, [client, userId, policy.iceServers]);
+  }, [client, clientId, userId, policy.iceServers]);
 
   // Load local device settings, enumerate devices and follow device changes.
   useEffect(() => {
@@ -187,32 +214,57 @@ export function VoiceProvider({ client, userId, children }: VoiceProviderProps) 
     await engineRef.current?.applySettings(next);
   }, []);
 
+  const confirmSwitch = useCallback(() => confirmSwitchDevice(), []);
+
   const startCall = useCallback(
     async (channelId: string, kind: CallKind, ringingUserIds?: readonly string[]) => {
       const engine = engineRef.current;
       if (engine === null) {
         return null;
       }
-      const callId = await engine.startCall({
-        channelId,
-        kind,
-        ...(ringingUserIds !== undefined ? { ringingUserIds } : {}),
+      const result = await claimCallSeat({
+        calls: activeCallsRef.current,
+        userId,
+        clientId,
+        confirm: confirmSwitch,
+        run: (takeover) =>
+          engine.startCall({
+            channelId,
+            kind,
+            ...(ringingUserIds !== undefined ? { ringingUserIds } : {}),
+            ...(takeover ? { takeover: true } : {}),
+          }),
       });
-      if (callId !== null) {
+      if (result.status === "joined") {
         setView("stage");
+        return result.callId;
       }
-      return callId;
+      return null;
     },
-    [],
+    [clientId, confirmSwitch, userId],
   );
 
-  const joinCall = useCallback(async (callId: string) => {
-    const ok = (await engineRef.current?.joinCall(callId)) ?? false;
-    if (ok) {
-      setView("stage");
-    }
-    return ok;
-  }, []);
+  const joinCall = useCallback(
+    async (callId: string) => {
+      const engine = engineRef.current;
+      if (engine === null) {
+        return false;
+      }
+      const result = await claimCallSeat({
+        calls: activeCallsRef.current,
+        userId,
+        clientId,
+        confirm: confirmSwitch,
+        run: (takeover) => engine.joinCall(callId, takeover ? { takeover: true } : {}),
+      });
+      if (result.status === "joined") {
+        setView("stage");
+        return true;
+      }
+      return false;
+    },
+    [clientId, confirmSwitch, userId],
+  );
 
   const acceptCall = useCallback(
     async (call: CallView) => {
@@ -265,6 +317,7 @@ export function VoiceProvider({ client, userId, children }: VoiceProviderProps) 
     () => ({
       ...snapshot,
       selfUserId: userId,
+      clientId,
       policy,
       incoming,
       activeCalls,
@@ -295,6 +348,7 @@ export function VoiceProvider({ client, userId, children }: VoiceProviderProps) 
     [
       snapshot,
       userId,
+      clientId,
       policy,
       incoming,
       activeCalls,
@@ -325,7 +379,11 @@ export function VoiceProvider({ client, userId, children }: VoiceProviderProps) 
   return (
     <VoiceContext.Provider value={value}>
       {children}
-      <RemoteAudio streams={snapshot.remoteStreams} deafened={snapshot.local.deafened} />
+      <RemoteAudio
+        streams={snapshot.remoteStreams}
+        deafened={snapshot.local.deafened}
+        volume={settings.outputVolume}
+      />
     </VoiceContext.Provider>
   );
 }
@@ -355,18 +413,48 @@ function normalizeIceServers(
 function RemoteAudio({
   streams,
   deafened,
+  volume,
 }: {
   readonly streams: ReadonlyMap<string, { getAudioTracks(): { enabled: boolean }[] }>;
   readonly deafened: boolean;
+  readonly volume: number;
 }) {
   useEffect(() => {
     for (const stream of streams.values()) {
       for (const track of stream.getAudioTracks()) {
         track.enabled = !deafened;
+        const adjustable = track as { _setVolume?: (value: number) => void };
+        try {
+          adjustable._setVolume?.(deafened ? 0 : volume);
+        } catch {
+          // Per-track gain is not exposed on every platform.
+        }
       }
     }
-  }, [streams, deafened]);
+  }, [streams, deafened, volume]);
   return null;
+}
+
+function confirmSwitchDevice(): Promise<boolean> {
+  return new Promise((resolve) => {
+    let settled = false;
+    const finish = (accepted: boolean) => {
+      if (settled) {
+        return;
+      }
+      settled = true;
+      resolve(accepted);
+    };
+    Alert.alert(
+      "Join on this device?",
+      "You're already in a call on another device. Joining here will disconnect that device.",
+      [
+        { text: "Cancel", style: "cancel", onPress: () => finish(false) },
+        { text: "Join here", onPress: () => finish(true) },
+      ],
+      { cancelable: true, onDismiss: () => finish(false) },
+    );
+  });
 }
 
 /** Reads the voice context; throws outside a {@link VoiceProvider}. */

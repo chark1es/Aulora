@@ -1,5 +1,5 @@
 import { EVERYONE_ROLE_ID, Permission } from "@aulora/core";
-import { describe, expect, it } from "vitest";
+import { afterEach, describe, expect, it } from "vitest";
 import { api } from "../convex/_generated/api";
 import { newTest, seedWorkspace } from "./helpers";
 
@@ -26,6 +26,31 @@ describe("invites", () => {
     const listed = await asOwner.query(api.invites.list, { paginationOpts: PAGE });
     expect(listed.page[0]?.id).toBe(created.inviteId);
     expect(JSON.stringify(listed.page)).not.toContain(created.code);
+  });
+
+  it("defaults to a 7-day expiry and is publicly inspectable", async () => {
+    const t = newTest();
+    await seedWorkspace(t);
+    const asOwner = t.withIdentity({ subject: "owner-1" });
+    const before = Date.now();
+    const created = await asOwner.mutation(api.invites.create, {});
+
+    const row = await inviteRow(t);
+    const sevenDays = 7 * 24 * 60 * 60 * 1000;
+    expect(row.expiresAt).toBeGreaterThanOrEqual(before + sevenDays - 1_000);
+    expect(row.expiresAt).toBeLessThanOrEqual(Date.now() + sevenDays + 1_000);
+
+    const info = await t.query(api.invites.inspect, { code: created.code });
+    expect(info).toMatchObject({ valid: true, workspaceName: "Acme" });
+    expect(info.expiresAt).toBe(row.expiresAt);
+
+    expect((await t.query(api.invites.inspect, { code: "not-a-real-code" })).valid).toBe(false);
+
+    await asOwner.mutation(api.invites.revoke, { inviteId: created.inviteId });
+    expect(await t.query(api.invites.inspect, { code: created.code })).toMatchObject({
+      valid: false,
+      reason: "revoked",
+    });
   });
 
   it("redeems a code, joins with @everyone and is idempotent", async () => {
@@ -125,5 +150,45 @@ describe("invites", () => {
     });
     const created = await t.withIdentity({ subject: "user-1" }).mutation(api.invites.create, {});
     expect(created.code).toHaveLength(48);
+  });
+});
+
+describe("invite abuse controls", () => {
+  afterEach(() => {
+    delete process.env.INVITE_RATE_LIMIT;
+    delete process.env.INVITE_RATE_WINDOW_MS;
+    delete process.env.INVITE_PENDING_LIMIT;
+  });
+
+  it("rejects a malformed recipient email", async () => {
+    const t = newTest();
+    await seedWorkspace(t);
+    const asOwner = t.withIdentity({ subject: "owner-1" });
+    await expect(asOwner.mutation(api.invites.create, { email: "not-an-email" })).rejects.toThrow(
+      "valid address",
+    );
+    await expect(asOwner.mutation(api.invites.create, { email: "a@b" })).rejects.toThrow(
+      "valid address",
+    );
+  });
+
+  it("rate limits invite creation per actor", async () => {
+    process.env.INVITE_RATE_LIMIT = "1";
+    const t = newTest();
+    await seedWorkspace(t);
+    const asOwner = t.withIdentity({ subject: "owner-1" });
+    await asOwner.mutation(api.invites.create, {});
+    await expect(asOwner.mutation(api.invites.create, {})).rejects.toThrow("Rate limit exceeded");
+  });
+
+  it("caps a creator's pending unused invites", async () => {
+    process.env.INVITE_PENDING_LIMIT = "1";
+    const t = newTest();
+    await seedWorkspace(t);
+    const asOwner = t.withIdentity({ subject: "owner-1" });
+    await asOwner.mutation(api.invites.create, {});
+    await expect(asOwner.mutation(api.invites.create, {})).rejects.toThrow(
+      "Too many pending invites",
+    );
   });
 });

@@ -32,6 +32,7 @@ export function useChannelSession(
   const [decrypted, setDecrypted] = useState<ReadonlyMap<string, string>>(new Map());
   const [typers, setTypers] = useState<readonly TypingRow[]>([]);
   const [readState, setReadState] = useState<ReadStateRow | null>(null);
+  const [loadedChannelId, setLoadedChannelId] = useState<string | undefined>(undefined);
 
   useEffect(() => {
     if (runtime === undefined || channelId === undefined) {
@@ -39,8 +40,16 @@ export function useChannelSession(
       setDecrypted(new Map());
       setTypers([]);
       setReadState(null);
+      setLoadedChannelId(undefined);
       return;
     }
+    // Clear the previous channel's state immediately so a switch never shows a
+    // stale timeline or reactions for one frame.
+    setMessages([]);
+    setDecrypted(new Map());
+    setTypers([]);
+    setReadState(null);
+    setLoadedChannelId(channelId);
     const offMessages = runtime.subscriptions.watchMessages(channelId, (incoming) => {
       setMessages(incoming);
       void runtime.session.receiveMessages(incoming);
@@ -67,6 +76,8 @@ export function useChannelSession(
     };
   }, [runtime, channelId]);
 
+  const settled = loadedChannelId === channelId;
+
   const unread = useMemo(
     () =>
       summarizeUnread(
@@ -86,7 +97,13 @@ export function useChannelSession(
     [messages, readState, userId],
   );
 
-  return { messages, decrypted, typers, readState, unread };
+  return {
+    messages: settled ? messages : [],
+    decrypted: settled ? decrypted : new Map(),
+    typers: settled ? typers : [],
+    readState: settled ? readState : null,
+    unread,
+  };
 }
 
 export type { PresenceRow, ReactionRow };

@@ -324,6 +324,12 @@ export function createMockPort(): MockPort {
         ...(args.replyToId !== undefined ? { replyToId: args.replyToId } : {}),
         attachmentIds: [...(args.attachmentIds ?? [])],
         mentionUserIds: [...(args.mentionUserIds ?? [])],
+        ...(args.mentionChannelIds !== undefined
+          ? { mentionChannelIds: [...args.mentionChannelIds] }
+          : {}),
+        ...(args.mentionCategoryIds !== undefined
+          ? { mentionCategoryIds: [...args.mentionCategoryIds] }
+          : {}),
         editedAt: null,
         deletedAt: null,
         pinnedAt: null,

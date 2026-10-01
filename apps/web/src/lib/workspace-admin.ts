@@ -38,6 +38,8 @@ export interface MemberView {
   readonly roleIds: readonly string[];
   readonly joinedAt: number;
   readonly timeoutUntil: number | null;
+  /** This workspace's profile picture. Missing on older payloads. */
+  readonly avatarUrl?: string | null;
 }
 
 export type OverrideView = Overwrite;

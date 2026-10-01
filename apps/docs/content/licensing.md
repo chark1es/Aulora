@@ -1,37 +1,15 @@
 # Licensing
 
-Aulora uses a dual license.
+Aulora is free for the personal and noncommercial purposes defined in [LICENSE](legal/LICENSE). For business deployments, read the [commercial terms](legal/COMMERCIAL.md) for pricing, billing, and permitted use. This guide covers operating a licensed server.
 
-## PolyForm Noncommercial 1.0.0
+## Activate and view usage
 
-The full text ships in the repository root as `LICENSE`. It allows personal use
-(hobby, study, private entertainment, amateur pursuits, religious observance)
-and use by charities, schools, public research, public-safety/health and
-environmental organizations, and government bodies. It does **not** allow
-commercial use. Aulora is source-available, not OSI open source.
+The licensor shares an AULORA2 key after a paid recurring invoice. The instance administrator pastes it into **Instance administration → License**. The server verifies it over HTTPS with `https://aulora-licenses.spwnd.dev` and refreshes every 30 minutes. Signed results are bound to the key and installation and last at most one hour. The panel shows monthly active users and report delivery. Billing is initially disabled until Stripe is configured; contact [cnguyen@spwnd.dev](mailto:cnguyen@spwnd.dev) to arrange a subscription.
 
-## Commercial license
+Activity records are created only for an activated activity-billed license. The panel displays provisional counts during the month and final reports after it ends. See [reporting privacy](legal/COMMERCIAL.md#reporting-privacy) for the data sent to the authority and [privacy](privacy.md) for other server data flows.
 
-Any company or for-profit team running Aulora for work needs the paid
-commercial license. The terms and pricing are not finalized; see
-`COMMERCIAL.md` in the repository root for the current stub.
+## Expiration and outages
 
-## How enforcement works
+An outage does not extend a signed validation lease. Revocation denies new validations, but an existing signed lease can remain valid for up to one hour. Expiration does not delete company data or shut down access to existing messages; it ends authorization for commercial operation.
 
-There is no DRM. The [admin panel](admin.md) license screen shows the parsed
-status (unlicensed, active, expired or invalid) and reminds unlicensed
-commercial installs. A key looks like:
-
-```
-AULORA1.CO.20271231.20260101.ACME_CORP.K3F9
-```
-
-The tier (`CO` commercial, `NC` noncommercial), expiry date, issue date and
-licensee are visible, and a short checksum catches typos. Key format lives in
-`packages/convex/convex/lib/license.ts`. Compliance is your responsibility.
-
-## Contributions
-
-Contributors sign a CLA so the project can keep selling commercial licenses
-while contributors keep their copyright. See `CONTRIBUTING.md` and `CLA.md` in
-the repository root.
+Queued reports and protected reporting credentials survive expiry and local key removal so final usage can still be delivered. Historical AULORA1 checksum keys do not establish subscription payment or authorize commercial operation.

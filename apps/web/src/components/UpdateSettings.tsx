@@ -1,0 +1,145 @@
+import { Button, Text } from "@aulora/ui-web";
+import { isDesktop } from "../lib/desktop";
+import { type UpdatePhase, useDesktopUpdates } from "../providers/DesktopUpdateProvider";
+
+export interface UpdateSettingsProps {
+  readonly title: string;
+  readonly currentVersion: string | null;
+  readonly latestVersion: string | null;
+  readonly available: boolean;
+  readonly phase: UpdatePhase;
+  readonly error: string | null;
+  readonly notes?: string | null;
+  readonly detail?: string | null;
+  readonly canDownload?: boolean;
+  readonly checked?: boolean;
+  readonly onCheck: () => void;
+  readonly onDownload: () => void;
+  readonly onRestart: () => void;
+}
+export function UpdateSettings({
+  title,
+  currentVersion,
+  latestVersion,
+  available,
+  phase,
+  error,
+  notes,
+  detail,
+  canDownload = true,
+  checked = false,
+  onCheck,
+  onDownload,
+  onRestart,
+}: UpdateSettingsProps) {
+  const busy = phase === "checking" || phase === "downloading" || phase === "restarting";
+  const ready = phase === "ready" || phase === "restarting";
+  return (
+    <section
+      className="flex flex-col gap-3"
+      data-testid="update-settings"
+      aria-label={`${title} updates`}
+    >
+      <div>
+        <h3 className="text-[15px] font-semibold text-text">{title}</h3>
+        <Text size="sm" tone="muted">
+          Current version:{" "}
+          {currentVersion ? `v${currentVersion}` : error ? "Unavailable" : "Loading…"}
+        </Text>
+      </div>
+      <div role="status" aria-live="polite" className="flex flex-col gap-1">
+        <Text size="sm">
+          {phase === "checking"
+            ? "Checking for updates…"
+            : phase === "downloading"
+              ? "Downloading update…"
+              : phase === "restarting"
+                ? "Restarting to install the update…"
+                : ready
+                  ? `v${latestVersion} is downloaded and ready to install.`
+                  : available
+                    ? `v${latestVersion} is available.`
+                    : latestVersion || checked
+                      ? "No newer release is available."
+                      : "Check for a new release."}
+        </Text>
+        {detail && (
+          <Text size="sm" tone="muted">
+            {detail}
+          </Text>
+        )}
+      </div>
+      {notes && (
+        <p className="whitespace-pre-wrap break-words text-[13px] leading-relaxed text-text-muted">
+          {notes.slice(0, 2000)}
+        </p>
+      )}
+      {error && (
+        <Text size="sm" tone="danger" role="alert">
+          {error}
+        </Text>
+      )}
+      <div className="flex flex-wrap gap-2">
+        <Button
+          size="sm"
+          variant="secondary"
+          disabled={busy || ready}
+          loading={phase === "checking"}
+          onClick={onCheck}
+        >
+          Check for updates
+        </Button>
+        {(available || ready) &&
+          (ready ? (
+            <Button
+              size="sm"
+              disabled={busy || !canDownload}
+              loading={phase === "restarting"}
+              onClick={onRestart}
+            >
+              Restart to update
+            </Button>
+          ) : (
+            <Button
+              size="sm"
+              disabled={busy || !canDownload}
+              loading={phase === "downloading"}
+              onClick={onDownload}
+            >
+              Download update
+            </Button>
+          ))}
+      </div>
+    </section>
+  );
+}
+
+export function DesktopUpdateSettings() {
+  const update = useDesktopUpdates();
+  if (!isDesktop()) return null;
+  const total = update.progress?.contentLength;
+  const detail =
+    update.phase === "downloading" && update.progress
+      ? total
+        ? `${Math.min(100, Math.round((update.progress.downloaded / total) * 100))}% downloaded`
+        : `${(update.progress.downloaded / (1024 * 1024)).toFixed(1)} MB downloaded`
+      : update.phase === "ready"
+        ? "Restart when you're ready. The update will be installed then."
+        : "Aulora checks automatically every six hours.";
+  return (
+    <UpdateSettings
+      title="Desktop app"
+      currentVersion={update.currentVersion}
+      latestVersion={update.status?.version ?? null}
+      available={update.status?.updateAvailable ?? false}
+      checked={update.status !== null && update.status.error === null}
+      phase={update.phase}
+      error={update.error}
+      notes={update.status?.notes ?? null}
+      detail={detail}
+      onCheck={() => void update.check()}
+      onDownload={() => void update.download()}
+      onRestart={() => void update.restart()}
+    />
+  );
+}

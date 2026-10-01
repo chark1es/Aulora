@@ -44,6 +44,20 @@ function slug(text) {
     .replace(/^-|-$/g, "");
 }
 
+function tableCells(line) {
+  return line
+    .trim()
+    .replace(/^\|/, "")
+    .replace(/\|$/, "")
+    .split(/(?<!\\)\|/)
+    .map((cell) => cell.trim().replace(/\\\|/g, "|"));
+}
+
+function tableSeparator(line) {
+  const cells = tableCells(line);
+  return cells.length > 0 && cells.every((cell) => /^:?-{3,}:?$/.test(cell));
+}
+
 /**
  * Renders Markdown to HTML. Returns `{ html, title }`, where `title` is the
  * first level-1 heading when present.
@@ -122,6 +136,23 @@ export function renderMarkdown(markdown) {
 
     if (line.trim() === "") {
       index += 1;
+      continue;
+    }
+
+    if (line.includes("|") && index + 1 < lines.length && tableSeparator(lines[index + 1])) {
+      const headers = tableCells(line);
+      const rows = [];
+      index += 2;
+      while (index < lines.length && lines[index].trim() !== "" && lines[index].includes("|")) {
+        const cells = tableCells(lines[index]);
+        rows.push(
+          `<tr>${headers.map((_header, column) => `<td>${inline(cells[column] ?? "")}</td>`).join("")}</tr>`,
+        );
+        index += 1;
+      }
+      out.push(
+        `<div class="table-scroll"><table><thead><tr>${headers.map((cell) => `<th scope="col">${inline(cell)}</th>`).join("")}</tr></thead><tbody>${rows.join("")}</tbody></table></div>`,
+      );
       continue;
     }
 

@@ -1,4 +1,4 @@
-import { darkPalette, lightPalette, type Palette } from "@aulora/tokens";
+import { darkPalette, IDLE_COLOR, lightPalette, type Palette } from "@aulora/tokens";
 
 export type ColorScheme = "dark" | "light";
 
@@ -8,18 +8,30 @@ export function paletteForScheme(scheme: string | null | undefined): Palette {
 }
 
 /** Amber for idle, kept distinct from the Ember accent that marks unread. */
-export const IDLE_COLOR = "#E8A33B";
+export { IDLE_COLOR };
 
-const PRESENCE_COLORS: Record<string, string> = {
-  online: darkPalette.secondary,
-  idle: IDLE_COLOR,
-  dnd: darkPalette.danger,
-  offline: darkPalette["text-muted"],
-};
+/**
+ * A neutral dark overlay used on top of the accent color (own message bubbles),
+ * e.g. behind inline code, mentions and channel chips. Defined once so the web
+ * and native renderers stay in step.
+ */
+export const ACCENT_OVERLAY = "rgba(0,0,0,0.2)";
 
-/** Presence dot color for a status; unknown statuses read as offline. */
-export function presenceColor(status: string): string {
-  return PRESENCE_COLORS[status] ?? darkPalette["text-muted"];
+/**
+ * Presence dot color for a status; unknown statuses read as offline. Pass the
+ * active palette (from {@link usePalette}) so the dot follows light/dark.
+ */
+export function presenceColor(status: string, palette: Palette = darkPalette): string {
+  switch (status) {
+    case "online":
+      return palette.secondary;
+    case "idle":
+      return IDLE_COLOR;
+    case "dnd":
+      return palette.danger;
+    default:
+      return palette["text-muted"];
+  }
 }
 
 export interface RoleRing {

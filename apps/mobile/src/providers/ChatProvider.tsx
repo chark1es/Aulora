@@ -2,11 +2,14 @@ import {
   type AttachmentDescriptor,
   type ChannelSummary,
   type ChannelView,
+  hasPermission,
   memoryOutboxStore,
   memorySearchStore,
   Outbox,
   type OutboxItem,
+  Permission,
   type PresenceRow,
+  type RoleMentionTarget,
   type SearchHit,
   SearchIndex,
 } from "@aulora/core";
@@ -31,6 +34,7 @@ import {
   memberViewToEntry,
   type RoleView,
   resolveViewerPermissions,
+  roleRef,
 } from "../lib/permissions";
 import { usePresenceHeartbeat } from "../lib/use-presence-heartbeat";
 
@@ -38,6 +42,8 @@ export type { MobileMemberEntry } from "../lib/permissions";
 
 export interface ChatSendOptions {
   readonly mentionUserIds?: readonly string[];
+  readonly mentionChannelIds?: readonly string[];
+  readonly mentionCategoryIds?: readonly string[];
   readonly threadRootId?: string;
   readonly attachments?: readonly AttachmentDescriptor[];
 }
@@ -47,19 +53,38 @@ export interface ChatSendResult {
   readonly messageId?: string;
 }
 
+export interface CategoryView {
+  readonly id: string;
+  readonly name: string;
+  readonly position: number;
+}
+
 export interface MobileChatContextValue {
   readonly runtime: MobileChatRuntime | undefined;
   readonly ready: boolean;
   readonly channels: readonly ChannelView[];
+  readonly categories: readonly CategoryView[];
   readonly presence: readonly PresenceRow[];
   readonly outbox: readonly OutboxItem[];
   /** Workspace members, flattened for the channel-edit picker. */
   readonly members: readonly MobileMemberEntry[];
+  /** Profile pictures set in this workspace, keyed by user id. */
+  readonly avatarUrls: ReadonlyMap<string, string>;
+  /** Mentionable roles with their member ids, for `@role` resolution. */
+  readonly roles: readonly RoleMentionTarget[];
   /** The viewer's effective permission bitfield, resolved like the server. */
   readonly viewerPermissions: bigint;
   readonly isOwner: boolean;
+  /** The workspace owner's user id, used for moderation hierarchy guards. */
+  readonly ownerUserId: string | null;
   /** Owner or `ManageChannels`; gates the channel-edit surfaces. */
   readonly canManageChannels: boolean;
+  readonly canKick: boolean;
+  readonly canBan: boolean;
+  readonly canTimeout: boolean;
+  readonly canModerateMembers: boolean;
+  /** Owner or `MentionEveryone`; gates `@everyone`/`@here` suggestions. */
+  readonly canMentionEveryone: boolean;
   sendMessage(channelId: string, text: string, options?: ChatSendOptions): Promise<ChatSendResult>;
   search(query: string): Promise<readonly SearchHit[]>;
 }
@@ -178,11 +203,15 @@ export function ChatProvider({ client, children }: ChatProviderProps) {
         return { queued: false };
       }
       const attachmentIds = (options.attachments ?? []).map((attachment) => attachment.fileId);
+      const channelMentions = options.mentionChannelIds ?? [];
+      const categoryMentions = options.mentionCategoryIds ?? [];
       try {
         const messageId = await chat.session.sendMessage(channelId, text, {
           ...(options.mentionUserIds !== undefined
             ? { mentionUserIds: options.mentionUserIds }
             : {}),
+          ...(channelMentions.length > 0 ? { mentionChannelIds: channelMentions } : {}),
+          ...(categoryMentions.length > 0 ? { mentionCategoryIds: categoryMentions } : {}),
           ...(options.threadRootId !== undefined ? { threadRootId: options.threadRootId } : {}),
           ...(attachmentIds.length > 0 ? { attachmentIds } : {}),
         });
@@ -194,6 +223,12 @@ export function ChatProvider({ client, children }: ChatProviderProps) {
             text,
             ...(options.mentionUserIds !== undefined
               ? { mentionUserIds: options.mentionUserIds }
+              : {}),
+            ...(options.mentionChannelIds !== undefined
+              ? { mentionChannelIds: options.mentionChannelIds }
+              : {}),
+            ...(options.mentionCategoryIds !== undefined
+              ? { mentionCategoryIds: options.mentionCategoryIds }
               : {}),
             ...(options.threadRootId !== undefined ? { threadRootId: options.threadRootId } : {}),
             ...(options.attachments !== undefined ? { attachments: options.attachments } : {}),
@@ -218,6 +253,7 @@ export function ChatProvider({ client, children }: ChatProviderProps) {
   const membersResult = useQuery(api.members.list, {});
   const rolesResult = useQuery(api.roles.list, {});
   const meResult = useQuery(api.members.me, {});
+  const categoriesResult = useQuery(api.categories.list, {});
 
   const roleViews = useMemo<readonly RoleView[]>(
     () => (rolesResult ?? []) as readonly RoleView[],
@@ -228,6 +264,20 @@ export function ChatProvider({ client, children }: ChatProviderProps) {
     () => (membersResult ?? []) as readonly MemberView[],
     [membersResult],
   );
+
+  const avatarUrls = useMemo(() => {
+    const map = new Map<string, string>();
+    for (const member of memberViews) {
+      if (
+        member.avatarUrl !== undefined &&
+        member.avatarUrl !== null &&
+        member.avatarUrl.length > 0
+      ) {
+        map.set(member.userId, member.avatarUrl);
+      }
+    }
+    return map;
+  }, [memberViews]);
 
   const viewerUserId = meResult?.userId;
   const ownerId = meResult?.ownerId ?? null;
@@ -258,7 +308,40 @@ export function ChatProvider({ client, children }: ChatProviderProps) {
     [memberViews, roleViews, ownerId, viewerUserId],
   );
 
+  const mentionRoles = useMemo<readonly RoleMentionTarget[]>(
+    () =>
+      roleViews.map((role) => {
+        const ref = roleRef(role);
+        return {
+          roleId: ref,
+          name: role.name,
+          mentionable: role.mentionable,
+          memberUserIds: memberViews
+            .filter((member) => member.roleIds.includes(ref))
+            .map((member) => member.userId),
+        };
+      }),
+    [roleViews, memberViews],
+  );
+
   const canManageChannelsForViewer = canManageChannels(isOwner, viewerPermissions);
+
+  const categories = useMemo<readonly CategoryView[]>(
+    () =>
+      (categoriesResult ?? []).map((category) => ({
+        id: category.id,
+        name: category.name,
+        position: category.position,
+      })),
+    [categoriesResult],
+  );
+
+  const canKick = isOwner || hasPermission(viewerPermissions, Permission.Kick);
+  const canBan = isOwner || hasPermission(viewerPermissions, Permission.Ban);
+  const canTimeout = isOwner || hasPermission(viewerPermissions, Permission.Timeout);
+  const canModerateMembers = canKick || canBan || canTimeout;
+  const canMentionEveryone =
+    isOwner || hasPermission(viewerPermissions, Permission.MentionEveryone);
 
   const views = useMemo<readonly ChannelView[]>(
     () =>
@@ -274,12 +357,21 @@ export function ChatProvider({ client, children }: ChatProviderProps) {
       runtime,
       ready,
       channels: views,
+      categories,
       presence,
       outbox,
       members,
+      avatarUrls,
+      roles: mentionRoles,
       viewerPermissions,
       isOwner,
+      ownerUserId: ownerId,
       canManageChannels: canManageChannelsForViewer,
+      canKick,
+      canBan,
+      canTimeout,
+      canModerateMembers,
+      canMentionEveryone,
       sendMessage,
       search,
     }),
@@ -287,12 +379,21 @@ export function ChatProvider({ client, children }: ChatProviderProps) {
       runtime,
       ready,
       views,
+      categories,
       presence,
       outbox,
       members,
+      avatarUrls,
+      mentionRoles,
       viewerPermissions,
       isOwner,
+      ownerId,
       canManageChannelsForViewer,
+      canKick,
+      canBan,
+      canTimeout,
+      canModerateMembers,
+      canMentionEveryone,
       sendMessage,
       search,
     ],

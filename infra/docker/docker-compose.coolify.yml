@@ -370,7 +370,7 @@ services:
       AULORA_SERVER_ID: ${AULORA_SERVER_ID:-}
       APNS_KEY_ID: ${APNS_KEY_ID:-}
       APNS_TEAM_ID: ${APNS_TEAM_ID:-}
-      APNS_TOPIC: ${APNS_TOPIC:-app.aulora.ios}
+      APNS_TOPIC: ${APNS_TOPIC:-dev.spwnd.aulora}
       APNS_KEY_P8: ${APNS_KEY_P8:-}
       APNS_KEY_PATH: ${APNS_KEY_PATH:-}
       APNS_ENVIRONMENT: ${APNS_ENVIRONMENT:-production}

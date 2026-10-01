@@ -7,7 +7,7 @@
   "scripts": {
     "well-known": "bun run scripts/write-well-known.ts",
     "dev": "bun run well-known && vite",
-    "build": "bun run well-known && vite build",
+    "build": "bun run well-known && vite build && node ../../scripts/legal-notices.mjs --web",
     "preview": "vite preview",
     "typecheck": "tsc --noEmit",
     "lint": "biome check .",
@@ -46,5 +46,6 @@
     "typescript": "5.9.3",
     "vite": "8.3.1",
     "vitest": "5.0.2"
-  }
+  },
+  "license": "PolyForm-Noncommercial-1.0.0"
 }

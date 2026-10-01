@@ -20,6 +20,13 @@ describe("notificationContent", () => {
     expect(content.body.length).toBe(NOTIFICATION_BODY_LIMIT + 1);
     expect(content.body.endsWith("…")).toBe(true);
   });
+
+  it("marks mentions and honours a custom limit", () => {
+    expect(notificationContent("general", "hi", { mention: true }).title).toBe(
+      "Mention in #general",
+    );
+    expect(notificationContent("general", "abcdef", { limit: 3 }).body).toBe("abc…");
+  });
 });
 
 describe("shouldNotify", () => {

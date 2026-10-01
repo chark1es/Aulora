@@ -17,6 +17,11 @@ export interface AvatarProps {
   animate?: "hover" | "always";
   /** Optional accessible label. When omitted the avatar is decorative. */
   title?: string;
+  /**
+   * Workspace profile picture. When set, it replaces the generated avatar.
+   * Each workspace stores its own, so the same account can look different.
+   */
+  src?: string;
   /** `circle` for people, `squircle` for servers and workspaces. */
   shape?: AvatarShape;
   className?: string;
@@ -33,20 +38,30 @@ export function Avatar({
   roleColor,
   animate,
   title,
+  src,
   shape = "circle",
   className,
 }: AvatarProps) {
-  const content =
-    animate === undefined ? (
-      <Blobatar name={seed} size={size} {...(title !== undefined ? { title } : {})} />
-    ) : (
-      <Blobatar
-        name={seed}
-        size={size}
-        animate={animate}
-        {...(title !== undefined ? { title } : {})}
-      />
-    );
+  const photo = src !== undefined && src.length > 0;
+  const content = photo ? (
+    <img
+      src={src}
+      alt={title ?? ""}
+      width={size}
+      height={size}
+      draggable={false}
+      style={{ width: size, height: size, objectFit: "cover" }}
+    />
+  ) : animate === undefined ? (
+    <Blobatar name={seed} size={size} {...(title !== undefined ? { title } : {})} />
+  ) : (
+    <Blobatar
+      name={seed}
+      size={size}
+      animate={animate}
+      {...(title !== undefined ? { title } : {})}
+    />
+  );
 
   const style: CSSProperties = {
     width: size,

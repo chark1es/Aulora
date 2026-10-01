@@ -15,6 +15,7 @@ async function makeVapidKeys(): Promise<{ publicKey: string; privateKey: string 
 }
 
 const ORIGINAL_FETCH = globalThis.fetch;
+const PAGE = { numItems: 50, cursor: null } as const;
 
 afterEach(() => {
   delete process.env.VAPID_PUBLIC_KEY;
@@ -69,6 +70,61 @@ describe("notification preferences", () => {
     await expect(
       asUser.mutation(api.notifications.setPref, { scope: "server", channelId, level: "all" }),
     ).rejects.toThrow("Server scope must not set a channelId");
+  });
+
+  it("hides and mutes a channel per viewer without affecting others", async () => {
+    const t = newTest();
+    await seedWorkspace(t, {
+      members: [{ userId: "user-1" }, { userId: "user-2" }],
+    });
+    const channelId = await seedChannel(t, { memberIds: ["user-1", "user-2"] });
+    const asUser1 = t.withIdentity({ subject: "user-1" });
+    const asUser2 = t.withIdentity({ subject: "user-2" });
+
+    await asUser1.mutation(api.notifications.setChannelHidden, { channelId, hidden: true });
+    await asUser1.mutation(api.notifications.setChannelMuted, { channelId, muted: true });
+
+    const prefs = await asUser1.query(api.notifications.getPrefs);
+    expect(prefs.find((pref) => pref.scope === "channel")).toMatchObject({
+      channelId,
+      hidden: true,
+      muted: true,
+      level: "nothing",
+    });
+    expect(await asUser2.query(api.notifications.getPrefs)).toHaveLength(0);
+
+    const list1 = await asUser1.query(api.channels.list, { paginationOpts: PAGE });
+    const channel1 = list1.page.find((channel) => channel.id === channelId);
+    expect(channel1).toMatchObject({ hidden: true, muted: true });
+
+    const list2 = await asUser2.query(api.channels.list, { paginationOpts: PAGE });
+    const channel2 = list2.page.find((channel) => channel.id === channelId);
+    expect(channel2).toMatchObject({ hidden: false, muted: false });
+
+    await asUser1.mutation(api.notifications.setChannelMuted, { channelId, muted: false });
+    await asUser1.mutation(api.notifications.setChannelHidden, { channelId, hidden: false });
+    const after = await asUser1.query(api.notifications.getPrefs);
+    expect(after.find((pref) => pref.scope === "channel")).toMatchObject({
+      hidden: false,
+      muted: false,
+      level: "all",
+    });
+  });
+
+  it("requires ViewChannel to hide or mute", async () => {
+    const t = newTest();
+    await seedWorkspace(t, {
+      everyonePermissions: Permission.ReadHistory,
+      members: [{ userId: "user-1" }],
+    });
+    const channelId = await seedChannel(t, { memberIds: ["user-1"] });
+    const asUser = t.withIdentity({ subject: "user-1" });
+    await expect(
+      asUser.mutation(api.notifications.setChannelHidden, { channelId, hidden: true }),
+    ).rejects.toThrow("Missing permission");
+    await expect(
+      asUser.mutation(api.notifications.setChannelMuted, { channelId, muted: true }),
+    ).rejects.toThrow("Missing permission");
   });
 });
 
@@ -136,6 +192,79 @@ describe("notifications.resolveRecipients", () => {
     });
     const recipients = await t.query(internal.notifications.resolveRecipients, { messageId });
     expect(recipients).toEqual([]);
+  });
+
+  it("notifies the members of a mentioned channel", async () => {
+    const t = newTest();
+    await seedWorkspace(t, { members: [{ userId: "author" }, { userId: "listener" }] });
+    const channelId = await seedChannel(t, { memberIds: ["author"] });
+    const mentionedId = await seedChannel(t, { memberIds: ["listener"] });
+    const asAuthor = t.withIdentity({ subject: "author" });
+    const messageId = await asAuthor.mutation(api.messages.send, {
+      channelId,
+      body: "bXNn",
+      mentionChannelIds: [mentionedId],
+    });
+    const recipients = await t.query(internal.notifications.resolveRecipients, { messageId });
+    expect(recipients).toEqual(["listener"]);
+  });
+
+  it("notifies members of channels in a mentioned category, never the author", async () => {
+    const t = newTest();
+    await seedWorkspace(t, {
+      members: [{ userId: "author" }, { userId: "listener" }, { userId: "outsider" }],
+    });
+    const categoryId = await t.run(
+      async (ctx) =>
+        await ctx.db.insert("categories", { name: "team", position: 0, overrides: [] }),
+    );
+    const channelId = await seedChannel(t, { memberIds: ["author"] });
+    await seedChannel(t, { memberIds: ["listener"], categoryId });
+    await seedChannel(t, { memberIds: ["outsider"] });
+    const asAuthor = t.withIdentity({ subject: "author" });
+    const messageId = await asAuthor.mutation(api.messages.send, {
+      channelId,
+      body: "bXNn",
+      mentionCategoryIds: [categoryId],
+    });
+    const recipients = await t.query(internal.notifications.resolveRecipients, { messageId });
+    expect(recipients.sort()).toEqual(["listener"]);
+  });
+
+  it("treats a mentioned member bound by a mention-only preference as notified", async () => {
+    const t = newTest();
+    await seedWorkspace(t, { members: [{ userId: "author" }, { userId: "listener" }] });
+    const channelId = await seedChannel(t, { memberIds: ["author"] });
+    const mentionedId = await seedChannel(t, { memberIds: ["listener"] });
+    const asListener = t.withIdentity({ subject: "listener" });
+    await asListener.mutation(api.notifications.setPref, { scope: "server", level: "mentions" });
+    const asAuthor = t.withIdentity({ subject: "author" });
+    const messageId = await asAuthor.mutation(api.messages.send, {
+      channelId,
+      body: "bXNn",
+      mentionChannelIds: [mentionedId],
+    });
+    const recipients = await t.query(internal.notifications.resolveRecipients, { messageId });
+    expect(recipients).toEqual(["listener"]);
+  });
+});
+
+describe("notifications.mobilePushTargets", () => {
+  it("accepts a generic `mobile` platform tag as a native target", async () => {
+    const t = newTest();
+    await seedWorkspace(t, { members: [{ userId: "user-1" }] });
+    await t.run(async (ctx) => {
+      await ctx.db.insert("devices", {
+        userId: "user-1",
+        platform: "mobile",
+        pushToken: "fcm-token",
+        lastSeen: Date.now(),
+      });
+    });
+    const targets = await t.query(internal.notifications.mobilePushTargets, {
+      userIds: ["user-1"],
+    });
+    expect(targets).toEqual([{ userId: "user-1", platform: "mobile", token: "fcm-token" }]);
   });
 });
 

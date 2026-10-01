@@ -15,14 +15,30 @@ import { useMutation, useQuery } from "convex/react";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { api } from "../../../../../packages/convex/convex/_generated/api";
 import { uploadFiles } from "../../lib/attachments";
+import { isDesktop } from "../../lib/desktop";
+import { playSound } from "../../lib/sounds";
 import { useChannelSession } from "../../lib/use-channel";
-import { useDesktopNotifications } from "../../lib/use-desktop-notifications";
+import {
+  showUnfocusedNotification,
+  useDesktopNotifications,
+} from "../../lib/use-desktop-notifications";
 import { useLiveUnreadBadge } from "../../lib/use-desktop-unread";
 import { useWebPush } from "../../lib/use-web-push";
-import type { CategoryView, MemberView, RoleView } from "../../lib/workspace-admin";
+import {
+  type CategoryView,
+  type MemberView,
+  type RoleView,
+  resolveViewerPermissions,
+} from "../../lib/workspace-admin";
 import { type ChatSearchHit, useChat } from "../../providers/ChatProvider";
+import { useDesktopUpdates } from "../../providers/DesktopUpdateProvider";
 import { useVoice } from "../../providers/VoiceProvider";
+import {
+  useWorkspaceUpdates,
+  WorkspaceUpdateProvider,
+} from "../../providers/WorkspaceUpdateProvider";
 import { AdminPanel, type AdminPanelViewer } from "../admin/AdminPanel";
+import { DesktopUpdateSettings } from "../UpdateSettings";
 import { CallDock } from "../voice/CallDock";
 import { CallStage } from "../voice/CallStage";
 import { DeviceSettingsSection } from "../voice/DeviceSettingsSection";
@@ -37,9 +53,12 @@ import { ConversationHeader } from "./ConversationHeader";
 import { CreateCategoryModal } from "./CreateCategoryModal";
 import { type CreateChannelInput, CreateChannelModal } from "./CreateChannelModal";
 import { EditChannelModal, type EditChannelPatch } from "./EditChannelModal";
+import { MemberProfilePopover } from "./MemberProfilePopover";
 import { MembersPanel } from "./MembersPanel";
 import { MessageList } from "./MessageList";
 import { NewConversationDialog } from "./NewConversationDialog";
+import { NotificationsSettingsSection } from "./NotificationsSettingsSection";
+import { PinnedMessagesPanel } from "./PinnedMessagesPanel";
 import type { PresenceStatus } from "./PresenceAvatar";
 import { RenameChannelModal } from "./RenameChannelModal";
 import { SearchPanel } from "./SearchPanel";
@@ -144,7 +163,15 @@ function useAttentive(): boolean {
  * the quick switcher and admin sheets. Reads the chat session from
  * {@link useChat}; message bodies and channel names are plaintext.
  */
-export function ChatView({
+export function ChatView(props: ChatViewProps) {
+  return (
+    <WorkspaceUpdateProvider isOwner={props.admin.viewer.isOwner}>
+      <ChatViewContent {...props} />
+    </WorkspaceUpdateProvider>
+  );
+}
+
+function ChatViewContent({
   workspaceName,
   workspaceIconSeed,
   ownUserId,
@@ -170,6 +197,9 @@ export function ChatView({
     search,
   } = useChat();
   const voice = useVoice();
+  const desktopUpdate = useDesktopUpdates();
+  const workspaceUpdate = useWorkspaceUpdates();
+  const updateAvailable = desktopUpdate.status?.updateAvailable ?? false;
   const lastChannelKey = `${LAST_CHANNEL_KEY}${workspaceName}`;
   const [activeChannelId, setActiveChannelId] = useState<string | undefined>(
     () => readLocal(lastChannelKey) ?? undefined,
@@ -182,6 +212,9 @@ export function ChatView({
   const [createChannelCategoryId, setCreateChannelCategoryId] = useState<string | undefined>(
     undefined,
   );
+  const [createChannelKind, setCreateChannelKind] = useState<"text" | "voice" | undefined>(
+    undefined,
+  );
   const [createCategoryOpen, setCreateCategoryOpen] = useState(false);
   const [categoryModal, setCategoryModal] = useState<{ category: CategoryView } | null>(null);
   const [categoryBusy, setCategoryBusy] = useState(false);
@@ -192,8 +225,14 @@ export function ChatView({
   const [editChannelError, setEditChannelError] = useState<string | null>(null);
   const [editChannelBusy, setEditChannelBusy] = useState(false);
   const [threadRoot, setThreadRoot] = useState<MessagePayload | null>(null);
+  const [pinsOpen, setPinsOpen] = useState(false);
   const [replyTarget, setReplyTarget] = useState<MessagePayload | null>(null);
   const [userSettingsOpen, setUserSettingsOpen] = useState(false);
+  const [profileTarget, setProfileTarget] = useState<{
+    userId: string;
+    anchor: HTMLButtonElement;
+  } | null>(null);
+  const closeProfile = useCallback(() => setProfileTarget(null), []);
   const [membersOpen, setMembersOpen] = useState(() => readLocal(MEMBERS_OPEN_KEY) === "true");
   const [customStatuses, setCustomStatuses] = useState<ReadonlyMap<string, string>>(new Map());
   const [customStatus, setCustomStatus] = useState<string>(
@@ -208,10 +247,6 @@ export function ChatView({
   const [searchResults, setSearchResults] = useState<readonly ChatSearchHit[]>([]);
   const [searching, setSearching] = useState(false);
   const [sendError, setSendError] = useState<string | null>(null);
-  const [unreadAnchor, setUnreadAnchor] = useState<{
-    channelId: string;
-    messageId: string | null;
-  } | null>(null);
   const reported = useRef(new Set<string>());
   const attentive = useAttentive();
 
@@ -219,6 +254,20 @@ export function ChatView({
   const updateCategory = useMutation(api.categories.update);
   const removeCategory = useMutation(api.categories.remove);
   const setNickname = useMutation(api.members.setNickname);
+  const setBio = useMutation(api.members.setBio);
+  const generateAvatarUploadUrl = useMutation(api.members.generateAvatarUploadUrl);
+  const setAvatar = useMutation(api.members.setAvatar);
+  const memberProfile = useQuery(
+    api.members.profile,
+    profileTarget !== null ? { userId: profileTarget.userId } : "skip",
+  );
+  const ownProfile = useQuery(
+    api.members.profile,
+    userSettingsOpen ? { userId: ownUserId } : "skip",
+  );
+  const profileMember = members.find((member) => member.userId === profileTarget?.userId);
+  const kickMember = useMutation(api.members.kick);
+  const banMember = useMutation(api.members.ban);
 
   // The Threads inbox is always subscribed so its tab can badge mentions.
   const threadRows = useQuery(api.messages.threadInbox, {});
@@ -227,9 +276,97 @@ export function ChatView({
     [threadRows],
   );
 
-  useDesktopNotifications(runtime, ownUserId, channelNames);
+  const mutedChannelIds = useMemo(
+    () =>
+      new Set(channels.filter((channel) => channel.muted === true).map((channel) => channel.id)),
+    [channels],
+  );
+  useDesktopNotifications(runtime, ownUserId, channelNames, mutedChannelIds);
   useWebPush(runtime);
   useLiveUnreadBadge();
+
+  // Synthesized cues: a message/mention chime for new messages in channels that
+  // are not muted. Background channels notify too, so this mirrors the OS
+  // notification path rather than only the open conversation.
+  useEffect(() => {
+    if (runtime === undefined) {
+      return;
+    }
+    const mountedAt = Date.now();
+    const seen = new Set<string>();
+    let seeded = false;
+    const off = runtime.session.onDecrypted((messages) => {
+      if (!seeded) {
+        seeded = true;
+        for (const message of messages) {
+          seen.add(message.id);
+        }
+        return;
+      }
+      for (const message of messages) {
+        if (
+          seen.has(message.id) ||
+          message.authorId === ownUserId ||
+          message.createdAt < mountedAt
+        ) {
+          continue;
+        }
+        seen.add(message.id);
+        if (channels.some((entry) => entry.id === message.channelId && entry.muted === true)) {
+          continue;
+        }
+        playSound(message.mentionUserIds.includes(ownUserId) ? "mention" : "message");
+      }
+    });
+    return off;
+  }, [runtime, ownUserId, channels]);
+
+  // Ring for an incoming call and raise an OS notification while unfocused.
+  const incomingCallId = voice.incoming[0]?.id ?? null;
+  const incomingCallChannelId = voice.incoming[0]?.channelId ?? null;
+  useEffect(() => {
+    if (incomingCallId === null) {
+      return;
+    }
+    const stop = playSound("call-ring");
+    if (!document.hasFocus()) {
+      const channelName =
+        incomingCallChannelId === null ? undefined : channelNames.get(incomingCallChannelId);
+      showUnfocusedNotification(
+        "Incoming call",
+        channelName === undefined ? "Someone is calling" : `Call in #${channelName}`,
+      );
+    }
+    return stop;
+  }, [incomingCallId, incomingCallChannelId, channelNames]);
+
+  // Cue when the call connects and as participants come and go.
+  const callParticipantCount = voice.call?.participants.length ?? 0;
+  const connectedRef = useRef(false);
+  const participantCountRef = useRef(0);
+  useEffect(() => {
+    if (callParticipantCount === 0) {
+      connectedRef.current = false;
+      participantCountRef.current = 0;
+      return;
+    }
+    if (!connectedRef.current) {
+      connectedRef.current = true;
+      participantCountRef.current = callParticipantCount;
+      playSound("call-connect");
+      return;
+    }
+    const previous = participantCountRef.current;
+    participantCountRef.current = callParticipantCount;
+    if (callParticipantCount > previous) {
+      playSound("call-join");
+      if (!document.hasFocus()) {
+        showUnfocusedNotification("Someone joined the call", "A participant joined your call.");
+      }
+    } else if (callParticipantCount < previous) {
+      playSound("call-leave");
+    }
+  }, [callParticipantCount]);
 
   const typing = useMemo(
     () =>
@@ -299,6 +436,33 @@ export function ChatView({
       ...roles.filter((r) => r.mentionable).map((r) => r.name),
     ],
     [members, roles],
+  );
+
+  const channelMentions = useMemo(
+    () =>
+      channels
+        .filter(
+          (entry) =>
+            entry.kind !== "dm" &&
+            entry.kind !== "group_dm" &&
+            !entry.archived &&
+            entry.name !== null &&
+            entry.name.length > 0,
+        )
+        .map((entry) => ({ channelId: entry.id, name: entry.name as string })),
+    [channels],
+  );
+  const channelMentionNames = useMemo(
+    () => channelMentions.map((entry) => entry.name),
+    [channelMentions],
+  );
+  const categoryMentions = useMemo(
+    () =>
+      (admin?.categories ?? []).map((entry) => ({
+        categoryId: entry.id,
+        name: entry.name,
+      })),
+    [admin?.categories],
   );
 
   // Fall back to the first channel when nothing (or a vanished channel) is selected.
@@ -426,6 +590,18 @@ export function ChatView({
   }, [membersOpen]);
 
   const channel = channels.find((entry) => entry.id === activeChannelId);
+  const viewerMember = admin.memberViews.find((entry) => entry.userId === ownUserId) ?? null;
+  const category = admin.categories.find((entry) => entry.id === channel?.categoryId);
+  const channelPermissions =
+    channel === undefined
+      ? permissions
+      : resolveViewerPermissions({
+          viewer: { userId: ownUserId, isOwner: admin.viewer.isOwner },
+          member: viewerMember,
+          roles: admin.roleViews,
+          categoryOverrides: category?.overrides ?? [],
+          channelOverrides: channel.overrides ?? [],
+        });
   const sessionState = useChannelSession(runtime, activeChannelId, ownUserId);
 
   // Who can actually see the open channel; falls back to the workspace list
@@ -448,26 +624,6 @@ export function ChatView({
     () => roles.map((role) => ({ id: role.roleId, name: role.name })),
     [roles],
   );
-
-  // Freeze the "New messages" divider when a channel's history and read cursor
-  // first arrive, so reading (which moves the cursor) does not make it jump.
-  useEffect(() => {
-    if (
-      activeChannelId === undefined ||
-      sessionState.loading ||
-      !sessionState.readStateLoaded ||
-      unreadAnchor?.channelId === activeChannelId
-    ) {
-      return;
-    }
-    setUnreadAnchor({ channelId: activeChannelId, messageId: sessionState.unread.firstUnreadId });
-  }, [
-    activeChannelId,
-    sessionState.loading,
-    sessionState.readStateLoaded,
-    sessionState.unread.firstUnreadId,
-    unreadAnchor,
-  ]);
 
   // Mark the newest message read while the reader can actually see it.
   const newest = sessionState.messages.at(-1);
@@ -503,7 +659,13 @@ export function ChatView({
     channel === undefined ||
     channel.kind === "dm" ||
     channel.kind === "group_dm" ||
-    hasPermission(permissions, Permission.SendMessages);
+    hasPermission(channelPermissions, Permission.SendMessages);
+  const canAttach =
+    channel === undefined ||
+    channel.kind === "dm" ||
+    channel.kind === "group_dm" ||
+    hasPermission(channelPermissions, Permission.AttachFiles);
+  const canMentionEveryone = hasPermission(channelPermissions, Permission.MentionEveryone);
 
   const showAdmin = useMemo(
     () =>
@@ -544,6 +706,37 @@ export function ChatView({
     }
     return map;
   }, [unreadByChannel, activeChannelId]);
+
+  // A mention restores a hidden channel to its category and saved position.
+  const restoringChannels = useRef(new Set<string>());
+  const hiddenMentionBaseline = useRef(new Map<string, number>());
+  useEffect(() => {
+    if (runtime?.port.setChannelHidden === undefined) {
+      return;
+    }
+    for (const channel of channels) {
+      if (channel.hidden !== true) {
+        restoringChannels.current.delete(channel.id);
+        hiddenMentionBaseline.current.delete(channel.id);
+        continue;
+      }
+      const mentionCount = unreadByChannel.get(channel.id)?.mentionCount ?? 0;
+      const baseline = hiddenMentionBaseline.current.get(channel.id) ?? 0;
+      if (mentionCount < baseline) {
+        hiddenMentionBaseline.current.set(channel.id, mentionCount);
+      }
+      if (
+        mentionCount <= (hiddenMentionBaseline.current.get(channel.id) ?? 0) ||
+        restoringChannels.current.has(channel.id)
+      ) {
+        continue;
+      }
+      restoringChannels.current.add(channel.id);
+      void runtime.port.setChannelHidden({ channelId: channel.id, hidden: false }).catch(() => {
+        restoringChannels.current.delete(channel.id);
+      });
+    }
+  }, [runtime, channels, unreadByChannel]);
 
   // Queued (and failed) sends for the open channel, rendered optimistically.
   // Thread replies are owned by the thread panel, so only channel roots here.
@@ -747,7 +940,13 @@ export function ChatView({
 
   const sendWithFiles = async (
     targetChannelId: string,
-    input: { text: string; mentionUserIds: readonly string[]; files: readonly File[] },
+    input: {
+      text: string;
+      mentionUserIds: readonly string[];
+      mentionChannelIds?: readonly string[];
+      mentionCategoryIds?: readonly string[];
+      files: readonly File[];
+    },
     extra: { threadRootId?: string; replyToId?: string } = {},
   ): Promise<string | undefined> => {
     let attachments: readonly AttachmentDescriptor[] | undefined;
@@ -764,6 +963,12 @@ export function ChatView({
     void runtime.port.clearTyping({ channelId: targetChannelId }).catch(() => undefined);
     const result = await sendMessage(targetChannelId, input.text, {
       mentionUserIds: input.mentionUserIds,
+      ...(input.mentionChannelIds !== undefined
+        ? { mentionChannelIds: input.mentionChannelIds }
+        : {}),
+      ...(input.mentionCategoryIds !== undefined
+        ? { mentionCategoryIds: input.mentionCategoryIds }
+        : {}),
       ...(extra.threadRootId !== undefined ? { threadRootId: extra.threadRootId } : {}),
       ...(extra.replyToId !== undefined ? { replyToId: extra.replyToId } : {}),
       ...(attachments !== undefined && attachments.length > 0 ? { attachments } : {}),
@@ -799,13 +1004,37 @@ export function ChatView({
     }
   };
 
-  const saveUserSettings = async (input: { alignment: "left" | "right"; nickname?: string }) => {
+  const saveUserSettings = async (input: {
+    alignment: "left" | "right";
+    nickname?: string;
+    bio?: string;
+  }) => {
     writeLocal(MESSAGE_ALIGNMENT_KEY, input.alignment);
     setAlignment(input.alignment);
     if (input.nickname !== undefined) {
       await setNickname({ userId: ownUserId, nickname: input.nickname });
     }
+    if (input.bio !== undefined) {
+      await setBio({ bio: input.bio });
+    }
     setUserSettingsOpen(false);
+  };
+
+  const changeAvatar = async (file: File) => {
+    const url = await generateAvatarUploadUrl({});
+    const response = await fetch(url, {
+      method: "POST",
+      headers: { "Content-Type": file.type || "application/octet-stream" },
+      body: file,
+    });
+    if (!response.ok) {
+      throw new Error("Avatar upload failed");
+    }
+    const body = (await response.json()) as { storageId?: unknown };
+    if (typeof body.storageId !== "string") {
+      throw new Error("Avatar upload did not return a storage id");
+    }
+    await setAvatar({ storageId: body.storageId as never });
   };
 
   const submitChannelEdit = async (patch: EditChannelPatch) => {
@@ -901,6 +1130,8 @@ export function ChatView({
             }}
             onCreateCategory={() => setCreateCategoryOpen(true)}
             canManageCategories={canManageCategories}
+            appUpdateAvailable={desktopUpdate.status?.updateAvailable ?? false}
+            workspaceUpdateAvailable={workspaceUpdate.available}
             onOpenUserSettings={() => {
               setAdminOpen(false);
               setUserSettingsOpen(true);
@@ -912,11 +1143,16 @@ export function ChatView({
             }}
             workspaceSwitcher={<WorkspaceMenu onlineCount={onlineCount} variant="header" />}
             onSelect={(channelId) => void openChannel(channelId)}
-            onCreateChannel={() => setCreateChannelOpen(true)}
+            onCreateChannel={(kind) => {
+              setCreateChannelKind(kind);
+              setCreateChannelCategoryId(undefined);
+              setCreateChannelOpen(true);
+            }}
             categoryActions={{
               rename: (category) => setCategoryModal({ category }),
               delete: (category) => void removeCategory({ categoryId: category.id as never }),
               createChannel: (category) => {
+                setCreateChannelKind("text");
                 setCreateChannelCategoryId(category.id);
                 setCreateChannelOpen(true);
               },
@@ -948,8 +1184,29 @@ export function ChatView({
                 const url = `${window.location.origin}/?channel=${channel.id}`;
                 void navigator.clipboard?.writeText(url).catch(() => undefined);
               },
-              leave: (channel) => {
-                void runtime.port.leaveChannel({ channelId: channel.id }).catch(() => undefined);
+              hide: (channel) => {
+                hiddenMentionBaseline.current.set(
+                  channel.id,
+                  unreadByChannel.get(channel.id)?.mentionCount ?? 0,
+                );
+                void runtime.port
+                  .setChannelHidden?.({ channelId: channel.id, hidden: true })
+                  .catch(() => undefined);
+              },
+              unhide: (channel) => {
+                void runtime.port
+                  .setChannelHidden?.({ channelId: channel.id, hidden: false })
+                  .catch(() => undefined);
+              },
+              mute: (channel) => {
+                void runtime.port
+                  .setChannelMuted?.({ channelId: channel.id, muted: true })
+                  .catch(() => undefined);
+              },
+              unmute: (channel) => {
+                void runtime.port
+                  .setChannelMuted?.({ channelId: channel.id, muted: false })
+                  .catch(() => undefined);
               },
               ...(admin.viewer.isOwner || hasPermission(permissions, Permission.ManageChannels)
                 ? {
@@ -1005,13 +1262,25 @@ export function ChatView({
         <UserSettingsView
           ownUserId={ownUserId}
           ownName={ownName}
+          ownBio={ownProfile?.bio ?? ""}
+          busy={ownProfile === undefined}
           alignment={alignment}
           canEditNickname={canEditNickname}
           isOwner={admin.viewer.isOwner}
           onSave={saveUserSettings}
+          hasAvatar={
+            admin.memberViews.find((member) => member.userId === ownUserId)?.avatarUrl != null
+          }
+          onChangeAvatar={changeAvatar}
+          onClearAvatar={async () => {
+            await setAvatar({});
+          }}
           onBack={() => setUserSettingsOpen(false)}
           onSignOut={onSignOut}
           voiceSettings={<DeviceSettingsSection />}
+          soundSettings={<NotificationsSettingsSection />}
+          {...(isDesktop() ? { updateSettings: <DesktopUpdateSettings /> } : {})}
+          updateAvailable={updateAvailable}
         />
       ) : (
         <section
@@ -1064,15 +1333,31 @@ export function ChatView({
                   setMembersOpen((open) => (threadRoot !== null ? true : !open));
                 }}
                 onOpenSearch={() => setSearchOpen(true)}
+                pinsOpen={pinsOpen}
+                onTogglePins={() => setPinsOpen((open) => !open)}
                 onBack={() => setMobilePane("list")}
-                canStartCall={voice.canConnect}
-                canStartVideoCall={voice.canVideo}
+                canStartCall={
+                  voice.canConnect && hasPermission(channelPermissions, Permission.Connect)
+                }
+                canStartVideoCall={
+                  voice.canVideo && hasPermission(channelPermissions, Permission.UseVideo)
+                }
                 onStartCall={(kind) => {
                   setNewConversationOpen(false);
                   void voice.startCall(channel.id, kind);
                 }}
               />
+              {pinsOpen && (
+                <PinnedMessagesPanel
+                  key={channel.id}
+                  channelId={channel.id}
+                  memberNames={memberNames}
+                  permissions={channelPermissions}
+                  onClose={() => setPinsOpen(false)}
+                />
+              )}
               <MessageList
+                key={channel.id}
                 runtime={runtime}
                 channelId={channel.id}
                 messages={mergedMessages}
@@ -1086,15 +1371,20 @@ export function ChatView({
                 onDiscardSend={(pendingId) => {
                   void discardSend?.(pendingId.replace(/^pending:/, ""));
                 }}
-                permissions={permissions}
+                permissions={channelPermissions}
                 ownUserId={ownUserId}
                 ownName={ownName}
                 memberNames={memberNames}
                 memberColors={memberColors}
                 mentionNames={mentionNames}
-                firstUnreadId={
-                  unreadAnchor?.channelId === channel.id ? unreadAnchor.messageId : null
-                }
+                channelNames={channelMentionNames}
+                onChannelClick={(name) => {
+                  const target = channelMentions.find((entry) => entry.name === name);
+                  if (target !== undefined) {
+                    void openChannel(target.channelId);
+                  }
+                }}
+                firstUnreadId={sessionState.unread.firstUnreadId}
                 typers={sessionState.typers}
                 hasOlder={sessionState.hasOlder}
                 loading={sessionState.loading}
@@ -1137,6 +1427,11 @@ export function ChatView({
                   members={mentionMembers}
                   roles={roles}
                   memberIds={memberIds}
+                  channels={channelMentions}
+                  categories={categoryMentions}
+                  canAttach={canAttach}
+                  canMentionEveryone={canMentionEveryone}
+                  ownName={ownName}
                   placeholder={placeholder}
                   onTyping={(channelId) => typing.ping(channelId)}
                   onSend={async (input) => {
@@ -1191,7 +1486,7 @@ export function ChatView({
                 members={mentionMembers}
                 roles={roles}
                 memberIds={memberIds}
-                permissions={permissions}
+                permissions={channelPermissions}
                 ownUserId={ownUserId}
                 ownName={ownName}
                 memberNames={memberNames}
@@ -1229,16 +1524,41 @@ export function ChatView({
                 presence={presence}
                 customStatuses={customStatuses}
                 ownUserId={ownUserId}
+                onViewProfile={(userId, anchor) => {
+                  setProfileTarget((current) =>
+                    current?.userId === userId ? null : { userId, anchor },
+                  );
+                }}
                 onMessage={(userId) => void startConversation([userId])}
                 onClose={() => setMembersOpen(false)}
                 memberActions={{
                   message: (userId) => void startConversation([userId]),
-                  ...(showAdmin ? { assignRoles: () => setAdminOpen(true) } : {}),
+                  ...(hasPermission(permissions, Permission.ManageRoles)
+                    ? { assignRoles: () => setAdminOpen(true) }
+                    : {}),
+                  ...(hasPermission(permissions, Permission.Kick)
+                    ? { kick: (userId: string) => void kickMember({ userId }) }
+                    : {}),
+                  ...(hasPermission(permissions, Permission.Ban)
+                    ? { ban: (userId: string) => void banMember({ userId }) }
+                    : {}),
                 }}
               />
             )}
           </div>
         )}
+
+      {profileMember !== undefined && profileTarget !== null && rightPanel === "members" && (
+        <MemberProfilePopover
+          key={profileMember.userId}
+          member={profileMember}
+          anchor={profileTarget.anchor}
+          status={presenceOf(profileMember.userId)}
+          profile={memberProfile}
+          onMessage={(userId) => startConversation([userId])}
+          onClose={closeProfile}
+        />
+      )}
 
       {incomingCall !== undefined && (
         <IncomingCallModal
@@ -1305,15 +1625,18 @@ export function ChatView({
         {...(createChannelCategoryId !== undefined
           ? { initialCategoryId: createChannelCategoryId }
           : {})}
+        {...(createChannelKind !== undefined ? { initialKind: createChannelKind } : {})}
         members={members}
         roles={channelRoleOptions}
         onClose={() => {
           setCreateChannelOpen(false);
           setCreateChannelCategoryId(undefined);
+          setCreateChannelKind(undefined);
         }}
         onCreate={async (input: CreateChannelInput) => {
           setCreateChannelOpen(false);
           setCreateChannelCategoryId(undefined);
+          setCreateChannelKind(undefined);
           const channelId = await createChannel(runtime, input);
           if (channelId !== undefined) {
             setActiveChannelId(channelId);

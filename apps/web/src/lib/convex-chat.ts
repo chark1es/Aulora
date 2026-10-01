@@ -45,6 +45,8 @@ interface ServerChannel {
   }[];
   readonly position?: number;
   readonly memberIds?: readonly string[];
+  readonly hidden?: boolean;
+  readonly muted?: boolean;
 }
 
 function toSummary(channel: ServerChannel): ChannelSummary {
@@ -59,6 +61,8 @@ function toSummary(channel: ServerChannel): ChannelSummary {
     ...(channel.overrides !== undefined ? { overrides: channel.overrides } : {}),
     ...(channel.position !== undefined ? { position: channel.position } : {}),
     ...(channel.memberIds !== undefined ? { memberIds: channel.memberIds } : {}),
+    ...(channel.hidden !== undefined ? { hidden: channel.hidden } : {}),
+    ...(channel.muted !== undefined ? { muted: channel.muted } : {}),
   };
 }
 
@@ -185,6 +189,20 @@ export function convexPort(client: ConvexReactClient): ChatPort {
     async getChannelMemberIds(args) {
       const channel = await client.query(api.channels.get, { channelId: args.channelId as never });
       return channel.memberIds ?? [];
+    },
+    async setChannelHidden(args) {
+      await client.mutation(api.notifications.setChannelHidden, {
+        channelId: args.channelId as never,
+        hidden: args.hidden,
+      });
+      return null;
+    },
+    async setChannelMuted(args) {
+      await client.mutation(api.notifications.setChannelMuted, {
+        channelId: args.channelId as never,
+        muted: args.muted,
+      });
+      return null;
     },
     async uploadFile(args) {
       const uploadUrl = await client.mutation(api.files.generateUploadUrl, {});

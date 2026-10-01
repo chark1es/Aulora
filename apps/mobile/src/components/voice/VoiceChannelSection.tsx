@@ -1,4 +1,4 @@
-import type { CallView, ChannelView } from "@aulora/core";
+import { type CallView, type ChannelView, joinedElsewhere } from "@aulora/core";
 import { Icon, Text, usePalette } from "@aulora/ui-native";
 import { Pressable, View } from "react-native";
 
@@ -7,6 +7,10 @@ export interface VoiceChannelSectionProps {
   readonly activeCalls: readonly CallView[];
   readonly memberNames: ReadonlyMap<string, string>;
   readonly selfUserId: string;
+  readonly clientId: string | null;
+  readonly localCallId: string | null;
+  /** Per-participant remote audio level, 0..1, when available. */
+  readonly remoteLevels?: ReadonlyMap<string, number>;
   readonly onJoin: (channelId: string) => void;
 }
 
@@ -20,6 +24,9 @@ export function VoiceChannelSection({
   activeCalls,
   memberNames,
   selfUserId,
+  clientId,
+  localCallId,
+  remoteLevels,
   onJoin,
 }: VoiceChannelSectionProps) {
   const palette = usePalette();
@@ -36,6 +43,8 @@ export function VoiceChannelSection({
         const call = activeCalls.find((entry) => entry.channelId === channel.id);
         const connected = call?.participants ?? [];
         const selfConnected = connected.some((participant) => participant.userId === selfUserId);
+        const elsewhere =
+          call !== undefined && joinedElsewhere(call, selfUserId, clientId, localCallId);
         return (
           <Pressable
             key={channel.id}
@@ -55,7 +64,7 @@ export function VoiceChannelSection({
               </Text>
               {selfConnected && (
                 <Text size="xs" tone="accent">
-                  Joined
+                  {elsewhere ? "Other device" : "Joined"}
                 </Text>
               )}
               {connected.length > 0 && (
@@ -71,7 +80,11 @@ export function VoiceChannelSection({
                     <Icon
                       name={participant.muted ? "mic-off" : "mic"}
                       size={12}
-                      color={palette["text-muted"]}
+                      color={
+                        !participant.muted && (remoteLevels?.get(participant.userId) ?? 0) > 0.06
+                          ? palette.secondary
+                          : palette["text-muted"]
+                      }
                     />
                     <Text size="xs" tone="muted">
                       {memberNames.get(participant.userId) ?? participant.userId}

@@ -8,10 +8,32 @@ node_modules/
 .env.*
 !.env.example
 
+# Private release credentials. Keep signing and push files out of Git even
+# when native build tools copy them outside the private credentials directory.
+/.secrets/
+*.p8
+*.p12
+*.pfx
+*.jks
+*.keystore
+*.mobileprovision
+*.provisionprofile
+google-services.json
+GoogleService-Info.plist
+credentials.json
+*service-account*.json
+*firebase-adminsdk*.json
+
 # infra/generated secrets and well-known documents (never commit real values)
 infra/docker/.env
 infra/docker/.env.generated
 infra/docker/**/.well-known/
+infra/docker/.deployed-version
+infra/docker/.update-status.json
+infra/docker/.update.lock/
+infra/docker/.update-host.lock/
+infra/docker/.update-stage/
+infra/docker/.update-ready.json
 
 # playwright
 **/test-results/
@@ -41,6 +63,8 @@ coverage/
 src-tauri/target/
 .cache/
 apps/mobile/.expo/
+apps/mobile/android/app/src/main/assets/legal/
+apps/mobile/ios/Aulora/Legal/
 
 # spike build artifacts
 spikes/mls-demo/public/worker.js
@@ -49,3 +73,6 @@ spikes/mls-demo/public/worker.js
 *.log
 .DS_Store
 Thumbs.db
+
+# Local CI helper bytecode
+scripts/ci/__pycache__/

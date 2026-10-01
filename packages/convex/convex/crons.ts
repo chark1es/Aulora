@@ -25,4 +25,18 @@ if (getEkmSettings(process.env).provider !== "local") {
   crons.interval("ekm prime", { minutes: 30 }, internal.encryptionKeys.prime, {});
 }
 
+crons.interval(
+  "commercial license validation",
+  { minutes: 30 },
+  internal.licenseActions.refresh,
+  {},
+);
+
+crons.interval(
+  "commercial active-user reports",
+  { hours: 1 },
+  internal.licenseUsageActions.report,
+  {},
+);
+
 export default crons;

@@ -1,0 +1,133 @@
+name: CI
+
+on:
+  pull_request:
+  push:
+    branches: [main]
+  merge_group:
+  workflow_call:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ci-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  quality:
+    name: Tests and types
+    runs-on: ubuntu-22.04
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - uses: ./.github/actions/setup-js
+      - run: bun run lint
+      - run: bun run typecheck
+      - run: bun run test
+      - run: bun run build
+      - run: bun run docs:check
+      - run: bun run release:check
+      - name: Release automation tests
+        run: bun run test:release
+      - name: Infrastructure tests
+        run: bun run test:infra
+
+  workflows:
+    name: Workflow validation
+    runs-on: ubuntu-22.04
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - uses: actions/setup-go@v5
+        with:
+          go-version: '1.24'
+          cache: false
+      - name: Check workflow syntax and shell scripts
+        run: |
+          go install github.com/rhysd/actionlint/cmd/actionlint@v1.7.7
+          actionlint
+
+  desktop:
+    uses: ./.github/workflows/desktop.yml
+
+  android:
+    name: Android compile
+    runs-on: ubuntu-22.04
+    timeout-minutes: 60
+    env:
+      NODE_ENV: production
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - uses: ./.github/actions/setup-js
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '17'
+      - uses: android-actions/setup-android@v3
+        with:
+          packages: platform-tools
+      - uses: gradle/actions/setup-gradle@v4
+        with:
+          cache-read-only: ${{ github.ref != 'refs/heads/main' }}
+      - name: Compile debug APK without release secrets
+        working-directory: apps/mobile/android
+        run: ./gradlew :app:assembleDebug --no-daemon -PreactNativeArchitectures=arm64-v8a
+
+  ios:
+    name: iOS compile
+    runs-on: macos-latest
+    timeout-minutes: 60
+    env:
+      NODE_ENV: production
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - uses: ./.github/actions/setup-js
+      - name: Verify portable podspec checksums
+        run: ruby scripts/ci/podspec-checksums.test.rb
+      - name: Install CocoaPods dependencies
+        working-directory: apps/mobile/ios
+        run: pod install --deployment
+      - name: Compile unsigned simulator app
+        working-directory: apps/mobile/ios
+        run: |
+          xcodebuild -workspace Aulora.xcworkspace -scheme Aulora -configuration Release -sdk iphonesimulator -destination 'generic/platform=iOS Simulator' -derivedDataPath "$RUNNER_TEMP/ios-ci" ARCHS="$(uname -m)" CODE_SIGNING_ALLOWED=NO build
+
+  secrets:
+    name: Secret history scan
+    runs-on: ubuntu-22.04
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+          persist-credentials: false
+      - name: Scan all Git history with reviewed fixture exceptions
+        run: docker run --rm -v "$PWD:/repo:ro" ghcr.io/gitleaks/gitleaks:v8.30.1 git /repo --config /repo/.gitleaks.toml --redact=100
+
+  required:
+    name: Required checks
+    if: always()
+    needs: [quality, workflows, desktop, android, ios, secrets]
+    runs-on: ubuntu-22.04
+    steps:
+      - name: Require every check to pass
+        env:
+          RESULTS: ${{ toJSON(needs) }}
+        run: |
+          python3 - <<'PY'
+          import json, os, sys
+          failures = [name for name, job in json.loads(os.environ['RESULTS']).items() if job['result'] != 'success']
+          if failures:
+              print('Required checks failed or were skipped: ' + ', '.join(failures))
+              sys.exit(1)
+          print('All required checks passed.')
+          PY

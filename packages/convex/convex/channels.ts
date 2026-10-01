@@ -2,10 +2,11 @@ import { EVERYONE_ROLE_ID, hasPermission, Permission, resolvePermissions } from 
 import { paginationOptsValidator } from "convex/server";
 import { ConvexError, v } from "convex/values";
 import type { Doc, Id } from "./_generated/dataModel";
-import type { MutationCtx } from "./_generated/server";
+import type { MutationCtx, QueryCtx } from "./_generated/server";
 import { mutation, query } from "./_generated/server";
 import { writeAudit } from "./lib/audit";
 import { requireAuth } from "./lib/auth";
+import { assertMayParticipate } from "./lib/bans";
 import {
   computeDmKey,
   removeChannelMember as deleteChannelMember,
@@ -20,6 +21,7 @@ import {
   categoryOverridesFor,
   channelPermissions,
   loadPermissionContext,
+  requireMember,
   requirePermission,
   requireWorkspacePermission,
 } from "./lib/permissions";
@@ -53,10 +55,48 @@ interface ChannelSummary {
   readonly overrides: Doc<"channels">["overrides"];
   /** Display order within its category; falls back to creation order when unset. */
   readonly position: number;
+  /** Hidden from the viewer's sidebar. */
+  readonly hidden: boolean;
+  /** Viewer has muted notifications for this channel. */
+  readonly muted: boolean;
   readonly memberIds?: string[];
 }
 
-async function toSummary(channel: Doc<"channels">, memberIds?: string[]): Promise<ChannelSummary> {
+interface ViewerChannelPref {
+  readonly hidden: boolean;
+  readonly muted: boolean;
+}
+
+type ReadCtx = QueryCtx | MutationCtx;
+
+/** The viewer's per-channel hidden/muted flags, keyed by channel id. */
+async function viewerChannelPrefs(
+  ctx: ReadCtx,
+  userId: string,
+): Promise<Map<string, ViewerChannelPref>> {
+  const rows = await ctx.db
+    .query("notificationPrefs")
+    .withIndex("by_user_scope", (q) => q.eq("userId", userId))
+    .collect();
+  const now = Date.now();
+  const prefs = new Map<string, ViewerChannelPref>();
+  for (const row of rows) {
+    if (row.channelId === undefined) {
+      continue;
+    }
+    prefs.set(row.channelId, {
+      hidden: row.hidden === true,
+      muted: row.level === "nothing" || (row.muteUntil !== undefined && row.muteUntil > now),
+    });
+  }
+  return prefs;
+}
+
+async function toSummary(
+  channel: Doc<"channels">,
+  memberIds?: string[],
+  pref?: ViewerChannelPref,
+): Promise<ChannelSummary> {
   return {
     id: channel._id,
     kind: channel.kind,
@@ -67,6 +107,8 @@ async function toSummary(channel: Doc<"channels">, memberIds?: string[]): Promis
     isPrivate: channel.private === true,
     overrides: channel.overrides,
     position: channel.position ?? 0,
+    hidden: pref?.hidden ?? false,
+    muted: pref?.muted ?? false,
     ...(memberIds !== undefined ? { memberIds } : {}),
   };
 }
@@ -223,6 +265,7 @@ export const list = query({
   handler: async (ctx, args) => {
     const { userId } = await requireAuth(ctx);
     const context = await loadPermissionContext(ctx, userId);
+    const viewerPrefs = await viewerChannelPrefs(ctx, userId);
     // DMs are filtered before pagination so they never crowd channels out of
     // a page; they are listed by `listDms`.
     const result = await ctx.db
@@ -236,7 +279,13 @@ export const list = query({
       if (channel.private === true) {
         // Membership is the only gate for a private channel.
         if (await findChannelMember(ctx, channel._id, userId)) {
-          page.push(await toSummary(channel, await listChannelMemberIds(ctx, channel._id)));
+          page.push(
+            await toSummary(
+              channel,
+              await listChannelMemberIds(ctx, channel._id),
+              viewerPrefs.get(channel._id),
+            ),
+          );
         }
         continue;
       }
@@ -245,7 +294,7 @@ export const list = query({
       if (!hasPermission(permissions, Permission.ViewChannel)) {
         continue;
       }
-      page.push(await toSummary(channel));
+      page.push(await toSummary(channel, undefined, viewerPrefs.get(channel._id)));
     }
     return { ...result, page };
   },
@@ -343,7 +392,8 @@ export const get = query({
       isDmKind(result.channel.kind) || result.channel.private === true
         ? await listChannelMemberIds(ctx, result.channel._id)
         : undefined;
-    return await toSummary(result.channel, memberIds);
+    const viewerPrefs = await viewerChannelPrefs(ctx, result.userId);
+    return await toSummary(result.channel, memberIds, viewerPrefs.get(result.channel._id));
   },
 });
 
@@ -588,6 +638,7 @@ export const join = mutation({
       args.channelId,
       Permission.ViewChannel,
     );
+    await assertMayParticipate(ctx, userId);
     if (isDmKind(channel.kind)) {
       throw new ConvexError("Cannot join a DM");
     }
@@ -595,9 +646,6 @@ export const join = mutation({
       throw new ConvexError("This channel is private. Ask a member to add you.");
     }
     const added = await insertChannelMember(ctx, args.channelId, userId);
-    if (added) {
-      await writeAudit(ctx, { actorId: userId, action: "channel.join", targetId: args.channelId });
-    }
     return { joined: added };
   },
 });
@@ -673,9 +721,6 @@ export const leave = mutation({
   handler: async (ctx, args) => {
     const { userId } = await requireAuth(ctx);
     const removed = await deleteChannelMember(ctx, args.channelId, userId);
-    if (removed) {
-      await writeAudit(ctx, { actorId: userId, action: "channel.leave", targetId: args.channelId });
-    }
     return { left: removed };
   },
 });
@@ -719,15 +764,8 @@ export const createDm = mutation({
   args: { otherUserId: v.string() },
   handler: async (ctx, args) => {
     const { userId } = await requireAuth(ctx);
-    const result = await createDmChannel(ctx, userId, [args.otherUserId], "dm");
-    if (result.created) {
-      await writeAudit(ctx, {
-        actorId: userId,
-        action: "channel.createDm",
-        targetId: result.channelId,
-      });
-    }
-    return result;
+    await requireMember(ctx, userId);
+    return await createDmChannel(ctx, userId, [args.otherUserId], "dm");
   },
 });
 
@@ -736,15 +774,8 @@ export const createGroupDm = mutation({
   args: { memberIds: v.array(v.string()) },
   handler: async (ctx, args) => {
     const { userId } = await requireAuth(ctx);
-    const result = await createDmChannel(ctx, userId, args.memberIds, "group_dm");
-    if (result.created) {
-      await writeAudit(ctx, {
-        actorId: userId,
-        action: "channel.createGroupDm",
-        targetId: result.channelId,
-      });
-    }
-    return result;
+    await requireMember(ctx, userId);
+    return await createDmChannel(ctx, userId, args.memberIds, "group_dm");
   },
 });
 
@@ -756,6 +787,7 @@ export const listDms = query({
   args: { paginationOpts: v.optional(paginationOptsValidator) },
   handler: async (ctx, args) => {
     const { userId } = await requireAuth(ctx);
+    const viewerPrefs = await viewerChannelPrefs(ctx, userId);
     const result = await ctx.db
       .query("channelMembers")
       .withIndex("by_user", (q) => q.eq("userId", userId))
@@ -768,7 +800,13 @@ export const listDms = query({
       if (channel === null || !isDmKind(channel.kind)) {
         continue;
       }
-      page.push(await toSummary(channel, await listChannelMemberIds(ctx, channel._id)));
+      page.push(
+        await toSummary(
+          channel,
+          await listChannelMemberIds(ctx, channel._id),
+          viewerPrefs.get(channel._id),
+        ),
+      );
     }
     return { ...result, page };
   },

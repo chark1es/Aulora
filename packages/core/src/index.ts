@@ -82,6 +82,18 @@ export {
 } from "./server-url";
 
 export {
+  DEFAULT_SOUND_SETTINGS,
+  loadSoundSettings,
+  memorySoundSettingsStore,
+  mergeSoundSettings,
+  SOUND_EVENTS,
+  SOUND_SETTINGS_KEY,
+  type SoundEvent,
+  type SoundSettings,
+  saveSoundSettings,
+  soundVolume,
+} from "./sounds";
+export {
   advanceCursor,
   countMentions,
   countUnread,
@@ -95,6 +107,26 @@ export {
   summarizeUnread,
   type UnreadSummary,
 } from "./unread";
+export {
+  autoUpdateEnabled,
+  compareSemver,
+  DEFAULT_UPDATE_GITHUB_REPO,
+  DEFAULT_UPDATE_MANIFEST_URL,
+  isReleaseTag,
+  loadPublishedRelease,
+  type PublishedRelease,
+  parseSemver,
+  planWorkspaceUpdate,
+  readDeclaredVersion,
+  releaseTag,
+  resolveGitHubRepo,
+  resolveManifestUrl,
+  type Semver,
+  type UpdateChannel,
+  updateChannel,
+  type WorkspaceApply,
+  type WorkspaceUpdatePlan,
+} from "./updates";
 export * from "./voice/index";
 export {
   containsSecretField,

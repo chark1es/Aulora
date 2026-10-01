@@ -1,5 +1,12 @@
 import { darkPalette, lightPalette } from "@aulora/tokens";
-import { type StyleProp, StyleSheet, useColorScheme, View, type ViewStyle } from "react-native";
+import {
+  Image,
+  type StyleProp,
+  StyleSheet,
+  useColorScheme,
+  View,
+  type ViewStyle,
+} from "react-native";
 import { SvgXml } from "react-native-svg";
 import { type AvatarShape, avatarRadius } from "./shape";
 import { avatarSvg } from "./svg";
@@ -16,6 +23,8 @@ export interface NativeAvatarProps {
   roleColor?: string;
   /** Accessible label. When omitted the avatar is decorative. */
   title?: string;
+  /** Workspace profile picture. When set, it replaces the generated avatar. */
+  src?: string;
   /** `circle` for people, `squircle` for servers and workspaces. */
   shape?: AvatarShape;
   style?: StyleProp<ViewStyle>;
@@ -32,6 +41,7 @@ export function NativeAvatar({
   size = 32,
   roleColor,
   title,
+  src,
   shape = "circle",
   style,
 }: NativeAvatarProps) {
@@ -57,7 +67,16 @@ export function NativeAvatar({
         style,
       ]}
     >
-      <SvgXml xml={avatarSvg(seed, { size })} width={size} height={size} />
+      {src !== undefined && src.length > 0 ? (
+        <Image
+          source={{ uri: src }}
+          accessibilityIgnoresInvertColors
+          style={{ width: size, height: size }}
+          resizeMode="cover"
+        />
+      ) : (
+        <SvgXml xml={avatarSvg(seed, { size })} width={size} height={size} />
+      )}
     </View>
   );
 }

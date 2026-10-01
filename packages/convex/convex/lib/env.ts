@@ -64,6 +64,27 @@ export interface SocialProviderCredentials {
   readonly clientSecret: string;
 }
 
+/**
+ * Operator toggles for the auth providers offered by `server.publicConfig`.
+ * Absent values inherit the deployment environment; `false` hides a provider
+ * even when its credentials are present.
+ */
+export interface AuthProviderToggles {
+  readonly github?: boolean;
+  readonly google?: boolean;
+  readonly microsoft?: boolean;
+  readonly apple?: boolean;
+  readonly oidc?: boolean;
+}
+
+/** A provider is offered unless its toggle is explicitly `false`. */
+function providerEnabled(
+  toggles: AuthProviderToggles | undefined,
+  id: "github" | "google" | "microsoft" | "apple" | "oidc",
+): boolean {
+  return toggles?.[id] !== false;
+}
+
 /** Provider id -> credentials for the ones fully configured. */
 export function getSocialProviderCredentials(env: Env): Record<string, SocialProviderCredentials> {
   const result: Record<string, SocialProviderCredentials> = {};
@@ -135,13 +156,21 @@ export function getOidcSettings(env: Env): OidcSettings | null {
  * Public (secret-free) auth configuration. Safe to return from a query and to
  * publish in `/.well-known/aulora.json`.
  */
-export function getPublicAuthConfig(env: Env, signupEnabled: boolean): WellKnownAuth {
+export function getPublicAuthConfig(
+  env: Env,
+  signupEnabled: boolean,
+  toggles?: AuthProviderToggles,
+): WellKnownAuth {
   const providers: WellKnownProvider[] = [];
 
   for (const def of SOCIAL_PROVIDER_DEFINITIONS) {
     const clientId = read(env, def.clientIdEnv);
     const clientSecret = read(env, def.clientSecretEnv);
-    if (clientId !== undefined && clientSecret !== undefined) {
+    if (
+      clientId !== undefined &&
+      clientSecret !== undefined &&
+      providerEnabled(toggles, def.id as "github" | "google" | "microsoft" | "apple")
+    ) {
       const provider: WellKnownOAuthProvider = {
         id: def.id,
         type: "oauth",
@@ -152,7 +181,7 @@ export function getPublicAuthConfig(env: Env, signupEnabled: boolean): WellKnown
   }
 
   const oidc = getOidcSettings(env);
-  if (oidc !== null) {
+  if (oidc !== null && providerEnabled(toggles, "oidc")) {
     const provider: WellKnownOidcProvider = {
       id: oidc.providerId,
       type: "oidc",
@@ -196,6 +225,11 @@ export function getTrustedOrigins(env: Env): string[] {
   }
   origins.add("aulora://auth/callback");
   origins.add("aulora://");
+  // The desktop shell's webview origins (macOS/Linux, Windows). Its session
+  // rides on a bearer token, so it must be allowed to call the auth surface.
+  origins.add("tauri://localhost");
+  origins.add("http://tauri.localhost");
+  origins.add("https://tauri.localhost");
   return [...origins];
 }
 

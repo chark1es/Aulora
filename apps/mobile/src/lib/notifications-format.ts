@@ -17,11 +17,13 @@ export const NOTIFICATION_BODY_LIMIT = 240;
 export function notificationContent(
   channelName: string | undefined,
   text: string,
-  limit: number = NOTIFICATION_BODY_LIMIT,
+  options: { readonly limit?: number; readonly mention?: boolean } = {},
 ): NotificationContent {
+  const limit = options.limit ?? NOTIFICATION_BODY_LIMIT;
   const trimmed = text.trim();
+  const base = channelName === undefined ? "New message" : `#${channelName}`;
   return {
-    title: channelName === undefined ? "New message" : `#${channelName}`,
+    title: options.mention === true ? `Mention in ${base}` : base,
     body: trimmed.length > limit ? `${trimmed.slice(0, limit)}…` : trimmed,
   };
 }

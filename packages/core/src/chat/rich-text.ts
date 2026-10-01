@@ -14,7 +14,8 @@ export type InlineSegment =
   | { readonly type: "bold"; readonly children: readonly InlineSegment[] }
   | { readonly type: "italic"; readonly children: readonly InlineSegment[] }
   | { readonly type: "link"; readonly href: string; readonly text: string }
-  | { readonly type: "mention"; readonly name: string; readonly broadcast: boolean };
+  | { readonly type: "mention"; readonly name: string; readonly broadcast: boolean }
+  | { readonly type: "channel"; readonly name: string };
 
 export type RichBlock =
   | { readonly type: "code_block"; readonly language: string | null; readonly text: string }
@@ -23,20 +24,35 @@ export type RichBlock =
 export interface RichTextOptions {
   /** Display names (and mentionable role names) that `@name` may refer to. */
   readonly mentionNames?: readonly string[];
+  /** Channel names that `#name` may refer to. */
+  readonly channelNames?: readonly string[];
 }
 
 const FENCE = /```([^\n`]*)\n?([\s\S]*?)```/g;
 const URL_PATTERN = /^https?:\/\/[^\s<>"'`]+/i;
 const TRAILING_PUNCTUATION = /[.,;:!?)\]]+$/;
 
+/** Matches `@name`/`#name` at a word boundary against a fixed set of names. */
+function nameMatcher(prefix: "@" | "#", names: readonly string[]): RegExp | null {
+  const escaped = [...new Set(names.filter((name) => name.trim().length > 0))]
+    .sort((a, b) => b.length - a.length)
+    .map((name) => name.replace(/[.*+?^${}()|[\]\\]/g, "\\$&"));
+  if (escaped.length === 0) {
+    return null;
+  }
+  const alternatives = prefix === "@" ? ["here", "everyone", ...escaped] : escaped;
+  return new RegExp(`^${prefix}(${alternatives.join("|")})(?![\\w])`, "i");
+}
+
 /** Splits text into fenced code blocks and inline-formatted paragraphs. */
 export function parseRichText(text: string, options: RichTextOptions = {}): RichBlock[] {
   const blocks: RichBlock[] = [];
-  const mentions = mentionMatcher(options.mentionNames ?? []);
+  const mentions = nameMatcher("@", options.mentionNames ?? []);
+  const channels = nameMatcher("#", options.channelNames ?? []);
   let lastIndex = 0;
   for (const match of text.matchAll(FENCE)) {
     const index = match.index ?? 0;
-    pushParagraph(blocks, text.slice(lastIndex, index), mentions);
+    pushParagraph(blocks, text.slice(lastIndex, index), mentions, channels);
     const language = (match[1] ?? "").trim();
     blocks.push({
       type: "code_block",
@@ -45,28 +61,29 @@ export function parseRichText(text: string, options: RichTextOptions = {}): Rich
     });
     lastIndex = index + match[0].length;
   }
-  pushParagraph(blocks, text.slice(lastIndex), mentions);
+  pushParagraph(blocks, text.slice(lastIndex), mentions, channels);
   return blocks;
 }
 
-function pushParagraph(blocks: RichBlock[], raw: string, mentions: RegExp | null): void {
+function pushParagraph(
+  blocks: RichBlock[],
+  raw: string,
+  mentions: RegExp | null,
+  channels: RegExp | null,
+): void {
   const trimmed = raw.replace(/^\n+|\n+$/g, "");
   if (trimmed.length === 0) {
     return;
   }
-  blocks.push({ type: "paragraph", children: parseInline(trimmed, mentions) });
-}
-
-function mentionMatcher(names: readonly string[]): RegExp | null {
-  const escaped = [...new Set(names.filter((name) => name.trim().length > 0))]
-    .sort((a, b) => b.length - a.length)
-    .map((name) => name.replace(/[.*+?^${}()|[\]\\]/g, "\\$&"));
-  const alternatives = ["here", "everyone", ...escaped];
-  return new RegExp(`^@(${alternatives.join("|")})(?![\\w])`, "i");
+  blocks.push({ type: "paragraph", children: parseInline(trimmed, mentions, channels) });
 }
 
 /** Parses inline formatting; unmatched markers stay literal text. */
-export function parseInline(text: string, mentions: RegExp | null = null): InlineSegment[] {
+export function parseInline(
+  text: string,
+  mentions: RegExp | null = null,
+  channels: RegExp | null = null,
+): InlineSegment[] {
   const out: InlineSegment[] = [];
   let buffer = "";
   const flush = () => {
@@ -107,7 +124,10 @@ export function parseInline(text: string, mentions: RegExp | null = null): Inlin
       const end = text.indexOf("**", index + 2);
       if (end > index + 2) {
         flush();
-        out.push({ type: "bold", children: parseInline(text.slice(index + 2, end), mentions) });
+        out.push({
+          type: "bold",
+          children: parseInline(text.slice(index + 2, end), mentions, channels),
+        });
         index = end + 2;
         continue;
       }
@@ -117,7 +137,10 @@ export function parseInline(text: string, mentions: RegExp | null = null): Inlin
       const end = findClosing(text, char, index + 1);
       if (end !== -1) {
         flush();
-        out.push({ type: "italic", children: parseInline(text.slice(index + 1, end), mentions) });
+        out.push({
+          type: "italic",
+          children: parseInline(text.slice(index + 1, end), mentions, channels),
+        });
         index = end + 1;
         continue;
       }
@@ -134,6 +157,16 @@ export function parseInline(text: string, mentions: RegExp | null = null): Inlin
           name: lower === "here" || lower === "everyone" ? lower : name,
           broadcast: lower === "here" || lower === "everyone",
         });
+        index += match[0].length;
+        continue;
+      }
+    }
+
+    if (char === "#" && atWordStart && channels !== null) {
+      const match = channels.exec(rest);
+      if (match !== null) {
+        flush();
+        out.push({ type: "channel", name: match[1] ?? "" });
         index += match[0].length;
         continue;
       }
@@ -174,6 +207,8 @@ export function inlineToPlainText(segments: readonly InlineSegment[]): string {
           return segment.text;
         case "mention":
           return `@${segment.name}`;
+        case "channel":
+          return `#${segment.name}`;
         default:
           return inlineToPlainText(segment.children);
       }

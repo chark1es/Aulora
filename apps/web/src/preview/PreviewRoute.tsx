@@ -8,6 +8,7 @@ import {
   type ChatContextValue,
   type ChatSearchHit,
 } from "../providers/ChatProvider";
+import { type VoicePolicy, VoiceProvider } from "../providers/VoiceProvider";
 import {
   createDemoWorkspace,
   DEMO_MEMBERS,
@@ -25,6 +26,16 @@ export function PreviewRoute() {
   const [demo, setDemo] = useState<DemoWorkspace | null>(null);
   const [presence, setPresence] = useState<readonly PresenceRow[]>([]);
   const convex = useMemo(() => new ConvexReactClient("http://127.0.0.1:9"), []);
+  const voicePolicy = useMemo<VoicePolicy>(
+    () => ({
+      enabled: true,
+      videoEnabled: true,
+      screenShareEnabled: true,
+      maxParticipants: 10,
+      iceServers: [],
+    }),
+    [],
+  );
 
   useEffect(() => {
     let cancelled = false;
@@ -106,32 +117,34 @@ export function PreviewRoute() {
 
   return (
     <ConvexProvider client={convex}>
-      <ChatContextProvider value={value}>
-        <ChatView
-          workspaceName="Acme Studio"
-          workspaceIconSeed="aulora:server:acme-studio"
-          ownUserId={DEMO_OWN_ID}
-          ownName={DEMO_OWN_NAME}
-          permissions={-1n}
-          members={DEMO_MEMBERS.map((member) => ({ ...member }))}
-          roles={[]}
-          unreadByChannel={demo.unread}
-          admin={{
-            viewer: {
-              userId: DEMO_OWN_ID,
-              isOwner: true,
-              roleIds: [],
-              permissions: -1n,
-              topPosition: Number.POSITIVE_INFINITY,
-            },
-            ownerId: DEMO_OWN_ID,
-            roleViews: [],
-            memberViews: [],
-            categories: demo.categories,
-          }}
-          onSignOut={() => undefined}
-        />
-      </ChatContextProvider>
+      <VoiceProvider client={convex} userId={DEMO_OWN_ID} permissions={-1n} policy={voicePolicy}>
+        <ChatContextProvider value={value}>
+          <ChatView
+            workspaceName="Acme Studio"
+            workspaceIconSeed="aulora:server:acme-studio"
+            ownUserId={DEMO_OWN_ID}
+            ownName={DEMO_OWN_NAME}
+            permissions={-1n}
+            members={DEMO_MEMBERS.map((member) => ({ ...member }))}
+            roles={[]}
+            unreadByChannel={demo.unread}
+            admin={{
+              viewer: {
+                userId: DEMO_OWN_ID,
+                isOwner: true,
+                roleIds: [],
+                permissions: -1n,
+                topPosition: Number.POSITIVE_INFINITY,
+              },
+              ownerId: DEMO_OWN_ID,
+              roleViews: [],
+              memberViews: [],
+              categories: demo.categories,
+            }}
+            onSignOut={() => undefined}
+          />
+        </ChatContextProvider>
+      </VoiceProvider>
     </ConvexProvider>
   );
 }

@@ -66,7 +66,7 @@ export function PermissionsToggles({
                       checked ? "border-accent bg-accent text-on-accent" : "border-border",
                     )}
                   >
-                    {checked && <Icon name="check" size={11} strokeWidth={3} />}
+                    {checked && <Icon name="check" size={11} />}
                   </span>
                   {PERMISSION_LABELS[name]}
                 </label>

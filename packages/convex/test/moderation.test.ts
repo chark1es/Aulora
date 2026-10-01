@@ -1,6 +1,6 @@
 import { EVERYONE_ROLE_ID, Permission } from "@aulora/core";
 import { describe, expect, it } from "vitest";
-import { api } from "../convex/_generated/api";
+import { api, internal } from "../convex/_generated/api";
 import { newTest, seedWorkspace, type Test } from "./helpers";
 
 const MANAGER_PERMISSIONS =
@@ -108,6 +108,71 @@ describe("moderation", () => {
     const result = await asOwner.mutation(api.members.unban, { userId: "user-1" });
     expect(result.unbanned).toBe(true);
     expect(await asOwner.query(api.members.listBans, {})).toHaveLength(0);
+  });
+
+  it("supports a temporary ban whose expiry restores access", async () => {
+    const { t, asOwner } = await moderationSetup();
+    await asOwner.mutation(api.members.ban, {
+      userId: "user-1",
+      reason: "cooldown",
+      durationMs: 60_000,
+    });
+    expect(await memberRoleIds(t, "user-1")).toBeNull();
+
+    const bans = await asOwner.query(api.members.listBans, {});
+    const ban = bans.find((entry) => entry.userId === "user-1");
+    expect(ban?.expiresAt).toBeGreaterThan(Date.now());
+
+    const invite = await asOwner.mutation(api.invites.create, {});
+    await expect(
+      t.withIdentity({ subject: "user-1" }).mutation(api.invites.redeem, { code: invite.code }),
+    ).rejects.toThrow("banned");
+
+    await t.run(async (ctx) => {
+      const row = await ctx.db.query("bans").first();
+      if (row !== null) {
+        await ctx.db.patch(row._id, { expiresAt: Date.now() - 1 });
+      }
+    });
+
+    const result = await t
+      .withIdentity({ subject: "user-1" })
+      .mutation(api.invites.redeem, { code: invite.code });
+    expect(result).toEqual({ joined: true, alreadyMember: false });
+    expect(await asOwner.query(api.members.listBans, {})).toHaveLength(0);
+  });
+
+  it("never re-attaches roles for a banned user, but allows an expired ban", async () => {
+    const { t } = await moderationSetup();
+    await t.run(async (ctx) => {
+      await ctx.db.insert("bans", {
+        userId: "banned",
+        actorId: "owner-1",
+        at: Date.now(),
+        expiresAt: Date.now() + 60_000,
+      });
+      await ctx.db.insert("bans", {
+        userId: "lapsed",
+        actorId: "owner-1",
+        at: Date.now() - 1_000,
+        expiresAt: Date.now() - 1,
+      });
+    });
+
+    await t.mutation(internal.members.attachRolesFromAuth, { userId: "banned" });
+    expect(await memberRoleIds(t, "banned")).toBeNull();
+
+    await t.mutation(internal.members.attachRolesFromAuth, { userId: "lapsed" });
+    expect(await memberRoleIds(t, "lapsed")).toEqual([EVERYONE_ROLE_ID]);
+    const bans = await t.run(async (ctx) => await ctx.db.query("bans").collect());
+    expect(bans.map((ban) => ban.userId)).toEqual(["banned"]);
+  });
+
+  it("rejects a non-positive ban duration", async () => {
+    const { asOwner } = await moderationSetup();
+    await expect(
+      asOwner.mutation(api.members.ban, { userId: "user-1", durationMs: -1 }),
+    ).rejects.toThrow("positive");
   });
 
   it("requires Timeout and applies it to a lower member", async () => {

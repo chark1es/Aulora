@@ -36,7 +36,7 @@ export function IncomingCallModal({
             onClick={() => void voice.declineCall(call.id)}
             className="flex h-9 items-center gap-1.5 rounded-[8px] bg-danger/15 px-3.5 text-[13px] font-semibold text-danger transition hover:bg-danger/25"
           >
-            <Icon name="phone-off" size={15} />
+            <Icon name="phone-hangup" size={15} />
             Decline
           </button>
           <button

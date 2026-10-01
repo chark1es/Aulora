@@ -32,6 +32,8 @@ export interface ChatSearchHit extends SearchHit {
 
 export interface ChatSendOptions {
   readonly mentionUserIds?: readonly string[];
+  readonly mentionChannelIds?: readonly string[];
+  readonly mentionCategoryIds?: readonly string[];
   readonly threadRootId?: string;
   readonly replyToId?: string;
   readonly attachments?: readonly AttachmentDescriptor[];
@@ -197,6 +199,12 @@ export function ChatProvider({
       await active.flush(async (item) => {
         await chat.session.sendMessage(item.channelId, item.text, {
           mentionUserIds: item.mentionUserIds,
+          ...(item.mentionChannelIds !== undefined
+            ? { mentionChannelIds: item.mentionChannelIds }
+            : {}),
+          ...(item.mentionCategoryIds !== undefined
+            ? { mentionCategoryIds: item.mentionCategoryIds }
+            : {}),
           ...(item.threadRootId !== undefined ? { threadRootId: item.threadRootId } : {}),
           ...(item.replyToId !== undefined ? { replyToId: item.replyToId } : {}),
           ...(item.attachments !== undefined && item.attachments.length > 0
@@ -322,8 +330,13 @@ export function ChatProvider({
             ...(options.mentionUserIds !== undefined
               ? { mentionUserIds: options.mentionUserIds }
               : {}),
+            ...(options.mentionChannelIds !== undefined
+              ? { mentionChannelIds: options.mentionChannelIds }
+              : {}),
+            ...(options.mentionCategoryIds !== undefined
+              ? { mentionCategoryIds: options.mentionCategoryIds }
+              : {}),
             ...(options.threadRootId !== undefined ? { threadRootId: options.threadRootId } : {}),
-            ...(options.replyToId !== undefined ? { replyToId: options.replyToId } : {}),
             ...(options.attachments !== undefined ? { attachments: options.attachments } : {}),
           },
           Date.now(),
@@ -346,6 +359,12 @@ export function ChatProvider({
         const messageId = await chat.session.sendMessage(channelId, text, {
           ...(options.mentionUserIds !== undefined
             ? { mentionUserIds: options.mentionUserIds }
+            : {}),
+          ...(options.mentionChannelIds !== undefined
+            ? { mentionChannelIds: options.mentionChannelIds }
+            : {}),
+          ...(options.mentionCategoryIds !== undefined
+            ? { mentionCategoryIds: options.mentionCategoryIds }
             : {}),
           ...(options.threadRootId !== undefined ? { threadRootId: options.threadRootId } : {}),
           ...(options.replyToId !== undefined ? { replyToId: options.replyToId } : {}),

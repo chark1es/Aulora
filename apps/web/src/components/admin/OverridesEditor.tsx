@@ -510,7 +510,7 @@ function FlagChip({
           : "border-danger/30 bg-danger/10 text-danger",
       )}
     >
-      <Icon name={state === "allow" ? "check" : "x"} size={10} strokeWidth={2.25} />
+      <Icon name={state === "allow" ? "check" : "x"} size={10} />
       {PERMISSION_LABELS[name]}
     </span>
   );

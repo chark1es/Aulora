@@ -1,5 +1,6 @@
 export { Button, type ButtonProps, type ButtonSize, type ButtonVariant } from "./Button";
 export { Card, type CardProps } from "./Card";
+export { ConfirmDialog, type ConfirmDialogProps } from "./ConfirmDialog";
 export {
   type ContextMenuEvent,
   type ContextMenuItem,

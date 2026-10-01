@@ -113,3 +113,77 @@ export function expandBroadcast(
   }
   return [...ids].sort();
 }
+
+/** A channel that `#name` may refer to. */
+export interface ChannelMentionTarget {
+  readonly channelId: string;
+  /** Channel display name, without the leading `#`. */
+  readonly name: string;
+}
+
+/** A category that `#name` may refer to. */
+export interface CategoryMentionTarget {
+  readonly categoryId: string;
+  readonly name: string;
+}
+
+export interface ChannelMentionResolution {
+  /** De-duplicated channel ids mentioned as `#name`. */
+  readonly channelIds: readonly string[];
+  /** De-duplicated category ids mentioned as `#name`. */
+  readonly categoryIds: readonly string[];
+}
+
+const CHANNEL_TOKEN = /#([A-Za-z0-9_.-]+)/g;
+
+/**
+ * Resolves `#channel` and `#category` mentions against the workspace's known
+ * channels and categories. Longest name wins so `#general` does not shadow
+ * `#general-announcements`.
+ */
+export function resolveChannelMentions(
+  text: string,
+  channels: readonly ChannelMentionTarget[],
+  categories: readonly CategoryMentionTarget[] = [],
+): ChannelMentionResolution {
+  const channelIds = new Set<string>();
+  const categoryIds = new Set<string>();
+
+  const channelPatterns = [...channels]
+    .sort((a, b) => b.name.length - a.name.length)
+    .map((channel) => ({
+      channel,
+      pattern: new RegExp(`#${escapeRegExp(channel.name)}(?![\\w.-])`, "i"),
+    }));
+  const categoryPatterns = [...categories]
+    .sort((a, b) => b.name.length - a.name.length)
+    .map((category) => ({
+      category,
+      pattern: new RegExp(`#${escapeRegExp(category.name)}(?![\\w.-])`, "i"),
+    }));
+
+  for (const _token of text.matchAll(CHANNEL_TOKEN)) {
+    let matched = false;
+    for (const { channel, pattern } of channelPatterns) {
+      if (pattern.test(text)) {
+        channelIds.add(channel.channelId);
+        matched = true;
+        break;
+      }
+    }
+    if (matched) {
+      continue;
+    }
+    for (const { category, pattern } of categoryPatterns) {
+      if (pattern.test(text)) {
+        categoryIds.add(category.categoryId);
+        break;
+      }
+    }
+  }
+
+  return {
+    channelIds: [...channelIds].sort(),
+    categoryIds: [...categoryIds].sort(),
+  };
+}

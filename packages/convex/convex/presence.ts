@@ -2,6 +2,8 @@ import { v } from "convex/values";
 import type { MutationCtx } from "./_generated/server";
 import { internalMutation, mutation, query } from "./_generated/server";
 import { requireAuth } from "./lib/auth";
+import { recordLicenseActivity } from "./lib/licenseActivity";
+import { requireMember } from "./lib/permissions";
 import { openContentOptional } from "./lib/sealed";
 import { sealString } from "./lib/sse";
 
@@ -46,6 +48,11 @@ async function upsertPresence(
     .withIndex("by_user", (q) => q.eq("userId", userId))
     .unique();
   const status = patch.status ?? existing?.status ?? "online";
+  const lastOnlineAt =
+    status !== "offline"
+      ? now
+      : (existing?.lastOnlineAt ??
+        (existing !== null && existing.status !== "offline" ? existing.lastHeartbeat : undefined));
   const setCustomStatus = patch.setCustomStatus === true;
   const customStatusCiphertext = setCustomStatus
     ? patch.customStatusCiphertext
@@ -56,6 +63,7 @@ async function upsertPresence(
       userId,
       status,
       lastHeartbeat: now,
+      ...(lastOnlineAt !== undefined ? { lastOnlineAt } : {}),
       ...(patch.manual !== undefined ? { manual: patch.manual } : {}),
       ...(customStatusCiphertext !== undefined ? { customStatusCiphertext } : {}),
     });
@@ -63,6 +71,7 @@ async function upsertPresence(
     await ctx.db.patch(existing._id, {
       status,
       lastHeartbeat: now,
+      ...(lastOnlineAt !== undefined ? { lastOnlineAt } : {}),
       ...(patch.manual !== undefined ? { manual: patch.manual } : {}),
       ...(setCustomStatus ? { customStatusCiphertext } : {}),
     });
@@ -79,6 +88,8 @@ export const heartbeat = mutation({
   args: { status: v.optional(presenceStatusValidator) },
   handler: async (ctx, args) => {
     const { userId } = await requireAuth(ctx);
+    await requireMember(ctx, userId);
+    await recordLicenseActivity(ctx, userId);
     const now = Date.now();
     const existing = await ctx.db
       .query("presence")
@@ -87,7 +98,10 @@ export const heartbeat = mutation({
     // A deliberate status is never overwritten by a heartbeat; only the
     // liveness timestamp moves so the row stays out of the offline sweep.
     if (existing?.manual === true) {
-      await ctx.db.patch(existing._id, { lastHeartbeat: now });
+      await ctx.db.patch(existing._id, {
+        lastHeartbeat: now,
+        ...(existing.status !== "offline" ? { lastOnlineAt: now } : {}),
+      });
       return { status: existing.status, lastHeartbeat: now };
     }
     return await upsertPresence(
@@ -112,6 +126,8 @@ export const setStatus = mutation({
   },
   handler: async (ctx, args) => {
     const { userId } = await requireAuth(ctx);
+    await requireMember(ctx, userId);
+    await recordLicenseActivity(ctx, userId);
     const customStatusProvided = args.customStatus !== undefined;
     const trimmed = args.customStatus?.trim() ?? "";
     const customStatusCiphertext =
@@ -136,7 +152,8 @@ export const setStatus = mutation({
 export const list = query({
   args: {},
   handler: async (ctx) => {
-    await requireAuth(ctx);
+    const { userId } = await requireAuth(ctx);
+    await requireMember(ctx, userId);
     const rows = await ctx.db.query("presence").collect();
     return await Promise.all(
       rows.map(async (row) => ({
@@ -153,7 +170,8 @@ export const list = query({
 export const get = query({
   args: { userId: v.string() },
   handler: async (ctx, args) => {
-    await requireAuth(ctx);
+    const { userId } = await requireAuth(ctx);
+    await requireMember(ctx, userId);
     const row = await ctx.db
       .query("presence")
       .withIndex("by_user", (q) => q.eq("userId", args.userId))

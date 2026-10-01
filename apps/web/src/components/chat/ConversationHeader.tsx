@@ -13,6 +13,8 @@ export interface ConversationHeaderProps {
   readonly membersOpen: boolean;
   readonly onToggleMembers: () => void;
   readonly onOpenSearch: () => void;
+  readonly pinsOpen?: boolean;
+  readonly onTogglePins?: () => void;
   /** Narrow layouts: returns to the conversation list. */
   readonly onBack?: () => void;
   /** Whether the viewer may start a call in this conversation. */
@@ -36,6 +38,8 @@ export function ConversationHeader({
   membersOpen,
   onToggleMembers,
   onOpenSearch,
+  pinsOpen = false,
+  onTogglePins,
   onBack,
   canStartCall = false,
   canStartVideoCall = false,
@@ -91,6 +95,15 @@ export function ConversationHeader({
         <p className="truncate text-[11px] text-text-muted">{subtitle}</p>
       </div>
       <div className="flex items-center gap-0.5">
+        {onTogglePins !== undefined && (
+          <HeaderAction
+            label={pinsOpen ? "Hide pinned messages" : "View pinned messages"}
+            pressed={pinsOpen}
+            onClick={onTogglePins}
+          >
+            <Icon name="pin" size={18} />
+          </HeaderAction>
+        )}
         {isConversation && canStartCall && onStartCall !== undefined && (
           <HeaderAction label="Start voice call" onClick={() => onStartCall("voice")}>
             <Icon name="phone" size={18} />

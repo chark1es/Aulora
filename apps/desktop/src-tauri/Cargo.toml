@@ -3,7 +3,7 @@ name = "aulora-desktop"
 version = "0.0.0"
 description = "Aulora desktop shell (Tauri 2) wrapping the web client."
 authors = ["Aulora"]
-license = "SEE LICENSE IN LICENSE AND COMMERCIAL.md"
+license = "PolyForm-Noncommercial-1.0.0"
 edition = "2021"
 rust-version = "1.77.2"
 
@@ -19,6 +19,7 @@ tauri = { version = "2", features = ["macos-private-api", "tray-icon", "image-pn
 tauri-plugin-single-instance = { version = "2", features = ["deep-link"] }
 tauri-plugin-deep-link = "2"
 tauri-plugin-notification = "2"
+tauri-plugin-updater = "2"
 serde = { version = "1", features = ["derive"] }
 serde_json = "1"
 

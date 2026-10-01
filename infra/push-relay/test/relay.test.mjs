@@ -6,6 +6,7 @@ import { loadRelayConfig } from "../src/config.mjs";
 import {
   bearerMatches,
   buildApnsJwt,
+  createFcmProvider,
   createProviderRegistry,
   createUnifiedPushProvider,
   RelayError,
@@ -14,6 +15,7 @@ import {
 import { createRelayServer } from "../src/server.mjs";
 
 const VALID_WAKE = {
+  kind: "message",
   serverId: "srv-1",
   channelId: "chan-1",
   messageId: "msg-1",
@@ -77,6 +79,7 @@ test("accepts a valid wake and forwards only opaque ids", async () => {
   assert.equal(delivered.length, 1);
   assert.deepEqual(Object.keys(delivered[0]).sort(), [
     "channelId",
+    "kind",
     "messageId",
     "platform",
     "serverId",
@@ -148,6 +151,7 @@ test("unifiedpush provider posts content-free ids to the device endpoint", async
     serverId: "srv-1",
     channelId: "chan-1",
     messageId: "msg-1",
+    kind: "message",
   });
   assert.equal(JSON.stringify(calls[0].body).includes("text"), false);
 });
@@ -186,7 +190,7 @@ test("loadRelayConfig enables only fully configured providers", () => {
     PUSH_RELAY_PORT: "9000",
     APNS_KEY_ID: "kid",
     APNS_TEAM_ID: "team",
-    APNS_TOPIC: "app.aulora.ios",
+    APNS_TOPIC: "dev.spwnd.aulora",
     APNS_KEY_PATH: "/keys/apns.p8",
     FCM_PROJECT_ID: "proj",
     FCM_ACCESS_TOKEN: "fcm-token",
@@ -198,4 +202,26 @@ test("loadRelayConfig enables only fully configured providers", () => {
   assert.equal(registry.ios.name, "apns");
   assert.equal(registry.android.name, "fcm");
   assert.equal(registry.unifiedpush.name, "unifiedpush");
+});
+
+test("FCM exchanges a service account assertion and reuses the short-lived token", async () => {
+  const { privateKey } = generateKeyPairSync("rsa", { modulusLength: 2048 });
+  const requests = [];
+  const provider = createFcmProvider({
+    projectId: "project-1",
+    serviceAccount: {
+      client_email: "sender@example.iam.gserviceaccount.com",
+      private_key: privateKey.export({ type: "pkcs8", format: "pem" }),
+    },
+    fetchImpl: async (url, init) => {
+      requests.push({ url, init });
+      return url.includes("oauth2.googleapis.com")
+        ? new Response(JSON.stringify({ access_token: "fresh-token", expires_in: 3600 }), { status: 200 })
+        : new Response("{}", { status: 200 });
+    },
+  });
+  await provider.deliver({ ...VALID_WAKE, platform: "android" });
+  await provider.deliver({ ...VALID_WAKE, platform: "android" });
+  assert.equal(requests.filter(({ url }) => url.includes("oauth2.googleapis.com")).length, 1);
+  assert.equal(requests[1].init.headers.authorization, "Bearer fresh-token");
 });

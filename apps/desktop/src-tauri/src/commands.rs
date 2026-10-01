@@ -9,7 +9,9 @@ use crate::deep_link::DeepLinkState;
 /// Pins or unpins the calling window above every other window (call PiP).
 #[tauri::command]
 pub fn set_always_on_top(window: WebviewWindow, on: bool) -> Result<(), String> {
-    window.set_always_on_top(on).map_err(|error| error.to_string())
+    window
+        .set_always_on_top(on)
+        .map_err(|error| error.to_string())
 }
 
 /// Updates the Dock/taskbar unread badge for the calling window.

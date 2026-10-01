@@ -24,7 +24,7 @@ Useful flags and environment variables:
 | --- | --- | --- |
 | `--name` / `-Name` | `AULORA_WORKSPACE_NAME` | workspace name |
 | `--email` / `-Email` | `AULORA_OWNER_EMAIL` | owner account email |
-| `--password` / `-Password` | `AULORA_OWNER_PASSWORD` | owner password (32+ chars) |
+| `--password` / `-Password` | `AULORA_OWNER_PASSWORD` | owner password (16+ chars) |
 | `--port` / `-Port` | `AULORA_WEB_PORT` | host web port (default 8080) |
 | `--site-url` / `-SiteUrl` | `AULORA_SITE_URL` | public origin for a real domain |
 | `--backups` / `-Backups` | — | also start the nightly backup runner |
@@ -45,7 +45,7 @@ docker compose logs -f setup
 
 `setup` mints the admin key with the Convex backend's own `generate_key`,
 generates the missing secrets (`INSTANCE_SECRET`, `BETTER_AUTH_SECRET`, VAPID
-keys, `BACKUP_TOKEN`, the default local master key `AULORA_ENCRYPTION_KEY`),
+keys, the default local master key `AULORA_ENCRYPTION_KEY`),
 deploys `packages/convex`, creates the workspace and owner, and writes
 `/.well-known/aulora.json`. It is safe to re-run.
 
@@ -71,14 +71,13 @@ Convex backend must be able to resolve and fetch
 ## Encryption
 
 Encryption is on by default and runs **server-side**: content and files are
-sealed with AES-256-GCM envelope encryption, and the master key (the KEK) is
-never stored in the database. The default is the `local` provider: `setup`
+sealed with AES-256-GCM envelope encryption. Setup saves the master key (the KEK) in `.env` and configures it
+in the backend deployment environment. The default is the `local` provider: `setup`
 generates a base64 32-byte `AULORA_ENCRYPTION_KEY` and persists it to `.env`, so
 the default stack needs no extra services.
 
 The KEK is the root of data confidentiality: back up `AULORA_ENCRYPTION_KEY`
-separately from the database and never commit it. The database, its backups and
-`convex export` contain only ciphertext; losing the KEK makes that data
+separately from the database and never commit it. Encrypted content stays ciphertext in the database and exports. Account and other metadata may remain readable; losing the KEK makes that data
 unreadable. `INSTANCE_SECRET` is only a legacy fallback the `local` provider uses
 when `AULORA_ENCRYPTION_KEY` is unset.
 
@@ -99,6 +98,36 @@ It is dev mode and in-memory, so for production use a persistent Vault.
 
 ## Upgrade and teardown
 
+From a git clone, the host updater fast-forwards to the published release tag
+and redeploys. It refuses a dirty tree and does not touch `.env` or volumes.
+
+```sh
+cd infra/docker
+./update.sh --check          # exit 10 when a release is newer
+./update.sh --apply          # fast-forward and redeploy
+./update.sh --watch          # enable download/restart controls in settings
+./update.sh --download       # prepare a release without downtime
+./update.sh --restart        # install the prepared release
+```
+
+The workspace owner can see the running version and check releases in
+**Workspace settings → Instance**. Workspace update status and its settings dot
+are visible only to the owner. Desktop app updates live in **Your settings →
+Updates** and mark the user settings icon separately. While `--watch` runs
+on the host, **Download update** prepares images in a separate checkout and
+**Restart to update** installs them. Restart briefly interrupts the workspace;
+messages, volumes, and `.env` are kept. A dot on settings indicates an available
+update. Keep the watcher running under your host's service manager, with Bun and
+the checkout dependencies installed.
+
+Set `AULORA_AUTO_UPDATE=true` to prepare releases automatically. The watcher still
+waits for the owner to restart. Restart the watcher and re-run `setup` after
+changing update settings. Without the watcher, version information and release
+checks remain available; use host or hosting-provider controls to install.
+
+A checkout that is not a git clone, including Coolify, still updates by
+redeploying the new git ref:
+
 ```sh
 docker compose pull
 docker compose up -d --build
@@ -112,3 +141,13 @@ docker compose run --rm setup
 Keep `infra/docker/.env` safe: it holds `INSTANCE_SECRET`, the default
 `AULORA_ENCRYPTION_KEY` and any external EKM settings, and the KEK it holds is
 what makes the existing data readable. Losing the KEK makes the data unreadable.
+
+## Public deployment checklist
+
+Before exposing a server, replace `POSTGRES_PASSWORD` and the matching password in `POSTGRES_URL`, and replace `MINIO_ROOT_PASSWORD`. Configure DNS and valid HTTPS, reachable `SITE_URL`, `CONVEX_URL`, `CONVEX_CLOUD_ORIGIN`, and `CONVEX_SITE_ORIGIN`. Keep the auth route on the web origin and allow WebSocket upgrades. The origin settings are explained in the [proxy guide](https://github.com/chark1es/Aulora/blob/main/infra/docker/proxy/README.md).
+
+The standard Compose file publishes database and administration ports for local use. Bind them to localhost or remove their published ports before public deployment. Keep the Convex dashboard, Postgres, and MinIO administration private. Coolify's file keeps services internal by default.
+
+Start with a small test team and measure CPU, memory, storage, and upload growth on your host. There is no published capacity guarantee. Container builds need more resources than an idle server. Configure a TURN server if calls must work across restrictive networks.
+
+Set signup/invitation policy, verify backups and a restore, and check the server from another network before inviting users. See [updates](updates.md), [backups](backups.md), and [troubleshooting](troubleshooting.md). Business use requires a [paid commercial agreement](licensing.md).

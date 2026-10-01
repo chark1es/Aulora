@@ -10,7 +10,7 @@ export interface HeadingProps extends RNTextProps {
 const LEVEL_CLASSES: Record<HeadingLevel, string> = {
   1: "text-3xl font-semibold tracking-tight",
   2: "text-2xl font-semibold tracking-tight",
-  3: "text-xl font-semibold",
+  3: "text-base font-semibold",
 };
 
 /** Section heading; `level` picks the type size. */

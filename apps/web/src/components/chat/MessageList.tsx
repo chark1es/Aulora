@@ -13,7 +13,7 @@ import {
   messageTime,
   Permission,
 } from "@aulora/core";
-import { type ContextMenuItem, cn, Icon, Spinner, useContextMenu } from "@aulora/ui-web";
+import { Button, type ContextMenuItem, cn, Icon, Spinner, useContextMenu } from "@aulora/ui-web";
 import {
   type ReactNode,
   useCallback,
@@ -51,6 +51,10 @@ export interface MessageListProps {
   readonly memberColors?: ReadonlyMap<string, string>;
   /** Names `@mentions` may refer to, for highlighting. */
   readonly mentionNames: readonly string[];
+  /** Channel/category names `#mentions` may refer to. */
+  readonly channelNames?: readonly string[];
+  /** Navigates to a channel when its `#mention` is clicked. */
+  readonly onChannelClick?: (name: string) => void;
   /** Where the "New messages" divider goes; fixed when the channel opens. */
   readonly firstUnreadId: string | null;
   readonly typers: readonly TypingRow[];
@@ -76,8 +80,6 @@ export interface MessageListProps {
   /** Which side the viewer's own messages render on. Defaults to "left". */
   readonly ownSide?: "left" | "right";
 }
-
-const QUICK_REACTIONS = ["👍", "❤️", "😂", "🎉", "👀"] as const;
 
 /** Stable empty value so rows without reactions do not re-render needlessly. */
 const NO_REACTIONS: readonly ReactionGroup[] = [];
@@ -130,11 +132,16 @@ export function MessageList(props: MessageListProps) {
   const ownUserId = props.ownUserId;
   useEffect(() => {
     if (subscriptions?.watchReactionsBatch === undefined || messageIds.length === 0) {
-      setReactionsByMessage((current) => (current.size === 0 ? current : new Map()));
       return;
     }
     return subscriptions.watchReactionsBatch(messageIds, (rows: readonly MessageReactionRow[]) => {
-      setReactionsByMessage(groupReactionsByMessage(rows, ownUserId));
+      const updated = groupReactionsByMessage(rows, ownUserId);
+      setReactionsByMessage((current) => {
+        const next = new Map(current);
+        for (const id of messageIds) next.delete(id);
+        for (const [id, groups] of updated) next.set(id, groups);
+        return next;
+      });
     });
   }, [subscriptions, messageIds, ownUserId]);
 
@@ -145,9 +152,20 @@ export function MessageList(props: MessageListProps) {
     }
   }, []);
 
+  const updateBottomState = useCallback(() => {
+    const node = scrollRef.current;
+    if (node === null) {
+      return;
+    }
+    const distance = node.scrollHeight - node.scrollTop - node.clientHeight;
+    const pinned = distance < STICK_THRESHOLD_PX;
+    stickRef.current = pinned;
+    setAtBottom(pinned);
+  }, []);
+
   // A new channel starts pinned to the bottom until it is first positioned.
   // biome-ignore lint/correctness/useExhaustiveDependencies: channelId is the reset trigger
-  useEffect(() => {
+  useLayoutEffect(() => {
     stickRef.current = true;
     olderAnchorRef.current = null;
     positionedChannelRef.current = null;
@@ -166,6 +184,7 @@ export function MessageList(props: MessageListProps) {
     if (anchor !== null) {
       node.scrollTop = anchor.top + (node.scrollHeight - anchor.height);
       olderAnchorRef.current = null;
+      updateBottomState();
       return;
     }
     if (positionedChannelRef.current !== channelId && messages.length > 0) {
@@ -173,40 +192,41 @@ export function MessageList(props: MessageListProps) {
       const divider = node.querySelector<HTMLElement>("[data-unread-divider]");
       if (divider !== null) {
         node.scrollTop = Math.max(0, divider.offsetTop - node.clientHeight / 3);
-        stickRef.current = false;
-        setAtBottom(false);
+        updateBottomState();
         return;
       }
     }
     if (stickRef.current) {
       node.scrollTop = node.scrollHeight;
     }
+    updateBottomState();
   });
 
-  // Late-loading images and thumbnails change the height; stay pinned.
+  // Images and viewport resizing change the distance to the bottom, even when
+  // the browser does not fire a scroll event.
   useEffect(() => {
     const content = contentRef.current;
-    if (content === null || typeof ResizeObserver === "undefined") {
+    const node = scrollRef.current;
+    if (content === null || node === null || typeof ResizeObserver === "undefined") {
       return;
     }
     const observer = new ResizeObserver(() => {
       if (stickRef.current) {
         scrollToBottom();
       }
+      updateBottomState();
     });
     observer.observe(content);
+    observer.observe(node);
     return () => observer.disconnect();
-  }, [scrollToBottom]);
+  }, [scrollToBottom, updateBottomState]);
 
   const onScroll = () => {
     const node = scrollRef.current;
     if (node === null) {
       return;
     }
-    const distance = node.scrollHeight - node.scrollTop - node.clientHeight;
-    const pinned = distance < STICK_THRESHOLD_PX;
-    stickRef.current = pinned;
-    setAtBottom(pinned);
+    updateBottomState();
     if (
       node.scrollTop < LOAD_OLDER_THRESHOLD_PX &&
       hasOlder &&
@@ -379,7 +399,10 @@ function MessageRow({
   const canDelete = own || canModerate;
   const canPin = hasPermission(permissions, Permission.PinMessages);
   const canReact = hasPermission(permissions, Permission.AddReactions);
-  const canThread = list.inThread !== true && hasPermission(permissions, Permission.SendInThreads);
+  const canThread =
+    list.inThread !== true &&
+    hasPermission(permissions, Permission.SendInThreads) &&
+    ((message.replyCount ?? 0) > 0 || hasPermission(permissions, Permission.CreateThreads));
   const openMenu = useContextMenu();
 
   const openContextMenu = (event: React.MouseEvent) => {
@@ -391,19 +414,12 @@ function MessageRow({
     if (canReact) {
       items.push({
         id: "react",
-        label: "Add reaction",
+        label: "Custom reaction",
         icon: <Icon name="smile" size={14} />,
         onSelect: () => setPickerOpen(true),
       });
-      for (const emoji of QUICK_REACTIONS.slice(0, 3)) {
-        items.push({
-          id: `react-${emoji}`,
-          label: `React ${emoji}`,
-          onSelect: () => list.onReact(message, emoji),
-        });
-      }
     }
-    if (list.onReplyTo !== undefined) {
+    if (list.onReplyTo !== undefined && hasPermission(permissions, Permission.SendMessages)) {
       items.push({
         id: "reply",
         label: "Reply",
@@ -539,19 +555,12 @@ function MessageRow({
       />
       <div className="flex items-center justify-end gap-2 text-xs">
         <span className="mr-auto pl-1.5 text-text-muted">Esc to cancel · Enter to save</span>
-        <button
-          type="button"
-          className="rounded-[8px] px-2.5 py-1 font-medium text-text-muted hover:bg-surface-3 hover:text-text"
-          onClick={() => setEditing(false)}
-        >
+        <Button type="button" size="sm" variant="ghost" onClick={() => setEditing(false)}>
           Cancel
-        </button>
-        <button
-          type="submit"
-          className="rounded-[8px] bg-accent px-2.5 py-1 font-semibold text-on-accent"
-        >
+        </Button>
+        <Button type="submit" size="sm">
           Save
-        </button>
+        </Button>
       </div>
     </form>
   ) : hasText ? (
@@ -561,7 +570,13 @@ function MessageRow({
         unsent && "opacity-70",
       )}
     >
-      <RichText text={text} mentionNames={mentionNames} viewerName={ownName} />
+      <RichText
+        text={text}
+        mentionNames={mentionNames}
+        {...(list.channelNames !== undefined ? { channelNames: list.channelNames } : {})}
+        {...(list.onChannelClick !== undefined ? { onChannelClick: list.onChannelClick } : {})}
+        viewerName={ownName}
+      />
     </div>
   ) : null;
 
@@ -569,53 +584,44 @@ function MessageRow({
   const replyAuthorColor =
     replyAuthorId !== undefined ? memberColors?.get(replyAuthorId) : undefined;
 
-  // The quoted line, shared by grouped replies (whose elbow replaces the bar)
-  // and consecutive replies (which stay inline with their small color bar).
-  const renderReplyLine = (showBar: boolean): ReactNode =>
-    replyToId !== null && (
-      <button
-        type="button"
-        onClick={() => scrollToOriginal(replyToId)}
-        aria-label="Jump to replied message"
-        className={cn(
-          "flex min-w-0 max-w-full items-center gap-2 text-left transition hover:opacity-80",
-          showBar && "mb-0.5",
-          mirror && "flex-row-reverse text-right",
+  const replyLine = replyToId !== null && (
+    <button
+      type="button"
+      onClick={() => scrollToOriginal(replyToId)}
+      aria-label="Jump to replied message"
+      className={cn(
+        "flex min-w-0 max-w-full items-center text-left transition hover:opacity-80 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent",
+        mirror && "text-right",
+      )}
+    >
+      <div className="flex min-w-0 items-baseline gap-1 text-[12px] leading-4">
+        {replyPreview !== undefined ? (
+          <>
+            <span
+              className={cn(
+                "min-w-0 truncate font-semibold",
+                replyAuthorColor === undefined && "text-accent",
+              )}
+              style={replyAuthorColor !== undefined ? { color: replyAuthorColor } : undefined}
+            >
+              {replyPreview.authorName}
+            </span>
+            <div className="min-w-0 text-text-muted">
+              <RichText
+                variant="inline"
+                text={replyPreview.text}
+                mentionNames={list.mentionNames}
+                {...(list.channelNames !== undefined ? { channelNames: list.channelNames } : {})}
+                viewerName={list.ownName}
+              />
+            </div>
+          </>
+        ) : (
+          <span className="truncate italic text-text-muted">Replying to a message</span>
         )}
-      >
-        {showBar && (
-          <span
-            aria-hidden
-            className={cn(
-              "h-4 w-[2px] shrink-0 rounded-full",
-              replyAuthorColor === undefined && "bg-border",
-            )}
-            style={
-              replyAuthorColor !== undefined ? { backgroundColor: replyAuthorColor } : undefined
-            }
-          />
-        )}
-        <span className="min-w-0 truncate text-[12px] leading-4">
-          {replyPreview !== undefined ? (
-            <>
-              <span
-                className={cn("font-semibold", replyAuthorColor === undefined && "text-accent")}
-                style={replyAuthorColor !== undefined ? { color: replyAuthorColor } : undefined}
-              >
-                {replyPreview.authorName}
-              </span>{" "}
-              <span className="text-text-muted">{replyPreview.text}</span>
-            </>
-          ) : (
-            <span className="italic text-text-muted">Replying to a message</span>
-          )}
-        </span>
-      </button>
-    );
-
-  // A reply that opens a group pulls the quote onto its own row above the
-  // avatar + name + body row, joined to the avatar by an elbow connector.
-  const showReplyElbow = replyToId !== null && startsGroup;
+      </div>
+    </button>
+  );
 
   const toolbar = !unsent && !editing && (
     <div
@@ -627,20 +633,10 @@ function MessageRow({
         pickerOpen && "flex",
       )}
     >
-      {canReact &&
-        QUICK_REACTIONS.slice(0, 3).map((emoji) => (
-          <ToolbarButton
-            key={emoji}
-            label={`React ${emoji}`}
-            onClick={() => list.onReact(message, emoji)}
-          >
-            <span className="text-[15px] leading-none">{emoji}</span>
-          </ToolbarButton>
-        ))}
       {canReact && (
         <span className="relative">
-          <ToolbarButton label="Add reaction" onClick={() => setPickerOpen((open) => !open)}>
-            <Icon name="smile" size={16} />
+          <ToolbarButton label="Custom reaction" onClick={() => setPickerOpen((open) => !open)}>
+            <Icon name="smile" size={18} />
           </ToolbarButton>
           {pickerOpen && (
             <EmojiPicker
@@ -651,14 +647,14 @@ function MessageRow({
           )}
         </span>
       )}
-      {list.onReplyTo !== undefined && (
+      {list.onReplyTo !== undefined && hasPermission(permissions, Permission.SendMessages) && (
         <ToolbarButton label="Reply" onClick={() => list.onReplyTo?.(message)}>
-          <Icon name="reply" size={16} />
+          <Icon name="reply" size={18} />
         </ToolbarButton>
       )}
       {canThread && (
         <ToolbarButton label="Reply in thread" onClick={() => list.onReply(message)}>
-          <Icon name="thread" size={16} />
+          <Icon name="thread" size={18} />
         </ToolbarButton>
       )}
       {canEdit && (
@@ -669,7 +665,7 @@ function MessageRow({
             setEditing(true);
           }}
         >
-          <Icon name="pencil" size={15} />
+          <Icon name="pencil" size={18} />
         </ToolbarButton>
       )}
       {canPin && (
@@ -678,25 +674,26 @@ function MessageRow({
           active={message.pinnedAt !== null}
           onClick={() => list.onPinToggle(message)}
         >
-          <Icon name="pin" size={15} />
+          <Icon name="pin" size={18} />
         </ToolbarButton>
       )}
       {canDelete &&
         (confirmDelete ? (
-          <button
+          <Button
             type="button"
+            size="sm"
+            variant="danger"
             aria-label="Confirm delete"
             onClick={() => {
               setConfirmDelete(false);
               list.onDelete(message);
             }}
-            className="h-7 rounded-[7px] bg-danger px-2 text-xs font-semibold text-on-accent"
           >
             Delete?
-          </button>
+          </Button>
         ) : (
           <ToolbarButton label="Delete message" danger onClick={() => setConfirmDelete(true)}>
-            <Icon name="trash" size={15} />
+            <Icon name="trash" size={18} />
           </ToolbarButton>
         ))}
     </div>
@@ -713,12 +710,12 @@ function MessageRow({
         startsGroup ? "mt-3" : "mt-0.5",
       )}
     >
-      {showReplyElbow && (
+      {replyToId !== null && (
         <>
           <div className={cn("mb-1.5 flex w-full gap-2.5", mirror && "flex-row-reverse")}>
             <div className="w-8 shrink-0" />
             <div className={cn("flex min-w-0 flex-1", mirror ? "justify-end" : "justify-start")}>
-              {renderReplyLine(false)}
+              {replyLine}
             </div>
           </div>
           <svg
@@ -742,14 +739,14 @@ function MessageRow({
         </>
       )}
       <div className={cn("relative flex w-full gap-2.5", mirror && "flex-row-reverse")}>
-        <div className="w-8 shrink-0 pt-0.5">
+        <div className="flex w-8 shrink-0 items-start justify-end pt-0.5">
           {startsGroup ? (
             <PresenceAvatar userId={message.authorId} size={32} roleColor={authorColor} />
           ) : (
             !editing && (
               <time
                 className={cn(
-                  "pointer-events-none hidden whitespace-nowrap text-[10px] text-text-muted group-hover/message:block",
+                  "pointer-events-none hidden whitespace-nowrap text-[10px] leading-5 text-text-muted group-hover/message:block",
                   mirror ? "text-left" : "text-right",
                 )}
                 dateTime={new Date(message.createdAt).toISOString()}
@@ -761,15 +758,20 @@ function MessageRow({
         </div>
         <div className={cn("flex min-w-0 flex-1 flex-col", mirror ? "items-end" : "items-start")}>
           {startsGroup && (
-            <div className={cn("mb-0.5 flex items-baseline gap-2", mirror && "flex-row-reverse")}>
+            <div
+              className={cn(
+                "mb-0.5 flex min-w-0 max-w-full items-baseline gap-2",
+                mirror && "flex-row-reverse",
+              )}
+            >
               <span
-                className="text-[13px] font-semibold text-text"
+                className="min-w-0 truncate text-[13px] font-semibold text-text"
                 style={authorColor !== undefined ? { color: authorColor } : undefined}
               >
                 {authorName}
               </span>
               <time
-                className="text-[11px] text-text-muted"
+                className="shrink-0 text-[11px] text-text-muted"
                 dateTime={new Date(message.createdAt).toISOString()}
               >
                 {time}
@@ -782,7 +784,6 @@ function MessageRow({
               Pinned
             </span>
           )}
-          {!startsGroup && renderReplyLine(true)}
           {body}
           {attachments.length > 0 && (
             <div className={cn("mt-1.5 flex flex-col gap-1.5", mirror && "items-end")}>

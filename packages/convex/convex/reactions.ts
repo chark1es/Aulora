@@ -2,6 +2,7 @@ import { Permission } from "@aulora/core";
 import { ConvexError, v } from "convex/values";
 import type { Id } from "./_generated/dataModel";
 import { mutation, query } from "./_generated/server";
+import { assertMayParticipate } from "./lib/bans";
 import { requireChannelAccess } from "./lib/channels";
 import { openContent } from "./lib/sealed";
 import { sealString } from "./lib/sse";
@@ -25,6 +26,7 @@ export const toggle = mutation({
       throw new ConvexError("Message not found");
     }
     const access = await requireChannelAccess(ctx, message.channelId, Permission.AddReactions);
+    await assertMayParticipate(ctx, access.userId);
 
     const existing = await ctx.db
       .query("reactions")

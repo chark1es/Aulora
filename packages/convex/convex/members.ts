@@ -6,15 +6,132 @@ import { internalMutation, mutation, query } from "./_generated/server";
 import { accountNames } from "./lib/accountNames";
 import { writeAudit } from "./lib/audit";
 import { requireAuth } from "./lib/auth";
+import { pruneExpiredBans } from "./lib/bans";
 import {
   requireCanGrant,
+  requireMember,
   requireModerator,
   requireRoleManageable,
   requireWorkspaceContext,
   requireWorkspacePermission,
 } from "./lib/permissions";
+import { enforceRateLimit, userRateLimitKey } from "./lib/rateLimit";
+import { openContentOptional } from "./lib/sealed";
+import { sealString } from "./lib/sse";
 
 type ReadCtx = QueryCtx | MutationCtx;
+
+const BIO_CONTEXT = { scope: "member.bio" } as const;
+const MAX_BIO_LENGTH = 500;
+const MAX_AVATAR_BYTES = 4 * 1024 * 1024;
+
+function isAvatarImage(metadata: {
+  readonly size: number;
+  readonly contentType?: string | null;
+}): boolean {
+  if (metadata.size <= 0 || metadata.size > MAX_AVATAR_BYTES) {
+    return false;
+  }
+  const contentType = (metadata.contentType ?? "").toLowerCase();
+  return contentType.length === 0 || contentType.startsWith("image/");
+}
+
+/** A workspace member's public summary. */
+export const profile = query({
+  args: { userId: v.string() },
+  handler: async (ctx, args) => {
+    const { userId } = await requireAuth(ctx);
+    await requireMember(ctx, userId);
+    const member = await ctx.db
+      .query("members")
+      .withIndex("by_user", (q) => q.eq("userId", args.userId))
+      .unique();
+    if (member === null) {
+      return null;
+    }
+    const presence = await ctx.db
+      .query("presence")
+      .withIndex("by_user", (q) => q.eq("userId", args.userId))
+      .unique();
+    return {
+      userId: member.userId,
+      bio: await openContentOptional(BIO_CONTEXT, member.bioCiphertext),
+      avatarUrl:
+        member.avatarStorageId !== undefined
+          ? await ctx.storage.getUrl(member.avatarStorageId)
+          : null,
+      lastOnlineAt:
+        presence?.lastOnlineAt ??
+        (presence !== null && !(presence.manual === true && presence.status === "offline")
+          ? presence.lastHeartbeat
+          : null),
+    };
+  },
+});
+
+/** Edits only the caller's bio, sealed at rest. An empty value clears it. */
+export const setBio = mutation({
+  args: { bio: v.string() },
+  handler: async (ctx, args) => {
+    const { userId } = await requireAuth(ctx);
+    await requireMember(ctx, userId);
+    const bio = args.bio.trim();
+    if (bio.length > MAX_BIO_LENGTH) {
+      throw new ConvexError(`Bio must be ${MAX_BIO_LENGTH} characters or fewer`);
+    }
+    const member = await requireMemberRow(ctx, userId);
+    await ctx.db.patch(member._id, {
+      bioCiphertext: bio.length > 0 ? await sealString(BIO_CONTEXT, bio) : undefined,
+    });
+    return null;
+  },
+});
+
+/** Upload URL for the caller's workspace profile picture. Membership is enough. */
+export const generateAvatarUploadUrl = mutation({
+  args: {},
+  handler: async (ctx) => {
+    const { userId } = await requireAuth(ctx);
+    await requireMember(ctx, userId);
+    await enforceRateLimit(ctx, {
+      key: userRateLimitKey("avatar", userId),
+      limit: 10,
+      windowMs: 60_000,
+    });
+    return await ctx.storage.generateUploadUrl();
+  },
+});
+
+/**
+ * Sets or clears the caller's profile picture in this workspace. Other
+ * workspaces keep their own picture because each server has its own member row.
+ */
+export const setAvatar = mutation({
+  args: { storageId: v.optional(v.id("_storage")) },
+  handler: async (ctx, args) => {
+    const { userId } = await requireAuth(ctx);
+    await requireMember(ctx, userId);
+    const member = await requireMemberRow(ctx, userId);
+    const previous = member.avatarStorageId;
+    if (args.storageId !== undefined) {
+      const url = await ctx.storage.getUrl(args.storageId);
+      if (url === null) {
+        throw new ConvexError("Avatar file not found");
+      }
+      const metadata = await ctx.db.system.get("_storage", args.storageId);
+      if (metadata === null || !isAvatarImage(metadata)) {
+        throw new ConvexError("Avatar must be an image under 4 MB");
+      }
+      await ctx.db.patch(member._id, { avatarStorageId: args.storageId });
+    } else {
+      await ctx.db.patch(member._id, { avatarStorageId: undefined });
+    }
+    if (previous !== undefined && previous !== args.storageId) {
+      await ctx.storage.delete(previous);
+    }
+    return null;
+  },
+});
 
 async function findRoleByName(ctx: MutationCtx, name: string): Promise<Doc<"roles"> | null> {
   const roles = await ctx.db.query("roles").collect();
@@ -22,7 +139,7 @@ async function findRoleByName(ctx: MutationCtx, name: string): Promise<Doc<"role
   return match ?? null;
 }
 
-async function requireMember(ctx: ReadCtx, userId: string): Promise<Doc<"members">> {
+async function requireMemberRow(ctx: ReadCtx, userId: string): Promise<Doc<"members">> {
   const member = await ctx.db
     .query("members")
     .withIndex("by_user", (q) => q.eq("userId", userId))
@@ -55,6 +172,11 @@ export const attachRolesFromAuth = internalMutation({
   },
   returns: v.null(),
   handler: async (ctx, args) => {
+    // A banned account never re-joins through the auth hook, even when the
+    // workspace is not invite-only; an expired temp ban is pruned here.
+    if (await pruneExpiredBans(ctx, args.userId)) {
+      return null;
+    }
     const existing = await ctx.db
       .query("members")
       .withIndex("by_user", (q) => q.eq("userId", args.userId))
@@ -107,9 +229,15 @@ interface MemberView {
   readonly roleIds: string[];
   readonly joinedAt: number;
   readonly timeoutUntil: number | null;
+  /** This workspace's profile picture, or null for the generated avatar. */
+  readonly avatarUrl: string | null;
 }
 
-function toMemberView(member: Doc<"members">, accountName: string | null = null): MemberView {
+async function toMemberView(
+  ctx: ReadCtx,
+  member: Doc<"members">,
+  accountName: string | null = null,
+): Promise<MemberView> {
   return {
     id: member._id,
     userId: member.userId,
@@ -118,22 +246,29 @@ function toMemberView(member: Doc<"members">, accountName: string | null = null)
     roleIds: member.roleIds,
     joinedAt: member.joinedAt,
     timeoutUntil: member.timeoutUntil ?? null,
+    avatarUrl:
+      member.avatarStorageId !== undefined
+        ? await ctx.storage.getUrl(member.avatarStorageId)
+        : null,
   };
 }
 
-/** Every member with their roles and moderation state. */
+/** Every member with their roles and moderation state. Members only. */
 export const list = query({
   args: {},
   handler: async (ctx) => {
-    await requireAuth(ctx);
+    const { userId } = await requireAuth(ctx);
+    await requireMember(ctx, userId);
     const members = await ctx.db.query("members").collect();
     const names = await accountNames(
       ctx,
       members.map((member) => member.userId),
     );
-    return members
-      .sort((a, b) => a.joinedAt - b.joinedAt)
-      .map((member) => toMemberView(member, names.get(member.userId) ?? null));
+    return await Promise.all(
+      members
+        .sort((a, b) => a.joinedAt - b.joinedAt)
+        .map((member) => toMemberView(ctx, member, names.get(member.userId) ?? null)),
+    );
   },
 });
 
@@ -157,7 +292,11 @@ export const me = query({
       member:
         member === null
           ? null
-          : toMemberView(member, (await accountNames(ctx, [userId])).get(userId) ?? null),
+          : await toMemberView(
+              ctx,
+              member,
+              (await accountNames(ctx, [userId])).get(userId) ?? null,
+            ),
     };
   },
 });
@@ -171,7 +310,7 @@ export const assignRole = mutation({
   args: { userId: v.string(), roleId: v.id("roles") },
   handler: async (ctx, args) => {
     const { userId, context } = await requireWorkspaceContext(ctx, Permission.ManageRoles);
-    const member = await requireMember(ctx, args.userId);
+    const member = await requireMemberRow(ctx, args.userId);
     const role = await ctx.db.get(args.roleId);
     if (role === null) {
       throw new ConvexError("Role not found");
@@ -203,7 +342,7 @@ export const removeRole = mutation({
   args: { userId: v.string(), roleId: v.id("roles") },
   handler: async (ctx, args) => {
     const { userId, context } = await requireWorkspaceContext(ctx, Permission.ManageRoles);
-    const member = await requireMember(ctx, args.userId);
+    const member = await requireMemberRow(ctx, args.userId);
     const role = await ctx.db.get(args.roleId);
     if (role === null) {
       throw new ConvexError("Role not found");
@@ -239,14 +378,14 @@ export const setNickname = mutation({
       const { context } = await requireWorkspaceContext(ctx, Permission.ManageNicknames);
       await requireModerator(ctx, context, args.userId);
     }
-    const member = await requireMember(ctx, args.userId);
+    const member = await requireMemberRow(ctx, args.userId);
     await ctx.db.patch(member._id, { nickname: args.nickname });
     await writeAudit(ctx, {
       actorId: userId,
       action: "member.nickname",
       targetId: args.userId,
     });
-    return { ...toMemberView(member), nickname: args.nickname ?? null };
+    return { ...(await toMemberView(ctx, member)), nickname: args.nickname ?? null };
   },
 });
 
@@ -256,7 +395,7 @@ export const timeout = mutation({
   handler: async (ctx, args) => {
     const { userId, context } = await requireWorkspaceContext(ctx, Permission.Timeout);
     await requireModerator(ctx, context, args.userId);
-    const member = await requireMember(ctx, args.userId);
+    const member = await requireMemberRow(ctx, args.userId);
     await ctx.db.patch(member._id, { timeoutUntil: args.until });
     await writeAudit(ctx, {
       actorId: userId,
@@ -264,7 +403,7 @@ export const timeout = mutation({
       targetId: args.userId,
       meta: JSON.stringify({ until: args.until ?? null }),
     });
-    return { ...toMemberView(member), timeoutUntil: args.until ?? null };
+    return { ...(await toMemberView(ctx, member)), timeoutUntil: args.until ?? null };
   },
 });
 
@@ -274,7 +413,7 @@ export const kick = mutation({
   handler: async (ctx, args) => {
     const { userId, context } = await requireWorkspaceContext(ctx, Permission.Kick);
     await requireModerator(ctx, context, args.userId);
-    const member = await requireMember(ctx, args.userId);
+    const member = await requireMemberRow(ctx, args.userId);
     await detachFromChannels(ctx, args.userId);
     await ctx.db.delete(member._id);
     await writeAudit(ctx, { actorId: userId, action: "member.kick", targetId: args.userId });
@@ -282,13 +421,28 @@ export const kick = mutation({
   },
 });
 
-/** Bans a member: writes a ban row and removes the member. */
+/**
+ * Bans a member: writes a ban row and removes the member. `durationMs` makes
+ * the ban temporary; absent it is permanent.
+ */
 export const ban = mutation({
-  args: { userId: v.string(), reason: v.optional(v.string()) },
+  args: {
+    userId: v.string(),
+    reason: v.optional(v.string()),
+    durationMs: v.optional(v.number()),
+  },
   handler: async (ctx, args) => {
     const { userId, context } = await requireWorkspaceContext(ctx, Permission.Ban);
     await requireModerator(ctx, context, args.userId);
-    const member = await requireMember(ctx, args.userId);
+    if (
+      args.durationMs !== undefined &&
+      (!Number.isFinite(args.durationMs) || args.durationMs <= 0)
+    ) {
+      throw new ConvexError("durationMs must be a positive number of milliseconds");
+    }
+    const member = await requireMemberRow(ctx, args.userId);
+    const now = Date.now();
+    const expiresAt = args.durationMs !== undefined ? now + args.durationMs : undefined;
     const existing = await ctx.db
       .query("bans")
       .withIndex("by_user", (q) => q.eq("userId", args.userId))
@@ -297,8 +451,16 @@ export const ban = mutation({
       await ctx.db.insert("bans", {
         userId: args.userId,
         actorId: userId,
-        at: Date.now(),
+        at: now,
         ...(args.reason !== undefined ? { reason: args.reason } : {}),
+        ...(expiresAt !== undefined ? { expiresAt } : {}),
+      });
+    } else {
+      await ctx.db.patch(existing._id, {
+        actorId: userId,
+        at: now,
+        reason: args.reason,
+        expiresAt,
       });
     }
     await detachFromChannels(ctx, args.userId);
@@ -307,7 +469,10 @@ export const ban = mutation({
       actorId: userId,
       action: "member.ban",
       targetId: args.userId,
-      ...(args.reason !== undefined ? { meta: JSON.stringify({ reason: args.reason }) } : {}),
+      meta: JSON.stringify({
+        reason: args.reason ?? null,
+        expiresAt: expiresAt ?? null,
+      }),
     });
     return null;
   },
@@ -351,6 +516,7 @@ export const listBans = query({
         actorId: row.actorId,
         reason: row.reason ?? null,
         at: row.at,
+        expiresAt: row.expiresAt ?? null,
       }));
   },
 });

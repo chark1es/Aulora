@@ -11,7 +11,10 @@ const RESOLUTIONS: readonly VoiceDeviceSettings["videoResolution"][] = ["360p", 
  * inside the members sheet's voice settings modal.
  */
 export function DeviceSettingsSection() {
-  const { settings, devices, updateSettings } = useVoice();
+  const { settings, devices, updateSettings, micLevelAvailable, callId } = useVoice();
+  // Once a call is live we know whether this build exposes mic levels; until
+  // then push-to-talk availability is simply unknown.
+  const pushToTalkUnavailable = callId !== null && !micLevelAvailable;
 
   return (
     <ScrollView contentContainerStyle={{ gap: 18, paddingBottom: 24 }}>
@@ -38,9 +41,7 @@ export function DeviceSettingsSection() {
       />
 
       <View className="gap-1">
-        <Heading level={3} className="text-base">
-          Audio processing
-        </Heading>
+        <Heading level={3}>Audio processing</Heading>
         <ToggleRow
           label="Echo cancellation"
           value={settings.echoCancellation}
@@ -59,9 +60,7 @@ export function DeviceSettingsSection() {
       </View>
 
       <View className="gap-2">
-        <Heading level={3} className="text-base">
-          Levels
-        </Heading>
+        <Heading level={3}>Levels</Heading>
         <VolumeStepper
           label="Input volume"
           value={settings.inputVolume}
@@ -72,12 +71,15 @@ export function DeviceSettingsSection() {
           value={settings.outputVolume}
           onChange={(value) => void updateSettings({ outputVolume: value })}
         />
+        <VolumeStepper
+          label="Noise gate"
+          value={settings.noiseGateThreshold}
+          onChange={(value) => void updateSettings({ noiseGateThreshold: value })}
+        />
       </View>
 
       <View className="gap-2">
-        <Heading level={3} className="text-base">
-          Video
-        </Heading>
+        <Heading level={3}>Video</Heading>
         <Segmented
           label="Resolution"
           options={RESOLUTIONS}
@@ -92,14 +94,19 @@ export function DeviceSettingsSection() {
       </View>
 
       <View className="gap-1">
-        <Heading level={3} className="text-base">
-          When joining
-        </Heading>
+        <Heading level={3}>When joining</Heading>
         <ToggleRow
           label="Push to talk"
           value={settings.pushToTalk}
           onChange={(value) => void updateSettings({ pushToTalk: value })}
+          disabled={pushToTalkUnavailable && !settings.pushToTalk}
         />
+        {pushToTalkUnavailable && (
+          <Text size="xs" tone="muted">
+            Push-to-talk needs live microphone levels, which this device's WebRTC build does not
+            expose. While it is enabled the microphone stays closed instead of transmitting.
+          </Text>
+        )}
         <ToggleRow
           label="Join muted"
           value={settings.joinMuted}
@@ -132,9 +139,7 @@ function DevicePicker({
   const options = devices.filter((device) => device.kind === kind);
   return (
     <View className="gap-1.5">
-      <Heading level={3} className="text-base">
-        {label}
-      </Heading>
+      <Heading level={3}>{label}</Heading>
       <DeviceOption
         label="System default"
         selected={selected === null}
@@ -200,20 +205,23 @@ function ToggleRow({
   label,
   value,
   onChange,
+  disabled = false,
 }: {
   readonly label: string;
   readonly value: boolean;
   readonly onChange: (value: boolean) => void;
+  readonly disabled?: boolean;
 }) {
   const palette = usePalette();
   return (
     <View className="flex-row items-center justify-between py-1">
-      <Text size="sm" className="flex-1">
+      <Text size="sm" className="flex-1" tone={disabled ? "muted" : "default"}>
         {label}
       </Text>
       <Switch
         value={value}
         onValueChange={onChange}
+        disabled={disabled}
         trackColor={{ false: palette.border, true: palette.accent }}
         thumbColor={palette["on-accent"]}
       />

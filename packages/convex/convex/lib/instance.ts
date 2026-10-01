@@ -2,6 +2,7 @@ import { ConvexError } from "convex/values";
 import type { Doc } from "../_generated/dataModel";
 import type { MutationCtx, QueryCtx } from "../_generated/server";
 import { requireAuth } from "./auth";
+import type { AuthProviderToggles } from "./env";
 
 /**
  * Instance-admin authority. The operator account created by first-run setup is
@@ -19,6 +20,7 @@ export interface InstanceSettingsValues {
   readonly pushRelayUrl: string | null;
   readonly serverId: string | null;
   readonly backupsEnabled: boolean;
+  readonly authProviders: AuthProviderToggles | null;
 }
 
 /** Total storage quota in bytes; 0 means unlimited. */
@@ -36,6 +38,7 @@ export const DEFAULT_INSTANCE_SETTINGS: InstanceSettingsValues = {
   pushRelayUrl: null,
   serverId: null,
   backupsEnabled: true,
+  authProviders: null,
 };
 
 export interface InstanceAdmin {
@@ -69,6 +72,7 @@ export async function loadInstanceSettings(ctx: ReadCtx): Promise<InstanceSettin
     pushRelayUrl: row.pushRelayUrl ?? null,
     serverId: row.serverId ?? null,
     backupsEnabled: row.backupsEnabled,
+    authProviders: row.authProviders ?? null,
   };
 }
 
@@ -88,6 +92,7 @@ export async function saveInstanceSettings(
       ...(next.pushRelayUrl !== null ? { pushRelayUrl: next.pushRelayUrl } : {}),
       ...(next.serverId !== null ? { serverId: next.serverId } : {}),
       backupsEnabled: next.backupsEnabled,
+      ...(next.authProviders !== null ? { authProviders: next.authProviders } : {}),
     });
   } else {
     await ctx.db.patch(row._id, {
@@ -97,6 +102,7 @@ export async function saveInstanceSettings(
       pushRelayUrl: next.pushRelayUrl ?? undefined,
       serverId: next.serverId ?? undefined,
       backupsEnabled: next.backupsEnabled,
+      authProviders: next.authProviders ?? undefined,
     });
   }
   return next;

@@ -69,6 +69,17 @@ export interface CallParticipantView {
   readonly video: boolean;
   readonly sharingScreen: boolean;
   readonly joinedAt: number;
+  /**
+   * Which client owns this seat. Set only on the viewer's own row; everyone
+   * else sees `null`. A mismatch means this user is in the call from another
+   * device.
+   */
+  readonly clientId: string | null;
+  /**
+   * Bumps when another device takes over the seat, so peers drop the old
+   * connection and handshake with the new one.
+   */
+  readonly session: number;
   /** Local-only: remote audio level, 0..1. */
   readonly speaking: boolean;
   readonly audioLevel: number;
@@ -96,6 +107,8 @@ export interface CallSignalRow {
   readonly kind: CallSignalKind;
   readonly payload: string;
   readonly createdAt: number;
+  /** Seat generation of the sender. Peers ignore envelopes from an older one. */
+  readonly session: number;
 }
 
 /**
@@ -108,8 +121,13 @@ export interface VoicePort {
     readonly channelId: string;
     readonly kind: CallKind;
     readonly ringingUserIds?: readonly string[];
+    /**
+     * Set after the user confirms they will be disconnected on the other
+     * device. Without it, a seat held by a different client is rejected.
+     */
+    readonly takeover?: boolean;
   }): Promise<{ callId: string; created: boolean }>;
-  joinCall(args: { readonly callId: string }): Promise<null>;
+  joinCall(args: { readonly callId: string; readonly takeover?: boolean }): Promise<null>;
   leaveCall(args: { readonly callId: string }): Promise<null>;
   endCall(args: { readonly callId: string }): Promise<null>;
   /** Declines a ringing DM call without joining. */

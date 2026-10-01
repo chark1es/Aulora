@@ -53,8 +53,15 @@ export function loadRelayConfig(env = process.env, { readFile = readFileSync } =
 
   const fcmProjectId = nonEmpty(env.FCM_PROJECT_ID);
   const fcmAccessToken = nonEmpty(env.FCM_ACCESS_TOKEN);
-  if (fcmProjectId && fcmAccessToken) {
-    providers.fcm = { projectId: fcmProjectId, accessToken: fcmAccessToken };
+  const serviceAccountJson = nonEmpty(env.FCM_SERVICE_ACCOUNT_JSON);
+  const serviceAccountPath = nonEmpty(env.FCM_SERVICE_ACCOUNT_PATH);
+  const serviceAccount = serviceAccountJson ?? (serviceAccountPath ? readFile(serviceAccountPath) : undefined);
+  if (fcmProjectId && (fcmAccessToken || serviceAccount)) {
+    providers.fcm = {
+      projectId: fcmProjectId,
+      ...(fcmAccessToken ? { accessToken: fcmAccessToken } : {}),
+      ...(serviceAccount ? { serviceAccount: JSON.parse(serviceAccount) } : {}),
+    };
   }
 
   if (nonEmpty(env.UNIFIEDPUSH_ENABLED) === "1") {

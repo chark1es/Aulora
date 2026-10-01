@@ -1,29 +1,47 @@
 import { describe, expect, it } from "vitest";
 import { parseDomains } from "../components/admin/WorkspaceSettings";
-import { auditActionLabel, auditCategory, describeAuditAction, shortId } from "../lib/audit-format";
+import {
+  auditActionLabel,
+  auditCategory,
+  describeAuditAction,
+  formatAuditEvent,
+  shortId,
+} from "../lib/audit-format";
 import { inviteUrl, parseInviteCode, redeemErrorMessage } from "../lib/invites";
 
 describe("audit-format", () => {
-  it("labels known actions and falls back to the raw string", () => {
-    expect(auditActionLabel("role.create")).toBe("Created role");
-    expect(auditActionLabel("unknown.action")).toBe("unknown.action");
+  it("labels known actions and humanizes unknown ones", () => {
+    expect(auditActionLabel("role.create")).toBe("created a role");
+    expect(auditActionLabel("unknown.action")).toBe("unknown action");
   });
 
   it("summarizes parseable metadata without leaking it raw", () => {
-    expect(describeAuditAction("member.ban", '{"reason":"spam"}')).toBe(
-      "Banned member (Reason: spam)",
-    );
-    expect(describeAuditAction("role.delete", "not-json")).toBe("Deleted role");
-    expect(describeAuditAction("role.delete", null)).toBe("Deleted role");
+    expect(describeAuditAction("member.ban", '{"reason":"spam"}')).toBe("Banned a member: spam");
+    expect(describeAuditAction("role.delete", "not-json")).toBe("Deleted a role");
+    expect(describeAuditAction("role.delete", null)).toBe("Deleted a role");
   });
 
   it("drops opaque ids and maps known metadata to friendly copy", () => {
-    expect(describeAuditAction("member.role.add", '{"roleId":"abc123"}')).toBe("Added member role");
+    expect(describeAuditAction("member.role.add", '{"roleId":"abc123"}')).toBe(
+      "Gave a member a role",
+    );
     expect(describeAuditAction("role.create", '{"name":"Moderator","position":3}')).toBe(
-      "Created role (Moderator, Position 3)",
+      "Created a role: Moderator",
     );
     expect(describeAuditAction("channel.create", '{"kind":"text","private":true}')).toBe(
-      "Created channel (Kind: text, Private)",
+      "Created a channel: text, private",
+    );
+  });
+
+  it("builds a friendly sentence from resolved actor and target names", () => {
+    expect(
+      formatAuditEvent("member.ban", '{"reason":"spam"}', {
+        actorName: "Ada",
+        targetName: "Bob",
+      }),
+    ).toBe("Ada banned a member · Bob · spam");
+    expect(formatAuditEvent("server.updateBranding", null, { actorName: "Ada" })).toBe(
+      "Ada updated the workspace branding",
     );
   });
 

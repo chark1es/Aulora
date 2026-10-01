@@ -124,6 +124,21 @@ describe("roles CRUD", () => {
     expect((await roles(t)).find((role) => role._id === high)?.name).toBe("High");
   });
 
+  it("forbids a non-owner from changing @everyone permissions but allows the owner", async () => {
+    const { t, asOwner, asManager } = await managerSetup();
+    const everyone = await roleByKey(t, EVERYONE_ROLE_ID);
+
+    await expect(
+      asManager.mutation(api.roles.update, { roleId: everyone._id, permissions: 0n }),
+    ).rejects.toThrow("Only the owner");
+
+    await asOwner.mutation(api.roles.update, {
+      roleId: everyone._id,
+      permissions: Permission.Kick,
+    });
+    expect((await roleByKey(t, EVERYONE_ROLE_ID)).permissions).toBe(Permission.Kick);
+  });
+
   it("deletes a manageable role and detaches it from members", async () => {
     const { t, asOwner } = await managerSetup();
     const roleId = await asOwner.mutation(api.roles.create, { name: "Temp", position: 1 });

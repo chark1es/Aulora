@@ -12,12 +12,15 @@
     "lint": "biome check .",
     "test": "vitest run",
     "format": "biome format --write .",
-    "clean": "node -e \"require('node:fs').rmSync('dist',{recursive:true,force:true})\""
+    "clean": "node -e \"require('node:fs').rmSync('dist',{recursive:true,force:true})\"",
+    "icons": "node scripts/generate-icons.mjs && biome format --write src/icons.ts"
   },
   "devDependencies": {
     "@aulora/config": "workspace:*",
+    "@iconify-json/material-symbols": "1.2.93",
     "@types/node": "26.6.3",
     "typescript": "5.9.3",
     "vitest": "5.0.2"
-  }
+  },
+  "license": "PolyForm-Noncommercial-1.0.0"
 }

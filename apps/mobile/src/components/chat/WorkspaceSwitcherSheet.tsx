@@ -1,5 +1,5 @@
 import { NativeAvatar } from "@aulora/avatars/native";
-import { Heading, Text } from "@aulora/ui-native";
+import { Heading, Icon, Text, usePalette } from "@aulora/ui-native";
 import { useRouter } from "expo-router";
 import { Modal, Pressable, ScrollView, View } from "react-native";
 import { useProfiles } from "../../providers/ProfileProvider";
@@ -22,6 +22,7 @@ export interface WorkspaceSwitcherSheetProps {
 export function WorkspaceSwitcherSheet({ visible, onClose }: WorkspaceSwitcherSheetProps) {
   const { profiles, activeProfile, setActive } = useProfiles();
   const router = useRouter();
+  const palette = usePalette();
 
   return (
     <Modal visible={visible} transparent animationType="slide" onRequestClose={onClose}>
@@ -55,9 +56,9 @@ export function WorkspaceSwitcherSheet({ visible, onClose }: WorkspaceSwitcherSh
                     </Text>
                   </View>
                   {active && (
-                    <Text size="sm" tone="accent" accessibilityLabel="Current workspace">
-                      ✓
-                    </Text>
+                    <View accessibilityLabel="Current workspace">
+                      <Icon name="check" size={18} color={palette.accent} />
+                    </View>
                   )}
                 </Pressable>
               );

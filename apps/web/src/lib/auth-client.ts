@@ -1,6 +1,12 @@
 import { convexClient } from "@convex-dev/better-auth/client/plugins";
 import { genericOAuthClient } from "better-auth/client/plugins";
 import { createAuthClient } from "better-auth/react";
+import {
+  clearSessionToken,
+  isCrossOrigin,
+  readSessionToken,
+  writeSessionToken,
+} from "./session-token";
 
 /**
  * Creates a Better Auth client for one server profile.
@@ -16,12 +22,37 @@ import { createAuthClient } from "better-auth/react";
  * - `genericOAuthClient()` exposes `signIn.oauth2({ providerId })` for the
  *   server's generic OIDC providers.
  * - `credentials: "include"` sends the first-party session cookie.
+ * - When the app is not served from `siteUrl` (the desktop app, a dev server on
+ *   another port) the cookie is cross-site and does not survive a restart, so
+ *   the session token from `set-auth-token` is stored and replayed as a bearer
+ *   token. See `./session-token`.
  */
 export function createAuloraAuthClient(siteUrl: string) {
+  const persistToken = isCrossOrigin(siteUrl);
   return createAuthClient({
     baseURL: siteUrl,
     plugins: [convexClient(), genericOAuthClient()],
-    fetchOptions: { credentials: "include" },
+    fetchOptions: {
+      credentials: "include",
+      ...(persistToken
+        ? {
+            auth: {
+              type: "Bearer" as const,
+              token: () => readSessionToken(siteUrl) ?? "",
+            },
+            onSuccess: (context: { request: { url: URL | string }; response: Response }) => {
+              if (String(context.request.url).includes("/sign-out")) {
+                clearSessionToken(siteUrl);
+                return;
+              }
+              const token = context.response.headers.get("set-auth-token");
+              if (token !== null && token.length > 0) {
+                writeSessionToken(siteUrl, token);
+              }
+            },
+          }
+        : {}),
+    },
   });
 }
 

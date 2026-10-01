@@ -1,0 +1,51 @@
+[config]
+custom_model_max_tokens = 262144
+max_model_tokens = 32000
+restricted_mode = true
+use_global_settings_file = false
+repo_context_files = ["README.md", "CONTRIBUTING.md", "docs/development.md"]
+
+[pr_reviewer]
+persistent_comment = true
+require_security_review = true
+require_tests_review = true
+enable_review_labels_security = false
+enable_review_labels_effort = false
+extra_instructions = """
+Review Aulora, a self-hosted team chat monorepo with React web, Tauri desktop,
+Expo/React Native mobile, and a Convex backend. Report concrete bugs introduced
+by this diff, with affected files, failure conditions, and practical fixes.
+Prioritize backend authorization for channels, direct messages, threads, files,
+and workspace roles. Check server boundaries, authentication/session handling,
+server-side encryption, secret exposure, and notification privacy. Consider
+cross-client behavior, reconnect and restore flows, native platform differences,
+and backward compatibility for self-hosted upgrades. Check whether tests cover
+changed behavior. Avoid speculative findings, formatting advice, and issues
+already covered by lint or type checks. Current contributor guides take
+precedence over historical PHASE reports and spike experiments.
+"""
+
+[pr_code_suggestions]
+num_code_suggestions_per_chunk = 3
+suggestions_score_threshold = 7
+extra_instructions = """
+Suggest small fixes for demonstrated correctness, authorization, privacy,
+or cross-platform problems in Aulora. Follow existing module conventions.
+Do not suggest broad rewrites or changes to generated files.
+"""
+
+[pr_description]
+publish_description_as_comment = true
+publish_description_as_comment_persistent = true
+
+[ignore]
+glob = [
+  "bun.lock",
+  "**/package-lock.json",
+  "**/Cargo.lock",
+  "**/Podfile.lock",
+  "packages/convex/convex/_generated/**",
+  "**/dist/**",
+  "**/build/**",
+  "vendor/**",
+]

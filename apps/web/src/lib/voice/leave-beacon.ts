@@ -18,6 +18,7 @@ export function sendLeaveBeacon(args: {
   readonly convexUrl: string;
   readonly token: string | null;
   readonly callId: string;
+  readonly clientId: string;
 }): void {
   if (args.token === null) {
     return;
@@ -25,7 +26,7 @@ export function sendLeaveBeacon(args: {
   const body = JSON.stringify({
     path: getFunctionName(api.calls.leave),
     format: "convex_encoded_json",
-    args: [convexToJson({ callId: args.callId })],
+    args: [convexToJson({ callId: args.callId, clientId: args.clientId })],
   });
   try {
     void fetch(`${args.convexUrl}/api/mutation`, {

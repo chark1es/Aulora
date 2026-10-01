@@ -18,7 +18,8 @@
     "@aulora/core": "workspace:*",
     "@convex-dev/better-auth": "0.12.5",
     "better-auth": "1.6.22",
-    "convex": "1.46.0"
+    "convex": "1.46.0",
+    "jose": "6.2.12"
   },
   "devDependencies": {
     "@aulora/config": "workspace:*",
@@ -27,5 +28,6 @@
     "convex-test": "0.0.60",
     "typescript": "5.9.3",
     "vitest": "5.0.2"
-  }
+  },
+  "license": "PolyForm-Noncommercial-1.0.0"
 }

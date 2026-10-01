@@ -64,6 +64,45 @@ describe("unread summary", () => {
     expect(hasUnread(cursor, m3)).toBe(false);
   });
 
+  it("resolves an id-only cursor so earlier messages stay read", () => {
+    const cursor = { lastReadAt: null, lastReadMessageId: "m3", mentionCount: 0 };
+    expect(summarizeUnread(MESSAGES, cursor, "alice")).toEqual({
+      unread: false,
+      unreadCount: 0,
+      mentionCount: 0,
+      firstUnreadId: null,
+    });
+  });
+
+  it("counts only messages and mentions after an id-only cursor", () => {
+    const cursor = { lastReadAt: null, lastReadMessageId: "m2", mentionCount: 0 };
+    expect(summarizeUnread(MESSAGES, cursor, "bob")).toEqual({
+      unread: true,
+      unreadCount: 1,
+      mentionCount: 1,
+      firstUnreadId: "m3",
+    });
+  });
+
+  it("uses a supplied cursor timestamp when its message is outside the loaded page", () => {
+    expect(summarizeUnread([m3], cursorAt(m2), "bob")).toEqual({
+      unread: true,
+      unreadCount: 1,
+      mentionCount: 1,
+      firstUnreadId: "m3",
+    });
+  });
+
+  it("keeps loaded messages unread when an id-only cursor is outside the page", () => {
+    const cursor = { lastReadAt: null, lastReadMessageId: "older-message", mentionCount: 0 };
+    expect(summarizeUnread(MESSAGES, cursor, "alice")).toEqual({
+      unread: true,
+      unreadCount: 3,
+      mentionCount: 1,
+      firstUnreadId: "m1",
+    });
+  });
+
   it("compares the cursor with the latest message", () => {
     expect(hasUnread(cursorAt(m1), m3)).toBe(true);
     expect(hasUnread(EMPTY_CURSOR, m3)).toBe(true);

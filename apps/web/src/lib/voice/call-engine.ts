@@ -1,7 +1,10 @@
 import {
   type CallKind,
+  type CallSeatResult,
   type CallSignalRow,
   type CallView,
+  isCallElsewhereError,
+  isOnThisDevice,
   type PeerConnectionState,
   shouldOffer,
   type VoiceDeviceSettings,
@@ -14,6 +17,8 @@ import {
   acquireVideo,
   applySinkId,
   createLevelMeter,
+  createMicPipeline,
+  type MicPipeline,
 } from "./media";
 
 /**
@@ -52,7 +57,11 @@ export interface VoiceSnapshot {
   /** The track to show in the local tile: screen while sharing, else camera. */
   readonly localVideoTrack: MediaStreamTrack | null;
   readonly remoteStreams: ReadonlyMap<string, MediaStream>;
+  /** Remote users whose audio is currently above the speaking threshold. */
+  readonly remoteSpeaking: ReadonlySet<string>;
   readonly micLevel: number;
+  /** Whether this device is currently transmitting speech. */
+  readonly localSpeaking: boolean;
   readonly pending: boolean;
   readonly error: string | null;
   /** Set when the microphone/camera could not be acquired for this call. */
@@ -63,6 +72,8 @@ export interface VoiceEngineOptions {
   readonly port: VoicePort;
   readonly subscriptions: VoiceSubscriptions;
   readonly userId: string;
+  /** This install. A seat held by any other id is not ours. */
+  readonly clientId: string;
   readonly getSettings: () => VoiceDeviceSettings;
   /** Read lazily on each peer so late-loaded deployment config still applies. */
   readonly getIceServers?: () => readonly RTCIceServer[];
@@ -79,6 +90,8 @@ interface Peer {
   videoTx?: RTCRtpTransceiver;
   connection: PeerConnectionState;
   levelUnsub: (() => void) | null;
+  /** Seat generation this connection was opened against. */
+  session: number;
 }
 
 const DEFAULT_ICE: readonly RTCIceServer[] = [
@@ -99,6 +112,7 @@ export class VoiceEngine {
   private readonly port: VoicePort;
   private readonly subscriptions: VoiceSubscriptions;
   private readonly userId: string;
+  private readonly clientId: string;
   private readonly getSettings: () => VoiceDeviceSettings;
   private readonly getIceServers: () => readonly RTCIceServer[];
   private readonly onError: (message: string) => void;
@@ -113,9 +127,12 @@ export class VoiceEngine {
     sharingScreen: false,
   };
   private micStream: MediaStream | null = null;
+  private micPipeline: MicPipeline | null = null;
+  private micProcessingKey = "";
   private cameraTrack: MediaStreamTrack | null = null;
   private screenTrack: MediaStreamTrack | null = null;
   private micLevel = 0;
+  private localSpeaking = false;
   private levelUnsub: (() => void) | null = null;
   private pending = false;
   private error: string | null = null;
@@ -126,6 +143,7 @@ export class VoiceEngine {
 
   private readonly peers = new Map<string, Peer>();
   private readonly remoteStreams = new Map<string, MediaStream>();
+  private readonly remoteSpeaking = new Set<string>();
   private readonly processedSignals = new Set<string>();
   private callUnsub: (() => void) | null = null;
   private signalUnsub: (() => void) | null = null;
@@ -135,6 +153,7 @@ export class VoiceEngine {
     this.port = options.port;
     this.subscriptions = options.subscriptions;
     this.userId = options.userId;
+    this.clientId = options.clientId;
     this.getSettings = options.getSettings;
     this.getIceServers = options.getIceServers ?? (() => DEFAULT_ICE);
     this.onError = options.onError ?? (() => {});
@@ -161,7 +180,9 @@ export class VoiceEngine {
       micStream: this.micStream,
       localVideoTrack: this.screenTrack ?? this.cameraTrack,
       remoteStreams: this.remoteStreams,
+      remoteSpeaking: this.remoteSpeaking,
       micLevel: this.micLevel,
+      localSpeaking: this.localSpeaking,
       pending: this.pending,
       error: this.error,
       mediaError: this.mediaError,
@@ -178,34 +199,47 @@ export class VoiceEngine {
     readonly channelId: string;
     readonly kind: CallKind;
     readonly ringingUserIds?: readonly string[];
-  }): Promise<string | null> {
+    readonly takeover?: boolean;
+  }): Promise<Exclude<CallSeatResult, { status: "cancelled" }>> {
     this.setError(null);
     this.pending = true;
     this.emit();
     try {
       const result = await this.port.startCall(args);
       await this.enter(result.callId);
-      return result.callId;
+      return { status: "joined", callId: result.callId };
     } catch (error) {
+      if (isCallElsewhereError(error)) {
+        return { status: "elsewhere", callId: error.callId, channelId: error.channelId };
+      }
       this.setError(messageOf(error));
-      return null;
+      return { status: "failed" };
     } finally {
       this.pending = false;
       this.emit();
     }
   }
 
-  async joinCall(callId: string): Promise<boolean> {
+  async joinCall(
+    callId: string,
+    options?: { readonly takeover?: boolean },
+  ): Promise<Exclude<CallSeatResult, { status: "cancelled" }>> {
     this.setError(null);
     this.pending = true;
     this.emit();
     try {
-      await this.port.joinCall({ callId });
+      await this.port.joinCall({
+        callId,
+        ...(options?.takeover === true ? { takeover: true } : {}),
+      });
       await this.enter(callId);
-      return true;
+      return { status: "joined", callId };
     } catch (error) {
+      if (isCallElsewhereError(error)) {
+        return { status: "elsewhere", callId: error.callId, channelId: error.channelId };
+      }
       this.setError(messageOf(error));
-      return false;
+      return { status: "failed" };
     } finally {
       this.pending = false;
       this.emit();
@@ -260,7 +294,11 @@ export class VoiceEngine {
     this.enterTeardown();
     this.callId = callId;
     this.processedSignals.clear();
+    const watched = callId;
     this.callUnsub = this.subscriptions.watchCallById(callId, (call) => {
+      if (this.callId !== watched) {
+        return;
+      }
       void this.onCallUpdate(call);
     });
     this.signalUnsub = this.subscriptions.watchSignals(callId, (signals) => {
@@ -293,10 +331,13 @@ export class VoiceEngine {
     }
     this.closeAllPeers();
     this.stopLevelMeter();
+    this.micPipeline?.stop();
+    this.micPipeline = null;
     this.micStream?.getTracks().forEach((track) => {
       track.stop();
     });
     this.micStream = null;
+    this.remoteSpeaking.clear();
     this.cameraTrack?.stop();
     this.cameraTrack = null;
     this.screenTrack?.stop();
@@ -316,14 +357,18 @@ export class VoiceEngine {
   private async acquireMic(): Promise<void> {
     this.mediaError = null;
     try {
-      this.micStream = await acquireUserMedia({
+      const raw = await acquireUserMedia({
         settings: this.getSettings(),
         withVideo: false,
       });
+      this.micPipeline = createMicPipeline(raw, this.getSettings());
+      this.micStream = this.micPipeline.stream;
+      this.micProcessingKey = processingKey(this.getSettings());
     } catch (error) {
       // Surface why media is unavailable; the call still connects for others.
       this.mediaError = mediaMessage(error);
       this.micStream = null;
+      this.micPipeline = null;
       return;
     }
     this.startLevelMeter();
@@ -339,6 +384,8 @@ export class VoiceEngine {
     }
     this.levelUnsub = createLevelMeter(this.micStream, (level) => {
       this.micLevel = level;
+      const transmitting = !this.local.muted && (!this.pushToTalk || this.talking);
+      this.localSpeaking = transmitting && (this.localSpeaking ? level > 0.035 : level > 0.08);
       this.emit();
     });
   }
@@ -347,6 +394,25 @@ export class VoiceEngine {
     this.levelUnsub?.();
     this.levelUnsub = null;
     this.micLevel = 0;
+    this.localSpeaking = false;
+  }
+
+  /**
+   * Tracks whether a remote peer is speaking, with hysteresis so a level
+   * hovering on the threshold does not flicker the tile ring every frame.
+   */
+  private setRemoteLevel(userId: string, level: number): void {
+    const speaking = this.remoteSpeaking.has(userId);
+    const next = speaking ? level > 0.035 : level > 0.08;
+    if (next === speaking) {
+      return;
+    }
+    if (next) {
+      this.remoteSpeaking.add(userId);
+    } else {
+      this.remoteSpeaking.delete(userId);
+    }
+    this.emit();
   }
 
   // ---- Media controls ------------------------------------------------------
@@ -372,6 +438,10 @@ export class VoiceEngine {
     const enabled = !this.local.muted && (!this.pushToTalk || this.talking);
     for (const track of this.micStream.getAudioTracks()) {
       track.enabled = enabled;
+    }
+    if (!enabled && this.localSpeaking) {
+      this.localSpeaking = false;
+      this.emit();
     }
   }
 
@@ -456,9 +526,15 @@ export class VoiceEngine {
   async applySettings(settings: VoiceDeviceSettings): Promise<void> {
     const previousInput = this.currentInputId();
     const nextInput = settings.inputDeviceId;
-    if (this.micStream !== null && previousInput !== nextInput) {
+    const previousProcessing = this.micProcessingKey;
+    const nextProcessing = processingKey(settings);
+    if (
+      this.micStream !== null &&
+      (previousInput !== nextInput || previousProcessing !== nextProcessing)
+    ) {
       await this.reacquireMic();
     }
+    this.micPipeline?.setSettings(settings);
     this.pushToTalk = settings.pushToTalk;
     this.applyMicEnabled();
     if (this.local.video && this.cameraTrack !== null && !this.local.sharingScreen) {
@@ -480,15 +556,20 @@ export class VoiceEngine {
 
   private async reacquireMic(): Promise<void> {
     try {
-      const stream = await acquireUserMedia({ settings: this.getSettings(), withVideo: false });
-      this.micStream?.getTracks().forEach((track) => {
+      const raw = await acquireUserMedia({ settings: this.getSettings(), withVideo: false });
+      const previousPipeline = this.micPipeline;
+      const previousStream = this.micStream;
+      this.micPipeline = createMicPipeline(raw, this.getSettings());
+      this.micStream = this.micPipeline.stream;
+      this.micProcessingKey = processingKey(this.getSettings());
+      previousPipeline?.stop();
+      previousStream?.getTracks().forEach((track) => {
         track.stop();
       });
-      this.micStream = stream;
       this.mediaError = null;
       this.applyMicEnabled();
       this.startLevelMeter();
-      await this.applyAudioTrack(stream.getAudioTracks()[0] ?? null);
+      await this.applyAudioTrack(this.micStream.getAudioTracks()[0] ?? null);
     } catch (error) {
       this.mediaError = mediaMessage(error);
       this.onError(messageOf(error));
@@ -509,8 +590,9 @@ export class VoiceEngine {
       return;
     }
     this.call = call;
-    if (!call.participants.some((participant) => participant.userId === this.userId)) {
-      // We were removed (e.g. the call ended from another device).
+    if (!isOnThisDevice(call, this.userId, this.clientId)) {
+      // Removed, or another device took the seat. Do not leave: that would
+      // disconnect the device that just joined.
       this.enterTeardown();
       return;
     }
@@ -529,24 +611,33 @@ export class VoiceEngine {
     if (this.call === null) {
       return;
     }
-    const remoteIds = this.call.participants
-      .map((participant) => participant.userId)
-      .filter((id) => id !== this.userId);
+    const remote = this.call.participants.filter(
+      (participant) => participant.userId !== this.userId,
+    );
     for (const [id, peer] of this.peers) {
-      if (!remoteIds.includes(id)) {
+      const participant = remote.find((entry) => entry.userId === id);
+      if (participant === undefined || participant.session !== peer.session) {
         this.closePeer(id, peer);
       }
     }
-    for (const id of remoteIds) {
-      if (!this.peers.has(id) && shouldOffer(this.userId, id)) {
-        void this.createPeer(id, true);
+    for (const participant of remote) {
+      if (!this.peers.has(participant.userId) && shouldOffer(this.userId, participant.userId)) {
+        void this.createPeer(participant.userId, true, participant.session);
       }
     }
   }
 
-  private async createPeer(remoteId: string, initiator: boolean): Promise<Peer | null> {
-    if (this.peers.has(remoteId)) {
-      return this.peers.get(remoteId) ?? null;
+  private async createPeer(
+    remoteId: string,
+    initiator: boolean,
+    session: number,
+  ): Promise<Peer | null> {
+    const existing = this.peers.get(remoteId);
+    if (existing !== undefined) {
+      if (existing.session === session) {
+        return existing;
+      }
+      this.closePeer(remoteId, existing);
     }
     const configured = this.getIceServers();
     const pc = new RTCPeerConnection({
@@ -561,6 +652,7 @@ export class VoiceEngine {
       pendingCandidates: [],
       connection: "connecting",
       levelUnsub: null,
+      session,
     };
     this.peers.set(remoteId, peer);
     this.remoteStreams.set(remoteId, peer.stream);
@@ -580,8 +672,9 @@ export class VoiceEngine {
     pc.ontrack = (event) => {
       peer.stream.addTrack(event.track);
       if (event.track.kind === "audio") {
-        peer.levelUnsub = createLevelMeter(peer.stream, () => {
-          // Remote levels are surfaced through the participant tiles only.
+        peer.levelUnsub?.();
+        peer.levelUnsub = createLevelMeter(peer.stream, (level) => {
+          this.setRemoteLevel(remoteId, level);
         });
       }
       this.emit();
@@ -735,8 +828,12 @@ export class VoiceEngine {
 
   private async handleSignal(signal: CallSignalRow): Promise<void> {
     const existing = this.peers.get(signal.fromUserId);
+    if (existing !== undefined && existing.session !== signal.session && signal.kind !== "offer") {
+      this.closePeer(signal.fromUserId, existing);
+      return;
+    }
     if (signal.kind === "offer") {
-      const peer = existing ?? (await this.createPeer(signal.fromUserId, false));
+      const peer = await this.createPeer(signal.fromUserId, false, signal.session);
       if (peer === null) {
         return;
       }
@@ -803,6 +900,7 @@ export class VoiceEngine {
 
   private closePeer(remoteId: string, peer: Peer): void {
     peer.levelUnsub?.();
+    this.remoteSpeaking.delete(remoteId);
     peer.pc.onicecandidate = null;
     peer.pc.ontrack = null;
     peer.pc.onconnectionstatechange = null;
@@ -843,6 +941,13 @@ export class VoiceEngine {
     this.enterTeardown();
     this.listeners.clear();
   }
+}
+
+/** Identifies the capture constraints that require a fresh `getUserMedia`. */
+function processingKey(settings: VoiceDeviceSettings): string {
+  return `${settings.echoCancellation ? 1 : 0}:${settings.noiseSuppression ? 1 : 0}:${
+    settings.autoGainControl ? 1 : 0
+  }`;
 }
 
 /** Rough connection state mapping for the participant tiles. */

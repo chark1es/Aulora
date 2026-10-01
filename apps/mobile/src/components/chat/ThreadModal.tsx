@@ -1,11 +1,12 @@
-import type { MessagePayload } from "@aulora/core";
+import type { MessagePayload, RoleMentionTarget } from "@aulora/core";
 import { Button, Card, Heading, Text } from "@aulora/ui-native";
-import { useEffect, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { Modal, ScrollView, View } from "react-native";
 import type { PickedFile } from "../../lib/attachments";
 import type { MobileChatRuntime } from "../../lib/chat-runtime";
 import { watchThread } from "../../lib/chat-runtime";
 import { Composer } from "./Composer";
+import { RichText } from "./RichText";
 
 export interface ThreadModalProps {
   readonly runtime: MobileChatRuntime;
@@ -14,6 +15,12 @@ export interface ThreadModalProps {
   readonly rootText: string | undefined;
   readonly ownUserId: string;
   readonly memberNames: ReadonlyMap<string, string>;
+  readonly roles?: readonly RoleMentionTarget[];
+  readonly channels?: readonly { readonly id: string; readonly name: string }[];
+  /** Channel/category names `#` may refer to, for rendering. */
+  readonly channelNames?: ReadonlyMap<string, string>;
+  /** Opens the channel behind a `#channel` mention. */
+  readonly onChannelPress?: (name: string) => void;
   readonly onClose: () => void;
   readonly onSendReply: (input: {
     text: string;
@@ -30,12 +37,22 @@ export function ThreadModal({
   rootText,
   ownUserId,
   memberNames,
+  roles = [],
+  channels = [],
+  channelNames,
+  onChannelPress,
   onClose,
   onSendReply,
 }: ThreadModalProps) {
   const [replies, setReplies] = useState<readonly MessagePayload[]>([]);
   const [decrypted, setDecrypted] = useState<ReadonlyMap<string, string>>(new Map());
   const [alsoSend, setAlsoSend] = useState(false);
+  const mentionNames = useMemo(() => [...memberNames.values()], [memberNames]);
+  const channelNameList = useMemo(
+    () => (channelNames === undefined ? [] : [...channelNames.values()]),
+    [channelNames],
+  );
+  const viewerName = memberNames.get(ownUserId) ?? "You";
 
   useEffect(() => {
     const off = watchThread(runtime, root.id, (incoming) => {
@@ -68,7 +85,19 @@ export function ThreadModal({
               <Text size="sm" className="font-medium">
                 {memberNames.get(root.authorId) ?? root.authorId}
               </Text>
-              <Text size="sm">{rootText ?? "Unable to load this message."}</Text>
+              {rootText !== undefined ? (
+                <RichText
+                  text={rootText}
+                  mentionNames={mentionNames}
+                  channelNames={channelNameList}
+                  viewerName={viewerName}
+                  onChannelPress={onChannelPress}
+                />
+              ) : (
+                <Text size="sm" tone="muted">
+                  Unable to load this message.
+                </Text>
+              )}
             </Card>
             {replies.map((reply) => (
               <View key={reply.id} className="px-1">
@@ -76,7 +105,19 @@ export function ThreadModal({
                   {memberNames.get(reply.authorId) ?? reply.authorId}
                   {reply.authorId === ownUserId ? " (you)" : ""}
                 </Text>
-                <Text size="sm">{decrypted.get(reply.id) ?? "Unable to load this message."}</Text>
+                {decrypted.get(reply.id) !== undefined ? (
+                  <RichText
+                    text={decrypted.get(reply.id) ?? ""}
+                    mentionNames={mentionNames}
+                    channelNames={channelNameList}
+                    viewerName={viewerName}
+                    onChannelPress={onChannelPress}
+                  />
+                ) : (
+                  <Text size="sm" tone="muted">
+                    Unable to load this message.
+                  </Text>
+                )}
               </View>
             ))}
             {replies.length === 0 && (
@@ -95,6 +136,12 @@ export function ThreadModal({
           <Composer
             channelId={channelId}
             placeholder="Reply"
+            members={[...memberNames.entries()].map(([userId, displayName]) => ({
+              userId,
+              displayName,
+            }))}
+            roles={roles}
+            channels={channels}
             onTyping={(id) => {
               void runtime.port.setTyping({ channelId: id });
             }}

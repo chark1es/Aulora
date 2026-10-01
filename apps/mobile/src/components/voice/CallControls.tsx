@@ -6,6 +6,7 @@ export interface CallControlsProps {
   readonly deafened: boolean;
   readonly video: boolean;
   readonly sharingScreen: boolean;
+  readonly canSpeak?: boolean;
   readonly canVideo: boolean;
   readonly canStream: boolean;
   readonly pipPinned?: boolean;
@@ -26,6 +27,7 @@ export function CallControls({
   deafened,
   video,
   sharingScreen,
+  canSpeak = true,
   canVideo,
   canStream,
   pipPinned = false,
@@ -45,6 +47,7 @@ export function CallControls({
       <IconButton
         label={muted ? "Unmute microphone" : "Mute microphone"}
         variant={muted ? "danger" : "secondary"}
+        disabled={!canSpeak}
         onPress={onToggleMute}
       >
         {icon(muted ? "mic-off" : "mic", muted ? palette["on-accent"] : palette.text)}
@@ -59,25 +62,27 @@ export function CallControls({
           deafened ? palette["on-accent"] : palette.text,
         )}
       </IconButton>
-      <IconButton
-        label={video ? "Turn camera off" : "Turn camera on"}
-        variant={video ? "primary" : "secondary"}
-        disabled={!canVideo}
-        onPress={onToggleCamera}
-      >
-        {icon(video ? "video" : "video-off", video ? palette["on-accent"] : palette.text)}
-      </IconButton>
-      <IconButton
-        label={sharingScreen ? "Stop sharing screen" : "Share screen"}
-        variant={sharingScreen ? "primary" : "secondary"}
-        disabled={!canStream}
-        onPress={onToggleScreen}
-      >
-        {icon(
-          sharingScreen ? "monitor-off" : "monitor",
-          sharingScreen ? palette["on-accent"] : palette.text,
-        )}
-      </IconButton>
+      {canVideo && (
+        <IconButton
+          label={video ? "Turn camera off" : "Turn camera on"}
+          variant={video ? "primary" : "secondary"}
+          onPress={onToggleCamera}
+        >
+          {icon(video ? "video" : "video-off", video ? palette["on-accent"] : palette.text)}
+        </IconButton>
+      )}
+      {canStream && (
+        <IconButton
+          label={sharingScreen ? "Stop sharing screen" : "Share screen"}
+          variant={sharingScreen ? "primary" : "secondary"}
+          onPress={onToggleScreen}
+        >
+          {icon(
+            sharingScreen ? "monitor-off" : "monitor",
+            sharingScreen ? palette["on-accent"] : palette.text,
+          )}
+        </IconButton>
+      )}
       {onTogglePin !== undefined && (
         <IconButton
           label={pipPinned ? "Unpin picture-in-picture" : "Pin picture-in-picture"}

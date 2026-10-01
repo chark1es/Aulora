@@ -2,8 +2,8 @@
   "name": "aulora",
   "version": "0.0.0",
   "private": true,
-  "description": "Aulora — secure team chat on your own server. Bun + Turborepo monorepo.",
-  "license": "SEE LICENSE IN LICENSE AND COMMERCIAL.md",
+  "description": "Aulora: self-hosted team chat with browser, desktop, and mobile clients.",
+  "license": "PolyForm-Noncommercial-1.0.0",
   "packageManager": "bun@1.4.0",
   "workspaces": [
     "apps/*",
@@ -13,15 +13,31 @@
     "dev": "turbo run dev",
     "build": "turbo run build",
     "typecheck": "turbo run typecheck",
-    "lint": "turbo run lint",
+    "lint": "turbo run lint && biome check scripts package.json",
     "format": "turbo run format",
     "test": "turbo run test",
-    "clean": "turbo run clean"
+    "clean": "turbo run clean",
+    "check": "bun run lint && bun run typecheck && bun run test && bun run build && bun run test:infra && bun run test:release && bun run docs:check && bun run release:check",
+    "docs:build": "bun run --cwd apps/docs build",
+    "docs:dev": "bun run --cwd apps/docs dev",
+    "docs:check": "bun run docs:build && node scripts/check-docs.mjs",
+    "test:infra": "node --test infra/push-relay/test/*.test.mjs infra/docker/backup/test/*.test.mjs infra/docker/install/test/*.test.mjs && bun test infra/docker/update/*.test.mjs",
+    "test:release": "bun test scripts/ci/*.test.mjs apps/desktop/scripts/release-version.test.mjs apps/desktop/scripts/release-manifest.test.mjs",
+    "release:check": "node scripts/check-release.mjs",
+    "release:version": "node scripts/set-version.mjs",
+    "notices": "node scripts/legal-notices.mjs"
   },
   "devDependencies": {
     "@biomejs/biome": "2.5.14",
     "turbo": "2.11.4",
     "typescript": "5.9.3",
     "vitest": "5.0.2"
+  },
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/chark1es/Aulora.git"
+  },
+  "bugs": {
+    "url": "https://github.com/chark1es/Aulora/issues"
   }
 }

@@ -1,12 +1,40 @@
 import { EVERYONE_ROLE_ID, Permission } from "@aulora/core";
 import { paginationOptsValidator } from "convex/server";
 import { ConvexError, v } from "convex/values";
+import { internal } from "./_generated/api";
 import type { Doc } from "./_generated/dataModel";
 import { mutation, query } from "./_generated/server";
+import { accountNames } from "./lib/accountNames";
 import { writeAudit } from "./lib/audit";
 import { requireAuth } from "./lib/auth";
+import { assertNotBanned } from "./lib/bans";
 import { randomToken, sha256Hex } from "./lib/crypto";
+import { parseEmailConfig } from "./lib/email";
 import { requireWorkspacePermission } from "./lib/permissions";
+import { enforceRateLimit, userRateLimitKey } from "./lib/rateLimit";
+
+/** Default invite lifetime: one week. */
+export const INVITE_TTL_MS = 7 * 24 * 60 * 60 * 1000;
+
+/** Per-actor invite mint budget, overridable per deployment. */
+function inviteRateLimit(): number {
+  const configured = Number(process.env.INVITE_RATE_LIMIT);
+  return Number.isFinite(configured) && configured > 0 ? configured : 20;
+}
+
+function inviteRateWindowMs(): number {
+  const configured = Number(process.env.INVITE_RATE_WINDOW_MS);
+  return Number.isFinite(configured) && configured > 0 ? configured : 60_000;
+}
+
+/** Cap on a creator's live (unused, unexpired, unrevoked) invites. */
+function pendingInviteLimit(): number {
+  const configured = Number(process.env.INVITE_PENDING_LIMIT);
+  return Number.isFinite(configured) && configured > 0 ? configured : 50;
+}
+
+/** Deliberately permissive: a single `@`, a dot in the domain, no spaces. */
+const EMAIL_PATTERN = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
 
 interface InviteView {
   readonly id: Doc<"invites">["_id"];
@@ -36,15 +64,53 @@ function toInviteView(invite: Doc<"invites">): InviteView {
  * link. `maxUses` of 0 means unlimited. Requires `CreateInvites`.
  */
 export const create = mutation({
-  args: { maxUses: v.optional(v.number()), expiresAt: v.optional(v.number()) },
+  args: {
+    maxUses: v.optional(v.number()),
+    expiresAt: v.optional(v.number()),
+    email: v.optional(v.string()),
+  },
   handler: async (ctx, args) => {
     const { userId } = await requireWorkspacePermission(ctx, Permission.CreateInvites);
+    await enforceRateLimit(ctx, {
+      key: userRateLimitKey("invite", userId),
+      limit: inviteRateLimit(),
+      windowMs: inviteRateWindowMs(),
+    });
     const maxUses = args.maxUses ?? 0;
     if (maxUses < 0) {
       throw new ConvexError("maxUses cannot be negative");
     }
-    if (args.expiresAt !== undefined && args.expiresAt <= Date.now()) {
+    const now = Date.now();
+    if (args.expiresAt !== undefined && args.expiresAt <= now) {
       throw new ConvexError("expiresAt must be in the future");
+    }
+    const expiresAt = args.expiresAt ?? now + INVITE_TTL_MS;
+
+    const recipient = args.email?.trim();
+    if (recipient !== undefined && recipient.length > 0 && !EMAIL_PATTERN.test(recipient)) {
+      throw new ConvexError("Invite email is not a valid address");
+    }
+    if (recipient !== undefined && recipient.length > 0) {
+      const siteUrl = process.env.SITE_URL?.trim() || process.env.CONVEX_SITE_URL?.trim();
+      if (!siteUrl) throw new ConvexError("Set SITE_URL before emailing invites");
+      const configured = await ctx.db.query("emailSettings").first();
+      if ((configured?.provider ?? parseEmailConfig().provider) === "none") {
+        throw new ConvexError("Configure email delivery before emailing invites");
+      }
+    }
+
+    // Cap the creator's live invites so one actor cannot mint unbounded links
+    // (each may trigger an outbound email).
+    const existingInvites = await ctx.db.query("invites").collect();
+    const pending = existingInvites.filter(
+      (invite) =>
+        invite.createdBy === userId &&
+        invite.revokedAt === undefined &&
+        (invite.expiresAt === undefined || invite.expiresAt > now) &&
+        (invite.maxUses === 0 || invite.uses < invite.maxUses),
+    );
+    if (pending.length >= pendingInviteLimit()) {
+      throw new ConvexError("Too many pending invites");
     }
 
     const code = randomToken();
@@ -54,15 +120,74 @@ export const create = mutation({
       createdBy: userId,
       maxUses,
       uses: 0,
-      ...(args.expiresAt !== undefined ? { expiresAt: args.expiresAt } : {}),
+      expiresAt,
     });
+    if (recipient !== undefined && recipient.length > 0) {
+      const server = await ctx.db.query("server").first();
+      const invitedByName = (await accountNames(ctx, [userId])).get(userId) ?? undefined;
+      await ctx.scheduler.runAfter(0, internal.email.sendInvite, {
+        to: recipient,
+        code,
+        workspaceName: server?.name ?? "Aulora",
+        ...(invitedByName !== undefined && invitedByName !== null ? { invitedByName } : {}),
+      });
+    }
     await writeAudit(ctx, {
       actorId: userId,
       action: "invite.create",
       targetId: inviteId,
-      meta: JSON.stringify({ maxUses, expiresAt: args.expiresAt ?? null }),
+      meta: JSON.stringify({ maxUses, expiresAt, email: recipient ?? null }),
     });
     return { inviteId, code };
+  },
+});
+
+/**
+ * Public, unauthenticated invite check for the join page. Never reveals the
+ * code or any member data; it only reports whether the link still works.
+ */
+export const inspect = query({
+  args: { code: v.string() },
+  handler: async (ctx, args) => {
+    const server = await ctx.db.query("server").first();
+    const workspaceName = server?.name ?? "Aulora";
+    const codeHash = await sha256Hex(args.code);
+    const invite = await ctx.db
+      .query("invites")
+      .withIndex("by_code", (q) => q.eq("code", codeHash))
+      .unique();
+    if (invite === null) {
+      return { valid: false, workspaceName, expiresAt: null, reason: "not_found" };
+    }
+    if (invite.revokedAt !== undefined) {
+      return {
+        valid: false,
+        workspaceName,
+        expiresAt: invite.expiresAt ?? null,
+        reason: "revoked",
+      };
+    }
+    if (invite.expiresAt !== undefined && invite.expiresAt <= Date.now()) {
+      return {
+        valid: false,
+        workspaceName,
+        expiresAt: invite.expiresAt,
+        reason: "expired",
+      };
+    }
+    if (invite.maxUses > 0 && invite.uses >= invite.maxUses) {
+      return {
+        valid: false,
+        workspaceName,
+        expiresAt: invite.expiresAt ?? null,
+        reason: "exhausted",
+      };
+    }
+    return {
+      valid: true,
+      workspaceName,
+      expiresAt: invite.expiresAt ?? null,
+    };
   },
 });
 
@@ -125,13 +250,7 @@ export const redeem = mutation({
       throw new ConvexError("Invite has expired");
     }
 
-    const banned = await ctx.db
-      .query("bans")
-      .withIndex("by_user", (q) => q.eq("userId", userId))
-      .unique();
-    if (banned !== null) {
-      throw new ConvexError("You are banned from this workspace");
-    }
+    await assertNotBanned(ctx, userId);
 
     const existing = await ctx.db
       .query("members")

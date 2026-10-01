@@ -1,0 +1,161 @@
+name: Release
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - apps/desktop/src-tauri/tauri.conf.json
+  workflow_dispatch:
+    inputs:
+      publish:
+        description: Publish the current main version after every build passes
+        type: boolean
+        default: false
+      notes:
+        description: Release notes for a manual release
+        type: string
+        default: ''
+
+permissions:
+  contents: read
+
+concurrency:
+  group: release-main
+  cancel-in-progress: false
+
+jobs:
+  plan:
+    name: Check release version
+    runs-on: ubuntu-22.04
+    outputs:
+      version: ${{ steps.plan.outputs.version }}
+      build: ${{ steps.plan.outputs.build }}
+      publish: ${{ steps.plan.outputs.publish }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+          persist-credentials: false
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22.18.0
+      - name: Detect a new version on main
+        id: plan
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: node scripts/ci/release.mjs plan
+
+  checks:
+    needs: plan
+    if: needs.plan.outputs.build == 'true'
+    uses: ./.github/workflows/ci.yml
+
+  desktop:
+    needs: [plan, checks]
+    uses: ./.github/workflows/desktop-release.yml
+    with:
+      version: ${{ needs.plan.outputs.version }}
+
+  mobile:
+    needs: [plan, checks]
+    uses: ./.github/workflows/mobile-release.yml
+    with:
+      version: ${{ needs.plan.outputs.version }}
+      build-number: ${{ format('{0}', github.run_number) }}
+
+  web:
+    name: Web and documentation release
+    needs: [plan, checks]
+    runs-on: ubuntu-22.04
+    env:
+      RELEASE_VERSION: ${{ needs.plan.outputs.version }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - uses: ./.github/actions/setup-js
+      - run: bun run build
+      - run: bun run notices
+      - name: Package web and docs
+        run: |
+          mkdir -p dist/release-web
+          python3 - <<'PY'
+          import os, shutil
+          from pathlib import Path
+          for app in ('web', 'docs'):
+              shutil.copytree('dist/legal', 'apps/' + app + '/dist/legal', dirs_exist_ok=True)
+              shutil.make_archive('dist/release-web/Aulora_' + os.environ['RELEASE_VERSION'] + '_' + app, 'zip', 'apps/' + app + '/dist')
+          for source in Path('dist/legal').iterdir():
+              if source.is_file():
+                  shutil.copy2(source, Path('dist/release-web') / source.name)
+          shutil.make_archive('dist/release-web/Aulora_' + os.environ['RELEASE_VERSION'] + '_legal', 'zip', 'dist/legal')
+          PY
+      - uses: actions/upload-artifact@v4
+        with:
+          name: release-web
+          path: dist/release-web/*
+          if-no-files-found: error
+          retention-days: 14
+
+  assemble:
+    name: Assemble release files
+    needs: [plan, desktop, mobile, web]
+    runs-on: ubuntu-22.04
+    env:
+      RELEASE_VERSION: ${{ needs.plan.outputs.version }}
+      RELEASE_NOTES: ${{ inputs.notes }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - uses: ./.github/actions/setup-js
+      - uses: actions/download-artifact@v4
+        with:
+          pattern: release-*
+          merge-multiple: true
+          path: dist/release
+      - name: Create updater manifest and checksums
+        run: |
+          node scripts/ci/assemble-release.mjs
+          node scripts/ci/assemble-release.mjs checksums
+      - uses: actions/upload-artifact@v4
+        with:
+          name: complete-release
+          path: dist/release/*
+          if-no-files-found: error
+          retention-days: 30
+
+  publish:
+    name: Publish versioned GitHub release
+    needs: [plan, assemble]
+    if: needs.plan.outputs.publish == 'true'
+    runs-on: ubuntu-22.04
+    permissions:
+      contents: write
+    env:
+      GH_TOKEN: ${{ github.token }}
+      GH_REPO: ${{ github.repository }}
+      RELEASE_VERSION: ${{ needs.plan.outputs.version }}
+      RELEASE_NOTES: ${{ inputs.notes }}
+    steps:
+      - uses: actions/download-artifact@v4
+        with:
+          name: complete-release
+          path: dist/release
+      - name: Publish completed release
+        run: |
+          tag="v${RELEASE_VERSION}"
+          state="$RUNNER_TEMP/release-state.txt"
+          if gh release view "$tag" --json isDraft --jq .isDraft > "$state"; then
+            test "$(cat "$state")" = true
+            gh release upload "$tag" dist/release/* --clobber
+          else
+            notes="$RUNNER_TEMP/release-notes.md"
+            if [ -n "$RELEASE_NOTES" ]; then
+              printf '%s\n' "$RELEASE_NOTES" > "$notes"
+              gh release create "$tag" --draft --target "$GITHUB_SHA" --title "Aulora ${RELEASE_VERSION}" --notes-file "$notes" dist/release/*
+            else
+              gh release create "$tag" --draft --target "$GITHUB_SHA" --title "Aulora ${RELEASE_VERSION}" --generate-notes dist/release/*
+            fi
+          fi
+          gh release edit "$tag" --draft=false --latest

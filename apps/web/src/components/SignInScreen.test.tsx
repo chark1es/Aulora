@@ -1,9 +1,12 @@
 import type { ServerProfile, WellKnownAuth } from "@aulora/core";
 import { render, screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
-import { describe, expect, it, vi } from "vitest";
+import { useQuery } from "convex/react";
+import { beforeEach, describe, expect, it, vi } from "vitest";
 import type { AuthActions } from "../lib/auth-client";
 import { SignInScreen } from "./SignInScreen";
+
+vi.mock("convex/react", () => ({ useQuery: vi.fn(() => undefined) }));
 
 const providers: WellKnownAuth["providers"] = [
   { id: "github", type: "oauth", displayName: "GitHub" },
@@ -44,6 +47,10 @@ function fakeActions(): AuthActions {
 }
 
 describe("SignInScreen", () => {
+  beforeEach(() => {
+    vi.mocked(useQuery).mockReturnValue(undefined);
+  });
+
   it("renders exactly the providers from the well-known and the local form", () => {
     render(
       <SignInScreen
@@ -122,5 +129,21 @@ describe("SignInScreen", () => {
 
     expect(screen.getByLabelText("Name")).toBeInTheDocument();
     expect(screen.getByRole("button", { name: "Create account" })).toBeInTheDocument();
+  });
+
+  it("shows the workspace description and logo from the public config", () => {
+    vi.mocked(useQuery).mockReturnValue({
+      description: "A calm place to ship.",
+      logoUrl: "https://chat.acme.com/logo.png",
+    });
+    const { container } = render(
+      <SignInScreen
+        profile={makeProfile({ enabled: true, signup: false })}
+        actions={fakeActions()}
+      />,
+    );
+
+    expect(screen.getByText("A calm place to ship.")).toBeInTheDocument();
+    expect(container.querySelector("img")).toHaveAttribute("src", "https://chat.acme.com/logo.png");
   });
 });

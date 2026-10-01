@@ -6,7 +6,10 @@ import { authComponent, createAuth } from "./auth";
 const http = httpRouter();
 
 // Mounts the full Better Auth HTTP surface (sign-in/up, callbacks, OAuth, ...).
-authComponent.registerRoutes(http, createAuth, { cors: true });
+// `set-auth-token` carries the bearer session token to cross-origin clients.
+authComponent.registerRoutes(http, createAuth, {
+  cors: { allowedHeaders: [], exposedHeaders: ["set-auth-token"] },
+});
 
 /**
  * Serves decrypted file bytes for a signed short-lived token. Files are sealed

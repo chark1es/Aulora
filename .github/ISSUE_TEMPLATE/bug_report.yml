@@ -1,0 +1,34 @@
+name: Bug report
+description: Report a reproducible problem in an app or server.
+title: "[Bug]: "
+body:
+  - type: markdown
+    attributes:
+      value: "For vulnerabilities, email cnguyen@spwnd.dev privately. Do not attach credentials, .env files, private messages, or encryption keys."
+  - type: input
+    id: version
+    attributes:
+      label: Version or commit
+      description: Include the server and client versions if they differ.
+    validations:
+      required: true
+  - type: dropdown
+    id: platform
+    attributes:
+      label: Affected platform
+      multiple: true
+      options: [Browser, macOS desktop, Windows desktop, Linux desktop, iOS, Android, Docker server, Coolify deployment]
+    validations:
+      required: true
+  - type: textarea
+    id: reproduce
+    attributes:
+      label: Steps to reproduce
+      description: Include the expected result and what happened instead.
+    validations:
+      required: true
+  - type: textarea
+    id: environment
+    attributes:
+      label: Environment and redacted evidence
+      description: OS/browser versions, deployment method, relevant logs, and screenshots without private data.

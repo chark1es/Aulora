@@ -15,6 +15,10 @@ export default defineConfig(({ mode }) => {
   return {
     plugins: [react()],
     server: {
+      host: "127.0.0.1",
+      port: 5173,
+      strictPort: true,
+      allowedHosts: env.AULORA_DEV_ALLOWED_HOST ? [env.AULORA_DEV_ALLOWED_HOST] : [],
       proxy: {
         "/api/auth": {
           target: authProxyTarget,
@@ -28,6 +32,11 @@ export default defineConfig(({ mode }) => {
               proxyReq.setHeader("Origin", authProxyTarget);
             });
           },
+        },
+        "/api": {
+          target: authProxyTarget,
+          changeOrigin: true,
+          ws: true,
         },
       },
     },

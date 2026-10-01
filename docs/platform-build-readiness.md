@@ -1,0 +1,61 @@
+# Platform build and notification readiness
+
+Checked 2026-09-29 against the current working tree and official documentation. This is a setup checklist, not evidence that signed releases or live push delivery have passed. Credentials may already exist outside Git; their availability was not inspected.
+
+The release and PR workflows have since been added. See [GitHub Actions builds and releases](github-actions.md) for the implemented automation and signing secret setup. The assessment below records the initial readiness findings.
+
+## What the repository initially provided
+
+- Desktop is Tauri 2 around the web client. Native notifications come from live message events in `apps/web/src/lib/use-desktop-notifications.ts` through `apps/desktop/src-tauri/src/commands.rs`. Closing the window hides it and keeps the process running in the tray. Quitting stops this delivery path. The notification plugin displays local OS notifications; it does not add a remote delivery service to a stopped process.
+- Mobile uses Expo and native APNs/FCM tokens through `getDevicePushTokenAsync()` in `apps/mobile/src/lib/push.ts`. It does not use the Expo Push Service. The relay in `infra/push-relay` currently sends generic, visible message/call alerts, including while the mobile UI is suspended. Rich message previews before opening the app need additional client work.
+- `apps/mobile/app.json` identifies iOS as `dev.spwnd.aulora` and Android as `dev.spwnd.aulora`, and includes the `expo-notifications` plugin. It does not configure `android.googleServicesFile`. The checked-in Android Gradle projects have no Google Services plugin setup, and release currently uses the debug signing key.
+- The checked-in iOS entitlement uses `aps-environment=development`. Inspect the final exported application's entitlement and provisioning profile for each distribution type; do not assume the source entitlement proves a production archive is wrong. Expo documents that Xcode changes the APNs environment for release archives. [Expo notifications configuration](https://docs.expo.dev/versions/latest/sdk/notifications/)
+- `.github/workflows/desktop.yml` builds and uploads temporary CI artifacts. It does not configure production signing/notarization or publish stable download releases. Mobile `expo export` scripts produce JavaScript/assets, not signed `.ipa`, `.aab`, or `.apk` installers. [Expo CLI export](https://docs.expo.dev/more/expo-cli/)
+
+## Build and distribution setup
+
+| Platform | Build requirements | Public distribution requirements |
+| --- | --- | --- |
+| Windows | Bun dependencies, Rust MSVC toolchain, Microsoft C++ Build Tools and WebView2. Use a Windows runner for MSI; the repo also offers macOS-to-Windows NSIS cross-builds. | Initially distribute unsigned NSIS installers through GitHub Releases, with public downloads after the repository becomes public for v1. No Windows signing provider is required for this phase; users may see unknown-publisher or SmartScreen warnings. Signing and timestamping can be added later. |
+| macOS | Bun dependencies, Rust, and Xcode Command Line Tools or full Xcode on a Mac. Build Intel and Apple Silicon artifacts, or a universal app if both are supported. | Apple Developer Program, Developer ID Application certificate for direct downloads, notarization credentials and a notarized/stapled app or DMG. Mac App Store distribution has a separate signing/sandbox/review path. |
+| iOS | Full Xcode/CocoaPods on macOS, or an EAS cloud build. Preserve/review the existing native project when choosing a build workflow. | Apple Developer Program, registered explicit app ID matching the bundle ID, signing certificate/provisioning profile and an App Store Connect app. Use TestFlight for broad testing and the App Store for public distribution. |
+| Android | Android SDK and JDK with a local Gradle build, or EAS cloud build. | Dedicated release/upload keystore with backed-up credentials. Produce AAB for Google Play and APK for direct installs. Google Play requires a developer account and app listing. |
+
+Sources: [Tauri prerequisites](https://v2.tauri.app/start/prerequisites/), [Tauri Windows signing](https://v2.tauri.app/distribute/sign/windows/), [Tauri macOS signing/notarization](https://v2.tauri.app/distribute/sign/macos/), [Expo build setup](https://docs.expo.dev/build/setup/), [Expo production build formats](https://docs.expo.dev/deploy/build-project/), [Android app signing](https://developer.android.com/studio/publish/app-signing).
+
+The current desktop enables `macOSPrivateApi` and the `macos-private-api` Cargo feature. Review/remove private APIs before pursuing the Mac App Store. Direct notarized DMG distribution is the appropriate initial path for this configuration. [Tauri Mac App Store guidance](https://v2.tauri.app/distribute/app-store/)
+
+EAS is optional. To use it, configure an Expo account/project and `eas.json` build profiles from `apps/mobile`, with `eas build:configure`, then `eas build --platform all --profile production`. Existing native directories require intentional native configuration; adding app.json settings alone is not proof they reached those projects. Review native changes before regenerating these directories, especially with `prebuild --clean`. Local builds can use the native Xcode and Gradle release workflows instead. [Expo build setup](https://docs.expo.dev/build/setup/), [Expo local EAS requirements](https://docs.expo.dev/build-reference/local-builds/)
+
+## Notification credentials and wiring
+
+1. For iOS, register the bundle ID with Push Notifications enabled and provision the app with the matching APNs entitlement. Create an APNs `.p8` key and record its Key ID and Apple Team ID. Configure the relay with `APNS_KEY_ID`, `APNS_TEAM_ID`, `APNS_TOPIC=dev.spwnd.aulora`, `APNS_KEY_P8` or `APNS_KEY_PATH`, and `APNS_ENVIRONMENT`. Development tokens require sandbox; TestFlight/App Store tokens require production. App signing certificates, APNs keys and notarization API keys have different purposes. [Apple app IDs/capabilities](https://developer.apple.com/help/account/identifiers/register-an-app-id), [Expo direct APNs setup](https://docs.expo.dev/push-notifications/sending-notifications-custom/)
+2. For Android, register `dev.spwnd.aulora` in Firebase and obtain `google-services.json`. Configure `expo.android.googleServicesFile` and ensure the Google Services Gradle integration reaches the native project. This client configuration is separate from the private service-account JSON held by the relay. [Expo Firebase client configuration](https://docs.expo.dev/push-notifications/fcm-credentials/)
+3. Enable the Firebase Cloud Messaging API and give the sending service account permission to send to the target project. Set relay `FCM_PROJECT_ID` plus `FCM_SERVICE_ACCOUNT_JSON` or `FCM_SERVICE_ACCOUNT_PATH`. This relay already exchanges the service-account credentials for OAuth tokens and renews them. `FCM_ACCESS_TOKEN` is a short-lived testing option. No upload to Expo's push service is necessary for Aulora's direct transport. [Firebase HTTP v1 authorization](https://firebase.google.com/docs/cloud-messaging/send/v1-api), [Expo native-token transport](https://docs.expo.dev/push-notifications/sending-notifications-custom/)
+4. Run an always-on relay with `PUSH_RELAY_TOKEN` and allow outgoing APNs/FCM connections. Configure the Convex deployment with `PUSH_RELAY_URL`, the matching `PUSH_RELAY_TOKEN`, and a stable `AULORA_SERVER_ID`. Set the URL to the relay base URL reachable from the backend; the action appends `/v1/wake`. A same-network relay can use `http://push-relay:8790` without a public port. A shared relay for external self-hosters needs an authenticated HTTPS endpoint. The app publisher owns the APNs/FCM credentials; self-hosters using its official builds configure the relay endpoint/authentication. See the [relay configuration](../infra/push-relay/README.md).
+
+The current setup entrypoint does not copy those three push settings into the Convex deployment environment. The admin push-relay UI saves database settings, but dispatch currently reads environment settings instead. Setting Docker `.env` or enabling the admin toggle alone does not complete backend push configuration. With the existing self-hosted Convex URL/admin-key authentication configured, run from `packages/convex`:
+
+```sh
+bunx convex env set PUSH_RELAY_URL "$PUSH_RELAY_URL"
+bunx convex env set PUSH_RELAY_TOKEN "$PUSH_RELAY_TOKEN"
+bunx convex env set AULORA_SERVER_ID "$AULORA_SERVER_ID"
+```
+
+## Remaining product work and release checks
+
+- Make Android channel creation complete before requesting notification permissions or obtaining a token. The code currently starts `calls` channel creation without awaiting it and creates `default` after permission. Android 13 requires a channel for the permission prompt. [Expo Android notification permissions](https://docs.expo.dev/versions/latest/sdk/notifications/)
+- Add/verify desktop permission handling, mobile notification-tap routing including cold start, and push-token refresh handling. The current mobile sources contain no notification response listener or push-token-change listener. [Tauri notification permissions](https://v2.tauri.app/plugin/notification/), [Expo notification responses and token listeners](https://docs.expo.dev/versions/latest/sdk/notifications/)
+- Keep generic background alerts as the initial supported behavior. Showing fetched sender/message text before an iOS alert appears needs a Notification Service Extension and authenticated access to the server. `mutable-content` alone does not implement that extension. Ordinary visible APNs alerts do not require a background fetch task. [Apple notification service extension](https://developer.apple.com/documentation/usernotifications/modifying-content-in-newly-delivered-notifications)
+- Publish versioned desktop downloads and mobile store/test links. Initial Windows downloads are unsigned; macOS direct downloads still require signing and notarization. Check icons, app version/build numbers, permissions explanations, privacy/store metadata, backend HTTPS/WSS connectivity and reconnect behavior on an external network. Publish server discovery/connect URLs that phones and other computers can reach, with valid TLS; `localhost` and private Docker service names are unsuitable public addresses.
+- Validate actual installed release builds on Windows, macOS, a physical iPhone and Android phone. Aulora's registration code explicitly skips simulators. Cover fresh-install permission grant/denial, foreground, minimized/tray, background/locked phone, app launch from an alert, call alert sound, muted channels, logout/server switching and reinstall. Verify APNs sandbox and production independently. Desktop fully quit currently means no new local notification delivery.
+
+`bun run verify` passed from `apps/desktop` during this assessment. This verifies desktop configuration structure only. No live provider credentials, signed installers, store submissions or device delivery were exercised for this note.
+
+## Automatic setup for official apps
+
+The proposed default is a shared relay operated by the official app publisher. The publisher configures APNs/FCM credentials once; ordinary server deployments do not receive those credentials. This follows Aulora's existing direct-token transport described above. [Expo direct APNs/FCM transport](https://docs.expo.dev/push-notifications/sending-notifications-custom/)
+
+First-run setup can register an instance with the shared relay, receive an instance-specific credential, persist it across redeployments, and apply the relay settings to Convex automatically. The shared service needs enrollment, credential revocation and per-instance delivery limits. Its master credential must not be bundled into the public source or installers. The backend only needs outbound connectivity to the relay; it does not need to host a local relay container for official apps.
+
+This is a proposed design, not implemented behavior. The current relay has one configured bearer token and only a delivery endpoint, with no instance enrollment. The official relay address and publisher credentials still need to be provisioned. Preserve an explicit opt-out and custom-relay configuration for independent app builds.

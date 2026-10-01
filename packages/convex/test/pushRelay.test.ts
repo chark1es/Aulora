@@ -44,6 +44,7 @@ describe("sendWake", () => {
 
     const result = await sendWake(
       {
+        kind: "message",
         serverId: "srv-1",
         channelId: "chan-1",
         messageId: "msg-1",
@@ -58,6 +59,7 @@ describe("sendWake", () => {
     expect(calls[0]?.auth).toBe("Bearer secret");
     expect(calls[0]?.body).toEqual({
       v: 1,
+      kind: "message",
       serverId: "srv-1",
       channelId: "chan-1",
       messageId: "msg-1",
@@ -73,6 +75,7 @@ describe("sendWake", () => {
     }) as typeof fetch;
     const result = await sendWake(
       {
+        kind: "call",
         serverId: "srv-1",
         channelId: "c",
         messageId: "m",
@@ -145,6 +148,63 @@ describe("notifications.dispatchMobileForMessage", () => {
     expect(bodies[0]?.platform).toBe("ios");
     expect(bodies[0]?.token).toBe("apns-token");
     expect(bodies[0]?.messageId).toBe(messageId);
+    expect(bodies[0]?.channelId).toBe(channelId);
+  });
+});
+
+describe("notifications.dispatchMobileCallRinging", () => {
+  it("no-ops without relay configuration", async () => {
+    const t = newTest();
+    await seedWorkspace(t, { members: [{ userId: "user-1" }, { userId: "user-2" }] });
+    const channelId = await seedChannel(t, { kind: "dm", memberIds: ["user-1", "user-2"] });
+    const { callId } = await t
+      .withIdentity({ subject: "user-1" })
+      .mutation(api.calls.start, { channelId, kind: "voice", clientId: "device-a" });
+    const result = await t.action(internal.notifications.dispatchMobileCallRinging, { callId });
+    expect(result).toEqual({ sent: 0, skipped: "unconfigured" });
+  });
+
+  it("wakes each ringing native device through the relay", async () => {
+    process.env.PUSH_RELAY_URL = "https://relay.example.com";
+    process.env.PUSH_RELAY_TOKEN = "secret";
+    process.env.AULORA_SERVER_ID = "srv-1";
+
+    const t = newTest();
+    await seedWorkspace(t, { members: [{ userId: "user-1" }, { userId: "user-2" }] });
+    const channelId = await seedChannel(t, {
+      kind: "dm",
+      memberIds: ["user-1", "user-2"],
+    });
+    await t.run(async (ctx) => {
+      await ctx.db.insert("devices", {
+        userId: "user-2",
+        platform: "ios",
+        pushToken: "apns-token",
+        lastSeen: Date.now(),
+      });
+    });
+
+    const bodies: Record<string, unknown>[] = [];
+    globalThis.fetch = (async (_input: RequestInfo | URL, init?: RequestInit) => {
+      bodies.push(JSON.parse(String(init?.body)));
+      return new Response("", { status: 200 });
+    }) as typeof fetch;
+
+    const { callId } = await t
+      .withIdentity({ subject: "user-1" })
+      .mutation(api.calls.start, { channelId, kind: "voice", clientId: "device-a" });
+    // `calls.start` schedules the mobile ring; drain that background dispatch
+    // before measuring, then invoke the action explicitly for a deterministic
+    // count (mirrors the dispatchMobileForMessage test).
+    await t.finishAllScheduledFunctions(() => {});
+    bodies.length = 0;
+    const result = await t.action(internal.notifications.dispatchMobileCallRinging, { callId });
+
+    expect(result).toEqual({ sent: 1 });
+    expect(bodies).toHaveLength(1);
+    expect(bodies[0]?.platform).toBe("ios");
+    expect(bodies[0]?.token).toBe("apns-token");
+    expect(bodies[0]?.messageId).toBe(callId);
     expect(bodies[0]?.channelId).toBe(channelId);
   });
 });

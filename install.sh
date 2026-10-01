@@ -15,6 +15,7 @@
 #   --port <port>        host web port, default 8080 (AULORA_WEB_PORT)
 #   --site-url <url>     public origin             (AULORA_SITE_URL)
 #   --backups            also start the nightly backup runner
+#   --auto-update        allow infra/docker/update.sh to apply releases
 #   --no-start           write .env and stop before docker compose
 #   --dry-run            print the plan; change nothing
 #   -h, --help           show this help
@@ -30,7 +31,7 @@ log() { printf '[install] %s\n' "$*"; }
 die() { printf '[install] ERROR: %s\n' "$*" >&2; exit 1; }
 
 usage() {
-  sed -n '2,25p' "${BASH_SOURCE[0]}" | sed 's/^# \{0,1\}//'
+  sed -n '2,21p' "${BASH_SOURCE[0]}" | sed 's/^# \{0,1\}//'
 }
 
 WORKSPACE_NAME="${AULORA_WORKSPACE_NAME:-}"
@@ -41,6 +42,7 @@ WEB_PORT="${AULORA_WEB_PORT:-8080}"
 SITE_URL="${AULORA_SITE_URL:-}"
 OWNER_NAME="${AULORA_OWNER_NAME:-}"
 WITH_BACKUPS=0
+AUTO_UPDATE=0
 NO_START=0
 DRY_RUN=0
 
@@ -53,6 +55,7 @@ while [ "$#" -gt 0 ]; do
     --port) WEB_PORT="${2:-}"; shift 2 ;;
     --site-url) SITE_URL="${2:-}"; shift 2 ;;
     --backups) WITH_BACKUPS=1; shift ;;
+    --auto-update) AUTO_UPDATE=1; shift ;;
     --no-start) NO_START=1; shift ;;
     --dry-run) DRY_RUN=1; shift ;;
     -h|--help) usage; exit 0 ;;
@@ -78,17 +81,36 @@ env_set() {
   mv "${file}.tmp" "$file"
 }
 
+env_get() {
+  local value
+  value="$(awk -v key="$1" '
+    $0 ~ "^[[:space:]]*(export[[:space:]]+)?" key "=" {
+      sub(/^[^=]*=/, ""); value = $0
+    }
+    END { gsub(/^[[:space:]]+|[[:space:]]+$/, "", value); print value }
+  ' "$2")"
+  case "$value" in
+    \"*\"|\'*\') value="${value:1:${#value}-2}" ;;
+  esac
+  printf '%s' "$value"
+}
+
 # --- validate inputs (before touching anything) -----------------------------
 
 command -v docker >/dev/null 2>&1 || die "Docker is not installed or not on PATH"
 if ! docker compose version >/dev/null 2>&1; then
   die "Docker Compose v2 is required (docker compose)"
 fi
+docker compose wait --help >/dev/null 2>&1 || die "update Docker Compose: the installer requires the wait command"
 
 [ -f "$ENV_EXAMPLE" ] || die "missing $ENV_EXAMPLE"
 
 if [ -f "$ENV_FILE" ]; then
   log "using the existing $ENV_FILE (idempotent re-run)"
+  SITE_URL="$(env_get SITE_URL "$ENV_FILE")"
+  WEB_PORT="$(env_get WEB_PORT "$ENV_FILE")"
+  WEB_PORT="${WEB_PORT:-8080}"
+  OWNER_EMAIL="$(env_get OWNER_EMAIL "$ENV_FILE")"
 else
   [ -n "$WORKSPACE_NAME" ] || WORKSPACE_NAME="Aulora"
   if [ -z "$INSTANCE_NAME" ]; then
@@ -136,9 +158,12 @@ if [ "$DRY_RUN" = "1" ]; then
     log "DRY RUN: would write $ENV_FILE (workspace=${WORKSPACE_NAME}, instance=${INSTANCE_NAME}, site=${SITE_URL}, port=${WEB_PORT})"
   fi
   log "DRY RUN: docker compose up -d --build"
-  log "DRY RUN: docker compose run --rm setup"
+  log "DRY RUN: docker compose wait setup"
   if [ "$WITH_BACKUPS" = "1" ]; then
     log "DRY RUN: docker compose --profile backups up -d --build"
+  fi
+  if [ "$AUTO_UPDATE" = "1" ]; then
+    log "DRY RUN: would set AULORA_AUTO_UPDATE=true"
   fi
   log "DRY RUN: done; no changes made"
   exit 0
@@ -149,6 +174,15 @@ if [ ! -f "$ENV_FILE" ]; then
   log "wrote $ENV_FILE"
 fi
 
+if [ "$AUTO_UPDATE" = "1" ]; then
+  if grep -qE '^[[:space:]]*(export[[:space:]]+)?AULORA_AUTO_UPDATE=' "$ENV_FILE"; then
+    env_set AULORA_AUTO_UPDATE true "$ENV_FILE"
+  else
+    printf 'AULORA_AUTO_UPDATE=true\n' >> "$ENV_FILE"
+  fi
+  log "auto-update enabled in $ENV_FILE"
+fi
+
 if [ "$NO_START" = "1" ]; then
   log "config ready; skipping docker compose (--no-start)"
   exit 0
@@ -157,13 +191,18 @@ fi
 log "building and starting the stack (this can take a few minutes)…"
 compose up -d --build
 
-log "running first-run setup (idempotent)…"
-compose run --rm setup
+log "waiting for first-run setup (idempotent)…"
+if ! compose wait setup; then
+  compose logs --tail=100 setup
+  die "setup failed; inspect the setup logs above"
+fi
 
 if [ "$WITH_BACKUPS" = "1" ]; then
   log "starting the nightly backup runner…"
   compose --profile backups up -d --build
 fi
+
+log "enable update controls in settings with: infra/docker/update.sh --watch"
 
 log "ready. Open ${SITE_URL} and sign in as ${OWNER_EMAIL}."
 log "Logs: (cd infra/docker && docker compose logs -f setup)"

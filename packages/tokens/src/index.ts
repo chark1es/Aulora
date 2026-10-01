@@ -2,6 +2,7 @@ export {
   COLOR_TOKENS,
   type ColorToken,
   darkPalette,
+  IDLE_COLOR,
   lightPalette,
   type Palette,
   paletteFor,

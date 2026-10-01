@@ -8,11 +8,15 @@ export interface SwitchProps {
   readonly description?: string;
   readonly disabled?: boolean;
   readonly id?: string;
+  /** Renders only the toggle, for rows that already render their own label. */
+  readonly bare?: boolean;
 }
 
 /**
  * A macOS-style toggle: a labelled row with a small sliding switch. The whole
- * row is the hit target and the control keeps `role="switch"` semantics.
+ * row is the hit target and the control keeps `role="switch"` semantics. Set
+ * `bare` when the surrounding row already shows the label, so it is not
+ * rendered twice.
  */
 export function Switch({
   checked,
@@ -21,9 +25,39 @@ export function Switch({
   description,
   disabled = false,
   id,
+  bare = false,
 }: SwitchProps) {
   const generatedId = useId();
   const switchId = id ?? generatedId;
+  const control = (
+    <button
+      id={switchId}
+      type="button"
+      role="switch"
+      aria-checked={checked}
+      aria-label={label}
+      disabled={disabled}
+      onClick={() => onChange(!checked)}
+      className={cn(
+        "relative inline-flex h-[22px] w-[38px] shrink-0 items-center rounded-full transition-colors duration-200",
+        "focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent focus-visible:ring-offset-2 focus-visible:ring-offset-surface-2",
+        checked ? "bg-accent" : "bg-surface-3 ring-1 ring-inset ring-border",
+      )}
+    >
+      <span
+        aria-hidden="true"
+        className={cn(
+          "inline-block h-[18px] w-[18px] transform rounded-full bg-white shadow-sm transition-transform duration-200",
+          checked ? "translate-x-[18px]" : "translate-x-0.5",
+        )}
+      />
+    </button>
+  );
+
+  if (bare) {
+    return <span className={cn("inline-flex", disabled && "opacity-50")}>{control}</span>;
+  }
+
   return (
     <div className={cn("flex items-center justify-between gap-4 py-1.5", disabled && "opacity-50")}>
       <label htmlFor={switchId} className="min-w-0 flex-1 cursor-pointer">
@@ -34,28 +68,7 @@ export function Switch({
           </span>
         )}
       </label>
-      <button
-        id={switchId}
-        type="button"
-        role="switch"
-        aria-checked={checked}
-        aria-label={label}
-        disabled={disabled}
-        onClick={() => onChange(!checked)}
-        className={cn(
-          "relative inline-flex h-[22px] w-[38px] shrink-0 items-center rounded-full transition-colors duration-200",
-          "focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent focus-visible:ring-offset-2 focus-visible:ring-offset-surface-2",
-          checked ? "bg-accent" : "bg-surface-3 ring-1 ring-inset ring-border",
-        )}
-      >
-        <span
-          aria-hidden="true"
-          className={cn(
-            "inline-block h-[18px] w-[18px] transform rounded-full bg-white shadow-sm transition-transform duration-200",
-            checked ? "translate-x-[18px]" : "translate-x-0.5",
-          )}
-        />
-      </button>
+      {control}
     </div>
   );
 }

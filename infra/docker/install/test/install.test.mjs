@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import { spawnSync } from "node:child_process";
-import { mkdtempSync, rmSync } from "node:fs";
+import { mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { test } from "node:test";
@@ -70,7 +70,7 @@ test("--dry-run plans the stack without changing anything", { skip }, () => {
     );
     assert.equal(result.status, 0, result.stderr);
     assert.match(result.stdout, /docker compose up -d --build/);
-    assert.match(result.stdout, /docker compose run --rm setup/);
+    assert.match(result.stdout, /docker compose wait setup/);
     assert.match(result.stdout, /no changes made/);
   } finally {
     rmSync(dir, { recursive: true, force: true });
@@ -109,12 +109,111 @@ test("a short owner password is rejected", { skip }, () => {
   }
 });
 
+test("an existing configuration prints its actual URL and owner without evaluating it", {
+  skip,
+}, () => {
+  const dir = makeEnvDir();
+  try {
+    const bin = join(dir, "bin");
+    mkdirSync(bin);
+    writeFileSync(join(bin, "docker"), "#!/usr/bin/env bash\nexit 0\n", { mode: 0o755 });
+    const file = join(dir, ".env");
+    const content =
+      'SITE_URL="http://localhost:18080"\nWEB_PORT=18080\nOWNER_EMAIL=owner@example.test\nUNUSED=$(touch should-not-exist)\n';
+    writeFileSync(file, content);
+    const result = spawnSync("bash", [INSTALL], {
+      cwd: dir,
+      encoding: "utf8",
+      input: "",
+      env: { ...process.env, AULORA_ENV_FILE: file, PATH: `${bin}:${process.env.PATH}` },
+    });
+    assert.equal(result.status, 0, result.stderr);
+    assert.match(result.stdout, /Open http:\/\/localhost:18080 and sign in as owner@example.test/);
+    assert.equal(readFileSync(file, "utf8"), content);
+    assert.throws(() => readFileSync(join(dir, "should-not-exist")));
+  } finally {
+    rmSync(dir, { recursive: true, force: true });
+  }
+});
+
+test("--dry-run with --auto-update plans the host updater flag", { skip }, () => {
+  const dir = makeEnvDir();
+  try {
+    const result = run(
+      [
+        "--dry-run",
+        "--auto-update",
+        "--email",
+        "owner@acme.test",
+        "--password",
+        "correct-horse-battery-staple",
+      ],
+      dir,
+    );
+    assert.equal(result.status, 0, result.stderr);
+    assert.match(result.stdout, /AULORA_AUTO_UPDATE=true/);
+    assert.match(result.stdout, /no changes made/);
+  } finally {
+    rmSync(dir, { recursive: true, force: true });
+  }
+});
+
 test("an unknown option is rejected", { skip }, () => {
   const dir = makeEnvDir();
   try {
     const result = run(["--nope"], dir);
     assert.notEqual(result.status, 0);
     assert.match(result.stderr, /unknown option/);
+  } finally {
+    rmSync(dir, { recursive: true, force: true });
+  }
+});
+
+test("installer waits for Compose setup instead of launching a conflicting second setup", {
+  skip,
+}, () => {
+  const dir = makeEnvDir();
+  try {
+    const bin = join(dir, "bin");
+    mkdirSync(bin);
+    writeFileSync(
+      join(dir, ".env"),
+      "SITE_URL=http://localhost:18080\nOWNER_EMAIL=owner@example.test\n",
+    );
+    writeFileSync(
+      join(bin, "docker"),
+      `#!/usr/bin/env bash
+printf '%s\\n' "$*" >> "$INSTALL_TEST_LOG"
+for arg in "$@"; do
+  case "$arg" in
+    up) touch "$INSTALL_SETUP_ACTIVE" ;;
+    run) if [ -f "$INSTALL_SETUP_ACTIVE" ]; then
+      echo 'Environment variables have changed during push' >&2
+      exit 1
+    fi ;;
+    wait) rm -f "$INSTALL_SETUP_ACTIVE" ;;
+  esac
+done
+exit 0
+`,
+      { mode: 0o755 },
+    );
+    const log = join(dir, "commands");
+    const result = spawnSync("bash", [INSTALL], {
+      encoding: "utf8",
+      input: "",
+      env: {
+        ...process.env,
+        AULORA_ENV_FILE: join(dir, ".env"),
+        PATH: `${bin}:${process.env.PATH}`,
+        INSTALL_TEST_LOG: log,
+        INSTALL_SETUP_ACTIVE: join(dir, "setup-active"),
+      },
+    });
+    assert.equal(result.status, 0, result.stderr);
+    const commands = readFileSync(log, "utf8");
+    assert.match(commands, / wait setup/);
+    assert.ok(!commands.includes("run --rm setup"));
   } finally {
     rmSync(dir, { recursive: true, force: true });
   }

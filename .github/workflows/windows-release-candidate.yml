@@ -1,0 +1,76 @@
+name: Windows release candidate
+
+on:
+  workflow_dispatch:
+    inputs:
+      version:
+        description: Stable release version, without the v prefix
+        required: true
+        default: "1.0.0"
+        type: string
+
+permissions:
+  contents: read
+
+jobs:
+  build:
+    runs-on: windows-latest
+    env:
+      RELEASE_VERSION: ${{ inputs.version }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: oven-sh/setup-bun@v2
+        with:
+          bun-version: 1.4.0
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22.18.0
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: x86_64-pc-windows-msvc
+      - uses: swatinem/rust-cache@v2
+        with:
+          workspaces: "apps/desktop/src-tauri -> target"
+      - run: bun install --frozen-lockfile
+      - name: Check configuration and release version
+        working-directory: apps/desktop
+        run: |
+          bun run verify
+          if ($LASTEXITCODE -ne 0) { throw 'Desktop configuration check failed' }
+          bun run test:release-version
+          if ($LASTEXITCODE -ne 0) { throw 'Release version tests failed' }
+      - name: Build unsigned x64 NSIS installer
+        working-directory: apps/desktop
+        shell: pwsh
+        run: |
+          $config = Join-Path $env:RUNNER_TEMP 'aulora-release-version.json'
+          bun run release-version --version $env:RELEASE_VERSION --output $config
+          if ($LASTEXITCODE -ne 0) { throw 'Invalid release version' }
+          bun run icons
+          if ($LASTEXITCODE -ne 0) { throw 'Icon generation failed' }
+          bun run tauri:build --target x86_64-pc-windows-msvc --config $config
+          if ($LASTEXITCODE -ne 0) { throw 'Windows build failed' }
+      - name: Generate checksum and test installed metadata
+        working-directory: apps/desktop
+        shell: pwsh
+        run: |
+          $installer = "src-tauri/target/x86_64-pc-windows-msvc/release/bundle/nsis/Aulora_$($env:RELEASE_VERSION)_x64-setup.exe"
+          New-Item -ItemType Directory -Force dist/windows-release | Out-Null
+          Copy-Item $installer dist/windows-release/
+          $checksum = (Get-FileHash $installer -Algorithm SHA256).Hash
+          "$checksum  $(Split-Path $installer -Leaf)" | Set-Content -Path dist/windows-release/SHA256SUMS -Encoding utf8
+          $process = Start-Process -FilePath (Resolve-Path $installer) -ArgumentList '/S' -Wait -PassThru
+          if ($process.ExitCode -ne 0) { throw "Silent install failed: $($process.ExitCode)" }
+          $entry = Get-ItemProperty 'HKCU:\Software\Microsoft\Windows\CurrentVersion\Uninstall\Aulora'
+          if ($entry.DisplayName -ne 'Aulora' -or $entry.Publisher -ne 'SPWND' -or $entry.DisplayVersion -ne $env:RELEASE_VERSION) {
+            throw 'Installed metadata does not match the release version'
+          }
+          $uninstaller = Join-Path $env:LOCALAPPDATA 'Aulora/uninstall.exe'
+          $process = Start-Process -FilePath $uninstaller -ArgumentList '/S' -Wait -PassThru
+          if ($process.ExitCode -ne 0) { throw "Silent uninstall failed: $($process.ExitCode)" }
+      - uses: actions/upload-artifact@v4
+        with:
+          name: aulora-windows-${{ inputs.version }}
+          path: apps/desktop/dist/windows-release/
+          if-no-files-found: error
+          retention-days: 30

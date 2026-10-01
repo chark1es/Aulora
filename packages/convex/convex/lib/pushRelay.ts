@@ -11,7 +11,7 @@
  * credentials. Nothing here logs the token or the shared secret.
  */
 
-export type MobilePlatform = "ios" | "android" | "unifiedpush";
+export type MobilePlatform = "ios" | "android" | "unifiedpush" | "mobile";
 
 export interface PushRelayConfig {
   /** Base URL of the relay, e.g. `https://push.aulora.app`. */
@@ -29,6 +29,7 @@ export interface MobilePushTarget {
 }
 
 export interface WakePayload {
+  readonly kind: "message" | "call";
   readonly serverId: string;
   readonly channelId: string;
   readonly messageId: string;
@@ -73,6 +74,7 @@ export async function sendWake(
   const fetchImpl = deps.fetch ?? fetch;
   const body = {
     v: 1,
+    kind: payload.kind,
     serverId: payload.serverId,
     channelId: payload.channelId,
     messageId: payload.messageId,

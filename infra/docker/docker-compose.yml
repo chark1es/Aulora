@@ -231,6 +231,17 @@ services:
         condition: service_healthy
     logging: *logging
 
+  # Private SMTP bridge. Only Convex actions can call it; no host port is exposed.
+  smtp-gateway:
+    build:
+      context: ../..
+      dockerfile: infra/docker/smtp-gateway/Dockerfile
+    image: aulora-smtp-gateway:local
+    restart: unless-stopped
+    environment:
+      SMTP_GATEWAY_TOKEN: ${INSTANCE_SECRET:-}
+    logging: *logging
+
   # One-shot first-run tool. Idempotent: safe to re-run any time.
   setup:
     build:
