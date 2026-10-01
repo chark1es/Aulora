@@ -1,7 +1,24 @@
 import type { AttachmentDescriptor, ChannelSummary, MessagePayload } from "@aulora/core";
-import { Button, Heading, Input, Spinner, Text } from "@aulora/ui-native";
+import { Permission } from "@aulora/core";
+import {
+  Button,
+  Heading,
+  Icon,
+  IconButton,
+  Input,
+  Spinner,
+  Text,
+  usePalette,
+} from "@aulora/ui-native";
 import { useEffect, useMemo, useState } from "react";
-import { Alert, KeyboardAvoidingView, Modal, ScrollView, View } from "react-native";
+import {
+  Alert,
+  KeyboardAvoidingView,
+  Modal,
+  ScrollView,
+  useWindowDimensions,
+  View,
+} from "react-native";
 import { type PickedFile, uploadPickedFiles } from "../lib/attachments";
 import {
   createReviewDemo,
@@ -22,6 +39,8 @@ const noPending = new Set<string>();
 
 /** The native chat controls over a disposable local workspace, without auth or push. */
 export function ReviewDemoScreen({ onExit }: { readonly onExit: () => void }) {
+  const { fontScale } = useWindowDimensions();
+  const palette = usePalette();
   const [demo, setDemo] = useState<ReviewDemo | undefined>();
   const [channels, setChannels] = useState<readonly ChannelSummary[]>([]);
   const [channelId, setChannelId] = useState<string | undefined>();
@@ -101,17 +120,25 @@ export function ReviewDemoScreen({ onExit }: { readonly onExit: () => void }) {
   return (
     <KeyboardAvoidingView className="flex-1 bg-bg" behavior="padding">
       <View className="flex-row items-center justify-between border-b border-border px-4 py-2">
-        <Heading level={3}>Acme Studio</Heading>
-        <Button style={{ minHeight: 44 }} variant="ghost" onPress={onExit}>
-          Exit demo
-        </Button>
+        <Heading level={3} className="min-w-0 flex-1" numberOfLines={1} maxFontSizeMultiplier={1.5}>
+          Acme Studio
+        </Heading>
+        <IconButton label="Exit demo" onPress={onExit}>
+          <Icon name="x" color={palette.text} />
+        </IconButton>
       </View>
-      <View className="gap-1 bg-surface-2 px-4 py-3">
-        <Text size="sm">Offline App Review demo</Text>
-        <Text size="sm" tone="muted">
-          No server connection. Changes reset when you exit.
-        </Text>
-      </View>
+      {fontScale <= 1.5 && (
+        <View className="gap-1 bg-surface-2 px-4 py-3">
+          <Text size="sm" maxFontSizeMultiplier={1.5}>
+            Offline App Review demo
+          </Text>
+          {fontScale <= 1.5 && (
+            <Text size="sm" tone="muted">
+              No server connection. Changes reset when you exit.
+            </Text>
+          )}
+        </View>
+      )}
       {demo === undefined ? (
         <View className="flex-1 items-center justify-center px-4">
           {error === null ? (
@@ -125,20 +152,29 @@ export function ReviewDemoScreen({ onExit }: { readonly onExit: () => void }) {
       ) : (
         <>
           <View className="flex-row flex-wrap items-center justify-between border-b border-border px-2 py-1">
-            <Button style={{ minHeight: 44 }} variant="ghost" onPress={() => setSheet("channels")}>
-              {`${channel?.kind === "text" || channel?.kind === "announcement" ? "# " : ""}${channel === undefined ? "Channels" : reviewChannelTitle(channel)}`}
-            </Button>
-            <View className="flex-row">
-              <Button
-                style={{ minHeight: 44 }}
-                variant="ghost"
-                onPress={() => setSearchOpen((current) => !current)}
+            {fontScale > 1.5 ? (
+              <IconButton
+                label={`Conversations, ${channel?.name ?? "Channels"}`}
+                onPress={() => setSheet("channels")}
               >
-                Search
+                <Icon name="menu" color={palette.text} />
+              </IconButton>
+            ) : (
+              <Button
+                style={{ minHeight: 48 }}
+                variant="ghost"
+                onPress={() => setSheet("channels")}
+              >
+                {`${channel?.kind === "text" || channel?.kind === "announcement" ? "# " : ""}${channel === undefined ? "Channels" : reviewChannelTitle(channel)}`}
               </Button>
-              <Button style={{ minHeight: 44 }} variant="ghost" onPress={() => setSheet("members")}>
-                Members
-              </Button>
+            )}
+            <View className="flex-row flex-wrap">
+              <IconButton label="Search" onPress={() => setSearchOpen((current) => !current)}>
+                <Icon name="search" color={palette.text} />
+              </IconButton>
+              <IconButton label="Members" onPress={() => setSheet("members")}>
+                <Icon name="users" color={palette.text} />
+              </IconButton>
             </View>
           </View>
           {searchOpen && (
@@ -154,7 +190,7 @@ export function ReviewDemoScreen({ onExit }: { readonly onExit: () => void }) {
                 <ScrollView style={{ maxHeight: 180 }} keyboardShouldPersistTaps="handled">
                   {demo.search(query).map((hit) => (
                     <Button
-                      style={{ minHeight: 44 }}
+                      style={{ minHeight: 48 }}
                       key={hit.messageId}
                       variant="ghost"
                       onPress={() => openChannel(hit.channelId)}
@@ -170,6 +206,12 @@ export function ReviewDemoScreen({ onExit }: { readonly onExit: () => void }) {
           {channelId !== undefined && (
             <>
               <MessageList
+                permissions={
+                  Permission.PinMessages |
+                  Permission.AddReactions |
+                  Permission.SendMessages |
+                  Permission.SendInThreads
+                }
                 runtime={demo.runtime}
                 channelId={channelId}
                 messages={state.messages}
@@ -189,12 +231,18 @@ export function ReviewDemoScreen({ onExit }: { readonly onExit: () => void }) {
                 onJumpToFirstUnread={() => undefined}
               />
               <View className="flex-row items-center justify-between border-t border-border px-4 py-1">
-                <Text size="xs" tone="muted">
-                  Calls and push need your own server.
-                </Text>
-                <Button
-                  style={{ minHeight: 44 }}
-                  variant="ghost"
+                {fontScale <= 1.5 && (
+                  <Text
+                    size="xs"
+                    tone="muted"
+                    className="min-w-0 flex-1"
+                    maxFontSizeMultiplier={1.5}
+                  >
+                    Calls and push need your own server.
+                  </Text>
+                )}
+                <IconButton
+                  label="Calls"
                   onPress={() =>
                     Alert.alert(
                       "Offline demo",
@@ -202,8 +250,8 @@ export function ReviewDemoScreen({ onExit }: { readonly onExit: () => void }) {
                     )
                   }
                 >
-                  Calls
-                </Button>
+                  <Icon name="phone" color={palette.text} />
+                </IconButton>
               </View>
               <Composer
                 channelId={channelId}
@@ -229,7 +277,7 @@ export function ReviewDemoScreen({ onExit }: { readonly onExit: () => void }) {
           <View className="max-h-[80%] rounded-t-card bg-surface-1 pb-8">
             <View className="flex-row items-center justify-between border-b border-border px-4 py-2">
               <Heading level={3}>{sheet === "members" ? "Demo members" : "Conversations"}</Heading>
-              <Button style={{ minHeight: 44 }} variant="ghost" onPress={() => setSheet(null)}>
+              <Button style={{ minHeight: 48 }} variant="ghost" onPress={() => setSheet(null)}>
                 Done
               </Button>
             </View>
@@ -251,7 +299,7 @@ export function ReviewDemoScreen({ onExit }: { readonly onExit: () => void }) {
                   ))
                 : channels.map((row) => (
                     <Button
-                      style={{ minHeight: 44 }}
+                      style={{ minHeight: 48 }}
                       key={row.id}
                       variant={row.id === channelId ? "secondary" : "ghost"}
                       onPress={() => openChannel(row.id)}
@@ -265,6 +313,12 @@ export function ReviewDemoScreen({ onExit }: { readonly onExit: () => void }) {
       </Modal>
       {demo !== undefined && channelId !== undefined && threadRoot !== null && (
         <ThreadModal
+          permissions={
+            Permission.PinMessages |
+            Permission.AddReactions |
+            Permission.SendMessages |
+            Permission.SendInThreads
+          }
           runtime={demo.runtime}
           channelId={channelId}
           root={threadRoot}

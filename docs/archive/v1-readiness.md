@@ -1,3 +1,5 @@
+> Archived work record. This file can describe removed code or unresolved work that has since changed. Use [the current documentation](../README.md) and [project status](../project-status.md).
+
 # V1 preparation status
 
 Checked 2026-09-30 against the working tree. Existing application and release-workflow changes were preserved. This report records local verification; it is not a publication or signed-release certification.

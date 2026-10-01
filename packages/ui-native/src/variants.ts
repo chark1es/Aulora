@@ -23,18 +23,18 @@ const BUTTON_LABEL_CLASSES: Record<ButtonVariant, string> = {
   primary: "text-on-accent",
   secondary: "text-text",
   ghost: "text-text-muted",
-  danger: "text-on-accent",
+  danger: "text-bg",
 };
 
 const BUTTON_SIZES: Record<ButtonSize, string> = {
-  sm: "min-h-8 px-3",
-  md: "min-h-10 px-4",
+  sm: "min-h-12 px-3 py-2",
+  md: "min-h-12 px-4 py-2",
   lg: "min-h-12 px-6",
 };
 
 const ICON_SIZES: Record<ButtonSize, string> = {
-  sm: "h-8 w-8",
-  md: "h-10 w-10",
+  sm: "h-12 w-12",
+  md: "h-12 w-12",
   lg: "h-12 w-12",
 };
 
@@ -146,13 +146,10 @@ export function textClass(options: {
 }
 
 /**
- * Field sizing. `md` renders exactly as before (40px box, 14px text). `lg` is
- * the Apple-appropriate 17px text on a >=44pt target, for entry screens where
- * the default body size reads too small. Uses `minHeight` (not a fixed `h-*`)
- * so text still fits at large Dynamic Type.
+ * Minimum heights keep inputs usable with touch and system font scaling.
  */
 const INPUT_SIZES: Record<InputSize, string> = {
-  md: "h-10 px-3 text-base",
+  md: "min-h-12 px-3 py-2 text-[17px]",
   lg: "min-h-[52px] px-4 py-2.5 text-[17px] leading-6",
 };
 

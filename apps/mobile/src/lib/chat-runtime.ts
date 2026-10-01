@@ -36,6 +36,20 @@ export async function createMobileChatRuntime(
     port,
     subscriptions,
     client: options.client,
+    watchHistory(channelId, cursor, onChange) {
+      const watch = options.client.watchQuery(api.messages.list, {
+        channelId: channelId as never,
+        paginationOpts: { numItems: 100, cursor },
+      });
+      const emit = () => {
+        const value = watch.localQueryResult();
+        if (value !== undefined)
+          onChange({ messages: value.page, cursor: value.continueCursor, isDone: value.isDone });
+      };
+      const off = watch.onUpdate(emit);
+      emit();
+      return off;
+    },
     watchThread: (threadRootId, onChange) =>
       watchConvexThread(options.client, threadRootId, onChange),
   };

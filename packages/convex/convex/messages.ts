@@ -243,6 +243,44 @@ export const list = query({
   },
 });
 
+/** History around a search result or pin, including results outside the live tail. */
+export const context = query({
+  args: { messageId: v.id("messages") },
+  handler: async (ctx, args) => {
+    const message = await ctx.db.get(args.messageId);
+    if (message === null) return null;
+    await requireChannelAccess(ctx, message.channelId, Permission.ReadHistory);
+    if (message.deletedAt !== undefined) return null;
+    const root =
+      message.threadRootId === undefined ? message : await ctx.db.get(message.threadRootId);
+    if (root === null || root.deletedAt !== undefined) return null;
+    const [before, after] = await Promise.all([
+      ctx.db
+        .query("messages")
+        .withIndex("by_channel_thread", (q) =>
+          q
+            .eq("channelId", root.channelId)
+            .eq("threadRootId", undefined)
+            .lt("_creationTime", root._creationTime),
+        )
+        .order("desc")
+        .take(20),
+      ctx.db
+        .query("messages")
+        .withIndex("by_channel_thread", (q) =>
+          q
+            .eq("channelId", root.channelId)
+            .eq("threadRootId", undefined)
+            .gt("_creationTime", root._creationTime),
+        )
+        .order("asc")
+        .take(20),
+    ]);
+    const history = await toMessages([...before.reverse(), root, ...after]);
+    return { message: await toMessage(message), root: await toMessage(root), history };
+  },
+});
+
 /** Paginated thread replies for one root message, oldest first. */
 export const listThread = query({
   args: { threadRootId: v.id("messages"), paginationOpts: paginationOptsValidator },

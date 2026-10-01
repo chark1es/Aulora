@@ -1,7 +1,7 @@
 import type { RoleMentionTarget } from "@aulora/core";
-import { Button, Icon, Text, usePalette } from "@aulora/ui-native";
+import { Button, Icon, IconButton, Text, usePalette } from "@aulora/ui-native";
 import { useEffect, useMemo, useRef, useState } from "react";
-import { Modal, Pressable, TextInput, View } from "react-native";
+import { Modal, Pressable, TextInput, useWindowDimensions, View } from "react-native";
 import {
   type PickedFile,
   pickDocuments,
@@ -75,6 +75,7 @@ export function Composer({
   onSend,
 }: ComposerProps) {
   const palette = usePalette();
+  const { fontScale } = useWindowDimensions();
   const [value, setValue] = useState("");
   const [files, setFiles] = useState<readonly { key: string; file: PickedFile }[]>([]);
   const [menuOpen, setMenuOpen] = useState(false);
@@ -229,7 +230,8 @@ export function Composer({
         <Pressable
           accessibilityLabel="Attach"
           disabled={disabled === true || busy}
-          className="rounded-pill px-2 py-1"
+          accessibilityRole="button"
+          className="h-12 w-12 items-center justify-center rounded-pill"
           onPress={() => setMenuOpen(true)}
         >
           <Icon
@@ -239,6 +241,7 @@ export function Composer({
           />
         </Pressable>
         <TextInput
+          maxFontSizeMultiplier={2}
           ref={inputRef}
           accessibilityLabel={placeholder}
           placeholder={placeholder}
@@ -252,15 +255,25 @@ export function Composer({
               onTyping(channelId);
             }
           }}
-          className="max-h-32 min-h-9 flex-1 px-1 py-1.5 text-base text-text"
+          className="max-h-32 min-h-12 flex-1 px-1 py-2 text-[17px] text-text"
         />
-        <Button
-          size="sm"
-          disabled={disabled === true || (value.trim().length === 0 && files.length === 0)}
-          onPress={send}
-        >
-          Send
-        </Button>
+        {fontScale > 1.5 ? (
+          <IconButton
+            label="Send"
+            disabled={disabled === true || (value.trim().length === 0 && files.length === 0)}
+            onPress={send}
+          >
+            <Icon name="send" color={palette.text} />
+          </IconButton>
+        ) : (
+          <Button
+            size="sm"
+            disabled={disabled === true || (value.trim().length === 0 && files.length === 0)}
+            onPress={send}
+          >
+            Send
+          </Button>
+        )}
       </View>
 
       <Modal

@@ -3,9 +3,7 @@
  *
  * `createMockPort()` is an in-memory `ChatPort` plus subscription plumbing that
  * stores plaintext rows and emits watch callbacks, so session behaviour can be
- * tested without a backend. `createMemoryMlsEngine()` is a no-op stub kept only
- * for the dev preview, which still wires an engine factory at construction time
- * even though MLS is gone and the server now seals content.
+ * tested without a backend.
  */
 
 import { type Overwrite, Permission } from "../permissions.js";
@@ -574,18 +572,4 @@ export function createMockPort(options: { readonly now?: () => number } = {}): M
   };
 
   return port;
-}
-
-/**
- * No-op stand-in for the removed MLS engine factory.
- *
- * MLS is gone: the session no longer takes an engine and the server seals
- * content. This exists only so the dev preview, which still calls
- * `ChatSession.create({ createEngine: () => … })`, keeps compiling until the
- * apps drop their engine wiring.
- *
- * @deprecated The session is encryption-agnostic; the server seals content.
- */
-export function createMemoryMlsEngine(_secret = "memory"): Record<string, never> {
-  return {};
 }

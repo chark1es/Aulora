@@ -6,7 +6,7 @@ import type {
   TypingRow,
 } from "@aulora/core";
 import { summarizeUnread, type UnreadSummary } from "@aulora/core";
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import type { ChatSurfaceRuntime } from "./chat-surface";
 
 export interface ChannelSessionState {
@@ -15,6 +15,9 @@ export interface ChannelSessionState {
   readonly typers: readonly TypingRow[];
   readonly readState: ReadStateRow | null;
   readonly unread: UnreadSummary;
+  readonly hasOlder: boolean;
+  readonly loadingOlder: boolean;
+  readonly loadOlder: () => void;
 }
 
 /**
@@ -33,8 +36,14 @@ export function useChannelSession(
   const [typers, setTypers] = useState<readonly TypingRow[]>([]);
   const [readState, setReadState] = useState<ReadStateRow | null>(null);
   const [loadedChannelId, setLoadedChannelId] = useState<string | undefined>(undefined);
+  const [hasOlder, setHasOlder] = useState(false);
+  const [loadingOlder, setLoadingOlder] = useState(false);
+  const loadOlderRef = useRef<() => void>(() => {});
 
   useEffect(() => {
+    setHasOlder(false);
+    setLoadingOlder(false);
+    loadOlderRef.current = () => {};
     if (runtime === undefined || channelId === undefined) {
       setMessages([]);
       setDecrypted(new Map());
@@ -50,10 +59,48 @@ export function useChannelSession(
     setTypers([]);
     setReadState(null);
     setLoadedChannelId(channelId);
-    const offMessages = runtime.subscriptions.watchMessages(channelId, (incoming) => {
+    const receive = (incoming: readonly MessagePayload[]) => {
       setMessages(incoming);
       void runtime.session.receiveMessages(incoming);
-    });
+    };
+    const pages = new Map<string | null, readonly MessagePayload[]>();
+    const historyOff: (() => void)[] = [];
+    let nextCursor: string | null = null;
+    let oldestCursor: string | null = null;
+    let loading = false;
+    function subscribePage(cursor: string | null) {
+      oldestCursor = cursor;
+      const off = runtime?.watchHistory?.(channelId ?? "", cursor, (page) => {
+        pages.set(cursor, page.messages);
+        const all = new Map<string, MessagePayload>();
+        for (const messages of pages.values())
+          for (const message of messages) all.set(message.id, message);
+        receive([...all.values()].sort((a, b) => a.createdAt - b.createdAt));
+        // The oldest subscribed page owns the next continuation.
+        if (cursor === oldestCursor) {
+          nextCursor = page.isDone ? null : page.cursor;
+          setHasOlder(!page.isDone);
+          loading = false;
+          setLoadingOlder(false);
+        }
+      });
+      if (off !== undefined) historyOff.push(off);
+    }
+    const offMessages =
+      runtime.watchHistory === undefined
+        ? runtime.subscriptions.watchMessages(channelId, receive)
+        : (() => {
+            subscribePage(null);
+            return () => {
+              for (const off of historyOff) off();
+            };
+          })();
+    loadOlderRef.current = () => {
+      if (nextCursor === null || loading) return;
+      loading = true;
+      setLoadingOlder(true);
+      subscribePage(nextCursor);
+    };
     const offDecrypted = runtime.session.onDecrypted((opened) => {
       setDecrypted((current) => {
         const next = new Map(current);
@@ -103,6 +150,9 @@ export function useChannelSession(
     typers: settled ? typers : [],
     readState: settled ? readState : null,
     unread,
+    hasOlder: settled && hasOlder,
+    loadingOlder: settled && loadingOlder,
+    loadOlder: () => loadOlderRef.current(),
   };
 }
 
