@@ -54,12 +54,14 @@ jobs:
   desktop:
     needs: [plan, checks]
     uses: ./.github/workflows/desktop-release.yml
+    secrets: inherit
     with:
       version: ${{ needs.plan.outputs.version }}
 
   mobile:
     needs: [plan, checks]
     uses: ./.github/workflows/mobile-release.yml
+    secrets: inherit
     with:
       version: ${{ needs.plan.outputs.version }}
       build-number: ${{ format('{0}', github.run_number) }}

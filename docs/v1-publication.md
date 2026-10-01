@@ -14,7 +14,7 @@ Reviewed 2026-09-30 against `c6ed2fe8cff075d3805511ed70056ffcfece8326` and the i
 
 ## Build and distribution evidence
 
-The [initial signed candidate run](https://github.com/chark1es/Aulora/actions/runs/36802151249) builds the existing main version without publication. Its result must be recorded after completion. The v1 release pipeline checks all platforms again, collects signed mobile files and desktop updater signatures, and publishes a complete asset set only after all jobs succeed.
+The [initial signed candidate run](https://github.com/chark1es/Aulora/actions/runs/36802151249) passed every source/native CI check, then exposed missing secret inheritance between the caller and reusable signing workflows. Apple and Android jobs received empty secrets. The v1 preparation fixes the caller with `secrets: inherit`. The v1 release pipeline checks all platforms again, collects signed mobile files and desktop updater signatures, and produces a complete asset set only after all jobs succeed. The initial publication hold permits inspecting these files before publication.
 
 Publication, artifact inspection, public downloads, and TestFlight upload results will be recorded after those actions. A prepared workflow is not evidence of an uploaded or installable TestFlight build.
 
@@ -24,7 +24,7 @@ Publication, artifact inspection, public downloads, and TestFlight upload result
 - Public HTTPS/WSS, OAuth/SSO callbacks, multi-account denied actions, TURN calls, and foreground/background/locked-device push delivery.
 - Native license inventories, the JavaScript license-text review queue, and ownership/redistribution permission for project assets. The local notice generator found 98 packages requiring upstream license-text review. Most declare permissive licenses; that alone does not close the queue.
 - Stable hosted docs, privacy/support URLs, store data disclosures, account-deletion requirements, screenshots, and any review credentials.
-- Initial App Store Connect app record, Apple upload/processing, TestFlight group setup, and external Beta App Review if public testing is offered.
+- Apple upload/processing, TestFlight group setup, and external Beta App Review if public testing is offered. The publisher created app record `6817986490` on 2026-09-30, and its bundle ID and English locale were verified through Apple's API.
 - Google Play app creation and track setup if AAB-based testing is wanted. A signed APK can be tested directly.
 - CLA acceptance records and adding the `CLA` branch status requirement after the bot has recorded real contributor acceptance. The workflow permission fix allows comments on PRs; it cannot sign an agreement for a person.
 
