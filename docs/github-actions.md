@@ -22,8 +22,8 @@ non-draft PRs when opened, reopened, marked ready, or updated. It updates a
 persistent review comment. Automatic description changes and code suggestions
 are disabled; maintainers can request them with commands.
 
-Add the `OPENROUTER_API_KEY` repository secret in
-[Actions settings](https://github.com/chark1es/Aulora/settings/secrets/actions).
+Add the `OPENROUTER_API_KEY` secret to the `pr-review` environment in
+[environment settings](https://github.com/chark1es/Aulora/settings/environments).
 Get a key from [OpenRouter](https://openrouter.ai/settings/keys). The default
 model is [DeepSeek V4.1 Flash](https://openrouter.ai/deepseek/deepseek-v4.1-flash),
 `openrouter/deepseek/deepseek-v4.1-flash`. OpenRouter receives the PR
@@ -32,7 +32,7 @@ diff and repository context and bills API usage to that key.
 With GitHub CLI, run this command and enter the key at its hidden prompt:
 
 ```sh
-gh secret set OPENROUTER_API_KEY --repo chark1es/Aulora
+gh secret set OPENROUTER_API_KEY --env pr-review --repo chark1es/Aulora
 ```
 
 Merge the workflow and [`.pr_agent.toml`](../.pr_agent.toml) to `main`, then open

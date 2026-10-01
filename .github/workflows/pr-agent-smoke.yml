@@ -1,0 +1,48 @@
+name: PR-Agent smoke test
+
+on:
+  pull_request:
+    branches: [main]
+    paths: [.github/workflows/pr-agent-smoke.yml]
+
+permissions:
+  contents: read
+  issues: write
+  pull-requests: write
+
+jobs:
+  review:
+    if: >-
+      github.event.pull_request.head.repo.full_name == github.repository &&
+      github.event.pull_request.head.ref == 'chore/pr-agent-deepseek-flash' &&
+      github.event.pull_request.user.login == github.repository_owner
+    runs-on: ubuntu-latest
+    environment: pr-review
+    timeout-minutes: 15
+    steps:
+      - name: Prepare the evaluation review request
+        env:
+          EVALUATION_REPOSITORY: ${{ github.repository }}
+          EVALUATION_EVENT_PATH: ${{ runner.temp }}/pr-agent-smoke-event.json
+        run: |
+          python3 - <<'PY'
+          import json, os
+          payload = {
+              "action": "created",
+              "sender": {"type": "User"},
+              "issue": {"pull_request": {"url": f"https://api.github.com/repos/{os.environ['EVALUATION_REPOSITORY']}/pulls/4"}},
+              "comment": {"body": "/review"},
+          }
+          with open(os.environ['EVALUATION_EVENT_PATH'], 'w') as event_file:
+              json.dump(payload, event_file)
+          PY
+      - name: Review the draft evaluation PR with DeepSeek
+        uses: docker://pragent/pr-agent@sha256:65e5b196e38cecd7df8a71fe29942052e081a0c6645132c2ac874df60b1760c7 # 0.46.0-github_action
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          OPENROUTER__KEY: ${{ secrets.OPENROUTER_API_KEY }}
+          CONFIG__MODEL: openrouter/deepseek/deepseek-v4.1-flash
+          CONFIG__MODEL_WEAK: openrouter/deepseek/deepseek-v4.1-flash
+          CONFIG__FALLBACK_MODELS: '[]'
+          GITHUB_EVENT_NAME: issue_comment
+          GITHUB_EVENT_PATH: ${{ runner.temp }}/pr-agent-smoke-event.json
