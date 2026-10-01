@@ -62,14 +62,13 @@ For a candidate, run [Actions, Release](https://github.com/chark1es/Aulora/actio
 
 ## Final artifacts and announcement
 
-- [ ] Prepare release notes from `CHANGELOG.md`, including known limitations and any migration steps.
+- [ ] Write the release notes (GitHub Releases is the changelog), including known limitations and any migration steps.
 - [ ] Download the candidate `complete-release` artifact and inspect every distributable.
 - [ ] Verify `latest.json` has all four desktop updater targets and valid signatures.
 - [ ] Verify `SHA256SUMS`, license/notice files, and the web/docs and legal ZIP contents.
 - [ ] Host the docs site and privacy policy at stable public URLs and test navigation on desktop and mobile.
 - [ ] Merge the version bump to publish, or manually dispatch Release on `main` with `publish=true` for an unpublished current version.
 - [ ] Verify the release tag points to the built commit, assets are publicly downloadable, and updater/discovery URLs work.
-- [ ] Replace the changelog's release-candidate heading with the version and actual publication date.
 
 Windows installers are unsigned in the initial distribution. iOS IPA downloads are App Store submissions, and mobile store availability depends on approval. State these limitations in release notes.
 

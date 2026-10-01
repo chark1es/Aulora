@@ -92,7 +92,7 @@ Use [GitHub Issues](https://github.com/chark1es/Aulora/issues) for reproducible 
 
 Report vulnerabilities privately to [cnguyen@spwnd.dev](mailto:cnguyen@spwnd.dev). Read [SECURITY.md](SECURITY.md) for reporting details and the trust model. Do not publish credentials, encryption keys, or private messages in issues.
 
-[Changelog](CHANGELOG.md) · [License](LICENSE) · [Commercial licensing](COMMERCIAL.md) · [Third-party software](THIRD_PARTY_NOTICES.md) · [Privacy](apps/docs/content/privacy.md)
+[Releases](https://github.com/chark1es/Aulora/releases) · [License](LICENSE) · [Commercial licensing](COMMERCIAL.md) · [Third-party software](THIRD_PARTY_NOTICES.md) · [Privacy](apps/docs/content/privacy.md)
 
 ## Company subscriptions
 
