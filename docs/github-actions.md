@@ -14,6 +14,67 @@ The same checks run after merges and for merge groups.
 
 The separate [CLA bot](cla-bot.md) records contributor acceptance and publishes the `CLA` commit status on pull requests. After enabling it, require that status alongside `Required checks`. Its privileged job runs default-branch code without executing the PR's code.
 
+## PR-Agent reviews
+
+[PR-Agent](https://github.com/The-PR-Agent/pr-agent) runs separately from CI in
+[`.github/workflows/pr-agent.yml`](../.github/workflows/pr-agent.yml). It reviews
+non-draft PRs when opened, reopened, marked ready, or updated. It updates a
+persistent review comment. Automatic description changes and code suggestions
+are disabled; maintainers can request them with commands.
+
+Add one repository secret in
+[Actions settings](https://github.com/chark1es/Aulora/settings/secrets/actions):
+
+| Secret | Provider and default model |
+| --- | --- |
+| `OPENCODE_API_KEY` | OpenCode Zen, `openai/kimi-k2.5` |
+| `OPENROUTER_API_KEY` | OpenRouter, `openrouter/moonshotai/kimi-k2.5` |
+
+OpenCode takes priority when both secrets exist. OpenRouter is the alternative
+when the OpenCode secret is absent; an OpenCode request failure does not switch
+providers. Get a key from [OpenCode Zen](https://opencode.ai/docs/en/zen/) or
+[OpenRouter](https://openrouter.ai/settings/keys). The selected provider receives
+the PR diff and repository context and bills API usage to that key.
+
+With GitHub CLI, run either command and enter the key at its hidden prompt:
+
+```sh
+gh secret set OPENCODE_API_KEY --repo chark1es/Aulora
+# Or use OpenRouter:
+gh secret set OPENROUTER_API_KEY --repo chark1es/Aulora
+```
+
+Merge the workflow and [`.pr_agent.toml`](../.pr_agent.toml) to `main`, then open
+or update a ready PR. Check its review comment and the `PR-Agent` workflow run.
+Missing credentials produce a setup error. PR-Agent is advisory and is not part
+of `Required checks`.
+
+Repository owners, organization members, and collaborators can post these PR
+comments. Ordinary discussion, bot comments, and external contributor commands
+do not run the agent:
+
+```text
+/review
+/improve
+/ask "Does this change affect mobile reconnects?"
+/describe
+/help
+```
+
+`/describe` posts a summary comment. To change the model, set the `PR_AGENT_MODEL`
+Actions variable to a PR-Agent/LiteLLM model ID for the selected provider. For
+OpenCode, choose a model served at its `chat/completions` endpoint and use the
+`openai/` prefix. For OpenRouter, use `openrouter/` followed by the model ID.
+Keep `custom_model_max_tokens` in `.pr_agent.toml` within the model's context
+limit. [PR-Agent model configuration](https://docs.pr-agent.ai/usage-guide/changing_a_model/).
+
+The workflow uses `pull_request_target` for fork PRs and fetches content through
+the GitHub API. It never checks out or executes PR code. Its token can read
+repository content and write PR/issue comments, but cannot push commits.
+Repository configuration and context come from the default branch. The Docker
+image is pinned by digest to the `0.46.0-github_action` release; verify a new
+release's image digest before updating it.
+
 ## Start a release
 
 Complete the [release checklist](releasing.md), then run `bun run release:version -- 1.0.0`
