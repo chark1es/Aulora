@@ -1,6 +1,6 @@
 [package]
 name = "aulora-desktop"
-version = "0.0.0"
+version = "1.0.0"
 description = "Aulora desktop shell (Tauri 2) wrapping the web client."
 authors = ["Aulora"]
 license = "PolyForm-Noncommercial-1.0.0"

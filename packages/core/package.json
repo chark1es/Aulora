@@ -1,6 +1,6 @@
 {
   "name": "@aulora/core",
-  "version": "0.0.0",
+  "version": "1.0.0",
   "private": true,
   "description": "Aulora shared client logic: server profiles, well-known validation, permissions, unread math.",
   "type": "module",

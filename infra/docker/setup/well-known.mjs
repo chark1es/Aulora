@@ -29,7 +29,7 @@ const encryption =
 
 const document = {
   name: read(process.env.NAME_VALUE) ?? read(config.name) ?? "Aulora",
-  version: read(config.version) ?? "0.1.0",
+  version: read(config.version) ?? "1.0.0",
   apiVersion: typeof config.apiVersion === "number" ? config.apiVersion : 1,
   convexUrl: read(process.env.CONVEX_URL_VALUE) ?? read(config.convexUrl) ?? "",
   siteUrl: read(process.env.SITE_URL_VALUE) ?? read(config.siteUrl) ?? "",

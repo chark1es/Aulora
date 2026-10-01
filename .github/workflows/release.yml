@@ -116,6 +116,10 @@ jobs:
           path: dist/release
       - name: Create updater manifest and checksums
         run: |
+          if [ -z "$RELEASE_NOTES" ]; then
+            export RELEASE_NOTES="$(cat docs/release-notes-v1.md)"
+          fi
+          printf '%s\n' "$RELEASE_NOTES" > dist/release/RELEASE_NOTES.md
           node scripts/ci/assemble-release.mjs
           node scripts/ci/assemble-release.mjs checksums
       - uses: actions/upload-artifact@v4
@@ -155,7 +159,7 @@ jobs:
               printf '%s\n' "$RELEASE_NOTES" > "$notes"
               gh release create "$tag" --draft --target "$GITHUB_SHA" --title "Aulora ${RELEASE_VERSION}" --notes-file "$notes" dist/release/*
             else
-              gh release create "$tag" --draft --target "$GITHUB_SHA" --title "Aulora ${RELEASE_VERSION}" --generate-notes dist/release/*
+              gh release create "$tag" --draft --target "$GITHUB_SHA" --title "Aulora ${RELEASE_VERSION}" --notes-file dist/release/RELEASE_NOTES.md dist/release/*
             fi
           fi
           gh release edit "$tag" --draft=false --latest
