@@ -1,0 +1,114 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <meta name="color-scheme" content="light dark" />
+    <title>Privacy and data handling · Aulora Docs</title>
+    <meta name="description" content="Documentation for Aulora, self-hosted team chat with server-side encryption." />
+    <link rel="icon" type="image/svg+xml" href="../favicon.svg" />
+    <script src="../site.js" defer></script>
+    <link rel="stylesheet" href="../tokens.css" />
+    <link rel="stylesheet" href="../site.css" />
+    <link rel="stylesheet" href="../docs.css" />
+  </head>
+  <body class="docs">
+    <header class="site-header">
+      <div class="site-header-inner">
+        <a class="brand" href="../index.html">
+          <img src="../favicon.svg" alt="" width="26" height="26" />
+          <span>Aulora</span><span class="brand-sub">/ docs</span>
+        </a>
+        <nav class="site-nav" aria-label="Site">
+          <a href="../index.html#product">Product</a>
+          <a href="../index.html#install">Install</a>
+          <a href="../index.html#pricing">Pricing</a>
+          <a href="../docs/index.html" aria-current="page">Docs</a>
+          <a href="https://github.com/chark1es/Aulora">GitHub</a>
+        </nav>
+      </div>
+    </header>
+    <div class="docs-shell">
+      <details class="docs-nav" open>
+        <summary><svg class="icon" viewBox="0 0 24 24" aria-hidden="true" focusable="false"><path fill="currentColor" d="M4 18q-.425 0-.712-.288T3 17t.288-.712T4 16h16q.425 0 .713.288T21 17t-.288.713T20 18zm0-5q-.425 0-.712-.288T3 12t.288-.712T4 11h16q.425 0 .713.288T21 12t-.288.713T20 13zm0-5q-.425 0-.712-.288T3 7t.288-.712T4 6h16q.425 0 .713.288T21 7t-.288.713T20 8z"/></svg><span>Contents</span></summary>
+        <nav aria-label="Documentation">
+        <div class="nav-group">
+          <p class="nav-label">Start here</p>
+          <a href="../docs/index.html">Overview</a>
+          <a href="../docs/getting-started.html">Getting started</a>
+          <a href="../docs/user-guide.html">User guide</a>
+        </div>
+        <div class="nav-group">
+          <p class="nav-label">Run a server</p>
+          <a href="../docs/self-hosting.html">Self-hosting</a>
+          <a href="../docs/coolify.html">Coolify</a>
+          <a href="../docs/admin.html">Admin panel</a>
+          <a href="../docs/backups.html">Backups</a>
+          <a href="../docs/updates.html">Updates</a>
+          <a href="../docs/troubleshooting.html">Troubleshooting</a>
+        </div>
+        <div class="nav-group">
+          <p class="nav-label">Policy</p>
+          <a href="../docs/privacy.html" aria-current="page">Privacy</a>
+          <a href="../docs/licensing.html">Licensing</a>
+          <a href="../docs/contributing.html">Contributing</a>
+        </div>
+        </nav>
+      </details>
+      <main class="docs-main">
+        <header class="page-header">
+          <p class="page-eyebrow"><a href="../docs/index.html">Docs</a><svg class="icon" viewBox="0 0 24 24" aria-hidden="true" focusable="false"><path fill="currentColor" d="M12.6 12L8.7 8.1q-.275-.275-.275-.7t.275-.7t.7-.275t.7.275l4.6 4.6q.15.15.213.325t.062.375t-.062.375t-.213.325l-4.6 4.6q-.275.275-.7.275t-.7-.275t-.275-.7t.275-.7z"/></svg><span>Policy</span></p>
+          <h1>Privacy and data handling</h1>
+          <p class="page-meta">2 min read</p>
+        </header>
+        <article class="prose">
+<p>This page describes Aulora&#39;s data flows. Each server operator is responsible for the privacy policy, retention rules, and notices for their own deployment. It is not a promise about a particular server&#39;s practices.</p>
+<h2 id="data-on-your-server">Data on your server</h2>
+<p>The server stores accounts, workspace membership, messages, attachments, reactions, permissions, and activity metadata needed to run chat. The default deployment stores data in Postgres and object storage on the operator&#39;s infrastructure.</p>
+<p>Message content and uploads use server-side encryption. Authorized clients receive decrypted content. The operator&#39;s server has access to the key, so administrators with control of the application can read content. Account information and other metadata may remain readable. This is not end-to-end encryption.</p>
+<p>Clients store server profiles and session information on the device so you can return to your workspaces. Sign out on shared devices. OS backups and local device security can affect that information.</p>
+<h2 id="optional-external-services">Optional external services</h2>
+<p>The configured identity provider receives sign-in traffic when OAuth or SSO is enabled. An email provider receives recipient addresses and email content when the server sends account or invitation emails.</p>
+<p>Mobile notifications send device tokens and routing information through the configured push relay and APNs, FCM, or UnifiedPush. The relay is designed to send generic wakeups/alerts rather than chat message bodies. Providers can still observe transport metadata.</p>
+<p>Voice/video uses WebRTC. Media travels between participants or through TURN when required by network conditions. STUN/TURN servers receive network information; peers may learn each other&#39;s public IP addresses. Operators can configure their own ICE servers.</p>
+<p>Desktop and server update checks contact the configured release feed, normally GitHub. External key managers and external object storage receive requests when the operator enables them.</p>
+<h2 id="retention-deletion-and-backups">Retention, deletion, and backups</h2>
+<p>Ask your server operator about retention, account deletion, access requests, and exported data. Deleted data can remain in older backups until the operator&#39;s backup retention expires. Backups include sensitive metadata even when content is encrypted.</p>
+<p>The default backup bucket is on the same MinIO deployment. Operators should keep protected off-machine copies and a separately secured encryption-key backup. See <a href="backups.html">backups</a>.</p>
+<h2 id="release-publisher-responsibilities">Release publisher responsibilities</h2>
+<p>Before distributing official mobile apps, the publisher must publish a reachable privacy-policy URL, complete store data disclosures accurately, and provide any required account-deletion process. A page in this repository alone does not establish a hosted policy or store compliance.</p>
+<p>For project questions, email <a href="mailto:cnguyen@spwnd.dev">cnguyen@spwnd.dev</a>. Contact your server operator for requests about data on their deployment.</p>
+<h2 id="licensed-monthly-activity">Licensed monthly activity</h2>
+<p>After an activity-billed license activates, the instance counts distinct authenticated members once per UTC month using successful logins/session refreshes, presence heartbeats, and messages. Local user IDs are used only to deduplicate and are removed after the final monthly report is acknowledged. Unlicensed instances do not create these billing activity records. The licensing authority receives aggregate counts, month, license ID, installation ID, and final/provisional status. It receives no member identities or message contents. Saved encrypted reporting credentials allow final reports after expiry or key removal. Reports support monthly billing; missing reports are not interpreted as zero users.</p>
+        </article>
+        <nav class="pager" aria-label="Pages">
+          <a class="pager-prev" href="../docs/troubleshooting.html" rel="prev"><small>Previous</small>Troubleshooting</a>
+          <a class="pager-next" href="../docs/licensing.html" rel="next"><small>Next</small>Licensing</a>
+        </nav>
+      </main>
+      <aside class="toc" aria-label="On this page">
+        <p class="nav-label">On this page</p>
+        <nav>
+          <a href="#data-on-your-server">Data on your server</a>
+          <a href="#optional-external-services">Optional external services</a>
+          <a href="#retention-deletion-and-backups">Retention, deletion, and backups</a>
+          <a href="#release-publisher-responsibilities">Release publisher responsibilities</a>
+          <a href="#licensed-monthly-activity">Licensed monthly activity</a>
+        </nav>
+      </aside>
+    </div>
+    <footer class="site-footer">
+      <div class="site-footer-inner">
+        <p class="footer-mark">Aulora · team chat on your own server</p>
+        <nav aria-label="Legal and contact">
+          <a href="../docs/licensing.html">Licensing</a>
+          <a href="../docs/privacy.html">Privacy</a>
+          <a href="../docs/legal/COMMERCIAL.html">Commercial terms</a>
+          <a href="../docs/legal/THIRD_PARTY_NOTICES.html">Third-party notices</a>
+          <a href="mailto:cnguyen@spwnd.dev">cnguyen@spwnd.dev</a>
+        </nav>
+        <p class="footer-fine">Free for personal and noncommercial use under PolyForm Noncommercial 1.0.0. Business use requires a paid license.</p>
+      </div>
+    </footer>
+  </body>
+</html>

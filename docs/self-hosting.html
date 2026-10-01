@@ -1,0 +1,145 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <meta name="color-scheme" content="light dark" />
+    <title>Self-hosting · Aulora Docs</title>
+    <meta name="description" content="Documentation for Aulora, self-hosted team chat with server-side encryption." />
+    <link rel="icon" type="image/svg+xml" href="../favicon.svg" />
+    <script src="../site.js" defer></script>
+    <link rel="stylesheet" href="../tokens.css" />
+    <link rel="stylesheet" href="../site.css" />
+    <link rel="stylesheet" href="../docs.css" />
+  </head>
+  <body class="docs">
+    <header class="site-header">
+      <div class="site-header-inner">
+        <a class="brand" href="../index.html">
+          <img src="../favicon.svg" alt="" width="26" height="26" />
+          <span>Aulora</span><span class="brand-sub">/ docs</span>
+        </a>
+        <nav class="site-nav" aria-label="Site">
+          <a href="../index.html#product">Product</a>
+          <a href="../index.html#install">Install</a>
+          <a href="../index.html#pricing">Pricing</a>
+          <a href="../docs/index.html" aria-current="page">Docs</a>
+          <a href="https://github.com/chark1es/Aulora">GitHub</a>
+        </nav>
+      </div>
+    </header>
+    <div class="docs-shell">
+      <details class="docs-nav" open>
+        <summary><svg class="icon" viewBox="0 0 24 24" aria-hidden="true" focusable="false"><path fill="currentColor" d="M4 18q-.425 0-.712-.288T3 17t.288-.712T4 16h16q.425 0 .713.288T21 17t-.288.713T20 18zm0-5q-.425 0-.712-.288T3 12t.288-.712T4 11h16q.425 0 .713.288T21 12t-.288.713T20 13zm0-5q-.425 0-.712-.288T3 7t.288-.712T4 6h16q.425 0 .713.288T21 7t-.288.713T20 8z"/></svg><span>Contents</span></summary>
+        <nav aria-label="Documentation">
+        <div class="nav-group">
+          <p class="nav-label">Start here</p>
+          <a href="../docs/index.html">Overview</a>
+          <a href="../docs/getting-started.html">Getting started</a>
+          <a href="../docs/user-guide.html">User guide</a>
+        </div>
+        <div class="nav-group">
+          <p class="nav-label">Run a server</p>
+          <a href="../docs/self-hosting.html" aria-current="page">Self-hosting</a>
+          <a href="../docs/coolify.html">Coolify</a>
+          <a href="../docs/admin.html">Admin panel</a>
+          <a href="../docs/backups.html">Backups</a>
+          <a href="../docs/updates.html">Updates</a>
+          <a href="../docs/troubleshooting.html">Troubleshooting</a>
+        </div>
+        <div class="nav-group">
+          <p class="nav-label">Policy</p>
+          <a href="../docs/privacy.html">Privacy</a>
+          <a href="../docs/licensing.html">Licensing</a>
+          <a href="../docs/contributing.html">Contributing</a>
+        </div>
+        </nav>
+      </details>
+      <main class="docs-main">
+        <header class="page-header">
+          <p class="page-eyebrow"><a href="../docs/index.html">Docs</a><svg class="icon" viewBox="0 0 24 24" aria-hidden="true" focusable="false"><path fill="currentColor" d="M12.6 12L8.7 8.1q-.275-.275-.275-.7t.275-.7t.7-.275t.7.275l4.6 4.6q.15.15.213.325t.062.375t-.062.375t-.213.325l-4.6 4.6q-.275.275-.7.275t-.7-.275t-.275-.7t.275-.7z"/></svg><span>Run a server</span></p>
+          <h1>Self-hosting</h1>
+          <p class="page-meta">4 min read</p>
+        </header>
+        <article class="prose">
+<p>One Aulora server runs one workspace. The whole stack is a Docker Compose project under <code>infra/docker</code>: Postgres, the self-hosted Convex backend and dashboard, MinIO object storage, the web SPA, and a one-shot <code>setup</code> container that provisions everything on first run.</p>
+<p>There is deliberately no TLS terminator in the stack. Put it behind your own edge proxy (Coolify, Traefik, Caddy, nginx or a cloud load balancer). For a guided deploy on <a href="https://coolify.io">Coolify</a> see <a href="coolify.html">Deploy on Coolify</a>, which uses the ready-made <code>infra/docker/docker-compose.coolify.yml</code>.</p>
+<h2 id="the-installer">The installer</h2>
+<div class="code"><div class="code-bar"><span>sh</span><button type="button" data-copy>Copy</button></div><pre><code class="language-sh">./install.sh            # macOS / Linux
+pwsh ./install.ps1      # Windows</code></pre></div>
+<p>Useful flags and environment variables:</p>
+<div class="table-scroll"><table><thead><tr><th scope="col">Flag</th><th scope="col">Environment</th><th scope="col">Meaning</th></tr></thead><tbody><tr><td><code>--name</code> / <code>-Name</code></td><td><code>AULORA_WORKSPACE_NAME</code></td><td>workspace name</td></tr><tr><td><code>--email</code> / <code>-Email</code></td><td><code>AULORA_OWNER_EMAIL</code></td><td>owner account email</td></tr><tr><td><code>--password</code> / <code>-Password</code></td><td><code>AULORA_OWNER_PASSWORD</code></td><td>owner password (16+ chars)</td></tr><tr><td><code>--port</code> / <code>-Port</code></td><td><code>AULORA_WEB_PORT</code></td><td>host web port (default 8080)</td></tr><tr><td><code>--site-url</code> / <code>-SiteUrl</code></td><td><code>AULORA_SITE_URL</code></td><td>public origin for a real domain</td></tr><tr><td><code>--backups</code> / <code>-Backups</code></td><td>—</td><td>also start the nightly backup runner</td></tr><tr><td><code>--no-start</code> / <code>-NoStart</code></td><td>—</td><td>write <code>.env</code> and stop before <code>docker compose</code></td></tr><tr><td><code>--dry-run</code> / <code>-DryRun</code></td><td>—</td><td>print the plan without changing anything</td></tr></tbody></table></div>
+<p>The installer is idempotent: re-running it reuses the existing <code>.env</code> and is a no-op for data.</p>
+<h2 id="manual-first-run">Manual first run</h2>
+<div class="code"><div class="code-bar"><span>sh</span><button type="button" data-copy>Copy</button></div><pre><code class="language-sh">cd infra/docker
+cp .env.example .env      # edit INSTANCE_NAME, WORKSPACE_NAME, OWNER_* and origins
+docker compose up -d --build
+docker compose logs -f setup</code></pre></div>
+<p><code>setup</code> mints the admin key with the Convex backend&#39;s own <code>generate_key</code>, generates the missing secrets (<code>INSTANCE_SECRET</code>, <code>BETTER_AUTH_SECRET</code>, VAPID keys, the default local master key <code>AULORA_ENCRYPTION_KEY</code>), deploys <code>packages/convex</code>, creates the workspace and owner, and writes <code>/.well-known/aulora.json</code>. It is safe to re-run.</p>
+<h2 id="local-url-map">Local URL map</h2>
+<div class="table-scroll"><table><thead><tr><th scope="col">Service</th><th scope="col">URL</th><th scope="col">Notes</th></tr></thead><tbody><tr><td>Web app</td><td>http://localhost:8080</td><td>sign in here</td></tr><tr><td>Convex API / WebSocket</td><td>http://localhost:3210</td><td><code>CONVEX_CLOUD_ORIGIN</code></td></tr><tr><td>Convex HTTP actions</td><td>http://localhost:3211</td><td><code>/api/auth</code>, <code>/setup/initialize</code></td></tr><tr><td>Convex dashboard</td><td>http://localhost:6791</td><td>paste the admin key; keep private</td></tr><tr><td>MinIO console</td><td>http://localhost:9001</td><td><code>MINIO_ROOT_USER</code> / password</td></tr><tr><td>Postgres</td><td>localhost:5432</td><td><code>POSTGRES_USER</code> / password</td></tr></tbody></table></div>
+<h2 id="auth-is-same-origin-on-purpose">Auth is same-origin on purpose</h2>
+<p>The browser must see Better Auth as first-party, so <code>&lt;SITE_URL&gt;/api/auth/*</code> is proxied to the Convex HTTP-actions port. Locally the web nginx container does it; in production either keep that route or move it to your edge proxy. The Convex backend must be able to resolve and fetch <code>&lt;CONVEX_SITE_ORIGIN&gt;/api/auth/convex/jwks</code>, because it is the token issuer.</p>
+<h2 id="encryption">Encryption</h2>
+<p>Encryption is on by default and runs <strong>server-side</strong>: content and files are sealed with AES-256-GCM envelope encryption. Setup saves the master key (the KEK) in <code>.env</code> and configures it in the backend deployment environment. The default is the <code>local</code> provider: <code>setup</code> generates a base64 32-byte <code>AULORA_ENCRYPTION_KEY</code> and persists it to <code>.env</code>, so the default stack needs no extra services.</p>
+<p>The KEK is the root of data confidentiality: back up <code>AULORA_ENCRYPTION_KEY</code> separately from the database and never commit it. Encrypted content stays ciphertext in the database and exports. Account and other metadata may remain readable; losing the KEK makes that data unreadable. <code>INSTANCE_SECRET</code> is only a legacy fallback the <code>local</code> provider uses when <code>AULORA_ENCRYPTION_KEY</code> is unset.</p>
+<h3 id="optional-advanced-external-key-manager-ekm">Optional / advanced: external key manager (EKM)</h3>
+<p>To delegate custody of the KEK, set <code>AULORA_EKM_PROVIDER</code> to <code>vault</code>, <code>aws-kms</code>, <code>gcp-kms</code> or <code>http</code> and supply the matching settings (see <code>.env.example</code>). The provider interface accepts them without code changes; the default <code>docker compose up</code> starts none of this. For the optional bundled Vault, start the <code>ekm</code> profile:</p>
+<div class="code"><div class="code-bar"><span>sh</span><button type="button" data-copy>Copy</button></div><pre><code class="language-sh">docker compose --profile ekm up -d
+docker compose logs -f vault-init</code></pre></div>
+<p>It is dev mode and in-memory, so for production use a persistent Vault.</p>
+<h2 id="upgrade-and-teardown">Upgrade and teardown</h2>
+<p>From a git clone, the host updater fast-forwards to the published release tag and redeploys. It refuses a dirty tree and does not touch <code>.env</code> or volumes.</p>
+<div class="code"><div class="code-bar"><span>sh</span><button type="button" data-copy>Copy</button></div><pre><code class="language-sh">cd infra/docker
+./update.sh --check          # exit 10 when a release is newer
+./update.sh --apply          # fast-forward and redeploy
+./update.sh --watch          # enable download/restart controls in settings
+./update.sh --download       # prepare a release without downtime
+./update.sh --restart        # install the prepared release</code></pre></div>
+<p>The workspace owner can see the running version and check releases in <strong>Workspace settings → Instance</strong>. Workspace update status and its settings dot are visible only to the owner. Desktop app updates live in <strong>Your settings → Updates</strong> and mark the user settings icon separately. While <code>--watch</code> runs on the host, <strong>Download update</strong> prepares images in a separate checkout and <strong>Restart to update</strong> installs them. Restart briefly interrupts the workspace; messages, volumes, and <code>.env</code> are kept. A dot on settings indicates an available update. Keep the watcher running under your host&#39;s service manager, with Bun and the checkout dependencies installed.</p>
+<p>Set <code>AULORA_AUTO_UPDATE=true</code> to prepare releases automatically. The watcher still waits for the owner to restart. Restart the watcher and re-run <code>setup</code> after changing update settings. Without the watcher, version information and release checks remain available; use host or hosting-provider controls to install.</p>
+<p>A checkout that is not a git clone, including Coolify, still updates by redeploying the new git ref:</p>
+<div class="code"><div class="code-bar"><span>sh</span><button type="button" data-copy>Copy</button></div><pre><code class="language-sh">docker compose pull
+docker compose up -d --build
+docker compose run --rm setup</code></pre></div>
+<p><code>docker compose down</code> stops the stack but keeps the named volumes (<code>pgdata</code>, <code>convex-data</code>, <code>minio-data</code>, <code>web-well-known</code>, <code>backup-data</code>). <code>docker compose down -v</code> wipes them, irreversibly.</p>
+<p>Keep <code>infra/docker/.env</code> safe: it holds <code>INSTANCE_SECRET</code>, the default <code>AULORA_ENCRYPTION_KEY</code> and any external EKM settings, and the KEK it holds is what makes the existing data readable. Losing the KEK makes the data unreadable.</p>
+<h2 id="public-deployment-checklist">Public deployment checklist</h2>
+<p>Before exposing a server, replace <code>POSTGRES_PASSWORD</code> and the matching password in <code>POSTGRES_URL</code>, and replace <code>MINIO_ROOT_PASSWORD</code>. Configure DNS and valid HTTPS, reachable <code>SITE_URL</code>, <code>CONVEX_URL</code>, <code>CONVEX_CLOUD_ORIGIN</code>, and <code>CONVEX_SITE_ORIGIN</code>. Keep the auth route on the web origin and allow WebSocket upgrades. The origin settings are explained in the <a href="https://github.com/chark1es/Aulora/blob/main/infra/docker/proxy/README.md">proxy guide</a>.</p>
+<p>The standard Compose file publishes database and administration ports for local use. Bind them to localhost or remove their published ports before public deployment. Keep the Convex dashboard, Postgres, and MinIO administration private. Coolify&#39;s file keeps services internal by default.</p>
+<p>Start with a small test team and measure CPU, memory, storage, and upload growth on your host. There is no published capacity guarantee. Container builds need more resources than an idle server. Configure a TURN server if calls must work across restrictive networks.</p>
+<p>Set signup/invitation policy, verify backups and a restore, and check the server from another network before inviting users. See <a href="updates.html">updates</a>, <a href="backups.html">backups</a>, and <a href="troubleshooting.html">troubleshooting</a>. Business use requires a <a href="licensing.html">paid commercial agreement</a>.</p>
+        </article>
+        <nav class="pager" aria-label="Pages">
+          <a class="pager-prev" href="../docs/user-guide.html" rel="prev"><small>Previous</small>User guide</a>
+          <a class="pager-next" href="../docs/coolify.html" rel="next"><small>Next</small>Coolify</a>
+        </nav>
+      </main>
+      <aside class="toc" aria-label="On this page">
+        <p class="nav-label">On this page</p>
+        <nav>
+          <a href="#the-installer">The installer</a>
+          <a href="#manual-first-run">Manual first run</a>
+          <a href="#local-url-map">Local URL map</a>
+          <a href="#auth-is-same-origin-on-purpose">Auth is same-origin on purpose</a>
+          <a href="#encryption">Encryption</a>
+          <a href="#upgrade-and-teardown">Upgrade and teardown</a>
+          <a href="#public-deployment-checklist">Public deployment checklist</a>
+        </nav>
+      </aside>
+    </div>
+    <footer class="site-footer">
+      <div class="site-footer-inner">
+        <p class="footer-mark">Aulora · team chat on your own server</p>
+        <nav aria-label="Legal and contact">
+          <a href="../docs/licensing.html">Licensing</a>
+          <a href="../docs/privacy.html">Privacy</a>
+          <a href="../docs/legal/COMMERCIAL.html">Commercial terms</a>
+          <a href="../docs/legal/THIRD_PARTY_NOTICES.html">Third-party notices</a>
+          <a href="mailto:cnguyen@spwnd.dev">cnguyen@spwnd.dev</a>
+        </nav>
+        <p class="footer-fine">Free for personal and noncommercial use under PolyForm Noncommercial 1.0.0. Business use requires a paid license.</p>
+      </div>
+    </footer>
+  </body>
+</html>

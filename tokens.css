@@ -1,0 +1,42 @@
+/* Generated from packages/tokens/src/colors.ts by scripts/build.mjs. */
+:root {
+  --bg: #F2F2F7;
+  --grid-dot: #E5E5EA;
+  --surface-1: #F7F7FA;
+  --surface-2: #FFFFFF;
+  --surface-3: #EFEFF4;
+  --border: #D9D9DE;
+  --text: #1C1C1E;
+  --text-muted: #636366;
+  --accent: #C2410C;
+  --accent-soft: #C2410C14;
+  --on-accent: #FFFFFF;
+  --secondary: #248A3D;
+  --danger: #D70015;
+  --rail: #1C1C1E;
+  --rail-text: #A6A6AE;
+  --chat: #FFFFFF;
+  --idle: #E8A33B;
+  color-scheme: light dark;
+}
+
+@media (prefers-color-scheme: dark) {
+  :root {
+    --bg: #1C1C1E;
+    --grid-dot: #2C2C2E;
+    --surface-1: #242426;
+    --surface-2: #2C2C2E;
+    --surface-3: #3A3A3C;
+    --border: #38383A;
+    --text: #F5F5F7;
+    --text-muted: #A6A6AE;
+    --accent: #E4571C;
+    --accent-soft: #E4571C24;
+    --on-accent: #FFFFFF;
+    --secondary: #4CD964;
+    --danger: #FF6B6B;
+    --rail: #1B1B1D;
+    --rail-text: #A6A6AE;
+    --chat: #1C1C1E;
+  }
+}

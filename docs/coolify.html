@@ -1,0 +1,170 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <meta name="color-scheme" content="light dark" />
+    <title>Deploy on Coolify · Aulora Docs</title>
+    <meta name="description" content="Documentation for Aulora, self-hosted team chat with server-side encryption." />
+    <link rel="icon" type="image/svg+xml" href="../favicon.svg" />
+    <script src="../site.js" defer></script>
+    <link rel="stylesheet" href="../tokens.css" />
+    <link rel="stylesheet" href="../site.css" />
+    <link rel="stylesheet" href="../docs.css" />
+  </head>
+  <body class="docs">
+    <header class="site-header">
+      <div class="site-header-inner">
+        <a class="brand" href="../index.html">
+          <img src="../favicon.svg" alt="" width="26" height="26" />
+          <span>Aulora</span><span class="brand-sub">/ docs</span>
+        </a>
+        <nav class="site-nav" aria-label="Site">
+          <a href="../index.html#product">Product</a>
+          <a href="../index.html#install">Install</a>
+          <a href="../index.html#pricing">Pricing</a>
+          <a href="../docs/index.html" aria-current="page">Docs</a>
+          <a href="https://github.com/chark1es/Aulora">GitHub</a>
+        </nav>
+      </div>
+    </header>
+    <div class="docs-shell">
+      <details class="docs-nav" open>
+        <summary><svg class="icon" viewBox="0 0 24 24" aria-hidden="true" focusable="false"><path fill="currentColor" d="M4 18q-.425 0-.712-.288T3 17t.288-.712T4 16h16q.425 0 .713.288T21 17t-.288.713T20 18zm0-5q-.425 0-.712-.288T3 12t.288-.712T4 11h16q.425 0 .713.288T21 12t-.288.713T20 13zm0-5q-.425 0-.712-.288T3 7t.288-.712T4 6h16q.425 0 .713.288T21 7t-.288.713T20 8z"/></svg><span>Contents</span></summary>
+        <nav aria-label="Documentation">
+        <div class="nav-group">
+          <p class="nav-label">Start here</p>
+          <a href="../docs/index.html">Overview</a>
+          <a href="../docs/getting-started.html">Getting started</a>
+          <a href="../docs/user-guide.html">User guide</a>
+        </div>
+        <div class="nav-group">
+          <p class="nav-label">Run a server</p>
+          <a href="../docs/self-hosting.html">Self-hosting</a>
+          <a href="../docs/coolify.html" aria-current="page">Coolify</a>
+          <a href="../docs/admin.html">Admin panel</a>
+          <a href="../docs/backups.html">Backups</a>
+          <a href="../docs/updates.html">Updates</a>
+          <a href="../docs/troubleshooting.html">Troubleshooting</a>
+        </div>
+        <div class="nav-group">
+          <p class="nav-label">Policy</p>
+          <a href="../docs/privacy.html">Privacy</a>
+          <a href="../docs/licensing.html">Licensing</a>
+          <a href="../docs/contributing.html">Contributing</a>
+        </div>
+        </nav>
+      </details>
+      <main class="docs-main">
+        <header class="page-header">
+          <p class="page-eyebrow"><a href="../docs/index.html">Docs</a><svg class="icon" viewBox="0 0 24 24" aria-hidden="true" focusable="false"><path fill="currentColor" d="M12.6 12L8.7 8.1q-.275-.275-.275-.7t.275-.7t.7-.275t.7.275l4.6 4.6q.15.15.213.325t.062.375t-.062.375t-.213.325l-4.6 4.6q-.275.275-.7.275t-.7-.275t-.275-.7t.275-.7z"/></svg><span>Run a server</span></p>
+          <h1>Deploy on Coolify</h1>
+          <p class="page-meta">5 min read</p>
+        </header>
+        <article class="prose">
+<p><a href="https://coolify.io">Coolify</a> runs the Aulora stack from this Git repository and terminates TLS for you with its Traefik proxy. Aulora ships a Coolify-ready compose file, <code>infra/docker/docker-compose.coolify.yml</code>. Use it instead of <code>docker-compose.yml</code>: it publishes no host ports, keeps the generated secrets in a named volume so redeploys do not regenerate them, and marks the one-shot services so they do not fail Coolify&#39;s health check.</p>
+<h2 id="before-you-start">Before you start</h2>
+<ul><li>A Coolify instance (any recent v4) with a server attached.</li><li>Two DNS names pointed at that server, for example <code>chat.example.com</code> (the app)</li></ul>
+<p>and <code>convex.example.com</code> (the Convex API and WebSocket).</p>
+<ul><li>The owner email and a password of at least 32 characters.</li></ul>
+<h2 id="1-create-the-resource">1. Create the resource</h2>
+<p>In Coolify, create a <strong>new resource → Docker Compose</strong> (Git-based) and point it at this repository, then set:</p>
+<div class="table-scroll"><table><thead><tr><th scope="col">Field</th><th scope="col">Value</th></tr></thead><tbody><tr><td>Repository</td><td>this Git repository</td></tr><tr><td>Branch</td><td>the branch you deploy (for example <code>main</code>)</td></tr><tr><td>Base Directory</td><td><code>infra/docker</code></td></tr><tr><td>Compose Location</td><td><code>docker-compose.coolify.yml</code></td></tr><tr><td>Preserve Repository During Deployment</td><td><strong>on</strong></td></tr></tbody></table></div>
+<p><strong>Preserve Repository during deployment</strong> is required: the stack bind-mounts repo-relative paths (<code>./initdb</code>, and <code>./vault</code> if you enable the optional <code>ekm</code> profile) and Coolify otherwise deletes the checkout after deploying. With the toggle on, those files exist when the containers start.</p>
+<h2 id="2-set-the-environment">2. Set the environment</h2>
+<p>Open the resource&#39;s <strong>Environment Variables</strong> and paste the values below (Coolify&#39;s developer view accepts <code>KEY=value</code> lines). They are the operator values from <code>infra/docker/.env.example</code>; see that file for the full annotated list.</p>
+<div class="code"><div class="code-bar"><span>sh</span><button type="button" data-copy>Copy</button></div><pre><code class="language-sh">INSTANCE_NAME=aulora
+WORKSPACE_NAME=Aulora
+OWNER_EMAIL=owner@example.com
+OWNER_PASSWORD=change-me-please-32-chars-min
+OWNER_NAME=Aulora Owner
+
+# Public origins — must match the domains you add in step 3.
+SITE_URL=https://chat.example.com
+CONVEX_CLOUD_ORIGIN=https://convex.example.com
+CONVEX_URL=https://convex.example.com
+CONVEX_SITE_ORIGIN=https://chat.example.com
+TRUSTED_ORIGINS=https://chat.example.com
+
+# Postgres and object storage (change the passwords for a real deploy).
+POSTGRES_USER=convex
+POSTGRES_PASSWORD=aulora-postgres
+POSTGRES_URL=postgresql://convex:aulora-postgres@postgres:5432
+MINIO_ROOT_USER=aulora
+MINIO_ROOT_PASSWORD=aulora-minio-secret</code></pre></div>
+<p>You can leave the generated secrets blank and let <code>setup</code> create them, but on Coolify it is safer to set them explicitly in this list so they are stable across deploys. Generate each once and keep the values:</p>
+<div class="code"><div class="code-bar"><span>sh</span><button type="button" data-copy>Copy</button></div><pre><code class="language-sh"># 32-byte base64 master key: the KEK, root of data confidentiality.
+openssl rand -base64 32      # -&gt; AULORA_ENCRYPTION_KEY
+openssl rand -base64 48      # -&gt; BETTER_AUTH_SECRET
+openssl rand -hex 32         # -&gt; INSTANCE_SECRET</code></pre></div>
+<p>Set <code>AULORA_ENCRYPTION_KEY</code>, <code>BETTER_AUTH_SECRET</code> and <code>INSTANCE_SECRET</code> to those values. Web-push keys (<code>VAPID_PUBLIC_KEY</code> / <code>VAPID_PRIVATE_KEY</code>) are generated by <code>setup</code> and kept in the volume; add them here too if you rotate them.</p>
+<blockquote><strong>Never paste these into a public place, and never delete the volume that holds them.</strong> If <code>AULORA_ENCRYPTION_KEY</code> changes, existing messages and files become unreadable ciphertext.</blockquote>
+<h2 id="3-add-two-domains">3. Add two domains</h2>
+<p>On the resource&#39;s <strong>Domains</strong>, add:</p>
+<div class="table-scroll"><table><thead><tr><th scope="col">Domain</th><th scope="col">Service</th><th scope="col">Container port</th></tr></thead><tbody><tr><td><code>https://chat.example.com</code></td><td><code>web</code></td><td><code>80</code></td></tr><tr><td><code>https://convex.example.com</code></td><td><code>convex-backend</code></td><td><code>3210</code></td></tr></tbody></table></div>
+<p>Coolify&#39;s proxy terminates TLS, so <code>SITE_URL</code> and <code>CONVEX_CLOUD_ORIGIN</code> must match these two domains exactly.</p>
+<p><code>/api/auth/*</code> must stay on the <strong>web</strong> domain. The browser calls it there so the Better Auth session cookie is first-party; the <code>web</code> nginx container proxies it to the Convex HTTP-actions port (<code>convex-backend:3211</code>) internally. Do not add an <code>/api/auth</code> route to the Convex domain, and set <code>CONVEX_SITE_ORIGIN</code> to the web origin (as above). The Convex backend fetches <code>https://chat.example.com/api/auth/convex/jwks</code> to validate its own tokens, so both DNS names must resolve publicly.</p>
+<p>Only <code>web</code> and <code>convex-backend</code> need a domain. Postgres, MinIO, the dashboard and the push relay stay on the internal Docker network.</p>
+<h2 id="4-deploy">4. Deploy</h2>
+<p>Press <strong>Deploy</strong>. Coolify builds <code>web</code> and <code>setup</code> from the repository, starts the stack, and runs the one-shot <code>setup</code> service. <code>setup</code> mints the admin key, creates the workspace and owner, deploys the Convex functions, and writes the public <code>/.well-known/aulora.json</code>. It is idempotent and safe on every deploy.</p>
+<p>To watch it, open the <code>setup</code> service logs (or the deployment logs) and wait for <code>[setup] done</code>. Then open <code>https://chat.example.com</code> and sign in as the owner.</p>
+<p>To re-run <code>setup</code> after changing auth providers or <code>TRUSTED_ORIGINS</code>, redeploy the same Coolify resource.</p>
+<p>This file uses Coolify-specific <code>exclude_from_hc</code> fields. Plain Docker Compose rejects the raw source file. If using host commands, use Coolify&#39;s rendered Compose configuration and its existing project/environment, not the source template. See <a href="https://coolify.io/docs/applications/builds/docker-compose">Coolify&#39;s Compose documentation</a>.</p>
+<h2 id="how-the-generated-secrets-persist">How the generated secrets persist</h2>
+<p>On a normal <code>docker compose</code> install, <code>setup</code> writes generated secrets to <code>infra/docker/.env</code>, and Compose re-injects them through <code>env_file</code> on the next run. Coolify does not provide that file, so this stack keeps them in the <code>setup-state</code> named volume instead (<code>setup</code> writes <code>/host/.env</code>, the same path, and re-reads it each run). A redeploy therefore reuses the same <code>INSTANCE_SECRET</code>, <code>BETTER_AUTH_SECRET</code> and VAPID keys — and, when you did not set it yourself, the same generated <code>AULORA_ENCRYPTION_KEY</code>.</p>
+<p>Do not delete the <code>setup-state</code> volume, and keep an offline copy of <code>AULORA_ENCRYPTION_KEY</code>: encrypted content in the database and exports needs that key to be readable. Other metadata may remain readable. The same warning as <a href="self-hosting.html">Self-hosting → Encryption</a> applies.</p>
+<h2 id="optional-services">Optional services</h2>
+<p>The backup runner, push relay, and development Vault have Compose profiles and are off by default. To enable an optional service in this resource, remove its <code>profiles</code> entry in your deployment branch and redeploy the same Coolify resource. Configure its environment values in Coolify first. Keep the project and named volumes unchanged so the service joins the existing deployment.</p>
+<p>Do not create a second independent stack for backups; it would have different named volumes and could back up a fresh deployment instead. If managing profiles through host commands, use Coolify&#39;s rendered configuration, project name, and environment.</p>
+<ul><li>Backups require a working destination and an off-machine copy; see <a href="backups.html">backups</a>.</li><li>Mobile push requires relay authentication and publisher APNs/FCM credentials.</li><li>The bundled Vault runs in memory for development. Use a persistent external key manager in production.</li></ul>
+<h2 id="upgrade">Upgrade</h2>
+<p>Redeploy the resource (Coolify pulls the branch and rebuilds <code>web</code> and <code>setup</code>). The named volumes, including <code>setup-state</code>, are kept, so data and secrets survive. If you changed origins or auth settings, re-run <code>setup</code> as above.</p>
+<p>The instance admin panel reports when a newer Aulora release is published. Coolify owns the git checkout, so apply that release by redeploying the new ref here. Do not run <code>infra/docker/update.sh</code> inside Coolify&#39;s source directory.</p>
+<h2 id="teardown">Teardown</h2>
+<p>Stop or delete the Coolify resource. <strong>Deleting the volumes wipes the data and the generated secrets, irreversibly.</strong> If you want to keep the deployment recoverable, back up <code>AULORA_ENCRYPTION_KEY</code> and the database first (see <a href="backups.html">Backups</a>) before removing the <code>pgdata</code>, <code>convex-data</code>, <code>minio-data</code> and <code>setup-state</code> volumes.</p>
+<h2 id="troubleshooting">Troubleshooting</h2>
+<ul><li><strong>Login redirects but the session does not stick</strong> — <code>/api/auth/*</code> is not</li></ul>
+<p>same-origin. Check that <code>CONVEX_SITE_ORIGIN</code> equals <code>SITE_URL</code> and that no <code>/api/auth</code> route was added to the Convex domain.</p>
+<ul><li><strong><code>setup</code> keeps failing the deployment health check</strong> — the one-shot services</li></ul>
+<p>must carry <code>exclude_from_hc: true</code>; keep that key when you edit the file.</p>
+<ul><li><strong>Data unreadable after a redeploy</strong> — <code>AULORA_ENCRYPTION_KEY</code> changed. Restore</li></ul>
+<p>it from your backup and point the stack at the original value; the ciphertext cannot be recovered without it.</p>
+<ul><li><strong>WebSocket or API errors from the client</strong> — <code>CONVEX_CLOUD_ORIGIN</code> must be the</li></ul>
+<p>public Convex domain and must not have a trailing slash.</p>
+        </article>
+        <nav class="pager" aria-label="Pages">
+          <a class="pager-prev" href="../docs/self-hosting.html" rel="prev"><small>Previous</small>Self-hosting</a>
+          <a class="pager-next" href="../docs/admin.html" rel="next"><small>Next</small>Admin panel</a>
+        </nav>
+      </main>
+      <aside class="toc" aria-label="On this page">
+        <p class="nav-label">On this page</p>
+        <nav>
+          <a href="#before-you-start">Before you start</a>
+          <a href="#1-create-the-resource">1. Create the resource</a>
+          <a href="#2-set-the-environment">2. Set the environment</a>
+          <a href="#3-add-two-domains">3. Add two domains</a>
+          <a href="#4-deploy">4. Deploy</a>
+          <a href="#how-the-generated-secrets-persist">How the generated secrets persist</a>
+          <a href="#optional-services">Optional services</a>
+          <a href="#upgrade">Upgrade</a>
+          <a href="#teardown">Teardown</a>
+          <a href="#troubleshooting">Troubleshooting</a>
+        </nav>
+      </aside>
+    </div>
+    <footer class="site-footer">
+      <div class="site-footer-inner">
+        <p class="footer-mark">Aulora · team chat on your own server</p>
+        <nav aria-label="Legal and contact">
+          <a href="../docs/licensing.html">Licensing</a>
+          <a href="../docs/privacy.html">Privacy</a>
+          <a href="../docs/legal/COMMERCIAL.html">Commercial terms</a>
+          <a href="../docs/legal/THIRD_PARTY_NOTICES.html">Third-party notices</a>
+          <a href="mailto:cnguyen@spwnd.dev">cnguyen@spwnd.dev</a>
+        </nav>
+        <p class="footer-fine">Free for personal and noncommercial use under PolyForm Noncommercial 1.0.0. Business use requires a paid license.</p>
+      </div>
+    </footer>
+  </body>
+</html>

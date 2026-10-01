@@ -1,0 +1,120 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <meta name="color-scheme" content="light dark" />
+    <title>Updates · Aulora Docs</title>
+    <meta name="description" content="Documentation for Aulora, self-hosted team chat with server-side encryption." />
+    <link rel="icon" type="image/svg+xml" href="../favicon.svg" />
+    <script src="../site.js" defer></script>
+    <link rel="stylesheet" href="../tokens.css" />
+    <link rel="stylesheet" href="../site.css" />
+    <link rel="stylesheet" href="../docs.css" />
+  </head>
+  <body class="docs">
+    <header class="site-header">
+      <div class="site-header-inner">
+        <a class="brand" href="../index.html">
+          <img src="../favicon.svg" alt="" width="26" height="26" />
+          <span>Aulora</span><span class="brand-sub">/ docs</span>
+        </a>
+        <nav class="site-nav" aria-label="Site">
+          <a href="../index.html#product">Product</a>
+          <a href="../index.html#install">Install</a>
+          <a href="../index.html#pricing">Pricing</a>
+          <a href="../docs/index.html" aria-current="page">Docs</a>
+          <a href="https://github.com/chark1es/Aulora">GitHub</a>
+        </nav>
+      </div>
+    </header>
+    <div class="docs-shell">
+      <details class="docs-nav" open>
+        <summary><svg class="icon" viewBox="0 0 24 24" aria-hidden="true" focusable="false"><path fill="currentColor" d="M4 18q-.425 0-.712-.288T3 17t.288-.712T4 16h16q.425 0 .713.288T21 17t-.288.713T20 18zm0-5q-.425 0-.712-.288T3 12t.288-.712T4 11h16q.425 0 .713.288T21 12t-.288.713T20 13zm0-5q-.425 0-.712-.288T3 7t.288-.712T4 6h16q.425 0 .713.288T21 7t-.288.713T20 8z"/></svg><span>Contents</span></summary>
+        <nav aria-label="Documentation">
+        <div class="nav-group">
+          <p class="nav-label">Start here</p>
+          <a href="../docs/index.html">Overview</a>
+          <a href="../docs/getting-started.html">Getting started</a>
+          <a href="../docs/user-guide.html">User guide</a>
+        </div>
+        <div class="nav-group">
+          <p class="nav-label">Run a server</p>
+          <a href="../docs/self-hosting.html">Self-hosting</a>
+          <a href="../docs/coolify.html">Coolify</a>
+          <a href="../docs/admin.html">Admin panel</a>
+          <a href="../docs/backups.html">Backups</a>
+          <a href="../docs/updates.html" aria-current="page">Updates</a>
+          <a href="../docs/troubleshooting.html">Troubleshooting</a>
+        </div>
+        <div class="nav-group">
+          <p class="nav-label">Policy</p>
+          <a href="../docs/privacy.html">Privacy</a>
+          <a href="../docs/licensing.html">Licensing</a>
+          <a href="../docs/contributing.html">Contributing</a>
+        </div>
+        </nav>
+      </details>
+      <main class="docs-main">
+        <header class="page-header">
+          <p class="page-eyebrow"><a href="../docs/index.html">Docs</a><svg class="icon" viewBox="0 0 24 24" aria-hidden="true" focusable="false"><path fill="currentColor" d="M12.6 12L8.7 8.1q-.275-.275-.275-.7t.275-.7t.7-.275t.7.275l4.6 4.6q.15.15.213.325t.062.375t-.062.375t-.213.325l-4.6 4.6q-.275.275-.7.275t-.7-.275t-.275-.7t.275-.7z"/></svg><span>Run a server</span></p>
+          <h1>Updates</h1>
+          <p class="page-meta">2 min read</p>
+        </header>
+        <article class="prose">
+<p>Back up the database, uploaded files, and encryption key before updating a server. Read the release notes for migrations. Server restarts briefly interrupt active clients and calls.</p>
+<h2 id="desktop-app">Desktop app</h2>
+<p>Open Your settings, Updates, or Check for updates in the app menu. Download the update and restart when ready. The desktop updater verifies its signature using the embedded public key.</p>
+<p>Linux AppImage supports the updater. Debian packages require manual installation of a newer package. Mobile clients update through their store or other installation channel.</p>
+<h2 id="docker-server-from-a-git-clone">Docker server from a Git clone</h2>
+<p>The host updater checks the release feed, refuses dirty checkouts, and redeploys a published release while keeping <code>.env</code> and volumes:</p>
+<div class="code"><div class="code-bar"><span>sh</span><button type="button" data-copy>Copy</button></div><pre><code class="language-sh">cd infra/docker
+./update.sh --check
+./update.sh --download
+./update.sh --restart</code></pre></div>
+<p><code>--check</code> returns exit code 10 when a newer release is available. A wrapper using <code>set -e</code> must handle that expected code. <code>--apply</code> downloads and applies an update directly.</p>
+<p>Run <code>./update.sh --watch</code> under a host service manager to enable owner-only download/restart controls in Workspace settings, Instance. The watcher needs Bun and installed checkout dependencies. <code>AULORA_AUTO_UPDATE=true</code> allows the watcher to prepare downloads automatically; the owner still chooses Restart. The default automatic mode without <code>--watch</code> can apply an update, so choose the invocation intentionally.</p>
+<p>Restart the watcher and re-run setup after changing its environment settings. Without it, update checks can still show version information, but installation uses host or hosting-provider controls.</p>
+<h2 id="coolify">Coolify</h2>
+<p>Deploy a chosen release tag or commit through Coolify. Preserve the existing named volumes, especially <code>setup-state</code>, which holds generated secrets. Do not switch to fresh volumes or regenerate the master key during an upgrade.</p>
+<h2 id="updating-a-checkout-manually">Updating a checkout manually</h2>
+<p>After reviewing the intended commit and confirming your backup, update the checkout without discarding local changes. Then:</p>
+<div class="code"><div class="code-bar"><span>sh</span><button type="button" data-copy>Copy</button></div><pre><code class="language-sh">cd infra/docker
+./deploy.sh
+# Include --profile backups if you use the backup runner.</code></pre></div>
+<p>Running setup alone reuses its current image and can deploy old code. <code>deploy.sh</code> rebuilds the source-containing images before redeploying.</p>
+<h2 id="verify-and-recover">Verify and recover</h2>
+<p>Check service health, discovery, sign-in, old messages, uploads, and permissions after every update. Verify from another client&#39;s network too.</p>
+<p>Do not assume that checking out an older version reverses a schema migration. Recover using the previous deployment configuration and a compatible backup in an isolated stack. See <a href="backups.html">backups and restore</a>.</p>
+        </article>
+        <nav class="pager" aria-label="Pages">
+          <a class="pager-prev" href="../docs/backups.html" rel="prev"><small>Previous</small>Backups</a>
+          <a class="pager-next" href="../docs/troubleshooting.html" rel="next"><small>Next</small>Troubleshooting</a>
+        </nav>
+      </main>
+      <aside class="toc" aria-label="On this page">
+        <p class="nav-label">On this page</p>
+        <nav>
+          <a href="#desktop-app">Desktop app</a>
+          <a href="#docker-server-from-a-git-clone">Docker server from a Git clone</a>
+          <a href="#coolify">Coolify</a>
+          <a href="#updating-a-checkout-manually">Updating a checkout manually</a>
+          <a href="#verify-and-recover">Verify and recover</a>
+        </nav>
+      </aside>
+    </div>
+    <footer class="site-footer">
+      <div class="site-footer-inner">
+        <p class="footer-mark">Aulora · team chat on your own server</p>
+        <nav aria-label="Legal and contact">
+          <a href="../docs/licensing.html">Licensing</a>
+          <a href="../docs/privacy.html">Privacy</a>
+          <a href="../docs/legal/COMMERCIAL.html">Commercial terms</a>
+          <a href="../docs/legal/THIRD_PARTY_NOTICES.html">Third-party notices</a>
+          <a href="mailto:cnguyen@spwnd.dev">cnguyen@spwnd.dev</a>
+        </nav>
+        <p class="footer-fine">Free for personal and noncommercial use under PolyForm Noncommercial 1.0.0. Business use requires a paid license.</p>
+      </div>
+    </footer>
+  </body>
+</html>

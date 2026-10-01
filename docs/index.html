@@ -1,0 +1,104 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <meta name="color-scheme" content="light dark" />
+    <title>Aulora documentation · Aulora Docs</title>
+    <meta name="description" content="Documentation for Aulora, self-hosted team chat with server-side encryption." />
+    <link rel="icon" type="image/svg+xml" href="../favicon.svg" />
+    <script src="../site.js" defer></script>
+    <link rel="stylesheet" href="../tokens.css" />
+    <link rel="stylesheet" href="../site.css" />
+    <link rel="stylesheet" href="../docs.css" />
+  </head>
+  <body class="docs">
+    <header class="site-header">
+      <div class="site-header-inner">
+        <a class="brand" href="../index.html">
+          <img src="../favicon.svg" alt="" width="26" height="26" />
+          <span>Aulora</span><span class="brand-sub">/ docs</span>
+        </a>
+        <nav class="site-nav" aria-label="Site">
+          <a href="../index.html#product">Product</a>
+          <a href="../index.html#install">Install</a>
+          <a href="../index.html#pricing">Pricing</a>
+          <a href="../docs/index.html" aria-current="page">Docs</a>
+          <a href="https://github.com/chark1es/Aulora">GitHub</a>
+        </nav>
+      </div>
+    </header>
+    <div class="docs-shell">
+      <details class="docs-nav" open>
+        <summary><svg class="icon" viewBox="0 0 24 24" aria-hidden="true" focusable="false"><path fill="currentColor" d="M4 18q-.425 0-.712-.288T3 17t.288-.712T4 16h16q.425 0 .713.288T21 17t-.288.713T20 18zm0-5q-.425 0-.712-.288T3 12t.288-.712T4 11h16q.425 0 .713.288T21 12t-.288.713T20 13zm0-5q-.425 0-.712-.288T3 7t.288-.712T4 6h16q.425 0 .713.288T21 7t-.288.713T20 8z"/></svg><span>Contents</span></summary>
+        <nav aria-label="Documentation">
+        <div class="nav-group">
+          <p class="nav-label">Start here</p>
+          <a href="../docs/index.html" aria-current="page">Overview</a>
+          <a href="../docs/getting-started.html">Getting started</a>
+          <a href="../docs/user-guide.html">User guide</a>
+        </div>
+        <div class="nav-group">
+          <p class="nav-label">Run a server</p>
+          <a href="../docs/self-hosting.html">Self-hosting</a>
+          <a href="../docs/coolify.html">Coolify</a>
+          <a href="../docs/admin.html">Admin panel</a>
+          <a href="../docs/backups.html">Backups</a>
+          <a href="../docs/updates.html">Updates</a>
+          <a href="../docs/troubleshooting.html">Troubleshooting</a>
+        </div>
+        <div class="nav-group">
+          <p class="nav-label">Policy</p>
+          <a href="../docs/privacy.html">Privacy</a>
+          <a href="../docs/licensing.html">Licensing</a>
+          <a href="../docs/contributing.html">Contributing</a>
+        </div>
+        </nav>
+      </details>
+      <main class="docs-main">
+        <header class="page-header">
+          <p class="page-eyebrow"><a href="../docs/index.html">Docs</a><svg class="icon" viewBox="0 0 24 24" aria-hidden="true" focusable="false"><path fill="currentColor" d="M12.6 12L8.7 8.1q-.275-.275-.275-.7t.275-.7t.7-.275t.7.275l4.6 4.6q.15.15.213.325t.062.375t-.062.375t-.213.325l-4.6 4.6q-.275.275-.7.275t-.7-.275t-.275-.7t.275-.7z"/></svg><span>Start here</span></p>
+          <h1>Aulora documentation</h1>
+          <p class="page-meta">1 min read</p>
+        </header>
+        <article class="prose">
+<p>Aulora is self-hosted team chat. Each server hosts one workspace; clients can join several servers. Personal and noncommercial use is free. Businesses need a paid commercial agreement.</p>
+<h2 id="start-here">Start here</h2>
+<ul><li>Joining a team? Read the <a href="user-guide.html">user guide</a>.</li><li>Installing your own server? Start with <a href="getting-started.html">getting started</a>.</li><li>Deploying publicly? Read <a href="self-hosting.html">self-hosting</a> or <a href="coolify.html">Coolify</a>.</li><li>Managing a workspace? Read the <a href="admin.html">admin guide</a>.</li><li>Keeping it running? Set up <a href="backups.html">backups</a>, <a href="updates.html">updates</a>, and read <a href="troubleshooting.html">troubleshooting</a>.</li><li>Building from source? Read <a href="contributing.html">contributing</a> and the <a href="https://github.com/chark1es/Aulora/blob/main/docs/development.md">development guide</a>.</li></ul>
+<h2 id="what-aulora-provides">What Aulora provides</h2>
+<p>Channels, direct and group messages, threads, reactions, file sharing, search, permissions, and voice/video calls. Browser, desktop, and mobile clients connect to the same server.</p>
+<p>Content encryption happens on the server. The operator can decrypt content for authorized users. This is not end-to-end encryption. See <a href="privacy.html">privacy</a> for the trust model and optional external services.</p>
+<h2 id="requirements">Requirements</h2>
+<div class="table-scroll"><table><thead><tr><th scope="col">Task</th><th scope="col">Requirements</th></tr></thead><tbody><tr><td>Join a workspace</td><td>A server URL, an account or invitation, and a supported client</td></tr><tr><td>Run a server</td><td>Git, Docker, and Compose v2.24 or newer</td></tr><tr><td>Build JavaScript apps</td><td>Bun 1.4.0 and Node.js 22.18.0</td></tr><tr><td>Build native clients</td><td>Platform SDKs, plus Rust for desktop</td></tr></tbody></table></div>
+<p>Release binaries and store listings become available when published. A successful source build does not establish store availability or live push delivery.</p>
+<p><a href="licensing.html">Licensing</a> explains free and paid use. Contact <a href="mailto:cnguyen@spwnd.dev">cnguyen@spwnd.dev</a> for commercial licensing or private security reports.</p>
+        </article>
+        <nav class="pager" aria-label="Pages">
+          <span></span>
+          <a class="pager-next" href="../docs/getting-started.html" rel="next"><small>Next</small>Getting started</a>
+        </nav>
+      </main>
+      <aside class="toc" aria-label="On this page">
+        <p class="nav-label">On this page</p>
+        <nav>
+          <a href="#start-here">Start here</a>
+          <a href="#what-aulora-provides">What Aulora provides</a>
+          <a href="#requirements">Requirements</a>
+        </nav>
+      </aside>
+    </div>
+    <footer class="site-footer">
+      <div class="site-footer-inner">
+        <p class="footer-mark">Aulora · team chat on your own server</p>
+        <nav aria-label="Legal and contact">
+          <a href="../docs/licensing.html">Licensing</a>
+          <a href="../docs/privacy.html">Privacy</a>
+          <a href="../docs/legal/COMMERCIAL.html">Commercial terms</a>
+          <a href="../docs/legal/THIRD_PARTY_NOTICES.html">Third-party notices</a>
+          <a href="mailto:cnguyen@spwnd.dev">cnguyen@spwnd.dev</a>
+        </nav>
+        <p class="footer-fine">Free for personal and noncommercial use under PolyForm Noncommercial 1.0.0. Business use requires a paid license.</p>
+      </div>
+    </footer>
+  </body>
+</html>

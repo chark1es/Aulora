@@ -1,0 +1,309 @@
+/*
+ * Shared chrome for the landing page and docs. Colors come from tokens.css,
+ * generated from @aulora/tokens; type, radii and materials mirror the web
+ * client (apps/web/src/styles/globals.css) so the site reads as the same app.
+ */
+
+:root {
+  --font-sans:
+    -apple-system, BlinkMacSystemFont, "Segoe UI Variable Text", "Segoe UI", "Inter", "Geist",
+    system-ui, sans-serif;
+  --font-mono:
+    ui-monospace, "SF Mono", "Geist Mono", "JetBrains Mono", "Cascadia Code", SFMono-Regular, Menlo,
+    Consolas, monospace;
+  --radius-card: 12px;
+  --radius-input: 10px;
+  --radius-sm: 6px;
+  --ease-out: cubic-bezier(0.16, 1, 0.3, 1);
+  --shadow-card: 0 1px 2px rgba(0, 0, 0, 0.04), 0 12px 32px -18px rgba(0, 0, 0, 0.22);
+  --header-height: 56px;
+}
+
+/*
+ * Ember is kept for things you can click. In dark mode the token accent is
+ * 3.7:1 under white text and 3.8:1 as text on raised surfaces, below the 4.5:1
+ * minimum, so filled buttons darken it (4.9:1) and links lighten it (4.8:1
+ * on surface-2, 5.9:1 on bg). Light mode uses the token directly (5.2:1).
+ */
+:root {
+  --link: var(--accent);
+  --accent-fill: var(--accent);
+  --accent-fill-hover: color-mix(in srgb, var(--accent) 88%, black);
+}
+
+@media (prefers-color-scheme: dark) {
+  :root {
+    --link: color-mix(in srgb, var(--accent) 80%, white);
+    --accent-fill: color-mix(in srgb, var(--accent) 85%, black);
+    --accent-fill-hover: color-mix(in srgb, var(--accent) 78%, black);
+    --shadow-card: 0 1px 2px rgba(0, 0, 0, 0.5), 0 14px 34px -20px rgba(0, 0, 0, 0.85);
+  }
+}
+
+/* Increase Contrast: stronger hairlines and secondary text. */
+@media (prefers-contrast: more) {
+  :root {
+    --border: color-mix(in srgb, var(--text) 45%, var(--bg));
+    --text-muted: color-mix(in srgb, var(--text) 82%, var(--bg));
+  }
+}
+
+*,
+*::before,
+*::after {
+  box-sizing: border-box;
+}
+
+html {
+  scroll-padding-top: calc(var(--header-height) + 24px);
+  -webkit-text-size-adjust: 100%;
+}
+
+body {
+  margin: 0;
+  background: var(--bg);
+  color: var(--text);
+  font-family: var(--font-sans);
+  font-size: 16px;
+  line-height: 1.6;
+  -webkit-font-smoothing: antialiased;
+  text-rendering: optimizeLegibility;
+}
+
+::selection {
+  background-color: color-mix(in srgb, var(--accent) 28%, transparent);
+}
+
+a {
+  color: var(--link);
+  text-decoration: none;
+}
+
+a:hover {
+  text-decoration: underline;
+  text-underline-offset: 3px;
+}
+
+:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 2px;
+  border-radius: 4px;
+}
+
+img,
+svg {
+  display: block;
+}
+
+.icon {
+  width: 1.15em;
+  height: 1.15em;
+  flex-shrink: 0;
+}
+
+code,
+kbd,
+pre {
+  font-family: var(--font-mono);
+}
+
+/* Header: translucent chrome over content, like the app's toolbar. */
+
+.site-header {
+  position: sticky;
+  top: 0;
+  z-index: 20;
+  border-bottom: 1px solid var(--border);
+  background-color: color-mix(in srgb, var(--surface-1) 84%, transparent);
+  -webkit-backdrop-filter: saturate(180%) blur(20px);
+  backdrop-filter: saturate(180%) blur(20px);
+}
+
+.site-header-inner {
+  display: flex;
+  align-items: center;
+  gap: 24px;
+  max-width: 1200px;
+  height: var(--header-height);
+  margin: 0 auto;
+  padding: 0 24px;
+}
+
+@media (prefers-reduced-transparency: reduce) {
+  .site-header {
+    background-color: var(--surface-1);
+    -webkit-backdrop-filter: none;
+    backdrop-filter: none;
+  }
+}
+
+.brand {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  color: var(--text);
+  font-size: 16px;
+  font-weight: 600;
+  letter-spacing: -0.01em;
+}
+
+.brand:hover {
+  text-decoration: none;
+}
+
+.brand img {
+  border-radius: 7px;
+}
+
+.brand-sub {
+  color: var(--text-muted);
+  font-family: var(--font-mono);
+  font-size: 13px;
+  font-weight: 400;
+}
+
+.site-nav {
+  display: flex;
+  gap: 2px;
+  margin-left: auto;
+}
+
+.site-nav a {
+  border-radius: 8px;
+  display: flex;
+  align-items: center;
+  min-height: 36px;
+  padding: 0 10px;
+  color: var(--text-muted);
+  font-size: 14px;
+  font-weight: 500;
+}
+
+.site-nav a:hover,
+.site-nav a[aria-current="page"] {
+  background: var(--surface-3);
+  color: var(--text);
+  text-decoration: none;
+}
+
+/* Buttons */
+
+.button {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  min-height: 44px;
+  border: 1px solid transparent;
+  border-radius: var(--radius-input);
+  padding: 0 18px;
+  font-size: 15px;
+  font-weight: 600;
+  transition:
+    background-color 140ms ease-out,
+    border-color 140ms ease-out,
+    transform 140ms ease-out;
+}
+
+.button:hover {
+  text-decoration: none;
+}
+
+.button:active {
+  transform: translateY(1px);
+}
+
+.button-primary {
+  background: var(--accent-fill);
+  color: var(--on-accent);
+}
+
+.button-primary:hover {
+  background: var(--accent-fill-hover);
+}
+
+.button-quiet {
+  border-color: var(--border);
+  background: var(--surface-2);
+  color: var(--text);
+}
+
+.button-quiet:hover {
+  background: var(--surface-3);
+}
+
+/* Footer */
+
+.site-footer {
+  border-top: 1px solid var(--border);
+  background: var(--surface-1);
+  color: var(--text-muted);
+  font-size: 13px;
+}
+
+.site-footer-inner {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 12px 24px;
+  max-width: 1200px;
+  margin: 0 auto;
+  padding: 28px 24px 36px;
+}
+
+.site-footer p {
+  margin: 0;
+}
+
+.footer-mark {
+  color: var(--text);
+  font-weight: 500;
+}
+
+.site-footer nav {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px 18px;
+  margin-left: auto;
+}
+
+.site-footer nav a {
+  color: var(--text-muted);
+}
+
+.site-footer nav a:hover {
+  color: var(--text);
+}
+
+.footer-fine {
+  flex-basis: 100%;
+  font-size: 12px;
+}
+
+@media (max-width: 720px) {
+  .site-header-inner {
+    gap: 12px;
+    padding: 0 16px;
+  }
+
+  .site-nav a:not([href*="docs/"]):not([href*="github"]) {
+    display: none;
+  }
+
+  .site-nav a {
+    min-height: 44px;
+  }
+
+  .site-footer nav {
+    margin-left: 0;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+  }
+}

@@ -1,0 +1,122 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <meta name="color-scheme" content="light dark" />
+    <title>User guide · Aulora Docs</title>
+    <meta name="description" content="Documentation for Aulora, self-hosted team chat with server-side encryption." />
+    <link rel="icon" type="image/svg+xml" href="../favicon.svg" />
+    <script src="../site.js" defer></script>
+    <link rel="stylesheet" href="../tokens.css" />
+    <link rel="stylesheet" href="../site.css" />
+    <link rel="stylesheet" href="../docs.css" />
+  </head>
+  <body class="docs">
+    <header class="site-header">
+      <div class="site-header-inner">
+        <a class="brand" href="../index.html">
+          <img src="../favicon.svg" alt="" width="26" height="26" />
+          <span>Aulora</span><span class="brand-sub">/ docs</span>
+        </a>
+        <nav class="site-nav" aria-label="Site">
+          <a href="../index.html#product">Product</a>
+          <a href="../index.html#install">Install</a>
+          <a href="../index.html#pricing">Pricing</a>
+          <a href="../docs/index.html" aria-current="page">Docs</a>
+          <a href="https://github.com/chark1es/Aulora">GitHub</a>
+        </nav>
+      </div>
+    </header>
+    <div class="docs-shell">
+      <details class="docs-nav" open>
+        <summary><svg class="icon" viewBox="0 0 24 24" aria-hidden="true" focusable="false"><path fill="currentColor" d="M4 18q-.425 0-.712-.288T3 17t.288-.712T4 16h16q.425 0 .713.288T21 17t-.288.713T20 18zm0-5q-.425 0-.712-.288T3 12t.288-.712T4 11h16q.425 0 .713.288T21 12t-.288.713T20 13zm0-5q-.425 0-.712-.288T3 7t.288-.712T4 6h16q.425 0 .713.288T21 7t-.288.713T20 8z"/></svg><span>Contents</span></summary>
+        <nav aria-label="Documentation">
+        <div class="nav-group">
+          <p class="nav-label">Start here</p>
+          <a href="../docs/index.html">Overview</a>
+          <a href="../docs/getting-started.html">Getting started</a>
+          <a href="../docs/user-guide.html" aria-current="page">User guide</a>
+        </div>
+        <div class="nav-group">
+          <p class="nav-label">Run a server</p>
+          <a href="../docs/self-hosting.html">Self-hosting</a>
+          <a href="../docs/coolify.html">Coolify</a>
+          <a href="../docs/admin.html">Admin panel</a>
+          <a href="../docs/backups.html">Backups</a>
+          <a href="../docs/updates.html">Updates</a>
+          <a href="../docs/troubleshooting.html">Troubleshooting</a>
+        </div>
+        <div class="nav-group">
+          <p class="nav-label">Policy</p>
+          <a href="../docs/privacy.html">Privacy</a>
+          <a href="../docs/licensing.html">Licensing</a>
+          <a href="../docs/contributing.html">Contributing</a>
+        </div>
+        </nav>
+      </details>
+      <main class="docs-main">
+        <header class="page-header">
+          <p class="page-eyebrow"><a href="../docs/index.html">Docs</a><svg class="icon" viewBox="0 0 24 24" aria-hidden="true" focusable="false"><path fill="currentColor" d="M12.6 12L8.7 8.1q-.275-.275-.275-.7t.275-.7t.7-.275t.7.275l4.6 4.6q.15.15.213.325t.062.375t-.062.375t-.213.325l-4.6 4.6q-.275.275-.7.275t-.7-.275t-.275-.7t.275-.7z"/></svg><span>Start here</span></p>
+          <h1>User guide</h1>
+          <p class="page-meta">3 min read</p>
+        </header>
+        <article class="prose">
+<h2 id="connect-and-sign-in">Connect and sign in</h2>
+<p>Your administrator supplies the server&#39;s web URL, such as <code>https://chat.example.com</code>. Open it in your browser or enter it on the app&#39;s connect screen. Use the web URL, not the Convex dashboard or a database address.</p>
+<p>The server advertises its available sign-in methods. Use email/password, a configured OAuth provider, or your organization&#39;s SSO. An invitation may be required. If sign-in is unavailable, contact the administrator of that server.</p>
+<p>Accounts belong to each server. Joining another server can require another account. Use the workspace switcher to move between connected servers.</p>
+<h2 id="install-a-desktop-or-mobile-client">Install a desktop or mobile client</h2>
+<p>Published files are listed in <a href="https://github.com/chark1es/Aulora/releases">GitHub Releases</a>. Check the version and choose your platform:</p>
+<div class="table-scroll"><table><thead><tr><th scope="col">Platform</th><th scope="col">File and installation</th></tr></thead><tbody><tr><td>macOS Apple Silicon</td><td>ARM64 DMG; open it and move Aulora to Applications</td></tr><tr><td>macOS Intel</td><td>x86_64 DMG; open it and move Aulora to Applications</td></tr><tr><td>Windows x64</td><td><code>_x64-setup.exe</code>; run the installer</td></tr><tr><td>Linux x64</td><td>AppImage for in-app updates, or a Debian package for manual installation</td></tr><tr><td>Android</td><td>APK for direct installation; AAB is for Google Play submission</td></tr><tr><td>iOS</td><td>Use a published App Store or TestFlight invitation; an IPA download is not a general installer</td></tr><tr><td>Browser</td><td>Open your server&#39;s web URL</td></tr></tbody></table></div>
+<p>For an AppImage, grant execute permission before opening it, for example <code>chmod +x Aulora*.AppImage</code>. Linux desktop integration and system dependencies vary by distribution.</p>
+<p>Windows downloads are currently unsigned, so Windows may show an unknown-publisher warning. Verify that a download came from this repository. Release assets include <code>SHA256SUMS</code>; use <code>sha256sum</code>, macOS <code>shasum -a 256</code>, or PowerShell <code>Get-FileHash -Algorithm SHA256</code> to compare the downloaded file with its listed hash. Hashes verify file integrity; they are not a substitute for a trusted download source.</p>
+<h2 id="messages-and-conversations">Messages and conversations</h2>
+<p>Choose a channel in the sidebar to read or send messages. Start a direct conversation from the conversation controls and choose a member. Use a message&#39;s action menu for replies, reactions, editing, or other available actions.</p>
+<p>Threads keep replies attached to a message. The threads inbox helps you return to discussions. Drag a file into the web/desktop composer or use the attachment control; mobile offers the device&#39;s file and photo pickers. Upload limits depend on the server.</p>
+<p>Role permissions control who can create channels, upload, moderate, or manage a workspace. If an action is missing or denied, ask the workspace administrator.</p>
+<h2 id="voice-and-video">Voice and video</h2>
+<p>Join a voice channel or start a call from a conversation. Allow microphone access, and camera access when using video. Use the call controls to mute, change devices, or leave.</p>
+<p>A browser needs HTTPS or localhost for media permissions. Screen sharing depends on platform support. If a call connects but has no audio/video, try another network and ask the administrator whether TURN is configured.</p>
+<h2 id="notifications">Notifications</h2>
+<p>Allow notifications when prompted and check channel mute and user notification settings. OS focus modes, battery restrictions, and denied permissions can suppress alerts.</p>
+<p>The desktop process must remain running for local chat notifications. Closing its window can leave it in the tray; quitting stops that delivery path. Mobile background notifications require the server&#39;s relay and the publisher&#39;s APNs/FCM setup. The browser also needs permission for web push. Notifications are not evidence that messages are end-to-end encrypted.</p>
+<h2 id="updates">Updates</h2>
+<p>Desktop updates are in Your settings, Updates. Download the update, then restart to install it. AppImage supports the Linux updater; Debian packages require manual replacement. Mobile updates come through the distribution channel you installed from.</p>
+<p>Server updates belong to the workspace owner. See <a href="updates.html">updates</a>. If the server is being restarted, reconnect after it returns.</p>
+<h2 id="get-help">Get help</h2>
+<p>For account access or workspace rules, contact your server administrator. For a reproducible app bug, follow <a href="troubleshooting.html">troubleshooting</a> and file a <a href="https://github.com/chark1es/Aulora/issues">GitHub issue</a>. Keep passwords, tokens, and private messages out of reports.</p>
+        </article>
+        <nav class="pager" aria-label="Pages">
+          <a class="pager-prev" href="../docs/getting-started.html" rel="prev"><small>Previous</small>Getting started</a>
+          <a class="pager-next" href="../docs/self-hosting.html" rel="next"><small>Next</small>Self-hosting</a>
+        </nav>
+      </main>
+      <aside class="toc" aria-label="On this page">
+        <p class="nav-label">On this page</p>
+        <nav>
+          <a href="#connect-and-sign-in">Connect and sign in</a>
+          <a href="#install-a-desktop-or-mobile-client">Install a desktop or mobile client</a>
+          <a href="#messages-and-conversations">Messages and conversations</a>
+          <a href="#voice-and-video">Voice and video</a>
+          <a href="#notifications">Notifications</a>
+          <a href="#updates">Updates</a>
+          <a href="#get-help">Get help</a>
+        </nav>
+      </aside>
+    </div>
+    <footer class="site-footer">
+      <div class="site-footer-inner">
+        <p class="footer-mark">Aulora · team chat on your own server</p>
+        <nav aria-label="Legal and contact">
+          <a href="../docs/licensing.html">Licensing</a>
+          <a href="../docs/privacy.html">Privacy</a>
+          <a href="../docs/legal/COMMERCIAL.html">Commercial terms</a>
+          <a href="../docs/legal/THIRD_PARTY_NOTICES.html">Third-party notices</a>
+          <a href="mailto:cnguyen@spwnd.dev">cnguyen@spwnd.dev</a>
+        </nav>
+        <p class="footer-fine">Free for personal and noncommercial use under PolyForm Noncommercial 1.0.0. Business use requires a paid license.</p>
+      </div>
+    </footer>
+  </body>
+</html>
