@@ -26,26 +26,17 @@ non-draft PRs when opened, reopened, marked ready, or updated. It updates a
 persistent review comment. Automatic description changes and code suggestions
 are disabled; maintainers can request them with commands.
 
-Add one repository secret in
-[Actions settings](https://github.com/chark1es/Aulora/settings/secrets/actions):
+Add the `OPENROUTER_API_KEY` secret to the `pr-review` environment in
+[environment settings](https://github.com/chark1es/Aulora/settings/environments).
+Get a key from [OpenRouter](https://openrouter.ai/settings/keys). The default
+model is [DeepSeek V4.1 Flash](https://openrouter.ai/deepseek/deepseek-v4.1-flash),
+`openrouter/deepseek/deepseek-v4.1-flash`. OpenRouter receives the PR
+diff and repository context and bills API usage to that key.
 
-| Secret | Provider and default model |
-| --- | --- |
-| `OPENCODE_API_KEY` | OpenCode Zen, `openai/kimi-k2.5` |
-| `OPENROUTER_API_KEY` | OpenRouter, `openrouter/moonshotai/kimi-k2.5` |
-
-OpenCode takes priority when both secrets exist. OpenRouter is the alternative
-when the OpenCode secret is absent; an OpenCode request failure does not switch
-providers. Get a key from [OpenCode Zen](https://opencode.ai/docs/en/zen/) or
-[OpenRouter](https://openrouter.ai/settings/keys). The selected provider receives
-the PR diff and repository context and bills API usage to that key.
-
-With GitHub CLI, run either command and enter the key at its hidden prompt:
+With GitHub CLI, run this command and enter the key at its hidden prompt:
 
 ```sh
-gh secret set OPENCODE_API_KEY --repo chark1es/Aulora
-# Or use OpenRouter:
-gh secret set OPENROUTER_API_KEY --repo chark1es/Aulora
+gh secret set OPENROUTER_API_KEY --env pr-review --repo chark1es/Aulora
 ```
 
 Merge the workflow and [`.pr_agent.toml`](../.pr_agent.toml) to `main`, then open
@@ -66,9 +57,7 @@ do not run the agent:
 ```
 
 `/describe` posts a summary comment. To change the model, set the `PR_AGENT_MODEL`
-Actions variable to a PR-Agent/LiteLLM model ID for the selected provider. For
-OpenCode, choose a model served at its `chat/completions` endpoint and use the
-`openai/` prefix. For OpenRouter, use `openrouter/` followed by the model ID.
+Actions variable to `openrouter/` followed by an OpenRouter model ID.
 Keep `custom_model_max_tokens` in `.pr_agent.toml` within the model's context
 limit. [PR-Agent model configuration](https://docs.pr-agent.ai/usage-guide/changing_a_model/).
 
