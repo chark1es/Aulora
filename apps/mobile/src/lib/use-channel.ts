@@ -7,7 +7,7 @@ import type {
 } from "@aulora/core";
 import { summarizeUnread, type UnreadSummary } from "@aulora/core";
 import { useEffect, useMemo, useState } from "react";
-import type { MobileChatRuntime } from "./chat-runtime";
+import type { ChatSurfaceRuntime } from "./chat-surface";
 
 export interface ChannelSessionState {
   readonly messages: readonly MessagePayload[];
@@ -24,7 +24,7 @@ export interface ChannelSessionState {
  * clients behave identically.
  */
 export function useChannelSession(
-  runtime: MobileChatRuntime | undefined,
+  runtime: ChatSurfaceRuntime | undefined,
   channelId: string | undefined,
   userId: string,
 ): ChannelSessionState {

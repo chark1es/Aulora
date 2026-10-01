@@ -1,15 +1,16 @@
 import type { MessagePayload, RoleMentionTarget } from "@aulora/core";
 import { Button, Card, Heading, Text } from "@aulora/ui-native";
 import { useEffect, useMemo, useState } from "react";
-import { Modal, ScrollView, View } from "react-native";
+import { KeyboardAvoidingView, Modal, Platform, ScrollView, View } from "react-native";
+import { useSafeAreaInsets } from "react-native-safe-area-context";
 import type { PickedFile } from "../../lib/attachments";
-import type { MobileChatRuntime } from "../../lib/chat-runtime";
-import { watchThread } from "../../lib/chat-runtime";
+import type { ChatSurfaceRuntime } from "../../lib/chat-surface";
+import { AttachmentView } from "./AttachmentView";
 import { Composer } from "./Composer";
 import { RichText } from "./RichText";
 
 export interface ThreadModalProps {
-  readonly runtime: MobileChatRuntime;
+  readonly runtime: ChatSurfaceRuntime;
   readonly channelId: string;
   readonly root: MessagePayload;
   readonly rootText: string | undefined;
@@ -45,6 +46,7 @@ export function ThreadModal({
   onSendReply,
 }: ThreadModalProps) {
   const [replies, setReplies] = useState<readonly MessagePayload[]>([]);
+  const insets = useSafeAreaInsets();
   const [decrypted, setDecrypted] = useState<ReadonlyMap<string, string>>(new Map());
   const [alsoSend, setAlsoSend] = useState(false);
   const mentionNames = useMemo(() => [...memberNames.values()], [memberNames]);
@@ -55,7 +57,7 @@ export function ThreadModal({
   const viewerName = memberNames.get(ownUserId) ?? "You";
 
   useEffect(() => {
-    const off = watchThread(runtime, root.id, (incoming) => {
+    const off = runtime.watchThread(root.id, (incoming) => {
       void runtime.session.receiveMessages(incoming).then(() => {
         setReplies(incoming);
         setDecrypted((current) => {
@@ -72,15 +74,24 @@ export function ThreadModal({
 
   return (
     <Modal visible transparent animationType="slide" onRequestClose={onClose}>
-      <View className="flex-1 justify-end bg-black/50">
-        <View className="max-h-[85%] rounded-t-card bg-surface-1">
+      <KeyboardAvoidingView
+        className="flex-1 justify-end bg-black/50"
+        behavior={Platform.OS === "ios" ? "padding" : "height"}
+      >
+        <View
+          className="max-h-[85%] rounded-t-card bg-surface-1"
+          style={{ paddingBottom: insets.bottom }}
+        >
           <View className="flex-row items-center justify-between border-b border-border px-4 py-3">
             <Heading level={3}>Thread</Heading>
             <Button size="sm" variant="ghost" onPress={onClose}>
               Close
             </Button>
           </View>
-          <ScrollView contentContainerStyle={{ padding: 12, gap: 10 }}>
+          <ScrollView
+            contentContainerStyle={{ padding: 12, gap: 10 }}
+            keyboardShouldPersistTaps="handled"
+          >
             <Card>
               <Text size="sm" className="font-medium">
                 {memberNames.get(root.authorId) ?? root.authorId}
@@ -98,6 +109,9 @@ export function ThreadModal({
                   Unable to load this message.
                 </Text>
               )}
+              {runtime.session.attachmentsFor(root.id).map((attachment) => (
+                <AttachmentView key={attachment.fileId} runtime={runtime} descriptor={attachment} />
+              ))}
             </Card>
             {replies.map((reply) => (
               <View key={reply.id} className="px-1">
@@ -118,6 +132,13 @@ export function ThreadModal({
                     Unable to load this message.
                   </Text>
                 )}
+                {runtime.session.attachmentsFor(reply.id).map((attachment) => (
+                  <AttachmentView
+                    key={attachment.fileId}
+                    runtime={runtime}
+                    descriptor={attachment}
+                  />
+                ))}
               </View>
             ))}
             {replies.length === 0 && (
@@ -150,7 +171,7 @@ export function ThreadModal({
             }
           />
         </View>
-      </View>
+      </KeyboardAvoidingView>
     </Modal>
   );
 }

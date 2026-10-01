@@ -3,13 +3,13 @@ import { gridDays } from "@aulora/core";
 import { Text, usePalette } from "@aulora/ui-native";
 import { useEffect, useMemo, useState } from "react";
 import { FlatList, Pressable, View } from "react-native";
-import type { MobileChatRuntime } from "../../lib/chat-runtime";
+import type { ChatSurfaceRuntime } from "../../lib/chat-surface";
 import { AttachmentView } from "./AttachmentView";
 import { MemberAvatar } from "./MemberAvatar";
 import { RichText } from "./RichText";
 
 export interface MessageListProps {
-  readonly runtime: MobileChatRuntime | undefined;
+  readonly runtime: ChatSurfaceRuntime | undefined;
   readonly channelId: string;
   readonly messages: readonly MessagePayload[];
   readonly decrypted: ReadonlyMap<string, string>;
@@ -142,7 +142,7 @@ function MessageRow({
   onReply,
   onChannelPress,
 }: {
-  runtime: MobileChatRuntime | undefined;
+  runtime: ChatSurfaceRuntime | undefined;
   channelId: string;
   message: MessagePayload;
   text: string | undefined;
@@ -268,7 +268,7 @@ function ReactionRow({
   ownUserId,
   onReply,
 }: {
-  runtime: MobileChatRuntime;
+  runtime: ChatSurfaceRuntime;
   channelId: string;
   messageId: string;
   ownUserId: string;

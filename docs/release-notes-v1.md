@@ -18,6 +18,8 @@ Verify downloads against `SHA256SUMS`. Windows installers are unsigned and can d
 
 The [release assets](https://github.com/chark1es/Aulora/releases/tag/v1.0.0) contain the downloads. Mobile store and TestFlight access are not yet available. An IPA downloaded from GitHub cannot be installed on an arbitrary iPhone. See the [mobile test plan](https://github.com/chark1es/Aulora/blob/main/docs/mobile-testing.md).
 
+Testers connect to their own server. On a fresh iOS installation, a reserved server address opens a clearly labeled offline App Review demo. Sample channels, messages, threads, reactions, search, members, and local files stay on the device and reset on exit. Calls, authentication, administration, and push still require a real server. See [review instructions](https://github.com/chark1es/Aulora/blob/main/docs/apple-review-demo.md).
+
 ## Deployment notes
 
 The Docker defaults are for a local trial. Public deployments need HTTPS, reachable origin settings, non-default database/storage passwords, and private administration ports. Follow [self-hosting](https://github.com/chark1es/Aulora/blob/v1.0.0/apps/docs/content/self-hosting.md) or [Coolify](https://github.com/chark1es/Aulora/blob/v1.0.0/apps/docs/content/coolify.md).
@@ -35,3 +37,5 @@ Report reproducible bugs through GitHub Issues. Report vulnerabilities privately
 ## Verification limits
 
 Native CI compilation passes for macOS, Windows, Linux, Android, and the iOS simulator. Signed build and checksum validation run before GitHub publication. Physical-device behavior, production OAuth/HTTPS/WSS, TURN calls, and background push delivery have not completed the release acceptance pass. Native license inventories and project asset ownership still require publisher review. The repository checklist records these outstanding checks; the release does not certify them.
+
+The Linux desktop dependency graph includes `glib` 0.18.5, affected by the moderate [VariantStrIter advisory](https://github.com/advisories/GHSA-wrw7-89jp-8q8g). The dependency alert remains open. Upgrading this GTK dependency requires coordination with the desktop framework; this release does not claim the issue is fixed.

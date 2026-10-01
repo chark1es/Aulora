@@ -4,6 +4,8 @@ Use the signed files from the same published release. The [Prepare mobile testin
 
 ## Android
 
+Testers supply their own server address. There is no official test server. Apple reviewers have a separate [offline iOS demo](apple-review-demo.md), opened by entering a reserved server address before a server profile is saved.
+
 Download `Aulora_1.0.0_android.apk` from [v1.0.0](https://github.com/chark1es/Aulora/releases/tag/v1.0.0). Permit installation from your browser or file manager when Android prompts, then open Aulora. For an attached device with Android platform tools, run:
 
 ```sh
@@ -14,7 +16,7 @@ Use `Aulora_1.0.0_android.aab` for a Google Play internal testing track after cr
 
 ## TestFlight
 
-Create the app record in [App Store Connect](https://appstoreconnect.apple.com/apps) before the first upload. Choose iOS, name `Aulora`, primary language English U.S., bundle ID `dev.spwnd.aulora`, and SKU `aulora-ios`. Apple requires the initial app record through its website. The registered identifier and distribution profile already use that bundle ID.
+The publisher created the [Aulora app record](https://appstoreconnect.apple.com/apps/6817986490/testflight/ios) on 2026-09-30. Its bundle ID is `dev.spwnd.aulora` and primary language is English U.S. The registered identifier and distribution profile use that bundle ID.
 
 Run Prepare mobile testing with `upload-ios=true`. After Apple processes the upload, open the app's TestFlight tab. Resolve any export-compliance questions using the app's actual encryption behavior. The server encrypts messages; the mobile client uses HTTPS and native secure storage. The workflow does not make an export-law declaration on the publisher's behalf.
 

@@ -2,6 +2,7 @@ import { NativeAvatar } from "@aulora/avatars/native";
 import { fetchWellKnown, type WellKnown, WellKnownError } from "@aulora/core";
 import { Button, Heading, Input, Text } from "@aulora/ui-native";
 import { ConvexReactClient } from "convex/react";
+import { useRouter } from "expo-router";
 import { useState } from "react";
 import {
   Animated,
@@ -15,6 +16,7 @@ import {
 } from "react-native";
 import { api } from "../../../../packages/convex/convex/_generated/api";
 import { SUPPORTED_API_VERSION } from "../lib/api-version";
+import { isReviewDemoAddress } from "../lib/review-demo";
 import { useEntrance, useReduceMotion } from "../lib/use-entrance";
 import { useProfiles } from "../providers/ProfileProvider";
 import { AuthScaffold } from "./AuthScaffold";
@@ -71,7 +73,8 @@ export function ConnectScreen({
   /** Host prefilled from an `aulora://connect?server=…` deep link. */
   readonly initialHost?: string;
 }) {
-  const { addProfile } = useProfiles();
+  const { addProfile, profiles } = useProfiles();
+  const router = useRouter();
   const [host, setHost] = useState(initialHost ?? "");
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -85,6 +88,11 @@ export function ConnectScreen({
   async function connect() {
     setError(null);
     if (host.trim().length === 0) {
+      return;
+    }
+    // App Review reaches the offline demo by address; there is no visible entry.
+    if (Platform.OS === "ios" && profiles.length === 0 && isReviewDemoAddress(host)) {
+      router.push("/review-demo");
       return;
     }
     setBusy(true);

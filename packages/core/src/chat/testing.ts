@@ -53,7 +53,7 @@ function nextId(prefix: string): string {
  * and observable through the watch callbacks, so hooks can be exercised in
  * tests without Convex.
  */
-export function createMockPort(): MockPort {
+export function createMockPort(options: { readonly now?: () => number } = {}): MockPort {
   const state: MockPortState = {
     calls: [],
     channels: new Map(),
@@ -314,6 +314,7 @@ export function createMockPort(): MockPort {
     async sendMessage(args) {
       record("sendMessage", args);
       messageSeq += 1;
+      const createdAt = options.now?.() ?? messageSeq;
       const id = nextId("message");
       state.messages.set(id, {
         id,
@@ -333,7 +334,7 @@ export function createMockPort(): MockPort {
         editedAt: null,
         deletedAt: null,
         pinnedAt: null,
-        createdAt: messageSeq,
+        createdAt,
       });
       if (args.threadRootId !== undefined) {
         const root = state.messages.get(args.threadRootId);
@@ -341,7 +342,7 @@ export function createMockPort(): MockPort {
           state.messages.set(root.id, {
             ...root,
             replyCount: (root.replyCount ?? 0) + 1,
-            lastReplyAt: messageSeq,
+            lastReplyAt: createdAt,
           });
         }
       }
