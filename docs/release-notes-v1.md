@@ -18,7 +18,7 @@ Verify downloads against `SHA256SUMS`. Windows installers are unsigned and can d
 
 The [release assets](https://github.com/chark1es/Aulora/releases/tag/v1.0.0) contain the downloads. Mobile store and TestFlight access are not yet available. An IPA downloaded from GitHub cannot be installed on an arbitrary iPhone. See the [mobile test plan](https://github.com/chark1es/Aulora/blob/main/docs/mobile-testing.md).
 
-Testers connect to their own server. A fresh iOS installation also offers a clearly labeled offline App Review demo. Sample channels, messages, threads, reactions, search, members, and local files stay on the device and reset on exit. Calls, authentication, administration, and push still require a real server. See [review instructions](https://github.com/chark1es/Aulora/blob/main/docs/apple-review-demo.md).
+Testers connect to their own server. On a fresh iOS installation, a reserved server address opens a clearly labeled offline App Review demo. Sample channels, messages, threads, reactions, search, members, and local files stay on the device and reset on exit. Calls, authentication, administration, and push still require a real server. See [review instructions](https://github.com/chark1es/Aulora/blob/main/docs/apple-review-demo.md).
 
 ## Deployment notes
 

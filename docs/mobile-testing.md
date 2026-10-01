@@ -4,7 +4,7 @@ Use the signed files from the same published release. The [Prepare mobile testin
 
 ## Android
 
-Testers supply their own server address. There is no official test server. Apple reviewers have a separate [offline iOS demo](apple-review-demo.md), available before a server profile is saved.
+Testers supply their own server address. There is no official test server. Apple reviewers have a separate [offline iOS demo](apple-review-demo.md), opened by entering a reserved server address before a server profile is saved.
 
 Download `Aulora_1.0.0_android.apk` from [v1.0.0](https://github.com/chark1es/Aulora/releases/tag/v1.0.0). Permit installation from your browser or file manager when Android prompts, then open Aulora. For an attached device with Android platform tools, run:
 

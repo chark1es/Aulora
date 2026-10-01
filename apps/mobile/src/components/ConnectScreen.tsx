@@ -16,6 +16,7 @@ import {
 } from "react-native";
 import { api } from "../../../../packages/convex/convex/_generated/api";
 import { SUPPORTED_API_VERSION } from "../lib/api-version";
+import { isReviewDemoAddress } from "../lib/review-demo";
 import { useEntrance, useReduceMotion } from "../lib/use-entrance";
 import { useProfiles } from "../providers/ProfileProvider";
 import { AuthScaffold } from "./AuthScaffold";
@@ -87,6 +88,11 @@ export function ConnectScreen({
   async function connect() {
     setError(null);
     if (host.trim().length === 0) {
+      return;
+    }
+    // App Review reaches the offline demo by address; there is no visible entry.
+    if (Platform.OS === "ios" && profiles.length === 0 && isReviewDemoAddress(host)) {
+      router.push("/review-demo");
       return;
     }
     setBusy(true);
@@ -229,21 +235,6 @@ export function ConnectScreen({
             >
               Connect
             </Button>
-            {Platform.OS === "ios" && profiles.length === 0 && (
-              <View className="gap-1">
-                <Button
-                  style={{ minHeight: 44 }}
-                  variant="ghost"
-                  disabled={busy}
-                  onPress={() => router.push("/review-demo")}
-                >
-                  Try App Review demo
-                </Button>
-                <Text size="sm" tone="muted" className="text-center">
-                  Explore a sample workspace offline. No account needed.
-                </Text>
-              </View>
-            )}
           </Animated.View>
         </AuthScaffold>
       </ScrollView>

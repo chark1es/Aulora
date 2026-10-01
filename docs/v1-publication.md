@@ -11,7 +11,7 @@ Reviewed 2026-09-30 against `c6ed2fe8cff075d3805511ed70056ffcfece8326` and the i
 - Main branch protection requires up-to-date `Required checks`. The repository has one recorded human commit author. Legal acceptance and asset rights remain publisher decisions.
 - The App Store Connect API key authenticated successfully. No iOS app record matched `dev.spwnd.aulora` at the time of review.
 - The mobile testing workflow downloads the published APK/AAB/IPA and checks their SHA-256 hashes before an optional TestFlight upload. It does not send invitations or declare store approval.
-- The publisher clarified that testers use their own servers. The iOS App Review demo uses an isolated in-memory chat session before any server profile is saved. It supplies no hosted backend and makes no claim to verify live calls or push.
+- The publisher clarified that testers use their own servers. The iOS App Review demo opens from a reserved server address, not a visible button, and uses an isolated in-memory chat session before any server profile is saved. It supplies no hosted backend and makes no claim to verify live calls or push.
 
 ## Build and distribution evidence
 

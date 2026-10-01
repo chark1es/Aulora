@@ -5,7 +5,7 @@ import { SafeAreaView } from "react-native-safe-area-context";
 import { ReviewDemoScreen } from "../src/components/ReviewDemoScreen";
 import { useProfiles } from "../src/providers/ProfileProvider";
 
-/** Review entry is public and documented, but only offered on iOS. */
+/** Reached by entering the review demo address on Connect; iOS only, no saved servers. */
 export default function ReviewDemoRoute() {
   const router = useRouter();
   const { profiles, ready } = useProfiles();

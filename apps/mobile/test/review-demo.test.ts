@@ -1,6 +1,6 @@
 import { downloadAttachment, uploadAttachment } from "@aulora/core";
 import { afterEach, describe, expect, it, vi } from "vitest";
-import { createReviewDemo } from "../src/lib/review-demo";
+import { createReviewDemo, isReviewDemoAddress } from "../src/lib/review-demo";
 
 afterEach(() => vi.unstubAllGlobals());
 
@@ -52,6 +52,19 @@ describe("offline Apple review workspace", () => {
       expect(second.search("Private demo draft")).toEqual([]);
     } finally {
       second.dispose();
+    }
+  });
+
+  it("opens only for the reserved review address", () => {
+    for (const input of [
+      "demo.aulora.example",
+      " Demo.Aulora.Example/ ",
+      "https://demo.aulora.example",
+    ]) {
+      expect(isReviewDemoAddress(input)).toBe(true);
+    }
+    for (const input of ["", "chat.acme.com", "demo.aulora.example.com", "demo.aulora.example/x"]) {
+      expect(isReviewDemoAddress(input)).toBe(false);
     }
   });
 });

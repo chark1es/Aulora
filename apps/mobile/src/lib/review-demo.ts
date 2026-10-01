@@ -3,10 +3,21 @@ import {
   ChatSession,
   type MessagePayload,
   type SearchHit,
+  tryNormalizeServerUrl,
   uploadAttachment,
 } from "@aulora/core";
 import { createMockPort, type MockPort } from "../../../../packages/core/src/chat/testing";
 import type { ChatSurfaceRuntime } from "./chat-surface";
+
+/**
+ * Typing this into the server address field opens the offline demo instead of
+ * connecting. `.example` is reserved (RFC 2606), so no real server can claim it.
+ */
+export const REVIEW_DEMO_ADDRESS = "demo.aulora.example";
+
+export function isReviewDemoAddress(input: string): boolean {
+  return tryNormalizeServerUrl(input) === `https://${REVIEW_DEMO_ADDRESS}`;
+}
 
 export const REVIEW_USER_ID = "me";
 export const REVIEW_MEMBERS = [
