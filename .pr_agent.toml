@@ -1,5 +1,5 @@
 [config]
-custom_model_max_tokens = 262144
+custom_model_max_tokens = 1048576
 max_model_tokens = 32000
 restricted_mode = true
 use_global_settings_file = false

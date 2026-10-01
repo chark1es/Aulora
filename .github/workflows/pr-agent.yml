@@ -33,11 +33,10 @@ jobs:
     steps:
       - name: Check model credentials
         env:
-          OPENCODE_API_KEY: ${{ secrets.OPENCODE_API_KEY }}
           OPENROUTER_API_KEY: ${{ secrets.OPENROUTER_API_KEY }}
         run: |
-          if [ -z "$OPENCODE_API_KEY" ] && [ -z "$OPENROUTER_API_KEY" ]; then
-            echo '::error::Add the OPENCODE_API_KEY or OPENROUTER_API_KEY repository secret. See docs/github-actions.md#pr-agent-reviews.'
+          if [ -z "$OPENROUTER_API_KEY" ]; then
+            echo '::error::Add the OPENROUTER_API_KEY repository secret. See docs/github-actions.md#pr-agent-reviews.'
             exit 1
           fi
       # Fetch PR data through the GitHub API. Never check out or execute PR code
@@ -46,11 +45,9 @@ jobs:
         uses: docker://pragent/pr-agent@sha256:65e5b196e38cecd7df8a71fe29942052e081a0c6645132c2ac874df60b1760c7 # 0.46.0-github_action
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-          OPENAI_KEY: ${{ secrets.OPENCODE_API_KEY }}
-          OPENAI__API_BASE: ${{ secrets.OPENCODE_API_KEY != '' && 'https://opencode.ai/zen/v1' || '' }}
-          OPENROUTER__KEY: ${{ secrets.OPENCODE_API_KEY == '' && secrets.OPENROUTER_API_KEY || '' }}
-          CONFIG__MODEL: ${{ vars.PR_AGENT_MODEL || (secrets.OPENCODE_API_KEY != '' && 'openai/kimi-k2.5' || 'openrouter/moonshotai/kimi-k2.5') }}
-          CONFIG__MODEL_WEAK: ${{ vars.PR_AGENT_MODEL || (secrets.OPENCODE_API_KEY != '' && 'openai/kimi-k2.5' || 'openrouter/moonshotai/kimi-k2.5') }}
+          OPENROUTER__KEY: ${{ secrets.OPENROUTER_API_KEY }}
+          CONFIG__MODEL: ${{ vars.PR_AGENT_MODEL || 'openrouter/deepseek/deepseek-v4.1-flash' }}
+          CONFIG__MODEL_WEAK: ${{ vars.PR_AGENT_MODEL || 'openrouter/deepseek/deepseek-v4.1-flash' }}
           CONFIG__FALLBACK_MODELS: '[]'
           GITHUB_ACTION_CONFIG__AUTO_REVIEW: 'true'
           GITHUB_ACTION_CONFIG__AUTO_DESCRIBE: 'false'
