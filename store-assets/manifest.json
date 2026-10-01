@@ -1,0 +1,230 @@
+{
+  "locale": "en-US",
+  "capture": "Native iOS and Android app components with a disposable fictional Acme Studio workspace",
+  "assets": [
+    {
+      "path": "app-store/icon/aulora-1024x1024.png",
+      "width": 1024,
+      "height": 1024,
+      "mode": "RGB",
+      "bytes": 59878,
+      "sha256": "0da3b7b4bca542a59ae92ed4b7e9e4f0fd80f6bb244d15ceb085726e9d88c3cc"
+    },
+    {
+      "path": "app-store/ipad-13/01-channels.png",
+      "width": 2064,
+      "height": 2752,
+      "mode": "RGB",
+      "bytes": 266068,
+      "sha256": "eebcfadf13830769c52311c75809a0ef0649f360ab140da77bed60ebfd91094e"
+    },
+    {
+      "path": "app-store/ipad-13/02-design.png",
+      "width": 2064,
+      "height": 2752,
+      "mode": "RGB",
+      "bytes": 182762,
+      "sha256": "bd40a79c30969b7fdca34f137c8a0c0ec84c70836f11c78d7e32559b343e914f"
+    },
+    {
+      "path": "app-store/ipad-13/03-direct-messages.png",
+      "width": 2064,
+      "height": 2752,
+      "mode": "RGB",
+      "bytes": 199161,
+      "sha256": "7a73c6e8f7e27e6543e6ca212017fdf41747924946ecdc5cd2a8f99bf6eb5725"
+    },
+    {
+      "path": "app-store/ipad-13/04-threads.png",
+      "width": 2064,
+      "height": 2752,
+      "mode": "RGB",
+      "bytes": 163995,
+      "sha256": "379ad5e427c4823cd9d2675bf228f0a07becb8c1a87214e6322c1ab47bfef601"
+    },
+    {
+      "path": "app-store/ipad-13/05-group-conversations.png",
+      "width": 2064,
+      "height": 2752,
+      "mode": "RGB",
+      "bytes": 153627,
+      "sha256": "a982c8f013ac2cabab32183d27d484e72b3d4a9246f848e15e456100748982f3"
+    },
+    {
+      "path": "app-store/iphone-6.9/01-channels.png",
+      "width": 1320,
+      "height": 2868,
+      "mode": "RGB",
+      "bytes": 249455,
+      "sha256": "04695c81796732a330b2c16cae6eb127e8c8d53eeae525b65995700590b5e03e"
+    },
+    {
+      "path": "app-store/iphone-6.9/02-design.png",
+      "width": 1320,
+      "height": 2868,
+      "mode": "RGB",
+      "bytes": 231677,
+      "sha256": "5fb13160c94284283de76f4b6fdf02f7a768bfceafa35ad360552df0eb388eef"
+    },
+    {
+      "path": "app-store/iphone-6.9/03-direct-messages.png",
+      "width": 1320,
+      "height": 2868,
+      "mode": "RGB",
+      "bytes": 222290,
+      "sha256": "87c23f6f79e70c7abae06154c98bdd5e6561d077394715a94f41be733b370fd4"
+    },
+    {
+      "path": "app-store/iphone-6.9/04-threads.png",
+      "width": 1320,
+      "height": 2868,
+      "mode": "RGB",
+      "bytes": 182494,
+      "sha256": "1afaaa515f80cc41d528241ddef298c67b265703d9dd3495699defa9b685fc88"
+    },
+    {
+      "path": "app-store/iphone-6.9/05-group-conversations.png",
+      "width": 1320,
+      "height": 2868,
+      "mode": "RGB",
+      "bytes": 212481,
+      "sha256": "28bf170ce5f31253b5ec655fe87be4d0f63bbf2f80fcb7916577b4cec10690c0"
+    },
+    {
+      "path": "google-play/feature-graphic-1024x500.png",
+      "width": 1024,
+      "height": 500,
+      "mode": "RGB",
+      "bytes": 54469,
+      "sha256": "60476f2e1f00343f03ea19e4b10ff369a1eafeb983cef0e4b7525c707715b8bb"
+    },
+    {
+      "path": "google-play/icon/aulora-512x512.png",
+      "width": 512,
+      "height": 512,
+      "mode": "RGBA",
+      "bytes": 28885,
+      "sha256": "64c214e962e8ef3ac52f5deed7e96f6f0a38c39cb8ed2644b59cbfce055fd188"
+    },
+    {
+      "path": "google-play/phone/01-channels.png",
+      "width": 1080,
+      "height": 1920,
+      "mode": "RGB",
+      "bytes": 138140,
+      "sha256": "1af7653119d4dfc7481a0ed6c3936c69bbf1d6ada11a1ff937d0ac24c51f9f84"
+    },
+    {
+      "path": "google-play/phone/02-design.png",
+      "width": 1080,
+      "height": 1920,
+      "mode": "RGB",
+      "bytes": 139677,
+      "sha256": "82ff90ed320f34cdc574dd4cb22743aa9108034b2e845d5aed8bc7dabf3aa96e"
+    },
+    {
+      "path": "google-play/phone/03-direct-messages.png",
+      "width": 1080,
+      "height": 1920,
+      "mode": "RGB",
+      "bytes": 136737,
+      "sha256": "e023e5f2e78a98e07c91331ba7aa6d5645ae0a3d65362bb27be9ce0ad32cf754"
+    },
+    {
+      "path": "google-play/phone/04-threads.png",
+      "width": 1080,
+      "height": 1920,
+      "mode": "RGB",
+      "bytes": 127810,
+      "sha256": "d571475c5b5e4486faaee30fe7902f942353194e5337eed9213065428295c7fa"
+    },
+    {
+      "path": "google-play/phone/05-group-conversations.png",
+      "width": 1080,
+      "height": 1920,
+      "mode": "RGB",
+      "bytes": 135950,
+      "sha256": "99a36ccdebb46cc7b3fac46779a977714dfe91cb1a20d8c0edfe5f644c57c5cf"
+    },
+    {
+      "path": "google-play/tablet-10/01-channels.png",
+      "width": 1440,
+      "height": 2560,
+      "mode": "RGB",
+      "bytes": 190044,
+      "sha256": "79c9041f19eb76000f75e47536ce943f0fcb8442674a1f23b833cd071a49119c"
+    },
+    {
+      "path": "google-play/tablet-10/02-design.png",
+      "width": 1440,
+      "height": 2560,
+      "mode": "RGB",
+      "bytes": 128827,
+      "sha256": "f3522804d1ee2501073182f1cf78d5d8a1edc8c2547ba59c12b6ef3f9edb2f5f"
+    },
+    {
+      "path": "google-play/tablet-10/03-direct-messages.png",
+      "width": 1440,
+      "height": 2560,
+      "mode": "RGB",
+      "bytes": 141044,
+      "sha256": "46613220e95c8125334224a89773459c16caca53a1f2b6d5f8ef4de5b1e825a5"
+    },
+    {
+      "path": "google-play/tablet-10/04-threads.png",
+      "width": 1440,
+      "height": 2560,
+      "mode": "RGB",
+      "bytes": 91107,
+      "sha256": "f998765df9e0f383232fed1a3b047a77f66053fb277be56ce550c917094d4ea2"
+    },
+    {
+      "path": "google-play/tablet-10/05-group-conversations.png",
+      "width": 1440,
+      "height": 2560,
+      "mode": "RGB",
+      "bytes": 109083,
+      "sha256": "12ae566c560151c2f6eae048e77d492ec4b5b8dadbea70005868f2d625e9c401"
+    },
+    {
+      "path": "google-play/tablet-7/01-channels.png",
+      "width": 1080,
+      "height": 1920,
+      "mode": "RGB",
+      "bytes": 167692,
+      "sha256": "3525d331ce0003e1a9722ebd7fff805eb58925b06007ed50049f68a997d96659"
+    },
+    {
+      "path": "google-play/tablet-7/02-design.png",
+      "width": 1080,
+      "height": 1920,
+      "mode": "RGB",
+      "bytes": 121578,
+      "sha256": "30c01a0f6da300304f81765dd146ce330c0db47074c3497c51025e830965b9d5"
+    },
+    {
+      "path": "google-play/tablet-7/03-direct-messages.png",
+      "width": 1080,
+      "height": 1920,
+      "mode": "RGB",
+      "bytes": 136462,
+      "sha256": "a1c32e32e75699633dc4926d44904d73ab57267e272775f46e243a49ed8e5801"
+    },
+    {
+      "path": "google-play/tablet-7/04-threads.png",
+      "width": 1080,
+      "height": 1920,
+      "mode": "RGB",
+      "bytes": 85025,
+      "sha256": "e80f4e9d72616a8bcaf1667c3911d013a261e97dd582ab61281476433149f3cb"
+    },
+    {
+      "path": "google-play/tablet-7/05-group-conversations.png",
+      "width": 1080,
+      "height": 1920,
+      "mode": "RGB",
+      "bytes": 100372,
+      "sha256": "38615b3faed2f8a948d01b23929ca19284e9a542f609d4ce48a01b6d720b56f6"
+    }
+  ]
+}

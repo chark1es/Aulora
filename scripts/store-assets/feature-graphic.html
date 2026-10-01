@@ -1,0 +1,32 @@
+<!doctype html>
+<html lang="en">
+<meta charset="utf-8">
+<title>Aulora Google Play feature graphic</title>
+<style>
+  * { box-sizing: border-box; }
+  html, body { width: 1024px; height: 500px; margin: 0; overflow: hidden; }
+  body { background: #be461e; color: #fff4e8; font-family: 'Avenir Next', Arial, sans-serif; }
+  main { position: relative; width: 100%; height: 100%; padding: 68px 86px; }
+  .brand { font-size: 23px; letter-spacing: -.5px; font-weight: 600; }
+  h1 { margin: 22px 0 17px; font-size: 64px; line-height: 1.08; letter-spacing: -2.5px; font-weight: 600; }
+  p { margin: 0; font-size: 20px; font-weight: 500; color: #ffd7be; }
+  .conversations { position: absolute; width: 302px; height: 280px; right: 80px; top: 108px; }
+  .bubble { position: absolute; border: 2px solid #ffb88b; border-radius: 30px; background: #ce5429; }
+  .bubble:after { content: ''; position: absolute; width: 24px; height: 25px; bottom: -13px; left: 30px; background: inherit; border-bottom: 2px solid #ffb88b; border-left: 2px solid #ffb88b; transform: skewY(-34deg); }
+  .first { width: 192px; height: 108px; top: 0; left: 0; padding: 31px; }
+  .second { width: 186px; height: 104px; right: 0; top: 127px; padding: 32px; background: #f4a56b; border-color: #f4a56b; }
+  .second:after { border-color: #f4a56b; }
+  .line { height: 6px; background: #ffd7be; border-radius: 6px; margin-bottom: 13px; width: 100%; }
+  .line.short { width: 68%; }
+  .second .line { background: #be461e; }
+</style>
+<main>
+  <div class="brand">Aulora</div>
+  <h1>Your team.<br>Your server.</h1>
+  <p>Self-hosted team chat</p>
+  <div class="conversations" aria-hidden="true">
+    <div class="bubble first"><div class="line"></div><div class="line short"></div></div>
+    <div class="bubble second"><div class="line"></div><div class="line short"></div></div>
+  </div>
+</main>
+</html>
