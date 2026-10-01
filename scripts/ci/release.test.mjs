@@ -43,3 +43,19 @@ test("native mobile versions share a validated release version and build number"
   for (const number of ["0", "-1", "abc", "1.5", "2100000001"])
     expect(() => mobileVersion("1.2.3", number)).toThrow();
 });
+
+test("an inspection hold builds a version bump without automatic publication", () => {
+  expect(releasePlan({ ...baseline, autoPublish: false })).toEqual({
+    version: "1.0.0",
+    build: true,
+    publish: false,
+  });
+  expect(
+    releasePlan({
+      ...baseline,
+      eventName: "workflow_dispatch",
+      autoPublish: false,
+      publish: true,
+    }).publish,
+  ).toBe(true);
+});

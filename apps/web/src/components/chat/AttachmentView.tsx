@@ -22,7 +22,8 @@ function formatBytes(size: number): string {
 
 /**
  * One attachment. Images show a small thumbnail (with a blurhash placeholder)
- * and open the full image on click; other files download locally. The server
+ * and open the full image on click; audio and video play inline once
+ * requested; other files download locally. The server
  * seals the bytes at rest and returns them to this device decrypted.
  */
 export function AttachmentView({ runtime, descriptor }: AttachmentViewProps) {
@@ -32,6 +33,14 @@ export function AttachmentView({ runtime, descriptor }: AttachmentViewProps) {
   const [fullUrl, setFullUrl] = useState<string | undefined>(undefined);
   const [error, setError] = useState<string | undefined>(undefined);
   const [busy, setBusy] = useState(false);
+  const media = isImage
+    ? null
+    : descriptor.mime.startsWith("audio/")
+      ? "audio"
+      : descriptor.mime.startsWith("video/")
+        ? "video"
+        : null;
+  const [mediaUrl, setMediaUrl] = useState<string | undefined>(undefined);
   // Defer thumbnail download until the image is near the viewport, so a long
   // channel does not fetch every image's bytes as soon as it loads.
   const [visible, setVisible] = useState(false);
@@ -164,6 +173,25 @@ export function AttachmentView({ runtime, descriptor }: AttachmentViewProps) {
       .finally(() => setBusy(false));
   }, [runtime, descriptor]);
 
+  const play = useCallback(() => {
+    if (runtime === undefined) {
+      return;
+    }
+    setBusy(true);
+    void loadAttachmentUrl(runtime.port, descriptor)
+      .then(setMediaUrl)
+      .catch(() => setError("Unable to open this attachment."))
+      .finally(() => setBusy(false));
+  }, [runtime, descriptor]);
+
+  // The player's object URL lives until the attachment unmounts or changes.
+  useEffect(() => {
+    if (mediaUrl === undefined) {
+      return;
+    }
+    return () => URL.revokeObjectURL(mediaUrl);
+  }, [mediaUrl]);
+
   if (error !== undefined) {
     return (
       <Text size="xs" tone="danger">
@@ -232,7 +260,7 @@ export function AttachmentView({ runtime, descriptor }: AttachmentViewProps) {
     );
   }
 
-  return (
+  const file = (
     <div
       data-testid={`attachment-${descriptor.fileId}`}
       className="flex w-72 items-center gap-2 rounded-input border border-border bg-surface-2 px-3 py-2"
@@ -246,6 +274,17 @@ export function AttachmentView({ runtime, descriptor }: AttachmentViewProps) {
           {formatBytes(descriptor.size)}
         </Text>
       </div>
+      {media !== null && mediaUrl === undefined && (
+        <button
+          type="button"
+          onClick={play}
+          disabled={busy || runtime === undefined}
+          aria-label={`Play ${descriptor.name}`}
+          className="rounded-pill border border-border px-2 py-0.5 text-xs text-text-muted hover:text-text disabled:opacity-60"
+        >
+          {busy ? "Loading…" : "Play"}
+        </button>
+      )}
       <button
         type="button"
         onClick={download}
@@ -253,6 +292,37 @@ export function AttachmentView({ runtime, descriptor }: AttachmentViewProps) {
       >
         Download
       </button>
+    </div>
+  );
+
+  if (mediaUrl === undefined) {
+    return file;
+  }
+  return (
+    <div className="flex flex-col gap-1.5">
+      {media === "video" ? (
+        // biome-ignore lint/a11y/useMediaCaption: member uploads carry no caption track
+        <video
+          src={mediaUrl}
+          controls
+          autoPlay
+          playsInline
+          aria-label={descriptor.name}
+          data-testid={`video-${descriptor.fileId}`}
+          className="max-h-80 w-full max-w-md rounded-input border border-border bg-black"
+        />
+      ) : (
+        // biome-ignore lint/a11y/useMediaCaption: member uploads carry no caption track
+        <audio
+          src={mediaUrl}
+          controls
+          autoPlay
+          aria-label={descriptor.name}
+          data-testid={`audio-${descriptor.fileId}`}
+          className="w-72"
+        />
+      )}
+      {file}
     </div>
   );
 }

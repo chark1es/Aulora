@@ -1,9 +1,10 @@
 import {
+  ArchiveBackfill,
   type AttachmentDescriptor,
   type ChannelSummary,
   type ChannelView,
   hasPermission,
-  memoryOutboxStore,
+  isConnectivityError,
   memorySearchStore,
   Outbox,
   type OutboxItem,
@@ -12,7 +13,9 @@ import {
   type RoleMentionTarget,
   type SearchHit,
   SearchIndex,
+  searchDocumentFor,
 } from "@aulora/core";
+import AsyncStorage from "@react-native-async-storage/async-storage";
 import { type ConvexReactClient, useQuery } from "convex/react";
 import {
   createContext,
@@ -24,9 +27,12 @@ import {
   useRef,
   useState,
 } from "react";
+import { AppState } from "react-native";
 import { api } from "../../../../packages/convex/convex/_generated/api";
 import { createMobileChatRuntime, type MobileChatRuntime } from "../lib/chat-runtime";
 import { convexSubscriptions } from "../lib/convex-chat";
+import { sendOutboxItem } from "../lib/outbox-send";
+import { mobileOutboxStore } from "../lib/outbox-store";
 import {
   canManageChannels,
   type MemberView,
@@ -37,6 +43,7 @@ import {
   roleRef,
 } from "../lib/permissions";
 import { usePresenceHeartbeat } from "../lib/use-presence-heartbeat";
+import { AvatarProvider } from "./AvatarProvider";
 
 export type { MobileMemberEntry } from "../lib/permissions";
 
@@ -45,6 +52,7 @@ export interface ChatSendOptions {
   readonly mentionChannelIds?: readonly string[];
   readonly mentionCategoryIds?: readonly string[];
   readonly threadRootId?: string;
+  readonly replyToId?: string;
   readonly attachments?: readonly AttachmentDescriptor[];
 }
 
@@ -62,6 +70,8 @@ export interface CategoryView {
 export interface MobileChatContextValue {
   readonly runtime: MobileChatRuntime | undefined;
   readonly ready: boolean;
+  readonly startupError: string | null;
+  readonly retryStartup: () => void;
   readonly channels: readonly ChannelView[];
   readonly categories: readonly CategoryView[];
   readonly presence: readonly PresenceRow[];
@@ -86,13 +96,22 @@ export interface MobileChatContextValue {
   /** Owner or `MentionEveryone`; gates `@everyone`/`@here` suggestions. */
   readonly canMentionEveryone: boolean;
   sendMessage(channelId: string, text: string, options?: ChatSendOptions): Promise<ChatSendResult>;
+  retrySend(id: string): Promise<void>;
+  discardSend(id: string): Promise<void>;
   search(query: string): Promise<readonly SearchHit[]>;
+  /**
+   * Reads one more page of server history into the search index. Resolves
+   * `true` once every conversation is indexed back to its first message.
+   */
+  loadSearchHistory(): Promise<boolean>;
+  permissionsFor(channel: ChannelView): bigint;
 }
 
 const ChatContext = createContext<MobileChatContextValue | null>(null);
 
 export interface ChatProviderProps {
   readonly client: ConvexReactClient;
+  readonly userId: string;
   readonly children: ReactNode;
 }
 
@@ -100,30 +119,44 @@ export interface ChatProviderProps {
  * Owns the mobile chat runtime, device-local search and the offline outbox.
  * The server seals content at rest; this provider only ever handles plaintext.
  */
-export function ChatProvider({ client, children }: ChatProviderProps) {
+export function ChatProvider({ client, userId, children }: ChatProviderProps) {
   const [runtime, setRuntime] = useState<MobileChatRuntime | undefined>(undefined);
   const [ready, setReady] = useState(false);
   const [summaries, setSummaries] = useState<readonly ChannelSummary[]>([]);
   const [presence, setPresence] = useState<readonly PresenceRow[]>([]);
+  const [startupError, setStartupError] = useState<string | null>(null);
+  const [startupAttempt, setStartupAttempt] = useState(0);
+  const retryStartup = useCallback(() => setStartupAttempt((attempt) => attempt + 1), []);
   const [outbox, setOutbox] = useState<readonly OutboxItem[]>([]);
   const runtimeRef = useRef<MobileChatRuntime | undefined>(undefined);
   const outboxRef = useRef<Outbox | undefined>(undefined);
   const searchRef = useRef<SearchIndex | undefined>(undefined);
+  const backfillRef = useRef<ArchiveBackfill | undefined>(undefined);
+  const summariesRef = useRef(summaries);
+  summariesRef.current = summaries;
 
   usePresenceHeartbeat(runtime?.port);
 
+  // biome-ignore lint/correctness/useExhaustiveDependencies: an explicit retry restarts the connection even when the client and account are unchanged
   useEffect(() => {
     let cancelled = false;
-    const outboxStore = new Outbox({ store: memoryOutboxStore() });
+    setReady(false);
+    setRuntime(undefined);
+    setStartupError(null);
+    const outboxStore = new Outbox({ store: mobileOutboxStore(AsyncStorage, client.url, userId) });
     const searchIndex = new SearchIndex(memorySearchStore());
     outboxRef.current = outboxStore;
     searchRef.current = searchIndex;
     void searchIndex.load();
-    void outboxStore.list().then((items) => {
-      if (!cancelled) {
-        setOutbox(items);
-      }
-    });
+    void outboxStore
+      .list()
+      .then((items) => {
+        if (!cancelled) setOutbox(items);
+      })
+      .catch(() => {
+        if (!cancelled)
+          setStartupError("Could not load your unsent messages. Try reopening the workspace.");
+      });
     void createMobileChatRuntime({ client })
       .then((result) => {
         if (cancelled) {
@@ -131,6 +164,13 @@ export function ChatProvider({ client, children }: ChatProviderProps) {
           return;
         }
         runtimeRef.current = result;
+        const { listMessages, listThreadMessages } = result.port;
+        if (listMessages !== undefined && listThreadMessages !== undefined) {
+          backfillRef.current = new ArchiveBackfill(searchIndex, {
+            listMessages,
+            listThreadMessages,
+          });
+        }
         setRuntime(result);
         setReady(true);
       })
@@ -141,6 +181,7 @@ export function ChatProvider({ client, children }: ChatProviderProps) {
         // A failed session start must not leave the shell spinning forever.
         const message = error instanceof Error ? error.message : String(error);
         console.warn(`[aulora] chat runtime failed to start: ${message}`);
+        setStartupError("Could not open this workspace. Check your connection and try again.");
         setReady(true);
       });
     return () => {
@@ -149,8 +190,9 @@ export function ChatProvider({ client, children }: ChatProviderProps) {
       runtimeRef.current = undefined;
       outboxRef.current = undefined;
       searchRef.current = undefined;
+      backfillRef.current = undefined;
     };
-  }, [client]);
+  }, [client, userId, startupAttempt]);
 
   useEffect(() => {
     const subs = convexSubscriptions(client);
@@ -176,16 +218,55 @@ export function ChatProvider({ client, children }: ChatProviderProps) {
         if (text.length === 0) {
           continue;
         }
-        void index.index({
-          messageId: message.id,
-          channelId: message.channelId,
-          authorId: message.authorId,
-          text,
-          createdAt: message.createdAt,
-        });
+        void index.index({ ...searchDocumentFor(message), text });
       }
     });
   }, [runtime]);
+
+  const refreshOutbox = useCallback(async () => {
+    const active = outboxRef.current;
+    if (active !== undefined) {
+      const items = await active.list();
+      if (outboxRef.current === active) setOutbox(items);
+    }
+  }, []);
+  const flush = useCallback(async () => {
+    const active = outboxRef.current;
+    const chat = runtimeRef.current;
+    if (active === undefined || chat === undefined || AppState.currentState !== "active") return;
+    await active.flush((item) => sendOutboxItem(chat.session, item));
+    await refreshOutbox();
+  }, [refreshOutbox]);
+  useEffect(() => {
+    if (runtime === undefined) return;
+    const retry = () => {
+      void flush().catch(() => undefined);
+    };
+    retry();
+    const timer = setInterval(retry, 5000);
+    const off = AppState.addEventListener("change", (state) => {
+      if (state === "active") retry();
+    });
+    return () => {
+      clearInterval(timer);
+      off.remove();
+    };
+  }, [runtime, flush]);
+  const retrySend = useCallback(
+    async (id: string) => {
+      await outboxRef.current?.retry(id);
+      await refreshOutbox();
+      await flush();
+    },
+    [refreshOutbox, flush],
+  );
+  const discardSend = useCallback(
+    async (id: string) => {
+      await outboxRef.current?.remove(id);
+      await refreshOutbox();
+    },
+    [refreshOutbox],
+  );
 
   const sendMessage = useCallback(
     async (
@@ -213,10 +294,12 @@ export function ChatProvider({ client, children }: ChatProviderProps) {
           ...(channelMentions.length > 0 ? { mentionChannelIds: channelMentions } : {}),
           ...(categoryMentions.length > 0 ? { mentionCategoryIds: categoryMentions } : {}),
           ...(options.threadRootId !== undefined ? { threadRootId: options.threadRootId } : {}),
+          ...(options.replyToId !== undefined ? { replyToId: options.replyToId } : {}),
           ...(attachmentIds.length > 0 ? { attachmentIds } : {}),
         });
         return { queued: false, messageId };
-      } catch {
+      } catch (cause) {
+        if (!isConnectivityError(cause)) throw cause;
         await active.enqueue(
           {
             channelId,
@@ -231,15 +314,16 @@ export function ChatProvider({ client, children }: ChatProviderProps) {
               ? { mentionCategoryIds: options.mentionCategoryIds }
               : {}),
             ...(options.threadRootId !== undefined ? { threadRootId: options.threadRootId } : {}),
+            ...(options.replyToId !== undefined ? { replyToId: options.replyToId } : {}),
             ...(options.attachments !== undefined ? { attachments: options.attachments } : {}),
           },
           Date.now(),
         );
-        setOutbox(await active.list());
+        await refreshOutbox();
         return { queued: true };
       }
     },
-    [],
+    [refreshOutbox],
   );
 
   const search = useCallback(async (query: string): Promise<readonly SearchHit[]> => {
@@ -247,7 +331,15 @@ export function ChatProvider({ client, children }: ChatProviderProps) {
     if (index === undefined) {
       return [];
     }
-    return index.query(query, { limit: 20 });
+    return index.query(query, { limit: 50 });
+  }, []);
+
+  const loadSearchHistory = useCallback(async (): Promise<boolean> => {
+    const backfill = backfillRef.current;
+    if (backfill === undefined) {
+      return true;
+    }
+    return await backfill.step(summariesRef.current.map((channel) => channel.id));
   }, []);
 
   const membersResult = useQuery(api.members.list, {});
@@ -326,6 +418,21 @@ export function ChatProvider({ client, children }: ChatProviderProps) {
 
   const canManageChannelsForViewer = canManageChannels(isOwner, viewerPermissions);
 
+  const permissionsFor = useCallback(
+    (channel: ChannelView): bigint => {
+      if (viewerUserId === undefined) return 0n;
+      return resolveViewerPermissions({
+        viewer: { userId: viewerUserId, isOwner },
+        member: viewerMember,
+        roles: roleViews,
+        categoryOverrides:
+          categoriesResult?.find((category) => category.id === channel.categoryId)?.overrides ?? [],
+        channelOverrides: channel.overrides ?? [],
+      });
+    },
+    [viewerUserId, isOwner, viewerMember, roleViews, categoriesResult],
+  );
+
   const categories = useMemo<readonly CategoryView[]>(
     () =>
       (categoriesResult ?? []).map((category) => ({
@@ -356,6 +463,8 @@ export function ChatProvider({ client, children }: ChatProviderProps) {
     () => ({
       runtime,
       ready,
+      startupError,
+      retryStartup,
       channels: views,
       categories,
       presence,
@@ -374,10 +483,16 @@ export function ChatProvider({ client, children }: ChatProviderProps) {
       canMentionEveryone,
       sendMessage,
       search,
+      loadSearchHistory,
+      permissionsFor,
+      retrySend,
+      discardSend,
     }),
     [
       runtime,
       ready,
+      startupError,
+      retryStartup,
       views,
       categories,
       presence,
@@ -396,10 +511,18 @@ export function ChatProvider({ client, children }: ChatProviderProps) {
       canMentionEveryone,
       sendMessage,
       search,
+      loadSearchHistory,
+      permissionsFor,
+      retrySend,
+      discardSend,
     ],
   );
 
-  return <ChatContext.Provider value={value}>{children}</ChatContext.Provider>;
+  return (
+    <AvatarProvider urls={avatarUrls}>
+      <ChatContext.Provider value={value}>{children}</ChatContext.Provider>
+    </AvatarProvider>
+  );
 }
 
 function placeholder(channel: ChannelSummary): string {

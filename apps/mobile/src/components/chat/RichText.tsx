@@ -51,7 +51,7 @@ export function RichText({
         return (
           <Text
             key={`p:${inlineToPlainText(block.children)}`}
-            size="sm"
+            size="base"
             style={{ color: palette.text }}
           >
             {renderInline(block.children, viewerName, onAccent, palette, onChannelPress)}

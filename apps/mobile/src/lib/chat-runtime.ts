@@ -1,12 +1,7 @@
-import {
-  type ChannelSummary,
-  type ChatPort,
-  ChatSession,
-  type ChatSubscriptions,
-  type MessagePayload,
-} from "@aulora/core";
+import { type ChannelSummary, ChatSession, type MessagePayload } from "@aulora/core";
 import type { ConvexReactClient } from "convex/react";
 import { api } from "../../../../packages/convex/convex/_generated/api";
+import type { ChatSurfaceRuntime } from "./chat-surface";
 import { convexPort, convexSubscriptions } from "./convex-chat";
 import { devicePushPlatform } from "./push";
 
@@ -18,10 +13,7 @@ import { devicePushPlatform } from "./push";
  * cryptographic work. The device row is registered on start so push wakes can
  * reach it.
  */
-export interface MobileChatRuntime {
-  readonly session: ChatSession;
-  readonly port: ChatPort;
-  readonly subscriptions: ChatSubscriptions;
+export interface MobileChatRuntime extends ChatSurfaceRuntime {
   readonly client: ConvexReactClient;
 }
 
@@ -39,18 +31,39 @@ export async function createMobileChatRuntime(
   const session = ChatSession.create({ port, subscriptions });
   await port.upsertDevice({ platform: options.platform ?? devicePushPlatform() });
   await session.start();
-  return { session, port, subscriptions, client: options.client };
+  return {
+    session,
+    port,
+    subscriptions,
+    client: options.client,
+    watchHistory(channelId, cursor, onChange) {
+      const watch = options.client.watchQuery(api.messages.list, {
+        channelId: channelId as never,
+        paginationOpts: { numItems: 100, cursor },
+      });
+      const emit = () => {
+        const value = watch.localQueryResult();
+        if (value !== undefined)
+          onChange({ messages: value.page, cursor: value.continueCursor, isDone: value.isDone });
+      };
+      const off = watch.onUpdate(emit);
+      emit();
+      return off;
+    },
+    watchThread: (threadRootId, onChange) =>
+      watchConvexThread(options.client, threadRootId, onChange),
+  };
 }
 
 export type { ChannelSummary, MessagePayload };
 
 /** Live replies for a thread root, oldest first. */
-export function watchThread(
-  runtime: MobileChatRuntime,
+function watchConvexThread(
+  client: ConvexReactClient,
   threadRootId: string,
   onChange: (messages: readonly MessagePayload[]) => void,
 ): () => void {
-  const watch = runtime.client.watchQuery(api.messages.listThread, {
+  const watch = client.watchQuery(api.messages.listThread, {
     threadRootId: threadRootId as never,
     paginationOpts: { numItems: 100, cursor: null },
   });

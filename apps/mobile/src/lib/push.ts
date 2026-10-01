@@ -99,9 +99,10 @@ export async function registerDevicePushToken(
   client: ConvexReactClient,
   registration: PushRegistration,
   platformTag: string,
-): Promise<void> {
-  await client.mutation(api.devices.upsert, {
+): Promise<string> {
+  const result = await client.mutation(api.devices.upsert, {
     platform: platformTag,
     pushToken: registration.token,
   });
+  return result.deviceId;
 }

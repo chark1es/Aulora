@@ -65,12 +65,15 @@ export {
   webLocalStorageStore,
 } from "./profiles";
 export {
+  ArchiveBackfill,
+  type ArchiveSource,
   memorySearchStore,
   type SearchDocument,
   type SearchHit,
   SearchIndex,
   type SearchOptions,
   type SearchStore,
+  searchDocumentFor,
   tokenize,
 } from "./search/index";
 export {

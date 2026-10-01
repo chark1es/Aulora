@@ -16,7 +16,7 @@ export const report = internalAction({
       );
       for (const row of input.reports) {
         try {
-          const response = await fetch(base + "/api/v1/licenses/usage", {
+          const response = await fetch(`${base}/api/v1/licenses/usage`, {
             method: "POST",
             redirect: "error",
             headers: { "content-type": "application/json", authorization: `Bearer ${key}` },

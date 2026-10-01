@@ -1,11 +1,9 @@
 import type { PresenceRow } from "@aulora/core";
-import { Button, Heading, Icon, presenceColor, Text, usePalette } from "@aulora/ui-native";
-import { Modal, Pressable, ScrollView, View } from "react-native";
+import { Button, Icon, Text, usePalette } from "@aulora/ui-native";
+import { Pressable, ScrollView, View } from "react-native";
 import { presenceLabel } from "../../lib/presence";
 import { MemberAvatar } from "./MemberAvatar";
-import { StatusEditor } from "./StatusEditor";
-
-type PresenceStatus = PresenceRow["status"];
+import { Sheet } from "./Sheet";
 
 export interface MembersSheetProps {
   readonly visible: boolean;
@@ -16,17 +14,14 @@ export interface MembersSheetProps {
   readonly canModerateMembers?: boolean;
   readonly onClose: () => void;
   readonly onSetStatus: (status: PresenceRow["status"], customStatus?: string) => void;
-  /** Opens the voice/video device settings; omitted hides the entry. */
   readonly onOpenVoiceSettings?: () => void;
-  /** Opens moderation actions for a member; omitted hides the action. */
   readonly onMemberActions?: (userId: string) => void;
-  /** Opens the general settings surface; omitted hides the entry. */
+  readonly onMemberPress?: (userId: string) => void;
   readonly onOpenSettings?: () => void;
-  /** Opens the workspace ban list; omitted hides the entry. */
   readonly onOpenBans?: () => void;
 }
 
-/** Bottom sheet with presence, a status switcher and member moderation. */
+/** All workspace members, including people with no current presence row. */
 export function MembersSheet({
   visible,
   presence,
@@ -35,99 +30,80 @@ export function MembersSheet({
   ownerUserId = null,
   canModerateMembers = false,
   onClose,
-  onSetStatus,
   onOpenVoiceSettings,
   onMemberActions,
+  onMemberPress,
   onOpenSettings,
   onOpenBans,
 }: MembersSheetProps) {
-  const ownPresence = presence.find((row) => row.userId === ownUserId);
-  const ownStatus: PresenceStatus = ownPresence?.status ?? "offline";
-  const ownCustomStatus = ownPresence?.customStatus ?? "";
   const palette = usePalette();
-
   return (
-    <Modal visible={visible} transparent animationType="slide" onRequestClose={onClose}>
-      <Pressable className="flex-1 justify-end bg-black/50" onPress={onClose}>
-        <Pressable onPress={() => {}} className="max-h-[70%] rounded-t-card bg-surface-1 p-4">
-          <View className="flex-row items-center justify-between">
-            <Heading level={3}>Members</Heading>
-            <View className="flex-row gap-2">
-              {onOpenBans !== undefined && (
-                <Button size="sm" variant="secondary" onPress={onOpenBans}>
-                  Banned
-                </Button>
-              )}
-              {onOpenSettings !== undefined && (
-                <Button size="sm" variant="secondary" onPress={onOpenSettings}>
-                  Settings
-                </Button>
-              )}
-              {onOpenVoiceSettings !== undefined && (
-                <Button size="sm" variant="secondary" onPress={onOpenVoiceSettings}>
-                  Voice &amp; video
-                </Button>
+    <Sheet visible={visible} title="Members" onClose={onClose}>
+      <ScrollView contentContainerStyle={{ padding: 16, gap: 12 }}>
+        <View className="flex-row flex-wrap gap-2">
+          {onOpenBans !== undefined && (
+            <Button variant="secondary" onPress={onOpenBans}>
+              Banned
+            </Button>
+          )}
+          {onOpenSettings !== undefined && (
+            <Button variant="secondary" onPress={onOpenSettings}>
+              Settings
+            </Button>
+          )}
+          {onOpenVoiceSettings !== undefined && (
+            <Button variant="secondary" onPress={onOpenVoiceSettings}>
+              Voice &amp; video
+            </Button>
+          )}
+        </View>
+        {[...memberNames].map(([userId, name]) => {
+          const row = presence.find((entry) => entry.userId === userId);
+          const canAct =
+            canModerateMembers &&
+            onMemberActions !== undefined &&
+            userId !== ownUserId &&
+            userId !== ownerUserId;
+          return (
+            <View key={userId} className="flex-row items-center gap-2">
+              <Pressable
+                accessibilityRole="button"
+                accessibilityLabel={`Profile of ${name}`}
+                disabled={onMemberPress === undefined}
+                className="min-h-12 flex-1 flex-row items-center gap-3 rounded-input bg-surface-2 p-3"
+                onPress={() => onMemberPress?.(userId)}
+              >
+                <MemberAvatar userId={userId} size={36} />
+                <View className="min-w-0 flex-1 gap-1">
+                  <Text>
+                    {name}
+                    {userId === ownUserId ? " (you)" : ""}
+                  </Text>
+                  <Text size="sm" tone="muted">
+                    {presenceLabel(row?.status ?? "offline")}
+                  </Text>
+                  {row?.customStatus && (
+                    <Text size="sm" tone="muted">
+                      {row.customStatus}
+                    </Text>
+                  )}
+                </View>
+              </Pressable>
+              {canAct && (
+                <Pressable
+                  accessibilityRole="button"
+                  accessibilityLabel={`Actions for ${name}`}
+                  className="h-12 w-12 items-center justify-center"
+                  onPress={() => onMemberActions?.(userId)}
+                >
+                  <Icon name="more-horizontal" size={20} color={palette.text} />
+                </Pressable>
               )}
             </View>
-          </View>
-          <View className="mt-3">
-            <StatusEditor
-              status={ownStatus}
-              customStatus={ownCustomStatus}
-              onSetStatus={onSetStatus}
-            />
-          </View>
-          <ScrollView contentContainerStyle={{ gap: 10, paddingVertical: 12 }}>
-            {presence.map((row) => {
-              const canAct =
-                canModerateMembers &&
-                onMemberActions !== undefined &&
-                row.userId !== ownUserId &&
-                row.userId !== ownerUserId;
-              return (
-                <View key={row.userId} className="flex-row items-center gap-3">
-                  <MemberAvatar userId={row.userId} size={32} />
-                  <View className="flex-1">
-                    <Text size="sm">
-                      {memberNames.get(row.userId) ?? row.userId}
-                      {row.userId === ownUserId ? " (you)" : ""}
-                    </Text>
-                    {row.customStatus !== null && row.customStatus.length > 0 && (
-                      <Text size="xs" tone="muted">
-                        {row.customStatus}
-                      </Text>
-                    )}
-                    <Text size="xs" tone="muted">
-                      {presenceLabel(row.status)}
-                    </Text>
-                  </View>
-                  {canAct && (
-                    <Pressable
-                      accessibilityRole="button"
-                      accessibilityLabel={`Actions for ${
-                        memberNames.get(row.userId) ?? row.userId
-                      }`}
-                      className="rounded-input px-2 py-1"
-                      onPress={() => onMemberActions?.(row.userId)}
-                    >
-                      <Icon name="more-horizontal" size={18} color={palette["text-muted"]} />
-                    </Pressable>
-                  )}
-                  <View
-                    className="h-2.5 w-2.5 rounded-pill"
-                    style={{ backgroundColor: presenceColor(row.status, palette) }}
-                  />
-                </View>
-              );
-            })}
-            {presence.length === 0 && (
-              <Text size="sm" tone="muted">
-                No presence data yet.
-              </Text>
-            )}
-          </ScrollView>
-        </Pressable>
-      </Pressable>
-    </Modal>
+          );
+        })}
+        {memberNames.size === 0 && <Text tone="muted">No members yet.</Text>}
+      </ScrollView>
+    </Sheet>
   );
 }

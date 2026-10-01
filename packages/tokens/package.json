@@ -1,6 +1,6 @@
 {
   "name": "@aulora/tokens",
-  "version": "0.0.0",
+  "version": "1.0.0",
   "private": true,
   "description": "Aulora design tokens: colors, radii, spacing, type scale, and Tailwind/NativeWind presets.",
   "type": "module",

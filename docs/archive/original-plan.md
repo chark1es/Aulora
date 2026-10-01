@@ -1,3 +1,5 @@
+> Archived work record. This file can describe removed code or unresolved work that has since changed. Use [the current documentation](../README.md) and [project status](../project-status.md).
+
 # Aulora: Self-Hosted Team Chat
 
 Sep 25, 2026 · [Charles](Charles) Nguyen

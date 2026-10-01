@@ -1,6 +1,7 @@
-import { Button, Heading, Input, Text, usePalette } from "@aulora/ui-native";
+import { Button, Input, Text, usePalette } from "@aulora/ui-native";
 import { useState } from "react";
-import { Modal, Pressable, ScrollView, Switch, View } from "react-native";
+import { Pressable, ScrollView, Switch, View } from "react-native";
+import { Sheet } from "./Sheet";
 
 export type NewChannelKind = "text" | "announcement" | "voice";
 
@@ -55,172 +56,162 @@ export function CreateChannelSheet({
   }
 
   return (
-    <Modal
+    <Sheet
       visible={visible}
-      transparent
-      animationType="slide"
-      onRequestClose={() => {
+      title={"Create channel"}
+      onClose={() => {
         reset();
         onClose();
       }}
     >
-      <Pressable
-        className="flex-1 justify-end bg-black/50"
-        onPress={() => {
-          reset();
-          onClose();
-        }}
-      >
-        <Pressable onPress={() => {}} className="max-h-[88%] rounded-t-card bg-surface-1 p-4">
-          <Heading level={3}>Create channel</Heading>
-          <View className="mt-3 flex-row gap-2">
-            {KIND_OPTIONS.map((option) => {
-              const active = option.value === kind;
-              return (
+      <View className="flex-1 p-4">
+        <View className="mt-3 flex-row gap-2">
+          {KIND_OPTIONS.map((option) => {
+            const active = option.value === kind;
+            return (
+              <Pressable
+                key={option.value}
+                accessibilityRole="button"
+                accessibilityState={{ selected: active }}
+                onPress={() => setKind(option.value)}
+                className={
+                  active
+                    ? "flex-1 items-center rounded-input border border-accent bg-accent-soft px-2 py-2"
+                    : "flex-1 items-center rounded-input border border-border bg-surface-3 px-2 py-2"
+                }
+              >
+                <Text size="sm" tone={active ? "accent" : "muted"}>
+                  {option.label}
+                </Text>
+              </Pressable>
+            );
+          })}
+        </View>
+
+        <ScrollView contentContainerStyle={{ gap: 12, paddingVertical: 12 }}>
+          <Input
+            label="Name"
+            value={name}
+            onChangeText={setName}
+            maxLength={80}
+            placeholder={kind === "text" ? "e.g. product-launch" : "e.g. Standup"}
+          />
+          {kind !== "voice" && (
+            <Input
+              label="Topic (optional)"
+              value={topic}
+              onChangeText={setTopic}
+              maxLength={160}
+              placeholder="What is this channel about?"
+            />
+          )}
+
+          {categories.length > 0 && (
+            <View className="gap-1.5">
+              <Text size="sm">Category</Text>
+              <View className="flex-row flex-wrap gap-2">
                 <Pressable
-                  key={option.value}
                   accessibilityRole="button"
-                  accessibilityState={{ selected: active }}
-                  onPress={() => setKind(option.value)}
+                  accessibilityState={{ selected: categoryId === undefined }}
+                  onPress={() => setCategoryId(undefined)}
                   className={
-                    active
-                      ? "flex-1 items-center rounded-input border border-accent bg-accent-soft px-2 py-2"
-                      : "flex-1 items-center rounded-input border border-border bg-surface-3 px-2 py-2"
+                    categoryId === undefined
+                      ? "rounded-pill border border-accent bg-accent-soft px-3 py-1"
+                      : "rounded-pill border border-border bg-surface-3 px-3 py-1"
                   }
                 >
-                  <Text size="sm" tone={active ? "accent" : "muted"}>
-                    {option.label}
+                  <Text size="xs" tone={categoryId === undefined ? "accent" : "default"}>
+                    None
                   </Text>
                 </Pressable>
-              );
-            })}
+                {categories.map((category) => {
+                  const active = category.id === categoryId;
+                  return (
+                    <Pressable
+                      key={category.id}
+                      accessibilityRole="button"
+                      accessibilityState={{ selected: active }}
+                      onPress={() => setCategoryId(category.id)}
+                      className={
+                        active
+                          ? "rounded-pill border border-accent bg-accent-soft px-3 py-1"
+                          : "rounded-pill border border-border bg-surface-3 px-3 py-1"
+                      }
+                    >
+                      <Text size="xs" tone={active ? "accent" : "default"}>
+                        {category.name}
+                      </Text>
+                    </Pressable>
+                  );
+                })}
+              </View>
+            </View>
+          )}
+
+          <View className="flex-row items-center justify-between rounded-input border border-border bg-surface-2 px-3 py-2">
+            <Text size="sm">Private channel</Text>
+            <Switch
+              value={isPrivate}
+              onValueChange={setIsPrivate}
+              trackColor={{ false: palette.border, true: palette.accent }}
+              thumbColor={palette["on-accent"]}
+              accessibilityLabel="Private channel"
+            />
           </View>
 
-          <ScrollView contentContainerStyle={{ gap: 12, paddingVertical: 12 }}>
-            <Input
-              label="Name"
-              value={name}
-              onChangeText={setName}
-              maxLength={80}
-              placeholder={kind === "text" ? "e.g. product-launch" : "e.g. Standup"}
-            />
-            {kind !== "voice" && (
-              <Input
-                label="Topic (optional)"
-                value={topic}
-                onChangeText={setTopic}
-                maxLength={160}
-                placeholder="What is this channel about?"
-              />
-            )}
+          {error !== null && (
+            <Text size="sm" tone="danger" accessibilityRole="alert">
+              {error}
+            </Text>
+          )}
 
-            {categories.length > 0 && (
-              <View className="gap-1.5">
-                <Text size="sm">Category</Text>
-                <View className="flex-row flex-wrap gap-2">
-                  <Pressable
-                    accessibilityRole="button"
-                    accessibilityState={{ selected: categoryId === undefined }}
-                    onPress={() => setCategoryId(undefined)}
-                    className={
-                      categoryId === undefined
-                        ? "rounded-pill border border-accent bg-accent-soft px-3 py-1"
-                        : "rounded-pill border border-border bg-surface-3 px-3 py-1"
-                    }
-                  >
-                    <Text size="xs" tone={categoryId === undefined ? "accent" : "default"}>
-                      None
-                    </Text>
-                  </Pressable>
-                  {categories.map((category) => {
-                    const active = category.id === categoryId;
-                    return (
-                      <Pressable
-                        key={category.id}
-                        accessibilityRole="button"
-                        accessibilityState={{ selected: active }}
-                        onPress={() => setCategoryId(category.id)}
-                        className={
-                          active
-                            ? "rounded-pill border border-accent bg-accent-soft px-3 py-1"
-                            : "rounded-pill border border-border bg-surface-3 px-3 py-1"
-                        }
-                      >
-                        <Text size="xs" tone={active ? "accent" : "default"}>
-                          {category.name}
-                        </Text>
-                      </Pressable>
-                    );
-                  })}
-                </View>
-              </View>
-            )}
+          <View className="flex-row justify-end gap-2">
+            <Button
+              variant="ghost"
+              onPress={() => {
+                reset();
+                onClose();
+              }}
+              disabled={busy}
+            >
+              Cancel
+            </Button>
+            <Button
+              disabled={disabled}
+              loading={busy}
+              onPress={() => {
+                const topicValue = topic.trim();
+                void Promise.resolve(
+                  onCreateChannel({
+                    kind,
+                    name: trimmed,
+                    ...(topicValue.length > 0 ? { topic: topicValue } : {}),
+                    ...(categoryId !== undefined ? { categoryId } : {}),
+                    private: isPrivate,
+                  }),
+                ).then(reset);
+              }}
+            >
+              Create
+            </Button>
+          </View>
 
-            <View className="flex-row items-center justify-between rounded-input border border-border bg-surface-2 px-3 py-2">
-              <Text size="sm">Private channel</Text>
-              <Switch
-                value={isPrivate}
-                onValueChange={setIsPrivate}
-                trackColor={{ false: palette.border, true: palette.accent }}
-                thumbColor={palette["on-accent"]}
-                accessibilityLabel="Private channel"
-              />
-            </View>
-
-            {error !== null && (
-              <Text size="sm" tone="danger" accessibilityRole="alert">
-                {error}
-              </Text>
-            )}
-
-            <View className="flex-row justify-end gap-2">
-              <Button
-                variant="ghost"
-                onPress={() => {
-                  reset();
-                  onClose();
-                }}
-                disabled={busy}
-              >
-                Cancel
-              </Button>
-              <Button
-                disabled={disabled}
-                loading={busy}
-                onPress={() => {
-                  const topicValue = topic.trim();
-                  void Promise.resolve(
-                    onCreateChannel({
-                      kind,
-                      name: trimmed,
-                      ...(topicValue.length > 0 ? { topic: topicValue } : {}),
-                      ...(categoryId !== undefined ? { categoryId } : {}),
-                      private: isPrivate,
-                    }),
-                  ).then(reset);
-                }}
-              >
-                Create
-              </Button>
-            </View>
-
-            <View className="mt-2 border-t border-border pt-3">
-              <Text size="sm" className="pb-2">
-                Or create a category
-              </Text>
-              <Button
-                variant="secondary"
-                disabled={disabled}
-                onPress={() => {
-                  void Promise.resolve(onCreateCategory(trimmed)).then(reset);
-                }}
-              >
-                Create category “{trimmed.length > 0 ? trimmed : "…"}”
-              </Button>
-            </View>
-          </ScrollView>
-        </Pressable>
-      </Pressable>
-    </Modal>
+          <View className="mt-2 border-t border-border pt-3">
+            <Text size="sm" className="pb-2">
+              Or create a category
+            </Text>
+            <Button
+              variant="secondary"
+              disabled={disabled}
+              onPress={() => {
+                void Promise.resolve(onCreateCategory(trimmed)).then(reset);
+              }}
+            >
+              Create category “{trimmed.length > 0 ? trimmed : "…"}”
+            </Button>
+          </View>
+        </ScrollView>
+      </View>
+    </Sheet>
   );
 }

@@ -3,9 +3,7 @@
  *
  * `createMockPort()` is an in-memory `ChatPort` plus subscription plumbing that
  * stores plaintext rows and emits watch callbacks, so session behaviour can be
- * tested without a backend. `createMemoryMlsEngine()` is a no-op stub kept only
- * for the dev preview, which still wires an engine factory at construction time
- * even though MLS is gone and the server now seals content.
+ * tested without a backend.
  */
 
 import { type Overwrite, Permission } from "../permissions.js";
@@ -53,7 +51,7 @@ function nextId(prefix: string): string {
  * and observable through the watch callbacks, so hooks can be exercised in
  * tests without Convex.
  */
-export function createMockPort(): MockPort {
+export function createMockPort(options: { readonly now?: () => number } = {}): MockPort {
   const state: MockPortState = {
     calls: [],
     channels: new Map(),
@@ -314,6 +312,7 @@ export function createMockPort(): MockPort {
     async sendMessage(args) {
       record("sendMessage", args);
       messageSeq += 1;
+      const createdAt = options.now?.() ?? messageSeq;
       const id = nextId("message");
       state.messages.set(id, {
         id,
@@ -333,7 +332,7 @@ export function createMockPort(): MockPort {
         editedAt: null,
         deletedAt: null,
         pinnedAt: null,
-        createdAt: messageSeq,
+        createdAt,
       });
       if (args.threadRootId !== undefined) {
         const root = state.messages.get(args.threadRootId);
@@ -341,7 +340,7 @@ export function createMockPort(): MockPort {
           state.messages.set(root.id, {
             ...root,
             replyCount: (root.replyCount ?? 0) + 1,
-            lastReplyAt: messageSeq,
+            lastReplyAt: createdAt,
           });
         }
       }
@@ -573,18 +572,4 @@ export function createMockPort(): MockPort {
   };
 
   return port;
-}
-
-/**
- * No-op stand-in for the removed MLS engine factory.
- *
- * MLS is gone: the session no longer takes an engine and the server seals
- * content. This exists only so the dev preview, which still calls
- * `ChatSession.create({ createEngine: () => … })`, keeps compiling until the
- * apps drop their engine wiring.
- *
- * @deprecated The session is encryption-agnostic; the server seals content.
- */
-export function createMemoryMlsEngine(_secret = "memory"): Record<string, never> {
-  return {};
 }

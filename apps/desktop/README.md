@@ -114,9 +114,7 @@ path, building the shell on macOS, Windows and Linux and uploading the bundles.
 
 ## Caveats
 
-- On-device behaviour (menus, tray, badge, deep links, vibrancy) has
-  **not** been verified locally: no Rust toolchain was available when this
-  landed. CI builds only prove it compiles and bundles.
+- Release acceptance covers menus, tray, badges, deep links, vibrancy, and installed updates. Configuration checks and successful builds do not verify those interactions. Record platform evidence in the [release checklist](../../docs/releasing.md).
 - The dev CSP is strict (`script-src 'self'`); if Vite's HMR needs more during
   `tauri:dev`, pass a relaxed `--config` override rather than weakening the
   production policy.

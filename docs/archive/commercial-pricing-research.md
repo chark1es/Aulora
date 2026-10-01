@@ -1,3 +1,5 @@
+> Archived work record. This file can describe removed code or unresolved work that has since changed. Use [the current documentation](../README.md) and [project status](../project-status.md).
+
 # Commercial pricing research
 
 Checked September 30, 2026. All vendor prices below come from official sources. USD prices exclude tax. Annual figures are monthly equivalents unless the table says otherwise. Promotional introductory prices are excluded.

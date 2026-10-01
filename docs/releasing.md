@@ -6,6 +6,8 @@ This is the maintainer checklist for v1 and later stable releases. Completing a 
 
 The release workflow reads `apps/desktop/src-tauri/tauri.conf.json`. A higher stable version merged into `main` triggers the complete release pipeline and automatically publishes after every required check and artifact build succeeds. Do not merge a version bump before the publication checks below are complete.
 
+For an initial release, set the repository Actions variable `RELEASE_AUTO_PUBLISH=false` before merging the version preparation. This builds the exact v1 candidate without publishing. Inspect its complete artifact set before creating the public release at that build's commit. Remove the variable after publication to restore automatic releases. This hold does not close the remaining acceptance checks.
+
 Use the version command to keep backend discovery, web defaults, package metadata, and native versions aligned:
 
 ```sh

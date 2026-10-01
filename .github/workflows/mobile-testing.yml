@@ -1,0 +1,110 @@
+name: Prepare mobile testing
+
+on:
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: Published release tag to test
+        required: true
+        type: string
+        default: v1.0.0
+      upload-ios:
+        description: Upload the signed IPA to App Store Connect for TestFlight
+        type: boolean
+        default: true
+
+permissions:
+  contents: read
+
+concurrency:
+  group: mobile-testing-${{ inputs.tag }}
+  cancel-in-progress: false
+
+jobs:
+  testing:
+    name: Android testing files and TestFlight upload
+    runs-on: macos-latest
+    environment: release-signing
+    timeout-minutes: 30
+    env:
+      GH_TOKEN: ${{ github.token }}
+      GH_REPO: ${{ github.repository }}
+      RELEASE_TAG: ${{ inputs.tag }}
+    steps:
+      - name: Require main and a stable release tag
+        run: |
+          test "$GITHUB_REF" = refs/heads/main
+          python3 - <<'PY'
+          import os, re
+          if not re.fullmatch(r'v\d+\.\d+\.\d+', os.environ['RELEASE_TAG']):
+              raise SystemExit('Expected a stable version tag such as v1.0.0')
+          PY
+          test "$(gh release view "$RELEASE_TAG" --json isDraft --jq .isDraft)" = false
+      - name: Download published mobile artifacts
+        run: |
+          mkdir -p mobile-testing
+          gh release download "$RELEASE_TAG" --dir mobile-testing --pattern '*_android.apk' --pattern '*_android.aab' --pattern '*_ios.ipa' --pattern SHA256SUMS
+          python3 - <<'PY'
+          import hashlib, os
+          from pathlib import Path
+          root = Path('mobile-testing')
+          version = os.environ['RELEASE_TAG'][1:]
+          hashes = dict(line.split('  ', 1)[::-1] for line in (root / 'SHA256SUMS').read_text().splitlines())
+          for suffix in ('android.apk', 'android.aab', 'ios.ipa'):
+              name = f'Aulora_{version}_{suffix}'
+              actual = hashlib.sha256((root / name).read_bytes()).hexdigest()
+              if hashes.get(name) != actual:
+                  raise SystemExit('Checksum mismatch: ' + name)
+          print('Published mobile checksums verified.')
+          PY
+      - uses: actions/upload-artifact@v4
+        with:
+          name: mobile-testing-${{ inputs.tag }}
+          path: mobile-testing/*
+          if-no-files-found: error
+          retention-days: 30
+      - name: Upload iOS build to App Store Connect
+        if: inputs.upload-ios
+        env:
+          APPLE_API_KEY: ${{ secrets.APPLE_API_KEY }}
+          APPLE_API_ISSUER: ${{ secrets.APPLE_API_ISSUER }}
+          APPLE_API_PRIVATE_KEY: ${{ secrets.APPLE_API_PRIVATE_KEY }}
+        run: |
+          python3 - <<'PY'
+          import os
+          from pathlib import Path
+          for name in ('APPLE_API_KEY', 'APPLE_API_ISSUER', 'APPLE_API_PRIVATE_KEY'):
+              if not os.environ.get(name):
+                  raise SystemExit('Missing signing secret: ' + name)
+          key = Path(os.environ['RUNNER_TEMP']) / 'testflight.p8'
+          key.write_text(os.environ['APPLE_API_PRIVATE_KEY'])
+          key.chmod(0o600)
+          PY
+          xcrun altool --upload-package "mobile-testing/Aulora_${RELEASE_TAG#v}_ios.ipa" --api-key "$APPLE_API_KEY" --api-issuer "$APPLE_API_ISSUER" --p8-file-path "$RUNNER_TEMP/testflight.p8" --output-format json
+      - name: Testing instructions
+        env:
+          UPLOAD_IOS: ${{ inputs.upload-ios }}
+        run: |
+          python3 - <<'PY'
+          import os
+          from pathlib import Path
+          tag = os.environ['RELEASE_TAG']
+          version = tag[1:]
+          text = f'''## Mobile testing for {tag}
+
+          Android APK: https://github.com/{os.environ['GH_REPO']}/releases/download/{tag}/Aulora_{version}_android.apk
+
+          Install the APK directly or use the AAB for a Google Play internal testing track. The artifact contains the exact published builds and verified checksums.
+
+          iOS upload requested: {os.environ['UPLOAD_IOS']}. An accepted upload still needs Apple processing, export-compliance information, and assignment to a TestFlight group. External testing also requires Beta App Review. No tester invitations are sent by this workflow.
+
+          App Store Connect: https://appstoreconnect.apple.com/apps
+
+          Test plan: https://github.com/{os.environ['GH_REPO']}/blob/main/docs/mobile-testing.md
+          '''
+          with Path(os.environ['GITHUB_STEP_SUMMARY']).open('a') as output:
+              output.write(text)
+          PY
+      - name: Remove App Store Connect private key
+        if: always()
+        run: rm -f "$RUNNER_TEMP/testflight.p8"
