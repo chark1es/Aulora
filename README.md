@@ -83,8 +83,7 @@ The site is static: the landing page at the root and the docs under `docs/`. Hos
 | `packages/tokens`, `packages/ui-*`, `packages/avatars` | Shared UI packages |
 | `infra/docker` | Server deployment, setup, updates, and backups |
 | `infra/push-relay` | Optional APNs/FCM/UnifiedPush relay |
-| `docs` | Contributor guides, release procedures, and historical engineering reports |
-| `spikes` | Experiments, excluded from the supported deployment |
+| `docs` | Contributor guides and release procedures |
 
 ## Support and security
 

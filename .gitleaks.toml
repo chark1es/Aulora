@@ -10,11 +10,3 @@ condition = "AND"
 paths = ['packages/convex/test/license\.test\.ts$']
 regexTarget = "line"
 regexes = ['const key = "AULORA1\.CO\.20271231\.20260101\.ACME_CORP\.ABCD";']
-
-[[allowlists]]
-description = "Documented placeholder in the historical self-hosting experiment"
-targetRules = ["generic-api-key"]
-condition = "AND"
-paths = ['spikes/convex-selfhost/\.env\.example$']
-regexTarget = "line"
-regexes = ['replace-with-64-hex-chars']

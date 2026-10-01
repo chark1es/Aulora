@@ -66,4 +66,4 @@ For another provider, supply its signing client/instructions, certificate or key
 - Never copy these private keys into app assets, source code, tracked `.env` files, build logs or release artifacts. Supply them to CI through its secret store, and to the push relay through secret environment variables or mounted files.
 - Platform account sign-in, enrollment and identity verification happen in your browser. Sharing the downloaded release credentials or installing a local signing identity is sufficient; sharing your account password is unnecessary.
 
-Build wiring and delivery checks are covered in [platform build readiness](platform-build-readiness.md).
+Build wiring and delivery checks are covered in [GitHub Actions builds and releases](github-actions.md).

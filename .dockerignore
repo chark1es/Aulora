@@ -44,6 +44,5 @@ infra/docker/.update-status.json
 # Generated per-instance well-known document; infra writes the real one at runtime.
 apps/web/public/.well-known
 
-# Spikes and docs are not needed to build or run the stack.
-spikes
+# Docs are not needed to build or run the stack.
 docs

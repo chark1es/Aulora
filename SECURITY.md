@@ -10,7 +10,7 @@ We will investigate and coordinate a fix and disclosure with you. There is no gu
 
 ## Supported versions
 
-Security fixes target the latest stable release. Until v1 is published, reports against the current release candidate are welcome. Upgrade older versions to the latest patch release; experimental code in `spikes/` is not supported for production.
+Security fixes target the latest stable release. Until v1 is published, reports against the current release candidate are welcome. Upgrade older versions to the latest patch release.
 
 ## Trust model
 

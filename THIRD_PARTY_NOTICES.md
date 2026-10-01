@@ -18,7 +18,7 @@ Docker image references live in `infra/docker/docker-compose.yml` and the Docker
 
 ## Project assets
 
-Before release, verify ownership or redistribution permission for logos, application icons, avatar assets, and notification sounds. Record any required third-party attribution here and include its license in the release notices. Files in `spikes/` are experiments and are not part of the supported release.
+Before release, verify ownership or redistribution permission for logos, application icons, avatar assets, and notification sounds. Record any required third-party attribution here and include its license in the release notices.
 
 ## Distribution
 

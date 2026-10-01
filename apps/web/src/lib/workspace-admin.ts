@@ -227,7 +227,7 @@ export interface PermissionGroup {
   readonly permissions: readonly PermissionName[];
 }
 
-/** Permission flags grouped for the role editor, in the plan.md order. */
+/** Permission flags grouped for the role editor. */
 export const PERMISSION_GROUPS: readonly PermissionGroup[] = [
   {
     label: "General",

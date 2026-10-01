@@ -10,5 +10,3 @@ Current contributor and maintainer guides:
 - [GitHub Actions builds and releases](github-actions.md)
 - [CLA bot tracking and maintenance](cla-bot.md)
 - [Signing and push credentials](release-credentials.md)
-
-Files named `PHASE-*`, platform-readiness assessments, deployment-test notes, and handoff reports record earlier work. They are historical evidence, not current setup instructions. Some describe gaps that later changes have addressed. Follow current guides and inspect the implementation when they disagree.
