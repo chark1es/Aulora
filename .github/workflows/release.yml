@@ -43,6 +43,7 @@ jobs:
         id: plan
         env:
           GH_TOKEN: ${{ github.token }}
+          RELEASE_AUTO_PUBLISH: ${{ vars.RELEASE_AUTO_PUBLISH }}
         run: node scripts/ci/release.mjs plan
 
   checks:
@@ -116,7 +117,7 @@ jobs:
           path: dist/release
       - name: Create updater manifest and checksums
         run: |
-          if [ -z "$RELEASE_NOTES" ]; then
+          if [ -z "$RELEASE_NOTES" ] && [ "$RELEASE_VERSION" = 1.0.0 ]; then
             RELEASE_NOTES="$(cat docs/release-notes-v1.md)"
             export RELEASE_NOTES
           fi
@@ -155,12 +156,10 @@ jobs:
             test "$(cat "$state")" = true
             gh release upload "$tag" dist/release/* --clobber
           else
-            notes="$RUNNER_TEMP/release-notes.md"
-            if [ -n "$RELEASE_NOTES" ]; then
-              printf '%s\n' "$RELEASE_NOTES" > "$notes"
-              gh release create "$tag" --draft --target "$GITHUB_SHA" --title "Aulora ${RELEASE_VERSION}" --notes-file "$notes" dist/release/*
-            else
+            if [ -s dist/release/RELEASE_NOTES.md ] && grep -q '[^[:space:]]' dist/release/RELEASE_NOTES.md; then
               gh release create "$tag" --draft --target "$GITHUB_SHA" --title "Aulora ${RELEASE_VERSION}" --notes-file dist/release/RELEASE_NOTES.md dist/release/*
+            else
+              gh release create "$tag" --draft --target "$GITHUB_SHA" --title "Aulora ${RELEASE_VERSION}" --generate-notes dist/release/*
             fi
           fi
           gh release edit "$tag" --draft=false --latest
