@@ -1,16 +1,20 @@
 # GitHub Actions builds and releases
 
 Every pull request runs `.github/workflows/ci.yml`. It checks lint, workspace types,
-tests, web/docs builds and links, release metadata, infrastructure tests, workflow syntax, and native builds
-for Windows, macOS, Linux, Android, and the iOS simulator. These jobs do not
-receive release credentials. The final `Required checks` job fails if any
-required job fails, is cancelled, or is skipped. There are no path filters on PR
-checks, so documentation-only PRs also produce the required result.
+tests, web/docs builds and links, release metadata, infrastructure tests, and workflow syntax.
+The native builds for Windows, macOS, Linux, Android, and the iOS simulator are
+opt-in because they are slow. They run when a PR has the `build-native` label, when
+you start CI manually from the Actions tab (`native` input), and on every release,
+which calls CI as a reusable workflow. They are skipped on plain PRs and on pushes to `main`.
+These jobs do not receive release credentials. The final `Required checks` job
+fails if any other job fails or is cancelled, and treats only the native jobs as
+optional when skipped. There are no path filters on PR checks, so
+documentation-only PRs also produce the required result.
 
 Configure `main` to require that check from the GitHub Actions app, an up-to-date PR branch,
 and resolved review conversations. Apply the rule to administrators and
 block force pushes and branch deletion. Review approvals are a maintainer choice.
-The same checks run after merges and for merge groups.
+The same checks run after merges and for merge groups, without the native builds.
 
 The separate [CLA bot](cla-bot.md) records contributor acceptance and publishes the `CLA` commit status on pull requests. After enabling it, require that status alongside `Required checks`. Its privileged job runs default-branch code without executing the PR's code.
 
