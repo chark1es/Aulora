@@ -6,22 +6,17 @@
  */
 
 body.docs {
-  background: var(--chat);
-}
-
-.docs .site-header-inner {
-  max-width: 1280px;
-  padding: 0 32px;
+  background: var(--bg);
 }
 
 .docs-shell {
   display: grid;
   grid-template-columns: 232px minmax(0, 1fr) 208px;
   gap: 56px;
-  max-width: 1280px;
+  max-width: var(--site-max);
   min-height: calc(100vh - var(--header-height));
   margin: 0 auto;
-  padding: 0 32px;
+  padding: 0 var(--site-pad);
 }
 
 /* Table of contents */
@@ -395,10 +390,6 @@ body.docs {
 }
 
 @media (max-width: 900px) {
-  .docs .site-header-inner {
-    padding: 0 16px;
-  }
-
   .docs-shell {
     display: block;
     padding: 0;
@@ -407,7 +398,7 @@ body.docs {
   .docs-nav {
     z-index: 10;
     border-bottom: 1px solid var(--border);
-    background: var(--chat);
+    background: var(--surface-1);
     padding: 0 16px;
   }
 

@@ -13,7 +13,8 @@ bun run --cwd apps/docs test    # node:test the markdown renderer and token read
 
 | Output | Source |
 | --- | --- |
-| `dist/index.html` | `landing/index.html`, the landing page |
+| `dist/index.html` | `landing/index.html`, the home page |
+| `dist/how-it-works.html`, `install.html`, `pricing.html` | The other marketing pages in `landing/` |
 | `dist/docs/*.html` | `content/*.md`, the documentation |
 | `dist/docs/legal/` | `LICENSE`, `NOTICE`, `COMMERCIAL.md`, `CLA.md`, `THIRD_PARTY_NOTICES.md` from the repository root |
 | `dist/tokens.css` | Generated from `packages/tokens/src/colors.ts` |
@@ -43,7 +44,7 @@ The site uses the app's own design system, so it can't drift from the clients:
 - `lib/markdown.mjs` supports headings, paragraphs, fenced code, lists,
   blockquotes, tables, horizontal rules and inline code/bold/italic/links. Raw
   HTML is escaped. Relative `*.md` links are rewritten to `*.html`.
-- The landing page is hand-written HTML. The build fills these placeholders:
+- Marketing pages live in `landing/`. The build fills these placeholders:
   `{{icon:name}}` for a token icon, `{{avatar:seed}}` for a person,
   `{{server:seed}}` for a workspace, and `{{head}}`, `{{header}}`, and
   `{{footer}}` for the shared chrome.

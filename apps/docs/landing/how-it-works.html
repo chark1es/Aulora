@@ -1,0 +1,153 @@
+{{head}}
+  <body class="landing">
+{{header}}
+    <main>
+      <header class="page-intro">
+        <p class="eyebrow">How it works</p>
+        <h1>The server is yours. The app is the same everywhere.</h1>
+        <p class="lede">
+          Each Aulora server hosts one workspace. People open it in a browser or add its URL to the
+          desktop or mobile app. One install of the app can hold every server they belong to.
+        </p>
+      </header>
+
+      <section class="band" id="servers">
+        <div class="section-head">
+          <h2>One app. A server for each group.</h2>
+          <p>
+            Work, a club, and a side project each run their own server. Pick one in the rail.
+            Signing in on one does not sign you in on the others.
+          </p>
+        </div>
+
+        <div class="server-stage">
+          <input type="radio" name="workspace" id="ws-acme" checked aria-label="Acme Studio" />
+          <input type="radio" name="workspace" id="ws-makers" aria-label="Makers Club" />
+          <input type="radio" name="workspace" id="ws-lumen" aria-label="Lumen" />
+          <div class="server-rail">
+            <label for="ws-acme" title="Acme Studio">{{server:acme-studio}}</label>
+            <label for="ws-makers" title="Makers Club">{{server:makers}}</label>
+            <label for="ws-lumen" title="Lumen">{{server:lumen}}</label>
+            <span class="rail-add" aria-hidden="true">{{icon:plus}}</span>
+          </div>
+          <div class="server-panels">
+            <article class="server-panel for-acme">
+              <header>
+                <span class="panel-avatar">{{server:acme-studio}}</span>
+                <span class="panel-ident">
+                  <h3>Acme Studio <span class="panel-tag">Work</span></h3>
+                  <code>chat.acme.studio</code>
+                </span>
+              </header>
+              <p>People sign in with their work accounts. Channels, files, and backups for this server stay here.</p>
+              <ul class="stage-channels">
+                <li>{{icon:hash}}<span>ops</span></li>
+                <li>{{icon:hash}}<span>design</span></li>
+                <li>{{icon:hash}}<span>general</span></li>
+              </ul>
+              <dl class="stage-facts">
+                <div><dt>members</dt><dd>40</dd></div>
+                <div><dt>channels</dt><dd>6</dd></div>
+                <div><dt>sign-in</dt><dd>Work SSO</dd></div>
+              </dl>
+            </article>
+
+            <article class="server-panel for-makers">
+              <header>
+                <span class="panel-avatar">{{server:makers}}</span>
+                <span class="panel-ident">
+                  <h3>Makers Club <span class="panel-tag">Club</span></h3>
+                  <code>hall.makers.club</code>
+                </span>
+              </header>
+              <p>Joining here does not use the work account. It has its own members, roles, and URL.</p>
+              <ul class="stage-channels">
+                <li>{{icon:hash}}<span>general</span></li>
+                <li>{{icon:hash}}<span>projects</span></li>
+                <li>{{icon:hash}}<span>night-shop</span></li>
+              </ul>
+              <dl class="stage-facts">
+                <div><dt>members</dt><dd>30</dd></div>
+                <div><dt>channels</dt><dd>3</dd></div>
+                <div><dt>sign-in</dt><dd>Invite</dd></div>
+              </dl>
+            </article>
+
+            <article class="server-panel for-lumen">
+              <header>
+                <span class="panel-avatar">{{server:lumen}}</span>
+                <span class="panel-ident">
+                  <h3>Lumen <span class="panel-tag">Side project</span></h3>
+                  <code>team.lumen.dev</code>
+                </span>
+              </header>
+              <p>Same installed app, third server, third sign-in. The switcher is the only thing these three share.</p>
+              <ul class="stage-channels">
+                <li>{{icon:hash}}<span>build</span></li>
+                <li>{{icon:hash}}<span>notes</span></li>
+              </ul>
+              <dl class="stage-facts">
+                <div><dt>members</dt><dd>4</dd></div>
+                <div><dt>channels</dt><dd>2</dd></div>
+                <div><dt>sign-in</dt><dd>Email</dd></div>
+              </dl>
+            </article>
+          </div>
+        </div>
+        <p class="stage-foot">
+          Accounts belong to a server. The app can remember several servers. It does not merge them.
+        </p>
+      </section>
+
+      <section class="band" id="features">
+        <div class="section-head">
+          <h2>Everything a team talks through, no add-ons.</h2>
+          <p>Channels, calls, files, and the admin tools, all in the same server. Nothing here is sold separately.</p>
+        </div>
+        <div class="feature-groups">
+          <div class="group">
+            <p class="group-label">Talk</p>
+            <ul>
+              <li><span class="glyph">{{icon:hash}}</span><span><strong>Channels and categories</strong><small>Public, private, and announcement channels, sorted into categories.</small></span></li>
+              <li><span class="glyph">{{icon:thread}}</span><span><strong>Threads</strong><small>Replies stay attached, and a threads inbox brings you back to them.</small></span></li>
+              <li><span class="glyph">{{icon:message}}</span><span><strong>Direct and group messages</strong><small>Presence shows who's online, idle, or on do not disturb.</small></span></li>
+              <li><span class="glyph">{{icon:at}}</span><span><strong>Mentions and reactions</strong><small>@people and #channels, with per-channel mute and notification settings.</small></span></li>
+              <li><span class="glyph">{{icon:paperclip}}</span><span><strong>Files</strong><small>Drag in files and images. The upload limit is yours to set.</small></span></li>
+              <li><span class="glyph">{{icon:search}}</span><span><strong>Search</strong><small>Jump to any channel, person, or message with ⌘K.</small></span></li>
+            </ul>
+          </div>
+          <div class="group">
+            <p class="group-label">Call</p>
+            <ul>
+              <li><span class="glyph">{{icon:volume}}</span><span><strong>Voice channels</strong><small>Drop in and out like walking into a room.</small></span></li>
+              <li><span class="glyph">{{icon:video}}</span><span><strong>Video calls</strong><small>WebRTC on web, desktop, and mobile, starting from any conversation.</small></span></li>
+              <li><span class="glyph">{{icon:monitor}}</span><span><strong>Screen sharing</strong><small>Where the platform supports it.</small></span></li>
+              <li><span class="glyph">{{icon:phone-incoming}}</span><span><strong>Incoming calls</strong><small>Call alerts on web, desktop, and mobile.</small></span></li>
+              <li><span class="glyph">{{icon:signal}}</span><span><strong>Your own TURN</strong><small>Add your own ICE servers for networks that block direct connections.</small></span></li>
+            </ul>
+          </div>
+          <div class="group">
+            <p class="group-label">Run</p>
+            <ul>
+              <li><span class="glyph">{{icon:shield}}</span><span><strong>Roles and overrides</strong><small>Workspace roles, plus allow and deny overrides on each channel.</small></span></li>
+              <li><span class="glyph">{{icon:user-plus}}</span><span><strong>Invites and signup policy</strong><small>Open signup or invite only, with email, OAuth, or OIDC sign-in.</small></span></li>
+              <li><span class="glyph">{{icon:ban}}</span><span><strong>Moderation</strong><small>Timeouts, bans, and an audit log of admin actions.</small></span></li>
+              <li><span class="glyph">{{icon:download}}</span><span><strong>Nightly backups</strong><small>An optional backup runner, plus a documented restore drill.</small></span></li>
+              <li><span class="glyph">{{icon:settings}}</span><span><strong>Release updates</strong><small>A host updater with owner controls in settings, or redeploy a tag on Coolify.</small></span></li>
+            </ul>
+          </div>
+        </div>
+      </section>
+
+      <section class="closer">
+        <h2>Try it in the page, then install the real thing.</h2>
+        <p>Point the demo at anything. What you type stays in your browser.</p>
+        <div class="hero-actions">
+          <a class="button button-primary" href="index.html">Open the demo</a>
+          <a class="button button-quiet" href="install.html">Install</a>
+        </div>
+      </section>
+    </main>
+{{footer}}
+  </body>
+</html>
