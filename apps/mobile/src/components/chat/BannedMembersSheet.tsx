@@ -30,7 +30,7 @@ export function BannedMembersSheet({ visible, memberNames, onClose }: BannedMemb
   const rows = bans ?? [];
 
   return (
-    <Sheet visible={visible} title={"Banned members"} onClose={onClose}>
+    <Sheet visible={visible} title="Banned members" dismiss="done" onClose={onClose}>
       <View className="flex-1 p-4">
         <Text size="xs" tone="muted" className="mt-1">
           People who cannot rejoin until they are unbanned.

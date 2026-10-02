@@ -155,7 +155,7 @@ export function AttachmentView({ runtime, descriptor }: AttachmentViewProps) {
         </Text>
       )}
       {preview && (
-        <Sheet visible title={descriptor.name} onClose={() => setPreview(false)}>
+        <Sheet visible title={descriptor.name} dismiss="done" onClose={() => setPreview(false)}>
           <ScrollView contentContainerStyle={{ padding: 16, gap: 16 }}>
             {dataUri !== null ? (
               <Image

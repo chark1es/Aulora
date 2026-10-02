@@ -1,7 +1,7 @@
 import type { PresenceRow } from "@aulora/core";
-import { Button, Input, Text } from "@aulora/ui-native";
+import { Button, presenceColor, Text, usePalette } from "@aulora/ui-native";
 import { useEffect, useState } from "react";
-import { Keyboard, Pressable, View } from "react-native";
+import { Keyboard, Pressable, TextInput, View } from "react-native";
 import { presenceLabel } from "../../lib/presence";
 
 type PresenceStatus = PresenceRow["status"];
@@ -28,6 +28,7 @@ export interface StatusEditorProps {
  * the settings sheet, so the two surfaces cannot drift apart.
  */
 export function StatusEditor({ status, customStatus, onSetStatus }: StatusEditorProps) {
+  const palette = usePalette();
   const [draft, setDraft] = useState(customStatus);
 
   // Re-seed the draft whenever the viewer's live custom status changes.
@@ -45,6 +46,8 @@ export function StatusEditor({ status, customStatus, onSetStatus }: StatusEditor
     onSetStatus(status, "");
   };
 
+  const changed = draft.trim() !== customStatus;
+
   return (
     <View className="gap-3">
       <View className="flex-row flex-wrap gap-2">
@@ -55,36 +58,46 @@ export function StatusEditor({ status, customStatus, onSetStatus }: StatusEditor
               key={option.value}
               accessibilityRole="button"
               accessibilityState={{ selected: active }}
+              hitSlop={{ top: 4, bottom: 4 }}
               onPress={() => onSetStatus(option.value)}
-              className={
-                active
-                  ? "min-h-12 items-center justify-center rounded-pill border border-accent bg-accent-soft px-3 py-1"
-                  : "min-h-12 items-center justify-center rounded-pill border border-border bg-surface-3 px-3 py-1"
-              }
+              className={`min-h-10 flex-row items-center gap-2 rounded-pill border px-3 active:opacity-70 ${
+                active ? "border-accent bg-accent-soft" : "border-transparent bg-surface-3"
+              }`}
             >
-              <Text size="xs" tone={active ? "accent" : "default"}>
+              <View
+                className="h-2.5 w-2.5 rounded-pill"
+                style={{ backgroundColor: presenceColor(option.value, palette) }}
+              />
+              <Text size="sm" tone={active ? "accent" : "default"} maxFontSizeMultiplier={1.4}>
                 {option.label}
               </Text>
             </Pressable>
           );
         })}
       </View>
-      <Input
-        label="Custom status"
-        value={draft}
-        onChangeText={setDraft}
-        maxLength={80}
-        placeholder="Set a custom status…"
-        returnKeyType="done"
-        onSubmitEditing={save}
-      />
-      <View className="flex-row gap-2">
-        <Button size="sm" variant="primary" onPress={save}>
-          Save
-        </Button>
-        <Button size="sm" variant="secondary" onPress={clear}>
-          Clear
-        </Button>
+      <View className="flex-row items-center gap-2">
+        <TextInput
+          accessibilityLabel="Custom status"
+          value={draft}
+          onChangeText={setDraft}
+          maxLength={80}
+          placeholder="What are you up to?"
+          placeholderTextColor={palette["text-muted"]}
+          returnKeyType="done"
+          onSubmitEditing={save}
+          className="min-h-11 flex-1 rounded-input bg-surface-3 px-3 py-0 text-[17px] text-text"
+        />
+        {changed ? (
+          <Button size="sm" variant="primary" onPress={save}>
+            Save
+          </Button>
+        ) : (
+          customStatus.length > 0 && (
+            <Button size="sm" variant="secondary" onPress={clear}>
+              Clear
+            </Button>
+          )
+        )}
       </View>
     </View>
   );

@@ -79,14 +79,6 @@ export function UserNoteSheet({
         <View className="mt-3 flex-row justify-end gap-2">
           <Button
             size="sm"
-            variant="ghost"
-            onPress={onClose}
-            disabled={saving || loading || error !== null}
-          >
-            Cancel
-          </Button>
-          <Button
-            size="sm"
             variant="secondary"
             onPress={() => submit(true)}
             disabled={saving || loading || error !== null}

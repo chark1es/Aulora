@@ -42,14 +42,28 @@ describe("readSetCookies", () => {
     (combined as unknown as { getSetCookie?: unknown }).getSetCookie = undefined;
     expect(readSetCookies(combined)).toEqual(["a=1", "b=2; Path=/"]);
   });
+
+  it("splits combined cookies whose names contain a dot", () => {
+    const combined = new Headers({
+      "set-cookie":
+        "better-auth.session_token=abc; Path=/; HttpOnly, better-auth.convex_jwt=def; Path=/",
+    });
+    (combined as unknown as { getSetCookie?: unknown }).getSetCookie = undefined;
+    expect(readSetCookies(combined)).toEqual([
+      "better-auth.session_token=abc; Path=/; HttpOnly",
+      "better-auth.convex_jwt=def; Path=/",
+    ]);
+  });
 });
 
 describe("createCookieFetch", () => {
   it("sends the stored cookie and persists set-cookie responses", async () => {
     const { store, map } = memoryCookieStore();
     const seen: Array<string | null> = [];
+    const credentials: Array<RequestCredentials | undefined> = [];
     const baseFetch = vi.fn(async (_input: RequestInfo | URL, init?: RequestInit) => {
       seen.push(new Headers(init?.headers).get("cookie"));
+      credentials.push(init?.credentials);
       const headers = new Headers({ "set-cookie": "session=abc; HttpOnly; Path=/" });
       return new Response("{}", { status: 200, headers });
     });
@@ -64,6 +78,8 @@ describe("createCookieFetch", () => {
 
     await cookieFetch("https://chat.acme.com/api/auth/convex/token");
     expect(seen[1]).toBe("session=abc");
+    // The platform cookie jar must stay out, or iOS sends the session twice.
+    expect(credentials).toEqual(["omit", "omit"]);
   });
 });
 

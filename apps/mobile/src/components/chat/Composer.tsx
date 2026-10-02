@@ -1,7 +1,9 @@
 import type { RoleMentionTarget } from "@aulora/core";
-import { Button, Icon, IconButton, Text, usePalette } from "@aulora/ui-native";
+import type { IconName } from "@aulora/tokens";
+import { Icon, Text, usePalette } from "@aulora/ui-native";
 import { useEffect, useMemo, useRef, useState } from "react";
-import { Modal, Pressable, TextInput, useWindowDimensions, View } from "react-native";
+import { Pressable, TextInput, View } from "react-native";
+import { useSafeAreaInsets } from "react-native-safe-area-context";
 import {
   type PickedFile,
   pickDocuments,
@@ -9,6 +11,8 @@ import {
   pickFromClipboard,
   pickFromLibrary,
 } from "../../lib/attachments";
+import { BottomSheet } from "./BottomSheet";
+import { ListGroup, ListRow } from "./List";
 import { RichText } from "./RichText";
 
 export interface MentionCandidate {
@@ -37,26 +41,29 @@ export interface ComposerProps {
 const ATTACH_OPTIONS: readonly {
   key: string;
   label: string;
+  icon: IconName;
   pick: () => Promise<readonly PickedFile[]>;
 }[] = [
   {
     key: "camera",
-    label: "Camera",
+    label: "Take a photo",
+    icon: "camera",
     pick: async () => {
       const file = await pickFromCamera();
       return file === null ? [] : [file];
     },
   },
-  { key: "photos", label: "Photo library", pick: pickFromLibrary },
+  { key: "photos", label: "Photo library", icon: "image", pick: pickFromLibrary },
   {
     key: "clipboard",
-    label: "Paste image",
+    label: "Paste image from clipboard",
+    icon: "image-plus",
     pick: async () => {
       const file = await pickFromClipboard();
       return file === null ? [] : [file];
     },
   },
-  { key: "files", label: "Files", pick: pickDocuments },
+  { key: "files", label: "Browse files", icon: "file", pick: pickDocuments },
 ];
 
 const TRIGGER = /(^|\s)([@#])([^\s@#]*)$/;
@@ -75,7 +82,7 @@ export function Composer({
   onSend,
 }: ComposerProps) {
   const palette = usePalette();
-  const { fontScale } = useWindowDimensions();
+  const insets = useSafeAreaInsets();
   const [value, setValue] = useState("");
   const [files, setFiles] = useState<readonly { key: string; file: PickedFile }[]>([]);
   const [menuOpen, setMenuOpen] = useState(false);
@@ -178,34 +185,43 @@ export function Composer({
     setFiles([]);
   }
 
+  const canSend = disabled !== true && (value.trim().length > 0 || files.length > 0);
+
   return (
-    <View className="gap-1 border-t border-border bg-bg px-3 pb-2 pt-2">
+    <View
+      className="gap-1.5 bg-bg px-3 pt-1.5"
+      style={{ paddingBottom: Math.max(insets.bottom, 8) }}
+    >
       {files.length > 0 && (
-        <View className="flex-row flex-wrap gap-1">
+        <View className="flex-row flex-wrap gap-1.5">
           {files.map((entry) => (
             <Pressable
               key={entry.key}
+              accessibilityRole="button"
               accessibilityLabel={`Remove ${entry.file.name}`}
-              className="rounded-pill border border-border bg-surface-2 px-2 py-0.5"
+              hitSlop={6}
+              className="flex-row items-center gap-1.5 rounded-pill bg-surface-2 py-1.5 pl-3 pr-2 active:opacity-70"
               onPress={() =>
                 setFiles((current) => current.filter((value) => value.key !== entry.key))
               }
             >
-              <Text size="xs" tone="muted" numberOfLines={1} className="max-w-[10rem]">
-                {entry.file.name} ×
+              <Icon name="paperclip" size={14} color={palette["text-muted"]} />
+              <Text size="xs" numberOfLines={1} className="max-w-[10rem]">
+                {entry.file.name}
               </Text>
+              <Icon name="x" size={14} color={palette["text-muted"]} />
             </Pressable>
           ))}
         </View>
       )}
       {suggestions.length > 0 && (
-        <View className="rounded-input border border-border bg-surface-2 p-1">
+        <View className="overflow-hidden rounded-card border border-border bg-surface-2">
           {suggestions.map((candidate) => (
             <Pressable
               key={candidate.key}
               accessibilityRole="button"
               accessibilityLabel={`Insert ${candidate.insert}`}
-              className="flex-row items-center justify-between rounded-input px-2 py-2"
+              className="min-h-11 flex-row items-center justify-between px-3 active:bg-surface-3"
               onPress={() => applySuggestion(candidate)}
             >
               <Text size="sm">{candidate.insert}</Text>
@@ -217,7 +233,7 @@ export function Composer({
         </View>
       )}
       {showPreview && value.trim().length > 0 && (
-        <View className="rounded-input border border-border bg-surface-2 px-3 py-2">
+        <View className="rounded-card border border-border bg-surface-2 px-3 py-2">
           <RichText
             text={value}
             mentionNames={members.map((member) => member.displayName)}
@@ -226,79 +242,74 @@ export function Composer({
           />
         </View>
       )}
-      <View className="flex-row items-end gap-2 rounded-input border border-border bg-surface-2 p-2">
+      <View className="flex-row items-end gap-2">
         <Pressable
+          accessibilityRole="button"
           accessibilityLabel="Attach"
           disabled={disabled === true || busy}
-          accessibilityRole="button"
-          className="h-12 w-12 items-center justify-center rounded-pill"
+          hitSlop={4}
+          className={`h-11 w-11 items-center justify-center rounded-pill bg-surface-2 active:opacity-70 ${
+            disabled === true ? "opacity-50" : ""
+          }`}
           onPress={() => setMenuOpen(true)}
         >
+          <Icon name="plus" size={22} color={palette.text} />
+        </Pressable>
+        <View className="min-h-11 flex-1 justify-center rounded-[22px] border border-border bg-surface-2 px-4">
+          <TextInput
+            maxFontSizeMultiplier={2}
+            ref={inputRef}
+            accessibilityLabel={placeholder}
+            placeholder={disabled === true ? "You can't send messages here" : placeholder}
+            placeholderTextColor={palette["text-muted"]}
+            value={value}
+            multiline
+            editable={disabled !== true}
+            onChangeText={(next) => {
+              setValue(next);
+              if (next.length > 0) {
+                onTyping(channelId);
+              }
+            }}
+            className="max-h-32 py-2.5 text-[17px] leading-[22px] text-text"
+          />
+        </View>
+        <Pressable
+          accessibilityRole="button"
+          accessibilityLabel="Send"
+          accessibilityState={{ disabled: !canSend }}
+          disabled={!canSend}
+          hitSlop={4}
+          onPress={send}
+          className={`h-11 w-11 items-center justify-center rounded-pill active:opacity-80 ${
+            canSend ? "bg-accent" : "bg-surface-2"
+          }`}
+        >
           <Icon
-            name="paperclip"
-            size={18}
-            color={disabled === true ? palette["text-muted"] : palette.text}
+            name="send"
+            size={20}
+            color={canSend ? palette["on-accent"] : palette["text-muted"]}
           />
         </Pressable>
-        <TextInput
-          maxFontSizeMultiplier={2}
-          ref={inputRef}
-          accessibilityLabel={placeholder}
-          placeholder={placeholder}
-          placeholderTextColor={palette["text-muted"]}
-          value={value}
-          multiline
-          editable={disabled !== true}
-          onChangeText={(next) => {
-            setValue(next);
-            if (next.length > 0) {
-              onTyping(channelId);
-            }
-          }}
-          className="max-h-32 min-h-12 flex-1 px-1 py-2 text-[17px] text-text"
-        />
-        {fontScale > 1.5 ? (
-          <IconButton
-            label="Send"
-            disabled={disabled === true || (value.trim().length === 0 && files.length === 0)}
-            onPress={send}
-          >
-            <Icon name="send" color={palette.text} />
-          </IconButton>
-        ) : (
-          <Button
-            size="sm"
-            disabled={disabled === true || (value.trim().length === 0 && files.length === 0)}
-            onPress={send}
-          >
-            Send
-          </Button>
-        )}
       </View>
 
-      <Modal
+      <BottomSheet
         visible={menuOpen}
-        transparent
-        animationType="fade"
-        onRequestClose={() => setMenuOpen(false)}
+        title="Add to message"
+        subtitle="Formatting: **bold**, *italic*, `code`"
+        onClose={() => setMenuOpen(false)}
       >
-        <Pressable className="flex-1 justify-end bg-black/50" onPress={() => setMenuOpen(false)}>
-          <View className="gap-1 rounded-t-card bg-surface-2 p-4">
-            <Text size="xs" tone="muted" style={{ color: palette["text-muted"] }}>
-              Formatting: **bold** *italic* `code`
-            </Text>
-            {ATTACH_OPTIONS.map((option) => (
-              <Pressable
-                key={option.key}
-                className="rounded-input px-3 py-3"
-                onPress={() => void pick(option)}
-              >
-                <Text>{option.label}</Text>
-              </Pressable>
-            ))}
-          </View>
-        </Pressable>
-      </Modal>
+        <ListGroup>
+          {ATTACH_OPTIONS.map((option) => (
+            <ListRow
+              key={option.key}
+              icon={option.icon}
+              title={option.label}
+              onPress={() => void pick(option)}
+            />
+          ))}
+        </ListGroup>
+      </BottomSheet>
     </View>
   );
 }

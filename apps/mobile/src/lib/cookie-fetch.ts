@@ -84,8 +84,9 @@ export function readSetCookies(headers: Headers): string[] {
     return [];
   }
   // Split multiple cookies that were joined with a comma before an attribute.
+  // Better Auth's cookie names contain a dot (`better-auth.session_token`).
   return combined
-    .split(/,(?=\s*[A-Za-z0-9_-]+=)/)
+    .split(/,(?=\s*[A-Za-z0-9_.-]+=)/)
     .map((value) => value.trim())
     .filter((value) => value.length > 0);
 }
@@ -104,7 +105,10 @@ export function createCookieFetch(options: CookieFetchOptions): typeof fetch {
     if (stored !== null && stored.length > 0 && !headers.has("cookie")) {
       headers.set("cookie", stored);
     }
-    const response = await baseFetch(input, { ...init, headers });
+    // `omit` keeps the platform cookie jar out of it. With `include`, iOS adds
+    // its own copy of the session cookie next to this header and the server
+    // then reads no session at all.
+    const response = await baseFetch(input, { ...init, headers, credentials: "omit" });
     const setCookies = readSetCookies(response.headers);
     if (setCookies.length > 0) {
       const merged = mergeCookieHeader(stored, setCookies);

@@ -1,13 +1,13 @@
 import type { MessagePayload, OutboxItem, RoleMentionTarget } from "@aulora/core";
 import { type AttachmentDescriptor, hasPermission, Permission } from "@aulora/core";
-import { Button } from "@aulora/ui-native";
+import { Icon, Text, usePalette } from "@aulora/ui-native";
 import { useEffect, useMemo, useState } from "react";
-import { View } from "react-native";
+import { Pressable, View } from "react-native";
 import type { PickedFile } from "../../lib/attachments";
 import type { ChatSurfaceRuntime } from "../../lib/chat-surface";
 import { Composer } from "./Composer";
 import { MessageList } from "./MessageList";
-import { Sheet } from "./Sheet";
+import { SlideOver } from "./SlideOver";
 
 export interface ThreadModalProps {
   readonly runtime: ChatSurfaceRuntime;
@@ -23,6 +23,8 @@ export interface ThreadModalProps {
   readonly channelNames?: ReadonlyMap<string, string>;
   /** Opens the channel behind a `#channel` mention. */
   readonly onChannelPress?: (name: string) => void;
+  /** Where the thread lives, shown under the title. */
+  readonly channelTitle?: string;
   readonly permissions?: bigint;
   readonly onClose: () => void;
   readonly onSendReply: (input: {
@@ -32,7 +34,7 @@ export interface ThreadModalProps {
   }) => void | Promise<void>;
 }
 
-/** Bottom-sheet thread: the root message, its replies and an in-thread composer. */
+/** A thread as its own page: the root message, its replies and an in-thread composer. */
 export function ThreadModal({
   runtime,
   channelId,
@@ -45,12 +47,14 @@ export function ThreadModal({
   channels = [],
   channelNames,
   onChannelPress,
+  channelTitle,
   permissions = 0n,
   onClose,
   onSendReply,
 }: ThreadModalProps) {
   const [replies, setReplies] = useState<readonly MessagePayload[]>([]);
   const [decrypted, setDecrypted] = useState<ReadonlyMap<string, string>>(new Map());
+  const palette = usePalette();
   const [alsoSend, setAlsoSend] = useState(false);
   const pending = useMemo(
     () => outbox.filter((item) => item.channelId === channelId && item.threadRootId === root.id),
@@ -114,52 +118,69 @@ export function ThreadModal({
   }, [runtime, root.id]);
 
   return (
-    <Sheet visible title="Thread" onClose={onClose}>
-      <View className="flex-1">
-        <MessageList
-          runtime={runtime}
-          channelId={channelId}
-          messages={messages}
-          decrypted={texts}
-          attachments={attachments}
-          pendingIds={new Set(pending.map((item) => `pending:${item.id}`))}
-          ownUserId={ownUserId}
-          memberNames={memberNames}
-          memberColors={new Map()}
-          permissions={permissions}
-          channelNames={channelNames}
-          firstUnreadId={null}
-          onJumpToFirstUnread={() => {}}
-          onChannelPress={onChannelPress}
-        />
-        <Button
-          size="sm"
-          variant={alsoSend ? "secondary" : "ghost"}
-          onPress={() => setAlsoSend(!alsoSend)}
+    <SlideOver
+      title="Thread"
+      subtitle={
+        channelTitle === undefined
+          ? undefined
+          : `${channelTitle} · ${replies.length} ${replies.length === 1 ? "reply" : "replies"}`
+      }
+      onClose={onClose}
+    >
+      <MessageList
+        runtime={runtime}
+        channelId={channelId}
+        messages={messages}
+        decrypted={texts}
+        attachments={attachments}
+        pendingIds={new Set(pending.map((item) => `pending:${item.id}`))}
+        ownUserId={ownUserId}
+        memberNames={memberNames}
+        memberColors={new Map()}
+        permissions={permissions}
+        channelNames={channelNames}
+        firstUnreadId={null}
+        onJumpToFirstUnread={() => {}}
+        onChannelPress={onChannelPress}
+      />
+      <Pressable
+        accessibilityRole="checkbox"
+        accessibilityState={{ checked: alsoSend }}
+        hitSlop={6}
+        onPress={() => setAlsoSend(!alsoSend)}
+        className="flex-row items-center gap-2 px-4 py-1.5"
+      >
+        <View
+          className={`h-[18px] w-[18px] items-center justify-center rounded-sm border ${
+            alsoSend ? "border-accent bg-accent" : "border-border"
+          }`}
         >
-          {alsoSend ? "Also send to channel: on" : "Also send to channel: off"}
-        </Button>
-        <Composer
-          channelId={channelId}
-          disabled={
-            !hasPermission(permissions, Permission.SendMessages) ||
-            (!alsoSend && !hasPermission(permissions, Permission.SendInThreads))
-          }
-          placeholder="Reply"
-          members={[...memberNames.entries()].map(([userId, displayName]) => ({
-            userId,
-            displayName,
-          }))}
-          roles={roles}
-          channels={channels}
-          onTyping={(id) => {
-            void runtime.port.setTyping({ channelId: id });
-          }}
-          onSend={(input) =>
-            onSendReply({ text: input.text, files: input.files, replyInThread: !alsoSend })
-          }
-        />
-      </View>
-    </Sheet>
+          {alsoSend && <Icon name="check" size={14} color={palette["on-accent"]} />}
+        </View>
+        <Text size="xs" tone={alsoSend ? "accent" : "muted"}>
+          Also send to {channelTitle ?? "the conversation"}
+        </Text>
+      </Pressable>
+      <Composer
+        channelId={channelId}
+        disabled={
+          !hasPermission(permissions, Permission.SendMessages) ||
+          (!alsoSend && !hasPermission(permissions, Permission.SendInThreads))
+        }
+        placeholder="Reply in thread"
+        members={[...memberNames.entries()].map(([userId, displayName]) => ({
+          userId,
+          displayName,
+        }))}
+        roles={roles}
+        channels={channels}
+        onTyping={(id) => {
+          void runtime.port.setTyping({ channelId: id });
+        }}
+        onSend={(input) =>
+          onSendReply({ text: input.text, files: input.files, replyInThread: !alsoSend })
+        }
+      />
+    </SlideOver>
   );
 }

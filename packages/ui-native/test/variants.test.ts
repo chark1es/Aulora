@@ -11,6 +11,7 @@ import {
 import {
   buttonClass,
   buttonLabelClass,
+  buttonLabelText,
   iconButtonClass,
   inputClass,
   textClass,
@@ -88,5 +89,19 @@ describe("class composers", () => {
   it("appends custom class names and applies the mono font", () => {
     expect(textClass({ size: "xs", mono: true, className: "px-2" })).toContain("font-mono");
     expect(textClass({ size: "xs", mono: true, className: "px-2" })).toContain("px-2");
+  });
+});
+
+describe("buttonLabelText", () => {
+  it("joins a label built from several text pieces", () => {
+    expect(buttonLabelText("Send")).toBe("Send");
+    expect(buttonLabelText(["Continue with ", "Keycloak"])).toBe("Continue with Keycloak");
+    expect(buttonLabelText(["Start group message (", 3, ")"])).toBe("Start group message (3)");
+  });
+
+  it("leaves element children to the caller", () => {
+    expect(buttonLabelText({ type: "Icon" })).toBeNull();
+    expect(buttonLabelText(["Save", { type: "Icon" }])).toBeNull();
+    expect(buttonLabelText(undefined)).toBeNull();
   });
 });

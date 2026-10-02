@@ -1,6 +1,7 @@
 import { type CallView, type ChannelView, joinedElsewhere } from "@aulora/core";
 import { Icon, Text, usePalette } from "@aulora/ui-native";
 import { Pressable, View } from "react-native";
+import { ListGroup, ListHeader } from "../chat/List";
 
 export interface VoiceChannelSectionProps {
   readonly channels: readonly ChannelView[];
@@ -35,67 +36,70 @@ export function VoiceChannelSection({
     return null;
   }
   return (
-    <View className="gap-1">
-      <Text size="xs" tone="muted" className="px-3 pb-1 uppercase">
-        Voice
-      </Text>
-      {voiceChannels.map((channel) => {
-        const call = activeCalls.find((entry) => entry.channelId === channel.id);
-        const connected = call?.participants ?? [];
-        const selfConnected = connected.some((participant) => participant.userId === selfUserId);
-        const elsewhere =
-          call !== undefined && joinedElsewhere(call, selfUserId, clientId, localCallId);
-        return (
-          <Pressable
-            key={channel.id}
-            accessibilityRole="button"
-            accessibilityLabel={`Join voice channel ${channel.name}`}
-            onPress={() => onJoin(channel.id)}
-            className="gap-1 rounded-input px-3 py-2"
-          >
-            <View className="flex-row items-center gap-2">
-              <Icon
-                name="volume"
-                size={16}
-                color={call !== undefined ? palette.accent : palette["text-muted"]}
-              />
-              <Text size="sm" className="flex-1" tone={call !== undefined ? "default" : "muted"}>
-                {channel.name}
-              </Text>
-              {selfConnected && (
-                <Text size="xs" tone="accent">
-                  {elsewhere ? "Other device" : "Joined"}
+    <View>
+      <ListHeader title="Voice" />
+      <ListGroup>
+        {voiceChannels.map((channel) => {
+          const call = activeCalls.find((entry) => entry.channelId === channel.id);
+          const connected = call?.participants ?? [];
+          const selfConnected = connected.some((participant) => participant.userId === selfUserId);
+          const elsewhere =
+            call !== undefined && joinedElsewhere(call, selfUserId, clientId, localCallId);
+          return (
+            <Pressable
+              key={channel.id}
+              accessibilityRole="button"
+              accessibilityLabel={`Join voice channel ${channel.name}`}
+              android_ripple={{ color: palette["surface-3"] }}
+              onPress={() => onJoin(channel.id)}
+              className="min-h-[52px] justify-center gap-1.5 px-3 py-2 active:bg-surface-3"
+            >
+              <View className="flex-row items-center gap-3">
+                <View className="w-7 items-center">
+                  <Icon
+                    name="volume"
+                    size={20}
+                    color={call !== undefined ? palette.accent : palette["text-muted"]}
+                  />
+                </View>
+                <Text className="flex-1" numberOfLines={1}>
+                  {channel.name}
                 </Text>
-              )}
-              {connected.length > 0 && (
-                <Text size="xs" tone="muted">
-                  {connected.length}
-                </Text>
-              )}
-            </View>
-            {connected.length > 0 && (
-              <View className="flex-row flex-wrap gap-2 pl-6">
-                {connected.map((participant) => (
-                  <View key={participant.userId} className="flex-row items-center gap-1">
-                    <Icon
-                      name={participant.muted ? "mic-off" : "mic"}
-                      size={12}
-                      color={
-                        !participant.muted && (remoteLevels?.get(participant.userId) ?? 0) > 0.06
-                          ? palette.secondary
-                          : palette["text-muted"]
-                      }
-                    />
-                    <Text size="xs" tone="muted">
-                      {memberNames.get(participant.userId) ?? participant.userId}
-                    </Text>
-                  </View>
-                ))}
+                {selfConnected && (
+                  <Text size="xs" tone="accent" className="font-semibold">
+                    {elsewhere ? "On another device" : "Joined"}
+                  </Text>
+                )}
+                {connected.length > 0 && !selfConnected && (
+                  <Text size="xs" tone="muted">
+                    {connected.length} in call
+                  </Text>
+                )}
               </View>
-            )}
-          </Pressable>
-        );
-      })}
+              {connected.length > 0 && (
+                <View className="flex-row flex-wrap gap-x-3 gap-y-1 pl-10">
+                  {connected.map((participant) => (
+                    <View key={participant.userId} className="flex-row items-center gap-1">
+                      <Icon
+                        name={participant.muted ? "mic-off" : "mic"}
+                        size={12}
+                        color={
+                          !participant.muted && (remoteLevels?.get(participant.userId) ?? 0) > 0.06
+                            ? palette.secondary
+                            : palette["text-muted"]
+                        }
+                      />
+                      <Text size="xs" tone="muted">
+                        {memberNames.get(participant.userId) ?? participant.userId}
+                      </Text>
+                    </View>
+                  ))}
+                </View>
+              )}
+            </Pressable>
+          );
+        })}
+      </ListGroup>
     </View>
   );
 }

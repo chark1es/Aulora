@@ -389,14 +389,9 @@ export function EditChannelSheet({
             </Text>
           )}
 
-          <View className="flex-row justify-end gap-2">
-            <Button variant="ghost" onPress={onClose} disabled={saving}>
-              Cancel
-            </Button>
-            <Button onPress={submit} disabled={disabled} loading={busy || saving}>
-              {busy || saving ? "Saving…" : "Save changes"}
-            </Button>
-          </View>
+          <Button onPress={submit} disabled={disabled} loading={busy || saving}>
+            {busy || saving ? "Saving…" : "Save changes"}
+          </Button>
         </ScrollView>
       </View>
     </Sheet>

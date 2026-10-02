@@ -165,17 +165,7 @@ export function CreateChannelSheet({
             </Text>
           )}
 
-          <View className="flex-row justify-end gap-2">
-            <Button
-              variant="ghost"
-              onPress={() => {
-                reset();
-                onClose();
-              }}
-              disabled={busy}
-            >
-              Cancel
-            </Button>
+          <View>
             <Button
               disabled={disabled}
               loading={busy}
@@ -197,8 +187,8 @@ export function CreateChannelSheet({
           </View>
 
           <View className="mt-2 border-t border-border pt-3">
-            <Text size="sm" className="pb-2">
-              Or create a category
+            <Text size="sm" tone="muted" className="pb-2">
+              Or use the name above for a new category
             </Text>
             <Button
               variant="secondary"
@@ -207,7 +197,7 @@ export function CreateChannelSheet({
                 void Promise.resolve(onCreateCategory(trimmed)).then(reset);
               }}
             >
-              Create category “{trimmed.length > 0 ? trimmed : "…"}”
+              {`Create category “${trimmed.length > 0 ? trimmed : "…"}”`}
             </Button>
           </View>
         </ScrollView>
