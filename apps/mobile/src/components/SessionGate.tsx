@@ -4,6 +4,7 @@ import type { ConvexReactClient } from "convex/react";
 import { useRouter } from "expo-router";
 import { useState } from "react";
 import { View } from "react-native";
+import { SafeAreaView } from "react-native-safe-area-context";
 import type { AuloraAuthClient } from "../lib/auth-client";
 import type { CookieStore } from "../lib/cookie-fetch";
 import { ChatProvider } from "../providers/ChatProvider";
@@ -59,16 +60,26 @@ export function SessionGate({ profile, authClient, cookieStore, client }: Sessio
     );
   }
 
+  // The chat surface lays out its own safe areas; only sign-in needs the frame.
   return (
-    <>
+    <SafeAreaView className="flex-1" edges={["top", "bottom"]}>
       <SignInScreen
         profile={profile}
         authClient={authClient}
         cookieStore={cookieStore}
-        onOpenWorkspaces={() => setSwitcherOpen(true)}
-        onConnectDifferentServer={() => router.push("/connect")}
+        onOpenWorkspaces={() => {
+          setSwitcherOpen(true);
+        }}
+        onConnectDifferentServer={() => {
+          router.push("/connect");
+        }}
       />
-      <WorkspaceSwitcherSheet visible={switcherOpen} onClose={() => setSwitcherOpen(false)} />
-    </>
+      <WorkspaceSwitcherSheet
+        visible={switcherOpen}
+        onClose={() => {
+          setSwitcherOpen(false);
+        }}
+      />
+    </SafeAreaView>
   );
 }

@@ -1,9 +1,9 @@
 import { NativeAvatar } from "@aulora/avatars/native";
-import { Icon, Text, usePalette } from "@aulora/ui-native";
+import { Icon, usePalette } from "@aulora/ui-native";
 import { useRouter } from "expo-router";
-import { Pressable, ScrollView, View } from "react-native";
 import { useProfiles } from "../../providers/ProfileProvider";
-import { Sheet } from "./Sheet";
+import { BottomSheet } from "./BottomSheet";
+import { ListGroup, ListRow } from "./List";
 
 /** The host (with port) of a profile's base URL, for the quiet workspace caption. */
 function profileHost(baseUrl: string): string {
@@ -26,70 +26,47 @@ export function WorkspaceSwitcherSheet({ visible, onClose }: WorkspaceSwitcherSh
   const palette = usePalette();
 
   return (
-    <Sheet visible={visible} title={"Workspaces"} onClose={onClose}>
-      <View className="flex-1 p-4">
-        <ScrollView contentContainerStyle={{ gap: 4, paddingVertical: 12 }}>
+    <BottomSheet
+      visible={visible}
+      title="Workspaces"
+      subtitle={profiles.length === 0 ? "No workspaces yet" : undefined}
+      onClose={onClose}
+    >
+      {profiles.length > 0 && (
+        <ListGroup>
           {profiles.map((profile) => {
             const active = activeProfile?.id === profile.id;
             return (
-              <Pressable
+              <ListRow
                 key={profile.id}
-                accessibilityRole="button"
                 accessibilityLabel={`Switch to ${profile.name}`}
-                accessibilityState={{ selected: active }}
-                onPress={() => {
-                  void setActive(profile.id);
-                  onClose();
-                }}
-                className={
-                  active
-                    ? "flex-row items-center gap-3 rounded-input bg-surface-3 px-3 py-2"
-                    : "flex-row items-center gap-3 rounded-input px-3 py-2"
+                title={profile.name}
+                subtitle={profileHost(profile.baseUrl)}
+                selected={active}
+                leading={<NativeAvatar seed={profile.iconSeed} size={36} shape="squircle" />}
+                trailing={
+                  active ? <Icon name="check" size={18} color={palette.accent} /> : undefined
                 }
-              >
-                <NativeAvatar seed={profile.iconSeed} size={36} title={profile.name} />
-                <View className="flex-1">
-                  <Text size="sm">{profile.name}</Text>
-                  <Text size="xs" tone="muted" mono numberOfLines={1} ellipsizeMode="tail">
-                    {profileHost(profile.baseUrl)}
-                  </Text>
-                </View>
-                {active && (
-                  <View accessibilityLabel="Current workspace">
-                    <Icon name="check" size={18} color={palette.accent} />
-                  </View>
-                )}
-              </Pressable>
+                onPress={() => {
+                  onClose();
+                  if (!active) void setActive(profile.id);
+                }}
+              />
             );
           })}
-          {profiles.length === 0 && (
-            <Text size="sm" tone="muted">
-              No workspaces yet.
-            </Text>
-          )}
-        </ScrollView>
-        <View className="border-t border-border pt-2">
-          <Pressable
-            accessibilityRole="button"
-            accessibilityLabel="Add a workspace"
-            className="rounded-input px-3 py-3"
-            onPress={() => {
-              onClose();
-              router.push("/connect");
-            }}
-          >
-            <Text>Add a workspace</Text>
-          </Pressable>
-          <Pressable
-            accessibilityRole="button"
-            accessibilityLabel="Cancel"
-            className="rounded-input px-3 py-3"
-            onPress={onClose}
-          >
-            <Text tone="muted">Cancel</Text>
-          </Pressable>
-        </View>
-      </View>
-    </Sheet>
+        </ListGroup>
+      )}
+      <ListGroup>
+        <ListRow
+          icon="plus"
+          title="Add a workspace"
+          subtitle="Connect to another Aulora server"
+          onPress={() => {
+            onClose();
+            router.push("/connect");
+          }}
+        />
+      </ListGroup>
+    </BottomSheet>
   );
 }

@@ -8,6 +8,7 @@ import {
   type ButtonVariant,
   buttonClass,
   buttonLabelClass,
+  buttonLabelText,
   buttonRippleColor,
 } from "./variants";
 
@@ -41,11 +42,12 @@ export function Button({
         ? palette["text-muted"]
         : palette.bg
       : palette.accent;
+  const label = buttonLabelText(children);
   const render = useCallback(
     () => (
       <>
         {loading ? <ActivityIndicator size="small" color={spinnerColor} /> : leading}
-        {typeof children === "string" ? (
+        {label !== null ? (
           <Text
             size="base"
             maxFontSizeMultiplier={2}
@@ -65,14 +67,25 @@ export function Button({
               size === "lg" ? "!text-[17px] font-semibold" : "font-medium",
             )}
           >
-            {children}
+            {label}
           </Text>
         ) : (
           children
         )}
       </>
     ),
-    [loading, leading, children, variant, size, isDisabled, spinnerColor, neutralDisabled, palette],
+    [
+      loading,
+      leading,
+      label,
+      children,
+      variant,
+      size,
+      isDisabled,
+      spinnerColor,
+      neutralDisabled,
+      palette,
+    ],
   );
 
   return (

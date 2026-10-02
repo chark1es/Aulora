@@ -30,7 +30,7 @@ export function BannedMembersSheet({ visible, memberNames, onClose }: BannedMemb
   const rows = bans ?? [];
 
   return (
-    <Sheet visible={visible} title={"Banned members"} onClose={onClose}>
+    <Sheet visible={visible} title="Banned members" dismiss="done" onClose={onClose}>
       <View className="flex-1 p-4">
         <Text size="xs" tone="muted" className="mt-1">
           People who cannot rejoin until they are unbanned.
@@ -61,10 +61,12 @@ export function BannedMembersSheet({ visible, memberNames, onClose }: BannedMemb
                 onPress={() => {
                   setBusyId(entry.id);
                   void Promise.resolve(unban({ userId: entry.userId }))
-                    .catch(() =>
-                      Alert.alert("Couldn't unban member", "Try again when you are connected."),
-                    )
-                    .finally(() => setBusyId(null));
+                    .catch(() => {
+                      Alert.alert("Couldn't unban member", "Try again when you are connected.");
+                    })
+                    .finally(() => {
+                      setBusyId(null);
+                    });
                 }}
               >
                 Unban

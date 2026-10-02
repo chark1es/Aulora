@@ -88,6 +88,31 @@ export function iconButtonClass(options: {
     .join(" ");
 }
 
+/**
+ * The text a button should draw, or `null` when its children are elements.
+ * JSX such as `Continue with {name}` arrives as an array of strings; without
+ * joining it the label would never be wrapped in a text node and would not draw.
+ */
+export function buttonLabelText(children: unknown): string | null {
+  if (typeof children === "string" || typeof children === "number") {
+    return String(children);
+  }
+  if (!Array.isArray(children)) {
+    return null;
+  }
+  // `Save {busy && "…"}` leaves `false` in the array; React renders nothing for it.
+  const pieces = children.filter(
+    (child) => child !== null && child !== undefined && typeof child !== "boolean",
+  );
+  if (
+    pieces.length > 0 &&
+    pieces.every((child) => typeof child === "string" || typeof child === "number")
+  ) {
+    return pieces.join("");
+  }
+  return null;
+}
+
 const RIPPLE_TOKENS: Record<ButtonVariant, ColorToken> = {
   primary: "on-accent",
   secondary: "text",

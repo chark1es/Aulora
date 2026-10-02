@@ -3,9 +3,11 @@ import { StatusBar } from "expo-status-bar";
 import { useEffect } from "react";
 import { View } from "react-native";
 import { GestureHandlerRootView } from "react-native-gesture-handler";
+import { KeyboardProvider } from "react-native-keyboard-controller";
 import { SafeAreaProvider } from "react-native-safe-area-context";
 import "../global.css";
 import { usePalette } from "@aulora/ui-native";
+import { BottomSheetModalProvider } from "@gorhom/bottom-sheet";
 import { configureNotificationHandler } from "../src/lib/push";
 import { useThemeVars } from "../src/lib/theme";
 import { ProfileProvider } from "../src/providers/ProfileProvider";
@@ -58,9 +60,13 @@ export default function RootLayout() {
   return (
     <GestureHandlerRootView style={{ flex: 1 }}>
       <SafeAreaProvider>
-        <ProfileProvider>
-          <ThemedStack />
-        </ProfileProvider>
+        <KeyboardProvider>
+          <ProfileProvider>
+            <BottomSheetModalProvider>
+              <ThemedStack />
+            </BottomSheetModalProvider>
+          </ProfileProvider>
+        </KeyboardProvider>
       </SafeAreaProvider>
     </GestureHandlerRootView>
   );
