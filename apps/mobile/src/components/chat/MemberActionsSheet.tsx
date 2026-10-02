@@ -109,7 +109,9 @@ export function MemberActionsSheet({
                 icon="bell-off"
                 title="Time out"
                 chevron
-                onPress={() => setPanel("timeout")}
+                onPress={() => {
+                  setPanel("timeout");
+                }}
               />
             )}
           </ListGroup>
@@ -121,7 +123,7 @@ export function MemberActionsSheet({
                   title="Kick from workspace"
                   tone="danger"
                   disabled={busy}
-                  onPress={() =>
+                  onPress={() => {
                     Alert.alert(
                       `Kick ${memberName}?`,
                       "They lose access now and can rejoin with a new invitation.",
@@ -133,8 +135,8 @@ export function MemberActionsSheet({
                           onPress: onKick,
                         },
                       ],
-                    )
-                  }
+                    );
+                  }}
                 />
               )}
               {canBan && (
@@ -143,7 +145,9 @@ export function MemberActionsSheet({
                   title="Ban"
                   tone="danger"
                   chevron
-                  onPress={() => setPanel("ban")}
+                  onPress={() => {
+                    setPanel("ban");
+                  }}
                 />
               )}
             </ListGroup>
@@ -159,13 +163,26 @@ export function MemberActionsSheet({
                 key={`timeout:${option.label}`}
                 title={option.label}
                 disabled={busy}
-                onPress={() => onTimeout(option.durationMs)}
+                onPress={() => {
+                  onTimeout(option.durationMs);
+                }}
               />
             ))}
           </ListGroup>
           <ListGroup inset={12}>
-            <ListRow title="Clear timeout" disabled={busy} onPress={() => onTimeout(undefined)} />
-            <ListRow title="Back" onPress={() => setPanel("actions")} />
+            <ListRow
+              title="Clear timeout"
+              disabled={busy}
+              onPress={() => {
+                onTimeout(undefined);
+              }}
+            />
+            <ListRow
+              title="Back"
+              onPress={() => {
+                setPanel("actions");
+              }}
+            />
           </ListGroup>
         </>
       )}
@@ -224,7 +241,12 @@ export function MemberActionsSheet({
             ))}
           </ListGroup>
           <ListGroup inset={12}>
-            <ListRow title="Back" onPress={() => setPanel("actions")} />
+            <ListRow
+              title="Back"
+              onPress={() => {
+                setPanel("actions");
+              }}
+            />
           </ListGroup>
         </>
       )}

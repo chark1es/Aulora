@@ -128,7 +128,9 @@ export function EditChannelSheet({
         memberIds: privateChannel ? [...new Set([ownUserId, ...selectedMembers])] : [],
         blockedUserIds: [...new Set(blockedUserIds)],
       }),
-    ).finally(() => setSaving(false));
+    ).finally(() => {
+      setSaving(false);
+    });
   }
 
   return (
@@ -155,7 +157,9 @@ export function EditChannelSheet({
             accessibilityRole="switch"
             accessibilityState={{ checked: privateChannel }}
             className="flex-row items-center gap-3 rounded-input border border-border bg-surface-2 px-3.5 py-2.5"
-            onPress={() => setPrivateChannel(!privateChannel)}
+            onPress={() => {
+              setPrivateChannel(!privateChannel);
+            }}
           >
             <Icon
               name={privateChannel ? "lock" : "hash"}
@@ -225,7 +229,9 @@ export function EditChannelSheet({
                           accessibilityRole="button"
                           className="min-h-12 min-w-12 items-center justify-center"
                           accessibilityLabel={`Remove ${member?.displayName ?? userId}`}
-                          onPress={() => toggleMember(userId)}
+                          onPress={() => {
+                            toggleMember(userId);
+                          }}
                         >
                           <Icon name="x" size={11} color={palette.accent} />
                         </Pressable>
@@ -257,7 +263,9 @@ export function EditChannelSheet({
                         ? "min-h-12 flex-row items-center gap-2.5 rounded-input px-2.5 py-1.5 opacity-60"
                         : "min-h-12 flex-row items-center gap-2.5 rounded-input px-2.5 py-1.5"
                     }
-                    onPress={() => toggleMember(member.userId)}
+                    onPress={() => {
+                      toggleMember(member.userId);
+                    }}
                   >
                     <MemberAvatar userId={member.userId} size={26} roleColor={member.roleColor} />
                     <Text size="sm" className="min-w-0 flex-1" numberOfLines={1}>
@@ -318,7 +326,9 @@ export function EditChannelSheet({
                       accessibilityRole="button"
                       className="min-h-12 min-w-12 items-center justify-center"
                       accessibilityLabel={`Unblock ${label}`}
-                      onPress={() => toggleBlocked(userId)}
+                      onPress={() => {
+                        toggleBlocked(userId);
+                      }}
                     >
                       <Icon name="x" size={11} color={palette.danger} />
                     </Pressable>
@@ -353,7 +363,9 @@ export function EditChannelSheet({
                       ? "min-h-12 flex-row items-center gap-2.5 rounded-input px-2.5 py-1.5 opacity-60"
                       : "min-h-12 flex-row items-center gap-2.5 rounded-input px-2.5 py-1.5"
                   }
-                  onPress={() => toggleBlocked(member.userId)}
+                  onPress={() => {
+                    toggleBlocked(member.userId);
+                  }}
                 >
                   <Text size="sm" className="min-w-0 flex-1" numberOfLines={1}>
                     {member.displayName}

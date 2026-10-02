@@ -59,7 +59,9 @@ export function StatusEditor({ status, customStatus, onSetStatus }: StatusEditor
               accessibilityRole="button"
               accessibilityState={{ selected: active }}
               hitSlop={{ top: 4, bottom: 4 }}
-              onPress={() => onSetStatus(option.value)}
+              onPress={() => {
+                onSetStatus(option.value);
+              }}
               className={`min-h-10 flex-row items-center gap-2 rounded-pill border px-3 active:opacity-70 ${
                 active ? "border-accent bg-accent-soft" : "border-transparent bg-surface-3"
               }`}

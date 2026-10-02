@@ -51,7 +51,9 @@ export function VoiceChannelSection({
               accessibilityRole="button"
               accessibilityLabel={`Join voice channel ${channel.name}`}
               android_ripple={{ color: palette["surface-3"] }}
-              onPress={() => onJoin(channel.id)}
+              onPress={() => {
+                onJoin(channel.id);
+              }}
               className="min-h-[52px] justify-center gap-1.5 px-3 py-2 active:bg-surface-3"
             >
               <View className="flex-row items-center gap-3">

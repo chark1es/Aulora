@@ -73,7 +73,9 @@ export function CreateChannelSheet({
                 key={option.value}
                 accessibilityRole="button"
                 accessibilityState={{ selected: active }}
-                onPress={() => setKind(option.value)}
+                onPress={() => {
+                  setKind(option.value);
+                }}
                 className={
                   active
                     ? "flex-1 items-center rounded-input border border-accent bg-accent-soft px-2 py-2"
@@ -113,7 +115,9 @@ export function CreateChannelSheet({
                 <Pressable
                   accessibilityRole="button"
                   accessibilityState={{ selected: categoryId === undefined }}
-                  onPress={() => setCategoryId(undefined)}
+                  onPress={() => {
+                    setCategoryId(undefined);
+                  }}
                   className={
                     categoryId === undefined
                       ? "rounded-pill border border-accent bg-accent-soft px-3 py-1"
@@ -131,7 +135,9 @@ export function CreateChannelSheet({
                       key={category.id}
                       accessibilityRole="button"
                       accessibilityState={{ selected: active }}
-                      onPress={() => setCategoryId(category.id)}
+                      onPress={() => {
+                        setCategoryId(category.id);
+                      }}
                       className={
                         active
                           ? "rounded-pill border border-accent bg-accent-soft px-3 py-1"

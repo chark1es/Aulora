@@ -67,10 +67,19 @@ export function SessionGate({ profile, authClient, cookieStore, client }: Sessio
         profile={profile}
         authClient={authClient}
         cookieStore={cookieStore}
-        onOpenWorkspaces={() => setSwitcherOpen(true)}
-        onConnectDifferentServer={() => router.push("/connect")}
+        onOpenWorkspaces={() => {
+          setSwitcherOpen(true);
+        }}
+        onConnectDifferentServer={() => {
+          router.push("/connect");
+        }}
       />
-      <WorkspaceSwitcherSheet visible={switcherOpen} onClose={() => setSwitcherOpen(false)} />
+      <WorkspaceSwitcherSheet
+        visible={switcherOpen}
+        onClose={() => {
+          setSwitcherOpen(false);
+        }}
+      />
     </SafeAreaView>
   );
 }

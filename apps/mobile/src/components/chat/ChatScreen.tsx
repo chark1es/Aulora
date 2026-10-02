@@ -45,18 +45,12 @@ import { IncomingCallModal } from "../voice/IncomingCallModal";
 import { JoinedElsewhereScreen } from "../voice/JoinedElsewhereScreen";
 import { BannedMembersSheet } from "./BannedMembersSheet";
 import { BottomSheet, useLingering } from "./BottomSheet";
+import { ChannelList } from "./ChannelList";
 import { Composer } from "./Composer";
 import { CreateChannelSheet, type NewChannelKind } from "./CreateChannelSheet";
+import { DirectList } from "./DirectList";
 import { EditChannelSheet } from "./EditChannelSheet";
-import {
-  ChannelList,
-  DirectList,
-  HubDock,
-  type HubTab,
-  PaneHeader,
-  RoundButton,
-  useDockClearance,
-} from "./HubPane";
+import { HubDock, type HubTab, PaneHeader, RoundButton, useDockClearance } from "./HubPane";
 import { ListGroup, ListRow } from "./List";
 import { MemberActionsSheet } from "./MemberActionsSheet";
 import { MemberProfileSheet } from "./MemberProfileSheet";
@@ -651,12 +645,12 @@ export function ChatScreen({
           void unregisterPush()
             .then(() => AsyncStorage.removeItem(recentKey).catch(() => undefined))
             .then(onSignOut)
-            .catch(() =>
+            .catch(() => {
               Alert.alert(
                 "Couldn't sign out",
                 "Connect to your workspace and try again so notifications can be removed from this device.",
-              ),
-            );
+              );
+            });
         },
       },
     ]);
@@ -680,7 +674,9 @@ export function ChatScreen({
       }
       return false;
     });
-    return () => subscription.remove();
+    return () => {
+      subscription.remove();
+    };
   }, [pane, hubTab, threadRoot]);
 
   const goToPane = useCallback((next: PaneIndex) => {
@@ -697,6 +693,12 @@ export function ChatScreen({
       return baseUrl;
     }
   }, [activeProfile?.baseUrl]);
+  // A private channel or direct message lists only its own people.
+  const conversationMemberIds =
+    channel !== undefined &&
+    (channel.kind === "dm" || channel.kind === "group_dm" || channel.isPrivate === true)
+      ? (channel.memberIds ?? [])
+      : undefined;
   const shownProfile = useLingering(profileFor);
   const shownChannelAction = useLingering(channelAction);
   const shownMemberActions = useLingering(memberActionsFor);
@@ -735,12 +737,19 @@ export function ChatScreen({
               {startupError}
             </Text>
             <Button onPress={retryStartup}>Try again</Button>
-            <Button variant="ghost" onPress={() => setWorkspaceSwitcherOpen(true)}>
+            <Button
+              variant="ghost"
+              onPress={() => {
+                setWorkspaceSwitcherOpen(true);
+              }}
+            >
               Switch workspace
             </Button>
             <WorkspaceSwitcherSheet
               visible={workspaceSwitcherOpen}
-              onClose={() => setWorkspaceSwitcherOpen(false)}
+              onClose={() => {
+                setWorkspaceSwitcherOpen(false);
+              }}
             />
           </>
         )}
@@ -778,12 +787,16 @@ export function ChatScreen({
           onJoinVoice={joinVoiceChannel}
           threads={threadRows}
           onOpenThread={openThreadFromInbox}
-          onOpenThreads={() => setHubTab("threads")}
+          onOpenThreads={() => {
+            setHubTab("threads");
+          }}
           onCreateChannel={() => {
             setCreateError(null);
             setCreateOpen(true);
           }}
-          onToggleHidden={() => setShowHidden(!showHidden)}
+          onToggleHidden={() => {
+            setShowHidden(!showHidden);
+          }}
         />
       ) : hubTab === "dms" ? (
         <DirectList
@@ -797,7 +810,9 @@ export function ChatScreen({
             selectionFeedback();
             setChannelAction(target);
           }}
-          onNewMessage={() => setNewMessageOpen(true)}
+          onNewMessage={() => {
+            setNewMessageOpen(true);
+          }}
         />
       ) : hubTab === "threads" ? (
         <View className="flex-1" style={{ paddingBottom: dockClearance }}>
@@ -808,7 +823,9 @@ export function ChatScreen({
               <RoundButton
                 icon="chevron-left"
                 label="Back to channels"
-                onPress={() => setHubTab("chats")}
+                onPress={() => {
+                  setHubTab("chats");
+                }}
               />
             }
           />
@@ -837,10 +854,12 @@ export function ChatScreen({
           onOpenMember={setProfileFor}
           onOpen={(id, messageId) => {
             void openChannel(id)
-              .then(() => setJumpToMessageId(messageId ?? null))
-              .catch((cause: unknown) =>
-                Alert.alert("Couldn't open conversation", errorMessage(cause)),
-              );
+              .then(() => {
+                setJumpToMessageId(messageId ?? null);
+              })
+              .catch((cause: unknown) => {
+                Alert.alert("Couldn't open conversation", errorMessage(cause));
+              });
           }}
         />
       ) : (
@@ -852,7 +871,7 @@ export function ChatScreen({
           hasAvatar={avatarUrls.has(ownUserId)}
           onChangeAvatar={() => {
             void (async () => {
-              const [file] = await pickFromLibrary();
+              const file = (await pickFromLibrary()).at(0);
               if (file === undefined) {
                 return;
               }
@@ -877,10 +896,14 @@ export function ChatScreen({
                 return;
               }
               await setAvatar({ storageId: body.storageId as never });
-            })().catch(() => Alert.alert("Couldn't update your profile picture."));
+            })().catch(() => {
+              Alert.alert("Couldn't update your profile picture.");
+            });
           }}
           onClearAvatar={() => {
-            void setAvatar({}).catch(() => Alert.alert("Couldn't remove your profile picture."));
+            void setAvatar({}).catch(() => {
+              Alert.alert("Couldn't remove your profile picture.");
+            });
           }}
           ownStatus={ownStatus}
           ownCustomStatus={ownCustomStatus}
@@ -899,7 +922,9 @@ export function ChatScreen({
         onTab={setHubTab}
         workspaceName={workspaceName}
         workspaceSeed={activeProfile?.iconSeed ?? workspaceName}
-        onSwitchWorkspace={() => setWorkspaceSwitcherOpen(true)}
+        onSwitchWorkspace={() => {
+          setWorkspaceSwitcherOpen(true);
+        }}
         ownUserId={ownUserId}
         ownStatus={ownStatus}
         threadBadge={threadMentionCount}
@@ -914,11 +939,19 @@ export function ChatScreen({
       style={{ flex: 1, backgroundColor: palette.bg, paddingTop: insets.top }}
     >
       <View className="flex-row items-center gap-3 border-b border-border px-3 pb-2 pt-1">
-        <RoundButton icon="menu" label="Open conversations" onPress={() => goToPane(0)} />
+        <RoundButton
+          icon="menu"
+          label="Open conversations"
+          onPress={() => {
+            goToPane(0);
+          }}
+        />
         <Pressable
           accessibilityRole="button"
           accessibilityLabel={`${channelTitle}, show members`}
-          onPress={() => goToPane(2)}
+          onPress={() => {
+            goToPane(2);
+          }}
           className="min-h-11 min-w-0 flex-1 flex-row items-center gap-2.5 active:opacity-70"
         >
           {partnerId !== undefined ? (
@@ -974,9 +1007,21 @@ export function ChatScreen({
           </>
         )}
         {channel !== undefined && hasPermission(channelPermissions, Permission.ReadHistory) && (
-          <RoundButton icon="pin" label="Pinned messages" onPress={() => setPinsOpen(true)} />
+          <RoundButton
+            icon="pin"
+            label="Pinned messages"
+            onPress={() => {
+              setPinsOpen(true);
+            }}
+          />
         )}
-        <RoundButton icon="users" label="Members" onPress={() => goToPane(2)} />
+        <RoundButton
+          icon="users"
+          label="Members"
+          onPress={() => {
+            goToPane(2);
+          }}
+        />
       </View>
 
       {channel === undefined ? (
@@ -984,7 +1029,12 @@ export function ChatScreen({
           <Text tone="muted" className="text-center">
             Pick a conversation to start.
           </Text>
-          <Button variant="secondary" onPress={() => goToPane(0)}>
+          <Button
+            variant="secondary"
+            onPress={() => {
+              goToPane(0);
+            }}
+          >
             Browse conversations
           </Button>
         </View>
@@ -999,7 +1049,9 @@ export function ChatScreen({
           channelName={channel.name}
           pending={voice.pending}
           canJoin={voice.canConnect}
-          onJoin={() => joinVoiceChannel(channel.id)}
+          onJoin={() => {
+            joinVoiceChannel(channel.id);
+          }}
         />
       ) : (
         <>
@@ -1023,7 +1075,9 @@ export function ChatScreen({
             jumpToMessageId={messageContext?.root.id ?? jumpToMessageId}
             onQuote={setQuote}
             onMemberPress={setProfileFor}
-            onReply={(message) => setThreadRoot(message)}
+            onReply={(message) => {
+              setThreadRoot(message);
+            }}
             onChannelPress={(name) => {
               const target = mentionChannelTargets.find((entry) => entry.name === name);
               if (target !== undefined) {
@@ -1055,9 +1109,9 @@ export function ChatScreen({
                   size="sm"
                   variant="ghost"
                   onPress={() =>
-                    void retrySend(item.id).catch((cause: unknown) =>
-                      Alert.alert("Couldn't retry message", errorMessage(cause)),
-                    )
+                    void retrySend(item.id).catch((cause: unknown) => {
+                      Alert.alert("Couldn't retry message", errorMessage(cause));
+                    })
                   }
                 >
                   Retry
@@ -1066,9 +1120,9 @@ export function ChatScreen({
                   size="sm"
                   variant="ghost"
                   onPress={() =>
-                    void discardSend(item.id).catch((cause: unknown) =>
-                      Alert.alert("Couldn't discard message", errorMessage(cause)),
-                    )
+                    void discardSend(item.id).catch((cause: unknown) => {
+                      Alert.alert("Couldn't discard message", errorMessage(cause));
+                    })
                   }
                 >
                   Discard
@@ -1091,7 +1145,9 @@ export function ChatScreen({
                 accessibilityRole="button"
                 accessibilityLabel="Cancel reply"
                 hitSlop={12}
-                onPress={() => setQuote(null)}
+                onPress={() => {
+                  setQuote(null);
+                }}
                 className="h-7 w-7 items-center justify-center rounded-pill active:bg-surface-3"
               >
                 <Icon name="x" size={14} color={palette["text-muted"]} />
@@ -1162,19 +1218,27 @@ export function ChatScreen({
           center={chat}
           right={
             <MembersPane
-              channel={channel}
+              memberIds={conversationMemberIds}
               channelTitle={channelTitle}
               members={members}
               presence={presence}
               ownUserId={ownUserId}
               canModerateMembers={canModerateMembers}
-              onBack={() => goToPane(1)}
+              onBack={() => {
+                goToPane(1);
+              }}
               onMemberPress={setProfileFor}
               onMemberActions={(userId) => {
                 setModerationError(null);
                 setMemberActionsFor(userId);
               }}
-              onOpenBans={canBan ? () => setBansOpen(true) : undefined}
+              onOpenBans={
+                canBan
+                  ? () => {
+                      setBansOpen(true);
+                    }
+                  : undefined
+              }
             />
           }
         />
@@ -1200,7 +1264,9 @@ export function ChatScreen({
                 void openChannel(target.channelId);
               }
             }}
-            onClose={() => setThreadRoot(null)}
+            onClose={() => {
+              setThreadRoot(null);
+            }}
             onSendReply={async ({ text, files, replyInThread }) => {
               let attachments: readonly AttachmentDescriptor[] | undefined;
               if (files.length > 0) {
@@ -1228,7 +1294,9 @@ export function ChatScreen({
               : (titles.get(shownChannelAction.id) ?? shownChannelAction.name)
           }
           subtitle={shownChannelAction?.topic ?? undefined}
-          onClose={() => setChannelAction(null)}
+          onClose={() => {
+            setChannelAction(null);
+          }}
         >
           {shownChannelAction !== null && (
             <ListGroup>
@@ -1271,7 +1339,9 @@ export function ChatScreen({
             visible={pinsOpen}
             channelId={channel.id}
             memberNames={memberNames}
-            onClose={() => setPinsOpen(false)}
+            onClose={() => {
+              setPinsOpen(false);
+            }}
             onOpen={setJumpToMessageId}
           />
         )}
@@ -1281,9 +1351,12 @@ export function ChatScreen({
             visible={profileFor !== null}
             userId={shownProfile}
             displayName={memberNames.get(shownProfile) ?? "Member"}
-            presence={presence.find((row) => row.userId === shownProfile)}
+            status={presence.find((row) => row.userId === shownProfile)?.status ?? "offline"}
+            customStatus={presence.find((row) => row.userId === shownProfile)?.customStatus ?? ""}
             ownUserId={ownUserId}
-            onClose={() => setProfileFor(null)}
+            onClose={() => {
+              setProfileFor(null);
+            }}
             onNote={() => {
               setNoteFor(shownProfile);
               setProfileFor(null);
@@ -1302,9 +1375,9 @@ export function ChatScreen({
               void runtime?.port
                 .createDm({ otherUserId: shownProfile })
                 .then((result) => openChannel(result.channelId))
-                .catch((cause: unknown) =>
-                  Alert.alert("Couldn't start message", errorMessage(cause)),
-                );
+                .catch((cause: unknown) => {
+                  Alert.alert("Couldn't start message", errorMessage(cause));
+                });
             }}
           />
         )}
@@ -1359,14 +1432,18 @@ export function ChatScreen({
 
         <WorkspaceSwitcherSheet
           visible={workspaceSwitcherOpen}
-          onClose={() => setWorkspaceSwitcherOpen(false)}
+          onClose={() => {
+            setWorkspaceSwitcherOpen(false);
+          }}
         />
 
         {newMessageOpen && (
           <NewConversationSheet
             members={members}
             ownUserId={ownUserId}
-            onClose={() => setNewMessageOpen(false)}
+            onClose={() => {
+              setNewMessageOpen(false);
+            }}
             onCreate={async (ids) => {
               if (runtime === undefined) throw new Error("Wait for the workspace to connect.");
               const result =
@@ -1410,7 +1487,9 @@ export function ChatScreen({
           <BannedMembersSheet
             visible={bansOpen}
             memberNames={memberNames}
-            onClose={() => setBansOpen(false)}
+            onClose={() => {
+              setBansOpen(false);
+            }}
           />
         )}
 
@@ -1421,7 +1500,9 @@ export function ChatScreen({
           error={createError}
           onCreateChannel={create}
           onCreateCategory={createNewCategory}
-          onClose={() => setCreateOpen(false)}
+          onClose={() => {
+            setCreateOpen(false);
+          }}
         />
 
         {noteFor !== null && runtime !== undefined && (
@@ -1430,7 +1511,9 @@ export function ChatScreen({
             memberName={memberNames.get(noteFor) ?? noteFor}
             loadNote={() => getUserNote(runtime.client, noteFor)}
             onSave={(body) => setUserNote(runtime.client, noteFor, body)}
-            onClose={() => setNoteFor(null)}
+            onClose={() => {
+              setNoteFor(null);
+            }}
           />
         )}
 

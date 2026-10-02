@@ -1,3 +1,4 @@
+/* eslint-disable no-unused-vars -- the base rule reports parameter names in type signatures; Biome checks real unused code */
 import { createContext, type ReactNode, useContext, useEffect, useMemo, useState } from "react";
 import {
   ScrollView,
@@ -55,7 +56,9 @@ export function SwipePanes({
     () => ({
       add(gesture) {
         setBlockers((current) => [...current, gesture]);
-        return () => setBlockers((current) => current.filter((entry) => entry !== gesture));
+        return () => {
+          setBlockers((current) => current.filter((entry) => entry !== gesture));
+        };
       },
     }),
     [],
@@ -118,7 +121,7 @@ export function SwipePanes({
 
 interface PaneSwipeRegistry {
   /** Registers a gesture the pane swipe must yield to; returns its removal. */
-  add(gesture: NativeGesture): () => void;
+  readonly add: (gesture: NativeGesture) => () => void;
 }
 
 const PaneSwipeContext = createContext<PaneSwipeRegistry | null>(null);

@@ -54,7 +54,9 @@ export function SlideOver({
       close();
       return true;
     });
-    return () => subscription.remove();
+    return () => {
+      subscription.remove();
+    };
   }, [close]);
 
   const pan = Gesture.Pan()

@@ -114,7 +114,9 @@ export function ThreadModal({
         });
       });
     });
-    return () => off();
+    return () => {
+      off();
+    };
   }, [runtime, root.id]);
 
   return (
@@ -140,14 +142,15 @@ export function ThreadModal({
         permissions={permissions}
         channelNames={channelNames}
         firstUnreadId={null}
-        onJumpToFirstUnread={() => {}}
         onChannelPress={onChannelPress}
       />
       <Pressable
         accessibilityRole="checkbox"
         accessibilityState={{ checked: alsoSend }}
         hitSlop={6}
-        onPress={() => setAlsoSend(!alsoSend)}
+        onPress={() => {
+          setAlsoSend(!alsoSend);
+        }}
         className="flex-row items-center gap-2 px-4 py-1.5"
       >
         <View

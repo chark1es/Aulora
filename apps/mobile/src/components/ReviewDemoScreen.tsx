@@ -163,7 +163,9 @@ export function ReviewDemoScreen({ onExit }: { readonly onExit: () => void }) {
               {fontScale > 1.5 ? (
                 <IconButton
                   label={`Conversations, ${channel?.name ?? "Channels"}`}
-                  onPress={() => setSheet("channels")}
+                  onPress={() => {
+                    setSheet("channels");
+                  }}
                 >
                   <Icon name="menu" color={palette.text} />
                 </IconButton>
@@ -171,16 +173,28 @@ export function ReviewDemoScreen({ onExit }: { readonly onExit: () => void }) {
                 <Button
                   style={{ minHeight: 48 }}
                   variant="ghost"
-                  onPress={() => setSheet("channels")}
+                  onPress={() => {
+                    setSheet("channels");
+                  }}
                 >
                   {`${channel?.kind === "text" || channel?.kind === "announcement" ? "# " : ""}${channel === undefined ? "Channels" : reviewChannelTitle(channel)}`}
                 </Button>
               )}
               <View className="flex-row flex-wrap">
-                <IconButton label="Search" onPress={() => setSearchOpen((current) => !current)}>
+                <IconButton
+                  label="Search"
+                  onPress={() => {
+                    setSearchOpen((current) => !current);
+                  }}
+                >
                   <Icon name="search" color={palette.text} />
                 </IconButton>
-                <IconButton label="Members" onPress={() => setSheet("members")}>
+                <IconButton
+                  label="Members"
+                  onPress={() => {
+                    setSheet("members");
+                  }}
+                >
                   <Icon name="users" color={palette.text} />
                 </IconButton>
               </View>
@@ -201,7 +215,9 @@ export function ReviewDemoScreen({ onExit }: { readonly onExit: () => void }) {
                         style={{ minHeight: 48 }}
                         key={hit.messageId}
                         variant="ghost"
-                        onPress={() => openChannel(hit.channelId)}
+                        onPress={() => {
+                          openChannel(hit.channelId);
+                        }}
                       >
                         {hit.snippet}
                       </Button>
@@ -238,7 +254,6 @@ export function ReviewDemoScreen({ onExit }: { readonly onExit: () => void }) {
                     const target = channels.find((row) => row.name === name);
                     if (target !== undefined) openChannel(target.id);
                   }}
-                  onJumpToFirstUnread={() => undefined}
                 />
                 <View className="flex-row items-center justify-between border-t border-border px-4 py-1">
                   {fontScale <= 1.5 && (
@@ -253,12 +268,12 @@ export function ReviewDemoScreen({ onExit }: { readonly onExit: () => void }) {
                   )}
                   <IconButton
                     label="Calls"
-                    onPress={() =>
+                    onPress={() => {
                       Alert.alert(
                         "Offline demo",
                         "Voice, video and push delivery require a real server and another device. No call is made in this demo.",
-                      )
-                    }
+                      );
+                    }}
                   >
                     <Icon name="phone" color={palette.text} />
                   </IconButton>
@@ -282,7 +297,9 @@ export function ReviewDemoScreen({ onExit }: { readonly onExit: () => void }) {
         visible={sheet !== null}
         title={sheet === "members" ? "Demo members" : "Conversations"}
         subtitle={sheet === "members" ? "Presence is simulated" : undefined}
-        onClose={() => setSheet(null)}
+        onClose={() => {
+          setSheet(null);
+        }}
       >
         <ListGroup>
           {sheet === "members"
@@ -305,7 +322,9 @@ export function ReviewDemoScreen({ onExit }: { readonly onExit: () => void }) {
                   }
                   title={reviewChannelTitle(row)}
                   selected={row.id === channelId}
-                  onPress={() => openChannel(row.id)}
+                  onPress={() => {
+                    openChannel(row.id);
+                  }}
                 />
               ))}
         </ListGroup>
@@ -326,7 +345,9 @@ export function ReviewDemoScreen({ onExit }: { readonly onExit: () => void }) {
           memberNames={memberNames}
           channels={channelTargets}
           channelNames={channelNames}
-          onClose={() => setThreadRoot(null)}
+          onClose={() => {
+            setThreadRoot(null);
+          }}
           onSendReply={(input) =>
             send(input.text, input.files, input.replyInThread ? threadRoot.id : undefined)
           }

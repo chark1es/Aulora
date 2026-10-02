@@ -72,7 +72,12 @@ export function PinnedMessagesSheet({
         </ListGroup>
       )}
       {status === "CanLoadMore" && (
-        <Button variant="ghost" onPress={() => loadMore(30)}>
+        <Button
+          variant="ghost"
+          onPress={() => {
+            loadMore(30);
+          }}
+        >
           Load more
         </Button>
       )}

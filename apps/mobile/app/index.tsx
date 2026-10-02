@@ -29,7 +29,13 @@ export default function IndexScreen() {
         <SafeAreaView className="flex-1" edges={["top", "bottom"]}>
           {profiles.length > 0 && (
             <View className="items-end px-4 pt-2">
-              <Button size="sm" variant="secondary" onPress={() => setSwitcherOpen(true)}>
+              <Button
+                size="sm"
+                variant="secondary"
+                onPress={() => {
+                  setSwitcherOpen(true);
+                }}
+              >
                 Switch workspace
               </Button>
             </View>
@@ -40,7 +46,12 @@ export default function IndexScreen() {
         <ServerSession key={activeProfile.id} profile={activeProfile} />
       )}
 
-      <WorkspaceSwitcherSheet visible={switcherOpen} onClose={() => setSwitcherOpen(false)} />
+      <WorkspaceSwitcherSheet
+        visible={switcherOpen}
+        onClose={() => {
+          setSwitcherOpen(false);
+        }}
+      />
     </View>
   );
 }

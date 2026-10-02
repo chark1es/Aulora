@@ -1,4 +1,5 @@
-import type { ChannelView, PresenceRow } from "@aulora/core";
+/* eslint-disable no-unused-vars -- the base rule reports parameter names in type signatures; Biome checks real unused code */
+import type { PresenceRow } from "@aulora/core";
 import { Icon, Text, usePalette } from "@aulora/ui-native";
 import { useMemo, useState } from "react";
 import { Pressable, TextInput, View } from "react-native";
@@ -18,8 +19,95 @@ const GROUPS: readonly { readonly status: Status; readonly title: string }[] = [
   { status: "offline", title: "Offline" },
 ];
 
+interface MemberFilterProps {
+  readonly value: string;
+  readonly onChange: (value: string) => void;
+}
+
+function MemberFilter({ value, onChange }: MemberFilterProps) {
+  const palette = usePalette();
+  return (
+    <View className="mx-3 mb-2 min-h-11 flex-row items-center gap-2 rounded-pill bg-surface-2 px-4">
+      <Icon name="search" size={18} color={palette["text-muted"]} />
+      <TextInput
+        accessibilityLabel="Filter members"
+        placeholder="Filter by name"
+        placeholderTextColor={palette["text-muted"]}
+        value={value}
+        onChangeText={onChange}
+        autoCorrect={false}
+        autoCapitalize="none"
+        clearButtonMode="while-editing"
+        returnKeyType="search"
+        className="min-h-11 flex-1 py-0 text-[17px] text-text"
+      />
+    </View>
+  );
+}
+
+interface MemberRowProps {
+  readonly member: MobileMemberEntry;
+  readonly status: Status;
+  readonly customStatus: string;
+  readonly own: boolean;
+  /** Present when the viewer may moderate this member. */
+  readonly onActions?: (() => void) | undefined;
+  readonly onPress: () => void;
+}
+
+function MemberRow({ member, status, customStatus, own, onActions, onPress }: MemberRowProps) {
+  const palette = usePalette();
+  return (
+    <ListRow
+      accessibilityLabel={`Profile of ${member.displayName}`}
+      title={own ? `${member.displayName} (you)` : member.displayName}
+      subtitle={
+        customStatus.length > 0 ? customStatus : member.isOwner ? "Workspace owner" : undefined
+      }
+      leading={
+        <PresenceAvatar
+          userId={member.userId}
+          status={status}
+          roleColor={member.roleColor}
+          size={36}
+        />
+      }
+      trailing={
+        onActions !== undefined ? (
+          <Pressable
+            accessibilityRole="button"
+            accessibilityLabel={`Actions for ${member.displayName}`}
+            hitSlop={8}
+            onPress={onActions}
+            className="h-9 w-9 items-center justify-center rounded-pill active:bg-surface-3"
+          >
+            <Icon name="more-horizontal" size={20} color={palette["text-muted"]} />
+          </Pressable>
+        ) : undefined
+      }
+      onPress={onPress}
+    />
+  );
+}
+
+function NoMembers({ query }: { readonly query: string }) {
+  const palette = usePalette();
+  return (
+    <View className="items-center gap-2 px-6 py-12">
+      <Icon name="users" size={28} color={palette["text-muted"]} />
+      <Text tone="muted" className="text-center">
+        {query.length > 0 ? `Nobody matches “${query}”.` : "No members yet."}
+      </Text>
+    </View>
+  );
+}
+
 export interface MembersPaneProps {
-  readonly channel: ChannelView | undefined;
+  /**
+   * The people in this conversation, for a private channel or direct message.
+   * Omitted for an open channel, which lists the whole workspace.
+   */
+  readonly memberIds?: readonly string[] | undefined;
   readonly channelTitle: string;
   readonly members: readonly MobileMemberEntry[];
   readonly presence: readonly PresenceRow[];
@@ -31,70 +119,53 @@ export interface MembersPaneProps {
   readonly onOpenBans?: (() => void) | undefined;
 }
 
+/** Members matching the filter, with their presence, sorted by name. */
+function useMemberRows(props: MembersPaneProps, query: string) {
+  const { memberIds, members, presence } = props;
+  const scoped = useMemo(() => {
+    if (memberIds === undefined) return members;
+    const ids = new Set(memberIds);
+    return members.filter((member) => ids.has(member.userId));
+  }, [memberIds, members]);
+
+  const rows = useMemo(() => {
+    const needle = query.toLocaleLowerCase();
+    const byUser = new Map(presence.map((row) => [row.userId, row]));
+    return scoped
+      .filter((member) => member.displayName.toLocaleLowerCase().includes(needle))
+      .map((member) => ({
+        member,
+        status: byUser.get(member.userId)?.status ?? "offline",
+        customStatus: byUser.get(member.userId)?.customStatus ?? "",
+      }))
+      .sort((a, b) => a.member.displayName.localeCompare(b.member.displayName));
+  }, [scoped, presence, query]);
+
+  return { rows, total: scoped.length };
+}
+
 /**
  * The right-hand pane: who is in this conversation, grouped by presence. A
  * private channel or direct message lists its own people; open channels list
  * the whole workspace.
  */
-export function MembersPane({
-  channel,
-  channelTitle,
-  members,
-  presence,
-  ownUserId,
-  canModerateMembers,
-  onBack,
-  onMemberPress,
-  onMemberActions,
-  onOpenBans,
-}: MembersPaneProps) {
-  const palette = usePalette();
+export function MembersPane(props: MembersPaneProps) {
   const insets = useSafeAreaInsets();
   const [query, setQuery] = useState("");
-
-  const scoped = useMemo(() => {
-    const restricted =
-      channel !== undefined &&
-      (channel.kind === "dm" || channel.kind === "group_dm" || channel.isPrivate === true);
-    if (!restricted) return members;
-    const ids = new Set(channel.memberIds ?? []);
-    return members.filter((member) => ids.has(member.userId));
-  }, [channel, members]);
-
-  const rows = useMemo(() => {
-    const needle = query.trim().toLocaleLowerCase();
-    const byUser = new Map(presence.map((row) => [row.userId, row]));
-    return scoped
-      .filter((member) => member.displayName.toLocaleLowerCase().includes(needle))
-      .map((member) => ({ member, presence: byUser.get(member.userId) }))
-      .sort((a, b) => a.member.displayName.localeCompare(b.member.displayName));
-  }, [scoped, presence, query]);
-
-  const scopedToChannel = scoped !== members;
-  const online = rows.filter((row) => (row.presence?.status ?? "offline") !== "offline").length;
+  const { rows, total } = useMemberRows(props, query.trim());
+  const online = rows.filter((row) => row.status !== "offline").length;
+  const scope = props.memberIds === undefined ? "Everyone in the workspace" : props.channelTitle;
 
   return (
     <View className="flex-1 bg-bg" style={{ paddingTop: insets.top }}>
       <PaneHeader
         title="Members"
-        subtitle={`${scopedToChannel ? channelTitle : "Everyone in the workspace"} · ${online} of ${scoped.length} online`}
-        leading={<RoundButton icon="chevron-left" label="Back to conversation" onPress={onBack} />}
+        subtitle={`${scope} · ${online} of ${total} online`}
+        leading={
+          <RoundButton icon="chevron-left" label="Back to conversation" onPress={props.onBack} />
+        }
       />
-      <View className="mx-3 mb-2 min-h-11 flex-row items-center gap-2 rounded-pill bg-surface-2 px-4">
-        <Icon name="search" size={18} color={palette["text-muted"]} />
-        <TextInput
-          accessibilityLabel="Filter members"
-          placeholder="Filter by name"
-          placeholderTextColor={palette["text-muted"]}
-          value={query}
-          onChangeText={setQuery}
-          autoCorrect={false}
-          autoCapitalize="none"
-          clearButtonMode="while-editing"
-          returnKeyType="search"
-          className="min-h-11 flex-1 py-0 text-[17px] text-text"
-        />
-      </View>
+      <MemberFilter value={query} onChange={setQuery} />
       <ScrollView
         keyboardShouldPersistTaps="handled"
         keyboardDismissMode="on-drag"
@@ -105,47 +176,32 @@ export function MembersPane({
         }}
       >
         {GROUPS.map((group) => {
-          const inGroup = rows.filter(
-            (row) => (row.presence?.status ?? "offline") === group.status,
-          );
+          const inGroup = rows.filter((row) => row.status === group.status);
           if (inGroup.length === 0) return null;
           return (
             <View key={group.status}>
               <ListHeader title={`${group.title} · ${inGroup.length}`} />
               <ListGroup>
-                {inGroup.map(({ member, presence: row }) => {
-                  const own = member.userId === ownUserId;
-                  const custom = row?.customStatus ?? "";
+                {inGroup.map(({ member, status, customStatus }) => {
+                  const own = member.userId === props.ownUserId;
+                  const moderate = props.canModerateMembers && !own && !member.isOwner;
                   return (
-                    <ListRow
+                    <MemberRow
                       key={member.userId}
-                      accessibilityLabel={`Profile of ${member.displayName}`}
-                      title={own ? `${member.displayName} (you)` : member.displayName}
-                      subtitle={
-                        custom.length > 0 ? custom : member.isOwner ? "Workspace owner" : undefined
+                      member={member}
+                      status={status}
+                      customStatus={customStatus}
+                      own={own}
+                      onActions={
+                        moderate
+                          ? () => {
+                              props.onMemberActions(member.userId);
+                            }
+                          : undefined
                       }
-                      leading={
-                        <PresenceAvatar
-                          userId={member.userId}
-                          status={group.status}
-                          roleColor={member.roleColor}
-                          size={36}
-                        />
-                      }
-                      trailing={
-                        canModerateMembers && !own && !member.isOwner ? (
-                          <Pressable
-                            accessibilityRole="button"
-                            accessibilityLabel={`Actions for ${member.displayName}`}
-                            hitSlop={8}
-                            onPress={() => onMemberActions(member.userId)}
-                            className="h-9 w-9 items-center justify-center rounded-pill active:bg-surface-3"
-                          >
-                            <Icon name="more-horizontal" size={20} color={palette["text-muted"]} />
-                          </Pressable>
-                        ) : undefined
-                      }
-                      onPress={() => onMemberPress(member.userId)}
+                      onPress={() => {
+                        props.onMemberPress(member.userId);
+                      }}
                     />
                   );
                 })}
@@ -153,17 +209,10 @@ export function MembersPane({
             </View>
           );
         })}
-        {rows.length === 0 && (
-          <View className="items-center gap-2 px-6 py-12">
-            <Icon name="users" size={28} color={palette["text-muted"]} />
-            <Text tone="muted" className="text-center">
-              {query.trim().length > 0 ? `Nobody matches “${query.trim()}”.` : "No members yet."}
-            </Text>
-          </View>
-        )}
-        {onOpenBans !== undefined && (
+        {rows.length === 0 && <NoMembers query={query.trim()} />}
+        {props.onOpenBans !== undefined && (
           <ListGroup>
-            <ListRow icon="ban" title="Banned members" chevron onPress={onOpenBans} />
+            <ListRow icon="ban" title="Banned members" chevron onPress={props.onOpenBans} />
           </ListGroup>
         )}
       </ScrollView>

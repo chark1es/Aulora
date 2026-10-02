@@ -93,7 +93,9 @@ export function ThreadsInbox({
           <Pressable
             key={thread.id}
             accessibilityRole="button"
-            onPress={() => onOpen(thread)}
+            onPress={() => {
+              onOpen(thread);
+            }}
             className="flex-row items-start gap-3 rounded-input px-2.5 py-2"
           >
             <MemberAvatar userId={thread.authorId} size={32} roleColor={roleColor} />

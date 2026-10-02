@@ -58,12 +58,14 @@ export function MessageActionsSheet({
     setError(null);
     void task()
       .then(onClose)
-      .catch((cause: unknown) =>
+      .catch((cause: unknown) => {
         setError(
           cause instanceof Error ? cause.message : "Couldn't update this message. Try again.",
-        ),
-      )
-      .finally(() => setBusy(false));
+        );
+      })
+      .finally(() => {
+        setBusy(false);
+      });
   }
   function react(value: string) {
     selectionFeedback();
@@ -98,16 +100,22 @@ export function MessageActionsSheet({
             style={[inputStyle, { minHeight: 96, maxHeight: 200, textAlignVertical: "top" }]}
           />
           <View className="flex-row gap-2">
-            <Button variant="secondary" className="flex-1" onPress={() => setMode("actions")}>
+            <Button
+              variant="secondary"
+              className="flex-1"
+              onPress={() => {
+                setMode("actions");
+              }}
+            >
               Cancel
             </Button>
             <Button
               className="flex-1"
               loading={busy}
               disabled={draft.trim().length === 0 || draft === text}
-              onPress={() =>
-                run(() => runtime.session.editMessage(message.channelId, message.id, draft))
-              }
+              onPress={() => {
+                run(() => runtime.session.editMessage(message.channelId, message.id, draft));
+              }}
             >
               Save
             </Button>
@@ -126,14 +134,22 @@ export function MessageActionsSheet({
             style={inputStyle}
           />
           <View className="flex-row gap-2">
-            <Button variant="secondary" className="flex-1" onPress={() => setMode("actions")}>
+            <Button
+              variant="secondary"
+              className="flex-1"
+              onPress={() => {
+                setMode("actions");
+              }}
+            >
               Back
             </Button>
             <Button
               className="flex-1"
               loading={busy}
               disabled={emoji.trim().length === 0}
-              onPress={() => react(emoji.trim())}
+              onPress={() => {
+                react(emoji.trim());
+              }}
             >
               Add reaction
             </Button>
@@ -154,7 +170,9 @@ export function MessageActionsSheet({
                   accessibilityRole="button"
                   accessibilityLabel={`React ${reaction}`}
                   disabled={busy}
-                  onPress={() => react(reaction)}
+                  onPress={() => {
+                    react(reaction);
+                  }}
                   className="h-12 w-12 items-center justify-center rounded-pill bg-surface-2 active:bg-surface-3"
                 >
                   <Text style={{ fontSize: 22, lineHeight: 28 }} maxFontSizeMultiplier={1.3}>
@@ -166,7 +184,9 @@ export function MessageActionsSheet({
                 accessibilityRole="button"
                 accessibilityLabel="React with another emoji"
                 disabled={busy}
-                onPress={() => setMode("emoji")}
+                onPress={() => {
+                  setMode("emoji");
+                }}
                 className="h-12 w-12 items-center justify-center rounded-pill bg-surface-2 active:bg-surface-3"
               >
                 <Icon name="plus" size={20} color={palette["text-muted"]} />
@@ -197,23 +217,33 @@ export function MessageActionsSheet({
             <ListRow
               icon="file"
               title="Copy text"
-              onPress={() => run(() => Clipboard.setStringAsync(text))}
+              onPress={() => {
+                run(() => Clipboard.setStringAsync(text));
+              }}
             />
             {hasPermission(permissions, Permission.PinMessages) && (
               <ListRow
                 icon="pin"
                 title={message.pinnedAt === null ? "Pin to conversation" : "Unpin"}
                 disabled={busy}
-                onPress={() =>
+                onPress={() => {
                   run(() =>
                     message.pinnedAt === null
                       ? runtime.session.pinMessage(message.channelId, message.id)
                       : runtime.session.unpinMessage(message.channelId, message.id),
-                  )
-                }
+                  );
+                }}
               />
             )}
-            {canEdit && <ListRow icon="pencil" title="Edit" onPress={() => setMode("edit")} />}
+            {canEdit && (
+              <ListRow
+                icon="pencil"
+                title="Edit"
+                onPress={() => {
+                  setMode("edit");
+                }}
+              />
+            )}
           </ListGroup>
           {canEdit && (
             <ListGroup>
@@ -222,7 +252,7 @@ export function MessageActionsSheet({
                 title="Delete message"
                 tone="danger"
                 disabled={busy}
-                onPress={() =>
+                onPress={() => {
                   Alert.alert(
                     "Delete message?",
                     "This message will be removed for everyone in the conversation.",
@@ -231,12 +261,13 @@ export function MessageActionsSheet({
                       {
                         text: "Delete message",
                         style: "destructive",
-                        onPress: () =>
-                          run(() => runtime.session.deleteMessage(message.channelId, message.id)),
+                        onPress: () => {
+                          run(() => runtime.session.deleteMessage(message.channelId, message.id));
+                        },
                       },
                     ],
-                  )
-                }
+                  );
+                }}
               />
             </ListGroup>
           )}

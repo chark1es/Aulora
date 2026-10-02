@@ -201,9 +201,9 @@ export function Composer({
               accessibilityLabel={`Remove ${entry.file.name}`}
               hitSlop={6}
               className="flex-row items-center gap-1.5 rounded-pill bg-surface-2 py-1.5 pl-3 pr-2 active:opacity-70"
-              onPress={() =>
-                setFiles((current) => current.filter((value) => value.key !== entry.key))
-              }
+              onPress={() => {
+                setFiles((current) => current.filter((value) => value.key !== entry.key));
+              }}
             >
               <Icon name="paperclip" size={14} color={palette["text-muted"]} />
               <Text size="xs" numberOfLines={1} className="max-w-[10rem]">
@@ -222,7 +222,9 @@ export function Composer({
               accessibilityRole="button"
               accessibilityLabel={`Insert ${candidate.insert}`}
               className="min-h-11 flex-row items-center justify-between px-3 active:bg-surface-3"
-              onPress={() => applySuggestion(candidate)}
+              onPress={() => {
+                applySuggestion(candidate);
+              }}
             >
               <Text size="sm">{candidate.insert}</Text>
               <Text size="xs" tone="muted">
@@ -251,7 +253,9 @@ export function Composer({
           className={`h-11 w-11 items-center justify-center rounded-pill bg-surface-2 active:opacity-70 ${
             disabled === true ? "opacity-50" : ""
           }`}
-          onPress={() => setMenuOpen(true)}
+          onPress={() => {
+            setMenuOpen(true);
+          }}
         >
           <Icon name="plus" size={22} color={palette.text} />
         </Pressable>
@@ -297,7 +301,9 @@ export function Composer({
         visible={menuOpen}
         title="Add to message"
         subtitle="Formatting: **bold**, *italic*, `code`"
-        onClose={() => setMenuOpen(false)}
+        onClose={() => {
+          setMenuOpen(false);
+        }}
       >
         <ListGroup>
           {ATTACH_OPTIONS.map((option) => (

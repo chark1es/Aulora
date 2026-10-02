@@ -106,7 +106,9 @@ export function AttachmentView({ runtime, descriptor }: AttachmentViewProps) {
         <Pressable
           accessibilityRole="button"
           accessibilityLabel={`Preview ${descriptor.name}`}
-          onPress={() => setPreview(true)}
+          onPress={() => {
+            setPreview(true);
+          }}
         >
           <Image
             source={{ uri: dataUri }}
@@ -155,7 +157,14 @@ export function AttachmentView({ runtime, descriptor }: AttachmentViewProps) {
         </Text>
       )}
       {preview && (
-        <Sheet visible title={descriptor.name} dismiss="done" onClose={() => setPreview(false)}>
+        <Sheet
+          visible
+          title={descriptor.name}
+          dismiss="done"
+          onClose={() => {
+            setPreview(false);
+          }}
+        >
           <ScrollView contentContainerStyle={{ padding: 16, gap: 16 }}>
             {dataUri !== null ? (
               <Image
@@ -211,7 +220,9 @@ function AudioPlayback({ uri, name }: { readonly uri: string; readonly name: str
 
 /** Shows a cached video inline with the system playback controls. */
 function VideoPlayback({ uri, name }: { readonly uri: string; readonly name: string }) {
-  const player = useVideoPlayer(uri, (created) => created.play());
+  const player = useVideoPlayer(uri, (created) => {
+    created.play();
+  });
   return (
     <VideoView
       player={player}

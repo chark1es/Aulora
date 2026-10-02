@@ -71,61 +71,87 @@ export interface ListRowProps {
   readonly onLongPress?: (() => void) | undefined;
 }
 
-/** One tappable row: leading glyph or avatar, title and detail, trailing accessory. */
-export function ListRow({
+/** The row's leading slot: a custom element, a bare glyph, or nothing. */
+function RowLeading({
+  leading,
+  icon,
+  color,
+}: {
+  readonly leading: ReactNode;
+  readonly icon: IconName | undefined;
+  readonly color: string;
+}) {
+  if (leading !== undefined && leading !== null) return leading;
+  if (icon === undefined) return null;
+  return (
+    <View className="w-7 items-center">
+      <Icon name={icon} size={20} color={color} />
+    </View>
+  );
+}
+
+/** Title over an optional one-line detail. */
+function RowLabel({
   title,
   subtitle,
-  icon,
-  leading,
-  trailing,
-  tone = "default",
-  selected = false,
-  chevron = false,
-  disabled = false,
-  accessibilityLabel,
-  onPress,
-  onLongPress,
-}: ListRowProps) {
+  emphasized,
+  color,
+}: {
+  readonly title: string;
+  readonly subtitle: string | undefined;
+  readonly emphasized: boolean;
+  readonly color: string | undefined;
+}) {
+  return (
+    <View className="min-w-0 flex-1">
+      <Text
+        numberOfLines={1}
+        className={emphasized ? "font-semibold" : ""}
+        style={color !== undefined ? { color } : undefined}
+      >
+        {title}
+      </Text>
+      {subtitle !== undefined && subtitle.length > 0 && (
+        <Text size="xs" tone="muted" numberOfLines={1}>
+          {subtitle}
+        </Text>
+      )}
+    </View>
+  );
+}
+
+/** One tappable row: leading glyph or avatar, title and detail, trailing accessory. */
+export function ListRow(props: ListRowProps) {
+  const { title, tone = "default", selected = false, disabled = false } = props;
   const palette = usePalette();
   const tint =
     tone === "danger" ? palette.danger : tone === "accent" || selected ? palette.accent : null;
   // A row with nothing to do is plain content, not a button that does nothing.
-  const inert = disabled || (onPress === undefined && onLongPress === undefined);
+  const inert = disabled || (props.onPress === undefined && props.onLongPress === undefined);
   return (
     <Pressable
       accessibilityRole={inert && !disabled ? undefined : "button"}
-      accessibilityLabel={accessibilityLabel ?? title}
+      accessibilityLabel={props.accessibilityLabel ?? title}
       accessibilityState={{ selected, disabled: inert }}
       disabled={inert}
-      onPress={onPress}
-      onLongPress={onLongPress}
+      onPress={props.onPress}
+      onLongPress={props.onLongPress}
       delayLongPress={280}
       className={`min-h-[52px] flex-row items-center gap-3 px-3 py-2 active:bg-surface-3 ${
         selected ? "bg-accent-soft" : ""
       } ${disabled ? "opacity-50" : ""}`}
     >
-      {leading ??
-        (icon !== undefined && (
-          <View className="w-7 items-center">
-            <Icon name={icon} size={20} color={tint ?? palette["text-muted"]} />
-          </View>
-        ))}
-      <View className="min-w-0 flex-1">
-        <Text
-          numberOfLines={1}
-          className={selected ? "font-semibold" : ""}
-          style={tint !== null && tone !== "default" ? { color: tint } : undefined}
-        >
-          {title}
-        </Text>
-        {subtitle !== undefined && subtitle.length > 0 && (
-          <Text size="xs" tone="muted" numberOfLines={1}>
-            {subtitle}
-          </Text>
-        )}
-      </View>
-      {trailing}
-      {chevron && <Icon name="chevron-right" size={18} color={palette["text-muted"]} />}
+      <RowLeading leading={props.leading} icon={props.icon} color={tint ?? palette["text-muted"]} />
+      <RowLabel
+        title={title}
+        subtitle={props.subtitle}
+        emphasized={selected}
+        color={tint !== null && tone !== "default" ? tint : undefined}
+      />
+      {props.trailing}
+      {props.chevron === true && (
+        <Icon name="chevron-right" size={18} color={palette["text-muted"]} />
+      )}
     </Pressable>
   );
 }

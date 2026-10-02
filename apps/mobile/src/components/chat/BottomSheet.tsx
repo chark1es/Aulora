@@ -54,7 +54,9 @@ export function BottomSheet({
       ref.current?.dismiss();
       return true;
     });
-    return () => subscription.remove();
+    return () => {
+      subscription.remove();
+    };
   }, [visible]);
 
   const backdrop = useCallback(
