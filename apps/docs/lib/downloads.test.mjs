@@ -48,12 +48,12 @@ const assets = [
 
 test("pickDownloads keeps one GitHub asset per platform and drops other hosts", () => {
   const picked = pickDownloads(assets);
-  assert.equal(picked.windows.name, "Aulora_1.0.0_x64-setup.exe");
-  assert.equal(picked.macosArm.name, "Aulora_1.0.0_aarch64.dmg");
-  assert.equal(picked.macosIntel.name, "Aulora_1.0.0_x64.dmg");
-  assert.equal(picked.android.name, "Aulora_1.0.0_android.apk");
-  assert.equal(picked.ios.name, "Aulora_1.0.0_ios.ipa");
-  assert.match(picked.linux.name, /AppImage$/);
+  assert.equal(picked.get("windows").name, "Aulora_1.0.0_x64-setup.exe");
+  assert.equal(picked.get("macosArm").name, "Aulora_1.0.0_aarch64.dmg");
+  assert.equal(picked.get("macosIntel").name, "Aulora_1.0.0_x64.dmg");
+  assert.equal(picked.get("android").name, "Aulora_1.0.0_android.apk");
+  assert.equal(picked.get("ios").name, "Aulora_1.0.0_ios.ipa");
+  assert.match(picked.get("linux").name, /AppImage$/);
   assert.equal(isReleaseAssetUrl("https://example.com/file.exe"), false);
 });
 

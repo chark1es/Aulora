@@ -1,7 +1,6 @@
 // Platform detection and GitHub release asset matching for the download buttons.
 // Pure helpers are covered by node:test. The page script supplies navigator and fetch.
 
-const RELEASES = "https://github.com/chark1es/Aulora/releases";
 const ASSET_PREFIX = "/chark1es/Aulora/releases/download/";
 
 const RULES = [
@@ -27,15 +26,15 @@ export function isReleaseAssetUrl(url) {
 }
 
 export function pickDownloads(assets) {
-  const picked = {};
+  const picked = new Map();
   for (const asset of assets ?? []) {
     if (!asset?.name || !isReleaseAssetUrl(asset.browser_download_url ?? asset.url ?? "")) {
       continue;
     }
     const url = asset.browser_download_url ?? asset.url;
     for (const [key, test] of RULES) {
-      if (picked[key] === undefined && test(asset.name)) {
-        picked[key] = { name: asset.name, url };
+      if (!picked.has(key) && test(asset.name)) {
+        picked.set(key, { name: asset.name, url });
       }
     }
   }
@@ -76,14 +75,13 @@ export function primaryCopy(os) {
 
 export function assetFor(picks, key, arch) {
   if (key === "macos") {
-    if (arch === "intel" || arch === "x64") return picks.macosIntel;
-    if (arch === "arm") return picks.macosArm;
-    return picks.macosArm ?? picks.macosIntel;
+    if (arch === "intel" || arch === "x64") return picks.get("macosIntel");
+    if (arch === "arm") return picks.get("macosArm");
+    return picks.get("macosArm") ?? picks.get("macosIntel");
   }
-  if (key === "windows") return picks.windows;
-  if (key === "android") return picks.android;
-  if (key === "linux") return picks.linux;
-  if (key === "ios") return undefined;
+  if (key === "windows") return picks.get("windows");
+  if (key === "android") return picks.get("android");
+  if (key === "linux") return picks.get("linux");
   return undefined;
 }
 
@@ -144,7 +142,6 @@ export async function loadRelease(
   const data = await response.json();
   const release = {
     tag_name: typeof data.tag_name === "string" ? data.tag_name : "",
-    html_url: typeof data.html_url === "string" ? data.html_url : RELEASES,
     assets: Array.isArray(data.assets)
       ? data.assets.map((asset) => ({
           name: asset.name,
@@ -160,18 +157,18 @@ export async function loadRelease(
   return release;
 }
 
-const SECTIONS = {
-  macos: "#macos",
-  windows: "#windows",
-  ios: "#ios",
-  android: "#android",
-  linux: "#linux",
-};
+const SECTIONS = new Map([
+  ["macos", "#macos"],
+  ["windows", "#windows"],
+  ["ios", "#ios"],
+  ["android", "#android"],
+  ["linux", "#linux"],
+]);
 
 function destination(primary, os, asset) {
   if (os !== "ios" && asset) return asset.url;
   const authored = primary.getAttribute("href") || "install.html";
-  const section = SECTIONS[os];
+  const section = SECTIONS.get(os);
   if (!section) return authored;
   if (authored.startsWith("#")) return section;
   if (authored.includes("install.html")) return `install.html${section}`;

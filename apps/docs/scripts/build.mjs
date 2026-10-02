@@ -97,12 +97,11 @@ function siteHeader({ base, section }) {
     const current = section === name ? ' aria-current="page"' : "";
     return `<a href="${base}${href}"${current}>${label}</a>`;
   };
-  const docsMark = section === "docs" ? '<span class="brand-sub">/docs</span>' : "";
   return `    <header class="site-header">
       <div class="site-header-inner">
         <a class="brand" href="${base}index.html">
           <img src="${base}favicon.svg" alt="" width="26" height="26" />
-          <span class="brand-lockup"><span class="brand-name">Aulora</span>${docsMark}</span>
+          <span class="brand-lockup"><span class="brand-name">Aulora</span>${section === "docs" ? '<span class="brand-sub">/docs</span>' : ""}</span>
         </a>
         <nav class="site-nav" aria-label="Site">
           ${item("how-it-works.html", "How it works", "how-it-works")}
@@ -263,6 +262,8 @@ const LANDING_PAGES = [
 ];
 
 function renderLanding(page) {
+  // page.file comes from the fixed LANDING_PAGES list, not user input.
+  // eslint-disable-next-line security/detect-non-literal-fs-filename
   const template = readFileSync(join(root, "landing", page.file), "utf8");
   const base = "";
   return template
@@ -292,6 +293,7 @@ cpSync(staticDir, outDir, { recursive: true });
 cpSync(join(repo, "apps/web/public/favicon.svg"), join(outDir, "favicon.svg"));
 writeFileSync(join(outDir, "tokens.css"), paletteCss(palettes), "utf8");
 for (const page of LANDING_PAGES) {
+  // eslint-disable-next-line security/detect-non-literal-fs-filename
   writeFileSync(join(outDir, page.file), renderLanding(page), "utf8");
 }
 
