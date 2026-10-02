@@ -363,11 +363,11 @@ function renderVoiceRoom(ctx, channel, ws) {
     faces.append(row);
   }
   room.append(faces);
-  room.append(callButton(ctx, channel, joined));
+  room.append(callButton(ctx, joined));
   ctx.dom.transcript.append(room);
 }
 
-function callButton(ctx, channel, joined) {
+function callButton(ctx, joined) {
   const action = document.createElement("button");
   action.type = "button";
   action.className = "button button-primary";
