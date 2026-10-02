@@ -73,7 +73,9 @@ export function CreateChannelSheet({
                 key={option.value}
                 accessibilityRole="button"
                 accessibilityState={{ selected: active }}
-                onPress={() => setKind(option.value)}
+                onPress={() => {
+                  setKind(option.value);
+                }}
                 className={
                   active
                     ? "flex-1 items-center rounded-input border border-accent bg-accent-soft px-2 py-2"
@@ -113,7 +115,9 @@ export function CreateChannelSheet({
                 <Pressable
                   accessibilityRole="button"
                   accessibilityState={{ selected: categoryId === undefined }}
-                  onPress={() => setCategoryId(undefined)}
+                  onPress={() => {
+                    setCategoryId(undefined);
+                  }}
                   className={
                     categoryId === undefined
                       ? "rounded-pill border border-accent bg-accent-soft px-3 py-1"
@@ -131,7 +135,9 @@ export function CreateChannelSheet({
                       key={category.id}
                       accessibilityRole="button"
                       accessibilityState={{ selected: active }}
-                      onPress={() => setCategoryId(category.id)}
+                      onPress={() => {
+                        setCategoryId(category.id);
+                      }}
                       className={
                         active
                           ? "rounded-pill border border-accent bg-accent-soft px-3 py-1"
@@ -165,17 +171,7 @@ export function CreateChannelSheet({
             </Text>
           )}
 
-          <View className="flex-row justify-end gap-2">
-            <Button
-              variant="ghost"
-              onPress={() => {
-                reset();
-                onClose();
-              }}
-              disabled={busy}
-            >
-              Cancel
-            </Button>
+          <View>
             <Button
               disabled={disabled}
               loading={busy}
@@ -197,8 +193,8 @@ export function CreateChannelSheet({
           </View>
 
           <View className="mt-2 border-t border-border pt-3">
-            <Text size="sm" className="pb-2">
-              Or create a category
+            <Text size="sm" tone="muted" className="pb-2">
+              Or use the name above for a new category
             </Text>
             <Button
               variant="secondary"
@@ -207,7 +203,7 @@ export function CreateChannelSheet({
                 void Promise.resolve(onCreateCategory(trimmed)).then(reset);
               }}
             >
-              Create category “{trimmed.length > 0 ? trimmed : "…"}”
+              {`Create category “${trimmed.length > 0 ? trimmed : "…"}”`}
             </Button>
           </View>
         </ScrollView>

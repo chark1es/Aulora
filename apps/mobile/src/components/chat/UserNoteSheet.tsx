@@ -33,9 +33,15 @@ export function UserNoteSheet({
     setLoading(true);
     setError(null);
     void loadNote()
-      .then((value) => setBody(value ?? ""))
-      .catch(() => setError("Could not load this note. Close it and try again."))
-      .finally(() => setLoading(false));
+      .then((value) => {
+        setBody(value ?? "");
+      })
+      .catch(() => {
+        setError("Could not load this note. Close it and try again.");
+      })
+      .finally(() => {
+        setLoading(false);
+      });
   }, [visible]);
 
   function submit(clear: boolean) {
@@ -50,7 +56,9 @@ export function UserNoteSheet({
       .catch((caught: unknown) => {
         setError(caught instanceof Error ? caught.message : "Could not save this note.");
       })
-      .finally(() => setSaving(false));
+      .finally(() => {
+        setSaving(false);
+      });
   }
 
   return (
@@ -79,23 +87,19 @@ export function UserNoteSheet({
         <View className="mt-3 flex-row justify-end gap-2">
           <Button
             size="sm"
-            variant="ghost"
-            onPress={onClose}
-            disabled={saving || loading || error !== null}
-          >
-            Cancel
-          </Button>
-          <Button
-            size="sm"
             variant="secondary"
-            onPress={() => submit(true)}
+            onPress={() => {
+              submit(true);
+            }}
             disabled={saving || loading || error !== null}
           >
             Clear
           </Button>
           <Button
             size="sm"
-            onPress={() => submit(false)}
+            onPress={() => {
+              submit(false);
+            }}
             disabled={saving || loading || error !== null}
             loading={saving}
           >

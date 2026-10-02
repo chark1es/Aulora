@@ -17,13 +17,11 @@ export default function ReviewDemoRoute() {
       </SafeAreaView>
     );
   return (
-    <SafeAreaView className="flex-1 bg-bg" edges={["top", "bottom"]}>
-      <ReviewDemoScreen
-        onExit={() => {
-          if (router.canGoBack()) router.back();
-          else router.replace("/");
-        }}
-      />
-    </SafeAreaView>
+    <ReviewDemoScreen
+      onExit={() => {
+        if (router.canGoBack()) router.back();
+        else router.replace("/");
+      }}
+    />
   );
 }
