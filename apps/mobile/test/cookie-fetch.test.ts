@@ -43,6 +43,23 @@ describe("readSetCookies", () => {
     expect(readSetCookies(combined)).toEqual(["a=1", "b=2; Path=/"]);
   });
 
+  it("splits combined cookies whose names use other token characters", () => {
+    const combined = new Headers({ "set-cookie": "a=1; Path=/, foo+bar=2; Path=/" });
+    (combined as unknown as { getSetCookie?: unknown }).getSetCookie = undefined;
+    expect(readSetCookies(combined)).toEqual(["a=1; Path=/", "foo+bar=2; Path=/"]);
+  });
+
+  it("does not split on a comma inside an Expires date", () => {
+    const combined = new Headers({
+      "set-cookie": "a=1; Expires=Wed, 21 Oct 2026 07:28:00 GMT; Path=/, b=2",
+    });
+    (combined as unknown as { getSetCookie?: unknown }).getSetCookie = undefined;
+    expect(readSetCookies(combined)).toEqual([
+      "a=1; Expires=Wed, 21 Oct 2026 07:28:00 GMT; Path=/",
+      "b=2",
+    ]);
+  });
+
   it("splits combined cookies whose names contain a dot", () => {
     const combined = new Headers({
       "set-cookie":

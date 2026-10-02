@@ -7,11 +7,13 @@ import { ScrollView } from "react-native-gesture-handler";
 import { useReanimatedKeyboardAnimation } from "react-native-keyboard-controller";
 import Animated, { useAnimatedStyle } from "react-native-reanimated";
 import { selectionFeedback } from "../../lib/haptics";
+import { highlightParts } from "../../lib/search-ui";
 import type { MobileMemberEntry } from "../../providers/ChatProvider";
 import { PaneHeader, useDockClearance } from "./HubPane";
 import { ListGroup, ListHeader, ListRow } from "./List";
 import { MemberAvatar } from "./MemberAvatar";
 import { PresenceAvatar } from "./PresenceAvatar";
+import { HorizontalScroll } from "./SwipePanes";
 
 type Scope = "all" | "messages" | "conversations" | "people";
 
@@ -22,22 +24,7 @@ const SCOPES: readonly { readonly key: Scope; readonly label: string }[] = [
   { key: "people", label: "People" },
 ];
 
-const RECENT_KEY = "aulora.search.recent";
 const RECENT_LIMIT = 6;
-
-/** Splits `text` around case-insensitive occurrences of any query word. */
-function highlightParts(text: string, query: string): { text: string; match: boolean }[] {
-  const words = query
-    .split(/\s+/)
-    .filter((word) => word.length > 1)
-    .map((word) => word.replace(/[.*+?^${}()|[\]\\]/g, "\\$&"));
-  if (words.length === 0) return [{ text, match: false }];
-  const pattern = new RegExp(`(${words.join("|")})`, "gi");
-  return text
-    .split(pattern)
-    .map((part, index) => ({ text: part, match: index % 2 === 1 }))
-    .filter((part) => part.text.length > 0);
-}
 
 export function SearchView({
   channels,
@@ -46,6 +33,7 @@ export function SearchView({
   memberNames,
   presence,
   ownUserId,
+  recentKey,
   search,
   loadHistory,
   onOpen,
@@ -57,6 +45,8 @@ export function SearchView({
   readonly memberNames: ReadonlyMap<string, string>;
   readonly presence: readonly PresenceRow[];
   readonly ownUserId: string;
+  /** Where recent searches are stored; scoped to this server and account. */
+  readonly recentKey: string;
   readonly search: (query: string) => Promise<readonly SearchHit[]>;
   /** Indexes one more page of server history; resolves `true` when none is left. */
   readonly loadHistory: () => Promise<boolean>;
@@ -78,19 +68,19 @@ export function SearchView({
   const trimmed = query.trim();
 
   useEffect(() => {
-    void AsyncStorage.getItem(RECENT_KEY)
+    void AsyncStorage.getItem(recentKey)
       .then((stored) => {
         const parsed: unknown = stored === null ? [] : JSON.parse(stored);
         if (Array.isArray(parsed)) setRecent(parsed.filter((entry) => typeof entry === "string"));
       })
       .catch(() => undefined);
-  }, []);
+  }, [recentKey]);
 
   function remember() {
     if (trimmed.length < 2) return;
     const next = [trimmed, ...recent.filter((entry) => entry !== trimmed)].slice(0, RECENT_LIMIT);
     setRecent(next);
-    void AsyncStorage.setItem(RECENT_KEY, JSON.stringify(next)).catch(() => undefined);
+    void AsyncStorage.setItem(recentKey, JSON.stringify(next)).catch(() => undefined);
   }
 
   // biome-ignore lint/correctness/useExhaustiveDependencies: `attempt` restarts the history read after a failure
@@ -203,7 +193,7 @@ export function SearchView({
                     className="min-h-9 justify-center px-3"
                     onPress={() => {
                       setRecent([]);
-                      void AsyncStorage.removeItem(RECENT_KEY).catch(() => undefined);
+                      void AsyncStorage.removeItem(recentKey).catch(() => undefined);
                     }}
                   >
                     <Text size="xs" tone="muted">
@@ -392,12 +382,7 @@ export function SearchView({
       </ScrollView>
 
       <View className="gap-2 px-3 pt-2">
-        <ScrollView
-          horizontal
-          showsHorizontalScrollIndicator={false}
-          keyboardShouldPersistTaps="handled"
-          contentContainerStyle={{ gap: 8 }}
-        >
+        <HorizontalScroll keyboardShouldPersistTaps="handled" contentContainerStyle={{ gap: 8 }}>
           {SCOPES.map((entry) => {
             const active = entry.key === scope;
             return (
@@ -425,7 +410,7 @@ export function SearchView({
               </Pressable>
             );
           })}
-        </ScrollView>
+        </HorizontalScroll>
         <Pressable
           accessible={false}
           onPress={() => inputRef.current?.focus()}

@@ -18,6 +18,7 @@ import { VoiceChannelSection } from "../voice/VoiceChannelSection";
 import { ListGroup, ListHeader, ListRow } from "./List";
 import { MemberAvatar } from "./MemberAvatar";
 import { PresenceAvatar } from "./PresenceAvatar";
+import { HorizontalScroll } from "./SwipePanes";
 import type { ThreadInboxItem } from "./ThreadsInbox";
 
 /** `threads` is the full thread list, opened from the Channels tab rather than the dock. */
@@ -378,9 +379,7 @@ export function ChannelList({
               : "You're the first one here. Invite your team from the web app."}
           </Text>
         ) : (
-          <ScrollView
-            horizontal
-            showsHorizontalScrollIndicator={false}
+          <HorizontalScroll
             accessibilityLabel={`Here now, ${here.length} ${here.length === 1 ? "person" : "people"}`}
             className="-mx-3"
             contentContainerStyle={{ paddingHorizontal: 12, gap: 4 }}
@@ -405,7 +404,7 @@ export function ChannelList({
                 </Text>
               </Pressable>
             ))}
-          </ScrollView>
+          </HorizontalScroll>
         )}
       </View>
 

@@ -99,6 +99,12 @@ describe("buttonLabelText", () => {
     expect(buttonLabelText(["Start group message (", 3, ")"])).toBe("Start group message (3)");
   });
 
+  it("skips the empty values a conditional leaves behind", () => {
+    expect(buttonLabelText(["Save", false])).toBe("Save");
+    expect(buttonLabelText(["Save", null, undefined, "…"])).toBe("Save…");
+    expect(buttonLabelText([false, null])).toBeNull();
+  });
+
   it("leaves element children to the caller", () => {
     expect(buttonLabelText({ type: "Icon" })).toBeNull();
     expect(buttonLabelText(["Save", { type: "Icon" }])).toBeNull();

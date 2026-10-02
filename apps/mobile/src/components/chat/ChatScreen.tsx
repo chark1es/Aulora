@@ -13,6 +13,7 @@ import {
 } from "@aulora/core";
 import { Button, Icon, Spinner, Text, usePalette } from "@aulora/ui-native";
 import { BottomSheetModalProvider } from "@gorhom/bottom-sheet";
+import AsyncStorage from "@react-native-async-storage/async-storage";
 import { useMutation, useQuery } from "convex/react";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { Alert, BackHandler, Keyboard, Platform, Pressable, View } from "react-native";
@@ -32,6 +33,7 @@ import { selectionFeedback } from "../../lib/haptics";
 import { useIncomingCallNotification, useLocalNotifications } from "../../lib/notifications";
 import { planChannelEdit } from "../../lib/permissions";
 import { presenceLabel, typingLabel } from "../../lib/presence";
+import { recentSearchKey } from "../../lib/search-ui";
 import { useChannelSession } from "../../lib/use-channel";
 import { usePushRegistration } from "../../lib/use-push-registration";
 import { useChat } from "../../providers/ChatProvider";
@@ -637,6 +639,8 @@ export function ChatScreen({
     (userId) => memberNames.get(userId) ?? userId,
   );
 
+  const recentKey = recentSearchKey(activeProfile?.baseUrl ?? workspaceName, ownUserId);
+
   const confirmSignOut = useCallback(() => {
     Alert.alert(`Sign out of ${workspaceName}?`, "You can sign back in at any time.", [
       { text: "Cancel", style: "cancel" },
@@ -645,6 +649,7 @@ export function ChatScreen({
         style: "destructive",
         onPress: () => {
           void unregisterPush()
+            .then(() => AsyncStorage.removeItem(recentKey).catch(() => undefined))
             .then(onSignOut)
             .catch(() =>
               Alert.alert(
@@ -655,7 +660,7 @@ export function ChatScreen({
         },
       },
     ]);
-  }, [workspaceName, onSignOut, unregisterPush]);
+  }, [workspaceName, onSignOut, unregisterPush, recentKey]);
 
   // Android back steps toward the hub's first tab before leaving the app.
   useEffect(() => {
@@ -826,6 +831,7 @@ export function ChatScreen({
           memberNames={memberNames}
           presence={presence}
           ownUserId={ownUserId}
+          recentKey={recentKey}
           search={search}
           loadHistory={loadSearchHistory}
           onOpenMember={setProfileFor}

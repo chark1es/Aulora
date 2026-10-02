@@ -1,6 +1,6 @@
 import { Text, usePalette } from "@aulora/ui-native";
 import { BottomSheetTextInput } from "@gorhom/bottom-sheet";
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { Alert } from "react-native";
 import { BottomSheet } from "./BottomSheet";
 import { ListGroup, ListHeader, ListRow } from "./List";
@@ -66,9 +66,16 @@ export function MemberActionsSheet({
   const [panel, setPanel] = useState<Panel>("actions");
   const [reason, setReason] = useState("");
 
+  // The caller hides the sheet once a moderation request succeeds; a failure
+  // keeps it open with the error. Either way the next opening starts clean.
+  useEffect(() => {
+    if (!visible) {
+      setPanel("actions");
+      setReason("");
+    }
+  }, [visible]);
+
   function close() {
-    setPanel("actions");
-    setReason("");
     onClose();
   }
 
@@ -123,10 +130,7 @@ export function MemberActionsSheet({
                         {
                           text: "Kick",
                           style: "destructive",
-                          onPress: () => {
-                            onKick();
-                            close();
-                          },
+                          onPress: onKick,
                         },
                       ],
                     )
@@ -155,22 +159,12 @@ export function MemberActionsSheet({
                 key={`timeout:${option.label}`}
                 title={option.label}
                 disabled={busy}
-                onPress={() => {
-                  onTimeout(option.durationMs);
-                  close();
-                }}
+                onPress={() => onTimeout(option.durationMs)}
               />
             ))}
           </ListGroup>
           <ListGroup inset={12}>
-            <ListRow
-              title="Clear timeout"
-              disabled={busy}
-              onPress={() => {
-                onTimeout(undefined);
-                close();
-              }}
-            />
+            <ListRow title="Clear timeout" disabled={busy} onPress={() => onTimeout(undefined)} />
             <ListRow title="Back" onPress={() => setPanel("actions")} />
           </ListGroup>
         </>
@@ -221,7 +215,6 @@ export function MemberActionsSheet({
                               ? { durationMs: option.durationMs }
                               : {}),
                           });
-                          close();
                         },
                       },
                     ],

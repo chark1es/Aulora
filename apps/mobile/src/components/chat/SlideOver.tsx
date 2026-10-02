@@ -36,6 +36,7 @@ export function SlideOver({
   const insets = useSafeAreaInsets();
   const palette = usePalette();
   const offset = useSharedValue(width);
+  const origin = useSharedValue(0);
 
   useEffect(() => {
     offset.value = withTiming(0, TIMING);
@@ -60,13 +61,15 @@ export function SlideOver({
     .activeOffsetX(14)
     .failOffsetY([-12, 12])
     .onStart(() => {
+      // Anchor to where the page is, so a drag begun mid-animation does not jump.
+      origin.value = offset.value;
       scheduleOnRN(dismissKeyboard);
     })
     .onUpdate((event) => {
-      offset.value = Math.max(0, event.translationX);
+      offset.value = Math.max(0, origin.value + event.translationX);
     })
     .onEnd((event) => {
-      if (event.velocityX > 520 || event.translationX > width * 0.35) {
+      if (event.velocityX > 520 || origin.value + event.translationX > width * 0.35) {
         offset.value = withTiming(width, TIMING, (finished) => {
           if (finished === true) scheduleOnRN(onClose);
         });

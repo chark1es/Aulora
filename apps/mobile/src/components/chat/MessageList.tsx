@@ -132,8 +132,24 @@ export function MessageList({
     if (jumpIndex >= 0)
       listRef.current?.scrollToIndex({ index: jumpIndex, animated: true, viewPosition: 0.5 });
   }
+  // A jumped-to message flashes briefly, whether reached from a reply line, search or pins.
+  const [flashId, setFlashId] = useState<string | null>(null);
   useEffect(() => {
-    if (jumpToMessageId === undefined || jumpToMessageId === null || jumpIndex < 0) return;
+    if (flashId === null) return;
+    const timer = setTimeout(() => setFlashId(null), 1600);
+    return () => clearTimeout(timer);
+  }, [flashId]);
+  // Scroll to a requested message once, when it first appears in the list.
+  // Later list updates (new history, new messages) must not snap back to it.
+  const handledJump = useRef<string | null>(null);
+  useEffect(() => {
+    if (jumpToMessageId === undefined || jumpToMessageId === null) {
+      handledJump.current = null;
+      return;
+    }
+    if (jumpIndex < 0 || handledJump.current === jumpToMessageId) return;
+    handledJump.current = jumpToMessageId;
+    setFlashId(jumpToMessageId);
     const timer = setTimeout(
       () =>
         listRef.current?.scrollToIndex({ index: jumpIndex, animated: false, viewPosition: 0.5 }),
@@ -142,13 +158,6 @@ export function MessageList({
     return () => clearTimeout(timer);
   }, [jumpToMessageId, jumpIndex]);
 
-  // Tapping a reply line scrolls to the message it answers and flashes it.
-  const [flashId, setFlashId] = useState<string | null>(null);
-  useEffect(() => {
-    if (flashId === null) return;
-    const timer = setTimeout(() => setFlashId(null), 1600);
-    return () => clearTimeout(timer);
-  }, [flashId]);
   function jumpToMessage(messageId: string) {
     const index = rows.findIndex((row) => row.kind === "message" && row.key === messageId);
     if (index < 0) return;
@@ -226,7 +235,7 @@ export function MessageList({
               channelId={channelId}
               message={item.message}
               grouped={item.grouped}
-              highlighted={item.message.id === jumpToMessageId || item.message.id === flashId}
+              highlighted={item.message.id === flashId}
               text={decrypted.get(item.message.id)}
               reply={replyPreviewFor(item.message)}
               onJumpToReply={jumpToMessage}

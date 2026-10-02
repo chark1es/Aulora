@@ -89,12 +89,14 @@ export function ListRow({
   const palette = usePalette();
   const tint =
     tone === "danger" ? palette.danger : tone === "accent" || selected ? palette.accent : null;
+  // A row with nothing to do is plain content, not a button that does nothing.
+  const inert = disabled || (onPress === undefined && onLongPress === undefined);
   return (
     <Pressable
-      accessibilityRole="button"
+      accessibilityRole={inert && !disabled ? undefined : "button"}
       accessibilityLabel={accessibilityLabel ?? title}
-      accessibilityState={{ selected, disabled }}
-      disabled={disabled || (onPress === undefined && onLongPress === undefined)}
+      accessibilityState={{ selected, disabled: inert }}
+      disabled={inert}
       onPress={onPress}
       onLongPress={onLongPress}
       delayLongPress={280}

@@ -97,12 +97,18 @@ export function buttonLabelText(children: unknown): string | null {
   if (typeof children === "string" || typeof children === "number") {
     return String(children);
   }
+  if (!Array.isArray(children)) {
+    return null;
+  }
+  // `Save {busy && "…"}` leaves `false` in the array; React renders nothing for it.
+  const pieces = children.filter(
+    (child) => child !== null && child !== undefined && typeof child !== "boolean",
+  );
   if (
-    Array.isArray(children) &&
-    children.length > 0 &&
-    children.every((child) => typeof child === "string" || typeof child === "number")
+    pieces.length > 0 &&
+    pieces.every((child) => typeof child === "string" || typeof child === "number")
   ) {
-    return children.join("");
+    return pieces.join("");
   }
   return null;
 }

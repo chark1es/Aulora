@@ -84,9 +84,10 @@ export function readSetCookies(headers: Headers): string[] {
     return [];
   }
   // Split multiple cookies that were joined with a comma before an attribute.
-  // Better Auth's cookie names contain a dot (`better-auth.session_token`).
+  // A cookie name is an HTTP token, so it may contain `.`, `+` and similar
+  // (Better Auth uses `better-auth.session_token`).
   return combined
-    .split(/,(?=\s*[A-Za-z0-9_.-]+=)/)
+    .split(/,(?=\s*[!#$%&'*+\-.^_`|~A-Za-z0-9]+=)/)
     .map((value) => value.trim())
     .filter((value) => value.length > 0);
 }
