@@ -1,7 +1,7 @@
 /* eslint-disable no-unused-vars -- the base rule reports parameter names in type signatures; Biome checks real unused code */
 import type { AttachmentDescriptor, MessagePayload } from "@aulora/core";
 import { Icon, Spinner, Text, usePalette } from "@aulora/ui-native";
-import { type RefObject, useEffect, useMemo, useRef, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { Pressable, View } from "react-native";
 import { FlatList } from "react-native-gesture-handler";
 import type { ChatSurfaceRuntime } from "../../lib/chat-surface";
@@ -46,11 +46,8 @@ function indexOfMessage(rows: readonly MessageListRow[], messageId: string | nul
 const FLASH_MS = 1600;
 
 /** Scrolling to a message and briefly marking it, from a reply line, search or pins. */
-function useJump(
-  listRef: RefObject<ListHandle | null>,
-  rows: readonly MessageListRow[],
-  requestedId: string | null,
-) {
+function useJump(rows: readonly MessageListRow[], requestedId: string | null) {
+  const listRef = useRef<ListHandle>(null);
   const [flashId, setFlashId] = useState<string | null>(null);
   useEffect(() => {
     if (flashId === null) return;
@@ -80,7 +77,7 @@ function useJump(
     return () => {
       clearTimeout(timer);
     };
-  }, [listRef, requestedId, requestedIndex]);
+  }, [requestedId, requestedIndex]);
 
   function jumpTo(messageId: string) {
     const index = indexOfMessage(rows, messageId);
@@ -90,23 +87,23 @@ function useJump(
     setFlashId(messageId);
   }
 
-  return { flashId, jumpTo };
+  return { listRef, flashId, jumpTo };
 }
 
 /** The message actions sheet and which message it is open on. */
 function useActionsSheet() {
-  const [open, setOpen] = useState<MessagePayload | null>(null);
+  const [visible, setVisible] = useState(false);
   // Kept after closing so the sheet's content stays put while it slides away.
-  const [shown, setShown] = useState<MessagePayload | null>(null);
-  function show(message: MessagePayload) {
+  const [message, setMessage] = useState<MessagePayload>();
+  function show(next: MessagePayload) {
     impactFeedback();
-    setShown(message);
-    setOpen(message);
+    setMessage(next);
+    setVisible(true);
   }
   function hide() {
-    setOpen(null);
+    setVisible(false);
   }
-  return { visible: open !== null, message: shown, show, hide };
+  return { visible, message, show, hide };
 }
 
 function DaySeparator({ label }: { readonly label: string }) {
@@ -221,9 +218,8 @@ function useNames(props: MessageListProps) {
  */
 export function MessageList(props: MessageListProps) {
   const { runtime, messages, firstUnreadId, hasOlder = false, onReply, onQuote } = props;
-  const listRef = useRef<ListHandle>(null);
   const rows = useMemo(() => buildMessageRows(messages), [messages]);
-  const { flashId, jumpTo } = useJump(listRef, rows, props.jumpToMessageId ?? null);
+  const { listRef, flashId, jumpTo } = useJump(rows, props.jumpToMessageId ?? null);
   const sheet = useActionsSheet();
   const names = useNames(props);
   const context: MessageRowContext = {
@@ -272,7 +268,7 @@ export function MessageList(props: MessageListProps) {
           }}
         />
       )}
-      {sheetMessage !== null && runtime !== undefined && (
+      {sheetMessage !== undefined && runtime !== undefined && (
         <MessageActionsSheet
           visible={sheet.visible}
           runtime={runtime}

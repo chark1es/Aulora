@@ -78,7 +78,7 @@ function RowLeading({
   color,
 }: {
   readonly leading: ReactNode;
-  readonly icon: IconName | undefined;
+  readonly icon: ListRowProps["icon"];
   readonly color: string;
 }) {
   if (leading !== undefined && leading !== null) return leading;
