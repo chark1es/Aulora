@@ -1,12 +1,16 @@
 # Getting started
 
-## Join an existing server
+A client and a workspace are different installs.
 
-Ask your workspace administrator for the server's web URL and an invitation if registration is restricted. Open it in a browser, or enter that URL in the desktop or mobile client's connect screen. Choose a sign-in method offered by the server. Follow the [user guide](user-guide.md) for everyday use.
+A client is the app: the browser, or a desktop or mobile download. You use it to join a server someone already runs. A workspace is that server. One person installs it. Everyone else installs a client and opens the workspace URL.
 
-You do not need Docker or developer tools to join someone else's server.
+## Install a client
 
-## Install a local server
+You do not need Git, Docker, or a compiler to join a workspace.
+
+Ask the person who runs it for the web URL, and an invitation if signup is closed. Open that URL in a browser, or install a desktop or mobile app and enter the URL on the connect screen. Choose a sign-in method the server offers. iOS and Android are in beta. File names and install steps are in the [user guide](user-guide.md#install-a-desktop-or-mobile-client).
+
+## Install a workspace
 
 Install Git and Docker with Compose v2.24 or newer. Start Docker first. On Windows use PowerShell 7 and Docker Desktop in Linux-container mode.
 

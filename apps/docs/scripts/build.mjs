@@ -87,24 +87,28 @@ function head({ title, description, base, styles }) {
     <title>${escapeHtml(title)}</title>
     <meta name="description" content="${escapeHtml(description)}" />
     <link rel="icon" type="image/svg+xml" href="${base}favicon.svg" />
-    <script src="${base}site.js" defer></script>
+    <script type="module" src="${base}site.js"></script>
 ${["tokens.css", "site.css", ...styles].map((file) => `    <link rel="stylesheet" href="${base}${file}" />`).join("\n")}
   </head>`;
 }
 
 function siteHeader({ base, section }) {
-  const current = (name) => (section === name ? ' aria-current="page"' : "");
+  const item = (href, label, name) => {
+    const current = section === name ? ' aria-current="page"' : "";
+    return `<a href="${base}${href}"${current}>${label}</a>`;
+  };
+  const docsMark = section === "docs" ? '<span class="brand-sub">/docs</span>' : "";
   return `    <header class="site-header">
       <div class="site-header-inner">
         <a class="brand" href="${base}index.html">
           <img src="${base}favicon.svg" alt="" width="26" height="26" />
-          <span>Aulora</span>${section === "docs" ? '<span class="brand-sub">/ docs</span>' : ""}
+          <span class="brand-lockup"><span class="brand-name">Aulora</span>${docsMark}</span>
         </a>
         <nav class="site-nav" aria-label="Site">
-          <a href="${base}index.html#product">Product</a>
-          <a href="${base}index.html#install">Install</a>
-          <a href="${base}index.html#pricing">Pricing</a>
-          <a href="${base}docs/index.html"${current("docs")}>Docs</a>
+          ${item("how-it-works.html", "How it works", "how-it-works")}
+          ${item("install.html", "Install", "install")}
+          ${item("pricing.html", "Pricing", "pricing")}
+          ${item("docs/index.html", "Docs", "docs")}
           <a href="https://github.com/chark1es/Aulora">GitHub</a>
         </nav>
       </div>
@@ -224,24 +228,54 @@ ${siteFooter({ base })}
 `;
 }
 
-// The landing page is hand-written HTML with a few build-time placeholders:
+// Marketing pages are hand-written HTML with a few build-time placeholders:
 // {{icon:name}}, {{avatar:seed}} (a person, circle) and {{server:seed}}
 // (a workspace, squircle), plus {{head}}, {{header}} and {{footer}}.
-function renderLanding() {
-  const template = readFileSync(join(root, "landing", "index.html"), "utf8");
+const LANDING_PAGES = [
+  {
+    file: "index.html",
+    section: "home",
+    title: "Aulora · Team chat on your own server",
+    description:
+      "Channels, threads, direct messages, and voice and video calls. Download the app, or install a workspace on a server you run.",
+  },
+  {
+    file: "how-it-works.html",
+    section: "how-it-works",
+    title: "How it works · Aulora",
+    description:
+      "One Aulora app can join several servers. Each server is its own workspace, with its own accounts, channels, and files.",
+  },
+  {
+    file: "install.html",
+    section: "install",
+    title: "Install · Aulora",
+    description:
+      "Install the Aulora client for macOS, Windows, Linux, or the iOS and Android betas, or run a workspace on a server you control.",
+  },
+  {
+    file: "pricing.html",
+    section: "pricing",
+    title: "Pricing · Aulora",
+    description:
+      "Aulora is free for personal and noncommercial use. Companies pay $1 per active user per month.",
+  },
+];
+
+function renderLanding(page) {
+  const template = readFileSync(join(root, "landing", page.file), "utf8");
   const base = "";
   return template
     .replace(
       "{{head}}",
       head({
-        title: "Aulora · Team chat on your own server",
-        description:
-          "Channels, threads, DMs, and voice/video calls for your team, running on one Docker host you control. Browser, desktop, and mobile clients.",
+        title: page.title,
+        description: page.description,
         base,
         styles: ["landing.css"],
       }),
     )
-    .replace("{{header}}", siteHeader({ base, section: "home" }))
+    .replace("{{header}}", siteHeader({ base, section: page.section }))
     .replace("{{footer}}", siteFooter({ base }))
     .replace(/\{\{icon:([a-z-]+)\}\}/g, (_match, name) => icon(name))
     .replace(
@@ -257,7 +291,9 @@ mkdirSync(docsOut, { recursive: true });
 cpSync(staticDir, outDir, { recursive: true });
 cpSync(join(repo, "apps/web/public/favicon.svg"), join(outDir, "favicon.svg"));
 writeFileSync(join(outDir, "tokens.css"), paletteCss(palettes), "utf8");
-writeFileSync(join(outDir, "index.html"), renderLanding(), "utf8");
+for (const page of LANDING_PAGES) {
+  writeFileSync(join(outDir, page.file), renderLanding(page), "utf8");
+}
 
 for (const page of PAGES) {
   const source = readFileSync(join(contentDir, page.file), "utf8");
@@ -290,4 +326,6 @@ for (const file of ["LICENSE", "NOTICE", "COMMERCIAL.md", "CLA.md", "THIRD_PARTY
     );
   }
 }
-process.stdout.write(`docs: wrote the landing page and ${PAGES.length} docs pages to ${outDir}\n`);
+process.stdout.write(
+  `docs: wrote ${LANDING_PAGES.length} marketing pages and ${PAGES.length} docs pages to ${outDir}\n`,
+);

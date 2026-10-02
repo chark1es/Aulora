@@ -4,8 +4,8 @@ Aulora is self-hosted team chat. Each server hosts one workspace; clients can jo
 
 ## Start here
 
-- Joining a team? Read the [user guide](user-guide.md).
-- Installing your own server? Start with [getting started](getting-started.md).
+- Installing the app? Read [install a client](getting-started.md#install-a-client), then the [user guide](user-guide.md#install-a-desktop-or-mobile-client).
+- Running a server? Start with [install a workspace](getting-started.md#install-a-workspace).
 - Deploying publicly? Read [self-hosting](self-hosting.md) or [Coolify](coolify.md).
 - Managing a workspace? Read the [admin guide](admin.md).
 - Keeping it running? Set up [backups](backups.md), [updates](updates.md), and read [troubleshooting](troubleshooting.md).
