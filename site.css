@@ -17,6 +17,8 @@
   --ease-out: cubic-bezier(0.16, 1, 0.3, 1);
   --shadow-card: 0 1px 2px rgba(0, 0, 0, 0.04), 0 12px 32px -18px rgba(0, 0, 0, 0.22);
   --header-height: 56px;
+  --site-max: 1320px;
+  --site-pad: 24px;
 }
 
 /*
@@ -123,10 +125,10 @@ pre {
   display: flex;
   align-items: center;
   gap: 24px;
-  max-width: 1200px;
+  max-width: var(--site-max);
   height: var(--header-height);
   margin: 0 auto;
-  padding: 0 24px;
+  padding: 0 var(--site-pad);
 }
 
 @media (prefers-reduced-transparency: reduce) {
@@ -155,15 +157,33 @@ pre {
   border-radius: 7px;
 }
 
+.brand-lockup {
+  display: inline-flex;
+  align-items: baseline;
+  gap: 0.35em;
+  line-height: 1;
+  white-space: nowrap;
+}
+
+.brand-name,
+.brand-sub {
+  font-size: 16px;
+  letter-spacing: -0.011em;
+  line-height: 1;
+}
+
+.brand-name {
+  font-weight: 600;
+}
+
 .brand-sub {
   color: var(--text-muted);
-  font-family: var(--font-mono);
-  font-size: 13px;
-  font-weight: 400;
+  font-weight: 500;
 }
 
 .site-nav {
   display: flex;
+  flex-wrap: wrap;
   gap: 2px;
   margin-left: auto;
 }
@@ -245,9 +265,9 @@ pre {
   flex-wrap: wrap;
   align-items: center;
   gap: 12px 24px;
-  max-width: 1200px;
+  max-width: var(--site-max);
   margin: 0 auto;
-  padding: 28px 24px 36px;
+  padding: 28px var(--site-pad) 36px;
 }
 
 .site-footer p {
@@ -279,18 +299,23 @@ pre {
   font-size: 12px;
 }
 
-@media (max-width: 720px) {
+@media (max-width: 860px) {
   .site-header-inner {
-    gap: 12px;
-    padding: 0 16px;
+    height: auto;
+    min-height: var(--header-height);
+    flex-wrap: wrap;
+    gap: 4px 12px;
+    padding: 8px 16px;
   }
 
-  .site-nav a:not([href*="docs/"]):not([href*="github"]) {
-    display: none;
+  .site-nav {
+    width: 100%;
+    margin-left: 0;
   }
 
   .site-nav a {
     min-height: 44px;
+    padding: 0 8px;
   }
 
   .site-footer nav {
@@ -303,7 +328,9 @@ pre {
   *::before,
   *::after {
     animation-duration: 0.01ms !important;
+    animation-delay: 0.01ms !important;
     animation-iteration-count: 1 !important;
     transition-duration: 0.01ms !important;
+    transition-delay: 0s !important;
   }
 }

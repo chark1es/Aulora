@@ -1,0 +1,122 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <meta name="color-scheme" content="light dark" />
+    <title>Pricing · Aulora</title>
+    <meta name="description" content="Aulora is free for personal and noncommercial use. Companies pay $1 per active user per month." />
+    <link rel="icon" type="image/svg+xml" href="favicon.svg" />
+    <script type="module" src="site.js"></script>
+    <link rel="stylesheet" href="tokens.css" />
+    <link rel="stylesheet" href="site.css" />
+    <link rel="stylesheet" href="landing.css" />
+  </head>
+  <body class="landing">
+    <header class="site-header">
+      <div class="site-header-inner">
+        <a class="brand" href="index.html">
+          <img src="favicon.svg" alt="" width="26" height="26" />
+          <span class="brand-lockup"><span class="brand-name">Aulora</span></span>
+        </a>
+        <nav class="site-nav" aria-label="Site">
+          <a href="how-it-works.html">How it works</a>
+          <a href="install.html">Install</a>
+          <a href="pricing.html" aria-current="page">Pricing</a>
+          <a href="docs/index.html">Docs</a>
+          <a href="https://github.com/chark1es/Aulora">GitHub</a>
+        </nav>
+      </div>
+    </header>
+    <main>
+      <header class="page-intro">
+        <p class="eyebrow">Pricing</p>
+        <h1>Free at home. A dollar a head at work.</h1>
+        <p class="lede">Every feature is in every copy. The difference is who is using it.</p>
+      </header>
+
+      <section class="band" id="rates">
+        <div class="rate-card">
+          <div class="rate rate-personal">
+            <p class="rate-kicker">Personal &amp; noncommercial</p>
+            <p class="rate-price"><span class="rate-amount">$0</span><small>forever</small></p>
+            <p class="rate-note">No seat limit, no time limit, no license key.</p>
+            <p class="rate-body">
+              For you, your friends, your club, or your community, and for the other noncommercial
+              uses defined in the <a href="docs/legal/LICENSE">PolyForm Noncommercial license</a>.
+            </p>
+            <a class="button button-quiet" href="install.html#workspace">Install a workspace</a>
+          </div>
+          <div class="rate rate-company">
+            <p class="rate-kicker">Companies</p>
+            <p class="rate-price"><span class="rate-amount">$1</span><small>per active user / month</small></p>
+            <p class="rate-note">You pay for the people who showed up, not the seats you reserved.</p>
+            <p class="rate-body">
+              Anyone who never signs in costs nothing. Verified nonprofits can choose $0.50.
+              Billing covers forks and modified builds too.
+            </p>
+            <a class="button button-primary" href="mailto:cnguyen@spwnd.dev?subject=Aulora%20commercial%20license">Talk about a license</a>
+          </div>
+        </div>
+
+        <ul class="rate-included">
+          <li><svg class="icon" viewBox="0 0 24 24" aria-hidden="true" focusable="false"><path fill="currentColor" d="m9.55 15.15l8.475-8.475q.3-.3.7-.3t.7.3t.3.713t-.3.712l-9.175 9.2q-.3.3-.7.3t-.7-.3L4.55 13q-.3-.3-.288-.712t.313-.713t.713-.3t.712.3z"/></svg>Every feature, in every copy</li>
+          <li><svg class="icon" viewBox="0 0 24 24" aria-hidden="true" focusable="false"><path fill="currentColor" d="m9.55 15.15l8.475-8.475q.3-.3.7-.3t.7.3t.3.713t-.3.712l-9.175 9.2q-.3.3-.7.3t-.7-.3L4.55 13q-.3-.3-.288-.712t.313-.713t.713-.3t.712.3z"/></svg>Monthly, with no annual lock-in</li>
+          <li><svg class="icon" viewBox="0 0 24 24" aria-hidden="true" focusable="false"><path fill="currentColor" d="m9.55 15.15l8.475-8.475q.3-.3.7-.3t.7.3t.3.713t-.3.712l-9.175 9.2q-.3.3-.7.3t-.7-.3L4.55 13q-.3-.3-.288-.712t.313-.713t.713-.3t.712.3z"/></svg>Reports contain counts only</li>
+          <li><svg class="icon" viewBox="0 0 24 24" aria-hidden="true" focusable="false"><path fill="currentColor" d="m9.55 15.15l8.475-8.475q.3-.3.7-.3t.7.3t.3.713t-.3.712l-9.175 9.2q-.3.3-.7.3t-.7-.3L4.55 13q-.3-.3-.288-.712t.313-.713t.713-.3t.712.3z"/></svg>No per-server or storage fees</li>
+        </ul>
+      </section>
+
+      <section class="band" id="counting">
+        <div class="counting">
+          <div class="counting-copy">
+            <p class="group-label">How counting works</p>
+            <h2>A member is counted once a month.</h2>
+            <p>
+              On the first sign-in, presence, or sent message in a UTC month, a member counts for
+              that month. Someone who never opens the workspace is never billed. The invoice is a
+              count, not a dossier.
+            </p>
+            <p class="pricing-links">
+              <a href="docs/licensing.html">How licensing works</a> ·
+              <a href="docs/legal/COMMERCIAL.html">Commercial terms</a>
+            </p>
+          </div>
+          <figure class="receipt" aria-label="Example monthly invoice">
+            <p class="receipt-head"><span>Aulora · usage</span><span>Oct 2026</span></p>
+            <p class="receipt-note">Example: a 40-person team</p>
+            <dl>
+              <div><dt>Members in workspace</dt><dd>40</dd></div>
+              <div><dt>Active at least once</dt><dd>27</dd></div>
+              <div class="is-free"><dt>Inactive all month</dt><dd>13 × $0</dd></div>
+            </dl>
+            <p class="receipt-total"><span>27 × $1.00</span><strong>$27.00</strong></p>
+            <p class="receipt-fine">Invoices show counts and amounts only. No names, emails, or messages leave the server.</p>
+          </figure>
+        </div>
+      </section>
+
+      <section class="closer">
+        <h2>Try the whole thing first.</h2>
+        <p>The demo runs in your browser, and the license is free for personal use.</p>
+        <div class="hero-actions">
+          <a class="button button-primary" href="index.html">Open the demo</a>
+          <a class="button button-quiet" href="install.html">Install</a>
+        </div>
+      </section>
+    </main>
+    <footer class="site-footer">
+      <div class="site-footer-inner">
+        <p class="footer-mark">Aulora · team chat on your own server</p>
+        <nav aria-label="Legal and contact">
+          <a href="docs/licensing.html">Licensing</a>
+          <a href="docs/privacy.html">Privacy</a>
+          <a href="docs/legal/COMMERCIAL.html">Commercial terms</a>
+          <a href="docs/legal/THIRD_PARTY_NOTICES.html">Third-party notices</a>
+          <a href="mailto:cnguyen@spwnd.dev">cnguyen@spwnd.dev</a>
+        </nav>
+        <p class="footer-fine">Free for personal and noncommercial use under PolyForm Noncommercial 1.0.0. Business use requires a paid license.</p>
+      </div>
+    </footer>
+  </body>
+</html>

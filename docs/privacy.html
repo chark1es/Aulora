@@ -7,7 +7,7 @@
     <title>Privacy and data handling · Aulora Docs</title>
     <meta name="description" content="Documentation for Aulora, self-hosted team chat with server-side encryption." />
     <link rel="icon" type="image/svg+xml" href="../favicon.svg" />
-    <script src="../site.js" defer></script>
+    <script type="module" src="../site.js"></script>
     <link rel="stylesheet" href="../tokens.css" />
     <link rel="stylesheet" href="../site.css" />
     <link rel="stylesheet" href="../docs.css" />
@@ -17,12 +17,12 @@
       <div class="site-header-inner">
         <a class="brand" href="../index.html">
           <img src="../favicon.svg" alt="" width="26" height="26" />
-          <span>Aulora</span><span class="brand-sub">/ docs</span>
+          <span class="brand-lockup"><span class="brand-name">Aulora</span><span class="brand-sub">/docs</span></span>
         </a>
         <nav class="site-nav" aria-label="Site">
-          <a href="../index.html#product">Product</a>
-          <a href="../index.html#install">Install</a>
-          <a href="../index.html#pricing">Pricing</a>
+          <a href="../how-it-works.html">How it works</a>
+          <a href="../install.html">Install</a>
+          <a href="../pricing.html">Pricing</a>
           <a href="../docs/index.html" aria-current="page">Docs</a>
           <a href="https://github.com/chark1es/Aulora">GitHub</a>
         </nav>
@@ -66,7 +66,7 @@
 <h2 id="data-on-your-server">Data on your server</h2>
 <p>The server stores accounts, workspace membership, messages, attachments, reactions, permissions, and activity metadata needed to run chat. The default deployment stores data in Postgres and object storage on the operator&#39;s infrastructure.</p>
 <p>Message content and uploads use server-side encryption. Authorized clients receive decrypted content. The operator&#39;s server has access to the key, so administrators with control of the application can read content. Account information and other metadata may remain readable. This is not end-to-end encryption.</p>
-<p>Clients store server profiles and session information on the device so you can return to your workspaces. Sign out on shared devices. OS backups and local device security can affect that information.</p>
+<p>Clients store server profiles, session information, and local message caches on the device so you can return to your workspaces. The mobile app also stores unsent messages and attachment references locally until they are sent or discarded. Downloaded attachments can remain in the application&#39;s temporary cache. Sign out on shared devices. OS backups and local device security can affect that information.</p>
 <h2 id="optional-external-services">Optional external services</h2>
 <p>The configured identity provider receives sign-in traffic when OAuth or SSO is enabled. An email provider receives recipient addresses and email content when the server sends account or invitation emails.</p>
 <p>Mobile notifications send device tokens and routing information through the configured push relay and APNs, FCM, or UnifiedPush. The relay is designed to send generic wakeups/alerts rather than chat message bodies. Providers can still observe transport metadata.</p>

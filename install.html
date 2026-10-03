@@ -1,0 +1,254 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <meta name="color-scheme" content="light dark" />
+    <title>Install · Aulora</title>
+    <meta name="description" content="Install the Aulora client for macOS, Windows, Linux, or the iOS and Android betas, or run a workspace on a server you control." />
+    <link rel="icon" type="image/svg+xml" href="favicon.svg" />
+    <script type="module" src="site.js"></script>
+    <link rel="stylesheet" href="tokens.css" />
+    <link rel="stylesheet" href="site.css" />
+    <link rel="stylesheet" href="landing.css" />
+  </head>
+  <body class="landing">
+    <header class="site-header">
+      <div class="site-header-inner">
+        <a class="brand" href="index.html">
+          <img src="favicon.svg" alt="" width="26" height="26" />
+          <span class="brand-lockup"><span class="brand-name">Aulora</span></span>
+        </a>
+        <nav class="site-nav" aria-label="Site">
+          <a href="how-it-works.html">How it works</a>
+          <a href="install.html" aria-current="page">Install</a>
+          <a href="pricing.html">Pricing</a>
+          <a href="docs/index.html">Docs</a>
+          <a href="https://github.com/chark1es/Aulora">GitHub</a>
+        </nav>
+      </div>
+    </header>
+    <main>
+      <header class="page-intro">
+        <p class="eyebrow">Install</p>
+        <h1>Get the app. Or run the server.</h1>
+        <p class="lede">
+          Aulora is two pieces. The <strong>client</strong> is the app you open to join a workspace.
+          The <strong>workspace</strong> is the server that holds the messages, files, and accounts.
+          Most people only install the client. One person per team runs the server.
+        </p>
+        <div class="download-bar" data-downloads>
+          <a class="button button-primary" data-download="primary" href="#macos">Get the app</a>
+          <p class="download-meta" data-download-meta>The button follows this computer. iOS and Android are in beta.</p>
+          <nav class="download-alts" aria-label="Other systems">
+            <a data-download="macos" href="#macos">macOS</a>
+            <a data-download="windows" href="#windows">Windows</a>
+            <a data-download="linux" href="#linux">Linux</a>
+            <a data-download="ios" href="#ios">iOS <span class="beta">Beta</span></a>
+            <a data-download="android" href="#android">Android <span class="beta">Beta</span></a>
+          </nav>
+        </div>
+      </header>
+
+      <section class="band" id="client">
+        <div class="section-head">
+          <p class="group-label">Step one · the client</p>
+          <h2>Join a workspace.</h2>
+          <p>
+            The client connects to a server someone already runs. You need that server's web URL, and
+            an invitation if signup is closed. Nothing here needs Docker.
+          </p>
+        </div>
+
+        <div class="platforms">
+          <article class="platform-card" id="macos">
+            <header>
+              <span class="platform-icon"><svg class="icon" viewBox="0 0 24 24" aria-hidden="true" focusable="false"><path fill="currentColor" d="M10 19v-2H4q-.825 0-1.412-.587T2 15V5q0-.825.588-1.412T4 3h16q.825 0 1.413.588T22 5v10q0 .825-.587 1.413T20 17h-6v2h1q.425 0 .713.288T16 20t-.288.713T15 21H9q-.425 0-.712-.288T8 20t.288-.712T9 19zm-6-4h16V5H4zm0 0V5z"/></svg></span>
+              <span><h3>macOS</h3><small>Desktop app</small></span>
+            </header>
+            <p>Open the disk image and drag Aulora to Applications, then enter your workspace URL on the connect screen.</p>
+            <div class="platform-actions">
+              <a class="button button-primary" data-download="macos" data-arch="arm" href="https://github.com/chark1es/Aulora/releases/latest">Apple silicon</a>
+              <a class="button button-quiet" data-download="macos" data-arch="intel" href="https://github.com/chark1es/Aulora/releases/latest">Intel</a>
+            </div>
+          </article>
+
+          <article class="platform-card" id="windows">
+            <header>
+              <span class="platform-icon"><svg class="icon" viewBox="0 0 24 24" aria-hidden="true" focusable="false"><path fill="currentColor" d="M10 19v-2H4q-.825 0-1.412-.587T2 15V5q0-.825.588-1.412T4 3h16q.825 0 1.413.588T22 5v10q0 .825-.587 1.413T20 17h-6v2h1q.425 0 .713.288T16 20t-.288.713T15 21H9q-.425 0-.712-.288T8 20t.288-.712T9 19zm-6-4h16V5H4zm0 0V5z"/></svg></span>
+              <span><h3>Windows</h3><small>Desktop app</small></span>
+            </header>
+            <p>Run the installer. Windows builds are unsigned for now, so the system may warn you the first time. Compare it against <code>SHA256SUMS</code> on the release if you want to check it.</p>
+            <div class="platform-actions">
+              <a class="button button-primary" data-download="windows" href="https://github.com/chark1es/Aulora/releases/latest">Download for Windows</a>
+            </div>
+          </article>
+
+          <article class="platform-card" id="linux">
+            <header>
+              <span class="platform-icon"><svg class="icon" viewBox="0 0 24 24" aria-hidden="true" focusable="false"><path fill="currentColor" d="M10 19v-2H4q-.825 0-1.412-.587T2 15V5q0-.825.588-1.412T4 3h16q.825 0 1.413.588T22 5v10q0 .825-.587 1.413T20 17h-6v2h1q.425 0 .713.288T16 20t-.288.713T15 21H9q-.425 0-.712-.288T8 20t.288-.712T9 19zm-6-4h16V5H4zm0 0V5z"/></svg></span>
+              <span><h3>Linux</h3><small>Desktop app</small></span>
+            </header>
+            <p>Use the AppImage if you want in-app updates. Grant it execute permission, for example <code>chmod +x Aulora*.AppImage</code>. A Debian package is on the same release.</p>
+            <div class="platform-actions">
+              <a class="button button-primary" data-download="linux" href="https://github.com/chark1es/Aulora/releases/latest">Download the AppImage</a>
+            </div>
+          </article>
+
+          <article class="platform-card is-beta" id="ios">
+            <header>
+              <span class="platform-icon"><svg class="icon" viewBox="0 0 24 24" aria-hidden="true" focusable="false"><path fill="currentColor" d="M19.95 21q-3.125 0-6.175-1.362t-5.55-3.863t-3.862-5.55T3 4.05q0-.45.3-.75t.75-.3H8.1q.35 0 .625.238t.325.562l.65 3.5q.05.4-.025.675T9.4 8.45L6.975 10.9q.5.925 1.187 1.787t1.513 1.663q.775.775 1.625 1.438T13.1 17l2.35-2.35q.225-.225.588-.337t.712-.063l3.45.7q.35.1.575.363T21 15.9v4.05q0 .45-.3.75t-.75.3M6.025 9l1.65-1.65L7.25 5H5.025q.125 1.025.35 2.025T6.025 9m8.95 8.95q.975.425 1.988.675T19 18.95v-2.2l-2.35-.475zm0 0"/></svg></span>
+              <span><h3>iOS <span class="beta">Beta</span></h3><small>iPhone and iPad</small></span>
+            </header>
+            <p>The app installs through TestFlight, not as a file you tap. The signed IPA on the release is for the person shipping the build; it will not install on a phone. Enter the workspace URL on the connect screen.</p>
+            <div class="platform-actions">
+              <a class="button button-primary" href="docs/user-guide.html#install-a-desktop-or-mobile-client">Read the install notes</a>
+              <a class="button button-quiet" href="https://github.com/chark1es/Aulora/releases/latest">Release files</a>
+            </div>
+          </article>
+
+          <article class="platform-card is-beta" id="android">
+            <header>
+              <span class="platform-icon"><svg class="icon" viewBox="0 0 24 24" aria-hidden="true" focusable="false"><path fill="currentColor" d="M19.95 21q-3.125 0-6.175-1.362t-5.55-3.863t-3.862-5.55T3 4.05q0-.45.3-.75t.75-.3H8.1q.35 0 .625.238t.325.562l.65 3.5q.05.4-.025.675T9.4 8.45L6.975 10.9q.5.925 1.187 1.787t1.513 1.663q.775.775 1.625 1.438T13.1 17l2.35-2.35q.225-.225.588-.337t.712-.063l3.45.7q.35.1.575.363T21 15.9v4.05q0 .45-.3.75t-.75.3M6.025 9l1.65-1.65L7.25 5H5.025q.125 1.025.35 2.025T6.025 9m8.95 8.95q.975.425 1.988.675T19 18.95v-2.2l-2.35-.475zm0 0"/></svg></span>
+              <span><h3>Android <span class="beta">Beta</span></h3><small>Phone and tablet</small></span>
+            </header>
+            <p>Download the APK and allow your browser or file manager to install it. The AAB on the release is for Play submission, not a file you install. You still need a workspace URL.</p>
+            <div class="platform-actions">
+              <a class="button button-primary" data-download="android" href="https://github.com/chark1es/Aulora/releases/latest">Download the APK</a>
+            </div>
+          </article>
+
+          <article class="platform-card" id="browser">
+            <header>
+              <span class="platform-icon"><svg class="icon" viewBox="0 0 24 24" aria-hidden="true" focusable="false"><path fill="currentColor" d="M9.5 16q-2.725 0-4.612-1.888T3 9.5t1.888-4.612T9.5 3t4.613 1.888T16 9.5q0 1.1-.35 2.075T14.7 13.3l5.6 5.6q.275.275.275.7t-.275.7t-.7.275t-.7-.275l-5.6-5.6q-.75.6-1.725.95T9.5 16m0-2q1.875 0 3.188-1.312T14 9.5t-1.312-3.187T9.5 5T6.313 6.313T5 9.5t1.313 3.188T9.5 14"/></svg></span>
+              <span><h3>In the browser</h3><small>Nothing to install</small></span>
+            </header>
+            <p>Every workspace also serves the app over the web. Open the workspace URL and sign in; the rest of the team can do the same.</p>
+            <div class="platform-actions">
+              <a class="button button-quiet" href="docs/user-guide.html#connect-and-sign-in">Read the user guide</a>
+            </div>
+          </article>
+        </div>
+
+        <p class="stage-foot">
+          Every client asks for the workspace URL. Files and checksums live on
+          <a href="https://github.com/chark1es/Aulora/releases">GitHub Releases</a>, and the
+          <a href="docs/user-guide.html#install-a-desktop-or-mobile-client">user guide</a> covers the rest of the setup.
+        </p>
+      </section>
+
+      <section class="band" id="workspace">
+        <div class="section-head">
+          <p class="group-label">Step two · the workspace</p>
+          <h2>Run the server.</h2>
+          <p>
+            Do this once, on a machine you control. You need Git and Docker with Compose v2.24 or
+            newer. Bun, Node.js, and Rust are not required to run a workspace.
+          </p>
+        </div>
+
+        <div class="oneliner">
+          <span class="prompt" aria-hidden="true">$</span>
+          <code id="oneliner">git clone https://github.com/chark1es/Aulora.git &amp;&amp; cd Aulora &amp;&amp; ./install.sh</code>
+          <button type="button" data-copy="oneliner">Copy</button>
+        </div>
+
+        <div class="install">
+          <div class="terminal" role="img" aria-label="Terminal session running the Aulora installer">
+            <div class="terminal-bar"><i></i><i></i><i></i><span>~/Aulora zsh</span></div>
+            <pre><span class="t-prompt">$</span> ./install.sh
+<span class="t-ask">Owner email:</span> sam@acme.studio
+<span class="t-ask">Owner password (16+ chars):</span> <span class="t-dim">••••••••••••••••••••</span>
+<span class="t-log">[install]</span> wrote infra/docker/.env
+<span class="t-log">[install]</span> building and starting the stack (this can take a few minutes)...
+<span class="t-log">[install]</span> waiting for first-run setup (idempotent)…
+<span class="t-log">[install]</span> <span class="t-ok">ready.</span> Open http://localhost:8080 and sign in as sam@acme.studio.
+<span class="t-prompt">$</span> <span class="cursor"></span></pre>
+          </div>
+          <ol class="steps">
+            <li>
+              <strong>Run the installer</strong>
+              <p>It asks for an owner email and password, generates secrets, builds the stack, and creates the workspace. On Windows, run <code>pwsh ./install.ps1</code>. That script installs the server, not the Windows app.</p>
+            </li>
+            <li>
+              <strong>Back up <code>.env</code> somewhere else</strong>
+              <p>It holds the encryption key. A database backup is useless without it.</p>
+            </li>
+            <li>
+              <strong>Give it a real address</strong>
+              <p>Set up DNS, HTTPS, and origins with the <a href="docs/self-hosting.html">self-hosting guide</a>, or deploy on <a href="docs/coolify.html">Coolify</a>.</p>
+            </li>
+            <li>
+              <strong>Invite the team</strong>
+              <p>They install a client or open the URL. You create channels, roles, and invites from <a href="docs/admin.html">workspace settings</a>.</p>
+            </li>
+          </ol>
+        </div>
+
+        <div class="server-card workspace-stack">
+          <p class="server-host"><span class="avatar avatar-server" aria-hidden="true"><svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 100 100"><g fill="#0091cb"><circle cx="34.48" cy="50.61" r="21.47"/><circle cx="63.18" cy="50.61" r="21.47"/><path d="M34.48 29.15H63.18V72.08H34.48Z"/></g><g fill="#071117"><path d="M40.98 46.85C42.13 53.48 42.03 54.02 39.56 54.45C37.09 54.88 36.81 54.41 35.66 47.77C34.51 41.13 34.61 40.6 37.09 40.17C39.56 39.74 39.83 40.21 40.98 46.85Z"/><path d="M63.99 46.46C65.25 54.47 65.11 55.11 62.06 55.59C59.01 56.07 58.68 55.5 57.43 47.49C56.18 39.48 56.31 38.84 59.36 38.36C62.42 37.88 62.74 38.45 63.99 46.46Z"/></g></svg></span><span><strong>What the installer starts</strong><code>one workspace</code></span></p>
+          <ul class="stack-list">
+            <li><span>web</span><small>proxy + client</small></li>
+            <li><span>convex</span><small>backend, auth, encryption</small></li>
+            <li><span>postgres</span><small>messages, members, roles</small></li>
+            <li><span>minio</span><small>uploads + nightly backups</small></li>
+          </ul>
+          <p class="server-foot"><svg class="icon" viewBox="0 0 24 24" aria-hidden="true" focusable="false"><path fill="currentColor" d="M6 22q-.825 0-1.412-.587T4 20V10q0-.825.588-1.412T6 8h1V6q0-2.075 1.463-3.537T12 1t3.538 1.463T17 6v2h1q.825 0 1.413.588T20 10v10q0 .825-.587 1.413T18 22zm0-2h12V10H6zm7.413-3.588Q14 15.826 14 15t-.587-1.412T12 13t-1.412.588T10 15t.588 1.413T12 17t1.413-.587M9 8h6V6q0-1.25-.875-2.125T12 3t-2.125.875T9 6zM6 20V10z"/></svg>Key held by the operator, stored apart from the database</p>
+        </div>
+
+        <p class="stage-foot">Full steps, checks, and the public-address setup are in <a href="docs/getting-started.html#install-a-workspace">getting started</a>.</p>
+      </section>
+
+      <section class="band" id="trust">
+        <div class="pinned">
+          <p class="pinned-tag"><svg class="icon" viewBox="0 0 24 24" aria-hidden="true" focusable="false"><path fill="currentColor" d="M16 5v7l1.7 1.7q.15.15.225.338t.075.387V15q0 .425-.288.712T17 16h-4v5.85q0 .425-.288.713T12 22.85t-.712-.288T11 21.85V16H7q-.425 0-.712-.288T6 15v-.575q0-.2.075-.387T6.3 13.7L8 12V5q-.425 0-.712-.288T7 4t.288-.712T8 3h8q.425 0 .713.288T17 4t-.288.713T16 5m-7.15 9h6.3L14 12.85V5h-4v7.85zM12 14"/></svg>Before you run a server</p>
+          <h2>Know who can read what.</h2>
+          <p class="pinned-lede">Self-hosting only helps if the trust model is clear. Here it is in plain terms.</p>
+          <div class="ledger">
+            <div>
+              <p class="ledger-label is-yes"><svg class="icon" viewBox="0 0 24 24" aria-hidden="true" focusable="false"><path fill="currentColor" d="m9.55 15.15l8.475-8.475q.3-.3.7-.3t.7.3t.3.713t-.3.712l-9.175 9.2q-.3.3-.7.3t-.7-.3L4.55 13q-.3-.3-.288-.712t.313-.713t.713-.3t.712.3z"/></svg>What Aulora does</p>
+              <ul>
+                <li>Encrypts message content and uploads at rest with a key you generate and keep.</li>
+                <li>Keeps chat data in Postgres and object storage on infrastructure you run.</li>
+                <li>Sends mobile push as generic wakeups through your relay, not message bodies.</li>
+                <li>Reports billing as monthly counts only: no names, emails, or messages.</li>
+              </ul>
+            </div>
+            <div>
+              <p class="ledger-label is-no"><svg class="icon" viewBox="0 0 24 24" aria-hidden="true" focusable="false"><path fill="currentColor" d="m12 13.4l-4.9 4.9q-.275.275-.7.275t-.7-.275t-.275-.7t.275-.7l4.9-4.9l-4.9-4.9q-.275-.275-.275-.7t.275-.7t.7-.275t.7.275l4.9 4.9l4.9-4.9q.275-.275.7-.275t.7.275t.275.7t-.275.7L13.4 12l4.9 4.9q.275.275.275.7t-.275.7t-.7.275t-.7-.275z"/></svg>What it doesn't do</p>
+              <ul>
+                <li><strong>It isn't end-to-end encrypted.</strong> The server decrypts content for signed-in users, so the operator has to be trusted.</li>
+                <li>It isn't a hosted service. You run the machine, the backups, and the updates.</li>
+                <li>It can't recover data without the key. Lose <code>AULORA_ENCRYPTION_KEY</code> and your messages are gone.</li>
+                <li>Windows client installers are unsigned for now, so Windows may warn you the first time.</li>
+              </ul>
+            </div>
+          </div>
+          <a class="text-link" href="docs/privacy.html">Privacy and data-flow notes <svg class="icon" viewBox="0 0 24 24" aria-hidden="true" focusable="false"><path fill="currentColor" d="M12.6 12L8.7 8.1q-.275-.275-.275-.7t.275-.7t.7-.275t.7.275l4.6 4.6q.15.15.213.325t.062.375t-.062.375t-.213.325l-4.6 4.6q-.275.275-.7.275t-.7-.275t-.275-.7t.275-.7z"/></svg></a>
+        </div>
+      </section>
+
+      <section class="closer">
+        <h2>One installer, then the team is talking.</h2>
+        <p>Run the server, hand out the URL, and everyone else just installs the app.</p>
+        <div class="hero-actions">
+          <a class="button button-primary" href="docs/getting-started.html">Read getting started</a>
+          <a class="button button-quiet" href="how-it-works.html">How it works</a>
+        </div>
+      </section>
+    </main>
+    <footer class="site-footer">
+      <div class="site-footer-inner">
+        <p class="footer-mark">Aulora · team chat on your own server</p>
+        <nav aria-label="Legal and contact">
+          <a href="docs/licensing.html">Licensing</a>
+          <a href="docs/privacy.html">Privacy</a>
+          <a href="docs/legal/COMMERCIAL.html">Commercial terms</a>
+          <a href="docs/legal/THIRD_PARTY_NOTICES.html">Third-party notices</a>
+          <a href="mailto:cnguyen@spwnd.dev">cnguyen@spwnd.dev</a>
+        </nav>
+        <p class="footer-fine">Free for personal and noncommercial use under PolyForm Noncommercial 1.0.0. Business use requires a paid license.</p>
+      </div>
+    </footer>
+  </body>
+</html>

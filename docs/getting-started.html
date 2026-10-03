@@ -7,7 +7,7 @@
     <title>Getting started · Aulora Docs</title>
     <meta name="description" content="Documentation for Aulora, self-hosted team chat with server-side encryption." />
     <link rel="icon" type="image/svg+xml" href="../favicon.svg" />
-    <script src="../site.js" defer></script>
+    <script type="module" src="../site.js"></script>
     <link rel="stylesheet" href="../tokens.css" />
     <link rel="stylesheet" href="../site.css" />
     <link rel="stylesheet" href="../docs.css" />
@@ -17,12 +17,12 @@
       <div class="site-header-inner">
         <a class="brand" href="../index.html">
           <img src="../favicon.svg" alt="" width="26" height="26" />
-          <span>Aulora</span><span class="brand-sub">/ docs</span>
+          <span class="brand-lockup"><span class="brand-name">Aulora</span><span class="brand-sub">/docs</span></span>
         </a>
         <nav class="site-nav" aria-label="Site">
-          <a href="../index.html#product">Product</a>
-          <a href="../index.html#install">Install</a>
-          <a href="../index.html#pricing">Pricing</a>
+          <a href="../how-it-works.html">How it works</a>
+          <a href="../install.html">Install</a>
+          <a href="../pricing.html">Pricing</a>
           <a href="../docs/index.html" aria-current="page">Docs</a>
           <a href="https://github.com/chark1es/Aulora">GitHub</a>
         </nav>
@@ -62,10 +62,12 @@
           <p class="page-meta">2 min read</p>
         </header>
         <article class="prose">
-<h2 id="join-an-existing-server">Join an existing server</h2>
-<p>Ask your workspace administrator for the server&#39;s web URL and an invitation if registration is restricted. Open it in a browser, or enter that URL in the desktop or mobile client&#39;s connect screen. Choose a sign-in method offered by the server. Follow the <a href="user-guide.html">user guide</a> for everyday use.</p>
-<p>You do not need Docker or developer tools to join someone else&#39;s server.</p>
-<h2 id="install-a-local-server">Install a local server</h2>
+<p>A client and a workspace are different installs.</p>
+<p>A client is the app: the browser, or a desktop or mobile download. You use it to join a server someone already runs. A workspace is that server. One person installs it. Everyone else installs a client and opens the workspace URL.</p>
+<h2 id="install-a-client">Install a client</h2>
+<p>You do not need Git, Docker, or a compiler to join a workspace.</p>
+<p>Ask the person who runs it for the web URL, and an invitation if signup is closed. Open that URL in a browser, or install a desktop or mobile app and enter the URL on the connect screen. Choose a sign-in method the server offers. iOS and Android are in beta. File names and install steps are in the <a href="user-guide.html#install-a-desktop-or-mobile-client">user guide</a>.</p>
+<h2 id="install-a-workspace">Install a workspace</h2>
 <p>Install Git and Docker with Compose v2.24 or newer. Start Docker first. On Windows use PowerShell 7 and Docker Desktop in Linux-container mode.</p>
 <p>On macOS, Linux, or WSL:</p>
 <div class="code"><div class="code-bar"><span>sh</span><button type="button" data-copy>Copy</button></div><pre><code class="language-sh">git clone https://github.com/chark1es/Aulora.git
@@ -99,8 +101,8 @@ curl --fail http://localhost:8080/.well-known/aulora.json</code></pre></div>
       <aside class="toc" aria-label="On this page">
         <p class="nav-label">On this page</p>
         <nav>
-          <a href="#join-an-existing-server">Join an existing server</a>
-          <a href="#install-a-local-server">Install a local server</a>
+          <a href="#install-a-client">Install a client</a>
+          <a href="#install-a-workspace">Install a workspace</a>
           <a href="#check-the-installation">Check the installation</a>
           <a href="#make-it-available-to-your-team">Make it available to your team</a>
           <a href="#next-steps">Next steps</a>

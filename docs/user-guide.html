@@ -7,7 +7,7 @@
     <title>User guide · Aulora Docs</title>
     <meta name="description" content="Documentation for Aulora, self-hosted team chat with server-side encryption." />
     <link rel="icon" type="image/svg+xml" href="../favicon.svg" />
-    <script src="../site.js" defer></script>
+    <script type="module" src="../site.js"></script>
     <link rel="stylesheet" href="../tokens.css" />
     <link rel="stylesheet" href="../site.css" />
     <link rel="stylesheet" href="../docs.css" />
@@ -17,12 +17,12 @@
       <div class="site-header-inner">
         <a class="brand" href="../index.html">
           <img src="../favicon.svg" alt="" width="26" height="26" />
-          <span>Aulora</span><span class="brand-sub">/ docs</span>
+          <span class="brand-lockup"><span class="brand-name">Aulora</span><span class="brand-sub">/docs</span></span>
         </a>
         <nav class="site-nav" aria-label="Site">
-          <a href="../index.html#product">Product</a>
-          <a href="../index.html#install">Install</a>
-          <a href="../index.html#pricing">Pricing</a>
+          <a href="../how-it-works.html">How it works</a>
+          <a href="../install.html">Install</a>
+          <a href="../pricing.html">Pricing</a>
           <a href="../docs/index.html" aria-current="page">Docs</a>
           <a href="https://github.com/chark1es/Aulora">GitHub</a>
         </nav>
@@ -67,7 +67,8 @@
 <p>The server advertises its available sign-in methods. Use email/password, a configured OAuth provider, or your organization&#39;s SSO. An invitation may be required. If sign-in is unavailable, contact the administrator of that server.</p>
 <p>Accounts belong to each server. Joining another server can require another account. Use the workspace switcher to move between connected servers.</p>
 <h2 id="install-a-desktop-or-mobile-client">Install a desktop or mobile client</h2>
-<p>Published files are listed in <a href="https://github.com/chark1es/Aulora/releases">GitHub Releases</a>. Check the version and choose your platform:</p>
+<p>This installs a client, not a workspace. To run a server, follow <a href="getting-started.html#install-a-workspace">getting started</a>.</p>
+<p>Published files are listed in <a href="https://github.com/chark1es/Aulora/releases">GitHub Releases</a>. iOS and Android are in beta. Check the version and choose your platform:</p>
 <div class="table-scroll"><table><thead><tr><th scope="col">Platform</th><th scope="col">File and installation</th></tr></thead><tbody><tr><td>macOS Apple Silicon</td><td>ARM64 DMG; open it and move Aulora to Applications</td></tr><tr><td>macOS Intel</td><td>x86_64 DMG; open it and move Aulora to Applications</td></tr><tr><td>Windows x64</td><td><code>_x64-setup.exe</code>; run the installer</td></tr><tr><td>Linux x64</td><td>AppImage for in-app updates, or a Debian package for manual installation</td></tr><tr><td>Android</td><td>APK for direct installation; AAB is for Google Play submission</td></tr><tr><td>iOS</td><td>Use a published App Store or TestFlight invitation; an IPA download is not a general installer</td></tr><tr><td>Browser</td><td>Open your server&#39;s web URL</td></tr></tbody></table></div>
 <p>For an AppImage, grant execute permission before opening it, for example <code>chmod +x Aulora*.AppImage</code>. Linux desktop integration and system dependencies vary by distribution.</p>
 <p>Windows downloads are currently unsigned, so Windows may show an unknown-publisher warning. Verify that a download came from this repository. Release assets include <code>SHA256SUMS</code>; use <code>sha256sum</code>, macOS <code>shasum -a 256</code>, or PowerShell <code>Get-FileHash -Algorithm SHA256</code> to compare the downloaded file with its listed hash. Hashes verify file integrity; they are not a substitute for a trusted download source.</p>
