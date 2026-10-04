@@ -9,6 +9,7 @@ import {
   type RoleView,
   roleRef,
 } from "../../lib/workspace-admin";
+import { AddonsSettings } from "./AddonsSettings";
 import { AuditLogViewer } from "./AuditLogViewer";
 import { InviteManager } from "./InviteManager";
 import { InstanceAdminPanel } from "./instance/InstanceAdminPanel";
@@ -38,7 +39,15 @@ export interface AdminPanelProps {
   readonly onClose: () => void;
 }
 
-type TabId = "roles" | "members" | "invites" | "permissions" | "audit" | "workspace" | "instance";
+type TabId =
+  | "roles"
+  | "members"
+  | "invites"
+  | "permissions"
+  | "audit"
+  | "workspace"
+  | "addons"
+  | "instance";
 
 type AdminPage = RolePage | ScopePage;
 
@@ -54,6 +63,7 @@ const TAB_LABELS: Record<TabId, string> = {
   permissions: "Permissions",
   audit: "Audit log",
   workspace: "Workspace",
+  addons: "Addons",
   instance: "Instance",
 };
 
@@ -95,6 +105,7 @@ export function AdminPanel({
   }
   if (permission("ManageWorkspace")) {
     tabs.push({ id: "workspace", label: "Workspace" });
+    tabs.push({ id: "addons", label: "Addons" });
   }
   if (viewer.isOwner) {
     tabs.push({ id: "instance", label: "Instance" });
@@ -238,6 +249,9 @@ export function AdminPanel({
               <WorkspaceBranding canManageWorkspace={permission("ManageWorkspace")} />
               <WorkspaceSettings canManageWorkspace={permission("ManageWorkspace")} />
             </div>
+          )}
+          {nav.tab === "addons" && (
+            <AddonsSettings canManageWorkspace={permission("ManageWorkspace")} />
           )}
           {nav.tab === "instance" && (
             <InstanceAdminPanel canManage={viewer.isOwner} variant="inline" />

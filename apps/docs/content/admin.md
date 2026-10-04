@@ -14,6 +14,10 @@ Each section appears only when the viewer holds the matching permission, and
 every mutation is re-checked on the server. The client copy of the permission
 logic only hides UI.
 
+## Addons
+
+The Addons tab controls optional tools. Kanban is off by default and requires Manage workspace to enable. Grant its separate role permissions before inviting members to use it. See [Kanban](kanban.md) for board permissions, timers, attachments and GitHub connections.
+
 ## Instance admin
 
 Opened from **Instance admin** in the sidebar, visible only to the operator

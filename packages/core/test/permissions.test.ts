@@ -75,8 +75,12 @@ describe("Permission bitfield", () => {
       "MuteMembers",
       "DeafenMembers",
       "MoveMembers",
+      "ViewKanban",
+      "EditKanban",
+      "CommentKanban",
+      "ManageKanban",
     ]);
-    expect(PERMISSION_NAMES).toHaveLength(30);
+    expect(PERMISSION_NAMES).toHaveLength(34);
   });
 
   it("gives every flag exactly one independent bit", () => {

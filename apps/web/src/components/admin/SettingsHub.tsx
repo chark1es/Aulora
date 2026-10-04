@@ -1,12 +1,13 @@
 import type { IconName } from "@aulora/tokens";
 import { Icon } from "@aulora/ui-web";
 import { useWorkspaceUpdates } from "../../providers/WorkspaceUpdateProvider";
+import { AddonsSettings } from "./AddonsSettings";
 import { InstanceAdminPanel } from "./instance/InstanceAdminPanel";
 import { SettingsSectionHeader } from "./SettingsSection";
 import { WorkspaceBranding } from "./WorkspaceBranding";
 import { WorkspaceSettings } from "./WorkspaceSettings";
 
-export type SettingsGroupId = "workspace" | "instance";
+export type SettingsGroupId = "workspace" | "addons" | "instance";
 
 export interface SettingsPage {
   readonly kind: "settings";
@@ -34,6 +35,12 @@ export const SETTINGS_GROUPS: readonly SettingsGroup[] = [
     title: "Workspace",
     description: "Name, branding, how people join, and calling policy.",
     icon: "shield",
+  },
+  {
+    id: "addons",
+    title: "Addons",
+    description: "Optional workspace tools, including Kanban.",
+    icon: "settings",
   },
   {
     id: "instance",
@@ -74,6 +81,7 @@ export function SettingsHub({
       </div>
     );
   }
+  if (group === "addons") return <AddonsSettings canManageWorkspace={canManageWorkspace} />;
   if (group === "instance") {
     return <InstanceAdminPanel canManage={isInstanceAdmin} variant="inline" />;
   }
