@@ -39,7 +39,13 @@ export function isGithubRepositoryName(name: string): boolean {
   const repository = name.split("/")[1];
   return repository !== "." && repository !== "..";
 }
+/** A repository, issue or pull request on github.com, and nothing else. */
 export function isKanbanGithubLink(url: string): boolean {
-  const match = /^https:\/\/github\.com\/([^/]+\/[^/]+)(?:\/(?:issues|pull)\/\d+)?\/?$/.exec(url);
-  return match !== null && isGithubRepositoryName(match[1] ?? "");
+  const prefix = "https://github.com/";
+  if (!url.startsWith(prefix)) return false;
+  const parts = url.slice(prefix.length).replace(/\/$/, "").split("/");
+  const [owner = "", repository = "", kind, number, ...rest] = parts;
+  if (!isGithubRepositoryName(`${owner}/${repository}`) || rest.length > 0) return false;
+  if (kind === undefined) return true;
+  return (kind === "issues" || kind === "pull") && /^\d+$/.test(number ?? "");
 }

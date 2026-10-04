@@ -29,12 +29,14 @@ export function AddonsSettings({ canManageWorkspace }: { canManageWorkspace: boo
             setBusy(true);
             setError(null);
             void setEnabled({ enabled })
-              .catch((cause: unknown) =>
+              .catch((cause: unknown) => {
                 setError(
                   cause instanceof Error ? cause.message : "Could not change Kanban. Try again.",
-                ),
-              )
-              .finally(() => setBusy(false));
+                );
+              })
+              .finally(() => {
+                setBusy(false);
+              });
           }}
         />
       </div>

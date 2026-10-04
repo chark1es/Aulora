@@ -7,17 +7,17 @@ const EASE = "cubic-bezier(0.16, 1, 0.3, 1)";
 function place(node: HTMLElement, root: HTMLElement) {
   let x = 0;
   let y = 0;
-  for (
-    let n: HTMLElement | null = node;
-    n && n !== root;
-    n = n.offsetParent as HTMLElement | null
-  ) {
-    x += n.offsetLeft;
-    y += n.offsetTop;
+  let positioned: Element | null = node;
+  while (positioned instanceof HTMLElement && positioned !== root) {
+    x += positioned.offsetLeft;
+    y += positioned.offsetTop;
+    positioned = positioned.offsetParent;
   }
-  for (let n = node.parentElement; n && n !== root; n = n.parentElement) {
-    x -= n.scrollLeft;
-    y -= n.scrollTop;
+  let scroller = node.parentElement;
+  while (scroller !== null && scroller !== root) {
+    x -= scroller.scrollLeft;
+    y -= scroller.scrollTop;
+    scroller = scroller.parentElement;
   }
   return { x, y };
 }

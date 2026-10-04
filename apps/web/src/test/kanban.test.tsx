@@ -75,7 +75,7 @@ beforeEach(() => {
   state.mutations.clear();
   state.values.set("kanban:listBoards", [board]);
   state.values.set("kanban:listCards", [card]);
-  state.values.set("kanban:history", []);
+  state.values.set("kanbanComments:history", []);
   state.values.set("files:getMany", []);
   state.values.set("server:settings", { settings: {} });
 });
@@ -203,7 +203,7 @@ describe("Kanban UI", () => {
     await user.type(screen.getByRole("textbox", { name: "Edit comment" }), "Moderated comment");
     await user.click(screen.getByRole("button", { name: "Save comment" }));
     await waitFor(() =>
-      expect(state.mutations.get("kanban:comment")).toHaveBeenCalledWith({
+      expect(state.mutations.get("kanbanComments:comment")).toHaveBeenCalledWith({
         cardId: card._id,
         commentId: "comment-1",
         body: "Moderated comment",

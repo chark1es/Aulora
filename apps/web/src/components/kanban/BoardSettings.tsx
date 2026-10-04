@@ -6,6 +6,17 @@ import { api } from "../../../../../packages/convex/convex/_generated/api";
 import { PeoplePicker } from "./controls";
 import { type Board, type BoardMember, control, failure, newItemId } from "./types";
 
+/** The list with the items at two places exchanged. */
+function swapped<T>(items: readonly T[], index: number, other: number): T[] {
+  const first = items.at(index);
+  const second = items.at(other);
+  if (first === undefined || second === undefined) return [...items];
+  return items.map((item, place) => {
+    if (place === index) return second;
+    return place === other ? first : item;
+  });
+}
+
 export function BoardSettings({
   board,
   members,
@@ -72,7 +83,12 @@ export function BoardSettings({
         className="flex max-h-[calc(100dvh-32px)] flex-col [&>div]:min-h-0 [&>div]:overflow-y-auto [&>footer]:shrink-0 [&>footer]:flex-wrap [&>header]:shrink-0"
         footer={
           <>
-            <Button variant="ghost" onClick={() => setConfirmArchive(true)}>
+            <Button
+              variant="ghost"
+              onClick={() => {
+                setConfirmArchive(true);
+              }}
+            >
               Archive board
             </Button>
             <Button variant="secondary" onClick={close}>
@@ -89,7 +105,9 @@ export function BoardSettings({
             label="Board name"
             maxLength={120}
             value={draft.name}
-            onChange={(e) => setDraft({ ...draft, name: e.target.value })}
+            onChange={(e) => {
+              setDraft({ ...draft, name: e.target.value });
+            }}
           />
           <label className="flex flex-col gap-1.5 text-[13px] text-text-muted">
             Description
@@ -98,7 +116,9 @@ export function BoardSettings({
               rows={3}
               maxLength={5000}
               value={draft.description}
-              onChange={(e) => setDraft({ ...draft, description: e.target.value })}
+              onChange={(e) => {
+                setDraft({ ...draft, description: e.target.value });
+              }}
             />
           </label>
           <Switch
@@ -135,14 +155,14 @@ export function BoardSettings({
                     label={`Column ${index + 1}`}
                     value={c.name}
                     maxLength={80}
-                    onChange={(e) =>
+                    onChange={(e) => {
                       setDraft({
                         ...draft,
                         columns: draft.columns.map((entry) =>
                           entry.id === c.id ? { ...entry, name: e.target.value } : entry,
                         ),
-                      })
-                    }
+                      });
+                    }}
                   />
                 </div>
                 <div className="w-24">
@@ -153,7 +173,7 @@ export function BoardSettings({
                     max={500}
                     placeholder="None"
                     value={c.wipLimit ?? ""}
-                    onChange={(e) =>
+                    onChange={(e) => {
                       setDraft({
                         ...draft,
                         columns: draft.columns.map((entry) =>
@@ -165,8 +185,8 @@ export function BoardSettings({
                               }
                             : entry,
                         ),
-                      })
-                    }
+                      });
+                    }}
                   />
                 </div>
                 <IconButton
@@ -174,13 +194,7 @@ export function BoardSettings({
                   disabled={index === 0}
                   label={`Move ${c.name} column left`}
                   onClick={() => {
-                    const columns = [...draft.columns];
-                    const previous = columns[index - 1];
-                    if (previous) {
-                      columns[index - 1] = c;
-                      columns[index] = previous;
-                      setDraft({ ...draft, columns });
-                    }
+                    setDraft({ ...draft, columns: swapped(draft.columns, index, index - 1) });
                   }}
                 >
                   <Icon name="chevron-left" size={16} />
@@ -190,13 +204,7 @@ export function BoardSettings({
                   disabled={index === draft.columns.length - 1}
                   label={`Move ${c.name} column right`}
                   onClick={() => {
-                    const columns = [...draft.columns];
-                    const next = columns[index + 1];
-                    if (next) {
-                      columns[index + 1] = c;
-                      columns[index] = next;
-                      setDraft({ ...draft, columns });
-                    }
+                    setDraft({ ...draft, columns: swapped(draft.columns, index, index + 1) });
                   }}
                 >
                   <Icon name="chevron-right" size={16} />
@@ -206,12 +214,12 @@ export function BoardSettings({
                   variant="danger"
                   disabled={draft.columns.length === 1}
                   label={`Remove ${c.name} column`}
-                  onClick={() =>
+                  onClick={() => {
                     setDraft({
                       ...draft,
                       columns: draft.columns.filter((entry) => entry.id !== c.id),
-                    })
-                  }
+                    });
+                  }}
                 >
                   <Icon name="trash" size={16} />
                 </IconButton>
@@ -222,12 +230,12 @@ export function BoardSettings({
               size="sm"
               className="self-start"
               disabled={draft.columns.length >= 20}
-              onClick={() =>
+              onClick={() => {
                 setDraft({
                   ...draft,
                   columns: [...draft.columns, { id: newItemId(), name: "New column" }],
-                })
-              }
+                });
+              }}
             >
               Add column
             </Button>
@@ -240,14 +248,14 @@ export function BoardSettings({
                   label="Label name"
                   maxLength={50}
                   value={l.name}
-                  onChange={(e) =>
+                  onChange={(e) => {
                     setDraft({
                       ...draft,
                       labels: draft.labels.map((entry) =>
                         entry.id === l.id ? { ...entry, name: e.target.value } : entry,
                       ),
-                    })
-                  }
+                    });
+                  }}
                 />
                 <label className="flex flex-col gap-1 text-xs text-text-muted">
                   Color
@@ -255,14 +263,14 @@ export function BoardSettings({
                     type="color"
                     aria-label={`Color for ${l.name}`}
                     value={l.color}
-                    onChange={(e) =>
+                    onChange={(e) => {
                       setDraft({
                         ...draft,
                         labels: draft.labels.map((entry) =>
                           entry.id === l.id ? { ...entry, color: e.target.value } : entry,
                         ),
-                      })
-                    }
+                      });
+                    }}
                     className="h-10 w-10 bg-transparent"
                   />
                 </label>
@@ -270,12 +278,12 @@ export function BoardSettings({
                   size="sm"
                   variant="danger"
                   label={`Remove ${l.name} label`}
-                  onClick={() =>
+                  onClick={() => {
                     setDraft({
                       ...draft,
                       labels: draft.labels.filter((entry) => entry.id !== l.id),
-                    })
-                  }
+                    });
+                  }}
                 >
                   <Icon name="trash" size={16} />
                 </IconButton>
@@ -286,15 +294,15 @@ export function BoardSettings({
               size="sm"
               className="self-start"
               disabled={draft.labels.length >= 50}
-              onClick={() =>
+              onClick={() => {
                 setDraft({
                   ...draft,
                   labels: [
                     ...draft.labels,
                     { id: newItemId(), name: "New label", color: "#d47838" },
                   ],
-                })
-              }
+                });
+              }}
             >
               Add label
             </Button>
@@ -308,25 +316,28 @@ export function BoardSettings({
       </Modal>
       <ConfirmDialog
         open={discard}
-        onClose={() => setDiscard(false)}
+        onClose={() => {
+          setDiscard(false);
+        }}
         title="Discard unsaved board settings?"
         confirmLabel="Discard changes"
         onConfirm={onClose}
       />
       <ConfirmDialog
         open={confirmArchive}
-        onClose={() => setConfirmArchive(false)}
+        onClose={() => {
+          setConfirmArchive(false);
+        }}
         title="Archive board?"
         description="Work timers will stop. You can restore this board from archived boards."
         confirmLabel="Archive board"
-        onConfirm={async () => {
+        onConfirm={() => {
           setError(null);
-          try {
-            await archive({ boardId: board.id, archived: true });
-            onClose();
-          } catch (cause) {
-            setError(failure(cause));
-          }
+          archive({ boardId: board.id, archived: true })
+            .then(onClose)
+            .catch((cause: unknown) => {
+              setError(failure(cause));
+            });
         }}
       />
     </>

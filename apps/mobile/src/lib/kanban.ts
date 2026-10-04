@@ -19,14 +19,25 @@ export interface BoardMember {
 
 export const PRIORITIES = ["none", "low", "medium", "high", "urgent"] as const;
 
-/** `idle` is the amber presence color, which is not a palette token. */
-export const PRIORITY: Record<Priority, { label: string; tone: ColorToken | "idle" }> = {
-  none: { label: "No priority", tone: "text-muted" },
-  low: { label: "Low", tone: "text-muted" },
-  medium: { label: "Medium", tone: "idle" },
-  high: { label: "High", tone: "accent" },
-  urgent: { label: "Urgent", tone: "danger" },
-};
+export interface PriorityInfo {
+  readonly label: string;
+  /** `idle` is the amber presence color, which is not a palette token. */
+  readonly tone: ColorToken | "idle";
+}
+
+const NO_PRIORITY: PriorityInfo = { label: "No priority", tone: "text-muted" };
+const PRIORITY_INFO = new Map<Priority, PriorityInfo>([
+  ["none", NO_PRIORITY],
+  ["low", { label: "Low", tone: "text-muted" }],
+  ["medium", { label: "Medium", tone: "idle" }],
+  ["high", { label: "High", tone: "accent" }],
+  ["urgent", { label: "Urgent", tone: "danger" }],
+]);
+
+/** How a priority is named and coloured. */
+export function priorityInfo(priority: Priority): PriorityInfo {
+  return PRIORITY_INFO.get(priority) ?? NO_PRIORITY;
+}
 
 export const UNASSIGNED = "unassigned";
 
@@ -76,6 +87,12 @@ export function isColumnFull(column: Column, cards: readonly Card[]): boolean {
   );
 }
 
+/** Where `moveCard` should put a card: before another card, or at the end. */
+export interface MoveTarget {
+  columnId: string;
+  beforeId?: Card["_id"];
+}
+
 /**
  * The `moveCard` target that shifts a card one place within its column, or
  * `null` when it is already at that end. `siblings` is the column in order.
@@ -84,16 +101,16 @@ export function moveStep(
   siblings: readonly Card[],
   cardId: string,
   direction: "up" | "down",
-): { columnId: string; beforeId?: Card["_id"] } | null {
+): MoveTarget | null {
   const index = siblings.findIndex((card) => card._id === cardId);
-  const card = siblings[index];
-  if (!card) return null;
+  const card = index < 0 ? undefined : siblings.at(index);
+  if (card === undefined) return null;
   if (direction === "up") {
-    const before = siblings[index - 1];
+    const before = index > 0 ? siblings.at(index - 1) : undefined;
     return before ? { columnId: card.columnId, beforeId: before._id } : null;
   }
   if (index === siblings.length - 1) return null;
-  const after = siblings[index + 2];
+  const after = siblings.at(index + 2);
   return { columnId: card.columnId, ...(after ? { beforeId: after._id } : {}) };
 }
 
@@ -132,7 +149,7 @@ const MONTHS = [
   "November",
   "December",
 ];
-export const monthName = (month: number) => MONTHS[month] ?? "";
+export const monthName = (month: number) => MONTHS.at(month) ?? "";
 
 /**
  * "Oct 4" or "Oct 4, 2026" for a `YYYY-MM-DD` day. Built by hand because
@@ -144,21 +161,28 @@ export function formatDay(day: string, year: "always" | number = "always"): stri
   return year === "always" || year !== y ? `${text}, ${y}` : text;
 }
 
-export function dueLabel(at: number, now: number): { text: string; overdue: boolean } {
+const DAY_MS = 86400000;
+
+function dayName(days: number): string | null {
+  if (days === 0) return "Today";
+  if (days === 1) return "Tomorrow";
+  if (days === -1) return "Yesterday";
+  return null;
+}
+
+export interface DueLabel {
+  readonly text: string;
+  readonly overdue: boolean;
+}
+
+export function dueLabel(at: number, now: number): DueLabel {
   const today = new Date(now);
-  const days = Math.round(
-    (Date.parse(dayOf(at)) - Date.UTC(today.getFullYear(), today.getMonth(), today.getDate())) /
-      86400000,
-  );
-  const text =
-    days === 0
-      ? "Today"
-      : days === 1
-        ? "Tomorrow"
-        : days === -1
-          ? "Yesterday"
-          : formatDay(dayOf(at), today.getFullYear());
-  return { text, overdue: days < 0 };
+  const start = Date.UTC(today.getFullYear(), today.getMonth(), today.getDate());
+  const elapsed = Date.parse(dayOf(at)) - start;
+  const days = Math.round(elapsed / DAY_MS);
+  const text = dayName(days) ?? formatDay(dayOf(at), today.getFullYear());
+  const overdue = days < 0;
+  return { text, overdue };
 }
 
 export function timeAgo(at: number, now: number): string {
@@ -199,13 +223,12 @@ export function failure(cause: unknown): string {
   return message?.[1] ?? cause.message;
 }
 
+let itemSequence = 0;
+
 /** Unique within one card or board, which is all an item id has to be. */
 export function newItemId(): string {
-  return Array.from({ length: 16 }, () =>
-    Math.floor(Math.random() * 256)
-      .toString(16)
-      .padStart(2, "0"),
-  ).join("");
+  itemSequence += 1;
+  return `${Date.now().toString(36)}-${itemSequence.toString(36)}`;
 }
 
 /**

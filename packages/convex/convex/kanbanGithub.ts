@@ -89,6 +89,39 @@ export interface GitHubBrowseResult {
   }[];
   hasMore: boolean;
 }
+/** Compares two secrets without stopping at the first difference. */
+function sameSecret(left: string, right: string): boolean {
+  let difference = left.length ^ right.length;
+  for (let index = 0; index < left.length; index++)
+    difference |= left.charCodeAt(index) ^ right.charCodeAt(index % Math.max(right.length, 1));
+  return difference === 0;
+}
+
+/** Calls the GitHub API and turns its failures into messages a member can act on. */
+async function githubRequest(path: string, token: string): Promise<Response> {
+  // Fixed origin and no redirects prevent credentials going to a user-controlled host.
+  const response = await fetch(`https://api.github.com${path}`, {
+    headers: {
+      Authorization: `Bearer ${token}`,
+      Accept: "application/vnd.github+json",
+      "X-GitHub-Api-Version": "2026-03-10",
+      "User-Agent": "Aulora-Kanban",
+    },
+    redirect: "error",
+    signal: AbortSignal.timeout(15000),
+  });
+  if (response.ok) return response;
+  if (response.status === 401)
+    throw new ConvexError("Your GitHub token is invalid or expired. Reconnect with a new token");
+  if (response.status === 403 || response.status === 429)
+    throw new ConvexError(
+      "GitHub denied this request. Check token permissions or try again after the rate limit resets",
+    );
+  if (response.status === 404)
+    throw new ConvexError("Repository not found or your GitHub token does not have access");
+  throw new ConvexError("GitHub is unavailable. Try again later");
+}
+
 export const browse = action({
   args: {
     repository: v.optional(v.string()),
@@ -107,34 +140,13 @@ export const browse = action({
       ? `/repos/${args.repository}/${kind}?state=${args.state ?? "open"}&sort=updated&direction=desc&per_page=50&page=${page}`
       : `/user/repos?sort=updated&per_page=50&page=${page}`;
     // Fixed origin and no redirects prevent credentials going to a user-controlled host.
-    const response = await fetch(`https://api.github.com${path}`, {
-      headers: {
-        Authorization: `Bearer ${token}`,
-        Accept: "application/vnd.github+json",
-        "X-GitHub-Api-Version": "2026-03-10",
-        "User-Agent": "Aulora-Kanban",
-      },
-      redirect: "error",
-      signal: AbortSignal.timeout(15000),
-    });
-    if (!response.ok) {
-      if (response.status === 401)
-        throw new ConvexError(
-          "Your GitHub token is invalid or expired. Reconnect with a new token",
-        );
-      if (response.status === 403 || response.status === 429)
-        throw new ConvexError(
-          "GitHub denied this request. Check token permissions or try again after the rate limit resets",
-        );
-      if (response.status === 404)
-        throw new ConvexError("Repository not found or your GitHub token does not have access");
-      throw new ConvexError("GitHub is unavailable. Try again later");
-    }
+    const response = await githubRequest(path, token);
     const data: unknown = await response.json();
     if (!Array.isArray(data)) throw new ConvexError("Unexpected GitHub response");
     // Check current standing again after the external request, including token revocation.
     const current = await ctx.runQuery(internal.kanbanGithub.credentials, {});
-    if (current.token !== token) throw new ConvexError("GitHub connection changed. Try again");
+    if (!sameSecret(current.token, token))
+      throw new ConvexError("GitHub connection changed. Try again");
     const hasMore = response.headers.get("link")?.includes('rel="next"') ?? false;
     if (!args.repository) {
       const repos = data as GitHubRepository[];

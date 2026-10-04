@@ -2,7 +2,7 @@ import type { IconName } from "@aulora/tokens";
 import { Icon, IDLE_COLOR, Text, usePalette } from "@aulora/ui-native";
 import { type ReactNode, useEffect, useRef, useState } from "react";
 import { Animated, Pressable, View } from "react-native";
-import { type BoardMember, PRIORITY, type Priority } from "../../lib/kanban";
+import { type BoardMember, type Priority, priorityInfo } from "../../lib/kanban";
 import { useReduceMotion } from "../../lib/use-entrance";
 import { MemberAvatar } from "../chat/MemberAvatar";
 
@@ -12,16 +12,23 @@ export function useNow(ticking: boolean): number {
   useEffect(() => {
     if (!ticking) return;
     setNow(Date.now());
-    const tick = setInterval(() => setNow(Date.now()), 1000);
-    return () => clearInterval(tick);
+    const tick = setInterval(() => {
+      setNow(Date.now());
+    }, 1000);
+    return () => {
+      clearInterval(tick);
+    };
   }, [ticking]);
   return now;
 }
 
 export function usePriorityColor(priority: Priority): string {
   const palette = usePalette();
-  const tone = PRIORITY[priority].tone;
-  return tone === "idle" ? IDLE_COLOR : palette[tone];
+  const tone = priorityInfo(priority).tone;
+  if (tone === "idle") return IDLE_COLOR;
+  if (tone === "accent") return palette.accent;
+  if (tone === "danger") return palette.danger;
+  return palette["text-muted"];
 }
 
 export function PriorityFlag({
@@ -104,7 +111,12 @@ export function AvatarStack({
     (id) => members.find((member) => member.userId === id)?.displayName ?? "Former member",
   );
   const shown = userIds.slice(0, userIds.length > max ? max - 1 : max);
-  const frame = { borderWidth: 2, borderColor: palette[ring], borderRadius: 999 };
+  const rings = new Map([
+    ["surface-1", palette["surface-1"]],
+    ["surface-2", palette["surface-2"]],
+    ["surface-3", palette["surface-3"]],
+  ]);
+  const frame = { borderWidth: 2, borderColor: rings.get(ring), borderRadius: 999 };
   return (
     <View
       accessible

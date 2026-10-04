@@ -1,14 +1,13 @@
+/* eslint-disable no-unused-vars -- the base rule reports parameter names in type signatures; Biome checks real unused code */
 import type { IconName } from "@aulora/tokens";
-import { Button, Heading, Icon, Text, usePalette } from "@aulora/ui-native";
+import { Heading, Icon, Text, usePalette } from "@aulora/ui-native";
 import {
   createContext,
-  memo,
   type ReactNode,
   useCallback,
   useContext,
   useLayoutEffect,
   useRef,
-  useState,
 } from "react";
 import {
   Animated,
@@ -22,33 +21,19 @@ import {
   View,
 } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
-import { formatDay, localDay, monthGrid, monthName } from "../../lib/kanban";
 import { useThemeVars } from "../../lib/theme";
 import { useReduceMotion } from "../../lib/use-entrance";
-import { CheckBox } from "./parts";
 
 /** Closes the sheet with its exit animation, then runs the follow-up. */
 type Close = (then?: () => void) => void;
-const CloseContext = createContext<Close>(() => {});
+function closeNothing(): void {
+  // Outside a sheet there is nothing to close.
+}
+const CloseContext = createContext<Close>(closeNothing);
 export const useSheetClose = () => useContext(CloseContext);
 
-/**
- * A panel that slides up from the bottom edge over a dimmed screen. It closes
- * on a backdrop tap or the Android back button.
- */
-export function BottomSheet({
-  title,
-  onClose,
-  children,
-  footer,
-}: {
-  readonly title: string;
-  readonly onClose: () => void;
-  readonly children: ReactNode;
-  readonly footer?: ReactNode;
-}) {
-  const theme = useThemeVars();
-  const insets = useSafeAreaInsets();
+/** Drives the slide: 0 is off screen, 1 is open. */
+function useSheetMotion(onClose: () => void) {
   const reduced = useReduceMotion();
   const progress = useRef(new Animated.Value(0)).current;
   const closing = useRef(false);
@@ -71,7 +56,7 @@ export function BottomSheet({
       closing.current = true;
       Animated.timing(progress, {
         toValue: 0,
-        duration: reduced ? 0 : 160,
+        duration: reduced === true ? 0 : 160,
         easing: Easing.in(Easing.cubic),
         useNativeDriver: true,
       }).start(() => {
@@ -81,8 +66,34 @@ export function BottomSheet({
     },
     [progress, reduced],
   );
+  return { progress, close };
+}
+
+/**
+ * A panel that slides up from the bottom edge over a dimmed screen. It is a
+ * plain modal, so unlike the chat's bottom sheet it can open above a page
+ * sheet. It closes on a backdrop tap or the Android back button.
+ */
+export function BottomSheet({
+  title,
+  onClose,
+  children,
+  footer,
+}: {
+  readonly title: string;
+  readonly onClose: () => void;
+  readonly children: ReactNode;
+  readonly footer?: ReactNode;
+}) {
+  const theme = useThemeVars();
+  const insets = useSafeAreaInsets();
+  const { progress, close } = useSheetMotion(onClose);
+  const translateY = progress.interpolate({ inputRange: [0, 1], outputRange: [420, 0] });
+  const dismiss = () => {
+    close();
+  };
   return (
-    <Modal visible transparent animationType="none" onRequestClose={() => close()}>
+    <Modal visible transparent animationType="none" onRequestClose={dismiss}>
       <KeyboardAvoidingView
         style={[{ flex: 1 }, theme]}
         behavior={Platform.OS === "ios" ? "padding" : "height"}
@@ -94,21 +105,14 @@ export function BottomSheet({
             accessibilityRole="button"
             accessibilityLabel={`Close ${title}`}
             className="flex-1 bg-black/50"
-            onPress={() => close()}
+            onPress={dismiss}
           />
         </Animated.View>
         <View className="flex-1 justify-end" pointerEvents="box-none">
           <Animated.View
             accessibilityViewIsModal
             className="max-h-[85%] rounded-t-card bg-surface-2"
-            style={{
-              paddingBottom: Math.max(insets.bottom, 12),
-              transform: [
-                {
-                  translateY: progress.interpolate({ inputRange: [0, 1], outputRange: [420, 0] }),
-                },
-              ],
-            }}
+            style={{ paddingBottom: Math.max(insets.bottom, 12), transform: [{ translateY }] }}
           >
             <View className="items-center pt-2">
               <View className="h-1 w-9 rounded-pill bg-surface-3" />
@@ -116,12 +120,12 @@ export function BottomSheet({
             <Heading level={3} className="px-5 pb-2 pt-3" numberOfLines={1}>
               {title}
             </Heading>
-            <CloseContext.Provider value={close}>{children}</CloseContext.Provider>
-            {footer !== undefined && (
-              <CloseContext.Provider value={close}>
+            <CloseContext.Provider value={close}>
+              {children}
+              {footer !== undefined && (
                 <View className="flex-row gap-2 border-t border-border px-4 pt-3">{footer}</View>
-              </CloseContext.Provider>
-            )}
+              )}
+            </CloseContext.Provider>
           </Animated.View>
         </View>
       </KeyboardAvoidingView>
@@ -163,36 +167,39 @@ export function ActionSheet({
   );
 }
 
+function ActionSection({ caption }: { readonly caption: string | true }) {
+  return (
+    <View className="mx-3 mt-1 border-t border-border pt-1">
+      {caption !== true && (
+        <Text size="xs" tone="muted" className="pb-1 pt-2 font-semibold uppercase">
+          {caption}
+        </Text>
+      )}
+    </View>
+  );
+}
+
 function ActionRow({ action }: { readonly action: SheetAction }) {
   const palette = usePalette();
   const close = useSheetClose();
-  const color = action.danger ? palette.danger : palette.text;
+  const danger = action.danger === true;
+  const color = danger ? palette.danger : palette.text;
   return (
     <>
-      {action.section !== undefined && (
-        <View className="mx-3 mt-1 border-t border-border pt-1">
-          {typeof action.section === "string" && (
-            <Text size="xs" tone="muted" className="pb-1 pt-2 font-semibold uppercase">
-              {action.section}
-            </Text>
-          )}
-        </View>
-      )}
+      {action.section !== undefined && <ActionSection caption={action.section} />}
       <Pressable
         accessibilityRole="button"
         accessibilityState={{ disabled: action.disabled === true }}
         disabled={action.disabled}
         className={`min-h-12 flex-row items-center gap-3 rounded-input px-3 py-2 active:bg-surface-3 ${
-          action.disabled ? "opacity-40" : ""
+          action.disabled === true ? "opacity-40" : ""
         }`}
-        onPress={() => close(action.onPress)}
+        onPress={() => {
+          close(action.onPress);
+        }}
       >
         {action.icon !== undefined && (
-          <Icon
-            name={action.icon}
-            size={20}
-            color={action.danger ? color : palette["text-muted"]}
-          />
+          <Icon name={action.icon} size={20} color={danger ? color : palette["text-muted"]} />
         )}
         <View className="min-w-0 flex-1">
           <Text style={{ color }} numberOfLines={1}>
@@ -205,149 +212,6 @@ function ActionRow({ action }: { readonly action: SheetAction }) {
           )}
         </View>
       </Pressable>
-    </>
-  );
-}
-
-export interface PickerOption {
-  readonly id: string;
-  readonly label: string;
-  readonly leading?: ReactNode;
-  readonly hint?: string;
-  readonly disabled?: boolean;
-}
-
-/**
- * A checklist of options. With `multiple` every row is a checkbox and the
- * sheet stays open; otherwise choosing a row closes it.
- */
-export function PickerSheet({
-  title,
-  options,
-  selected,
-  onChange,
-  onClose,
-  multiple = false,
-  searchPlaceholder,
-  emptyText = "Nothing to choose from",
-}: {
-  readonly title: string;
-  readonly options: readonly PickerOption[];
-  readonly selected: readonly string[];
-  readonly onChange: (selected: string[]) => void;
-  readonly onClose: () => void;
-  readonly multiple?: boolean;
-  /** Shows a filter field once the list is long; meant for people. */
-  readonly searchPlaceholder?: string;
-  readonly emptyText?: string;
-}) {
-  const [query, setQuery] = useState("");
-  const searchable = searchPlaceholder !== undefined && options.length > 6;
-  const visible = options.filter((option) =>
-    option.label.toLowerCase().includes(query.trim().toLowerCase()),
-  );
-  return (
-    <BottomSheet
-      title={title}
-      onClose={onClose}
-      {...(multiple
-        ? {
-            footer: (
-              <PickerFooter
-                count={selected.length}
-                onClear={selected.length ? () => onChange([]) : undefined}
-              />
-            ),
-          }
-        : {})}
-    >
-      {searchable && <SearchField value={query} onChange={setQuery} label={searchPlaceholder} />}
-      <ScrollView
-        keyboardShouldPersistTaps="handled"
-        contentContainerStyle={{ paddingHorizontal: 8, paddingBottom: 8 }}
-      >
-        {visible.map((option) => (
-          <PickerRow
-            key={option.id}
-            option={option}
-            checked={selected.includes(option.id)}
-            multiple={multiple}
-            onPress={() =>
-              onChange(
-                multiple
-                  ? selected.includes(option.id)
-                    ? selected.filter((id) => id !== option.id)
-                    : [...selected, option.id]
-                  : [option.id],
-              )
-            }
-          />
-        ))}
-        {visible.length === 0 && (
-          <Text size="sm" tone="muted" className="px-3 py-6 text-center">
-            {options.length ? "No matches" : emptyText}
-          </Text>
-        )}
-      </ScrollView>
-    </BottomSheet>
-  );
-}
-
-function PickerRow({
-  option,
-  checked,
-  multiple,
-  onPress,
-}: {
-  readonly option: PickerOption;
-  readonly checked: boolean;
-  readonly multiple: boolean;
-  readonly onPress: () => void;
-}) {
-  const palette = usePalette();
-  const close = useSheetClose();
-  return (
-    <Pressable
-      accessibilityRole={multiple ? "checkbox" : "radio"}
-      accessibilityLabel={option.label}
-      accessibilityState={{ checked, disabled: option.disabled === true }}
-      disabled={option.disabled}
-      className={`min-h-12 flex-row items-center gap-3 rounded-input px-3 py-2 active:bg-surface-3 ${
-        option.disabled ? "opacity-40" : ""
-      }`}
-      onPress={() => (multiple ? onPress() : close(onPress))}
-    >
-      {multiple && <CheckBox checked={checked} />}
-      {option.leading}
-      <View className="min-w-0 flex-1">
-        <Text numberOfLines={1}>{option.label}</Text>
-        {option.hint !== undefined && (
-          <Text size="xs" tone="muted">
-            {option.hint}
-          </Text>
-        )}
-      </View>
-      {!multiple && checked && <Icon name="check" size={20} color={palette.accent} />}
-    </Pressable>
-  );
-}
-
-function PickerFooter({
-  count,
-  onClear,
-}: {
-  readonly count: number;
-  readonly onClear: (() => void) | undefined;
-}) {
-  const close = useSheetClose();
-  return (
-    <>
-      <Button variant="ghost" disabled={onClear === undefined} onPress={() => onClear?.()}>
-        Clear
-      </Button>
-      <Button className="flex-1" onPress={() => close()}>
-        {count ? `Done (${count})` : "Done"}
-      </Button>
     </>
   );
 }
@@ -380,150 +244,3 @@ export function SearchField({
     </View>
   );
 }
-
-const WEEKDAYS = ["S", "M", "T", "W", "T", "F", "S"];
-
-/** Picks a calendar day: shortcuts for the common answers, a month for the rest. */
-export function DateSheet({
-  title,
-  value,
-  now,
-  onChange,
-  onClose,
-}: {
-  readonly title: string;
-  /** `YYYY-MM-DD`, or empty when no day is set. */
-  readonly value: string;
-  readonly now: number;
-  readonly onChange: (day: string) => void;
-  readonly onClose: () => void;
-}) {
-  const palette = usePalette();
-  const today = localDay(now);
-  const [shown, setShown] = useState(() => (value || today).slice(0, 7));
-  const year = Number(shown.slice(0, 4));
-  const month = Number(shown.slice(5, 7)) - 1;
-  const step = (by: number) =>
-    setShown(new Date(Date.UTC(year, month + by, 1)).toISOString().slice(0, 7));
-  const latest = useRef(onChange);
-  latest.current = onChange;
-  const pick = useCallback((day: string) => latest.current(day), []);
-  return (
-    <BottomSheet title={title} onClose={onClose}>
-      <View className="gap-3 px-4 pb-2">
-        <View className="flex-row flex-wrap gap-2">
-          {(
-            [
-              ["Today", 0],
-              ["Tomorrow", 1],
-              ["In a week", 7],
-            ] as const
-          ).map(([label, offset]) => (
-            <DayShortcut
-              key={label}
-              label={label}
-              onPress={() => onChange(localDay(now, offset))}
-            />
-          ))}
-          {value !== "" && <DayShortcut label="No date" onPress={() => onChange("")} />}
-        </View>
-        <View className="flex-row items-center">
-          <Pressable
-            accessibilityRole="button"
-            accessibilityLabel="Previous month"
-            className="h-11 w-11 items-center justify-center rounded-input active:bg-surface-3"
-            onPress={() => step(-1)}
-          >
-            <Icon name="chevron-left" size={20} color={palette.text} />
-          </Pressable>
-          <Text className="flex-1 text-center font-semibold">
-            {monthName(month)} {year}
-          </Text>
-          <Pressable
-            accessibilityRole="button"
-            accessibilityLabel="Next month"
-            className="h-11 w-11 items-center justify-center rounded-input active:bg-surface-3"
-            onPress={() => step(1)}
-          >
-            <Icon name="chevron-right" size={20} color={palette.text} />
-          </Pressable>
-        </View>
-        <View className="flex-row">
-          {WEEKDAYS.map((day, index) => (
-            // biome-ignore lint/suspicious/noArrayIndexKey: weekday letters repeat and never reorder
-            <Text key={index} size="xs" tone="muted" className="flex-1 text-center">
-              {day}
-            </Text>
-          ))}
-        </View>
-        <View className="flex-row flex-wrap">
-          {monthGrid(year, month).map((day) => (
-            <DayCell
-              key={day}
-              day={day}
-              outside={day.slice(0, 7) !== shown}
-              today={day === today}
-              selected={day === value}
-              onPick={pick}
-            />
-          ))}
-        </View>
-      </View>
-    </BottomSheet>
-  );
-}
-
-function DayShortcut({ label, onPress }: { readonly label: string; readonly onPress: () => void }) {
-  const close = useSheetClose();
-  return (
-    <Pressable
-      accessibilityRole="button"
-      className="min-h-10 justify-center rounded-pill border border-border bg-surface-3 px-4 active:opacity-70"
-      onPress={() => close(onPress)}
-    >
-      <Text size="sm">{label}</Text>
-    </Pressable>
-  );
-}
-
-const DayCell = memo(function DayCell({
-  day,
-  outside,
-  today,
-  selected,
-  onPick,
-}: {
-  readonly day: string;
-  readonly outside: boolean;
-  readonly today: boolean;
-  readonly selected: boolean;
-  readonly onPick: (day: string) => void;
-}) {
-  const palette = usePalette();
-  const close = useSheetClose();
-  return (
-    <Pressable
-      accessibilityRole="button"
-      accessibilityLabel={formatDay(day)}
-      accessibilityState={{ selected }}
-      className="h-11 w-[14.28%] items-center justify-center"
-      onPress={() => close(() => onPick(day))}
-    >
-      <View
-        className={`h-9 w-9 items-center justify-center rounded-pill ${
-          selected ? "bg-accent" : today ? "border border-accent" : ""
-        }`}
-      >
-        <Text
-          size="sm"
-          style={{
-            color: selected ? palette["on-accent"] : outside ? palette["text-muted"] : palette.text,
-            opacity: outside && !selected ? 0.5 : 1,
-          }}
-        >
-          {Number(day.slice(8))}
-        </Text>
-      </View>
-    </Pressable>
-  );
-});

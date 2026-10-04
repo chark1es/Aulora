@@ -1,3 +1,4 @@
+/* eslint-disable no-unused-vars -- the base rule reports parameter names in type signatures; Biome checks real unused code */
 import { Button, Input, Modal, Spinner } from "@aulora/ui-web";
 import { useAction, useMutation, useQuery } from "convex/react";
 import { useState } from "react";
@@ -68,8 +69,12 @@ export function GithubBrowser({
                   setToken("");
                   setResult(null);
                 })
-                .catch((cause: unknown) => setError(failure(cause)))
-                .finally(() => setBusy(false));
+                .catch((cause: unknown) => {
+                  setError(failure(cause));
+                })
+                .finally(() => {
+                  setBusy(false);
+                });
             }}
           >
             <Input
@@ -77,7 +82,9 @@ export function GithubBrowser({
               type="password"
               autoComplete="off"
               value={token}
-              onChange={(e) => setToken(e.target.value)}
+              onChange={(e) => {
+                setToken(e.target.value);
+              }}
               hint="Use a fine-grained token limited to the repositories you need, with read access to metadata, issues and pull requests. Your token is encrypted and only used on the server."
             />
             <a
@@ -105,8 +112,12 @@ export function GithubBrowser({
                   setError(null);
                   setResult(null);
                   void disconnect({})
-                    .catch((cause: unknown) => setError(failure(cause)))
-                    .finally(() => setBusy(false));
+                    .catch((cause: unknown) => {
+                      setError(failure(cause));
+                    })
+                    .finally(() => {
+                      setBusy(false);
+                    });
                 }}
               >
                 Disconnect
@@ -123,7 +134,9 @@ export function GithubBrowser({
                 label="Repository"
                 placeholder="owner/repository"
                 value={repository}
-                onChange={(e) => setRepository(e.target.value)}
+                onChange={(e) => {
+                  setRepository(e.target.value);
+                }}
                 hint="Leave empty to list your repositories."
               />
               <div className="flex flex-wrap items-end gap-2">
@@ -198,7 +211,9 @@ export function GithubBrowser({
                       <Button
                         size="sm"
                         variant="ghost"
-                        onClick={() => onPick({ url: r.url, title: r.name })}
+                        onClick={() => {
+                          onPick({ url: r.url, title: r.name });
+                        }}
                       >
                         Link
                       </Button>
@@ -226,7 +241,9 @@ export function GithubBrowser({
                       <Button
                         variant="secondary"
                         size="sm"
-                        onClick={() => onPick({ url: item.url, title: item.title })}
+                        onClick={() => {
+                          onPick({ url: item.url, title: item.title });
+                        }}
                       >
                         Link
                       </Button>

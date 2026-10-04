@@ -1,16 +1,28 @@
+/* eslint-disable no-unused-vars -- the base rule reports parameter names in type signatures; Biome checks real unused code */
 import { cn, Icon, type IconProps } from "@aulora/ui-web";
 import { type ReactNode, useEffect, useRef, useState } from "react";
 import { PersonAvatar } from "../chat/member-avatars";
 import type { BoardMember, Card } from "./types";
 
 export const PRIORITIES = ["none", "low", "medium", "high", "urgent"] as const;
-export const PRIORITY: Record<Card["priority"], { label: string; tone: string }> = {
-  none: { label: "No priority", tone: "text-text-muted/50" },
-  low: { label: "Low", tone: "text-text-muted" },
-  medium: { label: "Medium", tone: "text-idle" },
-  high: { label: "High", tone: "text-accent" },
-  urgent: { label: "Urgent", tone: "text-danger" },
-};
+export interface PriorityInfo {
+  label: string;
+  /** Text color class for the flag and its label. */
+  tone: string;
+}
+const NO_PRIORITY: PriorityInfo = { label: "No priority", tone: "text-text-muted/50" };
+const PRIORITY_INFO = new Map<Card["priority"], PriorityInfo>([
+  ["none", NO_PRIORITY],
+  ["low", { label: "Low", tone: "text-text-muted" }],
+  ["medium", { label: "Medium", tone: "text-idle" }],
+  ["high", { label: "High", tone: "text-accent" }],
+  ["urgent", { label: "Urgent", tone: "text-danger" }],
+]);
+
+/** How a priority is named and coloured. */
+export function priorityInfo(priority: Card["priority"]): PriorityInfo {
+  return PRIORITY_INFO.get(priority) ?? NO_PRIORITY;
+}
 
 export function PriorityFlag({
   priority,
@@ -19,7 +31,7 @@ export function PriorityFlag({
   priority: Card["priority"];
   size?: number;
 }) {
-  return <Icon name="flag" size={size} className={PRIORITY[priority].tone} />;
+  return <Icon name="flag" size={size} className={priorityInfo(priority).tone} />;
 }
 
 /** Card dates are stored as UTC days, so they are compared and shown as days. */
@@ -123,7 +135,9 @@ export function usePopover() {
       if (!rootRef.current?.contains(event.target as Node)) setOpen(false);
     };
     document.addEventListener("pointerdown", onPointer);
-    return () => document.removeEventListener("pointerdown", onPointer);
+    return () => {
+      document.removeEventListener("pointerdown", onPointer);
+    };
   }, [open]);
   const onKeyDown = (event: React.KeyboardEvent) => {
     if (open && event.key === "Escape") {
@@ -202,7 +216,9 @@ export function ChecklistMenu({
               aria-label={searchPlaceholder}
               placeholder={searchPlaceholder}
               value={query}
-              onChange={(e) => setQuery(e.target.value)}
+              onChange={(e) => {
+                setQuery(e.target.value);
+              }}
               className="mb-1 h-8 w-full rounded-[7px] border border-border bg-surface-3 px-2.5 text-[13px] text-text placeholder:text-text-muted focus-visible:border-accent focus-visible:outline-none"
             />
           )}
@@ -219,13 +235,13 @@ export function ChecklistMenu({
                     aria-label={option.label}
                     className="peer sr-only"
                     checked={checked}
-                    onChange={() =>
+                    onChange={() => {
                       onChange(
                         checked
                           ? selected.filter((id) => id !== option.id)
                           : [...selected, option.id],
-                      )
-                    }
+                      );
+                    }}
                   />
                   <CheckMark />
                   {option.leading}
@@ -243,7 +259,9 @@ export function ChecklistMenu({
             <button
               type="button"
               className={cn(menuRow, "mt-1 justify-center border-t border-border text-text-muted")}
-              onClick={() => onChange([])}
+              onClick={() => {
+                onChange([]);
+              }}
             >
               Clear selection
             </button>
@@ -363,7 +381,9 @@ export function PeoplePicker({
                   <button
                     type="button"
                     aria-label={`Remove ${name}`}
-                    onClick={() => onChange(selected.filter((s) => s !== id))}
+                    onClick={() => {
+                      onChange(selected.filter((s) => s !== id));
+                    }}
                     className="flex h-6 w-6 items-center justify-center rounded-[6px] text-text-muted opacity-0 transition hover:bg-surface-3 hover:text-text focus-visible:opacity-100 group-hover:opacity-100"
                   >
                     <Icon name="x" size={14} />

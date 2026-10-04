@@ -2,114 +2,29 @@ import {
   DEFAULT_KANBAN_COLUMNS,
   hasPermission,
   isKanbanGithubLink,
-  type KanbanCardContent,
   Permission,
 } from "@aulora/core";
-import { paginationOptsValidator } from "convex/server";
 import { ConvexError, v } from "convex/values";
 import { internal } from "./_generated/api";
-import type { Doc, Id } from "./_generated/dataModel";
-import { internalMutation, type MutationCtx, mutation, query } from "./_generated/server";
+import { mutation, query } from "./_generated/server";
 import { writeAudit } from "./lib/audit";
-import { assertMayParticipate, listActiveBans } from "./lib/bans";
+import { assertMayParticipate } from "./lib/bans";
 import { boardContent, requireBoard, requireKanban, writableBoard } from "./lib/kanban";
-import { requireMember, requireWorkspacePermission } from "./lib/permissions";
-import { enforceRateLimit, userRateLimitKey } from "./lib/rateLimit";
-import { openContent } from "./lib/sealed";
+import {
+  activity,
+  boardFields,
+  cardAccess,
+  cardContent,
+  cardFields,
+  cardMetadata,
+  checkWip,
+  stopTimer,
+  text,
+  uniqueIds,
+  validateMembers,
+} from "./lib/kanbanCards";
+import { requireWorkspacePermission } from "./lib/permissions";
 import { sealString } from "./lib/sse";
-
-const column = v.object({ id: v.string(), name: v.string(), wipLimit: v.optional(v.number()) });
-const label = v.object({ id: v.string(), name: v.string(), color: v.string() });
-const boardFields = {
-  name: v.string(),
-  description: v.string(),
-  columns: v.array(column),
-  labels: v.array(label),
-};
-const cardFields = {
-  title: v.string(),
-  notes: v.string(),
-  checklist: v.array(v.object({ id: v.string(), text: v.string(), done: v.boolean() })),
-  githubLinks: v.array(v.string()),
-};
-const priority = v.union(
-  v.literal("none"),
-  v.literal("low"),
-  v.literal("medium"),
-  v.literal("high"),
-  v.literal("urgent"),
-);
-const cardMetadata = {
-  labelIds: v.array(v.string()),
-  assigneeIds: v.array(v.string()),
-  priority,
-  startAt: v.union(v.number(), v.null()),
-  dueAt: v.union(v.number(), v.null()),
-  estimateMinutes: v.union(v.number(), v.null()),
-};
-function text(value: string, name: string, max: number, required = true) {
-  if ((required && !value.trim()) || value.length > max)
-    throw new ConvexError(`${name} must be ${required ? "1" : "0"}–${max} characters`);
-}
-function uniqueIds(values: string[], max: number) {
-  if (
-    values.length > max ||
-    new Set(values).size !== values.length ||
-    values.some((id) => !id || id.length > 100)
-  ) {
-    throw new ConvexError("Invalid or duplicate identifiers");
-  }
-}
-async function validateMembers(ctx: MutationCtx, ids: string[]) {
-  uniqueIds(ids, 100);
-  for (const id of ids) {
-    await requireMember(ctx, id);
-    if ((await listActiveBans(ctx, id)).length)
-      throw new ConvexError("Cannot assign a banned member");
-  }
-}
-async function activity(
-  ctx: MutationCtx,
-  cardId: Id<"kanbanCards">,
-  actorId: string,
-  body: string,
-) {
-  const id = await ctx.db.insert("kanbanActivity", {
-    cardId,
-    actorId,
-    bodyCiphertext: "",
-    at: Date.now(),
-  });
-  await ctx.db.patch(id, {
-    bodyCiphertext: await sealString({ scope: "kanban.activity", recordId: id }, body),
-  });
-}
-async function stopTimer(ctx: MutationCtx, card: Doc<"kanbanCards">) {
-  if (card.timerStartedAt === undefined) return;
-  await ctx.db.patch(card._id, {
-    trackedMs: card.trackedMs + Math.max(0, Date.now() - card.timerStartedAt),
-    timerStartedAt: undefined,
-    timerUserId: undefined,
-  });
-}
-async function cardAccess(
-  ctx: MutationCtx,
-  cardId: Id<"kanbanCards">,
-  flag = Permission.EditKanban,
-  allowArchived = false,
-) {
-  const card = await ctx.db.get(cardId);
-  if (!card) throw new ConvexError("Card not found");
-  const auth = await writableBoard(ctx, card.boardId, flag);
-  if (card.archived && !allowArchived) throw new ConvexError("Restore the card before editing it");
-  return { ...auth, card };
-}
-async function cardContent(card: Doc<"kanbanCards">): Promise<KanbanCardContent> {
-  return JSON.parse(
-    await openContent({ scope: "kanban.card", recordId: card._id }, card.contentCiphertext),
-  );
-}
-
 export const setEnabled = mutation({
   args: { enabled: v.boolean() },
   handler: async (ctx, { enabled }) => {
@@ -360,19 +275,6 @@ export const createCard = mutation({
     return id;
   },
 });
-function checkWip(
-  columns: { id: string; wipLimit?: number }[],
-  cards: Doc<"kanbanCards">[],
-  columnId: string,
-  exclude?: Id<"kanbanCards">,
-) {
-  const limit = columns.find((c) => c.id === columnId)?.wipLimit;
-  if (
-    limit !== undefined &&
-    cards.filter((c) => c.columnId === columnId && !c.archived && c._id !== exclude).length >= limit
-  )
-    throw new ConvexError("This column has reached its work-in-progress limit");
-}
 export const updateCard = mutation({
   args: { cardId: v.id("kanbanCards"), revision: v.number(), ...cardFields, ...cardMetadata },
   handler: async (ctx, args) => {
@@ -537,106 +439,6 @@ export const attachFile = mutation({
     );
   },
 });
-export const comments = query({
-  args: { cardId: v.id("kanbanCards"), paginationOpts: paginationOptsValidator },
-  handler: async (ctx, args) => {
-    const card = await ctx.db.get(args.cardId);
-    if (!card) throw new ConvexError("Card not found");
-    await requireBoard(ctx, card.boardId);
-    const result = await ctx.db
-      .query("kanbanComments")
-      .withIndex("by_card", (q) => q.eq("cardId", card._id))
-      .order("desc")
-      .paginate({ ...args.paginationOpts, numItems: Math.min(50, args.paginationOpts.numItems) });
-    return {
-      ...result,
-      page: await Promise.all(
-        result.page.map(async (c) => ({
-          id: c._id,
-          authorId: c.authorId,
-          at: c._creationTime,
-          updatedAt: c.updatedAt,
-          body: await openContent({ scope: "kanban.comment", recordId: c._id }, c.bodyCiphertext),
-        })),
-      ),
-    };
-  },
-});
-export const comment = mutation({
-  args: {
-    cardId: v.id("kanbanCards"),
-    body: v.string(),
-    commentId: v.optional(v.id("kanbanComments")),
-    remove: v.optional(v.boolean()),
-  },
-  handler: async (ctx, args) => {
-    const { card, userId, permissions } = await cardAccess(
-      ctx,
-      args.cardId,
-      args.commentId ? Permission.ViewKanban : Permission.CommentKanban,
-    );
-    await enforceRateLimit(ctx, {
-      key: userRateLimitKey("kanban.comment", userId),
-      limit: 30,
-      windowMs: 60000,
-    });
-    if (!args.remove) text(args.body, "Comment", 10000);
-    let id = args.commentId;
-    if (id) {
-      const existing = await ctx.db.get(id);
-      if (!existing || existing.cardId !== card._id)
-        throw new ConvexError("Comment not found on this card");
-      const mayModerate = hasPermission(permissions, Permission.ManageKanban);
-      if (
-        !mayModerate &&
-        (existing.authorId !== userId || !hasPermission(permissions, Permission.CommentKanban))
-      )
-        throw new ConvexError("You can only edit your own comments");
-      if (args.remove) {
-        await ctx.db.delete(id);
-        await activity(ctx, card._id, userId, "Deleted a comment");
-        return;
-      }
-    } else {
-      if (args.remove) throw new ConvexError("Comment not found");
-      id = await ctx.db.insert("kanbanComments", {
-        cardId: card._id,
-        authorId: userId,
-        bodyCiphertext: "",
-        updatedAt: Date.now(),
-      });
-    }
-    await ctx.db.patch(id, {
-      bodyCiphertext: await sealString({ scope: "kanban.comment", recordId: id }, args.body),
-      updatedAt: Date.now(),
-    });
-    await ctx.db.patch(card._id, { updatedAt: Date.now() });
-    await activity(ctx, card._id, userId, args.commentId ? "Edited a comment" : "Added a comment");
-  },
-});
-export const history = query({
-  args: { cardId: v.id("kanbanCards") },
-  handler: async (ctx, args) => {
-    const card = await ctx.db.get(args.cardId);
-    if (!card) throw new ConvexError("Card not found");
-    await requireBoard(ctx, card.boardId);
-    const rows = await ctx.db
-      .query("kanbanActivity")
-      .withIndex("by_card", (q) => q.eq("cardId", card._id))
-      .order("desc")
-      .take(50);
-    return Promise.all(
-      rows.map(async (r) => ({
-        id: r._id,
-        actorId: r.actorId,
-        at: r.at,
-        body: await openContent({ scope: "kanban.activity", recordId: r._id }, r.bodyCiphertext),
-      })),
-    );
-  },
-});
-
-/** Deletes are immediate for readers; storage and history cleanup is bounded. */
 export const deleteCard = mutation({
   args: { cardId: v.id("kanbanCards") },
   handler: async (ctx, args) => {
@@ -645,7 +447,7 @@ export const deleteCard = mutation({
     const { userId } = await requireBoard(ctx, card.boardId, Permission.ManageKanban);
     await assertMayParticipate(ctx, userId);
     await ctx.db.delete(card._id);
-    await ctx.scheduler.runAfter(0, internal.kanban.cleanupCard, {
+    await ctx.scheduler.runAfter(0, internal.kanbanCleanup.cleanupCard, {
       cardId: card._id,
       boardId: card.boardId,
       fileIds: card.fileIds,
@@ -659,79 +461,7 @@ export const deleteBoard = mutation({
     const { board, userId } = await requireBoard(ctx, args.boardId, Permission.ManageKanban);
     await assertMayParticipate(ctx, userId);
     await ctx.db.patch(board._id, { deleted: true, archived: true });
-    await ctx.scheduler.runAfter(0, internal.kanban.cleanupBoard, { boardId: board._id });
+    await ctx.scheduler.runAfter(0, internal.kanbanCleanup.cleanupBoard, { boardId: board._id });
     await writeAudit(ctx, { actorId: userId, action: "kanban.deleteBoard", targetId: board._id });
-  },
-});
-async function deleteFile(ctx: MutationCtx, id: Id<"files">) {
-  const row = await ctx.db.get(id);
-  if (!row) return;
-  await ctx.storage.delete(row.storageId);
-  await ctx.db.delete(row._id);
-}
-export const cleanupCard = internalMutation({
-  args: {
-    cardId: v.id("kanbanCards"),
-    boardId: v.id("kanbanBoards"),
-    fileIds: v.array(v.id("files")),
-  },
-  handler: async (ctx, args) => {
-    if (await ctx.db.get(args.cardId)) return;
-    const comments = await ctx.db
-      .query("kanbanComments")
-      .withIndex("by_card", (q) => q.eq("cardId", args.cardId))
-      .take(100);
-    const events = await ctx.db
-      .query("kanbanActivity")
-      .withIndex("by_card", (q) => q.eq("cardId", args.cardId))
-      .take(100);
-    for (const row of comments) await ctx.db.delete(row._id);
-    for (const row of events) await ctx.db.delete(row._id);
-    if (comments.length === 100 || events.length === 100) {
-      await ctx.scheduler.runAfter(0, internal.kanban.cleanupCard, args);
-      return;
-    }
-    const remaining = await ctx.db
-      .query("kanbanCards")
-      .withIndex("by_board", (q) => q.eq("boardId", args.boardId))
-      .collect();
-    for (const id of args.fileIds) {
-      const file = await ctx.db.get(id);
-      if (file?.kanbanBoardId === args.boardId && !remaining.some((c) => c.fileIds.includes(id)))
-        await deleteFile(ctx, id);
-    }
-  },
-});
-export const cleanupBoard = internalMutation({
-  args: { boardId: v.id("kanbanBoards") },
-  handler: async (ctx, args) => {
-    const board = await ctx.db.get(args.boardId);
-    if (!board?.deleted) return;
-    const cards = await ctx.db
-      .query("kanbanCards")
-      .withIndex("by_board", (q) => q.eq("boardId", args.boardId))
-      .take(20);
-    for (const card of cards) {
-      await ctx.db.delete(card._id);
-      await ctx.scheduler.runAfter(0, internal.kanban.cleanupCard, {
-        cardId: card._id,
-        boardId: args.boardId,
-        fileIds: card.fileIds,
-      });
-    }
-    if (cards.length) {
-      await ctx.scheduler.runAfter(0, internal.kanban.cleanupBoard, args);
-      return;
-    }
-    const files = await ctx.db
-      .query("files")
-      .withIndex("by_kanban_board", (q) => q.eq("kanbanBoardId", args.boardId))
-      .take(20);
-    for (const file of files) await deleteFile(ctx, file._id);
-    if (files.length) {
-      await ctx.scheduler.runAfter(0, internal.kanban.cleanupBoard, args);
-      return;
-    }
-    await ctx.db.delete(board._id);
   },
 });
