@@ -43,6 +43,7 @@ import { useChat } from "../../providers/ChatProvider";
 import { useProfiles } from "../../providers/ProfileProvider";
 import { useSound } from "../../providers/SoundProvider";
 import { useVoice } from "../../providers/VoiceProvider";
+import { KanbanScreen } from "../kanban/KanbanScreen";
 import { CallScreen } from "../voice/CallScreen";
 import { IncomingCallModal } from "../voice/IncomingCallModal";
 import { JoinedElsewhereScreen } from "../voice/JoinedElsewhereScreen";
@@ -120,7 +121,15 @@ export function ChatScreen({
     Platform.OS === "ios" ? "ios" : "android",
   );
   const [activeChannelId, setActiveChannelId] = useState<string | undefined>(undefined);
-  const [mainView, setMainView] = useState<"channels" | "threads" | "search">("channels");
+  const [mainView, setMainView] = useState<"channels" | "threads" | "search" | "kanban">(
+    "channels",
+  );
+  // The Kanban addon is off unless the workspace turns it on; older servers omit it.
+  const [kanbanBoardId, setKanbanBoardId] = useState<string | null>(null);
+  const publicConfig = useQuery(api.server.publicConfig, {});
+  const showKanban =
+    publicConfig?.addons?.kanban === true &&
+    hasPermission(viewerPermissions, Permission.ViewKanban);
   const [newMessageOpen, setNewMessageOpen] = useState(false);
   const [pinsOpen, setPinsOpen] = useState(false);
   const [profileFor, setProfileFor] = useState<string | null>(null);
@@ -659,7 +668,13 @@ export function ChatScreen({
       className="flex-1 bg-bg"
       behavior={Platform.OS === "ios" ? "padding" : "height"}
     >
-      <View className="flex-row items-center justify-between border-b border-border px-3 py-3">
+      <View
+        className={
+          mainView === "kanban" && showKanban
+            ? "hidden"
+            : "flex-row items-center justify-between border-b border-border px-3 py-3"
+        }
+      >
         <View className="min-w-0 flex-1 flex-row items-center gap-2">
           <Pressable
             accessibilityRole="button"
@@ -738,6 +753,15 @@ export function ChatScreen({
           </Text>
           <Button onPress={retryStartup}>Try again</Button>
         </View>
+      ) : mainView === "kanban" && showKanban ? (
+        <KanbanScreen
+          ownUserId={ownUserId}
+          permissions={viewerPermissions}
+          members={members}
+          boardId={kanbanBoardId}
+          onBoardChange={setKanbanBoardId}
+          onOpenDrawer={() => setDrawerOpen(true)}
+        />
       ) : mainView === "search" ? (
         <SearchView
           channels={channels}
@@ -931,6 +955,7 @@ export function ChatScreen({
           [
             { key: "channels", label: "Chats", icon: "message" },
             { key: "threads", label: "Threads", icon: "hash" },
+            ...(showKanban ? [{ key: "kanban", label: "Boards", icon: "kanban" } as const] : []),
             { key: "search", label: "Search", icon: "search" },
           ] as const
         ).map((tab) => (

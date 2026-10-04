@@ -1,24 +1,29 @@
 import { useEffect, useRef, useState } from "react";
 import { AccessibilityInfo, Animated, Easing } from "react-native";
 
+/** The last answer from the OS, so later screens need not wait a tick to animate. */
+let lastKnown: boolean | null = null;
+
 /**
  * Tracks the OS "Reduce Motion" preference (initial read + change events) so
  * screens can render a static, non-animated variant when it is enabled.
- * Returns `null` until the first read resolves, so callers never animate
- * before the preference is known. Mirrors the HIG guidance for accessibility:
+ * Returns `null` until the first read in this app session resolves, so callers
+ * never animate before the preference is known. Mirrors the HIG guidance for accessibility:
  * "ensure your app responds by reducing automatic and repetitive animations".
  */
 export function useReduceMotion(): boolean | null {
-  const [reduced, setReduced] = useState<boolean | null>(null);
+  const [reduced, setReduced] = useState<boolean | null>(lastKnown);
 
   useEffect(() => {
     let mounted = true;
     void AccessibilityInfo.isReduceMotionEnabled().then((value) => {
+      lastKnown = value;
       if (mounted) {
         setReduced(value);
       }
     });
     const subscription = AccessibilityInfo.addEventListener("reduceMotionChanged", (value) => {
+      lastKnown = value;
       setReduced(value);
     });
     return () => {
