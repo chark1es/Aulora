@@ -1,7 +1,9 @@
-import { Button, Input, Text } from "@aulora/ui-native";
-import { useState } from "react";
-import { Pressable, ScrollView, View } from "react-native";
-import { Sheet } from "./Sheet";
+import { Text, usePalette } from "@aulora/ui-native";
+import { BottomSheetTextInput } from "@gorhom/bottom-sheet";
+import { useEffect, useState } from "react";
+import { Alert } from "react-native";
+import { BottomSheet } from "./BottomSheet";
+import { ListGroup, ListHeader, ListRow } from "./List";
 
 const MINUTE = 60_000;
 const HOUR = 60 * MINUTE;
@@ -60,151 +62,194 @@ export function MemberActionsSheet({
   onOpenNote,
   onClose,
 }: MemberActionsSheetProps) {
+  const palette = usePalette();
   const [panel, setPanel] = useState<Panel>("actions");
   const [reason, setReason] = useState("");
 
+  // The caller hides the sheet once a moderation request succeeds; a failure
+  // keeps it open with the error. Either way the next opening starts clean.
+  useEffect(() => {
+    if (!visible) {
+      setPanel("actions");
+      setReason("");
+    }
+  }, [visible]);
+
   function close() {
-    setPanel("actions");
-    setReason("");
     onClose();
   }
 
   return (
-    <Sheet visible={visible} title={memberName} onClose={close}>
-      <View className="flex-1 p-4">
-        {error !== null && (
-          <Text size="sm" tone="danger" accessibilityRole="alert" className="mt-2">
-            {error}
-          </Text>
-        )}
+    <BottomSheet
+      visible={visible}
+      title={panel === "ban" ? `Ban ${memberName}` : panel === "timeout" ? "Time out" : memberName}
+      subtitle={panel === "timeout" ? `${memberName} can't send messages until it ends` : undefined}
+      onClose={close}
+    >
+      {error !== null && (
+        <Text size="sm" tone="danger" accessibilityRole="alert">
+          {error}
+        </Text>
+      )}
 
-        <ScrollView contentContainerStyle={{ gap: 4, paddingVertical: 12 }}>
-          {panel === "actions" && (
-            <>
-              <Pressable
-                accessibilityRole="button"
-                className="rounded-input px-3 py-3"
+      {panel === "actions" && (
+        <>
+          <ListGroup>
+            <ListRow
+              icon="note"
+              title="Private note"
+              subtitle="Only you can see it"
+              onPress={() => {
+                close();
+                onOpenNote();
+              }}
+            />
+            {canTimeout && (
+              <ListRow
+                icon="bell-off"
+                title="Time out"
+                chevron
                 onPress={() => {
-                  close();
-                  onOpenNote();
+                  setPanel("timeout");
                 }}
-              >
-                <Text>Add or edit note…</Text>
-              </Pressable>
-              {canTimeout && (
-                <Pressable
-                  accessibilityRole="button"
-                  className="rounded-input px-3 py-3"
-                  onPress={() => setPanel("timeout")}
-                >
-                  <Text>Timeout…</Text>
-                </Pressable>
-              )}
+              />
+            )}
+          </ListGroup>
+          {(canKick || canBan) && (
+            <ListGroup>
               {canKick && (
-                <Pressable
-                  accessibilityRole="button"
-                  className="rounded-input px-3 py-3"
+                <ListRow
+                  icon="logout"
+                  title="Kick from workspace"
+                  tone="danger"
                   disabled={busy}
                   onPress={() => {
-                    onKick();
-                    close();
+                    Alert.alert(
+                      `Kick ${memberName}?`,
+                      "They lose access now and can rejoin with a new invitation.",
+                      [
+                        { text: "Cancel", style: "cancel" },
+                        {
+                          text: "Kick",
+                          style: "destructive",
+                          onPress: onKick,
+                        },
+                      ],
+                    );
                   }}
-                >
-                  <Text tone="danger">Kick</Text>
-                </Pressable>
+                />
               )}
               {canBan && (
-                <Pressable
-                  accessibilityRole="button"
-                  className="rounded-input px-3 py-3"
-                  onPress={() => setPanel("ban")}
-                >
-                  <Text tone="danger">Ban…</Text>
-                </Pressable>
-              )}
-              <Pressable
-                accessibilityRole="button"
-                className="rounded-input px-3 py-3"
-                onPress={close}
-              >
-                <Text tone="muted">Cancel</Text>
-              </Pressable>
-            </>
-          )}
-
-          {panel === "timeout" && (
-            <>
-              <Text size="xs" tone="muted" className="px-3 pb-1">
-                Mute this member for…
-              </Text>
-              {TIMEOUT_DURATIONS.map((option) => (
-                <Pressable
-                  key={`timeout:${option.label}`}
-                  accessibilityRole="button"
-                  className="rounded-input px-3 py-3"
-                  disabled={busy}
+                <ListRow
+                  icon="ban"
+                  title="Ban"
+                  tone="danger"
+                  chevron
                   onPress={() => {
-                    onTimeout(option.durationMs);
-                    close();
+                    setPanel("ban");
                   }}
-                >
-                  <Text>{option.label}</Text>
-                </Pressable>
-              ))}
-              <Pressable
-                accessibilityRole="button"
-                className="rounded-input px-3 py-3"
+                />
+              )}
+            </ListGroup>
+          )}
+        </>
+      )}
+
+      {panel === "timeout" && (
+        <>
+          <ListGroup inset={12}>
+            {TIMEOUT_DURATIONS.map((option) => (
+              <ListRow
+                key={`timeout:${option.label}`}
+                title={option.label}
                 disabled={busy}
                 onPress={() => {
-                  onTimeout(undefined);
-                  close();
+                  onTimeout(option.durationMs);
                 }}
-              >
-                <Text tone="muted">Clear timeout</Text>
-              </Pressable>
-              <Button size="sm" variant="ghost" onPress={() => setPanel("actions")}>
-                Back
-              </Button>
-            </>
-          )}
-
-          {panel === "ban" && (
-            <>
-              <Input
-                label="Reason (optional)"
-                value={reason}
-                onChangeText={setReason}
-                maxLength={200}
-                placeholder="Why is this member being banned?"
               />
-              <Text size="xs" tone="muted" className="px-3 pt-1">
-                Ban for…
-              </Text>
-              {BAN_DURATIONS.map((option) => (
-                <Pressable
-                  key={`ban:${option.label}`}
-                  accessibilityRole="button"
-                  className="rounded-input px-3 py-3"
-                  disabled={busy}
-                  onPress={() => {
-                    const trimmed = reason.trim();
-                    onBan({
-                      ...(trimmed.length > 0 ? { reason: trimmed } : {}),
-                      ...(option.durationMs !== undefined ? { durationMs: option.durationMs } : {}),
-                    });
-                    close();
-                  }}
-                >
-                  <Text>{option.label}</Text>
-                </Pressable>
-              ))}
-              <Button size="sm" variant="ghost" onPress={() => setPanel("actions")}>
-                Back
-              </Button>
-            </>
-          )}
-        </ScrollView>
-      </View>
-    </Sheet>
+            ))}
+          </ListGroup>
+          <ListGroup inset={12}>
+            <ListRow
+              title="Clear timeout"
+              disabled={busy}
+              onPress={() => {
+                onTimeout(undefined);
+              }}
+            />
+            <ListRow
+              title="Back"
+              onPress={() => {
+                setPanel("actions");
+              }}
+            />
+          </ListGroup>
+        </>
+      )}
+
+      {panel === "ban" && (
+        <>
+          <BottomSheetTextInput
+            accessibilityLabel="Reason, optional"
+            value={reason}
+            onChangeText={setReason}
+            maxLength={200}
+            placeholder="Reason (optional)"
+            placeholderTextColor={palette["text-muted"]}
+            style={{
+              color: palette.text,
+              backgroundColor: palette["surface-2"],
+              borderRadius: 12,
+              paddingHorizontal: 14,
+              paddingVertical: 12,
+              fontSize: 17,
+            }}
+          />
+          <ListHeader title="Ban for" />
+          <ListGroup inset={12}>
+            {BAN_DURATIONS.map((option) => (
+              <ListRow
+                key={`ban:${option.label}`}
+                title={option.label}
+                tone="danger"
+                disabled={busy}
+                onPress={() => {
+                  const trimmed = reason.trim();
+                  Alert.alert(
+                    `Ban ${memberName}?`,
+                    option.durationMs === undefined
+                      ? "They can't rejoin until someone lifts the ban."
+                      : `They can't rejoin for ${option.label}.`,
+                    [
+                      { text: "Cancel", style: "cancel" },
+                      {
+                        text: "Ban",
+                        style: "destructive",
+                        onPress: () => {
+                          onBan({
+                            ...(trimmed.length > 0 ? { reason: trimmed } : {}),
+                            ...(option.durationMs !== undefined
+                              ? { durationMs: option.durationMs }
+                              : {}),
+                          });
+                        },
+                      },
+                    ],
+                  );
+                }}
+              />
+            ))}
+          </ListGroup>
+          <ListGroup inset={12}>
+            <ListRow
+              title="Back"
+              onPress={() => {
+                setPanel("actions");
+              }}
+            />
+          </ListGroup>
+        </>
+      )}
+    </BottomSheet>
   );
 }

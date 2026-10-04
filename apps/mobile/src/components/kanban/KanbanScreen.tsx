@@ -14,9 +14,11 @@ import {
   useWindowDimensions,
   View,
 } from "react-native";
+import { KeyboardAvoidingView } from "react-native-keyboard-controller";
 import Animated, { FadeIn, FadeInDown, FadeOut, LinearTransition } from "react-native-reanimated";
 import { api } from "../../../../../packages/convex/convex/_generated/api";
 import type { Id } from "../../../../../packages/convex/convex/_generated/dataModel";
+import { impactFeedback, selectionFeedback } from "../../lib/haptics";
 import {
   applyMove,
   applyTimer,
@@ -37,6 +39,7 @@ import {
   UNASSIGNED,
 } from "../../lib/kanban";
 import { MemberAvatar } from "../chat/MemberAvatar";
+import { HorizontalScroll } from "../chat/SwipePanes";
 import { BoardSettingsSheet, NewBoardSheet } from "./BoardSettingsSheet";
 import { CardSheet } from "./CardSheet";
 import { CardTile } from "./CardTile";
@@ -64,7 +67,6 @@ export function KanbanScreen({
   members,
   boardId,
   onBoardChange: setBoardId,
-  onOpenDrawer,
 }: {
   readonly ownUserId: string;
   readonly permissions: bigint;
@@ -72,7 +74,6 @@ export function KanbanScreen({
   /** Kept by the parent so the board survives a visit to another tab. */
   readonly boardId: string | null;
   readonly onBoardChange: (boardId: string | null) => void;
-  readonly onOpenDrawer: () => void;
 }) {
   const palette = usePalette();
   const { width } = useWindowDimensions();
@@ -198,13 +199,19 @@ export function KanbanScreen({
   const onPagerScroll = useCallback(
     (event: NativeSyntheticEvent<NativeScrollEvent>) => {
       const index = Math.round(event.nativeEvent.contentOffset.x / interval);
-      setActive((current) => (current === index ? current : index));
+      setActive((current) => {
+        if (current !== index) selectionFeedback();
+        return index;
+      });
     },
     [interval],
   );
 
   const openCard = useCallback((card: Card) => setDetail(card._id), []);
-  const menuCard = useCallback((card: Card) => setOpen({ kind: "card", cardId: card._id }), []);
+  const menuCard = useCallback((card: Card) => {
+    impactFeedback();
+    setOpen({ kind: "card", cardId: card._id });
+  }, []);
 
   function confirm(title: string, message: string, label: string, onConfirm: () => void) {
     Alert.alert(title, message, [
@@ -426,16 +433,9 @@ export function KanbanScreen({
   const close = () => setOpen(null);
 
   return (
-    <View className="flex-1">
+    // Lifts the add-card composer clear of the keyboard.
+    <KeyboardAvoidingView behavior="padding" style={{ flex: 1 }}>
       <View className="flex-row items-center gap-1 border-b border-border px-3 py-3">
-        <Pressable
-          accessibilityRole="button"
-          accessibilityLabel="Open conversations"
-          className="h-12 w-12 items-center justify-center"
-          onPress={onOpenDrawer}
-        >
-          <Icon name="menu" size={20} color={palette.text} />
-        </Pressable>
         <Pressable
           accessibilityRole="button"
           accessibilityLabel={board ? `${board.name}, switch board` : "Switch board"}
@@ -535,9 +535,7 @@ export function KanbanScreen({
             </Animated.View>
           )}
           <View className="border-b border-border">
-            <ScrollView
-              horizontal
-              showsHorizontalScrollIndicator={false}
+            <HorizontalScroll
               keyboardShouldPersistTaps="handled"
               contentContainerStyle={{
                 gap: 8,
@@ -584,7 +582,7 @@ export function KanbanScreen({
               {board.private && (
                 <AvatarStack userIds={board.memberIds} members={members} max={4} ring="surface-1" />
               )}
-            </ScrollView>
+            </HorizontalScroll>
           </View>
 
           {(board.archived || archivedCards) && (
@@ -619,10 +617,8 @@ export function KanbanScreen({
           )}
 
           {!wide && columns.length > 1 && (
-            <ScrollView
+            <HorizontalScroll
               ref={strip}
-              horizontal
-              showsHorizontalScrollIndicator={false}
               accessibilityRole="tablist"
               style={{ flexGrow: 0 }}
               contentContainerStyle={{ gap: 4, paddingHorizontal: EDGE - 4, paddingTop: 8 }}
@@ -655,7 +651,7 @@ export function KanbanScreen({
                   </Pressable>
                 );
               })}
-            </ScrollView>
+            </HorizontalScroll>
           )}
 
           {cards === undefined ? (
@@ -663,11 +659,9 @@ export function KanbanScreen({
               <Spinner size={28} label="Loading cards" />
             </View>
           ) : (
-            <ScrollView
+            <HorizontalScroll
               key={board.id}
               ref={pager}
-              horizontal
-              showsHorizontalScrollIndicator={false}
               keyboardShouldPersistTaps="handled"
               decelerationRate="fast"
               disableIntervalMomentum
@@ -706,7 +700,7 @@ export function KanbanScreen({
                   onMenu={menuCard}
                 />
               ))}
-            </ScrollView>
+            </HorizontalScroll>
           )}
         </>
       )}
@@ -807,7 +801,7 @@ export function KanbanScreen({
           onClose={() => setDetail(null)}
         />
       )}
-    </View>
+    </KeyboardAvoidingView>
   );
 }
 

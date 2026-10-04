@@ -1,8 +1,8 @@
-import { NativeAvatar } from "@aulora/avatars/native";
 import {
   type AttachmentDescriptor,
   type ChannelView,
   conversationTitle,
+  dmPartnerId,
   expandBroadcast,
   hasPermission,
   joinedElsewhere,
@@ -11,18 +11,13 @@ import {
   resolveChannelMentions,
   resolveMentions,
 } from "@aulora/core";
-import { Button, Heading, Icon, IconButton, Spinner, Text, usePalette } from "@aulora/ui-native";
+import { Button, Icon, Spinner, Text, usePalette } from "@aulora/ui-native";
+import { BottomSheetModalProvider } from "@gorhom/bottom-sheet";
+import AsyncStorage from "@react-native-async-storage/async-storage";
 import { useMutation, useQuery } from "convex/react";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import {
-  Alert,
-  KeyboardAvoidingView,
-  Modal,
-  Platform,
-  Pressable,
-  ScrollView,
-  View,
-} from "react-native";
+import { Alert, BackHandler, Keyboard, Platform, Pressable, View } from "react-native";
+import { KeyboardAvoidingView } from "react-native-keyboard-controller";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { api } from "../../../../../packages/convex/convex/_generated/api";
 import { pickFromLibrary, uploadPickedFiles } from "../../lib/attachments";
@@ -34,9 +29,11 @@ import {
   setUserNote,
   timeoutMember,
 } from "../../lib/backend-actions";
+import { selectionFeedback } from "../../lib/haptics";
 import { useIncomingCallNotification, useLocalNotifications } from "../../lib/notifications";
 import { planChannelEdit } from "../../lib/permissions";
-import { typingLabel } from "../../lib/presence";
+import { presenceLabel, typingLabel } from "../../lib/presence";
+import { recentSearchKey } from "../../lib/search-ui";
 import { useChannelSession } from "../../lib/use-channel";
 import { usePushRegistration } from "../../lib/use-push-registration";
 import { useChat } from "../../providers/ChatProvider";
@@ -47,19 +44,25 @@ import { KanbanScreen } from "../kanban/KanbanScreen";
 import { CallScreen } from "../voice/CallScreen";
 import { IncomingCallModal } from "../voice/IncomingCallModal";
 import { JoinedElsewhereScreen } from "../voice/JoinedElsewhereScreen";
-import { VoiceChannelSection } from "../voice/VoiceChannelSection";
 import { BannedMembersSheet } from "./BannedMembersSheet";
+import { BottomSheet, useLingering } from "./BottomSheet";
+import { ChannelList } from "./ChannelList";
 import { Composer } from "./Composer";
 import { CreateChannelSheet, type NewChannelKind } from "./CreateChannelSheet";
+import { DirectList } from "./DirectList";
 import { EditChannelSheet } from "./EditChannelSheet";
+import { HubDock, type HubTab, PaneHeader, RoundButton, useDockClearance } from "./HubPane";
+import { ListGroup, ListRow } from "./List";
 import { MemberActionsSheet } from "./MemberActionsSheet";
 import { MemberProfileSheet } from "./MemberProfileSheet";
-import { MembersSheet } from "./MembersSheet";
+import { MembersPane } from "./MembersPane";
 import { MessageList } from "./MessageList";
 import { NewConversationSheet } from "./NewConversationSheet";
 import { PinnedMessagesSheet } from "./PinnedMessagesSheet";
+import { PresenceAvatar } from "./PresenceAvatar";
 import { SearchView } from "./SearchView";
-import { SettingsSheet } from "./SettingsSheet";
+import { SettingsView } from "./SettingsView";
+import { type PaneIndex, SwipePanes } from "./SwipePanes";
 import { ThreadModal } from "./ThreadModal";
 import { type ThreadInboxItem, ThreadsInbox } from "./ThreadsInbox";
 import { UserNoteSheet } from "./UserNoteSheet";
@@ -73,8 +76,9 @@ export interface ChatScreenProps {
 }
 
 /**
- * The signed-in mobile chat surface: channel drawer, plaintext message list,
- * composer, threads, reactions, presence and typing.
+ * The signed-in mobile chat surface as three full-screen panes. The conversation
+ * sits in the middle; swipe right for the hub (conversations, threads, search,
+ * settings) and left for the people in it.
  */
 export function ChatScreen({
   workspaceName,
@@ -121,9 +125,8 @@ export function ChatScreen({
     Platform.OS === "ios" ? "ios" : "android",
   );
   const [activeChannelId, setActiveChannelId] = useState<string | undefined>(undefined);
-  const [mainView, setMainView] = useState<"channels" | "threads" | "search" | "kanban">(
-    "channels",
-  );
+  const [pane, setPane] = useState<PaneIndex>(1);
+  const [hubTab, setHubTab] = useState<HubTab>("chats");
   // The Kanban addon is off unless the workspace turns it on; older servers omit it.
   const [kanbanBoardId, setKanbanBoardId] = useState<string | null>(null);
   const publicConfig = useQuery(api.server.publicConfig, {});
@@ -135,12 +138,9 @@ export function ChatScreen({
   const [profileFor, setProfileFor] = useState<string | null>(null);
   const [quote, setQuote] = useState<MessagePayload | null>(null);
   const [jumpToMessageId, setJumpToMessageId] = useState<string | null>(null);
-  const [drawerOpen, setDrawerOpen] = useState(false);
   const [showHidden, setShowHidden] = useState(false);
   const [workspaceSwitcherOpen, setWorkspaceSwitcherOpen] = useState(false);
-  const [membersOpen, setMembersOpen] = useState(false);
   const [bansOpen, setBansOpen] = useState(false);
-  const [settingsOpen, setSettingsOpen] = useState(false);
   const [createOpen, setCreateOpen] = useState(false);
   const [createBusy, setCreateBusy] = useState(false);
   const [createError, setCreateError] = useState<string | null>(null);
@@ -418,8 +418,7 @@ export function ChatScreen({
       setThreadRoot(null);
       setQuote(null);
       setJumpToMessageId(null);
-      setMainView("channels");
-      setDrawerOpen(false);
+      setPane(1);
       const summary = channels.find((entry) => entry.id === channelId);
       if (runtime !== undefined && summary !== undefined) {
         await runtime.session.openChannel(summary);
@@ -430,7 +429,6 @@ export function ChatScreen({
 
   const joinVoiceChannel = useCallback(
     (channelId: string) => {
-      setDrawerOpen(false);
       void openChannel(channelId);
       const live = voice.activeCalls.find((entry) => entry.channelId === channelId);
       if (live !== undefined) {
@@ -572,8 +570,7 @@ export function ChatScreen({
       };
       setActiveChannelId(thread.channelId);
       setThreadRoot(root);
-      setMainView("channels");
-      setDrawerOpen(false);
+      setPane(1);
       const summary = channels.find((entry) => entry.id === thread.channelId);
       if (runtime !== undefined && summary !== undefined) {
         void runtime.session.openChannel(summary);
@@ -643,6 +640,8 @@ export function ChatScreen({
     (userId) => memberNames.get(userId) ?? userId,
   );
 
+  const recentKey = recentSearchKey(activeProfile?.baseUrl ?? workspaceName, ownUserId);
+
   const confirmSignOut = useCallback(() => {
     Alert.alert(`Sign out of ${workspaceName}?`, "You can sign back in at any time.", [
       { text: "Cancel", style: "cancel" },
@@ -651,146 +650,411 @@ export function ChatScreen({
         style: "destructive",
         onPress: () => {
           void unregisterPush()
+            .then(() => AsyncStorage.removeItem(recentKey).catch(() => undefined))
             .then(onSignOut)
-            .catch(() =>
+            .catch(() => {
               Alert.alert(
                 "Couldn't sign out",
                 "Connect to your workspace and try again so notifications can be removed from this device.",
-              ),
-            );
+              );
+            });
         },
       },
     ]);
-  }, [workspaceName, onSignOut, unregisterPush]);
+  }, [workspaceName, onSignOut, unregisterPush, recentKey]);
 
-  return (
-    <KeyboardAvoidingView
-      className="flex-1 bg-bg"
-      behavior={Platform.OS === "ios" ? "padding" : "height"}
-    >
+  // Android back steps toward the hub's first tab before leaving the app.
+  useEffect(() => {
+    const subscription = BackHandler.addEventListener("hardwareBackPress", () => {
+      if (threadRoot !== null) return false;
+      if (pane === 2) {
+        setPane(1);
+        return true;
+      }
+      if (pane === 1) {
+        setPane(0);
+        return true;
+      }
+      if (hubTab !== "chats") {
+        setHubTab("chats");
+        return true;
+      }
+      return false;
+    });
+    return () => {
+      subscription.remove();
+    };
+  }, [pane, hubTab, threadRoot]);
+
+  const goToPane = useCallback((next: PaneIndex) => {
+    Keyboard.dismiss();
+    selectionFeedback();
+    setPane(next);
+  }, []);
+
+  const workspaceHost = useMemo(() => {
+    const baseUrl = activeProfile?.baseUrl ?? "";
+    try {
+      return new URL(baseUrl).host;
+    } catch {
+      return baseUrl;
+    }
+  }, [activeProfile?.baseUrl]);
+  // A private channel or direct message lists only its own people.
+  const conversationMemberIds =
+    channel !== undefined &&
+    (channel.kind === "dm" || channel.kind === "group_dm" || channel.isPrivate === true)
+      ? (channel.memberIds ?? [])
+      : undefined;
+  const shownProfile = useLingering(profileFor);
+  const shownChannelAction = useLingering(channelAction);
+  const shownMemberActions = useLingering(memberActionsFor);
+  const dockClearance = useDockClearance();
+
+  const channelTitle =
+    channel === undefined ? workspaceName : (titles.get(channel.id) ?? channel.name);
+  const isDirect = channel !== undefined && (channel.kind === "dm" || channel.kind === "group_dm");
+  const partnerId = channel === undefined ? undefined : dmPartnerId(channel, ownUserId);
+  const partnerPresence = presence.find((row) => row.userId === partnerId);
+  const channelSubtitle =
+    channel === undefined
+      ? undefined
+      : partnerId !== undefined
+        ? partnerPresence?.customStatus || presenceLabel(partnerPresence?.status ?? "offline")
+        : channel.kind === "group_dm"
+          ? `${(channel.memberIds ?? []).length} people`
+          : (channel.topic ?? (channel.kind === "announcement" ? "Announcements" : undefined));
+
+  if (!ready || startupError !== null) {
+    return (
       <View
-        className={
-          mainView === "kanban" && showKanban
-            ? "hidden"
-            : "flex-row items-center justify-between border-b border-border px-3 py-3"
-        }
+        className="flex-1 items-center justify-center gap-4 bg-bg px-8"
+        style={{ paddingTop: insets.top, paddingBottom: insets.bottom }}
       >
-        <View className="min-w-0 flex-1 flex-row items-center gap-2">
-          <Pressable
-            accessibilityRole="button"
-            className="h-12 w-12 items-center justify-center"
-            accessibilityLabel="Open conversations"
-            onPress={() => setDrawerOpen(true)}
-          >
-            <Icon name="menu" size={20} color={palette.text} />
-          </Pressable>
-          <Heading
-            level={3}
-            className="min-w-0 flex-1"
-            numberOfLines={1}
-            maxFontSizeMultiplier={1.5}
-          >
-            {mainView === "threads"
-              ? "Threads"
-              : mainView === "search"
-                ? "Search"
-                : channel === undefined
-                  ? workspaceName
-                  : (titles.get(channel.id) ?? channel.name)}
-          </Heading>
-        </View>
-        <View className="flex-row items-center gap-2">
-          {mainView === "channels" &&
-            channel !== undefined &&
-            (channel.kind === "dm" || channel.kind === "group_dm") &&
-            voice.canConnect && (
-              <>
-                <IconButton
-                  label="Start voice call"
-                  variant="ghost"
-                  size="sm"
-                  onPress={() => void voice.startCall(channel.id, "voice")}
-                >
-                  <Icon name="phone" size={18} color={palette.text} />
-                </IconButton>
-                {voice.canVideo && (
-                  <IconButton
-                    label="Start video call"
-                    variant="ghost"
-                    size="sm"
-                    onPress={() => void voice.startCall(channel.id, "video")}
-                  >
-                    <Icon name="video" size={18} color={palette.text} />
-                  </IconButton>
-                )}
-              </>
-            )}
-          <IconButton label="Members" size="sm" onPress={() => setMembersOpen(true)}>
-            <Icon name="users" size={20} color={palette.text} />
-          </IconButton>
-          <IconButton
-            label="Settings"
-            variant="ghost"
-            size="sm"
-            onPress={() => setSettingsOpen(true)}
-          >
-            <Icon name="settings" size={18} color={palette.text} />
-          </IconButton>
-        </View>
+        {!ready ? (
+          <>
+            <Spinner size={28} label="Opening workspace" />
+            <Text size="sm" tone="muted">
+              Opening {workspaceName}…
+            </Text>
+          </>
+        ) : (
+          <>
+            <Text tone="danger" accessibilityRole="alert" className="text-center">
+              {startupError}
+            </Text>
+            <Button onPress={retryStartup}>Try again</Button>
+            <Button
+              variant="ghost"
+              onPress={() => {
+                setWorkspaceSwitcherOpen(true);
+              }}
+            >
+              Switch workspace
+            </Button>
+            <WorkspaceSwitcherSheet
+              visible={workspaceSwitcherOpen}
+              onClose={() => {
+                setWorkspaceSwitcherOpen(false);
+              }}
+            />
+          </>
+        )}
       </View>
+    );
+  }
 
-      {!ready ? (
-        <View className="flex-1 items-center justify-center gap-3">
-          <Spinner size={28} label="Opening channels" />
-          <Text size="sm" tone="muted">
-            Opening channels…
-          </Text>
-        </View>
-      ) : startupError !== null ? (
-        <View className="flex-1 items-center justify-center gap-4 px-6">
-          <Text tone="danger" accessibilityRole="alert">
-            {startupError}
-          </Text>
-          <Button onPress={retryStartup}>Try again</Button>
-        </View>
-      ) : mainView === "kanban" && showKanban ? (
-        <KanbanScreen
+  const hub = (
+    <View className="flex-1 bg-bg" style={{ paddingTop: insets.top }}>
+      {hubTab === "chats" ? (
+        <ChannelList
+          workspaceName={workspaceName}
+          channels={visibleChannels}
+          categories={categories}
+          titles={titles}
+          activeChannelId={activeChannelId}
           ownUserId={ownUserId}
-          permissions={viewerPermissions}
+          presence={presence}
           members={members}
-          boardId={kanbanBoardId}
-          onBoardChange={setKanbanBoardId}
-          onOpenDrawer={() => setDrawerOpen(true)}
+          workspaceHost={workspaceHost}
+          onMemberPress={setProfileFor}
+          hiddenCount={hiddenCount}
+          showHidden={showHidden}
+          canManageChannels={canManageChannels}
+          activeCalls={voice.activeCalls}
+          memberNames={memberNames}
+          clientId={voice.clientId}
+          localCallId={voice.callId}
+          remoteLevels={voice.remoteLevels}
+          onOpenChannel={(channelId) => void openChannel(channelId)}
+          onChannelActions={(target) => {
+            selectionFeedback();
+            setChannelAction(target);
+          }}
+          onJoinVoice={joinVoiceChannel}
+          threads={threadRows}
+          onOpenThread={openThreadFromInbox}
+          onOpenThreads={() => {
+            setHubTab("threads");
+          }}
+          onCreateChannel={() => {
+            setCreateError(null);
+            setCreateOpen(true);
+          }}
+          onToggleHidden={() => {
+            setShowHidden(!showHidden);
+          }}
         />
-      ) : mainView === "search" ? (
+      ) : hubTab === "dms" ? (
+        <DirectList
+          channels={visibleChannels}
+          titles={titles}
+          activeChannelId={activeChannelId}
+          ownUserId={ownUserId}
+          presence={presence}
+          onOpenChannel={(channelId) => void openChannel(channelId)}
+          onChannelActions={(target) => {
+            selectionFeedback();
+            setChannelAction(target);
+          }}
+          onNewMessage={() => {
+            setNewMessageOpen(true);
+          }}
+        />
+      ) : hubTab === "boards" && showKanban ? (
+        <View className="flex-1" style={{ paddingBottom: dockClearance }}>
+          <KanbanScreen
+            ownUserId={ownUserId}
+            permissions={viewerPermissions}
+            members={members}
+            boardId={kanbanBoardId}
+            onBoardChange={setKanbanBoardId}
+          />
+        </View>
+      ) : hubTab === "threads" ? (
+        <View className="flex-1" style={{ paddingBottom: dockClearance }}>
+          <PaneHeader
+            title="Threads"
+            subtitle="Conversations you replied to or were mentioned in"
+            leading={
+              <RoundButton
+                icon="chevron-left"
+                label="Back to channels"
+                onPress={() => {
+                  setHubTab("chats");
+                }}
+              />
+            }
+          />
+          <ThreadsInbox
+            threads={threadRows ?? []}
+            loading={threadRows === undefined}
+            channelNames={textChannelNames}
+            memberNames={memberNames}
+            memberColors={memberColors}
+            titles={titles}
+            ownUserId={ownUserId}
+            onOpen={openThreadFromInbox}
+          />
+        </View>
+      ) : hubTab === "search" ? (
         <SearchView
           channels={channels}
           titles={titles}
+          members={members}
           memberNames={memberNames}
+          presence={presence}
+          ownUserId={ownUserId}
+          recentKey={recentKey}
           search={search}
           loadHistory={loadSearchHistory}
+          onOpenMember={setProfileFor}
           onOpen={(id, messageId) => {
             void openChannel(id)
-              .then(() => setJumpToMessageId(messageId ?? null))
-              .catch((cause: unknown) =>
-                Alert.alert("Couldn't open conversation", errorMessage(cause)),
-              );
+              .then(() => {
+                setJumpToMessageId(messageId ?? null);
+              })
+              .catch((cause: unknown) => {
+                Alert.alert("Couldn't open conversation", errorMessage(cause));
+              });
           }}
         />
-      ) : mainView === "threads" ? (
-        <ThreadsInbox
-          threads={threadRows ?? []}
-          loading={threadRows === undefined}
-          channelNames={textChannelNames}
-          memberNames={memberNames}
-          memberColors={memberColors}
-          titles={titles}
+      ) : (
+        <SettingsView
+          workspaceName={workspaceName}
           ownUserId={ownUserId}
-          onOpen={openThreadFromInbox}
+          ownDisplayName={memberNames.get(ownUserId) ?? ownDisplayName}
+          canChangeNickname={hasPermission(viewerPermissions, Permission.ChangeOwnNickname)}
+          hasAvatar={avatarUrls.has(ownUserId)}
+          onChangeAvatar={() => {
+            void (async () => {
+              const file = (await pickFromLibrary()).at(0);
+              if (file === undefined) {
+                return;
+              }
+              const bytes = await fetch(file.uri).then((response) => response.blob());
+              if (bytes.size > 4 * 1024 * 1024) {
+                Alert.alert("Image too large", "Choose an image under 4 MB.");
+                return;
+              }
+              const uploadUrl = await generateAvatarUploadUrl({});
+              const uploaded = await fetch(uploadUrl, {
+                method: "POST",
+                headers: { "Content-Type": file.mime },
+                body: bytes,
+              });
+              if (!uploaded.ok) {
+                Alert.alert("Couldn't update your profile picture.");
+                return;
+              }
+              const body = (await uploaded.json()) as { storageId?: unknown };
+              if (typeof body.storageId !== "string") {
+                Alert.alert("Couldn't update your profile picture.");
+                return;
+              }
+              await setAvatar({ storageId: body.storageId as never });
+            })().catch(() => {
+              Alert.alert("Couldn't update your profile picture.");
+            });
+          }}
+          onClearAvatar={() => {
+            void setAvatar({}).catch(() => {
+              Alert.alert("Couldn't remove your profile picture.");
+            });
+          }}
+          ownStatus={ownStatus}
+          ownCustomStatus={ownCustomStatus}
+          pushState={pushState}
+          onSetStatus={(status, customStatus) => {
+            void runtime?.port.setStatus({
+              status,
+              ...(customStatus !== undefined ? { customStatus } : {}),
+            });
+          }}
+          onSignOut={confirmSignOut}
         />
-      ) : channel === undefined ? (
-        <View className="flex-1 items-center justify-center">
-          <Text tone="muted">Select a channel to start.</Text>
+      )}
+      <HubDock
+        tab={hubTab}
+        onTab={setHubTab}
+        workspaceName={workspaceName}
+        workspaceSeed={activeProfile?.iconSeed ?? workspaceName}
+        onSwitchWorkspace={() => {
+          setWorkspaceSwitcherOpen(true);
+        }}
+        ownUserId={ownUserId}
+        ownStatus={ownStatus}
+        threadBadge={threadMentionCount}
+        boards={showKanban}
+      />
+    </View>
+  );
+
+  const chat = (
+    <KeyboardAvoidingView
+      behavior="padding"
+      keyboardVerticalOffset={-insets.bottom}
+      style={{ flex: 1, backgroundColor: palette.bg, paddingTop: insets.top }}
+    >
+      <View className="flex-row items-center gap-3 border-b border-border px-3 pb-2 pt-1">
+        <RoundButton
+          icon="menu"
+          label="Open conversations"
+          onPress={() => {
+            goToPane(0);
+          }}
+        />
+        <Pressable
+          accessibilityRole="button"
+          accessibilityLabel={`${channelTitle}, show members`}
+          onPress={() => {
+            goToPane(2);
+          }}
+          className="min-h-11 min-w-0 flex-1 flex-row items-center gap-2.5 active:opacity-70"
+        >
+          {partnerId !== undefined ? (
+            <PresenceAvatar
+              userId={partnerId}
+              status={partnerPresence?.status ?? "offline"}
+              size={32}
+              surface={palette.bg}
+            />
+          ) : (
+            channel !== undefined &&
+            !isDirect && (
+              <Icon
+                name={
+                  channel.kind === "voice"
+                    ? "volume"
+                    : channel.isPrivate === true
+                      ? "lock"
+                      : channel.kind === "announcement"
+                        ? "megaphone"
+                        : "hash"
+                }
+                size={20}
+                color={palette["text-muted"]}
+              />
+            )
+          )}
+          <View className="min-w-0 flex-1">
+            <Text className="font-semibold" numberOfLines={1} maxFontSizeMultiplier={1.5}>
+              {channelTitle}
+            </Text>
+            {channelSubtitle !== undefined && channelSubtitle.length > 0 && (
+              <Text size="xs" tone="muted" numberOfLines={1} maxFontSizeMultiplier={1.5}>
+                {channelSubtitle}
+              </Text>
+            )}
+          </View>
+        </Pressable>
+        {channel !== undefined && isDirect && voice.canConnect && (
+          <>
+            <RoundButton
+              icon="phone"
+              label="Start voice call"
+              onPress={() => void voice.startCall(channel.id, "voice")}
+            />
+            {voice.canVideo && (
+              <RoundButton
+                icon="video"
+                label="Start video call"
+                onPress={() => void voice.startCall(channel.id, "video")}
+              />
+            )}
+          </>
+        )}
+        {channel !== undefined && hasPermission(channelPermissions, Permission.ReadHistory) && (
+          <RoundButton
+            icon="pin"
+            label="Pinned messages"
+            onPress={() => {
+              setPinsOpen(true);
+            }}
+          />
+        )}
+        <RoundButton
+          icon="users"
+          label="Members"
+          onPress={() => {
+            goToPane(2);
+          }}
+        />
+      </View>
+
+      {channel === undefined ? (
+        <View className="flex-1 items-center justify-center gap-3 px-8">
+          <Text tone="muted" className="text-center">
+            Pick a conversation to start.
+          </Text>
+          <Button
+            variant="secondary"
+            onPress={() => {
+              goToPane(0);
+            }}
+          >
+            Browse conversations
+          </Button>
         </View>
       ) : channel.kind === "voice" &&
         joinedElsewhere(
@@ -803,23 +1067,12 @@ export function ChatScreen({
           channelName={channel.name}
           pending={voice.pending}
           canJoin={voice.canConnect}
-          onJoin={() => joinVoiceChannel(channel.id)}
+          onJoin={() => {
+            joinVoiceChannel(channel.id);
+          }}
         />
       ) : (
         <>
-          <View className="flex-row items-center border-b border-border px-4 py-1">
-            <Text size="sm" tone="muted" className="flex-1">
-              {channel.topic ?? (channel.kind === "announcement" ? "Announcements" : "")}
-            </Text>
-            <IconButton
-              disabled={!hasPermission(channelPermissions, Permission.ReadHistory)}
-              label="Pinned messages"
-              size="sm"
-              onPress={() => setPinsOpen(true)}
-            >
-              <Icon name="pin" size={18} color={palette.text} />
-            </IconButton>
-          </View>
           <MessageList
             key={channel.id}
             runtime={runtime}
@@ -840,7 +1093,9 @@ export function ChatScreen({
             jumpToMessageId={messageContext?.root.id ?? jumpToMessageId}
             onQuote={setQuote}
             onMemberPress={setProfileFor}
-            onReply={(message) => setThreadRoot(message)}
+            onReply={(message) => {
+              setThreadRoot(message);
+            }}
             onChannelPress={(name) => {
               const target = mentionChannelTargets.find((entry) => entry.name === name);
               if (target !== undefined) {
@@ -854,52 +1109,67 @@ export function ChatScreen({
             }}
           />
           {typing !== null && (
-            <View className="px-3 pb-1">
-              <Text size="xs" tone="muted">
-                {typing}
-              </Text>
-            </View>
+            <Text size="xs" tone="muted" className="px-4 pb-1" accessibilityLiveRegion="polite">
+              {typing}
+            </Text>
           )}
           {pendingItems
             .filter((item) => item.status === "failed")
             .map((item) => (
-              <View key={item.id} className="flex-row flex-wrap items-center gap-2 px-4 py-2">
-                <Text tone="danger" accessibilityRole="alert">
+              <View
+                key={item.id}
+                className="mx-3 mb-1.5 flex-row items-center gap-1 rounded-card bg-surface-2 py-1 pl-3 pr-1"
+              >
+                <Text size="sm" tone="danger" accessibilityRole="alert" className="flex-1">
                   Message couldn't be sent.
                 </Text>
-                <Pressable
-                  accessibilityRole="button"
-                  className="min-h-12 justify-center px-3"
+                <Button
+                  size="sm"
+                  variant="ghost"
                   onPress={() =>
-                    void retrySend(item.id).catch((cause: unknown) =>
-                      Alert.alert("Couldn't retry message", errorMessage(cause)),
-                    )
+                    void retrySend(item.id).catch((cause: unknown) => {
+                      Alert.alert("Couldn't retry message", errorMessage(cause));
+                    })
                   }
                 >
-                  <Text>Retry</Text>
-                </Pressable>
-                <Pressable
-                  accessibilityRole="button"
-                  className="min-h-12 justify-center px-3"
+                  Retry
+                </Button>
+                <Button
+                  size="sm"
+                  variant="ghost"
                   onPress={() =>
-                    void discardSend(item.id).catch((cause: unknown) =>
-                      Alert.alert("Couldn't discard message", errorMessage(cause)),
-                    )
+                    void discardSend(item.id).catch((cause: unknown) => {
+                      Alert.alert("Couldn't discard message", errorMessage(cause));
+                    })
                   }
                 >
-                  <Text>Discard</Text>
-                </Pressable>
+                  Discard
+                </Button>
               </View>
             ))}
           {quote !== null && (
-            <View className="flex-row items-center gap-2 bg-surface-2 px-4 py-2">
-              <Text size="sm" className="flex-1" numberOfLines={2}>
-                Replying to {memberNames.get(quote.authorId) ?? "Member"}:{" "}
-                {sessionState.decrypted.get(quote.id) ?? quote.body}
+            <View className="flex-row items-center gap-2 border-t border-border py-1.5 pl-4 pr-2">
+              <Icon name="reply" size={14} color={palette.accent} />
+              <Text size="xs" numberOfLines={1} className="min-w-0 flex-1">
+                <Text size="xs" className="font-semibold">
+                  {memberNames.get(quote.authorId) ?? "Member"}
+                </Text>
+                <Text size="xs" tone="muted">
+                  {"  "}
+                  {(sessionState.decrypted.get(quote.id) ?? quote.body).replace(/\s+/g, " ").trim()}
+                </Text>
               </Text>
-              <IconButton label="Cancel reply" onPress={() => setQuote(null)}>
-                <Icon name="x" size={18} color={palette.text} />
-              </IconButton>
+              <Pressable
+                accessibilityRole="button"
+                accessibilityLabel="Cancel reply"
+                hitSlop={12}
+                onPress={() => {
+                  setQuote(null);
+                }}
+                className="h-7 w-7 items-center justify-center rounded-pill active:bg-surface-3"
+              >
+                <Icon name="x" size={14} color={palette["text-muted"]} />
+              </Pressable>
             </View>
           )}
           <Composer
@@ -907,6 +1177,7 @@ export function ChatScreen({
               channel.archived || !hasPermission(channelPermissions, Permission.SendMessages)
             }
             channelId={channel.id}
+            placeholder={isDirect ? `Message ${channelTitle}` : `Message #${channelTitle}`}
             members={mentionUserTargets}
             roles={roles}
             channels={mentionChannelOptions}
@@ -949,555 +1220,332 @@ export function ChatScreen({
           />
         </>
       )}
-
-      <View accessibilityRole="tablist" className="flex-row border-t border-border bg-surface-1">
-        {(
-          [
-            { key: "channels", label: "Chats", icon: "message" },
-            { key: "threads", label: "Threads", icon: "hash" },
-            ...(showKanban ? [{ key: "kanban", label: "Boards", icon: "kanban" } as const] : []),
-            { key: "search", label: "Search", icon: "search" },
-          ] as const
-        ).map((tab) => (
-          <Pressable
-            key={tab.key}
-            accessibilityRole="tab"
-            accessibilityState={{ selected: mainView === tab.key }}
-            className="min-h-16 flex-1 items-center justify-center gap-1 px-2 py-2"
-            onPress={() => setMainView(tab.key)}
-          >
-            <Icon
-              name={tab.icon}
-              size={22}
-              color={mainView === tab.key ? palette.text : palette["text-muted"]}
-            />
-            <Text
-              size="sm"
-              maxFontSizeMultiplier={1.5}
-              className={mainView === tab.key ? "font-semibold" : ""}
-              tone={mainView === tab.key ? "default" : "muted"}
-            >
-              {tab.label}
-              {tab.key === "threads" && threadMentionCount > 0 ? ` (${threadMentionCount})` : ""}
-            </Text>
-          </Pressable>
-        ))}
-      </View>
-
-      {newMessageOpen && (
-        <NewConversationSheet
-          members={members}
-          ownUserId={ownUserId}
-          onClose={() => setNewMessageOpen(false)}
-          onCreate={async (ids) => {
-            if (runtime === undefined) throw new Error("Wait for the workspace to connect.");
-            const result =
-              ids.length === 1
-                ? await runtime.port.createDm({ otherUserId: ids[0] ?? "" })
-                : await runtime.port.createGroupDm({ memberIds: ids });
-            setNewMessageOpen(false);
-            await openChannel(result.channelId);
-          }}
-        />
-      )}
-      {pinsOpen && channel !== undefined && (
-        <PinnedMessagesSheet
-          channelId={channel.id}
-          memberNames={memberNames}
-          onClose={() => setPinsOpen(false)}
-          onOpen={setJumpToMessageId}
-        />
-      )}
-      {profileFor !== null && (
-        <MemberProfileSheet
-          userId={profileFor}
-          displayName={memberNames.get(profileFor) ?? "Member"}
-          ownUserId={ownUserId}
-          onClose={() => setProfileFor(null)}
-          onNote={() => {
-            setNoteFor(profileFor);
-            setProfileFor(null);
-          }}
-          onMessage={() => {
-            const userId = profileFor;
-            setProfileFor(null);
-            void runtime?.port
-              .createDm({ otherUserId: userId })
-              .then((result) => openChannel(result.channelId))
-              .catch((cause: unknown) =>
-                Alert.alert("Couldn't start message", errorMessage(cause)),
-              );
-          }}
-        />
-      )}
-
-      <Modal
-        visible={drawerOpen}
-        transparent
-        animationType="fade"
-        onRequestClose={() => setDrawerOpen(false)}
-      >
-        <Pressable className="flex-1 flex-row bg-black/50" onPress={() => setDrawerOpen(false)}>
-          <Pressable
-            onPress={(event) => event.stopPropagation()}
-            className="h-full w-[85%] max-w-sm bg-surface-1 p-4"
-            style={{ paddingTop: insets.top + 16, paddingBottom: insets.bottom + 16 }}
-          >
-            <Pressable
-              accessibilityRole="button"
-              accessibilityLabel={`Switch workspace, current ${workspaceName}`}
-              onPress={() => {
-                setDrawerOpen(false);
-                setWorkspaceSwitcherOpen(true);
-              }}
-              className="flex-row items-center gap-3 rounded-input px-1 py-1"
-            >
-              <NativeAvatar
-                seed={activeProfile?.iconSeed ?? workspaceName}
-                size={28}
-                title={workspaceName}
-              />
-              <Heading level={3} className="flex-1" numberOfLines={1}>
-                {workspaceName}
-              </Heading>
-              <Icon name="chevron-down" size={16} color={palette["text-muted"]} />
-            </Pressable>
-            <Pressable
-              accessibilityRole="button"
-              className="min-h-12 justify-center rounded-input bg-surface-2 px-3 mt-3"
-              onPress={() => {
-                setDrawerOpen(false);
-                setNewMessageOpen(true);
-              }}
-            >
-              <Text>New message</Text>
-            </Pressable>
-            <View className="mt-2 flex-row items-center gap-2">
-              <Pressable
-                accessibilityRole="button"
-                accessibilityState={{ selected: mainView === "threads" }}
-                onPress={() => {
-                  setMainView("threads");
-                  setThreadRoot(null);
-                  setDrawerOpen(false);
-                }}
-                className={
-                  mainView === "threads"
-                    ? "flex-1 flex-row items-center gap-2 rounded-input bg-surface-3 px-3 py-2"
-                    : "flex-1 flex-row items-center gap-2 rounded-input px-3 py-2"
-                }
-              >
-                <Text size="sm" tone={mainView === "threads" ? "default" : "muted"}>
-                  # Threads
-                </Text>
-                {threadMentionCount > 0 && (
-                  <View className="rounded-pill bg-accent px-1.5 py-0.5">
-                    <Text size="xs" className="font-bold" style={{ color: palette["on-accent"] }}>
-                      {threadMentionCount > 9 ? "9+" : String(threadMentionCount)}
-                    </Text>
-                  </View>
-                )}
-              </Pressable>
-              {canManageChannels && (
-                <IconButton
-                  label="Create channel"
-                  variant="secondary"
-                  size="sm"
-                  onPress={() => {
-                    setDrawerOpen(false);
-                    setCreateError(null);
-                    setCreateOpen(true);
-                  }}
-                >
-                  <Icon name="plus" size={18} color={palette.text} />
-                </IconButton>
-              )}
-            </View>
-            <ScrollView contentContainerStyle={{ gap: 6, paddingVertical: 12 }}>
-              {visibleChannels
-                .filter((entry) => entry.kind !== "voice")
-                .map((entry) => {
-                  const active = entry.id === activeChannelId;
-                  return (
-                    <Pressable
-                      key={entry.id}
-                      accessibilityRole="button"
-                      onPress={() => void openChannel(entry.id)}
-                      onLongPress={() => {
-                        setDrawerOpen(false);
-                        setChannelAction(entry);
-                      }}
-                      delayLongPress={300}
-                      className={
-                        active
-                          ? "min-h-12 justify-center rounded-input bg-surface-3 px-3 py-2"
-                          : "min-h-12 justify-center rounded-input px-3 py-2"
-                      }
-                    >
-                      <View className="flex-row items-center gap-2">
-                        <Text size="sm" tone={active ? "default" : "muted"} className="flex-1">
-                          {entry.kind === "dm" || entry.kind === "group_dm" ? "@ " : "# "}
-                          {titles.get(entry.id) ?? entry.name}
-                        </Text>
-                        {entry.muted === true && (
-                          <Icon name="bell-off" size={13} color={palette["text-muted"]} />
-                        )}
-                        {entry.hidden === true && (
-                          <Icon name="eye-off" size={13} color={palette["text-muted"]} />
-                        )}
-                      </View>
-                    </Pressable>
-                  );
-                })}
-              {visibleChannels.length === 0 && (
-                <Text size="sm" tone="muted">
-                  No channels yet.
-                </Text>
-              )}
-              {hiddenCount > 0 && (
-                <Pressable
-                  accessibilityRole="button"
-                  className="rounded-input px-3 py-2"
-                  onPress={() => setShowHidden(!showHidden)}
-                >
-                  <Text size="xs" tone="muted">
-                    {showHidden ? "Hide hidden channels" : `Show ${hiddenCount} hidden`}
-                  </Text>
-                </Pressable>
-              )}
-              <VoiceChannelSection
-                channels={visibleChannels}
-                activeCalls={voice.activeCalls}
-                memberNames={memberNames}
-                selfUserId={ownUserId}
-                clientId={voice.clientId}
-                localCallId={voice.callId}
-                remoteLevels={voice.remoteLevels}
-                onJoin={joinVoiceChannel}
-              />
-            </ScrollView>
-          </Pressable>
-        </Pressable>
-      </Modal>
-
-      <Modal
-        visible={channelAction !== null}
-        transparent
-        animationType="fade"
-        onRequestClose={() => setChannelAction(null)}
-      >
-        <Pressable
-          className="flex-1 justify-end bg-black/50"
-          onPress={() => setChannelAction(null)}
-        >
-          <View className="gap-1 rounded-t-card bg-surface-2 p-4">
-            <Heading level={3} className="px-3 pb-1">
-              {channelAction?.name}
-            </Heading>
-            {channelAction !== null && (
-              <>
-                <Pressable
-                  accessibilityRole="button"
-                  className="rounded-input px-3 py-3"
-                  onPress={() => void toggleMute(channelAction)}
-                >
-                  <Text>{channelAction.muted === true ? "Unmute channel" : "Mute channel"}</Text>
-                </Pressable>
-                <Pressable
-                  accessibilityRole="button"
-                  className="rounded-input px-3 py-3"
-                  onPress={() => void toggleHide(channelAction)}
-                >
-                  <Text>{channelAction.hidden === true ? "Show channel" : "Hide channel"}</Text>
-                </Pressable>
-                {channelAction.id === activeChannelId && (
-                  <Pressable
-                    accessibilityRole="button"
-                    className="rounded-input px-3 py-3"
-                    onPress={() => void markChannelRead()}
-                  >
-                    <Text>Mark as read</Text>
-                  </Pressable>
-                )}
-                {canManageChannels &&
-                  (channelAction.kind === "text" || channelAction.kind === "announcement") && (
-                    <Pressable
-                      accessibilityRole="button"
-                      className="rounded-input px-3 py-3"
-                      onPress={() => {
-                        const target = channelAction;
-                        if (target === null) {
-                          return;
-                        }
-                        setEditChannelError(null);
-                        setEditChannelModal(target);
-                        setChannelAction(null);
-                        setDrawerOpen(false);
-                      }}
-                    >
-                      <Text>Edit channel…</Text>
-                    </Pressable>
-                  )}
-              </>
-            )}
-            <Pressable
-              accessibilityRole="button"
-              className="rounded-input px-3 py-3"
-              onPress={() => setChannelAction(null)}
-            >
-              <Text tone="muted">Cancel</Text>
-            </Pressable>
-          </View>
-        </Pressable>
-      </Modal>
-
-      {editChannelModal !== null && (
-        <EditChannelSheet
-          visible
-          channelName={titles.get(editChannelModal.id) ?? editChannelModal.name}
-          channelTopic={editChannelModal.topic ?? ""}
-          isPrivate={editChannelModal.isPrivate === true}
-          initialMemberIds={
-            editChannelModal.isPrivate === true
-              ? [...new Set([ownUserId, ...(editChannelModal.memberIds ?? [])])]
-              : (editChannelModal.memberIds ?? [])
-          }
-          initialBlockedUserIds={(editChannelModal.overrides ?? [])
-            .filter((override) => override.targetType === "member")
-            .filter((override) => (override.deny & Permission.ViewChannel) !== 0n)
-            .map((override) => override.targetId)}
-          ownUserId={ownUserId}
-          members={members}
-          busy={editChannelBusy}
-          error={editChannelError}
-          onClose={() => {
-            setEditChannelModal(null);
-            setEditChannelError(null);
-          }}
-          onSave={submitChannelEdit}
-        />
-      )}
-
-      {threadRoot !== null && channel !== undefined && runtime !== undefined && (
-        <ThreadModal
-          runtime={runtime}
-          permissions={channelPermissions}
-          channelId={channel.id}
-          root={threadRoot}
-          outbox={outbox}
-          rootText={mergedDecrypted.get(threadRoot.id) ?? threadRoot.body}
-          ownUserId={ownUserId}
-          memberNames={memberNames}
-          roles={roles}
-          channels={mentionChannelOptions}
-          channelNames={mentionNames}
-          onChannelPress={(name) => {
-            const target = mentionChannelTargets.find((entry) => entry.name === name);
-            if (target !== undefined) {
-              setThreadRoot(null);
-              void openChannel(target.channelId);
-            }
-          }}
-          onClose={() => setThreadRoot(null)}
-          onSendReply={async ({ text, files, replyInThread }) => {
-            let attachments: readonly AttachmentDescriptor[] | undefined;
-            if (files.length > 0) {
-              attachments = await uploadPickedFiles(runtime.port, files);
-            }
-            if (replyInThread) {
-              await sendMessage(channel.id, text, {
-                threadRootId: threadRoot.id,
-                ...(attachments !== undefined && attachments.length > 0 ? { attachments } : {}),
-              });
-            } else {
-              await sendMessage(channel.id, text, {
-                ...(attachments !== undefined && attachments.length > 0 ? { attachments } : {}),
-              });
-            }
-          }}
-        />
-      )}
-
-      <MembersSheet
-        visible={membersOpen}
-        presence={presence}
-        memberNames={memberNames}
-        ownUserId={ownUserId}
-        ownerUserId={ownerUserId}
-        canModerateMembers={canModerateMembers}
-        onClose={() => setMembersOpen(false)}
-        onOpenSettings={() => {
-          setMembersOpen(false);
-          setSettingsOpen(true);
-        }}
-        {...(canBan
-          ? {
-              onOpenBans: () => {
-                setMembersOpen(false);
-                setBansOpen(true);
-              },
-            }
-          : {})}
-        onMemberPress={(userId) => {
-          setMembersOpen(false);
-          setProfileFor(userId);
-        }}
-        onMemberActions={(userId) => {
-          setMembersOpen(false);
-          setModerationError(null);
-          setMemberActionsFor(userId);
-        }}
-        onSetStatus={(status, customStatus) => {
-          void runtime?.port.setStatus({
-            status,
-            ...(customStatus !== undefined ? { customStatus } : {}),
-          });
-        }}
-      />
-
-      <SettingsSheet
-        visible={settingsOpen}
-        ownUserId={ownUserId}
-        ownDisplayName={memberNames.get(ownUserId) ?? ownDisplayName}
-        canChangeNickname={hasPermission(viewerPermissions, Permission.ChangeOwnNickname)}
-        hasAvatar={avatarUrls.has(ownUserId)}
-        onChangeAvatar={() => {
-          void (async () => {
-            const [file] = await pickFromLibrary();
-            if (file === undefined) {
-              return;
-            }
-            const bytes = await fetch(file.uri).then((response) => response.blob());
-            if (bytes.size > 4 * 1024 * 1024) {
-              Alert.alert("Image too large", "Choose an image under 4 MB.");
-              return;
-            }
-            const uploadUrl = await generateAvatarUploadUrl({});
-            const uploaded = await fetch(uploadUrl, {
-              method: "POST",
-              headers: { "Content-Type": file.mime },
-              body: bytes,
-            });
-            if (!uploaded.ok) {
-              Alert.alert("Couldn't update your profile picture.");
-              return;
-            }
-            const body = (await uploaded.json()) as { storageId?: unknown };
-            if (typeof body.storageId !== "string") {
-              Alert.alert("Couldn't update your profile picture.");
-              return;
-            }
-            await setAvatar({ storageId: body.storageId as never });
-          })().catch(() => Alert.alert("Couldn't update your profile picture."));
-        }}
-        onClearAvatar={() => {
-          void setAvatar({}).catch(() => Alert.alert("Couldn't remove your profile picture."));
-        }}
-        ownStatus={ownStatus}
-        ownCustomStatus={ownCustomStatus}
-        pushState={pushState}
-        onSetStatus={(status, customStatus) => {
-          void runtime?.port.setStatus({
-            status,
-            ...(customStatus !== undefined ? { customStatus } : {}),
-          });
-        }}
-        onSignOut={() => {
-          setSettingsOpen(false);
-          confirmSignOut();
-        }}
-        onClose={() => setSettingsOpen(false)}
-      />
-
-      {canBan && (
-        <BannedMembersSheet
-          visible={bansOpen}
-          memberNames={memberNames}
-          onClose={() => setBansOpen(false)}
-        />
-      )}
-
-      <CreateChannelSheet
-        visible={createOpen}
-        categories={categories}
-        busy={createBusy}
-        error={createError}
-        onCreateChannel={create}
-        onCreateCategory={createNewCategory}
-        onClose={() => setCreateOpen(false)}
-      />
-
-      <MemberActionsSheet
-        visible={memberActionsFor !== null}
-        memberName={
-          memberActionsFor === null ? "" : (memberNames.get(memberActionsFor) ?? memberActionsFor)
-        }
-        canKick={canKick}
-        canBan={canBan}
-        canTimeout={canTimeout}
-        busy={moderationBusy}
-        error={moderationError}
-        onKick={() => {
-          const target = memberActionsFor;
-          if (target !== null) {
-            void runModeration((client) => kickMember(client, target));
-          }
-        }}
-        onBan={(options) => {
-          const target = memberActionsFor;
-          if (target !== null) {
-            void runModeration((client) => banMember(client, target, options));
-          }
-        }}
-        onTimeout={(durationMs) => {
-          const target = memberActionsFor;
-          if (target !== null) {
-            void runModeration((client) =>
-              timeoutMember(
-                client,
-                target,
-                durationMs === undefined ? undefined : Date.now() + durationMs,
-              ),
-            );
-          }
-        }}
-        onOpenNote={() => {
-          const target = memberActionsFor;
-          if (target !== null) {
-            setNoteFor(target);
-          }
-        }}
-        onClose={() => {
-          setMemberActionsFor(null);
-          setModerationError(null);
-        }}
-      />
-
-      {noteFor !== null && runtime !== undefined && (
-        <UserNoteSheet
-          visible
-          memberName={memberNames.get(noteFor) ?? noteFor}
-          loadNote={() => getUserNote(runtime.client, noteFor)}
-          onSave={(body) => setUserNote(runtime.client, noteFor, body)}
-          onClose={() => setNoteFor(null)}
-        />
-      )}
-
-      <IncomingCallModal
-        callerName={(call) => memberNames.get(call.initiatorId) ?? call.initiatorId}
-      />
-
-      <CallScreen
-        channelName={channel?.name ?? workspaceName}
-        memberNames={memberNames}
-        memberColors={memberColors}
-      />
-
-      <WorkspaceSwitcherSheet
-        visible={workspaceSwitcherOpen}
-        onClose={() => setWorkspaceSwitcherOpen(false)}
-      />
     </KeyboardAvoidingView>
+  );
+
+  return (
+    <BottomSheetModalProvider>
+      <View className="flex-1 bg-bg">
+        <SwipePanes
+          index={pane}
+          onIndexChange={(next) => {
+            selectionFeedback();
+            setPane(next);
+          }}
+          left={hub}
+          center={chat}
+          right={
+            <MembersPane
+              memberIds={conversationMemberIds}
+              channelTitle={channelTitle}
+              members={members}
+              presence={presence}
+              ownUserId={ownUserId}
+              canModerateMembers={canModerateMembers}
+              onBack={() => {
+                goToPane(1);
+              }}
+              onMemberPress={setProfileFor}
+              onMemberActions={(userId) => {
+                setModerationError(null);
+                setMemberActionsFor(userId);
+              }}
+              onOpenBans={
+                canBan
+                  ? () => {
+                      setBansOpen(true);
+                    }
+                  : undefined
+              }
+            />
+          }
+        />
+
+        {threadRoot !== null && channel !== undefined && runtime !== undefined && (
+          <ThreadModal
+            runtime={runtime}
+            permissions={channelPermissions}
+            channelId={channel.id}
+            channelTitle={isDirect ? channelTitle : `#${channelTitle}`}
+            root={threadRoot}
+            outbox={outbox}
+            rootText={mergedDecrypted.get(threadRoot.id) ?? threadRoot.body}
+            ownUserId={ownUserId}
+            memberNames={memberNames}
+            roles={roles}
+            channels={mentionChannelOptions}
+            channelNames={mentionNames}
+            onChannelPress={(name) => {
+              const target = mentionChannelTargets.find((entry) => entry.name === name);
+              if (target !== undefined) {
+                setThreadRoot(null);
+                void openChannel(target.channelId);
+              }
+            }}
+            onClose={() => {
+              setThreadRoot(null);
+            }}
+            onSendReply={async ({ text, files, replyInThread }) => {
+              let attachments: readonly AttachmentDescriptor[] | undefined;
+              if (files.length > 0) {
+                attachments = await uploadPickedFiles(runtime.port, files);
+              }
+              if (replyInThread) {
+                await sendMessage(channel.id, text, {
+                  threadRootId: threadRoot.id,
+                  ...(attachments !== undefined && attachments.length > 0 ? { attachments } : {}),
+                });
+              } else {
+                await sendMessage(channel.id, text, {
+                  ...(attachments !== undefined && attachments.length > 0 ? { attachments } : {}),
+                });
+              }
+            }}
+          />
+        )}
+
+        <BottomSheet
+          visible={channelAction !== null}
+          title={
+            shownChannelAction === null
+              ? ""
+              : (titles.get(shownChannelAction.id) ?? shownChannelAction.name)
+          }
+          subtitle={shownChannelAction?.topic ?? undefined}
+          onClose={() => {
+            setChannelAction(null);
+          }}
+        >
+          {shownChannelAction !== null && (
+            <ListGroup>
+              <ListRow
+                icon={shownChannelAction.muted === true ? "bell" : "bell-off"}
+                title={shownChannelAction.muted === true ? "Unmute" : "Mute"}
+                subtitle={
+                  shownChannelAction.muted === true ? undefined : "No sounds or badges from here"
+                }
+                onPress={() => void toggleMute(shownChannelAction)}
+              />
+              <ListRow
+                icon={shownChannelAction.hidden === true ? "eye" : "eye-off"}
+                title={shownChannelAction.hidden === true ? "Show in list" : "Hide from list"}
+                onPress={() => void toggleHide(shownChannelAction)}
+              />
+              {shownChannelAction.id === activeChannelId && (
+                <ListRow icon="check" title="Mark as read" onPress={() => void markChannelRead()} />
+              )}
+              {canManageChannels &&
+                (shownChannelAction.kind === "text" ||
+                  shownChannelAction.kind === "announcement") && (
+                  <ListRow
+                    icon="pencil"
+                    title="Edit channel"
+                    chevron
+                    onPress={() => {
+                      setEditChannelError(null);
+                      setEditChannelModal(shownChannelAction);
+                      setChannelAction(null);
+                    }}
+                  />
+                )}
+            </ListGroup>
+          )}
+        </BottomSheet>
+
+        {channel !== undefined && (
+          <PinnedMessagesSheet
+            visible={pinsOpen}
+            channelId={channel.id}
+            memberNames={memberNames}
+            onClose={() => {
+              setPinsOpen(false);
+            }}
+            onOpen={setJumpToMessageId}
+          />
+        )}
+
+        {shownProfile !== null && (
+          <MemberProfileSheet
+            visible={profileFor !== null}
+            userId={shownProfile}
+            displayName={memberNames.get(shownProfile) ?? "Member"}
+            status={presence.find((row) => row.userId === shownProfile)?.status ?? "offline"}
+            customStatus={presence.find((row) => row.userId === shownProfile)?.customStatus ?? ""}
+            ownUserId={ownUserId}
+            onClose={() => {
+              setProfileFor(null);
+            }}
+            onNote={() => {
+              setNoteFor(shownProfile);
+              setProfileFor(null);
+            }}
+            onModerate={
+              canModerateMembers && shownProfile !== ownUserId && shownProfile !== ownerUserId
+                ? () => {
+                    setProfileFor(null);
+                    setModerationError(null);
+                    setMemberActionsFor(shownProfile);
+                  }
+                : undefined
+            }
+            onMessage={() => {
+              setProfileFor(null);
+              void runtime?.port
+                .createDm({ otherUserId: shownProfile })
+                .then((result) => openChannel(result.channelId))
+                .catch((cause: unknown) => {
+                  Alert.alert("Couldn't start message", errorMessage(cause));
+                });
+            }}
+          />
+        )}
+
+        <MemberActionsSheet
+          visible={memberActionsFor !== null}
+          memberName={
+            shownMemberActions === null
+              ? ""
+              : (memberNames.get(shownMemberActions) ?? shownMemberActions)
+          }
+          canKick={canKick}
+          canBan={canBan}
+          canTimeout={canTimeout}
+          busy={moderationBusy}
+          error={moderationError}
+          onKick={() => {
+            const target = memberActionsFor;
+            if (target !== null) {
+              void runModeration((client) => kickMember(client, target));
+            }
+          }}
+          onBan={(options) => {
+            const target = memberActionsFor;
+            if (target !== null) {
+              void runModeration((client) => banMember(client, target, options));
+            }
+          }}
+          onTimeout={(durationMs) => {
+            const target = memberActionsFor;
+            if (target !== null) {
+              void runModeration((client) =>
+                timeoutMember(
+                  client,
+                  target,
+                  durationMs === undefined ? undefined : Date.now() + durationMs,
+                ),
+              );
+            }
+          }}
+          onOpenNote={() => {
+            const target = memberActionsFor;
+            if (target !== null) {
+              setNoteFor(target);
+            }
+          }}
+          onClose={() => {
+            setMemberActionsFor(null);
+            setModerationError(null);
+          }}
+        />
+
+        <WorkspaceSwitcherSheet
+          visible={workspaceSwitcherOpen}
+          onClose={() => {
+            setWorkspaceSwitcherOpen(false);
+          }}
+        />
+
+        {newMessageOpen && (
+          <NewConversationSheet
+            members={members}
+            ownUserId={ownUserId}
+            onClose={() => {
+              setNewMessageOpen(false);
+            }}
+            onCreate={async (ids) => {
+              if (runtime === undefined) throw new Error("Wait for the workspace to connect.");
+              const result =
+                ids.length === 1
+                  ? await runtime.port.createDm({ otherUserId: ids[0] ?? "" })
+                  : await runtime.port.createGroupDm({ memberIds: ids });
+              setNewMessageOpen(false);
+              await openChannel(result.channelId);
+            }}
+          />
+        )}
+
+        {editChannelModal !== null && (
+          <EditChannelSheet
+            visible
+            channelName={titles.get(editChannelModal.id) ?? editChannelModal.name}
+            channelTopic={editChannelModal.topic ?? ""}
+            isPrivate={editChannelModal.isPrivate === true}
+            initialMemberIds={
+              editChannelModal.isPrivate === true
+                ? [...new Set([ownUserId, ...(editChannelModal.memberIds ?? [])])]
+                : (editChannelModal.memberIds ?? [])
+            }
+            initialBlockedUserIds={(editChannelModal.overrides ?? [])
+              .filter((override) => override.targetType === "member")
+              .filter((override) => (override.deny & Permission.ViewChannel) !== 0n)
+              .map((override) => override.targetId)}
+            ownUserId={ownUserId}
+            members={members}
+            busy={editChannelBusy}
+            error={editChannelError}
+            onClose={() => {
+              setEditChannelModal(null);
+              setEditChannelError(null);
+            }}
+            onSave={submitChannelEdit}
+          />
+        )}
+
+        {canBan && (
+          <BannedMembersSheet
+            visible={bansOpen}
+            memberNames={memberNames}
+            onClose={() => {
+              setBansOpen(false);
+            }}
+          />
+        )}
+
+        <CreateChannelSheet
+          visible={createOpen}
+          categories={categories}
+          busy={createBusy}
+          error={createError}
+          onCreateChannel={create}
+          onCreateCategory={createNewCategory}
+          onClose={() => {
+            setCreateOpen(false);
+          }}
+        />
+
+        {noteFor !== null && runtime !== undefined && (
+          <UserNoteSheet
+            visible
+            memberName={memberNames.get(noteFor) ?? noteFor}
+            loadNote={() => getUserNote(runtime.client, noteFor)}
+            onSave={(body) => setUserNote(runtime.client, noteFor, body)}
+            onClose={() => {
+              setNoteFor(null);
+            }}
+          />
+        )}
+
+        <IncomingCallModal
+          callerName={(call) => memberNames.get(call.initiatorId) ?? call.initiatorId}
+        />
+
+        <CallScreen
+          channelName={channel?.name ?? workspaceName}
+          memberNames={memberNames}
+          memberColors={memberColors}
+        />
+      </View>
+    </BottomSheetModalProvider>
   );
 }
 

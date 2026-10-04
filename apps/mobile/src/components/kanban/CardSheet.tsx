@@ -363,7 +363,7 @@ export function CardSheet({
       title={`${board.name} · ${column?.name ?? "Unknown column"}`}
       onClose={close}
       swipeToClose={!dirty && !commentText.trim()}
-      closeLabel={dirty ? "Cancel" : "Done"}
+      dismiss={dirty ? "cancel" : "done"}
       footer={
         (dirty || error !== null) && (
           <Animated.View

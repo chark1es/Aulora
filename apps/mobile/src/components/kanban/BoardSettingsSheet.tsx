@@ -125,7 +125,7 @@ export function NewBoardSheet({
       .finally(() => setBusy(false));
   };
   return (
-    <Sheet visible title="New board" onClose={onClose} closeLabel="Cancel">
+    <Sheet visible title="New board" onClose={onClose}>
       <View className="gap-5 p-4">
         <Input
           label="Board name"
@@ -227,7 +227,7 @@ export function BoardSettingsSheet({
       title="Board settings"
       onClose={close}
       swipeToClose={!dirty}
-      closeLabel={dirty ? "Cancel" : "Done"}
+      dismiss={dirty ? "cancel" : "done"}
       footer={
         <View className="gap-2 border-t border-border bg-surface-1 px-4 py-3">
           {error !== null && (

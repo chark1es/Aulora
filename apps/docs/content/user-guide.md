@@ -10,7 +10,9 @@ Accounts belong to each server. Joining another server can require another accou
 
 ## Install a desktop or mobile client
 
-Published files are listed in [GitHub Releases](https://github.com/chark1es/Aulora/releases). Check the version and choose your platform:
+This installs a client, not a workspace. To run a server, follow [getting started](getting-started.md#install-a-workspace).
+
+Published files are listed in [GitHub Releases](https://github.com/chark1es/Aulora/releases). iOS and Android are in beta. Check the version and choose your platform:
 
 | Platform | File and installation |
 | --- | --- |

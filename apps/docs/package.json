@@ -7,7 +7,7 @@
   "scripts": {
     "build": "node scripts/build.mjs",
     "dev": "node scripts/serve.mjs",
-    "typecheck": "node --check lib/markdown.mjs && node --check lib/theme.mjs && node --check static/site.js && node --check scripts/build.mjs && node --check scripts/serve.mjs",
+    "typecheck": "node --check lib/markdown.mjs && node --check lib/theme.mjs && node --check static/site.js && node --check static/downloads.js && node --check static/demo.js && node --check static/demo-data.js && node --check static/demo-view.js && node --check scripts/build.mjs && node --check scripts/serve.mjs",
     "lint": "biome check .",
     "test": "node --test lib/*.test.mjs",
     "format": "biome format --write .",

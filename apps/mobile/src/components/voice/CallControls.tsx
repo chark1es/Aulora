@@ -20,7 +20,7 @@ export interface CallControlsProps {
 
 /**
  * The pinned in-call control bar: mic, deafen, camera, screen share, optional
- * picture-in-picture pin and leave. Dark pills consistent with `MembersSheet`.
+ * picture-in-picture pin and leave.
  */
 export function CallControls({
   muted,

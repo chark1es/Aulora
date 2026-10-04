@@ -1,6 +1,7 @@
 import { activityLabel } from "@aulora/core";
-import { Spinner, Text } from "@aulora/ui-native";
-import { Pressable, ScrollView, View } from "react-native";
+import { Icon, Spinner, Text, usePalette } from "@aulora/ui-native";
+import { Pressable, View } from "react-native";
+import { ScrollView } from "react-native-gesture-handler";
 import { MemberAvatar } from "./MemberAvatar";
 
 /** One row of the Threads inbox, as returned by `api.messages.threadInbox`. */
@@ -49,6 +50,7 @@ export function ThreadsInbox({
   ownUserId,
   onOpen,
 }: ThreadsInboxProps) {
+  const palette = usePalette();
   if (loading) {
     return (
       <View className="flex-1 items-center justify-center gap-3">
@@ -63,16 +65,11 @@ export function ThreadsInbox({
   if (threads.length === 0) {
     return (
       <View className="flex-1 items-center justify-center gap-3 px-8">
-        <View className="h-12 w-12 items-center justify-center rounded-card bg-accent-soft">
-          <Text size="lg" tone="accent">
-            #
-          </Text>
+        <View className="h-14 w-14 items-center justify-center rounded-pill bg-surface-2">
+          <Icon name="thread" size={24} color={palette["text-muted"]} />
         </View>
-        <Text size="lg" className="font-semibold">
-          No threads yet
-        </Text>
-        <Text size="sm" tone="muted" className="text-center">
-          Threads you reply to or get mentioned in will show up here.
+        <Text tone="muted" className="text-center">
+          No threads yet. Reply to a message in a thread and it shows up here.
         </Text>
       </View>
     );
@@ -96,7 +93,9 @@ export function ThreadsInbox({
           <Pressable
             key={thread.id}
             accessibilityRole="button"
-            onPress={() => onOpen(thread)}
+            onPress={() => {
+              onOpen(thread);
+            }}
             className="flex-row items-start gap-3 rounded-input px-2.5 py-2"
           >
             <MemberAvatar userId={thread.authorId} size={32} roleColor={roleColor} />
