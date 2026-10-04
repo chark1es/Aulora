@@ -49,7 +49,7 @@ function moveToColumn(ctl: BoardController, board: Board, card: Card): SheetActi
       ...(full ? { hint: "Column limit reached" } : {}),
       ...(index === 0 ? { section: "Move to" } : {}),
       onPress: () => {
-        ctl.showColumn.current?.(board.columns.indexOf(column));
+        ctl.showColumn.current(board.columns.indexOf(column));
         void ctl.run(() => ctl.mutations.move({ cardId: card._id, columnId: column.id }));
       },
     };

@@ -44,8 +44,8 @@ export function isKanbanGithubLink(url: string): boolean {
   const prefix = "https://github.com/";
   if (!url.startsWith(prefix)) return false;
   const parts = url.slice(prefix.length).replace(/\/$/, "").split("/");
-  const [owner = "", repository = "", kind, number, ...rest] = parts;
-  if (!isGithubRepositoryName(`${owner}/${repository}`) || rest.length > 0) return false;
-  if (kind === undefined) return true;
-  return (kind === "issues" || kind === "pull") && /^\d+$/.test(number ?? "");
+  if (parts.length > 4 || !isGithubRepositoryName(parts.slice(0, 2).join("/"))) return false;
+  if (parts.length === 2) return true;
+  const kind = parts.at(2);
+  return (kind === "issues" || kind === "pull") && /^\d+$/.test(parts.at(3) ?? "");
 }

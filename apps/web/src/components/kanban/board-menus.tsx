@@ -7,7 +7,7 @@ function moveWithinColumn(ctl: BoardController, card: Card, siblings: readonly C
   const index = siblings.findIndex((entry) => entry._id === card._id);
   const before = index > 0 ? siblings.at(index - 1) : undefined;
   const after = siblings.at(index + 2);
-  const moveBefore = (beforeId: Card["_id"] | undefined) => {
+  const moveBefore = (beforeId?: Card["_id"]) => {
     void ctl.run(() =>
       ctl.mutations.move({
         cardId: card._id,

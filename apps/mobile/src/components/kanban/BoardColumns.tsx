@@ -1,3 +1,4 @@
+/* eslint-disable no-unused-vars -- the base rule reports parameter names in type signatures; Biome checks real unused code */
 import { Text } from "@aulora/ui-native";
 import { useCallback, useEffect, useRef, useState } from "react";
 import {

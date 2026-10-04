@@ -55,12 +55,16 @@ function useBoardState() {
 
 type BoardState = ReturnType<typeof useBoardState>;
 
+function nothingToSettle(): void {
+  // Until a drag registers its cleanup there is nothing to put away.
+}
+
 /** Runs a write, blocks a second one meanwhile, and keeps its failure for the banner. */
 function useRunner() {
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | undefined>();
   /** Called after every write; the drag uses it to put its placeholder away. */
-  const settled = useRef<() => void>(undefined);
+  const settled = useRef(nothingToSettle);
   const run = async (work: () => Promise<unknown>) => {
     setBusy(true);
     setError(undefined);
@@ -72,7 +76,7 @@ function useRunner() {
       return false;
     } finally {
       setBusy(false);
-      settled.current?.();
+      settled.current();
     }
   };
   return { busy, error, setError, run, settled };

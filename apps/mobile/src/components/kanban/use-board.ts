@@ -128,13 +128,17 @@ function useFirstPaint(scope: string, loaded: boolean): boolean {
   return settled !== scope;
 }
 
+function ignoreColumn(_index: number): void {
+  // Until the column pager mounts there is nothing to scroll.
+}
+
 /** Everything the board screen and its parts share. */
 export function useBoard(props: BoardProps) {
   const state = useBoardState();
   const data = useBoardData(props, state);
   const runner = useRunner();
   const mutations = useBoardMutations(props.ownUserId);
-  const showColumn = useRef<(index: number) => void>(undefined);
+  const showColumn = useRef(ignoreColumn);
   const boardId = data.board?.id;
   const { setFilters, setSearching, setArchivedCards, setComposing, setDetail } = state;
   // A board change starts a new filter and editing context.

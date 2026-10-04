@@ -12,7 +12,7 @@ interface Drag {
 }
 
 /** The card the pointer is above the middle of, if any: the dragged card lands before it. */
-function cardUnderPointer(column: HTMLElement, clientY: number): Card["_id"] | undefined {
+function cardUnderPointer(column: HTMLElement, clientY: number) {
   for (const tile of column.querySelectorAll<HTMLElement>("[data-card]")) {
     const box = tile.getBoundingClientRect();
     if (clientY < box.top + box.height / 2) return tile.dataset.card as Card["_id"];
