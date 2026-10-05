@@ -115,14 +115,45 @@ function parseMeta(meta: string | null): Record<string, unknown> | null {
   }
 }
 
+function changedList(meta: Record<string, unknown>): string[] {
+  return Array.isArray(meta.changed)
+    ? meta.changed.filter((entry): entry is string => typeof entry === "string")
+    : [];
+}
+
+function channelCreateDetail(
+  meta: Record<string, unknown>,
+  fallback: string | null,
+): string | null {
+  const kind = nonEmpty(meta.kind);
+  const isPrivate = meta.private === true;
+  const parts = [kind, isPrivate ? "private" : null].filter(
+    (entry): entry is string => entry !== null,
+  );
+  return parts.length > 0 ? parts.join(", ") : fallback;
+}
+
+function banDetail(meta: Record<string, unknown>): string | null {
+  const reason = nonEmpty(meta.reason);
+  const expiresAt = typeof meta.expiresAt === "number" ? meta.expiresAt : null;
+  const parts = [
+    reason,
+    expiresAt !== null ? `until ${new Date(expiresAt).toLocaleDateString()}` : null,
+  ].filter((entry): entry is string => entry !== null);
+  return parts.length > 0 ? parts.join(" · ") : null;
+}
+
+function inviteDetail(meta: Record<string, unknown>): string | null {
+  const expiresAt = typeof meta.expiresAt === "number" ? meta.expiresAt : null;
+  return expiresAt !== null ? `expires ${new Date(expiresAt).toLocaleDateString()}` : null;
+}
+
 function metaDetail(action: string, meta: Record<string, unknown> | null): string | null {
   if (meta === null) {
     return null;
   }
   const name = nonEmpty(meta.name);
-  const changed = Array.isArray(meta.changed)
-    ? meta.changed.filter((entry): entry is string => typeof entry === "string")
-    : [];
+  const changed = changedList(meta);
   switch (action) {
     case "role.create":
     case "role.delete":
@@ -131,39 +162,23 @@ function metaDetail(action: string, meta: Record<string, unknown> | null): strin
     case "category.delete":
     case "channel.rename":
     case "channel.setTopic":
+    case "member.nickname":
       return name !== null ? name : null;
     case "role.update":
       return changed.length > 0 ? changed.join(", ") : name;
     case "server.updateSettings":
     case "instance.authProviders.update":
       return changed.length > 0 ? changed.join(", ") : null;
-    case "member.nickname":
-      return name !== null ? name : null;
-    case "channel.create": {
-      const kind = nonEmpty(meta.kind);
-      const isPrivate = meta.private === true;
-      const parts = [kind, isPrivate ? "private" : null].filter(
-        (entry): entry is string => entry !== null,
-      );
-      return parts.length > 0 ? parts.join(", ") : name;
-    }
-    case "member.ban": {
-      const reason = nonEmpty(meta.reason);
-      const expiresAt = typeof meta.expiresAt === "number" ? meta.expiresAt : null;
-      const parts = [
-        reason,
-        expiresAt !== null ? `until ${new Date(expiresAt).toLocaleDateString()}` : null,
-      ].filter((entry): entry is string => entry !== null);
-      return parts.length > 0 ? parts.join(" · ") : null;
-    }
+    case "channel.create":
+      return channelCreateDetail(meta, name);
+    case "member.ban":
+      return banDetail(meta);
     case "member.timeout":
       return typeof meta.until === "number"
         ? `until ${new Date(meta.until).toLocaleString()}`
         : "cleared";
-    case "invite.create": {
-      const expiresAt = typeof meta.expiresAt === "number" ? meta.expiresAt : null;
-      return expiresAt !== null ? `expires ${new Date(expiresAt).toLocaleDateString()}` : null;
-    }
+    case "invite.create":
+      return inviteDetail(meta);
     default: {
       const keys = Object.keys(meta).filter((key) => META_LABELS[key] !== undefined);
       return keys.length > 0 ? null : null;

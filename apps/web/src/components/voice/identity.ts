@@ -1,4 +1,5 @@
 import type { VoiceDeviceSettings } from "@aulora/core";
+import type { Callback } from "../admin/callbacks";
 
 /**
  * Resolves display metadata for call participants. The chat surface already
@@ -6,8 +7,8 @@ import type { VoiceDeviceSettings } from "@aulora/core";
  * functions instead of importing the workspace data themselves.
  */
 export interface CallIdentity {
-  readonly nameOf: (userId: string) => string;
-  readonly colorOf: (userId: string) => string | null;
+  readonly nameOf: Callback<[userId: string], string>;
+  readonly colorOf: Callback<[userId: string], string | null>;
 }
 
 export const UNKNOWN_IDENTITY: CallIdentity = {

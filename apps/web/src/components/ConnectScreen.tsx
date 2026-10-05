@@ -16,7 +16,7 @@ import { AuthCard, AuthFrame, AuthHeader, AuthLink } from "./AuthFrame";
 
 export interface ConnectScreenProps {
   readonly store: ProfileStore;
-  readonly onConnected?: (profile: ServerProfile) => void;
+  readonly onConnected?: (_profile: ServerProfile) => void;
   /** Host prefilled from an `aulora://connect?server=…` deep link. */
   readonly initialHost?: string;
 }
@@ -165,7 +165,13 @@ export function ConnectScreen({ store, onConnected, initialHost }: ConnectScreen
         subtitle="Enter the address your team gave you. Nothing is saved until you confirm."
       />
       <AuthCard>
-        <form className="flex flex-col gap-4" onSubmit={handleSubmit} noValidate>
+        <form
+          className="flex flex-col gap-4"
+          onSubmit={(event) => {
+            void handleSubmit(event);
+          }}
+          noValidate
+        >
           <Input
             label="Server address"
             size="lg"
@@ -176,7 +182,9 @@ export function ConnectScreen({ store, onConnected, initialHost }: ConnectScreen
             inputMode="url"
             autoFocus
             value={host}
-            onChange={(event) => setHost(event.currentTarget.value)}
+            onChange={(event) => {
+              setHost(event.currentTarget.value);
+            }}
             {...(error !== null ? { error } : {})}
           />
           <Button size="lg" type="submit" loading={busy} disabled={host.trim().length === 0}>

@@ -95,16 +95,20 @@ export interface MobileChatContextValue {
   readonly canModerateMembers: boolean;
   /** Owner or `MentionEveryone`; gates `@everyone`/`@here` suggestions. */
   readonly canMentionEveryone: boolean;
-  sendMessage(channelId: string, text: string, options?: ChatSendOptions): Promise<ChatSendResult>;
-  retrySend(id: string): Promise<void>;
-  discardSend(id: string): Promise<void>;
-  search(query: string): Promise<readonly SearchHit[]>;
+  readonly sendMessage: (
+    _channelId: string,
+    _text: string,
+    _options?: ChatSendOptions,
+  ) => Promise<ChatSendResult>;
+  readonly retrySend: (_id: string) => Promise<void>;
+  readonly discardSend: (_id: string) => Promise<void>;
+  readonly search: (_query: string) => Promise<readonly SearchHit[]>;
   /**
    * Reads one more page of server history into the search index. Resolves
    * `true` once every conversation is indexed back to its first message.
    */
-  loadSearchHistory(): Promise<boolean>;
-  permissionsFor(channel: ChannelView): bigint;
+  readonly loadSearchHistory: () => Promise<boolean>;
+  readonly permissionsFor: (_channel: ChannelView) => bigint;
 }
 
 const ChatContext = createContext<MobileChatContextValue | null>(null);
@@ -126,12 +130,14 @@ export function ChatProvider({ client, userId, children }: ChatProviderProps) {
   const [presence, setPresence] = useState<readonly PresenceRow[]>([]);
   const [startupError, setStartupError] = useState<string | null>(null);
   const [startupAttempt, setStartupAttempt] = useState(0);
-  const retryStartup = useCallback(() => setStartupAttempt((attempt) => attempt + 1), []);
+  const retryStartup = useCallback(() => {
+    setStartupAttempt((attempt) => attempt + 1);
+  }, []);
   const [outbox, setOutbox] = useState<readonly OutboxItem[]>([]);
   const runtimeRef = useRef<MobileChatRuntime | undefined>(undefined);
-  const outboxRef = useRef<Outbox | undefined>(undefined);
-  const searchRef = useRef<SearchIndex | undefined>(undefined);
-  const backfillRef = useRef<ArchiveBackfill | undefined>(undefined);
+  const outboxRef = useRef<Outbox>(undefined);
+  const searchRef = useRef<SearchIndex>(undefined);
+  const backfillRef = useRef<ArchiveBackfill>(undefined);
   const summariesRef = useRef(summaries);
   summariesRef.current = summaries;
 
@@ -326,12 +332,12 @@ export function ChatProvider({ client, userId, children }: ChatProviderProps) {
     [refreshOutbox],
   );
 
-  const search = useCallback(async (query: string): Promise<readonly SearchHit[]> => {
+  const search = useCallback((query: string): Promise<readonly SearchHit[]> => {
     const index = searchRef.current;
     if (index === undefined) {
-      return [];
+      return Promise.resolve([]);
     }
-    return index.query(query, { limit: 50 });
+    return Promise.resolve(index.query(query, { limit: 50 }));
   }, []);
 
   const loadSearchHistory = useCallback(async (): Promise<boolean> => {

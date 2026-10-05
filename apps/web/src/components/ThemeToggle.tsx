@@ -32,7 +32,9 @@ export function ThemeToggle({ variant = "rail" }: { readonly variant?: "rail" | 
     const query = window.matchMedia("(prefers-color-scheme: dark)");
     const onChange = () => applyTheme("system");
     query.addEventListener("change", onChange);
-    return () => query.removeEventListener("change", onChange);
+    return () => {
+      query.removeEventListener("change", onChange);
+    };
   }, [preference]);
 
   const next = nextThemePreference(preference);

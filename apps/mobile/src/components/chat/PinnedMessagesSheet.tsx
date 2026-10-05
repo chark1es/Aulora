@@ -17,7 +17,7 @@ export function PinnedMessagesSheet({
   readonly visible: boolean;
   readonly channelId: string;
   readonly memberNames: ReadonlyMap<string, string>;
-  readonly onOpen: (messageId: string) => void;
+  readonly onOpen: (_messageId: string) => void;
   readonly onClose: () => void;
 }) {
   const palette = usePalette();

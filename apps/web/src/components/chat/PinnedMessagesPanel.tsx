@@ -76,7 +76,9 @@ export function PinnedMessagesPanel({
           <button
             type="button"
             className="w-full rounded-[7px] py-2 text-xs font-medium text-accent hover:bg-surface-3"
-            onClick={() => loadMore(30)}
+            onClick={() => {
+              loadMore(30);
+            }}
           >
             Load more pins
           </button>

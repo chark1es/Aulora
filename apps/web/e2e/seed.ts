@@ -103,7 +103,7 @@ async function main(): Promise<void> {
   for (let i = 0; i < total; i += 1) {
     const label = await page.locator('button[data-testid^="channel-row-"]').nth(i).innerText();
     if (label.trim().toLowerCase().startsWith("channel")) {
-      const name = CHANNEL_NAMES[unnamed] ?? `channel-${unnamed + 1}`;
+      const name = CHANNEL_NAMES.at(unnamed) ?? `channel-${unnamed + 1}`;
       try {
         await renameChannel(page, i, name);
         console.log(`renamed channel #${i} -> ${name}`);
@@ -123,14 +123,18 @@ async function main(): Promise<void> {
     }
   }
 
+  await seedDirectMessages(page);
+
+  await browser.close();
+  console.log("done");
+}
+
+async function seedDirectMessages(page: Page): Promise<void> {
   for (const person of ["Ludmil Popov", "Kathryn Murphy"]) {
     try {
       await page.getByRole("button", { name: "New direct message" }).click();
       await page.getByRole("textbox", { name: "Find people" }).fill(person);
-      await page
-        .getByRole("button", { name: new RegExp(person) })
-        .first()
-        .click();
+      await page.getByRole("button", { name: person }).first().click();
       await page.getByRole("button", { name: /^(Message |Start group)/ }).click();
       await page.waitForTimeout(800);
       const composer = page.getByRole("textbox", { name: "Message" });
@@ -142,9 +146,6 @@ async function main(): Promise<void> {
       console.warn(`skipped DM ${person}:`, cause instanceof Error ? cause.message : cause);
     }
   }
-
-  await browser.close();
-  console.log("done");
 }
 
 void main();

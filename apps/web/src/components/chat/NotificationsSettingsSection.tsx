@@ -60,7 +60,9 @@ export function NotificationsSettingsSection() {
       <div className="rounded-[10px] border border-border bg-surface-1 px-3.5">
         <Switch
           checked={settings.enabled}
-          onChange={(enabled) => update({ enabled })}
+          onChange={(enabled) => {
+            update({ enabled });
+          }}
           label="Play sound cues"
           description="Turns every cue below on or off at once."
         />
@@ -78,7 +80,9 @@ export function NotificationsSettingsSection() {
           step={0.05}
           value={settings.volume}
           disabled={!settings.enabled}
-          onChange={(event) => update({ volume: Number(event.target.value) })}
+          onChange={(event) => {
+            update({ volume: Number(event.target.value) });
+          }}
           className="h-1.5 w-full cursor-pointer appearance-none rounded-full bg-surface-3 accent-accent disabled:opacity-50"
         />
       </label>
@@ -106,7 +110,9 @@ export function NotificationsSettingsSection() {
                 bare
                 checked={settings.events[row.event]}
                 disabled={!settings.enabled}
-                onChange={(value) => updateEvent({ [row.event]: value })}
+                onChange={(value) => {
+                  updateEvent({ [row.event]: value });
+                }}
                 label={row.label}
               />
             </div>

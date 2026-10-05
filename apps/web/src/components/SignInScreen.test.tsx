@@ -38,11 +38,11 @@ function makeProfile(local: WellKnownAuth["local"]): ServerProfile {
 
 function fakeActions(): AuthActions {
   return {
-    signInEmail: vi.fn(async () => ({ error: null })),
-    signUpEmail: vi.fn(async () => ({ error: null })),
-    signInSocial: vi.fn(async () => ({ error: null })),
-    signInOAuth2: vi.fn(async () => ({ error: null })),
-    signOut: vi.fn(async () => ({ error: null })),
+    signInEmail: vi.fn(() => Promise.resolve({ error: null })),
+    signUpEmail: vi.fn(() => Promise.resolve({ error: null })),
+    signInSocial: vi.fn(() => Promise.resolve({ error: null })),
+    signInOAuth2: vi.fn(() => Promise.resolve({ error: null })),
+    signOut: vi.fn(() => Promise.resolve({ error: null })),
   };
 }
 

@@ -27,12 +27,7 @@ export function bytesToBase64(bytes: Uint8Array): string {
 
 /** Inverse of {@link bytesToBase64}. */
 export function base64ToBytes(encoded: string): Uint8Array {
-  const binary = atob(encoded);
-  const bytes = new Uint8Array(binary.length);
-  for (let index = 0; index < binary.length; index += 1) {
-    bytes[index] = binary.charCodeAt(index);
-  }
-  return bytes;
+  return Uint8Array.from(atob(encoded), (character) => character.charCodeAt(0));
 }
 
 /**
@@ -72,7 +67,7 @@ export function timingSafeEqual(a: Uint8Array, b: Uint8Array): boolean {
   }
   let diff = 0;
   for (let index = 0; index < a.length; index += 1) {
-    diff |= (a[index] ?? 0) ^ (b[index] ?? 0);
+    diff |= (a.at(index) ?? 0) ^ (b.at(index) ?? 0);
   }
   return diff === 0;
 }

@@ -21,7 +21,9 @@ export function ReactionChips({ groups, onToggle, align = "start" }: ReactionChi
         <button
           key={group.emoji}
           type="button"
-          onClick={() => onToggle(group.emoji)}
+          onClick={() => {
+            onToggle(group.emoji);
+          }}
           aria-pressed={group.mine}
           aria-label={`${group.emoji} ${group.count}`}
           className={cn(

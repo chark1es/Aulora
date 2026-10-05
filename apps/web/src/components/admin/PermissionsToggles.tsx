@@ -5,10 +5,14 @@ import {
   PERMISSION_LABELS,
   togglePermissionBit,
 } from "../../lib/workspace-admin";
+import type { Callback } from "./callbacks";
+
+const PERMISSION_BITS = new Map<string, bigint>(Object.entries(Permission));
+const PERMISSION_LABELS_BY_NAME = new Map<string, string>(Object.entries(PERMISSION_LABELS));
 
 export interface PermissionsTogglesProps {
   readonly value: bigint;
-  readonly onChange: (next: bigint) => void;
+  readonly onChange: Callback<[next: bigint]>;
   readonly disabled?: boolean;
   readonly testId?: string;
 }
@@ -32,13 +36,17 @@ export function PermissionsToggles({
           <legend className="mb-1 flex items-center gap-2 text-[11px] font-semibold uppercase tracking-[0.06em] text-text-muted">
             {group.label}
             <span className="text-[10px] font-normal normal-case tracking-normal text-text-muted">
-              {group.permissions.filter((name) => (value & Permission[name]) !== 0n).length}/
+              {
+                group.permissions.filter(
+                  (name) => (value & (PERMISSION_BITS.get(name) ?? 0n)) !== 0n,
+                ).length
+              }
               {group.permissions.length}
             </span>
           </legend>
           <div className="grid grid-cols-1 gap-1.5 sm:grid-cols-2">
             {group.permissions.map((name) => {
-              const checked = (value & Permission[name]) !== 0n;
+              const checked = (value & (PERMISSION_BITS.get(name) ?? 0n)) !== 0n;
               return (
                 <label
                   key={name}
@@ -55,9 +63,9 @@ export function PermissionsToggles({
                     className="sr-only"
                     checked={checked}
                     disabled={disabled}
-                    onChange={(event) =>
-                      onChange(togglePermissionBit(value, name, event.currentTarget.checked))
-                    }
+                    onChange={(event) => {
+                      onChange(togglePermissionBit(value, name, event.currentTarget.checked));
+                    }}
                   />
                   <span
                     aria-hidden="true"
@@ -68,7 +76,7 @@ export function PermissionsToggles({
                   >
                     {checked && <Icon name="check" size={11} />}
                   </span>
-                  {PERMISSION_LABELS[name]}
+                  {PERMISSION_LABELS_BY_NAME.get(name) ?? name}
                 </label>
               );
             })}

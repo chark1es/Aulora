@@ -1,5 +1,5 @@
 import { type AttachmentDescriptor, bytesToBase64, downloadAttachment } from "@aulora/core";
-import { Button, Spinner, Text } from "@aulora/ui-native";
+import { Button, Text } from "@aulora/ui-native";
 import { useAudioPlayer, useAudioPlayerStatus } from "expo-audio";
 import { Directory, File, Paths } from "expo-file-system";
 import * as Sharing from "expo-sharing";
@@ -14,24 +14,41 @@ export interface AttachmentViewProps {
   readonly descriptor: AttachmentDescriptor;
 }
 
-/**
- * Previews images, plays audio and video inline, and saves or opens any
- * downloaded file through the system share sheet.
- */
-export function AttachmentView({ runtime, descriptor }: AttachmentViewProps) {
+/** Downloads the decrypted bytes into the cache and returns the file's URI. */
+async function cacheAttachmentFile(
+  port: ChatSurfaceRuntime["port"],
+  descriptor: AttachmentDescriptor,
+): Promise<string> {
+  const bytes = await downloadAttachment(port, descriptor);
+  const directory = new Directory(
+    Paths.cache,
+    "shared-attachments",
+    descriptor.fileId.replace(/[^a-zA-Z0-9_-]/g, "_"),
+  );
+  directory.create({ idempotent: true, intermediates: true });
+  const file = new File(
+    directory,
+    descriptor.name
+      .replace(/[^\p{L}\p{N} ._-]/gu, "_")
+      .replace(/^\.+/, "")
+      .slice(0, 160) || "attachment",
+  );
+  file.write(bytes);
+  return file.uri;
+}
+
+function useAttachmentPreview(
+  runtime: ChatSurfaceRuntime | undefined,
+  descriptor: AttachmentDescriptor,
+  isImage: boolean,
+) {
   const [dataUri, setDataUri] = useState<string | null>(null);
   const [failed, setFailed] = useState(false);
-  const [preview, setPreview] = useState(false);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [mediaUri, setMediaUri] = useState<string | null>(null);
   const [loadingMedia, setLoadingMedia] = useState(false);
-  const isImage = descriptor.mime.startsWith("image/");
-  const media = descriptor.mime.startsWith("audio/")
-    ? "audio"
-    : descriptor.mime.startsWith("video/")
-      ? "video"
-      : null;
+
   useEffect(() => {
     setDataUri(null);
     setFailed(false);
@@ -50,26 +67,6 @@ export function AttachmentView({ runtime, descriptor }: AttachmentViewProps) {
     };
   }, [runtime, descriptor, isImage]);
 
-  /** Downloads the decrypted bytes into the cache and returns the file's URI. */
-  async function cacheFile(port: ChatSurfaceRuntime["port"]): Promise<string> {
-    const bytes = await downloadAttachment(port, descriptor);
-    const directory = new Directory(
-      Paths.cache,
-      "shared-attachments",
-      descriptor.fileId.replace(/[^a-zA-Z0-9_-]/g, "_"),
-    );
-    directory.create({ idempotent: true, intermediates: true });
-    const file = new File(
-      directory,
-      descriptor.name
-        .replace(/[^\p{L}\p{N} ._-]/gu, "_")
-        .replace(/^\.+/, "")
-        .slice(0, 160) || "attachment",
-    );
-    file.write(bytes);
-    return file.uri;
-  }
-
   async function share() {
     if (runtime === undefined || busy) return;
     setBusy(true);
@@ -77,7 +74,7 @@ export function AttachmentView({ runtime, descriptor }: AttachmentViewProps) {
     try {
       if (!(await Sharing.isAvailableAsync()))
         throw new Error("File sharing is unavailable on this device.");
-      await Sharing.shareAsync(mediaUri ?? (await cacheFile(runtime.port)), {
+      await Sharing.shareAsync(mediaUri ?? (await cacheAttachmentFile(runtime.port, descriptor)), {
         mimeType: descriptor.mime,
         dialogTitle: descriptor.name,
       });
@@ -93,96 +90,190 @@ export function AttachmentView({ runtime, descriptor }: AttachmentViewProps) {
     setLoadingMedia(true);
     setError(null);
     try {
-      setMediaUri(await cacheFile(runtime.port));
+      setMediaUri(await cacheAttachmentFile(runtime.port, descriptor));
     } catch {
       setError(`Couldn't load ${descriptor.name}. Try again.`);
     } finally {
       setLoadingMedia(false);
     }
   }
+
+  return { dataUri, failed, busy, error, mediaUri, loadingMedia, share, loadMedia };
+}
+
+function AttachmentActions(props: {
+  readonly runtime: ChatSurfaceRuntime | undefined;
+  readonly size: number;
+  readonly media: "audio" | "video" | null;
+  readonly mediaLoaded: boolean;
+  readonly busy: boolean;
+  readonly loadingMedia: boolean;
+  readonly onLoadMedia: () => void;
+  readonly onShare: () => void;
+}) {
+  const { runtime, size, media, mediaLoaded, busy, loadingMedia, onLoadMedia, onShare } = props;
   return (
-    <View className="gap-2">
-      {isImage && dataUri !== null ? (
-        <Pressable
-          accessibilityRole="button"
-          accessibilityLabel={`Preview ${descriptor.name}`}
-          onPress={() => {
-            setPreview(true);
-          }}
-        >
-          <Image
-            source={{ uri: dataUri }}
-            accessibilityLabel={descriptor.name}
-            resizeMode="contain"
-            style={{ width: "100%", maxWidth: 320, height: 180, borderRadius: 12 }}
-          />
-        </Pressable>
-      ) : (
-        <Text>{failed ? `Couldn't load ${descriptor.name}` : descriptor.name}</Text>
-      )}
-      {mediaUri !== null && media === "audio" && (
-        <AudioPlayback uri={mediaUri} name={descriptor.name} />
-      )}
-      {mediaUri !== null && media === "video" && (
-        <VideoPlayback uri={mediaUri} name={descriptor.name} />
-      )}
-      <View className="flex-row flex-wrap items-center gap-2">
-        <Text size="sm" tone="muted">
-          {formatBytes(descriptor.size)}
-        </Text>
-        {media !== null && mediaUri === null && (
-          <Button
-            size="sm"
-            disabled={runtime === undefined}
-            loading={loadingMedia}
-            accessibilityLabel={`Play ${descriptor.name}`}
-            onPress={() => void loadMedia()}
-          >
-            Play
-          </Button>
-        )}
+    <View className="flex-row flex-wrap items-center gap-2">
+      <Text size="sm" tone="muted">
+        {formatBytes(size)}
+      </Text>
+      {media !== null && !mediaLoaded && (
         <Button
-          variant="secondary"
           size="sm"
           disabled={runtime === undefined}
-          loading={busy}
-          onPress={() => void share()}
+          loading={loadingMedia}
+          accessibilityLabel="Play attachment"
+          onPress={onLoadMedia}
         >
-          Share or save file
+          Play
         </Button>
-      </View>
+      )}
+      <Button
+        variant="secondary"
+        size="sm"
+        disabled={runtime === undefined}
+        loading={busy}
+        onPress={onShare}
+      >
+        Share or save file
+      </Button>
+    </View>
+  );
+}
+
+function AttachmentThumb({
+  isImage,
+  dataUri,
+  failed,
+  name,
+  onPreview,
+}: {
+  readonly isImage: boolean;
+  readonly dataUri: string | null;
+  readonly failed: boolean;
+  readonly name: string;
+  readonly onPreview: () => void;
+}) {
+  if (isImage && dataUri !== null) {
+    return (
+      <Pressable
+        accessibilityRole="button"
+        accessibilityLabel={`Preview ${name}`}
+        onPress={onPreview}
+      >
+        <Image
+          source={{ uri: dataUri }}
+          accessibilityLabel={name}
+          resizeMode="contain"
+          style={{ width: "100%", maxWidth: 320, height: 180, borderRadius: 12 }}
+        />
+      </Pressable>
+    );
+  }
+  return <Text>{failed ? `Couldn't load ${name}` : name}</Text>;
+}
+
+function AttachmentMedia({
+  mediaUri,
+  media,
+  name,
+}: {
+  readonly mediaUri: string | null;
+  readonly media: "audio" | "video" | null;
+  readonly name: string;
+}) {
+  if (mediaUri === null) {
+    return null;
+  }
+  if (media === "audio") {
+    return <AudioPlayback uri={mediaUri} name={name} />;
+  }
+  if (media === "video") {
+    return <VideoPlayback uri={mediaUri} name={name} />;
+  }
+  return null;
+}
+
+/** Previews images, plays audio and video inline, and saves or opens any downloaded file. */
+export function AttachmentView({ runtime, descriptor }: AttachmentViewProps) {
+  const [preview, setPreview] = useState(false);
+  const isImage = descriptor.mime.startsWith("image/");
+  const media = descriptor.mime.startsWith("audio/")
+    ? "audio"
+    : descriptor.mime.startsWith("video/")
+      ? "video"
+      : null;
+  const { dataUri, failed, busy, error, mediaUri, loadingMedia, share, loadMedia } =
+    useAttachmentPreview(runtime, descriptor, isImage);
+  return (
+    <View className="gap-2">
+      <AttachmentThumb
+        isImage={isImage}
+        dataUri={dataUri}
+        failed={failed}
+        name={descriptor.name}
+        onPreview={() => {
+          setPreview(true);
+        }}
+      />
+      <AttachmentMedia mediaUri={mediaUri} media={media} name={descriptor.name} />
+      <AttachmentActions
+        runtime={runtime}
+        size={descriptor.size}
+        media={media}
+        mediaLoaded={mediaUri !== null}
+        busy={busy}
+        loadingMedia={loadingMedia}
+        onLoadMedia={() => void loadMedia()}
+        onShare={() => void share()}
+      />
       {error !== null && (
         <Text tone="danger" accessibilityRole="alert">
           {error}
         </Text>
       )}
-      {preview && (
-        <Sheet
-          visible
-          title={descriptor.name}
-          dismiss="done"
+      {preview && dataUri !== null && (
+        <AttachmentPreview
+          dataUri={dataUri}
+          name={descriptor.name}
+          busy={busy}
+          onShare={() => void share()}
           onClose={() => {
             setPreview(false);
           }}
-        >
-          <ScrollView contentContainerStyle={{ padding: 16, gap: 16 }}>
-            {dataUri !== null ? (
-              <Image
-                source={{ uri: dataUri }}
-                accessibilityLabel={descriptor.name}
-                resizeMode="contain"
-                style={{ width: "100%", height: 420 }}
-              />
-            ) : (
-              <Spinner label="Loading image" />
-            )}
-            <Button loading={busy} onPress={() => void share()}>
-              Share or save image
-            </Button>
-          </ScrollView>
-        </Sheet>
+        />
       )}
     </View>
+  );
+}
+
+function AttachmentPreview({
+  dataUri,
+  name,
+  busy,
+  onShare,
+  onClose,
+}: {
+  readonly dataUri: string;
+  readonly name: string;
+  readonly busy: boolean;
+  readonly onShare: () => void;
+  readonly onClose: () => void;
+}) {
+  return (
+    <Sheet visible title={name} dismiss="done" onClose={onClose}>
+      <ScrollView contentContainerStyle={{ padding: 16, gap: 16 }}>
+        <Image
+          source={{ uri: dataUri }}
+          accessibilityLabel={name}
+          resizeMode="contain"
+          style={{ width: "100%", height: 420 }}
+        />
+        <Button loading={busy} onPress={onShare}>
+          Share or save image
+        </Button>
+      </ScrollView>
+    </Sheet>
   );
 }
 

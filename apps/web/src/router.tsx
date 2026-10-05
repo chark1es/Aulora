@@ -27,10 +27,12 @@ const PreviewRoute = import.meta.env.DEV
 function RootLayout() {
   const pathname = useRouterState({ select: (state) => state.location.pathname });
   const previewing = import.meta.env.DEV && pathname.startsWith("/__preview");
-  const [previewStore, setPreviewStore] = useState<ProfileStore | undefined>(undefined);
+  const [previewStore, setPreviewStore] = useState<ProfileStore>();
   useEffect(() => {
     if (previewing) {
-      void import("./preview/demo").then((module) => setPreviewStore(module.demoProfileStore()));
+      void import("./preview/demo").then((module) => {
+        setPreviewStore(module.demoProfileStore());
+      });
     }
   }, [previewing]);
   if (previewing && previewStore === undefined) {

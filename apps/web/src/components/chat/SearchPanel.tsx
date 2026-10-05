@@ -75,7 +75,9 @@ export function SearchPanel({
   );
 
   // biome-ignore lint/correctness/useExhaustiveDependencies: reset the cursor when the query changes
-  useEffect(() => setActive(0), [query]);
+  useEffect(() => {
+    setActive(0);
+  }, [query]);
 
   const choose = (entry: Entry | undefined) => {
     if (entry?.kind === "conversation") {
@@ -109,7 +111,9 @@ export function SearchPanel({
             aria-label="Search messages"
             placeholder="Jump to a conversation or search messages"
             value={query}
-            onChange={(event) => onQueryChange(event.target.value)}
+            onChange={(event) => {
+              onQueryChange(event.target.value);
+            }}
             onKeyDown={(event) => {
               if (event.key === "Escape") {
                 onClose();
@@ -121,7 +125,7 @@ export function SearchPanel({
                 setActive((index) => Math.max(index - 1, 0));
               } else if (event.key === "Enter") {
                 event.preventDefault();
-                choose(entries[active]);
+                choose(entries.at(active));
               }
             }}
             className="h-12 flex-1 bg-transparent text-[15px] text-text placeholder:text-text-muted focus-visible:outline-none"
@@ -146,8 +150,12 @@ export function SearchPanel({
                 <li key={channel.id}>
                   <button
                     type="button"
-                    onMouseEnter={() => setActive(index)}
-                    onClick={() => onSelectConversation(channel.id)}
+                    onMouseEnter={() => {
+                      setActive(index);
+                    }}
+                    onClick={() => {
+                      onSelectConversation(channel.id);
+                    }}
                     className={cn(
                       "flex w-full items-center gap-3 rounded-[8px] px-2.5 py-2 text-left",
                       active === index ? "bg-accent-soft" : "hover:bg-surface-3",
@@ -199,8 +207,12 @@ export function SearchPanel({
                         <button
                           type="button"
                           data-testid="search-result"
-                          onMouseEnter={() => setActive(index)}
-                          onClick={() => onSelect(hit)}
+                          onMouseEnter={() => {
+                            setActive(index);
+                          }}
+                          onClick={() => {
+                            onSelect(hit);
+                          }}
                           className={cn(
                             "flex w-full items-start gap-3 rounded-[8px] px-2.5 py-2 text-left",
                             active === index ? "bg-accent-soft" : "hover:bg-surface-3",

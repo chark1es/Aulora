@@ -6,6 +6,7 @@ import {
   useContext,
   useEffect,
   useMemo,
+  useRef,
   useState,
 } from "react";
 import {
@@ -19,8 +20,8 @@ import {
 export interface SoundContextValue {
   readonly settings: SoundSettings;
   readonly available: boolean;
-  updateSettings(partial: Partial<SoundSettings>): Promise<void>;
-  play(event: SoundEvent): void;
+  readonly updateSettings: (_partial: Partial<SoundSettings>) => Promise<void>;
+  readonly play: (_event: SoundEvent) => void;
 }
 
 const SoundContext = createContext<SoundContextValue | null>(null);
@@ -35,12 +36,14 @@ export function SoundProvider({ children }: { readonly children: ReactNode }) {
     void loadSoundSettingsAsync().then(setSettings);
   }, []);
 
+  const settingsRef = useRef(settings);
+  settingsRef.current = settings;
+
   const updateSettings = useCallback(async (partial: Partial<SoundSettings>) => {
-    setSettings((current) => {
-      const next = mergeSoundSettings({ ...current, ...partial });
-      void saveSoundSettingsAsync(next);
-      return next;
-    });
+    const next = mergeSoundSettings({ ...settingsRef.current, ...partial });
+    settingsRef.current = next;
+    setSettings(next);
+    await saveSoundSettingsAsync(next);
   }, []);
 
   const play = useCallback(

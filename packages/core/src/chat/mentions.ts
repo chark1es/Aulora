@@ -31,8 +31,26 @@ export interface MentionResolution {
 
 const MENTION_TOKEN = /@([A-Za-z0-9_.-]+)/g;
 
-function escapeRegExp(value: string): string {
-  return value.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+/**
+ * Whether `text` contains `prefix + name` as a whole tag, case-insensitively.
+ * A tag ends at the end of the text or before any word character, `.` or `-`,
+ * matching the former `(?![\w.-])` boundary without compiling a regex per name.
+ */
+function hasTag(text: string, name: string, prefix: "@" | "#"): boolean {
+  if (name.length === 0) {
+    return false;
+  }
+  const haystack = text.toLowerCase();
+  const needle = `${prefix}${name}`.toLowerCase();
+  let from = haystack.indexOf(needle);
+  while (from !== -1) {
+    const after = haystack.charAt(from + needle.length);
+    if (after === "" || !/[\w.-]/.test(after)) {
+      return true;
+    }
+    from = haystack.indexOf(needle, from + 1);
+  }
+  return false;
 }
 
 /**
@@ -48,18 +66,6 @@ export function resolveMentions(
   let here = false;
   let everyone = false;
 
-  const directMembers = [...members].sort((a, b) => b.displayName.length - a.displayName.length);
-  const directPatterns = directMembers.map((member) => ({
-    member,
-    pattern: new RegExp(`@${escapeRegExp(member.displayName)}(?![\\w.-])`, "i"),
-  }));
-  const rolePatterns = roles
-    .filter((role) => role.mentionable)
-    .map((role) => ({
-      role,
-      pattern: new RegExp(`@${escapeRegExp(role.name)}(?![\\w.-])`, "i"),
-    }));
-
   if (/(^|\s)@here(?![A-Za-z0-9_.-])/i.test(text)) {
     here = true;
   }
@@ -67,8 +73,11 @@ export function resolveMentions(
     everyone = true;
   }
 
+  const directMembers = [...members].sort((a, b) => b.displayName.length - a.displayName.length);
+  const mentionableRoles = roles.filter((role) => role.mentionable);
+
   for (const token of text.matchAll(MENTION_TOKEN)) {
-    const raw = token[1] ?? "";
+    const raw = token.at(1) ?? "";
     if (raw.toLowerCase() === "here") {
       here = true;
       continue;
@@ -77,14 +86,14 @@ export function resolveMentions(
       everyone = true;
       continue;
     }
-    for (const { member, pattern } of directPatterns) {
-      if (pattern.test(text)) {
+    for (const member of directMembers) {
+      if (hasTag(text, member.displayName, "@")) {
         userIds.add(member.userId);
         break;
       }
     }
-    for (const { role, pattern } of rolePatterns) {
-      if (pattern.test(text)) {
+    for (const role of mentionableRoles) {
+      if (hasTag(text, role.name, "@")) {
         for (const userId of role.memberUserIds) {
           userIds.add(userId);
         }
@@ -149,36 +158,21 @@ export function resolveChannelMentions(
   const channelIds = new Set<string>();
   const categoryIds = new Set<string>();
 
-  const channelPatterns = [...channels]
-    .sort((a, b) => b.name.length - a.name.length)
-    .map((channel) => ({
-      channel,
-      pattern: new RegExp(`#${escapeRegExp(channel.name)}(?![\\w.-])`, "i"),
-    }));
-  const categoryPatterns = [...categories]
-    .sort((a, b) => b.name.length - a.name.length)
-    .map((category) => ({
-      category,
-      pattern: new RegExp(`#${escapeRegExp(category.name)}(?![\\w.-])`, "i"),
-    }));
+  if (text.match(CHANNEL_TOKEN) === null) {
+    return { channelIds: [], categoryIds: [] };
+  }
 
-  for (const _token of text.matchAll(CHANNEL_TOKEN)) {
-    let matched = false;
-    for (const { channel, pattern } of channelPatterns) {
-      if (pattern.test(text)) {
-        channelIds.add(channel.channelId);
-        matched = true;
-        break;
-      }
-    }
-    if (matched) {
-      continue;
-    }
-    for (const { category, pattern } of categoryPatterns) {
-      if (pattern.test(text)) {
-        categoryIds.add(category.categoryId);
-        break;
-      }
+  const channel = [...channels]
+    .sort((a, b) => b.name.length - a.name.length)
+    .find((candidate) => hasTag(text, candidate.name, "#"));
+  if (channel !== undefined) {
+    channelIds.add(channel.channelId);
+  } else {
+    const category = [...categories]
+      .sort((a, b) => b.name.length - a.name.length)
+      .find((candidate) => hasTag(text, candidate.name, "#"));
+    if (category !== undefined) {
+      categoryIds.add(category.categoryId);
     }
   }
 

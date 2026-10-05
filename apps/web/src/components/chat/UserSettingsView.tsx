@@ -124,8 +124,12 @@ export function UserSettingsView({
     setAvatarBusy(true);
     setAvatarError(null);
     void onChangeAvatar(file)
-      .catch(() => setAvatarError("Couldn't update your profile picture."))
-      .finally(() => setAvatarBusy(false));
+      .catch(() => {
+        setAvatarError("Couldn't update your profile picture.");
+      })
+      .finally(() => {
+        setAvatarBusy(false);
+      });
   };
 
   const clearAvatar = () => {
@@ -135,8 +139,12 @@ export function UserSettingsView({
     setAvatarBusy(true);
     setAvatarError(null);
     void onClearAvatar()
-      .catch(() => setAvatarError("Couldn't remove your profile picture."))
-      .finally(() => setAvatarBusy(false));
+      .catch(() => {
+        setAvatarError("Couldn't remove your profile picture.");
+      })
+      .finally(() => {
+        setAvatarBusy(false);
+      });
   };
 
   const submit = (includeNickname: boolean) => {
@@ -153,8 +161,12 @@ export function UserSettingsView({
           ...(includeNickname ? { bio: bio.trim() } : {}),
         }),
       )
-      .catch(() => setSaveError("Couldn't save your settings. Please try again."))
-      .finally(() => setSubmitting(false));
+      .catch(() => {
+        setSaveError("Couldn't save your settings. Please try again.");
+      })
+      .finally(() => {
+        setSubmitting(false);
+      });
   };
 
   return (
@@ -183,7 +195,9 @@ export function UserSettingsView({
                 key={entry.id}
                 type="button"
                 aria-current={category === entry.id ? "page" : undefined}
-                onClick={() => setCategory(entry.id)}
+                onClick={() => {
+                  setCategory(entry.id);
+                }}
                 className={cn(
                   "flex shrink-0 items-center gap-2.5 whitespace-nowrap rounded-[8px] px-2.5 py-2 text-left text-[13px]",
                   category === entry.id
@@ -287,7 +301,9 @@ export function UserSettingsView({
                       placeholder={ownName}
                       value={nickname}
                       maxLength={32}
-                      onChange={(event) => setNickname(event.target.value)}
+                      onChange={(event) => {
+                        setNickname(event.target.value);
+                      }}
                       hint="Leave blank to use your account name."
                     />
                   )}
@@ -326,7 +342,9 @@ export function UserSettingsView({
                         variant="ghost"
                         className="mr-auto"
                         leading={<Icon name="logout" size={15} />}
-                        onClick={() => setConfirmSignOut(true)}
+                        onClick={() => {
+                          setConfirmSignOut(true);
+                        }}
                       >
                         Sign out
                       </Button>
@@ -402,7 +420,9 @@ export function UserSettingsView({
 
       <ConfirmDialog
         open={confirmSignOut}
-        onClose={() => setConfirmSignOut(false)}
+        onClose={() => {
+          setConfirmSignOut(false);
+        }}
         title={`Sign out of ${ownName}'s workspace?`}
         description="You can sign back in at any time."
         confirmLabel="Sign out"

@@ -130,14 +130,22 @@ export function SignInScreen({ profile, actions, onSwitchServer }: SignInScreenP
         {hasProviders && local.enabled && <AuthDivider>or use email</AuthDivider>}
 
         {local.enabled && (
-          <form className="flex flex-col gap-4" onSubmit={handleLocalSubmit} noValidate>
+          <form
+            className="flex flex-col gap-4"
+            onSubmit={(event) => {
+              void handleLocalSubmit(event);
+            }}
+            noValidate
+          >
             {mode === "sign-up" && (
               <Input
                 label="Name"
                 size="lg"
                 autoComplete="name"
                 value={name}
-                onChange={(event) => setName(event.currentTarget.value)}
+                onChange={(event) => {
+                  setName(event.currentTarget.value);
+                }}
               />
             )}
             <Input
@@ -147,7 +155,9 @@ export function SignInScreen({ profile, actions, onSwitchServer }: SignInScreenP
               autoComplete="email"
               autoFocus={!hasProviders}
               value={email}
-              onChange={(event) => setEmail(event.currentTarget.value)}
+              onChange={(event) => {
+                setEmail(event.currentTarget.value);
+              }}
             />
             <Input
               label="Password"
@@ -155,7 +165,9 @@ export function SignInScreen({ profile, actions, onSwitchServer }: SignInScreenP
               type="password"
               autoComplete={mode === "sign-up" ? "new-password" : "current-password"}
               value={password}
-              onChange={(event) => setPassword(event.currentTarget.value)}
+              onChange={(event) => {
+                setPassword(event.currentTarget.value);
+              }}
             />
             <Button
               size="lg"

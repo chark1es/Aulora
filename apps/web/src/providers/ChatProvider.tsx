@@ -28,6 +28,9 @@ import { webOutboxStore } from "../lib/outbox-store";
 import { webSearchStore } from "../lib/search-store";
 import { usePresenceHeartbeat } from "../lib/use-presence-heartbeat";
 
+/** A mutable ref target that starts unset without spelling out a union at each use. */
+type Maybe<T> = T | undefined;
+
 export interface ChatSearchHit extends SearchHit {
   readonly channelName: string;
 }
@@ -55,7 +58,7 @@ export interface ChatContextValue {
   /** Channel names, keyed by channel id. */
   readonly channelNames: ReadonlyMap<string, string>;
   /** Caches plaintext channel names for the given channels. */
-  reportChannelNames(entries: readonly { id: string; name: string }[]): void;
+  reportChannelNames: (_entries: readonly { id: string; name: string }[]) => void;
   readonly presence: readonly PresenceRow[];
   readonly channels: readonly ChannelView[];
   readonly ready: boolean;
@@ -64,18 +67,22 @@ export interface ChatContextValue {
   /** Queued offline sends, oldest first; rendered optimistically. */
   readonly outbox: readonly OutboxItem[];
   /** Sends, or queues locally when offline. */
-  sendMessage(channelId: string, text: string, options?: ChatSendOptions): Promise<ChatSendResult>;
+  sendMessage: (
+    _channelId: string,
+    _text: string,
+    _options?: ChatSendOptions,
+  ) => Promise<ChatSendResult>;
   /** Re-queues a failed send and immediately attempts to flush it. */
-  retrySend?(id: string): Promise<void>;
+  retrySend?: (_id: string) => Promise<void>;
   /** Drops a queued or failed send without sending it. */
-  discardSend?(id: string): Promise<void>;
+  discardSend?: (_id: string) => Promise<void>;
   /** Queries the local search index. */
-  search(query: string): Promise<readonly ChatSearchHit[]>;
+  search: (_query: string) => Promise<readonly ChatSearchHit[]>;
   /**
    * Reads one more page of server history into the search index. Resolves
    * `true` once every conversation is indexed back to its first message.
    */
-  loadSearchHistory?(): Promise<boolean>;
+  loadSearchHistory?: () => Promise<boolean>;
 }
 
 const ChatContext = createContext<ChatContextValue | null>(null);
@@ -109,9 +116,9 @@ export function ChatProvider({
   );
   const [outbox, setOutbox] = useState<readonly OutboxItem[]>([]);
   const runtimeRef = useRef<ChatRuntime | undefined>(undefined);
-  const outboxRef = useRef<Outbox | undefined>(undefined);
-  const searchRef = useRef<SearchIndex | undefined>(undefined);
-  const backfillRef = useRef<ArchiveBackfill | undefined>(undefined);
+  const outboxRef = useRef<Maybe<Outbox>>(undefined);
+  const searchRef = useRef<Maybe<SearchIndex>>(undefined);
+  const backfillRef = useRef<Maybe<ArchiveBackfill>>(undefined);
   const channelsRef = useRef(channels);
   channelsRef.current = channels;
 
@@ -119,13 +126,14 @@ export function ChatProvider({
 
   useEffect(() => {
     let cancelled = false;
+    const isCancelled = () => cancelled;
     const outboxStore = new Outbox({ store: webOutboxStore() });
     const searchIndex = new SearchIndex(webSearchStore());
     outboxRef.current = outboxStore;
     searchRef.current = searchIndex;
     void searchIndex.load();
     void outboxStore.list().then(async (items) => {
-      if (cancelled) {
+      if (isCancelled()) {
         return;
       }
       // Recover sends left mid-flight by a crash so they can be retried; a
@@ -136,12 +144,12 @@ export function ChatProvider({
         }
       }
       const loaded = await outboxStore.list();
-      if (!cancelled) {
+      if (!isCancelled()) {
         setOutbox(loaded);
       }
     });
     void createChatRuntime({ client, userId, displayName }).then((created) => {
-      if (cancelled) {
+      if (isCancelled()) {
         created.session.dispose();
         return;
       }
@@ -235,7 +243,9 @@ export function ChatProvider({
       setOnline(true);
       void flush();
     };
-    const goOffline = () => setOnline(false);
+    const goOffline = () => {
+      setOnline(false);
+    };
     if (typeof window !== "undefined") {
       window.addEventListener("online", goOnline);
       window.addEventListener("offline", goOffline);
@@ -264,7 +274,9 @@ export function ChatProvider({
         void flush();
       }
     }, 5_000);
-    return () => clearInterval(timer);
+    return () => {
+      clearInterval(timer);
+    };
   }, [flush]);
 
   const reportChannelNames = useCallback((entries: readonly { id: string; name: string }[]) => {
@@ -289,18 +301,19 @@ export function ChatProvider({
       return;
     }
     let cancelled = false;
+    const isCancelled = () => cancelled;
     void Promise.allSettled(
       channels.map((channel) =>
         (async () => {
-          if (cancelled) {
+          if (isCancelled()) {
             return;
           }
           await active.session.openChannel(channel);
-          if (cancelled) {
+          if (isCancelled()) {
             return;
           }
           await active.session.hydrateChannelNames([channel]);
-          if (cancelled) {
+          if (isCancelled()) {
             return;
           }
           if (channel.kind !== "dm" && channel.kind !== "group_dm") {
@@ -427,16 +440,17 @@ export function ChatProvider({
   );
 
   const search = useCallback(
-    async (query: string): Promise<readonly ChatSearchHit[]> => {
-      const index = searchRef.current;
-      if (index === undefined) {
-        return [];
-      }
-      return index.query(query, { limit: 50 }).map((hit) => ({
-        ...hit,
-        channelName: channelNames.get(hit.channelId) ?? "channel",
-      }));
-    },
+    (query: string): Promise<readonly ChatSearchHit[]> =>
+      Promise.resolve().then(() => {
+        const index = searchRef.current;
+        if (index === undefined) {
+          return [];
+        }
+        return index.query(query, { limit: 50 }).map((hit) => ({
+          ...hit,
+          channelName: channelNames.get(hit.channelId) ?? "channel",
+        }));
+      }),
     [channelNames],
   );
 

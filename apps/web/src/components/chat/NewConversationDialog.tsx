@@ -8,7 +8,7 @@ export const MAX_GROUP_DM_OTHERS = 9;
 export interface NewConversationDialogProps {
   readonly members: readonly { readonly userId: string; readonly displayName: string }[];
   readonly ownUserId: string;
-  readonly presenceOf: (userId: string) => PresenceStatus;
+  readonly presenceOf: (_userId: string) => PresenceStatus;
   readonly onStart: (userIds: readonly string[]) => void;
   readonly onClose: () => void;
 }
@@ -41,7 +41,7 @@ export function NewConversationDialog({
   const names = new Map(others.map((member) => [member.userId, member.displayName]));
   const full = selected.length >= MAX_GROUP_DM_OTHERS;
 
-  const toggle = (userId: string) =>
+  const toggle = (userId: string) => {
     setSelected((current) =>
       current.includes(userId)
         ? current.filter((id) => id !== userId)
@@ -49,6 +49,7 @@ export function NewConversationDialog({
           ? current
           : [...current, userId],
     );
+  };
 
   const cta =
     selected.length === 0
@@ -73,7 +74,9 @@ export function NewConversationDialog({
         <button
           type="button"
           disabled={selected.length === 0}
-          onClick={() => onStart(selected)}
+          onClick={() => {
+            onStart(selected);
+          }}
           className="h-9 rounded-[8px] bg-accent px-3.5 text-[13px] font-semibold text-on-accent transition hover:brightness-110 disabled:pointer-events-none disabled:bg-surface-3 disabled:text-text-muted"
         >
           {cta}
@@ -88,7 +91,9 @@ export function NewConversationDialog({
               key={userId}
               type="button"
               aria-label={`Remove ${names.get(userId) ?? "member"}`}
-              onClick={() => toggle(userId)}
+              onClick={() => {
+                toggle(userId);
+              }}
               className="flex max-w-[180px] items-center gap-1 rounded-full bg-accent-soft py-0.5 pl-2 pr-1 text-xs font-medium text-accent"
             >
               <span className="truncate">{names.get(userId)}</span>
@@ -100,7 +105,9 @@ export function NewConversationDialog({
             aria-label="Find people"
             placeholder={selected.length === 0 ? "Find people" : ""}
             value={query}
-            onChange={(event) => setQuery(event.target.value)}
+            onChange={(event) => {
+              setQuery(event.target.value);
+            }}
             onKeyDown={(event) => {
               if (event.key === "Escape") {
                 onClose();
@@ -125,7 +132,9 @@ export function NewConversationDialog({
                   type="button"
                   aria-pressed={checked}
                   disabled={!checked && full}
-                  onClick={() => toggle(member.userId)}
+                  onClick={() => {
+                    toggle(member.userId);
+                  }}
                   className="flex w-full items-center gap-3 rounded-[8px] px-2.5 py-2 text-left transition hover:bg-surface-3 disabled:opacity-40"
                 >
                   <PresenceAvatar

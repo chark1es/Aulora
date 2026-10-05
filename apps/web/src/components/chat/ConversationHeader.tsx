@@ -2,7 +2,7 @@ import type { ChannelView } from "@aulora/core";
 import { dmPartnerId } from "@aulora/core";
 import { cn, Icon } from "@aulora/ui-web";
 import type { ReactNode } from "react";
-import { GroupAvatar, PRESENCE_LABEL, PresenceAvatar, type PresenceStatus } from "./PresenceAvatar";
+import { GroupAvatar, PresenceAvatar, type PresenceStatus, presenceLabel } from "./PresenceAvatar";
 
 export interface ConversationHeaderProps {
   readonly channel: ChannelView;
@@ -53,7 +53,7 @@ export function ConversationHeader({
 
   let subtitle: ReactNode;
   if (isDm && status !== undefined) {
-    subtitle = PRESENCE_LABEL[status];
+    subtitle = presenceLabel(status);
   } else if (channel.kind === "group_dm") {
     subtitle = `${others.length + 1} members`;
   } else {
@@ -105,12 +105,22 @@ export function ConversationHeader({
           </HeaderAction>
         )}
         {isConversation && canStartCall && onStartCall !== undefined && (
-          <HeaderAction label="Start voice call" onClick={() => onStartCall("voice")}>
+          <HeaderAction
+            label="Start voice call"
+            onClick={() => {
+              onStartCall("voice");
+            }}
+          >
             <Icon name="phone" size={18} />
           </HeaderAction>
         )}
         {isConversation && canStartVideoCall && onStartCall !== undefined && (
-          <HeaderAction label="Start video call" onClick={() => onStartCall("video")}>
+          <HeaderAction
+            label="Start video call"
+            onClick={() => {
+              onStartCall("video");
+            }}
+          >
             <Icon name="video" size={18} />
           </HeaderAction>
         )}

@@ -78,7 +78,7 @@ export function buildTimeline(
 
   // A message ends its run unless the very next item continues that run.
   return items.map((item, index) => {
-    const next = items[index + 1];
+    const next = items.at(index + 1);
     if (item.kind === "message" && next?.kind === "message" && !next.startsGroup) {
       return { ...item, endsGroup: false };
     }

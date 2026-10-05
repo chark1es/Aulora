@@ -13,7 +13,7 @@ export function NewConversationSheet({
 }: {
   readonly members: readonly MobileMemberEntry[];
   readonly ownUserId: string;
-  readonly onCreate: (memberIds: readonly string[]) => Promise<void>;
+  readonly onCreate: (_memberIds: readonly string[]) => Promise<void>;
   readonly onClose: () => void;
 }) {
   const [query, setQuery] = useState("");
@@ -46,13 +46,13 @@ export function NewConversationSheet({
                 accessibilityRole="checkbox"
                 accessibilityState={{ checked }}
                 className="min-h-12 flex-row items-center gap-3 rounded-input bg-surface-2 p-3"
-                onPress={() =>
+                onPress={() => {
                   setSelected((current) =>
                     checked
                       ? current.filter((id) => id !== member.userId)
                       : [...current, member.userId],
-                  )
-                }
+                  );
+                }}
               >
                 <MemberAvatar userId={member.userId} size={32} />
                 <Text className="flex-1">{member.displayName}</Text>
@@ -74,14 +74,16 @@ export function NewConversationSheet({
             setBusy(true);
             setError(null);
             void onCreate(selected)
-              .catch((cause: unknown) =>
+              .catch((cause: unknown) => {
                 setError(
                   cause instanceof Error
                     ? cause.message
                     : "Couldn't start the conversation. Try again.",
-                ),
-              )
-              .finally(() => setBusy(false));
+                );
+              })
+              .finally(() => {
+                setBusy(false);
+              });
           }}
         >
           {selected.length > 1 ? `Start group message (${selected.length})` : "Start message"}

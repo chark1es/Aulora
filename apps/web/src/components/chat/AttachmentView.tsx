@@ -65,7 +65,9 @@ export function AttachmentView({ runtime, descriptor }: AttachmentViewProps) {
       { rootMargin: "600px 0px" },
     );
     observer.observe(node);
-    return () => observer.disconnect();
+    return () => {
+      observer.disconnect();
+    };
   }, [visible]);
 
   useEffect(() => {
@@ -107,7 +109,9 @@ export function AttachmentView({ runtime, descriptor }: AttachmentViewProps) {
       .catch(() => {
         setError("Unable to open this attachment.");
       })
-      .finally(() => setBusy(false));
+      .finally(() => {
+        setBusy(false);
+      });
   }, [runtime, descriptor, fullUrl]);
 
   const closeFull = useCallback(() => {
@@ -130,7 +134,9 @@ export function AttachmentView({ runtime, descriptor }: AttachmentViewProps) {
       }
     };
     window.addEventListener("keydown", onKeyDown);
-    return () => window.removeEventListener("keydown", onKeyDown);
+    return () => {
+      window.removeEventListener("keydown", onKeyDown);
+    };
   }, [fullUrl, closeFull]);
 
   // If the dedicated thumbnail is unavailable, show the full image
@@ -167,10 +173,16 @@ export function AttachmentView({ runtime, descriptor }: AttachmentViewProps) {
         anchor.href = url;
         anchor.download = descriptor.name;
         anchor.click();
-        setTimeout(() => URL.revokeObjectURL(url), 10_000);
+        setTimeout(() => {
+          URL.revokeObjectURL(url);
+        }, 10_000);
       })
-      .catch(() => setError("Unable to open this attachment."))
-      .finally(() => setBusy(false));
+      .catch(() => {
+        setError("Unable to open this attachment.");
+      })
+      .finally(() => {
+        setBusy(false);
+      });
   }, [runtime, descriptor]);
 
   const play = useCallback(() => {
@@ -180,8 +192,12 @@ export function AttachmentView({ runtime, descriptor }: AttachmentViewProps) {
     setBusy(true);
     void loadAttachmentUrl(runtime.port, descriptor)
       .then(setMediaUrl)
-      .catch(() => setError("Unable to open this attachment."))
-      .finally(() => setBusy(false));
+      .catch(() => {
+        setError("Unable to open this attachment.");
+      })
+      .finally(() => {
+        setBusy(false);
+      });
   }, [runtime, descriptor]);
 
   // The player's object URL lives until the attachment unmounts or changes.
@@ -189,7 +205,9 @@ export function AttachmentView({ runtime, descriptor }: AttachmentViewProps) {
     if (mediaUrl === undefined) {
       return;
     }
-    return () => URL.revokeObjectURL(mediaUrl);
+    return () => {
+      URL.revokeObjectURL(mediaUrl);
+    };
   }, [mediaUrl]);
 
   if (error !== undefined) {

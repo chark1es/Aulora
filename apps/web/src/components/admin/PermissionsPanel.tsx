@@ -12,6 +12,7 @@ import {
   type RoleView,
   roleRef,
 } from "../../lib/workspace-admin";
+import type { Callback } from "./callbacks";
 import { OverridesEditor } from "./OverridesEditor";
 
 export interface Scope {
@@ -33,7 +34,7 @@ export interface PermissionsPanelProps {
   readonly channels: readonly ChannelSummary[];
   readonly channelNames?: ReadonlyMap<string, string>;
   readonly page?: ScopePage | null;
-  readonly onNavigate?: (page: ScopePage | null) => void;
+  readonly onNavigate?: Callback<[page: ScopePage | null]>;
 }
 
 /** Flattens categories then text/announcement channels into override scopes. */
@@ -77,75 +78,23 @@ export function PermissionsPanel({
   onNavigate,
 }: PermissionsPanelProps) {
   const navigate = onNavigate ?? (() => undefined);
-  const [busy, setBusy] = useState(false);
-  const [error, setError] = useState<string | null>(null);
-  const setCategoryOverrides = useMutation(api.categories.setOverrides);
-  const setChannelOverrides = useMutation(api.channels.setOverrides);
 
   const scopes = useMemo(
     () => buildScopes(categories, channels, channelNames),
     [categories, channels, channelNames],
   );
 
-  const targets: OverrideTarget[] = useMemo(
-    () => [
-      ...[...roles]
-        .sort((a, b) => b.position - a.position)
-        .map((role) => ({
-          targetId: roleRef(role),
-          targetType: "role" as const,
-          label: role.name,
-          color: role.color,
-        })),
-      ...members.map((member) => ({
-        targetId: member.userId,
-        targetType: "member" as const,
-        label: memberDisplayName(member, member.userId),
-      })),
-    ],
-    [roles, members],
-  );
-
   const scope = scopes.find((entry) => entry.key === page?.scopeKey) ?? null;
 
   if (scope !== null) {
-    const currentOverrides: readonly OverrideView[] =
-      scope.kind === "category"
-        ? (categories.find((category) => category.id === scope.id)?.overrides ?? [])
-        : (channels.find((channel) => channel.id === scope.id)?.overrides ?? []);
-
     return (
-      <div className="flex flex-col gap-4" data-testid="permissions-panel">
-        <OverridesEditor
-          title={scope.name}
-          overrides={currentOverrides}
-          targets={targets}
-          busy={busy}
-          error={error}
-          testId="admin-overrides"
-          onSave={async (next) => {
-            setBusy(true);
-            setError(null);
-            try {
-              const payload = next.map((override) => ({
-                targetId: override.targetId,
-                targetType: override.targetType,
-                allow: override.allow,
-                deny: override.deny,
-              }));
-              if (scope.kind === "category") {
-                await setCategoryOverrides({ categoryId: scope.id as never, overrides: payload });
-              } else {
-                await setChannelOverrides({ channelId: scope.id as never, overrides: payload });
-              }
-            } catch (cause) {
-              setError(cause instanceof Error ? cause.message : "Could not save overrides.");
-            } finally {
-              setBusy(false);
-            }
-          }}
-        />
-      </div>
+      <ScopeOverridesPage
+        scope={scope}
+        roles={roles}
+        members={members}
+        categories={categories}
+        channels={channels}
+      />
     );
   }
 
@@ -171,18 +120,96 @@ export function PermissionsPanel({
             <ScopeGroup
               title="Categories"
               scopes={categoriesScopes}
-              onSelect={(entry) => navigate({ kind: "scope", scopeKey: entry.key })}
+              onSelect={(entry) => {
+                navigate({ kind: "scope", scopeKey: entry.key });
+              }}
             />
           )}
           {channelScopes.length > 0 && (
             <ScopeGroup
               title="Channels"
               scopes={channelScopes}
-              onSelect={(entry) => navigate({ kind: "scope", scopeKey: entry.key })}
+              onSelect={(entry) => {
+                navigate({ kind: "scope", scopeKey: entry.key });
+              }}
             />
           )}
         </div>
       )}
+    </div>
+  );
+}
+
+interface ScopeOverridesPageProps {
+  readonly scope: Scope;
+  readonly roles: readonly RoleView[];
+  readonly members: readonly MemberView[];
+  readonly categories: readonly CategoryView[];
+  readonly channels: readonly ChannelSummary[];
+}
+
+function ScopeOverridesPage(props: ScopeOverridesPageProps) {
+  const { scope, roles, members, categories, channels } = props;
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+  const setCategoryOverrides = useMutation(api.categories.setOverrides);
+  const setChannelOverrides = useMutation(api.channels.setOverrides);
+
+  const targets: OverrideTarget[] = useMemo(
+    () => [
+      ...[...roles]
+        .sort((a, b) => b.position - a.position)
+        .map((role) => ({
+          targetId: roleRef(role),
+          targetType: "role" as const,
+          label: role.name,
+          color: role.color,
+        })),
+      ...members.map((member) => ({
+        targetId: member.userId,
+        targetType: "member" as const,
+        label: memberDisplayName(member, member.userId),
+      })),
+    ],
+    [roles, members],
+  );
+
+  const currentOverrides: readonly OverrideView[] =
+    scope.kind === "category"
+      ? (categories.find((category) => category.id === scope.id)?.overrides ?? [])
+      : (channels.find((channel) => channel.id === scope.id)?.overrides ?? []);
+
+  return (
+    <div className="flex flex-col gap-4" data-testid="permissions-panel">
+      <OverridesEditor
+        title={scope.name}
+        overrides={currentOverrides}
+        targets={targets}
+        busy={busy}
+        error={error}
+        testId="admin-overrides"
+        onSave={async (next) => {
+          setBusy(true);
+          setError(null);
+          try {
+            const payload = next.map((override) => ({
+              targetId: override.targetId,
+              targetType: override.targetType,
+              allow: override.allow,
+              deny: override.deny,
+            }));
+            if (scope.kind === "category") {
+              await setCategoryOverrides({ categoryId: scope.id as never, overrides: payload });
+            } else {
+              await setChannelOverrides({ channelId: scope.id as never, overrides: payload });
+            }
+          } catch (cause) {
+            setError(cause instanceof Error ? cause.message : "Could not save overrides.");
+          } finally {
+            setBusy(false);
+          }
+        }}
+      />
     </div>
   );
 }
@@ -194,7 +221,7 @@ function ScopeGroup({
 }: {
   readonly title: string;
   readonly scopes: readonly Scope[];
-  onSelect: (scope: Scope) => void;
+  onSelect: Callback<[scope: Scope]>;
 }) {
   return (
     <section className="flex flex-col gap-2">
@@ -207,7 +234,9 @@ function ScopeGroup({
             {index > 0 && <div className="ml-4 h-px bg-border" />}
             <button
               type="button"
-              onClick={() => onSelect(scope)}
+              onClick={() => {
+                onSelect(scope);
+              }}
               className="group flex w-full items-center gap-3 px-4 py-2.5 text-left transition hover:bg-surface-3 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-accent"
             >
               <span className="flex h-7 w-7 shrink-0 items-center justify-center rounded-[8px] border border-border bg-surface-1 text-text-muted group-hover:text-accent">

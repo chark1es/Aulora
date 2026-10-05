@@ -32,13 +32,92 @@ export interface ChannelSessionState {
   /** `true` while an older history page is in flight. */
   readonly loadingOlder: boolean;
   /** Loads the next older page of history, keeping the live tail intact. */
-  loadOlder(): void;
+  readonly loadOlder: () => void;
 }
 
 interface OlderPage {
   readonly cursor: string;
   readonly messages: readonly MessagePayload[];
   readonly nextCursor: string | null;
+}
+
+interface ChannelSubscriptions {
+  readonly setTail: (messages: readonly MessagePayload[]) => void;
+  readonly setTailNext: (cursor: string | null) => void;
+  readonly setLoading: (loading: boolean) => void;
+  readonly setDecrypted: (
+    updater: (current: ReadonlyMap<string, string>) => ReadonlyMap<string, string>,
+  ) => void;
+  readonly setTypers: (typers: readonly TypingRow[]) => void;
+  readonly setReadState: (state: ReadStateRow | null) => void;
+  readonly setReadStateLoaded: (loaded: boolean) => void;
+}
+
+/**
+ * Opens the live tail, plaintext-mirror, typing and read-state subscriptions
+ * for one channel and returns a teardown that releases all four.
+ */
+function subscribeToChannel(
+  runtime: ChatRuntime,
+  channelId: string,
+  state: ChannelSubscriptions,
+): () => void {
+  const offTail = runtime.watchChannelMessages(
+    channelId,
+    (page) => {
+      state.setTail(page.page);
+      state.setTailNext(page.isDone ? null : page.continueCursor);
+      state.setLoading(false);
+      void runtime.session.receiveMessages(page.page);
+    },
+    { limit: MESSAGE_PAGE_SIZE },
+  );
+  // The session owns the plaintext cache; mirror its events into React state
+  // so a message opened by any subscription path (not just this one) renders.
+  const offDecrypted = runtime.session.onDecrypted((messages) => {
+    state.setDecrypted((current) => {
+      const next = new Map(current);
+      for (const message of messages) {
+        if (message.channelId !== channelId) {
+          continue;
+        }
+        next.set(message.id, runtime.session.decryptedText(message.id));
+      }
+      return next;
+    });
+  });
+  const offTyping = runtime.subscriptions.watchTyping(channelId, state.setTypers);
+  const offRead = runtime.subscriptions.watchReadState(channelId, (readState) => {
+    state.setReadState(readState);
+    state.setReadStateLoaded(true);
+  });
+  return () => {
+    offTail();
+    offDecrypted();
+    offTyping();
+    offRead();
+  };
+}
+
+function summarizeForReader(
+  messages: readonly MessagePayload[],
+  readState: ReadStateRow | null,
+  userId: string,
+): UnreadSummary {
+  return summarizeUnread(
+    messages.map((message) => ({
+      id: message.id,
+      createdAt: message.createdAt,
+      authorId: message.authorId,
+      mentionedUserIds: message.mentionUserIds,
+    })),
+    {
+      lastReadAt: null,
+      lastReadMessageId: readState?.lastReadMessageId ?? null,
+      mentionCount: readState?.mentionCount ?? 0,
+    },
+    userId,
+  );
 }
 
 /**
@@ -104,45 +183,21 @@ export function useChannelSession(
       return;
     }
     setLoadedChannelId(channelId);
-    const offTail = runtime.watchChannelMessages(
-      channelId,
-      (page) => {
-        setTail(page.page);
-        setTailNext(page.isDone ? null : page.continueCursor);
-        setLoading(false);
-        void runtime.session.receiveMessages(page.page);
-      },
-      { limit: MESSAGE_PAGE_SIZE },
-    );
-    // The session owns the plaintext cache; mirror its events into React state
-    // so a message opened by any subscription path (not just this one) renders.
-    const offDecrypted = runtime.session.onDecrypted((messages) => {
-      setDecrypted((current) => {
-        const next = new Map(current);
-        for (const message of messages) {
-          if (message.channelId !== channelId) {
-            continue;
-          }
-          next.set(message.id, runtime.session.decryptedText(message.id));
-        }
-        return next;
-      });
+    return subscribeToChannel(runtime, channelId, {
+      setTail,
+      setTailNext,
+      setLoading,
+      setDecrypted,
+      setTypers,
+      setReadState,
+      setReadStateLoaded,
     });
-    const offTyping = runtime.subscriptions.watchTyping(channelId, setTypers);
-    const offRead = runtime.subscriptions.watchReadState(channelId, (state) => {
-      setReadState(state);
-      setReadStateLoaded(true);
-    });
-    return () => {
-      offTail();
-      offDecrypted();
-      offTyping();
-      offRead();
-    };
   }, [runtime, channelId]);
 
   // Release any remaining history subscriptions on unmount.
-  useEffect(() => releaseOlder, [releaseOlder]);
+  useEffect(() => {
+    return releaseOlder;
+  }, [releaseOlder]);
 
   // Typing rows carry an expiry the server cannot push; tick while anyone is
   // typing so stale "is typing…" lines disappear on time.
@@ -150,8 +205,12 @@ export function useChannelSession(
     if (typers.length === 0) {
       return;
     }
-    const timer = setInterval(() => setNow(Date.now()), 1_000);
-    return () => clearInterval(timer);
+    const timer = setInterval(() => {
+      setNow(Date.now());
+    }, 1_000);
+    return () => {
+      clearInterval(timer);
+    };
   }, [typers]);
 
   const loadOlder = useCallback(() => {
@@ -160,7 +219,7 @@ export function useChannelSession(
     }
     const last = olderPages.at(-1);
     const cursor = last === undefined ? tailNext : last.nextCursor;
-    if (cursor === null || cursor === undefined || olderOffs.current.has(cursor)) {
+    if (cursor === null || olderOffs.current.has(cursor)) {
       return;
     }
     setLoadingOlder(true);
@@ -186,11 +245,8 @@ export function useChannelSession(
 
   const messages = useMemo(() => {
     const merged: MessagePayload[] = [];
-    for (let index = olderPages.length - 1; index >= 0; index -= 1) {
-      const page = olderPages[index];
-      if (page !== undefined) {
-        merged.push(...page.messages);
-      }
+    for (const page of [...olderPages].reverse()) {
+      merged.push(...page.messages);
     }
     merged.push(...tail);
     return merged;
@@ -206,21 +262,7 @@ export function useChannelSession(
   );
 
   const unread = useMemo(
-    () =>
-      summarizeUnread(
-        activeMessages.map((message) => ({
-          id: message.id,
-          createdAt: message.createdAt,
-          authorId: message.authorId,
-          mentionedUserIds: message.mentionUserIds,
-        })),
-        {
-          lastReadAt: null,
-          lastReadMessageId: activeReadState?.lastReadMessageId ?? null,
-          mentionCount: activeReadState?.mentionCount ?? 0,
-        },
-        userId,
-      ),
+    () => summarizeForReader(activeMessages, activeReadState, userId),
     [activeMessages, activeReadState, userId],
   );
 

@@ -112,7 +112,9 @@ export function LicensePanel({ canManage }: LicensePanelProps) {
           label="License key"
           hint="AULORA2_… Your server sends the key to Aulora’s licensing server over HTTPS for validation."
           value={key}
-          onChange={(event) => setKey(event.currentTarget.value)}
+          onChange={(event) => {
+            setKey(event.currentTarget.value);
+          }}
           autoComplete="off"
           spellCheck={false}
         />
@@ -144,10 +146,12 @@ export function LicensePanel({ canManage }: LicensePanelProps) {
                         "The licensing server rejected this key. Check the license status.",
                     );
                 })
-                .catch((cause) =>
-                  setError(cause instanceof Error ? cause.message : "Could not verify license."),
-                )
-                .finally(() => setBusy(false));
+                .catch((cause) => {
+                  setError(cause instanceof Error ? cause.message : "Could not verify license.");
+                })
+                .finally(() => {
+                  setBusy(false);
+                });
             }}
           >
             Verify now

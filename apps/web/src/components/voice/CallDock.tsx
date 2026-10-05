@@ -22,8 +22,8 @@ interface DockPosition {
 
 function readPosition(): DockPosition | null {
   try {
-    const raw = globalThis.localStorage?.getItem(POSITION_KEY);
-    if (raw === null || raw === undefined) {
+    const raw = globalThis.localStorage.getItem(POSITION_KEY);
+    if (raw === null) {
       return null;
     }
     const parsed = JSON.parse(raw) as Partial<DockPosition>;
@@ -68,7 +68,9 @@ export function CallDock({
   const popOut = useCallback(async () => {
     const window = await openDocumentPip(DOCK_WIDTH + 40, DOCK_HEIGHT + 40);
     if (window !== null) {
-      window.addEventListener("pagehide", () => setPipWindow(null));
+      window.addEventListener("pagehide", () => {
+        setPipWindow(null);
+      });
       setPipWindow(window);
     }
   }, []);
@@ -79,7 +81,7 @@ export function CallDock({
         return;
       }
       const rect = panelRef.current?.getBoundingClientRect();
-      if (rect === undefined || rect === null) {
+      if (rect === undefined) {
         return;
       }
       dragRef.current = { offsetX: event.clientX - rect.left, offsetY: event.clientY - rect.top };
@@ -112,7 +114,7 @@ export function CallDock({
     setPosition((current) => {
       if (current !== null) {
         try {
-          globalThis.localStorage?.setItem(POSITION_KEY, JSON.stringify(current));
+          globalThis.localStorage.setItem(POSITION_KEY, JSON.stringify(current));
         } catch {
           // Position is a nicety.
         }
@@ -141,7 +143,9 @@ export function CallDock({
       identity={identity}
       pipMode={pipWindow !== null}
       onPopOut={pipWindow === null ? () => void popOut() : undefined}
-      onClose={() => voice.setView("hidden")}
+      onClose={() => {
+        voice.setView("hidden");
+      }}
     />
   );
 
@@ -205,11 +209,18 @@ function DockBody({
         <DockIconButton
           label={voice.pipPinned ? "Unpin from top" : "Pin to top"}
           active={voice.pipPinned}
-          onClick={() => voice.setPipPinned(!voice.pipPinned)}
+          onClick={() => {
+            voice.setPipPinned(!voice.pipPinned);
+          }}
         >
           <Icon name="pin" size={13} />
         </DockIconButton>
-        <DockIconButton label="Expand to full view" onClick={() => voice.setView("stage")}>
+        <DockIconButton
+          label="Expand to full view"
+          onClick={() => {
+            voice.setView("stage");
+          }}
+        >
           <Icon name="expand" size={13} />
         </DockIconButton>
         {onPopOut !== undefined && (
@@ -249,7 +260,9 @@ function DockBody({
           canVideo={voice.canVideo}
           canStream={voice.canStream}
           onToggleMute={() => void voice.setMuted(!voice.local.muted)}
-          onToggleDeafen={() => voice.setDeafened(!voice.local.deafened)}
+          onToggleDeafen={() => {
+            voice.setDeafened(!voice.local.deafened);
+          }}
           onToggleCamera={() => void voice.setCamera(!voice.local.video)}
           onToggleScreen={() => void voice.setScreenSharing(!voice.local.sharingScreen)}
           onLeave={() => void voice.leave()}

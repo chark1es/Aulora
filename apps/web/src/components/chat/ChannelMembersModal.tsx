@@ -10,10 +10,10 @@ export interface ChannelMembersModalProps {
   /** User ids currently in the channel (private channels only). */
   readonly memberIds?: readonly string[];
   readonly ownUserId: string;
-  readonly presenceOf: (userId: string) => PresenceStatus;
+  readonly presenceOf: (_userId: string) => PresenceStatus;
   readonly canManage: boolean;
-  readonly onAdd?: (userId: string) => void;
-  readonly onRemove?: (userId: string) => void;
+  readonly onAdd?: (_userId: string) => void;
+  readonly onRemove?: (_userId: string) => void;
   readonly onClose: () => void;
 }
 
@@ -71,7 +71,9 @@ export function ChannelMembersModal({
               aria-label="Find people"
               placeholder="Add people…"
               value={query}
-              onChange={(event) => setQuery(event.target.value)}
+              onChange={(event) => {
+                setQuery(event.target.value);
+              }}
               className="h-9 flex-1 bg-transparent text-[13px] text-text placeholder:text-text-muted focus-visible:outline-none"
             />
           </div>

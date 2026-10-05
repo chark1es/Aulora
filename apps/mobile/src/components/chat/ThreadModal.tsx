@@ -22,12 +22,12 @@ export interface ThreadModalProps {
   /** Channel/category names `#` may refer to, for rendering. */
   readonly channelNames?: ReadonlyMap<string, string>;
   /** Opens the channel behind a `#channel` mention. */
-  readonly onChannelPress?: (name: string) => void;
+  readonly onChannelPress?: (_name: string) => void;
   /** Where the thread lives, shown under the title. */
   readonly channelTitle?: string;
   readonly permissions?: bigint;
   readonly onClose: () => void;
-  readonly onSendReply: (input: {
+  readonly onSendReply: (_input: {
     text: string;
     files: readonly PickedFile[];
     replyInThread: boolean;
@@ -35,23 +35,24 @@ export interface ThreadModalProps {
 }
 
 /** A thread as its own page: the root message, its replies and an in-thread composer. */
-export function ThreadModal({
-  runtime,
-  channelId,
-  root,
-  outbox = [],
-  rootText,
-  ownUserId,
-  memberNames,
-  roles = [],
-  channels = [],
-  channelNames,
-  onChannelPress,
-  channelTitle,
-  permissions = 0n,
-  onClose,
-  onSendReply,
-}: ThreadModalProps) {
+export function ThreadModal(props: ThreadModalProps) {
+  const {
+    runtime,
+    channelId,
+    root,
+    outbox = [],
+    rootText,
+    ownUserId,
+    memberNames,
+    roles = [],
+    channels = [],
+    channelNames,
+    onChannelPress,
+    channelTitle,
+    permissions = 0n,
+    onClose,
+    onSendReply,
+  } = props;
   const [replies, setReplies] = useState<readonly MessagePayload[]>([]);
   const [decrypted, setDecrypted] = useState<ReadonlyMap<string, string>>(new Map());
   const palette = usePalette();

@@ -172,24 +172,21 @@ function assertOnlyKeys(
   }
 }
 
-function readString(obj: Record<string, unknown>, key: string, path: string): string {
-  const value = obj[key];
+function readString(value: unknown, path: string): string {
   if (typeof value !== "string" || value.length === 0) {
     fail(path, "a non-empty string");
   }
   return value;
 }
 
-function readBoolean(obj: Record<string, unknown>, key: string, path: string): boolean {
-  const value = obj[key];
+function readBoolean(value: unknown, path: string): boolean {
   if (typeof value !== "boolean") {
     fail(path, "a boolean");
   }
   return value;
 }
 
-function readNumber(obj: Record<string, unknown>, key: string, path: string): number {
-  const value = obj[key];
+function readNumber(value: unknown, path: string): number {
   if (typeof value !== "number" || !Number.isFinite(value)) {
     fail(path, "a finite number");
   }
@@ -202,8 +199,8 @@ function parseLocalAuth(value: unknown, path: string): WellKnownLocalAuth {
   }
   assertOnlyKeys(value, LOCAL_KEYS, path);
   return {
-    enabled: readBoolean(value, "enabled", `${path}.enabled`),
-    signup: readBoolean(value, "signup", `${path}.signup`),
+    enabled: readBoolean(value.enabled, `${path}.enabled`),
+    signup: readBoolean(value.signup, `${path}.signup`),
   };
 }
 
@@ -215,9 +212,9 @@ function parseProvider(value: unknown, path: string): WellKnownProvider {
   if (type === "oauth") {
     assertOnlyKeys(value, OAUTH_KEYS, path);
     return {
-      id: readString(value, "id", `${path}.id`),
+      id: readString(value.id, `${path}.id`),
       type: "oauth",
-      displayName: readString(value, "displayName", `${path}.displayName`),
+      displayName: readString(value.displayName, `${path}.displayName`),
     };
   }
   if (type === "oidc") {
@@ -227,12 +224,12 @@ function parseProvider(value: unknown, path: string): WellKnownProvider {
       fail(`${path}.scopes`, "an array of strings");
     }
     return {
-      id: readString(value, "id", `${path}.id`),
+      id: readString(value.id, `${path}.id`),
       type: "oidc",
-      displayName: readString(value, "displayName", `${path}.displayName`),
-      issuer: readString(value, "issuer", `${path}.issuer`),
-      discoveryUrl: readString(value, "discoveryUrl", `${path}.discoveryUrl`),
-      clientId: readString(value, "clientId", `${path}.clientId`),
+      displayName: readString(value.displayName, `${path}.displayName`),
+      issuer: readString(value.issuer, `${path}.issuer`),
+      discoveryUrl: readString(value.discoveryUrl, `${path}.discoveryUrl`),
+      clientId: readString(value.clientId, `${path}.clientId`),
       scopes: [...rawScopes],
     };
   }
@@ -262,15 +259,15 @@ function parseEncryption(value: unknown, path: string): WellKnownEncryption {
     fail(path, "an object");
   }
   assertOnlyKeys(value, ENCRYPTION_KEYS, path);
-  const mode = readString(value, "mode", `${path}.mode`);
+  const mode = readString(value.mode, `${path}.mode`);
   if (mode !== "server") {
     fail(`${path}.mode`, '"server"');
   }
   return {
     mode: "server",
-    algorithm: readString(value, "algorithm", `${path}.algorithm`),
-    keyVersion: readString(value, "keyVersion", `${path}.keyVersion`),
-    provider: readString(value, "provider", `${path}.provider`),
+    algorithm: readString(value.algorithm, `${path}.algorithm`),
+    keyVersion: readString(value.keyVersion, `${path}.keyVersion`),
+    provider: readString(value.provider, `${path}.provider`),
   };
 }
 
@@ -293,12 +290,12 @@ export function parseWellKnown(value: unknown): WellKnown {
   const encryption =
     value.encryption === undefined ? undefined : parseEncryption(value.encryption, "encryption");
   return {
-    name: readString(value, "name", "name"),
-    version: readString(value, "version", "version"),
-    apiVersion: readNumber(value, "apiVersion", "apiVersion"),
-    convexUrl: readString(value, "convexUrl", "convexUrl"),
-    siteUrl: readString(value, "siteUrl", "siteUrl"),
-    iconSeed: readString(value, "iconSeed", "iconSeed"),
+    name: readString(value.name, "name"),
+    version: readString(value.version, "version"),
+    apiVersion: readNumber(value.apiVersion, "apiVersion"),
+    convexUrl: readString(value.convexUrl, "convexUrl"),
+    siteUrl: readString(value.siteUrl, "siteUrl"),
+    iconSeed: readString(value.iconSeed, "iconSeed"),
     auth: parseAuth(value.auth, "auth"),
     ...(encryption !== undefined ? { encryption } : {}),
   };

@@ -50,7 +50,8 @@ const CONNECTIVITY_PATTERNS = [
  * Used to decide between queueing a send and surfacing an error.
  */
 export function isConnectivityError(error: unknown): boolean {
-  if (typeof navigator !== "undefined" && navigator.onLine === false) {
+  const online: unknown = typeof navigator === "undefined" ? undefined : navigator.onLine;
+  if (online === false) {
     return true;
   }
   const message =
@@ -101,14 +102,16 @@ export function memoryOutboxStore(seed: readonly OutboxItem[] = []): OutboxStore
     items.set(item.id, item);
   }
   return {
-    async readAll() {
-      return [...items.values()];
+    readAll() {
+      return Promise.resolve([...items.values()]);
     },
-    async put(item) {
+    put(item) {
       items.set(item.id, item);
+      return Promise.resolve();
     },
-    async delete(id) {
+    delete(id) {
       items.delete(id);
+      return Promise.resolve();
     },
   };
 }

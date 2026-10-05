@@ -46,6 +46,8 @@ export type Permissions = bigint;
 
 export const PERMISSION_NAMES = Object.keys(Permission) as PermissionName[];
 
+const PERMISSION_BY_NAME = new Map<string, bigint>(Object.entries(Permission));
+
 export const ADMINISTRATOR: bigint = Permission.Administrator;
 
 export const ALL_PERMISSIONS: bigint = Object.values(Permission).reduce<bigint>(
@@ -64,11 +66,14 @@ export function hasPermission(permissions: bigint, flag: bigint): boolean {
 }
 
 export function permissionNames(permissions: bigint): PermissionName[] {
-  return PERMISSION_NAMES.filter((name) => (permissions & Permission[name]) !== 0n);
+  return PERMISSION_NAMES.filter((name) => {
+    const flag = PERMISSION_BY_NAME.get(name);
+    return flag !== undefined && (permissions & flag) !== 0n;
+  });
 }
 
 export function permissionsFromNames(names: readonly PermissionName[]): bigint {
-  return names.reduce<bigint>((acc, name) => acc | Permission[name], 0n);
+  return names.reduce<bigint>((acc, name) => acc | (PERMISSION_BY_NAME.get(name) ?? 0n), 0n);
 }
 
 export interface Role {

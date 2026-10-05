@@ -173,7 +173,9 @@ export function ThreadsPanel(props: ThreadsPanelProps) {
               type="checkbox"
               className="h-3.5 w-3.5 accent-accent"
               checked={alsoSend}
-              onChange={(event) => setAlsoSend(event.target.checked)}
+              onChange={(event) => {
+                setAlsoSend(event.target.checked);
+              }}
             />
             Also send to channel
           </label>

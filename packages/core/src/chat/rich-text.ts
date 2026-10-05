@@ -32,32 +32,71 @@ const FENCE = /```([^\n`]*)\n?([\s\S]*?)```/g;
 const URL_PATTERN = /^https?:\/\/[^\s<>"'`]+/i;
 const TRAILING_PUNCTUATION = /[.,;:!?)\]]+$/;
 
-/** Matches `@name`/`#name` at a word boundary against a fixed set of names. */
-function nameMatcher(prefix: "@" | "#", names: readonly string[]): RegExp | null {
-  const escaped = [...new Set(names.filter((name) => name.trim().length > 0))]
-    .sort((a, b) => b.length - a.length)
-    .map((name) => name.replace(/[.*+?^${}()|[\]\\]/g, "\\$&"));
-  if (escaped.length === 0) {
+/** A set of known `@name`/`#name` targets, ordered longest first. */
+export interface NameMatcher {
+  readonly names: readonly string[];
+}
+
+/** A matcher accepted by {@link parseInline}: names, or a caller-supplied regex. */
+export type InlineMatcher = RegExp | NameMatcher;
+
+function nameMatcher(names: readonly string[]): NameMatcher | null {
+  const unique = [...new Set(names.filter((name) => name.trim().length > 0))].sort(
+    (a, b) => b.length - a.length,
+  );
+  return unique.length === 0 ? null : { names: unique };
+}
+
+function mentionMatcher(names: readonly string[]): NameMatcher | null {
+  const base = nameMatcher(names);
+  return base === null ? null : { names: ["here", "everyone", ...base.names] };
+}
+
+/** Matches `prefix + name` at the start of `rest`, longest name first. */
+function matchNameAt(
+  rest: string,
+  prefix: "@" | "#",
+  matcher: InlineMatcher,
+): { readonly name: string; readonly length: number } | null {
+  if (matcher instanceof RegExp) {
+    const match = matcher.exec(rest);
+    const name = match?.at(1);
+    if (match === null || name === undefined) {
+      return null;
+    }
+    return { name, length: match.at(0)?.length ?? 0 };
+  }
+  if (rest.charAt(0) !== prefix) {
     return null;
   }
-  const alternatives = prefix === "@" ? ["here", "everyone", ...escaped] : escaped;
-  return new RegExp(`^${prefix}(${alternatives.join("|")})(?![\\w])`, "i");
+  const body = rest.slice(1).toLowerCase();
+  for (const candidate of matcher.names) {
+    const lower = candidate.toLowerCase();
+    if (!body.startsWith(lower)) {
+      continue;
+    }
+    const after = body.charAt(lower.length);
+    if (after === "" || !/\w/.test(after)) {
+      return { name: rest.slice(1, 1 + candidate.length), length: 1 + candidate.length };
+    }
+  }
+  return null;
 }
 
 /** Splits text into fenced code blocks and inline-formatted paragraphs. */
 export function parseRichText(text: string, options: RichTextOptions = {}): RichBlock[] {
   const blocks: RichBlock[] = [];
-  const mentions = nameMatcher("@", options.mentionNames ?? []);
-  const channels = nameMatcher("#", options.channelNames ?? []);
+  const mentions = mentionMatcher(options.mentionNames ?? []);
+  const channels = nameMatcher(options.channelNames ?? []);
   let lastIndex = 0;
   for (const match of text.matchAll(FENCE)) {
-    const index = match.index ?? 0;
+    const index = match.index;
     pushParagraph(blocks, text.slice(lastIndex, index), mentions, channels);
-    const language = (match[1] ?? "").trim();
+    const language = (match.at(1) ?? "").trim();
     blocks.push({
       type: "code_block",
       language: language.length > 0 ? language : null,
-      text: (match[2] ?? "").replace(/\n$/, ""),
+      text: (match.at(2) ?? "").replace(/\n$/, ""),
     });
     lastIndex = index + match[0].length;
   }
@@ -68,8 +107,8 @@ export function parseRichText(text: string, options: RichTextOptions = {}): Rich
 function pushParagraph(
   blocks: RichBlock[],
   raw: string,
-  mentions: RegExp | null,
-  channels: RegExp | null,
+  mentions: InlineMatcher | null,
+  channels: InlineMatcher | null,
 ): void {
   const trimmed = raw.replace(/^\n+|\n+$/g, "");
   if (trimmed.length === 0) {
@@ -81,8 +120,8 @@ function pushParagraph(
 /** Parses inline formatting; unmatched markers stay literal text. */
 export function parseInline(
   text: string,
-  mentions: RegExp | null = null,
-  channels: RegExp | null = null,
+  mentions: InlineMatcher | null = null,
+  channels: InlineMatcher | null = null,
 ): InlineSegment[] {
   const out: InlineSegment[] = [];
   let buffer = "";
@@ -96,8 +135,8 @@ export function parseInline(
   let index = 0;
   while (index < text.length) {
     const rest = text.slice(index);
-    const char = text[index];
-    const atWordStart = index === 0 || /[\s([{]/.test(text[index - 1] ?? "");
+    const char = text.charAt(index);
+    const atWordStart = index === 0 || /[\s([{]/.test(text.charAt(index - 1));
 
     if (char === "`") {
       const end = text.indexOf("`", index + 1);
@@ -133,7 +172,7 @@ export function parseInline(
       }
     }
 
-    if ((char === "*" || char === "_") && atWordStart && !/\s/.test(text[index + 1] ?? " ")) {
+    if ((char === "*" || char === "_") && atWordStart && !/\s/.test(text.charAt(index + 1))) {
       const end = findClosing(text, char, index + 1);
       if (end !== -1) {
         flush();
@@ -147,27 +186,27 @@ export function parseInline(
     }
 
     if (char === "@" && atWordStart && mentions !== null) {
-      const match = mentions.exec(rest);
+      const match = matchNameAt(rest, "@", mentions);
       if (match !== null) {
-        const name = match[1] ?? "";
         flush();
-        const lower = name.toLowerCase();
+        const lower = match.name.toLowerCase();
+        const broadcast = lower === "here" || lower === "everyone";
         out.push({
           type: "mention",
-          name: lower === "here" || lower === "everyone" ? lower : name,
-          broadcast: lower === "here" || lower === "everyone",
+          name: broadcast ? lower : match.name,
+          broadcast,
         });
-        index += match[0].length;
+        index += match.length;
         continue;
       }
     }
 
     if (char === "#" && atWordStart && channels !== null) {
-      const match = channels.exec(rest);
+      const match = matchNameAt(rest, "#", channels);
       if (match !== null) {
         flush();
-        out.push({ type: "channel", name: match[1] ?? "" });
-        index += match[0].length;
+        out.push({ type: "channel", name: match.name });
+        index += match.length;
         continue;
       }
     }
@@ -182,13 +221,13 @@ export function parseInline(
 /** A closing single marker that ends a word (not followed by a word char). */
 function findClosing(text: string, marker: string, from: number): number {
   for (let index = from; index < text.length; index += 1) {
-    if (text[index] === "\n") {
+    if (text.charAt(index) === "\n") {
       return -1;
     }
     if (
-      text[index] === marker &&
-      !/\s/.test(text[index - 1] ?? " ") &&
-      !/\w/.test(text[index + 1] ?? "")
+      text.charAt(index) === marker &&
+      !/\s/.test(text.charAt(index - 1)) &&
+      !/\w/.test(text.charAt(index + 1))
     ) {
       return index;
     }

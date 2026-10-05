@@ -12,7 +12,7 @@ export interface VoiceChannelSectionProps {
   readonly localCallId: string | null;
   /** Per-participant remote audio level, 0..1, when available. */
   readonly remoteLevels?: ReadonlyMap<string, number>;
-  readonly onJoin: (channelId: string) => void;
+  readonly onJoin: (_channelId: string) => void;
 }
 
 /**
@@ -20,16 +20,17 @@ export interface VoiceChannelSectionProps {
  * users currently connected, joining on tap. Text/announcement channels are
  * rendered separately and unchanged.
  */
-export function VoiceChannelSection({
-  channels,
-  activeCalls,
-  memberNames,
-  selfUserId,
-  clientId,
-  localCallId,
-  remoteLevels,
-  onJoin,
-}: VoiceChannelSectionProps) {
+export function VoiceChannelSection(props: VoiceChannelSectionProps) {
+  const {
+    channels,
+    activeCalls,
+    memberNames,
+    selfUserId,
+    clientId,
+    localCallId,
+    remoteLevels,
+    onJoin,
+  } = props;
   const palette = usePalette();
   const voiceChannels = channels.filter((channel) => channel.kind === "voice");
   if (voiceChannels.length === 0) {

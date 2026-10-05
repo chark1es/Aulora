@@ -17,23 +17,25 @@ export interface UpdateSettingsProps {
   readonly onDownload: () => void;
   readonly onRestart: () => void;
 }
-export function UpdateSettings({
-  title,
-  currentVersion,
-  latestVersion,
-  available,
-  phase,
-  error,
-  notes,
-  detail,
-  canDownload = true,
-  checked = false,
-  onCheck,
-  onDownload,
-  onRestart,
-}: UpdateSettingsProps) {
+export function UpdateSettings(props: UpdateSettingsProps) {
+  const {
+    title,
+    currentVersion,
+    latestVersion,
+    available,
+    phase,
+    error,
+    notes,
+    detail,
+    canDownload = true,
+    checked = false,
+    onCheck,
+    onDownload,
+    onRestart,
+  } = props;
   const busy = phase === "checking" || phase === "downloading" || phase === "restarting";
   const ready = phase === "ready" || phase === "restarting";
+  const status = statusText({ phase, ready, available, latestVersion, checked });
   return (
     <section
       className="flex flex-col gap-3"
@@ -48,21 +50,7 @@ export function UpdateSettings({
         </Text>
       </div>
       <div role="status" aria-live="polite" className="flex flex-col gap-1">
-        <Text size="sm">
-          {phase === "checking"
-            ? "Checking for updates…"
-            : phase === "downloading"
-              ? "Downloading update…"
-              : phase === "restarting"
-                ? "Restarting to install the update…"
-                : ready
-                  ? `v${latestVersion} is downloaded and ready to install.`
-                  : available
-                    ? `v${latestVersion} is available.`
-                    : latestVersion || checked
-                      ? "No newer release is available."
-                      : "Check for a new release."}
-        </Text>
+        <Text size="sm">{status}</Text>
         {detail && (
           <Text size="sm" tone="muted">
             {detail}
@@ -79,38 +67,105 @@ export function UpdateSettings({
           {error}
         </Text>
       )}
-      <div className="flex flex-wrap gap-2">
-        <Button
-          size="sm"
-          variant="secondary"
-          disabled={busy || ready}
-          loading={phase === "checking"}
-          onClick={onCheck}
-        >
-          Check for updates
-        </Button>
-        {(available || ready) &&
-          (ready ? (
-            <Button
-              size="sm"
-              disabled={busy || !canDownload}
-              loading={phase === "restarting"}
-              onClick={onRestart}
-            >
-              Restart to update
-            </Button>
-          ) : (
-            <Button
-              size="sm"
-              disabled={busy || !canDownload}
-              loading={phase === "downloading"}
-              onClick={onDownload}
-            >
-              Download update
-            </Button>
-          ))}
-      </div>
+      <UpdateActions
+        phase={phase}
+        busy={busy}
+        ready={ready}
+        available={available}
+        canDownload={canDownload}
+        onCheck={onCheck}
+        onDownload={onDownload}
+        onRestart={onRestart}
+      />
     </section>
+  );
+}
+
+function statusText({
+  phase,
+  ready,
+  available,
+  latestVersion,
+  checked,
+}: {
+  readonly phase: UpdatePhase;
+  readonly ready: boolean;
+  readonly available: boolean;
+  readonly latestVersion: string | null;
+  readonly checked: boolean;
+}): string {
+  if (phase === "checking") {
+    return "Checking for updates…";
+  }
+  if (phase === "downloading") {
+    return "Downloading update…";
+  }
+  if (phase === "restarting") {
+    return "Restarting to install the update…";
+  }
+  if (ready) {
+    return `v${latestVersion} is downloaded and ready to install.`;
+  }
+  if (available) {
+    return `v${latestVersion} is available.`;
+  }
+  if (latestVersion ?? checked) {
+    return "No newer release is available.";
+  }
+  return "Check for a new release.";
+}
+
+function UpdateActions({
+  phase,
+  busy,
+  ready,
+  available,
+  canDownload,
+  onCheck,
+  onDownload,
+  onRestart,
+}: {
+  readonly phase: UpdatePhase;
+  readonly busy: boolean;
+  readonly ready: boolean;
+  readonly available: boolean;
+  readonly canDownload: boolean;
+  readonly onCheck: () => void;
+  readonly onDownload: () => void;
+  readonly onRestart: () => void;
+}) {
+  return (
+    <div className="flex flex-wrap gap-2">
+      <Button
+        size="sm"
+        variant="secondary"
+        disabled={busy || ready}
+        loading={phase === "checking"}
+        onClick={onCheck}
+      >
+        Check for updates
+      </Button>
+      {(available || ready) &&
+        (ready ? (
+          <Button
+            size="sm"
+            disabled={busy || !canDownload}
+            loading={phase === "restarting"}
+            onClick={onRestart}
+          >
+            Restart to update
+          </Button>
+        ) : (
+          <Button
+            size="sm"
+            disabled={busy || !canDownload}
+            loading={phase === "downloading"}
+            onClick={onDownload}
+          >
+            Download update
+          </Button>
+        ))}
+    </div>
   );
 }
 

@@ -32,7 +32,7 @@ export function WorkspaceUpdateProvider({
   const host = useQuery(api.updates.status, isOwner ? {} : "skip");
   const checkRelease = useAction(api.updates.check);
   const request = useMutation(api.updates.request);
-  const [result, setResult] = useState<CheckResult | null>(null);
+  const [result, setResult] = useState<CheckResult>();
   const [phase, setPhase] = useState<UpdatePhase>("idle");
   const [error, setError] = useState<string | null>(null);
   const busy = useRef(false);
@@ -40,8 +40,12 @@ export function WorkspaceUpdateProvider({
   const [now, setNow] = useState(Date.now);
   useEffect(() => {
     if (!isOwner) return;
-    const timer = setInterval(() => setNow(Date.now()), 5000);
-    return () => clearInterval(timer);
+    const timer = setInterval(() => {
+      setNow(Date.now());
+    }, 5000);
+    return () => {
+      clearInterval(timer);
+    };
   }, [isOwner]);
   const check = useCallback(async () => {
     if (!isOwner || busy.current) return;
@@ -113,7 +117,7 @@ export function WorkspaceUpdateProvider({
           currentVersion={useHost ? host.currentVersion : (currentVersion ?? null)}
           latestVersion={useHost ? host.latestVersion : (result?.latestVersion ?? null)}
           available={available}
-          checked={useHost ? host.checkedAt > 0 : result !== null}
+          checked={useHost ? host.checkedAt > 0 : result !== undefined}
           phase={shownPhase}
           error={error ?? (useHost ? host.error : result?.error) ?? null}
           notes={(useHost ? host.notes : result?.notes) ?? null}

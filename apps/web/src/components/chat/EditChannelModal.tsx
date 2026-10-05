@@ -74,7 +74,9 @@ export function EditChannelModal({
     setBlockQuery("");
     setSaving(false);
     const frame = requestAnimationFrame(() => inputRef.current?.focus());
-    return () => cancelAnimationFrame(frame);
+    return () => {
+      cancelAnimationFrame(frame);
+    };
   }, [open]);
 
   const sortedMembers = useMemo(
@@ -126,7 +128,9 @@ export function EditChannelModal({
         memberIds: privateChannel ? [...new Set([ownUserId, ...selectedMembers])] : [],
         blockedUserIds: [...new Set(blockedUserIds)],
       }),
-    ).finally(() => setSaving(false));
+    ).finally(() => {
+      setSaving(false);
+    });
   };
 
   return (
@@ -176,7 +180,9 @@ export function EditChannelModal({
             placeholder="e.g. product-launch"
             value={name}
             maxLength={80}
-            onChange={(event) => setName(event.target.value)}
+            onChange={(event) => {
+              setName(event.target.value);
+            }}
           />
 
           <Input
@@ -184,7 +190,9 @@ export function EditChannelModal({
             placeholder="What is this channel about?"
             value={topic}
             maxLength={160}
-            onChange={(event) => setTopic(event.target.value)}
+            onChange={(event) => {
+              setTopic(event.target.value);
+            }}
           />
 
           <div className="rounded-[10px] border border-border bg-surface-1 px-3.5 py-2.5">
@@ -232,7 +240,9 @@ export function EditChannelModal({
                         <button
                           type="button"
                           aria-label={`Remove ${member?.displayName ?? userId}`}
-                          onClick={() => toggleMember(userId)}
+                          onClick={() => {
+                            toggleMember(userId);
+                          }}
                           className="shrink-0"
                         >
                           <Icon name="x" size={11} />
@@ -245,7 +255,9 @@ export function EditChannelModal({
                   aria-label="Search members"
                   placeholder={selectedMembers.length === 0 ? "Add people" : ""}
                   value={memberQuery}
-                  onChange={(event) => setMemberQuery(event.target.value)}
+                  onChange={(event) => {
+                    setMemberQuery(event.target.value);
+                  }}
                   className="min-w-[8rem] flex-1 bg-transparent px-1 text-[13px] text-text placeholder:text-text-muted focus-visible:outline-none"
                 />
               </div>
@@ -261,7 +273,9 @@ export function EditChannelModal({
                         data-testid={`member-option-${member.userId}`}
                         aria-pressed={checked}
                         disabled={self}
-                        onClick={() => toggleMember(member.userId)}
+                        onClick={() => {
+                          toggleMember(member.userId);
+                        }}
                         className="flex w-full items-center gap-2.5 rounded-[8px] px-2.5 py-1.5 text-left transition hover:bg-surface-3 disabled:cursor-default disabled:opacity-60"
                       >
                         <span className="min-w-0 flex-1 truncate text-[13px] text-text">
@@ -318,7 +332,9 @@ export function EditChannelModal({
                     <button
                       type="button"
                       aria-label={`Unblock ${label}`}
-                      onClick={() => toggleBlocked(userId)}
+                      onClick={() => {
+                        toggleBlocked(userId);
+                      }}
                       className="shrink-0"
                     >
                       <Icon name="x" size={11} />
@@ -334,7 +350,9 @@ export function EditChannelModal({
                 aria-label="Search people to block"
                 placeholder="Block a member…"
                 value={blockQuery}
-                onChange={(event) => setBlockQuery(event.target.value)}
+                onChange={(event) => {
+                  setBlockQuery(event.target.value);
+                }}
                 className="h-8 flex-1 bg-transparent text-[13px] text-text placeholder:text-text-muted focus-visible:outline-none"
               />
             </div>
@@ -350,7 +368,9 @@ export function EditChannelModal({
                       data-testid={`blocked-option-${member.userId}`}
                       aria-pressed={checked}
                       disabled={self}
-                      onClick={() => toggleBlocked(member.userId)}
+                      onClick={() => {
+                        toggleBlocked(member.userId);
+                      }}
                       className="flex w-full items-center gap-2.5 rounded-[8px] px-2.5 py-1.5 text-left transition hover:bg-surface-3 disabled:cursor-default disabled:opacity-60"
                     >
                       <span className="min-w-0 flex-1 truncate text-[13px] text-text">

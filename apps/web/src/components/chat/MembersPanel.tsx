@@ -65,7 +65,9 @@ export function MembersPanel({
       id: "message",
       label: "Send message",
       icon: <Icon name="message" size={14} />,
-      onSelect: () => (memberActions?.message ?? onMessage)(member.userId),
+      onSelect: () => {
+        (memberActions?.message ?? onMessage)(member.userId);
+      },
     });
     if (memberActions?.assignRoles !== undefined) {
       items.push({
@@ -186,8 +188,12 @@ function MemberGroup({
                 type="button"
                 data-testid={`presence-row-${member.userId}`}
                 disabled={self}
-                onClick={(event) => onViewProfile(member.userId, event.currentTarget)}
-                onContextMenu={(event) => onContextMenu(member, event)}
+                onClick={(event) => {
+                  onViewProfile(member.userId, event.currentTarget);
+                }}
+                onContextMenu={(event) => {
+                  onContextMenu(member, event);
+                }}
                 title={self ? undefined : `View ${member.displayName}'s profile`}
                 aria-haspopup={self ? undefined : "dialog"}
                 className={cn(

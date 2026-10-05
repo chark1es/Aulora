@@ -68,6 +68,8 @@ import { type ThreadInboxItem, ThreadsInbox } from "./ThreadsInbox";
 import { UserNoteSheet } from "./UserNoteSheet";
 import { WorkspaceSwitcherSheet } from "./WorkspaceSwitcherSheet";
 
+type Nullable<T> = T | null;
+
 export interface ChatScreenProps {
   readonly workspaceName: string;
   readonly ownUserId: string;
@@ -136,7 +138,7 @@ export function ChatScreen({
   const [newMessageOpen, setNewMessageOpen] = useState(false);
   const [pinsOpen, setPinsOpen] = useState(false);
   const [profileFor, setProfileFor] = useState<string | null>(null);
-  const [quote, setQuote] = useState<MessagePayload | null>(null);
+  const [quote, setQuote] = useState<Nullable<MessagePayload>>(null);
   const [jumpToMessageId, setJumpToMessageId] = useState<string | null>(null);
   const [showHidden, setShowHidden] = useState(false);
   const [workspaceSwitcherOpen, setWorkspaceSwitcherOpen] = useState(false);
@@ -144,9 +146,9 @@ export function ChatScreen({
   const [createOpen, setCreateOpen] = useState(false);
   const [createBusy, setCreateBusy] = useState(false);
   const [createError, setCreateError] = useState<string | null>(null);
-  const [threadRoot, setThreadRoot] = useState<MessagePayload | null>(null);
-  const [channelAction, setChannelAction] = useState<ChannelView | null>(null);
-  const [editChannelModal, setEditChannelModal] = useState<ChannelView | null>(null);
+  const [threadRoot, setThreadRoot] = useState<Nullable<MessagePayload>>(null);
+  const [channelAction, setChannelAction] = useState<Nullable<ChannelView>>(null);
+  const [editChannelModal, setEditChannelModal] = useState<Nullable<ChannelView>>(null);
   const [editChannelBusy, setEditChannelBusy] = useState(false);
   const [editChannelError, setEditChannelError] = useState<string | null>(null);
   const [memberActionsFor, setMemberActionsFor] = useState<string | null>(null);
@@ -533,7 +535,7 @@ export function ChatScreen({
   }, [runtime, activeChannelId, sessionState.messages]);
 
   const runModeration = useCallback(
-    async (task: (client: NonNullable<typeof runtime>["client"]) => Promise<void>) => {
+    async (task: (_client: NonNullable<typeof runtime>["client"]) => Promise<void>) => {
       if (runtime === undefined) {
         return;
       }

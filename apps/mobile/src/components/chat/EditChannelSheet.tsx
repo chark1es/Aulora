@@ -25,7 +25,7 @@ export interface EditChannelSheetProps {
   readonly busy?: boolean;
   readonly error?: string | null;
   readonly onClose: () => void;
-  readonly onSave: (patch: EditChannelPatch) => void | Promise<void>;
+  readonly onSave: (_patch: EditChannelPatch) => void | Promise<void>;
 }
 
 /**
@@ -34,20 +34,21 @@ export interface EditChannelSheetProps {
  * counterpart of the web {@link EditChannelModal}; blocked users reuse the
  * channel override system (a member override denying `ViewChannel`).
  */
-export function EditChannelSheet({
-  visible,
-  channelName,
-  channelTopic,
-  isPrivate,
-  initialMemberIds,
-  initialBlockedUserIds,
-  ownUserId,
-  members,
-  busy = false,
-  error = null,
-  onClose,
-  onSave,
-}: EditChannelSheetProps) {
+export function EditChannelSheet(props: EditChannelSheetProps) {
+  const {
+    visible,
+    channelName,
+    channelTopic,
+    isPrivate,
+    initialMemberIds,
+    initialBlockedUserIds,
+    ownUserId,
+    members,
+    busy = false,
+    error = null,
+    onClose,
+    onSave,
+  } = props;
   const palette = usePalette();
   const [name, setName] = useState(channelName);
   const [topic, setTopic] = useState(channelTopic);

@@ -30,6 +30,8 @@ import { MemberAvatar } from "./chat/MemberAvatar";
 import { MessageList } from "./chat/MessageList";
 import { ThreadModal } from "./chat/ThreadModal";
 
+type Nullable<T> = T | null;
+
 const memberNames = new Map(REVIEW_MEMBERS.map((member) => [member.userId, member.displayName]));
 const emptyColors = new Map<string, string>();
 const noPending = new Set<string>();
@@ -46,7 +48,7 @@ export function ReviewDemoScreen({ onExit }: { readonly onExit: () => void }) {
   const [sheet, setSheet] = useState<"channels" | "members" | null>(null);
   const [searchOpen, setSearchOpen] = useState(false);
   const [query, setQuery] = useState("");
-  const [threadRoot, setThreadRoot] = useState<MessagePayload | null>(null);
+  const [threadRoot, setThreadRoot] = useState<Nullable<MessagePayload>>(null);
   const state = useChannelSession(demo?.runtime, channelId, REVIEW_USER_ID);
 
   useEffect(() => {

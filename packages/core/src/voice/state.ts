@@ -77,7 +77,7 @@ export function isOnAnotherDevice(
     return false;
   }
   const self = selfParticipant(call, userId);
-  return self !== undefined && self.clientId !== null && self.clientId !== clientId;
+  return self?.clientId != null && self.clientId !== clientId;
 }
 
 /**

@@ -13,7 +13,9 @@ import AsyncStorage from "@react-native-async-storage/async-storage";
 import { type ConvexReactClient, useQuery } from "convex/react";
 import {
   createContext,
+  type Dispatch,
   type ReactNode,
+  type SetStateAction,
   useCallback,
   useContext,
   useEffect,
@@ -59,25 +61,25 @@ export interface VoiceContextValue extends MobileVoiceSnapshot {
   readonly canVideo: boolean;
   readonly view: CallViewMode;
   readonly pipPinned: boolean;
-  setView(view: CallViewMode): void;
-  setPipPinned(pinned: boolean): void;
-  startCall(
-    channelId: string,
-    kind: CallKind,
-    ringingUserIds?: readonly string[],
-  ): Promise<string | null>;
-  joinCall(callId: string): Promise<boolean>;
-  acceptCall(call: CallView): Promise<void>;
-  declineCall(callId: string): Promise<void>;
-  leave(): Promise<void>;
-  endCall(): Promise<void>;
-  setMuted(muted: boolean): Promise<void>;
-  setDeafened(deafened: boolean): void;
-  setCamera(on: boolean): Promise<void>;
-  setScreenSharing(on: boolean): Promise<void>;
-  updateSettings(partial: Partial<VoiceDeviceSettings>): Promise<void>;
-  refreshDevices(): Promise<void>;
-  clearError(): void;
+  readonly setView: (_view: CallViewMode) => void;
+  readonly setPipPinned: (_pinned: boolean) => void;
+  readonly startCall: (
+    _channelId: string,
+    _kind: CallKind,
+    _ringingUserIds?: readonly string[],
+  ) => Promise<string | null>;
+  readonly joinCall: (_callId: string) => Promise<boolean>;
+  readonly acceptCall: (_call: CallView) => Promise<void>;
+  readonly declineCall: (_callId: string) => Promise<void>;
+  readonly leave: () => Promise<void>;
+  readonly endCall: () => Promise<void>;
+  readonly setMuted: (_muted: boolean) => Promise<void>;
+  readonly setDeafened: (_deafened: boolean) => void;
+  readonly setCamera: (_on: boolean) => Promise<void>;
+  readonly setScreenSharing: (_on: boolean) => Promise<void>;
+  readonly updateSettings: (_partial: Partial<VoiceDeviceSettings>) => Promise<void>;
+  readonly refreshDevices: () => Promise<void>;
+  readonly clearError: () => void;
 }
 
 const VoiceContext = createContext<VoiceContextValue | null>(null);
@@ -102,28 +104,41 @@ export interface VoiceProviderProps {
   readonly children: ReactNode;
 }
 
-/**
- * Owns the call engine for one signed-in device: the WebRTC mesh, the media
- * devices and the call UI mode. Mounted inside {@link ChatProvider} so it can
- * read the viewer's resolved permission bitfield without duplicating that
- * resolution; every call surface talks to it through {@link useVoice}.
- */
-export function VoiceProvider({ client, userId, children }: VoiceProviderProps) {
-  const { viewerPermissions } = useChat();
-  const [clientId, setClientId] = useState<string | null>(null);
-  const engineRef = useRef<MobileVoiceEngine | null>(null);
-  const [snapshot, setSnapshot] = useState<MobileVoiceSnapshot>(EMPTY_SNAPSHOT);
-  const [incoming, setIncoming] = useState<readonly CallView[]>([]);
-  const [activeCalls, setActiveCalls] = useState<readonly CallView[]>([]);
-  const [settings, setSettings] = useState<VoiceDeviceSettings>(DEFAULT_VOICE_SETTINGS);
-  const [devices, setDevices] = useState<readonly AuloraMediaDevice[]>([]);
-  const [view, setView] = useState<CallViewMode>("hidden");
-  const [pipPinned, setPipPinned] = useState(false);
-  const settingsRef = useRef<VoiceDeviceSettings>(settings);
-  settingsRef.current = settings;
-  const activeCallsRef = useRef(activeCalls);
-  activeCallsRef.current = activeCalls;
+interface EngineRef {
+  current: MobileVoiceEngine | null;
+}
 
+interface SettingsRef {
+  current: VoiceDeviceSettings;
+}
+
+interface ActiveCallsRef {
+  current: readonly CallView[];
+}
+
+interface VoiceFlags {
+  readonly canConnect: boolean;
+  readonly canSpeak: boolean;
+  readonly canStream: boolean;
+  readonly canVideo: boolean;
+}
+
+interface VoiceControls {
+  readonly startCall: VoiceContextValue["startCall"];
+  readonly joinCall: VoiceContextValue["joinCall"];
+  readonly acceptCall: VoiceContextValue["acceptCall"];
+  readonly declineCall: VoiceContextValue["declineCall"];
+  readonly leave: VoiceContextValue["leave"];
+  readonly endCall: VoiceContextValue["endCall"];
+  readonly setMuted: VoiceContextValue["setMuted"];
+  readonly setDeafened: VoiceContextValue["setDeafened"];
+  readonly setCamera: VoiceContextValue["setCamera"];
+  readonly setScreenSharing: VoiceContextValue["setScreenSharing"];
+  readonly clearError: VoiceContextValue["clearError"];
+}
+
+function useVoiceClientId(): string | null {
+  const [clientId, setClientId] = useState<string | null>(null);
   useEffect(() => {
     let cancelled = false;
     void ensureVoiceClientIdAsync(AsyncStorage).then((id) => {
@@ -135,9 +150,12 @@ export function VoiceProvider({ client, userId, children }: VoiceProviderProps) 
       cancelled = true;
     };
   }, []);
+  return clientId;
+}
 
+function useVoicePolicy(): VoicePolicy {
   const config = useQuery(api.server.publicConfig, {});
-  const policy = useMemo<VoicePolicy>(() => {
+  return useMemo<VoicePolicy>(() => {
     const voice = config?.voice;
     return {
       enabled: voice?.enabled ?? true,
@@ -147,6 +165,59 @@ export function VoiceProvider({ client, userId, children }: VoiceProviderProps) 
       iceServers: normalizeIceServers(voice?.iceServers),
     };
   }, [config]);
+}
+
+function useVoiceSettings(engineRef: EngineRef) {
+  const [settings, setSettings] = useState<VoiceDeviceSettings>(DEFAULT_VOICE_SETTINGS);
+  const settingsRef = useRef<VoiceDeviceSettings>(settings);
+  settingsRef.current = settings;
+
+  useEffect(() => {
+    void loadVoiceSettingsAsync().then((initial) => {
+      setSettings(initial);
+      settingsRef.current = initial;
+    });
+  }, []);
+
+  const updateSettings = useCallback(
+    async (partial: Partial<VoiceDeviceSettings>) => {
+      const next = mergeVoiceSettings({ ...settingsRef.current, ...partial });
+      setSettings(next);
+      settingsRef.current = next;
+      await saveVoiceSettingsAsync(next);
+      await engineRef.current?.applySettings(next);
+    },
+    [engineRef],
+  );
+
+  return { settings, settingsRef, updateSettings };
+}
+
+function useVoiceDevices() {
+  const [devices, setDevices] = useState<readonly AuloraMediaDevice[]>([]);
+  useEffect(() => {
+    void listMediaDevices().then(setDevices);
+    return onDeviceChange(() => {
+      void listMediaDevices().then(setDevices);
+    });
+  }, []);
+  const refreshDevices = useCallback(async () => {
+    setDevices(await listMediaDevices());
+  }, []);
+  return { devices, refreshDevices };
+}
+
+function useVoiceEngine(
+  client: ConvexReactClient,
+  clientId: string | null,
+  userId: string,
+  policy: VoicePolicy,
+  settingsRef: SettingsRef,
+  engineRef: EngineRef,
+) {
+  const [snapshot, setSnapshot] = useState<MobileVoiceSnapshot>(EMPTY_SNAPSHOT);
+  const [incoming, setIncoming] = useState<readonly CallView[]>([]);
+  const [activeCalls, setActiveCalls] = useState<readonly CallView[]>([]);
 
   // Engine lifetime is tied to the signed-in client + identity.
   useEffect(() => {
@@ -163,7 +234,9 @@ export function VoiceProvider({ client, userId, children }: VoiceProviderProps) 
     });
     engineRef.current = engine;
     setSnapshot(engine.getSnapshot());
-    const unsubscribe = engine.subscribe(() => setSnapshot(engine.getSnapshot()));
+    const unsubscribe = engine.subscribe(() => {
+      setSnapshot(engine.getSnapshot());
+    });
     const subscriptions = convexVoiceSubscriptions(client);
     const offIncoming = subscriptions.watchIncoming(setIncoming);
     const offActive = subscriptions.watchActiveCalls(setActiveCalls);
@@ -174,22 +247,16 @@ export function VoiceProvider({ client, userId, children }: VoiceProviderProps) 
       engine.dispose();
       engineRef.current = null;
     };
-  }, [client, clientId, userId, policy.iceServers]);
+  }, [client, clientId, userId, policy.iceServers, settingsRef, engineRef]);
 
-  // Load local device settings, enumerate devices and follow device changes.
-  useEffect(() => {
-    void loadVoiceSettingsAsync().then((initial) => {
-      setSettings(initial);
-      settingsRef.current = initial;
-    });
-    void listMediaDevices().then(setDevices);
-    return onDeviceChange(() => {
-      void listMediaDevices().then(setDevices);
-    });
-  }, []);
+  return { snapshot, incoming, activeCalls };
+}
 
-  // Reveal the call stage when a call starts; hide it when the call ends.
-  const callActive = snapshot.callId !== null;
+function useAutoRevealStage(
+  callActive: boolean,
+  setView: Dispatch<SetStateAction<CallViewMode>>,
+  setPipPinned: Dispatch<SetStateAction<boolean>>,
+) {
   useEffect(() => {
     setView((current) => {
       if (callActive) {
@@ -200,23 +267,17 @@ export function VoiceProvider({ client, userId, children }: VoiceProviderProps) 
     if (!callActive) {
       setPipPinned(false);
     }
-  }, [callActive]);
+  }, [callActive, setView, setPipPinned]);
+}
 
-  const refreshDevices = useCallback(async () => {
-    setDevices(await listMediaDevices());
-  }, []);
-
-  const updateSettings = useCallback(async (partial: Partial<VoiceDeviceSettings>) => {
-    const next = mergeVoiceSettings({ ...settingsRef.current, ...partial });
-    setSettings(next);
-    settingsRef.current = next;
-    await saveVoiceSettingsAsync(next);
-    await engineRef.current?.applySettings(next);
-  }, []);
-
-  const confirmSwitch = useCallback(() => confirmSwitchDevice(), []);
-
-  const startCall = useCallback(
+function useStartCall(
+  engineRef: EngineRef,
+  activeCallsRef: ActiveCallsRef,
+  userId: string,
+  clientId: string | null,
+  setView: Dispatch<SetStateAction<CallViewMode>>,
+) {
+  return useCallback(
     async (channelId: string, kind: CallKind, ringingUserIds?: readonly string[]) => {
       const engine = engineRef.current;
       if (engine === null) {
@@ -226,7 +287,7 @@ export function VoiceProvider({ client, userId, children }: VoiceProviderProps) 
         calls: activeCallsRef.current,
         userId,
         clientId,
-        confirm: confirmSwitch,
+        confirm: () => confirmSwitchDevice(),
         run: (takeover) =>
           engine.startCall({
             channelId,
@@ -241,10 +302,18 @@ export function VoiceProvider({ client, userId, children }: VoiceProviderProps) 
       }
       return null;
     },
-    [clientId, confirmSwitch, userId],
+    [clientId, userId, engineRef, activeCallsRef, setView],
   );
+}
 
-  const joinCall = useCallback(
+function useJoinCall(
+  engineRef: EngineRef,
+  activeCallsRef: ActiveCallsRef,
+  userId: string,
+  clientId: string | null,
+  setView: Dispatch<SetStateAction<CallViewMode>>,
+) {
+  return useCallback(
     async (callId: string) => {
       const engine = engineRef.current;
       if (engine === null) {
@@ -254,7 +323,7 @@ export function VoiceProvider({ client, userId, children }: VoiceProviderProps) 
         calls: activeCallsRef.current,
         userId,
         clientId,
-        confirm: confirmSwitch,
+        confirm: () => confirmSwitchDevice(),
         run: (takeover) => engine.joinCall(callId, takeover ? { takeover: true } : {}),
       });
       if (result.status === "joined") {
@@ -263,57 +332,136 @@ export function VoiceProvider({ client, userId, children }: VoiceProviderProps) 
       }
       return false;
     },
-    [clientId, confirmSwitch, userId],
+    [clientId, userId, engineRef, activeCallsRef, setView],
   );
+}
 
+function useSessionControls(engineRef: EngineRef, setView: Dispatch<SetStateAction<CallViewMode>>) {
+  const declineCall = useCallback(
+    async (callId: string) => {
+      await engineRef.current?.declineCall(callId);
+    },
+    [engineRef],
+  );
+  const leave = useCallback(async () => {
+    await engineRef.current?.leave();
+    setView("hidden");
+  }, [engineRef, setView]);
+  const endCall = useCallback(async () => {
+    await engineRef.current?.endCall();
+    setView("hidden");
+  }, [engineRef, setView]);
+  const setMuted = useCallback(
+    async (muted: boolean) => {
+      await engineRef.current?.setMuted(muted);
+    },
+    [engineRef],
+  );
+  const setDeafened = useCallback(
+    (deafened: boolean) => {
+      engineRef.current?.setDeafened(deafened);
+    },
+    [engineRef],
+  );
+  const setCamera = useCallback(
+    async (on: boolean) => {
+      await engineRef.current?.setCamera(on);
+    },
+    [engineRef],
+  );
+  const setScreenSharing = useCallback(
+    async (on: boolean) => {
+      await engineRef.current?.setScreenSharing(on);
+    },
+    [engineRef],
+  );
+  const clearError = useCallback(() => {
+    engineRef.current?.clearError();
+  }, [engineRef]);
+  return {
+    declineCall,
+    leave,
+    endCall,
+    setMuted,
+    setDeafened,
+    setCamera,
+    setScreenSharing,
+    clearError,
+  };
+}
+
+function useVoiceUi(callActive: boolean) {
+  const [view, setView] = useState<CallViewMode>("hidden");
+  const [pipPinned, setPipPinned] = useState(false);
+  useAutoRevealStage(callActive, setView, setPipPinned);
+  return { view, pipPinned, setView, setPipPinned };
+}
+
+function useVoiceControls(
+  engineRef: EngineRef,
+  activeCallsRef: ActiveCallsRef,
+  userId: string,
+  clientId: string | null,
+  setView: Dispatch<SetStateAction<CallViewMode>>,
+): VoiceControls {
+  const startCall = useStartCall(engineRef, activeCallsRef, userId, clientId, setView);
+  const joinCall = useJoinCall(engineRef, activeCallsRef, userId, clientId, setView);
+  const session = useSessionControls(engineRef, setView);
   const acceptCall = useCallback(
     async (call: CallView) => {
       await joinCall(call.id);
     },
     [joinCall],
   );
+  return { startCall, joinCall, acceptCall, ...session };
+}
 
-  const declineCall = useCallback(async (callId: string) => {
-    await engineRef.current?.declineCall(callId);
-  }, []);
+function useVoiceFlags(viewerPermissions: bigint, policy: VoicePolicy): VoiceFlags {
+  return {
+    canConnect: policy.enabled && hasPermission(viewerPermissions, Permission.Connect),
+    canSpeak: hasPermission(viewerPermissions, Permission.Speak),
+    canStream: policy.screenShareEnabled && hasPermission(viewerPermissions, Permission.Stream),
+    canVideo: policy.videoEnabled && hasPermission(viewerPermissions, Permission.UseVideo),
+  };
+}
 
-  const leave = useCallback(async () => {
-    await engineRef.current?.leave();
-    setView("hidden");
-  }, []);
-
-  const endCall = useCallback(async () => {
-    await engineRef.current?.endCall();
-    setView("hidden");
-  }, []);
-
-  const setMuted = useCallback(async (muted: boolean) => {
-    await engineRef.current?.setMuted(muted);
-  }, []);
-
-  const setDeafened = useCallback((deafened: boolean) => {
-    engineRef.current?.setDeafened(deafened);
-  }, []);
-
-  const setCamera = useCallback(async (on: boolean) => {
-    await engineRef.current?.setCamera(on);
-  }, []);
-
-  const setScreenSharing = useCallback(async (on: boolean) => {
-    await engineRef.current?.setScreenSharing(on);
-  }, []);
-
-  const clearError = useCallback(() => {
-    engineRef.current?.clearError();
-  }, []);
-
-  const canConnect = policy.enabled && hasPermission(viewerPermissions, Permission.Connect);
-  const canSpeak = hasPermission(viewerPermissions, Permission.Speak);
-  const canStream =
-    policy.screenShareEnabled && hasPermission(viewerPermissions, Permission.Stream);
-  const canVideo = policy.videoEnabled && hasPermission(viewerPermissions, Permission.UseVideo);
-
-  const value = useMemo<VoiceContextValue>(
+function useVoiceContextValue(input: {
+  readonly snapshot: MobileVoiceSnapshot;
+  readonly userId: string;
+  readonly clientId: string | null;
+  readonly policy: VoicePolicy;
+  readonly incoming: readonly CallView[];
+  readonly activeCalls: readonly CallView[];
+  readonly settings: VoiceDeviceSettings;
+  readonly devices: readonly AuloraMediaDevice[];
+  readonly flags: VoiceFlags;
+  readonly view: CallViewMode;
+  readonly pipPinned: boolean;
+  readonly setView: Dispatch<SetStateAction<CallViewMode>>;
+  readonly setPipPinned: Dispatch<SetStateAction<boolean>>;
+  readonly controls: VoiceControls;
+  readonly updateSettings: (_partial: Partial<VoiceDeviceSettings>) => Promise<void>;
+  readonly refreshDevices: () => Promise<void>;
+}): VoiceContextValue {
+  const {
+    snapshot,
+    userId,
+    clientId,
+    policy,
+    incoming,
+    activeCalls,
+    settings,
+    devices,
+    flags,
+    view,
+    pipPinned,
+    setView,
+    setPipPinned,
+    controls,
+    updateSettings,
+    refreshDevices,
+  } = input;
+  return useMemo<VoiceContextValue>(
     () => ({
       ...snapshot,
       selfUserId: userId,
@@ -323,27 +471,14 @@ export function VoiceProvider({ client, userId, children }: VoiceProviderProps) 
       activeCalls,
       settings,
       devices,
-      canConnect,
-      canSpeak,
-      canStream,
-      canVideo,
+      ...flags,
       view,
       pipPinned,
       setView,
       setPipPinned,
-      startCall,
-      joinCall,
-      acceptCall,
-      declineCall,
-      leave,
-      endCall,
-      setMuted,
-      setDeafened,
-      setCamera,
-      setScreenSharing,
+      ...controls,
       updateSettings,
       refreshDevices,
-      clearError,
     }),
     [
       snapshot,
@@ -354,27 +489,59 @@ export function VoiceProvider({ client, userId, children }: VoiceProviderProps) 
       activeCalls,
       settings,
       devices,
-      canConnect,
-      canSpeak,
-      canStream,
-      canVideo,
+      flags,
       view,
       pipPinned,
-      startCall,
-      joinCall,
-      acceptCall,
-      declineCall,
-      leave,
-      endCall,
-      setMuted,
-      setDeafened,
-      setCamera,
-      setScreenSharing,
+      setView,
+      setPipPinned,
+      controls,
       updateSettings,
       refreshDevices,
-      clearError,
     ],
   );
+}
+
+/**
+ * Owns the call engine for one signed-in device: the WebRTC mesh, the media
+ * devices and the call UI mode. Mounted inside {@link ChatProvider} so it can
+ * read the viewer's resolved permission bitfield without duplicating that
+ * resolution; every call surface talks to it through {@link useVoice}.
+ */
+export function VoiceProvider({ client, userId, children }: VoiceProviderProps) {
+  const { viewerPermissions } = useChat();
+  const clientId = useVoiceClientId();
+  const policy = useVoicePolicy();
+  const engineRef = useRef<MobileVoiceEngine | null>(null);
+  const { settings, settingsRef, updateSettings } = useVoiceSettings(engineRef);
+  const { devices, refreshDevices } = useVoiceDevices();
+  const { snapshot, incoming, activeCalls } = useVoiceEngine(
+    client,
+    clientId,
+    userId,
+    policy,
+    settingsRef,
+    engineRef,
+  );
+  const ui = useVoiceUi(snapshot.callId !== null);
+  const activeCallsRef = useRef(activeCalls);
+  activeCallsRef.current = activeCalls;
+  const controls = useVoiceControls(engineRef, activeCallsRef, userId, clientId, ui.setView);
+  const flags = useVoiceFlags(viewerPermissions, policy);
+  const value = useVoiceContextValue({
+    snapshot,
+    userId,
+    clientId,
+    policy,
+    incoming,
+    activeCalls,
+    settings,
+    devices,
+    flags,
+    ...ui,
+    controls,
+    updateSettings,
+    refreshDevices,
+  });
 
   return (
     <VoiceContext.Provider value={value}>
@@ -423,7 +590,7 @@ function RemoteAudio({
     for (const stream of streams.values()) {
       for (const track of stream.getAudioTracks()) {
         track.enabled = !deafened;
-        const adjustable = track as { _setVolume?: (value: number) => void };
+        const adjustable = track as { _setVolume?: (_value: number) => void };
         try {
           adjustable._setVolume?.(deafened ? 0 : volume);
         } catch {
@@ -449,10 +616,26 @@ function confirmSwitchDevice(): Promise<boolean> {
       "Join on this device?",
       "You're already in a call on another device. Joining here will disconnect that device.",
       [
-        { text: "Cancel", style: "cancel", onPress: () => finish(false) },
-        { text: "Join here", onPress: () => finish(true) },
+        {
+          text: "Cancel",
+          style: "cancel",
+          onPress: () => {
+            finish(false);
+          },
+        },
+        {
+          text: "Join here",
+          onPress: () => {
+            finish(true);
+          },
+        },
       ],
-      { cancelable: true, onDismiss: () => finish(false) },
+      {
+        cancelable: true,
+        onDismiss: () => {
+          finish(false);
+        },
+      },
     );
   });
 }

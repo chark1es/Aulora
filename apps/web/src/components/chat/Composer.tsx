@@ -164,8 +164,12 @@ export function Composer({
     if (draftKey === undefined) {
       return;
     }
-    const timer = setTimeout(() => writeDraft(draftKey, value), 250);
-    return () => clearTimeout(timer);
+    const timer = setTimeout(() => {
+      writeDraft(draftKey, value);
+    }, 250);
+    return () => {
+      clearTimeout(timer);
+    };
   }, [draftKey, value]);
 
   // Grow with the content up to a cap, then scroll.
@@ -452,7 +456,7 @@ export function Composer({
         event.preventDefault();
         setDragging(false);
         if (!windowDropEnabled) {
-          addFiles(collectFiles(event.dataTransfer?.files ?? null));
+          addFiles(collectFiles(event.dataTransfer.files));
           event.stopPropagation();
         }
       }}
@@ -480,7 +484,9 @@ export function Composer({
                     "flex w-full items-center gap-2.5 rounded-[8px] px-2 py-1.5 text-left text-[13px]",
                     index === activeSuggestion ? "bg-accent-soft text-text" : "text-text-muted",
                   )}
-                  onMouseEnter={() => setActiveSuggestion(index)}
+                  onMouseEnter={() => {
+                    setActiveSuggestion(index);
+                  }}
                   onMouseDown={(event) => {
                     event.preventDefault();
                     applySuggestion(suggestion);
@@ -549,7 +555,9 @@ export function Composer({
                   type="button"
                   aria-label={`Remove ${file.name}`}
                   className="flex h-5 w-5 items-center justify-center rounded-full text-text-muted hover:bg-surface-2 hover:text-text"
-                  onClick={() => setFiles((current) => current.filter((value) => value !== file))}
+                  onClick={() => {
+                    setFiles((current) => current.filter((value) => value !== file));
+                  }}
                 >
                   <Icon name="x" size={12} />
                 </button>
@@ -564,15 +572,21 @@ export function Composer({
               type="button"
               aria-label="Insert emoji"
               className="flex h-8 w-8 items-center justify-center rounded-[8px] text-text-muted transition hover:bg-surface-3 hover:text-text"
-              onClick={() => setEmojiOpen((open) => !open)}
+              onClick={() => {
+                setEmojiOpen((open) => !open);
+              }}
             >
               <Icon name="smile" size={18} />
             </button>
             {emojiOpen && (
               <EmojiPicker
                 className="absolute bottom-full left-0 mb-2"
-                onPick={(emoji) => insertAtCaret(emoji)}
-                onClose={() => setEmojiOpen(false)}
+                onPick={(emoji) => {
+                  insertAtCaret(emoji);
+                }}
+                onClose={() => {
+                  setEmojiOpen(false);
+                }}
               />
             )}
           </span>
@@ -590,10 +604,10 @@ export function Composer({
               if (next.length > 0) {
                 onTyping(channelId);
               }
-              updateSuggestions(next, event.target.selectionStart ?? next.length);
+              updateSuggestions(next, event.target.selectionStart);
             }}
             onPaste={(event) => {
-              const pasted = collectFiles(event.clipboardData?.files ?? null);
+              const pasted = collectFiles(event.clipboardData.files);
               if (pasted.length > 0) {
                 event.preventDefault();
                 addFiles(pasted);
@@ -615,7 +629,7 @@ export function Composer({
                 }
                 if (event.key === "Tab" || event.key === "Enter") {
                   event.preventDefault();
-                  const suggestion = suggestions[activeSuggestion];
+                  const suggestion = suggestions.at(activeSuggestion);
                   if (suggestion !== undefined) {
                     applySuggestion(suggestion);
                   }
@@ -696,7 +710,9 @@ export function Composer({
           <ToolButton
             label="Code block"
             icon="code"
-            onClick={() => insertAtCaret("```\n\n```", [4, 4])}
+            onClick={() => {
+              insertAtCaret("```\n\n```", [4, 4]);
+            }}
           />
           <ToolButton
             label="Mention someone"

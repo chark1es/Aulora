@@ -48,15 +48,17 @@ function startOfUtcDay(timestamp: number): number {
 }
 
 /** Builds display views from plaintext channel summaries. */
-export async function toChannelViews(
+export function toChannelViews(
   _session: ChatSession,
   channels: readonly ChannelSummary[],
 ): Promise<ChannelView[]> {
-  return channels.map((channel) => ({ ...channel, name: channelName(channel) }));
+  void _session;
+  return Promise.resolve(channels.map((channel) => ({ ...channel, name: channelName(channel) })));
 }
 
 /** Best-effort display name for a channel: its plaintext name or a placeholder. */
 export function channelName(channel: ChannelSummary, _session?: ChatSession): string {
+  void _session;
   if (channel.name !== null && channel.name.length > 0) {
     return channel.name;
   }

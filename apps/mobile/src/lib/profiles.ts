@@ -48,14 +48,8 @@ function sanitizeProvider(value: unknown): WellKnownProvider | null {
   return null;
 }
 
-/**
- * Validates one stored profile. Never trusts the store: a corrupted or
- * hand-edited document must not reach the auth/Convex wiring.
- */
-export function sanitizeProfile(value: unknown): ServerProfile | null {
-  if (!isRecord(value)) {
-    return null;
-  }
+/** Reads the required fields of a stored profile, returning null when any is missing. */
+function readRequiredProfileFields(value: Record<string, unknown>): ServerProfile | null {
   const id = readString(value.id);
   const baseUrl = readString(value.baseUrl);
   const name = readString(value.name);
@@ -102,6 +96,17 @@ export function sanitizeProfile(value: unknown): ServerProfile | null {
     auth: authBlock,
     addedAt,
   };
+}
+
+/**
+ * Validates one stored profile. Never trusts the store: a corrupted or
+ * hand-edited document must not reach the auth/Convex wiring.
+ */
+export function sanitizeProfile(value: unknown): ServerProfile | null {
+  if (!isRecord(value)) {
+    return null;
+  }
+  return readRequiredProfileFields(value);
 }
 
 /** AsyncStorage-backed {@link ProfileStore} for iOS/Android. */

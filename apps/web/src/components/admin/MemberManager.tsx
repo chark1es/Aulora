@@ -1,20 +1,16 @@
-import { EVERYONE_ROLE_ID } from "@aulora/core";
-import { Button, Heading, Icon, Input, Modal, Spinner, Text } from "@aulora/ui-web";
+import { Button, Heading, Icon, Modal, Spinner, Text } from "@aulora/ui-web";
 import { useMutation, useQuery } from "convex/react";
-import { useEffect, useState } from "react";
+import { useState } from "react";
 import { api } from "../../../../../packages/convex/convex/_generated/api";
 import {
-  canManageRoleUi,
   canModerateUi,
   type MemberView,
   memberDisplayName,
-  type RoleView,
   roleColorFor,
   roleNamesFor,
-  roleRef,
 } from "../../lib/workspace-admin";
 import { PersonAvatar } from "../chat/member-avatars";
-import { Combobox, type ComboboxOption } from "./Combobox";
+import { MemberDetail } from "./MemberDetail";
 
 export interface MemberManagerViewer {
   readonly userId: string;
@@ -35,23 +31,6 @@ export interface MemberManagerProps {
     readonly changeOwnNickname: boolean;
   };
 }
-
-const TIMEOUTS: readonly { readonly label: string; readonly ms: number }[] = [
-  { label: "60s", ms: 60_000 },
-  { label: "5m", ms: 5 * 60_000 },
-  { label: "1h", ms: 60 * 60_000 },
-  { label: "1d", ms: 24 * 60 * 60_000 },
-];
-
-/** Ban durations; `null` means permanent. */
-const BAN_DURATIONS: readonly { readonly label: string; readonly ms: number | null }[] = [
-  { label: "60 seconds", ms: 60_000 },
-  { label: "1 hour", ms: 60 * 60_000 },
-  { label: "1 day", ms: 24 * 60 * 60_000 },
-  { label: "7 days", ms: 7 * 24 * 60 * 60_000 },
-  { label: "30 days", ms: 30 * 24 * 60 * 60_000 },
-  { label: "Permanent", ms: null },
-];
 
 const ANY_MANAGE = (p: MemberManagerProps["permissions"]): boolean =>
   p.manageRoles || p.kick || p.ban || p.timeout || p.manageNicknames;
@@ -210,7 +189,9 @@ export function MemberManager({ viewer, ownerId, permissions }: MemberManagerPro
       {permissions.ban && (
         <button
           type="button"
-          onClick={() => setBansOpen(true)}
+          onClick={() => {
+            setBansOpen(true);
+          }}
           className="group flex items-center gap-1.5 self-start rounded-[8px] px-2 py-1 text-[12px] font-medium text-text-muted transition hover:bg-surface-2 hover:text-text"
         >
           <Icon name="lock" size={13} />
@@ -222,7 +203,9 @@ export function MemberManager({ viewer, ownerId, permissions }: MemberManagerPro
       {selected !== null && (
         <Modal
           open={memberOpen}
-          onClose={() => setMemberOpen(false)}
+          onClose={() => {
+            setMemberOpen(false);
+          }}
           size="md"
           label="Member"
           title={memberDisplayName(selected, selected.userId)}
@@ -233,7 +216,12 @@ export function MemberManager({ viewer, ownerId, permissions }: MemberManagerPro
           }
           icon={<PersonAvatar userId={selected.userId} size={36} />}
           footer={
-            <Button variant="secondary" onClick={() => setMemberOpen(false)}>
+            <Button
+              variant="secondary"
+              onClick={() => {
+                setMemberOpen(false);
+              }}
+            >
               Done
             </Button>
           }
@@ -248,46 +236,52 @@ export function MemberManager({ viewer, ownerId, permissions }: MemberManagerPro
             moderatable={canModerate(selected)}
             busy={busy}
             error={error}
-            onAssignRole={(roleId) =>
-              void run(() => assignRole({ userId: selected.userId, roleId: roleId as never }))
-            }
-            onRemoveRole={(roleId) =>
-              void run(() => removeRole({ userId: selected.userId, roleId: roleId as never }))
-            }
-            onNickname={(nickname) =>
+            onAssignRole={(roleId) => {
+              void run(() => assignRole({ userId: selected.userId, roleId: roleId as never }));
+            }}
+            onRemoveRole={(roleId) => {
+              void run(() => removeRole({ userId: selected.userId, roleId: roleId as never }));
+            }}
+            onNickname={(nickname) => {
               void run(() =>
                 setNickname({
                   userId: selected.userId,
                   ...(nickname.length > 0 ? { nickname } : {}),
                 }),
-              )
-            }
-            onTimeout={(until) =>
+              );
+            }}
+            onTimeout={(until) => {
               void run(() =>
                 until === undefined
                   ? timeout({ userId: selected.userId })
                   : timeout({ userId: selected.userId, until }),
-              )
-            }
-            onKick={() =>
-              void run(() => kick({ userId: selected.userId })).then(() => setMemberOpen(false))
-            }
-            onBan={(durationMs, reason) =>
+              );
+            }}
+            onKick={() => {
+              void run(() => kick({ userId: selected.userId })).then(() => {
+                setMemberOpen(false);
+              });
+            }}
+            onBan={(durationMs, reason) => {
               void run(() =>
                 ban({
                   userId: selected.userId,
                   ...(reason !== undefined && reason.length > 0 ? { reason } : {}),
                   ...(durationMs !== undefined ? { durationMs } : {}),
                 }),
-              ).then(() => setMemberOpen(false))
-            }
+              ).then(() => {
+                setMemberOpen(false);
+              });
+            }}
           />
         </Modal>
       )}
 
       <Modal
         open={bansOpen}
-        onClose={() => setBansOpen(false)}
+        onClose={() => {
+          setBansOpen(false);
+        }}
         size="md"
         label="Banned members"
         title="Banned members"
@@ -298,7 +292,12 @@ export function MemberManager({ viewer, ownerId, permissions }: MemberManagerPro
           </span>
         }
         footer={
-          <Button variant="secondary" onClick={() => setBansOpen(false)}>
+          <Button
+            variant="secondary"
+            onClick={() => {
+              setBansOpen(false);
+            }}
+          >
             Done
           </Button>
         }
@@ -330,410 +329,23 @@ export function MemberManager({ viewer, ownerId, permissions }: MemberManagerPro
                         : `Expires ${new Date(entry.expiresAt as number).toLocaleString()}`}
                     </Text>
                   </span>
-                  <ActionButton
+                  <Button
+                    type="button"
+                    size="sm"
+                    variant="secondary"
                     disabled={busy}
-                    onClick={() => void run(() => unban({ userId: entry.userId }))}
+                    onClick={() => {
+                      void run(() => unban({ userId: entry.userId }));
+                    }}
                   >
                     Unban
-                  </ActionButton>
+                  </Button>
                 </li>
               ))}
             </ul>
           )}
         </section>
       </Modal>
-    </div>
-  );
-}
-
-interface MemberDetailProps {
-  readonly member: MemberView;
-  readonly roles: readonly RoleView[];
-  readonly viewer: MemberManagerViewer;
-  readonly ownerId: string | null;
-  readonly permissions: MemberManagerProps["permissions"];
-  readonly moderatable: boolean;
-  readonly busy: boolean;
-  readonly error: string | null;
-  onAssignRole(roleId: string): void;
-  onRemoveRole(roleId: string): void;
-  onNickname(nickname: string): void;
-  onTimeout(until: number | undefined): void;
-  onKick(): void;
-  onBan(durationMs?: number, reason?: string): void;
-}
-
-function MemberDetail({
-  member,
-  roles,
-  viewer,
-  ownerId,
-  permissions,
-  moderatable,
-  busy,
-  error,
-  onAssignRole,
-  onRemoveRole,
-  onNickname,
-  onTimeout,
-  onKick,
-  onBan,
-}: MemberDetailProps) {
-  const [nickname, setNickname] = useState(member.nickname ?? "");
-
-  useEffect(() => {
-    setNickname(member.nickname ?? "");
-  }, [member.nickname]);
-
-  const isSelf = member.userId === viewer.userId;
-  const displayName = memberDisplayName(member, member.userId);
-  const heldRefs = new Set(member.roleIds);
-  const timedOut = member.timeoutUntil !== null && member.timeoutUntil > Date.now();
-  const isOwner = member.userId === ownerId;
-
-  const canEditNickname = isSelf
-    ? permissions.changeOwnNickname || permissions.manageNicknames || viewer.isOwner
-    : permissions.manageNicknames && moderatable;
-  const canAssignRoles = permissions.manageRoles && moderatable;
-  const canTimeout = permissions.timeout && moderatable;
-  const canKick = permissions.kick && moderatable;
-  const canBan = permissions.ban && moderatable && !isSelf;
-
-  const assignable = roles.filter(
-    (role) =>
-      canManageRoleUi(viewer, role) &&
-      !role.isEveryone &&
-      !heldRefs.has(roleRef(role)) &&
-      (viewer.isOwner || roleRef(role) !== EVERYONE_ROLE_ID),
-  );
-
-  const addRoleOptions: readonly ComboboxOption[] = assignable.map((role) => ({
-    value: role.id,
-    label: role.name,
-    keywords: roleRef(role),
-    leading:
-      role.color !== null && role.color.length > 0 ? (
-        <span
-          aria-hidden="true"
-          className="h-2.5 w-2.5 rounded-full border border-border"
-          style={{ backgroundColor: role.color }}
-        />
-      ) : (
-        <Icon name="shield" size={13} />
-      ),
-  }));
-
-  const actionCount = [canEditNickname, canAssignRoles, canTimeout, canKick, canBan].filter(
-    Boolean,
-  ).length;
-
-  return (
-    <div className="flex flex-col gap-4" data-testid={`member-detail-${member.userId}`}>
-      {(isOwner || timedOut) && (
-        <div className="flex flex-wrap items-center gap-1.5">
-          {isOwner && (
-            <span className="rounded-[5px] bg-accent-soft px-1.5 py-0.5 text-[10px] font-semibold uppercase text-accent">
-              Owner
-            </span>
-          )}
-          {timedOut && (
-            <span className="rounded-[5px] bg-danger/10 px-1.5 py-0.5 text-[10px] font-semibold uppercase text-danger">
-              Timed out
-            </span>
-          )}
-        </div>
-      )}
-
-      {error !== null && (
-        <Text tone="danger" size="sm" role="alert">
-          {error}
-        </Text>
-      )}
-
-      <section className="flex flex-col gap-2.5">
-        <Text as="h4" size="xs" tone="muted" className="font-semibold uppercase tracking-[0.06em]">
-          Roles
-        </Text>
-        <div className="flex flex-wrap items-center gap-1.5">
-          {member.roleIds.map((ref) => {
-            const role = roles.find((entry) => roleRef(entry) === ref);
-            const label = role?.name ?? ref;
-            const isEveryone = ref === EVERYONE_ROLE_ID;
-            return (
-              <span
-                key={ref}
-                className="inline-flex items-center gap-1 rounded-full border border-border bg-surface-3 py-0.5 pl-2 pr-1 text-[11px] font-medium"
-                style={
-                  !isEveryone && role?.color !== null && role?.color !== undefined
-                    ? { color: role.color }
-                    : undefined
-                }
-              >
-                {!isEveryone && role?.color !== null && role?.color !== undefined && (
-                  <span
-                    aria-hidden="true"
-                    className="h-2 w-2 rounded-full"
-                    style={{ backgroundColor: role.color }}
-                  />
-                )}
-                <span className={isEveryone ? "text-text-muted" : undefined}>{label}</span>
-                {canAssignRoles && !isEveryone && role !== undefined && (
-                  <button
-                    type="button"
-                    aria-label={`Remove role ${label}`}
-                    className="flex h-4 w-4 items-center justify-center rounded-full text-text-muted transition hover:bg-danger/15 hover:text-danger"
-                    disabled={busy}
-                    onClick={() => onRemoveRole(role.id)}
-                  >
-                    <Icon name="x" size={10} />
-                  </button>
-                )}
-              </span>
-            );
-          })}
-        </div>
-        {canAssignRoles && assignable.length > 0 && (
-          <Combobox
-            className="max-w-[220px]"
-            aria-label={`Add role to ${displayName}`}
-            value=""
-            options={addRoleOptions}
-            placeholder="Add role…"
-            searchPlaceholder="Search roles…"
-            emptyMessage="No roles to add."
-            onChange={(roleId) => {
-              if (roleId.length > 0) {
-                onAssignRole(roleId);
-              }
-            }}
-          />
-        )}
-      </section>
-
-      {actionCount > 0 && (
-        <section className="flex flex-col gap-3 border-t border-border pt-4">
-          {canEditNickname && (
-            <div className="flex items-end gap-2">
-              <div className="flex-1">
-                <Input
-                  label="Nickname"
-                  value={nickname}
-                  placeholder={displayName}
-                  onChange={(event) => setNickname(event.currentTarget.value)}
-                  onKeyDown={(event) => {
-                    if (event.key === "Enter") {
-                      onNickname(nickname.trim());
-                    }
-                  }}
-                />
-              </div>
-              <ActionButton
-                disabled={busy || nickname === (member.nickname ?? "")}
-                onClick={() => onNickname(nickname.trim())}
-              >
-                Save nickname
-              </ActionButton>
-            </div>
-          )}
-
-          <div className="flex flex-wrap items-center gap-2">
-            {canTimeout &&
-              (timedOut ? (
-                <ActionButton disabled={busy} onClick={() => onTimeout(undefined)}>
-                  Clear timeout
-                </ActionButton>
-              ) : (
-                <TimeoutMenu disabled={busy} onPick={(until) => onTimeout(until)} />
-              ))}
-
-            <span className="flex-1" />
-
-            {canKick && (
-              <ActionButton danger disabled={busy} onClick={onKick}>
-                Kick
-              </ActionButton>
-            )}
-            {canBan && <BanMenu disabled={busy} onPick={onBan} />}
-          </div>
-        </section>
-      )}
-
-      <MemberNote userId={member.userId} />
-    </div>
-  );
-}
-
-function MemberNote({ userId }: { readonly userId: string }) {
-  const note = useQuery(api.notes.get, { targetUserId: userId });
-  const upsert = useMutation(api.notes.upsert);
-  const [body, setBody] = useState("");
-  const [busy, setBusy] = useState(false);
-  const [saved, setSaved] = useState(false);
-  const [error, setError] = useState<string | null>(null);
-
-  useEffect(() => {
-    setBody(note?.body ?? "");
-  }, [note?.body]);
-
-  const dirty = body !== (note?.body ?? "");
-
-  return (
-    <section
-      className="flex flex-col gap-2 border-t border-border pt-4"
-      data-testid={`member-note-${userId}`}
-    >
-      <div className="flex items-center gap-1.5">
-        <Icon name="note" size={14} className="text-text-muted" />
-        <Text as="h4" size="xs" tone="muted" className="font-semibold uppercase tracking-[0.06em]">
-          Private note
-        </Text>
-        {(note?.body ?? "").trim().length > 0 && (
-          <span className="flex h-1.5 w-1.5 rounded-full bg-accent" title="Note saved" />
-        )}
-      </div>
-      <textarea
-        aria-label="Private note"
-        rows={3}
-        value={body}
-        maxLength={1000}
-        placeholder="Only you can see this note about this member."
-        onChange={(event) => {
-          setBody(event.currentTarget.value);
-          setSaved(false);
-        }}
-        className="resize-none rounded-[8px] border border-border bg-surface-1 px-2.5 py-2 text-[13px] text-text placeholder:text-text-muted focus:border-accent focus:outline-none"
-      />
-      <div className="flex items-center gap-2">
-        <ActionButton
-          disabled={busy || !dirty}
-          onClick={() => {
-            setError(null);
-            setBusy(true);
-            void upsert({ targetUserId: userId, body: body.trim() })
-              .then(() => setSaved(true))
-              .catch((cause: unknown) =>
-                setError(cause instanceof Error ? cause.message : "Could not save the note."),
-              )
-              .finally(() => setBusy(false));
-          }}
-        >
-          Save note
-        </ActionButton>
-        {saved && !dirty && (
-          <Text size="xs" tone="secondary">
-            Saved
-          </Text>
-        )}
-        {error !== null && (
-          <Text size="xs" tone="danger" role="alert">
-            {error}
-          </Text>
-        )}
-      </div>
-    </section>
-  );
-}
-
-function ActionButton({
-  children,
-  onClick,
-  disabled = false,
-  danger = false,
-}: {
-  readonly children: React.ReactNode;
-  readonly onClick: () => void;
-  readonly disabled?: boolean;
-  readonly danger?: boolean;
-}) {
-  return (
-    <Button
-      type="button"
-      size="sm"
-      variant={danger ? "danger" : "secondary"}
-      disabled={disabled}
-      onClick={onClick}
-    >
-      {children}
-    </Button>
-  );
-}
-
-function BanMenu({
-  disabled,
-  onPick,
-}: {
-  readonly disabled: boolean;
-  readonly onPick: (durationMs?: number, reason?: string) => void;
-}) {
-  const [open, setOpen] = useState(false);
-  const [reason, setReason] = useState("");
-  return (
-    <div className="relative">
-      <ActionButton danger disabled={disabled} onClick={() => setOpen((value) => !value)}>
-        Ban…
-      </ActionButton>
-      {open && (
-        <div className="absolute bottom-full right-0 z-30 mb-1 w-[220px] animate-pop-in rounded-[9px] border border-border bg-surface-2 p-1.5 shadow-2xl shadow-black/25">
-          <input
-            aria-label="Ban reason"
-            value={reason}
-            maxLength={200}
-            placeholder="Reason (optional)"
-            onChange={(event) => setReason(event.target.value)}
-            className="mb-1 h-8 w-full rounded-[7px] border border-border bg-surface-1 px-2 text-[12px] text-text placeholder:text-text-muted focus:border-accent focus:outline-none"
-          />
-          {BAN_DURATIONS.map((duration) => (
-            <button
-              key={duration.label}
-              type="button"
-              onClick={() => {
-                setOpen(false);
-                onPick(
-                  duration.ms ?? undefined,
-                  reason.trim().length > 0 ? reason.trim() : undefined,
-                );
-              }}
-              className="flex w-full items-center rounded-[7px] px-2.5 py-1.5 text-left text-[12px] text-danger transition hover:bg-danger/10"
-            >
-              {duration.label}
-            </button>
-          ))}
-        </div>
-      )}
-    </div>
-  );
-}
-
-function TimeoutMenu({
-  disabled,
-  onPick,
-}: {
-  readonly disabled: boolean;
-  readonly onPick: (until: number) => void;
-}) {
-  const [open, setOpen] = useState(false);
-  return (
-    <div className="relative">
-      <ActionButton disabled={disabled} onClick={() => setOpen((value) => !value)}>
-        Time out…
-      </ActionButton>
-      {open && (
-        <div className="absolute bottom-full left-0 z-30 mb-1 min-w-[140px] animate-pop-in rounded-[9px] border border-border bg-surface-2 p-1 shadow-2xl shadow-black/25">
-          {TIMEOUTS.map((duration) => (
-            <button
-              key={duration.label}
-              type="button"
-              onClick={() => {
-                setOpen(false);
-                onPick(Date.now() + duration.ms);
-              }}
-              className="flex w-full items-center rounded-[7px] px-2.5 py-1.5 text-left text-[12px] text-text transition hover:bg-surface-3"
-            >
-              {duration.label}
-            </button>
-          ))}
-        </div>
-      )}
     </div>
   );
 }

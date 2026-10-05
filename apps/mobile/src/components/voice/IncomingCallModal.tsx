@@ -5,7 +5,7 @@ import { useVoice } from "../../providers/VoiceProvider";
 import { MemberAvatar } from "../chat/MemberAvatar";
 
 export interface IncomingCallModalProps {
-  readonly callerName: (call: CallView) => string;
+  readonly callerName: (_call: CallView) => string;
 }
 
 /** Ringing surface for an incoming DM/group-DM call, with accept and decline. */

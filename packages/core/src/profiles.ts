@@ -177,6 +177,22 @@ function sanitizeProvider(value: unknown): WellKnownProvider | null {
   return null;
 }
 
+function sanitizeStoredAuth(value: unknown): WellKnownAuth | null {
+  if (!isRecord(value) || !isRecord(value.local) || !Array.isArray(value.providers)) {
+    return null;
+  }
+  const providers = value.providers
+    .map(sanitizeProvider)
+    .filter((p): p is WellKnownProvider => p !== null);
+  return {
+    local: {
+      enabled: value.local.enabled === true,
+      signup: value.local.signup === true,
+    },
+    providers,
+  };
+}
+
 function sanitizeStoredProfile(value: unknown): ServerProfile | null {
   if (!isRecord(value)) {
     return null;
@@ -190,7 +206,7 @@ function sanitizeStoredProfile(value: unknown): ServerProfile | null {
   const siteUrl = readOptionalString(value.siteUrl);
   const apiVersion = typeof value.apiVersion === "number" ? value.apiVersion : null;
   const addedAt = typeof value.addedAt === "number" ? value.addedAt : 0;
-  const auth = value.auth;
+  const auth = sanitizeStoredAuth(value.auth);
   if (
     id === null ||
     baseUrl === null ||
@@ -200,21 +216,10 @@ function sanitizeStoredProfile(value: unknown): ServerProfile | null {
     convexUrl === null ||
     siteUrl === null ||
     apiVersion === null ||
-    !isRecord(auth)
+    auth === null
   ) {
     return null;
   }
-  const local = auth.local;
-  if (!isRecord(local)) {
-    return null;
-  }
-  const rawProviders = auth.providers;
-  if (!Array.isArray(rawProviders)) {
-    return null;
-  }
-  const providers = rawProviders
-    .map(sanitizeProvider)
-    .filter((p): p is WellKnownProvider => p !== null);
   return {
     id,
     baseUrl,
@@ -224,13 +229,7 @@ function sanitizeStoredProfile(value: unknown): ServerProfile | null {
     apiVersion,
     convexUrl,
     siteUrl,
-    auth: {
-      local: {
-        enabled: local.enabled === true,
-        signup: local.signup === true,
-      },
-      providers,
-    },
+    auth,
     addedAt,
   };
 }
@@ -272,29 +271,32 @@ export function createMemoryProfileStore(seed: readonly ServerProfile[] = []): P
   let activeId: string | null = null;
 
   return {
-    async list() {
-      return [...profiles.values()];
+    list() {
+      return Promise.resolve([...profiles.values()]);
     },
-    async get(id) {
-      return profiles.get(id);
+    get(id) {
+      return Promise.resolve(profiles.get(id));
     },
-    async add(profile) {
+    add(profile) {
       profiles.set(profile.id, profile);
+      return Promise.resolve();
     },
-    async remove(id) {
+    remove(id) {
       profiles.delete(id);
       if (activeId === id) {
         activeId = null;
       }
+      return Promise.resolve();
     },
-    async setActive(id) {
+    setActive(id) {
       if (!profiles.has(id)) {
-        throw new UnknownProfileError(id);
+        return Promise.reject(new UnknownProfileError(id));
       }
       activeId = id;
+      return Promise.resolve();
     },
-    async getActive() {
-      return activeId === null ? undefined : profiles.get(activeId);
+    getActive() {
+      return Promise.resolve(activeId === null ? undefined : profiles.get(activeId));
     },
   };
 }
@@ -333,36 +335,39 @@ export function webLocalStorageStore(options: WebLocalStorageStoreOptions = {}):
   }
 
   return {
-    async list() {
-      return readProfiles();
+    list() {
+      return Promise.resolve(readProfiles());
     },
-    async get(id) {
-      return readProfiles().find((profile) => profile.id === id);
+    get(id) {
+      return Promise.resolve(readProfiles().find((profile) => profile.id === id));
     },
-    async add(profile) {
+    add(profile) {
       const profiles = readProfiles().filter((existing) => existing.id !== profile.id);
       profiles.push(profile);
       writeProfiles(profiles);
+      return Promise.resolve();
     },
-    async remove(id) {
+    remove(id) {
       writeProfiles(readProfiles().filter((profile) => profile.id !== id));
       if (readActiveId() === id) {
         storage.removeItem(activeKey);
       }
+      return Promise.resolve();
     },
-    async setActive(id) {
+    setActive(id) {
       const exists = readProfiles().some((profile) => profile.id === id);
       if (!exists) {
-        throw new UnknownProfileError(id);
+        return Promise.reject(new UnknownProfileError(id));
       }
       storage.setItem(activeKey, id);
+      return Promise.resolve();
     },
-    async getActive() {
+    getActive() {
       const id = readActiveId();
       if (id === null) {
-        return undefined;
+        return Promise.resolve(undefined);
       }
-      return readProfiles().find((profile) => profile.id === id);
+      return Promise.resolve(readProfiles().find((profile) => profile.id === id));
     },
   };
 }

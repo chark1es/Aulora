@@ -30,13 +30,8 @@ import {
   writeVoiceSettings,
 } from "../lib/voice/device-settings";
 import { sendLeaveBeacon } from "../lib/voice/leave-beacon";
-import {
-  applySinkId,
-  createOutputGain,
-  listMediaDevices,
-  type OutputGain,
-  onDeviceChange,
-} from "../lib/voice/media";
+import { listMediaDevices, onDeviceChange } from "../lib/voice/media";
+import { RemoteAudio } from "./voice-remote-audio";
 
 /** How often the cached unload token is refreshed while a call is active. */
 const TOKEN_REFRESH_MS = 60_000;
@@ -67,23 +62,23 @@ export interface VoiceContextValue extends VoiceSnapshot {
   readonly canVideo: boolean;
   readonly view: CallViewMode;
   readonly pipPinned: boolean;
-  setView(view: CallViewMode): void;
-  setPipPinned(pinned: boolean): void;
+  setView(_view: CallViewMode): void;
+  setPipPinned(_pinned: boolean): void;
   startCall(
-    channelId: string,
-    kind: CallKind,
-    ringingUserIds?: readonly string[],
+    _channelId: string,
+    _kind: CallKind,
+    _ringingUserIds?: readonly string[],
   ): Promise<string | null>;
-  joinCall(callId: string): Promise<boolean>;
-  acceptCall(call: CallView): Promise<void>;
-  declineCall(callId: string): Promise<void>;
+  joinCall(_callId: string): Promise<boolean>;
+  acceptCall(_call: CallView): Promise<void>;
+  declineCall(_callId: string): Promise<void>;
   leave(): Promise<void>;
   endCall(): Promise<void>;
-  setMuted(muted: boolean): Promise<void>;
-  setDeafened(deafened: boolean): void;
-  setCamera(on: boolean): Promise<void>;
-  setScreenSharing(on: boolean): Promise<void>;
-  updateSettings(partial: Partial<VoiceDeviceSettings>): Promise<void>;
+  setMuted(_muted: boolean): Promise<void>;
+  setDeafened(_deafened: boolean): void;
+  setCamera(_on: boolean): Promise<void>;
+  setScreenSharing(_on: boolean): Promise<void>;
+  updateSettings(_partial: Partial<VoiceDeviceSettings>): Promise<void>;
   refreshDevices(): Promise<void>;
   clearError(): void;
 }
@@ -135,7 +130,7 @@ export function VoiceProvider({
   const [view, setView] = useState<CallViewMode>("hidden");
   const [pipPinned, setPipPinned] = useState(false);
   const [switchPrompt, setSwitchPrompt] = useState<{
-    resolve: (accepted: boolean) => void;
+    resolve: (_accepted: boolean) => void;
   } | null>(null);
   const settingsRef = useRef<VoiceDeviceSettings>(settings);
   settingsRef.current = settings;
@@ -159,13 +154,15 @@ export function VoiceProvider({
     });
     engineRef.current = engine;
     setSnapshot(engine.getSnapshot());
-    const unsubscribe = engine.subscribe(() => setSnapshot(engine.getSnapshot()));
-    const offIncoming = convexVoiceSubscriptions(client).watchIncoming((calls) =>
-      setIncoming(calls),
-    );
-    const offActive = convexVoiceSubscriptions(client).watchActiveCalls((calls) =>
-      setActiveCalls(calls),
-    );
+    const unsubscribe = engine.subscribe(() => {
+      setSnapshot(engine.getSnapshot());
+    });
+    const offIncoming = convexVoiceSubscriptions(client).watchIncoming((calls) => {
+      setIncoming(calls);
+    });
+    const offActive = convexVoiceSubscriptions(client).watchActiveCalls((calls) => {
+      setActiveCalls(calls);
+    });
     return () => {
       unsubscribe();
       offIncoming();
@@ -203,8 +200,9 @@ export function VoiceProvider({
       return;
     }
     const isTyping = (target: EventTarget | null): boolean =>
-      target instanceof HTMLElement &&
-      (target.tagName === "INPUT" || target.tagName === "TEXTAREA" || target.isContentEditable);
+      target instanceof HTMLInputElement ||
+      target instanceof HTMLTextAreaElement ||
+      (target instanceof HTMLElement && target.isContentEditable);
     const onKeyDown = (event: KeyboardEvent) => {
       if (event.code === "Space" && !event.repeat && !isTyping(event.target)) {
         event.preventDefault();
@@ -496,8 +494,12 @@ export function VoiceProvider({
       {children}
       <SwitchDeviceCallModal
         open={switchPrompt !== null}
-        onCancel={() => settleSwitch(false)}
-        onConfirm={() => settleSwitch(true)}
+        onCancel={() => {
+          settleSwitch(false);
+        }}
+        onConfirm={() => {
+          settleSwitch(true);
+        }}
       />
       <RemoteAudio
         streams={snapshot.remoteStreams}
@@ -507,98 +509,6 @@ export function VoiceProvider({
       />
     </VoiceContext.Provider>
   );
-}
-
-/** Hidden audio elements for every remote participant, honouring the speaker choice. */
-function RemoteAudio({
-  streams,
-  deafened,
-  outputDeviceId,
-  outputVolume,
-}: {
-  readonly streams: ReadonlyMap<string, MediaStream>;
-  readonly deafened: boolean;
-  readonly outputDeviceId: string | null;
-  readonly outputVolume: number;
-}) {
-  return (
-    <>
-      {[...streams.entries()].map(([userId, stream]) => (
-        <RemoteAudioElement
-          key={userId}
-          stream={stream}
-          deafened={deafened}
-          outputDeviceId={outputDeviceId}
-          outputVolume={outputVolume}
-        />
-      ))}
-    </>
-  );
-}
-
-function RemoteAudioElement({
-  stream,
-  deafened,
-  outputDeviceId,
-  outputVolume,
-}: {
-  readonly stream: MediaStream;
-  readonly deafened: boolean;
-  readonly outputDeviceId: string | null;
-  readonly outputVolume: number;
-}) {
-  const ref = useRef<HTMLAudioElement | null>(null);
-  const boostRef = useRef<OutputGain | null>(null);
-
-  useEffect(() => {
-    const element = ref.current;
-    if (element === null) {
-      return;
-    }
-    element.srcObject = stream;
-    void element.play().catch(() => undefined);
-    return () => {
-      element.srcObject = null;
-    };
-  }, [stream]);
-
-  useEffect(() => {
-    if (ref.current !== null) {
-      void applySinkId(ref.current, outputDeviceId);
-    }
-  }, [outputDeviceId]);
-
-  // Past unity the element's `volume` cannot go, so route through a WebAudio
-  // gain instead; at or below unity the element plays directly and keeps the
-  // chosen output device.
-  useEffect(() => {
-    const element = ref.current;
-    if (element === null) {
-      return;
-    }
-    if (outputVolume <= 1) {
-      boostRef.current?.stop();
-      boostRef.current = null;
-      element.volume = Math.max(0, outputVolume);
-    } else {
-      element.volume = 1;
-      if (boostRef.current === null) {
-        boostRef.current = createOutputGain(stream, outputVolume);
-      } else {
-        boostRef.current.setVolume(outputVolume);
-      }
-    }
-  }, [outputVolume, stream]);
-
-  useEffect(
-    () => () => {
-      boostRef.current?.stop();
-      boostRef.current = null;
-    },
-    [],
-  );
-
-  return <audio ref={ref} autoPlay playsInline muted={deafened} className="hidden" />;
 }
 
 function loadBrowserVoiceClientId(): string {

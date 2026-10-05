@@ -11,18 +11,7 @@ import { ListGroup, ListRow } from "./List";
 
 const QUICK_REACTIONS = ["👍", "❤️", "😂", "🎉", "👀", "✅"] as const;
 
-export function MessageActionsSheet({
-  visible,
-  runtime,
-  message,
-  text,
-  authorName,
-  ownUserId,
-  permissions,
-  onReply,
-  onQuote,
-  onClose,
-}: {
+export function MessageActionsSheet(props: {
   readonly visible: boolean;
   readonly runtime: ChatSurfaceRuntime;
   readonly message: MessagePayload;
@@ -34,6 +23,18 @@ export function MessageActionsSheet({
   readonly onQuote?: (() => void) | undefined;
   readonly onClose: () => void;
 }) {
+  const {
+    visible,
+    runtime,
+    message,
+    text,
+    authorName,
+    ownUserId,
+    permissions,
+    onReply,
+    onQuote,
+    onClose,
+  } = props;
   const palette = usePalette();
   const [mode, setMode] = useState<"actions" | "edit" | "emoji">("actions");
   const [emoji, setEmoji] = useState("");

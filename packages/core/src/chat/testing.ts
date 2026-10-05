@@ -7,32 +7,10 @@
  */
 
 import { type Overwrite, Permission } from "../permissions.js";
-import type {
-  ChannelSummary,
-  ChatPort,
-  ChatSubscriptions,
-  MessagePayload,
-  PresenceRow,
-  ReactionRow,
-  ReadStateRow,
-  StoredFileView,
-  TypingRow,
-} from "./port.js";
+import { createMockHub, type MockPortState } from "./mock-hub.js";
+import type { ChatPort, ChatSubscriptions, StoredFileView } from "./port.js";
 
-export interface MockPortState {
-  readonly calls: { method: string; args: unknown }[];
-  readonly channels: Map<string, ChannelSummary>;
-  readonly messages: Map<string, MessagePayload>;
-  readonly reactions: Map<string, ReactionRow[]>;
-  readonly presence: PresenceRow[];
-  readonly typing: Map<string, TypingRow[]>;
-  readonly readStates: Map<string, ReadStateRow>;
-  readonly members: Map<string, string[]>;
-  readonly files: Map<string, StoredFileView>;
-  /** Plaintext bytes by file id (the mock's "sealed at rest" storage). */
-  readonly blobs: Map<string, Uint8Array>;
-  deviceId: string;
-}
+export type { MockPortState } from "./mock-hub.js";
 
 export interface MockPort extends ChatPort, ChatSubscriptions {
   readonly state: MockPortState;
@@ -65,45 +43,68 @@ export function createMockPort(options: { readonly now?: () => number } = {}): M
     blobs: new Map(),
     deviceId: "device-1",
   };
-
-  const channelListeners: ((channels: readonly ChannelSummary[]) => void)[] = [];
-  const messageListeners = new Map<string, ((m: readonly MessagePayload[]) => void)[]>();
-  const reactionListeners = new Map<string, ((r: readonly ReactionRow[]) => void)[]>();
-  const presenceListeners: ((p: readonly PresenceRow[]) => void)[] = [];
-  const typingListeners = new Map<string, ((t: readonly TypingRow[]) => void)[]>();
-  const readStateListeners = new Map<string, ((s: ReadStateRow | null) => void)[]>();
+  const hub = createMockHub(state);
 
   const record = (method: string, args: unknown) => {
     state.calls.push({ method, args });
   };
 
-  const emitChannels = () => {
-    const list = [...state.channels.values()];
-    for (const listener of channelListeners) {
-      listener(list);
+  const sendMessage = (args: {
+    channelId: string;
+    body: string;
+    threadRootId?: string;
+    replyToId?: string;
+    mentionUserIds?: readonly string[];
+    mentionChannelIds?: readonly string[];
+    mentionCategoryIds?: readonly string[];
+    attachmentIds?: readonly string[];
+  }): Promise<string> => {
+    record("sendMessage", args);
+    messageSeq += 1;
+    const createdAt = options.now?.() ?? messageSeq;
+    const id = nextId("message");
+    state.messages.set(id, {
+      id,
+      channelId: args.channelId,
+      authorId: "me",
+      body: args.body,
+      threadRootId: args.threadRootId ?? null,
+      ...(args.replyToId !== undefined ? { replyToId: args.replyToId } : {}),
+      attachmentIds: [...(args.attachmentIds ?? [])],
+      mentionUserIds: [...(args.mentionUserIds ?? [])],
+      ...(args.mentionChannelIds !== undefined
+        ? { mentionChannelIds: [...args.mentionChannelIds] }
+        : {}),
+      ...(args.mentionCategoryIds !== undefined
+        ? { mentionCategoryIds: [...args.mentionCategoryIds] }
+        : {}),
+      editedAt: null,
+      deletedAt: null,
+      pinnedAt: null,
+      createdAt,
+    });
+    if (args.threadRootId !== undefined) {
+      const root = state.messages.get(args.threadRootId);
+      if (root !== undefined) {
+        state.messages.set(root.id, {
+          ...root,
+          replyCount: (root.replyCount ?? 0) + 1,
+          lastReplyAt: createdAt,
+        });
+      }
     }
-  };
-  const emitMessages = (channelId: string) => {
-    const list = [...state.messages.values()]
-      .filter((message) => message.channelId === channelId && message.threadRootId === null)
-      .sort((a, b) => a.createdAt - b.createdAt);
-    for (const listener of messageListeners.get(channelId) ?? []) {
-      listener(list);
-    }
-  };
-  const emitTyping = (channelId: string) => {
-    for (const listener of typingListeners.get(channelId) ?? []) {
-      listener(state.typing.get(channelId) ?? []);
-    }
+    hub.emitMessages(args.channelId);
+    return Promise.resolve(id);
   };
 
   const port: MockPort = {
     state,
-    async upsertDevice(args) {
+    ...hub.subscriptions,
+    upsertDevice(args) {
       record("upsertDevice", args);
-      return { deviceId: state.deviceId };
+      return Promise.resolve({ deviceId: state.deviceId });
     },
-    async createChannel(args) {
+    createChannel(args) {
       record("createChannel", args);
       const id = nextId("channel");
       state.channels.set(id, {
@@ -116,10 +117,10 @@ export function createMockPort(options: { readonly now?: () => number } = {}): M
         ...(args.private === true ? { isPrivate: true } : {}),
       });
       state.members.set(id, args.private === true ? ["me"] : []);
-      emitChannels();
-      return id;
+      hub.emitChannels();
+      return Promise.resolve(id);
     },
-    async reorderChannels(args) {
+    reorderChannels(args) {
       record("reorderChannels", args);
       for (const move of args.moves) {
         const channel = state.channels.get(move.channelId);
@@ -131,28 +132,28 @@ export function createMockPort(options: { readonly now?: () => number } = {}): M
           });
         }
       }
-      emitChannels();
-      return null;
+      hub.emitChannels();
+      return Promise.resolve(null);
     },
-    async renameChannel(args) {
+    renameChannel(args) {
       record("renameChannel", args);
       const channel = state.channels.get(args.channelId);
       if (channel !== undefined) {
         state.channels.set(args.channelId, { ...channel, name: args.name });
-        emitChannels();
+        hub.emitChannels();
       }
-      return null;
+      return Promise.resolve(null);
     },
-    async setChannelTopic(args) {
+    setChannelTopic(args) {
       record("setChannelTopic", args);
       const channel = state.channels.get(args.channelId);
       if (channel !== undefined) {
         state.channels.set(args.channelId, { ...channel, topic: args.topic ?? null });
-        emitChannels();
+        hub.emitChannels();
       }
-      return null;
+      return Promise.resolve(null);
     },
-    async setChannelPrivate(args) {
+    setChannelPrivate(args) {
       record("setChannelPrivate", args);
       const channel = state.channels.get(args.channelId);
       if (channel !== undefined) {
@@ -163,11 +164,11 @@ export function createMockPort(options: { readonly now?: () => number } = {}): M
           isPrivate: args.private,
           memberIds,
         });
-        emitChannels();
+        hub.emitChannels();
       }
-      return null;
+      return Promise.resolve(null);
     },
-    async setChannelBlocked(args) {
+    setChannelBlocked(args) {
       record("setChannelBlocked", args);
       const channel = state.channels.get(args.channelId);
       if (channel !== undefined) {
@@ -188,58 +189,58 @@ export function createMockPort(options: { readonly now?: () => number } = {}): M
           overrides,
           memberIds: (channel.memberIds ?? []).filter((id) => !blocked.has(id)),
         });
-        emitChannels();
+        hub.emitChannels();
       }
-      return null;
+      return Promise.resolve(null);
     },
-    async joinChannel(args) {
+    joinChannel(args) {
       record("joinChannel", args);
-      return null;
+      return Promise.resolve(null);
     },
-    async leaveChannel(args) {
+    leaveChannel(args) {
       record("leaveChannel", args);
-      return null;
+      return Promise.resolve(null);
     },
-    async addChannelMember(args) {
+    addChannelMember(args) {
       record("addChannelMember", args);
       const list = state.members.get(args.channelId) ?? [];
       if (list.includes(args.userId)) {
-        return { added: false };
+        return Promise.resolve({ added: false });
       }
       state.members.set(args.channelId, [...list, args.userId]);
-      return { added: true };
+      return Promise.resolve({ added: true });
     },
-    async removeChannelMember(args) {
+    removeChannelMember(args) {
       record("removeChannelMember", args);
       const list = state.members.get(args.channelId) ?? [];
       if (!list.includes(args.userId)) {
-        return { removed: false };
+        return Promise.resolve({ removed: false });
       }
       state.members.set(
         args.channelId,
         list.filter((id) => id !== args.userId),
       );
-      return { removed: true };
+      return Promise.resolve({ removed: true });
     },
-    async archiveChannel(args) {
+    archiveChannel(args) {
       record("archiveChannel", args);
       const channel = state.channels.get(args.channelId);
       if (channel !== undefined) {
         state.channels.set(args.channelId, { ...channel, archived: true });
-        emitChannels();
+        hub.emitChannels();
       }
-      return null;
+      return Promise.resolve(null);
     },
-    async unarchiveChannel(args) {
+    unarchiveChannel(args) {
       record("unarchiveChannel", args);
       const channel = state.channels.get(args.channelId);
       if (channel !== undefined) {
         state.channels.set(args.channelId, { ...channel, archived: false });
-        emitChannels();
+        hub.emitChannels();
       }
-      return null;
+      return Promise.resolve(null);
     },
-    async createDm(args) {
+    createDm(args) {
       record("createDm", args);
       const id = nextId("channel");
       state.channels.set(id, {
@@ -252,10 +253,10 @@ export function createMockPort(options: { readonly now?: () => number } = {}): M
         memberIds: ["me", args.otherUserId],
       });
       state.members.set(id, ["me", args.otherUserId]);
-      emitChannels();
-      return { channelId: id, created: true };
+      hub.emitChannels();
+      return Promise.resolve({ channelId: id, created: true });
     },
-    async createGroupDm(args) {
+    createGroupDm(args) {
       record("createGroupDm", args);
       const id = nextId("channel");
       state.channels.set(id, {
@@ -268,14 +269,14 @@ export function createMockPort(options: { readonly now?: () => number } = {}): M
         memberIds: ["me", ...args.memberIds],
       });
       state.members.set(id, ["me", ...args.memberIds]);
-      emitChannels();
-      return { channelId: id, created: true };
+      hub.emitChannels();
+      return Promise.resolve({ channelId: id, created: true });
     },
-    async getChannelMemberIds(args) {
+    getChannelMemberIds(args) {
       record("getChannelMemberIds", args);
-      return state.members.get(args.channelId) ?? [];
+      return Promise.resolve(state.members.get(args.channelId) ?? []);
     },
-    async uploadFile(args) {
+    uploadFile(args) {
       record("uploadFile", { ...args, bytes: args.bytes.length });
       const fileId = nextId("file");
       state.blobs.set(fileId, new Uint8Array(args.bytes));
@@ -289,65 +290,30 @@ export function createMockPort(options: { readonly now?: () => number } = {}): M
         blurhash: args.blurhash ?? null,
         url: `blob://${fileId}`,
       });
-      return fileId;
+      return Promise.resolve(fileId);
     },
-    async getFile(args) {
+    getFile(args) {
       record("getFile", args);
-      return state.files.get(args.fileId) ?? null;
+      return Promise.resolve(state.files.get(args.fileId) ?? null);
     },
-    async getFiles(args) {
+    getFiles(args) {
       record("getFiles", args);
-      return args.fileIds
-        .map((fileId) => state.files.get(fileId))
-        .filter((file): file is StoredFileView => file !== undefined);
+      return Promise.resolve(
+        args.fileIds
+          .map((fileId) => state.files.get(fileId))
+          .filter((file): file is StoredFileView => file !== undefined),
+      );
     },
-    async downloadFile(args) {
+    downloadFile(args) {
       record("downloadFile", args);
       const bytes = state.blobs.get(args.fileId);
       if (bytes === undefined) {
-        throw new Error("file is no longer available");
+        return Promise.reject(new Error("file is no longer available"));
       }
-      return new Uint8Array(bytes);
+      return Promise.resolve(new Uint8Array(bytes));
     },
-    async sendMessage(args) {
-      record("sendMessage", args);
-      messageSeq += 1;
-      const createdAt = options.now?.() ?? messageSeq;
-      const id = nextId("message");
-      state.messages.set(id, {
-        id,
-        channelId: args.channelId,
-        authorId: "me",
-        body: args.body,
-        threadRootId: args.threadRootId ?? null,
-        ...(args.replyToId !== undefined ? { replyToId: args.replyToId } : {}),
-        attachmentIds: [...(args.attachmentIds ?? [])],
-        mentionUserIds: [...(args.mentionUserIds ?? [])],
-        ...(args.mentionChannelIds !== undefined
-          ? { mentionChannelIds: [...args.mentionChannelIds] }
-          : {}),
-        ...(args.mentionCategoryIds !== undefined
-          ? { mentionCategoryIds: [...args.mentionCategoryIds] }
-          : {}),
-        editedAt: null,
-        deletedAt: null,
-        pinnedAt: null,
-        createdAt,
-      });
-      if (args.threadRootId !== undefined) {
-        const root = state.messages.get(args.threadRootId);
-        if (root !== undefined) {
-          state.messages.set(root.id, {
-            ...root,
-            replyCount: (root.replyCount ?? 0) + 1,
-            lastReplyAt: createdAt,
-          });
-        }
-      }
-      emitMessages(args.channelId);
-      return id;
-    },
-    async editMessage(args) {
+    sendMessage,
+    editMessage(args) {
       record("editMessage", args);
       const message = state.messages.get(args.messageId);
       if (message !== undefined) {
@@ -356,38 +322,38 @@ export function createMockPort(options: { readonly now?: () => number } = {}): M
           body: args.body,
           editedAt: Date.now(),
         });
-        emitMessages(message.channelId);
+        hub.emitMessages(message.channelId);
       }
-      return null;
+      return Promise.resolve(null);
     },
-    async deleteMessage(args) {
+    deleteMessage(args) {
       record("deleteMessage", args);
       const message = state.messages.get(args.messageId);
       if (message !== undefined) {
         state.messages.set(args.messageId, { ...message, deletedAt: Date.now() });
-        emitMessages(message.channelId);
+        hub.emitMessages(message.channelId);
       }
-      return null;
+      return Promise.resolve(null);
     },
-    async pinMessage(args) {
+    pinMessage(args) {
       record("pinMessage", args);
       const message = state.messages.get(args.messageId);
       if (message !== undefined) {
         state.messages.set(args.messageId, { ...message, pinnedAt: Date.now() });
-        emitMessages(message.channelId);
+        hub.emitMessages(message.channelId);
       }
-      return null;
+      return Promise.resolve(null);
     },
-    async unpinMessage(args) {
+    unpinMessage(args) {
       record("unpinMessage", args);
       const message = state.messages.get(args.messageId);
       if (message !== undefined) {
         state.messages.set(args.messageId, { ...message, pinnedAt: null });
-        emitMessages(message.channelId);
+        hub.emitMessages(message.channelId);
       }
-      return null;
+      return Promise.resolve(null);
     },
-    async toggleReaction(args) {
+    toggleReaction(args) {
       record("toggleReaction", args);
       const list = state.reactions.get(args.messageId) ?? [];
       const index = list.findIndex(
@@ -396,24 +362,18 @@ export function createMockPort(options: { readonly now?: () => number } = {}): M
       const next = [...list];
       if (index >= 0) {
         next.splice(index, 1);
-        state.reactions.set(args.messageId, next);
-        for (const listener of reactionListeners.get(args.messageId) ?? []) {
-          listener(next);
-        }
-        return { added: false };
+        hub.emitReactions(args.messageId, next);
+        return Promise.resolve({ added: false });
       }
       next.push({ id: nextId("reaction"), userId: "me", emoji: args.emoji });
-      state.reactions.set(args.messageId, next);
-      for (const listener of reactionListeners.get(args.messageId) ?? []) {
-        listener(next);
-      }
-      return { added: true };
+      hub.emitReactions(args.messageId, next);
+      return Promise.resolve({ added: true });
     },
-    async heartbeat(args) {
+    heartbeat(args) {
       record("heartbeat", args);
-      return null;
+      return Promise.resolve(null);
     },
-    async setStatus(args) {
+    setStatus(args) {
       record("setStatus", args);
       state.presence.splice(
         0,
@@ -426,12 +386,10 @@ export function createMockPort(options: { readonly now?: () => number } = {}): M
           lastHeartbeat: Date.now(),
         },
       );
-      for (const listener of presenceListeners) {
-        listener(state.presence);
-      }
-      return null;
+      hub.emitPresence();
+      return Promise.resolve(null);
     },
-    async setTyping(args) {
+    setTyping(args) {
       record("setTyping", args);
       const list = state.typing.get(args.channelId) ?? [];
       const next = [
@@ -439,135 +397,28 @@ export function createMockPort(options: { readonly now?: () => number } = {}): M
         { userId: "me", expiresAt: Date.now() + 8000 },
       ];
       state.typing.set(args.channelId, next);
-      emitTyping(args.channelId);
-      return { expiresAt: next[next.length - 1]?.expiresAt ?? 0 };
+      hub.emitTyping(args.channelId);
+      return Promise.resolve({ expiresAt: next.at(-1)?.expiresAt ?? 0 });
     },
-    async clearTyping(args) {
+    clearTyping(args) {
       record("clearTyping", args);
       state.typing.set(
         args.channelId,
         (state.typing.get(args.channelId) ?? []).filter((row) => row.userId !== "me"),
       );
-      emitTyping(args.channelId);
-      return null;
+      hub.emitTyping(args.channelId);
+      return Promise.resolve(null);
     },
-    async setReadState(args) {
+    setReadState(args) {
       record("setReadState", args);
-      const next: ReadStateRow = {
+      const next = {
         channelId: args.channelId,
         lastReadMessageId: args.lastReadMessageId,
         mentionCount: 0,
       };
       state.readStates.set(args.channelId, next);
-      for (const listener of readStateListeners.get(args.channelId) ?? []) {
-        listener(next);
-      }
-      return null;
-    },
-    watchChannels(onChange) {
-      channelListeners.push(onChange);
-      onChange([...state.channels.values()]);
-      return () => {
-        const index = channelListeners.indexOf(onChange);
-        if (index >= 0) {
-          channelListeners.splice(index, 1);
-        }
-      };
-    },
-    watchMessages(channelId, onChange, options) {
-      // Like the server: the newest `limit` roots, oldest first.
-      const limit = options?.limit;
-      const listener = (messages: readonly MessagePayload[]) =>
-        onChange(limit === undefined ? messages : messages.slice(-limit));
-      const list = messageListeners.get(channelId) ?? [];
-      list.push(listener);
-      messageListeners.set(channelId, list);
-      listener(
-        [...state.messages.values()]
-          .filter((message) => message.channelId === channelId && message.threadRootId === null)
-          .sort((a, b) => a.createdAt - b.createdAt),
-      );
-      return () => {
-        messageListeners.set(
-          channelId,
-          (messageListeners.get(channelId) ?? []).filter((entry) => entry !== listener),
-        );
-      };
-    },
-    watchReactions(messageId, onChange) {
-      const list = reactionListeners.get(messageId) ?? [];
-      list.push(onChange);
-      reactionListeners.set(messageId, list);
-      onChange(state.reactions.get(messageId) ?? []);
-      return () => {
-        reactionListeners.set(
-          messageId,
-          (reactionListeners.get(messageId) ?? []).filter((listener) => listener !== onChange),
-        );
-      };
-    },
-    watchReactionsBatch(messageIds, onChange) {
-      const unique = [...new Set(messageIds)];
-      const emit = () =>
-        onChange(
-          unique.flatMap((messageId) =>
-            (state.reactions.get(messageId) ?? []).map((reaction) => ({
-              messageId,
-              ...reaction,
-            })),
-          ),
-        );
-      const registered = new Map<string, () => void>();
-      for (const messageId of unique) {
-        const listener = () => emit();
-        const list = reactionListeners.get(messageId) ?? [];
-        list.push(listener);
-        reactionListeners.set(messageId, list);
-        registered.set(messageId, listener);
-      }
-      emit();
-      return () => {
-        for (const [messageId, listener] of registered) {
-          reactionListeners.set(
-            messageId,
-            (reactionListeners.get(messageId) ?? []).filter((entry) => entry !== listener),
-          );
-        }
-      };
-    },
-    watchPresence(onChange) {
-      presenceListeners.push(onChange);
-      onChange(state.presence);
-      return () => {
-        const index = presenceListeners.indexOf(onChange);
-        if (index >= 0) {
-          presenceListeners.splice(index, 1);
-        }
-      };
-    },
-    watchTyping(channelId, onChange) {
-      const list = typingListeners.get(channelId) ?? [];
-      list.push(onChange);
-      typingListeners.set(channelId, list);
-      onChange(state.typing.get(channelId) ?? []);
-      return () => {
-        typingListeners.set(
-          channelId,
-          (typingListeners.get(channelId) ?? []).filter((listener) => listener !== onChange),
-        );
-      };
-    },
-    watchReadState(channelId, onChange) {
-      const list = readStateListeners.get(channelId) ?? [];
-      list.push(onChange);
-      readStateListeners.set(channelId, list);
-      onChange(state.readStates.get(channelId) ?? null);
-      return () => {
-        readStateListeners.set(
-          channelId,
-          (readStateListeners.get(channelId) ?? []).filter((listener) => listener !== onChange),
-        );
-      };
+      hub.emitReadState(args.channelId, next);
+      return Promise.resolve(null);
     },
   };
 

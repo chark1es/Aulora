@@ -9,8 +9,12 @@ export function useCallDuration(startedAt: number | null): string {
       return;
     }
     setNow(Date.now());
-    const timer = setInterval(() => setNow(Date.now()), 1000);
-    return () => clearInterval(timer);
+    const timer = setInterval(() => {
+      setNow(Date.now());
+    }, 1000);
+    return () => {
+      clearInterval(timer);
+    };
   }, [startedAt]);
   return startedAt === null ? "0:00" : formatCallDuration(now - startedAt);
 }
