@@ -35,6 +35,10 @@ export const Permission = {
   MuteMembers: 1n << 27n,
   DeafenMembers: 1n << 28n,
   MoveMembers: 1n << 29n,
+  ViewKanban: 1n << 30n,
+  EditKanban: 1n << 31n,
+  CommentKanban: 1n << 32n,
+  ManageKanban: 1n << 33n,
 } as const satisfies Record<string, bigint>;
 
 export type PermissionName = keyof typeof Permission;

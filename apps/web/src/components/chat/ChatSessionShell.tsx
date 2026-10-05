@@ -170,6 +170,7 @@ export function ChatSessionShell({
             unreadByChannel={unreadByChannel}
             onSignOut={onSignOut}
             permissions={permissions}
+            kanbanEnabled={publicConfig?.addons.kanban ?? false}
             members={members}
             roles={mentionRoles}
             admin={{

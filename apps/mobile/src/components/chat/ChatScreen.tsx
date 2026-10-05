@@ -40,6 +40,7 @@ import { useChat } from "../../providers/ChatProvider";
 import { useProfiles } from "../../providers/ProfileProvider";
 import { useSound } from "../../providers/SoundProvider";
 import { useVoice } from "../../providers/VoiceProvider";
+import { KanbanScreen } from "../kanban/KanbanScreen";
 import { CallScreen } from "../voice/CallScreen";
 import { IncomingCallModal } from "../voice/IncomingCallModal";
 import { JoinedElsewhereScreen } from "../voice/JoinedElsewhereScreen";
@@ -126,6 +127,12 @@ export function ChatScreen({
   const [activeChannelId, setActiveChannelId] = useState<string | undefined>(undefined);
   const [pane, setPane] = useState<PaneIndex>(1);
   const [hubTab, setHubTab] = useState<HubTab>("chats");
+  // The Kanban addon is off unless the workspace turns it on; older servers omit it.
+  const [kanbanBoardId, setKanbanBoardId] = useState<string | null>(null);
+  const publicConfig = useQuery(api.server.publicConfig, {});
+  const showKanban =
+    publicConfig?.addons?.kanban === true &&
+    hasPermission(viewerPermissions, Permission.ViewKanban);
   const [newMessageOpen, setNewMessageOpen] = useState(false);
   const [pinsOpen, setPinsOpen] = useState(false);
   const [profileFor, setProfileFor] = useState<string | null>(null);
@@ -814,6 +821,16 @@ export function ChatScreen({
             setNewMessageOpen(true);
           }}
         />
+      ) : hubTab === "boards" && showKanban ? (
+        <View className="flex-1" style={{ paddingBottom: dockClearance }}>
+          <KanbanScreen
+            ownUserId={ownUserId}
+            permissions={viewerPermissions}
+            members={members}
+            boardId={kanbanBoardId}
+            onBoardChange={setKanbanBoardId}
+          />
+        </View>
       ) : hubTab === "threads" ? (
         <View className="flex-1" style={{ paddingBottom: dockClearance }}>
           <PaneHeader
@@ -928,6 +945,7 @@ export function ChatScreen({
         ownUserId={ownUserId}
         ownStatus={ownStatus}
         threadBadge={threadMentionCount}
+        boards={showKanban}
       />
     </View>
   );

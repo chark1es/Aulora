@@ -22,6 +22,7 @@ const permissionOverwrite = v.object({
 });
 
 const serverSettings = v.object({
+  kanbanEnabled: v.optional(v.boolean()),
   signupEnabled: v.boolean(),
   inviteOnly: v.boolean(),
   allowedEmailDomains: v.array(v.string()),
@@ -329,6 +330,61 @@ export default defineSchema({
     mentionCount: v.number(),
   }).index("by_user_channel", ["userId", "channelId"]),
 
+  kanbanBoards: defineTable({
+    deleted: v.optional(v.boolean()),
+    contentCiphertext: v.string(),
+    private: v.boolean(),
+    memberIds: v.array(v.string()),
+    creatorId: v.string(),
+    archived: v.boolean(),
+    updatedAt: v.number(),
+  }),
+  kanbanCards: defineTable({
+    boardId: v.id("kanbanBoards"),
+    contentCiphertext: v.string(),
+    columnId: v.string(),
+    position: v.number(),
+    labelIds: v.array(v.string()),
+    assigneeIds: v.array(v.string()),
+    priority: v.union(
+      v.literal("none"),
+      v.literal("low"),
+      v.literal("medium"),
+      v.literal("high"),
+      v.literal("urgent"),
+    ),
+    startAt: v.optional(v.number()),
+    dueAt: v.optional(v.number()),
+    estimateMinutes: v.optional(v.number()),
+    fileIds: v.array(v.id("files")),
+    creatorId: v.string(),
+    archived: v.boolean(),
+    trackedMs: v.number(),
+    timerStartedAt: v.optional(v.number()),
+    timerUserId: v.optional(v.string()),
+    updatedAt: v.number(),
+    revision: v.number(),
+  })
+    .index("by_board", ["boardId"])
+    .index("by_timer_user", ["timerUserId"])
+    .index("by_running_timer", ["timerStartedAt"]),
+  kanbanComments: defineTable({
+    cardId: v.id("kanbanCards"),
+    authorId: v.string(),
+    bodyCiphertext: v.string(),
+    updatedAt: v.number(),
+  }).index("by_card", ["cardId"]),
+  kanbanActivity: defineTable({
+    cardId: v.id("kanbanCards"),
+    actorId: v.string(),
+    bodyCiphertext: v.string(),
+    at: v.number(),
+  }).index("by_card", ["cardId"]),
+  kanbanGithub: defineTable({
+    userId: v.string(),
+    tokenCiphertext: v.string(),
+  }).index("by_user", ["userId"]),
+
   files: defineTable({
     /** Storage id of the server-sealed bytes. */
     storageId: v.id("_storage"),
@@ -347,8 +403,10 @@ export default defineSchema({
     dimensionsCiphertext: v.optional(v.string()),
     blurhashCiphertext: v.optional(v.string()),
     channelId: v.optional(v.id("channels")),
+    kanbanBoardId: v.optional(v.id("kanbanBoards")),
   })
     .index("by_uploader", ["uploaderId"])
+    .index("by_kanban_board", ["kanbanBoardId"])
     .index("by_channel", ["channelId"]),
 
   devices: defineTable({

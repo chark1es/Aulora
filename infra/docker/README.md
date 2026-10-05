@@ -55,6 +55,10 @@ functions, creates the workspace + owner account, and writes the public
 | MinIO console     | http://localhost:9001   | `MINIO_ROOT_USER` / `MINIO_ROOT_PASSWORD` |
 | Postgres          | localhost:5432          | `POSTGRES_USER` / `POSTGRES_PASSWORD` |
 
+## Kanban addon
+
+Kanban ships in the web and setup images and uses the existing backend and encrypted storage. Rebuild both images when upgrading, run `setup` to deploy the new functions, then recreate `web`. No additional container or GitHub environment secret is needed. Enable it in Workspace settings → Addons; it is off by default. Existing roles need explicit Kanban permissions. See [the Kanban guide](../../apps/docs/content/kanban.md).
+
 ## Why `setup` rather than manual steps
 
 The self-hosted Convex backend image ships `/convex/generate_key`. The admin key

@@ -38,6 +38,7 @@ import {
   WorkspaceUpdateProvider,
 } from "../../providers/WorkspaceUpdateProvider";
 import { AdminPanel, type AdminPanelViewer } from "../admin/AdminPanel";
+import { KanbanView } from "../kanban/KanbanView";
 import { DesktopUpdateSettings } from "../UpdateSettings";
 import { CallDock } from "../voice/CallDock";
 import { CallStage } from "../voice/CallStage";
@@ -72,6 +73,7 @@ export interface ChatViewProps {
   readonly ownUserId: string;
   readonly ownName: string;
   readonly permissions: bigint;
+  readonly kanbanEnabled?: boolean;
   readonly members: readonly {
     userId: string;
     displayName: string;
@@ -177,6 +179,7 @@ function ChatViewContent({
   ownUserId,
   ownName,
   permissions,
+  kanbanEnabled = false,
   members,
   roles,
   unreadByChannel,
@@ -206,7 +209,7 @@ function ChatViewContent({
     () => readLocal(lastChannelKey) ?? undefined,
   );
   const [mobilePane, setMobilePane] = useState<"list" | "chat">("list");
-  const [mainView, setMainView] = useState<"chat" | "threads">("chat");
+  const [mainView, setMainView] = useState<"chat" | "threads" | "kanban">("chat");
   const [adminOpen, setAdminOpen] = useState(false);
   const [newConversationOpen, setNewConversationOpen] = useState(false);
   const [createChannelOpen, setCreateChannelOpen] = useState(false);
@@ -1182,7 +1185,7 @@ function ChatViewContent({
     }
   };
 
-  const showList = mobilePane === "list" || channel === undefined;
+  const showList = mobilePane === "list" || (mainView === "chat" && channel === undefined);
   const adminView = adminOpen && showAdmin;
   const rightPanel =
     threadRoot !== null && channel !== undefined ? "thread" : membersOpen ? "members" : null;
@@ -1210,6 +1213,17 @@ function ChatViewContent({
             unreadByChannel={sidebarUnread}
             canCreateChannel={canCreateChannel}
             mainView={mainView}
+            {...(kanbanEnabled && hasPermission(permissions, Permission.ViewKanban)
+              ? {
+                  onOpenKanban: () => {
+                    setMainView("kanban");
+                    setMobilePane("chat");
+                    setThreadRoot(null);
+                    setAdminOpen(false);
+                    setUserSettingsOpen(false);
+                  },
+                }
+              : {})}
             threadMentionCount={threadMentionCount}
             onOpenThreads={() => {
               setMainView("threads");
@@ -1370,6 +1384,18 @@ function ChatViewContent({
           soundSettings={<NotificationsSettingsSection />}
           {...(isDesktop() ? { updateSettings: <DesktopUpdateSettings /> } : {})}
           updateAvailable={updateAvailable}
+        />
+      ) : mainView === "kanban" &&
+        kanbanEnabled &&
+        hasPermission(permissions, Permission.ViewKanban) ? (
+        <KanbanView
+          ownUserId={ownUserId}
+          permissions={permissions}
+          members={members}
+          onBack={() => {
+            setMainView("chat");
+            setMobilePane("list");
+          }}
         />
       ) : (
         <section
@@ -1559,6 +1585,7 @@ function ChatViewContent({
       {rightPanel !== null &&
         channel !== undefined &&
         !adminView &&
+        mainView !== "kanban" &&
         !userSettingsOpen &&
         mainView === "chat" && (
           <div className="fixed inset-y-2.5 right-2.5 z-30 flex lg:static lg:z-auto">

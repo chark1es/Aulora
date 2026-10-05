@@ -9,7 +9,7 @@ import { selectionFeedback } from "../../lib/haptics";
 import { PresenceAvatar } from "./PresenceAvatar";
 
 /** `threads` is the full thread list, opened from the Channels tab rather than the dock. */
-export type HubTab = "chats" | "dms" | "threads" | "search" | "you";
+export type HubTab = "chats" | "dms" | "boards" | "threads" | "search" | "you";
 
 /** Height of the floating dock, used to pad scrolling content clear of it. */
 export const DOCK_HEIGHT = 64;
@@ -78,10 +78,19 @@ export function RoundButton({
   );
 }
 
-const TABS: readonly { readonly key: HubTab; readonly label: string; readonly icon: IconName }[] = [
+interface TabEntry {
+  readonly key: HubTab;
+  readonly label: string;
+  readonly icon: IconName;
+}
+
+const TABS: readonly TabEntry[] = [
   { key: "chats", label: "Channels", icon: "hash" },
   { key: "dms", label: "DMs", icon: "message" },
 ];
+
+/** Shown only where the workspace's Kanban addon is on and the viewer may see it. */
+const BOARDS_TAB: TabEntry = { key: "boards", label: "Boards", icon: "kanban" };
 
 const FLOAT_SHADOW = {
   shadowColor: "#000",
@@ -201,6 +210,8 @@ export interface HubDockProps {
   readonly ownUserId: string;
   readonly ownStatus: string;
   readonly threadBadge: number;
+  /** Adds the Boards tab. */
+  readonly boards?: boolean;
 }
 
 /**
@@ -232,7 +243,7 @@ export function HubDock(props: HubDockProps) {
         className="max-w-xs flex-1 flex-row items-center rounded-pill border border-border bg-surface-2 px-1.5"
         style={[{ height: DOCK_HEIGHT }, FLOAT_SHADOW]}
       >
-        {TABS.map((entry) => {
+        {(props.boards === true ? [...TABS, BOARDS_TAB] : TABS).map((entry) => {
           // The full thread list is reached from Channels, so it keeps that tab lit.
           const active = entry.key === tab || (entry.key === "chats" && tab === "threads");
           return (

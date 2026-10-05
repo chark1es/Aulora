@@ -30,7 +30,8 @@ export interface ChannelSidebarProps {
   readonly unreadByChannel: ReadonlyMap<string, ChannelUnread>;
   readonly canCreateChannel: boolean;
   /** Which main pane is showing; drives the sidebar Threads row. */
-  readonly mainView?: "chat" | "threads";
+  readonly mainView?: "chat" | "threads" | "kanban";
+  readonly onOpenKanban?: () => void;
   /** Mentions across the viewer's threads; badges the Threads row. */
   readonly threadMentionCount?: number;
   /** Opens the Threads inbox from the sidebar row. */
@@ -579,6 +580,25 @@ export function ChannelSidebar(props: ChannelSidebarProps) {
         </div>
       )}
 
+      {props.onOpenKanban && (
+        <div className="px-3 pb-2">
+          <button
+            type="button"
+            data-testid="sidebar-kanban"
+            aria-current={props.mainView === "kanban" ? "page" : undefined}
+            onClick={props.onOpenKanban}
+            className={cn(
+              "flex h-8 w-full items-center gap-2.5 rounded-[8px] pl-3 pr-2 text-left text-[13px] transition focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent",
+              props.mainView === "kanban"
+                ? "bg-surface-3 font-semibold text-text"
+                : "text-text-muted hover:bg-surface-3 hover:text-text",
+            )}
+          >
+            <Icon name="kanban" size={16} />
+            <span>Kanban</span>
+          </button>
+        </div>
+      )}
       <nav className="min-h-0 flex-1 overflow-y-auto px-2 pb-3">
         {groups.map((group) => {
           const category = group.category;

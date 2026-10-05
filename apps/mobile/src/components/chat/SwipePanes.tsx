@@ -1,5 +1,13 @@
 /* eslint-disable no-unused-vars -- the base rule reports parameter names in type signatures; Biome checks real unused code */
-import { createContext, type ReactNode, useContext, useEffect, useMemo, useState } from "react";
+import {
+  createContext,
+  type ReactNode,
+  type Ref,
+  useContext,
+  useEffect,
+  useMemo,
+  useState,
+} from "react";
 import {
   ScrollView,
   type ScrollViewProps,
@@ -131,13 +139,16 @@ const PaneSwipeContext = createContext<PaneSwipeRegistry | null>(null);
  * scrolls it instead of changing pane. Outside {@link SwipePanes} it is a
  * plain horizontal scroll view.
  */
-export function HorizontalScroll(props: Omit<ScrollViewProps, "horizontal">) {
+export function HorizontalScroll({
+  ref,
+  ...props
+}: Omit<ScrollViewProps, "horizontal"> & { readonly ref?: Ref<ScrollView> }) {
   const registry = useContext(PaneSwipeContext);
   const native = useMemo(() => Gesture.Native(), []);
   useEffect(() => registry?.add(native), [registry, native]);
   return (
     <GestureDetector gesture={native}>
-      <ScrollView horizontal showsHorizontalScrollIndicator={false} {...props} />
+      <ScrollView ref={ref} horizontal showsHorizontalScrollIndicator={false} {...props} />
     </GestureDetector>
   );
 }

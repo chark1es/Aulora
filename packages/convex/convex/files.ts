@@ -9,6 +9,7 @@ import { assertMayParticipate, listActiveBans } from "./lib/bans";
 import { requireChannelAccessForUser } from "./lib/channels";
 import { getEkmSettings } from "./lib/ekm";
 import { DOWNLOAD_TOKEN_TTL_MS, signDownloadToken, verifyDownloadToken } from "./lib/fileTokens";
+import { requireBoardForUser, writableBoard } from "./lib/kanban";
 import { requireMember, requireWorkspacePermission } from "./lib/permissions";
 import { enforceRateLimit, ipRateLimitKey, requestIp, userRateLimitKey } from "./lib/rateLimit";
 import { openContentOptional } from "./lib/sealed";
@@ -66,7 +67,7 @@ export const generateUploadUrl = mutation({
  * can run it with the caller's identity.
  */
 export const authorizeUpload = internalMutation({
-  args: { storageId: v.id("_storage") },
+  args: { storageId: v.id("_storage"), kanbanBoardId: v.optional(v.id("kanbanBoards")) },
   handler: async (ctx, args) => {
     const { userId } = await requireWorkspacePermission(ctx, Permission.AttachFiles);
     await assertMayParticipate(ctx, userId);
@@ -80,6 +81,7 @@ export const authorizeUpload = internalMutation({
       limit: uploadLimit() * 5,
       windowMs: uploadWindowMs(),
     });
+    if (args.kanbanBoardId !== undefined) await writableBoard(ctx, args.kanbanBoardId);
     const metadata = await ctx.db.system.get("_storage", args.storageId);
     if (metadata === null) {
       throw new ConvexError("Upload not found");
@@ -104,8 +106,19 @@ export const insertFinalized = internalMutation({
     dimensionsCiphertext: v.optional(v.string()),
     blurhashCiphertext: v.optional(v.string()),
     channelId: v.optional(v.id("channels")),
+    kanbanBoardId: v.optional(v.id("kanbanBoards")),
   },
   handler: async (ctx, args) => {
+    if (args.kanbanBoardId !== undefined) {
+      const access = await requireBoardForUser(
+        ctx,
+        args.uploaderId,
+        args.kanbanBoardId,
+        Permission.EditKanban | Permission.AttachFiles,
+      );
+      if (access.board.archived) throw new ConvexError("Restore the board before uploading files");
+      await assertMayParticipate(ctx, args.uploaderId);
+    }
     return await ctx.db.insert("files", {
       storageId: args.storageId,
       sealedStorageId: args.sealedStorageId,
@@ -121,6 +134,7 @@ export const insertFinalized = internalMutation({
         ? { blurhashCiphertext: args.blurhashCiphertext }
         : {}),
       ...(args.channelId !== undefined ? { channelId: args.channelId } : {}),
+      ...(args.kanbanBoardId !== undefined ? { kanbanBoardId: args.kanbanBoardId } : {}),
     });
   },
 });
@@ -140,10 +154,14 @@ export const finalize = action({
     dimensions: v.optional(v.string()),
     blurhash: v.optional(v.string()),
     channelId: v.optional(v.id("channels")),
+    kanbanBoardId: v.optional(v.id("kanbanBoards")),
   },
   handler: async (ctx, args): Promise<Id<"files">> => {
+    if (args.kanbanBoardId !== undefined && args.channelId !== undefined)
+      throw new ConvexError("Choose a channel or a board for this file");
     const { userId, sizeBytes } = await ctx.runMutation(internal.files.authorizeUpload, {
       storageId: args.storageId,
+      ...(args.kanbanBoardId !== undefined ? { kanbanBoardId: args.kanbanBoardId } : {}),
     });
     const blob = await ctx.storage.get(args.storageId);
     if (blob === null) {
@@ -172,6 +190,7 @@ export const finalize = action({
       ...(dimensionsCiphertext !== undefined ? { dimensionsCiphertext } : {}),
       ...(blurhashCiphertext !== undefined ? { blurhashCiphertext } : {}),
       ...(args.channelId !== undefined ? { channelId: args.channelId } : {}),
+      ...(args.kanbanBoardId !== undefined ? { kanbanBoardId: args.kanbanBoardId } : {}),
     });
     await ctx.storage.delete(args.storageId);
     return fileId;
@@ -196,7 +215,9 @@ export const authorizeDownload = internalQuery({
       throw new ConvexError("You are banned from this workspace");
     }
     await requireMember(ctx, args.userId);
-    if (row.channelId !== undefined) {
+    if (row.kanbanBoardId !== undefined) {
+      await requireBoardForUser(ctx, args.userId, row.kanbanBoardId);
+    } else if (row.channelId !== undefined) {
       await requireChannelAccessForUser(ctx, args.userId, row.channelId, Permission.ViewChannel);
     } else if (row.uploaderId !== args.userId) {
       throw new ConvexError("You do not have access to this file");
@@ -269,6 +290,14 @@ async function toFileView(row: Doc<"files">, userId: string): Promise<FileView> 
 
 /** True when `userId` may read `row`'s metadata and bytes. */
 async function canAccessFile(ctx: QueryCtx, userId: string, row: Doc<"files">): Promise<boolean> {
+  if (row.kanbanBoardId !== undefined) {
+    try {
+      await requireBoardForUser(ctx, userId, row.kanbanBoardId);
+      return true;
+    } catch {
+      return false;
+    }
+  }
   if (row.channelId !== undefined) {
     try {
       await requireChannelAccessForUser(ctx, userId, row.channelId, Permission.ViewChannel);

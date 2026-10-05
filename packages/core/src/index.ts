@@ -17,6 +17,7 @@ export {
 } from "./binary";
 export { blurhashDecode, blurhashEncode } from "./blurhash";
 export * from "./chat/index";
+export * from "./kanban.js";
 export {
   type EnqueueInput,
   type FlushOptions,
@@ -83,7 +84,6 @@ export {
   tryNormalizeServerUrl,
   wellKnownUrl,
 } from "./server-url";
-
 export {
   DEFAULT_SOUND_SETTINGS,
   loadSoundSettings,

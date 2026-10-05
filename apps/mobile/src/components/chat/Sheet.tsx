@@ -16,12 +16,18 @@ export function Sheet({
   dismiss = "cancel",
   onClose,
   children,
+  footer,
+  swipeToClose = true,
 }: {
   readonly visible: boolean;
   readonly title: string;
   readonly dismiss?: "cancel" | "done";
   readonly onClose: () => void;
   readonly children: ReactNode;
+  /** Pinned under the content, above the keyboard. */
+  readonly footer?: ReactNode;
+  /** Turn off while there is unsaved work, so a stray swipe cannot drop it. */
+  readonly swipeToClose?: boolean;
 }) {
   const palette = usePalette();
   const theme = useThemeVars();
@@ -32,7 +38,7 @@ export function Sheet({
       visible={visible}
       presentationStyle="pageSheet"
       animationType={reducedMotion === false ? "slide" : "none"}
-      allowSwipeDismissal
+      allowSwipeDismissal={swipeToClose}
       onRequestClose={onClose}
     >
       <KeyboardAvoidingView
@@ -75,6 +81,7 @@ export function Sheet({
             </View>
           </View>
           {children}
+          {footer}
         </View>
       </KeyboardAvoidingView>
     </Modal>

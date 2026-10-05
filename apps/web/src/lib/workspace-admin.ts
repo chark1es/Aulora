@@ -272,6 +272,7 @@ export const PERMISSION_GROUPS: readonly PermissionGroup[] = [
       "MoveMembers",
     ],
   },
+  { label: "Kanban", permissions: ["ViewKanban", "EditKanban", "CommentKanban", "ManageKanban"] },
   { label: "Special", permissions: ["Administrator"] },
 ];
 
@@ -306,6 +307,10 @@ export const PERMISSION_LABELS: Record<PermissionName, string> = {
   MuteMembers: "Mute members",
   DeafenMembers: "Deafen members",
   MoveMembers: "Move members",
+  ViewKanban: "View Kanban boards",
+  EditKanban: "Edit Kanban cards and track time",
+  CommentKanban: "Comment on Kanban cards",
+  ManageKanban: "Manage all boards, membership and comments",
   Administrator: "Administrator",
 };
 

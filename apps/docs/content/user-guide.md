@@ -36,6 +36,10 @@ Threads keep replies attached to a message. The threads inbox helps you return t
 
 Role permissions control who can create channels, upload, moderate, or manage a workspace. If an action is missing or denied, ask the workspace administrator.
 
+## Kanban
+
+If your administrator enables Kanban and grants you View Kanban permission, open it from the sidebar. Plan work with cards, columns, labels, assignees, checklists, due dates, comments, attachments and work timers. You can browse GitHub repositories, issues and pull requests with your own connection. See [Kanban](kanban.md) for the full workflow.
+
 ## Voice and video
 
 Join a voice channel or start a call from a conversation. Allow microphone access, and camera access when using video. Use the call controls to mute, change devices, or leave.
