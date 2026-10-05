@@ -179,7 +179,7 @@ function PreJoinVoiceView({
       </p>
 
       <PreJoinParticipants participants={call?.participants ?? []} identity={identity} />
-      <PreJoinActions channel={channel} call={call ?? null} voice={voice} />
+      <PreJoinActions channel={channel} {...(call !== undefined ? { call } : {})} voice={voice} />
     </div>
   );
 }
@@ -219,11 +219,11 @@ function PreJoinActions({
   voice,
 }: {
   readonly channel: ChannelView;
-  readonly call: CallView | null;
+  readonly call?: CallView;
   readonly voice: VoiceContextValue;
 }) {
   const join = async (kind: "voice" | "video") => {
-    if (call !== null) {
+    if (call !== undefined) {
       await voice.joinCall(call.id);
     } else {
       await voice.startCall(channel.id, kind);

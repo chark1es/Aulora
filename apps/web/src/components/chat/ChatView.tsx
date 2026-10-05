@@ -1412,7 +1412,7 @@ function ChatViewContent({
               canMentionEveryone={canMentionEveryone}
               pinsOpen={pinsOpen}
               membersOpen={rightPanel === "members"}
-              replyTarget={replyTarget}
+              {...(replyTarget !== undefined ? { replyTarget } : {})}
               sendError={sendError}
               typingPing={(channelId) => {
                 typing.ping(channelId);

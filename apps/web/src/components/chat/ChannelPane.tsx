@@ -81,7 +81,7 @@ export interface ChannelPaneProps {
   readonly canMentionEveryone: boolean;
   readonly pinsOpen: boolean;
   readonly membersOpen: boolean;
-  readonly replyTarget: MessagePayload | undefined;
+  readonly replyTarget?: MessagePayload;
   readonly sendError: string | null;
   readonly typingPing: (channelId: string) => void;
   readonly onOpenChannel: (channelId: string) => void;

@@ -593,8 +593,12 @@ function ComboboxTrigger(props: ComboboxTriggerProps) {
       aria-expanded={open}
       aria-controls={open ? listId : undefined}
       disabled={disabled}
-      onClick={() => handleTriggerClick(open, onToggle, onOpenPicker)}
-      onKeyDown={(event) => handleTriggerKeyDown(event, open, onOpenPicker)}
+      onClick={() => {
+        handleTriggerClick(open, onToggle, onOpenPicker);
+      }}
+      onKeyDown={(event) => {
+        handleTriggerKeyDown(event, open, onOpenPicker);
+      }}
       className={cn(
         "flex h-9 w-full items-center gap-2 rounded-[8px] border bg-surface-3 px-2.5 text-left text-[13px] text-text transition disabled:opacity-50",
         open ? "border-accent" : "border-border hover:border-text-muted/40",

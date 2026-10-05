@@ -304,7 +304,7 @@ function useChatScreenConversation(
     workspaceName: session.workspaceName,
     presence,
     titles,
-    channel,
+    ...(channel !== undefined ? { channel } : {}),
     typers: sessionState.typers,
     ownUserId,
     memberNames,
@@ -324,7 +324,7 @@ function useChatScreenConversationMeta(input: {
   readonly workspaceName: string;
   readonly presence: ChatScreenSession["presence"];
   readonly titles: ChatScreenChannelList["titles"];
-  readonly channel: ChannelView | undefined;
+  readonly channel?: ChannelView;
   readonly typers: ReturnType<typeof useChannelSession>["typers"];
   readonly ownUserId: string;
   readonly memberNames: Map<string, string>;
@@ -363,7 +363,7 @@ function useChatScreenConversationMeta(input: {
   const isDirect = channel !== undefined && (channel.kind === "dm" || channel.kind === "group_dm");
   const partnerId = channel === undefined ? undefined : dmPartnerId(channel, ownUserId);
   const partnerPresence = presence.find((row) => row.userId === partnerId);
-  const channelSubtitle = channelSubtitleFor(channel, partnerId, partnerPresence);
+  const channelSubtitle = channelSubtitleFor(partnerId, channel, partnerPresence);
 
   return {
     typing,
@@ -379,9 +379,9 @@ function useChatScreenConversationMeta(input: {
 }
 
 function channelSubtitleFor(
-  channel: ChannelView | undefined,
   partnerId: string | undefined,
-  partnerPresence: ChatScreenSession["presence"][number] | undefined,
+  channel?: ChannelView,
+  partnerPresence?: ChatScreenSession["presence"][number],
 ): string | undefined {
   if (channel === undefined) {
     return undefined;
