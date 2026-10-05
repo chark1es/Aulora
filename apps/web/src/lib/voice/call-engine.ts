@@ -91,7 +91,7 @@ export class VoiceEngine {
     this.clientId = options.clientId;
     this.getSettings = options.getSettings;
     this.getIceServers = options.getIceServers ?? (() => DEFAULT_ICE);
-    this.onError = options.onError ?? (() => {});
+    this.onError = options.onError ?? (() => undefined);
     this.mesh = new PeerMesh({
       userId: this.userId,
       getCallId: () => this.callId,
@@ -99,8 +99,12 @@ export class VoiceEngine {
       sendSignal: (signal) => this.port.sendSignal(signal),
       ackSignals: (signalIds) =>
         this.port.ackSignals({ signalIds: signalIds.map((id) => id as never) }),
-      onError: (message) => this.onError(message),
-      onChange: () => this.emit(),
+      onError: (message) => {
+        this.onError(message);
+      },
+      onChange: () => {
+        this.emit();
+      },
       getAudioTrack: () => this.micStream?.getAudioTracks()[0] ?? null,
       getVideoTrack: () => this.screenTrack ?? (this.local.video ? this.cameraTrack : null),
       isScreenSharing: () => this.screenTrack !== null,
@@ -247,7 +251,7 @@ export class VoiceEngine {
       if (this.callId !== watched) {
         return;
       }
-      void this.onCallUpdate(call);
+      this.onCallUpdate(call);
     });
     this.signalUnsub = this.subscriptions.watchSignals(callId, (signals) => {
       void this.mesh.handleSignals(signals);
@@ -344,13 +348,14 @@ export class VoiceEngine {
 
   // ---- Media controls ------------------------------------------------------
 
-  async setMuted(muted: boolean): Promise<void> {
+  setMuted(muted: boolean): Promise<void> {
     this.local = { ...this.local, muted };
     this.applyMicEnabled();
     if (this.callId !== null) {
       void this.port.updateParticipant({ callId: this.callId, muted }).catch(() => undefined);
     }
     this.emit();
+    return Promise.resolve();
   }
 
   /**
@@ -511,7 +516,7 @@ export class VoiceEngine {
 
   // ---- Peer plumbing -------------------------------------------------------
 
-  private async onCallUpdate(call: CallView | null): Promise<void> {
+  private onCallUpdate(call: CallView | null): void {
     if (call === null || call.status === "ended") {
       this.enterTeardown();
       return;

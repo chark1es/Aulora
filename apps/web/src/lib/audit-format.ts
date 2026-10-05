@@ -7,7 +7,7 @@
 
 /** A readable label for an opaque audit action string. */
 export function auditActionLabel(action: string): string {
-  return ACTION_LABELS[action] ?? humanize(action);
+  return ACTION_LABEL_MAP.get(action) ?? humanize(action);
 }
 
 /** A coarse grouping used to tint and icon an event. */
@@ -77,20 +77,12 @@ const ACTION_LABELS: Record<string, string> = {
   "license.setKey": "updated the license key",
 };
 
+const ACTION_LABEL_MAP = new Map(Object.entries(ACTION_LABELS));
+
 function humanize(action: string): string {
   const words = action.replace(/[._]/g, " ").trim();
   return words.length === 0 ? "did something" : words;
 }
-
-const META_LABELS: Record<string, string> = {
-  name: "name",
-  reason: "reason",
-  domain: "domain",
-  email: "email",
-  kind: "kind",
-  position: "position",
-  provider: "provider",
-};
 
 interface EventNames {
   readonly actorName?: string | null;
@@ -163,7 +155,7 @@ function metaDetail(action: string, meta: Record<string, unknown> | null): strin
     case "channel.rename":
     case "channel.setTopic":
     case "member.nickname":
-      return name !== null ? name : null;
+      return name;
     case "role.update":
       return changed.length > 0 ? changed.join(", ") : name;
     case "server.updateSettings":
@@ -179,10 +171,8 @@ function metaDetail(action: string, meta: Record<string, unknown> | null): strin
         : "cleared";
     case "invite.create":
       return inviteDetail(meta);
-    default: {
-      const keys = Object.keys(meta).filter((key) => META_LABELS[key] !== undefined);
-      return keys.length > 0 ? null : null;
-    }
+    default:
+      return null;
   }
 }
 

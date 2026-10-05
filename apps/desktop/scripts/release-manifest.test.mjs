@@ -1,5 +1,5 @@
 import { describe, expect, it } from "bun:test";
-import { mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
+import { mkdtemp, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { planWorkspaceUpdate } from "../../../packages/core/src/updates.ts";
@@ -23,8 +23,8 @@ describe("release manifest", () => {
     const dir = await mkdtemp(join(tmpdir(), "aulora-release-"));
     try {
       const artifact = join(dir, "Aulora.app.tar.gz");
-      await writeFile(artifact, "bytes");
-      await writeFile(`${artifact}.sig`, "minisign-signature\n");
+      await Bun.write(artifact, "bytes");
+      await Bun.write(`${artifact}.sig`, "minisign-signature\n");
       const platform = await platformFromFile(
         "darwin-aarch64",
         artifact,
@@ -51,8 +51,8 @@ describe("release manifest", () => {
       expect(
         planWorkspaceUpdate({ sourceVersion: "1.2.0", channel: "stable", manifest }),
       ).toMatchObject({ apply: "fast-forward", gitTag: "v1.2.3" });
-      await writeFile(join(dir, "latest.json"), JSON.stringify(manifest));
-      expect(JSON.parse(await readFile(join(dir, "latest.json"), "utf8")).version).toBe("1.2.3");
+      await Bun.write(join(dir, "latest.json"), JSON.stringify(manifest));
+      expect(JSON.parse(await Bun.file(join(dir, "latest.json")).text()).version).toBe("1.2.3");
     } finally {
       await rm(dir, { recursive: true, force: true });
     }

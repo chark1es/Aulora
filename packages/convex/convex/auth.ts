@@ -151,7 +151,7 @@ export const createAuthOptions = (
             const groups = pendingGroups.get(user.email);
             pendingGroups.delete(user.email);
             const roleNames =
-              groups !== undefined && oidc !== null && oidc.groupClaim !== undefined
+              groups !== undefined && oidc?.groupClaim !== undefined
                 ? roleNamesForGroups(groups, oidc.groupRoleMap)
                 : [];
             await requireActionCtx(ctx).runMutation(internal.members.attachRolesFromAuth, {
@@ -174,5 +174,5 @@ export const createAuth = (ctx: GenericCtx<DataModel>) => {
 /** Returns the signed-in Better Auth user, or `null`. */
 export const getCurrentUser = query({
   args: {},
-  handler: async (ctx) => authComponent.safeGetAuthUser(ctx),
+  handler: (ctx) => authComponent.safeGetAuthUser(ctx),
 });

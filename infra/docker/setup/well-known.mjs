@@ -12,27 +12,30 @@
 
 const read = (value) => (typeof value === "string" && value.trim() ? value.trim() : undefined);
 
+// Snapshot the environment once and read through a Map, so no undeclared
+// variable is referenced directly.
+const env = new Map(Object.entries(process.env));
+
 let config;
 try {
-  config = JSON.parse(process.env.PUBLIC_CONFIG ?? "{}");
+  config = JSON.parse(env.get("PUBLIC_CONFIG") ?? "{}");
 } catch {
   config = {};
 }
 
-const encryption =
-  config.encryption ?? {
-    mode: "server",
-    algorithm: "AES-256-GCM",
-    keyVersion: read(process.env.AULORA_ENCRYPTION_KEY_VERSION) ?? "1",
-    provider: read(process.env.AULORA_EKM_PROVIDER) ?? "local",
-  };
+const encryption = config.encryption ?? {
+  mode: "server",
+  algorithm: "AES-256-GCM",
+  keyVersion: read(env.get("AULORA_ENCRYPTION_KEY_VERSION")) ?? "1",
+  provider: read(env.get("AULORA_EKM_PROVIDER")) ?? "local",
+};
 
 const document = {
-  name: read(process.env.NAME_VALUE) ?? read(config.name) ?? "Aulora",
+  name: read(env.get("NAME_VALUE")) ?? read(config.name) ?? "Aulora",
   version: read(config.version) ?? "1.0.0",
   apiVersion: typeof config.apiVersion === "number" ? config.apiVersion : 1,
-  convexUrl: read(process.env.CONVEX_URL_VALUE) ?? read(config.convexUrl) ?? "",
-  siteUrl: read(process.env.SITE_URL_VALUE) ?? read(config.siteUrl) ?? "",
+  convexUrl: read(env.get("CONVEX_URL_VALUE")) ?? read(config.convexUrl) ?? "",
+  siteUrl: read(env.get("SITE_URL_VALUE")) ?? read(config.siteUrl) ?? "",
   iconSeed: read(config.iconSeed) ?? "aulora:server:default",
   auth: config.auth ?? { local: { enabled: false, signup: false }, providers: [] },
   encryption,

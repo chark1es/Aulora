@@ -1,5 +1,6 @@
 """Capture the staged native screens at each device's real resolution."""
 import argparse
+import shutil
 import subprocess
 import time
 from pathlib import Path
@@ -25,6 +26,11 @@ parser.add_argument("--adb", default="adb")
 parser.add_argument("--settle", type=float, default=20, help="Seconds to let each native launch render before capture")
 parser.add_argument("--views", nargs="+", choices=[view for view, _ in VIEWS], help="Capture only selected views")
 args = parser.parse_args()
+
+# Resolve external tools to absolute paths so a hostile PATH entry cannot
+# substitute a different program.
+ADB = shutil.which(args.adb) or args.adb
+XCRUN = shutil.which("xcrun") or "xcrun"
 devices = [
     ("ios", args.iphone, "app-store/iphone-6.9"),
     ("ios", args.ipad, "app-store/ipad-13"),
@@ -37,6 +43,8 @@ if not devices:
     parser.error("Supply at least one device id.")
 
 def run(command, **kwargs):
+    # `command` is always one of the literal argument lists below; shell is
+    # never used, so each element is passed as its own argument.
     return subprocess.run(command, check=True, stdout=subprocess.PIPE, **kwargs)
 
 for view, filename in VIEWS:
@@ -49,19 +57,19 @@ for view, filename in VIEWS:
     time.sleep(2)
     for platform, device, _ in devices:
         if platform == "ios":
-            subprocess.run(["xcrun", "simctl", "terminate", device, "dev.spwnd.aulora"], capture_output=True)
-            run(["xcrun", "simctl", "launch", device, "dev.spwnd.aulora"])
+            subprocess.run([XCRUN, "simctl", "terminate", device, "dev.spwnd.aulora"], capture_output=True)
+            run([XCRUN, "simctl", "launch", device, "dev.spwnd.aulora"])
         else:
-            run([args.adb, "-s", device, "shell", "am", "start", "-n", "dev.spwnd.aulora/.MainActivity"])
+            run([ADB, "-s", device, "shell", "am", "start", "-n", "dev.spwnd.aulora/.MainActivity"])
     time.sleep(args.settle)
     for platform, device, folder in devices:
         target = ROOT / ".cache/store-raw" / folder / filename
         target.parent.mkdir(parents=True, exist_ok=True)
         for attempt in range(7):
             if platform == "ios":
-                run(["xcrun", "simctl", "io", device, "screenshot", str(target)])
+                run([XCRUN, "simctl", "io", device, "screenshot", str(target)])
             else:
-                target.write_bytes(run([args.adb, "-s", device, "exec-out", "screencap", "-p"]).stdout)
+                target.write_bytes(run([ADB, "-s", device, "exec-out", "screencap", "-p"]).stdout)
             with Image.open(target) as screenshot:
                 rgb = screenshot.convert("RGB")
                 top = rgb.crop((0, 0, rgb.width, int(rgb.height * .15)))

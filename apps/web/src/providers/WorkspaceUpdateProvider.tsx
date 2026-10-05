@@ -67,7 +67,9 @@ export function WorkspaceUpdateProvider({
     if (!isOwner) return;
     void check();
     const timer = setInterval(() => void check(), 6 * 60 * 60 * 1000);
-    return () => clearInterval(timer);
+    return () => {
+      clearInterval(timer);
+    };
   }, [check, isOwner]);
 
   const hostConnected = host != null && now - host.hostSeenAt < 30_000;

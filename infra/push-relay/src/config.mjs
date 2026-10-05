@@ -31,7 +31,7 @@ function readKey(env, readFile) {
  */
 export function loadRelayConfig(env = process.env, { readFile = readFileSync } = {}) {
   const token = nonEmpty(env.PUSH_RELAY_TOKEN);
-  if (token === undefined) {
+  if (typeof token !== "string") {
     throw new Error("PUSH_RELAY_TOKEN is required");
   }
   const port = Number.parseInt(nonEmpty(env.PUSH_RELAY_PORT) ?? String(DEFAULT_PORT), 10);
@@ -55,7 +55,8 @@ export function loadRelayConfig(env = process.env, { readFile = readFileSync } =
   const fcmAccessToken = nonEmpty(env.FCM_ACCESS_TOKEN);
   const serviceAccountJson = nonEmpty(env.FCM_SERVICE_ACCOUNT_JSON);
   const serviceAccountPath = nonEmpty(env.FCM_SERVICE_ACCOUNT_PATH);
-  const serviceAccount = serviceAccountJson ?? (serviceAccountPath ? readFile(serviceAccountPath) : undefined);
+  const serviceAccount =
+    serviceAccountJson ?? (serviceAccountPath ? readFile(serviceAccountPath) : undefined);
   if (fcmProjectId && (fcmAccessToken || serviceAccount)) {
     providers.fcm = {
       projectId: fcmProjectId,

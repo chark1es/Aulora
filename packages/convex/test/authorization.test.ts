@@ -7,7 +7,7 @@ const PAGE = { numItems: 50, cursor: null } as const;
 
 function tokenFromUrl(url: string): string {
   const token = new URL(url, "http://localhost").searchParams.get("token");
-  if (token === null) {
+  if (!token) {
     throw new Error("URL did not carry a download token");
   }
   return token;

@@ -222,7 +222,8 @@ export class PeerMesh {
     if (entries.length === 0) {
       // Answerer: transceivers were created by `setRemoteDescription`.
       for (const transceiver of peer.pc.getTransceivers()) {
-        const kind = transceiver.receiver.track?.kind ?? transceiver.sender.track?.kind;
+        const receiverTrack = transceiver.receiver.track as MediaStreamTrack | null;
+        const kind = receiverTrack?.kind ?? transceiver.sender.track?.kind;
         if (kind === "audio" || kind === "video") {
           entries.push({ kind, transceiver });
         }
@@ -257,7 +258,8 @@ export class PeerMesh {
     }
     const result: RTCRtpTransceiver[] = [];
     for (const transceiver of peer.pc.getTransceivers()) {
-      if ((transceiver.sender.track?.kind ?? transceiver.receiver.track?.kind) === kind) {
+      const receiverTrack = transceiver.receiver.track as MediaStreamTrack | null;
+      if ((transceiver.sender.track?.kind ?? receiverTrack?.kind) === kind) {
         result.push(transceiver);
       }
     }
@@ -332,19 +334,17 @@ export class PeerMesh {
       }
       return;
     }
-    if (signal.kind === "renegotiate") {
-      // Only the impolite side (offerer) initiates; the other side simply
-      // applies a fresh offer, handled above.
-      if (shouldOffer(this.host.userId, signal.fromUserId)) {
-        const description = parsePayload<RTCSessionDescriptionInit>(signal.payload);
-        if (description === null) {
-          return;
-        }
-        await peer.pc.setRemoteDescription(description);
-        const answer = await peer.pc.createAnswer();
-        await peer.pc.setLocalDescription(answer);
-        this.sendDescription(signal.fromUserId, "answer", peer.pc.localDescription);
+    // Only the impolite side (offerer) initiates; the other side simply
+    // applies a fresh offer, handled above.
+    if (shouldOffer(this.host.userId, signal.fromUserId)) {
+      const description = parsePayload<RTCSessionDescriptionInit>(signal.payload);
+      if (description === null) {
+        return;
       }
+      await peer.pc.setRemoteDescription(description);
+      const answer = await peer.pc.createAnswer();
+      await peer.pc.setLocalDescription(answer);
+      this.sendDescription(signal.fromUserId, "answer", peer.pc.localDescription);
     }
   }
 

@@ -20,8 +20,8 @@ export function releasePlan({
   if (eventName === "push" && previousVersion && previousVersion !== version) {
     const previous = validateVersion(previousVersion).split(".").map(Number);
     const current = version.split(".").map(Number);
-    const different = current.findIndex((part, index) => part !== previous[index]);
-    if (different === -1 || current[different] < previous[different])
+    const different = current.findIndex((part, index) => part !== previous.at(index));
+    if (different === -1 || current.at(different) < previous.at(different))
       throw new Error("Release versions must increase.");
   }
   if (eventName === "workflow_dispatch" && publish && alreadyReleased) {

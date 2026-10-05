@@ -10,7 +10,8 @@
 import { existsSync, readFileSync } from "node:fs";
 import { join } from "node:path";
 
-const base = process.env.CONVEX_SELF_HOSTED_URL ?? "http://convex-backend:3210";
+const env = new Map(Object.entries(process.env));
+const base = env.get("CONVEX_SELF_HOSTED_URL") ?? "http://convex-backend:3210";
 const field = process.argv[2];
 
 async function fromBackend(name) {
@@ -33,23 +34,23 @@ function fromFile(file) {
   }
 }
 
-const dataDir = process.env.DATA_DIR ?? "/convex/data";
+const dataDir = env.get("DATA_DIR") ?? "/convex/data";
 const credentialsDir = join(dataDir, "credentials");
 
 if (field === "name") {
   const value =
     (await fromBackend("instance_name")) ||
-    (process.env.INSTANCE_NAME ?? "").trim() ||
+    (env.get("INSTANCE_NAME") ?? "").trim() ||
     fromFile(join(credentialsDir, "instance_name")) ||
     "aulora";
   process.stdout.write(value);
 } else if (field === "secret") {
   const value =
     (await fromBackend("instance_secret")) ||
-    (process.env.INSTANCE_SECRET ?? "").trim() ||
+    (env.get("INSTANCE_SECRET") ?? "").trim() ||
     fromFile(join(credentialsDir, "instance_secret"));
   process.stdout.write(value);
 } else {
-  process.stderr.write("usage: resolve-instance.mjs <name|secret>\n");
+  process.stderr.write("usage: resolve-instance.mjs name|secret\n");
   process.exit(2);
 }

@@ -2,7 +2,7 @@
 
 ## Report a vulnerability privately
 
-Email [cnguyen@spwnd.dev](mailto:cnguyen@spwnd.dev). If GitHub private vulnerability reporting is enabled, you can also use [Report a vulnerability](https://github.com/chark1es/Aulora/security/advisories/new).
+Use [GitHub private vulnerability reporting](https://github.com/chark1es/Aulora/security/advisories/new). If it is unavailable, open a minimal issue that asks a maintainer to arrange a private channel; do not include vulnerability details in that issue.
 
 Include the affected version or commit, the impact, reproduction steps, and a minimal proof of concept using test data. Remove credentials, tokens, private messages, user information, and encryption keys. Ask by email for a secure transfer method before sending sensitive material.
 
@@ -14,7 +14,7 @@ Security fixes target the latest stable release. Until v1 is published, reports 
 
 ## Trust model
 
-Aulora encrypts message content and uploads on the server. Authorized clients receive decrypted content. This is not end-to-end encryption, and a server operator with access to the application and its key can read content. HTTPS protects network traffic. Account information, membership, timestamps, and other metadata may remain readable in the database. Backups must be treated as sensitive even when message bodies are encrypted.
+Aulora encrypts message content and uploads on the server. Authorized clients receive decrypted content. This is not end-to-end encryption, and a server operator with access to the application and its key can read content. HTTPS protects network traffic. Account information, membership, timestamps, and other metadata may remain readable in the database. Backups must be treated as sensitive even when message bodies are encrypted; if a deployment cannot meet that bar, treat it as a security exception, document the risk, and get maintainer sign-off before proceeding.
 
 The default master key lives in `infra/docker/.env` as `AULORA_ENCRYPTION_KEY`. Back it up separately from data and restrict access to the file. Setup also configures the key in the backend deployment environment; protect backend state and raw database dumps as potentially secret-bearing. External key managers are optional. Losing the key makes encrypted content unreadable. Changing a key or key-version setting without a migration and the old keys is not a safe rotation procedure.
 

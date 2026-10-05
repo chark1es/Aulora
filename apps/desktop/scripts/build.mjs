@@ -60,7 +60,7 @@ function findOnPath(command) {
 function findSccache() {
   const onPath = findOnPath("sccache");
   if (onPath !== null) {
-    return { command: "sccache", onPath: true };
+    return { command: onPath, onPath: true };
   }
   const cargoBin = resolve(homedir(), ".cargo", "bin");
   const candidate = resolve(cargoBin, isWindowsHost ? "sccache.exe" : "sccache");
@@ -70,11 +70,17 @@ function findSccache() {
   return null;
 }
 
+// On Windows the runnable is a real file (`bun.exe`, `cargo.exe`, ...); resolve
+// it explicitly so we never need to spawn through a shell. Elsewhere the bare
+// command name is enough.
+function executable(command) {
+  return isWindowsHost ? (findOnPath(command) ?? command) : command;
+}
+
 function run(command, args) {
-  const result = spawnSync(command, args, {
+  const result = spawnSync(executable(command), args, {
     cwd: desktopDir,
     stdio: "inherit",
-    shell: isWindowsHost,
   });
   if (result.error !== undefined) {
     process.stderr.write(`build: failed to run ${command}: ${result.error.message}\n`);
@@ -84,7 +90,7 @@ function run(command, args) {
 }
 
 function commandOk(command, args) {
-  return spawnSync(command, args, { stdio: "ignore", shell: isWindowsHost }).status === 0;
+  return spawnSync(executable(command), args, { stdio: "ignore" }).status === 0;
 }
 
 function setupCache(disabled) {
@@ -103,39 +109,38 @@ function setupCache(disabled) {
     process.env.PATH = `${found.dir}${delimiter}${process.env.PATH ?? ""}`;
   }
   process.env.RUSTC_WRAPPER = found.onPath ? "sccache" : found.command;
-  const cacheDir = process.env.SCCACHE_DIR ?? resolve(repoRoot, ".cache", "sccache");
-  mkdirSync(cacheDir, { recursive: true });
-  process.env.SCCACHE_DIR = cacheDir;
-  spawnSync(found.command, ["--start-server"], { stdio: "ignore", shell: isWindowsHost });
-  process.stdout.write(`build: caching with sccache (${cacheDir})\n`);
+  if (process.env.SCCACHE_DIR === undefined) {
+    const cacheDir = resolve(repoRoot, ".cache", "sccache");
+    mkdirSync(cacheDir, { recursive: true });
+    process.env.SCCACHE_DIR = cacheDir;
+  }
+  spawnSync(executable(found.command), ["--start-server"], { stdio: "ignore" });
+  process.stdout.write(`build: caching with sccache (${process.env.SCCACHE_DIR})\n`);
 }
 
 function runTauri(extraArgs, debug) {
-  const args = ["tauri", "build", ...extraArgs];
+  const args = ["x", "tauri", "build", ...extraArgs];
   if (process.env.TAURI_SIGNING_PRIVATE_KEY) {
     args.push("--config", "src-tauri/tauri.release.conf.json");
   }
   if (debug) {
     args.push("--debug");
   }
-  process.stdout.write(`build: bunx ${args.join(" ")}\n`);
-  return run("bunx", args);
+  process.stdout.write(`build: bun ${args.join(" ")}\n`);
+  return run("bun", args);
 }
 
 function ensureLlvm() {
   if (findOnPath("lld-link") !== null) {
     return true;
   }
-  const prefix = spawnSync("brew", ["--prefix", "llvm"], {
+  const prefix = spawnSync(executable("brew"), ["--prefix", "llvm"], {
     encoding: "utf8",
-    shell: isWindowsHost,
   });
   if (prefix.status === 0) {
     const bin = resolve(prefix.stdout.trim(), "bin");
-    if (existsSync(bin)) {
-      process.env.PATH = `${bin}${delimiter}${process.env.PATH ?? ""}`;
-      return findOnPath("lld-link") !== null;
-    }
+    process.env.PATH = `${bin}${delimiter}${process.env.PATH ?? ""}`;
+    return findOnPath("lld-link") !== null;
   }
   return false;
 }

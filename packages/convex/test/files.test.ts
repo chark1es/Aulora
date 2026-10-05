@@ -22,7 +22,7 @@ async function setup(everyonePermissions?: bigint) {
 function tokenFromUrl(url: string): string {
   const parsed = new URL(url, "http://localhost");
   const token = parsed.searchParams.get("token");
-  if (token === null) {
+  if (!token) {
     throw new Error("URL did not carry a download token");
   }
   return token;

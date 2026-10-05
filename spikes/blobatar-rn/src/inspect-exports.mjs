@@ -1,22 +1,89 @@
 import { createRequire } from "node:module";
+
 const require = createRequire(import.meta.url);
+
+// Only these known specifiers may be imported, so the module id is never
+// derived from arbitrary input.
+const ALLOWED_SPECIFIERS = new Set([
+  "blobatar",
+  "blobatar/uri",
+  "blobatar/expression",
+  "blobatar/internal",
+  "blobatar/react",
+  "@blobatar/react",
+]);
 
 function line() {
   console.log("-".repeat(72));
 }
 
-async function dump(spec, loader) {
-  const mod = await import(spec);
+async function load(specifier) {
+  if (!ALLOWED_SPECIFIERS.has(specifier)) {
+    throw new Error(`refusing to import unknown specifier: ${specifier}`);
+  }
+  return await import(specifier);
+}
+
+async function dump(spec) {
+  const mod = await load(spec);
   const keys = Object.keys(mod).sort();
   console.log(`\n>> ${spec}`);
   console.log("   exports:", keys.join(", "));
   for (const k of keys) {
-    const v = mod[k];
-    console.log(
-      `     - ${k}: ${typeof v}${typeof v === "function" ? ` (arity ${v.length})` : ""}`
-    );
+    const v = Object.getOwnPropertyDescriptor(mod, k)?.value;
+    console.log(`     - ${k}: ${typeof v}${typeof v === "function" ? ` (arity ${v.length})` : ""}`);
   }
   return mod;
+}
+
+const PACKAGE_NAMES = new Set([
+  "blobatar",
+  "@blobatar/react",
+  "react",
+  "react-dom",
+  "react-test-renderer",
+  "react-native-svg",
+]);
+
+function resolveEntry(name) {
+  if (!PACKAGE_NAMES.has(name)) {
+    throw new Error(`refusing to resolve unknown package: ${name}`);
+  }
+  switch (name) {
+    case "blobatar":
+      return require.resolve("blobatar");
+    case "@blobatar/react":
+      return require.resolve("@blobatar/react");
+    case "react":
+      return require.resolve("react");
+    case "react-dom":
+      return require.resolve("react-dom");
+    case "react-test-renderer":
+      return require.resolve("react-test-renderer");
+    default:
+      return require.resolve("react-native-svg");
+  }
+}
+
+// Each known package is required with a literal and returned; the module id is
+// consequently never derived from arbitrary input.
+function requireManifest(name) {
+  switch (name) {
+    case "blobatar":
+      return require("blobatar/package.json");
+    case "@blobatar/react":
+      return require("@blobatar/react/package.json");
+    case "react":
+      return require("react/package.json");
+    case "react-dom":
+      return require("react-dom/package.json");
+    case "react-test-renderer":
+      return require("react-test-renderer/package.json");
+    case "react-native-svg":
+      return require("react-native-svg/package.json");
+    default:
+      throw new Error(`refusing to read the manifest for unknown package: ${name}`);
+  }
 }
 
 line();
@@ -31,13 +98,11 @@ for (const p of [
   "react-native-svg",
 ]) {
   try {
-    const pkg = require(`${p}/package.json`);
-    console.log(
-      `  ${pkg.name.padEnd(26)} ${pkg.version.padEnd(10)} license=${pkg.license ?? "-"}`
-    );
-  } catch (e) {
+    const pkg = requireManifest(p);
+    console.log(`  ${pkg.name.padEnd(26)} ${pkg.version.padEnd(10)} license=${pkg.license ?? "-"}`);
+  } catch {
     console.log(`  ${p} -> not resolvable as ${p}/package.json (exports map)`);
-    const entry = require.resolve(p);
+    const entry = resolveEntry(p);
     console.log(`      entry: ${entry}`);
   }
 }
@@ -47,13 +112,13 @@ console.log("blobatar CORE (string API — the thing mobile consumes)");
 line();
 const core = await dump("blobatar");
 console.log("\n>> blobatar/uri");
-const uri = await import("blobatar/uri");
+const uri = await load("blobatar/uri");
 console.log("   exports:", Object.keys(uri).join(", "));
 console.log("\n>> blobatar/expression");
-const expr = await import("blobatar/expression");
+const expr = await load("blobatar/expression");
 console.log("   exports:", Object.keys(expr).join(", "));
 console.log("\n>> blobatar/internal");
-const internal = await import("blobatar/internal");
+const internal = await load("blobatar/internal");
 console.log("   exports:", Object.keys(internal).join(", "));
 
 line();
@@ -63,7 +128,7 @@ await dump("@blobatar/react");
 await dump("blobatar/react");
 
 line();
-console.log(`Core VERSION const = ${core.VERSION}`);
+console.log(`Core VERSION const = ${Object.getOwnPropertyDescriptor(core, "VERSION")?.value}`);
 console.log(
-  `blobatar("x") length=${core.blobatar("x").length}, starts with: ${core.blobatar("x").slice(0, 30)}`
+  `blobatar("x") length=${core.blobatar("x").length}, starts with: ${core.blobatar("x").slice(0, 30)}`,
 );

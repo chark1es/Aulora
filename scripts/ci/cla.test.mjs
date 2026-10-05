@@ -213,7 +213,7 @@ test("a valid signature creates an independent branch with its immutable agreeme
   expect(state.statuses.at(-1).state).toBe("success");
   expect(records()[0]).toMatchObject({
     acceptedAt: "2026-09-30T12:00:00Z",
-    pullRequest: pull.html_url,
+    pullRequest: pull.html_url.toString(),
   });
   const commit = state.commits.get(state.head);
   expect(commit.parents).toEqual([]);
@@ -337,7 +337,7 @@ test("changed PR heads and excessive co-author lists fail instead of omitting co
 
 test("scheduled sweeps reconcile open PRs but ordinary issue comments are ignored", async () => {
   const { github, state } = fixture();
-  const core = { error: () => {}, setFailed: () => {} };
+  const core = { error: () => undefined, setFailed: () => undefined };
   const context = {
     repo,
     eventName: "issue_comment",

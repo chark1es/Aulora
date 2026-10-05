@@ -10,7 +10,7 @@
 import { cpSync, mkdirSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { createRequire } from "node:module";
 import { dirname, join } from "node:path";
-import { fileURLToPath, pathToFileURL } from "node:url";
+import { fileURLToPath } from "node:url";
 import { escapeHtml, renderMarkdown } from "../lib/markdown.mjs";
 import { iconSvg, paletteCss, readIcons, readPalettes } from "../lib/theme.mjs";
 
@@ -57,10 +57,9 @@ const PAGES = GROUPS.flatMap((group) => group.pages);
 
 const icons = readIcons(readFileSync(join(repo, "packages/tokens/src/icons.ts"), "utf8"));
 const palettes = readPalettes(readFileSync(join(repo, "packages/tokens/src/colors.ts"), "utf8"));
-const blobatarEntry = createRequire(join(repo, "packages/avatars/package.json")).resolve(
-  "blobatar",
-);
-const { blobatar } = await import(pathToFileURL(blobatarEntry).href);
+// `blobatar` is a dependency of the avatars package, not the docs app, so load
+// it through a require rooted at that package with a fixed module name.
+const { blobatar } = createRequire(join(repo, "packages/avatars/package.json"))("blobatar");
 
 const icon = (name, className) => iconSvg(icons, name, className);
 
@@ -149,9 +148,14 @@ ${links.join("\n")}
 function decorateCode(html) {
   return html
     .replace(
-      /<pre><code(?: class="language-([\w-]+)")?>/g,
+      /<pre><code class="language-([\w-]+)">/g,
       (_match, language) =>
         `<div class="code"><div class="code-bar"><span>${language ?? "text"}</span><button type="button" data-copy>Copy</button></div><pre><code${language ? ` class="language-${language}"` : ""}>`,
+    )
+    .replace(
+      /<pre><code>/g,
+      () =>
+        '<div class="code"><div class="code-bar"><span>text</span><button type="button" data-copy>Copy</button></div><pre><code>',
     )
     .replace(/<\/code><\/pre>/g, "</code></pre></div>");
 }
@@ -262,10 +266,41 @@ const LANDING_PAGES = [
   },
 ];
 
+// Each marketing page declares its own literal source and output paths, so the
+// build only ever opens files under the fixed landing and dist directories.
+const LANDING_IO = new Map([
+  [
+    "index.html",
+    {
+      read: () => readFileSync(join(root, "landing", "index.html"), "utf8"),
+      write: (contents) => writeFileSync(join(outDir, "index.html"), contents, "utf8"),
+    },
+  ],
+  [
+    "how-it-works.html",
+    {
+      read: () => readFileSync(join(root, "landing", "how-it-works.html"), "utf8"),
+      write: (contents) => writeFileSync(join(outDir, "how-it-works.html"), contents, "utf8"),
+    },
+  ],
+  [
+    "install.html",
+    {
+      read: () => readFileSync(join(root, "landing", "install.html"), "utf8"),
+      write: (contents) => writeFileSync(join(outDir, "install.html"), contents, "utf8"),
+    },
+  ],
+  [
+    "pricing.html",
+    {
+      read: () => readFileSync(join(root, "landing", "pricing.html"), "utf8"),
+      write: (contents) => writeFileSync(join(outDir, "pricing.html"), contents, "utf8"),
+    },
+  ],
+]);
+
 function renderLanding(page) {
-  // page.file comes from the fixed LANDING_PAGES list, not user input.
-  // eslint-disable-next-line security/detect-non-literal-fs-filename
-  const template = readFileSync(join(root, "landing", page.file), "utf8");
+  const template = LANDING_IO.get(page.file).read();
   const base = "";
   return template
     .replace(
@@ -294,8 +329,7 @@ cpSync(staticDir, outDir, { recursive: true });
 cpSync(join(repo, "apps/web/public/favicon.svg"), join(outDir, "favicon.svg"));
 writeFileSync(join(outDir, "tokens.css"), paletteCss(palettes), "utf8");
 for (const page of LANDING_PAGES) {
-  // eslint-disable-next-line security/detect-non-literal-fs-filename
-  writeFileSync(join(outDir, page.file), renderLanding(page), "utf8");
+  LANDING_IO.get(page.file).write(renderLanding(page));
 }
 
 for (const page of PAGES) {

@@ -229,7 +229,9 @@ function WorkspaceMenuItem({
       type="button"
       role="menuitemradio"
       aria-checked={active}
-      onClick={() => onPick(profile.id)}
+      onClick={() => {
+        onPick(profile.id);
+      }}
       className="flex w-full items-center gap-2.5 rounded-[7px] px-2 py-1.5 text-left transition hover:bg-surface-3"
     >
       <Avatar seed={profile.iconSeed} size={26} shape="squircle" />

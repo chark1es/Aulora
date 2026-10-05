@@ -117,6 +117,62 @@ const MENTION_SCAN_LIMIT = 200;
 /** Upper bound on channels per summary call, matching the sidebar page size. */
 const SUMMARY_CHANNEL_LIMIT = 200;
 
+interface ChannelUnreadSummary {
+  channelId: Id<"channels">;
+  unread: boolean;
+  mentionCount: number;
+  lastActivityAt: number | null;
+  lastAuthorId: string | null;
+}
+
+/** Computes one channel's live unread/mention summary for a single viewer. */
+async function summarizeChannel(
+  ctx: Parameters<typeof requireChannelAccess>[0],
+  channelId: Id<"channels">,
+  userId: string,
+): Promise<ChannelUnreadSummary> {
+  const latest = await ctx.db
+    .query("messages")
+    .withIndex("by_channel_created", (q) => q.eq("channelId", channelId))
+    .filter((q) => q.eq(q.field("threadRootId"), undefined))
+    .order("desc")
+    .first();
+  const state = await ctx.db
+    .query("readStates")
+    .withIndex("by_user_channel", (q) => q.eq("userId", userId).eq("channelId", channelId))
+    .unique();
+  const cursor =
+    state?.lastReadMessageId !== undefined ? await ctx.db.get(state.lastReadMessageId) : null;
+  const cursorAt = cursor?._creationTime ?? null;
+
+  const after = await ctx.db
+    .query("messages")
+    .withIndex("by_channel_created", (q) =>
+      cursorAt === null
+        ? q.eq("channelId", channelId)
+        : q.eq("channelId", channelId).gt("_creationTime", cursorAt),
+    )
+    .order("desc")
+    .take(MENTION_SCAN_LIMIT);
+  const fromOthers = after.filter(
+    (message) =>
+      message.authorId !== userId &&
+      message.deletedAt === undefined &&
+      message.threadRootId === undefined,
+  );
+  const mentionCount = fromOthers.filter((message) =>
+    message.mentionUserIds.includes(userId),
+  ).length;
+
+  return {
+    channelId,
+    unread: fromOthers.length > 0,
+    mentionCount,
+    lastActivityAt: latest?._creationTime ?? null,
+    lastAuthorId: latest?.authorId ?? null,
+  };
+}
+
 /**
  * Live unread summary for the sidebar: for each requested channel the caller
  * can view, whether it has unread root messages from other people, how many of
@@ -128,13 +184,7 @@ const SUMMARY_CHANNEL_LIMIT = 200;
 export const summary = query({
   args: { channelIds: v.array(v.id("channels")) },
   handler: async (ctx, args) => {
-    const rows: {
-      channelId: Id<"channels">;
-      unread: boolean;
-      mentionCount: number;
-      lastActivityAt: number | null;
-      lastAuthorId: string | null;
-    }[] = [];
+    const rows: ChannelUnreadSummary[] = [];
     for (const channelId of args.channelIds.slice(0, SUMMARY_CHANNEL_LIMIT)) {
       let userId: string;
       try {
@@ -142,46 +192,7 @@ export const summary = query({
       } catch {
         continue;
       }
-      const latest = await ctx.db
-        .query("messages")
-        .withIndex("by_channel_created", (q) => q.eq("channelId", channelId))
-        .filter((q) => q.eq(q.field("threadRootId"), undefined))
-        .order("desc")
-        .first();
-      const state = await ctx.db
-        .query("readStates")
-        .withIndex("by_user_channel", (q) => q.eq("userId", userId).eq("channelId", channelId))
-        .unique();
-      const cursor =
-        state?.lastReadMessageId !== undefined ? await ctx.db.get(state.lastReadMessageId) : null;
-      const cursorAt = cursor?._creationTime ?? null;
-
-      const after = await ctx.db
-        .query("messages")
-        .withIndex("by_channel_created", (q) =>
-          cursorAt === null
-            ? q.eq("channelId", channelId)
-            : q.eq("channelId", channelId).gt("_creationTime", cursorAt),
-        )
-        .order("desc")
-        .take(MENTION_SCAN_LIMIT);
-      const fromOthers = after.filter(
-        (message) =>
-          message.authorId !== userId &&
-          message.deletedAt === undefined &&
-          message.threadRootId === undefined,
-      );
-      const mentionCount = fromOthers.filter((message) =>
-        message.mentionUserIds.includes(userId),
-      ).length;
-
-      rows.push({
-        channelId,
-        unread: fromOthers.length > 0,
-        mentionCount,
-        lastActivityAt: latest?._creationTime ?? null,
-        lastAuthorId: latest?.authorId ?? null,
-      });
+      rows.push(await summarizeChannel(ctx, channelId, userId));
     }
     return rows;
   },

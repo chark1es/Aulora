@@ -7,7 +7,11 @@ export function messageOf(error: unknown): string {
 
 /** A clear, actionable reason media could not start. */
 export function mediaMessage(error: unknown): string {
-  if (typeof navigator === "undefined" || navigator.mediaDevices === undefined) {
+  const mediaDevices =
+    typeof navigator === "undefined"
+      ? undefined
+      : (navigator as Navigator & { readonly mediaDevices?: MediaDevices }).mediaDevices;
+  if (mediaDevices === undefined) {
     return "Audio and video need a secure connection. Open Aulora over HTTPS or on localhost.";
   }
   if (error instanceof DOMException && error.name === "NotAllowedError") {

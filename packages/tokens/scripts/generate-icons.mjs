@@ -102,21 +102,30 @@ const ICONS = {
 const root = join(dirname(fileURLToPath(import.meta.url)), "..");
 const require = createRequire(join(root, "package.json"));
 const setDir = dirname(require.resolve("@iconify-json/material-symbols/package.json"));
-const set = JSON.parse(readFileSync(join(setDir, "icons.json"), "utf8"));
+const ICONS_JSON = join(setDir, "icons.json");
+const set = JSON.parse(readFileSync(ICONS_JSON, "utf8"));
+const iconMap = new Map(Object.entries(set.icons));
+const aliasMap = new Map(Object.entries(set.aliases ?? {}));
+const seen = new Set();
 
 function resolve(name) {
-  const icon = set.icons[name];
-  if (icon) return icon;
-  const alias = set.aliases?.[name];
+  if (seen.has(name)) {
+    throw new Error(`Material Symbols alias cycle at "${name}"`);
+  }
+  seen.add(name);
+  const icon = iconMap.get(name);
+  if (icon !== undefined) return icon;
+  const alias = aliasMap.get(name);
   if (alias && !alias.hFlip && !alias.vFlip && !alias.rotate) return resolve(alias.parent);
   throw new Error(`Material Symbols has no icon "${name}"`);
 }
 
 const PATH = /<path\s+(?:fill="currentColor"\s+)?d="([^"]+)"\s*\/>/g;
+const viewBox = { width: 24, height: 24, left: 0, top: 0 };
 const lines = [];
 for (const [name, source] of Object.entries(ICONS)) {
   const icon = resolve(source);
-  const box = { width: 24, height: 24, left: 0, top: 0, ...set, ...icon };
+  const box = { ...viewBox, ...set, ...icon };
   if (box.width !== 24 || box.height !== 24 || box.left !== 0 || box.top !== 0) {
     throw new Error(`${source}: expected a 24x24 view box`);
   }

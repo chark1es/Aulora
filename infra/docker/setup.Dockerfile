@@ -34,5 +34,10 @@ COPY infra/docker/setup /app/setup
 
 RUN chmod +x /usr/local/bin/generate_key /app/setup/entrypoint.sh
 
+# Run the one-shot setup as an unprivileged user rather than root.
+RUN groupadd --system aulora && useradd --system --gid aulora --home-dir /app aulora \
+  && chown -R aulora:aulora /app
+USER aulora
+
 
 ENTRYPOINT ["/app/setup/entrypoint.sh"]

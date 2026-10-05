@@ -126,7 +126,7 @@ async function configuredEmail(ctx: ActionCtx): Promise<EmailConfig> {
       row.resendApiKeyCiphertext !== undefined
         ? await openString(resendKeyContext, row.resendApiKeyCiphertext)
         : fallback.resendApiKey,
-    smtpGatewayUrl: process.env.SMTP_GATEWAY_URL?.trim() || fallback.smtpGatewayUrl,
+    smtpGatewayUrl: (process.env.SMTP_GATEWAY_URL?.trim() ?? "") || fallback.smtpGatewayUrl,
     ...(row.provider === "smtp"
       ? {
           smtp: {

@@ -36,6 +36,9 @@ import { RemoteAudio } from "./voice-remote-audio";
 /** How often the cached unload token is refreshed while a call is active. */
 const TOKEN_REFRESH_MS = 60_000;
 
+/** Tags whose text entry should suppress push-to-talk while focused. */
+const TEXT_ENTRY_TAGS = new Set(["INPUT", "TEXTAREA"]);
+
 /** The workspace's voice policy, mirrored from `server.publicConfig`. */
 export interface VoicePolicy {
   readonly enabled: boolean;
@@ -199,10 +202,13 @@ export function VoiceProvider({
     if (!settings.pushToTalk) {
       return;
     }
-    const isTyping = (target: EventTarget | null): boolean =>
-      target instanceof HTMLInputElement ||
-      target instanceof HTMLTextAreaElement ||
-      (target instanceof HTMLElement && target.isContentEditable);
+    const isTyping = (target: EventTarget | null): boolean => {
+      if (!(target instanceof Element)) {
+        return false;
+      }
+      const editable = target as { readonly isContentEditable?: boolean };
+      return TEXT_ENTRY_TAGS.has(target.tagName) || editable.isContentEditable === true;
+    };
     const onKeyDown = (event: KeyboardEvent) => {
       if (event.code === "Space" && !event.repeat && !isTyping(event.target)) {
         event.preventDefault();

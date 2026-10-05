@@ -33,6 +33,37 @@ function pendingInviteLimit(): number {
   return Number.isFinite(configured) && configured > 0 ? configured : 50;
 }
 
+/** Rejects the create when email is configured but no transport is set up. */
+async function assertInviteEmailConfigured(
+  ctx: Parameters<typeof requireWorkspacePermission>[0],
+): Promise<void> {
+  const siteUrl = (process.env.SITE_URL?.trim() ?? "") || process.env.CONVEX_SITE_URL?.trim();
+  if (!siteUrl) throw new ConvexError("Set SITE_URL before emailing invites");
+  const configured = await ctx.db.query("emailSettings").first();
+  if ((configured?.provider ?? parseEmailConfig().provider) === "none") {
+    throw new ConvexError("Configure email delivery before emailing invites");
+  }
+}
+
+/** Caps a creator's live invites so one actor cannot mint unbounded links. */
+async function assertPendingInviteBudget(
+  ctx: Parameters<typeof requireWorkspacePermission>[0],
+  userId: string,
+  now: number,
+): Promise<void> {
+  const existingInvites = await ctx.db.query("invites").collect();
+  const pending = existingInvites.filter(
+    (invite) =>
+      invite.createdBy === userId &&
+      invite.revokedAt === undefined &&
+      (invite.expiresAt === undefined || invite.expiresAt > now) &&
+      (invite.maxUses === 0 || invite.uses < invite.maxUses),
+  );
+  if (pending.length >= pendingInviteLimit()) {
+    throw new ConvexError("Too many pending invites");
+  }
+}
+
 /** Deliberately permissive: a single `@`, a dot in the domain, no spaces. */
 const EMAIL_PATTERN = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
 
@@ -87,31 +118,15 @@ export const create = mutation({
     const expiresAt = args.expiresAt ?? now + INVITE_TTL_MS;
 
     const recipient = args.email?.trim();
-    if (recipient !== undefined && recipient.length > 0 && !EMAIL_PATTERN.test(recipient)) {
+    const emailRecipient = recipient !== undefined && recipient.length > 0 ? recipient : undefined;
+    if (emailRecipient !== undefined && !EMAIL_PATTERN.test(emailRecipient)) {
       throw new ConvexError("Invite email is not a valid address");
     }
-    if (recipient !== undefined && recipient.length > 0) {
-      const siteUrl = process.env.SITE_URL?.trim() || process.env.CONVEX_SITE_URL?.trim();
-      if (!siteUrl) throw new ConvexError("Set SITE_URL before emailing invites");
-      const configured = await ctx.db.query("emailSettings").first();
-      if ((configured?.provider ?? parseEmailConfig().provider) === "none") {
-        throw new ConvexError("Configure email delivery before emailing invites");
-      }
+    if (emailRecipient !== undefined) {
+      await assertInviteEmailConfigured(ctx);
     }
 
-    // Cap the creator's live invites so one actor cannot mint unbounded links
-    // (each may trigger an outbound email).
-    const existingInvites = await ctx.db.query("invites").collect();
-    const pending = existingInvites.filter(
-      (invite) =>
-        invite.createdBy === userId &&
-        invite.revokedAt === undefined &&
-        (invite.expiresAt === undefined || invite.expiresAt > now) &&
-        (invite.maxUses === 0 || invite.uses < invite.maxUses),
-    );
-    if (pending.length >= pendingInviteLimit()) {
-      throw new ConvexError("Too many pending invites");
-    }
+    await assertPendingInviteBudget(ctx, userId, now);
 
     const code = randomToken();
     const codeHash = await sha256Hex(code);
@@ -122,14 +137,14 @@ export const create = mutation({
       uses: 0,
       expiresAt,
     });
-    if (recipient !== undefined && recipient.length > 0) {
+    if (emailRecipient !== undefined) {
       const server = await ctx.db.query("server").first();
       const invitedByName = (await accountNames(ctx, [userId])).get(userId) ?? undefined;
       await ctx.scheduler.runAfter(0, internal.email.sendInvite, {
-        to: recipient,
+        to: emailRecipient,
         code,
         workspaceName: server?.name ?? "Aulora",
-        ...(invitedByName !== undefined && invitedByName !== null ? { invitedByName } : {}),
+        ...(invitedByName !== undefined ? { invitedByName } : {}),
       });
     }
     await writeAudit(ctx, {

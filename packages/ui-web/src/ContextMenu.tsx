@@ -61,7 +61,9 @@ export function ContextMenuProvider({ children }: { readonly children: ReactNode
     if (menu === null) {
       return;
     }
-    const close = () => setMenu(null);
+    const close = () => {
+      setMenu(null);
+    };
     window.addEventListener("pointerdown", close);
     window.addEventListener("resize", close);
     window.addEventListener("scroll", close, true);
@@ -75,7 +77,14 @@ export function ContextMenuProvider({ children }: { readonly children: ReactNode
   return (
     <ContextMenuContext.Provider value={open}>
       {children}
-      {menu !== null && <ContextMenu state={menu} onClose={() => setMenu(null)} />}
+      {menu !== null && (
+        <ContextMenu
+          state={menu}
+          onClose={() => {
+            setMenu(null);
+          }}
+        />
+      )}
     </ContextMenuContext.Provider>
   );
 }
@@ -83,7 +92,7 @@ export function ContextMenuProvider({ children }: { readonly children: ReactNode
 /** Opens a context menu at the pointer. No-op when no provider is mounted. */
 export function useContextMenu(): (event: ContextMenuEvent) => void {
   const open = useContext(ContextMenuContext);
-  return open ?? (() => {});
+  return open ?? (() => undefined);
 }
 
 function ContextMenu({
@@ -123,7 +132,9 @@ function ContextMenu({
       }
     };
     window.addEventListener("keydown", onKey, true);
-    return () => window.removeEventListener("keydown", onKey, true);
+    return () => {
+      window.removeEventListener("keydown", onKey, true);
+    };
   }, [onClose]);
 
   return (
@@ -132,8 +143,12 @@ function ContextMenu({
       role="menu"
       aria-label={state.label}
       style={{ left: position.x, top: position.y }}
-      onPointerDown={(event) => event.stopPropagation()}
-      onContextMenu={(event) => event.preventDefault()}
+      onPointerDown={(event) => {
+        event.stopPropagation();
+      }}
+      onContextMenu={(event) => {
+        event.preventDefault();
+      }}
       className="fixed z-[60] min-w-[196px] animate-pop-in rounded-[10px] border border-border bg-surface-2 p-1 shadow-2xl shadow-black/30"
     >
       {state.items.map((item) => (

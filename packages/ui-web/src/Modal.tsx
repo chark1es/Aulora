@@ -27,11 +27,11 @@ export interface ModalProps {
   readonly className?: string;
 }
 
-const SIZE: Record<NonNullable<ModalProps["size"]>, string> = {
-  sm: "max-w-[380px]",
-  md: "max-w-[480px]",
-  lg: "max-w-[620px]",
-};
+const SIZE = new Map<NonNullable<ModalProps["size"]>, string>([
+  ["sm", "max-w-[380px]"],
+  ["md", "max-w-[480px]"],
+  ["lg", "max-w-[620px]"],
+]);
 
 /**
  * A focused, centered dialog. Opens with a subtle scale-and-fade, traps the
@@ -39,18 +39,19 @@ const SIZE: Record<NonNullable<ModalProps["size"]>, string> = {
  * the trigger. Uses the native `dialog`-style semantics (`role="dialog"` +
  * `aria-modal`) so it is identical in the web and Tauri builds.
  */
-export function Modal({
-  open,
-  onClose,
-  label,
-  title,
-  description,
-  icon,
-  children,
-  footer,
-  size = "md",
-  className,
-}: ModalProps) {
+export function Modal(props: ModalProps) {
+  const {
+    open,
+    onClose,
+    label,
+    title,
+    description,
+    icon,
+    children,
+    footer,
+    size = "md",
+    className,
+  } = props;
   const reducedMotion = usePrefersReducedMotion();
   const titleId = useId();
   const descriptionId = useId();
@@ -62,16 +63,24 @@ export function Modal({
   useEffect(() => {
     if (open) {
       setRendered(true);
-      const frame = requestAnimationFrame(() => setEntered(true));
-      return () => cancelAnimationFrame(frame);
+      const frame = requestAnimationFrame(() => {
+        setEntered(true);
+      });
+      return () => {
+        cancelAnimationFrame(frame);
+      };
     }
     setEntered(false);
     if (reducedMotion) {
       setRendered(false);
       return;
     }
-    const timer = setTimeout(() => setRendered(false), 160);
-    return () => clearTimeout(timer);
+    const timer = setTimeout(() => {
+      setRendered(false);
+    }, 160);
+    return () => {
+      clearTimeout(timer);
+    };
   }, [open, reducedMotion]);
 
   // Move focus into the dialog when it opens, and restore it on close.
@@ -79,7 +88,7 @@ export function Modal({
     if (!open) {
       return;
     }
-    const previous = document.activeElement as HTMLElement | null;
+    const previous = document.activeElement;
     const frame = requestAnimationFrame(() => {
       const panel = panelRef.current;
       if (panel === null) {
@@ -92,7 +101,9 @@ export function Modal({
     });
     return () => {
       cancelAnimationFrame(frame);
-      previous?.focus?.();
+      if (previous instanceof HTMLElement) {
+        previous.focus();
+      }
     };
   }, [open]);
 
@@ -115,7 +126,7 @@ export function Modal({
           "input,textarea,select,button:not([disabled]),[tabindex]:not([tabindex='-1'])",
         ),
       ].filter((node) => node.offsetParent !== null || node === document.activeElement);
-      const first = focusable[0];
+      const first = focusable.at(0);
       const last = focusable.at(-1);
       if (first === undefined || last === undefined) {
         return;
@@ -163,7 +174,7 @@ export function Modal({
           "w-full overflow-hidden rounded-[14px] border border-border bg-surface-2 shadow-2xl shadow-black/30",
           "transition-all duration-150 ease-out focus:outline-none",
           entered ? "translate-y-0 scale-100 opacity-100" : "translate-y-1 scale-[0.98] opacity-0",
-          SIZE[size],
+          SIZE.get(size),
           className,
         )}
       >

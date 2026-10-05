@@ -34,7 +34,7 @@ export function SessionGate({ profile, authClient, client }: SessionGateProps) {
 
   // A failed lookup is not a signed-out session: the stored login is still
   // valid, so offer a retry instead of sending the person to the sign-in form.
-  if ((user === undefined || user === null) && session.error) {
+  if (user === undefined && session.error) {
     return (
       <SessionUnreachable
         profileName={profile.name}
@@ -44,7 +44,7 @@ export function SessionGate({ profile, authClient, client }: SessionGateProps) {
     );
   }
 
-  if (user !== undefined && user !== null) {
+  if (user !== undefined) {
     const signedInUser = {
       id: user.id,
       ...(typeof user.name === "string" ? { name: user.name } : {}),

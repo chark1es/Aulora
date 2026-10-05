@@ -141,7 +141,13 @@ export function ConnectScreen({ store, onConnected, initialHost }: ConnectScreen
               {error}
             </Text>
           )}
-          <Button size="lg" onClick={handleContinue} loading={busy}>
+          <Button
+            size="lg"
+            onClick={() => {
+              void handleContinue();
+            }}
+            loading={busy}
+          >
             <span className="text-[15px] font-semibold">Continue</span>
           </Button>
         </AuthCard>

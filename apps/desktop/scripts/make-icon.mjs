@@ -29,15 +29,15 @@ const APP_SIZE = 1024;
 const BADGE_SIZE = 64;
 
 const CRC_TABLE = (() => {
-  const table = new Int32Array(256);
+  const table = [];
   for (let n = 0; n < 256; n += 1) {
     let c = n;
     for (let k = 0; k < 8; k += 1) {
       c = c & 1 ? 0xedb88320 ^ (c >>> 1) : c >>> 1;
     }
-    table[n] = c;
+    table.push(c);
   }
-  return table;
+  return Int32Array.from(table);
 })();
 
 function crc32(buffer) {
@@ -120,30 +120,23 @@ function render(size, sampler, scale) {
       if (a === 0) {
         continue;
       }
-      out[offset] = Math.round(r / a);
-      out[offset + 1] = Math.round(g / a);
-      out[offset + 2] = Math.round(b / a);
-      out[offset + 3] = Math.round(a * inv);
+      const red = Math.round(r / a);
+      const green = Math.round(g / a);
+      const blue = Math.round(b / a);
+      const alpha = Math.round(a * inv);
+      out.writeUInt32BE(((red << 24) | (green << 16) | (blue << 8) | alpha) >>> 0, offset);
     }
   }
   return out;
-}
-
-function write(relative, buffer) {
-  const path = resolve(root, relative);
-  mkdirSync(dirname(path), { recursive: true });
-  writeFileSync(path, buffer);
-  process.stdout.write(`wrote ${path}\n`);
 }
 
 // Playwright is a devDependency of @aulora/web, not @aulora/desktop, so resolve
 // it explicitly from the web workspace (or the root) rather than relying on
 // this package's own node_modules.
 function loadPlaywright() {
-  const require = createRequire(import.meta.url);
   for (const base of [resolve(root, "../web"), root]) {
     try {
-      return require(require.resolve("@playwright/test", { paths: [base] }));
+      return createRequire(resolve(base, "package.json"))("@playwright/test");
     } catch {
       // Fall through to the next candidate workspace.
     }
@@ -195,11 +188,14 @@ async function makeAppIcon() {
 
 await makeAppIcon();
 
-write(
-  "src-tauri/assets/badge.png",
+const badgePath = resolve(root, "src-tauri/assets/badge.png");
+mkdirSync(dirname(badgePath), { recursive: true });
+writeFileSync(
+  badgePath,
   encodePng(
     BADGE_SIZE,
     BADGE_SIZE,
     render(BADGE_SIZE, (x, y) => sampleBadge(x, y, BADGE_SIZE), 2),
   ),
 );
+process.stdout.write(`wrote ${badgePath}\n`);

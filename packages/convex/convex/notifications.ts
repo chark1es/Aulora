@@ -1,10 +1,11 @@
 import { Permission } from "@aulora/core";
 import { ConvexError, v } from "convex/values";
 import { internal } from "./_generated/api";
-import type { Doc, Id } from "./_generated/dataModel";
+import type { Id } from "./_generated/dataModel";
 import { action, internalAction, internalQuery, mutation, query } from "./_generated/server";
 import { requireAuth } from "./lib/auth";
 import { requireChannelAccess } from "./lib/channels";
+import { resolveMessageRecipients, resolvePref } from "./lib/messageRecipients";
 import { requireMember } from "./lib/permissions";
 import {
   type MobilePlatform,
@@ -32,39 +33,6 @@ import {
 
 const scopeValidator = v.union(v.literal("server"), v.literal("channel"));
 const levelValidator = v.union(v.literal("all"), v.literal("mentions"), v.literal("nothing"));
-
-type NotificationLevel = "all" | "mentions" | "nothing";
-
-/** A recipient whose presence heartbeat is younger than this is treated as
- * actively using Aulora, so it is skipped (the plan's "skips anyone active"). */
-const ACTIVE_PRESENCE_MS = 60_000;
-
-interface ResolvedPref {
-  readonly level: NotificationLevel;
-  readonly muteUntil: number | undefined;
-}
-
-/**
- * Channel prefs win over server prefs; absent both, the default is "all". A
- * `muteUntil` in the future suppresses delivery regardless of level.
- */
-async function resolvePref(
-  ctx: Parameters<typeof requireChannelAccess>[0],
-  userId: string,
-  channelId: Id<"channels">,
-): Promise<ResolvedPref> {
-  const rows = await ctx.db
-    .query("notificationPrefs")
-    .withIndex("by_user_scope", (q) => q.eq("userId", userId))
-    .collect();
-  const channelPref = rows.find((row) => row.scope === "channel" && row.channelId === channelId);
-  const serverPref = rows.find((row) => row.scope === "server");
-  const chosen = channelPref ?? serverPref;
-  return {
-    level: chosen?.level ?? "all",
-    muteUntil: chosen?.muteUntil,
-  };
-}
 
 /** All of the caller's notification preferences. */
 export const getPrefs = query({
@@ -267,107 +235,7 @@ export const resolveRecipients = internalQuery({
     if (message === null) {
       return [];
     }
-    const channelId = message.channelId;
-    const now = Date.now();
-
-    // Candidate recipients keyed by user id. The value records which channel's
-    // preference governs the wake (the message's channel for direct members,
-    // the mentioned channel/category's channel otherwise) and whether the user
-    // was explicitly mentioned.
-    const candidates = new Map<string, { channelId: Id<"channels">; mentioned: boolean }>();
-    const addCandidate = (
-      userId: string,
-      prefChannelId: Id<"channels">,
-      mentioned: boolean,
-    ): void => {
-      const existing = candidates.get(userId);
-      if (existing === undefined) {
-        candidates.set(userId, { channelId: prefChannelId, mentioned });
-        return;
-      }
-      // A later mention upgrades a plain member to mentioned.
-      existing.mentioned = existing.mentioned || mentioned;
-    };
-
-    const members = await ctx.db
-      .query("channelMembers")
-      .withIndex("by_channel", (q) => q.eq("channelId", channelId))
-      .collect();
-    for (const member of members) {
-      addCandidate(member.userId, channelId, message.mentionUserIds.includes(member.userId));
-    }
-
-    // `#channel` mentions notify that channel's members too, even when they are
-    // not members of the message's own channel.
-    for (const mentioned of new Set(message.mentionChannelIds ?? [])) {
-      let mentionedChannelId: Id<"channels">;
-      try {
-        mentionedChannelId = mentioned as Id<"channels">;
-        if ((await ctx.db.get(mentionedChannelId)) === null) {
-          continue;
-        }
-      } catch {
-        continue;
-      }
-      const rows = await ctx.db
-        .query("channelMembers")
-        .withIndex("by_channel", (q) => q.eq("channelId", mentionedChannelId))
-        .collect();
-      for (const row of rows) {
-        addCandidate(row.userId, mentionedChannelId, true);
-      }
-    }
-
-    // Category mentions notify members of every channel in those categories.
-    const categoryIds = new Set(message.mentionCategoryIds ?? []);
-    if (categoryIds.size > 0) {
-      const allChannels = await ctx.db.query("channels").collect();
-      for (const channel of allChannels) {
-        if (channel.categoryId === undefined || !categoryIds.has(channel.categoryId)) {
-          continue;
-        }
-        const rows = await ctx.db
-          .query("channelMembers")
-          .withIndex("by_channel", (q) => q.eq("channelId", channel._id))
-          .collect();
-        for (const row of rows) {
-          addCandidate(row.userId, channel._id, true);
-        }
-      }
-    }
-
-    const presenceRows = await ctx.db.query("presence").collect();
-    const presenceByUser = new Map<string, Doc<"presence">>();
-    for (const row of presenceRows) {
-      presenceByUser.set(row.userId, row);
-    }
-
-    const recipients: string[] = [];
-    for (const [userId, info] of candidates) {
-      if (userId === message.authorId) {
-        continue;
-      }
-      const pref = await resolvePref(ctx, userId, info.channelId);
-      if (pref.level === "nothing") {
-        continue;
-      }
-      if (pref.muteUntil !== undefined && pref.muteUntil > now) {
-        continue;
-      }
-      if (pref.level === "mentions" && !info.mentioned) {
-        continue;
-      }
-      const presence = presenceByUser.get(userId);
-      if (
-        presence !== undefined &&
-        presence.status !== "offline" &&
-        now - presence.lastHeartbeat < ACTIVE_PRESENCE_MS
-      ) {
-        continue;
-      }
-      recipients.push(userId);
-    }
-    return recipients;
+    return await resolveMessageRecipients(ctx, message);
   },
 });
 

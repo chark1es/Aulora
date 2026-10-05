@@ -7,7 +7,10 @@ export const report = internalAction({
   args: {},
   handler: async (ctx) => {
     const groups = await ctx.runQuery(internal.licenseUsage.reports, {});
-    const base = (process.env.AULORA_LICENSE_SERVER_URL || LICENSE_SERVER_URL).replace(/\/$/, "");
+    const base = ((process.env.AULORA_LICENSE_SERVER_URL ?? "") || LICENSE_SERVER_URL).replace(
+      /\/$/,
+      "",
+    );
     if (new URL(base).protocol !== "https:") throw new Error("Usage reports require HTTPS");
     for (const input of groups) {
       const key = await openString(

@@ -90,12 +90,12 @@ describe("SignInScreen", () => {
 
     await user.click(screen.getByRole("button", { name: "Continue with Keycloak" }));
 
-    await waitFor(() =>
+    await waitFor(() => {
       expect(actions.signInOAuth2).toHaveBeenCalledWith({
         providerId: "keycloak",
         callbackURL: expect.any(String),
-      }),
-    );
+      });
+    });
   });
 
   it("uses signIn.social for a built-in oauth provider", async () => {
@@ -107,12 +107,12 @@ describe("SignInScreen", () => {
 
     await user.click(screen.getByRole("button", { name: "Continue with GitHub" }));
 
-    await waitFor(() =>
+    await waitFor(() => {
       expect(actions.signInSocial).toHaveBeenCalledWith({
         provider: "github",
         callbackURL: expect.any(String),
-      }),
-    );
+      });
+    });
   });
 
   it("shows the sign-up toggle only when signup is enabled", async () => {

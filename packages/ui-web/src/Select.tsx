@@ -59,7 +59,9 @@ export function Select<T extends string>({
       }
     };
     document.addEventListener("pointerdown", onPointer);
-    return () => document.removeEventListener("pointerdown", onPointer);
+    return () => {
+      document.removeEventListener("pointerdown", onPointer);
+    };
   }, [open]);
 
   return (
@@ -76,7 +78,9 @@ export function Select<T extends string>({
           aria-haspopup="listbox"
           aria-expanded={open}
           aria-controls={open ? listId : undefined}
-          onClick={() => setOpen((current) => !current)}
+          onClick={() => {
+            setOpen((current) => !current);
+          }}
           onKeyDown={(event) => {
             if (event.key === "ArrowDown" || event.key === "ArrowUp") {
               event.preventDefault();
@@ -128,7 +132,7 @@ export function Select<T extends string>({
                 setActive(options.length - 1);
               } else if (event.key === "Enter" || event.key === " ") {
                 event.preventDefault();
-                const option = options[active];
+                const option = options.at(active);
                 if (option !== undefined) {
                   onChange(option.value);
                   setOpen(false);
@@ -147,7 +151,9 @@ export function Select<T extends string>({
                 role="option"
                 tabIndex={-1}
                 aria-selected={option.value === value}
-                onMouseEnter={() => setActive(index)}
+                onMouseEnter={() => {
+                  setActive(index);
+                }}
                 onClick={() => {
                   onChange(option.value);
                   setOpen(false);

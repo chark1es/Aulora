@@ -32,16 +32,8 @@ export interface AvatarProps {
  * role-color ring. Presentational and dependency-light; animation is opt-in
  * because it switches Blobatar from an `<img>` to inline SVG.
  */
-export function Avatar({
-  seed,
-  size = 32,
-  roleColor,
-  animate,
-  title,
-  src,
-  shape = "circle",
-  className,
-}: AvatarProps) {
+export function Avatar(props: AvatarProps) {
+  const { seed, size = 32, roleColor, animate, title, src, shape = "circle", className } = props;
   const photo = src !== undefined && src.length > 0;
   const content = photo ? (
     <img

@@ -49,8 +49,7 @@ function json(body: unknown, status: number): Response {
   });
 }
 
-function readString(record: Record<string, unknown>, key: string): string | null {
-  const value = record[key];
+function readString(value: unknown): string | null {
   return typeof value === "string" && value.length > 0 ? value : null;
 }
 
@@ -74,15 +73,15 @@ http.route({
     }
     const record = body as Record<string, unknown>;
 
-    const token = readString(record, "setupToken") ?? request.headers.get("x-setup-token");
-    const name = readString(record, "name");
-    const email = readString(record, "email");
-    const password = readString(record, "password");
+    const token = readString(record.setupToken) ?? request.headers.get("x-setup-token");
+    const name = readString(record.name);
+    const email = readString(record.email);
+    const password = readString(record.password);
     if (token === null || name === null || email === null || password === null) {
       return json({ ok: false, error: "MISSING_FIELDS" }, 400);
     }
 
-    const displayName = readString(record, "displayName");
+    const displayName = readString(record.displayName);
     try {
       const result = await ctx.runAction(api.setup.initialize, {
         token,

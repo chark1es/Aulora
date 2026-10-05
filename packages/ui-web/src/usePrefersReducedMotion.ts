@@ -4,7 +4,7 @@ const QUERY = "(prefers-reduced-motion: reduce)";
 
 function subscribe(onChange: () => void): () => void {
   if (typeof window === "undefined" || typeof window.matchMedia !== "function") {
-    return () => {};
+    return () => undefined;
   }
   const media = window.matchMedia(QUERY);
   media.addEventListener("change", onChange);

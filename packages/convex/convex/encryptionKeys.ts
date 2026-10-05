@@ -146,7 +146,7 @@ export const prime = internalAction({
 /** Public-safe encryption description for the well-known/config surface. */
 export const info = query({
   args: {},
-  handler: async () => {
+  handler: () => {
     const env = process.env;
     const settings = getEkmSettings(env);
     const encryption = getEncryptionSettings(env);

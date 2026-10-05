@@ -154,7 +154,9 @@ export function ChatProvider({
         return;
       }
       runtimeRef.current = created;
-      const { listMessages, listThreadMessages } = created.port;
+      const chatPort = created.port;
+      const listMessages = chatPort.listMessages?.bind(chatPort);
+      const listThreadMessages = chatPort.listThreadMessages?.bind(chatPort);
       if (listMessages !== undefined && listThreadMessages !== undefined) {
         backfillRef.current = new ArchiveBackfill(searchIndex, {
           listMessages,
@@ -312,7 +314,7 @@ export function ChatProvider({
           if (isCancelled()) {
             return;
           }
-          await active.session.hydrateChannelNames([channel]);
+          active.session.hydrateChannelNames([channel]);
           if (isCancelled()) {
             return;
           }

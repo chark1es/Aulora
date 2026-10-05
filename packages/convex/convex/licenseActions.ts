@@ -8,7 +8,10 @@ export const refresh = internalAction({
   handler: async (ctx) => {
     const input = await ctx.runQuery(internal.license.validationInput, {});
     if (!input) return { verified: false };
-    const base = (process.env.AULORA_LICENSE_SERVER_URL || LICENSE_SERVER_URL).replace(/\/$/, "");
+    const base = ((process.env.AULORA_LICENSE_SERVER_URL ?? "") || LICENSE_SERVER_URL).replace(
+      /\/$/,
+      "",
+    );
     if (new URL(base).protocol !== "https:") throw new Error("License validation requires HTTPS");
     const nonce = randomToken(24);
     const keyHash = await sha256Hex(input.key);
@@ -25,7 +28,7 @@ export const refresh = internalAction({
       if (!data || typeof data !== "object" || !("token" in data) || typeof data.token !== "string")
         throw new Error("Invalid validation response");
       const record = await verifyLicenseProof(data.token, {
-        publicKey: (process.env.AULORA_LICENSE_PUBLIC_KEY || LICENSE_PUBLIC_KEY).replace(
+        publicKey: ((process.env.AULORA_LICENSE_PUBLIC_KEY ?? "") || LICENSE_PUBLIC_KEY).replace(
           /\\n/g,
           "\n",
         ),

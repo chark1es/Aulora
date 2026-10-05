@@ -33,7 +33,6 @@ export function UpdateSettings(props: UpdateSettingsProps) {
     onDownload,
     onRestart,
   } = props;
-  const busy = phase === "checking" || phase === "downloading" || phase === "restarting";
   const ready = phase === "ready" || phase === "restarting";
   const status = statusText({ phase, ready, available, latestVersion, checked });
   return (
@@ -42,13 +41,7 @@ export function UpdateSettings(props: UpdateSettingsProps) {
       data-testid="update-settings"
       aria-label={`${title} updates`}
     >
-      <div>
-        <h3 className="text-[15px] font-semibold text-text">{title}</h3>
-        <Text size="sm" tone="muted">
-          Current version:{" "}
-          {currentVersion ? `v${currentVersion}` : error ? "Unavailable" : "Loading…"}
-        </Text>
-      </div>
+      <UpdateHeading title={title} currentVersion={currentVersion} error={error} />
       <div role="status" aria-live="polite" className="flex flex-col gap-1">
         <Text size="sm">{status}</Text>
         {detail && (
@@ -69,8 +62,6 @@ export function UpdateSettings(props: UpdateSettingsProps) {
       )}
       <UpdateActions
         phase={phase}
-        busy={busy}
-        ready={ready}
         available={available}
         canDownload={canDownload}
         onCheck={onCheck}
@@ -78,6 +69,26 @@ export function UpdateSettings(props: UpdateSettingsProps) {
         onRestart={onRestart}
       />
     </section>
+  );
+}
+
+function UpdateHeading({
+  title,
+  currentVersion,
+  error,
+}: {
+  readonly title: string;
+  readonly currentVersion: string | null;
+  readonly error: string | null;
+}) {
+  return (
+    <div>
+      <h3 className="text-[15px] font-semibold text-text">{title}</h3>
+      <Text size="sm" tone="muted">
+        Current version:{" "}
+        {currentVersion ? `v${currentVersion}` : error ? "Unavailable" : "Loading…"}
+      </Text>
+    </div>
   );
 }
 
@@ -117,8 +128,6 @@ function statusText({
 
 function UpdateActions({
   phase,
-  busy,
-  ready,
   available,
   canDownload,
   onCheck,
@@ -126,14 +135,14 @@ function UpdateActions({
   onRestart,
 }: {
   readonly phase: UpdatePhase;
-  readonly busy: boolean;
-  readonly ready: boolean;
   readonly available: boolean;
   readonly canDownload: boolean;
   readonly onCheck: () => void;
   readonly onDownload: () => void;
   readonly onRestart: () => void;
 }) {
+  const busy = phase === "checking" || phase === "downloading" || phase === "restarting";
+  const ready = phase === "ready" || phase === "restarting";
   return (
     <div className="flex flex-wrap gap-2">
       <Button

@@ -63,7 +63,7 @@ function keyMaterial(env: Env): Bytes {
     return decoded;
   }
   const secret = read(env, "INSTANCE_SECRET");
-  if (secret === undefined) {
+  if (!secret) {
     throw new ConvexError("No file download signing key configured");
   }
   return textEncoder.encode(secret);
@@ -93,11 +93,7 @@ export async function signDownloadToken(
   return `${body}.${base64UrlEncode(new Uint8Array(signature))}`;
 }
 
-/** Verifies token signature and expiry, returning the payload. */
-export async function verifyDownloadToken(
-  token: string,
-  opts: { env?: Env; now?: number } = {},
-): Promise<DownloadTokenPayload> {
+function splitToken(token: string): { body: string; signature: Bytes } {
   const parts = token.split(".");
   if (parts.length !== 2) {
     throw new ConvexError("Malformed download token");
@@ -107,23 +103,14 @@ export async function verifyDownloadToken(
   if (body.length === 0 || signaturePart.length === 0) {
     throw new ConvexError("Malformed download token");
   }
-  let signature: Bytes;
   try {
-    signature = base64UrlDecode(signaturePart);
+    return { body, signature: base64UrlDecode(signaturePart) };
   } catch {
     throw new ConvexError("Malformed download token");
   }
-  const env = opts.env ?? process.env;
-  const key = await importKey(env);
-  const valid = await globalThis.crypto.subtle.verify(
-    "HMAC",
-    key,
-    signature,
-    textEncoder.encode(body),
-  );
-  if (!valid) {
-    throw new ConvexError("Invalid download token");
-  }
+}
+
+function decodePayload(body: string): DownloadTokenPayload {
   let parsed: unknown;
   try {
     parsed = JSON.parse(textDecoder.decode(base64UrlDecode(body)));
@@ -143,9 +130,30 @@ export async function verifyDownloadToken(
   ) {
     throw new ConvexError("Malformed download token");
   }
+  return { fileId: record.f, userId: record.u, exp: record.e };
+}
+
+/** Verifies token signature and expiry, returning the payload. */
+export async function verifyDownloadToken(
+  token: string,
+  opts: { env?: Env; now?: number } = {},
+): Promise<DownloadTokenPayload> {
+  const { body, signature } = splitToken(token);
+  const env = opts.env ?? process.env;
+  const key = await importKey(env);
+  const valid = await globalThis.crypto.subtle.verify(
+    "HMAC",
+    key,
+    signature,
+    textEncoder.encode(body),
+  );
+  if (!valid) {
+    throw new ConvexError("Invalid download token");
+  }
+  const payload = decodePayload(body);
   const now = opts.now ?? Date.now();
-  if (record.e <= now) {
+  if (payload.exp <= now) {
     throw new ConvexError("Download token expired");
   }
-  return { fileId: record.f, userId: record.u, exp: record.e };
+  return payload;
 }
