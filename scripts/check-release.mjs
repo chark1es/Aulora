@@ -5,10 +5,6 @@ import { fileURLToPath } from "node:url";
 import { validateVersion } from "../apps/desktop/scripts/release-version.mjs";
 
 const root = resolve(dirname(fileURLToPath(import.meta.url)), "..");
-// Resolve fixed repository paths up front so file reads use literal arguments.
-const repoFile = (relative) => resolve(root, relative);
-const read = (path) => readFileSync(path, "utf8");
-const json = (path) => JSON.parse(read(path));
 
 // "key>CFBundleShortVersionString</key>" as character codes, so the token is
 // not a literal HTML tag to the static analyzer.
@@ -53,7 +49,10 @@ const failures = [];
 function check(label, condition) {
   if (!condition) failures.push(label);
 }
-const version = validateVersion(json(repoFile("apps/desktop/src-tauri/tauri.conf.json")).version);
+const tauriConfig = JSON.parse(
+  readFileSync(resolve(root, "apps/desktop/src-tauri/tauri.conf.json"), "utf8"),
+);
+const version = validateVersion(tauriConfig.version);
 const license = "PolyForm-Noncommercial-1.0.0";
 const manifests = ["package.json", "infra/push-relay/package.json"];
 for (const parent of ["apps", "packages"]) {
@@ -62,32 +61,43 @@ for (const parent of ["apps", "packages"]) {
   }
 }
 for (const path of manifests) {
-  const value = json(path);
+  const value = JSON.parse(readFileSync(path, "utf8"));
   check(`${path}: missing source license identifier`, value.license === license);
 }
 // Package versions before v1 are historical. From v1 onward every distributable
 // and workspace version must agree with the release source of truth.
 if (Number(version.split(".")[0]) >= 1) {
   for (const path of manifests)
-    check(`${path}: version differs from ${version}`, json(path).version === version);
-  check("Mobile version differs", json(repoFile("apps/mobile/app.json")).expo.version === version);
+    check(
+      `${path}: version differs from ${version}`,
+      JSON.parse(readFileSync(path, "utf8")).version === version,
+    );
+  const mobileConfig = JSON.parse(readFileSync(resolve(root, "apps/mobile/app.json"), "utf8"));
+  check("Mobile version differs", mobileConfig.expo.version === version);
   check(
     "Backend version differs",
-    read(repoFile("packages/convex/convex/lib/env.ts")).includes(
+    readFileSync(resolve(root, "packages/convex/convex/lib/env.ts"), "utf8").includes(
       `export const AULORA_VERSION = "${version}";`,
     ),
   );
   check(
     "Cargo version differs",
-    read(repoFile("apps/desktop/src-tauri/Cargo.toml")).includes(`version = "${version}"`),
+    readFileSync(resolve(root, "apps/desktop/src-tauri/Cargo.toml"), "utf8").includes(
+      `version = "${version}"`,
+    ),
   );
   check(
     "iOS version differs",
-    matchesIosVersion(read(repoFile("apps/mobile/ios/Aulora/Info.plist")), version),
+    matchesIosVersion(
+      readFileSync(resolve(root, "apps/mobile/ios/Aulora/Info.plist"), "utf8"),
+      version,
+    ),
   );
   check(
     "Web example version differs",
-    read(repoFile("apps/web/.env.example")).includes(`AULORA_VERSION=${version}`),
+    readFileSync(resolve(root, "apps/web/.env.example"), "utf8").includes(
+      `AULORA_VERSION=${version}`,
+    ),
   );
 }
 for (const path of [
@@ -103,20 +113,22 @@ for (const path of [
 for (const path of ["COMMERCIAL.md", "CLA.md"]) {
   check(
     `${path}: unfinished placeholder`,
-    !/status:\s*stub|short-form placeholder/i.test(read(path)),
+    !/status:\s*stub|short-form placeholder/i.test(readFileSync(path, "utf8")),
   );
 }
 check(
   "Required copyright notice is missing",
-  /^Required Notice: Copyright /m.test(read(repoFile("NOTICE"))),
+  /^Required Notice: Copyright /m.test(readFileSync(resolve(root, "NOTICE"), "utf8")),
 );
 check(
   "Backup exports must include uploaded files",
-  read(repoFile("infra/docker/backup/backup.sh")).includes("convex export --include-file-storage"),
+  readFileSync(resolve(root, "infra/docker/backup/backup.sh"), "utf8").includes(
+    "convex export --include-file-storage",
+  ),
 );
 check(
   "Docker context must exclude private credentials",
-  read(repoFile(".dockerignore")).includes("**/.secrets"),
+  readFileSync(resolve(root, ".dockerignore"), "utf8").includes("**/.secrets"),
 );
 if (existsSync(resolve(root, ".git"))) {
   const tracked = execFileSync("git", ["ls-files", "-z"], { cwd: root, encoding: "utf8" }).split(

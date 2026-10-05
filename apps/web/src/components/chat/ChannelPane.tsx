@@ -85,8 +85,8 @@ export interface ChannelPaneProps {
   readonly sendError: string | null;
   readonly typingPing: (channelId: string) => void;
   readonly onOpenChannel: (channelId: string) => void;
-  readonly onSetReplyTarget: (message: MessagePayload | undefined) => void;
-  readonly onSetThreadRoot: (message: MessagePayload | undefined) => void;
+  readonly onSetReplyTarget: (message?: MessagePayload) => void;
+  readonly onSetThreadRoot: (message?: MessagePayload) => void;
   readonly onToggleMembers: () => void;
   readonly onOpenSearch: () => void;
   readonly onTogglePins: () => void;

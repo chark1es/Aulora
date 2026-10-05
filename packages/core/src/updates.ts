@@ -83,11 +83,8 @@ export function parseSemver(input: string): Semver | null {
   if (parts.length !== 3) {
     return null;
   }
-  const [major, minor, patch] = parts;
+  const [major, minor, patch] = parts as [string, string, string];
   if (
-    major === undefined ||
-    minor === undefined ||
-    patch === undefined ||
     !NUMERIC_IDENTIFIER.test(major) ||
     !NUMERIC_IDENTIFIER.test(minor) ||
     !NUMERIC_IDENTIFIER.test(patch)

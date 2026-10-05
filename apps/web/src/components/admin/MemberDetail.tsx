@@ -10,7 +10,7 @@ import {
 } from "../../lib/workspace-admin";
 import { Combobox, type ComboboxOption } from "./Combobox";
 import type { Callback } from "./callbacks";
-import { MemberActionsSection, type MemberActionsSectionProps } from "./MemberActions";
+import { MemberActionsSection } from "./MemberActions";
 import type { MemberManagerProps, MemberManagerViewer } from "./MemberManager";
 import { MemberNote } from "./MemberNote";
 
@@ -31,81 +31,136 @@ export interface MemberDetailProps {
   readonly onBan: Callback<[durationMs?: number, reason?: string]>;
 }
 
-export function MemberDetail(props: MemberDetailProps) {
-  const {
-    member,
-    roles,
-    viewer,
-    ownerId,
-    permissions,
-    moderatable,
-    busy,
-    error,
-    onAssignRole,
-    onRemoveRole,
-    onNickname,
-    onTimeout,
-    onKick,
-    onBan,
-  } = props;
+interface MemberDetailModel {
+  readonly member: MemberView;
+  readonly roles: readonly RoleView[];
+  readonly viewer: MemberManagerViewer;
+  readonly nickname: string;
+  readonly onNicknameChange: (value: string) => void;
+  readonly displayName: string;
+  readonly busy: boolean;
+  readonly error: string | null;
+  readonly isOwner: boolean;
+  readonly timedOut: boolean;
+  readonly canEditNickname: boolean;
+  readonly canAssignRoles: boolean;
+  readonly canTimeout: boolean;
+  readonly canKick: boolean;
+  readonly canBan: boolean;
+  readonly actionCount: number;
+  readonly onNickname: Callback<[nickname: string]>;
+  readonly onTimeout: Callback<[until: number | undefined]>;
+  readonly onKick: () => void;
+  readonly onBan: Callback<[durationMs?: number, reason?: string]>;
+  readonly onAssignRole: Callback<[roleId: string]>;
+  readonly onRemoveRole: Callback<[roleId: string]>;
+}
+
+function useMemberDetailModel(props: MemberDetailProps): MemberDetailModel {
+  const { member, roles, viewer, ownerId, permissions, moderatable, busy, error } = props;
   const [nickname, setNickname] = useState(member.nickname ?? "");
 
   useEffect(() => {
     setNickname(member.nickname ?? "");
   }, [member.nickname]);
 
-  const isSelf = member.userId === viewer.userId;
-  const displayName = memberDisplayName(member, member.userId);
-  const timedOut = member.timeoutUntil !== null && member.timeoutUntil > Date.now();
-  const isOwner = member.userId === ownerId;
-
+  const { isSelf, displayName, timedOut, isOwner } = memberFlags(member, viewer, ownerId);
   const { canEditNickname, canAssignRoles, canTimeout, canKick, canBan } = memberActions(
     permissions,
     viewer,
     moderatable,
     isSelf,
   );
-
   const actionCount = [canEditNickname, canAssignRoles, canTimeout, canKick, canBan].filter(
     Boolean,
   ).length;
-  const actionProps: MemberActionsSectionProps = {
+
+  return {
     member,
+    roles,
+    viewer,
     nickname,
     onNicknameChange: setNickname,
     displayName,
     busy,
+    error,
+    isOwner,
     timedOut,
     canEditNickname,
+    canAssignRoles,
     canTimeout,
     canKick,
     canBan,
-    onNickname,
-    onTimeout,
-    onKick,
-    onBan,
+    actionCount,
+    onNickname: props.onNickname,
+    onTimeout: props.onTimeout,
+    onKick: props.onKick,
+    onBan: props.onBan,
+    onAssignRole: props.onAssignRole,
+    onRemoveRole: props.onRemoveRole,
   };
+}
 
+function memberFlags(
+  member: MemberView,
+  viewer: MemberManagerViewer,
+  ownerId: string | null,
+): {
+  readonly isSelf: boolean;
+  readonly displayName: string;
+  readonly timedOut: boolean;
+  readonly isOwner: boolean;
+} {
+  return {
+    isSelf: member.userId === viewer.userId,
+    displayName: memberDisplayName(member, member.userId),
+    timedOut: member.timeoutUntil !== null && member.timeoutUntil > Date.now(),
+    isOwner: member.userId === ownerId,
+  };
+}
+
+export function MemberDetail(props: MemberDetailProps) {
+  return <MemberDetailView model={useMemberDetailModel(props)} />;
+}
+
+function MemberDetailView({ model }: { readonly model: MemberDetailModel }) {
   return (
-    <div className="flex flex-col gap-4" data-testid={`member-detail-${member.userId}`}>
-      <MemberBadges isOwner={isOwner} timedOut={timedOut} />
+    <div className="flex flex-col gap-4" data-testid={`member-detail-${model.member.userId}`}>
+      <MemberBadges isOwner={model.isOwner} timedOut={model.timedOut} />
 
-      <MemberError error={error} />
+      <MemberError error={model.error} />
 
       <MemberRolesSection
-        member={member}
-        roles={roles}
-        viewer={viewer}
-        displayName={displayName}
-        canAssignRoles={canAssignRoles}
-        busy={busy}
-        onAssignRole={onAssignRole}
-        onRemoveRole={onRemoveRole}
+        member={model.member}
+        roles={model.roles}
+        viewer={model.viewer}
+        displayName={model.displayName}
+        canAssignRoles={model.canAssignRoles}
+        busy={model.busy}
+        onAssignRole={model.onAssignRole}
+        onRemoveRole={model.onRemoveRole}
       />
 
-      {actionCount > 0 && <MemberActionsSection {...actionProps} />}
+      {model.actionCount > 0 && (
+        <MemberActionsSection
+          member={model.member}
+          nickname={model.nickname}
+          onNicknameChange={model.onNicknameChange}
+          displayName={model.displayName}
+          busy={model.busy}
+          timedOut={model.timedOut}
+          canEditNickname={model.canEditNickname}
+          canTimeout={model.canTimeout}
+          canKick={model.canKick}
+          canBan={model.canBan}
+          onNickname={model.onNickname}
+          onTimeout={model.onTimeout}
+          onKick={model.onKick}
+          onBan={model.onBan}
+        />
+      )}
 
-      <MemberNote userId={member.userId} />
+      <MemberNote userId={model.member.userId} />
     </div>
   );
 }

@@ -63,8 +63,10 @@ class Handler(BaseHTTPRequestHandler):
             # Do not echo credentials or SMTP server responses to callers or logs.
             self.send_error(502, "SMTP delivery failed")
 
-    def log_message(self, _format, *args):
+    def log_message(self, *args, **kwargs):
         # The default logger includes request details. The bridge is private.
+        # Accepts the base handler's positional call shape without shadowing
+        # the built-in `format` name (Pylint W0221/W0622).
         pass
 
 

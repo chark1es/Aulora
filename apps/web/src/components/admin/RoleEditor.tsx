@@ -448,32 +448,59 @@ function RoleRow(props: RoleRowProps) {
         aria-hidden="true"
       />
       {editable && (
-        <div className="flex items-center gap-0.5">
-          <button
-            type="button"
-            aria-label={`Move ${role.name} up`}
-            disabled={!canMoveUp || busy}
-            onClick={() => {
-              onMove(index, index - 1);
-            }}
-            className="flex h-7 w-7 items-center justify-center rounded-[7px] text-text-muted transition hover:bg-surface-3 hover:text-text disabled:opacity-30"
-          >
-            <Icon name="chevron-down" size={14} className="rotate-180" />
-          </button>
-          <button
-            type="button"
-            aria-label={`Move ${role.name} down`}
-            disabled={!canMoveDown || busy}
-            onClick={() => {
-              onMove(index, index + 1);
-            }}
-            className="flex h-7 w-7 items-center justify-center rounded-[7px] text-text-muted transition hover:bg-surface-3 hover:text-text disabled:opacity-30"
-          >
-            <Icon name="chevron-down" size={14} />
-          </button>
-        </div>
+        <RoleMoveButtons
+          roleName={role.name}
+          index={index}
+          canMoveUp={canMoveUp}
+          canMoveDown={canMoveDown}
+          busy={busy}
+          onMove={onMove}
+        />
       )}
     </li>
+  );
+}
+
+function RoleMoveButtons({
+  roleName,
+  index,
+  canMoveUp,
+  canMoveDown,
+  busy,
+  onMove,
+}: {
+  readonly roleName: string;
+  readonly index: number;
+  readonly canMoveUp: boolean;
+  readonly canMoveDown: boolean;
+  readonly busy: boolean;
+  readonly onMove: Callback<[index: number, otherIndex: number]>;
+}) {
+  return (
+    <div className="flex items-center gap-0.5">
+      <button
+        type="button"
+        aria-label={`Move ${roleName} up`}
+        disabled={!canMoveUp || busy}
+        onClick={() => {
+          onMove(index, index - 1);
+        }}
+        className="flex h-7 w-7 items-center justify-center rounded-[7px] text-text-muted transition hover:bg-surface-3 hover:text-text disabled:opacity-30"
+      >
+        <Icon name="chevron-down" size={14} className="rotate-180" />
+      </button>
+      <button
+        type="button"
+        aria-label={`Move ${roleName} down`}
+        disabled={!canMoveDown || busy}
+        onClick={() => {
+          onMove(index, index + 1);
+        }}
+        className="flex h-7 w-7 items-center justify-center rounded-[7px] text-text-muted transition hover:bg-surface-3 hover:text-text disabled:opacity-30"
+      >
+        <Icon name="chevron-down" size={14} />
+      </button>
+    </div>
   );
 }
 

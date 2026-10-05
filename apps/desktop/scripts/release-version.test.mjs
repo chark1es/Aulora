@@ -1,6 +1,6 @@
 import { expect, test } from "bun:test";
 import { spawnSync } from "node:child_process";
-import { mkdtemp, rm } from "node:fs/promises";
+import { mkdtemp, readFile, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { fileURLToPath } from "node:url";
@@ -20,10 +20,10 @@ test("the release CLI writes the requested Tauri version override and rejects in
     const output = join(root, "version.json");
     const args = [script, "--version", "1.2.3", "--output", output];
     expect(spawnSync("node", args, { encoding: "utf8" }).status).toBe(0);
-    expect(JSON.parse(await Bun.file(output).text())).toEqual({ version: "1.2.3" });
+    expect(JSON.parse(await readFile(output, "utf8"))).toEqual({ version: "1.2.3" });
     args[2] = "65536.0.0";
     expect(spawnSync("node", args, { encoding: "utf8" }).status).not.toBe(0);
-    expect(JSON.parse(await Bun.file(output).text())).toEqual({ version: "1.2.3" });
+    expect(JSON.parse(await readFile(output, "utf8"))).toEqual({ version: "1.2.3" });
   } finally {
     await rm(root, { recursive: true, force: true });
   }

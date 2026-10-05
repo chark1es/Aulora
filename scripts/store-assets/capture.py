@@ -30,7 +30,7 @@ args = parser.parse_args()
 # Resolve external tools to absolute paths so a hostile PATH entry cannot
 # substitute a different program.
 ADB = shutil.which(args.adb) or args.adb
-XCRUN = shutil.which("xcrun") or "xcrun"
+XCRUN = "/usr/bin/xcrun"
 devices = [
     ("ios", args.iphone, "app-store/iphone-6.9"),
     ("ios", args.ipad, "app-store/ipad-13"),
@@ -57,7 +57,7 @@ for view, filename in VIEWS:
     time.sleep(2)
     for platform, device, _ in devices:
         if platform == "ios":
-            subprocess.run([XCRUN, "simctl", "terminate", device, "dev.spwnd.aulora"], capture_output=True)
+            subprocess.run(["/usr/bin/xcrun", "simctl", "terminate", device, "dev.spwnd.aulora"], capture_output=True)
             run([XCRUN, "simctl", "launch", device, "dev.spwnd.aulora"])
         else:
             run([ADB, "-s", device, "shell", "am", "start", "-n", "dev.spwnd.aulora/.MainActivity"])

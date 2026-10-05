@@ -23,7 +23,11 @@ export function EmailSection() {
         Configure invite delivery. Credentials are encrypted on the server and are never shown
         again.
       </Text>
-      <EmailConfigForm current={current} onResult={onResult} />
+      {current === undefined ? (
+        <EmailConfigForm onResult={onResult} />
+      ) : (
+        <EmailConfigForm current={current} onResult={onResult} />
+      )}
       <EmailTestForm onResult={onResult} />
       {status !== null && (
         <Text tone="secondary" size="sm" role="status">
@@ -43,7 +47,7 @@ function EmailConfigForm({
   current,
   onResult,
 }: {
-  readonly current: EmailSettings | undefined;
+  readonly current?: EmailSettings;
   readonly onResult: Callback<[status: string | null, error: string | null]>;
 }) {
   const update = useMutation(api.email.updateSettings);

@@ -17,9 +17,9 @@ KEYCHAIN = ROOT / "release.keychain-db"
 APPLE_CA_BASE = "https://www.apple.com/certificateauthority/"
 BUNDLE_ID = "dev.spwnd.aulora"
 
-# Absolute paths for external tools, resolved once so a malicious PATH entry
-# cannot substitute the executables this script trusts.
-SECURITY = shutil.which("security") or "/usr/bin/security"
+# Absolute paths for external tools. These are fixed literals so a malicious
+# PATH entry cannot substitute the executables this script trusts.
+SECURITY = "/usr/bin/security"
 
 
 def run(*args):
@@ -31,11 +31,16 @@ def private_file(path, data):
     path.chmod(0o600)
 
 
+# Certificate downloads are HTTPS-only. Carry an explicit HTTPS handler so no
+# other scheme handler can serve the request.
+HTTPS_OPENER = urllib.request.build_opener(urllib.request.HTTPSHandler())
+
+
 def download_certificate(name):
     url = urllib.parse.urljoin(APPLE_CA_BASE, name)
     if urllib.parse.urlparse(url).scheme != "https":
         raise ValueError("Refusing to download intermediate certificates over a non-HTTPS URL")
-    with urllib.request.urlopen(url, timeout=60) as response:
+    with HTTPS_OPENER.open(url, timeout=60) as response:
         return response.read()
 
 
@@ -160,7 +165,7 @@ def install():
 
 def cleanup():
     if KEYCHAIN.exists():
-        subprocess.run([SECURITY, "delete-keychain", str(KEYCHAIN)], check=True)
+        subprocess.run(["/usr/bin/security", "delete-keychain", str(KEYCHAIN)], check=True)
     uuid_file = ROOT / "profile-uuid.txt"
     if uuid_file.exists():
         uuid = uuid_file.read_text().strip()

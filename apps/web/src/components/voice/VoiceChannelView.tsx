@@ -46,6 +46,10 @@ export function VoiceChannelView({
     return <InCallVoiceView call={call} title={title} identity={identity} voice={voice} />;
   }
 
+  if (call === null) {
+    return <PreJoinVoiceView channel={channel} title={title} identity={identity} voice={voice} />;
+  }
+
   return (
     <PreJoinVoiceView
       channel={channel}
@@ -159,7 +163,7 @@ function PreJoinVoiceView({
   readonly channel: ChannelView;
   readonly title: string;
   readonly identity: CallIdentity;
-  readonly call: CallView | null;
+  readonly call?: CallView;
   readonly voice: VoiceContextValue;
 }) {
   return (
@@ -175,7 +179,7 @@ function PreJoinVoiceView({
       </p>
 
       <PreJoinParticipants participants={call?.participants ?? []} identity={identity} />
-      <PreJoinActions channel={channel} call={call} voice={voice} />
+      <PreJoinActions channel={channel} call={call ?? null} voice={voice} />
     </div>
   );
 }

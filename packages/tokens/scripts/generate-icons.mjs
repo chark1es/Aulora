@@ -7,7 +7,7 @@
  * Each entry maps an Aulora icon name to a Material Symbols icon. Only the
  * icons listed here are shipped, so nothing is fetched at runtime.
  */
-import { readFileSync, writeFileSync } from "node:fs";
+import { writeFileSync } from "node:fs";
 import { createRequire } from "node:module";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
@@ -101,9 +101,7 @@ const ICONS = {
 
 const root = join(dirname(fileURLToPath(import.meta.url)), "..");
 const require = createRequire(join(root, "package.json"));
-const setDir = dirname(require.resolve("@iconify-json/material-symbols/package.json"));
-const ICONS_JSON = join(setDir, "icons.json");
-const set = JSON.parse(readFileSync(ICONS_JSON, "utf8"));
+const set = require("@iconify-json/material-symbols/icons.json");
 const iconMap = new Map(Object.entries(set.icons));
 const aliasMap = new Map(Object.entries(set.aliases ?? {}));
 const seen = new Set();

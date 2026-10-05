@@ -1,6 +1,7 @@
 import { cn, Icon } from "@aulora/ui-web";
 import {
   type Dispatch,
+  type KeyboardEvent as ReactKeyboardEvent,
   type ReactNode,
   type RefObject,
   type SetStateAction,
@@ -127,55 +128,97 @@ function useScrollActiveIntoView(
  * and members can be shown with color and context.
  */
 export function Combobox(props: ComboboxProps) {
-  const {
-    value,
-    options,
-    onChange,
-    label,
-    placeholder,
-    searchPlaceholder = "Type to filter…",
-    emptyMessage = "No matches.",
-    className,
-    id,
-    disabled = false,
-    "aria-label": ariaLabel,
-  } = props;
   const generatedId = useId();
-  const triggerId = id ?? generatedId;
+  const triggerId = props.id ?? generatedId;
   const listId = `${triggerId}-listbox`;
   const optionId = (index: number): string => `${listId}-opt-${index}`;
+  const controller = useComboboxController(props);
+  return (
+    <ComboboxView
+      props={props}
+      controller={controller}
+      triggerId={triggerId}
+      listId={listId}
+      optionId={optionId}
+    />
+  );
+}
 
+interface ComboboxController {
+  readonly open: boolean;
+  readonly query: string;
+  readonly setQuery: Dispatch<SetStateAction<string>>;
+  readonly active: number;
+  readonly setActive: Dispatch<SetStateAction<number>>;
+  readonly rootRef: RefObject<HTMLDivElement | null>;
+  readonly inputRef: RefObject<HTMLInputElement | null>;
+  readonly listRef: RefObject<HTMLDivElement | null>;
+  readonly selected: ComboboxOption | undefined;
+  readonly filtered: readonly ComboboxOption[];
+  readonly openPicker: () => void;
+  readonly close: () => void;
+  readonly choose: Callback<[option: ComboboxOption | undefined]>;
+}
+
+function useComboboxController({ options, value, onChange }: ComboboxProps): ComboboxController {
   const [open, setOpen] = useState(false);
   const [query, setQuery] = useState("");
   const [active, setActive] = useState(0);
   const rootRef = useRef<HTMLDivElement | null>(null);
   const inputRef = useRef<HTMLInputElement | null>(null);
   const listRef = useRef<HTMLDivElement | null>(null);
-
   const selected = options.find((option) => option.value === value);
   const filtered = useFilteredOptions(options, query);
-
   useOpenEffects(open, inputRef, setQuery);
   useActiveInRange(filtered.length, setActive);
   useDismissOnOutside(open, rootRef, setOpen);
   useScrollActiveIntoView(open, active, listRef);
 
-  function openPicker() {
+  const close = () => {
+    setOpen(false);
+  };
+  const openPicker = () => {
     const index = options.findIndex((option) => option.value === value);
     setActive(index >= 0 ? index : 0);
     setOpen(true);
-  }
-
-  function choose(option: ComboboxOption | undefined) {
+  };
+  const choose = (option: ComboboxOption | undefined) => {
     if (option === undefined || option.disabled === true) {
       return;
     }
     onChange(option.value);
     setOpen(false);
-  }
+  };
+  return {
+    open,
+    query,
+    setQuery,
+    active,
+    setActive,
+    rootRef,
+    inputRef,
+    listRef,
+    selected,
+    filtered,
+    openPicker,
+    close,
+    choose,
+  };
+}
 
+interface ComboboxViewProps {
+  readonly props: ComboboxProps;
+  readonly controller: ComboboxController;
+  readonly triggerId: string;
+  readonly listId: string;
+  readonly optionId: Callback<[index: number], string>;
+}
+
+function ComboboxView({ props, controller, triggerId, listId, optionId }: ComboboxViewProps) {
+  const label = props.label;
+  const ariaLabel = props["aria-label"];
   return (
-    <div ref={rootRef} className={cn("relative flex flex-col gap-1.5", className)}>
+    <div ref={controller.rootRef} className={cn("relative flex flex-col gap-1.5", props.className)}>
       {label !== undefined && (
         <label htmlFor={triggerId} className="text-[12px] font-medium text-text-muted">
           {label}
@@ -185,37 +228,33 @@ export function Combobox(props: ComboboxProps) {
         triggerId={triggerId}
         label={label}
         ariaLabel={ariaLabel}
-        open={open}
-        disabled={disabled}
-        selected={selected}
-        placeholder={placeholder}
+        open={controller.open}
+        disabled={props.disabled ?? false}
+        selected={controller.selected}
+        placeholder={props.placeholder}
         listId={listId}
-        onToggle={() => {
-          setOpen(false);
-        }}
-        onOpenPicker={openPicker}
+        onToggle={controller.close}
+        onOpenPicker={controller.openPicker}
       />
 
-      {open && (
+      {controller.open && (
         <ComboboxPopover
           listId={listId}
           label={label}
           ariaLabel={ariaLabel}
-          emptyMessage={emptyMessage}
-          searchPlaceholder={searchPlaceholder}
-          query={query}
-          onQueryChange={setQuery}
-          filtered={filtered}
-          active={active}
-          setActive={setActive}
-          value={value}
+          emptyMessage={props.emptyMessage ?? "No matches."}
+          searchPlaceholder={props.searchPlaceholder ?? "Type to filter…"}
+          query={controller.query}
+          onQueryChange={controller.setQuery}
+          filtered={controller.filtered}
+          active={controller.active}
+          setActive={controller.setActive}
+          value={props.value}
           optionId={optionId}
-          onChoose={choose}
-          onClose={() => {
-            setOpen(false);
-          }}
-          inputRef={inputRef}
-          listRef={listRef}
+          onChoose={controller.choose}
+          onClose={controller.close}
+          inputRef={controller.inputRef}
+          listRef={controller.listRef}
         />
       )}
     </div>
@@ -233,63 +272,6 @@ interface ComboboxTriggerProps {
   readonly listId: string;
   readonly onToggle: () => void;
   readonly onOpenPicker: () => void;
-}
-
-function ComboboxTrigger(props: ComboboxTriggerProps) {
-  const {
-    triggerId,
-    label,
-    ariaLabel,
-    open,
-    disabled,
-    selected,
-    placeholder,
-    listId,
-    onToggle,
-    onOpenPicker,
-  } = props;
-  return (
-    <button
-      id={triggerId}
-      type="button"
-      aria-label={label === undefined ? ariaLabel : undefined}
-      aria-haspopup="listbox"
-      aria-expanded={open}
-      aria-controls={open ? listId : undefined}
-      disabled={disabled}
-      onClick={() => {
-        if (open) {
-          onToggle();
-        } else {
-          onOpenPicker();
-        }
-      }}
-      onKeyDown={(event) => {
-        if (!open && (event.key === "ArrowDown" || event.key === "ArrowUp")) {
-          event.preventDefault();
-          onOpenPicker();
-        }
-      }}
-      className={cn(
-        "flex h-9 w-full items-center gap-2 rounded-[8px] border bg-surface-3 px-2.5 text-left text-[13px] text-text transition disabled:opacity-50",
-        open ? "border-accent" : "border-border hover:border-text-muted/40",
-      )}
-    >
-      {selected?.leading !== undefined && (
-        <span className="flex h-4 w-4 items-center justify-center text-text-muted">
-          {selected.leading}
-        </span>
-      )}
-      <span className={cn("min-w-0 flex-1 truncate", selected === undefined && "text-text-muted")}>
-        {selected?.label ?? placeholder ?? "Select…"}
-      </span>
-      <Icon
-        name="chevron-down"
-        size={14}
-        className={cn("shrink-0 text-text-muted transition-transform", open && "-rotate-180")}
-      />
-    </button>
-  );
 }
 
 interface ComboboxPopoverProps {
@@ -327,7 +309,21 @@ function ComboboxPopover(props: ComboboxPopoverProps) {
   } = props;
   return (
     <div className="absolute left-0 right-0 top-[calc(100%+4px)] z-40 animate-pop-in overflow-hidden rounded-[10px] border border-border bg-surface-2 shadow-2xl shadow-black/25">
-      <ComboboxSearch {...props} />
+      <ComboboxSearch
+        listId={listId}
+        label={label}
+        ariaLabel={ariaLabel}
+        searchPlaceholder={props.searchPlaceholder}
+        query={props.query}
+        onQueryChange={props.onQueryChange}
+        filtered={filtered}
+        active={active}
+        setActive={setActive}
+        optionId={optionId}
+        onChoose={onChoose}
+        onClose={props.onClose}
+        inputRef={props.inputRef}
+      />
       <ComboboxListbox
         listId={listId}
         label={label}
@@ -359,71 +355,6 @@ interface ComboboxSearchProps {
   readonly onChoose: Callback<[option: ComboboxOption | undefined]>;
   readonly onClose: () => void;
   readonly inputRef: RefObject<HTMLInputElement | null>;
-}
-
-function ComboboxSearch(props: ComboboxSearchProps) {
-  const {
-    listId,
-    label,
-    ariaLabel,
-    searchPlaceholder,
-    query,
-    onQueryChange,
-    filtered,
-    active,
-    setActive,
-    optionId,
-    onChoose,
-    onClose,
-    inputRef,
-  } = props;
-  return (
-    <div className="flex items-center gap-2 border-b border-border px-2.5 py-2">
-      <Icon name="search" size={14} className="shrink-0 text-text-muted" />
-      <input
-        ref={inputRef}
-        role="combobox"
-        aria-expanded="true"
-        aria-controls={listId}
-        aria-autocomplete="list"
-        aria-label={label !== undefined ? `${label} search` : (ariaLabel ?? "Search")}
-        aria-activedescendant={
-          filtered.length > 0 ? optionId(Math.min(active, filtered.length - 1)) : undefined
-        }
-        value={query}
-        placeholder={searchPlaceholder}
-        onChange={(event) => {
-          onQueryChange(event.currentTarget.value);
-          setActive(0);
-        }}
-        onKeyDown={(event) => {
-          if (event.key === "ArrowDown") {
-            event.preventDefault();
-            setActive((index) => Math.min(index + 1, filtered.length - 1));
-          } else if (event.key === "ArrowUp") {
-            event.preventDefault();
-            setActive((index) => Math.max(index - 1, 0));
-          } else if (event.key === "Home") {
-            event.preventDefault();
-            setActive(0);
-          } else if (event.key === "End") {
-            event.preventDefault();
-            setActive(filtered.length - 1);
-          } else if (event.key === "Enter") {
-            event.preventDefault();
-            onChoose(filtered.at(active));
-          } else if (event.key === "Escape") {
-            event.preventDefault();
-            event.stopPropagation();
-            onClose();
-          } else if (event.key === "Tab") {
-            onClose();
-          }
-        }}
-        className="min-w-0 flex-1 bg-transparent text-[13px] text-text placeholder:text-text-muted focus:outline-none"
-      />
-    </div>
-  );
 }
 
 interface ComboboxListboxProps {
@@ -533,5 +464,155 @@ function ComboboxOptionRow({
       </span>
       {selected && <Icon name="check" size={14} className="shrink-0 text-accent" />}
     </div>
+  );
+}
+
+interface ComboboxSearchKeyNav {
+  readonly active: number;
+  readonly filtered: readonly ComboboxOption[];
+  readonly setActive: Dispatch<SetStateAction<number>>;
+  readonly onChoose: Callback<[option: ComboboxOption | undefined]>;
+  readonly onClose: () => void;
+}
+
+function handleSearchKeyDown(
+  event: ReactKeyboardEvent<HTMLInputElement>,
+  nav: ComboboxSearchKeyNav,
+): void {
+  const { active, filtered, setActive, onChoose, onClose } = nav;
+  if (event.key === "ArrowDown") {
+    event.preventDefault();
+    setActive((index) => Math.min(index + 1, filtered.length - 1));
+  } else if (event.key === "ArrowUp") {
+    event.preventDefault();
+    setActive((index) => Math.max(index - 1, 0));
+  } else if (event.key === "Home") {
+    event.preventDefault();
+    setActive(0);
+  } else if (event.key === "End") {
+    event.preventDefault();
+    setActive(filtered.length - 1);
+  } else if (event.key === "Enter") {
+    event.preventDefault();
+    onChoose(filtered.at(active));
+  } else if (event.key === "Escape") {
+    event.preventDefault();
+    event.stopPropagation();
+    onClose();
+  } else if (event.key === "Tab") {
+    onClose();
+  }
+}
+
+function ComboboxSearch(props: ComboboxSearchProps) {
+  return <ComboboxSearchField props={props} />;
+}
+
+function ComboboxSearchField({ props }: { readonly props: ComboboxSearchProps }) {
+  const {
+    listId,
+    label,
+    ariaLabel,
+    searchPlaceholder,
+    query,
+    onQueryChange,
+    filtered,
+    active,
+    setActive,
+    optionId,
+    onChoose,
+    onClose,
+    inputRef,
+  } = props;
+  return (
+    <div className="flex items-center gap-2 border-b border-border px-2.5 py-2">
+      <Icon name="search" size={14} className="shrink-0 text-text-muted" />
+      <input
+        ref={inputRef}
+        role="combobox"
+        aria-expanded="true"
+        aria-controls={listId}
+        aria-autocomplete="list"
+        aria-label={label !== undefined ? `${label} search` : (ariaLabel ?? "Search")}
+        aria-activedescendant={
+          filtered.length > 0 ? optionId(Math.min(active, filtered.length - 1)) : undefined
+        }
+        value={query}
+        placeholder={searchPlaceholder}
+        onChange={(event) => {
+          onQueryChange(event.currentTarget.value);
+          setActive(0);
+        }}
+        onKeyDown={(event) => {
+          handleSearchKeyDown(event, { active, filtered, setActive, onChoose, onClose });
+        }}
+        className="min-w-0 flex-1 bg-transparent text-[13px] text-text placeholder:text-text-muted focus:outline-none"
+      />
+    </div>
+  );
+}
+
+function handleTriggerClick(open: boolean, onToggle: () => void, onOpenPicker: () => void): void {
+  if (open) {
+    onToggle();
+  } else {
+    onOpenPicker();
+  }
+}
+
+function handleTriggerKeyDown(
+  event: ReactKeyboardEvent<HTMLButtonElement>,
+  open: boolean,
+  onOpenPicker: () => void,
+): void {
+  if (!open && (event.key === "ArrowDown" || event.key === "ArrowUp")) {
+    event.preventDefault();
+    onOpenPicker();
+  }
+}
+
+function ComboboxTrigger(props: ComboboxTriggerProps) {
+  const {
+    triggerId,
+    label,
+    ariaLabel,
+    open,
+    disabled,
+    selected,
+    placeholder,
+    listId,
+    onToggle,
+    onOpenPicker,
+  } = props;
+  return (
+    <button
+      id={triggerId}
+      type="button"
+      aria-label={label === undefined ? ariaLabel : undefined}
+      aria-haspopup="listbox"
+      aria-expanded={open}
+      aria-controls={open ? listId : undefined}
+      disabled={disabled}
+      onClick={() => handleTriggerClick(open, onToggle, onOpenPicker)}
+      onKeyDown={(event) => handleTriggerKeyDown(event, open, onOpenPicker)}
+      className={cn(
+        "flex h-9 w-full items-center gap-2 rounded-[8px] border bg-surface-3 px-2.5 text-left text-[13px] text-text transition disabled:opacity-50",
+        open ? "border-accent" : "border-border hover:border-text-muted/40",
+      )}
+    >
+      {selected?.leading !== undefined && (
+        <span className="flex h-4 w-4 items-center justify-center text-text-muted">
+          {selected.leading}
+        </span>
+      )}
+      <span className={cn("min-w-0 flex-1 truncate", selected === undefined && "text-text-muted")}>
+        {selected?.label ?? placeholder ?? "Select…"}
+      </span>
+      <Icon
+        name="chevron-down"
+        size={14}
+        className={cn("shrink-0 text-text-muted transition-transform", open && "-rotate-180")}
+      />
+    </button>
   );
 }

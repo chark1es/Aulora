@@ -59,7 +59,74 @@ export function OverviewSection({ overview }: { readonly overview: Overview }) {
   );
 }
 
-export function AuthSection({ overview }: { readonly overview: Overview }) {
+async function persistAuthProviders(
+  update: (args: { providers: Record<string, boolean | undefined> }) => Promise<unknown>,
+  toggles: Record<string, boolean | undefined>,
+  setError: (value: string | null) => void,
+  setSaved: (value: boolean) => void,
+  setBusy: (value: boolean) => void,
+): Promise<void> {
+  setError(null);
+  setSaved(false);
+  setBusy(true);
+  try {
+    await update({ providers: providersPayload(toggles) });
+    setSaved(true);
+  } catch (cause) {
+    setError(cause instanceof Error ? cause.message : "Could not save providers.");
+  } finally {
+    setBusy(false);
+  }
+}
+
+function providersPayload(
+  toggles: Record<string, boolean | undefined>,
+): Record<string, boolean | undefined> {
+  return {
+    ...(toggles.github !== undefined ? { github: toggles.github } : {}),
+    ...(toggles.google !== undefined ? { google: toggles.google } : {}),
+    ...(toggles.microsoft !== undefined ? { microsoft: toggles.microsoft } : {}),
+    ...(toggles.apple !== undefined ? { apple: toggles.apple } : {}),
+    ...(toggles.oidc !== undefined ? { oidc: toggles.oidc } : {}),
+  };
+}
+
+function AuthProviderList({
+  providers,
+  toggles,
+  onToggle,
+}: {
+  readonly providers: readonly AuthProvider[];
+  readonly toggles: Record<string, boolean | undefined>;
+  readonly onToggle: Callback<[providerId: string, value: boolean]>;
+}) {
+  return (
+    <ul className="flex flex-col gap-1" data-testid="instance-auth-providers">
+      {providers.map((provider) => (
+        <AuthProviderToggle
+          key={provider.id}
+          provider={provider}
+          enabled={toggles[provider.id] ?? provider.enabled}
+          onToggle={(value) => {
+            onToggle(provider.id, value);
+          }}
+        />
+      ))}
+    </ul>
+  );
+}
+
+interface AuthSectionModel {
+  readonly overview: Overview;
+  readonly toggles: Record<string, boolean | undefined>;
+  readonly saved: boolean;
+  readonly error: string | null;
+  readonly busy: boolean;
+  readonly onToggle: Callback<[providerId: string, value: boolean]>;
+  readonly onSave: () => void;
+}
+
+function useAuthSectionModel(overview: Overview): AuthSectionModel {
   const updateAuthProviders = useMutation(api.instance.updateAuthProviders);
   const stored = (overview.auth.providersConfigured ?? {}) as Record<string, boolean | undefined>;
   const [toggles, setToggles] = useState<Record<string, boolean | undefined>>(stored);
@@ -67,27 +134,27 @@ export function AuthSection({ overview }: { readonly overview: Overview }) {
   const [saved, setSaved] = useState(false);
   const [busy, setBusy] = useState(false);
 
-  async function save(): Promise<void> {
-    setError(null);
-    setSaved(false);
-    setBusy(true);
-    try {
-      const providers = {
-        ...(toggles.github !== undefined ? { github: toggles.github } : {}),
-        ...(toggles.google !== undefined ? { google: toggles.google } : {}),
-        ...(toggles.microsoft !== undefined ? { microsoft: toggles.microsoft } : {}),
-        ...(toggles.apple !== undefined ? { apple: toggles.apple } : {}),
-        ...(toggles.oidc !== undefined ? { oidc: toggles.oidc } : {}),
-      };
-      await updateAuthProviders({ providers });
-      setSaved(true);
-    } catch (cause) {
-      setError(cause instanceof Error ? cause.message : "Could not save providers.");
-    } finally {
-      setBusy(false);
-    }
-  }
+  return {
+    overview,
+    toggles,
+    saved,
+    error,
+    busy,
+    onToggle: (providerId, value) => {
+      setToggles((current) => ({ ...current, [providerId]: value }));
+      setSaved(false);
+    },
+    onSave: () => {
+      void persistAuthProviders(updateAuthProviders, toggles, setError, setSaved, setBusy);
+    },
+  };
+}
 
+export function AuthSection({ overview }: { readonly overview: Overview }) {
+  return <AuthSectionView model={useAuthSectionModel(overview)} />;
+}
+
+function AuthSectionView({ model }: { readonly model: AuthSectionModel }) {
   return (
     <div className="flex flex-col gap-4" data-testid="instance-auth">
       <Heading level={3}>Auth providers</Heading>
@@ -97,52 +164,38 @@ export function AuthSection({ overview }: { readonly overview: Overview }) {
       </Text>
       <Card className="flex flex-col gap-1">
         <Text size="sm">
-          Local email/password: {overview.auth.local.enabled ? "enabled" : "disabled"} · signup{" "}
-          {overview.auth.local.signup ? "open" : "closed"}
+          Local email/password: {model.overview.auth.local.enabled ? "enabled" : "disabled"} ·
+          signup {model.overview.auth.local.signup ? "open" : "closed"}
         </Text>
       </Card>
-      <ul className="flex flex-col gap-1" data-testid="instance-auth-providers">
-        {overview.auth.availableProviders.map((provider) => (
-          <AuthProviderToggle
-            key={provider.id}
-            provider={provider}
-            enabled={toggles[provider.id] ?? provider.enabled}
-            onToggle={(value) => {
-              setToggles((current) => ({ ...current, [provider.id]: value }));
-              setSaved(false);
-            }}
-          />
-        ))}
-      </ul>
-      {overview.auth.oidc !== null && (
+      <AuthProviderList
+        providers={model.overview.auth.availableProviders}
+        toggles={model.toggles}
+        onToggle={model.onToggle}
+      />
+      {model.overview.auth.oidc !== null && (
         <Card className="flex flex-col gap-1">
-          <Text size="sm">OIDC: {overview.auth.oidc.displayName}</Text>
+          <Text size="sm">OIDC: {model.overview.auth.oidc.displayName}</Text>
           <Text size="xs" tone="muted" mono>
-            {overview.auth.oidc.discoveryUrl}
+            {model.overview.auth.oidc.discoveryUrl}
           </Text>
           <Text size="xs" tone="muted">
-            scopes: {overview.auth.oidc.scopes.join(" ")}
+            scopes: {model.overview.auth.oidc.scopes.join(" ")}
           </Text>
         </Card>
       )}
       <div className="flex items-center gap-3">
-        <Button
-          loading={busy}
-          disabled={busy}
-          onClick={() => {
-            void save();
-          }}
-        >
+        <Button loading={model.busy} disabled={model.busy} onClick={model.onSave}>
           Save providers
         </Button>
-        {saved && (
+        {model.saved && (
           <Text tone="secondary" size="sm" role="status">
             Saved.
           </Text>
         )}
-        {error !== null && (
+        {model.error !== null && (
           <Text tone="danger" size="sm" role="alert">
-            {error}
+            {model.error}
           </Text>
         )}
       </div>

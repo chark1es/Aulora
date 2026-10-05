@@ -2,37 +2,45 @@ import { createRequire } from "node:module";
 
 const require = createRequire(import.meta.url);
 
-// Only these known specifiers may be imported, so the module id is never
-// derived from arbitrary input.
-const ALLOWED_SPECIFIERS = new Set([
-  "blobatar",
-  "blobatar/uri",
-  "blobatar/expression",
-  "blobatar/internal",
-  "blobatar/react",
-  "@blobatar/react",
-]);
-
 function line() {
   console.log("-".repeat(72));
 }
 
-async function load(specifier) {
-  if (!ALLOWED_SPECIFIERS.has(specifier)) {
-    throw new Error(`refusing to import unknown specifier: ${specifier}`);
+// Only these known specifiers may be imported, so the module id is never
+// derived from arbitrary input.
+function load(specifier) {
+  switch (specifier) {
+    case "blobatar":
+      return import("blobatar");
+    case "blobatar/uri":
+      return import("blobatar/uri");
+    case "blobatar/expression":
+      return import("blobatar/expression");
+    case "blobatar/internal":
+      return import("blobatar/internal");
+    case "blobatar/react":
+      return import("blobatar/react");
+    case "@blobatar/react":
+      return import("@blobatar/react");
+    default:
+      throw new Error(`refusing to import unknown specifier: ${specifier}`);
   }
-  return await import(specifier);
 }
 
-async function dump(spec) {
-  const mod = await load(spec);
+function printExports(spec, mod) {
   const keys = Object.keys(mod).sort();
   console.log(`\n>> ${spec}`);
   console.log("   exports:", keys.join(", "));
   for (const k of keys) {
     const v = Object.getOwnPropertyDescriptor(mod, k)?.value;
-    console.log(`     - ${k}: ${typeof v}${typeof v === "function" ? ` (arity ${v.length})` : ""}`);
+    const arity = typeof v === "function" ? ` (arity ${v.length})` : "";
+    console.log(`     - ${k}: ${typeof v}${arity}`);
   }
+}
+
+async function dump(spec) {
+  const mod = await load(spec);
+  printExports(spec, mod);
   return mod;
 }
 
