@@ -118,19 +118,25 @@ export function WorkspaceBranding({ canManageWorkspace }: WorkspaceBrandingProps
             label="Workspace name"
             value={name}
             maxLength={80}
-            onChange={(event) => setName(event.currentTarget.value)}
+            onChange={(event) => {
+              setName(event.currentTarget.value);
+            }}
           />
           <Input
             label="Icon seed"
             value={iconSeed}
-            onChange={(event) => setIconSeed(event.currentTarget.value)}
+            onChange={(event) => {
+              setIconSeed(event.currentTarget.value);
+            }}
             hint="Drives the generated icon when no logo is set."
           />
           <Input
             label="Description"
             value={description}
             maxLength={280}
-            onChange={(event) => setDescription(event.currentTarget.value)}
+            onChange={(event) => {
+              setDescription(event.currentTarget.value);
+            }}
             hint="A short line shown under the workspace name."
           />
 

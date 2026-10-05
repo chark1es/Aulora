@@ -1,6 +1,7 @@
 import { type ChannelView, joinedElsewhere } from "@aulora/core";
 import { cn, Icon } from "@aulora/ui-web";
 import { useVoice } from "../../providers/VoiceProvider";
+import type { Callback } from "../admin/callbacks";
 import { ActiveBar } from "../chat/ActiveBar";
 import { PersonAvatar } from "../chat/member-avatars";
 
@@ -19,9 +20,9 @@ export function VoiceChannelRow({
   readonly channel: ChannelView;
   readonly title: string;
   readonly active: boolean;
-  readonly onSelect: (channelId: string) => void;
-  readonly onContextMenu: (event: React.MouseEvent) => void;
-  readonly nameOf: (userId: string) => string;
+  readonly onSelect: Callback<[channelId: string]>;
+  readonly onContextMenu: Callback<[event: React.MouseEvent]>;
+  readonly nameOf: Callback<[userId: string], string>;
 }) {
   const voice = useVoice();
   const call = voice.activeCalls.find((entry) => entry.channelId === channel.id) ?? null;
@@ -33,7 +34,9 @@ export function VoiceChannelRow({
         type="button"
         data-testid={`voice-channel-row-${channel.id}`}
         aria-current={active ? "page" : undefined}
-        onClick={() => onSelect(channel.id)}
+        onClick={() => {
+          onSelect(channel.id);
+        }}
         onContextMenu={(event) => {
           event.preventDefault();
           onContextMenu(event);

@@ -59,18 +59,19 @@ export function mergeSoundSettings(
   partial: Partial<SoundSettings> | null | undefined,
 ): SoundSettings {
   const p = partial ?? {};
-  const events = { ...DEFAULT_SOUND_SETTINGS.events };
-  const rawEvents = (p.events ?? {}) as Partial<Record<SoundEvent, boolean>>;
-  for (const event of SOUND_EVENTS) {
-    const value = rawEvents[event];
-    if (typeof value === "boolean") {
-      events[event] = value;
-    }
-  }
+  const provided: Partial<Record<SoundEvent, boolean>> = p.events ?? {};
+  const defaults = DEFAULT_SOUND_SETTINGS.events;
   return {
     enabled: typeof p.enabled === "boolean" ? p.enabled : DEFAULT_SOUND_SETTINGS.enabled,
     volume: clamp(p.volume, 0, 2, DEFAULT_SOUND_SETTINGS.volume),
-    events,
+    events: {
+      message: provided.message ?? defaults.message,
+      mention: provided.mention ?? defaults.mention,
+      "call-ring": provided["call-ring"] ?? defaults["call-ring"],
+      "call-connect": provided["call-connect"] ?? defaults["call-connect"],
+      "call-join": provided["call-join"] ?? defaults["call-join"],
+      "call-leave": provided["call-leave"] ?? defaults["call-leave"],
+    },
   };
 }
 
@@ -110,9 +111,26 @@ export function memorySoundSettingsStore(seed: Record<string, string> = {}): Sto
   };
 }
 
+function isEventEnabled(settings: SoundSettings, event: SoundEvent): boolean {
+  switch (event) {
+    case "message":
+      return settings.events.message;
+    case "mention":
+      return settings.events.mention;
+    case "call-ring":
+      return settings.events["call-ring"];
+    case "call-connect":
+      return settings.events["call-connect"];
+    case "call-join":
+      return settings.events["call-join"];
+    case "call-leave":
+      return settings.events["call-leave"];
+  }
+}
+
 /** The volume a client should play `event` at, or 0 when it must stay silent. */
 export function soundVolume(settings: SoundSettings, event: SoundEvent): number {
-  if (!settings.enabled || settings.events[event] !== true) {
+  if (!settings.enabled || !isEventEnabled(settings, event)) {
     return 0;
   }
   return settings.volume;

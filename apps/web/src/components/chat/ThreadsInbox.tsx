@@ -100,7 +100,9 @@ export function ThreadsInbox({
               <button
                 type="button"
                 data-testid={`thread-row-${thread.id}`}
-                onClick={() => onOpen(thread)}
+                onClick={() => {
+                  onOpen(thread);
+                }}
                 className="flex w-full items-start gap-3 rounded-[8px] px-2.5 py-2 text-left transition hover:bg-surface-3"
               >
                 <PersonAvatar userId={thread.authorId} size={32} roleColor={roleColor} />

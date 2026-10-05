@@ -6,7 +6,7 @@ use tauri::menu::{Menu, MenuItem, PredefinedMenuItem};
 use tauri::tray::{MouseButton, MouseButtonState, TrayIconBuilder, TrayIconEvent};
 use tauri::{App, Emitter, Runtime};
 
-pub fn install<R: Runtime>(app: &App<R>) -> tauri::Result<()> {
+fn build_menu<R: Runtime>(app: &App<R>) -> tauri::Result<Menu<R>> {
     let open = MenuItem::with_id(app, "tray_open", "Open Aulora", true, None::<&str>)?;
     let connect = MenuItem::with_id(
         app,
@@ -23,7 +23,7 @@ pub fn install<R: Runtime>(app: &App<R>) -> tauri::Result<()> {
         None::<&str>,
     )?;
     let quit = MenuItem::with_id(app, "tray_quit", "Quit Aulora", true, None::<&str>)?;
-    let menu = Menu::with_items(
+    Menu::with_items(
         app,
         &[
             &open,
@@ -32,7 +32,11 @@ pub fn install<R: Runtime>(app: &App<R>) -> tauri::Result<()> {
             &PredefinedMenuItem::separator(app)?,
             &quit,
         ],
-    )?;
+    )
+}
+
+pub fn install<R: Runtime>(app: &App<R>) -> tauri::Result<()> {
+    let menu = build_menu(app)?;
 
     let mut builder = TrayIconBuilder::new()
         .menu(&menu)

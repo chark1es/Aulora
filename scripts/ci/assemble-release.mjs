@@ -7,8 +7,10 @@ import {
   platformFromFile,
 } from "../../apps/desktop/scripts/release-manifest.mjs";
 
-export async function assembleRelease(directory, version, repository, notes = "") {
-  const files = readdirSync(directory);
+const RELEASE_DIRECTORY = "dist/release";
+
+export async function assembleRelease(version, repository, notes = "") {
+  const files = readdirSync(RELEASE_DIRECTORY);
   const patterns = {
     "darwin-aarch64": /_darwin-aarch64\.app\.tar\.gz$/,
     "darwin-x86_64": /_darwin-x86_64\.app\.tar\.gz$/,
@@ -20,7 +22,7 @@ export async function assembleRelease(directory, version, repository, notes = ""
   for (const [target, pattern] of Object.entries(patterns)) {
     const matches = files.filter((file) => pattern.test(file));
     if (matches.length !== 1) throw new Error(`Expected exactly one ${target} updater artifact.`);
-    platforms.push(await platformFromFile(target, join(directory, matches[0]), baseUrl));
+    platforms.push(await platformFromFile(target, join(RELEASE_DIRECTORY, matches[0]), baseUrl));
   }
   for (const suffix of [
     "_android.apk",
@@ -48,30 +50,28 @@ export async function assembleRelease(directory, version, repository, notes = ""
     pubDate: new Date().toISOString(),
     platforms,
   });
-  writeFileSync(join(directory, "latest.json"), `${JSON.stringify(manifest, null, 2)}\n`);
+  writeFileSync(join(RELEASE_DIRECTORY, "latest.json"), `${JSON.stringify(manifest, null, 2)}\n`);
 }
 
-export function writeChecksums(directory) {
-  const hashes = readdirSync(directory)
+export function writeChecksums() {
+  const hashes = readdirSync(RELEASE_DIRECTORY)
     .filter((file) => file !== "SHA256SUMS")
     .sort()
     .map((file) => {
       const digest = createHash("sha256")
-        .update(readFileSync(join(directory, file)))
+        .update(readFileSync(join(RELEASE_DIRECTORY, file)))
         .digest("hex");
       return `${digest}  ${file}`;
     });
-  writeFileSync(join(directory, "SHA256SUMS"), `${hashes.join("\n")}\n`);
+  writeFileSync(join(RELEASE_DIRECTORY, "SHA256SUMS"), `${hashes.join("\n")}\n`);
 }
 
 if (process.argv[1] && resolve(process.argv[1]) === fileURLToPath(import.meta.url)) {
-  const directory = "dist/release";
-  if (process.argv[2] === "checksums") writeChecksums(directory);
+  if (process.argv[2] === "checksums") writeChecksums();
   else
     await assembleRelease(
-      directory,
       process.env.RELEASE_VERSION,
       process.env.GITHUB_REPOSITORY,
-      readFileSync(join(directory, "RELEASE_NOTES.md"), "utf8"),
+      readFileSync(join(RELEASE_DIRECTORY, "RELEASE_NOTES.md"), "utf8"),
     );
 }

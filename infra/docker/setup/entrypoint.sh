@@ -100,7 +100,7 @@ export SETUP_DIR
 wait_for_backend() {
   log "waiting for Convex backend at ${CONVEX_SELF_HOSTED_URL}"
   for _ in $(seq 1 60); do
-    if BACKEND_VERSION="$(node "$SETUP_DIR/backend-version.mjs" 2>/dev/null)"; then
+    if node "$SETUP_DIR/backend-version.mjs" >/dev/null 2>&1; then
       return 0
     fi
     sleep 2

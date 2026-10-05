@@ -1,4 +1,4 @@
-import { expect, test } from "@playwright/test";
+import { type Browser, expect, test } from "@playwright/test";
 import { baseURL, connectAndSignIn, createChannel, hasOwnerCredentials } from "./helpers";
 
 /**
@@ -13,6 +13,38 @@ import { baseURL, connectAndSignIn, createChannel, hasOwnerCredentials } from ".
  * Credentials come from the environment and are never committed.
  */
 test.skip(!hasOwnerCredentials, "set AULORA_E2E_OWNER_EMAIL and AULORA_E2E_OWNER_PASSWORD");
+
+/** Signs a second account up through an invite link and joins the workspace. */
+async function createSecondAccount(browser: Browser, invitePath: string) {
+  const contextB = await browser.newContext();
+  const pageB = await contextB.newPage();
+  const signupEmail = `phase3-${Date.now()}@example.com`;
+  const signupPassword = "phase3-test-password-1234567890";
+
+  await pageB.goto("/");
+  await expect(pageB.getByRole("heading", { name: "Connect to a server" })).toBeVisible();
+  await pageB.getByLabel("Server address").fill(baseURL);
+  await pageB.getByRole("button", { name: "Connect" }).click();
+  await expect(pageB.getByRole("button", { name: "Continue" })).toBeVisible();
+  await pageB.getByRole("button", { name: "Continue" }).click();
+
+  await pageB.goto(invitePath);
+  await expect(pageB.getByRole("heading", { name: /^Sign in to / })).toBeVisible({
+    timeout: 30_000,
+  });
+  await pageB.getByRole("button", { name: "Create an account" }).click();
+  await pageB.getByLabel("Name").fill("Phase Three");
+  await pageB.getByLabel("Email").fill(signupEmail);
+  await pageB.getByLabel("Password").fill(signupPassword);
+  await pageB.getByRole("button", { name: "Create account" }).click();
+
+  await expect(pageB.getByTestId("redeem-card")).toBeVisible({ timeout: 30_000 });
+  await pageB.getByRole("button", { name: "Join workspace" }).click();
+  await expect(pageB.getByRole("button", { name: "Sign out" })).toBeVisible({
+    timeout: 30_000,
+  });
+  return contextB;
+}
 
 test.describe
   .serial("phase 3 admin", () => {
@@ -109,33 +141,7 @@ test.describe
       await page.getByRole("button", { name: "Close admin panel" }).click();
 
       // Second account: connect to the server, then open the invite link.
-      const contextB = await browser.newContext();
-      const pageB = await contextB.newPage();
-      const signupEmail = `phase3-${Date.now()}@example.com`;
-      const signupPassword = "phase3-test-password-1234567890";
-
-      await pageB.goto("/");
-      await expect(pageB.getByRole("heading", { name: "Connect to a server" })).toBeVisible();
-      await pageB.getByLabel("Server address").fill(baseURL);
-      await pageB.getByRole("button", { name: "Connect" }).click();
-      await expect(pageB.getByRole("button", { name: "Continue" })).toBeVisible();
-      await pageB.getByRole("button", { name: "Continue" }).click();
-
-      await pageB.goto(invitePath);
-      await expect(pageB.getByRole("heading", { name: /^Sign in to / })).toBeVisible({
-        timeout: 30_000,
-      });
-      await pageB.getByRole("button", { name: "Create an account" }).click();
-      await pageB.getByLabel("Name").fill("Phase Three");
-      await pageB.getByLabel("Email").fill(signupEmail);
-      await pageB.getByLabel("Password").fill(signupPassword);
-      await pageB.getByRole("button", { name: "Create account" }).click();
-
-      await expect(pageB.getByTestId("redeem-card")).toBeVisible({ timeout: 30_000 });
-      await pageB.getByRole("button", { name: "Join workspace" }).click();
-      await expect(pageB.getByRole("button", { name: "Sign out" })).toBeVisible({
-        timeout: 30_000,
-      });
+      const contextB = await createSecondAccount(browser, invitePath);
 
       // Owner assigns the role, sets a nickname, times out and kicks the new member.
       await page.getByRole("button", { name: "Workspace settings" }).click();

@@ -64,11 +64,15 @@ export interface AuthActionResult {
 
 /** Narrow, test-friendly view of the auth actions the sign-in UI needs. */
 export interface AuthActions {
-  signInEmail(input: { email: string; password: string }): Promise<AuthActionResult>;
-  signUpEmail(input: { email: string; password: string; name: string }): Promise<AuthActionResult>;
-  signInSocial(input: { provider: string; callbackURL: string }): Promise<AuthActionResult>;
-  signInOAuth2(input: { providerId: string; callbackURL: string }): Promise<AuthActionResult>;
-  signOut(): Promise<AuthActionResult>;
+  signInEmail: (_input: { email: string; password: string }) => Promise<AuthActionResult>;
+  signUpEmail: (_input: {
+    email: string;
+    password: string;
+    name: string;
+  }) => Promise<AuthActionResult>;
+  signInSocial: (_input: { provider: string; callbackURL: string }) => Promise<AuthActionResult>;
+  signInOAuth2: (_input: { providerId: string; callbackURL: string }) => Promise<AuthActionResult>;
+  signOut: () => Promise<AuthActionResult>;
 }
 
 function toResult(result: { error?: unknown } | null | undefined): AuthActionResult {

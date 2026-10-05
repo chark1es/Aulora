@@ -1,4 +1,4 @@
-import { expect, test } from "@playwright/test";
+import { expect, type Page, test } from "@playwright/test";
 import { createChannel, hasOwnerCredentials, signIn } from "./helpers";
 
 /**
@@ -28,6 +28,21 @@ function pngBuffer(): Buffer {
   );
 }
 
+/** Opens the sent image, preferring the thumbnail and falling back to the row. */
+async function openAttachmentPreview(page: Page): Promise<void> {
+  const thumbnail = page.getByTestId(/^thumbnail-/).first();
+  if (await thumbnail.isVisible().catch(() => false)) {
+    await thumbnail.click();
+  } else {
+    await page
+      .getByTestId(/^attachment-/)
+      .first()
+      .click();
+  }
+  await expect(page.getByTestId(/^fullimage-/).first()).toBeVisible({ timeout: 30_000 });
+  await page.keyboard.press("Escape");
+}
+
 test.describe("file uploads, search and offline outbox", () => {
   test("image thumbnail then full image, local search, and an offline send that reconnects", async ({
     browser,
@@ -50,19 +65,7 @@ test.describe("file uploads, search and offline outbox", () => {
     // The filename renders from the message payload.
     await expect(page.getByText(fileName)).toBeVisible({ timeout: 30_000 });
 
-    // The image preview is interactive. If the thumbnail rendered, assert it and
-    // use it; otherwise open the full image from the row.
-    const thumbnail = page.getByTestId(/^thumbnail-/).first();
-    if (await thumbnail.isVisible().catch(() => false)) {
-      await thumbnail.click();
-    } else {
-      await page
-        .getByTestId(/^attachment-/)
-        .first()
-        .click();
-    }
-    await expect(page.getByTestId(/^fullimage-/).first()).toBeVisible({ timeout: 30_000 });
-    await page.keyboard.press("Escape");
+    await openAttachmentPreview(page);
 
     // --- 2. Local search ----------------------------------------------------
     const token = `needle${Date.now()}`;

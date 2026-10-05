@@ -28,7 +28,7 @@ class Sandbox
     @spec_path = spec_path
   end
 
-  def store_podspec(name, *args)
+  def store_podspec(_name, *args)
     Specification.new(@spec_path)
   end
 end

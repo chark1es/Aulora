@@ -4,13 +4,7 @@ import { useEffect, useState } from "react";
 import { View } from "react-native";
 import { api } from "../../../../../packages/convex/convex/_generated/api";
 
-export function ProfileEditor({
-  userId,
-  canChangeNickname,
-}: {
-  readonly userId: string;
-  readonly canChangeNickname: boolean;
-}) {
+function useProfileEditor(userId: string, canChangeNickname: boolean) {
   const me = useQuery(api.members.me, {});
   const profile = useQuery(api.members.profile, { userId });
   const setNickname = useMutation(api.members.setNickname);
@@ -26,62 +20,94 @@ export function ProfileEditor({
   useEffect(() => {
     editBio(profile?.bio ?? "");
   }, [profile?.bio]);
-  if (me === undefined || profile === undefined) return <Spinner label="Loading your profile" />;
-  if (me === null || profile === null)
+
+  async function save() {
+    setBusy(true);
+    setError(null);
+    setFeedback(null);
+    try {
+      const nicknameChanged = nickname.trim() !== (me?.member?.nickname ?? "");
+      if (canChangeNickname && nicknameChanged) {
+        await setNickname({
+          userId,
+          ...(nickname.trim().length > 0 ? { nickname: nickname.trim() } : {}),
+        });
+      }
+      if (bio.trim() !== (profile?.bio ?? "")) {
+        await setBio({ bio: bio.trim() });
+      }
+      setFeedback("Profile saved.");
+    } catch (cause) {
+      setError(cause instanceof Error ? cause.message : "Couldn't save your profile. Try again.");
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  const nicknameChanged = nickname.trim() !== (me?.member?.nickname ?? "");
+  const bioChanged = bio.trim() !== (profile?.bio ?? "");
+  return {
+    me,
+    profile,
+    nickname,
+    editNickname,
+    bio,
+    editBio,
+    busy,
+    feedback,
+    error,
+    nicknameChanged,
+    bioChanged,
+    save,
+  };
+}
+
+export function ProfileEditor({
+  userId,
+  canChangeNickname,
+}: {
+  readonly userId: string;
+  readonly canChangeNickname: boolean;
+}) {
+  const editor = useProfileEditor(userId, canChangeNickname);
+  if (editor.me === undefined || editor.profile === undefined) {
+    return <Spinner label="Loading your profile" />;
+  }
+  if (editor.me === null || editor.profile === null) {
     return <Text tone="muted">Your workspace profile is unavailable.</Text>;
-  const nicknameChanged = nickname.trim() !== (me.member?.nickname ?? "");
-  const bioChanged = bio.trim() !== (profile.bio ?? "");
+  }
   return (
     <View className="gap-3">
       {canChangeNickname && (
         <Input
           label="Workspace nickname"
           hint="Leave blank to use your account name."
-          value={nickname}
-          onChangeText={editNickname}
+          value={editor.nickname}
+          onChangeText={editor.editNickname}
           maxLength={80}
         />
       )}
       <Input
         label="About you"
         hint="Visible to other members in this workspace."
-        value={bio}
-        onChangeText={editBio}
+        value={editor.bio}
+        onChangeText={editor.editBio}
         multiline
         maxLength={500}
       />
       <Button
-        loading={busy}
-        disabled={!bioChanged && !(canChangeNickname && nicknameChanged)}
-        onPress={() => {
-          setBusy(true);
-          setError(null);
-          setFeedback(null);
-          void (async () => {
-            if (canChangeNickname && nicknameChanged)
-              await setNickname({
-                userId,
-                ...(nickname.trim().length > 0 ? { nickname: nickname.trim() } : {}),
-              });
-            if (bioChanged) await setBio({ bio: bio.trim() });
-            setFeedback("Profile saved.");
-          })()
-            .catch((cause: unknown) =>
-              setError(
-                cause instanceof Error ? cause.message : "Couldn't save your profile. Try again.",
-              ),
-            )
-            .finally(() => setBusy(false));
-        }}
+        loading={editor.busy}
+        disabled={!editor.bioChanged && !(canChangeNickname && editor.nicknameChanged)}
+        onPress={editor.save}
       >
         Save profile
       </Button>
-      {error !== null && (
+      {editor.error !== null && (
         <Text tone="danger" accessibilityRole="alert">
-          {error}
+          {editor.error}
         </Text>
       )}
-      {feedback !== null && <Text accessibilityLiveRegion="polite">{feedback}</Text>}
+      {editor.feedback !== null && <Text accessibilityLiveRegion="polite">{editor.feedback}</Text>}
     </View>
   );
 }

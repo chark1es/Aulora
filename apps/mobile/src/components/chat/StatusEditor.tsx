@@ -20,7 +20,7 @@ const STATUS_OPTIONS: readonly { readonly value: PresenceStatus; readonly label:
 export interface StatusEditorProps {
   readonly status: PresenceStatus;
   readonly customStatus: string;
-  readonly onSetStatus: (status: PresenceStatus, customStatus?: string) => void;
+  readonly onSetStatus: (_status: PresenceStatus, _customStatus?: string) => void;
 }
 
 /**

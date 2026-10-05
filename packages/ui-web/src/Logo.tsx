@@ -51,50 +51,56 @@ export function Logo({ size = 32, title, className, ...rest }: LogoProps) {
       className={cn("shrink-0", className)}
       {...rest}
     >
-      <defs>
-        <linearGradient
-          id={`${uid}-main`}
-          gradientUnits="userSpaceOnUse"
-          x1={740}
-          y1={259}
-          x2={729}
-          y2={871}
-        >
-          <stop offset="0" stopColor="#FFB84D" />
-          <stop offset="0.5" stopColor="#F3651E" />
-          <stop offset="1" stopColor="#D0481B" />
-        </linearGradient>
-        <linearGradient
-          id={`${uid}-fold`}
-          gradientUnits="userSpaceOnUse"
-          x1={642}
-          y1={467}
-          x2={834}
-          y2={665}
-        >
-          <stop offset="0" stopColor="#7C1D0A" />
-          <stop offset="0.5" stopColor="#D84C1C" />
-          <stop offset="0.85" stopColor="#FF7723" />
-          <stop offset="1" stopColor="#F89C3E" />
-        </linearGradient>
-        <linearGradient
-          id={`${uid}-wave`}
-          gradientUnits="userSpaceOnUse"
-          x1={536}
-          y1={998}
-          x2={991}
-          y2={663}
-        >
-          <stop offset="0" stopColor="#002301" />
-          <stop offset="0.22" stopColor="#B42510" />
-          <stop offset="0.6" stopColor="#F86F22" />
-          <stop offset="1" stopColor="#FCD75E" />
-        </linearGradient>
-      </defs>
+      <LogoGradients uid={uid} />
       <rect width={CANVAS} height={CANVAS} rx={TILE_RADIUS} fill={TILE_FILL} />
       <path fill={`url(#${uid}-wave)`} d={WAVE_PATH} />
       <path fill={`url(#${uid}-main)`} d={MAIN_PATH} />
       <path fill={`url(#${uid}-fold)`} d={FOLD_PATH} />
     </svg>
+  );
+}
+
+function LogoGradients({ uid }: { readonly uid: string }) {
+  return (
+    <defs>
+      <linearGradient
+        id={`${uid}-main`}
+        gradientUnits="userSpaceOnUse"
+        x1={740}
+        y1={259}
+        x2={729}
+        y2={871}
+      >
+        <stop offset="0" stopColor="#FFB84D" />
+        <stop offset="0.5" stopColor="#F3651E" />
+        <stop offset="1" stopColor="#D0481B" />
+      </linearGradient>
+      <linearGradient
+        id={`${uid}-fold`}
+        gradientUnits="userSpaceOnUse"
+        x1={642}
+        y1={467}
+        x2={834}
+        y2={665}
+      >
+        <stop offset="0" stopColor="#7C1D0A" />
+        <stop offset="0.5" stopColor="#D84C1C" />
+        <stop offset="0.85" stopColor="#FF7723" />
+        <stop offset="1" stopColor="#F89C3E" />
+      </linearGradient>
+      <linearGradient
+        id={`${uid}-wave`}
+        gradientUnits="userSpaceOnUse"
+        x1={536}
+        y1={998}
+        x2={991}
+        y2={663}
+      >
+        <stop offset="0" stopColor="#002301" />
+        <stop offset="0.22" stopColor="#B42510" />
+        <stop offset="0.6" stopColor="#F86F22" />
+        <stop offset="1" stopColor="#FCD75E" />
+      </linearGradient>
+    </defs>
   );
 }

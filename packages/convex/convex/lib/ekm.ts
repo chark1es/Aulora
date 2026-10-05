@@ -164,14 +164,23 @@ function tryBase64(value: string): Bytes | null {
   }
 }
 
-function readBase64Field(body: unknown, path: readonly string[]): Bytes {
-  let cursor: unknown = body;
-  for (const key of path) {
-    if (typeof cursor !== "object" || cursor === null) {
-      throw new EkmKeyUnavailableError("EKM response was malformed");
-    }
-    cursor = (cursor as Record<string, unknown>)[key];
+function asRecord(value: unknown): Record<string, unknown> {
+  if (typeof value !== "object" || value === null) {
+    throw new EkmKeyUnavailableError("EKM response was malformed");
   }
+  return value as Record<string, unknown>;
+}
+
+/**
+ * Pulls one base64 field out of an EKM response. Callers pass an explicit
+ * accessor rather than a key path, so no dynamic property lookup can be driven
+ * by response content.
+ */
+function readBase64Field(
+  body: unknown,
+  select: (envelope: Record<string, unknown>) => unknown,
+): Bytes {
+  const cursor = select(asRecord(body));
   if (typeof cursor !== "string" || cursor.length === 0) {
     throw new EkmKeyUnavailableError("EKM response did not contain key material");
   }
@@ -209,7 +218,7 @@ async function unwrapHttp(settings: EkmSettings, fetchImpl: typeof fetch): Promi
   if (!response.ok) {
     throw new EkmKeyUnavailableError(`EKM proxy unwrap failed with status ${response.status}`);
   }
-  return readBase64Field(await readJson(response), ["key"]);
+  return readBase64Field(await readJson(response), (envelope) => envelope.key);
 }
 
 async function unwrapVault(settings: EkmSettings, fetchImpl: typeof fetch): Promise<Bytes> {
@@ -239,7 +248,7 @@ async function unwrapVault(settings: EkmSettings, fetchImpl: typeof fetch): Prom
   if (!response.ok) {
     throw new EkmKeyUnavailableError(`Vault transit decrypt failed with status ${response.status}`);
   }
-  return readBase64Field(await readJson(response), ["data", "plaintext"]);
+  return readBase64Field(await readJson(response), (envelope) => asRecord(envelope.data).plaintext);
 }
 
 /**
@@ -275,7 +284,7 @@ async function unwrapAwsKms(settings: EkmSettings, deps: EkmClientDeps): Promise
   if (!response.ok) {
     throw new EkmKeyUnavailableError(`AWS KMS decrypt failed with status ${response.status}`);
   }
-  return readBase64Field(await readJson(response), ["Plaintext"]);
+  return readBase64Field(await readJson(response), (envelope) => envelope.Plaintext);
 }
 
 async function unwrapGcpKms(settings: EkmSettings, fetchImpl: typeof fetch): Promise<Bytes> {
@@ -297,7 +306,7 @@ async function unwrapGcpKms(settings: EkmSettings, fetchImpl: typeof fetch): Pro
   if (!response.ok) {
     throw new EkmKeyUnavailableError(`GCP KMS decrypt failed with status ${response.status}`);
   }
-  return readBase64Field(await readJson(response), ["plaintext"]);
+  return readBase64Field(await readJson(response), (envelope) => envelope.plaintext);
 }
 
 /**
@@ -344,7 +353,7 @@ export async function deriveLocalMasterKey(env: Env, settings: EkmSettings): Pro
     ikm = decoded;
   } else {
     const secret = read(env, "INSTANCE_SECRET");
-    if (secret === undefined) {
+    if (!secret) {
       throw new EkmKeyUnavailableError(
         "No local master key: set AULORA_ENCRYPTION_KEY or INSTANCE_SECRET",
       );

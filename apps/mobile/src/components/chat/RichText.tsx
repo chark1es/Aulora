@@ -10,7 +10,7 @@ export interface RichTextProps {
   /** The viewer's display name; mentions of them are highlighted. */
   readonly viewerName: string;
   readonly onAccent?: boolean;
-  readonly onChannelPress?: (name: string) => void;
+  readonly onChannelPress?: (_name: string) => void;
 }
 
 /**
@@ -78,12 +78,15 @@ function inlineKey(segment: InlineSegment): string {
   }
 }
 
+type Palette = ReturnType<typeof usePalette>;
+type ChannelPress = ((_name: string) => void) | undefined;
+
 function renderInline(
   segments: readonly InlineSegment[],
   viewerName: string,
   onAccent: boolean,
-  palette: ReturnType<typeof usePalette>,
-  onChannelPress: ((name: string) => void) | undefined,
+  palette: Palette,
+  onChannelPress: ChannelPress,
 ): ReactNode[] {
   return segments.map((segment) => {
     const key = inlineKey(segment);
@@ -91,18 +94,7 @@ function renderInline(
       case "text":
         return <Text key={key}>{segment.text}</Text>;
       case "code":
-        return (
-          <Text
-            key={key}
-            mono
-            style={{
-              backgroundColor: onAccent ? ACCENT_OVERLAY : palette["surface-3"],
-              color: onAccent ? palette["on-accent"] : palette.accent,
-            }}
-          >
-            {segment.text}
-          </Text>
-        );
+        return renderCodeSegment(segment, key, onAccent, palette);
       case "bold":
         return (
           <Text key={key} style={{ fontWeight: "600" }}>
@@ -116,65 +108,108 @@ function renderInline(
           </Text>
         );
       case "link":
-        return (
-          <Text
-            key={key}
-            style={{
-              textDecorationLine: "underline",
-              color: onAccent ? palette["on-accent"] : palette.accent,
-            }}
-            onPress={() => {
-              void Linking.openURL(segment.href);
-            }}
-          >
-            {segment.text}
-          </Text>
-        );
-      case "mention": {
-        const self = segment.broadcast || segment.name.toLowerCase() === viewerName.toLowerCase();
-        return (
-          <Text
-            key={key}
-            style={{
-              fontWeight: "600",
-              color: onAccent || self ? palette["on-accent"] : palette.accent,
-              backgroundColor: onAccent
-                ? ACCENT_OVERLAY
-                : self
-                  ? palette.accent
-                  : palette["accent-soft"],
-              borderWidth: 1,
-              borderColor: onAccent
-                ? ACCENT_OVERLAY
-                : self
-                  ? palette.accent
-                  : palette["accent-soft"],
-              borderRadius: 5,
-            }}
-          >
-            @{segment.name}
-          </Text>
-        );
-      }
+        return renderLinkSegment(segment, key, onAccent, palette);
+      case "mention":
+        return renderMentionSegment(segment, key, viewerName, onAccent, palette);
       case "channel":
-        return (
-          <Text
-            key={key}
-            style={{
-              fontWeight: "600",
-              color: onAccent ? palette["on-accent"] : palette.accent,
-              backgroundColor: onAccent ? ACCENT_OVERLAY : palette["accent-soft"],
-              borderWidth: 1,
-              borderColor: onAccent ? ACCENT_OVERLAY : palette["accent-soft"],
-              borderRadius: 5,
-            }}
-            onPress={() => onChannelPress?.(segment.name)}
-          >
-            #{segment.name}
-          </Text>
-        );
+        return renderChannelSegment(segment, key, onAccent, palette, onChannelPress);
       default:
         return null;
     }
   });
+}
+
+function renderCodeSegment(
+  segment: Extract<InlineSegment, { type: "code" }>,
+  key: string,
+  onAccent: boolean,
+  palette: Palette,
+): ReactNode {
+  return (
+    <Text
+      key={key}
+      mono
+      style={{
+        backgroundColor: onAccent ? ACCENT_OVERLAY : palette["surface-3"],
+        color: onAccent ? palette["on-accent"] : palette.accent,
+      }}
+    >
+      {segment.text}
+    </Text>
+  );
+}
+
+function renderLinkSegment(
+  segment: Extract<InlineSegment, { type: "link" }>,
+  key: string,
+  onAccent: boolean,
+  palette: Palette,
+): ReactNode {
+  return (
+    <Text
+      key={key}
+      style={{
+        textDecorationLine: "underline",
+        color: onAccent ? palette["on-accent"] : palette.accent,
+      }}
+      onPress={() => {
+        void Linking.openURL(segment.href);
+      }}
+    >
+      {segment.text}
+    </Text>
+  );
+}
+
+function renderMentionSegment(
+  segment: Extract<InlineSegment, { type: "mention" }>,
+  key: string,
+  viewerName: string,
+  onAccent: boolean,
+  palette: Palette,
+): ReactNode {
+  const self = segment.broadcast || segment.name.toLowerCase() === viewerName.toLowerCase();
+  const tint = onAccent || self;
+  const background = onAccent ? ACCENT_OVERLAY : self ? palette.accent : palette["accent-soft"];
+  return (
+    <Text
+      key={key}
+      style={{
+        fontWeight: "600",
+        color: tint ? palette["on-accent"] : palette.accent,
+        backgroundColor: background,
+        borderWidth: 1,
+        borderColor: background,
+        borderRadius: 5,
+      }}
+    >
+      @{segment.name}
+    </Text>
+  );
+}
+
+function renderChannelSegment(
+  segment: Extract<InlineSegment, { type: "channel" }>,
+  key: string,
+  onAccent: boolean,
+  palette: Palette,
+  onChannelPress: ChannelPress,
+): ReactNode {
+  const background = onAccent ? ACCENT_OVERLAY : palette["accent-soft"];
+  return (
+    <Text
+      key={key}
+      style={{
+        fontWeight: "600",
+        color: onAccent ? palette["on-accent"] : palette.accent,
+        backgroundColor: background,
+        borderWidth: 1,
+        borderColor: background,
+        borderRadius: 5,
+      }}
+      onPress={() => onChannelPress?.(segment.name)}
+    >
+      #{segment.name}
+    </Text>
+  );
 }

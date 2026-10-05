@@ -1,7 +1,7 @@
 import { EVERYONE_ROLE_ID, Permission } from "@aulora/core";
 import { ConvexError, v } from "convex/values";
 import type { Doc, Id } from "./_generated/dataModel";
-import type { MutationCtx, QueryCtx } from "./_generated/server";
+import type { MutationCtx } from "./_generated/server";
 import { internalMutation, mutation, query } from "./_generated/server";
 import { accountNames } from "./lib/accountNames";
 import { writeAudit } from "./lib/audit";
@@ -18,8 +18,9 @@ import {
 import { enforceRateLimit, userRateLimitKey } from "./lib/rateLimit";
 import { openContentOptional } from "./lib/sealed";
 import { sealString } from "./lib/sse";
+import type { Nullable } from "./lib/types";
 
-type ReadCtx = QueryCtx | MutationCtx;
+type ReadCtx = Parameters<typeof requireAuth>[0];
 
 const BIO_CONTEXT = { scope: "member.bio" } as const;
 const MAX_BIO_LENGTH = 500;
@@ -133,7 +134,7 @@ export const setAvatar = mutation({
   },
 });
 
-async function findRoleByName(ctx: MutationCtx, name: string): Promise<Doc<"roles"> | null> {
+async function findRoleByName(ctx: MutationCtx, name: string): Promise<Nullable<Doc<"roles">>> {
   const roles = await ctx.db.query("roles").collect();
   const match = roles.find((role) => role.name === name || role.key === name);
   return match ?? null;

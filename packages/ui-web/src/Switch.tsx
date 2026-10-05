@@ -37,7 +37,9 @@ export function Switch({
       aria-checked={checked}
       aria-label={label}
       disabled={disabled}
-      onClick={() => onChange(!checked)}
+      onClick={() => {
+        onChange(!checked);
+      }}
       className={cn(
         "relative inline-flex h-[22px] w-[38px] shrink-0 items-center rounded-full transition-colors duration-200",
         "focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent focus-visible:ring-offset-2 focus-visible:ring-offset-surface-2",
@@ -115,7 +117,9 @@ export function SegmentedControl<T extends string>({
               name={label}
               value={option.value}
               checked={active}
-              onChange={() => onChange(option.value)}
+              onChange={() => {
+                onChange(option.value);
+              }}
               className="sr-only"
             />
             {option.icon}

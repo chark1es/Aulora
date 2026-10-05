@@ -20,23 +20,23 @@ export interface AuditLogViewerProps {
 
 const PAGE_SIZE = 50;
 
-const CATEGORY_ICON: Record<AuditCategory, IconName> = {
-  role: "shield",
-  member: "users",
-  category: "sidebar",
-  channel: "hash",
-  server: "settings",
-  other: "file",
-};
+const CATEGORY_ICON = new Map<AuditCategory, IconName>([
+  ["role", "shield"],
+  ["member", "users"],
+  ["category", "sidebar"],
+  ["channel", "hash"],
+  ["server", "settings"],
+  ["other", "file"],
+]);
 
-const CATEGORY_ACCENT: Record<AuditCategory, string> = {
-  role: "bg-accent-soft text-accent",
-  member: "bg-secondary/10 text-secondary",
-  category: "bg-surface-3 text-text-muted",
-  channel: "bg-accent-soft text-accent",
-  server: "bg-surface-3 text-text-muted",
-  other: "bg-surface-3 text-text-muted",
-};
+const CATEGORY_ACCENT = new Map<AuditCategory, string>([
+  ["role", "bg-accent-soft text-accent"],
+  ["member", "bg-secondary/10 text-secondary"],
+  ["category", "bg-surface-3 text-text-muted"],
+  ["channel", "bg-accent-soft text-accent"],
+  ["server", "bg-surface-3 text-text-muted"],
+  ["other", "bg-surface-3 text-text-muted"],
+]);
 
 /** A compact "2h ago"-style age for a timestamp. */
 function relativeTime(at: number, now: number): string {
@@ -128,9 +128,9 @@ export function AuditLogViewer({
                 className="flex items-center gap-3 px-3.5 py-2.5 transition hover:bg-surface-3/50"
               >
                 <span
-                  className={`flex h-7 w-7 shrink-0 items-center justify-center rounded-[8px] ${CATEGORY_ACCENT[category]}`}
+                  className={`flex h-7 w-7 shrink-0 items-center justify-center rounded-[8px] ${CATEGORY_ACCENT.get(category) ?? ""}`}
                 >
-                  <Icon name={CATEGORY_ICON[category]} size={14} />
+                  <Icon name={CATEGORY_ICON.get(category) ?? "file"} size={14} />
                 </span>
                 <div className="min-w-0 flex-1">
                   <Text size="sm" className="truncate">
@@ -156,7 +156,13 @@ export function AuditLogViewer({
 
       {result !== undefined && !result.isDone && (
         <div>
-          <Button size="sm" variant="secondary" onClick={() => setCursor(result.continueCursor)}>
+          <Button
+            size="sm"
+            variant="secondary"
+            onClick={() => {
+              setCursor(result.continueCursor);
+            }}
+          >
             Load more
           </Button>
         </div>

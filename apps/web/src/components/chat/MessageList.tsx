@@ -218,7 +218,9 @@ export function MessageList(props: MessageListProps) {
     });
     observer.observe(content);
     observer.observe(node);
-    return () => observer.disconnect();
+    return () => {
+      observer.disconnect();
+    };
   }, [scrollToBottom, updateBottomState]);
 
   const onScroll = () => {
@@ -390,7 +392,7 @@ function MessageRow({
   };
 
   const [editing, setEditing] = useState(false);
-  const [draft, setDraft] = useState(text ?? "");
+  const [draft, setDraft] = useState<string>();
   const [confirmDelete, setConfirmDelete] = useState(false);
   const [pickerOpen, setPickerOpen] = useState(false);
 
@@ -416,7 +418,9 @@ function MessageRow({
         id: "react",
         label: "Custom reaction",
         icon: <Icon name="smile" size={14} />,
-        onSelect: () => setPickerOpen(true),
+        onSelect: () => {
+          setPickerOpen(true);
+        },
       });
     }
     if (list.onReplyTo !== undefined && hasPermission(permissions, Permission.SendMessages)) {
@@ -434,7 +438,9 @@ function MessageRow({
         label: "Reply in thread",
         icon: <Icon name="thread" size={14} />,
         separatorBefore: items.length > 0,
-        onSelect: () => list.onReply(message),
+        onSelect: () => {
+          list.onReply(message);
+        },
       });
     }
     if (canEdit) {
@@ -454,7 +460,9 @@ function MessageRow({
         id: "pin",
         label: message.pinnedAt !== null ? "Unpin message" : "Pin message",
         icon: <Icon name="pin" size={14} />,
-        onSelect: () => list.onPinToggle(message),
+        onSelect: () => {
+          list.onPinToggle(message);
+        },
       });
     }
     if (text.trim().length > 0) {
@@ -464,7 +472,7 @@ function MessageRow({
         icon: <Icon name="file" size={14} />,
         separatorBefore: items.length > 0,
         onSelect: () => {
-          void navigator.clipboard?.writeText(text).catch(() => undefined);
+          void navigator.clipboard.writeText(text).catch(() => undefined);
         },
       });
     }
@@ -475,7 +483,9 @@ function MessageRow({
         icon: <Icon name="trash" size={14} />,
         danger: true,
         separatorBefore: items.length > 0,
-        onSelect: () => list.onDelete(message),
+        onSelect: () => {
+          list.onDelete(message);
+        },
       });
     }
     if (items.length > 0) {
@@ -492,8 +502,12 @@ function MessageRow({
     if (!confirmDelete) {
       return;
     }
-    const timer = setTimeout(() => setConfirmDelete(false), 4_000);
-    return () => clearTimeout(timer);
+    const timer = setTimeout(() => {
+      setConfirmDelete(false);
+    }, 4_000);
+    return () => {
+      clearTimeout(timer);
+    };
   }, [confirmDelete]);
 
   if (message.deletedAt !== null) {
@@ -530,7 +544,7 @@ function MessageRow({
       className="flex w-[min(560px,100%)] flex-col gap-2 rounded-[10px] border border-accent bg-surface-2 p-2 shadow-lg shadow-black/10"
       onSubmit={(event) => {
         event.preventDefault();
-        if (draft.trim().length > 0 && draft !== text) {
+        if ((draft ?? "").trim().length > 0 && draft !== undefined && draft !== text) {
           list.onEdit(message, draft);
         }
         setEditing(false);
@@ -541,8 +555,10 @@ function MessageRow({
         // biome-ignore lint/a11y/noAutofocus: editing was explicitly requested
         autoFocus
         className="min-h-[64px] resize-none bg-transparent px-1.5 py-1 text-[14px] leading-relaxed text-text focus-visible:outline-none"
-        value={draft}
-        onChange={(event) => setDraft(event.target.value)}
+        value={draft ?? ""}
+        onChange={(event) => {
+          setDraft(event.target.value);
+        }}
         onKeyDown={(event) => {
           if (event.key === "Escape") {
             setEditing(false);
@@ -555,7 +571,14 @@ function MessageRow({
       />
       <div className="flex items-center justify-end gap-2 text-xs">
         <span className="mr-auto pl-1.5 text-text-muted">Esc to cancel · Enter to save</span>
-        <Button type="button" size="sm" variant="ghost" onClick={() => setEditing(false)}>
+        <Button
+          type="button"
+          size="sm"
+          variant="ghost"
+          onClick={() => {
+            setEditing(false);
+          }}
+        >
           Cancel
         </Button>
         <Button type="submit" size="sm">
@@ -587,7 +610,9 @@ function MessageRow({
   const replyLine = replyToId !== null && (
     <button
       type="button"
-      onClick={() => scrollToOriginal(replyToId)}
+      onClick={() => {
+        scrollToOriginal(replyToId);
+      }}
       aria-label="Jump to replied message"
       className={cn(
         "flex min-w-0 max-w-full items-center text-left transition hover:opacity-80 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent",
@@ -635,14 +660,23 @@ function MessageRow({
     >
       {canReact && (
         <span className="relative">
-          <ToolbarButton label="Custom reaction" onClick={() => setPickerOpen((open) => !open)}>
+          <ToolbarButton
+            label="Custom reaction"
+            onClick={() => {
+              setPickerOpen((open) => !open);
+            }}
+          >
             <Icon name="smile" size={18} />
           </ToolbarButton>
           {pickerOpen && (
             <EmojiPicker
               className={cn("absolute top-full mt-1", mirror ? "left-0" : "right-0")}
-              onPick={(emoji) => list.onReact(message, emoji)}
-              onClose={() => setPickerOpen(false)}
+              onPick={(emoji) => {
+                list.onReact(message, emoji);
+              }}
+              onClose={() => {
+                setPickerOpen(false);
+              }}
             />
           )}
         </span>
@@ -653,7 +687,12 @@ function MessageRow({
         </ToolbarButton>
       )}
       {canThread && (
-        <ToolbarButton label="Reply in thread" onClick={() => list.onReply(message)}>
+        <ToolbarButton
+          label="Reply in thread"
+          onClick={() => {
+            list.onReply(message);
+          }}
+        >
           <Icon name="thread" size={18} />
         </ToolbarButton>
       )}
@@ -672,7 +711,9 @@ function MessageRow({
         <ToolbarButton
           label={message.pinnedAt !== null ? "Unpin message" : "Pin message"}
           active={message.pinnedAt !== null}
-          onClick={() => list.onPinToggle(message)}
+          onClick={() => {
+            list.onPinToggle(message);
+          }}
         >
           <Icon name="pin" size={18} />
         </ToolbarButton>
@@ -692,7 +733,13 @@ function MessageRow({
             Delete?
           </Button>
         ) : (
-          <ToolbarButton label="Delete message" danger onClick={() => setConfirmDelete(true)}>
+          <ToolbarButton
+            label="Delete message"
+            danger
+            onClick={() => {
+              setConfirmDelete(true);
+            }}
+          >
             <Icon name="trash" size={18} />
           </ToolbarButton>
         ))}
@@ -832,13 +879,17 @@ function MessageRow({
             <ReactionChips
               groups={reactions}
               align={mirror ? "end" : own ? "end" : "start"}
-              onToggle={(emoji) => list.onReact(message, emoji)}
+              onToggle={(emoji) => {
+                list.onReact(message, emoji);
+              }}
             />
           )}
           {replyCount > 0 && list.inThread !== true && (
             <button
               type="button"
-              onClick={() => list.onReply(message)}
+              onClick={() => {
+                list.onReply(message);
+              }}
               className="mt-1 flex items-center gap-1.5 rounded-full px-2 py-0.5 text-xs font-semibold text-accent transition hover:bg-accent-soft"
             >
               <Icon name="thread" size={14} />

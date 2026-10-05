@@ -4,19 +4,28 @@ import { PersonAvatar } from "./member-avatars";
 
 export type PresenceStatus = PresenceRow["status"];
 
-export const PRESENCE_LABEL: Record<PresenceStatus, string> = {
-  online: "Online",
-  idle: "Idle",
-  dnd: "Do not disturb",
-  offline: "Offline",
-};
+const PRESENCE_LABELS = new Map<PresenceStatus, string>([
+  ["online", "Online"],
+  ["idle", "Idle"],
+  ["dnd", "Do not disturb"],
+  ["offline", "Offline"],
+]);
 
-const DOT_CLASS: Record<PresenceStatus, string> = {
-  online: "bg-secondary",
-  idle: "bg-idle",
-  dnd: "bg-danger",
-  offline: "bg-text-muted/60",
-};
+/** Human-readable label for a presence status. */
+export function presenceLabel(status: PresenceStatus): string {
+  return PRESENCE_LABELS.get(status) ?? "Offline";
+}
+
+const DOT_CLASSES = new Map<PresenceStatus, string>([
+  ["online", "bg-secondary"],
+  ["idle", "bg-idle"],
+  ["dnd", "bg-danger"],
+  ["offline", "bg-text-muted/60"],
+]);
+
+function dotClass(status: PresenceStatus): string {
+  return DOT_CLASSES.get(status) ?? "bg-text-muted/60";
+}
 
 /** A person's avatar with an optional presence dot in the bottom-right corner. */
 export function PresenceAvatar({
@@ -40,10 +49,10 @@ export function PresenceAvatar({
       {status !== undefined && (
         <span
           role="img"
-          aria-label={PRESENCE_LABEL[status]}
+          aria-label={presenceLabel(status)}
           className={cn(
             "absolute bottom-0 right-0 rounded-full ring-2",
-            DOT_CLASS[status],
+            dotClass(status),
             ringClassName,
           )}
           style={{ width: dot, height: dot }}

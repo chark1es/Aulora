@@ -35,9 +35,11 @@ export type {
   TypingRow,
 } from "./port.js";
 export {
+  type InlineMatcher,
   type InlineSegment,
   inlineToPlainText,
   mentionsViewer,
+  type NameMatcher,
   parseInline,
   parseRichText,
   type RichBlock,

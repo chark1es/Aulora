@@ -69,18 +69,19 @@ const ATTACH_OPTIONS: readonly {
 const TRIGGER = /(^|\s)([@#])([^\s@#]*)$/;
 
 /** Mobile composer with attachments, `@`/`#` autocomplete and a markdown preview. */
-export function Composer({
-  channelId,
-  placeholder = "Message",
-  disabled,
-  members = [],
-  roles = [],
-  channels = [],
-  canMentionEveryone = false,
-  viewerName = "You",
-  onTyping,
-  onSend,
-}: ComposerProps) {
+export function Composer(props: ComposerProps) {
+  const {
+    channelId,
+    placeholder = "Message",
+    disabled,
+    members = [],
+    roles = [],
+    channels = [],
+    canMentionEveryone = false,
+    viewerName = "You",
+    onTyping,
+    onSend,
+  } = props;
   const palette = usePalette();
   const insets = useSafeAreaInsets();
   const [value, setValue] = useState("");
@@ -133,8 +134,8 @@ export function Composer({
     if (trigger === null) {
       return [];
     }
-    const prefix = trigger[2] ?? "";
-    const query = (trigger[3] ?? "").toLowerCase();
+    const [, , prefix = "", rawQuery = ""] = trigger;
+    const query = rawQuery.toLowerCase();
     return candidates
       .filter((candidate) => candidate.insert.startsWith(prefix))
       .filter((candidate) => candidate.label.toLowerCase().includes(query))

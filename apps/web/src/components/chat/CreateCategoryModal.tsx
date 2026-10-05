@@ -40,7 +40,9 @@ export function CreateCategoryModal({
         inputRef.current?.focus();
         inputRef.current?.select();
       });
-      return () => cancelAnimationFrame(frame);
+      return () => {
+        cancelAnimationFrame(frame);
+      };
     }
     return undefined;
   }, [open, initialName]);
@@ -56,7 +58,9 @@ export function CreateCategoryModal({
       return;
     }
     setSubmitting(true);
-    void Promise.resolve(onSubmit(trimmed)).finally(() => setSubmitting(false));
+    void Promise.resolve(onSubmit(trimmed)).finally(() => {
+      setSubmitting(false);
+    });
   };
 
   return (
@@ -108,7 +112,9 @@ export function CreateCategoryModal({
           placeholder="e.g. Product"
           value={name}
           maxLength={80}
-          onChange={(event) => setName(event.target.value)}
+          onChange={(event) => {
+            setName(event.target.value);
+          }}
           {...(error !== null && error.length > 0 ? { error } : {})}
         />
       </form>

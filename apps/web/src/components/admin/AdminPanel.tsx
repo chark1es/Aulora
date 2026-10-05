@@ -11,6 +11,7 @@ import {
 } from "../../lib/workspace-admin";
 import { AddonsSettings } from "./AddonsSettings";
 import { AuditLogViewer } from "./AuditLogViewer";
+import type { Callback } from "./callbacks";
 import { InviteManager } from "./InviteManager";
 import { InstanceAdminPanel } from "./instance/InstanceAdminPanel";
 import { MemberManager } from "./MemberManager";
@@ -56,32 +57,31 @@ interface Nav {
   readonly page: AdminPage | null;
 }
 
-const TAB_LABELS: Record<TabId, string> = {
-  roles: "Roles",
-  members: "Members",
-  invites: "Invites",
-  permissions: "Permissions",
-  audit: "Audit log",
-  workspace: "Workspace",
-  addons: "Addons",
-  instance: "Instance",
-};
+interface AdminTab {
+  readonly id: TabId;
+  readonly label: string;
+}
 
-/** The workspace admin console: roles, members, overrides and audit. */
-export function AdminPanel({
-  viewer,
-  ownerId,
-  roles,
-  members,
-  categories,
-  channels,
-  channelNames,
-  onClose,
-}: AdminPanelProps) {
-  const permission = (name: PermissionName): boolean =>
-    hasPermission(viewer.permissions, Permission[name]);
+const TAB_LABELS = new Map<TabId, string>([
+  ["roles", "Roles"],
+  ["members", "Members"],
+  ["invites", "Invites"],
+  ["permissions", "Permissions"],
+  ["audit", "Audit log"],
+  ["workspace", "Workspace"],
+  ["addons", "Addons"],
+  ["instance", "Instance"],
+]);
 
-  const tabs: { id: TabId; label: string }[] = [];
+const PERMISSION_BITS = new Map<PermissionName, bigint>(
+  Object.entries(Permission) as [PermissionName, bigint][],
+);
+
+function buildTabs(
+  permission: Callback<[name: PermissionName], boolean>,
+  isOwner: boolean,
+): AdminTab[] {
+  const tabs: AdminTab[] = [];
   if (permission("ManageRoles")) {
     tabs.push({ id: "roles", label: "Roles" });
   }
@@ -107,9 +107,20 @@ export function AdminPanel({
     tabs.push({ id: "workspace", label: "Workspace" });
     tabs.push({ id: "addons", label: "Addons" });
   }
-  if (viewer.isOwner) {
+  if (isOwner) {
     tabs.push({ id: "instance", label: "Instance" });
   }
+  return tabs;
+}
+
+/** The workspace admin console: roles, members, overrides and audit. */
+export function AdminPanel(props: AdminPanelProps) {
+  const { viewer, ownerId, roles, members, categories, channels, channelNames, origin, onClose } =
+    props;
+  const permission = (name: PermissionName): boolean =>
+    hasPermission(viewer.permissions, PERMISSION_BITS.get(name) ?? 0n);
+
+  const tabs = buildTabs(permission, viewer.isOwner);
 
   const memberNames = useMemo(() => {
     const map = new Map<string, string>();
@@ -154,16 +165,67 @@ export function AdminPanel({
       data-testid="admin-panel"
       aria-label="Workspace admin"
     >
+      <AdminPanelHeader
+        drilled={drilled}
+        tab={nav.tab}
+        isOwner={viewer.isOwner}
+        tabs={tabs}
+        onGoToTab={goToTab}
+        onBack={goBack}
+        onClose={onClose}
+      />
+
+      <div className="min-h-0 flex-1 overflow-y-auto">
+        <div className="mx-auto flex w-full max-w-[1120px] flex-col gap-6 p-5">
+          <AdminPanelBody
+            nav={nav}
+            tabs={tabs}
+            permission={permission}
+            viewer={viewer}
+            ownerId={ownerId}
+            roles={roles}
+            members={members}
+            categories={categories}
+            channels={channels}
+            {...(channelNames !== undefined ? { channelNames } : {})}
+            origin={origin}
+            memberNames={memberNames}
+            roleNames={roleNames}
+            categoryNames={categoryNames}
+            onNavigate={(tab, page) => {
+              setNav({ tab, page });
+            }}
+          />
+        </div>
+      </div>
+    </section>
+  );
+}
+
+interface AdminPanelHeaderProps {
+  readonly drilled: boolean;
+  readonly tab: TabId;
+  readonly isOwner: boolean;
+  readonly tabs: readonly AdminTab[];
+  readonly onGoToTab: Callback<[tab: TabId]>;
+  readonly onBack: () => void;
+  readonly onClose: () => void;
+}
+
+function AdminPanelHeader(props: AdminPanelHeaderProps) {
+  const { drilled, tab, isOwner, tabs, onGoToTab, onBack, onClose } = props;
+  return (
+    <>
       <header className="material-chrome flex h-[52px] shrink-0 items-center gap-2 border-b border-border px-3">
         {drilled && (
-          <IconButton label="Back" onClick={goBack}>
+          <IconButton label="Back" onClick={onBack}>
             <Icon name="chevron-left" size={16} />
           </IconButton>
         )}
         <Heading level={3} className="min-w-0 flex-1 truncate">
-          {drilled ? TAB_LABELS[nav.tab] : "Workspace admin"}
+          {drilled ? (TAB_LABELS.get(tab) ?? "Workspace admin") : "Workspace admin"}
         </Heading>
-        {!drilled && viewer.isOwner && (
+        {!drilled && isOwner && (
           <span
             className="shrink-0 rounded-full bg-accent-soft px-2 py-0.5 text-[11px] font-medium text-accent"
             data-testid="admin-owner-badge"
@@ -180,90 +242,149 @@ export function AdminPanel({
         className="flex shrink-0 flex-wrap gap-1 border-b border-border px-3 py-2"
         aria-label="Admin sections"
       >
-        {tabs.map((tab) => (
+        {tabs.map((entry) => (
           <button
-            key={tab.id}
+            key={entry.id}
             type="button"
-            aria-current={nav.tab === tab.id ? "page" : undefined}
+            aria-current={tab === entry.id ? "page" : undefined}
             className={
-              nav.tab === tab.id
+              tab === entry.id
                 ? "rounded-[7px] bg-surface-3 px-3 py-1 text-[13px] font-medium text-text"
                 : "rounded-[7px] px-3 py-1 text-[13px] text-text-muted transition hover:bg-surface-2 hover:text-text"
             }
-            onClick={() => goToTab(tab.id)}
+            onClick={() => {
+              onGoToTab(entry.id);
+            }}
           >
-            {tab.label}
+            {entry.label}
           </button>
         ))}
       </nav>
+    </>
+  );
+}
 
-      <div className="min-h-0 flex-1 overflow-y-auto">
-        <div className="mx-auto flex w-full max-w-[1120px] flex-col gap-6 p-5">
-          {nav.tab === "roles" && (
-            <RoleEditor
-              viewer={viewer}
-              canManageRoles={permission("ManageRoles")}
-              page={isRolePage(nav.page) ? nav.page : null}
-              onNavigate={(page) => setNav({ tab: "roles", page })}
-            />
-          )}
-          {nav.tab === "members" && (
-            <MemberManager
-              viewer={viewer}
-              ownerId={ownerId}
-              permissions={{
-                manageRoles: permission("ManageRoles"),
-                kick: permission("Kick"),
-                ban: permission("Ban"),
-                timeout: permission("Timeout"),
-                manageNicknames: permission("ManageNicknames"),
-                changeOwnNickname: permission("ChangeOwnNickname"),
-              }}
-            />
-          )}
-          {nav.tab === "invites" && (
-            <InviteManager canCreateInvites={permission("CreateInvites")} origin={origin} />
-          )}
-          {nav.tab === "permissions" && (
-            <PermissionsPanel
-              roles={roles}
-              members={members}
-              categories={categories}
-              channels={channels}
-              {...(channelNames !== undefined ? { channelNames } : {})}
-              page={isScopePage(nav.page) ? nav.page : null}
-              onNavigate={(page) => setNav({ tab: "permissions", page })}
-            />
-          )}
-          {nav.tab === "audit" && (
-            <AuditLogViewer
-              canViewAuditLog={permission("ViewAuditLog")}
-              memberNames={memberNames}
-              roleNames={roleNames}
-              categoryNames={categoryNames}
-              {...(channelNames !== undefined ? { channelNames } : {})}
-            />
-          )}
-          {nav.tab === "workspace" && (
-            <div className="flex flex-col gap-8" data-testid="settings-workspace">
-              <WorkspaceBranding canManageWorkspace={permission("ManageWorkspace")} />
-              <WorkspaceSettings canManageWorkspace={permission("ManageWorkspace")} />
-            </div>
-          )}
-          {nav.tab === "addons" && (
-            <AddonsSettings canManageWorkspace={permission("ManageWorkspace")} />
-          )}
-          {nav.tab === "instance" && (
-            <InstanceAdminPanel canManage={viewer.isOwner} variant="inline" />
-          )}
-          {tabs.length === 0 && (
-            <Text tone="muted" size="sm">
-              You do not have access to any admin sections.
-            </Text>
-          )}
+interface AdminPanelBodyProps {
+  readonly nav: Nav;
+  readonly tabs: readonly AdminTab[];
+  readonly permission: Callback<[name: PermissionName], boolean>;
+  readonly viewer: AdminPanelViewer;
+  readonly ownerId: string | null;
+  readonly roles: readonly RoleView[];
+  readonly members: readonly MemberView[];
+  readonly categories: readonly CategoryView[];
+  readonly channels: readonly ChannelSummary[];
+  readonly channelNames?: ReadonlyMap<string, string>;
+  readonly origin: string;
+  readonly memberNames: ReadonlyMap<string, string>;
+  readonly roleNames: ReadonlyMap<string, string>;
+  readonly categoryNames: ReadonlyMap<string, string>;
+  readonly onNavigate: Callback<[tab: TabId, page: AdminPage | null]>;
+}
+
+function AdminPanelBody(props: AdminPanelBodyProps) {
+  if (props.tabs.length === 0) {
+    return (
+      <Text tone="muted" size="sm">
+        You do not have access to any admin sections.
+      </Text>
+    );
+  }
+  if (
+    props.nav.tab === "audit" ||
+    props.nav.tab === "workspace" ||
+    props.nav.tab === "addons" ||
+    props.nav.tab === "instance"
+  ) {
+    return <AdminPanelSystemBody {...props} />;
+  }
+  return <AdminPanelWorkspaceBody {...props} />;
+}
+
+function AdminPanelWorkspaceBody(props: AdminPanelBodyProps) {
+  const {
+    nav,
+    permission,
+    viewer,
+    ownerId,
+    roles,
+    members,
+    categories,
+    channels,
+    channelNames,
+    origin,
+    onNavigate,
+  } = props;
+  return (
+    <>
+      {nav.tab === "roles" && (
+        <RoleEditor
+          viewer={viewer}
+          canManageRoles={permission("ManageRoles")}
+          page={isRolePage(nav.page) ? nav.page : null}
+          onNavigate={(page) => {
+            onNavigate("roles", page);
+          }}
+        />
+      )}
+      {nav.tab === "members" && (
+        <MemberManager
+          viewer={viewer}
+          ownerId={ownerId}
+          permissions={{
+            manageRoles: permission("ManageRoles"),
+            kick: permission("Kick"),
+            ban: permission("Ban"),
+            timeout: permission("Timeout"),
+            manageNicknames: permission("ManageNicknames"),
+            changeOwnNickname: permission("ChangeOwnNickname"),
+          }}
+        />
+      )}
+      {nav.tab === "invites" && (
+        <InviteManager canCreateInvites={permission("CreateInvites")} origin={origin} />
+      )}
+      {nav.tab === "permissions" && (
+        <PermissionsPanel
+          roles={roles}
+          members={members}
+          categories={categories}
+          channels={channels}
+          {...(channelNames !== undefined ? { channelNames } : {})}
+          page={isScopePage(nav.page) ? nav.page : null}
+          onNavigate={(page) => {
+            onNavigate("permissions", page);
+          }}
+        />
+      )}
+    </>
+  );
+}
+
+function AdminPanelSystemBody(props: AdminPanelBodyProps) {
+  const { nav, permission, viewer, channelNames, memberNames, roleNames, categoryNames } = props;
+  return (
+    <>
+      {nav.tab === "audit" && (
+        <AuditLogViewer
+          canViewAuditLog={permission("ViewAuditLog")}
+          memberNames={memberNames}
+          roleNames={roleNames}
+          categoryNames={categoryNames}
+          {...(channelNames !== undefined ? { channelNames } : {})}
+        />
+      )}
+      {nav.tab === "workspace" && (
+        <div className="flex flex-col gap-8" data-testid="settings-workspace">
+          <WorkspaceBranding canManageWorkspace={permission("ManageWorkspace")} />
+          <WorkspaceSettings canManageWorkspace={permission("ManageWorkspace")} />
         </div>
-      </div>
-    </section>
+      )}
+      {nav.tab === "addons" && (
+        <AddonsSettings canManageWorkspace={permission("ManageWorkspace")} />
+      )}
+      {nav.tab === "instance" && <InstanceAdminPanel canManage={viewer.isOwner} variant="inline" />}
+    </>
   );
 }
 

@@ -2,6 +2,10 @@ import { type IconName, iconPaths } from "@aulora/tokens";
 import type { SVGProps } from "react";
 import { cn } from "./cn";
 
+const ICON_PATHS = new Map<IconName, readonly string[]>(
+  Object.entries(iconPaths) as Array<[IconName, readonly string[]]>,
+);
+
 export interface IconProps extends Omit<SVGProps<SVGSVGElement>, "children"> {
   name: IconName;
   /** Rendered size in pixels (square). */
@@ -34,7 +38,7 @@ export function Icon({
       style={align !== undefined ? { verticalAlign: align, ...style } : style}
       {...rest}
     >
-      {iconPaths[name].map((d) => (
+      {ICON_PATHS.get(name)?.map((d) => (
         <path key={d} d={d} />
       ))}
     </svg>

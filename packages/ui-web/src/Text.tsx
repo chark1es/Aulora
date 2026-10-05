@@ -11,21 +11,21 @@ export interface TextProps extends HTMLAttributes<HTMLElement> {
   mono?: boolean;
 }
 
-const TONE_CLASSES: Record<TextTone, string> = {
-  default: "text-text",
-  muted: "text-text-muted",
-  accent: "text-accent",
-  secondary: "text-secondary",
-  danger: "text-danger",
-};
+const TONE_CLASSES = new Map<TextTone, string>([
+  ["default", "text-text"],
+  ["muted", "text-text-muted"],
+  ["accent", "text-accent"],
+  ["secondary", "text-secondary"],
+  ["danger", "text-danger"],
+]);
 
-const SIZE_CLASSES: Record<TextSize, string> = {
-  xs: "text-xs",
-  sm: "text-sm",
-  base: "text-base",
-  md: "text-md",
-  lg: "text-lg",
-};
+const SIZE_CLASSES = new Map<TextSize, string>([
+  ["xs", "text-xs"],
+  ["sm", "text-sm"],
+  ["base", "text-base"],
+  ["md", "text-md"],
+  ["lg", "text-lg"],
+]);
 
 /** Body/meta text with token-driven tone, size and optional mono styling. */
 export function Text({
@@ -39,7 +39,7 @@ export function Text({
 }: TextProps) {
   return (
     <Tag
-      className={cn(TONE_CLASSES[tone], SIZE_CLASSES[size], mono && "font-mono", className)}
+      className={cn(TONE_CLASSES.get(tone), SIZE_CLASSES.get(size), mono && "font-mono", className)}
       {...rest}
     >
       {children}

@@ -1,14 +1,26 @@
-import { EVERYONE_ROLE_ID, hasPermission, Permission, resolvePermissions } from "@aulora/core";
+import { hasPermission, Permission } from "@aulora/core";
 import { paginationOptsValidator } from "convex/server";
 import { ConvexError, v } from "convex/values";
-import type { Doc, Id } from "./_generated/dataModel";
-import type { MutationCtx, QueryCtx } from "./_generated/server";
 import { mutation, query } from "./_generated/server";
 import { writeAudit } from "./lib/audit";
 import { requireAuth } from "./lib/auth";
 import { assertMayParticipate } from "./lib/bans";
 import {
-  computeDmKey,
+  applyPrivateOverrides,
+  type ChannelSummary,
+  clearChannelMembers,
+  computeBlockedOverrides,
+  createDmChannel,
+  NAME_CONTEXT,
+  nextChannelPosition,
+  privateGrant,
+  resolvePrivateTargets,
+  resolveVisibleMemberIds,
+  TOPIC_CONTEXT,
+  toSummary,
+  viewerChannelPrefs,
+} from "./lib/channelHelpers";
+import {
   removeChannelMember as deleteChannelMember,
   findChannelMember,
   addChannelMember as insertChannelMember,
@@ -25,148 +37,15 @@ import {
   requirePermission,
   requireWorkspacePermission,
 } from "./lib/permissions";
-import { openContentOptional } from "./lib/sealed";
 import { sealString } from "./lib/sse";
+
+export { MAX_GROUP_DM_MEMBERS } from "./lib/channelHelpers";
 
 const createKindValidator = v.union(
   v.literal("text"),
   v.literal("announcement"),
   v.literal("voice"),
 );
-
-/** Maximum participants in a group DM, including the caller. */
-export const MAX_GROUP_DM_MEMBERS = 10;
-
-const NAME_CONTEXT = { scope: "channel.name" } as const;
-const TOPIC_CONTEXT = { scope: "channel.topic" } as const;
-
-interface ChannelSummary {
-  readonly id: Id<"channels">;
-  readonly kind: Doc<"channels">["kind"];
-  readonly categoryId: Id<"categories"> | null;
-  /** Decrypted channel name; `null` when unset. */
-  readonly name: string | null;
-  /** Decrypted channel topic; `null` when unset. */
-  readonly topic: string | null;
-  readonly archived: boolean;
-  /** A private channel: only explicit members ever see it. */
-  readonly isPrivate: boolean;
-  /** Current role/member permission overrides, read-only for the editors. */
-  readonly overrides: Doc<"channels">["overrides"];
-  /** Display order within its category; falls back to creation order when unset. */
-  readonly position: number;
-  /** Hidden from the viewer's sidebar. */
-  readonly hidden: boolean;
-  /** Viewer has muted notifications for this channel. */
-  readonly muted: boolean;
-  readonly memberIds?: string[];
-}
-
-interface ViewerChannelPref {
-  readonly hidden: boolean;
-  readonly muted: boolean;
-}
-
-type ReadCtx = QueryCtx | MutationCtx;
-
-/** The viewer's per-channel hidden/muted flags, keyed by channel id. */
-async function viewerChannelPrefs(
-  ctx: ReadCtx,
-  userId: string,
-): Promise<Map<string, ViewerChannelPref>> {
-  const rows = await ctx.db
-    .query("notificationPrefs")
-    .withIndex("by_user_scope", (q) => q.eq("userId", userId))
-    .collect();
-  const now = Date.now();
-  const prefs = new Map<string, ViewerChannelPref>();
-  for (const row of rows) {
-    if (row.channelId === undefined) {
-      continue;
-    }
-    prefs.set(row.channelId, {
-      hidden: row.hidden === true,
-      muted: row.level === "nothing" || (row.muteUntil !== undefined && row.muteUntil > now),
-    });
-  }
-  return prefs;
-}
-
-async function toSummary(
-  channel: Doc<"channels">,
-  memberIds?: string[],
-  pref?: ViewerChannelPref,
-): Promise<ChannelSummary> {
-  return {
-    id: channel._id,
-    kind: channel.kind,
-    categoryId: channel.categoryId ?? null,
-    name: await openContentOptional(NAME_CONTEXT, channel.nameCiphertext),
-    topic: await openContentOptional(TOPIC_CONTEXT, channel.topicCiphertext),
-    archived: channel.archived,
-    isPrivate: channel.private === true,
-    overrides: channel.overrides,
-    position: channel.position ?? 0,
-    hidden: pref?.hidden ?? false,
-    muted: pref?.muted ?? false,
-    ...(memberIds !== undefined ? { memberIds } : {}),
-  };
-}
-
-/**
- * The next display position in a category: one past the highest defined
- * position among its channels, or `0` when none has a position yet.
- */
-async function nextChannelPosition(
-  ctx: MutationCtx,
-  categoryId: Id<"categories"> | undefined,
-): Promise<number> {
-  const siblings =
-    categoryId !== undefined
-      ? await ctx.db
-          .query("channels")
-          .withIndex("by_category", (q) => q.eq("categoryId", categoryId))
-          .collect()
-      : (await ctx.db.query("channels").collect()).filter(
-          (channel) => channel.categoryId === undefined,
-        );
-  let max = -1;
-  for (const sibling of siblings) {
-    if (sibling.position !== undefined && sibling.position > max) {
-      max = sibling.position;
-    }
-  }
-  return max + 1;
-}
-
-/** Adds `grant` to the matching override's `allow`, or appends a new grant-only override. */
-function mergeGrantOverride(
-  overrides: Doc<"channels">["overrides"],
-  targetType: "role" | "member",
-  targetId: string,
-  grant: bigint,
-): Doc<"channels">["overrides"] {
-  const index = overrides.findIndex(
-    (override) => override.targetId === targetId && override.targetType === targetType,
-  );
-  if (index < 0) {
-    return [...overrides, { targetId, targetType, allow: grant, deny: 0n }];
-  }
-  return overrides.map((override, i) =>
-    i === index ? { ...override, allow: override.allow | grant } : override,
-  );
-}
-
-/** Removes every membership row for a channel. */
-async function clearChannelMembers(ctx: MutationCtx, channelId: Id<"channels">): Promise<void> {
-  const rows = await ctx.db
-    .query("channelMembers")
-    .withIndex("by_channel", (q) => q.eq("channelId", channelId))
-    .collect();
-  for (const row of rows) {
-    await ctx.db.delete(row._id);
-  }
-}
 
 /**
  * Creates a text, announcement or voice channel. ManageChannels is resolved
@@ -192,36 +71,13 @@ export const create = mutation({
       Permission.ManageChannels,
       args.categoryId,
     );
-    const memberUserIds = new Set<string>();
     let overrides = args.overrides ?? [];
+    let memberUserIds = new Set<string>();
     if (args.private === true) {
-      for (const memberId of args.memberIds ?? []) {
-        memberUserIds.add(memberId);
-      }
       const roleIds = args.roleIds ?? [];
-      if (roleIds.length > 0) {
-        const roleSet = new Set(roleIds);
-        const members = await ctx.db.query("members").collect();
-        for (const member of members) {
-          if (member.roleIds.some((roleId) => roleSet.has(roleId))) {
-            memberUserIds.add(member.userId);
-          }
-        }
-      }
-      const grant =
-        args.kind === "voice"
-          ? Permission.ViewChannel |
-            Permission.Connect |
-            Permission.Speak |
-            Permission.Stream |
-            Permission.UseVideo
-          : Permission.ViewChannel | Permission.SendMessages;
-      for (const roleId of roleIds) {
-        overrides = mergeGrantOverride(overrides, "role", roleId, grant);
-      }
-      for (const memberId of args.memberIds ?? []) {
-        overrides = mergeGrantOverride(overrides, "member", memberId, grant);
-      }
+      const memberIds = args.memberIds ?? [];
+      memberUserIds = await resolvePrivateTargets(ctx, args.memberIds, args.roleIds);
+      overrides = applyPrivateOverrides(overrides, roleIds, memberIds, privateGrant(args.kind));
     }
     validateOverrides(overrides);
     const nameCiphertext = await sealString(NAME_CONTEXT, args.name);
@@ -350,36 +206,7 @@ export const visibleMemberIds = query({
     if (isDmKind(channel.kind) || channel.private === true) {
       return await listChannelMemberIds(ctx, channel._id);
     }
-    const server = await ctx.db.query("server").first();
-    const ownerId = server?.ownerId ?? null;
-    const members = await ctx.db.query("members").collect();
-    const roles = (await ctx.db.query("roles").collect()).map((role) => {
-      const id = role.key ?? role._id;
-      return {
-        id,
-        position: role.position,
-        permissions: role.permissions,
-        isEveryone: id === EVERYONE_ROLE_ID,
-      };
-    });
-    const categoryOverrides = await categoryOverridesFor(ctx, channel);
-    const visible: string[] = [];
-    for (const member of members) {
-      const permissions = resolvePermissions({
-        actor: {
-          userId: member.userId,
-          roleIds: member.roleIds,
-          isOwner: member.userId === ownerId,
-        },
-        roles,
-        categoryOverrides,
-        channelOverrides: channel.overrides,
-      });
-      if (hasPermission(permissions, Permission.ViewChannel)) {
-        visible.push(member.userId);
-      }
-    }
-    return visible;
+    return await resolveVisibleMemberIds(ctx, channel);
   },
 });
 
@@ -484,45 +311,7 @@ export const setBlockedUsers = mutation({
       throw new ConvexError("Cannot block users from a DM");
     }
     const blocked = new Set(args.userIds);
-    const previouslyBlocked = new Set(
-      channel.overrides
-        .filter(
-          (override) =>
-            override.targetType === "member" && (override.deny & Permission.ViewChannel) !== 0n,
-        )
-        .map((override) => override.targetId),
-    );
-    const next: Doc<"channels">["overrides"] = channel.overrides
-      .map((override) => {
-        if (override.targetType !== "member") {
-          return override;
-        }
-        if (blocked.has(override.targetId)) {
-          return {
-            ...override,
-            allow: override.allow & ~Permission.ViewChannel,
-            deny: override.deny | Permission.ViewChannel,
-          };
-        }
-        if ((override.deny & Permission.ViewChannel) !== 0n) {
-          return { ...override, deny: override.deny & ~Permission.ViewChannel };
-        }
-        return override;
-      })
-      .filter((override) => override.allow !== 0n || override.deny !== 0n);
-    for (const blockedId of blocked) {
-      const exists = next.some(
-        (override) => override.targetType === "member" && override.targetId === blockedId,
-      );
-      if (!exists) {
-        next.push({
-          targetId: blockedId,
-          targetType: "member",
-          allow: 0n,
-          deny: Permission.ViewChannel,
-        });
-      }
-    }
+    const { next, previouslyBlocked } = computeBlockedOverrides(channel, blocked);
     validateOverrides(next);
     await ctx.db.patch(args.channelId, { overrides: next });
     if (channel.private === true) {
@@ -724,40 +513,6 @@ export const leave = mutation({
     return { left: removed };
   },
 });
-
-async function createDmChannel(
-  ctx: MutationCtx,
-  userId: string,
-  otherUserIds: readonly string[],
-  kind: "dm" | "group_dm",
-): Promise<{ channelId: Id<"channels">; created: boolean }> {
-  const memberIds = [...new Set([userId, ...otherUserIds])];
-  if (memberIds.length < 2) {
-    throw new ConvexError("A DM needs at least two members");
-  }
-  if (memberIds.length > MAX_GROUP_DM_MEMBERS) {
-    throw new ConvexError("Too many DM members");
-  }
-  const dmKey = computeDmKey(kind, memberIds);
-  const existing = await ctx.db
-    .query("channels")
-    .withIndex("by_dm_key", (q) => q.eq("dmKey", dmKey))
-    .unique();
-  if (existing !== null) {
-    return { channelId: existing._id, created: false };
-  }
-  const channelId = await ctx.db.insert("channels", {
-    kind,
-    overrides: [],
-    archived: false,
-    dmKey,
-  });
-  const now = Date.now();
-  for (const memberId of memberIds) {
-    await insertChannelMember(ctx, channelId, memberId, now);
-  }
-  return { channelId, created: true };
-}
 
 /** Creates (or reuses) a 1:1 DM with another user. */
 export const createDm = mutation({

@@ -9,10 +9,8 @@ export const DEFAULT_UPDATE_MANIFEST_URL =
 
 export const DEFAULT_UPDATE_GITHUB_REPO = "chark1es/Aulora";
 
-const SEMVER =
-  /^v?(0|[1-9]\d*)\.(0|[1-9]\d*)\.(0|[1-9]\d*)(?:-([0-9A-Za-z.-]+))?(?:\+[0-9A-Za-z.-]+)?$/;
-
-const RELEASE_TAG = /^v(0|[1-9]\d*)\.(0|[1-9]\d*)\.(0|[1-9]\d*)(?:-[0-9A-Za-z.-]+)?$/;
+const NUMERIC_IDENTIFIER = /^(0|[1-9]\d*)$/;
+const DOT_SEPARATED_IDENTIFIER = /^[0-9A-Za-z.-]+$/;
 
 const GITHUB_REPO = /^[A-Za-z0-9_.-]+\/[A-Za-z0-9_.-]+$/;
 
@@ -60,15 +58,44 @@ export function autoUpdateEnabled(value: string | undefined): boolean {
 }
 
 export function parseSemver(input: string): Semver | null {
-  const match = SEMVER.exec(input.trim());
-  if (match === null) {
+  let rest = input.trim();
+  if (rest.startsWith("v")) {
+    rest = rest.slice(1);
+  }
+  const buildIndex = rest.indexOf("+");
+  if (buildIndex !== -1) {
+    if (!DOT_SEPARATED_IDENTIFIER.test(rest.slice(buildIndex + 1))) {
+      return null;
+    }
+    rest = rest.slice(0, buildIndex);
+  }
+  let prerelease: string[] = [];
+  const prereleaseIndex = rest.indexOf("-");
+  if (prereleaseIndex !== -1) {
+    const prereleaseText = rest.slice(prereleaseIndex + 1);
+    if (!DOT_SEPARATED_IDENTIFIER.test(prereleaseText)) {
+      return null;
+    }
+    prerelease = prereleaseText.split(".");
+    rest = rest.slice(0, prereleaseIndex);
+  }
+  const parts = rest.split(".");
+  if (parts.length !== 3) {
+    return null;
+  }
+  const [major, minor, patch] = parts as [string, string, string];
+  if (
+    !NUMERIC_IDENTIFIER.test(major) ||
+    !NUMERIC_IDENTIFIER.test(minor) ||
+    !NUMERIC_IDENTIFIER.test(patch)
+  ) {
     return null;
   }
   return {
-    major: Number(match[1]),
-    minor: Number(match[2]),
-    patch: Number(match[3]),
-    prerelease: match[4] === undefined ? [] : match[4].split("."),
+    major: Number(major),
+    minor: Number(minor),
+    patch: Number(patch),
+    prerelease,
   };
 }
 
@@ -93,8 +120,8 @@ export function compareSemver(left: Semver, right: Semver): number {
   }
   const length = Math.max(left.prerelease.length, right.prerelease.length);
   for (let index = 0; index < length; index += 1) {
-    const a = left.prerelease[index];
-    const b = right.prerelease[index];
+    const a = left.prerelease.at(index);
+    const b = right.prerelease.at(index);
     if (a === undefined) {
       return -1;
     }
@@ -110,7 +137,12 @@ export function compareSemver(left: Semver, right: Semver): number {
 }
 
 export function isReleaseTag(tag: string): boolean {
-  return RELEASE_TAG.test(tag);
+  const parsed = parseSemver(tag);
+  if (parsed === null) {
+    return false;
+  }
+  const prerelease = parsed.prerelease.length > 0 ? `-${parsed.prerelease.join(".")}` : "";
+  return tag === `v${parsed.major}.${parsed.minor}.${parsed.patch}${prerelease}`;
 }
 
 export function releaseTag(version: string): string | null {
@@ -151,7 +183,8 @@ export function resolveManifestUrl(
 export function resolveGitHubRepo(
   value: string | undefined,
 ): { readonly repo: string } | { readonly error: string } {
-  const raw = value?.trim() || DEFAULT_UPDATE_GITHUB_REPO;
+  const trimmed = value?.trim();
+  const raw = trimmed === undefined || trimmed === "" ? DEFAULT_UPDATE_GITHUB_REPO : trimmed;
   if (!GITHUB_REPO.test(raw)) {
     return { error: "Update repository must look like owner/name." };
   }
@@ -260,7 +293,7 @@ export async function loadPublishedRelease(options: {
       `https://api.github.com/repos/${options.githubRepo}/releases?per_page=20`,
     );
     if (!list.ok) {
-      return { error: manifestError ?? list.error ?? "No published release found." };
+      return { error: manifestError ?? list.error };
     }
     const best = pickHighestRelease(list.body);
     if (best === null) {
@@ -274,7 +307,7 @@ export async function loadPublishedRelease(options: {
     `https://api.github.com/repos/${options.githubRepo}/releases/latest`,
   );
   if (!latest.ok) {
-    return { error: manifestError ?? latest.error ?? "No published release found." };
+    return { error: manifestError ?? latest.error };
   }
   return { githubRelease: latest.body, error: null };
 }
@@ -315,8 +348,7 @@ function isRecord(value: unknown): value is Record<string, unknown> {
   return typeof value === "object" && value !== null && !Array.isArray(value);
 }
 
-function stringField(record: Record<string, unknown>, key: string): string | null {
-  const value = record[key];
+function stringField(value: unknown): string | null {
   if (typeof value !== "string") {
     return null;
   }
@@ -334,7 +366,7 @@ function parseManifestRelease(
   }
   const workspace = isRecord(body.workspace) ? body.workspace : null;
   const version =
-    (workspace !== null ? stringField(workspace, "version") : null) ?? stringField(body, "version");
+    (workspace !== null ? stringField(workspace.version) : null) ?? stringField(body.version);
   if (version === null) {
     return { ok: false, error: "Update manifest has no version." };
   }
@@ -342,7 +374,7 @@ function parseManifestRelease(
   if (parsed === null) {
     return { ok: false, error: "Update manifest version is not valid semver." };
   }
-  const declaredTag = workspace !== null ? stringField(workspace, "gitTag") : null;
+  const declaredTag = workspace !== null ? stringField(workspace.gitTag) : null;
   const gitTag = declaredTag ?? releaseTag(version);
   if (gitTag === null || !isReleaseTag(gitTag)) {
     return { ok: false, error: "Update manifest git tag is not a release tag." };
@@ -358,8 +390,8 @@ function parseManifestRelease(
         parsed.prerelease.length > 0 ? `-${parsed.prerelease.join(".")}` : ""
       }`,
       prerelease: parsed.prerelease.length > 0,
-      notes: clip(stringField(body, "notes")),
-      pubDate: stringField(body, "pub_date") ?? stringField(body, "pubDate"),
+      notes: clip(stringField(body.notes)),
+      pubDate: stringField(body.pub_date) ?? stringField(body.pubDate),
       gitTag,
     },
   };
@@ -376,7 +408,7 @@ function parseGitHubRelease(
   if (body.draft === true) {
     return { ok: false, error: "Draft releases are not installable." };
   }
-  const tag = stringField(body, "tag_name");
+  const tag = stringField(body.tag_name);
   if (tag === null || !isReleaseTag(tag)) {
     return { ok: false, error: "GitHub release tag is not a version tag." };
   }
@@ -391,8 +423,8 @@ function parseGitHubRelease(
         parsed.prerelease.length > 0 ? `-${parsed.prerelease.join(".")}` : ""
       }`,
       prerelease: body.prerelease === true || parsed.prerelease.length > 0,
-      notes: clip(stringField(body, "body")),
-      pubDate: stringField(body, "published_at"),
+      notes: clip(stringField(body.body)),
+      pubDate: stringField(body.published_at),
       gitTag: tag,
     },
   };
@@ -403,9 +435,7 @@ function manifestVersion(body: unknown): string | null {
     return null;
   }
   const workspace = isRecord(body.workspace) ? body.workspace : null;
-  return (
-    (workspace !== null ? stringField(workspace, "version") : null) ?? stringField(body, "version")
-  );
+  return (workspace !== null ? stringField(workspace.version) : null) ?? stringField(body.version);
 }
 
 function pickHighestRelease(body: unknown): Record<string, unknown> | null {
@@ -417,7 +447,7 @@ function pickHighestRelease(body: unknown): Record<string, unknown> | null {
     if (!isRecord(entry) || entry.draft === true) {
       continue;
     }
-    const tag = stringField(entry, "tag_name");
+    const tag = stringField(entry.tag_name);
     if (tag === null) {
       continue;
     }

@@ -30,7 +30,7 @@ interface DesktopUpdates {
   download(): Promise<void>;
   restart(): Promise<void>;
 }
-const noop = async () => {};
+const noop = () => Promise.resolve();
 const Context = createContext<DesktopUpdates>({
   status: null,
   currentVersion: null,
@@ -53,6 +53,7 @@ export function DesktopUpdateProvider({ children }: { readonly children: ReactNo
   const [menuNote, setMenuNote] = useState<string | null>(null);
   const busy = useRef(false);
   const ready = useRef(false);
+  const isReady = useCallback(() => ready.current, []);
   const apply = useCallback((next: DesktopUpdateStatus) => {
     // Failed checks must not erase a known update or a verified download.
     if (next.currentVersion) setCurrentVersion(next.currentVersion);
@@ -75,9 +76,9 @@ export function DesktopUpdateProvider({ children }: { readonly children: ReactNo
       else setError("Update status is unavailable. Try checking again.");
     } finally {
       busy.current = false;
-      setPhase(ready.current ? "ready" : "idle");
+      setPhase(isReady() ? "ready" : "idle");
     }
-  }, [apply]);
+  }, [apply, isReady]);
 
   useEffect(() => {
     if (!isDesktop()) return;
@@ -120,7 +121,7 @@ export function DesktopUpdateProvider({ children }: { readonly children: ReactNo
       .then((version) => {
         if (!disposed) setCurrentVersion(version);
       })
-      .catch((cause) => {
+      .catch((cause: unknown) => {
         if (!disposed) setError(message(cause));
       });
     void register();
@@ -139,8 +140,12 @@ export function DesktopUpdateProvider({ children }: { readonly children: ReactNo
 
   useEffect(() => {
     if (menuNote === null) return;
-    const timer = setTimeout(() => setMenuNote(null), 8000);
-    return () => clearTimeout(timer);
+    const timer = setTimeout(() => {
+      setMenuNote(null);
+    }, 8000);
+    return () => {
+      clearTimeout(timer);
+    };
   }, [menuNote]);
 
   async function download() {

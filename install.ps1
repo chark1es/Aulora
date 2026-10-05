@@ -23,7 +23,8 @@ param(
   [string]$Name = $env:AULORA_WORKSPACE_NAME,
   [string]$Instance = $env:AULORA_INSTANCE_NAME,
   [string]$Email = $env:AULORA_OWNER_EMAIL,
-  [string]$Password = $env:AULORA_OWNER_PASSWORD,
+  [Alias("Password")]
+  [string]$OwnerPassword = $env:AULORA_OWNER_PASSWORD,
   [string]$Port = $(if ($env:AULORA_WEB_PORT) { $env:AULORA_WEB_PORT } else { "8080" }),
   [string]$SiteUrl = $env:AULORA_SITE_URL,
   [switch]$Backups,
@@ -34,8 +35,8 @@ param(
 
 $ErrorActionPreference = "Stop"
 
-function Write-Log([string]$Message) { Write-Host "[install] $Message" }
-function Stop-Install([string]$Message) { Write-Error "[install] $Message"; exit 1 }
+function Write-Log([string]$Message) { Write-Output "[install] $Message" }
+function Write-InstallError([string]$Message) { Write-Error "[install] $Message"; exit 1 }
 function Get-Slug([string]$Value) {
   return ($Value.ToLower() -replace "[^a-z0-9]+", "-").Trim("-")
 }
@@ -52,15 +53,15 @@ $EnvFile = if ($env:AULORA_ENV_FILE) { $env:AULORA_ENV_FILE } else { Join-Path $
 $EnvExample = Join-Path $DockerDir ".env.example"
 
 if (-not (Get-Command docker -ErrorAction SilentlyContinue)) {
-  Stop-Install "Docker is not installed or not on PATH"
+  Write-InstallError "Docker is not installed or not on PATH"
 }
 docker compose version *> $null
-if ($LASTEXITCODE -ne 0) { Stop-Install "Docker Compose v2 is required (docker compose)" }
+if ($LASTEXITCODE -ne 0) { Write-InstallError "Docker Compose v2 is required (docker compose)" }
 docker compose wait --help *> $null
-if ($LASTEXITCODE -ne 0) { Stop-Install "update Docker Compose: the installer requires the wait command" }
-if (-not (Test-Path -LiteralPath $EnvExample)) { Stop-Install "missing $EnvExample" }
+if ($LASTEXITCODE -ne 0) { Write-InstallError "update Docker Compose: the installer requires the wait command" }
+if (-not (Test-Path -LiteralPath $EnvExample)) { Write-InstallError "missing $EnvExample" }
 
-function Set-EnvValue([string]$Path, [string]$Key, [string]$Value) {
+function Write-EnvValue([string]$Path, [string]$Key, [string]$Value) {
   $pattern = "^\s*(export\s+)?$([regex]::Escape($Key))="
   $found = $false
   $updated = foreach ($line in (Get-Content -LiteralPath $Path)) {
@@ -87,15 +88,15 @@ if (Test-Path -LiteralPath $EnvFile) {
   if (-not $Name) { $Name = "Aulora" }
   if (-not $Instance) { $Instance = Get-Slug $Name; if (-not $Instance) { $Instance = "aulora" } }
   if (-not $Email) { $Email = Read-Host "Owner email" }
-  if (-not $Email) { Stop-Install "set -Email (or AULORA_OWNER_EMAIL) for the owner account" }
-  if (-not $Password) {
+  if (-not $Email) { Write-InstallError "set -Email (or AULORA_OWNER_EMAIL) for the owner account" }
+  if (-not $OwnerPassword) {
     $secure = Read-Host "Owner password (16+ chars)" -AsSecureString
-    $Password = [Runtime.InteropServices.Marshal]::PtrToStringAuto(
+    $OwnerPassword = [Runtime.InteropServices.Marshal]::PtrToStringAuto(
       [Runtime.InteropServices.Marshal]::SecureStringToBSTR($secure)
     )
   }
-  if (-not $Password) { Stop-Install "set -Password (or AULORA_OWNER_PASSWORD)" }
-  if ($Password.Length -lt 16) { Stop-Install "owner password must be at least 16 characters" }
+  if (-not $OwnerPassword) { Write-InstallError "set -Password (or AULORA_OWNER_PASSWORD)" }
+  if ($OwnerPassword.Length -lt 16) { Write-InstallError "owner password must be at least 16 characters" }
 }
 
 if (-not $SiteUrl) { $SiteUrl = "http://localhost:$Port" }
@@ -104,7 +105,7 @@ $OwnerName = if ($env:AULORA_OWNER_NAME) { $env:AULORA_OWNER_NAME } else { $Name
 function Invoke-Compose([string[]]$Arguments) {
   Push-Location $DockerDir
   try { & docker compose --env-file $EnvFile @Arguments } finally { Pop-Location }
-  if ($LASTEXITCODE -ne 0) { Stop-Install "docker compose $($Arguments -join ' ') failed" }
+  if ($LASTEXITCODE -ne 0) { Write-InstallError "docker compose $($Arguments -join ' ') failed" }
 }
 
 if ($DryRun) {
@@ -122,13 +123,13 @@ if ($DryRun) {
 
 if (-not (Test-Path -LiteralPath $EnvFile)) {
   Copy-Item -LiteralPath $EnvExample -Destination $EnvFile
-  Set-EnvValue $EnvFile "INSTANCE_NAME" $Instance
-  Set-EnvValue $EnvFile "WORKSPACE_NAME" $Name
-  Set-EnvValue $EnvFile "OWNER_EMAIL" $Email
-  Set-EnvValue $EnvFile "OWNER_PASSWORD" $Password
-  Set-EnvValue $EnvFile "OWNER_NAME" $OwnerName
-  Set-EnvValue $EnvFile "SITE_URL" $SiteUrl
-  Set-EnvValue $EnvFile "WEB_PORT" $Port
+  Write-EnvValue $EnvFile "INSTANCE_NAME" $Instance
+  Write-EnvValue $EnvFile "WORKSPACE_NAME" $Name
+  Write-EnvValue $EnvFile "OWNER_EMAIL" $Email
+  Write-EnvValue $EnvFile "OWNER_PASSWORD" $OwnerPassword
+  Write-EnvValue $EnvFile "OWNER_NAME" $OwnerName
+  Write-EnvValue $EnvFile "SITE_URL" $SiteUrl
+  Write-EnvValue $EnvFile "WEB_PORT" $Port
   Write-Log "wrote $EnvFile"
 }
 

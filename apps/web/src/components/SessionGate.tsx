@@ -34,28 +34,17 @@ export function SessionGate({ profile, authClient, client }: SessionGateProps) {
 
   // A failed lookup is not a signed-out session: the stored login is still
   // valid, so offer a retry instead of sending the person to the sign-in form.
-  if ((user === undefined || user === null) && session.error) {
+  if (user === undefined && session.error) {
     return (
-      <div className="pane flex flex-1 flex-col items-center justify-center gap-3 px-6 text-center">
-        <Text size="md" className="font-medium">
-          Can't reach {profile.name}
-        </Text>
-        <Text tone="muted" size="sm">
-          You're still signed in. Check your connection and try again.
-        </Text>
-        <div className="flex gap-2">
-          <Button size="md" onClick={() => void session.refetch()}>
-            Try again
-          </Button>
-          <Button size="md" variant="ghost" onClick={() => void navigate({ to: "/connect" })}>
-            Use a different server
-          </Button>
-        </div>
-      </div>
+      <SessionUnreachable
+        profileName={profile.name}
+        onRetry={() => void session.refetch()}
+        onSwitchServer={() => void navigate({ to: "/connect" })}
+      />
     );
   }
 
-  if (user !== undefined && user !== null) {
+  if (user !== undefined) {
     const signedInUser = {
       id: user.id,
       ...(typeof user.name === "string" ? { name: user.name } : {}),
@@ -80,5 +69,34 @@ export function SessionGate({ profile, authClient, client }: SessionGateProps) {
       actions={actions}
       onSwitchServer={() => void navigate({ to: "/connect" })}
     />
+  );
+}
+
+function SessionUnreachable({
+  profileName,
+  onRetry,
+  onSwitchServer,
+}: {
+  readonly profileName: string;
+  readonly onRetry: () => void;
+  readonly onSwitchServer: () => void;
+}) {
+  return (
+    <div className="pane flex flex-1 flex-col items-center justify-center gap-3 px-6 text-center">
+      <Text size="md" className="font-medium">
+        Can't reach {profileName}
+      </Text>
+      <Text tone="muted" size="sm">
+        You're still signed in. Check your connection and try again.
+      </Text>
+      <div className="flex gap-2">
+        <Button size="md" onClick={onRetry}>
+          Try again
+        </Button>
+        <Button size="md" variant="ghost" onClick={onSwitchServer}>
+          Use a different server
+        </Button>
+      </div>
+    </div>
   );
 }

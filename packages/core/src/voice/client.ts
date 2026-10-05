@@ -11,10 +11,15 @@ export function isVoiceClientId(value: string): boolean {
 
 export function createVoiceClientId(): string {
   const cryptoObj = globalThis.crypto;
-  if (cryptoObj !== undefined && typeof cryptoObj.randomUUID === "function") {
+  if (typeof cryptoObj.randomUUID === "function") {
     return cryptoObj.randomUUID();
   }
-  return `c_${Date.now().toString(36)}_${Math.random().toString(36).slice(2, 12)}`;
+  const bytes = new Uint8Array(8);
+  cryptoObj.getRandomValues(bytes);
+  const suffix = Array.from(bytes, (value) => value.toString(36).padStart(2, "0"))
+    .join("")
+    .slice(0, 10);
+  return `c_${Date.now().toString(36)}_${suffix}`;
 }
 
 /** Reads or creates the client id in a synchronous store (web `localStorage`). */

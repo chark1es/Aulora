@@ -134,11 +134,18 @@ export const status = query({
     await requireInstanceAdmin(ctx);
     const row = await ctx.db.query("workspaceUpdate").first();
     if (!row) return null;
-    const { _id, _creationTime, request: pending, ...result } = row;
     return {
-      ...result,
+      currentVersion: row.currentVersion,
+      latestVersion: row.latestVersion,
+      updateAvailable: row.updateAvailable,
+      notes: row.notes,
+      error: row.error,
+      autoUpdate: row.autoUpdate,
+      phase: row.phase,
+      checkedAt: row.checkedAt,
+      hostSeenAt: row.hostSeenAt,
       hostConnected: Date.now() - row.hostSeenAt < HOST_TIMEOUT,
-      pending: pending !== undefined,
+      pending: row.request !== undefined,
     };
   },
 });

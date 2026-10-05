@@ -15,7 +15,7 @@ function encode83(value: number, length: number): string {
   let result = "";
   for (let index = 1; index <= length; index += 1) {
     const digit = Math.floor(value / 83 ** (length - index)) % 83;
-    result += ALPHABET[digit];
+    result += ALPHABET.charAt(digit);
   }
   return result;
 }
@@ -58,6 +58,47 @@ function decodeDc(value: number): [number, number, number] {
   return [srgbToLinear(value >> 16), srgbToLinear((value >> 8) & 255), srgbToLinear(value & 255)];
 }
 
+function computeFactors(
+  pixels: Uint8Array | Uint8ClampedArray,
+  width: number,
+  height: number,
+  componentX: number,
+  componentY: number,
+): number[] {
+  const factors: number[] = [];
+  for (let y = 0; y < componentY; y += 1) {
+    for (let x = 0; x < componentX; x += 1) {
+      const normalisation = x === 0 && y === 0 ? 1 : 2;
+      let r = 0;
+      let g = 0;
+      let b = 0;
+      for (let i = 0; i < width; i += 1) {
+        for (let j = 0; j < height; j += 1) {
+          const basis = Math.cos((Math.PI * x * i) / width) * Math.cos((Math.PI * y * j) / height);
+          const offset = (j * width + i) * 4;
+          r += basis * srgbToLinear(pixels.at(offset) ?? 0);
+          g += basis * srgbToLinear(pixels.at(offset + 1) ?? 0);
+          b += basis * srgbToLinear(pixels.at(offset + 2) ?? 0);
+        }
+      }
+      const scale = normalisation / (width * height);
+      factors.push(r * scale, g * scale, b * scale);
+    }
+  }
+  return factors;
+}
+
+function quantiseAc(value: number, maximum: number): number {
+  return clamp(Math.floor(signPow(value / maximum, 0.5) * 9 + 9.5), 0, 18);
+}
+
+function encodeAc(factors: readonly number[], index: number, maximum: number): number {
+  const quantR = quantiseAc(factors.at(index * 3) ?? 0, maximum);
+  const quantG = quantiseAc(factors.at(index * 3 + 1) ?? 0, maximum);
+  const quantB = quantiseAc(factors.at(index * 3 + 2) ?? 0, maximum);
+  return quantR * 19 * 19 + quantG * 19 + quantB;
+}
+
 /** Encodes RGBA pixels into a blurhash string. */
 export function blurhashEncode(
   pixels: Uint8Array | Uint8ClampedArray,
@@ -74,27 +115,7 @@ export function blurhashEncode(
   }
   const componentX = clamp(Math.trunc(componentsX), 1, 9);
   const componentY = clamp(Math.trunc(componentsY), 1, 9);
-
-  const factors: number[] = [];
-  for (let y = 0; y < componentY; y += 1) {
-    for (let x = 0; x < componentX; x += 1) {
-      const normalisation = x === 0 && y === 0 ? 1 : 2;
-      let r = 0;
-      let g = 0;
-      let b = 0;
-      for (let i = 0; i < width; i += 1) {
-        for (let j = 0; j < height; j += 1) {
-          const basis = Math.cos((Math.PI * x * i) / width) * Math.cos((Math.PI * y * j) / height);
-          const offset = (j * width + i) * 4;
-          r += basis * srgbToLinear(pixels[offset] ?? 0);
-          g += basis * srgbToLinear(pixels[offset + 1] ?? 0);
-          b += basis * srgbToLinear(pixels[offset + 2] ?? 0);
-        }
-      }
-      const scale = normalisation / (width * height);
-      factors.push(r * scale, g * scale, b * scale);
-    }
-  }
+  const factors = computeFactors(pixels, width, height, componentX, componentY);
 
   const sizeFlag = componentX - 1 + (componentY - 1) * 9;
   let hash = encode83(sizeFlag, 1);
@@ -104,28 +125,72 @@ export function blurhashEncode(
   hash += encode83(quantisedMaximumValue, 1);
   const actualMaximumValue = (quantisedMaximumValue + 1) / 166;
 
-  hash += encode83(encodeDc(factors[0] ?? 0, factors[1] ?? 0, factors[2] ?? 0), 4);
+  hash += encode83(encodeDc(factors.at(0) ?? 0, factors.at(1) ?? 0, factors.at(2) ?? 0), 4);
 
   for (let index = 1; index < factors.length / 3; index += 1) {
-    const quantR = clamp(
-      Math.floor(signPow((factors[index * 3] ?? 0) / actualMaximumValue, 0.5) * 9 + 9.5),
-      0,
-      18,
-    );
-    const quantG = clamp(
-      Math.floor(signPow((factors[index * 3 + 1] ?? 0) / actualMaximumValue, 0.5) * 9 + 9.5),
-      0,
-      18,
-    );
-    const quantB = clamp(
-      Math.floor(signPow((factors[index * 3 + 2] ?? 0) / actualMaximumValue, 0.5) * 9 + 9.5),
-      0,
-      18,
-    );
-    hash += encode83(quantR * 19 * 19 + quantG * 19 + quantB, 2);
+    hash += encode83(encodeAc(factors, index, actualMaximumValue), 2);
   }
 
   return hash;
+}
+
+function decodeColors(
+  hash: string,
+  numX: number,
+  numY: number,
+  maximumValue: number,
+  punch: number,
+): [number, number, number][] {
+  const colors: [number, number, number][] = [];
+  for (let index = 0; index < numX * numY; index += 1) {
+    if (index === 0) {
+      colors.push(decodeDc(decode83(hash.substring(2, 6))));
+      continue;
+    }
+    const value = decode83(hash.substring(4 + index * 2, 6 + index * 2));
+    const quantR = Math.floor(value / (19 * 19));
+    const quantG = Math.floor(value / 19) % 19;
+    const quantB = value % 19;
+    const scale = maximumValue * punch;
+    colors.push([
+      signPow((quantR - 9) / 9, 2) * scale,
+      signPow((quantG - 9) / 9, 2) * scale,
+      signPow((quantB - 9) / 9, 2) * scale,
+    ]);
+  }
+  return colors;
+}
+
+function renderPixels(
+  colors: readonly [number, number, number][],
+  width: number,
+  height: number,
+  numX: number,
+  numY: number,
+): Uint8ClampedArray {
+  const pixels = new Uint8ClampedArray(width * height * 4);
+  for (let y = 0; y < height; y += 1) {
+    for (let x = 0; x < width; x += 1) {
+      let r = 0;
+      let g = 0;
+      let b = 0;
+      for (let j = 0; j < numY; j += 1) {
+        for (let i = 0; i < numX; i += 1) {
+          const basis = Math.cos((Math.PI * i * x) / width) * Math.cos((Math.PI * j * y) / height);
+          const color = colors.at(i + j * numX);
+          if (color === undefined) {
+            continue;
+          }
+          r += color[0] * basis;
+          g += color[1] * basis;
+          b += color[2] * basis;
+        }
+      }
+      const offset = (y * width + x) * 4;
+      pixels.set([linearToSrgb(r), linearToSrgb(g), linearToSrgb(b), 255], offset);
+    }
+  }
+  return pixels;
 }
 
 /** Decodes a blurhash into RGBA pixels of the requested size. */
@@ -141,54 +206,12 @@ export function blurhashDecode(
   if (hash.length < 6) {
     throw new Error("blurhashDecode: hash is too short");
   }
-  const sizeFlag = decode83(hash[0] ?? "0");
+  const sizeFlag = decode83(hash.at(0) ?? "0");
   const numY = Math.floor(sizeFlag / 9) + 1;
   const numX = (sizeFlag % 9) + 1;
-  const quantisedMaximumValue = decode83(hash[1] ?? "0");
+  const quantisedMaximumValue = decode83(hash.at(1) ?? "0");
   const maximumValue = (quantisedMaximumValue + 1) / 166;
 
-  const colors: [number, number, number][] = [];
-  for (let index = 0; index < numX * numY; index += 1) {
-    if (index === 0) {
-      colors.push(decodeDc(decode83(hash.substring(2, 6))));
-    } else {
-      const value = decode83(hash.substring(4 + index * 2, 6 + index * 2));
-      const quantR = Math.floor(value / (19 * 19));
-      const quantG = Math.floor(value / 19) % 19;
-      const quantB = value % 19;
-      const scale = maximumValue * punch;
-      colors.push([
-        signPow((quantR - 9) / 9, 2) * scale,
-        signPow((quantG - 9) / 9, 2) * scale,
-        signPow((quantB - 9) / 9, 2) * scale,
-      ]);
-    }
-  }
-
-  const pixels = new Uint8ClampedArray(width * height * 4);
-  for (let y = 0; y < height; y += 1) {
-    for (let x = 0; x < width; x += 1) {
-      let r = 0;
-      let g = 0;
-      let b = 0;
-      for (let j = 0; j < numY; j += 1) {
-        for (let i = 0; i < numX; i += 1) {
-          const basis = Math.cos((Math.PI * i * x) / width) * Math.cos((Math.PI * j * y) / height);
-          const color = colors[i + j * numX];
-          if (color === undefined) {
-            continue;
-          }
-          r += color[0] * basis;
-          g += color[1] * basis;
-          b += color[2] * basis;
-        }
-      }
-      const offset = (y * width + x) * 4;
-      pixels[offset] = linearToSrgb(r);
-      pixels[offset + 1] = linearToSrgb(g);
-      pixels[offset + 2] = linearToSrgb(b);
-      pixels[offset + 3] = 255;
-    }
-  }
-  return pixels;
+  const colors = decodeColors(hash, numX, numY, maximumValue, punch);
+  return renderPixels(colors, width, height, numX, numY);
 }

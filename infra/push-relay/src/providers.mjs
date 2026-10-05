@@ -36,7 +36,12 @@ export class RelayError extends Error {
 
 /** The ids passed downstream to a provider; deliberately no message text. */
 export function contentFreePayload(wake) {
-  return { serverId: wake.serverId, channelId: wake.channelId, messageId: wake.messageId, kind: wake.kind };
+  return {
+    serverId: wake.serverId,
+    channelId: wake.channelId,
+    messageId: wake.messageId,
+    kind: wake.kind,
+  };
 }
 
 function requireId(value, field) {
@@ -120,25 +125,32 @@ export function buildApnsJwt({ keyId, teamId, key, nowSeconds = Math.floor(Date.
 /** Converts an ECDSA DER signature to the fixed 64-byte JOSE encoding. */
 export function derToJose(der) {
   let offset = 0;
-  if (der[offset] !== 0x30) {
+  const nextByte = () => {
+    const byte = der.at(offset);
+    if (byte === undefined) {
+      throw new RelayError("provider-error", "malformed ECDSA signature", 500);
+    }
+    return byte;
+  };
+  if (nextByte() !== 0x30) {
     throw new RelayError("provider-error", "malformed ECDSA signature", 500);
   }
   offset += 1;
-  if (der[offset] === 0x81) {
+  if (nextByte() === 0x81) {
     offset += 2;
   } else {
     offset += 1;
   }
   const readInt = () => {
-    if (der[offset] !== 0x02) {
+    if (nextByte() !== 0x02) {
       throw new RelayError("provider-error", "malformed ECDSA signature", 500);
     }
     offset += 1;
-    const length = der[offset];
+    const length = nextByte();
     offset += 1;
     let value = der.subarray(offset, offset + length);
     offset += length;
-    while (value.length > 32 && value[0] === 0) {
+    while (value.length > 32 && value.at(0) === 0) {
       value = value.subarray(1);
     }
     const padded = Buffer.alloc(32);
@@ -150,10 +162,10 @@ export function derToJose(der) {
   return Buffer.concat([r, s]);
 }
 
-const APNS_HOSTS = {
-  production: "https://api.push.apple.com",
-  sandbox: "https://api.sandbox.push.apple.com",
-};
+const APNS_HOSTS = new Map([
+  ["production", "https://api.push.apple.com"],
+  ["sandbox", "https://api.sandbox.push.apple.com"],
+]);
 
 /**
  * APNs adapter. `request` is injectable (defaults to Node's HTTP/2 client) so
@@ -173,7 +185,7 @@ export function createApnsProvider({
       throw new RelayError("config-error", `APNs ${field} is required`, 500);
     }
   }
-  const host = APNS_HOSTS[environment] ?? APNS_HOSTS.production;
+  const host = APNS_HOSTS.get(environment) ?? APNS_HOSTS.get("production");
   return {
     name: "apns",
     async deliver(wake) {
@@ -204,10 +216,11 @@ export function createApnsProvider({
 async function defaultApnsRequest({ url, headers, body }) {
   const http2 = await import("node:http2");
   return await new Promise((resolve, reject) => {
-    const client = http2.connect(new URL(url).origin);
+    const target = new URL(url);
+    const client = http2.connect(target.origin);
     const request = client.request({
       ":method": "POST",
-      ":path": new URL(url).pathname,
+      ":path": target.pathname,
       ...headers,
     });
     let status = 0;
@@ -224,11 +237,21 @@ async function defaultApnsRequest({ url, headers, body }) {
 }
 
 /** FCM HTTP v1 adapter. The OAuth access token is supplied by the operator. */
-export function createFcmProvider({ projectId, accessToken, serviceAccount, fetchImpl = fetch, now = () => Date.now() } = {}) {
+export function createFcmProvider({
+  projectId,
+  accessToken,
+  serviceAccount,
+  fetchImpl = fetch,
+  now = () => Date.now(),
+} = {}) {
   if (typeof projectId !== "string" || projectId.length === 0) {
     throw new RelayError("config-error", "FCM projectId is required", 500);
   }
-  if (!accessToken && (typeof serviceAccount?.client_email !== "string" || typeof serviceAccount?.private_key !== "string")) {
+  if (
+    !accessToken &&
+    (typeof serviceAccount?.client_email !== "string" ||
+      typeof serviceAccount?.private_key !== "string")
+  ) {
     throw new RelayError("config-error", "FCM access token or service account is required", 500);
   }
   let cachedToken;
@@ -238,13 +261,15 @@ export function createFcmProvider({ projectId, accessToken, serviceAccount, fetc
     if (accessToken) return accessToken;
     const issuedAt = Math.floor(now() / 1000);
     const jwtHeader = base64Url(JSON.stringify({ alg: "RS256", typ: "JWT" }));
-    const jwtClaims = base64Url(JSON.stringify({
-      iss: serviceAccount.client_email,
-      scope: "https://www.googleapis.com/auth/firebase.messaging",
-      aud: "https://oauth2.googleapis.com/token",
-      iat: issuedAt,
-      exp: issuedAt + 3600,
-    }));
+    const jwtClaims = base64Url(
+      JSON.stringify({
+        iss: serviceAccount.client_email,
+        scope: "https://www.googleapis.com/auth/firebase.messaging",
+        aud: "https://oauth2.googleapis.com/token",
+        iat: issuedAt,
+        exp: issuedAt + 3600,
+      }),
+    );
     const input = `${jwtHeader}.${jwtClaims}`;
     const signer = createSign("RSA-SHA256");
     signer.update(input);
@@ -253,7 +278,10 @@ export function createFcmProvider({ projectId, accessToken, serviceAccount, fetc
     const response = await fetchImpl("https://oauth2.googleapis.com/token", {
       method: "POST",
       headers: { "content-type": "application/x-www-form-urlencoded" },
-      body: new URLSearchParams({ grant_type: "urn:ietf:params:oauth:grant-type:jwt-bearer", assertion }),
+      body: new URLSearchParams({
+        grant_type: "urn:ietf:params:oauth:grant-type:jwt-bearer",
+        assertion,
+      }),
     });
     if (!response.ok) throw new RelayError("provider-error", "FCM token request failed", 502);
     const data = await response.json();

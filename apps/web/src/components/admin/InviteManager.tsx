@@ -2,7 +2,9 @@ import { Button, Heading, Icon, Input, Spinner, Text } from "@aulora/ui-web";
 import { useMutation, useQuery } from "convex/react";
 import { useState } from "react";
 import { api } from "../../../../../packages/convex/convex/_generated/api";
+import type { Id } from "../../../../../packages/convex/convex/_generated/dataModel";
 import { inviteUrl } from "../../lib/invites";
+import type { Callback } from "./callbacks";
 
 export interface InviteManagerProps {
   readonly canCreateInvites: boolean;
@@ -20,6 +22,14 @@ function expiryLabel(expiresAt: number | null): string {
     : `Expires ${new Date(expiresAt).toLocaleDateString()}`;
 }
 
+interface InviteRow {
+  readonly id: Id<"invites">;
+  readonly revokedAt: number | null;
+  readonly expiresAt: number | null;
+  readonly uses: number;
+  readonly maxUses: number;
+}
+
 /**
  * Invite management: create a link (optionally emailing it), copy the magic
  * link, and review or revoke outstanding invites. The plaintext code is only
@@ -27,14 +37,7 @@ function expiryLabel(expiresAt: number | null): string {
  */
 export function InviteManager({ canCreateInvites, origin }: InviteManagerProps) {
   const list = useQuery(api.invites.list, canCreateInvites ? { paginationOpts: PAGE } : "skip");
-  const create = useMutation(api.invites.create);
   const revoke = useMutation(api.invites.revoke);
-
-  const [email, setEmail] = useState("");
-  const [busy, setBusy] = useState(false);
-  const [error, setError] = useState<string | null>(null);
-  const [created, setCreated] = useState<{ code: string; emailed: boolean } | null>(null);
-  const [copied, setCopied] = useState(false);
 
   if (!canCreateInvites) {
     return (
@@ -43,8 +46,6 @@ export function InviteManager({ canCreateInvites, origin }: InviteManagerProps) 
       </Text>
     );
   }
-
-  const link = created !== null ? inviteUrl(origin, created.code) : null;
 
   return (
     <div className="flex flex-col gap-4" data-testid="invite-manager">
@@ -55,75 +56,7 @@ export function InviteManager({ canCreateInvites, origin }: InviteManagerProps) 
         </Text>
       </header>
 
-      <form
-        className="flex flex-col gap-3 rounded-[12px] border border-border bg-surface-2 p-4"
-        onSubmit={(event) => {
-          event.preventDefault();
-          setError(null);
-          setCopied(false);
-          setBusy(true);
-          const recipient = email.trim();
-          void create({
-            ...(recipient.length > 0 ? { email: recipient } : {}),
-          })
-            .then((result) => {
-              setCreated({ code: result.code, emailed: recipient.length > 0 });
-              setEmail("");
-            })
-            .catch((cause: unknown) =>
-              setError(cause instanceof Error ? cause.message : "Could not create the invite."),
-            )
-            .finally(() => setBusy(false));
-        }}
-      >
-        <Input
-          label="Email (optional)"
-          type="email"
-          placeholder="teammate@example.com"
-          value={email}
-          onChange={(event) => setEmail(event.currentTarget.value)}
-          hint="Leave blank to just generate a link."
-        />
-        <div>
-          <Button type="submit" loading={busy} disabled={busy}>
-            Create invite
-          </Button>
-        </div>
-
-        {created !== null && link !== null && (
-          <div className="flex flex-col gap-2 rounded-[10px] border border-accent/30 bg-accent-soft/40 p-3">
-            <Text size="xs" tone="secondary">
-              {created.emailed ? "Invite created; email delivery is queued. " : "Invite created. "}
-              Copy the link now — it is only shown once.
-            </Text>
-            <div className="flex items-center gap-2">
-              <code className="min-w-0 flex-1 truncate rounded-[7px] border border-border bg-surface-1 px-2 py-1.5 font-mono text-[12px] text-text">
-                {link}
-              </code>
-              <Button
-                type="button"
-                variant="secondary"
-                size="sm"
-                onClick={() => {
-                  void navigator.clipboard
-                    ?.writeText(link)
-                    .then(() => setCopied(true))
-                    .catch(() => undefined);
-                }}
-              >
-                <Icon name="file" size={14} />
-                {copied ? "Copied" : "Copy"}
-              </Button>
-            </div>
-          </div>
-        )}
-
-        {error !== null && (
-          <Text tone="danger" size="sm" role="alert">
-            {error}
-          </Text>
-        )}
-      </form>
+      <InviteCreateForm origin={origin} />
 
       {list === undefined && (
         <div className="flex justify-center py-8">
@@ -132,39 +65,170 @@ export function InviteManager({ canCreateInvites, origin }: InviteManagerProps) 
       )}
 
       {list !== undefined && (
-        <ul className="flex flex-col divide-y divide-border overflow-hidden rounded-[12px] border border-border bg-surface-2">
-          {list.page.map((invite) => (
-            <li key={invite.id} className="flex items-center justify-between gap-3 px-3.5 py-2.5">
-              <div className="min-w-0">
-                <Text size="sm" className="truncate">
-                  {invite.revokedAt !== null ? "Revoked" : expiryLabel(invite.expiresAt)}
-                </Text>
-                <Text size="xs" tone="muted" className="truncate">
-                  {invite.uses}
-                  {invite.maxUses > 0 ? ` / ${invite.maxUses}` : ""} uses
-                </Text>
-              </div>
-              {invite.revokedAt === null && (
-                <Button
-                  type="button"
-                  variant="ghost"
-                  size="sm"
-                  onClick={() => void revoke({ inviteId: invite.id })}
-                >
-                  Revoke
-                </Button>
-              )}
-            </li>
-          ))}
-          {list.page.length === 0 && (
-            <li className="px-3.5 py-3">
-              <Text tone="muted" size="sm">
-                No invites yet.
-              </Text>
-            </li>
-          )}
-        </ul>
+        <InviteList
+          page={list.page}
+          onRevoke={(inviteId) => {
+            void revoke({ inviteId });
+          }}
+        />
       )}
     </div>
+  );
+}
+
+function InviteCreateForm({ origin }: { readonly origin: string }) {
+  const create = useMutation(api.invites.create);
+  const [email, setEmail] = useState("");
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+  const [created, setCreated] = useState<{ code: string; emailed: boolean } | null>(null);
+  const [copied, setCopied] = useState(false);
+
+  const link = created !== null ? inviteUrl(origin, created.code) : null;
+
+  return (
+    <form
+      className="flex flex-col gap-3 rounded-[12px] border border-border bg-surface-2 p-4"
+      onSubmit={(event) => {
+        event.preventDefault();
+        setError(null);
+        setCopied(false);
+        setBusy(true);
+        const recipient = email.trim();
+        void create({
+          ...(recipient.length > 0 ? { email: recipient } : {}),
+        })
+          .then((result) => {
+            setCreated({ code: result.code, emailed: recipient.length > 0 });
+            setEmail("");
+          })
+          .catch((cause: unknown) => {
+            setError(cause instanceof Error ? cause.message : "Could not create the invite.");
+          })
+          .finally(() => {
+            setBusy(false);
+          });
+      }}
+    >
+      <Input
+        label="Email (optional)"
+        type="email"
+        placeholder="teammate@example.com"
+        value={email}
+        onChange={(event) => {
+          setEmail(event.currentTarget.value);
+        }}
+        hint="Leave blank to just generate a link."
+      />
+      <div>
+        <Button type="submit" loading={busy} disabled={busy}>
+          Create invite
+        </Button>
+      </div>
+
+      {created !== null && link !== null && (
+        <CreatedInviteLink
+          link={link}
+          emailed={created.emailed}
+          copied={copied}
+          onCopy={() => {
+            setCopied(true);
+          }}
+        />
+      )}
+
+      {error !== null && (
+        <Text tone="danger" size="sm" role="alert">
+          {error}
+        </Text>
+      )}
+    </form>
+  );
+}
+
+function CreatedInviteLink({
+  link,
+  emailed,
+  copied,
+  onCopy,
+}: {
+  readonly link: string;
+  readonly emailed: boolean;
+  readonly copied: boolean;
+  readonly onCopy: () => void;
+}) {
+  return (
+    <div className="flex flex-col gap-2 rounded-[10px] border border-accent/30 bg-accent-soft/40 p-3">
+      <Text size="xs" tone="secondary">
+        {emailed ? "Invite created; email delivery is queued. " : "Invite created. "}
+        Copy the link now — it is only shown once.
+      </Text>
+      <div className="flex items-center gap-2">
+        <code className="min-w-0 flex-1 truncate rounded-[7px] border border-border bg-surface-1 px-2 py-1.5 font-mono text-[12px] text-text">
+          {link}
+        </code>
+        <Button
+          type="button"
+          variant="secondary"
+          size="sm"
+          onClick={() => {
+            void navigator.clipboard
+              .writeText(link)
+              .then(() => {
+                onCopy();
+              })
+              .catch(() => undefined);
+          }}
+        >
+          <Icon name="file" size={14} />
+          {copied ? "Copied" : "Copy"}
+        </Button>
+      </div>
+    </div>
+  );
+}
+
+function InviteList({
+  page,
+  onRevoke,
+}: {
+  readonly page: readonly InviteRow[];
+  readonly onRevoke: Callback<[inviteId: Id<"invites">]>;
+}) {
+  return (
+    <ul className="flex flex-col divide-y divide-border overflow-hidden rounded-[12px] border border-border bg-surface-2">
+      {page.map((invite) => (
+        <li key={invite.id} className="flex items-center justify-between gap-3 px-3.5 py-2.5">
+          <div className="min-w-0">
+            <Text size="sm" className="truncate">
+              {invite.revokedAt !== null ? "Revoked" : expiryLabel(invite.expiresAt)}
+            </Text>
+            <Text size="xs" tone="muted" className="truncate">
+              {invite.uses}
+              {invite.maxUses > 0 ? ` / ${invite.maxUses}` : ""} uses
+            </Text>
+          </div>
+          {invite.revokedAt === null && (
+            <Button
+              type="button"
+              variant="ghost"
+              size="sm"
+              onClick={() => {
+                onRevoke(invite.id);
+              }}
+            >
+              Revoke
+            </Button>
+          )}
+        </li>
+      ))}
+      {page.length === 0 && (
+        <li className="px-3.5 py-3">
+          <Text tone="muted" size="sm">
+            No invites yet.
+          </Text>
+        </li>
+      )}
+    </ul>
   );
 }

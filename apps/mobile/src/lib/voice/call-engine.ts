@@ -1,623 +1,39 @@
+import { type CallSignalRow, type CallView, isOnThisDevice, shouldOffer } from "@aulora/core";
+import type { Peer } from "./call-engine-core";
 import {
-  type CallKind,
-  type CallSeatResult,
-  type CallSignalRow,
-  type CallView,
-  isCallElsewhereError,
-  isOnThisDevice,
-  type PeerConnectionState,
-  shouldOffer,
-  type VoiceDeviceSettings,
-  type VoicePort,
-  type VoiceSubscriptions,
-} from "@aulora/core";
+  mapConnection,
+  messageOf,
+  parsePayload,
+  tuneAudioSender,
+  tuneReceiver,
+  tuneVideoSender,
+} from "./call-engine-helpers";
+import { CallEngineMedia } from "./call-engine-media";
 import {
-  acquireDisplay,
-  acquireUserMedia,
-  acquireVideo,
   createIceCandidate,
-  createLevelMeter,
   createMediaStream,
   createPeerConnection,
   createSessionDescription,
-  extractAudioLevel,
-  setTrackVolume,
   type VoiceIceCandidateInit,
-  type VoicePeerConnection,
   type VoiceSessionDescriptionInit,
-  type VoiceStream,
   type VoiceTrack,
   type VoiceTransceiver,
 } from "./webrtc";
 
+export type {
+  MobileVoiceEngineOptions,
+  MobileVoiceLocalState,
+  MobileVoiceSnapshot,
+} from "./call-engine-core";
+
 /**
- * The mobile WebRTC mesh call engine.
- *
- * One `RTCPeerConnection` per remote participant, media flowing peer-to-peer;
- * Convex carries only the SDP/ICE envelopes and the roster. The architecture
- * mirrors the web engine exactly:
- *  - a persistent audio *and* video transceiver per peer, so camera and screen
- *    toggles swap tracks with no renegotiation round-trip;
- *  - Opus tuned for voice, video tuned for motion vs. screen clarity;
- *  - a deterministic offerer (`shouldOffer`) so both peers agree silently.
- *
- * Plain TypeScript (no React) reporting every change through a single
- * `onChange` listener; the provider mirrors that into React state.
+ * The peer mesh for {@link MobileVoiceEngine}: one connection per remote
+ * participant plus the signal handling that negotiates them.
  */
-
-export interface MobileVoiceLocalState {
-  readonly muted: boolean;
-  readonly deafened: boolean;
-  readonly video: boolean;
-  readonly sharingScreen: boolean;
-}
-
-export interface MobileVoiceSnapshot {
-  readonly callId: string | null;
-  readonly call: CallView | null;
-  readonly local: MobileVoiceLocalState;
-  readonly micStream: VoiceStream | null;
-  /** The track to show in the local tile: screen while sharing, else camera. */
-  readonly localVideoTrack: VoiceTrack | null;
-  readonly remoteStreams: ReadonlyMap<string, VoiceStream>;
-  /** Per-remote-participant audio level, 0..1, derived from RTP stats. */
-  readonly remoteLevels: ReadonlyMap<string, number>;
-  readonly micLevel: number;
-  /** Whether this build exposes live mic levels (needed by push-to-talk). */
-  readonly micLevelAvailable: boolean;
-  readonly pending: boolean;
-  readonly error: string | null;
-}
-
-export interface MobileVoiceEngineOptions {
-  readonly port: VoicePort;
-  readonly subscriptions: VoiceSubscriptions;
-  readonly userId: string;
-  /** This install. A seat held by any other id is not ours. */
-  readonly clientId: string;
-  readonly getSettings: () => VoiceDeviceSettings;
-  readonly iceServers?: readonly { urls: string | readonly string[] }[];
-  readonly onError?: (message: string) => void;
-}
-
-interface Peer {
-  readonly pc: VoicePeerConnection;
-  readonly stream: VoiceStream;
-  readonly initiator: boolean;
-  readonly pendingCandidates: VoiceIceCandidateInit[];
-  connection: PeerConnectionState;
-  /** The offerer's own transceivers; the answerer inherits the remote's. */
-  audioTx?: VoiceTransceiver;
-  videoTx?: VoiceTransceiver;
-  /** Seat generation this connection was opened against. */
-  session: number;
-}
-
-const DEFAULT_ICE: readonly { urls: readonly string[] }[] = [
-  { urls: ["stun:stun.l.google.com:19302", "stun:stun1.l.google.com:19302"] },
-];
-
-const HEARTBEAT_MS = 15_000;
-
-function parsePayload<T>(payload: string): T | null {
-  try {
-    return JSON.parse(payload) as T;
-  } catch {
-    return null;
-  }
-}
-
-export class MobileVoiceEngine {
-  private readonly port: VoicePort;
-  private readonly subscriptions: VoiceSubscriptions;
-  private readonly userId: string;
-  private readonly clientId: string;
-  private readonly getSettings: () => VoiceDeviceSettings;
-  private readonly iceServers: readonly { urls: string | readonly string[] }[];
-  private readonly onError: (message: string) => void;
-  private readonly listeners = new Set<() => void>();
-
-  private callId: string | null = null;
-  private call: CallView | null = null;
-  private local: MobileVoiceLocalState = {
-    muted: false,
-    deafened: false,
-    video: false,
-    sharingScreen: false,
-  };
-  private micStream: VoiceStream | null = null;
-  private cameraTrack: VoiceTrack | null = null;
-  private screenTrack: VoiceTrack | null = null;
-  private micLevel = 0;
-  private micLevelAvailable = false;
-  private levelUnsub: (() => void) | null = null;
-  private pending = false;
-  private error: string | null = null;
-
-  private readonly peers = new Map<string, Peer>();
-  private readonly remoteStreams = new Map<string, VoiceStream>();
-  private readonly remoteLevels = new Map<string, number>();
-  private readonly processedSignals = new Set<string>();
-  private callUnsub: (() => void) | null = null;
-  private signalUnsub: (() => void) | null = null;
-  private heartbeat: ReturnType<typeof setInterval> | null = null;
-  private levelHunt: ReturnType<typeof setInterval> | null = null;
-
-  constructor(options: MobileVoiceEngineOptions) {
-    this.port = options.port;
-    this.subscriptions = options.subscriptions;
-    this.userId = options.userId;
-    this.clientId = options.clientId;
-    this.getSettings = options.getSettings;
-    this.iceServers =
-      options.iceServers !== undefined && options.iceServers.length > 0
-        ? options.iceServers
-        : DEFAULT_ICE;
-    this.onError = options.onError ?? (() => {});
-  }
-
-  // ---- Observation ---------------------------------------------------------
-
-  subscribe(listener: () => void): () => void {
-    this.listeners.add(listener);
-    return () => this.listeners.delete(listener);
-  }
-
-  private emit(): void {
-    for (const listener of this.listeners) {
-      listener();
-    }
-  }
-
-  getSnapshot(): MobileVoiceSnapshot {
-    return {
-      callId: this.callId,
-      call: this.call,
-      local: this.local,
-      micStream: this.micStream,
-      localVideoTrack: this.screenTrack ?? this.cameraTrack,
-      remoteStreams: this.remoteStreams,
-      remoteLevels: this.remoteLevels,
-      micLevel: this.micLevel,
-      micLevelAvailable: this.micLevelAvailable,
-      pending: this.pending,
-      error: this.error,
-    };
-  }
-
-  isActive(): boolean {
-    return this.callId !== null;
-  }
-
-  // ---- Call lifecycle ------------------------------------------------------
-
-  async startCall(args: {
-    readonly channelId: string;
-    readonly kind: CallKind;
-    readonly ringingUserIds?: readonly string[];
-    readonly takeover?: boolean;
-  }): Promise<Exclude<CallSeatResult, { status: "cancelled" }>> {
-    this.setError(null);
-    this.pending = true;
-    this.emit();
-    try {
-      const result = await this.port.startCall(args);
-      await this.enter(result.callId);
-      return { status: "joined", callId: result.callId };
-    } catch (error) {
-      if (isCallElsewhereError(error)) {
-        return { status: "elsewhere", callId: error.callId, channelId: error.channelId };
-      }
-      this.setError(messageOf(error));
-      return { status: "failed" };
-    } finally {
-      this.pending = false;
-      this.emit();
-    }
-  }
-
-  async joinCall(
-    callId: string,
-    options?: { readonly takeover?: boolean },
-  ): Promise<Exclude<CallSeatResult, { status: "cancelled" }>> {
-    this.setError(null);
-    this.pending = true;
-    this.emit();
-    try {
-      await this.port.joinCall({
-        callId,
-        ...(options?.takeover === true ? { takeover: true } : {}),
-      });
-      await this.enter(callId);
-      return { status: "joined", callId };
-    } catch (error) {
-      if (isCallElsewhereError(error)) {
-        return { status: "elsewhere", callId: error.callId, channelId: error.channelId };
-      }
-      this.setError(messageOf(error));
-      return { status: "failed" };
-    } finally {
-      this.pending = false;
-      this.emit();
-    }
-  }
-
-  async declineCall(callId: string): Promise<void> {
-    try {
-      await this.port.declineCall({ callId });
-    } catch (error) {
-      this.setError(messageOf(error));
-    }
-  }
-
-  async leave(): Promise<void> {
-    const callId = this.callId;
-    this.enterTeardown();
-    if (callId !== null) {
-      try {
-        await this.port.leaveCall({ callId });
-      } catch {
-        // Leaving is best-effort; the server sweep cleans a dropped client.
-      }
-    }
-  }
-
-  async endCall(): Promise<void> {
-    const callId = this.callId;
-    this.enterTeardown();
-    if (callId !== null) {
-      try {
-        await this.port.endCall({ callId });
-      } catch (error) {
-        this.setError(messageOf(error));
-      }
-    }
-  }
-
-  private async enter(callId: string): Promise<void> {
-    if (this.callId === callId) {
-      return;
-    }
-    this.enterTeardown();
-    this.callId = callId;
-    this.processedSignals.clear();
-    const watched = callId;
-    this.callUnsub = this.subscriptions.watchCallById(callId, (call) => {
-      if (this.callId !== watched) {
-        return;
-      }
-      void this.onCallUpdate(call);
-    });
-    this.signalUnsub = this.subscriptions.watchSignals(callId, (signals) => {
-      void this.onSignals(signals);
-    });
-    this.heartbeat = setInterval(() => {
-      if (this.callId !== null) {
-        void this.port.callHeartbeat({ callId: this.callId }).catch(() => undefined);
-      }
-    }, HEARTBEAT_MS);
-    this.startRemoteLevelHunt();
-    await this.acquireMic();
-    const settings = this.getSettings();
-    this.local = { ...this.local, muted: settings.joinMuted };
-    if (this.micStream !== null) {
-      for (const track of this.micStream.getAudioTracks()) {
-        track.enabled = !settings.joinMuted;
-      }
-    }
-    void this.port.updateParticipant({ callId, muted: settings.joinMuted }).catch(() => undefined);
-    this.emit();
-  }
-
-  private enterTeardown(): void {
-    this.callUnsub?.();
-    this.signalUnsub?.();
-    this.callUnsub = null;
-    this.signalUnsub = null;
-    if (this.heartbeat !== null) {
-      clearInterval(this.heartbeat);
-      this.heartbeat = null;
-    }
-    if (this.levelHunt !== null) {
-      clearInterval(this.levelHunt);
-      this.levelHunt = null;
-    }
-    this.remoteLevels.clear();
-    this.closeAllPeers();
-    this.stopLevelMeter();
-    this.micStream?.getTracks().forEach((track) => {
-      track.stop();
-    });
-    this.micStream = null;
-    this.cameraTrack?.stop();
-    this.cameraTrack = null;
-    this.screenTrack?.stop();
-    this.screenTrack = null;
-    this.remoteStreams.clear();
-    this.callId = null;
-    this.call = null;
-    this.local = { muted: false, deafened: false, video: false, sharingScreen: false };
-    this.processedSignals.clear();
-    this.emit();
-  }
-
-  private async acquireMic(): Promise<void> {
-    try {
-      this.micStream = await acquireUserMedia({
-        settings: this.getSettings(),
-        withVideo: false,
-      });
-    } catch (error) {
-      this.onError(messageOf(error));
-      this.micStream = null;
-      return;
-    }
-    this.startLevelMeter();
-    // A peer may have been created (and offered) before the mic resolved; give
-    // it the real track now that we have it. `replaceTrack` needs no renegotiation.
-    await this.applyAudioTrack(this.micStream.getAudioTracks()[0] ?? null);
-  }
-
-  private startLevelMeter(): void {
-    this.stopLevelMeter();
-    if (this.micStream === null) {
-      return;
-    }
-    this.applyInputVolume();
-    const meter = createLevelMeter(this.micStream, (level) => {
-      this.micLevel = level;
-      this.applyNoiseGate(level);
-      this.emit();
-    });
-    this.micLevelAvailable = meter.available;
-    this.levelUnsub = meter.stop;
-    this.enforceGateSafety();
-  }
-
-  private stopLevelMeter(): void {
-    this.levelUnsub?.();
-    this.levelUnsub = null;
-    this.micLevelAvailable = false;
-    this.micLevel = 0;
-  }
-
-  /**
-   * Push-to-talk needs live level data to know when the key is effectively
-   * held. `react-native-webrtc` exposes none, so when the meter is unavailable
-   * the mic is kept closed rather than left hot; the settings UI surfaces the
-   * feature as unsupported instead of pretending it works.
-   */
-  private enforceGateSafety(): void {
-    if (this.micStream === null || this.micLevelAvailable) {
-      return;
-    }
-    if (!this.getSettings().pushToTalk) {
-      return;
-    }
-    for (const track of this.micStream.getAudioTracks()) {
-      track.enabled = false;
-    }
-  }
-
-  /** Applies the configured microphone gain to every local audio track. */
-  private applyInputVolume(): void {
-    if (this.micStream === null) {
-      return;
-    }
-    const volume = this.getSettings().inputVolume;
-    for (const track of this.micStream.getAudioTracks()) {
-      setTrackVolume(track, volume);
-    }
-  }
-
-  /**
-   * Push-to-talk / noise gate. When either is on, the mic only transmits while
-   * the level clears the threshold; otherwise it follows the mute flag. Native
-   * level data is best-effort, so an unknown level keeps the mic audible.
-   */
-  private applyNoiseGate(level: number): void {
-    const settings = this.getSettings();
-    if (
-      this.micStream === null ||
-      !this.micLevelAvailable ||
-      (!settings.pushToTalk && settings.noiseGateThreshold <= 0)
-    ) {
-      return;
-    }
-    if (this.local.muted) {
-      return;
-    }
-    const open = settings.pushToTalk ? level > settings.noiseGateThreshold : true;
-    for (const track of this.micStream.getAudioTracks()) {
-      track.enabled = open;
-    }
-  }
-
-  /**
-   * Polls remote audio receivers for their RTP `audioLevel` and publishes a
-   * per-participant map. Native engines without `getStats` simply produce an
-   * empty map and the UI falls back to mute flags.
-   */
-  private startRemoteLevelHunt(): void {
-    if (this.levelHunt !== null) {
-      clearInterval(this.levelHunt);
-    }
-    this.levelHunt = setInterval(() => {
-      void this.pollRemoteLevels();
-    }, 500);
-  }
-
-  private async pollRemoteLevels(): Promise<void> {
-    if (this.peers.size === 0) {
-      return;
-    }
-    let changed = false;
-    await Promise.all(
-      [...this.peers.entries()].map(async ([remoteId, peer]) => {
-        const receiver = this.transceiversFor(peer, "audio")[0]?.receiver;
-        if (receiver === undefined || typeof receiver.getStats !== "function") {
-          return;
-        }
-        try {
-          const stats = await receiver.getStats();
-          const level = extractAudioLevel(stats);
-          if (level === null) {
-            return;
-          }
-          const previous = this.remoteLevels.get(remoteId) ?? -1;
-          if (Math.abs(previous - level) > 0.02) {
-            this.remoteLevels.set(remoteId, level);
-            changed = true;
-          }
-        } catch {
-          // Receiver stats are best-effort.
-        }
-      }),
-    );
-    if (changed) {
-      this.emit();
-    }
-  }
-
-  // ---- Media controls ------------------------------------------------------
-
-  async setMuted(muted: boolean): Promise<void> {
-    this.local = { ...this.local, muted };
-    if (this.micStream !== null) {
-      for (const track of this.micStream.getAudioTracks()) {
-        track.enabled = !muted;
-      }
-    }
-    if (this.callId !== null) {
-      void this.port.updateParticipant({ callId: this.callId, muted }).catch(() => undefined);
-    }
-    this.emit();
-  }
-
-  setDeafened(deafened: boolean): void {
-    this.local = { ...this.local, deafened };
-    if (deafened && !this.local.muted) {
-      void this.setMuted(true);
-    }
-    this.emit();
-  }
-
-  async setCamera(on: boolean): Promise<void> {
-    if (on) {
-      try {
-        if (this.cameraTrack === null) {
-          this.cameraTrack = await acquireVideo(this.getSettings());
-        }
-      } catch (error) {
-        this.onError(messageOf(error));
-        return;
-      }
-    } else {
-      this.cameraTrack?.stop();
-      this.cameraTrack = null;
-    }
-    this.local = { ...this.local, video: on };
-    if (!this.local.sharingScreen) {
-      await this.applyVideoTrack(on ? this.cameraTrack : null);
-    }
-    if (this.callId !== null) {
-      void this.port.updateParticipant({ callId: this.callId, video: on }).catch(() => undefined);
-    }
-    this.emit();
-  }
-
-  async setScreenSharing(on: boolean): Promise<void> {
-    if (on) {
-      try {
-        this.screenTrack = await acquireDisplay(this.getSettings());
-      } catch (error) {
-        this.onError(messageOf(error));
-        return;
-      }
-      this.screenTrack.addEventListener?.("ended", () => {
-        void this.setScreenSharing(false);
-      });
-      this.local = { ...this.local, sharingScreen: true };
-      await this.applyVideoTrack(this.screenTrack, "screen");
-    } else {
-      this.screenTrack?.stop();
-      this.screenTrack = null;
-      this.local = { ...this.local, sharingScreen: false };
-      await this.applyVideoTrack(this.local.video ? this.cameraTrack : null);
-    }
-    if (this.callId !== null) {
-      void this.port
-        .updateParticipant({ callId: this.callId, sharingScreen: on })
-        .catch(() => undefined);
-    }
-    this.emit();
-  }
-
-  /** Re-reads device settings: swaps a changed microphone and camera. */
-  async applySettings(settings: VoiceDeviceSettings): Promise<void> {
-    const previousInput = this.currentInputId();
-    const nextInput = settings.inputDeviceId;
-    const previous = this.previousAudioProcessing;
-    const audioProcessingChanged =
-      previous === null ||
-      previous.echoCancellation !== settings.echoCancellation ||
-      previous.noiseSuppression !== settings.noiseSuppression ||
-      previous.autoGainControl !== settings.autoGainControl;
-    this.previousAudioProcessing = {
-      echoCancellation: settings.echoCancellation,
-      noiseSuppression: settings.noiseSuppression,
-      autoGainControl: settings.autoGainControl,
-    };
-    if (this.micStream !== null && (previousInput !== nextInput || audioProcessingChanged)) {
-      await this.reacquireMic();
-    } else {
-      this.applyInputVolume();
-      this.enforceGateSafety();
-    }
-    if (this.local.video && this.cameraTrack !== null && !this.local.sharingScreen) {
-      try {
-        this.cameraTrack.stop();
-        this.cameraTrack = await acquireVideo(settings);
-        await this.applyVideoTrack(this.cameraTrack);
-      } catch {
-        // Keep the existing camera if the new device is unavailable.
-      }
-    }
-    this.emit();
-  }
-
-  private previousAudioProcessing: {
-    echoCancellation: boolean;
-    noiseSuppression: boolean;
-    autoGainControl: boolean;
-  } | null = null;
-
-  private currentInputId(): string | null {
-    const track = this.micStream?.getAudioTracks()[0];
-    return track?.getSettings?.().deviceId ?? this.getSettings().inputDeviceId ?? null;
-  }
-
-  private async reacquireMic(): Promise<void> {
-    const wasMuted = this.local.muted;
-    try {
-      const stream = await acquireUserMedia({ settings: this.getSettings(), withVideo: false });
-      this.micStream?.getTracks().forEach((track) => {
-        track.stop();
-      });
-      this.micStream = stream;
-      for (const track of stream.getAudioTracks()) {
-        track.enabled = !wasMuted;
-      }
-      this.startLevelMeter();
-      await this.applyAudioTrack(stream.getAudioTracks()[0] ?? null);
-    } catch (error) {
-      this.onError(messageOf(error));
-    }
-  }
-
+export class MobileVoiceEngine extends CallEngineMedia {
   // ---- Peer plumbing -------------------------------------------------------
 
-  private async onCallUpdate(call: CallView | null): Promise<void> {
+  protected async onCallUpdate(call: CallView | null): Promise<void> {
     if (call === null || call.status === "ended") {
       this.enterTeardown();
       return;
@@ -754,7 +170,7 @@ export class MobileVoiceEngine {
    * (stored on the peer); the answerer inherited them from the remote offer, and
    * their kind is only knowable from the receiver/sender tracks.
    */
-  private transceiversFor(peer: Peer, kind: "audio" | "video"): VoiceTransceiver[] {
+  protected transceiversFor(peer: Peer, kind: "audio" | "video"): VoiceTransceiver[] {
     const stored = kind === "audio" ? peer.audioTx : peer.videoTx;
     if (stored !== undefined) {
       return [stored];
@@ -769,7 +185,7 @@ export class MobileVoiceEngine {
   }
 
   /** Swaps the outgoing video track across every peer without renegotiating. */
-  private async applyVideoTrack(
+  protected async applyVideoTrack(
     track: VoiceTrack | null,
     mode: "camera" | "screen" = "camera",
   ): Promise<void> {
@@ -782,7 +198,7 @@ export class MobileVoiceEngine {
     }
   }
 
-  private async applyAudioTrack(track: VoiceTrack | null): Promise<void> {
+  protected async applyAudioTrack(track: VoiceTrack | null): Promise<void> {
     for (const peer of this.peers.values()) {
       for (const transceiver of this.transceiversFor(peer, "audio")) {
         transceiver.direction = "sendrecv";
@@ -810,7 +226,7 @@ export class MobileVoiceEngine {
       .catch(() => undefined);
   }
 
-  private async onSignals(signals: readonly CallSignalRow[]): Promise<void> {
+  protected async onSignals(signals: readonly CallSignalRow[]): Promise<void> {
     const fresh = signals.filter((signal) => !this.processedSignals.has(signal.id));
     if (fresh.length === 0) {
       return;
@@ -917,124 +333,11 @@ export class MobileVoiceEngine {
     this.emit();
   }
 
-  private closeAllPeers(): void {
+  protected closeAllPeers(): void {
     for (const [id, peer] of [...this.peers]) {
       this.closePeer(id, peer);
     }
     this.peers.clear();
     this.remoteStreams.clear();
-  }
-
-  // ---- Errors --------------------------------------------------------------
-
-  setError(message: string | null): void {
-    this.error = message;
-    if (message !== null) {
-      this.onError(message);
-    }
-    this.emit();
-  }
-
-  clearError(): void {
-    this.error = null;
-    this.emit();
-  }
-
-  dispose(): void {
-    this.enterTeardown();
-    this.listeners.clear();
-  }
-}
-
-/** Rough connection state mapping for the participant tiles. */
-function mapConnection(state: string): PeerConnectionState {
-  switch (state) {
-    case "connected":
-      return "connected";
-    case "failed":
-    case "closed":
-      return "failed";
-    case "disconnected":
-      return "reconnecting";
-    default:
-      return "connecting";
-  }
-}
-
-function messageOf(error: unknown): string {
-  if (error instanceof Error && error.message.length > 0) {
-    return error.message;
-  }
-  return "The call ran into a problem. Please try again.";
-}
-
-/**
- * Voice-tuned Opus: in-band FEC on, stereo off, a tight bitrate cap and high
- * network priority. All parameters are best-effort across native builds.
- */
-function tuneAudioSender(sender: {
-  getParameters(): {
-    encodings?: { maxBitrate?: number; networkPriority?: string }[];
-    degradationPreference?: string;
-  };
-  setParameters(parameters: unknown): Promise<void>;
-}): void {
-  try {
-    const params = sender.getParameters();
-    params.encodings =
-      params.encodings !== undefined && params.encodings.length > 0 ? params.encodings : [{}];
-    const encoding = params.encodings[0];
-    if (encoding !== undefined) {
-      encoding.maxBitrate = 40_000;
-      encoding.networkPriority = "high";
-    }
-    params.degradationPreference = "balanced";
-    void sender.setParameters(params).catch(() => undefined);
-  } catch {
-    // Older engines expose read-only parameters.
-  }
-}
-
-/**
- * Video tuning. Screen share prioritizes resolution so text stays legible;
- * camera prioritizes framerate. The cap keeps a share from starving audio.
- */
-function tuneVideoSender(
-  sender: {
-    getParameters(): {
-      encodings?: { maxBitrate?: number; maxFramerate?: number }[];
-      degradationPreference?: string;
-    };
-    setParameters(parameters: unknown): Promise<void>;
-  },
-  screen: boolean,
-): void {
-  try {
-    const params = sender.getParameters();
-    params.encodings =
-      params.encodings !== undefined && params.encodings.length > 0 ? params.encodings : [{}];
-    const encoding = params.encodings[0];
-    if (encoding !== undefined) {
-      encoding.maxBitrate = screen ? 3_000_000 : 1_500_000;
-      encoding.maxFramerate = 30;
-    }
-    params.degradationPreference = screen ? "maintain-resolution" : "maintain-framerate";
-    void sender.setParameters(params).catch(() => undefined);
-  } catch {
-    // Best-effort.
-  }
-}
-
-/** Asks the native receiver to keep playout delay low for conversation. */
-function tuneReceiver(receiver: { playoutDelayHint?: number; jitterBufferTarget?: number }): void {
-  try {
-    receiver.playoutDelayHint = 0;
-  } catch {
-    // Unsupported.
-  }
-  try {
-    receiver.jitterBufferTarget = 0;
-  } catch {
-    // Unsupported.
   }
 }

@@ -2,7 +2,7 @@ import { Button, Icon } from "@aulora/ui-web";
 import { useEffect, useId, useLayoutEffect, useRef, useState } from "react";
 import { createPortal } from "react-dom";
 import type { MemberEntry } from "./MembersPanel";
-import { PRESENCE_LABEL, PresenceAvatar, type PresenceStatus } from "./PresenceAvatar";
+import { PresenceAvatar, type PresenceStatus, presenceLabel } from "./PresenceAvatar";
 
 export interface MemberProfilePopoverProps {
   readonly member: MemberEntry;
@@ -141,7 +141,7 @@ export function MemberProfilePopover({
           >
             {member.displayName}
           </h2>
-          <p className="mt-0.5 text-[12px] text-text-muted">{PRESENCE_LABEL[status]}</p>
+          <p className="mt-0.5 text-[12px] text-text-muted">{presenceLabel(status)}</p>
         </div>
         <button
           ref={closeRef}

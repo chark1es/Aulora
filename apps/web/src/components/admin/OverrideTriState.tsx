@@ -1,27 +1,28 @@
 import { cn, Icon } from "@aulora/ui-web";
 import type { OverrideLevel } from "../../lib/workspace-admin";
+import type { Callback } from "./callbacks";
 
 export interface OverrideTriStateProps {
   readonly label: string;
   readonly value: OverrideLevel;
-  readonly onChange: (level: OverrideLevel) => void;
+  readonly onChange: Callback<[level: OverrideLevel]>;
   readonly disabled?: boolean;
 }
 
 const SEGMENTS = ["inherit", "allow", "deny"] as const satisfies readonly OverrideLevel[];
 
 /** Raised, colored surface for the active segment. */
-const INDICATOR: Record<OverrideLevel, string> = {
-  inherit: "bg-surface-1 ring-1 ring-border shadow-sm",
-  allow: "bg-secondary/20 ring-1 ring-secondary/40 shadow-sm",
-  deny: "bg-danger/15 ring-1 ring-danger/40 shadow-sm",
-};
+const INDICATOR = new Map<OverrideLevel, string>([
+  ["inherit", "bg-surface-1 ring-1 ring-border shadow-sm"],
+  ["allow", "bg-secondary/20 ring-1 ring-secondary/40 shadow-sm"],
+  ["deny", "bg-danger/15 ring-1 ring-danger/40 shadow-sm"],
+]);
 
-const ACTIVE_TEXT: Record<OverrideLevel, string> = {
-  inherit: "text-text",
-  allow: "text-secondary",
-  deny: "text-danger",
-};
+const ACTIVE_TEXT = new Map<OverrideLevel, string>([
+  ["inherit", "text-text"],
+  ["allow", "text-secondary"],
+  ["deny", "text-danger"],
+]);
 
 /**
  * A compact macOS-style segmented control for one override flag: inherit
@@ -48,7 +49,7 @@ export function OverrideTriState({
         aria-hidden="true"
         className={cn(
           "pointer-events-none absolute inset-y-0.5 left-0.5 rounded-[6px] transition-[transform,background-color,box-shadow] duration-200 ease-out",
-          INDICATOR[value],
+          INDICATOR.get(value) ?? "",
         )}
         style={{
           width: "calc((100% - 0.5rem) / 3)",
@@ -65,11 +66,13 @@ export function OverrideTriState({
             aria-label={`${label} ${segment}`}
             title={segment === "inherit" ? "Inherit" : segment === "allow" ? "Allow" : "Deny"}
             disabled={disabled}
-            onClick={() => onChange(segment)}
+            onClick={() => {
+              onChange(segment);
+            }}
             className={cn(
               "relative z-10 flex h-6 items-center justify-center rounded-[6px] transition-colors",
               "focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent",
-              active ? ACTIVE_TEXT[segment] : "text-text-muted hover:text-text",
+              active ? (ACTIVE_TEXT.get(segment) ?? "") : "text-text-muted hover:text-text",
             )}
           >
             {segment === "inherit" ? (

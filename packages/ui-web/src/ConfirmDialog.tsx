@@ -17,16 +17,17 @@ export interface ConfirmDialogProps {
  * and a single action. Built on {@link Modal} so focus, Escape and the backdrop
  * behave the same as every other dialog in the app.
  */
-export function ConfirmDialog({
-  open,
-  onClose,
-  title,
-  description,
-  confirmLabel,
-  cancelLabel = "Cancel",
-  variant = "primary",
-  onConfirm,
-}: ConfirmDialogProps) {
+export function ConfirmDialog(props: ConfirmDialogProps) {
+  const {
+    open,
+    onClose,
+    title,
+    description,
+    confirmLabel,
+    cancelLabel = "Cancel",
+    variant = "primary",
+    onConfirm,
+  } = props;
   return (
     <Modal
       open={open}

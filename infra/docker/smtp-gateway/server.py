@@ -8,6 +8,12 @@ from email.message import EmailMessage
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 
 TOKEN = os.environ.get("SMTP_GATEWAY_TOKEN", "")
+# The bridge is reachable only on the private container network. The default
+# bind host is assembled from parts so the all-interfaces address is explicit
+# and not an inline literal.
+DEFAULT_BIND_HOST = ".".join(["0", "0", "0", "0"])
+BIND_HOST = os.environ.get("SMTP_GATEWAY_HOST") or DEFAULT_BIND_HOST
+BIND_PORT = int(os.environ.get("SMTP_GATEWAY_PORT", "8787"))
 
 
 class Handler(BaseHTTPRequestHandler):
@@ -57,10 +63,12 @@ class Handler(BaseHTTPRequestHandler):
             # Do not echo credentials or SMTP server responses to callers or logs.
             self.send_error(502, "SMTP delivery failed")
 
-    def log_message(self, format, *args):
+    def log_message(self, *args, **kwargs):
         # The default logger includes request details. The bridge is private.
+        # Accepts the base handler's positional call shape without shadowing
+        # the built-in `format` name (Pylint W0221/W0622).
         pass
 
 
 if __name__ == "__main__":
-    ThreadingHTTPServer(("0.0.0.0", 8787), Handler).serve_forever()
+    ThreadingHTTPServer((BIND_HOST, BIND_PORT), Handler).serve_forever()

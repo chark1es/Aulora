@@ -78,17 +78,20 @@ export function memorySearchStore(seed: readonly SearchDocument[] = []): SearchS
     documents.set(document.messageId, document);
   }
   return {
-    async readAll() {
-      return [...documents.values()];
+    readAll() {
+      return Promise.resolve([...documents.values()]);
     },
-    async put(document) {
+    put(document) {
       documents.set(document.messageId, document);
+      return Promise.resolve();
     },
-    async delete(messageId) {
+    delete(messageId) {
       documents.delete(messageId);
+      return Promise.resolve();
     },
-    async clear() {
+    clear() {
       documents.clear();
+      return Promise.resolve();
     },
   };
 }

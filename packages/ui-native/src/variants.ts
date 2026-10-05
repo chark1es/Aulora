@@ -4,7 +4,7 @@
  * React Native renderer.
  */
 
-import type { ColorToken, Palette } from "@aulora/tokens";
+import type { Palette } from "@aulora/tokens";
 
 export type ButtonVariant = "primary" | "secondary" | "ghost" | "danger";
 export type ButtonSize = "sm" | "md" | "lg";
@@ -12,31 +12,31 @@ export type InputSize = "md" | "lg";
 export type TextTone = "default" | "muted" | "accent" | "secondary" | "danger";
 export type TextSize = "xs" | "sm" | "base" | "md" | "lg";
 
-const BUTTON_VARIANTS: Record<ButtonVariant, string> = {
-  primary: "bg-accent",
-  secondary: "border border-border bg-surface-3",
-  ghost: "bg-transparent",
-  danger: "bg-danger",
-};
+const BUTTON_VARIANTS = new Map<ButtonVariant, string>([
+  ["primary", "bg-accent"],
+  ["secondary", "border border-border bg-surface-3"],
+  ["ghost", "bg-transparent"],
+  ["danger", "bg-danger"],
+]);
 
-const BUTTON_LABEL_CLASSES: Record<ButtonVariant, string> = {
-  primary: "text-on-accent",
-  secondary: "text-text",
-  ghost: "text-text-muted",
-  danger: "text-bg",
-};
+const BUTTON_LABEL_CLASSES = new Map<ButtonVariant, string>([
+  ["primary", "text-on-accent"],
+  ["secondary", "text-text"],
+  ["ghost", "text-text-muted"],
+  ["danger", "text-bg"],
+]);
 
-const BUTTON_SIZES: Record<ButtonSize, string> = {
-  sm: "min-h-12 px-3 py-2",
-  md: "min-h-12 px-4 py-2",
-  lg: "min-h-12 px-6",
-};
+const BUTTON_SIZES = new Map<ButtonSize, string>([
+  ["sm", "min-h-12 px-3 py-2"],
+  ["md", "min-h-12 px-4 py-2"],
+  ["lg", "min-h-12 px-6"],
+]);
 
-const ICON_SIZES: Record<ButtonSize, string> = {
-  sm: "h-12 w-12",
-  md: "h-12 w-12",
-  lg: "h-12 w-12",
-};
+const ICON_SIZES = new Map<ButtonSize, string>([
+  ["sm", "h-12 w-12"],
+  ["md", "h-12 w-12"],
+  ["lg", "h-12 w-12"],
+]);
 
 function disabledClass(variant: ButtonVariant): string {
   return variant === "primary" ? "bg-surface-3" : "opacity-50";
@@ -52,8 +52,8 @@ export function buttonClass(options: {
   const size = options.size ?? "md";
   return [
     "flex-row items-center justify-center gap-2 rounded-input active:opacity-90",
-    BUTTON_VARIANTS[variant],
-    BUTTON_SIZES[size],
+    BUTTON_VARIANTS.get(variant),
+    BUTTON_SIZES.get(size),
     options.disabled === true ? disabledClass(variant) : "",
     options.className ?? "",
   ]
@@ -66,7 +66,7 @@ export function buttonLabelClass(variant: ButtonVariant = "primary", disabled = 
   if (disabled && variant === "primary") {
     return "text-text-muted";
   }
-  return BUTTON_LABEL_CLASSES[variant];
+  return BUTTON_LABEL_CLASSES.get(variant) ?? "text-text";
 }
 
 export function iconButtonClass(options: {
@@ -79,8 +79,8 @@ export function iconButtonClass(options: {
   const size = options.size ?? "md";
   return [
     "items-center justify-center rounded-input active:opacity-90",
-    BUTTON_VARIANTS[variant],
-    ICON_SIZES[size],
+    BUTTON_VARIANTS.get(variant),
+    ICON_SIZES.get(size),
     options.disabled === true ? disabledClass(variant) : "",
     options.className ?? "",
   ]
@@ -113,12 +113,7 @@ export function buttonLabelText(children: unknown): string | null {
   return null;
 }
 
-const RIPPLE_TOKENS: Record<ButtonVariant, ColorToken> = {
-  primary: "on-accent",
-  secondary: "text",
-  ghost: "accent",
-  danger: "on-accent",
-};
+const RIPPLE_ALPHA = 0.16;
 
 function withAlpha(hex: string, alpha: number): string {
   const value = hex.startsWith("#") ? hex.slice(1) : hex;
@@ -133,24 +128,32 @@ function withAlpha(hex: string, alpha: number): string {
 
 /** Translucent Android ripple tint for a button, derived from the palette. */
 export function buttonRippleColor(palette: Palette, variant: ButtonVariant = "primary"): string {
-  return withAlpha(palette[RIPPLE_TOKENS[variant]], 0.16);
+  switch (variant) {
+    case "secondary":
+      return withAlpha(palette.text, RIPPLE_ALPHA);
+    case "ghost":
+      return withAlpha(palette.accent, RIPPLE_ALPHA);
+    case "primary":
+    case "danger":
+      return withAlpha(palette["on-accent"], RIPPLE_ALPHA);
+  }
 }
 
-const TONE_CLASSES: Record<TextTone, string> = {
-  default: "text-text",
-  muted: "text-text-muted",
-  accent: "text-accent",
-  secondary: "text-secondary",
-  danger: "text-danger",
-};
+const TONE_CLASSES = new Map<TextTone, string>([
+  ["default", "text-text"],
+  ["muted", "text-text-muted"],
+  ["accent", "text-accent"],
+  ["secondary", "text-secondary"],
+  ["danger", "text-danger"],
+]);
 
-const SIZE_CLASSES: Record<TextSize, string> = {
-  xs: "text-xs",
-  sm: "text-sm",
-  base: "text-base",
-  md: "text-md",
-  lg: "text-lg",
-};
+const SIZE_CLASSES = new Map<TextSize, string>([
+  ["xs", "text-xs"],
+  ["sm", "text-sm"],
+  ["base", "text-base"],
+  ["md", "text-md"],
+  ["lg", "text-lg"],
+]);
 
 export function textClass(options: {
   tone?: TextTone;
@@ -161,8 +164,8 @@ export function textClass(options: {
   const tone = options.tone ?? "default";
   const size = options.size ?? "base";
   return [
-    TONE_CLASSES[tone],
-    SIZE_CLASSES[size],
+    TONE_CLASSES.get(tone),
+    SIZE_CLASSES.get(size),
     options.mono ? "font-mono" : "",
     options.className ?? "",
   ]
@@ -173,10 +176,10 @@ export function textClass(options: {
 /**
  * Minimum heights keep inputs usable with touch and system font scaling.
  */
-const INPUT_SIZES: Record<InputSize, string> = {
-  md: "min-h-12 px-3 py-2 text-[17px]",
-  lg: "min-h-[52px] px-4 py-2.5 text-[17px] leading-6",
-};
+const INPUT_SIZES = new Map<InputSize, string>([
+  ["md", "min-h-12 px-3 py-2 text-[17px]"],
+  ["lg", "min-h-[52px] px-4 py-2.5 text-[17px] leading-6"],
+]);
 
 export function inputClass(
   options: { error?: boolean; size?: InputSize; className?: string } = {},
@@ -184,7 +187,7 @@ export function inputClass(
   const size = options.size ?? "md";
   return [
     "w-full rounded-input border bg-surface-3 text-text",
-    INPUT_SIZES[size],
+    INPUT_SIZES.get(size),
     options.error === true ? "border-danger" : "border-border",
     options.className ?? "",
   ]

@@ -229,11 +229,14 @@ export async function sealString(
   )}`;
 }
 
-export async function openString(
-  context: EncryptionContext,
-  sealed: string,
-  opts: { env?: Env } = {},
-): Promise<string> {
+interface SealedStringParts {
+  readonly keyVersion: string;
+  readonly iv: Bytes;
+  readonly ciphertext: Bytes;
+}
+
+/** Parses and validates the four dot-separated parts of a sealed string. */
+function parseSealedString(sealed: string): SealedStringParts {
   if (!isSealed(sealed)) {
     throw new SseError("not-sealed", "Value is not a server-side envelope");
   }
@@ -265,6 +268,15 @@ export async function openString(
   if (iv.length !== IV_BYTES) {
     throw new SseError("malformed", "Envelope carried an invalid IV length");
   }
+  return { keyVersion, iv, ciphertext };
+}
+
+export async function openString(
+  context: EncryptionContext,
+  sealed: string,
+  opts: { env?: Env } = {},
+): Promise<string> {
+  const { keyVersion, iv, ciphertext } = parseSealedString(sealed);
   const env = opts.env ?? process.env;
   const master = await resolveMasterKey(env, keyVersion);
   const dataKey = await deriveDataKey(master.bytes, context, keyVersion);

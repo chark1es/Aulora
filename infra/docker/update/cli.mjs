@@ -26,12 +26,12 @@ const envFile = resolve(dockerDir, ".env");
 
 const STATES = new Set(["idle", "applying", "failed", "current"]);
 
-export function readEnvFile(path) {
-  if (!existsSync(path)) {
-    return {};
+export function readEnvFile() {
+  if (!existsSync(envFile)) {
+    return new Map();
   }
-  const values = {};
-  for (const line of readFileSync(path, "utf8").split("\n")) {
+  const values = new Map();
+  for (const line of readFileSync(envFile, "utf8").split("\n")) {
     const trimmed = line.trim();
     if (trimmed === "" || trimmed.startsWith("#")) {
       continue;
@@ -48,17 +48,17 @@ export function readEnvFile(path) {
     ) {
       value = value.slice(1, -1);
     }
-    values[key] = value;
+    values.set(key, value);
   }
   return values;
 }
 
 function setting(env, key) {
-  const fromProcess = process.env[key];
+  const fromProcess = Object.getOwnPropertyDescriptor(process.env, key)?.value;
   if (fromProcess !== undefined && fromProcess.trim() !== "") {
     return fromProcess.trim();
   }
-  return env[key];
+  return env.get(key);
 }
 
 function arg(name) {
@@ -71,7 +71,7 @@ function arg(name) {
 }
 
 export async function checkWorkspace() {
-  const env = readEnvFile(envFile);
+  const env = readEnvFile();
   const channel = updateChannel(setting(env, "AULORA_UPDATE_CHANNEL"));
   const autoUpdate = autoUpdateEnabled(setting(env, "AULORA_AUTO_UPDATE"));
   const source = readDeclaredVersion(readFileSync(versionFile, "utf8"));

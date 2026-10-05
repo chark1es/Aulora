@@ -2,6 +2,7 @@ import type { IconName } from "@aulora/tokens";
 import { Icon } from "@aulora/ui-web";
 import { useWorkspaceUpdates } from "../../providers/WorkspaceUpdateProvider";
 import { AddonsSettings } from "./AddonsSettings";
+import type { Callback } from "./callbacks";
 import { InstanceAdminPanel } from "./instance/InstanceAdminPanel";
 import { SettingsSectionHeader } from "./SettingsSection";
 import { WorkspaceBranding } from "./WorkspaceBranding";
@@ -19,7 +20,7 @@ export interface SettingsHubProps {
   /** Instance settings are shown only to the workspace owner (instance admin). */
   readonly isInstanceAdmin?: boolean;
   readonly page?: SettingsPage | null;
-  readonly onNavigate?: (page: SettingsPage | null) => void;
+  readonly onNavigate?: Callback<[page: SettingsPage | null]>;
 }
 
 interface SettingsGroup {
@@ -99,7 +100,9 @@ export function SettingsHub({
           <button
             key={entry.id}
             type="button"
-            onClick={() => navigate({ kind: "settings", group: entry.id })}
+            onClick={() => {
+              navigate({ kind: "settings", group: entry.id });
+            }}
             style={{ animationDelay: `${index * 30}ms` }}
             className="group flex animate-slide-up items-center gap-3.5 rounded-[12px] border border-border bg-surface-2 p-3.5 text-left transition hover:border-text-muted/30 hover:bg-surface-3 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent"
           >

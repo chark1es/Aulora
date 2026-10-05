@@ -18,57 +18,83 @@ export interface CallControlsProps {
   readonly onLeave: () => void;
 }
 
-/**
- * The pinned in-call control bar: mic, deafen, camera, screen share, optional
- * picture-in-picture pin and leave.
- */
-export function CallControls({
+function controlIcon(name: Parameters<typeof Icon>[0]["name"], color: string) {
+  return <Icon name={name} size={20} color={color} />;
+}
+
+function CoreControls({
   muted,
   deafened,
-  video,
-  sharingScreen,
-  canSpeak = true,
-  canVideo,
-  canStream,
-  pipPinned = false,
+  canSpeak,
   onToggleMute,
   onToggleDeafen,
-  onToggleCamera,
-  onToggleScreen,
-  onTogglePin,
   onLeave,
-}: CallControlsProps) {
+}: {
+  readonly muted: boolean;
+  readonly deafened: boolean;
+  readonly canSpeak: boolean;
+  readonly onToggleMute: () => void;
+  readonly onToggleDeafen: () => void;
+  readonly onLeave: () => void;
+}) {
   const palette = usePalette();
-  const icon = (name: Parameters<typeof Icon>[0]["name"], color: string) => (
-    <Icon name={name} size={20} color={color} />
-  );
   return (
-    <View className="flex-row items-center justify-center gap-3 rounded-card border border-border bg-surface-2 px-4 py-3">
+    <>
       <IconButton
         label={muted ? "Unmute microphone" : "Mute microphone"}
         variant={muted ? "danger" : "secondary"}
         disabled={!canSpeak}
         onPress={onToggleMute}
       >
-        {icon(muted ? "mic-off" : "mic", muted ? palette["on-accent"] : palette.text)}
+        {controlIcon(muted ? "mic-off" : "mic", muted ? palette["on-accent"] : palette.text)}
       </IconButton>
       <IconButton
         label={deafened ? "Undeafen" : "Deafen"}
         variant={deafened ? "danger" : "secondary"}
         onPress={onToggleDeafen}
       >
-        {icon(
+        {controlIcon(
           deafened ? "headphones-off" : "headphones",
           deafened ? palette["on-accent"] : palette.text,
         )}
       </IconButton>
+      <IconButton label="Leave call" variant="danger" onPress={onLeave}>
+        {controlIcon("phone-off", palette["on-accent"])}
+      </IconButton>
+    </>
+  );
+}
+
+function MediaControls(props: {
+  readonly video: boolean;
+  readonly sharingScreen: boolean;
+  readonly pipPinned: boolean;
+  readonly canVideo: boolean;
+  readonly canStream: boolean;
+  readonly onToggleCamera: () => void;
+  readonly onToggleScreen: () => void;
+  readonly onTogglePin: (() => void) | undefined;
+}) {
+  const {
+    video,
+    sharingScreen,
+    pipPinned,
+    canVideo,
+    canStream,
+    onToggleCamera,
+    onToggleScreen,
+    onTogglePin,
+  } = props;
+  const palette = usePalette();
+  return (
+    <>
       {canVideo && (
         <IconButton
           label={video ? "Turn camera off" : "Turn camera on"}
           variant={video ? "primary" : "secondary"}
           onPress={onToggleCamera}
         >
-          {icon(video ? "video" : "video-off", video ? palette["on-accent"] : palette.text)}
+          {controlIcon(video ? "video" : "video-off", video ? palette["on-accent"] : palette.text)}
         </IconButton>
       )}
       {canStream && (
@@ -77,7 +103,7 @@ export function CallControls({
           variant={sharingScreen ? "primary" : "secondary"}
           onPress={onToggleScreen}
         >
-          {icon(
+          {controlIcon(
             sharingScreen ? "monitor-off" : "monitor",
             sharingScreen ? palette["on-accent"] : palette.text,
           )}
@@ -89,12 +115,54 @@ export function CallControls({
           variant={pipPinned ? "primary" : "secondary"}
           onPress={onTogglePin}
         >
-          {icon("pip", pipPinned ? palette["on-accent"] : palette.text)}
+          {controlIcon("pip", pipPinned ? palette["on-accent"] : palette.text)}
         </IconButton>
       )}
-      <IconButton label="Leave call" variant="danger" onPress={onLeave}>
-        {icon("phone-off", palette["on-accent"])}
-      </IconButton>
+    </>
+  );
+}
+
+/**
+ * The pinned in-call control bar: mic, deafen, camera, screen share, optional
+ * picture-in-picture pin and leave.
+ */
+export function CallControls(props: CallControlsProps) {
+  const {
+    muted,
+    deafened,
+    video,
+    sharingScreen,
+    canSpeak = true,
+    canVideo,
+    canStream,
+    pipPinned = false,
+    onToggleMute,
+    onToggleDeafen,
+    onToggleCamera,
+    onToggleScreen,
+    onTogglePin,
+    onLeave,
+  } = props;
+  return (
+    <View className="flex-row items-center justify-center gap-3 rounded-card border border-border bg-surface-2 px-4 py-3">
+      <CoreControls
+        muted={muted}
+        deafened={deafened}
+        canSpeak={canSpeak}
+        onToggleMute={onToggleMute}
+        onToggleDeafen={onToggleDeafen}
+        onLeave={onLeave}
+      />
+      <MediaControls
+        video={video}
+        sharingScreen={sharingScreen}
+        pipPinned={pipPinned}
+        canVideo={canVideo}
+        canStream={canStream}
+        onToggleCamera={onToggleCamera}
+        onToggleScreen={onToggleScreen}
+        onTogglePin={onTogglePin}
+      />
     </View>
   );
 }

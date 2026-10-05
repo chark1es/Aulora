@@ -183,18 +183,18 @@ export class ChatSession {
    * Opens a channel: subscribes to its message stream and remembers its
    * plaintext name. Safe to call repeatedly for the same channel.
    */
-  async openChannel(channel: ChannelSummary): Promise<void> {
+  openChannel(channel: ChannelSummary): Promise<void> {
     this.rememberName(channel.id, channel.name);
-    if (this.openChannels.has(channel.id)) {
-      return;
+    if (!this.openChannels.has(channel.id)) {
+      const state: OpenChannelState = { unsubscribers: [] };
+      this.openChannels.set(channel.id, state);
+      state.unsubscribers.push(
+        this.subscriptions.watchMessages(channel.id, (messages) => {
+          void this.receiveMessages(messages);
+        }),
+      );
     }
-    const state: OpenChannelState = { unsubscribers: [] };
-    this.openChannels.set(channel.id, state);
-    state.unsubscribers.push(
-      this.subscriptions.watchMessages(channel.id, (messages) => {
-        void this.receiveMessages(messages);
-      }),
-    );
+    return Promise.resolve();
   }
 
   /** Closes subscriptions and forgets channel state. */

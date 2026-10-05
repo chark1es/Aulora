@@ -24,104 +24,149 @@ export interface CallControlsProps {
   readonly compact?: boolean;
 }
 
+interface ControlSpec {
+  readonly key: string;
+  readonly label: string;
+  readonly active: boolean;
+  readonly tone: "neutral" | "accent" | "danger";
+  readonly icon: IconName;
+  readonly onClick: () => void;
+}
+
+function controlSpecs(input: {
+  readonly muted: boolean;
+  readonly deafened: boolean;
+  readonly video: boolean;
+  readonly sharingScreen: boolean;
+  readonly canSpeak: boolean;
+  readonly canVideo: boolean;
+  readonly canStream: boolean;
+  readonly onToggleMute: () => void;
+  readonly onToggleDeafen: () => void;
+  readonly onToggleCamera: () => void;
+  readonly onToggleScreen: () => void;
+  readonly onToggleView: (() => void) | undefined;
+  readonly viewExpanded: boolean | undefined;
+  readonly onPopOut: (() => void) | undefined;
+}): ControlSpec[] {
+  const specs: ControlSpec[] = [];
+  if (input.canSpeak) {
+    specs.push({
+      key: "mute",
+      label: input.muted ? "Unmute" : "Mute",
+      active: !input.muted,
+      tone: input.muted ? "danger" : "neutral",
+      icon: input.muted ? "mic-off" : "mic",
+      onClick: input.onToggleMute,
+    });
+    specs.push({
+      key: "deafen",
+      label: input.deafened ? "Undeafen" : "Deafen",
+      active: !input.deafened,
+      tone: input.deafened ? "danger" : "neutral",
+      icon: input.deafened ? "headphones-off" : "headphones",
+      onClick: input.onToggleDeafen,
+    });
+  }
+  if (input.canVideo) {
+    specs.push({
+      key: "camera",
+      label: input.video ? "Turn off camera" : "Turn on camera",
+      active: input.video,
+      tone: input.video ? "accent" : "neutral",
+      icon: input.video ? "video" : "video-off",
+      onClick: input.onToggleCamera,
+    });
+  }
+  if (input.canStream) {
+    specs.push({
+      key: "screen",
+      label: input.sharingScreen ? "Stop sharing" : "Share screen",
+      active: input.sharingScreen,
+      tone: input.sharingScreen ? "accent" : "neutral",
+      icon: input.sharingScreen ? "monitor-off" : "monitor",
+      onClick: input.onToggleScreen,
+    });
+  }
+  if (input.onToggleView !== undefined) {
+    specs.push({
+      key: "view",
+      label: input.viewExpanded === true ? "Minimize call" : "Expand call",
+      active: false,
+      tone: "neutral",
+      icon: input.viewExpanded === true ? "chevron-down" : "expand",
+      onClick: input.onToggleView,
+    });
+  }
+  if (input.onPopOut !== undefined) {
+    specs.push({
+      key: "popout",
+      label: "Pop out call",
+      active: false,
+      tone: "neutral",
+      icon: "pip",
+      onClick: input.onPopOut,
+    });
+  }
+  return specs;
+}
+
 /**
  * The in-call control bar. Colour is meaningful: a red-tinted control is
  * switched off (muted, deafened), accent means actively broadcasting (camera,
  * screen), and the leave button is the only solid danger surface.
  */
-export function CallControls({
-  muted,
-  deafened,
-  video,
-  sharingScreen,
-  canSpeak = true,
-  canVideo,
-  canStream,
-  onToggleMute,
-  onToggleDeafen,
-  onToggleCamera,
-  onToggleScreen,
-  onLeave,
-  onToggleView,
-  viewExpanded,
-  onPopOut,
-  compact = false,
-}: CallControlsProps) {
+export function CallControls(props: CallControlsProps) {
+  const {
+    muted,
+    deafened,
+    video,
+    sharingScreen,
+    canSpeak = true,
+    canVideo,
+    canStream,
+    onToggleMute,
+    onToggleDeafen,
+    onToggleCamera,
+    onToggleScreen,
+    onLeave,
+    onToggleView,
+    viewExpanded,
+    onPopOut,
+    compact = false,
+  } = props;
   const size = compact ? "h-9 w-9" : "h-11 w-11";
   const icon = compact ? 18 : 21;
+  const controls = controlSpecs({
+    muted,
+    deafened,
+    video,
+    sharingScreen,
+    canSpeak,
+    canVideo,
+    canStream,
+    onToggleMute,
+    onToggleDeafen,
+    onToggleCamera,
+    onToggleScreen,
+    onToggleView,
+    viewExpanded,
+    onPopOut,
+  });
   return (
     <div className={cn("flex items-center justify-center gap-1.5", compact ? "gap-1" : "gap-1.5")}>
-      {canSpeak && (
+      {controls.map((control) => (
         <CallButton
-          label={muted ? "Unmute" : "Mute"}
-          active={!muted}
-          tone={muted ? "danger" : "neutral"}
+          key={control.key}
+          label={control.label}
+          active={control.active}
+          tone={control.tone}
           size={size}
-          onClick={onToggleMute}
+          onClick={control.onClick}
         >
-          <Icon name={muted ? "mic-off" : "mic"} size={icon} />
+          <Icon name={control.icon} size={icon} />
         </CallButton>
-      )}
-
-      {canSpeak && (
-        <CallButton
-          label={deafened ? "Undeafen" : "Deafen"}
-          active={!deafened}
-          tone={deafened ? "danger" : "neutral"}
-          size={size}
-          onClick={onToggleDeafen}
-        >
-          <Icon name={deafened ? "headphones-off" : "headphones"} size={icon} />
-        </CallButton>
-      )}
-
-      {canVideo && (
-        <CallButton
-          label={video ? "Turn off camera" : "Turn on camera"}
-          active={video}
-          tone={video ? "accent" : "neutral"}
-          size={size}
-          onClick={onToggleCamera}
-        >
-          <Icon name={video ? "video" : "video-off"} size={icon} />
-        </CallButton>
-      )}
-
-      {canStream && (
-        <CallButton
-          label={sharingScreen ? "Stop sharing" : "Share screen"}
-          active={sharingScreen}
-          tone={sharingScreen ? "accent" : "neutral"}
-          size={size}
-          onClick={onToggleScreen}
-        >
-          <Icon name={sharingScreen ? "monitor-off" : "monitor"} size={icon} />
-        </CallButton>
-      )}
-
-      {onToggleView !== undefined && (
-        <CallButton
-          label={viewExpanded === true ? "Minimize call" : "Expand call"}
-          active={false}
-          tone="neutral"
-          size={size}
-          onClick={onToggleView}
-        >
-          <Icon name={viewExpanded === true ? "chevron-down" : "expand"} size={icon} />
-        </CallButton>
-      )}
-
-      {onPopOut !== undefined && (
-        <CallButton
-          label="Pop out call"
-          active={false}
-          tone="neutral"
-          size={size}
-          onClick={onPopOut}
-        >
-          <Icon name="pip" size={icon} />
-        </CallButton>
-      )}
+      ))}
 
       <CallButton label="Leave call" active tone="danger-solid" size={size} onClick={onLeave}>
         <Icon name="phone-hangup" size={icon} />

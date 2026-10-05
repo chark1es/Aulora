@@ -28,7 +28,7 @@ export interface ThreadsInboxProps {
   /** Display title per channel id, used for DMs (named after their members). */
   readonly titles?: ReadonlyMap<string, string>;
   readonly ownUserId: string;
-  readonly onOpen: (thread: ThreadInboxItem) => void;
+  readonly onOpen: (_thread: ThreadInboxItem) => void;
 }
 
 function replyLabel(count: number): string {
@@ -40,16 +40,17 @@ function replyLabel(count: number): string {
  * mentioned in, most recently active first. Selecting a row opens the thread
  * sheet over the chat.
  */
-export function ThreadsInbox({
-  threads,
-  loading = false,
-  channelNames,
-  memberNames,
-  memberColors,
-  titles,
-  ownUserId,
-  onOpen,
-}: ThreadsInboxProps) {
+export function ThreadsInbox(props: ThreadsInboxProps) {
+  const {
+    threads,
+    loading = false,
+    channelNames,
+    memberNames,
+    memberColors,
+    titles,
+    ownUserId,
+    onOpen,
+  } = props;
   const palette = usePalette();
   if (loading) {
     return (

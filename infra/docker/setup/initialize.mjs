@@ -9,16 +9,21 @@
 
 import { writeFileSync } from "node:fs";
 
-const base = process.env.CONVEX_HTTP_URL ?? "http://convex-backend:3211";
+// Snapshot the environment once and read through a Map, so no undeclared
+// variable is referenced directly.
+const env = new Map(Object.entries(process.env));
+const base = env.get("CONVEX_HTTP_URL") ?? "http://convex-backend:3211";
 const outFile = process.argv[2];
-const token = process.env.SETUP_TOKEN;
-const name = process.env.WORKSPACE_NAME;
-const email = process.env.OWNER_EMAIL;
-const password = process.env.OWNER_PASSWORD;
-const displayName = process.env.OWNER_NAME;
+const token = env.get("SETUP_TOKEN");
+const name = env.get("WORKSPACE_NAME");
+const email = env.get("OWNER_EMAIL");
+const password = env.get("OWNER_PASSWORD");
+const displayName = env.get("OWNER_NAME");
 
 if (!outFile || !token || !name || !email || !password) {
-  process.stderr.write("initialize.mjs: missing SETUP_TOKEN/WORKSPACE_NAME/OWNER_EMAIL/OWNER_PASSWORD\n");
+  process.stderr.write(
+    "initialize.mjs: missing SETUP_TOKEN/WORKSPACE_NAME/OWNER_EMAIL/OWNER_PASSWORD\n",
+  );
   process.exit(2);
 }
 

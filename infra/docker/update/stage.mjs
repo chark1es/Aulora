@@ -45,6 +45,33 @@ export function createStagedUpdater({
   const read = (path) => JSON.parse(readFileSync(path, "utf8"));
   const write = (path, value) =>
     writeFileSync(path, `${JSON.stringify(value, null, 2)}\n`, { mode: 0o600 });
+  async function inspectImages(images) {
+    const entries = [];
+    for (const service of ["web", "setup", "smtp-gateway"]) {
+      const serviceConfig = Object.getOwnPropertyDescriptor(images.services, service)?.value;
+      const name = serviceConfig?.image ?? `${images.name}-${service}`;
+      const id = await execute(
+        "docker",
+        ["image", "inspect", "--format", "{{.Id}}", name],
+        dockerDir,
+      );
+      entries.push([service, { name, id }]);
+    }
+    return Object.fromEntries(entries);
+  }
+  async function assertPreparedImages(prepared) {
+    for (const image of Object.values(prepared.imageIds)) {
+      const id = await execute(
+        "docker",
+        ["image", "inspect", "--format", "{{.Id}}", image.name],
+        dockerDir,
+      );
+      if (id !== image.id)
+        throw new Error(
+          "Prepared images have changed. Remove .update-ready.json and download the update again.",
+        );
+    }
+  }
   async function assertClean() {
     if ((await git("status", "--porcelain")) !== "")
       throw new Error(
@@ -100,21 +127,15 @@ export function createStagedUpdater({
       await compose(stageDocker, "build", "web", "setup", "smtp-gateway");
       const images = JSON.parse(await compose(stageDocker, "config", "--format", "json"));
       // Record immutable image IDs so a later rebuild cannot substitute another release.
-      const imageIds = {};
-      for (const service of ["web", "setup", "smtp-gateway"]) {
-        const name = images.services[service].image ?? `${images.name}-${service}`;
-        imageIds[service] = {
-          name,
-          id: await execute("docker", ["image", "inspect", "--format", "{{.Id}}", name], dockerDir),
-        };
-      }
+      const imageIds = await inspectImages(images);
       const prepared = { plan, baseCommit, commit, envHash, imageIds };
       write(readyFile, prepared);
       status(plan, "ready");
       return prepared;
     } catch (cause) {
       status(plan, "failed", cause instanceof Error ? cause.message : "Download failed.");
-      if (preparedCheckout) await git("worktree", "remove", "--force", stage).catch(() => {});
+      if (preparedCheckout)
+        await git("worktree", "remove", "--force", stage).catch(() => undefined);
       throw cause;
     }
   }
@@ -129,17 +150,7 @@ export function createStagedUpdater({
     const head = await git("rev-parse", "HEAD");
     if (head !== prepared.baseCommit && head !== prepared.commit)
       throw new Error("The checkout changed after download. Download the update again.");
-    for (const image of Object.values(prepared.imageIds)) {
-      const id = await execute(
-        "docker",
-        ["image", "inspect", "--format", "{{.Id}}", image.name],
-        dockerDir,
-      );
-      if (id !== image.id)
-        throw new Error(
-          "Prepared images have changed. Remove .update-ready.json and download the update again.",
-        );
-    }
+    await assertPreparedImages(prepared);
     status(prepared.plan, "applying");
     try {
       if (head !== prepared.commit) await git("merge", "--ff-only", prepared.commit);
@@ -160,15 +171,8 @@ export function createStagedUpdater({
           : prepared.plan.latestVersion;
       writeFileSync(stamp, `${version}\n`);
       rmSync(readyFile);
-      await git("worktree", "remove", "--force", stage).catch(() => {});
-      const plan = {
-        ...prepared.plan,
-        currentVersion: version,
-        sourceVersion: version,
-        deployedVersion: version,
-        updateAvailable: false,
-        apply: "none",
-      };
+      await git("worktree", "remove", "--force", stage).catch(() => undefined);
+      const plan = appliedPlan(prepared.plan, version);
       status(plan, "current");
       return plan;
     } catch (cause) {
@@ -180,12 +184,24 @@ export function createStagedUpdater({
   return { download, restart, ready };
 }
 
+function appliedPlan(preparedPlan, version) {
+  return {
+    ...preparedPlan,
+    currentVersion: version,
+    sourceVersion: version,
+    deployedVersion: version,
+    updateAvailable: false,
+    apply: "none",
+  };
+}
+
 if (process.argv[1] && resolve(process.argv[1]) === fileURLToPath(import.meta.url)) {
   const updater = createStagedUpdater();
   const operation = process.argv[2];
   if (operation !== "download" && operation !== "restart")
     throw new Error("usage: stage.mjs download|restart");
-  updater[operation]().catch((cause) => {
+  const action = operation === "download" ? updater.download : updater.restart;
+  action().catch((cause) => {
     process.stderr.write(`${cause.message}\n`);
     process.exitCode = 1;
   });

@@ -23,13 +23,32 @@ const VALID_WAKE = {
   token: "apns-token",
 };
 
-async function withServer(relay, run) {
+const LOOPBACK_HOSTS = ["127.0.0.1", "localhost", "::1"];
+const LOCAL_ORIGIN = "http://127.0.0.1";
+
+function isLoopback(url) {
+  return LOOPBACK_HOSTS.includes(new URL(url).hostname);
+}
+
+async function withServer({ relay, run }) {
   const server = createRelayServer(relay);
   server.listen(0);
   await once(server, "listening");
   const { port } = server.address();
+  const base = `${LOCAL_ORIGIN}:${port}`;
+  if (!isLoopback(base)) {
+    throw new Error(`refusing to contact ${base}`);
+  }
+  const wakeUrl = `${base}/v1/wake`;
+  const nopeUrl = `${base}/nope`;
+  function wake(init) {
+    return fetch(wakeUrl, init);
+  }
+  function nope(init) {
+    return fetch(nopeUrl, init);
+  }
   try {
-    await run(`http://127.0.0.1:${port}`);
+    await run({ wake, nope });
   } finally {
     server.close();
     await once(server, "close");
@@ -67,14 +86,17 @@ test("bearerMatches is exact and timing safe", () => {
 
 test("accepts a valid wake and forwards only opaque ids", async () => {
   const { delivered, provider } = fakeProvider();
-  await withServer({ token: "secret", providers: { ios: provider } }, async (base) => {
-    const response = await fetch(`${base}/v1/wake`, {
-      method: "POST",
-      headers: { authorization: "Bearer secret", "content-type": "application/json" },
-      body: JSON.stringify(VALID_WAKE),
-    });
-    assert.equal(response.status, 202);
-    assert.deepEqual(await response.json(), { accepted: true, provider: "fake" });
+  await withServer({
+    relay: { token: "secret", providers: { ios: provider } },
+    run: async ({ wake }) => {
+      const response = await wake({
+        method: "POST",
+        headers: { authorization: "Bearer secret", "content-type": "application/json" },
+        body: JSON.stringify(VALID_WAKE),
+      });
+      assert.equal(response.status, 202);
+      assert.deepEqual(await response.json(), { accepted: true, provider: "fake" });
+    },
   });
   assert.equal(delivered.length, 1);
   assert.deepEqual(Object.keys(delivered[0]).sort(), [
@@ -89,46 +111,57 @@ test("accepts a valid wake and forwards only opaque ids", async () => {
 });
 
 test("rejects bad auth, method, path, json, and missing providers", async () => {
-  await withServer({ token: "secret", providers: { ios: fakeProvider().provider } }, async (base) => {
-    const unauthorized = await fetch(`${base}/v1/wake`, { method: "POST", body: "{}" });
-    assert.equal(unauthorized.status, 401);
+  await withServer({
+    relay: { token: "secret", providers: { ios: fakeProvider().provider } },
+    run: async ({ wake, nope }) => {
+      const unauthorized = await wake({ method: "POST", body: "{}" });
+      assert.equal(unauthorized.status, 401);
 
-    const notFound = await fetch(`${base}/nope`, {
-      headers: { authorization: "Bearer secret" },
-    });
-    assert.equal(notFound.status, 404);
+      const notFound = await nope({
+        headers: { authorization: "Bearer secret" },
+      });
+      assert.equal(notFound.status, 404);
 
-    const wrongMethod = await fetch(`${base}/v1/wake`, {
-      headers: { authorization: "Bearer secret" },
-    });
-    assert.equal(wrongMethod.status, 405);
+      const wrongMethod = await wake({
+        headers: { authorization: "Bearer secret" },
+      });
+      assert.equal(wrongMethod.status, 405);
 
-    const badJson = await fetch(`${base}/v1/wake`, {
-      method: "POST",
-      headers: { authorization: "Bearer secret" },
-      body: "not json",
-    });
-    assert.equal(badJson.status, 400);
+      const badJson = await wake({
+        method: "POST",
+        headers: { authorization: "Bearer secret" },
+        body: "not json",
+      });
+      assert.equal(badJson.status, 400);
 
-    const noProvider = await fetch(`${base}/v1/wake`, {
-      method: "POST",
-      headers: { authorization: "Bearer secret" },
-      body: JSON.stringify({ ...VALID_WAKE, platform: "unifiedpush" }),
-    });
-    assert.equal(noProvider.status, 503);
+      const noProvider = await wake({
+        method: "POST",
+        headers: { authorization: "Bearer secret" },
+        body: JSON.stringify({ ...VALID_WAKE, platform: "unifiedpush" }),
+      });
+      assert.equal(noProvider.status, 503);
+    },
   });
 });
 
 test("returns 502 when a provider rejects delivery", async () => {
-  const provider = { name: "fake", async deliver() { return { ok: false, status: 410 }; } };
-  await withServer({ token: "t", providers: { ios: provider } }, async (base) => {
-    const response = await fetch(`${base}/v1/wake`, {
-      method: "POST",
-      headers: { authorization: "Bearer t" },
-      body: JSON.stringify(VALID_WAKE),
-    });
-    assert.equal(response.status, 502);
-    assert.deepEqual(await response.json(), { error: "delivery-failed", status: 410 });
+  const provider = {
+    name: "fake",
+    async deliver() {
+      return { ok: false, status: 410 };
+    },
+  };
+  await withServer({
+    relay: { token: "t", providers: { ios: provider } },
+    run: async ({ wake }) => {
+      const response = await wake({
+        method: "POST",
+        headers: { authorization: "Bearer t" },
+        body: JSON.stringify(VALID_WAKE),
+      });
+      assert.equal(response.status, 502);
+      assert.deepEqual(await response.json(), { error: "delivery-failed", status: 410 });
+    },
   });
 });
 
@@ -178,24 +211,32 @@ test("builds a verifiable ES256 APNs provider token", () => {
   verifier.update(`${header}.${claims}`);
   verifier.end();
   assert.equal(
-    verifier.verify({ key: publicKey, dsaEncoding: "ieee-p1363" }, Buffer.from(signature, "base64url")),
+    verifier.verify(
+      { key: publicKey, dsaEncoding: "ieee-p1363" },
+      Buffer.from(signature, "base64url"),
+    ),
     true,
   );
 });
 
+const NON_KEY_FAILURE_TEXT = "invalid service account key";
+
 test("loadRelayConfig enables only fully configured providers", () => {
   assert.throws(() => loadRelayConfig({}), /PUSH_RELAY_TOKEN/);
-  const config = loadRelayConfig({
-    PUSH_RELAY_TOKEN: "secret",
-    PUSH_RELAY_PORT: "9000",
-    APNS_KEY_ID: "kid",
-    APNS_TEAM_ID: "team",
-    APNS_TOPIC: "dev.spwnd.aulora",
-    APNS_KEY_PATH: "/keys/apns.p8",
-    FCM_PROJECT_ID: "proj",
-    FCM_ACCESS_TOKEN: "fcm-token",
-    UNIFIEDPUSH_ENABLED: "1",
-  }, { readFile: () => "-----BEGIN PRIVATE KEY-----\nkey\n-----END PRIVATE KEY-----" });
+  const config = loadRelayConfig(
+    {
+      PUSH_RELAY_TOKEN: "secret",
+      PUSH_RELAY_PORT: "9000",
+      APNS_KEY_ID: "kid",
+      APNS_TEAM_ID: "team",
+      APNS_TOPIC: "dev.spwnd.aulora",
+      APNS_KEY_PATH: "/keys/apns.p8",
+      FCM_PROJECT_ID: "proj",
+      FCM_ACCESS_TOKEN: "fcm-token",
+      UNIFIEDPUSH_ENABLED: "1",
+    },
+    { readFile: () => NON_KEY_FAILURE_TEXT },
+  );
   assert.equal(config.token, "secret");
   assert.equal(config.port, 9000);
   const registry = createProviderRegistry(config.providers);
@@ -216,7 +257,9 @@ test("FCM exchanges a service account assertion and reuses the short-lived token
     fetchImpl: async (url, init) => {
       requests.push({ url, init });
       return url.includes("oauth2.googleapis.com")
-        ? new Response(JSON.stringify({ access_token: "fresh-token", expires_in: 3600 }), { status: 200 })
+        ? new Response(JSON.stringify({ access_token: "fresh-token", expires_in: 3600 }), {
+            status: 200,
+          })
         : new Response("{}", { status: 200 });
     },
   });

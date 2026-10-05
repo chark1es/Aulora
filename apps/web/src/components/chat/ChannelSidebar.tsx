@@ -1,12 +1,19 @@
 import { Avatar } from "@aulora/avatars";
 import type { ChannelView } from "@aulora/core";
 import { activityLabel, badgeCount, dmPartnerId } from "@aulora/core";
-import { ConfirmDialog, type ContextMenuItem, cn, Icon, useContextMenu } from "@aulora/ui-web";
+import { ConfirmDialog, cn, Icon, useContextMenu } from "@aulora/ui-web";
 import { Fragment, type ReactNode, useEffect, useMemo, useRef, useState } from "react";
 import type { CategoryView } from "../../lib/workspace-admin";
 import { VoiceChannelRow } from "../voice/VoiceChannelRow";
 import { ActiveBar } from "./ActiveBar";
-import { GroupAvatar, PRESENCE_LABEL, PresenceAvatar, type PresenceStatus } from "./PresenceAvatar";
+import { GroupAvatar, PresenceAvatar, type PresenceStatus, presenceLabel } from "./PresenceAvatar";
+import {
+  type CategoryActions,
+  type ChannelActions,
+  categoryMenuItems,
+  channelMenuItems,
+} from "./sidebar-menus";
+import { useChannelDrag } from "./use-channel-drag";
 
 export interface ChannelUnread {
   readonly unread: boolean;
@@ -69,7 +76,7 @@ export interface ChannelSidebarProps {
   readonly onSetCustomStatus?: (text: string) => void;
   /** Reorder channels via drag and drop; absent disables the feature. */
   readonly onReorderChannels?: (
-    moves: readonly {
+    _moves: readonly {
       readonly channelId: string;
       readonly categoryId: string | null;
       readonly position: number;
@@ -79,27 +86,11 @@ export interface ChannelSidebarProps {
   readonly canReorderChannels?: boolean;
   readonly onSignOut: () => void;
   /** Channel context-menu actions; absent entries are hidden. */
-  readonly channelActions?: {
-    readonly open?: (channel: ChannelView) => void;
-    readonly invite?: (channel: ChannelView) => void;
-    readonly rename?: (channel: ChannelView) => void;
-    readonly edit?: (channel: ChannelView) => void;
-    readonly markRead?: (channel: ChannelView) => void;
-    readonly archive?: (channel: ChannelView) => void;
-    readonly copyLink?: (channel: ChannelView) => void;
-    readonly hide?: (channel: ChannelView) => void;
-    readonly unhide?: (channel: ChannelView) => void;
-    readonly mute?: (channel: ChannelView) => void;
-    readonly unmute?: (channel: ChannelView) => void;
-  };
+  readonly channelActions?: ChannelActions;
   /** Resolves a member's display name for voice-channel participant lists. */
   readonly memberNameOf?: (userId: string) => string;
   /** Category context-menu actions; absent entries are hidden. */
-  readonly categoryActions?: {
-    readonly rename?: (category: CategoryView) => void;
-    readonly delete?: (category: CategoryView) => void;
-    readonly createChannel?: (category: CategoryView) => void;
-  };
+  readonly categoryActions?: CategoryActions;
 }
 
 const COLLAPSED_KEY = "aulora.sidebar.collapsed.v1";
@@ -122,20 +113,43 @@ function sortByPosition(channels: readonly ChannelView[]): ChannelView[] {
     .map((entry) => entry.channel);
 }
 
-/** The rendered group key for a channel: its category id, or `channels`/`dms`. */
-function groupKeyOf(channel: ChannelView, known: ReadonlySet<string>): string {
-  if (channel.kind === "dm" || channel.kind === "group_dm") {
-    return "dms";
+/** Builds the sidebar's channel groups: uncategorised "Channels" then each category. */
+function buildChannelGroups(
+  channels: readonly ChannelView[],
+  categories: readonly CategoryView[],
+): ChannelGroup[] {
+  const chat = channels.filter(
+    (channel) =>
+      (channel.kind === "text" || channel.kind === "announcement" || channel.kind === "voice") &&
+      !channel.archived &&
+      channel.hidden !== true,
+  );
+  const known = new Set(categories.map((category) => category.id));
+  const sorted = [...categories].sort((a, b) => a.position - b.position);
+  const result: ChannelGroup[] = [
+    {
+      key: "channels",
+      name: "Channels",
+      channels: sortByPosition(
+        chat.filter((c) => c.categoryId === null || !known.has(c.categoryId)),
+      ),
+    },
+  ];
+  for (const category of sorted) {
+    result.push({
+      key: category.id,
+      name: category.name,
+      channels: sortByPosition(chat.filter((c) => c.categoryId === category.id)),
+      category,
+    });
   }
-  return channel.categoryId !== null && known.has(channel.categoryId)
-    ? channel.categoryId
-    : "channels";
+  return result;
 }
 
 function readCollapsed(): Set<string> {
   try {
-    const raw = globalThis.localStorage?.getItem(COLLAPSED_KEY);
-    const parsed: unknown = raw === null || raw === undefined ? [] : JSON.parse(raw);
+    const raw = globalThis.localStorage.getItem(COLLAPSED_KEY);
+    const parsed: unknown = raw === null ? [] : JSON.parse(raw);
     return new Set(
       Array.isArray(parsed) ? parsed.filter((v): v is string => typeof v === "string") : [],
     );
@@ -162,19 +176,16 @@ export function ChannelSidebar(props: ChannelSidebarProps) {
   } = props;
   const [collapsed, setCollapsed] = useState<Set<string>>(readCollapsed);
   const openMenu = useContextMenu();
-  const [dragChannelId, setDragChannelId] = useState<string | null>(null);
-  const [dropTarget, setDropTarget] = useState<{ groupKey: string; index: number } | null>(null);
-  const draggingRef = useRef(false);
 
   useEffect(() => {
     try {
-      globalThis.localStorage?.setItem(COLLAPSED_KEY, JSON.stringify([...collapsed]));
+      globalThis.localStorage.setItem(COLLAPSED_KEY, JSON.stringify([...collapsed]));
     } catch {
       // Collapse state is a nicety; ignore storage failures.
     }
   }, [collapsed]);
 
-  const toggle = (key: string) =>
+  const toggle = (key: string) => {
     setCollapsed((current) => {
       const next = new Set(current);
       if (next.has(key)) {
@@ -184,35 +195,9 @@ export function ChannelSidebar(props: ChannelSidebarProps) {
       }
       return next;
     });
+  };
 
-  const groups = useMemo(() => {
-    const chat = channels.filter(
-      (channel) =>
-        (channel.kind === "text" || channel.kind === "announcement" || channel.kind === "voice") &&
-        !channel.archived &&
-        channel.hidden !== true,
-    );
-    const known = new Set(categories.map((category) => category.id));
-    const sorted = [...categories].sort((a, b) => a.position - b.position);
-    const result: ChannelGroup[] = [
-      {
-        key: "channels",
-        name: "Channels",
-        channels: sortByPosition(
-          chat.filter((c) => c.categoryId === null || !known.has(c.categoryId)),
-        ),
-      },
-    ];
-    for (const category of sorted) {
-      result.push({
-        key: category.id,
-        name: category.name,
-        channels: sortByPosition(chat.filter((c) => c.categoryId === category.id)),
-        category,
-      });
-    }
-    return result;
-  }, [channels, categories]);
+  const groups = useMemo(() => buildChannelGroups(channels, categories), [channels, categories]);
 
   const knownCategoryIds = useMemo(
     () => new Set(categories.map((category) => category.id)),
@@ -221,125 +206,23 @@ export function ChannelSidebar(props: ChannelSidebarProps) {
 
   const canReorder = props.canReorderChannels === true && props.onReorderChannels !== undefined;
 
-  const clearDrag = () => {
-    setDragChannelId(null);
-    setDropTarget(null);
-  };
-
-  const startDrag = (channelId: string) => {
-    draggingRef.current = true;
-    setDragChannelId(channelId);
-  };
-
-  const endDrag = () => {
-    clearDrag();
-    // Let any trailing click from the drag settle before re-enabling navigation.
-    window.setTimeout(() => {
-      draggingRef.current = false;
-    }, 0);
-  };
-
-  const selectChannel = (channelId: string) => {
-    if (draggingRef.current) {
-      return;
-    }
-    onSelect(channelId);
-  };
-
-  // The insertion index in a group's rendered list: the row whose midpoint the
-  // pointer is above, or the list length when it is past every row.
-  const dragOverList = (event: React.DragEvent, groupKey: string) => {
-    if (!canReorder || dragChannelId === null) {
-      return;
-    }
-    event.preventDefault();
-    if (event.dataTransfer !== null) {
-      event.dataTransfer.dropEffect = "move";
-    }
-    const rows = [
-      ...(event.currentTarget as HTMLElement).querySelectorAll<HTMLElement>("[data-drag-index]"),
-    ];
-    let index = rows.length;
-    for (let i = 0; i < rows.length; i++) {
-      const row = rows[i] as HTMLElement;
-      const rect = row.getBoundingClientRect();
-      if (event.clientY < rect.top + rect.height / 2) {
-        index = i;
-        break;
-      }
-    }
-    setDropTarget((current) =>
-      current !== null && current.groupKey === groupKey && current.index === index
-        ? current
-        : { groupKey, index },
-    );
-  };
-
-  const movesForGroup = (groupKey: string, ordered: readonly ChannelView[]) => {
-    const categoryId = groupKey === "channels" ? null : groupKey;
-    return ordered.map((channel, index) => ({
-      channelId: channel.id,
-      categoryId,
-      position: index,
-    }));
-  };
-
-  const dropOnList = (groupKey: string) => {
-    const dragId = dragChannelId;
-    const drop = dropTarget;
-    clearDrag();
-    const reorder = props.onReorderChannels;
-    if (dragId === null || drop === null || reorder === undefined) {
-      return;
-    }
-    const targetGroup = groups.find((group) => group.key === groupKey);
-    const dragged = channels.find((channel) => channel.id === dragId);
-    if (targetGroup === undefined || dragged === undefined) {
-      return;
-    }
-
-    const rendered = targetGroup.channels;
-    const sourceIndex = rendered.findIndex((channel) => channel.id === dragId);
-    let reducedIndex = drop.index;
-    if (sourceIndex !== -1 && sourceIndex < drop.index) {
-      reducedIndex -= 1;
-    }
-    const targetList = rendered.filter((channel) => channel.id !== dragId);
-    targetList.splice(
-      Math.max(0, Math.min(reducedIndex, targetList.length)),
-      0,
-      dragged as ChannelView,
-    );
-
-    const sourceKey = groupKeyOf(dragged, knownCategoryIds);
-    if (sourceKey === targetGroup.key) {
-      const unchanged = targetList.every((channel, index) => channel.id === rendered[index]?.id);
-      if (unchanged) {
-        return;
-      }
-      reorder(movesForGroup(targetGroup.key, targetList));
-      return;
-    }
-
-    // Cross-category: re-index the source group so its remaining order sticks.
-    const sourceGroup = groups.find((group) => group.key === sourceKey);
-    const sourceList =
-      sourceGroup === undefined
-        ? []
-        : sourceGroup.channels.filter((channel) => channel.id !== dragId);
-    reorder([
-      ...movesForGroup(targetGroup.key, targetList),
-      ...movesForGroup(sourceKey, sourceList),
-    ]);
-  };
-
-  const dragLeaveList = (event: React.DragEvent, groupKey: string) => {
-    const next = event.relatedTarget as Node | null;
-    if (next !== null && (event.currentTarget as HTMLElement).contains(next)) {
-      return;
-    }
-    setDropTarget((current) => (current?.groupKey === groupKey ? null : current));
-  };
+  const {
+    dragChannelId,
+    dropTarget,
+    selectChannel,
+    startDrag,
+    endDrag,
+    dragOverList,
+    dropOnList,
+    dragLeaveList,
+  } = useChannelDrag({
+    channels,
+    groups,
+    knownCategoryIds,
+    canReorder,
+    onSelect,
+    onReorderChannels: props.onReorderChannels,
+  });
 
   const hiddenChannels = useMemo(
     () => channels.filter((channel) => channel.hidden === true),
@@ -361,135 +244,11 @@ export function ChannelSidebar(props: ChannelSidebarProps) {
     [channels, unreadByChannel],
   );
 
-  const channelMenu = (channel: ChannelView, active: boolean) => {
-    const actions = props.channelActions;
-    const items: ContextMenuItem[] = [];
-    if (actions?.open !== undefined) {
-      items.push({
-        id: "open",
-        label: "Open channel",
-        icon: <Icon name="message" size={14} />,
-        onSelect: () => actions.open?.(channel),
-      });
-    }
-    if (actions?.invite !== undefined) {
-      items.push({
-        id: "invite",
-        label: "Add people…",
-        icon: <Icon name="user-plus" size={14} />,
-        onSelect: () => actions.invite?.(channel),
-      });
-    }
-    if (actions?.rename !== undefined) {
-      items.push({
-        id: "rename",
-        label: "Rename channel…",
-        icon: <Icon name="pencil" size={14} />,
-        onSelect: () => actions.rename?.(channel),
-      });
-    }
-    if (actions?.edit !== undefined) {
-      items.push({
-        id: "edit",
-        label: "Edit channel…",
-        icon: <Icon name="pencil" size={14} />,
-        onSelect: () => actions.edit?.(channel),
-      });
-    }
-    if (actions?.markRead !== undefined && !active) {
-      items.push({
-        id: "markRead",
-        label: "Mark as read",
-        icon: <Icon name="check" size={14} />,
-        onSelect: () => actions.markRead?.(channel),
-      });
-    }
-    if (actions?.copyLink !== undefined) {
-      items.push({
-        id: "copyLink",
-        label: "Copy link",
-        icon: <Icon name="file" size={14} />,
-        separatorBefore: items.length > 0,
-        onSelect: () => actions.copyLink?.(channel),
-      });
-    }
-    if (actions?.mute !== undefined && channel.muted !== true) {
-      items.push({
-        id: "mute",
-        label: "Mute channel",
-        icon: <Icon name="bell-off" size={14} />,
-        separatorBefore: items.length > 0,
-        onSelect: () => actions.mute?.(channel),
-      });
-    }
-    if (actions?.unmute !== undefined && channel.muted === true) {
-      items.push({
-        id: "unmute",
-        label: "Unmute channel",
-        icon: <Icon name="bell" size={14} />,
-        separatorBefore: items.length > 0,
-        onSelect: () => actions.unmute?.(channel),
-      });
-    }
-    if (actions?.hide !== undefined) {
-      items.push({
-        id: "hide",
-        label: "Hide channel",
-        icon: <Icon name="eye-off" size={14} />,
-        onSelect: () => actions.hide?.(channel),
-      });
-    }
-    if (actions?.unhide !== undefined && channel.hidden === true) {
-      items.push({
-        id: "unhide",
-        label: "Unhide channel",
-        icon: <Icon name="eye" size={14} />,
-        onSelect: () => actions.unhide?.(channel),
-      });
-    }
-    if (actions?.archive !== undefined) {
-      items.push({
-        id: "archive",
-        label: "Archive channel",
-        icon: <Icon name="trash" size={14} />,
-        separatorBefore: items.length > 0,
-        onSelect: () => actions.archive?.(channel),
-      });
-    }
-    return items;
-  };
+  const channelMenu = (channel: ChannelView, active: boolean) =>
+    channelMenuItems(channel, active, props.channelActions);
 
-  const categoryMenu = (category: CategoryView): ContextMenuItem[] => {
-    const actions = props.categoryActions;
-    const items: ContextMenuItem[] = [];
-    if (actions?.rename !== undefined) {
-      items.push({
-        id: "rename",
-        label: "Rename category…",
-        icon: <Icon name="pencil" size={14} />,
-        onSelect: () => actions.rename?.(category),
-      });
-    }
-    if (actions?.createChannel !== undefined) {
-      items.push({
-        id: "createChannel",
-        label: "Create channel here…",
-        icon: <Icon name="plus" size={14} />,
-        onSelect: () => actions.createChannel?.(category),
-      });
-    }
-    if (actions?.delete !== undefined) {
-      items.push({
-        id: "delete",
-        label: "Delete category",
-        icon: <Icon name="trash" size={14} />,
-        danger: true,
-        separatorBefore: items.length > 0,
-        onSelect: () => actions.delete?.(category),
-      });
-    }
-    return items;
-  };
+  const categoryMenu = (category: CategoryView) =>
+    categoryMenuItems(category, props.categoryActions);
 
   return (
     <aside
@@ -607,7 +366,9 @@ export function ChannelSidebar(props: ChannelSidebarProps) {
               <SectionHeader
                 title={group.name}
                 collapsed={collapsed.has(group.key)}
-                onToggle={() => toggle(group.key)}
+                onToggle={() => {
+                  toggle(group.key);
+                }}
                 {...(category !== undefined ? { testId: `category-header-${category.id}` } : {})}
                 {...(category !== undefined
                   ? {
@@ -642,8 +403,12 @@ export function ChannelSidebar(props: ChannelSidebarProps) {
                   className="flex flex-col gap-px"
                   {...(canReorder
                     ? {
-                        onDragOver: (event: React.DragEvent) => dragOverList(event, group.key),
-                        onDragLeave: (event: React.DragEvent) => dragLeaveList(event, group.key),
+                        onDragOver: (event: React.DragEvent) => {
+                          dragOverList(event, group.key);
+                        },
+                        onDragLeave: (event: React.DragEvent) => {
+                          dragLeaveList(event, group.key);
+                        },
                         onDrop: (event: React.DragEvent) => {
                           event.preventDefault();
                           dropOnList(group.key);
@@ -683,12 +448,16 @@ export function ChannelSidebar(props: ChannelSidebarProps) {
                             active={channel.id === activeChannelId}
                             unread={unreadByChannel.get(channel.id)}
                             onSelect={selectChannel}
-                            {...(canReorder ? { dragIndex: index } : {})}
-                            dragging={canReorder && dragChannelId === channel.id}
                             {...(canReorder
                               ? {
-                                  onDragStart: () => startDrag(channel.id),
-                                  onDragEnd: endDrag,
+                                  drag: {
+                                    dragIndex: index,
+                                    dragging: dragChannelId === channel.id,
+                                    onDragStart: () => {
+                                      startDrag(channel.id);
+                                    },
+                                    onDragEnd: endDrag,
+                                  },
                                 }
                               : {})}
                             onContextMenu={(event) => {
@@ -722,7 +491,9 @@ export function ChannelSidebar(props: ChannelSidebarProps) {
           <SectionHeader
             title="Direct messages"
             collapsed={collapsed.has("dms")}
-            onToggle={() => toggle("dms")}
+            onToggle={() => {
+              toggle("dms");
+            }}
             action={
               <HeaderButton label="New direct message" small onClick={props.onNewConversation}>
                 <Icon name="compose" size={14} />
@@ -764,7 +535,9 @@ export function ChannelSidebar(props: ChannelSidebarProps) {
             <SectionHeader
               title="Hidden channels"
               collapsed={collapsed.has("hidden")}
-              onToggle={() => toggle("hidden")}
+              onToggle={() => {
+                toggle("hidden");
+              }}
               action={null}
             />
             {!collapsed.has("hidden") && (
@@ -774,7 +547,9 @@ export function ChannelSidebar(props: ChannelSidebarProps) {
                     <button
                       type="button"
                       data-testid={`hidden-channel-row-${channel.id}`}
-                      onClick={() => onSelect(channel.id)}
+                      onClick={() => {
+                        onSelect(channel.id);
+                      }}
                       className="flex h-8 min-w-0 flex-1 items-center gap-2.5 rounded-[8px] pl-3 pr-1 text-left text-[13px] text-text-muted transition hover:bg-surface-3 hover:text-text"
                     >
                       <Icon
@@ -821,7 +596,7 @@ function SectionHeader({
   readonly onToggle: () => void;
   readonly action: ReactNode;
   readonly testId?: string;
-  readonly onContextMenu?: (event: React.MouseEvent) => void;
+  readonly onContextMenu?: (_event: React.MouseEvent) => void;
 }) {
   return (
     <div className="flex items-center justify-between py-1 pl-1.5 pr-1">
@@ -968,20 +743,18 @@ function CreateMenuButton({
               New voice channel
             </button>
           )}
-          {canManageCategories && (
-            <button
-              type="button"
-              role="menuitem"
-              onClick={() => {
-                setOpen(false);
-                onCreateCategory?.();
-              }}
-              className="flex w-full items-center gap-2.5 rounded-[7px] px-2.5 py-1.5 text-left text-[13px] text-text transition hover:bg-surface-3"
-            >
-              <Icon name="plus" size={14} className="text-text-muted" />
-              New category
-            </button>
-          )}
+          <button
+            type="button"
+            role="menuitem"
+            onClick={() => {
+              setOpen(false);
+              onCreateCategory?.();
+            }}
+            className="flex w-full items-center gap-2.5 rounded-[7px] px-2.5 py-1.5 text-left text-[13px] text-text transition hover:bg-surface-3"
+          >
+            <Icon name="plus" size={14} className="text-text-muted" />
+            New category
+          </button>
         </div>
       )}
     </div>
@@ -1022,21 +795,20 @@ function ChannelRow({
   unread,
   onSelect,
   onContextMenu,
-  dragIndex,
-  dragging = false,
-  onDragStart,
-  onDragEnd,
+  drag,
 }: {
   readonly channel: ChannelView;
   readonly title: string;
   readonly active: boolean;
   readonly unread: ChannelUnread | undefined;
-  onSelect(channelId: string): void;
-  onContextMenu(event: React.MouseEvent): void;
-  readonly dragIndex?: number;
-  readonly dragging?: boolean;
-  readonly onDragStart?: () => void;
-  readonly onDragEnd?: () => void;
+  readonly onSelect: (_channelId: string) => void;
+  readonly onContextMenu: (_event: React.MouseEvent) => void;
+  readonly drag?: {
+    readonly dragIndex: number;
+    readonly dragging: boolean;
+    readonly onDragStart: () => void;
+    readonly onDragEnd: () => void;
+  };
 }) {
   const isUnread = unread?.unread === true && !active;
   const isPrivate = channel.isPrivate === true;
@@ -1044,25 +816,25 @@ function ChannelRow({
     <button
       type="button"
       data-testid={`channel-row-${channel.id}`}
-      onClick={() => onSelect(channel.id)}
+      onClick={() => {
+        onSelect(channel.id);
+      }}
       onContextMenu={(event) => {
         event.preventDefault();
         onContextMenu(event);
       }}
       aria-current={active ? "page" : undefined}
-      {...(dragIndex !== undefined ? { "data-drag-index": dragIndex, draggable: true } : {})}
-      {...(onDragStart !== undefined
+      {...(drag !== undefined ? { "data-drag-index": drag.dragIndex, draggable: true } : {})}
+      {...(drag !== undefined
         ? {
             onDragStart: (event: React.DragEvent) => {
-              if (event.dataTransfer !== null) {
-                event.dataTransfer.effectAllowed = "move";
-                event.dataTransfer.setData("text/plain", channel.id);
-              }
-              onDragStart();
+              event.dataTransfer.effectAllowed = "move";
+              event.dataTransfer.setData("text/plain", channel.id);
+              drag.onDragStart();
             },
           }
         : {})}
-      {...(onDragEnd !== undefined ? { onDragEnd } : {})}
+      {...(drag !== undefined ? { onDragEnd: drag.onDragEnd } : {})}
       className={cn(
         "relative flex h-8 w-full items-center gap-2.5 rounded-[8px] pl-3 pr-2 text-left text-[13px] transition",
         active
@@ -1071,7 +843,7 @@ function ChannelRow({
             ? "font-semibold text-text hover:bg-surface-3"
             : "text-text-muted hover:bg-surface-3 hover:text-text",
         channel.muted === true && !active && !isUnread && "opacity-60",
-        dragging && "opacity-40",
+        drag?.dragging === true && "opacity-40",
       )}
     >
       <ActiveBar active={active} />
@@ -1104,7 +876,7 @@ function DmRow({
   readonly presenceOf: (userId: string) => PresenceStatus;
   readonly active: boolean;
   readonly unread: ChannelUnread | undefined;
-  onSelect(channelId: string): void;
+  readonly onSelect: (channelId: string) => void;
 }) {
   const partner = dmPartnerId(channel, ownUserId);
   const others = (channel.memberIds ?? []).filter((id) => id !== ownUserId);
@@ -1114,13 +886,15 @@ function DmRow({
     channel.kind === "group_dm"
       ? `${others.length + 1} members`
       : status !== undefined
-        ? PRESENCE_LABEL[status]
+        ? presenceLabel(status)
         : "Direct message";
   return (
     <button
       type="button"
       data-testid={`channel-row-${channel.id}`}
-      onClick={() => onSelect(channel.id)}
+      onClick={() => {
+        onSelect(channel.id);
+      }}
       aria-current={active ? "page" : undefined}
       className={cn(
         "relative flex w-full items-center gap-2.5 rounded-[8px] py-1.5 pl-3 pr-2 text-left transition",
@@ -1262,7 +1036,9 @@ function AccountFooter(props: ChannelSidebarProps) {
                 value={statusDraft}
                 maxLength={80}
                 placeholder="Set a custom status…"
-                onChange={(event) => setStatusDraft(event.target.value)}
+                onChange={(event) => {
+                  setStatusDraft(event.target.value);
+                }}
                 onKeyDown={(event) => {
                   if (event.key === "Enter") {
                     event.preventDefault();
@@ -1304,7 +1080,9 @@ function AccountFooter(props: ChannelSidebarProps) {
           aria-label="Set your status"
           aria-haspopup="menu"
           aria-expanded={menuOpen}
-          onClick={() => setMenuOpen((open) => !open)}
+          onClick={() => {
+            setMenuOpen((open) => !open);
+          }}
           className="flex min-w-0 flex-1 items-center gap-2.5 rounded-[8px] px-2 py-1.5 text-left transition hover:bg-surface-3"
         >
           <PresenceAvatar userId={props.ownUserId} size={30} status={props.ownStatus} />
@@ -1332,14 +1110,21 @@ function AccountFooter(props: ChannelSidebarProps) {
             </span>
           </HeaderButton>
         )}
-        <HeaderButton label="Sign out" onClick={() => setConfirmSignOut(true)}>
+        <HeaderButton
+          label="Sign out"
+          onClick={() => {
+            setConfirmSignOut(true);
+          }}
+        >
           <Icon name="logout" size={17} />
         </HeaderButton>
       </div>
 
       <ConfirmDialog
         open={confirmSignOut}
-        onClose={() => setConfirmSignOut(false)}
+        onClose={() => {
+          setConfirmSignOut(false);
+        }}
         title={`Sign out of ${props.workspaceName}?`}
         description="You can sign back in at any time."
         confirmLabel="Sign out"

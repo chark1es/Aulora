@@ -18,12 +18,12 @@ import {
 export interface ProfileContextValue {
   readonly store: ProfileStore;
   readonly profiles: readonly ServerProfile[];
-  readonly activeProfile: ServerProfile | undefined;
+  readonly activeProfile?: ServerProfile;
   readonly ready: boolean;
   /** Saves a validated well-known document as a profile and makes it active. */
-  addProfile(baseUrl: string, wellKnown: WellKnown): Promise<ServerProfile>;
-  setActive(id: string): Promise<void>;
-  refresh(): Promise<void>;
+  readonly addProfile: (_baseUrl: string, _wellKnown: WellKnown) => Promise<ServerProfile>;
+  readonly setActive: (_id: string) => Promise<void>;
+  readonly refresh: () => Promise<void>;
 }
 
 const ProfileContext = createContext<ProfileContextValue | null>(null);
@@ -47,10 +47,10 @@ export function ProfileProvider({ store, children }: ProfileProviderProps) {
   }, [profileStore]);
 
   useEffect(() => {
-    let cancelled = false;
+    const controller = new AbortController();
     void (async () => {
       const [list, active] = await Promise.all([profileStore.list(), profileStore.getActive()]);
-      if (cancelled) {
+      if (controller.signal.aborted) {
         return;
       }
       setProfiles(list);
@@ -58,7 +58,7 @@ export function ProfileProvider({ store, children }: ProfileProviderProps) {
       setReady(true);
     })();
     return () => {
-      cancelled = true;
+      controller.abort();
     };
   }, [profileStore]);
 
@@ -87,7 +87,15 @@ export function ProfileProvider({ store, children }: ProfileProviderProps) {
   );
 
   const value = useMemo<ProfileContextValue>(
-    () => ({ store: profileStore, profiles, activeProfile, ready, addProfile, setActive, refresh }),
+    () => ({
+      store: profileStore,
+      profiles,
+      ...(activeProfile !== undefined ? { activeProfile } : {}),
+      ready,
+      addProfile,
+      setActive,
+      refresh,
+    }),
     [profileStore, profiles, activeProfile, ready, addProfile, setActive, refresh],
   );
 

@@ -12,9 +12,10 @@
  *   p2@aulora.test / p2
  */
 
-const BASE_URL = process.env.BASE_URL ?? process.env.AULORA_SEED_BASE_URL ?? "http://localhost:8080";
+const env = new Map(Object.entries(process.env));
+const BASE_URL = env.get("BASE_URL") ?? env.get("AULORA_SEED_BASE_URL") ?? "http://localhost:8080";
 const CONVEX_URL =
-  process.env.CONVEX_URL ?? process.env.AULORA_SEED_CONVEX_URL ?? "http://localhost:3210";
+  env.get("CONVEX_URL") ?? env.get("AULORA_SEED_CONVEX_URL") ?? "http://localhost:3210";
 
 const ACCOUNTS = [
   { email: "p1@aulora.test", password: "p1", name: "Player One" },
@@ -22,8 +23,8 @@ const ACCOUNTS = [
 ];
 
 const OWNER = {
-  email: process.env.OWNER_EMAIL ?? "owner@aulora.test",
-  password: process.env.OWNER_PASSWORD ?? "Aulora-Test-Password-123",
+  email: env.get("OWNER_EMAIL") ?? "owner@aulora.test",
+  password: env.get("OWNER_PASSWORD") ?? "Aulora-Test-Password-123",
 };
 
 const log = (...args) => console.log("[test-accounts]", ...args);
@@ -46,19 +47,25 @@ function readCookies(response) {
   return [...jar].map(([name, value]) => `${name}=${value}`).join("; ");
 }
 
+const AUTH_PATHS = new Set(["/api/auth/sign-up/email", "/api/auth/sign-in/email"]);
+const CONVEX_KINDS = new Set(["query", "mutation"]);
+
 async function authRequest(path, body) {
-  const response = await fetch(`${BASE_URL}${path}`, {
-    method: "POST",
-    headers: { "content-type": "application/json" },
-    body: JSON.stringify(body),
-  });
-  let json = null;
-  try {
-    json = await response.json();
-  } catch {
-    json = null;
+  if (AUTH_PATHS.has(path)) {
+    const response = await fetch(`${BASE_URL}${path}`, {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify(body),
+    });
+    let json = null;
+    try {
+      json = await response.json();
+    } catch {
+      json = null;
+    }
+    return { response, cookies: readCookies(response), json };
   }
-  return { response, cookies: readCookies(response), json };
+  throw new Error(`unsupported auth path: ${path}`);
 }
 
 async function getConvexToken(cookies) {
@@ -73,24 +80,27 @@ async function getConvexToken(cookies) {
 }
 
 async function convex(kind, path, args, token) {
-  const response = await fetch(`${CONVEX_URL}/api/${kind}`, {
-    method: "POST",
-    headers: { "content-type": "application/json", authorization: `Bearer ${token}` },
-    body: JSON.stringify({ path, args, format: "json" }),
-  });
-  const text = await response.text();
-  let parsed;
-  try {
-    parsed = JSON.parse(text);
-  } catch {
-    throw new Error(`${path}: HTTP ${response.status}: ${text.slice(0, 200)}`);
+  if (CONVEX_KINDS.has(kind)) {
+    const response = await fetch(`${CONVEX_URL}/api/${kind}`, {
+      method: "POST",
+      headers: { "content-type": "application/json", authorization: `Bearer ${token}` },
+      body: JSON.stringify({ path, args, format: "json" }),
+    });
+    const text = await response.text();
+    let parsed;
+    try {
+      parsed = JSON.parse(text);
+    } catch {
+      throw new Error(`${path}: HTTP ${response.status}: ${text.slice(0, 200)}`);
+    }
+    if (!response.ok || parsed.status === "error") {
+      throw new Error(
+        `${path}: HTTP ${response.status}: ${parsed.message ?? parsed.errorMessage ?? text.slice(0, 200)}`,
+      );
+    }
+    return parsed.value;
   }
-  if (!response.ok || parsed.status === "error") {
-    throw new Error(
-      `${path}: HTTP ${response.status}: ${parsed.message ?? parsed.errorMessage ?? text.slice(0, 200)}`,
-    );
-  }
-  return parsed.value;
+  throw new Error(`unsupported Convex API kind: ${kind}`);
 }
 
 const query = (path, args, token) => convex("query", path, args, token);

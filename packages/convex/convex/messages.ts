@@ -3,21 +3,18 @@ import { paginationOptsValidator } from "convex/server";
 import { ConvexError, v } from "convex/values";
 import { internal } from "./_generated/api";
 import type { Doc, Id } from "./_generated/dataModel";
-import { mutation, type QueryCtx, query } from "./_generated/server";
+import { mutation, query } from "./_generated/server";
 import { writeAudit } from "./lib/audit";
 import { requireAuth } from "./lib/auth";
 import { assertMayParticipate } from "./lib/bans";
-import { findChannelMember, isDmKind, requireChannelAccess } from "./lib/channels";
+import { requireChannelAccess } from "./lib/channels";
 import { recordLicenseActivity } from "./lib/licenseActivity";
-import {
-  categoryOverridesFor,
-  channelPermissions,
-  loadPermissionContext,
-  requireMember,
-} from "./lib/permissions";
+import { requireMember } from "./lib/permissions";
 import { enforceRateLimit, userRateLimitKey } from "./lib/rateLimit";
 import { openContent } from "./lib/sealed";
 import { sealString } from "./lib/sse";
+import { loadThreadInbox, type ThreadInboxRow } from "./lib/threadInbox";
+import type { Nullable } from "./lib/types";
 
 /** Per-user send budget: 30 messages per 10 seconds unless overridden. */
 function sendLimit(): number {
@@ -40,8 +37,8 @@ interface MessageView {
   readonly channelId: Id<"channels">;
   readonly authorId: string;
   readonly body: string;
-  readonly threadRootId: Id<"messages"> | null;
-  readonly replyToId: Id<"messages"> | null;
+  readonly threadRootId: Nullable<Id<"messages">>;
+  readonly replyToId: Nullable<Id<"messages">>;
   readonly attachmentIds: Id<"files">[];
   readonly mentionUserIds: string[];
   readonly mentionChannelIds: string[];
@@ -131,6 +128,47 @@ async function filterMentionIds(
   };
 }
 
+/** Validates and returns the thread root a reply targets, or `null`. */
+async function resolveThreadRoot(
+  ctx: Parameters<typeof requireChannelAccess>[0],
+  channelId: Id<"channels">,
+  permissions: bigint,
+  threadRootId?: Id<"messages">,
+): Promise<Nullable<Doc<"messages">>> {
+  if (threadRootId === undefined) {
+    return null;
+  }
+  if (!hasPermission(permissions, Permission.SendInThreads)) {
+    throw new ConvexError("Missing permission");
+  }
+  const threadRoot = await ctx.db.get(threadRootId);
+  if (threadRoot === null || threadRoot.channelId !== channelId) {
+    throw new ConvexError("Thread root not found in channel");
+  }
+  if (threadRoot.threadRootId !== undefined) {
+    throw new ConvexError("Threads cannot be nested");
+  }
+  if ((threadRoot.replyCount ?? 0) === 0 && !hasPermission(permissions, Permission.CreateThreads)) {
+    throw new ConvexError("Missing permission to create threads");
+  }
+  return threadRoot;
+}
+
+/** Ensures a reply target, when present, belongs to the same channel. */
+async function assertReplyTarget(
+  ctx: Parameters<typeof requireChannelAccess>[0],
+  channelId: Id<"channels">,
+  replyToId?: Id<"messages">,
+): Promise<void> {
+  if (replyToId === undefined) {
+    return;
+  }
+  const replyTo = await ctx.db.get(replyToId);
+  if (replyTo === null || replyTo.channelId !== channelId) {
+    throw new ConvexError("Reply target not found in channel");
+  }
+}
+
 /** Sends a message: the server seals the plaintext body before storing it. */
 export const send = mutation({
   args: {
@@ -146,31 +184,13 @@ export const send = mutation({
   handler: async (ctx, args) => {
     const access = await requireChannelAccess(ctx, args.channelId, Permission.SendMessages);
     await assertMayParticipate(ctx, access.userId);
-    let threadRoot: Doc<"messages"> | null = null;
-    if (args.threadRootId !== undefined) {
-      if (!hasPermission(access.permissions, Permission.SendInThreads)) {
-        throw new ConvexError("Missing permission");
-      }
-      threadRoot = await ctx.db.get(args.threadRootId);
-      if (threadRoot === null || threadRoot.channelId !== args.channelId) {
-        throw new ConvexError("Thread root not found in channel");
-      }
-      if (threadRoot.threadRootId !== undefined) {
-        throw new ConvexError("Threads cannot be nested");
-      }
-      if (
-        (threadRoot.replyCount ?? 0) === 0 &&
-        !hasPermission(access.permissions, Permission.CreateThreads)
-      ) {
-        throw new ConvexError("Missing permission to create threads");
-      }
-    }
-    if (args.replyToId !== undefined) {
-      const replyTo = await ctx.db.get(args.replyToId);
-      if (replyTo === null || replyTo.channelId !== args.channelId) {
-        throw new ConvexError("Reply target not found in channel");
-      }
-    }
+    const threadRoot = await resolveThreadRoot(
+      ctx,
+      args.channelId,
+      access.permissions,
+      args.threadRootId,
+    );
+    await assertReplyTarget(ctx, args.channelId, args.replyToId);
     await enforceRateLimit(ctx, {
       key: userRateLimitKey("send", access.userId),
       limit: sendLimit(),
@@ -409,67 +429,7 @@ export const listPins = query({
 });
 
 /** One row of the Threads inbox, with its root body opened server-side. */
-export interface ThreadInboxRow {
-  /** Root message id. */
-  readonly id: Id<"messages">;
-  readonly channelId: Id<"channels">;
-  readonly authorId: string;
-  /** Plaintext root body (`openContent`); never the stored ciphertext. */
-  readonly body: string;
-  /** Root `_creationTime`. */
-  readonly createdAt: number;
-  readonly replyCount: number;
-  readonly lastReplyAt: number | null;
-  /** Distinct authors of the replies scanned. */
-  readonly participantIds: string[];
-  /** Distinct users mentioned by the root or any scanned reply. */
-  readonly mentionedUserIds: string[];
-  readonly viewerParticipated: boolean;
-  readonly viewerMentioned: boolean;
-}
-
-/** Newest messages scanned when assembling the inbox (no new index). */
-const THREAD_INBOX_SCAN_LIMIT = 1000;
-/** Maximum threads returned, most recently active first. */
-const THREAD_INBOX_MAX_ROWS = 50;
-
-/**
- * Filters `channelIds` down to the ones the viewer may currently view, so a
- * thread in a channel the viewer has since been removed from is dropped rather
- * than leaking its root body. Permission bits plus DM/private membership are
- * resolved once per distinct channel.
- */
-async function viewableChannelIds(
-  ctx: QueryCtx,
-  userId: string,
-  channelIds: readonly Id<"channels">[],
-): Promise<Set<string>> {
-  const unique = [...new Set(channelIds)];
-  const viewable = new Set<string>();
-  if (unique.length === 0) {
-    return viewable;
-  }
-  const context = await loadPermissionContext(ctx, userId);
-  for (const channelId of unique) {
-    const channel = await ctx.db.get(channelId);
-    if (channel === null) {
-      continue;
-    }
-    const categoryOverrides = await categoryOverridesFor(ctx, channel);
-    const permissions = channelPermissions(context, channel, categoryOverrides);
-    if (!hasPermission(permissions, Permission.ViewChannel)) {
-      continue;
-    }
-    if (
-      (isDmKind(channel.kind) || channel.private === true) &&
-      !(await findChannelMember(ctx, channelId, userId))
-    ) {
-      continue;
-    }
-    viewable.add(channelId);
-  }
-  return viewable;
-}
+export type { ThreadInboxRow } from "./lib/threadInbox";
 
 /**
  * Powers the "Threads" inbox: the threads the signed-in viewer participated in
@@ -486,103 +446,6 @@ export const threadInbox = query({
   handler: async (ctx): Promise<ThreadInboxRow[]> => {
     const { userId } = await requireAuth(ctx);
     await requireMember(ctx, userId);
-    const recent = await ctx.db.query("messages").order("desc").take(THREAD_INBOX_SCAN_LIMIT);
-
-    interface ThreadAccumulator {
-      readonly participantIds: Set<string>;
-      readonly mentionedUserIds: Set<string>;
-      replyCount: number;
-      maxReplyAt: number;
-    }
-
-    const byRoot = new Map<Id<"messages">, ThreadAccumulator>();
-    for (const message of recent) {
-      const rootId = message.threadRootId;
-      if (rootId === undefined) {
-        continue;
-      }
-      const accumulator =
-        byRoot.get(rootId) ??
-        ({
-          participantIds: new Set<string>(),
-          mentionedUserIds: new Set<string>(),
-          replyCount: 0,
-          maxReplyAt: 0,
-        } satisfies ThreadAccumulator);
-      accumulator.participantIds.add(message.authorId);
-      for (const mentioned of message.mentionUserIds) {
-        accumulator.mentionedUserIds.add(mentioned);
-      }
-      accumulator.replyCount += 1;
-      accumulator.maxReplyAt = Math.max(accumulator.maxReplyAt, message._creationTime);
-      byRoot.set(rootId, accumulator);
-    }
-
-    const rootEntries = await Promise.all(
-      [...byRoot.keys()].map(async (rootId) => {
-        const root = await ctx.db.get(rootId);
-        return root === null ? null : { rootId, root };
-      }),
-    );
-    const rootById = new Map<Id<"messages">, Doc<"messages">>();
-    for (const entry of rootEntries) {
-      if (entry !== null) {
-        rootById.set(entry.rootId, entry.root);
-      }
-    }
-
-    const viewable = await viewableChannelIds(
-      ctx,
-      userId,
-      [...rootById.values()].map((root) => root.channelId),
-    );
-
-    const candidates: Omit<ThreadInboxRow, "body">[] = [];
-    for (const [rootId, root] of rootById) {
-      if (!viewable.has(root.channelId)) {
-        continue;
-      }
-      const accumulator = byRoot.get(rootId);
-      if (accumulator === undefined) {
-        continue;
-      }
-      const participantIds = [...accumulator.participantIds].sort();
-      const mentionedUserIds = [
-        ...new Set([...(root.mentionUserIds ?? []), ...accumulator.mentionedUserIds]),
-      ].sort();
-      const viewerParticipated = participantIds.includes(userId);
-      const viewerMentioned = mentionedUserIds.includes(userId);
-      if (!viewerParticipated && !viewerMentioned) {
-        continue;
-      }
-      candidates.push({
-        id: root._id,
-        channelId: root.channelId,
-        authorId: root.authorId,
-        createdAt: root._creationTime,
-        replyCount: root.replyCount ?? accumulator.replyCount,
-        lastReplyAt: root.lastReplyAt ?? accumulator.maxReplyAt,
-        participantIds,
-        mentionedUserIds,
-        viewerParticipated,
-        viewerMentioned,
-      });
-    }
-
-    candidates.sort((a, b) => (b.lastReplyAt ?? b.createdAt) - (a.lastReplyAt ?? a.createdAt));
-
-    const top = candidates.slice(0, THREAD_INBOX_MAX_ROWS);
-    return await Promise.all(
-      top.map(async (row) => {
-        const root = rootById.get(row.id);
-        if (root === undefined) {
-          throw new ConvexError("Thread root not found");
-        }
-        return {
-          ...row,
-          body: await openContent(messageContext(root.channelId), root.ciphertext),
-        };
-      }),
-    );
+    return await loadThreadInbox(ctx, userId);
   },
 });

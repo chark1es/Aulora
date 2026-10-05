@@ -169,7 +169,7 @@ services:
       INSTANCE_NAME: ${INSTANCE_NAME:-aulora}
       # Blank lets the backend generate and persist one in the data volume;
       # `setup` records it back into the setup-state volume. See README.md.
-      INSTANCE_SECRET: ${INSTANCE_SECRET:-}
+      INSTANCE_SECRET: ${INSTANCE_SECRET}
       # POSTGRES_URL must NOT include a database name.
       POSTGRES_URL: ${POSTGRES_URL:-postgresql://convex:aulora-postgres@postgres:5432}
       DO_NOT_REQUIRE_SSL: ${DO_NOT_REQUIRE_SSL:-1}
@@ -195,13 +195,13 @@ services:
       AULORA_ENCRYPTION_KEY: ${AULORA_ENCRYPTION_KEY:-}
       AULORA_KEK_WRAPPED: ${AULORA_KEK_WRAPPED:-}
       VAULT_ADDR: ${VAULT_ADDR:-}
-      VAULT_TOKEN: ${VAULT_TOKEN:-}
+      VAULT_TOKEN: ${VAULT_TOKEN}
       VAULT_TRANSIT_MOUNT: ${VAULT_TRANSIT_MOUNT:-transit}
       VAULT_NAMESPACE: ${VAULT_NAMESPACE:-}
       AWS_KMS_KEY_ID: ${AWS_KMS_KEY_ID:-}
       GCP_KMS_KEY_NAME: ${GCP_KMS_KEY_NAME:-}
       EKM_PROXY_URL: ${EKM_PROXY_URL:-}
-      EKM_PROXY_TOKEN: ${EKM_PROXY_TOKEN:-}
+      EKM_PROXY_TOKEN: ${EKM_PROXY_TOKEN}
     # Coolify maps the Convex domain to these container ports; no host ports.
     expose:
       - "3210"
@@ -297,9 +297,9 @@ services:
       CONVEX_SITE_ORIGIN: ${CONVEX_SITE_ORIGIN:-}
       TRUSTED_ORIGINS: ${TRUSTED_ORIGINS:-}
       # --- generated secrets (blank = generate + persist; set = stable) ---
-      INSTANCE_SECRET: ${INSTANCE_SECRET:-}
+      INSTANCE_SECRET: ${INSTANCE_SECRET}
       BETTER_AUTH_SECRET: ${BETTER_AUTH_SECRET:-}
-      SETUP_TOKEN: ${SETUP_TOKEN:-}
+      SETUP_TOKEN: ${SETUP_TOKEN}
       # --- auth ---
       AUTH_LOCAL_ENABLED: ${AUTH_LOCAL_ENABLED:-true}
       AUTH_LOCAL_SIGNUP: ${AUTH_LOCAL_SIGNUP:-true}
@@ -330,14 +330,14 @@ services:
       AULORA_ENCRYPTION_KEY: ${AULORA_ENCRYPTION_KEY:-}
       AULORA_KEK_WRAPPED: ${AULORA_KEK_WRAPPED:-}
       VAULT_ADDR: ${VAULT_ADDR:-}
-      VAULT_TOKEN: ${VAULT_TOKEN:-}
+      VAULT_TOKEN: ${VAULT_TOKEN}
       VAULT_TRANSIT_MOUNT: ${VAULT_TRANSIT_MOUNT:-transit}
       VAULT_NAMESPACE: ${VAULT_NAMESPACE:-}
       AWS_REGION: ${AWS_REGION:-us-east-1}
       AWS_KMS_KEY_ID: ${AWS_KMS_KEY_ID:-}
       GCP_KMS_KEY_NAME: ${GCP_KMS_KEY_NAME:-}
       EKM_PROXY_URL: ${EKM_PROXY_URL:-}
-      EKM_PROXY_TOKEN: ${EKM_PROXY_TOKEN:-}
+      EKM_PROXY_TOKEN: ${EKM_PROXY_TOKEN}
     volumes:
       - convex-data:/convex/data
       - web-well-known:/web-well-known
@@ -366,7 +366,7 @@ services:
     environment:
       PUSH_RELAY_PORT: 8790
       PUSH_RELAY_URL: ${PUSH_RELAY_URL:-}
-      PUSH_RELAY_TOKEN: ${PUSH_RELAY_TOKEN:-}
+      PUSH_RELAY_TOKEN: ${PUSH_RELAY_TOKEN}
       AULORA_SERVER_ID: ${AULORA_SERVER_ID:-}
       APNS_KEY_ID: ${APNS_KEY_ID:-}
       APNS_TEAM_ID: ${APNS_TEAM_ID:-}
@@ -375,7 +375,7 @@ services:
       APNS_KEY_PATH: ${APNS_KEY_PATH:-}
       APNS_ENVIRONMENT: ${APNS_ENVIRONMENT:-production}
       FCM_PROJECT_ID: ${FCM_PROJECT_ID:-}
-      FCM_ACCESS_TOKEN: ${FCM_ACCESS_TOKEN:-}
+      FCM_ACCESS_TOKEN: ${FCM_ACCESS_TOKEN}
       UNIFIEDPUSH_ENABLED: ${UNIFIEDPUSH_ENABLED:-}
     expose:
       - "8790"
@@ -403,7 +403,7 @@ services:
       BACKUP_ENABLED: ${BACKUP_ENABLED:-true}
       BACKUP_BUCKET: ${BACKUP_BUCKET:-aulora-backups}
       BACKUP_RETENTION: ${BACKUP_RETENTION:-7}
-      BACKUP_TOKEN: ${BACKUP_TOKEN:-}
+      BACKUP_TOKEN: ${BACKUP_TOKEN}
       POSTGRES_HOST: postgres
       POSTGRES_PORT: "5432"
       POSTGRES_USER: ${POSTGRES_USER:-convex}
@@ -431,7 +431,7 @@ services:
     profiles: ["ekm"]
     restart: unless-stopped
     environment:
-      VAULT_DEV_ROOT_TOKEN_ID: ${VAULT_TOKEN:-aulora-dev-root}
+      VAULT_DEV_ROOT_TOKEN_ID: ${VAULT_TOKEN}
       VAULT_DEV_LISTEN_ADDRESS: 0.0.0.0:8200
     command: ["server", "-dev"]
     cap_add:
@@ -456,7 +456,7 @@ services:
         required: false
     environment:
       VAULT_ADDR: ${VAULT_ADDR:-http://vault:8200}
-      VAULT_TOKEN: ${VAULT_TOKEN:-aulora-dev-root}
+      VAULT_TOKEN: ${VAULT_TOKEN}
       VAULT_TRANSIT_MOUNT: ${VAULT_TRANSIT_MOUNT:-transit}
       AULORA_EKM_KEY_ID: ${AULORA_EKM_KEY_ID:-aulora-kek}
       HOST_ENV_FILE: /host/.env

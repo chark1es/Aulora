@@ -1,6 +1,5 @@
 import {
   type AttachmentDescriptor,
-  type ChannelSummary,
   type ChannelView,
   conversationTitle,
   createTypingThrottle,
@@ -48,20 +47,19 @@ import type { CallIdentity } from "../voice/identity";
 import { VoiceChannelView } from "../voice/VoiceChannelView";
 import { WorkspaceMenu } from "../WorkspaceMenu";
 import { ChannelMembersModal } from "./ChannelMembersModal";
+import { ChannelPane } from "./ChannelPane";
 import { ChannelSidebar, type ChannelUnread } from "./ChannelSidebar";
-import { Composer } from "./Composer";
-import { ConversationHeader } from "./ConversationHeader";
 import { CreateCategoryModal } from "./CreateCategoryModal";
 import { type CreateChannelInput, CreateChannelModal } from "./CreateChannelModal";
+import { channelEditBaseline, commitChannelEdit } from "./channel-edit";
 import { EditChannelModal, type EditChannelPatch } from "./EditChannelModal";
 import { MemberProfilePopover } from "./MemberProfilePopover";
 import { MembersPanel } from "./MembersPanel";
-import { MessageList } from "./MessageList";
 import { NewConversationDialog } from "./NewConversationDialog";
 import { NotificationsSettingsSection } from "./NotificationsSettingsSection";
-import { PinnedMessagesPanel } from "./PinnedMessagesPanel";
 import type { PresenceStatus } from "./PresenceAvatar";
 import { RenameChannelModal } from "./RenameChannelModal";
+import { type RestoreTracking, restoreMentionedChannels } from "./restore-channels";
 import { type SearchArchiveState, SearchPanel } from "./SearchPanel";
 import { type ThreadInboxItem, ThreadsInbox } from "./ThreadsInbox";
 import { ThreadsPanel } from "./ThreadsPanel";
@@ -98,15 +96,6 @@ export interface ChatViewProps {
 const LAST_CHANNEL_KEY = "aulora.lastChannel.v1:";
 const MEMBERS_OPEN_KEY = "aulora.membersOpen.v1";
 const MESSAGE_ALIGNMENT_KEY = "aulora.messageAlignment.v1";
-const REPLY_PREVIEW_MAX = 120;
-
-function truncateReply(text: string): string {
-  const trimmed = text.replace(/\s+/g, " ").trim();
-  return trimmed.length > REPLY_PREVIEW_MAX
-    ? `${trimmed.slice(0, REPLY_PREVIEW_MAX - 1)}…`
-    : trimmed;
-}
-
 function errorMessage(error: unknown): string {
   return error instanceof Error && error.message.length > 0
     ? error.message
@@ -114,15 +103,9 @@ function errorMessage(error: unknown): string {
 }
 
 /** Whether two id lists hold the same distinct values, order-insensitive. */
-function sameStringSet(a: readonly string[], b: readonly string[]): boolean {
-  const left = [...new Set(a)].sort();
-  const right = [...new Set(b)].sort();
-  return left.length === right.length && left.every((value, index) => value === right[index]);
-}
-
 function readLocal(key: string): string | null {
   try {
-    return globalThis.localStorage?.getItem(key) ?? null;
+    return globalThis.localStorage.getItem(key) ?? null;
   } catch {
     return null;
   }
@@ -130,7 +113,7 @@ function readLocal(key: string): string | null {
 
 function writeLocal(key: string, value: string): void {
   try {
-    globalThis.localStorage?.setItem(key, value);
+    globalThis.localStorage.setItem(key, value);
   } catch {
     // Preferences are best-effort.
   }
@@ -139,7 +122,7 @@ function writeLocal(key: string, value: string): void {
 function readAttentive(): boolean {
   return (
     typeof document === "undefined" ||
-    (document.visibilityState === "visible" && (document.hasFocus?.() ?? true))
+    (document.visibilityState === "visible" && document.hasFocus())
   );
 }
 
@@ -147,7 +130,9 @@ function readAttentive(): boolean {
 function useAttentive(): boolean {
   const [attentive, setAttentive] = useState(readAttentive);
   useEffect(() => {
-    const update = () => setAttentive(readAttentive());
+    const update = () => {
+      setAttentive(readAttentive());
+    };
     document.addEventListener("visibilitychange", update);
     window.addEventListener("focus", update);
     window.addEventListener("blur", update);
@@ -186,20 +171,8 @@ function ChatViewContent({
   admin,
   onSignOut,
 }: ChatViewProps) {
-  const {
-    runtime,
-    channels,
-    channelNames,
-    presence,
-    reportChannelNames,
-    ready,
-    outbox,
-    sendMessage,
-    retrySend,
-    discardSend,
-    search,
-    loadSearchHistory,
-  } = useChat();
+  const chat = useChat();
+  const { runtime, channels, channelNames, presence, ready, outbox } = chat;
   const voice = useVoice();
   const desktopUpdate = useDesktopUpdates();
   const workspaceUpdate = useWorkspaceUpdates();
@@ -223,20 +196,22 @@ function ChatViewContent({
   const [categoryModal, setCategoryModal] = useState<{ category: CategoryView } | null>(null);
   const [categoryBusy, setCategoryBusy] = useState(false);
   const [categoryError, setCategoryError] = useState<string | null>(null);
-  const [membersModalChannel, setMembersModalChannel] = useState<ChannelView | null>(null);
-  const [renameModalChannel, setRenameModalChannel] = useState<ChannelView | null>(null);
-  const [editChannelModal, setEditChannelModal] = useState<ChannelView | null>(null);
+  const [membersModalChannel, setMembersModalChannel] = useState<ChannelView>();
+  const [renameModalChannel, setRenameModalChannel] = useState<ChannelView>();
+  const [editChannelModal, setEditChannelModal] = useState<ChannelView>();
   const [editChannelError, setEditChannelError] = useState<string | null>(null);
   const [editChannelBusy, setEditChannelBusy] = useState(false);
-  const [threadRoot, setThreadRoot] = useState<MessagePayload | null>(null);
+  const [threadRoot, setThreadRoot] = useState<MessagePayload>();
   const [pinsOpen, setPinsOpen] = useState(false);
-  const [replyTarget, setReplyTarget] = useState<MessagePayload | null>(null);
+  const [replyTarget, setReplyTarget] = useState<MessagePayload>();
   const [userSettingsOpen, setUserSettingsOpen] = useState(false);
   const [profileTarget, setProfileTarget] = useState<{
     userId: string;
     anchor: HTMLButtonElement;
   } | null>(null);
-  const closeProfile = useCallback(() => setProfileTarget(null), []);
+  const closeProfile = useCallback(() => {
+    setProfileTarget(null);
+  }, []);
   const [membersOpen, setMembersOpen] = useState(() => readLocal(MEMBERS_OPEN_KEY) === "true");
   const [customStatuses, setCustomStatuses] = useState<ReadonlyMap<string, string>>(new Map());
   const [customStatus, setCustomStatus] = useState<string>(
@@ -459,23 +434,18 @@ function ChatViewContent({
             entry.kind !== "dm" &&
             entry.kind !== "group_dm" &&
             !entry.archived &&
-            entry.name !== null &&
             entry.name.length > 0,
         )
         .map((entry) => ({ channelId: entry.id, name: entry.name as string })),
     [channels],
   );
-  const channelMentionNames = useMemo(
-    () => channelMentions.map((entry) => entry.name),
-    [channelMentions],
-  );
   const categoryMentions = useMemo(
     () =>
-      (admin?.categories ?? []).map((entry) => ({
+      admin.categories.map((entry) => ({
         categoryId: entry.id,
         name: entry.name,
       })),
-    [admin?.categories],
+    [admin.categories],
   );
 
   // Fall back to the first channel when nothing (or a vanished channel) is selected.
@@ -505,9 +475,7 @@ function ChatViewContent({
     const pending = channels
       .filter(
         (channel) =>
-          channel.name !== null &&
-          channel.name.length > 0 &&
-          !reported.current.has(`${channel.id}:${channel.name}`),
+          channel.name.length > 0 && !reported.current.has(`${channel.id}:${channel.name}`),
       )
       .map((channel) => ({
         id: channel.id,
@@ -520,8 +488,8 @@ function ChatViewContent({
     for (const entry of pending) {
       reported.current.add(entry.key);
     }
-    reportChannelNames(pending.map(({ id, name }) => ({ id, name })));
-  }, [runtime, channels, reportChannelNames]);
+    chat.reportChannelNames(pending.map(({ id, name }) => ({ id, name })));
+  }, [runtime, channels, chat]);
 
   useEffect(() => {
     for (const row of presence) {
@@ -551,29 +519,38 @@ function ChatViewContent({
       }
     };
     window.addEventListener("keydown", onKeyDown);
-    return () => window.removeEventListener("keydown", onKeyDown);
+    return () => {
+      window.removeEventListener("keydown", onKeyDown);
+    };
   }, []);
 
   // The native Cmd+K menu item emits a shell event; open the same palette.
   useEffect(() => {
-    const onQuickSwitcher = () => setSearchOpen(true);
+    const onQuickSwitcher = () => {
+      setSearchOpen(true);
+    };
     window.addEventListener("aulora:quick-switcher", onQuickSwitcher);
-    return () => window.removeEventListener("aulora:quick-switcher", onQuickSwitcher);
+    return () => {
+      window.removeEventListener("aulora:quick-switcher", onQuickSwitcher);
+    };
   }, []);
 
   // The native View > Toggle Sidebar menu item hides/shows the channel list.
   // The Threads inbox is reachable only through the sidebar, so hiding it while
   // Threads is open would strand the user; fall back to the chat view instead.
   useEffect(() => {
-    const onToggleSidebar = () =>
+    const onToggleSidebar = () => {
       setSidebarHidden((hidden) => {
         if (!hidden) {
           setMainView("chat");
         }
         return !hidden;
       });
+    };
     window.addEventListener("aulora:toggle-sidebar", onToggleSidebar);
-    return () => window.removeEventListener("aulora:toggle-sidebar", onToggleSidebar);
+    return () => {
+      window.removeEventListener("aulora:toggle-sidebar", onToggleSidebar);
+    };
   }, []);
 
   useEffect(() => {
@@ -591,10 +568,11 @@ function ChatViewContent({
     setSearching(true);
     setSearchArchive("loading");
     let cancelled = false;
+    const isCancelled = () => cancelled;
     const timer = setTimeout(() => {
       void (async () => {
-        const local = await search(trimmed);
-        if (cancelled) {
+        const local = await chat.search(trimmed);
+        if (isCancelled()) {
           return;
         }
         setSearchResults(local);
@@ -602,18 +580,18 @@ function ChatViewContent({
         // Loaded history answers at once; older pages refine the results.
         try {
           for (;;) {
-            const complete = (await loadSearchHistory?.()) ?? true;
-            if (cancelled) {
+            const complete = (await chat.loadSearchHistory?.()) ?? true;
+            if (isCancelled()) {
               return;
             }
-            setSearchResults(await search(trimmed));
+            setSearchResults(await chat.search(trimmed));
             if (complete) {
               break;
             }
           }
           setSearchArchive("complete");
         } catch {
-          if (!cancelled) {
+          if (!isCancelled()) {
             setSearchArchive("failed");
           }
         }
@@ -623,7 +601,7 @@ function ChatViewContent({
       cancelled = true;
       clearTimeout(timer);
     };
-  }, [searchOpen, searchQuery, search, loadSearchHistory]);
+  }, [searchOpen, searchQuery, chat]);
 
   useEffect(() => {
     writeLocal(MEMBERS_OPEN_KEY, String(membersOpen));
@@ -748,34 +726,9 @@ function ChatViewContent({
   }, [unreadByChannel, activeChannelId]);
 
   // A mention restores a hidden channel to its category and saved position.
-  const restoringChannels = useRef(new Set<string>());
-  const hiddenMentionBaseline = useRef(new Map<string, number>());
+  const restoreTracking = useRef<RestoreTracking>({ restoring: new Set(), baseline: new Map() });
   useEffect(() => {
-    if (runtime?.port.setChannelHidden === undefined) {
-      return;
-    }
-    for (const channel of channels) {
-      if (channel.hidden !== true) {
-        restoringChannels.current.delete(channel.id);
-        hiddenMentionBaseline.current.delete(channel.id);
-        continue;
-      }
-      const mentionCount = unreadByChannel.get(channel.id)?.mentionCount ?? 0;
-      const baseline = hiddenMentionBaseline.current.get(channel.id) ?? 0;
-      if (mentionCount < baseline) {
-        hiddenMentionBaseline.current.set(channel.id, mentionCount);
-      }
-      if (
-        mentionCount <= (hiddenMentionBaseline.current.get(channel.id) ?? 0) ||
-        restoringChannels.current.has(channel.id)
-      ) {
-        continue;
-      }
-      restoringChannels.current.add(channel.id);
-      void runtime.port.setChannelHidden({ channelId: channel.id, hidden: false }).catch(() => {
-        restoringChannels.current.delete(channel.id);
-      });
-    }
+    restoreMentionedChannels(restoreTracking.current, runtime, channels, unreadByChannel);
   }, [runtime, channels, unreadByChannel]);
 
   // Queued (and failed) sends for the open channel, rendered optimistically.
@@ -883,20 +836,20 @@ function ChatViewContent({
       return;
     }
     void runtime.session.openChannel(activeSummary).then(() => {
-      if (activeSummary.name !== null && activeSummary.name.length > 0) {
-        reportChannelNames([{ id: activeSummary.id, name: activeSummary.name }]);
+      if (activeSummary.name.length > 0) {
+        chat.reportChannelNames([{ id: activeSummary.id, name: activeSummary.name }]);
       }
       void runtime.session.receiveMessages(sessionState.messages);
     });
   }, [runtime, activeChannelKey]);
 
-  const openChannel = useCallback(async (channelId: string) => {
+  const openChannel = useCallback((channelId: string) => {
     setAdminOpen(false);
     setUserSettingsOpen(false);
     setMainView("chat");
     setActiveChannelId(channelId);
-    setThreadRoot(null);
-    setReplyTarget(null);
+    setThreadRoot(undefined);
+    setReplyTarget(undefined);
     setMobilePane("chat");
     setSendError(null);
   }, []);
@@ -912,8 +865,8 @@ function ChatViewContent({
       setMainView("chat");
       const channelId = await createConversation(runtime, userIds);
       setActiveChannelId(channelId);
-      setThreadRoot(null);
-      setReplyTarget(null);
+      setThreadRoot(undefined);
+      setReplyTarget(undefined);
       setMobilePane("chat");
     },
     [runtime],
@@ -947,7 +900,7 @@ function ChatViewContent({
   const selectSearchHit = useCallback(
     (hit: ChatSearchHit) => {
       setSearchOpen(false);
-      void openChannel(hit.channelId);
+      openChannel(hit.channelId);
       setPendingJump({
         channelId: hit.channelId,
         messageId: hit.threadRootId ?? hit.messageId,
@@ -1053,7 +1006,7 @@ function ChatViewContent({
     setSendError(null);
     typing.reset(targetChannelId);
     void runtime.port.clearTyping({ channelId: targetChannelId }).catch(() => undefined);
-    const result = await sendMessage(targetChannelId, input.text, {
+    const result = await chat.sendMessage(targetChannelId, input.text, {
       mentionUserIds: input.mentionUserIds,
       ...(input.mentionChannelIds !== undefined
         ? { mentionChannelIds: input.mentionChannelIds }
@@ -1129,69 +1082,38 @@ function ChatViewContent({
     await setAvatar({ storageId: body.storageId as never });
   };
 
+  const showList = mobilePane === "list" || (mainView === "chat" && channel === undefined);
+  const adminView = adminOpen && showAdmin;
+  const rightPanel =
+    threadRoot !== undefined && channel !== undefined ? "thread" : membersOpen ? "members" : null;
+  const callTitle =
+    voice.call !== null ? (titles.get(voice.call.channelId) ?? channel?.name ?? "") : "";
+  const incomingCall = voice.incoming[0];
+
   const submitChannelEdit = async (patch: EditChannelPatch) => {
     const target = editChannelModal;
-    if (target === null) {
+    if (target === undefined) {
       return;
     }
-    const originalName = titles.get(target.id) ?? target.name;
-    const originalTopic = target.topic ?? "";
-    const originallyPrivate = target.isPrivate === true;
-    const originalMemberIds = target.memberIds ?? [];
-    const originalBlocked = (target.overrides ?? [])
-      .filter((override) => override.targetType === "member")
-      .filter((override) => (override.deny & Permission.ViewChannel) !== 0n)
-      .map((override) => override.targetId);
-    const nextName = patch.name.trim();
     setEditChannelBusy(true);
     setEditChannelError(null);
     try {
-      if (nextName.length > 0 && nextName !== originalName) {
-        await runtime.session.setChannelName(target.id, nextName);
-      }
-      if (patch.topic !== originalTopic) {
-        await runtime.port.setChannelTopic({ channelId: target.id, topic: patch.topic });
-      }
-      const membership =
-        patch.private && patch.memberIds.length > 0
-          ? [...new Set([ownUserId, ...patch.memberIds])]
-          : patch.private
-            ? [ownUserId]
-            : [];
-      if (patch.private !== originallyPrivate) {
-        await runtime.port.setChannelPrivate({
-          channelId: target.id,
-          private: patch.private,
-          memberIds: membership,
-        });
-      } else if (patch.private && !sameStringSet(patch.memberIds, originalMemberIds)) {
-        await runtime.port.setChannelPrivate({
-          channelId: target.id,
-          private: true,
-          memberIds: membership,
-        });
-      }
-      if (!sameStringSet(patch.blockedUserIds, originalBlocked)) {
-        await runtime.port.setChannelBlocked({
-          channelId: target.id,
-          userIds: [...new Set(patch.blockedUserIds)],
-        });
-      }
-      setEditChannelModal(null);
+      await commitChannelEdit(runtime, {
+        baseline: channelEditBaseline(target, titles.get(target.id) ?? target.name),
+        name: patch.name,
+        topic: patch.topic,
+        isPrivate: patch.private,
+        memberIds: patch.memberIds,
+        blockedUserIds: patch.blockedUserIds,
+        ownUserId,
+      });
+      setEditChannelModal(undefined);
     } catch (error) {
       setEditChannelError(errorMessage(error));
     } finally {
       setEditChannelBusy(false);
     }
   };
-
-  const showList = mobilePane === "list" || (mainView === "chat" && channel === undefined);
-  const adminView = adminOpen && showAdmin;
-  const rightPanel =
-    threadRoot !== null && channel !== undefined ? "thread" : membersOpen ? "members" : null;
-  const callTitle =
-    voice.call !== null ? (titles.get(voice.call.channelId) ?? channel?.name ?? "") : "";
-  const incomingCall = voice.incoming[0];
 
   return (
     <div className="relative flex min-h-0 min-w-0 flex-1 gap-2.5">
@@ -1218,7 +1140,7 @@ function ChatViewContent({
                   onOpenKanban: () => {
                     setMainView("kanban");
                     setMobilePane("chat");
-                    setThreadRoot(null);
+                    setThreadRoot(undefined);
                     setAdminOpen(false);
                     setUserSettingsOpen(false);
                   },
@@ -1227,11 +1149,13 @@ function ChatViewContent({
             threadMentionCount={threadMentionCount}
             onOpenThreads={() => {
               setMainView("threads");
-              setThreadRoot(null);
+              setThreadRoot(undefined);
               setAdminOpen(false);
               setUserSettingsOpen(false);
             }}
-            onCreateCategory={() => setCreateCategoryOpen(true)}
+            onCreateCategory={() => {
+              setCreateCategoryOpen(true);
+            }}
             canManageCategories={canManageCategories}
             appUpdateAvailable={desktopUpdate.status?.updateAvailable ?? false}
             workspaceUpdateAvailable={workspaceUpdate.available}
@@ -1245,14 +1169,18 @@ function ChatViewContent({
               setAdminOpen(true);
             }}
             workspaceSwitcher={<WorkspaceMenu onlineCount={onlineCount} variant="header" />}
-            onSelect={(channelId) => void openChannel(channelId)}
+            onSelect={(channelId) => {
+              openChannel(channelId);
+            }}
             onCreateChannel={(kind) => {
               setCreateChannelKind(kind);
               setCreateChannelCategoryId(undefined);
               setCreateChannelOpen(true);
             }}
             categoryActions={{
-              rename: (category) => setCategoryModal({ category }),
+              rename: (category) => {
+                setCategoryModal({ category });
+              },
               delete: (category) => void removeCategory({ categoryId: category.id as never }),
               createChannel: (category) => {
                 setCreateChannelKind("text");
@@ -1261,10 +1189,18 @@ function ChatViewContent({
               },
             }}
             channelActions={{
-              open: (channel) => void openChannel(channel.id),
-              invite: (channel) => setMembersModalChannel(channel),
+              open: (channel) => {
+                openChannel(channel.id);
+              },
+              invite: (channel) => {
+                setMembersModalChannel(channel);
+              },
               ...(admin.viewer.isOwner || hasPermission(permissions, Permission.ManageChannels)
-                ? { rename: (channel: ChannelView) => setRenameModalChannel(channel) }
+                ? {
+                    rename: (channel: ChannelView) => {
+                      setRenameModalChannel(channel);
+                    },
+                  }
                 : {}),
               ...(canManageChannels
                 ? {
@@ -1285,10 +1221,10 @@ function ChatViewContent({
               },
               copyLink: (channel) => {
                 const url = `${window.location.origin}/?channel=${channel.id}`;
-                void navigator.clipboard?.writeText(url).catch(() => undefined);
+                void navigator.clipboard.writeText(url).catch(() => undefined);
               },
               hide: (channel) => {
-                hiddenMentionBaseline.current.set(
+                restoreTracking.current.baseline.set(
                   channel.id,
                   unreadByChannel.get(channel.id)?.mentionCount ?? 0,
                 );
@@ -1319,8 +1255,12 @@ function ChatViewContent({
                   }
                 : {}),
             }}
-            onNewConversation={() => setNewConversationOpen(true)}
-            onOpenSearch={() => setSearchOpen(true)}
+            onNewConversation={() => {
+              setNewConversationOpen(true);
+            }}
+            onOpenSearch={() => {
+              setSearchOpen(true);
+            }}
             onSetStatus={(status) => {
               void runtime.port.setStatus({ status });
             }}
@@ -1359,7 +1299,9 @@ function ChatViewContent({
           channels={channels}
           channelNames={channelNames}
           origin={typeof window === "undefined" ? "" : window.location.origin}
-          onClose={() => setAdminOpen(false)}
+          onClose={() => {
+            setAdminOpen(false);
+          }}
         />
       ) : userSettingsOpen ? (
         <UserSettingsView
@@ -1378,7 +1320,9 @@ function ChatViewContent({
           onClearAvatar={async () => {
             await setAvatar({});
           }}
-          onBack={() => setUserSettingsOpen(false)}
+          onBack={() => {
+            setUserSettingsOpen(false);
+          }}
           onSignOut={onSignOut}
           voiceSettings={<DeviceSettingsSection />}
           soundSettings={<NotificationsSettingsSection />}
@@ -1435,149 +1379,64 @@ function ChatViewContent({
           ) : channel.kind === "voice" ? (
             <VoiceChannelView channel={channel} title={title} identity={callIdentity} />
           ) : (
-            <>
-              <ConversationHeader
-                channel={channel}
-                title={title}
-                ownUserId={ownUserId}
-                memberCount={visibleMembers.length}
-                presenceOf={presenceOf}
-                membersOpen={rightPanel === "members"}
-                onToggleMembers={() => {
-                  setThreadRoot(null);
-                  setMembersOpen((open) => (threadRoot !== null ? true : !open));
-                }}
-                onOpenSearch={() => setSearchOpen(true)}
-                pinsOpen={pinsOpen}
-                onTogglePins={() => setPinsOpen((open) => !open)}
-                onBack={() => setMobilePane("list")}
-                canStartCall={
-                  voice.canConnect && hasPermission(channelPermissions, Permission.Connect)
-                }
-                canStartVideoCall={
-                  voice.canVideo && hasPermission(channelPermissions, Permission.UseVideo)
-                }
-                onStartCall={(kind) => {
-                  setNewConversationOpen(false);
-                  void voice.startCall(channel.id, kind);
-                }}
-              />
-              {pinsOpen && (
-                <PinnedMessagesPanel
-                  key={channel.id}
-                  channelId={channel.id}
-                  memberNames={memberNames}
-                  permissions={channelPermissions}
-                  onClose={() => setPinsOpen(false)}
-                />
-              )}
-              <MessageList
-                key={channel.id}
-                runtime={runtime}
-                channelId={channel.id}
-                messages={mergedMessages}
-                decrypted={mergedDecrypted}
-                attachments={attachmentsByMessage}
-                pendingIds={pendingIds}
-                failedIds={failedIds}
-                onRetrySend={(pendingId) => {
-                  void retrySend?.(pendingId.replace(/^pending:/, ""));
-                }}
-                onDiscardSend={(pendingId) => {
-                  void discardSend?.(pendingId.replace(/^pending:/, ""));
-                }}
-                permissions={channelPermissions}
-                ownUserId={ownUserId}
-                ownName={ownName}
-                memberNames={memberNames}
-                memberColors={memberColors}
-                mentionNames={mentionNames}
-                channelNames={channelMentionNames}
-                onChannelClick={(name) => {
-                  const target = channelMentions.find((entry) => entry.name === name);
-                  if (target !== undefined) {
-                    void openChannel(target.channelId);
-                  }
-                }}
-                firstUnreadId={sessionState.unread.firstUnreadId}
-                typers={sessionState.typers}
-                hasOlder={sessionState.hasOlder}
-                loading={sessionState.loading}
-                onLoadOlder={sessionState.loadOlder}
-                onReply={(message) => setThreadRoot(message)}
-                onReplyTo={(message) => setReplyTarget(message)}
-                replyPreviews={replyPreviews}
-                ownSide={alignment}
-                onEdit={(message, text) => {
-                  void runtime.session.editMessage(channel.id, message.id, text);
-                }}
-                onDelete={(message) => {
-                  void runtime.session.deleteMessage(channel.id, message.id);
-                }}
-                onPinToggle={(message) => {
-                  void (message.pinnedAt !== null
-                    ? runtime.session.unpinMessage(channel.id, message.id)
-                    : runtime.session.pinMessage(channel.id, message.id));
-                }}
-                onReact={(message, emoji) => {
-                  void runtime.session.toggleReaction(channel.id, message.id, emoji);
-                }}
-                emptyState={<ConversationStart channel={channel} title={title} />}
-              />
-              {sendError !== null && (
-                <div
-                  role="alert"
-                  className="mx-4 mb-1 flex items-center gap-2 rounded-[10px] border border-danger/30 bg-danger/10 px-3 py-2 text-[13px] text-danger"
-                >
-                  <span className="flex-1">{sendError}</span>
-                  <button type="button" aria-label="Dismiss" onClick={() => setSendError(null)}>
-                    <Icon name="x" size={16} />
-                  </button>
-                </div>
-              )}
-              {canSend ? (
-                <Composer
-                  channelId={channel.id}
-                  draftKey={channel.id}
-                  members={mentionMembers}
-                  roles={roles}
-                  memberIds={memberIds}
-                  channels={channelMentions}
-                  categories={categoryMentions}
-                  canAttach={canAttach}
-                  canMentionEveryone={canMentionEveryone}
-                  ownName={ownName}
-                  placeholder={placeholder}
-                  onTyping={(channelId) => typing.ping(channelId)}
-                  onSend={async (input) => {
-                    await sendWithFiles(
-                      channel.id,
-                      input,
-                      replyTarget !== null ? { replyToId: replyTarget.id } : {},
-                    );
-                    setReplyTarget(null);
-                  }}
-                  replyTo={
-                    replyTarget === null
-                      ? null
-                      : {
-                          authorName:
-                            replyTarget.authorId === ownUserId
-                              ? ownName
-                              : (memberNames.get(replyTarget.authorId) ?? "Unknown member"),
-                          preview: truncateReply(
-                            mergedDecrypted.get(replyTarget.id) ?? replyTarget.body,
-                          ),
-                        }
-                  }
-                  onCancelReply={() => setReplyTarget(null)}
-                />
-              ) : (
-                <p className="m-4 rounded-[10px] border border-border bg-surface-2 px-4 py-3 text-center text-[13px] text-text-muted">
-                  You can read this channel, but only some roles can post here.
-                </p>
-              )}
-            </>
+            <ChannelPane
+              runtime={runtime}
+              channel={channel}
+              title={title}
+              placeholder={placeholder}
+              ownUserId={ownUserId}
+              ownName={ownName}
+              alignment={alignment}
+              channelPermissions={channelPermissions}
+              sessionState={sessionState}
+              mergedMessages={mergedMessages}
+              mergedDecrypted={mergedDecrypted}
+              attachments={attachmentsByMessage}
+              pendingIds={pendingIds}
+              failedIds={failedIds}
+              replyPreviews={replyPreviews}
+              memberNames={memberNames}
+              memberColors={memberColors}
+              mentionNames={mentionNames}
+              mentionMembers={mentionMembers}
+              memberIds={memberIds}
+              roles={roles}
+              channelMentions={channelMentions}
+              categoryMentions={categoryMentions}
+              visibleMemberCount={visibleMembers.length}
+              presenceOf={presenceOf}
+              voice={voice}
+              chat={chat}
+              canSend={canSend}
+              canAttach={canAttach}
+              canMentionEveryone={canMentionEveryone}
+              pinsOpen={pinsOpen}
+              membersOpen={rightPanel === "members"}
+              {...(replyTarget !== undefined ? { replyTarget } : {})}
+              sendError={sendError}
+              typingPing={(channelId) => {
+                typing.ping(channelId);
+              }}
+              onOpenChannel={openChannel}
+              onSetReplyTarget={setReplyTarget}
+              onSetThreadRoot={setThreadRoot}
+              onToggleMembers={() => {
+                setThreadRoot(undefined);
+                setMembersOpen((open) => (threadRoot !== undefined ? true : !open));
+              }}
+              onOpenSearch={() => {
+                setSearchOpen(true);
+              }}
+              onTogglePins={() => {
+                setPinsOpen((open) => !open);
+              }}
+              onBack={() => {
+                setMobilePane("list");
+              }}
+              onSetSendError={setSendError}
+              onSetNewConversationOpen={setNewConversationOpen}
+              sendWithFiles={sendWithFiles}
+            />
           )}
         </section>
       )}
@@ -1589,7 +1448,7 @@ function ChatViewContent({
         !userSettingsOpen &&
         mainView === "chat" && (
           <div className="fixed inset-y-2.5 right-2.5 z-30 flex lg:static lg:z-auto">
-            {rightPanel === "thread" && threadRoot !== null ? (
+            {rightPanel === "thread" && threadRoot !== undefined ? (
               <ThreadsPanel
                 key={threadRoot.id}
                 runtime={runtime}
@@ -1608,8 +1467,12 @@ function ChatViewContent({
                 memberNames={memberNames}
                 memberColors={memberColors}
                 mentionNames={mentionNames}
-                onClose={() => setThreadRoot(null)}
-                onTyping={(channelId) => typing.ping(channelId)}
+                onClose={() => {
+                  setThreadRoot(undefined);
+                }}
+                onTyping={(channelId) => {
+                  typing.ping(channelId);
+                }}
                 onSendReply={async ({ alsoSendToChannel, ...input }) => {
                   await sendWithFiles(channel.id, input, { threadRootId: threadRoot.id });
                   if (alsoSendToChannel) {
@@ -1622,7 +1485,7 @@ function ChatViewContent({
                 onDelete={(message) => {
                   void runtime.session.deleteMessage(channel.id, message.id);
                   if (message.id === threadRoot.id) {
-                    setThreadRoot(null);
+                    setThreadRoot(undefined);
                   }
                 }}
                 onPinToggle={(message) => {
@@ -1646,17 +1509,33 @@ function ChatViewContent({
                   );
                 }}
                 onMessage={(userId) => void startConversation([userId])}
-                onClose={() => setMembersOpen(false)}
+                onClose={() => {
+                  setMembersOpen(false);
+                }}
                 memberActions={{
-                  message: (userId) => void startConversation([userId]),
+                  message: (userId) => {
+                    void startConversation([userId]);
+                  },
                   ...(hasPermission(permissions, Permission.ManageRoles)
-                    ? { assignRoles: () => setAdminOpen(true) }
+                    ? {
+                        assignRoles: () => {
+                          setAdminOpen(true);
+                        },
+                      }
                     : {}),
                   ...(hasPermission(permissions, Permission.Kick)
-                    ? { kick: (userId: string) => void kickMember({ userId }) }
+                    ? {
+                        kick: (userId: string) => {
+                          void kickMember({ userId });
+                        },
+                      }
                     : {}),
                   ...(hasPermission(permissions, Permission.Ban)
-                    ? { ban: (userId: string) => void banMember({ userId }) }
+                    ? {
+                        ban: (userId: string) => {
+                          void banMember({ userId });
+                        },
+                      }
                     : {}),
                 }}
               />
@@ -1694,7 +1573,9 @@ function ChatViewContent({
           <button
             type="button"
             aria-label="Dismiss call error"
-            onClick={() => voice.clearError()}
+            onClick={() => {
+              voice.clearError();
+            }}
             className="shrink-0 text-text-muted transition hover:text-text"
           >
             <Icon name="x" size={15} />
@@ -1720,10 +1601,12 @@ function ChatViewContent({
           onQueryChange={setSearchQuery}
           onSelectConversation={(channelId) => {
             setSearchOpen(false);
-            void openChannel(channelId);
+            openChannel(channelId);
           }}
           onSelect={selectSearchHit}
-          onClose={() => setSearchOpen(false)}
+          onClose={() => {
+            setSearchOpen(false);
+          }}
         />
       )}
 
@@ -1733,7 +1616,9 @@ function ChatViewContent({
           ownUserId={ownUserId}
           presenceOf={presenceOf}
           onStart={(userIds) => void startConversation(userIds)}
-          onClose={() => setNewConversationOpen(false)}
+          onClose={() => {
+            setNewConversationOpen(false);
+          }}
         />
       )}
 
@@ -1774,22 +1659,24 @@ function ChatViewContent({
         onSubmit={submitCategory}
       />
 
-      {renameModalChannel !== null && (
+      {renameModalChannel !== undefined && (
         <RenameChannelModal
           open
           currentName={titles.get(renameModalChannel.id) ?? renameModalChannel.name}
           kindLabel={
             renameModalChannel.kind === "announcement" ? "announcement channel" : "channel"
           }
-          onClose={() => setRenameModalChannel(null)}
+          onClose={() => {
+            setRenameModalChannel(undefined);
+          }}
           onRename={async (name) => {
-            setRenameModalChannel(null);
+            setRenameModalChannel(undefined);
             await runtime.session.setChannelName(renameModalChannel.id, name);
           }}
         />
       )}
 
-      {membersModalChannel !== null && (
+      {membersModalChannel !== undefined && (
         <ChannelMembersModal
           open
           channelName={titles.get(membersModalChannel.id) ?? membersModalChannel.name}
@@ -1811,11 +1698,13 @@ function ChatViewContent({
               .removeChannelMember({ channelId: membersModalChannel.id, userId })
               .catch(() => undefined);
           }}
-          onClose={() => setMembersModalChannel(null)}
+          onClose={() => {
+            setMembersModalChannel(undefined);
+          }}
         />
       )}
 
-      {editChannelModal !== null && (
+      {editChannelModal !== undefined && (
         <EditChannelModal
           open
           channelName={titles.get(editChannelModal.id) ?? editChannelModal.name}
@@ -1835,40 +1724,12 @@ function ChatViewContent({
           busy={editChannelBusy}
           error={editChannelError}
           onClose={() => {
-            setEditChannelModal(null);
+            setEditChannelModal(undefined);
             setEditChannelError(null);
           }}
           onSave={submitChannelEdit}
         />
       )}
-    </div>
-  );
-}
-
-function ConversationStart({
-  channel,
-  title,
-}: {
-  readonly channel: ChannelSummary;
-  readonly title: string;
-}) {
-  const isChannel = channel.kind === "text" || channel.kind === "announcement";
-  return (
-    <div className="flex flex-1 flex-col items-center justify-center gap-3 py-16 text-center">
-      <span className="flex h-12 w-12 items-center justify-center rounded-[10px] bg-accent-soft text-accent">
-        <Icon
-          name={isChannel ? (channel.kind === "announcement" ? "announce" : "hash") : "message"}
-          size={24}
-        />
-      </span>
-      <h3 className="text-xl font-semibold tracking-tight text-text">
-        {isChannel ? `Welcome to #${title}` : title}
-      </h3>
-      <p className="max-w-sm text-sm text-text-muted">
-        {isChannel
-          ? "This is the very beginning of the channel. Say hello."
-          : "This is the start of your conversation."}
-      </p>
     </div>
   );
 }

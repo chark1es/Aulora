@@ -26,7 +26,9 @@ export function RenameChannelModal({
       setName(currentName);
       setBusy(false);
       const frame = requestAnimationFrame(() => inputRef.current?.select());
-      return () => cancelAnimationFrame(frame);
+      return () => {
+        cancelAnimationFrame(frame);
+      };
     }
     return undefined;
   }, [open, currentName]);
@@ -63,7 +65,9 @@ export function RenameChannelModal({
                 return;
               }
               setBusy(true);
-              void Promise.resolve(onRename(trimmed)).finally(() => setBusy(false));
+              void Promise.resolve(onRename(trimmed)).finally(() => {
+                setBusy(false);
+              });
             }}
             className="h-9 rounded-[8px] bg-accent px-3.5 text-[13px] font-semibold text-on-accent transition hover:brightness-110 disabled:pointer-events-none disabled:opacity-40"
           >
@@ -77,11 +81,15 @@ export function RenameChannelModal({
         label="Name"
         value={name}
         maxLength={80}
-        onChange={(event) => setName(event.target.value)}
+        onChange={(event) => {
+          setName(event.target.value);
+        }}
         onKeyDown={(event) => {
           if (event.key === "Enter" && canSubmit) {
             setBusy(true);
-            void Promise.resolve(onRename(trimmed)).finally(() => setBusy(false));
+            void Promise.resolve(onRename(trimmed)).finally(() => {
+              setBusy(false);
+            });
           }
         }}
       />

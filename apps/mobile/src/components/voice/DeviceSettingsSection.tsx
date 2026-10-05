@@ -5,163 +5,7 @@ import { useVoice } from "../../providers/VoiceProvider";
 
 const RESOLUTIONS: readonly VoiceDeviceSettings["videoResolution"][] = ["360p", "720p", "1080p"];
 
-/**
- * Voice and video device preferences: input/output/camera pickers, audio
- * processing switches, gains, video resolution and join defaults. Rendered
- * inside the members sheet's voice settings modal.
- */
-export function DeviceSettingsSection() {
-  const { settings, devices, updateSettings, micLevelAvailable, callId } = useVoice();
-  // Once a call is live we know whether this build exposes mic levels; until
-  // then push-to-talk availability is simply unknown.
-  const pushToTalkUnavailable = callId !== null && !micLevelAvailable;
-
-  return (
-    <ScrollView contentContainerStyle={{ gap: 18, paddingBottom: 24 }}>
-      <DevicePicker
-        label="Microphone"
-        kind="audioinput"
-        devices={devices}
-        selected={settings.inputDeviceId}
-        onSelect={(deviceId) => void updateSettings({ inputDeviceId: deviceId })}
-      />
-      <DevicePicker
-        label="Camera"
-        kind="videoinput"
-        devices={devices}
-        selected={settings.cameraDeviceId}
-        onSelect={(deviceId) => void updateSettings({ cameraDeviceId: deviceId })}
-      />
-      <DevicePicker
-        label="Speaker"
-        kind="audiooutput"
-        devices={devices}
-        selected={settings.outputDeviceId}
-        onSelect={(deviceId) => void updateSettings({ outputDeviceId: deviceId })}
-      />
-
-      <View className="gap-1">
-        <Heading level={3}>Audio processing</Heading>
-        <ToggleRow
-          label="Echo cancellation"
-          value={settings.echoCancellation}
-          onChange={(value) => void updateSettings({ echoCancellation: value })}
-        />
-        <ToggleRow
-          label="Noise suppression"
-          value={settings.noiseSuppression}
-          onChange={(value) => void updateSettings({ noiseSuppression: value })}
-        />
-        <ToggleRow
-          label="Automatic gain control"
-          value={settings.autoGainControl}
-          onChange={(value) => void updateSettings({ autoGainControl: value })}
-        />
-      </View>
-
-      <View className="gap-2">
-        <Heading level={3}>Levels</Heading>
-        <VolumeStepper
-          label="Input volume"
-          value={settings.inputVolume}
-          onChange={(value) => void updateSettings({ inputVolume: value })}
-        />
-        <VolumeStepper
-          label="Output volume"
-          value={settings.outputVolume}
-          onChange={(value) => void updateSettings({ outputVolume: value })}
-        />
-        <VolumeStepper
-          label="Noise gate"
-          value={settings.noiseGateThreshold}
-          onChange={(value) => void updateSettings({ noiseGateThreshold: value })}
-        />
-      </View>
-
-      <View className="gap-2">
-        <Heading level={3}>Video</Heading>
-        <Segmented
-          label="Resolution"
-          options={RESOLUTIONS}
-          value={settings.videoResolution}
-          onSelect={(value) => void updateSettings({ videoResolution: value })}
-        />
-        <ToggleRow
-          label="Mirror camera"
-          value={settings.mirrorCamera}
-          onChange={(value) => void updateSettings({ mirrorCamera: value })}
-        />
-      </View>
-
-      <View className="gap-1">
-        <Heading level={3}>When joining</Heading>
-        <ToggleRow
-          label="Push to talk"
-          value={settings.pushToTalk}
-          onChange={(value) => void updateSettings({ pushToTalk: value })}
-          disabled={pushToTalkUnavailable && !settings.pushToTalk}
-        />
-        {pushToTalkUnavailable && (
-          <Text size="xs" tone="muted">
-            Push-to-talk needs live microphone levels, which this device's WebRTC build does not
-            expose. While it is enabled the microphone stays closed instead of transmitting.
-          </Text>
-        )}
-        <ToggleRow
-          label="Join muted"
-          value={settings.joinMuted}
-          onChange={(value) => void updateSettings({ joinMuted: value })}
-        />
-        <ToggleRow
-          label="Join with camera on"
-          value={settings.joinWithCamera}
-          onChange={(value) => void updateSettings({ joinWithCamera: value })}
-        />
-      </View>
-    </ScrollView>
-  );
-}
-
-function DevicePicker({
-  label,
-  kind,
-  devices,
-  selected,
-  onSelect,
-}: {
-  readonly label: string;
-  readonly kind: MediaDeviceInfo["kind"];
-  readonly devices: readonly MediaDeviceInfo[];
-  readonly selected: string | null;
-  readonly onSelect: (deviceId: string | null) => void;
-}) {
-  const palette = usePalette();
-  const options = devices.filter((device) => device.kind === kind);
-  return (
-    <View className="gap-1.5">
-      <Heading level={3}>{label}</Heading>
-      <DeviceOption
-        label="System default"
-        selected={selected === null}
-        onPress={() => onSelect(null)}
-      />
-      {options.map((device) => (
-        <DeviceOption
-          key={device.deviceId}
-          label={device.label}
-          selected={selected === device.deviceId}
-          onPress={() => onSelect(device.deviceId)}
-          checkColor={palette.accent}
-        />
-      ))}
-      {options.length === 0 && (
-        <Text size="xs" tone="muted">
-          No devices detected yet.
-        </Text>
-      )}
-    </View>
-  );
-}
+type UpdateSettings = (patch: Partial<VoiceDeviceSettings>) => void;
 
 function DeviceOption({
   label,
@@ -201,6 +45,51 @@ function DeviceOption({
   );
 }
 
+function DevicePicker({
+  label,
+  kind,
+  devices,
+  selected,
+  onSelect,
+}: {
+  readonly label: string;
+  readonly kind: MediaDeviceInfo["kind"];
+  readonly devices: readonly MediaDeviceInfo[];
+  readonly selected: string | null;
+  readonly onSelect: (_deviceId: string | null) => void;
+}) {
+  const palette = usePalette();
+  const options = devices.filter((device) => device.kind === kind);
+  return (
+    <View className="gap-1.5">
+      <Heading level={3}>{label}</Heading>
+      <DeviceOption
+        label="System default"
+        selected={selected === null}
+        onPress={() => {
+          onSelect(null);
+        }}
+      />
+      {options.map((device) => (
+        <DeviceOption
+          key={device.deviceId}
+          label={device.label}
+          selected={selected === device.deviceId}
+          onPress={() => {
+            onSelect(device.deviceId);
+          }}
+          checkColor={palette.accent}
+        />
+      ))}
+      {options.length === 0 && (
+        <Text size="xs" tone="muted">
+          No devices detected yet.
+        </Text>
+      )}
+    </View>
+  );
+}
+
 function ToggleRow({
   label,
   value,
@@ -209,7 +98,7 @@ function ToggleRow({
 }: {
   readonly label: string;
   readonly value: boolean;
-  readonly onChange: (value: boolean) => void;
+  readonly onChange: (_value: boolean) => void;
   readonly disabled?: boolean;
 }) {
   const palette = usePalette();
@@ -236,7 +125,7 @@ function VolumeStepper({
 }: {
   readonly label: string;
   readonly value: number;
-  readonly onChange: (value: number) => void;
+  readonly onChange: (_value: number) => void;
 }) {
   const step = 0.1;
   const clamp = (next: number) => Math.min(2, Math.max(0, Math.round(next * 10) / 10));
@@ -245,13 +134,25 @@ function VolumeStepper({
       <Text size="sm" className="flex-1">
         {label}
       </Text>
-      <Button size="sm" variant="secondary" onPress={() => onChange(clamp(value - step))}>
+      <Button
+        size="sm"
+        variant="secondary"
+        onPress={() => {
+          onChange(clamp(value - step));
+        }}
+      >
         −
       </Button>
       <Text size="sm" mono style={{ minWidth: 48, textAlign: "center" }}>
         {`${Math.round(value * 100)}%`}
       </Text>
-      <Button size="sm" variant="secondary" onPress={() => onChange(clamp(value + step))}>
+      <Button
+        size="sm"
+        variant="secondary"
+        onPress={() => {
+          onChange(clamp(value + step));
+        }}
+      >
         +
       </Button>
     </View>
@@ -267,7 +168,7 @@ function Segmented<T extends string>({
   readonly label: string;
   readonly options: readonly T[];
   readonly value: T;
-  readonly onSelect: (value: T) => void;
+  readonly onSelect: (_value: T) => void;
 }) {
   return (
     <View className="gap-1.5">
@@ -280,7 +181,9 @@ function Segmented<T extends string>({
               key={option}
               accessibilityRole="button"
               accessibilityState={{ selected: active }}
-              onPress={() => onSelect(option)}
+              onPress={() => {
+                onSelect(option);
+              }}
               className={
                 active
                   ? "flex-1 items-center rounded-input border border-accent bg-accent-soft px-3 py-2"
@@ -295,5 +198,201 @@ function Segmented<T extends string>({
         })}
       </View>
     </View>
+  );
+}
+
+function AudioProcessing({
+  settings,
+  update,
+}: {
+  readonly settings: VoiceDeviceSettings;
+  readonly update: UpdateSettings;
+}) {
+  return (
+    <View className="gap-1">
+      <Heading level={3}>Audio processing</Heading>
+      <ToggleRow
+        label="Echo cancellation"
+        value={settings.echoCancellation}
+        onChange={(value) => {
+          update({ echoCancellation: value });
+        }}
+      />
+      <ToggleRow
+        label="Noise suppression"
+        value={settings.noiseSuppression}
+        onChange={(value) => {
+          update({ noiseSuppression: value });
+        }}
+      />
+      <ToggleRow
+        label="Automatic gain control"
+        value={settings.autoGainControl}
+        onChange={(value) => {
+          update({ autoGainControl: value });
+        }}
+      />
+    </View>
+  );
+}
+
+function LevelsSection({
+  settings,
+  update,
+}: {
+  readonly settings: VoiceDeviceSettings;
+  readonly update: UpdateSettings;
+}) {
+  return (
+    <View className="gap-2">
+      <Heading level={3}>Levels</Heading>
+      <VolumeStepper
+        label="Input volume"
+        value={settings.inputVolume}
+        onChange={(value) => {
+          update({ inputVolume: value });
+        }}
+      />
+      <VolumeStepper
+        label="Output volume"
+        value={settings.outputVolume}
+        onChange={(value) => {
+          update({ outputVolume: value });
+        }}
+      />
+      <VolumeStepper
+        label="Noise gate"
+        value={settings.noiseGateThreshold}
+        onChange={(value) => {
+          update({ noiseGateThreshold: value });
+        }}
+      />
+    </View>
+  );
+}
+
+function VideoSection({
+  settings,
+  update,
+}: {
+  readonly settings: VoiceDeviceSettings;
+  readonly update: UpdateSettings;
+}) {
+  return (
+    <View className="gap-2">
+      <Heading level={3}>Video</Heading>
+      <Segmented
+        label="Resolution"
+        options={RESOLUTIONS}
+        value={settings.videoResolution}
+        onSelect={(value) => {
+          update({ videoResolution: value });
+        }}
+      />
+      <ToggleRow
+        label="Mirror camera"
+        value={settings.mirrorCamera}
+        onChange={(value) => {
+          update({ mirrorCamera: value });
+        }}
+      />
+    </View>
+  );
+}
+
+function JoinSection({
+  settings,
+  update,
+  pushToTalkUnavailable,
+}: {
+  readonly settings: VoiceDeviceSettings;
+  readonly update: UpdateSettings;
+  readonly pushToTalkUnavailable: boolean;
+}) {
+  return (
+    <View className="gap-1">
+      <Heading level={3}>When joining</Heading>
+      <ToggleRow
+        label="Push to talk"
+        value={settings.pushToTalk}
+        onChange={(value) => {
+          update({ pushToTalk: value });
+        }}
+        disabled={pushToTalkUnavailable && !settings.pushToTalk}
+      />
+      {pushToTalkUnavailable && (
+        <Text size="xs" tone="muted">
+          Push-to-talk needs live microphone levels, which this device's WebRTC build does not
+          expose. While it is enabled the microphone stays closed instead of transmitting.
+        </Text>
+      )}
+      <ToggleRow
+        label="Join muted"
+        value={settings.joinMuted}
+        onChange={(value) => {
+          update({ joinMuted: value });
+        }}
+      />
+      <ToggleRow
+        label="Join with camera on"
+        value={settings.joinWithCamera}
+        onChange={(value) => {
+          update({ joinWithCamera: value });
+        }}
+      />
+    </View>
+  );
+}
+
+/**
+ * Voice and video device preferences: input/output/camera pickers, audio
+ * processing switches, gains, video resolution and join defaults. Rendered
+ * inside the members sheet's voice settings modal.
+ */
+export function DeviceSettingsSection() {
+  const { settings, devices, updateSettings, micLevelAvailable, callId } = useVoice();
+  const pushToTalkUnavailable = callId !== null && !micLevelAvailable;
+  const update: UpdateSettings = (patch) => {
+    void updateSettings(patch);
+  };
+
+  return (
+    <ScrollView contentContainerStyle={{ gap: 18, paddingBottom: 24 }}>
+      <DevicePicker
+        label="Microphone"
+        kind="audioinput"
+        devices={devices}
+        selected={settings.inputDeviceId}
+        onSelect={(deviceId) => {
+          update({ inputDeviceId: deviceId });
+        }}
+      />
+      <DevicePicker
+        label="Camera"
+        kind="videoinput"
+        devices={devices}
+        selected={settings.cameraDeviceId}
+        onSelect={(deviceId) => {
+          update({ cameraDeviceId: deviceId });
+        }}
+      />
+      <DevicePicker
+        label="Speaker"
+        kind="audiooutput"
+        devices={devices}
+        selected={settings.outputDeviceId}
+        onSelect={(deviceId) => {
+          update({ outputDeviceId: deviceId });
+        }}
+      />
+      <AudioProcessing settings={settings} update={update} />
+      <LevelsSection settings={settings} update={update} />
+      <VideoSection settings={settings} update={update} />
+      <JoinSection
+        settings={settings}
+        update={update}
+        pushToTalkUnavailable={pushToTalkUnavailable}
+      />
+    </ScrollView>
   );
 }

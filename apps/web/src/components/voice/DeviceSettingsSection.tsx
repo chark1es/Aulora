@@ -3,6 +3,7 @@ import { cn, Icon, SegmentedControl, Select, Switch, Text } from "@aulora/ui-web
 import { useCallback, useEffect, useRef, useState } from "react";
 import { acquireUserMedia, createLevelMeter, supportsOutputSelection } from "../../lib/voice/media";
 import { useVoice } from "../../providers/VoiceProvider";
+import type { Callback } from "../admin/callbacks";
 
 const DEVICE_NONE = "__default__";
 
@@ -22,7 +23,7 @@ function deviceOptions(devices: readonly MediaDeviceInfo[], kind: MediaDeviceInf
  */
 export function DeviceSettingsSection() {
   const voice = useVoice();
-  const { settings, devices, updateSettings } = voice;
+  const { settings, devices } = voice;
   const [testing, setTesting] = useState(false);
   const [testLevel, setTestLevel] = useState(0);
   const testStream = useRef<MediaStream | null>(null);
@@ -72,7 +73,7 @@ export function DeviceSettingsSection() {
         value={settings.inputDeviceId ?? DEVICE_NONE}
         options={deviceOptions(devices, "audioinput")}
         onChange={(value) =>
-          void updateSettings({ inputDeviceId: value === DEVICE_NONE ? null : value })
+          void voice.updateSettings({ inputDeviceId: value === DEVICE_NONE ? null : value })
         }
       />
 
@@ -90,7 +91,9 @@ export function DeviceSettingsSection() {
           </div>
           <button
             type="button"
-            onClick={() => (testing ? stopTest() : void startTest())}
+            onClick={() => {
+              testing ? stopTest() : void startTest();
+            }}
             className={cn(
               "h-7 shrink-0 rounded-[7px] px-2.5 text-[12px] font-medium transition",
               testing
@@ -108,7 +111,7 @@ export function DeviceSettingsSection() {
         value={settings.outputDeviceId ?? DEVICE_NONE}
         options={deviceOptions(devices, "audiooutput")}
         onChange={(value) =>
-          void updateSettings({ outputDeviceId: value === DEVICE_NONE ? null : value })
+          void voice.updateSettings({ outputDeviceId: value === DEVICE_NONE ? null : value })
         }
         {...(outputSelectable ? {} : { className: "pointer-events-none opacity-50" })}
       />
@@ -118,7 +121,7 @@ export function DeviceSettingsSection() {
         value={settings.cameraDeviceId ?? DEVICE_NONE}
         options={deviceOptions(devices, "videoinput")}
         onChange={(value) =>
-          void updateSettings({ cameraDeviceId: value === DEVICE_NONE ? null : value })
+          void voice.updateSettings({ cameraDeviceId: value === DEVICE_NONE ? null : value })
         }
       />
 
@@ -126,20 +129,20 @@ export function DeviceSettingsSection() {
         label="Input volume"
         value={settings.inputVolume}
         max={2}
-        onChange={(inputVolume) => void updateSettings({ inputVolume })}
+        onChange={(inputVolume) => void voice.updateSettings({ inputVolume })}
       />
       <RangeSetting
         label="Output volume"
         value={settings.outputVolume}
         max={2}
-        onChange={(outputVolume) => void updateSettings({ outputVolume })}
+        onChange={(outputVolume) => void voice.updateSettings({ outputVolume })}
       />
       <RangeSetting
         label="Noise gate"
         value={settings.noiseGateThreshold}
         max={0.5}
         step={0.01}
-        onChange={(noiseGateThreshold) => void updateSettings({ noiseGateThreshold })}
+        onChange={(noiseGateThreshold) => void voice.updateSettings({ noiseGateThreshold })}
       />
       <Text tone="muted" size="xs">
         The gate silences input below this level. Set it to zero to leave the mic open.
@@ -148,19 +151,19 @@ export function DeviceSettingsSection() {
       <div className="rounded-[10px] border border-border bg-surface-1 px-3.5">
         <Switch
           checked={settings.echoCancellation}
-          onChange={(echoCancellation) => void updateSettings({ echoCancellation })}
+          onChange={(echoCancellation) => void voice.updateSettings({ echoCancellation })}
           label="Echo cancellation"
           description="Removes echo from speakers bleeding into your microphone."
         />
         <Switch
           checked={settings.noiseSuppression}
-          onChange={(noiseSuppression) => void updateSettings({ noiseSuppression })}
+          onChange={(noiseSuppression) => void voice.updateSettings({ noiseSuppression })}
           label="Noise suppression"
           description="Reduces background hum, fans and keystrokes."
         />
         <Switch
           checked={settings.autoGainControl}
-          onChange={(autoGainControl) => void updateSettings({ autoGainControl })}
+          onChange={(autoGainControl) => void voice.updateSettings({ autoGainControl })}
           label="Automatic gain control"
           description="Keeps your level steady as you move around."
         />
@@ -176,7 +179,7 @@ export function DeviceSettingsSection() {
             { value: "720p", label: "720p" },
             { value: "1080p", label: "1080p" },
           ]}
-          onChange={(videoResolution) => void updateSettings({ videoResolution })}
+          onChange={(videoResolution) => void voice.updateSettings({ videoResolution })}
           className="w-full"
         />
       </div>
@@ -184,25 +187,25 @@ export function DeviceSettingsSection() {
       <div className="rounded-[10px] border border-border bg-surface-1 px-3.5">
         <Switch
           checked={settings.mirrorCamera}
-          onChange={(mirrorCamera) => void updateSettings({ mirrorCamera })}
+          onChange={(mirrorCamera) => void voice.updateSettings({ mirrorCamera })}
           label="Mirror my camera"
           description="Flip your self-view, as in a mirror."
         />
         <Switch
           checked={settings.pushToTalk}
-          onChange={(pushToTalk) => void updateSettings({ pushToTalk })}
+          onChange={(pushToTalk) => void voice.updateSettings({ pushToTalk })}
           label="Push to talk"
           description="Only transmit while the talk key is held."
         />
         <Switch
           checked={settings.joinMuted}
-          onChange={(joinMuted) => void updateSettings({ joinMuted })}
+          onChange={(joinMuted) => void voice.updateSettings({ joinMuted })}
           label="Join muted"
           description="Start every call with your microphone off."
         />
         <Switch
           checked={settings.joinWithCamera}
-          onChange={(joinWithCamera) => void updateSettings({ joinWithCamera })}
+          onChange={(joinWithCamera) => void voice.updateSettings({ joinWithCamera })}
           label="Join with camera on"
           description="Turn your camera on when you join a video call."
         />
@@ -226,7 +229,7 @@ function RangeSetting({
   readonly value: number;
   readonly max: number;
   readonly step?: number;
-  readonly onChange: (value: number) => void;
+  readonly onChange: Callback<[value: number]>;
 }) {
   return (
     <label className="flex flex-col gap-1.5">
@@ -240,7 +243,9 @@ function RangeSetting({
         max={max}
         step={step}
         value={value}
-        onChange={(event) => onChange(Number(event.target.value))}
+        onChange={(event) => {
+          onChange(Number(event.target.value));
+        }}
         className="h-1.5 w-full cursor-pointer appearance-none rounded-full bg-surface-3 accent-accent"
       />
     </label>

@@ -17,7 +17,10 @@ FROM docker.io/pgsty/mc@sha256:cfc83108c3abb371f8fb84d99c1fdc88f8c237e022409b008
 FROM oven/bun:1.4.0
 
 RUN apt-get update \
-  && apt-get install -y --no-install-recommends postgresql-client ca-certificates curl \
+  && apt-get install -y --no-install-recommends \
+    postgresql-client=17+278 \
+    ca-certificates=20250419 \
+    curl=8.14.1-2+deb13u5 \
   && rm -rf /var/lib/apt/lists/*
 
 COPY --from=backend /convex/generate_key /usr/local/bin/generate_key
@@ -42,5 +45,10 @@ RUN chmod +x /usr/local/bin/generate_key \
   /app/setup/entrypoint.sh \
   /app/backup/entrypoint.sh \
   /app/backup/backup.sh
+
+# Run the backup runner as an unprivileged user rather than root.
+RUN groupadd --system aulora && useradd --system --gid aulora --home-dir /app aulora \
+  && chown -R aulora:aulora /app
+USER aulora
 
 ENTRYPOINT ["/app/backup/entrypoint.sh"]

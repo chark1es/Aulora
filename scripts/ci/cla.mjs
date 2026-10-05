@@ -63,6 +63,23 @@ async function readSignatures(github, repo, agreement, head) {
 
 // Commit the document and records together. A non-fast-forward update retries
 // against the new archive head, preserving signatures from concurrent PRs.
+function signatureTree(agreement, existing, records) {
+  return [
+    {
+      path: `agreements/${agreement.hash}/CLA.md`,
+      mode: "100644",
+      type: "blob",
+      content: agreement.text,
+    },
+    {
+      path: `agreements/${agreement.hash}/signatures.json`,
+      mode: "100644",
+      type: "blob",
+      content: `${JSON.stringify([...existing, ...records], null, 2)}\n`,
+    },
+  ];
+}
+
 export async function saveSignatures(github, repo, agreement, additions) {
   for (let attempt = 0; attempt < 5; attempt++) {
     const head = await archiveHead(github, repo);
@@ -76,20 +93,7 @@ export async function saveSignatures(github, repo, agreement, additions) {
     const { data: tree } = await github.rest.git.createTree({
       ...repo,
       ...(baseTree ? { base_tree: baseTree } : {}),
-      tree: [
-        {
-          path: `agreements/${agreement.hash}/CLA.md`,
-          mode: "100644",
-          type: "blob",
-          content: agreement.text,
-        },
-        {
-          path: `agreements/${agreement.hash}/signatures.json`,
-          mode: "100644",
-          type: "blob",
-          content: `${JSON.stringify([...existing, ...records], null, 2)}\n`,
-        },
-      ],
+      tree: signatureTree(agreement, existing, records),
     });
     const { data: commit } = await github.rest.git.createCommit({
       ...repo,
@@ -183,12 +187,44 @@ export function acceptances(comments, people, agreement, pull) {
       revision: agreement.revision,
       agreementHash: agreement.hash,
       agreementUrl: agreement.url,
-      pullRequest: pull.html_url,
+      pullRequest: pull.html_url.toString(),
       commentId: comment.id,
-      commentUrl: comment.html_url,
+      commentUrl: comment.html_url.toString(),
     });
   }
   return [...records.values()];
+}
+
+function acceptanceInstructions(agreement, missing) {
+  const lines = [];
+  if (missing.length) {
+    lines.push(`Acceptance needed from ${missing.map((login) => `@${login}`).join(", ")}.`, "");
+  }
+  lines.push(
+    `Read [CLA revision ${agreement.revision}](${agreement.url}), then post this exact statement as a new comment from your own account:`,
+    "",
+    "```text",
+    agreement.statement,
+    "```",
+    "",
+    "Acceptance is recorded once per agreement text and reused on later pull requests.",
+  );
+  return lines;
+}
+
+function unknownAuthorsNotice(unknown) {
+  // Commit metadata is untrusted text. JSON inside a fenced block avoids
+  // turning names into mentions, links, or bot instructions.
+  return [
+    "",
+    "These commit authors have no linked GitHub identity:",
+    "",
+    "```json",
+    JSON.stringify(unknown).replaceAll("`", "\\u0060"),
+    "```",
+    "",
+    "Link the commit email to the author's GitHub account, then comment `recheck`. Correct incorrect author attribution before rechecking.",
+  ];
 }
 
 function commentBody(agreement, missing, unknown) {
@@ -198,31 +234,9 @@ function commentBody(agreement, missing, unknown) {
       `All contributors have accepted [CLA revision ${agreement.revision}](${agreement.url}).`,
     );
   } else {
-    if (missing.length) {
-      lines.push(`Acceptance needed from ${missing.map((login) => `@${login}`).join(", ")}.`, "");
-    }
-    lines.push(
-      `Read [CLA revision ${agreement.revision}](${agreement.url}), then post this exact statement as a new comment from your own account:`,
-      "",
-      "```text",
-      agreement.statement,
-      "```",
-      "",
-      "Acceptance is recorded once per agreement text and reused on later pull requests.",
-    );
+    lines.push(...acceptanceInstructions(agreement, missing));
     if (unknown.length) {
-      // Commit metadata is untrusted text. JSON inside a fenced block avoids
-      // turning names into mentions, links, or bot instructions.
-      lines.push(
-        "",
-        "These commit authors have no linked GitHub identity:",
-        "",
-        "```json",
-        JSON.stringify(unknown).replaceAll("`", "\\u0060"),
-        "```",
-        "",
-        "Link the commit email to the author's GitHub account, then comment `recheck`. Correct incorrect author attribution before rechecking.",
-      );
+      lines.push(...unknownAuthorsNotice(unknown));
     }
   }
   lines.push("", `[Tracking and troubleshooting](${agreement.guideUrl}).`);
@@ -237,7 +251,7 @@ export async function checkPullRequest(github, repo, defaultBranch, number) {
       ...repo,
       sha: pull.head.sha,
       context: statusContext,
-      target_url: pull.html_url,
+      target_url: pull.html_url.toString(),
       state,
       description,
     });

@@ -12,12 +12,19 @@ const dockerDir = resolve(dirname(fileURLToPath(import.meta.url)), "..");
 const repoRoot = resolve(dockerDir, "../..");
 const require = createRequire(resolve(repoRoot, "packages/convex/package.json"));
 const { ConvexHttpClient } = require("convex/browser");
-const env = readEnvFile(resolve(dockerDir, ".env"));
+const env = readEnvFile();
 const lock = resolve(dockerDir, ".update-host.lock");
 const statusFile = resolve(dockerDir, ".update-status.json");
 const updater = createStagedUpdater();
-const client = new ConvexHttpClient(`http://127.0.0.1:${env.CONVEX_API_PORT || "3210"}`, {
-  fetch: (url, init) => fetch(url, { ...init, signal: AbortSignal.timeout(15_000) }),
+const convexOrigin = `http://127.0.0.1:${env.get("CONVEX_API_PORT") || "3210"}`;
+const CONVEX_ORIGINS = [convexOrigin];
+const client = new ConvexHttpClient(convexOrigin, {
+  fetch: (url, init) => {
+    if (CONVEX_ORIGINS.includes(new URL(url).origin)) {
+      return fetch(url, { ...init, signal: AbortSignal.timeout(15_000) });
+    }
+    throw new Error(`Refusing to contact a non-Convex origin: ${url}`);
+  },
 });
 // Secrets are expanded inside the backend container, not shell command arguments.
 const key = await run(
@@ -52,7 +59,7 @@ process.on("SIGTERM", () => {
 });
 let lastCheck = 0;
 let current = existsSync(statusFile) ? JSON.parse(readFileSync(statusFile, "utf8")) : null;
-const interval = Math.max(60, Number(env.AULORA_UPDATE_INTERVAL_SECONDS) || 21600) * 1000;
+const interval = Math.max(60, Number(env.get("AULORA_UPDATE_INTERVAL_SECONDS")) || 21600) * 1000;
 const call = (name, args = {}) => client.function(`updates:${name}`, undefined, args);
 async function report(phase, error = current?.error ?? null) {
   if (!current) return;
@@ -95,7 +102,7 @@ async function operate(command) {
   await report(command === "download" ? "ready" : "idle");
 }
 const heartbeat = setInterval(() => {
-  void call("hostHeartbeat").catch(() => {});
+  void call("hostHeartbeat").catch(() => undefined);
 }, 5000);
 try {
   try {
@@ -110,7 +117,7 @@ try {
     }
   } catch (cause) {
     console.error(`[update] ${cause.message}`);
-    await report(updater.ready() ? "ready" : "idle", cause.message).catch(() => {});
+    await report(updater.ready() ? "ready" : "idle", cause.message).catch(() => undefined);
   }
   while (!stopping) {
     try {
@@ -124,7 +131,7 @@ try {
     } catch (cause) {
       console.error(`[update] ${cause.message}`);
       if (existsSync(statusFile)) current = JSON.parse(readFileSync(statusFile, "utf8"));
-      await report(updater.ready() ? "ready" : "idle", cause.message).catch(() => {});
+      await report(updater.ready() ? "ready" : "idle", cause.message).catch(() => undefined);
     }
     await delay(5000);
   }

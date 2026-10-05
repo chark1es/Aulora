@@ -30,24 +30,10 @@ export function IncomingCallModal({
         </span>
       }
       footer={
-        <>
-          <button
-            type="button"
-            onClick={() => void voice.declineCall(call.id)}
-            className="flex h-9 items-center gap-1.5 rounded-[8px] bg-danger/15 px-3.5 text-[13px] font-semibold text-danger transition hover:bg-danger/25"
-          >
-            <Icon name="phone-hangup" size={15} />
-            Decline
-          </button>
-          <button
-            type="button"
-            onClick={() => void voice.acceptCall(call)}
-            className="flex h-9 items-center gap-1.5 rounded-[8px] bg-secondary px-3.5 text-[13px] font-semibold text-white transition hover:brightness-110"
-          >
-            <Icon name="phone" size={15} />
-            Accept
-          </button>
-        </>
+        <IncomingCallActions
+          onDecline={() => void voice.declineCall(call.id)}
+          onAccept={() => void voice.acceptCall(call)}
+        />
       }
     >
       <div className="flex items-center gap-3">
@@ -62,5 +48,34 @@ export function IncomingCallModal({
         </div>
       </div>
     </Modal>
+  );
+}
+
+function IncomingCallActions({
+  onDecline,
+  onAccept,
+}: {
+  readonly onDecline: () => void;
+  readonly onAccept: () => void;
+}) {
+  return (
+    <>
+      <button
+        type="button"
+        onClick={onDecline}
+        className="flex h-9 items-center gap-1.5 rounded-[8px] bg-danger/15 px-3.5 text-[13px] font-semibold text-danger transition hover:bg-danger/25"
+      >
+        <Icon name="phone-hangup" size={15} />
+        Decline
+      </button>
+      <button
+        type="button"
+        onClick={onAccept}
+        className="flex h-9 items-center gap-1.5 rounded-[8px] bg-secondary px-3.5 text-[13px] font-semibold text-white transition hover:brightness-110"
+      >
+        <Icon name="phone" size={15} />
+        Accept
+      </button>
+    </>
   );
 }

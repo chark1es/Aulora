@@ -96,6 +96,57 @@ export interface SendEmailDeps {
   readonly config?: EmailConfig;
 }
 
+async function sendResend(
+  config: EmailConfig,
+  message: EmailMessage,
+  fetchImpl: typeof fetch,
+): Promise<SendEmailResult> {
+  const response = await fetchImpl("https://api.resend.com/emails", {
+    method: "POST",
+    headers: {
+      "content-type": "application/json",
+      authorization: `Bearer ${config.resendApiKey ?? ""}`,
+    },
+    body: JSON.stringify({
+      from: config.from,
+      to: message.to,
+      subject: message.subject,
+      text: message.text,
+      ...(message.html !== undefined ? { html: message.html } : {}),
+    }),
+  });
+  return response.ok
+    ? { sent: true, provider: "resend" }
+    : { sent: false, provider: "resend", skipped: "error" };
+}
+
+async function sendSmtp(
+  config: EmailConfig,
+  message: EmailMessage,
+  env: Env,
+  fetchImpl: typeof fetch,
+): Promise<SendEmailResult> {
+  const gatewayToken = read(env, "SMTP_GATEWAY_TOKEN");
+  const response = await fetchImpl(config.smtpGatewayUrl ?? "", {
+    method: "POST",
+    headers: {
+      "content-type": "application/json",
+      ...(gatewayToken !== undefined ? { authorization: `Bearer ${gatewayToken}` } : {}),
+    },
+    body: JSON.stringify({
+      from: config.from,
+      to: message.to,
+      subject: message.subject,
+      text: message.text,
+      ...(message.html !== undefined ? { html: message.html } : {}),
+      ...(config.smtp !== undefined ? { smtp: config.smtp } : {}),
+    }),
+  });
+  return response.ok
+    ? { sent: true, provider: "smtp" }
+    : { sent: false, provider: "smtp", skipped: "error" };
+}
+
 /**
  * Sends one message over the configured transport. Failures are returned,
  * never thrown, so a scheduled invite or notification cannot break a mutation.
@@ -118,46 +169,9 @@ export async function sendEmail(
   }
 
   try {
-    if (config.provider === "resend") {
-      const response = await fetchImpl("https://api.resend.com/emails", {
-        method: "POST",
-        headers: {
-          "content-type": "application/json",
-          authorization: `Bearer ${config.resendApiKey ?? ""}`,
-        },
-        body: JSON.stringify({
-          from: config.from,
-          to: message.to,
-          subject: message.subject,
-          text: message.text,
-          ...(message.html !== undefined ? { html: message.html } : {}),
-        }),
-      });
-      return response.ok
-        ? { sent: true, provider: "resend" }
-        : { sent: false, provider: "resend", skipped: "error" };
-    }
-
-    const response = await fetchImpl(config.smtpGatewayUrl ?? "", {
-      method: "POST",
-      headers: {
-        "content-type": "application/json",
-        ...(read(env, "SMTP_GATEWAY_TOKEN") !== undefined
-          ? { authorization: `Bearer ${read(env, "SMTP_GATEWAY_TOKEN")}` }
-          : {}),
-      },
-      body: JSON.stringify({
-        from: config.from,
-        to: message.to,
-        subject: message.subject,
-        text: message.text,
-        ...(message.html !== undefined ? { html: message.html } : {}),
-        ...(config.smtp !== undefined ? { smtp: config.smtp } : {}),
-      }),
-    });
-    return response.ok
-      ? { sent: true, provider: "smtp" }
-      : { sent: false, provider: "smtp", skipped: "error" };
+    return config.provider === "resend"
+      ? await sendResend(config, message, fetchImpl)
+      : await sendSmtp(config, message, env, fetchImpl);
   } catch {
     return { sent: false, provider: config.provider, skipped: "error" };
   }

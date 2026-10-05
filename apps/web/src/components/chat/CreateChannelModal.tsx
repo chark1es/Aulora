@@ -86,7 +86,9 @@ export function CreateChannelModal({
       setQuery("");
       setBusy(false);
       const frame = requestAnimationFrame(() => inputRef.current?.focus());
-      return () => cancelAnimationFrame(frame);
+      return () => {
+        cancelAnimationFrame(frame);
+      };
     }
     return undefined;
   }, [open, initialCategoryId, initialKind]);
@@ -109,14 +111,16 @@ export function CreateChannelModal({
     [sortedMembers, needle],
   );
 
-  const toggleRole = (id: string) =>
+  const toggleRole = (id: string) => {
     setSelectedRoles((current) =>
       current.includes(id) ? current.filter((value) => value !== id) : [...current, id],
     );
-  const toggleMember = (userId: string) =>
+  };
+  const toggleMember = (userId: string) => {
     setSelectedMembers((current) =>
       current.includes(userId) ? current.filter((value) => value !== userId) : [...current, userId],
     );
+  };
 
   const submit = () => {
     if (!canSubmit) {
@@ -132,7 +136,9 @@ export function CreateChannelModal({
         ...(isPrivate && selectedMembers.length > 0 ? { memberIds: selectedMembers } : {}),
         ...(isPrivate && selectedRoles.length > 0 ? { roleIds: selectedRoles } : {}),
       }),
-    ).finally(() => setBusy(false));
+    ).finally(() => {
+      setBusy(false);
+    });
   };
 
   return (
@@ -188,7 +194,9 @@ export function CreateChannelModal({
           placeholder="e.g. product-launch"
           value={name}
           maxLength={80}
-          onChange={(event) => setName(event.target.value)}
+          onChange={(event) => {
+            setName(event.target.value);
+          }}
           {...(slug.length > 0 && slug !== name.trim()
             ? { hint: `Will be created as #${slug}` }
             : {})}
@@ -202,21 +210,27 @@ export function CreateChannelModal({
               icon={<Icon name="hash" size={17} />}
               title="Text"
               description="Messages, threads and files"
-              onClick={() => setKind("text")}
+              onClick={() => {
+                setKind("text");
+              }}
             />
             <KindOption
               active={kind === "announcement"}
               icon={<Icon name="announce" size={17} />}
               title="Announcements"
               description="Read-only for most members"
-              onClick={() => setKind("announcement")}
+              onClick={() => {
+                setKind("announcement");
+              }}
             />
             <KindOption
               active={kind === "voice"}
               icon={<Icon name="volume" size={17} />}
               title="Voice"
               description="Voice and video calls"
-              onClick={() => setKind("voice")}
+              onClick={() => {
+                setKind("voice");
+              }}
             />
           </fieldset>
         </div>
@@ -248,7 +262,9 @@ export function CreateChannelModal({
                     key={`role:${id}`}
                     label={`@${role?.name ?? id}`}
                     color={role?.color ?? null}
-                    onRemove={() => toggleRole(id)}
+                    onRemove={() => {
+                      toggleRole(id);
+                    }}
                   />
                 );
               })}
@@ -259,7 +275,9 @@ export function CreateChannelModal({
                     key={`member:${userId}`}
                     label={member?.displayName ?? userId}
                     color={member?.roleColor ?? null}
-                    onRemove={() => toggleMember(userId)}
+                    onRemove={() => {
+                      toggleMember(userId);
+                    }}
                   />
                 );
               })}
@@ -269,7 +287,9 @@ export function CreateChannelModal({
                   selectedRoles.length + selectedMembers.length === 0 ? "Add roles or people" : ""
                 }
                 value={query}
-                onChange={(event) => setQuery(event.target.value)}
+                onChange={(event) => {
+                  setQuery(event.target.value);
+                }}
                 onKeyDown={(event) => {
                   if (event.key === "Backspace" && query.length === 0) {
                     if (selectedMembers.length > 0) {
@@ -293,7 +313,9 @@ export function CreateChannelModal({
                       label={role.name}
                       description="Role"
                       color={role.color ?? null}
-                      onToggle={() => toggleRole(role.id)}
+                      onToggle={() => {
+                        toggleRole(role.id);
+                      }}
                     />
                   </li>
                 );
@@ -307,7 +329,9 @@ export function CreateChannelModal({
                       label={member.displayName}
                       description="Member"
                       color={member.roleColor ?? null}
-                      onToggle={() => toggleMember(member.userId)}
+                      onToggle={() => {
+                        toggleMember(member.userId);
+                      }}
                     />
                   </li>
                 );

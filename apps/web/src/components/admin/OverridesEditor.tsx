@@ -1,6 +1,6 @@
 import type { PermissionName } from "@aulora/core";
 import { Button, cn, Heading, Icon, Text } from "@aulora/ui-web";
-import { useEffect, useId, useMemo, useState } from "react";
+import { type Dispatch, type SetStateAction, useEffect, useId, useMemo, useState } from "react";
 import {
   type OverrideLevel,
   type OverrideTarget,
@@ -11,13 +11,14 @@ import {
   setOverrideLevel,
 } from "../../lib/workspace-admin";
 import { Combobox, type ComboboxOption } from "./Combobox";
+import type { Callback } from "./callbacks";
 import { OverrideTriState } from "./OverrideTriState";
 
 export interface OverridesEditorProps {
   readonly title: string;
   readonly overrides: readonly OverrideView[];
   readonly targets: readonly OverrideTarget[];
-  readonly onSave: (next: readonly OverrideView[]) => void | Promise<void>;
+  readonly onSave: Callback<[next: readonly OverrideView[]], void | Promise<void>>;
   readonly disabled?: boolean;
   readonly busy?: boolean;
   readonly error?: string | null;
@@ -27,6 +28,18 @@ export interface OverridesEditorProps {
 interface GroupCounts {
   readonly allow: number;
   readonly deny: number;
+}
+
+interface FilteredGroup {
+  readonly label: string;
+  readonly all: readonly PermissionName[];
+  readonly permissions: readonly PermissionName[];
+}
+
+const PERMISSION_LABELS_BY_NAME = new Map<string, string>(Object.entries(PERMISSION_LABELS));
+
+function permissionLabel(name: PermissionName): string {
+  return PERMISSION_LABELS_BY_NAME.get(name) ?? name;
 }
 
 function countGroup(
@@ -66,21 +79,104 @@ function flagsFor(
   return { allow, deny };
 }
 
+function targetMapFor(targets: readonly OverrideTarget[]): Map<string, OverrideTarget> {
+  return new Map(targets.map((target) => [`${target.targetType}:${target.targetId}`, target]));
+}
+
+function buildTargetOptions(targets: readonly OverrideTarget[]): readonly ComboboxOption[] {
+  return targets.map((target) => {
+    const hasColor = target.color !== undefined && target.color !== null && target.color.length > 0;
+    return {
+      value: `${target.targetType}:${target.targetId}`,
+      label: target.label,
+      description: target.targetType === "role" ? "Role" : "Member",
+      keywords: `${target.targetType} ${target.targetId}`,
+      leading:
+        target.targetType === "role" ? (
+          hasColor ? (
+            <span
+              aria-hidden="true"
+              className="h-2.5 w-2.5 rounded-full border border-border"
+              style={{ backgroundColor: target.color ?? undefined }}
+            />
+          ) : (
+            <Icon name="shield" size={13} />
+          )
+        ) : (
+          <Icon name="at" size={13} />
+        ),
+    };
+  });
+}
+
+function filterPermissionGroups(query: string): FilteredGroup[] {
+  const needle = query.trim().toLowerCase();
+  return PERMISSION_GROUPS.map((group) => ({
+    label: group.label,
+    all: group.permissions,
+    permissions:
+      needle.length === 0
+        ? group.permissions
+        : group.permissions.filter((name) => permissionLabel(name).toLowerCase().includes(needle)),
+  })).filter((group) => group.permissions.length > 0);
+}
+
+function countTotals(draft: readonly OverrideView[]): GroupCounts {
+  let allow = 0;
+  let deny = 0;
+  for (const override of draft) {
+    const flags = flagsFor(draft, override);
+    allow += flags.allow.length;
+    deny += flags.deny.length;
+  }
+  return { allow, deny };
+}
+
 /**
  * A category or channel override matrix: pick a role/member target, then set
  * each permission flag to inherit (unset), allow, or deny. `allow`/`deny` stay
  * disjoint because {@link setOverrideLevel} clears the opposite bit.
  */
-export function OverridesEditor({
-  title,
-  overrides,
-  targets,
-  onSave,
-  disabled = false,
-  busy = false,
-  error = null,
-  testId,
-}: OverridesEditorProps) {
+export function OverridesEditor(props: OverridesEditorProps) {
+  return <OverridesEditorView model={useOverridesEditorModel(props)} />;
+}
+
+interface OverridesEditorModel {
+  readonly title: string;
+  readonly disabled: boolean;
+  readonly busy: boolean;
+  readonly error: string | null;
+  readonly testId: string | undefined;
+  readonly draft: readonly OverrideView[];
+  readonly targetKey: string;
+  readonly query: string;
+  readonly summaryOpen: boolean;
+  readonly summaryId: string;
+  readonly targetMap: ReadonlyMap<string, OverrideTarget>;
+  readonly active: OverrideTarget | null;
+  readonly targetOptions: readonly ComboboxOption[];
+  readonly filteredGroups: readonly FilteredGroup[];
+  readonly totals: GroupCounts;
+  readonly setLevel: Callback<[name: PermissionName, level: OverrideLevel]>;
+  readonly setGroup: Callback<[permissions: readonly PermissionName[], level: OverrideLevel]>;
+  readonly clearTarget: Callback<[override: OverrideView]>;
+  readonly onTargetKeyChange: Dispatch<SetStateAction<string>>;
+  readonly onQueryChange: Dispatch<SetStateAction<string>>;
+  readonly onToggleSummary: () => void;
+  readonly onSave: () => void;
+}
+
+function useOverridesEditorModel(props: OverridesEditorProps): OverridesEditorModel {
+  const {
+    title,
+    overrides,
+    targets,
+    onSave,
+    disabled = false,
+    busy = false,
+    error = null,
+    testId,
+  } = props;
   const [draft, setDraft] = useState<readonly OverrideView[]>(overrides);
   const [targetKey, setTargetKey] = useState<string>("");
   const [query, setQuery] = useState("");
@@ -91,101 +187,101 @@ export function OverridesEditor({
     setDraft(overrides);
   }, [overrides]);
 
-  const targetMap = useMemo(
-    () => new Map(targets.map((target) => [`${target.targetType}:${target.targetId}`, target])),
-    [targets],
-  );
+  const targetMap = useMemo(() => targetMapFor(targets), [targets]);
   const active = targetMap.get(targetKey) ?? null;
+  const targetOptions = useMemo(() => buildTargetOptions(targets), [targets]);
+  const filteredGroups = useMemo(() => filterPermissionGroups(query), [query]);
+  const totals = useMemo(() => countTotals(draft), [draft]);
+  const { setLevel, setGroup, clearTarget } = useOverrideDraft(active, setDraft);
 
-  const targetOptions: readonly ComboboxOption[] = useMemo(
-    () =>
-      targets.map((target) => {
-        const hasColor =
-          target.color !== undefined && target.color !== null && target.color.length > 0;
-        return {
-          value: `${target.targetType}:${target.targetId}`,
-          label: target.label,
-          description: target.targetType === "role" ? "Role" : "Member",
-          keywords: `${target.targetType} ${target.targetId}`,
-          leading:
-            target.targetType === "role" ? (
-              hasColor ? (
-                <span
-                  aria-hidden="true"
-                  className="h-2.5 w-2.5 rounded-full border border-border"
-                  style={{ backgroundColor: target.color ?? undefined }}
-                />
-              ) : (
-                <Icon name="shield" size={13} />
-              )
-            ) : (
-              <Icon name="at" size={13} />
-            ),
-        };
-      }),
-    [targets],
-  );
+  return {
+    title,
+    disabled,
+    busy,
+    error,
+    testId,
+    draft,
+    targetKey,
+    query,
+    summaryOpen,
+    summaryId,
+    targetMap,
+    active,
+    targetOptions,
+    filteredGroups,
+    totals,
+    setLevel,
+    setGroup,
+    clearTarget,
+    onTargetKeyChange: setTargetKey,
+    onQueryChange: setQuery,
+    onToggleSummary: () => {
+      setSummaryOpen((open) => !open);
+    },
+    onSave: () => {
+      void onSave(draft);
+    },
+  };
+}
 
-  const filteredGroups = useMemo(() => {
-    const needle = query.trim().toLowerCase();
-    return PERMISSION_GROUPS.map((group) => ({
-      label: group.label,
-      all: group.permissions,
-      permissions:
-        needle.length === 0
-          ? group.permissions
-          : group.permissions.filter((name) =>
-              PERMISSION_LABELS[name].toLowerCase().includes(needle),
-            ),
-    })).filter((group) => group.permissions.length > 0);
-  }, [query]);
-
-  const totals = useMemo(() => {
-    let allow = 0;
-    let deny = 0;
-    for (const override of draft) {
-      const flags = flagsFor(draft, override);
-      allow += flags.allow.length;
-      deny += flags.deny.length;
-    }
-    return { allow, deny };
-  }, [draft]);
-
-  function setLevel(name: PermissionName, level: OverrideLevel) {
-    if (active === null) {
-      return;
-    }
-    setDraft((current) => setOverrideLevel(current, active, name, level));
-  }
-
-  function setGroup(permissions: readonly PermissionName[], level: OverrideLevel) {
-    if (active === null) {
-      return;
-    }
-    setDraft((current) =>
-      permissions.reduce((acc, name) => setOverrideLevel(acc, active, name, level), current),
-    );
-  }
-
-  function clearTarget(override: OverrideView) {
-    setDraft((current) =>
-      current.filter(
-        (entry) =>
-          !(entry.targetId === override.targetId && entry.targetType === override.targetType),
-      ),
-    );
-  }
-
+function OverridesEditorView({ model }: { readonly model: OverridesEditorModel }) {
   return (
-    <div className="flex flex-col gap-3" data-testid={testId}>
+    <div className="flex flex-col gap-3" data-testid={model.testId}>
+      <OverridesToolbar
+        title={model.title}
+        busy={model.busy}
+        disabled={model.disabled}
+        error={model.error}
+        onSave={model.onSave}
+      />
+
+      <OverrideTargetPanel
+        title={model.title}
+        targetKey={model.targetKey}
+        targetOptions={model.targetOptions}
+        disabled={model.disabled}
+        active={model.active}
+        draft={model.draft}
+        query={model.query}
+        onTargetKeyChange={model.onTargetKeyChange}
+        onQueryChange={model.onQueryChange}
+        filteredGroups={model.filteredGroups}
+        onSetLevel={model.setLevel}
+        onSetGroup={model.setGroup}
+      />
+
+      <OverrideSummarySection
+        summaryOpen={model.summaryOpen}
+        summaryId={model.summaryId}
+        draft={model.draft}
+        totals={model.totals}
+        targetMap={model.targetMap}
+        disabled={model.disabled}
+        onToggle={model.onToggleSummary}
+        onClear={model.clearTarget}
+      />
+    </div>
+  );
+}
+
+function OverridesToolbar({
+  title,
+  busy,
+  disabled,
+  error,
+  onSave,
+}: {
+  readonly title: string;
+  readonly busy: boolean;
+  readonly disabled: boolean;
+  readonly error: string | null;
+  readonly onSave: () => void;
+}) {
+  return (
+    <>
       <div className="flex items-center justify-between">
         <Heading level={3}>{title}</Heading>
-        <Button
-          size="sm"
-          loading={busy}
-          disabled={disabled || busy}
-          onClick={() => void onSave(draft)}
-        >
+        <Button size="sm" loading={busy} disabled={disabled || busy} onClick={onSave}>
           Save overrides
         </Button>
       </div>
@@ -195,7 +291,77 @@ export function OverridesEditor({
           {error}
         </Text>
       )}
+    </>
+  );
+}
 
+function useOverrideDraft(
+  active: OverrideTarget | null,
+  setDraft: Dispatch<SetStateAction<readonly OverrideView[]>>,
+): {
+  readonly setLevel: Callback<[name: PermissionName, level: OverrideLevel]>;
+  readonly setGroup: Callback<[permissions: readonly PermissionName[], level: OverrideLevel]>;
+  readonly clearTarget: Callback<[override: OverrideView]>;
+} {
+  const setLevel = (name: PermissionName, level: OverrideLevel) => {
+    if (active === null) {
+      return;
+    }
+    setDraft((current) => setOverrideLevel(current, active, name, level));
+  };
+
+  const setGroup = (permissions: readonly PermissionName[], level: OverrideLevel) => {
+    if (active === null) {
+      return;
+    }
+    setDraft((current) =>
+      permissions.reduce((acc, name) => setOverrideLevel(acc, active, name, level), current),
+    );
+  };
+
+  const clearTarget = (override: OverrideView) => {
+    setDraft((current) =>
+      current.filter(
+        (entry) =>
+          !(entry.targetId === override.targetId && entry.targetType === override.targetType),
+      ),
+    );
+  };
+
+  return { setLevel, setGroup, clearTarget };
+}
+
+interface OverrideTargetPanelProps {
+  readonly title: string;
+  readonly targetKey: string;
+  readonly targetOptions: readonly ComboboxOption[];
+  readonly disabled: boolean;
+  readonly active: OverrideTarget | null;
+  readonly draft: readonly OverrideView[];
+  readonly query: string;
+  readonly onTargetKeyChange: Callback<[value: string]>;
+  readonly onQueryChange: Callback<[value: string]>;
+  readonly filteredGroups: readonly FilteredGroup[];
+  readonly onSetLevel: Callback<[name: PermissionName, level: OverrideLevel]>;
+  readonly onSetGroup: Callback<[permissions: readonly PermissionName[], level: OverrideLevel]>;
+}
+
+function OverrideTargetPanel({
+  title,
+  targetKey,
+  targetOptions,
+  disabled,
+  active,
+  draft,
+  query,
+  onTargetKeyChange,
+  onQueryChange,
+  filteredGroups,
+  onSetLevel,
+  onSetGroup,
+}: OverrideTargetPanelProps) {
+  return (
+    <>
       <Combobox
         label="Target"
         aria-label={`${title} target`}
@@ -205,7 +371,7 @@ export function OverridesEditor({
         searchPlaceholder="Search roles and members…"
         emptyMessage="No matching targets."
         disabled={disabled}
-        onChange={(next) => setTargetKey(next)}
+        onChange={onTargetKeyChange}
       />
 
       {active === null ? (
@@ -213,165 +379,289 @@ export function OverridesEditor({
           Choose a target to edit its overrides.
         </Text>
       ) : (
-        <div className="flex flex-col gap-4" data-testid="override-grid">
-          <TargetHeader target={active} />
+        <OverrideMatrix
+          active={active}
+          draft={draft}
+          query={query}
+          onQueryChange={onQueryChange}
+          filteredGroups={filteredGroups}
+          disabled={disabled}
+          onSetLevel={onSetLevel}
+          onSetGroup={onSetGroup}
+        />
+      )}
+    </>
+  );
+}
 
-          <div className="flex items-center gap-2 rounded-[9px] border border-border bg-surface-2 px-2.5 transition focus-within:border-accent">
-            <Icon name="search" size={14} className="shrink-0 text-text-muted" />
-            <input
-              type="text"
-              value={query}
-              aria-label="Filter permissions"
-              placeholder="Filter permissions…"
+interface OverrideMatrixProps {
+  readonly active: OverrideTarget;
+  readonly draft: readonly OverrideView[];
+  readonly query: string;
+  readonly onQueryChange: Callback<[value: string]>;
+  readonly filteredGroups: readonly FilteredGroup[];
+  readonly disabled: boolean;
+  readonly onSetLevel: Callback<[name: PermissionName, level: OverrideLevel]>;
+  readonly onSetGroup: Callback<[permissions: readonly PermissionName[], level: OverrideLevel]>;
+}
+
+function OverrideMatrix(props: OverrideMatrixProps) {
+  const { active, draft, query, onQueryChange, filteredGroups, disabled, onSetLevel, onSetGroup } =
+    props;
+  return (
+    <div className="flex flex-col gap-4" data-testid="override-grid">
+      <TargetHeader target={active} />
+
+      <PermissionFilter query={query} disabled={disabled} onQueryChange={onQueryChange} />
+
+      {filteredGroups.length === 0 ? (
+        <Text tone="muted" size="sm">
+          No permissions match “{query.trim()}”.
+        </Text>
+      ) : (
+        <div className="flex flex-col gap-3">
+          {filteredGroups.map((group) => (
+            <OverrideGroupCard
+              key={group.label}
+              group={group}
+              draft={draft}
+              active={active}
               disabled={disabled}
-              onChange={(event) => setQuery(event.currentTarget.value)}
-              className="h-8 min-w-0 flex-1 bg-transparent text-[13px] text-text placeholder:text-text-muted focus:outline-none disabled:opacity-50"
+              onSetLevel={onSetLevel}
+              onSetGroup={onSetGroup}
             />
-            {query.length > 0 && (
-              <button
-                type="button"
-                aria-label="Clear filter"
-                onClick={() => setQuery("")}
-                className="flex h-5 w-5 shrink-0 items-center justify-center rounded-[5px] text-text-muted transition hover:bg-surface-3 hover:text-text"
-              >
-                <Icon name="x" size={12} />
-              </button>
-            )}
-          </div>
+          ))}
+        </div>
+      )}
+    </div>
+  );
+}
 
-          {filteredGroups.length === 0 ? (
-            <Text tone="muted" size="sm">
-              No permissions match “{query.trim()}”.
+function PermissionFilter({
+  query,
+  disabled,
+  onQueryChange,
+}: {
+  readonly query: string;
+  readonly disabled: boolean;
+  readonly onQueryChange: Callback<[value: string]>;
+}) {
+  return (
+    <div className="flex items-center gap-2 rounded-[9px] border border-border bg-surface-2 px-2.5 transition focus-within:border-accent">
+      <Icon name="search" size={14} className="shrink-0 text-text-muted" />
+      <input
+        type="text"
+        value={query}
+        aria-label="Filter permissions"
+        placeholder="Filter permissions…"
+        disabled={disabled}
+        onChange={(event) => {
+          onQueryChange(event.currentTarget.value);
+        }}
+        className="h-8 min-w-0 flex-1 bg-transparent text-[13px] text-text placeholder:text-text-muted focus:outline-none disabled:opacity-50"
+      />
+      {query.length > 0 && (
+        <button
+          type="button"
+          aria-label="Clear filter"
+          onClick={() => {
+            onQueryChange("");
+          }}
+          className="flex h-5 w-5 shrink-0 items-center justify-center rounded-[5px] text-text-muted transition hover:bg-surface-3 hover:text-text"
+        >
+          <Icon name="x" size={12} />
+        </button>
+      )}
+    </div>
+  );
+}
+
+function OverridePermissionRow({
+  name,
+  draft,
+  active,
+  disabled,
+  onSetLevel,
+}: {
+  readonly name: PermissionName;
+  readonly draft: readonly OverrideView[];
+  readonly active: OverrideTarget;
+  readonly disabled: boolean;
+  readonly onSetLevel: Callback<[name: PermissionName, level: OverrideLevel]>;
+}) {
+  const level = overrideLevel(draft, active, name);
+  return (
+    <div className="flex items-center justify-between gap-3 px-3 py-1.5 transition-colors hover:bg-surface-3/40">
+      <Text size="sm" className="min-w-0 truncate">
+        {permissionLabel(name)}
+      </Text>
+      <OverrideTriState
+        label={permissionLabel(name)}
+        value={level}
+        disabled={disabled}
+        onChange={(next) => {
+          onSetLevel(name, next);
+        }}
+      />
+    </div>
+  );
+}
+
+function GroupHeader({
+  group,
+  counts,
+  disabled,
+  onSetGroup,
+}: {
+  readonly group: FilteredGroup;
+  readonly counts: GroupCounts;
+  readonly disabled: boolean;
+  readonly onSetGroup: Callback<[permissions: readonly PermissionName[], level: OverrideLevel]>;
+}) {
+  return (
+    <header className="sticky top-0 z-[1] flex items-center justify-between gap-2 border-b border-border bg-surface-2/95 px-3 py-1.5 backdrop-blur-sm">
+      <div className="flex min-w-0 items-center gap-2">
+        <Text as="h4" size="xs" tone="muted" className="font-semibold uppercase tracking-[0.06em]">
+          {group.label}
+        </Text>
+        <GroupPills counts={counts} />
+      </div>
+      <div className="flex shrink-0 items-center gap-0.5">
+        <button
+          type="button"
+          disabled={disabled}
+          onClick={() => {
+            onSetGroup(group.all, "allow");
+          }}
+          className="rounded-[6px] px-1.5 py-0.5 text-[11px] font-medium text-text-muted transition hover:bg-surface-3 hover:text-secondary disabled:pointer-events-none disabled:opacity-40"
+        >
+          Allow all
+        </button>
+        <button
+          type="button"
+          disabled={disabled}
+          onClick={() => {
+            onSetGroup(group.all, "inherit");
+          }}
+          className="rounded-[6px] px-1.5 py-0.5 text-[11px] font-medium text-text-muted transition hover:bg-surface-3 hover:text-text disabled:pointer-events-none disabled:opacity-40"
+        >
+          Clear
+        </button>
+      </div>
+    </header>
+  );
+}
+
+function OverrideGroupCard({
+  group,
+  draft,
+  active,
+  disabled,
+  onSetLevel,
+  onSetGroup,
+}: {
+  readonly group: FilteredGroup;
+  readonly draft: readonly OverrideView[];
+  readonly active: OverrideTarget;
+  readonly disabled: boolean;
+  readonly onSetLevel: Callback<[name: PermissionName, level: OverrideLevel]>;
+  readonly onSetGroup: Callback<[permissions: readonly PermissionName[], level: OverrideLevel]>;
+}) {
+  const counts = countGroup(draft, active, group.all);
+  return (
+    <section className="overflow-clip rounded-[12px] border border-border bg-surface-2">
+      <GroupHeader group={group} counts={counts} disabled={disabled} onSetGroup={onSetGroup} />
+      <div className="divide-y divide-border">
+        {group.permissions.map((name) => (
+          <OverridePermissionRow
+            key={name}
+            name={name}
+            draft={draft}
+            active={active}
+            disabled={disabled}
+            onSetLevel={onSetLevel}
+          />
+        ))}
+      </div>
+    </section>
+  );
+}
+
+interface OverrideSummarySectionProps {
+  readonly summaryOpen: boolean;
+  readonly summaryId: string;
+  readonly draft: readonly OverrideView[];
+  readonly totals: GroupCounts;
+  readonly targetMap: ReadonlyMap<string, OverrideTarget>;
+  readonly disabled: boolean;
+  readonly onToggle: () => void;
+  readonly onClear: Callback<[override: OverrideView]>;
+}
+
+function OverrideSummarySection(props: OverrideSummarySectionProps) {
+  const { summaryOpen, summaryId, draft, totals, targetMap, disabled, onToggle, onClear } = props;
+  return (
+    <section className="overflow-hidden rounded-[12px] border border-border bg-surface-2">
+      <button
+        type="button"
+        aria-expanded={summaryOpen}
+        aria-controls={summaryId}
+        onClick={onToggle}
+        className="flex w-full items-center justify-between gap-2 px-3.5 py-2 text-left transition hover:bg-surface-3/40"
+      >
+        <span className="flex min-w-0 items-center gap-2">
+          <Text as="span" size="xs" tone="muted" mono className="uppercase tracking-[0.06em]">
+            Active overrides
+          </Text>
+          <span className="rounded-full bg-surface-3 px-1.5 py-0.5 text-[10px] font-medium text-text-muted">
+            {draft.length}
+          </span>
+          {totals.allow > 0 && (
+            <span className="rounded-full bg-secondary/15 px-1.5 py-0.5 text-[10px] font-medium text-secondary">
+              {totals.allow} allow
+            </span>
+          )}
+          {totals.deny > 0 && (
+            <span className="rounded-full bg-danger/15 px-1.5 py-0.5 text-[10px] font-medium text-danger">
+              {totals.deny} deny
+            </span>
+          )}
+        </span>
+        <Icon
+          name="chevron-down"
+          size={14}
+          className={cn(
+            "shrink-0 text-text-muted transition-transform",
+            summaryOpen && "rotate-180",
+          )}
+        />
+      </button>
+
+      {summaryOpen && (
+        <div id={summaryId} className="animate-fade-in border-t border-border px-2.5 py-2.5">
+          {draft.length === 0 ? (
+            <Text size="sm" tone="muted">
+              No overrides on this scope. Unset flags inherit.
             </Text>
           ) : (
-            <div className="flex flex-col gap-3">
-              {filteredGroups.map((group) => {
-                const counts = countGroup(draft, active, group.all);
-                return (
-                  <section
-                    key={group.label}
-                    className="overflow-clip rounded-[12px] border border-border bg-surface-2"
-                  >
-                    <header className="sticky top-0 z-[1] flex items-center justify-between gap-2 border-b border-border bg-surface-2/95 px-3 py-1.5 backdrop-blur-sm">
-                      <div className="flex min-w-0 items-center gap-2">
-                        <Text
-                          as="h4"
-                          size="xs"
-                          tone="muted"
-                          className="font-semibold uppercase tracking-[0.06em]"
-                        >
-                          {group.label}
-                        </Text>
-                        <GroupPills counts={counts} />
-                      </div>
-                      <div className="flex shrink-0 items-center gap-0.5">
-                        <button
-                          type="button"
-                          disabled={disabled}
-                          onClick={() => setGroup(group.all, "allow")}
-                          className="rounded-[6px] px-1.5 py-0.5 text-[11px] font-medium text-text-muted transition hover:bg-surface-3 hover:text-secondary disabled:pointer-events-none disabled:opacity-40"
-                        >
-                          Allow all
-                        </button>
-                        <button
-                          type="button"
-                          disabled={disabled}
-                          onClick={() => setGroup(group.all, "inherit")}
-                          className="rounded-[6px] px-1.5 py-0.5 text-[11px] font-medium text-text-muted transition hover:bg-surface-3 hover:text-text disabled:pointer-events-none disabled:opacity-40"
-                        >
-                          Clear
-                        </button>
-                      </div>
-                    </header>
-                    <div className="divide-y divide-border">
-                      {group.permissions.map((name) => {
-                        const level = overrideLevel(draft, active, name);
-                        return (
-                          <div
-                            key={name}
-                            className="flex items-center justify-between gap-3 px-3 py-1.5 transition-colors hover:bg-surface-3/40"
-                          >
-                            <Text size="sm" className="min-w-0 truncate">
-                              {PERMISSION_LABELS[name]}
-                            </Text>
-                            <OverrideTriState
-                              label={PERMISSION_LABELS[name]}
-                              value={level}
-                              disabled={disabled}
-                              onChange={(next) => setLevel(name, next)}
-                            />
-                          </div>
-                        );
-                      })}
-                    </div>
-                  </section>
-                );
-              })}
-            </div>
+            <ul className="flex flex-col gap-1.5" data-testid="override-list">
+              {draft.map((override) => (
+                <OverrideSummaryRow
+                  key={`${override.targetType}:${override.targetId}`}
+                  override={override}
+                  target={targetMap.get(`${override.targetType}:${override.targetId}`)}
+                  flags={flagsFor(draft, override)}
+                  disabled={disabled}
+                  onClear={() => {
+                    onClear(override);
+                  }}
+                />
+              ))}
+            </ul>
           )}
         </div>
       )}
-
-      <section className="overflow-hidden rounded-[12px] border border-border bg-surface-2">
-        <button
-          type="button"
-          aria-expanded={summaryOpen}
-          aria-controls={summaryId}
-          onClick={() => setSummaryOpen((open) => !open)}
-          className="flex w-full items-center justify-between gap-2 px-3.5 py-2 text-left transition hover:bg-surface-3/40"
-        >
-          <span className="flex min-w-0 items-center gap-2">
-            <Text as="span" size="xs" tone="muted" mono className="uppercase tracking-[0.06em]">
-              Active overrides
-            </Text>
-            <span className="rounded-full bg-surface-3 px-1.5 py-0.5 text-[10px] font-medium text-text-muted">
-              {draft.length}
-            </span>
-            {totals.allow > 0 && (
-              <span className="rounded-full bg-secondary/15 px-1.5 py-0.5 text-[10px] font-medium text-secondary">
-                {totals.allow} allow
-              </span>
-            )}
-            {totals.deny > 0 && (
-              <span className="rounded-full bg-danger/15 px-1.5 py-0.5 text-[10px] font-medium text-danger">
-                {totals.deny} deny
-              </span>
-            )}
-          </span>
-          <Icon
-            name="chevron-down"
-            size={14}
-            className={cn(
-              "shrink-0 text-text-muted transition-transform",
-              summaryOpen && "rotate-180",
-            )}
-          />
-        </button>
-
-        {summaryOpen && (
-          <div id={summaryId} className="animate-fade-in border-t border-border px-2.5 py-2.5">
-            {draft.length === 0 ? (
-              <Text size="sm" tone="muted">
-                No overrides on this scope. Unset flags inherit.
-              </Text>
-            ) : (
-              <ul className="flex flex-col gap-1.5" data-testid="override-list">
-                {draft.map((override) => (
-                  <OverrideSummaryRow
-                    key={`${override.targetType}:${override.targetId}`}
-                    override={override}
-                    target={targetMap.get(`${override.targetType}:${override.targetId}`)}
-                    flags={flagsFor(draft, override)}
-                    disabled={disabled}
-                    onClear={() => clearTarget(override)}
-                  />
-                ))}
-              </ul>
-            )}
-          </div>
-        )}
-      </section>
-    </div>
+    </section>
   );
 }
 
@@ -458,7 +748,7 @@ function OverrideSummaryRow({
               "flex h-5 w-5 shrink-0 items-center justify-center rounded-[6px] border border-border text-text-muted",
               hasColor && "border-transparent",
             )}
-            style={hasColor ? { backgroundColor: target?.color ?? undefined } : undefined}
+            style={hasColor ? { backgroundColor: target.color } : undefined}
           >
             {!hasColor && (
               <Icon name={override.targetType === "role" ? "shield" : "at"} size={11} />
@@ -511,7 +801,7 @@ function FlagChip({
       )}
     >
       <Icon name={state === "allow" ? "check" : "x"} size={10} />
-      {PERMISSION_LABELS[name]}
+      {permissionLabel(name)}
     </span>
   );
 }

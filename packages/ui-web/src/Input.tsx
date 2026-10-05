@@ -14,10 +14,10 @@ export interface InputProps extends Omit<InputHTMLAttributes<HTMLInputElement>, 
   size?: InputSize;
 }
 
-const SIZE_CLASSES: Record<InputSize, string> = {
-  md: "h-10 px-3 text-[14px]",
-  lg: "h-12 px-3.5 text-[17px]",
-};
+const SIZE_CLASSES = new Map<InputSize, string>([
+  ["md", "h-10 px-3 text-[14px]"],
+  ["lg", "h-12 px-3.5 text-[17px]"],
+]);
 
 /** Text input with a 10px radius, hairline border and accent focus ring. */
 export const Input = forwardRef<HTMLInputElement, InputProps>(function Input(
@@ -42,7 +42,7 @@ export const Input = forwardRef<HTMLInputElement, InputProps>(function Input(
         aria-describedby={describedBy.length > 0 ? describedBy.join(" ") : undefined}
         className={cn(
           "w-full rounded-input border bg-surface-3 text-text placeholder:text-text-muted",
-          SIZE_CLASSES[size],
+          SIZE_CLASSES.get(size),
           "transition focus-visible:border-accent focus-visible:bg-surface-2 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent-soft",
           "disabled:pointer-events-none disabled:opacity-50",
           error !== undefined ? "border-danger" : "border-border",

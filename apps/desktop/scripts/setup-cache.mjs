@@ -41,18 +41,23 @@ function findSccache() {
   return existsSync(candidate) ? candidate : null;
 }
 
+// On Windows the runnable is a real `.exe`; resolve it explicitly so no shell
+// is needed. Elsewhere the bare command name is enough.
+function executable(command) {
+  return isWindowsHost ? (findOnPath(command) ?? command) : command;
+}
+
 const found = findSccache();
 if (found !== null) {
-  const version = spawnSync(found, ["--version"], { encoding: "utf8", shell: isWindowsHost });
+  const version = spawnSync(found, ["--version"], { encoding: "utf8" });
   const text = version.stdout?.trim();
   process.stdout.write(
     `${text !== undefined && text !== "" ? text : `sccache found at ${found}`}\n`,
   );
 } else if (install) {
   process.stdout.write("Installing sccache with `cargo install --locked sccache`...\n");
-  const result = spawnSync("cargo", ["install", "--locked", "sccache"], {
+  const result = spawnSync(executable("cargo"), ["install", "--locked", "sccache"], {
     stdio: "inherit",
-    shell: isWindowsHost,
   });
   if (result.status !== 0) {
     process.stderr.write("sccache install failed\n");
@@ -67,7 +72,7 @@ if (found !== null) {
   );
 }
 
-const rustup = spawnSync("rustup", ["--version"], { stdio: "ignore", shell: isWindowsHost });
+const rustup = spawnSync(executable("rustup"), ["--version"], { stdio: "ignore" });
 process.stdout.write("\nWindows cross-compilation target (needs rustup):\n");
 process.stdout.write(
   rustup.status === 0

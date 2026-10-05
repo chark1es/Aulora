@@ -7,19 +7,16 @@ export interface UserNoteSheetProps {
   readonly visible: boolean;
   readonly memberName: string;
   readonly loadNote: () => Promise<string | null>;
-  readonly onSave: (body: string) => Promise<void>;
+  readonly onSave: (_body: string) => Promise<void>;
   readonly onClose: () => void;
 }
 
-/** A private, server-stored note about another member. */
-export function UserNoteSheet({
-  visible,
-  memberName,
-  loadNote,
-  onSave,
-  onClose,
-}: UserNoteSheetProps) {
-  const palette = usePalette();
+function useUserNote(
+  visible: boolean,
+  loadNote: () => Promise<string | null>,
+  onSave: (body: string) => Promise<void>,
+  onClose: () => void,
+) {
   const [body, setBody] = useState("");
   const [loading, setLoading] = useState(false);
   const [saving, setSaving] = useState(false);
@@ -61,6 +58,51 @@ export function UserNoteSheet({
       });
   }
 
+  return { body, setBody, loading, saving, error, submit };
+}
+
+function NoteActions({
+  saving,
+  loading,
+  error,
+  onClear,
+  onSave,
+}: {
+  readonly saving: boolean;
+  readonly loading: boolean;
+  readonly error: string | null;
+  readonly onClear: () => void;
+  readonly onSave: () => void;
+}) {
+  const disabled = saving || loading || error !== null;
+  return (
+    <View className="mt-3 flex-row justify-end gap-2">
+      <Button size="sm" variant="secondary" onPress={onClear} disabled={disabled}>
+        Clear
+      </Button>
+      <Button size="sm" onPress={onSave} disabled={disabled} loading={saving}>
+        Save
+      </Button>
+    </View>
+  );
+}
+
+/** A private, server-stored note about another member. */
+export function UserNoteSheet({
+  visible,
+  memberName,
+  loadNote,
+  onSave,
+  onClose,
+}: UserNoteSheetProps) {
+  const palette = usePalette();
+  const { body, setBody, loading, saving, error, submit } = useUserNote(
+    visible,
+    loadNote,
+    onSave,
+    onClose,
+  );
+
   return (
     <Sheet visible={visible} title={`Note · ${memberName}`} onClose={onClose}>
       <View className="flex-1 p-4">
@@ -84,28 +126,17 @@ export function UserNoteSheet({
             className="max-h-32 min-h-32 text-base text-text"
           />
         </View>
-        <View className="mt-3 flex-row justify-end gap-2">
-          <Button
-            size="sm"
-            variant="secondary"
-            onPress={() => {
-              submit(true);
-            }}
-            disabled={saving || loading || error !== null}
-          >
-            Clear
-          </Button>
-          <Button
-            size="sm"
-            onPress={() => {
-              submit(false);
-            }}
-            disabled={saving || loading || error !== null}
-            loading={saving}
-          >
-            Save
-          </Button>
-        </View>
+        <NoteActions
+          saving={saving}
+          loading={loading}
+          error={error}
+          onClear={() => {
+            submit(true);
+          }}
+          onSave={() => {
+            submit(false);
+          }}
+        />
       </View>
     </Sheet>
   );

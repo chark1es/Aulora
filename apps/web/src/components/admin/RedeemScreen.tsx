@@ -113,7 +113,7 @@ function RedeemGate({
   }
 
   const user = session.data?.user;
-  if (user === undefined || user === null) {
+  if (user === undefined) {
     if (inspect !== undefined && !inspect.valid && !forceSignIn) {
       return (
         <AuthFrame>
@@ -124,7 +124,13 @@ function RedeemGate({
               {inspect.reason === "expired" ? " (it has expired)" : ""}. Ask an admin for a new
               link.
             </Text>
-            <Button onClick={() => setForceSignIn(true)}>Sign in anyway</Button>
+            <Button
+              onClick={() => {
+                setForceSignIn(true);
+              }}
+            >
+              Sign in anyway
+            </Button>
           </Card>
         </AuthFrame>
       );

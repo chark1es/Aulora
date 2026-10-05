@@ -2,6 +2,10 @@ import { type IconName, iconPaths } from "@aulora/tokens";
 import { View } from "react-native";
 import Svg, { Path } from "react-native-svg";
 
+const ICON_PATHS = new Map<IconName, readonly string[]>(
+  Object.entries(iconPaths) as Array<[IconName, readonly string[]]>,
+);
+
 export interface IconProps {
   name: IconName;
   /** Rendered size in points (square). */
@@ -33,7 +37,7 @@ export function Icon({ name, size = 22, color }: IconProps) {
         accessibilityElementsHidden
         importantForAccessibility="no-hide-descendants"
       >
-        {iconPaths[name].map((d) => (
+        {ICON_PATHS.get(name)?.map((d) => (
           <Path key={d} d={d} />
         ))}
       </Svg>
