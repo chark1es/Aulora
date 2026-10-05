@@ -264,7 +264,9 @@ export function applyTimer(
   return cards.map((card) => {
     if (card._id !== change.cardId) return card;
     if (change.running) return { ...card, timerStartedAt: now, timerUserId: userId };
-    const { timerStartedAt, timerUserId: _owner, ...rest } = card;
-    return { ...rest, trackedMs: card.trackedMs + Math.max(0, now - (timerStartedAt ?? now)) };
+    const { timerStartedAt, timerUserId, ...rest } = card;
+    // A card with no running timer has nothing to stop.
+    if (timerStartedAt === undefined || timerUserId === undefined) return card;
+    return { ...rest, trackedMs: card.trackedMs + Math.max(0, now - timerStartedAt) };
   });
 }
