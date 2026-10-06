@@ -35,7 +35,7 @@ Feature graphic alt text: "Aulora, Your team. Your server. Self-hosted team chat
 
 These are native renders of Aulora's shared message list, composer, rich text, avatars, reactions, and thread controls, using fictional Acme Studio conversations. The disposable capture workspace uses the existing offline review demo to supply local data. Its review instructions and call disclaimer are omitted from the capture shell. It makes no network connection to a real workspace and does not exercise calls, push, or authentication.
 
-The capture shell is staged under `.cache/store-capture`, outside the shipping app sources. The production app and iOS review demo entry rules are unchanged. Screen contents are sample data; these assets do not represent a production account or a live backend test.
+The capture shell is staged under `.cache/store-capture`, outside the shipping app sources. The production app and review demo entry rules are unchanged. Screen contents are sample data; these assets do not represent a production account or a live backend test.
 
 ## Regenerate
 

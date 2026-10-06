@@ -1,10 +1,14 @@
 import { downloadAttachment, uploadAttachment } from "@aulora/core";
 import { afterEach, describe, expect, it, vi } from "vitest";
-import { createReviewDemo, isReviewDemoAddress } from "../src/lib/review-demo";
+import {
+  createReviewDemo,
+  isReviewDemoAddress,
+  shouldOpenReviewDemo,
+} from "../src/lib/review-demo";
 
 afterEach(() => vi.unstubAllGlobals());
 
-describe("offline Apple review workspace", () => {
+describe("offline review workspace", () => {
   it("supports chat, threads, reactions, and files without a network request", async () => {
     const fetch = vi.fn(() => {
       throw new Error("The review demo must stay offline");
@@ -66,5 +70,12 @@ describe("offline Apple review workspace", () => {
     for (const input of ["", "chat.acme.com", "demo.aulora.example.com", "demo.aulora.example/x"]) {
       expect(isReviewDemoAddress(input)).toBe(false);
     }
+  });
+
+  it("opens the reserved address on iOS and Android until a server is saved", () => {
+    expect(shouldOpenReviewDemo(0, "demo.aulora.example")).toBe(true);
+    expect(shouldOpenReviewDemo(0, "https://demo.aulora.example")).toBe(true);
+    expect(shouldOpenReviewDemo(1, "demo.aulora.example")).toBe(false);
+    expect(shouldOpenReviewDemo(0, "chat.acme.com")).toBe(false);
   });
 });
