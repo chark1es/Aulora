@@ -1,0 +1,124 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <meta name="color-scheme" content="light dark" />
+    <title>Kanban · Aulora Docs</title>
+    <meta name="description" content="Documentation for Aulora, self-hosted team chat with server-side encryption." />
+    <link rel="icon" type="image/svg+xml" href="../favicon.svg" />
+    <script type="module" src="../site.js"></script>
+    <link rel="stylesheet" href="../tokens.css" />
+    <link rel="stylesheet" href="../site.css" />
+    <link rel="stylesheet" href="../docs.css" />
+  </head>
+  <body class="docs">
+    <header class="site-header">
+      <div class="site-header-inner">
+        <a class="brand" href="../">
+          <img src="../favicon.svg" alt="" width="26" height="26" />
+          <span class="brand-lockup"><span class="brand-name">Aulora</span><span class="brand-sub">/docs</span></span>
+        </a>
+        <nav class="site-nav" aria-label="Site">
+          <a href="../how-it-works">How it works</a>
+          <a href="../install">Install</a>
+          <a href="../pricing">Pricing</a>
+          <a href="../docs/" aria-current="page">Docs</a>
+          <a href="https://github.com/chark1es/Aulora">GitHub</a>
+        </nav>
+      </div>
+    </header>
+    <div class="docs-shell">
+      <details class="docs-nav" open>
+        <summary><svg class="icon" viewBox="0 0 24 24" aria-hidden="true" focusable="false"><path fill="currentColor" d="M4 18q-.425 0-.712-.288T3 17t.288-.712T4 16h16q.425 0 .713.288T21 17t-.288.713T20 18zm0-5q-.425 0-.712-.288T3 12t.288-.712T4 11h16q.425 0 .713.288T21 12t-.288.713T20 13zm0-5q-.425 0-.712-.288T3 7t.288-.712T4 6h16q.425 0 .713.288T21 7t-.288.713T20 8z"/></svg><span>Contents</span></summary>
+        <nav aria-label="Documentation">
+        <div class="nav-group">
+          <p class="nav-label">Start here</p>
+          <a href="../docs/">Overview</a>
+          <a href="../docs/getting-started">Getting started</a>
+          <a href="../docs/user-guide">User guide</a>
+          <a href="../docs/kanban" aria-current="page">Kanban</a>
+        </div>
+        <div class="nav-group">
+          <p class="nav-label">Run a server</p>
+          <a href="../docs/self-hosting">Self-hosting</a>
+          <a href="../docs/coolify">Coolify</a>
+          <a href="../docs/admin">Admin panel</a>
+          <a href="../docs/backups">Backups</a>
+          <a href="../docs/updates">Updates</a>
+          <a href="../docs/troubleshooting">Troubleshooting</a>
+        </div>
+        <div class="nav-group">
+          <p class="nav-label">Policy</p>
+          <a href="../docs/privacy">Privacy</a>
+          <a href="../docs/licensing">Licensing</a>
+          <a href="../docs/contributing">Contributing</a>
+        </div>
+        </nav>
+      </details>
+      <main class="docs-main">
+        <header class="page-header">
+          <p class="page-eyebrow"><a href="../docs/">Docs</a><svg class="icon" viewBox="0 0 24 24" aria-hidden="true" focusable="false"><path fill="currentColor" d="M12.6 12L8.7 8.1q-.275-.275-.275-.7t.275-.7t.7-.275t.7.275l4.6 4.6q.15.15.213.325t.062.375t-.062.375t-.213.325l-4.6 4.6q-.275.275-.7.275t-.7-.275t-.275-.7t.275-.7z"/></svg><span>Start here</span></p>
+          <h1>Kanban</h1>
+          <p class="page-meta">5 min read</p>
+        </header>
+        <article class="prose">
+<p>Kanban is an optional workspace addon for the web, desktop and mobile apps. It is off by default. Open <strong>Workspace settings → Addons</strong> and enable <strong>Kanban</strong> with the Manage workspace permission. The sidebar entry appears for members with View Kanban permission.</p>
+<h2 id="permissions">Permissions</h2>
+<p>Grant Kanban permissions in <strong>Workspace settings → Roles</strong>. Existing roles keep their permissions when the addon is installed. New workspaces include View, Edit and Comment in the default member role; board management still requires an explicit grant.</p>
+<div class="table-scroll"><table><thead><tr><th scope="col">Permission</th><th scope="col">Allows</th></tr></thead><tbody><tr><td>View Kanban</td><td>Read accessible boards, cards, comments, activity and attachments; browse GitHub with a personal connection</td></tr><tr><td>Edit Kanban</td><td>Create, edit, move, archive and restore cards; assign members; use work timers</td></tr><tr><td>Comment on Kanban</td><td>Add comments and edit or delete your own comments</td></tr><tr><td>Manage Kanban</td><td>Create and configure boards, change membership, archive and restore boards, moderate comments, delete boards and cards, and stop other members&#39; timers</td></tr><tr><td>Attach files</td><td>Upload or remove attachments, together with Edit Kanban</td></tr><tr><td>Manage workspace</td><td>Enable or disable the addon</td></tr></tbody></table></div>
+<p>Every operation also requires View Kanban. Workspace owners and administrators have all permissions. A private board limits access to selected current workspace members and users with Manage Kanban. Board managers can access every private board. Being assigned to a card does not grant board access. Banned users cannot read boards, and timed-out members cannot edit or comment. File downloads recheck current access, including URLs issued before membership was revoked.</p>
+<h2 id="boards-and-cards">Boards and cards</h2>
+<p>Create a board from the board switcher at the top of Kanban: open it and choose <strong>New board</strong>. The same menu switches boards and shows archived boards. Choose a workspace board or a private board. Add members to a private board in <strong>Board settings</strong>. Configure up to 20 ordered columns, optional work-in-progress limits and up to 50 colored labels. Move cards out of a column before deleting it, including archived cards. Remove a label from all cards before deleting it.</p>
+<p>Add cards within a column: choose <strong>Add card</strong>, type a title and press Enter. The composer stays open so you can add several in a row; press Escape to close it. Drag cards between or within columns: a dashed outline shows where the card will land, and a column that reached its limit turns red and refuses the card. Right-click a card, or use its <strong>⋯</strong> button, to move it up, down or to another column, assign it to yourself, start or stop its timer, copy its title, archive it or delete it. Right-clicking a column or the board background offers the matching column and board actions. WIP limits apply to active cards and are enforced by the server.</p>
+<p>Open a card to edit its title, notes, assignees, labels, priority, start and due dates, estimate in minutes, checklist and GitHub links. Save explicitly. Concurrent edits are detected; reload the card before saving if someone else changed it. Attachments, comments and the Column selector save separately. Assignees and labels are chosen from a checklist; the people list can be searched. Search title or notes, and filter by assignee, label or priority. Each filter is a checklist, so you can tick several values at once; a card matches when it has any ticked value in every filter you use.</p>
+<p>Each board supports up to 500 cards, including archived cards, and each workspace supports up to 200 boards. A card supports 100 checklist items, 20 attachments and 20 GitHub links. Existing upload size limits also apply.</p>
+<p>Archive cards or boards to retain their content. Use <strong>Show archived cards</strong> in the board&#39;s <strong>⋯</strong> menu, or <strong>Show archived boards</strong> in the board switcher, to restore them. Archived boards are read-only, and archived cards cannot be edited or commented on until restored. The Activity section of a card shows the latest 50 events; comments can load older pages. Board managers can also permanently delete cards or entire boards after a confirmation. Deletion removes comments, activity and files that are no longer used.</p>
+<h2 id="work-timers">Work timers</h2>
+<p>Start or stop the timer inside a card, or from the card&#39;s right-click menu, to track elapsed work time. One timer can run on a card, and each person can run one timer at a time. Only the timer&#39;s owner or a board manager can stop it. Timers continue across reloads and browser sessions until stopped; they measure elapsed time, not keyboard or mouse activity.</p>
+<p>Archiving a card or board stops its timers. Removing members from a private board stops their timers. Disabling Kanban stops all running timers and keeps board data for when it is enabled again.</p>
+<h2 id="github">GitHub</h2>
+<p>Open GitHub from the board toolbar or <strong>Link from GitHub</strong> inside a card. Connect a personal access token. Prefer a fine-grained token limited to selected repositories with read access to metadata, issues and pull requests. See <a href="https://docs.github.com/en/rest/authentication/permissions-required-for-fine-grained-personal-access-tokens">GitHub&#39;s token permission documentation</a>.</p>
+<p>Tokens are encrypted at rest, belong to individual users and never return to a client. Repository results use the caller&#39;s GitHub access. Browse repositories, or enter an owner/repository name to view open, closed or all issues and pull requests. Use Next/Previous to page through results. Links open the original GitHub item. Link from a card to add a reference, or link from the board toolbar to create a linked card in its first column.</p>
+<p>Linking a title or URL shares that information with everyone who can read the board. GitHub itself continues to enforce access to the linked resource. Aulora&#39;s integration is read-only; it does not change GitHub issues, pull requests or repositories, and links do not automatically change card status. Disconnect to revoke Aulora&#39;s stored token, and revoke the token on GitHub if needed.</p>
+<h2 id="docker-updates">Docker updates</h2>
+<p>Kanban uses the existing Convex backend and encrypted file storage. It needs no additional service or environment secret. Rebuild both the web and setup images, deploy the backend functions, then replace the web container:</p>
+<div class="code"><div class="code-bar"><span>sh</span><button type="button" data-copy>Copy</button></div><pre><code class="language-sh">docker compose build web setup
+docker compose run --rm setup
+docker compose up -d --no-deps web</code></pre></div>
+<p>Enabling the addon is a workspace setting, not a Docker environment variable. A redeploy preserves it and does not grant new permissions to existing roles.</p>
+<h2 id="on-ios-and-android">On iOS and Android</h2>
+<p>Boards open from the <strong>Boards</strong> tab, which appears once the addon is on and you have View Kanban permission. Swipe sideways to move between columns, or tap a column name above the board to jump to it. Tap a card to open it; long-press it, or tap its <strong>⋯</strong> button, for the same actions a right-click offers on the web, including <strong>Move to</strong> another column. The filter chips open checklists, and the card&#39;s properties open pickers for people, labels, priority and dates. Cards are moved from the actions list rather than by dragging. GitHub links are pasted in, and the GitHub browser is available on the web only.</p>
+        </article>
+        <nav class="pager" aria-label="Pages">
+          <a class="pager-prev" href="../docs/user-guide" rel="prev"><small>Previous</small>User guide</a>
+          <a class="pager-next" href="../docs/self-hosting" rel="next"><small>Next</small>Self-hosting</a>
+        </nav>
+      </main>
+      <aside class="toc" aria-label="On this page">
+        <p class="nav-label">On this page</p>
+        <nav>
+          <a href="#permissions">Permissions</a>
+          <a href="#boards-and-cards">Boards and cards</a>
+          <a href="#work-timers">Work timers</a>
+          <a href="#github">GitHub</a>
+          <a href="#docker-updates">Docker updates</a>
+          <a href="#on-ios-and-android">On iOS and Android</a>
+        </nav>
+      </aside>
+    </div>
+    <footer class="site-footer">
+      <div class="site-footer-inner">
+        <p class="footer-mark">Aulora · team chat on your own server</p>
+        <nav aria-label="Legal and contact">
+          <a href="../docs/licensing">Licensing</a>
+          <a href="../docs/privacy">Privacy</a>
+          <a href="../docs/legal/COMMERCIAL">Commercial terms</a>
+          <a href="../docs/legal/THIRD_PARTY_NOTICES">Third-party notices</a>
+          <a href="mailto:cnguyen@spwnd.dev">cnguyen@spwnd.dev</a>
+        </nav>
+        <p class="footer-fine">Free for personal and noncommercial use under PolyForm Noncommercial 1.0.0. Business use requires a paid license.</p>
+      </div>
+    </footer>
+  </body>
+</html>

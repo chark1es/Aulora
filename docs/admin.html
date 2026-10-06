@@ -15,15 +15,15 @@
   <body class="docs">
     <header class="site-header">
       <div class="site-header-inner">
-        <a class="brand" href="../index.html">
+        <a class="brand" href="../">
           <img src="../favicon.svg" alt="" width="26" height="26" />
           <span class="brand-lockup"><span class="brand-name">Aulora</span><span class="brand-sub">/docs</span></span>
         </a>
         <nav class="site-nav" aria-label="Site">
-          <a href="../how-it-works.html">How it works</a>
-          <a href="../install.html">Install</a>
-          <a href="../pricing.html">Pricing</a>
-          <a href="../docs/index.html" aria-current="page">Docs</a>
+          <a href="../how-it-works">How it works</a>
+          <a href="../install">Install</a>
+          <a href="../pricing">Pricing</a>
+          <a href="../docs/" aria-current="page">Docs</a>
           <a href="https://github.com/chark1es/Aulora">GitHub</a>
         </nav>
       </div>
@@ -34,30 +34,31 @@
         <nav aria-label="Documentation">
         <div class="nav-group">
           <p class="nav-label">Start here</p>
-          <a href="../docs/index.html">Overview</a>
-          <a href="../docs/getting-started.html">Getting started</a>
-          <a href="../docs/user-guide.html">User guide</a>
+          <a href="../docs/">Overview</a>
+          <a href="../docs/getting-started">Getting started</a>
+          <a href="../docs/user-guide">User guide</a>
+          <a href="../docs/kanban">Kanban</a>
         </div>
         <div class="nav-group">
           <p class="nav-label">Run a server</p>
-          <a href="../docs/self-hosting.html">Self-hosting</a>
-          <a href="../docs/coolify.html">Coolify</a>
-          <a href="../docs/admin.html" aria-current="page">Admin panel</a>
-          <a href="../docs/backups.html">Backups</a>
-          <a href="../docs/updates.html">Updates</a>
-          <a href="../docs/troubleshooting.html">Troubleshooting</a>
+          <a href="../docs/self-hosting">Self-hosting</a>
+          <a href="../docs/coolify">Coolify</a>
+          <a href="../docs/admin" aria-current="page">Admin panel</a>
+          <a href="../docs/backups">Backups</a>
+          <a href="../docs/updates">Updates</a>
+          <a href="../docs/troubleshooting">Troubleshooting</a>
         </div>
         <div class="nav-group">
           <p class="nav-label">Policy</p>
-          <a href="../docs/privacy.html">Privacy</a>
-          <a href="../docs/licensing.html">Licensing</a>
-          <a href="../docs/contributing.html">Contributing</a>
+          <a href="../docs/privacy">Privacy</a>
+          <a href="../docs/licensing">Licensing</a>
+          <a href="../docs/contributing">Contributing</a>
         </div>
         </nav>
       </details>
       <main class="docs-main">
         <header class="page-header">
-          <p class="page-eyebrow"><a href="../docs/index.html">Docs</a><svg class="icon" viewBox="0 0 24 24" aria-hidden="true" focusable="false"><path fill="currentColor" d="M12.6 12L8.7 8.1q-.275-.275-.275-.7t.275-.7t.7-.275t.7.275l4.6 4.6q.15.15.213.325t.062.375t-.062.375t-.213.325l-4.6 4.6q-.275.275-.7.275t-.7-.275t-.275-.7t.275-.7z"/></svg><span>Run a server</span></p>
+          <p class="page-eyebrow"><a href="../docs/">Docs</a><svg class="icon" viewBox="0 0 24 24" aria-hidden="true" focusable="false"><path fill="currentColor" d="M12.6 12L8.7 8.1q-.275-.275-.275-.7t.275-.7t.7-.275t.7.275l4.6 4.6q.15.15.213.325t.062.375t-.062.375t-.213.325l-4.6 4.6q-.275.275-.7.275t-.7-.275t-.275-.7t.275-.7z"/></svg><span>Run a server</span></p>
           <h1>Admin panel</h1>
           <p class="page-meta">2 min read</p>
         </header>
@@ -66,6 +67,8 @@
 <h2 id="workspace-admin">Workspace admin</h2>
 <p>Opened from <strong>Workspace settings</strong> in the sidebar. It covers the things a workspace owner and moderators manage: roles and permission bitfields, member moderation (kick, ban, timeout, nicknames), per-channel and per-category overrides, invite links, audit log and workspace access policy (signup, invite-only, allowed email domains).</p>
 <p>Each section appears only when the viewer holds the matching permission, and every mutation is re-checked on the server. The client copy of the permission logic only hides UI.</p>
+<h2 id="addons">Addons</h2>
+<p>The Addons tab controls optional tools. Kanban is off by default and requires Manage workspace to enable. Grant its separate role permissions before inviting members to use it. See <a href="kanban">Kanban</a> for board permissions, timers, attachments and GitHub connections.</p>
 <h2 id="instance-admin">Instance admin</h2>
 <p>Opened from <strong>Instance admin</strong> in the sidebar, visible only to the operator account created by first-run setup (the workspace owner). This is where instance-level concerns live:</p>
 <ul><li><strong>Overview</strong> — version, member/channel/device/file counts, storage used, the</li></ul>
@@ -86,14 +89,15 @@
 <p>The operator account is created by the <code>setup</code> container from <code>.env</code> (<code>OWNER_EMAIL</code>, <code>OWNER_PASSWORD</code>, <code>OWNER_NAME</code>). To change instance settings later, use the panel; to change auth credentials or the public origin, edit <code>.env</code> and re-run <code>docker compose run --rm setup</code>.</p>
         </article>
         <nav class="pager" aria-label="Pages">
-          <a class="pager-prev" href="../docs/coolify.html" rel="prev"><small>Previous</small>Coolify</a>
-          <a class="pager-next" href="../docs/backups.html" rel="next"><small>Next</small>Backups</a>
+          <a class="pager-prev" href="../docs/coolify" rel="prev"><small>Previous</small>Coolify</a>
+          <a class="pager-next" href="../docs/backups" rel="next"><small>Next</small>Backups</a>
         </nav>
       </main>
       <aside class="toc" aria-label="On this page">
         <p class="nav-label">On this page</p>
         <nav>
           <a href="#workspace-admin">Workspace admin</a>
+          <a href="#addons">Addons</a>
           <a href="#instance-admin">Instance admin</a>
           <a href="#first-run-setup">First-run setup</a>
         </nav>
@@ -103,10 +107,10 @@
       <div class="site-footer-inner">
         <p class="footer-mark">Aulora · team chat on your own server</p>
         <nav aria-label="Legal and contact">
-          <a href="../docs/licensing.html">Licensing</a>
-          <a href="../docs/privacy.html">Privacy</a>
-          <a href="../docs/legal/COMMERCIAL.html">Commercial terms</a>
-          <a href="../docs/legal/THIRD_PARTY_NOTICES.html">Third-party notices</a>
+          <a href="../docs/licensing">Licensing</a>
+          <a href="../docs/privacy">Privacy</a>
+          <a href="../docs/legal/COMMERCIAL">Commercial terms</a>
+          <a href="../docs/legal/THIRD_PARTY_NOTICES">Third-party notices</a>
           <a href="mailto:cnguyen@spwnd.dev">cnguyen@spwnd.dev</a>
         </nav>
         <p class="footer-fine">Free for personal and noncommercial use under PolyForm Noncommercial 1.0.0. Business use requires a paid license.</p>

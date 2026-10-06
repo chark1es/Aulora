@@ -15,15 +15,15 @@
   <body class="docs">
     <header class="site-header">
       <div class="site-header-inner">
-        <a class="brand" href="../index.html">
+        <a class="brand" href="../">
           <img src="../favicon.svg" alt="" width="26" height="26" />
           <span class="brand-lockup"><span class="brand-name">Aulora</span><span class="brand-sub">/docs</span></span>
         </a>
         <nav class="site-nav" aria-label="Site">
-          <a href="../how-it-works.html">How it works</a>
-          <a href="../install.html">Install</a>
-          <a href="../pricing.html">Pricing</a>
-          <a href="../docs/index.html" aria-current="page">Docs</a>
+          <a href="../how-it-works">How it works</a>
+          <a href="../install">Install</a>
+          <a href="../pricing">Pricing</a>
+          <a href="../docs/" aria-current="page">Docs</a>
           <a href="https://github.com/chark1es/Aulora">GitHub</a>
         </nav>
       </div>
@@ -34,30 +34,31 @@
         <nav aria-label="Documentation">
         <div class="nav-group">
           <p class="nav-label">Start here</p>
-          <a href="../docs/index.html">Overview</a>
-          <a href="../docs/getting-started.html" aria-current="page">Getting started</a>
-          <a href="../docs/user-guide.html">User guide</a>
+          <a href="../docs/">Overview</a>
+          <a href="../docs/getting-started" aria-current="page">Getting started</a>
+          <a href="../docs/user-guide">User guide</a>
+          <a href="../docs/kanban">Kanban</a>
         </div>
         <div class="nav-group">
           <p class="nav-label">Run a server</p>
-          <a href="../docs/self-hosting.html">Self-hosting</a>
-          <a href="../docs/coolify.html">Coolify</a>
-          <a href="../docs/admin.html">Admin panel</a>
-          <a href="../docs/backups.html">Backups</a>
-          <a href="../docs/updates.html">Updates</a>
-          <a href="../docs/troubleshooting.html">Troubleshooting</a>
+          <a href="../docs/self-hosting">Self-hosting</a>
+          <a href="../docs/coolify">Coolify</a>
+          <a href="../docs/admin">Admin panel</a>
+          <a href="../docs/backups">Backups</a>
+          <a href="../docs/updates">Updates</a>
+          <a href="../docs/troubleshooting">Troubleshooting</a>
         </div>
         <div class="nav-group">
           <p class="nav-label">Policy</p>
-          <a href="../docs/privacy.html">Privacy</a>
-          <a href="../docs/licensing.html">Licensing</a>
-          <a href="../docs/contributing.html">Contributing</a>
+          <a href="../docs/privacy">Privacy</a>
+          <a href="../docs/licensing">Licensing</a>
+          <a href="../docs/contributing">Contributing</a>
         </div>
         </nav>
       </details>
       <main class="docs-main">
         <header class="page-header">
-          <p class="page-eyebrow"><a href="../docs/index.html">Docs</a><svg class="icon" viewBox="0 0 24 24" aria-hidden="true" focusable="false"><path fill="currentColor" d="M12.6 12L8.7 8.1q-.275-.275-.275-.7t.275-.7t.7-.275t.7.275l4.6 4.6q.15.15.213.325t.062.375t-.062.375t-.213.325l-4.6 4.6q-.275.275-.7.275t-.7-.275t-.275-.7t.275-.7z"/></svg><span>Start here</span></p>
+          <p class="page-eyebrow"><a href="../docs/">Docs</a><svg class="icon" viewBox="0 0 24 24" aria-hidden="true" focusable="false"><path fill="currentColor" d="M12.6 12L8.7 8.1q-.275-.275-.275-.7t.275-.7t.7-.275t.7.275l4.6 4.6q.15.15.213.325t.062.375t-.062.375t-.213.325l-4.6 4.6q-.275.275-.7.275t-.7-.275t-.275-.7t.275-.7z"/></svg><span>Start here</span></p>
           <h1>Getting started</h1>
           <p class="page-meta">2 min read</p>
         </header>
@@ -66,7 +67,7 @@
 <p>A client is the app: the browser, or a desktop or mobile download. You use it to join a server someone already runs. A workspace is that server. One person installs it. Everyone else installs a client and opens the workspace URL.</p>
 <h2 id="install-a-client">Install a client</h2>
 <p>You do not need Git, Docker, or a compiler to join a workspace.</p>
-<p>Ask the person who runs it for the web URL, and an invitation if signup is closed. Open that URL in a browser, or install a desktop or mobile app and enter the URL on the connect screen. Choose a sign-in method the server offers. iOS and Android are in beta. File names and install steps are in the <a href="user-guide.html#install-a-desktop-or-mobile-client">user guide</a>.</p>
+<p>Ask the person who runs it for the web URL, and an invitation if signup is closed. Open that URL in a browser, or install a desktop or mobile app and enter the URL on the connect screen. Choose a sign-in method the server offers. iOS and Android are in beta. File names and install steps are in the <a href="user-guide#install-a-desktop-or-mobile-client">user guide</a>.</p>
 <h2 id="install-a-workspace">Install a workspace</h2>
 <p>Install Git and Docker with Compose v2.24 or newer. Start Docker first. On Windows use PowerShell 7 and Docker Desktop in Linux-container mode.</p>
 <p>On macOS, Linux, or WSL:</p>
@@ -88,14 +89,14 @@ curl --fail http://localhost:8080/.well-known/aulora.json</code></pre></div>
 <p>On PowerShell use <code>curl.exe</code> for the last command. Setup should finish successfully and discovery should return JSON with the workspace name and a reachable Convex URL. Create a channel, send a message, upload a small file, and invite a second test account.</p>
 <p>Keep <code>infra/docker/.env</code> private and back it up securely. It contains the encryption key needed to recover your messages. Database backups alone are insufficient.</p>
 <h2 id="make-it-available-to-your-team">Make it available to your team</h2>
-<p><code>localhost</code> only works on the machine hosting the server. A phone or another computer needs a reachable hostname and matching public URLs. For a public deployment, configure DNS, HTTPS, origin settings, private administration ports, and non-default database/storage credentials. Follow <a href="self-hosting.html">self-hosting</a> or <a href="coolify.html">Coolify</a> before inviting users.</p>
+<p><code>localhost</code> only works on the machine hosting the server. A phone or another computer needs a reachable hostname and matching public URLs. For a public deployment, configure DNS, HTTPS, origin settings, private administration ports, and non-default database/storage credentials. Follow <a href="self-hosting">self-hosting</a> or <a href="coolify">Coolify</a> before inviting users.</p>
 <p>Voice/video requires microphone/camera permissions and a secure origin. Some networks also need TURN. Mobile push requires a configured relay; it is optional.</p>
 <h2 id="next-steps">Next steps</h2>
-<ul><li>Configure <a href="admin.html">workspace access, roles, and invitations</a>.</li><li>Set up <a href="backups.html">off-machine backups and test a restore</a>.</li><li>Read <a href="privacy.html">privacy</a> and <a href="licensing.html">licensing</a>.</li><li>If something fails, use <a href="troubleshooting.html">troubleshooting</a>.</li><li>To modify the code, follow <a href="https://github.com/chark1es/Aulora/blob/main/docs/development.md">development setup</a>.</li></ul>
+<ul><li>Configure <a href="admin">workspace access, roles, and invitations</a>.</li><li>Set up <a href="backups">off-machine backups and test a restore</a>.</li><li>Read <a href="privacy">privacy</a> and <a href="licensing">licensing</a>.</li><li>If something fails, use <a href="troubleshooting">troubleshooting</a>.</li><li>To modify the code, follow <a href="https://github.com/chark1es/Aulora/blob/main/docs/development.md">development setup</a>.</li></ul>
         </article>
         <nav class="pager" aria-label="Pages">
-          <a class="pager-prev" href="../docs/index.html" rel="prev"><small>Previous</small>Overview</a>
-          <a class="pager-next" href="../docs/user-guide.html" rel="next"><small>Next</small>User guide</a>
+          <a class="pager-prev" href="../docs/" rel="prev"><small>Previous</small>Overview</a>
+          <a class="pager-next" href="../docs/user-guide" rel="next"><small>Next</small>User guide</a>
         </nav>
       </main>
       <aside class="toc" aria-label="On this page">
@@ -113,10 +114,10 @@ curl --fail http://localhost:8080/.well-known/aulora.json</code></pre></div>
       <div class="site-footer-inner">
         <p class="footer-mark">Aulora · team chat on your own server</p>
         <nav aria-label="Legal and contact">
-          <a href="../docs/licensing.html">Licensing</a>
-          <a href="../docs/privacy.html">Privacy</a>
-          <a href="../docs/legal/COMMERCIAL.html">Commercial terms</a>
-          <a href="../docs/legal/THIRD_PARTY_NOTICES.html">Third-party notices</a>
+          <a href="../docs/licensing">Licensing</a>
+          <a href="../docs/privacy">Privacy</a>
+          <a href="../docs/legal/COMMERCIAL">Commercial terms</a>
+          <a href="../docs/legal/THIRD_PARTY_NOTICES">Third-party notices</a>
           <a href="mailto:cnguyen@spwnd.dev">cnguyen@spwnd.dev</a>
         </nav>
         <p class="footer-fine">Free for personal and noncommercial use under PolyForm Noncommercial 1.0.0. Business use requires a paid license.</p>

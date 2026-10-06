@@ -15,15 +15,15 @@
   <body class="docs">
     <header class="site-header">
       <div class="site-header-inner">
-        <a class="brand" href="../index.html">
+        <a class="brand" href="../">
           <img src="../favicon.svg" alt="" width="26" height="26" />
           <span class="brand-lockup"><span class="brand-name">Aulora</span><span class="brand-sub">/docs</span></span>
         </a>
         <nav class="site-nav" aria-label="Site">
-          <a href="../how-it-works.html">How it works</a>
-          <a href="../install.html">Install</a>
-          <a href="../pricing.html">Pricing</a>
-          <a href="../docs/index.html" aria-current="page">Docs</a>
+          <a href="../how-it-works">How it works</a>
+          <a href="../install">Install</a>
+          <a href="../pricing">Pricing</a>
+          <a href="../docs/" aria-current="page">Docs</a>
           <a href="https://github.com/chark1es/Aulora">GitHub</a>
         </nav>
       </div>
@@ -34,30 +34,31 @@
         <nav aria-label="Documentation">
         <div class="nav-group">
           <p class="nav-label">Start here</p>
-          <a href="../docs/index.html">Overview</a>
-          <a href="../docs/getting-started.html">Getting started</a>
-          <a href="../docs/user-guide.html" aria-current="page">User guide</a>
+          <a href="../docs/">Overview</a>
+          <a href="../docs/getting-started">Getting started</a>
+          <a href="../docs/user-guide" aria-current="page">User guide</a>
+          <a href="../docs/kanban">Kanban</a>
         </div>
         <div class="nav-group">
           <p class="nav-label">Run a server</p>
-          <a href="../docs/self-hosting.html">Self-hosting</a>
-          <a href="../docs/coolify.html">Coolify</a>
-          <a href="../docs/admin.html">Admin panel</a>
-          <a href="../docs/backups.html">Backups</a>
-          <a href="../docs/updates.html">Updates</a>
-          <a href="../docs/troubleshooting.html">Troubleshooting</a>
+          <a href="../docs/self-hosting">Self-hosting</a>
+          <a href="../docs/coolify">Coolify</a>
+          <a href="../docs/admin">Admin panel</a>
+          <a href="../docs/backups">Backups</a>
+          <a href="../docs/updates">Updates</a>
+          <a href="../docs/troubleshooting">Troubleshooting</a>
         </div>
         <div class="nav-group">
           <p class="nav-label">Policy</p>
-          <a href="../docs/privacy.html">Privacy</a>
-          <a href="../docs/licensing.html">Licensing</a>
-          <a href="../docs/contributing.html">Contributing</a>
+          <a href="../docs/privacy">Privacy</a>
+          <a href="../docs/licensing">Licensing</a>
+          <a href="../docs/contributing">Contributing</a>
         </div>
         </nav>
       </details>
       <main class="docs-main">
         <header class="page-header">
-          <p class="page-eyebrow"><a href="../docs/index.html">Docs</a><svg class="icon" viewBox="0 0 24 24" aria-hidden="true" focusable="false"><path fill="currentColor" d="M12.6 12L8.7 8.1q-.275-.275-.275-.7t.275-.7t.7-.275t.7.275l4.6 4.6q.15.15.213.325t.062.375t-.062.375t-.213.325l-4.6 4.6q-.275.275-.7.275t-.7-.275t-.275-.7t.275-.7z"/></svg><span>Start here</span></p>
+          <p class="page-eyebrow"><a href="../docs/">Docs</a><svg class="icon" viewBox="0 0 24 24" aria-hidden="true" focusable="false"><path fill="currentColor" d="M12.6 12L8.7 8.1q-.275-.275-.275-.7t.275-.7t.7-.275t.7.275l4.6 4.6q.15.15.213.325t.062.375t-.062.375t-.213.325l-4.6 4.6q-.275.275-.7.275t-.7-.275t-.275-.7t.275-.7z"/></svg><span>Start here</span></p>
           <h1>User guide</h1>
           <p class="page-meta">3 min read</p>
         </header>
@@ -67,7 +68,7 @@
 <p>The server advertises its available sign-in methods. Use email/password, a configured OAuth provider, or your organization&#39;s SSO. An invitation may be required. If sign-in is unavailable, contact the administrator of that server.</p>
 <p>Accounts belong to each server. Joining another server can require another account. Use the workspace switcher to move between connected servers.</p>
 <h2 id="install-a-desktop-or-mobile-client">Install a desktop or mobile client</h2>
-<p>This installs a client, not a workspace. To run a server, follow <a href="getting-started.html#install-a-workspace">getting started</a>.</p>
+<p>This installs a client, not a workspace. To run a server, follow <a href="getting-started#install-a-workspace">getting started</a>.</p>
 <p>Published files are listed in <a href="https://github.com/chark1es/Aulora/releases">GitHub Releases</a>. iOS and Android are in beta. Check the version and choose your platform:</p>
 <div class="table-scroll"><table><thead><tr><th scope="col">Platform</th><th scope="col">File and installation</th></tr></thead><tbody><tr><td>macOS Apple Silicon</td><td>ARM64 DMG; open it and move Aulora to Applications</td></tr><tr><td>macOS Intel</td><td>x86_64 DMG; open it and move Aulora to Applications</td></tr><tr><td>Windows x64</td><td><code>_x64-setup.exe</code>; run the installer</td></tr><tr><td>Linux x64</td><td>AppImage for in-app updates, or a Debian package for manual installation</td></tr><tr><td>Android</td><td>APK for direct installation; AAB is for Google Play submission</td></tr><tr><td>iOS</td><td>Use a published App Store or TestFlight invitation; an IPA download is not a general installer</td></tr><tr><td>Browser</td><td>Open your server&#39;s web URL</td></tr></tbody></table></div>
 <p>For an AppImage, grant execute permission before opening it, for example <code>chmod +x Aulora*.AppImage</code>. Linux desktop integration and system dependencies vary by distribution.</p>
@@ -76,6 +77,8 @@
 <p>Choose a channel in the sidebar to read or send messages. Start a direct conversation from the conversation controls and choose a member. Use a message&#39;s action menu for replies, reactions, editing, or other available actions.</p>
 <p>Threads keep replies attached to a message. The threads inbox helps you return to discussions. Drag a file into the web/desktop composer or use the attachment control; mobile offers the device&#39;s file and photo pickers. Upload limits depend on the server.</p>
 <p>Role permissions control who can create channels, upload, moderate, or manage a workspace. If an action is missing or denied, ask the workspace administrator.</p>
+<h2 id="kanban">Kanban</h2>
+<p>If your administrator enables Kanban and grants you View Kanban permission, open it from the sidebar. Plan work with cards, columns, labels, assignees, checklists, due dates, comments, attachments and work timers. You can browse GitHub repositories, issues and pull requests with your own connection. See <a href="kanban">Kanban</a> for the full workflow.</p>
 <h2 id="voice-and-video">Voice and video</h2>
 <p>Join a voice channel or start a call from a conversation. Allow microphone access, and camera access when using video. Use the call controls to mute, change devices, or leave.</p>
 <p>A browser needs HTTPS or localhost for media permissions. Screen sharing depends on platform support. If a call connects but has no audio/video, try another network and ask the administrator whether TURN is configured.</p>
@@ -84,13 +87,13 @@
 <p>The desktop process must remain running for local chat notifications. Closing its window can leave it in the tray; quitting stops that delivery path. Mobile background notifications require the server&#39;s relay and the publisher&#39;s APNs/FCM setup. The browser also needs permission for web push. Notifications are not evidence that messages are end-to-end encrypted.</p>
 <h2 id="updates">Updates</h2>
 <p>Desktop updates are in Your settings, Updates. Download the update, then restart to install it. AppImage supports the Linux updater; Debian packages require manual replacement. Mobile updates come through the distribution channel you installed from.</p>
-<p>Server updates belong to the workspace owner. See <a href="updates.html">updates</a>. If the server is being restarted, reconnect after it returns.</p>
+<p>Server updates belong to the workspace owner. See <a href="updates">updates</a>. If the server is being restarted, reconnect after it returns.</p>
 <h2 id="get-help">Get help</h2>
-<p>For account access or workspace rules, contact your server administrator. For a reproducible app bug, follow <a href="troubleshooting.html">troubleshooting</a> and file a <a href="https://github.com/chark1es/Aulora/issues">GitHub issue</a>. Keep passwords, tokens, and private messages out of reports.</p>
+<p>For account access or workspace rules, contact your server administrator. For a reproducible app bug, follow <a href="troubleshooting">troubleshooting</a> and file a <a href="https://github.com/chark1es/Aulora/issues">GitHub issue</a>. Keep passwords, tokens, and private messages out of reports.</p>
         </article>
         <nav class="pager" aria-label="Pages">
-          <a class="pager-prev" href="../docs/getting-started.html" rel="prev"><small>Previous</small>Getting started</a>
-          <a class="pager-next" href="../docs/self-hosting.html" rel="next"><small>Next</small>Self-hosting</a>
+          <a class="pager-prev" href="../docs/getting-started" rel="prev"><small>Previous</small>Getting started</a>
+          <a class="pager-next" href="../docs/kanban" rel="next"><small>Next</small>Kanban</a>
         </nav>
       </main>
       <aside class="toc" aria-label="On this page">
@@ -99,6 +102,7 @@
           <a href="#connect-and-sign-in">Connect and sign in</a>
           <a href="#install-a-desktop-or-mobile-client">Install a desktop or mobile client</a>
           <a href="#messages-and-conversations">Messages and conversations</a>
+          <a href="#kanban">Kanban</a>
           <a href="#voice-and-video">Voice and video</a>
           <a href="#notifications">Notifications</a>
           <a href="#updates">Updates</a>
@@ -110,10 +114,10 @@
       <div class="site-footer-inner">
         <p class="footer-mark">Aulora · team chat on your own server</p>
         <nav aria-label="Legal and contact">
-          <a href="../docs/licensing.html">Licensing</a>
-          <a href="../docs/privacy.html">Privacy</a>
-          <a href="../docs/legal/COMMERCIAL.html">Commercial terms</a>
-          <a href="../docs/legal/THIRD_PARTY_NOTICES.html">Third-party notices</a>
+          <a href="../docs/licensing">Licensing</a>
+          <a href="../docs/privacy">Privacy</a>
+          <a href="../docs/legal/COMMERCIAL">Commercial terms</a>
+          <a href="../docs/legal/THIRD_PARTY_NOTICES">Third-party notices</a>
           <a href="mailto:cnguyen@spwnd.dev">cnguyen@spwnd.dev</a>
         </nav>
         <p class="footer-fine">Free for personal and noncommercial use under PolyForm Noncommercial 1.0.0. Business use requires a paid license.</p>

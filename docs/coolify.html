@@ -15,15 +15,15 @@
   <body class="docs">
     <header class="site-header">
       <div class="site-header-inner">
-        <a class="brand" href="../index.html">
+        <a class="brand" href="../">
           <img src="../favicon.svg" alt="" width="26" height="26" />
           <span class="brand-lockup"><span class="brand-name">Aulora</span><span class="brand-sub">/docs</span></span>
         </a>
         <nav class="site-nav" aria-label="Site">
-          <a href="../how-it-works.html">How it works</a>
-          <a href="../install.html">Install</a>
-          <a href="../pricing.html">Pricing</a>
-          <a href="../docs/index.html" aria-current="page">Docs</a>
+          <a href="../how-it-works">How it works</a>
+          <a href="../install">Install</a>
+          <a href="../pricing">Pricing</a>
+          <a href="../docs/" aria-current="page">Docs</a>
           <a href="https://github.com/chark1es/Aulora">GitHub</a>
         </nav>
       </div>
@@ -34,30 +34,31 @@
         <nav aria-label="Documentation">
         <div class="nav-group">
           <p class="nav-label">Start here</p>
-          <a href="../docs/index.html">Overview</a>
-          <a href="../docs/getting-started.html">Getting started</a>
-          <a href="../docs/user-guide.html">User guide</a>
+          <a href="../docs/">Overview</a>
+          <a href="../docs/getting-started">Getting started</a>
+          <a href="../docs/user-guide">User guide</a>
+          <a href="../docs/kanban">Kanban</a>
         </div>
         <div class="nav-group">
           <p class="nav-label">Run a server</p>
-          <a href="../docs/self-hosting.html">Self-hosting</a>
-          <a href="../docs/coolify.html" aria-current="page">Coolify</a>
-          <a href="../docs/admin.html">Admin panel</a>
-          <a href="../docs/backups.html">Backups</a>
-          <a href="../docs/updates.html">Updates</a>
-          <a href="../docs/troubleshooting.html">Troubleshooting</a>
+          <a href="../docs/self-hosting">Self-hosting</a>
+          <a href="../docs/coolify" aria-current="page">Coolify</a>
+          <a href="../docs/admin">Admin panel</a>
+          <a href="../docs/backups">Backups</a>
+          <a href="../docs/updates">Updates</a>
+          <a href="../docs/troubleshooting">Troubleshooting</a>
         </div>
         <div class="nav-group">
           <p class="nav-label">Policy</p>
-          <a href="../docs/privacy.html">Privacy</a>
-          <a href="../docs/licensing.html">Licensing</a>
-          <a href="../docs/contributing.html">Contributing</a>
+          <a href="../docs/privacy">Privacy</a>
+          <a href="../docs/licensing">Licensing</a>
+          <a href="../docs/contributing">Contributing</a>
         </div>
         </nav>
       </details>
       <main class="docs-main">
         <header class="page-header">
-          <p class="page-eyebrow"><a href="../docs/index.html">Docs</a><svg class="icon" viewBox="0 0 24 24" aria-hidden="true" focusable="false"><path fill="currentColor" d="M12.6 12L8.7 8.1q-.275-.275-.275-.7t.275-.7t.7-.275t.7.275l4.6 4.6q.15.15.213.325t.062.375t-.062.375t-.213.325l-4.6 4.6q-.275.275-.7.275t-.7-.275t-.275-.7t.275-.7z"/></svg><span>Run a server</span></p>
+          <p class="page-eyebrow"><a href="../docs/">Docs</a><svg class="icon" viewBox="0 0 24 24" aria-hidden="true" focusable="false"><path fill="currentColor" d="M12.6 12L8.7 8.1q-.275-.275-.275-.7t.275-.7t.7-.275t.7.275l4.6 4.6q.15.15.213.325t.062.375t-.062.375t-.213.325l-4.6 4.6q-.275.275-.7.275t-.7-.275t-.275-.7t.275-.7z"/></svg><span>Run a server</span></p>
           <h1>Deploy on Coolify</h1>
           <p class="page-meta">5 min read</p>
         </header>
@@ -112,16 +113,16 @@ openssl rand -hex 32         # -&gt; INSTANCE_SECRET</code></pre></div>
 <p>This file uses Coolify-specific <code>exclude_from_hc</code> fields. Plain Docker Compose rejects the raw source file. If using host commands, use Coolify&#39;s rendered Compose configuration and its existing project/environment, not the source template. See <a href="https://coolify.io/docs/applications/builds/docker-compose">Coolify&#39;s Compose documentation</a>.</p>
 <h2 id="how-the-generated-secrets-persist">How the generated secrets persist</h2>
 <p>On a normal <code>docker compose</code> install, <code>setup</code> writes generated secrets to <code>infra/docker/.env</code>, and Compose re-injects them through <code>env_file</code> on the next run. Coolify does not provide that file, so this stack keeps them in the <code>setup-state</code> named volume instead (<code>setup</code> writes <code>/host/.env</code>, the same path, and re-reads it each run). A redeploy therefore reuses the same <code>INSTANCE_SECRET</code>, <code>BETTER_AUTH_SECRET</code> and VAPID keys — and, when you did not set it yourself, the same generated <code>AULORA_ENCRYPTION_KEY</code>.</p>
-<p>Do not delete the <code>setup-state</code> volume, and keep an offline copy of <code>AULORA_ENCRYPTION_KEY</code>: encrypted content in the database and exports needs that key to be readable. Other metadata may remain readable. The same warning as <a href="self-hosting.html">Self-hosting → Encryption</a> applies.</p>
+<p>Do not delete the <code>setup-state</code> volume, and keep an offline copy of <code>AULORA_ENCRYPTION_KEY</code>: encrypted content in the database and exports needs that key to be readable. Other metadata may remain readable. The same warning as <a href="self-hosting">Self-hosting → Encryption</a> applies.</p>
 <h2 id="optional-services">Optional services</h2>
 <p>The backup runner, push relay, and development Vault have Compose profiles and are off by default. To enable an optional service in this resource, remove its <code>profiles</code> entry in your deployment branch and redeploy the same Coolify resource. Configure its environment values in Coolify first. Keep the project and named volumes unchanged so the service joins the existing deployment.</p>
 <p>Do not create a second independent stack for backups; it would have different named volumes and could back up a fresh deployment instead. If managing profiles through host commands, use Coolify&#39;s rendered configuration, project name, and environment.</p>
-<ul><li>Backups require a working destination and an off-machine copy; see <a href="backups.html">backups</a>.</li><li>Mobile push requires relay authentication and publisher APNs/FCM credentials.</li><li>The bundled Vault runs in memory for development. Use a persistent external key manager in production.</li></ul>
+<ul><li>Backups require a working destination and an off-machine copy; see <a href="backups">backups</a>.</li><li>Mobile push requires relay authentication and publisher APNs/FCM credentials.</li><li>The bundled Vault runs in memory for development. Use a persistent external key manager in production.</li></ul>
 <h2 id="upgrade">Upgrade</h2>
 <p>Redeploy the resource (Coolify pulls the branch and rebuilds <code>web</code> and <code>setup</code>). The named volumes, including <code>setup-state</code>, are kept, so data and secrets survive. If you changed origins or auth settings, re-run <code>setup</code> as above.</p>
 <p>The instance admin panel reports when a newer Aulora release is published. Coolify owns the git checkout, so apply that release by redeploying the new ref here. Do not run <code>infra/docker/update.sh</code> inside Coolify&#39;s source directory.</p>
 <h2 id="teardown">Teardown</h2>
-<p>Stop or delete the Coolify resource. <strong>Deleting the volumes wipes the data and the generated secrets, irreversibly.</strong> If you want to keep the deployment recoverable, back up <code>AULORA_ENCRYPTION_KEY</code> and the database first (see <a href="backups.html">Backups</a>) before removing the <code>pgdata</code>, <code>convex-data</code>, <code>minio-data</code> and <code>setup-state</code> volumes.</p>
+<p>Stop or delete the Coolify resource. <strong>Deleting the volumes wipes the data and the generated secrets, irreversibly.</strong> If you want to keep the deployment recoverable, back up <code>AULORA_ENCRYPTION_KEY</code> and the database first (see <a href="backups">Backups</a>) before removing the <code>pgdata</code>, <code>convex-data</code>, <code>minio-data</code> and <code>setup-state</code> volumes.</p>
 <h2 id="troubleshooting">Troubleshooting</h2>
 <ul><li><strong>Login redirects but the session does not stick</strong> — <code>/api/auth/*</code> is not</li></ul>
 <p>same-origin. Check that <code>CONVEX_SITE_ORIGIN</code> equals <code>SITE_URL</code> and that no <code>/api/auth</code> route was added to the Convex domain.</p>
@@ -133,8 +134,8 @@ openssl rand -hex 32         # -&gt; INSTANCE_SECRET</code></pre></div>
 <p>public Convex domain and must not have a trailing slash.</p>
         </article>
         <nav class="pager" aria-label="Pages">
-          <a class="pager-prev" href="../docs/self-hosting.html" rel="prev"><small>Previous</small>Self-hosting</a>
-          <a class="pager-next" href="../docs/admin.html" rel="next"><small>Next</small>Admin panel</a>
+          <a class="pager-prev" href="../docs/self-hosting" rel="prev"><small>Previous</small>Self-hosting</a>
+          <a class="pager-next" href="../docs/admin" rel="next"><small>Next</small>Admin panel</a>
         </nav>
       </main>
       <aside class="toc" aria-label="On this page">
@@ -157,10 +158,10 @@ openssl rand -hex 32         # -&gt; INSTANCE_SECRET</code></pre></div>
       <div class="site-footer-inner">
         <p class="footer-mark">Aulora · team chat on your own server</p>
         <nav aria-label="Legal and contact">
-          <a href="../docs/licensing.html">Licensing</a>
-          <a href="../docs/privacy.html">Privacy</a>
-          <a href="../docs/legal/COMMERCIAL.html">Commercial terms</a>
-          <a href="../docs/legal/THIRD_PARTY_NOTICES.html">Third-party notices</a>
+          <a href="../docs/licensing">Licensing</a>
+          <a href="../docs/privacy">Privacy</a>
+          <a href="../docs/legal/COMMERCIAL">Commercial terms</a>
+          <a href="../docs/legal/THIRD_PARTY_NOTICES">Third-party notices</a>
           <a href="mailto:cnguyen@spwnd.dev">cnguyen@spwnd.dev</a>
         </nav>
         <p class="footer-fine">Free for personal and noncommercial use under PolyForm Noncommercial 1.0.0. Business use requires a paid license.</p>

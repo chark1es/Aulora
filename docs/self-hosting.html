@@ -15,15 +15,15 @@
   <body class="docs">
     <header class="site-header">
       <div class="site-header-inner">
-        <a class="brand" href="../index.html">
+        <a class="brand" href="../">
           <img src="../favicon.svg" alt="" width="26" height="26" />
           <span class="brand-lockup"><span class="brand-name">Aulora</span><span class="brand-sub">/docs</span></span>
         </a>
         <nav class="site-nav" aria-label="Site">
-          <a href="../how-it-works.html">How it works</a>
-          <a href="../install.html">Install</a>
-          <a href="../pricing.html">Pricing</a>
-          <a href="../docs/index.html" aria-current="page">Docs</a>
+          <a href="../how-it-works">How it works</a>
+          <a href="../install">Install</a>
+          <a href="../pricing">Pricing</a>
+          <a href="../docs/" aria-current="page">Docs</a>
           <a href="https://github.com/chark1es/Aulora">GitHub</a>
         </nav>
       </div>
@@ -34,36 +34,37 @@
         <nav aria-label="Documentation">
         <div class="nav-group">
           <p class="nav-label">Start here</p>
-          <a href="../docs/index.html">Overview</a>
-          <a href="../docs/getting-started.html">Getting started</a>
-          <a href="../docs/user-guide.html">User guide</a>
+          <a href="../docs/">Overview</a>
+          <a href="../docs/getting-started">Getting started</a>
+          <a href="../docs/user-guide">User guide</a>
+          <a href="../docs/kanban">Kanban</a>
         </div>
         <div class="nav-group">
           <p class="nav-label">Run a server</p>
-          <a href="../docs/self-hosting.html" aria-current="page">Self-hosting</a>
-          <a href="../docs/coolify.html">Coolify</a>
-          <a href="../docs/admin.html">Admin panel</a>
-          <a href="../docs/backups.html">Backups</a>
-          <a href="../docs/updates.html">Updates</a>
-          <a href="../docs/troubleshooting.html">Troubleshooting</a>
+          <a href="../docs/self-hosting" aria-current="page">Self-hosting</a>
+          <a href="../docs/coolify">Coolify</a>
+          <a href="../docs/admin">Admin panel</a>
+          <a href="../docs/backups">Backups</a>
+          <a href="../docs/updates">Updates</a>
+          <a href="../docs/troubleshooting">Troubleshooting</a>
         </div>
         <div class="nav-group">
           <p class="nav-label">Policy</p>
-          <a href="../docs/privacy.html">Privacy</a>
-          <a href="../docs/licensing.html">Licensing</a>
-          <a href="../docs/contributing.html">Contributing</a>
+          <a href="../docs/privacy">Privacy</a>
+          <a href="../docs/licensing">Licensing</a>
+          <a href="../docs/contributing">Contributing</a>
         </div>
         </nav>
       </details>
       <main class="docs-main">
         <header class="page-header">
-          <p class="page-eyebrow"><a href="../docs/index.html">Docs</a><svg class="icon" viewBox="0 0 24 24" aria-hidden="true" focusable="false"><path fill="currentColor" d="M12.6 12L8.7 8.1q-.275-.275-.275-.7t.275-.7t.7-.275t.7.275l4.6 4.6q.15.15.213.325t.062.375t-.062.375t-.213.325l-4.6 4.6q-.275.275-.7.275t-.7-.275t-.275-.7t.275-.7z"/></svg><span>Run a server</span></p>
+          <p class="page-eyebrow"><a href="../docs/">Docs</a><svg class="icon" viewBox="0 0 24 24" aria-hidden="true" focusable="false"><path fill="currentColor" d="M12.6 12L8.7 8.1q-.275-.275-.275-.7t.275-.7t.7-.275t.7.275l4.6 4.6q.15.15.213.325t.062.375t-.062.375t-.213.325l-4.6 4.6q-.275.275-.7.275t-.7-.275t-.275-.7t.275-.7z"/></svg><span>Run a server</span></p>
           <h1>Self-hosting</h1>
           <p class="page-meta">4 min read</p>
         </header>
         <article class="prose">
 <p>One Aulora server runs one workspace. The whole stack is a Docker Compose project under <code>infra/docker</code>: Postgres, the self-hosted Convex backend and dashboard, MinIO object storage, the web SPA, and a one-shot <code>setup</code> container that provisions everything on first run.</p>
-<p>There is deliberately no TLS terminator in the stack. Put it behind your own edge proxy (Coolify, Traefik, Caddy, nginx or a cloud load balancer). For a guided deploy on <a href="https://coolify.io">Coolify</a> see <a href="coolify.html">Deploy on Coolify</a>, which uses the ready-made <code>infra/docker/docker-compose.coolify.yml</code>.</p>
+<p>There is deliberately no TLS terminator in the stack. Put it behind your own edge proxy (Coolify, Traefik, Caddy, nginx or a cloud load balancer). For a guided deploy on <a href="https://coolify.io">Coolify</a> see <a href="coolify">Deploy on Coolify</a>, which uses the ready-made <code>infra/docker/docker-compose.coolify.yml</code>.</p>
 <h2 id="the-installer">The installer</h2>
 <div class="code"><div class="code-bar"><span>sh</span><button type="button" data-copy>Copy</button></div><pre><code class="language-sh">./install.sh            # macOS / Linux
 pwsh ./install.ps1      # Windows</code></pre></div>
@@ -108,11 +109,11 @@ docker compose run --rm setup</code></pre></div>
 <p>Before exposing a server, replace <code>POSTGRES_PASSWORD</code> and the matching password in <code>POSTGRES_URL</code>, and replace <code>MINIO_ROOT_PASSWORD</code>. Configure DNS and valid HTTPS, reachable <code>SITE_URL</code>, <code>CONVEX_URL</code>, <code>CONVEX_CLOUD_ORIGIN</code>, and <code>CONVEX_SITE_ORIGIN</code>. Keep the auth route on the web origin and allow WebSocket upgrades. The origin settings are explained in the <a href="https://github.com/chark1es/Aulora/blob/main/infra/docker/proxy/README.md">proxy guide</a>.</p>
 <p>The standard Compose file publishes database and administration ports for local use. Bind them to localhost or remove their published ports before public deployment. Keep the Convex dashboard, Postgres, and MinIO administration private. Coolify&#39;s file keeps services internal by default.</p>
 <p>Start with a small test team and measure CPU, memory, storage, and upload growth on your host. There is no published capacity guarantee. Container builds need more resources than an idle server. Configure a TURN server if calls must work across restrictive networks.</p>
-<p>Set signup/invitation policy, verify backups and a restore, and check the server from another network before inviting users. See <a href="updates.html">updates</a>, <a href="backups.html">backups</a>, and <a href="troubleshooting.html">troubleshooting</a>. Business use requires a <a href="licensing.html">paid commercial agreement</a>.</p>
+<p>Set signup/invitation policy, verify backups and a restore, and check the server from another network before inviting users. See <a href="updates">updates</a>, <a href="backups">backups</a>, and <a href="troubleshooting">troubleshooting</a>. Business use requires a <a href="licensing">paid commercial agreement</a>.</p>
         </article>
         <nav class="pager" aria-label="Pages">
-          <a class="pager-prev" href="../docs/user-guide.html" rel="prev"><small>Previous</small>User guide</a>
-          <a class="pager-next" href="../docs/coolify.html" rel="next"><small>Next</small>Coolify</a>
+          <a class="pager-prev" href="../docs/kanban" rel="prev"><small>Previous</small>Kanban</a>
+          <a class="pager-next" href="../docs/coolify" rel="next"><small>Next</small>Coolify</a>
         </nav>
       </main>
       <aside class="toc" aria-label="On this page">
@@ -132,10 +133,10 @@ docker compose run --rm setup</code></pre></div>
       <div class="site-footer-inner">
         <p class="footer-mark">Aulora · team chat on your own server</p>
         <nav aria-label="Legal and contact">
-          <a href="../docs/licensing.html">Licensing</a>
-          <a href="../docs/privacy.html">Privacy</a>
-          <a href="../docs/legal/COMMERCIAL.html">Commercial terms</a>
-          <a href="../docs/legal/THIRD_PARTY_NOTICES.html">Third-party notices</a>
+          <a href="../docs/licensing">Licensing</a>
+          <a href="../docs/privacy">Privacy</a>
+          <a href="../docs/legal/COMMERCIAL">Commercial terms</a>
+          <a href="../docs/legal/THIRD_PARTY_NOTICES">Third-party notices</a>
           <a href="mailto:cnguyen@spwnd.dev">cnguyen@spwnd.dev</a>
         </nav>
         <p class="footer-fine">Free for personal and noncommercial use under PolyForm Noncommercial 1.0.0. Business use requires a paid license.</p>

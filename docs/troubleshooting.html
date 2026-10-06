@@ -15,15 +15,15 @@
   <body class="docs">
     <header class="site-header">
       <div class="site-header-inner">
-        <a class="brand" href="../index.html">
+        <a class="brand" href="../">
           <img src="../favicon.svg" alt="" width="26" height="26" />
           <span class="brand-lockup"><span class="brand-name">Aulora</span><span class="brand-sub">/docs</span></span>
         </a>
         <nav class="site-nav" aria-label="Site">
-          <a href="../how-it-works.html">How it works</a>
-          <a href="../install.html">Install</a>
-          <a href="../pricing.html">Pricing</a>
-          <a href="../docs/index.html" aria-current="page">Docs</a>
+          <a href="../how-it-works">How it works</a>
+          <a href="../install">Install</a>
+          <a href="../pricing">Pricing</a>
+          <a href="../docs/" aria-current="page">Docs</a>
           <a href="https://github.com/chark1es/Aulora">GitHub</a>
         </nav>
       </div>
@@ -34,30 +34,31 @@
         <nav aria-label="Documentation">
         <div class="nav-group">
           <p class="nav-label">Start here</p>
-          <a href="../docs/index.html">Overview</a>
-          <a href="../docs/getting-started.html">Getting started</a>
-          <a href="../docs/user-guide.html">User guide</a>
+          <a href="../docs/">Overview</a>
+          <a href="../docs/getting-started">Getting started</a>
+          <a href="../docs/user-guide">User guide</a>
+          <a href="../docs/kanban">Kanban</a>
         </div>
         <div class="nav-group">
           <p class="nav-label">Run a server</p>
-          <a href="../docs/self-hosting.html">Self-hosting</a>
-          <a href="../docs/coolify.html">Coolify</a>
-          <a href="../docs/admin.html">Admin panel</a>
-          <a href="../docs/backups.html">Backups</a>
-          <a href="../docs/updates.html">Updates</a>
-          <a href="../docs/troubleshooting.html" aria-current="page">Troubleshooting</a>
+          <a href="../docs/self-hosting">Self-hosting</a>
+          <a href="../docs/coolify">Coolify</a>
+          <a href="../docs/admin">Admin panel</a>
+          <a href="../docs/backups">Backups</a>
+          <a href="../docs/updates">Updates</a>
+          <a href="../docs/troubleshooting" aria-current="page">Troubleshooting</a>
         </div>
         <div class="nav-group">
           <p class="nav-label">Policy</p>
-          <a href="../docs/privacy.html">Privacy</a>
-          <a href="../docs/licensing.html">Licensing</a>
-          <a href="../docs/contributing.html">Contributing</a>
+          <a href="../docs/privacy">Privacy</a>
+          <a href="../docs/licensing">Licensing</a>
+          <a href="../docs/contributing">Contributing</a>
         </div>
         </nav>
       </details>
       <main class="docs-main">
         <header class="page-header">
-          <p class="page-eyebrow"><a href="../docs/index.html">Docs</a><svg class="icon" viewBox="0 0 24 24" aria-hidden="true" focusable="false"><path fill="currentColor" d="M12.6 12L8.7 8.1q-.275-.275-.275-.7t.275-.7t.7-.275t.7.275l4.6 4.6q.15.15.213.325t.062.375t-.062.375t-.213.325l-4.6 4.6q-.275.275-.7.275t-.7-.275t-.275-.7t.275-.7z"/></svg><span>Run a server</span></p>
+          <p class="page-eyebrow"><a href="../docs/">Docs</a><svg class="icon" viewBox="0 0 24 24" aria-hidden="true" focusable="false"><path fill="currentColor" d="M12.6 12L8.7 8.1q-.275-.275-.275-.7t.275-.7t.7-.275t.7.275l4.6 4.6q.15.15.213.325t.062.375t-.062.375t-.213.325l-4.6 4.6q-.275.275-.7.275t-.7-.275t-.275-.7t.275-.7z"/></svg><span>Run a server</span></p>
           <h1>Troubleshooting</h1>
           <p class="page-meta">2 min read</p>
         </header>
@@ -87,15 +88,15 @@ docker compose logs --tail=100 setup convex-backend web</code></pre></div>
 <h2 id="voice-connects-without-media">Voice connects without media</h2>
 <p>Allow microphone/camera access in the app and OS. Use HTTPS for remote clients. Test another network. Restrictive NAT or firewalls can require a TURN server; configure <code>AULORA_ICE_SERVERS</code> in <code>.env</code> and re-run setup.</p>
 <h2 id="notifications-do-not-arrive">Notifications do not arrive</h2>
-<p>Check permissions, focus mode, channel mutes, and whether the desktop process is still running. Mobile background delivery requires a correctly configured relay and APNs/FCM credentials for the installed app. Device push is not validated by a simulator build. See the <a href="user-guide.html">user guide</a>.</p>
+<p>Check permissions, focus mode, channel mutes, and whether the desktop process is still running. Mobile background delivery requires a correctly configured relay and APNs/FCM credentials for the installed app. Device push is not validated by a simulator build. See the <a href="user-guide">user guide</a>.</p>
 <h2 id="updates-are-unavailable">Updates are unavailable</h2>
-<p>Public GitHub release feeds require published assets and an accessible repository. Workspace download/restart controls require the host watcher. A dirty checkout prevents server updates. Follow <a href="updates.html">updates</a> and inspect watcher logs.</p>
+<p>Public GitHub release feeds require published assets and an accessible repository. Workspace download/restart controls require the host watcher. A dirty checkout prevents server updates. Follow <a href="updates">updates</a> and inspect watcher logs.</p>
 <h2 id="before-opening-an-issue">Before opening an issue</h2>
 <p>Include the version or commit, platform, deployment method, reproduction steps, expected behavior, actual behavior, and redacted logs. Distinguish browser, desktop, mobile, and server failures. Report security issues privately to <a href="mailto:cnguyen@spwnd.dev">cnguyen@spwnd.dev</a>.</p>
         </article>
         <nav class="pager" aria-label="Pages">
-          <a class="pager-prev" href="../docs/updates.html" rel="prev"><small>Previous</small>Updates</a>
-          <a class="pager-next" href="../docs/privacy.html" rel="next"><small>Next</small>Privacy</a>
+          <a class="pager-prev" href="../docs/updates" rel="prev"><small>Previous</small>Updates</a>
+          <a class="pager-next" href="../docs/privacy" rel="next"><small>Next</small>Privacy</a>
         </nav>
       </main>
       <aside class="toc" aria-label="On this page">
@@ -117,10 +118,10 @@ docker compose logs --tail=100 setup convex-backend web</code></pre></div>
       <div class="site-footer-inner">
         <p class="footer-mark">Aulora · team chat on your own server</p>
         <nav aria-label="Legal and contact">
-          <a href="../docs/licensing.html">Licensing</a>
-          <a href="../docs/privacy.html">Privacy</a>
-          <a href="../docs/legal/COMMERCIAL.html">Commercial terms</a>
-          <a href="../docs/legal/THIRD_PARTY_NOTICES.html">Third-party notices</a>
+          <a href="../docs/licensing">Licensing</a>
+          <a href="../docs/privacy">Privacy</a>
+          <a href="../docs/legal/COMMERCIAL">Commercial terms</a>
+          <a href="../docs/legal/THIRD_PARTY_NOTICES">Third-party notices</a>
           <a href="mailto:cnguyen@spwnd.dev">cnguyen@spwnd.dev</a>
         </nav>
         <p class="footer-fine">Free for personal and noncommercial use under PolyForm Noncommercial 1.0.0. Business use requires a paid license.</p>
