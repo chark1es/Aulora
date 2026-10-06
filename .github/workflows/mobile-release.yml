@@ -9,6 +9,16 @@ on:
       build-number:
         required: true
         type: string
+      play-track:
+        description: Google Play track to receive the signed AAB; empty skips the upload
+        required: false
+        type: string
+        default: ""
+      release-notes:
+        description: Release notes for the Google Play upload; empty uses a version default
+        required: false
+        type: string
+        default: ""
 
 permissions:
   contents: read
@@ -92,6 +102,17 @@ jobs:
           path: dist/release-android/*
           if-no-files-found: error
           retention-days: 14
+      - name: Upload bundle to Google Play
+        if: inputs.play-track != ''
+        env:
+          GOOGLE_PLAY_SERVICE_ACCOUNT_JSON: ${{ secrets.GOOGLE_PLAY_SERVICE_ACCOUNT_JSON }}
+          PLAY_PACKAGE_NAME: dev.spwnd.aulora
+          PLAY_TRACK: ${{ inputs.play-track }}
+          PLAY_AAB: dist/release-android/Aulora_${{ inputs.version }}_android.aab
+          PLAY_RELEASE_NOTES: ${{ inputs.release-notes != '' && inputs.release-notes || format('Aulora {0} release build.', inputs.version) }}
+        run: |
+          python3 -m pip install --quiet --disable-pip-version-check google-api-python-client
+          python3 scripts/ci/play-upload.py
       - name: Remove Android signing material
         if: always()
         run: rm -f "$RUNNER_TEMP/aulora-release.jks" apps/mobile/android/app/google-services.json
