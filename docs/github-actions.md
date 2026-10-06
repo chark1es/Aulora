@@ -126,8 +126,10 @@ and publish GitHub assets. To also push the signed Android AAB to a Google Play
 track from the same run, set the manual `play-track` input (`alpha` for closed
 testing, or `internal`, `beta`, `production`). That step uses the
 `GOOGLE_PLAY_SERVICE_ACCOUNT_JSON` secret and runs whether or not `publish` is
-set. Leave `play-track` empty to build without uploading. TestFlight uploads use
-the [mobile testing workflow](mobile-testing.md), and obtaining store approval
+set. Leave `play-track` empty to build without uploading. An automatic release
+run uploads to the track named by the `PLAY_TRACK` repository variable; the
+manual `play-track` input overrides it. TestFlight uploads use the
+[mobile testing workflow](mobile-testing.md), and obtaining store approval
 remains a separate step.
 
 ## Signing secrets

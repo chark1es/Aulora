@@ -71,7 +71,7 @@ jobs:
     with:
       version: ${{ needs.plan.outputs.version }}
       build-number: ${{ format('{0}', github.run_number) }}
-      play-track: ${{ inputs.play-track }}
+      play-track: ${{ inputs.play-track || vars.PLAY_TRACK }}
       release-notes: ${{ inputs.notes }}
 
   web:
