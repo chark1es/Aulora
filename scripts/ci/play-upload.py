@@ -10,7 +10,10 @@ Environment:
   PLAY_PACKAGE_NAME                 Application id, e.g. dev.spwnd.aulora
   PLAY_TRACK                        Track id: internal, alpha, beta, production
   PLAY_AAB                          Path to the signed .aab
-  PLAY_RELEASE_NOTES                Optional release notes, up to 500 characters
+  PLAY_RELEASE_NOTES                Optional release notes, capped at 500 chars
+
+Google libraries are imported inside the functions so the module can be tested
+without the client installed; see play-upload.test.py.
 """
 
 import contextlib
@@ -18,12 +21,9 @@ import json
 import os
 import sys
 
-from google.oauth2 import service_account
-from googleapiclient.discovery import build
-from googleapiclient.http import MediaFileUpload
-
 SCOPE = "https://www.googleapis.com/auth/androidpublisher"
 MAX_NOTES = 500
+BUNDLE_MIME = "application/octet-stream"
 
 
 def required(name):
@@ -34,23 +34,42 @@ def required(name):
 
 
 def release_notes():
+    """Return the tester-facing notes, truncated because Play caps them at 500."""
     notes = os.environ.get("PLAY_RELEASE_NOTES", "").strip()
     if len(notes) > MAX_NOTES:
-        raise SystemExit(f"PLAY_RELEASE_NOTES exceeds {MAX_NOTES} characters")
+        print(
+            f"Warning: PLAY_RELEASE_NOTES was truncated to {MAX_NOTES} characters.",
+            file=sys.stderr,
+        )
+        notes = notes[:MAX_NOTES]
     return notes
 
 
-def upload(service, package, track, aab, notes):
+def media_upload(path):
+    from googleapiclient.http import MediaFileUpload
+
+    # Resumable uploads tolerate a dropped connection on a large bundle.
+    return MediaFileUpload(path, mimetype=BUNDLE_MIME, resumable=True)
+
+
+def create_service(raw_key):
+    from google.oauth2 import service_account
+    from googleapiclient.discovery import build
+
+    credentials = service_account.Credentials.from_service_account_info(
+        json.loads(raw_key), scopes=[SCOPE]
+    )
+    return build("androidpublisher", "v3", credentials=credentials, cache_discovery=False)
+
+
+def upload(service, package, track, aab, notes, media=media_upload):
+    """Run one Play edit: insert, upload the bundle, assign the track, commit."""
     edit_id = service.edits().insert(body={}, packageName=package).execute()["id"]
     try:
         bundle = (
             service.edits()
             .bundles()
-            .upload(
-                packageName=package,
-                editId=edit_id,
-                media_body=MediaFileUpload(aab, mimetype="application/octet-stream"),
-            )
+            .upload(packageName=package, editId=edit_id, media_body=media(aab))
             .execute()
         )
         version_code = str(bundle["versionCode"])
@@ -81,12 +100,9 @@ def main():
     if not os.path.isfile(aab):
         raise SystemExit(f"Bundle not found: {aab}")
 
-    credentials = service_account.Credentials.from_service_account_info(
-        json.loads(raw_key), scopes=[SCOPE]
+    version_code = upload(
+        create_service(raw_key), package, track, aab, release_notes()
     )
-    service = build("androidpublisher", "v3", credentials=credentials, cache_discovery=False)
-
-    version_code = upload(service, package, track, aab, release_notes())
     line = f"Uploaded {package} versionCode {version_code} to the '{track}' track."
     print(line)
     summary = os.environ.get("GITHUB_STEP_SUMMARY")
