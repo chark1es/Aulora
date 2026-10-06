@@ -9,6 +9,7 @@ Play edit lifecycle without installing google-api-python-client.
 import importlib.util
 import os
 import pathlib
+import socket
 import sys
 import types
 import unittest
@@ -122,6 +123,42 @@ class ConfigTests(unittest.TestCase):
         self.assertEqual(calls["path"], "bundle.aab")
         self.assertTrue(calls["resumable"])
         self.assertEqual(calls["chunksize"], play_upload.CHUNK_SIZE)
+
+
+class RetryTests(unittest.TestCase):
+    def test_classifies_transient_errors(self):
+        self.assertTrue(play_upload.is_transient(socket.timeout("read timed out")))
+        self.assertTrue(
+            play_upload.is_transient(
+                ValueError("Redirected but the response is missing a Location: header.")
+            )
+        )
+        self.assertFalse(play_upload.is_transient(ValueError("permanent")))
+
+    def test_retries_a_transient_failure(self):
+        attempts = {"count": 0}
+
+        def flaky(*_args, **_kwargs):
+            attempts["count"] += 1
+            if attempts["count"] == 1:
+                raise socket.timeout("read timed out")
+            return "42"
+
+        with mock.patch.object(play_upload, "upload", side_effect=flaky), mock.patch.object(
+            play_upload.time, "sleep"
+        ):
+            self.assertEqual(
+                play_upload.run_upload(None, "pkg", "alpha", "a.aab", ""), "42"
+            )
+        self.assertEqual(attempts["count"], 2)
+
+    def test_does_not_retry_a_permanent_failure(self):
+        with mock.patch.object(
+            play_upload, "upload", side_effect=ValueError("bad")
+        ) as upload:
+            with self.assertRaises(ValueError):
+                play_upload.run_upload(None, "pkg", "alpha", "a.aab", "")
+        self.assertEqual(upload.call_count, 1)
 
 
 if __name__ == "__main__":

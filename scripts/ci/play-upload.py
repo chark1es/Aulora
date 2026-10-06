@@ -19,7 +19,10 @@ without the client installed; see play-upload.test.py.
 import contextlib
 import json
 import os
+import socket
+import ssl
 import sys
+import time
 
 SCOPE = "https://www.googleapis.com/auth/androidpublisher"
 MAX_NOTES = 500
@@ -29,6 +32,8 @@ BUNDLE_MIME = "application/octet-stream"
 UPLOAD_TIMEOUT = 900
 CHUNK_SIZE = 8 * 1024 * 1024
 RETRIES = 8
+ATTEMPTS = 3
+RETRY_DELAY = 5
 
 
 def required(name):
@@ -108,6 +113,34 @@ def upload(service, package, track, aab, notes, media=media_upload):
         raise
 
 
+def is_transient(error):
+    """Network and 5xx failures are worth retrying; permanent errors are not."""
+    if isinstance(error, (socket.timeout, TimeoutError, ConnectionError, ssl.SSLError)):
+        return True
+    if "Redirected but the response is missing a Location" in str(error):
+        return True
+    try:
+        from googleapiclient.errors import HttpError
+    except ImportError:
+        return False
+    return isinstance(error, HttpError) and error.resp.status in (429, 500, 502, 503, 504)
+
+
+def run_upload(service, package, track, aab, notes):
+    """Retry the whole edit a few times, since a Play upload can hit a blip."""
+    for attempt in range(1, ATTEMPTS + 1):
+        try:
+            return upload(service, package, track, aab, notes)
+        except Exception as error:
+            if attempt == ATTEMPTS or not is_transient(error):
+                raise
+            print(
+                f"Play upload attempt {attempt} failed: {error}. Retrying.",
+                file=sys.stderr,
+            )
+            time.sleep(RETRY_DELAY * attempt)
+
+
 def main():
     package = required("PLAY_PACKAGE_NAME")
     track = required("PLAY_TRACK")
@@ -117,7 +150,7 @@ def main():
     if not os.path.isfile(aab):
         raise SystemExit(f"Bundle not found: {aab}")
 
-    version_code = upload(
+    version_code = run_upload(
         create_service(raw_key), package, track, aab, release_notes()
     )
     line = f"Uploaded {package} versionCode {version_code} to the '{track}' track."
