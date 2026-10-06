@@ -32,7 +32,7 @@ const encryption = config.encryption ?? {
 
 const document = {
   name: read(env.get("NAME_VALUE")) ?? read(config.name) ?? "Aulora",
-  version: read(config.version) ?? "1.0.0",
+  version: read(config.version) ?? "1.0.1",
   apiVersion: typeof config.apiVersion === "number" ? config.apiVersion : 1,
   convexUrl: read(env.get("CONVEX_URL_VALUE")) ?? read(config.convexUrl) ?? "",
   siteUrl: read(env.get("SITE_URL_VALUE")) ?? read(config.siteUrl) ?? "",
