@@ -16,7 +16,7 @@ import {
 } from "react-native";
 import { api } from "../../../../packages/convex/convex/_generated/api";
 import { SUPPORTED_API_VERSION } from "../lib/api-version";
-import { isReviewDemoAddress } from "../lib/review-demo";
+import { shouldOpenReviewDemo } from "../lib/review-demo";
 import { useEntrance, useReduceMotion } from "../lib/use-entrance";
 import { useProfiles } from "../providers/ProfileProvider";
 import { AuthScaffold } from "./AuthScaffold";
@@ -90,8 +90,9 @@ export function ConnectScreen({
     if (host.trim().length === 0) {
       return;
     }
-    // App Review reaches the offline demo by address; there is no visible entry.
-    if (Platform.OS === "ios" && profiles.length === 0 && isReviewDemoAddress(host)) {
+    // Store review reaches the offline demo by address on any platform; there is
+    // no visible entry, and it closes once a real server profile is saved.
+    if (shouldOpenReviewDemo(profiles.length, host)) {
       router.push("/review-demo");
       return;
     }
