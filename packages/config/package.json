@@ -1,6 +1,6 @@
 {
   "name": "@aulora/config",
-  "version": "1.0.0",
+  "version": "1.0.1",
   "private": true,
   "description": "Shared TypeScript and Biome configuration for the Aulora monorepo.",
   "files": [

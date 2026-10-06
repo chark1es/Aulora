@@ -1,6 +1,6 @@
 {
   "name": "aulora-push-relay",
-  "version": "1.0.0",
+  "version": "1.0.1",
   "private": true,
   "description": "Aulora push relay: forwards content-free APNs/FCM/UnifiedPush wakeups. Self-hosted option for official mobile builds.",
   "type": "module",

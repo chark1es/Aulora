@@ -1,6 +1,6 @@
 {
   "name": "@aulora/convex",
-  "version": "1.0.0",
+  "version": "1.0.1",
   "private": true,
   "description": "Aulora Convex backend: schema, auth, queries, mutations, HTTP routes.",
   "type": "module",
