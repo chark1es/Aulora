@@ -48,7 +48,10 @@ jobs:
           packages: platform-tools
       - uses: gradle/actions/setup-gradle@ed408507eac070d1f99cc633dbcf757c94c7933a # v4.4.3
         with:
-          cache-disabled: true
+          # Cache downloaded dependencies, never Gradle's build cache. Signing
+          # material lives outside the Gradle home and the build cache is not
+          # enabled for release tasks.
+          gradle-home-cache-excludes: caches/build-cache-1
       - name: Prepare private Android build files
         env:
           ANDROID_KEYSTORE_BASE64: ${{ secrets.ANDROID_KEYSTORE_BASE64 }}
@@ -133,6 +136,13 @@ jobs:
       - uses: ./.github/actions/setup-js
       - name: Prepare bundled license notices
         run: node scripts/legal-notices.mjs --mobile
+      - name: Cache CocoaPods
+        uses: actions/cache@v4
+        with:
+          path: ~/Library/Caches/CocoaPods
+          key: cocoapods-${{ runner.os }}-${{ runner.arch }}-${{ hashFiles('apps/mobile/ios/Podfile.lock') }}
+          restore-keys: |
+            cocoapods-${{ runner.os }}-${{ runner.arch }}-
       - name: Install CocoaPods dependencies
         working-directory: apps/mobile/ios
         run: pod install --deployment
