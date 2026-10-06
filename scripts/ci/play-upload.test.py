@@ -60,6 +60,9 @@ class UploadTests(unittest.TestCase):
             },
         )
         edits.commit.assert_called_once_with(packageName="dev.spwnd.aulora", editId="edit-1")
+        edits.commit.return_value.execute.assert_called_once_with(
+            num_retries=play_upload.RETRIES
+        )
         edits.delete.assert_not_called()
 
     def test_omits_release_notes_when_empty(self):
@@ -102,8 +105,10 @@ class ConfigTests(unittest.TestCase):
         calls = {}
 
         class FakeMediaFileUpload:
-            def __init__(self, path, mimetype=None, resumable=False):
-                calls.update(path=path, mimetype=mimetype, resumable=resumable)
+            def __init__(self, path, mimetype=None, resumable=False, chunksize=None):
+                calls.update(
+                    path=path, mimetype=mimetype, resumable=resumable, chunksize=chunksize
+                )
 
         http = types.ModuleType("googleapiclient.http")
         http.MediaFileUpload = FakeMediaFileUpload
@@ -116,6 +121,7 @@ class ConfigTests(unittest.TestCase):
 
         self.assertEqual(calls["path"], "bundle.aab")
         self.assertTrue(calls["resumable"])
+        self.assertEqual(calls["chunksize"], play_upload.CHUNK_SIZE)
 
 
 if __name__ == "__main__":
