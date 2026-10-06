@@ -24,6 +24,11 @@ import sys
 SCOPE = "https://www.googleapis.com/auth/androidpublisher"
 MAX_NOTES = 500
 BUNDLE_MIME = "application/octet-stream"
+# A large bundle over a slow runner can outlive the default socket timeout, so
+# upload in small resumable chunks and allow a long, retried transfer.
+UPLOAD_TIMEOUT = 900
+CHUNK_SIZE = 8 * 1024 * 1024
+RETRIES = 8
 
 
 def required(name):
@@ -48,29 +53,39 @@ def release_notes():
 def media_upload(path):
     from googleapiclient.http import MediaFileUpload
 
-    # Resumable uploads tolerate a dropped connection on a large bundle.
-    return MediaFileUpload(path, mimetype=BUNDLE_MIME, resumable=True)
+    # Resumable uploads in small chunks tolerate a dropped or slow connection
+    # on a large bundle, and each request stays well under the socket timeout.
+    return MediaFileUpload(
+        path, mimetype=BUNDLE_MIME, resumable=True, chunksize=CHUNK_SIZE
+    )
 
 
 def create_service(raw_key):
+    import httplib2
     from google.oauth2 import service_account
+    from google_auth_httplib2 import AuthorizedHttp
     from googleapiclient.discovery import build
 
     credentials = service_account.Credentials.from_service_account_info(
         json.loads(raw_key), scopes=[SCOPE]
     )
-    return build("androidpublisher", "v3", credentials=credentials, cache_discovery=False)
+    http = AuthorizedHttp(credentials, http=httplib2.Http(timeout=UPLOAD_TIMEOUT))
+    return build("androidpublisher", "v3", http=http, cache_discovery=False)
 
 
 def upload(service, package, track, aab, notes, media=media_upload):
     """Run one Play edit: insert, upload the bundle, assign the track, commit."""
-    edit_id = service.edits().insert(body={}, packageName=package).execute()["id"]
+    edit_id = (
+        service.edits()
+        .insert(body={}, packageName=package)
+        .execute(num_retries=RETRIES)["id"]
+    )
     try:
         bundle = (
             service.edits()
             .bundles()
             .upload(packageName=package, editId=edit_id, media_body=media(aab))
-            .execute()
+            .execute(num_retries=RETRIES)
         )
         version_code = str(bundle["versionCode"])
         release = {"status": "completed", "versionCodes": [version_code]}
@@ -81,8 +96,10 @@ def upload(service, package, track, aab, notes, media=media_upload):
             editId=edit_id,
             track=track,
             body={"releases": [release]},
-        ).execute()
-        service.edits().commit(packageName=package, editId=edit_id).execute()
+        ).execute(num_retries=RETRIES)
+        service.edits().commit(packageName=package, editId=edit_id).execute(
+            num_retries=RETRIES
+        )
         return version_code
     except Exception:
         # Abandon the edit so a failed upload does not leave a stale draft.
