@@ -159,8 +159,10 @@ Certificates are imported into temporary runner keychains. Private files are
 written under `RUNNER_TEMP` with restricted permissions and removed in cleanup
 steps. Android's Firebase client JSON is temporarily written to its required
 native build path and removed afterward. Release uploads include only the
-explicit distributable files. Android release jobs disable Gradle caching to
-avoid caching signed outputs or private build inputs.
+explicit distributable files. The Android jobs cache downloaded Gradle
+dependencies, but exclude Gradle's build cache so task outputs cannot be
+restored from an earlier build. The iOS jobs cache CocoaPods downloads, keyed by
+`Podfile.lock`. Neither cache holds signing material.
 [GitHub Apple signing instructions](https://docs.github.com/en/actions/how-tos/deploy/deploy-to-third-party-platforms/sign-xcode-applications).
 
 The APNs `.p8` and FCM service-account private key are not uploaded to app-build
