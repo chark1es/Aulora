@@ -12,7 +12,7 @@ Download `Aulora_1.0.0_android.apk` from [v1.0.0](https://github.com/chark1es/Au
 adb install -r Aulora_1.0.0_android.apk
 ```
 
-Use `Aulora_1.0.0_android.aab` for a Google Play internal testing track after creating the app in Play Console and configuring Play App Signing. An AAB cannot be installed directly. Preserve the release keystore so future APKs can update existing installations.
+Use `Aulora_1.0.0_android.aab` for a Google Play testing track after creating the app in Play Console and configuring Play App Signing. The release workflow can also upload the signed AAB directly when its manual `play-track` input is set; see [GitHub Actions](github-actions.md). An AAB cannot be installed directly. Preserve the release keystore so future APKs can update existing installations.
 
 ## TestFlight
 

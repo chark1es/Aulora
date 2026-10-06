@@ -80,8 +80,10 @@ publish a release. Existing published versions cannot be overwritten.
 For a candidate or retry, open [Actions → Release](https://github.com/chark1es/Aulora/actions/workflows/release.yml),
 select `main`, and leave `publish` off. It builds the current checked-in version
 and uploads the complete release as an Actions artifact. Turning `publish` on
-creates the GitHub release after successful builds. The desktop-only candidate
-workflow remains available for testing desktop artifacts separately.
+creates the GitHub release after successful builds. Set the optional
+`play-track` input to also upload the signed Android AAB to a Google Play track.
+The desktop-only candidate workflow remains available for testing desktop
+artifacts separately.
 
 Release notes use the manual `notes` input when supplied. Otherwise, v1 uses
 `docs/release-notes-v1.md`, and later versions use GitHub's automatically
@@ -120,8 +122,13 @@ and generated JavaScript notices accompany the release and web/docs archives. A 
 
 The iOS IPA uses your App Store profile. It is for App Store Connect/TestFlight,
 and cannot be installed directly on arbitrary iPhones. These workflows compile
-and publish GitHub assets; uploading to App Store Connect or Google Play and
-obtaining store approval remain separate steps.
+and publish GitHub assets. To also push the signed Android AAB to a Google Play
+track from the same run, set the manual `play-track` input (`alpha` for closed
+testing, or `internal`, `beta`, `production`). That step uses the
+`GOOGLE_PLAY_SERVICE_ACCOUNT_JSON` secret and runs whether or not `publish` is
+set. Leave `play-track` empty to build without uploading. TestFlight uploads use
+the [mobile testing workflow](mobile-testing.md), and obtaining store approval
+remains a separate step.
 
 ## Signing secrets
 
@@ -139,6 +146,7 @@ Its deployment branch policy permits only `main`.
 | `TAURI_SIGNING_PRIVATE_KEY`, `TAURI_SIGNING_PRIVATE_KEY_PASSWORD` | Desktop updater signing |
 | `ANDROID_KEYSTORE_BASE64`, `ANDROID_KEYSTORE_PASSWORD`, `ANDROID_KEY_ALIAS`, `ANDROID_KEY_PASSWORD` | Android distribution signing |
 | `ANDROID_GOOGLE_SERVICES_JSON` | Firebase client configuration compiled into the Android app |
+| `GOOGLE_PLAY_SERVICE_ACCOUNT_JSON` | Optional Google Play upload, used only by the manual `play-track` release input |
 
 GitHub encrypts secret values and does not expose them for later reading in the
 settings UI. Trusted release jobs must decrypt them to sign applications.
