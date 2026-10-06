@@ -31,7 +31,12 @@ const TYPES = {
 const server = createServer((request, response) => {
   const url = new URL(request.url ?? "/", `http://localhost:${port}`);
   const relative = normalize(url.pathname).replace(/^([/\\])+/, "");
-  let file = join(dist, relative === "" ? "index.html" : relative);
+  let file = join(dist, relative);
+  // Clean URLs: `/docs/` and `/docs` resolve to `docs/index.html`, and
+  // `/docs/privacy` falls back to `docs/privacy.html`.
+  if (existsSync(file) && statSync(file).isDirectory()) {
+    file = join(file, "index.html");
+  }
   if (!existsSync(file) || statSync(file).isDirectory()) {
     const withHtml = `${file}.html`;
     file = existsSync(withHtml) ? withHtml : join(dist, "index.html");

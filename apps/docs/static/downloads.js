@@ -167,11 +167,12 @@ const SECTIONS = new Map([
 
 function destination(primary, os, asset) {
   if (os !== "ios" && asset) return asset.url;
-  const authored = primary.getAttribute("href") || "install.html";
+  const authored = primary.getAttribute("href") || "install";
   const section = SECTIONS.get(os);
   if (!section) return authored;
   if (authored.startsWith("#")) return section;
-  if (authored.includes("install.html")) return `install.html${section}`;
+  // Old markup used `install.html#...`; the site now links `install#...`.
+  if (/(^|\/)install(\.html)?(#|$)/.test(authored)) return `install${section}`;
   return authored;
 }
 
