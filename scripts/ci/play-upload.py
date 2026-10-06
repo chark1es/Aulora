@@ -66,16 +66,20 @@ def media_upload(path):
 
 
 def create_service(raw_key):
-    import httplib2
+    import socket
+
     from google.oauth2 import service_account
-    from google_auth_httplib2 import AuthorizedHttp
     from googleapiclient.discovery import build
 
+    # googleapiclient's build_http reads this default for the httplib2 timeout
+    # and strips the resumable-upload 308 from httplib2's redirect codes. Passing
+    # a custom http here would skip that 308 fix, so chunked uploads would fail
+    # with "Redirected but the response is missing a Location: header".
+    socket.setdefaulttimeout(UPLOAD_TIMEOUT)
     credentials = service_account.Credentials.from_service_account_info(
         json.loads(raw_key), scopes=[SCOPE]
     )
-    http = AuthorizedHttp(credentials, http=httplib2.Http(timeout=UPLOAD_TIMEOUT))
-    return build("androidpublisher", "v3", http=http, cache_discovery=False)
+    return build("androidpublisher", "v3", credentials=credentials, cache_discovery=False)
 
 
 def upload(service, package, track, aab, notes, media=media_upload):
