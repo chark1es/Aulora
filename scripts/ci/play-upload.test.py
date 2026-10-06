@@ -160,6 +160,31 @@ class RetryTests(unittest.TestCase):
                 play_upload.run_upload(None, "pkg", "alpha", "a.aab", "")
         self.assertEqual(upload.call_count, 1)
 
+    def test_detects_a_draft_app(self):
+        self.assertTrue(
+            play_upload.is_draft_app(
+                ValueError("Only releases with status draft may be created on draft app.")
+            )
+        )
+        self.assertFalse(play_upload.is_draft_app(ValueError("nope")))
+
+    def test_falls_back_to_a_draft_release(self):
+        statuses = []
+
+        def fake_upload(*_args, **kwargs):
+            statuses.append(kwargs.get("status", "completed"))
+            if len(statuses) == 1:
+                raise ValueError(
+                    "Only releases with status draft may be created on draft app."
+                )
+            return "42"
+
+        with mock.patch.object(play_upload, "upload", side_effect=fake_upload):
+            self.assertEqual(
+                play_upload.run_upload(None, "pkg", "alpha", "a.aab", ""), "42"
+            )
+        self.assertEqual(statuses, ["completed", "draft"])
+
 
 if __name__ == "__main__":
     unittest.main()
