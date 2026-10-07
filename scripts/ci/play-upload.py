@@ -82,7 +82,7 @@ def create_service(raw_key):
     return build("androidpublisher", "v3", credentials=credentials, cache_discovery=False)
 
 
-def upload(service, package, track, aab, notes, media=media_upload):
+def upload(service, package, track, aab, notes, media=media_upload, status="completed"):
     """Run one Play edit: insert, upload the bundle, assign the track, commit."""
     edit_id = (
         service.edits()
@@ -97,7 +97,7 @@ def upload(service, package, track, aab, notes, media=media_upload):
             .execute(num_retries=RETRIES)
         )
         version_code = str(bundle["versionCode"])
-        release = {"status": "completed", "versionCodes": [version_code]}
+        release = {"status": status, "versionCodes": [version_code]}
         if notes:
             release["releaseNotes"] = [{"language": "en-US", "text": notes}]
         service.edits().tracks().update(
@@ -130,12 +130,28 @@ def is_transient(error):
     return isinstance(error, HttpError) and error.resp.status in (429, 500, 502, 503, 504)
 
 
+def is_draft_app(error):
+    """True when Play rejects a completed release because the app is a draft."""
+    return "draft app" in str(error)
+
+
 def run_upload(service, package, track, aab, notes):
-    """Retry the whole edit a few times, since a Play upload can hit a blip."""
+    """Retry transient failures, and fall back to a draft release on a new app."""
+    status = "completed"
     for attempt in range(1, ATTEMPTS + 1):
         try:
-            return upload(service, package, track, aab, notes)
+            return upload(service, package, track, aab, notes, status=status)
         except Exception as error:
+            # A draft app only accepts a draft release, so switch once and keep
+            # the retry protection for the fallback attempt.
+            if status == "completed" and is_draft_app(error):
+                print(
+                    "The Play app is still a draft, so the release is created as a "
+                    "draft. Roll it out in Play Console to reach testers.",
+                    file=sys.stderr,
+                )
+                status = "draft"
+                continue
             if attempt == ATTEMPTS or not is_transient(error):
                 raise
             print(
