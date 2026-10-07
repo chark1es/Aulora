@@ -124,7 +124,10 @@ async function buildPublicConfig(ctx: QueryCtx) {
         ? { publicKey: vapidPublicKey }
         : null,
     voice,
-    addons: { kanban: server?.settings.kanbanEnabled ?? false },
+    addons: {
+      kanban: server?.settings.kanbanEnabled ?? false,
+      notes: server?.settings.notesEnabled ?? false,
+    },
   };
 }
 
