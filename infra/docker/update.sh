@@ -13,6 +13,8 @@
 #   ./update.sh --watch         # enable updates from settings; watch for releases
 #   ./update.sh --download      # prepare the release without restarting
 #   ./update.sh --restart       # install the prepared release
+#   ./update.sh --install-service # keep the macOS watcher running at login
+#   ./update.sh --remove-service  # remove the macOS watcher service
 #
 # --check exits 10 when an update is available and 1 on failure.
 #
@@ -179,6 +181,8 @@ case "${1:-}" in
   --download) mode="download" ;;
   --restart) mode="restart" ;;
   --watch) mode="watch" ;;
+  --install-service) exec bun "$DOCKER_DIR/update/service.mjs" install ;;
+  --remove-service) exec bun "$DOCKER_DIR/update/service.mjs" remove ;;
   -h|--help)
     sed -n '2,16p' "$self" | sed 's/^# \{0,1\}//'
     exit 0

@@ -9,14 +9,21 @@ const mocks = vi.hoisted(() => ({
   check: vi.fn(),
   request: vi.fn(),
   reads: vi.fn(),
+  capabilities: { provider: "host", configured: false, error: null, status: null } as unknown,
+  install: vi.fn(),
+  version: "0.1.0",
 }));
 vi.mock("convex/react", () => ({
   useQuery: (reference: Parameters<typeof getFunctionName>[0], args: unknown) => {
     mocks.reads(getFunctionName(reference), args);
     if (args === "skip") return undefined;
-    return getFunctionName(reference) === "updates:version" ? "0.1.0" : mocks.host;
+    const name = getFunctionName(reference);
+    if (name === "updates:version") return mocks.version;
+    if (name === "updates:capabilities") return mocks.capabilities;
+    return mocks.host;
   },
-  useAction: () => mocks.check,
+  useAction: (reference: Parameters<typeof getFunctionName>[0]) =>
+    getFunctionName(reference) === "updates:installCoolify" ? mocks.install : mocks.check,
   useMutation: () => mocks.request,
 }));
 const release = {
@@ -44,9 +51,79 @@ beforeEach(() => {
   mocks.check.mockReset().mockResolvedValue(release);
   mocks.request.mockReset().mockResolvedValue(null);
   mocks.reads.mockClear();
+  mocks.capabilities = { provider: "host", configured: false, error: null, status: null };
+  mocks.install.mockReset().mockResolvedValue(null);
+  mocks.version = "0.1.0";
 });
 
 describe("workspace update settings", () => {
+  it("clears stale availability after another session installs the release", async () => {
+    mocks.version = "0.2.0";
+    mocks.capabilities = {
+      provider: "coolify",
+      configured: true,
+      error: null,
+      status: { phase: "installed", targetVersion: "0.2.0", error: null },
+    };
+    render(
+      <WorkspaceUpdateProvider isOwner>
+        <Surface />
+      </WorkspaceUpdateProvider>,
+    );
+    await act(async () => {});
+    expect(screen.queryByRole("button", { name: "Install update" })).not.toBeInTheDocument();
+    expect(screen.queryByText("Workspace settings dot")).not.toBeInTheDocument();
+    expect(screen.getByRole("status")).toHaveTextContent("No newer release is available.");
+  });
+  it("installs through Coolify without requiring a host watcher or a separate download", async () => {
+    mocks.capabilities = { provider: "coolify", configured: true, error: null, status: null };
+    const user = userEvent.setup();
+    render(
+      <WorkspaceUpdateProvider isOwner>
+        <Surface />
+      </WorkspaceUpdateProvider>,
+    );
+    await user.click(await screen.findByRole("button", { name: "Install update" }));
+    expect(mocks.install).toHaveBeenCalledWith({});
+    expect(mocks.request).not.toHaveBeenCalled();
+    expect(screen.queryByRole("button", { name: "Download update" })).not.toBeInTheDocument();
+  });
+
+  it("shows Coolify deployment progress and disables duplicate installs", async () => {
+    mocks.capabilities = {
+      provider: "coolify",
+      configured: true,
+      error: null,
+      status: { phase: "installing", targetVersion: "0.2.0", error: null },
+    };
+    render(
+      <WorkspaceUpdateProvider isOwner>
+        <Surface />
+      </WorkspaceUpdateProvider>,
+    );
+    expect(await screen.findByRole("button", { name: "Install update" })).toBeDisabled();
+    expect(screen.getByRole("button", { name: "Check for updates" })).toBeDisabled();
+    expect(screen.getByRole("status")).toHaveTextContent(
+      "Coolify is building and deploying the update",
+    );
+  });
+
+  it("explains incomplete Coolify configuration without falling back to host commands", async () => {
+    mocks.capabilities = {
+      provider: "coolify",
+      configured: false,
+      error: "Configure the Coolify API token.",
+      status: null,
+    };
+    render(
+      <WorkspaceUpdateProvider isOwner>
+        <Surface />
+      </WorkspaceUpdateProvider>,
+    );
+    expect(await screen.findByRole("button", { name: "Install update" })).toBeDisabled();
+    expect(screen.getByRole("alert")).toHaveTextContent("Configure the Coolify API token.");
+    expect(screen.queryByText(/start infra\/docker/)).not.toBeInTheDocument();
+  });
   it("renders workspace controls separately and hides all status when owner authority is lost", async () => {
     const view = render(
       <WorkspaceUpdateProvider isOwner>

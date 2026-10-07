@@ -258,6 +258,10 @@ set_env_if_present AULORA_UPDATE_MANIFEST_URL "$(host_value AULORA_UPDATE_MANIFE
 set_env_if_present AULORA_UPDATE_GITHUB_REPO "$(host_value AULORA_UPDATE_GITHUB_REPO)"
 set_env_if_present AULORA_UPDATE_CHANNEL "$(host_value AULORA_UPDATE_CHANNEL)"
 set_env_if_present AULORA_AUTO_UPDATE "$(host_value AULORA_AUTO_UPDATE)"
+set_env_if_present AULORA_UPDATE_PROVIDER "$(host_value AULORA_UPDATE_PROVIDER)"
+set_env_if_present AULORA_COOLIFY_URL "$(host_value AULORA_COOLIFY_URL)"
+set_env_if_present AULORA_COOLIFY_APPLICATION_UUID "$(host_value AULORA_COOLIFY_APPLICATION_UUID)"
+set_env_if_present AULORA_COOLIFY_API_TOKEN "$(host_value AULORA_COOLIFY_API_TOKEN)" 1
 
 # Server-side encryption: the default local master key is set as a secret.
 # Optional/advanced external-provider settings are read from the host .env and
