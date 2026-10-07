@@ -4,6 +4,7 @@ import { NoteDialogs } from "./NoteDialogs";
 import { NoteEditor } from "./NoteEditor";
 import { NoteHistory } from "./NoteHistory";
 import { NotesLibrary } from "./NotesLibrary";
+import { folderPath } from "./types";
 import { type NotesController, type NotesProps, useNotes } from "./use-notes";
 
 interface BoundaryProps {
@@ -81,6 +82,7 @@ function NotesError({ ctl }: { ctl: NotesController }) {
 }
 
 function DetailTabs({ ctl }: { ctl: NotesController }) {
+  const path = folderPath(ctl.folders, ctl.detail?.folderId ?? null);
   return (
     <div className="flex shrink-0 items-center gap-2 border-b border-border px-4 py-2">
       <IconButton
@@ -93,9 +95,19 @@ function DetailTabs({ ctl }: { ctl: NotesController }) {
       >
         <Icon name="chevron-left" size={16} />
       </IconButton>
-      <h2 className="min-w-0 flex-1 truncate text-[15px] font-semibold text-text">
-        {ctl.detail?.title.trim() || "Untitled note"}
-      </h2>
+      <nav
+        className="flex min-w-0 flex-1 items-center gap-1 text-[12px] text-text-muted"
+        aria-label="Note folder"
+      >
+        <Icon name="grid" size={13} className="shrink-0" />
+        <span className="shrink-0">Notes</span>
+        {path.map((folder) => (
+          <span key={folder.id} className="flex min-w-0 items-center gap-1">
+            <span className="shrink-0">›</span>
+            <span className="truncate">{folder.name}</span>
+          </span>
+        ))}
+      </nav>
       <SegmentedControl
         label="Note view"
         value={ctl.tab}

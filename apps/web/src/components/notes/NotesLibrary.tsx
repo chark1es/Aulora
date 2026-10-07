@@ -1,6 +1,13 @@
 import { Button, cn, Icon, IconButton } from "@aulora/ui-web";
 import { type ReactNode, useState } from "react";
-import { flattenFolders, type NoteFolder, type NoteSummary, relativeTime, UNFILED } from "./types";
+import {
+  flattenFolders,
+  folderPath,
+  type NoteFolder,
+  type NoteSummary,
+  relativeTime,
+  UNFILED,
+} from "./types";
 import type { NotesController } from "./use-notes";
 
 const rowClass = (active: boolean) =>
@@ -232,19 +239,6 @@ function NoteRow({ ctl, note, now }: { ctl: NotesController; note: NoteSummary; 
       </button>
     </li>
   );
-}
-
-/** The folder path from the root to the selected folder, for the breadcrumb. */
-function folderPath(folders: readonly NoteFolder[], folderId: NotesController["folderId"]) {
-  if (folderId === undefined || folderId === UNFILED) return [];
-  const byId = new Map(folders.map((folder) => [folder.id, folder]));
-  const path: NoteFolder[] = [];
-  let current = byId.get(folderId);
-  while (current !== undefined) {
-    path.unshift(current);
-    current = current.parentId !== null ? byId.get(current.parentId) : undefined;
-  }
-  return path;
 }
 
 /**

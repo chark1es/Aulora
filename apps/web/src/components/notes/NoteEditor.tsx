@@ -25,16 +25,21 @@ function ToolButton({
     <button
       type="button"
       aria-label={label}
+      title={label}
       disabled={disabled}
       onClick={onClick}
-      className="flex h-7 min-w-7 items-center justify-center rounded-[7px] px-1.5 text-[13px] text-text-muted transition hover:bg-surface-3 hover:text-text focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent focus-visible:ring-offset-1 focus-visible:ring-offset-surface-1 disabled:pointer-events-none disabled:opacity-40"
+      className="flex h-7 min-w-7 items-center justify-center rounded-[7px] px-1.5 text-[13px] text-text-muted transition hover:bg-surface-3 hover:text-text focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent disabled:pointer-events-none disabled:opacity-40"
     >
       {children}
     </button>
   );
 }
 
-/** The Markdown editor: title, formatting toolbar, live preview, tags and folder. */
+function ToolDivider() {
+  return <span className="mx-0.5 h-4 w-px shrink-0 bg-border" />;
+}
+
+/** The Markdown editor: title, folder and tags, a formatting toolbar and the body. */
 export function NoteEditor({ ctl }: { ctl: NotesController }) {
   const { draft, detail } = ctl;
   const bodyRef = useRef<HTMLTextAreaElement | null>(null);
@@ -134,98 +139,24 @@ export function NoteEditor({ ctl }: { ctl: NotesController }) {
         className="w-full border-none bg-transparent text-2xl font-semibold tracking-tight text-text placeholder:text-text-muted focus-visible:outline-none disabled:opacity-60"
       />
 
-      <div className="flex flex-wrap items-center gap-1 border-b border-border pb-2">
-        {!preview && (
-          <>
-            <ToolButton
-              label="Bold"
-              disabled={!ctl.canEdit}
-              onClick={() => wrap("**", "**", "bold")}
-            >
-              <span className="font-bold">B</span>
-            </ToolButton>
-            <ToolButton
-              label="Italic"
-              disabled={!ctl.canEdit}
-              onClick={() => wrap("*", "*", "italic")}
-            >
-              <span className="italic">I</span>
-            </ToolButton>
-            <ToolButton
-              label="Heading"
-              disabled={!ctl.canEdit}
-              onClick={() => prefixLines("# ", false)}
-            >
-              <span className="font-semibold">H</span>
-            </ToolButton>
-            <ToolButton
-              label="Bullet list"
-              disabled={!ctl.canEdit}
-              onClick={() => prefixLines("- ", false)}
-            >
-              <span className="font-semibold">•</span>
-            </ToolButton>
-            <ToolButton
-              label="Ordered list"
-              disabled={!ctl.canEdit}
-              onClick={() => prefixLines("1. ", true)}
-            >
-              <span className="font-semibold">1.</span>
-            </ToolButton>
-            <ToolButton label="Code" disabled={!ctl.canEdit} onClick={() => wrap("`", "`", "code")}>
-              <Icon name="code" size={15} />
-            </ToolButton>
-            <ToolButton label="Link" disabled={!ctl.canEdit} onClick={insertLink}>
-              <Icon name="link" size={15} />
-            </ToolButton>
-          </>
-        )}
-        <span className="flex-1" />
-        <Button
-          size="sm"
-          variant="ghost"
-          aria-pressed={preview}
-          leading={<Icon name={preview ? "pencil" : "eye"} size={14} />}
-          onClick={() => {
-            setPreview((value) => !value);
-          }}
-        >
-          {preview ? "Write" : "Preview"}
-        </Button>
-      </div>
-
-      <div className="min-h-0 flex-1 overflow-y-auto">
-        {preview ? (
-          <NotePreview title={current.title} body={current.body} />
-        ) : (
-          <textarea
-            ref={bodyRef}
-            aria-label="Note body"
-            placeholder="Write in Markdown…"
-            value={current.body}
-            disabled={!ctl.canEdit}
-            onChange={(event) => {
-              ctl.setDraft({ ...current, body: event.target.value });
+      <div className="flex flex-wrap items-center gap-x-4 gap-y-2 rounded-[10px] border border-border bg-surface-1 px-3 py-2">
+        <div className="flex items-center gap-2">
+          <Icon name="grid" size={15} className="shrink-0 text-text-muted" />
+          <Select
+            className="w-[180px]"
+            value={current.folderId ?? ""}
+            options={options}
+            onChange={(value) => {
+              ctl.setDraft({
+                ...current,
+                folderId: value === "" ? null : (value as NoteFolder["id"]),
+              });
             }}
-            className="h-full min-h-[280px] w-full resize-none rounded-input border border-border bg-surface-3 p-3 font-mono text-[13px] leading-relaxed text-text placeholder:text-text-muted transition focus-visible:border-accent focus-visible:bg-surface-2 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent-soft disabled:opacity-60"
           />
-        )}
-      </div>
-
-      <div className="flex flex-col gap-2">
-        <Select
-          label="Folder"
-          value={current.folderId ?? ""}
-          options={options}
-          onChange={(value) => {
-            ctl.setDraft({
-              ...current,
-              folderId: value === "" ? null : (value as NoteFolder["id"]),
-            });
-          }}
-        />
-        <div className="flex flex-wrap items-center gap-1.5">
-          <span className="text-[12px] font-medium text-text-muted">Tags</span>
+        </div>
+        <span className="hidden h-4 w-px bg-border sm:block" />
+        <div className="flex min-w-0 flex-1 flex-wrap items-center gap-1.5">
+          <Icon name="label" size={15} className="shrink-0 text-text-muted" />
           {ctl.tags.map((tag) => {
             const active = current.tagIds.includes(tag.id);
             return (
@@ -265,6 +196,91 @@ export function NoteEditor({ ctl }: { ctl: NotesController }) {
             </button>
           )}
         </div>
+      </div>
+
+      <div className="flex flex-wrap items-center gap-2">
+        {!preview && (
+          <div className="inline-flex items-center rounded-[10px] border border-border bg-surface-2 p-0.5">
+            <ToolButton
+              label="Bold"
+              disabled={!ctl.canEdit}
+              onClick={() => wrap("**", "**", "bold")}
+            >
+              <span className="font-bold">B</span>
+            </ToolButton>
+            <ToolButton
+              label="Italic"
+              disabled={!ctl.canEdit}
+              onClick={() => wrap("*", "*", "italic")}
+            >
+              <span className="font-serif italic">I</span>
+            </ToolButton>
+            <ToolButton
+              label="Heading"
+              disabled={!ctl.canEdit}
+              onClick={() => prefixLines("# ", false)}
+            >
+              <span className="font-semibold">H</span>
+            </ToolButton>
+            <ToolDivider />
+            <ToolButton
+              label="Bullet list"
+              disabled={!ctl.canEdit}
+              onClick={() => prefixLines("- ", false)}
+            >
+              <span className="font-semibold">•</span>
+            </ToolButton>
+            <ToolButton
+              label="Ordered list"
+              disabled={!ctl.canEdit}
+              onClick={() => prefixLines("1. ", true)}
+            >
+              <span className="font-semibold">1.</span>
+            </ToolButton>
+            <ToolDivider />
+            <ToolButton label="Code" disabled={!ctl.canEdit} onClick={() => wrap("`", "`", "code")}>
+              <Icon name="code" size={15} />
+            </ToolButton>
+            <ToolButton label="Link" disabled={!ctl.canEdit} onClick={insertLink}>
+              <Icon name="link" size={15} />
+            </ToolButton>
+          </div>
+        )}
+        <span className="flex-1" />
+        <button
+          type="button"
+          aria-pressed={preview}
+          onClick={() => {
+            setPreview((value) => !value);
+          }}
+          className={cn(
+            "inline-flex h-8 items-center gap-1.5 rounded-[10px] border px-3 text-[12.5px] font-medium transition focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent",
+            preview
+              ? "border-accent/40 bg-accent-soft text-accent"
+              : "border-border bg-surface-2 text-text-muted hover:text-text",
+          )}
+        >
+          <Icon name={preview ? "pencil" : "eye"} size={14} />
+          {preview ? "Write" : "Preview"}
+        </button>
+      </div>
+
+      <div className="min-h-0 flex-1 overflow-y-auto">
+        {preview ? (
+          <NotePreview title={current.title} body={current.body} />
+        ) : (
+          <textarea
+            ref={bodyRef}
+            aria-label="Note body"
+            placeholder="Write in Markdown…"
+            value={current.body}
+            disabled={!ctl.canEdit}
+            onChange={(event) => {
+              ctl.setDraft({ ...current, body: event.target.value });
+            }}
+            className="h-full min-h-[280px] w-full resize-none rounded-input border border-border bg-surface-3 p-3 font-mono text-[13px] leading-relaxed text-text placeholder:text-text-muted transition focus-visible:border-accent focus-visible:bg-surface-2 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent-soft disabled:opacity-60"
+          />
+        )}
       </div>
 
       <p className="text-[11px] text-text-muted">
