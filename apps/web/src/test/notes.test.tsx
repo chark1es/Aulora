@@ -89,7 +89,8 @@ beforeEach(() => {
 });
 
 describe("Notes UI", () => {
-  it("lets readers browse but hides create, edit and delete controls", () => {
+  it("lets readers browse but hides create, edit and delete controls", async () => {
+    const user = userEvent.setup();
     render(
       <NotesView
         ownUserId="alice"
@@ -101,6 +102,7 @@ describe("Notes UI", () => {
     expect(screen.getByRole("button", { name: "Open note Roadmap" })).toBeInTheDocument();
     expect(screen.queryByRole("button", { name: "New note" })).not.toBeInTheDocument();
     expect(screen.queryByRole("button", { name: "New folder" })).not.toBeInTheDocument();
+    await user.click(screen.getByRole("button", { name: "Open note Roadmap" }));
     expect(screen.getByRole("textbox", { name: "Note body" })).toBeDisabled();
     expect(screen.getByRole("button", { name: "Save" })).toBeDisabled();
     expect(screen.getByRole("button", { name: "Delete" })).toBeDisabled();
@@ -141,6 +143,7 @@ describe("Notes UI", () => {
         onBack={vi.fn()}
       />,
     );
+    await user.click(screen.getByRole("button", { name: "Open note Roadmap" }));
     const title = screen.getByRole("textbox", { name: "Note title" });
     await user.clear(title);
     await user.type(title, "Plan");
@@ -170,6 +173,7 @@ describe("Notes UI", () => {
         onBack={vi.fn()}
       />,
     );
+    await user.click(screen.getByRole("button", { name: "Open note Roadmap" }));
     await user.click(screen.getByText("History"));
     expect(await screen.findByText(/edited this note/)).toBeInTheDocument();
     expect(screen.getByText(/line one/)).toBeInTheDocument();

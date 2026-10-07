@@ -1,9 +1,10 @@
-import { Button, cn, Icon, IconButton, SegmentedControl, Spinner } from "@aulora/ui-web";
-import { Component, type ReactNode } from "react";
+import { Icon, IconButton, SegmentedControl, Spinner } from "@aulora/ui-web";
+import { Component, type ReactNode, useState } from "react";
 import { NoteDialogs } from "./NoteDialogs";
 import { NoteEditor } from "./NoteEditor";
 import { NoteHistory } from "./NoteHistory";
 import { NotesLibrary } from "./NotesLibrary";
+import { folderPath, type NoteSummary } from "./types";
 import { type NotesController, type NotesProps, useNotes } from "./use-notes";
 
 interface BoundaryProps {
@@ -27,26 +28,32 @@ class NotesBoundary extends Component<BoundaryProps, { error: boolean }> {
           reload your notes.
         </p>
         <div className="flex gap-2">
-          <Button variant="secondary" onClick={this.props.onBack}>
+          <button
+            type="button"
+            className="rounded-[9px] bg-surface-3 px-3 py-1.5 text-[13px] text-text"
+            onClick={this.props.onBack}
+          >
             Back to chat
-          </Button>
-          <Button
+          </button>
+          <button
+            type="button"
+            className="rounded-[9px] bg-accent px-3 py-1.5 text-[13px] text-on-accent"
             onClick={() => {
               this.setState({ error: false });
             }}
           >
             Retry
-          </Button>
+          </button>
         </div>
       </section>
     );
   }
 }
 
-function NotesHeader({ ctl }: { ctl: NotesController }) {
+function NotesHeader({ ctl, onBack }: { ctl: NotesController; onBack: () => void }) {
   return (
     <header className="material-chrome relative z-30 flex min-h-[52px] shrink-0 items-center gap-2 border-b border-border px-3 py-2">
-      <IconButton label="Back to chat" size="sm" onClick={ctl.onBack}>
+      <IconButton label="Back to chat" size="sm" onClick={onBack}>
         <Icon name="chevron-left" size={18} />
       </IconButton>
       <Icon name="note" size={18} className="text-accent" />
@@ -80,22 +87,30 @@ function NotesError({ ctl }: { ctl: NotesController }) {
   );
 }
 
-function DetailTabs({ ctl }: { ctl: NotesController }) {
+/** The breadcrumb and view switch above an open note. */
+function DetailHeader({ ctl, onBackToList }: { ctl: NotesController; onBackToList: () => void }) {
+  const path = folderPath(ctl.folders, ctl.detail?.folderId ?? null);
   return (
-    <div className="flex shrink-0 items-center gap-2 border-b border-border px-4 py-2">
-      <IconButton
-        label="Back to list"
-        size="sm"
-        className="md:hidden"
-        onClick={() => {
-          ctl.setNoteId(undefined);
-        }}
-      >
-        <Icon name="chevron-left" size={16} />
+    <div className="flex min-w-0 shrink-0 items-center gap-2 border-b border-border px-4 py-2">
+      <IconButton label="Back to notes" size="sm" onClick={onBackToList}>
+        <Icon name="chevron-left" size={18} />
       </IconButton>
-      <h2 className="min-w-0 flex-1 truncate text-[15px] font-semibold text-text">
-        {ctl.detail?.title.trim() || "Untitled note"}
-      </h2>
+      <nav
+        className="flex min-w-0 flex-1 items-center gap-1 overflow-hidden text-[12px] text-text-muted"
+        aria-label="Note location"
+      >
+        <span className="shrink-0">Notes</span>
+        {path.map((folder) => (
+          <span key={folder.id} className="flex min-w-0 items-center gap-1">
+            <span className="shrink-0">›</span>
+            <span className="truncate">{folder.name}</span>
+          </span>
+        ))}
+        <span className="shrink-0">›</span>
+        <span className="truncate font-semibold text-text">
+          {ctl.detail?.title.trim() || "Untitled note"}
+        </span>
+      </nav>
       <SegmentedControl
         label="Note view"
         value={ctl.tab}
@@ -109,32 +124,10 @@ function DetailTabs({ ctl }: { ctl: NotesController }) {
   );
 }
 
-function EmptyDetail({ ctl }: { ctl: NotesController }) {
-  return (
-    <div className="flex flex-1 flex-col items-center justify-center gap-3 p-8 text-center">
-      <span className="flex h-14 w-14 items-center justify-center rounded-[16px] bg-accent-soft text-accent">
-        <Icon name="note" size={28} />
-      </span>
-      <h2 className="text-lg font-semibold">
-        {ctl.notes.length === 0 ? "Write your first note" : "Pick a note"}
-      </h2>
-      <p className="max-w-sm text-sm text-text-muted">
-        {ctl.canCreate
-          ? "Create a note and it opens in the editor, ready to write."
-          : "No note is available to you yet."}
-      </p>
-      {ctl.canCreate && (
-        <Button leading={<Icon name="plus" size={14} />} onClick={() => void ctl.createNote()}>
-          New note
-        </Button>
-      )}
-    </div>
-  );
-}
-
 function NotesContent(props: NotesProps) {
   const ctl = useNotes(props);
-  const selected = ctl.noteId !== undefined;
+  const [detailOpen, setDetailOpen] = useState(false);
+
   if (!ctl.canView) {
     return (
       <section className="pane flex min-w-0 flex-1 flex-col items-center justify-center gap-2 p-5">
@@ -142,20 +135,33 @@ function NotesContent(props: NotesProps) {
       </section>
     );
   }
+
+  const openNote = (id: NoteSummary["id"]) => {
+    ctl.setNoteId(id);
+    ctl.setTab("edit");
+    setDetailOpen(true);
+  };
+  const newNote = async () => {
+    const id = await ctl.createNote();
+    if (id !== undefined) setDetailOpen(true);
+  };
+  const backToList = () => {
+    setDetailOpen(false);
+  };
+
+  const selected = detailOpen && ctl.noteId !== undefined;
+
   return (
     <section className="pane flex min-h-0 min-w-0 flex-1 flex-col" aria-label="Notes">
-      <NotesHeader ctl={ctl} />
+      <NotesHeader ctl={ctl} onBack={props.onBack} />
       <NotesError ctl={ctl} />
       {ctl.overview === undefined ? (
         <div className="flex flex-1 items-center justify-center">
           <Spinner label="Loading notes" />
         </div>
       ) : (
-        <div className="flex min-h-0 min-w-0 flex-1">
-          <NotesLibrary ctl={ctl} />
-          <div
-            className={cn("min-h-0 min-w-0 flex-1 flex-col", selected ? "flex" : "hidden md:flex")}
-          >
+        <div className="flex min-h-0 flex-1 flex-col">
+          <div className="mx-auto flex min-h-0 w-full max-w-[900px] flex-1 flex-col">
             {selected ? (
               ctl.detail === undefined ? (
                 <div className="flex flex-1 items-center justify-center">
@@ -163,14 +169,14 @@ function NotesContent(props: NotesProps) {
                 </div>
               ) : (
                 <>
-                  <DetailTabs ctl={ctl} />
+                  <DetailHeader ctl={ctl} onBackToList={backToList} />
                   <div className="min-h-0 flex-1 overflow-y-auto">
                     {ctl.tab === "edit" ? <NoteEditor ctl={ctl} /> : <NoteHistory ctl={ctl} />}
                   </div>
                 </>
               )
             ) : (
-              <EmptyDetail ctl={ctl} />
+              <NotesLibrary ctl={ctl} onOpenNote={openNote} onNewNote={() => void newNote()} />
             )}
           </div>
         </div>
@@ -180,7 +186,7 @@ function NotesContent(props: NotesProps) {
   );
 }
 
-/** The Notes addon: folders and tags on the left, a note list, and an editor/history. */
+/** The Notes addon: a single column that shows the list, then the open note. */
 export function NotesView(props: NotesProps) {
   return (
     <NotesBoundary onBack={props.onBack}>
