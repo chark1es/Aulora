@@ -147,9 +147,21 @@ Redeploy the resource (Coolify pulls the branch and rebuilds `web` and `setup`).
 The named volumes, including `setup-state`, are kept, so data and secrets
 survive. If you changed origins or auth settings, re-run `setup` as above.
 
-The instance admin panel reports when a newer Aulora release is published.
-Coolify owns the git checkout, so apply that release by redeploying the new
-ref here. Do not run `infra/docker/update.sh` inside Coolify's source directory.
+To install published releases directly from the instance admin panel, set these runtime environment variables on the same Coolify resource:
+
+```sh
+AULORA_COOLIFY_URL=https://coolify.example.com
+AULORA_COOLIFY_APPLICATION_UUID=your-application-uuid
+AULORA_COOLIFY_API_TOKEN=your-api-token
+```
+
+Use the UUID of this Git-based Docker Compose **application**, not a service or server UUID. Create an API token in Coolify's **Keys & Tokens** with permission to read the application and deployments, update the application, and deploy it. The Coolify URL must be reachable from the Convex backend. Keep the token out of build variables and client configuration.
+
+Redeploy once to apply this configuration through `setup`. The shipped Compose file selects the Coolify update provider automatically. The instance panel then offers **Install update**. It resolves the published Git tag to an immutable commit, pins the application's `git_commit_sha`, and asks Coolify to build and deploy it. Status is tracked through the Coolify API; success requires the backend to run the requested version. Deployment briefly interrupts the workspace. A failed installation reports an error and can be retried after checking the Coolify deployment and setup logs.
+
+The application stays pinned to the installed commit. To resume deploying your branch manually, reset `git_commit_sha` to `HEAD` in Coolify. The integration verifies that the application's GitHub repository matches `AULORA_UPDATE_GITHUB_REPO`, which defaults to `chark1es/Aulora`.
+
+Without API configuration, the panel still checks for releases and explains which settings are missing. Apply releases manually through Coolify. Do not run `infra/docker/update.sh` inside Coolify's source directory.
 
 ## Teardown
 

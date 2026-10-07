@@ -292,6 +292,15 @@ services:
       CONVEX_PROJECT_DIR: /app/packages/convex
       HOST_ENV_FILE: /host/.env
       WELL_KNOWN_DIR: /web-well-known
+      AULORA_UPDATE_PROVIDER: coolify
+      AULORA_COOLIFY_URL: ${AULORA_COOLIFY_URL:-}
+      AULORA_COOLIFY_APPLICATION_UUID: ${AULORA_COOLIFY_APPLICATION_UUID:-}
+      # Compose reads the token from the operator's environment; no credential is stored here.
+      # nosemgrep: codacy.yaml.security.hard-coded-tokens
+      AULORA_COOLIFY_API_TOKEN: ${AULORA_COOLIFY_API_TOKEN:-}
+      AULORA_UPDATE_MANIFEST_URL: ${AULORA_UPDATE_MANIFEST_URL:-}
+      AULORA_UPDATE_GITHUB_REPO: ${AULORA_UPDATE_GITHUB_REPO:-}
+      AULORA_UPDATE_CHANNEL: ${AULORA_UPDATE_CHANNEL:-stable}
       # --- instance identity + owner (operator-required) ---
       INSTANCE_NAME: ${INSTANCE_NAME:-aulora}
       WORKSPACE_NAME: ${WORKSPACE_NAME:-Aulora}
