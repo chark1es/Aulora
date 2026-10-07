@@ -64,6 +64,15 @@ const callSignalKind = v.union(
 );
 
 export default defineSchema({
+  coolifyUpdate: defineTable({
+    targetVersion: v.string(),
+    gitTag: v.string(),
+    githubRepo: v.string(),
+    phase: v.union(v.literal("installing"), v.literal("installed"), v.literal("failed")),
+    startedAt: v.number(),
+    deploymentUuid: v.optional(v.string()),
+    error: v.union(v.string(), v.null()),
+  }),
   workspaceUpdate: defineTable({
     currentVersion: v.string(),
     latestVersion: v.union(v.string(), v.null()),
