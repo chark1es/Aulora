@@ -1120,7 +1120,7 @@ function ChatViewContent({
 
   return (
     <div className="relative flex min-h-0 min-w-0 flex-1 gap-2.5">
-      {!sidebarHidden && (
+      {!sidebarHidden && mainView !== "notes" && (
         <div className={cn("min-h-0 w-full md:flex md:w-auto", showList ? "flex" : "hidden")}>
           <ChannelSidebar
             workspaceName={workspaceName}

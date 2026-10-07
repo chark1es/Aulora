@@ -14,42 +14,36 @@ const rowClass = (active: boolean) =>
 const actionClass =
   "shrink-0 opacity-0 transition group-hover:opacity-100 focus-visible:opacity-100";
 
-/** A collapsible group inside the library: header row plus its rows. */
-function Section({
-  title,
-  action,
+/** A small anchored dropdown that closes on an outside click. */
+function Menu({
   open,
-  onToggle,
+  onClose,
   children,
+  className,
 }: {
-  title: string;
-  action?: ReactNode;
   open: boolean;
-  onToggle: () => void;
+  onClose: () => void;
   children: ReactNode;
+  className?: string;
 }) {
+  if (!open) return null;
   return (
-    <section className="py-0.5">
-      <div className="flex items-center gap-1 py-1 pl-1.5 pr-1">
-        <button
-          type="button"
-          aria-expanded={open}
-          onClick={onToggle}
-          className="flex min-w-0 flex-1 items-center gap-1.5 rounded-[6px] text-left focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent"
-        >
-          <Icon
-            name="chevron-down"
-            size={14}
-            className={cn("shrink-0 text-text-muted transition", !open && "-rotate-90")}
-          />
-          <span className="text-[11px] font-semibold uppercase tracking-[0.06em] text-text-muted">
-            {title}
-          </span>
-        </button>
-        {action}
+    <>
+      <button
+        type="button"
+        aria-label="Close menu"
+        onClick={onClose}
+        className="fixed inset-0 z-40 cursor-default"
+      />
+      <div
+        className={cn(
+          "absolute z-50 max-h-[360px] overflow-y-auto rounded-[12px] border border-border bg-surface-2 p-1.5 shadow-xl",
+          className,
+        )}
+      >
+        {children}
       </div>
-      {open && <div className="flex flex-col">{children}</div>}
-    </section>
+    </>
   );
 }
 
@@ -58,11 +52,13 @@ function FolderRow({
   folder,
   depth,
   count,
+  onSelect,
 }: {
   ctl: NotesController;
   folder: NoteFolder;
   depth: number;
   count: number;
+  onSelect: () => void;
 }) {
   const active = ctl.folderId === folder.id;
   return (
@@ -73,6 +69,7 @@ function FolderRow({
         aria-current={active ? "page" : undefined}
         onClick={() => {
           ctl.setFolderId(folder.id);
+          onSelect();
         }}
         style={{ paddingLeft: 12 + depth * 14 }}
         className={cn(rowClass(active), "flex-1")}
@@ -126,10 +123,12 @@ function TagRow({
   ctl,
   tag,
   count,
+  onSelect,
 }: {
   ctl: NotesController;
   tag: NotesController["tags"][number];
   count: number;
+  onSelect?: () => void;
 }) {
   const active = ctl.tagId === tag.id;
   return (
@@ -140,6 +139,7 @@ function TagRow({
         aria-pressed={active}
         onClick={() => {
           ctl.setTagId(active ? undefined : tag.id);
+          onSelect?.();
         }}
         className={cn(rowClass(active), "flex-1 pl-3")}
       >
@@ -234,13 +234,27 @@ function NoteRow({ ctl, note, now }: { ctl: NotesController; note: NoteSummary; 
   );
 }
 
+/** The folder path from the root to the selected folder, for the breadcrumb. */
+function folderPath(folders: readonly NoteFolder[], folderId: NotesController["folderId"]) {
+  if (folderId === undefined || folderId === UNFILED) return [];
+  const byId = new Map(folders.map((folder) => [folder.id, folder]));
+  const path: NoteFolder[] = [];
+  let current = byId.get(folderId);
+  while (current !== undefined) {
+    path.unshift(current);
+    current = current.parentId !== null ? byId.get(current.parentId) : undefined;
+  }
+  return path;
+}
+
 /**
- * The single Notes library pane: search, collapsible folders and tags, then the
- * filtered note list — one column instead of a separate nav sidebar plus list.
+ * The single Notes navigation column: a breadcrumb scope, search, tag filters
+ * and the note list. Folders and tags are managed from small dropdown menus
+ * rather than a standing tree, so the view stays to one column.
  */
 export function NotesLibrary({ ctl }: { ctl: NotesController }) {
-  const [foldersOpen, setFoldersOpen] = useState(true);
-  const [tagsOpen, setTagsOpen] = useState(true);
+  const [folderMenu, setFolderMenu] = useState(false);
+  const [tagMenu, setTagMenu] = useState(false);
   const now = Date.now();
   const tree = flattenFolders(ctl.folders);
 
@@ -264,18 +278,32 @@ export function NotesLibrary({ ctl }: { ctl: NotesController }) {
 
   const newFolderParent =
     ctl.folderId !== undefined && ctl.folderId !== UNFILED ? ctl.folderId : null;
+  const path = folderPath(ctl.folders, ctl.folderId);
   const total = ctl.visible.length;
   const countLabel = `${total} ${total === 1 ? "note" : "notes"}${ctl.showArchived ? " archived" : ""}`;
+  const crumbs: { key: string; label: string; onClick: () => void }[] = [];
+  for (const folder of path) {
+    crumbs.push({
+      key: folder.id,
+      label: folder.name,
+      onClick: () => {
+        ctl.setFolderId(folder.id);
+      },
+    });
+  }
+  if (ctl.folderId === UNFILED) {
+    crumbs.push({ key: "unfiled", label: "Unfiled", onClick: () => ctl.setFolderId(UNFILED) });
+  }
 
   return (
     <aside
       className={cn(
-        "min-h-0 w-full shrink-0 flex-col border-r border-border md:flex md:w-[320px]",
+        "min-h-0 w-full shrink-0 flex-col border-r border-border md:flex md:w-[330px]",
         ctl.noteId !== undefined ? "hidden" : "flex",
       )}
-      aria-label="Notes library"
+      aria-label="Notes"
     >
-      <div className="flex flex-col gap-2 border-b border-border px-3 py-2.5">
+      <div className="relative flex flex-col gap-2 border-b border-border px-3 py-2.5">
         <div className="flex items-center gap-2">
           <label className="relative block flex-1">
             <Icon
@@ -304,34 +332,98 @@ export function NotesLibrary({ ctl }: { ctl: NotesController }) {
             </Button>
           )}
         </div>
-      </div>
 
-      <div className="min-h-0 flex-1 overflow-y-auto px-2 pb-2">
-        <Section
-          title="Folders"
-          open={foldersOpen}
-          onToggle={() => {
-            setFoldersOpen((value) => !value);
-          }}
-          action={
-            ctl.canCreate ? (
+        <div className="flex min-w-0 items-center gap-1 text-[12px]">
+          <button
+            type="button"
+            aria-haspopup="menu"
+            aria-expanded={folderMenu}
+            onClick={() => {
+              setFolderMenu((value) => !value);
+            }}
+            className="shrink-0 rounded-[6px] px-1.5 py-0.5 font-semibold text-text transition hover:bg-surface-3 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent"
+          >
+            Notes
+          </button>
+          {crumbs.map((crumb) => (
+            <span key={crumb.key} className="flex min-w-0 items-center gap-1">
+              <span className="shrink-0 text-text-muted">›</span>
+              <button
+                type="button"
+                onClick={crumb.onClick}
+                className="min-w-0 truncate rounded-[6px] px-1.5 py-0.5 text-text-muted transition hover:bg-surface-3 hover:text-text focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent"
+              >
+                {crumb.label}
+              </button>
+            </span>
+          ))}
+          <span className="flex-1" />
+          <IconButton
+            label="Choose folder"
+            size="sm"
+            onClick={() => {
+              setFolderMenu((value) => !value);
+            }}
+          >
+            <Icon name="chevron-down" size={14} />
+          </IconButton>
+        </div>
+
+        {(ctl.tags.length > 0 || ctl.canEdit) && (
+          <div className="flex flex-wrap items-center gap-1">
+            {ctl.tags.map((tag) => {
+              const active = ctl.tagId === tag.id;
+              return (
+                <button
+                  key={tag.id}
+                  type="button"
+                  data-testid={`note-tag-${tag.id}`}
+                  aria-pressed={active}
+                  onClick={() => {
+                    ctl.setTagId(active ? undefined : tag.id);
+                  }}
+                  className={cn(
+                    "inline-flex h-6 items-center gap-1.5 rounded-full border px-2 text-[11.5px] transition focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent",
+                    active
+                      ? "border-accent/40 bg-accent-soft font-semibold text-accent"
+                      : "border-border text-text-muted hover:bg-surface-3 hover:text-text",
+                  )}
+                >
+                  <span
+                    className="h-2 w-2 shrink-0 rounded-full"
+                    style={{ backgroundColor: tag.color }}
+                  />
+                  {tag.name}
+                </button>
+              );
+            })}
+            {ctl.canEdit && (
               <IconButton
-                label="New folder"
+                label="Manage tags"
                 size="sm"
                 onClick={() => {
-                  ctl.setFolderDialog({ mode: "new", parentId: newFolderParent });
+                  setTagMenu((value) => !value);
                 }}
               >
                 <Icon name="plus" size={14} />
               </IconButton>
-            ) : null
-          }
+            )}
+          </div>
+        )}
+
+        <Menu
+          open={folderMenu}
+          onClose={() => {
+            setFolderMenu(false);
+          }}
+          className="left-3 right-3 top-[46px]"
         >
           <button
             type="button"
             aria-current={ctl.folderId === undefined ? "page" : undefined}
             onClick={() => {
               ctl.setFolderId(undefined);
+              setFolderMenu(false);
             }}
             className={cn(rowClass(ctl.folderId === undefined), "w-full pl-3")}
           >
@@ -346,6 +438,7 @@ export function NotesLibrary({ ctl }: { ctl: NotesController }) {
             aria-current={ctl.folderId === UNFILED ? "page" : undefined}
             onClick={() => {
               ctl.setFolderId(UNFILED);
+              setFolderMenu(false);
             }}
             className={cn(rowClass(ctl.folderId === UNFILED), "w-full pl-3")}
           >
@@ -362,32 +455,37 @@ export function NotesLibrary({ ctl }: { ctl: NotesController }) {
               folder={folder}
               depth={depth}
               count={directCounts.get(folder.id) ?? 0}
+              onSelect={() => {
+                setFolderMenu(false);
+              }}
             />
           ))}
           {tree.length === 0 && (
             <p className="px-3 py-1.5 text-xs text-text-muted">No folders yet</p>
           )}
-        </Section>
-
-        <Section
-          title="Tags"
-          open={tagsOpen}
-          onToggle={() => {
-            setTagsOpen((value) => !value);
-          }}
-          action={
-            ctl.canEdit ? (
-              <IconButton
-                label="New tag"
-                size="sm"
+          {ctl.canCreate && (
+            <div className="mt-1 border-t border-border pt-1">
+              <button
+                type="button"
                 onClick={() => {
-                  ctl.setTagDialog({ mode: "new" });
+                  ctl.setFolderDialog({ mode: "new", parentId: newFolderParent });
+                  setFolderMenu(false);
                 }}
+                className={cn(rowClass(false), "w-full pl-3")}
               >
                 <Icon name="plus" size={14} />
-              </IconButton>
-            ) : null
-          }
+                <span className="min-w-0 flex-1 truncate">New folder</span>
+              </button>
+            </div>
+          )}
+        </Menu>
+
+        <Menu
+          open={tagMenu}
+          onClose={() => {
+            setTagMenu(false);
+          }}
+          className="left-3 right-3 top-[46px]"
         >
           {ctl.tags.map((tag) => (
             <TagRow key={tag.id} ctl={ctl} tag={tag} count={tagCounts.get(tag.id) ?? 0} />
@@ -395,25 +493,40 @@ export function NotesLibrary({ ctl }: { ctl: NotesController }) {
           {ctl.tags.length === 0 && (
             <p className="px-3 py-1.5 text-xs text-text-muted">No tags yet</p>
           )}
-        </Section>
+          <div className="mt-1 border-t border-border pt-1">
+            <button
+              type="button"
+              onClick={() => {
+                ctl.setTagDialog({ mode: "new" });
+                setTagMenu(false);
+              }}
+              className={cn(rowClass(false), "w-full pl-3")}
+            >
+              <Icon name="plus" size={14} />
+              <span className="min-w-0 flex-1 truncate">New tag</span>
+            </button>
+          </div>
+        </Menu>
+      </div>
 
-        <div className="mt-2 flex items-center justify-between gap-2 border-t border-border px-1 pt-2">
-          <span className="text-[11px] tabular-nums text-text-muted">{countLabel}</span>
-          <Button
-            size="sm"
-            variant="ghost"
-            aria-pressed={ctl.showArchived}
-            leading={<Icon name="archive" size={13} />}
-            onClick={() => {
-              ctl.setShowArchived(!ctl.showArchived);
-            }}
-          >
-            {ctl.showArchived ? "Active" : "Archived"}
-          </Button>
-        </div>
+      <div className="flex items-center justify-between gap-2 px-3 py-2">
+        <span className="text-[11px] tabular-nums text-text-muted">{countLabel}</span>
+        <Button
+          size="sm"
+          variant="ghost"
+          aria-pressed={ctl.showArchived}
+          leading={<Icon name="archive" size={13} />}
+          onClick={() => {
+            ctl.setShowArchived(!ctl.showArchived);
+          }}
+        >
+          {ctl.showArchived ? "Active" : "Archived"}
+        </Button>
+      </div>
 
+      <div className="min-h-0 flex-1 overflow-y-auto px-2 pb-2">
         {total === 0 ? (
-          <div className="flex flex-col items-center justify-center gap-2 px-6 py-10 text-center">
+          <div className="flex flex-col items-center justify-center gap-2 px-6 py-12 text-center">
             <Icon name="note" size={24} className="text-text-muted" />
             <p className="text-[13px] text-text-muted">
               {ctl.query.trim().length > 0
