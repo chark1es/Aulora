@@ -35,6 +35,14 @@ function checkLink(file, href, generated = false) {
   } else {
     path = resolve(root, dirname(file), target || file.split("/").at(-1));
   }
+  if (generated) {
+    // Generated links are clean (no `.html`). The files on disk keep the
+    // extension, and a clean directory path is served by its `index.html`.
+    path =
+      [path, `${path}.html`, resolve(path, "index.html")].find(
+        (candidate) => existsSync(candidate) && statSync(candidate).isFile(),
+      ) ?? path;
+  }
   if (!existsSync(path) || !statSync(path).isFile()) {
     failures.push(`${file}: missing target ${href}`);
     return;

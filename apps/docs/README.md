@@ -43,7 +43,10 @@ The site uses the app's own design system, so it can't drift from the clients:
   are declared in `scripts/build.mjs` (`GROUPS`).
 - `lib/markdown.mjs` supports headings, paragraphs, fenced code, lists,
   blockquotes, tables, horizontal rules and inline code/bold/italic/links. Raw
-  HTML is escaped. Relative `*.md` links are rewritten to `*.html`.
+  HTML is escaped. Relative `*.md` links are rewritten to clean, extensionless
+  URLs (`privacy.md` → `privacy`). The generated files keep the `.html`
+  extension, so old `*.html` links still work; GitHub Pages serves the clean
+  URL from the same file.
 - Marketing pages live in `landing/`. The build fills these placeholders:
   `{{icon:name}}` for a token icon, `{{avatar:seed}}` for a person,
   `{{server:seed}}` for a workspace, and `{{head}}`, `{{header}}`, and
