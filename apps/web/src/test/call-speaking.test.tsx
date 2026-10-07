@@ -9,6 +9,7 @@ const self: CallParticipantView = {
   deafened: false,
   video: false,
   sharingScreen: false,
+  sfu: false,
   joinedAt: 0,
   clientId: null,
   session: 1,

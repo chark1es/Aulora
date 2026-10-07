@@ -17,7 +17,8 @@ store of its own.
 | `aulora://connect` and `aulora://invite` deep links, single instance | `deep_link.rs` |
 | Signed in-app updates from the GitHub `latest.json` feed | `updater.rs`, `tauri.conf.json` |
 | macOS Sidebar vibrancy behind translucent rails | `window.rs`, `tauri.macos.conf.json` |
-| Locked-down CSP: bundled code only, no remote script origins | `tauri.conf.json` |
+| Locked-down CSP: bundled code only, no remote script origins (`'wasm-unsafe-eval'` allows WebAssembly for noise suppression and background blur, not JavaScript `eval`) | `tauri.conf.json` |
+| Call picture-in-picture: the window shrinks to a small always-on-top window; `bun run verify` keeps its restore size in sync | `src-tauri/src/mini_window.rs` |
 | Native drag-drop disabled (`dragDropEnabled: false`) so the web composer accepts files dropped anywhere in the window | `tauri.conf.json`, `tauri.macos.conf.json` |
 
 The web player (`apps/web`) talks to the shell through `window.__TAURI__`
@@ -114,6 +115,7 @@ path, building the shell on macOS, Windows and Linux and uploading the bundles.
 
 ## Caveats
 
+- Call picture-in-picture, background effects and screen capture are exercised in Chromium. The system webviews (WKWebView on macOS, WebView2 on Windows, WebKitGTK on Linux) differ, so confirm each on real installs: the window shrinking and staying on top, `getDisplayMedia`, and WebAssembly in the audio worklet. Record the evidence in the release checklist.
 - Release acceptance covers menus, tray, badges, deep links, vibrancy, and installed updates. Configuration checks and successful builds do not verify those interactions. Record platform evidence in the [release checklist](../../docs/releasing.md).
 - The dev CSP is strict (`script-src 'self'`); if Vite's HMR needs more during
   `tauri:dev`, pass a relaxed `--config` override rather than weakening the

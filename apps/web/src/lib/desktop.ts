@@ -1,3 +1,4 @@
+/* eslint-disable no-unused-vars -- the base rule reports parameter names in type signatures; Biome checks real unused code */
 /**
  * Desktop (Tauri) bridge helpers.
  *
@@ -122,6 +123,47 @@ export async function setDesktopAlwaysOnTop(on: boolean): Promise<void> {
     await invokeCommand("set_always_on_top", { on });
   } catch {
     // Always-on-top is a nicety; a missing platform API must never break calls.
+  }
+}
+
+/**
+ * Shrinks the app window into a small always-ready picture-in-picture window
+ * for a call. Resolves `true` when the shell did it, `false` outside the shell
+ * or if the request failed, so callers can fall back to something else.
+ */
+export async function enterDesktopMiniWindow(width: number, height: number): Promise<boolean> {
+  if (!isDesktop()) {
+    return false;
+  }
+  try {
+    await invokeCommand("enter_mini_window", { width, height });
+    return true;
+  } catch {
+    return false;
+  }
+}
+
+/** Restores the app window after picture-in-picture; a no-op when it is not one. */
+export async function exitDesktopMiniWindow(): Promise<void> {
+  if (!isDesktop()) {
+    return;
+  }
+  try {
+    await invokeCommand("exit_mini_window");
+  } catch {
+    // The window stays small; the user can resize it.
+  }
+}
+
+/** Whether the shell's window is currently a picture-in-picture window. */
+export async function isDesktopMiniWindow(): Promise<boolean> {
+  if (!isDesktop()) {
+    return false;
+  }
+  try {
+    return (await invokeCommand("is_mini_window")) === true;
+  } catch {
+    return false;
   }
 }
 

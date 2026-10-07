@@ -4,6 +4,9 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import { acquireUserMedia, createLevelMeter, supportsOutputSelection } from "../../lib/voice/media";
 import { useVoice } from "../../providers/VoiceProvider";
 import type { Callback } from "../admin/callbacks";
+import { BackgroundSettings } from "./BackgroundSettings";
+import { NoiseSuppressionSetting } from "./NoiseSuppressionSetting";
+import { StreamSettings } from "./StreamSettings";
 
 const DEVICE_NONE = "__default__";
 
@@ -148,18 +151,14 @@ export function DeviceSettingsSection() {
         The gate silences input below this level. Set it to zero to leave the mic open.
       </Text>
 
+      <NoiseSuppressionSetting />
+
       <div className="rounded-[10px] border border-border bg-surface-1 px-3.5">
         <Switch
           checked={settings.echoCancellation}
           onChange={(echoCancellation) => void voice.updateSettings({ echoCancellation })}
           label="Echo cancellation"
           description="Removes echo from speakers bleeding into your microphone."
-        />
-        <Switch
-          checked={settings.noiseSuppression}
-          onChange={(noiseSuppression) => void voice.updateSettings({ noiseSuppression })}
-          label="Noise suppression"
-          description="Reduces background hum, fans and keystrokes."
         />
         <Switch
           checked={settings.autoGainControl}
@@ -183,6 +182,8 @@ export function DeviceSettingsSection() {
           className="w-full"
         />
       </div>
+
+      <BackgroundSettings />
 
       <div className="rounded-[10px] border border-border bg-surface-1 px-3.5">
         <Switch
@@ -210,6 +211,8 @@ export function DeviceSettingsSection() {
           description="Turn your camera on when you join a video call."
         />
       </div>
+
+      <StreamSettings />
 
       <Text tone="muted" size="xs">
         Changes apply to the current call immediately.

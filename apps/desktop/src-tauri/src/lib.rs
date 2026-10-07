@@ -10,6 +10,7 @@
 mod commands;
 mod deep_link;
 mod menu;
+mod mini_window;
 mod tray;
 mod updater;
 mod window;
@@ -35,8 +36,12 @@ pub fn run() {
         .plugin(tauri_plugin_notification::init())
         .manage(deep_link::DeepLinkState::default())
         .manage(updater::AppUpdateState::default())
+        .manage(mini_window::MiniWindowState::default())
         .invoke_handler(tauri::generate_handler![
             commands::set_always_on_top,
+            commands::enter_mini_window,
+            commands::exit_mini_window,
+            commands::is_mini_window,
             commands::set_unread_badge,
             commands::show_notification,
             commands::take_deep_links,

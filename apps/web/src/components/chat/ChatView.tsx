@@ -40,6 +40,7 @@ import { AdminPanel, type AdminPanelViewer } from "../admin/AdminPanel";
 import { KanbanView } from "../kanban/KanbanView";
 import { DesktopUpdateSettings } from "../UpdateSettings";
 import { CallDock } from "../voice/CallDock";
+import { CallPictureInPicture } from "../voice/CallPictureInPicture";
 import { CallStage } from "../voice/CallStage";
 import { DeviceSettingsSection } from "../voice/DeviceSettingsSection";
 import { IncomingCallModal } from "../voice/IncomingCallModal";
@@ -1587,6 +1588,7 @@ function ChatViewContent({
         <CallDock title={callTitle} identity={callIdentity} />
       )}
       {voice.view === "stage" && <CallStage title={callTitle} identity={callIdentity} />}
+      <CallPictureInPicture title={callTitle} identity={callIdentity} />
 
       {searchOpen && (
         <SearchPanel

@@ -1,3 +1,4 @@
+/* eslint-disable no-unused-vars -- the base rule reports parameter names in type signatures; Biome checks real unused code */
 import {
   type CallSignalKind,
   type CallSignalRow,
@@ -71,8 +72,15 @@ export function convexVoicePort(client: ConvexReactClient, clientId: string): Vo
         ...(args.deafened !== undefined ? { deafened: args.deafened } : {}),
         ...(args.video !== undefined ? { video: args.video } : {}),
         ...(args.sharingScreen !== undefined ? { sharingScreen: args.sharingScreen } : {}),
+        ...(args.sfu !== undefined ? { sfu: args.sfu } : {}),
       });
       return null;
+    },
+    async sfuAccess(args) {
+      return await client.action(api.callStreaming.access, {
+        callId: args.callId as never,
+        clientId,
+      });
     },
     async callHeartbeat(args) {
       await client.mutation(api.calls.heartbeat, { callId: args.callId as never, clientId });

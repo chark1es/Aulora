@@ -19,6 +19,7 @@ const readMacos = () => readFileSync(resolve(srcTauri, "tauri.macos.conf.json"),
 const readWindows = () => readFileSync(resolve(srcTauri, "tauri.windows.conf.json"), "utf8");
 const readLinux = () => readFileSync(resolve(srcTauri, "tauri.linux.conf.json"), "utf8");
 const readRelease = () => readFileSync(resolve(srcTauri, "tauri.release.conf.json"), "utf8");
+const readMiniWindow = () => readFileSync(resolve(srcTauri, "src/mini_window.rs"), "utf8");
 const readCapabilities = () => readFileSync(resolve(srcTauri, "capabilities/default.json"), "utf8");
 
 function readJson(relative, read) {
@@ -54,10 +55,15 @@ function verifyCsp(csp) {
   }
   const directives = parseCsp(csp);
   const scriptSrc = directives.get("script-src") ?? [];
-  check("script-src must be restricted to 'self'", scriptSrc.join(" ") === "'self'");
+  // 'wasm-unsafe-eval' lets the call engine compile its WebAssembly (noise
+  // suppression, background segmentation). It does not enable JavaScript eval.
+  check(
+    "script-src must be restricted to 'self' (plus 'wasm-unsafe-eval' for WebAssembly)",
+    scriptSrc.join(" ") === "'self'" || scriptSrc.join(" ") === "'self' 'wasm-unsafe-eval'",
+  );
   check(
     "script-src must not allow remote origins or eval",
-    !scriptSrc.some((token) => /https?:|unsafe-eval|\*/.test(token)),
+    !scriptSrc.some((token) => /https?:|\*/.test(token) || token === "'unsafe-eval'"),
   );
   check("object-src must be 'none'", (directives.get("object-src") ?? []).includes("'none'"));
   const connectSrc = (directives.get("connect-src") ?? []).join(" ");
@@ -95,6 +101,23 @@ function verifyUpdater(updater) {
   );
 }
 
+// The picture-in-picture window lowers the main window's minimum size and puts
+// it back with constants in Rust (the webview cannot be asked for it). They have
+// to equal the configured minimum or leaving PiP would resize the window wrongly.
+function verifyMiniWindowMinimums(window) {
+  const source = readMiniWindow();
+  const width = /const MAIN_MIN_WIDTH: f64 = (\d+(?:\.\d+)?);/.exec(source)?.[1];
+  const height = /const MAIN_MIN_HEIGHT: f64 = (\d+(?:\.\d+)?);/.exec(source)?.[1];
+  check(
+    "mini_window.rs MAIN_MIN_WIDTH must equal windows[0].minWidth",
+    width !== undefined && Number(width) === window?.minWidth,
+  );
+  check(
+    "mini_window.rs MAIN_MIN_HEIGHT must equal windows[0].minHeight",
+    height !== undefined && Number(height) === window?.minHeight,
+  );
+}
+
 function verifyMainConfig(config) {
   check("productName must be Aulora", config.productName === "Aulora");
   check("identifier must be dev.spwnd.aulora", config.identifier === "dev.spwnd.aulora");
@@ -109,6 +132,7 @@ function verifyMainConfig(config) {
   );
   check("withGlobalTauri must be enabled", config.app?.withGlobalTauri === true);
   check("windows[0] must be the main window", config.app?.windows?.[0]?.label === "main");
+  verifyMiniWindowMinimums(config.app?.windows?.[0]);
   check(
     "windows[0] must set dragDropEnabled to false so the app-wide web file drop reaches the webview",
     config.app?.windows?.[0]?.dragDropEnabled === false,

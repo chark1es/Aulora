@@ -20,7 +20,9 @@ export {
   memoryVoiceSettingsStore,
   mergeVoiceSettings,
   resolutionConstraints,
+  type StreamProfile,
   saveVoiceSettings,
+  streamProfile,
   VOICE_SETTINGS_KEY,
 } from "./settings";
 export {
@@ -40,6 +42,8 @@ export {
   sortParticipants,
 } from "./state";
 export type {
+  BackgroundBlur,
+  BackgroundEffect,
   CallKind,
   CallParticipantView,
   CallSignalKind,
@@ -49,6 +53,8 @@ export type {
   MediaDeviceInfo,
   MediaDeviceKind,
   PeerConnectionState,
+  SfuAccess,
+  StreamQuality,
   VoiceDeviceSettings,
   VoicePort,
   VoiceSubscriptions,

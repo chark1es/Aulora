@@ -131,6 +131,10 @@ Do not delete the `setup-state` volume, and keep an offline copy of
 `AULORA_ENCRYPTION_KEY`: encrypted content in the database and exports needs that key to be readable. Other metadata may remain readable. The same warning as
 [Self-hosting → Encryption](self-hosting.md) applies.
 
+## Screen streaming
+
+Streaming a desktop or an application to many people uses the bundled LiveKit server, which this resource runs and configures for you. It creates its own keys, `setup` hands them to Convex, and clients reach it at your web domain under `/livekit`, so there is nothing to set and no third domain to add. The only step Coolify cannot do is open the media ports: allow `7881/tcp` and `7882/udp` to the server in its firewall. Until you do, shares still work, sent directly to each viewer instead. Behind NAT, see [Self-hosting](self-hosting.md#screen-streaming-server-optional).
+
 ## Optional services
 
 The backup runner, push relay, and development Vault have Compose profiles and are off by default. To enable an optional service in this resource, remove its `profiles` entry in your deployment branch and redeploy the same Coolify resource. Configure its environment values in Coolify first. Keep the project and named volumes unchanged so the service joins the existing deployment.

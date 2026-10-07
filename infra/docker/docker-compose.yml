@@ -270,6 +270,8 @@ services:
     volumes:
       - convex-data:/convex/data
       - web-well-known:/web-well-known
+      # The streaming server's key pair, present only with `--profile streaming`.
+      - livekit-keys:/livekit-keys:ro
       # Write generated secrets back to infra/docker/.env on the host.
       - ./:/host
     depends_on:
@@ -277,6 +279,10 @@ services:
         condition: service_healthy
       minio-init:
         condition: service_completed_successfully
+      # Only exists with `--profile streaming`; setup then waits for the keys.
+      livekit-init:
+        condition: service_completed_successfully
+        required: false
     logging: *logging
 
   # Optional project push relay for official store builds. Holds APNs/FCM
@@ -396,9 +402,44 @@ services:
         condition: service_healthy
     logging: *logging
 
+  # Optional screen-streaming server (LiveKit SFU), profile `streaming`. Calls
+  # stay peer to peer; only a screen or window share is relayed here, so one
+  # sharer uploads a single copy however many people watch. Nothing to
+  # configure: `livekit-init` makes the API key pair, `setup` hands it to Convex
+  # and points clients at `<SITE_URL>/livekit`, which the `web` container proxies
+  # here. Publish 7881/tcp and 7882/udp on the host for the media itself. See
+  # README.md "Screen streaming".
+  livekit-init:
+    image: postgres:17-alpine
+    profiles: ["streaming"]
+    restart: "no"
+    entrypoint: ["/bin/sh", "/init/init-keys.sh"]
+    volumes:
+      - livekit-keys:/keys
+      - ./livekit/init-keys.sh:/init/init-keys.sh:ro
+    logging: *logging
+
+  livekit:
+    image: livekit/livekit-server:v1.13.8
+    profiles: ["streaming"]
+    restart: unless-stopped
+    command: ["--config", "/etc/livekit.yaml"]
+    volumes:
+      - ./livekit/livekit.yaml:/etc/livekit.yaml:ro
+      - livekit-keys:/keys:ro
+    depends_on:
+      livekit-init:
+        condition: service_completed_successfully
+    ports:
+      - "${LIVEKIT_PORT:-7880}:7880"
+      - "7881:7881"
+      - "7882:7882/udp"
+    logging: *logging
+
 volumes:
   pgdata:
   convex-data:
   minio-data:
   web-well-known:
+  livekit-keys:
   backup-data:

@@ -150,4 +150,8 @@ The standard Compose file publishes database and administration ports for local 
 
 Start with a small test team and measure CPU, memory, storage, and upload growth on your host. There is no published capacity guarantee. Container builds need more resources than an idle server. Configure a TURN server if calls must work across restrictive networks.
 
+## Screen streaming server (optional)
+
+Calls are peer to peer, which suits small calls. To stream a desktop or application to many people, enable the optional LiveKit streaming server: open `7881/tcp` and `7882/udp` on the host and run `docker compose --profile streaming up -d`. It creates its own keys and is served from your existing web address, so there is nothing to configure. Under Coolify it is already running and only needs those two ports opened. Only screen and window shares go through it; voice and camera stay peer to peer, and clients that cannot use it (the mobile apps today) still receive shares directly. LiveKit is Apache-2.0 software run as a separate container. Details are in [infra/docker/README.md](https://github.com/chark1es/Aulora/blob/main/infra/docker/README.md#screen-streaming-optional).
+
 Set signup/invitation policy, verify backups and a restore, and check the server from another network before inviting users. See [updates](updates.md), [backups](backups.md), and [troubleshooting](troubleshooting.md). Business use requires a [paid commercial agreement](licensing.md).
