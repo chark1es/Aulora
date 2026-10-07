@@ -71,6 +71,8 @@ async function requestJson(
     throw new Error(`${service} request does not match the configured origin.`);
   let response: Response;
   try {
+    // Only the operator-configured origin or GitHub is allowed above; redirects are rejected.
+    // nosemgrep: rules_lgpl_javascript_ssrf_rule-node-ssrf
     response = await fetch(target, {
       ...init,
       redirect: "error",
