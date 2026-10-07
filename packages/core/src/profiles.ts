@@ -87,7 +87,7 @@ function isLoopbackUrl(advertised: string): boolean {
  * When the server advertises a loopback Convex URL it means "this deployment's
  * default", not a reachable address: the client uses the very origin it reached
  * the server on. The web edge serves Convex under that same origin at `/api`
- * (see `infra/docker/nginx/default.conf`), so one URL works for localhost, the
+ * (see `infra/docker/nginx/default.conf.template`), so one URL works for localhost, the
  * LAN, Tailscale, a tunnel or the operator's own HTTPS proxy. A public
  * (non-loopback) advertised URL is trusted as-is.
  */

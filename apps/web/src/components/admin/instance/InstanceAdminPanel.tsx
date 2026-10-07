@@ -4,14 +4,9 @@ import { useState } from "react";
 import { api } from "../../../../../../packages/convex/convex/_generated/api";
 import { SettingsSectionHeader } from "../SettingsSection";
 import { EmailSection } from "./EmailSettingsSection";
-import {
-  AuthSection,
-  BackupsSection,
-  OverviewSection,
-  PushRelaySection,
-  StorageSection,
-} from "./InstanceSections";
+import { AuthSection, BackupsSection, OverviewSection, PushRelaySection } from "./InstanceSections";
 import { LicensePanel } from "./LicensePanel";
+import { StorageSection } from "./StorageSection";
 
 export interface InstanceAdminPanelProps {
   readonly canManage: boolean;

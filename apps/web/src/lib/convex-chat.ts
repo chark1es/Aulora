@@ -212,7 +212,14 @@ export function convexPort(client: ConvexReactClient): ChatPort {
         body: args.bytes as unknown as BodyInit,
       });
       if (!response.ok) {
-        throw new Error(`Upload failed with status ${response.status}`);
+        // Include the status and, when the storage endpoint explains itself
+        // (e.g. "request entity too large"), that text too.
+        const detail = await response
+          .text()
+          .then((text) => text.trim())
+          .catch(() => "");
+        const suffix = detail.length > 0 ? `: ${detail.slice(0, 200)}` : "";
+        throw new Error(`Upload failed (HTTP ${response.status})${suffix}`);
       }
       const body = (await response.json()) as { storageId?: unknown };
       if (typeof body.storageId !== "string") {

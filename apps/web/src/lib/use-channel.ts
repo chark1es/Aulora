@@ -16,6 +16,18 @@ export const MESSAGE_PAGE_SIZE = 100;
 const EMPTY_MESSAGES: readonly MessagePayload[] = [];
 const EMPTY_DECRYPTED: ReadonlyMap<string, string> = new Map();
 
+/**
+ * Neutral unread summary used until the read cursor has arrived. Without it,
+ * messages that load before the cursor would all look unread and briefly flash
+ * the "New messages" divider on a channel switch.
+ */
+const EMPTY_UNREAD: UnreadSummary = {
+  unread: false,
+  unreadCount: 0,
+  mentionCount: 0,
+  firstUnreadId: null,
+};
+
 export interface ChannelSessionState {
   readonly messages: readonly MessagePayload[];
   readonly decrypted: ReadonlyMap<string, string>;
@@ -105,12 +117,16 @@ function summarizeForReader(
   userId: string,
 ): UnreadSummary {
   return summarizeUnread(
-    messages.map((message) => ({
-      id: message.id,
-      createdAt: message.createdAt,
-      authorId: message.authorId,
-      mentionedUserIds: message.mentionUserIds,
-    })),
+    // Deleted messages are hidden from the timeline, so they must not count as
+    // unread or anchor the "New messages" divider either.
+    messages
+      .filter((message) => message.deletedAt === null)
+      .map((message) => ({
+        id: message.id,
+        createdAt: message.createdAt,
+        authorId: message.authorId,
+        mentionedUserIds: message.mentionUserIds,
+      })),
     {
       lastReadAt: null,
       lastReadMessageId: readState?.lastReadMessageId ?? null,
@@ -255,6 +271,7 @@ export function useChannelSession(
   const settled = loadedChannelId === channelId;
   const activeMessages = settled ? messages : EMPTY_MESSAGES;
   const activeReadState = settled ? readState : null;
+  const activeReadStateLoaded = settled && readStateLoaded;
 
   const visibleTypers = useMemo(
     () => (settled ? activeTypers(typers, userId, now) : []),
@@ -262,8 +279,11 @@ export function useChannelSession(
   );
 
   const unread = useMemo(
-    () => summarizeForReader(activeMessages, activeReadState, userId),
-    [activeMessages, activeReadState, userId],
+    () =>
+      activeReadStateLoaded
+        ? summarizeForReader(activeMessages, activeReadState, userId)
+        : EMPTY_UNREAD,
+    [activeMessages, activeReadState, activeReadStateLoaded, userId],
   );
 
   const hasOlder =
@@ -274,7 +294,7 @@ export function useChannelSession(
     decrypted: settled ? decrypted : EMPTY_DECRYPTED,
     typers: visibleTypers,
     readState: activeReadState,
-    readStateLoaded: settled && readStateLoaded,
+    readStateLoaded: activeReadStateLoaded,
     unread,
     hasOlder,
     loading: settled ? loading : true,
