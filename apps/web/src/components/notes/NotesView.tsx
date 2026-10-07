@@ -1,10 +1,10 @@
 import { Button, cn, Icon, IconButton, SegmentedControl, Spinner } from "@aulora/ui-web";
-import { Component, type ReactNode } from "react";
+import { Component, type ReactNode, useState } from "react";
 import { NoteDialogs } from "./NoteDialogs";
 import { NoteEditor } from "./NoteEditor";
 import { NoteHistory } from "./NoteHistory";
 import { NotesLibrary } from "./NotesLibrary";
-import { folderPath } from "./types";
+import { folderPath, relativeTime } from "./types";
 import { type NotesController, type NotesProps, useNotes } from "./use-notes";
 
 interface BoundaryProps {
@@ -81,10 +81,77 @@ function NotesError({ ctl }: { ctl: NotesController }) {
   );
 }
 
+/** Secondary and destructive note actions, kept out of the way of the content. */
+function DetailMenu({ ctl }: { ctl: NotesController }) {
+  const [open, setOpen] = useState(false);
+  const detail = ctl.detail;
+  if (detail === undefined) return null;
+  const close = () => {
+    setOpen(false);
+  };
+  return (
+    <div className="relative">
+      <IconButton
+        label="More actions"
+        size="sm"
+        aria-haspopup="menu"
+        aria-expanded={open}
+        onClick={() => {
+          setOpen((value) => !value);
+        }}
+      >
+        <Icon name="more-horizontal" size={18} />
+      </IconButton>
+      {open && (
+        <>
+          <button
+            type="button"
+            aria-label="Close menu"
+            onClick={close}
+            className="fixed inset-0 z-40 cursor-default"
+          />
+          <div
+            role="menu"
+            className="absolute right-0 top-[calc(100%+4px)] z-50 w-44 rounded-[10px] border border-border bg-surface-2 p-1 shadow-xl"
+          >
+            <button
+              type="button"
+              role="menuitem"
+              disabled={!ctl.canEdit || ctl.busy}
+              onClick={() => {
+                close();
+                void ctl.archiveNote(detail, !detail.archived);
+              }}
+              className="flex w-full items-center gap-2 rounded-[7px] px-2.5 py-1.5 text-left text-[13px] text-text transition hover:bg-surface-3 disabled:opacity-50"
+            >
+              <Icon name={detail.archived ? "unarchive" : "archive"} size={15} />
+              {detail.archived ? "Restore" : "Archive"}
+            </button>
+            <button
+              type="button"
+              role="menuitem"
+              disabled={!ctl.canDelete || ctl.busy}
+              onClick={() => {
+                close();
+                ctl.requestDeleteNote(detail);
+              }}
+              className="flex w-full items-center gap-2 rounded-[7px] px-2.5 py-1.5 text-left text-[13px] text-danger transition hover:bg-danger/10 disabled:opacity-50"
+            >
+              <Icon name="trash" size={15} />
+              Delete
+            </button>
+          </div>
+        </>
+      )}
+    </div>
+  );
+}
+
 function DetailTabs({ ctl }: { ctl: NotesController }) {
+  const now = Date.now();
   const path = folderPath(ctl.folders, ctl.detail?.folderId ?? null);
   return (
-    <div className="flex shrink-0 items-center gap-2 border-b border-border px-4 py-2">
+    <div className="flex shrink-0 flex-wrap items-center gap-2 border-b border-border px-4 py-2">
       <IconButton
         label="Back to list"
         size="sm"
@@ -107,6 +174,11 @@ function DetailTabs({ ctl }: { ctl: NotesController }) {
             <span className="truncate">{folder.name}</span>
           </span>
         ))}
+        {ctl.detail !== undefined && (
+          <span className="ml-2 hidden shrink-0 text-[11px] lg:inline">
+            Updated {relativeTime(ctl.detail.updatedAt, now)}
+          </span>
+        )}
       </nav>
       <SegmentedControl
         label="Note view"
@@ -117,6 +189,16 @@ function DetailTabs({ ctl }: { ctl: NotesController }) {
           { value: "history", label: "History" },
         ]}
       />
+      <DetailMenu ctl={ctl} />
+      <Button
+        size="sm"
+        disabled={!ctl.canEdit || !ctl.dirty || ctl.busy}
+        loading={ctl.busy}
+        leading={<Icon name="check" size={14} />}
+        onClick={() => void ctl.saveNote()}
+      >
+        Save
+      </Button>
     </div>
   );
 }

@@ -17,6 +17,8 @@ export interface SelectProps<T extends string> {
   readonly placeholder?: string;
   readonly className?: string;
   readonly id?: string;
+  /** `bare` renders a quiet inline trigger instead of a bordered form control. */
+  readonly variant?: "default" | "bare";
 }
 
 /**
@@ -32,6 +34,7 @@ export function Select<T extends string>({
   placeholder,
   className,
   id,
+  variant = "default",
 }: SelectProps<T>) {
   const generatedId = useId();
   const buttonId = id ?? generatedId;
@@ -88,8 +91,13 @@ export function Select<T extends string>({
             }
           }}
           className={cn(
-            "flex h-9 w-full items-center gap-2 rounded-[8px] border bg-surface-3 px-2.5 text-left text-[13px] text-text transition",
-            open ? "border-accent" : "border-border hover:border-text-muted/40",
+            "flex items-center gap-2 rounded-[8px] text-left text-[13px] transition",
+            variant === "bare"
+              ? "h-7 border border-transparent px-1.5 text-text-muted hover:bg-surface-3 hover:text-text"
+              : cn(
+                  "h-9 w-full border bg-surface-3 px-2.5 text-text",
+                  open ? "border-accent" : "border-border hover:border-text-muted/40",
+                ),
           )}
         >
           {selected?.leading !== undefined && (

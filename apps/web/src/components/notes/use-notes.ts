@@ -87,6 +87,16 @@ function nothingToSettle(): void {
   // Until a write registers its cleanup there is nothing to put away.
 }
 
+/** Whether two editor drafts hold the same content. */
+function sameDraft(a: NoteDraft, b: NoteDraft): boolean {
+  return (
+    a.title === b.title &&
+    a.body === b.body &&
+    a.folderId === b.folderId &&
+    a.tagIds.join("\u0000") === b.tagIds.join("\u0000")
+  );
+}
+
 /** Runs a write, blocks a second one meanwhile, and keeps its failure for the banner. */
 function useRunner() {
   const [busy, setBusy] = useState(false);
@@ -262,30 +272,29 @@ export function useNotes(props: NotesProps) {
     state.setNoteId(data.visible[0]?.id);
   }, [visibleKey]);
 
-  // Seed the editor draft whenever a different note loads.
-  const detailId = data.detail?.id;
-  // biome-ignore lint/correctness/useExhaustiveDependencies: reseed only when the open note changes
+  // Seed the editor from the server when a different note loads, and reload it
+  // when the server revision changes — unless there are unsaved local edits.
+  const detailKey =
+    data.detail === undefined ? undefined : `${data.detail.id}:${data.detail.revision}`;
+  const seeded = useRef<{ key: string; snapshot: NoteDraft } | null>(null);
+  // biome-ignore lint/correctness/useExhaustiveDependencies: reload only when the server key changes
   useEffect(() => {
-    if (data.detail === undefined) return;
-    state.setDraft({
-      title: data.detail.title,
-      body: data.detail.body,
-      folderId: data.detail.folderId,
-      tagIds: [...data.detail.tagIds],
-    });
-    state.setTab("edit");
-  }, [detailId]);
-
-  const reloadDraft = () => {
     const detail = data.detail;
-    if (detail === undefined) return;
-    state.setDraft({
+    if (detail === undefined || detailKey === undefined) return;
+    const snapshot: NoteDraft = {
       title: detail.title,
       body: detail.body,
       folderId: detail.folderId,
       tagIds: [...detail.tagIds],
-    });
-  };
+    };
+    const previous = seeded.current;
+    const hasLocalEdits =
+      previous !== null && state.draft !== undefined && !sameDraft(state.draft, previous.snapshot);
+    seeded.current = { key: detailKey, snapshot };
+    if (previous !== null && hasLocalEdits) return;
+    state.setDraft(snapshot);
+    state.setTab("edit");
+  }, [detailKey]);
 
   const createNote = async (): Promise<void> => {
     if (!data.canCreate) return;
@@ -406,12 +415,23 @@ export function useNotes(props: NotesProps) {
     });
   };
 
+  const dirty =
+    state.draft !== undefined &&
+    data.detail !== undefined &&
+    !sameDraft(state.draft, {
+      title: data.detail.title,
+      body: data.detail.body,
+      folderId: data.detail.folderId,
+      tagIds: [...data.detail.tagIds],
+    });
+
   return {
     ...props,
     ...state,
     ...data,
     ...runner,
     mutations,
+    dirty,
     createNote,
     saveNote,
     archiveNote,
@@ -424,7 +444,6 @@ export function useNotes(props: NotesProps) {
     moveFolder,
     createTag,
     updateTag,
-    reloadDraft,
     clearError: () => {
       runner.setError(undefined);
     },

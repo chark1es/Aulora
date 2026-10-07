@@ -30,6 +30,8 @@ const ICONS = {
   copy: "content-copy-outline-rounded",
   label: "label-outline-rounded",
   checklist: "checklist-rounded",
+  "list-bulleted": "format-list-bulleted-rounded",
+  "list-numbered": "format-list-numbered-rounded",
   history: "history-rounded",
   "arrow-up": "arrow-upward-rounded",
   at: "alternate-email-rounded",

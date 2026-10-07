@@ -1,7 +1,7 @@
-import { Button, cn, Icon, Select, type SelectOption } from "@aulora/ui-web";
+import { cn, Icon, Select, type SelectOption } from "@aulora/ui-web";
 import { useLayoutEffect, useRef, useState } from "react";
 import { NotePreview } from "./NotePreview";
-import { flattenFolders, type NoteFolder, relativeTime } from "./types";
+import { flattenFolders, type NoteFolder } from "./types";
 import type { NotesController } from "./use-notes";
 
 interface Edit {
@@ -28,7 +28,7 @@ function ToolButton({
       title={label}
       disabled={disabled}
       onClick={onClick}
-      className="flex h-7 min-w-7 items-center justify-center rounded-[7px] px-1.5 text-[13px] text-text-muted transition hover:bg-surface-3 hover:text-text focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent disabled:pointer-events-none disabled:opacity-40"
+      className="flex h-8 w-8 items-center justify-center rounded-[8px] text-[14px] text-text-muted transition hover:bg-surface-3 hover:text-text focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent disabled:pointer-events-none disabled:opacity-40"
     >
       {children}
     </button>
@@ -45,7 +45,6 @@ export function NoteEditor({ ctl }: { ctl: NotesController }) {
   const bodyRef = useRef<HTMLTextAreaElement | null>(null);
   const pendingSelection = useRef<[number, number] | null>(null);
   const [preview, setPreview] = useState(false);
-  const now = Date.now();
 
   useLayoutEffect(() => {
     const selection = pendingSelection.current;
@@ -111,12 +110,6 @@ export function NoteEditor({ ctl }: { ctl: NotesController }) {
     });
   };
 
-  const dirty =
-    current.title !== detail.title ||
-    current.body !== detail.body ||
-    current.folderId !== detail.folderId ||
-    current.tagIds.join("\u0000") !== detail.tagIds.join("\u0000");
-
   const options: readonly SelectOption<string>[] = [
     { value: "", label: "No folder" },
     ...flattenFolders(ctl.folders).map(({ folder, depth }) => ({
@@ -139,11 +132,11 @@ export function NoteEditor({ ctl }: { ctl: NotesController }) {
         className="w-full border-none bg-transparent text-2xl font-semibold tracking-tight text-text placeholder:text-text-muted focus-visible:outline-none disabled:opacity-60"
       />
 
-      <div className="flex flex-wrap items-center gap-x-4 gap-y-2 rounded-[10px] border border-border bg-surface-1 px-3 py-2">
-        <div className="flex items-center gap-2">
-          <Icon name="grid" size={15} className="shrink-0 text-text-muted" />
+      <div className="flex flex-wrap items-center gap-x-3 gap-y-2">
+        <div className="flex items-center gap-1">
+          <Icon name="grid" size={14} className="shrink-0 text-text-muted" />
           <Select
-            className="w-[180px]"
+            variant="bare"
             value={current.folderId ?? ""}
             options={options}
             onChange={(value) => {
@@ -154,9 +147,8 @@ export function NoteEditor({ ctl }: { ctl: NotesController }) {
             }}
           />
         </div>
-        <span className="hidden h-4 w-px bg-border sm:block" />
+        <span className="hidden h-3.5 w-px bg-border sm:block" />
         <div className="flex min-w-0 flex-1 flex-wrap items-center gap-1.5">
-          <Icon name="label" size={15} className="shrink-0 text-text-muted" />
           {ctl.tags.map((tag) => {
             const active = current.tagIds.includes(tag.id);
             return (
@@ -169,10 +161,10 @@ export function NoteEditor({ ctl }: { ctl: NotesController }) {
                   toggleTag(tag.id);
                 }}
                 className={cn(
-                  "inline-flex items-center gap-1.5 rounded-full border px-2.5 py-0.5 text-[12px] font-medium transition disabled:opacity-60",
+                  "inline-flex items-center gap-1.5 rounded-full px-2 py-0.5 text-[12px] transition disabled:opacity-60",
                   active
-                    ? "border-accent/50 bg-accent-soft text-text"
-                    : "border-border bg-surface-2 text-text-muted hover:text-text",
+                    ? "bg-accent-soft font-medium text-accent"
+                    : "text-text-muted hover:bg-surface-3 hover:text-text",
                 )}
               >
                 <span className="h-2 w-2 rounded-full" style={{ backgroundColor: tag.color }} />
@@ -180,73 +172,23 @@ export function NoteEditor({ ctl }: { ctl: NotesController }) {
               </button>
             );
           })}
-          {ctl.tags.length === 0 && (
-            <span className="text-[12px] text-text-muted">No tags yet.</span>
-          )}
           {ctl.canEdit && (
             <button
               type="button"
+              aria-label="New tag"
+              title="New tag"
               onClick={() => {
                 ctl.setTagDialog({ mode: "new" });
               }}
-              className="inline-flex items-center gap-1 rounded-full border border-dashed border-border px-2.5 py-0.5 text-[12px] text-text-muted transition hover:border-accent hover:text-text"
+              className="flex h-6 w-6 items-center justify-center rounded-full text-text-muted transition hover:bg-surface-3 hover:text-text focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent"
             >
-              <Icon name="plus" size={12} />
-              New tag
+              <Icon name="plus" size={13} />
             </button>
           )}
+          {ctl.tags.length === 0 && !ctl.canEdit && (
+            <span className="text-[12px] text-text-muted">No tags</span>
+          )}
         </div>
-      </div>
-
-      <div className="flex flex-wrap items-center gap-2">
-        {!preview && (
-          <div className="inline-flex items-center rounded-[10px] border border-border bg-surface-2 p-0.5">
-            <ToolButton
-              label="Bold"
-              disabled={!ctl.canEdit}
-              onClick={() => wrap("**", "**", "bold")}
-            >
-              <span className="font-bold">B</span>
-            </ToolButton>
-            <ToolButton
-              label="Italic"
-              disabled={!ctl.canEdit}
-              onClick={() => wrap("*", "*", "italic")}
-            >
-              <span className="font-serif italic">I</span>
-            </ToolButton>
-            <ToolButton
-              label="Heading"
-              disabled={!ctl.canEdit}
-              onClick={() => prefixLines("# ", false)}
-            >
-              <span className="font-semibold">H</span>
-            </ToolButton>
-            <ToolDivider />
-            <ToolButton
-              label="Bullet list"
-              disabled={!ctl.canEdit}
-              onClick={() => prefixLines("- ", false)}
-            >
-              <span className="font-semibold">•</span>
-            </ToolButton>
-            <ToolButton
-              label="Ordered list"
-              disabled={!ctl.canEdit}
-              onClick={() => prefixLines("1. ", true)}
-            >
-              <span className="font-semibold">1.</span>
-            </ToolButton>
-            <ToolDivider />
-            <ToolButton label="Code" disabled={!ctl.canEdit} onClick={() => wrap("`", "`", "code")}>
-              <Icon name="code" size={15} />
-            </ToolButton>
-            <ToolButton label="Link" disabled={!ctl.canEdit} onClick={insertLink}>
-              <Icon name="link" size={15} />
-            </ToolButton>
-          </div>
-        )}
-        <span className="flex-1" />
         <button
           type="button"
           aria-pressed={preview}
@@ -254,7 +196,7 @@ export function NoteEditor({ ctl }: { ctl: NotesController }) {
             setPreview((value) => !value);
           }}
           className={cn(
-            "inline-flex h-8 items-center gap-1.5 rounded-[10px] border px-3 text-[12.5px] font-medium transition focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent",
+            "inline-flex h-8 shrink-0 items-center gap-1.5 rounded-[10px] border px-3 text-[12.5px] font-medium transition focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent",
             preview
               ? "border-accent/40 bg-accent-soft text-accent"
               : "border-border bg-surface-2 text-text-muted hover:text-text",
@@ -264,6 +206,50 @@ export function NoteEditor({ ctl }: { ctl: NotesController }) {
           {preview ? "Write" : "Preview"}
         </button>
       </div>
+
+      {!preview && (
+        <div className="inline-flex items-center self-start rounded-[11px] border border-border bg-surface-2 p-0.5">
+          <ToolButton label="Bold" disabled={!ctl.canEdit} onClick={() => wrap("**", "**", "bold")}>
+            <span className="font-bold">B</span>
+          </ToolButton>
+          <ToolButton
+            label="Italic"
+            disabled={!ctl.canEdit}
+            onClick={() => wrap("*", "*", "italic")}
+          >
+            <span className="font-serif italic">I</span>
+          </ToolButton>
+          <ToolButton
+            label="Heading"
+            disabled={!ctl.canEdit}
+            onClick={() => prefixLines("# ", false)}
+          >
+            <span className="font-semibold">H</span>
+          </ToolButton>
+          <ToolDivider />
+          <ToolButton
+            label="Bullet list"
+            disabled={!ctl.canEdit}
+            onClick={() => prefixLines("- ", false)}
+          >
+            <Icon name="list-bulleted" size={16} />
+          </ToolButton>
+          <ToolButton
+            label="Ordered list"
+            disabled={!ctl.canEdit}
+            onClick={() => prefixLines("1. ", true)}
+          >
+            <Icon name="list-numbered" size={16} />
+          </ToolButton>
+          <ToolDivider />
+          <ToolButton label="Code" disabled={!ctl.canEdit} onClick={() => wrap("`", "`", "code")}>
+            <Icon name="code" size={16} />
+          </ToolButton>
+          <ToolButton label="Link" disabled={!ctl.canEdit} onClick={insertLink}>
+            <Icon name="link" size={16} />
+          </ToolButton>
+        </div>
+      )}
 
       <div className="min-h-0 flex-1 overflow-y-auto">
         {preview ? (
@@ -283,55 +269,11 @@ export function NoteEditor({ ctl }: { ctl: NotesController }) {
         )}
       </div>
 
-      <p className="text-[11px] text-text-muted">
-        Updated {relativeTime(detail.updatedAt, now)} · revision {detail.revision}
-      </p>
-
       {ctl.error !== undefined && (
         <p role="alert" className="text-sm text-danger">
           {ctl.error}
         </p>
       )}
-
-      <div className="flex flex-wrap items-center gap-2 border-t border-border pt-3">
-        <Button
-          onClick={() => void ctl.saveNote()}
-          disabled={!ctl.canEdit || !dirty || ctl.busy}
-          loading={ctl.busy}
-          leading={<Icon name="check" size={14} />}
-        >
-          Save
-        </Button>
-        <Button
-          variant="secondary"
-          disabled={!dirty || ctl.busy}
-          leading={<Icon name="history" size={14} />}
-          onClick={() => {
-            ctl.reloadDraft();
-          }}
-        >
-          Reload
-        </Button>
-        <span className="flex-1" />
-        <Button
-          variant="secondary"
-          disabled={!ctl.canEdit || ctl.busy}
-          leading={<Icon name={detail.archived ? "unarchive" : "archive"} size={14} />}
-          onClick={() => void ctl.archiveNote(detail, !detail.archived)}
-        >
-          {detail.archived ? "Restore" : "Archive"}
-        </Button>
-        <Button
-          variant="danger"
-          disabled={!ctl.canDelete || ctl.busy}
-          leading={<Icon name="trash" size={14} />}
-          onClick={() => {
-            ctl.requestDeleteNote(detail);
-          }}
-        >
-          Delete
-        </Button>
-      </div>
     </div>
   );
 }
