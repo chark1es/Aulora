@@ -18,6 +18,7 @@ export {
 export { blurhashDecode, blurhashEncode } from "./blurhash";
 export * from "./chat/index";
 export * from "./kanban.js";
+export * from "./notes/index.js";
 export {
   type EnqueueInput,
   type FlushOptions,
