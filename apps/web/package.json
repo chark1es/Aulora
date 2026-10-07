@@ -1,6 +1,6 @@
 {
   "name": "@aulora/web",
-  "version": "1.0.0",
+  "version": "1.0.1",
   "private": true,
   "description": "Aulora web client: Vite + React SPA with TanStack Router, Tailwind v3 and Convex + Better Auth.",
   "type": "module",

@@ -1,6 +1,6 @@
 {
   "name": "@aulora/ui-native",
-  "version": "1.0.0",
+  "version": "1.0.1",
   "private": true,
   "description": "Aulora React Native design-system primitives mirroring @aulora/ui-web, styled with NativeWind and the shared token preset.",
   "type": "module",

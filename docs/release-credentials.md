@@ -35,6 +35,35 @@ Open [Google Play Console](https://play.google.com/console/) for Play distributi
 
 With Play App Signing, Google signs installed releases using the **app signing key**; your **upload key** signs submissions. For directly distributed APKs, choose a stable release signing key and preserve it for future updates. If you want direct APKs and Play installs to update one another, decide their shared signing strategy before the first release. A public `.pem` signing certificate does not contain the private signing key. [Android signing and keystore instructions](https://developer.android.com/studio/publish/app-signing)
 
+## Optional Google Play upload automation
+
+The release workflow can upload a signed AAB to a Play track when its manual
+`play-track` input is set. That uses a service account instead of your Google
+account password:
+
+1. In [Google Cloud Console](https://console.cloud.google.com/), select or create
+   a project and enable the **Google Play Android Developer API**.
+2. Create a **service account** (**IAM & Admin > Service accounts**), then add a
+   **JSON key** (**Keys > Add key > Create new key > JSON**). Apple's one-download
+   rule does not apply, but treat it as a private key.
+3. In [Play Console > Users and permissions](https://play.google.com/console/),
+   invite the service account's email and grant release access to the Aulora app.
+   Grant at least **Release to testing tracks** and **Manage testing tracks**, or
+   **Admin** for all tracks and production.
+4. Store the JSON as the Actions secret `GOOGLE_PLAY_SERVICE_ACCOUNT_JSON` in the
+   `release-signing` environment. Keep a local copy under
+   `.secrets/release/android/` only if you need it:
+
+   ```sh
+   gh secret set GOOGLE_PLAY_SERVICE_ACCOUNT_JSON --env release-signing \
+     --repo chark1es/Aulora < play-service-account.json
+   ```
+
+The account is not needed to build the bundle. Track identifiers are
+`internal`, `alpha` (closed testing), `beta` (open testing), and `production`;
+a custom closed-testing track shows its identifier in Play Console. See
+[GitHub Actions](github-actions.md) for the workflow input.
+
 ## Android notifications through Firebase
 
 1. Open [Firebase Console](https://console.firebase.google.com/), select/create the project, then **Project settings > General > Your apps**. Register Android package `dev.spwnd.aulora` and download `google-services.json`. Store it at `.secrets/release/android/google-services.json` initially. This is **client configuration with public identifiers**, not a private service-account key; it is bundled in the Android app. We can still keep this supplied file out of Git. Configure its path and native Gradle integration when wiring builds. [Expo Firebase setup](https://docs.expo.dev/push-notifications/fcm-credentials/)

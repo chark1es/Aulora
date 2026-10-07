@@ -58,7 +58,7 @@ For a candidate, run [Actions, Release](https://github.com/chark1es/Aulora/actio
 - [ ] Verify push permissions, foreground/background/locked-device alerts, denied permissions, notification taps, logout, and server switching.
 - [ ] If offering an official relay, publish its address and onboarding/access process and test it. A configured local relay is not a public managed service.
 - [ ] Publish the privacy-policy URL, support URL, required account-deletion flow, store screenshots/descriptions, and accurate store data disclosures.
-- [ ] Upload to App Store Connect and Google Play and obtain approval separately. The release workflow uploads GitHub assets, not store submissions.
+- [ ] Upload to App Store Connect and Google Play and obtain approval separately. TestFlight uploads use the mobile testing workflow; Google Play uploads can run from the release workflow's optional `play-track` input. Neither replaces store review.
 
 ## Final artifacts and announcement
 

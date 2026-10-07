@@ -92,6 +92,9 @@ jobs:
       - uses: gradle/actions/setup-gradle@ed408507eac070d1f99cc633dbcf757c94c7933a # v4.4.3
         with:
           cache-read-only: ${{ github.ref != 'refs/heads/main' }}
+          # Cache downloaded dependencies, never Gradle's build cache, so task
+          # outputs cannot leak between CI and release builds.
+          gradle-home-cache-excludes: caches/build-cache-1
       - name: Compile debug APK without release secrets
         working-directory: apps/mobile/android
         run: ./gradlew :app:assembleDebug --no-daemon -PreactNativeArchitectures=arm64-v8a
@@ -110,6 +113,13 @@ jobs:
       - uses: ./.github/actions/setup-js
       - name: Verify portable podspec checksums
         run: ruby scripts/ci/podspec-checksums.test.rb
+      - name: Cache CocoaPods
+        uses: actions/cache@v4
+        with:
+          path: ~/Library/Caches/CocoaPods
+          key: cocoapods-${{ runner.os }}-${{ runner.arch }}-${{ hashFiles('apps/mobile/ios/Podfile.lock') }}
+          restore-keys: |
+            cocoapods-${{ runner.os }}-${{ runner.arch }}-
       - name: Install CocoaPods dependencies
         working-directory: apps/mobile/ios
         run: pod install --deployment

@@ -1,6 +1,6 @@
 {
   "name": "aulora",
-  "version": "1.0.0",
+  "version": "1.0.1",
   "private": true,
   "description": "Aulora: self-hosted team chat with browser, desktop, and mobile clients.",
   "license": "PolyForm-Noncommercial-1.0.0",
@@ -22,7 +22,7 @@
     "docs:dev": "bun run --cwd apps/docs dev",
     "docs:check": "bun run docs:build && node scripts/check-docs.mjs",
     "test:infra": "node --test infra/push-relay/test/*.test.mjs infra/docker/backup/test/*.test.mjs infra/docker/install/test/*.test.mjs && bun test infra/docker/update/*.test.mjs",
-    "test:release": "bun test scripts/ci/*.test.mjs apps/desktop/scripts/release-version.test.mjs apps/desktop/scripts/release-manifest.test.mjs",
+    "test:release": "bun test scripts/ci/*.test.mjs apps/desktop/scripts/release-version.test.mjs apps/desktop/scripts/release-manifest.test.mjs && python3 scripts/ci/play-upload.test.py",
     "release:check": "node scripts/check-release.mjs",
     "release:version": "node scripts/set-version.mjs",
     "notices": "node scripts/legal-notices.mjs"

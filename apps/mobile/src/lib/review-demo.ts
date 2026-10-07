@@ -19,6 +19,14 @@ export function isReviewDemoAddress(input: string): boolean {
   return tryNormalizeServerUrl(input) === `https://${REVIEW_DEMO_ADDRESS}`;
 }
 
+/**
+ * The offline demo opens from the reserved address on a fresh install, on iOS
+ * and Android alike. Saving any real server profile disables the shortcut.
+ */
+export function shouldOpenReviewDemo(savedProfileCount: number, input: string): boolean {
+  return savedProfileCount === 0 && isReviewDemoAddress(input);
+}
+
 export const REVIEW_USER_ID = "me";
 export const REVIEW_MEMBERS = [
   { userId: REVIEW_USER_ID, displayName: "Alex Rivera" },

@@ -9,7 +9,7 @@ Current contributor and maintainer guides:
 - [Release checklist](releasing.md)
 - [Release notes draft](release-notes-v1.md)
 - [Android and TestFlight testing](mobile-testing.md)
-- [Offline Apple review demo](apple-review-demo.md)
+- [Offline review demo](review-demo.md)
 - [App Store review notes](app-review-notes.md)
 - [GitHub Actions builds and releases](github-actions.md)
 - [CLA bot tracking and maintenance](cla-bot.md)

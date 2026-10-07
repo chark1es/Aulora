@@ -4,7 +4,7 @@ Use the signed files from the same published release. The [Prepare mobile testin
 
 ## Android
 
-Testers supply their own server address. There is no official test server. Apple reviewers have a separate [offline iOS demo](apple-review-demo.md), opened by entering a reserved server address before a server profile is saved.
+Testers supply their own server address. There is no official test server. Store reviewers on iOS and Android can open a separate [offline demo](review-demo.md) by entering a reserved server address before a server profile is saved.
 
 Download `Aulora_1.0.0_android.apk` from [v1.0.0](https://github.com/chark1es/Aulora/releases/tag/v1.0.0). Permit installation from your browser or file manager when Android prompts, then open Aulora. For an attached device with Android platform tools, run:
 
@@ -12,7 +12,7 @@ Download `Aulora_1.0.0_android.apk` from [v1.0.0](https://github.com/chark1es/Au
 adb install -r Aulora_1.0.0_android.apk
 ```
 
-Use `Aulora_1.0.0_android.aab` for a Google Play internal testing track after creating the app in Play Console and configuring Play App Signing. An AAB cannot be installed directly. Preserve the release keystore so future APKs can update existing installations.
+Use `Aulora_1.0.0_android.aab` for a Google Play testing track after creating the app in Play Console and configuring Play App Signing. The release workflow can also upload the signed AAB directly when its manual `play-track` input is set; see [GitHub Actions](github-actions.md). An AAB cannot be installed directly. Preserve the release keystore so future APKs can update existing installations.
 
 ## TestFlight
 

@@ -15,6 +15,12 @@ on:
         description: Release notes for a manual release
         type: string
         default: ''
+      play-track:
+        description: >-
+          Google Play track for the signed AAB (alpha is closed testing,
+          internal, beta, production). Empty skips the upload.
+        type: string
+        default: ''
 
 permissions:
   contents: read
@@ -65,6 +71,8 @@ jobs:
     with:
       version: ${{ needs.plan.outputs.version }}
       build-number: ${{ format('{0}', github.run_number) }}
+      play-track: ${{ github.event_name == 'push' && vars.PLAY_TRACK || inputs.play-track }}
+      release-notes: ${{ inputs.notes }}
 
   web:
     name: Web and documentation release
