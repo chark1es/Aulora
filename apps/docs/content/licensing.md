@@ -6,7 +6,7 @@ Aulora is free for the personal and noncommercial purposes defined in [LICENSE](
 
 The licensor shares an AULORA2 key after a paid recurring invoice. The instance administrator pastes it into **Instance administration → License**. The server verifies it over HTTPS with `https://aulora-licenses.spwnd.dev` and refreshes every 30 minutes. Signed results are bound to the key and installation and last at most one hour. The panel shows monthly active users and report delivery. Billing is initially disabled until Stripe is configured; contact [cnguyen@spwnd.dev](mailto:cnguyen@spwnd.dev) to arrange a subscription.
 
-Activity records are created only for an activated activity-billed license. The panel displays provisional counts during the month and final reports after it ends. See [reporting privacy](legal/COMMERCIAL.md#reporting-privacy) for the data sent to the authority and [privacy](privacy.md) for other server data flows.
+Activity records are created only for an activated activity-billed license. The panel displays provisional counts during the month and final reports after it ends. See [validation and privacy](legal/COMMERCIAL.md#validation-and-privacy) for the data sent to the authority and [privacy](privacy.md) for other server data flows.
 
 ## Expiration and outages
 

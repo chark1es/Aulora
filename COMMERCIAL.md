@@ -4,7 +4,7 @@ Personal and eligible noncommercial use is free under [LICENSE](LICENSE). Commer
 
 ## Monthly active-user pricing
 
-Company subscriptions cost **$1 USD per monthly active user**. Verified nonprofits may choose an optional subscription at **$0.50 per monthly active user**; a nonprofit tag alone does not verify eligibility. Annual plans, lifetime licenses, and one-time purchases are unavailable. There is no ongoing minimum activity charge. Taxes are additional where applicable.
+Company subscriptions cost **$1 USD per monthly active user**. Verified nonprofits may choose an optional subscription at **$0.50 per monthly active user**. Annual plans, lifetime licenses, and one-time purchases are unavailable. There is no ongoing minimum activity charge. Taxes are additional where applicable.
 
 An active user is a distinct authenticated workspace member who logs in, has an authenticated presence heartbeat, or successfully sends a message at least once during a UTC calendar month while the license is activated. Administrators count when active. Repeated events, devices, and workspaces do not count the same account again in that installation during that month. Registered members with no activity in the month cost $0. Activity before activation is excluded.
 
@@ -26,12 +26,20 @@ An active paid subscription grants the subscribing company permission to operate
 
 Forking, renaming, modifying, building from source, or contributing to Aulora does not remove the purchase requirement. Enterprise customers must keep a paid subscription while commercially operating an upstream or forked version. They must preserve and operate the license-key interface, server validation, activation and expiration handling, active-user instrumentation, reports, and billing integration. They must retain license and copyright notices. They must not remove, bypass, disable, stub out, hard-code success for, falsify, or redirect these features to avoid validation, reporting, or payment.
 
-License and reporting credentials must remain confidential. The company is responsible for accurate reports and sufficient connectivity to deliver them. Expired, suspended, or revoked keys do not authorize continued commercial operation. Ending a subscription does not erase outstanding usage charges or the duty to deliver final reports. A displayed key or status does not grant rights beyond the commercial agreement.
+License and reporting credentials must remain confidential. The company is responsible for accurate reports and sufficient connectivity to deliver them. Expired, suspended, or revoked keys do not authorize continued commercial operation. Ending a subscription does not erase outstanding usage charges or the duty to deliver final reports. A displayed key or status does not grant rights beyond the commercial agreement. The contributor agreement does not grant rights to operate Aulora commercially.
 
-## Reporting privacy
+## Noncommercial use and contributors
 
-Validation transmits the key, installation ID, member count, and a nonce. Activity reports send the license ID, installation ID, UTC month, aggregate active-user count, and final/provisional status. They send no user IDs, names, emails, message contents, or individual activity events. Member identifiers used for local deduplication stay in the company's database and are removed after the authority acknowledges the final report.
+The permitted personal and noncommercial uses and organizations in [LICENSE](LICENSE) remain available without purchase. A nonprofit tag does not itself verify discount eligibility. Contributors use the separate [Contributor License Agreement](CLA.md), retain ownership of their original contributions, and grant the rights needed for project distribution. Submitting a contribution does not require purchasing a commercial subscription. Operating a company deployment still does, including deployments run by a contributor's employer.
 
-Activity tracking starts only after successful activation of an activity-billed license. Pending reports and their protected credentials are retained so final reports can still be delivered after expiration or local key removal. License status does not delete company data or shut down access to existing messages. See the [licensing guide](apps/docs/content/licensing.md#activate-and-view-usage) for activation, validation leases, and outage behavior.
+## Validation and privacy
+
+The instance validates its key over HTTPS with `https://aulora-licenses.spwnd.dev`. The signed response is bound to the key and installation and lasts at most one hour; refresh runs every 30 minutes. Validation transmits the key, installation ID, member count, and a nonce. Activity reports send the license ID, installation ID, UTC month, aggregate active-user count, and final/provisional status. They send no user IDs, names, emails, message contents, or individual activity events. Member identifiers used for local deduplication stay in the company's database and are removed after the authority acknowledges the final report.
+
+Activity tracking starts only after successful activation of an activity-billed license. A validation outage cannot extend the signed lease. Pending reports and their protected credentials are retained so final reports can still be delivered after expiration or local key removal. Revocation denies new validations; a previously signed lease can last up to one hour. The license status does not delete company data or shut down access to existing messages. Continuing commercial operation still requires the rights granted here.
 
 Third-party software retains its own licenses. See [THIRD_PARTY_NOTICES.md](THIRD_PARTY_NOTICES.md). Historical AULORA1 checksum keys do not establish subscription payment or authorize commercial operation.
+
+## Pricing comparison
+
+Aulora's monthly price is below the published paid Slack Pro and Zulip self-hosted Basic rates researched on September 30, 2026. Free alternatives exist, and quote-based enterprise plans cannot be compared without a quote. See the [pricing research](docs/archive/commercial-pricing-research.md). Aulora offers monthly subscriptions only.
