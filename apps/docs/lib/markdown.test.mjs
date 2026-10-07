@@ -9,9 +9,9 @@ test("escapeHtml neutralizes markup", () => {
   );
 });
 
-test("rewriteLink maps .md to .html and leaves external links alone", () => {
-  assert.equal(rewriteLink("self-hosting.md"), "self-hosting.html");
-  assert.equal(rewriteLink("./admin.md#backups"), "admin.html#backups");
+test("rewriteLink strips .md for clean URLs and leaves external links alone", () => {
+  assert.equal(rewriteLink("self-hosting.md"), "self-hosting");
+  assert.equal(rewriteLink("./admin.md#backups"), "admin#backups");
   assert.equal(rewriteLink("https://example.com/x.md"), "https://example.com/x.md");
   assert.equal(rewriteLink("#section"), "#section");
 });
@@ -39,9 +39,9 @@ test("renderMarkdown renders fenced code, lists and blockquotes", () => {
   assert.match(html, /<ol><li>first<\/li><li>second<\/li><\/ol>/);
 });
 
-test("renderMarkdown links .md docs to .html", () => {
+test("renderMarkdown links .md docs to clean URLs", () => {
   const { html } = renderMarkdown("See [self-hosting](self-hosting.md).");
-  assert.match(html, /<a href="self-hosting.html">self-hosting<\/a>/);
+  assert.match(html, /<a href="self-hosting">self-hosting<\/a>/);
 });
 
 test("tables render readable headers, inline formatting, links and escaped cells", () => {
@@ -50,7 +50,7 @@ test("tables render readable headers, inline formatting, links and escaped cells
   );
   assert.match(html, /<th scope="col">Platform<\/th>/);
   assert.match(html, /<td><strong>Web<\/strong><\/td>/);
-  assert.match(html, /href="getting-started.html"/);
+  assert.match(html, /href="getting-started"/);
   assert.match(html, /<td>A\|B<\/td>/);
   assert.match(html, /&lt;script&gt;/);
   assert.ok(!html.includes("<script>"));
