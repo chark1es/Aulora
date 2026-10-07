@@ -1,13 +1,6 @@
 import { Button, cn, Icon, IconButton } from "@aulora/ui-web";
 import { type ReactNode, useState } from "react";
-import {
-  flattenFolders,
-  folderPath,
-  type NoteFolder,
-  type NoteSummary,
-  relativeTime,
-  UNFILED,
-} from "./types";
+import { flattenFolders, type NoteFolder, type NoteSummary, relativeTime, UNFILED } from "./types";
 import type { NotesController } from "./use-notes";
 
 const rowClass = (active: boolean) =>
@@ -186,17 +179,7 @@ function TagRow({
   );
 }
 
-function NoteRow({
-  ctl,
-  note,
-  now,
-  onOpen,
-}: {
-  ctl: NotesController;
-  note: NoteSummary;
-  now: number;
-  onOpen: (id: NoteSummary["id"]) => void;
-}) {
+function NoteRow({ ctl, note, now }: { ctl: NotesController; note: NoteSummary; now: number }) {
   const active = ctl.noteId === note.id;
   const snippet = ctl.hitById.get(note.id)?.snippet ?? "";
   const tags = note.tagIds
@@ -209,7 +192,7 @@ function NoteRow({
         aria-current={active ? "page" : undefined}
         aria-label={`Open note ${note.title}`}
         onClick={() => {
-          onOpen(note.id);
+          ctl.setNoteId(note.id);
         }}
         className={cn(
           "flex w-full flex-col gap-1 rounded-[10px] border px-3 py-2 text-left transition",
@@ -251,20 +234,25 @@ function NoteRow({
   );
 }
 
+/** The folder path from the root to the selected folder, for the breadcrumb. */
+function folderPath(folders: readonly NoteFolder[], folderId: NotesController["folderId"]) {
+  if (folderId === undefined || folderId === UNFILED) return [];
+  const byId = new Map(folders.map((folder) => [folder.id, folder]));
+  const path: NoteFolder[] = [];
+  let current = byId.get(folderId);
+  while (current !== undefined) {
+    path.unshift(current);
+    current = current.parentId !== null ? byId.get(current.parentId) : undefined;
+  }
+  return path;
+}
+
 /**
  * The single Notes navigation column: a breadcrumb scope, search, tag filters
  * and the note list. Folders and tags are managed from small dropdown menus
  * rather than a standing tree, so the view stays to one column.
  */
-export function NotesLibrary({
-  ctl,
-  onOpenNote,
-  onNewNote,
-}: {
-  ctl: NotesController;
-  onOpenNote: (id: NoteSummary["id"]) => void;
-  onNewNote: () => void;
-}) {
+export function NotesLibrary({ ctl }: { ctl: NotesController }) {
   const [folderMenu, setFolderMenu] = useState(false);
   const [tagMenu, setTagMenu] = useState(false);
   const now = Date.now();
@@ -308,7 +296,13 @@ export function NotesLibrary({
   }
 
   return (
-    <section className="flex min-h-0 flex-1 flex-col" aria-label="Notes list">
+    <aside
+      className={cn(
+        "min-h-0 w-full shrink-0 flex-col border-r border-border md:flex md:w-[330px]",
+        ctl.noteId !== undefined ? "hidden" : "flex",
+      )}
+      aria-label="Notes"
+    >
       <div className="relative flex flex-col gap-2 border-b border-border px-3 py-2.5">
         <div className="flex items-center gap-2">
           <label className="relative block flex-1">
@@ -332,7 +326,7 @@ export function NotesLibrary({
               size="sm"
               leading={<Icon name="plus" size={14} />}
               loading={ctl.busy}
-              onClick={() => void onNewNote()}
+              onClick={() => void ctl.createNote()}
             >
               New note
             </Button>
@@ -545,11 +539,11 @@ export function NotesLibrary({
         ) : (
           <ul className="flex flex-col gap-0.5 p-0.5">
             {ctl.visible.map((note) => (
-              <NoteRow key={note.id} ctl={ctl} note={note} now={now} onOpen={onOpenNote} />
+              <NoteRow key={note.id} ctl={ctl} note={note} now={now} />
             ))}
           </ul>
         )}
       </div>
-    </section>
+    </aside>
   );
 }

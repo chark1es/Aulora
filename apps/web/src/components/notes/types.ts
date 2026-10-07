@@ -47,22 +47,6 @@ export function flattenFolders(folders: readonly NoteFolder[]): FlatFolder[] {
   return out;
 }
 
-/** The folder path from the root to the selected folder, for breadcrumbs. */
-export function folderPath(
-  folders: readonly NoteFolder[],
-  folderId: string | null | undefined,
-): NoteFolder[] {
-  if (folderId === null || folderId === undefined || folderId === UNFILED) return [];
-  const byId = new Map<string, NoteFolder>(folders.map((folder) => [folder.id, folder]));
-  const path: NoteFolder[] = [];
-  let current = byId.get(folderId);
-  while (current !== undefined) {
-    path.unshift(current);
-    current = current.parentId !== null ? byId.get(current.parentId) : undefined;
-  }
-  return path;
-}
-
 export function failure(cause: unknown): string {
   return cause instanceof Error ? cause.message : "Could not save. Try again.";
 }

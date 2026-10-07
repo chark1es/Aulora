@@ -252,6 +252,16 @@ export function useNotes(props: NotesProps) {
   const runner = useRunner();
   const mutations = useNoteMutations();
 
+  const visibleKey = data.visible.map((note) => note.id).join(",");
+  // Keep a valid note selected as filters change; fall back to the first row.
+  // biome-ignore lint/correctness/useExhaustiveDependencies: reselect only when the visible set changes
+  useEffect(() => {
+    if (state.noteId !== undefined && data.visible.some((note) => note.id === state.noteId)) {
+      return;
+    }
+    state.setNoteId(data.visible[0]?.id);
+  }, [visibleKey]);
+
   // Seed the editor draft whenever a different note loads.
   const detailId = data.detail?.id;
   // biome-ignore lint/correctness/useExhaustiveDependencies: reseed only when the open note changes
@@ -277,11 +287,10 @@ export function useNotes(props: NotesProps) {
     });
   };
 
-  const createNote = async (): Promise<string | undefined> => {
-    if (!data.canCreate) return undefined;
+  const createNote = async (): Promise<void> => {
+    if (!data.canCreate) return;
     const folderId =
       state.folderId !== undefined && state.folderId !== UNFILED ? state.folderId : undefined;
-    let created: string | undefined;
     await runner.run(async () => {
       const id = await mutations.createNote({
         title: "Untitled note",
@@ -289,11 +298,9 @@ export function useNotes(props: NotesProps) {
         ...(folderId !== undefined ? { folderId } : {}),
         ...(state.tagId !== undefined ? { tagIds: [state.tagId] } : {}),
       });
-      created = id;
       state.setNoteId(id);
       state.setTab("edit");
     });
-    return created;
   };
 
   const saveNote = async (): Promise<void> => {
