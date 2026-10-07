@@ -3,8 +3,7 @@ import { Component, type ReactNode } from "react";
 import { NoteDialogs } from "./NoteDialogs";
 import { NoteEditor } from "./NoteEditor";
 import { NoteHistory } from "./NoteHistory";
-import { NoteList } from "./NoteList";
-import { NotesSidebar } from "./NotesSidebar";
+import { NotesLibrary } from "./NotesLibrary";
 import { type NotesController, type NotesProps, useNotes } from "./use-notes";
 
 interface BoundaryProps {
@@ -153,8 +152,7 @@ function NotesContent(props: NotesProps) {
         </div>
       ) : (
         <div className="flex min-h-0 min-w-0 flex-1">
-          <NotesSidebar ctl={ctl} />
-          <NoteList ctl={ctl} />
+          <NotesLibrary ctl={ctl} />
           <div
             className={cn("min-h-0 min-w-0 flex-1 flex-col", selected ? "flex" : "hidden md:flex")}
           >
