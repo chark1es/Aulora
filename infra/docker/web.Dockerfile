@@ -3,7 +3,8 @@
 # Builds the Aulora web SPA and serves it with nginx.
 #   - multi-stage: Bun build -> nginx (alpine)
 #   - history fallback for the TanStack Router SPA
-#   - /.well-known/ served from the `web-well-known` volume (see nginx/default.conf.template)
+#   - /.well-known/aulora.json proxied to live backend discovery
+#   - other /.well-known/ documents served from the `web-well-known` volume
 #   - /api/auth/ proxied to the Convex HTTP-actions origin for first-party cookies
 #
 # Build context is the repo root; see ../../.dockerignore.

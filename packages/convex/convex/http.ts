@@ -1,3 +1,4 @@
+import { WELL_KNOWN_PATH, type WellKnown } from "@aulora/core";
 import { httpRouter } from "convex/server";
 import { api } from "./_generated/api";
 import { httpAction } from "./_generated/server";
@@ -9,6 +10,33 @@ const http = httpRouter();
 // `set-auth-token` carries the bearer session token to cross-origin clients.
 authComponent.registerRoutes(http, createAuth, {
   cors: { allowedHeaders: [], exposedHeaders: ["set-auth-token"] },
+});
+
+// Discovery uses current workspace settings and does not depend on setup's
+// static document. Keep the response limited to the client discovery contract.
+http.route({
+  path: WELL_KNOWN_PATH,
+  method: "GET",
+  handler: httpAction(async (ctx) => {
+    const config = await ctx.runQuery(api.server.publicConfig, {});
+    const document: WellKnown = {
+      name: config.name,
+      version: config.version,
+      apiVersion: config.apiVersion,
+      convexUrl: config.convexUrl,
+      siteUrl: config.siteUrl,
+      iconSeed: config.iconSeed,
+      auth: config.auth,
+      encryption: config.encryption,
+    };
+    return new Response(JSON.stringify(document), {
+      headers: {
+        "Content-Type": "application/json",
+        "Access-Control-Allow-Origin": "*",
+        "Cache-Control": "no-store",
+      },
+    });
+  }),
 });
 
 /**

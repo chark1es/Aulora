@@ -221,10 +221,26 @@ origin to `TRUSTED_ORIGINS` in `.env` and re-run
 
 ## `/.well-known/aulora.json`
 
-`setup` writes the real per-instance document into the `web-well-known` volume
-from `server:publicConfig`. It contains only public data (name, versions, Convex
-URL, site URL, icon seed, enabled auth providers) and never a secret. It is
-gitignored and must not be committed.
+The web container proxies this endpoint to Convex HTTP actions on port 3211.
+The backend returns current workspace settings, so discovery works at the main
+web URL without a generated file and reflects branding and auth changes immediately.
+The response contains only public discovery data: name, versions, Convex URL,
+site URL, icon seed, auth providers and the encryption descriptor.
+
+`setup` also writes a static copy into `web-well-known` for deployments that
+serve discovery as a file. That copy is gitignored and must not be committed.
+Other documents, including `aulora-update.json`, still use the volume.
+
+Compose starts a short root bootstrap to assign the discovery directory, setup
+state directory and their existing output files to the image's `aulora` user,
+UID/GID 10001. It then drops to that user, removes all capabilities and prevents
+privilege escalation before running deployment or initialization. The image
+defaults to `aulora` when run directly. After building it, check volume access
+and the worker's privileges:
+
+```sh
+bash infra/docker/setup/test/volume-permissions.sh aulora-setup:local
+```
 
 ## Upgrade
 
@@ -333,8 +349,9 @@ with instructions to use the hosting provider's redeploy controls.
 - **`/instance_name` unreachable** — the backend is not healthy; check
   `docker compose logs convex-backend` and that `POSTGRES_URL` has no database
   name.
-- **Well-known 404** — run `setup`; it writes the document after a successful
-  deploy.
+- **Well-known 404** — rebuild `web` and `setup`, then redeploy the Convex
+  functions. Verify the exact discovery route reaches HTTP actions on port
+  3211. If your edge serves a static document, also verify setup completed.
 
 ## Public release operations
 

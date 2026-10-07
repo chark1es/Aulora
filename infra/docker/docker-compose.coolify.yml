@@ -275,6 +275,9 @@ services:
       context: ../..
       dockerfile: infra/docker/setup.Dockerfile
     image: aulora-setup:local
+    # The bootstrap prepares mount ownership, then drops to aulora without
+    # capabilities before deployment or workspace initialization.
+    user: "0:0"
     restart: "no"
     exclude_from_hc: true
     # Optional fallback for hosts that still provide a compose .env. Under

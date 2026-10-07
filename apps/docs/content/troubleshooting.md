@@ -33,7 +33,9 @@ Re-running setup does not reset the existing owner's password or create another 
 
 ## Discovery fails
 
-Open `https://your-host/.well-known/aulora.json`. It should return JSON, not an HTML login page or proxy error. Verify the web route and setup's well-known volume. The advertised `convexUrl` must work from the client's network, not just inside Docker.
+Open `https://your-host/.well-known/aulora.json`. It should return JSON, not an HTML login page or proxy error. The web container forwards this path to Convex HTTP actions on port 3211. Rebuild `web` and `setup` and verify the backend functions were deployed. If your edge serves a static document instead, check setup's well-known volume. The advertised `convexUrl` must work from the client's network, not just inside Docker.
+
+If setup reports `Permission denied` for `/web-well-known` or `/host/.env`, rebuild the setup image and use the updated Compose configuration. A short root bootstrap prepares output ownership, then drops to the `aulora` user without capabilities before deploying functions or initializing the workspace. Confirm its logs reach `[setup] done`.
 
 A phone's `localhost` refers to the phone. Docker service names are also unavailable outside the Compose network. Use reachable public URLs.
 

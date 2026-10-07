@@ -28,6 +28,20 @@ WELL_KNOWN_DIR="${WELL_KNOWN_DIR:-/web-well-known}"
 log() { printf '[setup] %s\n' "$*"; }
 die() { printf '[setup] ERROR: %s\n' "$*" >&2; exit 1; }
 
+# Check output mounts before changing deployment settings or creating an owner.
+mkdir -p "$WELL_KNOWN_DIR"
+[ -w "$WELL_KNOWN_DIR" ] || die "cannot write ${WELL_KNOWN_DIR}; check setup volume permissions"
+if [ -f "$WELL_KNOWN_DIR/aulora.json" ] && [ ! -w "$WELL_KNOWN_DIR/aulora.json" ]; then
+  die "cannot write ${WELL_KNOWN_DIR}/aulora.json; check setup volume permissions"
+fi
+HOST_ENV_DIR="$(dirname "$HOST_ENV_FILE")"
+if [ -d "$HOST_ENV_DIR" ]; then
+  [ -w "$HOST_ENV_DIR" ] || die "cannot write ${HOST_ENV_DIR}; check setup state permissions"
+  if [ -f "$HOST_ENV_FILE" ] && [ ! -w "$HOST_ENV_FILE" ]; then
+    die "cannot write ${HOST_ENV_FILE}; check setup state permissions"
+  fi
+fi
+
 # --- tiny .env helpers (preserve comments; never echo secret values) --------
 
 env_get() {
