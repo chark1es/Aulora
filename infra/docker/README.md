@@ -231,8 +231,12 @@ site URL, icon seed, auth providers and the encryption descriptor.
 serve discovery as a file. That copy is gitignored and must not be committed.
 Other documents, including `aulora-update.json`, still use the volume.
 
-Setup needs to write root-owned Docker volumes and the host `.env`, so its
-one-shot image runs as root. After building that image, check its volume access:
+Compose starts a short root bootstrap to assign the discovery directory, setup
+state directory and their existing output files to the image's `aulora` user,
+UID/GID 10001. It then drops to that user, removes all capabilities and prevents
+privilege escalation before running deployment or initialization. The image
+defaults to `aulora` when run directly. After building it, check volume access
+and the worker's privileges:
 
 ```sh
 bash infra/docker/setup/test/volume-permissions.sh aulora-setup:local

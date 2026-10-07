@@ -13,6 +13,20 @@ afterEach(() => {
 });
 
 describe("workspace discovery", () => {
+  it("returns default metadata before workspace initialization", async () => {
+    const t = newTest();
+    const document = await fetchWellKnown("aulora.chark1es.dev", {
+      fetchImpl: async () => await t.fetch("/.well-known/aulora.json"),
+    });
+
+    expect(document).toMatchObject({
+      name: "Aulora",
+      iconSeed: "aulora:server:default",
+      convexUrl: "https://aulora.chark1es.dev",
+      siteUrl: "https://aulora.chark1es.dev",
+    });
+  });
+
   it("connects from the main URL using the backend HTTP route", async () => {
     const t = newTest();
     await seedWorkspace(t);

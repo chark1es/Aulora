@@ -32,10 +32,14 @@ RUN bun install --frozen-lockfile
 
 COPY infra/docker/setup /app/setup
 
-RUN chmod +x /usr/local/bin/generate_key /app/setup/entrypoint.sh
+RUN chmod +x /usr/local/bin/generate_key /app/setup/entrypoint.sh /app/setup/bootstrap.sh
 
-# Setup writes root-owned named volumes and the host .env bind mount. It must
-# have access to both discovery and persisted secrets before exiting.
-USER root
+# Compose grants root only to the bootstrap, which prepares output ownership
+# and drops all privileges before running setup. Direct image use is non-root.
+RUN groupadd --system --gid 10001 aulora \
+  && useradd --system --uid 10001 --gid aulora --home-dir /app aulora \
+  && chown -R aulora:aulora /app
+USER aulora
 
-ENTRYPOINT ["/app/setup/entrypoint.sh"]
+ENTRYPOINT ["/app/setup/bootstrap.sh"]
+CMD ["/app/setup/entrypoint.sh"]
