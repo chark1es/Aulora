@@ -123,6 +123,24 @@ S3.
 `minio-init` waits for MinIO and creates the buckets idempotently on every
 `up`.
 
+## Upload size limits
+
+Two independent caps apply, and both must allow the size you want:
+
+- **Convex** enforces the authoritative per-upload cap from the admin
+  **Storage** setting (`instanceSettings.maxUploadBytes`, 25 MiB by default).
+  When no setting has been saved it falls back to the `UPLOAD_MAX_BYTES`
+  deployment env var, then to the 25 MiB default. Clients read the effective
+  value from `server.publicConfig.uploads.maxBytes`.
+- **nginx** (the `web` service) rejects request bodies larger than
+  `NGINX_CLIENT_MAX_BODY_SIZE` (default `100m`) before they reach Convex. This
+  matters when uploads go through the web origin, i.e. `CONVEX_CLOUD_ORIGIN`
+  points at `SITE_URL` rather than the Convex API host directly.
+
+If you raise the admin Storage max above `100m`, also set
+`NGINX_CLIENT_MAX_BODY_SIZE` in `.env` to match (nginx size notation, e.g.
+`250m`) and redeploy the `web` service.
+
 ## Encryption
 
 Aulora encrypts content **server-side**: structured content and files are sealed

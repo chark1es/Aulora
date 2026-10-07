@@ -221,6 +221,11 @@ services:
         CONVEX_URL: ${CONVEX_CLOUD_ORIGIN:-http://localhost:3210}
     image: aulora-web:local
     restart: unless-stopped
+    environment:
+      # nginx request-body cap for uploads proxied through this origin. Keep it
+      # at least as large as the effective max upload (the admin Storage setting
+      # or UPLOAD_MAX_BYTES). The 100m default covers the built-in 25 MiB cap.
+      NGINX_CLIENT_MAX_BODY_SIZE: ${NGINX_CLIENT_MAX_BODY_SIZE:-100m}
     ports:
       - "${WEB_PORT:-8080}:80"
     volumes:

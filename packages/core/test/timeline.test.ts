@@ -102,13 +102,13 @@ describe("buildTimeline", () => {
     expect(shape(items)).toEqual(["day", "a^$", "unread", "b^", "c$"]);
   });
 
-  it("never groups deleted messages with their neighbours", () => {
+  it("omits deleted messages and groups their surviving neighbours", () => {
     const items = buildTimeline([
       message("a", "u1", BASE),
       message("b", "u1", BASE + 1_000, { deletedAt: BASE + 5_000 }),
       message("c", "u1", BASE + 2_000),
     ]);
-    expect(shape(items)).toEqual(["day", "a^$", "b^$", "c^$"]);
+    expect(shape(items)).toEqual(["day", "a^", "c$"]);
   });
 });
 

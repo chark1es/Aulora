@@ -247,14 +247,14 @@ describe("MessageList", () => {
     expect(onDelete).toHaveBeenCalledWith(expect.objectContaining({ id: "m3" }));
   });
 
-  it("renders deleted messages as tombstones without actions", () => {
+  it("does not render deleted messages", () => {
     render(
       <MessageList
         {...listProps({ messages: [message("m1", "me", 0, { deletedAt: NOW + 1 })] })}
       />,
     );
-    expect(screen.getByText("This message was deleted.")).toBeInTheDocument();
-    expect(screen.queryByRole("button", { name: "Delete message" })).not.toBeInTheDocument();
+    expect(screen.queryByText("This message was deleted.")).not.toBeInTheDocument();
+    expect(screen.queryByTestId("message-m1")).toBeNull();
   });
 
   it("shows a thread summary that opens the thread", async () => {

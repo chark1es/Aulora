@@ -1,5 +1,11 @@
 # Aulora web container: static SPA + the two routes that must be first-party.
 #
+# This is an nginx *template*: the official nginx image envsubst-expands it from
+# /etc/nginx/templates into /etc/nginx/conf.d at startup. `${NGINX_CLIENT_MAX_BODY_SIZE}`
+# is the only substituted value here (see web.Dockerfile); nginx runtime
+# variables such as `$http_upgrade` are left untouched because they are not
+# environment variables.
+#
 # Routing contract (see ../proxy/README.md for the production edge):
 #   /                 -> the built SPA, with history fallback
 #   /.well-known/*    -> the per-instance well-known document (mounted volume)
@@ -31,7 +37,12 @@ server {
   # Do not leak the nginx version.
   server_tokens off;
 
-  client_max_body_size 25m;
+  # Request-body cap, applied before Convex sees the upload. Set
+  # NGINX_CLIENT_MAX_BODY_SIZE (env, nginx size notation) at least as large as
+  # the effective max upload: the instance setting (instanceSettings
+  # `maxUploadBytes`, managed in the admin Storage panel) or UPLOAD_MAX_BYTES.
+  # The default (100m) comfortably covers the 25 MiB built-in upload cap.
+  client_max_body_size ${NGINX_CLIENT_MAX_BODY_SIZE};
 
   # Public per-instance document, written by the `setup` container into the
   # `web-well-known` volume mounted at /var/www/.well-known. Always revalidate
