@@ -40,6 +40,10 @@ Role permissions control who can create channels, upload, moderate, or manage a 
 
 If your administrator enables Kanban and grants you View Kanban permission, open it from the sidebar. Plan work with cards, columns, labels, assignees, checklists, due dates, comments, attachments and work timers. You can browse GitHub repositories, issues and pull requests with your own connection. See [Kanban](kanban.md) for the full workflow.
 
+## Notes
+
+If your administrator enables Notes and grants you View Notes permission, open it from the sidebar. Write Markdown notes with a live preview, organize them in nested folders, label them with tags, search locally or on the server, and review each note's line-by-line history. See [Notes](notes.md) for the full workflow.
+
 ## Voice and video
 
 Join a voice channel or start a call from a conversation. Allow microphone access, and camera access when using video. Use the call controls to mute, change devices, or leave.

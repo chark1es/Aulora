@@ -30,6 +30,7 @@ const GROUPS = [
       { file: "getting-started.md", label: "Getting started" },
       { file: "user-guide.md", label: "User guide" },
       { file: "kanban.md", label: "Kanban" },
+      { file: "notes.md", label: "Notes" },
     ],
   },
   {

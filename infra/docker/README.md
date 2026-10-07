@@ -55,9 +55,12 @@ functions, creates the workspace + owner account, and writes the public
 | MinIO console     | http://localhost:9001   | `MINIO_ROOT_USER` / `MINIO_ROOT_PASSWORD` |
 | Postgres          | localhost:5432          | `POSTGRES_USER` / `POSTGRES_PASSWORD` |
 
-## Kanban addon
+## Optional addons
 
-Kanban ships in the web and setup images and uses the existing backend and encrypted storage. Rebuild both images when upgrading, run `setup` to deploy the new functions, then recreate `web`. No additional container or GitHub environment secret is needed. Enable it in Workspace settings → Addons; it is off by default. Existing roles need explicit Kanban permissions. See [the Kanban guide](../../apps/docs/content/kanban.md).
+Kanban and Notes are optional addons that ship in the web and setup images and use the existing backend and encrypted storage. Rebuild both images when upgrading, run `setup` to deploy the new functions, then recreate `web`. No additional container or GitHub environment secret is needed. Enable them in Workspace settings → Addons; they are off by default, and existing roles need explicit permissions for each addon.
+
+- **Kanban** — boards, cards, work timers, attachments and GitHub links. See [the Kanban guide](../../apps/docs/content/kanban.md).
+- **Notes** — Markdown notes with nested folders, tags, search and per-note history. See [the Notes guide](../../apps/docs/content/notes.md).
 
 ## Why `setup` rather than manual steps
 

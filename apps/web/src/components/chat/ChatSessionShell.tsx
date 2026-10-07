@@ -171,6 +171,7 @@ export function ChatSessionShell({
             onSignOut={onSignOut}
             permissions={permissions}
             kanbanEnabled={publicConfig?.addons.kanban ?? false}
+            notesEnabled={publicConfig?.addons.notes ?? false}
             members={members}
             roles={mentionRoles}
             admin={{
