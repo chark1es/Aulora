@@ -185,6 +185,27 @@ class RetryTests(unittest.TestCase):
             )
         self.assertEqual(statuses, ["completed", "draft"])
 
+    def test_retries_a_transient_failure_after_the_draft_fallback(self):
+        statuses = []
+
+        def fake_upload(*_args, **kwargs):
+            statuses.append(kwargs.get("status", "completed"))
+            if len(statuses) == 1:
+                raise ValueError(
+                    "Only releases with status draft may be created on draft app."
+                )
+            if len(statuses) == 2:
+                raise socket.timeout("read timed out")
+            return "42"
+
+        with mock.patch.object(
+            play_upload, "upload", side_effect=fake_upload
+        ), mock.patch.object(play_upload.time, "sleep"):
+            self.assertEqual(
+                play_upload.run_upload(None, "pkg", "alpha", "a.aab", ""), "42"
+            )
+        self.assertEqual(statuses, ["completed", "draft", "draft"])
+
 
 if __name__ == "__main__":
     unittest.main()

@@ -132,28 +132,26 @@ def is_transient(error):
 
 def is_draft_app(error):
     """True when Play rejects a completed release because the app is a draft."""
-    if "draft app" not in str(error):
-        return False
-    try:
-        from googleapiclient.errors import HttpError
-    except ImportError:
-        return True
-    return isinstance(error, HttpError)
+    return "draft app" in str(error)
 
 
 def run_upload(service, package, track, aab, notes):
     """Retry transient failures, and fall back to a draft release on a new app."""
+    status = "completed"
     for attempt in range(1, ATTEMPTS + 1):
         try:
-            return upload(service, package, track, aab, notes)
+            return upload(service, package, track, aab, notes, status=status)
         except Exception as error:
-            if is_draft_app(error):
+            # A draft app only accepts a draft release, so switch once and keep
+            # the retry protection for the fallback attempt.
+            if status == "completed" and is_draft_app(error):
                 print(
                     "The Play app is still a draft, so the release is created as a "
                     "draft. Roll it out in Play Console to reach testers.",
                     file=sys.stderr,
                 )
-                return upload(service, package, track, aab, notes, status="draft")
+                status = "draft"
+                continue
             if attempt == ATTEMPTS or not is_transient(error):
                 raise
             print(
