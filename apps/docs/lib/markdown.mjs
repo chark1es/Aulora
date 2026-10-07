@@ -11,12 +11,16 @@ export function escapeHtml(text) {
   return String(text).replace(/[&<>"']/g, (char) => ESCAPES[char]);
 }
 
-/** Rewrites a relative `*.md` link to `*.html` for the generated site. */
+/**
+ * Rewrites a relative `*.md` link to a clean, extensionless URL for the
+ * generated site. The files on disk stay `<page>.html` so old links keep
+ * working, but links and canonical URLs omit the extension.
+ */
 export function rewriteLink(href) {
   if (/^[a-z]+:/i.test(href) || href.startsWith("#") || href.startsWith("/")) {
     return href;
   }
-  return href.replace(/\.md(#|$)/i, ".html$1").replace(/^\.\//, "");
+  return href.replace(/\.md(#|$)/i, "$1").replace(/^\.\//, "");
 }
 
 function inline(text) {

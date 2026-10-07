@@ -7,7 +7,7 @@
 // Blobatar build the clients use, so the site always matches the app. Pages are
 // declared in order below so the nav is stable.
 
-import { cpSync, mkdirSync, readFileSync, rmSync, writeFileSync } from "node:fs";
+import { cpSync, existsSync, mkdirSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { createRequire } from "node:module";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
@@ -67,6 +67,14 @@ function outputName(file) {
   return file.replace(/\.md$/, ".html");
 }
 
+// Clean, extensionless URL for a documentation page. The generated file keeps
+// its `.html` extension for backwards compatibility (and so GitHub Pages can
+// serve it), but links and canonical URLs omit it. The index page maps to the
+// directory itself.
+function pageHref(file) {
+  return file === "index.md" ? "" : outputName(file).replace(/\.html$/, "");
+}
+
 function plainText(html) {
   return html
     .replace(/<[^>]+>/g, "")
@@ -99,15 +107,15 @@ function siteHeader({ base, section }) {
   };
   return `    <header class="site-header">
       <div class="site-header-inner">
-        <a class="brand" href="${base}index.html">
+        <a class="brand" href="${base || "./"}">
           <img src="${base}favicon.svg" alt="" width="26" height="26" />
           <span class="brand-lockup"><span class="brand-name">Aulora</span>${section === "docs" ? '<span class="brand-sub">/docs</span>' : ""}</span>
         </a>
         <nav class="site-nav" aria-label="Site">
-          ${item("how-it-works.html", "How it works", "how-it-works")}
-          ${item("install.html", "Install", "install")}
-          ${item("pricing.html", "Pricing", "pricing")}
-          ${item("docs/index.html", "Docs", "docs")}
+          ${item("how-it-works", "How it works", "how-it-works")}
+          ${item("install", "Install", "install")}
+          ${item("pricing", "Pricing", "pricing")}
+          ${item("docs/", "Docs", "docs")}
           <a href="https://github.com/chark1es/Aulora">GitHub</a>
         </nav>
       </div>
@@ -119,10 +127,10 @@ function siteFooter({ base }) {
       <div class="site-footer-inner">
         <p class="footer-mark">Aulora · team chat on your own server</p>
         <nav aria-label="Legal and contact">
-          <a href="${base}docs/licensing.html">Licensing</a>
-          <a href="${base}docs/privacy.html">Privacy</a>
-          <a href="${base}docs/legal/COMMERCIAL.html">Commercial terms</a>
-          <a href="${base}docs/legal/THIRD_PARTY_NOTICES.html">Third-party notices</a>
+          <a href="${base}docs/licensing">Licensing</a>
+          <a href="${base}docs/privacy">Privacy</a>
+          <a href="${base}docs/legal/COMMERCIAL">Commercial terms</a>
+          <a href="${base}docs/legal/THIRD_PARTY_NOTICES">Third-party notices</a>
           <a href="mailto:cnguyen@spwnd.dev">cnguyen@spwnd.dev</a>
         </nav>
         <p class="footer-fine">Free for personal and noncommercial use under PolyForm Noncommercial 1.0.0. Business use requires a paid license.</p>
@@ -134,7 +142,7 @@ function sidebar(currentFile, docs) {
   const groups = GROUPS.map((group) => {
     const links = group.pages.map((page) => {
       const active = page.file === currentFile ? ' aria-current="page"' : "";
-      return `          <a href="${docs}${outputName(page.file)}"${active}>${page.label}</a>`;
+      return `          <a href="${docs}${pageHref(page.file)}"${active}>${page.label}</a>`;
     });
     return `        <div class="nav-group">
           <p class="nav-label">${group.label}</p>
@@ -185,7 +193,7 @@ function pager(currentFile, docs) {
   const link = (page, rel, label) =>
     page === undefined
       ? "<span></span>"
-      : `<a class="pager-${rel}" href="${docs}${outputName(page.file)}" rel="${rel}"><small>${label}</small>${page.label}</a>`;
+      : `<a class="pager-${rel}" href="${docs}${pageHref(page.file)}" rel="${rel}"><small>${label}</small>${page.label}</a>`;
   return `        <nav class="pager" aria-label="Pages">
           ${link(previous, "prev", "Previous")}
           ${link(next, "next", "Next")}
@@ -215,7 +223,7 @@ ${sidebar(currentFile, docs)}
       </details>
       <main class="docs-main">
         <header class="page-header">
-          <p class="page-eyebrow"><a href="${docs}index.html">Docs</a>${icon("chevron-right")}<span>${escapeHtml(group?.label ?? "Legal")}</span></p>
+          <p class="page-eyebrow"><a href="${docs}">Docs</a>${icon("chevron-right")}<span>${escapeHtml(group?.label ?? "Legal")}</span></p>
           <h1>${title}</h1>
           <p class="page-meta">${minutes} min read</p>
         </header>
@@ -342,6 +350,17 @@ for (const page of PAGES) {
   );
 }
 
+// Legal pages are written from repository-root Markdown but link relative to
+// the repository. Map a rendered link back to the real file (keeping `.md`
+// where the source is Markdown) for the absolute GitHub copy.
+function repoBlobPath(href) {
+  const hashAt = href.indexOf("#");
+  const target = hashAt === -1 ? href : href.slice(0, hashAt);
+  const hash = hashAt === -1 ? "" : href.slice(hashAt);
+  const candidate = [target, `${target}.md`].find((path) => existsSync(join(repo, path)));
+  return `${candidate ?? target}${hash}`;
+}
+
 const legalDir = join(docsOut, "legal");
 mkdirSync(legalDir, { recursive: true });
 for (const file of ["LICENSE", "NOTICE", "COMMERCIAL.md", "CLA.md", "THIRD_PARTY_NOTICES.md"]) {
@@ -353,8 +372,7 @@ for (const file of ["LICENSE", "NOTICE", "COMMERCIAL.md", "CLA.md", "THIRD_PARTY
     // and use absolute repository links in the readable HTML copies.
     const body = html.replace(
       /href="(?![a-z]+:|#|\/)([^"]+)"/gi,
-      (_match, href) =>
-        `href="https://github.com/chark1es/Aulora/blob/main/${href.replace(/\.html(?=#|$)/, ".md")}"`,
+      (_match, href) => `href="https://github.com/chark1es/Aulora/blob/main/${repoBlobPath(href)}"`,
     );
     writeFileSync(
       join(legalDir, outputName(file)),
