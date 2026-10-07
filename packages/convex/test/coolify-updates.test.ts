@@ -64,7 +64,7 @@ describe("Coolify update adapter", () => {
     expect(await createCoolifyUpdater(config).deploy(operation.githubRepo, operation.gitTag)).toBe(
       "deployment-1",
     );
-    expect(mock.mock.calls.map(([url]) => url)).toEqual([
+    expect(mock.mock.calls.map(([url]) => String(url))).toEqual([
       `${config.apiUrl}/applications/app-1`,
       "https://api.github.com/repos/chark1es/Aulora/commits/v9.0.0",
       `${config.apiUrl}/applications/app-1`,
@@ -87,6 +87,19 @@ describe("Coolify update adapter", () => {
       createCoolifyUpdater(config).deploy(operation.githubRepo, operation.gitTag),
     ).rejects.toThrow("update feed's GitHub repository");
     expect(mock).toHaveBeenCalledTimes(1);
+  });
+
+  it("rejects unsafe request URLs before sending credentials", async () => {
+    const mock = network();
+    for (const apiUrl of [
+      "https://user:password@coolify.example.com/api/v1",
+      "ftp://coolify.example.com/api/v1",
+    ]) {
+      await expect(
+        createCoolifyUpdater({ ...config, apiUrl }).deploy(operation.githubRepo, operation.gitTag),
+      ).rejects.toThrow("configured origin");
+    }
+    expect(mock).not.toHaveBeenCalled();
   });
 
   it("does not leak response bodies or credentials on API errors", async () => {

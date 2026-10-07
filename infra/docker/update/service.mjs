@@ -46,12 +46,13 @@ async function main() {
   });
   const domain = `gui/${process.getuid()}`;
   if (command === "install") {
-    // eslint-disable-next-line security/detect-non-literal-fs-filename -- The checkout is selected by the local operator; file names are fixed here.
-    for (const file of [".env", "update/host.mjs"])
+    for (const file of [".env", "update/host.mjs"]) {
+      // eslint-disable-next-line security/detect-non-literal-fs-filename -- The checkout is selected by the local operator; file names are fixed here.
       if (!existsSync(resolve(dockerDir, file)))
         throw new Error(
           `Missing ${file} in ${dockerDir}. Install from the checkout running your Docker stack.`,
         );
+    }
     // Check the exact project's backend before installing a service that would repeatedly fail.
     await run("docker", ["compose", "exec", "-T", "convex-backend", "true"], dockerDir);
     // eslint-disable-next-line security/detect-non-literal-fs-filename -- Generated under this user's Library/LaunchAgents with a hashed checkout label.

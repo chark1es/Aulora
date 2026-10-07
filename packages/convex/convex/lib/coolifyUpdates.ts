@@ -55,10 +55,23 @@ function record(value: unknown): Record<string, unknown> {
   return value as Record<string, unknown>;
 }
 
-async function requestJson(url: string, init: RequestInit, service: string): Promise<unknown> {
+async function requestJson(
+  url: string,
+  init: RequestInit,
+  service: string,
+  allowedOrigin: string,
+): Promise<unknown> {
+  const target = new URL(url);
+  if (
+    target.origin !== allowedOrigin ||
+    !["https:", "http:"].includes(target.protocol) ||
+    target.username ||
+    target.password
+  )
+    throw new Error(`${service} request does not match the configured origin.`);
   let response: Response;
   try {
-    response = await fetch(url, {
+    response = await fetch(target, {
       ...init,
       redirect: "error",
       signal: AbortSignal.timeout(15_000),
@@ -97,6 +110,7 @@ function assertApplicationRepository(application: Record<string, unknown>, repo:
 }
 
 export function createCoolifyUpdater(config: CoolifyConfig) {
+  const coolifyOrigin = new URL(config.apiUrl).origin;
   const request = (path: string, method = "GET", body?: unknown) =>
     requestJson(
       `${config.apiUrl}${path}`,
@@ -110,6 +124,7 @@ export function createCoolifyUpdater(config: CoolifyConfig) {
         ...(body === undefined ? {} : { body: JSON.stringify(body) }),
       },
       "Coolify",
+      coolifyOrigin,
     );
 
   async function deploy(repo: string, gitTag: string): Promise<string> {
@@ -126,6 +141,7 @@ export function createCoolifyUpdater(config: CoolifyConfig) {
           headers: { Accept: "application/vnd.github+json", "User-Agent": "aulora-updater" },
         },
         "GitHub",
+        "https://api.github.com",
       ),
     );
     if (typeof release.sha !== "string" || !/^[a-f0-9]{40}$/i.test(release.sha))

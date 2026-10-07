@@ -28,6 +28,7 @@ export function acquireWatcherLock(directory) {
       if (error.code !== "ESRCH") throw error;
     }
     rmSync(directory, { recursive: true });
+    // eslint-disable-next-line security/detect-non-literal-fs-filename -- Recreate the same fixed checkout lock after confirming the previous watcher exited.
     mkdirSync(directory);
   }
   // eslint-disable-next-line security/detect-non-literal-fs-filename -- Write the fixed pid file inside the checkout's watcher lock.
