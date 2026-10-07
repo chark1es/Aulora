@@ -12,26 +12,18 @@ export function watcherService({ dockerDir, bunPath, userHome, path }) {
   const logDir = resolve(userHome, "Library/Logs/Aulora");
   const logPath = resolve(logDir, `update-${instance}.log`);
   const plistPath = resolve(userHome, "Library/LaunchAgents", `${label}.plist`);
-  const xml = (value) =>
-    String(value).replace(
-      /[&<>"']/g,
-      (character) =>
-        ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&apos;" })[character],
-    );
-  const plist = `<?xml version="1.0" encoding="UTF-8"?>
-<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
-<plist version="1.0"><dict>
-<key>Label</key><string>${xml(label)}</string>
-<key>ProgramArguments</key><array><string>${xml(bunPath)}</string><string>${xml(resolve(dockerDir, "update/host.mjs"))}</string></array>
-<key>WorkingDirectory</key><string>${xml(dockerDir)}</string>
-<key>EnvironmentVariables</key><dict><key>PATH</key><string>${xml(path)}</string></dict>
-<key>RunAtLoad</key><true/>
-<key>KeepAlive</key><true/>
-<key>ThrottleInterval</key><integer>30</integer>
-<key>StandardOutPath</key><string>${xml(logPath)}</string>
-<key>StandardErrorPath</key><string>${xml(logPath)}</string>
-</dict></plist>
-`;
+  // plutil converts structured JSON to a plist without hand-written XML escaping.
+  const plist = JSON.stringify({
+    Label: label,
+    ProgramArguments: [bunPath, resolve(dockerDir, "update/host.mjs")],
+    WorkingDirectory: dockerDir,
+    EnvironmentVariables: { PATH: path },
+    RunAtLoad: true,
+    KeepAlive: true,
+    ThrottleInterval: 30,
+    StandardOutPath: logPath,
+    StandardErrorPath: logPath,
+  });
   return { label, plist, plistPath, logDir, logPath };
 }
 
@@ -54,6 +46,7 @@ async function main() {
   });
   const domain = `gui/${process.getuid()}`;
   if (command === "install") {
+    // eslint-disable-next-line security/detect-non-literal-fs-filename -- The checkout is selected by the local operator; file names are fixed here.
     for (const file of [".env", "update/host.mjs"])
       if (!existsSync(resolve(dockerDir, file)))
         throw new Error(
@@ -61,12 +54,16 @@ async function main() {
         );
     // Check the exact project's backend before installing a service that would repeatedly fail.
     await run("docker", ["compose", "exec", "-T", "convex-backend", "true"], dockerDir);
+    // eslint-disable-next-line security/detect-non-literal-fs-filename -- Generated under this user's Library/LaunchAgents with a hashed checkout label.
     mkdirSync(dirname(service.plistPath), { recursive: true });
+    // eslint-disable-next-line security/detect-non-literal-fs-filename -- Generated under this user's Library/Logs/Aulora; no remote input.
     mkdirSync(service.logDir, { recursive: true, mode: 0o700 });
     await run("launchctl", ["bootout", `${domain}/${service.label}`], dockerDir).catch(
       () => undefined,
     );
+    // eslint-disable-next-line security/detect-non-literal-fs-filename -- Generated under this user's Library/LaunchAgents with a hashed checkout label.
     writeFileSync(service.plistPath, service.plist, { mode: 0o600 });
+    await run("plutil", ["-convert", "xml1", service.plistPath], dockerDir);
     await run("launchctl", ["bootstrap", domain, service.plistPath], dockerDir);
     console.log(`[update] Installed ${service.label}. The watcher starts now and at login.`);
     console.log(`[update] Logs: ${service.logPath}`);

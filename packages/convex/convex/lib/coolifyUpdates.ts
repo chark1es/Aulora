@@ -78,6 +78,24 @@ async function requestJson(url: string, init: RequestInit, service: string): Pro
   }
 }
 
+function assertApplicationRepository(application: Record<string, unknown>, repo: string): void {
+  const repository =
+    typeof application.git_repository === "string"
+      ? application.git_repository
+          .replace(/^https?:\/\/github\.com\//, "")
+          .replace(/^git@github\.com:/, "")
+          .replace(/\.git\/?$/, "")
+          .replace(/\/$/, "")
+      : null;
+  if (
+    application.build_pack !== "dockercompose" ||
+    repository?.toLowerCase() !== repo.toLowerCase()
+  )
+    throw new Error(
+      "The configured Coolify application must use Docker Compose and the update feed's GitHub repository.",
+    );
+}
+
 export function createCoolifyUpdater(config: CoolifyConfig) {
   const request = (path: string, method = "GET", body?: unknown) =>
     requestJson(
@@ -100,21 +118,7 @@ export function createCoolifyUpdater(config: CoolifyConfig) {
         "The published release does not identify a valid repository and release tag.",
       );
     const application = record(await request(`/applications/${config.applicationUuid}`));
-    const repository =
-      typeof application.git_repository === "string"
-        ? application.git_repository
-            .replace(/^https?:\/\/github\.com\//, "")
-            .replace(/^git@github\.com:/, "")
-            .replace(/\.git\/?$/, "")
-            .replace(/\/$/, "")
-        : null;
-    if (
-      application.build_pack !== "dockercompose" ||
-      repository?.toLowerCase() !== repo.toLowerCase()
-    )
-      throw new Error(
-        "The configured Coolify application must use Docker Compose and the update feed's GitHub repository.",
-      );
+    assertApplicationRepository(application, repo);
     const release = record(
       await requestJson(
         `https://api.github.com/repos/${repo}/commits/${encodeURIComponent(gitTag)}`,

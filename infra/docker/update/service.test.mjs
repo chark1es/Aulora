@@ -13,9 +13,12 @@ describe("macOS update service", () => {
       const release = acquireWatcherLock(lock);
       expect(() => acquireWatcherLock(lock)).toThrow("already running");
       release();
+      // eslint-disable-next-line security/detect-non-literal-fs-filename -- Isolated mkdtemp fixture owned and removed by this test.
       mkdirSync(lock);
+      // eslint-disable-next-line security/detect-non-literal-fs-filename -- Fixed pid file within the isolated mkdtemp fixture.
       writeFileSync(resolve(lock, "pid"), "2147483647\n");
       const recovered = acquireWatcherLock(lock);
+      // eslint-disable-next-line security/detect-non-literal-fs-filename -- Fixed pid file within the isolated mkdtemp fixture.
       expect(Number(readFileSync(resolve(lock, "pid"), "utf8"))).toBe(process.pid);
       recovered();
     } finally {
@@ -29,11 +32,20 @@ describe("macOS update service", () => {
       userHome: "/Users/example",
       path: "/Users/example/.docker/bin:/opt/homebrew/bin:/usr/bin",
     });
-    expect(service.plist).toContain("Team &amp; Chat/infra/docker/update/host.mjs");
-    expect(service.plist).toContain("<string>/opt/homebrew/bin/bun</string>");
-    expect(service.plist).toContain(".docker/bin:/opt/homebrew/bin:/usr/bin");
-    expect(service.plist).toContain("<key>KeepAlive</key><true/>");
-    expect(service.plist).not.toContain("TOKEN");
+    expect(JSON.parse(service.plist)).toEqual({
+      Label: service.label,
+      ProgramArguments: [
+        "/opt/homebrew/bin/bun",
+        "/Users/example/Team & Chat/infra/docker/update/host.mjs",
+      ],
+      WorkingDirectory: "/Users/example/Team & Chat/infra/docker",
+      EnvironmentVariables: { PATH: "/Users/example/.docker/bin:/opt/homebrew/bin:/usr/bin" },
+      KeepAlive: true,
+      RunAtLoad: true,
+      ThrottleInterval: 30,
+      StandardOutPath: service.logPath,
+      StandardErrorPath: service.logPath,
+    });
     expect(service.plistPath).toContain("/Library/LaunchAgents/io.aulora.updater.");
     const other = watcherService({
       dockerDir: "/another/checkout/infra/docker",
