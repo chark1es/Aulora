@@ -21,6 +21,11 @@ Three things must be true at the public edge:
    port `3211`, which return current workspace settings. Other `/.well-known/`
    documents remain in the `web-well-known` volume. An edge may forward discovery
    to `web:80` or directly to `convex-backend:3211`.
+   The web gateway sends `X-Aulora-Api-Proxy: same-origin` on discovery requests
+   so the document advertises `SITE_URL` for API traffic. An edge forwarding
+   directly to port `3211` should set this header only if it also implements
+   the same-origin API and WebSocket route below. Without it, discovery
+   advertises the configured separate Convex API origin.
 
 3. **`<web origin>/api/auth/*` is forwarded to the Convex HTTP-actions origin
    (`convex-backend:3211`), on the *same* origin as the web app.**

@@ -224,6 +224,9 @@ origin to `TRUSTED_ORIGINS` in `.env` and re-run
 The web container proxies this endpoint to Convex HTTP actions on port 3211.
 The backend returns current workspace settings, so discovery works at the main
 web URL without a generated file and reflects branding and auth changes immediately.
+Discovery through this gateway advertises `SITE_URL` as the Convex URL because
+the gateway also proxies the client API and WebSocket. Direct backend discovery
+retains the configured `CONVEX_CLOUD_ORIGIN` for deployments with separate hosts.
 The response contains only public discovery data: name, versions, Convex URL,
 site URL, icon seed, auth providers and the encryption descriptor.
 
@@ -352,6 +355,10 @@ with instructions to use the hosting provider's redeploy controls.
 - **Well-known 404** — rebuild `web` and `setup`, then redeploy the Convex
   functions. Verify the exact discovery route reaches HTTP actions on port
   3211. If your edge serves a static document, also verify setup completed.
+- **Stuck on "Loading workspace"** — check the discovery document's `convexUrl`.
+  That origin must serve the Convex API and WebSocket. If the main web URL works
+  but a separate advertised API hostname does not, rebuild `web` and `setup`
+  to use gateway discovery, then reconnect the client to replace its saved URL.
 
 ## Public release operations
 
