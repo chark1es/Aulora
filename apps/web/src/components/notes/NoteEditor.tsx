@@ -28,7 +28,7 @@ function ToolButton({
       title={label}
       disabled={disabled}
       onClick={onClick}
-      className="flex h-8 w-8 items-center justify-center rounded-[8px] text-[14px] text-text-muted transition hover:bg-surface-3 hover:text-text focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent disabled:pointer-events-none disabled:opacity-40"
+      className="flex size-8 shrink-0 items-center justify-center rounded-[8px] text-text-muted transition hover:bg-surface-3 hover:text-text focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent disabled:pointer-events-none disabled:opacity-40"
     >
       {children}
     </button>
@@ -243,43 +243,41 @@ export function NoteEditor({ ctl }: { ctl: NotesController }) {
       {!preview && (
         <div className="inline-flex items-center gap-0.5 self-start rounded-[11px] border border-border bg-surface-2 p-0.5">
           <ToolButton label="Bold" disabled={!ctl.canEdit} onClick={() => wrap("**", "**", "bold")}>
-            <span className="font-bold">B</span>
+            <Icon name="bold" size={18} />
           </ToolButton>
           <ToolButton
             label="Italic"
             disabled={!ctl.canEdit}
             onClick={() => wrap("*", "*", "italic")}
           >
-            <span className="font-serif italic">I</span>
+            <Icon name="italic" size={18} />
           </ToolButton>
           <ToolButton
             label="Heading"
             disabled={!ctl.canEdit}
             onClick={() => prefixLines("# ", false)}
           >
-            <span className="font-semibold">H</span>
+            <Icon name="heading" size={18} />
           </ToolButton>
-          <span className="h-4 w-px shrink-0 bg-border" />
           <ToolButton
             label="Bullet list"
             disabled={!ctl.canEdit}
             onClick={() => prefixLines("- ", false)}
           >
-            <Icon name="list-bulleted" size={16} />
+            <Icon name="list-bulleted" size={18} />
           </ToolButton>
           <ToolButton
             label="Ordered list"
             disabled={!ctl.canEdit}
             onClick={() => prefixLines("1. ", true)}
           >
-            <Icon name="list-numbered" size={16} />
+            <Icon name="list-numbered" size={18} />
           </ToolButton>
-          <span className="h-4 w-px shrink-0 bg-border" />
           <ToolButton label="Code" disabled={!ctl.canEdit} onClick={() => wrap("`", "`", "code")}>
-            <Icon name="code" size={16} />
+            <Icon name="code" size={18} />
           </ToolButton>
           <ToolButton label="Link" disabled={!ctl.canEdit} onClick={insertLink}>
-            <Icon name="link" size={16} />
+            <Icon name="link" size={18} />
           </ToolButton>
         </div>
       )}
