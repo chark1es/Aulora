@@ -60,6 +60,7 @@ import type * as lib_threadInbox from "../lib/threadInbox.js";
 import type * as lib_types from "../lib/types.js";
 import type * as lib_webPush from "../lib/webPush.js";
 import type * as lib_workspaceNotes from "../lib/workspaceNotes.js";
+import type * as lib_workspaceNotesMutations from "../lib/workspaceNotesMutations.js";
 import type * as license from "../license.js";
 import type * as licenseActions from "../licenseActions.js";
 import type * as licenseUsage from "../licenseUsage.js";
@@ -139,6 +140,7 @@ declare const fullApi: ApiFromModules<{
   "lib/types": typeof lib_types;
   "lib/webPush": typeof lib_webPush;
   "lib/workspaceNotes": typeof lib_workspaceNotes;
+  "lib/workspaceNotesMutations": typeof lib_workspaceNotesMutations;
   license: typeof license;
   licenseActions: typeof licenseActions;
   licenseUsage: typeof licenseUsage;

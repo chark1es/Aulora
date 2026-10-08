@@ -8,7 +8,7 @@ import { timeAgo } from "../../lib/kanban";
 import { diffSummary, noteTitle, revisionActionLabel } from "../../lib/notes";
 import { PaneHeader } from "../chat/HubPane";
 import { NoteBackButton, NotesError, NotesLoading } from "./NoteParts";
-import type { NotesController } from "./use-notes";
+import type { NoteHistoryEntry, NotesController } from "./use-notes";
 
 function actorName(ctl: NotesController, actorId: string): string {
   if (actorId === ctl.ownUserId) return "You";
@@ -61,6 +61,54 @@ function DiffView({ lines }: { readonly lines: readonly DiffLine[] }) {
   );
 }
 
+function RevisionRow({
+  ctl,
+  revision,
+  open,
+  now,
+  onToggle,
+}: {
+  readonly ctl: NotesController;
+  readonly revision: NoteHistoryEntry;
+  readonly open: boolean;
+  readonly now: number;
+  readonly onToggle: () => void;
+}) {
+  const palette = usePalette();
+  const lines = diffLines(revision.before?.body ?? "", revision.after?.body ?? "");
+  const stats = diffStats(lines);
+  return (
+    <Pressable
+      accessibilityRole="button"
+      accessibilityState={{ expanded: open }}
+      className="border-b border-border px-4 py-3 active:bg-surface-2"
+      onPress={onToggle}
+    >
+      <View className="flex-row items-center gap-2">
+        <Text className="min-w-0 flex-1 font-medium" numberOfLines={1}>
+          {revisionActionLabel(revision.action)}
+        </Text>
+        <Text size="xs" tone="muted" style={{ fontVariant: ["tabular-nums"] }}>
+          {diffSummary(stats)}
+        </Text>
+        <Icon
+          name={open ? "chevron-down" : "chevron-right"}
+          size={16}
+          color={palette["text-muted"]}
+        />
+      </View>
+      <Text size="xs" tone="muted">
+        {actorName(ctl, revision.actorId)} · {timeAgo(revision.at, now)}
+      </Text>
+      {open && (
+        <Animated.View entering={FadeIn.duration(160)}>
+          <DiffView lines={lines} />
+        </Animated.View>
+      )}
+    </Pressable>
+  );
+}
+
 /** The note's revisions, newest first, each expandable to its text diff. */
 export function NoteHistoryScreen({ ctl }: { readonly ctl: NotesController }) {
   const palette = usePalette();
@@ -86,44 +134,18 @@ export function NoteHistoryScreen({ ctl }: { readonly ctl: NotesController }) {
         </View>
       ) : (
         <ScrollView contentContainerStyle={{ paddingBottom: 16 }}>
-          {ctl.history.map((revision) => {
-            const lines = diffLines(revision.before?.body ?? "", revision.after?.body ?? "");
-            const stats = diffStats(lines);
-            const open = expanded === revision.id;
-            return (
-              <Pressable
-                key={revision.id}
-                accessibilityRole="button"
-                accessibilityState={{ expanded: open }}
-                className="border-b border-border px-4 py-3 active:bg-surface-2"
-                onPress={() => {
-                  setExpanded(open ? undefined : revision.id);
-                }}
-              >
-                <View className="flex-row items-center gap-2">
-                  <Text className="min-w-0 flex-1 font-medium" numberOfLines={1}>
-                    {revisionActionLabel(revision.action)}
-                  </Text>
-                  <Text size="xs" tone="muted" style={{ fontVariant: ["tabular-nums"] }}>
-                    {diffSummary(stats)}
-                  </Text>
-                  <Icon
-                    name={open ? "chevron-down" : "chevron-right"}
-                    size={16}
-                    color={palette["text-muted"]}
-                  />
-                </View>
-                <Text size="xs" tone="muted">
-                  {actorName(ctl, revision.actorId)} · {timeAgo(revision.at, now)}
-                </Text>
-                {open && (
-                  <Animated.View entering={FadeIn.duration(160)}>
-                    <DiffView lines={lines} />
-                  </Animated.View>
-                )}
-              </Pressable>
-            );
-          })}
+          {ctl.history.map((revision) => (
+            <RevisionRow
+              key={revision.id}
+              ctl={ctl}
+              revision={revision}
+              open={expanded === revision.id}
+              now={now}
+              onToggle={() => {
+                setExpanded(expanded === revision.id ? undefined : revision.id);
+              }}
+            />
+          ))}
         </ScrollView>
       )}
     </View>

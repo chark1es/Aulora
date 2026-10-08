@@ -147,6 +147,35 @@ function DetailMenu({ ctl }: { ctl: NotesController }) {
   );
 }
 
+function DetailEditAction({ ctl }: { ctl: NotesController }) {
+  return (
+    <>
+      {ctl.tab === "edit" &&
+        (ctl.editing ? (
+          <Button
+            size="sm"
+            disabled={!ctl.canEdit || !ctl.dirty || ctl.busy}
+            loading={ctl.busy}
+            leading={<Icon name="check" size={14} />}
+            onClick={() => void ctl.saveNote()}
+          >
+            Save
+          </Button>
+        ) : ctl.canEdit ? (
+          <Button
+            size="sm"
+            leading={<Icon name="pencil" size={14} />}
+            onClick={() => {
+              ctl.setEditing(true);
+            }}
+          >
+            Edit
+          </Button>
+        ) : null)}
+    </>
+  );
+}
+
 function DetailTabs({ ctl }: { ctl: NotesController }) {
   const now = Date.now();
   const path = folderPath(ctl.folders, ctl.detail?.folderId ?? null);
@@ -190,28 +219,7 @@ function DetailTabs({ ctl }: { ctl: NotesController }) {
         ]}
       />
       <DetailMenu ctl={ctl} />
-      {ctl.tab === "edit" &&
-        (ctl.editing ? (
-          <Button
-            size="sm"
-            disabled={!ctl.canEdit || !ctl.dirty || ctl.busy}
-            loading={ctl.busy}
-            leading={<Icon name="check" size={14} />}
-            onClick={() => void ctl.saveNote()}
-          >
-            Save
-          </Button>
-        ) : ctl.canEdit ? (
-          <Button
-            size="sm"
-            leading={<Icon name="pencil" size={14} />}
-            onClick={() => {
-              ctl.setEditing(true);
-            }}
-          >
-            Edit
-          </Button>
-        ) : null)}
+      <DetailEditAction ctl={ctl} />
     </div>
   );
 }

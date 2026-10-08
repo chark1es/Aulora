@@ -5,7 +5,7 @@ import { Linking, View } from "react-native";
 
 type Palette = ReturnType<typeof usePalette>;
 
-const HEADING_SIZE: Record<number, number> = { 1: 24, 2: 20, 3: 18, 4: 16, 5: 15, 6: 14 };
+const HEADING_SIZE = { 1: 24, 2: 20, 3: 18, 4: 16, 5: 15, 6: 14 } as const;
 
 function inlineKey(segment: InlineSegment, index: number): string {
   switch (segment.type) {
@@ -65,23 +65,58 @@ function renderInline(segments: readonly InlineSegment[], palette: Palette): Rea
   });
 }
 
+function HeadingBlock({
+  block,
+  palette,
+}: {
+  readonly block: Extract<NoteBlock, { type: "heading" }>;
+  readonly palette: Palette;
+}) {
+  return (
+    <Text
+      style={{
+        color: palette.text,
+        fontSize: HEADING_SIZE[block.level],
+        fontWeight: block.level <= 3 ? "700" : "600",
+        lineHeight: HEADING_SIZE[block.level] + 6,
+      }}
+    >
+      {renderInline(block.children, palette)}
+    </Text>
+  );
+}
+
+function ListBlock({
+  block,
+  palette,
+}: {
+  readonly block: Extract<NoteBlock, { type: "list" }>;
+  readonly palette: Palette;
+}) {
+  return (
+    <View style={{ gap: 4 }}>
+      {block.items.map((item, itemIndex) => {
+        const itemKey = `item:${itemIndex}`;
+        return (
+          <View key={itemKey} className="flex-row gap-2">
+            <Text style={{ color: palette["text-muted"], minWidth: 18 }}>
+              {block.ordered ? `${itemIndex + 1}.` : "•"}
+            </Text>
+            <Text className="flex-1" style={{ color: palette.text, lineHeight: 22 }}>
+              {renderInline(item, palette)}
+            </Text>
+          </View>
+        );
+      })}
+    </View>
+  );
+}
+
 function renderBlock(block: NoteBlock, index: number, palette: Palette): ReactNode {
   const key = `${block.type}:${index}`;
   switch (block.type) {
     case "heading":
-      return (
-        <Text
-          key={key}
-          style={{
-            color: palette.text,
-            fontSize: HEADING_SIZE[block.level] ?? 16,
-            fontWeight: block.level <= 3 ? "700" : "600",
-            lineHeight: (HEADING_SIZE[block.level] ?? 16) + 6,
-          }}
-        >
-          {renderInline(block.children, palette)}
-        </Text>
-      );
+      return <HeadingBlock key={key} block={block} palette={palette} />;
     case "paragraph":
       return (
         <Text key={key} style={{ color: palette.text, lineHeight: 22 }}>
@@ -101,23 +136,7 @@ function renderBlock(block: NoteBlock, index: number, palette: Palette): ReactNo
         </View>
       );
     case "list":
-      return (
-        <View key={key} style={{ gap: 4 }}>
-          {block.items.map((item, itemIndex) => {
-            const itemKey = `item:${itemIndex}`;
-            return (
-              <View key={itemKey} className="flex-row gap-2">
-                <Text style={{ color: palette["text-muted"], minWidth: 18 }}>
-                  {block.ordered ? `${itemIndex + 1}.` : "•"}
-                </Text>
-                <Text className="flex-1" style={{ color: palette.text, lineHeight: 22 }}>
-                  {renderInline(item, palette)}
-                </Text>
-              </View>
-            );
-          })}
-        </View>
-      );
+      return <ListBlock key={key} block={block} palette={palette} />;
     case "blockquote":
       return (
         <View key={key} className="border-l-2 pl-3" style={{ borderLeftColor: palette.accent }}>

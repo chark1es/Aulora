@@ -1,9 +1,9 @@
 /* eslint-disable no-unused-vars -- the base rule reports parameter names in type signatures; Biome checks real unused code */
 import { hasPermission, Permission } from "@aulora/core";
 import { useMutation, useQuery } from "convex/react";
+import type { GenericId as Id } from "convex/values";
 import { useEffect, useMemo, useRef, useState } from "react";
 import { api } from "../../../../../packages/convex/convex/_generated/api";
-import type { Id } from "../../../../../packages/convex/convex/_generated/dataModel";
 import {
   failure,
   type NoteFolder,
@@ -24,7 +24,7 @@ export interface NotesProps {
 export interface NoteDraft {
   title: string;
   body: string;
-  folderId: NoteFolder["id"] | null;
+  folderId: Id<"noteFolders"> | null;
   tagIds: string[];
 }
 
@@ -36,20 +36,20 @@ export type Confirm =
 
 /** The folder form the user has open, if any. */
 export type FolderDialog =
-  | { mode: "new"; parentId: NoteFolder["id"] | null }
+  | { mode: "new"; parentId: Id<"noteFolders"> | null }
   | { mode: "rename"; folder: NoteFolder }
   | { mode: "move"; folder: NoteFolder };
 
 /** The tag form the user has open, if any. */
 export type TagDialog = { mode: "new" } | { mode: "edit"; tag: NoteTag };
 
-type FolderSelection = NoteFolder["id"] | typeof UNFILED | undefined;
+type FolderSelection = Id<"noteFolders"> | typeof UNFILED | undefined;
 
 /** What the viewer has switched on: filters, the open note and open dialogs. */
 function useNotesState() {
   const [folderId, setFolderId] = useState<FolderSelection>(undefined);
-  const [tagId, setTagId] = useState<NoteTag["id"] | undefined>(undefined);
-  const [noteId, setNoteId] = useState<NoteSummary["id"] | undefined>(undefined);
+  const [tagId, setTagId] = useState<Id<"noteTags"> | undefined>(undefined);
+  const [noteId, setNoteId] = useState<Id<"notePages"> | undefined>(undefined);
   const [editing, setEditing] = useState(false);
   const [query, setQuery] = useState("");
   const [showArchived, setShowArchived] = useState(false);
@@ -173,6 +173,31 @@ function inScope(
   return note.folderId !== null && (scope?.has(note.folderId) ?? false);
 }
 
+function useNoteSearch(query: string) {
+  // The server search runs behind the raw input; the list still filters instantly.
+  const [debounced, setDebounced] = useState("");
+  useEffect(() => {
+    const value = query.trim();
+    const timer = setTimeout(() => {
+      setDebounced(value);
+    }, 150);
+    return () => {
+      clearTimeout(timer);
+    };
+  }, [query]);
+  return useQuery(api.workspaceNotes.search, debounced.length >= 2 ? { query: debounced } : "skip");
+}
+
+function notePermissions(permissions: bigint) {
+  return {
+    canView: hasPermission(permissions, Permission.ViewNotes),
+    canCreate: hasPermission(permissions, Permission.CreateNotes),
+    canEdit: hasPermission(permissions, Permission.EditNotes),
+    canDelete: hasPermission(permissions, Permission.DeleteNotes),
+    canManage: hasPermission(permissions, Permission.ManageNotes),
+  };
+}
+
 /** The folders, notes and tags the viewer may see, and the filtered note list. */
 function useNotesData(props: NotesProps, state: NotesState) {
   const overview = useQuery(api.workspaceNotes.overview, {});
@@ -197,21 +222,7 @@ function useNotesData(props: NotesProps, state: NotesState) {
     [tags],
   );
 
-  // The server search runs behind the raw input; the list still filters instantly.
-  const [debounced, setDebounced] = useState("");
-  useEffect(() => {
-    const value = state.query.trim();
-    const timer = setTimeout(() => {
-      setDebounced(value);
-    }, 150);
-    return () => {
-      clearTimeout(timer);
-    };
-  }, [state.query]);
-  const hits = useQuery(
-    api.workspaceNotes.search,
-    debounced.length >= 2 ? { query: debounced } : "skip",
-  );
+  const hits = useNoteSearch(state.query);
   const hitById = useMemo(() => new Map((hits ?? []).map((hit) => [hit.id, hit])), [hits]);
 
   const visible = useMemo(() => {
@@ -250,21 +261,11 @@ function useNotesData(props: NotesProps, state: NotesState) {
     visible,
     detailSummary,
     scope,
-    canView: hasPermission(props.permissions, Permission.ViewNotes),
-    canCreate: hasPermission(props.permissions, Permission.CreateNotes),
-    canEdit: hasPermission(props.permissions, Permission.EditNotes),
-    canDelete: hasPermission(props.permissions, Permission.DeleteNotes),
-    canManage: hasPermission(props.permissions, Permission.ManageNotes),
+    ...notePermissions(props.permissions),
   };
 }
 
-/** Everything the Notes view and its parts share. */
-export function useNotes(props: NotesProps) {
-  const state = useNotesState();
-  const data = useNotesData(props, state);
-  const runner = useRunner();
-  const mutations = useNoteMutations();
-
+function useNoteSelection(state: NotesState, data: ReturnType<typeof useNotesData>) {
   const visibleKey = data.visible.map((note) => note.id).join(",");
   // Keep a valid note selected as filters change; fall back to the first row.
   // biome-ignore lint/correctness/useExhaustiveDependencies: reselect only when the visible set changes
@@ -298,8 +299,31 @@ export function useNotes(props: NotesProps) {
     state.setDraft(snapshot);
     state.setTab("edit");
   }, [detailKey]);
+}
 
-  const openNote = (id: NoteSummary["id"]) => {
+function isDraftDirty(state: NotesState, data: ReturnType<typeof useNotesData>): boolean {
+  return (
+    state.draft !== undefined &&
+    data.detail !== undefined &&
+    !sameDraft(state.draft, {
+      title: data.detail.title,
+      body: data.detail.body,
+      folderId: data.detail.folderId,
+      tagIds: [...data.detail.tagIds],
+    })
+  );
+}
+
+/** Everything the Notes view and its parts share. */
+export function useNotes(props: NotesProps) {
+  const state = useNotesState();
+  const data = useNotesData(props, state);
+  const runner = useRunner();
+  const mutations = useNoteMutations();
+
+  useNoteSelection(state, data);
+
+  const openNote = (id: Id<"notePages">) => {
     state.setNoteId(id);
     state.setEditing(false);
   };
@@ -379,7 +403,7 @@ export function useNotes(props: NotesProps) {
     });
   };
 
-  const createFolder = async (name: string, parentId: NoteFolder["id"] | null) => {
+  const createFolder = async (name: string, parentId: Id<"noteFolders"> | null) => {
     if (!data.canCreate) return;
     await runner.run(async () => {
       await mutations.createFolder({
@@ -398,7 +422,7 @@ export function useNotes(props: NotesProps) {
     });
   };
 
-  const moveFolder = async (folder: NoteFolder, parentId: NoteFolder["id"] | null) => {
+  const moveFolder = async (folder: NoteFolder, parentId: Id<"noteFolders"> | null) => {
     if (!data.canEdit) return;
     await runner.run(async () => {
       await mutations.moveFolder({
@@ -425,15 +449,7 @@ export function useNotes(props: NotesProps) {
     });
   };
 
-  const dirty =
-    state.draft !== undefined &&
-    data.detail !== undefined &&
-    !sameDraft(state.draft, {
-      title: data.detail.title,
-      body: data.detail.body,
-      folderId: data.detail.folderId,
-      tagIds: [...data.detail.tagIds],
-    });
+  const dirty = isDraftDirty(state, data);
 
   return {
     ...props,

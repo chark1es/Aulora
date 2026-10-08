@@ -135,32 +135,8 @@ export function searchNotes(
 ): NoteSearchHit[] {
   const terms = tokenize(query);
   if (terms.length === 0 || limit <= 0) return [];
-  const byId = new Map(documents.map((document) => [document.id, document]));
-  const titleTokens = new Map<string, Set<string>>();
-  const postings = new Map<string, Set<string>>();
-  for (const document of documents) {
-    const title = new Set(tokenize(document.title));
-    titleTokens.set(document.id, title);
-    const tokens = new Set([...title, ...tokenize(document.body)]);
-    for (const token of tokens) {
-      const posting = postings.get(token) ?? new Set<string>();
-      posting.add(document.id);
-      postings.set(token, posting);
-    }
-  }
-  const scores = new Map<string, number>();
-  for (const term of terms) {
-    const exact = postings.get(term);
-    if (exact !== undefined) {
-      for (const id of exact) scores.set(id, (scores.get(id) ?? 0) + 3);
-    }
-    if (term.length >= minPrefixLength) {
-      for (const [token, posting] of postings) {
-        if (token === term || !token.startsWith(term)) continue;
-        for (const id of posting) scores.set(id, Math.max(scores.get(id) ?? 0, 1) + 1);
-      }
-    }
-  }
+  const { byId, titleTokens, postings } = searchIndex(documents);
+  const scores = searchScores(postings, terms, minPrefixLength);
   const results: NoteSearchHit[] = [];
   for (const [id, score] of scores) {
     const document = byId.get(id);
@@ -180,6 +156,44 @@ export function searchNotes(
   }
   results.sort((a, b) => b.score - a.score || b.updatedAt - a.updatedAt);
   return results.slice(0, limit);
+}
+
+function searchScores(
+  postings: ReadonlyMap<string, ReadonlySet<string>>,
+  terms: readonly string[],
+  minPrefixLength: number,
+): Map<string, number> {
+  const scores = new Map<string, number>();
+  for (const term of terms) {
+    const exact = postings.get(term);
+    if (exact !== undefined) {
+      for (const id of exact) scores.set(id, (scores.get(id) ?? 0) + 3);
+    }
+    if (term.length >= minPrefixLength) {
+      for (const [token, posting] of postings) {
+        if (token === term || !token.startsWith(term)) continue;
+        for (const id of posting) scores.set(id, Math.max(scores.get(id) ?? 0, 1) + 1);
+      }
+    }
+  }
+  return scores;
+}
+
+function searchIndex(documents: readonly NoteSearchDocument[]) {
+  const byId = new Map(documents.map((document) => [document.id, document]));
+  const titleTokens = new Map<string, Set<string>>();
+  const postings = new Map<string, Set<string>>();
+  for (const document of documents) {
+    const title = new Set(tokenize(document.title));
+    titleTokens.set(document.id, title);
+    const tokens = new Set([...title, ...tokenize(document.body)]);
+    for (const token of tokens) {
+      const posting = postings.get(token) ?? new Set<string>();
+      posting.add(document.id);
+      postings.set(token, posting);
+    }
+  }
+  return { byId, titleTokens, postings };
 }
 
 function snippet(document: NoteSearchDocument, terms: readonly string[]): string {

@@ -8,6 +8,7 @@ interface AddonToggleProps {
   label: string;
   description: string;
   checked: boolean;
+  // eslint-disable-next-line no-unused-vars -- base rule treats TypeScript callback parameters as variables
   onToggle: (enabled: boolean) => Promise<unknown>;
   failureMessage: string;
 }

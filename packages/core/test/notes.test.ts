@@ -67,11 +67,44 @@ describe("diffLines", () => {
     expect(lines.map((line) => line.type)).toEqual(["context", "del", "add", "context", "add"]);
   });
 
+  it.each([
+    ["", "first\nsecond"],
+    ["first\nsecond", ""],
+    ["a\nb\na\n", "b\na\nb\n"],
+    ["one\ntwo\nthree", "three\ntwo\none"],
+    ["before", "after"],
+  ])("reconstructs both versions from the diff of %j and %j", (before, after) => {
+    const lines = diffLines(before, after);
+    expect(
+      lines
+        .filter((line) => line.type !== "add")
+        .map((line) => line.text)
+        .join("\n"),
+    ).toBe(before);
+    expect(
+      lines
+        .filter((line) => line.type !== "del")
+        .map((line) => line.text)
+        .join("\n"),
+    ).toBe(after);
+  });
+
   it("falls back to a coarse diff on very large inputs", () => {
     const before = Array.from({ length: 700 }, (_, i) => `line ${i}`).join("\n");
     const after = `${before}\nextra`;
     const lines = diffLines(before, after);
     expect(lines.at(-1)).toEqual({ type: "add", text: "extra" });
+  });
+
+  it("keeps the common prefix and suffix in a large replacement", () => {
+    const middle = Array.from({ length: 700 }, (_, i) => `line ${i}`).join("\n");
+    const before = `start\n${middle}\nend`;
+    const after = `start\nreplacement\n${middle}\nend`;
+    const lines = diffLines(before, after);
+    expect(lines.at(0)).toEqual({ type: "context", text: "start" });
+    expect(lines.at(1)).toEqual({ type: "add", text: "replacement" });
+    expect(lines.at(-1)).toEqual({ type: "context", text: "end" });
+    expect(diffStats(lines)).toEqual({ added: 1, removed: 0 });
   });
 });
 

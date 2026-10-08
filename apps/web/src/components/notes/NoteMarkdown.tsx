@@ -61,24 +61,8 @@ function renderBlock(block: NoteBlock, key: string): ReactNode {
           <code>{block.text}</code>
         </pre>
       );
-    case "list": {
-      const Tag = block.ordered ? "ol" : "ul";
-      return (
-        <Tag
-          key={key}
-          className={cn("flex flex-col gap-1 pl-5", block.ordered ? "list-decimal" : "list-disc")}
-        >
-          {block.items.map((item, index) => {
-            const itemKey = `${key}:item:${index}`;
-            return (
-              <li key={itemKey} className="whitespace-pre-wrap [overflow-wrap:anywhere]">
-                {renderInline(item)}
-              </li>
-            );
-          })}
-        </Tag>
-      );
-    }
+    case "list":
+      return renderList(block, key);
     case "blockquote":
       return (
         <blockquote key={key} className="border-l-2 border-accent/50 pl-3 italic text-text-muted">
@@ -120,17 +104,7 @@ function renderInline(segments: readonly InlineSegment[]): ReactNode[] {
           </em>
         );
       case "link":
-        return (
-          <a
-            key={key}
-            href={segment.href}
-            target="_blank"
-            rel="noopener noreferrer"
-            className="text-accent underline decoration-1 underline-offset-2 hover:brightness-110"
-          >
-            {segment.text}
-          </a>
-        );
+        return renderLink(segment, key);
       case "mention":
         return (
           <span key={key} className="font-semibold text-accent">
@@ -147,4 +121,37 @@ function renderInline(segments: readonly InlineSegment[]): ReactNode[] {
         return null;
     }
   });
+}
+
+function renderList(block: Extract<NoteBlock, { type: "list" }>, key: string): ReactNode {
+  const Tag = block.ordered ? "ol" : "ul";
+  return (
+    <Tag
+      key={key}
+      className={cn("flex flex-col gap-1 pl-5", block.ordered ? "list-decimal" : "list-disc")}
+    >
+      {block.items.map((item, index) => {
+        const itemKey = `${key}:item:${index}`;
+        return (
+          <li key={itemKey} className="whitespace-pre-wrap [overflow-wrap:anywhere]">
+            {renderInline(item)}
+          </li>
+        );
+      })}
+    </Tag>
+  );
+}
+
+function renderLink(segment: Extract<InlineSegment, { type: "link" }>, key: string): ReactNode {
+  return (
+    <a
+      key={key}
+      href={segment.href}
+      target="_blank"
+      rel="noopener noreferrer"
+      className="text-accent underline decoration-1 underline-offset-2 hover:brightness-110"
+    >
+      {segment.text}
+    </a>
+  );
 }

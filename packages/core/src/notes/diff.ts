@@ -45,41 +45,44 @@ function splitLines(text: string): string[] {
   return text.length === 0 ? [] : text.split("\n");
 }
 
-function lcsDiff(a: readonly string[], b: readonly string[]): DiffLine[] {
-  const n = a.length;
-  const m = b.length;
-  const table: number[][] = Array.from({ length: n + 1 }, () => new Array<number>(m + 1).fill(0));
-  for (let i = n - 1; i >= 0; i -= 1) {
-    for (let j = m - 1; j >= 0; j -= 1) {
-      const row = table[i];
-      const next = table[i + 1];
-      if (row === undefined || next === undefined) continue;
-      row[j] = a[i] === b[j] ? (next[j + 1] ?? 0) + 1 : Math.max(next[j] ?? 0, row[j + 1] ?? 0);
+function buildLcsTable(a: readonly string[], b: readonly string[]) {
+  const columns = b.length + 1;
+  const table = new DataView(new ArrayBuffer((a.length + 1) * columns * 4));
+  const get = (row: number, column: number): number =>
+    table.getUint32((row * columns + column) * 4);
+  for (let i = a.length - 1; i >= 0; i -= 1) {
+    for (let j = b.length - 1; j >= 0; j -= 1) {
+      const length =
+        a.at(i) === b.at(j) ? get(i + 1, j + 1) + 1 : Math.max(get(i + 1, j), get(i, j + 1));
+      table.setUint32((i * columns + j) * 4, length);
     }
   }
+  return get;
+}
+
+function lcsDiff(a: readonly string[], b: readonly string[]): DiffLine[] {
+  const getLength = buildLcsTable(a, b);
   const result: DiffLine[] = [];
   let i = 0;
   let j = 0;
-  while (i < n && j < m) {
-    if (a[i] === b[j]) {
-      result.push({ type: "context", text: a[i] ?? "" });
+  while (i < a.length && j < b.length) {
+    if (a.at(i) === b.at(j)) {
+      result.push({ type: "context", text: a.at(i) ?? "" });
       i += 1;
       j += 1;
-    } else if ((table[i + 1]?.[j] ?? 0) >= (table[i]?.[j + 1] ?? 0)) {
-      result.push({ type: "del", text: a[i] ?? "" });
+    } else if (getLength(i + 1, j) >= getLength(i, j + 1)) {
+      result.push({ type: "del", text: a.at(i) ?? "" });
       i += 1;
     } else {
-      result.push({ type: "add", text: b[j] ?? "" });
+      result.push({ type: "add", text: b.at(j) ?? "" });
       j += 1;
     }
   }
-  while (i < n) {
-    result.push({ type: "del", text: a[i] ?? "" });
-    i += 1;
+  for (const text of a.slice(i)) {
+    result.push({ type: "del", text });
   }
-  while (j < m) {
-    result.push({ type: "add", text: b[j] ?? "" });
-    j += 1;
+  for (const text of b.slice(j)) {
+    result.push({ type: "add", text });
   }
   return result;
 }
@@ -91,22 +94,19 @@ function lcsDiff(a: readonly string[], b: readonly string[]): DiffLine[] {
  */
 function coarseDiff(a: readonly string[], b: readonly string[]): DiffLine[] {
   let prefix = 0;
-  while (prefix < a.length && prefix < b.length && a[prefix] === b[prefix]) prefix += 1;
+  while (prefix < a.length && prefix < b.length && a.at(prefix) === b.at(prefix)) prefix += 1;
   let suffix = 0;
   while (
     suffix < a.length - prefix &&
     suffix < b.length - prefix &&
-    a[a.length - 1 - suffix] === b[b.length - 1 - suffix]
+    a.at(-1 - suffix) === b.at(-1 - suffix)
   ) {
     suffix += 1;
   }
   const result: DiffLine[] = [];
-  for (let i = 0; i < prefix; i += 1) result.push({ type: "context", text: a[i] ?? "" });
-  for (let i = prefix; i < a.length - suffix; i += 1)
-    result.push({ type: "del", text: a[i] ?? "" });
-  for (let i = prefix; i < b.length - suffix; i += 1)
-    result.push({ type: "add", text: b[i] ?? "" });
-  for (let i = a.length - suffix; i < a.length; i += 1)
-    result.push({ type: "context", text: a[i] ?? "" });
+  for (const text of a.slice(0, prefix)) result.push({ type: "context", text });
+  for (const text of a.slice(prefix, a.length - suffix)) result.push({ type: "del", text });
+  for (const text of b.slice(prefix, b.length - suffix)) result.push({ type: "add", text });
+  for (const text of a.slice(a.length - suffix)) result.push({ type: "context", text });
   return result;
 }

@@ -164,6 +164,35 @@ function FolderRail({ ctl }: { readonly ctl: NotesController }) {
   );
 }
 
+function NoteRowTitle({
+  ctl,
+  note,
+}: {
+  readonly ctl: NotesController;
+  readonly note: NoteListItem;
+}) {
+  const palette = usePalette();
+  return (
+    <View className="flex-row items-center gap-2">
+      <Text className="min-w-0 flex-1 font-medium" numberOfLines={1}>
+        {noteTitle(note)}
+      </Text>
+      {note.archived && <Icon name="archive" size={14} color={palette["text-muted"]} />}
+      <Pressable
+        accessibilityRole="button"
+        accessibilityLabel={`Actions for ${noteTitle(note)}`}
+        hitSlop={8}
+        onPress={() => {
+          ctl.setOpen({ kind: "note", noteId: note.id });
+        }}
+        className="h-8 w-8 items-center justify-center rounded-input active:bg-surface-3"
+      >
+        <Icon name="more-horizontal" size={18} color={palette["text-muted"]} />
+      </Pressable>
+    </View>
+  );
+}
+
 function NoteRow({
   ctl,
   note,
@@ -175,7 +204,6 @@ function NoteRow({
   readonly index: number;
   readonly now: number;
 }) {
-  const palette = usePalette();
   const tags = tagsForIds(ctl.tags, note.tagIds).slice(0, 3);
   const folder =
     note.folderId === null ? undefined : ctl.folders.find((f) => f.id === note.folderId);
@@ -194,23 +222,7 @@ function NoteRow({
         }}
         className="gap-1.5 border-b border-border px-4 py-3 active:bg-surface-2"
       >
-        <View className="flex-row items-center gap-2">
-          <Text className="min-w-0 flex-1 font-medium" numberOfLines={1}>
-            {noteTitle(note)}
-          </Text>
-          {note.archived && <Icon name="archive" size={14} color={palette["text-muted"]} />}
-          <Pressable
-            accessibilityRole="button"
-            accessibilityLabel={`Actions for ${noteTitle(note)}`}
-            hitSlop={8}
-            onPress={() => {
-              ctl.setOpen({ kind: "note", noteId: note.id });
-            }}
-            className="h-8 w-8 items-center justify-center rounded-input active:bg-surface-3"
-          >
-            <Icon name="more-horizontal" size={18} color={palette["text-muted"]} />
-          </Pressable>
-        </View>
+        <NoteRowTitle ctl={ctl} note={note} />
         {tags.length > 0 && (
           <View className="flex-row flex-wrap gap-1">
             {tags.map((tag) => (

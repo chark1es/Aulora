@@ -102,6 +102,7 @@ export function NoteEditor({ ctl }: { ctl: NotesController }) {
     );
   }
 
+  // eslint-disable-next-line no-unused-vars -- base rule treats TypeScript callback parameters as variables
   const applyEdit = (transform: (value: string, start: number, end: number) => Edit) => {
     const element = bodyRef.current;
     if (element === null) return;
@@ -242,38 +243,58 @@ export function NoteEditor({ ctl }: { ctl: NotesController }) {
 
       {!preview && (
         <div className="inline-flex items-center gap-0.5 self-start rounded-[11px] border border-border bg-surface-2 p-0.5">
-          <ToolButton label="Bold" disabled={!ctl.canEdit} onClick={() => wrap("**", "**", "bold")}>
+          <ToolButton
+            label="Bold"
+            disabled={!ctl.canEdit}
+            onClick={() => {
+              wrap("**", "**", "bold");
+            }}
+          >
             <Icon name="bold" size={18} />
           </ToolButton>
           <ToolButton
             label="Italic"
             disabled={!ctl.canEdit}
-            onClick={() => wrap("*", "*", "italic")}
+            onClick={() => {
+              wrap("*", "*", "italic");
+            }}
           >
             <Icon name="italic" size={18} />
           </ToolButton>
           <ToolButton
             label="Heading"
             disabled={!ctl.canEdit}
-            onClick={() => prefixLines("# ", false)}
+            onClick={() => {
+              prefixLines("# ", false);
+            }}
           >
             <Icon name="heading" size={18} />
           </ToolButton>
           <ToolButton
             label="Bullet list"
             disabled={!ctl.canEdit}
-            onClick={() => prefixLines("- ", false)}
+            onClick={() => {
+              prefixLines("- ", false);
+            }}
           >
             <Icon name="list-bulleted" size={18} />
           </ToolButton>
           <ToolButton
             label="Ordered list"
             disabled={!ctl.canEdit}
-            onClick={() => prefixLines("1. ", true)}
+            onClick={() => {
+              prefixLines("1. ", true);
+            }}
           >
             <Icon name="list-numbered" size={18} />
           </ToolButton>
-          <ToolButton label="Code" disabled={!ctl.canEdit} onClick={() => wrap("`", "`", "code")}>
+          <ToolButton
+            label="Code"
+            disabled={!ctl.canEdit}
+            onClick={() => {
+              wrap("`", "`", "code");
+            }}
+          >
             <Icon name="code" size={18} />
           </ToolButton>
           <ToolButton label="Link" disabled={!ctl.canEdit} onClick={insertLink}>

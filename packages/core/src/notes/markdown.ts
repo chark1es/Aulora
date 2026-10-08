@@ -79,7 +79,7 @@ function parseLines(blocks: NoteBlock[], raw: string): void {
   };
 
   while (index < lines.length) {
-    const line = lines[index] ?? "";
+    const line = lines.at(index) ?? "";
     index += 1;
 
     if (BLANK.test(line)) {
@@ -92,11 +92,11 @@ function parseLines(blocks: NoteBlock[], raw: string): void {
     if (heading !== null) {
       flushParagraph();
       flushList();
-      const level = heading[1]?.length ?? 1;
+      const level = heading.at(1)?.length ?? 1;
       blocks.push({
         type: "heading",
         level: Math.min(6, Math.max(1, level)) as NoteHeadingLevel,
-        children: parseInline((heading[2] ?? "").trim()),
+        children: parseInline((heading.at(2) ?? "").trim()),
       });
       continue;
     }
@@ -112,11 +112,11 @@ function parseLines(blocks: NoteBlock[], raw: string): void {
     if (quote !== null) {
       flushParagraph();
       flushList();
-      const quoteLines: string[] = [quote[1] ?? ""];
+      const quoteLines: string[] = [quote.at(1) ?? ""];
       while (index < lines.length) {
-        const next = BLOCKQUOTE.exec(lines[index] ?? "");
+        const next = BLOCKQUOTE.exec(lines.at(index) ?? "");
         if (next === null) break;
-        quoteLines.push(next[1] ?? "");
+        quoteLines.push(next.at(1) ?? "");
         index += 1;
       }
       const joined = quoteLines.join("\n").trim();

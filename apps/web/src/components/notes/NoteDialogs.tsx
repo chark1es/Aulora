@@ -69,13 +69,43 @@ function Confirmations({ ctl }: { ctl: NotesController }) {
   );
 }
 
-function FolderDialogForm({ ctl, dialog }: { ctl: NotesController; dialog: FolderDialog }) {
-  const folder = dialog.mode === "new" ? undefined : dialog.folder;
-  const initialParent = dialog.mode === "new" ? dialog.parentId : (dialog.folder.parentId ?? null);
-  const [name, setName] = useState(folder?.name ?? "");
-  const [parentId, setParentId] = useState(initialParent ?? "");
+function DialogError({ error }: { error: string | undefined }) {
+  if (error === undefined) return null;
+  return (
+    <p role="alert" className="text-sm text-danger">
+      {error}
+    </p>
+  );
+}
+
+function DialogFooter({
+  onClose,
+  form,
+  label,
+  disabled,
+  busy,
+}: {
+  onClose: () => void;
+  form: string;
+  label: string;
+  disabled: boolean;
+  busy: boolean;
+}) {
+  return (
+    <>
+      <Button variant="secondary" onClick={onClose}>
+        Cancel
+      </Button>
+      <Button type="submit" form={form} disabled={disabled} loading={busy}>
+        {label}
+      </Button>
+    </>
+  );
+}
+
+function parentOptions(ctl: NotesController, folder?: NoteFolder): readonly SelectOption<string>[] {
   const excluded = folder === undefined ? new Set<string>() : descendantsOf(ctl.folders, folder.id);
-  const options: readonly SelectOption<string>[] = [
+  return [
     { value: "", label: "No folder (root)" },
     ...flattenFolders(ctl.folders)
       .filter((entry) => !excluded.has(entry.folder.id))
@@ -84,6 +114,14 @@ function FolderDialogForm({ ctl, dialog }: { ctl: NotesController; dialog: Folde
         label: `${"— ".repeat(depth)}${entry.name}`,
       })),
   ];
+}
+
+function useFolderForm(ctl: NotesController, dialog: FolderDialog) {
+  const folder = dialog.mode === "new" ? undefined : dialog.folder;
+  const initialParent = dialog.mode === "new" ? dialog.parentId : (dialog.folder.parentId ?? null);
+  const [name, setName] = useState(folder?.name ?? "");
+  const [parentId, setParentId] = useState(initialParent ?? "");
+  const options = parentOptions(ctl, folder);
   const title =
     dialog.mode === "new"
       ? "New folder"
@@ -105,6 +143,14 @@ function FolderDialogForm({ ctl, dialog }: { ctl: NotesController; dialog: Folde
       await ctl.moveFolder(dialog.folder, parentId === "" ? null : (parentId as NoteFolder["id"]));
     }
   };
+  return { name, setName, parentId, setParentId, options, title, close, submit };
+}
+
+function FolderDialogForm({ ctl, dialog }: { ctl: NotesController; dialog: FolderDialog }) {
+  const { name, setName, parentId, setParentId, options, title, close, submit } = useFolderForm(
+    ctl,
+    dialog,
+  );
   return (
     <Modal
       open
@@ -112,23 +158,19 @@ function FolderDialogForm({ ctl, dialog }: { ctl: NotesController; dialog: Folde
       label={title}
       title={title}
       footer={
-        <>
-          <Button variant="secondary" onClick={close}>
-            Cancel
-          </Button>
-          <Button
-            type="submit"
-            form="notes-folder-form"
-            disabled={dialog.mode !== "move" && name.trim().length === 0}
-            loading={ctl.busy}
-          >
-            {dialog.mode === "move"
+        <DialogFooter
+          onClose={close}
+          form="notes-folder-form"
+          disabled={dialog.mode !== "move" && name.trim().length === 0}
+          busy={ctl.busy}
+          label={
+            dialog.mode === "move"
               ? "Move folder"
               : dialog.mode === "rename"
                 ? "Rename folder"
-                : "Create folder"}
-          </Button>
-        </>
+                : "Create folder"
+          }
+        />
       }
     >
       <form
@@ -153,13 +195,41 @@ function FolderDialogForm({ ctl, dialog }: { ctl: NotesController; dialog: Folde
         {dialog.mode !== "rename" && (
           <Select label="Parent folder" value={parentId} options={options} onChange={setParentId} />
         )}
-        {ctl.error !== undefined && (
-          <p role="alert" className="text-sm text-danger">
-            {ctl.error}
-          </p>
-        )}
+        <DialogError error={ctl.error} />
       </form>
     </Modal>
+  );
+}
+
+function TagColor({
+  name,
+  color,
+  onChange,
+}: {
+  name: string;
+  color: string;
+  onChange: React.Dispatch<React.SetStateAction<string>>;
+}) {
+  return (
+    <div className="flex flex-col gap-1.5">
+      <span className="text-[12px] font-medium text-text-muted">Color</span>
+      <div className="flex items-center gap-3">
+        <input
+          type="color"
+          aria-label="Tag color"
+          value={color}
+          onChange={(event) => {
+            onChange(event.target.value);
+          }}
+          className="h-9 w-14 cursor-pointer rounded-[8px] border border-border bg-surface-3"
+        />
+        <span className="font-mono text-[13px] text-text-muted">{color}</span>
+        <span className="inline-flex items-center gap-1.5 rounded-full bg-surface-3 px-2.5 py-1 text-[12px] text-text">
+          <span className="h-2 w-2 rounded-full" style={{ backgroundColor: color }} />
+          {name.trim().length > 0 ? name : "Tag"}
+        </span>
+      </div>
+    </div>
   );
 }
 
@@ -187,19 +257,13 @@ function TagDialogForm({ ctl, dialog }: { ctl: NotesController; dialog: TagDialo
       label={title}
       title={title}
       footer={
-        <>
-          <Button variant="secondary" onClick={close}>
-            Cancel
-          </Button>
-          <Button
-            type="submit"
-            form="notes-tag-form"
-            disabled={name.trim().length === 0}
-            loading={ctl.busy}
-          >
-            {dialog.mode === "new" ? "Create tag" : "Save tag"}
-          </Button>
-        </>
+        <DialogFooter
+          onClose={close}
+          form="notes-tag-form"
+          disabled={name.trim().length === 0}
+          busy={ctl.busy}
+          label={dialog.mode === "new" ? "Create tag" : "Save tag"}
+        />
       }
     >
       <form
@@ -219,30 +283,8 @@ function TagDialogForm({ ctl, dialog }: { ctl: NotesController; dialog: TagDialo
             setName(event.target.value);
           }}
         />
-        <div className="flex flex-col gap-1.5">
-          <span className="text-[12px] font-medium text-text-muted">Color</span>
-          <div className="flex items-center gap-3">
-            <input
-              type="color"
-              aria-label="Tag color"
-              value={color}
-              onChange={(event) => {
-                setColor(event.target.value);
-              }}
-              className="h-9 w-14 cursor-pointer rounded-[8px] border border-border bg-surface-3"
-            />
-            <span className="font-mono text-[13px] text-text-muted">{color}</span>
-            <span className="inline-flex items-center gap-1.5 rounded-full bg-surface-3 px-2.5 py-1 text-[12px] text-text">
-              <span className="h-2 w-2 rounded-full" style={{ backgroundColor: color }} />
-              {name.trim().length > 0 ? name : "Tag"}
-            </span>
-          </div>
-        </div>
-        {ctl.error !== undefined && (
-          <p role="alert" className="text-sm text-danger">
-            {ctl.error}
-          </p>
-        )}
+        <TagColor name={name} color={color} onChange={setColor} />
+        <DialogError error={ctl.error} />
       </form>
     </Modal>
   );

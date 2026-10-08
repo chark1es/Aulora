@@ -1,4 +1,4 @@
-import { diffLines, Permission } from "@aulora/core";
+import { diffLines, NOTE_MAX_REVISIONS, Permission } from "@aulora/core";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { api } from "../convex/_generated/api";
 import { isSealed } from "../convex/lib/sse";
@@ -29,6 +29,31 @@ async function enable(t: Test, userId = "owner-1") {
   await t
     .withIdentity({ subject: userId })
     .mutation(api.workspaceNotes.setEnabled, { enabled: true });
+}
+
+async function permissionScenario() {
+  const t = newTest();
+  await seedWorkspace(t, {
+    everyonePermissions: Permission.ViewNotes,
+    extraRoles: [
+      { key: "creator", permissions: Permission.CreateNotes },
+      { key: "editor", permissions: Permission.EditNotes },
+      { key: "deleter", permissions: Permission.DeleteNotes },
+    ],
+    members: [
+      { userId: "viewer" },
+      { userId: "creator", roleIds: ["creator"] },
+      { userId: "editor", roleIds: ["editor"] },
+      { userId: "deleter", roleIds: ["deleter"] },
+    ],
+  });
+  await enable(t);
+  const viewer = t.withIdentity({ subject: "viewer" });
+  const creator = t.withIdentity({ subject: "creator" });
+  const editor = t.withIdentity({ subject: "editor" });
+  const deleter = t.withIdentity({ subject: "deleter" });
+
+  return { t, viewer, creator, editor, deleter };
 }
 
 describe("Notes authorization", () => {
@@ -73,26 +98,7 @@ describe("Notes authorization", () => {
   });
 
   it("maps create, edit and delete permissions to the right operations", async () => {
-    const t = newTest();
-    await seedWorkspace(t, {
-      everyonePermissions: Permission.ViewNotes,
-      extraRoles: [
-        { key: "creator", permissions: Permission.CreateNotes },
-        { key: "editor", permissions: Permission.EditNotes },
-        { key: "deleter", permissions: Permission.DeleteNotes },
-      ],
-      members: [
-        { userId: "viewer" },
-        { userId: "creator", roleIds: ["creator"] },
-        { userId: "editor", roleIds: ["editor"] },
-        { userId: "deleter", roleIds: ["deleter"] },
-      ],
-    });
-    await enable(t);
-    const viewer = t.withIdentity({ subject: "viewer" });
-    const creator = t.withIdentity({ subject: "creator" });
-    const editor = t.withIdentity({ subject: "editor" });
-    const deleter = t.withIdentity({ subject: "deleter" });
+    const { t, viewer, creator, editor, deleter } = await permissionScenario();
 
     await expect(viewer.query(api.workspaceNotes.overview)).resolves.toBeTruthy();
     await expect(
@@ -251,6 +257,50 @@ describe("Notes storage and CRUD", () => {
     );
   });
 
+  it("keeps the full revision limit and prunes the oldest row when an edit exceeds it", async () => {
+    const { t, alice } = await setup();
+    const noteId = await alice.mutation(api.workspaceNotes.createNote, {
+      title: "Plan",
+      body: "before",
+    });
+    const { oldestId, retainedIds } = await t.run(async (ctx) => {
+      const oldest = (await ctx.db.query("noteRevisions").collect()).find(
+        (row) => row.noteId === noteId,
+      );
+      if (!oldest) throw new Error("Missing creation revision");
+      await ctx.db.patch(oldest._id, { at: 0 });
+      const retainedIds = [];
+      for (let at = 1; at < NOTE_MAX_REVISIONS; at++) {
+        retainedIds.push(
+          await ctx.db.insert("noteRevisions", { noteId, actorId: "alice", action: "updated", at }),
+        );
+      }
+      return { oldestId: oldest._id, retainedIds };
+    });
+    const atLimit = await alice.query(api.workspaceNotes.history, {
+      noteId,
+      limit: NOTE_MAX_REVISIONS,
+    });
+    expect(atLimit).toHaveLength(NOTE_MAX_REVISIONS);
+    expect(atLimit.some((row) => row.id === oldestId)).toBe(true);
+    await alice.mutation(api.workspaceNotes.updateNote, {
+      noteId,
+      revision: 0,
+      title: "Plan",
+      body: "after",
+      tagIds: [],
+    });
+    const afterEdit = await alice.query(api.workspaceNotes.history, {
+      noteId,
+      limit: NOTE_MAX_REVISIONS,
+    });
+    expect(afterEdit).toHaveLength(NOTE_MAX_REVISIONS);
+    expect(afterEdit.some((row) => row.id === oldestId)).toBe(false);
+    expect(afterEdit.map((row) => row.id)).toEqual(expect.arrayContaining(retainedIds));
+    expect(afterEdit[0]).toMatchObject({ before: { body: "before" }, after: { body: "after" } });
+    expect(await t.run((ctx) => ctx.db.get(oldestId))).toBeNull();
+  });
+
   it("classifies rename, move, tag, content and archive revisions", async () => {
     const { alice } = await setup();
     const noteId = await alice.mutation(api.workspaceNotes.createNote, { title: "A", body: "b" });
@@ -259,37 +309,15 @@ describe("Notes storage and CRUD", () => {
       name: "T",
       color: "#112233",
     });
-    await alice.mutation(api.workspaceNotes.updateNote, {
-      noteId,
-      revision: 0,
-      title: "A2",
-      body: "b",
-      tagIds: [],
-    });
-    await alice.mutation(api.workspaceNotes.updateNote, {
-      noteId,
-      revision: 1,
-      title: "A2",
-      body: "b",
-      folderId,
-      tagIds: [],
-    });
-    await alice.mutation(api.workspaceNotes.updateNote, {
-      noteId,
-      revision: 2,
-      title: "A2",
-      body: "b",
-      folderId,
-      tagIds: [tagId],
-    });
-    await alice.mutation(api.workspaceNotes.updateNote, {
-      noteId,
-      revision: 3,
-      title: "A2",
-      body: "b2",
-      folderId,
-      tagIds: [tagId],
-    });
+    const edits = [
+      { title: "A2", body: "b", tagIds: [] },
+      { title: "A2", body: "b", folderId, tagIds: [] },
+      { title: "A2", body: "b", folderId, tagIds: [tagId] },
+      { title: "A2", body: "b2", folderId, tagIds: [tagId] },
+    ];
+    for (const [revision, edit] of edits.entries()) {
+      await alice.mutation(api.workspaceNotes.updateNote, { noteId, revision, ...edit });
+    }
     await alice.mutation(api.workspaceNotes.archiveNote, { noteId, archived: true });
     const history = await alice.query(api.workspaceNotes.history, { noteId });
     expect(history.map((row) => row.action)).toEqual([
