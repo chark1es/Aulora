@@ -246,6 +246,11 @@ services:
         CONVEX_URL: ${CONVEX_CLOUD_ORIGIN:-http://localhost:3210}
     image: aulora-web:local
     restart: unless-stopped
+    environment:
+      # nginx request-body cap for uploads proxied through this origin. Keep it
+      # at least as large as the effective max upload (the admin Storage setting
+      # or UPLOAD_MAX_BYTES). The 100m default covers the built-in 25 MiB cap.
+      NGINX_CLIENT_MAX_BODY_SIZE: ${NGINX_CLIENT_MAX_BODY_SIZE:-100m}
     # Coolify maps the web domain to this container's port 80; no host ports.
     expose:
       - "80"
@@ -270,6 +275,9 @@ services:
       context: ../..
       dockerfile: infra/docker/setup.Dockerfile
     image: aulora-setup:local
+    # The bootstrap prepares mount ownership, then drops to aulora without
+    # capabilities before deployment or workspace initialization.
+    user: "0:0"
     restart: "no"
     exclude_from_hc: true
     # Optional fallback for hosts that still provide a compose .env. Under
@@ -284,6 +292,15 @@ services:
       CONVEX_PROJECT_DIR: /app/packages/convex
       HOST_ENV_FILE: /host/.env
       WELL_KNOWN_DIR: /web-well-known
+      AULORA_UPDATE_PROVIDER: coolify
+      AULORA_COOLIFY_URL: ${AULORA_COOLIFY_URL:-}
+      AULORA_COOLIFY_APPLICATION_UUID: ${AULORA_COOLIFY_APPLICATION_UUID:-}
+      # Compose reads the token from the operator's environment; no credential is stored here.
+      # nosemgrep: codacy.yaml.security.hard-coded-tokens
+      AULORA_COOLIFY_API_TOKEN: ${AULORA_COOLIFY_API_TOKEN:-}
+      AULORA_UPDATE_MANIFEST_URL: ${AULORA_UPDATE_MANIFEST_URL:-}
+      AULORA_UPDATE_GITHUB_REPO: ${AULORA_UPDATE_GITHUB_REPO:-}
+      AULORA_UPDATE_CHANNEL: ${AULORA_UPDATE_CHANNEL:-stable}
       # --- instance identity + owner (operator-required) ---
       INSTANCE_NAME: ${INSTANCE_NAME:-aulora}
       WORKSPACE_NAME: ${WORKSPACE_NAME:-Aulora}

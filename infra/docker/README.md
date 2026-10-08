@@ -126,6 +126,24 @@ S3.
 `minio-init` waits for MinIO and creates the buckets idempotently on every
 `up`.
 
+## Upload size limits
+
+Two independent caps apply, and both must allow the size you want:
+
+- **Convex** enforces the authoritative per-upload cap from the admin
+  **Storage** setting (`instanceSettings.maxUploadBytes`, 25 MiB by default).
+  When no setting has been saved it falls back to the `UPLOAD_MAX_BYTES`
+  deployment env var, then to the 25 MiB default. Clients read the effective
+  value from `server.publicConfig.uploads.maxBytes`.
+- **nginx** (the `web` service) rejects request bodies larger than
+  `NGINX_CLIENT_MAX_BODY_SIZE` (default `100m`) before they reach Convex. This
+  matters when uploads go through the web origin, i.e. `CONVEX_CLOUD_ORIGIN`
+  points at `SITE_URL` rather than the Convex API host directly.
+
+If you raise the admin Storage max above `100m`, also set
+`NGINX_CLIENT_MAX_BODY_SIZE` in `.env` to match (nginx size notation, e.g.
+`250m`) and redeploy the `web` service.
+
 ## Encryption
 
 Aulora encrypts content **server-side**: structured content and files are sealed
@@ -206,10 +224,29 @@ origin to `TRUSTED_ORIGINS` in `.env` and re-run
 
 ## `/.well-known/aulora.json`
 
-`setup` writes the real per-instance document into the `web-well-known` volume
-from `server:publicConfig`. It contains only public data (name, versions, Convex
-URL, site URL, icon seed, enabled auth providers) and never a secret. It is
-gitignored and must not be committed.
+The web container proxies this endpoint to Convex HTTP actions on port 3211.
+The backend returns current workspace settings, so discovery works at the main
+web URL without a generated file and reflects branding and auth changes immediately.
+Discovery through this gateway advertises `SITE_URL` as the Convex URL because
+the gateway also proxies the client API and WebSocket. Direct backend discovery
+retains the configured `CONVEX_CLOUD_ORIGIN` for deployments with separate hosts.
+The response contains only public discovery data: name, versions, Convex URL,
+site URL, icon seed, auth providers and the encryption descriptor.
+
+`setup` also writes a static copy into `web-well-known` for deployments that
+serve discovery as a file. That copy is gitignored and must not be committed.
+Other documents, including `aulora-update.json`, still use the volume.
+
+Compose starts a short root bootstrap to assign the discovery directory, setup
+state directory and their existing output files to the image's `aulora` user,
+UID/GID 10001. It then drops to that user, removes all capabilities and prevents
+privilege escalation before running deployment or initialization. The image
+defaults to `aulora` when run directly. After building it, check volume access
+and the worker's privileges:
+
+```sh
+bash infra/docker/setup/test/volume-permissions.sh aulora-setup:local
+```
 
 ## Upgrade
 
@@ -318,8 +355,13 @@ with instructions to use the hosting provider's redeploy controls.
 - **`/instance_name` unreachable** — the backend is not healthy; check
   `docker compose logs convex-backend` and that `POSTGRES_URL` has no database
   name.
-- **Well-known 404** — run `setup`; it writes the document after a successful
-  deploy.
+- **Well-known 404** — rebuild `web` and `setup`, then redeploy the Convex
+  functions. Verify the exact discovery route reaches HTTP actions on port
+  3211. If your edge serves a static document, also verify setup completed.
+- **Stuck on "Loading workspace"** — check the discovery document's `convexUrl`.
+  That origin must serve the Convex API and WebSocket. If the main web URL works
+  but a separate advertised API hostname does not, rebuild `web` and `setup`
+  to use gateway discovery, then reconnect the client to replace its saved URL.
 
 ## Public release operations
 

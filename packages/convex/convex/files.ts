@@ -9,17 +9,12 @@ import { assertMayParticipate, listActiveBans } from "./lib/bans";
 import { requireChannelAccessForUser } from "./lib/channels";
 import { getEkmSettings } from "./lib/ekm";
 import { DOWNLOAD_TOKEN_TTL_MS, signDownloadToken, verifyDownloadToken } from "./lib/fileTokens";
+import { effectiveMaxUploadBytes } from "./lib/instance";
 import { requireBoardForUser, writableBoard } from "./lib/kanban";
 import { requireMember, requireWorkspacePermission } from "./lib/permissions";
 import { enforceRateLimit, ipRateLimitKey, requestIp, userRateLimitKey } from "./lib/rateLimit";
 import { openContentOptional } from "./lib/sealed";
 import { openBytes, sealBytes, sealString } from "./lib/sse";
-
-/** Maximum plaintext upload size, overridable per deployment. */
-export function maxUploadBytes(): number {
-  const configured = Number(process.env.UPLOAD_MAX_BYTES);
-  return Number.isFinite(configured) && configured > 0 ? configured : 25 * 1024 * 1024;
-}
 
 function uploadLimit(): number {
   const configured = Number(process.env.UPLOAD_RATE_LIMIT);
@@ -86,8 +81,9 @@ export const authorizeUpload = internalMutation({
     if (metadata === null) {
       throw new ConvexError("Upload not found");
     }
-    if (metadata.size > maxUploadBytes()) {
-      throw new ConvexError("File exceeds the upload size cap");
+    const maxBytes = await effectiveMaxUploadBytes(ctx);
+    if (metadata.size > maxBytes) {
+      throw new ConvexError(`File exceeds the upload size cap (${maxBytes} bytes)`);
     }
     return { userId, sizeBytes: metadata.size };
   },

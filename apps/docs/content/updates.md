@@ -23,11 +23,15 @@ cd infra/docker
 
 Run `./update.sh --watch` under a host service manager to enable owner-only download/restart controls in Workspace settings, Instance. The watcher needs Bun and installed checkout dependencies. `AULORA_AUTO_UPDATE=true` allows the watcher to prepare downloads automatically; the owner still chooses Restart. The default automatic mode without `--watch` can apply an update, so choose the invocation intentionally.
 
+On macOS with Docker Desktop, run `./update.sh --install-service` from the checkout that owns the running stack. This installs a user LaunchAgent, starts the watcher immediately, and starts it again at login. It keeps your current PATH so the watcher can find Docker and Bun. Logs are in `~/Library/Logs/Aulora/update-*.log`. Use `./update.sh --remove-service` to stop and remove it. A gray Download or Restart button means the watcher is offline; Check for updates still works without it.
+
 Restart the watcher and re-run setup after changing its environment settings. Without it, update checks can still show version information, but installation uses host or hosting-provider controls.
 
 ## Coolify
 
-Deploy a chosen release tag or commit through Coolify. Preserve the existing named volumes, especially `setup-state`, which holds generated secrets. Do not switch to fresh volumes or regenerate the master key during an upgrade.
+Configure the Coolify API integration described in [Deploy on Coolify](coolify.md#upgrade) to enable **Install update** in the instance settings. Coolify builds and deploys the release in one step, so there is no separate Download button and no host watcher. The owner starts installation explicitly; automatic host updates do not trigger Coolify deployments.
+
+You can also deploy a chosen release tag or commit through Coolify manually. Preserve the existing named volumes, especially `setup-state`, which holds generated secrets. Do not switch to fresh volumes or regenerate the master key during an upgrade.
 
 ## Updating a checkout manually
 

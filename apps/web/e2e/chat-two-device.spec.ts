@@ -71,12 +71,14 @@ test.describe("two-device chat", () => {
       timeout: 45_000,
     });
 
-    // A deletes the message; both devices show the tombstone.
+    // A deletes the message; it disappears on both devices with no tombstone.
     await messageA.hover();
     await pageA.getByRole("button", { name: "Delete message" }).first().click();
     await pageA.getByRole("button", { name: "Confirm delete" }).first().click();
-    await expect(pageA.getByText("This message was deleted.")).toBeVisible({ timeout: 30_000 });
-    await expect(pageB.getByText("This message was deleted.")).toBeVisible({ timeout: 45_000 });
+    await expect(pageA.getByText(edited)).not.toBeVisible({ timeout: 30_000 });
+    await expect(pageB.getByText(edited)).not.toBeVisible({ timeout: 45_000 });
+    await expect(pageA.getByText("This message was deleted.")).not.toBeVisible();
+    await expect(pageB.getByText("This message was deleted.")).not.toBeVisible();
 
     await contextA.close();
     await contextB.close();
