@@ -185,20 +185,33 @@ function DetailTabs({ ctl }: { ctl: NotesController }) {
         value={ctl.tab}
         onChange={ctl.setTab}
         options={[
-          { value: "edit", label: "Edit" },
+          { value: "edit", label: "Note" },
           { value: "history", label: "History" },
         ]}
       />
       <DetailMenu ctl={ctl} />
-      <Button
-        size="sm"
-        disabled={!ctl.canEdit || !ctl.dirty || ctl.busy}
-        loading={ctl.busy}
-        leading={<Icon name="check" size={14} />}
-        onClick={() => void ctl.saveNote()}
-      >
-        Save
-      </Button>
+      {ctl.tab === "edit" &&
+        (ctl.editing ? (
+          <Button
+            size="sm"
+            disabled={!ctl.canEdit || !ctl.dirty || ctl.busy}
+            loading={ctl.busy}
+            leading={<Icon name="check" size={14} />}
+            onClick={() => void ctl.saveNote()}
+          >
+            Save
+          </Button>
+        ) : ctl.canEdit ? (
+          <Button
+            size="sm"
+            leading={<Icon name="pencil" size={14} />}
+            onClick={() => {
+              ctl.setEditing(true);
+            }}
+          >
+            Edit
+          </Button>
+        ) : null)}
     </div>
   );
 }

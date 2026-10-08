@@ -35,10 +35,6 @@ function ToolButton({
   );
 }
 
-function ToolDivider() {
-  return <span className="mx-0.5 h-4 w-px shrink-0 bg-border" />;
-}
-
 /** The Markdown editor: title, folder and tags, a formatting toolbar and the body. */
 export function NoteEditor({ ctl }: { ctl: NotesController }) {
   const { draft, detail } = ctl;
@@ -57,6 +53,54 @@ export function NoteEditor({ ctl }: { ctl: NotesController }) {
 
   if (draft === undefined || detail === undefined) return null;
   const current = draft;
+
+  const options: readonly SelectOption<string>[] = [
+    { value: "", label: "No folder" },
+    ...flattenFolders(ctl.folders).map(({ folder, depth }) => ({
+      value: folder.id,
+      label: `${"— ".repeat(depth)}${folder.name}`,
+    })),
+  ];
+
+  if (!ctl.editing) {
+    const folderLabel = options.find((option) => option.value === (current.folderId ?? ""))?.label;
+    const selectedTags = ctl.tags.filter((tag) => current.tagIds.includes(tag.id));
+    return (
+      <div className="flex min-h-0 flex-col gap-4 p-4">
+        <div className="flex flex-wrap items-center gap-x-3 gap-y-1.5 text-[12.5px] text-text-muted">
+          <span className="flex items-center gap-1.5">
+            <Icon name="grid" size={14} />
+            {folderLabel ?? "No folder"}
+          </span>
+          {selectedTags.length > 0 && (
+            <>
+              <span className="h-3.5 w-px bg-border" />
+              <span className="flex flex-wrap items-center gap-1.5">
+                <Icon name="label" size={14} />
+                {selectedTags.map((tag) => (
+                  <span
+                    key={tag.id}
+                    className="inline-flex items-center gap-1.5 rounded-full bg-surface-2 px-2 py-0.5 text-[12px]"
+                  >
+                    <span className="h-2 w-2 rounded-full" style={{ backgroundColor: tag.color }} />
+                    {tag.name}
+                  </span>
+                ))}
+              </span>
+            </>
+          )}
+        </div>
+        <div className="min-h-0 flex-1 overflow-y-auto">
+          <NotePreview title={current.title} body={current.body} />
+        </div>
+        {ctl.error !== undefined && (
+          <p role="alert" className="text-sm text-danger">
+            {ctl.error}
+          </p>
+        )}
+      </div>
+    );
+  }
 
   const applyEdit = (transform: (value: string, start: number, end: number) => Edit) => {
     const element = bodyRef.current;
@@ -109,14 +153,6 @@ export function NoteEditor({ ctl }: { ctl: NotesController }) {
         : [...current.tagIds, tagId],
     });
   };
-
-  const options: readonly SelectOption<string>[] = [
-    { value: "", label: "No folder" },
-    ...flattenFolders(ctl.folders).map(({ folder, depth }) => ({
-      value: folder.id,
-      label: `${"— ".repeat(depth)}${folder.name}`,
-    })),
-  ];
 
   return (
     <div className="flex min-h-0 flex-col gap-3 p-4">
@@ -185,9 +221,6 @@ export function NoteEditor({ ctl }: { ctl: NotesController }) {
               <Icon name="plus" size={13} />
             </button>
           )}
-          {ctl.tags.length === 0 && !ctl.canEdit && (
-            <span className="text-[12px] text-text-muted">No tags</span>
-          )}
         </div>
         <button
           type="button"
@@ -208,7 +241,7 @@ export function NoteEditor({ ctl }: { ctl: NotesController }) {
       </div>
 
       {!preview && (
-        <div className="inline-flex items-center self-start rounded-[11px] border border-border bg-surface-2 p-0.5">
+        <div className="inline-flex items-center gap-0.5 self-start rounded-[11px] border border-border bg-surface-2 p-0.5">
           <ToolButton label="Bold" disabled={!ctl.canEdit} onClick={() => wrap("**", "**", "bold")}>
             <span className="font-bold">B</span>
           </ToolButton>
@@ -226,7 +259,7 @@ export function NoteEditor({ ctl }: { ctl: NotesController }) {
           >
             <span className="font-semibold">H</span>
           </ToolButton>
-          <ToolDivider />
+          <span className="h-4 w-px shrink-0 bg-border" />
           <ToolButton
             label="Bullet list"
             disabled={!ctl.canEdit}
@@ -241,7 +274,7 @@ export function NoteEditor({ ctl }: { ctl: NotesController }) {
           >
             <Icon name="list-numbered" size={16} />
           </ToolButton>
-          <ToolDivider />
+          <span className="h-4 w-px shrink-0 bg-border" />
           <ToolButton label="Code" disabled={!ctl.canEdit} onClick={() => wrap("`", "`", "code")}>
             <Icon name="code" size={16} />
           </ToolButton>

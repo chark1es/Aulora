@@ -199,7 +199,7 @@ function NoteRow({ ctl, note, now }: { ctl: NotesController; note: NoteSummary; 
         aria-current={active ? "page" : undefined}
         aria-label={`Open note ${note.title}`}
         onClick={() => {
-          ctl.setNoteId(note.id);
+          ctl.openNote(note.id);
         }}
         className={cn(
           "flex w-full flex-col gap-1 rounded-[10px] border px-3 py-2 text-left transition",

@@ -50,6 +50,7 @@ function useNotesState() {
   const [folderId, setFolderId] = useState<FolderSelection>(undefined);
   const [tagId, setTagId] = useState<NoteTag["id"] | undefined>(undefined);
   const [noteId, setNoteId] = useState<NoteSummary["id"] | undefined>(undefined);
+  const [editing, setEditing] = useState(false);
   const [query, setQuery] = useState("");
   const [showArchived, setShowArchived] = useState(false);
   const [tab, setTab] = useState<"edit" | "history">("edit");
@@ -64,6 +65,8 @@ function useNotesState() {
     setTagId,
     noteId,
     setNoteId,
+    editing,
+    setEditing,
     query,
     setQuery,
     showArchived,
@@ -296,6 +299,11 @@ export function useNotes(props: NotesProps) {
     state.setTab("edit");
   }, [detailKey]);
 
+  const openNote = (id: NoteSummary["id"]) => {
+    state.setNoteId(id);
+    state.setEditing(false);
+  };
+
   const createNote = async (): Promise<void> => {
     if (!data.canCreate) return;
     const folderId =
@@ -309,6 +317,7 @@ export function useNotes(props: NotesProps) {
       });
       state.setNoteId(id);
       state.setTab("edit");
+      state.setEditing(true);
     });
   };
 
@@ -316,7 +325,7 @@ export function useNotes(props: NotesProps) {
     const detail = data.detail;
     if (!data.canEdit || detail === undefined || state.draft === undefined) return;
     const draft = state.draft;
-    await runner.run(async () => {
+    const saved = await runner.run(async () => {
       await mutations.updateNote({
         noteId: detail.id,
         revision: detail.revision,
@@ -326,6 +335,7 @@ export function useNotes(props: NotesProps) {
         tagIds: draft.tagIds as Id<"noteTags">[],
       });
     });
+    if (saved) state.setEditing(false);
   };
 
   const archiveNote = async (note: NoteSummary, archived: boolean): Promise<void> => {
@@ -432,6 +442,7 @@ export function useNotes(props: NotesProps) {
     ...runner,
     mutations,
     dirty,
+    openNote,
     createNote,
     saveNote,
     archiveNote,
