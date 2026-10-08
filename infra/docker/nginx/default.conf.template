@@ -54,6 +54,9 @@ server {
     proxy_set_header X-Real-IP $remote_addr;
     proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
     proxy_set_header X-Forwarded-Proto $scheme;
+    # Advertise SITE_URL for client API + WebSocket traffic, which this
+    # gateway already forwards at /api/. Replace any incoming client header.
+    proxy_set_header X-Aulora-Api-Proxy "same-origin";
     proxy_buffering off;
   }
 

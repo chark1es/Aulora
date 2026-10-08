@@ -47,6 +47,30 @@ describe("workspace discovery", () => {
     expect(containsSecretField(document)).toBe(false);
   });
 
+  it("uses the main API gateway even when the separate Convex origin is different", async () => {
+    vi.stubEnv("CONVEX_CLOUD_URL", "https://convex.chark1es.dev");
+    const t = newTest();
+    await seedWorkspace(t);
+    const document = await fetchWellKnown("aulora.chark1es.dev", {
+      fetchImpl: async () =>
+        await t.fetch("/.well-known/aulora.json", {
+          headers: { "X-Aulora-Api-Proxy": "same-origin" },
+        }),
+    });
+
+    expect(document.convexUrl).toBe("https://aulora.chark1es.dev");
+    expect(document.siteUrl).toBe("https://aulora.chark1es.dev");
+  });
+
+  it("preserves the configured API origin for discovery without the web gateway", async () => {
+    vi.stubEnv("CONVEX_CLOUD_URL", "https://convex.chark1es.dev");
+    const t = newTest();
+    await seedWorkspace(t);
+    const response = await t.fetch("/.well-known/aulora.json");
+
+    expect(await response.json()).toMatchObject({ convexUrl: "https://convex.chark1es.dev" });
+  });
+
   it("only publishes discovery fields, excluding provider secrets and TURN credentials", async () => {
     vi.stubEnv("GITHUB_CLIENT_ID", "github-id");
     vi.stubEnv("GITHUB_CLIENT_SECRET", "provider-secret");

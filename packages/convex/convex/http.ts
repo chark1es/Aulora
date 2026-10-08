@@ -17,13 +17,19 @@ authComponent.registerRoutes(http, createAuth, {
 http.route({
   path: WELL_KNOWN_PATH,
   method: "GET",
-  handler: httpAction(async (ctx) => {
+  handler: httpAction(async (ctx, request) => {
     const config = await ctx.runQuery(api.server.publicConfig, {});
+    // The web gateway proxies both discovery and the client API. Clients that
+    // reached it can use that same origin instead of a separate API hostname.
+    const convexUrl =
+      request.headers.get("X-Aulora-Api-Proxy") === "same-origin"
+        ? config.siteUrl
+        : config.convexUrl;
     const document: WellKnown = {
       name: config.name,
       version: config.version,
       apiVersion: config.apiVersion,
-      convexUrl: config.convexUrl,
+      convexUrl,
       siteUrl: config.siteUrl,
       iconSeed: config.iconSeed,
       auth: config.auth,

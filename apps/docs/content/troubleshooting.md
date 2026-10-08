@@ -39,6 +39,19 @@ If setup reports `Permission denied` for `/web-well-known` or `/host/.env`, rebu
 
 A phone's `localhost` refers to the phone. Docker service names are also unavailable outside the Compose network. Use reachable public URLs.
 
+## Workspace stays on the loading screen
+
+Check the discovery document's `convexUrl` and the client's network requests.
+The loading screen waits for workspace subscriptions over the Convex WebSocket.
+If that origin returns an HTTP error or cannot connect, workspace data will not load.
+
+The shipped web gateway serves the API and WebSocket at the main workspace URL.
+Its discovery document advertises `SITE_URL` for those connections. Rebuild
+`web` and `setup` to deploy the gateway discovery behavior, then reconnect to
+replace a client's previously saved API URL. If you serve discovery directly
+from the backend, check that `CONVEX_CLOUD_ORIGIN` matches the domain assigned
+to `convex-backend` in Coolify, with container port 3210.
+
 ## Sign-in loops or OAuth callback errors
 
 Check that `SITE_URL` matches the browser origin, including scheme and port. Add extra web origins to `TRUSTED_ORIGINS` when appropriate and re-run setup. Keep `/api/auth/*` on the web origin and forward it to Convex's HTTP-actions port 3211.
