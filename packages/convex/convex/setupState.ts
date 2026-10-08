@@ -19,7 +19,10 @@ const EVERYONE_PERMISSIONS: bigint =
   Permission.UseVideo |
   Permission.ViewKanban |
   Permission.EditKanban |
-  Permission.CommentKanban;
+  Permission.CommentKanban |
+  Permission.ViewNotes |
+  Permission.CreateNotes |
+  Permission.EditNotes;
 
 /** Voice bits added to the `@everyone` baseline after calling shipped. */
 const VOICE_EVERYONE_BITS: bigint =

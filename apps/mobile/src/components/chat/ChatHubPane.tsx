@@ -4,6 +4,7 @@ import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { pickFromLibrary } from "../../lib/attachments";
 import { selectionFeedback } from "../../lib/haptics";
 import { KanbanScreen } from "../kanban/KanbanScreen";
+import { NotesScreen } from "../notes/NotesScreen";
 import { ChannelList } from "./ChannelList";
 import { errorMessage } from "./chat-screen-types";
 import { DirectList } from "./DirectList";
@@ -23,6 +24,8 @@ export function ChatHubPane({ model }: { readonly model: ChatScreenModel }) {
         <ChatHubDirectTab model={model} />
       ) : model.hubTab === "boards" && model.showKanban ? (
         <ChatHubBoardsTab model={model} />
+      ) : model.hubTab === "notes" && model.showNotes ? (
+        <ChatHubNotesTab model={model} />
       ) : model.hubTab === "threads" ? (
         <ChatHubThreadsTab model={model} />
       ) : model.hubTab === "search" ? (
@@ -42,6 +45,7 @@ export function ChatHubPane({ model }: { readonly model: ChatScreenModel }) {
         ownStatus={model.ownStatus}
         threadBadge={model.threadMentionCount}
         boards={model.showKanban}
+        notes={model.showNotes}
       />
     </View>
   );
@@ -120,6 +124,21 @@ function ChatHubBoardsTab({ model }: { readonly model: ChatScreenModel }) {
         members={model.members}
         boardId={model.kanbanBoardId}
         onBoardChange={model.setKanbanBoardId}
+      />
+    </View>
+  );
+}
+
+function ChatHubNotesTab({ model }: { readonly model: ChatScreenModel }) {
+  const dockClearance = useDockClearance();
+  return (
+    <View className="flex-1" style={{ paddingBottom: dockClearance }}>
+      <NotesScreen
+        ownUserId={model.ownUserId}
+        permissions={model.viewerPermissions}
+        members={model.members}
+        noteId={model.noteId}
+        onNoteChange={model.setNoteId}
       />
     </View>
   );

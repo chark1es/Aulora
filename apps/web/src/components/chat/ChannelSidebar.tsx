@@ -37,8 +37,10 @@ export interface ChannelSidebarProps {
   readonly unreadByChannel: ReadonlyMap<string, ChannelUnread>;
   readonly canCreateChannel: boolean;
   /** Which main pane is showing; drives the sidebar Threads row. */
-  readonly mainView?: "chat" | "threads" | "kanban";
+  readonly mainView?: "chat" | "threads" | "kanban" | "notes";
   readonly onOpenKanban?: () => void;
+  /** Opens the Notes addon from the sidebar row. */
+  readonly onOpenNotes?: () => void;
   /** Mentions across the viewer's threads; badges the Threads row. */
   readonly threadMentionCount?: number;
   /** Opens the Threads inbox from the sidebar row. */
@@ -355,6 +357,25 @@ export function ChannelSidebar(props: ChannelSidebarProps) {
           >
             <Icon name="kanban" size={16} />
             <span>Kanban</span>
+          </button>
+        </div>
+      )}
+      {props.onOpenNotes && (
+        <div className="px-3 pb-2">
+          <button
+            type="button"
+            data-testid="sidebar-notes"
+            aria-current={props.mainView === "notes" ? "page" : undefined}
+            onClick={props.onOpenNotes}
+            className={cn(
+              "flex h-8 w-full items-center gap-2.5 rounded-[8px] pl-3 pr-2 text-left text-[13px] transition focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent",
+              props.mainView === "notes"
+                ? "bg-surface-3 font-semibold text-text"
+                : "text-text-muted hover:bg-surface-3 hover:text-text",
+            )}
+          >
+            <Icon name="note" size={16} />
+            <span>Notes</span>
           </button>
         </div>
       )}

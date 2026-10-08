@@ -23,6 +23,7 @@ const permissionOverwrite = v.object({
 
 const serverSettings = v.object({
   kanbanEnabled: v.optional(v.boolean()),
+  notesEnabled: v.optional(v.boolean()),
   signupEnabled: v.boolean(),
   inviteOnly: v.boolean(),
   allowedEmailDomains: v.array(v.string()),
@@ -393,6 +394,48 @@ export default defineSchema({
     userId: v.string(),
     tokenCiphertext: v.string(),
   }).index("by_user", ["userId"]),
+
+  /**
+   * Notes addon. Names/titles/bodies are server-sealed (`aulora-sse-v1`);
+   * structural refs, positions and timestamps stay plaintext so the server can
+   * page and filter without the key.
+   */
+  noteFolders: defineTable({
+    nameCiphertext: v.string(),
+    parentId: v.optional(v.id("noteFolders")),
+    position: v.number(),
+    creatorId: v.string(),
+    createdAt: v.number(),
+    updatedAt: v.number(),
+  }).index("by_parent", ["parentId"]),
+  notePages: defineTable({
+    folderId: v.optional(v.id("noteFolders")),
+    titleCiphertext: v.string(),
+    bodyCiphertext: v.string(),
+    tagIds: v.array(v.string()),
+    creatorId: v.string(),
+    lastEditorId: v.string(),
+    archived: v.boolean(),
+    createdAt: v.number(),
+    updatedAt: v.number(),
+    revision: v.number(),
+  })
+    .index("by_folder", ["folderId"])
+    .index("by_updated", ["updatedAt"]),
+  noteRevisions: defineTable({
+    noteId: v.id("notePages"),
+    actorId: v.string(),
+    action: v.string(),
+    beforeCiphertext: v.optional(v.string()),
+    afterCiphertext: v.optional(v.string()),
+    at: v.number(),
+  }).index("by_note", ["noteId"]),
+  noteTags: defineTable({
+    nameCiphertext: v.string(),
+    color: v.string(),
+    creatorId: v.string(),
+    createdAt: v.number(),
+  }),
 
   files: defineTable({
     /** Storage id of the server-sealed bytes. */

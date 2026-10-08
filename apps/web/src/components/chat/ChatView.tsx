@@ -42,6 +42,7 @@ import {
 } from "../../providers/WorkspaceUpdateProvider";
 import { AdminPanel, type AdminPanelViewer } from "../admin/AdminPanel";
 import { KanbanView } from "../kanban/KanbanView";
+import { NotesView } from "../notes/NotesView";
 import { DesktopUpdateSettings } from "../UpdateSettings";
 import { CallDock } from "../voice/CallDock";
 import { CallStage } from "../voice/CallStage";
@@ -76,6 +77,7 @@ export interface ChatViewProps {
   readonly ownName: string;
   readonly permissions: bigint;
   readonly kanbanEnabled?: boolean;
+  readonly notesEnabled?: boolean;
   readonly members: readonly {
     userId: string;
     displayName: string;
@@ -169,6 +171,7 @@ function ChatViewContent({
   ownName,
   permissions,
   kanbanEnabled = false,
+  notesEnabled = false,
   members,
   roles,
   unreadByChannel,
@@ -186,7 +189,7 @@ function ChatViewContent({
     () => readLocal(lastChannelKey) ?? undefined,
   );
   const [mobilePane, setMobilePane] = useState<"list" | "chat">("list");
-  const [mainView, setMainView] = useState<"chat" | "threads" | "kanban">("chat");
+  const [mainView, setMainView] = useState<"chat" | "threads" | "kanban" | "notes">("chat");
   const [adminOpen, setAdminOpen] = useState(false);
   const [newConversationOpen, setNewConversationOpen] = useState(false);
   const [createChannelOpen, setCreateChannelOpen] = useState(false);
@@ -1155,6 +1158,17 @@ function ChatViewContent({
                   },
                 }
               : {})}
+            {...(notesEnabled && hasPermission(permissions, Permission.ViewNotes)
+              ? {
+                  onOpenNotes: () => {
+                    setMainView("notes");
+                    setMobilePane("chat");
+                    setThreadRoot(undefined);
+                    setAdminOpen(false);
+                    setUserSettingsOpen(false);
+                  },
+                }
+              : {})}
             threadMentionCount={threadMentionCount}
             onOpenThreads={() => {
               setMainView("threads");
@@ -1350,6 +1364,18 @@ function ChatViewContent({
             setMobilePane("list");
           }}
         />
+      ) : mainView === "notes" &&
+        notesEnabled &&
+        hasPermission(permissions, Permission.ViewNotes) ? (
+        <NotesView
+          ownUserId={ownUserId}
+          permissions={permissions}
+          members={members}
+          onBack={() => {
+            setMainView("chat");
+            setMobilePane("list");
+          }}
+        />
       ) : (
         <section
           className={cn(
@@ -1455,6 +1481,7 @@ function ChatViewContent({
         channel !== undefined &&
         !adminView &&
         mainView !== "kanban" &&
+        mainView !== "notes" &&
         !userSettingsOpen &&
         mainView === "chat" && (
           <div className="fixed inset-y-2.5 right-2.5 z-30 flex lg:static lg:z-auto">

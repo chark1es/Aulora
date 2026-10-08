@@ -9,6 +9,7 @@ function useChatScreenViewState() {
   const [pane, setPane] = useState<PaneIndex>(1);
   const [hubTab, setHubTab] = useState<HubTab>("chats");
   const [kanbanBoardId, setKanbanBoardId] = useState<string | null>(null);
+  const [noteId, setNoteId] = useState<string | null>(null);
   const [newMessageOpen, setNewMessageOpen] = useState(false);
   const [pinsOpen, setPinsOpen] = useState(false);
   const [profileFor, setProfileFor] = useState<string | null>(null);
@@ -26,6 +27,8 @@ function useChatScreenViewState() {
     setHubTab,
     kanbanBoardId,
     setKanbanBoardId,
+    noteId,
+    setNoteId,
     newMessageOpen,
     setNewMessageOpen,
     pinsOpen,

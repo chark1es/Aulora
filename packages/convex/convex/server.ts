@@ -131,7 +131,10 @@ async function buildPublicConfig(ctx: QueryCtx) {
     // Effective per-upload cap (operator setting, else env/default). Clients
     // use this to reject oversized picks before uploading.
     uploads: { maxBytes: maxUploadBytes },
-    addons: { kanban: server?.settings.kanbanEnabled ?? false },
+    addons: {
+      kanban: server?.settings.kanbanEnabled ?? false,
+      notes: server?.settings.notesEnabled ?? false,
+    },
   };
 }
 
