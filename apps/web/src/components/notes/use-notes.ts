@@ -1,7 +1,6 @@
 /* eslint-disable no-unused-vars -- the base rule reports parameter names in type signatures; Biome checks real unused code */
 import { hasPermission, Permission } from "@aulora/core";
 import { useMutation, useQuery } from "convex/react";
-import type { GenericId as Id } from "convex/values";
 import { useEffect, useMemo, useRef, useState } from "react";
 import { api } from "../../../../../packages/convex/convex/_generated/api";
 import {
@@ -12,6 +11,11 @@ import {
   type NoteTag,
   UNFILED,
 } from "./types";
+
+/** Table-branded note identifiers, structurally compatible with Convex IDs. */
+type Id<TableName extends "noteFolders" | "noteTags" | "notePages"> = string & {
+  __tableName: TableName;
+};
 
 export interface NotesProps {
   ownUserId: string;
