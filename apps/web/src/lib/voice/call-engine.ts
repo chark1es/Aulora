@@ -1,25 +1,22 @@
+/* eslint-disable no-unused-vars -- the base rule reports parameter names in type signatures; Biome checks real unused code */
 import {
   type CallKind,
   type CallSeatResult,
   type CallView,
   isCallElsewhereError,
   isOnThisDevice,
+  streamProfile,
   type VoiceDeviceSettings,
   type VoicePort,
   type VoiceSubscriptions,
 } from "@aulora/core";
-import { isAbort, mediaMessage, messageOf } from "./call-errors";
+import { mediaMessage, messageOf } from "./call-errors";
 import type { VoiceEngineOptions, VoiceLocalState, VoiceSnapshot } from "./call-types";
-import {
-  acquireDisplay,
-  acquireUserMedia,
-  acquireVideo,
-  applySinkId,
-  createLevelMeter,
-  createMicPipeline,
-  type MicPipeline,
-} from "./media";
+import { LocalCamera } from "./local-camera";
+import { applySinkId, createLevelMeter } from "./media";
+import { type MicPipeline, micProcessingKey, openMicPipeline } from "./mic-pipeline";
 import { DEFAULT_ICE, PeerMesh } from "./peer-mesh";
+import { ScreenShare } from "./screen-share";
 
 export type { VoiceEngineOptions, VoiceLocalState, VoiceSnapshot } from "./call-types";
 
@@ -67,8 +64,6 @@ export class VoiceEngine {
   private micStream: MediaStream | null = null;
   private micPipeline: MicPipeline | null = null;
   private micProcessingKey = "";
-  private cameraTrack: MediaStreamTrack | null = null;
-  private screenTrack: MediaStreamTrack | null = null;
   private micLevel = 0;
   private localSpeaking = false;
   private levelUnsub: (() => void) | null = null;
@@ -80,6 +75,8 @@ export class VoiceEngine {
   private cameraInitialised = false;
 
   private readonly mesh: PeerMesh;
+  private readonly screen: ScreenShare;
+  private readonly camera: LocalCamera;
   private callUnsub: (() => void) | null = null;
   private signalUnsub: (() => void) | null = null;
   private heartbeat: ReturnType<typeof setInterval> | null = null;
@@ -106,9 +103,59 @@ export class VoiceEngine {
         this.emit();
       },
       getAudioTrack: () => this.micStream?.getAudioTracks()[0] ?? null,
-      getVideoTrack: () => this.screenTrack ?? (this.local.video ? this.cameraTrack : null),
-      isScreenSharing: () => this.screenTrack !== null,
+      getVideoTrack: (peerId) =>
+        this.screen.trackForPeer(peerId) ?? (this.local.video ? this.camera.track : null),
+      isScreenSharing: (peerId) => this.screen.trackForPeer(peerId) !== null,
+      getScreenProfile: () => {
+        const profile = streamProfile(this.getSettings().streamQuality);
+        return { maxBitrate: profile.maxBitrate, frameRate: profile.frameRate };
+      },
     });
+    this.camera = new LocalCamera({
+      onError: (message) => {
+        this.onError(message);
+      },
+      onFailed: () => {
+        // The effect broke mid-call: carry on with the plain camera.
+        this.camera.fallBack();
+        void this.mesh.refreshVideo();
+        this.emit();
+      },
+    });
+    this.screen = new ScreenShare({
+      userId: this.userId,
+      getSettings: () => this.getSettings(),
+      getParticipants: () => this.call?.participants ?? [],
+      fetchAccess: async () => {
+        const callId = this.callId;
+        return callId === null ? null : ((await this.port.sfuAccess?.({ callId })) ?? null);
+      },
+      reportCapable: (capable) => {
+        this.report({ sfu: capable });
+      },
+      reportSharing: (sharing) => {
+        this.local = { ...this.local, sharingScreen: sharing };
+        this.report({ sharingScreen: sharing });
+      },
+      refreshMesh: () => this.mesh.refreshVideo(),
+      onChange: () => {
+        this.emit();
+      },
+      onError: (message) => {
+        this.onError(message);
+      },
+    });
+  }
+
+  /** Publishes participant flags; the roster is advisory, so a failure is not fatal. */
+  private report(flags: {
+    readonly sfu?: boolean;
+    readonly sharingScreen?: boolean;
+    readonly video?: boolean;
+  }): void {
+    if (this.callId !== null) {
+      void this.port.updateParticipant({ callId: this.callId, ...flags }).catch(() => undefined);
+    }
   }
 
   // ---- Observation ---------------------------------------------------------
@@ -130,8 +177,9 @@ export class VoiceEngine {
       call: this.call,
       local: this.local,
       micStream: this.micStream,
-      localVideoTrack: this.screenTrack ?? this.cameraTrack,
+      localVideoTrack: this.screen.track ?? this.camera.track,
       remoteStreams: this.mesh.remoteStreams,
+      remoteScreens: this.screen.relayed,
       remoteSpeaking: this.mesh.remoteSpeaking,
       micLevel: this.micLevel,
       localSpeaking: this.localSpeaking,
@@ -269,6 +317,7 @@ export class VoiceEngine {
     await this.acquireMic();
     this.applyMicEnabled();
     void this.port.updateParticipant({ callId, muted: settings.joinMuted }).catch(() => undefined);
+    void this.screen.probe();
     this.emit();
   }
 
@@ -289,10 +338,8 @@ export class VoiceEngine {
       track.stop();
     });
     this.micStream = null;
-    this.cameraTrack?.stop();
-    this.cameraTrack = null;
-    this.screenTrack?.stop();
-    this.screenTrack = null;
+    this.camera.close();
+    void this.screen.reset();
     this.mediaError = null;
     this.callId = null;
     this.call = null;
@@ -306,13 +353,9 @@ export class VoiceEngine {
   private async acquireMic(): Promise<void> {
     this.mediaError = null;
     try {
-      const raw = await acquireUserMedia({
-        settings: this.getSettings(),
-        withVideo: false,
-      });
-      this.micPipeline = createMicPipeline(raw, this.getSettings());
+      this.micPipeline = await openMicPipeline(this.getSettings());
       this.micStream = this.micPipeline.stream;
-      this.micProcessingKey = processingKey(this.getSettings());
+      this.micProcessingKey = micProcessingKey(this.getSettings());
     } catch (error) {
       // Surface why media is unavailable; the call still connects for others.
       this.mediaError = mediaMessage(error);
@@ -403,55 +446,28 @@ export class VoiceEngine {
   async setCamera(on: boolean): Promise<void> {
     if (on) {
       try {
-        if (this.cameraTrack === null) {
-          this.cameraTrack = await acquireVideo(this.getSettings());
+        if (!this.camera.isOpen) {
+          await this.camera.open(this.getSettings());
         }
       } catch (error) {
         this.onError(messageOf(error));
         return;
       }
     } else {
-      this.cameraTrack?.stop();
-      this.cameraTrack = null;
+      this.camera.close();
     }
     this.local = { ...this.local, video: on };
-    if (!this.local.sharingScreen) {
-      await this.mesh.applyVideoTrack(on ? this.cameraTrack : null);
-    }
-    if (this.callId !== null) {
-      void this.port.updateParticipant({ callId: this.callId, video: on }).catch(() => undefined);
-    }
+    await this.mesh.refreshVideo();
+    this.report({ video: on });
     this.emit();
   }
 
   async setScreenSharing(on: boolean): Promise<void> {
     if (on) {
-      try {
-        this.screenTrack = await acquireDisplay({ settings: this.getSettings() });
-      } catch (error) {
-        // A cancelled picker is not an error worth shouting about.
-        if (!isAbort(error)) {
-          this.onError(messageOf(error));
-        }
-        return;
-      }
-      this.screenTrack.addEventListener("ended", () => {
-        void this.setScreenSharing(false);
-      });
-      this.local = { ...this.local, sharingScreen: true };
-      await this.mesh.applyVideoTrack(this.screenTrack, "screen");
+      await this.screen.start();
     } else {
-      this.screenTrack?.stop();
-      this.screenTrack = null;
-      this.local = { ...this.local, sharingScreen: false };
-      await this.mesh.applyVideoTrack(this.local.video ? this.cameraTrack : null);
+      await this.screen.stop();
     }
-    if (this.callId !== null) {
-      void this.port
-        .updateParticipant({ callId: this.callId, sharingScreen: on })
-        .catch(() => undefined);
-    }
-    this.emit();
   }
 
   /** Re-reads device settings: swaps a changed microphone and rebuilds the meter. */
@@ -459,7 +475,7 @@ export class VoiceEngine {
     const previousInput = this.currentInputId();
     const nextInput = settings.inputDeviceId;
     const previousProcessing = this.micProcessingKey;
-    const nextProcessing = processingKey(settings);
+    const nextProcessing = micProcessingKey(settings);
     if (
       this.micStream !== null &&
       (previousInput !== nextInput || previousProcessing !== nextProcessing)
@@ -469,14 +485,8 @@ export class VoiceEngine {
     this.micPipeline?.setSettings(settings);
     this.pushToTalk = settings.pushToTalk;
     this.applyMicEnabled();
-    if (this.local.video && this.cameraTrack !== null && !this.local.sharingScreen) {
-      try {
-        this.cameraTrack.stop();
-        this.cameraTrack = await acquireVideo(settings);
-        await this.mesh.applyVideoTrack(this.cameraTrack);
-      } catch {
-        // Keep the existing camera if the new device is unavailable.
-      }
+    if (this.local.video && (await this.camera.sync(settings))) {
+      await this.mesh.refreshVideo();
     }
     this.emit();
   }
@@ -488,12 +498,12 @@ export class VoiceEngine {
 
   private async reacquireMic(): Promise<void> {
     try {
-      const raw = await acquireUserMedia({ settings: this.getSettings(), withVideo: false });
+      const pipeline = await openMicPipeline(this.getSettings());
       const previousPipeline = this.micPipeline;
       const previousStream = this.micStream;
-      this.micPipeline = createMicPipeline(raw, this.getSettings());
+      this.micPipeline = pipeline;
       this.micStream = this.micPipeline.stream;
-      this.micProcessingKey = processingKey(this.getSettings());
+      this.micProcessingKey = micProcessingKey(this.getSettings());
       previousPipeline?.stop();
       previousStream?.getTracks().forEach((track) => {
         track.stop();
@@ -529,6 +539,12 @@ export class VoiceEngine {
       return;
     }
     this.mesh.reconcile(call.participants);
+    // A viewer's streaming-server capability decides who gets the mesh copy of a
+    // share, and a sharer on the server decides whether to join its room.
+    this.screen.follow();
+    if (this.screen.active) {
+      void this.mesh.refreshVideo();
+    }
     // Honour "join video calls with camera on" once, as the call first arrives.
     if (!this.cameraInitialised) {
       this.cameraInitialised = true;
@@ -558,11 +574,4 @@ export class VoiceEngine {
     this.enterTeardown();
     this.listeners.clear();
   }
-}
-
-/** Identifies the capture constraints that require a fresh `getUserMedia`. */
-function processingKey(settings: VoiceDeviceSettings): string {
-  return `${settings.echoCancellation ? 1 : 0}:${settings.noiseSuppression ? 1 : 0}:${
-    settings.autoGainControl ? 1 : 0
-  }`;
 }

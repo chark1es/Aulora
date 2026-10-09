@@ -6,6 +6,7 @@ import { CallMediaNotice } from "./CallMediaNotice";
 import { CallGrid } from "./CallParticipant";
 import { useCallDuration } from "./hooks";
 import { type CallIdentity, UNKNOWN_IDENTITY } from "./identity";
+import { PictureInPictureButton } from "./PictureInPictureButton";
 
 /** The full call surface: a top bar, the participant grid, and controls below. */
 export function CallStage({
@@ -37,6 +38,7 @@ export function CallStage({
         duration={duration}
         sharer={sharer}
         voice={voice}
+        identity={identity}
       />
 
       <CallMediaNotice />
@@ -45,6 +47,7 @@ export function CallStage({
         <CallGrid
           participants={call.participants}
           streams={voice.remoteStreams}
+          screens={voice.remoteScreens}
           localUserId={voice.selfUserId}
           localVideoTrack={voice.localVideoTrack}
           settings={voice.settings}
@@ -66,12 +69,14 @@ function CallStageHeader({
   duration,
   sharer,
   voice,
+  identity,
 }: {
   readonly title: string;
   readonly call: CallView;
   readonly duration: string;
   readonly sharer: string | null;
   readonly voice: VoiceContextValue;
+  readonly identity: CallIdentity;
 }) {
   return (
     <header className="flex h-14 shrink-0 items-center gap-3 border-b border-border px-4">
@@ -91,6 +96,7 @@ function CallStageHeader({
           onToggle={() => void voice.setScreenSharing(!voice.local.sharingScreen)}
         />
       )}
+      <PictureInPictureButton identity={identity} />
       <button
         type="button"
         aria-label="Minimize call"

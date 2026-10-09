@@ -22,9 +22,12 @@
     "@aulora/tokens": "workspace:*",
     "@aulora/ui-web": "workspace:*",
     "@convex-dev/better-auth": "0.12.5",
+    "@mediapipe/tasks-vision": "1.1.0",
+    "@sapphi-red/web-noise-suppressor": "0.4.1",
     "@tanstack/react-router": "1.170.39",
     "better-auth": "1.6.22",
     "convex": "1.46.0",
+    "livekit-client": "2.22.3",
     "react": "19.2.3",
     "react-dom": "19.2.3"
   },

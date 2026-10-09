@@ -262,6 +262,46 @@ set_env_if_present VAPID_PRIVATE_KEY "$VAPID_PRIVATE_KEY_VALUE" 1
 # clients on their built-in public STUN defaults; calls need no media server.
 set_env_if_present AULORA_ICE_SERVERS "$(host_value AULORA_ICE_SERVERS)"
 
+# Optional screen-streaming server (compose profile `streaming`). Convex only
+# mints room tokens from these; the media never passes through it. With the
+# profile on, `livekit-init` has already written the key pair to a volume and the
+# `web` container proxies `<SITE_URL>/livekit` to the server, so nothing needs to
+# be configured. Explicit LIVEKIT_* values win, for a LiveKit server you run
+# yourself (or LiveKit Cloud). With neither, every share stays on the peer mesh.
+LIVEKIT_KEYS_FILE="${LIVEKIT_KEYS_FILE:-/livekit-keys/keys}"
+
+# The file is one `name: "secret"` line written by livekit/init-keys.sh.
+livekit_key_name() { sed -n '1s/:.*//p' "$LIVEKIT_KEYS_FILE"; }
+livekit_key_secret() { sed -n '1s/^[^:]*:[[:space:]]*//p' "$LIVEKIT_KEYS_FILE" | tr -d '"[:space:]'; }
+
+# `https://chat.example.com` -> `wss://chat.example.com/livekit`
+livekit_url_from_site() {
+  local site="${1%/}"
+  case "$site" in
+    https://*) printf 'wss://%s/livekit' "${site#https://}" ;;
+    http://*) printf 'ws://%s/livekit' "${site#http://}" ;;
+  esac
+}
+
+LIVEKIT_URL_VALUE="$(host_value LIVEKIT_URL)"
+LIVEKIT_API_KEY_VALUE="$(host_value LIVEKIT_API_KEY)"
+LIVEKIT_API_SECRET_VALUE="$(host_value LIVEKIT_API_SECRET)"
+if [ -z "$LIVEKIT_API_KEY_VALUE$LIVEKIT_API_SECRET_VALUE" ] && [ -s "$LIVEKIT_KEYS_FILE" ]; then
+  LIVEKIT_API_KEY_VALUE="$(livekit_key_name)"
+  LIVEKIT_API_SECRET_VALUE="$(livekit_key_secret)"
+  [ -n "$LIVEKIT_API_KEY_VALUE" ] && [ -n "$LIVEKIT_API_SECRET_VALUE" ] \
+    || die "the streaming key pair in ${LIVEKIT_KEYS_FILE} is unreadable"
+  if [ -z "$LIVEKIT_URL_VALUE" ]; then
+    LIVEKIT_URL_VALUE="$(livekit_url_from_site "$SITE_URL_VALUE")"
+    [ -n "$LIVEKIT_URL_VALUE" ] \
+      || log "warning: SITE_URL is not an http(s) origin; set LIVEKIT_URL to enable streaming"
+  fi
+  log "screen streaming: using the bundled server at ${LIVEKIT_URL_VALUE:-<unset>}"
+fi
+set_env_if_present LIVEKIT_URL "$LIVEKIT_URL_VALUE"
+set_env_if_present LIVEKIT_API_KEY "$LIVEKIT_API_KEY_VALUE" 1
+set_env_if_present LIVEKIT_API_SECRET "$LIVEKIT_API_SECRET_VALUE" 1
+
 set_env_if_present AULORA_LICENSE_SERVER_URL "$(host_value AULORA_LICENSE_SERVER_URL)"
 set_env_if_present AULORA_LICENSE_PUBLIC_KEY "$(host_value AULORA_LICENSE_PUBLIC_KEY)"
 

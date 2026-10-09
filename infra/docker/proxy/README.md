@@ -103,6 +103,16 @@ in [Deploy on Coolify](../../../apps/docs/content/coolify.md).
 Coolify sets `X-Forwarded-Proto`; the shipped nginx config already passes it to
 the auth upstream.
 
+## Screen streaming
+
+Only needed with the optional `streaming` compose profile, and nothing to add to
+the edge for it. LiveKit's signalling (a WebSocket) is served from the web origin
+at `/livekit`, which the `web` container proxies to the `livekit` service, so it
+needs no hostname, certificate or `connect-src` entry of its own. Make sure the
+edge passes WebSocket upgrades on the web origin (the Convex sync channel
+already requires that). Media does not pass through any proxy: `7881/tcp` and
+`7882/udp` must be reachable directly on the host.
+
 ## TLS and HSTS
 
 - Terminate TLS with **TLS 1.2+ (prefer 1.3)** and a valid certificate
@@ -137,12 +147,15 @@ Content-Security-Policy:
   img-src 'self' data: blob:;
   media-src 'self' blob:;
   style-src 'self' 'unsafe-inline';
-  script-src 'self';
+  script-src 'self' 'wasm-unsafe-eval';
   connect-src 'self' https://convex.example.com wss://convex.example.com wss:
 ```
 
 `style-src` needs `'unsafe-inline'` for the Tailwind runtime-injected theme
-variables; `script-src` is `'self'` only. The theme bootstrap in `index.html`
+variables; `script-src` is `'self'` plus `'wasm-unsafe-eval'`. The latter only
+lets the call engine compile its WebAssembly modules (RNNoise noise suppression
+and the background-blur model runtime); it does not permit JavaScript `eval`.
+Serve `.wasm` as `application/wasm` (the bundled nginx already does). The theme bootstrap in `index.html`
 is an inline script — either hash it, serve it as a file, or add a nonce before
 locking `script-src` down to `'self'` (see `Caddyfile.example` for the note).
 Tighten `connect-src` to exactly your Convex origins. For a **single-host**

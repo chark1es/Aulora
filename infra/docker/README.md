@@ -95,6 +95,7 @@ Reproducibility matters more than freshness here, so every image is pinned:
 | `sourcemation/minio` | `RELEASE.2025-10-15T17-29-55Z-20260920` | last AGPL MinIO release (see below) |
 | `pgsty/mc` | digest `sha256:cfc831…` | MinIO client used for bucket init |
 | `hashicorp/vault` | `1.18` | optional EKM for the `ekm` profile (see below) |
+| `livekit/livekit-server` | `v1.13.8` | optional screen-streaming server for the `streaming` profile (Apache-2.0; see below) |
 
 To bump the Convex digest:
 
@@ -103,6 +104,50 @@ docker pull ghcr.io/get-convex/convex-backend:latest
 docker inspect ghcr.io/get-convex/convex-backend:latest `
   --format '{{index .RepoDigests 0}} {{index .Config.Labels "org.opencontainers.image.revision"}}'
 ```
+
+## Screen streaming (optional)
+
+Calls are peer to peer, which is the right design for a small call but not for
+streaming a desktop or an application to many people: the sharer would upload
+one copy per viewer. The `streaming` profile adds a [LiveKit](https://livekit.io)
+server (Apache-2.0) that relays only screen and window shares. The microphone,
+camera and small calls still go peer to peer, and clients that cannot use the
+server (the mobile apps today) keep receiving shares directly. Leave it off and
+nothing changes.
+
+Turn it on by adding the profile; there is nothing to configure:
+
+```bash
+docker compose --profile streaming up -d
+```
+
+A one-shot `livekit-init` creates the API key pair on first start and keeps it in
+a Docker volume, `setup` hands it to Convex, and clients are pointed at
+`<SITE_URL>/livekit`, which the `web` container proxies to the server. The key
+never appears in `.env`. Then open `7881/tcp` and `7882/udp` to the internet (one
+rule each; media uses no other ports), and re-run `setup` if you enabled the
+profile on a stack that is already running:
+
+```bash
+docker compose run --rm setup
+```
+
+On Coolify nothing needs adding: `docker-compose.coolify.yml` runs the server
+without a profile (Coolify does not start profiled services) and configures it
+the same way. Open `7881/tcp` and `7882/udp` in the server's firewall; until you
+do, shares still work, sent directly to each viewer.
+
+To use a LiveKit server you run yourself (or LiveKit Cloud) instead, leave the
+profile off and set `LIVEKIT_URL`, `LIVEKIT_API_KEY` and `LIVEKIT_API_SECRET` in
+`.env`; explicit values always win. To turn streaming off again, drop the profile
+and clear the three values on the deployment with `bunx convex env remove`
+(clients that cannot reach the server fall back to direct shares meanwhile).
+
+Tokens only grant the screen-share sources, one room per call, and expire after
+an hour. Behind NAT, or on a LAN without a public address, set `rtc.node_ip` in
+`livekit/livekit.yaml` to an address clients can reach. Budget roughly the stream
+bitrate (1 to 3.5 Mbps) times the number of viewers in outbound bandwidth; a
+1 Gbps host serves a few hundred viewers.
 
 ## Object storage (MinIO)
 

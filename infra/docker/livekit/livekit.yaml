@@ -1,0 +1,29 @@
+# LiveKit server settings for Aulora's optional screen-streaming service
+# (compose profile `streaming`). The API key pair is generated on first start by
+# the `livekit-init` service into a volume; it is never kept in this file.
+#
+# Aulora uses LiveKit only to relay screen and window streams to viewers. The
+# microphone, camera and everything in a small call still go peer to peer.
+
+port: 7880
+
+key_file: /keys/keys
+
+rtc:
+  # One UDP port and one TCP port for all media, so a firewall needs two rules
+  # instead of a range. Publish both on the host (see docker-compose.yml).
+  tcp_port: 7881
+  udp_port: 7882
+  # Discover the public address with STUN. On a LAN or behind 1:1 NAT, replace
+  # this with `node_ip: <address clients can reach>`.
+  use_external_ip: true
+
+# Streams are the only thing published here; there is no need for data channels
+# or server-side recording, so keep the surface small.
+room:
+  auto_create: true
+  empty_timeout: 60
+  max_participants: 100
+
+logging:
+  level: info

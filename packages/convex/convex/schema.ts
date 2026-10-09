@@ -531,6 +531,8 @@ export default defineSchema({
     deafened: v.boolean(),
     video: v.boolean(),
     sharingScreen: v.boolean(),
+    /** The device can send and receive screen shares through the streaming server. */
+    sfu: v.optional(v.boolean()),
     joinedAt: v.number(),
     lastSeen: v.number(),
   })

@@ -1,3 +1,4 @@
+/* eslint-disable no-unused-vars -- the base rule reports parameter names in type signatures; Biome checks real unused code */
 import { type CallSignalRow, type PeerConnectionState, shouldOffer } from "@aulora/core";
 import { messageOf } from "./call-errors";
 import { createLevelMeter } from "./media";
@@ -35,8 +36,35 @@ export interface PeerMeshHost {
   onError(message: string): void;
   onChange(): void;
   getAudioTrack(): MediaStreamTrack | null;
-  getVideoTrack(): MediaStreamTrack | null;
-  isScreenSharing(): boolean;
+  /**
+   * The video this peer should receive from us. It differs per peer: a share that
+   * goes through the streaming server is withheld from peers who watch it there.
+   */
+  getVideoTrack(peerId: string): MediaStreamTrack | null;
+  /** Whether the track returned for this peer is a screen share (tunes the encoder). */
+  isScreenSharing(peerId: string): boolean;
+  /** The chosen stream quality: the most a single viewer's copy may use. */
+  getScreenProfile(): ScreenBudget;
+}
+
+/** What a screen share may spend, per viewer. */
+export interface ScreenBudget {
+  readonly maxBitrate: number;
+  readonly frameRate: number;
+}
+
+/**
+ * Sending a share to each viewer separately multiplies the upload, so the whole
+ * mesh upload is capped at this many full-quality copies and each viewer's copy
+ * shrinks once more people than that are watching.
+ */
+const SCREEN_COPIES = 3;
+const MIN_SCREEN_BITRATE = 500_000;
+
+/** One viewer's share of the budget: full quality for a few viewers, then thinner. */
+export function screenBitrateFor(budget: ScreenBudget, viewers: number): number {
+  const shared = (budget.maxBitrate * SCREEN_COPIES) / Math.max(1, viewers);
+  return Math.round(Math.min(budget.maxBitrate, Math.max(MIN_SCREEN_BITRATE, shared)));
 }
 
 function parsePayload<T>(payload: string): T | null {
@@ -106,18 +134,33 @@ export class PeerMesh {
     }
   }
 
-  /** Swaps the outgoing video track across every peer without renegotiating. */
-  async applyVideoTrack(
-    track: MediaStreamTrack | null,
-    mode: "camera" | "screen" = "camera",
-  ): Promise<void> {
-    for (const peer of this.peers.values()) {
+  /**
+   * Re-points every peer's outgoing video at what the host wants it to receive,
+   * without renegotiating. Call after the camera, a share or the roster changes.
+   */
+  async refreshVideo(): Promise<void> {
+    const viewers = [...this.peers.keys()].filter((id) => this.host.isScreenSharing(id)).length;
+    for (const [peerId, peer] of this.peers) {
+      const track = this.host.getVideoTrack(peerId);
+      const screen = this.screenTuning(peerId, viewers);
       for (const transceiver of this.transceiversFor(peer, "video")) {
-        transceiver.direction = "sendrecv";
-        await transceiver.sender.replaceTrack(track).catch(() => undefined);
-        tuneVideoSender(transceiver.sender, mode === "screen");
+        if (transceiver.sender.track !== track) {
+          transceiver.direction = "sendrecv";
+          await transceiver.sender.replaceTrack(track).catch(() => undefined);
+        }
+        // Retune even when the track is unchanged: the viewer count may have moved.
+        tuneVideoSender(transceiver.sender, screen);
       }
     }
+  }
+
+  /** The encoder limits for what this peer receives; `null` means a camera. */
+  private screenTuning(peerId: string, viewers: number): ScreenBudget | null {
+    if (!this.host.isScreenSharing(peerId)) {
+      return null;
+    }
+    const budget = this.host.getScreenProfile();
+    return { ...budget, maxBitrate: screenBitrateFor(budget, viewers) };
   }
 
   async applyAudioTrack(track: MediaStreamTrack | null): Promise<void> {
@@ -202,7 +245,7 @@ export class PeerMesh {
     if (initiator) {
       peer.audioTx = pc.addTransceiver("audio", { direction: "sendrecv" });
       peer.videoTx = pc.addTransceiver("video", { direction: "sendrecv" });
-      await this.attachLocalTracks(peer);
+      await this.attachLocalTracks(peer, remoteId);
       const offer = await pc.createOffer();
       await pc.setLocalDescription(offer);
       this.sendDescription(remoteId, "offer", pc.localDescription);
@@ -211,7 +254,7 @@ export class PeerMesh {
   }
 
   /** Replaces the sender track on each transceiver with the current local media. */
-  private async attachLocalTracks(peer: Peer): Promise<void> {
+  private async attachLocalTracks(peer: Peer, remoteId: string): Promise<void> {
     const entries: { kind: string; transceiver: RTCRtpTransceiver }[] = [];
     if (peer.audioTx !== undefined) {
       entries.push({ kind: "audio", transceiver: peer.audioTx });
@@ -239,11 +282,17 @@ export class PeerMesh {
         await transceiver.sender.replaceTrack(this.host.getAudioTrack()).catch(() => undefined);
         tuneAudioSender(transceiver.sender);
       } else {
-        await transceiver.sender.replaceTrack(this.host.getVideoTrack()).catch(() => undefined);
-        tuneVideoSender(transceiver.sender, this.host.isScreenSharing());
+        await transceiver.sender
+          .replaceTrack(this.host.getVideoTrack(remoteId))
+          .catch(() => undefined);
+        tuneVideoSender(transceiver.sender, this.screenTuning(remoteId, this.screenViewers()));
         tuneReceiver(transceiver.receiver);
       }
     }
+  }
+
+  private screenViewers(): number {
+    return [...this.peers.keys()].filter((id) => this.host.isScreenSharing(id)).length;
   }
 
   /**
@@ -301,7 +350,7 @@ export class PeerMesh {
         return;
       }
       await peer.pc.setRemoteDescription(description);
-      await this.attachLocalTracks(peer);
+      await this.attachLocalTracks(peer, signal.fromUserId);
       await this.flushCandidates(peer);
       const answer = await peer.pc.createAnswer();
       await peer.pc.setLocalDescription(answer);
@@ -438,16 +487,16 @@ function tuneAudioSender(sender: RTCRtpSender): void {
  * camera prioritizes framerate. Bitrates scale with resolution by the browser,
  * but the cap keeps a share from starving the audio on a thin uplink.
  */
-function tuneVideoSender(sender: RTCRtpSender, screen: boolean): void {
+function tuneVideoSender(sender: RTCRtpSender, screen: ScreenBudget | null): void {
   try {
     const params = sender.getParameters();
     params.encodings = params.encodings.length > 0 ? params.encodings : [{}];
     const encoding = params.encodings[0];
     if (encoding !== undefined) {
-      encoding.maxBitrate = screen ? 3_000_000 : 1_500_000;
-      encoding.maxFramerate = screen ? 30 : 30;
+      encoding.maxBitrate = screen?.maxBitrate ?? 1_500_000;
+      encoding.maxFramerate = screen?.frameRate ?? 30;
     }
-    params.degradationPreference = screen ? "maintain-resolution" : "maintain-framerate";
+    params.degradationPreference = screen !== null ? "maintain-resolution" : "maintain-framerate";
     void sender.setParameters(params).catch(() => undefined);
   } catch {
     // Best-effort.

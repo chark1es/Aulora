@@ -27,6 +27,7 @@ import {
   useVoiceSettings,
   useVoiceUi,
 } from "./voice-provider-engine";
+import { useVoicePip } from "./voice-provider-pip";
 import {
   type ActiveCallsRef,
   type CallViewMode,
@@ -35,6 +36,7 @@ import {
   type VoiceContextValue,
   type VoiceControls,
   type VoiceFlags,
+  type VoicePip,
   type VoicePolicy,
 } from "./voice-provider-types";
 
@@ -198,6 +200,7 @@ function useVoiceContextValue(input: {
   readonly flags: VoiceFlags;
   readonly view: CallViewMode;
   readonly pipPinned: boolean;
+  readonly pip: VoicePip;
   readonly setView: Dispatch<SetStateAction<CallViewMode>>;
   readonly setPipPinned: Dispatch<SetStateAction<boolean>>;
   readonly controls: VoiceControls;
@@ -216,6 +219,7 @@ function useVoiceContextValue(input: {
     flags,
     view,
     pipPinned,
+    pip,
     setView,
     setPipPinned,
     controls,
@@ -235,6 +239,7 @@ function useVoiceContextValue(input: {
       ...flags,
       view,
       pipPinned,
+      pip,
       setView,
       setPipPinned,
       ...controls,
@@ -253,6 +258,7 @@ function useVoiceContextValue(input: {
       flags,
       view,
       pipPinned,
+      pip,
       setView,
       setPipPinned,
       controls,
@@ -292,6 +298,7 @@ export function useVoiceValue(input: {
   activeCallsRef.current = activeCalls;
   const controls = useVoiceControls(engineRef, activeCallsRef, userId, clientId, ui.setView);
   const flags = useVoiceFlags(viewerPermissions, policy);
+  const pip = useVoicePip(snapshot, userId);
   const value = useVoiceContextValue({
     snapshot,
     userId,
@@ -303,6 +310,7 @@ export function useVoiceValue(input: {
     devices,
     flags,
     ...ui,
+    pip,
     controls,
     updateSettings,
     refreshDevices,

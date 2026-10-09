@@ -68,6 +68,14 @@ If encrypted files or messages stop decrypting, restore the correct master key a
 
 Allow microphone/camera access in the app and OS. Use HTTPS for remote clients. Test another network. Restrictive NAT or firewalls can require a TURN server; configure `AULORA_ICE_SERVERS` in `.env` and re-run setup.
 
+## Background blur or enhanced noise suppression is unavailable
+
+Both run in WebAssembly on your device. They need WebGL 2 (blur) and a current browser or the desktop app. The settings show a message when a feature cannot run, and the call carries on with your plain camera or the browser's standard noise suppression. If you host the web app behind your own proxy, its Content-Security-Policy must allow `'wasm-unsafe-eval'` in `script-src` and serve `.wasm` files as `application/wasm`; see [proxy/README.md](https://github.com/chark1es/Aulora/blob/main/infra/docker/proxy/README.md).
+
+## Screen shares are choppy or the sharer's connection struggles
+
+A share sent straight to each viewer uses the sharer's upload once per viewer. For regular streaming to many people, ask the administrator to enable the optional streaming server (see [self-hosting](self-hosting.md)), or choose **Settings → Voice & video → Screen sharing quality → Data saver**.
+
 ## Notifications do not arrive
 
 Check permissions, focus mode, channel mutes, and whether the desktop process is still running. Mobile background delivery requires a correctly configured relay and APNs/FCM credentials for the installed app. Device push is not validated by a simulator build. See the [user guide](user-guide.md).

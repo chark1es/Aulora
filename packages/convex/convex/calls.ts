@@ -219,6 +219,7 @@ export const updateParticipant = mutation({
     deafened: v.optional(v.boolean()),
     video: v.optional(v.boolean()),
     sharingScreen: v.optional(v.boolean()),
+    sfu: v.optional(v.boolean()),
   },
   handler: async (ctx, args) => {
     const { userId } = await requireAuth(ctx);
@@ -242,6 +243,7 @@ export const updateParticipant = mutation({
       ...(args.deafened !== undefined ? { deafened: args.deafened } : {}),
       ...(args.video !== undefined ? { video: args.video } : {}),
       ...(args.sharingScreen !== undefined ? { sharingScreen: args.sharingScreen } : {}),
+      ...(args.sfu !== undefined ? { sfu: args.sfu } : {}),
       lastSeen: Date.now(),
     });
     if (args.sharingScreen !== undefined) {
