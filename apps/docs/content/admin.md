@@ -16,7 +16,7 @@ logic only hides UI.
 
 ## Addons
 
-The Addons tab controls optional tools. Kanban is off by default and requires Manage workspace to enable. Grant its separate role permissions before inviting members to use it. See [Kanban](kanban.md) for board permissions, timers, attachments and GitHub connections.
+The Addons tab controls optional tools. Kanban and Notes are off by default and require Manage workspace to enable. Grant their separate role permissions before inviting members to use them. See [Kanban](kanban.md) for board permissions, timers, attachments and GitHub connections, and [Notes](notes.md) for folders, tags, search and history.
 
 ## Instance admin
 

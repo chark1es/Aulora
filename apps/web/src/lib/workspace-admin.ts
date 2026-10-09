@@ -273,6 +273,10 @@ export const PERMISSION_GROUPS: readonly PermissionGroup[] = [
     ],
   },
   { label: "Kanban", permissions: ["ViewKanban", "EditKanban", "CommentKanban", "ManageKanban"] },
+  {
+    label: "Notes",
+    permissions: ["ViewNotes", "CreateNotes", "EditNotes", "DeleteNotes", "ManageNotes"],
+  },
   { label: "Special", permissions: ["Administrator"] },
 ];
 
@@ -311,6 +315,11 @@ export const PERMISSION_LABELS: Record<PermissionName, string> = {
   EditKanban: "Edit Kanban cards and track time",
   CommentKanban: "Comment on Kanban cards",
   ManageKanban: "Manage all boards, membership and comments",
+  ViewNotes: "View notes and folders",
+  CreateNotes: "Create notes and folders",
+  EditNotes: "Edit notes, folders and tags",
+  DeleteNotes: "Delete notes, folders and tags",
+  ManageNotes: "Manage all notes and history",
   Administrator: "Administrator",
 };
 

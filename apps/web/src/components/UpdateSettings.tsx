@@ -13,6 +13,7 @@ export interface UpdateSettingsProps {
   readonly detail?: string | null;
   readonly canDownload?: boolean;
   readonly checked?: boolean;
+  readonly installDirectly?: boolean;
   readonly onCheck: () => void;
   readonly onDownload: () => void;
   readonly onRestart: () => void;
@@ -29,12 +30,16 @@ export function UpdateSettings(props: UpdateSettingsProps) {
     detail,
     canDownload = true,
     checked = false,
+    installDirectly = false,
     onCheck,
     onDownload,
     onRestart,
   } = props;
-  const ready = phase === "ready" || phase === "restarting";
-  const status = statusText({ phase, ready, available, latestVersion, checked });
+  const ready = !installDirectly && (phase === "ready" || phase === "restarting");
+  const status =
+    installDirectly && phase === "restarting"
+      ? "Coolify is building and deploying the update…"
+      : statusText({ phase, ready, available, latestVersion, checked });
   return (
     <section
       className="flex flex-col gap-3"
@@ -64,6 +69,7 @@ export function UpdateSettings(props: UpdateSettingsProps) {
         phase={phase}
         available={available}
         canDownload={canDownload}
+        installDirectly={installDirectly}
         onCheck={onCheck}
         onDownload={onDownload}
         onRestart={onRestart}
@@ -130,6 +136,7 @@ function UpdateActions({
   phase,
   available,
   canDownload,
+  installDirectly,
   onCheck,
   onDownload,
   onRestart,
@@ -137,6 +144,7 @@ function UpdateActions({
   readonly phase: UpdatePhase;
   readonly available: boolean;
   readonly canDownload: boolean;
+  readonly installDirectly: boolean;
   readonly onCheck: () => void;
   readonly onDownload: () => void;
   readonly onRestart: () => void;
@@ -155,7 +163,16 @@ function UpdateActions({
         Check for updates
       </Button>
       {(available || ready) &&
-        (ready ? (
+        (installDirectly ? (
+          <Button
+            size="sm"
+            disabled={busy || !canDownload}
+            loading={phase === "restarting"}
+            onClick={onDownload}
+          >
+            Install update
+          </Button>
+        ) : ready ? (
           <Button
             size="sm"
             disabled={busy || !canDownload}

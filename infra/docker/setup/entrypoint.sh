@@ -28,6 +28,20 @@ WELL_KNOWN_DIR="${WELL_KNOWN_DIR:-/web-well-known}"
 log() { printf '[setup] %s\n' "$*"; }
 die() { printf '[setup] ERROR: %s\n' "$*" >&2; exit 1; }
 
+# Check output mounts before changing deployment settings or creating an owner.
+mkdir -p "$WELL_KNOWN_DIR"
+[ -w "$WELL_KNOWN_DIR" ] || die "cannot write ${WELL_KNOWN_DIR}; check setup volume permissions"
+if [ -f "$WELL_KNOWN_DIR/aulora.json" ] && [ ! -w "$WELL_KNOWN_DIR/aulora.json" ]; then
+  die "cannot write ${WELL_KNOWN_DIR}/aulora.json; check setup volume permissions"
+fi
+HOST_ENV_DIR="$(dirname "$HOST_ENV_FILE")"
+if [ -d "$HOST_ENV_DIR" ]; then
+  [ -w "$HOST_ENV_DIR" ] || die "cannot write ${HOST_ENV_DIR}; check setup state permissions"
+  if [ -f "$HOST_ENV_FILE" ] && [ ! -w "$HOST_ENV_FILE" ]; then
+    die "cannot write ${HOST_ENV_FILE}; check setup state permissions"
+  fi
+fi
+
 # --- tiny .env helpers (preserve comments; never echo secret values) --------
 
 env_get() {
@@ -298,6 +312,10 @@ set_env_if_present AULORA_UPDATE_MANIFEST_URL "$(host_value AULORA_UPDATE_MANIFE
 set_env_if_present AULORA_UPDATE_GITHUB_REPO "$(host_value AULORA_UPDATE_GITHUB_REPO)"
 set_env_if_present AULORA_UPDATE_CHANNEL "$(host_value AULORA_UPDATE_CHANNEL)"
 set_env_if_present AULORA_AUTO_UPDATE "$(host_value AULORA_AUTO_UPDATE)"
+set_env_if_present AULORA_UPDATE_PROVIDER "$(host_value AULORA_UPDATE_PROVIDER)"
+set_env_if_present AULORA_COOLIFY_URL "$(host_value AULORA_COOLIFY_URL)"
+set_env_if_present AULORA_COOLIFY_APPLICATION_UUID "$(host_value AULORA_COOLIFY_APPLICATION_UUID)"
+set_env_if_present AULORA_COOLIFY_API_TOKEN "$(host_value AULORA_COOLIFY_API_TOKEN)" 1
 
 # Server-side encryption: the default local master key is set as a secret.
 # Optional/advanced external-provider settings are read from the host .env and

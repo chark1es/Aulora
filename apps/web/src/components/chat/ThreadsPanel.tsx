@@ -20,6 +20,8 @@ export interface ThreadsPanelProps {
   readonly roles: readonly RoleMentionTarget[];
   readonly memberIds: readonly string[];
   readonly permissions: bigint;
+  /** Effective single-upload cap in bytes, forwarded to the reply composer. */
+  readonly maxUploadBytes: number;
   readonly ownUserId: string;
   readonly ownName: string;
   readonly memberNames: ReadonlyMap<string, string>;
@@ -154,6 +156,7 @@ export function ThreadsPanel(props: ThreadsPanelProps) {
         members={props.members}
         roles={props.roles}
         memberIds={props.memberIds}
+        maxUploadBytes={props.maxUploadBytes}
         placeholder="Reply in thread…"
         windowDropEnabled={false}
         onTyping={props.onTyping}

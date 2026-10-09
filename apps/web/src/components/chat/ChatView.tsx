@@ -13,7 +13,11 @@ import { cn, Icon, Spinner } from "@aulora/ui-web";
 import { useMutation, useQuery } from "convex/react";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { api } from "../../../../../packages/convex/convex/_generated/api";
-import { uploadFiles } from "../../lib/attachments";
+import {
+  attachmentUploadErrorMessage,
+  DEFAULT_MAX_UPLOAD_BYTES,
+  uploadFiles,
+} from "../../lib/attachments";
 import { isDesktop } from "../../lib/desktop";
 import { playSound } from "../../lib/sounds";
 import { useChannelSession } from "../../lib/use-channel";
@@ -38,6 +42,7 @@ import {
 } from "../../providers/WorkspaceUpdateProvider";
 import { AdminPanel, type AdminPanelViewer } from "../admin/AdminPanel";
 import { KanbanView } from "../kanban/KanbanView";
+import { NotesView } from "../notes/NotesView";
 import { DesktopUpdateSettings } from "../UpdateSettings";
 import { CallDock } from "../voice/CallDock";
 import { CallPictureInPicture } from "../voice/CallPictureInPicture";
@@ -73,6 +78,7 @@ export interface ChatViewProps {
   readonly ownName: string;
   readonly permissions: bigint;
   readonly kanbanEnabled?: boolean;
+  readonly notesEnabled?: boolean;
   readonly members: readonly {
     userId: string;
     displayName: string;
@@ -166,6 +172,7 @@ function ChatViewContent({
   ownName,
   permissions,
   kanbanEnabled = false,
+  notesEnabled = false,
   members,
   roles,
   unreadByChannel,
@@ -183,7 +190,7 @@ function ChatViewContent({
     () => readLocal(lastChannelKey) ?? undefined,
   );
   const [mobilePane, setMobilePane] = useState<"list" | "chat">("list");
-  const [mainView, setMainView] = useState<"chat" | "threads" | "kanban">("chat");
+  const [mainView, setMainView] = useState<"chat" | "threads" | "kanban" | "notes">("chat");
   const [adminOpen, setAdminOpen] = useState(false);
   const [newConversationOpen, setNewConversationOpen] = useState(false);
   const [createChannelOpen, setCreateChannelOpen] = useState(false);
@@ -260,6 +267,11 @@ function ChatViewContent({
 
   // The Threads inbox is always subscribed so its tab can badge mentions.
   const threadRows = useQuery(api.messages.threadInbox, {});
+  // The effective single-upload cap, so the composer can reject oversized picks
+  // before any bytes leave the browser. Falls back to the shared default while
+  // the query loads.
+  const publicConfig = useQuery(api.server.publicConfig, {});
+  const maxUploadBytes = publicConfig?.uploads?.maxBytes ?? DEFAULT_MAX_UPLOAD_BYTES;
   const threadMentionCount = useMemo(
     () => (threadRows ?? []).filter((row) => row.viewerMentioned).length,
     [threadRows],
@@ -998,9 +1010,9 @@ function ChatViewContent({
     let attachments: readonly AttachmentDescriptor[] | undefined;
     if (input.files.length > 0) {
       try {
-        attachments = await uploadFiles(runtime.port, input.files);
-      } catch {
-        setSendError("Couldn't upload that attachment. Check the file size and try again.");
+        attachments = await uploadFiles(runtime.port, input.files, { maxBytes: maxUploadBytes });
+      } catch (error) {
+        setSendError(attachmentUploadErrorMessage(error));
         return undefined;
       }
     }
@@ -1140,6 +1152,17 @@ function ChatViewContent({
               ? {
                   onOpenKanban: () => {
                     setMainView("kanban");
+                    setMobilePane("chat");
+                    setThreadRoot(undefined);
+                    setAdminOpen(false);
+                    setUserSettingsOpen(false);
+                  },
+                }
+              : {})}
+            {...(notesEnabled && hasPermission(permissions, Permission.ViewNotes)
+              ? {
+                  onOpenNotes: () => {
+                    setMainView("notes");
                     setMobilePane("chat");
                     setThreadRoot(undefined);
                     setAdminOpen(false);
@@ -1342,6 +1365,18 @@ function ChatViewContent({
             setMobilePane("list");
           }}
         />
+      ) : mainView === "notes" &&
+        notesEnabled &&
+        hasPermission(permissions, Permission.ViewNotes) ? (
+        <NotesView
+          ownUserId={ownUserId}
+          permissions={permissions}
+          members={members}
+          onBack={() => {
+            setMainView("chat");
+            setMobilePane("list");
+          }}
+        />
       ) : (
         <section
           className={cn(
@@ -1411,6 +1446,7 @@ function ChatViewContent({
               canSend={canSend}
               canAttach={canAttach}
               canMentionEveryone={canMentionEveryone}
+              maxUploadBytes={maxUploadBytes}
               pinsOpen={pinsOpen}
               membersOpen={rightPanel === "members"}
               {...(replyTarget !== undefined ? { replyTarget } : {})}
@@ -1446,6 +1482,7 @@ function ChatViewContent({
         channel !== undefined &&
         !adminView &&
         mainView !== "kanban" &&
+        mainView !== "notes" &&
         !userSettingsOpen &&
         mainView === "chat" && (
           <div className="fixed inset-y-2.5 right-2.5 z-30 flex lg:static lg:z-auto">
@@ -1463,6 +1500,7 @@ function ChatViewContent({
                 roles={roles}
                 memberIds={memberIds}
                 permissions={channelPermissions}
+                maxUploadBytes={maxUploadBytes}
                 ownUserId={ownUserId}
                 ownName={ownName}
                 memberNames={memberNames}

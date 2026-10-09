@@ -44,6 +44,8 @@ The default addresses are for a local trial. For phones, other computers, or a p
 
 After setup, create a channel and send a message. Use Workspace settings to invite a second user and configure signup policy. Back up `.env` securely, including `AULORA_ENCRYPTION_KEY`, then set up [off-machine backups](apps/docs/content/backups.md).
 
+Kanban and Notes are optional addons, off by default and enabled in **Workspace settings → Addons** by a member with the Manage workspace permission. They ship in the web and setup images and use the same backend, so an upgrade rebuilds both images and re-runs `setup` before recreating `web`. See the [Kanban](apps/docs/content/kanban.md) and [Notes](apps/docs/content/notes.md) guides.
+
 ## Get the clients
 
 Use your server's web URL in a browser. Desktop installers and Android APKs are distributed through [GitHub Releases](https://github.com/chark1es/Aulora/releases) when a release is published. Choose the file for your operating system and CPU. The [user guide](apps/docs/content/user-guide.md) explains installation, sign-in, and notifications.

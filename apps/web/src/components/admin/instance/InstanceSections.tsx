@@ -9,7 +9,6 @@ import {
   formatBytes,
   formatQuota,
   formatTimestamp,
-  parseByteInput,
 } from "../../../lib/instance-admin";
 import type { Callback } from "../callbacks";
 import { UpdatesCard } from "./UpdatesCard";
@@ -226,93 +225,6 @@ function AuthProviderToggle({
             })}
       />
     </li>
-  );
-}
-
-export function StorageSection({ overview }: { readonly overview: Overview }) {
-  const updateStorage = useMutation(api.instance.updateStorage);
-  const [quota, setQuota] = useState("");
-  const [maxUpload, setMaxUpload] = useState("");
-  const [error, setError] = useState<string | null>(null);
-  const [saved, setSaved] = useState(false);
-  const [busy, setBusy] = useState(false);
-
-  useEffect(() => {
-    setQuota(overview.storage.quotaBytes > 0 ? String(overview.storage.quotaBytes) : "0");
-    setMaxUpload(String(overview.storage.maxUploadBytes));
-  }, [overview.storage.quotaBytes, overview.storage.maxUploadBytes]);
-
-  const parseQuota = (raw: string): number | null => {
-    const trimmed = raw.trim();
-    if (trimmed === "" || trimmed === "0") {
-      return 0;
-    }
-    return parseByteInput(trimmed);
-  };
-
-  return (
-    <form
-      className="flex flex-col gap-4"
-      data-testid="instance-storage"
-      onSubmit={(event) => {
-        event.preventDefault();
-        setError(null);
-        setSaved(false);
-        const quotaBytes = parseQuota(quota);
-        const maxUploadBytes = parseByteInput(maxUpload);
-        if (quotaBytes === null || maxUploadBytes === null) {
-          setError("Enter a valid size such as 25 MiB, 1 GiB, or 0 for unlimited.");
-          return;
-        }
-        setBusy(true);
-        void updateStorage({ storageQuotaBytes: quotaBytes, maxUploadBytes })
-          .then(() => {
-            setSaved(true);
-          })
-          .catch((cause: unknown) => {
-            setError(cause instanceof Error ? cause.message : "Could not save the quota.");
-          })
-          .finally(() => {
-            setBusy(false);
-          });
-      }}
-    >
-      <Heading level={3}>Storage quotas</Heading>
-      <Text tone="muted" size="sm">
-        The quota is the total upload budget; 0 means unlimited. The max upload caps a single file.
-      </Text>
-      <Input
-        label="Total storage quota"
-        hint="Examples: 50 GiB, 500 MiB, 0 for unlimited."
-        value={quota}
-        onChange={(event) => {
-          setQuota(event.currentTarget.value);
-        }}
-      />
-      <Input
-        label="Max upload size"
-        hint="Examples: 25 MiB, 100 MiB."
-        value={maxUpload}
-        onChange={(event) => {
-          setMaxUpload(event.currentTarget.value);
-        }}
-      />
-      {error !== null && (
-        <Text tone="danger" size="sm" role="alert">
-          {error}
-        </Text>
-      )}
-      {saved && (
-        <Text tone="secondary" size="sm" role="status">
-          Quota saved.
-        </Text>
-      )}
-      <div>
-        <Button type="submit" loading={busy} disabled={busy}>
-          Save quotas
-        </Button>
-      </div>
-    </form>
   );
 }
 

@@ -38,6 +38,9 @@ function useChatScreenSession(workspaceName: string, ownUserId: string, ownDispl
   const showKanban =
     publicConfig?.addons?.kanban === true &&
     hasPermission(chat.viewerPermissions, Permission.ViewKanban);
+  const showNotes =
+    publicConfig?.addons?.notes === true &&
+    hasPermission(chat.viewerPermissions, Permission.ViewNotes);
   const threadRows = useQuery(api.messages.threadInbox, {});
   const threadMentionCount = useMemo(
     () => (threadRows ?? []).filter((row) => row.viewerMentioned).length,
@@ -56,6 +59,7 @@ function useChatScreenSession(workspaceName: string, ownUserId: string, ownDispl
     pushState,
     unregisterPush,
     showKanban,
+    showNotes,
     threadRows,
     threadMentionCount,
   };
