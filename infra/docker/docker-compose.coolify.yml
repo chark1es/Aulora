@@ -514,15 +514,19 @@ services:
     entrypoint: ["/bin/sh", "/init/init-keys.sh"]
     volumes:
       - livekit-keys:/keys
-      - ./livekit/init-keys.sh:/init/init-keys.sh:ro
+      # Mount the directory, not the file. Coolify creates every relative bind
+      # source as an empty directory before it copies the checkout in, so a
+      # single-file mount makes that copy fail ("cannot overwrite directory ...
+      # with non-directory") and takes the stack down mid-deploy.
+      - ./livekit:/init:ro
     logging: *logging
 
   livekit:
     image: livekit/livekit-server:v1.13.8
     restart: unless-stopped
-    command: ["--config", "/etc/livekit.yaml"]
+    command: ["--config", "/etc/livekit/livekit.yaml"]
     volumes:
-      - ./livekit/livekit.yaml:/etc/livekit.yaml:ro
+      - ./livekit:/etc/livekit:ro
       - livekit-keys:/keys:ro
     depends_on:
       livekit-init:
