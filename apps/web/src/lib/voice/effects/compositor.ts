@@ -112,6 +112,15 @@ function target(gl: WebGL2RenderingContext, width: number, height: number): Targ
   return { texture: color, framebuffer };
 }
 
+/** Frees a render target's framebuffer and texture. Safe on `null`. */
+function release(gl: WebGL2RenderingContext, target: Target | null): void {
+  if (target === null) {
+    return;
+  }
+  gl.deleteFramebuffer(target.framebuffer);
+  gl.deleteTexture(target.texture);
+}
+
 export type FrameSource = TexImageSource;
 
 export class Compositor {
@@ -165,6 +174,10 @@ export class Compositor {
     this.canvas.width = width;
     this.canvas.height = height;
     this.imageDirty = true;
+    // Drop the old targets before making new ones, or a resize leaks the last
+    // frame's textures and framebuffers.
+    release(this.gl, this.ping);
+    release(this.gl, this.pong);
     const small = {
       width: Math.max(2, Math.round(width / BLUR_SCALE)),
       height: Math.max(2, Math.round(height / BLUR_SCALE)),
@@ -204,15 +217,13 @@ export class Compositor {
 
   dispose(): void {
     const { gl } = this;
-    for (const owned of [
-      this.video,
-      this.mask,
-      this.image,
-      this.ping?.texture,
-      this.pong?.texture,
-    ]) {
-      gl.deleteTexture(owned ?? null);
+    for (const owned of [this.video, this.mask, this.image]) {
+      gl.deleteTexture(owned);
     }
+    release(gl, this.ping);
+    release(gl, this.pong);
+    this.ping = null;
+    this.pong = null;
     gl.deleteProgram(this.blurProgram);
     gl.deleteProgram(this.compositeProgram);
     gl.getExtension("WEBGL_lose_context")?.loseContext();

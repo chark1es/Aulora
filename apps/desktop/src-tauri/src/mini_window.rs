@@ -105,7 +105,13 @@ pub fn enter(
     if let Some(monitor) = window.current_monitor()? {
         let scale = monitor.scale_factor();
         let area = monitor.work_area();
-        let size = window.outer_size()?;
+        // Use the size we just asked for, not `outer_size()`: the window manager
+        // applies `set_size` asynchronously, so reading it back can be the old
+        // size. The size is in logical pixels, so scale it to place the window.
+        let size = PhysicalSize::new(
+            (width * scale).round() as u32,
+            (height * scale).round() as u32,
+        );
         let target = corner_position(
             area.position,
             area.size,

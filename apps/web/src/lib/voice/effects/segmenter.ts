@@ -68,7 +68,9 @@ export async function createSegmenter(): Promise<Segmenter> {
           return;
         }
         if (values.length === MASK_SIZE) {
-          mask.set(Uint8Array.from(values, toByte));
+          for (let index = 0; index < MASK_SIZE; index += 1) {
+            mask[index] = toByte(values[index] ?? 0);
+          }
           outcome.produced = true;
         }
       });
@@ -85,10 +87,11 @@ export async function createSegmenter(): Promise<Segmenter> {
  * does not flicker between frames. Writes into `previous` and returns it.
  */
 export function smoothMask(previous: Uint8Array, next: Uint8Array, weight = 0.6): Uint8Array {
-  previous.set(
-    previous.map((before, index) =>
-      Math.round(before + ((next.at(index) ?? before) - before) * weight),
-    ),
-  );
+  // Written in place: this runs every frame, so no second array is allocated.
+  for (let index = 0; index < previous.length; index += 1) {
+    const before = previous[index] ?? 0;
+    const target = next[index] ?? before;
+    previous[index] = Math.round(before + (target - before) * weight);
+  }
   return previous;
 }
