@@ -266,7 +266,9 @@ set_env_if_present AULORA_ICE_SERVERS "$(host_value AULORA_ICE_SERVERS)"
 # mints room tokens from these; the media never passes through it. With the
 # profile on, `livekit-init` has already written the key pair to a volume and the
 # `web` container proxies `<SITE_URL>/livekit` to the server, so nothing needs to
-# be configured. Explicit LIVEKIT_* values win, for a LiveKit server you run
+# be configured. `bootstrap.sh` reads that root-only key file before dropping
+# privileges and passes the pair down through the environment, so it arrives
+# here already set. Explicit LIVEKIT_* values win, for a LiveKit server you run
 # yourself (or LiveKit Cloud). With neither, every share stays on the peer mesh.
 LIVEKIT_KEYS_FILE="${LIVEKIT_KEYS_FILE:-/livekit-keys/keys}"
 
@@ -291,12 +293,14 @@ if [ -z "$LIVEKIT_API_KEY_VALUE$LIVEKIT_API_SECRET_VALUE" ] && [ -s "$LIVEKIT_KE
   LIVEKIT_API_SECRET_VALUE="$(livekit_key_secret)"
   [ -n "$LIVEKIT_API_KEY_VALUE" ] && [ -n "$LIVEKIT_API_SECRET_VALUE" ] \
     || die "the streaming key pair in ${LIVEKIT_KEYS_FILE} is unreadable"
+fi
+if [ -n "$LIVEKIT_API_KEY_VALUE" ] && [ -n "$LIVEKIT_API_SECRET_VALUE" ]; then
   if [ -z "$LIVEKIT_URL_VALUE" ]; then
     LIVEKIT_URL_VALUE="$(livekit_url_from_site "$SITE_URL_VALUE")"
     [ -n "$LIVEKIT_URL_VALUE" ] \
       || log "warning: SITE_URL is not an http(s) origin; set LIVEKIT_URL to enable streaming"
   fi
-  log "screen streaming: using the bundled server at ${LIVEKIT_URL_VALUE:-<unset>}"
+  log "screen streaming: using the server at ${LIVEKIT_URL_VALUE:-<unset>}"
 fi
 set_env_if_present LIVEKIT_URL "$LIVEKIT_URL_VALUE"
 set_env_if_present LIVEKIT_API_KEY "$LIVEKIT_API_KEY_VALUE" 1

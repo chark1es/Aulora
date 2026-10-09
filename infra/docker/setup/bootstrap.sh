@@ -30,6 +30,22 @@ if [ "$(id -u)" = 0 ]; then
     fi
   fi
 
+  # `livekit-init` writes the streaming key pair as a root-only 0600 file,
+  # because the LiveKit server refuses a key file other users can read. Setup
+  # then runs without root, so read the pair here while we still can and hand it
+  # down through the environment; otherwise the unprivileged stage cannot open
+  # it and setup aborts before it hands the credentials to Convex.
+  livekit_keys_file="${LIVEKIT_KEYS_FILE:-/livekit-keys/keys}"
+  if [ -s "$livekit_keys_file" ] && [ -z "${LIVEKIT_API_KEY:-}${LIVEKIT_API_SECRET:-}" ]; then
+    LIVEKIT_API_KEY="$(sed -n '1s/:.*//p' "$livekit_keys_file")"
+    LIVEKIT_API_SECRET="$(sed -n '1s/^[^:]*:[[:space:]]*//p' "$livekit_keys_file" | tr -d '"[:space:]')"
+    [ -n "$LIVEKIT_API_KEY" ] && [ -n "$LIVEKIT_API_SECRET" ] || {
+      printf '[setup] ERROR: the streaming key pair in %s is unreadable\n' "$livekit_keys_file" >&2
+      exit 1
+    }
+    export LIVEKIT_API_KEY LIVEKIT_API_SECRET
+  fi
+
   exec setpriv --reuid=aulora --regid=aulora --init-groups \
     --bounding-set=-all --inh-caps=-all --ambient-caps=-all --no-new-privs "$@"
 fi
