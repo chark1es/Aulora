@@ -106,8 +106,8 @@ function verifyUpdater(updater) {
 // to equal the configured minimum or leaving PiP would resize the window wrongly.
 function verifyMiniWindowMinimums(window) {
   const source = readMiniWindow();
-  const width = /const MAIN_MIN_WIDTH: f64 = (\d+(?:\.\d+)?);/.exec(source)?.[1];
-  const height = /const MAIN_MIN_HEIGHT: f64 = (\d+(?:\.\d+)?);/.exec(source)?.[1];
+  const width = /const MAIN_MIN_WIDTH: f64 = ([0-9.]+);/.exec(source)?.[1];
+  const height = /const MAIN_MIN_HEIGHT: f64 = ([0-9.]+);/.exec(source)?.[1];
   check(
     "mini_window.rs MAIN_MIN_WIDTH must equal windows[0].minWidth",
     width !== undefined && Number(width) === window?.minWidth,

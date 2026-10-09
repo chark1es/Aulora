@@ -52,7 +52,9 @@ export function pictureInPictureActive(): boolean {
 /** Calls `listener` whenever the app enters or leaves the floating window. */
 export function onPictureInPictureChange(listener: (active: boolean) => void): () => void {
   if (native === null) {
-    return () => {};
+    return () => {
+      // No native module, so there is no subscription to remove.
+    };
   }
   const subscription = native.addListener("onPipChange", (event) => {
     listener(event.active);
