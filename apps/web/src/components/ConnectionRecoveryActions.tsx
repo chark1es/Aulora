@@ -52,9 +52,8 @@ export function ConnectionRecoveryActions(props: ConnectionRecoveryActionsProps)
           }}
           onConfirm={() => {
             setConfirming(false);
-            if (onRemoveServer !== undefined) {
-              onRemoveServer();
-            }
+            // `canRemove` narrows onRemoveServer to defined at the JSX site.
+            onRemoveServer();
           }}
         />
       )}

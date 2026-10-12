@@ -1,3 +1,4 @@
+/* eslint-disable no-unused-vars -- the base rule reports parameter names in type signatures; Biome checks real unused code */
 import { Avatar } from "@aulora/avatars";
 import type { ChannelView } from "@aulora/core";
 import { activityLabel, badgeCount, dmPartnerId, partitionPinnedDms } from "@aulora/core";

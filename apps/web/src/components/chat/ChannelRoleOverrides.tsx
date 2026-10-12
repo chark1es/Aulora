@@ -1,3 +1,4 @@
+/* eslint-disable no-unused-vars -- the base rule reports parameter names in type signatures; Biome checks real unused code */
 import type { PermissionName } from "@aulora/core";
 import { cn, Icon } from "@aulora/ui-web";
 import { useMemo, useState } from "react";

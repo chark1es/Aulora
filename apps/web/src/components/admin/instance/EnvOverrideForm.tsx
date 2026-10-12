@@ -1,3 +1,4 @@
+/* eslint-disable no-unused-vars -- the base rule reports parameter names in type signatures; Biome checks real unused code */
 import { Button, Input, Text } from "@aulora/ui-web";
 import { useState } from "react";
 import type { EnvVariable } from "../../../lib/instance-env";
