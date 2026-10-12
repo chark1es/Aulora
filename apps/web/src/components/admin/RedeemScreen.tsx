@@ -9,12 +9,14 @@ import {
   authActionsFromClient,
   createAuloraAuthClient,
 } from "../../lib/auth-client";
-import { redeemErrorMessage } from "../../lib/invites";
+import { redeemErrorMessage, redeemOutcomeMessage } from "../../lib/invites";
 import { AuthFrame } from "../AuthFrame";
 import { SignInScreen } from "../SignInScreen";
 
 export interface RedeemCardProps {
   readonly code: string;
+  /** Masked address when the invite was issued to one person. */
+  readonly restrictedTo?: string;
   readonly state: "idle" | "pending" | "done";
   readonly message: string | null;
   readonly error: string | null;
@@ -23,7 +25,14 @@ export interface RedeemCardProps {
 }
 
 /** Presentational redeem card: join, retry, or continue after success. */
-export function RedeemCard({ state, message, error, onJoin, onContinue }: RedeemCardProps) {
+export function RedeemCard({
+  state,
+  message,
+  error,
+  restrictedTo,
+  onJoin,
+  onContinue,
+}: RedeemCardProps) {
   return (
     <AuthFrame>
       <Card
@@ -42,6 +51,8 @@ export function RedeemCard({ state, message, error, onJoin, onContinue }: Redeem
           <>
             <Text tone="muted" size="sm">
               Accept this invite to become a member of this workspace.
+              {restrictedTo !== undefined &&
+                ` It was sent to ${restrictedTo}, so you need to be signed in with that address.`}
             </Text>
             {error !== null && (
               <Text tone="danger" size="sm" role="alert">
@@ -121,8 +132,9 @@ function RedeemGate({
             <Heading level={2}>Invite unavailable</Heading>
             <Text tone="muted" size="sm">
               This invite to {inspect.workspaceName} is no longer valid
-              {inspect.reason === "expired" ? " (it has expired)" : ""}. Ask an admin for a new
-              link.
+              {inspect.reason === "expired" ? " (it has expired)" : ""}
+              {inspect.reason === "exhausted" ? " (it has been used up)" : ""}. Ask an admin for a
+              new link.
             </Text>
             <Button
               onClick={() => {
@@ -141,6 +153,7 @@ function RedeemGate({
   return (
     <RedeemCard
       code={code}
+      {...(inspect?.restrictedTo !== undefined ? { restrictedTo: inspect.restrictedTo } : {})}
       state={state}
       message={message}
       error={error}
@@ -149,7 +162,12 @@ function RedeemGate({
         setError(null);
         void redeem({ code })
           .then((result) => {
-            setMessage(result.alreadyMember ? "You are already a member." : "Welcome aboard.");
+            if (!result.joined) {
+              setError(redeemOutcomeMessage(result));
+              setState("idle");
+              return;
+            }
+            setMessage(redeemOutcomeMessage(result));
             setState("done");
             // Give the toast a beat before navigating home.
             setTimeout(onDone, 600);

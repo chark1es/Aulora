@@ -574,9 +574,13 @@ export default defineSchema({
     .index("by_user_channel", ["userId", "channelId"]),
 
   /**
-   * Invite links. `code` stores the SHA-256 hex digest of the plaintext code,
-   * never the code itself; the plaintext is returned only once, at creation.
-   * `maxUses` of 0 means unlimited.
+   * Invites. `code` stores the SHA-256 hex digest of the normalised plaintext
+   * code, never the code itself; the plaintext is returned only once, at
+   * creation. `maxUses` of 0 means unlimited and an absent `expiresAt` means the
+   * invite never expires. `kind` is how it reaches the person: a shareable
+   * `link`, an `email` sent to one address, or a short typed `code`. A
+   * `restrictedEmail` limits redemption to the account with that address.
+   * Rows written before these fields existed read as unrestricted links.
    */
   invites: defineTable({
     code: v.string(),
@@ -585,7 +589,48 @@ export default defineSchema({
     uses: v.number(),
     expiresAt: v.optional(v.number()),
     revokedAt: v.optional(v.number()),
-  }).index("by_code", ["code"]),
+    kind: v.optional(v.union(v.literal("link"), v.literal("email"), v.literal("code"))),
+    restrictedEmail: v.optional(v.string()),
+    note: v.optional(v.string()),
+    /** Last characters of the plaintext, so an admin can tell links apart. */
+    codeHint: v.optional(v.string()),
+    emailStatus: v.optional(v.union(v.literal("queued"), v.literal("sent"), v.literal("failed"))),
+  })
+    .index("by_code", ["code"])
+    .index("by_creator", ["createdBy"]),
+
+  /** Who joined through which invite; the history shown beside each invite. */
+  inviteRedemptions: defineTable({
+    inviteId: v.id("invites"),
+    userId: v.string(),
+    at: v.number(),
+  }).index("by_invite", ["inviteId"]),
+
+  /**
+   * Pre-approved addresses. An entry is either `person@example.com` or
+   * `@example.com` (a whole domain), always lowercase. A signed-in account whose
+   * verified email matches may join an invite-only workspace without a link.
+   */
+  inviteAllowlist: defineTable({
+    pattern: v.string(),
+    kind: v.union(v.literal("email"), v.literal("domain")),
+    addedBy: v.string(),
+    note: v.optional(v.string()),
+    addedAt: v.number(),
+  }).index("by_pattern", ["pattern"]),
+
+  /**
+   * One-time email codes that prove an account owns an allowlisted address.
+   * Only the digest is stored; a row is deleted on success and lapses after
+   * `expiresAt`.
+   */
+  joinCodes: defineTable({
+    userId: v.string(),
+    email: v.string(),
+    codeHash: v.string(),
+    expiresAt: v.number(),
+    attempts: v.number(),
+  }).index("by_user", ["userId"]),
 
   /**
    * Permanently banned users. A ban removes the member and their channel

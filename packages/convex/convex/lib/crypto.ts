@@ -1,3 +1,5 @@
+import { INVITE_CODE_ALPHABET, INVITE_CODE_LENGTH } from "@aulora/core";
+
 /**
  * Constant-time string comparison for secrets such as the one-time
  * `SETUP_TOKEN`. The length is folded into the accumulated difference so a
@@ -41,4 +43,30 @@ export async function sha256Hex(input: string): Promise<string> {
   const data = new TextEncoder().encode(input);
   const digest = await crypto.subtle.digest("SHA-256", data);
   return Array.from(new Uint8Array(digest), (byte) => byte.toString(16).padStart(2, "0")).join("");
+}
+
+/**
+ * A short code a person can type: `INVITE_CODE_LENGTH` characters from the
+ * 32-letter alphabet. 256 is a multiple of 32, so masking a random byte is
+ * unbiased.
+ */
+export function randomAccessCode(): string {
+  const buffer = new Uint8Array(INVITE_CODE_LENGTH);
+  crypto.getRandomValues(buffer);
+  return Array.from(buffer, (byte) => INVITE_CODE_ALPHABET.charAt(byte & 31)).join("");
+}
+
+/** A uniformly random numeric code, for the emailed one-time join code. */
+export function randomDigits(length: number): string {
+  const limit = 0x100000000 - (0x100000000 % 10);
+  let digits = "";
+  const buffer = new Uint32Array(1);
+  while (digits.length < length) {
+    crypto.getRandomValues(buffer);
+    const value = buffer[0] ?? limit;
+    if (value < limit) {
+      digits += String(value % 10);
+    }
+  }
+  return digits;
 }
