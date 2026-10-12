@@ -118,8 +118,7 @@ export function ChannelRow({
 export function DmRow({
   channel,
   title,
-  ownUserId,
-  presenceOf,
+  viewer,
   active,
   unread,
   onSelect,
@@ -127,16 +126,19 @@ export function DmRow({
 }: {
   readonly channel: ChannelView;
   readonly title: string;
-  readonly ownUserId: string;
-  readonly presenceOf: (userId: string) => PresenceStatus;
+  /** The signed-in viewer, needed to resolve the DM partner and its presence. */
+  readonly viewer: {
+    readonly ownUserId: string;
+    readonly presenceOf: (userId: string) => PresenceStatus;
+  };
   readonly active: boolean;
   readonly unread: ChannelUnread | undefined;
   readonly onSelect: (channelId: string) => void;
   readonly onContextMenu: (event: React.MouseEvent) => void;
 }) {
-  const partner = dmPartnerId(channel, ownUserId);
-  const others = (channel.memberIds ?? []).filter((id) => id !== ownUserId);
-  const status = partner !== undefined ? presenceOf(partner) : undefined;
+  const partner = dmPartnerId(channel, viewer.ownUserId);
+  const others = (channel.memberIds ?? []).filter((id) => id !== viewer.ownUserId);
+  const status = partner !== undefined ? viewer.presenceOf(partner) : undefined;
   const isUnread = unread?.unread === true && !active;
   const subtitle =
     channel.kind === "group_dm"
@@ -166,7 +168,7 @@ export function DmRow({
         <GroupAvatar userIds={others} size={32} />
       ) : (
         <PresenceAvatar
-          userId={partner ?? ownUserId}
+          userId={partner ?? viewer.ownUserId}
           size={32}
           status={status}
           ringClassName={active ? "ring-surface-3" : "ring-surface-1"}

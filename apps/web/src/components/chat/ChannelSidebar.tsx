@@ -427,8 +427,7 @@ export function ChannelSidebar(props: ChannelSidebarProps) {
                   <DmRow
                     channel={channel}
                     title={props.titles.get(channel.id) ?? channel.name}
-                    ownUserId={props.ownUserId}
-                    presenceOf={props.presenceOf}
+                    viewer={{ ownUserId: props.ownUserId, presenceOf: props.presenceOf }}
                     active={channel.id === activeChannelId}
                     unread={unreadByChannel.get(channel.id)}
                     onSelect={onSelect}
