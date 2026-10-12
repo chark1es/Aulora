@@ -11,7 +11,11 @@ import { useState, useSyncExternalStore } from "react";
 import { KeyboardAvoidingView, Platform, ScrollView, View } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
 import { api } from "../../../../packages/convex/convex/_generated/api";
-import { getPendingInvite, setPendingInvite, subscribePendingInvite } from "../lib/pending-invite";
+import {
+  clearPendingInvite,
+  getPendingInvite,
+  subscribePendingInvite,
+} from "../lib/pending-invite";
 import { AuthScaffold } from "./AuthScaffold";
 
 export interface JoinGateProps {
@@ -122,7 +126,7 @@ function CodeEntry() {
     try {
       const outcome: RedeemOutcome = await redeem({ code: value });
       if (outcome.joined) {
-        setPendingInvite(null);
+        clearPendingInvite();
       } else {
         setError(redeemOutcomeMessage(outcome));
       }

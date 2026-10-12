@@ -2,11 +2,12 @@ import type { ServerProfile } from "@aulora/core";
 import { Spinner, Text } from "@aulora/ui-native";
 import type { ConvexReactClient } from "convex/react";
 import { useRouter } from "expo-router";
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { View } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
 import type { AuloraAuthClient } from "../lib/auth-client";
 import type { CookieStore } from "../lib/cookie-fetch";
+import { bindPendingInvite } from "../lib/pending-invite";
 import { ChatProvider } from "../providers/ChatProvider";
 import { SoundProvider } from "../providers/SoundProvider";
 import { VoiceProvider } from "../providers/VoiceProvider";
@@ -27,6 +28,11 @@ export function SessionGate({ profile, authClient, cookieStore, client }: Sessio
   const session = authClient.useSession();
   const [switcherOpen, setSwitcherOpen] = useState(false);
   const router = useRouter();
+
+  const identity = session.data?.user?.id ?? null;
+  useEffect(() => {
+    bindPendingInvite(identity);
+  }, [identity]);
 
   if (session.isPending) {
     return (
