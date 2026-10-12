@@ -18,3 +18,11 @@ condition = "AND"
 paths = ['spikes/convex-selfhost/\.env\.example$']
 regexTarget = "line"
 regexes = ['replace-with-64-hex-chars']
+
+[[allowlists]]
+description = "Environment-override test fixtures, not authentication secrets"
+targetRules = ["generic-api-key"]
+condition = "AND"
+paths = ['packages/convex/test/envOverrides\.test\.ts$']
+regexTarget = "line"
+regexes = ['process\.env\.GITHUB_CLIENT_SECRET = "env-secret']
