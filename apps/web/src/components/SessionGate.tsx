@@ -5,6 +5,7 @@ import type { ConvexReactClient } from "convex/react";
 import { useMemo } from "react";
 import { type AuloraAuthClient, authActionsFromClient } from "../lib/auth-client";
 import { ChatSessionShell } from "./chat/ChatSessionShell";
+import { MembershipGate } from "./MembershipGate";
 import { SignInScreen } from "./SignInScreen";
 
 export interface SessionGateProps {
@@ -45,17 +46,11 @@ export function SessionGate({ profile, authClient, client }: SessionGateProps) {
   }
 
   if (user !== undefined) {
-    const signedInUser = {
-      id: user.id,
-      ...(typeof user.name === "string" ? { name: user.name } : {}),
-      ...(typeof user.email === "string" ? { email: user.email } : {}),
-    };
     return (
-      <ChatSessionShell
+      <SignedIn
+        profile={profile}
         client={client}
-        workspaceName={profile.name}
-        workspaceIconSeed={profile.iconSeed}
-        user={signedInUser}
+        user={user}
         onSignOut={() => {
           void actions.signOut();
         }}
@@ -69,6 +64,37 @@ export function SessionGate({ profile, authClient, client }: SessionGateProps) {
       actions={actions}
       onSwitchServer={() => void navigate({ to: "/connect" })}
     />
+  );
+}
+
+interface SignedInProps {
+  readonly profile: ServerProfile;
+  readonly client: ConvexReactClient;
+  readonly user: { readonly id: string; readonly name?: unknown; readonly email?: unknown };
+  readonly onSignOut: () => void;
+}
+
+/** The chat surface, behind the membership gate, for a signed-in account. */
+function SignedIn({ profile, client, user, onSignOut }: SignedInProps) {
+  const signedInUser = {
+    id: user.id,
+    ...(typeof user.name === "string" ? { name: user.name } : {}),
+    ...(typeof user.email === "string" ? { email: user.email } : {}),
+  };
+  return (
+    <MembershipGate
+      workspaceIconSeed={profile.iconSeed}
+      signedInAs={signedInUser.email ?? signedInUser.name ?? null}
+      onSignOut={onSignOut}
+    >
+      <ChatSessionShell
+        client={client}
+        workspaceName={profile.name}
+        workspaceIconSeed={profile.iconSeed}
+        user={signedInUser}
+        onSignOut={onSignOut}
+      />
+    </MembershipGate>
   );
 }
 

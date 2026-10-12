@@ -84,9 +84,15 @@ describe("invites", () => {
     await t.withIdentity({ subject: "user-1" }).mutation(api.invites.redeem, {
       code: created.code,
     });
-    await expect(
-      t.withIdentity({ subject: "user-2" }).mutation(api.invites.redeem, { code: created.code }),
-    ).rejects.toThrow("maximum uses");
+    expect(
+      await t
+        .withIdentity({ subject: "user-2" })
+        .mutation(api.invites.redeem, { code: created.code }),
+    ).toMatchObject({
+      joined: false,
+      reason: "exhausted",
+      message: expect.stringContaining("maximum uses"),
+    });
   });
 
   it("enforces expiry", async () => {
@@ -102,9 +108,11 @@ describe("invites", () => {
       }
     });
 
-    await expect(
-      t.withIdentity({ subject: "user-1" }).mutation(api.invites.redeem, { code: created.code }),
-    ).rejects.toThrow("expired");
+    expect(
+      await t
+        .withIdentity({ subject: "user-1" })
+        .mutation(api.invites.redeem, { code: created.code }),
+    ).toMatchObject({ joined: false, reason: "expired" });
   });
 
   it("rejects a revoked code", async () => {
@@ -114,9 +122,11 @@ describe("invites", () => {
     const created = await asOwner.mutation(api.invites.create, {});
     await asOwner.mutation(api.invites.revoke, { inviteId: created.inviteId });
 
-    await expect(
-      t.withIdentity({ subject: "user-1" }).mutation(api.invites.redeem, { code: created.code }),
-    ).rejects.toThrow("revoked");
+    expect(
+      await t
+        .withIdentity({ subject: "user-1" })
+        .mutation(api.invites.redeem, { code: created.code }),
+    ).toMatchObject({ joined: false, reason: "revoked" });
   });
 
   it("rejects a banned user", async () => {
@@ -139,6 +149,46 @@ describe("invites", () => {
     await expect(asUser.mutation(api.invites.create, {})).rejects.toThrow("Missing permission");
     await expect(asUser.query(api.invites.list, { paginationOpts: PAGE })).rejects.toThrow(
       "Missing permission",
+    );
+  });
+
+  it("splits creating from deleting", async () => {
+    const t = newTest();
+    await seedWorkspace(t, {
+      extraRoles: [
+        { key: "inviter", permissions: Permission.CreateInvites },
+        { key: "cleaner", permissions: Permission.DeleteInvites },
+      ],
+      members: [
+        { userId: "inviter", roleIds: [EVERYONE_ROLE_ID, "inviter"] },
+        { userId: "cleaner", roleIds: [EVERYONE_ROLE_ID, "cleaner"] },
+      ],
+    });
+    const asInviter = t.withIdentity({ subject: "inviter" });
+    const asCleaner = t.withIdentity({ subject: "cleaner" });
+    const created = await asInviter.mutation(api.invites.create, {});
+
+    await expect(
+      asInviter.mutation(api.invites.revoke, { inviteId: created.inviteId }),
+    ).rejects.toThrow("Missing permission");
+    await expect(
+      asInviter.mutation(api.invites.remove, { inviteId: created.inviteId }),
+    ).rejects.toThrow("Missing permission");
+    await expect(asCleaner.mutation(api.invites.create, {})).rejects.toThrow("Missing permission");
+
+    // Either permission is enough to see the history, which names the creator.
+    const seenByCleaner = await asCleaner.query(api.invites.list, { paginationOpts: PAGE });
+    expect(seenByCleaner.page[0]).toMatchObject({ id: created.inviteId, createdBy: "inviter" });
+
+    await asCleaner.mutation(api.invites.revoke, { inviteId: created.inviteId });
+    expect(
+      (await asInviter.query(api.invites.list, { paginationOpts: PAGE })).page[0]?.status,
+    ).toBe("revoked");
+    await asCleaner.mutation(api.invites.remove, { inviteId: created.inviteId });
+    expect(await inviteRow(t)).toBeUndefined();
+    const audit = await t.run(async (ctx) => await ctx.db.query("auditLog").collect());
+    expect(audit.map((row) => row.action)).toEqual(
+      expect.arrayContaining(["invite.create", "invite.revoke", "invite.delete"]),
     );
   });
 
