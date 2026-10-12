@@ -5,7 +5,7 @@ function escapeHtml(value: string): string {
     .replace(/&/g, "&amp;")
     .replace(/</g, "&lt;")
     .replace(/>/g, "&gt;")
-    .replace(/"/g, "&quot;");
+    .replaceAll('"', "&quot;");
 }
 
 function layout(heading: string, paragraphs: readonly string[], action?: string): string {

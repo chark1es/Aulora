@@ -80,7 +80,7 @@ async function assertPendingInviteBudget(
 }
 
 interface CreateArgs {
-  readonly kind?: InviteKind | undefined;
+  readonly kind?: InviteKind;
   readonly maxUses?: number | undefined;
   readonly expiresAt?: number | null | undefined;
   readonly email?: string | undefined;
@@ -147,7 +147,7 @@ function resolveSpec(args: CreateArgs, now: number): InviteSpec {
 }
 
 /** Looks an invite up by whatever the person pasted or typed. */
-async function findInviteByCode(ctx: QueryCtx, input: string): Promise<Doc<"invites"> | null> {
+async function findInviteByCode(ctx: QueryCtx, input: string) {
   const codeHash = await sha256Hex(normalizeInviteCode(input));
   return await ctx.db
     .query("invites")

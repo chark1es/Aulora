@@ -1,3 +1,4 @@
+/* eslint-disable no-unused-vars -- the base rule reports parameter names in type signatures; Biome checks real unused code */
 import type { InviteKind } from "@aulora/core";
 import { Button, Input, SegmentedControl, Select, Text } from "@aulora/ui-web";
 import { useMutation } from "convex/react";
