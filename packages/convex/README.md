@@ -77,6 +77,13 @@ are reported as booleans; the OIDC client secret, `PUSH_RELAY_TOKEN` and
 
 - `instanceSettings` stores the total storage quota, the per-upload cap, the
   relay enabled flag/URL/server id and the backup on/off flag.
+- `convex/envOverrides.ts` backs the Environment tab. `list` returns the catalog
+  with each value's source (environment, UI, or unset) and never a deployment
+  value; `set`, `setMany` and `clear` are owner-only, validate against the
+  catalog allowlist, are rate-limited and audited with key names only, and store
+  values sealed with `lib/sse.ts`. `lib/envOverrides.ts` holds the pure merge and
+  validation helpers, and `AULORA_ALLOW_UI_ENV_OVERRIDES=false` on the deployment
+  disables the whole path.
 - `convex/license.ts` accepts opaque `AULORA2_` subscription keys for the instance
   owner. `licenseActions.ts` validates them over HTTPS with the Aulora licensing
   server, and `lib/licenseProof.ts` verifies the signed response, nonce, key hash,

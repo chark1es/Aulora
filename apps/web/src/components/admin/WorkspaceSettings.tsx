@@ -328,7 +328,7 @@ function JoinModeCard({
 }) {
   return (
     <div className="overflow-hidden rounded-[14px] border border-border bg-surface-2">
-      <div className="flex items-center justify-between gap-4 px-4 py-3.5">
+      <div className="flex flex-wrap items-center justify-between gap-x-4 gap-y-2 px-4 py-3.5">
         <div className="min-w-0">
           <span className="block text-[13px] font-medium text-text">
             {joinMode === "anyone" ? "Open to anyone" : "Invite only"}
@@ -343,6 +343,7 @@ function JoinModeCard({
           label="How people join"
           value={joinMode}
           onChange={onChange}
+          className="shrink-0"
           options={[
             { value: "anyone", label: "Anyone" },
             { value: "invite", label: "Invite only" },

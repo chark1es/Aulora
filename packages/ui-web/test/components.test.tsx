@@ -150,6 +150,26 @@ describe("SegmentedControl", () => {
     expect(screen.getByRole("radio", { name: "Dark" })).toBeChecked();
     expect(screen.getByRole("radio", { name: "Light" })).not.toBeChecked();
   });
+
+  it("gives every segment an equal, non-wrapping width", () => {
+    render(
+      <SegmentedControl
+        label="How people join"
+        value="anyone"
+        onChange={() => undefined}
+        options={[
+          { value: "anyone", label: "Anyone" },
+          { value: "invite", label: "Invite only" },
+        ]}
+      />,
+    );
+    const group = screen.getByRole("group", { name: "How people join" });
+    expect(group.className).toContain("grid-flow-col");
+    expect(group.className).toContain("auto-cols-fr");
+    for (const label of ["Anyone", "Invite only"]) {
+      expect(screen.getByText(label).className).toContain("whitespace-nowrap");
+    }
+  });
 });
 
 describe("Select", () => {

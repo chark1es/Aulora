@@ -4,6 +4,7 @@ import type { QueryCtx } from "./_generated/server";
 import { mutation, query } from "./_generated/server";
 import { writeAudit } from "./lib/audit";
 import { API_VERSION, AULORA_VERSION, getEncryptionSettings, getPublicAuthConfig } from "./lib/env";
+import { loadEffectiveEnv } from "./lib/envOverrides";
 import { effectiveMaxUploadBytes } from "./lib/instance";
 import { requireWorkspacePermission } from "./lib/permissions";
 
@@ -78,10 +79,12 @@ function parseIceServers(raw: string | undefined): readonly IceServerConfig[] {
 /**
  * Public server metadata. Never contains credentials: the auth block only
  * exposes provider ids/types/display names and, for OIDC, the issuer,
- * discovery URL, client id and scopes.
+ * discovery URL, client id and scopes. Authentication settings read the
+ * effective environment, so a provider configured in the instance admin
+ * Environment section reaches clients without a redeploy.
  */
 async function buildPublicConfig(ctx: QueryCtx) {
-  const env = process.env;
+  const env = (await loadEffectiveEnv(ctx)).env;
   const server = await ctx.db.query("server").first();
   const instance = await ctx.db.query("instanceSettings").first();
   const signupEnabled = server?.settings.signupEnabled ?? true;

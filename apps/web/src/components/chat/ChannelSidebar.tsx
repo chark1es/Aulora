@@ -1,6 +1,6 @@
 import { Avatar } from "@aulora/avatars";
 import type { ChannelView } from "@aulora/core";
-import { activityLabel, badgeCount, dmPartnerId } from "@aulora/core";
+import { activityLabel, badgeCount, dmPartnerId, partitionPinnedDms } from "@aulora/core";
 import { ConfirmDialog, cn, Icon, useContextMenu } from "@aulora/ui-web";
 import { Fragment, type ReactNode, useEffect, useMemo, useRef, useState } from "react";
 import type { CategoryView } from "../../lib/workspace-admin";
@@ -13,6 +13,7 @@ import {
   categoryMenuItems,
   channelMenuItems,
 } from "./sidebar-menus";
+import { type CategoryHeaderDrag, useCategoryDrag } from "./use-category-drag";
 import { useChannelDrag } from "./use-channel-drag";
 
 export interface ChannelUnread {
@@ -86,6 +87,15 @@ export interface ChannelSidebarProps {
   ) => void;
   /** Whether the viewer may drag channels between/within categories. */
   readonly canReorderChannels?: boolean;
+  /** Reorder categories via drag and drop; absent disables the feature. */
+  readonly onReorderCategories?: (
+    _moves: readonly {
+      readonly categoryId: string;
+      readonly position: number;
+    }[],
+  ) => void;
+  /** Whether the viewer may drag category headers. */
+  readonly canReorderCategories?: boolean;
   readonly onSignOut: () => void;
   /** Channel context-menu actions; absent entries are hidden. */
   readonly channelActions?: ChannelActions;
@@ -226,31 +236,52 @@ export function ChannelSidebar(props: ChannelSidebarProps) {
     onReorderChannels: props.onReorderChannels,
   });
 
+  const canReorderCategories =
+    props.canReorderCategories === true && props.onReorderCategories !== undefined;
+
+  const { headerDrag, isDragging: isCategoryDragging } = useCategoryDrag({
+    categories,
+    canReorder: canReorderCategories,
+    onReorderCategories: props.onReorderCategories,
+  });
+
   const hiddenChannels = useMemo(
     () => channels.filter((channel) => channel.hidden === true),
     [channels],
   );
 
-  const dms = useMemo(
-    () =>
-      channels
-        .filter(
-          (channel) =>
-            (channel.kind === "dm" || channel.kind === "group_dm") && channel.hidden !== true,
-        )
-        .sort(
-          (a, b) =>
-            (unreadByChannel.get(b.id)?.lastActivityAt ?? 0) -
-            (unreadByChannel.get(a.id)?.lastActivityAt ?? 0),
-        ),
-    [channels, unreadByChannel],
-  );
+  const { pinned: pinnedDms, others: dms } = useMemo(() => {
+    const direct = channels
+      .filter(
+        (channel) =>
+          (channel.kind === "dm" || channel.kind === "group_dm") && channel.hidden !== true,
+      )
+      .sort(
+        (a, b) =>
+          (unreadByChannel.get(b.id)?.lastActivityAt ?? 0) -
+          (unreadByChannel.get(a.id)?.lastActivityAt ?? 0),
+      );
+    return partitionPinnedDms(direct);
+  }, [channels, unreadByChannel]);
 
   const channelMenu = (channel: ChannelView, active: boolean) =>
     channelMenuItems(channel, active, props.channelActions);
 
   const categoryMenu = (category: CategoryView) =>
     categoryMenuItems(category, props.categoryActions);
+
+  const openConversationMenu = (channel: ChannelView, event: React.MouseEvent) => {
+    const items = channelMenu(channel, channel.id === activeChannelId);
+    if (items.length === 0) {
+      return;
+    }
+    openMenu({
+      clientX: event.clientX,
+      clientY: event.clientY,
+      items,
+      label: props.titles.get(channel.id) ?? channel.name,
+    });
+  };
 
   return (
     <aside
@@ -382,14 +413,20 @@ export function ChannelSidebar(props: ChannelSidebarProps) {
       <nav className="min-h-0 flex-1 overflow-y-auto px-2 pb-3">
         {groups.map((group) => {
           const category = group.category;
+          const categoryDrag =
+            category !== undefined && canReorderCategories ? headerDrag(category.id) : undefined;
           return (
             <section key={group.key} className="mt-2">
+              {categoryDrag?.dropPlacement === "before" && <CategoryDropLine />}
               <SectionHeader
                 title={group.name}
                 collapsed={collapsed.has(group.key)}
                 onToggle={() => {
-                  toggle(group.key);
+                  if (categoryDrag === undefined || !isCategoryDragging()) {
+                    toggle(group.key);
+                  }
                 }}
+                {...(categoryDrag !== undefined ? { drag: categoryDrag } : {})}
                 {...(category !== undefined ? { testId: `category-header-${category.id}` } : {})}
                 {...(category !== undefined
                   ? {
@@ -419,6 +456,7 @@ export function ChannelSidebar(props: ChannelSidebarProps) {
                   ) : null
                 }
               />
+              {categoryDrag?.dropPlacement === "after" && <CategoryDropLine />}
               {!collapsed.has(group.key) && (
                 <ul
                   className="flex flex-col gap-px"
@@ -523,7 +561,12 @@ export function ChannelSidebar(props: ChannelSidebarProps) {
           />
           {!collapsed.has("dms") && (
             <ul className="flex flex-col gap-px">
-              {dms.map((channel) => (
+              {pinnedDms.length > 0 && (
+                <li className="px-3 pb-0.5 pt-1 text-[10px] font-semibold uppercase tracking-[0.06em] text-text-muted">
+                  Pinned
+                </li>
+              )}
+              {[...pinnedDms, ...dms].map((channel) => (
                 <li key={channel.id}>
                   <DmRow
                     channel={channel}
@@ -533,10 +576,13 @@ export function ChannelSidebar(props: ChannelSidebarProps) {
                     active={channel.id === activeChannelId}
                     unread={unreadByChannel.get(channel.id)}
                     onSelect={onSelect}
+                    onContextMenu={(event) => {
+                      openConversationMenu(channel, event);
+                    }}
                   />
                 </li>
               ))}
-              {dms.length === 0 && (
+              {pinnedDms.length === 0 && dms.length === 0 && (
                 <li>
                   <button
                     type="button"
@@ -611,6 +657,7 @@ function SectionHeader({
   action,
   testId,
   onContextMenu,
+  drag,
 }: {
   readonly title: string;
   readonly collapsed: boolean;
@@ -618,9 +665,25 @@ function SectionHeader({
   readonly action: ReactNode;
   readonly testId?: string;
   readonly onContextMenu?: (_event: React.MouseEvent) => void;
+  readonly drag?: CategoryHeaderDrag;
 }) {
   return (
-    <div className="flex items-center justify-between py-1 pl-1.5 pr-1">
+    <div
+      className={cn(
+        "flex items-center justify-between py-1 pl-1.5 pr-1",
+        drag?.dragging === true && "opacity-50",
+      )}
+      {...(drag !== undefined
+        ? {
+            draggable: true,
+            onDragStart: drag.onDragStart,
+            onDragEnd: drag.onDragEnd,
+            onDragOver: drag.onDragOver,
+            onDragLeave: drag.onDragLeave,
+            onDrop: drag.onDrop,
+          }
+        : {})}
+    >
       <button
         type="button"
         {...(testId !== undefined ? { "data-testid": testId } : {})}
@@ -809,6 +872,15 @@ function DropLine() {
   );
 }
 
+/** The insertion indicator shown above or below a category header. */
+function CategoryDropLine() {
+  return (
+    <div aria-hidden="true" className="h-0.5 px-1.5">
+      <span className="block h-0.5 rounded-full bg-accent" />
+    </div>
+  );
+}
+
 function ChannelRow({
   channel,
   title,
@@ -890,6 +962,7 @@ function DmRow({
   active,
   unread,
   onSelect,
+  onContextMenu,
 }: {
   readonly channel: ChannelView;
   readonly title: string;
@@ -898,6 +971,7 @@ function DmRow({
   readonly active: boolean;
   readonly unread: ChannelUnread | undefined;
   readonly onSelect: (channelId: string) => void;
+  readonly onContextMenu: (event: React.MouseEvent) => void;
 }) {
   const partner = dmPartnerId(channel, ownUserId);
   const others = (channel.memberIds ?? []).filter((id) => id !== ownUserId);
@@ -915,6 +989,10 @@ function DmRow({
       data-testid={`channel-row-${channel.id}`}
       onClick={() => {
         onSelect(channel.id);
+      }}
+      onContextMenu={(event) => {
+        event.preventDefault();
+        onContextMenu(event);
       }}
       aria-current={active ? "page" : undefined}
       className={cn(
@@ -955,7 +1033,12 @@ function DmRow({
         </span>
         <span className="mt-0.5 flex items-center justify-between gap-2">
           <span className="truncate text-xs text-text-muted">{subtitle}</span>
-          {!active && <UnreadBadge unread={unread} />}
+          <span className="flex shrink-0 items-center gap-1.5">
+            {channel.pinned === true && (
+              <Icon name="pin" size={12} className="shrink-0 text-text-muted" />
+            )}
+            {!active && <UnreadBadge unread={unread} />}
+          </span>
         </span>
       </span>
     </button>

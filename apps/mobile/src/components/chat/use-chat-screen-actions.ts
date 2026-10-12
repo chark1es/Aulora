@@ -2,7 +2,15 @@ import { type ChannelView, type MessagePayload, Permission } from "@aulora/core"
 import AsyncStorage from "@react-native-async-storage/async-storage";
 import { useCallback, useEffect } from "react";
 import { Alert, BackHandler, Keyboard } from "react-native";
+import { api } from "../../../../../packages/convex/convex/_generated/api";
 import { createCategory } from "../../lib/backend-actions";
+import {
+  manageableChannelRoles,
+  mergeRoleOverrides,
+  type OverrideView,
+  roleOverridesFor,
+  sameOverrides,
+} from "../../lib/channel-role-overrides";
 import { selectionFeedback } from "../../lib/haptics";
 import { planChannelEdit } from "../../lib/permissions";
 import type { NewChannelKind } from "./CreateChannelSheet";
@@ -132,6 +140,9 @@ function useChatScreenCreation(
     editChannelModal,
     ownUserId,
     titles,
+    roleViews,
+    viewerTopPosition,
+    isOwner,
   } = data;
 
   const create = useCallback(
@@ -194,6 +205,7 @@ function useChatScreenCreation(
       readonly private: boolean;
       readonly memberIds: readonly string[];
       readonly blockedUserIds: readonly string[];
+      readonly roleOverrides: readonly OverrideView[];
     }) => {
       const target = editChannelModal;
       if (target === null || runtime === undefined) {
@@ -210,9 +222,26 @@ function useChatScreenCreation(
           .map((override) => override.targetId),
       };
       const plan = planChannelEdit(original, patch, ownUserId);
+      const roleIds = new Set(
+        manageableChannelRoles(roleViews, { isOwner, topPosition: viewerTopPosition }).map(
+          (role) => role.id,
+        ),
+      );
+      const submittedRoles = patch.roleOverrides.filter((override) =>
+        roleIds.has(override.targetId),
+      );
+      const currentRoles = roleOverridesFor(target.overrides ?? []).filter((override) =>
+        roleIds.has(override.targetId),
+      );
       setEditChannelBusy(true);
       setEditChannelError(null);
       try {
+        if (!sameOverrides(submittedRoles, currentRoles)) {
+          await runtime.client.mutation(api.channels.setOverrides, {
+            channelId: target.id as never,
+            overrides: mergeRoleOverrides(target.overrides ?? [], submittedRoles, roleIds),
+          });
+        }
         if (plan.name !== null) {
           await runtime.session.setChannelName(target.id, plan.name);
         }
@@ -244,6 +273,9 @@ function useChatScreenCreation(
       ownUserId,
       runtime,
       titles,
+      roleViews,
+      viewerTopPosition,
+      isOwner,
       setEditChannelBusy,
       setEditChannelError,
       setEditChannelModal,
@@ -284,6 +316,23 @@ function useChatScreenChannelActions(data: ChatScreenData) {
     [runtime, setChannelAction],
   );
 
+  const togglePin = useCallback(
+    async (target: ChannelView) => {
+      if (runtime === undefined) {
+        return;
+      }
+      if (target.kind !== "dm" && target.kind !== "group_dm") {
+        return;
+      }
+      await runtime.port.setChannelPinned?.({
+        channelId: target.id,
+        pinned: target.pinned !== true,
+      });
+      setChannelAction(null);
+    },
+    [runtime, setChannelAction],
+  );
+
   const markChannelRead = useCallback(async () => {
     if (runtime === undefined || activeChannelId === undefined) {
       return;
@@ -295,7 +344,7 @@ function useChatScreenChannelActions(data: ChatScreenData) {
     setChannelAction(null);
   }, [runtime, activeChannelId, sessionState.messages, setChannelAction]);
 
-  return { toggleMute, toggleHide, markChannelRead };
+  return { toggleMute, toggleHide, togglePin, markChannelRead };
 }
 
 function useChatScreenModeration(data: ChatScreenData) {

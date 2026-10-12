@@ -1,8 +1,13 @@
 import { Button, Spinner, Text } from "@aulora/ui-native";
 import { BottomSheetModalProvider } from "@gorhom/bottom-sheet";
+import { useRouter } from "expo-router";
+import { useState } from "react";
 import { View } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { selectionFeedback } from "../../lib/haptics";
+import { useStuckTimeout } from "../../lib/stuck-timeout";
+import { useProfiles } from "../../providers/ProfileProvider";
+import { ConnectionRecoveryActions } from "../ConnectionRecoveryActions";
 import { ChatConversation } from "./ChatConversation";
 import { ChatHubPane } from "./ChatHubPane";
 import { ChatScreenSheets } from "./ChatScreenSheets";
@@ -40,6 +45,7 @@ function ChatScreenStatus({ model }: { readonly model: ReturnType<typeof useChat
           <Text size="sm" tone="muted">
             Opening {model.workspaceName}…
           </Text>
+          <ChatStartupRecovery model={model} />
         </>
       ) : (
         <>
@@ -67,6 +73,50 @@ function ChatScreenStatus({ model }: { readonly model: ReturnType<typeof useChat
   );
 }
 
+/**
+ * Recovery actions for a startup that is taking too long: retry the runtime,
+ * forget the saved server, or return to the connect screen.
+ */
+function ChatStartupRecovery({ model }: { readonly model: ReturnType<typeof useChatScreenModel> }) {
+  const router = useRouter();
+  const { profiles, remove } = useProfiles();
+  const [retrySignal, setRetrySignal] = useState(0);
+  const stuck = useStuckTimeout(!model.ready, retrySignal);
+  if (!stuck) {
+    return null;
+  }
+
+  const activeProfileId = model.activeProfile?.id;
+  const canRemoveServer =
+    activeProfileId !== undefined && profiles.some((entry) => entry.id === activeProfileId);
+
+  return (
+    <>
+      <Text size="sm" tone="muted">
+        This is taking longer than usual.
+      </Text>
+      <ConnectionRecoveryActions
+        serverName={model.workspaceName}
+        canRemoveServer={canRemoveServer}
+        onRetry={() => {
+          model.retryStartup();
+          setRetrySignal((signal) => signal + 1);
+        }}
+        onSwitchServer={() => {
+          router.push("/connect");
+        }}
+        onRemoveServer={() => {
+          if (activeProfileId === undefined) {
+            return;
+          }
+          void remove(activeProfileId);
+          router.push("/connect");
+        }}
+      />
+    </>
+  );
+}
+
 function ChatScreenPanes({ model }: { readonly model: ReturnType<typeof useChatScreenModel> }) {
   return (
     <BottomSheetModalProvider>
@@ -85,6 +135,7 @@ function ChatScreenPanes({ model }: { readonly model: ReturnType<typeof useChatS
               channelTitle={model.channelTitle}
               members={model.members}
               presence={model.presence}
+              roles={model.memberRoleGroups}
               ownUserId={model.ownUserId}
               canModerateMembers={model.canModerateMembers}
               onBack={() => {

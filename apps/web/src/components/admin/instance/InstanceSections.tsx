@@ -158,8 +158,8 @@ function AuthSectionView({ model }: { readonly model: AuthSectionModel }) {
     <div className="flex flex-col gap-4" data-testid="instance-auth">
       <Heading level={3}>Auth providers</Heading>
       <Text tone="muted" size="sm">
-        Credentials come from the deployment environment; a provider is offered only when it is both
-        configured and switched on here.
+        Credentials come from the deployment environment or from overrides saved in the Environment
+        section; a provider is offered only when it is both configured and switched on here.
       </Text>
       <Card className="flex flex-col gap-1">
         <Text size="sm">
@@ -172,17 +172,7 @@ function AuthSectionView({ model }: { readonly model: AuthSectionModel }) {
         toggles={model.toggles}
         onToggle={model.onToggle}
       />
-      {model.overview.auth.oidc !== null && (
-        <Card className="flex flex-col gap-1">
-          <Text size="sm">OIDC: {model.overview.auth.oidc.displayName}</Text>
-          <Text size="xs" tone="muted" mono>
-            {model.overview.auth.oidc.discoveryUrl}
-          </Text>
-          <Text size="xs" tone="muted">
-            scopes: {model.overview.auth.oidc.scopes.join(" ")}
-          </Text>
-        </Card>
-      )}
+      {model.overview.auth.oidc !== null && <OidcSummary oidc={model.overview.auth.oidc} />}
       <div className="flex items-center gap-3">
         <Button loading={model.busy} disabled={model.busy} onClick={model.onSave}>
           Save providers
@@ -221,10 +211,36 @@ function AuthProviderToggle({
         {...(provider.configured
           ? {}
           : {
-              description: "Not configured — set credentials in the deployment environment.",
+              description:
+                "Not configured — set credentials in the Environment section or the deployment environment.",
             })}
       />
     </li>
+  );
+}
+
+/** OIDC summary that never renders environment-sourced values. */
+function OidcSummary({ oidc }: { readonly oidc: NonNullable<Overview["auth"]["oidc"]> }) {
+  if (oidc.source === "environment") {
+    return (
+      <Card className="flex flex-col gap-1">
+        <Text size="sm">OIDC: configured from the deployment environment</Text>
+        <Text size="xs" tone="muted">
+          Its values are hidden here. Replace or adjust it in the Environment section.
+        </Text>
+      </Card>
+    );
+  }
+  return (
+    <Card className="flex flex-col gap-1">
+      <Text size="sm">OIDC: {oidc.displayName}</Text>
+      <Text size="xs" tone="muted" mono>
+        {oidc.discoveryUrl}
+      </Text>
+      <Text size="xs" tone="muted">
+        scopes: {oidc.scopes.join(" ")}
+      </Text>
+    </Card>
   );
 }
 

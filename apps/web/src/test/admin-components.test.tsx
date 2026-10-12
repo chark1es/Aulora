@@ -2,9 +2,48 @@ import { Permission } from "@aulora/core";
 import { render, screen } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { describe, expect, it, vi } from "vitest";
+import { MemberActionsSection } from "../components/admin/MemberActions";
 import { OverridesEditor } from "../components/admin/OverridesEditor";
 import { PermissionsToggles } from "../components/admin/PermissionsToggles";
 import { RedeemCard } from "../components/admin/RedeemScreen";
+
+describe("MemberActionsSection", () => {
+  const member = {
+    id: "m1",
+    userId: "u1",
+    nickname: null,
+    roleIds: [],
+    joinedAt: 0,
+    timeoutUntil: null,
+  };
+
+  it("centres the Save nickname button on the nickname input", () => {
+    render(
+      <MemberActionsSection
+        member={member}
+        nickname=""
+        onNicknameChange={() => {}}
+        displayName="Alice"
+        busy={false}
+        timedOut={false}
+        canEditNickname
+        canTimeout={false}
+        canKick={false}
+        canBan={false}
+        onNickname={() => {}}
+        onTimeout={() => {}}
+        onKick={() => {}}
+        onBan={() => {}}
+      />,
+    );
+    const button = screen.getByRole("button", { name: "Save nickname" });
+    const wrapper = button.parentElement;
+    // The wrapper matches the input height so the button's label sits on the
+    // input's centre line rather than at the bottom of the label+input row.
+    expect(wrapper?.className).toContain("h-10");
+    expect(wrapper?.className).toContain("items-center");
+  });
+});
 
 describe("PermissionsToggles", () => {
   it("toggles a flag and reports the new bitfield", async () => {

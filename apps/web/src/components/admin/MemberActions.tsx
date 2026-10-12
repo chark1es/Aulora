@@ -115,9 +115,13 @@ function NicknameRow({
           }}
         />
       </div>
-      <ActionButton disabled={busy || !dirty} onClick={onSave}>
-        Save nickname
-      </ActionButton>
+      {/* Sit the button in a box the same height as the field so its label
+          centres on the input, not on the label-and-input row as a whole. */}
+      <div className="flex h-10 items-center">
+        <ActionButton disabled={busy || !dirty} onClick={onSave}>
+          Save nickname
+        </ActionButton>
+      </div>
     </div>
   );
 }
@@ -184,6 +188,7 @@ export function ActionButton({
       type="button"
       size="sm"
       variant={danger ? "danger" : "secondary"}
+      className="shrink-0 whitespace-nowrap"
       disabled={disabled}
       onClick={onClick}
     >

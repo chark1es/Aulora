@@ -1,5 +1,5 @@
 /* eslint-disable no-unused-vars -- the base rule reports parameter names in type signatures; Biome checks real unused code */
-import { type ChannelView, dmPartnerId, type PresenceRow } from "@aulora/core";
+import { type ChannelView, dmPartnerId, type PresenceRow, partitionPinnedDms } from "@aulora/core";
 import { Icon, Text, usePalette } from "@aulora/ui-native";
 import { View } from "react-native";
 import { ScrollView } from "react-native-gesture-handler";
@@ -68,6 +68,17 @@ function DirectEmpty() {
   );
 }
 
+/** The trailing marks on a conversation row: a pin when pinned, then mute/hidden. */
+function DirectTrailing({ channel }: { readonly channel: ChannelView }) {
+  const palette = usePalette();
+  return (
+    <View className="flex-row items-center gap-1.5">
+      {channel.pinned === true && <Icon name="pin" size={15} color={palette["text-muted"]} />}
+      <ChannelFlags channel={channel} />
+    </View>
+  );
+}
+
 export interface DirectListProps {
   readonly channels: readonly ChannelView[];
   readonly titles: ReadonlyMap<string, string>;
@@ -84,6 +95,7 @@ export function DirectList(props: DirectListProps) {
   const clearance = useDockClearance();
   const { titles, ownUserId, presence } = props;
   const direct = props.channels.filter((entry) => entry.kind === "dm" || entry.kind === "group_dm");
+  const { pinned, others } = partitionPinnedDms(direct);
 
   return (
     <ScrollView
@@ -107,13 +119,13 @@ export function DirectList(props: DirectListProps) {
         <DirectEmpty />
       ) : (
         <ListGroup inset={60}>
-          {direct.map((entry) => (
+          {[...pinned, ...others].map((entry) => (
             <ListRow
               key={entry.id}
               title={titles.get(entry.id) ?? entry.name}
               subtitle={directSubtitle(entry, ownUserId, presence)}
               selected={entry.id === props.activeChannelId}
-              trailing={<ChannelFlags channel={entry} />}
+              trailing={<DirectTrailing channel={entry} />}
               leading={<DirectAvatar channel={entry} ownUserId={ownUserId} presence={presence} />}
               onPress={() => {
                 props.onOpenChannel(entry.id);

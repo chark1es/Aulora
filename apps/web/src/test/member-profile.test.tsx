@@ -114,6 +114,42 @@ describe("member profiles", () => {
     expect(screen.getByRole("button", { name: /Me/ })).toBeDisabled();
   });
 
+  it("groups online members under their hoisted role section", () => {
+    render(
+      <ContextMenuProvider>
+        <MembersPanel
+          members={[
+            { userId: "ada", displayName: "Ada", roleIds: ["mod"] },
+            { userId: "bob", displayName: "Bob", roleIds: ["@everyone"] },
+          ]}
+          roles={[
+            {
+              id: "mod",
+              name: "Moderators",
+              color: "#f2545b",
+              position: 5,
+              hoisted: true,
+            },
+          ]}
+          presence={[
+            { userId: "ada", status: "online", customStatus: null, lastHeartbeat: 0 },
+            { userId: "bob", status: "offline", customStatus: null, lastHeartbeat: 0 },
+          ]}
+          customStatuses={new Map()}
+          ownUserId="me"
+          onViewProfile={vi.fn()}
+          onMessage={vi.fn()}
+          onClose={vi.fn()}
+        />
+      </ContextMenuProvider>,
+    );
+    const heading = screen.getByRole("heading", { name: /Moderators — 1/ });
+    expect(heading).toBeInTheDocument();
+    expect((heading as HTMLElement).style.color).not.toBe("");
+    expect(screen.getByRole("heading", { name: /Offline — 1/ })).toBeInTheDocument();
+    expect(screen.queryByRole("heading", { name: /Online —/ })).not.toBeInTheDocument();
+  });
+
   it("shows the name, last online time and bio, then opens a DM", async () => {
     const onMessage = vi.fn().mockResolvedValue(undefined);
     const onClose = vi.fn();

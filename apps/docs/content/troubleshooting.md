@@ -44,6 +44,8 @@ A phone's `localhost` refers to the phone. Docker service names are also unavail
 Check the discovery document's `convexUrl` and the client's network requests.
 The loading screen waits for workspace subscriptions over the Convex WebSocket.
 If that origin returns an HTTP error or cannot connect, workspace data will not load.
+After about ten seconds the client stops waiting and offers **Try again**, **Use a
+different server** and, for a saved server, **Remove this server**.
 
 The shipped web gateway serves the API and WebSocket at the main workspace URL.
 Its discovery document advertises `SITE_URL` for those connections. Rebuild
