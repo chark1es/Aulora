@@ -15,6 +15,7 @@ import {
   envOverrideContext,
   envVarSource,
   isEnvValueSet,
+  resolveEnvOverrides,
   uiEnvOverridesEnabled,
   validateEnvOverrideValue,
 } from "../convex/lib/envOverrides";
@@ -187,6 +188,23 @@ describe("validateEnvOverrideValue JSON and bounds", () => {
 });
 
 describe("effective environment", () => {
+  it("filters overrides to the allowlist and hides the rest of a credential group", () => {
+    const { applied, removed } = resolveEnvOverrides(
+      new Map([
+        ["GITHUB_CLIENT_ID", "ui-id"],
+        ["BETTER_AUTH_SECRET", "evil"], // not overridable: ignored
+        ["OIDC_DISCOVERY_URL", "   "], // blank: ignored
+      ]),
+    );
+    expect(applied.get("GITHUB_CLIENT_ID")).toBe("ui-id");
+    expect(applied.has("BETTER_AUTH_SECRET")).toBe(false);
+    expect(applied.has("OIDC_DISCOVERY_URL")).toBe(false);
+    // Overriding one social credential drops the deployment's other half.
+    expect(removed.has("GITHUB_CLIENT_SECRET")).toBe(true);
+    // The blank OIDC override never enabled the OIDC group.
+    expect(removed.has("OIDC_ISSUER")).toBe(false);
+  });
+
   it("lets an override win over the deployment value", () => {
     const merged = buildEffectiveEnv(
       { GITHUB_CLIENT_ID: "env-id", OIDC_SCOPES: "openid" },
@@ -253,6 +271,8 @@ describe("effective environment", () => {
     const merged = buildEffectiveEnv(runtimeEnv, new Map([["GITHUB_CLIENT_ID", "ui-id"]]));
     expect(merged.SITE_URL).toBe("https://chat.acme.com");
     expect(merged.GITHUB_CLIENT_ID).toBe("ui-id");
+    // Known catalog keys stay enumerable even though the runtime env is not.
+    expect(Object.keys(merged)).toContain("SITE_URL");
   });
 
   it("reflects applied overrides and hides removed group members when enumerated", () => {
