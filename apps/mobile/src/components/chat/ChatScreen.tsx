@@ -1,9 +1,9 @@
 import { Button, Spinner, Text } from "@aulora/ui-native";
 import { BottomSheetModalProvider } from "@gorhom/bottom-sheet";
 import { useRouter } from "expo-router";
-import { useState } from "react";
+import { type ReactNode, useMemo, useState } from "react";
 import { View } from "react-native";
-import { useSafeAreaInsets } from "react-native-safe-area-context";
+import { SafeAreaInsetsContext, useSafeAreaInsets } from "react-native-safe-area-context";
 import { selectionFeedback } from "../../lib/haptics";
 import { useStuckTimeout } from "../../lib/stuck-timeout";
 import { useProfiles } from "../../providers/ProfileProvider";
@@ -11,9 +11,11 @@ import { ConnectionRecoveryActions } from "../ConnectionRecoveryActions";
 import { ChatConversation } from "./ChatConversation";
 import { ChatHubPane } from "./ChatHubPane";
 import { ChatScreenSheets } from "./ChatScreenSheets";
+import { ChatScreenSessionProvider } from "./chat-screen-session";
 import type { ChatScreenProps } from "./chat-screen-types";
 import { MembersPane } from "./MembersPane";
 import { SwipePanes } from "./SwipePanes";
+import { useConvexChatScreenSession } from "./use-chat-screen-data";
 import { useChatScreenModel } from "./use-chat-screen-model";
 import { WorkspaceSwitcherSheet } from "./WorkspaceSwitcherSheet";
 
@@ -25,11 +27,52 @@ export type { ChatScreenProps } from "./chat-screen-types";
  * settings) and left for the people in it.
  */
 export function ChatScreen(props: ChatScreenProps) {
+  const session = useConvexChatScreenSession(
+    props.workspaceName,
+    props.ownUserId,
+    props.ownDisplayName,
+  );
+  return (
+    <ChatScreenSessionProvider value={session}>
+      <ChatScreenView {...props} />
+    </ChatScreenSessionProvider>
+  );
+}
+
+export interface ChatScreenViewProps extends ChatScreenProps {
+  /**
+   * A persistent bar above the panes, used by the offline demo to label itself.
+   * When present the panes drop their own top inset so nothing is double-padded.
+   */
+  readonly notice?: ReactNode;
+}
+
+/**
+ * The chat surface driven by whichever session sits in context. The offline
+ * review demo renders this over its mock session, so every pane, sheet and
+ * interaction here stays identical to the signed-in app.
+ */
+export function ChatScreenView({ notice, ...props }: ChatScreenViewProps) {
+  const insets = useSafeAreaInsets();
+  const noticeInsets = useMemo(() => ({ ...insets, top: 0 }), [insets]);
   const model = useChatScreenModel(props);
-  if (!model.ready || model.startupError !== null) {
-    return <ChatScreenStatus model={model} />;
+  const panes =
+    !model.ready || model.startupError !== null ? (
+      <ChatScreenStatus model={model} />
+    ) : (
+      <ChatScreenPanes model={model} />
+    );
+  if (notice === undefined) {
+    return panes;
   }
-  return <ChatScreenPanes model={model} />;
+  return (
+    <View className="flex-1 bg-bg">
+      <View style={{ paddingTop: insets.top }}>{notice}</View>
+      <SafeAreaInsetsContext.Provider value={noticeInsets}>
+        <View className="flex-1">{panes}</View>
+      </SafeAreaInsetsContext.Provider>
+    </View>
+  );
 }
 
 function ChatScreenStatus({ model }: { readonly model: ReturnType<typeof useChatScreenModel> }) {

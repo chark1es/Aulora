@@ -1,3 +1,4 @@
+/* eslint-disable no-unused-vars -- the base rule reports parameter names in type signatures; Biome checks real unused code */
 import {
   type AttachmentDescriptor,
   type ChannelView,
@@ -20,10 +21,15 @@ import { useChat } from "../../providers/ChatProvider";
 import { useProfiles } from "../../providers/ProfileProvider";
 import { useSound } from "../../providers/SoundProvider";
 import { useVoice } from "../../providers/VoiceProvider";
+import { type ChatScreenSession, useChatScreenSessionValue } from "./chat-screen-session";
 import type { ChatScreenProps } from "./chat-screen-types";
 import { type ChatScreenUiState, useChatScreenUiState } from "./use-chat-screen-ui-state";
 
-function useChatScreenSession(workspaceName: string, ownUserId: string, ownDisplayName: string) {
+export function useConvexChatScreenSession(
+  workspaceName: string,
+  ownUserId: string,
+  ownDisplayName: string,
+) {
   const chat = useChat();
   const generateAvatarUploadUrl = useMutation(api.members.generateAvatarUploadUrl);
   const setAvatar = useMutation(api.members.setAvatar);
@@ -65,7 +71,12 @@ function useChatScreenSession(workspaceName: string, ownUserId: string, ownDispl
   };
 }
 
-export type ChatScreenSession = ReturnType<typeof useChatScreenSession>;
+export type {
+  ChatScreenOfflineData,
+  ChatScreenSession,
+  MemberProfileData,
+  ViewerProfileData,
+} from "./chat-screen-session";
 
 function useChatScreenMentions(session: ChatScreenSession) {
   const { channels, categories, members, presence, ownUserId, ownDisplayName, voice } = session;
@@ -486,20 +497,28 @@ function useChatScreenMessages(
   };
 }
 
-export function useChatScreenData({
-  workspaceName,
-  ownUserId,
-  ownDisplayName,
-  onSignOut,
-}: ChatScreenProps) {
-  const session = useChatScreenSession(workspaceName, ownUserId, ownDisplayName);
+export function useChatScreenData({ onSignOut }: ChatScreenProps) {
+  const session = useChatScreenSessionValue();
   const ui = useChatScreenUiState();
   const mentions = useChatScreenMentions(session);
   const list = useChatScreenChannelList(session, ui, mentions);
   const conversation = useChatScreenConversation(session, ui, mentions, list);
   const messages = useChatScreenMessages(session, ui, conversation);
 
-  const ownPresence = session.presence.find((row) => row.userId === ownUserId);
+  // The offline capture opens one thread; live surfaces never set this, and the
+  // guard keeps closing the thread from reopening it.
+  const initialThreadRoot = session.initialThreadRoot;
+  const openedInitialThread = useRef(false);
+  const setThreadRoot = ui.setThreadRoot;
+  useEffect(() => {
+    if (openedInitialThread.current || initialThreadRoot === undefined) {
+      return;
+    }
+    openedInitialThread.current = true;
+    setThreadRoot(initialThreadRoot);
+  }, [initialThreadRoot, setThreadRoot]);
+
+  const ownPresence = session.presence.find((row) => row.userId === session.ownUserId);
   const ownStatus = ownPresence?.status ?? "offline";
   const ownCustomStatus = ownPresence?.customStatus ?? "";
 

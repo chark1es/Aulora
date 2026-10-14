@@ -182,6 +182,7 @@ function PinnedMessagesOverlay({ model }: { readonly model: ChatScreenModel }) {
       visible={model.pinsOpen}
       channelId={channel.id}
       memberNames={model.memberNames}
+      pins={model.pinsFor?.(channel.id)}
       onClose={() => {
         model.setPinsOpen(false);
       }}
@@ -203,6 +204,7 @@ function MemberProfileOverlay({ model }: { readonly model: ChatScreenModel }) {
       displayName={model.memberNames.get(shownProfile) ?? "Member"}
       status={row?.status ?? "offline"}
       customStatus={row?.customStatus ?? ""}
+      profile={model.profiles?.get(shownProfile)}
       ownUserId={model.ownUserId}
       onClose={() => {
         model.setProfileFor(null);

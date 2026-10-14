@@ -6,6 +6,7 @@ import { presenceLabel } from "../../lib/presence";
 import { BottomSheet } from "./BottomSheet";
 import { ListGroup, ListRow } from "./List";
 import { PresenceAvatar } from "./PresenceAvatar";
+import type { MemberProfileData } from "./use-chat-screen-data";
 
 export interface MemberProfileSheetProps {
   readonly visible: boolean;
@@ -14,6 +15,8 @@ export interface MemberProfileSheetProps {
   /** Presence status, such as `online`; `offline` when they have no presence row. */
   readonly status: string;
   readonly customStatus: string;
+  /** Profile an offline surface already holds; when set the sheet skips the server. */
+  readonly profile?: MemberProfileData | undefined;
   readonly ownUserId: string;
   readonly onMessage: () => void;
   readonly onNote: () => void;
@@ -93,7 +96,12 @@ function ProfileActions({ onNote, onModerate }: ProfileActionsProps) {
 
 export function MemberProfileSheet(props: MemberProfileSheetProps) {
   const { visible, userId, displayName, status } = props;
-  const profile = useQuery(api.members.profile, visible ? { userId } : "skip");
+  const supplied = props.profile;
+  const queried = useQuery(
+    api.members.profile,
+    visible && supplied === undefined ? { userId } : "skip",
+  );
+  const profile = supplied ?? queried;
   return (
     <BottomSheet
       visible={visible}

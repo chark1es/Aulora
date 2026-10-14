@@ -1,5 +1,4 @@
 import {
-  type ChannelSummary,
   ChatSession,
   type MessagePayload,
   type SearchHit,
@@ -231,8 +230,4 @@ export async function createReviewDemo(): Promise<ReviewDemo> {
     search: (query) => demoSearch(port, query),
     dispose: () => session.dispose(),
   };
-}
-
-export function reviewChannelTitle(channel: ChannelSummary): string {
-  return channel.name ?? (channel.kind === "dm" ? "Direct message" : "Group message");
 }
