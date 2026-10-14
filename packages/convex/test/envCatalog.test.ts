@@ -241,6 +241,20 @@ describe("effective environment", () => {
     expect(merged.SITE_URL).toBeUndefined();
   });
 
+  it("reads deployment values from a non-enumerable env, like Convex's process.env", () => {
+    // Convex's default runtime (udf-runtime/src/00_misc.ts) implements
+    // `process.env` as a Proxy over `{}` with only a `get` trap, so
+    // Object.entries/Object.keys/spread see nothing while reads still work.
+    const runtimeEnv = new Proxy({} as Record<string, string>, {
+      get: (_target, prop) => (prop === "SITE_URL" ? "https://chat.acme.com" : undefined),
+    });
+    expect(Object.keys(runtimeEnv)).toHaveLength(0);
+
+    const merged = buildEffectiveEnv(runtimeEnv, new Map([["GITHUB_CLIENT_ID", "ui-id"]]));
+    expect(merged.SITE_URL).toBe("https://chat.acme.com");
+    expect(merged.GITHUB_CLIENT_ID).toBe("ui-id");
+  });
+
   it("reports the source of each variable without exposing values", () => {
     const lookup = envLookup({ GITHUB_CLIENT_ID: "env-id", OIDC_SCOPES: "   " });
     expect(isEnvValueSet(lookup, "GITHUB_CLIENT_ID")).toBe(true);
@@ -248,6 +262,16 @@ describe("effective environment", () => {
     expect(envVarSource("GITHUB_CLIENT_ID", new Set(), lookup)).toBe("environment");
     expect(envVarSource("GITHUB_CLIENT_ID", new Set(["GITHUB_CLIENT_ID"]), lookup)).toBe("ui");
     expect(envVarSource("OIDC_SCOPES", new Set(), lookup)).toBe("unset");
+  });
+
+  it("resolves explicitly named keys on a non-enumerable env", () => {
+    const runtimeEnv = new Proxy({} as Record<string, string>, {
+      get: (_target, prop) => (prop === "SITE_URL" ? "https://chat.acme.com" : undefined),
+    });
+    const lookup = envLookup(runtimeEnv, ["SITE_URL", "MISSING"]);
+    expect(isEnvValueSet(lookup, "SITE_URL")).toBe(true);
+    expect(isEnvValueSet(lookup, "MISSING")).toBe(false);
+    expect(envVarSource("SITE_URL", new Set(), lookup)).toBe("environment");
   });
 });
 

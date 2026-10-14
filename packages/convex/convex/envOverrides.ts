@@ -102,7 +102,11 @@ export const list = query({
     const rows = await ctx.db.query("envOverrides").collect();
     const rowByKey = new Map(rows.map((row) => [row.key, row]));
     const overrideKeys = new Set(rowByKey.keys());
-    const lookup = envLookup();
+    // Convex's `process.env` does not enumerate, so name the keys to read.
+    const lookup = envLookup(
+      process.env,
+      ENV_VAR_CATALOG.map((definition) => definition.key),
+    );
     const variables = [];
     for (const definition of ENV_VAR_CATALOG) {
       const row = rowByKey.get(definition.key);

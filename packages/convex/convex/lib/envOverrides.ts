@@ -21,7 +21,7 @@ import { openString } from "./sse";
 
 export type Env = Record<string, string | undefined>;
 
-/** Read-only view of an environment map; use `envLookup()` only on raw envs. */
+/** Read-only view of environment values, keyed by variable name. */
 export type EnvLookup = ReadonlyMap<string, string | undefined>;
 
 /** Where a variable's effective value comes from, as shown in the UI. */
@@ -50,9 +50,26 @@ export function assertUiEnvOverridesEnabled(env: Env = process.env): void {
   }
 }
 
-/** A Map view of an env, so lookups never index an object with a variable key. */
-export function envLookup(env: Env = process.env): EnvLookup {
-  return new Map(Object.entries(env));
+/**
+ * A Map view of an env, so lookups never index an object with a variable key.
+ *
+ * Convex's default runtime exposes `process.env` as a Proxy over an empty
+ * object whose only trap is `get` (`npm-packages/udf-runtime/src/00_misc.ts`),
+ * so `Object.entries(process.env)` is empty and enumerating it yields nothing.
+ * Plain objects still enumerate. Callers that read the deployment environment
+ * must therefore pass the keys they care about explicitly.
+ */
+export function envLookup(env: Env = process.env, keys?: Iterable<string>): EnvLookup {
+  const lookup = new Map<string, string | undefined>();
+  for (const key of Object.keys(env)) {
+    lookup.set(key, env[key]);
+  }
+  if (keys !== undefined) {
+    for (const key of keys) {
+      lookup.set(key, env[key]);
+    }
+  }
+  return lookup;
 }
 
 export function isEnvValueSet(lookup: EnvLookup, key: string): boolean {
@@ -76,28 +93,78 @@ export function envVarSource(
  * override wins even when the deployment variable is set. Keys that are not in
  * the overridable allowlist are ignored, so a stale row can never smuggle in a
  * bootstrap variable.
+ *
+ * The overlay is a Proxy rather than a copied object on purpose. Convex's
+ * default runtime implements `process.env` as a Proxy over an empty object with
+ * only a `get` trap, so the entire deployment environment is invisible to
+ * `Object.entries`/`Object.keys`/spread. Copying `base` would therefore drop
+ * every deployment variable; forwarding reads through to `base` keeps them.
  */
 export function buildEffectiveEnv(base: Env, overrides: ReadonlyMap<string, string>): Env {
-  const merged = new Map<string, string | undefined>(Object.entries(base));
-  const applied = new Set<string>();
+  const applied = new Map<string, string>();
   for (const [key, value] of overrides) {
     if (isOverridableEnvVar(key) && value.trim().length > 0) {
-      merged.set(key, value);
-      applied.add(key);
+      applied.set(key, value);
     }
   }
   // Credential groups come from a single source: once any member is
   // overridden, the rest stop inheriting the deployment value.
+  const removed = new Set<string>();
   for (const group of ENV_CREDENTIAL_GROUPS) {
     if (group.some((key) => applied.has(key))) {
       for (const key of group) {
         if (!applied.has(key)) {
-          merged.delete(key);
+          removed.add(key);
         }
       }
     }
   }
-  return Object.fromEntries(merged);
+  const handler: ProxyHandler<Env> = {
+    get(target, prop, receiver) {
+      if (typeof prop === "string") {
+        if (removed.has(prop)) {
+          return undefined;
+        }
+        const override = applied.get(prop);
+        if (override !== undefined) {
+          return override;
+        }
+      }
+      return Reflect.get(target, prop, receiver);
+    },
+    has(target, prop) {
+      if (typeof prop === "string") {
+        if (removed.has(prop)) {
+          return false;
+        }
+        if (applied.has(prop)) {
+          return true;
+        }
+      }
+      return Reflect.has(target, prop);
+    },
+    ownKeys(target) {
+      const keys = new Set<string | symbol>(Reflect.ownKeys(target));
+      for (const key of applied.keys()) {
+        keys.add(key);
+      }
+      for (const key of removed) {
+        keys.delete(key);
+      }
+      return [...keys];
+    },
+    getOwnPropertyDescriptor(target, prop) {
+      return (
+        Reflect.getOwnPropertyDescriptor(target, prop) ?? {
+          configurable: true,
+          enumerable: true,
+          writable: true,
+          value: undefined,
+        }
+      );
+    },
+  };
+  return new Proxy(base, handler);
 }
 
 export interface SealedEnvOverride {

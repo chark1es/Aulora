@@ -131,7 +131,14 @@ export const overview = query({
       server.settings.signupEnabled,
       settings.authProviders ?? undefined,
     );
-    const envMap = envLookup(env);
+    // Convex's `process.env` does not enumerate, so name the keys to read.
+    const envMap = envLookup(
+      env,
+      SOCIAL_PROVIDER_DEFINITIONS.flatMap((definition) => [
+        definition.clientIdEnv,
+        definition.clientSecretEnv,
+      ]),
+    );
     const availableProviders = SOCIAL_PROVIDER_DEFINITIONS.map((definition) => ({
       id: definition.id,
       displayName: definition.displayName,

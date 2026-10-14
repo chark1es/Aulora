@@ -155,9 +155,11 @@ describe("Better Auth options from the effective environment", () => {
         { key: "GITHUB_CLIENT_SECRET", value: "ui-github-secret" },
       ],
     });
-    const env = await t.run(async (ctx) => (await loadEffectiveEnv(ctx)).env);
     let built: BetterAuthOptions | undefined;
     await t.run(async (ctx) => {
+      // Keep the effective env inside the Convex call: it is a Proxy over
+      // `process.env` and is not a serializable Convex value.
+      const env = (await loadEffectiveEnv(ctx)).env;
       built = createAuthOptions(ctx, new Map(), env);
     });
     if (built === undefined) {
