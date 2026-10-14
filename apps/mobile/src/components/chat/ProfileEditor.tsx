@@ -1,3 +1,4 @@
+/* eslint-disable no-unused-vars -- the base rule reports parameter names in type signatures; Biome checks real unused code */
 import { Button, Input, Spinner, Text } from "@aulora/ui-native";
 import { useMutation, useQuery } from "convex/react";
 import { useEffect, useState } from "react";
