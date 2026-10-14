@@ -7,7 +7,7 @@ import { useReviewDemoSession } from "../lib/review-demo-session";
 import { SoundProvider } from "../providers/SoundProvider";
 import { VoiceContext } from "../providers/voice-provider-types";
 import { ChatScreenView } from "./chat/ChatScreen";
-import { ChatScreenSessionProvider } from "./chat/use-chat-screen-data";
+import { ChatScreenSessionProvider } from "./chat/chat-screen-session";
 
 export interface ReviewDemoScreenProps {
   readonly onExit: () => void;

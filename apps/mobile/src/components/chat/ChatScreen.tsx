@@ -11,10 +11,11 @@ import { ConnectionRecoveryActions } from "../ConnectionRecoveryActions";
 import { ChatConversation } from "./ChatConversation";
 import { ChatHubPane } from "./ChatHubPane";
 import { ChatScreenSheets } from "./ChatScreenSheets";
+import { ChatScreenSessionProvider } from "./chat-screen-session";
 import type { ChatScreenProps } from "./chat-screen-types";
 import { MembersPane } from "./MembersPane";
 import { SwipePanes } from "./SwipePanes";
-import { ChatScreenSessionProvider, useConvexChatScreenSession } from "./use-chat-screen-data";
+import { useConvexChatScreenSession } from "./use-chat-screen-data";
 import { useChatScreenModel } from "./use-chat-screen-model";
 import { WorkspaceSwitcherSheet } from "./WorkspaceSwitcherSheet";
 
