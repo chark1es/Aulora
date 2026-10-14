@@ -31,7 +31,7 @@ Restart the watcher and re-run setup after changing its environment settings. Wi
 
 Configure the Coolify API integration described in [Deploy on Coolify](coolify.md#upgrade) to enable **Install update** in the instance settings. Coolify builds and deploys the release in one step, so there is no separate Download button and no host watcher. The owner starts installation explicitly; automatic host updates do not trigger Coolify deployments.
 
-You can also deploy a chosen release tag or commit through Coolify manually. Preserve the existing named volumes, especially `setup-state`, which holds generated secrets. Do not switch to fresh volumes or regenerate the master key during an upgrade.
+You can also deploy the stable `release` branch, or a chosen release tag or commit, through Coolify manually. Preserve the existing named volumes, especially `setup-state`, which holds generated secrets. Do not switch to fresh volumes or regenerate the master key during an upgrade.
 
 ## Updating a checkout manually
 
