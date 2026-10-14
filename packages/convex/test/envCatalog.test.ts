@@ -15,6 +15,7 @@ import {
   envOverrideContext,
   envVarSource,
   isEnvValueSet,
+  resolveEnvOverrides,
   uiEnvOverridesEnabled,
   validateEnvOverrideValue,
 } from "../convex/lib/envOverrides";
@@ -187,6 +188,23 @@ describe("validateEnvOverrideValue JSON and bounds", () => {
 });
 
 describe("effective environment", () => {
+  it("filters overrides to the allowlist and hides the rest of a credential group", () => {
+    const { applied, removed } = resolveEnvOverrides(
+      new Map([
+        ["GITHUB_CLIENT_ID", "ui-id"],
+        ["BETTER_AUTH_SECRET", "evil"], // not overridable: ignored
+        ["OIDC_DISCOVERY_URL", "   "], // blank: ignored
+      ]),
+    );
+    expect(applied.get("GITHUB_CLIENT_ID")).toBe("ui-id");
+    expect(applied.has("BETTER_AUTH_SECRET")).toBe(false);
+    expect(applied.has("OIDC_DISCOVERY_URL")).toBe(false);
+    // Overriding one social credential drops the deployment's other half.
+    expect(removed.has("GITHUB_CLIENT_SECRET")).toBe(true);
+    // The blank OIDC override never enabled the OIDC group.
+    expect(removed.has("OIDC_ISSUER")).toBe(false);
+  });
+
   it("lets an override win over the deployment value", () => {
     const merged = buildEffectiveEnv(
       { GITHUB_CLIENT_ID: "env-id", OIDC_SCOPES: "openid" },
@@ -241,6 +259,36 @@ describe("effective environment", () => {
     expect(merged.SITE_URL).toBeUndefined();
   });
 
+  it("reads deployment values from a non-enumerable env, like Convex's process.env", () => {
+    // Convex's default runtime (udf-runtime/src/00_misc.ts) implements
+    // `process.env` as a Proxy over `{}` with only a `get` trap, so
+    // Object.entries/Object.keys/spread see nothing while reads still work.
+    const runtimeEnv = new Proxy({} as Record<string, string>, {
+      get: (_target, prop) => (prop === "SITE_URL" ? "https://chat.acme.com" : undefined),
+    });
+    expect(Object.keys(runtimeEnv)).toHaveLength(0);
+
+    const merged = buildEffectiveEnv(runtimeEnv, new Map([["GITHUB_CLIENT_ID", "ui-id"]]));
+    expect(merged.SITE_URL).toBe("https://chat.acme.com");
+    expect(merged.GITHUB_CLIENT_ID).toBe("ui-id");
+    // Known catalog keys stay enumerable even though the runtime env is not.
+    expect(Object.keys(merged)).toContain("SITE_URL");
+  });
+
+  it("reflects applied overrides and hides removed group members when enumerated", () => {
+    const merged = buildEffectiveEnv(
+      { OIDC_ISSUER: "https://idp.example.com", OIDC_CLIENT_ID: "env-id", OIDC_SCOPES: "openid" },
+      new Map([["OIDC_CLIENT_ID", "ui-id"]]),
+    );
+    const keys = Object.keys(merged);
+    expect(keys).toContain("OIDC_CLIENT_ID");
+    expect(keys).toContain("OIDC_SCOPES");
+    expect(keys).not.toContain("OIDC_ISSUER");
+    expect(merged.OIDC_CLIENT_ID).toBe("ui-id");
+    expect("OIDC_SCOPES" in merged).toBe(true);
+    expect("OIDC_ISSUER" in merged).toBe(false);
+  });
+
   it("reports the source of each variable without exposing values", () => {
     const lookup = envLookup({ GITHUB_CLIENT_ID: "env-id", OIDC_SCOPES: "   " });
     expect(isEnvValueSet(lookup, "GITHUB_CLIENT_ID")).toBe(true);
@@ -248,6 +296,16 @@ describe("effective environment", () => {
     expect(envVarSource("GITHUB_CLIENT_ID", new Set(), lookup)).toBe("environment");
     expect(envVarSource("GITHUB_CLIENT_ID", new Set(["GITHUB_CLIENT_ID"]), lookup)).toBe("ui");
     expect(envVarSource("OIDC_SCOPES", new Set(), lookup)).toBe("unset");
+  });
+
+  it("resolves explicitly named keys on a non-enumerable env", () => {
+    const runtimeEnv = new Proxy({} as Record<string, string>, {
+      get: (_target, prop) => (prop === "SITE_URL" ? "https://chat.acme.com" : undefined),
+    });
+    const lookup = envLookup(runtimeEnv, ["SITE_URL", "MISSING"]);
+    expect(isEnvValueSet(lookup, "SITE_URL")).toBe(true);
+    expect(isEnvValueSet(lookup, "MISSING")).toBe(false);
+    expect(envVarSource("SITE_URL", new Set(), lookup)).toBe("environment");
   });
 });
 

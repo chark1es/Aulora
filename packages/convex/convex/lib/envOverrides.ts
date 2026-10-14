@@ -2,6 +2,7 @@ import { ConvexError } from "convex/values";
 import type { MutationCtx, QueryCtx } from "../_generated/server";
 import {
   ENV_CREDENTIAL_GROUPS,
+  ENV_VAR_CATALOG,
   type EnvVarDefinition,
   findEnvVarDefinition,
   isOverridableEnvVar,
@@ -21,7 +22,7 @@ import { openString } from "./sse";
 
 export type Env = Record<string, string | undefined>;
 
-/** Read-only view of an environment map; use `envLookup()` only on raw envs. */
+/** Read-only view of environment values, keyed by variable name. */
 export type EnvLookup = ReadonlyMap<string, string | undefined>;
 
 /** Where a variable's effective value comes from, as shown in the UI. */
@@ -50,9 +51,26 @@ export function assertUiEnvOverridesEnabled(env: Env = process.env): void {
   }
 }
 
-/** A Map view of an env, so lookups never index an object with a variable key. */
-export function envLookup(env: Env = process.env): EnvLookup {
-  return new Map(Object.entries(env));
+/**
+ * A Map view of an env, so lookups never index an object with a variable key.
+ *
+ * Convex's default runtime exposes `process.env` as a Proxy over an empty
+ * object whose only trap is `get` (`npm-packages/udf-runtime/src/00_misc.ts`),
+ * so `Object.entries(process.env)` is empty and enumerating it yields nothing.
+ * Plain objects still enumerate. Callers that read the deployment environment
+ * must therefore pass the keys they care about explicitly.
+ */
+export function envLookup(env: Env = process.env, keys?: Iterable<string>): EnvLookup {
+  const lookup = new Map<string, string | undefined>();
+  for (const key of Object.keys(env)) {
+    lookup.set(key, env[key]);
+  }
+  if (keys !== undefined) {
+    for (const key of keys) {
+      lookup.set(key, env[key]);
+    }
+  }
+  return lookup;
 }
 
 export function isEnvValueSet(lookup: EnvLookup, key: string): boolean {
@@ -71,6 +89,88 @@ export function envVarSource(
   return isEnvValueSet(lookup, key) ? "environment" : "unset";
 }
 
+/** Overrides after allowlist filtering, plus group members to hide. */
+export interface ResolvedOverrides {
+  readonly applied: ReadonlyMap<string, string>;
+  readonly removed: ReadonlySet<string>;
+}
+
+/**
+ * Folds decrypted override rows into an allowlist-filtered `applied` map and the
+ * set of credential-group members that must stop inheriting the deployment
+ * value. Pure and separate from the Proxy so both halves are unit-testable.
+ */
+export function resolveEnvOverrides(overrides: ReadonlyMap<string, string>): ResolvedOverrides {
+  const applied = new Map<string, string>();
+  for (const [key, value] of overrides) {
+    if (isOverridableEnvVar(key) && value.trim().length > 0) {
+      applied.set(key, value);
+    }
+  }
+  // Credential groups come from a single source: once any member is
+  // overridden, the rest stop inheriting the deployment value.
+  const removed = new Set<string>();
+  for (const group of ENV_CREDENTIAL_GROUPS) {
+    if (!group.some((key) => applied.has(key))) continue;
+    for (const key of group) {
+      if (!applied.has(key)) removed.add(key);
+    }
+  }
+  return { applied, removed };
+}
+
+/** Catalog keys, so enumeration can surface known deployment variables. */
+const ENV_CATALOG_KEYS: readonly string[] = ENV_VAR_CATALOG.map((definition) => definition.key);
+
+/** Descriptor reported for overlay-only keys so enumeration stays consistent. */
+const OVERLAY_DESCRIPTOR: PropertyDescriptor = {
+  configurable: true,
+  enumerable: true,
+  writable: true,
+  value: undefined,
+};
+
+/**
+ * `base` with `applied` overlaid and `removed` hidden. A Proxy, not a copy:
+ * Convex's default runtime exposes `process.env` as a non-enumerable Proxy, so
+ * `Object.entries`/spread on it are empty and copying `base` would silently drop
+ * every deployment variable. Reads (and `in`) forward to `base`; `exposedKeys`
+ * names the catalog variables so enumeration still surfaces known deployment
+ * keys even though the runtime environment itself cannot be enumerated.
+ */
+function envOverlay(
+  base: Env,
+  applied: ReadonlyMap<string, string>,
+  removed: ReadonlySet<string>,
+  exposedKeys: readonly string[],
+): Env {
+  const exposed = exposedKeys.filter((key) => !removed.has(key));
+  const handler: ProxyHandler<Env> = {
+    get(target, prop, receiver) {
+      if (typeof prop === "string" && removed.has(prop)) return undefined;
+      const override = typeof prop === "string" ? applied.get(prop) : undefined;
+      if (override !== undefined) return override;
+      return Reflect.get(target, prop, receiver);
+    },
+    has(target, prop) {
+      if (typeof prop === "string" && removed.has(prop)) return false;
+      if (typeof prop === "string" && applied.has(prop)) return true;
+      return Reflect.has(target, prop);
+    },
+    ownKeys(target) {
+      const keys = new Set<string | symbol>(Reflect.ownKeys(target));
+      for (const key of exposed) keys.add(key);
+      for (const key of applied.keys()) keys.add(key);
+      for (const key of removed) keys.delete(key);
+      return [...keys];
+    },
+    getOwnPropertyDescriptor(target, prop) {
+      return Reflect.getOwnPropertyDescriptor(target, prop) ?? OVERLAY_DESCRIPTOR;
+    },
+  };
+  return new Proxy(base, handler);
+}
+
 /**
  * The effective environment: `base` overlaid by decrypted overrides. An
  * override wins even when the deployment variable is set. Keys that are not in
@@ -78,26 +178,8 @@ export function envVarSource(
  * bootstrap variable.
  */
 export function buildEffectiveEnv(base: Env, overrides: ReadonlyMap<string, string>): Env {
-  const merged = new Map<string, string | undefined>(Object.entries(base));
-  const applied = new Set<string>();
-  for (const [key, value] of overrides) {
-    if (isOverridableEnvVar(key) && value.trim().length > 0) {
-      merged.set(key, value);
-      applied.add(key);
-    }
-  }
-  // Credential groups come from a single source: once any member is
-  // overridden, the rest stop inheriting the deployment value.
-  for (const group of ENV_CREDENTIAL_GROUPS) {
-    if (group.some((key) => applied.has(key))) {
-      for (const key of group) {
-        if (!applied.has(key)) {
-          merged.delete(key);
-        }
-      }
-    }
-  }
-  return Object.fromEntries(merged);
+  const { applied, removed } = resolveEnvOverrides(overrides);
+  return envOverlay(base, applied, removed, ENV_CATALOG_KEYS);
 }
 
 export interface SealedEnvOverride {
