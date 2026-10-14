@@ -50,7 +50,11 @@ const ACTION_LABELS: Record<string, string> = {
   "member.unban": "unbanned a member",
   "invite.create": "created an invite",
   "invite.revoke": "revoked an invite",
+  "invite.delete": "deleted an invite",
   "invite.redeem": "redeemed an invite",
+  "allowlist.add": "added to the invite allowlist",
+  "allowlist.remove": "removed from the invite allowlist",
+  "allowlist.join": "joined from the allowlist",
   "category.create": "created a category",
   "category.update": "renamed a category",
   "category.delete": "deleted a category",
@@ -136,8 +140,19 @@ function banDetail(meta: Record<string, unknown>): string | null {
 }
 
 function inviteDetail(meta: Record<string, unknown>): string | null {
+  const kind = nonEmpty(meta.kind);
+  const email = nonEmpty(meta.email);
   const expiresAt = typeof meta.expiresAt === "number" ? meta.expiresAt : null;
-  return expiresAt !== null ? `expires ${new Date(expiresAt).toLocaleDateString()}` : null;
+  const parts = [
+    kind,
+    email !== null ? `for ${email}` : null,
+    expiresAt !== null ? `expires ${new Date(expiresAt).toLocaleDateString()}` : "never expires",
+  ].filter((entry): entry is string => entry !== null);
+  return parts.join(" · ");
+}
+
+function allowlistDetail(meta: Record<string, unknown>): string | null {
+  return nonEmpty(meta.pattern);
 }
 
 function metaDetail(action: string, meta: Record<string, unknown> | null): string | null {
@@ -171,6 +186,9 @@ function metaDetail(action: string, meta: Record<string, unknown> | null): strin
         : "cleared";
     case "invite.create":
       return inviteDetail(meta);
+    case "allowlist.add":
+    case "allowlist.remove":
+      return allowlistDetail(meta);
     default:
       return null;
   }

@@ -7,7 +7,7 @@ Aulora has two admin surfaces.
 Opened from **Workspace settings** in the sidebar. It covers the things a
 workspace owner and moderators manage: roles and permission bitfields, member
 moderation (kick, ban, timeout, nicknames), per-channel and per-category
-overrides, invite links, audit log and workspace access policy (signup,
+overrides, invites and the allowlist, audit log and workspace access policy (signup,
 invite-only, allowed email domains).
 
 Each section appears only when the viewer holds the matching permission, and
@@ -35,6 +35,47 @@ you do not hold, and you cannot change overrides for a role above your own.
 Category headers can be dragged to reorder them, the same way channels are
 dragged. Reordering needs the Manage channels permission, and the new order is
 stored server-side.
+
+## Invites
+
+The **Invites** section (and the same flow on a new member's device) controls
+how people get into an invite-only workspace.
+
+Ways to invite:
+
+- **Link** — a web link (`/invite/<code>`) you share anywhere. Unlimited uses by
+  default.
+- **Email** — enter an address and Aulora emails a one-time link. It works once,
+  only for the account that signs in with that address, and needs email delivery
+  set up under Instance admin.
+- **Code** — a short code such as `7QXM-2KD9-TV4B`. A new member signs in, sees
+  the join screen and types it in; it is one-time by default.
+
+Every invite can have an expiry (an hour to 30 days, a date you pick, or never;
+the default is 7 days), a use limit (one time, a number, or unlimited), an
+optional **Only for** address that limits it to one account, and a note that only
+admins see. The plaintext link or code is shown once at creation; only a hash is
+stored.
+
+The history lists who created each invite, its method, expiry, uses, the address
+it is limited to, and who joined with it. Active invites can be revoked (the link
+stops working) and any invite can be deleted. The audit log keeps a record either
+way.
+
+**Allowlist** — add `person@example.com` or a whole domain, `@example.com`.
+Someone who signs in with a matching address can join without an invite. If
+their sign-in provider has verified the address they join straight away;
+otherwise Aulora emails a six-digit code (valid 10 minutes, five tries) to prove
+they own it. Removing an entry does not remove anyone who already joined.
+
+Permissions: **Create invites** lets a role make invites and add allowlist
+entries; **Delete invites** lets it revoke or delete invites and remove
+allowlist entries. Either permission opens the section, so a role can be given
+one without the other. Redeeming is limited to 10 attempts per person every 10
+minutes so short codes cannot be guessed.
+
+Existing roles that held Create invites do not gain Delete invites automatically;
+grant it from the role editor where it is wanted.
 
 ## Addons
 

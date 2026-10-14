@@ -12,6 +12,8 @@ import {
 import { writeAudit } from "./lib/audit";
 import { type EmailConfig, parseEmailConfig, sendEmail } from "./lib/email";
 import { requireInstanceAdmin } from "./lib/instance";
+import { inviteEmail, joinCodeEmail } from "./lib/inviteEmail";
+import { JOIN_CODE_TTL_MINUTES } from "./lib/joinCodes";
 import { openString, sealString } from "./lib/sse";
 
 /**
@@ -148,30 +150,51 @@ function siteUrl(): string {
   return (process.env.SITE_URL ?? process.env.CONVEX_SITE_URL ?? "").replace(/\/+$/, "");
 }
 
-/** Sends an invite magic link. Scheduled by `invites.create` when an email is set. */
+/** Sends the single-use invite link. Scheduled by `invites.create` for an `email` invite. */
 export const sendInvite = internalAction({
   args: {
+    inviteId: v.id("invites"),
     to: v.string(),
     code: v.string(),
     workspaceName: v.string(),
     invitedByName: v.optional(v.string()),
+    expiresAt: v.optional(v.number()),
   },
   handler: async (ctx, args) => {
     const origin = siteUrl();
     if (origin.length === 0) throw new ConvexError("SITE_URL must be configured to email invites");
-    const link = `${origin}/invite/${args.code}`;
     const invitedBy =
       args.invitedByName !== undefined && args.invitedByName.trim().length > 0
         ? args.invitedByName.trim()
         : "Someone";
-    return await sendEmail(
-      {
-        to: args.to,
-        subject: `You're invited to ${args.workspaceName}`,
-        text: `${invitedBy} invited you to join ${args.workspaceName} on Aulora.\n\n${link}\n\nThis link expires in 7 days.`,
-      },
+    const message = inviteEmail({
+      workspaceName: args.workspaceName,
+      invitedBy,
+      link: `${origin}/invite/${args.code}`,
+      expiresAt: args.expiresAt,
+    });
+    const result = await sendEmail(
+      { to: args.to, ...message },
       { config: await configuredEmail(ctx) },
     );
+    await ctx.runMutation(internal.invites.markEmailResult, {
+      inviteId: args.inviteId,
+      sent: result.sent,
+    });
+    return result;
+  },
+});
+
+/** Sends the one-time code that lets an allowlisted account prove its address. */
+export const sendJoinCode = internalAction({
+  args: { to: v.string(), code: v.string(), workspaceName: v.string() },
+  handler: async (ctx, args) => {
+    const message = joinCodeEmail({
+      workspaceName: args.workspaceName,
+      code: args.code,
+      minutes: JOIN_CODE_TTL_MINUTES,
+    });
+    return await sendEmail({ to: args.to, ...message }, { config: await configuredEmail(ctx) });
   },
 });
 

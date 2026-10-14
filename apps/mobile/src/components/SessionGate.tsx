@@ -3,11 +3,12 @@ import type { ServerProfile } from "@aulora/core";
 import { Spinner, Text } from "@aulora/ui-native";
 import type { ConvexReactClient } from "convex/react";
 import { useRouter } from "expo-router";
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { View } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
 import type { AuloraAuthClient } from "../lib/auth-client";
 import type { CookieStore } from "../lib/cookie-fetch";
+import { bindPendingInvite } from "../lib/pending-invite";
 import { useStuckTimeout } from "../lib/stuck-timeout";
 import { ChatProvider } from "../providers/ChatProvider";
 import { useProfiles } from "../providers/ProfileProvider";
@@ -19,6 +20,7 @@ import {
 } from "./ConnectionRecoveryActions";
 import { ChatScreen } from "./chat/ChatScreen";
 import { WorkspaceSwitcherSheet } from "./chat/WorkspaceSwitcherSheet";
+import { MembershipGate } from "./MembershipGate";
 import { SignInScreen } from "./SignInScreen";
 
 export interface SessionGateProps {
@@ -41,6 +43,11 @@ export function SessionGate({ profile, authClient, cookieStore, client }: Sessio
   const backToConnect = () => {
     router.push("/connect");
   };
+
+  const identity = session.data?.user?.id ?? null;
+  useEffect(() => {
+    bindPendingInvite(identity);
+  }, [identity]);
 
   if (session.isPending) {
     return (
@@ -65,7 +72,7 @@ export function SessionGate({ profile, authClient, cookieStore, client }: Sessio
 
   const user = session.data?.user;
   if (user !== undefined && user !== null) {
-    return <SignedInChat client={client} profile={profile} authClient={authClient} user={user} />;
+    return <SignedInChat profile={profile} authClient={authClient} client={client} user={user} />;
   }
 
   // The chat surface lays out its own safe areas; only sign-in needs the frame.
@@ -116,36 +123,42 @@ function SessionPending({
 }
 
 function SignedInChat({
-  client,
   profile,
   authClient,
+  client,
   user,
 }: {
-  readonly client: ConvexReactClient;
   readonly profile: ServerProfile;
   readonly authClient: AuloraAuthClient;
+  readonly client: ConvexReactClient;
   readonly user: {
     readonly id: string;
     readonly name?: string | null;
     readonly email?: string | null;
   };
 }) {
-  const displayName = user.name ?? user.email ?? "You";
+  const signOut = async () => {
+    const result = await authClient.signOut();
+    if (result.error) throw new Error(result.error.message ?? "Couldn't sign out");
+  };
   return (
-    <SoundProvider>
-      <ChatProvider key={user.id} client={client} userId={user.id}>
-        <VoiceProvider client={client} userId={user.id}>
-          <ChatScreen
-            workspaceName={profile.name}
-            ownUserId={user.id}
-            ownDisplayName={displayName}
-            onSignOut={async () => {
-              const result = await authClient.signOut();
-              if (result.error) throw new Error(result.error.message ?? "Couldn't sign out");
-            }}
-          />
-        </VoiceProvider>
-      </ChatProvider>
-    </SoundProvider>
+    <MembershipGate
+      workspaceIconSeed={profile.iconSeed}
+      signedInAs={user.email ?? user.name ?? null}
+      onSignOut={() => void signOut()}
+    >
+      <SoundProvider>
+        <ChatProvider key={user.id} client={client} userId={user.id}>
+          <VoiceProvider client={client} userId={user.id}>
+            <ChatScreen
+              workspaceName={profile.name}
+              ownUserId={user.id}
+              ownDisplayName={user.name ?? user.email ?? "You"}
+              onSignOut={signOut}
+            />
+          </VoiceProvider>
+        </ChatProvider>
+      </SoundProvider>
+    </MembershipGate>
   );
 }

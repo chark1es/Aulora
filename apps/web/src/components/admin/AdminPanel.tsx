@@ -94,7 +94,7 @@ function buildTabs(
   ) {
     tabs.push({ id: "members", label: "Members" });
   }
-  if (permission("CreateInvites")) {
+  if (permission("CreateInvites") || permission("DeleteInvites")) {
     tabs.push({ id: "invites", label: "Invites" });
   }
   if (permission("ManageChannels")) {
@@ -342,7 +342,11 @@ function AdminPanelWorkspaceBody(props: AdminPanelBodyProps) {
         />
       )}
       {nav.tab === "invites" && (
-        <InviteManager canCreateInvites={permission("CreateInvites")} origin={origin} />
+        <InviteManager
+          canCreateInvites={permission("CreateInvites")}
+          canDeleteInvites={permission("DeleteInvites")}
+          origin={origin}
+        />
       )}
       {nav.tab === "permissions" && (
         <PermissionsPanel

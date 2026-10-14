@@ -11,6 +11,7 @@ import {
   type ConnectionRecoveryActionsProps,
 } from "./ConnectionRecoveryActions";
 import { ChatSessionShell, type ChatSessionShellRecovery } from "./chat/ChatSessionShell";
+import { MembershipGate } from "./MembershipGate";
 import { SignInScreen } from "./SignInScreen";
 
 export interface SessionGateProps {
@@ -116,18 +117,25 @@ function SignedInShell({
     ...(typeof user.email === "string" ? { email: user.email } : {}),
   };
   const shellRecovery: ChatSessionShellRecovery = { ...recovery, onRetry };
+  const signOut = () => {
+    void actions.signOut();
+  };
   return (
-    <ChatSessionShell
-      key={attempt}
-      client={client}
-      workspaceName={profile.name}
+    <MembershipGate
       workspaceIconSeed={profile.iconSeed}
-      user={signedInUser}
-      onSignOut={() => {
-        void actions.signOut();
-      }}
-      recovery={shellRecovery}
-    />
+      signedInAs={signedInUser.email ?? signedInUser.name ?? null}
+      onSignOut={signOut}
+    >
+      <ChatSessionShell
+        key={attempt}
+        client={client}
+        workspaceName={profile.name}
+        workspaceIconSeed={profile.iconSeed}
+        user={signedInUser}
+        onSignOut={signOut}
+        recovery={shellRecovery}
+      />
+    </MembershipGate>
   );
 }
 

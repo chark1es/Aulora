@@ -84,8 +84,9 @@ describe("Permission bitfield", () => {
       "EditNotes",
       "DeleteNotes",
       "ManageNotes",
+      "DeleteInvites",
     ]);
-    expect(PERMISSION_NAMES).toHaveLength(39);
+    expect(PERMISSION_NAMES).toHaveLength(40);
   });
 
   it("gives every flag exactly one independent bit", () => {

@@ -17,6 +17,23 @@ export {
 } from "./binary";
 export { blurhashDecode, blurhashEncode } from "./blurhash";
 export * from "./chat/index";
+export {
+  allowlistAdmits,
+  formatAccessCode,
+  INVITE_CODE_ALPHABET,
+  INVITE_CODE_LENGTH,
+  INVITE_KINDS,
+  type InviteKind,
+  isAccessCodeShape,
+  isValidEmail,
+  joinCodeFailureMessage,
+  maskEmail,
+  normalizeEmail,
+  normalizeInviteCode,
+  parseAllowlistEntry,
+  type RedeemOutcome,
+  redeemOutcomeMessage,
+} from "./invites";
 export * from "./kanban.js";
 export {
   groupMembersByHoistedRole,

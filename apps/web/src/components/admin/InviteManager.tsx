@@ -1,234 +1,111 @@
-import { Button, Heading, Icon, Input, Spinner, Text } from "@aulora/ui-web";
-import { useMutation, useQuery } from "convex/react";
+import { Icon, SegmentedControl, Spinner, Text } from "@aulora/ui-web";
+import { useMutation, usePaginatedQuery } from "convex/react";
 import { useState } from "react";
 import { api } from "../../../../../packages/convex/convex/_generated/api";
 import type { Id } from "../../../../../packages/convex/convex/_generated/dataModel";
-import { inviteUrl } from "../../lib/invites";
-import type { Callback } from "./callbacks";
+import { AllowlistManager } from "./invites/AllowlistManager";
+import { InviteCreateForm } from "./invites/InviteCreateForm";
+import { InviteList, type InviteRow } from "./invites/InviteList";
+import { SettingsSectionHeader } from "./SettingsSection";
 
 export interface InviteManagerProps {
   readonly canCreateInvites: boolean;
+  readonly canDeleteInvites: boolean;
   readonly origin: string;
 }
 
-const PAGE = { numItems: 50, cursor: null } as const;
+type View = "invites" | "allowlist";
 
-function expiryLabel(expiresAt: number | null): string {
-  if (expiresAt === null) {
-    return "Never expires";
-  }
-  return expiresAt <= Date.now()
-    ? "Expired"
-    : `Expires ${new Date(expiresAt).toLocaleDateString()}`;
-}
-
-interface InviteRow {
-  readonly id: Id<"invites">;
-  readonly revokedAt: number | null;
-  readonly expiresAt: number | null;
-  readonly uses: number;
-  readonly maxUses: number;
-}
+const PAGE_SIZE = 25;
 
 /**
- * Invite management: create a link (optionally emailing it), copy the magic
- * link, and review or revoke outstanding invites. The plaintext code is only
- * returned once, at creation, and is shown/copied right away.
+ * Invite management: create links, emailed one-time invitations and access
+ * codes, review who made each one and who joined, revoke or delete them, and
+ * keep the allowlist of pre-approved addresses. Creating and deleting are
+ * separate permissions; either one opens the section.
  */
-export function InviteManager({ canCreateInvites, origin }: InviteManagerProps) {
-  const list = useQuery(api.invites.list, canCreateInvites ? { paginationOpts: PAGE } : "skip");
-  const revoke = useMutation(api.invites.revoke);
+export function InviteManager({ canCreateInvites, canDeleteInvites, origin }: InviteManagerProps) {
+  const [view, setView] = useState<View>("invites");
 
-  if (!canCreateInvites) {
+  if (!canCreateInvites && !canDeleteInvites) {
     return (
       <Text tone="muted" size="sm" data-testid="invites-locked">
-        You need the Create invites permission to manage invites.
+        You need the Create invites or Delete invites permission to manage invites.
       </Text>
     );
   }
 
   return (
-    <div className="flex flex-col gap-4" data-testid="invite-manager">
-      <header className="flex flex-col gap-1">
-        <Heading level={3}>Invites</Heading>
-        <Text size="sm" tone="muted">
-          Every new link lasts 7 days and can be copied or emailed.
-        </Text>
-      </header>
+    <div className="flex flex-col gap-5" data-testid="invite-manager">
+      <SettingsSectionHeader
+        icon="user-plus"
+        title="Invites"
+        description="Bring people in with a link, an emailed one-time invitation or a short code — or pre-approve their address."
+        trailing={
+          <SegmentedControl
+            label="Invite section"
+            value={view}
+            onChange={setView}
+            options={[
+              { value: "invites", label: "Invites" },
+              { value: "allowlist", label: "Allowlist" },
+            ]}
+          />
+        }
+      />
 
-      <InviteCreateForm origin={origin} />
+      {view === "invites" ? (
+        <InvitesView canCreate={canCreateInvites} canDelete={canDeleteInvites} origin={origin} />
+      ) : (
+        <AllowlistManager canAdd={canCreateInvites} canRemove={canDeleteInvites} />
+      )}
+    </div>
+  );
+}
 
-      {list === undefined && (
+function InvitesView({
+  canCreate,
+  canDelete,
+  origin,
+}: {
+  readonly canCreate: boolean;
+  readonly canDelete: boolean;
+  readonly origin: string;
+}) {
+  const list = usePaginatedQuery(api.invites.list, {}, { initialNumItems: PAGE_SIZE });
+  const revoke = useMutation(api.invites.revoke);
+  const remove = useMutation(api.invites.remove);
+
+  return (
+    <div className="flex flex-col gap-5">
+      {canCreate && <InviteCreateForm origin={origin} />}
+
+      {list.status === "LoadingFirstPage" ? (
         <div className="flex justify-center py-8">
           <Spinner size={22} label="Loading invites" />
         </div>
-      )}
-
-      {list !== undefined && (
+      ) : (
         <InviteList
-          page={list.page}
-          onRevoke={(inviteId) => {
-            void revoke({ inviteId });
+          rows={list.results as readonly InviteRow[]}
+          canDelete={canDelete}
+          canLoadMore={list.status === "CanLoadMore"}
+          onLoadMore={() => {
+            list.loadMore(PAGE_SIZE);
+          }}
+          onRevoke={(id) => {
+            void revoke({ inviteId: id as Id<"invites"> });
+          }}
+          onDelete={(id) => {
+            void remove({ inviteId: id as Id<"invites"> });
           }}
         />
       )}
+      {!canCreate && (
+        <span className="flex items-center gap-1.5 text-[12px] text-text-muted">
+          <Icon name="lock" size={12} />
+          You can review and delete invites, but not create them.
+        </span>
+      )}
     </div>
-  );
-}
-
-function InviteCreateForm({ origin }: { readonly origin: string }) {
-  const create = useMutation(api.invites.create);
-  const [email, setEmail] = useState("");
-  const [busy, setBusy] = useState(false);
-  const [error, setError] = useState<string | null>(null);
-  const [created, setCreated] = useState<{ code: string; emailed: boolean } | null>(null);
-  const [copied, setCopied] = useState(false);
-
-  const link = created !== null ? inviteUrl(origin, created.code) : null;
-
-  return (
-    <form
-      className="flex flex-col gap-3 rounded-[12px] border border-border bg-surface-2 p-4"
-      onSubmit={(event) => {
-        event.preventDefault();
-        setError(null);
-        setCopied(false);
-        setBusy(true);
-        const recipient = email.trim();
-        void create({
-          ...(recipient.length > 0 ? { email: recipient } : {}),
-        })
-          .then((result) => {
-            setCreated({ code: result.code, emailed: recipient.length > 0 });
-            setEmail("");
-          })
-          .catch((cause: unknown) => {
-            setError(cause instanceof Error ? cause.message : "Could not create the invite.");
-          })
-          .finally(() => {
-            setBusy(false);
-          });
-      }}
-    >
-      <Input
-        label="Email (optional)"
-        type="email"
-        placeholder="teammate@example.com"
-        value={email}
-        onChange={(event) => {
-          setEmail(event.currentTarget.value);
-        }}
-        hint="Leave blank to just generate a link."
-      />
-      <div>
-        <Button type="submit" loading={busy} disabled={busy}>
-          Create invite
-        </Button>
-      </div>
-
-      {created !== null && link !== null && (
-        <CreatedInviteLink
-          link={link}
-          emailed={created.emailed}
-          copied={copied}
-          onCopy={() => {
-            setCopied(true);
-          }}
-        />
-      )}
-
-      {error !== null && (
-        <Text tone="danger" size="sm" role="alert">
-          {error}
-        </Text>
-      )}
-    </form>
-  );
-}
-
-function CreatedInviteLink({
-  link,
-  emailed,
-  copied,
-  onCopy,
-}: {
-  readonly link: string;
-  readonly emailed: boolean;
-  readonly copied: boolean;
-  readonly onCopy: () => void;
-}) {
-  return (
-    <div className="flex flex-col gap-2 rounded-[10px] border border-accent/30 bg-accent-soft/40 p-3">
-      <Text size="xs" tone="secondary">
-        {emailed ? "Invite created; email delivery is queued. " : "Invite created. "}
-        Copy the link now — it is only shown once.
-      </Text>
-      <div className="flex items-center gap-2">
-        <code className="min-w-0 flex-1 truncate rounded-[7px] border border-border bg-surface-1 px-2 py-1.5 font-mono text-[12px] text-text">
-          {link}
-        </code>
-        <Button
-          type="button"
-          variant="secondary"
-          size="sm"
-          onClick={() => {
-            void navigator.clipboard
-              .writeText(link)
-              .then(() => {
-                onCopy();
-              })
-              .catch(() => undefined);
-          }}
-        >
-          <Icon name="file" size={14} />
-          {copied ? "Copied" : "Copy"}
-        </Button>
-      </div>
-    </div>
-  );
-}
-
-function InviteList({
-  page,
-  onRevoke,
-}: {
-  readonly page: readonly InviteRow[];
-  readonly onRevoke: Callback<[inviteId: Id<"invites">]>;
-}) {
-  return (
-    <ul className="flex flex-col divide-y divide-border overflow-hidden rounded-[12px] border border-border bg-surface-2">
-      {page.map((invite) => (
-        <li key={invite.id} className="flex items-center justify-between gap-3 px-3.5 py-2.5">
-          <div className="min-w-0">
-            <Text size="sm" className="truncate">
-              {invite.revokedAt !== null ? "Revoked" : expiryLabel(invite.expiresAt)}
-            </Text>
-            <Text size="xs" tone="muted" className="truncate">
-              {invite.uses}
-              {invite.maxUses > 0 ? ` / ${invite.maxUses}` : ""} uses
-            </Text>
-          </div>
-          {invite.revokedAt === null && (
-            <Button
-              type="button"
-              variant="ghost"
-              size="sm"
-              onClick={() => {
-                onRevoke(invite.id);
-              }}
-            >
-              Revoke
-            </Button>
-          )}
-        </li>
-      ))}
-      {page.length === 0 && (
-        <li className="px-3.5 py-3">
-          <Text tone="muted" size="sm">
-            No invites yet.
-          </Text>
-        </li>
-      )}
-    </ul>
   );
 }
