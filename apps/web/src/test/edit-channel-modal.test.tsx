@@ -1,3 +1,4 @@
+import { Permission } from "@aulora/core";
 import { render, screen, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { describe, expect, it, vi } from "vitest";
@@ -52,6 +53,7 @@ describe("EditChannelModal", () => {
       private: true,
       memberIds: ["me", "u-ada"],
       blockedUserIds: ["u-bob"],
+      roleOverrides: [],
     });
   });
 
@@ -74,5 +76,41 @@ describe("EditChannelModal", () => {
   it("keeps the primary action disabled until a name is given", () => {
     render(<EditChannelModal {...baseProps()} channelName="" />);
     expect(screen.getByRole("button", { name: "Save changes" })).toBeDisabled();
+  });
+
+  it("edits a role's channel permission override", async () => {
+    const user = userEvent.setup();
+    const onSave = vi.fn();
+    render(
+      <EditChannelModal
+        {...baseProps()}
+        roles={[{ id: "mod", name: "Moderator", position: 5 }]}
+        canManageRoleOverrides
+        onSave={onSave}
+      />,
+    );
+
+    await user.click(screen.getByTestId("role-override-mod"));
+    await user.click(screen.getByRole("button", { name: "Send messages allow" }));
+    await user.click(screen.getByRole("button", { name: "Save changes" }));
+
+    expect(onSave).toHaveBeenCalledWith(
+      expect.objectContaining({
+        roleOverrides: [
+          { targetId: "mod", targetType: "role", allow: Permission.SendMessages, deny: 0n },
+        ],
+      }),
+    );
+  });
+
+  it("hides the role permissions section when the viewer cannot manage roles", () => {
+    render(
+      <EditChannelModal
+        {...baseProps()}
+        roles={[{ id: "mod", name: "Moderator", position: 5 }]}
+        onSave={vi.fn()}
+      />,
+    );
+    expect(screen.queryByTestId("channel-role-overrides")).not.toBeInTheDocument();
   });
 });

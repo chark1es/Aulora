@@ -267,6 +267,26 @@ web app on a LAN or Tailscale IP (e.g. `http://100.64.0.10:8080`), add that
 origin to `TRUSTED_ORIGINS` in `.env` and re-run
 `docker compose run --rm setup` to push it to the deployment.
 
+## Environment overrides (admin panel)
+
+The workspace owner can override a curated set of environment variables from
+**Instance admin → Environment** instead of editing `.env`, including the OAuth
+and OIDC credentials and a custom OIDC provider. Overrides live in the workspace
+database, sealed with the server encryption key, and take precedence over the
+deployment environment. Values supplied by the deployment are never returned to
+the client, secret or not, and secrets saved in the panel are write-only.
+Bootstrap values (`BETTER_AUTH_SECRET`, the encryption keys, `SITE_URL` and the
+other read-only entries) cannot be overridden. Overriding one key of a
+credential group (OIDC, or a social provider's id and secret) drops the group's
+remaining deployment values, so a deployment secret is never sent to an endpoint
+the owner chose.
+
+The catalog lives in `packages/convex/convex/lib/envCatalog*.ts`. To fall back to
+`.env` alone, set `AULORA_ALLOW_UI_ENV_OVERRIDES=false` in `.env` and re-run
+`docker compose run --rm setup`: the Environment tab then reports that overrides
+are disabled by the deployment and every override mutation is refused. Overrides
+apply on the next request, so a change does not need a restart.
+
 ## `/.well-known/aulora.json`
 
 The web container proxies this endpoint to Convex HTTP actions on port 3211.

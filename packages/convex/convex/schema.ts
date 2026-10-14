@@ -189,6 +189,20 @@ export default defineSchema({
   }),
 
   /**
+   * Operator-saved environment variable overrides from the instance settings
+   * UI. Every value is sealed with the server key (`aulora-sse-v1`), secrets
+   * and non-secrets alike, so nothing is stored in plaintext. Only allowlisted
+   * keys are written; the deployment environment is never returned by any
+   * query, so an override cannot be used to read the previous value.
+   */
+  envOverrides: defineTable({
+    key: v.string(),
+    valueCiphertext: v.string(),
+    updatedAt: v.number(),
+    updatedBy: v.string(),
+  }).index("by_key", ["key"]),
+
+  /**
    * Backup run log for the instance admin panel. The Convex cron and the manual
    * control write the intent; the outside backup runner writes the result. Rows
    * never hold key material or database contents.
@@ -569,6 +583,10 @@ export default defineSchema({
     muteUntil: v.optional(v.number()),
     /** Hidden from the sidebar for this viewer (per-channel only). */
     hidden: v.optional(v.boolean()),
+    /** Pinned to the top of this viewer's direct messages (per-channel only). */
+    pinned: v.optional(v.boolean()),
+    /** When the viewer pinned it; orders the pinned block, oldest pin first. */
+    pinnedAt: v.optional(v.number()),
   })
     .index("by_user_scope", ["userId", "scope"])
     .index("by_user_channel", ["userId", "channelId"]),

@@ -1,5 +1,9 @@
 /* eslint-disable no-unused-vars -- the base rule reports parameter names in type signatures; Biome checks real unused code */
-import type { PresenceRow } from "@aulora/core";
+import {
+  groupMembersByHoistedRole,
+  type MembersGroupingRole,
+  type PresenceRow,
+} from "@aulora/core";
 import { Icon, Text, usePalette } from "@aulora/ui-native";
 import { useMemo, useState } from "react";
 import { Pressable, TextInput, View } from "react-native";
@@ -18,6 +22,9 @@ const GROUPS: readonly { readonly status: Status; readonly title: string }[] = [
   { status: "dnd", title: "Do not disturb" },
   { status: "offline", title: "Offline" },
 ];
+
+/** Stable fallback so an absent `roles` prop never invalidates the grouping memo. */
+const EMPTY_ROLES: readonly MembersGroupingRole[] = [];
 
 interface MemberFilterProps {
   readonly value: string;
@@ -102,6 +109,79 @@ function NoMembers({ query }: { readonly query: string }) {
   );
 }
 
+/** A hoisted role's heading, tinted with the role color. */
+function RoleSectionHeader({
+  title,
+  color,
+  count,
+}: {
+  readonly title: string;
+  readonly color: string | null;
+  readonly count: number;
+}) {
+  const palette = usePalette();
+  return (
+    <View className="min-h-9 flex-row items-end justify-between pb-1.5 pl-4 pr-1">
+      <Text
+        size="sm"
+        className="font-semibold"
+        accessibilityRole="header"
+        maxFontSizeMultiplier={1.5}
+        style={{ color: color !== null && color.length > 0 ? color : palette["text-muted"] }}
+      >
+        {title} · {count}
+      </Text>
+    </View>
+  );
+}
+
+/** A row plus the presence data every group needs. */
+interface MemberRowData {
+  readonly member: MobileMemberEntry;
+  readonly roleIds: readonly string[];
+  readonly status: Status;
+  readonly customStatus: string;
+}
+
+interface MemberRowsProps {
+  readonly rows: readonly MemberRowData[];
+  readonly ownUserId: string;
+  readonly canModerateMembers: boolean;
+  readonly onMemberPress: (userId: string) => void;
+  readonly onMemberActions: (userId: string) => void;
+}
+
+/** Renders a group's rows, wiring moderation state per member. */
+function MemberRows(props: MemberRowsProps) {
+  return (
+    <>
+      {props.rows.map((row) => {
+        const own = row.member.userId === props.ownUserId;
+        const moderate = props.canModerateMembers && !own && !row.member.isOwner;
+        return (
+          <MemberRow
+            key={row.member.userId}
+            member={row.member}
+            status={row.status}
+            customStatus={row.customStatus}
+            own={own}
+            onActions={
+              moderate
+                ? () => {
+                    props.onMemberActions(row.member.userId);
+                  }
+                : undefined
+            }
+            onPress={() => {
+              props.onMemberPress(row.member.userId);
+            }}
+          />
+        );
+      })}
+    </>
+  );
+}
+
 export interface MembersPaneProps {
   /**
    * The people in this conversation, for a private channel or direct message.
@@ -111,6 +191,11 @@ export interface MembersPaneProps {
   readonly channelTitle: string;
   readonly members: readonly MobileMemberEntry[];
   readonly presence: readonly PresenceRow[];
+  /**
+   * Roles that opt into their own section via `hoisted`, matched by the ref
+   * stored in each member's `roleIds`. `@everyone` is always ignored.
+   */
+  readonly roles?: readonly MembersGroupingRole[] | undefined;
   readonly ownUserId: string;
   readonly canModerateMembers: boolean;
   readonly onBack: () => void;
@@ -133,11 +218,14 @@ function useMemberRows(props: MembersPaneProps, query: string) {
     const byUser = new Map(presence.map((row) => [row.userId, row]));
     return scoped
       .filter((member) => member.displayName.toLocaleLowerCase().includes(needle))
-      .map((member) => ({
-        member,
-        status: byUser.get(member.userId)?.status ?? "offline",
-        customStatus: byUser.get(member.userId)?.customStatus ?? "",
-      }))
+      .map(
+        (member): MemberRowData => ({
+          member,
+          roleIds: member.roleIds,
+          status: byUser.get(member.userId)?.status ?? "offline",
+          customStatus: byUser.get(member.userId)?.customStatus ?? "",
+        }),
+      )
       .sort((a, b) => a.member.displayName.localeCompare(b.member.displayName));
   }, [scoped, presence, query]);
 
@@ -153,6 +241,13 @@ export function MembersPane(props: MembersPaneProps) {
   const insets = useSafeAreaInsets();
   const [query, setQuery] = useState("");
   const { rows, total } = useMemberRows(props, query.trim());
+  const roles = props.roles ?? EMPTY_ROLES;
+  // Discord grouping: hoisted role sections list online members only; every
+  // offline member collapses into the trailing Offline group.
+  const grouped = useMemo(
+    () => groupMembersByHoistedRole(rows, roles, (row) => row.status !== "offline"),
+    [rows, roles],
+  );
   const online = rows.filter((row) => row.status !== "offline").length;
   const scope = props.memberIds === undefined ? "Everyone in the workspace" : props.channelTitle;
 
@@ -175,36 +270,39 @@ export function MembersPane(props: MembersPaneProps) {
           gap: 16,
         }}
       >
+        {grouped.sections.map((section) => (
+          <View key={section.role.id}>
+            <RoleSectionHeader
+              title={section.role.name}
+              color={section.role.color}
+              count={section.members.length}
+            />
+            <ListGroup>
+              <MemberRows
+                rows={section.members}
+                ownUserId={props.ownUserId}
+                canModerateMembers={props.canModerateMembers}
+                onMemberPress={props.onMemberPress}
+                onMemberActions={props.onMemberActions}
+              />
+            </ListGroup>
+          </View>
+        ))}
         {GROUPS.map((group) => {
-          const inGroup = rows.filter((row) => row.status === group.status);
+          const source = group.status === "offline" ? grouped.offline : grouped.online;
+          const inGroup = source.filter((row) => row.status === group.status);
           if (inGroup.length === 0) return null;
           return (
             <View key={group.status}>
               <ListHeader title={`${group.title} · ${inGroup.length}`} />
               <ListGroup>
-                {inGroup.map(({ member, status, customStatus }) => {
-                  const own = member.userId === props.ownUserId;
-                  const moderate = props.canModerateMembers && !own && !member.isOwner;
-                  return (
-                    <MemberRow
-                      key={member.userId}
-                      member={member}
-                      status={status}
-                      customStatus={customStatus}
-                      own={own}
-                      onActions={
-                        moderate
-                          ? () => {
-                              props.onMemberActions(member.userId);
-                            }
-                          : undefined
-                      }
-                      onPress={() => {
-                        props.onMemberPress(member.userId);
-                      }}
-                    />
-                  );
-                })}
+                <MemberRows
+                  rows={inGroup}
+                  ownUserId={props.ownUserId}
+                  canModerateMembers={props.canModerateMembers}
+                  onMemberPress={props.onMemberPress}
+                  onMemberActions={props.onMemberActions}
+                />
               </ListGroup>
             </View>
           );

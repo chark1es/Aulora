@@ -35,6 +35,13 @@ export {
   redeemOutcomeMessage,
 } from "./invites";
 export * from "./kanban.js";
+export {
+  groupMembersByHoistedRole,
+  type MembersGroupingMember,
+  type MembersGroupingResult,
+  type MembersGroupingRole,
+  type MembersGroupingRoleSection,
+} from "./members-grouping";
 export * from "./notes/index.js";
 export {
   type EnqueueInput,

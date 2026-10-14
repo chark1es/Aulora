@@ -231,8 +231,8 @@ export function RoleEditor({ viewer, canManageRoles, page = null, onNavigate }: 
                 onChange={(hoisted) => {
                   setDraft({ ...draft, hoisted });
                 }}
-                label="Show separately"
-                description="Display this role as its own group in the member list."
+                label="Display role members separately from online members"
+                description="Show this role as its own section at the top of the member list."
               />
             </div>
             <div className="h-px bg-border" />

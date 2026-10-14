@@ -1,3 +1,4 @@
+export { type DmPinGroups, partitionPinnedDms } from "./dm-pins.js";
 export {
   type ChannelView,
   channelName,

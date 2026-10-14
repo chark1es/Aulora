@@ -65,6 +65,75 @@ describe("categories CRUD", () => {
   });
 });
 
+describe("category reorder", () => {
+  it("reorders categories and persists unique, contiguous positions", async () => {
+    const t = newTest();
+    await seedWorkspace(t);
+    const asOwner = t.withIdentity({ subject: "owner-1" });
+    const first = await asOwner.mutation(api.categories.create, { name: "First" });
+    const second = await asOwner.mutation(api.categories.create, { name: "Second" });
+    const third = await asOwner.mutation(api.categories.create, { name: "Third" });
+
+    await asOwner.mutation(api.categories.reorder, {
+      moves: [
+        { categoryId: third, position: 0 },
+        { categoryId: first, position: 1 },
+        { categoryId: second, position: 2 },
+      ],
+    });
+
+    const stored = await categories(t);
+    const positions = stored.map((category) => category.position).sort((a, b) => a - b);
+    expect(positions).toEqual([0, 1, 2]);
+    const list = await asOwner.query(api.categories.list, {});
+    expect(list.map((category) => category.id)).toEqual([third, first, second]);
+  });
+
+  it("normalises a sparse position into a contiguous order", async () => {
+    const t = newTest();
+    await seedWorkspace(t);
+    const asOwner = t.withIdentity({ subject: "owner-1" });
+    const first = await asOwner.mutation(api.categories.create, { name: "First" });
+    const second = await asOwner.mutation(api.categories.create, { name: "Second" });
+    const third = await asOwner.mutation(api.categories.create, { name: "Third" });
+
+    await asOwner.mutation(api.categories.reorder, {
+      moves: [{ categoryId: first, position: 42 }],
+    });
+
+    const stored = await categories(t);
+    expect(stored.map((category) => category.position).sort((a, b) => a - b)).toEqual([0, 1, 2]);
+    const list = await asOwner.query(api.categories.list, {});
+    expect(list.map((category) => category.id)).toEqual([second, third, first]);
+  });
+
+  it("gates reorder behind ManageChannels", async () => {
+    const t = newTest();
+    await seedWorkspace(t, { members: [{ userId: "user-1" }] });
+    const categoryId = await t
+      .withIdentity({ subject: "owner-1" })
+      .mutation(api.categories.create, { name: "General" });
+
+    await expect(
+      t
+        .withIdentity({ subject: "user-1" })
+        .mutation(api.categories.reorder, { moves: [{ categoryId, position: 0 }] }),
+    ).rejects.toThrow("Missing permission");
+  });
+
+  it("rejects an unknown category id", async () => {
+    const t = newTest();
+    await seedWorkspace(t);
+    const asOwner = t.withIdentity({ subject: "owner-1" });
+    const categoryId = await asOwner.mutation(api.categories.create, { name: "Gone" });
+    await asOwner.mutation(api.categories.remove, { categoryId });
+
+    await expect(
+      asOwner.mutation(api.categories.reorder, { moves: [{ categoryId, position: 0 }] }),
+    ).rejects.toThrow("Category not found");
+  });
+});
+
 describe("category overrides", () => {
   it("hides the channel when ViewChannel is lost and shows it again when cleared", async () => {
     const t = newTest();

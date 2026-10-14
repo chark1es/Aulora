@@ -68,6 +68,23 @@ it; in production either keep that route or move it to your edge proxy. The
 Convex backend must be able to resolve and fetch
 `<CONVEX_SITE_ORIGIN>/api/auth/convex/jwks`, because it is the token issuer.
 
+## Environment overrides from the admin panel
+
+The workspace owner can override a curated set of variables from **Instance
+admin → Environment** instead of editing `.env`, including the OAuth/OIDC
+providers and a custom OIDC provider. Overrides live in the workspace database,
+sealed with the server encryption key, and win over the deployment environment.
+Deployment values are never shown, and secrets saved in the panel are
+write-only. Anyone with owner access can change them, and a database restore
+carries them with it, so keep credentials that should never change in `.env`.
+Bootstrap settings such as `BETTER_AUTH_SECRET`, the encryption keys and
+`SITE_URL` are read-only.
+
+Overrides take effect on the next request, with no restart. The switch is read
+from the deployment environment, so set `AULORA_ALLOW_UI_ENV_OVERRIDES=false` in
+`.env` and re-run `docker compose run --rm setup` to disable the section and
+fall back to `.env` alone.
+
 ## Encryption
 
 Encryption is on by default and runs **server-side**: content and files are

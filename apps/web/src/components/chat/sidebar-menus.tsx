@@ -1,3 +1,4 @@
+/* eslint-disable no-unused-vars -- the base rule reports parameter names in type signatures; Biome checks real unused code */
 import type { ChannelView } from "@aulora/core";
 import { type ContextMenuItem, Icon } from "@aulora/ui-web";
 import type { CategoryView } from "../../lib/workspace-admin";
@@ -15,6 +16,8 @@ export interface ChannelActions {
   readonly unhide?: (channel: ChannelView) => void;
   readonly mute?: (channel: ChannelView) => void;
   readonly unmute?: (channel: ChannelView) => void;
+  readonly pin?: (channel: ChannelView) => void;
+  readonly unpin?: (channel: ChannelView) => void;
 }
 
 /** Category context-menu actions; absent entries are hidden. */
@@ -78,6 +81,25 @@ export function channelMenuItems(
       icon: <Icon name="file" size={14} />,
       separatorBefore: items.length > 0,
       onSelect: () => actions.copyLink?.(channel),
+    });
+  }
+  const isDirect = channel.kind === "dm" || channel.kind === "group_dm";
+  if (isDirect && actions?.pin !== undefined && channel.pinned !== true) {
+    items.push({
+      id: "pin",
+      label: "Pin conversation",
+      icon: <Icon name="pin" size={14} />,
+      separatorBefore: items.length > 0,
+      onSelect: () => actions.pin?.(channel),
+    });
+  }
+  if (isDirect && actions?.unpin !== undefined && channel.pinned === true) {
+    items.push({
+      id: "unpin",
+      label: "Unpin conversation",
+      icon: <Icon name="pin" size={14} />,
+      separatorBefore: items.length > 0,
+      onSelect: () => actions.unpin?.(channel),
     });
   }
   if (actions?.mute !== undefined && channel.muted !== true) {

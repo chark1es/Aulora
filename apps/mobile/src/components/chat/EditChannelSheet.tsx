@@ -1,7 +1,9 @@
 import { Button, Icon, Input, Text, usePalette } from "@aulora/ui-native";
 import { useEffect, useMemo, useState } from "react";
 import { Pressable, ScrollView, TextInput, View } from "react-native";
+import type { ChannelRoleOption, OverrideView } from "../../lib/channel-role-overrides";
 import type { MobileMemberEntry } from "../../lib/permissions";
+import { ChannelRoleOverrides } from "./ChannelRoleOverrides";
 import { MemberAvatar } from "./MemberAvatar";
 import { Sheet } from "./Sheet";
 
@@ -11,6 +13,7 @@ export interface EditChannelPatch {
   readonly private: boolean;
   readonly memberIds: readonly string[];
   readonly blockedUserIds: readonly string[];
+  readonly roleOverrides: readonly OverrideView[];
 }
 
 export interface EditChannelSheetProps {
@@ -20,6 +23,12 @@ export interface EditChannelSheetProps {
   readonly isPrivate: boolean;
   readonly initialMemberIds: readonly string[];
   readonly initialBlockedUserIds: readonly string[];
+  /** Roles the viewer may override on this channel, highest position first. */
+  readonly roles?: readonly ChannelRoleOption[];
+  /** Existing role-target overrides for the channel. */
+  readonly initialRoleOverrides?: readonly OverrideView[];
+  /** Shows the role permissions section when the viewer can manage roles. */
+  readonly canManageRoleOverrides?: boolean;
   readonly ownUserId: string;
   readonly members: readonly MobileMemberEntry[];
   readonly busy?: boolean;
@@ -42,6 +51,9 @@ export function EditChannelSheet(props: EditChannelSheetProps) {
     isPrivate,
     initialMemberIds,
     initialBlockedUserIds,
+    roles = [],
+    initialRoleOverrides = [],
+    canManageRoleOverrides = false,
     ownUserId,
     members,
     busy = false,
@@ -55,6 +67,7 @@ export function EditChannelSheet(props: EditChannelSheetProps) {
   const [privateChannel, setPrivateChannel] = useState(isPrivate);
   const [selectedMembers, setSelectedMembers] = useState<readonly string[]>(initialMemberIds);
   const [blockedUserIds, setBlockedUserIds] = useState<readonly string[]>(initialBlockedUserIds);
+  const [roleOverrides, setRoleOverrides] = useState<readonly OverrideView[]>(initialRoleOverrides);
   const [memberQuery, setMemberQuery] = useState("");
   const [blockQuery, setBlockQuery] = useState("");
   const [saving, setSaving] = useState(false);
@@ -70,6 +83,7 @@ export function EditChannelSheet(props: EditChannelSheetProps) {
     setPrivateChannel(isPrivate);
     setSelectedMembers(initialMemberIds);
     setBlockedUserIds(initialBlockedUserIds);
+    setRoleOverrides(initialRoleOverrides);
     setMemberQuery("");
     setBlockQuery("");
     setSaving(false);
@@ -128,6 +142,7 @@ export function EditChannelSheet(props: EditChannelSheetProps) {
         private: privateChannel,
         memberIds: privateChannel ? [...new Set([ownUserId, ...selectedMembers])] : [],
         blockedUserIds: [...new Set(blockedUserIds)],
+        roleOverrides: [...roleOverrides],
       }),
     ).finally(() => {
       setSaving(false);
@@ -395,6 +410,15 @@ export function EditChannelSheet(props: EditChannelSheetProps) {
               permission on this channel only.
             </Text>
           </View>
+
+          {canManageRoleOverrides && (
+            <ChannelRoleOverrides
+              roles={roles}
+              overrides={roleOverrides}
+              disabled={busy || saving}
+              onChange={setRoleOverrides}
+            />
+          )}
 
           {error !== null && (
             <Text size="sm" tone="danger" accessibilityRole="alert">

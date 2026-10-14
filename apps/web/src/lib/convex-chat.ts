@@ -47,6 +47,8 @@ interface ServerChannel {
   readonly memberIds?: readonly string[];
   readonly hidden?: boolean;
   readonly muted?: boolean;
+  readonly pinned?: boolean;
+  readonly pinnedAt?: number | null;
 }
 
 function toSummary(channel: ServerChannel): ChannelSummary {
@@ -63,6 +65,8 @@ function toSummary(channel: ServerChannel): ChannelSummary {
     ...(channel.memberIds !== undefined ? { memberIds: channel.memberIds } : {}),
     ...(channel.hidden !== undefined ? { hidden: channel.hidden } : {}),
     ...(channel.muted !== undefined ? { muted: channel.muted } : {}),
+    ...(channel.pinned !== undefined ? { pinned: channel.pinned } : {}),
+    ...(channel.pinnedAt !== undefined ? { pinnedAt: channel.pinnedAt } : {}),
   };
 }
 
@@ -201,6 +205,13 @@ export function convexPort(client: ConvexReactClient): ChatPort {
       await client.mutation(api.notifications.setChannelMuted, {
         channelId: args.channelId as never,
         muted: args.muted,
+      });
+      return null;
+    },
+    async setChannelPinned(args) {
+      await client.mutation(api.channels.setPinned, {
+        channelId: args.channelId as never,
+        pinned: args.pinned,
       });
       return null;
     },

@@ -4,6 +4,7 @@ import {
   conversationTitle,
   createTypingThrottle,
   hasPermission,
+  type MembersGroupingRole,
   type MentionTarget,
   type MessagePayload,
   Permission,
@@ -32,6 +33,7 @@ import {
   type MemberView,
   type RoleView,
   resolveViewerPermissions,
+  roleRef,
 } from "../../lib/workspace-admin";
 import { type ChatSearchHit, useChat } from "../../providers/ChatProvider";
 import { useDesktopUpdates } from "../../providers/DesktopUpdateProvider";
@@ -58,6 +60,13 @@ import { ChannelSidebar, type ChannelUnread } from "./ChannelSidebar";
 import { CreateCategoryModal } from "./CreateCategoryModal";
 import { type CreateChannelInput, CreateChannelModal } from "./CreateChannelModal";
 import { channelEditBaseline, commitChannelEdit } from "./channel-edit";
+import {
+  type ChannelRoleOption,
+  canEditChannelRole,
+  mergeRoleOverrides,
+  roleOverridesFor,
+  sameOverrides,
+} from "./channel-role-overrides";
 import { EditChannelModal, type EditChannelPatch } from "./EditChannelModal";
 import { MemberProfilePopover } from "./MemberProfilePopover";
 import { MembersPanel } from "./MembersPanel";
@@ -249,6 +258,7 @@ function ChatViewContent({
   const createCategory = useMutation(api.categories.create);
   const updateCategory = useMutation(api.categories.update);
   const removeCategory = useMutation(api.categories.remove);
+  const reorderCategories = useMutation(api.categories.reorder);
   const setNickname = useMutation(api.members.setNickname);
   const setBio = useMutation(api.members.setBio);
   const generateAvatarUploadUrl = useMutation(api.members.generateAvatarUploadUrl);
@@ -651,6 +661,21 @@ function ChatViewContent({
     [members, visibleMemberIds],
   );
 
+  // Roles the members panel can render as their own sections. Members store a
+  // role's stable key when it has one, so match on that ref.
+  const memberRoleGroups = useMemo<readonly MembersGroupingRole[]>(
+    () =>
+      admin.roleViews.map((role) => ({
+        id: roleRef(role),
+        name: role.name,
+        color: role.color,
+        position: role.position,
+        hoisted: role.hoisted,
+        isEveryone: role.isEveryone,
+      })),
+    [admin.roleViews],
+  );
+
   const channelRoleOptions = useMemo(
     () => roles.map((role) => ({ id: role.roleId, name: role.name })),
     [roles],
@@ -682,6 +707,28 @@ function ChatViewContent({
   const canCreateChannel = hasPermission(permissions, Permission.ManageChannels);
   const canManageChannels =
     admin.viewer.isOwner || hasPermission(permissions, Permission.ManageChannels);
+  const manageableRoles = useMemo<readonly ChannelRoleOption[]>(() => {
+    const viewer = { isOwner: admin.viewer.isOwner, topPosition: admin.viewer.topPosition };
+    const options: ChannelRoleOption[] = [];
+    for (const role of admin.roleViews) {
+      const option: ChannelRoleOption = {
+        id: roleRef(role),
+        name: role.name,
+        color: role.color,
+        position: role.position,
+        isEveryone: role.isEveryone,
+      };
+      if (canEditChannelRole(viewer, option)) {
+        options.push(option);
+      }
+    }
+    return options;
+  }, [admin.roleViews, admin.viewer.isOwner, admin.viewer.topPosition]);
+  const manageableRoleIds = useMemo(
+    () => new Set(manageableRoles.map((role) => role.id)),
+    [manageableRoles],
+  );
+  const setChannelOverrides = useMutation(api.channels.setOverrides);
   const canManageCategories =
     admin.viewer.isOwner || hasPermission(permissions, Permission.ManageChannels);
   const canEditNickname =
@@ -1111,6 +1158,27 @@ function ChatViewContent({
     setEditChannelBusy(true);
     setEditChannelError(null);
     try {
+      const submittedRoles = patch.roleOverrides.filter((override) =>
+        manageableRoleIds.has(override.targetId),
+      );
+      const currentRoles = roleOverridesFor(target.overrides ?? []).filter((override) =>
+        manageableRoleIds.has(override.targetId),
+      );
+      if (!sameOverrides(submittedRoles, currentRoles)) {
+        await setChannelOverrides({
+          channelId: target.id as never,
+          overrides: mergeRoleOverrides(
+            target.overrides ?? [],
+            submittedRoles,
+            manageableRoleIds,
+          ).map((override) => ({
+            targetId: override.targetId,
+            targetType: override.targetType,
+            allow: override.allow,
+            deny: override.deny,
+          })),
+        });
+      }
       await commitChannelEdit(runtime, {
         baseline: channelEditBaseline(target, titles.get(target.id) ?? target.name),
         name: patch.name,
@@ -1129,7 +1197,7 @@ function ChatViewContent({
   };
 
   return (
-    <div className="relative flex min-h-0 min-w-0 flex-1 gap-2.5">
+    <div className="relative flex min-h-0 min-w-0 flex-1">
       {!sidebarHidden && (
         <div className={cn("min-h-0 w-full md:flex md:w-auto", showList ? "flex" : "hidden")}>
           <ChannelSidebar
@@ -1271,6 +1339,16 @@ function ChatViewContent({
                   .setChannelMuted?.({ channelId: channel.id, muted: false })
                   .catch(() => undefined);
               },
+              pin: (channel) => {
+                void runtime.port
+                  .setChannelPinned?.({ channelId: channel.id, pinned: true })
+                  .catch(() => undefined);
+              },
+              unpin: (channel) => {
+                void runtime.port
+                  .setChannelPinned?.({ channelId: channel.id, pinned: false })
+                  .catch(() => undefined);
+              },
               ...(admin.viewer.isOwner || hasPermission(permissions, Permission.ManageChannels)
                 ? {
                     archive: (channel: ChannelView) => {
@@ -1307,6 +1385,15 @@ function ChatViewContent({
             }
             onReorderChannels={(moves) =>
               void runtime.port.reorderChannels({ moves }).catch(() => undefined)
+            }
+            canReorderCategories={canManageCategories}
+            onReorderCategories={(moves) =>
+              void reorderCategories({
+                moves: moves.map((move) => ({
+                  categoryId: move.categoryId as never,
+                  position: move.position,
+                })),
+              }).catch(() => undefined)
             }
             onSignOut={onSignOut}
           />
@@ -1540,6 +1627,7 @@ function ChatViewContent({
               <MembersPanel
                 members={visibleMembers}
                 presence={presence}
+                roles={memberRoleGroups}
                 customStatuses={customStatuses}
                 ownUserId={ownUserId}
                 onViewProfile={(userId, anchor) => {
@@ -1759,6 +1847,11 @@ function ChatViewContent({
             .filter((override) => override.targetType === "member")
             .filter((override) => (override.deny & Permission.ViewChannel) !== 0n)
             .map((override) => override.targetId)}
+          roles={manageableRoles}
+          initialRoleOverrides={roleOverridesFor(editChannelModal.overrides ?? []).filter(
+            (override) => manageableRoleIds.has(override.targetId),
+          )}
+          canManageRoleOverrides={canManageChannels && manageableRoles.length > 0}
           ownUserId={ownUserId}
           members={members}
           busy={editChannelBusy}

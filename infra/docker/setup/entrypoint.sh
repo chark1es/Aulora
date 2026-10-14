@@ -253,6 +253,12 @@ set_env_if_present OIDC_SCOPES "$(host_value OIDC_SCOPES)"
 set_env_if_present OIDC_GROUP_CLAIM "$(host_value OIDC_GROUP_CLAIM)"
 set_env_if_present OIDC_GROUP_ROLE_MAP "$(host_value OIDC_GROUP_ROLE_MAP)"
 
+# Kill switch for the owner-editable environment overrides in Instance admin ->
+# Environment. Only the exact value "false" disables them; blank keeps the
+# default (on). The setting lives on the deployment env because the backend
+# reads it when listing and saving overrides.
+set_env_if_present AULORA_ALLOW_UI_ENV_OVERRIDES "$(host_value AULORA_ALLOW_UI_ENV_OVERRIDES)"
+
 set_env_if_present VAPID_SUBJECT "$VAPID_SUBJECT_VALUE"
 set_env_if_present VAPID_PUBLIC_KEY "$VAPID_PUBLIC_KEY_VALUE"
 set_env_if_present VAPID_PRIVATE_KEY "$VAPID_PRIVATE_KEY_VALUE" 1
