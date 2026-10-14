@@ -255,6 +255,20 @@ describe("effective environment", () => {
     expect(merged.GITHUB_CLIENT_ID).toBe("ui-id");
   });
 
+  it("reflects applied overrides and hides removed group members when enumerated", () => {
+    const merged = buildEffectiveEnv(
+      { OIDC_ISSUER: "https://idp.example.com", OIDC_CLIENT_ID: "env-id", OIDC_SCOPES: "openid" },
+      new Map([["OIDC_CLIENT_ID", "ui-id"]]),
+    );
+    const keys = Object.keys(merged);
+    expect(keys).toContain("OIDC_CLIENT_ID");
+    expect(keys).toContain("OIDC_SCOPES");
+    expect(keys).not.toContain("OIDC_ISSUER");
+    expect(merged.OIDC_CLIENT_ID).toBe("ui-id");
+    expect("OIDC_SCOPES" in merged).toBe(true);
+    expect("OIDC_ISSUER" in merged).toBe(false);
+  });
+
   it("reports the source of each variable without exposing values", () => {
     const lookup = envLookup({ GITHUB_CLIENT_ID: "env-id", OIDC_SCOPES: "   " });
     expect(isEnvValueSet(lookup, "GITHUB_CLIENT_ID")).toBe(true);

@@ -93,12 +93,6 @@ export function envVarSource(
  * override wins even when the deployment variable is set. Keys that are not in
  * the overridable allowlist are ignored, so a stale row can never smuggle in a
  * bootstrap variable.
- *
- * The overlay is a Proxy rather than a copied object on purpose. Convex's
- * default runtime implements `process.env` as a Proxy over an empty object with
- * only a `get` trap, so the entire deployment environment is invisible to
- * `Object.entries`/`Object.keys`/spread. Copying `base` would therefore drop
- * every deployment variable; forwarding reads through to `base` keeps them.
  */
 export function buildEffectiveEnv(base: Env, overrides: ReadonlyMap<string, string>): Env {
   const applied = new Map<string, string>();
@@ -119,49 +113,48 @@ export function buildEffectiveEnv(base: Env, overrides: ReadonlyMap<string, stri
       }
     }
   }
+  return envOverlay(base, applied, removed);
+}
+
+/** Descriptor reported for overlay-only keys so enumeration stays consistent. */
+const OVERLAY_DESCRIPTOR: PropertyDescriptor = {
+  configurable: true,
+  enumerable: true,
+  writable: true,
+  value: undefined,
+};
+
+/**
+ * `base` with `applied` overlaid and `removed` hidden. A Proxy, not a copy:
+ * Convex's default runtime exposes `process.env` as a non-enumerable Proxy, so
+ * `Object.entries`/spread on it are empty and copying `base` would silently drop
+ * every deployment variable. Forwarding reads through to `base` keeps them.
+ */
+function envOverlay(
+  base: Env,
+  applied: ReadonlyMap<string, string>,
+  removed: ReadonlySet<string>,
+): Env {
   const handler: ProxyHandler<Env> = {
     get(target, prop, receiver) {
-      if (typeof prop === "string") {
-        if (removed.has(prop)) {
-          return undefined;
-        }
-        const override = applied.get(prop);
-        if (override !== undefined) {
-          return override;
-        }
-      }
+      if (typeof prop === "string" && removed.has(prop)) return undefined;
+      const override = typeof prop === "string" ? applied.get(prop) : undefined;
+      if (override !== undefined) return override;
       return Reflect.get(target, prop, receiver);
     },
     has(target, prop) {
-      if (typeof prop === "string") {
-        if (removed.has(prop)) {
-          return false;
-        }
-        if (applied.has(prop)) {
-          return true;
-        }
-      }
+      if (typeof prop === "string" && removed.has(prop)) return false;
+      if (typeof prop === "string" && applied.has(prop)) return true;
       return Reflect.has(target, prop);
     },
     ownKeys(target) {
       const keys = new Set<string | symbol>(Reflect.ownKeys(target));
-      for (const key of applied.keys()) {
-        keys.add(key);
-      }
-      for (const key of removed) {
-        keys.delete(key);
-      }
+      for (const key of applied.keys()) keys.add(key);
+      for (const key of removed) keys.delete(key);
       return [...keys];
     },
     getOwnPropertyDescriptor(target, prop) {
-      return (
-        Reflect.getOwnPropertyDescriptor(target, prop) ?? {
-          configurable: true,
-          enumerable: true,
-          writable: true,
-          value: undefined,
-        }
-      );
+      return Reflect.getOwnPropertyDescriptor(target, prop) ?? OVERLAY_DESCRIPTOR;
     },
   };
   return new Proxy(base, handler);
