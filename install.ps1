@@ -2,9 +2,10 @@
 #
 #   pwsh ./install.ps1 [options]
 #
-# It checks Docker, writes infra/docker/.env (reusing an existing one), builds
-# and starts the Compose stack, runs first-run setup, and prints the URL. It is
-# idempotent: re-running reuses .env and is a no-op for data.
+# Run it from a checkout of the stable "release" branch. It checks Docker,
+# writes infra/docker/.env (reusing an existing one), builds and starts the
+# Compose stack, runs first-run setup, and prints the URL. It is idempotent:
+# re-running reuses .env and is a no-op for data.
 #
 # Options (or the matching AULORA_* environment variable):
 #   -Name <name>        workspace name            (AULORA_WORKSPACE_NAME)
@@ -16,6 +17,7 @@
 #   -Backups            also start the nightly backup runner
 #   -NoStart            write .env and stop before docker compose
 #   -DryRun             print the plan; change nothing
+#   -AllowAnyBranch     install from a non-release branch (AULORA_ALLOW_ANY_BRANCH)
 #   -Help
 
 [CmdletBinding()]
@@ -30,15 +32,28 @@ param(
   [switch]$Backups,
   [switch]$NoStart,
   [switch]$DryRun,
+  [switch]$AllowAnyBranch,
   [switch]$Help
 )
 
 $ErrorActionPreference = "Stop"
 
+$AllowAny = $AllowAnyBranch -or ($env:AULORA_ALLOW_ANY_BRANCH -match '^(1|true|yes|on)$')
+
 function Write-Log([string]$Message) { Write-Output "[install] $Message" }
 function Write-InstallError([string]$Message) { Write-Error "[install] $Message"; exit 1 }
 function Get-Slug([string]$Value) {
   return ($Value.ToLower() -replace "[^a-z0-9]+", "-").Trim("-")
+}
+function Test-InstallBranch {
+  if ($AllowAny) { return }
+  if (-not (Get-Command git -ErrorAction SilentlyContinue)) { return }
+  $branch = (& git -C $Root rev-parse --abbrev-ref HEAD 2>$null)
+  if ($LASTEXITCODE -ne 0 -or -not $branch) { return }
+  if ($branch -eq "release") { return }
+  $remote = (& git -C $Root remote get-url origin 2>$null)
+  if (-not $remote) { $remote = "https://github.com/chark1es/Aulora.git" }
+  Write-Warning "[install] this checkout is on '$branch', not the stable 'release' branch. Install from the release branch: git clone --branch release $remote (development installs can use -AllowAnyBranch)."
 }
 
 if ($Help) {
@@ -51,6 +66,8 @@ $Root = Split-Path -Parent $MyInvocation.MyCommand.Path
 $DockerDir = Join-Path $Root "infra\docker"
 $EnvFile = if ($env:AULORA_ENV_FILE) { $env:AULORA_ENV_FILE } else { Join-Path $DockerDir ".env" }
 $EnvExample = Join-Path $DockerDir ".env.example"
+
+Test-InstallBranch
 
 if (-not (Get-Command docker -ErrorAction SilentlyContinue)) {
   Write-InstallError "Docker is not installed or not on PATH"

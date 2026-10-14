@@ -18,6 +18,8 @@ bun run check
 
 Only stable `major.minor.patch` versions are supported by the release automation. API discovery's `apiVersion` is separate and remains 1 unless that contract changes.
 
+`main` is the development branch. The long-lived `release` branch is the stable install and Coolify deploy target, and it is moved to each published tag in the final checklist below.
+
 For a candidate, run [Actions, Release](https://github.com/chark1es/Aulora/actions/workflows/release.yml) on `main` with `publish=false`. It builds the current version and uploads a `complete-release` artifact without publishing. For v1, finish preparation at the current version, build a candidate, then merge the v1 version bump once ready. To test v1 installers separately, use the desktop candidate workflow with `version=1.0.0`; mobile candidates use the main Release workflow's current version.
 
 ## Repository and licensing
@@ -68,6 +70,7 @@ For a candidate, run [Actions, Release](https://github.com/chark1es/Aulora/actio
 - [ ] Verify `SHA256SUMS`, license/notice files, and the web/docs and legal ZIP contents.
 - [ ] Host the docs site and privacy policy at stable public URLs and test navigation on desktop and mobile.
 - [ ] Merge the version bump to publish, or manually dispatch Release on `main` with `publish=true` for an unpublished current version.
+- [ ] Move the `release` branch to the published tag (`git push origin +vX.Y.Z:refs/heads/release`) so installs and Coolify deploys pick up the new version, then confirm a fresh `git clone --branch release` installs it.
 - [ ] Verify the release tag points to the built commit, assets are publicly downloadable, and updater/discovery URLs work.
 
 Windows installers are unsigned in the initial distribution. iOS IPA downloads are App Store submissions, and mobile store availability depends on approval. State these limitations in release notes.

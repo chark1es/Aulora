@@ -17,7 +17,7 @@ All commands below start at the repository root unless stated otherwise. Use Pow
 
 ## Start the backend
 
-Run `./install.sh`, or `pwsh ./install.ps1` on Windows, to start and provision the local stack. See [getting started](../apps/docs/content/getting-started.md). Use disposable owner credentials for development and keep the generated `infra/docker/.env` private.
+Run `./install.sh`, or `pwsh ./install.ps1` on Windows, to start and provision the local stack. See [getting started](../apps/docs/content/getting-started.md). Development checkouts are on `main`, not the stable `release` branch, so the installer prints a branch warning; pass `--allow-any-branch` (or `-AllowAnyBranch`, or `AULORA_ALLOW_ANY_BRANCH=1`) to silence it. Use disposable owner credentials for development and keep the generated `infra/docker/.env` private.
 
 The default stack serves the web app at `http://localhost:8080`, Convex API/WebSocket at `http://localhost:3210`, and HTTP actions at `http://localhost:3211`.
 

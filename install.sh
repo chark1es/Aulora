@@ -3,9 +3,10 @@
 #
 #   ./install.sh [options]
 #
-# It checks Docker, writes infra/docker/.env (reusing an existing one), builds
-# and starts the Compose stack, runs first-run setup, and prints the URL. It is
-# idempotent: re-running reuses .env and is a no-op for data.
+# Run it from a checkout of the stable "release" branch. It checks Docker,
+# writes infra/docker/.env (reusing an existing one), builds and starts the
+# Compose stack, runs first-run setup, and prints the URL. It is idempotent:
+# re-running reuses .env and is a no-op for data.
 #
 # Options (or the matching AULORA_* environment variable):
 #   --name <name>        workspace name            (AULORA_WORKSPACE_NAME)
@@ -18,6 +19,7 @@
 #   --auto-update        allow infra/docker/update.sh to apply releases
 #   --no-start           write .env and stop before docker compose
 #   --dry-run            print the plan; change nothing
+#   --allow-any-branch   install from a non-release branch (AULORA_ALLOW_ANY_BRANCH)
 #   -h, --help           show this help
 
 set -euo pipefail
@@ -31,7 +33,7 @@ log() { printf '[install] %s\n' "$*"; }
 die() { printf '[install] ERROR: %s\n' "$*" >&2; exit 1; }
 
 usage() {
-  sed -n '2,21p' "${BASH_SOURCE[0]}" | sed 's/^# \{0,1\}//'
+  sed -n '2,23p' "${BASH_SOURCE[0]}" | sed 's/^# \{0,1\}//'
 }
 
 WORKSPACE_NAME="${AULORA_WORKSPACE_NAME:-}"
@@ -45,6 +47,7 @@ WITH_BACKUPS=0
 AUTO_UPDATE=0
 NO_START=0
 DRY_RUN=0
+ALLOW_ANY_BRANCH="${AULORA_ALLOW_ANY_BRANCH:-0}"
 
 while [ "$#" -gt 0 ]; do
   case "$1" in
@@ -58,6 +61,7 @@ while [ "$#" -gt 0 ]; do
     --auto-update) AUTO_UPDATE=1; shift ;;
     --no-start) NO_START=1; shift ;;
     --dry-run) DRY_RUN=1; shift ;;
+    --allow-any-branch) ALLOW_ANY_BRANCH=1; shift ;;
     -h|--help) usage; exit 0 ;;
     *) die "unknown option: $1 (try --help)" ;;
   esac
@@ -95,7 +99,31 @@ env_get() {
   printf '%s' "$value"
 }
 
+# --- branch check -----------------------------------------------------------
+
+# Installations come from the stable "release" branch. Warn (without failing)
+# when this checkout is on another branch, so development installs still work.
+warn_install_branch() {
+  case "$ALLOW_ANY_BRANCH" in
+    1|true|TRUE|yes|YES|on|ON) return 0 ;;
+  esac
+  command -v git >/dev/null 2>&1 || return 0
+  git -C "$ROOT" rev-parse --is-inside-work-tree >/dev/null 2>&1 || return 0
+  local branch remote
+  branch="$(git -C "$ROOT" rev-parse --abbrev-ref HEAD 2>/dev/null || true)"
+  if [ "$branch" = "release" ]; then
+    return 0
+  fi
+  remote="$(git -C "$ROOT" remote get-url origin 2>/dev/null || true)"
+  [ -n "$remote" ] || remote="https://github.com/chark1es/Aulora.git"
+  printf '[install] WARNING: this checkout is on "%s", not the stable "release" branch.\n' "${branch:-HEAD}" >&2
+  printf '[install]          Install from the release branch: git clone --branch release %s\n' "$remote" >&2
+  printf '[install]          Development installs can pass --allow-any-branch (or AULORA_ALLOW_ANY_BRANCH=1).\n' >&2
+}
+
 # --- validate inputs (before touching anything) -----------------------------
+
+warn_install_branch
 
 command -v docker >/dev/null 2>&1 || die "Docker is not installed or not on PATH"
 if ! docker compose version >/dev/null 2>&1; then

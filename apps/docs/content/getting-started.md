@@ -12,12 +12,12 @@ Ask the person who runs it for the web URL, and an invitation if signup is close
 
 ## Install a workspace
 
-Install Git and Docker with Compose v2.24 or newer. Start Docker first. On Windows use PowerShell 7 and Docker Desktop in Linux-container mode.
+Install Git and Docker with Compose v2.24 or newer. Start Docker first. On Windows use PowerShell 7 and Docker Desktop in Linux-container mode. Install from the stable `release` branch; `main` is for development.
 
 On macOS, Linux, or WSL:
 
 ```sh
-git clone https://github.com/chark1es/Aulora.git
+git clone --branch release https://github.com/chark1es/Aulora.git
 cd Aulora
 ./install.sh
 ```
@@ -25,7 +25,7 @@ cd Aulora
 On Windows:
 
 ```powershell
-git clone https://github.com/chark1es/Aulora.git
+git clone --branch release https://github.com/chark1es/Aulora.git
 Set-Location Aulora
 pwsh ./install.ps1
 ```

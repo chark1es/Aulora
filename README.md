@@ -22,10 +22,12 @@ Messages and uploads use server-side encryption. The server decrypts content for
 
 Install Git and Docker with Compose v2.24 or newer. Docker must be running. You do not need Bun, Node.js, or Rust to run the server. The first install downloads images and builds the app, which can take several minutes.
 
+Install from the stable `release` branch. `main` tracks development and is not an install target, and the installer warns when it runs from another branch.
+
 On macOS, Linux, or WSL:
 
 ```sh
-git clone https://github.com/chark1es/Aulora.git
+git clone --branch release https://github.com/chark1es/Aulora.git
 cd Aulora
 ./install.sh
 ```
@@ -33,7 +35,7 @@ cd Aulora
 On Windows, use PowerShell 7 and Docker Desktop with Linux containers:
 
 ```powershell
-git clone https://github.com/chark1es/Aulora.git
+git clone --branch release https://github.com/chark1es/Aulora.git
 Set-Location Aulora
 pwsh ./install.ps1
 ```
