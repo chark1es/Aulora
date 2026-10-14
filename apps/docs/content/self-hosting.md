@@ -148,7 +148,7 @@ changing update settings. Without the watcher, version information and release
 checks remain available; use host or hosting-provider controls to install.
 
 A checkout that is not a git clone, including Coolify, still updates by
-redeploying the new git ref:
+redeploying the stable `release` branch:
 
 ```sh
 docker compose pull

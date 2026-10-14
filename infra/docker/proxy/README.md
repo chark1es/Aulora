@@ -85,10 +85,11 @@ host ports, keeps generated secrets in a named volume, and marks the one-shot
 services so they do not fail Coolify's health check. The full operator guide is
 in [Deploy on Coolify](../../../apps/docs/content/coolify.md).
 
-1. Create a **Docker Compose** resource pointing at this repository, with Base
-   Directory `infra/docker` and Compose Location
-   `docker-compose.coolify.yml`. Turn on **Preserve Repository During
-   Deployment**, which the repo-relative bind mounts require.
+1. Create a **Docker Compose** resource pointing at this repository on the
+   stable **`release`** branch (`main` is for development), with Base Directory
+   `infra/docker` and Compose Location `docker-compose.coolify.yml`. Turn on
+   **Preserve Repository During Deployment**, which the repo-relative bind mounts
+   require.
 2. Set the environment variables from `.env.example` in Coolify's UI; do not
    commit a real `.env`.
 3. Add two domains: the web host -> service `web`, container port `80`, and the

@@ -33,7 +33,7 @@ profile) and Coolify otherwise deletes the checkout after deploying. With the
 toggle on, those files exist when the containers start.
 
 Deploy the stable `release` branch. It tracks the newest published release;
-`main` is the development branch. Moving `release` to the new tag is part of the
+`main` is the development branch. Promoting `release` to the new tag is part of the
 [release checklist](https://github.com/chark1es/Aulora/blob/main/docs/releasing.md).
 
 ## 2. Set the environment
@@ -141,7 +141,7 @@ Streaming a desktop or an application to many people uses the bundled LiveKit se
 
 ## Optional services
 
-The backup runner, push relay, and development Vault have Compose profiles and are off by default. To enable an optional service in this resource, remove its `profiles` entry in your deployment branch and redeploy the same Coolify resource. Configure its environment values in Coolify first. Keep the project and named volumes unchanged so the service joins the existing deployment.
+The backup runner, push relay, and development Vault have Compose profiles and are off by default. To enable an optional service in this resource, remove its `profiles` entry on the `release` branch and redeploy the same Coolify resource. Configure its environment values in Coolify first. Keep the project and named volumes unchanged so the service joins the existing deployment.
 
 Do not create a second independent stack for backups; it would have different named volumes and could back up a fresh deployment instead. If managing profiles through host commands, use Coolify's rendered configuration, project name, and environment.
 
@@ -151,7 +151,7 @@ Do not create a second independent stack for backups; it would have different na
 
 ## Upgrade
 
-Redeploy the resource (Coolify pulls the branch and rebuilds `web` and `setup`).
+Redeploy the resource (Coolify pulls the `release` branch and rebuilds `web` and `setup`).
 The named volumes, including `setup-state`, are kept, so data and secrets
 survive. If you changed origins or auth settings, re-run `setup` as above.
 
@@ -167,7 +167,7 @@ Use the UUID of this Git-based Docker Compose **application**, not a service or 
 
 Redeploy once to apply this configuration through `setup`. The shipped Compose file selects the Coolify update provider automatically. The instance panel then offers **Install update**. It resolves the published Git tag to an immutable commit, pins the application's `git_commit_sha`, and asks Coolify to build and deploy it. Status is tracked through the Coolify API; success requires the backend to run the requested version. Deployment briefly interrupts the workspace. A failed installation reports an error and can be retried after checking the Coolify deployment and setup logs.
 
-The application stays pinned to the installed commit. To resume deploying your branch manually, reset `git_commit_sha` to `HEAD` in Coolify. The integration verifies that the application's GitHub repository matches `AULORA_UPDATE_GITHUB_REPO`, which defaults to `chark1es/Aulora`.
+The application stays pinned to the installed commit. To resume deploying the `release` branch manually, reset `git_commit_sha` to `HEAD` in Coolify. The integration verifies that the application's GitHub repository matches `AULORA_UPDATE_GITHUB_REPO`, which defaults to `chark1es/Aulora`.
 
 Without API configuration, the panel still checks for releases and explains which settings are missing. Apply releases manually through Coolify. Do not run `infra/docker/update.sh` inside Coolify's source directory.
 
