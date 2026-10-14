@@ -67,14 +67,19 @@ export function ProfileEditor({
   userId,
   canChangeNickname,
   profile,
+  onSave,
 }: {
   readonly userId: string;
   readonly canChangeNickname: boolean;
   /** A profile an offline surface already holds; when set the editor stays local. */
   readonly profile?: ViewerProfileData | null | undefined;
+  /** Persists an offline edit for the life of the surface. */
+  readonly onSave?: ((next: ViewerProfileData) => void) | undefined;
 }) {
   if (profile != null) {
-    return <LocalProfileEditor canChangeNickname={canChangeNickname} initial={profile} />;
+    return (
+      <LocalProfileEditor canChangeNickname={canChangeNickname} initial={profile} onSave={onSave} />
+    );
   }
   return <RemoteProfileEditor userId={userId} canChangeNickname={canChangeNickname} />;
 }
@@ -133,9 +138,11 @@ function RemoteProfileEditor({
 function LocalProfileEditor({
   canChangeNickname,
   initial,
+  onSave,
 }: {
   readonly canChangeNickname: boolean;
   readonly initial: ViewerProfileData;
+  readonly onSave?: ((next: ViewerProfileData) => void) | undefined;
 }) {
   const savedNickname = initial.nickname ?? "";
   const [nickname, setNickname] = useState(savedNickname);
@@ -171,6 +178,11 @@ function LocalProfileEditor({
       <Button
         disabled={!bioChanged && !nicknameChanged}
         onPress={() => {
+          const next: ViewerProfileData = {
+            nickname: nickname.trim().length > 0 ? nickname.trim() : null,
+            bio: bio.trim(),
+          };
+          onSave?.(next);
           setFeedback("Saved in this offline demo only.");
         }}
       >

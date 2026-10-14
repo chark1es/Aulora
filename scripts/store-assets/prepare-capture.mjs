@@ -66,13 +66,12 @@ import { TurboModuleRegistry } from 'react-native';
 import { ReviewDemoScreen } from '../src/components/ReviewDemoScreen';
 import { CAPTURE_VIEW } from '../src/lib/capture-state';
 
-const CHANNEL_BY_VIEW: Record<string, string> = {
-  general: 'general',
-  direct: 'Sam Chen',
-  design: 'design',
-  group: 'Launch crew',
-  // Threads share the general channel; the capture shows the conversation view.
-  thread: 'general',
+const VIEW_BY_NAME: Record<string, { channel: string; thread?: string }> = {
+  general: { channel: 'general' },
+  direct: { channel: 'Sam Chen' },
+  design: { channel: 'design' },
+  group: { channel: 'Launch crew' },
+  thread: { channel: 'general', thread: 'explore' },
 };
 
 export default function StoreCapture() {
@@ -80,10 +79,12 @@ export default function StoreCapture() {
     const timer = setInterval(() => TurboModuleRegistry.get<{ hide(): void }>('DevLoadingView')?.hide(), 500);
     return () => clearInterval(timer);
   }, []);
+  const view = VIEW_BY_NAME[CAPTURE_VIEW] ?? { channel: 'general' };
   return (
     <ReviewDemoScreen
       showNotice={false}
-      initialChannelName={CHANNEL_BY_VIEW[CAPTURE_VIEW] ?? 'general'}
+      initialChannelName={view.channel}
+      initialThreadRootId={view.thread}
       onExit={() => {}}
     />
   );

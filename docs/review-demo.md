@@ -6,7 +6,7 @@ Enter `demo.aulora.example` as the server address and tap **Connect**. No accoun
 
 The demo renders the *same* chat surfaces as a signed-in workspace — the three swipe panes (hub, conversation, members), the thumb-height dock, threads, search, member profiles, pinned messages, and the composer — over a mock session instead of a server. Any change to the chat UI therefore appears in the demo without a parallel implementation. A slim **Offline App Review demo** bar sits across the top.
 
-Reviewers can browse channels, direct and group messages, send messages and local files, add reactions, open and reply to threads, search sample messages, open member profiles, and view pinned messages. These use the native chat controls and the shared chat session. Presence is simulated. Voice/video, server administration, authentication, and push delivery require a real server and are not verified by the offline demo; calls are shown as unavailable and profile pictures and private notes stay local.
+Reviewers can browse channels, direct and group messages, send messages and local files, add reactions, open and reply to threads, search sample messages, open member profiles, and view pinned messages. These use the native chat controls and the shared chat session. Presence is simulated. Voice/video, server administration, authentication, and push delivery require a real server and are not verified by the offline demo; calls are shown as unavailable, profile edits persist only for the session and reset on exit, and profile pictures and private notes stay local.
 
 Tap **Exit demo** to return to Connect. Entering again creates a fresh sample workspace. Messages and files created in the demo are discarded rather than sent or saved to a real workspace.
 

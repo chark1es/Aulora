@@ -47,6 +47,8 @@ export interface SettingsViewProps {
   readonly onSignOut: () => void;
   /** Profile an offline surface already holds; when set the editor stays local. */
   readonly profileData?: ViewerProfileData | null | undefined;
+  /** Persists an offline profile edit for the life of the surface. */
+  readonly onSaveProfile?: ((next: ViewerProfileData) => void) | undefined;
 }
 
 interface DetailProps {
@@ -54,11 +56,19 @@ interface DetailProps {
   readonly ownUserId: string;
   readonly canChangeNickname: boolean;
   readonly profileData?: ViewerProfileData | null | undefined;
+  readonly onSaveProfile?: ((next: ViewerProfileData) => void) | undefined;
   readonly onBack: () => void;
 }
 
 /** One settings page pushed over the You tab, with a way back. */
-function SettingsDetail({ page, ownUserId, canChangeNickname, profileData, onBack }: DetailProps) {
+function SettingsDetail({
+  page,
+  ownUserId,
+  canChangeNickname,
+  profileData,
+  onSaveProfile,
+  onBack,
+}: DetailProps) {
   const clearance = useDockClearance();
   return (
     <View className="flex-1" style={{ paddingBottom: clearance }}>
@@ -77,6 +87,7 @@ function SettingsDetail({ page, ownUserId, canChangeNickname, profileData, onBac
               userId={ownUserId}
               canChangeNickname={canChangeNickname}
               profile={profileData}
+              onSave={onSaveProfile}
             />
           </KeyboardAwareScrollView>
         )}
@@ -217,6 +228,7 @@ export function SettingsView(props: SettingsViewProps) {
         ownUserId={props.ownUserId}
         canChangeNickname={props.canChangeNickname}
         profileData={props.profileData}
+        onSaveProfile={props.onSaveProfile}
         onBack={() => {
           setPage(null);
         }}

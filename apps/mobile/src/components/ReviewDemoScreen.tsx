@@ -15,6 +15,8 @@ export interface ReviewDemoScreenProps {
   readonly showNotice?: boolean;
   /** Screenshot capture opens one named conversation first. */
   readonly initialChannelName?: string;
+  /** Screenshot capture opens one thread first. */
+  readonly initialThreadRootId?: string;
 }
 
 /** A visibly labeled, self-contained workspace running the real chat surfaces offline. */
@@ -22,13 +24,14 @@ export function ReviewDemoScreen({
   onExit,
   showNotice = true,
   initialChannelName,
+  initialThreadRootId,
 }: ReviewDemoScreenProps) {
   // The chat surface expects a Convex client for server-only sheets; nothing here
   // reaches it because every live surface reads the mock session instead.
   const client = useMemo(() => new ConvexReactClient("http://127.0.0.1:9"), []);
   const [demo, setDemo] = useState<ReviewDemo | undefined>();
   const [error, setError] = useState<string | null>(null);
-  const session = useReviewDemoSession(demo, initialChannelName);
+  const session = useReviewDemoSession(demo, { initialChannelName, initialThreadRootId });
 
   useEffect(() => {
     let cancelled = false;

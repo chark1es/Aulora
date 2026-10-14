@@ -98,9 +98,13 @@ export interface ViewerProfileData {
  * spinner; every other screen reads the shared session unchanged.
  */
 export interface ChatScreenOfflineData {
-  readonly pinsFor?: (channelId: string) => readonly MessagePayload[];
+  readonly pinsFor?: (_channelId: string) => readonly MessagePayload[];
   readonly profiles?: ReadonlyMap<string, MemberProfileData>;
   readonly viewerProfile?: ViewerProfileData | null;
+  /** Persists an offline profile edit for the life of the surface. */
+  readonly onSaveViewerProfile?: (next: ViewerProfileData) => void;
+  /** Thread to open once on mount, for an offline screenshot capture. */
+  readonly initialThreadRoot?: MessagePayload;
 }
 
 const ChatScreenSessionContext = createContext<ChatScreenSession | null>(null);
@@ -554,6 +558,19 @@ export function useChatScreenData({ onSignOut }: ChatScreenProps) {
   const list = useChatScreenChannelList(session, ui, mentions);
   const conversation = useChatScreenConversation(session, ui, mentions, list);
   const messages = useChatScreenMessages(session, ui, conversation);
+
+  // The offline capture opens one thread; live surfaces never set this, and the
+  // guard keeps closing the thread from reopening it.
+  const initialThreadRoot = session.initialThreadRoot;
+  const openedInitialThread = useRef(false);
+  const setThreadRoot = ui.setThreadRoot;
+  useEffect(() => {
+    if (openedInitialThread.current || initialThreadRoot === undefined) {
+      return;
+    }
+    openedInitialThread.current = true;
+    setThreadRoot(initialThreadRoot);
+  }, [initialThreadRoot, setThreadRoot]);
 
   const ownPresence = session.presence.find((row) => row.userId === session.ownUserId);
   const ownStatus = ownPresence?.status ?? "offline";
