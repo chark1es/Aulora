@@ -8,7 +8,15 @@ import {
   Permission,
 } from "@aulora/core";
 import { useMutation, useQuery } from "convex/react";
-import { useEffect, useMemo, useRef } from "react";
+import {
+  createContext,
+  createElement,
+  type ReactNode,
+  useContext,
+  useEffect,
+  useMemo,
+  useRef,
+} from "react";
 import { Platform } from "react-native";
 import { api } from "../../../../../packages/convex/convex/_generated/api";
 import { useIncomingCallNotification, useLocalNotifications } from "../../lib/notifications";
@@ -23,7 +31,11 @@ import { useVoice } from "../../providers/VoiceProvider";
 import type { ChatScreenProps } from "./chat-screen-types";
 import { type ChatScreenUiState, useChatScreenUiState } from "./use-chat-screen-ui-state";
 
-function useChatScreenSession(workspaceName: string, ownUserId: string, ownDisplayName: string) {
+export function useConvexChatScreenSession(
+  workspaceName: string,
+  ownUserId: string,
+  ownDisplayName: string,
+) {
   const chat = useChat();
   const generateAvatarUploadUrl = useMutation(api.members.generateAvatarUploadUrl);
   const setAvatar = useMutation(api.members.setAvatar);
@@ -65,7 +77,56 @@ function useChatScreenSession(workspaceName: string, ownUserId: string, ownDispl
   };
 }
 
-export type ChatScreenSession = ReturnType<typeof useChatScreenSession>;
+export type ChatScreenSession = ReturnType<typeof useConvexChatScreenSession> &
+  ChatScreenOfflineData;
+
+/** Profile details that a live server supplies; the offline demo injects its own. */
+export interface MemberProfileData {
+  readonly bio: string;
+  readonly lastOnlineAt: number | null;
+}
+
+/** The viewer's editable profile fields, supplied offline by the demo. */
+export interface ViewerProfileData {
+  readonly nickname: string | null;
+  readonly bio: string;
+}
+
+/**
+ * Optional data only a live server normally reports. The offline review demo
+ * fills these so server-backed sheets render sample content instead of a
+ * spinner; every other screen reads the shared session unchanged.
+ */
+export interface ChatScreenOfflineData {
+  readonly pinsFor?: (channelId: string) => readonly MessagePayload[];
+  readonly profiles?: ReadonlyMap<string, MemberProfileData>;
+  readonly viewerProfile?: ViewerProfileData | null;
+}
+
+const ChatScreenSessionContext = createContext<ChatScreenSession | null>(null);
+
+/**
+ * Provides the session every chat pane reads. The signed-in app supplies the
+ * Convex-backed {@link useConvexChatScreenSession}; the offline demo supplies a
+ * mock one, so both render the identical surfaces.
+ */
+export function ChatScreenSessionProvider({
+  value,
+  children,
+}: {
+  readonly value: ChatScreenSession;
+  readonly children: ReactNode;
+}) {
+  return createElement(ChatScreenSessionContext.Provider, { value }, children);
+}
+
+export function useChatScreenSessionValue(): ChatScreenSession {
+  const value = useContext(ChatScreenSessionContext);
+  if (value === null) {
+    throw new Error("useChatScreenSessionValue must be used within a ChatScreenSessionProvider.");
+  }
+  return value;
+}
 
 function useChatScreenMentions(session: ChatScreenSession) {
   const { channels, categories, members, presence, ownUserId, ownDisplayName, voice } = session;
@@ -486,20 +547,15 @@ function useChatScreenMessages(
   };
 }
 
-export function useChatScreenData({
-  workspaceName,
-  ownUserId,
-  ownDisplayName,
-  onSignOut,
-}: ChatScreenProps) {
-  const session = useChatScreenSession(workspaceName, ownUserId, ownDisplayName);
+export function useChatScreenData({ onSignOut }: ChatScreenProps) {
+  const session = useChatScreenSessionValue();
   const ui = useChatScreenUiState();
   const mentions = useChatScreenMentions(session);
   const list = useChatScreenChannelList(session, ui, mentions);
   const conversation = useChatScreenConversation(session, ui, mentions, list);
   const messages = useChatScreenMessages(session, ui, conversation);
 
-  const ownPresence = session.presence.find((row) => row.userId === ownUserId);
+  const ownPresence = session.presence.find((row) => row.userId === session.ownUserId);
   const ownStatus = ownPresence?.status ?? "offline";
   const ownCustomStatus = ownPresence?.customStatus ?? "";
 

@@ -223,6 +223,7 @@ function ChatHubSettingsTab({ model }: { readonly model: ChatScreenModel }) {
         });
       }}
       onSignOut={model.confirmSignOut}
+      profileData={model.viewerProfile}
     />
   );
 }

@@ -2,9 +2,11 @@
 
 Aulora connects to a server the user supplies. There is no official hosted service or shared reviewer account, so a fresh iOS or Android installation can open a self-contained demo workspace without a backend.
 
-Enter `demo.aulora.example` as the server address and tap **Connect**. No account or password is needed. The Connect screen shows no demo button; the address is the only entry, and it is given to reviewers in the store review notes. `.example` is a reserved domain ([RFC 2606](https://www.rfc-editor.org/rfc/rfc2606)), so the address cannot belong to a real server and the app never contacts it. The sample Acme Studio workspace runs in memory and does not create a server profile, authenticate, register for push, or connect to a backend. The address stops opening the demo once any server profile is saved, as does the direct route, so a live workspace cannot remain connected behind the demo.
+Enter `demo.aulora.example` as the server address and tap **Connect**. No account or password is needed. The Connect screen shows no demo button; the address is the only entry, and it is given to reviewers in the store review notes. `.example` is a reserved domain ([RFC 2606](https://www.rfc-editor.org/rfc/rfc2606)), so the address cannot belong to a real server and the app never contacts it. The demo workspace runs in memory and does not create a server profile, authenticate, register for push, or connect to a backend. The address stops opening the demo once any server profile is saved, as does the direct route, so a live workspace cannot remain connected behind the demo.
 
-Reviewers can browse channels, direct and group messages, send messages and local files, add reactions, open and reply to threads, search sample messages, and view sample members. These use the native chat controls and the shared chat session. Presence is simulated. Voice/video, server administration, authentication, and push delivery require a real server and are not verified by the offline demo.
+The demo renders the *same* chat surfaces as a signed-in workspace — the three swipe panes (hub, conversation, members), the thumb-height dock, threads, search, member profiles, pinned messages, and the composer — over a mock session instead of a server. Any change to the chat UI therefore appears in the demo without a parallel implementation. A slim **Offline App Review demo** bar sits across the top.
+
+Reviewers can browse channels, direct and group messages, send messages and local files, add reactions, open and reply to threads, search sample messages, open member profiles, and view pinned messages. These use the native chat controls and the shared chat session. Presence is simulated. Voice/video, server administration, authentication, and push delivery require a real server and are not verified by the offline demo; calls are shown as unavailable and profile pictures and private notes stay local.
 
 Tap **Exit demo** to return to Connect. Entering again creates a fresh sample workspace. Messages and files created in the demo are discarded rather than sent or saved to a real workspace.
 
@@ -14,7 +16,7 @@ Use this text for store review. It applies to both the iOS and Android builds:
 
 > Aulora is a self-hosted team communication client. Users supply their own Aulora server address and authenticate using that server's configuration. There is no official hosted service or shared reviewer account.
 >
-> On a fresh installation, type demo.aulora.example into the Server address field and tap Connect. This opens a visibly labeled offline Acme Studio workspace without login. Channels, direct/group messages, local messages/files, reactions, threads, search, and sample members can be explored. Tap Exit demo to return to normal server connection. Re-entering resets the sample data.
+> On a fresh installation, type demo.aulora.example into the Server address field and tap Connect. This opens a visibly labeled offline Acme Studio workspace without login, showing the same chat surface as a signed-in workspace. Channels, direct/group messages, local messages/files, reactions, threads, search, member profiles, and pinned messages can be explored. Tap Exit demo to return to normal server connection. Re-entering resets the sample data.
 >
 > The demo does not connect to any server. Presence is simulated; voice/video, authentication, administration, and push require a real deployment. We are disclosing these limits rather than presenting simulated operations as production verification.
 
