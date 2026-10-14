@@ -1,5 +1,5 @@
 import assert from "node:assert/strict";
-import { spawnSync } from "node:child_process";
+import { execFileSync, spawnSync } from "node:child_process";
 import { mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
@@ -11,6 +11,19 @@ import { fileURLToPath } from "node:url";
 // AULORA_ENV_FILE keeps them independent of any developer `.env`.
 
 const INSTALL = fileURLToPath(new URL("../../../../install.sh", import.meta.url));
+const REPO_ROOT = fileURLToPath(new URL("../../../../", import.meta.url));
+
+// The branch warning depends on the checkout the tests run from, so one test is
+// skipped when that checkout already is the release branch.
+function currentBranch() {
+  try {
+    return execFileSync("git", ["-C", REPO_ROOT, "rev-parse", "--abbrev-ref", "HEAD"], {
+      encoding: "utf8",
+    }).trim();
+  } catch {
+    return "";
+  }
+}
 
 function hasBash() {
   const probe = spawnSync("bash", ["--version"], { encoding: "utf8" });
@@ -214,6 +227,51 @@ exit 0
     const commands = readFileSync(log, "utf8");
     assert.match(commands, / wait setup/);
     assert.ok(!commands.includes("run --rm setup"));
+  } finally {
+    rmSync(dir, { recursive: true, force: true });
+  }
+});
+
+const releaseBranchSkip =
+  currentBranch() === "release" ? "the checkout is already on the release branch" : false;
+
+test("a non-release checkout prints a branch warning", { skip: skip || releaseBranchSkip }, () => {
+  const dir = makeEnvDir();
+  try {
+    const result = run(
+      ["--dry-run", "--email", "owner@acme.test", "--password", "correct-horse-battery-staple"],
+      dir,
+    );
+    assert.equal(result.status, 0, result.stderr);
+    assert.match(result.stderr, /not the stable "release" branch/);
+  } finally {
+    rmSync(dir, { recursive: true, force: true });
+  }
+});
+
+test("--allow-any-branch and AULORA_ALLOW_ANY_BRANCH silence the branch warning", { skip }, () => {
+  const dir = makeEnvDir();
+  const baseArgs = [
+    "--dry-run",
+    "--email",
+    "owner@acme.test",
+    "--password",
+    "correct-horse-battery-staple",
+  ];
+  try {
+    const attempts = [
+      { args: [...baseArgs, "--allow-any-branch"], env: {} },
+      { args: baseArgs, env: { AULORA_ALLOW_ANY_BRANCH: "1" } },
+    ];
+    for (const attempt of attempts) {
+      const result = spawnSync("bash", [INSTALL, ...attempt.args], {
+        encoding: "utf8",
+        input: "",
+        env: { ...process.env, AULORA_ENV_FILE: join(dir, ".env"), ...attempt.env },
+      });
+      assert.equal(result.status, 0, result.stderr);
+      assert.doesNotMatch(result.stderr, /release branch/);
+    }
   } finally {
     rmSync(dir, { recursive: true, force: true });
   }

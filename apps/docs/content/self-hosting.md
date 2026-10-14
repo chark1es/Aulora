@@ -13,7 +13,12 @@ guided deploy on [Coolify](https://coolify.io) see
 
 ## The installer
 
+Install from a checkout of the stable `release` branch. `main` tracks
+development, and the installer warns when it runs from another branch.
+
 ```sh
+git clone --branch release https://github.com/chark1es/Aulora.git
+cd Aulora
 ./install.sh            # macOS / Linux
 pwsh ./install.ps1      # Windows
 ```

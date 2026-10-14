@@ -22,7 +22,7 @@ at this repository, then set:
 | Field | Value |
 | --- | --- |
 | Repository | this Git repository |
-| Branch | the branch you deploy (for example `main`) |
+| Branch | the branch you deploy (`release`, the stable install branch) |
 | Base Directory | `infra/docker` |
 | Compose Location | `docker-compose.coolify.yml` |
 | Preserve Repository During Deployment | **on** |
@@ -31,6 +31,10 @@ at this repository, then set:
 repo-relative paths (`./initdb`, and `./vault` if you enable the optional `ekm`
 profile) and Coolify otherwise deletes the checkout after deploying. With the
 toggle on, those files exist when the containers start.
+
+Deploy the stable `release` branch. It tracks the newest published release;
+`main` is the development branch. Moving `release` to the new tag is part of the
+[release checklist](https://github.com/chark1es/Aulora/blob/main/docs/releasing.md).
 
 ## 2. Set the environment
 

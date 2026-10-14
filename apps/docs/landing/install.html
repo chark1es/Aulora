@@ -122,7 +122,7 @@
 
         <div class="oneliner">
           <span class="prompt" aria-hidden="true">$</span>
-          <code id="oneliner">git clone https://github.com/chark1es/Aulora.git &amp;&amp; cd Aulora &amp;&amp; ./install.sh</code>
+          <code id="oneliner">git clone --branch release https://github.com/chark1es/Aulora.git &amp;&amp; cd Aulora &amp;&amp; ./install.sh</code>
           <button type="button" data-copy="oneliner">Copy</button>
         </div>
 
@@ -141,7 +141,7 @@
           <ol class="steps">
             <li>
               <strong>Run the installer</strong>
-              <p>It asks for an owner email and password, generates secrets, builds the stack, and creates the workspace. On Windows, run <code>pwsh ./install.ps1</code>. That script installs the server, not the Windows app.</p>
+              <p>Clone the stable <code>release</code> branch first, then run the installer: it asks for an owner email and password, generates secrets, builds the stack, and creates the workspace. On Windows, run <code>pwsh ./install.ps1</code>. That script installs the server, not the Windows app.</p>
             </li>
             <li>
               <strong>Back up <code>.env</code> somewhere else</strong>

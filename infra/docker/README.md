@@ -15,6 +15,8 @@ redeploy never regenerates the encryption master key.
 
 ## First run
 
+Clone the stable `release` branch (`git clone --branch release https://github.com/chark1es/Aulora.git`) and run these steps from its `infra/docker` directory. `main` is for development.
+
 ```powershell
 cd infra/docker
 
@@ -374,8 +376,9 @@ Tearing down with `down` (no `-v`) is the safe default: the named volumes
 Desktop settings show the installed app version, check for signed releases, and
 provide **Download update**, followed by **Restart to update**.
 
-For the workspace instance, run the watcher on the Docker host from a clean git
-clone with Bun dependencies installed with `bun install --frozen-lockfile`:
+For the workspace instance, run the watcher on the Docker host from a clean
+`release`-branch clone with Bun dependencies installed with
+`bun install --frozen-lockfile`:
 
 ```sh
 ./update.sh --watch     # enables owner-only update controls in settings

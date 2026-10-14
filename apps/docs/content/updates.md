@@ -10,7 +10,7 @@ Linux AppImage supports the updater. Debian packages require manual installation
 
 ## Docker server from a Git clone
 
-The host updater checks the release feed, refuses dirty checkouts, and redeploys a published release while keeping `.env` and volumes:
+Run the updater from a checkout of the stable `release` branch. It checks the release feed, refuses dirty checkouts, and redeploys a published release while keeping `.env` and volumes:
 
 ```sh
 cd infra/docker
