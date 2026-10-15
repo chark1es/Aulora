@@ -1,3 +1,4 @@
+/* eslint-disable no-unused-vars -- the base rule reports parameter names in type signatures; Biome checks real unused code */
 import {
   createServerProfile,
   type ProfileStore,
@@ -23,6 +24,7 @@ export interface ProfileContextValue {
   /** Saves a validated well-known document as a profile and makes it active. */
   readonly addProfile: (_baseUrl: string, _wellKnown: WellKnown) => Promise<ServerProfile>;
   readonly setActive: (_id: string) => Promise<void>;
+  readonly remove: (_id: string) => Promise<void>;
   readonly refresh: () => Promise<void>;
 }
 
@@ -81,6 +83,14 @@ export function ProfileProvider({ store, children }: ProfileProviderProps) {
     [profileStore],
   );
 
+  const remove = useCallback(
+    async (id: string) => {
+      await profileStore.remove(id);
+      await refresh();
+    },
+    [profileStore, refresh],
+  );
+
   const activeProfile = useMemo(
     () => profiles.find((profile) => profile.id === activeId),
     [profiles, activeId],
@@ -94,9 +104,10 @@ export function ProfileProvider({ store, children }: ProfileProviderProps) {
       ready,
       addProfile,
       setActive,
+      remove,
       refresh,
     }),
-    [profileStore, profiles, activeProfile, ready, addProfile, setActive, refresh],
+    [profileStore, profiles, activeProfile, ready, addProfile, setActive, remove, refresh],
   );
 
   return <ProfileContext.Provider value={value}>{children}</ProfileContext.Provider>;

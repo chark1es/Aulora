@@ -8,6 +8,7 @@ import { CallMediaNotice } from "./CallMediaNotice";
 import { CallGrid } from "./CallParticipant";
 import { type CallIdentity, UNKNOWN_IDENTITY } from "./identity";
 import { JoinedElsewhere } from "./JoinedElsewhere";
+import { PictureInPictureButton } from "./PictureInPictureButton";
 
 /**
  * The main pane for a voice channel. Before joining it is a calm pre-join
@@ -74,12 +75,13 @@ function InCallVoiceView({
 }) {
   return (
     <div className="flex min-h-0 flex-1 flex-col bg-surface-1">
-      <InCallHeader call={call} title={title} voice={voice} />
+      <InCallHeader call={call} title={title} voice={voice} identity={identity} />
       <CallMediaNotice />
       <div className="min-h-0 flex-1 p-3">
         <CallGrid
           participants={call.participants}
           streams={voice.remoteStreams}
+          screens={voice.remoteScreens}
           localUserId={voice.selfUserId}
           localVideoTrack={voice.localVideoTrack}
           settings={voice.settings}
@@ -98,10 +100,12 @@ function InCallHeader({
   call,
   title,
   voice,
+  identity,
 }: {
   readonly call: CallView;
   readonly title: string;
   readonly voice: VoiceContextValue;
+  readonly identity: CallIdentity;
 }) {
   return (
     <header className="material-chrome flex h-[52px] shrink-0 items-center gap-2.5 border-b border-border px-4">
@@ -115,6 +119,7 @@ function InCallHeader({
           {voice.local.sharingScreen ? " · You are sharing your screen" : ""}
         </p>
       </div>
+      <PictureInPictureButton identity={identity} />
       <button
         type="button"
         aria-label="Expand call"

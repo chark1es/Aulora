@@ -20,3 +20,5 @@ export function redeemErrorMessage(cause: unknown): string {
   }
   return "That invite could not be redeemed.";
 }
+
+export { type RedeemOutcome, redeemOutcomeMessage } from "@aulora/core";

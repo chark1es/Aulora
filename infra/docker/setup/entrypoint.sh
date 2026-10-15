@@ -28,6 +28,20 @@ WELL_KNOWN_DIR="${WELL_KNOWN_DIR:-/web-well-known}"
 log() { printf '[setup] %s\n' "$*"; }
 die() { printf '[setup] ERROR: %s\n' "$*" >&2; exit 1; }
 
+# Check output mounts before changing deployment settings or creating an owner.
+mkdir -p "$WELL_KNOWN_DIR"
+[ -w "$WELL_KNOWN_DIR" ] || die "cannot write ${WELL_KNOWN_DIR}; check setup volume permissions"
+if [ -f "$WELL_KNOWN_DIR/aulora.json" ] && [ ! -w "$WELL_KNOWN_DIR/aulora.json" ]; then
+  die "cannot write ${WELL_KNOWN_DIR}/aulora.json; check setup volume permissions"
+fi
+HOST_ENV_DIR="$(dirname "$HOST_ENV_FILE")"
+if [ -d "$HOST_ENV_DIR" ]; then
+  [ -w "$HOST_ENV_DIR" ] || die "cannot write ${HOST_ENV_DIR}; check setup state permissions"
+  if [ -f "$HOST_ENV_FILE" ] && [ ! -w "$HOST_ENV_FILE" ]; then
+    die "cannot write ${HOST_ENV_FILE}; check setup state permissions"
+  fi
+fi
+
 # --- tiny .env helpers (preserve comments; never echo secret values) --------
 
 env_get() {
@@ -239,6 +253,12 @@ set_env_if_present OIDC_SCOPES "$(host_value OIDC_SCOPES)"
 set_env_if_present OIDC_GROUP_CLAIM "$(host_value OIDC_GROUP_CLAIM)"
 set_env_if_present OIDC_GROUP_ROLE_MAP "$(host_value OIDC_GROUP_ROLE_MAP)"
 
+# Kill switch for the owner-editable environment overrides in Instance admin ->
+# Environment. Only the exact value "false" disables them; blank keeps the
+# default (on). The setting lives on the deployment env because the backend
+# reads it when listing and saving overrides.
+set_env_if_present AULORA_ALLOW_UI_ENV_OVERRIDES "$(host_value AULORA_ALLOW_UI_ENV_OVERRIDES)"
+
 set_env_if_present VAPID_SUBJECT "$VAPID_SUBJECT_VALUE"
 set_env_if_present VAPID_PUBLIC_KEY "$VAPID_PUBLIC_KEY_VALUE"
 set_env_if_present VAPID_PRIVATE_KEY "$VAPID_PRIVATE_KEY_VALUE" 1
@@ -247,6 +267,50 @@ set_env_if_present VAPID_PRIVATE_KEY "$VAPID_PRIVATE_KEY_VALUE" 1
 # self-hosted deployment can point calls at its own STUN/TURN. Blank leaves
 # clients on their built-in public STUN defaults; calls need no media server.
 set_env_if_present AULORA_ICE_SERVERS "$(host_value AULORA_ICE_SERVERS)"
+
+# Optional screen-streaming server (compose profile `streaming`). Convex only
+# mints room tokens from these; the media never passes through it. With the
+# profile on, `livekit-init` has already written the key pair to a volume and the
+# `web` container proxies `<SITE_URL>/livekit` to the server, so nothing needs to
+# be configured. `bootstrap.sh` reads that root-only key file before dropping
+# privileges and passes the pair down through the environment, so it arrives
+# here already set. Explicit LIVEKIT_* values win, for a LiveKit server you run
+# yourself (or LiveKit Cloud). With neither, every share stays on the peer mesh.
+LIVEKIT_KEYS_FILE="${LIVEKIT_KEYS_FILE:-/livekit-keys/keys}"
+
+# The file is one `name: "secret"` line written by livekit/init-keys.sh.
+livekit_key_name() { sed -n '1s/:.*//p' "$LIVEKIT_KEYS_FILE"; }
+livekit_key_secret() { sed -n '1s/^[^:]*:[[:space:]]*//p' "$LIVEKIT_KEYS_FILE" | tr -d '"[:space:]'; }
+
+# `https://chat.example.com` -> `wss://chat.example.com/livekit`
+livekit_url_from_site() {
+  local site="${1%/}"
+  case "$site" in
+    https://*) printf 'wss://%s/livekit' "${site#https://}" ;;
+    http://*) printf 'ws://%s/livekit' "${site#http://}" ;;
+  esac
+}
+
+LIVEKIT_URL_VALUE="$(host_value LIVEKIT_URL)"
+LIVEKIT_API_KEY_VALUE="$(host_value LIVEKIT_API_KEY)"
+LIVEKIT_API_SECRET_VALUE="$(host_value LIVEKIT_API_SECRET)"
+if [ -z "$LIVEKIT_API_KEY_VALUE$LIVEKIT_API_SECRET_VALUE" ] && [ -s "$LIVEKIT_KEYS_FILE" ]; then
+  LIVEKIT_API_KEY_VALUE="$(livekit_key_name)"
+  LIVEKIT_API_SECRET_VALUE="$(livekit_key_secret)"
+  [ -n "$LIVEKIT_API_KEY_VALUE" ] && [ -n "$LIVEKIT_API_SECRET_VALUE" ] \
+    || die "the streaming key pair in ${LIVEKIT_KEYS_FILE} is unreadable"
+fi
+if [ -n "$LIVEKIT_API_KEY_VALUE" ] && [ -n "$LIVEKIT_API_SECRET_VALUE" ]; then
+  if [ -z "$LIVEKIT_URL_VALUE" ]; then
+    LIVEKIT_URL_VALUE="$(livekit_url_from_site "$SITE_URL_VALUE")"
+    [ -n "$LIVEKIT_URL_VALUE" ] \
+      || log "warning: SITE_URL is not an http(s) origin; set LIVEKIT_URL to enable streaming"
+  fi
+  log "screen streaming: using the server at ${LIVEKIT_URL_VALUE:-<unset>}"
+fi
+set_env_if_present LIVEKIT_URL "$LIVEKIT_URL_VALUE"
+set_env_if_present LIVEKIT_API_KEY "$LIVEKIT_API_KEY_VALUE" 1
+set_env_if_present LIVEKIT_API_SECRET "$LIVEKIT_API_SECRET_VALUE" 1
 
 set_env_if_present AULORA_LICENSE_SERVER_URL "$(host_value AULORA_LICENSE_SERVER_URL)"
 set_env_if_present AULORA_LICENSE_PUBLIC_KEY "$(host_value AULORA_LICENSE_PUBLIC_KEY)"
@@ -258,6 +322,10 @@ set_env_if_present AULORA_UPDATE_MANIFEST_URL "$(host_value AULORA_UPDATE_MANIFE
 set_env_if_present AULORA_UPDATE_GITHUB_REPO "$(host_value AULORA_UPDATE_GITHUB_REPO)"
 set_env_if_present AULORA_UPDATE_CHANNEL "$(host_value AULORA_UPDATE_CHANNEL)"
 set_env_if_present AULORA_AUTO_UPDATE "$(host_value AULORA_AUTO_UPDATE)"
+set_env_if_present AULORA_UPDATE_PROVIDER "$(host_value AULORA_UPDATE_PROVIDER)"
+set_env_if_present AULORA_COOLIFY_URL "$(host_value AULORA_COOLIFY_URL)"
+set_env_if_present AULORA_COOLIFY_APPLICATION_UUID "$(host_value AULORA_COOLIFY_APPLICATION_UUID)"
+set_env_if_present AULORA_COOLIFY_API_TOKEN "$(host_value AULORA_COOLIFY_API_TOKEN)" 1
 
 # Server-side encryption: the default local master key is set as a secret.
 # Optional/advanced external-provider settings are read from the host .env and

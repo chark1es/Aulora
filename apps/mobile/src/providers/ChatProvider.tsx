@@ -5,6 +5,7 @@ import {
   type ChannelView,
   hasPermission,
   isConnectivityError,
+  type MembersGroupingRole,
   memorySearchStore,
   Outbox,
   type OutboxItem,
@@ -78,12 +79,18 @@ export interface MobileChatContextValue {
   readonly outbox: readonly OutboxItem[];
   /** Workspace members, flattened for the channel-edit picker. */
   readonly members: readonly MobileMemberEntry[];
+  /** Roles that may render as their own sections in the members pane. */
+  readonly memberRoleGroups: readonly MembersGroupingRole[];
   /** Profile pictures set in this workspace, keyed by user id. */
   readonly avatarUrls: ReadonlyMap<string, string>;
   /** Mentionable roles with their member ids, for `@role` resolution. */
   readonly roles: readonly RoleMentionTarget[];
+  /** All workspace roles with positions, for hierarchy-aware editors. */
+  readonly roleViews: readonly RoleView[];
   /** The viewer's effective permission bitfield, resolved like the server. */
   readonly viewerPermissions: bigint;
+  /** Highest role position the viewer holds; owners sit at `Infinity`. */
+  readonly viewerTopPosition: number;
   readonly isOwner: boolean;
   /** The workspace owner's user id, used for moderation hierarchy guards. */
   readonly ownerUserId: string | null;
@@ -358,6 +365,21 @@ export function ChatProvider({ client, userId, children }: ChatProviderProps) {
     [rolesResult],
   );
 
+  // Roles the members pane can render as their own sections. Members store a
+  // role's stable key when it has one, so match on that ref.
+  const memberRoleGroups = useMemo<readonly MembersGroupingRole[]>(
+    () =>
+      roleViews.map((role) => ({
+        id: roleRef(role),
+        name: role.name,
+        color: role.color,
+        position: role.position,
+        hoisted: role.hoisted,
+        isEveryone: role.isEveryone,
+      })),
+    [roleViews],
+  );
+
   const memberViews = useMemo<readonly MemberView[]>(
     () => (membersResult ?? []) as readonly MemberView[],
     [membersResult],
@@ -392,6 +414,20 @@ export function ChatProvider({ client, userId, children }: ChatProviderProps) {
       roles: roleViews,
     });
   }, [viewerUserId, isOwner, viewerMember, roleViews]);
+
+  const viewerTopPosition = useMemo<number>(() => {
+    if (isOwner) {
+      return Number.POSITIVE_INFINITY;
+    }
+    const held = new Set(viewerMember?.roleIds ?? []);
+    let top = -1;
+    for (const role of roleViews) {
+      if (held.has(roleRef(role))) {
+        top = Math.max(top, role.position);
+      }
+    }
+    return top;
+  }, [isOwner, viewerMember, roleViews]);
 
   const members = useMemo<readonly MobileMemberEntry[]>(
     () =>
@@ -476,9 +512,12 @@ export function ChatProvider({ client, userId, children }: ChatProviderProps) {
       presence,
       outbox,
       members,
+      memberRoleGroups,
       avatarUrls,
       roles: mentionRoles,
+      roleViews,
       viewerPermissions,
+      viewerTopPosition,
       isOwner,
       ownerUserId: ownerId,
       canManageChannels: canManageChannelsForViewer,
@@ -504,9 +543,12 @@ export function ChatProvider({ client, userId, children }: ChatProviderProps) {
       presence,
       outbox,
       members,
+      memberRoleGroups,
       avatarUrls,
       mentionRoles,
+      roleViews,
       viewerPermissions,
+      viewerTopPosition,
       isOwner,
       ownerId,
       canManageChannelsForViewer,

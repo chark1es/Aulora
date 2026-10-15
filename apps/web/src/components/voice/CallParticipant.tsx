@@ -162,8 +162,10 @@ function ParticipantMedia({
   readonly avatarSize: number;
   readonly roleColor: string | null;
 }) {
+  // A share counts as video even with the camera off: the sharer's screen is
+  // the thing to look at.
   const hasVideo =
-    participant.video &&
+    (participant.video || participant.sharingScreen) &&
     participant.connection === "connected" &&
     (isSelf ? localVideoTrack !== null : stream !== null && stream.getVideoTracks().length > 0);
   if (!hasVideo) {
@@ -232,6 +234,8 @@ function ParticipantChrome({
 export interface CallGridProps {
   readonly participants: readonly CallParticipantView[];
   readonly streams: ReadonlyMap<string, MediaStream>;
+  /** Screens relayed by the streaming server; preferred over the mesh stream for a sharer. */
+  readonly screens?: ReadonlyMap<string, MediaStream>;
   readonly localUserId: string;
   readonly localVideoTrack: MediaStreamTrack | null;
   readonly settings: VoiceDeviceSettings;
@@ -244,12 +248,21 @@ export interface CallGridProps {
 
 interface TileContext {
   readonly streams: ReadonlyMap<string, MediaStream>;
+  readonly screens: ReadonlyMap<string, MediaStream>;
   readonly localUserId: string;
   readonly localVideoTrack: MediaStreamTrack | null;
   readonly settings: VoiceDeviceSettings;
   readonly identity: CallIdentity;
   readonly speakingIds: ReadonlySet<string> | undefined;
   readonly localSpeaking: boolean;
+}
+
+const NO_SCREENS: ReadonlyMap<string, MediaStream> = new Map();
+
+/** A sharer's relayed screen when there is one, otherwise whatever the mesh delivers. */
+function streamFor(participant: CallParticipantView, context: TileContext): MediaStream | null {
+  const relayed = participant.sharingScreen ? context.screens.get(participant.userId) : undefined;
+  return relayed ?? context.streams.get(participant.userId) ?? null;
 }
 
 /**
@@ -260,6 +273,7 @@ export function CallGrid(props: CallGridProps) {
   const {
     participants,
     streams,
+    screens = NO_SCREENS,
     localUserId,
     localVideoTrack,
     settings,
@@ -270,6 +284,7 @@ export function CallGrid(props: CallGridProps) {
   } = props;
   const context: TileContext = {
     streams,
+    screens,
     localUserId,
     localVideoTrack,
     settings,
@@ -349,7 +364,7 @@ function Tile({
       isSelf={participant.userId === context.localUserId}
       name={context.identity.nameOf(participant.userId)}
       roleColor={context.identity.colorOf(participant.userId)}
-      stream={context.streams.get(participant.userId) ?? null}
+      stream={streamFor(participant, context)}
       localVideoTrack={context.localVideoTrack}
       settings={context.settings}
       speaking={

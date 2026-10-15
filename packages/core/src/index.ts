@@ -17,7 +17,32 @@ export {
 } from "./binary";
 export { blurhashDecode, blurhashEncode } from "./blurhash";
 export * from "./chat/index";
+export {
+  allowlistAdmits,
+  formatAccessCode,
+  INVITE_CODE_ALPHABET,
+  INVITE_CODE_LENGTH,
+  INVITE_KINDS,
+  type InviteKind,
+  isAccessCodeShape,
+  isValidEmail,
+  joinCodeFailureMessage,
+  maskEmail,
+  normalizeEmail,
+  normalizeInviteCode,
+  parseAllowlistEntry,
+  type RedeemOutcome,
+  redeemOutcomeMessage,
+} from "./invites";
 export * from "./kanban.js";
+export {
+  groupMembersByHoistedRole,
+  type MembersGroupingMember,
+  type MembersGroupingResult,
+  type MembersGroupingRole,
+  type MembersGroupingRoleSection,
+} from "./members-grouping";
+export * from "./notes/index.js";
 export {
   type EnqueueInput,
   type FlushOptions,

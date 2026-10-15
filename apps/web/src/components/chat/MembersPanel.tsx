@@ -1,4 +1,8 @@
-import type { PresenceRow } from "@aulora/core";
+import {
+  groupMembersByHoistedRole,
+  type MembersGroupingRole,
+  type PresenceRow,
+} from "@aulora/core";
 import { type ContextMenuItem, cn, Icon, useContextMenu } from "@aulora/ui-web";
 import { useMemo } from "react";
 import { PresenceAvatar } from "./PresenceAvatar";
@@ -17,6 +21,11 @@ export interface MemberEntry {
 export interface MembersPanelProps {
   readonly members: readonly MemberEntry[];
   readonly presence: readonly PresenceRow[];
+  /**
+   * Roles that opt into their own section via `hoisted`, matched by the ref
+   * stored in each member's `roleIds`. `@everyone` is always ignored.
+   */
+  readonly roles?: readonly MembersGroupingRole[] | undefined;
   readonly customStatuses: ReadonlyMap<string, string>;
   readonly ownUserId: string;
   readonly onViewProfile: (userId: string, anchor: HTMLButtonElement) => void;
@@ -31,6 +40,8 @@ export interface MembersPanelProps {
   };
 }
 
+const EMPTY_ROLES: readonly MembersGroupingRole[] = [];
+
 /**
  * The member list, split into who is around and who is offline. Clicking a
  * member opens their profile summary.
@@ -38,6 +49,7 @@ export interface MembersPanelProps {
 export function MembersPanel({
   members,
   presence,
+  roles = EMPTY_ROLES,
   customStatuses,
   ownUserId,
   onViewProfile,
@@ -50,9 +62,21 @@ export function MembersPanel({
     () => [...members].sort((a, b) => a.displayName.localeCompare(b.displayName)),
     [members],
   );
+  // Discord grouping: hoisted role sections list online members only; every
+  // offline member collapses into the trailing Offline section.
+  const grouped = useMemo(
+    () =>
+      groupMembersByHoistedRole(
+        sorted,
+        roles,
+        (member) => (byUser.get(member.userId)?.status ?? "offline") !== "offline",
+      ),
+    [sorted, roles, byUser],
+  );
   const statusOf = (userId: string) => byUser.get(userId)?.status ?? "offline";
-  const active = sorted.filter((member) => statusOf(member.userId) !== "offline");
-  const offline = sorted.filter((member) => statusOf(member.userId) === "offline");
+  const onlineCount =
+    grouped.sections.reduce((total, section) => total + section.members.length, 0) +
+    grouped.online.length;
   const openMenu = useContextMenu();
 
   const memberMenu = (member: MemberEntry, event: React.MouseEvent) => {
@@ -114,7 +138,7 @@ export function MembersPanel({
         <div>
           <h2 className="text-[14px] font-semibold tracking-[-0.01em] text-text">Members</h2>
           <p className="text-[11px] text-text-muted">
-            {active.length} online · {members.length} total
+            {onlineCount} online · {members.length} total
           </p>
         </div>
         <button
@@ -127,9 +151,22 @@ export function MembersPanel({
         </button>
       </header>
       <div className="min-h-0 flex-1 overflow-y-auto px-2 py-3">
+        {grouped.sections.map((section) => (
+          <MemberGroup
+            key={section.role.id}
+            title={section.role.name}
+            color={section.role.color}
+            members={section.members}
+            statusOf={statusOf}
+            customStatuses={customStatuses}
+            ownUserId={ownUserId}
+            onViewProfile={onViewProfile}
+            onContextMenu={memberMenu}
+          />
+        ))}
         <MemberGroup
           title="Online"
-          members={active}
+          members={grouped.online}
           statusOf={statusOf}
           customStatuses={customStatuses}
           ownUserId={ownUserId}
@@ -138,7 +175,7 @@ export function MembersPanel({
         />
         <MemberGroup
           title="Offline"
-          members={offline}
+          members={grouped.offline}
           statusOf={statusOf}
           customStatuses={customStatuses}
           ownUserId={ownUserId}
@@ -153,6 +190,7 @@ export function MembersPanel({
 
 function MemberGroup({
   title,
+  color = null,
   members,
   statusOf,
   customStatuses,
@@ -162,6 +200,8 @@ function MemberGroup({
   dim = false,
 }: {
   readonly title: string;
+  /** Hoisted role color; tints the section heading. */
+  readonly color?: string | null;
   readonly members: readonly MemberEntry[];
   readonly statusOf: (userId: string) => PresenceRow["status"];
   readonly customStatuses: ReadonlyMap<string, string>;
@@ -175,7 +215,10 @@ function MemberGroup({
   }
   return (
     <section className="mb-4">
-      <h3 className="px-2 pb-1 text-[11px] font-semibold uppercase tracking-[0.06em] text-text-muted">
+      <h3
+        className="px-2 pb-1 text-[11px] font-semibold uppercase tracking-[0.06em] text-text-muted"
+        style={color !== null && color.length > 0 ? { color } : undefined}
+      >
         {title} — {members.length}
       </h3>
       <ul className="stagger flex flex-col gap-px">

@@ -108,20 +108,6 @@ function ReplyLine({ reply, onPress }: ReplyLineProps) {
   );
 }
 
-function DeletedRow() {
-  const palette = usePalette();
-  return (
-    <View className="flex-row items-center gap-3 px-4 py-1">
-      <View className="w-9 items-center">
-        <Icon name="trash" size={14} color={palette["text-muted"]} />
-      </View>
-      <Text size="sm" tone="muted" className="italic">
-        This message was deleted.
-      </Text>
-    </View>
-  );
-}
-
 interface AuthorLineProps {
   readonly name: string;
   readonly color: string | undefined;
@@ -260,7 +246,6 @@ function MessageBody(props: MessageRowProps) {
 /** One message. Tap or long-press it for reactions, replies and the rest of its actions. */
 export function MessageRow(props: MessageRowProps) {
   const { context, message, grouped, reply, pending, authorName } = props;
-  if (message.deletedAt !== null) return <DeletedRow />;
   const openActions = () => {
     context.onActions(message);
   };

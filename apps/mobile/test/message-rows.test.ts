@@ -57,13 +57,14 @@ describe("buildMessageRows", () => {
     ).toEqual(["day", "a:false", "late:false", "reply:false", "day", "next-day:false"]);
   });
 
-  it("does not attach a message to a deleted one before it", () => {
+  it("omits deleted messages and groups the remaining rows", () => {
     expect(
       shape([
-        message("gone", "u1", NOON, { deletedAt: NOON + 1 }),
-        message("after", "u1", NOON + MINUTE),
+        message("a", "u1", NOON),
+        message("gone", "u1", NOON + MINUTE, { deletedAt: NOON + 2 * MINUTE }),
+        message("after", "u1", NOON + 2 * MINUTE),
       ]),
-    ).toEqual(["day", "gone:false", "after:false"]);
+    ).toEqual(["day", "a:false", "after:true"]);
   });
 
   it("handles an empty conversation", () => {

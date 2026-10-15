@@ -47,6 +47,8 @@ interface ServerChannel {
   readonly memberIds?: readonly string[];
   readonly hidden?: boolean;
   readonly muted?: boolean;
+  readonly pinned?: boolean;
+  readonly pinnedAt?: number | null;
 }
 
 function toSummary(channel: ServerChannel): ChannelSummary {
@@ -63,6 +65,8 @@ function toSummary(channel: ServerChannel): ChannelSummary {
     ...(channel.memberIds !== undefined ? { memberIds: channel.memberIds } : {}),
     ...(channel.hidden !== undefined ? { hidden: channel.hidden } : {}),
     ...(channel.muted !== undefined ? { muted: channel.muted } : {}),
+    ...(channel.pinned !== undefined ? { pinned: channel.pinned } : {}),
+    ...(channel.pinnedAt !== undefined ? { pinnedAt: channel.pinnedAt } : {}),
   };
 }
 
@@ -204,6 +208,13 @@ export function convexPort(client: ConvexReactClient): ChatPort {
       });
       return null;
     },
+    async setChannelPinned(args) {
+      await client.mutation(api.channels.setPinned, {
+        channelId: args.channelId as never,
+        pinned: args.pinned,
+      });
+      return null;
+    },
     async uploadFile(args) {
       const uploadUrl = await client.mutation(api.files.generateUploadUrl, {});
       const response = await fetch(uploadUrl, {
@@ -212,7 +223,14 @@ export function convexPort(client: ConvexReactClient): ChatPort {
         body: args.bytes as unknown as BodyInit,
       });
       if (!response.ok) {
-        throw new Error(`Upload failed with status ${response.status}`);
+        // Include the status and, when the storage endpoint explains itself
+        // (e.g. "request entity too large"), that text too.
+        const detail = await response
+          .text()
+          .then((text) => text.trim())
+          .catch(() => "");
+        const suffix = detail.length > 0 ? `: ${detail.slice(0, 200)}` : "";
+        throw new Error(`Upload failed (HTTP ${response.status})${suffix}`);
       }
       const body = (await response.json()) as { storageId?: unknown };
       if (typeof body.storageId !== "string") {

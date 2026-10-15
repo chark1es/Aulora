@@ -2,12 +2,14 @@ import { describe, expect, it } from "vitest";
 import {
   backupStatusLabel,
   backupStatusTone,
+  composeByteSize,
   formatBytes,
   formatQuota,
   formatTimestamp,
   licenseStateLabel,
   licenseStateTone,
   parseByteInput,
+  splitByteSize,
 } from "../lib/instance-admin";
 
 describe("formatBytes", () => {
@@ -46,6 +48,51 @@ describe("parseByteInput", () => {
     expect(parseByteInput("0")).toBeNull();
     expect(parseByteInput("nope")).toBeNull();
     expect(parseByteInput("5 furlongs")).toBeNull();
+  });
+});
+
+describe("splitByteSize", () => {
+  it("renders zero as unlimited in GiB", () => {
+    expect(splitByteSize(0)).toEqual({ value: "0", unit: "GiB" });
+    expect(splitByteSize(-5)).toEqual({ value: "0", unit: "GiB" });
+  });
+
+  it("picks the largest exact unit", () => {
+    expect(splitByteSize(1024)).toEqual({ value: "1", unit: "KiB" });
+    expect(splitByteSize(1536)).toEqual({ value: "1.5", unit: "KiB" });
+    expect(splitByteSize(25 * 1024 * 1024)).toEqual({ value: "25", unit: "MiB" });
+    expect(splitByteSize(2 * 1024 ** 3)).toEqual({ value: "2", unit: "GiB" });
+    expect(splitByteSize(1024 ** 4)).toEqual({ value: "1", unit: "TiB" });
+    expect(splitByteSize(2 * 1024 ** 4)).toEqual({ value: "2", unit: "TiB" });
+  });
+
+  it("falls back to KiB below one unit", () => {
+    expect(splitByteSize(500)).toEqual({ value: "0.48828125", unit: "KiB" });
+  });
+});
+
+describe("composeByteSize", () => {
+  it("composes integer bytes from a number and unit", () => {
+    expect(composeByteSize("0", "GiB")).toBe(0);
+    expect(composeByteSize("1", "KiB")).toBe(1024);
+    expect(composeByteSize("25", "MiB")).toBe(25 * 1024 * 1024);
+    expect(composeByteSize("2.5", "GiB")).toBe(2.5 * 1024 ** 3);
+    expect(composeByteSize("1", "TiB")).toBe(1024 ** 4);
+  });
+
+  it("rejects empty, negative and non-numeric input", () => {
+    expect(composeByteSize("", "MiB")).toBeNull();
+    expect(composeByteSize("   ", "MiB")).toBeNull();
+    expect(composeByteSize("abc", "MiB")).toBeNull();
+    expect(composeByteSize("-1", "KiB")).toBeNull();
+    expect(composeByteSize("1,000", "KiB")).toBeNull();
+  });
+
+  it("round-trips through splitByteSize", () => {
+    for (const bytes of [0, 1024, 1536, 500 * 1024, 25 * 1024 * 1024, 2 * 1024 ** 3, 1024 ** 4]) {
+      const { value, unit } = splitByteSize(bytes);
+      expect(composeByteSize(value, unit)).toBe(bytes);
+    }
   });
 });
 

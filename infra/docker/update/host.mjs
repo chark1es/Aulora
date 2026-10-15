@@ -1,11 +1,12 @@
 // A host watcher with deployment credentials, never a public shell endpoint.
 
-import { existsSync, mkdirSync, readFileSync, rmdirSync } from "node:fs";
+import { existsSync, readFileSync } from "node:fs";
 import { createRequire } from "node:module";
 import { dirname, resolve } from "node:path";
 import { setTimeout as delay } from "node:timers/promises";
 import { fileURLToPath } from "node:url";
 import { checkWorkspace, readEnvFile } from "./cli.mjs";
+import { acquireWatcherLock } from "./lock.mjs";
 import { createStagedUpdater, run } from "./stage.mjs";
 
 const dockerDir = resolve(dirname(fileURLToPath(import.meta.url)), "..");
@@ -43,13 +44,7 @@ const key = await run(
 const adminKey = key.split("\n").find((line) => line.includes("|"));
 if (!adminKey) throw new Error("The backend did not generate a deployment key.");
 client.setAdminAuth(adminKey);
-try {
-  mkdirSync(lock);
-} catch {
-  throw new Error(
-    "The update watcher is already running. If it crashed, remove infra/docker/.update-host.lock before starting it again.",
-  );
-}
+const releaseLock = acquireWatcherLock(lock);
 let stopping = false;
 process.on("SIGINT", () => {
   stopping = true;
@@ -137,5 +132,5 @@ try {
   }
 } finally {
   clearInterval(heartbeat);
-  rmdirSync(lock);
+  releaseLock();
 }

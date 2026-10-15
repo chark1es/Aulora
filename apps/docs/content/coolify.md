@@ -22,7 +22,7 @@ at this repository, then set:
 | Field | Value |
 | --- | --- |
 | Repository | this Git repository |
-| Branch | the branch you deploy (for example `main`) |
+| Branch | the branch you deploy (`release`, the stable install branch) |
 | Base Directory | `infra/docker` |
 | Compose Location | `docker-compose.coolify.yml` |
 | Preserve Repository During Deployment | **on** |
@@ -31,6 +31,10 @@ at this repository, then set:
 repo-relative paths (`./initdb`, and `./vault` if you enable the optional `ekm`
 profile) and Coolify otherwise deletes the checkout after deploying. With the
 toggle on, those files exist when the containers start.
+
+Deploy the stable `release` branch. It tracks the newest published release;
+`main` is the development branch. Promoting `release` to the new tag is part of the
+[release checklist](https://github.com/chark1es/Aulora/blob/main/docs/releasing.md).
 
 ## 2. Set the environment
 
@@ -131,9 +135,13 @@ Do not delete the `setup-state` volume, and keep an offline copy of
 `AULORA_ENCRYPTION_KEY`: encrypted content in the database and exports needs that key to be readable. Other metadata may remain readable. The same warning as
 [Self-hosting → Encryption](self-hosting.md) applies.
 
+## Screen streaming
+
+Streaming a desktop or an application to many people uses the bundled LiveKit server, which this resource runs and configures for you. It creates its own keys, `setup` hands them to Convex, and clients reach it at your web domain under `/livekit`, so there is nothing to set and no third domain to add. The only step Coolify cannot do is open the media ports: allow `7881/tcp` and `7882/udp` to the server in its firewall. Until you do, shares still work, sent directly to each viewer instead. Behind NAT, see [Self-hosting](self-hosting.md#screen-streaming-server-optional).
+
 ## Optional services
 
-The backup runner, push relay, and development Vault have Compose profiles and are off by default. To enable an optional service in this resource, remove its `profiles` entry in your deployment branch and redeploy the same Coolify resource. Configure its environment values in Coolify first. Keep the project and named volumes unchanged so the service joins the existing deployment.
+The backup runner, push relay, and development Vault have Compose profiles and are off by default. To enable an optional service in this resource, remove its `profiles` entry on the `release` branch and redeploy the same Coolify resource. Configure its environment values in Coolify first. Keep the project and named volumes unchanged so the service joins the existing deployment.
 
 Do not create a second independent stack for backups; it would have different named volumes and could back up a fresh deployment instead. If managing profiles through host commands, use Coolify's rendered configuration, project name, and environment.
 
@@ -143,13 +151,25 @@ Do not create a second independent stack for backups; it would have different na
 
 ## Upgrade
 
-Redeploy the resource (Coolify pulls the branch and rebuilds `web` and `setup`).
+Redeploy the resource (Coolify pulls the `release` branch and rebuilds `web` and `setup`).
 The named volumes, including `setup-state`, are kept, so data and secrets
 survive. If you changed origins or auth settings, re-run `setup` as above.
 
-The instance admin panel reports when a newer Aulora release is published.
-Coolify owns the git checkout, so apply that release by redeploying the new
-ref here. Do not run `infra/docker/update.sh` inside Coolify's source directory.
+To install published releases directly from the instance admin panel, set these runtime environment variables on the same Coolify resource:
+
+```sh
+AULORA_COOLIFY_URL=https://coolify.example.com
+AULORA_COOLIFY_APPLICATION_UUID=your-application-uuid
+AULORA_COOLIFY_API_TOKEN=your-api-token
+```
+
+Use the UUID of this Git-based Docker Compose **application**, not a service or server UUID. Create an API token in Coolify's **Keys & Tokens** with permission to read the application and deployments, update the application, and deploy it. The Coolify URL must be reachable from the Convex backend. Keep the token out of build variables and client configuration.
+
+Redeploy once to apply this configuration through `setup`. The shipped Compose file selects the Coolify update provider automatically. The instance panel then offers **Install update**. It resolves the published Git tag to an immutable commit, pins the application's `git_commit_sha`, and asks Coolify to build and deploy it. Status is tracked through the Coolify API; success requires the backend to run the requested version. Deployment briefly interrupts the workspace. A failed installation reports an error and can be retried after checking the Coolify deployment and setup logs.
+
+The application stays pinned to the installed commit. To resume deploying the `release` branch manually, reset `git_commit_sha` to `HEAD` in Coolify. The integration verifies that the application's GitHub repository matches `AULORA_UPDATE_GITHUB_REPO`, which defaults to `chark1es/Aulora`.
+
+Without API configuration, the panel still checks for releases and explains which settings are missing. Apply releases manually through Coolify. Do not run `infra/docker/update.sh` inside Coolify's source directory.
 
 ## Teardown
 

@@ -35,12 +35,18 @@ export interface ChannelSummary {
   readonly hidden: boolean;
   /** Viewer has muted notifications for this channel. */
   readonly muted: boolean;
+  /** Pinned to the top of the viewer's direct messages, for this viewer only. */
+  readonly pinned: boolean;
+  /** When the viewer pinned it; `null` when not pinned. Orders the pinned block. */
+  readonly pinnedAt: number | null;
   readonly memberIds?: string[];
 }
 
 export interface ViewerChannelPref {
   readonly hidden: boolean;
   readonly muted: boolean;
+  readonly pinned: boolean;
+  readonly pinnedAt: number | null;
 }
 
 /** The viewer's per-channel hidden/muted flags, keyed by channel id. */
@@ -61,6 +67,8 @@ export async function viewerChannelPrefs(
     prefs.set(row.channelId, {
       hidden: row.hidden === true,
       muted: row.level === "nothing" || (row.muteUntil !== undefined && row.muteUntil > now),
+      pinned: row.pinned === true,
+      pinnedAt: row.pinnedAt ?? null,
     });
   }
   return prefs;
@@ -83,6 +91,8 @@ export async function toSummary(
     position: channel.position ?? 0,
     hidden: pref?.hidden ?? false,
     muted: pref?.muted ?? false,
+    pinned: pref?.pinned ?? false,
+    pinnedAt: pref?.pinnedAt ?? null,
     ...(memberIds !== undefined ? { memberIds } : {}),
   };
 }

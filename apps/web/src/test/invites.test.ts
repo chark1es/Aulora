@@ -1,5 +1,10 @@
 import { describe, expect, it } from "vitest";
-import { inviteUrl, parseInviteCode, redeemErrorMessage } from "../lib/invites";
+import {
+  inviteUrl,
+  parseInviteCode,
+  redeemErrorMessage,
+  redeemOutcomeMessage,
+} from "../lib/invites";
 
 describe("inviteUrl", () => {
   it("builds a shareable invite link and strips a trailing slash", () => {
@@ -22,5 +27,20 @@ describe("redeemErrorMessage", () => {
   it("prefers an error message and falls back", () => {
     expect(redeemErrorMessage(new Error("Invite expired"))).toBe("Invite expired");
     expect(redeemErrorMessage(null)).toBe("That invite could not be redeemed.");
+  });
+});
+
+describe("redeemOutcomeMessage", () => {
+  it("explains a refusal and greets a new member", () => {
+    expect(redeemOutcomeMessage({ joined: false, message: "Invite has expired" })).toBe(
+      "Invite has expired",
+    );
+    expect(redeemOutcomeMessage({ joined: false, message: "" })).toBe(
+      "That invite could not be redeemed.",
+    );
+    expect(redeemOutcomeMessage({ joined: true, alreadyMember: false })).toBe("Welcome aboard.");
+    expect(redeemOutcomeMessage({ joined: true, alreadyMember: true })).toBe(
+      "You are already a member.",
+    );
   });
 });

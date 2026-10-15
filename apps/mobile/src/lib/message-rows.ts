@@ -15,7 +15,6 @@ export type MessageListRow =
 function continuesBlock(previous: MessagePayload, message: MessagePayload): boolean {
   return (
     previous.authorId === message.authorId &&
-    previous.deletedAt === null &&
     message.createdAt - previous.createdAt < GROUP_WINDOW_MS &&
     (message.replyToId === null || message.replyToId === undefined)
   );
@@ -25,11 +24,14 @@ function continuesBlock(previous: MessagePayload, message: MessagePayload): bool
  * Turns messages in chronological order into list rows, newest first, because
  * the list is inverted so it opens on the latest message. A day separator
  * follows the messages of its day in the array, so it draws above them.
+ * Deleted messages are omitted: the server keeps the soft-delete row for
+ * audit, but the client renders no tombstone.
  */
 export function buildMessageRows(messages: readonly MessagePayload[]): MessageListRow[] {
+  const visible = messages.filter((message) => message.deletedAt === null);
   const rows: MessageListRow[] = [];
-  messages.forEach((message, index) => {
-    const previous = messages[index - 1];
+  visible.forEach((message, index) => {
+    const previous = visible[index - 1];
     const day = startOfLocalDay(message.createdAt);
     const sameDay = previous !== undefined && startOfLocalDay(previous.createdAt) === day;
     if (!sameDay) rows.push({ kind: "day", key: `day-${day}`, label: dayLabel(day) });

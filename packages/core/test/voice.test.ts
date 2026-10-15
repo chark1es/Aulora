@@ -24,6 +24,7 @@ import {
   saveVoiceSettings,
   shouldOffer,
   sortParticipants,
+  streamProfile,
 } from "../src/index";
 
 function participant(
@@ -36,6 +37,7 @@ function participant(
     deafened: false,
     video: false,
     sharingScreen: false,
+    sfu: false,
     joinedAt: 0,
     clientId: null,
     session: 1,
@@ -88,6 +90,39 @@ describe("voice settings", () => {
 
     store.setItem("aulora.voiceSettings.v1", "{not json");
     expect(loadVoiceSettings(store)).toEqual(DEFAULT_VOICE_SETTINGS);
+  });
+
+  it("keeps older stored settings valid and fills in the streaming options", () => {
+    const merged = mergeVoiceSettings({ noiseSuppression: false, inputVolume: 1.5 });
+    expect(merged.noiseSuppression).toBe(false);
+    expect(merged.enhancedNoiseSuppression).toBe(false);
+    expect(merged.backgroundEffect).toBe("none");
+    expect(merged.streamQuality).toBe("smooth");
+    expect(merged.streamAudio).toBe(true);
+  });
+
+  it("rejects an unknown effect, quality or malformed backdrop id", () => {
+    const merged = mergeVoiceSettings({
+      backgroundEffect: "sparkle" as never,
+      backgroundBlur: "extreme" as never,
+      backgroundImage: "../etc/passwd",
+      streamQuality: "ultra" as never,
+    });
+    expect(merged.backgroundEffect).toBe("none");
+    expect(merged.backgroundBlur).toBe("strong");
+    expect(merged.backgroundImage).toBe(DEFAULT_VOICE_SETTINGS.backgroundImage);
+    expect(merged.streamQuality).toBe("smooth");
+  });
+
+  it("scales the stream budget with the chosen quality", () => {
+    const smooth = streamProfile("smooth");
+    const balanced = streamProfile("balanced");
+    const saver = streamProfile("saver");
+    expect(smooth.frameRate).toBe(30);
+    expect(balanced.frameRate).toBe(15);
+    expect(saver.height).toBeLessThan(balanced.height);
+    expect(saver.maxBitrate).toBeLessThan(balanced.maxBitrate);
+    expect(balanced.maxBitrate).toBeLessThan(smooth.maxBitrate);
   });
 
   it("maps resolutions to capture constraints", () => {

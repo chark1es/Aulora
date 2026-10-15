@@ -84,6 +84,50 @@ export const update = mutation({
 });
 
 /**
+ * Applies drag-and-drop category moves. Each move needs `ManageChannels` on
+ * its category, every id must exist, and the resulting positions are rewritten
+ * as unique, contiguous values so the stored order is unambiguous.
+ */
+export const reorder = mutation({
+  args: {
+    moves: v.array(v.object({ categoryId: v.id("categories"), position: v.number() })),
+  },
+  handler: async (ctx, args) => {
+    if (args.moves.length === 0) {
+      return null;
+    }
+    let actorId: string | null = null;
+    for (const move of args.moves) {
+      const { userId } = await requireWorkspacePermission(
+        ctx,
+        Permission.ManageChannels,
+        move.categoryId,
+      );
+      actorId = userId;
+    }
+    const desired = new Map(args.moves.map((move) => [move.categoryId, move.position]));
+    const ordered = (await ctx.db.query("categories").collect())
+      .map((category, index) => ({
+        category,
+        index,
+        position: desired.get(category._id) ?? category.position,
+      }))
+      .sort((a, b) => a.position - b.position || a.index - b.index);
+    for (const [position, entry] of ordered.entries()) {
+      await ctx.db.patch(entry.category._id, { position });
+    }
+    if (actorId !== null) {
+      await writeAudit(ctx, {
+        actorId,
+        action: "category.reorder",
+        meta: JSON.stringify({ count: args.moves.length }),
+      });
+    }
+    return null;
+  },
+});
+
+/**
  * Replaces a category's overrides. Requires `ManageChannels`.
  */
 export const setOverrides = mutation({

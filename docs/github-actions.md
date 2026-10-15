@@ -11,7 +11,7 @@ fails if any other job fails or is cancelled, and treats only the native jobs as
 optional when skipped. There are no path filters on PR checks, so
 documentation-only PRs also produce the required result.
 
-Configure `main` to require that check from the GitHub Actions app, an up-to-date PR branch,
+Configure `main` and the stable `release` branch to require that check from the GitHub Actions app, an up-to-date PR branch,
 and resolved review conversations. Apply the rule to administrators and
 block force pushes and branch deletion. Review approvals are a maintainer choice.
 The same checks run after merges and for merge groups, without the native builds.

@@ -1,4 +1,4 @@
-import { activityLabel } from "@aulora/core";
+import { activityLabel, type MessagePayload } from "@aulora/core";
 import { Button, Icon, Spinner, Text, usePalette } from "@aulora/ui-native";
 import { usePaginatedQuery } from "convex/react";
 import { Pressable, View } from "react-native";
@@ -11,25 +11,30 @@ export function PinnedMessagesSheet({
   visible,
   channelId,
   memberNames,
+  pins: suppliedPins,
   onOpen,
   onClose,
 }: {
   readonly visible: boolean;
   readonly channelId: string;
   readonly memberNames: ReadonlyMap<string, string>;
+  /** Pins an offline surface already holds; when set the sheet skips the server. */
+  readonly pins?: readonly MessagePayload[] | undefined;
   readonly onOpen: (_messageId: string) => void;
   readonly onClose: () => void;
 }) {
   const palette = usePalette();
+  const querying = suppliedPins === undefined && visible;
   const { results, status, loadMore } = usePaginatedQuery(
     api.messages.listPins,
-    visible ? { channelId: channelId as never } : "skip",
+    querying ? { channelId: channelId as never } : "skip",
     { initialNumItems: 30 },
   );
-  const pins = results.filter((message) => message.deletedAt === null);
+  const pins = (suppliedPins ?? results).filter((message) => message.deletedAt === null);
+  const loading = suppliedPins === undefined && status === "LoadingFirstPage";
   return (
     <BottomSheet visible={visible} title="Pinned messages" onClose={onClose}>
-      {status === "LoadingFirstPage" ? (
+      {loading ? (
         <View className="items-center py-6">
           <Spinner label="Loading pinned messages" />
         </View>
@@ -71,7 +76,7 @@ export function PinnedMessagesSheet({
           ))}
         </ListGroup>
       )}
-      {status === "CanLoadMore" && (
+      {suppliedPins === undefined && status === "CanLoadMore" && (
         <Button
           variant="ghost"
           onPress={() => {
@@ -81,7 +86,9 @@ export function PinnedMessagesSheet({
           Load more
         </Button>
       )}
-      {status === "LoadingMore" && <Spinner label="Loading more pinned messages" />}
+      {suppliedPins === undefined && status === "LoadingMore" && (
+        <Spinner label="Loading more pinned messages" />
+      )}
     </BottomSheet>
   );
 }

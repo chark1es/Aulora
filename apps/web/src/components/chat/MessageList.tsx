@@ -115,7 +115,14 @@ export function MessageList(props: MessageListProps) {
   const [atBottom, setAtBottom] = useState(true);
 
   const items = useMemo(
-    () => buildTimeline(messages, { firstUnreadId }),
+    () =>
+      buildTimeline(messages, { firstUnreadId }).map((item) =>
+        // A pinned message needs its author header (and the pin itself) even
+        // when it continues an author run, so force the run to start here.
+        item.kind === "message" && item.message.pinnedAt !== null
+          ? { ...item, startsGroup: true }
+          : item,
+      ),
     [messages, firstUnreadId],
   );
 
@@ -510,31 +517,6 @@ function MessageRow({
     };
   }, [confirmDelete]);
 
-  if (message.deletedAt !== null) {
-    return (
-      <article
-        id={`message-${message.id}`}
-        data-testid={`message-${message.id}`}
-        data-message-row
-        className={cn("w-full py-0.5", startsGroup ? "mt-3" : "mt-0.5")}
-      >
-        <div className={cn("flex w-full items-start gap-2.5", mirror && "flex-row-reverse")}>
-          <div className="w-8 shrink-0 pt-0.5">
-            {startsGroup && (
-              <PresenceAvatar userId={message.authorId} size={32} roleColor={authorColor} />
-            )}
-          </div>
-          <div className={cn("flex min-w-0 flex-1", mirror ? "justify-end" : "justify-start")}>
-            <span className="flex items-center gap-1.5 rounded-full border border-dashed border-border px-3 py-1 text-xs italic text-text-muted">
-              <Icon name="trash" size={12} />
-              This message was deleted.
-            </span>
-          </div>
-        </div>
-      </article>
-    );
-  }
-
   const hasText = text.trim().length > 0;
   const time = messageTime(message.createdAt);
   const replyCount = message.replyCount ?? 0;
@@ -823,13 +805,17 @@ function MessageRow({
               >
                 {time}
               </time>
+              {message.pinnedAt !== null && (
+                <span
+                  role="img"
+                  aria-label="Pinned"
+                  title="Pinned"
+                  className="inline-flex shrink-0 items-center text-accent"
+                >
+                  <Icon name="pin" size={12} align="baseline" />
+                </span>
+              )}
             </div>
-          )}
-          {message.pinnedAt !== null && (
-            <span className="mb-1 flex items-center gap-1 text-[11px] font-medium text-accent">
-              <Icon name="pin" size={12} />
-              Pinned
-            </span>
           )}
           {body}
           {attachments.length > 0 && (

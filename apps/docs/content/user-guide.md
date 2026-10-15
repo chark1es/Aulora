@@ -8,6 +8,8 @@ The server advertises its available sign-in methods. Use email/password, a confi
 
 Accounts belong to each server. Joining another server can require another account. Use the workspace switcher to move between connected servers.
 
+If a server does not answer, the app stops waiting silently. After about ten seconds it offers **Try again**, **Use a different server**, and, for a saved server, **Remove this server**. Removal asks for confirmation and only forgets the server on this device, so you can add it again later.
+
 ## Install a desktop or mobile client
 
 This installs a client, not a workspace. To run a server, follow [getting started](getting-started.md#install-a-workspace).
@@ -36,15 +38,45 @@ Threads keep replies attached to a message. The threads inbox helps you return t
 
 Role permissions control who can create channels, upload, moderate, or manage a workspace. If an action is missing or denied, ask the workspace administrator.
 
+Pin a direct message or group chat to keep it in a Pinned block at the top of your Direct messages list. A pin is personal to you and does not affect the other people in the conversation.
+
+In a channel's member list, roles an administrator has set to display separately get their own section above Online and Offline, titled in the role's colour. Only online members appear under a role; everyone offline is listed under Offline.
+
 ## Kanban
 
 If your administrator enables Kanban and grants you View Kanban permission, open it from the sidebar. Plan work with cards, columns, labels, assignees, checklists, due dates, comments, attachments and work timers. You can browse GitHub repositories, issues and pull requests with your own connection. See [Kanban](kanban.md) for the full workflow.
+
+## Notes
+
+If your administrator enables Notes and grants you View Notes permission, open it from the sidebar. Write Markdown notes with a live preview, organize them in nested folders, label them with tags, search locally or on the server, and review each note's line-by-line history. See [Notes](notes.md) for the full workflow.
 
 ## Voice and video
 
 Join a voice channel or start a call from a conversation. Allow microphone access, and camera access when using video. Use the call controls to mute, change devices, or leave.
 
 A browser needs HTTPS or localhost for media permissions. Screen sharing depends on platform support. If a call connects but has no audio/video, try another network and ask the administrator whether TURN is configured.
+
+### Sound and picture
+
+Open **Settings → Voice & video** to choose how you sound and look. Changes apply to the current call straight away.
+
+- **Noise suppression** has three levels. *Standard* uses your browser's built-in filter. *Enhanced* runs a small AI model on your device that removes keyboard clatter, fans and room noise while keeping your voice. It needs a little more processing power and is available in the web and desktop apps. Where it cannot run, Standard is used and the settings say so.
+- **Background** blurs the room behind you or replaces it with a built-in image or a picture of your own. It runs entirely on your device, so your camera picture is not sent anywhere to do this. It is available in the web and desktop apps and needs WebGL 2.
+- **Screen sharing quality** sets how sharp a shared screen is. *Smooth* is 1080p at 30 frames a second, *Balanced* is 1080p at 15 for sharp text, and *Data saver* is 720p at 15.
+
+### Sharing a screen or window
+
+Choose **Share** in a call, then pick a whole screen, one window or a browser tab. In the desktop and Chrome-based browsers you can also share the sound of that screen or window. Your workspace may run a streaming server, which lets one share reach a whole channel without slowing your connection; if it does not, people receive the share straight from you, which is fine for a handful of viewers.
+
+### Picture in picture
+
+Keep a call in view while you work in other apps.
+
+- **Desktop app:** choose the **Picture in picture** button in the call window. The app shrinks to a small window in the corner of the screen. Choose **Keep on top of other windows** (the pin) to keep it above everything else, and the expand button to return to the full app.
+- **Chrome and Edge:** the button opens a floating window that stays above other windows. Chrome can also open it for you when you switch to another tab during a call.
+- **Safari and Firefox:** the button floats a video of whoever is sharing their screen or speaking.
+- **iPhone and iPad:** leave the app during a video call and the other person's video keeps playing in a small window. You can also use the **Picture in picture** button.
+- **Android:** leave the app (the home gesture or button) during a video call and the call shrinks into a floating window. The same button does it on demand. Needs Android 8 or later.
 
 ## Notifications
 

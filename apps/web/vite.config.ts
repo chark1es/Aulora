@@ -1,6 +1,11 @@
 import react from "@vitejs/plugin-react";
 import { defineConfig, loadEnv } from "vite";
 
+/** Never inline code or models; images and fonts keep Vite's default size rule. */
+export function keepLoadableAssetsAsFiles(file: string): boolean | undefined {
+  return /\.(?:js|mjs|wasm|tflite)(?:$|\?)/.test(file) ? false : undefined;
+}
+
 /**
  * No backend URL is baked into the bundle. `/api/auth/*` is proxied in dev so
  * the session cookie is first-party; in production Caddy does the same on the
@@ -43,6 +48,11 @@ export default defineConfig(({ mode }) => {
     build: {
       outDir: "dist",
       sourcemap: false,
+      // Scripts, WebAssembly and models are loaded by URL (audio worklets, the
+      // MediaPipe runtime, `new Worker`) and must stay real same-origin files:
+      // Vite would otherwise inline a small one as a `data:` URL, which the
+      // production Content-Security-Policy (`script-src 'self'`) refuses to run.
+      assetsInlineLimit: keepLoadableAssetsAsFiles,
     },
   };
 });

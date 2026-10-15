@@ -1,5 +1,6 @@
 package dev.spwnd.aulora
 
+import android.content.res.Configuration
 import android.os.Build
 import android.os.Bundle
 
@@ -9,6 +10,7 @@ import com.facebook.react.defaults.DefaultNewArchitectureEntryPoint.fabricEnable
 import com.facebook.react.defaults.DefaultReactActivityDelegate
 
 import expo.modules.ReactActivityDelegateWrapper
+import expo.modules.aulorapip.PipBridge
 
 class MainActivity : ReactActivity() {
   override fun onCreate(savedInstanceState: Bundle?) {
@@ -17,6 +19,30 @@ class MainActivity : ReactActivity() {
     // This is required for expo-splash-screen.
     setTheme(R.style.AppTheme);
     super.onCreate(null)
+  }
+
+  /**
+   * Picture-in-picture for video calls. Before Android 12 the activity has to ask
+   * to float when the user leaves; from Android 12 the system does it itself.
+   */
+  override fun onUserLeaveHint() {
+    super.onUserLeaveHint()
+    PipBridge.onUserLeaveHint(this)
+  }
+
+  override fun onPictureInPictureModeChanged(
+    isInPictureInPictureMode: Boolean,
+    newConfig: Configuration
+  ) {
+    super.onPictureInPictureModeChanged(isInPictureInPictureMode, newConfig)
+    if (isInPictureInPictureMode) {
+      // A floating activity is paused, and React Native stops its JavaScript timers
+      // while the host is paused. The call's heartbeat, speaking indicator and
+      // reconnect logic all run on timers, so a floating call would be dropped
+      // by the server within a minute. Keep the host running while it floats.
+      reactHost.onHostResume(this)
+    }
+    PipBridge.onModeChanged(isInPictureInPictureMode)
   }
 
   /**

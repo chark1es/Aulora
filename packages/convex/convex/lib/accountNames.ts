@@ -36,3 +36,28 @@ export async function accountNames(
   }
   return names;
 }
+
+export interface AccountIdentity {
+  readonly email: string | null;
+  readonly emailVerified: boolean;
+}
+
+/**
+ * The sign-in email of an account and whether its provider vouched for it.
+ * `null` when the account cannot be read, so callers fail closed.
+ */
+export async function accountIdentity(
+  ctx: GenericCtx<DataModel>,
+  userId: string,
+): Promise<AccountIdentity | null> {
+  try {
+    const user = await authComponent.getAnyUserById(ctx, userId);
+    if (user === null) {
+      return null;
+    }
+    const email = user.email.trim();
+    return { email: email.length > 0 ? email : null, emailVerified: user.emailVerified === true };
+  } catch {
+    return null;
+  }
+}

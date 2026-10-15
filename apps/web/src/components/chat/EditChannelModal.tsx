@@ -1,5 +1,8 @@
 import { cn, Icon, Input, Modal, Switch } from "@aulora/ui-web";
 import { useEffect, useMemo, useRef, useState } from "react";
+import type { OverrideView } from "../../lib/workspace-admin";
+import { ChannelRoleOverrides } from "./ChannelRoleOverrides";
+import type { ChannelRoleOption } from "./channel-role-overrides";
 
 export interface EditChannelMemberOption {
   readonly userId: string;
@@ -13,6 +16,7 @@ export interface EditChannelPatch {
   readonly private: boolean;
   readonly memberIds: readonly string[];
   readonly blockedUserIds: readonly string[];
+  readonly roleOverrides: readonly OverrideView[];
 }
 
 export interface EditChannelModalProps {
@@ -22,6 +26,12 @@ export interface EditChannelModalProps {
   readonly isPrivate: boolean;
   readonly initialMemberIds: readonly string[];
   readonly initialBlockedUserIds: readonly string[];
+  /** Roles the viewer may override on this channel, highest position first. */
+  readonly roles?: readonly ChannelRoleOption[];
+  /** Existing role-target overrides for the channel. */
+  readonly initialRoleOverrides?: readonly OverrideView[];
+  /** Shows the role permissions section when the viewer can manage roles. */
+  readonly canManageRoleOverrides?: boolean;
   readonly ownUserId: string;
   readonly members: readonly EditChannelMemberOption[];
   readonly busy?: boolean;
@@ -42,6 +52,9 @@ export function EditChannelModal({
   isPrivate,
   initialMemberIds,
   initialBlockedUserIds,
+  roles = [],
+  initialRoleOverrides = [],
+  canManageRoleOverrides = false,
   ownUserId,
   members,
   busy = false,
@@ -54,6 +67,7 @@ export function EditChannelModal({
   const [privateChannel, setPrivateChannel] = useState(isPrivate);
   const [selectedMembers, setSelectedMembers] = useState<readonly string[]>(initialMemberIds);
   const [blockedUserIds, setBlockedUserIds] = useState<readonly string[]>(initialBlockedUserIds);
+  const [roleOverrides, setRoleOverrides] = useState<readonly OverrideView[]>(initialRoleOverrides);
   const [memberQuery, setMemberQuery] = useState("");
   const [blockQuery, setBlockQuery] = useState("");
   const [saving, setSaving] = useState(false);
@@ -70,6 +84,7 @@ export function EditChannelModal({
     setPrivateChannel(isPrivate);
     setSelectedMembers(initialMemberIds);
     setBlockedUserIds(initialBlockedUserIds);
+    setRoleOverrides(initialRoleOverrides);
     setMemberQuery("");
     setBlockQuery("");
     setSaving(false);
@@ -127,6 +142,7 @@ export function EditChannelModal({
         private: privateChannel,
         memberIds: privateChannel ? [...new Set([ownUserId, ...selectedMembers])] : [],
         blockedUserIds: [...new Set(blockedUserIds)],
+        roleOverrides: [...roleOverrides],
       }),
     ).finally(() => {
       setSaving(false);
@@ -401,6 +417,15 @@ export function EditChannelModal({
               permission on this channel only.
             </p>
           </div>
+
+          {canManageRoleOverrides && (
+            <ChannelRoleOverrides
+              roles={roles}
+              overrides={roleOverrides}
+              disabled={busy || saving}
+              onChange={setRoleOverrides}
+            />
+          )}
 
           {error !== null && (
             <p role="alert" className="text-[13px] text-danger">

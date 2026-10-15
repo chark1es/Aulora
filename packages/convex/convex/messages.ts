@@ -245,8 +245,9 @@ export const send = mutation({
  * the first page is always the live tail and `continueCursor` loads older
  * history; each page is returned oldest first for rendering. Thread replies are
  * filtered before pagination so they never crowd roots out of a page; use
- * {@link listThread} for replies. Deleted messages are returned with
- * `deletedAt` set so clients render a tombstone.
+ * {@link listThread} for replies. Deleted messages are still returned with
+ * `deletedAt` set so read-state math can ignore them, but every client hides
+ * them from the timeline (no tombstone is rendered).
  */
 export const list = query({
   args: { channelId: v.id("channels"), paginationOpts: paginationOptsValidator },
@@ -423,7 +424,11 @@ export const listPins = query({
       .withIndex("by_channel_pinned", (q) => q.eq("channelId", args.channelId))
       .order("desc")
       .paginate(args.paginationOpts);
-    const pinned = result.page.filter((message) => message.pinnedAt !== undefined);
+    // Deleted messages are hidden everywhere, so a deleted pin must not surface
+    // here (or consume the page).
+    const pinned = result.page.filter(
+      (message) => message.pinnedAt !== undefined && message.deletedAt === undefined,
+    );
     return { ...result, page: await toMessages(pinned) };
   },
 });

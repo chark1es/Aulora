@@ -9,7 +9,6 @@ import {
   formatBytes,
   formatQuota,
   formatTimestamp,
-  parseByteInput,
 } from "../../../lib/instance-admin";
 import type { Callback } from "../callbacks";
 import { UpdatesCard } from "./UpdatesCard";
@@ -159,8 +158,8 @@ function AuthSectionView({ model }: { readonly model: AuthSectionModel }) {
     <div className="flex flex-col gap-4" data-testid="instance-auth">
       <Heading level={3}>Auth providers</Heading>
       <Text tone="muted" size="sm">
-        Credentials come from the deployment environment; a provider is offered only when it is both
-        configured and switched on here.
+        Credentials come from the deployment environment or from overrides saved in the Environment
+        section; a provider is offered only when it is both configured and switched on here.
       </Text>
       <Card className="flex flex-col gap-1">
         <Text size="sm">
@@ -173,17 +172,7 @@ function AuthSectionView({ model }: { readonly model: AuthSectionModel }) {
         toggles={model.toggles}
         onToggle={model.onToggle}
       />
-      {model.overview.auth.oidc !== null && (
-        <Card className="flex flex-col gap-1">
-          <Text size="sm">OIDC: {model.overview.auth.oidc.displayName}</Text>
-          <Text size="xs" tone="muted" mono>
-            {model.overview.auth.oidc.discoveryUrl}
-          </Text>
-          <Text size="xs" tone="muted">
-            scopes: {model.overview.auth.oidc.scopes.join(" ")}
-          </Text>
-        </Card>
-      )}
+      {model.overview.auth.oidc !== null && <OidcSummary oidc={model.overview.auth.oidc} />}
       <div className="flex items-center gap-3">
         <Button loading={model.busy} disabled={model.busy} onClick={model.onSave}>
           Save providers
@@ -222,97 +211,36 @@ function AuthProviderToggle({
         {...(provider.configured
           ? {}
           : {
-              description: "Not configured — set credentials in the deployment environment.",
+              description:
+                "Not configured — set credentials in the Environment section or the deployment environment.",
             })}
       />
     </li>
   );
 }
 
-export function StorageSection({ overview }: { readonly overview: Overview }) {
-  const updateStorage = useMutation(api.instance.updateStorage);
-  const [quota, setQuota] = useState("");
-  const [maxUpload, setMaxUpload] = useState("");
-  const [error, setError] = useState<string | null>(null);
-  const [saved, setSaved] = useState(false);
-  const [busy, setBusy] = useState(false);
-
-  useEffect(() => {
-    setQuota(overview.storage.quotaBytes > 0 ? String(overview.storage.quotaBytes) : "0");
-    setMaxUpload(String(overview.storage.maxUploadBytes));
-  }, [overview.storage.quotaBytes, overview.storage.maxUploadBytes]);
-
-  const parseQuota = (raw: string): number | null => {
-    const trimmed = raw.trim();
-    if (trimmed === "" || trimmed === "0") {
-      return 0;
-    }
-    return parseByteInput(trimmed);
-  };
-
+/** OIDC summary that never renders environment-sourced values. */
+function OidcSummary({ oidc }: { readonly oidc: NonNullable<Overview["auth"]["oidc"]> }) {
+  if (oidc.source === "environment") {
+    return (
+      <Card className="flex flex-col gap-1">
+        <Text size="sm">OIDC: configured from the deployment environment</Text>
+        <Text size="xs" tone="muted">
+          Its values are hidden here. Replace or adjust it in the Environment section.
+        </Text>
+      </Card>
+    );
+  }
   return (
-    <form
-      className="flex flex-col gap-4"
-      data-testid="instance-storage"
-      onSubmit={(event) => {
-        event.preventDefault();
-        setError(null);
-        setSaved(false);
-        const quotaBytes = parseQuota(quota);
-        const maxUploadBytes = parseByteInput(maxUpload);
-        if (quotaBytes === null || maxUploadBytes === null) {
-          setError("Enter a valid size such as 25 MiB, 1 GiB, or 0 for unlimited.");
-          return;
-        }
-        setBusy(true);
-        void updateStorage({ storageQuotaBytes: quotaBytes, maxUploadBytes })
-          .then(() => {
-            setSaved(true);
-          })
-          .catch((cause: unknown) => {
-            setError(cause instanceof Error ? cause.message : "Could not save the quota.");
-          })
-          .finally(() => {
-            setBusy(false);
-          });
-      }}
-    >
-      <Heading level={3}>Storage quotas</Heading>
-      <Text tone="muted" size="sm">
-        The quota is the total upload budget; 0 means unlimited. The max upload caps a single file.
+    <Card className="flex flex-col gap-1">
+      <Text size="sm">OIDC: {oidc.displayName}</Text>
+      <Text size="xs" tone="muted" mono>
+        {oidc.discoveryUrl}
       </Text>
-      <Input
-        label="Total storage quota"
-        hint="Examples: 50 GiB, 500 MiB, 0 for unlimited."
-        value={quota}
-        onChange={(event) => {
-          setQuota(event.currentTarget.value);
-        }}
-      />
-      <Input
-        label="Max upload size"
-        hint="Examples: 25 MiB, 100 MiB."
-        value={maxUpload}
-        onChange={(event) => {
-          setMaxUpload(event.currentTarget.value);
-        }}
-      />
-      {error !== null && (
-        <Text tone="danger" size="sm" role="alert">
-          {error}
-        </Text>
-      )}
-      {saved && (
-        <Text tone="secondary" size="sm" role="status">
-          Quota saved.
-        </Text>
-      )}
-      <div>
-        <Button type="submit" loading={busy} disabled={busy}>
-          Save quotas
-        </Button>
-      </div>
-    </form>
+      <Text size="xs" tone="muted">
+        scopes: {oidc.scopes.join(" ")}
+      </Text>
+    </Card>
   );
 }
 

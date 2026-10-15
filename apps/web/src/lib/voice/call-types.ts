@@ -1,3 +1,4 @@
+/* eslint-disable no-unused-vars -- the base rule reports parameter names in type signatures; Biome checks real unused code */
 import type { CallView, VoiceDeviceSettings, VoicePort, VoiceSubscriptions } from "@aulora/core";
 
 export interface VoiceLocalState {
@@ -15,6 +16,8 @@ export interface VoiceSnapshot {
   /** The track to show in the local tile: screen while sharing, else camera. */
   readonly localVideoTrack: MediaStreamTrack | null;
   readonly remoteStreams: ReadonlyMap<string, MediaStream>;
+  /** Screens relayed by the streaming server, keyed by the sharer's user id. */
+  readonly remoteScreens: ReadonlyMap<string, MediaStream>;
   /** Remote users whose audio is currently above the speaking threshold. */
   readonly remoteSpeaking: ReadonlySet<string>;
   readonly micLevel: number;

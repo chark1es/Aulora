@@ -3,7 +3,8 @@
 # Builds the Aulora web SPA and serves it with nginx.
 #   - multi-stage: Bun build -> nginx (alpine)
 #   - history fallback for the TanStack Router SPA
-#   - /.well-known/ served from the `web-well-known` volume (see nginx/default.conf)
+#   - /.well-known/aulora.json proxied to live backend discovery
+#   - other /.well-known/ documents served from the `web-well-known` volume
 #   - /api/auth/ proxied to the Convex HTTP-actions origin for first-party cookies
 #
 # Build context is the repo root; see ../../.dockerignore.
@@ -35,6 +36,12 @@ RUN bun install --frozen-lockfile
 RUN bun run --cwd apps/web build
 
 FROM nginx:1.27-alpine AS runtime
-COPY infra/docker/nginx/default.conf /etc/nginx/conf.d/default.conf
+# Maximum request body forwarded through this origin. The official nginx image
+# envsubst-expands files in /etc/nginx/templates into /etc/nginx/conf.d at
+# startup, substituting only environment variables (nginx's own `$var` tokens
+# are left alone). Raise NGINX_CLIENT_MAX_BODY_SIZE to match the effective max
+# upload whenever clients upload through this origin.
+ENV NGINX_CLIENT_MAX_BODY_SIZE=100m
+COPY infra/docker/nginx/default.conf.template /etc/nginx/templates/default.conf.template
 COPY --from=build /app/apps/web/dist /usr/share/nginx/html
 EXPOSE 80

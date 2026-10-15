@@ -1,6 +1,10 @@
-import { describe, expect, it } from "vitest";
+import { afterEach, describe, expect, it } from "vitest";
 import { api } from "../convex/_generated/api";
 import { newTest, seedWorkspace } from "./helpers";
+
+afterEach(() => {
+  delete process.env.UPLOAD_MAX_BYTES;
+});
 
 async function ownerTest() {
   const t = newTest();
@@ -64,6 +68,28 @@ describe("instance.updateStorage", () => {
         maxUploadBytes: 10,
       }),
     ).rejects.toThrow("at least 1 KiB");
+  });
+});
+
+describe("effective max upload cap", () => {
+  it("defaults to the env/default and prefers the stored instance setting", async () => {
+    const { t, asOwner } = await ownerTest();
+
+    // No instanceSettings row and no env override -> built-in 25 MiB default.
+    delete process.env.UPLOAD_MAX_BYTES;
+    expect((await t.query(api.server.publicConfig)).uploads.maxBytes).toBe(25 * 1024 * 1024);
+
+    // Env overrides the default while no row exists.
+    process.env.UPLOAD_MAX_BYTES = String(1024 * 1024);
+    expect((await t.query(api.server.publicConfig)).uploads.maxBytes).toBe(1024 * 1024);
+
+    // Once the operator saves a setting, it wins over the env value.
+    delete process.env.UPLOAD_MAX_BYTES;
+    await asOwner.mutation(api.instance.updateStorage, {
+      storageQuotaBytes: 0,
+      maxUploadBytes: 50 * 1024 * 1024,
+    });
+    expect((await t.query(api.server.publicConfig)).uploads.maxBytes).toBe(50 * 1024 * 1024);
   });
 });
 

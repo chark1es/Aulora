@@ -10,9 +10,9 @@
 #   Base Directory ...... infra/docker
 #   Compose Location .... docker-compose.coolify.yml
 #   Preserve Repository . ON
-#       Needed so the repo-relative bind mounts below (./initdb, and ./vault for
-#       the optional `ekm` profile) still exist at deploy time. Coolify removes
-#       the checkout after a normal (non-preserved) deploy.
+#       Needed so the repo-relative bind mounts below (./initdb, ./livekit, and
+#       ./vault for the optional `ekm` profile) still exist at deploy time.
+#       Coolify removes the checkout after a normal (non-preserved) deploy.
 #
 # Domains (Coolify "Domains" on this resource; Coolify's Traefik terminates TLS)
 #   https://chat.example.com    -> service `web`            container port 80
@@ -46,6 +46,14 @@
 # Only `web` and `convex-backend` need a Coolify domain. Every other service is
 # internal-only: no host `ports:` are published here on purpose. Coolify routes
 # a domain to `<service>:<container port>`; it does not need published ports.
+#
+# Screen streaming: unlike the plain compose file, the LiveKit streaming server
+# is not behind a profile here, because Coolify does not start profiled
+# services. It configures itself: `livekit-init` creates its API key pair,
+# `setup` hands it to Convex and points clients at `<SITE_URL>/livekit`, which
+# `web` proxies to the server. The one thing Coolify cannot do for you is open
+# the media ports: allow 7881/tcp and 7882/udp to this server in its firewall.
+# Without them shares still work, sent directly to each viewer instead.
 #
 # Profiles: Coolify does not start profiled services, so `backups`, `ekm` and
 # `push-relay` stay off. To enable one, run this compose file with the profile as
@@ -246,6 +254,11 @@ services:
         CONVEX_URL: ${CONVEX_CLOUD_ORIGIN:-http://localhost:3210}
     image: aulora-web:local
     restart: unless-stopped
+    environment:
+      # nginx request-body cap for uploads proxied through this origin. Keep it
+      # at least as large as the effective max upload (the admin Storage setting
+      # or UPLOAD_MAX_BYTES). The 100m default covers the built-in 25 MiB cap.
+      NGINX_CLIENT_MAX_BODY_SIZE: ${NGINX_CLIENT_MAX_BODY_SIZE:-100m}
     # Coolify maps the web domain to this container's port 80; no host ports.
     expose:
       - "80"
@@ -270,6 +283,9 @@ services:
       context: ../..
       dockerfile: infra/docker/setup.Dockerfile
     image: aulora-setup:local
+    # The bootstrap prepares mount ownership, then drops to aulora without
+    # capabilities before deployment or workspace initialization.
+    user: "0:0"
     restart: "no"
     exclude_from_hc: true
     # Optional fallback for hosts that still provide a compose .env. Under
@@ -284,6 +300,15 @@ services:
       CONVEX_PROJECT_DIR: /app/packages/convex
       HOST_ENV_FILE: /host/.env
       WELL_KNOWN_DIR: /web-well-known
+      AULORA_UPDATE_PROVIDER: coolify
+      AULORA_COOLIFY_URL: ${AULORA_COOLIFY_URL:-}
+      AULORA_COOLIFY_APPLICATION_UUID: ${AULORA_COOLIFY_APPLICATION_UUID:-}
+      # Compose reads the token from the operator's environment; no credential is stored here.
+      # nosemgrep: codacy.yaml.security.hard-coded-tokens
+      AULORA_COOLIFY_API_TOKEN: ${AULORA_COOLIFY_API_TOKEN:-}
+      AULORA_UPDATE_MANIFEST_URL: ${AULORA_UPDATE_MANIFEST_URL:-}
+      AULORA_UPDATE_GITHUB_REPO: ${AULORA_UPDATE_GITHUB_REPO:-}
+      AULORA_UPDATE_CHANNEL: ${AULORA_UPDATE_CHANNEL:-stable}
       # --- instance identity + owner (operator-required) ---
       INSTANCE_NAME: ${INSTANCE_NAME:-aulora}
       WORKSPACE_NAME: ${WORKSPACE_NAME:-Aulora}
@@ -341,6 +366,8 @@ services:
     volumes:
       - convex-data:/convex/data
       - web-well-known:/web-well-known
+      # The streaming server's key pair, created by `livekit-init`.
+      - livekit-keys:/livekit-keys:ro
       # Persistent secret state: `setup` writes generated secrets here and
       # re-reads them on later runs, so redeploys keep the same keys. This
       # replaces the host bind `./:/host` in docker-compose.yml.
@@ -349,6 +376,9 @@ services:
       convex-backend:
         condition: service_healthy
       minio-init:
+        condition: service_completed_successfully
+      # Setup reads the streaming server's key pair, so wait for it.
+      livekit-init:
         condition: service_completed_successfully
     logging: *logging
 
@@ -472,11 +502,48 @@ services:
         condition: service_completed_successfully
     logging: *logging
 
+  # Screen-streaming server (LiveKit SFU). Calls stay peer to peer; only a
+  # screen or window share is relayed here, so one sharer uploads a single copy
+  # however many people watch. Nothing to configure (see the header). Not
+  # profiled, so Coolify starts it; it is idle until someone shares a screen.
+  livekit-init:
+    image: postgres:17-alpine
+    restart: "no"
+    # One-shot service: exit is expected, so do not fail the Coolify health gate.
+    exclude_from_hc: true
+    entrypoint: ["/bin/sh", "/init/init-keys.sh"]
+    volumes:
+      - livekit-keys:/keys
+      # Mount the directory, not the file. Coolify creates every relative bind
+      # source as an empty directory before it copies the checkout in, so a
+      # single-file mount makes that copy fail ("cannot overwrite directory ...
+      # with non-directory") and takes the stack down mid-deploy.
+      - ./livekit:/init:ro
+    logging: *logging
+
+  livekit:
+    image: livekit/livekit-server:v1.13.8
+    restart: unless-stopped
+    command: ["--config", "/etc/livekit/livekit.yaml"]
+    volumes:
+      - ./livekit:/etc/livekit:ro
+      - livekit-keys:/keys:ro
+    depends_on:
+      livekit-init:
+        condition: service_completed_successfully
+    expose:
+      - "7880"
+    ports:
+      - "7881:7881"
+      - "7882:7882/udp"
+    logging: *logging
+
 volumes:
   pgdata:
   convex-data:
   minio-data:
   web-well-known:
+  livekit-keys:
   backup-data:
   # Persists generated secrets across redeploys. Back this up (it holds the KEK
   # AULORA_ENCRYPTION_KEY); losing it makes existing ciphertext unreadable.

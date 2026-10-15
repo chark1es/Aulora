@@ -4,6 +4,7 @@ import {
   conversationTitle,
   createTypingThrottle,
   hasPermission,
+  type MembersGroupingRole,
   type MentionTarget,
   type MessagePayload,
   Permission,
@@ -13,7 +14,11 @@ import { cn, Icon, Spinner } from "@aulora/ui-web";
 import { useMutation, useQuery } from "convex/react";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { api } from "../../../../../packages/convex/convex/_generated/api";
-import { uploadFiles } from "../../lib/attachments";
+import {
+  attachmentUploadErrorMessage,
+  DEFAULT_MAX_UPLOAD_BYTES,
+  uploadFiles,
+} from "../../lib/attachments";
 import { isDesktop } from "../../lib/desktop";
 import { playSound } from "../../lib/sounds";
 import { useChannelSession } from "../../lib/use-channel";
@@ -28,6 +33,7 @@ import {
   type MemberView,
   type RoleView,
   resolveViewerPermissions,
+  roleRef,
 } from "../../lib/workspace-admin";
 import { type ChatSearchHit, useChat } from "../../providers/ChatProvider";
 import { useDesktopUpdates } from "../../providers/DesktopUpdateProvider";
@@ -38,8 +44,10 @@ import {
 } from "../../providers/WorkspaceUpdateProvider";
 import { AdminPanel, type AdminPanelViewer } from "../admin/AdminPanel";
 import { KanbanView } from "../kanban/KanbanView";
+import { NotesView } from "../notes/NotesView";
 import { DesktopUpdateSettings } from "../UpdateSettings";
 import { CallDock } from "../voice/CallDock";
+import { CallPictureInPicture } from "../voice/CallPictureInPicture";
 import { CallStage } from "../voice/CallStage";
 import { DeviceSettingsSection } from "../voice/DeviceSettingsSection";
 import { IncomingCallModal } from "../voice/IncomingCallModal";
@@ -52,6 +60,13 @@ import { ChannelSidebar, type ChannelUnread } from "./ChannelSidebar";
 import { CreateCategoryModal } from "./CreateCategoryModal";
 import { type CreateChannelInput, CreateChannelModal } from "./CreateChannelModal";
 import { channelEditBaseline, commitChannelEdit } from "./channel-edit";
+import {
+  type ChannelRoleOption,
+  canEditChannelRole,
+  mergeRoleOverrides,
+  roleOverridesFor,
+  sameOverrides,
+} from "./channel-role-overrides";
 import { EditChannelModal, type EditChannelPatch } from "./EditChannelModal";
 import { MemberProfilePopover } from "./MemberProfilePopover";
 import { MembersPanel } from "./MembersPanel";
@@ -72,6 +87,7 @@ export interface ChatViewProps {
   readonly ownName: string;
   readonly permissions: bigint;
   readonly kanbanEnabled?: boolean;
+  readonly notesEnabled?: boolean;
   readonly members: readonly {
     userId: string;
     displayName: string;
@@ -165,6 +181,7 @@ function ChatViewContent({
   ownName,
   permissions,
   kanbanEnabled = false,
+  notesEnabled = false,
   members,
   roles,
   unreadByChannel,
@@ -182,7 +199,7 @@ function ChatViewContent({
     () => readLocal(lastChannelKey) ?? undefined,
   );
   const [mobilePane, setMobilePane] = useState<"list" | "chat">("list");
-  const [mainView, setMainView] = useState<"chat" | "threads" | "kanban">("chat");
+  const [mainView, setMainView] = useState<"chat" | "threads" | "kanban" | "notes">("chat");
   const [adminOpen, setAdminOpen] = useState(false);
   const [newConversationOpen, setNewConversationOpen] = useState(false);
   const [createChannelOpen, setCreateChannelOpen] = useState(false);
@@ -241,6 +258,7 @@ function ChatViewContent({
   const createCategory = useMutation(api.categories.create);
   const updateCategory = useMutation(api.categories.update);
   const removeCategory = useMutation(api.categories.remove);
+  const reorderCategories = useMutation(api.categories.reorder);
   const setNickname = useMutation(api.members.setNickname);
   const setBio = useMutation(api.members.setBio);
   const generateAvatarUploadUrl = useMutation(api.members.generateAvatarUploadUrl);
@@ -259,6 +277,11 @@ function ChatViewContent({
 
   // The Threads inbox is always subscribed so its tab can badge mentions.
   const threadRows = useQuery(api.messages.threadInbox, {});
+  // The effective single-upload cap, so the composer can reject oversized picks
+  // before any bytes leave the browser. Falls back to the shared default while
+  // the query loads.
+  const publicConfig = useQuery(api.server.publicConfig, {});
+  const maxUploadBytes = publicConfig?.uploads?.maxBytes ?? DEFAULT_MAX_UPLOAD_BYTES;
   const threadMentionCount = useMemo(
     () => (threadRows ?? []).filter((row) => row.viewerMentioned).length,
     [threadRows],
@@ -638,6 +661,21 @@ function ChatViewContent({
     [members, visibleMemberIds],
   );
 
+  // Roles the members panel can render as their own sections. Members store a
+  // role's stable key when it has one, so match on that ref.
+  const memberRoleGroups = useMemo<readonly MembersGroupingRole[]>(
+    () =>
+      admin.roleViews.map((role) => ({
+        id: roleRef(role),
+        name: role.name,
+        color: role.color,
+        position: role.position,
+        hoisted: role.hoisted,
+        isEveryone: role.isEveryone,
+      })),
+    [admin.roleViews],
+  );
+
   const channelRoleOptions = useMemo(
     () => roles.map((role) => ({ id: role.roleId, name: role.name })),
     [roles],
@@ -669,6 +707,28 @@ function ChatViewContent({
   const canCreateChannel = hasPermission(permissions, Permission.ManageChannels);
   const canManageChannels =
     admin.viewer.isOwner || hasPermission(permissions, Permission.ManageChannels);
+  const manageableRoles = useMemo<readonly ChannelRoleOption[]>(() => {
+    const viewer = { isOwner: admin.viewer.isOwner, topPosition: admin.viewer.topPosition };
+    const options: ChannelRoleOption[] = [];
+    for (const role of admin.roleViews) {
+      const option: ChannelRoleOption = {
+        id: roleRef(role),
+        name: role.name,
+        color: role.color,
+        position: role.position,
+        isEveryone: role.isEveryone,
+      };
+      if (canEditChannelRole(viewer, option)) {
+        options.push(option);
+      }
+    }
+    return options;
+  }, [admin.roleViews, admin.viewer.isOwner, admin.viewer.topPosition]);
+  const manageableRoleIds = useMemo(
+    () => new Set(manageableRoles.map((role) => role.id)),
+    [manageableRoles],
+  );
+  const setChannelOverrides = useMutation(api.channels.setOverrides);
   const canManageCategories =
     admin.viewer.isOwner || hasPermission(permissions, Permission.ManageChannels);
   const canEditNickname =
@@ -997,9 +1057,9 @@ function ChatViewContent({
     let attachments: readonly AttachmentDescriptor[] | undefined;
     if (input.files.length > 0) {
       try {
-        attachments = await uploadFiles(runtime.port, input.files);
-      } catch {
-        setSendError("Couldn't upload that attachment. Check the file size and try again.");
+        attachments = await uploadFiles(runtime.port, input.files, { maxBytes: maxUploadBytes });
+      } catch (error) {
+        setSendError(attachmentUploadErrorMessage(error));
         return undefined;
       }
     }
@@ -1098,6 +1158,27 @@ function ChatViewContent({
     setEditChannelBusy(true);
     setEditChannelError(null);
     try {
+      const submittedRoles = patch.roleOverrides.filter((override) =>
+        manageableRoleIds.has(override.targetId),
+      );
+      const currentRoles = roleOverridesFor(target.overrides ?? []).filter((override) =>
+        manageableRoleIds.has(override.targetId),
+      );
+      if (!sameOverrides(submittedRoles, currentRoles)) {
+        await setChannelOverrides({
+          channelId: target.id as never,
+          overrides: mergeRoleOverrides(
+            target.overrides ?? [],
+            submittedRoles,
+            manageableRoleIds,
+          ).map((override) => ({
+            targetId: override.targetId,
+            targetType: override.targetType,
+            allow: override.allow,
+            deny: override.deny,
+          })),
+        });
+      }
       await commitChannelEdit(runtime, {
         baseline: channelEditBaseline(target, titles.get(target.id) ?? target.name),
         name: patch.name,
@@ -1116,7 +1197,7 @@ function ChatViewContent({
   };
 
   return (
-    <div className="relative flex min-h-0 min-w-0 flex-1 gap-2.5">
+    <div className="relative flex min-h-0 min-w-0 flex-1">
       {!sidebarHidden && (
         <div className={cn("min-h-0 w-full md:flex md:w-auto", showList ? "flex" : "hidden")}>
           <ChannelSidebar
@@ -1139,6 +1220,17 @@ function ChatViewContent({
               ? {
                   onOpenKanban: () => {
                     setMainView("kanban");
+                    setMobilePane("chat");
+                    setThreadRoot(undefined);
+                    setAdminOpen(false);
+                    setUserSettingsOpen(false);
+                  },
+                }
+              : {})}
+            {...(notesEnabled && hasPermission(permissions, Permission.ViewNotes)
+              ? {
+                  onOpenNotes: () => {
+                    setMainView("notes");
                     setMobilePane("chat");
                     setThreadRoot(undefined);
                     setAdminOpen(false);
@@ -1247,6 +1339,16 @@ function ChatViewContent({
                   .setChannelMuted?.({ channelId: channel.id, muted: false })
                   .catch(() => undefined);
               },
+              pin: (channel) => {
+                void runtime.port
+                  .setChannelPinned?.({ channelId: channel.id, pinned: true })
+                  .catch(() => undefined);
+              },
+              unpin: (channel) => {
+                void runtime.port
+                  .setChannelPinned?.({ channelId: channel.id, pinned: false })
+                  .catch(() => undefined);
+              },
               ...(admin.viewer.isOwner || hasPermission(permissions, Permission.ManageChannels)
                 ? {
                     archive: (channel: ChannelView) => {
@@ -1283,6 +1385,15 @@ function ChatViewContent({
             }
             onReorderChannels={(moves) =>
               void runtime.port.reorderChannels({ moves }).catch(() => undefined)
+            }
+            canReorderCategories={canManageCategories}
+            onReorderCategories={(moves) =>
+              void reorderCategories({
+                moves: moves.map((move) => ({
+                  categoryId: move.categoryId as never,
+                  position: move.position,
+                })),
+              }).catch(() => undefined)
             }
             onSignOut={onSignOut}
           />
@@ -1333,6 +1444,18 @@ function ChatViewContent({
         kanbanEnabled &&
         hasPermission(permissions, Permission.ViewKanban) ? (
         <KanbanView
+          ownUserId={ownUserId}
+          permissions={permissions}
+          members={members}
+          onBack={() => {
+            setMainView("chat");
+            setMobilePane("list");
+          }}
+        />
+      ) : mainView === "notes" &&
+        notesEnabled &&
+        hasPermission(permissions, Permission.ViewNotes) ? (
+        <NotesView
           ownUserId={ownUserId}
           permissions={permissions}
           members={members}
@@ -1410,6 +1533,7 @@ function ChatViewContent({
               canSend={canSend}
               canAttach={canAttach}
               canMentionEveryone={canMentionEveryone}
+              maxUploadBytes={maxUploadBytes}
               pinsOpen={pinsOpen}
               membersOpen={rightPanel === "members"}
               {...(replyTarget !== undefined ? { replyTarget } : {})}
@@ -1445,6 +1569,7 @@ function ChatViewContent({
         channel !== undefined &&
         !adminView &&
         mainView !== "kanban" &&
+        mainView !== "notes" &&
         !userSettingsOpen &&
         mainView === "chat" && (
           <div className="fixed inset-y-2.5 right-2.5 z-30 flex lg:static lg:z-auto">
@@ -1462,6 +1587,7 @@ function ChatViewContent({
                 roles={roles}
                 memberIds={memberIds}
                 permissions={channelPermissions}
+                maxUploadBytes={maxUploadBytes}
                 ownUserId={ownUserId}
                 ownName={ownName}
                 memberNames={memberNames}
@@ -1501,6 +1627,7 @@ function ChatViewContent({
               <MembersPanel
                 members={visibleMembers}
                 presence={presence}
+                roles={memberRoleGroups}
                 customStatuses={customStatuses}
                 ownUserId={ownUserId}
                 onViewProfile={(userId, anchor) => {
@@ -1587,6 +1714,7 @@ function ChatViewContent({
         <CallDock title={callTitle} identity={callIdentity} />
       )}
       {voice.view === "stage" && <CallStage title={callTitle} identity={callIdentity} />}
+      <CallPictureInPicture title={callTitle} identity={callIdentity} />
 
       {searchOpen && (
         <SearchPanel
@@ -1719,6 +1847,11 @@ function ChatViewContent({
             .filter((override) => override.targetType === "member")
             .filter((override) => (override.deny & Permission.ViewChannel) !== 0n)
             .map((override) => override.targetId)}
+          roles={manageableRoles}
+          initialRoleOverrides={roleOverridesFor(editChannelModal.overrides ?? []).filter(
+            (override) => manageableRoleIds.has(override.targetId),
+          )}
+          canManageRoleOverrides={canManageChannels && manageableRoles.length > 0}
           ownUserId={ownUserId}
           members={members}
           busy={editChannelBusy}

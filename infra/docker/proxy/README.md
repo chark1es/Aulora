@@ -17,8 +17,15 @@ Three things must be true at the public edge:
    `Content-Type: application/json`.**
    This is the public, secret-free document clients read to discover the
    workspace name, API version, Convex URL and enabled auth providers. In this
-   stack it is written by the `setup` container into the `web-well-known`
-   volume and served by the `web` container at `/.well-known/`.
+   stack the `web` container proxies this exact path to Convex HTTP actions on
+   port `3211`, which return current workspace settings. Other `/.well-known/`
+   documents remain in the `web-well-known` volume. An edge may forward discovery
+   to `web:80` or directly to `convex-backend:3211`.
+   The web gateway sends `X-Aulora-Api-Proxy: same-origin` on discovery requests
+   so the document advertises `SITE_URL` for API traffic. An edge forwarding
+   directly to port `3211` should set this header only if it also implements
+   the same-origin API and WebSocket route below. Without it, discovery
+   advertises the configured separate Convex API origin.
 
 3. **`<web origin>/api/auth/*` is forwarded to the Convex HTTP-actions origin
    (`convex-backend:3211`), on the *same* origin as the web app.**
@@ -78,10 +85,11 @@ host ports, keeps generated secrets in a named volume, and marks the one-shot
 services so they do not fail Coolify's health check. The full operator guide is
 in [Deploy on Coolify](../../../apps/docs/content/coolify.md).
 
-1. Create a **Docker Compose** resource pointing at this repository, with Base
-   Directory `infra/docker` and Compose Location
-   `docker-compose.coolify.yml`. Turn on **Preserve Repository During
-   Deployment**, which the repo-relative bind mounts require.
+1. Create a **Docker Compose** resource pointing at this repository on the
+   stable **`release`** branch (`main` is for development), with Base Directory
+   `infra/docker` and Compose Location `docker-compose.coolify.yml`. Turn on
+   **Preserve Repository During Deployment**, which the repo-relative bind mounts
+   require.
 2. Set the environment variables from `.env.example` in Coolify's UI; do not
    commit a real `.env`.
 3. Add two domains: the web host -> service `web`, container port `80`, and the
@@ -95,6 +103,16 @@ in [Deploy on Coolify](../../../apps/docs/content/coolify.md).
 
 Coolify sets `X-Forwarded-Proto`; the shipped nginx config already passes it to
 the auth upstream.
+
+## Screen streaming
+
+Only needed with the optional `streaming` compose profile, and nothing to add to
+the edge for it. LiveKit's signalling (a WebSocket) is served from the web origin
+at `/livekit`, which the `web` container proxies to the `livekit` service, so it
+needs no hostname, certificate or `connect-src` entry of its own. Make sure the
+edge passes WebSocket upgrades on the web origin (the Convex sync channel
+already requires that). Media does not pass through any proxy: `7881/tcp` and
+`7882/udp` must be reachable directly on the host.
 
 ## TLS and HSTS
 
@@ -130,12 +148,15 @@ Content-Security-Policy:
   img-src 'self' data: blob:;
   media-src 'self' blob:;
   style-src 'self' 'unsafe-inline';
-  script-src 'self';
+  script-src 'self' 'wasm-unsafe-eval';
   connect-src 'self' https://convex.example.com wss://convex.example.com wss:
 ```
 
 `style-src` needs `'unsafe-inline'` for the Tailwind runtime-injected theme
-variables; `script-src` is `'self'` only. The theme bootstrap in `index.html`
+variables; `script-src` is `'self'` plus `'wasm-unsafe-eval'`. The latter only
+lets the call engine compile its WebAssembly modules (RNNoise noise suppression
+and the background-blur model runtime); it does not permit JavaScript `eval`.
+Serve `.wasm` as `application/wasm` (the bundled nginx already does). The theme bootstrap in `index.html`
 is an inline script — either hash it, serve it as a file, or add a nonce before
 locking `script-src` down to `'self'` (see `Caddyfile.example` for the note).
 Tighten `connect-src` to exactly your Convex origins. For a **single-host**

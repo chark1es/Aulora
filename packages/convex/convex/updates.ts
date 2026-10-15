@@ -7,15 +7,22 @@ import {
   updateChannel,
 } from "@aulora/core";
 import { ConvexError, v } from "convex/values";
-import { internal } from "./_generated/api";
-import { action, internalMutation, internalQuery, mutation, query } from "./_generated/server";
+import { api, internal } from "./_generated/api";
+import {
+  action,
+  internalAction,
+  internalMutation,
+  internalQuery,
+  mutation,
+  query,
+} from "./_generated/server";
+import { coolifyConfiguration, createCoolifyUpdater } from "./lib/coolifyUpdates";
 import { AULORA_VERSION } from "./lib/env";
 import { requireInstanceAdmin } from "./lib/instance";
 
 /**
- * Workspace update check. The running deployment reports whether a newer
- * release is published. Applying it stays on the host (`infra/docker/update.sh`),
- * because this process cannot rebuild its own containers.
+ * Workspace update controls. Docker installs run through the host watcher;
+ * managed installs ask Coolify to build and deploy the published release.
  */
 
 const planResult = v.object({
@@ -156,6 +163,8 @@ export const request = mutation({
   returns: v.null(),
   handler: async (ctx, args) => {
     await requireInstanceAdmin(ctx);
+    if (coolifyConfiguration().provider === "coolify")
+      throw new ConvexError("Use Install update for this Coolify deployment.");
     const row = await ctx.db.query("workspaceUpdate").first();
     if (!row || Date.now() - row.hostSeenAt >= HOST_TIMEOUT)
       throw new ConvexError(
@@ -212,6 +221,160 @@ export const hostReport = internalMutation({
     const values = { ...args.status, hostSeenAt: Date.now() };
     if (row) await ctx.db.patch(row._id, values);
     else await ctx.db.insert("workspaceUpdate", values);
+    return null;
+  },
+});
+
+/** Configuration and progress only. Deployment credentials never enter the client. */
+export const capabilities = query({
+  args: {},
+  handler: async (ctx) => {
+    await requireInstanceAdmin(ctx);
+    const configuration = coolifyConfiguration();
+    const row =
+      configuration.provider === "coolify"
+        ? await ctx.db.query("coolifyUpdate").order("desc").first()
+        : null;
+    return {
+      provider: configuration.provider,
+      configured: configuration.config !== null,
+      error: configuration.error,
+      status: row ? { phase: row.phase, targetVersion: row.targetVersion, error: row.error } : null,
+    };
+  },
+});
+
+export const installCoolify = action({
+  args: {},
+  returns: v.null(),
+  handler: async (ctx) => {
+    await ctx.runQuery(internal.updates.assertInstanceAdmin, {});
+    const configuration = coolifyConfiguration();
+    if (!configuration.config)
+      throw new ConvexError(configuration.error ?? "Coolify updates are not configured.");
+    const plan = await ctx.runAction(api.updates.check, {});
+    if (plan.error) throw new ConvexError(plan.error);
+    if (!plan.updateAvailable || !plan.latestVersion || !plan.gitTag)
+      throw new ConvexError("No update needs installing.");
+    const repo = resolveGitHubRepo(process.env.AULORA_UPDATE_GITHUB_REPO);
+    if ("error" in repo) throw new ConvexError(repo.error);
+    await ctx.runMutation(internal.updates.beginCoolifyInstall, {
+      targetVersion: plan.latestVersion,
+      gitTag: plan.gitTag,
+      githubRepo: repo.repo,
+    });
+    return null;
+  },
+});
+
+export const beginCoolifyInstall = internalMutation({
+  args: { targetVersion: v.string(), gitTag: v.string(), githubRepo: v.string() },
+  returns: v.id("coolifyUpdate"),
+  handler: async (ctx, args) => {
+    const previous = await ctx.db.query("coolifyUpdate").order("desc").first();
+    if (previous?.phase === "installing")
+      throw new ConvexError("An update installation is already in progress.");
+    const id = await ctx.db.insert("coolifyUpdate", {
+      ...args,
+      phase: "installing",
+      startedAt: Date.now(),
+      error: null,
+    });
+    await ctx.scheduler.runAfter(0, internal.updates.deployCoolify, { id });
+    return id;
+  },
+});
+
+export const coolifyOperation = internalQuery({
+  args: { id: v.id("coolifyUpdate") },
+  handler: (ctx, args) => ctx.db.get(args.id),
+});
+
+export const reportCoolify = internalMutation({
+  args: {
+    id: v.id("coolifyUpdate"),
+    phase: v.union(v.literal("installing"), v.literal("installed"), v.literal("failed")),
+    error: v.union(v.string(), v.null()),
+    deploymentUuid: v.optional(v.string()),
+  },
+  returns: v.null(),
+  handler: async (ctx, { id, ...status }) => {
+    const row = await ctx.db.get(id);
+    if (row?.phase !== "installing") return null;
+    await ctx.db.patch(id, status);
+    if (status.phase === "installing")
+      await ctx.scheduler.runAfter(10_000, internal.updates.pollCoolify, { id });
+    return null;
+  },
+});
+
+export const deployCoolify = internalAction({
+  args: { id: v.id("coolifyUpdate") },
+  returns: v.null(),
+  handler: async (ctx, { id }) => {
+    const row = await ctx.runQuery(internal.updates.coolifyOperation, { id });
+    if (row?.phase !== "installing") return null;
+    try {
+      const configuration = coolifyConfiguration();
+      if (!configuration.config)
+        throw new Error(configuration.error ?? "Coolify updates are not configured.");
+      const deploymentUuid = await createCoolifyUpdater(configuration.config).deploy(
+        row.githubRepo,
+        row.gitTag,
+      );
+      await ctx.runMutation(internal.updates.reportCoolify, {
+        id,
+        phase: "installing",
+        error: null,
+        deploymentUuid,
+      });
+    } catch (cause) {
+      await ctx.runMutation(internal.updates.reportCoolify, {
+        id,
+        phase: "failed",
+        error: cause instanceof Error ? cause.message : "Could not start the Coolify deployment.",
+      });
+    }
+    return null;
+  },
+});
+
+export const pollCoolify = internalAction({
+  args: { id: v.id("coolifyUpdate") },
+  returns: v.null(),
+  handler: async (ctx, { id }) => {
+    const row = await ctx.runQuery(internal.updates.coolifyOperation, { id });
+    if (row?.phase !== "installing" || !row.deploymentUuid) return null;
+    let phase: "installing" | "installed" | "failed" = "installing";
+    let error: string | null = null;
+    try {
+      const configuration = coolifyConfiguration();
+      if (!configuration.config)
+        throw new Error(configuration.error ?? "Coolify updates are not configured.");
+      phase = await createCoolifyUpdater(configuration.config).status(row.deploymentUuid);
+      if (phase === "failed")
+        error = "Coolify did not complete the update. Check the deployment logs before retrying.";
+      if (phase === "installed" && AULORA_VERSION !== row.targetVersion) {
+        phase = "failed";
+        error =
+          "Coolify finished, but this instance is still running a different version. Check the setup service logs.";
+      }
+    } catch (cause) {
+      // Keep the operation locked during transient outages rather than allowing duplicate deployments.
+      error =
+        cause instanceof Error ? cause.message : "Could not read the Coolify deployment status.";
+    }
+    if (phase === "installing" && Date.now() - row.startedAt >= 60 * 60 * 1000) {
+      phase = "failed";
+      error =
+        "The update has not completed after an hour. Check Coolify before attempting another installation.";
+    }
+    await ctx.runMutation(internal.updates.reportCoolify, {
+      id,
+      phase,
+      error,
+      deploymentUuid: row.deploymentUuid,
+    });
     return null;
   },
 });

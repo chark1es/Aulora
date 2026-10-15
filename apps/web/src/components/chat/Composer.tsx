@@ -10,7 +10,9 @@ import {
   useRef,
   useState,
 } from "react";
+import { DEFAULT_MAX_UPLOAD_BYTES } from "../../lib/attachments";
 import { readDraft, writeDraft } from "../../lib/drafts";
+import { formatBytes } from "../../lib/instance-admin";
 import { EmojiPicker } from "./EmojiPicker";
 import { PersonAvatar } from "./member-avatars";
 import { RichText } from "./RichText";
@@ -58,6 +60,12 @@ export interface ComposerProps {
   readonly replyTo?: { readonly authorName: string; readonly preview: string } | null;
   /** Clears the inline reply (banner X or Escape). */
   readonly onCancelReply?: () => void;
+  /**
+   * Largest file this composer will attach, in bytes. Picks larger than this
+   * are rejected with an inline error naming both sizes. Defaults to
+   * {@link DEFAULT_MAX_UPLOAD_BYTES} so callers that don't pass it still work.
+   */
+  readonly maxUploadBytes?: number;
 }
 
 interface Suggestion {
@@ -134,9 +142,11 @@ export function Composer({
   windowDropEnabled = true,
   replyTo = null,
   onCancelReply,
+  maxUploadBytes = DEFAULT_MAX_UPLOAD_BYTES,
 }: ComposerProps) {
   const [value, setValue] = useState(() => (draftKey !== undefined ? readDraft(draftKey) : ""));
   const [files, setFiles] = useState<readonly File[]>([]);
+  const [attachmentError, setAttachmentError] = useState<string | null>(null);
   const [dragging, setDragging] = useState(false);
   const [windowDragging, setWindowDragging] = useState(false);
   const [suggestions, setSuggestions] = useState<readonly Suggestion[]>([]);
@@ -156,6 +166,7 @@ export function Composer({
   useEffect(() => {
     setValue(draftKey !== undefined ? readDraft(draftKey) : "");
     setFiles([]);
+    setAttachmentError(null);
     setSuggestions([]);
     textareaRef.current?.focus();
   }, [draftKey]);
@@ -299,11 +310,30 @@ export function Composer({
 
   const addFiles = useCallback(
     (incoming: readonly File[]): void => {
-      if (canAttach && incoming.length > 0) {
-        setFiles((current) => [...current, ...incoming]);
+      if (!canAttach || incoming.length === 0) {
+        return;
+      }
+      const accepted: File[] = [];
+      let rejected: File | undefined;
+      for (const file of incoming) {
+        if (file.size > maxUploadBytes) {
+          rejected ??= file;
+        } else {
+          accepted.push(file);
+        }
+      }
+      if (rejected !== undefined) {
+        setAttachmentError(
+          `${rejected.name} is ${formatBytes(rejected.size)}, over the ${formatBytes(maxUploadBytes)} limit.`,
+        );
+      } else {
+        setAttachmentError(null);
+      }
+      if (accepted.length > 0) {
+        setFiles((current) => [...current, ...accepted]);
       }
     },
-    [canAttach],
+    [canAttach, maxUploadBytes],
   );
 
   // A file drag can be dropped anywhere in the app, so watch the window rather
@@ -424,6 +454,7 @@ export function Composer({
     });
     setValue("");
     setFiles([]);
+    setAttachmentError(null);
     setSuggestions([]);
     if (draftKey !== undefined) {
       writeDraft(draftKey, "");
@@ -564,6 +595,26 @@ export function Composer({
               </li>
             ))}
           </ul>
+        )}
+
+        {attachmentError !== null && (
+          <div
+            role="alert"
+            data-testid="composer-attachment-error"
+            className="mx-3 mt-3 flex items-start gap-2 rounded-[8px] border border-danger/30 bg-danger/10 px-3 py-2 text-[12px] text-danger"
+          >
+            <span className="flex-1">{attachmentError}</span>
+            <button
+              type="button"
+              aria-label="Dismiss attachment error"
+              className="shrink-0 text-danger/80 hover:text-danger"
+              onClick={() => {
+                setAttachmentError(null);
+              }}
+            >
+              <Icon name="x" size={14} />
+            </button>
+          </div>
         )}
 
         <div className="flex items-end gap-1.5 px-2 pt-2">

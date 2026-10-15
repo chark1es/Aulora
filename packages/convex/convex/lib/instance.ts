@@ -76,6 +76,28 @@ export async function loadInstanceSettings(ctx: ReadCtx): Promise<InstanceSettin
   };
 }
 
+/**
+ * Largest single upload from the deployment environment, or the built-in
+ * default when `UPLOAD_MAX_BYTES` is unset or invalid. This is only a fallback:
+ * once an operator saves the storage settings, the stored value wins.
+ */
+export function envMaxUploadBytes(): number {
+  const configured = Number(process.env.UPLOAD_MAX_BYTES);
+  return Number.isFinite(configured) && configured > 0 ? configured : DEFAULT_MAX_UPLOAD_BYTES;
+}
+
+/**
+ * The effective per-upload cap: the operator-configured
+ * `instanceSettings.maxUploadBytes` when the singleton row exists, otherwise
+ * the `UPLOAD_MAX_BYTES` env fallback / `DEFAULT_MAX_UPLOAD_BYTES`. Upload
+ * enforcement (`files.authorizeUpload`) and `server.publicConfig` both read
+ * this, so the admin setting is the single source of truth once saved.
+ */
+export async function effectiveMaxUploadBytes(ctx: ReadCtx): Promise<number> {
+  const row = await ctx.db.query("instanceSettings").first();
+  return row === null ? envMaxUploadBytes() : row.maxUploadBytes;
+}
+
 /** Writes the singleton settings row, inserting it on first save. */
 export async function saveInstanceSettings(
   ctx: MutationCtx,

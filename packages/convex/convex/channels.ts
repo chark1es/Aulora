@@ -1,7 +1,7 @@
 import { hasPermission, Permission } from "@aulora/core";
 import { paginationOptsValidator } from "convex/server";
 import { ConvexError, v } from "convex/values";
-import { mutation, query } from "./_generated/server";
+import { type MutationCtx, mutation, query } from "./_generated/server";
 import { writeAudit } from "./lib/audit";
 import { requireAuth } from "./lib/auth";
 import { assertMayParticipate } from "./lib/bans";
@@ -27,14 +27,18 @@ import {
   isDmKind,
   listChannelMemberIds,
   requireChannelAccess,
+  requireChannelMember,
 } from "./lib/channels";
 import { overwriteValidator, validateOverrides } from "./lib/overrides";
 import {
   categoryOverridesFor,
   channelPermissions,
   loadPermissionContext,
+  type PermissionContext,
+  requireCanGrant,
   requireMember,
   requirePermission,
+  requireRoleManageable,
   requireWorkspacePermission,
 } from "./lib/permissions";
 import { sealString } from "./lib/sse";
@@ -365,6 +369,62 @@ export const archiveChannel = archive;
 /** Alias of {@link unarchive}. */
 export const unarchiveChannel = unarchive;
 
+interface OverrideTargetInput {
+  readonly targetId: string;
+  readonly targetType: "role" | "member";
+  readonly allow: bigint;
+  readonly deny: bigint;
+}
+
+function sameTarget(a: OverrideTargetInput, b: OverrideTargetInput): boolean {
+  return a.targetType === b.targetType && a.targetId === b.targetId;
+}
+
+/**
+ * Override guard shared by {@link setOverrides} and {@link clearOverride}. It
+ * judges the difference between the stored overrides and the submitted ones:
+ * a role override that is added, changed or dropped must belong to a role
+ * strictly below the actor's highest role, and the actor may only newly allow
+ * bits they already hold, so nobody can edit a role above them or hand out
+ * power they do not have. Overrides that are resubmitted unchanged are not
+ * re-verified, so saving one override never fails because another stored
+ * override targets a higher role or grants a bit the actor lacks.
+ */
+async function requireOverrideAccess(
+  ctx: MutationCtx,
+  context: PermissionContext,
+  current: readonly OverrideTargetInput[],
+  submitted: readonly OverrideTargetInput[],
+): Promise<void> {
+  const changed = submitted.filter((override) => {
+    const existing = current.find((entry) => sameTarget(entry, override));
+    return (
+      existing === undefined || existing.allow !== override.allow || existing.deny !== override.deny
+    );
+  });
+  const dropped = current.filter(
+    (entry) => !submitted.some((override) => sameTarget(entry, override)),
+  );
+  const touchedRoles = [...changed, ...dropped].filter(
+    (override) => override.targetType === "role",
+  );
+  const byRef =
+    touchedRoles.length > 0
+      ? new Map((await ctx.db.query("roles").collect()).map((role) => [role.key ?? role._id, role]))
+      : new Map<string, never>();
+  for (const override of touchedRoles) {
+    const role = byRef.get(override.targetId);
+    if (role === undefined) {
+      throw new ConvexError("Role not found");
+    }
+    requireRoleManageable(context, role);
+  }
+  for (const override of changed) {
+    const existing = current.find((entry) => sameTarget(entry, override));
+    requireCanGrant(context, override.allow & ~(existing?.allow ?? 0n));
+  }
+}
+
 /** Replaces a channel's permission overrides. Requires `ManageChannels`. */
 export const setOverrides = mutation({
   args: { channelId: v.id("channels"), overrides: v.array(overwriteValidator) },
@@ -375,6 +435,8 @@ export const setOverrides = mutation({
     if (channel === null) {
       throw new ConvexError("Channel not found");
     }
+    const context = await loadPermissionContext(ctx, userId);
+    await requireOverrideAccess(ctx, context, channel.overrides, args.overrides);
     await ctx.db.patch(args.channelId, { overrides: args.overrides });
     await writeAudit(ctx, {
       actorId: userId,
@@ -403,6 +465,8 @@ export const clearOverride = mutation({
       (override) =>
         !(override.targetId === args.targetId && override.targetType === args.targetType),
     );
+    const context = await loadPermissionContext(ctx, userId);
+    await requireOverrideAccess(ctx, context, channel.overrides, nextOverrides);
     await ctx.db.patch(args.channelId, { overrides: nextOverrides });
     await writeAudit(ctx, {
       actorId: userId,
@@ -564,5 +628,48 @@ export const listDms = query({
       );
     }
     return { ...result, page };
+  },
+});
+
+/**
+ * Pins or unpins a DM or group DM for the caller only. The caller must be a
+ * participant and the channel must be a direct conversation; the flag lives on
+ * the caller's private channel preference row, so teammates never see it.
+ * Unpinning clears `pinnedAt` so a stale pin never sorts ahead of a later one.
+ */
+export const setPinned = mutation({
+  args: { channelId: v.id("channels"), pinned: v.boolean() },
+  handler: async (ctx, args) => {
+    const { userId } = await requireAuth(ctx);
+    const channel = await ctx.db.get(args.channelId);
+    if (channel === null || !isDmKind(channel.kind)) {
+      throw new ConvexError("Only direct messages can be pinned");
+    }
+    await requireChannelMember(ctx, args.channelId, userId);
+    const existing = await ctx.db
+      .query("notificationPrefs")
+      .withIndex("by_user_channel", (q) => q.eq("userId", userId).eq("channelId", args.channelId))
+      .unique();
+    const pinnedAt = args.pinned ? Date.now() : undefined;
+    if (existing === null) {
+      // A channel row outranks the server-wide one, so seed it with that
+      // level; pinning must not change what the viewer is notified about.
+      const serverPref = await ctx.db
+        .query("notificationPrefs")
+        .withIndex("by_user_scope", (q) => q.eq("userId", userId).eq("scope", "server"))
+        .first();
+      await ctx.db.insert("notificationPrefs", {
+        userId,
+        scope: "channel",
+        channelId: args.channelId,
+        level: serverPref?.level ?? "all",
+        ...(serverPref?.muteUntil !== undefined ? { muteUntil: serverPref.muteUntil } : {}),
+        pinned: args.pinned,
+        ...(pinnedAt !== undefined ? { pinnedAt } : {}),
+      });
+    } else {
+      await ctx.db.patch(existing._id, { pinned: args.pinned, pinnedAt });
+    }
+    return null;
   },
 });

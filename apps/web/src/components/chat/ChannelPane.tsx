@@ -79,6 +79,8 @@ export interface ChannelPaneProps {
   readonly canSend: boolean;
   readonly canAttach: boolean;
   readonly canMentionEveryone: boolean;
+  /** Effective single-upload cap in bytes, forwarded to the composer. */
+  readonly maxUploadBytes: number;
   readonly pinsOpen: boolean;
   readonly membersOpen: boolean;
   readonly replyTarget?: MessagePayload;
@@ -250,6 +252,7 @@ function ChannelComposer(props: ChannelPaneProps) {
       categories={props.categoryMentions}
       canAttach={props.canAttach}
       canMentionEveryone={props.canMentionEveryone}
+      maxUploadBytes={props.maxUploadBytes}
       ownName={props.ownName}
       placeholder={props.placeholder}
       onTyping={props.typingPing}

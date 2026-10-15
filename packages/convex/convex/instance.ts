@@ -11,6 +11,8 @@ import {
   getPublicAuthConfig,
   SOCIAL_PROVIDER_DEFINITIONS,
 } from "./lib/env";
+import { OIDC_REQUIRED_ENV_KEYS } from "./lib/envCatalog";
+import { envLookup, isEnvValueSet, loadEffectiveEnv } from "./lib/envOverrides";
 import {
   loadInstanceSettings,
   normalizePushRelayUrl,
@@ -26,7 +28,9 @@ import { encryptionConfigured } from "./lib/sse";
  * Instance admin surface: read-only status plus the storage, push-relay and
  * backup knobs. Every function requires the operator (workspace owner) account.
  * Secrets (OIDC client secret, relay token, backup token) are reported only as
- * booleans and never returned.
+ * booleans and never returned. Values that come from the deployment environment
+ * are never echoed either, secret or not; only UI-saved non-secrets from the
+ * Environment section are readable back.
  */
 
 function nonEmpty(value: string | undefined): boolean {
@@ -72,12 +76,46 @@ export const settings = query({
   },
 });
 
+/**
+ * OIDC summary for the admin overview. Values are echoed back only when every
+ * required variable was saved in the UI; environment-sourced values are never
+ * returned, so the owner cannot read the deployment's OIDC configuration.
+ */
+function overviewOidc(env: Env, applied: ReadonlySet<string>) {
+  const oidc = getOidcSettings(env);
+  if (oidc === null) {
+    return null;
+  }
+  const uiManaged = OIDC_REQUIRED_ENV_KEYS.every((key) => applied.has(key));
+  if (!uiManaged) {
+    return { source: "environment" as const };
+  }
+  return {
+    source: "ui" as const,
+    displayName: oidc.displayName,
+    issuer: oidc.issuer,
+    discoveryUrl: oidc.discoveryUrl,
+    scopes: [...oidc.scopes],
+  };
+}
+
+/** Mail summary; env-sourced provider/from values are never echoed back. */
+async function overviewEmail(ctx: QueryCtx, env: Env) {
+  const settings = await ctx.db.query("emailSettings").first();
+  const fallback = parseEmailConfig(env);
+  return {
+    provider: settings?.provider ?? "none",
+    from: settings?.from ?? "",
+    configured: settings !== null || fallback.provider !== "none",
+  };
+}
+
 /** One-screen overview for the instance admin panel. */
 export const overview = query({
   args: {},
   handler: async (ctx) => {
     const { server } = await requireInstanceAdmin(ctx);
-    const env = process.env;
+    const { env, applied } = await loadEffectiveEnv(ctx);
     const settings = await loadInstanceSettings(ctx);
 
     const files = await ctx.db.query("files").collect();
@@ -93,22 +131,25 @@ export const overview = query({
       server.settings.signupEnabled,
       settings.authProviders ?? undefined,
     );
-    const oidc = getOidcSettings(env);
+    // Convex's `process.env` does not enumerate, so name the keys to read.
+    const envMap = envLookup(
+      env,
+      SOCIAL_PROVIDER_DEFINITIONS.flatMap((definition) => [
+        definition.clientIdEnv,
+        definition.clientSecretEnv,
+      ]),
+    );
     const availableProviders = SOCIAL_PROVIDER_DEFINITIONS.map((definition) => ({
       id: definition.id,
       displayName: definition.displayName,
       configured:
-        nonEmpty(env[definition.clientIdEnv]) && nonEmpty(env[definition.clientSecretEnv]),
+        isEnvValueSet(envMap, definition.clientIdEnv) &&
+        isEnvValueSet(envMap, definition.clientSecretEnv),
       enabled:
         settings.authProviders?.[definition.id as "github" | "google" | "microsoft" | "apple"] !==
         false,
     }));
-    const emailFallback = parseEmailConfig(env);
-    const emailSettings = await ctx.db.query("emailSettings").first();
-    const email = {
-      provider: emailSettings?.provider ?? emailFallback.provider,
-      from: emailSettings?.from ?? emailFallback.from,
-    };
+    const email = await overviewEmail(ctx, env);
 
     return {
       name: server.name,
@@ -128,23 +169,14 @@ export const overview = query({
       },
       auth: {
         local: auth.local,
-        providers: auth.providers,
         availableProviders,
         providersConfigured: settings.authProviders,
-        oidc:
-          oidc === null
-            ? null
-            : {
-                displayName: oidc.displayName,
-                issuer: oidc.issuer,
-                discoveryUrl: oidc.discoveryUrl,
-                scopes: [...oidc.scopes],
-              },
+        oidc: overviewOidc(env, applied),
       },
       email: {
         provider: email.provider,
         from: email.from,
-        configured: email.provider !== "none",
+        configured: email.configured,
       },
       pushRelay: {
         enabled: settings.pushRelayEnabled,

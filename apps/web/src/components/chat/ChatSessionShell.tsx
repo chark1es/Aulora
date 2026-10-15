@@ -1,9 +1,11 @@
+/* eslint-disable no-unused-vars -- the base rule reports parameter names in type signatures; Biome checks real unused code */
 import type { ChannelSummary, RoleMentionTarget } from "@aulora/core";
-import { Spinner } from "@aulora/ui-web";
+import { Spinner, Text } from "@aulora/ui-web";
 import type { ConvexReactClient } from "convex/react";
 import { useQuery } from "convex/react";
 import { useMemo } from "react";
 import { api } from "../../../../../packages/convex/convex/_generated/api";
+import { useStuckTimeout } from "../../lib/use-stuck-timeout";
 import {
   type CategoryView,
   heldRoleIds,
@@ -18,11 +20,18 @@ import {
 } from "../../lib/workspace-admin";
 import { ChatProvider } from "../../providers/ChatProvider";
 import { type VoicePolicy, VoiceProvider } from "../../providers/VoiceProvider";
+import {
+  ConnectionRecoveryActions,
+  type ConnectionRecoveryActionsProps,
+} from "../ConnectionRecoveryActions";
 import type { ChannelUnread } from "./ChannelSidebar";
 import { ChatView } from "./ChatView";
 import { MemberAvatarProvider } from "./member-avatars";
 
 const PAGE = { numItems: 100, cursor: null } as const;
+
+/** Recovery actions passed down to the initial-load spinner. */
+export type ChatSessionShellRecovery = ConnectionRecoveryActionsProps;
 
 export interface ChatSessionShellProps {
   readonly client: ConvexReactClient;
@@ -30,6 +39,8 @@ export interface ChatSessionShellProps {
   readonly workspaceIconSeed: string;
   readonly user: { readonly id: string; readonly name?: string; readonly email?: string };
   readonly onSignOut: () => void;
+  /** Retry / switch / remove actions shown when the first load stalls. */
+  readonly recovery?: ChatSessionShellRecovery;
 }
 
 /**
@@ -44,6 +55,7 @@ export function ChatSessionShell({
   workspaceIconSeed,
   user,
   onSignOut,
+  recovery,
 }: ChatSessionShellProps) {
   const channelResult = useQuery(api.channels.list, { paginationOpts: PAGE });
   const dmResult = useQuery(api.channels.listDms, { paginationOpts: PAGE });
@@ -144,11 +156,24 @@ export function ChatSessionShell({
     [roles, memberViews],
   );
 
-  if (channelResult === undefined || meResult === undefined) {
+  const isLoading = channelResult === undefined || meResult === undefined;
+  const stuck = useStuckTimeout(isLoading);
+
+  if (isLoading) {
     return (
-      <div className="pane flex flex-1 flex-col items-center justify-center gap-3">
+      <div className="pane flex flex-1 flex-col items-center justify-center gap-3 px-6 text-center">
         <Spinner size={28} label="Loading workspace" />
-        <p className="text-[13px] text-text-muted">Loading {workspaceName}…</p>
+        <Text tone="muted" size="sm">
+          Loading {workspaceName}…
+        </Text>
+        {stuck && recovery !== undefined && (
+          <>
+            <Text tone="muted" size="sm">
+              This is taking longer than usual.
+            </Text>
+            <ConnectionRecoveryActions {...recovery} />
+          </>
+        )}
       </div>
     );
   }
@@ -171,6 +196,7 @@ export function ChatSessionShell({
             onSignOut={onSignOut}
             permissions={permissions}
             kanbanEnabled={publicConfig?.addons.kanban ?? false}
+            notesEnabled={publicConfig?.addons.notes ?? false}
             members={members}
             roles={mentionRoles}
             admin={{

@@ -68,7 +68,7 @@ export function PinnedMessagesPanel({
               )}
             </div>
             <p className="mt-1 whitespace-pre-wrap break-words text-[13px] leading-relaxed text-text">
-              {message.deletedAt === null ? message.body : "Message deleted"}
+              {message.body}
             </p>
           </div>
         ))}

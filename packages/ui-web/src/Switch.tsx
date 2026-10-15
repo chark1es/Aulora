@@ -100,7 +100,10 @@ export function SegmentedControl<T extends string>({
   return (
     <fieldset
       aria-label={label}
-      className={cn("inline-flex items-center gap-0.5 rounded-[8px] bg-surface-3 p-0.5", className)}
+      className={cn(
+        "inline-grid max-w-full grid-flow-col auto-cols-fr items-center gap-0.5 rounded-[8px] bg-surface-3 p-0.5",
+        className,
+      )}
     >
       {options.map((option) => {
         const active = option.value === value;
@@ -108,7 +111,7 @@ export function SegmentedControl<T extends string>({
           <label
             key={option.value}
             className={cn(
-              "flex flex-1 cursor-pointer items-center justify-center gap-1.5 rounded-[6px] px-3 py-1 text-[12px] font-medium transition",
+              "flex cursor-pointer items-center justify-center gap-1.5 whitespace-nowrap rounded-[6px] px-2.5 py-1 text-[12px] font-medium transition",
               active ? "bg-surface-2 text-text shadow-sm" : "text-text-muted hover:text-text",
             )}
           >

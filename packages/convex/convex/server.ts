@@ -4,6 +4,8 @@ import type { QueryCtx } from "./_generated/server";
 import { mutation, query } from "./_generated/server";
 import { writeAudit } from "./lib/audit";
 import { API_VERSION, AULORA_VERSION, getEncryptionSettings, getPublicAuthConfig } from "./lib/env";
+import { loadEffectiveEnv } from "./lib/envOverrides";
+import { effectiveMaxUploadBytes } from "./lib/instance";
 import { requireWorkspacePermission } from "./lib/permissions";
 
 interface IceServerConfig {
@@ -77,10 +79,12 @@ function parseIceServers(raw: string | undefined): readonly IceServerConfig[] {
 /**
  * Public server metadata. Never contains credentials: the auth block only
  * exposes provider ids/types/display names and, for OIDC, the issuer,
- * discovery URL, client id and scopes.
+ * discovery URL, client id and scopes. Authentication settings read the
+ * effective environment, so a provider configured in the instance admin
+ * Environment section reaches clients without a redeploy.
  */
 async function buildPublicConfig(ctx: QueryCtx) {
-  const env = process.env;
+  const env = (await loadEffectiveEnv(ctx)).env;
   const server = await ctx.db.query("server").first();
   const instance = await ctx.db.query("instanceSettings").first();
   const signupEnabled = server?.settings.signupEnabled ?? true;
@@ -88,6 +92,9 @@ async function buildPublicConfig(ctx: QueryCtx) {
     server?.logoStorageId !== undefined ? await ctx.storage.getUrl(server.logoStorageId) : null;
   const vapidPublicKey = env.VAPID_PUBLIC_KEY?.trim();
   const encryption = getEncryptionSettings(env);
+  // The effective single-upload cap, so clients can pre-check sizes and show a
+  // specific error instead of failing at finalize.
+  const maxUploadBytes = await effectiveMaxUploadBytes(ctx);
   // Voice policy is a capability, not a secret: every client needs it to
   // decide whether to render call affordances, so it rides the public config.
   const voice = {
@@ -124,7 +131,13 @@ async function buildPublicConfig(ctx: QueryCtx) {
         ? { publicKey: vapidPublicKey }
         : null,
     voice,
-    addons: { kanban: server?.settings.kanbanEnabled ?? false },
+    // Effective per-upload cap (operator setting, else env/default). Clients
+    // use this to reject oversized picks before uploading.
+    uploads: { maxBytes: maxUploadBytes },
+    addons: {
+      kanban: server?.settings.kanbanEnabled ?? false,
+      notes: server?.settings.notesEnabled ?? false,
+    },
   };
 }
 

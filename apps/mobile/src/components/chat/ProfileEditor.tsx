@@ -1,8 +1,10 @@
+/* eslint-disable no-unused-vars -- the base rule reports parameter names in type signatures; Biome checks real unused code */
 import { Button, Input, Spinner, Text } from "@aulora/ui-native";
 import { useMutation, useQuery } from "convex/react";
 import { useEffect, useState } from "react";
 import { View } from "react-native";
 import { api } from "../../../../../packages/convex/convex/_generated/api";
+import type { ViewerProfileData } from "./use-chat-screen-data";
 
 function useProfileEditor(userId: string, canChangeNickname: boolean) {
   const me = useQuery(api.members.me, {});
@@ -65,6 +67,27 @@ function useProfileEditor(userId: string, canChangeNickname: boolean) {
 export function ProfileEditor({
   userId,
   canChangeNickname,
+  profile,
+  onSave,
+}: {
+  readonly userId: string;
+  readonly canChangeNickname: boolean;
+  /** A profile an offline surface already holds; when set the editor stays local. */
+  readonly profile?: ViewerProfileData | null | undefined;
+  /** Persists an offline edit for the life of the surface. */
+  readonly onSave?: ((next: ViewerProfileData) => void) | undefined;
+}) {
+  if (profile != null) {
+    return (
+      <LocalProfileEditor canChangeNickname={canChangeNickname} initial={profile} onSave={onSave} />
+    );
+  }
+  return <RemoteProfileEditor userId={userId} canChangeNickname={canChangeNickname} />;
+}
+
+function RemoteProfileEditor({
+  userId,
+  canChangeNickname,
 }: {
   readonly userId: string;
   readonly canChangeNickname: boolean;
@@ -108,6 +131,65 @@ export function ProfileEditor({
         </Text>
       )}
       {editor.feedback !== null && <Text accessibilityLiveRegion="polite">{editor.feedback}</Text>}
+    </View>
+  );
+}
+
+/** The offline demo's profile: edits stay on the device and never reach a server. */
+function LocalProfileEditor({
+  canChangeNickname,
+  initial,
+  onSave,
+}: {
+  readonly canChangeNickname: boolean;
+  readonly initial: ViewerProfileData;
+  readonly onSave?: ((next: ViewerProfileData) => void) | undefined;
+}) {
+  const savedNickname = initial.nickname ?? "";
+  const [nickname, setNickname] = useState(savedNickname);
+  const [bio, setBio] = useState(initial.bio);
+  const [feedback, setFeedback] = useState<string | null>(null);
+  const nicknameChanged = canChangeNickname && nickname.trim() !== savedNickname;
+  const bioChanged = bio.trim() !== initial.bio;
+  return (
+    <View className="gap-3">
+      {canChangeNickname && (
+        <Input
+          label="Workspace nickname"
+          hint="Leave blank to use your account name."
+          value={nickname}
+          onChangeText={(value) => {
+            setNickname(value);
+            setFeedback(null);
+          }}
+          maxLength={80}
+        />
+      )}
+      <Input
+        label="About you"
+        hint="Visible to other members in this workspace."
+        value={bio}
+        onChangeText={(value) => {
+          setBio(value);
+          setFeedback(null);
+        }}
+        multiline
+        maxLength={500}
+      />
+      <Button
+        disabled={!bioChanged && !nicknameChanged}
+        onPress={() => {
+          const next: ViewerProfileData = {
+            nickname: nickname.trim().length > 0 ? nickname.trim() : null,
+            bio: bio.trim(),
+          };
+          onSave?.(next);
+          setFeedback("Saved in this offline demo only.");
+        }}
+      >
+        Save profile
+      </Button>
+      {feedback !== null && <Text accessibilityLiveRegion="polite">{feedback}</Text>}
     </View>
   );
 }

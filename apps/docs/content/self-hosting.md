@@ -13,7 +13,12 @@ guided deploy on [Coolify](https://coolify.io) see
 
 ## The installer
 
+Install from a checkout of the stable `release` branch. `main` tracks
+development, and the installer warns when it runs from another branch.
+
 ```sh
+git clone --branch release https://github.com/chark1es/Aulora.git
+cd Aulora
 ./install.sh            # macOS / Linux
 pwsh ./install.ps1      # Windows
 ```
@@ -67,6 +72,23 @@ proxied to the Convex HTTP-actions port. Locally the web nginx container does
 it; in production either keep that route or move it to your edge proxy. The
 Convex backend must be able to resolve and fetch
 `<CONVEX_SITE_ORIGIN>/api/auth/convex/jwks`, because it is the token issuer.
+
+## Environment overrides from the admin panel
+
+The workspace owner can override a curated set of variables from **Instance
+admin → Environment** instead of editing `.env`, including the OAuth/OIDC
+providers and a custom OIDC provider. Overrides live in the workspace database,
+sealed with the server encryption key, and win over the deployment environment.
+Deployment values are never shown, and secrets saved in the panel are
+write-only. Anyone with owner access can change them, and a database restore
+carries them with it, so keep credentials that should never change in `.env`.
+Bootstrap settings such as `BETTER_AUTH_SECRET`, the encryption keys and
+`SITE_URL` are read-only.
+
+Overrides take effect on the next request, with no restart. The switch is read
+from the deployment environment, so set `AULORA_ALLOW_UI_ENV_OVERRIDES=false` in
+`.env` and re-run `docker compose run --rm setup` to disable the section and
+fall back to `.env` alone.
 
 ## Encryption
 
@@ -126,7 +148,7 @@ changing update settings. Without the watcher, version information and release
 checks remain available; use host or hosting-provider controls to install.
 
 A checkout that is not a git clone, including Coolify, still updates by
-redeploying the new git ref:
+redeploying the stable `release` branch:
 
 ```sh
 docker compose pull
@@ -149,5 +171,9 @@ Before exposing a server, replace `POSTGRES_PASSWORD` and the matching password 
 The standard Compose file publishes database and administration ports for local use. Bind them to localhost or remove their published ports before public deployment. Keep the Convex dashboard, Postgres, and MinIO administration private. Coolify's file keeps services internal by default.
 
 Start with a small test team and measure CPU, memory, storage, and upload growth on your host. There is no published capacity guarantee. Container builds need more resources than an idle server. Configure a TURN server if calls must work across restrictive networks.
+
+## Screen streaming server (optional)
+
+Calls are peer to peer, which suits small calls. To stream a desktop or application to many people, enable the optional LiveKit streaming server: open `7881/tcp` and `7882/udp` on the host and run `docker compose --profile streaming up -d`. It creates its own keys and is served from your existing web address, so there is nothing to configure. Under Coolify it is already running and only needs those two ports opened. Only screen and window shares go through it; voice and camera stay peer to peer, and clients that cannot use it (the mobile apps today) still receive shares directly. LiveKit is Apache-2.0 software run as a separate container. Details are in [infra/docker/README.md](https://github.com/chark1es/Aulora/blob/main/infra/docker/README.md#screen-streaming-optional).
 
 Set signup/invitation policy, verify backups and a restore, and check the server from another network before inviting users. See [updates](updates.md), [backups](backups.md), and [troubleshooting](troubleshooting.md). Business use requires a [paid commercial agreement](licensing.md).

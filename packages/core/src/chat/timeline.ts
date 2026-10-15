@@ -41,9 +41,10 @@ export function startOfLocalDay(timestamp: number): number {
  * Flattens messages (oldest first) into render items: a day separator at each
  * local-day boundary, an unread divider above `firstUnreadId`, and messages
  * tagged with where their author run starts and ends. A run breaks on a new
- * author, a day boundary, the unread divider, a gap over the group window, or
- * a deleted message (tombstones always stand alone). Inline replies always
- * start a new run so their author and reply context remain visible.
+ * author, a day boundary, the unread divider, or a gap over the group window.
+ * Deleted messages are omitted entirely: the server keeps the soft-delete row
+ * for audit, but no client renders a tombstone. Inline replies always start a
+ * new run so their author and reply context remain visible.
  */
 export function buildTimeline(
   messages: readonly MessagePayload[],
@@ -55,13 +56,14 @@ export function buildTimeline(
   let currentDay: number | undefined;
 
   for (const message of messages) {
+    if (message.deletedAt !== null) {
+      continue;
+    }
     let startsGroup =
       previous === undefined ||
       previous.authorId !== message.authorId ||
       message.createdAt - previous.createdAt > windowMs ||
-      message.replyToId != null ||
-      previous.deletedAt !== null ||
-      message.deletedAt !== null;
+      message.replyToId != null;
     const day = startOfLocalDay(message.createdAt);
     if (day !== currentDay) {
       items.push({ kind: "day", key: `day:${day}`, dayStart: day });

@@ -27,6 +27,7 @@ export interface CallParticipantSummary {
   readonly deafened: boolean;
   readonly video: boolean;
   readonly sharingScreen: boolean;
+  readonly sfu: boolean;
   readonly joinedAt: number;
   /** Present only for the viewer's own row. */
   readonly clientId: string | null;
@@ -66,6 +67,7 @@ export async function loadParticipants(
       deafened: row.deafened,
       video: row.video,
       sharingScreen: row.sharingScreen,
+      sfu: row.sfu ?? false,
       joinedAt: row.joinedAt,
       clientId: row.userId === viewerId ? (row.clientId ?? null) : null,
       session: row.session ?? 0,

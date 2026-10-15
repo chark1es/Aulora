@@ -1,3 +1,4 @@
+/* eslint-disable no-unused-vars -- the base rule reports parameter names in type signatures; Biome checks real unused code */
 /**
  * The Convex-facing surface the Aulora chat session depends on.
  *
@@ -83,6 +84,10 @@ export interface ChannelSummary {
   readonly hidden?: boolean;
   /** Muted by the viewer: no notification sound/badge for this channel. */
   readonly muted?: boolean;
+  /** Pinned by the viewer to the top of their direct messages. */
+  readonly pinned?: boolean;
+  /** When the viewer pinned it, for stable ordering; `null` when not pinned. */
+  readonly pinnedAt?: number | null;
 }
 
 export interface Paginated<T> {
@@ -201,6 +206,8 @@ export interface ChatPort {
   setChannelHidden?(args: { channelId: string; hidden: boolean }): Promise<null>;
   /** Mutes or unmutes notifications for a channel for the caller. */
   setChannelMuted?(args: { channelId: string; muted: boolean }): Promise<null>;
+  /** Pins or unpins a DM/group DM to the top of the caller's direct messages. */
+  setChannelPinned?(args: { channelId: string; pinned: boolean }): Promise<null>;
   /** Stores the caller's private note about another member. */
   setUserNote?(args: { targetUserId: string; body: string }): Promise<null>;
 

@@ -1,3 +1,4 @@
+/* eslint-disable no-unused-vars -- the base rule reports parameter names in type signatures; Biome checks real unused code */
 /**
  * Voice and video call domain types, shared by web, desktop and mobile.
  *
@@ -31,6 +32,12 @@ export interface MediaDeviceInfo {
   readonly label: string;
 }
 
+export type StreamQuality = "smooth" | "balanced" | "saver";
+
+export type BackgroundEffect = "none" | "blur" | "image";
+
+export type BackgroundBlur = "light" | "strong";
+
 export interface VoiceDeviceSettings {
   /** Selected microphone; `null` means the system default. */
   readonly inputDeviceId: string | null;
@@ -41,6 +48,12 @@ export interface VoiceDeviceSettings {
   /** WebRTC audio constraints, wired straight into `getUserMedia`. */
   readonly echoCancellation: boolean;
   readonly noiseSuppression: boolean;
+  /**
+   * Runs a learned denoiser (RNNoise) on the microphone before it is sent.
+   * Web and desktop only; when on, the browser's own suppression is disabled so
+   * the signal is not processed twice.
+   */
+  readonly enhancedNoiseSuppression: boolean;
   readonly autoGainControl: boolean;
   /** Input gain applied client-side, 0..2 (1 is unity). */
   readonly inputVolume: number;
@@ -55,10 +68,27 @@ export interface VoiceDeviceSettings {
   readonly noiseGateThreshold: number;
   /** Preferred codec for screen share (text clarity); `auto` lets the browser choose. */
   readonly screenCodec: "auto" | "av1" | "vp9" | "h264";
+  /** Resolution, frame rate and bitrate budget for a screen or window stream. */
+  readonly streamQuality: StreamQuality;
+  /** Shares the audio of the captured screen, window or tab when the platform offers it. */
+  readonly streamAudio: boolean;
+  /** Camera background: untouched, blurred, or replaced by an image. Web and desktop only. */
+  readonly backgroundEffect: BackgroundEffect;
+  readonly backgroundBlur: BackgroundBlur;
+  /** Id of a built-in backdrop, or `custom` for an image the user supplied. */
+  readonly backgroundImage: string;
   /** Joins calls with the microphone already muted. */
   readonly joinMuted: boolean;
   /** Joins video calls with the camera already on. */
   readonly joinWithCamera: boolean;
+}
+
+/** A short-lived grant to join one call's room on the streaming server. */
+export interface SfuAccess {
+  readonly url: string;
+  readonly token: string;
+  /** Whether this user may publish a screen share. */
+  readonly canPublish: boolean;
 }
 
 /** One participant of a live call, as rendered by every client. */
@@ -68,6 +98,12 @@ export interface CallParticipantView {
   readonly deafened: boolean;
   readonly video: boolean;
   readonly sharingScreen: boolean;
+  /**
+   * The client can send and receive screen shares through the streaming server.
+   * A sharer sends over the peer mesh to anyone without it, so older clients and
+   * mobile keep working unchanged.
+   */
+  readonly sfu: boolean;
   readonly joinedAt: number;
   /**
    * Which client owns this seat. Set only on the viewer's own row; everyone
@@ -138,7 +174,13 @@ export interface VoicePort {
     readonly deafened?: boolean;
     readonly video?: boolean;
     readonly sharingScreen?: boolean;
+    readonly sfu?: boolean;
   }): Promise<null>;
+  /**
+   * Credentials for the optional streaming server, or `null` when the workspace
+   * has none. Absent on clients that only support the peer mesh.
+   */
+  sfuAccess?(args: { readonly callId: string }): Promise<SfuAccess | null>;
   /** Keeps the participant row fresh so the server can sweep abandoned calls. */
   callHeartbeat(args: { readonly callId: string }): Promise<null>;
   sendSignal(args: {

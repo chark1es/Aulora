@@ -4,14 +4,10 @@ import { useState } from "react";
 import { api } from "../../../../../../packages/convex/convex/_generated/api";
 import { SettingsSectionHeader } from "../SettingsSection";
 import { EmailSection } from "./EmailSettingsSection";
-import {
-  AuthSection,
-  BackupsSection,
-  OverviewSection,
-  PushRelaySection,
-  StorageSection,
-} from "./InstanceSections";
+import { EnvironmentSection } from "./EnvironmentSection";
+import { AuthSection, BackupsSection, OverviewSection, PushRelaySection } from "./InstanceSections";
 import { LicensePanel } from "./LicensePanel";
+import { StorageSection } from "./StorageSection";
 
 export interface InstanceAdminPanelProps {
   readonly canManage: boolean;
@@ -21,11 +17,20 @@ export interface InstanceAdminPanelProps {
   readonly variant?: "overlay" | "inline";
 }
 
-type TabId = "overview" | "auth" | "email" | "storage" | "backups" | "push" | "license";
+type TabId =
+  | "overview"
+  | "auth"
+  | "environment"
+  | "email"
+  | "storage"
+  | "backups"
+  | "push"
+  | "license";
 
 const TABS: readonly { id: TabId; label: string }[] = [
   { id: "overview", label: "Overview" },
   { id: "auth", label: "Auth providers" },
+  { id: "environment", label: "Environment" },
   { id: "email", label: "Email" },
   { id: "storage", label: "Storage" },
   { id: "backups", label: "Backups" },
@@ -56,7 +61,7 @@ export function InstanceAdminPanel({
         <SettingsSectionHeader
           icon="shield"
           title="Instance"
-          description="Server status, storage quotas, backups, push relay and licensing. Visible to the workspace owner only."
+          description="Server status, auth providers, environment overrides, storage quotas, backups, push relay and licensing. Visible to the workspace owner only."
         />
         <InstanceAdminContent canManage={canManage} bodyClassName="flex flex-col gap-8" inline />
       </section>
@@ -146,6 +151,7 @@ function InstanceAdminContent({
           <>
             {(inline || active === "overview") && <OverviewSection overview={overview} />}
             {(inline || active === "auth") && <AuthSection overview={overview} />}
+            {(inline || active === "environment") && <EnvironmentSection />}
             {(inline || active === "email") && <EmailSection />}
             {(inline || active === "storage") && <StorageSection overview={overview} />}
             {(inline || active === "backups") && <BackupsSection overview={overview} />}

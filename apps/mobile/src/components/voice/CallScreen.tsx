@@ -7,6 +7,7 @@ import {
 import { Heading, Icon, Text, usePalette } from "@aulora/ui-native";
 import { useEffect, useMemo, useState } from "react";
 import { Modal, ScrollView, View } from "react-native";
+import { type MainVideo, pickMainVideo } from "../../lib/voice/pip";
 import { tryCreateMediaStream, type VoiceStream } from "../../lib/voice/webrtc";
 import { useVoice } from "../../providers/VoiceProvider";
 import { MemberAvatar } from "../chat/MemberAvatar";
@@ -72,17 +73,13 @@ interface ParticipantTileProps {
   readonly level?: number;
   readonly prominent?: boolean;
   readonly mirror?: boolean;
+  /** This is the video the system floats when the app is left (iOS). */
+  readonly floats?: boolean;
 }
 
-function ParticipantTile({
-  participant,
-  name,
-  color,
-  stream,
-  level = 0,
-  prominent = false,
-  mirror = false,
-}: ParticipantTileProps) {
+function ParticipantTile(props: ParticipantTileProps) {
+  const { participant, name, color, stream } = props;
+  const { level = 0, prominent = false, mirror = false, floats = false } = props;
   const palette = usePalette();
   const showVideo = participant.video || participant.sharingScreen;
   const talking = !participant.muted && (participant.speaking || level > 0.06);
@@ -100,6 +97,7 @@ function ParticipantTile({
         <CallVideo
           stream={stream}
           mirror={mirror}
+          pip={floats}
           fallback={<AvatarFallback seed={participant.userId} color={color} />}
         />
       ) : (
@@ -115,11 +113,13 @@ function ParticipantGrid({
   memberNames,
   memberColors,
   localStream,
+  mainUserId,
 }: {
   readonly voice: Voice;
   readonly memberNames: ReadonlyMap<string, string>;
   readonly memberColors: ReadonlyMap<string, string>;
   readonly localStream: VoiceStream | null;
+  readonly mainUserId: string | null;
 }) {
   const call = voice.call;
   if (call === null) {
@@ -139,6 +139,7 @@ function ParticipantGrid({
           stream={voice.remoteStreams.get(sharer.userId) ?? null}
           level={voice.remoteLevels.get(sharer.userId)}
           prominent
+          floats={sharer.userId === mainUserId}
         />
       )}
       <View className="flex-row flex-wrap gap-3">
@@ -153,6 +154,7 @@ function ParticipantGrid({
               stream={isSelf ? localStream : (voice.remoteStreams.get(participant.userId) ?? null)}
               level={isSelf ? voice.micLevel : voice.remoteLevels.get(participant.userId)}
               mirror={isSelf}
+              floats={participant.userId === mainUserId}
             />
           );
         })}
@@ -196,16 +198,35 @@ function CallError({ error }: { readonly error: string }) {
 }
 
 /**
- * Full-screen call stage: participant tiles with avatar fallbacks, mute,
- * deafen and speaking state, an enlarged screen-share tile, the elapsed
- * duration and the pinned control bar.
+ * What the floating window shows: the main video edge to edge, or the avatar of
+ * whoever would be on it. No controls: the window is too small to use them.
  */
-export function CallScreen({ channelName, memberNames, memberColors }: CallScreenProps) {
-  const voice = useVoice();
-  const { call, local } = voice;
-  const startedAt = call?.startedAt ?? null;
-  const [now, setNow] = useState(() => Date.now());
+function FloatingCall({
+  voice,
+  memberColors,
+  main,
+}: {
+  readonly voice: Voice;
+  readonly memberColors: ReadonlyMap<string, string>;
+  readonly main: MainVideo | null;
+}) {
+  const fallbackId =
+    main?.userId ??
+    voice.call?.participants.find((entry) => entry.userId !== voice.selfUserId)?.userId ??
+    voice.selfUserId;
+  return (
+    <View className="flex-1 bg-black">
+      <CallVideo
+        stream={main?.stream ?? null}
+        fallback={<AvatarFallback seed={fallbackId} color={memberColors.get(fallbackId)} />}
+      />
+    </View>
+  );
+}
 
+/** The current time, ticking each second while a call is on. */
+function useNow(startedAt: number | null): number {
+  const [now, setNow] = useState(() => Date.now());
   useEffect(() => {
     if (startedAt === null) {
       return;
@@ -218,14 +239,64 @@ export function CallScreen({ channelName, memberNames, memberColors }: CallScree
       clearInterval(timer);
     };
   }, [startedAt]);
+  return now;
+}
+
+function InCallControls({ voice }: { readonly voice: Voice }) {
+  const { local } = voice;
+  return (
+    <CallControls
+      muted={local.muted}
+      deafened={local.deafened}
+      video={local.video}
+      sharingScreen={local.sharingScreen}
+      canSpeak={voice.canSpeak}
+      canVideo={voice.canVideo}
+      canStream={voice.canStream}
+      pipSupported={voice.pip.supported}
+      onToggleMute={() => void voice.setMuted(!local.muted)}
+      onToggleDeafen={() => {
+        voice.setDeafened(!local.deafened);
+      }}
+      onToggleCamera={() => void voice.setCamera(!local.video)}
+      onToggleScreen={() => void voice.setScreenSharing(!local.sharingScreen)}
+      onPip={voice.pip.enter}
+      onLeave={() => void voice.leave()}
+    />
+  );
+}
+
+/**
+ * Full-screen call stage: participant tiles with avatar fallbacks, mute,
+ * deafen and speaking state, an enlarged screen-share tile, the elapsed
+ * duration and the pinned control bar.
+ */
+export function CallScreen({ channelName, memberNames, memberColors }: CallScreenProps) {
+  const voice = useVoice();
+  const { call } = voice;
+  const startedAt = call?.startedAt ?? null;
+  const now = useNow(startedAt);
 
   const localStream = useMemo(
     () => (voice.localVideoTrack === null ? null : tryCreateMediaStream([voice.localVideoTrack])),
     [voice.localVideoTrack],
   );
 
+  const main = useMemo(
+    () => pickMainVideo(call, voice.remoteStreams, voice.selfUserId),
+    [call, voice.remoteStreams, voice.selfUserId],
+  );
+
   if (call === null) {
     return <Modal visible={false} transparent onRequestClose={() => undefined} />;
+  }
+
+  if (voice.pip.active) {
+    return (
+      <Modal visible transparent onRequestClose={() => undefined}>
+        <FloatingCall voice={voice} memberColors={memberColors} main={main} />
+      </Modal>
+    );
   }
 
   return (
@@ -242,28 +313,10 @@ export function CallScreen({ channelName, memberNames, memberColors }: CallScree
           memberNames={memberNames}
           memberColors={memberColors}
           localStream={localStream}
+          mainUserId={main?.userId ?? null}
         />
         <View className="px-4 pb-6 pt-2">
-          <CallControls
-            muted={local.muted}
-            deafened={local.deafened}
-            video={local.video}
-            sharingScreen={local.sharingScreen}
-            canSpeak={voice.canSpeak}
-            canVideo={voice.canVideo}
-            canStream={voice.canStream}
-            pipPinned={voice.pipPinned}
-            onToggleMute={() => void voice.setMuted(!local.muted)}
-            onToggleDeafen={() => {
-              voice.setDeafened(!local.deafened);
-            }}
-            onToggleCamera={() => void voice.setCamera(!local.video)}
-            onToggleScreen={() => void voice.setScreenSharing(!local.sharingScreen)}
-            onTogglePin={() => {
-              voice.setPipPinned(!voice.pipPinned);
-            }}
-            onLeave={() => void voice.leave()}
-          />
+          <InCallControls voice={voice} />
         </View>
       </View>
     </Modal>

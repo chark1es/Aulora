@@ -23,6 +23,7 @@ const permissionOverwrite = v.object({
 
 const serverSettings = v.object({
   kanbanEnabled: v.optional(v.boolean()),
+  notesEnabled: v.optional(v.boolean()),
   signupEnabled: v.boolean(),
   inviteOnly: v.boolean(),
   allowedEmailDomains: v.array(v.string()),
@@ -64,6 +65,15 @@ const callSignalKind = v.union(
 );
 
 export default defineSchema({
+  coolifyUpdate: defineTable({
+    targetVersion: v.string(),
+    gitTag: v.string(),
+    githubRepo: v.string(),
+    phase: v.union(v.literal("installing"), v.literal("installed"), v.literal("failed")),
+    startedAt: v.number(),
+    deploymentUuid: v.optional(v.string()),
+    error: v.union(v.string(), v.null()),
+  }),
   workspaceUpdate: defineTable({
     currentVersion: v.string(),
     latestVersion: v.union(v.string(), v.null()),
@@ -177,6 +187,20 @@ export default defineSchema({
     smtpUser: v.optional(v.string()),
     smtpPasswordCiphertext: v.optional(v.string()),
   }),
+
+  /**
+   * Operator-saved environment variable overrides from the instance settings
+   * UI. Every value is sealed with the server key (`aulora-sse-v1`), secrets
+   * and non-secrets alike, so nothing is stored in plaintext. Only allowlisted
+   * keys are written; the deployment environment is never returned by any
+   * query, so an override cannot be used to read the previous value.
+   */
+  envOverrides: defineTable({
+    key: v.string(),
+    valueCiphertext: v.string(),
+    updatedAt: v.number(),
+    updatedBy: v.string(),
+  }).index("by_key", ["key"]),
 
   /**
    * Backup run log for the instance admin panel. The Convex cron and the manual
@@ -385,6 +409,48 @@ export default defineSchema({
     tokenCiphertext: v.string(),
   }).index("by_user", ["userId"]),
 
+  /**
+   * Notes addon. Names/titles/bodies are server-sealed (`aulora-sse-v1`);
+   * structural refs, positions and timestamps stay plaintext so the server can
+   * page and filter without the key.
+   */
+  noteFolders: defineTable({
+    nameCiphertext: v.string(),
+    parentId: v.optional(v.id("noteFolders")),
+    position: v.number(),
+    creatorId: v.string(),
+    createdAt: v.number(),
+    updatedAt: v.number(),
+  }).index("by_parent", ["parentId"]),
+  notePages: defineTable({
+    folderId: v.optional(v.id("noteFolders")),
+    titleCiphertext: v.string(),
+    bodyCiphertext: v.string(),
+    tagIds: v.array(v.string()),
+    creatorId: v.string(),
+    lastEditorId: v.string(),
+    archived: v.boolean(),
+    createdAt: v.number(),
+    updatedAt: v.number(),
+    revision: v.number(),
+  })
+    .index("by_folder", ["folderId"])
+    .index("by_updated", ["updatedAt"]),
+  noteRevisions: defineTable({
+    noteId: v.id("notePages"),
+    actorId: v.string(),
+    action: v.string(),
+    beforeCiphertext: v.optional(v.string()),
+    afterCiphertext: v.optional(v.string()),
+    at: v.number(),
+  }).index("by_note", ["noteId"]),
+  noteTags: defineTable({
+    nameCiphertext: v.string(),
+    color: v.string(),
+    creatorId: v.string(),
+    createdAt: v.number(),
+  }),
+
   files: defineTable({
     /** Storage id of the server-sealed bytes. */
     storageId: v.id("_storage"),
@@ -479,6 +545,8 @@ export default defineSchema({
     deafened: v.boolean(),
     video: v.boolean(),
     sharingScreen: v.boolean(),
+    /** The device can send and receive screen shares through the streaming server. */
+    sfu: v.optional(v.boolean()),
     joinedAt: v.number(),
     lastSeen: v.number(),
   })
@@ -515,14 +583,22 @@ export default defineSchema({
     muteUntil: v.optional(v.number()),
     /** Hidden from the sidebar for this viewer (per-channel only). */
     hidden: v.optional(v.boolean()),
+    /** Pinned to the top of this viewer's direct messages (per-channel only). */
+    pinned: v.optional(v.boolean()),
+    /** When the viewer pinned it; orders the pinned block, oldest pin first. */
+    pinnedAt: v.optional(v.number()),
   })
     .index("by_user_scope", ["userId", "scope"])
     .index("by_user_channel", ["userId", "channelId"]),
 
   /**
-   * Invite links. `code` stores the SHA-256 hex digest of the plaintext code,
-   * never the code itself; the plaintext is returned only once, at creation.
-   * `maxUses` of 0 means unlimited.
+   * Invites. `code` stores the SHA-256 hex digest of the normalised plaintext
+   * code, never the code itself; the plaintext is returned only once, at
+   * creation. `maxUses` of 0 means unlimited and an absent `expiresAt` means the
+   * invite never expires. `kind` is how it reaches the person: a shareable
+   * `link`, an `email` sent to one address, or a short typed `code`. A
+   * `restrictedEmail` limits redemption to the account with that address.
+   * Rows written before these fields existed read as unrestricted links.
    */
   invites: defineTable({
     code: v.string(),
@@ -531,7 +607,48 @@ export default defineSchema({
     uses: v.number(),
     expiresAt: v.optional(v.number()),
     revokedAt: v.optional(v.number()),
-  }).index("by_code", ["code"]),
+    kind: v.optional(v.union(v.literal("link"), v.literal("email"), v.literal("code"))),
+    restrictedEmail: v.optional(v.string()),
+    note: v.optional(v.string()),
+    /** Last characters of the plaintext, so an admin can tell links apart. */
+    codeHint: v.optional(v.string()),
+    emailStatus: v.optional(v.union(v.literal("queued"), v.literal("sent"), v.literal("failed"))),
+  })
+    .index("by_code", ["code"])
+    .index("by_creator", ["createdBy"]),
+
+  /** Who joined through which invite; the history shown beside each invite. */
+  inviteRedemptions: defineTable({
+    inviteId: v.id("invites"),
+    userId: v.string(),
+    at: v.number(),
+  }).index("by_invite", ["inviteId"]),
+
+  /**
+   * Pre-approved addresses. An entry is either `person@example.com` or
+   * `@example.com` (a whole domain), always lowercase. A signed-in account whose
+   * verified email matches may join an invite-only workspace without a link.
+   */
+  inviteAllowlist: defineTable({
+    pattern: v.string(),
+    kind: v.union(v.literal("email"), v.literal("domain")),
+    addedBy: v.string(),
+    note: v.optional(v.string()),
+    addedAt: v.number(),
+  }).index("by_pattern", ["pattern"]),
+
+  /**
+   * One-time email codes that prove an account owns an allowlisted address.
+   * Only the digest is stored; a row is deleted on success and lapses after
+   * `expiresAt`.
+   */
+  joinCodes: defineTable({
+    userId: v.string(),
+    email: v.string(),
+    codeHash: v.string(),
+    expiresAt: v.number(),
+    attempts: v.number(),
+  }).index("by_user", ["userId"]),
 
   /**
    * Permanently banned users. A ban removes the member and their channel

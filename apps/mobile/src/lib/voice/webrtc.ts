@@ -1,9 +1,10 @@
+/* eslint-disable no-unused-vars -- the base rule reports parameter names in type signatures; Biome checks real unused code */
 import {
   type MediaDeviceInfo as AuloraMediaDevice,
   resolutionConstraints,
   type VoiceDeviceSettings,
 } from "@aulora/core";
-import type { ComponentType } from "react";
+import type { ComponentType, Ref } from "react";
 
 /**
  * Compile-safe indirection over `react-native-webrtc`.
@@ -165,12 +166,23 @@ export interface VoiceStreamConstructor {
   new (tracks?: VoiceTrack[]): VoiceStream;
 }
 
+/** iOS picture-in-picture options for one video (`RTCView`'s `iosPIP`). */
+export interface VoiceIosPipOptions {
+  readonly enabled?: boolean;
+  readonly startAutomatically?: boolean;
+  readonly stopAutomatically?: boolean;
+  readonly preferredSize?: { readonly width: number; readonly height: number };
+}
+
 export interface VoiceRTCViewProps {
   readonly streamURL: string;
   readonly mirror?: boolean;
   readonly objectFit?: "contain" | "cover";
   readonly zOrder?: number;
   readonly style?: unknown;
+  readonly iosPIP?: VoiceIosPipOptions;
+  /** The native view, so picture-in-picture can be started on it. */
+  readonly ref?: Ref<unknown>;
 }
 
 interface NativeWebRTCModule {
@@ -180,6 +192,8 @@ interface NativeWebRTCModule {
   readonly MediaStream?: VoiceStreamConstructor;
   readonly mediaDevices?: VoiceMediaDevices;
   readonly RTCView?: ComponentType<VoiceRTCViewProps>;
+  /** iOS only: starts picture-in-picture for the `RTCView` behind a ref. */
+  readonly startIOSPIP?: (ref: { readonly current: unknown }) => void;
 }
 
 let nativeModule: NativeWebRTCModule | null = null;
@@ -222,6 +236,13 @@ export function mediaDevices(): VoiceMediaDevices {
 /** The native video renderer, or `null` when WebRTC is absent. */
 export function videoRenderer(): ComponentType<VoiceRTCViewProps> | null {
   return nativeModule?.RTCView ?? null;
+}
+
+/** Starts iOS picture-in-picture for the view behind `ref`; a no-op elsewhere. */
+export function startIosPip(ref: { readonly current: unknown }): void {
+  if (ref.current !== null) {
+    nativeModule?.startIOSPIP?.(ref);
+  }
 }
 
 /** Whether this build can capture a screen (mobile often cannot). */

@@ -107,7 +107,7 @@ describe("files", () => {
     expect(views.map((view) => view.name).sort()).toEqual(["file-0", "file-1"]);
   });
 
-  it("enforces the upload size cap against the stored size", async () => {
+  it("falls back to UPLOAD_MAX_BYTES when no instance setting is stored", async () => {
     process.env.UPLOAD_MAX_BYTES = "8";
     const { t, asUser1 } = await setup();
     const storageId = await storeBlob(t, 16);
@@ -117,6 +117,40 @@ describe("files", () => {
         name: "big",
         mime: "application/octet-stream",
         sizeBytes: 16,
+      }),
+    ).rejects.toThrow("size cap");
+  });
+
+  it("enforces the operator-configured max upload setting over the env fallback", async () => {
+    // The env fallback would allow 1024 bytes; the stored setting must win.
+    process.env.UPLOAD_MAX_BYTES = "1024";
+    const { t, asUser1 } = await setup();
+    await t.run(async (ctx) => {
+      await ctx.db.insert("instanceSettings", {
+        storageQuotaBytes: 0,
+        maxUploadBytes: 16,
+        pushRelayEnabled: false,
+        backupsEnabled: true,
+      });
+    });
+
+    const atLimitId = await storeBlob(t, 16);
+    await expect(
+      asUser1.action(api.files.finalize, {
+        storageId: atLimitId,
+        name: "at-limit",
+        mime: "application/octet-stream",
+        sizeBytes: 16,
+      }),
+    ).resolves.toBeDefined();
+
+    const overLimitId = await storeBlob(t, 17);
+    await expect(
+      asUser1.action(api.files.finalize, {
+        storageId: overLimitId,
+        name: "over-limit",
+        mime: "application/octet-stream",
+        sizeBytes: 17,
       }),
     ).rejects.toThrow("size cap");
   });

@@ -1,5 +1,7 @@
 import { EVERYONE_ROLE_ID, Permission } from "@aulora/core";
+import betterAuthTest from "@convex-dev/better-auth/test";
 import { convexTest } from "convex-test";
+import { components } from "../convex/_generated/api";
 import type { Id } from "../convex/_generated/dataModel";
 import schema from "../convex/schema";
 import { modules } from "./setup";
@@ -153,4 +155,40 @@ export async function seedDevice(
       ...(options.pushToken !== undefined ? { pushToken: options.pushToken } : {}),
     });
   });
+}
+
+export interface AccountSeed {
+  readonly email: string;
+  readonly name?: string;
+  readonly emailVerified?: boolean;
+}
+
+/**
+ * Mounts the Better Auth component on a test instance and creates an account
+ * in it, returning the id to use as an identity subject. Needed by anything
+ * that reads an account's email.
+ */
+export async function seedAccount(t: Test, account: AccountSeed): Promise<string> {
+  const created = await t.run(async (ctx) => {
+    return await ctx.runMutation(components.betterAuth.adapter.create, {
+      input: {
+        model: "user",
+        data: {
+          name: account.name ?? account.email.split("@")[0] ?? "user",
+          email: account.email,
+          emailVerified: account.emailVerified ?? false,
+          createdAt: Date.now(),
+          updatedAt: Date.now(),
+        },
+      },
+    });
+  });
+  return (created as { _id: string })._id;
+}
+
+/** `convexTest` with the Better Auth component registered for account lookups. */
+export function newTestWithAccounts(): Test {
+  const t = newTest();
+  betterAuthTest.register(t);
+  return t;
 }

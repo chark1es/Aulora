@@ -9,12 +9,13 @@ export interface CallControlsProps {
   readonly canSpeak?: boolean;
   readonly canVideo: boolean;
   readonly canStream: boolean;
-  readonly pipPinned?: boolean;
+  /** Offer picture-in-picture (there is video to float and the device can). */
+  readonly pipSupported?: boolean;
   readonly onToggleMute: () => void;
   readonly onToggleDeafen: () => void;
   readonly onToggleCamera: () => void;
   readonly onToggleScreen: () => void;
-  readonly onTogglePin?: () => void;
+  readonly onPip?: () => void;
   readonly onLeave: () => void;
 }
 
@@ -68,23 +69,14 @@ function CoreControls({
 function MediaControls(props: {
   readonly video: boolean;
   readonly sharingScreen: boolean;
-  readonly pipPinned: boolean;
   readonly canVideo: boolean;
   readonly canStream: boolean;
   readonly onToggleCamera: () => void;
   readonly onToggleScreen: () => void;
-  readonly onTogglePin: (() => void) | undefined;
+  readonly onPip: (() => void) | undefined;
 }) {
-  const {
-    video,
-    sharingScreen,
-    pipPinned,
-    canVideo,
-    canStream,
-    onToggleCamera,
-    onToggleScreen,
-    onTogglePin,
-  } = props;
+  const { video, sharingScreen, canVideo, canStream, onToggleCamera, onToggleScreen, onPip } =
+    props;
   const palette = usePalette();
   return (
     <>
@@ -109,13 +101,9 @@ function MediaControls(props: {
           )}
         </IconButton>
       )}
-      {onTogglePin !== undefined && (
-        <IconButton
-          label={pipPinned ? "Unpin picture-in-picture" : "Pin picture-in-picture"}
-          variant={pipPinned ? "primary" : "secondary"}
-          onPress={onTogglePin}
-        >
-          {controlIcon("pip", pipPinned ? palette["on-accent"] : palette.text)}
+      {onPip !== undefined && (
+        <IconButton label="Picture in picture" variant="secondary" onPress={onPip}>
+          {controlIcon("pip", palette.text)}
         </IconButton>
       )}
     </>
@@ -124,7 +112,7 @@ function MediaControls(props: {
 
 /**
  * The pinned in-call control bar: mic, deafen, camera, screen share, optional
- * picture-in-picture pin and leave.
+ * picture-in-picture and leave.
  */
 export function CallControls(props: CallControlsProps) {
   const {
@@ -135,12 +123,12 @@ export function CallControls(props: CallControlsProps) {
     canSpeak = true,
     canVideo,
     canStream,
-    pipPinned = false,
+    pipSupported = false,
     onToggleMute,
     onToggleDeafen,
     onToggleCamera,
     onToggleScreen,
-    onTogglePin,
+    onPip,
     onLeave,
   } = props;
   return (
@@ -156,12 +144,11 @@ export function CallControls(props: CallControlsProps) {
       <MediaControls
         video={video}
         sharingScreen={sharingScreen}
-        pipPinned={pipPinned}
         canVideo={canVideo}
         canStream={canStream}
         onToggleCamera={onToggleCamera}
         onToggleScreen={onToggleScreen}
-        onTogglePin={onTogglePin}
+        onPip={pipSupported ? onPip : undefined}
       />
     </View>
   );

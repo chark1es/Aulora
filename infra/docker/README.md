@@ -7,13 +7,15 @@ the web SPA, and a one-shot `setup` container for first-run provisioning.
 There is **no TLS terminator here** on purpose. Put the stack behind your own
 edge proxy (Coolify, Traefik, Caddy, nginx, a cloud LB) — see `proxy/`.
 
-For [Coolify](https://coolify.io), use `docker-compose.coolify.yml` instead of
-`docker-compose.yml` and follow [the Coolify guide](../../apps/docs/content/coolify.md). It
+For [Coolify](https://coolify.io), deploy the stable `release` branch using
+`docker-compose.coolify.yml` instead of `docker-compose.yml`, and follow [the Coolify guide](../../apps/docs/content/coolify.md). It
 publishes no host ports, marks the one-shot services for Coolify's health
 check, and keeps generated secrets in the `setup-state` named volume so a
 redeploy never regenerates the encryption master key.
 
 ## First run
+
+Clone the stable `release` branch (`git clone --branch release https://github.com/chark1es/Aulora.git`) and run these steps from its `infra/docker` directory. `main` is for development.
 
 ```powershell
 cd infra/docker
@@ -55,9 +57,12 @@ functions, creates the workspace + owner account, and writes the public
 | MinIO console     | http://localhost:9001   | `MINIO_ROOT_USER` / `MINIO_ROOT_PASSWORD` |
 | Postgres          | localhost:5432          | `POSTGRES_USER` / `POSTGRES_PASSWORD` |
 
-## Kanban addon
+## Optional addons
 
-Kanban ships in the web and setup images and uses the existing backend and encrypted storage. Rebuild both images when upgrading, run `setup` to deploy the new functions, then recreate `web`. No additional container or GitHub environment secret is needed. Enable it in Workspace settings → Addons; it is off by default. Existing roles need explicit Kanban permissions. See [the Kanban guide](../../apps/docs/content/kanban.md).
+Kanban and Notes are optional addons that ship in the web and setup images and use the existing backend and encrypted storage. Rebuild both images when upgrading, run `setup` to deploy the new functions, then recreate `web`. No additional container or GitHub environment secret is needed. Enable them in Workspace settings → Addons; they are off by default, and existing roles need explicit permissions for each addon.
+
+- **Kanban** — boards, cards, work timers, attachments and GitHub links. See [the Kanban guide](../../apps/docs/content/kanban.md).
+- **Notes** — Markdown notes with nested folders, tags, search and per-note history. See [the Notes guide](../../apps/docs/content/notes.md).
 
 ## Why `setup` rather than manual steps
 
@@ -92,6 +97,7 @@ Reproducibility matters more than freshness here, so every image is pinned:
 | `sourcemation/minio` | `RELEASE.2025-10-15T17-29-55Z-20260920` | last AGPL MinIO release (see below) |
 | `pgsty/mc` | digest `sha256:cfc831…` | MinIO client used for bucket init |
 | `hashicorp/vault` | `1.18` | optional EKM for the `ekm` profile (see below) |
+| `livekit/livekit-server` | `v1.13.8` | optional screen-streaming server for the `streaming` profile (Apache-2.0; see below) |
 
 To bump the Convex digest:
 
@@ -100,6 +106,50 @@ docker pull ghcr.io/get-convex/convex-backend:latest
 docker inspect ghcr.io/get-convex/convex-backend:latest `
   --format '{{index .RepoDigests 0}} {{index .Config.Labels "org.opencontainers.image.revision"}}'
 ```
+
+## Screen streaming (optional)
+
+Calls are peer to peer, which is the right design for a small call but not for
+streaming a desktop or an application to many people: the sharer would upload
+one copy per viewer. The `streaming` profile adds a [LiveKit](https://livekit.io)
+server (Apache-2.0) that relays only screen and window shares. The microphone,
+camera and small calls still go peer to peer, and clients that cannot use the
+server (the mobile apps today) keep receiving shares directly. Leave it off and
+nothing changes.
+
+Turn it on by adding the profile; there is nothing to configure:
+
+```bash
+docker compose --profile streaming up -d
+```
+
+A one-shot `livekit-init` creates the API key pair on first start and keeps it in
+a Docker volume, `setup` hands it to Convex, and clients are pointed at
+`<SITE_URL>/livekit`, which the `web` container proxies to the server. The key
+never appears in `.env`. Then open `7881/tcp` and `7882/udp` to the internet (one
+rule each; media uses no other ports), and re-run `setup` if you enabled the
+profile on a stack that is already running:
+
+```bash
+docker compose run --rm setup
+```
+
+On Coolify nothing needs adding: `docker-compose.coolify.yml` runs the server
+without a profile (Coolify does not start profiled services) and configures it
+the same way. Open `7881/tcp` and `7882/udp` in the server's firewall; until you
+do, shares still work, sent directly to each viewer.
+
+To use a LiveKit server you run yourself (or LiveKit Cloud) instead, leave the
+profile off and set `LIVEKIT_URL`, `LIVEKIT_API_KEY` and `LIVEKIT_API_SECRET` in
+`.env`; explicit values always win. To turn streaming off again, drop the profile
+and clear the three values on the deployment with `bunx convex env remove`
+(clients that cannot reach the server fall back to direct shares meanwhile).
+
+Tokens only grant the screen-share sources, one room per call, and expire after
+an hour. Behind NAT, or on a LAN without a public address, set `rtc.node_ip` in
+`livekit/livekit.yaml` to an address clients can reach. Budget roughly the stream
+bitrate (1 to 3.5 Mbps) times the number of viewers in outbound bandwidth; a
+1 Gbps host serves a few hundred viewers.
 
 ## Object storage (MinIO)
 
@@ -122,6 +172,24 @@ S3.
 
 `minio-init` waits for MinIO and creates the buckets idempotently on every
 `up`.
+
+## Upload size limits
+
+Two independent caps apply, and both must allow the size you want:
+
+- **Convex** enforces the authoritative per-upload cap from the admin
+  **Storage** setting (`instanceSettings.maxUploadBytes`, 25 MiB by default).
+  When no setting has been saved it falls back to the `UPLOAD_MAX_BYTES`
+  deployment env var, then to the 25 MiB default. Clients read the effective
+  value from `server.publicConfig.uploads.maxBytes`.
+- **nginx** (the `web` service) rejects request bodies larger than
+  `NGINX_CLIENT_MAX_BODY_SIZE` (default `100m`) before they reach Convex. This
+  matters when uploads go through the web origin, i.e. `CONVEX_CLOUD_ORIGIN`
+  points at `SITE_URL` rather than the Convex API host directly.
+
+If you raise the admin Storage max above `100m`, also set
+`NGINX_CLIENT_MAX_BODY_SIZE` in `.env` to match (nginx size notation, e.g.
+`250m`) and redeploy the `web` service.
 
 ## Encryption
 
@@ -201,12 +269,51 @@ web app on a LAN or Tailscale IP (e.g. `http://100.64.0.10:8080`), add that
 origin to `TRUSTED_ORIGINS` in `.env` and re-run
 `docker compose run --rm setup` to push it to the deployment.
 
+## Environment overrides (admin panel)
+
+The workspace owner can override a curated set of environment variables from
+**Instance admin → Environment** instead of editing `.env`, including the OAuth
+and OIDC credentials and a custom OIDC provider. Overrides live in the workspace
+database, sealed with the server encryption key, and take precedence over the
+deployment environment. Values supplied by the deployment are never returned to
+the client, secret or not, and secrets saved in the panel are write-only.
+Bootstrap values (`BETTER_AUTH_SECRET`, the encryption keys, `SITE_URL` and the
+other read-only entries) cannot be overridden. Overriding one key of a
+credential group (OIDC, or a social provider's id and secret) drops the group's
+remaining deployment values, so a deployment secret is never sent to an endpoint
+the owner chose.
+
+The catalog lives in `packages/convex/convex/lib/envCatalog*.ts`. To fall back to
+`.env` alone, set `AULORA_ALLOW_UI_ENV_OVERRIDES=false` in `.env` and re-run
+`docker compose run --rm setup`: the Environment tab then reports that overrides
+are disabled by the deployment and every override mutation is refused. Overrides
+apply on the next request, so a change does not need a restart.
+
 ## `/.well-known/aulora.json`
 
-`setup` writes the real per-instance document into the `web-well-known` volume
-from `server:publicConfig`. It contains only public data (name, versions, Convex
-URL, site URL, icon seed, enabled auth providers) and never a secret. It is
-gitignored and must not be committed.
+The web container proxies this endpoint to Convex HTTP actions on port 3211.
+The backend returns current workspace settings, so discovery works at the main
+web URL without a generated file and reflects branding and auth changes immediately.
+Discovery through this gateway advertises `SITE_URL` as the Convex URL because
+the gateway also proxies the client API and WebSocket. Direct backend discovery
+retains the configured `CONVEX_CLOUD_ORIGIN` for deployments with separate hosts.
+The response contains only public discovery data: name, versions, Convex URL,
+site URL, icon seed, auth providers and the encryption descriptor.
+
+`setup` also writes a static copy into `web-well-known` for deployments that
+serve discovery as a file. That copy is gitignored and must not be committed.
+Other documents, including `aulora-update.json`, still use the volume.
+
+Compose starts a short root bootstrap to assign the discovery directory, setup
+state directory and their existing output files to the image's `aulora` user,
+UID/GID 10001. It then drops to that user, removes all capabilities and prevents
+privilege escalation before running deployment or initialization. The image
+defaults to `aulora` when run directly. After building it, check volume access
+and the worker's privileges:
+
+```sh
+bash infra/docker/setup/test/volume-permissions.sh aulora-setup:local
+```
 
 ## Upgrade
 
@@ -269,8 +376,9 @@ Tearing down with `down` (no `-v`) is the safe default: the named volumes
 Desktop settings show the installed app version, check for signed releases, and
 provide **Download update**, followed by **Restart to update**.
 
-For the workspace instance, run the watcher on the Docker host from a clean git
-clone with Bun dependencies installed with `bun install --frozen-lockfile`:
+For the workspace instance, run the watcher on the Docker host from a clean
+`release`-branch clone with Bun dependencies installed with
+`bun install --frozen-lockfile`:
 
 ```sh
 ./update.sh --watch     # enables owner-only update controls in settings
@@ -302,7 +410,7 @@ rechecks workspace-owner authority for each request. No shell commands, release
 URLs, or deployment keys are accepted from the browser. If the watcher is offline,
 settings still show the version and can check releases, with installation disabled.
 
-Coolify should redeploy the new git ref from Coolify; do not point `update.sh` at
+Coolify should redeploy the `release` branch from Coolify; do not point `update.sh` at
 Coolify's source checkout. Its settings show the version and available releases,
 with instructions to use the hosting provider's redeploy controls.
 
@@ -315,8 +423,13 @@ with instructions to use the hosting provider's redeploy controls.
 - **`/instance_name` unreachable** — the backend is not healthy; check
   `docker compose logs convex-backend` and that `POSTGRES_URL` has no database
   name.
-- **Well-known 404** — run `setup`; it writes the document after a successful
-  deploy.
+- **Well-known 404** — rebuild `web` and `setup`, then redeploy the Convex
+  functions. Verify the exact discovery route reaches HTTP actions on port
+  3211. If your edge serves a static document, also verify setup completed.
+- **Stuck on "Loading workspace"** — check the discovery document's `convexUrl`.
+  That origin must serve the Convex API and WebSocket. If the main web URL works
+  but a separate advertised API hostname does not, rebuild `web` and `setup`
+  to use gateway discovery, then reconnect the client to replace its saved URL.
 
 ## Public release operations
 

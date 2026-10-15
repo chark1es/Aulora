@@ -8,6 +8,7 @@ import {
   setUserNote,
   timeoutMember,
 } from "../../lib/backend-actions";
+import { manageableChannelRoles, roleOverridesFor } from "../../lib/channel-role-overrides";
 import { CallScreen } from "../voice/CallScreen";
 import { IncomingCallModal } from "../voice/IncomingCallModal";
 import { BannedMembersSheet } from "./BannedMembersSheet";
@@ -140,6 +141,13 @@ function ChannelActionRows({
         subtitle={shown.muted === true ? undefined : "No sounds or badges from here"}
         onPress={() => void model.toggleMute(shown)}
       />
+      {(shown.kind === "dm" || shown.kind === "group_dm") && (
+        <ListRow
+          icon="pin"
+          title={shown.pinned === true ? "Unpin conversation" : "Pin conversation"}
+          onPress={() => void model.togglePin(shown)}
+        />
+      )}
       <ListRow
         icon={shown.hidden === true ? "eye" : "eye-off"}
         title={shown.hidden === true ? "Show in list" : "Hide from list"}
@@ -174,6 +182,7 @@ function PinnedMessagesOverlay({ model }: { readonly model: ChatScreenModel }) {
       visible={model.pinsOpen}
       channelId={channel.id}
       memberNames={model.memberNames}
+      pins={model.pinsFor?.(channel.id)}
       onClose={() => {
         model.setPinsOpen(false);
       }}
@@ -195,6 +204,7 @@ function MemberProfileOverlay({ model }: { readonly model: ChatScreenModel }) {
       displayName={model.memberNames.get(shownProfile) ?? "Member"}
       status={row?.status ?? "offline"}
       customStatus={row?.customStatus ?? ""}
+      profile={model.profiles?.get(shownProfile)}
       ownUserId={model.ownUserId}
       onClose={() => {
         model.setProfileFor(null);
@@ -317,6 +327,11 @@ function EditChannelOverlay({ model }: { readonly model: ChatScreenModel }) {
   if (target === null) {
     return null;
   }
+  const roles = manageableChannelRoles(model.roleViews, {
+    isOwner: model.isOwner,
+    topPosition: model.viewerTopPosition,
+  });
+  const roleIds = new Set(roles.map((role) => role.id));
   return (
     <EditChannelSheet
       visible
@@ -332,6 +347,11 @@ function EditChannelOverlay({ model }: { readonly model: ChatScreenModel }) {
         .filter((override) => override.targetType === "member")
         .filter((override) => (override.deny & Permission.ViewChannel) !== 0n)
         .map((override) => override.targetId)}
+      roles={roles}
+      initialRoleOverrides={roleOverridesFor(target.overrides ?? []).filter((override) =>
+        roleIds.has(override.targetId),
+      )}
+      canManageRoleOverrides={model.canManageChannels && roles.length > 0}
       ownUserId={model.ownUserId}
       members={model.members}
       busy={model.editChannelBusy}

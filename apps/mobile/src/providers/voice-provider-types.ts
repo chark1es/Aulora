@@ -18,6 +18,16 @@ export interface VoicePolicy {
 
 export type CallViewMode = "hidden" | "stage";
 
+/** Picture-in-picture for the active call (see `useVoicePip`). */
+export interface VoicePip {
+  /** There is video to float and this device can do it. */
+  readonly supported: boolean;
+  /** The app is currently in the floating window (Android; iOS does not report it). */
+  readonly active: boolean;
+  /** Floats the call now. */
+  readonly enter: () => void;
+}
+
 export interface VoiceContextValue extends MobileVoiceSnapshot {
   readonly selfUserId: string;
   /** This install's id, or null until it has been read from storage. */
@@ -33,6 +43,7 @@ export interface VoiceContextValue extends MobileVoiceSnapshot {
   readonly canVideo: boolean;
   readonly view: CallViewMode;
   readonly pipPinned: boolean;
+  readonly pip: VoicePip;
   readonly setView: (_view: CallViewMode) => void;
   readonly setPipPinned: (_pinned: boolean) => void;
   readonly startCall: (

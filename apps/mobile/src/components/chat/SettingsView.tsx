@@ -13,6 +13,7 @@ import { PresenceAvatar } from "./PresenceAvatar";
 import { ProfileEditor } from "./ProfileEditor";
 import { SoundSettingsSection } from "./SoundSettingsSection";
 import { StatusEditor } from "./StatusEditor";
+import type { ViewerProfileData } from "./use-chat-screen-data";
 
 type DetailPage = "profile" | "notifications" | "voice";
 type PresenceStatus = PresenceRow["status"];
@@ -44,17 +45,30 @@ export interface SettingsViewProps {
   readonly pushState: PushRegistrationState;
   readonly onSetStatus: (status: PresenceStatus, customStatus?: string) => void;
   readonly onSignOut: () => void;
+  /** Profile an offline surface already holds; when set the editor stays local. */
+  readonly profileData?: ViewerProfileData | null | undefined;
+  /** Persists an offline profile edit for the life of the surface. */
+  readonly onSaveProfile?: ((next: ViewerProfileData) => void) | undefined;
 }
 
 interface DetailProps {
   readonly page: DetailPage;
   readonly ownUserId: string;
   readonly canChangeNickname: boolean;
+  readonly profileData?: ViewerProfileData | null | undefined;
+  readonly onSaveProfile?: ((next: ViewerProfileData) => void) | undefined;
   readonly onBack: () => void;
 }
 
 /** One settings page pushed over the You tab, with a way back. */
-function SettingsDetail({ page, ownUserId, canChangeNickname, onBack }: DetailProps) {
+function SettingsDetail({
+  page,
+  ownUserId,
+  canChangeNickname,
+  profileData,
+  onSaveProfile,
+  onBack,
+}: DetailProps) {
   const clearance = useDockClearance();
   return (
     <View className="flex-1" style={{ paddingBottom: clearance }}>
@@ -69,7 +83,12 @@ function SettingsDetail({ page, ownUserId, canChangeNickname, onBack }: DetailPr
             keyboardShouldPersistTaps="handled"
             contentContainerStyle={{ paddingBottom: 24 }}
           >
-            <ProfileEditor userId={ownUserId} canChangeNickname={canChangeNickname} />
+            <ProfileEditor
+              userId={ownUserId}
+              canChangeNickname={canChangeNickname}
+              profile={profileData}
+              onSave={onSaveProfile}
+            />
           </KeyboardAwareScrollView>
         )}
         {page === "notifications" && <SoundSettingsSection />}
@@ -208,6 +227,8 @@ export function SettingsView(props: SettingsViewProps) {
         page={page}
         ownUserId={props.ownUserId}
         canChangeNickname={props.canChangeNickname}
+        profileData={props.profileData}
+        onSaveProfile={props.onSaveProfile}
         onBack={() => {
           setPage(null);
         }}

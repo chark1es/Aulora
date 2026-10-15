@@ -33,9 +33,26 @@ Re-running setup does not reset the existing owner's password or create another 
 
 ## Discovery fails
 
-Open `https://your-host/.well-known/aulora.json`. It should return JSON, not an HTML login page or proxy error. Verify the web route and setup's well-known volume. The advertised `convexUrl` must work from the client's network, not just inside Docker.
+Open `https://your-host/.well-known/aulora.json`. It should return JSON, not an HTML login page or proxy error. The web container forwards this path to Convex HTTP actions on port 3211. Rebuild `web` and `setup` and verify the backend functions were deployed. If your edge serves a static document instead, check setup's well-known volume. The advertised `convexUrl` must work from the client's network, not just inside Docker.
+
+If setup reports `Permission denied` for `/web-well-known` or `/host/.env`, rebuild the setup image and use the updated Compose configuration. A short root bootstrap prepares output ownership, then drops to the `aulora` user without capabilities before deploying functions or initializing the workspace. Confirm its logs reach `[setup] done`.
 
 A phone's `localhost` refers to the phone. Docker service names are also unavailable outside the Compose network. Use reachable public URLs.
+
+## Workspace stays on the loading screen
+
+Check the discovery document's `convexUrl` and the client's network requests.
+The loading screen waits for workspace subscriptions over the Convex WebSocket.
+If that origin returns an HTTP error or cannot connect, workspace data will not load.
+After about ten seconds the client stops waiting and offers **Try again**, **Use a
+different server** and, for a saved server, **Remove this server**.
+
+The shipped web gateway serves the API and WebSocket at the main workspace URL.
+Its discovery document advertises `SITE_URL` for those connections. Rebuild
+`web` and `setup` to deploy the gateway discovery behavior, then reconnect to
+replace a client's previously saved API URL. If you serve discovery directly
+from the backend, check that `CONVEX_CLOUD_ORIGIN` matches the domain assigned
+to `convex-backend` in Coolify, with container port 3210.
 
 ## Sign-in loops or OAuth callback errors
 
@@ -52,6 +69,14 @@ If encrypted files or messages stop decrypting, restore the correct master key a
 ## Voice connects without media
 
 Allow microphone/camera access in the app and OS. Use HTTPS for remote clients. Test another network. Restrictive NAT or firewalls can require a TURN server; configure `AULORA_ICE_SERVERS` in `.env` and re-run setup.
+
+## Background blur or enhanced noise suppression is unavailable
+
+Both run in WebAssembly on your device. They need WebGL 2 (blur) and a current browser or the desktop app. The settings show a message when a feature cannot run, and the call carries on with your plain camera or the browser's standard noise suppression. If you host the web app behind your own proxy, its Content-Security-Policy must allow `'wasm-unsafe-eval'` in `script-src` and serve `.wasm` files as `application/wasm`; see [proxy/README.md](https://github.com/chark1es/Aulora/blob/main/infra/docker/proxy/README.md).
+
+## Screen shares are choppy or the sharer's connection struggles
+
+A share sent straight to each viewer uses the sharer's upload once per viewer. For regular streaming to many people, ask the administrator to enable the optional streaming server (see [self-hosting](self-hosting.md)), or choose **Settings → Voice & video → Screen sharing quality → Data saver**.
 
 ## Notifications do not arrive
 

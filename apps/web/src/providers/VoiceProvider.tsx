@@ -3,8 +3,6 @@ import {
   type CallKind,
   type CallView,
   claimCallSeat,
-  createVoiceClientId,
-  ensureVoiceClientId,
   hasPermission,
   mergeVoiceSettings,
   Permission,
@@ -31,6 +29,8 @@ import {
 } from "../lib/voice/device-settings";
 import { sendLeaveBeacon } from "../lib/voice/leave-beacon";
 import { listMediaDevices, onDeviceChange } from "../lib/voice/media";
+import { type PipControl, type PipSurface, useCallPip } from "./use-call-pip";
+import { loadBrowserVoiceClientId, withScreenAudio } from "./voice-provider-utils";
 import { RemoteAudio } from "./voice-remote-audio";
 
 /** How often the cached unload token is refreshed while a call is active. */
@@ -65,6 +65,10 @@ export interface VoiceContextValue extends VoiceSnapshot {
   readonly canVideo: boolean;
   readonly view: CallViewMode;
   readonly pipPinned: boolean;
+  /** Picture-in-picture for the active call, in whatever form this platform offers. */
+  readonly pip: PipControl;
+  /** The floating surface the page draws the call into, if one is open. */
+  readonly pipSurface: PipSurface;
   setView(_view: CallViewMode): void;
   setPipPinned(_pinned: boolean): void;
   startCall(
@@ -95,6 +99,7 @@ const EMPTY_SNAPSHOT: VoiceSnapshot = {
   micStream: null,
   localVideoTrack: null,
   remoteStreams: new Map(),
+  remoteScreens: new Map(),
   remoteSpeaking: new Set(),
   micLevel: 0,
   localSpeaking: false,
@@ -427,6 +432,27 @@ export function VoiceProvider({
     engineRef.current?.clearError();
   }, []);
 
+  const { pip, surface: pipSurface } = useCallPip({
+    callActive,
+    snapshot,
+    selfUserId: userId,
+    pinned: pipPinned,
+    setPinned: setPipPinned,
+    controls: {
+      toggleMicrophone: () => {
+        const engine = engineRef.current;
+        void engine?.setMuted(!engine.getSnapshot().local.muted);
+      },
+      toggleCamera: () => {
+        const engine = engineRef.current;
+        void engine?.setCamera(!engine.getSnapshot().local.video);
+      },
+      hangUp: () => {
+        void leave();
+      },
+    },
+  });
+
   const canConnect = policy.enabled && hasPermission(permissions, Permission.Connect);
   const canSpeak = hasPermission(permissions, Permission.Speak);
   const canStream = policy.screenShareEnabled && hasPermission(permissions, Permission.Stream);
@@ -448,6 +474,8 @@ export function VoiceProvider({
       canVideo,
       view,
       pipPinned,
+      pip,
+      pipSurface,
       setView,
       setPipPinned,
       startCall,
@@ -479,6 +507,8 @@ export function VoiceProvider({
       canVideo,
       view,
       pipPinned,
+      pip,
+      pipSurface,
       startCall,
       joinCall,
       acceptCall,
@@ -495,6 +525,9 @@ export function VoiceProvider({
     ],
   );
 
+  // A relayed share's own audio plays beside the call audio, under its own key.
+  const audioStreams = withScreenAudio(snapshot.remoteStreams, snapshot.remoteScreens);
+
   return (
     <VoiceContext.Provider value={value}>
       {children}
@@ -508,25 +541,13 @@ export function VoiceProvider({
         }}
       />
       <RemoteAudio
-        streams={snapshot.remoteStreams}
+        streams={audioStreams}
         deafened={snapshot.local.deafened}
         outputDeviceId={settings.outputDeviceId}
         outputVolume={settings.outputVolume}
       />
     </VoiceContext.Provider>
   );
-}
-
-function loadBrowserVoiceClientId(): string {
-  try {
-    if (typeof localStorage !== "undefined") {
-      return ensureVoiceClientId(localStorage);
-    }
-  } catch {
-    // Private mode can throw on access. A session-only id still separates tabs
-    // that do not share storage, which is enough to keep seats apart.
-  }
-  return createVoiceClientId();
 }
 
 /** Reads the voice context; throws outside a {@link VoiceProvider}. */

@@ -22,10 +22,12 @@ Messages and uploads use server-side encryption. The server decrypts content for
 
 Install Git and Docker with Compose v2.24 or newer. Docker must be running. You do not need Bun, Node.js, or Rust to run the server. The first install downloads images and builds the app, which can take several minutes.
 
+Install from the stable `release` branch. `main` tracks development and is not an install target, and the installer warns when it runs from another branch.
+
 On macOS, Linux, or WSL:
 
 ```sh
-git clone https://github.com/chark1es/Aulora.git
+git clone --branch release https://github.com/chark1es/Aulora.git
 cd Aulora
 ./install.sh
 ```
@@ -33,7 +35,7 @@ cd Aulora
 On Windows, use PowerShell 7 and Docker Desktop with Linux containers:
 
 ```powershell
-git clone https://github.com/chark1es/Aulora.git
+git clone --branch release https://github.com/chark1es/Aulora.git
 Set-Location Aulora
 pwsh ./install.ps1
 ```
@@ -43,6 +45,8 @@ Enter an owner email and a password with at least 16 characters when prompted. O
 The default addresses are for a local trial. For phones, other computers, or a public server, configure reachable URLs and HTTPS using the [self-hosting guide](apps/docs/content/self-hosting.md). Replace the database and object-storage example passwords before a public deployment. A domain passed to the installer does not configure DNS or TLS for you.
 
 After setup, create a channel and send a message. Use Workspace settings to invite a second user and configure signup policy. Back up `.env` securely, including `AULORA_ENCRYPTION_KEY`, then set up [off-machine backups](apps/docs/content/backups.md).
+
+Kanban and Notes are optional addons, off by default and enabled in **Workspace settings → Addons** by a member with the Manage workspace permission. They ship in the web and setup images and use the same backend, so an upgrade rebuilds both images and re-runs `setup` before recreating `web`. See the [Kanban](apps/docs/content/kanban.md) and [Notes](apps/docs/content/notes.md) guides.
 
 ## Get the clients
 
