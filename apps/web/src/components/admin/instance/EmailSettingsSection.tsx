@@ -52,19 +52,18 @@ export function EmailSection() {
   );
 }
 
-function emailDirty(
-  current: EmailSettings | undefined,
-  draft: {
-    readonly provider: EmailProvider;
-    readonly from: string;
-    readonly smtpHost: string;
-    readonly smtpPort: string;
-    readonly smtpSecure: boolean;
-    readonly smtpUser: string;
-    readonly resendApiKey: string;
-    readonly smtpPassword: string;
-  },
-): boolean {
+interface EmailDraft {
+  readonly provider: EmailProvider;
+  readonly from: string;
+  readonly smtpHost: string;
+  readonly smtpPort: string;
+  readonly smtpSecure: boolean;
+  readonly smtpUser: string;
+  readonly resendApiKey: string;
+  readonly smtpPassword: string;
+}
+
+function emailDirty(draft: EmailDraft, current?: EmailSettings): boolean {
   if (current === undefined) {
     return false;
   }
@@ -108,16 +107,10 @@ function EmailConfigForm({
     setSmtpUser(current.smtpUser);
   }, [current]);
 
-  const dirty = emailDirty(current, {
-    provider,
-    from,
-    smtpHost,
-    smtpPort,
-    smtpSecure,
-    smtpUser,
-    resendApiKey,
-    smtpPassword,
-  });
+  const dirty = emailDirty(
+    { provider, from, smtpHost, smtpPort, smtpSecure, smtpUser, resendApiKey, smtpPassword },
+    current,
+  );
 
   function submit(): void {
     onResult(null, null);

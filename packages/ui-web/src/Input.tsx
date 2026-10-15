@@ -1,4 +1,10 @@
-import { forwardRef, type InputHTMLAttributes, type ReactNode, useId } from "react";
+import {
+  type CSSProperties,
+  forwardRef,
+  type InputHTMLAttributes,
+  type ReactNode,
+  useId,
+} from "react";
 import { cn } from "./cn";
 
 export type InputSize = "md" | "lg";
@@ -26,23 +32,59 @@ const SIZE_CLASSES = new Map<InputSize, string>([
 const LEADING_PADDING = "2.5rem";
 const TRAILING_PADDING = "5rem";
 
+/** Left and right padding that clears the leading and trailing slots. */
+function insetFor(leading: ReactNode, trailing: ReactNode): CSSProperties | undefined {
+  if (leading === undefined && trailing === undefined) {
+    return undefined;
+  }
+  return {
+    ...(leading !== undefined ? { paddingLeft: LEADING_PADDING } : {}),
+    ...(trailing !== undefined ? { paddingRight: TRAILING_PADDING } : {}),
+  };
+}
+
+/** The helper line and the error line under a field. */
+function FieldMessages(props: {
+  readonly hint?: string | undefined;
+  readonly hintId?: string | undefined;
+  readonly error?: string | undefined;
+  readonly errorId?: string | undefined;
+}) {
+  return (
+    <>
+      {props.hint !== undefined && (
+        <p id={props.hintId} className="text-xs text-text-muted">
+          {props.hint}
+        </p>
+      )}
+      {props.error !== undefined && (
+        <p id={props.errorId} role="alert" className="text-xs text-danger">
+          {props.error}
+        </p>
+      )}
+    </>
+  );
+}
+
 /** Text input with a 10px radius, hairline border and accent focus ring. */
-export const Input = forwardRef<HTMLInputElement, InputProps>(function Input(
-  { label, hint, error, size = "md", leading, trailing, className, id, style, ...rest },
-  ref,
-) {
+export const Input = forwardRef<HTMLInputElement, InputProps>(function Input(props, ref) {
+  const {
+    label,
+    hint,
+    error,
+    size = "md",
+    leading,
+    trailing,
+    className,
+    id,
+    style,
+    ...rest
+  } = props;
   const generatedId = useId();
   const inputId = id ?? generatedId;
   const hintId = hint !== undefined ? `${inputId}-hint` : undefined;
   const errorId = error !== undefined ? `${inputId}-error` : undefined;
   const describedBy = [hintId, errorId].filter((value): value is string => value !== undefined);
-  const inset =
-    leading !== undefined || trailing !== undefined
-      ? {
-          ...(leading !== undefined ? { paddingLeft: LEADING_PADDING } : {}),
-          ...(trailing !== undefined ? { paddingRight: TRAILING_PADDING } : {}),
-        }
-      : undefined;
 
   return (
     <div className="flex w-full flex-col gap-1.5">
@@ -63,7 +105,7 @@ export const Input = forwardRef<HTMLInputElement, InputProps>(function Input(
           id={inputId}
           aria-invalid={error !== undefined || undefined}
           aria-describedby={describedBy.length > 0 ? describedBy.join(" ") : undefined}
-          style={{ ...style, ...inset }}
+          style={{ ...style, ...insetFor(leading, trailing) }}
           className={cn(
             "w-full rounded-input border bg-surface-3 text-text placeholder:text-text-muted",
             SIZE_CLASSES.get(size),
@@ -78,16 +120,7 @@ export const Input = forwardRef<HTMLInputElement, InputProps>(function Input(
           <span className="absolute inset-y-0 right-1.5 flex items-center">{trailing}</span>
         )}
       </div>
-      {hint !== undefined && (
-        <p id={hintId} className="text-xs text-text-muted">
-          {hint}
-        </p>
-      )}
-      {error !== undefined && (
-        <p id={errorId} role="alert" className="text-xs text-danger">
-          {error}
-        </p>
-      )}
+      <FieldMessages hint={hint} hintId={hintId} error={error} errorId={errorId} />
     </div>
   );
 });

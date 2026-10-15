@@ -39,13 +39,13 @@ function sectionsFor(page) {
   }
   matches.forEach((match, index) => {
     const start = match.index + match[0].length;
-    const end = matches[index + 1]?.index ?? page.html.length;
+    const sectionEnd = matches[index + 1]?.index ?? page.html.length;
     entries.push({
       title: page.title,
       url: page.url,
       id: match[2],
       heading: plainText(match[3]),
-      text: clip(plainText(page.html.slice(start, end))),
+      text: clip(plainText(page.html.slice(start, sectionEnd))),
     });
   });
   return entries;

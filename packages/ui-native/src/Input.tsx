@@ -24,17 +24,8 @@ export interface InputProps extends TextInputProps {
 }
 
 /** Text input with a 14px radius, hairline border and token placeholder color. */
-export function Input({
-  label,
-  hint,
-  error,
-  size,
-  leading,
-  trailing,
-  className,
-  style,
-  ...rest
-}: InputProps) {
+export function Input(props: InputProps) {
+  const { label, hint, error, size, leading, trailing, className, style, ...rest } = props;
   const palette = usePalette();
   const insetStyle = {
     ...(leading !== undefined ? { paddingLeft: 40 } : {}),

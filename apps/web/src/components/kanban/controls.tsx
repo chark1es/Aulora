@@ -212,7 +212,7 @@ export function ChecklistMenu({
         >
           {searchable && (
             <SearchInput
-              label={searchPlaceholder ?? label}
+              label={searchPlaceholder}
               value={query}
               onChange={setQuery}
               autoFocus

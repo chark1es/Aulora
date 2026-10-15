@@ -167,7 +167,7 @@ export function AuthHeading({ title, subtitle }: AuthHeadingProps) {
 
 export interface AuthFieldProps extends Omit<InputHTMLAttributes<HTMLInputElement>, "size"> {
   readonly label: string;
-  readonly error?: string;
+  readonly error?: string | undefined;
   /** Decorative element before the text, e.g. an icon. */
   readonly leading?: ReactNode;
   /** Control after the text, e.g. a show-password button. */
@@ -292,26 +292,26 @@ export function AuthDivider({ children }: { readonly children: ReactNode }) {
   );
 }
 
-/** The quiet text link under a form ("Use a different workspace"). */
-export function AuthLink({
-  children,
-  centered = false,
-  className,
-  ...rest
-}: {
+export interface AuthLinkProps {
   readonly children: ReactNode;
+  readonly onClick: () => void;
+  readonly disabled?: boolean;
   /** Centres the link, for the legacy single-column frame. */
   readonly centered?: boolean;
-} & ButtonHTMLAttributes<HTMLButtonElement>) {
+}
+
+const LINK_CLASSES =
+  "w-fit rounded-[10px] text-[13px] font-medium text-text-muted underline decoration-border underline-offset-4 transition hover:text-text hover:decoration-text-muted focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent disabled:pointer-events-none disabled:opacity-50";
+
+/** The quiet text link under a form ("Use a different workspace"). */
+export function AuthLink(props: AuthLinkProps) {
+  const { children, onClick, disabled = false, centered = false } = props;
   return (
     <button
       type="button"
-      {...rest}
-      className={cn(
-        "w-fit rounded-[10px] text-[13px] font-medium text-text-muted underline decoration-border underline-offset-4 transition hover:text-text hover:decoration-text-muted focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent disabled:pointer-events-none disabled:opacity-50",
-        centered && "mx-auto -mt-2",
-        className,
-      )}
+      onClick={onClick}
+      disabled={disabled}
+      className={cn(LINK_CLASSES, centered && "mx-auto -mt-2")}
     >
       {children}
     </button>

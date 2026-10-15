@@ -6,20 +6,26 @@ export interface SettingsRowProps extends Omit<HTMLAttributes<HTMLDivElement>, "
   readonly description?: string;
   /** The control shown on the right; omit for a read-only row. */
   readonly children?: ReactNode;
-  readonly htmlFor?: string;
   readonly align?: "center" | "start";
 }
 
-/** One settings row: label and description on the left, control on the right. */
-export function SettingsRow(props: SettingsRowProps) {
-  const { label, description, children, htmlFor, align = "center", className, ...rest } = props;
-  const labelNode = (
+function SettingsRowLabel(props: { readonly label: string; readonly description?: string }) {
+  const { label, description } = props;
+  return (
     <>
       <span className="block text-[13px] font-medium text-text">{label}</span>
       {description !== undefined && (
         <span className="mt-0.5 block text-[11px] leading-snug text-text-muted">{description}</span>
       )}
     </>
+  );
+}
+
+/** One settings row: label and description on the left, control on the right. */
+export function SettingsRow(props: SettingsRowProps) {
+  const { label, description, children, align = "center", className, ...rest } = props;
+  const text = (
+    <SettingsRowLabel label={label} {...(description !== undefined ? { description } : {})} />
   );
   return (
     <div
@@ -30,13 +36,7 @@ export function SettingsRow(props: SettingsRowProps) {
       )}
       {...rest}
     >
-      {htmlFor !== undefined ? (
-        <label htmlFor={htmlFor} className="min-w-0 flex-1 cursor-pointer">
-          {labelNode}
-        </label>
-      ) : (
-        <div className="min-w-0 flex-1">{labelNode}</div>
-      )}
+      <div className="min-w-0 flex-1">{text}</div>
       {children !== undefined && <div className="flex shrink-0 items-center gap-2">{children}</div>}
     </div>
   );

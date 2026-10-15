@@ -67,80 +67,50 @@ describe("update view model", () => {
     expect(statusText({ ...base, phase: "idle" })).toBe("Check for a new release.");
   });
 
-  it("picks a single primary action per state", () => {
-    expect(
-      primaryAction({
-        phase: "downloading",
-        available: true,
-        ready: false,
-        installDirectly: false,
-        error: null,
-      }),
-    ).toEqual({
-      label: "Downloading…",
-      kind: "download",
-      busy: true,
+  describe("primary action", () => {
+    type ActionState = Parameters<typeof primaryAction>[0];
+    const idle: ActionState = {
+      phase: "idle",
+      available: false,
+      ready: false,
+      installDirectly: false,
+      error: null,
+    };
+
+    it("shows progress while downloading", () => {
+      const state = { ...idle, phase: "downloading", available: true } as const;
+      expect(primaryAction(state)).toEqual({ label: "Downloading…", kind: "download", busy: true });
     });
-    expect(
-      primaryAction({
-        phase: "idle",
-        available: true,
-        ready: false,
-        installDirectly: false,
-        error: null,
-      }),
-    ).toEqual({
-      label: "Update now",
-      kind: "download",
-      busy: false,
+
+    it("offers the update when one is available", () => {
+      const action = primaryAction({ ...idle, available: true });
+      expect(action).toEqual({ label: "Update now", kind: "download", busy: false });
     });
-    expect(
-      primaryAction({
-        phase: "ready",
-        available: true,
-        ready: true,
-        installDirectly: false,
-        error: null,
-      }),
-    ).toEqual({
-      label: "Restart to finish",
-      kind: "restart",
-      busy: false,
+
+    it("asks for a restart once the update is ready", () => {
+      const state = { ...idle, phase: "ready", available: true, ready: true } as const;
+      expect(primaryAction(state)).toEqual({
+        label: "Restart to finish",
+        kind: "restart",
+        busy: false,
+      });
     });
-    expect(
-      primaryAction({
-        phase: "idle",
-        available: true,
-        ready: false,
-        installDirectly: true,
-        error: null,
-      }),
-    ).toEqual({
-      label: "Install update",
-      kind: "install",
-      busy: false,
+
+    it("installs directly when the host updates in place", () => {
+      const action = primaryAction({ ...idle, available: true, installDirectly: true });
+      expect(action).toEqual({ label: "Install update", kind: "install", busy: false });
     });
-    expect(
-      primaryAction({
-        phase: "idle",
-        available: false,
-        ready: false,
-        installDirectly: false,
-        error: "Failed.",
-      }),
-    ).toEqual({
-      label: "Retry",
-      kind: "check",
-      busy: false,
+
+    it("offers a retry after an error", () => {
+      expect(primaryAction({ ...idle, error: "Failed." })).toEqual({
+        label: "Retry",
+        kind: "check",
+        busy: false,
+      });
     });
-    expect(
-      primaryAction({
-        phase: "idle",
-        available: false,
-        ready: false,
-        installDirectly: false,
-        error: null,
-      }),
-    ).toBeNull();
+
+    it("offers nothing when there is nothing to do", () => {
+      expect(primaryAction(idle)).toBeNull();
+    });
   });
 });

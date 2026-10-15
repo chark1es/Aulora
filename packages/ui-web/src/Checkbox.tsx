@@ -1,3 +1,4 @@
+/* eslint-disable no-unused-vars -- the base rule reports parameter names in type signatures; Biome checks real unused code */
 import { useId } from "react";
 import { cn } from "./cn";
 import { Icon } from "./Icon";

@@ -1,4 +1,6 @@
+/* eslint-disable no-unused-vars -- the base rule reports parameter names in type signatures; Biome checks real unused code */
 import {
+  providerInitial,
   resolveSignInMethods,
   type ServerProfile,
   type SignInMethods,
@@ -42,6 +44,15 @@ function callbackUrl(): string {
   return typeof window === "undefined" ? "http://localhost" : window.location.origin;
 }
 
+interface AuthFailure {
+  readonly message?: string;
+}
+
+/** What an auth call resolves to: no error on success. */
+interface AuthResult {
+  readonly error: AuthFailure | null;
+}
+
 interface FormState {
   readonly mode: "sign-in" | "sign-up";
   readonly email: string;
@@ -67,7 +78,7 @@ function useSignInForm(actions: AuthActions) {
     setState((current) => ({ ...current, ...next }));
   };
 
-  async function run(key: string, task: () => Promise<{ error: { message?: string } | null }>) {
+  async function run(key: string, task: () => Promise<AuthResult>) {
     patch({ error: null, pending: key });
     try {
       const result = await task();
@@ -107,13 +118,12 @@ function useSignInForm(actions: AuthActions) {
 }
 
 function ProviderBadge({ name }: { readonly name: string }) {
-  const initial = name.trim().charAt(0).toUpperCase() || "?";
   return (
     <span
       aria-hidden="true"
       className="grid h-6 w-6 place-items-center rounded-[7px] bg-surface-3 text-[12px] font-semibold text-text"
     >
-      {initial}
+      {providerInitial(name)}
     </span>
   );
 }
@@ -151,7 +161,33 @@ const MODES = [
   { value: "sign-up", label: "Create an account" },
 ] as const;
 
-/** Underlined local-auth mode tabs; the active one is not a button. */
+interface ModeTabProps {
+  readonly label: string;
+  readonly active: boolean;
+  readonly onSelect: () => void;
+}
+
+/** One local-auth mode tab; the active one is a label, not a button. */
+function ModeTab({ label, active, onSelect }: ModeTabProps) {
+  if (active) {
+    return (
+      <span className="-mb-px border-b-2 border-accent pb-2.5 text-[14px] font-semibold text-text">
+        {label}
+      </span>
+    );
+  }
+  return (
+    <button
+      type="button"
+      onClick={onSelect}
+      className="pb-2.5 text-[14px] font-medium text-text-muted transition hover:text-text focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent"
+    >
+      {label}
+    </button>
+  );
+}
+
+/** Underlined local-auth mode tabs. */
 function ModeSwitch({
   mode,
   onToggle,
@@ -161,25 +197,14 @@ function ModeSwitch({
 }) {
   return (
     <div className="flex gap-6 border-b border-border">
-      {MODES.map((option) =>
-        option.value === mode ? (
-          <span
-            key={option.value}
-            className="-mb-px border-b-2 border-accent pb-2.5 text-[14px] font-semibold text-text"
-          >
-            {option.label}
-          </span>
-        ) : (
-          <button
-            key={option.value}
-            type="button"
-            onClick={onToggle}
-            className="pb-2.5 text-[14px] font-medium text-text-muted transition hover:text-text focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent"
-          >
-            {option.label}
-          </button>
-        ),
-      )}
+      {MODES.map((option) => (
+        <ModeTab
+          key={option.value}
+          label={option.label}
+          active={option.value === mode}
+          onSelect={onToggle}
+        />
+      ))}
     </div>
   );
 }

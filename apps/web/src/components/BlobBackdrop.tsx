@@ -10,17 +10,6 @@ export interface BlobBackdropProps {
   readonly vignette?: boolean;
 }
 
-/**
- * Turbulence, as a 180px tile. Banding is the failure mode of a large, soft
- * gradient, and a couple of percent of noise removes it without being visible
- * as texture on its own.
- */
-const GRAIN_IMAGE = `url("data:image/svg+xml,${encodeURIComponent(
-  '<svg xmlns="http://www.w3.org/2000/svg" width="180" height="180">' +
-    '<filter id="g"><feTurbulence type="fractalNoise" baseFrequency="0.85" numOctaves="3" stitchTiles="stitch"/></filter>' +
-    '<rect width="180" height="180" filter="url(#g)" opacity="0.5"/></svg>',
-)}")`;
-
 const DRIFT_CLASSES = ["auth-blob-a", "auth-blob-b", "auth-blob-c", "auth-blob-a"] as const;
 
 /** Position, size and falloff for one blob, in viewport-relative units. */
@@ -63,7 +52,7 @@ function FieldLayer({
       {field.blobs.map((blob, index) => (
         <div
           key={`${blob.color}-${index.toFixed(0)}`}
-          className={cn("auth-blob", DRIFT_CLASSES[index] ?? "auth-blob-a")}
+          className={cn("auth-blob", DRIFT_CLASSES.at(index) ?? "auth-blob-a")}
           style={blobStyle(blob, index)}
         />
       ))}
@@ -87,7 +76,7 @@ export function BlobBackdrop({ seed, className, vignette = true }: BlobBackdropP
     >
       <FieldLayer seed={seed} theme="light" className="dark:hidden" />
       <FieldLayer seed={seed} theme="dark" className="hidden dark:block" />
-      <div className="auth-grain" style={{ backgroundImage: GRAIN_IMAGE }} />
+      <div className="auth-grain" />
       {/*
         Vignette. Deliberately weak and pushed to the outer 25%: it exists to
         settle the very edges, not to veil the colour — a full-strength vignette

@@ -77,7 +77,9 @@ describe("client update banner", () => {
   it("renders nothing outside the desktop shell", async () => {
     delete shell.__TAURI__;
     setup();
-    await waitFor(() => expect(invoke).not.toHaveBeenCalled());
+    await waitFor(() => {
+      expect(invoke).not.toHaveBeenCalled();
+    });
     expect(screen.queryByTestId("client-update-banner")).not.toBeInTheDocument();
   });
 });

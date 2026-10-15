@@ -1,3 +1,4 @@
+/* eslint-disable no-unused-vars -- the base rule reports parameter names in type signatures; Biome checks real unused code */
 import { Avatar } from "@aulora/avatars";
 import {
   createServerProfile,
@@ -36,7 +37,7 @@ const CONNECT_SEED = "aulora:server:connect";
 const SELF_HOST_URL =
   "https://github.com/chark1es/Aulora/blob/main/apps/docs/content/self-hosting.md";
 
-function messageForError(error: unknown): string {
+function messageForError(error: unknown) {
   if (error instanceof WellKnownError) {
     switch (error.code) {
       case "HTTP_ERROR":
@@ -60,7 +61,7 @@ function messageForError(error: unknown): string {
 }
 
 /** The host (with port) of a server’s base URL, for the quiet caption. */
-function serverHost(baseUrl: string): string {
+function serverHost(baseUrl: string) {
   try {
     return new URL(baseUrl).host;
   } catch {
@@ -74,7 +75,7 @@ function serverHost(baseUrl: string): string {
  * soon as they name the server rather than squirming on every keystroke; an
  * empty field falls back to the connect screen's own seed.
  */
-function hostSeed(host: string): string {
+function hostSeed(host: string) {
   const label = host
     .trim()
     .toLowerCase()
@@ -134,64 +135,76 @@ interface ConnectFormProps {
   readonly onWatch: (target: Element | null) => void;
 }
 
-function ConnectForm(props: ConnectFormProps) {
-  const { host, busy, error, onHostChange, onSubmit, onTouch, onWatch } = props;
+/** Reads the clipboard into the field; a denied or missing permission is a no-op. */
+interface PasteButtonProps {
+  readonly onPaste: (text: string) => void;
+}
 
+function PasteButton({ onPaste }: PasteButtonProps) {
   async function paste() {
     try {
       const text = await navigator.clipboard.readText();
       if (text.trim().length > 0) {
-        onHostChange(text.trim());
+        onPaste(text.trim());
       }
     } catch {
       // Clipboard permission denied or unavailable: leave the field untouched.
     }
   }
-
   return (
-    <form
-      className="flex flex-col gap-7"
-      onSubmit={(event: FormEvent<HTMLFormElement>) => {
-        event.preventDefault();
-        onSubmit();
-      }}
-      noValidate
+    <button
+      type="button"
+      onClick={() => void paste()}
+      className="rounded-full px-2.5 py-1 text-[13px] font-medium text-text-muted transition hover:bg-surface-3 hover:text-text focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent"
     >
-      <AuthField
-        label="Server address"
-        placeholder="chat.acme.com"
-        autoComplete="off"
-        autoCapitalize="none"
-        spellCheck={false}
-        inputMode="url"
-        autoFocus
-        value={host}
-        leading={<Icon name="link" size={20} />}
-        trailing={
-          busy ? (
-            <Spinner size={16} label="Checking" />
-          ) : (
-            <button
-              type="button"
-              onClick={() => void paste()}
-              className="rounded-full px-2.5 py-1 text-[13px] font-medium text-text-muted transition hover:bg-surface-3 hover:text-text focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent"
-            >
-              Paste
-            </button>
-          )
-        }
-        onChange={(event) => {
-          onHostChange(event.currentTarget.value);
-        }}
-        onFocus={(event) => {
-          onWatch(event.currentTarget);
-        }}
-        onBlur={() => {
-          onWatch(null);
-          onTouch();
-        }}
-        {...(error !== undefined ? { error } : {})}
-      />
+      Paste
+    </button>
+  );
+}
+
+function HostField(props: ConnectFormProps) {
+  const { host, busy, error, onHostChange, onTouch, onWatch } = props;
+  const trailing = busy ? (
+    <Spinner size={16} label="Checking" />
+  ) : (
+    <PasteButton onPaste={onHostChange} />
+  );
+  return (
+    <AuthField
+      label="Server address"
+      placeholder="chat.acme.com"
+      autoComplete="off"
+      autoCapitalize="none"
+      spellCheck="false"
+      inputMode="url"
+      autoFocus
+      value={host}
+      leading={<Icon name="link" size={20} />}
+      trailing={trailing}
+      onChange={(event) => {
+        onHostChange(event.currentTarget.value);
+      }}
+      onFocus={(event) => {
+        onWatch(event.currentTarget);
+      }}
+      onBlur={() => {
+        onWatch(null);
+        onTouch();
+      }}
+      error={error}
+    />
+  );
+}
+
+function ConnectForm(props: ConnectFormProps) {
+  const { host, busy, onSubmit } = props;
+  const submit = (event: FormEvent<HTMLFormElement>) => {
+    event.preventDefault();
+    onSubmit();
+  };
+  return (
+    <form className="flex flex-col gap-7" onSubmit={submit} noValidate={true}>
+      <HostField {...props} />
       <AuthButton type="submit" loading={busy} disabled={host.trim().length === 0}>
         {busy ? "Checking…" : "Continue"}
       </AuthButton>

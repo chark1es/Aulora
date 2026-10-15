@@ -1,3 +1,4 @@
+/* eslint-disable no-unused-vars -- the base rule reports parameter names in type signatures; Biome checks real unused code */
 import { Pressable, View } from "react-native";
 import { Text } from "./Text";
 import { segmentedOptionClass, segmentedTrackClass } from "./variants";

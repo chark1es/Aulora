@@ -79,16 +79,17 @@ const FIELD_SLOTS: readonly BlobSlot[] = [
  * *subtracting* it, so the field moves to the deep and mid swatches, where a
  * multiply blend reads as a stained-paper tint rather than a grey smudge.
  */
-const TONE_BY_THEME: { readonly light: readonly number[]; readonly dark: readonly number[] } = {
-  dark: [0.93, 0.8, 0.62, 0.93],
-  light: [0.8, 0.62, 0.8, 0.62],
-};
+const DARK_TONES: readonly number[] = [0.93, 0.8, 0.62, 0.93];
+const LIGHT_TONES: readonly number[] = [0.8, 0.62, 0.8, 0.62];
+
+function tonesFor(theme: AvatarTheme): readonly number[] {
+  return theme === "light" ? LIGHT_TONES : DARK_TONES;
+}
 
 /** Layer opacity per appearance. Vivid, but never so loud the copy fights it. */
-const LAYER_OPACITY: { readonly light: number; readonly dark: number } = {
-  dark: 0.68,
-  light: 0.5,
-};
+function layerOpacity(theme: AvatarTheme): number {
+  return theme === "light" ? 0.5 : 0.68;
+}
 
 const FALLBACK = "#E4571C";
 
@@ -103,15 +104,15 @@ function swatch(hue: number, tone: number): string {
 
 /** The avatar's own body colour, for a glow or a ring around its hero. */
 export function avatarHead(seed: string, theme: AvatarTheme = "dark"): string {
-  return swatch(avatarHue(seed), TONE_BY_THEME[theme][0] ?? 0.93);
+  return swatch(avatarHue(seed), tonesFor(theme).at(0) ?? 0.93);
 }
 
 /** The seed's tetrad as a positioned, theme-tuned blob field. */
 export function avatarField(seed: string, theme: AvatarTheme = "dark"): AvatarField {
   const hue = avatarHue(seed);
-  const tones = TONE_BY_THEME[theme];
+  const tones = tonesFor(theme);
   const blobs = FIELD_SLOTS.map((slot, index) => ({
-    color: swatch(hue + slot.dh, tones[index] ?? slot.tone),
+    color: swatch(hue + slot.dh, tones.at(index) ?? slot.tone),
     cx: slot.cx,
     cy: slot.cy,
     r: slot.r,
@@ -119,9 +120,9 @@ export function avatarField(seed: string, theme: AvatarTheme = "dark"): AvatarFi
   }));
   return {
     hue,
-    head: swatch(hue, tones[0] ?? 0.93),
+    head: swatch(hue, tones.at(0) ?? 0.93),
     eye: swatch(hue, 0.999),
     blobs,
-    opacity: LAYER_OPACITY[theme],
+    opacity: layerOpacity(theme),
   };
 }

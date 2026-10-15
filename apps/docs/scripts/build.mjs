@@ -228,10 +228,10 @@ function pager(currentFile, docs) {
         </nav>`;
 }
 
-function docsLayout({ title, body, currentFile, base }) {
+function docsLayout({ title, bodyHtml, currentFile, base }) {
   const docs = `${base}docs/`;
   // The page header carries the title, so drop the Markdown's own first heading.
-  const content = decorateCode(body.replace(/^<h1 id="[^"]*">[\s\S]*?<\/h1>\n?/, ""));
+  const content = decorateCode(bodyHtml.replace(/^<h1 id="[^"]*">[\s\S]*?<\/h1>\n?/, ""));
   const minutes = Math.max(1, Math.round(plainText(content).split(/\s+/).length / 220));
   const group = GROUPS.find((entry) => entry.pages.some((page) => page.file === currentFile));
   return `${head({
@@ -368,16 +368,22 @@ for (const page of LANDING_PAGES) {
   LANDING_IO.get(page.file).write(renderLanding(page));
 }
 
+/** Reads one docs page. `file` is always an entry of the PAGES manifest, never user input. */
+function readContentPage(file) {
+  // eslint-disable-next-line security/detect-non-literal-fs-filename -- manifest entry, not user input
+  return readFileSync(join(contentDir, file), "utf8");
+}
+
 const indexPages = [];
 for (const page of PAGES) {
   const { html, title } =
     page.file === ENV_REFERENCE_PAGE
       ? renderEnvReference(envCatalog, envExtras, icon)
-      : renderMarkdown(readFileSync(join(contentDir, page.file), "utf8"));
+      : renderMarkdown(readContentPage(page.file));
   const pageTitle = title ?? page.label;
   writeFileSync(
     join(docsOut, outputName(page.file)),
-    docsLayout({ title: pageTitle, body: html, currentFile: page.file, base: "../" }),
+    docsLayout({ title: pageTitle, bodyHtml: html, currentFile: page.file, base: "../" }),
     "utf8",
   );
   indexPages.push({ title: pageTitle, url: `docs/${pageHref(page.file)}`, html });
@@ -408,13 +414,13 @@ for (const file of ["LICENSE", "NOTICE", "COMMERCIAL.md", "CLA.md", "THIRD_PARTY
     const { html, title } = renderMarkdown(readFileSync(source, "utf8"));
     // Legal pages use repository-relative links. Keep their originals as text
     // and use absolute repository links in the readable HTML copies.
-    const body = html.replace(
+    const bodyHtml = html.replace(
       /href="(?![a-z]+:|#|\/)([^"]+)"/gi,
       (_match, href) => `href="https://github.com/chark1es/Aulora/blob/main/${repoBlobPath(href)}"`,
     );
     writeFileSync(
       join(legalDir, outputName(file)),
-      docsLayout({ title: title ?? file, body, currentFile: file, base: "../../" }),
+      docsLayout({ title: title ?? file, bodyHtml, currentFile: file, base: "../../" }),
       "utf8",
     );
   }

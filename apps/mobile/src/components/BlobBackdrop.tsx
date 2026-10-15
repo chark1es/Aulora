@@ -61,7 +61,9 @@ function useDrift(reduceMotion: boolean | null | undefined) {
       });
     const loop = Animated.loop(Animated.sequence([timing(1), timing(0)]));
     loop.start();
-    return () => loop.stop();
+    return () => {
+      loop.stop();
+    };
   }, [value, reduceMotion]);
   return value;
 }

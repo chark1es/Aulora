@@ -88,7 +88,12 @@ export function CardNotes({ editor }: Props) {
 
 type Item = CardDraft["checklist"][number];
 
-function ItemRow({ editor, item }: Props & { item: Item }) {
+interface ItemActions {
+  readonly toggle: () => void;
+  readonly remove: () => void;
+}
+
+function useItemActions(editor: Props["editor"], item: Item): ItemActions {
   const { draft } = editor;
   const toggle = () => {
     editor.setDraft({
@@ -104,23 +109,34 @@ function ItemRow({ editor, item }: Props & { item: Item }) {
       checklist: draft.checklist.filter((entry) => entry.id !== item.id),
     });
   };
-  const items = editor.canEdit
-    ? [
-        {
-          id: "toggle",
-          label: item.done ? "Mark as not done" : "Mark as done",
-          icon: <Icon name="check" size={14} />,
-          onSelect: toggle,
-        },
-        {
-          id: "remove",
-          label: "Remove item",
-          icon: <Icon name="trash" size={14} />,
-          danger: true,
-          onSelect: remove,
-        },
-      ]
-    : [];
+  return { toggle, remove };
+}
+
+/** The right-click menu for a checklist item; empty when the card is read-only. */
+function itemMenu(canEdit: boolean, item: Item, actions: ItemActions) {
+  if (!canEdit) {
+    return [];
+  }
+  return [
+    {
+      id: "toggle",
+      label: item.done ? "Mark as not done" : "Mark as done",
+      icon: <Icon name="check" size={14} />,
+      onSelect: actions.toggle,
+    },
+    {
+      id: "remove",
+      label: "Remove item",
+      icon: <Icon name="trash" size={14} />,
+      danger: true,
+      onSelect: actions.remove,
+    },
+  ];
+}
+
+function ItemRow({ editor, item }: Props & { item: Item }) {
+  const { toggle, remove } = useItemActions(editor, item);
+  const items = itemMenu(editor.canEdit, item, { toggle, remove });
   return (
     // biome-ignore lint/a11y/noStaticElementInteractions: the right-click menu repeats the row's own controls
     <div

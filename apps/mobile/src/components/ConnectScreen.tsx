@@ -1,3 +1,4 @@
+/* eslint-disable no-unused-vars -- the base rule reports parameter names in type signatures; Biome checks real unused code */
 import { NativeAvatar, NativeBlobatar } from "@aulora/avatars/native";
 import type { ServerProfile } from "@aulora/core";
 import { fetchWellKnown, type WellKnown, WellKnownError } from "@aulora/core";

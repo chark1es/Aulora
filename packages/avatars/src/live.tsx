@@ -1,5 +1,6 @@
+/* eslint-disable no-unused-vars -- the base rule reports parameter names in type signatures; Biome checks real unused code */
 import { Blobatar } from "@blobatar/react";
-import { type Gaze, type GazeTarget, gaze } from "blobatar/gaze";
+import { type GazeTarget, gaze } from "blobatar/gaze";
 import "blobatar/gaze.css";
 import "blobatar/motion.css";
 import { type CSSProperties, useEffect, useRef } from "react";
@@ -24,6 +25,12 @@ export interface LiveBlobatarProps {
   readonly className?: string;
 }
 
+/** The two calls this component makes on a running gaze driver. */
+interface GazeHandle {
+  readonly stop: () => void;
+  readonly lookAt: (target: GazeTarget) => void;
+}
+
 /** The eye excursion is a length, so it is only honoured once it is registered. */
 function trackStyle(travel: number): CSSProperties {
   return { "--mo-track-travel": `${travel}px` } as CSSProperties;
@@ -40,8 +47,10 @@ function canTrack(): boolean {
   if (typeof ResizeObserver === "undefined") {
     return false;
   }
-  const media = window.matchMedia?.("(prefers-reduced-motion: reduce)");
-  return media?.matches !== true;
+  if (typeof window.matchMedia !== "function") {
+    return true;
+  }
+  return !window.matchMedia("(prefers-reduced-motion: reduce)").matches;
 }
 
 /**
@@ -57,7 +66,7 @@ function canTrack(): boolean {
 export function LiveBlobatar(props: LiveBlobatarProps) {
   const { seed, size, title, watch, travel = 5, className } = props;
   const host = useRef<HTMLSpanElement | null>(null);
-  const driver = useRef<Gaze | null>(null);
+  const driver = useRef<GazeHandle | null>(null);
 
   useEffect(() => {
     const svg = host.current?.querySelector("svg");

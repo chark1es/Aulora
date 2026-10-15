@@ -1,4 +1,4 @@
-import { View } from "react-native";
+import { KeyboardAvoidingView, Platform, ScrollView, StyleSheet, View } from "react-native";
 import { BlobBackdrop } from "./BlobBackdrop";
 
 export interface AuthScaffoldProps {
@@ -36,5 +36,28 @@ export function AuthScaffold({ children, aura, intro, seed, reduceMotion }: Auth
         {children}
       </View>
     </View>
+  );
+}
+
+const scrollStyles = StyleSheet.create({
+  content: { flexGrow: 1 },
+});
+
+/** Keyboard-avoiding, tap-through scroller that every pre-session screen sits in. */
+export function AuthScroll({ children }: { readonly children: React.ReactNode }) {
+  return (
+    <KeyboardAvoidingView
+      className="flex-1"
+      behavior={Platform.OS === "ios" ? "padding" : "height"}
+    >
+      <ScrollView
+        className="flex-1"
+        contentContainerStyle={scrollStyles.content}
+        keyboardShouldPersistTaps="handled"
+        showsVerticalScrollIndicator={false}
+      >
+        {children}
+      </ScrollView>
+    </KeyboardAvoidingView>
   );
 }

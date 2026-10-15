@@ -9,16 +9,23 @@ const GLOW = 1.5;
 const COMPACT_QUERY = "(max-width: 640px)";
 const COMPACT_SCALE = 0.68;
 
+/** Whether the viewport is currently phone width. */
+function matchesCompact(): boolean {
+  return (
+    typeof window !== "undefined" &&
+    typeof window.matchMedia === "function" &&
+    window.matchMedia(COMPACT_QUERY).matches
+  );
+}
+
 /** Whether the viewport is a phone width, tracked so the hero can step down. */
 function useCompact(): boolean {
-  const [compact, setCompact] = useState(
-    () => typeof window !== "undefined" && (window.matchMedia?.(COMPACT_QUERY).matches ?? false),
-  );
+  const [compact, setCompact] = useState(matchesCompact);
   useEffect(() => {
-    const media = window.matchMedia?.(COMPACT_QUERY);
-    if (media === undefined) {
+    if (typeof window.matchMedia !== "function") {
       return;
     }
+    const media = window.matchMedia(COMPACT_QUERY);
     const onChange = () => {
       setCompact(media.matches);
     };
@@ -44,26 +51,23 @@ export interface BlobatarHeroProps {
   readonly className?: string;
 }
 
+interface Plate {
+  readonly width: number;
+  readonly height: number;
+}
+
 /**
- * The one hero element of a pre-session screen: the workspace's own blobatar,
- * oversized, alive, and floating on a glow drawn from its own colour. It is
- * deliberately the loudest thing on the page — everything else is quiet type,
- * one field and one button.
- *
- * Changing the seed swaps the creature with a short cross-fade, which is what
- * makes typing a hostname feel like it is conjuring the workspace rather than
- * filling in a form.
+ * The light behind the creature: a glow in its own colour (one per appearance),
+ * and a soft scrim of the page colour directly behind it. Without the scrim a
+ * blue workspace on a blue field is a blue smudge; a couple of percent of the
+ * page colour buys the object its silhouette and makes the glow read as a halo.
  */
-export function BlobatarHero(props: BlobatarHeroProps) {
-  const { seed, size = 140, title, watch, src, className } = props;
-  const compact = useCompact();
-  const px = compact ? Math.round(size * COMPACT_SCALE) : size;
-  const plate = { width: px * GLOW, height: px * GLOW };
+function HeroGlow({ seed, plate }: { readonly seed: string; readonly plate: Plate }) {
   const light = avatarHead(seed, "light");
   const dark = avatarHead(seed, "dark");
-
+  const scrim = "color-mix(in srgb, var(--aulora-bg) 68%, transparent)";
   return (
-    <div className={cn("relative grid shrink-0 place-items-center", className)} style={plate}>
+    <>
       <div
         aria-hidden="true"
         className="auth-hero-glow dark:hidden"
@@ -82,22 +86,36 @@ export function BlobatarHero(props: BlobatarHeroProps) {
           opacity: 0.5,
         }}
       />
-      {/*
-        A soft scrim directly behind the creature. Without it a blue workspace
-        on a blue field is a blue smudge; a couple of percent of the page colour
-        buys the object its silhouette and makes the glow read as a halo.
-      */}
       <div
         aria-hidden="true"
         className="auth-hero-glow"
-        style={{
-          ...plate,
-          background:
-            "radial-gradient(circle, color-mix(in srgb, var(--aulora-bg) 68%, transparent) 0%, transparent 58%)",
-        }}
+        style={{ ...plate, background: `radial-gradient(circle, ${scrim} 0%, transparent 58%)` }}
       />
+    </>
+  );
+}
+
+/**
+ * The one hero element of a pre-session screen: the workspace's own blobatar,
+ * oversized, alive, and floating on a glow drawn from its own colour. It is
+ * deliberately the loudest thing on the page — everything else is quiet type,
+ * one field and one button.
+ *
+ * Changing the seed swaps the creature with a short cross-fade, which is what
+ * makes typing a hostname feel like it is conjuring the workspace rather than
+ * filling in a form.
+ */
+export function BlobatarHero(props: BlobatarHeroProps) {
+  const { seed, size = 140, title, watch, src, className } = props;
+  const px = useCompact() ? Math.round(size * COMPACT_SCALE) : size;
+  const plate = { width: px * GLOW, height: px * GLOW };
+  const hasLogo = src !== undefined && src !== null && src.length > 0;
+
+  return (
+    <div className={cn("relative grid shrink-0 place-items-center", className)} style={plate}>
+      <HeroGlow seed={seed} plate={plate} />
       <div key={seed} className="auth-hero-float relative animate-pop-in">
-        {src !== undefined && src !== null && src.length > 0 ? (
+        {hasLogo ? (
           <img
             src={src}
             alt={title ?? ""}

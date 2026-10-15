@@ -1,3 +1,4 @@
+/* eslint-disable no-unused-vars -- the base rule reports parameter names in type signatures; Biome checks real unused code */
 import type { TextTone } from "@aulora/ui-web";
 import { useMutation, useQuery } from "convex/react";
 import type { FunctionReturnType } from "convex/server";
@@ -283,20 +284,20 @@ export function serializeEnvList(items: readonly string[]): string {
   return items.join(" ");
 }
 
-function parseJson(value: string):
+type JsonParse =
   | { readonly ok: true; readonly parsed: unknown }
-  | {
-      readonly ok: false;
-      readonly error: string;
-    } {
+  | { readonly ok: false; readonly error: string };
+
+function parseJson(value: string): JsonParse {
   try {
-    return { ok: true, parsed: JSON.parse(value) as unknown };
+    const parsed: unknown = JSON.parse(value);
+    return { ok: true, parsed };
   } catch {
     return { ok: false, error: "Enter valid JSON" };
   }
 }
 
-function envIceServersError(parsed: unknown): string | null {
+function envIceServersError(parsed: unknown) {
   if (!Array.isArray(parsed)) {
     return "Enter a JSON array of ICE servers";
   }
@@ -313,7 +314,7 @@ function envIceServersError(parsed: unknown): string | null {
   return null;
 }
 
-function envGroupRoleMapError(parsed: unknown): string | null {
+function envGroupRoleMapError(parsed: unknown) {
   if (typeof parsed !== "object" || parsed === null || Array.isArray(parsed)) {
     return "Enter a JSON object mapping groups to role names";
   }
@@ -345,6 +346,27 @@ function envJsonError(variable: EnvVariable, value: string): string | null {
   return null;
 }
 
+function envBooleanError(value: string) {
+  return value === "true" || value === "false" ? null : "Choose Enabled or Disabled";
+}
+
+function envEnumError(variable: EnvVariable, value: string): string | null {
+  const allowed = variable.enumValues ?? [];
+  return allowed.includes(value) ? null : `Choose one of: ${allowed.join(", ")}`;
+}
+
+type EnvCheck = (variable: EnvVariable, value: string) => string | null;
+
+/** The per-type check for each variable type; a plain string has nothing to check. */
+const ENV_CHECKS = new Map<EnvVariable["type"], EnvCheck>([
+  ["url", (_variable, value) => envUrlError(value)],
+  ["number", envNumberError],
+  ["boolean", (_variable, value) => envBooleanError(value)],
+  ["enum", envEnumError],
+  ["list", (_variable, value) => envListError(value)],
+  ["json", envJsonError],
+]);
+
 /** Client-side value check mirroring the server's per-type validation. */
 export function envValueError(variable: EnvVariable, rawValue: string): string | null {
   const value = rawValue.trim();
@@ -354,24 +376,7 @@ export function envValueError(variable: EnvVariable, rawValue: string): string |
   if (value.length > ENV_MAX_VALUE_LENGTH) {
     return `Values must be at most ${ENV_MAX_VALUE_LENGTH} characters`;
   }
-  switch (variable.type) {
-    case "url":
-      return envUrlError(value);
-    case "number":
-      return envNumberError(variable, value);
-    case "boolean":
-      return value === "true" || value === "false" ? null : "Choose Enabled or Disabled";
-    case "enum": {
-      const allowed = variable.enumValues ?? [];
-      return allowed.includes(value) ? null : `Choose one of: ${allowed.join(", ")}`;
-    }
-    case "list":
-      return envListError(value);
-    case "json":
-      return envJsonError(variable, value);
-    case "string":
-      return null;
-  }
+  return ENV_CHECKS.get(variable.type)?.(variable, value) ?? null;
 }
 
 /** Pretty-prints a JSON string, or returns null when it is not valid JSON. */

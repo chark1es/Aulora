@@ -64,7 +64,9 @@ function useFloat(reduceMotion: boolean | null | undefined) {
       ]),
     );
     loop.start();
-    return () => loop.stop();
+    return () => {
+      loop.stop();
+    };
   }, [progress, reduceMotion]);
   return progress;
 }

@@ -32,13 +32,19 @@ function parseValue(name, raw) {
 function parseEntry(chunk) {
   const fields = new Map();
   const lines = chunk.split("\n");
-  for (let index = 0; index < lines.length; index += 1) {
-    const match = FIELD.exec(lines[index]);
+  // A value may sit on the line after its key; `skipNext` consumes that line.
+  let skipNext = false;
+  for (const [index, line] of lines.entries()) {
+    if (skipNext) {
+      skipNext = false;
+      continue;
+    }
+    const match = FIELD.exec(line);
     if (match === null) continue;
     let raw = match[2].trim();
     if (raw === "") {
-      raw = (lines[index + 1] ?? "").trim();
-      index += 1;
+      raw = (lines.at(index + 1) ?? "").trim();
+      skipNext = true;
     }
     fields.set(match[1], parseValue(match[1], raw.replace(/,\s*$/, "")));
   }
@@ -76,6 +82,7 @@ export function parseStringArray(source, name) {
  */
 export function readEnvCatalog(root) {
   const libDir = join(root, "packages", "convex", "convex", "lib");
+  // eslint-disable-next-line security/detect-non-literal-fs-filename -- `name` is one of four fixed catalog file names below
   const read = (name) => readFileSync(join(libDir, name), "utf8");
   const main = read("envCatalog.ts");
   return {

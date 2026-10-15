@@ -1,4 +1,5 @@
-import type { SignInMethods, WellKnownProvider } from "@aulora/core";
+/* eslint-disable no-unused-vars -- the base rule reports parameter names in type signatures; Biome checks real unused code */
+import { providerInitial, type SignInMethods, type WellKnownProvider } from "@aulora/core";
 import { Button, Icon, IconButton, Text, usePalette } from "@aulora/ui-native";
 import { useState } from "react";
 import { Pressable, View } from "react-native";
@@ -12,11 +13,19 @@ import { AuthField } from "./AuthField";
 
 export type SignInMode = "sign-in" | "sign-up";
 
+type ProviderKind = "oauth" | "oidc";
+
+export type SignInField = "email" | "name" | "password";
+
+/** The values the local sign-in form collects. */
+export interface SignInValues {
+  readonly email: string;
+  readonly name: string;
+  readonly password: string;
+}
+
 /** The single-field patch for one form field, kept type-safe. */
-export function fieldPatch(
-  field: "email" | "name" | "password",
-  value: string,
-): Partial<{ email: string; name: string; password: string }> {
+export function fieldPatch(field: SignInField, value: string): Partial<SignInValues> {
   switch (field) {
     case "email":
       return { email: value };
@@ -31,7 +40,7 @@ function ProviderBadge({ name }: { readonly name: string }) {
   return (
     <View className="h-6 w-6 items-center justify-center rounded-[7px] bg-surface-3">
       <Text size="xs" className="font-semibold">
-        {name.trim().charAt(0).toUpperCase() || "?"}
+        {providerInitial(name)}
       </Text>
     </View>
   );
@@ -40,7 +49,7 @@ function ProviderBadge({ name }: { readonly name: string }) {
 export interface ProviderStackProps {
   readonly providers: readonly WellKnownProvider[];
   readonly pending: string | null;
-  readonly onPress: (providerId: string, type: "oauth" | "oidc") => void;
+  readonly onPress: (providerId: string, type: ProviderKind) => void;
 }
 
 export function ProviderStack({ providers, pending, onPress }: ProviderStackProps) {
@@ -167,14 +176,14 @@ export interface SignInPanelProps {
   readonly methods: SignInMethods;
   readonly providers: readonly WellKnownProvider[];
   readonly mode: SignInMode;
-  readonly values: { readonly email: string; readonly name: string; readonly password: string };
+  readonly values: SignInValues;
   /** The key of the request in flight, or `null`. */
   readonly pending: string | null;
   readonly error: string | null;
   /** Whether the sign-up toggle is offered at all. */
   readonly signup: boolean;
-  readonly onField: (field: "email" | "name" | "password", value: string) => void;
-  readonly onProvider: (providerId: string, type: "oauth" | "oidc") => void;
+  readonly onField: (field: SignInField, value: string) => void;
+  readonly onProvider: (providerId: string, type: ProviderKind) => void;
   readonly onSubmit: () => void;
   readonly onToggleMode: () => void;
 }

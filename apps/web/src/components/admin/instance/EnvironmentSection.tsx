@@ -47,8 +47,8 @@ export function EnvironmentSection() {
   );
 }
 
-export function EnvironmentSectionView({ model }: { readonly model: EnvironmentSectionModel }) {
-  const { data } = model;
+/** The navigation, search and filter state, and the variables they select. */
+function useEnvView(data: EnvironmentSectionModel["data"]) {
   const summaries = envGroupSummaries(data.groups, data.variables);
   const [activeGroup, setActiveGroup] = useState(() => firstEnvGroup(summaries));
   const [query, setQuery] = useState("");
@@ -62,6 +62,24 @@ export function EnvironmentSectionView({ model }: { readonly model: EnvironmentS
   });
   const resultCount = blocks.reduce((total, block) => total + block.variables.length, 0);
   const searchActive = query.trim().length > 0 || filter !== "all";
+  return {
+    summaries,
+    activeGroup,
+    setActiveGroup,
+    query,
+    setQuery,
+    filter,
+    setFilter,
+    blocks,
+    resultCount,
+    searchActive,
+  };
+}
+
+export function EnvironmentSectionView({ model }: { readonly model: EnvironmentSectionModel }) {
+  const { data } = model;
+  const view = useEnvView(data);
+  const { summaries, activeGroup, query, filter, blocks, searchActive } = view;
 
   return (
     <div className="flex flex-col gap-4" data-testid="instance-environment">
@@ -71,6 +89,43 @@ export function EnvironmentSectionView({ model }: { readonly model: EnvironmentS
         description="Every environment variable the app reads, and where each value comes from. Deployment values are never shown here."
       />
       <EnvSecurityNote />
+      <EnvWarnings data={data} />
+      <div className="flex flex-col gap-4 lg:flex-row lg:gap-6">
+        <EnvGroupNav
+          groups={summaries}
+          activeGroup={activeGroup}
+          onSelect={(groupId) => {
+            view.setActiveGroup(groupId);
+            view.setQuery("");
+            view.setFilter("all");
+          }}
+        />
+        <div className="flex min-w-0 flex-1 flex-col gap-3">
+          <EnvToolbar
+            query={query}
+            onQueryChange={view.setQuery}
+            filter={filter}
+            onFilterChange={view.setFilter}
+            resultCount={view.resultCount}
+          />
+          {blocks.length === 0 ? (
+            <Text tone="muted" size="sm" data-testid="env-empty">
+              No variables match your filters.
+            </Text>
+          ) : (
+            blocks.map((block) => (
+              <EnvGroup key={block.id} block={block} model={model} showOidc={!searchActive} />
+            ))
+          )}
+        </div>
+      </div>
+    </div>
+  );
+}
+
+function EnvWarnings({ data }: { readonly data: EnvironmentSectionModel["data"] }) {
+  return (
+    <>
       {data.locked && (
         <Card className="border-danger" data-testid="env-locked">
           <Text size="sm" tone="danger">
@@ -87,36 +142,7 @@ export function EnvironmentSectionView({ model }: { readonly model: EnvironmentS
           </Text>
         </Card>
       )}
-      <div className="flex flex-col gap-4 lg:flex-row lg:gap-6">
-        <EnvGroupNav
-          groups={summaries}
-          activeGroup={activeGroup}
-          onSelect={(groupId) => {
-            setActiveGroup(groupId);
-            setQuery("");
-            setFilter("all");
-          }}
-        />
-        <div className="flex min-w-0 flex-1 flex-col gap-3">
-          <EnvToolbar
-            query={query}
-            onQueryChange={setQuery}
-            filter={filter}
-            onFilterChange={setFilter}
-            resultCount={resultCount}
-          />
-          {blocks.length === 0 ? (
-            <Text tone="muted" size="sm" data-testid="env-empty">
-              No variables match your filters.
-            </Text>
-          ) : (
-            blocks.map((block) => (
-              <EnvGroup key={block.id} block={block} model={model} showOidc={!searchActive} />
-            ))
-          )}
-        </div>
-      </div>
-    </div>
+    </>
   );
 }
 

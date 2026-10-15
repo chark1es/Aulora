@@ -1,3 +1,4 @@
+/* eslint-disable no-unused-vars -- the base rule reports parameter names in type signatures; Biome checks real unused code */
 import { SOUND_EVENTS, type SoundEvent, type SoundSettings } from "@aulora/core";
 import { Button, SettingRow, Switch, Text } from "@aulora/ui-native";
 import { ScrollView, View } from "react-native";
@@ -55,6 +56,80 @@ function VolumeStepper({
   );
 }
 
+type SoundState = NonNullable<ReturnType<typeof useSound>>;
+
+function EnableSection({ sound }: { readonly sound: SoundState }) {
+  const { settings, updateSettings } = sound;
+  return (
+    <View>
+      <ListHeader title="Sounds" />
+      <ListGroup inset={16}>
+        <SettingRow
+          label="Enable sounds"
+          description="Play a cue for calls and messages"
+          control={
+            <Switch
+              accessibilityLabel="Enable sounds"
+              value={settings.enabled}
+              onValueChange={(value) => {
+                selectionFeedback();
+                void updateSettings({ enabled: value });
+              }}
+            />
+          }
+        />
+      </ListGroup>
+    </View>
+  );
+}
+
+function VolumeSection({ sound }: { readonly sound: SoundState }) {
+  const { settings, updateSettings, available, play } = sound;
+  return (
+    <View>
+      <ListHeader title="Volume" />
+      <ListGroup inset={16}>
+        <SettingRow
+          label="Playback volume"
+          control={
+            <VolumeStepper
+              volume={settings.volume}
+              updateVolume={(value) => {
+                void updateSettings({ volume: value });
+              }}
+              playTest={() => {
+                play("message");
+              }}
+              available={available}
+            />
+          }
+        />
+      </ListGroup>
+    </View>
+  );
+}
+
+function CuesSection({ sound }: { readonly sound: SoundState }) {
+  const { settings, updateSettings } = sound;
+  return (
+    <View>
+      <ListHeader title="Cues" />
+      <ListGroup inset={16}>
+        {SOUND_EVENTS.map((event) => (
+          <SoundCueRow
+            key={event}
+            event={event}
+            events={settings.events}
+            onChange={(value) => {
+              void updateSettings({ events: { ...settings.events, [event]: value } });
+            }}
+          />
+        ))}
+      </ListGroup>
+    </View>
+  );
+}
+
 /** Sound cue preferences: a master switch, per-event switches and volume 0–200%. */
 export function SoundSettingsSection() {
   const sound = useSound();
@@ -65,66 +140,13 @@ export function SoundSettingsSection() {
       </Text>
     );
   }
-  const { settings, updateSettings, available, play } = sound;
+  const { available } = sound;
 
   return (
     <ScrollView contentContainerStyle={{ gap: 18, paddingBottom: 24 }}>
-      <View>
-        <ListHeader title="Sounds" />
-        <ListGroup inset={16}>
-          <SettingRow
-            label="Enable sounds"
-            description="Play a cue for calls and messages"
-            control={
-              <Switch
-                accessibilityLabel="Enable sounds"
-                value={settings.enabled}
-                onValueChange={(value) => {
-                  selectionFeedback();
-                  void updateSettings({ enabled: value });
-                }}
-              />
-            }
-          />
-        </ListGroup>
-      </View>
-
-      <View>
-        <ListHeader title="Volume" />
-        <ListGroup inset={16}>
-          <SettingRow
-            label="Playback volume"
-            control={
-              <VolumeStepper
-                volume={settings.volume}
-                updateVolume={(value) => {
-                  void updateSettings({ volume: value });
-                }}
-                playTest={() => {
-                  play("message");
-                }}
-                available={available}
-              />
-            }
-          />
-        </ListGroup>
-      </View>
-
-      <View>
-        <ListHeader title="Cues" />
-        <ListGroup inset={16}>
-          {SOUND_EVENTS.map((event) => (
-            <SoundCueRow
-              key={event}
-              event={event}
-              events={settings.events}
-              onChange={(value) => {
-                void updateSettings({ events: { ...settings.events, [event]: value } });
-              }}
-            />
-          ))}
-        </ListGroup>
-      </View>
+      <EnableSection sound={sound} />
+      <VolumeSection sound={sound} />
+      <CuesSection sound={sound} />
 
       {!available && (
         <Text size="xs" tone="muted">

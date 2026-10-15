@@ -11,7 +11,7 @@ export const ENV_REFERENCE_PAGE = "environment-variables.md";
 /** Page title, also used for the document head. */
 export const ENV_REFERENCE_TITLE = "Environment variables";
 
-const INTRO =
+const INTRO_HTML =
   "Operators configure Aulora with environment variables. The Docker stack reads most of them from " +
   "<code>infra/docker/.env</code>; the workspace owner can override a curated set from Instance admin, " +
   "and those saved values win over the deployment. This page is generated from the server's environment " +
@@ -50,7 +50,7 @@ function rangeText(variable) {
   return `${variable.min}–${max}`;
 }
 
-function setInText(variable) {
+function setInHtml(variable) {
   if (variable.managedInSection !== undefined) {
     return `Instance admin → ${escapeHtml(variable.managedInSection)}; the deployment environment is the fallback`;
   }
@@ -82,7 +82,7 @@ function metaFor(variable) {
   }
   const range = rangeText(variable);
   if (range !== null) items.push(metaItem("Range", escapeHtml(range)));
-  items.push(metaItem("Set in", setInText(variable)));
+  items.push(metaItem("Set in", setInHtml(variable)));
   return items.join("\n");
 }
 
@@ -156,7 +156,7 @@ export function renderEnvReference(catalog, extras, renderIcon) {
     .join("\n");
   return {
     title: ENV_REFERENCE_TITLE,
-    html: `    <p>${INTRO}</p>
+    html: `    <p>${INTRO_HTML}</p>
 ${SETUP_HTML}
 ${filterBox(renderIcon)}
 ${sections}`,

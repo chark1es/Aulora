@@ -110,6 +110,7 @@ export {
   wellKnownUrl,
 } from "./server-url";
 export {
+  providerInitial,
   resolveSignInMethods,
   type SignInMethods,
 } from "./sign-in";

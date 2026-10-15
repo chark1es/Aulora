@@ -31,3 +31,9 @@ export function resolveSignInMethods(auth: WellKnownAuth): SignInMethods {
     hasAnyMethod: hasProviders || showLocalForm,
   };
 }
+
+/** The first letter of a provider's name, upper-cased, for its button badge. */
+export function providerInitial(name: string): string {
+  const first = Array.from(name.trim()).at(0);
+  return first === undefined ? "?" : first.toUpperCase();
+}

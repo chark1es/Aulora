@@ -6,18 +6,6 @@
 const MAX_RESULTS = 12;
 const SNIPPET_CHARS = 150;
 
-const ESCAPES = new Map([
-  ["&", "&amp;"],
-  ["<", "&lt;"],
-  [">", "&gt;"],
-  ['"', "&quot;"],
-  ["'", "&#39;"],
-]);
-
-function escapeHtml(text) {
-  return String(text).replace(/[&<>"']/g, (character) => ESCAPES.get(character));
-}
-
 function tokenize(text) {
   return String(text)
     .toLowerCase()
@@ -38,6 +26,12 @@ function scoreEntry(entry, tokens) {
     else return 0;
   }
   return score;
+}
+
+/** Whether keyboard focus is in a field the person is typing into. */
+function isEditable(target) {
+  if (!(target instanceof HTMLElement)) return false;
+  return target.isContentEditable || target.matches("input, textarea, select");
 }
 
 /** Prefix-matches every token against title, heading and body, weighted in turn. */
@@ -66,10 +60,47 @@ function snippet(entry, tokens) {
   return `${start > 0 ? "…" : ""}${text.slice(start, end).trim()}${end < text.length ? "…" : ""}`;
 }
 
-function highlight(text, tokens) {
-  const pattern = tokens.map((token) => token.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")).join("|");
-  if (pattern === "") return escapeHtml(text);
-  return escapeHtml(text).replace(new RegExp(`(${pattern})`, "gi"), "<mark>$1</mark>");
+/** The [start, end) ranges of `text` that match any token, merged and sorted. */
+function matchRanges(text, tokens) {
+  const lower = text.toLowerCase();
+  // Case mapping can change a string's length; skip highlighting rather than misplace it.
+  if (lower.length !== text.length) return [];
+  const ranges = [];
+  for (const token of tokens) {
+    let from = lower.indexOf(token);
+    while (from !== -1) {
+      ranges.push([from, from + token.length]);
+      from = lower.indexOf(token, from + token.length);
+    }
+  }
+  ranges.sort((a, b) => a[0] - b[0]);
+  const merged = [];
+  for (const range of ranges) {
+    const last = merged.at(-1);
+    if (last !== undefined && range[0] <= last[1]) last[1] = Math.max(last[1], range[1]);
+    else merged.push([...range]);
+  }
+  return merged;
+}
+
+/** Appends `text` to `parent`, wrapping every token match in a `<mark>` element. */
+function appendHighlighted(parent, text, tokens) {
+  let cursor = 0;
+  for (const [start, end] of matchRanges(text, tokens)) {
+    if (start > cursor) parent.append(text.slice(cursor, start));
+    const mark = document.createElement("mark");
+    mark.textContent = text.slice(start, end);
+    parent.append(mark);
+    cursor = end;
+  }
+  if (cursor < text.length) parent.append(text.slice(cursor));
+}
+
+function span(className, text, tokens) {
+  const element = document.createElement("span");
+  element.className = className;
+  appendHighlighted(element, text, tokens);
+  return element;
 }
 
 function resultItem(container, entry, tokens, index) {
@@ -80,14 +111,15 @@ function resultItem(container, entry, tokens, index) {
   item.setAttribute("aria-selected", "false");
   const base = container.dataset.base ?? "";
   const hash = entry.id === "" ? "" : `#${entry.id}`;
-  const heading =
-    entry.heading === "" || entry.heading === entry.title
-      ? ""
-      : `<span class="site-search-result-heading">${highlight(entry.heading, tokens)}</span>`;
-  item.innerHTML = `<a tabindex="-1" href="${escapeHtml(`${base}${entry.url}${hash}`)}">
-            <span class="site-search-result-page">${highlight(entry.title, tokens)}${heading}</span>
-            <span class="site-search-result-snippet">${highlight(snippet(entry, tokens), tokens)}</span>
-          </a>`;
+  const link = document.createElement("a");
+  link.tabIndex = -1;
+  link.setAttribute("href", `${base}${entry.url}${hash}`);
+  const page = span("site-search-result-page", entry.title, tokens);
+  if (entry.heading !== "" && entry.heading !== entry.title) {
+    page.append(span("site-search-result-heading", entry.heading, tokens));
+  }
+  link.append(page, span("site-search-result-snippet", snippet(entry, tokens), tokens));
+  item.append(link);
   return item;
 }
 
@@ -131,7 +163,8 @@ export function mountSearch(root = document) {
       item.classList.toggle("is-active", active);
       item.setAttribute("aria-selected", active ? "true" : "false");
     }
-    const option = list.children[state.active];
+    const option = list.children.item(state.active);
+    if (option === null) return;
     input.setAttribute("aria-activedescendant", option.id);
     option.scrollIntoView({ block: "nearest" });
   };
@@ -178,9 +211,9 @@ export function mountSearch(root = document) {
     input.removeAttribute("aria-activedescendant");
   };
 
+  // Follow the result link itself, so the browser performs the navigation.
   const navigate = () => {
-    const link = list.children[state.active]?.querySelector("a");
-    if (link !== null && link !== undefined) window.location.href = link.href;
+    list.children.item(state.active)?.querySelector("a")?.click();
   };
 
   const trapFocus = (event) => {
@@ -190,7 +223,7 @@ export function mountSearch(root = document) {
     const delta = event.shiftKey ? -1 : 1;
     const next =
       (focusable.indexOf(document.activeElement) + delta + focusable.length) % focusable.length;
-    focusable[next].focus();
+    focusable.at(next)?.focus();
   };
 
   input.addEventListener("focus", () => void open());
@@ -231,13 +264,9 @@ export function mountSearch(root = document) {
   });
 
   document.addEventListener("keydown", (event) => {
-    const target = event.target;
-    const typing =
-      target instanceof HTMLElement &&
-      (target.tagName === "INPUT" || target.tagName === "TEXTAREA" || target.isContentEditable);
     const shortcut =
       event.key === "/" || (event.key.toLowerCase() === "k" && (event.metaKey || event.ctrlKey));
-    if (!shortcut || typing) return;
+    if (!shortcut || isEditable(event.target)) return;
     event.preventDefault();
     input.focus();
     void open();

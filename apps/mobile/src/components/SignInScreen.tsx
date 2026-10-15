@@ -3,17 +3,7 @@ import { resolveSignInMethods, type ServerProfile, type SignInMethods } from "@a
 import { Button, Heading, Icon, Text, usePalette } from "@aulora/ui-native";
 import { useQuery } from "convex/react";
 import { useState } from "react";
-import {
-  Animated,
-  Image,
-  KeyboardAvoidingView,
-  Platform,
-  Pressable,
-  ScrollView,
-  StyleSheet,
-  useWindowDimensions,
-  View,
-} from "react-native";
+import { Animated, Image, Pressable, useWindowDimensions, View } from "react-native";
 import { api } from "../../../../packages/convex/convex/_generated/api";
 import {
   type AuloraAuthClient,
@@ -22,8 +12,8 @@ import {
 } from "../lib/auth-client";
 import type { CookieStore } from "../lib/cookie-fetch";
 import { useEntrance, useReduceMotion } from "../lib/use-entrance";
-import { AuthScaffold } from "./AuthScaffold";
-import { fieldPatch, type SignInMode, SignInPanel } from "./SignInForm";
+import { AuthScaffold, AuthScroll } from "./AuthScaffold";
+import { fieldPatch, type SignInMode, SignInPanel, type SignInPanelProps } from "./SignInForm";
 import { ThresholdAura } from "./ThresholdAura";
 
 export interface SignInScreenProps {
@@ -37,6 +27,15 @@ export interface SignInScreenProps {
 }
 
 type AuthActions = ReturnType<typeof authActionsFromClient>;
+
+interface AuthFailure {
+  readonly message?: string;
+}
+
+/** What an auth call resolves to: no error on success. */
+interface AuthResult {
+  readonly error: AuthFailure | null;
+}
 
 interface FormState {
   readonly mode: SignInMode;
@@ -76,7 +75,7 @@ function useSignInController(
     setState((current) => ({ ...current, ...next }));
   };
 
-  async function run(key: string, task: () => Promise<{ error: { message?: string } | null }>) {
+  async function run(key: string, task: () => Promise<AuthResult>) {
     patch({ error: null, pending: key });
     try {
       const result = await task();
@@ -119,25 +118,24 @@ function useSignInController(
   return { state, patch, submitLocal, signInWithProvider };
 }
 
-/** The hero mark of the sign-in screen: the workspace's own creature. */
-function auraFor(
-  profile: ServerProfile,
-  logoUrl: string | null,
-  size: number,
-  reduceMotion: boolean | null,
-) {
+interface WorkspaceMarkProps {
+  readonly profile: ServerProfile;
+  readonly logoUrl: string | null;
+  readonly size: number;
+  readonly reduceMotion: boolean | null;
+}
+
+/** The hero mark of the sign-in screen: the workspace's own logo or creature. */
+function WorkspaceMark({ profile, logoUrl, size, reduceMotion }: WorkspaceMarkProps) {
   if (logoUrl !== null) {
-    return (
-      <Image
-        source={{ uri: logoUrl }}
-        accessibilityLabel={`${profile.name} logo`}
-        style={{ width: size, height: size, borderRadius: 24 }}
-      />
-    );
+    const source = { uri: logoUrl };
+    const frame = { width: size, height: size, borderRadius: 24 };
+    return <Image source={source} accessibilityLabel={`${profile.name} logo`} style={frame} />;
   }
+  const creatureSize = Math.round(size * 0.72);
   return (
     <ThresholdAura size={size} seed={profile.iconSeed} reduceMotion={reduceMotion}>
-      <NativeBlobatar seed={profile.iconSeed} size={Math.round(size * 0.72)} title={profile.name} />
+      <NativeBlobatar seed={profile.iconSeed} size={creatureSize} title={profile.name} />
     </ThresholdAura>
   );
 }
@@ -189,6 +187,38 @@ function subtitleFor(methods: SignInMethods, description: string): string {
   return "Welcome back. Sign in to continue.";
 }
 
+type SignInController = ReturnType<typeof useSignInController>;
+
+/** The sign-in panel's view of the form state and the controller's actions. */
+function panelFor(
+  profile: ServerProfile,
+  methods: SignInMethods,
+  controller: SignInController,
+): SignInPanelProps {
+  const { state, patch, submitLocal, signInWithProvider } = controller;
+  return {
+    methods,
+    providers: profile.auth.providers,
+    mode: state.mode,
+    values: { email: state.email, name: state.name, password: state.password },
+    pending: state.pending,
+    error: state.error,
+    signup: methods.showSignUp,
+    onField: (field, value) => {
+      patch(fieldPatch(field, value));
+    },
+    onProvider: (id, type) => {
+      void signInWithProvider(id, type);
+    },
+    onSubmit: () => {
+      void submitLocal();
+    },
+    onToggleMode: () => {
+      patch({ mode: state.mode === "sign-up" ? "sign-in" : "sign-up", error: null });
+    },
+  };
+}
+
 /**
  * Sign-in driven entirely by the server’s well-known `auth` block: the local
  * form appears only when `auth.local.enabled`, a sign-up toggle only when
@@ -199,13 +229,8 @@ function subtitleFor(methods: SignInMethods, description: string): string {
  * The workspace's own blobatar is the hero, and the field behind it is drawn
  * from the same seed, so each workspace signs in on its own colours.
  */
-export function SignInScreen({
-  profile,
-  authClient,
-  cookieStore,
-  onOpenWorkspaces,
-  onConnectDifferentServer,
-}: SignInScreenProps) {
+export function SignInScreen(props: SignInScreenProps) {
+  const { profile, authClient, cookieStore, onOpenWorkspaces, onConnectDifferentServer } = props;
   const methods = resolveSignInMethods(profile.auth);
   const actions = authActionsFromClient(authClient);
   const config = useQuery(api.server.publicConfig, {});
@@ -213,79 +238,45 @@ export function SignInScreen({
   const { animatedStyle } = useEntrance(reduceMotion);
   const { width } = useWindowDimensions();
   const compact = width < 480;
-  const { state, patch, submitLocal, signInWithProvider } = useSignInController(
-    actions,
-    authClient,
-    cookieStore,
-  );
+  const controller = useSignInController(actions, authClient, cookieStore);
+  const { state } = controller;
 
   return (
-    <KeyboardAvoidingView
-      className="flex-1"
-      behavior={Platform.OS === "ios" ? "padding" : "height"}
-    >
-      <ScrollView
-        className="flex-1"
-        contentContainerStyle={styles.scrollContent}
-        keyboardShouldPersistTaps="handled"
-        showsVerticalScrollIndicator={false}
-      >
-        <AuthScaffold
-          seed={profile.iconSeed}
-          reduceMotion={reduceMotion}
-          aura={auraFor(profile, config?.logoUrl ?? null, compact ? 104 : 124, reduceMotion)}
-          intro={
-            <Animated.View style={animatedStyle}>
-              <SignInIdentity
-                profile={profile}
-                subtitle={subtitleFor(methods, config?.description ?? "")}
-                host={profileHost(profile.baseUrl)}
-                {...(onOpenWorkspaces !== undefined ? { onOpenWorkspaces } : {})}
-              />
-            </Animated.View>
-          }
-        >
-          <SignInPanel
-            panel={{
-              methods,
-              providers: profile.auth.providers,
-              mode: state.mode,
-              values: { email: state.email, name: state.name, password: state.password },
-              pending: state.pending,
-              error: state.error,
-              signup: methods.showSignUp,
-              onField: (field, value) => {
-                patch(fieldPatch(field, value));
-              },
-              onProvider: (id, type) => {
-                void signInWithProvider(id, type);
-              },
-              onSubmit: () => {
-                void submitLocal();
-              },
-              onToggleMode: () => {
-                patch({ mode: state.mode === "sign-up" ? "sign-in" : "sign-up", error: null });
-              },
-            }}
+    <AuthScroll>
+      <AuthScaffold
+        seed={profile.iconSeed}
+        reduceMotion={reduceMotion}
+        aura={
+          <WorkspaceMark
+            profile={profile}
+            logoUrl={config?.logoUrl ?? null}
+            size={compact ? 104 : 124}
+            reduceMotion={reduceMotion}
           />
-          {onConnectDifferentServer !== undefined && (
-            <Button
-              variant="ghost"
-              className="self-start"
-              disabled={state.pending !== null}
-              onPress={onConnectDifferentServer}
-            >
-              Use a different workspace
-            </Button>
-          )}
-        </AuthScaffold>
-      </ScrollView>
-    </KeyboardAvoidingView>
+        }
+        intro={
+          <Animated.View style={animatedStyle}>
+            <SignInIdentity
+              profile={profile}
+              subtitle={subtitleFor(methods, config?.description ?? "")}
+              host={profileHost(profile.baseUrl)}
+              {...(onOpenWorkspaces !== undefined ? { onOpenWorkspaces } : {})}
+            />
+          </Animated.View>
+        }
+      >
+        <SignInPanel panel={panelFor(profile, methods, controller)} />
+        {onConnectDifferentServer !== undefined && (
+          <Button
+            variant="ghost"
+            className="self-start"
+            disabled={state.pending !== null}
+            onPress={onConnectDifferentServer}
+          >
+            Use a different workspace
+          </Button>
+        )}
+      </AuthScaffold>
+    </AuthScroll>
   );
 }
-
-const styles = StyleSheet.create({
-  scrollContent: {
-    flexGrow: 1,
-  },
-});

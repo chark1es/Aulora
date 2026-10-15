@@ -28,6 +28,10 @@ import { demoProfileStore } from "./demo";
  * `fetch=delay` does the same for a discovery that is still in flight.
  */
 
+interface FixtureResult {
+  readonly error: { readonly message?: string } | null;
+}
+
 /** How a fixture auth call behaves. `hang` is the loading state, on purpose. */
 type Outcome = "ok" | "error" | "hang";
 /** How the fixture well-known request behaves. */
@@ -60,20 +64,26 @@ const WELL_KNOWN: WellKnown = {
 };
 
 /** Well-known documents per workspace preset, so SSO-only is a real state. */
-const PRESETS: Record<string, WellKnown> = {
-  "local-sso": WELL_KNOWN,
-  "sso-only": {
-    ...WELL_KNOWN,
-    auth: { ...WELL_KNOWN.auth, local: { enabled: false, signup: false } },
-  },
-  "no-methods": {
-    ...WELL_KNOWN,
-    auth: { local: { enabled: false, signup: false }, providers: [] },
-  },
-};
+const PRESETS = new Map<string, WellKnown>([
+  ["local-sso", WELL_KNOWN],
+  [
+    "sso-only",
+    {
+      ...WELL_KNOWN,
+      auth: { ...WELL_KNOWN.auth, local: { enabled: false, signup: false } },
+    },
+  ],
+  [
+    "no-methods",
+    {
+      ...WELL_KNOWN,
+      auth: { local: { enabled: false, signup: false }, providers: [] },
+    },
+  ],
+]);
 
 function presetWellKnown(preset: string): WellKnown {
-  return PRESETS[preset] ?? WELL_KNOWN;
+  return PRESETS.get(preset) ?? WELL_KNOWN;
 }
 
 function profileFor(preset: string): ServerProfile {
@@ -85,7 +95,7 @@ function profileFor(preset: string): ServerProfile {
  * keeps the button in its busy state long enough to photograph.
  */
 function fixtureActions(outcome: Outcome): AuthActions {
-  const settle = (): Promise<{ error: { message?: string } | null }> => {
+  const settle = (): Promise<FixtureResult> => {
     if (outcome === "hang") {
       return new Promise(() => undefined);
     }
@@ -117,9 +127,14 @@ function useFixtureFetch(mode: FetchMode, wellKnown: WellKnown): void {
       const body = JSON.stringify(wellKnown);
       const respond = () =>
         new Response(body, { status: 200, headers: { "content-type": "application/json" } });
-      return mode === "delay"
-        ? new Promise((resolve) => setTimeout(() => resolve(respond()), 30_000))
-        : Promise.resolve(respond());
+      if (mode !== "delay") {
+        return Promise.resolve(respond());
+      }
+      return new Promise((resolve) => {
+        setTimeout(() => {
+          resolve(respond());
+        }, 30_000);
+      });
     };
     return () => {
       globalThis.fetch = original;
