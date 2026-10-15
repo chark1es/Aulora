@@ -146,7 +146,15 @@ function OidcFormActions({
   readonly onCancel: () => void;
 }) {
   return (
-    <div className="flex flex-wrap items-center gap-2">
+    <div className="flex flex-wrap items-center justify-end gap-2">
+      <Button type="button" size="sm" variant="ghost" disabled={busy} onClick={onCancel}>
+        Cancel
+      </Button>
+      {step === "confirm" && (
+        <Button type="button" size="sm" variant="secondary" disabled={busy} onClick={onBack}>
+          Back
+        </Button>
+      )}
       {step === "edit" ? (
         <Button type="submit" size="sm" disabled={busy} data-testid="oidc-review">
           Review
@@ -163,14 +171,6 @@ function OidcFormActions({
           Save OIDC provider
         </Button>
       )}
-      {step === "confirm" && (
-        <Button type="button" size="sm" variant="secondary" disabled={busy} onClick={onBack}>
-          Back
-        </Button>
-      )}
-      <Button type="button" size="sm" variant="ghost" disabled={busy} onClick={onCancel}>
-        Cancel
-      </Button>
     </div>
   );
 }

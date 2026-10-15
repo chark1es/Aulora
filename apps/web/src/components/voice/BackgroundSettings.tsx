@@ -1,4 +1,4 @@
-import { cn, SegmentedControl, Text } from "@aulora/ui-web";
+import { Button, cn, Icon, SegmentedControl, Text } from "@aulora/ui-web";
 import { useRef, useState } from "react";
 import {
   BACKDROPS,
@@ -130,18 +130,20 @@ function BackdropPicker() {
           event.target.value = "";
         }}
       />
-      <div className="flex gap-3 text-[12px]">
-        <button
+      <div className="flex flex-wrap items-center gap-2">
+        <Button
           type="button"
-          className="text-accent hover:underline"
+          size="sm"
+          variant="secondary"
+          leading={<Icon name="image" size={15} />}
           onClick={() => input.current?.click()}
         >
           {custom !== null ? "Replace your picture" : "Upload a picture"}
-        </button>
+        </Button>
         {custom !== null && (
-          <button type="button" className="text-text-muted hover:underline" onClick={remove}>
+          <Button type="button" size="sm" variant="ghost" onClick={remove}>
             Remove it
-          </button>
+          </Button>
         )}
       </div>
       {problem !== null && (

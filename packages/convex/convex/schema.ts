@@ -163,7 +163,8 @@ export default defineSchema({
     /**
      * Per-provider auth toggles. Absent means "inherits the deployment
      * environment"; an explicit `false` hides a provider even when its
-     * credentials are present.
+     * credentials are present. `local` gates email/password sign-in and takes
+     * precedence over `AUTH_LOCAL_ENABLED`.
      */
     authProviders: v.optional(
       v.object({
@@ -172,6 +173,7 @@ export default defineSchema({
         microsoft: v.optional(v.boolean()),
         apple: v.optional(v.boolean()),
         oidc: v.optional(v.boolean()),
+        local: v.optional(v.boolean()),
       }),
     ),
   }),

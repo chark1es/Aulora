@@ -24,9 +24,9 @@ export const hasOwnerCredentials = ownerEmail !== "" && ownerPassword !== "";
  */
 export async function connectAndSignIn(page: Page): Promise<void> {
   await page.goto("/");
-  await expect(page.getByRole("heading", { name: "Connect to a server" })).toBeVisible();
+  await expect(page.getByRole("heading", { name: "Connect to your workspace" })).toBeVisible();
   await page.getByLabel("Server address").fill(baseURL);
-  await page.getByRole("button", { name: "Connect" }).click();
+  await page.getByRole("button", { name: "Continue" }).click();
 
   // Preview is built from the real well-known document.
   await expect(page.getByRole("button", { name: "Continue" })).toBeVisible();

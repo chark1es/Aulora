@@ -1,6 +1,7 @@
-import { Button, Input, Text } from "@aulora/ui-native";
+import { Button, Checkbox, Input, Text } from "@aulora/ui-native";
 import { useState } from "react";
 import { Pressable, ScrollView, View } from "react-native";
+import { impactFeedback } from "../../lib/haptics";
 import type { MobileMemberEntry } from "../../lib/permissions";
 import { MemberAvatar } from "./MemberAvatar";
 import { Sheet } from "./Sheet";
@@ -56,7 +57,7 @@ export function NewConversationSheet({
               >
                 <MemberAvatar userId={member.userId} size={32} />
                 <Text className="flex-1">{member.displayName}</Text>
-                <Text>{checked ? "✓" : ""}</Text>
+                <Checkbox checked={checked} />
               </Pressable>
             );
           })}
@@ -71,6 +72,7 @@ export function NewConversationSheet({
           loading={busy}
           disabled={selected.length === 0}
           onPress={() => {
+            impactFeedback();
             setBusy(true);
             setError(null);
             void onCreate(selected)

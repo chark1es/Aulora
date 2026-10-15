@@ -1,7 +1,7 @@
 import type { PresenceRow } from "@aulora/core";
-import { Button, presenceColor, Text, usePalette } from "@aulora/ui-native";
+import { Button, Input, presenceColor, Text, usePalette } from "@aulora/ui-native";
 import { useEffect, useState } from "react";
-import { Keyboard, Pressable, TextInput, View } from "react-native";
+import { Keyboard, Pressable, View } from "react-native";
 import { presenceLabel } from "../../lib/presence";
 
 type PresenceStatus = PresenceRow["status"];
@@ -77,18 +77,18 @@ export function StatusEditor({ status, customStatus, onSetStatus }: StatusEditor
           );
         })}
       </View>
-      <View className="flex-row items-center gap-2">
-        <TextInput
-          accessibilityLabel="Custom status"
-          value={draft}
-          onChangeText={setDraft}
-          maxLength={80}
-          placeholder="What are you up to?"
-          placeholderTextColor={palette["text-muted"]}
-          returnKeyType="done"
-          onSubmitEditing={save}
-          className="min-h-11 flex-1 rounded-input bg-surface-3 px-3 py-0 text-[17px] text-text"
-        />
+      <View className="flex-row items-end gap-2">
+        <View className="flex-1">
+          <Input
+            label="Custom status"
+            value={draft}
+            onChangeText={setDraft}
+            maxLength={80}
+            placeholder="What are you up to?"
+            returnKeyType="done"
+            onSubmitEditing={save}
+          />
+        </View>
         {changed ? (
           <Button size="sm" variant="primary" onPress={save}>
             Save

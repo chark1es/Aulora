@@ -110,17 +110,18 @@ export function ThreadsPanel(props: ThreadsPanelProps) {
         </span>
         <div className="min-w-0 flex-1">
           <h2 className="text-[14px] font-semibold tracking-[-0.01em] text-text">Thread</h2>
-          <p className="truncate text-xs text-text-muted">
+          <p className="truncate text-[11px] text-text-muted">
             {replies.length === 1 ? "1 reply" : `${replies.length} replies`} · {props.channelTitle}
           </p>
         </div>
         <button
           type="button"
           aria-label="Close thread"
+          title="Close thread"
           onClick={props.onClose}
-          className="flex h-8 w-8 items-center justify-center rounded-[7px] text-text-muted hover:bg-surface-3 hover:text-text"
+          className="flex h-8 w-8 items-center justify-center rounded-[8px] text-text-muted transition hover:bg-surface-3 hover:text-text focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent"
         >
-          <Icon name="x" size={18} />
+          <Icon name="x" size={20} />
         </button>
       </header>
 

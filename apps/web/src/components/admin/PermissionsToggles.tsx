@@ -1,5 +1,5 @@
 import { Permission } from "@aulora/core";
-import { cn, Icon } from "@aulora/ui-web";
+import { Checkbox, cn } from "@aulora/ui-web";
 import {
   PERMISSION_GROUPS,
   PERMISSION_LABELS,
@@ -50,6 +50,7 @@ export function PermissionsToggles({
               return (
                 <label
                   key={name}
+                  htmlFor={`permission-${name}`}
                   className={cn(
                     "group flex cursor-pointer items-center gap-2.5 rounded-[9px] border px-2.5 py-1.5 text-[12px] transition",
                     checked
@@ -58,24 +59,16 @@ export function PermissionsToggles({
                     disabled && "pointer-events-none opacity-50",
                   )}
                 >
-                  <input
-                    type="checkbox"
-                    className="sr-only"
+                  <Checkbox
+                    bare
+                    id={`permission-${name}`}
+                    label={PERMISSION_LABELS_BY_NAME.get(name) ?? name}
                     checked={checked}
                     disabled={disabled}
-                    onChange={(event) => {
-                      onChange(togglePermissionBit(value, name, event.currentTarget.checked));
+                    onChange={(next) => {
+                      onChange(togglePermissionBit(value, name, next));
                     }}
                   />
-                  <span
-                    aria-hidden="true"
-                    className={cn(
-                      "flex h-4 w-4 shrink-0 items-center justify-center rounded-[5px] border transition",
-                      checked ? "border-accent bg-accent text-on-accent" : "border-border",
-                    )}
-                  >
-                    {checked && <Icon name="check" size={11} />}
-                  </span>
                   {PERMISSION_LABELS_BY_NAME.get(name) ?? name}
                 </label>
               );

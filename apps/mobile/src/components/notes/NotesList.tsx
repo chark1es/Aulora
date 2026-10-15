@@ -1,5 +1,5 @@
 /* eslint-disable no-unused-vars -- the base rule reports parameter names in type signatures; Biome checks real unused code */
-import { Button, Heading, Icon, IconButton, Text, usePalette } from "@aulora/ui-native";
+import { Button, EmptyState, Icon, IconButton, Text, usePalette } from "@aulora/ui-native";
 import { Pressable, ScrollView, View } from "react-native";
 import Animated, { FadeIn } from "react-native-reanimated";
 import { timeAgo } from "../../lib/kanban";
@@ -75,6 +75,7 @@ function RailChip({
     <Pressable
       accessibilityRole="button"
       accessibilityState={{ selected: active }}
+      hitSlop={4}
       onPress={onPress}
       onLongPress={onLongPress}
       delayLongPress={280}
@@ -244,31 +245,27 @@ function NoteRow({
 }
 
 function NotesEmpty({ ctl }: { readonly ctl: NotesController }) {
-  const palette = usePalette();
   const heading = ctl.filters.archived
     ? "No archived notes"
     : ctl.selecting
       ? "No matching notes"
       : "Write your first note";
   return (
-    <View className="flex-1 items-center justify-center gap-3 px-8">
-      <View className="h-16 w-16 items-center justify-center rounded-card bg-accent-soft">
-        <Icon name="note" size={32} color={palette.accent} />
-      </View>
-      <Heading level={3} className="text-center">
-        {heading}
-      </Heading>
-      <Text size="sm" tone="muted" className="text-center">
-        {ctl.filters.archived
+    <EmptyState
+      icon="note"
+      title={heading}
+      message={
+        ctl.filters.archived
           ? "Notes you archive are kept here until you restore or delete them."
           : ctl.selecting
             ? "Try a different search or clear the filters."
-            : "Notes are written in Markdown and can be filed into folders and tagged."}
-      </Text>
+            : "Notes are written in Markdown and can be filed into folders and tagged."
+      }
+    >
       {!ctl.filters.archived && ctl.permissions.create && (
         <Button onPress={ctl.newNote}>New note</Button>
       )}
-    </View>
+    </EmptyState>
   );
 }
 

@@ -265,7 +265,7 @@ export function MembersPane(props: MembersPaneProps) {
         keyboardShouldPersistTaps="handled"
         keyboardDismissMode="on-drag"
         contentContainerStyle={{
-          paddingHorizontal: 12,
+          paddingHorizontal: 16,
           paddingBottom: insets.bottom + 24,
           gap: 16,
         }}

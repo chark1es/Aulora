@@ -4,6 +4,7 @@ import { useMutation } from "convex/react";
 import { useState } from "react";
 import { View } from "react-native";
 import { api } from "../../../../../packages/convex/convex/_generated/api";
+import { impactFeedback } from "../../lib/haptics";
 import { failure } from "../../lib/kanban";
 import { Sheet } from "../chat/Sheet";
 import { Toggle } from "./settings-parts";
@@ -24,6 +25,7 @@ export function NewBoardSheet({
   const [error, setError] = useState<string | undefined>();
   const submit = () => {
     if (!name.trim() || busy) return;
+    impactFeedback();
     setBusy(true);
     setError(undefined);
     create({ name, private: isPrivate, memberIds: [ownUserId] })

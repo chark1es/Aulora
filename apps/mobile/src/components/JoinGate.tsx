@@ -1,4 +1,4 @@
-import { NativeAvatar } from "@aulora/avatars/native";
+import { NativeBlobatar } from "@aulora/avatars/native";
 import {
   joinCodeFailureMessage,
   normalizeInviteCode,
@@ -59,7 +59,12 @@ export function JoinGate({ workspaceIconSeed, signedInAs, onSignOut }: JoinGateP
           keyboardShouldPersistTaps="handled"
           showsVerticalScrollIndicator={false}
         >
-          <AuthScaffold aura={<NativeAvatar seed={workspaceIconSeed} size={72} shape="squircle" />}>
+          <AuthScaffold
+            seed={workspaceIconSeed}
+            aura={
+              <NativeBlobatar seed={workspaceIconSeed} size={96} title={status.workspaceName} />
+            }
+          >
             <View className="gap-2">
               <Heading level={1}>Join {status.workspaceName}</Heading>
               <Text size="base" tone="muted" className="leading-relaxed">

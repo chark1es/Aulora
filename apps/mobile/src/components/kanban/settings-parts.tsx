@@ -1,7 +1,7 @@
 /* eslint-disable no-unused-vars -- the base rule reports parameter names in type signatures; Biome checks real unused code */
-import { Icon, Text, usePalette } from "@aulora/ui-native";
+import { Icon, SettingRow, Switch, Text, usePalette } from "@aulora/ui-native";
 import type { ReactNode } from "react";
-import { Pressable, Switch, View } from "react-native";
+import { Pressable, View } from "react-native";
 
 /** A bare text field inside a row of the settings lists. */
 export const cell =
@@ -15,22 +15,12 @@ interface ToggleProps {
 }
 
 export function Toggle({ label, description, value, onChange }: ToggleProps) {
-  const palette = usePalette();
   return (
-    <View className="flex-row items-center gap-3">
-      <View className="min-w-0 flex-1">
-        <Text className="font-medium">{label}</Text>
-        <Text size="xs" tone="muted">
-          {description}
-        </Text>
-      </View>
-      <Switch
-        accessibilityLabel={label}
-        value={value}
-        onValueChange={onChange}
-        trackColor={{ true: palette.accent, false: palette["surface-3"] }}
-      />
-    </View>
+    <SettingRow
+      label={label}
+      description={description}
+      control={<Switch accessibilityLabel={label} value={value} onValueChange={onChange} />}
+    />
   );
 }
 
@@ -67,9 +57,9 @@ export function RowButton({ label, icon, disabled = false, onPress }: RowButtonP
       accessibilityLabel={label}
       accessibilityState={{ disabled }}
       disabled={disabled}
-      hitSlop={4}
+      hitSlop={2}
       onPress={onPress}
-      className={`h-10 w-9 items-center justify-center rounded-input active:bg-surface-3 ${
+      className={`h-11 w-11 items-center justify-center rounded-input active:bg-surface-3 ${
         disabled ? "opacity-30" : ""
       }`}
     >

@@ -1,4 +1,12 @@
-import { Button, cn, Icon, IconButton, SegmentedControl, Spinner } from "@aulora/ui-web";
+import {
+  Button,
+  cn,
+  EmptyState,
+  Icon,
+  IconButton,
+  SegmentedControl,
+  Spinner,
+} from "@aulora/ui-web";
 import { Component, type ReactNode, useState } from "react";
 import { NoteDialogs } from "./NoteDialogs";
 import { NoteEditor } from "./NoteEditor";
@@ -226,24 +234,22 @@ function DetailTabs({ ctl }: { ctl: NotesController }) {
 
 function EmptyDetail({ ctl }: { ctl: NotesController }) {
   return (
-    <div className="flex flex-1 flex-col items-center justify-center gap-3 p-8 text-center">
-      <span className="flex h-14 w-14 items-center justify-center rounded-[16px] bg-accent-soft text-accent">
-        <Icon name="note" size={28} />
-      </span>
-      <h2 className="text-lg font-semibold">
-        {ctl.notes.length === 0 ? "Write your first note" : "Pick a note"}
-      </h2>
-      <p className="max-w-sm text-sm text-text-muted">
-        {ctl.canCreate
+    <EmptyState
+      icon="note"
+      title={ctl.notes.length === 0 ? "Write your first note" : "Pick a note"}
+      description={
+        ctl.canCreate
           ? "Create a note and it opens in the editor, ready to write."
-          : "No note is available to you yet."}
-      </p>
-      {ctl.canCreate && (
-        <Button leading={<Icon name="plus" size={14} />} onClick={() => void ctl.createNote()}>
-          New note
-        </Button>
-      )}
-    </div>
+          : "No note is available to you yet."
+      }
+      action={
+        ctl.canCreate ? (
+          <Button leading={<Icon name="plus" size={14} />} onClick={() => void ctl.createNote()}>
+            New note
+          </Button>
+        ) : undefined
+      }
+    />
   );
 }
 

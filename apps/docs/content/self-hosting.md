@@ -88,7 +88,37 @@ Bootstrap settings such as `BETTER_AUTH_SECRET`, the encryption keys and
 Overrides take effect on the next request, with no restart. The switch is read
 from the deployment environment, so set `AULORA_ALLOW_UI_ENV_OVERRIDES=false` in
 `.env` and re-run `docker compose run --rm setup` to disable the section and
-fall back to `.env` alone.
+fall back to `.env` alone. The
+[environment variables reference](environment-variables.md) lists every variable
+the stack reads: what it does, its type, whether it is a secret, and whether the
+owner can override it.
+
+## Disabling email & password sign-in
+
+An instance can require SSO and refuse local email/password sign-in. Set the
+gate either at deploy time or at runtime:
+
+- **Deployment:** set `AUTH_LOCAL_ENABLED=false` in `.env` and re-run
+  `docker compose run --rm setup` (or save it under **Instance admin →
+  Environment**, which takes effect on the next request).
+- **Runtime:** open **Instance admin → Auth providers** and switch off
+  **Email & password sign-in**. This is stored with the instance settings, wins
+  over the environment variable, and needs no redeploy.
+
+When it is off, the server refuses Better Auth's email/password **sign-in and
+sign-up** endpoints, not just the UI: the form is hidden on the web and mobile
+clients and only the configured provider buttons are shown. Existing sessions
+and already-created password accounts are unaffected — they simply cannot start
+a new password sign-in until the gate is turned back on (for example to help a
+user recover access).
+
+**Lock-out protection.** Turning local sign-in off is refused while no other
+sign-in method — GitHub, Google, Microsoft, Apple or OIDC — is both configured
+and enabled. The admin panel shows an error instead of saving, and at config-read
+time the server falls back to enabled rather than advertise a sign-in method
+nobody could use. Configure and enable an SSO provider first. First-run owner
+creation is never blocked by this gate: the setup container can always create
+the operator credential.
 
 ## Encryption
 

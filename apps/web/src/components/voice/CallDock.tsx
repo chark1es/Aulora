@@ -98,7 +98,12 @@ export function CallDock({
 
   const style = useMemo<React.CSSProperties>(() => {
     if (voice.pipPinned) {
-      return { left: "50%", top: 12, transform: "translateX(-50%)", width: DOCK_WIDTH };
+      return {
+        left: "50%",
+        top: "calc(var(--titlebar-height) + 12px)",
+        transform: "translateX(-50%)",
+        width: DOCK_WIDTH,
+      };
     }
     const fallback: DockPosition = {
       x: Math.max(8, window.innerWidth - DOCK_WIDTH - 20),

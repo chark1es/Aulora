@@ -201,6 +201,7 @@ export async function createDemoWorkspace(): Promise<DemoWorkspace> {
   const announcements = await channel("announcement", "announcements");
   const design = await channel("text", "design", { categoryId: "cat-product" });
   const engineering = await channel("text", "engineering", { categoryId: "cat-product" });
+  await channel("voice", "Standup", { categoryId: "cat-product" });
   const random = await channel("text", "random");
   const dmLudmil = await channel("dm", "Ludmil Popov", { memberIds: ["u-ludmil"] });
   const dmJacob = await channel("dm", "Jacob Jones", { memberIds: ["u-jacob"] });

@@ -313,8 +313,8 @@ export function UserSettingsView({
                     </Text>
                   )}
 
-                  <label className="flex flex-col gap-1.5 text-[12px] font-medium text-text-muted">
-                    Bio
+                  <label className="flex flex-col gap-1.5">
+                    <span className="text-[13px] font-medium text-text-muted">Bio</span>
                     <textarea
                       value={bio}
                       maxLength={500}
@@ -324,9 +324,9 @@ export function UserSettingsView({
                         setBioEdited(true);
                         setBio(event.target.value);
                       }}
-                      className="w-full resize-y rounded-input border border-border bg-surface-2 px-3 py-2 text-[13px] font-normal text-text placeholder:text-text-muted focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent"
+                      className="w-full resize-y rounded-input border border-border bg-surface-3 px-3 py-2 text-[14px] text-text placeholder:text-text-muted transition focus-visible:border-accent focus-visible:bg-surface-2 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent-soft"
                     />
-                    <span className="text-[11px] font-normal">{bio.length}/500 characters</span>
+                    <span className="text-xs text-text-muted">{bio.length}/500 characters</span>
                   </label>
 
                   {(saveError !== null || (error !== null && error.length > 0)) && (
@@ -407,7 +407,7 @@ export function UserSettingsView({
                     className="w-full"
                   />
                 </Field>
-                <div>
+                <div className="flex justify-end">
                   <Button type="submit" loading={isBusy} disabled={isBusy}>
                     Save
                   </Button>

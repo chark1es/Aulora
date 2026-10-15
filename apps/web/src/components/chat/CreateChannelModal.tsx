@@ -351,10 +351,6 @@ export function CreateChannelModal({
             </p>
           </div>
         )}
-
-        <button type="button" data-primary className="hidden">
-          Submit
-        </button>
       </form>
     </Modal>
   );

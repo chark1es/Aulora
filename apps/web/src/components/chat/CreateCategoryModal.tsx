@@ -1,4 +1,4 @@
-import { Icon, Input, Modal } from "@aulora/ui-web";
+import { Button, Icon, Input, Modal } from "@aulora/ui-web";
 import { useEffect, useRef, useState } from "react";
 
 export interface CreateCategoryModalProps {
@@ -81,21 +81,18 @@ export function CreateCategoryModal({
       }
       footer={
         <>
-          <button
-            type="button"
-            onClick={onClose}
-            className="h-9 rounded-[8px] px-3 text-[13px] font-medium text-text-muted transition hover:bg-surface-3 hover:text-text"
-          >
+          <Button type="button" variant="ghost" onClick={onClose}>
             Cancel
-          </button>
-          <button
+          </Button>
+          <Button
             type="button"
+            variant="primary"
             disabled={!canSubmit}
+            loading={isBusy}
             onClick={submit}
-            className="h-9 rounded-[8px] bg-accent px-3.5 text-[13px] font-semibold text-on-accent transition hover:brightness-110 disabled:pointer-events-none disabled:opacity-40"
           >
-            {isBusy ? (mode === "rename" ? "Saving…" : "Creating…") : primaryLabel}
-          </button>
+            {primaryLabel}
+          </Button>
         </>
       }
     >

@@ -3,6 +3,7 @@ import { Button, Icon, IconButton, Text, usePalette } from "@aulora/ui-native";
 import { useRef, useState } from "react";
 import { Pressable, ScrollView, TextInput, View } from "react-native";
 import Animated, { FadeIn, FadeInDown, LinearTransition } from "react-native-reanimated";
+import { impactFeedback } from "../../lib/haptics";
 import { type Board, type Card, type Column, cardsInColumn, isColumnFull } from "../../lib/kanban";
 import { CardTile } from "./CardTile";
 import type { BoardController } from "./use-board";
@@ -178,6 +179,7 @@ function NewCard(props: NewCardProps) {
   if (!props.open || props.full) return <AddCardRow full={props.full} onOpen={props.onOpen} />;
   const submit = () => {
     if (!title.trim() || saving) return;
+    impactFeedback();
     setSaving(true);
     void props.onCreate(title).then((saved) => {
       setSaving(false);

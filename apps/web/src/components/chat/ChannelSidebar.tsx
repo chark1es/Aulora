@@ -144,7 +144,7 @@ export function ChannelSidebar(props: ChannelSidebarProps) {
       className="pane flex h-full w-full flex-col border-r border-border md:w-[276px] md:shrink-0"
       aria-label="Conversations"
     >
-      <div className="desktop-drag flex items-center gap-2.5 px-3 pb-2 pt-3">
+      <div className="flex items-center gap-2.5 px-3 pb-2 pt-3">
         {props.workspaceSwitcher !== undefined ? (
           <div className="min-w-0 flex-1">{props.workspaceSwitcher}</div>
         ) : (

@@ -67,7 +67,8 @@ export interface SocialProviderCredentials {
 /**
  * Operator toggles for the auth providers offered by `server.publicConfig`.
  * Absent values inherit the deployment environment; `false` hides a provider
- * even when its credentials are present.
+ * even when its credentials are present. `local` gates email/password sign-in
+ * and takes precedence over `AUTH_LOCAL_ENABLED`.
  */
 export interface AuthProviderToggles {
   readonly github?: boolean;
@@ -75,6 +76,7 @@ export interface AuthProviderToggles {
   readonly microsoft?: boolean;
   readonly apple?: boolean;
   readonly oidc?: boolean;
+  readonly local?: boolean;
 }
 
 /** A provider is offered unless its toggle is explicitly `false`. */
@@ -153,6 +155,56 @@ export function getOidcSettings(env: Env): OidcSettings | null {
 }
 
 /**
+ * True when at least one non-local provider (GitHub/Google/Microsoft/Apple or
+ * OIDC) is both fully configured and not switched off. Used as the lock-out
+ * guard: email/password sign-in can only be turned off when this is true.
+ */
+export function hasOtherSignInProvider(env: Env, toggles?: AuthProviderToggles): boolean {
+  for (const def of SOCIAL_PROVIDER_DEFINITIONS) {
+    const clientId = read(env, def.clientIdEnv);
+    const clientSecret = read(env, def.clientSecretEnv);
+    if (
+      clientId !== undefined &&
+      clientSecret !== undefined &&
+      providerEnabled(toggles, def.id as "github" | "google" | "microsoft" | "apple")
+    ) {
+      return true;
+    }
+  }
+  return getOidcSettings(env) !== null && providerEnabled(toggles, "oidc");
+}
+
+export interface LocalAuthResolution {
+  readonly enabled: boolean;
+  /**
+   * True when email/password sign-in was asked to turn off but kept on because
+   * no other provider could sign anyone in. Prevents an instance lock-out.
+   */
+  readonly lockoutPrevented: boolean;
+}
+
+/**
+ * Resolves whether email/password sign-in is on, with precedence
+ * instance setting (`toggles.local`) > `AUTH_LOCAL_ENABLED` > default `true`.
+ * A request to disable it is refused (reported as `lockoutPrevented`) when no
+ * other sign-in provider is configured and enabled, so an operator can never
+ * lock themselves out of the instance.
+ */
+export function resolveLocalAuthEnabled(
+  env: Env,
+  toggles?: AuthProviderToggles,
+): LocalAuthResolution {
+  const requested = toggles?.local ?? read(env, "AUTH_LOCAL_ENABLED") !== "false";
+  if (requested) {
+    return { enabled: true, lockoutPrevented: false };
+  }
+  if (hasOtherSignInProvider(env, toggles)) {
+    return { enabled: false, lockoutPrevented: false };
+  }
+  return { enabled: true, lockoutPrevented: true };
+}
+
+/**
  * Public (secret-free) auth configuration. Safe to return from a query and to
  * publish in `/.well-known/aulora.json`.
  */
@@ -194,9 +246,11 @@ export function getPublicAuthConfig(
     providers.push(provider);
   }
 
+  const local = resolveLocalAuthEnabled(env, toggles);
+
   return {
     local: {
-      enabled: read(env, "AUTH_LOCAL_ENABLED") !== "false",
+      enabled: local.enabled,
       signup: signupEnabled,
     },
     providers,

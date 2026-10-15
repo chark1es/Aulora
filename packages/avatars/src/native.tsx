@@ -11,6 +11,22 @@ import { SvgXml } from "react-native-svg";
 import { type AvatarShape, avatarRadius } from "./shape";
 import { avatarSvg } from "./svg";
 
+export {
+  type AvatarBlob,
+  type AvatarField,
+  type AvatarTheme,
+  avatarField,
+  avatarHead,
+  avatarHue,
+} from "./field";
+export {
+  avatarDataUri,
+  avatarSvg,
+  normalizeAvatarSeed,
+  serverAvatarSeed,
+  userAvatarSeed,
+} from "./svg";
+
 export interface NativeAvatarProps {
   /**
    * Stable seed: use a user id (`userAvatarSeed`) or a server icon seed from
@@ -62,6 +78,38 @@ function AvatarBody({
     );
   }
   return <SvgXml xml={avatarSvg(seed, { size })} width={size} height={size} />;
+}
+
+export interface NativeBlobatarProps {
+  /**
+   * Stable seed: use a user id (`userAvatarSeed`) or a server icon seed from
+   * the well-known document. Never the display name.
+   */
+  seed: string;
+  /** Rendered size in pixels. */
+  size?: number;
+  /** Accessible label. When omitted the creature is decorative. */
+  title?: string;
+  /** Workspace profile picture. When set, it replaces the generated avatar. */
+  src?: string;
+  style?: StyleProp<ViewStyle>;
+}
+
+/**
+ * The blobatar on its own, with no plate behind it. Use it where the creature
+ * is the subject — a hero, an empty state — and {@link NativeAvatar} where it
+ * stands in for someone in a list and needs a frame and a ring.
+ */
+export function NativeBlobatar({ seed, size = 32, title, src, style }: NativeBlobatarProps) {
+  return (
+    <View
+      accessible={title !== undefined}
+      accessibilityLabel={title}
+      style={[{ width: size, height: size }, style]}
+    >
+      <AvatarBody src={src} seed={seed} size={size} />
+    </View>
+  );
 }
 
 export function NativeAvatar({

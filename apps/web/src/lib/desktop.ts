@@ -70,6 +70,19 @@ export function desktopPlatform(
   return "linux";
 }
 
+/**
+ * Whether the shell needs the dedicated macOS title bar. Only the macOS window
+ * draws its traffic lights over the webview, so it is the only platform that
+ * has to reserve a strip of its own for them. Windows and Linux keep the native
+ * title bar and the web build has none, so both are unchanged.
+ */
+export function showsDesktopTitleBar(
+  desktop: boolean = isDesktop(),
+  platform: DesktopPlatform = desktopPlatform(),
+): boolean {
+  return desktop && platform === "macos";
+}
+
 export async function listenDesktopEvent(
   event: string,
   handler: (payload: unknown) => void,
@@ -173,6 +186,8 @@ export interface DesktopUpdateStatus {
   readonly currentVersion: string;
   readonly notes: string | null;
   readonly error: string | null;
+  /** Release publish time as Unix seconds, when the feed provides one. */
+  readonly pubDate?: number | null;
   readonly source?: "menu" | "auto";
   readonly downloaded?: boolean;
 }
@@ -209,6 +224,7 @@ export async function checkDesktopUpdate(): Promise<DesktopUpdateStatus | null> 
       currentVersion: value.currentVersion,
       notes: typeof value.notes === "string" ? value.notes : null,
       error: typeof value.error === "string" ? value.error : null,
+      pubDate: typeof value.pubDate === "number" ? value.pubDate : null,
       ...(typeof value.downloaded === "boolean" ? { downloaded: value.downloaded } : {}),
     };
   } catch (error) {

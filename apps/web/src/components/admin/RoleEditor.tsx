@@ -1,10 +1,11 @@
-import { cn, Heading, Icon, Input, Switch, Text } from "@aulora/ui-web";
+import { Badge, Button, Heading, Icon, IconButton, Input, Switch, Text } from "@aulora/ui-web";
 import { useMutation, useQuery } from "convex/react";
 import { useEffect, useState } from "react";
 import { api } from "../../../../../packages/convex/convex/_generated/api";
 import { canManageRoleUi, type RoleView } from "../../lib/workspace-admin";
 import type { Callback } from "./callbacks";
 import { PermissionsToggles } from "./PermissionsToggles";
+import { RoleColorPicker } from "./RoleColorPicker";
 
 export interface RoleEditorViewer {
   readonly userId: string;
@@ -41,18 +42,6 @@ function draftFor(role: RoleView | null): RoleDraft {
     mentionable: role?.mentionable ?? false,
   };
 }
-
-/** A compact palette that reads well on both themes and next to blobatars. */
-const PRESET_COLORS = [
-  "#C2410C",
-  "#E4571C",
-  "#0E9F8E",
-  "#248A3D",
-  "#7C5CFF",
-  "#B24592",
-  "#D70015",
-  "#8E8E93",
-] as const;
 
 type PageMode = "list" | "create" | "edit";
 
@@ -179,51 +168,12 @@ export function RoleEditor({ viewer, canManageRoles, page = null, onNavigate }: 
               setDraft({ ...draft, name: event.currentTarget.value });
             }}
           />
-          <div className="flex flex-col gap-2">
-            <span className="text-[12px] font-medium text-text-muted">Role color</span>
-            <div className="flex flex-wrap items-center gap-2">
-              <label className="relative flex h-9 w-9 cursor-pointer items-center justify-center overflow-hidden rounded-[8px] border border-border">
-                <span
-                  className="absolute inset-0"
-                  style={{ backgroundColor: draft.color.length > 0 ? draft.color : "#8E8E93" }}
-                />
-                <Icon name="image" size={14} className="relative text-white/80" />
-                <input
-                  type="color"
-                  aria-label="Role color"
-                  className="absolute inset-0 cursor-pointer opacity-0"
-                  value={draft.color.length > 0 ? draft.color : "#8E8E93"}
-                  onChange={(event) => {
-                    setDraft({ ...draft, color: event.currentTarget.value });
-                  }}
-                />
-              </label>
-              {PRESET_COLORS.map((color) => (
-                <button
-                  key={color}
-                  type="button"
-                  aria-label={`Use color ${color}`}
-                  onClick={() => {
-                    setDraft({ ...draft, color });
-                  }}
-                  className={cn(
-                    "h-6 w-6 rounded-full border transition",
-                    draft.color === color ? "border-text ring-2 ring-accent/40" : "border-border",
-                  )}
-                  style={{ backgroundColor: color }}
-                />
-              ))}
-              <button
-                type="button"
-                onClick={() => {
-                  setDraft({ ...draft, color: "" });
-                }}
-                className="h-6 rounded-full border border-border px-2 text-[11px] text-text-muted transition hover:text-text"
-              >
-                None
-              </button>
-            </div>
-          </div>
+          <RoleColorPicker
+            value={draft.color}
+            onChange={(color) => {
+              setDraft({ ...draft, color });
+            }}
+          />
           <div className="overflow-hidden rounded-[10px] border border-border bg-surface-2">
             <div className="px-3.5 py-1.5">
               <Switch
@@ -255,25 +205,11 @@ export function RoleEditor({ viewer, canManageRoles, page = null, onNavigate }: 
             disabled={busy}
           />
           <div className="flex items-center gap-2">
-            <button
-              type="submit"
-              disabled={busy}
-              className="h-9 rounded-[8px] bg-accent px-3.5 text-[12px] font-semibold text-on-accent transition hover:brightness-110 disabled:opacity-50"
-            >
-              {busy ? "Saving…" : mode === "create" ? "Create role" : "Save changes"}
-            </button>
-            <button
-              type="button"
-              onClick={() => {
-                navigate(null);
-              }}
-              className="h-9 rounded-[8px] px-3 text-[12px] font-medium text-text-muted transition hover:bg-surface-3 hover:text-text"
-            >
-              Cancel
-            </button>
             {mode === "edit" && selected !== null && canManageRoleUi(viewer, selected) && (
-              <button
+              <Button
                 type="button"
+                variant="ghost"
+                className="mr-auto text-danger hover:bg-danger/10 hover:text-danger"
                 disabled={busy}
                 onClick={() => {
                   if (selected.isEveryone) {
@@ -284,11 +220,22 @@ export function RoleEditor({ viewer, canManageRoles, page = null, onNavigate }: 
                     navigate(null);
                   });
                 }}
-                className="ml-auto h-9 rounded-[8px] border border-danger/30 px-3 text-[12px] font-medium text-danger transition hover:bg-danger/10 disabled:opacity-50"
               >
                 Delete role
-              </button>
+              </Button>
             )}
+            <Button
+              type="button"
+              variant="secondary"
+              onClick={() => {
+                navigate(null);
+              }}
+            >
+              Cancel
+            </Button>
+            <Button type="submit" loading={busy}>
+              {mode === "create" ? "Create role" : "Save changes"}
+            </Button>
           </div>
         </form>
       </div>
@@ -335,17 +282,16 @@ function RoleList(props: RoleListProps) {
             Higher roles sit above lower ones in the member list and hierarchy.
           </p>
         </div>
-        <button
-          type="button"
+        <Button
+          size="sm"
+          disabled={busy}
+          leading={<Icon name="plus" size={14} />}
           onClick={() => {
             onNavigate({ kind: "role-create" });
           }}
-          disabled={busy}
-          className="flex h-8 items-center gap-1.5 rounded-[8px] bg-accent px-3 text-[12px] font-semibold text-on-accent transition hover:brightness-110 disabled:opacity-50"
         >
-          <Icon name="plus" size={14} />
           New role
-        </button>
+        </Button>
       </div>
 
       {error !== null && (
@@ -420,19 +366,19 @@ function RoleRow(props: RoleRowProps) {
             {role.name}
           </Text>
           {role.isEveryone && (
-            <span className="rounded-[4px] border border-border px-1 text-[10px] text-text-muted">
+            <Badge size="sm" tone="outline">
               default
-            </span>
+            </Badge>
           )}
           {role.hoisted && (
-            <span className="rounded-[4px] bg-surface-3 px-1 text-[10px] text-text-muted">
+            <Badge size="sm" tone="neutral">
               shown
-            </span>
+            </Badge>
           )}
           {role.mentionable && (
-            <span className="rounded-[4px] bg-surface-3 px-1 text-[10px] text-text-muted">
+            <Badge size="sm" tone="neutral">
               mentionable
-            </span>
+            </Badge>
           )}
         </span>
         <Text as="span" size="xs" tone="muted" className="block">
@@ -478,28 +424,26 @@ function RoleMoveButtons({
 }) {
   return (
     <div className="flex items-center gap-0.5">
-      <button
-        type="button"
-        aria-label={`Move ${roleName} up`}
+      <IconButton
+        label={`Move ${roleName} up`}
+        size="sm"
         disabled={!canMoveUp || busy}
         onClick={() => {
           onMove(index, index - 1);
         }}
-        className="flex h-7 w-7 items-center justify-center rounded-[7px] text-text-muted transition hover:bg-surface-3 hover:text-text disabled:opacity-30"
       >
         <Icon name="chevron-down" size={14} className="rotate-180" />
-      </button>
-      <button
-        type="button"
-        aria-label={`Move ${roleName} down`}
+      </IconButton>
+      <IconButton
+        label={`Move ${roleName} down`}
+        size="sm"
         disabled={!canMoveDown || busy}
         onClick={() => {
           onMove(index, index + 1);
         }}
-        className="flex h-7 w-7 items-center justify-center rounded-[7px] text-text-muted transition hover:bg-surface-3 hover:text-text disabled:opacity-30"
       >
         <Icon name="chevron-down" size={14} />
-      </button>
+      </IconButton>
     </div>
   );
 }

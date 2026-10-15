@@ -20,6 +20,8 @@ pub struct AppUpdateStatus {
     pub notes: Option<String>,
     pub error: Option<String>,
     pub downloaded: bool,
+    /// Release publish time as Unix seconds, when the feed provides one.
+    pub pub_date: Option<i64>,
 }
 
 #[derive(Default)]
@@ -142,6 +144,7 @@ fn available(update: &Update, current_version: String, downloaded: bool) -> AppU
         notes: update.body.clone(),
         error: None,
         downloaded,
+        pub_date: update.date.map(|date| date.unix_timestamp()),
     }
 }
 
@@ -153,6 +156,7 @@ fn idle(current_version: String, error: Option<String>) -> AppUpdateStatus {
         notes: None,
         error,
         downloaded: false,
+        pub_date: None,
     }
 }
 

@@ -1,5 +1,5 @@
 import type { SoundEvent } from "@aulora/core";
-import { Icon, Switch, Text } from "@aulora/ui-web";
+import { Icon, IconButton, Switch, Text } from "@aulora/ui-web";
 import { playSound, useSoundSettings } from "../../lib/sounds";
 
 const EVENT_ROWS: readonly {
@@ -97,15 +97,14 @@ export function NotificationsSettingsSection() {
                   {row.description}
                 </span>
               </div>
-              <button
-                type="button"
-                aria-label={`Preview ${row.label}`}
+              <IconButton
+                label={`Preview ${row.label}`}
+                size="sm"
                 disabled={!settings.enabled}
                 onClick={() => playSound(row.event, settings)}
-                className="flex h-7 w-7 shrink-0 items-center justify-center rounded-[7px] text-text-muted transition hover:bg-surface-3 hover:text-text disabled:opacity-40"
               >
                 <Icon name="volume" size={15} />
-              </button>
+              </IconButton>
               <Switch
                 bare
                 checked={settings.events[row.event]}

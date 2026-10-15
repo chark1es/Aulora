@@ -1,7 +1,15 @@
 /* eslint-disable no-unused-vars -- the base rule reports parameter names in type signatures; Biome checks real unused code */
 import type { InviteKind } from "@aulora/core";
 import type { IconName } from "@aulora/tokens";
-import { Button, ConfirmDialog, cn, Icon, SegmentedControl, Text } from "@aulora/ui-web";
+import {
+  Badge,
+  type BadgeTone,
+  Button,
+  ConfirmDialog,
+  Icon,
+  SegmentedControl,
+  Text,
+} from "@aulora/ui-web";
 import { type ReactNode, useState } from "react";
 import {
   expiryLabel,
@@ -41,11 +49,11 @@ const KIND_ICONS = new Map<InviteKind, IconName>([
   ["code", "key"],
 ]);
 
-const STATUS_STYLES = new Map<InviteStatus, string>([
-  ["active", "bg-accent-soft text-accent"],
-  ["revoked", "bg-danger/10 text-danger"],
-  ["expired", "bg-surface-3 text-text-muted"],
-  ["exhausted", "bg-surface-3 text-text-muted"],
+const STATUS_TONES = new Map<InviteStatus, BadgeTone>([
+  ["active", "accent"],
+  ["revoked", "danger"],
+  ["expired", "neutral"],
+  ["exhausted", "neutral"],
 ]);
 
 type Filter = "active" | "ended" | "all";
@@ -150,16 +158,7 @@ export function InviteList(props: InviteListProps) {
 }
 
 function StatusBadge({ status }: { readonly status: InviteStatus }) {
-  return (
-    <span
-      className={cn(
-        "shrink-0 rounded-full px-2 py-0.5 text-[11px] font-medium",
-        STATUS_STYLES.get(status),
-      )}
-    >
-      {statusLabel(status)}
-    </span>
-  );
+  return <Badge tone={STATUS_TONES.get(status) ?? "neutral"}>{statusLabel(status)}</Badge>;
 }
 
 interface MetaProps {

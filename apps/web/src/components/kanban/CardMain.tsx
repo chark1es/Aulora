@@ -1,8 +1,7 @@
-import { Button, cn, Icon } from "@aulora/ui-web";
+import { Button, Checkbox, cn, Icon, Textarea } from "@aulora/ui-web";
 import { useLayoutEffect, useRef, useState } from "react";
 import { field, rowAction, Section } from "./card-parts";
-import { CheckMark } from "./controls";
-import { control, newItemId } from "./types";
+import { newItemId } from "./types";
 import type { CardDraft, CardEditor } from "./use-card-editor";
 
 interface Props {
@@ -71,12 +70,13 @@ export function CardTitle({ editor }: Props) {
 export function CardNotes({ editor }: Props) {
   return (
     <Section icon="note" title="Notes">
-      <textarea
-        aria-label="Notes"
+      <Textarea
+        label="Notes"
+        hideLabel
         rows={5}
         maxLength={30000}
         placeholder={editor.canEdit ? "Add details, context or links…" : "No notes"}
-        className={cn(control, "resize-y leading-relaxed placeholder:text-text-muted")}
+        className="resize-y leading-relaxed"
         value={editor.draft.notes}
         onChange={(event) => {
           editor.setDraft({ ...editor.draft, notes: event.target.value });
@@ -129,9 +129,18 @@ function ItemRow({ editor, item }: Props & { item: Item }) {
         editor.menu(event, "Checklist item actions", items);
       }}
     >
-      <label className="flex min-w-0 flex-1 cursor-pointer items-start gap-2.5 py-1.5 text-[13px]">
-        <input type="checkbox" className="peer sr-only" checked={item.done} onChange={toggle} />
-        <CheckMark className="mt-px" />
+      <label
+        htmlFor={`kanban-item-${item.id}`}
+        className="flex min-w-0 flex-1 cursor-pointer items-start gap-2.5 py-1.5 text-[13px]"
+      >
+        <Checkbox
+          bare
+          id={`kanban-item-${item.id}`}
+          label={item.text}
+          checked={item.done}
+          onChange={toggle}
+          className="mt-0.5"
+        />
         <span
           className={cn(
             "min-w-0 break-words transition-colors",

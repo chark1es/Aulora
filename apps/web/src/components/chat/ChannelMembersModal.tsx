@@ -1,4 +1,4 @@
-import { cn, Icon, Modal } from "@aulora/ui-web";
+import { Button, Icon, Modal } from "@aulora/ui-web";
 import { useMemo, useState } from "react";
 import { PresenceAvatar, type PresenceStatus } from "./PresenceAvatar";
 
@@ -99,19 +99,15 @@ export function ChannelMembersModal({
                   {self ? " (you)" : ""}
                 </span>
                 {isPrivate && canManage && (
-                  <button
+                  <Button
                     type="button"
+                    size="sm"
+                    variant={inRoom ? "secondary" : "primary"}
                     disabled={self && inRoom}
                     onClick={() => (inRoom ? onRemove?.(member.userId) : onAdd?.(member.userId))}
-                    className={cn(
-                      "h-7 rounded-[7px] px-2.5 text-[12px] font-medium transition disabled:opacity-40",
-                      inRoom
-                        ? "border border-border text-text-muted hover:border-danger/40 hover:text-danger"
-                        : "bg-accent text-on-accent hover:brightness-110",
-                    )}
                   >
                     {inRoom ? "Remove" : "Add"}
-                  </button>
+                  </Button>
                 )}
                 {(!isPrivate || !canManage) && inRoom && (
                   <span className="text-[11px] text-text-muted">In channel</span>

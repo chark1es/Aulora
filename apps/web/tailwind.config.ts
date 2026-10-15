@@ -60,6 +60,14 @@ const config: Config = {
           "0%": { backgroundPosition: "200% 0" },
           "100%": { backgroundPosition: "-200% 0" },
         },
+        "blob-drift": {
+          "0%, 100%": { transform: "translate3d(-3%, -2%, 0) scale(1)" },
+          "50%": { transform: "translate3d(4%, 3%, 0) scale(1.12)" },
+        },
+        "blob-drift-alt": {
+          "0%, 100%": { transform: "translate3d(3%, 2%, 0) scale(1.06)" },
+          "50%": { transform: "translate3d(-4%, -3%, 0) scale(1)" },
+        },
       },
       animation: {
         "typing-dot": "typing-dot 1.2s ease-in-out infinite",
@@ -70,6 +78,8 @@ const config: Config = {
         "message-in": "message-in 200ms cubic-bezier(0.16, 1, 0.3, 1) both",
         "scale-in": "scale-in 140ms ease-out both",
         shimmer: "shimmer 1.6s linear infinite",
+        "blob-drift": "blob-drift 26s ease-in-out infinite",
+        "blob-drift-alt": "blob-drift-alt 34s ease-in-out infinite",
       },
     },
   },

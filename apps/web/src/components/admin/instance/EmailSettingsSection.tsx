@@ -1,11 +1,20 @@
-import { Button, Heading, Input, Switch, Text } from "@aulora/ui-web";
+import { Button, Input, Select, Switch, Text } from "@aulora/ui-web";
 import { useAction, useMutation, useQuery } from "convex/react";
 import type { FunctionReturnType } from "convex/server";
 import { useEffect, useState } from "react";
 import { api } from "../../../../../../packages/convex/convex/_generated/api";
 import type { Callback } from "../callbacks";
+import { SaveRow } from "../SettingsSaveRow";
+import { SettingsSectionHeader } from "../SettingsSection";
 
 type EmailSettings = NonNullable<FunctionReturnType<typeof api.email.settings>>;
+type EmailProvider = "none" | "resend" | "smtp";
+
+const PROVIDER_OPTIONS: readonly { readonly value: EmailProvider; readonly label: string }[] = [
+  { value: "none", label: "Disabled" },
+  { value: "resend", label: "Resend" },
+  { value: "smtp", label: "SMTP" },
+];
 
 export function EmailSection() {
   const current = useQuery(api.email.settings, {});
@@ -18,11 +27,11 @@ export function EmailSection() {
 
   return (
     <section className="flex flex-col gap-4" data-testid="instance-email">
-      <Heading level={3}>Email</Heading>
-      <Text tone="muted" size="sm">
-        Configure invite delivery. Credentials are encrypted on the server and are never shown
-        again.
-      </Text>
+      <SettingsSectionHeader
+        icon="mail"
+        title="Email"
+        description="Configure invite delivery. Credentials are encrypted on the server and are never shown again."
+      />
       {current === undefined ? (
         <EmailConfigForm onResult={onResult} />
       ) : (
@@ -43,6 +52,34 @@ export function EmailSection() {
   );
 }
 
+function emailDirty(
+  current: EmailSettings | undefined,
+  draft: {
+    readonly provider: EmailProvider;
+    readonly from: string;
+    readonly smtpHost: string;
+    readonly smtpPort: string;
+    readonly smtpSecure: boolean;
+    readonly smtpUser: string;
+    readonly resendApiKey: string;
+    readonly smtpPassword: string;
+  },
+): boolean {
+  if (current === undefined) {
+    return false;
+  }
+  return (
+    draft.provider !== current.provider ||
+    draft.from !== current.from ||
+    draft.smtpHost !== current.smtpHost ||
+    draft.smtpPort !== String(current.smtpPort) ||
+    draft.smtpSecure !== current.smtpSecure ||
+    draft.smtpUser !== current.smtpUser ||
+    draft.resendApiKey.length > 0 ||
+    draft.smtpPassword.length > 0
+  );
+}
+
 function EmailConfigForm({
   current,
   onResult,
@@ -51,7 +88,7 @@ function EmailConfigForm({
   readonly onResult: Callback<[status: string | null, error: string | null]>;
 }) {
   const update = useMutation(api.email.updateSettings);
-  const [provider, setProvider] = useState<"none" | "resend" | "smtp">("none");
+  const [provider, setProvider] = useState<EmailProvider>("none");
   const [from, setFrom] = useState("");
   const [resendApiKey, setResendApiKey] = useState("");
   const [smtpHost, setSmtpHost] = useState("");
@@ -71,94 +108,99 @@ function EmailConfigForm({
     setSmtpUser(current.smtpUser);
   }, [current]);
 
+  const dirty = emailDirty(current, {
+    provider,
+    from,
+    smtpHost,
+    smtpPort,
+    smtpSecure,
+    smtpUser,
+    resendApiKey,
+    smtpPassword,
+  });
+
+  function submit(): void {
+    onResult(null, null);
+    setBusy(true);
+    void update({
+      provider,
+      from,
+      ...(resendApiKey ? { resendApiKey } : {}),
+      smtpHost,
+      smtpPort: Number(smtpPort),
+      smtpSecure,
+      smtpUser,
+      ...(smtpPassword ? { smtpPassword } : {}),
+    })
+      .then(() => {
+        setResendApiKey("");
+        setSmtpPassword("");
+        onResult("Email settings saved. Send a test message to verify delivery.", null);
+      })
+      .catch((cause: unknown) => {
+        onResult(null, cause instanceof Error ? cause.message : "Could not save email settings.");
+      })
+      .finally(() => {
+        setBusy(false);
+      });
+  }
+
   return (
     <form
-      className="grid gap-4 md:grid-cols-2"
+      className="flex flex-col gap-4"
       onSubmit={(event) => {
         event.preventDefault();
-        onResult(null, null);
-        setBusy(true);
-        void update({
-          provider,
-          from,
-          ...(resendApiKey ? { resendApiKey } : {}),
-          smtpHost,
-          smtpPort: Number(smtpPort),
-          smtpSecure,
-          smtpUser,
-          ...(smtpPassword ? { smtpPassword } : {}),
-        })
-          .then(() => {
-            setResendApiKey("");
-            setSmtpPassword("");
-            onResult("Email settings saved. Send a test message to verify delivery.", null);
-          })
-          .catch((cause: unknown) => {
-            onResult(
-              null,
-              cause instanceof Error ? cause.message : "Could not save email settings.",
-            );
-          })
-          .finally(() => {
-            setBusy(false);
-          });
+        submit();
       }}
     >
-      <label className="flex flex-col gap-1.5 text-[13px] font-medium text-text">
-        Provider
-        <select
+      <div className="grid gap-4 sm:grid-cols-2">
+        <Select
+          label="Provider"
           value={provider}
-          onChange={(event) => {
-            setProvider(event.target.value as typeof provider);
+          options={PROVIDER_OPTIONS}
+          onChange={(next) => {
+            setProvider(next);
+            onResult(null, null);
           }}
-          className="h-10 rounded-[8px] border border-border bg-surface-2 px-3 text-text"
-        >
-          <option value="none">Disabled</option>
-          <option value="resend">Resend</option>
-          <option value="smtp">SMTP</option>
-        </select>
-      </label>
-      <Input
-        label="From address"
-        value={from}
-        onChange={(event) => {
-          setFrom(event.currentTarget.value);
-        }}
-        placeholder="Aulora hello@example.com"
-        required
-      />
-      {provider === "resend" && (
+        />
         <Input
-          label="Resend API key"
-          type="password"
-          value={resendApiKey}
+          label="From address"
+          value={from}
+          placeholder="Aulora hello@example.com"
+          required
           onChange={(event) => {
-            setResendApiKey(event.currentTarget.value);
+            setFrom(event.currentTarget.value);
           }}
-          placeholder={current?.hasResendApiKey ? "Saved key" : "re_..."}
-          autoComplete="off"
         />
-      )}
-      {provider === "smtp" && (
-        <SmtpFields
-          host={smtpHost}
-          port={smtpPort}
-          user={smtpUser}
-          password={smtpPassword}
-          secure={smtpSecure}
-          hasPassword={current?.hasSmtpPassword ?? false}
-          onHost={setSmtpHost}
-          onPort={setSmtpPort}
-          onUser={setSmtpUser}
-          onPassword={setSmtpPassword}
-          onSecure={setSmtpSecure}
-        />
-      )}
-      <div className="md:col-span-2">
-        <Button type="submit" loading={busy} disabled={busy || current === undefined}>
-          Save email settings
-        </Button>
+        {provider === "resend" && (
+          <Input
+            label="Resend API key"
+            type="password"
+            value={resendApiKey}
+            placeholder={current?.hasResendApiKey ? "Saved key" : "re_..."}
+            autoComplete="off"
+            onChange={(event) => {
+              setResendApiKey(event.currentTarget.value);
+            }}
+          />
+        )}
+        {provider === "smtp" && (
+          <SmtpFields
+            host={smtpHost}
+            port={smtpPort}
+            user={smtpUser}
+            password={smtpPassword}
+            secure={smtpSecure}
+            hasPassword={current?.hasSmtpPassword ?? false}
+            onHost={setSmtpHost}
+            onPort={setSmtpPort}
+            onUser={setSmtpUser}
+            onPassword={setSmtpPassword}
+            onSecure={setSmtpSecure}
+          />
+        )}
       </div>
+      <SaveRow busy={busy} dirty={dirty} saved={false} error={null} />
     </form>
   );
 }
@@ -178,77 +220,51 @@ interface SmtpFieldsProps {
 }
 
 function SmtpFields(props: SmtpFieldsProps) {
-  const {
-    host,
-    port,
-    user,
-    password,
-    secure,
-    hasPassword,
-    onHost,
-    onPort,
-    onUser,
-    onPassword,
-    onSecure,
-  } = props;
+  const { host, port, user, password, secure, hasPassword } = props;
   return (
     <>
       <Input
         label="SMTP host"
         value={host}
-        onChange={(event) => {
-          onHost(event.currentTarget.value);
-        }}
         required
+        onChange={(event) => {
+          props.onHost(event.currentTarget.value);
+        }}
       />
       <Input
         label="SMTP port"
         type="number"
         value={port}
-        onChange={(event) => {
-          onPort(event.currentTarget.value);
-        }}
         required
+        onChange={(event) => {
+          props.onPort(event.currentTarget.value);
+        }}
       />
       <Input
         label="SMTP username"
         value={user}
-        onChange={(event) => {
-          onUser(event.currentTarget.value);
-        }}
         autoComplete="off"
+        onChange={(event) => {
+          props.onUser(event.currentTarget.value);
+        }}
       />
-      <SmtpPasswordField value={password} hasPassword={hasPassword} onChange={onPassword} />
+      <Input
+        label="SMTP password"
+        type="password"
+        value={password}
+        placeholder={hasPassword ? "Saved password" : "Optional if server needs no login"}
+        autoComplete="new-password"
+        onChange={(event) => {
+          props.onPassword(event.currentTarget.value);
+        }}
+      />
       <Switch
         checked={secure}
-        onChange={onSecure}
+        onChange={props.onSecure}
         label="Use TLS immediately"
         description="Enable for port 465. Port 587 uses STARTTLS automatically."
       />
     </>
-  );
-}
-
-function SmtpPasswordField({
-  value,
-  hasPassword,
-  onChange,
-}: {
-  readonly value: string;
-  readonly hasPassword: boolean;
-  readonly onChange: Callback<[value: string]>;
-}) {
-  return (
-    <Input
-      label="SMTP password"
-      type="password"
-      value={value}
-      onChange={(event) => {
-        onChange(event.currentTarget.value);
-      }}
-      placeholder={hasPassword ? "Saved password" : "Optional if server needs no login"}
-      autoComplete="new-password"
-    />
   );
 }
 
@@ -293,10 +309,10 @@ function EmailTestForm({
         type="email"
         placeholder="you@example.com"
         value={to}
+        autoComplete="off"
         onChange={(event) => {
           setTo(event.currentTarget.value);
         }}
-        autoComplete="off"
       />
       <Button type="submit" loading={busy} disabled={busy || to.trim().length === 0}>
         Send test email

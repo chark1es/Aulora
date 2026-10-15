@@ -239,8 +239,8 @@ function ScopeGroup({
               }}
               className="group flex w-full items-center gap-3 px-4 py-2.5 text-left transition hover:bg-surface-3 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-accent"
             >
-              <span className="flex h-7 w-7 shrink-0 items-center justify-center rounded-[8px] border border-border bg-surface-1 text-text-muted group-hover:text-accent">
-                <Icon name={scope.kind === "category" ? "sidebar" : "hash"} size={14} />
+              <span className="flex h-8 w-8 shrink-0 items-center justify-center rounded-[9px] border border-border bg-surface-1 text-text-muted group-hover:text-accent">
+                <Icon name={scope.kind === "category" ? "sidebar" : "hash"} size={16} />
               </span>
               <Text as="span" size="sm" className="min-w-0 flex-1 truncate font-medium">
                 {scope.name}

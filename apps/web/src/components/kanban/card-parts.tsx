@@ -37,4 +37,4 @@ export const field =
 
 /** A small button at the end of a row that shows on hover or focus. */
 export const rowAction =
-  "flex h-6 w-6 shrink-0 items-center justify-center rounded-[6px] text-text-muted opacity-0 transition hover:bg-surface-3 hover:text-text focus-visible:opacity-100 group-hover:opacity-100 disabled:pointer-events-none";
+  "flex h-8 w-8 shrink-0 items-center justify-center rounded-[7px] text-text-muted opacity-0 transition hover:bg-surface-3 hover:text-text focus-visible:opacity-100 group-hover:opacity-100 disabled:pointer-events-none";

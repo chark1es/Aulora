@@ -1,49 +1,22 @@
 import type { MediaDeviceInfo, VoiceDeviceSettings } from "@aulora/core";
-import { Button, Heading, Text, usePalette } from "@aulora/ui-native";
-import { Pressable, ScrollView, Switch, View } from "react-native";
+import {
+  Button,
+  Icon,
+  SegmentedControl,
+  SettingRow,
+  Switch,
+  Text,
+  usePalette,
+} from "@aulora/ui-native";
+import { ScrollView, View } from "react-native";
+import { selectionFeedback } from "../../lib/haptics";
 import { useVoice } from "../../providers/VoiceProvider";
+import { ListGroup, ListHeader, ListRow } from "../chat/List";
 
 const RESOLUTIONS: readonly VoiceDeviceSettings["videoResolution"][] = ["360p", "720p", "1080p"];
+const RESOLUTION_OPTIONS = RESOLUTIONS.map((value) => ({ value, label: value }));
 
 type UpdateSettings = (patch: Partial<VoiceDeviceSettings>) => void;
-
-function DeviceOption({
-  label,
-  selected,
-  onPress,
-  checkColor,
-}: {
-  readonly label: string;
-  readonly selected: boolean;
-  readonly onPress: () => void;
-  readonly checkColor?: string;
-}) {
-  return (
-    <Pressable
-      accessibilityRole="button"
-      accessibilityState={{ selected }}
-      onPress={onPress}
-      className={
-        selected
-          ? "flex-row items-center justify-between rounded-input border border-accent bg-accent-soft px-3 py-2"
-          : "flex-row items-center justify-between rounded-input border border-border bg-surface-3 px-3 py-2"
-      }
-    >
-      <Text size="sm" numberOfLines={1} className="flex-1">
-        {label}
-      </Text>
-      {selected && (
-        <Text
-          size="sm"
-          tone="accent"
-          style={checkColor !== undefined ? { color: checkColor } : undefined}
-        >
-          ✓
-        </Text>
-      )}
-    </Pressable>
-  );
-}
 
 function DevicePicker({
   label,
@@ -60,29 +33,37 @@ function DevicePicker({
 }) {
   const palette = usePalette();
   const options = devices.filter((device) => device.kind === kind);
+  const select = (deviceId: string | null) => {
+    selectionFeedback();
+    onSelect(deviceId);
+  };
+  const check = <Icon name="check" size={18} color={palette.accent} />;
   return (
-    <View className="gap-1.5">
-      <Heading level={3}>{label}</Heading>
-      <DeviceOption
-        label="System default"
-        selected={selected === null}
-        onPress={() => {
-          onSelect(null);
-        }}
-      />
-      {options.map((device) => (
-        <DeviceOption
-          key={device.deviceId}
-          label={device.label}
-          selected={selected === device.deviceId}
+    <View>
+      <ListHeader title={label} />
+      <ListGroup inset={16}>
+        <ListRow
+          title="System default"
+          selected={selected === null}
+          trailing={selected === null ? check : undefined}
           onPress={() => {
-            onSelect(device.deviceId);
+            select(null);
           }}
-          checkColor={palette.accent}
         />
-      ))}
+        {options.map((device) => (
+          <ListRow
+            key={device.deviceId}
+            title={device.label}
+            selected={selected === device.deviceId}
+            trailing={selected === device.deviceId ? check : undefined}
+            onPress={() => {
+              select(device.deviceId);
+            }}
+          />
+        ))}
+      </ListGroup>
       {options.length === 0 && (
-        <Text size="xs" tone="muted">
+        <Text size="xs" tone="muted" className="px-1 pt-1.5">
           No devices detected yet.
         </Text>
       )}
@@ -92,29 +73,33 @@ function DevicePicker({
 
 function ToggleRow({
   label,
+  description,
   value,
   onChange,
   disabled = false,
 }: {
   readonly label: string;
+  readonly description?: string;
   readonly value: boolean;
   readonly onChange: (_value: boolean) => void;
   readonly disabled?: boolean;
 }) {
-  const palette = usePalette();
   return (
-    <View className="flex-row items-center justify-between py-1">
-      <Text size="sm" className="flex-1" tone={disabled ? "muted" : "default"}>
-        {label}
-      </Text>
-      <Switch
-        value={value}
-        onValueChange={onChange}
-        disabled={disabled}
-        trackColor={{ false: palette.border, true: palette.accent }}
-        thumbColor={palette["on-accent"]}
-      />
-    </View>
+    <SettingRow
+      label={label}
+      description={description}
+      control={
+        <Switch
+          accessibilityLabel={label}
+          value={value}
+          disabled={disabled}
+          onValueChange={(next) => {
+            selectionFeedback();
+            onChange(next);
+          }}
+        />
+      }
+    />
   );
 }
 
@@ -130,74 +115,34 @@ function VolumeStepper({
   const step = 0.1;
   const clamp = (next: number) => Math.min(2, Math.max(0, Math.round(next * 10) / 10));
   return (
-    <View className="flex-row items-center justify-between gap-3">
-      <Text size="sm" className="flex-1">
-        {label}
-      </Text>
-      <Button
-        size="sm"
-        variant="secondary"
-        onPress={() => {
-          onChange(clamp(value - step));
-        }}
-      >
-        −
-      </Button>
-      <Text size="sm" mono style={{ minWidth: 48, textAlign: "center" }}>
-        {`${Math.round(value * 100)}%`}
-      </Text>
-      <Button
-        size="sm"
-        variant="secondary"
-        onPress={() => {
-          onChange(clamp(value + step));
-        }}
-      >
-        +
-      </Button>
-    </View>
-  );
-}
-
-function Segmented<T extends string>({
-  label,
-  options,
-  value,
-  onSelect,
-}: {
-  readonly label: string;
-  readonly options: readonly T[];
-  readonly value: T;
-  readonly onSelect: (_value: T) => void;
-}) {
-  return (
-    <View className="gap-1.5">
-      <Text size="sm">{label}</Text>
-      <View className="flex-row gap-2">
-        {options.map((option) => {
-          const active = option === value;
-          return (
-            <Pressable
-              key={option}
-              accessibilityRole="button"
-              accessibilityState={{ selected: active }}
-              onPress={() => {
-                onSelect(option);
-              }}
-              className={
-                active
-                  ? "flex-1 items-center rounded-input border border-accent bg-accent-soft px-3 py-2"
-                  : "flex-1 items-center rounded-input border border-border bg-surface-3 px-3 py-2"
-              }
-            >
-              <Text size="sm" tone={active ? "accent" : "muted"}>
-                {option}
-              </Text>
-            </Pressable>
-          );
-        })}
-      </View>
-    </View>
+    <SettingRow
+      label={label}
+      control={
+        <View className="flex-row items-center gap-2">
+          <Button
+            size="sm"
+            variant="secondary"
+            onPress={() => {
+              onChange(clamp(value - step));
+            }}
+          >
+            −
+          </Button>
+          <Text size="sm" mono className="min-w-[48px] text-center">
+            {`${Math.round(value * 100)}%`}
+          </Text>
+          <Button
+            size="sm"
+            variant="secondary"
+            onPress={() => {
+              onChange(clamp(value + step));
+            }}
+          >
+            +
+          </Button>
+        </View>
+      }
+    />
   );
 }
 
@@ -209,29 +154,31 @@ function AudioProcessing({
   readonly update: UpdateSettings;
 }) {
   return (
-    <View className="gap-1">
-      <Heading level={3}>Audio processing</Heading>
-      <ToggleRow
-        label="Echo cancellation"
-        value={settings.echoCancellation}
-        onChange={(value) => {
-          update({ echoCancellation: value });
-        }}
-      />
-      <ToggleRow
-        label="Noise suppression"
-        value={settings.noiseSuppression}
-        onChange={(value) => {
-          update({ noiseSuppression: value });
-        }}
-      />
-      <ToggleRow
-        label="Automatic gain control"
-        value={settings.autoGainControl}
-        onChange={(value) => {
-          update({ autoGainControl: value });
-        }}
-      />
+    <View>
+      <ListHeader title="Audio processing" />
+      <ListGroup inset={16}>
+        <ToggleRow
+          label="Echo cancellation"
+          value={settings.echoCancellation}
+          onChange={(value) => {
+            update({ echoCancellation: value });
+          }}
+        />
+        <ToggleRow
+          label="Noise suppression"
+          value={settings.noiseSuppression}
+          onChange={(value) => {
+            update({ noiseSuppression: value });
+          }}
+        />
+        <ToggleRow
+          label="Automatic gain control"
+          value={settings.autoGainControl}
+          onChange={(value) => {
+            update({ autoGainControl: value });
+          }}
+        />
+      </ListGroup>
     </View>
   );
 }
@@ -244,29 +191,31 @@ function LevelsSection({
   readonly update: UpdateSettings;
 }) {
   return (
-    <View className="gap-2">
-      <Heading level={3}>Levels</Heading>
-      <VolumeStepper
-        label="Input volume"
-        value={settings.inputVolume}
-        onChange={(value) => {
-          update({ inputVolume: value });
-        }}
-      />
-      <VolumeStepper
-        label="Output volume"
-        value={settings.outputVolume}
-        onChange={(value) => {
-          update({ outputVolume: value });
-        }}
-      />
-      <VolumeStepper
-        label="Noise gate"
-        value={settings.noiseGateThreshold}
-        onChange={(value) => {
-          update({ noiseGateThreshold: value });
-        }}
-      />
+    <View>
+      <ListHeader title="Levels" />
+      <ListGroup inset={16}>
+        <VolumeStepper
+          label="Input volume"
+          value={settings.inputVolume}
+          onChange={(value) => {
+            update({ inputVolume: value });
+          }}
+        />
+        <VolumeStepper
+          label="Output volume"
+          value={settings.outputVolume}
+          onChange={(value) => {
+            update({ outputVolume: value });
+          }}
+        />
+        <VolumeStepper
+          label="Noise gate"
+          value={settings.noiseGateThreshold}
+          onChange={(value) => {
+            update({ noiseGateThreshold: value });
+          }}
+        />
+      </ListGroup>
     </View>
   );
 }
@@ -279,23 +228,28 @@ function VideoSection({
   readonly update: UpdateSettings;
 }) {
   return (
-    <View className="gap-2">
-      <Heading level={3}>Video</Heading>
-      <Segmented
-        label="Resolution"
-        options={RESOLUTIONS}
-        value={settings.videoResolution}
-        onSelect={(value) => {
-          update({ videoResolution: value });
-        }}
-      />
-      <ToggleRow
-        label="Mirror camera"
-        value={settings.mirrorCamera}
-        onChange={(value) => {
-          update({ mirrorCamera: value });
-        }}
-      />
+    <View>
+      <ListHeader title="Video" />
+      <View className="pb-3">
+        <SegmentedControl
+          label="Resolution"
+          options={RESOLUTION_OPTIONS}
+          value={settings.videoResolution}
+          onChange={(value) => {
+            selectionFeedback();
+            update({ videoResolution: value });
+          }}
+        />
+      </View>
+      <ListGroup inset={16}>
+        <ToggleRow
+          label="Mirror camera"
+          value={settings.mirrorCamera}
+          onChange={(value) => {
+            update({ mirrorCamera: value });
+          }}
+        />
+      </ListGroup>
     </View>
   );
 }
@@ -310,36 +264,38 @@ function JoinSection({
   readonly pushToTalkUnavailable: boolean;
 }) {
   return (
-    <View className="gap-1">
-      <Heading level={3}>When joining</Heading>
-      <ToggleRow
-        label="Push to talk"
-        value={settings.pushToTalk}
-        onChange={(value) => {
-          update({ pushToTalk: value });
-        }}
-        disabled={pushToTalkUnavailable && !settings.pushToTalk}
-      />
+    <View>
+      <ListHeader title="When joining" />
+      <ListGroup inset={16}>
+        <ToggleRow
+          label="Push to talk"
+          value={settings.pushToTalk}
+          onChange={(value) => {
+            update({ pushToTalk: value });
+          }}
+          disabled={pushToTalkUnavailable && !settings.pushToTalk}
+        />
+        <ToggleRow
+          label="Join muted"
+          value={settings.joinMuted}
+          onChange={(value) => {
+            update({ joinMuted: value });
+          }}
+        />
+        <ToggleRow
+          label="Join with camera on"
+          value={settings.joinWithCamera}
+          onChange={(value) => {
+            update({ joinWithCamera: value });
+          }}
+        />
+      </ListGroup>
       {pushToTalkUnavailable && (
-        <Text size="xs" tone="muted">
-          Push-to-talk needs live microphone levels, which this device's WebRTC build does not
+        <Text size="xs" tone="muted" className="px-1 pt-1.5">
+          Push-to-talk needs live microphone levels, which this device’s WebRTC build does not
           expose. While it is enabled the microphone stays closed instead of transmitting.
         </Text>
       )}
-      <ToggleRow
-        label="Join muted"
-        value={settings.joinMuted}
-        onChange={(value) => {
-          update({ joinMuted: value });
-        }}
-      />
-      <ToggleRow
-        label="Join with camera on"
-        value={settings.joinWithCamera}
-        onChange={(value) => {
-          update({ joinWithCamera: value });
-        }}
-      />
     </View>
   );
 }

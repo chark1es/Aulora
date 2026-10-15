@@ -94,7 +94,11 @@ instance-level concerns live:
   overrides saved in the **Environment** section; set credentials in
   `infra/docker/.env` (or the Environment tab) and re-run `setup`. Secrets are
   never shown, only whether each provider is configured, and values that came
-  from the deployment are hidden even from the owner.
+  from the deployment are hidden even from the owner. The **Email & password
+  sign-in** switch turns local sign-in on or off at runtime (no redeploy); it is
+  refused while no other provider is configured and enabled, so the instance can
+  never be locked out, and first-run owner creation is never blocked by it. See
+  [Disabling email & password sign-in](self-hosting.md#disabling-email-password-sign-in).
 - **Environment** — every environment variable the app reads, with where each
   value comes from (environment, overridden here, or unset). Deployment values
   are never returned, secret or not. The owner can override a curated set, reset
@@ -107,7 +111,9 @@ instance-level concerns live:
   group's deployment values from applying, so a deployment secret is never
   paired with an endpoint the owner chose. Overrides take effect on the next
   request, with no restart. Set `AULORA_ALLOW_UI_ENV_OVERRIDES=false` in `.env`
-  and re-run `setup` to disable the section.
+  and re-run `setup` to disable the section. The
+  [environment variables reference](environment-variables.md) lists every
+  variable the app reads.
 - **Storage** — the total upload quota (`0` means unlimited) and the largest
   single upload. Both are validated server-side.
 - **Encryption** — the EKM provider (default `local`), the KEK id and the active

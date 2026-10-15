@@ -174,6 +174,16 @@ export function WorkspaceUpdateProvider({
             null
           }
           notes={(useHost ? host.notes : result?.notes) ?? null}
+          releaseDate={useHost ? null : (result?.pubDate ?? null)}
+          lastCheckedAt={
+            useHost
+              ? host.checkedAt > 0
+                ? host.checkedAt
+                : null
+              : result !== undefined
+                ? now
+                : null
+          }
           canDownload={
             capabilities !== undefined && (coolify ? capabilities.configured : hostConnected)
           }

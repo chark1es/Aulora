@@ -1,10 +1,10 @@
 /* eslint-disable no-unused-vars -- the base rule reports parameter names in type signatures; Biome checks real unused code */
-import { Button, Input, Modal, Spinner } from "@aulora/ui-web";
+import { Button, Input, Modal, Select, Spinner } from "@aulora/ui-web";
 import { useAction, useMutation, useQuery } from "convex/react";
 import { useState } from "react";
 import { api } from "../../../../../packages/convex/convex/_generated/api";
 import type { GitHubBrowseResult } from "../../../../../packages/convex/convex/kanbanGithub";
-import { control, failure } from "./types";
+import { failure } from "./types";
 
 export function GithubBrowser({
   onClose,
@@ -140,35 +140,33 @@ export function GithubBrowser({
                 hint="Leave empty to list your repositories."
               />
               <div className="flex flex-wrap items-end gap-2">
-                <label className="flex min-w-[140px] flex-1 flex-col gap-1 text-xs text-text-muted">
-                  Type
-                  <select
-                    className={control}
-                    value={kind}
-                    onChange={(e) => {
-                      setKind(e.target.value as "issues" | "pulls");
-                      setResult(null);
-                    }}
-                  >
-                    <option value="issues">Issues</option>
-                    <option value="pulls">Pull requests</option>
-                  </select>
-                </label>
-                <label className="flex min-w-[120px] flex-1 flex-col gap-1 text-xs text-text-muted">
-                  State
-                  <select
-                    className={control}
-                    value={state}
-                    onChange={(e) => {
-                      setState(e.target.value as "open" | "closed" | "all");
-                      setResult(null);
-                    }}
-                  >
-                    <option value="open">Open</option>
-                    <option value="closed">Closed</option>
-                    <option value="all">All</option>
-                  </select>
-                </label>
+                <Select
+                  label="Type"
+                  value={kind}
+                  options={[
+                    { value: "issues", label: "Issues" },
+                    { value: "pulls", label: "Pull requests" },
+                  ]}
+                  onChange={(value) => {
+                    setKind(value);
+                    setResult(null);
+                  }}
+                  className="min-w-[140px] flex-1"
+                />
+                <Select
+                  label="State"
+                  value={state}
+                  options={[
+                    { value: "open", label: "Open" },
+                    { value: "closed", label: "Closed" },
+                    { value: "all", label: "All" },
+                  ]}
+                  onChange={(value) => {
+                    setState(value);
+                    setResult(null);
+                  }}
+                  className="min-w-[120px] flex-1"
+                />
                 <Button type="submit" loading={busy}>
                   Browse
                 </Button>

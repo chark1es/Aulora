@@ -3,10 +3,12 @@ import { useQuery } from "convex/react";
 import { useState } from "react";
 import { api } from "../../../../../../packages/convex/convex/_generated/api";
 import { SettingsSectionHeader } from "../SettingsSection";
+import { AuthSection } from "./AuthSection";
 import { EmailSection } from "./EmailSettingsSection";
 import { EnvironmentSection } from "./EnvironmentSection";
-import { AuthSection, BackupsSection, OverviewSection, PushRelaySection } from "./InstanceSections";
+import { BackupsSection, OverviewSection } from "./InstanceSections";
 import { LicensePanel } from "./LicensePanel";
+import { PushRelaySection } from "./PushRelaySection";
 import { StorageSection } from "./StorageSection";
 
 export interface InstanceAdminPanelProps {
@@ -63,7 +65,7 @@ export function InstanceAdminPanel({
           title="Instance"
           description="Server status, auth providers, environment overrides, storage quotas, backups, push relay and licensing. Visible to the workspace owner only."
         />
-        <InstanceAdminContent canManage={canManage} bodyClassName="flex flex-col gap-8" inline />
+        <InstanceAdminContent canManage={canManage} bodyClassName="flex flex-col gap-5" />
       </section>
     );
   }
@@ -102,42 +104,39 @@ function InstanceAdminContent({
   canManage,
   onClose,
   bodyClassName,
-  inline = false,
 }: {
   readonly canManage: boolean;
   readonly onClose?: () => void;
   readonly bodyClassName: string;
-  readonly inline?: boolean;
 }) {
   const overview = useQuery(api.instance.overview, canManage ? {} : "skip");
   const [active, setActive] = useState<TabId>("overview");
 
   return (
     <>
-      {!inline && (
-        <nav
-          className="flex flex-wrap gap-1 border-b border-border px-4 py-2"
-          aria-label="Instance admin sections"
-        >
-          {TABS.map((tab) => (
-            <button
-              key={tab.id}
-              type="button"
-              aria-current={active === tab.id ? "page" : undefined}
-              className={
-                active === tab.id
-                  ? "rounded-[7px] bg-surface-3 px-3 py-1 text-[13px] font-medium text-text"
-                  : "rounded-[7px] px-3 py-1 text-[13px] text-text-muted hover:bg-surface-2 hover:text-text"
-              }
-              onClick={() => {
-                setActive(tab.id);
-              }}
-            >
-              {tab.label}
-            </button>
-          ))}
-        </nav>
-      )}
+      <nav
+        className="flex flex-wrap gap-1 border-b border-border pb-2"
+        aria-label="Instance admin sections"
+      >
+        {TABS.map((tab) => (
+          <button
+            key={tab.id}
+            type="button"
+            aria-current={active === tab.id ? "page" : undefined}
+            data-testid={`instance-tab-${tab.id}`}
+            className={
+              active === tab.id
+                ? "rounded-[7px] bg-surface-3 px-3 py-1 text-[13px] font-medium text-text"
+                : "rounded-[7px] px-3 py-1 text-[13px] text-text-muted hover:bg-surface-2 hover:text-text"
+            }
+            onClick={() => {
+              setActive(tab.id);
+            }}
+          >
+            {tab.label}
+          </button>
+        ))}
+      </nav>
       <div className={bodyClassName}>
         {!canManage ? (
           <Text tone="muted" size="sm" data-testid="instance-admin-locked">
@@ -149,14 +148,14 @@ function InstanceAdminContent({
           </Text>
         ) : (
           <>
-            {(inline || active === "overview") && <OverviewSection overview={overview} />}
-            {(inline || active === "auth") && <AuthSection overview={overview} />}
-            {(inline || active === "environment") && <EnvironmentSection />}
-            {(inline || active === "email") && <EmailSection />}
-            {(inline || active === "storage") && <StorageSection overview={overview} />}
-            {(inline || active === "backups") && <BackupsSection overview={overview} />}
-            {(inline || active === "push") && <PushRelaySection overview={overview} />}
-            {(inline || active === "license") && <LicensePanel canManage={canManage} />}
+            {active === "overview" && <OverviewSection overview={overview} />}
+            {active === "auth" && <AuthSection overview={overview} />}
+            {active === "environment" && <EnvironmentSection />}
+            {active === "email" && <EmailSection />}
+            {active === "storage" && <StorageSection overview={overview} />}
+            {active === "backups" && <BackupsSection overview={overview} />}
+            {active === "push" && <PushRelaySection overview={overview} />}
+            {active === "license" && <LicensePanel canManage={canManage} />}
           </>
         )}
         {onClose !== undefined && (

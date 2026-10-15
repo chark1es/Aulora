@@ -240,9 +240,9 @@ export function SettingsView(props: SettingsViewProps) {
     <KeyboardAwareScrollView
       bottomOffset={24}
       keyboardShouldPersistTaps="handled"
-      contentContainerStyle={{ paddingHorizontal: 12, paddingBottom: clearance, gap: 18 }}
+      contentContainerStyle={{ paddingHorizontal: 16, paddingBottom: clearance, gap: 18 }}
     >
-      <View className="-mx-3">
+      <View className="-mx-4">
         <PaneHeader title="You" subtitle={`Signed in to ${props.workspaceName}`} />
       </View>
       <IdentityCard

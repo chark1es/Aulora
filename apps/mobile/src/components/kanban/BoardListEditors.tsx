@@ -1,24 +1,19 @@
 /* eslint-disable no-unused-vars -- the base rule reports parameter names in type signatures; Biome checks real unused code */
 import type { KanbanBoardContent } from "@aulora/core";
-import { Button, Icon, Text, usePalette } from "@aulora/ui-native";
+import {
+  Button,
+  Icon,
+  LABEL_COLOR_SWATCHES,
+  labelSwatchAt,
+  Text,
+  usePalette,
+} from "@aulora/ui-native";
 import { useState } from "react";
 import { Pressable, TextInput, View } from "react-native";
 import Animated, { FadeInDown, FadeOut, LinearTransition } from "react-native-reanimated";
 import { type Column, newItemId } from "../../lib/kanban";
 import { cell, Group, RowButton } from "./settings-parts";
 import { BottomSheet, useSheetClose } from "./sheets";
-
-const LABEL_COLORS = [
-  "#E5484D",
-  "#E4571C",
-  "#E8A33B",
-  "#46A758",
-  "#12A594",
-  "#3E63DD",
-  "#8E4EC6",
-  "#D6409F",
-  "#8B8D98",
-];
 
 interface EditorProps {
   readonly draft: KanbanBoardContent;
@@ -223,7 +218,7 @@ export function LabelsEditor({ draft, onChange }: EditorProps) {
         className="self-start"
         disabled={draft.labels.length >= 50}
         onPress={() => {
-          const color = LABEL_COLORS.at(draft.labels.length % LABEL_COLORS.length) ?? "#E4571C";
+          const color = labelSwatchAt(draft.labels.length);
           onChange({
             ...draft,
             labels: [...draft.labels, { id: newItemId(), name: "New label", color }],
@@ -262,7 +257,7 @@ function ColorSheet({ current, onPick, onClose }: ColorSheetProps) {
   return (
     <BottomSheet title="Label color" onClose={onClose}>
       <View className="flex-row flex-wrap gap-3 px-5 pb-3">
-        {LABEL_COLORS.map((color) => (
+        {LABEL_COLOR_SWATCHES.map((color) => (
           <ColorSwatch
             key={color}
             color={color}

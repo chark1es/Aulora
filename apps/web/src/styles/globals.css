@@ -5,6 +5,13 @@
 @layer base {
   :root {
     color-scheme: light;
+    /* Height of the dedicated desktop title bar. It is zero everywhere except
+       the macOS desktop shell, where the native traffic lights get their own
+       slim strip and the rest of the app is laid out below it. Keeping it as a
+       variable lets full-window overlays stay aligned with the bar. */
+    --titlebar-height: 0px;
+    /* Space reserved at the left of that bar for the macOS traffic lights. */
+    --titlebar-traffic-lights: 78px;
   }
 
   .dark {
@@ -59,6 +66,105 @@
 }
 
 @layer components {
+  /*
+   * The pre-session (auth) layer. Every screen before a workspace is open —
+   * connect, sign in, invites — sits on the same field: saturated blobs pulled
+   * from the workspace's own blobatar palette, drifting slowly, with a whisper
+   * of grain over the top so the large gradients never band.
+   */
+
+  /* One blob of the field. Position, size and colour come from the seed. */
+  .auth-blob {
+    position: absolute;
+    border-radius: 9999px;
+    will-change: transform;
+    pointer-events: none;
+  }
+
+  /* Three drift rhythms, so the field never pulses in lockstep. */
+  .auth-blob-a {
+    animation: auth-drift-a 38s ease-in-out infinite;
+  }
+  .auth-blob-b {
+    animation: auth-drift-b 47s ease-in-out infinite;
+  }
+  .auth-blob-c {
+    animation: auth-drift-c 56s ease-in-out infinite;
+  }
+
+  /*
+   * Fine grain over the field. `feTurbulence` in a data URI rather than an
+   * image, and `overlay` rather than a flat wash, so it modulates the colour
+   * underneath instead of greying it. Kept under 5% opacity: its whole job is
+   * to break up the banding in a 60%-opacity gradient.
+   */
+  .auth-grain {
+    position: absolute;
+    inset: 0;
+    background-repeat: repeat;
+    mix-blend-mode: overlay;
+    opacity: 0.055;
+  }
+  .dark .auth-grain {
+    opacity: 0.085;
+  }
+
+  /*
+   * The hero blobatar's plate: a soft glow in the creature's own colour plus a
+   * low shadow, so it reads as an object floating over the field rather than a
+   * sticker on it.
+   */
+  .auth-hero-glow {
+    position: absolute;
+    border-radius: 9999px;
+    filter: blur(28px);
+  }
+  .auth-hero-float {
+    animation: auth-hero-float 9s ease-in-out infinite;
+  }
+}
+
+@keyframes auth-drift-a {
+  0%,
+  100% {
+    transform: translate3d(-2.5%, -2%, 0) scale(1);
+  }
+  50% {
+    transform: translate3d(3.5%, 2.5%, 0) scale(1.12);
+  }
+}
+
+@keyframes auth-drift-b {
+  0%,
+  100% {
+    transform: translate3d(3%, 1.5%, 0) scale(1.08);
+  }
+  50% {
+    transform: translate3d(-3.5%, -2.5%, 0) scale(1);
+  }
+}
+
+@keyframes auth-drift-c {
+  0%,
+  100% {
+    transform: translate3d(1.5%, 3%, 0) scale(1.04);
+  }
+  50% {
+    transform: translate3d(-2%, -3%, 0) scale(1.14);
+  }
+}
+
+@keyframes auth-hero-float {
+  0%,
+  100% {
+    transform: translate3d(0, 0, 0);
+  }
+  50% {
+    transform: translate3d(0, -5px, 0);
+  }
+}
+
+@layer components {
   /* The conversation pane: a plain content surface. No dot grid, no ornament —
      the desktop shell reads as one window, not a canvas of floating cards. */
   .chat-canvas {
@@ -91,6 +197,41 @@
       transparent 100%
     );
   }
+
+  /*
+   * The dedicated desktop title bar. Rendered only by DesktopTitleBar, and only
+   * inside the macOS shell, it is a slim full-width strip at the top of the
+   * window that holds the native traffic lights and drags the window, so no
+   * workspace UI ever sits under the lights. It reads as chrome: the sidebar
+   * material with a hairline below, over the vibrancy.
+   */
+  .desktop-titlebar {
+    position: relative;
+    display: flex;
+    flex: 0 0 auto;
+    align-items: center;
+    justify-content: center;
+    height: var(--titlebar-height);
+    border-bottom: 1px solid var(--aulora-border);
+    background-color: color-mix(in srgb, var(--aulora-surface-1) 84%, transparent);
+    -webkit-backdrop-filter: saturate(180%) blur(20px);
+    backdrop-filter: saturate(180%) blur(20px);
+    user-select: none;
+    -webkit-user-select: none;
+  }
+
+  /* The current workspace name, centered on the window and kept clear of the
+     traffic lights. It never intercepts a click: the bar is a drag region. */
+  .desktop-titlebar-label {
+    position: absolute;
+    inset-inline: 0;
+    padding-inline: calc(var(--titlebar-traffic-lights) + 12px);
+    overflow: hidden;
+    text-align: center;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+    pointer-events: none;
+  }
 }
 
 @layer utilities {
@@ -120,15 +261,38 @@
   .stagger > *:nth-child(6) { animation-delay: 110ms; }
   .stagger > *:nth-child(7) { animation-delay: 132ms; }
   .stagger > *:nth-child(n + 8) { animation-delay: 154ms; }
+
+  /*
+   * A full-window overlay that stops below the dedicated desktop title bar, so
+   * its own top edge never reaches the traffic lights. On the web the reserved
+   * height is zero, so it is identical to `inset: 0`.
+   */
+  .desktop-below-titlebar {
+    position: fixed;
+    top: var(--titlebar-height);
+    right: 0;
+    bottom: 0;
+    left: 0;
+  }
+
+  /* Pins floating chrome (notices, pre-session switcher) just below the bar. */
+  .desktop-titlebar-offset {
+    top: calc(var(--titlebar-height) + 0.75rem);
+  }
 }
 
 /*
  * Desktop (Tauri) shell polish, scoped to the markers DesktopBridge sets so
  * the web build is untouched. Only the macOS window is transparent with a
  * Sidebar vibrancy effect and overlay traffic lights: there the canvas drops
- * most of its fill so vibrancy shows through.
- * Windows and Linux keep an opaque canvas.
+ * most of its fill so vibrancy shows through, and the native lights get their
+ * own title bar above the app.
+ * Windows and Linux keep an opaque canvas and their own native title bar.
  */
+html[data-desktop="tauri"][data-platform="macos"] {
+  --titlebar-height: 38px;
+}
+
 html[data-desktop="tauri"][data-platform="macos"],
 html[data-desktop="tauri"][data-platform="macos"] body {
   background-color: transparent;

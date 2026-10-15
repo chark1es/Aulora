@@ -1,6 +1,14 @@
-import { Button, Heading, Icon, IconButton, Spinner, Text, usePalette } from "@aulora/ui-native";
+import {
+  Button,
+  EmptyState,
+  ErrorBanner,
+  Heading,
+  Icon,
+  IconButton,
+  Spinner,
+  usePalette,
+} from "@aulora/ui-native";
 import { Pressable, View } from "react-native";
-import Animated, { FadeInDown, FadeOut } from "react-native-reanimated";
 import type { BoardController } from "./use-board";
 
 /** The board's name, which opens the switcher, with search and the board menu. */
@@ -58,30 +66,14 @@ export function BoardHeader({ ctl }: { readonly ctl: BoardController }) {
 
 /** A failed write, shown until it is dismissed or the next write starts. */
 export function BoardError({ ctl }: { readonly ctl: BoardController }) {
-  const palette = usePalette();
   if (ctl.error === undefined) return null;
   return (
-    <Animated.View
-      entering={FadeInDown.duration(200)}
-      exiting={FadeOut.duration(120)}
-      accessibilityRole="alert"
-      className="flex-row items-center gap-2 border-b border-border px-4 py-2"
-      style={{ backgroundColor: `${palette.danger}1F` }}
-    >
-      <Text size="sm" tone="danger" className="flex-1">
-        {ctl.error}
-      </Text>
-      <Pressable
-        accessibilityRole="button"
-        accessibilityLabel="Dismiss error"
-        hitSlop={10}
-        onPress={() => {
-          ctl.setError(undefined);
-        }}
-      >
-        <Icon name="x" size={18} color={palette.danger} />
-      </Pressable>
-    </Animated.View>
+    <ErrorBanner
+      message={ctl.error}
+      onDismiss={() => {
+        ctl.setError(undefined);
+      }}
+    />
   );
 }
 
@@ -102,18 +94,12 @@ function emptyMessage(ctl: BoardController): string {
 
 /** Shown when there is no board to open. */
 export function BoardEmpty({ ctl }: { readonly ctl: BoardController }) {
-  const palette = usePalette();
   return (
-    <View className="flex-1 items-center justify-center gap-3 px-8">
-      <View className="h-16 w-16 items-center justify-center rounded-card bg-accent-soft">
-        <Icon name="kanban" size={32} color={palette.accent} />
-      </View>
-      <Heading level={3} className="text-center">
-        {ctl.archivedBoards ? "No archived boards" : "Plan your next project"}
-      </Heading>
-      <Text size="sm" tone="muted" className="text-center">
-        {emptyMessage(ctl)}
-      </Text>
+    <EmptyState
+      icon="kanban"
+      title={ctl.archivedBoards ? "No archived boards" : "Plan your next project"}
+      message={emptyMessage(ctl)}
+    >
       {ctl.archivedBoards && (
         <Button
           variant="secondary"
@@ -133,6 +119,6 @@ export function BoardEmpty({ ctl }: { readonly ctl: BoardController }) {
           Create your first board
         </Button>
       )}
-    </View>
+    </EmptyState>
   );
 }

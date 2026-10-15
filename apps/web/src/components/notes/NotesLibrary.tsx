@@ -1,4 +1,4 @@
-import { Button, cn, Icon, IconButton } from "@aulora/ui-web";
+import { Badge, Button, cn, EmptyState, Icon, IconButton, SearchInput } from "@aulora/ui-web";
 import { useState } from "react";
 import { FolderMenu, type LibraryCounts, Menu, TagMenu } from "./NotesLibraryMenus";
 import { folderPath, type NoteSummary, relativeTime, UNFILED } from "./types";
@@ -29,9 +29,9 @@ function NoteRow({ ctl, note, now }: { ctl: NotesController; note: NoteSummary; 
             {note.title.trim().length > 0 ? note.title : "Untitled note"}
           </span>
           {note.archived && (
-            <span className="shrink-0 rounded-full bg-surface-3 px-1.5 py-0.5 text-[10px] font-medium uppercase tracking-wide text-text-muted">
+            <Badge size="sm" tone="neutral" className="uppercase tracking-wide">
               Archived
-            </span>
+            </Badge>
           )}
         </span>
         {snippet.length > 0 && (
@@ -84,22 +84,13 @@ function countNotes(ctl: NotesController): LibraryCounts {
 function LibrarySearch({ ctl }: { ctl: NotesController }) {
   return (
     <div className="flex items-center gap-2">
-      <label className="relative block flex-1">
-        <Icon
-          name="search"
-          size={14}
-          className="pointer-events-none absolute left-2.5 top-1/2 -translate-y-1/2 text-text-muted"
-        />
-        <input
-          aria-label="Search notes"
-          placeholder="Search notes"
-          value={ctl.query}
-          onChange={(event) => {
-            ctl.setQuery(event.target.value);
-          }}
-          className="h-8 w-full rounded-[8px] border border-border bg-surface-2 pl-8 pr-2.5 text-[13px] text-text placeholder:text-text-muted focus-visible:border-accent focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent-soft"
-        />
-      </label>
+      <SearchInput
+        label="Search notes"
+        placeholder="Search notes"
+        value={ctl.query}
+        onChange={ctl.setQuery}
+        className="flex-1"
+      />
       {ctl.canCreate && (
         <Button
           size="sm"
@@ -323,16 +314,18 @@ export function NotesLibrary({ ctl }: { ctl: NotesController }) {
 
       <div className="min-h-0 flex-1 overflow-y-auto px-2 pb-2">
         {total === 0 ? (
-          <div className="flex flex-col items-center justify-center gap-2 px-6 py-12 text-center">
-            <Icon name="note" size={24} className="text-text-muted" />
-            <p className="text-[13px] text-text-muted">
-              {ctl.query.trim().length > 0
-                ? "No notes match your search."
+          <EmptyState
+            size="sm"
+            icon="note"
+            title={
+              ctl.query.trim().length > 0
+                ? "No notes match your search"
                 : ctl.showArchived
-                  ? "No archived notes."
-                  : "No notes here yet."}
-            </p>
-          </div>
+                  ? "No archived notes"
+                  : "No notes here yet"
+            }
+            className="py-12"
+          />
         ) : (
           <ul className="flex flex-col gap-0.5 p-0.5">
             {ctl.visible.map((note) => (
