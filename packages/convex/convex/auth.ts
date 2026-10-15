@@ -14,8 +14,9 @@ import {
   getOidcSettings,
   getSocialProviderCredentials,
   getTrustedOrigins,
+  resolveLocalAuthEnabled,
 } from "./lib/env";
-import { effectiveEnvFromSealed, type SealedEnvOverride } from "./lib/envOverrides";
+import { effectiveEnvFromSealed } from "./lib/envOverrides";
 import { extractGroups, roleNamesForGroups } from "./lib/oidc";
 
 /** Component client mounted in `convex.config.ts`. */
@@ -53,6 +54,7 @@ export const createAuthOptions = (
   ctx: GenericCtx<DataModel>,
   pendingGroups: Map<string, string[]>,
   env: Env = process.env,
+  localEnabled: boolean = resolveLocalAuthEnabled(env, undefined).enabled,
 ) => {
   const secret = getBetterAuthSecret(env);
   const oidc = getOidcSettings(env);
@@ -111,7 +113,11 @@ export const createAuthOptions = (
       updateAge: SESSION_REFRESH_SECONDS,
     },
     emailAndPassword: {
-      enabled: true,
+      // Drives whether Better Auth's email/password sign-in AND sign-up
+      // endpoints accept requests, so hiding the form in the UI is not the only
+      // guard. `false` when local sign-in is off; the resolver refuses a
+      // disable that would lock the instance out.
+      enabled: localEnabled,
       requireEmailVerification: false,
       disableSignUp: env.AUTH_LOCAL_SIGNUP === "false",
       // Safe default of 8; an operator running a throwaway test deployment can
@@ -175,39 +181,74 @@ export const createAuthOptions = (
 
 /**
  * Builds the Better Auth instance for one request. The Better Auth component
- * requires a synchronous factory, so the deployment environment is used for the
- * instance handed to the component, and the request handler rebuilds it with
- * the effective environment when owner-saved overrides exist (loaded through an
- * internal query and decrypted here, in the action context). Without overrides
- * the synchronously built instance is reused.
+ * requires a synchronous factory, so the deployment environment and instance
+ * settings are used for the instance handed to the component, and the request
+ * handler rebuilds it when owner-saved overrides or a local-auth toggle exist.
+ * Without them the synchronously built instance is reused.
  */
 export const createAuth = (ctx: GenericCtx<DataModel>) => {
   const pendingGroups = new Map<string, string[]>();
-  const base = betterAuth(createAuthOptions(ctx, pendingGroups));
+  const baseLocalEnabled = resolveLocalAuthEnabled(process.env, undefined).enabled;
+  const base = betterAuth(createAuthOptions(ctx, pendingGroups, process.env, baseLocalEnabled));
   return {
     ...base,
     handler: async (request: Request) => {
-      const env = await loadOverriddenEnv(ctx);
-      const auth = env === null ? base : betterAuth(createAuthOptions(ctx, pendingGroups, env));
-      return auth.handler(request);
+      const { env, localEnabled } = await loadAuthOverrides(ctx);
+      if (env === null && localEnabled === baseLocalEnabled) {
+        return base.handler(request);
+      }
+      return betterAuth(
+        createAuthOptions(ctx, pendingGroups, env ?? process.env, localEnabled),
+      ).handler(request);
     },
   };
 };
 
-/** The effective env for auth, or `null` when the deployment env is already it. */
-async function loadOverriddenEnv(ctx: GenericCtx<DataModel>): Promise<Env | null> {
+/**
+ * Better Auth instance for first-run owner creation. Local sign-in is forced on
+ * (and sign-up is never disabled) so a deployment that turns off email/password
+ * sign-in, or runs invite-only, can still create the operator credential.
+ */
+export const createSetupAuth = (ctx: GenericCtx<DataModel>) => {
+  const options = createAuthOptions(ctx, new Map(), process.env, true);
+  return betterAuth({
+    ...options,
+    emailAndPassword: { ...options.emailAndPassword, enabled: true, disableSignUp: false },
+  });
+};
+
+interface AuthOverrides {
+  /** The effective env, or `null` when the deployment env is already it. */
+  readonly env: Env | null;
+  /** Whether email/password sign-in is on for this request. */
+  readonly localEnabled: boolean;
+}
+
+/**
+ * Reads the owner-saved env overrides and the instance auth-provider toggles for
+ * one auth request, then resolves the effective local sign-in state. Any read
+ * failure falls back to the deployment environment so sign-in never breaks.
+ */
+async function loadAuthOverrides(ctx: GenericCtx<DataModel>): Promise<AuthOverrides> {
+  const fallback: AuthOverrides = {
+    env: null,
+    localEnabled: resolveLocalAuthEnabled(process.env, undefined).enabled,
+  };
   try {
-    const rows: SealedEnvOverride[] = await requireActionCtx(ctx).runQuery(
-      internal.envOverrides.sealedValues,
-      {},
-    );
-    if (rows.length === 0) {
-      return null;
-    }
-    return await effectiveEnvFromSealed(process.env, rows);
+    const actionCtx = requireActionCtx(ctx);
+    const [rows, toggles] = await Promise.all([
+      actionCtx.runQuery(internal.envOverrides.sealedValues, {}),
+      actionCtx.runQuery(internal.instance.authProviderToggles, {}),
+    ]);
+    const env: Env | null =
+      rows.length === 0 ? null : await effectiveEnvFromSealed(process.env, rows);
+    return {
+      env,
+      localEnabled: resolveLocalAuthEnabled(env ?? process.env, toggles ?? undefined).enabled,
+    };
   } catch {
     // Overrides are best-effort: an unreadable row must never break sign-in.
-    return null;
+    return fallback;
   }
 }
 

@@ -158,6 +158,12 @@ function verifyMacos(macos) {
   const window = macos.app?.windows?.[0];
   check("macOS window must be transparent for vibrancy", window?.transparent === true);
   check("macOS window must use the overlay title bar", window?.titleBarStyle === "Overlay");
+  // The web app draws its own title bar for the overlay lights; the native
+  // lights are nudged down so they are centered in that 38px strip.
+  check(
+    "macOS window must center the traffic lights in the web title bar",
+    window?.trafficLightPosition?.y === 13 && typeof window?.trafficLightPosition?.x === "number",
+  );
   check(
     "macOS window must set dragDropEnabled to false so the app-wide web file drop reaches the webview",
     window?.dragDropEnabled === false,
@@ -176,6 +182,11 @@ function verifyCapabilities(capabilities) {
   check(
     "capability must grant core:default",
     Array.isArray(capabilities.permissions) && capabilities.permissions.includes("core:default"),
+  );
+  check(
+    "capability must allow the webview title bar to drag the window",
+    Array.isArray(capabilities.permissions) &&
+      capabilities.permissions.includes("core:window:allow-start-dragging"),
   );
 }
 

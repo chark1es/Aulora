@@ -1,11 +1,19 @@
 /* eslint-disable no-unused-vars -- the base rule reports parameter names in type signatures; Biome checks real unused code */
-import { Button, Card, Heading, Text } from "@aulora/ui-web";
+import { Button, Card, Text } from "@aulora/ui-web";
 import { useState } from "react";
 import {
+  type EnvFilter,
+  type EnvGroupBlock,
   type EnvVariable,
   type EnvVariablesModel,
+  envGroupSummaries,
+  firstEnvGroup,
+  selectEnvBlocks,
   useEnvOverrides,
 } from "../../../lib/instance-env";
+import { SettingsSectionHeader } from "../SettingsSection";
+import { EnvGroupNav } from "./EnvGroupNav";
+import { EnvToolbar } from "./EnvToolbar";
 import { EnvVariableRow } from "./EnvVariableRow";
 import { OidcProviderForm } from "./OidcProviderForm";
 
@@ -39,25 +47,85 @@ export function EnvironmentSection() {
   );
 }
 
+/** The navigation, search and filter state, and the variables they select. */
+function useEnvView(data: EnvironmentSectionModel["data"]) {
+  const summaries = envGroupSummaries(data.groups, data.variables);
+  const [activeGroup, setActiveGroup] = useState(() => firstEnvGroup(summaries));
+  const [query, setQuery] = useState("");
+  const [filter, setFilter] = useState<EnvFilter>("all");
+  const blocks = selectEnvBlocks({
+    groups: data.groups,
+    variables: data.variables,
+    activeGroup,
+    query,
+    filter,
+  });
+  const resultCount = blocks.reduce((total, block) => total + block.variables.length, 0);
+  const searchActive = query.trim().length > 0 || filter !== "all";
+  return {
+    summaries,
+    activeGroup,
+    setActiveGroup,
+    query,
+    setQuery,
+    filter,
+    setFilter,
+    blocks,
+    resultCount,
+    searchActive,
+  };
+}
+
 export function EnvironmentSectionView({ model }: { readonly model: EnvironmentSectionModel }) {
   const { data } = model;
+  const view = useEnvView(data);
+  const { summaries, activeGroup, query, filter, blocks, searchActive } = view;
+
   return (
     <div className="flex flex-col gap-4" data-testid="instance-environment">
-      <Heading level={3}>Environment</Heading>
-      <Text tone="muted" size="sm">
-        Every environment variable the app reads, and where each value comes from. Deployment values
-        are never shown here.
-      </Text>
-      <Card className="flex flex-col gap-1">
-        <Text size="sm" tone="accent">
-          Less secure than deploy-time variables
-        </Text>
-        <Text size="xs" tone="muted">
-          Overrides you save here live in the workspace database, encrypted with the server key.
-          Anyone with owner access can change them, and a later restore or database copy carries
-          them with it. Prefer the deployment environment for credentials that never change.
-        </Text>
-      </Card>
+      <SettingsSectionHeader
+        icon="code"
+        title="Environment"
+        description="Every environment variable the app reads, and where each value comes from. Deployment values are never shown here."
+      />
+      <EnvSecurityNote />
+      <EnvWarnings data={data} />
+      <div className="flex flex-col gap-4 lg:flex-row lg:gap-6">
+        <EnvGroupNav
+          groups={summaries}
+          activeGroup={activeGroup}
+          onSelect={(groupId) => {
+            view.setActiveGroup(groupId);
+            view.setQuery("");
+            view.setFilter("all");
+          }}
+        />
+        <div className="flex min-w-0 flex-1 flex-col gap-3">
+          <EnvToolbar
+            query={query}
+            onQueryChange={view.setQuery}
+            filter={filter}
+            onFilterChange={view.setFilter}
+            resultCount={view.resultCount}
+          />
+          {blocks.length === 0 ? (
+            <Text tone="muted" size="sm" data-testid="env-empty">
+              No variables match your filters.
+            </Text>
+          ) : (
+            blocks.map((block) => (
+              <EnvGroup key={block.id} block={block} model={model} showOidc={!searchActive} />
+            ))
+          )}
+        </div>
+      </div>
+    </div>
+  );
+}
+
+function EnvWarnings({ data }: { readonly data: EnvironmentSectionModel["data"] }) {
+  return (
+    <>
       {data.locked && (
         <Card className="border-danger" data-testid="env-locked">
           <Text size="sm" tone="danger">
@@ -74,34 +142,49 @@ export function EnvironmentSectionView({ model }: { readonly model: EnvironmentS
           </Text>
         </Card>
       )}
-      {data.groups.map((group) => (
-        <EnvGroup key={group.id} groupId={group.id} label={group.label} model={model} />
-      ))}
-    </div>
+    </>
+  );
+}
+
+function EnvSecurityNote() {
+  return (
+    <Card className="flex flex-col gap-1">
+      <Text size="sm" tone="accent">
+        Less secure than deploy-time variables
+      </Text>
+      <Text size="xs" tone="muted">
+        Overrides you save here live in the workspace database, encrypted with the server key.
+        Anyone with owner access can change them, and a later restore or database copy carries them
+        with it. Prefer the deployment environment for credentials that never change.
+      </Text>
+    </Card>
   );
 }
 
 function EnvGroup({
-  groupId,
-  label,
+  block,
   model,
+  showOidc,
 }: {
-  readonly groupId: string;
-  readonly label: string;
+  readonly block: EnvGroupBlock;
   readonly model: EnvironmentSectionModel;
+  readonly showOidc: boolean;
 }) {
-  const variables = model.data.variables.filter((variable) => variable.group === groupId);
-  if (variables.length === 0) {
-    return null;
-  }
   return (
-    <section className="flex flex-col gap-2" data-testid={`env-group-${groupId}`}>
-      <Text size="sm" className="font-medium" data-testid={`env-group-label-${groupId}`}>
-        {label}
-      </Text>
-      {groupId === "oidc" && <OidcGroupEditor model={model} variables={variables} />}
-      <ul className="flex flex-col gap-2">
-        {variables.map((variable) => (
+    <section className="flex flex-col gap-2" data-testid={`env-group-${block.id}`}>
+      <div className="flex items-center justify-between gap-2">
+        <Text size="sm" className="font-medium" data-testid={`env-group-label-${block.id}`}>
+          {block.label}
+        </Text>
+        <Text size="xs" tone="muted">
+          {block.variables.length === 1 ? "1 variable" : `${block.variables.length} variables`}
+        </Text>
+      </div>
+      {showOidc && block.id === "oidc" && (
+        <OidcGroupEditor model={model} variables={block.variables} />
+      )}
+      <ul className="flex flex-col rounded-card border border-border bg-surface-2">
+        {block.variables.map((variable) => (
           <EnvVariableRow
             key={variable.key}
             variable={variable}
@@ -128,12 +211,19 @@ function OidcGroupEditor({
 
   if (!open) {
     return (
-      <AddOidcButton
-        disabled={!ready}
-        onOpen={() => {
-          setOpen(true);
-        }}
-      />
+      <div>
+        <Button
+          size="sm"
+          variant="secondary"
+          disabled={!ready}
+          onClick={() => {
+            setOpen(true);
+          }}
+          data-testid="env-add-oidc"
+        >
+          Add custom OIDC provider
+        </Button>
+      </div>
     );
   }
   return (
@@ -187,27 +277,5 @@ function OpenOidcEditor({
         </Text>
       )}
     </>
-  );
-}
-
-function AddOidcButton({
-  disabled,
-  onOpen,
-}: {
-  readonly disabled: boolean;
-  readonly onOpen: () => void;
-}) {
-  return (
-    <div>
-      <Button
-        size="sm"
-        variant="secondary"
-        disabled={disabled}
-        onClick={onOpen}
-        data-testid="env-add-oidc"
-      >
-        Add custom OIDC provider
-      </Button>
-    </div>
   );
 }

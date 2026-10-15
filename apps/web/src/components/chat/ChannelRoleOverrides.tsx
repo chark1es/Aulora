@@ -1,6 +1,6 @@
 /* eslint-disable no-unused-vars -- the base rule reports parameter names in type signatures; Biome checks real unused code */
 import type { PermissionName } from "@aulora/core";
-import { cn, Icon } from "@aulora/ui-web";
+import { Button, cn, Icon } from "@aulora/ui-web";
 import { useMemo, useState } from "react";
 import {
   type OverrideLevel,
@@ -249,16 +249,18 @@ function RoleExpandedPermissions(props: RoleExpandedPermissionsProps) {
           />
         ))}
       </div>
-      <button
+      <Button
         type="button"
+        size="sm"
+        variant="ghost"
+        className="self-start"
         disabled={disabled || (counts.allow === 0 && counts.deny === 0)}
         onClick={() => {
           onClear(role.id);
         }}
-        className="self-start rounded-[6px] px-1.5 py-0.5 text-[11px] font-medium text-text-muted transition hover:bg-surface-3 hover:text-danger disabled:pointer-events-none disabled:opacity-40"
       >
         Clear role overrides
-      </button>
+      </Button>
     </div>
   );
 }

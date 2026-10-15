@@ -1,10 +1,10 @@
-import { Avatar } from "@aulora/avatars";
 import { Button, Spinner, Text } from "@aulora/ui-web";
 import { useMutation, useQuery } from "convex/react";
 import { useState } from "react";
 import { api } from "../../../../packages/convex/convex/_generated/api";
 import { redeemErrorMessage } from "../lib/invites";
 import { AuthCard, AuthFrame, AuthHeader, AuthLink } from "./AuthFrame";
+import { BlobatarHero } from "./BlobatarHero";
 import { AllowlistJoin } from "./join/AllowlistJoin";
 import { CodeEntry } from "./join/CodeEntry";
 
@@ -34,9 +34,9 @@ export function JoinGate({ workspaceIconSeed, signedInAs, onSignOut }: JoinGateP
       ? "This workspace is invite only. Enter your invite to continue."
       : "You’re signed in. Join to get started.";
   return (
-    <AuthFrame>
+    <AuthFrame seed={workspaceIconSeed}>
       <AuthHeader
-        mark={<Avatar seed={workspaceIconSeed} size={64} shape="squircle" />}
+        mark={<BlobatarHero seed={workspaceIconSeed} size={124} />}
         title={`Join ${status.workspaceName}`}
         subtitle={subtitle}
         {...(signedInAs !== null ? { caption: signedInAs } : {})}
@@ -53,7 +53,9 @@ export function JoinGate({ workspaceIconSeed, signedInAs, onSignOut }: JoinGateP
           {status.inviteOnly ? <InviteSection afterAllowlist={status.allowlisted} /> : <OpenJoin />}
         </AuthCard>
       )}
-      <AuthLink onClick={onSignOut}>Sign out</AuthLink>
+      <AuthLink centered onClick={onSignOut}>
+        Sign out
+      </AuthLink>
     </AuthFrame>
   );
 }

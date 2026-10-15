@@ -9,6 +9,7 @@ import {
 } from "@tanstack/react-router";
 import { lazy, Suspense, useEffect, useState } from "react";
 import { DesktopBridge } from "./components/DesktopBridge";
+import { DesktopTitleBar } from "./components/DesktopTitleBar";
 import { DesktopUpdateNotice } from "./components/DesktopUpdateNotice";
 import { WorkspaceMenu } from "./components/WorkspaceMenu";
 import { DesktopUpdateProvider } from "./providers/DesktopUpdateProvider";
@@ -21,6 +22,13 @@ import { RedeemRoute } from "./routes/RedeemRoute";
 const PreviewRoute = import.meta.env.DEV
   ? lazy(() =>
       import("./preview/PreviewRoute").then((module) => ({ default: module.PreviewRoute })),
+    )
+  : null;
+
+// Dev-only visual harness for the pre-session screens (connect, sign in).
+const AuthPreviewRoute = import.meta.env.DEV
+  ? lazy(() =>
+      import("./preview/AuthPreviewRoute").then((module) => ({ default: module.AuthPreviewRoute })),
     )
   : null;
 
@@ -61,12 +69,13 @@ function AppShell() {
     profiles.length >= 1 &&
     (pathname === "/connect" || (pathname === "/" && activeProfile === undefined));
   return (
-    <div className="desktop-canvas relative flex h-full bg-bg text-text">
+    <div className="desktop-canvas relative flex h-full flex-col bg-bg text-text">
+      <DesktopTitleBar />
       <main className="flex min-h-0 min-w-0 flex-1">
         <Outlet />
       </main>
       {showSwitcher && (
-        <div className="absolute right-3 top-3 z-40">
+        <div className="desktop-titlebar-offset absolute right-3 z-40">
           <WorkspaceMenu variant="compact" align="right" />
         </div>
       )}
@@ -109,9 +118,20 @@ const previewRoute = createRoute({
     ),
 });
 
+const authPreviewRoute = createRoute({
+  getParentRoute: () => rootRoute,
+  path: "/__preview/auth",
+  component: () =>
+    AuthPreviewRoute === null ? null : (
+      <Suspense fallback={null}>
+        <AuthPreviewRoute />
+      </Suspense>
+    ),
+});
+
 const routeTree = rootRoute.addChildren(
   import.meta.env.DEV
-    ? [indexRoute, connectRoute, redeemRoute, previewRoute]
+    ? [indexRoute, connectRoute, redeemRoute, previewRoute, authPreviewRoute]
     : [indexRoute, connectRoute, redeemRoute],
 );
 

@@ -100,9 +100,9 @@ export function DirectList(props: DirectListProps) {
   return (
     <ScrollView
       className="flex-1"
-      contentContainerStyle={{ paddingHorizontal: 12, paddingBottom: clearance, gap: 12 }}
+      contentContainerStyle={{ paddingHorizontal: 16, paddingBottom: clearance, gap: 12 }}
     >
-      <View className="-mx-3">
+      <View className="-mx-4">
         <PaneHeader
           title="Direct messages"
           trailing={

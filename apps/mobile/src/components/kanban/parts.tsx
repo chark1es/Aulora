@@ -1,7 +1,7 @@
 import type { IconName } from "@aulora/tokens";
-import { Icon, IDLE_COLOR, Text, usePalette } from "@aulora/ui-native";
-import { type ReactNode, useEffect, useRef, useState } from "react";
-import { Animated, Pressable, View } from "react-native";
+import { Checkbox, Icon, IDLE_COLOR, Text, usePalette } from "@aulora/ui-native";
+import { type ReactNode, useEffect, useState } from "react";
+import { Pressable, View } from "react-native";
 import { type BoardMember, type Priority, priorityInfo } from "../../lib/kanban";
 import { useReduceMotion } from "../../lib/use-entrance";
 import { MemberAvatar } from "../chat/MemberAvatar";
@@ -46,34 +46,10 @@ export function PriorityFlag({
   );
 }
 
-/** A square checkbox whose tick pops in. */
+/** The kanban checklist tick, backed by the shared ui-native checkbox. */
 export function CheckBox({ checked }: { readonly checked: boolean }) {
-  const palette = usePalette();
   const reduced = useReduceMotion();
-  const scale = useRef(new Animated.Value(checked ? 1 : 0)).current;
-  useEffect(() => {
-    if (reduced !== false) {
-      scale.setValue(checked ? 1 : 0);
-      return;
-    }
-    Animated.spring(scale, {
-      toValue: checked ? 1 : 0,
-      speed: 28,
-      bounciness: 8,
-      useNativeDriver: true,
-    }).start();
-  }, [checked, reduced, scale]);
-  return (
-    <View
-      className={`h-[22px] w-[22px] items-center justify-center rounded-[7px] border ${
-        checked ? "border-accent bg-accent" : "border-text-muted"
-      }`}
-    >
-      <Animated.View style={{ transform: [{ scale }] }}>
-        <Icon name="check" size={16} color={palette["on-accent"]} />
-      </Animated.View>
-    </View>
-  );
+  return <Checkbox checked={checked} reducedMotion={reduced === true} />;
 }
 
 export function LabelChip({ name, color }: { readonly name: string; readonly color: string }) {

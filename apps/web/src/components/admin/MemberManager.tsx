@@ -1,4 +1,4 @@
-import { Button, Heading, Icon, Modal, Spinner, Text } from "@aulora/ui-web";
+import { Badge, Button, Heading, Icon, Modal, Spinner, Text } from "@aulora/ui-web";
 import { useMutation, useQuery } from "convex/react";
 import { useState } from "react";
 import { api } from "../../../../../packages/convex/convex/_generated/api";
@@ -161,9 +161,9 @@ export function MemberManager({ viewer, ownerId, permissions }: MemberManagerPro
                         {displayName}
                       </Text>
                       {member.userId === ownerId && (
-                        <span className="rounded-[5px] bg-accent-soft px-1 text-[10px] font-semibold uppercase text-accent">
+                        <Badge size="sm" tone="accent" className="uppercase">
                           Owner
-                        </span>
+                        </Badge>
                       )}
                       {notedUserIds.has(member.userId) && (
                         <Icon name="note" size={12} className="shrink-0 text-text-muted" />

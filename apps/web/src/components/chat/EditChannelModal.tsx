@@ -1,4 +1,4 @@
-import { cn, Icon, Input, Modal, Switch } from "@aulora/ui-web";
+import { Button, cn, Icon, Input, Modal, Switch } from "@aulora/ui-web";
 import { useEffect, useMemo, useRef, useState } from "react";
 import type { OverrideView } from "../../lib/workspace-admin";
 import { ChannelRoleOverrides } from "./ChannelRoleOverrides";
@@ -164,21 +164,18 @@ export function EditChannelModal({
       size="lg"
       footer={
         <>
-          <button
-            type="button"
-            onClick={onClose}
-            className="h-9 rounded-[8px] px-3 text-[13px] font-medium text-text-muted transition hover:bg-surface-3 hover:text-text"
-          >
+          <Button type="button" variant="ghost" onClick={onClose}>
             Cancel
-          </button>
-          <button
+          </Button>
+          <Button
             type="button"
+            variant="primary"
             disabled={disabled}
+            loading={busy || saving}
             onClick={submit}
-            className="h-9 rounded-[8px] bg-accent px-3.5 text-[13px] font-semibold text-on-accent transition hover:brightness-110 disabled:pointer-events-none disabled:opacity-40"
           >
-            {busy || saving ? "Saving…" : "Save changes"}
-          </button>
+            Save changes
+          </Button>
         </>
       }
     >
@@ -432,10 +429,6 @@ export function EditChannelModal({
               {error}
             </p>
           )}
-
-          <button type="button" data-primary className="hidden">
-            Submit
-          </button>
         </form>
       </div>
     </Modal>

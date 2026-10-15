@@ -6,6 +6,7 @@ import { useState } from "react";
 import { Alert, Pressable, ScrollView, View } from "react-native";
 import Animated, { FadeInDown } from "react-native-reanimated";
 import { api } from "../../../../../packages/convex/convex/_generated/api";
+import { impactFeedback } from "../../lib/haptics";
 import { type Board, type BoardMember, failure } from "../../lib/kanban";
 import { MemberAvatar } from "../chat/MemberAvatar";
 import { Sheet } from "../chat/Sheet";
@@ -117,6 +118,7 @@ export function BoardSettingsSheet({
     ]);
   };
   const save = () => {
+    impactFeedback();
     setBusy(true);
     setError(undefined);
     update({

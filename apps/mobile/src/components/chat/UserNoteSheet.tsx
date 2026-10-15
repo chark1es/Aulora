@@ -1,6 +1,7 @@
-import { Button, Text, usePalette } from "@aulora/ui-native";
+import { Button, Input, Text } from "@aulora/ui-native";
 import { useEffect, useState } from "react";
-import { Keyboard, TextInput, View } from "react-native";
+import { Keyboard, View } from "react-native";
+import { impactFeedback } from "../../lib/haptics";
 import { Sheet } from "./Sheet";
 
 export interface UserNoteSheetProps {
@@ -43,6 +44,7 @@ function useUserNote(
 
   function submit(clear: boolean) {
     const next = clear ? "" : body.trim();
+    impactFeedback();
     setSaving(true);
     setError(null);
     void onSave(next)
@@ -95,7 +97,6 @@ export function UserNoteSheet({
   onSave,
   onClose,
 }: UserNoteSheetProps) {
-  const palette = usePalette();
   const { body, setBody, loading, saving, error, submit } = useUserNote(
     visible,
     loadNote,
@@ -105,27 +106,23 @@ export function UserNoteSheet({
 
   return (
     <Sheet visible={visible} title={`Note · ${memberName}`} onClose={onClose}>
-      <View className="flex-1 p-4">
-        <Text size="xs" tone="muted" className="mt-1">
-          Only you can see this note.
-        </Text>
+      <View className="flex-1 gap-3 p-4">
         {error !== null && (
-          <Text size="sm" tone="danger" accessibilityRole="alert" className="mt-2">
+          <Text size="sm" tone="danger" accessibilityRole="alert">
             {error}
           </Text>
         )}
-        <View className="mt-3 rounded-input border border-border bg-surface-2 p-2">
-          <TextInput
-            accessibilityLabel="Private note"
-            multiline
-            value={body}
-            editable={!loading && !saving}
-            onChangeText={setBody}
-            placeholder={loading ? "Loading…" : "Add a private note…"}
-            placeholderTextColor={palette["text-muted"]}
-            className="max-h-32 min-h-32 text-base text-text"
-          />
-        </View>
+        <Input
+          label="Private note"
+          multiline
+          textAlignVertical="top"
+          value={body}
+          editable={!loading && !saving}
+          onChangeText={setBody}
+          placeholder={loading ? "Loading…" : "Add a private note…"}
+          hint="Only you can see this note."
+          className="max-h-40 min-h-32"
+        />
         <NoteActions
           saving={saving}
           loading={loading}

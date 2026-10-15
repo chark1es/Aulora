@@ -798,7 +798,7 @@ export function Composer({
       {windowDragging && !disabled && (
         <div
           data-testid="composer-drop-overlay"
-          className="pointer-events-none fixed inset-0 z-[60] flex items-center justify-center border-2 border-dashed border-accent bg-accent-soft/80"
+          className="desktop-below-titlebar pointer-events-none z-[60] flex items-center justify-center border-2 border-dashed border-accent bg-accent-soft/80"
         >
           <span className="rounded-[10px] bg-surface-2 px-4 py-2 text-sm font-medium text-accent shadow-lg shadow-black/20">
             Drop files to attach

@@ -110,6 +110,11 @@ export {
   wellKnownUrl,
 } from "./server-url";
 export {
+  providerInitial,
+  resolveSignInMethods,
+  type SignInMethods,
+} from "./sign-in";
+export {
   DEFAULT_SOUND_SETTINGS,
   loadSoundSettings,
   memorySoundSettingsStore,

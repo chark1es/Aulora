@@ -1,3 +1,4 @@
+/* eslint-disable no-unused-vars -- the base rule reports parameter names in type signatures; Biome checks real unused code */
 import type { TextTone } from "@aulora/ui-web";
 import { useMutation, useQuery } from "convex/react";
 import type { FunctionReturnType } from "convex/server";
@@ -27,9 +28,9 @@ export function useEnvOverrides() {
 export function envSourceLabel(source: EnvSource): string {
   switch (source) {
     case "ui":
-      return "Overridden in UI";
+      return "Overridden";
     case "environment":
-      return "Environment";
+      return "Deployment";
     default:
       return "Not set";
   }
@@ -53,7 +54,7 @@ export function envSourceTone(source: EnvSource): TextTone {
 export function envValueLabel(variable: EnvVariable): string {
   if (variable.source === "ui") {
     if (variable.secret) {
-      return "Set (hidden)";
+      return "••••••";
     }
     return variable.value !== undefined && variable.value.length > 0 ? variable.value : "Set";
   }
@@ -180,4 +181,306 @@ export function oidcFormFromVariables(variables: readonly EnvVariable[]): OidcFo
     groupClaim: savedValue("OIDC_GROUP_CLAIM"),
     groupRoleMap: savedValue("OIDC_GROUP_ROLE_MAP"),
   };
+}
+
+export type EnvVarFormat = "ice-servers" | "group-role-map";
+
+/** Catalog metadata the list query does not return, mirrored for the editor. */
+export interface EnvFieldMeta {
+  readonly format: EnvVarFormat | null;
+  readonly min: number | null;
+  readonly max: number | null;
+  readonly step: number;
+  readonly unit: string | null;
+  readonly defaultValue: string | null;
+}
+
+const DEFAULT_FIELD_META: EnvFieldMeta = {
+  format: null,
+  min: null,
+  max: null,
+  step: 1,
+  unit: null,
+  defaultValue: null,
+};
+
+// Mirrors the bounds and formats declared in `packages/convex/convex/lib/envCatalog*`.
+const ENV_FIELD_META = new Map<string, Partial<EnvFieldMeta>>([
+  ["AUTH_MIN_PASSWORD_LENGTH", { min: 1, max: 128, unit: "characters", defaultValue: "8" }],
+  [
+    "AUTH_RATE_LIMIT_MAX",
+    { min: 1, max: 100000, unit: "requests per minute", defaultValue: "120" },
+  ],
+  ["OIDC_SCOPES", { defaultValue: "openid profile email" }],
+  ["OIDC_GROUP_ROLE_MAP", { format: "group-role-map" }],
+  ["AULORA_ICE_SERVERS", { format: "ice-servers" }],
+]);
+
+/** Bounds, unit and structural format for a variable, with safe defaults. */
+export function envFieldMeta(variable: EnvVariable): EnvFieldMeta {
+  return { ...DEFAULT_FIELD_META, ...(ENV_FIELD_META.get(variable.key) ?? {}) };
+}
+
+const ENV_MAX_VALUE_LENGTH = 8192;
+const ENV_MAX_LIST_ITEMS = 64;
+const ENV_MAX_LIST_ITEM_LENGTH = 256;
+
+function envUrlError(value: string): string | null {
+  let parsed: URL;
+  try {
+    parsed = new URL(value);
+  } catch {
+    return "Enter an absolute URL";
+  }
+  const host = parsed.hostname;
+  const isLocal =
+    host === "localhost" || host === "127.0.0.1" || host === "::1" || host === "[::1]";
+  if (/^(169\.254\.|\[?fe80:)/i.test(host)) {
+    return "Link-local addresses are not allowed";
+  }
+  if (parsed.protocol !== "https:" && !(parsed.protocol === "http:" && isLocal)) {
+    return "Use an https URL (http is allowed only for localhost)";
+  }
+  return null;
+}
+
+function envNumberError(variable: EnvVariable, value: string): string | null {
+  if (!/^\d+$/.test(value)) {
+    return "Enter a whole number";
+  }
+  const meta = envFieldMeta(variable);
+  const parsed = Number(value);
+  if (meta.min !== null && parsed < meta.min) {
+    return `Must be at least ${meta.min}`;
+  }
+  if (meta.max !== null && parsed > meta.max) {
+    return `Must be at most ${meta.max}`;
+  }
+  return null;
+}
+
+function envListError(value: string): string | null {
+  const items = parseEnvList(value);
+  if (items.length === 0) {
+    return "Enter at least one value";
+  }
+  if (items.length > ENV_MAX_LIST_ITEMS) {
+    return `Use at most ${ENV_MAX_LIST_ITEMS} values`;
+  }
+  if (items.some((item) => item.length > ENV_MAX_LIST_ITEM_LENGTH)) {
+    return `Each value must be at most ${ENV_MAX_LIST_ITEM_LENGTH} characters`;
+  }
+  return null;
+}
+
+export function parseEnvList(value: string): string[] {
+  return value
+    .split(/[\s,]+/)
+    .map((item) => item.trim())
+    .filter((item) => item.length > 0);
+}
+
+export function serializeEnvList(items: readonly string[]): string {
+  return items.join(" ");
+}
+
+type JsonParse =
+  | { readonly ok: true; readonly parsed: unknown }
+  | { readonly ok: false; readonly error: string };
+
+function parseJson(value: string): JsonParse {
+  try {
+    const parsed: unknown = JSON.parse(value);
+    return { ok: true, parsed };
+  } catch {
+    return { ok: false, error: "Enter valid JSON" };
+  }
+}
+
+function envIceServersError(parsed: unknown) {
+  if (!Array.isArray(parsed)) {
+    return "Enter a JSON array of ICE servers";
+  }
+  for (const entry of parsed) {
+    if (typeof entry !== "object" || entry === null) {
+      return "Each ICE server must be an object with urls";
+    }
+    const urls = (entry as Record<string, unknown>).urls;
+    const list = Array.isArray(urls) ? urls : [urls];
+    if (!list.some((url) => typeof url === "string" && url.trim().length > 0)) {
+      return "Each ICE server needs at least one URL";
+    }
+  }
+  return null;
+}
+
+function envGroupRoleMapError(parsed: unknown) {
+  if (typeof parsed !== "object" || parsed === null || Array.isArray(parsed)) {
+    return "Enter a JSON object mapping groups to role names";
+  }
+  for (const value of Object.values(parsed as Record<string, unknown>)) {
+    const names = Array.isArray(value) ? value : [value];
+    if (!names.some((name) => typeof name === "string" && name.trim().length > 0)) {
+      return "Each group must map to a role name or a list of role names";
+    }
+  }
+  return null;
+}
+
+function envJsonError(variable: EnvVariable, value: string): string | null {
+  const result = parseJson(value);
+  if (!result.ok) {
+    return result.error;
+  }
+  const { parsed } = result;
+  if (parsed === null || typeof parsed !== "object") {
+    return "Enter a JSON object or array";
+  }
+  const format = envFieldMeta(variable).format;
+  if (format === "ice-servers") {
+    return envIceServersError(parsed);
+  }
+  if (format === "group-role-map") {
+    return envGroupRoleMapError(parsed);
+  }
+  return null;
+}
+
+function envBooleanError(value: string) {
+  return value === "true" || value === "false" ? null : "Choose Enabled or Disabled";
+}
+
+function envEnumError(variable: EnvVariable, value: string): string | null {
+  const allowed = variable.enumValues ?? [];
+  return allowed.includes(value) ? null : `Choose one of: ${allowed.join(", ")}`;
+}
+
+type EnvCheck = (variable: EnvVariable, value: string) => string | null;
+
+/** The per-type check for each variable type; a plain string has nothing to check. */
+const ENV_CHECKS = new Map<EnvVariable["type"], EnvCheck>([
+  ["url", (_variable, value) => envUrlError(value)],
+  ["number", envNumberError],
+  ["boolean", (_variable, value) => envBooleanError(value)],
+  ["enum", envEnumError],
+  ["list", (_variable, value) => envListError(value)],
+  ["json", envJsonError],
+]);
+
+/** Client-side value check mirroring the server's per-type validation. */
+export function envValueError(variable: EnvVariable, rawValue: string): string | null {
+  const value = rawValue.trim();
+  if (value.length === 0) {
+    return "Enter a value";
+  }
+  if (value.length > ENV_MAX_VALUE_LENGTH) {
+    return `Values must be at most ${ENV_MAX_VALUE_LENGTH} characters`;
+  }
+  return ENV_CHECKS.get(variable.type)?.(variable, value) ?? null;
+}
+
+/** Pretty-prints a JSON string, or returns null when it is not valid JSON. */
+export function prettyJson(value: string): string | null {
+  const result = parseJson(value);
+  return result.ok ? JSON.stringify(result.parsed, null, 2) : null;
+}
+
+export type EnvFilter = "all" | "overridden" | "overridable" | "read-only";
+
+export const ENV_FILTERS: readonly { readonly id: EnvFilter; readonly label: string }[] = [
+  { id: "all", label: "All" },
+  { id: "overridden", label: "Overridden" },
+  { id: "overridable", label: "Overridable" },
+  { id: "read-only", label: "Read-only" },
+];
+
+export interface EnvGroupSummary {
+  readonly id: string;
+  readonly label: string;
+  readonly total: number;
+  readonly overridden: number;
+}
+
+/** Per-group totals plus the count of UI overrides, for the navigation. */
+export function envGroupSummaries(
+  groups: readonly { readonly id: string; readonly label: string }[],
+  variables: readonly EnvVariable[],
+): EnvGroupSummary[] {
+  const counts = new Map<string, { total: number; overridden: number }>();
+  for (const variable of variables) {
+    const current = counts.get(variable.group) ?? { total: 0, overridden: 0 };
+    current.total += 1;
+    if (variable.source === "ui") {
+      current.overridden += 1;
+    }
+    counts.set(variable.group, current);
+  }
+  return groups.map((group) => {
+    const count = counts.get(group.id) ?? { total: 0, overridden: 0 };
+    return { id: group.id, label: group.label, total: count.total, overridden: count.overridden };
+  });
+}
+
+/** The first group that actually has variables, so the view never opens empty. */
+export function firstEnvGroup(summaries: readonly EnvGroupSummary[]): string {
+  return summaries.find((summary) => summary.total > 0)?.id ?? summaries.at(0)?.id ?? "";
+}
+
+function envMatchesFilter(variable: EnvVariable, filter: EnvFilter): boolean {
+  switch (filter) {
+    case "overridden":
+      return variable.source === "ui";
+    case "overridable":
+      return variable.overridable;
+    case "read-only":
+      return !variable.overridable;
+    case "all":
+      return true;
+  }
+}
+
+export function envVariableMatchesQuery(variable: EnvVariable, query: string): boolean {
+  const needle = query.trim().toLowerCase();
+  if (needle.length === 0) {
+    return true;
+  }
+  return [variable.key, variable.label, variable.description, variable.type].some((part) =>
+    part.toLowerCase().includes(needle),
+  );
+}
+
+export interface EnvGroupBlock {
+  readonly id: string;
+  readonly label: string;
+  readonly variables: EnvVariable[];
+}
+
+/**
+ * Chooses which variables to render. With no query and the `all` filter only the
+ * selected group is returned; searching or filtering widens the view to every
+ * group, so a match is never hidden behind the navigation.
+ */
+export function selectEnvBlocks(input: {
+  readonly groups: readonly { readonly id: string; readonly label: string }[];
+  readonly variables: readonly EnvVariable[];
+  readonly activeGroup: string;
+  readonly query: string;
+  readonly filter: EnvFilter;
+}): readonly EnvGroupBlock[] {
+  const searchActive = input.query.trim().length > 0 || input.filter !== "all";
+  const groups = searchActive
+    ? input.groups
+    : input.groups.filter((group) => group.id === input.activeGroup);
+  return groups
+    .map((group) => ({
+      id: group.id,
+      label: group.label,
+      variables: input.variables.filter(
+        (variable) =>
+          variable.group === group.id &&
+          envMatchesFilter(variable, input.filter) &&
+          envVariableMatchesQuery(variable, input.query),
+      ),
+    }))
+    .filter((block) => block.variables.length > 0);
 }

@@ -107,7 +107,7 @@ export function SettingsHub({
             className="group flex animate-slide-up items-center gap-3.5 rounded-[12px] border border-border bg-surface-2 p-3.5 text-left transition hover:border-text-muted/30 hover:bg-surface-3 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent"
           >
             <span className="flex h-10 w-10 shrink-0 items-center justify-center rounded-[11px] border border-border bg-surface-1 text-text-muted transition group-hover:border-accent/30 group-hover:text-accent">
-              <Icon name={entry.icon} size={18} />
+              <Icon name={entry.icon} size={20} />
             </span>
             <span className="min-w-0 flex-1">
               <span className="block text-[13px] font-medium text-text">

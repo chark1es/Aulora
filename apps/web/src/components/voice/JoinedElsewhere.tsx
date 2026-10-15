@@ -1,4 +1,4 @@
-import { Icon } from "@aulora/ui-web";
+import { Button, Icon } from "@aulora/ui-web";
 
 /**
  * Shown in a voice channel when this user is connected from a different
@@ -26,15 +26,17 @@ export function JoinedElsewhere({
         You joined this voice channel from another device. This one stays out of the call.
       </p>
       {canConnect ? (
-        <button
+        <Button
           type="button"
-          onClick={onJoin}
+          size="lg"
+          variant="success"
+          className="mt-6"
           disabled={pending}
-          className="mt-6 flex h-11 items-center gap-2 rounded-[10px] bg-secondary px-5 text-[14px] font-semibold text-white transition hover:brightness-110 disabled:pointer-events-none disabled:opacity-40"
+          leading={<Icon name="phone" size={17} />}
+          onClick={onJoin}
         >
-          <Icon name="phone" size={17} />
           Join here
-        </button>
+        </Button>
       ) : (
         <p className="mt-6 text-[13px] text-text-muted">
           You do not have permission to move the call to this device.

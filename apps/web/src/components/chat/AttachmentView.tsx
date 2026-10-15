@@ -1,5 +1,5 @@
 import type { AttachmentDescriptor } from "@aulora/core";
-import { Icon, Text } from "@aulora/ui-web";
+import { Button, Icon, Text } from "@aulora/ui-web";
 import { useCallback, useEffect, useRef, useState } from "react";
 import { loadAttachmentUrl, loadThumbnailUrl } from "../../lib/attachments";
 import type { ChatRuntime } from "../../lib/chat-runtime";
@@ -293,23 +293,20 @@ export function AttachmentView({ runtime, descriptor }: AttachmentViewProps) {
         </Text>
       </div>
       {media !== null && mediaUrl === undefined && (
-        <button
+        <Button
           type="button"
+          size="sm"
+          variant="secondary"
           onClick={play}
           disabled={busy || runtime === undefined}
           aria-label={`Play ${descriptor.name}`}
-          className="rounded-pill border border-border px-2 py-0.5 text-xs text-text-muted hover:text-text disabled:opacity-60"
         >
           {busy ? "Loading…" : "Play"}
-        </button>
+        </Button>
       )}
-      <button
-        type="button"
-        onClick={download}
-        className="rounded-pill border border-border px-2 py-0.5 text-xs text-text-muted hover:text-text"
-      >
+      <Button type="button" size="sm" variant="secondary" onClick={download}>
         Download
-      </button>
+      </Button>
     </div>
   );
 

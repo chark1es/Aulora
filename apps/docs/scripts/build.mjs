@@ -11,7 +11,11 @@ import { cpSync, existsSync, mkdirSync, readFileSync, rmSync, writeFileSync } fr
 import { createRequire } from "node:module";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
+import { readEnvCatalog } from "../lib/env-catalog.mjs";
+import { ENV_REFERENCE_PAGE, renderEnvReference } from "../lib/env-reference.mjs";
+import { EXTRA_ENV_VARS, EXTRA_GROUPS } from "../lib/env-reference-extras.mjs";
 import { escapeHtml, renderMarkdown } from "../lib/markdown.mjs";
+import { buildSearchIndex } from "../lib/search-index.mjs";
 import { iconSvg, paletteCss, readIcons, readPalettes } from "../lib/theme.mjs";
 
 const here = dirname(fileURLToPath(import.meta.url));
@@ -37,6 +41,7 @@ const GROUPS = [
     label: "Run a server",
     pages: [
       { file: "self-hosting.md", label: "Self-hosting" },
+      { file: ENV_REFERENCE_PAGE, label: "Environment variables" },
       { file: "coolify.md", label: "Coolify" },
       { file: "admin.md", label: "Admin panel" },
       { file: "backups.md", label: "Backups" },
@@ -58,6 +63,8 @@ const PAGES = GROUPS.flatMap((group) => group.pages);
 
 const icons = readIcons(readFileSync(join(repo, "packages/tokens/src/icons.ts"), "utf8"));
 const palettes = readPalettes(readFileSync(join(repo, "packages/tokens/src/colors.ts"), "utf8"));
+const envCatalog = readEnvCatalog(repo);
+const envExtras = { groups: EXTRA_GROUPS, variables: EXTRA_ENV_VARS };
 // `blobatar` is a dependency of the avatars package, not the docs app, so load
 // it through a require rooted at that package with a fixed module name.
 const { blobatar } = createRequire(join(repo, "packages/avatars/package.json"))("blobatar");
@@ -112,6 +119,7 @@ function siteHeader({ base, section }) {
           <img src="${base}favicon.svg" alt="" width="26" height="26" />
           <span class="brand-lockup"><span class="brand-name">Aulora</span>${section === "docs" ? '<span class="brand-sub">/docs</span>' : ""}</span>
         </a>
+${siteSearch({ base })}
         <nav class="site-nav" aria-label="Site">
           ${item("how-it-works", "How it works", "how-it-works")}
           ${item("install", "Install", "install")}
@@ -121,6 +129,25 @@ function siteHeader({ base, section }) {
         </nav>
       </div>
     </header>`;
+}
+
+// The search command palette, shared by the marketing pages and the docs. The
+// index is built at build time into `search-index.json`; `static/search.js`
+// loads it lazily and scores it in the browser.
+function siteSearch({ base }) {
+  return `        <div class="site-search" data-search data-index="${base}search-index.json" data-base="${base}">
+          <div class="site-search-field" data-search-field>
+            ${icon("search")}
+            <label class="visually-hidden" for="docs-search-input">Search the documentation</label>
+            <input id="docs-search-input" class="site-search-input" type="search" placeholder="Search docs" autocomplete="off" spellcheck="false" role="combobox" aria-expanded="false" aria-controls="docs-search-listbox" aria-autocomplete="list" />
+            <kbd class="site-search-kbd" aria-hidden="true">/</kbd>
+            <button type="button" class="site-search-clear" data-search-clear aria-label="Clear search" hidden>${icon("x")}</button>
+          </div>
+          <div class="site-search-panel" data-search-panel hidden>
+            <ul id="docs-search-listbox" class="site-search-results" role="listbox" aria-label="Search results" data-search-results></ul>
+            <p class="site-search-empty" data-search-empty hidden></p>
+          </div>
+        </div>`;
 }
 
 function siteFooter({ base }) {
@@ -341,15 +368,30 @@ for (const page of LANDING_PAGES) {
   LANDING_IO.get(page.file).write(renderLanding(page));
 }
 
+/** Reads one docs page. `file` is always an entry of the PAGES manifest, never user input. */
+function readContentPage(file) {
+  // eslint-disable-next-line security/detect-non-literal-fs-filename -- manifest entry, not user input
+  return readFileSync(join(contentDir, file), "utf8");
+}
+
+const indexPages = [];
 for (const page of PAGES) {
-  const source = readFileSync(join(contentDir, page.file), "utf8");
-  const { html, title } = renderMarkdown(source);
+  const { html, title } =
+    page.file === ENV_REFERENCE_PAGE
+      ? renderEnvReference(envCatalog, envExtras, icon)
+      : renderMarkdown(readContentPage(page.file));
   writeFileSync(
     join(docsOut, outputName(page.file)),
     docsLayout({ title: title ?? page.label, body: html, currentFile: page.file, base: "../" }),
     "utf8",
   );
+  indexPages.push({ title: title ?? page.label, url: `docs/${pageHref(page.file)}`, html });
 }
+writeFileSync(
+  join(outDir, "search-index.json"),
+  `${JSON.stringify(buildSearchIndex(indexPages))}\n`,
+  "utf8",
+);
 
 // Legal pages are written from repository-root Markdown but link relative to
 // the repository. Map a rendered link back to the real file (keeping `.md`

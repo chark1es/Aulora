@@ -1,6 +1,6 @@
 import type { CallView } from "@aulora/core";
 import { callKindLabel } from "@aulora/core";
-import { Icon, Modal } from "@aulora/ui-web";
+import { Button, Icon, Modal } from "@aulora/ui-web";
 import { useVoice } from "../../providers/VoiceProvider";
 import { PresenceAvatar } from "../chat/PresenceAvatar";
 import { type CallIdentity, UNKNOWN_IDENTITY } from "./identity";
@@ -60,22 +60,22 @@ function IncomingCallActions({
 }) {
   return (
     <>
-      <button
+      <Button
         type="button"
+        variant="danger"
+        leading={<Icon name="phone-hangup" size={15} />}
         onClick={onDecline}
-        className="flex h-9 items-center gap-1.5 rounded-[8px] bg-danger/15 px-3.5 text-[13px] font-semibold text-danger transition hover:bg-danger/25"
       >
-        <Icon name="phone-hangup" size={15} />
         Decline
-      </button>
-      <button
+      </Button>
+      <Button
         type="button"
+        variant="success"
+        leading={<Icon name="phone" size={15} />}
         onClick={onAccept}
-        className="flex h-9 items-center gap-1.5 rounded-[8px] bg-secondary px-3.5 text-[13px] font-semibold text-white transition hover:brightness-110"
       >
-        <Icon name="phone" size={15} />
         Accept
-      </button>
+      </Button>
     </>
   );
 }

@@ -1,4 +1,4 @@
-import { cn, Icon, Modal } from "@aulora/ui-web";
+import { Button, cn, Icon, Modal } from "@aulora/ui-web";
 import { useEffect, useMemo, useRef, useState } from "react";
 import { PresenceAvatar, type PresenceStatus } from "./PresenceAvatar";
 
@@ -71,16 +71,21 @@ export function NewConversationDialog({
         </span>
       }
       footer={
-        <button
-          type="button"
-          disabled={selected.length === 0}
-          onClick={() => {
-            onStart(selected);
-          }}
-          className="h-9 rounded-[8px] bg-accent px-3.5 text-[13px] font-semibold text-on-accent transition hover:brightness-110 disabled:pointer-events-none disabled:bg-surface-3 disabled:text-text-muted"
-        >
-          {cta}
-        </button>
+        <>
+          <Button type="button" variant="ghost" onClick={onClose}>
+            Cancel
+          </Button>
+          <Button
+            type="button"
+            variant="primary"
+            disabled={selected.length === 0}
+            onClick={() => {
+              onStart(selected);
+            }}
+          >
+            {cta}
+          </Button>
+        </>
       }
     >
       <div className="flex flex-col gap-3">

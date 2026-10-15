@@ -1,6 +1,6 @@
 import type { CallParticipantView, CallView, ChannelView } from "@aulora/core";
 import { joinedElsewhere } from "@aulora/core";
-import { cn, Icon } from "@aulora/ui-web";
+import { Button, cn, Icon } from "@aulora/ui-web";
 import { useVoice, type VoiceContextValue } from "../../providers/VoiceProvider";
 import { PersonAvatar } from "../chat/member-avatars";
 import { CallControls } from "./CallControls";
@@ -239,25 +239,27 @@ function PreJoinActions({
     <div className="mt-6 flex items-center gap-2">
       {voice.canConnect ? (
         <>
-          <button
+          <Button
             type="button"
-            onClick={() => void join("voice")}
+            size="lg"
+            variant="success"
             disabled={voice.pending}
-            className="flex h-11 items-center gap-2 rounded-[10px] bg-secondary px-5 text-[14px] font-semibold text-white transition hover:brightness-110 disabled:pointer-events-none disabled:opacity-40"
+            leading={<Icon name="phone" size={17} />}
+            onClick={() => void join("voice")}
           >
-            <Icon name="phone" size={17} />
             Join voice
-          </button>
+          </Button>
           {voice.canVideo && (
-            <button
+            <Button
               type="button"
-              onClick={() => void join("video")}
+              size="lg"
+              variant="secondary"
               disabled={voice.pending}
-              className="flex h-11 items-center gap-2 rounded-[10px] border border-border bg-surface-2 px-5 text-[14px] font-semibold text-text transition hover:bg-surface-3 disabled:pointer-events-none disabled:opacity-40"
+              leading={<Icon name="video" size={17} />}
+              onClick={() => void join("video")}
             >
-              <Icon name="video" size={17} />
               Join with video
-            </button>
+            </Button>
           )}
         </>
       ) : (

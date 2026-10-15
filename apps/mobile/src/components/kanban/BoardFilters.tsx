@@ -23,6 +23,7 @@ function FilterChip({ icon, label, count, onPress }: FilterChipProps) {
     <Pressable
       accessibilityRole="button"
       accessibilityLabel={`Filter by ${label.toLowerCase()}${hint}`}
+      hitSlop={4}
       onPress={onPress}
       className={`min-h-9 flex-row items-center gap-1.5 rounded-pill border px-3 active:opacity-70 ${
         active ? "border-accent bg-accent-soft" : "border-border bg-surface-2"
@@ -118,6 +119,7 @@ export function BoardFilters({
               <Pressable
                 accessibilityRole="button"
                 className="min-h-9 justify-center px-2 active:opacity-60"
+                hitSlop={4}
                 onPress={() => {
                   ctl.setFilters(NO_FILTERS);
                 }}

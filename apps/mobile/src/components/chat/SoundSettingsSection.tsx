@@ -1,7 +1,10 @@
+/* eslint-disable no-unused-vars -- the base rule reports parameter names in type signatures; Biome checks real unused code */
 import { SOUND_EVENTS, type SoundEvent, type SoundSettings } from "@aulora/core";
-import { Button, Heading, Text, usePalette } from "@aulora/ui-native";
-import { ScrollView, Switch, View } from "react-native";
+import { Button, SettingRow, Switch, Text } from "@aulora/ui-native";
+import { ScrollView, View } from "react-native";
+import { selectionFeedback } from "../../lib/haptics";
 import { useSound } from "../../providers/SoundProvider";
+import { ListGroup, ListHeader } from "./List";
 
 const EVENT_LABELS: Record<SoundEvent, string> = {
   message: "Messages",
@@ -12,7 +15,7 @@ const EVENT_LABELS: Record<SoundEvent, string> = {
   "call-leave": "Someone leaves",
 };
 
-function SoundVolume({
+function VolumeStepper({
   volume,
   updateVolume,
   playTest,
@@ -24,41 +27,111 @@ function SoundVolume({
   readonly available: boolean;
 }) {
   return (
-    <View className="gap-2">
-      <Heading level={3}>Volume</Heading>
-      <View className="flex-row items-center justify-between gap-3">
-        <Button
-          size="sm"
-          variant="secondary"
-          onPress={() => {
-            updateVolume(Math.max(0, volume - 0.1));
-          }}
-        >
-          −
-        </Button>
-        <Text size="sm" mono style={{ minWidth: 60, textAlign: "center" }}>
-          {`${Math.round(volume * 100)}%`}
-        </Text>
-        <Button
-          size="sm"
-          variant="secondary"
-          onPress={() => {
-            updateVolume(Math.min(2, volume + 0.1));
-          }}
-        >
-          +
-        </Button>
-        <Button size="sm" variant="ghost" onPress={playTest} disabled={!available}>
-          Test
-        </Button>
-      </View>
+    <View className="flex-row items-center gap-2">
+      <Button
+        size="sm"
+        variant="secondary"
+        onPress={() => {
+          updateVolume(Math.max(0, volume - 0.1));
+        }}
+      >
+        −
+      </Button>
+      <Text size="sm" mono className="min-w-[48px] text-center">
+        {`${Math.round(volume * 100)}%`}
+      </Text>
+      <Button
+        size="sm"
+        variant="secondary"
+        onPress={() => {
+          updateVolume(Math.min(2, volume + 0.1));
+        }}
+      >
+        +
+      </Button>
+      <Button size="sm" variant="ghost" onPress={playTest} disabled={!available}>
+        Test
+      </Button>
+    </View>
+  );
+}
+
+type SoundState = NonNullable<ReturnType<typeof useSound>>;
+
+function EnableSection({ sound }: { readonly sound: SoundState }) {
+  const { settings, updateSettings } = sound;
+  return (
+    <View>
+      <ListHeader title="Sounds" />
+      <ListGroup inset={16}>
+        <SettingRow
+          label="Enable sounds"
+          description="Play a cue for calls and messages"
+          control={
+            <Switch
+              accessibilityLabel="Enable sounds"
+              value={settings.enabled}
+              onValueChange={(value) => {
+                selectionFeedback();
+                void updateSettings({ enabled: value });
+              }}
+            />
+          }
+        />
+      </ListGroup>
+    </View>
+  );
+}
+
+function VolumeSection({ sound }: { readonly sound: SoundState }) {
+  const { settings, updateSettings, available, play } = sound;
+  return (
+    <View>
+      <ListHeader title="Volume" />
+      <ListGroup inset={16}>
+        <SettingRow
+          label="Playback volume"
+          control={
+            <VolumeStepper
+              volume={settings.volume}
+              updateVolume={(value) => {
+                void updateSettings({ volume: value });
+              }}
+              playTest={() => {
+                play("message");
+              }}
+              available={available}
+            />
+          }
+        />
+      </ListGroup>
+    </View>
+  );
+}
+
+function CuesSection({ sound }: { readonly sound: SoundState }) {
+  const { settings, updateSettings } = sound;
+  return (
+    <View>
+      <ListHeader title="Cues" />
+      <ListGroup inset={16}>
+        {SOUND_EVENTS.map((event) => (
+          <SoundCueRow
+            key={event}
+            event={event}
+            events={settings.events}
+            onChange={(value) => {
+              void updateSettings({ events: { ...settings.events, [event]: value } });
+            }}
+          />
+        ))}
+      </ListGroup>
     </View>
   );
 }
 
 /** Sound cue preferences: a master switch, per-event switches and volume 0–200%. */
 export function SoundSettingsSection() {
-  const palette = usePalette();
   const sound = useSound();
   if (sound === null) {
     return (
@@ -67,46 +140,13 @@ export function SoundSettingsSection() {
       </Text>
     );
   }
-  const { settings, updateSettings, available, play } = sound;
+  const { available } = sound;
 
   return (
-    <ScrollView contentContainerStyle={{ gap: 12, paddingBottom: 24 }}>
-      <View className="flex-row items-center justify-between">
-        <Text size="sm" className="flex-1">
-          Enable sounds
-        </Text>
-        <Switch
-          value={settings.enabled}
-          onValueChange={(value) => void updateSettings({ enabled: value })}
-          trackColor={{ false: palette.border, true: palette.accent }}
-          thumbColor={palette["on-accent"]}
-        />
-      </View>
-
-      <SoundVolume
-        volume={settings.volume}
-        updateVolume={(value) => {
-          void updateSettings({ volume: value });
-        }}
-        playTest={() => {
-          play("message");
-        }}
-        available={available}
-      />
-
-      <View className="gap-1">
-        <Heading level={3}>Cues</Heading>
-        {SOUND_EVENTS.map((event) => (
-          <SoundCueRow
-            key={event}
-            event={event}
-            events={settings.events}
-            onChange={(value) =>
-              void updateSettings({ events: { ...settings.events, [event]: value } })
-            }
-          />
-        ))}
-      </View>
+    <ScrollView contentContainerStyle={{ gap: 18, paddingBottom: 24 }}>
+      <EnableSection sound={sound} />
+      <VolumeSection sound={sound} />
+      <CuesSection sound={sound} />
 
       {!available && (
         <Text size="xs" tone="muted">
@@ -126,20 +166,21 @@ function SoundCueRow({
   readonly events: SoundSettings["events"];
   readonly onChange: (_value: boolean) => void;
 }) {
-  const palette = usePalette();
   const { [event]: label } = EVENT_LABELS;
   const { [event]: enabled } = events;
   return (
-    <View className="flex-row items-center justify-between py-1">
-      <Text size="sm" className="flex-1">
-        {label}
-      </Text>
-      <Switch
-        value={enabled}
-        onValueChange={onChange}
-        trackColor={{ false: palette.border, true: palette.accent }}
-        thumbColor={palette["on-accent"]}
-      />
-    </View>
+    <SettingRow
+      label={label}
+      control={
+        <Switch
+          accessibilityLabel={label}
+          value={enabled}
+          onValueChange={(value) => {
+            selectionFeedback();
+            onChange(value);
+          }}
+        />
+      }
+    />
   );
 }

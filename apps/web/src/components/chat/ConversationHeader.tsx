@@ -63,11 +63,11 @@ export function ConversationHeader({
   }
 
   return (
-    <header className="desktop-drag material-chrome flex h-[52px] shrink-0 items-center gap-2.5 border-b border-border px-3 sm:px-4">
+    <header className="material-chrome flex h-[52px] shrink-0 items-center gap-2.5 border-b border-border px-3 sm:px-4">
       {onBack !== undefined && (
         <span className="md:hidden">
           <HeaderAction label="Back to conversations" onClick={onBack}>
-            <Icon name="chevron-left" size={19} />
+            <Icon name="chevron-left" size={20} />
           </HeaderAction>
         </span>
       )}
@@ -95,15 +95,25 @@ export function ConversationHeader({
         <p className="truncate text-[11px] text-text-muted">{subtitle}</p>
       </div>
       <div className="flex items-center gap-0.5">
+        <HeaderAction label="Search messages" onClick={onOpenSearch}>
+          <Icon name="search" size={20} />
+        </HeaderAction>
         {onTogglePins !== undefined && (
           <HeaderAction
             label={pinsOpen ? "Hide pinned messages" : "View pinned messages"}
             pressed={pinsOpen}
             onClick={onTogglePins}
           >
-            <Icon name="pin" size={18} />
+            <Icon name="pin" size={20} />
           </HeaderAction>
         )}
+        <HeaderAction
+          label={membersOpen ? "Hide members" : "Show members"}
+          pressed={membersOpen}
+          onClick={onToggleMembers}
+        >
+          <Icon name="users" size={20} />
+        </HeaderAction>
         {isConversation && canStartCall && onStartCall !== undefined && (
           <HeaderAction
             label="Start voice call"
@@ -111,7 +121,7 @@ export function ConversationHeader({
               onStartCall("voice");
             }}
           >
-            <Icon name="phone" size={18} />
+            <Icon name="phone" size={20} />
           </HeaderAction>
         )}
         {isConversation && canStartVideoCall && onStartCall !== undefined && (
@@ -121,19 +131,9 @@ export function ConversationHeader({
               onStartCall("video");
             }}
           >
-            <Icon name="video" size={18} />
+            <Icon name="video" size={20} />
           </HeaderAction>
         )}
-        <HeaderAction label="Search messages" onClick={onOpenSearch}>
-          <Icon name="search" size={18} />
-        </HeaderAction>
-        <HeaderAction
-          label={membersOpen ? "Hide members" : "Show members"}
-          pressed={membersOpen}
-          onClick={onToggleMembers}
-        >
-          <Icon name="users" size={18} />
-        </HeaderAction>
       </div>
     </header>
   );
@@ -158,7 +158,7 @@ function HeaderAction({
       aria-pressed={pressed}
       onClick={onClick}
       className={cn(
-        "flex h-8 w-8 items-center justify-center rounded-[7px] transition focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent",
+        "flex h-8 w-8 items-center justify-center rounded-[8px] transition focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent",
         pressed === true
           ? "bg-surface-3 text-accent"
           : "text-text-muted hover:bg-surface-3 hover:text-text",

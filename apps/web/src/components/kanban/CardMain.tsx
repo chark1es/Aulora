@@ -1,8 +1,7 @@
-import { Button, cn, Icon } from "@aulora/ui-web";
+import { Button, Checkbox, cn, Icon, Textarea } from "@aulora/ui-web";
 import { useLayoutEffect, useRef, useState } from "react";
 import { field, rowAction, Section } from "./card-parts";
-import { CheckMark } from "./controls";
-import { control, newItemId } from "./types";
+import { newItemId } from "./types";
 import type { CardDraft, CardEditor } from "./use-card-editor";
 
 interface Props {
@@ -71,12 +70,13 @@ export function CardTitle({ editor }: Props) {
 export function CardNotes({ editor }: Props) {
   return (
     <Section icon="note" title="Notes">
-      <textarea
-        aria-label="Notes"
+      <Textarea
+        label="Notes"
+        hideLabel
         rows={5}
         maxLength={30000}
         placeholder={editor.canEdit ? "Add details, context or links…" : "No notes"}
-        className={cn(control, "resize-y leading-relaxed placeholder:text-text-muted")}
+        className="resize-y leading-relaxed"
         value={editor.draft.notes}
         onChange={(event) => {
           editor.setDraft({ ...editor.draft, notes: event.target.value });
@@ -88,7 +88,12 @@ export function CardNotes({ editor }: Props) {
 
 type Item = CardDraft["checklist"][number];
 
-function ItemRow({ editor, item }: Props & { item: Item }) {
+interface ItemActions {
+  readonly toggle: () => void;
+  readonly remove: () => void;
+}
+
+function useItemActions(editor: Props["editor"], item: Item): ItemActions {
   const { draft } = editor;
   const toggle = () => {
     editor.setDraft({
@@ -104,23 +109,34 @@ function ItemRow({ editor, item }: Props & { item: Item }) {
       checklist: draft.checklist.filter((entry) => entry.id !== item.id),
     });
   };
-  const items = editor.canEdit
-    ? [
-        {
-          id: "toggle",
-          label: item.done ? "Mark as not done" : "Mark as done",
-          icon: <Icon name="check" size={14} />,
-          onSelect: toggle,
-        },
-        {
-          id: "remove",
-          label: "Remove item",
-          icon: <Icon name="trash" size={14} />,
-          danger: true,
-          onSelect: remove,
-        },
-      ]
-    : [];
+  return { toggle, remove };
+}
+
+/** The right-click menu for a checklist item; empty when the card is read-only. */
+function itemMenu(canEdit: boolean, item: Item, actions: ItemActions) {
+  if (!canEdit) {
+    return [];
+  }
+  return [
+    {
+      id: "toggle",
+      label: item.done ? "Mark as not done" : "Mark as done",
+      icon: <Icon name="check" size={14} />,
+      onSelect: actions.toggle,
+    },
+    {
+      id: "remove",
+      label: "Remove item",
+      icon: <Icon name="trash" size={14} />,
+      danger: true,
+      onSelect: actions.remove,
+    },
+  ];
+}
+
+function ItemRow({ editor, item }: Props & { item: Item }) {
+  const { toggle, remove } = useItemActions(editor, item);
+  const items = itemMenu(editor.canEdit, item, { toggle, remove });
   return (
     // biome-ignore lint/a11y/noStaticElementInteractions: the right-click menu repeats the row's own controls
     <div
@@ -129,9 +145,18 @@ function ItemRow({ editor, item }: Props & { item: Item }) {
         editor.menu(event, "Checklist item actions", items);
       }}
     >
-      <label className="flex min-w-0 flex-1 cursor-pointer items-start gap-2.5 py-1.5 text-[13px]">
-        <input type="checkbox" className="peer sr-only" checked={item.done} onChange={toggle} />
-        <CheckMark className="mt-px" />
+      <label
+        htmlFor={`kanban-item-${item.id}`}
+        className="flex min-w-0 flex-1 cursor-pointer items-start gap-2.5 py-1.5 text-[13px]"
+      >
+        <Checkbox
+          bare
+          id={`kanban-item-${item.id}`}
+          label={item.text}
+          checked={item.done}
+          onChange={toggle}
+          className="mt-0.5"
+        />
         <span
           className={cn(
             "min-w-0 break-words transition-colors",

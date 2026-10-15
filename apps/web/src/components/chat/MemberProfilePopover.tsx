@@ -147,8 +147,9 @@ export function MemberProfilePopover({
           ref={closeRef}
           type="button"
           aria-label="Close"
+          title="Close"
           onClick={onClose}
-          className="-mr-1 -mt-1 flex h-8 w-8 shrink-0 items-center justify-center rounded-[7px] text-text-muted transition hover:bg-surface-3 hover:text-text focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent"
+          className="-mr-1 -mt-1 flex h-8 w-8 shrink-0 items-center justify-center rounded-[8px] text-text-muted transition hover:bg-surface-3 hover:text-text focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent"
         >
           <Icon name="x" size={16} />
         </button>

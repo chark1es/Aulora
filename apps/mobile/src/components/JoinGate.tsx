@@ -1,4 +1,4 @@
-import { NativeAvatar } from "@aulora/avatars/native";
+import { NativeBlobatar } from "@aulora/avatars/native";
 import {
   joinCodeFailureMessage,
   normalizeInviteCode,
@@ -59,18 +59,17 @@ export function JoinGate({ workspaceIconSeed, signedInAs, onSignOut }: JoinGateP
           keyboardShouldPersistTaps="handled"
           showsVerticalScrollIndicator={false}
         >
-          <AuthScaffold aura={<NativeAvatar seed={workspaceIconSeed} size={72} shape="squircle" />}>
-            <View className="gap-2">
-              <Heading level={1}>Join {status.workspaceName}</Heading>
-              <Text size="base" tone="muted" className="leading-relaxed">
-                {subtitle}
-              </Text>
-              {signedInAs !== null && (
-                <Text size="xs" tone="muted" mono numberOfLines={1} ellipsizeMode="tail">
-                  {signedInAs}
-                </Text>
-              )}
-            </View>
+          <AuthScaffold
+            seed={workspaceIconSeed}
+            aura={
+              <NativeBlobatar seed={workspaceIconSeed} size={96} title={status.workspaceName} />
+            }
+          >
+            <JoinHeader
+              workspaceName={status.workspaceName}
+              subtitle={subtitle}
+              signedInAs={signedInAs}
+            />
             {!status.banned && <JoinOptions status={status} />}
             <Button variant="ghost" onPress={onSignOut}>
               Sign out
@@ -79,6 +78,28 @@ export function JoinGate({ workspaceIconSeed, signedInAs, onSignOut }: JoinGateP
         </ScrollView>
       </KeyboardAvoidingView>
     </SafeAreaView>
+  );
+}
+
+interface JoinHeaderProps {
+  readonly workspaceName: string;
+  readonly subtitle: string;
+  readonly signedInAs: string | null;
+}
+
+function JoinHeader({ workspaceName, subtitle, signedInAs }: JoinHeaderProps) {
+  return (
+    <View className="gap-2">
+      <Heading level={1}>Join {workspaceName}</Heading>
+      <Text size="base" tone="muted" className="leading-relaxed">
+        {subtitle}
+      </Text>
+      {signedInAs !== null && (
+        <Text size="xs" tone="muted" mono numberOfLines={1} ellipsizeMode="tail">
+          {signedInAs}
+        </Text>
+      )}
+    </View>
   );
 }
 

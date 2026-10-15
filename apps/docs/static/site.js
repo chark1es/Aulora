@@ -4,6 +4,11 @@
 
 import { mountDemo } from "./demo.js";
 import { applyDownloads, detectClient, loadRelease } from "./downloads.js";
+import { mountEnvFilter } from "./env-filter.js";
+import { mountSearch } from "./search.js";
+
+mountSearch();
+mountEnvFilter();
 
 for (const button of document.querySelectorAll("[data-copy]")) {
   button.addEventListener("click", async () => {

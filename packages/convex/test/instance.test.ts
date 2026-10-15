@@ -4,6 +4,8 @@ import { newTest, seedWorkspace } from "./helpers";
 
 afterEach(() => {
   delete process.env.UPLOAD_MAX_BYTES;
+  delete process.env.GITHUB_CLIENT_ID;
+  delete process.env.GITHUB_CLIENT_SECRET;
 });
 
 async function ownerTest() {
@@ -134,5 +136,43 @@ describe("instance.overview", () => {
     expect(overview.license.state).toBe("unlicensed");
     expect(overview.auth.local.enabled).toBe(true);
     expect(JSON.stringify(overview)).not.toContain("clientSecret");
+  });
+});
+
+describe("instance.updateAuthProviders local sign-in", () => {
+  it("refuses to disable email/password when nothing else is configured", async () => {
+    const { asOwner } = await ownerTest();
+    await expect(
+      asOwner.mutation(api.instance.updateAuthProviders, { providers: { local: false } }),
+    ).rejects.toThrow("no other sign-in provider is configured");
+  });
+
+  it("disables local sign-in once another provider is configured", async () => {
+    process.env.GITHUB_CLIENT_ID = "gh-id";
+    process.env.GITHUB_CLIENT_SECRET = "gh-secret";
+    const { asOwner } = await ownerTest();
+
+    const saved = await asOwner.mutation(api.instance.updateAuthProviders, {
+      providers: { local: false },
+    });
+    expect(saved.authProviders).toMatchObject({ local: false });
+
+    const config = await asOwner.query(api.server.publicConfig);
+    expect(config.auth.local.enabled).toBe(false);
+    const overview = await asOwner.query(api.instance.overview, {});
+    expect(overview.auth.local.enabled).toBe(false);
+    expect(overview.auth.providersConfigured).toMatchObject({ local: false });
+  });
+
+  it("keeps local sign-in on when the other provider is switched off", async () => {
+    process.env.GITHUB_CLIENT_ID = "gh-id";
+    process.env.GITHUB_CLIENT_SECRET = "gh-secret";
+    const { asOwner } = await ownerTest();
+
+    await expect(
+      asOwner.mutation(api.instance.updateAuthProviders, {
+        providers: { github: false, local: false },
+      }),
+    ).rejects.toThrow("no other sign-in provider is configured");
   });
 });

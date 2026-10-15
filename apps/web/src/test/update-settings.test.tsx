@@ -55,13 +55,20 @@ afterEach(() => {
 });
 
 describe("desktop settings updates", () => {
+  it("shows a version badge and formatted notes for an available update", async () => {
+    setup();
+    expect(await screen.findByText("Current version: v0.1.0")).toBeInTheDocument();
+    expect(await screen.findByText("v0.1.0 → v0.2.0")).toBeInTheDocument();
+    expect(screen.getByTestId("release-notes")).toBeInTheDocument();
+  });
+
   it("downloads first, keeps the indicator, and installs only on explicit restart", async () => {
     const user = userEvent.setup();
     setup();
-    expect(await screen.findByText("Current version: v0.1.0")).toBeInTheDocument();
-    await screen.findByRole("button", { name: "Download update" });
+    await screen.findByText("Current version: v0.1.0");
+    await screen.findByRole("button", { name: "Update now" });
     expect(screen.getByText("Settings update dot")).toBeInTheDocument();
-    expect(screen.queryByRole("button", { name: "Restart to update" })).not.toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: "Restart to finish" })).not.toBeInTheDocument();
     let finish: (() => void) | undefined;
     invoke.mockImplementation(async (command: string) => {
       if (command === "download_app_update")
@@ -70,7 +77,7 @@ describe("desktop settings updates", () => {
         });
       return undefined;
     });
-    await user.click(screen.getByRole("button", { name: "Download update" }));
+    await user.click(screen.getByRole("button", { name: "Update now" }));
     expect(screen.getByRole("button", { name: "Check for updates" })).toBeDisabled();
     await act(async () => {
       listeners.get("aulora://app-update-progress")?.({
@@ -80,7 +87,7 @@ describe("desktop settings updates", () => {
     expect(screen.getByText("50% downloaded")).toBeInTheDocument();
     expect(invoke).not.toHaveBeenCalledWith("install_app_update", undefined);
     await act(async () => finish?.());
-    await user.click(screen.getByRole("button", { name: "Restart to update" }));
+    await user.click(screen.getByRole("button", { name: "Restart to finish" }));
     expect(invoke).toHaveBeenCalledWith("install_app_update", undefined);
     expect(screen.getByText("Settings update dot")).toBeInTheDocument();
   });
@@ -88,27 +95,27 @@ describe("desktop settings updates", () => {
   it("preserves version and available update after a failed check, and retries a failed download", async () => {
     const user = userEvent.setup();
     setup();
-    await screen.findByRole("button", { name: "Download update" });
+    await screen.findByRole("button", { name: "Update now" });
     invoke.mockRejectedValue(new Error("Connection failed."));
     await user.click(screen.getByRole("button", { name: "Check for updates" }));
     expect(await screen.findByRole("alert")).toHaveTextContent("Connection failed.");
     expect(screen.getByText("Current version: v0.1.0")).toBeInTheDocument();
     expect(screen.getByText("Settings update dot")).toBeInTheDocument();
-    await user.click(screen.getByRole("button", { name: "Download update" }));
-    expect(screen.queryByRole("button", { name: "Restart to update" })).not.toBeInTheDocument();
+    await user.click(screen.getByRole("button", { name: "Update now" }));
+    expect(screen.queryByRole("button", { name: "Restart to finish" })).not.toBeInTheDocument();
     invoke.mockResolvedValue(undefined);
-    await user.click(screen.getByRole("button", { name: "Download update" }));
-    expect(await screen.findByRole("button", { name: "Restart to update" })).toBeEnabled();
+    await user.click(screen.getByRole("button", { name: "Update now" }));
+    expect(await screen.findByRole("button", { name: "Restart to finish" })).toBeEnabled();
   });
 
   it("retains a verified download after failed installation so restart can be retried", async () => {
     const user = userEvent.setup();
     setup();
-    await user.click(await screen.findByRole("button", { name: "Download update" }));
+    await user.click(await screen.findByRole("button", { name: "Update now" }));
     invoke.mockRejectedValue(new Error("Installer failed."));
-    await user.click(screen.getByRole("button", { name: "Restart to update" }));
+    await user.click(screen.getByRole("button", { name: "Restart to finish" }));
     expect(await screen.findByRole("alert")).toHaveTextContent("Installer failed.");
-    expect(screen.getByRole("button", { name: "Restart to update" })).toBeEnabled();
+    expect(screen.getByRole("button", { name: "Restart to finish" })).toBeEnabled();
   });
 
   it("reads the installed version even when the release feed is unavailable and unsubscribes", async () => {

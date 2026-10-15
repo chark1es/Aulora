@@ -1,6 +1,6 @@
-import { v } from "convex/values";
+import { ConvexError, v } from "convex/values";
 import type { QueryCtx } from "./_generated/server";
-import { mutation, query } from "./_generated/server";
+import { internalQuery, mutation, query } from "./_generated/server";
 import { writeAudit } from "./lib/audit";
 import { parseEmailConfig } from "./lib/email";
 import {
@@ -9,6 +9,7 @@ import {
   getEncryptionSettings,
   getOidcSettings,
   getPublicAuthConfig,
+  hasOtherSignInProvider,
   SOCIAL_PROVIDER_DEFINITIONS,
 } from "./lib/env";
 import { OIDC_REQUIRED_ENV_KEYS } from "./lib/envCatalog";
@@ -265,9 +266,35 @@ export const updateBackups = mutation({
 });
 
 /**
+ * Operator-saved auth-provider toggles for the auth request handler. Internal
+ * only: the handler needs the same `local` gate the public config advertises,
+ * without exposing the raw row. Returns `null` when no row is saved.
+ */
+export const authProviderToggles = internalQuery({
+  args: {},
+  returns: v.union(
+    v.object({
+      github: v.optional(v.boolean()),
+      google: v.optional(v.boolean()),
+      microsoft: v.optional(v.boolean()),
+      apple: v.optional(v.boolean()),
+      oidc: v.optional(v.boolean()),
+      local: v.optional(v.boolean()),
+    }),
+    v.null(),
+  ),
+  handler: async (ctx) => {
+    const row = await ctx.db.query("instanceSettings").first();
+    return row?.authProviders ?? null;
+  },
+});
+
+/**
  * Sets per-provider auth toggles. An explicit `false` hides a provider from
  * `server.publicConfig` even when its credentials are configured; absent
- * values inherit the deployment environment.
+ * values inherit the deployment environment. Turning local sign-in off is
+ * refused when no other provider is configured and enabled, so the instance is
+ * never locked out.
  */
 export const updateAuthProviders = mutation({
   args: {
@@ -277,10 +304,19 @@ export const updateAuthProviders = mutation({
       microsoft: v.optional(v.boolean()),
       apple: v.optional(v.boolean()),
       oidc: v.optional(v.boolean()),
+      local: v.optional(v.boolean()),
     }),
   },
   handler: async (ctx, args) => {
     const { userId } = await requireInstanceAdmin(ctx);
+    if (args.providers.local === false) {
+      const { env } = await loadEffectiveEnv(ctx);
+      if (!hasOtherSignInProvider(env, args.providers)) {
+        throw new ConvexError(
+          "Email & password sign-in can’t be turned off while no other sign-in provider is configured and enabled. Set up GitHub, Google, Microsoft, Apple or OIDC first.",
+        );
+      }
+    }
     const settings = await saveInstanceSettings(ctx, { authProviders: args.providers });
     await writeAudit(ctx, {
       actorId: userId,

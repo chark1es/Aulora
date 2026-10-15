@@ -29,9 +29,9 @@ export interface ModalProps {
 }
 
 const SIZE = new Map<NonNullable<ModalProps["size"]>, string>([
-  ["sm", "max-w-[380px]"],
-  ["md", "max-w-[480px]"],
-  ["lg", "max-w-[620px]"],
+  ["sm", "max-w-[400px]"],
+  ["md", "max-w-[520px]"],
+  ["lg", "max-w-[720px]"],
 ]);
 
 const FOCUSABLE_SELECTOR =
@@ -275,15 +275,48 @@ export function Modal(props: ModalProps) {
 export function Field({
   label,
   hint,
+  error,
   children,
   className,
   ...rest
-}: { label: string; hint?: string; children: ReactNode } & HTMLAttributes<HTMLDivElement>) {
+}: {
+  label: string;
+  hint?: string;
+  error?: string;
+  children: ReactNode;
+} & HTMLAttributes<HTMLDivElement>) {
   return (
     <div className={cn("flex flex-col gap-1.5", className)} {...rest}>
       <span className="text-[12px] font-medium text-text-muted">{label}</span>
       {children}
       {hint !== undefined && <span className="text-[11px] text-text-muted">{hint}</span>}
+      {error !== undefined && (
+        <span role="alert" className="text-[11px] text-danger">
+          {error}
+        </span>
+      )}
     </div>
+  );
+}
+
+/**
+ * The footer of a {@link Modal}: a destructive secondary action sits on the
+ * far left, while the cancel and primary action stay right-aligned in the
+ * order they are passed.
+ */
+export function ModalFooter({
+  destructive,
+  children,
+}: {
+  readonly destructive?: ReactNode;
+  readonly children: ReactNode;
+}) {
+  return (
+    <>
+      {destructive !== undefined && (
+        <span className="mr-auto flex items-center gap-2">{destructive}</span>
+      )}
+      {children}
+    </>
   );
 }

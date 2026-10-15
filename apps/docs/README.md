@@ -15,8 +15,9 @@ bun run --cwd apps/docs test    # node:test the markdown renderer and token read
 | --- | --- |
 | `dist/index.html` | `landing/index.html`, the home page |
 | `dist/how-it-works.html`, `install.html`, `pricing.html` | The other marketing pages in `landing/` |
-| `dist/docs/*.html` | `content/*.md`, the documentation |
+| `dist/docs/*.html` | `content/*.md`, the documentation (plus the generated environment reference) |
 | `dist/docs/legal/` | `LICENSE`, `NOTICE`, `COMMERCIAL.md`, `CLA.md`, `THIRD_PARTY_NOTICES.md` from the repository root |
+| `dist/search-index.json` | Built from every documentation page for the search palette |
 | `dist/tokens.css` | Generated from `packages/tokens/src/colors.ts` |
 | `dist/*.css`, `dist/*.js` | `static/` |
 
@@ -54,6 +55,15 @@ The site uses the app's own design system, so it can't drift from the clients:
 - `static/site.css` holds the shared chrome, `static/docs.css` the docs, and
   `static/landing.css` the landing page. Use the token variables (`--accent`,
   `--surface-2`, …) rather than hex values.
+- The header carries a search palette (`static/search.js`) backed by
+  `dist/search-index.json`, which `lib/search-index.mjs` builds from every
+  documentation page at build time.
+- The Environment variables page is generated at build time from the server's
+  environment catalog (`packages/convex/convex/lib/envCatalog*.ts`) by
+  `lib/env-catalog.mjs` and `lib/env-reference.mjs`, plus the hand-maintained
+  extras in `lib/env-reference-extras.mjs`. Do not edit it by hand; add new
+  catalog entries and they appear automatically. `lib/env-reference.test.mjs`
+  fails if a catalog key is missing from the page.
 
 Every link in `dist/` is relative, so the site can be served from any static
 file server or subdirectory. `bun run docs:check` verifies every generated

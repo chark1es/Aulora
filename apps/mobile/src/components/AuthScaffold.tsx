@@ -1,26 +1,63 @@
-import { View } from "react-native";
+import { KeyboardAvoidingView, Platform, ScrollView, StyleSheet, View } from "react-native";
+import { BlobBackdrop } from "./BlobBackdrop";
 
 export interface AuthScaffoldProps {
-  /** Rendered inside the centred column, below the aura. */
+  /** Rendered below the intro, directly on the page. */
   readonly children: React.ReactNode;
-  /** Optional override for the decorative aura slot. */
+  /** The hero mark, centred in the colour band. */
   readonly aura?: React.ReactNode;
+  /** Title and supporting copy between the band and the form. */
+  readonly intro?: React.ReactNode;
+  /** Icon seed for the drifting blob band; omitted for a plain band. */
+  readonly seed?: string;
+  /** `false` lets the blob field drift; `true`/`null` holds it still. */
+  readonly reduceMotion?: boolean | null;
 }
 
 /**
- * Shared layout for the two pre-session screens. A single centred column that
- * respects safe areas and keeps content in the readable, one-handed reach
- * zone; the content width is capped (and centred) on tablet/regular widths so
- * a primary button never stretches edge to edge (HIG: "Avoid full-width
- * buttons"). Callers own keyboard avoidance so it can wrap the whole column.
+ * Shared layout for the pre-session screens: an inset, rounded colour band on
+ * top carrying the workspace's blobatar, then the title and the form set
+ * directly on the page. There is no card around the form, so the screen reads as
+ * one composition rather than a panel floating over a wallpaper. The content
+ * width is capped on tablets so a primary button never stretches edge to edge
+ * (HIG: “Avoid full-width buttons”). Callers own keyboard avoidance.
  */
-export function AuthScaffold({ children, aura }: AuthScaffoldProps) {
+export function AuthScaffold({ children, aura, intro, seed, reduceMotion }: AuthScaffoldProps) {
   return (
-    <View className="flex-1 items-center justify-center px-6 py-6">
-      <View className="w-full max-w-content items-stretch gap-7">
-        {aura !== undefined && <View className="items-center">{aura}</View>}
+    <View className="flex-1 px-4 pb-8 pt-4">
+      <View className="h-[236px] w-full max-w-content self-center overflow-hidden rounded-[28px] border border-border">
+        {seed !== undefined && (
+          <BlobBackdrop seed={seed} {...(reduceMotion !== undefined ? { reduceMotion } : {})} />
+        )}
+        <View className="flex-1 items-center justify-center">{aura}</View>
+      </View>
+      <View className="w-full max-w-content gap-7 self-center px-2 pt-8">
+        {intro !== undefined && <View className="items-stretch">{intro}</View>}
         {children}
       </View>
     </View>
+  );
+}
+
+const scrollStyles = StyleSheet.create({
+  content: { flexGrow: 1 },
+});
+
+/** Keyboard-avoiding, tap-through scroller that every pre-session screen sits in. */
+export function AuthScroll({ children }: { readonly children: React.ReactNode }) {
+  return (
+    <KeyboardAvoidingView
+      className="flex-1"
+      behavior={Platform.OS === "ios" ? "padding" : "height"}
+    >
+      <ScrollView
+        className="flex-1"
+        contentContainerStyle={scrollStyles.content}
+        keyboardShouldPersistTaps="handled"
+        showsVerticalScrollIndicator={false}
+      >
+        {children}
+      </ScrollView>
+    </KeyboardAvoidingView>
   );
 }

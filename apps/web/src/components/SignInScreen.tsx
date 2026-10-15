@@ -1,11 +1,26 @@
-import { Avatar } from "@aulora/avatars";
-import type { ServerProfile } from "@aulora/core";
-import { Button, Input, Text } from "@aulora/ui-web";
+/* eslint-disable no-unused-vars -- the base rule reports parameter names in type signatures; Biome checks real unused code */
+import {
+  providerInitial,
+  resolveSignInMethods,
+  type ServerProfile,
+  type SignInMethods,
+  type WellKnownProvider,
+} from "@aulora/core";
+import { Button, Icon, IconButton, Text } from "@aulora/ui-web";
 import { useQuery } from "convex/react";
-import { type FormEvent, useState } from "react";
+import { type FocusEvent, type FormEvent, useState } from "react";
 import { api } from "../../../../packages/convex/convex/_generated/api";
 import type { AuthActions } from "../lib/auth-client";
-import { AuthCard, AuthDivider, AuthFrame, AuthHeader, AuthLink } from "./AuthFrame";
+import {
+  AuthButton,
+  AuthDivider,
+  AuthField,
+  AuthFrame,
+  AuthHeading,
+  AuthLink,
+  AuthStage,
+} from "./AuthFrame";
+import { BlobatarHero } from "./BlobatarHero";
 
 export interface SignInScreenProps {
   readonly profile: ServerProfile;
@@ -13,6 +28,9 @@ export interface SignInScreenProps {
   /** Returns to the connect screen to enter a different server. */
   readonly onSwitchServer?: () => void;
 }
+
+/** Where the hero's eyes are pointed: a focused field, `"rest"`, or nothing. */
+type Watch = Element | "rest" | null;
 
 function hostOf(baseUrl: string): string {
   try {
@@ -26,50 +44,67 @@ function callbackUrl(): string {
   return typeof window === "undefined" ? "http://localhost" : window.location.origin;
 }
 
-/**
- * Sign-in driven entirely by the server's well-known `auth` block: the local
- * email/password form appears only when `auth.local.enabled`, a sign-up toggle
- * only when `auth.local.signup`, and exactly one button per `auth.providers`
- * entry. No provider is hardcoded here.
- */
-export function SignInScreen({ profile, actions, onSwitchServer }: SignInScreenProps) {
-  const local = profile.auth.local;
-  const providers = profile.auth.providers;
-  const config = useQuery(api.server.publicConfig, {});
-  const description = config?.description ?? "";
-  const logoUrl = config?.logoUrl ?? null;
-  const [mode, setMode] = useState<"sign-in" | "sign-up">("sign-in");
-  const [email, setEmail] = useState("");
-  const [password, setPassword] = useState("");
-  const [name, setName] = useState("");
-  const [pending, setPending] = useState<string | null>(null);
-  const [error, setError] = useState<string | null>(null);
+interface AuthFailure {
+  readonly message?: string;
+}
 
-  async function run(key: string, task: () => Promise<{ error: { message?: string } | null }>) {
-    setError(null);
-    setPending(key);
+/** What an auth call resolves to: no error on success. */
+interface AuthResult {
+  readonly error: AuthFailure | null;
+}
+
+interface FormState {
+  readonly mode: "sign-in" | "sign-up";
+  readonly email: string;
+  readonly password: string;
+  readonly name: string;
+  readonly pending: string | null;
+  readonly error: string | null;
+}
+
+const INITIAL: FormState = {
+  mode: "sign-in",
+  email: "",
+  password: "",
+  name: "",
+  pending: null,
+  error: null,
+};
+
+/** The form state and submit handlers behind {@link SignInScreen}. */
+function useSignInForm(actions: AuthActions) {
+  const [state, setState] = useState<FormState>(INITIAL);
+  const patch = (next: Partial<FormState>) => {
+    setState((current) => ({ ...current, ...next }));
+  };
+
+  async function run(key: string, task: () => Promise<AuthResult>) {
+    patch({ error: null, pending: key });
     try {
       const result = await task();
       if (result.error !== null) {
-        setError(result.error.message ?? "That did not work. Check your details and try again.");
+        patch({
+          error: result.error.message ?? "That did not work. Check your details and try again.",
+        });
       }
     } catch {
-      setError("Could not reach the server. Try again.");
+      patch({ error: "Could not reach the server. Try again." });
     } finally {
-      setPending(null);
+      patch({ pending: null });
     }
   }
 
-  async function handleLocalSubmit(event: FormEvent<HTMLFormElement>) {
-    event.preventDefault();
-    if (mode === "sign-up") {
-      await run("local", () => actions.signUpEmail({ email, password, name }));
-    } else {
-      await run("local", () => actions.signInEmail({ email, password }));
+  async function submit() {
+    if (state.mode === "sign-up") {
+      await run("local", () =>
+        actions.signUpEmail({ email: state.email, password: state.password, name: state.name }),
+      );
+      return;
     }
+    await run("local", () => actions.signInEmail({ email: state.email, password: state.password }));
   }
 
-  function handleProvider(providerId: string, type: "oauth" | "oidc") {
+  function provider(providerId: string, type: "oauth" | "oidc") {
     return () => {
       void run(providerId, () =>
         type === "oauth"
@@ -79,129 +114,322 @@ export function SignInScreen({ profile, actions, onSwitchServer }: SignInScreenP
     };
   }
 
-  const hasProviders = providers.length > 0;
-  const subtitle =
-    description.length > 0
-      ? description
-      : hasProviders || local.enabled
-        ? mode === "sign-up"
-          ? "Set up your details to join this workspace."
-          : "Welcome back. Sign in to continue."
-        : "This server has no sign-in methods enabled yet.";
+  return { state, patch, submit, provider };
+}
+
+function ProviderBadge({ name }: { readonly name: string }) {
+  return (
+    <span
+      aria-hidden="true"
+      className="grid h-6 w-6 place-items-center rounded-[7px] bg-surface-3 text-[12px] font-semibold text-text"
+    >
+      {providerInitial(name)}
+    </span>
+  );
+}
+
+interface ProviderStackProps {
+  readonly providers: readonly WellKnownProvider[];
+  readonly pending: string | null;
+  readonly onProvider: (providerId: string, type: "oauth" | "oidc") => () => void;
+}
+
+function ProviderStack({ providers, pending, onProvider }: ProviderStackProps) {
+  return (
+    <div className="flex flex-col gap-2.5">
+      {providers.map((provider) => (
+        <Button
+          key={provider.id}
+          size="lg"
+          variant="secondary"
+          className="!h-12 !rounded-full !bg-transparent hover:!bg-surface-2"
+          aria-label={`Continue with ${provider.displayName}`}
+          leading={<ProviderBadge name={provider.displayName} />}
+          loading={pending === provider.id}
+          disabled={pending !== null && pending !== provider.id}
+          onClick={onProvider(provider.id, provider.type)}
+        >
+          {provider.displayName}
+        </Button>
+      ))}
+    </div>
+  );
+}
+
+const MODES = [
+  { value: "sign-in", label: "Sign in" },
+  { value: "sign-up", label: "Create an account" },
+] as const;
+
+interface ModeTabProps {
+  readonly label: string;
+  readonly active: boolean;
+  readonly onSelect: () => void;
+}
+
+/** One local-auth mode tab; the active one is a label, not a button. */
+function ModeTab({ label, active, onSelect }: ModeTabProps) {
+  if (active) {
+    return (
+      <span className="-mb-px border-b-2 border-accent pb-2.5 text-[14px] font-semibold text-text">
+        {label}
+      </span>
+    );
+  }
+  return (
+    <button
+      type="button"
+      onClick={onSelect}
+      className="pb-2.5 text-[14px] font-medium text-text-muted transition hover:text-text focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent"
+    >
+      {label}
+    </button>
+  );
+}
+
+/** Underlined local-auth mode tabs. */
+function ModeSwitch({
+  mode,
+  onToggle,
+}: {
+  readonly mode: FormState["mode"];
+  readonly onToggle: () => void;
+}) {
+  return (
+    <div className="flex gap-6 border-b border-border">
+      {MODES.map((option) => (
+        <ModeTab
+          key={option.value}
+          label={option.label}
+          active={option.value === mode}
+          onSelect={onToggle}
+        />
+      ))}
+    </div>
+  );
+}
+
+function PasswordField({
+  value,
+  signUp,
+  onWatch,
+  onChange,
+}: {
+  readonly value: string;
+  readonly signUp: boolean;
+  readonly onWatch: (target: Watch) => void;
+  readonly onChange: (value: string) => void;
+}) {
+  const [show, setShow] = useState(false);
+  return (
+    <AuthField
+      label="Password"
+      type={show ? "text" : "password"}
+      autoComplete={signUp ? "new-password" : "current-password"}
+      value={value}
+      onChange={(event) => {
+        onChange(event.currentTarget.value);
+      }}
+      onFocus={() => {
+        // A password field is the one place the creature should pointedly look
+        // away: eyes that follow a field being revealed read as a gag, not help.
+        onWatch("rest");
+      }}
+      onBlur={() => {
+        onWatch(null);
+      }}
+      trailing={
+        <IconButton
+          label={show ? "Hide password" : "Show password"}
+          size="sm"
+          onClick={() => {
+            setShow((current) => !current);
+          }}
+        >
+          <Icon name={show ? "eye-off" : "eye"} size={18} />
+        </IconButton>
+      }
+    />
+  );
+}
+
+interface LocalFormProps {
+  readonly state: FormState;
+  readonly signup: boolean;
+  readonly onPatch: (next: Partial<FormState>) => void;
+  readonly onWatch: (target: Watch) => void;
+  readonly onSubmit: () => void;
+  readonly onToggleMode: () => void;
+}
+
+function LocalForm({ state, signup, onPatch, onWatch, onSubmit, onToggleMode }: LocalFormProps) {
+  const signUp = state.mode === "sign-up";
+  const watchSelf = (event: FocusEvent<HTMLInputElement>) => {
+    onWatch(event.currentTarget);
+  };
+  return (
+    <form
+      className="flex flex-col gap-6"
+      onSubmit={(event: FormEvent<HTMLFormElement>) => {
+        event.preventDefault();
+        onSubmit();
+      }}
+      noValidate
+    >
+      {signup && <ModeSwitch mode={state.mode} onToggle={onToggleMode} />}
+      {signUp && (
+        <AuthField
+          label="Name"
+          autoComplete="name"
+          value={state.name}
+          onFocus={watchSelf}
+          onBlur={() => {
+            onWatch(null);
+          }}
+          onChange={(event) => {
+            onPatch({ name: event.currentTarget.value });
+          }}
+        />
+      )}
+      <AuthField
+        label="Email"
+        type="email"
+        placeholder="name@company.com"
+        autoComplete="email"
+        value={state.email}
+        onFocus={watchSelf}
+        onBlur={() => {
+          onWatch(null);
+        }}
+        onChange={(event) => {
+          onPatch({ email: event.currentTarget.value });
+        }}
+      />
+      <PasswordField
+        value={state.password}
+        signUp={signUp}
+        onWatch={onWatch}
+        onChange={(value) => {
+          onPatch({ password: value });
+        }}
+      />
+      <AuthButton
+        type="submit"
+        loading={state.pending === "local"}
+        disabled={state.pending !== null}
+      >
+        {signUp ? "Create account" : "Sign in"}
+      </AuthButton>
+    </form>
+  );
+}
+
+interface SignInPanelProps extends LocalFormProps {
+  readonly methods: SignInMethods;
+  readonly providers: readonly WellKnownProvider[];
+  readonly pending: string | null;
+  readonly onProvider: (providerId: string, type: "oauth" | "oidc") => () => void;
+}
+
+/**
+ * The sign-in methods in order of weight: the email form first, then a divider,
+ * then the single-sign-on providers beneath it. When local sign-in is off the
+ * explanation leads and the providers are the whole form.
+ */
+function SignInPanel(props: SignInPanelProps) {
+  const { methods, providers, state, pending, onProvider, ...formProps } = props;
+  return (
+    <div className="flex flex-col gap-6">
+      {state.error !== null && (
+        <Text tone="danger" size="sm" role="alert">
+          {state.error}
+        </Text>
+      )}
+      {methods.showLocalForm && <LocalForm {...formProps} state={state} />}
+      {!methods.showLocalForm && methods.hasProviders && (
+        <Text tone="muted" size="sm" className="leading-relaxed">
+          This workspace signs in through its configured provider.
+        </Text>
+      )}
+      {methods.showDivider && <AuthDivider>or continue with</AuthDivider>}
+      {methods.hasProviders && (
+        <ProviderStack providers={providers} pending={pending} onProvider={onProvider} />
+      )}
+    </div>
+  );
+}
+
+function subtitleFor(methods: SignInMethods, signUp: boolean, description: string): string {
+  if (description.length > 0) {
+    return description;
+  }
+  if (!methods.hasAnyMethod) {
+    return "This server has no sign-in methods enabled yet.";
+  }
+  return signUp
+    ? "Set up your details to join this workspace."
+    : "Welcome back. Sign in to continue.";
+}
+
+/**
+ * Sign-in driven entirely by the server's well-known `auth` block: the local
+ * email/password form appears only when `auth.local.enabled`, a sign-up toggle
+ * only when `auth.local.signup`, and exactly one button per `auth.providers`
+ * entry. No provider is hardcoded here. When local sign-in is off, only the SSO
+ * buttons are shown, with a short explanation.
+ *
+ * The workspace's blobatar is the hero on its own colour panel, drawn from the
+ * same seed, so each workspace signs in on its own colours. The form sits
+ * directly on the page beside it, with no card.
+ */
+export function SignInScreen({ profile, actions, onSwitchServer }: SignInScreenProps) {
+  const methods = resolveSignInMethods(profile.auth);
+  const config = useQuery(api.server.publicConfig, {});
+  const { state, patch, submit, provider } = useSignInForm(actions);
+  const [watch, setWatch] = useState<Watch>(null);
+  const signUp = state.mode === "sign-up";
 
   return (
-    <AuthFrame>
-      <AuthHeader
-        mark={
-          logoUrl !== null ? (
-            <img src={logoUrl} alt="" className="h-16 w-16 object-cover" />
-          ) : (
-            <Avatar seed={profile.iconSeed} size={64} shape="squircle" />
-          )
-        }
-        title={mode === "sign-up" ? "Create your account" : `Sign in to ${profile.name}`}
-        subtitle={subtitle}
-        caption={hostOf(profile.baseUrl)}
+    <AuthFrame
+      seed={profile.iconSeed}
+      stage={
+        <AuthStage
+          hero={
+            <BlobatarHero
+              seed={profile.iconSeed}
+              size={190}
+              watch={watch}
+              src={config?.logoUrl ?? null}
+            />
+          }
+          headline={profile.name}
+          caption={hostOf(profile.baseUrl)}
+        />
+      }
+    >
+      <AuthHeading
+        title={signUp ? "Create your account" : `Sign in to ${profile.name}`}
+        subtitle={subtitleFor(methods, signUp, config?.description ?? "")}
       />
-      <AuthCard>
-        {error !== null && (
-          <Text tone="danger" size="sm" role="alert">
-            {error}
-          </Text>
-        )}
-
-        {hasProviders && (
-          <div className="flex flex-col gap-2">
-            {providers.map((provider) => (
-              <Button
-                key={provider.id}
-                size="lg"
-                variant="secondary"
-                loading={pending === provider.id}
-                disabled={pending !== null && pending !== provider.id}
-                onClick={handleProvider(provider.id, provider.type)}
-              >
-                Continue with {provider.displayName}
-              </Button>
-            ))}
-          </div>
-        )}
-
-        {hasProviders && local.enabled && <AuthDivider>or use email</AuthDivider>}
-
-        {local.enabled && (
-          <form
-            className="flex flex-col gap-4"
-            onSubmit={(event) => {
-              void handleLocalSubmit(event);
-            }}
-            noValidate
-          >
-            {mode === "sign-up" && (
-              <Input
-                label="Name"
-                size="lg"
-                autoComplete="name"
-                value={name}
-                onChange={(event) => {
-                  setName(event.currentTarget.value);
-                }}
-              />
-            )}
-            <Input
-              label="Email"
-              size="lg"
-              type="email"
-              autoComplete="email"
-              autoFocus={!hasProviders}
-              value={email}
-              onChange={(event) => {
-                setEmail(event.currentTarget.value);
-              }}
-            />
-            <Input
-              label="Password"
-              size="lg"
-              type="password"
-              autoComplete={mode === "sign-up" ? "new-password" : "current-password"}
-              value={password}
-              onChange={(event) => {
-                setPassword(event.currentTarget.value);
-              }}
-            />
-            <Button
-              size="lg"
-              type="submit"
-              loading={pending === "local"}
-              disabled={pending !== null}
-            >
-              <span className="text-[15px] font-semibold">
-                {mode === "sign-up" ? "Create account" : "Sign in"}
-              </span>
-            </Button>
-          </form>
-        )}
-
-        {local.enabled && local.signup && (
-          <p className="text-center text-[13px] text-text-muted">
-            {mode === "sign-up" ? "Already have an account?" : "New here?"}{" "}
-            <button
-              type="button"
-              disabled={pending !== null}
-              onClick={() => {
-                setError(null);
-                setMode(mode === "sign-up" ? "sign-in" : "sign-up");
-              }}
-              className="rounded font-medium text-accent transition hover:underline focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent disabled:opacity-50"
-            >
-              {mode === "sign-up" ? "Sign in" : "Create an account"}
-            </button>
-          </p>
-        )}
-      </AuthCard>
+      <SignInPanel
+        methods={methods}
+        providers={profile.auth.providers}
+        state={state}
+        pending={state.pending}
+        signup={methods.showSignUp}
+        onPatch={patch}
+        onWatch={setWatch}
+        onProvider={provider}
+        onSubmit={() => {
+          void submit();
+        }}
+        onToggleMode={() => {
+          patch({ mode: signUp ? "sign-in" : "sign-up", error: null });
+        }}
+      />
       {onSwitchServer !== undefined && (
-        <AuthLink onClick={onSwitchServer} disabled={pending !== null}>
-          Use a different server
+        <AuthLink onClick={onSwitchServer} disabled={state.pending !== null}>
+          Use a different workspace
         </AuthLink>
       )}
     </AuthFrame>

@@ -1,6 +1,7 @@
-import { Button, Input, Text, usePalette } from "@aulora/ui-native";
+import { Button, Input, Switch, Text } from "@aulora/ui-native";
 import { useState } from "react";
-import { Pressable, ScrollView, Switch, View } from "react-native";
+import { Pressable, ScrollView, View } from "react-native";
+import { impactFeedback } from "../../lib/haptics";
 import { Sheet } from "./Sheet";
 
 export type NewChannelKind = "text" | "announcement" | "voice";
@@ -163,17 +164,10 @@ function PrivateToggle({
   readonly value: boolean;
   readonly onChange: (_value: boolean) => void;
 }) {
-  const palette = usePalette();
   return (
     <View className="flex-row items-center justify-between rounded-input border border-border bg-surface-2 px-3 py-2">
       <Text size="sm">Private channel</Text>
-      <Switch
-        value={value}
-        onValueChange={onChange}
-        trackColor={{ false: palette.border, true: palette.accent }}
-        thumbColor={palette["on-accent"]}
-        accessibilityLabel="Private channel"
-      />
+      <Switch value={value} onValueChange={onChange} accessibilityLabel="Private channel" />
     </View>
   );
 }
@@ -216,6 +210,7 @@ function ChannelFormActions(props: {
           disabled={disabled}
           loading={busy}
           onPress={() => {
+            impactFeedback();
             const topicValue = topic.trim();
             void Promise.resolve(
               onCreateChannel({

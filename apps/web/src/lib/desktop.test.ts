@@ -1,5 +1,11 @@
 import { afterEach, describe, expect, it } from "vitest";
-import { checkDesktopUpdate, desktopPlatform, isDesktop, parseDeepLink } from "./desktop";
+import {
+  checkDesktopUpdate,
+  desktopPlatform,
+  isDesktop,
+  parseDeepLink,
+  showsDesktopTitleBar,
+} from "./desktop";
 
 describe("parseDeepLink", () => {
   it("parses connect deep links in query and path forms", () => {
@@ -99,6 +105,7 @@ describe("checkDesktopUpdate", () => {
             currentVersion: "0.1.0",
             notes: "Faster calls.",
             error: null,
+            pubDate: 1_700_000_000,
           }),
       },
     };
@@ -108,6 +115,7 @@ describe("checkDesktopUpdate", () => {
       currentVersion: "0.1.0",
       notes: "Faster calls.",
       error: null,
+      pubDate: 1_700_000_000,
     });
   });
 });
@@ -123,5 +131,17 @@ describe("desktopPlatform", () => {
       desktopPlatform("Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 Edg/140.0"),
     ).toBe("windows");
     expect(desktopPlatform("Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/605.1.15")).toBe("linux");
+  });
+});
+
+describe("showsDesktopTitleBar", () => {
+  it("only asks the macOS shell for a dedicated title bar", () => {
+    expect(showsDesktopTitleBar(true, "macos")).toBe(true);
+    expect(showsDesktopTitleBar(true, "windows")).toBe(false);
+    expect(showsDesktopTitleBar(true, "linux")).toBe(false);
+  });
+
+  it("never asks the web build for one", () => {
+    expect(showsDesktopTitleBar(false, "macos")).toBe(false);
   });
 });

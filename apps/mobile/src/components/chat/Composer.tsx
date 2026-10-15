@@ -11,6 +11,7 @@ import {
   pickFromClipboard,
   pickFromLibrary,
 } from "../../lib/attachments";
+import { impactFeedback } from "../../lib/haptics";
 import { BottomSheet } from "./BottomSheet";
 import { ListGroup, ListRow } from "./List";
 import { RichText } from "./RichText";
@@ -181,6 +182,7 @@ export function Composer(props: ComposerProps) {
     if (text.length === 0 && files.length === 0) {
       return;
     }
+    impactFeedback();
     void onSend({ text, files: files.map((entry) => entry.file) });
     setValue("");
     setFiles([]);

@@ -26,6 +26,7 @@ interface DesktopUpdates {
   readonly error: string | null;
   readonly progress: DesktopUpdateProgress | null;
   readonly menuNote: string | null;
+  readonly checkedAt: number | null;
   check(): Promise<void>;
   download(): Promise<void>;
   restart(): Promise<void>;
@@ -38,6 +39,7 @@ const Context = createContext<DesktopUpdates>({
   error: null,
   progress: null,
   menuNote: null,
+  checkedAt: null,
   check: noop,
   download: noop,
   restart: noop,
@@ -51,13 +53,17 @@ export function DesktopUpdateProvider({ children }: { readonly children: ReactNo
   const [error, setError] = useState<string | null>(null);
   const [progress, setProgress] = useState<DesktopUpdateProgress | null>(null);
   const [menuNote, setMenuNote] = useState<string | null>(null);
+  const [checkedAt, setCheckedAt] = useState<number | null>(null);
   const busy = useRef(false);
   const ready = useRef(false);
   const isReady = useCallback(() => ready.current, []);
   const apply = useCallback((next: DesktopUpdateStatus) => {
     // Failed checks must not erase a known update or a verified download.
     if (next.currentVersion) setCurrentVersion(next.currentVersion);
-    if (!next.error) setStatus(next);
+    if (!next.error) {
+      setStatus(next);
+      setCheckedAt(Date.now());
+    }
     if (next.downloaded) {
       ready.current = true;
       setPhase("ready");
@@ -96,8 +102,8 @@ export function DesktopUpdateProvider({ children }: { readonly children: ReactNo
                 setMenuNote(
                   payload.error ??
                     (payload.updateAvailable
-                      ? "An app update is available in Your settings → Updates."
-                      : "You're on the latest version."),
+                      ? "An app update is available. Use the update prompt to install it."
+                      : "You’re on the latest version."),
                 );
             },
           ],
@@ -180,7 +186,18 @@ export function DesktopUpdateProvider({ children }: { readonly children: ReactNo
   }
   return (
     <Context.Provider
-      value={{ status, currentVersion, phase, error, progress, menuNote, check, download, restart }}
+      value={{
+        status,
+        currentVersion,
+        phase,
+        error,
+        progress,
+        menuNote,
+        checkedAt,
+        check,
+        download,
+        restart,
+      }}
     >
       {children}
     </Context.Provider>

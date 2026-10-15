@@ -14,6 +14,9 @@ import {
   buttonLabelText,
   iconButtonClass,
   inputClass,
+  segmentedOptionClass,
+  segmentedTrackClass,
+  settingRowClass,
   textClass,
 } from "../src/variants";
 
@@ -89,6 +92,17 @@ describe("class composers", () => {
   it("appends custom class names and applies the mono font", () => {
     expect(textClass({ size: "xs", mono: true, className: "px-2" })).toContain("font-mono");
     expect(textClass({ size: "xs", mono: true, className: "px-2" })).toContain("px-2");
+  });
+
+  it("keeps settings rows and segmented options at a 44pt target", () => {
+    expect(settingRowClass()).toContain("min-h-[52px]");
+    expect(settingRowClass({ pressable: true })).toContain("active:bg-surface-3");
+    expect(settingRowClass({ disabled: true })).toContain("opacity-50");
+
+    expect(segmentedOptionClass({ active: true })).toContain("min-h-11");
+    expect(segmentedOptionClass({ active: true })).toContain("border-accent bg-accent-soft");
+    expect(segmentedOptionClass({ active: false })).toContain("border-border bg-surface-3");
+    expect(segmentedTrackClass()).toContain("flex-row");
   });
 });
 

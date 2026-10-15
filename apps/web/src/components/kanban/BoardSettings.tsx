@@ -1,10 +1,20 @@
 import type { KanbanBoardContent } from "@aulora/core";
-import { Button, ConfirmDialog, Icon, IconButton, Input, Modal, Switch } from "@aulora/ui-web";
+import {
+  Button,
+  ConfirmDialog,
+  Icon,
+  IconButton,
+  Input,
+  Modal,
+  ModalFooter,
+  Switch,
+  Textarea,
+} from "@aulora/ui-web";
 import { useMutation } from "convex/react";
 import { useState } from "react";
 import { api } from "../../../../../packages/convex/convex/_generated/api";
 import { PeoplePicker } from "./controls";
-import { type Board, type BoardMember, control, failure, newItemId } from "./types";
+import { type Board, type BoardMember, failure, newItemId } from "./types";
 
 /** The list with the items at two places exchanged. */
 function swapped<T>(items: readonly T[], index: number, other: number): T[] {
@@ -82,22 +92,25 @@ export function BoardSettings({
         size="lg"
         className="flex max-h-[calc(100dvh-32px)] flex-col [&>div]:min-h-0 [&>div]:overflow-y-auto [&>footer]:shrink-0 [&>footer]:flex-wrap [&>header]:shrink-0"
         footer={
-          <>
-            <Button
-              variant="ghost"
-              onClick={() => {
-                setConfirmArchive(true);
-              }}
-            >
-              Archive board
-            </Button>
+          <ModalFooter
+            destructive={
+              <Button
+                variant="ghost"
+                onClick={() => {
+                  setConfirmArchive(true);
+                }}
+              >
+                Archive board
+              </Button>
+            }
+          >
             <Button variant="secondary" onClick={close}>
               Cancel
             </Button>
             <Button loading={busy} onClick={() => void save()}>
               Save board
             </Button>
-          </>
+          </ModalFooter>
         }
       >
         <div className="flex flex-col gap-5 pb-4">
@@ -109,18 +122,15 @@ export function BoardSettings({
               setDraft({ ...draft, name: e.target.value });
             }}
           />
-          <label className="flex flex-col gap-1.5 text-[13px] text-text-muted">
-            Description
-            <textarea
-              className={control}
-              rows={3}
-              maxLength={5000}
-              value={draft.description}
-              onChange={(e) => {
-                setDraft({ ...draft, description: e.target.value });
-              }}
-            />
-          </label>
+          <Textarea
+            label="Description"
+            rows={3}
+            maxLength={5000}
+            value={draft.description}
+            onChange={(e) => {
+              setDraft({ ...draft, description: e.target.value });
+            }}
+          />
           <Switch
             label="Private board"
             description="Only selected members and board managers can access it. Workspace Kanban permissions still apply."

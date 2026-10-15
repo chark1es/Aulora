@@ -62,14 +62,49 @@ function buildModel(overrides: Partial<EnvVariablesModel> = {}): EnvironmentSect
 }
 
 describe("EnvironmentSectionView", () => {
-  it("shows provenance without any deployment value", () => {
+  it("shows provenance without any deployment value", async () => {
+    const user = userEvent.setup();
     render(<EnvironmentSectionView model={buildModel()} />);
-    expect(screen.getByTestId("env-source-GITHUB_CLIENT_ID")).toHaveTextContent("Environment");
+    expect(screen.getByTestId("env-source-GITHUB_CLIENT_ID")).toHaveTextContent("Deployment");
     expect(screen.getByTestId("env-value-GITHUB_CLIENT_ID")).toHaveTextContent(
       "Set by the deployment (value hidden)",
     );
+
+    await user.click(screen.getByTestId("env-group-tab-oidc"));
     expect(screen.getByTestId("env-value-OIDC_CLIENT_ID")).toHaveTextContent("Not set");
-    expect(screen.queryByText("Overridden in UI")).not.toBeInTheDocument();
+    expect(screen.queryByTestId("env-reset-OIDC_CLIENT_ID")).not.toBeInTheDocument();
+  });
+
+  it("shows one group at a time unless searching", async () => {
+    const user = userEvent.setup();
+    render(<EnvironmentSectionView model={buildModel()} />);
+    expect(screen.getByTestId("env-var-GITHUB_CLIENT_ID")).toBeInTheDocument();
+    expect(screen.queryByTestId("env-var-OIDC_CLIENT_ID")).not.toBeInTheDocument();
+
+    await user.type(screen.getByLabelText("Filter variables"), "oidc");
+    expect(screen.queryByTestId("env-var-GITHUB_CLIENT_ID")).not.toBeInTheDocument();
+    expect(screen.getByTestId("env-var-OIDC_CLIENT_ID")).toBeInTheDocument();
+
+    await user.click(screen.getByTestId("env-filter-clear"));
+    expect(screen.getByTestId("env-result-count")).toHaveTextContent("2 variables");
+  });
+
+  it("filters by override state", async () => {
+    const user = userEvent.setup();
+    const model = buildModel({
+      variables: [
+        variable({ key: "GITHUB_CLIENT_ID", group: "auth-providers" }),
+        variable({ key: "SITE_URL", group: "auth-providers", overridable: false }),
+      ],
+    });
+    render(<EnvironmentSectionView model={model} />);
+    await user.click(screen.getByRole("button", { name: "Overridable" }));
+    expect(screen.getByTestId("env-var-GITHUB_CLIENT_ID")).toBeInTheDocument();
+    expect(screen.queryByTestId("env-var-SITE_URL")).not.toBeInTheDocument();
+
+    await user.click(screen.getByRole("button", { name: "Read-only" }));
+    expect(screen.getByTestId("env-var-SITE_URL")).toBeInTheDocument();
+    expect(screen.queryByTestId("env-var-GITHUB_CLIENT_ID")).not.toBeInTheDocument();
   });
 
   it("locks the section when the kill switch is set", () => {
@@ -90,7 +125,7 @@ describe("EnvironmentSectionView", () => {
 });
 
 describe("EnvVariableRow", () => {
-  it("keeps secrets write-only and confirms before saving", async () => {
+  it("keeps secrets write-only and saves inline", async () => {
     const onSave = vi.fn(async () => null);
     const user = userEvent.setup();
     render(
@@ -113,22 +148,42 @@ describe("EnvVariableRow", () => {
     const input = screen.getByLabelText("OIDC client secret");
     expect(input).toHaveAttribute("type", "password");
     expect(input).toHaveValue("");
-    expect(input).toHaveAttribute("placeholder", "Set — enter a new value to replace");
+    expect(input).toHaveAttribute("placeholder", "Enter the secret");
 
     await user.type(input, "super-secret-value");
-    await user.click(screen.getByRole("button", { name: "Review" }));
-    expect(screen.getByText(/Override/)).toBeInTheDocument();
-    expect(onSave).not.toHaveBeenCalled();
-
-    await user.click(screen.getByTestId("env-confirm-OIDC_CLIENT_SECRET"));
+    await user.click(screen.getByTestId("env-save-OIDC_CLIENT_SECRET"));
     await waitFor(() => {
       expect(onSave).toHaveBeenCalledWith("super-secret-value");
     });
   });
-});
 
-describe("EnvVariableRow reset", () => {
-  it("offers reset only for UI overrides", async () => {
+  it("keeps an existing secret when saved blank", async () => {
+    const onSave = vi.fn(async () => null);
+    const user = userEvent.setup();
+    render(
+      <EnvVariableRow
+        variable={variable({
+          key: "GITHUB_CLIENT_SECRET",
+          label: "GitHub client secret",
+          secret: true,
+          source: "ui",
+        })}
+        locked={false}
+        encryptionReady
+        onSave={onSave}
+        onReset={vi.fn(async () => null)}
+      />,
+    );
+    expect(screen.getByTestId("env-value-GITHUB_CLIENT_SECRET")).toHaveTextContent("••••••");
+    await user.click(screen.getByRole("button", { name: "Edit" }));
+    await user.click(screen.getByTestId("env-save-GITHUB_CLIENT_SECRET"));
+    await waitFor(() => {
+      expect(screen.queryByTestId("env-form-GITHUB_CLIENT_SECRET")).not.toBeInTheDocument();
+    });
+    expect(onSave).not.toHaveBeenCalled();
+  });
+
+  it("resets through a confirmation and reports results", async () => {
     const onReset = vi.fn(async () => null);
     const user = userEvent.setup();
     render(
@@ -146,9 +201,65 @@ describe("EnvVariableRow reset", () => {
       />,
     );
     expect(screen.getByTestId("env-value-OIDC_CLIENT_ID")).toHaveTextContent("ui-client");
+    await user.click(screen.getByTestId("env-reset-OIDC_CLIENT_ID"));
     await user.click(screen.getByRole("button", { name: "Reset to environment" }));
     await waitFor(() => {
       expect(onReset).toHaveBeenCalledTimes(1);
+    });
+    expect(await screen.findByText("Reset to the environment value.")).toBeInTheDocument();
+  });
+});
+
+describe("EnvVariableRow editors", () => {
+  it("uses a switch for booleans", async () => {
+    const onSave = vi.fn(async () => null);
+    const user = userEvent.setup();
+    render(
+      <EnvVariableRow
+        variable={variable({
+          key: "AUTH_LOCAL_ENABLED",
+          label: "Local sign-in enabled",
+          type: "boolean",
+          source: "unset",
+          isSet: false,
+        })}
+        locked={false}
+        encryptionReady
+        onSave={onSave}
+        onReset={vi.fn(async () => null)}
+      />,
+    );
+    await user.click(screen.getByRole("button", { name: "Override" }));
+    await user.click(screen.getByRole("switch", { name: "Local sign-in enabled" }));
+    await user.click(screen.getByTestId("env-save-AUTH_LOCAL_ENABLED"));
+    await waitFor(() => {
+      expect(onSave).toHaveBeenCalledWith("true");
+    });
+  });
+
+  it("edits lists as removable chips", async () => {
+    const onSave = vi.fn(async () => null);
+    const user = userEvent.setup();
+    render(
+      <EnvVariableRow
+        variable={variable({
+          key: "OIDC_SCOPES",
+          label: "OIDC scopes",
+          type: "list",
+          source: "unset",
+          isSet: false,
+        })}
+        locked={false}
+        encryptionReady
+        onSave={onSave}
+        onReset={vi.fn(async () => null)}
+      />,
+    );
+    await user.click(screen.getByRole("button", { name: "Override" }));
+    await user.type(screen.getByLabelText("Add a value to OIDC scopes"), "openid{Enter}");
+    await user.click(screen.getByTestId("env-save-OIDC_SCOPES"));
+    await waitFor(() => {
+      expect(onSave).toHaveBeenCalledWith("openid");
     });
   });
 });

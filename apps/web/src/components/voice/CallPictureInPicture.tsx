@@ -23,13 +23,15 @@ export function CallPictureInPicture({
   }
   if (pipWindow !== null) {
     return createPortal(
-      <CallCompactView title={title} identity={identity} floating />,
+      <div className="h-screen">
+        <CallCompactView title={title} identity={identity} floating />
+      </div>,
       pipWindow.document.body,
     );
   }
   if (mini) {
     return createPortal(
-      <div className="fixed inset-0 z-[120] bg-bg">
+      <div className="desktop-below-titlebar z-[120] bg-bg">
         <CallCompactView title={title} identity={identity} floating />
       </div>,
       document.body,

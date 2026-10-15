@@ -1,4 +1,4 @@
-import { Icon, Input, Modal } from "@aulora/ui-web";
+import { Button, Icon, Input, Modal } from "@aulora/ui-web";
 import { useEffect, useRef, useState } from "react";
 
 export interface RenameChannelModalProps {
@@ -36,6 +36,16 @@ export function RenameChannelModal({
   const trimmed = name.trim();
   const canSubmit = trimmed.length > 0 && trimmed !== currentName && !busy;
 
+  const submit = () => {
+    if (!canSubmit) {
+      return;
+    }
+    setBusy(true);
+    void Promise.resolve(onRename(trimmed)).finally(() => {
+      setBusy(false);
+    });
+  };
+
   return (
     <Modal
       open={open}
@@ -50,29 +60,18 @@ export function RenameChannelModal({
       }
       footer={
         <>
-          <button
-            type="button"
-            onClick={onClose}
-            className="h-9 rounded-[8px] px-3 text-[13px] font-medium text-text-muted transition hover:bg-surface-3 hover:text-text"
-          >
+          <Button type="button" variant="ghost" onClick={onClose}>
             Cancel
-          </button>
-          <button
+          </Button>
+          <Button
             type="button"
+            variant="primary"
             disabled={!canSubmit}
-            onClick={() => {
-              if (!canSubmit) {
-                return;
-              }
-              setBusy(true);
-              void Promise.resolve(onRename(trimmed)).finally(() => {
-                setBusy(false);
-              });
-            }}
-            className="h-9 rounded-[8px] bg-accent px-3.5 text-[13px] font-semibold text-on-accent transition hover:brightness-110 disabled:pointer-events-none disabled:opacity-40"
+            loading={busy}
+            onClick={submit}
           >
-            {busy ? "Saving…" : "Save"}
-          </button>
+            Save
+          </Button>
         </>
       }
     >
@@ -85,11 +84,8 @@ export function RenameChannelModal({
           setName(event.target.value);
         }}
         onKeyDown={(event) => {
-          if (event.key === "Enter" && canSubmit) {
-            setBusy(true);
-            void Promise.resolve(onRename(trimmed)).finally(() => {
-              setBusy(false);
-            });
+          if (event.key === "Enter") {
+            submit();
           }
         }}
       />

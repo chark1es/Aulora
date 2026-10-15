@@ -1,6 +1,5 @@
 import { callKindLabel } from "@aulora/core";
 import { cn, Icon } from "@aulora/ui-web";
-import { desktopPlatform, isDesktop } from "../../lib/desktop";
 import { useVoice } from "../../providers/VoiceProvider";
 import { CallControls } from "./CallControls";
 import { CallMediaNotice } from "./CallMediaNotice";
@@ -35,11 +34,9 @@ export function CallCompactView({
   if (call === null) {
     return null;
   }
-  // The macOS window has its traffic lights over the top-left corner.
-  const clearTrafficLights = floating && isDesktop() && desktopPlatform() === "macos";
   return (
-    <div className="flex flex-col gap-2 p-2" style={{ height: floating ? "100vh" : DOCK_HEIGHT }}>
-      <div className={cn("flex items-center gap-2 px-0.5", clearTrafficLights && "pl-[68px]")}>
+    <div className="flex flex-col gap-2 p-2" style={{ height: floating ? "100%" : DOCK_HEIGHT }}>
+      <div className="flex items-center gap-2 px-0.5">
         <span className="flex h-6 w-6 shrink-0 items-center justify-center rounded-[6px] bg-accent-soft text-accent">
           <Icon name={call.kind === "video" ? "video" : "volume"} size={14} />
         </span>

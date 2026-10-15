@@ -61,6 +61,7 @@ function ColumnStrip({ ctl, board, active, onShow }: StripProps) {
             accessibilityRole="tab"
             accessibilityState={{ selected }}
             accessibilityLabel={`${column.name}, ${count} cards`}
+            hitSlop={4}
             onLayout={(event) => {
               offsets.current.set(index, event.nativeEvent.layout.x);
             }}

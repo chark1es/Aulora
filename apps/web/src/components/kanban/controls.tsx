@@ -1,6 +1,6 @@
 /* eslint-disable no-unused-vars -- the base rule reports parameter names in type signatures; Biome checks real unused code */
-import { cn, Icon, type IconProps } from "@aulora/ui-web";
-import { type ReactNode, useEffect, useRef, useState } from "react";
+import { Checkbox, cn, Icon, type IconProps, SearchInput } from "@aulora/ui-web";
+import { type ReactNode, useEffect, useId, useRef, useState } from "react";
 import { PersonAvatar } from "../chat/member-avatars";
 import type { BoardMember, Card } from "./types";
 
@@ -185,6 +185,7 @@ export function ChecklistMenu({
   emptyText?: string;
 }) {
   const { open, setOpen, rootRef, onKeyDown } = usePopover();
+  const listId = useId();
   const [query, setQuery] = useState("");
   const searchable = searchPlaceholder !== undefined && options.length > 6;
   const visible = options.filter((o) => o.label.toLowerCase().includes(query.trim().toLowerCase()));
@@ -210,30 +211,28 @@ export function ChecklistMenu({
           className={cn(popoverPanel, align === "left" ? "left-0" : "right-0")}
         >
           {searchable && (
-            <input
-              // biome-ignore lint/a11y/noAutofocus: typing filters the list straight away
-              autoFocus
-              aria-label={searchPlaceholder}
-              placeholder={searchPlaceholder}
+            <SearchInput
+              label={searchPlaceholder}
               value={query}
-              onChange={(e) => {
-                setQuery(e.target.value);
-              }}
-              className="mb-1 h-8 w-full rounded-[7px] border border-border bg-surface-3 px-2.5 text-[13px] text-text placeholder:text-text-muted focus-visible:border-accent focus-visible:outline-none"
+              onChange={setQuery}
+              autoFocus
+              className="mb-1"
             />
           )}
           <div className="max-h-64 overflow-y-auto">
-            {visible.map((option) => {
+            {visible.map((option, index) => {
               const checked = selected.includes(option.id);
+              const checkId = `${listId}-${index}`;
               return (
                 <label
                   key={option.id}
+                  htmlFor={checkId}
                   className={cn(menuRow, "cursor-pointer focus-within:bg-surface-3")}
                 >
-                  <input
-                    type="checkbox"
-                    aria-label={option.label}
-                    className="peer sr-only"
+                  <Checkbox
+                    bare
+                    id={checkId}
+                    label={option.label}
                     checked={checked}
                     onChange={() => {
                       onChange(
@@ -243,7 +242,6 @@ export function ChecklistMenu({
                       );
                     }}
                   />
-                  <CheckMark />
                   {option.leading}
                   <span className="min-w-0 flex-1 truncate">{option.label}</span>
                 </label>
@@ -269,23 +267,6 @@ export function ChecklistMenu({
         </fieldset>
       )}
     </div>
-  );
-}
-
-/** The visual box for a visually hidden `peer` checkbox placed just before it. */
-export function CheckMark({ className }: { className?: string }) {
-  return (
-    <span
-      className={cn(
-        "flex h-4 w-4 shrink-0 items-center justify-center rounded-[5px] border border-text-muted/50 text-transparent transition duration-150 [&>svg]:scale-50 [&>svg]:transition-transform [&>svg]:duration-150 peer-checked:[&>svg]:scale-100",
-        "peer-checked:border-accent peer-checked:bg-accent peer-checked:text-on-accent",
-        "peer-focus-visible:ring-2 peer-focus-visible:ring-accent peer-focus-visible:ring-offset-1 peer-focus-visible:ring-offset-surface-2",
-        "peer-disabled:opacity-60",
-        className,
-      )}
-    >
-      <Icon name="check" size={12} />
-    </span>
   );
 }
 
@@ -373,7 +354,7 @@ export function PeoplePicker({
             return (
               <div
                 key={id}
-                className="group flex h-7 shrink-0 animate-fade-in items-center gap-2 text-[13px]"
+                className="group flex h-8 shrink-0 animate-fade-in items-center gap-2 text-[13px]"
               >
                 <PersonAvatar userId={id} size={20} />
                 <span className="min-w-0 flex-1 truncate">{name}</span>
@@ -384,7 +365,7 @@ export function PeoplePicker({
                     onClick={() => {
                       onChange(selected.filter((s) => s !== id));
                     }}
-                    className="flex h-6 w-6 items-center justify-center rounded-[6px] text-text-muted opacity-0 transition hover:bg-surface-3 hover:text-text focus-visible:opacity-100 group-hover:opacity-100"
+                    className="flex h-8 w-8 items-center justify-center rounded-[7px] text-text-muted opacity-0 transition hover:bg-surface-3 hover:text-text focus-visible:opacity-100 group-hover:opacity-100"
                   >
                     <Icon name="x" size={14} />
                   </button>

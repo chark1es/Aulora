@@ -44,7 +44,7 @@ describe("ConnectScreen", () => {
 
     render(<ConnectScreen store={store} onConnected={onConnected} />);
     await user.type(screen.getByLabelText("Server address"), "chat.acme.com/");
-    await user.click(screen.getByRole("button", { name: "Connect" }));
+    await user.click(screen.getByRole("button", { name: "Continue" }));
 
     expect(await screen.findByText("Acme Chat")).toBeInTheDocument();
     expect(calls[0]).toBe("https://chat.acme.com/.well-known/aulora.json");
@@ -64,7 +64,7 @@ describe("ConnectScreen", () => {
 
     render(<ConnectScreen store={store} onConnected={onConnected} />);
     await user.type(screen.getByLabelText("Server address"), "chat.acme.com");
-    await user.click(screen.getByRole("button", { name: "Connect" }));
+    await user.click(screen.getByRole("button", { name: "Continue" }));
 
     expect(await screen.findByRole("alert")).toHaveTextContent("supports v1");
     expect(onConnected).not.toHaveBeenCalled();
@@ -80,7 +80,7 @@ describe("ConnectScreen", () => {
 
     render(<ConnectScreen store={store} />);
     await user.type(screen.getByLabelText("Server address"), "not a host");
-    await user.click(screen.getByRole("button", { name: "Connect" }));
+    await user.click(screen.getByRole("button", { name: "Continue" }));
 
     expect(await screen.findByRole("alert")).toHaveTextContent("Enter a valid server address");
     expect(fetchMock).not.toHaveBeenCalled();

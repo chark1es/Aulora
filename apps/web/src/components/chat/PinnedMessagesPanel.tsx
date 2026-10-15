@@ -1,5 +1,5 @@
 import { hasPermission, Permission } from "@aulora/core";
-import { Icon } from "@aulora/ui-web";
+import { Button, Icon } from "@aulora/ui-web";
 import { useMutation, usePaginatedQuery } from "convex/react";
 import { api } from "../../../../../packages/convex/convex/_generated/api";
 
@@ -35,8 +35,9 @@ export function PinnedMessagesPanel({
         <button
           type="button"
           aria-label="Close pinned messages"
+          title="Close pinned messages"
           onClick={onClose}
-          className="rounded-[6px] p-1 text-text-muted hover:bg-surface-3 hover:text-text"
+          className="flex h-8 w-8 items-center justify-center rounded-[8px] text-text-muted transition hover:bg-surface-3 hover:text-text focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent"
         >
           <Icon name="x" size={16} />
         </button>
@@ -58,13 +59,15 @@ export function PinnedMessagesPanel({
                 {new Date(message.createdAt).toLocaleDateString()}
               </time>
               {canPin && (
-                <button
+                <Button
                   type="button"
-                  className="ml-auto rounded-[5px] px-1.5 py-0.5 opacity-0 transition hover:bg-surface-1 hover:text-text group-hover:opacity-100 focus:opacity-100"
+                  size="sm"
+                  variant="ghost"
+                  className="ml-auto opacity-0 group-hover:opacity-100 focus:opacity-100"
                   onClick={() => void unpin({ messageId: message.id })}
                 >
                   Unpin
-                </button>
+                </Button>
               )}
             </div>
             <p className="mt-1 whitespace-pre-wrap break-words text-[13px] leading-relaxed text-text">
@@ -73,15 +76,17 @@ export function PinnedMessagesPanel({
           </div>
         ))}
         {status === "CanLoadMore" && (
-          <button
+          <Button
             type="button"
-            className="w-full rounded-[7px] py-2 text-xs font-medium text-accent hover:bg-surface-3"
+            size="sm"
+            variant="ghost"
+            className="w-full"
             onClick={() => {
               loadMore(30);
             }}
           >
             Load more pins
-          </button>
+          </Button>
         )}
       </div>
     </aside>

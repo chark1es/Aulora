@@ -70,8 +70,8 @@ function HereNow({ members, presence, ownUserId, onMemberPress }: HereNowProps) 
   return (
     <HorizontalScroll
       accessibilityLabel={`Here now, ${here.length} ${here.length === 1 ? "person" : "people"}`}
-      className="-mx-3"
-      contentContainerStyle={{ paddingHorizontal: 12, gap: 4 }}
+      className="-mx-4"
+      contentContainerStyle={{ paddingHorizontal: 16, gap: 4 }}
     >
       {here.map((member) => (
         <Pressable
@@ -381,7 +381,7 @@ export function ChannelList(props: ChannelListProps) {
   return (
     <ScrollView
       className="flex-1"
-      contentContainerStyle={{ paddingHorizontal: 12, paddingBottom: clearance, gap: 18 }}
+      contentContainerStyle={{ paddingHorizontal: 16, paddingBottom: clearance, gap: 18 }}
     >
       <WorkspaceHeading
         name={props.workspaceName}

@@ -288,9 +288,9 @@ export function SearchView(props: SearchViewProps) {
         className="flex-1"
         keyboardShouldPersistTaps="handled"
         keyboardDismissMode="on-drag"
-        contentContainerStyle={{ paddingHorizontal: 12, paddingBottom: 16, gap: 16 }}
+        contentContainerStyle={{ paddingHorizontal: 16, paddingBottom: 16, gap: 16 }}
       >
-        <View className="-mx-3">
+        <View className="-mx-4">
           <PaneHeader title="Search" subtitle="Messages, conversations and people" />
         </View>
         <SearchBody
