@@ -98,6 +98,37 @@ describe("createCookieFetch", () => {
     // The platform cookie jar must stay out, or iOS sends the session twice.
     expect(credentials).toEqual(["omit", "omit"]);
   });
+
+  it("keeps the stored session when a request fails, so a disconnect is not a sign-out", async () => {
+    const { store, map } = memoryCookieStore();
+    await store.setItem(AUTH_COOKIE_KEY, "better-auth.session_token=abc");
+    const baseFetch = vi.fn(() => {
+      throw new Error("Network request failed");
+    });
+    const cookieFetch = createCookieFetch({
+      store,
+      baseFetch: baseFetch as unknown as typeof fetch,
+    });
+
+    await expect(cookieFetch("https://chat.acme.com/api/auth/get-session")).rejects.toThrow();
+    expect(map.get(AUTH_COOKIE_KEY)).toBe("better-auth.session_token=abc");
+  });
+
+  it("clears the stored session only when the server expires the cookie", async () => {
+    const { store, map } = memoryCookieStore();
+    await store.setItem(AUTH_COOKIE_KEY, "better-auth.session_token=abc");
+    const headers = new Headers({
+      "set-cookie": "better-auth.session_token=; Max-Age=0; Path=/",
+    });
+    const baseFetch = vi.fn(() => Promise.resolve(new Response("{}", { status: 200, headers })));
+    const cookieFetch = createCookieFetch({
+      store,
+      baseFetch: baseFetch as unknown as typeof fetch,
+    });
+
+    await cookieFetch("https://chat.acme.com/api/auth/get-session");
+    expect(map.get(AUTH_COOKIE_KEY)).toBeUndefined();
+  });
 });
 
 describe("storeRedirectCookie", () => {

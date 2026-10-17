@@ -12,6 +12,7 @@ import {
 } from "./ConnectionRecoveryActions";
 import { ChatSessionShell, type ChatSessionShellRecovery } from "./chat/ChatSessionShell";
 import { MembershipGate } from "./MembershipGate";
+import { QueryErrorBoundary } from "./QueryErrorBoundary";
 import { SignInScreen } from "./SignInScreen";
 
 export interface SessionGateProps {
@@ -121,21 +122,23 @@ function SignedInShell({
     void actions.signOut();
   };
   return (
-    <MembershipGate
-      workspaceIconSeed={profile.iconSeed}
-      signedInAs={signedInUser.email ?? signedInUser.name ?? null}
-      onSignOut={signOut}
-    >
-      <ChatSessionShell
-        key={attempt}
-        client={client}
-        workspaceName={profile.name}
+    <QueryErrorBoundary client={client} onSignOut={signOut}>
+      <MembershipGate
         workspaceIconSeed={profile.iconSeed}
-        user={signedInUser}
+        signedInAs={signedInUser.email ?? signedInUser.name ?? null}
         onSignOut={signOut}
-        recovery={shellRecovery}
-      />
-    </MembershipGate>
+      >
+        <ChatSessionShell
+          key={attempt}
+          client={client}
+          workspaceName={profile.name}
+          workspaceIconSeed={profile.iconSeed}
+          user={signedInUser}
+          onSignOut={signOut}
+          recovery={shellRecovery}
+        />
+      </MembershipGate>
+    </QueryErrorBoundary>
   );
 }
 
