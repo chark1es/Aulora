@@ -11,6 +11,7 @@ import { lazy, Suspense, useEffect, useState } from "react";
 import { DesktopBridge } from "./components/DesktopBridge";
 import { DesktopTitleBar } from "./components/DesktopTitleBar";
 import { DesktopUpdateNotice } from "./components/DesktopUpdateNotice";
+import { RouteError } from "./components/RouteError";
 import { WorkspaceMenu } from "./components/WorkspaceMenu";
 import { DesktopUpdateProvider } from "./providers/DesktopUpdateProvider";
 import { ProfileProvider, useProfiles } from "./providers/ProfileProvider";
@@ -135,7 +136,7 @@ const routeTree = rootRoute.addChildren(
     : [indexRoute, connectRoute, redeemRoute],
 );
 
-export const router = createRouter({ routeTree });
+export const router = createRouter({ routeTree, defaultErrorComponent: RouteError });
 
 declare module "@tanstack/react-router" {
   interface Register {

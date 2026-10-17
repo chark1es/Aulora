@@ -18,6 +18,11 @@ export {
 export { blurhashDecode, blurhashEncode } from "./blurhash";
 export * from "./chat/index";
 export {
+  classifyError,
+  type ErrorDisposition,
+  isAuthenticationError,
+} from "./errors/index";
+export {
   allowlistAdmits,
   formatAccessCode,
   INVITE_CODE_ALPHABET,

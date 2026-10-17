@@ -1,4 +1,5 @@
-import { Stack } from "expo-router";
+import { classifyError } from "@aulora/core";
+import { type ErrorBoundaryProps, Stack } from "expo-router";
 import { StatusBar } from "expo-status-bar";
 import { useEffect } from "react";
 import { View } from "react-native";
@@ -6,7 +7,7 @@ import { GestureHandlerRootView } from "react-native-gesture-handler";
 import { KeyboardProvider } from "react-native-keyboard-controller";
 import { SafeAreaProvider } from "react-native-safe-area-context";
 import "../global.css";
-import { usePalette } from "@aulora/ui-native";
+import { Button, Text, usePalette } from "@aulora/ui-native";
 import { BottomSheetModalProvider } from "@gorhom/bottom-sheet";
 import { configureNotificationHandler } from "../src/lib/push";
 import { useThemeVars } from "../src/lib/theme";
@@ -69,5 +70,27 @@ export default function RootLayout() {
         </KeyboardProvider>
       </SafeAreaProvider>
     </GestureHandlerRootView>
+  );
+}
+
+/**
+ * Recoverable fallback for an error that escapes the session's own boundary.
+ * Expo Router shows this instead of the dev error overlay; `retry` re-mounts
+ * the route, and a transient failure is framed as reconnecting.
+ */
+export function ErrorBoundary({ error, retry }: ErrorBoundaryProps) {
+  const reconnecting = classifyError(error) === "reconnecting";
+  return (
+    <View className="flex-1 items-center justify-center gap-3 bg-bg px-6">
+      <Text size="md" className="text-center font-medium">
+        {reconnecting ? "Reconnecting…" : "Something went wrong"}
+      </Text>
+      <Text size="sm" tone="muted" className="text-center">
+        {reconnecting
+          ? "Check your connection, then try again."
+          : "This view could not load. Try again to reload it."}
+      </Text>
+      <Button onPress={() => void retry()}>Try again</Button>
+    </View>
   );
 }
