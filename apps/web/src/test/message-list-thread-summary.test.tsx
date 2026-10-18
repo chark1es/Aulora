@@ -90,7 +90,8 @@ describe("MessageList thread summary", () => {
     );
     const stack = container.querySelector('[data-testid="thread-repliers"]');
     expect(stack?.querySelectorAll("span.inline-flex")).toHaveLength(3);
-    expect(stack?.textContent).toBe("+");
+    expect(stack?.querySelector("svg")).not.toBeNull();
+    expect(stack?.querySelectorAll("[aria-hidden] svg, svg")).toHaveLength(1);
 
     rerender(
       <MessageList
@@ -99,7 +100,7 @@ describe("MessageList thread summary", () => {
     );
     const fewer = container.querySelector('[data-testid="thread-repliers"]');
     expect(fewer?.querySelectorAll("span.inline-flex")).toHaveLength(2);
-    expect(fewer?.textContent).toBe("");
+    expect(fewer?.querySelector("svg")).toBeNull();
   });
 
   it("hides the summary inside a thread", () => {

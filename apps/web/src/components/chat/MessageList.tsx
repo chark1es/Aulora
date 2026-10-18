@@ -435,8 +435,8 @@ function SystemEventRow({
   const actorName = systemActorName(list, actorId);
   return (
     <div className="flex w-full gap-2.5 py-0.5" data-testid={`system-${message.id}`}>
-      <div className="flex w-8 shrink-0 justify-center pt-0.5 text-text-muted">
-        <Icon name="pin" size={12} />
+      <div className="flex h-5 w-8 shrink-0 items-center justify-center text-text-muted">
+        <Icon name="pin" size={13} block />
       </div>
       <p className="text-[12px] leading-5 text-text-muted">
         <span className="font-medium text-text-muted">{actorName}</span> pinned a{" "}
@@ -1006,9 +1006,9 @@ function ReplierStack({ userIds }: { readonly userIds: readonly string[] }) {
       {hasMore && (
         <span
           aria-hidden="true"
-          className="relative flex h-5 w-5 items-center justify-center rounded-full bg-surface-3 text-[11px] font-semibold leading-none text-text-muted ring-2 ring-[var(--aulora-chat)] group-hover/thread:ring-surface-3"
+          className="relative flex h-5 w-5 items-center justify-center rounded-full bg-surface-3 text-text-muted ring-2 ring-[var(--aulora-chat)] group-hover/thread:ring-surface-3"
         >
-          +
+          <Icon name="plus" size={12} block />
         </span>
       )}
     </span>
