@@ -1,5 +1,6 @@
 import { defineSchema, defineTable } from "convex/server";
 import { v } from "convex/values";
+import { botTables } from "./botSchema";
 
 /**
  * Aulora data model (one server = one workspace, so no `workspaceId`).
@@ -698,4 +699,6 @@ export default defineSchema({
     windowStart: v.number(),
     count: v.number(),
   }).index("by_key", ["key"]),
+
+  ...botTables,
 });

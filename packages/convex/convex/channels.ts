@@ -5,6 +5,7 @@ import { type MutationCtx, mutation, query } from "./_generated/server";
 import { writeAudit } from "./lib/audit";
 import { requireAuth } from "./lib/auth";
 import { assertMayParticipate } from "./lib/bans";
+import { assertNotBot } from "./lib/botAuth";
 import {
   applyPrivateOverrides,
   type ChannelSummary,
@@ -583,6 +584,7 @@ export const createDm = mutation({
   args: { otherUserId: v.string() },
   handler: async (ctx, args) => {
     const { userId } = await requireAuth(ctx);
+    assertNotBot(userId, "start direct messages");
     await requireMember(ctx, userId);
     return await createDmChannel(ctx, userId, [args.otherUserId], "dm");
   },
@@ -593,6 +595,7 @@ export const createGroupDm = mutation({
   args: { memberIds: v.array(v.string()) },
   handler: async (ctx, args) => {
     const { userId } = await requireAuth(ctx);
+    assertNotBot(userId, "start direct messages");
     await requireMember(ctx, userId);
     return await createDmChannel(ctx, userId, args.memberIds, "group_dm");
   },

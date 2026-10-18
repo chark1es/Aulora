@@ -1,4 +1,4 @@
-import { EVERYONE_ROLE_ID, Permission } from "@aulora/core";
+import { EVERYONE_ROLE_ID, isBotUserId, Permission } from "@aulora/core";
 import { ConvexError, v } from "convex/values";
 import type { Doc, Id } from "./_generated/dataModel";
 import type { MutationCtx } from "./_generated/server";
@@ -7,6 +7,7 @@ import { accountNames } from "./lib/accountNames";
 import { writeAudit } from "./lib/audit";
 import { requireAuth } from "./lib/auth";
 import { pruneExpiredBans } from "./lib/bans";
+import { assertNotBot } from "./lib/botAuth";
 import {
   requireCanGrant,
   requireMember,
@@ -93,6 +94,7 @@ export const generateAvatarUploadUrl = mutation({
   args: {},
   handler: async (ctx) => {
     const { userId } = await requireAuth(ctx);
+    assertNotBot(userId, "upload an avatar");
     await requireMember(ctx, userId);
     await enforceRateLimit(ctx, {
       key: userRateLimitKey("avatar", userId),
@@ -227,6 +229,8 @@ interface MemberView {
   readonly nickname: string | null;
   /** The account's own name (or email local part); `null` if unavailable. */
   readonly accountName: string | null;
+  /** True for a `bot_<id>` actor; a bot's display name comes from `bots`. */
+  readonly isBot: boolean;
   readonly roleIds: string[];
   readonly joinedAt: number;
   readonly timeoutUntil: number | null;
@@ -244,6 +248,7 @@ async function toMemberView(
     userId: member.userId,
     nickname: member.nickname ?? null,
     accountName,
+    isBot: isBotUserId(member.userId),
     roleIds: member.roleIds,
     joinedAt: member.joinedAt,
     timeoutUntil: member.timeoutUntil ?? null,

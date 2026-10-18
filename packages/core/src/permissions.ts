@@ -45,6 +45,7 @@ export const Permission = {
   DeleteNotes: 1n << 37n,
   ManageNotes: 1n << 38n,
   DeleteInvites: 1n << 39n,
+  ManageBots: 1n << 40n,
 } as const satisfies Record<string, bigint>;
 
 export type PermissionName = keyof typeof Permission;
