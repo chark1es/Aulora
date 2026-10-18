@@ -340,6 +340,8 @@ export default defineSchema({
     replyCount: v.optional(v.number()),
     /** Thread roots only: creation time of the newest reply. */
     lastReplyAt: v.optional(v.number()),
+    /** Thread roots only: recent distinct repliers, newest first, capped. Absent on older threads. */
+    replyParticipantIds: v.optional(v.array(v.string())),
   })
     // Convex appends `_creationTime` to every index, so this is
     // (channelId, _creationTime): chronological messages per channel.

@@ -26,6 +26,7 @@ import {
 import type { ChatRuntime } from "../../lib/chat-runtime";
 import { AttachmentView } from "./AttachmentView";
 import { EmojiPicker } from "./EmojiPicker";
+import { PersonAvatar } from "./member-avatars";
 import { PresenceAvatar } from "./PresenceAvatar";
 import { ReactionChips, type ReactionGroup } from "./ReactionChips";
 import { RichText } from "./RichText";
@@ -965,6 +966,7 @@ function MessageRow({
         <ThreadSummary
           replyCount={replyCount}
           lastReplyAt={message.lastReplyAt}
+          participantIds={message.replyParticipantIds ?? []}
           mirror={mirror}
           onOpen={() => {
             list.onReply(message);
@@ -972,6 +974,44 @@ function MessageRow({
         />
       )}
     </article>
+  );
+}
+
+const SHOWN_REPLIERS = 3;
+
+/**
+ * Overlapping avatars of the people who replied: up to three, then a "+" when
+ * the thread has more. With no participant data it falls back to a thread icon.
+ */
+function ReplierStack({ userIds }: { readonly userIds: readonly string[] }) {
+  if (userIds.length === 0) {
+    return (
+      <span className="flex h-5 w-5 shrink-0 items-center justify-center rounded-full bg-accent-soft text-accent">
+        <Icon name="thread" size={12} />
+      </span>
+    );
+  }
+  const shown = userIds.slice(0, SHOWN_REPLIERS);
+  const hasMore = userIds.length > SHOWN_REPLIERS;
+  return (
+    <span data-testid="thread-repliers" className="ml-0.5 flex shrink-0 items-center -space-x-1.5">
+      {shown.map((userId) => (
+        <PersonAvatar
+          key={userId}
+          userId={userId}
+          size={20}
+          className="ring-2 ring-[var(--aulora-chat)] group-hover/thread:ring-surface-3"
+        />
+      ))}
+      {hasMore && (
+        <span
+          aria-hidden="true"
+          className="relative flex h-5 w-5 items-center justify-center rounded-full bg-surface-3 text-[11px] font-semibold leading-none text-text-muted ring-2 ring-[var(--aulora-chat)] group-hover/thread:ring-surface-3"
+        >
+          +
+        </span>
+      )}
+    </span>
   );
 }
 
@@ -989,41 +1029,26 @@ function lastReplyNote(at: number | null | undefined): string | null {
 
 /**
  * The "N replies" row under a thread root. It stays quiet — a muted line with
- * an accented count — and is indented under the message text, joined to it by
- * the same elbow connector inline replies use. The whole row is the hit target.
+ * an accented count — sitting directly under the message text, led by the
+ * avatars of whoever replied. The whole row is the hit target.
  */
 function ThreadSummary({
   replyCount,
   lastReplyAt,
+  participantIds,
   mirror,
   onOpen,
 }: {
   readonly replyCount: number;
   readonly lastReplyAt: number | null | undefined;
+  readonly participantIds: readonly string[];
   readonly mirror: boolean;
   readonly onOpen: () => void;
 }) {
   const label = threadRepliesLabel(replyCount);
   const note = lastReplyNote(lastReplyAt);
   return (
-    <div className={cn("relative mt-1", mirror ? "pr-[62px]" : "pl-[62px]")}>
-      <svg
-        aria-hidden
-        data-testid="thread-branch"
-        viewBox="0 0 14 22"
-        fill="none"
-        className={cn(
-          "pointer-events-none absolute top-[-8px] h-[22px] w-[14px] overflow-visible text-text-muted",
-          mirror ? "right-[42px] -scale-x-100" : "left-[42px]",
-        )}
-      >
-        <path
-          d="M 2 0 L 2 14 Q 2 22 10 22 L 12 22"
-          stroke="currentColor"
-          strokeWidth={1.5}
-          strokeLinecap="round"
-        />
-      </svg>
+    <div className={cn("mt-1", mirror ? "pr-[42px]" : "pl-[42px]")}>
       <button
         type="button"
         aria-label={`Open thread, ${label}`}
@@ -1033,9 +1058,7 @@ function ThreadSummary({
           mirror ? "-mr-1.5 flex-row-reverse" : "-ml-1.5",
         )}
       >
-        <span className="flex h-5 w-5 shrink-0 items-center justify-center rounded-full bg-accent-soft text-accent">
-          <Icon name="thread" size={12} />
-        </span>
+        <ReplierStack userIds={participantIds} />
         <span className="shrink-0 text-[12px] font-semibold leading-4 text-accent">{label}</span>
         {note !== null && (
           <span className="min-w-0 truncate text-[11px] leading-4 text-text-muted">{note}</span>

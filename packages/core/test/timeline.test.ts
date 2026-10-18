@@ -13,6 +13,7 @@ import {
   startOfLocalDay,
   type TimelineItem,
   typingLabel,
+  withReplyParticipant,
 } from "../src/index";
 
 const BASE = new Date(2026, 8, 25, 10, 0, 0).getTime();
@@ -288,5 +289,16 @@ describe("typing", () => {
     throttle.reset("c1");
     throttle.ping("c1");
     expect(sent).toEqual(["c1", "c2", "c1", "c1"]);
+  });
+});
+
+describe("withReplyParticipant", () => {
+  it("puts the newest replier first without duplicating anyone", () => {
+    expect(withReplyParticipant(undefined, "a")).toEqual(["a"]);
+    expect(withReplyParticipant(["a", "b"], "b")).toEqual(["b", "a"]);
+  });
+
+  it("caps the list so a busy thread stays small", () => {
+    expect(withReplyParticipant(["a", "b", "c", "d"], "e")).toEqual(["e", "a", "b", "c"]);
   });
 });

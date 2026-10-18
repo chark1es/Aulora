@@ -9,6 +9,7 @@
 import { type Overwrite, Permission } from "../permissions.js";
 import { createMockHub, type MockPortState } from "./mock-hub.js";
 import type { ChatPort, ChatSubscriptions, StoredFileView } from "./port.js";
+import { withReplyParticipant } from "./timeline.js";
 
 export type { MockPortState } from "./mock-hub.js";
 
@@ -90,6 +91,7 @@ export function createMockPort(options: { readonly now?: () => number } = {}): M
           ...root,
           replyCount: (root.replyCount ?? 0) + 1,
           lastReplyAt: createdAt,
+          replyParticipantIds: withReplyParticipant(root.replyParticipantIds, "me"),
         });
       }
     }

@@ -65,7 +65,7 @@ describe("MessageList thread summary", () => {
 
     expect(screen.getByText("3 replies")).toBeInTheDocument();
     expect(screen.getByText(/last reply/)).toBeInTheDocument();
-    expect(container.querySelector('[data-testid="thread-branch"]')).not.toBeNull();
+    expect(container.querySelector('[data-testid="thread-branch"]')).toBeNull();
 
     await user.click(screen.getByRole("button", { name: /3 replies/ }));
     expect(onReply).toHaveBeenCalledWith(expect.objectContaining({ id: "m1" }));
@@ -83,10 +83,28 @@ describe("MessageList thread summary", () => {
     expect(screen.queryByText(/last reply/)).not.toBeInTheDocument();
   });
 
-  it("hides the summary and its branch inside a thread", () => {
-    const { container } = render(<MessageList {...props({ inThread: true })} />);
+  it("shows up to three repliers and a plus when there are more", () => {
+    const repliers = ["u-a", "u-b", "u-c", "u-d"];
+    const { container, rerender } = render(
+      <MessageList {...props({ messages: [threadRoot({ replyParticipantIds: repliers })] })} />,
+    );
+    const stack = container.querySelector('[data-testid="thread-repliers"]');
+    expect(stack?.querySelectorAll("span.inline-flex")).toHaveLength(3);
+    expect(stack?.textContent).toBe("+");
+
+    rerender(
+      <MessageList
+        {...props({ messages: [threadRoot({ replyParticipantIds: repliers.slice(0, 2) })] })}
+      />,
+    );
+    const fewer = container.querySelector('[data-testid="thread-repliers"]');
+    expect(fewer?.querySelectorAll("span.inline-flex")).toHaveLength(2);
+    expect(fewer?.textContent).toBe("");
+  });
+
+  it("hides the summary inside a thread", () => {
+    render(<MessageList {...props({ inThread: true })} />);
     expect(screen.queryByRole("button", { name: /replies/ })).not.toBeInTheDocument();
-    expect(container.querySelector('[data-testid="thread-branch"]')).toBeNull();
   });
 
   it("keeps the summary usable when the viewer's own messages are mirrored", async () => {
