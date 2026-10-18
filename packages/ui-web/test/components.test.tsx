@@ -190,6 +190,56 @@ describe("Select", () => {
     fireEvent.click(screen.getByRole("option", { name: "5m" }));
     expect(onChange).toHaveBeenCalledWith("b");
   });
+
+  it("indents nested options and exposes the full label as a title", () => {
+    render(
+      <Select
+        value="a"
+        onChange={() => undefined}
+        options={[
+          { value: "a", label: "Ideas" },
+          { value: "b", label: "Nested", indent: 1, title: "Ideas / Nested" },
+        ]}
+      />,
+    );
+    fireEvent.click(screen.getByRole("button", { name: /Ideas/ }));
+    const nested = screen.getByRole("option", { name: "Nested" });
+    expect(nested).toHaveStyle({ paddingLeft: "20px" });
+    expect(nested).toHaveAttribute("title", "Ideas / Nested");
+  });
+
+  it("runs the pinned action item and closes", () => {
+    const onSelect = vi.fn();
+    render(
+      <Select
+        value="a"
+        onChange={() => undefined}
+        options={[{ value: "a", label: "No folder" }]}
+        action={{ label: "New folder…", onSelect }}
+      />,
+    );
+    fireEvent.click(screen.getByRole("button", { name: /No folder/ }));
+    fireEvent.click(screen.getByRole("option", { name: "New folder…" }));
+    expect(onSelect).toHaveBeenCalled();
+    expect(screen.queryByRole("listbox")).not.toBeInTheDocument();
+  });
+
+  it("reaches the action item with the keyboard", () => {
+    const onSelect = vi.fn();
+    render(
+      <Select
+        value="a"
+        onChange={() => undefined}
+        options={[{ value: "a", label: "No folder" }]}
+        action={{ label: "New folder…", onSelect }}
+      />,
+    );
+    fireEvent.click(screen.getByRole("button", { name: /No folder/ }));
+    const listbox = screen.getByRole("listbox");
+    fireEvent.keyDown(listbox, { key: "ArrowDown" });
+    fireEvent.keyDown(listbox, { key: "Enter" });
+    expect(onSelect).toHaveBeenCalled();
+  });
 });
 
 describe("Modal", () => {

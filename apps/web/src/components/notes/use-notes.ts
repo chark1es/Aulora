@@ -4,11 +4,14 @@ import { useMutation, useQuery } from "convex/react";
 import { useEffect, useMemo, useRef, useState } from "react";
 import { api } from "../../../../../packages/convex/convex/_generated/api";
 import {
+  childFolders,
   failure,
   type NoteFolder,
   type NoteMember,
+  type NoteSearchHit,
   type NoteSummary,
   type NoteTag,
+  ROOT,
   UNFILED,
 } from "./types";
 
@@ -47,7 +50,7 @@ export type FolderDialog =
 /** The tag form the user has open, if any. */
 export type TagDialog = { mode: "new" } | { mode: "edit"; tag: NoteTag };
 
-type FolderSelection = Id<"noteFolders"> | typeof UNFILED | undefined;
+type FolderSelection = Id<"noteFolders"> | typeof UNFILED | typeof ROOT | undefined;
 
 /** What the viewer has switched on: filters, the open note and open dialogs. */
 function useNotesState() {
@@ -57,6 +60,7 @@ function useNotesState() {
   const [editing, setEditing] = useState(false);
   const [query, setQuery] = useState("");
   const [showArchived, setShowArchived] = useState(false);
+  const [showAllNotes, setShowAllNotes] = useState(false);
   const [tab, setTab] = useState<"edit" | "history">("edit");
   const [draft, setDraft] = useState<NoteDraft | undefined>(undefined);
   const [confirm, setConfirm] = useState<Confirm | undefined>(undefined);
@@ -75,6 +79,8 @@ function useNotesState() {
     setQuery,
     showArchived,
     setShowArchived,
+    showAllNotes,
+    setShowAllNotes,
     tab,
     setTab,
     draft,
@@ -143,42 +149,16 @@ function useNoteMutations() {
   };
 }
 
-/** The folders a selected folder contains, including itself. */
-function folderScope(
-  folders: readonly NoteFolder[],
-  folderId: FolderSelection,
-): ReadonlySet<string> | null {
-  if (folderId === undefined || folderId === UNFILED) return null;
-  const byParent = new Map<string, NoteFolder[]>();
-  for (const folder of folders) {
-    const key = folder.parentId ?? "";
-    const list = byParent.get(key) ?? [];
-    list.push(folder);
-    byParent.set(key, list);
-  }
-  const scope = new Set<string>();
-  const queue = [folderId as string];
-  while (queue.length > 0) {
-    const id = queue.pop();
-    if (id === undefined || scope.has(id)) continue;
-    scope.add(id);
-    for (const child of byParent.get(id) ?? []) queue.push(child.id);
-  }
-  return scope;
+/** Whether a note belongs directly to the folder the explorer is showing. */
+function inExplorerFolder(note: NoteSummary, folderId: FolderSelection): boolean {
+  if (folderId === undefined || folderId === UNFILED || folderId === ROOT)
+    return note.folderId === null;
+  return note.folderId === folderId;
 }
 
-function inScope(
-  note: NoteSummary,
-  folderId: FolderSelection,
-  scope: ReadonlySet<string> | null,
-): boolean {
-  if (folderId === undefined) return true;
-  if (folderId === UNFILED) return note.folderId === null;
-  return note.folderId !== null && (scope?.has(note.folderId) ?? false);
-}
-
-function useNoteSearch(query: string) {
-  // The server search runs behind the raw input; the list still filters instantly.
+function useNoteSearch(query: string): readonly NoteSearchHit[] | undefined {
+  // The server search runs behind the raw input, one character at a time, and
+  // holds its previous hits so the list never flickers while a new one loads.
   const [debounced, setDebounced] = useState("");
   useEffect(() => {
     const value = query.trim();
@@ -189,7 +169,18 @@ function useNoteSearch(query: string) {
       clearTimeout(timer);
     };
   }, [query]);
-  return useQuery(api.workspaceNotes.search, debounced.length >= 2 ? { query: debounced } : "skip");
+  const result = useQuery(
+    api.workspaceNotes.search,
+    debounced.length >= 1 ? { query: debounced } : "skip",
+  );
+  const [held, setHeld] = useState<readonly NoteSearchHit[] | undefined>(undefined);
+  const cleared = query.trim() === "";
+  useEffect(() => {
+    // Drop old hits once the box is emptied so a new query never starts on them.
+    if (cleared) setHeld(undefined);
+    else if (result !== undefined) setHeld(result);
+  }, [result, cleared]);
+  return cleared ? undefined : held;
 }
 
 function notePermissions(permissions: bigint) {
@@ -200,6 +191,65 @@ function notePermissions(permissions: bigint) {
     canDelete: hasPermission(permissions, Permission.DeleteNotes),
     canManage: hasPermission(permissions, Permission.ManageNotes),
   };
+}
+
+/**
+ * What the explorer shows for the open folder: a folder id selects that
+ * folder's own contents, ROOT or nothing is the home view (top-level folders
+ * and unfiled notes), and UNFILED is its own flat view.
+ */
+function useExplorerView(folders: readonly NoteFolder[], state: NotesState, searching: boolean) {
+  const atHome = state.folderId === undefined || state.folderId === ROOT;
+  const visibleFolders = useMemo(() => {
+    if (state.showAllNotes || searching || state.folderId === UNFILED) return [];
+    const parentId = atHome ? null : (state.folderId ?? null);
+    return childFolders(folders, parentId);
+  }, [folders, state.showAllNotes, searching, atHome, state.folderId]);
+  const currentFolder =
+    state.folderId === undefined || state.folderId === ROOT || state.folderId === UNFILED
+      ? undefined
+      : folders.find((folder) => folder.id === state.folderId);
+  return { atHome, visibleFolders, currentFolder };
+}
+
+interface VisibleNotesInput {
+  notes: readonly NoteSummary[];
+  tags: readonly NoteTag[];
+  state: NotesState;
+  hitById: ReadonlyMap<string, NoteSearchHit>;
+  searching: boolean;
+}
+
+/** The notes the list shows: archive, tag and folder filters, then the search text. */
+function useVisibleNotes({ notes, tags, state, hitById, searching }: VisibleNotesInput) {
+  const tagNames = useMemo(
+    () => new Map<string, string>(tags.map((tag) => [tag.id, tag.name])),
+    [tags],
+  );
+  return useMemo(() => {
+    const query = state.query.trim().toLowerCase();
+    return notes.filter((note) => {
+      if (note.archived !== state.showArchived) return false;
+      if (state.tagId !== undefined && !note.tagIds.includes(state.tagId)) return false;
+      // Search is always a flat result list across every folder.
+      if (!searching && !state.showAllNotes && !inExplorerFolder(note, state.folderId))
+        return false;
+      if (query === "") return true;
+      if (hitById.has(note.id)) return true;
+      if (note.title.toLowerCase().includes(query)) return true;
+      return note.tagIds.some((id) => (tagNames.get(id) ?? "").toLowerCase().includes(query));
+    });
+  }, [
+    notes,
+    state.showArchived,
+    state.folderId,
+    state.tagId,
+    state.showAllNotes,
+    searching,
+    state.query,
+    hitById,
+    tagNames,
+  ]);
 }
 
 /** The folders, notes and tags the viewer may see, and the filtered note list. */
@@ -220,38 +270,12 @@ function useNotesData(props: NotesProps, state: NotesState) {
       : "skip",
   );
 
-  const scope = useMemo(() => folderScope(folders, state.folderId), [folders, state.folderId]);
-  const tagNames = useMemo(
-    () => new Map<string, string>(tags.map((tag) => [tag.id, tag.name])),
-    [tags],
-  );
-
   const hits = useNoteSearch(state.query);
   const hitById = useMemo(() => new Map((hits ?? []).map((hit) => [hit.id, hit])), [hits]);
 
-  const visible = useMemo(() => {
-    const query = state.query.trim().toLowerCase();
-    return notes.filter((note) => {
-      if (note.archived !== state.showArchived) return false;
-      if (!inScope(note, state.folderId, scope)) return false;
-      if (state.tagId !== undefined && !note.tagIds.includes(state.tagId)) return false;
-      if (query === "") return true;
-      if (hitById.has(note.id)) return true;
-      if (note.title.toLowerCase().includes(query)) return true;
-      return note.tagIds.some((id) => (tagNames.get(id) ?? "").toLowerCase().includes(query));
-    });
-  }, [
-    notes,
-    state.showArchived,
-    state.folderId,
-    state.tagId,
-    state.query,
-    scope,
-    hitById,
-    tagNames,
-  ]);
-
-  const detailSummary = notes.find((note) => note.id === state.noteId);
+  const searching = state.query.trim().length > 0;
+  const explorer = useExplorerView(folders, state, searching);
+  const visible = useVisibleNotes({ notes, tags, state, hitById, searching });
 
   return {
     overview,
@@ -263,22 +287,31 @@ function useNotesData(props: NotesProps, state: NotesState) {
     hits,
     hitById,
     visible,
-    detailSummary,
-    scope,
+    ...explorer,
+    searching,
     ...notePermissions(props.permissions),
   };
 }
 
 function useNoteSelection(state: NotesState, data: ReturnType<typeof useNotesData>) {
-  const visibleKey = data.visible.map((note) => note.id).join(",");
-  // Keep a valid note selected as filters change; fall back to the first row.
-  // biome-ignore lint/correctness/useExhaustiveDependencies: reselect only when the visible set changes
+  // Nothing opens on its own: the pane only fills once the viewer picks a note.
+  // Clear a selection that no longer exists (deleted, archived or filtered out).
+  const knownKey = data.notes.map((note) => note.id).join(",");
+  // biome-ignore lint/correctness/useExhaustiveDependencies: only react to membership changes
   useEffect(() => {
-    if (state.noteId !== undefined && data.visible.some((note) => note.id === state.noteId)) {
-      return;
-    }
-    state.setNoteId(data.visible[0]?.id);
-  }, [visibleKey]);
+    if (state.noteId === undefined) return;
+    if (data.notes.some((note) => note.id === state.noteId)) return;
+    state.setNoteId(undefined);
+  }, [knownKey]);
+
+  // Switching between the active and archived views closes a note that no
+  // longer belongs to the list on screen.
+  const archived = state.showArchived;
+  // biome-ignore lint/correctness/useExhaustiveDependencies: only react to the view switch
+  useEffect(() => {
+    const note = data.notes.find((entry) => entry.id === state.noteId);
+    if (note !== undefined && note.archived !== archived) state.setNoteId(undefined);
+  }, [archived]);
 
   // Seed the editor from the server when a different note loads, and reload it
   // when the server revision changes — unless there are unsaved local edits.
@@ -335,7 +368,9 @@ export function useNotes(props: NotesProps) {
   const createNote = async (): Promise<void> => {
     if (!data.canCreate) return;
     const folderId =
-      state.folderId !== undefined && state.folderId !== UNFILED ? state.folderId : undefined;
+      state.folderId !== undefined && state.folderId !== UNFILED && state.folderId !== ROOT
+        ? state.folderId
+        : undefined;
     await runner.run(async () => {
       const id = await mutations.createNote({
         title: "Untitled note",
@@ -347,6 +382,28 @@ export function useNotes(props: NotesProps) {
       state.setTab("edit");
       state.setEditing(true);
     });
+  };
+
+  /** Opens a folder in the explorer, closing any note pane. */
+  const openFolder = (folderId: FolderSelection) => {
+    state.setFolderId(folderId);
+    state.setShowAllNotes(false);
+    state.setNoteId(undefined);
+    state.setEditing(false);
+  };
+
+  const closeNote = () => {
+    state.setNoteId(undefined);
+    state.setEditing(false);
+  };
+
+  /** Opens the create-folder dialog inside whichever folder the explorer shows. */
+  const newFolderInView = () => {
+    const parentId =
+      state.folderId !== undefined && state.folderId !== UNFILED && state.folderId !== ROOT
+        ? state.folderId
+        : null;
+    state.setFolderDialog({ mode: "new", parentId });
   };
 
   const saveNote = async (): Promise<void> => {
@@ -368,9 +425,11 @@ export function useNotes(props: NotesProps) {
 
   const archiveNote = async (note: NoteSummary, archived: boolean): Promise<void> => {
     if (!data.canEdit) return;
-    await runner.run(async () => {
+    const closes = state.noteId === note.id && archived !== state.showArchived;
+    const saved = await runner.run(async () => {
       await mutations.archiveNote({ noteId: note.id, archived });
     });
+    if (saved && closes) closeNote();
   };
 
   const requestDeleteNote = (note: NoteSummary) => {
@@ -463,6 +522,9 @@ export function useNotes(props: NotesProps) {
     mutations,
     dirty,
     openNote,
+    openFolder,
+    closeNote,
+    newFolderInView,
     createNote,
     saveNote,
     archiveNote,

@@ -41,10 +41,16 @@ export function NoteTagChip({ tag }: { readonly tag: NoteTagView }) {
 }
 
 /** A round back button used by the editor and history headers. */
-export function NoteBackButton({ onPress }: { readonly onPress: () => void }) {
+export function NoteBackButton({
+  onPress,
+  label = "Back to notes",
+}: {
+  readonly onPress: () => void;
+  readonly label?: string;
+}) {
   const palette = usePalette();
   return (
-    <IconButton label="Back to notes" size="sm" onPress={onPress}>
+    <IconButton label={label} size="sm" onPress={onPress}>
       <Icon name="chevron-left" size={22} color={palette.text} />
     </IconButton>
   );

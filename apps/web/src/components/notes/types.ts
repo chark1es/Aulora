@@ -19,6 +19,9 @@ export interface NoteMember {
 /** The sentinel folder selection that shows notes without a folder. */
 export const UNFILED = "__unfiled__";
 
+/** The sentinel selection for the file-explorer home: top-level folders and unfiled notes. */
+export const ROOT = "__root__";
+
 /** A folder in depth-first order, carrying its indent depth. */
 export interface FlatFolder {
   folder: NoteFolder;
@@ -52,7 +55,8 @@ export function folderPath(
   folders: readonly NoteFolder[],
   folderId: string | null | undefined,
 ): NoteFolder[] {
-  if (folderId === null || folderId === undefined || folderId === UNFILED) return [];
+  if (folderId === null || folderId === undefined || folderId === UNFILED || folderId === ROOT)
+    return [];
   const byId = new Map<string, NoteFolder>(folders.map((folder) => [folder.id, folder]));
   const path: NoteFolder[] = [];
   let current = byId.get(folderId);
@@ -61,6 +65,16 @@ export function folderPath(
     current = current.parentId !== null ? byId.get(current.parentId) : undefined;
   }
   return path;
+}
+
+/** A folder's direct children, ordered the same way the tree renders them. */
+export function childFolders(
+  folders: readonly NoteFolder[],
+  parentId: string | null,
+): NoteFolder[] {
+  return [...folders.filter((folder) => folder.parentId === parentId)].sort(
+    (a, b) => a.position - b.position || a.name.localeCompare(b.name),
+  );
 }
 
 export function failure(cause: unknown): string {

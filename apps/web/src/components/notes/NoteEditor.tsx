@@ -1,22 +1,24 @@
-import { cn, Icon, Select, type SelectOption } from "@aulora/ui-web";
-import { useLayoutEffect, useRef, useState } from "react";
+/* eslint-disable no-unused-vars -- the base rule reports parameter names in type signatures; Biome checks real unused code */
+import { Icon, type SelectAction, type SelectOption } from "@aulora/ui-web";
+import { useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
+import { actionLabel, detectMac, EDITOR_ACTIONS, type EditorActionId } from "./editor-actions";
 import { NotePreview } from "./NotePreview";
-import { flattenFolders, type NoteFolder } from "./types";
-import type { NotesController } from "./use-notes";
+import { useEditorCommands } from "./note-editor-commands";
+import { EditorMeta } from "./note-editor-meta";
+import { flattenFolders, folderPath } from "./types";
+import type { NoteDraft, NotesController } from "./use-notes";
+import { useUndoHistory } from "./use-undo-history";
 
-interface Edit {
-  text: string;
-  start: number;
-  end: number;
-}
-
+/** One icon button in the formatting bar. */
 function ToolButton({
   label,
+  title,
   onClick,
   disabled = false,
   children,
 }: {
   label: string;
+  title?: string;
   onClick: () => void;
   disabled?: boolean;
   children: React.ReactNode;
@@ -25,7 +27,7 @@ function ToolButton({
     <button
       type="button"
       aria-label={label}
-      title={label}
+      title={title ?? label}
       disabled={disabled}
       onClick={onClick}
       className="flex size-8 shrink-0 items-center justify-center rounded-[8px] text-text-muted transition hover:bg-surface-3 hover:text-text focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent disabled:pointer-events-none disabled:opacity-40"
@@ -35,12 +37,175 @@ function ToolButton({
   );
 }
 
+/** The formatting bar: undo/redo, then one button per Markdown action. */
+export function EditorToolbar({
+  canEdit,
+  canUndo,
+  canRedo,
+  mac,
+  runAction,
+  undo,
+  redo,
+}: {
+  canEdit: boolean;
+  canUndo: boolean;
+  canRedo: boolean;
+  mac: boolean;
+  runAction: (id: EditorActionId) => void;
+  undo: () => void;
+  redo: () => void;
+}) {
+  return (
+    <div className="inline-flex items-center gap-0.5 self-start rounded-[11px] border border-border bg-surface-2 p-0.5">
+      <ToolButton
+        label="Undo"
+        title={actionLabel(UNDO, mac)}
+        disabled={!canEdit || !canUndo}
+        onClick={undo}
+      >
+        <Icon name="undo" size={18} />
+      </ToolButton>
+      <ToolButton
+        label="Redo"
+        title={actionLabel(REDO, mac)}
+        disabled={!canEdit || !canRedo}
+        onClick={redo}
+      >
+        <Icon name="redo" size={18} />
+      </ToolButton>
+      <span className="mx-0.5 h-5 w-px shrink-0 bg-border" />
+      {EDITOR_ACTIONS.map((spec) => (
+        <ToolButton
+          key={spec.id}
+          label={spec.label}
+          title={actionLabel(spec, mac)}
+          disabled={!canEdit}
+          onClick={() => {
+            runAction(spec.id);
+          }}
+        >
+          <Icon name={spec.icon} size={18} />
+        </ToolButton>
+      ))}
+    </div>
+  );
+}
+
+/** The Preview/Write switch. */
+export function PreviewToggle({ preview, onToggle }: { preview: boolean; onToggle: () => void }) {
+  return (
+    <button
+      type="button"
+      aria-pressed={preview}
+      onClick={onToggle}
+      className={`inline-flex h-8 shrink-0 items-center gap-1.5 rounded-[10px] border px-3 text-[12.5px] font-medium transition focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent ${
+        preview
+          ? "border-accent/40 bg-accent-soft text-accent"
+          : "border-border bg-surface-2 text-text-muted hover:text-text"
+      }`}
+    >
+      <Icon name={preview ? "pencil" : "eye"} size={14} />
+      {preview ? "Write" : "Preview"}
+    </button>
+  );
+}
+
+/** The title field, shared by the writer and the read-only view. */
+function TitleField({ ctl, current }: { ctl: NotesController; current: NoteDraft }) {
+  return (
+    <input
+      aria-label="Note title"
+      placeholder="Untitled note"
+      maxLength={200}
+      value={current.title}
+      disabled={!ctl.canEdit}
+      onChange={(event) => {
+        ctl.setDraft({ ...current, title: event.target.value });
+      }}
+      className="w-full border-none bg-transparent text-2xl font-semibold tracking-tight text-text placeholder:text-text-muted focus-visible:outline-none disabled:opacity-60"
+    />
+  );
+}
+
+/** The read-only note: its metadata row and the rendered Markdown. */
+function NoteReader({
+  ctl,
+  current,
+  options,
+}: {
+  ctl: NotesController;
+  current: NoteDraft;
+  options: readonly SelectOption<string>[];
+}) {
+  const selectedFolder = options.find((option) => option.value === (current.folderId ?? ""));
+  const folderLabel = selectedFolder?.title ?? selectedFolder?.label;
+  const selectedTags = ctl.tags.filter((tag) => current.tagIds.includes(tag.id));
+  return (
+    <div className="flex min-h-0 flex-col gap-4 p-4">
+      <div className="flex flex-wrap items-center gap-x-3 gap-y-1.5 text-[12.5px] text-text-muted">
+        <span className="flex items-center gap-1.5">
+          <Icon name="grid" size={14} />
+          {folderLabel ?? "No folder"}
+        </span>
+        {selectedTags.length > 0 && (
+          <>
+            <span className="h-3.5 w-px bg-border" />
+            <span className="flex flex-wrap items-center gap-1.5">
+              <Icon name="label" size={14} />
+              {selectedTags.map((tag) => (
+                <span
+                  key={tag.id}
+                  className="inline-flex items-center gap-1.5 rounded-full bg-surface-2 px-2 py-0.5 text-[12px]"
+                >
+                  <span className="h-2 w-2 rounded-full" style={{ backgroundColor: tag.color }} />
+                  {tag.name}
+                </span>
+              ))}
+            </span>
+          </>
+        )}
+      </div>
+      <div className="min-h-0 flex-1 overflow-y-auto">
+        <NotePreview title={current.title} body={current.body} />
+      </div>
+      {ctl.error !== undefined && (
+        <p role="alert" className="text-sm text-danger">
+          {ctl.error}
+        </p>
+      )}
+    </div>
+  );
+}
+
+/** The "New folder…" action shown when the viewer may create folders. */
+function folderAction(ctl: NotesController, folderId: string | null): SelectAction | undefined {
+  if (!ctl.canCreate) return undefined;
+  return {
+    label: "New folder…",
+    leading: <Icon name="folder-plus" size={14} />,
+    onSelect: () => {
+      ctl.setFolderDialog({ mode: "new", parentId: folderId as NoteDraft["folderId"] });
+    },
+  };
+}
+
+const UNDO = { label: "Undo", shortcut: ["Mod", "Z"] as const };
+const REDO = { label: "Redo", shortcut: ["Mod", "Shift", "Z"] as const };
+
+const EMPTY_DRAFT: NoteDraft = { title: "", body: "", folderId: null, tagIds: [] };
+
 /** The Markdown editor: title, folder and tags, a formatting toolbar and the body. */
 export function NoteEditor({ ctl }: { ctl: NotesController }) {
   const { draft, detail } = ctl;
   const bodyRef = useRef<HTMLTextAreaElement | null>(null);
   const pendingSelection = useRef<[number, number] | null>(null);
   const [preview, setPreview] = useState(false);
+  const mac = useMemo(detectMac, []);
+  const history = useUndoHistory(`${detail?.id ?? "new"}:${detail?.revision ?? 0}`);
+  const handlers = useRef<{ undo: () => void; redo: () => void }>({
+    undo: () => undefined,
+    redo: () => undefined,
+  });
 
   useLayoutEffect(() => {
     const selection = pendingSelection.current;
@@ -51,261 +216,85 @@ export function NoteEditor({ ctl }: { ctl: NotesController }) {
     pendingSelection.current = null;
   });
 
-  if (draft === undefined || detail === undefined) return null;
-  const current = draft;
-
-  const options: readonly SelectOption<string>[] = [
-    { value: "", label: "No folder" },
-    ...flattenFolders(ctl.folders).map(({ folder, depth }) => ({
-      value: folder.id,
-      label: `${"— ".repeat(depth)}${folder.name}`,
-    })),
-  ];
-
-  if (!ctl.editing) {
-    const folderLabel = options.find((option) => option.value === (current.folderId ?? ""))?.label;
-    const selectedTags = ctl.tags.filter((tag) => current.tagIds.includes(tag.id));
-    return (
-      <div className="flex min-h-0 flex-col gap-4 p-4">
-        <div className="flex flex-wrap items-center gap-x-3 gap-y-1.5 text-[12.5px] text-text-muted">
-          <span className="flex items-center gap-1.5">
-            <Icon name="grid" size={14} />
-            {folderLabel ?? "No folder"}
-          </span>
-          {selectedTags.length > 0 && (
-            <>
-              <span className="h-3.5 w-px bg-border" />
-              <span className="flex flex-wrap items-center gap-1.5">
-                <Icon name="label" size={14} />
-                {selectedTags.map((tag) => (
-                  <span
-                    key={tag.id}
-                    className="inline-flex items-center gap-1.5 rounded-full bg-surface-2 px-2 py-0.5 text-[12px]"
-                  >
-                    <span className="h-2 w-2 rounded-full" style={{ backgroundColor: tag.color }} />
-                    {tag.name}
-                  </span>
-                ))}
-              </span>
-            </>
-          )}
-        </div>
-        <div className="min-h-0 flex-1 overflow-y-auto">
-          <NotePreview title={current.title} body={current.body} />
-        </div>
-        {ctl.error !== undefined && (
-          <p role="alert" className="text-sm text-danger">
-            {ctl.error}
-          </p>
-        )}
-      </div>
-    );
-  }
-
-  // eslint-disable-next-line no-unused-vars -- base rule treats TypeScript callback parameters as variables
-  const applyEdit = (transform: (value: string, start: number, end: number) => Edit) => {
+  // The native Edit menu (Electron) sends historyUndo/historyRedo, which React
+  // does not surface, so the textarea is wired up directly.
+  // biome-ignore lint/correctness/useExhaustiveDependencies: re-attach when the textarea mounts or unmounts
+  useEffect(() => {
     const element = bodyRef.current;
     if (element === null) return;
-    const result = transform(current.body, element.selectionStart, element.selectionEnd);
-    pendingSelection.current = [result.start, result.end];
-    ctl.setDraft({ ...current, body: result.text });
-  };
+    const onBeforeInput = (event: Event) => {
+      const input = event as InputEvent;
+      if (input.inputType === "historyUndo") {
+        event.preventDefault();
+        handlers.current.undo();
+      } else if (input.inputType === "historyRedo") {
+        event.preventDefault();
+        handlers.current.redo();
+      }
+    };
+    element.addEventListener("beforeinput", onBeforeInput);
+    return () => {
+      element.removeEventListener("beforeinput", onBeforeInput);
+    };
+  }, [ctl.editing]);
 
-  const wrap = (before: string, after: string, placeholder: string) => {
-    applyEdit((value, start, end) => {
-      const selected = value.slice(start, end);
-      const inner = selected.length > 0 ? selected : placeholder;
-      const text = `${value.slice(0, start)}${before}${inner}${after}${value.slice(end)}`;
-      const offset = start + before.length;
-      return { text, start: offset, end: offset + inner.length };
-    });
-  };
+  const options: readonly SelectOption<string>[] = useMemo(
+    () => [
+      { value: "", label: "No folder", leading: <Icon name="folder" size={14} /> },
+      ...flattenFolders(ctl.folders).map(({ folder, depth }) => ({
+        value: folder.id,
+        label: folder.name,
+        indent: depth,
+        title: folderPath(ctl.folders, folder.id)
+          .map((node) => node.name)
+          .join(" / "),
+        leading: <Icon name="folder" size={14} />,
+      })),
+    ],
+    [ctl.folders],
+  );
 
-  const prefixLines = (prefix: string, ordered: boolean) => {
-    applyEdit((value, start, end) => {
-      const lineStart = value.lastIndexOf("\n", start - 1) + 1;
-      const found = value.indexOf("\n", end);
-      const lineEnd = found === -1 ? value.length : found;
-      const replaced = value
-        .slice(lineStart, lineEnd)
-        .split("\n")
-        .map((line, index) => `${ordered ? `${index + 1}. ` : prefix}${line}`)
-        .join("\n");
-      const text = `${value.slice(0, lineStart)}${replaced}${value.slice(lineEnd)}`;
-      return { text, start: lineStart, end: lineStart + replaced.length };
-    });
-  };
+  const current: NoteDraft = draft ?? EMPTY_DRAFT;
+  const commands = useEditorCommands({ ctl, current, history, bodyRef, pendingSelection });
+  handlers.current = { undo: commands.undo, redo: commands.redo };
 
-  const insertLink = () => {
-    applyEdit((value, start, end) => {
-      const selected = value.slice(start, end);
-      const label = selected.length > 0 ? selected : "text";
-      const text = `${value.slice(0, start)}[${label}](url)${value.slice(end)}`;
-      const urlStart = start + label.length + 3;
-      return { text, start: urlStart, end: urlStart + 3 };
-    });
-  };
-
-  const toggleTag = (tagId: string) => {
-    ctl.setDraft({
-      ...current,
-      tagIds: current.tagIds.includes(tagId)
-        ? current.tagIds.filter((id) => id !== tagId)
-        : [...current.tagIds, tagId],
-    });
-  };
+  if (draft === undefined || detail === undefined) return null;
+  if (!ctl.editing) return <NoteReader ctl={ctl} current={current} options={options} />;
 
   return (
     <div className="flex min-h-0 flex-col gap-3 p-4">
-      <input
-        aria-label="Note title"
-        placeholder="Untitled note"
-        maxLength={200}
-        value={current.title}
-        disabled={!ctl.canEdit}
-        onChange={(event) => {
-          ctl.setDraft({ ...current, title: event.target.value });
-        }}
-        className="w-full border-none bg-transparent text-2xl font-semibold tracking-tight text-text placeholder:text-text-muted focus-visible:outline-none disabled:opacity-60"
-      />
+      <TitleField ctl={ctl} current={current} />
 
       <div className="flex flex-wrap items-center gap-x-3 gap-y-2">
-        <div className="flex items-center gap-1">
-          <Icon name="grid" size={14} className="shrink-0 text-text-muted" />
-          <Select
-            variant="bare"
-            value={current.folderId ?? ""}
-            options={options}
-            onChange={(value) => {
-              ctl.setDraft({
-                ...current,
-                folderId: value === "" ? null : (value as NoteFolder["id"]),
-              });
-            }}
-          />
-        </div>
-        <span className="hidden h-3.5 w-px bg-border sm:block" />
-        <div className="flex min-w-0 flex-1 flex-wrap items-center gap-1.5">
-          {ctl.tags.map((tag) => {
-            const active = current.tagIds.includes(tag.id);
-            return (
-              <button
-                key={tag.id}
-                type="button"
-                aria-pressed={active}
-                disabled={!ctl.canEdit}
-                onClick={() => {
-                  toggleTag(tag.id);
-                }}
-                className={cn(
-                  "inline-flex items-center gap-1.5 rounded-full px-2 py-0.5 text-[12px] transition disabled:opacity-60",
-                  active
-                    ? "bg-accent-soft font-medium text-accent"
-                    : "text-text-muted hover:bg-surface-3 hover:text-text",
-                )}
-              >
-                <span className="h-2 w-2 rounded-full" style={{ backgroundColor: tag.color }} />
-                {tag.name}
-              </button>
-            );
-          })}
-          {ctl.canEdit && (
-            <button
-              type="button"
-              aria-label="New tag"
-              title="New tag"
-              onClick={() => {
-                ctl.setTagDialog({ mode: "new" });
-              }}
-              className="flex h-6 w-6 items-center justify-center rounded-full text-text-muted transition hover:bg-surface-3 hover:text-text focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent"
-            >
-              <Icon name="plus" size={13} />
-            </button>
-          )}
-        </div>
-        <button
-          type="button"
-          aria-pressed={preview}
-          onClick={() => {
+        <EditorMeta
+          ctl={ctl}
+          current={current}
+          options={options}
+          action={folderAction(ctl, current.folderId)}
+        />
+        <PreviewToggle
+          preview={preview}
+          onToggle={() => {
             setPreview((value) => !value);
           }}
-          className={cn(
-            "inline-flex h-8 shrink-0 items-center gap-1.5 rounded-[10px] border px-3 text-[12.5px] font-medium transition focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent",
-            preview
-              ? "border-accent/40 bg-accent-soft text-accent"
-              : "border-border bg-surface-2 text-text-muted hover:text-text",
-          )}
-        >
-          <Icon name={preview ? "pencil" : "eye"} size={14} />
-          {preview ? "Write" : "Preview"}
-        </button>
+        />
       </div>
 
       {!preview && (
-        <div className="inline-flex items-center gap-0.5 self-start rounded-[11px] border border-border bg-surface-2 p-0.5">
-          <ToolButton
-            label="Bold"
-            disabled={!ctl.canEdit}
-            onClick={() => {
-              wrap("**", "**", "bold");
-            }}
-          >
-            <Icon name="bold" size={18} />
-          </ToolButton>
-          <ToolButton
-            label="Italic"
-            disabled={!ctl.canEdit}
-            onClick={() => {
-              wrap("*", "*", "italic");
-            }}
-          >
-            <Icon name="italic" size={18} />
-          </ToolButton>
-          <ToolButton
-            label="Heading"
-            disabled={!ctl.canEdit}
-            onClick={() => {
-              prefixLines("# ", false);
-            }}
-          >
-            <Icon name="heading" size={18} />
-          </ToolButton>
-          <ToolButton
-            label="Bullet list"
-            disabled={!ctl.canEdit}
-            onClick={() => {
-              prefixLines("- ", false);
-            }}
-          >
-            <Icon name="list-bulleted" size={18} />
-          </ToolButton>
-          <ToolButton
-            label="Ordered list"
-            disabled={!ctl.canEdit}
-            onClick={() => {
-              prefixLines("1. ", true);
-            }}
-          >
-            <Icon name="list-numbered" size={18} />
-          </ToolButton>
-          <ToolButton
-            label="Code"
-            disabled={!ctl.canEdit}
-            onClick={() => {
-              wrap("`", "`", "code");
-            }}
-          >
-            <Icon name="code" size={18} />
-          </ToolButton>
-          <ToolButton label="Link" disabled={!ctl.canEdit} onClick={insertLink}>
-            <Icon name="link" size={18} />
-          </ToolButton>
-        </div>
+        <EditorToolbar
+          canEdit={ctl.canEdit}
+          canUndo={history.canUndo}
+          canRedo={history.canRedo}
+          mac={mac}
+          runAction={commands.runAction}
+          undo={commands.undo}
+          redo={commands.redo}
+        />
       )}
 
       <div className="min-h-0 flex-1 overflow-y-auto">
         {preview ? (
-          <NotePreview title={current.title} body={current.body} />
+          <NotePreview body={current.body} />
         ) : (
           <textarea
             ref={bodyRef}
@@ -314,7 +303,11 @@ export function NoteEditor({ ctl }: { ctl: NotesController }) {
             value={current.body}
             disabled={!ctl.canEdit}
             onChange={(event) => {
-              ctl.setDraft({ ...current, body: event.target.value });
+              commands.onBodyChange(event.target.value, event.target);
+            }}
+            onKeyDown={commands.onKeyDown}
+            onSelect={(event) => {
+              commands.trackSelection(event.currentTarget);
             }}
             className="h-full min-h-[280px] w-full resize-none rounded-input border border-border bg-surface-3 p-3 font-mono text-[13px] leading-relaxed text-text placeholder:text-text-muted transition focus-visible:border-accent focus-visible:bg-surface-2 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent-soft disabled:opacity-60"
           />

@@ -319,6 +319,24 @@ describe("Kanban UI", () => {
     });
     await waitFor(() => expect(slot()).not.toBeInTheDocument());
   });
+  it("pads the top of a column's card list so a flipping card's ring is not clipped", () => {
+    render(
+      <KanbanView
+        ownUserId="alice"
+        permissions={Permission.ViewKanban | Permission.EditKanban}
+        members={members}
+        onBack={vi.fn()}
+      />,
+    );
+    const tile = screen.getByRole("button", { name: "Open card Fix login" });
+    // A card that is pushed down is drawn at its old slot first (FLIP), which is
+    // the top of the list. The scroll box clips to its padding box, so the list
+    // needs top padding or the card's border, shadow and focus ring are cut off.
+    const scroller = tile.closest("div.overflow-y-auto");
+    expect(scroller).not.toBeNull();
+    const classes = (scroller as HTMLElement).className.split(/\s+/);
+    expect(classes.some((name) => /^(p|py|pt)-/.test(name))).toBe(true);
+  });
   it("refuses a drop on a column that reached its limit", async () => {
     state.values.set("kanban:listBoards", [
       {

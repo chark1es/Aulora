@@ -50,15 +50,30 @@ export function filterCount(filters: NoteFilters): number {
   );
 }
 
-/** Choices inside one filter widen the result; separate filters narrow it. */
-export function filterNotes<T extends NoteSummary>(notes: readonly T[], filters: NoteFilters): T[] {
+/** One server search result: the note it belongs to and its matching snippet. */
+export interface NoteHit {
+  readonly id: string;
+  readonly snippet: string;
+}
+
+/**
+ * Choices inside one filter widen the result; separate filters narrow it.
+ * While a query is active the folder filter is dropped so matches from every
+ * folder show, and `hits` (the server's body search) widens the title match.
+ */
+export function filterNotes<T extends NoteSummary>(
+  notes: readonly T[],
+  filters: NoteFilters,
+  hits: ReadonlyMap<string, NoteHit> = new Map(),
+): T[] {
   const query = filters.query.trim().toLowerCase();
+  const searching = query.length > 0;
   return notes.filter(
     (note) =>
       note.archived === filters.archived &&
-      (filters.folderId === undefined || note.folderId === filters.folderId) &&
+      (searching || filters.folderId === undefined || note.folderId === filters.folderId) &&
       (!filters.tagIds.length || note.tagIds.some((id) => filters.tagIds.includes(id))) &&
-      (query.length === 0 || note.title.toLowerCase().includes(query)),
+      (!searching || hits.has(note.id) || note.title.toLowerCase().includes(query)),
   );
 }
 
@@ -76,8 +91,9 @@ export function selectNotes<T extends NoteSummary>(
   notes: readonly T[],
   filters: NoteFilters,
   order: NoteOrder,
+  hits: ReadonlyMap<string, NoteHit> = new Map(),
 ): T[] {
-  return sortNotes(filterNotes(notes, filters), order);
+  return sortNotes(filterNotes(notes, filters, hits), order);
 }
 
 export interface FolderNode {
@@ -86,7 +102,7 @@ export interface FolderNode {
   readonly children: readonly FolderNode[];
 }
 
-function sortSiblings(folders: readonly NoteFolder[]): NoteFolder[] {
+function sortSiblings<T extends NoteFolder>(folders: readonly T[]): T[] {
   return [...folders].sort((a, b) => a.position - b.position || a.name.localeCompare(b.name));
 }
 
@@ -129,10 +145,10 @@ export function flattenFolders(folders: readonly NoteFolder[]): FlatFolder[] {
 }
 
 /** A folder's direct children in display order. */
-export function folderChildren(
-  folders: readonly NoteFolder[],
+export function folderChildren<T extends NoteFolder>(
+  folders: readonly T[],
   parentId: string | null,
-): NoteFolder[] {
+): T[] {
   return sortSiblings(folders.filter((folder) => folder.parentId === parentId));
 }
 

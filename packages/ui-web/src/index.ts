@@ -20,7 +20,12 @@ export { Kbd, type KbdProps } from "./Kbd";
 export { Logo, type LogoProps } from "./Logo";
 export { Field, Modal, ModalFooter, type ModalProps } from "./Modal";
 export { SearchInput, type SearchInputProps, type SearchInputSize } from "./SearchInput";
-export { Select, type SelectOption, type SelectProps } from "./Select";
+export {
+  Select,
+  type SelectAction,
+  type SelectOption,
+  type SelectProps,
+} from "./Select";
 export {
   SettingsRow,
   SettingsRowGroup,

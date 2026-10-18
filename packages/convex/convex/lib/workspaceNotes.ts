@@ -131,7 +131,7 @@ export function searchNotes(
   documents: readonly NoteSearchDocument[],
   query: string,
   limit = 30,
-  minPrefixLength = 2,
+  minPrefixLength = 1,
 ): NoteSearchHit[] {
   const terms = tokenize(query);
   if (terms.length === 0 || limit <= 0) return [];

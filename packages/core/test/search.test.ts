@@ -6,6 +6,7 @@ import {
   memorySearchStore,
   type SearchDocument,
   SearchIndex,
+  searchScopeKey,
   tokenize,
 } from "../src/index.js";
 
@@ -22,6 +23,26 @@ function doc(overrides: Partial<SearchDocument> & { messageId: string }): Search
 describe("tokenize", () => {
   it("lowercases, normalizes accents and splits on punctuation", () => {
     expect(tokenize("Héllo, WORLD! foo_bar")).toEqual(["héllo", "world", "foo_bar"]);
+  });
+});
+
+describe("searchScopeKey", () => {
+  it("isolates the same server across accounts and the same account across servers", () => {
+    expect(searchScopeKey("https://a.example", "u1")).not.toBe(
+      searchScopeKey("https://b.example", "u1"),
+    );
+    expect(searchScopeKey("https://a.example", "u1")).not.toBe(
+      searchScopeKey("https://a.example", "u2"),
+    );
+  });
+
+  it("encodes both parts so the separator stays unambiguous", () => {
+    // A user id or server URL containing the separator must not collide with a
+    // different pair: encoding keeps `:` literal only as the separator.
+    expect(searchScopeKey("https://a.example", "a:b")).not.toBe(
+      searchScopeKey("https://a.example:a", "b"),
+    );
+    expect(searchScopeKey("https://a.example", "a b")).toContain("%20");
   });
 });
 

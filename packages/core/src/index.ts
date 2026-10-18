@@ -105,6 +105,7 @@ export {
   type SearchOptions,
   type SearchStore,
   searchDocumentFor,
+  searchScopeKey,
   tokenize,
 } from "./search/index";
 export {

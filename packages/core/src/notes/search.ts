@@ -29,6 +29,38 @@ export interface NoteSearchOptions {
   readonly minPrefixLength?: number;
 }
 
+/** One run of text from {@link highlightMatches}: a match or surrounding text. */
+export interface HighlightSegment {
+  readonly text: string;
+  /** Whether this run is one of the queried terms. */
+  readonly match: boolean;
+}
+
+function escapeRegExp(value: string): string {
+  return value.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+}
+
+/**
+ * Splits text into plain and matched runs for the terms in `query`, so a
+ * result row can highlight what matched. Matching is case-insensitive; an
+ * empty query (or text) returns a single unmatched run.
+ */
+export function highlightMatches(text: string, query: string): HighlightSegment[] {
+  const terms = [...new Set(tokenize(query))].sort((a, b) => b.length - a.length);
+  if (terms.length === 0 || text.length === 0) return [{ text, match: false }];
+  const pattern = new RegExp(`(${terms.map(escapeRegExp).join("|")})`, "giu");
+  const segments: HighlightSegment[] = [];
+  let last = 0;
+  for (const found of text.matchAll(pattern)) {
+    const index = found.index;
+    if (index > last) segments.push({ text: text.slice(last, index), match: false });
+    segments.push({ text: found[0], match: true });
+    last = index + found[0].length;
+  }
+  if (last < text.length) segments.push({ text: text.slice(last), match: false });
+  return segments.length > 0 ? segments : [{ text, match: false }];
+}
+
 const SNIPPET_RADIUS = 60;
 
 export class NoteSearchIndex {

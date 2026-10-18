@@ -53,6 +53,41 @@ function transactionDone(transaction: IDBTransaction): Promise<void> {
   });
 }
 
+/**
+ * Deletes a database and forgets any cached connection to it. Used once to
+ * discard legacy, unscoped data after a storage key changes (see
+ * `search-store.ts`).
+ */
+export function deleteDatabase(name: string): Promise<void> {
+  const existing = connections.get(name);
+  connections.delete(name);
+  return new Promise<void>((resolve, reject) => {
+    if (typeof indexedDB === "undefined") {
+      resolve();
+      return;
+    }
+    if (existing !== undefined) {
+      void existing
+        .then((database) => {
+          database.close();
+        })
+        .catch(() => undefined);
+    }
+    const request = indexedDB.deleteDatabase(name);
+    request.onsuccess = () => {
+      resolve();
+    };
+    request.onerror = () => {
+      reject(request.error ?? new Error("failed to delete IndexedDB"));
+    };
+    // An older tab holding the connection still leaves the name unused by new
+    // code, so a blocked delete must not strand the caller.
+    request.onblocked = () => {
+      resolve();
+    };
+  });
+}
+
 /** Opens (or reuses) a keyspace in a named IndexedDB database. */
 export function openKeyValueStore<T>(databaseName: string, storeName: string): KeyValueStore<T> {
   const database = openDatabase(databaseName, storeName);

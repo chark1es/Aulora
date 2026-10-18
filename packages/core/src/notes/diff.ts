@@ -19,6 +19,13 @@ export interface DiffStats {
 /** Above this many line pairs the exact LCS table is skipped. */
 const MAX_LCS_CELLS = 250_000;
 
+/**
+ * Tighter cap for the collapsed summaries, which run for every row. Small
+ * enough to stay cheap on a long history, large enough that ordinary notes
+ * still get an exact count.
+ */
+const MAX_SUMMARY_LCS_CELLS = 40_000;
+
 export function diffLines(before: string, after: string): DiffLine[] {
   if (before === after) {
     return splitLines(before).map((text) => ({ type: "context", text }));
@@ -41,8 +48,40 @@ export function diffStats(lines: readonly DiffLine[]): DiffStats {
   return { added, removed };
 }
 
+/**
+ * Cheap line delta for the collapsed history summaries. For notes small
+ * enough to diff exactly (the common case) this matches the aligned diff the
+ * user sees when a row expands; only genuinely large notes fall back to a
+ * linear prefix/suffix count, which can overcount a middle edit.
+ */
+export function lineDelta(before: string, after: string): DiffStats {
+  const a = splitLines(before);
+  const b = splitLines(after);
+  if (a.length * b.length <= MAX_SUMMARY_LCS_CELLS) return diffStats(lcsDiff(a, b));
+  const { prefix, suffix } = commonBounds(a, b);
+  return { added: b.length - prefix - suffix, removed: a.length - prefix - suffix };
+}
+
 function splitLines(text: string): string[] {
   return text.length === 0 ? [] : text.split("\n");
+}
+
+/** The shared start and end of two line lists, for coarse, linear edits. */
+function commonBounds(
+  a: readonly string[],
+  b: readonly string[],
+): { readonly prefix: number; readonly suffix: number } {
+  let prefix = 0;
+  while (prefix < a.length && prefix < b.length && a.at(prefix) === b.at(prefix)) prefix += 1;
+  let suffix = 0;
+  while (
+    suffix < a.length - prefix &&
+    suffix < b.length - prefix &&
+    a.at(-1 - suffix) === b.at(-1 - suffix)
+  ) {
+    suffix += 1;
+  }
+  return { prefix, suffix };
 }
 
 function buildLcsTable(a: readonly string[], b: readonly string[]) {
@@ -93,16 +132,7 @@ function lcsDiff(a: readonly string[], b: readonly string[]): DiffLine[] {
  * is not minimal.
  */
 function coarseDiff(a: readonly string[], b: readonly string[]): DiffLine[] {
-  let prefix = 0;
-  while (prefix < a.length && prefix < b.length && a.at(prefix) === b.at(prefix)) prefix += 1;
-  let suffix = 0;
-  while (
-    suffix < a.length - prefix &&
-    suffix < b.length - prefix &&
-    a.at(-1 - suffix) === b.at(-1 - suffix)
-  ) {
-    suffix += 1;
-  }
+  const { prefix, suffix } = commonBounds(a, b);
   const result: DiffLine[] = [];
   for (const text of a.slice(0, prefix)) result.push({ type: "context", text });
   for (const text of a.slice(prefix, a.length - suffix)) result.push({ type: "del", text });

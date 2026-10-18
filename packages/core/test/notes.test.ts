@@ -2,6 +2,7 @@ import { describe, expect, it } from "vitest";
 import {
   diffLines,
   diffStats,
+  highlightMatches,
   NoteSearchIndex,
   noteBlocksToPlainText,
   notePlainText,
@@ -140,5 +141,35 @@ describe("NoteSearchIndex", () => {
 describe("notePlainText", () => {
   it("joins title and body for indexing", () => {
     expect(notePlainText("Title", "Body")).toBe("Title\nBody");
+  });
+});
+
+describe("highlightMatches", () => {
+  it("marks each occurrence of the query terms, case-insensitively", () => {
+    const segments = highlightMatches("The Budget and the budget", "budget");
+    expect(segments.filter((segment) => segment.match).map((segment) => segment.text)).toEqual([
+      "Budget",
+      "budget",
+    ]);
+    expect(segments.map((segment) => segment.text).join("")).toBe("The Budget and the budget");
+  });
+
+  it("matches longer terms first so the whole word is highlighted", () => {
+    const segments = highlightMatches("release notes", "rele not");
+    expect(segments.some((segment) => segment.match && segment.text === "rele")).toBe(true);
+    expect(segments.some((segment) => segment.match && segment.text === "not")).toBe(true);
+  });
+
+  it("returns one unmatched run for an empty query or text", () => {
+    expect(highlightMatches("hello", "   ")).toEqual([{ text: "hello", match: false }]);
+    expect(highlightMatches("", "hello")).toEqual([{ text: "", match: false }]);
+  });
+
+  it("uses the same tokenizer as search, so punctuation is ignored", () => {
+    const segments = highlightMatches("alpha beta", "alpha!!");
+    expect(segments.filter((segment) => segment.match).map((segment) => segment.text)).toEqual([
+      "alpha",
+    ]);
+    expect(highlightMatches("alpha", "!!!")).toEqual([{ text: "alpha", match: false }]);
   });
 });
