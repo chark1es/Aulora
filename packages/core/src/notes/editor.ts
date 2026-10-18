@@ -101,8 +101,11 @@ function hasListPrefix(line: string, ordered: boolean) {
   return (ordered ? ORDERED_PREFIX : BULLET_PREFIX).test(line);
 }
 
-function headingPrefix(level: number) {
-  return new RegExp(`^[ \\t]*#{${level}}(?!#)[ \\t]+`);
+/** Whether a line opens with exactly `level` hashes followed by a space or tab. */
+function hasHeadingLevel(line: string, level: number) {
+  const trimmed = line.trimStart();
+  const rest = trimmed.slice(level);
+  return trimmed.startsWith("#".repeat(level)) && (rest.startsWith(" ") || rest.startsWith("\t"));
 }
 
 /**
@@ -251,8 +254,7 @@ export function applyHeading(value: string, start: number, end: number, level: n
   const lines = value.slice(from, to).split("\n");
   const body = lines.filter((line) => !isBlank(line));
   const removing =
-    safeLevel === 0 ||
-    (body.length > 0 && body.every((line) => headingPrefix(safeLevel).test(line)));
+    safeLevel === 0 || (body.length > 0 && body.every((line) => hasHeadingLevel(line, safeLevel)));
   const marker = safeLevel === 0 ? "" : `${"#".repeat(safeLevel)} `;
   const next = lines.map((line) => {
     if (isBlank(line)) return line;
@@ -363,33 +365,19 @@ interface ListMarker {
 function listMarker(line: string): ListMarker | null {
   const checkbox = /^([ \t]*)[-*+][ \t]+\[[ xX]\][ \t]+(.*)$/.exec(line);
   if (checkbox !== null) {
-    return {
-      indent: checkbox[1] ?? "",
-      length: line.length - (checkbox[2] ?? "").length,
-      content: checkbox[2] ?? "",
-      next: `${checkbox[1] ?? ""}- [ ] `,
-    };
+    const [, indent = "", content = ""] = checkbox;
+    return { indent, length: line.length - content.length, content, next: `${indent}- [ ] ` };
   }
   const bullet = /^([ \t]*)([-*+])([ \t]+)(.*)$/.exec(line);
   if (bullet !== null) {
-    const content = bullet[4] ?? "";
-    return {
-      indent: bullet[1] ?? "",
-      length: line.length - content.length,
-      content,
-      next: `${bullet[1] ?? ""}${bullet[2] ?? "-"} `,
-    };
+    const [, indent = "", symbol = "-", , content = ""] = bullet;
+    return { indent, length: line.length - content.length, content, next: `${indent}${symbol} ` };
   }
   const ordered = /^([ \t]*)(\d+)([.)])([ \t]+)(.*)$/.exec(line);
   if (ordered === null) return null;
-  const content = ordered[5] ?? "";
-  const number = Number.parseInt(ordered[2] ?? "1", 10) + 1;
-  return {
-    indent: ordered[1] ?? "",
-    length: line.length - content.length,
-    content,
-    next: `${ordered[1] ?? ""}${number}${ordered[3] ?? "."} `,
-  };
+  const [, indent = "", digits = "1", delimiter = ".", , content = ""] = ordered;
+  const next = `${indent}${Number.parseInt(digits, 10) + 1}${delimiter} `;
+  return { indent, length: line.length - content.length, content, next };
 }
 
 /** Inserts a link around the selection, or unwraps a link the caret sits in. */
@@ -414,10 +402,11 @@ interface FoundLink {
 
 function findLinkAt(value: string, start: number, end: number): FoundLink | null {
   for (const match of value.matchAll(LINK)) {
+    const [whole, label = ""] = match;
     const from = match.index;
-    const to = from + match[0].length;
+    const to = from + whole.length;
     const inside = start === end ? from < start && start < to : start >= from && end <= to;
-    if (inside) return { from, to, label: match[1] ?? "" };
+    if (inside) return { from, to, label };
   }
   return null;
 }

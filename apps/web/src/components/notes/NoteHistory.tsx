@@ -306,7 +306,7 @@ function HistoryGroupRow({
       />
     );
   }
-  const entry = group.revisions[0];
+  const entry = group.revisions.at(0);
   if (entry === undefined) return null;
   return (
     <RevisionRow

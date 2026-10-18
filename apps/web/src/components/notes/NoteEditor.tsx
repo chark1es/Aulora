@@ -1,5 +1,5 @@
 /* eslint-disable no-unused-vars -- the base rule reports parameter names in type signatures; Biome checks real unused code */
-import { Icon, type SelectAction, type SelectOption } from "@aulora/ui-web";
+import { Icon, type SelectOption } from "@aulora/ui-web";
 import { useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
 import { actionLabel, detectMac, EDITOR_ACTIONS, type EditorActionId } from "./editor-actions";
 import { NotePreview } from "./NotePreview";
@@ -177,18 +177,6 @@ function NoteReader({
   );
 }
 
-/** The "New folder…" action shown when the viewer may create folders. */
-function folderAction(ctl: NotesController, folderId: string | null): SelectAction | undefined {
-  if (!ctl.canCreate) return undefined;
-  return {
-    label: "New folder…",
-    leading: <Icon name="folder-plus" size={14} />,
-    onSelect: () => {
-      ctl.setFolderDialog({ mode: "new", parentId: folderId as NoteDraft["folderId"] });
-    },
-  };
-}
-
 const UNDO = { label: "Undo", shortcut: ["Mod", "Z"] as const };
 const REDO = { label: "Redo", shortcut: ["Mod", "Shift", "Z"] as const };
 
@@ -266,12 +254,7 @@ export function NoteEditor({ ctl }: { ctl: NotesController }) {
       <TitleField ctl={ctl} current={current} />
 
       <div className="flex flex-wrap items-center gap-x-3 gap-y-2">
-        <EditorMeta
-          ctl={ctl}
-          current={current}
-          options={options}
-          action={folderAction(ctl, current.folderId)}
-        />
+        <EditorMeta ctl={ctl} current={current} options={options} />
         <PreviewToggle
           preview={preview}
           onToggle={() => {

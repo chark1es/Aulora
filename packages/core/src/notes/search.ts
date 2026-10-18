@@ -36,8 +36,30 @@ export interface HighlightSegment {
   readonly match: boolean;
 }
 
-function escapeRegExp(value: string): string {
-  return value.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+interface MatchSpan {
+  start: number;
+  end: number;
+}
+
+/** Every place a term occurs in `lower`, with overlapping or touching matches merged. */
+function matchSpans(lower: string, terms: readonly string[]) {
+  const found: MatchSpan[] = [];
+  for (const term of terms) {
+    if (term.length === 0) continue;
+    let from = lower.indexOf(term);
+    while (from !== -1) {
+      found.push({ start: from, end: from + term.length });
+      from = lower.indexOf(term, from + term.length);
+    }
+  }
+  found.sort((a, b) => a.start - b.start || b.end - a.end);
+  const merged: MatchSpan[] = [];
+  for (const span of found) {
+    const last = merged.at(-1);
+    if (last !== undefined && span.start <= last.end) last.end = Math.max(last.end, span.end);
+    else merged.push({ ...span });
+  }
+  return merged;
 }
 
 /**
@@ -46,16 +68,18 @@ function escapeRegExp(value: string): string {
  * empty query (or text) returns a single unmatched run.
  */
 export function highlightMatches(text: string, query: string): HighlightSegment[] {
-  const terms = [...new Set(tokenize(query))].sort((a, b) => b.length - a.length);
-  if (terms.length === 0 || text.length === 0) return [{ text, match: false }];
-  const pattern = new RegExp(`(${terms.map(escapeRegExp).join("|")})`, "giu");
+  const terms = [...new Set(tokenize(query))];
+  const lower = text.toLowerCase();
+  // Lower-casing can change a string's length (some scripts); positions would drift.
+  if (terms.length === 0 || text.length === 0 || lower.length !== text.length) {
+    return [{ text, match: false }];
+  }
   const segments: HighlightSegment[] = [];
   let last = 0;
-  for (const found of text.matchAll(pattern)) {
-    const index = found.index;
-    if (index > last) segments.push({ text: text.slice(last, index), match: false });
-    segments.push({ text: found[0], match: true });
-    last = index + found[0].length;
+  for (const span of matchSpans(lower, terms)) {
+    if (span.start > last) segments.push({ text: text.slice(last, span.start), match: false });
+    segments.push({ text: text.slice(span.start, span.end), match: true });
+    last = span.end;
   }
   if (last < text.length) segments.push({ text: text.slice(last), match: false });
   return segments.length > 0 ? segments : [{ text, match: false }];

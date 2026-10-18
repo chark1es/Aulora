@@ -32,7 +32,7 @@ export function useUndoHistory(noteKey: string) {
   );
 
   const undo = useCallback(
-    (current: NoteEditSnapshot): NoteEditSnapshot | undefined => {
+    (current: NoteEditSnapshot) => {
       const snapshot = history.undo(current);
       sync();
       return snapshot;
@@ -41,7 +41,7 @@ export function useUndoHistory(noteKey: string) {
   );
 
   const redo = useCallback(
-    (current: NoteEditSnapshot): NoteEditSnapshot | undefined => {
+    (current: NoteEditSnapshot) => {
       const snapshot = history.redo(current);
       sync();
       return snapshot;

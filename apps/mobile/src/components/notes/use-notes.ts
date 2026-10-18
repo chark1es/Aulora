@@ -170,7 +170,7 @@ function useNotesData(props: NotesProps, state: NotesState) {
   const openFolderId = state.filters.folderId;
   const childFoldersInView = useMemo(() => {
     if (searching || openFolderId === null) return [];
-    return folderChildren(folders, openFolderId === undefined ? null : openFolderId);
+    return folderChildren(folders, openFolderId ?? null);
   }, [folders, searching, openFolderId]);
   return {
     overview,

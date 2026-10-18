@@ -230,8 +230,7 @@ function LibraryBreadcrumbs({ ctl }: { ctl: NotesController }) {
           label="Up one folder"
           size="sm"
           onClick={() => {
-            const parent = path.length > 1 ? path[path.length - 2]?.id : ROOT;
-            ctl.openFolder(parent ?? ROOT);
+            ctl.openFolder(path.at(-2)?.id ?? ROOT);
           }}
         >
           <Icon name="chevron-left" size={14} />

@@ -220,7 +220,7 @@ function collectEditRun<T extends HistoryRevision>(
 function buildEditGroup<T extends HistoryRevision>(
   lines: readonly T[],
 ): HistoryGroup<T> | undefined {
-  const first = lines[0];
+  const first = lines.at(0);
   const last = lines.at(-1);
   if (first === undefined || last === undefined || lines.length < 2) return undefined;
   return {

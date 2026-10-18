@@ -1,4 +1,4 @@
-import { NoteEditHistory, type NoteEditSnapshot, typedChangeKind } from "@aulora/core";
+import { NoteEditHistory, typedChangeKind } from "@aulora/core";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { hasNoteContent } from "../../lib/notes";
 import { type NoteFormatId, runNoteFormat } from "./editor-toolbar";
@@ -134,8 +134,7 @@ function useBodyEditing(state: EditorState, note?: NoteDetailView) {
         start: selectionRef.current.start,
         end: selectionRef.current.end,
       };
-      const snapshot: NoteEditSnapshot | undefined =
-        direction === "undo" ? history.undo(current) : history.redo(current);
+      const snapshot = direction === "undo" ? history.undo(current) : history.redo(current);
       if (snapshot === undefined) return;
       sync();
       place({ start: snapshot.start, end: snapshot.end });

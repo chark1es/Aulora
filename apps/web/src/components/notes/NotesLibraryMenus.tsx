@@ -34,7 +34,7 @@ function useMenuKeys(ref: RefObject<HTMLDivElement | null>, open: boolean, onClo
         return;
       }
       if (list.length === 0) return;
-      const current = list.findIndex((item) => item === document.activeElement);
+      const current = list.map((item) => item === document.activeElement).indexOf(true);
       const step = event.key === "ArrowDown" ? 1 : event.key === "ArrowUp" ? -1 : 0;
       if (step !== 0) {
         event.preventDefault();
@@ -275,7 +275,7 @@ function folderSubtitle(ctl: NotesController, folder: NoteFolder, now: number) {
     notes.length > 0 ? `${notes.length} ${notes.length === 1 ? "note" : "notes"}` : undefined,
   ].filter((value): value is string => value !== undefined);
   if (parts.length > 0) return parts.join(" · ");
-  const recent = [...notes].sort((a, b) => b.updatedAt - a.updatedAt)[0];
+  const recent = [...notes].sort((a, b) => b.updatedAt - a.updatedAt).at(0);
   return `Empty${recent !== undefined ? ` · ${relativeTime(recent.updatedAt, now)}` : ""}`;
 }
 

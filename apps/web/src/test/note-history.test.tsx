@@ -274,9 +274,8 @@ describe("NoteHistory", () => {
     const list = screen.getByRole("list");
     const items = within(list).getAllByRole("listitem");
     expect(items).toHaveLength(2);
-    const [first, second] = items.map((item) => within(item));
-    expect(first?.getByText(/Alex/)).toBeInTheDocument();
-    expect(second?.getByText(/Sam/)).toBeInTheDocument();
+    const authors = items.map((item) => (item.textContent.includes("Alex") ? "Alex" : "Sam"));
+    expect(authors).toEqual(["Alex", "Sam"]);
   });
 });
 

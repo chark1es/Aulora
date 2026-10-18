@@ -1,18 +1,29 @@
-import { cn, Icon, Select, type SelectAction, type SelectOption } from "@aulora/ui-web";
+import { cn, Icon, Select, type SelectOption } from "@aulora/ui-web";
 import type { NoteDraft, NotesController } from "./use-notes";
+
+/** The "New folder…" action shown when the viewer may create folders. */
+function folderAction(ctl: NotesController, folderId: string | null) {
+  if (!ctl.canCreate) return undefined;
+  return {
+    label: "New folder…",
+    leading: <Icon name="folder-plus" size={14} />,
+    onSelect: () => {
+      ctl.setFolderDialog({ mode: "new", parentId: folderId as NoteDraft["folderId"] });
+    },
+  };
+}
 
 /** The folder picker and the note's tags, above the body. */
 export function EditorMeta({
   ctl,
   current,
   options,
-  action,
 }: {
   ctl: NotesController;
   current: NoteDraft;
   options: readonly SelectOption<string>[];
-  action: SelectAction | undefined;
 }) {
+  const action = folderAction(ctl, current.folderId);
   return (
     <>
       <div className="flex min-w-0 items-center gap-1">

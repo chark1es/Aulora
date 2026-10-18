@@ -26,7 +26,7 @@ describe("EDITOR_ACTIONS", () => {
   });
 
   it("spells the shortcut for the platform", () => {
-    const bold = EDITOR_ACTIONS[0];
+    const bold = EDITOR_ACTIONS.at(0);
     expect(bold).toBeDefined();
     if (bold === undefined) return;
     expect(actionLabel(bold, true)).toBe("Bold (⌘B)");
