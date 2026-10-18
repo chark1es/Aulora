@@ -407,6 +407,9 @@ function MessageRow({
   const canEdit = own;
   const canDelete = own || canModerate;
   const canPin = hasPermission(permissions, Permission.PinMessages);
+  const pinned = message.pinnedAt !== null;
+  const pinLabel = pinned ? "Unpin message" : "Pin message";
+  const pinIcon = pinned ? "pin-off" : "pin";
   const canReact = hasPermission(permissions, Permission.AddReactions);
   const canThread =
     list.inThread !== true &&
@@ -465,8 +468,8 @@ function MessageRow({
     if (canPin) {
       items.push({
         id: "pin",
-        label: message.pinnedAt !== null ? "Unpin message" : "Pin message",
-        icon: <Icon name="pin" size={14} />,
+        label: pinLabel,
+        icon: <Icon name={pinIcon} size={14} />,
         onSelect: () => {
           list.onPinToggle(message);
         },
@@ -691,13 +694,13 @@ function MessageRow({
       )}
       {canPin && (
         <ToolbarButton
-          label={message.pinnedAt !== null ? "Unpin message" : "Pin message"}
-          active={message.pinnedAt !== null}
+          label={pinLabel}
+          active={pinned}
           onClick={() => {
             list.onPinToggle(message);
           }}
         >
-          <Icon name="pin" size={18} />
+          <Icon name={pinIcon} size={18} />
         </ToolbarButton>
       )}
       {canDelete &&

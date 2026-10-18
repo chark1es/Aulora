@@ -224,7 +224,7 @@ export function MessageActionsSheet(props: {
             />
             {hasPermission(permissions, Permission.PinMessages) && (
               <ListRow
-                icon="pin"
+                icon={message.pinnedAt === null ? "pin" : "pin-off"}
                 title={message.pinnedAt === null ? "Pin to conversation" : "Unpin"}
                 disabled={busy}
                 onPress={() => {
