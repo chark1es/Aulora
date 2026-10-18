@@ -8,7 +8,7 @@ export type ColumnDropPlacement = "before" | "after";
 
 function sameOrder<T extends Identified>(first: readonly T[], second: readonly T[]): boolean {
   return (
-    first.length === second.length && first.every((item, index) => item.id === second[index]?.id)
+    first.length === second.length && first.every((item, index) => item.id === second.at(index)?.id)
   );
 }
 
@@ -49,10 +49,8 @@ export function moveColumnBy<T extends Identified>(
   const from = columns.findIndex((column) => column.id === id);
   const to = from + delta;
   if (from === -1 || delta === 0 || to < 0 || to >= columns.length) return null;
-  const moved = columns[from];
-  if (moved === undefined) return null;
   const next = [...columns];
-  next.splice(from, 1);
-  next.splice(to, 0, moved);
+  const moved = next.splice(from, 1);
+  next.splice(to, 0, ...moved);
   return next;
 }

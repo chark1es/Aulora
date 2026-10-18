@@ -410,7 +410,7 @@ function TimelineRow({
   );
 }
 
-function systemActorName(list: MessageListProps, actorId: string | undefined): string {
+function systemActorName(list: MessageListProps, actorId: string | undefined) {
   if (actorId === undefined) {
     return "Someone";
   }
@@ -493,9 +493,6 @@ function MessageRow({
   const canEdit = own;
   const canDelete = own || canModerate;
   const canPin = hasPermission(permissions, Permission.PinMessages);
-  const pinned = message.pinnedAt !== null;
-  const pinLabel = pinned ? "Unpin message" : "Pin message";
-  const pinIcon = pinned ? "pin-off" : "pin";
   const canReact = hasPermission(permissions, Permission.AddReactions);
   const canThread =
     list.inThread !== true &&
@@ -554,8 +551,8 @@ function MessageRow({
     if (canPin) {
       items.push({
         id: "pin",
-        label: pinLabel,
-        icon: <Icon name={pinIcon} size={14} />,
+        label: message.pinnedAt !== null ? "Unpin message" : "Pin message",
+        icon: <Icon name={message.pinnedAt !== null ? "pin-off" : "pin"} size={14} />,
         onSelect: () => {
           list.onPinToggle(message);
         },
@@ -780,13 +777,13 @@ function MessageRow({
       )}
       {canPin && (
         <ToolbarButton
-          label={pinLabel}
-          active={pinned}
+          label={message.pinnedAt !== null ? "Unpin message" : "Pin message"}
+          active={message.pinnedAt !== null}
           onClick={() => {
             list.onPinToggle(message);
           }}
         >
-          <Icon name={pinIcon} size={18} />
+          <Icon name={message.pinnedAt !== null ? "pin-off" : "pin"} size={18} />
         </ToolbarButton>
       )}
       {canDelete &&
@@ -1015,7 +1012,7 @@ function ReplierStack({ userIds }: { readonly userIds: readonly string[] }) {
   );
 }
 
-function threadRepliesLabel(count: number): string {
+function threadRepliesLabel(count: number) {
   return count === 1 ? "1 reply" : `${count} replies`;
 }
 

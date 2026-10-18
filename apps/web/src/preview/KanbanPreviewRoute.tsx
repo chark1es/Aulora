@@ -61,7 +61,7 @@ const MEMBERS: readonly BoardMember[] = [
 
 /** The theme named in `?theme=`, defaulting to light. */
 function initialTheme(): ResolvedTheme {
-  const value = new URLSearchParams(globalThis.location?.search ?? "").get("theme");
+  const value = new URLSearchParams(window.location.search).get("theme");
   return value === "dark" ? "dark" : "light";
 }
 
