@@ -5,15 +5,8 @@ import type {
   TimelineItem,
   TypingRow,
 } from "@aulora/core";
-import {
-  activityLabel,
-  buildTimeline,
-  dayLabel,
-  hasPermission,
-  messageTime,
-  Permission,
-} from "@aulora/core";
-import { Button, type ContextMenuItem, cn, Icon, Spinner, useContextMenu } from "@aulora/ui-web";
+import { buildTimeline, dayLabel, hasPermission, messageTime, Permission } from "@aulora/core";
+import { Button, cn, Icon, Spinner, useContextMenu } from "@aulora/ui-web";
 import {
   type ReactNode,
   useCallback,
@@ -26,10 +19,13 @@ import {
 import type { ChatRuntime } from "../../lib/chat-runtime";
 import { AttachmentView } from "./AttachmentView";
 import { EmojiPicker } from "./EmojiPicker";
-import { PersonAvatar } from "./member-avatars";
+import { messageMenuItems } from "./message-menu";
 import { PresenceAvatar } from "./PresenceAvatar";
 import { ReactionChips, type ReactionGroup } from "./ReactionChips";
 import { RichText } from "./RichText";
+import { revealMessage } from "./reveal-message";
+import { SystemEventRow } from "./SystemEventRow";
+import { ThreadSummary } from "./ThreadSummary";
 
 export interface MessageListProps {
   readonly runtime: ChatRuntime | undefined;
@@ -89,48 +85,6 @@ const NO_REACTIONS: readonly ReactionGroup[] = [];
 const STICK_THRESHOLD_PX = 96;
 /** Within this distance of the top the list fetches older history. */
 const LOAD_OLDER_THRESHOLD_PX = 160;
-/** How long a jumped-to message keeps its highlight before it fades. */
-const REVEAL_HIGHLIGHT_MS = 1600;
-
-/** True when the viewer asked the OS to reduce motion. */
-function prefersReducedMotion(): boolean {
-  return (
-    typeof globalThis.matchMedia === "function" &&
-    globalThis.matchMedia("(prefers-reduced-motion: reduce)").matches
-  );
-}
-
-/**
- * Scrolls the row for `id` into view and briefly marks it so the eye can find
- * it: a fading tint normally, a static outline when motion is reduced. Shared
- * by the reply line and the pin notification so both reveal a message the same
- * way. A missing row (not loaded yet) is left alone.
- */
-function revealMessage(id: string): void {
-  const node = document.getElementById(`message-${id}`);
-  if (node === null) {
-    return;
-  }
-  if (typeof node.scrollIntoView === "function") {
-    node.scrollIntoView({ behavior: "smooth", block: "center" });
-  }
-  if (prefersReducedMotion() || typeof node.animate !== "function") {
-    const previousOutline = node.style.outline;
-    const previousOffset = node.style.outlineOffset;
-    node.style.outline = "2px solid var(--aulora-accent)";
-    node.style.outlineOffset = "2px";
-    globalThis.setTimeout(() => {
-      node.style.outline = previousOutline;
-      node.style.outlineOffset = previousOffset;
-    }, REVEAL_HIGHLIGHT_MS);
-    return;
-  }
-  node.animate(
-    [{ backgroundColor: "var(--aulora-accent-soft)" }, { backgroundColor: "transparent" }],
-    { duration: REVEAL_HIGHLIGHT_MS, easing: "ease-out" },
-  );
-}
-
 /**
  * The conversation timeline: message bubbles grouped into author runs, day
  * separators, the unread divider and a typing bubble. It follows the live tail
@@ -410,51 +364,6 @@ function TimelineRow({
   );
 }
 
-function systemActorName(list: MessageListProps, actorId: string | undefined) {
-  if (actorId === undefined) {
-    return "Someone";
-  }
-  if (actorId === list.ownUserId) {
-    return "You";
-  }
-  return list.memberNames.get(actorId) ?? "Someone";
-}
-
-function SystemEventRow({
-  list,
-  message,
-}: {
-  readonly list: MessageListProps;
-  readonly message: MessagePayload;
-}) {
-  const actorId = message.systemActorId;
-  const targetId = message.systemTargetId;
-  if (message.systemKind !== "pin" || targetId === undefined) {
-    return null;
-  }
-  const actorName = systemActorName(list, actorId);
-  return (
-    <div className="flex w-full gap-2.5 py-0.5" data-testid={`system-${message.id}`}>
-      <div className="flex h-5 w-8 shrink-0 items-center justify-center text-text-muted">
-        <Icon name="pin" size={13} block />
-      </div>
-      <p className="text-[12px] leading-5 text-text-muted">
-        <span className="font-medium text-text-muted">{actorName}</span> pinned a{" "}
-        <button
-          type="button"
-          onClick={() => {
-            revealMessage(targetId);
-          }}
-          aria-label="Jump to the pinned message"
-          className="rounded-[4px] font-medium text-text-muted underline decoration-dotted underline-offset-2 transition hover:text-text focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent"
-        >
-          message
-        </button>
-      </p>
-    </div>
-  );
-}
-
 function MessageRow({
   list,
   message,
@@ -505,82 +414,19 @@ function MessageRow({
       return;
     }
     event.preventDefault();
-    const items: ContextMenuItem[] = [];
-    if (canReact) {
-      items.push({
-        id: "react",
-        label: "Custom reaction",
-        icon: <Icon name="smile" size={14} />,
-        onSelect: () => {
-          setPickerOpen(true);
-        },
-      });
-    }
-    if (list.onReplyTo !== undefined && hasPermission(permissions, Permission.SendMessages)) {
-      items.push({
-        id: "reply",
-        label: "Reply",
-        icon: <Icon name="reply" size={14} />,
-        separatorBefore: items.length > 0,
-        onSelect: () => list.onReplyTo?.(message),
-      });
-    }
-    if (canThread) {
-      items.push({
-        id: "thread",
-        label: "Reply in thread",
-        icon: <Icon name="thread" size={14} />,
-        separatorBefore: items.length > 0,
-        onSelect: () => {
-          list.onReply(message);
-        },
-      });
-    }
-    if (canEdit) {
-      items.push({
-        id: "edit",
-        label: "Edit message",
-        icon: <Icon name="pencil" size={14} />,
-        separatorBefore: items.length > 0,
-        onSelect: () => {
-          setDraft(text);
-          setEditing(true);
-        },
-      });
-    }
-    if (canPin) {
-      items.push({
-        id: "pin",
-        label: message.pinnedAt !== null ? "Unpin message" : "Pin message",
-        icon: <Icon name={message.pinnedAt !== null ? "pin-off" : "pin"} size={14} />,
-        onSelect: () => {
-          list.onPinToggle(message);
-        },
-      });
-    }
-    if (text.trim().length > 0) {
-      items.push({
-        id: "copy",
-        label: "Copy text",
-        icon: <Icon name="file" size={14} />,
-        separatorBefore: items.length > 0,
-        onSelect: () => {
-          void navigator.clipboard.writeText(text).catch(() => undefined);
-        },
-      });
-    }
-    if (canDelete) {
-      items.push({
-        id: "delete",
-        label: "Delete message",
-        icon: <Icon name="trash" size={14} />,
-        danger: true,
-        separatorBefore: items.length > 0,
-        onSelect: () => {
-          list.onDelete(message);
-        },
-      });
-    }
+    const items = messageMenuItems({
+      list,
+      message,
+      text,
+      can: { react: canReact, thread: canThread, edit: canEdit, pin: canPin, delete: canDelete },
+      openPicker: () => {
+        setPickerOpen(true);
+      },
+      startEdit: () => {
+        setDraft(text);
+        setEditing(true);
+      },
+    });
     if (items.length > 0) {
       openMenu({
         clientX: event.clientX,
@@ -971,105 +817,6 @@ function MessageRow({
         />
       )}
     </article>
-  );
-}
-
-const SHOWN_REPLIERS = 3;
-
-/**
- * Overlapping avatars of the people who replied: up to three, then a "+" when
- * the thread has more. With no participant data it falls back to a thread icon.
- */
-function ReplierStack({ userIds }: { readonly userIds: readonly string[] }) {
-  if (userIds.length === 0) {
-    return (
-      <span className="flex h-5 w-5 shrink-0 items-center justify-center rounded-full bg-accent-soft text-accent">
-        <Icon name="thread" size={12} />
-      </span>
-    );
-  }
-  const shown = userIds.slice(0, SHOWN_REPLIERS);
-  const hasMore = userIds.length > SHOWN_REPLIERS;
-  return (
-    <span data-testid="thread-repliers" className="ml-0.5 flex shrink-0 items-center -space-x-1.5">
-      {shown.map((userId) => (
-        <PersonAvatar
-          key={userId}
-          userId={userId}
-          size={20}
-          className="ring-2 ring-[var(--aulora-chat)] group-hover/thread:ring-surface-3"
-        />
-      ))}
-      {hasMore && (
-        <span
-          aria-hidden="true"
-          className="relative flex h-5 w-5 items-center justify-center rounded-full bg-surface-3 text-text-muted ring-2 ring-[var(--aulora-chat)] group-hover/thread:ring-surface-3"
-        >
-          <Icon name="plus" size={12} block />
-        </span>
-      )}
-    </span>
-  );
-}
-
-function threadRepliesLabel(count: number) {
-  return count === 1 ? "1 reply" : `${count} replies`;
-}
-
-/** The muted "last reply …" note beside a thread summary, or null without one. */
-function lastReplyNote(at: number | null | undefined): string | null {
-  if (at === null || at === undefined) {
-    return null;
-  }
-  return `· last reply ${activityLabel(at)}`;
-}
-
-/**
- * The "N replies" row under a thread root. It stays quiet — a muted line with
- * an accented count — sitting directly under the message text, led by the
- * avatars of whoever replied. The whole row is the hit target.
- */
-function ThreadSummary({
-  replyCount,
-  lastReplyAt,
-  participantIds,
-  mirror,
-  onOpen,
-}: {
-  readonly replyCount: number;
-  readonly lastReplyAt: number | null | undefined;
-  readonly participantIds: readonly string[];
-  readonly mirror: boolean;
-  readonly onOpen: () => void;
-}) {
-  const label = threadRepliesLabel(replyCount);
-  const note = lastReplyNote(lastReplyAt);
-  return (
-    <div className={cn("mt-1", mirror ? "pr-[42px]" : "pl-[42px]")}>
-      <button
-        type="button"
-        aria-label={`Open thread, ${label}`}
-        onClick={onOpen}
-        className={cn(
-          "group/thread flex min-h-7 w-full min-w-0 items-center gap-1.5 rounded-[7px] px-1.5 py-0.5 text-left transition-colors hover:bg-surface-3 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent active:bg-surface-3",
-          mirror ? "-mr-1.5 flex-row-reverse" : "-ml-1.5",
-        )}
-      >
-        <ReplierStack userIds={participantIds} />
-        <span className="shrink-0 text-[12px] font-semibold leading-4 text-accent">{label}</span>
-        {note !== null && (
-          <span className="min-w-0 truncate text-[11px] leading-4 text-text-muted">{note}</span>
-        )}
-        <Icon
-          name="chevron-right"
-          size={14}
-          className={cn(
-            "shrink-0 text-text-muted opacity-0 transition group-hover/thread:translate-x-0 group-hover/thread:opacity-100 group-focus-visible/thread:translate-x-0 group-focus-visible/thread:opacity-100",
-            mirror ? "rotate-180 translate-x-0.5" : "-translate-x-0.5",
-          )}
-        />
-      </button>
-    </div>
   );
 }
 
