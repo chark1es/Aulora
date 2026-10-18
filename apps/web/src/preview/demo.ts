@@ -275,6 +275,25 @@ export async function createDemoWorkspace(): Promise<DemoWorkspace> {
     },
   ]);
 
+  // The quiet "pinned a message" line lives in history so the preview shows
+  // what a pin posts (the seed pins a message directly, not via `pinMessage`).
+  port.state.messages.set("seed-pin-notice-design", {
+    id: "seed-pin-notice-design",
+    channelId: design.id,
+    authorId: "u-kathryn",
+    body: "",
+    threadRootId: null,
+    attachmentIds: [],
+    mentionUserIds: [],
+    editedAt: null,
+    deletedAt: null,
+    pinnedAt: null,
+    createdAt: now - 59 * MINUTE,
+    systemKind: "pin",
+    systemActorId: "u-kathryn",
+    systemTargetId: `seed-${design.id}-${now - 95 * MINUTE}-${DEMO_OWN_ID}`,
+  });
+
   await seed(general, [
     { author: "u-theresa", text: "Morning all ☕", at: now - 5 * 60 * MINUTE },
     {

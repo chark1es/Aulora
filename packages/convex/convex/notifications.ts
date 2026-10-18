@@ -209,7 +209,11 @@ export const unreadSummary = query({
         start = index === -1 ? messages.length : index + 1;
       }
       for (const message of messages.slice(start)) {
-        if (message.deletedAt !== undefined || message.authorId === userId) {
+        if (
+          message.deletedAt !== undefined ||
+          message.authorId === userId ||
+          message.systemKind !== undefined
+        ) {
           continue;
         }
         total += 1;

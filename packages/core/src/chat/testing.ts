@@ -339,7 +339,29 @@ export function createMockPort(options: { readonly now?: () => number } = {}): M
       record("pinMessage", args);
       const message = state.messages.get(args.messageId);
       if (message !== undefined) {
+        const firstPin = message.pinnedAt === null;
         state.messages.set(args.messageId, { ...message, pinnedAt: Date.now() });
+        // Mirror the server: a first pin posts the quiet timeline line; a
+        // repeated pin or an unpin (below) does not.
+        if (firstPin) {
+          const noticeId = nextId("pin-notice");
+          state.messages.set(noticeId, {
+            id: noticeId,
+            channelId: message.channelId,
+            authorId: "me",
+            body: "",
+            threadRootId: null,
+            attachmentIds: [],
+            mentionUserIds: [],
+            editedAt: null,
+            deletedAt: null,
+            pinnedAt: null,
+            createdAt: Date.now(),
+            systemKind: "pin",
+            systemActorId: "me",
+            systemTargetId: message.id,
+          });
+        }
         hub.emitMessages(message.channelId);
       }
       return Promise.resolve(null);

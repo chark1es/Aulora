@@ -63,6 +63,15 @@ export interface MessagePayload {
   readonly replyCount?: number;
   /** Thread roots: creation time of the newest reply. */
   readonly lastReplyAt?: number | null;
+  /**
+   * A quiet system event in the timeline (e.g. a pin) instead of a normal
+   * message bubble. Absent on ordinary messages.
+   */
+  readonly systemKind?: "pin";
+  /** Who triggered a system event (the pinner). */
+  readonly systemActorId?: string;
+  /** The message a system event refers to (the pinned message). */
+  readonly systemTargetId?: string;
   readonly createdAt: number;
 }
 

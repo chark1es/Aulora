@@ -2,6 +2,7 @@ import type { MessagePayload } from "@aulora/core";
 import { Permission } from "@aulora/core";
 import { ContextMenuProvider } from "@aulora/ui-web";
 import { fireEvent, render, screen, within } from "@testing-library/react";
+import userEvent from "@testing-library/user-event";
 import { useState } from "react";
 import { describe, expect, it, vi } from "vitest";
 import { MessageList, type MessageListProps } from "../components/chat/MessageList";
@@ -170,5 +171,73 @@ describe("MessageList pin action", () => {
 
     const item = screen.getByRole("menuitem", { name: "Pin message" });
     expect(pinIconPath(item)).toMatch(/^M16 5v7/);
+  });
+});
+
+describe("MessageList pin notifications", () => {
+  const pinned: MessagePayload = message("m1", "u-ada", 0, { pinnedAt: NOW + 2 * 60_000 });
+
+  function notice(extra: Partial<MessagePayload> = {}): MessagePayload {
+    return message("n1", "u-ada", 1, {
+      body: "",
+      systemKind: "pin",
+      systemActorId: "u-ada",
+      systemTargetId: "m1",
+      ...extra,
+    });
+  }
+
+  it("renders a quiet pin line that links to the message without quoting it", () => {
+    render(<MessageList {...listProps({ messages: [pinned, notice()] })} />);
+
+    const line = screen.getByTestId("system-n1");
+    expect(line).toHaveTextContent("Ada Lovelace pinned a message");
+    // The pinned message's own text is never quoted in the timeline line.
+    expect(line).not.toHaveTextContent("text of m1");
+    // It is a system line, not a message bubble.
+    expect(line.querySelector("[data-message-row]")).toBeNull();
+  });
+
+  it("scrolls to the pinned message and highlights it when the link is clicked", async () => {
+    const user = userEvent.setup();
+    render(<MessageList {...listProps({ messages: [pinned, notice()] })} />);
+    const target = screen.getByTestId("message-m1");
+    const scrollIntoView = vi.fn();
+    target.scrollIntoView = scrollIntoView;
+    const animate = vi.fn();
+    Object.defineProperty(target, "animate", { value: animate, configurable: true });
+
+    await user.click(screen.getByRole("button", { name: "Jump to the pinned message" }));
+
+    expect(scrollIntoView).toHaveBeenCalledWith({ behavior: "smooth", block: "center" });
+    expect(animate).toHaveBeenCalled();
+  });
+
+  it("uses a static outline instead of an animation when motion is reduced", async () => {
+    const original = window.matchMedia;
+    window.matchMedia = ((query: string) => ({
+      matches: query.includes("prefers-reduced-motion"),
+      media: query,
+      onchange: null,
+      addListener: () => undefined,
+      removeListener: () => undefined,
+      addEventListener: () => undefined,
+      removeEventListener: () => undefined,
+      dispatchEvent: () => false,
+    })) as unknown as typeof window.matchMedia;
+    try {
+      const user = userEvent.setup();
+      render(<MessageList {...listProps({ messages: [pinned, notice()] })} />);
+      const target = screen.getByTestId("message-m1");
+      const animate = vi.fn();
+      Object.defineProperty(target, "animate", { value: animate, configurable: true });
+
+      await user.click(screen.getByRole("button", { name: "Jump to the pinned message" }));
+
+      expect(target.style.outline).toContain("solid");
+      expect(animate).not.toHaveBeenCalled();
+    } finally {
+      window.matchMedia = original;
+    }
   });
 });

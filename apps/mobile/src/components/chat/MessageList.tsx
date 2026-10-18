@@ -171,6 +171,40 @@ function replyPreview(props: MessageListProps, message: MessagePayload): ReplyPr
   };
 }
 
+function systemActorName(list: MessageListProps, actorId: string | undefined): string {
+  if (actorId === undefined) return "Someone";
+  if (actorId === list.ownUserId) return "You";
+  return list.memberNames.get(actorId) ?? "Someone";
+}
+
+function SystemNotice({
+  actorName,
+  onJump,
+}: {
+  readonly actorName: string;
+  readonly onJump: () => void;
+}) {
+  const palette = usePalette();
+  return (
+    <View className="flex-row items-center gap-2 px-4 py-1">
+      <Icon name="pin" size={12} color={palette["text-muted"]} />
+      <Text size="xs" tone="muted" maxFontSizeMultiplier={1.4}>
+        {actorName} pinned a{" "}
+        <Text
+          size="xs"
+          tone="muted"
+          className="underline"
+          accessibilityRole="button"
+          accessibilityLabel="Jump to the pinned message"
+          onPress={onJump}
+        >
+          message
+        </Text>
+      </Text>
+    </View>
+  );
+}
+
 interface RowItemProps {
   readonly row: MessageListRow;
   readonly list: MessageListProps;
@@ -180,6 +214,17 @@ interface RowItemProps {
 
 function RowItem({ row, list, context, flashId }: RowItemProps) {
   if (row.kind === "day") return <DaySeparator label={row.label} />;
+  if (row.kind === "system") {
+    const actorName = systemActorName(list, row.actorId);
+    return (
+      <SystemNotice
+        actorName={actorName}
+        onJump={() => {
+          if (row.targetId !== undefined) context.onJumpToReply(row.targetId);
+        }}
+      />
+    );
+  }
   const { message } = row;
   return (
     <MessageRow

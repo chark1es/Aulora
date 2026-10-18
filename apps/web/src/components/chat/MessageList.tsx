@@ -88,6 +88,47 @@ const NO_REACTIONS: readonly ReactionGroup[] = [];
 const STICK_THRESHOLD_PX = 96;
 /** Within this distance of the top the list fetches older history. */
 const LOAD_OLDER_THRESHOLD_PX = 160;
+/** How long a jumped-to message keeps its highlight before it fades. */
+const REVEAL_HIGHLIGHT_MS = 1600;
+
+/** True when the viewer asked the OS to reduce motion. */
+function prefersReducedMotion(): boolean {
+  return (
+    typeof globalThis.matchMedia === "function" &&
+    globalThis.matchMedia("(prefers-reduced-motion: reduce)").matches
+  );
+}
+
+/**
+ * Scrolls the row for `id` into view and briefly marks it so the eye can find
+ * it: a fading tint normally, a static outline when motion is reduced. Shared
+ * by the reply line and the pin notification so both reveal a message the same
+ * way. A missing row (not loaded yet) is left alone.
+ */
+function revealMessage(id: string): void {
+  const node = document.getElementById(`message-${id}`);
+  if (node === null) {
+    return;
+  }
+  if (typeof node.scrollIntoView === "function") {
+    node.scrollIntoView({ behavior: "smooth", block: "center" });
+  }
+  if (prefersReducedMotion() || typeof node.animate !== "function") {
+    const previousOutline = node.style.outline;
+    const previousOffset = node.style.outlineOffset;
+    node.style.outline = "2px solid var(--aulora-accent)";
+    node.style.outlineOffset = "2px";
+    globalThis.setTimeout(() => {
+      node.style.outline = previousOutline;
+      node.style.outlineOffset = previousOffset;
+    }, REVEAL_HIGHLIGHT_MS);
+    return;
+  }
+  node.animate(
+    [{ backgroundColor: "var(--aulora-accent-soft)" }, { backgroundColor: "transparent" }],
+    { duration: REVEAL_HIGHLIGHT_MS, easing: "ease-out" },
+  );
+}
 
 /**
  * The conversation timeline: message bubbles grouped into author runs, day
@@ -114,17 +155,23 @@ export function MessageList(props: MessageListProps) {
   const positionedChannelRef = useRef<string | null>(null);
   const [atBottom, setAtBottom] = useState(true);
 
-  const items = useMemo(
-    () =>
-      buildTimeline(messages, { firstUnreadId }).map((item) =>
-        // A pinned message needs its author header (and the pin itself) even
-        // when it continues an author run, so force the run to start here.
-        item.kind === "message" && item.message.pinnedAt !== null
-          ? { ...item, startsGroup: true }
-          : item,
-      ),
-    [messages, firstUnreadId],
-  );
+  const items = useMemo(() => {
+    const built = buildTimeline(messages, { firstUnreadId });
+    return built.map((item, index) => {
+      if (item.kind !== "message") {
+        return item;
+      }
+      // A pinned message needs its author header (and the pin itself) even
+      // when it continues an author run, so force the run to start here. A
+      // system event always stands alone, and so does the message after it.
+      const previous = built[index - 1];
+      const afterSystem = previous?.kind === "message" && previous.message.systemKind !== undefined;
+      if (item.message.systemKind !== undefined || afterSystem || item.message.pinnedAt !== null) {
+        return { ...item, startsGroup: true };
+      }
+      return item;
+    });
+  }, [messages, firstUnreadId]);
 
   // One batched reactions subscription for the whole timeline, chunked by the
   // adapter, instead of one live query per rendered message.
@@ -349,6 +396,9 @@ function TimelineRow({
       </div>
     );
   }
+  if (item.message.systemKind !== undefined) {
+    return <SystemEventRow list={list} message={item.message} />;
+  }
   return (
     <MessageRow
       list={list}
@@ -356,6 +406,51 @@ function TimelineRow({
       startsGroup={item.startsGroup}
       reactions={reactionsByMessage.get(item.message.id) ?? NO_REACTIONS}
     />
+  );
+}
+
+function systemActorName(list: MessageListProps, actorId: string | undefined): string {
+  if (actorId === undefined) {
+    return "Someone";
+  }
+  if (actorId === list.ownUserId) {
+    return "You";
+  }
+  return list.memberNames.get(actorId) ?? "Someone";
+}
+
+function SystemEventRow({
+  list,
+  message,
+}: {
+  readonly list: MessageListProps;
+  readonly message: MessagePayload;
+}) {
+  const actorId = message.systemActorId;
+  const targetId = message.systemTargetId;
+  if (message.systemKind !== "pin" || targetId === undefined) {
+    return null;
+  }
+  const actorName = systemActorName(list, actorId);
+  return (
+    <div className="flex w-full gap-2.5 py-0.5" data-testid={`system-${message.id}`}>
+      <div className="flex w-8 shrink-0 justify-center pt-0.5 text-text-muted">
+        <Icon name="pin" size={12} />
+      </div>
+      <p className="text-[12px] leading-5 text-text-muted">
+        <span className="font-medium text-text-muted">{actorName}</span> pinned a{" "}
+        <button
+          type="button"
+          onClick={() => {
+            revealMessage(targetId);
+          }}
+          aria-label="Jump to the pinned message"
+          className="rounded-[4px] font-medium text-text-muted underline decoration-dotted underline-offset-2 transition hover:text-text focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent"
+        >
+          message
+        </button>
+      </p>
+    </div>
   );
 }
 
@@ -385,17 +480,7 @@ function MessageRow({
   const replyPreview = replyToId !== null ? list.replyPreviews?.get(replyToId) : undefined;
 
   const scrollToOriginal = (id: string): void => {
-    const node = document.getElementById(`message-${id}`);
-    node?.scrollIntoView({
-      behavior: "smooth",
-      block: "center",
-    });
-    if (node !== null && typeof node.animate === "function") {
-      node.animate(
-        [{ backgroundColor: "var(--aulora-accent-soft)" }, { backgroundColor: "transparent" }],
-        { duration: 1600, easing: "ease-out" },
-      );
-    }
+    revealMessage(id);
   };
 
   const [editing, setEditing] = useState(false);
