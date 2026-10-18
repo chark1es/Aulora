@@ -1,5 +1,5 @@
 import { Icon, IconButton, Text } from "@aulora/ui-web";
-import { useState } from "react";
+import { useClipboardCopy } from "../useClipboardCopy";
 
 /**
  * The redirect (callback) URL to register with an identity provider, with a
@@ -7,7 +7,6 @@ import { useState } from "react";
  * URL) is set, so otherwise this says what is missing.
  */
 export function EnvRedirectUrl({ url }: { readonly url: string | null }) {
-  const [copied, setCopied] = useState(false);
   if (url === null) {
     return (
       <Text size="xs" tone="muted">
@@ -15,6 +14,11 @@ export function EnvRedirectUrl({ url }: { readonly url: string | null }) {
       </Text>
     );
   }
+  return <RedirectUrlRow url={url} />;
+}
+
+function RedirectUrlRow({ url }: { readonly url: string }) {
+  const { copied, copy } = useClipboardCopy(url);
   return (
     <div className="flex min-w-0 items-center gap-1" data-testid="env-redirect-url">
       <Text size="xs" tone="muted" className="shrink-0">
@@ -27,17 +31,7 @@ export function EnvRedirectUrl({ url }: { readonly url: string | null }) {
         label={copied ? "Copied" : "Copy redirect URL"}
         title="Copy redirect URL"
         size="sm"
-        onClick={() => {
-          void navigator.clipboard
-            .writeText(url)
-            .then(() => {
-              setCopied(true);
-              setTimeout(() => {
-                setCopied(false);
-              }, 1800);
-            })
-            .catch(() => undefined);
-        }}
+        onClick={copy}
       >
         <Icon name={copied ? "check" : "copy"} size={13} />
       </IconButton>

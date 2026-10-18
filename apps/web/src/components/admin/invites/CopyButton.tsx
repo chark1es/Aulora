@@ -1,5 +1,5 @@
 import { Button, Icon } from "@aulora/ui-web";
-import { useState } from "react";
+import { useClipboardCopy } from "../useClipboardCopy";
 
 /** Copies `value` to the clipboard and confirms for a moment. */
 export function CopyButton({
@@ -9,24 +9,9 @@ export function CopyButton({
   readonly value: string;
   readonly label?: string;
 }) {
-  const [copied, setCopied] = useState(false);
+  const { copied, copy } = useClipboardCopy(value);
   return (
-    <Button
-      type="button"
-      variant="secondary"
-      size="sm"
-      onClick={() => {
-        void navigator.clipboard
-          .writeText(value)
-          .then(() => {
-            setCopied(true);
-            setTimeout(() => {
-              setCopied(false);
-            }, 1800);
-          })
-          .catch(() => undefined);
-      }}
-    >
+    <Button type="button" variant="secondary" size="sm" onClick={copy}>
       <Icon name={copied ? "check" : "copy"} size={14} />
       {copied ? "Copied" : label}
     </Button>
