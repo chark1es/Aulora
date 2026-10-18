@@ -1,8 +1,9 @@
-import { afterEach, describe, expect, it } from "vitest";
+import { afterEach, describe, expect, it, vi } from "vitest";
 import {
   checkDesktopUpdate,
   desktopPlatform,
   isDesktop,
+  openExternal,
   parseDeepLink,
   showsDesktopTitleBar,
 } from "./desktop";
@@ -117,6 +118,40 @@ describe("checkDesktopUpdate", () => {
       error: null,
       pubDate: 1_700_000_000,
     });
+  });
+});
+
+describe("openExternal", () => {
+  const globalWithTauri = globalThis as { __TAURI__?: unknown };
+  const saved = globalWithTauri.__TAURI__;
+
+  afterEach(() => {
+    if (saved === undefined) {
+      delete globalWithTauri.__TAURI__;
+    } else {
+      globalWithTauri.__TAURI__ = saved;
+    }
+    vi.restoreAllMocks();
+  });
+
+  it("opens a new tab on the web", () => {
+    delete globalWithTauri.__TAURI__;
+    const open = vi.spyOn(window, "open").mockReturnValue(null);
+    openExternal("https://github.com/settings/personal-access-tokens/new");
+    expect(open).toHaveBeenCalledWith(
+      "https://github.com/settings/personal-access-tokens/new",
+      "_blank",
+      "noopener,noreferrer",
+    );
+  });
+
+  it("hands the URL to the desktop shell", () => {
+    const invoke = vi.fn().mockResolvedValue(undefined);
+    globalWithTauri.__TAURI__ = { core: { invoke } };
+    const open = vi.spyOn(window, "open").mockReturnValue(null);
+    openExternal("https://example.com");
+    expect(invoke).toHaveBeenCalledWith("open_external", { url: "https://example.com" });
+    expect(open).not.toHaveBeenCalled();
   });
 });
 

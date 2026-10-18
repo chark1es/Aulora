@@ -7,6 +7,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import type { Id } from "../../../../packages/convex/convex/_generated/dataModel";
 import { AddonsSettings } from "../components/admin/AddonsSettings";
 import { CardDetail } from "../components/kanban/CardDetail";
+import { GithubBrowser } from "../components/kanban/GithubBrowser";
 import { KanbanView } from "../components/kanban/KanbanView";
 import type { Board, Card } from "../components/kanban/types";
 
@@ -399,6 +400,20 @@ describe("Kanban UI", () => {
     expect(screen.getByRole("dialog").querySelector("[aria-busy]")).not.toBeInTheDocument();
     await user.click(start);
     expect(state.mutations.get("kanban:timer")).toHaveBeenCalledTimes(1);
+  });
+  it("opens the GitHub token page in the browser instead of inside the board", async () => {
+    state.values.set("kanbanGithub:status", { connected: false });
+    const open = vi.spyOn(window, "open").mockReturnValue(null);
+    render(<GithubBrowser onClose={vi.fn()} />);
+    const link = screen.getByRole("link", { name: "Create a GitHub token" });
+    expect(link).toHaveAttribute("href", "https://github.com/settings/personal-access-tokens/new");
+    await userEvent.setup().click(link);
+    expect(open).toHaveBeenCalledWith(
+      "https://github.com/settings/personal-access-tokens/new",
+      "_blank",
+      "noopener,noreferrer",
+    );
+    open.mockRestore();
   });
   it("uploads through the public Docker backend and attaches the finalized file", async () => {
     const user = userEvent.setup();
