@@ -171,20 +171,23 @@ function ColumnRow(props: ColumnRowProps) {
         className="h-9 min-w-0 flex-1 rounded-[7px] bg-transparent px-2 text-[13px] font-medium text-text placeholder:font-normal placeholder:text-text-muted motion-safe:transition hover:bg-surface-3 focus:bg-surface-3 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent"
       />
       {cardCount !== undefined && <CardCount count={cardCount} limit={column.wipLimit} />}
-      <label className="flex shrink-0 items-center gap-1 text-[11px] font-medium text-text-muted">
-        <span className="hidden sm:inline">WIP</span>
+      <label
+        title="Work-in-progress limit"
+        className="flex h-9 shrink-0 items-center gap-1 rounded-[7px] border border-border bg-surface-1 pl-2 pr-1 text-[11px] font-semibold uppercase tracking-wide text-text-muted motion-safe:transition hover:border-text-muted/40 focus-within:border-accent focus-within:ring-2 focus-within:ring-accent-soft"
+      >
+        <span aria-hidden="true">WIP</span>
         <input
           type="number"
           min={1}
           max={500}
-          placeholder="—"
+          placeholder="–"
           aria-label={`Work-in-progress limit for ${column.name}`}
           value={column.wipLimit ?? ""}
           onChange={(event) => {
             const raw = event.target.value;
             props.onWipLimit(raw === "" ? undefined : Number(raw));
           }}
-          className="h-9 w-14 shrink-0 rounded-[7px] border border-border bg-surface-3 px-1 text-center text-[13px] tabular-nums text-text placeholder:text-text-muted motion-safe:transition hover:bg-surface-2 focus-visible:border-accent focus-visible:bg-surface-2 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent-soft"
+          className="h-7 w-9 rounded-[5px] bg-transparent text-center text-[13px] font-medium normal-case tracking-normal tabular-nums text-text placeholder:text-text-muted focus-visible:outline-none [appearance:textfield] [&::-webkit-inner-spin-button]:appearance-none [&::-webkit-outer-spin-button]:appearance-none"
         />
       </label>
       <IconButton

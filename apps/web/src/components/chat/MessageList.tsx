@@ -724,7 +724,7 @@ function MessageRow({
         // Pinned to the far edge of the full-width row and revealed on hover or
         // keyboard focus. Mirrored own messages pin it to the left instead.
         "absolute top-0 z-20 hidden items-center gap-0.5 rounded-[9px] border border-border bg-surface-2 p-0.5 shadow-lg shadow-black/20 group-focus-within/message:flex group-hover/message:flex",
-        mirror ? "left-2" : "right-2",
+        mirror ? "left-3" : "right-3",
         pickerOpen && "flex",
       )}
     >
@@ -823,7 +823,7 @@ function MessageRow({
       data-message-row
       onContextMenu={openContextMenu}
       className={cn(
-        "group/message relative w-full py-0.5 transition-colors",
+        "group/message relative -mx-1 w-full px-1 py-0.5 transition-colors",
         startsGroup ? "mt-3" : "mt-0.5",
       )}
     >
@@ -841,7 +841,7 @@ function MessageRow({
             fill="none"
             className={cn(
               "pointer-events-none absolute top-[9px] h-[18px] w-[28px] overflow-visible",
-              mirror ? "right-[15px] -scale-x-100" : "left-[15px]",
+              mirror ? "right-[19px] -scale-x-100" : "left-[19px]",
               replyAuthorColor === undefined && "text-text-muted",
             )}
             style={replyAuthorColor !== undefined ? { color: replyAuthorColor } : undefined}
@@ -898,9 +898,9 @@ function MessageRow({
                   role="img"
                   aria-label="Pinned"
                   title="Pinned"
-                  className="inline-flex shrink-0 items-center text-accent"
+                  className="inline-flex shrink-0 self-center text-accent"
                 >
-                  <Icon name="pin" size={12} align="baseline" />
+                  <Icon name="pin" size={12} block />
                 </span>
               )}
             </div>
@@ -989,8 +989,8 @@ function lastReplyNote(at: number | null | undefined): string | null {
 
 /**
  * The "N replies" row under a thread root. It stays quiet — a muted line with
- * an accented count — and hangs off the message's avatar column with the same
- * elbow connector inline replies use. The whole row is the hit target.
+ * an accented count — and is indented under the message text, joined to it by
+ * the same elbow connector inline replies use. The whole row is the hit target.
  */
 function ThreadSummary({
   replyCount,
@@ -1006,19 +1006,19 @@ function ThreadSummary({
   const label = threadRepliesLabel(replyCount);
   const note = lastReplyNote(lastReplyAt);
   return (
-    <div className={cn("relative mt-1", mirror ? "pr-[42px]" : "pl-[42px]")}>
+    <div className={cn("relative mt-1", mirror ? "pr-[62px]" : "pl-[62px]")}>
       <svg
         aria-hidden
         data-testid="thread-branch"
-        viewBox="15 0 28 22"
+        viewBox="0 0 14 22"
         fill="none"
         className={cn(
-          "pointer-events-none absolute top-[-8px] h-[22px] w-[28px] overflow-visible text-text-muted",
-          mirror ? "right-[15px] -scale-x-100" : "left-[15px]",
+          "pointer-events-none absolute top-[-8px] h-[22px] w-[14px] overflow-visible text-text-muted",
+          mirror ? "right-[42px] -scale-x-100" : "left-[42px]",
         )}
       >
         <path
-          d="M 16 0 L 16 14 Q 16 22 24 22 L 39 22"
+          d="M 2 0 L 2 14 Q 2 22 10 22 L 12 22"
           stroke="currentColor"
           strokeWidth={1.5}
           strokeLinecap="round"
