@@ -13,27 +13,20 @@ import {
 import { useMutation } from "convex/react";
 import { useState } from "react";
 import { api } from "../../../../../packages/convex/convex/_generated/api";
+import { ColumnList } from "./ColumnList";
 import { PeoplePicker } from "./controls";
-import { type Board, type BoardMember, failure, newItemId } from "./types";
-
-/** The list with the items at two places exchanged. */
-function swapped<T>(items: readonly T[], index: number, other: number): T[] {
-  const first = items.at(index);
-  const second = items.at(other);
-  if (first === undefined || second === undefined) return [...items];
-  return items.map((item, place) => {
-    if (place === index) return second;
-    return place === other ? first : item;
-  });
-}
+import { type Board, type BoardMember, type Card, failure, newItemId } from "./types";
 
 export function BoardSettings({
   board,
   members,
+  cards,
   onClose,
 }: {
   board: Board;
   members: readonly BoardMember[];
+  /** The board's cards, used to show how full each column is; optional while they load. */
+  cards?: readonly Card[] | undefined;
   onClose: () => void;
 }) {
   const update = useMutation(api.kanban.updateBoard);
@@ -151,105 +144,14 @@ export function BoardSettings({
               />
             </fieldset>
           )}
-          <fieldset className="flex flex-col gap-2">
-            <legend className="mb-2 text-[13px] font-medium">
-              Columns and work-in-progress limits
-            </legend>
-            <p className="text-xs text-text-muted">
-              Remove a column after moving all its cards, including archived cards.
-            </p>
-            {draft.columns.map((c, index) => (
-              <div key={c.id} className="flex flex-wrap items-end gap-1.5 [&>button]:mb-1.5">
-                <div className="min-w-[150px] flex-1">
-                  <Input
-                    label={`Column ${index + 1}`}
-                    value={c.name}
-                    maxLength={80}
-                    onChange={(e) => {
-                      setDraft({
-                        ...draft,
-                        columns: draft.columns.map((entry) =>
-                          entry.id === c.id ? { ...entry, name: e.target.value } : entry,
-                        ),
-                      });
-                    }}
-                  />
-                </div>
-                <div className="w-24">
-                  <Input
-                    label="WIP limit"
-                    type="number"
-                    min={1}
-                    max={500}
-                    placeholder="None"
-                    value={c.wipLimit ?? ""}
-                    onChange={(e) => {
-                      setDraft({
-                        ...draft,
-                        columns: draft.columns.map((entry) =>
-                          entry.id === c.id
-                            ? {
-                                id: entry.id,
-                                name: entry.name,
-                                ...(e.target.value ? { wipLimit: Number(e.target.value) } : {}),
-                              }
-                            : entry,
-                        ),
-                      });
-                    }}
-                  />
-                </div>
-                <IconButton
-                  size="sm"
-                  disabled={index === 0}
-                  label={`Move ${c.name} column left`}
-                  onClick={() => {
-                    setDraft({ ...draft, columns: swapped(draft.columns, index, index - 1) });
-                  }}
-                >
-                  <Icon name="chevron-left" size={16} />
-                </IconButton>
-                <IconButton
-                  size="sm"
-                  disabled={index === draft.columns.length - 1}
-                  label={`Move ${c.name} column right`}
-                  onClick={() => {
-                    setDraft({ ...draft, columns: swapped(draft.columns, index, index + 1) });
-                  }}
-                >
-                  <Icon name="chevron-right" size={16} />
-                </IconButton>
-                <IconButton
-                  size="sm"
-                  variant="danger"
-                  disabled={draft.columns.length === 1}
-                  label={`Remove ${c.name} column`}
-                  onClick={() => {
-                    setDraft({
-                      ...draft,
-                      columns: draft.columns.filter((entry) => entry.id !== c.id),
-                    });
-                  }}
-                >
-                  <Icon name="trash" size={16} />
-                </IconButton>
-              </div>
-            ))}
-            <Button
-              variant="secondary"
-              size="sm"
-              className="self-start"
-              disabled={draft.columns.length >= 20}
-              onClick={() => {
-                setDraft({
-                  ...draft,
-                  columns: [...draft.columns, { id: newItemId(), name: "New column" }],
-                });
-              }}
-            >
-              Add column
-            </Button>
-          </fieldset>
+          <ColumnList
+            boardId={board.id}
+            columns={draft.columns}
+            cards={cards}
+            onChange={(columns) => {
+              setDraft((current) => ({ ...current, columns }));
+            }}
+          />
           <fieldset className="flex flex-col gap-2">
             <legend className="mb-2 text-[13px] font-medium">Labels</legend>
             {draft.labels.map((l) => (

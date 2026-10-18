@@ -33,6 +33,15 @@ const AuthPreviewRoute = import.meta.env.DEV
     )
   : null;
 
+// Dev-only harness for the Kanban board settings, for layout and theme checks.
+const KanbanPreviewRoute = import.meta.env.DEV
+  ? lazy(() =>
+      import("./preview/KanbanPreviewRoute").then((module) => ({
+        default: module.KanbanPreviewRoute,
+      })),
+    )
+  : null;
+
 function RootLayout() {
   const pathname = useRouterState({ select: (state) => state.location.pathname });
   const previewing = import.meta.env.DEV && pathname.startsWith("/__preview");
@@ -130,9 +139,20 @@ const authPreviewRoute = createRoute({
     ),
 });
 
+const kanbanPreviewRoute = createRoute({
+  getParentRoute: () => rootRoute,
+  path: "/__preview/kanban",
+  component: () =>
+    KanbanPreviewRoute === null ? null : (
+      <Suspense fallback={null}>
+        <KanbanPreviewRoute />
+      </Suspense>
+    ),
+});
+
 const routeTree = rootRoute.addChildren(
   import.meta.env.DEV
-    ? [indexRoute, connectRoute, redeemRoute, previewRoute, authPreviewRoute]
+    ? [indexRoute, connectRoute, redeemRoute, previewRoute, authPreviewRoute, kanbanPreviewRoute]
     : [indexRoute, connectRoute, redeemRoute],
 );
 
