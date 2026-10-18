@@ -43,29 +43,11 @@ if [ -d "$HOST_ENV_DIR" ]; then
 fi
 
 # --- tiny .env helpers (preserve comments; never echo secret values) --------
-
-env_get() {
-  local key="$1" file="$2"
-  [ -f "$file" ] || return 0
-  # Last assignment wins; strip an optional `export ` prefix.
-  sed -n "s/^[[:space:]]*\(export[[:space:]]\+\)\?${key}=//p" "$file" | tail -n 1
-}
-
-env_set() {
-  local key="$1" value="$2" file="$3"
-  [ -f "$file" ] || return 0
-  if grep -qE "^[[:space:]]*(export[[:space:]]+)?${key}=" "$file"; then
-    # awk so the replacement is literal (no sed delimiter/backref issues).
-    KEY="$key" VALUE="$value" awk '
-      BEGIN { k = ENVIRON["KEY"]; v = ENVIRON["VALUE"] }
-      $0 ~ "^[[:space:]]*(export[[:space:]]+)?" k "=" { print k "=" v; next }
-      { print }
-    ' "$file" > "${file}.tmp"
-    mv "${file}.tmp" "$file"
-  else
-    printf '%s=%s\n' "$key" "$value" >> "$file"
-  fi
-}
+# Shared with the tests; see envfile.sh.
+SETUP_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+export SETUP_DIR
+# shellcheck source=/dev/null
+source "$SETUP_DIR/envfile.sh"
 
 # --- 0. reuse persisted secrets and read optional settings -------------------
 # `setup` writes generated secrets to ${HOST_ENV_FILE} so later runs stay
@@ -102,14 +84,12 @@ host_value() {
 
 for _persisted in \
   INSTANCE_SECRET BETTER_AUTH_SECRET VAPID_SUBJECT VAPID_PUBLIC_KEY \
-  VAPID_PRIVATE_KEY AULORA_ENCRYPTION_KEY AULORA_KEK_WRAPPED; do
+  VAPID_PRIVATE_KEY AULORA_ENCRYPTION_KEY AULORA_KEK_WRAPPED \
+  BOT_JWT_PRIVATE_JWK_B64 BOT_JWT_PUBLIC_JWK_B64 BOT_RUNNER_TOKEN; do
   restore_persisted_secret "$_persisted"
 done
 
 # --- 1. wait for the backend and resolve identity ---------------------------
-
-SETUP_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-export SETUP_DIR
 
 wait_for_backend() {
   log "waiting for Convex backend at ${CONVEX_SELF_HOSTED_URL}"
@@ -126,6 +106,12 @@ wait_for_backend() {
 
 random_hex() { openssl rand -hex "$1"; }
 random_b64() { openssl rand -base64 "$1"; }
+random_b64url() {
+  node -e 'process.stdout.write(require("node:crypto").randomBytes(Number(process.argv[1])).toString("base64url"))' "$1"
+}
+b64url_encode() {
+  node -e 'process.stdout.write(Buffer.from(process.argv[1], "utf8").toString("base64url"))' "$1"
+}
 
 # --- convex helpers ---------------------------------------------------------
 
@@ -177,6 +163,43 @@ if [ -z "$VAPID_PUBLIC_KEY_VALUE" ] || [ -z "$VAPID_PRIVATE_KEY_VALUE" ]; then
   unset VAPID_KEYS
   [ -n "$VAPID_PUBLIC_KEY_VALUE" ] || die "VAPID key generation failed"
   log "generated VAPID key pair"
+fi
+
+# Bot JWTs (optional feature). A bot's Convex functions trust a second JWT
+# provider, so the deployment needs an ES256 key pair plus the shared runner
+# token. Generated once and persisted base64url-encoded: a JWK contains quotes
+# and braces that a dotenv file does not round-trip, so `.env` holds the
+# encoded form while `convex env set` below receives the raw JSON (the public
+# JWK is read by auth.config.ts at deploy time). Explicit BOT_JWT_* values from
+# the environment always win over the persisted file.
+BOT_JWT_PRIVATE_JWK_VALUE="${BOT_JWT_PRIVATE_JWK:-}"
+BOT_JWT_PUBLIC_JWK_VALUE="${BOT_JWT_PUBLIC_JWK:-}"
+BOT_JWT_PRIVATE_JWK_B64_VALUE="${BOT_JWT_PRIVATE_JWK_B64:-}"
+BOT_JWT_PUBLIC_JWK_B64_VALUE="${BOT_JWT_PUBLIC_JWK_B64:-}"
+BOT_JWT_GENERATED=0
+if [ -z "$BOT_JWT_PRIVATE_JWK_VALUE" ] || [ -z "$BOT_JWT_PUBLIC_JWK_VALUE" ]; then
+  if [ -n "$BOT_JWT_PRIVATE_JWK_B64_VALUE" ] && [ -n "$BOT_JWT_PUBLIC_JWK_B64_VALUE" ]; then
+    BOT_JWT_PRIVATE_JWK_VALUE="$(node "$SETUP_DIR/botkeys.mjs" decode "$BOT_JWT_PRIVATE_JWK_B64_VALUE")"
+    BOT_JWT_PUBLIC_JWK_VALUE="$(node "$SETUP_DIR/botkeys.mjs" decode "$BOT_JWT_PUBLIC_JWK_B64_VALUE")"
+  else
+    BOT_JWT_KEYS="$(node "$SETUP_DIR/botkeys.mjs")"
+    BOT_JWT_PRIVATE_JWK_VALUE="$(printf '%s\n' "$BOT_JWT_KEYS" | sed -n 1p)"
+    BOT_JWT_PUBLIC_JWK_VALUE="$(printf '%s\n' "$BOT_JWT_KEYS" | sed -n 2p)"
+    unset BOT_JWT_KEYS
+    [ -n "$BOT_JWT_PRIVATE_JWK_VALUE" ] || die "BOT_JWT key generation failed"
+    BOT_JWT_PRIVATE_JWK_B64_VALUE="$(b64url_encode "$BOT_JWT_PRIVATE_JWK_VALUE")"
+    BOT_JWT_PUBLIC_JWK_B64_VALUE="$(b64url_encode "$BOT_JWT_PUBLIC_JWK_VALUE")"
+    BOT_JWT_GENERATED=1
+    log "generated BOT_JWT ES256 key pair"
+  fi
+fi
+
+BOT_RUNNER_TOKEN_VALUE="${BOT_RUNNER_TOKEN:-}"
+BOT_RUNNER_TOKEN_GENERATED=0
+if [ -z "$BOT_RUNNER_TOKEN_VALUE" ]; then
+  BOT_RUNNER_TOKEN_VALUE="$(random_b64url 48)"
+  BOT_RUNNER_TOKEN_GENERATED=1
+  log "generated BOT_RUNNER_TOKEN"
 fi
 
 # --- 3. server-side encryption: local master key (default) ------------------
@@ -262,6 +285,12 @@ set_env_if_present AULORA_ALLOW_UI_ENV_OVERRIDES "$(host_value AULORA_ALLOW_UI_E
 set_env_if_present VAPID_SUBJECT "$VAPID_SUBJECT_VALUE"
 set_env_if_present VAPID_PUBLIC_KEY "$VAPID_PUBLIC_KEY_VALUE"
 set_env_if_present VAPID_PRIVATE_KEY "$VAPID_PRIVATE_KEY_VALUE" 1
+
+# Bot JWTs (optional). The public key is read by auth.config.ts at deploy time,
+# so these must be set before `convex deploy` below.
+set_env_if_present BOT_JWT_PRIVATE_JWK "$BOT_JWT_PRIVATE_JWK_VALUE" 1
+set_env_if_present BOT_JWT_PUBLIC_JWK "$BOT_JWT_PUBLIC_JWK_VALUE"
+set_env_if_present BOT_RUNNER_TOKEN "$BOT_RUNNER_TOKEN_VALUE" 1
 
 # Optional WebRTC ICE servers (JSON array of RTCIceServer objects) so a
 # self-hosted deployment can point calls at its own STUN/TURN. Blank leaves
@@ -492,6 +521,15 @@ if [ -d "$HOST_ENV_DIR" ]; then
   # key stays where they put it. Never echo it.
   if [ "$ENCRYPTION_KEY_GENERATED" = "1" ]; then
     env_set AULORA_ENCRYPTION_KEY "$AULORA_ENCRYPTION_KEY_VALUE" "$HOST_ENV_FILE"
+  fi
+  # Bot secrets: the JWKs go back base64url-encoded (never the raw JSON), and
+  # only when this run generated them, so an operator-provided value stays put.
+  if [ "$BOT_JWT_GENERATED" = "1" ]; then
+    env_set BOT_JWT_PRIVATE_JWK_B64 "$BOT_JWT_PRIVATE_JWK_B64_VALUE" "$HOST_ENV_FILE"
+    env_set BOT_JWT_PUBLIC_JWK_B64 "$BOT_JWT_PUBLIC_JWK_B64_VALUE" "$HOST_ENV_FILE"
+  fi
+  if [ "$BOT_RUNNER_TOKEN_GENERATED" = "1" ]; then
+    env_set BOT_RUNNER_TOKEN "$BOT_RUNNER_TOKEN_VALUE" "$HOST_ENV_FILE"
   fi
   umask "$UMASK_PREV"
   log "persisted generated secrets to ${HOST_ENV_FILE}"

@@ -1,0 +1,14 @@
+# Python build and bytecode artifacts
+__pycache__/
+*.py[cod]
+*.egg-info/
+build/
+dist/
+.eggs/
+
+# Local test / tooling state
+.pytest_cache/
+.mypy_cache/
+.pyright/
+.venv/
+venv/

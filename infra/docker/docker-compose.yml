@@ -195,6 +195,12 @@ services:
       retries: 30
       start_period: 20s
     logging: *logging
+    # Bots may only reach the backend: join the dedicated `bots` network in
+    # addition to the stack default, so `bot-runner` cannot reach postgres,
+    # minio or the web container.
+    networks:
+      - default
+      - bots
 
   convex-dashboard:
     # Pinned by digest (Convex dashboard image has no stable version tag).
@@ -291,6 +297,68 @@ services:
       livekit-init:
         condition: service_completed_successfully
         required: false
+    logging: *logging
+
+  # Optional bot runner: supervises user-created bots, one sandboxed process
+  # per enabled bot. Enable with `docker compose --profile bots up -d`. Bots
+  # share the dedicated `bots` network with convex-backend only, so they cannot
+  # reach postgres, minio or the web container. This is container-level
+  # isolation, not a VM, and `ManageBots` is effectively code execution on this
+  # host: read README.md "Bots" before turning it on.
+  bot-runner:
+    build:
+      context: ../..
+      dockerfile: infra/docker/bot-runner.Dockerfile
+    image: aulora-bot-runner:local
+    profiles: ["bots"]
+    restart: unless-stopped
+    # Give the supervisor time to SIGTERM/SIGKILL every bot on stop.
+    stop_grace_period: 20s
+    # No env_file and no host mounts on purpose: every bot shares this container
+    # (as its own uid), so anything mounted or injected here is readable by bot
+    # code. The runner token is the only secret and it comes from the
+    # environment of `docker compose` (the `.env` next to this file).
+    environment:
+      BOT_RUNNER_TOKEN: ${BOT_RUNNER_TOKEN:-}
+      CONVEX_HTTP_URL: http://convex-backend:3211
+      CONVEX_SELF_HOSTED_URL: http://convex-backend:3210
+      BOT_RUNNER_MAX_BOTS: ${BOT_RUNNER_MAX_BOTS:-10}
+      BOT_RUNNER_BOT_MEMORY_MB: ${BOT_RUNNER_BOT_MEMORY_MB:-256}
+      WORK_DIR: /work
+      BOT_RUNNER_HEALTH_FILE: /tmp/bot-runner-ready
+      BOT_SDK_TS_DIR: /opt/aulora/bot-sdk
+    # Root only to switch each bot to its own uid; compose drops every other
+    # capability below. Bots themselves never run as root.
+    user: "0:0"
+    read_only: true
+    tmpfs:
+      - /work:size=1g,mode=711
+      - /tmp:size=64m,mode=1777
+      - /home:size=16m,mode=755
+    cap_drop:
+      - ALL
+    cap_add:
+      - SETUID
+      - SETGID
+      - CHOWN
+    security_opt:
+      - no-new-privileges:true
+    pids_limit: 1024
+    mem_limit: 4g
+    cpus: 4
+    networks:
+      - bots
+    depends_on:
+      convex-backend:
+        condition: service_healthy
+      setup:
+        condition: service_completed_successfully
+    healthcheck:
+      test: ["CMD", "node", "/app/src/healthcheck.mjs"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+      start_period: 20s
     logging: *logging
 
   # Optional project push relay for official store builds. Holds APNs/FCM
@@ -451,3 +519,9 @@ volumes:
   web-well-known:
   livekit-keys:
   backup-data:
+
+# Dedicated network for bot processes: only `bot-runner` and `convex-backend`
+# join it, so a bot has no route to postgres, minio or the web container.
+networks:
+  bots:
+    driver: bridge
