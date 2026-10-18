@@ -870,27 +870,98 @@ function MessageRow({
               }}
             />
           )}
-          {replyCount > 0 && list.inThread !== true && (
-            <button
-              type="button"
-              onClick={() => {
-                list.onReply(message);
-              }}
-              className="mt-1 flex items-center gap-1.5 rounded-full px-2 py-0.5 text-xs font-semibold text-accent transition hover:bg-accent-soft"
-            >
-              <Icon name="thread" size={14} />
-              {replyCount === 1 ? "1 reply" : `${replyCount} replies`}
-              {message.lastReplyAt != null && (
-                <span className="font-normal text-text-muted">
-                  · {activityLabel(message.lastReplyAt)}
-                </span>
-              )}
-            </button>
-          )}
           {toolbar}
         </div>
       </div>
+      {replyCount > 0 && list.inThread !== true && (
+        <ThreadSummary
+          replyCount={replyCount}
+          lastReplyAt={message.lastReplyAt}
+          mirror={mirror}
+          onOpen={() => {
+            list.onReply(message);
+          }}
+        />
+      )}
     </article>
+  );
+}
+
+function threadRepliesLabel(count: number): string {
+  return count === 1 ? "1 reply" : `${count} replies`;
+}
+
+/** The muted "last reply …" note beside a thread summary, or null without one. */
+function lastReplyNote(at: number | null | undefined): string | null {
+  if (at === null || at === undefined) {
+    return null;
+  }
+  return `· last reply ${activityLabel(at)}`;
+}
+
+/**
+ * The "N replies" row under a thread root. It stays quiet — a muted line with
+ * an accented count — and hangs off the message's avatar column with the same
+ * elbow connector inline replies use. The whole row is the hit target.
+ */
+function ThreadSummary({
+  replyCount,
+  lastReplyAt,
+  mirror,
+  onOpen,
+}: {
+  readonly replyCount: number;
+  readonly lastReplyAt: number | null | undefined;
+  readonly mirror: boolean;
+  readonly onOpen: () => void;
+}) {
+  const label = threadRepliesLabel(replyCount);
+  const note = lastReplyNote(lastReplyAt);
+  return (
+    <div className={cn("relative mt-1", mirror ? "pr-[42px]" : "pl-[42px]")}>
+      <svg
+        aria-hidden
+        data-testid="thread-branch"
+        viewBox="15 0 28 22"
+        fill="none"
+        className={cn(
+          "pointer-events-none absolute top-[-8px] h-[22px] w-[28px] overflow-visible text-text-muted",
+          mirror ? "right-[15px] -scale-x-100" : "left-[15px]",
+        )}
+      >
+        <path
+          d="M 16 0 L 16 14 Q 16 22 24 22 L 39 22"
+          stroke="currentColor"
+          strokeWidth={1.5}
+          strokeLinecap="round"
+        />
+      </svg>
+      <button
+        type="button"
+        aria-label={`Open thread, ${label}`}
+        onClick={onOpen}
+        className={cn(
+          "group/thread flex min-h-7 w-full min-w-0 items-center gap-1.5 rounded-[7px] px-1.5 py-0.5 text-left transition-colors hover:bg-surface-3 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent active:bg-surface-3",
+          mirror ? "-mr-1.5 flex-row-reverse" : "-ml-1.5",
+        )}
+      >
+        <span className="flex h-5 w-5 shrink-0 items-center justify-center rounded-full bg-accent-soft text-accent">
+          <Icon name="thread" size={12} />
+        </span>
+        <span className="shrink-0 text-[12px] font-semibold leading-4 text-accent">{label}</span>
+        {note !== null && (
+          <span className="min-w-0 truncate text-[11px] leading-4 text-text-muted">{note}</span>
+        )}
+        <Icon
+          name="chevron-right"
+          size={14}
+          className={cn(
+            "shrink-0 text-text-muted opacity-0 transition group-hover/thread:translate-x-0 group-hover/thread:opacity-100 group-focus-visible/thread:translate-x-0 group-focus-visible/thread:opacity-100",
+            mirror ? "rotate-180 translate-x-0.5" : "-translate-x-0.5",
+          )}
+        />
+      </button>
+    </div>
   );
 }
 
