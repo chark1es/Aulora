@@ -1,8 +1,9 @@
-import { Text, usePalette } from "@aulora/ui-native";
+import { Icon, Text, usePalette } from "@aulora/ui-native";
 import { Pressable, TextInput, View } from "react-native";
 import { tagsForIds } from "../../lib/notes";
 import { PickerSheet } from "../kanban/PickerSheet";
 import { PropertyRow } from "../kanban/parts";
+import { NOTE_FORMATS } from "./editor-toolbar";
 import { NoteTagChip } from "./NoteParts";
 import { NotePreview } from "./NotePreview";
 import type { NoteEditorController } from "./use-note-editor";
@@ -79,9 +80,61 @@ function NoteEditorMode({ editor }: { readonly editor: NoteEditorController }) {
   );
 }
 
+/** One round icon button in the formatting toolbar. */
+function ToolButton({
+  label,
+  icon,
+  disabled,
+  onPress,
+}: {
+  readonly label: string;
+  readonly icon: Parameters<typeof Icon>[0]["name"];
+  readonly disabled: boolean;
+  readonly onPress: () => void;
+}) {
+  const palette = usePalette();
+  return (
+    <Pressable
+      accessibilityRole="button"
+      accessibilityLabel={label}
+      accessibilityState={{ disabled }}
+      disabled={disabled}
+      onPress={onPress}
+      className={`h-10 w-10 items-center justify-center rounded-[9px] ${
+        disabled ? "opacity-40" : "active:bg-surface-3"
+      }`}
+    >
+      <Icon name={icon} size={20} color={disabled ? palette["text-muted"] : palette.text} />
+    </Pressable>
+  );
+}
+
+/** The Markdown formatting bar, shown above the body field while writing. */
+function NoteFormatBar({ editor }: { readonly editor: NoteEditorController }) {
+  const { canUndo, canRedo, format, undo, redo } = editor;
+  return (
+    <View className="mx-4 mb-2 flex-row items-center rounded-input border border-border bg-surface-2 p-0.5">
+      <ToolButton label="Undo" icon="undo" disabled={!canUndo} onPress={undo} />
+      <ToolButton label="Redo" icon="redo" disabled={!canRedo} onPress={redo} />
+      <View className="mx-0.5 h-5 w-px bg-border" />
+      {NOTE_FORMATS.map((spec) => (
+        <ToolButton
+          key={spec.id}
+          label={spec.label}
+          icon={spec.icon}
+          disabled={false}
+          onPress={() => {
+            format(spec.id);
+          }}
+        />
+      ))}
+    </View>
+  );
+}
+
 export function NoteBodyInput({ editor }: { readonly editor: NoteEditorController }) {
   const palette = usePalette();
-  const { body, setBody, preview } = editor;
+  const { body, setBody, preview, selection, setSelection } = editor;
   return (
     <>
       <NoteEditorMode editor={editor} />
@@ -90,17 +143,24 @@ export function NoteBodyInput({ editor }: { readonly editor: NoteEditorControlle
           <NotePreview body={body} />
         </View>
       ) : (
-        <TextInput
-          accessibilityLabel="Note body"
-          placeholder="Write in Markdown…"
-          placeholderTextColor={palette["text-muted"]}
-          value={body}
-          onChangeText={setBody}
-          multiline
-          textAlignVertical="top"
-          className="mx-4 min-h-[220px] rounded-input border border-border bg-surface-1 p-3 text-[16px] text-text"
-          style={{ lineHeight: 22 }}
-        />
+        <>
+          <NoteFormatBar editor={editor} />
+          <TextInput
+            accessibilityLabel="Note body"
+            placeholder="Write in Markdown…"
+            placeholderTextColor={palette["text-muted"]}
+            value={body}
+            onChangeText={setBody}
+            onSelectionChange={(event) => {
+              setSelection(event.nativeEvent.selection);
+            }}
+            selection={selection}
+            multiline
+            textAlignVertical="top"
+            className="mx-4 min-h-[220px] rounded-input border border-border bg-surface-1 p-3 text-[16px] text-text"
+            style={{ lineHeight: 22 }}
+          />
+        </>
       )}
     </>
   );

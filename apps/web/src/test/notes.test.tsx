@@ -6,6 +6,7 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 import type { Id } from "../../../../packages/convex/convex/_generated/dataModel";
 import { AddonsSettings } from "../components/admin/AddonsSettings";
 import { NotesView } from "../components/notes/NotesView";
+import { childFolders, folderPath } from "../components/notes/types";
 
 const state = vi.hoisted(() => ({
   values: new Map<string, unknown>(),
@@ -107,6 +108,25 @@ describe("Notes UI", () => {
     expect(screen.queryByRole("button", { name: "Save" })).not.toBeInTheDocument();
   });
 
+  it("starts on the full-width list and opens a note only when clicked", async () => {
+    const user = userEvent.setup();
+    render(
+      <NotesView
+        ownUserId="alice"
+        permissions={Permission.ViewNotes}
+        members={members}
+        onBack={vi.fn()}
+      />,
+    );
+    // Nothing is selected until the viewer picks a note, so the list starts full width.
+    expect(screen.queryByRole("textbox", { name: "Note body" })).not.toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: "Back to list" })).not.toBeInTheDocument();
+    await user.click(screen.getByRole("button", { name: "Open note Roadmap" }));
+    expect(screen.getByRole("button", { name: "Back to list" })).toBeInTheDocument();
+    await user.click(screen.getByRole("button", { name: "Back to list" }));
+    expect(screen.queryByRole("button", { name: "Back to list" })).not.toBeInTheDocument();
+  });
+
   it("filters the loaded list instantly by title and tag", async () => {
     const user = userEvent.setup();
     render(
@@ -126,6 +146,120 @@ describe("Notes UI", () => {
     expect(screen.queryByRole("button", { name: "Open note Meeting" })).not.toBeInTheDocument();
   });
 
+  it("searches note bodies through the server and highlights the match", async () => {
+    const user = userEvent.setup();
+    state.values.set("workspaceNotes:search", [
+      {
+        id: "note-2",
+        title: "Meeting",
+        snippet: "…we discussed the budget spreadsheet…",
+        score: 3,
+        updatedAt: 20,
+      },
+    ]);
+    render(
+      <NotesView
+        ownUserId="alice"
+        permissions={Permission.ViewNotes}
+        members={members}
+        onBack={vi.fn()}
+      />,
+    );
+    // One character is enough to start the server search.
+    await user.type(screen.getByRole("textbox", { name: "Search notes" }), "b");
+    expect(await screen.findByRole("button", { name: "Open note Meeting" })).toBeInTheDocument();
+    // The matched term in the snippet is highlighted.
+    expect(document.querySelector("mark")).not.toBeNull();
+    expect(screen.queryByRole("button", { name: "Open note Roadmap" })).not.toBeInTheDocument();
+  });
+
+  it("drills into folders and offers new-folder actions beside New note", async () => {
+    const user = userEvent.setup();
+    render(
+      <NotesView
+        ownUserId="alice"
+        permissions={
+          Permission.ViewNotes |
+          Permission.CreateNotes |
+          Permission.EditNotes |
+          Permission.DeleteNotes
+        }
+        members={members}
+        onBack={vi.fn()}
+      />,
+    );
+    // Home shows the top-level folder row, not its contents.
+    const folderRow = screen.getByRole("button", { name: "Open folder Ideas" });
+    expect(screen.queryByRole("button", { name: "Open note Meeting" })).not.toBeInTheDocument();
+    await user.click(folderRow);
+    expect(screen.getByRole("button", { name: "Open note Meeting" })).toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: "Open note Roadmap" })).not.toBeInTheDocument();
+    // The split button offers note and folder creation.
+    await user.click(screen.getByRole("button", { name: "New note options" }));
+    expect(screen.getByRole("menuitem", { name: "New folder" })).toBeInTheDocument();
+    // Inside a folder, a subfolder can be created here.
+    expect(screen.getByRole("menuitem", { name: "New subfolder" })).toBeInTheDocument();
+  });
+
+  it("offers rename and delete on a folder row's actions menu", async () => {
+    const user = userEvent.setup();
+    render(
+      <NotesView
+        ownUserId="alice"
+        permissions={
+          Permission.ViewNotes |
+          Permission.CreateNotes |
+          Permission.EditNotes |
+          Permission.DeleteNotes
+        }
+        members={members}
+        onBack={vi.fn()}
+      />,
+    );
+    await user.click(screen.getByRole("button", { name: "Ideas actions" }));
+    await user.click(screen.getByRole("menuitem", { name: "Rename" }));
+    expect(await screen.findByRole("dialog", { name: "Rename folder" })).toBeInTheDocument();
+    await user.keyboard("{Escape}");
+    await user.click(screen.getByRole("button", { name: "Ideas actions" }));
+    await user.click(screen.getByRole("menuitem", { name: "Delete" }));
+    expect(await screen.findByRole("dialog", { name: "Delete folder?" })).toBeInTheDocument();
+  });
+
+  it("reaches tag management from the labeled Add tag and Manage controls", async () => {
+    const user = userEvent.setup();
+    render(
+      <NotesView
+        ownUserId="alice"
+        permissions={Permission.ViewNotes | Permission.CreateNotes | Permission.EditNotes}
+        members={members}
+        onBack={vi.fn()}
+      />,
+    );
+    await user.click(screen.getByRole("button", { name: "Add tag" }));
+    expect(await screen.findByRole("dialog", { name: "New tag" })).toBeInTheDocument();
+    await user.keyboard("{Escape}");
+    await user.click(screen.getByRole("button", { name: "Manage" }));
+    expect(screen.getByRole("button", { name: /New tag/ })).toBeInTheDocument();
+  });
+
+  it("closes the create menu with Escape and moves between its items with arrows", async () => {
+    const user = userEvent.setup();
+    render(
+      <NotesView
+        ownUserId="alice"
+        permissions={Permission.ViewNotes | Permission.CreateNotes}
+        members={members}
+        onBack={vi.fn()}
+      />,
+    );
+    await user.click(screen.getByRole("button", { name: "New note options" }));
+    const menu = screen.getByRole("menu");
+    await user.keyboard("{ArrowDown}");
+    expect(menu.contains(document.activeElement)).toBe(true);
+    await user.keyboard("{Escape}");
+    expect(screen.queryByRole("menu")).not.toBeInTheDocument();
+  });
+
   it("saves edits with the loaded revision and confirms deletes", async () => {
     const user = userEvent.setup();
     render(
@@ -141,6 +275,7 @@ describe("Notes UI", () => {
         onBack={vi.fn()}
       />,
     );
+    await user.click(screen.getByRole("button", { name: "Open note Roadmap" }));
     await user.click(screen.getByRole("button", { name: "Edit" }));
     const title = screen.getByRole("textbox", { name: "Note title" });
     await user.clear(title);
@@ -172,8 +307,11 @@ describe("Notes UI", () => {
         onBack={vi.fn()}
       />,
     );
+    await user.click(screen.getByRole("button", { name: "Open note Roadmap" }));
     await user.click(screen.getByText("History"));
     expect(await screen.findByText(/edited this note/)).toBeInTheDocument();
+    // Revisions are collapsed until opened, so expand the row to see its diff.
+    await user.click(screen.getByRole("button", { name: /edited this note/ }));
     expect(screen.getByText(/line one/)).toBeInTheDocument();
     expect(screen.getByText(/line two/)).toBeInTheDocument();
   });
@@ -187,5 +325,35 @@ describe("Notes UI", () => {
     expect(state.mutations.get("workspaceNotes:setEnabled")).toHaveBeenCalledWith({
       enabled: true,
     });
+  });
+});
+
+describe("folder helpers", () => {
+  const folders = [
+    { id: "work" as Id<"noteFolders">, name: "Work", parentId: null, position: 1 },
+    { id: "home" as Id<"noteFolders">, name: "Home", parentId: null, position: 0 },
+    {
+      id: "web" as Id<"noteFolders">,
+      name: "Web",
+      parentId: "work" as Id<"noteFolders">,
+      position: 1,
+    },
+    {
+      id: "api" as Id<"noteFolders">,
+      name: "Api",
+      parentId: "work" as Id<"noteFolders">,
+      position: 0,
+    },
+  ];
+
+  it("lists a folder's direct children in display order", () => {
+    expect(childFolders(folders, null).map((folder) => folder.id)).toEqual(["home", "work"]);
+    expect(childFolders(folders, "work").map((folder) => folder.id)).toEqual(["api", "web"]);
+  });
+
+  it("builds a breadcrumb path and stops at the root", () => {
+    expect(folderPath(folders, "api").map((folder) => folder.id)).toEqual(["work", "api"]);
+    expect(folderPath(folders, "__root__")).toEqual([]);
+    expect(folderPath(folders, "__unfiled__")).toEqual([]);
   });
 });

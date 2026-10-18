@@ -143,7 +143,12 @@ function BoardColumn({ ctl, dnd, board, column }: ColumnProps) {
       }}
     >
       <ColumnHeader ctl={ctl} column={column} count={cards.length} />
-      <div className="flex min-h-0 flex-1 flex-col gap-2 overflow-y-auto px-2 pb-2">
+      {/*
+        The list clips to its padding box. A flipping card is drawn at its old
+        slot before it glides into place, so padding (not just px/pb) keeps the
+        clip edge clear of the card's border, focus ring and shadow.
+      */}
+      <div className="flex min-h-0 flex-1 flex-col gap-2 overflow-y-auto p-2">
         {refused && (
           <p
             role="status"

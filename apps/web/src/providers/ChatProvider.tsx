@@ -128,7 +128,10 @@ export function ChatProvider({
     let cancelled = false;
     const isCancelled = () => cancelled;
     const outboxStore = new Outbox({ store: webOutboxStore() });
-    const searchIndex = new SearchIndex(webSearchStore());
+    // The index is scoped to this backend and account so a different instance
+    // that happens to share the same browser origin can never surface its
+    // messages here (see `search-store.ts`).
+    const searchIndex = new SearchIndex(webSearchStore(client.url, userId));
     outboxRef.current = outboxStore;
     searchRef.current = searchIndex;
     void searchIndex.load();

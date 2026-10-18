@@ -450,4 +450,21 @@ describe("Notes search", () => {
       "disabled",
     );
   });
+
+  it("matches a single character against titles and decrypted bodies", async () => {
+    const { alice } = await setup();
+    const roadmap = await alice.mutation(api.workspaceNotes.createNote, {
+      title: "Roadmap",
+      body: "annual planning",
+    });
+    const groceries = await alice.mutation(api.workspaceNotes.createNote, {
+      title: "Groceries",
+      body: "milk and eggs",
+    });
+    const oneCharBody = await alice.query(api.workspaceNotes.search, { query: "a" });
+    expect(oneCharBody.map((hit) => hit.id).sort()).toEqual([groceries, roadmap].sort());
+    const oneCharTitle = await alice.query(api.workspaceNotes.search, { query: "g" });
+    expect(oneCharTitle.map((hit) => hit.id)).toEqual([groceries]);
+    expect(oneCharTitle[0]?.snippet).toContain("milk");
+  });
 });

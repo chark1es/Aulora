@@ -290,6 +290,40 @@ function MoveFolderPicker({
   );
 }
 
+/** The add button's menu: create a note, a folder or a subfolder in view. */
+function createActions(ctl: NotesController): SheetAction[] {
+  const inFolder = ctl.filters.folderId !== undefined && ctl.filters.folderId !== null;
+  const actions: SheetAction[] = [
+    { id: "new-note", label: "New note", icon: "note", onPress: ctl.newNote },
+    {
+      id: "new-folder",
+      label: "New folder",
+      icon: "plus",
+      onPress: () => {
+        ctl.setOpen({
+          kind: "folderForm",
+          folderId: null,
+          parentId: ctl.filters.folderId ?? null,
+        });
+      },
+    },
+  ];
+  if (inFolder)
+    actions.push({
+      id: "new-subfolder",
+      label: "New subfolder",
+      icon: "plus",
+      onPress: () => {
+        ctl.setOpen({
+          kind: "folderForm",
+          folderId: null,
+          parentId: ctl.filters.folderId ?? null,
+        });
+      },
+    });
+  return actions;
+}
+
 /** Whichever menu, filter or form is open over the notes list. */
 export function NotesSheets({ ctl }: { readonly ctl: NotesController }) {
   const open = ctl.open;
@@ -297,6 +331,8 @@ export function NotesSheets({ ctl }: { readonly ctl: NotesController }) {
     ctl.setOpen(undefined);
   };
   if (open === undefined) return null;
+  if (open.kind === "create")
+    return <ActionSheet title="Create" actions={createActions(ctl)} onClose={onClose} />;
   if (open.kind === "more")
     return <ActionSheet title="Notes" actions={moreActions(ctl)} onClose={onClose} />;
   if (open.kind === "tagFilter")

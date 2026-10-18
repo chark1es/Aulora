@@ -1,16 +1,19 @@
 /* eslint-disable no-unused-vars -- the base rule reports parameter names in type signatures; Biome checks real unused code */
 import { useMutation, useQuery } from "convex/react";
 import type { FunctionReturnType } from "convex/server";
-import { useCallback, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 import { api } from "../../../../../packages/convex/convex/_generated/api";
 import { failure } from "../../lib/kanban";
 import {
   buildFolderTree,
   filterCount,
   flattenFolders,
+  folderChildren,
+  folderPath,
   groupNotes,
   NO_NOTE_FILTERS,
   type NoteFilters,
+  type NoteHit,
   type NoteMember,
   type NoteOrder,
   type NotePermissions,
@@ -43,6 +46,7 @@ export type NotesMode = "list" | "editor" | "history";
 /** The sheet currently over the notes list, if any. */
 export type NotesSheet =
   | { readonly kind: "note"; readonly noteId: string }
+  | { readonly kind: "create" }
   | { readonly kind: "folder"; readonly folderId: string }
   | {
       readonly kind: "folderForm";
@@ -112,6 +116,29 @@ export function useNotesMutations() {
 
 export type NoteMutations = ReturnType<typeof useNotesMutations>;
 
+/** The server search hits for one query, holding the last result to avoid flicker. */
+function useNoteHits(query: string): ReadonlyMap<string, NoteHit> {
+  const [debounced, setDebounced] = useState("");
+  useEffect(() => {
+    const value = query.trim();
+    const timer = setTimeout(() => {
+      setDebounced(value);
+    }, 150);
+    return () => {
+      clearTimeout(timer);
+    };
+  }, [query]);
+  const result = useQuery(
+    api.workspaceNotes.search,
+    debounced.length >= 1 ? { query: debounced } : "skip",
+  );
+  const [held, setHeld] = useState<readonly { id: string; snippet: string }[]>([]);
+  useEffect(() => {
+    if (result !== undefined) setHeld(result);
+  }, [result]);
+  return useMemo(() => new Map(held.map((hit) => [hit.id, hit])), [held]);
+}
+
 /** The folders, notes and tags the viewer may see, already filtered. */
 function useNotesData(props: NotesProps, state: NotesState) {
   const overview = useQuery(api.workspaceNotes.overview, {});
@@ -129,13 +156,22 @@ function useNotesData(props: NotesProps, state: NotesState) {
       ? { noteId: selectedId as never, limit: 50 }
       : "skip",
   );
+  const hits = useNoteHits(state.filters.query);
+  const searching = state.filters.query.trim().length > 0;
   const visible = useMemo(
-    () => selectNotes(notes, state.filters, state.order),
-    [notes, state.filters, state.order],
+    () => selectNotes(notes, state.filters, state.order, hits),
+    [notes, state.filters, state.order, hits],
   );
   const groups = useMemo(() => groupNotes(visible, Date.now()), [visible]);
   const flatFolders = useMemo(() => flattenFolders(folders), [folders]);
   const folderTree = useMemo(() => buildFolderTree(folders), [folders]);
+  // The child folders shown at the top of the list: top-level ones at home,
+  // and the open folder's own children once drilled in.
+  const openFolderId = state.filters.folderId;
+  const childFoldersInView = useMemo(() => {
+    if (searching || openFolderId === null) return [];
+    return folderChildren(folders, openFolderId ?? null);
+  }, [folders, searching, openFolderId]);
   return {
     overview,
     folders,
@@ -143,10 +179,13 @@ function useNotesData(props: NotesProps, state: NotesState) {
     tags,
     detail,
     history,
+    hits,
     visible,
     groups,
     flatFolders,
     folderTree,
+    childFoldersInView,
+    searching,
     selecting: filterCount(state.filters) > 0,
   };
 }
@@ -191,6 +230,24 @@ export function useNotes(props: NotesProps) {
     backToList: () => {
       state.setMode("list");
     },
+    /** Drills into a folder (or `null`/undefined for Unfiled/home) from the list. */
+    openFolder: (folderId: string | null | undefined) => {
+      props.onNoteChange(null);
+      state.setMode("list");
+      state.setFilters({ ...state.filters, query: "", folderId });
+    },
+    /** Returns from a folder to its parent, or to the home view at the root. */
+    goUpFolder: () => {
+      const current = state.filters.folderId;
+      if (current === undefined || current === null) return;
+      const folder = data.folders.find((entry) => entry.id === current);
+      state.setFilters({ ...state.filters, query: "", folderId: folder?.parentId ?? undefined });
+    },
+    /** The breadcrumb for the open folder, e.g. "Work / Web". */
+    folderPathLabel:
+      state.filters.folderId === undefined || state.filters.folderId === null
+        ? ""
+        : folderPath(data.folders, state.filters.folderId),
     /** Leaves the editor and forgets the note, e.g. after deleting it. */
     closeNote: () => {
       props.onNoteChange(null);

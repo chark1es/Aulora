@@ -38,4 +38,12 @@ describe("SearchPanel archive progress", () => {
     render(panel({ archive: "failed" }));
     expect(screen.getByRole("alert").textContent).toContain("Couldn't reach earlier messages");
   });
+
+  it("shows no message results when the index has nothing for the query", () => {
+    // Regression: a fresh instance searching "test" must not render phantom
+    // hits; the index is scoped per instance (see search-store.test.ts).
+    render(panel({ query: "test", results: [], archive: "complete" }));
+    expect(screen.queryAllByTestId("search-result")).toHaveLength(0);
+    expect(screen.getByTestId("search-empty").textContent).toContain("test");
+  });
 });

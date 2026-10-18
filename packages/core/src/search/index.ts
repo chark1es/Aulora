@@ -71,6 +71,18 @@ function contextSnippet(text: string, terms: readonly string[], radius = 40): st
   return `${prefix}${text.slice(start, end).trim()}${suffix}`;
 }
 
+/**
+ * Stable namespace for one device's persisted index, isolating a single server
+ * (its backend identity) and signed-in account. Persistence adapters derive
+ * their storage key from it so an index can never surface decrypted text from
+ * another instance or another account after a sign-out or server switch. Both
+ * parts are percent-encoded, so the separator is unambiguous even for IPv6
+ * server URLs or user ids that contain the separator themselves.
+ */
+export function searchScopeKey(serverUrl: string, userId: string): string {
+  return `${encodeURIComponent(serverUrl)}:${encodeURIComponent(userId)}`;
+}
+
 /** In-memory {@link SearchStore} for tests and non-browser hosts. */
 export function memorySearchStore(seed: readonly SearchDocument[] = []): SearchStore {
   const documents = new Map<string, SearchDocument>();
