@@ -1,8 +1,15 @@
 import { dayLabel, GROUP_WINDOW_MS, type MessagePayload, startOfLocalDay } from "@aulora/core";
 
-/** One entry of the message list: a day separator or a message. */
+/** One entry of the message list: a day separator, a system event, or a message. */
 export type MessageListRow =
   | { readonly kind: "day"; readonly key: string; readonly label: string }
+  | {
+      readonly kind: "system";
+      readonly key: string;
+      readonly actorId: string | undefined;
+      /** The message the event refers to (e.g. the pinned message). */
+      readonly targetId: string | undefined;
+    }
   | {
       readonly kind: "message";
       readonly key: string;
@@ -14,6 +21,7 @@ export type MessageListRow =
 /** Whether `message` continues the author block that `previous` belongs to. */
 function continuesBlock(previous: MessagePayload, message: MessagePayload): boolean {
   return (
+    previous.systemKind === undefined &&
     previous.authorId === message.authorId &&
     message.createdAt - previous.createdAt < GROUP_WINDOW_MS &&
     (message.replyToId === null || message.replyToId === undefined)
@@ -35,6 +43,15 @@ export function buildMessageRows(messages: readonly MessagePayload[]): MessageLi
     const day = startOfLocalDay(message.createdAt);
     const sameDay = previous !== undefined && startOfLocalDay(previous.createdAt) === day;
     if (!sameDay) rows.push({ kind: "day", key: `day-${day}`, label: dayLabel(day) });
+    if (message.systemKind === "pin") {
+      rows.push({
+        kind: "system",
+        key: message.id,
+        actorId: message.systemActorId,
+        targetId: message.systemTargetId,
+      });
+      return;
+    }
     rows.push({
       kind: "message",
       key: message.id,

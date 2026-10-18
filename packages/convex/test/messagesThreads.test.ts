@@ -170,4 +170,30 @@ describe("messages pins", () => {
       "Missing permission",
     );
   });
+
+  it("posts a quiet pin notice once and never on unpin", async () => {
+    const { t, channelId, messageId } = await setup();
+    const asPinner = t.withIdentity({ subject: "pinner-user" });
+
+    await asPinner.mutation(api.messages.pin, { messageId });
+    const timeline = await asPinner.query(api.messages.list, { channelId, paginationOpts: PAGE });
+    const notices = timeline.page.filter((message) => message.systemKind === "pin");
+    expect(notices).toHaveLength(1);
+    expect(notices[0]).toMatchObject({
+      systemActorId: "pinner-user",
+      systemTargetId: messageId,
+      body: "",
+    });
+    // The pinned message is still in the timeline alongside the notice.
+    expect(timeline.page.some((message) => message.id === messageId)).toBe(true);
+
+    // Pinning again is a no-op and unpinning never posts another notice.
+    await asPinner.mutation(api.messages.pin, { messageId });
+    await asPinner.mutation(api.messages.unpin, { messageId });
+    const after = await asPinner.query(api.messages.list, { channelId, paginationOpts: PAGE });
+    expect(after.page.filter((message) => message.systemKind === "pin")).toHaveLength(1);
+    expect(
+      after.page.some((message) => message.id === messageId && message.pinnedAt !== null),
+    ).toBe(false);
+  });
 });
