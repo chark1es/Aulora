@@ -1,6 +1,8 @@
 import type { MessagePayload } from "@aulora/core";
 import { Permission } from "@aulora/core";
-import { render, screen, within } from "@testing-library/react";
+import { ContextMenuProvider } from "@aulora/ui-web";
+import { fireEvent, render, screen, within } from "@testing-library/react";
+import { useState } from "react";
 import { describe, expect, it, vi } from "vitest";
 import { MessageList, type MessageListProps } from "../components/chat/MessageList";
 
@@ -96,5 +98,77 @@ describe("MessageList pin indicator", () => {
     const row = screen.getByTestId("message-m1");
     expect(within(row).getByLabelText("Pinned")).toBeInTheDocument();
     expect(within(screen.getByTestId("message-m2")).queryByLabelText("Pinned")).toBeNull();
+  });
+});
+
+function pinIconPath(button: HTMLElement): string | null {
+  return button.querySelector("path")?.getAttribute("d") ?? null;
+}
+
+/** Renders a list whose message flips pinned state through the pin action. */
+function PinHarness() {
+  const [messages, setMessages] = useState<MessagePayload[]>([message("m1", "u-ada", 0)]);
+  return (
+    <MessageList
+      {...listProps({
+        messages,
+        onPinToggle: (target) => {
+          setMessages((current) =>
+            current.map((entry) => (entry.id === target.id ? { ...entry, pinnedAt: NOW } : entry)),
+          );
+        },
+      })}
+    />
+  );
+}
+
+describe("MessageList pin action", () => {
+  it("shows Pin message with a pin icon, then flips to Unpin message after pinning", () => {
+    render(<PinHarness />);
+
+    const pin = screen.getByRole("button", { name: "Pin message" });
+    expect(pinIconPath(pin)).toMatch(/^M16 5v7/);
+
+    fireEvent.click(pin);
+
+    const unpin = screen.getByRole("button", { name: "Unpin message" });
+    expect(unpin).toBeInTheDocument();
+    expect(pinIconPath(unpin)).toMatch(/^M14 5h-4/);
+    expect(screen.queryByRole("button", { name: "Pin message" })).not.toBeInTheDocument();
+  });
+
+  it("offers Unpin message in the context menu for a pinned message", () => {
+    const onPinToggle = vi.fn();
+    render(
+      <ContextMenuProvider>
+        <MessageList
+          {...listProps({
+            messages: [message("m1", "u-ada", 0, { pinnedAt: NOW })],
+            onPinToggle,
+          })}
+        />
+      </ContextMenuProvider>,
+    );
+
+    fireEvent.contextMenu(screen.getByTestId("message-m1"));
+
+    const item = screen.getByRole("menuitem", { name: "Unpin message" });
+    expect(pinIconPath(item)).toMatch(/^M14 5h-4/);
+
+    fireEvent.click(item);
+    expect(onPinToggle).toHaveBeenCalledWith(expect.objectContaining({ id: "m1" }));
+  });
+
+  it("offers Pin message in the context menu for an unpinned message", () => {
+    render(
+      <ContextMenuProvider>
+        <MessageList {...listProps({ messages: [message("m1", "u-ada", 0)] })} />
+      </ContextMenuProvider>,
+    );
+
+    fireEvent.contextMenu(screen.getByTestId("message-m1"));
+
+    const item = screen.getByRole("menuitem", { name: "Pin message" });
+    expect(pinIconPath(item)).toMatch(/^M16 5v7/);
   });
 });
