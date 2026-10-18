@@ -140,16 +140,21 @@ export const overview = query({
         definition.clientSecretEnv,
       ]),
     );
-    const availableProviders = SOCIAL_PROVIDER_DEFINITIONS.map((definition) => ({
-      id: definition.id,
-      displayName: definition.displayName,
-      configured:
+    const availableProviders = SOCIAL_PROVIDER_DEFINITIONS.map((definition) => {
+      const configured =
         isEnvValueSet(envMap, definition.clientIdEnv) &&
-        isEnvValueSet(envMap, definition.clientSecretEnv),
-      enabled:
-        settings.authProviders?.[definition.id as "github" | "google" | "microsoft" | "apple"] !==
-        false,
-    }));
+        isEnvValueSet(envMap, definition.clientSecretEnv);
+      const toggle =
+        settings.authProviders?.[definition.id as "github" | "google" | "microsoft" | "apple"];
+      return {
+        id: definition.id,
+        displayName: definition.displayName,
+        configured,
+        // A provider with no credentials is never offered, so it reads as
+        // disabled rather than "on but unusable".
+        enabled: configured && toggle !== false,
+      };
+    });
     const email = await overviewEmail(ctx, env);
 
     return {

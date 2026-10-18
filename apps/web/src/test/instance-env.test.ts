@@ -6,6 +6,7 @@ import {
   type EnvVariable,
   envFieldMeta,
   envGroupSummaries,
+  envLockReason,
   envManagedReason,
   envSourceLabel,
   envSourceTone,
@@ -34,6 +35,7 @@ function variable(overrides: EnvVariableOverrides): EnvVariable {
     managedInSection: null,
     source: "environment",
     isSet: true,
+    redirectUrl: null,
   };
   return Object.assign(base, overrides);
 }
@@ -250,5 +252,19 @@ describe("environment grouping and filtering", () => {
       "A",
       "C",
     ]);
+  });
+
+  it("reports the lock reason in priority order", () => {
+    const open = { locked: false, encryptionReady: true };
+    expect(envLockReason(variable({ key: "GITHUB_CLIENT_ID" }), open)).toBeNull();
+    expect(envLockReason(variable({ key: "SITE_URL", overridable: false }), open)).toContain(
+      "Managed by the deployment",
+    );
+    expect(
+      envLockReason(variable({ key: "GITHUB_CLIENT_ID" }), { ...open, locked: true }),
+    ).toContain("AULORA_ALLOW_UI_ENV_OVERRIDES=false");
+    expect(
+      envLockReason(variable({ key: "GITHUB_CLIENT_ID" }), { ...open, encryptionReady: false }),
+    ).toContain("encryption is not configured");
   });
 });

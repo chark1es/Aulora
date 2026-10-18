@@ -2,6 +2,7 @@
 import { Button, Text } from "@aulora/ui-web";
 import { useState } from "react";
 import { type EnvVariable, envFieldMeta, envValueError } from "../../../lib/instance-env";
+import { EnvRedirectUrl } from "./EnvRedirectUrl";
 import { EnvValueEditor } from "./EnvValueEditor";
 
 export interface EnvOverrideFormProps {
@@ -100,6 +101,7 @@ function EnvOverrideHelper({ variable }: { readonly variable: EnvVariable }) {
           Default: <span className="font-mono">{meta.defaultValue}</span>
         </Text>
       )}
+      {variable.redirectUrl !== null && <EnvRedirectUrl url={variable.redirectUrl} />}
       <Text size="xs" tone="muted">
         Saved in the workspace database, encrypted with the server key — less secure than a
         deploy-time variable.

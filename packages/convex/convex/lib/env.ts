@@ -87,6 +87,33 @@ function providerEnabled(
   return toggles?.[id] !== false;
 }
 
+/**
+ * Public origin the auth surface is served from (`/api/auth/*`), without a
+ * trailing slash; `null` when neither `SITE_URL` nor `CONVEX_SITE_URL` is set.
+ */
+export function authSiteOrigin(env: Env): string | null {
+  const siteUrl = read(env, "SITE_URL") ?? read(env, "CONVEX_SITE_URL");
+  return siteUrl === undefined ? null : siteUrl.replace(/\/+$/, "");
+}
+
+/**
+ * The redirect (callback) URL an identity provider must allow for the given
+ * client-id variable, or `null` when the key is not a provider's client id or
+ * the site origin is unknown. Built-in social providers use Better Auth's
+ * `/callback/<id>`; the generic OIDC provider uses `/oauth2/callback/<id>`.
+ */
+export function authRedirectUrlForKey(env: Env, key: string): string | null {
+  const origin = authSiteOrigin(env);
+  if (origin === null) {
+    return null;
+  }
+  if (key === "OIDC_CLIENT_ID") {
+    return `${origin}/api/auth/oauth2/callback/oidc`;
+  }
+  const social = SOCIAL_PROVIDER_DEFINITIONS.find((definition) => definition.clientIdEnv === key);
+  return social === undefined ? null : `${origin}/api/auth/callback/${social.id}`;
+}
+
 /** Provider id -> credentials for the ones fully configured. */
 export function getSocialProviderCredentials(env: Env): Record<string, SocialProviderCredentials> {
   const result: Record<string, SocialProviderCredentials> = {};
