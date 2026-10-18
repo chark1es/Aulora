@@ -44,24 +44,14 @@ function GripDots() {
   );
 }
 
-/** The column's own colour, the same one its blobatar would wear, per theme. */
+/** The column's own colour: the pastel its blobatar wears, readable on either theme. */
 function ColumnDot({ seed }: { seed: string }) {
-  const light = avatarHead(seed, "light");
-  const dark = avatarHead(seed, "dark");
   return (
     <span
       aria-hidden="true"
-      className="relative h-2.5 w-2.5 shrink-0 rounded-full ring-1 ring-inset ring-black/10 dark:ring-white/15"
-    >
-      <span
-        className="absolute inset-0 rounded-full dark:hidden"
-        style={{ backgroundColor: light }}
-      />
-      <span
-        className="absolute inset-0 hidden rounded-full dark:block"
-        style={{ backgroundColor: dark }}
-      />
-    </span>
+      className="h-2.5 w-2.5 shrink-0 rounded-full ring-1 ring-inset ring-black/10 dark:ring-white/15"
+      style={{ backgroundColor: avatarHead(seed, "light") }}
+    />
   );
 }
 
