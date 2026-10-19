@@ -44,7 +44,9 @@ function BotEditorPane({ model }: { readonly model: BotFilesModel }) {
         path={file.path}
         content={file.content}
         disabled={model.busy}
-        onChange={model.changeContent}
+        onChange={(content) => {
+          model.changeContent(content);
+        }}
       />
       {model.limitError !== null && (
         <Text role="alert" tone="danger" size="sm">
@@ -60,7 +62,9 @@ function BotEditorPane({ model }: { readonly model: BotFilesModel }) {
         <Button
           loading={model.busy}
           disabled={model.busy || !model.dirty || model.limitError !== null}
-          onClick={model.save}
+          onClick={() => {
+            model.save();
+          }}
         >
           Save files
         </Button>

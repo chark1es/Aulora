@@ -19,7 +19,7 @@ const BOT_SCHEME_PREFIX = "Bot ";
 
 /** The credential in `Authorization: Bot <credential>`, or "" when absent; never logged. */
 function readBotCredential(header: string | null): string {
-  if (header === null || !header.startsWith(BOT_SCHEME_PREFIX)) {
+  if (!header?.startsWith(BOT_SCHEME_PREFIX)) {
     return "";
   }
   return header.slice(BOT_SCHEME_PREFIX.length).trim();

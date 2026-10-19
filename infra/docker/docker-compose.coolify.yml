@@ -413,6 +413,8 @@ services:
     # code. The runner token is the only secret and it comes from the
     # environment of `docker compose` (the `.env` next to this file).
     environment:
+      # The value is an interpolation of the operator's environment, not a stored credential.
+      # nosemgrep: codacy.yaml.security.hard-coded-tokens
       BOT_RUNNER_TOKEN: ${BOT_RUNNER_TOKEN:-}
       CONVEX_HTTP_URL: http://convex-backend:3211
       CONVEX_SELF_HOSTED_URL: http://convex-backend:3210
