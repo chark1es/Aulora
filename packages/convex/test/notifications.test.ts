@@ -154,6 +154,28 @@ describe("notifications.unreadSummary", () => {
     // The author never counts their own messages.
     expect(await asUser1.query(api.notifications.unreadSummary)).toEqual({ total: 0, mentions: 0 });
   });
+
+  it("saturates the count for a large channel instead of collecting the whole history", async () => {
+    const t = newTest();
+    await seedWorkspace(t, { members: [{ userId: "user-1" }, { userId: "user-2" }] });
+    const channelId = await seedChannel(t, { memberIds: ["user-1", "user-2"] });
+    await t.run(async (ctx) => {
+      for (let i = 0; i < 130; i += 1) {
+        await ctx.db.insert("messages", {
+          channelId,
+          authorId: "user-1",
+          ciphertext: "aulora-sse-v1:opaque",
+          attachmentIds: [],
+          mentionUserIds: i % 10 === 0 ? ["user-2"] : [],
+        });
+      }
+    });
+
+    const asUser2 = t.withIdentity({ subject: "user-2" });
+    const summary = await asUser2.query(api.notifications.unreadSummary);
+    // The tail is bounded at UNREAD_SCAN_LIMIT (100), so both counts saturate.
+    expect(summary).toEqual({ total: 100, mentions: 10 });
+  });
 });
 
 describe("notifications.resolveRecipients", () => {

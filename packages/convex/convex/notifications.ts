@@ -173,8 +173,20 @@ export const setPref = mutation({
 });
 
 /**
+ * Unread messages read per channel before the count saturates. The badge shows
+ * "99+" anyway, so a bounded tail keeps the query cost proportional to the
+ * limit rather than to the full channel history.
+ */
+const UNREAD_SCAN_LIMIT = 100;
+
+/**
  * Live unread + mention totals for the caller across their joined channels.
  * Drives the desktop Dock/taskbar badge and `navigator.setAppBadge`.
+ *
+ * Each channel's tail is read as an index range starting *after* the viewer's
+ * read cursor (`by_channel_created` with `.gt("_creationTime", cursorTime)`)
+ * and truncated at {@link UNREAD_SCAN_LIMIT}, saturating the count instead of
+ * collecting the entire channel history.
  */
 export const unreadSummary = query({
   args: {},
@@ -199,16 +211,27 @@ export const unreadSummary = query({
           q.eq("userId", userId).eq("channelId", membership.channelId),
         )
         .unique();
+      // Resolve the cursor message's timestamp so the tail is an index range
+      // rather than a whole-channel collect. A cursor that no longer resolves
+      // in this channel (stale id) reads as fully read, matching the previous
+      // positional `findIndex === -1` behaviour.
+      let after: number | null = null;
+      if (state?.lastReadMessageId !== undefined) {
+        const cursor = await ctx.db.get(state.lastReadMessageId);
+        if (cursor === null || cursor.channelId !== membership.channelId) {
+          continue;
+        }
+        after = cursor._creationTime;
+      }
       const messages = await ctx.db
         .query("messages")
-        .withIndex("by_channel_created", (q) => q.eq("channelId", membership.channelId))
-        .collect();
-      let start = 0;
-      if (state?.lastReadMessageId !== undefined) {
-        const index = messages.findIndex((message) => message._id === state.lastReadMessageId);
-        start = index === -1 ? messages.length : index + 1;
-      }
-      for (const message of messages.slice(start)) {
+        .withIndex("by_channel_created", (q) =>
+          after === null
+            ? q.eq("channelId", membership.channelId)
+            : q.eq("channelId", membership.channelId).gt("_creationTime", after),
+        )
+        .take(UNREAD_SCAN_LIMIT);
+      for (const message of messages) {
         if (
           message.deletedAt !== undefined ||
           message.authorId === userId ||
