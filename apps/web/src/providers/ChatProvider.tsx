@@ -117,6 +117,10 @@ export function ChatProvider({
   const [outbox, setOutbox] = useState<readonly OutboxItem[]>([]);
   const runtimeRef = useRef<ChatRuntime | undefined>(undefined);
   const outboxRef = useRef<Maybe<Outbox>>(undefined);
+  // The last snapshot handed to the context, so an unchanged refresh can keep
+  // the old array reference and leave the context value (and tree) untouched.
+  const outboxItemsRef = useRef<readonly OutboxItem[]>([]);
+  outboxItemsRef.current = outbox;
   const searchRef = useRef<Maybe<SearchIndex>>(undefined);
   const backfillRef = useRef<Maybe<ArchiveBackfill>>(undefined);
   const channelsRef = useRef(channels);
@@ -211,7 +215,10 @@ export function ChatProvider({
     if (active === undefined) {
       return;
     }
-    setOutbox(await active.list());
+    const next = await active.list();
+    // `list()` always returns a fresh array; keep the previous reference when
+    // nothing queued actually changed so the context value stays stable.
+    setOutbox((current) => (sameOutbox(current, next) ? current : next));
   }, []);
 
   const flush = useCallback(async () => {
@@ -270,12 +277,14 @@ export function ChatProvider({
   }, [runtime, online, flush]);
 
   // Retry/backoff ticker: even if `online` events are missed, queued sends are
-  // attempted once the browser reports a connection.
+  // attempted once the browser reports a connection. Stays idle (no flush, no
+  // context update) while nothing is queued.
   useEffect(() => {
     const timer = setInterval(() => {
       const connected = typeof navigator === "undefined" ? true : navigator.onLine;
       setOnline(connected);
-      if (connected) {
+      const queued = outboxItemsRef.current.some((item) => item.status !== "failed");
+      if (connected && queued) {
         void flush();
       }
     }, 5_000);
@@ -510,6 +519,36 @@ export function ChatProvider({
   );
 
   return <ChatContext.Provider value={value}>{children}</ChatContext.Provider>;
+}
+
+/**
+ * Whether two outbox snapshots are equivalent, so a refresh that changed
+ * nothing can keep the previous array reference (and the context value stable).
+ */
+function sameOutbox(a: readonly OutboxItem[], b: readonly OutboxItem[]): boolean {
+  if (a === b) {
+    return true;
+  }
+  if (a.length !== b.length) {
+    return false;
+  }
+  for (let index = 0; index < a.length; index += 1) {
+    const previous = a[index];
+    const next = b[index];
+    if (previous === undefined || next === undefined) {
+      return false;
+    }
+    if (
+      previous.id !== next.id ||
+      previous.status !== next.status ||
+      previous.attempts !== next.attempts ||
+      previous.lastAttemptAt !== next.lastAttemptAt ||
+      previous.nextAttemptAt !== next.nextAttemptAt
+    ) {
+      return false;
+    }
+  }
+  return true;
 }
 
 function placeholder(channel: ChannelSummary): string {
