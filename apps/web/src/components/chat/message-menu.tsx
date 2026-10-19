@@ -1,10 +1,10 @@
 import type { MessagePayload } from "@aulora/core";
 import { hasPermission, Permission } from "@aulora/core";
 import { type ContextMenuItem, Icon } from "@aulora/ui-web";
-import type { MessageListProps } from "./MessageList";
+import type { MessageRowListProps } from "./MessageList";
 
 export interface MessageMenuContext {
-  readonly list: MessageListProps;
+  readonly list: MessageRowListProps;
   readonly message: MessagePayload;
   readonly text: string;
   readonly can: {

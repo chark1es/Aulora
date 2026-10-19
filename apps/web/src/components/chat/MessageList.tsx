@@ -15,6 +15,7 @@ import {
 } from "@aulora/core";
 import { Badge, Button, cn, Icon, Spinner, useContextMenu } from "@aulora/ui-web";
 import {
+  memo,
   type ReactNode,
   useCallback,
   useEffect,
@@ -83,6 +84,38 @@ export interface MessageListProps {
   >;
   /** Which side the viewer's own messages render on. Defaults to "left". */
   readonly ownSide?: "left" | "right";
+}
+
+/**
+ * The subset of {@link MessageListProps} the timeline rows actually read. Rows
+ * receive a memoized object of this shape so a re-render of the list (a typing
+ * tick, a reaction, the voice snapshot) does not invalidate every mounted row.
+ */
+export interface MessageRowListProps {
+  readonly runtime: ChatRuntime | undefined;
+  readonly ownUserId: string;
+  readonly ownName: string;
+  readonly permissions: bigint;
+  readonly memberNames: ReadonlyMap<string, string>;
+  readonly memberColors: ReadonlyMap<string, string> | undefined;
+  readonly mentionNames: readonly string[];
+  readonly ownSide: "left" | "right" | undefined;
+  readonly pendingIds: ReadonlySet<string>;
+  readonly failedIds: ReadonlySet<string> | undefined;
+  readonly decrypted: ReadonlyMap<string, string>;
+  readonly attachments: ReadonlyMap<string, readonly AttachmentDescriptor[]>;
+  readonly replyPreviews: MessageListProps["replyPreviews"];
+  readonly channelNames: readonly string[] | undefined;
+  readonly onChannelClick: ((name: string) => void) | undefined;
+  readonly inThread: boolean | undefined;
+  readonly onRetrySend: ((pendingId: string) => void) | undefined;
+  readonly onDiscardSend: ((pendingId: string) => void) | undefined;
+  readonly onEdit: (message: MessagePayload, text: string) => void;
+  readonly onDelete: (message: MessagePayload) => void;
+  readonly onPinToggle: (message: MessagePayload) => void;
+  readonly onReact: (message: MessagePayload, emoji: string) => void;
+  readonly onReply: (message: MessagePayload) => void;
+  readonly onReplyTo: ((message: MessagePayload) => void) | undefined;
 }
 
 /** Stable empty value so rows without reactions do not re-render needlessly. */
@@ -257,6 +290,63 @@ export function MessageList(props: MessageListProps) {
     }
   };
 
+  // Rows read only this slice; keying the memo on the values they use lets a
+  // memoized row skip re-rendering when only unrelated list state changes.
+  const rowList = useMemo<MessageRowListProps>(
+    () => ({
+      runtime: props.runtime,
+      ownUserId: props.ownUserId,
+      ownName: props.ownName,
+      permissions: props.permissions,
+      memberNames: props.memberNames,
+      memberColors: props.memberColors,
+      mentionNames: props.mentionNames,
+      ownSide: props.ownSide,
+      pendingIds: props.pendingIds,
+      failedIds: props.failedIds,
+      decrypted: props.decrypted,
+      attachments: props.attachments,
+      replyPreviews: props.replyPreviews,
+      channelNames: props.channelNames,
+      onChannelClick: props.onChannelClick,
+      inThread: props.inThread,
+      onRetrySend: props.onRetrySend,
+      onDiscardSend: props.onDiscardSend,
+      onEdit: props.onEdit,
+      onDelete: props.onDelete,
+      onPinToggle: props.onPinToggle,
+      onReact: props.onReact,
+      onReply: props.onReply,
+      onReplyTo: props.onReplyTo,
+    }),
+    [
+      props.runtime,
+      props.ownUserId,
+      props.ownName,
+      props.permissions,
+      props.memberNames,
+      props.memberColors,
+      props.mentionNames,
+      props.ownSide,
+      props.pendingIds,
+      props.failedIds,
+      props.decrypted,
+      props.attachments,
+      props.replyPreviews,
+      props.channelNames,
+      props.onChannelClick,
+      props.inThread,
+      props.onRetrySend,
+      props.onDiscardSend,
+      props.onEdit,
+      props.onDelete,
+      props.onPinToggle,
+      props.onReact,
+      props.onReply,
+      props.onReplyTo,
+    ],
+  );
+
   return (
     <div className="relative flex min-h-0 flex-1 flex-col">
       <div
@@ -298,7 +388,7 @@ export function MessageList(props: MessageListProps) {
               <TimelineRow
                 key={item.key}
                 item={item}
-                list={props}
+                list={rowList}
                 reactionsByMessage={reactionsByMessage}
               />
             ))
@@ -327,13 +417,13 @@ export function MessageList(props: MessageListProps) {
   );
 }
 
-function TimelineRow({
+const TimelineRow = memo(function TimelineRow({
   item,
   list,
   reactionsByMessage,
 }: {
   readonly item: TimelineItem;
-  readonly list: MessageListProps;
+  readonly list: MessageRowListProps;
   readonly reactionsByMessage: ReadonlyMap<string, readonly ReactionGroup[]>;
 }) {
   if (item.kind === "day") {
@@ -369,15 +459,15 @@ function TimelineRow({
       reactions={reactionsByMessage.get(item.message.id) ?? NO_REACTIONS}
     />
   );
-}
+});
 
-function MessageRow({
+const MessageRow = memo(function MessageRow({
   list,
   message,
   startsGroup,
   reactions,
 }: {
-  readonly list: MessageListProps;
+  readonly list: MessageRowListProps;
   readonly message: MessagePayload;
   readonly startsGroup: boolean;
   readonly reactions: readonly ReactionGroup[];
@@ -830,7 +920,7 @@ function MessageRow({
       )}
     </article>
   );
-}
+});
 
 function ToolbarButton({
   label,

@@ -1,6 +1,7 @@
 import type { ChannelView, MentionTarget, MessagePayload, RoleMentionTarget } from "@aulora/core";
 import { hasPermission, Permission } from "@aulora/core";
 import { Icon } from "@aulora/ui-web";
+import { useCallback, useMemo } from "react";
 import type { ChatRuntime } from "../../lib/chat-runtime";
 import type { ChannelSessionState } from "../../lib/use-channel";
 import type { ChatContextValue } from "../../providers/ChatProvider";
@@ -154,6 +155,71 @@ function ChannelHeader(props: ChannelPaneProps) {
 /** The scrollable message timeline for a channel. */
 function ChannelTimeline(props: ChannelPaneProps) {
   const { runtime, channel, chat } = props;
+  // Stable callbacks and derived arrays so the memoized timeline rows can skip
+  // re-rendering when only unrelated state (typing, presence, voice level) changes.
+  const channelNames = useMemo(
+    () => props.channelMentions.map((entry) => entry.name),
+    [props.channelMentions],
+  );
+  const onChannelClick = useCallback(
+    (name: string) => {
+      const target = props.channelMentions.find((entry) => entry.name === name);
+      if (target !== undefined) {
+        props.onOpenChannel(target.channelId);
+      }
+    },
+    [props.channelMentions, props.onOpenChannel],
+  );
+  const onRetrySend = useCallback(
+    (pendingId: string) => {
+      void chat.retrySend?.(pendingId.replace(/^pending:/, ""));
+    },
+    [chat.retrySend],
+  );
+  const onDiscardSend = useCallback(
+    (pendingId: string) => {
+      void chat.discardSend?.(pendingId.replace(/^pending:/, ""));
+    },
+    [chat.discardSend],
+  );
+  const onReply = useCallback(
+    (message: MessagePayload) => {
+      props.onSetThreadRoot(message);
+    },
+    [props.onSetThreadRoot],
+  );
+  const onReplyTo = useCallback(
+    (message: MessagePayload) => {
+      props.onSetReplyTarget(message);
+    },
+    [props.onSetReplyTarget],
+  );
+  const onEdit = useCallback(
+    (message: MessagePayload, text: string) => {
+      void runtime.session.editMessage(channel.id, message.id, text);
+    },
+    [runtime, channel.id],
+  );
+  const onDelete = useCallback(
+    (message: MessagePayload) => {
+      void runtime.session.deleteMessage(channel.id, message.id);
+    },
+    [runtime, channel.id],
+  );
+  const onPinToggle = useCallback(
+    (message: MessagePayload) => {
+      void (message.pinnedAt !== null
+        ? runtime.session.unpinMessage(channel.id, message.id)
+        : runtime.session.pinMessage(channel.id, message.id));
+    },
+    [runtime, channel.id],
+  );
+  const onReact = useCallback(
+    (message: MessagePayload, emoji: string) => {
+      void runtime.session.toggleReaction(channel.id, message.id, emoji);
+    },
+    [runtime, channel.id],
+  );
   return (
     <MessageList
       key={channel.id}
@@ -164,52 +230,29 @@ function ChannelTimeline(props: ChannelPaneProps) {
       attachments={props.attachments}
       pendingIds={props.pendingIds}
       failedIds={props.failedIds}
-      onRetrySend={(pendingId) => {
-        void chat.retrySend?.(pendingId.replace(/^pending:/, ""));
-      }}
-      onDiscardSend={(pendingId) => {
-        void chat.discardSend?.(pendingId.replace(/^pending:/, ""));
-      }}
+      onRetrySend={onRetrySend}
+      onDiscardSend={onDiscardSend}
       permissions={props.channelPermissions}
       ownUserId={props.ownUserId}
       ownName={props.ownName}
       memberNames={props.memberNames}
       memberColors={props.memberColors}
       mentionNames={props.mentionNames}
-      channelNames={props.channelMentions.map((entry) => entry.name)}
-      onChannelClick={(name) => {
-        const target = props.channelMentions.find((entry) => entry.name === name);
-        if (target !== undefined) {
-          props.onOpenChannel(target.channelId);
-        }
-      }}
+      channelNames={channelNames}
+      onChannelClick={onChannelClick}
       firstUnreadId={props.sessionState.unread.firstUnreadId}
       typers={props.sessionState.typers}
       hasOlder={props.sessionState.hasOlder}
       loading={props.sessionState.loading}
       onLoadOlder={props.sessionState.loadOlder}
-      onReply={(message) => {
-        props.onSetThreadRoot(message);
-      }}
-      onReplyTo={(message) => {
-        props.onSetReplyTarget(message);
-      }}
+      onReply={onReply}
+      onReplyTo={onReplyTo}
       replyPreviews={props.replyPreviews}
       ownSide={props.alignment}
-      onEdit={(message, text) => {
-        void runtime.session.editMessage(channel.id, message.id, text);
-      }}
-      onDelete={(message) => {
-        void runtime.session.deleteMessage(channel.id, message.id);
-      }}
-      onPinToggle={(message) => {
-        void (message.pinnedAt !== null
-          ? runtime.session.unpinMessage(channel.id, message.id)
-          : runtime.session.pinMessage(channel.id, message.id));
-      }}
-      onReact={(message, emoji) => {
-        void runtime.session.toggleReaction(channel.id, message.id, emoji);
-      }}
+      onEdit={onEdit}
+      onDelete={onDelete}
+      onPinToggle={onPinToggle}
+      onReact={onReact}
       emptyState={<ConversationStart channel={channel} title={props.title} />}
     />
   );
