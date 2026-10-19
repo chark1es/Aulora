@@ -109,6 +109,8 @@ export const finalize = internalMutation({
       name: args.name,
       iconSeed: `aulora:server:${args.ownerId}`,
       ownerId: args.ownerId,
+      // The owner is the only member at bootstrap; joins/kicks keep this exact.
+      memberCount: 1,
       settings: {
         signupEnabled: true,
         inviteOnly: true,

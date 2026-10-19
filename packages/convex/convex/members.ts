@@ -8,6 +8,7 @@ import { writeAudit } from "./lib/audit";
 import { requireAuth } from "./lib/auth";
 import { pruneExpiredBans } from "./lib/bans";
 import { assertNotBot } from "./lib/botAuth";
+import { adjustMemberCount } from "./lib/memberCount";
 import {
   requireCanGrant,
   requireMember,
@@ -216,6 +217,7 @@ export const attachRolesFromAuth = internalMutation({
         roleIds: [...roleIds],
         joinedAt: Date.now(),
       });
+      await adjustMemberCount(ctx, 1);
     } else {
       await ctx.db.patch(existing._id, { roleIds: [...roleIds] });
     }
@@ -422,6 +424,7 @@ export const kick = mutation({
     const member = await requireMemberRow(ctx, args.userId);
     await detachFromChannels(ctx, args.userId);
     await ctx.db.delete(member._id);
+    await adjustMemberCount(ctx, -1);
     await writeAudit(ctx, { actorId: userId, action: "member.kick", targetId: args.userId });
     return null;
   },
@@ -471,6 +474,7 @@ export const ban = mutation({
     }
     await detachFromChannels(ctx, args.userId);
     await ctx.db.delete(member._id);
+    await adjustMemberCount(ctx, -1);
     await writeAudit(ctx, {
       actorId: userId,
       action: "member.ban",

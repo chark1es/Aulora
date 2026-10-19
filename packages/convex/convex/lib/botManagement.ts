@@ -12,6 +12,7 @@ import {
 } from "./botFiles";
 import { type BotTemplateName, starterFiles } from "./botTemplates";
 import type { BotDetail, BotSummary } from "./botTypes";
+import { adjustMemberCount } from "./memberCount";
 import { type PermissionContext, workspacePermissions } from "./permissions";
 
 /**
@@ -154,6 +155,7 @@ export async function deleteRowsForUser(ctx: MutationCtx, userId: string): Promi
   for (const row of members) {
     await ctx.db.delete(row._id);
   }
+  await adjustMemberCount(ctx, -members.length);
   const channelMembers = await ctx.db
     .query("channelMembers")
     .withIndex("by_user", (q) => q.eq("userId", userId))

@@ -98,6 +98,12 @@ export default defineSchema({
     iconSeed: v.string(),
     ownerId: v.string(),
     settings: serverSettings,
+    /**
+     * Maintained number of `members` rows, kept on join/kick/ban/bot-create.
+     * Optional so workspaces created before it remain valid; an absent value
+     * means "not backfilled yet" and readers fall back to a member scan.
+     */
+    memberCount: v.optional(v.number()),
     licenseKey: v.optional(v.string()),
     licenseValidation: v.optional(
       v.object({

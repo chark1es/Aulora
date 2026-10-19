@@ -39,6 +39,7 @@ import {
   validateName,
 } from "./lib/botManagement";
 import type { BotDetail, BotLogLine, BotRunnerStatus, BotStatus, BotSummary } from "./lib/botTypes";
+import { adjustMemberCount } from "./lib/memberCount";
 import { requireCanGrant, requireWorkspaceContext } from "./lib/permissions";
 import { openContent } from "./lib/sealed";
 
@@ -178,6 +179,7 @@ export const create = mutation({
       roleIds: [],
       joinedAt: now,
     });
+    await adjustMemberCount(ctx, 1);
     await seedStarterFiles(ctx, botId, args.language, args.template ?? "hello");
     await writeAudit(ctx, {
       actorId: userId,
