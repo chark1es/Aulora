@@ -20,6 +20,7 @@ import {
   uploadFiles,
 } from "../../lib/attachments";
 import { isDesktop } from "../../lib/desktop";
+import { buildPresenceScope, PRESENCE_SCOPE_MAX } from "../../lib/presence-scope";
 import { playSound } from "../../lib/sounds";
 import { useChannelSession } from "../../lib/use-channel";
 import {
@@ -450,6 +451,9 @@ function ChatViewContent({
     (userId: string): PresenceStatus => presenceByUser.get(userId) ?? "offline",
     [presenceByUser],
   );
+  // Counted over the scoped presence set (the people currently on screen), not
+  // the whole workspace. For a workspace with more people than the scope cap it
+  // is a lower bound; the header labels it as scoped via its title.
   const onlineCount = useMemo(
     () => presence.filter((row) => row.status !== "offline").length,
     [presence],
@@ -540,15 +544,20 @@ function ChatViewContent({
   }, [runtime, channels, chat]);
 
   useEffect(() => {
-    for (const row of presence) {
-      if (row.customStatus !== null && row.customStatus.length > 0) {
-        setCustomStatuses((current) => {
-          const next = new Map(current);
-          next.set(row.userId, row.customStatus as string);
-          return next;
-        });
+    // Build the map once per presence update instead of a `setState` per row,
+    // so a scoped refresh of N rows costs one render, not N.
+    setCustomStatuses((current) => {
+      let next: Map<string, string> | null = null;
+      for (const row of presence) {
+        if (row.customStatus !== null && row.customStatus.length > 0) {
+          if (next === null) {
+            next = new Map(current);
+          }
+          next.set(row.userId, row.customStatus);
+        }
       }
-    }
+      return next ?? current;
+    });
   }, [presence]);
 
   // Seed the settings dialog's custom status from live presence when it opens.
@@ -685,6 +694,40 @@ function ChatViewContent({
     const visible = new Set(visibleMemberIds as readonly string[]);
     return members.filter((member) => visible.has(member.userId));
   }, [members, visibleMemberIds]);
+
+  // Presence is fetched only for the people on screen: the open timeline's
+  // authors, the member panel/modal's displayed members, the sidebar's DM
+  // partners and any open picker. Bounded well under the server's 300-id cap
+  // (see `buildPresenceScope`), so the client never reads the whole table.
+  const presenceScope = useMemo(
+    () =>
+      buildPresenceScope({
+        ownUserId,
+        timelineAuthorIds: sessionState.messages.map((message) => message.authorId),
+        displayedMemberIds: [
+          ...(membersOpen ? visibleMembers.map((member) => member.userId) : []),
+          ...(membersModalChannel?.memberIds ?? []),
+          ...(newConversationOpen && members.length <= PRESENCE_SCOPE_MAX
+            ? members.map((member) => member.userId)
+            : []),
+        ],
+        channels,
+      }),
+    [
+      ownUserId,
+      sessionState.messages,
+      membersOpen,
+      visibleMembers,
+      membersModalChannel,
+      newConversationOpen,
+      members,
+      channels,
+    ],
+  );
+
+  useEffect(() => {
+    runtime?.setPresenceScope?.(presenceScope);
+  }, [runtime, presenceScope]);
 
   // Roles the members panel can render as their own sections. Members store a
   // role's stable key when it has one, so match on that ref.

@@ -13,6 +13,7 @@ import type {
 } from "@aulora/core";
 import type { ConvexReactClient } from "convex/react";
 import { api } from "../../../../packages/convex/convex/_generated/api";
+import { PRESENCE_SCOPE_MAX } from "./presence-scope";
 
 /**
  * Live Convex adapter for `@aulora/core`'s `ChatPort` + `ChatSubscriptions`.
@@ -422,6 +423,97 @@ export function convexSubscriptions(client: ConvexReactClient): ChatSubscription
     },
     watchReadState(channelId, onChange) {
       return watch<ReadStateRow | null>(api.readStates.get, { channelId }, onChange);
+    },
+  };
+}
+
+/**
+ * Scoped presence subscription.
+ *
+ * The full `presence.list` query returns every workspace member's row to every
+ * client and re-sends it on each heartbeat. The apps only render a bounded set
+ * of people at a time (the open timeline, the displayed member page, the
+ * sidebar's DM partners), so this serves `presence.getMany` over exactly that
+ * set instead. Every listener shares one underlying query, and changing the
+ * scope tears the old query down and starts a new one for the new ids.
+ */
+export interface ScopedPresence {
+  /** Subscribes to the current scope; emits immediately with the latest rows. */
+  watch(onChange: (rows: readonly PresenceRow[]) => void): () => void;
+  /** Replaces the scope. Ids are de-duplicated and capped client-side. */
+  setScope(userIds: readonly string[]): void;
+}
+
+export function createScopedPresence(client: ConvexReactClient): ScopedPresence {
+  const listeners = new Set<(rows: readonly PresenceRow[]) => void>();
+  let latest: readonly PresenceRow[] = [];
+  let scopeIds: readonly string[] = [];
+  let scopeKey = "";
+  let teardown: (() => void) | null = null;
+
+  const emit = (): void => {
+    for (const listener of [...listeners]) {
+      listener(latest);
+    }
+  };
+
+  const stop = (): void => {
+    teardown?.();
+    teardown = null;
+  };
+
+  const start = (): void => {
+    if (teardown !== null || listeners.size === 0) {
+      return;
+    }
+    if (scopeIds.length === 0) {
+      latest = [];
+      emit();
+      return;
+    }
+    const watch = client.watchQuery(api.presence.getMany, { userIds: scopeIds as never[] });
+    const update = () => {
+      const value = watch.localQueryResult();
+      if (value !== undefined) {
+        latest = value as PresenceRow[];
+        emit();
+      }
+    };
+    const off = watch.onUpdate(update);
+    // A warm client can deliver the first result before `onUpdate` is attached.
+    update();
+    teardown = () => {
+      off();
+    };
+  };
+
+  return {
+    watch(onChange) {
+      listeners.add(onChange);
+      onChange(latest);
+      start();
+      return () => {
+        listeners.delete(onChange);
+        if (listeners.size === 0) {
+          stop();
+          latest = [];
+        }
+      };
+    },
+    setScope(userIds) {
+      const next = [...new Set(userIds.filter((id) => id.length > 0))].slice(0, PRESENCE_SCOPE_MAX);
+      const key = next.join("\u0000");
+      if (key === scopeKey) {
+        return;
+      }
+      scopeKey = key;
+      scopeIds = next;
+      stop();
+      // Clear stale rows at once so a status for someone the UI no longer
+      // renders can never linger; `start` repopulates from the new query.
+      latest = [];
+      start();
+      emit();
     },
   };
 }

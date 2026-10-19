@@ -8,7 +8,7 @@ import {
 } from "@aulora/core";
 import type { ConvexReactClient } from "convex/react";
 import { api } from "../../../../packages/convex/convex/_generated/api";
-import { convexPort, convexSubscriptions } from "./convex-chat";
+import { convexPort, convexSubscriptions, createScopedPresence } from "./convex-chat";
 import { isDesktop } from "./desktop";
 
 /**
@@ -23,6 +23,12 @@ export interface ChatRuntime {
   readonly port: ChatPort;
   readonly subscriptions: Subscriptions;
   readonly client: ConvexReactClient;
+  /**
+   * Narrows the live presence subscription to the users the UI is rendering,
+   * backed by `presence.getMany` rather than the whole-table `presence.list`.
+   * De-duplicated and capped; safe to call on every scope change.
+   */
+  setPresenceScope?(userIds: readonly string[]): void;
   /** Live replies for a thread root, oldest first. */
   watchThread(
     threadRootId: string,
@@ -51,7 +57,13 @@ export interface CreateChatRuntimeOptions {
 /** Builds the session for one signed-in device. */
 export async function createChatRuntime(options: CreateChatRuntimeOptions): Promise<ChatRuntime> {
   const port = convexPort(options.client);
-  const subscriptions: Subscriptions = convexSubscriptions(options.client);
+  // Presence is scoped to what the UI renders; the session's aggregate
+  // `watchPresence` and the provider's subscription share this one controller.
+  const presence = createScopedPresence(options.client);
+  const subscriptions: Subscriptions = {
+    ...convexSubscriptions(options.client),
+    watchPresence: presence.watch,
+  };
   const session = ChatSession.create({ port, subscriptions });
   await session.start();
   await port.upsertDevice({ platform: isDesktop() ? "desktop" : "web" }).catch(() => undefined);
@@ -108,6 +120,7 @@ export async function createChatRuntime(options: CreateChatRuntimeOptions): Prom
     port,
     subscriptions,
     client: options.client,
+    setPresenceScope: presence.setScope,
     watchThread,
     watchChannelMessages,
   };
