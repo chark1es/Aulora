@@ -1,9 +1,20 @@
 import { Permission } from "@aulora/core";
 import { paginationOptsValidator } from "convex/server";
 import { v } from "convex/values";
-import { query } from "./_generated/server";
+import { internal } from "./_generated/api";
+import { internalMutation, query } from "./_generated/server";
 import { accountNames } from "./lib/accountNames";
 import { requireWorkspacePermission } from "./lib/permissions";
+
+/** Audit rows deleted per prune run before rescheduling. */
+const AUDIT_PRUNE_BATCH = 500;
+
+/**
+ * Retention for the audit log. Moderation/admin history is kept for six months
+ * and then dropped; a daily cron enforces it via the `by_at` index. Documented
+ * constant so the policy is explicit rather than implied.
+ */
+export const AUDIT_LOG_RETENTION_MS = 180 * 24 * 60 * 60 * 1000;
 
 /**
  * Paginated audit log, newest first. Gated by `ViewAuditLog`. Each row records
@@ -58,5 +69,29 @@ export const list = query({
         at: row.at,
       })),
     };
+  },
+});
+
+/**
+ * Cron hook: drops audit rows older than {@link AUDIT_LOG_RETENTION_MS}.
+ * Reads only rows past the cutoff via `by_at` (never a full scan) and drains a
+ * backlog by rescheduling while a batch is full. Rows inside the retention
+ * window are never touched. Ongoing reads (`list`) are unchanged.
+ */
+export const pruneAuditLog = internalMutation({
+  args: {},
+  handler: async (ctx) => {
+    const cutoff = Date.now() - AUDIT_LOG_RETENTION_MS;
+    const rows = await ctx.db
+      .query("auditLog")
+      .withIndex("by_at", (q) => q.lt("at", cutoff))
+      .take(AUDIT_PRUNE_BATCH);
+    for (const row of rows) {
+      await ctx.db.delete(row._id);
+    }
+    if (rows.length === AUDIT_PRUNE_BATCH) {
+      await ctx.scheduler.runAfter(0, internal.auditLog.pruneAuditLog, {});
+    }
+    return rows.length;
   },
 });

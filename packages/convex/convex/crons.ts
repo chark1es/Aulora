@@ -21,6 +21,9 @@ crons.interval("bot events prune", { hours: 1 }, internal.botEvents.prune, {});
 // touches counters far older than any window.
 crons.interval("rate limit prune", { hours: 1 }, internal.rateLimits.pruneRateLimits, {});
 
+// Six-month audit-log retention; drops only rows past the window.
+crons.cron("audit log prune", "0 4 * * *", internal.auditLog.pruneAuditLog, {});
+
 // Records the nightly backup intent at 03:00 UTC. The outside backup runner
 // (`infra/docker/backup`) performs the actual export + dump + upload.
 crons.cron("nightly backup", "0 3 * * *", internal.backups.nightly, {});
