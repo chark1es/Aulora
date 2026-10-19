@@ -442,16 +442,20 @@ const TEXT_ASSET = /\.(?:html|js|css|json|svg)$/;
 const GZIP_MIN_BYTES = 1024;
 
 function precompress(directory) {
+  // eslint-disable-next-line security/detect-non-literal-fs-filename -- Walks the build output directory this script just wrote; paths are bounded to it.
   for (const name of readdirSync(directory).sort()) {
     const path = join(directory, name);
+    // eslint-disable-next-line security/detect-non-literal-fs-filename -- Fixed child entry of the build output tree above.
     if (statSync(path).isDirectory()) {
       precompress(path);
       continue;
     }
     if (!TEXT_ASSET.test(name)) continue;
+    // eslint-disable-next-line security/detect-non-literal-fs-filename -- Fixed text asset inside the build output tree.
     const contents = readFileSync(path);
     if (contents.byteLength < GZIP_MIN_BYTES) continue;
     const target = `${path}.gz`;
+    // eslint-disable-next-line security/detect-non-literal-fs-filename -- Writes the .gz sibling of a build output file.
     if (!existsSync(target)) writeFileSync(target, gzipSync(contents, { level: 9 }));
   }
 }

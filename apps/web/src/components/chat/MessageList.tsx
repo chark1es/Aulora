@@ -118,15 +118,19 @@ export interface MessageRowListProps {
   readonly attachments: ReadonlyMap<string, readonly AttachmentDescriptor[]>;
   readonly replyPreviews: MessageListProps["replyPreviews"];
   readonly channelNames: readonly string[] | undefined;
+  // eslint-disable-next-line no-unused-vars -- parameter name documents the callback contract
   readonly onChannelClick: ((name: string) => void) | undefined;
   readonly inThread: boolean | undefined;
+  // eslint-disable-next-line no-unused-vars -- parameter name documents the callback contract
   readonly onRetrySend: ((pendingId: string) => void) | undefined;
+  // eslint-disable-next-line no-unused-vars -- parameter name documents the callback contract
   readonly onDiscardSend: ((pendingId: string) => void) | undefined;
   readonly onEdit: (message: MessagePayload, text: string) => void;
   readonly onDelete: (message: MessagePayload) => void;
   readonly onPinToggle: (message: MessagePayload) => void;
   readonly onReact: (message: MessagePayload, emoji: string) => void;
   readonly onReply: (message: MessagePayload) => void;
+  // eslint-disable-next-line no-unused-vars -- parameter name documents the callback contract
   readonly onReplyTo: ((message: MessagePayload) => void) | undefined;
 }
 

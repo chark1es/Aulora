@@ -38,6 +38,7 @@ export interface ComposerProps {
   /** Announces that the viewer is typing; throttled to one ping per few seconds. */
   readonly onTyping: (channelId: string) => void;
   /** Retracts the typing indicator on send, blur and channel switch. */
+  // eslint-disable-next-line no-unused-vars -- parameter name documents the callback contract
   readonly onClearTyping?: ((channelId: string) => void) | undefined;
   readonly onSend: (input: { text: string; files: readonly PickedFile[] }) => void | Promise<void>;
 }
@@ -101,9 +102,14 @@ export function Composer(props: ComposerProps) {
   onTypingRef.current = onTyping;
   const onClearTypingRef = useRef(onClearTyping);
   onClearTypingRef.current = onClearTyping;
-  const typingThrottleRef = useRef<ReturnType<typeof createTypingThrottle> | null>(null);
+  const typingThrottleRef = useRef<{
+    ping(channelId: string): void;
+    reset(channelId: string): void;
+  } | null>(null);
   if (typingThrottleRef.current === null) {
-    typingThrottleRef.current = createTypingThrottle((id) => onTypingRef.current(id));
+    typingThrottleRef.current = createTypingThrottle((id) => {
+      onTypingRef.current(id);
+    });
   }
 
   const stopTyping = useCallback((id: string) => {

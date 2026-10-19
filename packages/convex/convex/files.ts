@@ -191,9 +191,8 @@ export const finalize = action({
     const plaintext = new Uint8Array(await blob.arrayBuffer());
     const sealed = await sealBytes({ ...BYTES_CONTEXT, recordId: args.storageId }, plaintext);
     const sealedStorageId = await ctx.storage.store(new Blob([sealed]));
-    let thumbnailSealedStorageId: Id<"_storage"> | undefined;
-    if (args.thumbnailStorageId !== undefined) {
-      const thumbnailBlob = await ctx.storage.get(args.thumbnailStorageId);
+    const sealThumbnail = async (storageId: Id<"_storage">) => {
+      const thumbnailBlob = await ctx.storage.get(storageId);
       if (thumbnailBlob === null) {
         throw new ConvexError("Thumbnail upload not found");
       }
@@ -207,8 +206,12 @@ export const finalize = action({
         { ...BYTES_CONTEXT, recordId: `${args.storageId}:thumb` },
         thumbnailPlaintext,
       );
-      thumbnailSealedStorageId = await ctx.storage.store(new Blob([thumbnailSealed]));
-    }
+      return await ctx.storage.store(new Blob([thumbnailSealed]));
+    };
+    const thumbnailSealedStorageId =
+      args.thumbnailStorageId === undefined
+        ? undefined
+        : await sealThumbnail(args.thumbnailStorageId);
     const keyVersion = getEkmSettings(process.env).keyVersion;
     const nameCiphertext = await sealString(NAME_CONTEXT, args.name);
     const mimeCiphertext = await sealString(MIME_CONTEXT, args.mime);

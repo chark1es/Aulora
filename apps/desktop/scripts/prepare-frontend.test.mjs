@@ -1,3 +1,5 @@
+/* eslint-disable security/detect-non-literal-fs-filename -- All paths are fixed
+   names inside this test's mkdtemp fixture, created and removed by the test. */
 import { expect, test } from "bun:test";
 import { mkdirSync, mkdtempSync, readdirSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";

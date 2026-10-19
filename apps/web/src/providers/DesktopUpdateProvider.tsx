@@ -136,8 +136,15 @@ export function DesktopUpdateProvider({ children }: { readonly children: ReactNo
     const intervalMs = 6 * 60 * 60 * 1000;
     const jitterMs = 30 * 60 * 1000;
     let timer: ReturnType<typeof setTimeout> | undefined;
+    // Random jitter only spreads a fleet's update checks; it is not a secret,
+    // but use the platform CSPRNG so static analysis does not flag Math.random.
+    const jitterFraction = () => {
+      const words = new Uint32Array(1);
+      crypto.getRandomValues(words);
+      return (words[0] ?? 0) / 2 ** 32;
+    };
     const scheduleNext = () => {
-      const delay = intervalMs + (Math.random() * 2 - 1) * jitterMs;
+      const delay = intervalMs + (jitterFraction() * 2 - 1) * jitterMs;
       timer = setTimeout(() => {
         if (disposed) return;
         void check();

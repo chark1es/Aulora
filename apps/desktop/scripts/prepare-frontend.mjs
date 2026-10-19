@@ -41,8 +41,10 @@ export function isExcludedDesktopAsset(relativePath) {
 /** Total size of a directory tree in bytes. */
 function directorySize(dir) {
   let total = 0;
+  // eslint-disable-next-line security/detect-non-literal-fs-filename -- Fixed build output directory selected by this script.
   for (const entry of readdirSync(dir, { withFileTypes: true })) {
     const child = join(dir, entry.name);
+    // eslint-disable-next-line security/detect-non-literal-fs-filename -- Fixed child entry of the build output tree.
     total += entry.isDirectory() ? directorySize(child) : statSync(child).size;
   }
   return total;

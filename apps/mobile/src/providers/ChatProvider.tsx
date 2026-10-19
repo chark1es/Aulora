@@ -646,8 +646,8 @@ function sameOutbox(a: readonly OutboxItem[], b: readonly OutboxItem[]): boolean
     return false;
   }
   for (let index = 0; index < a.length; index += 1) {
-    const previous = a[index];
-    const next = b[index];
+    const previous = a.at(index);
+    const next = b.at(index);
     if (previous === undefined || next === undefined) {
       return false;
     }
