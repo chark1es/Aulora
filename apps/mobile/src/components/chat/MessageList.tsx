@@ -177,6 +177,7 @@ function systemActorName(list: MessageListProps, actorId: string | undefined): s
   return list.memberNames.get(actorId) ?? "Someone";
 }
 
+/** The quiet "<actor> pinned a message" line, with a jump to the pinned row. */
 function SystemNotice({
   actorName,
   onJump,

@@ -52,9 +52,9 @@ Members with the Manage bots permission can also host their own bots, written in
 
 ## Get the clients
 
-Use your server's web URL in a browser. Desktop installers and Android APKs are distributed through [GitHub Releases](https://github.com/chark1es/Aulora/releases) when a release is published. Choose the file for your operating system and CPU. The [user guide](apps/docs/content/user-guide.md) explains installation, sign-in, and notifications.
+Use your server's web URL in a browser. Desktop installers are distributed through [GitHub Releases](https://github.com/chark1es/Aulora/releases) when a release is published. Choose the file for your operating system and CPU. The [user guide](apps/docs/content/user-guide.md) explains installation, sign-in, and notifications.
 
-iOS release IPAs are for App Store Connect/TestFlight distribution, not direct installation on arbitrary iPhones. Store availability and live notification delivery must be confirmed for each release. Windows installers are currently unsigned and can display an unknown-publisher warning. Optional mobile push requires a configured relay; chat works without it.
+iOS and Android are betas that install from their stores, not from a release file. iOS uses the [TestFlight invitation](https://testflight.apple.com/join/YUp4ugyv). Android uses Google Play: [join the testers group](https://groups.google.com/g/aulora-testing), then install from the [Play Store listing](https://play.google.com/store/apps/details?id=dev.spwnd.aulora). No APK or IPA is downloaded. Windows installers are currently unsigned and can display an unknown-publisher warning. Optional mobile push requires a configured relay; chat works without it.
 
 ## Build from source
 

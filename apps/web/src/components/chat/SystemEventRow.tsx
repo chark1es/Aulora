@@ -13,6 +13,11 @@ function systemActorName(list: MessageListProps, actorId: string | undefined) {
   return list.memberNames.get(actorId) ?? "Someone";
 }
 
+/**
+ * The quiet "<actor> pinned a message" line the timeline shows for a pin
+ * system event. The word "message" jumps to the pinned row; the event's empty
+ * body is never rendered.
+ */
 export function SystemEventRow({
   list,
   message,
