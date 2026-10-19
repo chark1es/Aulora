@@ -19,6 +19,7 @@ export function createRunner({ config, api, logger = console, now = Date.now }) 
   const reconciler = createReconciler({ config, api, shipper, logger, now });
   let timer = null;
   let healthTimer = null;
+  let started = false;
   let stopped = false;
 
   function touchHealth() {
@@ -52,7 +53,8 @@ export function createRunner({ config, api, logger = console, now = Date.now }) 
   }
 
   function start() {
-    if (timer !== null || stopped) return;
+    if (started || stopped) return;
+    started = true;
     touchHealth();
     // The healthcheck rejects heartbeats older than ~30 s. The idle reconcile
     // cadence can be longer, so refresh the liveness file independently.

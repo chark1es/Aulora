@@ -570,3 +570,30 @@ fixed.
 All remain idempotent and self-rescheduling. Until (2) completes, role deletion
 keeps the full-scan fallback; until (3) completes, the inbox relies on the
 bounded reply scan and the participation rows written since deploy.
+
+### 8.5 Final verification round
+
+A third Codex pass confirmed the read-budget arithmetic (`summary`: 200×100 +
+20×100 = 22,000 message reads, ~23.2k with the other per-channel reads;
+`unreadSummary`: ≤22.8k for 200 memberships) and found one remaining data-loss
+path: a client-supplied `thumbnailStorageId` was authorized only as a storage
+object and then deleted, so a referenced blob could be removed. Fixed by
+authorizing the thumbnail through the same `authorizeUpload` path, adding
+`files.by_storage`/`by_sealed_storage`/`by_thumbnail_storage` indexes, and
+skipping deletion of any storage id still referenced by another file row. The
+post-insert cleanup now also attempts both deletions independently. The bot
+runner gained a single-start guard so a second `start()` cannot orphan the
+health interval.
+
+Remaining documented tradeoffs after this round:
+
+- **Global scan budget order dependence.** If 20 pathological channels (long
+  runs of the viewer's own messages) exhaust the shared extra-page budget, a
+  later channel's mention beyond its first page may not be counted. The summary
+  conservatively reports `unread: true` when it stops on the budget rather than
+  a false "read"; the unread badge can still undercount mentions in that
+  extreme. Raising the budget trades directly against Convex's 32k read limit.
+- **Thread-inbox candidate ordering.** Candidates are taken from the viewer's
+  500 most recent participation rows before ordering by thread activity; a very
+  heavy participant can still displace an older-but-recently-active thread.
+  Maintaining per-thread activity on the participation row is the follow-up.

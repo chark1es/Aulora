@@ -154,6 +154,36 @@ export const insertFinalized = internalMutation({
 });
 
 /**
+ * True when a storage object is still referenced by a file row other than the
+ * one being finalized. Prevents a client-supplied storage id from deleting
+ * another file's bytes.
+ */
+export const isStorageReferenced = internalQuery({
+  args: { storageId: v.id("_storage"), exceptFileId: v.id("files") },
+  handler: async (ctx, args) => {
+    const byStorage = await ctx.db
+      .query("files")
+      .withIndex("by_storage", (q) => q.eq("storageId", args.storageId))
+      .first();
+    if (byStorage !== null && byStorage._id !== args.exceptFileId) {
+      return true;
+    }
+    const bySealed = await ctx.db
+      .query("files")
+      .withIndex("by_sealed_storage", (q) => q.eq("sealedStorageId", args.storageId))
+      .first();
+    if (bySealed !== null && bySealed._id !== args.exceptFileId) {
+      return true;
+    }
+    const byThumbnail = await ctx.db
+      .query("files")
+      .withIndex("by_thumbnail_storage", (q) => q.eq("thumbnailStorageId", args.storageId))
+      .first();
+    return byThumbnail !== null && byThumbnail._id !== args.exceptFileId;
+  },
+});
+
+/**
  * Seals an uploaded blob: reads the plaintext bytes from Convex storage, seals
  * them with `file.bytes` bound to the upload's storage id, stores the sealed
  * blob under a new storage id, records sealed metadata and deletes the original.
@@ -184,6 +214,14 @@ export const finalize = action({
       storageId: args.storageId,
       ...(args.kanbanBoardId !== undefined ? { kanbanBoardId: args.kanbanBoardId } : {}),
     });
+    if (args.thumbnailStorageId !== undefined) {
+      // Authorize the variant through the same path as the original rather than
+      // trusting a client-supplied storage id.
+      await ctx.runMutation(internal.files.authorizeUpload, {
+        storageId: args.thumbnailStorageId,
+        ...(args.kanbanBoardId !== undefined ? { kanbanBoardId: args.kanbanBoardId } : {}),
+      });
+    }
     const blob = await ctx.storage.get(args.storageId);
     if (blob === null) {
       throw new ConvexError("Upload not found");
@@ -244,15 +282,27 @@ export const finalize = action({
       });
     } catch (error) {
       // No row references the sealed blobs yet, so both are safe to remove.
-      await ctx.storage.delete(sealedStorageId);
+      await ctx.storage.delete(sealedStorageId).catch(() => undefined);
       if (stored.thumbnailId !== undefined) {
-        await ctx.storage.delete(stored.thumbnailId);
+        await ctx.storage.delete(stored.thumbnailId).catch(() => undefined);
       }
       throw error;
     }
-    await ctx.storage.delete(args.storageId);
+    const sourceReferenced = await ctx.runQuery(internal.files.isStorageReferenced, {
+      storageId: args.storageId,
+      exceptFileId: fileId,
+    });
+    if (!sourceReferenced) {
+      await ctx.storage.delete(args.storageId);
+    }
     if (args.thumbnailStorageId !== undefined) {
-      await ctx.storage.delete(args.thumbnailStorageId);
+      const thumbnailReferenced = await ctx.runQuery(internal.files.isStorageReferenced, {
+        storageId: args.thumbnailStorageId,
+        exceptFileId: fileId,
+      });
+      if (!thumbnailReferenced) {
+        await ctx.storage.delete(args.thumbnailStorageId);
+      }
     }
     return fileId;
   },

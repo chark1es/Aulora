@@ -555,7 +555,10 @@ export default defineSchema({
   })
     .index("by_uploader", ["uploaderId"])
     .index("by_kanban_board", ["kanbanBoardId"])
-    .index("by_channel", ["channelId"]),
+    .index("by_channel", ["channelId"])
+    .index("by_storage", ["storageId"])
+    .index("by_sealed_storage", ["sealedStorageId"])
+    .index("by_thumbnail_storage", ["thumbnailStorageId"]),
 
   devices: defineTable({
     userId: v.string(),
