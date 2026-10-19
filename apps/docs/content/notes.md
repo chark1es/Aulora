@@ -21,11 +21,27 @@ Every operation also requires View Notes. Workspace owners and administrators ha
 
 Organize notes into a tree of folders. Create a folder from the sidebar and nest it under another folder to any depth. Rename or move a folder from its **⋯** menu; a folder cannot be moved inside itself or one of its descendants. The sidebar shows the tree, and selecting a folder lists the notes it contains. Root holds notes that are not filed in any folder.
 
+The **New note** button is split: its main half creates a note, and its menu also creates a folder or a subfolder of the open one. Browse folders like a file explorer — select one to open it and use the breadcrumbs above the list to move back up. The list opens full width, and selecting a note shows it in a side pane so the list stays visible.
+
 A folder must be empty before you delete it. Remove or move its child folders and notes first, then confirm the delete. Archived notes still count as children until you delete or restore them. A workspace holds up to 500 folders and up to 2000 notes.
 
 ## Editor
 
-Notes are written in Markdown. The editor pairs a text area with a formatting toolbar and a live preview, so you can write plain Markdown and toggle the preview to check the result. The toolbar inserts headings, bold, italic, code, lists, quotes, links and horizontal rules.
+Notes are written in Markdown. The editor pairs a text area with a formatting toolbar and a live preview, so you can write plain Markdown and toggle the preview to check the result. The toolbar inserts headings, bold, italic, code, lists, quotes, links and horizontal rules, and each formatting button toggles: choosing it again removes the formatting while keeping your selection. Undo and redo have their own buttons.
+
+The common keybinds work in the editor. On macOS use `Cmd`; on Windows and Linux use `Ctrl`.
+
+| Keys | Action |
+| --- | --- |
+| `Cmd/Ctrl+B`, `Cmd/Ctrl+I` | Bold or italic |
+| `Cmd/Ctrl+K` | Insert a link |
+| `Cmd/Ctrl+E` | Inline code |
+| `Cmd/Ctrl+Alt+1` to `3` | Set a heading level |
+| `Cmd/Ctrl+Shift+7`, `Cmd/Ctrl+Shift+8` | Numbered or bulleted list |
+| `Tab`, `Shift+Tab` | Indent or outdent |
+| `Enter` | Continue the current list |
+| `Cmd/Ctrl+Z`, `Shift+Cmd/Ctrl+Z` or `Ctrl+Y` | Undo and redo |
+| `Cmd/Ctrl+S` | Save |
 
 A note has a title of up to 200 characters and a body of up to 100,000 characters. Choose a folder and any tags from the editor, then save. Saving uses a revision guard: if someone else changed the note first, the save is rejected and you reload before trying again. Every note keeps its creating and last-editing member.
 
@@ -37,13 +53,13 @@ Tags label notes across folders. Create a tag from the sidebar with a name of up
 
 ## Search
 
-Search runs in two places. As you type, the app filters the notes it has already loaded on your device, so results are instant and work offline. Submitting the query also asks the server, which searches within your permissions and returns matching notes with a short snippet.
+Search runs in two places. As soon as you type the first character, the app filters the notes it has already loaded on your device and highlights the match, so results are instant and work offline; earlier results stay visible while the next query loads. Submitting the query also asks the server, which searches within your permissions and returns matching notes with a short snippet.
 
 The server search matches whole words and prefixes across note titles and bodies. It returns at most 30 results by default and never exposes a note you cannot read. Clearing the query restores the folder list.
 
 ## Activity history
 
-Each note records its history. Open **History** from a note to see recent revisions newest first, up to 100 per note, with the oldest pruned as new ones are written. History covers creating, updating, renaming, moving, tagging, archiving, restoring and deleting a note.
+Each note records its history. Open **History** from a note to see recent revisions newest first, up to 100 per note, with the oldest pruned as new ones are written. Each revision starts collapsed as a one-line summary, and consecutive edits by the same person are grouped together. Expand a group or a revision to see its full change list and the line diff. History covers creating, updating, renaming, moving, tagging, archiving, restoring and deleting a note.
 
 Every entry names the member who made the change and shows the title and body as a line diff, with added and removed lines marked. Members with Manage Notes can view the full workspace notes history, including notes they cannot otherwise read.
 

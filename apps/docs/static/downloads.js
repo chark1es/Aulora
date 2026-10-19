@@ -3,13 +3,22 @@
 
 const ASSET_PREFIX = "/chark1es/Aulora/releases/download/";
 
+/** The public TestFlight invitation for the iOS beta. */
+export const IOS_TESTFLIGHT_URL = "https://testflight.apple.com/join/YUp4ugyv";
+
+/** Android beta testers must join this group before the Play Store listing opens. */
+export const ANDROID_TESTERS_URL = "https://groups.google.com/g/aulora-testing";
+
+/** The Play Store listing for the Android beta. */
+export const ANDROID_PLAY_URL = "https://play.google.com/store/apps/details?id=dev.spwnd.aulora";
+
+// Mobile betas are distributed through TestFlight and Google Play, not as
+// release assets, so only desktop files are matched here.
 const RULES = [
   ["windows", (name) => /_x64-setup\.exe$/i.test(name)],
   ["macosArm", (name) => /\.dmg$/i.test(name) && /aarch64|arm64/i.test(name)],
   ["macosIntel", (name) => /\.dmg$/i.test(name) && /(x86_64|_x64)\.dmg$/i.test(name)],
   ["linux", (name) => /\.AppImage$/i.test(name)],
-  ["android", (name) => /_android\.apk$/i.test(name)],
-  ["ios", (name) => /_ios\.ipa$/i.test(name)],
 ];
 
 export function isReleaseAssetUrl(url) {
@@ -63,9 +72,9 @@ export function primaryCopy(os) {
     case "windows":
       return { label: "Download for Windows", beta: false };
     case "ios":
-      return { label: "iOS beta", beta: true };
+      return { label: "Join the iOS beta", beta: true };
     case "android":
-      return { label: "Android beta", beta: true };
+      return { label: "Join the Android beta", beta: true };
     case "linux":
       return { label: "Download for Linux", beta: false };
     default:
@@ -80,7 +89,6 @@ export function assetFor(picks, key, arch) {
     return picks.get("macosArm") ?? picks.get("macosIntel");
   }
   if (key === "windows") return picks.get("windows");
-  if (key === "android") return picks.get("android");
   if (key === "linux") return picks.get("linux");
   return undefined;
 }
@@ -93,9 +101,9 @@ export function statusLine(os, arch, version) {
     case "windows":
       return `${prefix}Windows installer. It is unsigned, so the first launch may warn you.`;
     case "ios":
-      return `${prefix}iOS is in beta. This opens the TestFlight notes, not a file you can tap to install.`;
+      return `${prefix}iOS is in beta. The button opens the TestFlight invitation.`;
     case "android":
-      return `${prefix}Android is in beta. The button is the APK.`;
+      return `${prefix}Android is in beta. Join the testers group, then install from Google Play.`;
     case "linux":
       return `${prefix}Linux AppImage.`;
     default:
@@ -165,8 +173,15 @@ const SECTIONS = new Map([
   ["linux", "#linux"],
 ]);
 
+/**
+ * Where the primary button points. The mobile betas never serve a file: iOS
+ * opens the TestFlight invitation and Android opens the testers group, which is
+ * the step before the Play Store listing becomes available.
+ */
 function destination(primary, os, asset) {
-  if (os !== "ios" && asset) return asset.url;
+  if (os === "ios") return IOS_TESTFLIGHT_URL;
+  if (os === "android") return ANDROID_TESTERS_URL;
+  if (asset) return asset.url;
   const authored = primary.getAttribute("href") || "install";
   const section = SECTIONS.get(os);
   if (!section) return authored;
@@ -203,6 +218,8 @@ export function applyDownloads(root, client, release) {
 
   for (const link of root.querySelectorAll("[data-download]")) {
     const key = link.dataset.download;
+    // iOS and Android keep their authored links (TestFlight and the Play
+    // Store testers group); only desktop platforms attach a release file.
     if (key === "primary" || key === "ios") continue;
     const asset = assetFor(picks, key, link.dataset.arch ?? client.arch);
     if (asset) link.href = asset.url;

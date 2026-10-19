@@ -1,8 +1,11 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
 import {
+  ANDROID_PLAY_URL,
+  ANDROID_TESTERS_URL,
   assetFor,
   detectFromHints,
+  IOS_TESTFLIGHT_URL,
   isReleaseAssetUrl,
   pickDownloads,
   primaryCopy,
@@ -46,14 +49,14 @@ const assets = [
   },
 ];
 
-test("pickDownloads keeps one GitHub asset per platform and drops other hosts", () => {
+test("pickDownloads keeps one GitHub asset per desktop platform and drops other hosts", () => {
   const picked = pickDownloads(assets);
   assert.equal(picked.get("windows").name, "Aulora_1.0.0_x64-setup.exe");
   assert.equal(picked.get("macosArm").name, "Aulora_1.0.0_aarch64.dmg");
   assert.equal(picked.get("macosIntel").name, "Aulora_1.0.0_x64.dmg");
-  assert.equal(picked.get("android").name, "Aulora_1.0.0_android.apk");
-  assert.equal(picked.get("ios").name, "Aulora_1.0.0_ios.ipa");
   assert.match(picked.get("linux").name, /AppImage$/);
+  assert.equal(picked.has("android"), false);
+  assert.equal(picked.has("ios"), false);
   assert.equal(isReleaseAssetUrl("https://example.com/file.exe"), false);
 });
 
@@ -84,10 +87,20 @@ test("detectFromHints distinguishes the client platforms", () => {
 test("iOS is a beta note, not an IPA", () => {
   const picked = pickDownloads(assets);
   assert.equal(assetFor(picked, "ios", "arm"), undefined);
+  assert.equal(assetFor(picked, "android", "arm"), undefined);
   assert.equal(primaryCopy("ios").beta, true);
   assert.equal(primaryCopy("android").beta, true);
   assert.equal(primaryCopy("macos").beta, false);
+  assert.equal(primaryCopy("ios").label, "Join the iOS beta");
+  assert.equal(primaryCopy("android").label, "Join the Android beta");
   assert.match(statusLine("ios", "arm", "v1.0.0"), /TestFlight/);
+  assert.match(statusLine("android", "arm", "v1.0.0"), /Google Play/);
   assert.equal(assetFor(picked, "macos", "x64")?.name, "Aulora_1.0.0_x64.dmg");
   assert.equal(assetFor(picked, "macos", "arm")?.name, "Aulora_1.0.0_aarch64.dmg");
+});
+
+test("mobile betas point at TestFlight and the Play Store testers group", () => {
+  assert.equal(IOS_TESTFLIGHT_URL, "https://testflight.apple.com/join/YUp4ugyv");
+  assert.equal(ANDROID_TESTERS_URL, "https://groups.google.com/g/aulora-testing");
+  assert.equal(ANDROID_PLAY_URL, "https://play.google.com/store/apps/details?id=dev.spwnd.aulora");
 });
