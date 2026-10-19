@@ -33,6 +33,10 @@ for (const parent of ["apps", "packages"]) {
 json("infra/push-relay/package.json", (value) => {
   value.version = version;
 });
+json("infra/bot-runner/package.json", (value) => {
+  value.version = version;
+});
+replace("packages/bot-sdk-python/pyproject.toml", /^version = "[^"]+"/m, `version = "${version}"`);
 json("apps/desktop/src-tauri/tauri.conf.json", (value) => {
   value.version = version;
 });

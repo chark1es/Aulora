@@ -14,6 +14,9 @@ crons.interval("typing purge", { seconds: 30 }, internal.typing.purgeExpired, {}
 // timed-out calls, so a voice channel never shows a ghost participant.
 crons.interval("call sweep", { seconds: 30 }, internal.calls.sweep, {});
 
+// Bot events are a one-hour outbox: `poll` reads them, then they are dropped.
+crons.interval("bot events prune", { hours: 1 }, internal.botEvents.prune, {});
+
 // Records the nightly backup intent at 03:00 UTC. The outside backup runner
 // (`infra/docker/backup`) performs the actual export + dump + upload.
 crons.cron("nightly backup", "0 3 * * *", internal.backups.nightly, {});

@@ -10,10 +10,19 @@ import {
   buildTimeline,
   dayLabel,
   hasPermission,
+  isBotUserId,
   messageTime,
   Permission,
 } from "@aulora/core";
-import { Button, type ContextMenuItem, cn, Icon, Spinner, useContextMenu } from "@aulora/ui-web";
+import {
+  Badge,
+  Button,
+  type ContextMenuItem,
+  cn,
+  Icon,
+  Spinner,
+  useContextMenu,
+} from "@aulora/ui-web";
 import {
   type ReactNode,
   useCallback,
@@ -799,6 +808,11 @@ function MessageRow({
               >
                 {authorName}
               </span>
+              {!own && isBotUserId(message.authorId) && (
+                <Badge size="sm" tone="accent" className="shrink-0 uppercase">
+                  BOT
+                </Badge>
+              )}
               <time
                 className="shrink-0 text-[11px] text-text-muted"
                 dateTime={new Date(message.createdAt).toISOString()}

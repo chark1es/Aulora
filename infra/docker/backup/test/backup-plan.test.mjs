@@ -1,5 +1,5 @@
 import assert from "node:assert/strict";
-import { mkdtempSync, mkdirSync, readdirSync, rmSync } from "node:fs";
+import { mkdirSync, mkdtempSync, readdirSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { test } from "node:test";
@@ -7,8 +7,8 @@ import {
   dbNameFor,
   nextRunDelay,
   objectPrefix,
-  pruneDirectory,
   prunableDirectories,
+  pruneDirectory,
   recordArgs,
   timestamp,
 } from "../backup-plan.mjs";
@@ -53,7 +53,13 @@ test("prunableDirectories keeps the newest runs", () => {
 
 test("recordArgs emits JSON and omits missing optionals", () => {
   const payload = JSON.parse(
-    recordArgs({ TOKEN: "abc", STATUS: "succeeded", STARTED: "1000", FINISHED: "2000", SIZE: "4096" }),
+    recordArgs({
+      TOKEN: "abc",
+      STATUS: "succeeded",
+      STARTED: "1000",
+      FINISHED: "2000",
+      SIZE: "4096",
+    }),
   );
   assert.deepEqual(payload, {
     token: "abc",
