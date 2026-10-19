@@ -413,10 +413,19 @@ export const activeCalls = query({
   args: {},
   handler: async (ctx) => {
     const { userId } = await requireAuth(ctx);
-    const live = await ctx.db
-      .query("calls")
-      .filter((q) => q.neq(q.field("status"), "ended"))
-      .collect();
+    // Read the two live statuses straight off `by_status` instead of scanning
+    // the whole table and post-filtering `status !== "ended"`.
+    const [ringing, active] = await Promise.all([
+      ctx.db
+        .query("calls")
+        .withIndex("by_status", (q) => q.eq("status", "ringing"))
+        .collect(),
+      ctx.db
+        .query("calls")
+        .withIndex("by_status", (q) => q.eq("status", "active"))
+        .collect(),
+    ]);
+    const live = [...ringing, ...active].sort((a, b) => a._creationTime - b._creationTime);
     if (live.length === 0) {
       return [];
     }
