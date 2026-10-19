@@ -423,15 +423,18 @@ export const dispatchMobileCallRinging = internalAction({
 });
 
 /**
- * Sends content-free Web Push wakes for one message. Scheduled by
- * `messages.send`; no-ops when VAPID is not configured, so a deployment without
- * web push never fails on send.
+ * Sends content-free Web Push wakes for one message and hands the resolved
+ * recipients to the mobile relay, so recipient resolution runs once per
+ * message. Scheduled by `messages.send`; no-ops when neither transport is
+ * configured, so a deployment without push never fails on send.
  */
 export const dispatchForMessage = internalAction({
   args: { messageId: v.id("messages") },
   handler: async (ctx, args): Promise<DispatchResult> => {
-    const config: VapidConfig | null = vapidConfigFromEnv();
-    if (config === null) {
+    const vapid: VapidConfig | null = vapidConfigFromEnv();
+    const relay: PushRelayConfig | null = pushRelayConfigFromEnv();
+    // Neither transport configured: skip the recipient read entirely.
+    if (vapid === null && relay === null) {
       return { sent: 0, skipped: "unconfigured" };
     }
     const recipients = await ctx.runQuery(internal.notifications.resolveRecipients, {
@@ -440,15 +443,26 @@ export const dispatchForMessage = internalAction({
     if (recipients.length === 0) {
       return { sent: 0, skipped: "no-message" };
     }
-    const subscriptions = await ctx.runQuery(internal.notifications.deviceSubscriptions, {
-      userIds: recipients,
-    });
     let sent = 0;
-    for (const { subscription } of subscriptions) {
-      const result = await sendWebPush(subscription, config);
-      if (result.ok) {
-        sent += 1;
+    if (vapid !== null) {
+      const subscriptions = await ctx.runQuery(internal.notifications.deviceSubscriptions, {
+        userIds: recipients,
+      });
+      for (const { subscription } of subscriptions) {
+        const result = await sendWebPush(subscription, vapid);
+        if (result.ok) {
+          sent += 1;
+        }
       }
+    }
+    if (relay !== null) {
+      // Hand off the already-resolved recipients so the mobile path never
+      // re-resolves them.
+      const mobile = await ctx.runAction(internal.notifications.dispatchMobileForMessage, {
+        messageId: args.messageId,
+        recipients,
+      });
+      sent += mobile.sent;
     }
     return { sent };
   },
@@ -522,10 +536,11 @@ export const messageChannelId = internalQuery({
  * Routes content-free mobile wakes for one message to the project push relay.
  * No-ops when `PUSH_RELAY_URL`/`PUSH_RELAY_TOKEN` are unset, so a deployment
  * without mobile push never fails on send. Scheduled alongside the web push
- * dispatch by `messages.send`.
+ * dispatch by `messages.send`; when invoked from {@link dispatchForMessage} the
+ * already-resolved `recipients` are passed in so resolution runs only once.
  */
 export const dispatchMobileForMessage = internalAction({
-  args: { messageId: v.id("messages") },
+  args: { messageId: v.id("messages"), recipients: v.optional(v.array(v.string())) },
   handler: async (ctx, args): Promise<DispatchResult> => {
     const config: PushRelayConfig | null = pushRelayConfigFromEnv();
     if (config === null) {
@@ -537,9 +552,11 @@ export const dispatchMobileForMessage = internalAction({
     if (channelId === null) {
       return { sent: 0, skipped: "no-message" };
     }
-    const recipients = await ctx.runQuery(internal.notifications.resolveRecipients, {
-      messageId: args.messageId,
-    });
+    const recipients =
+      args.recipients ??
+      (await ctx.runQuery(internal.notifications.resolveRecipients, {
+        messageId: args.messageId,
+      }));
     if (recipients.length === 0) {
       return { sent: 0, skipped: "no-message" };
     }

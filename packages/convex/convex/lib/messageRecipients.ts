@@ -123,31 +123,92 @@ async function collectCandidates(
   return candidates;
 }
 
+/** A user's preference rows, split by scope, for one recipient resolution. */
+interface UserPrefs {
+  readonly server: Doc<"notificationPrefs"> | undefined;
+  readonly channels: ReadonlyMap<string, Doc<"notificationPrefs">>;
+}
+
+/**
+ * Loads notification preferences for every candidate in a single pass. The
+ * preference table only holds rows for users who changed a setting, so one
+ * collect grouped by user replaces a separate indexed collect per candidate.
+ */
+async function loadPrefsByUser(
+  ctx: QueryCtx,
+  userIds: ReadonlySet<string>,
+): Promise<Map<string, UserPrefs>> {
+  const prefs = new Map<string, UserPrefs>();
+  if (userIds.size === 0) {
+    return prefs;
+  }
+  const rows = await ctx.db.query("notificationPrefs").collect();
+  const serverByUser = new Map<string, Doc<"notificationPrefs">>();
+  const channelsByUser = new Map<string, Map<string, Doc<"notificationPrefs">>>();
+  for (const row of rows) {
+    if (!userIds.has(row.userId)) {
+      continue;
+    }
+    if (row.scope === "server") {
+      serverByUser.set(row.userId, row);
+    } else if (row.channelId !== undefined) {
+      const channels = channelsByUser.get(row.userId) ?? new Map();
+      channels.set(row.channelId, row);
+      channelsByUser.set(row.userId, channels);
+    }
+  }
+  for (const userId of userIds) {
+    prefs.set(userId, {
+      server: serverByUser.get(userId),
+      channels: channelsByUser.get(userId) ?? new Map(),
+    });
+  }
+  return prefs;
+}
+
+/** Channel prefs win over server prefs; absent both, the caller applies "all". */
+function chosenPref(
+  prefs: UserPrefs | undefined,
+  channelId: Id<"channels">,
+): Doc<"notificationPrefs"> | undefined {
+  return prefs?.channels.get(channelId) ?? prefs?.server;
+}
+
 async function filterRecipients(
   ctx: QueryCtx,
   candidates: Map<string, CandidateInfo>,
   authorId: string,
   now: number,
 ): Promise<string[]> {
-  const presenceRows = await ctx.db.query("presence").collect();
+  // The author is never a recipient.
+  const targets = [...candidates.entries()].filter(([userId]) => userId !== authorId);
+  const userIds = new Set(targets.map(([userId]) => userId));
+
+  // Presence is read only for candidate users (via `by_user`) instead of
+  // collecting the whole `presence` table.
   const presenceByUser = new Map<string, Doc<"presence">>();
-  for (const row of presenceRows) {
-    presenceByUser.set(row.userId, row);
+  for (const userId of userIds) {
+    const presence = await ctx.db
+      .query("presence")
+      .withIndex("by_user", (q) => q.eq("userId", userId))
+      .unique();
+    if (presence !== null) {
+      presenceByUser.set(userId, presence);
+    }
   }
+  const prefsByUser = await loadPrefsByUser(ctx, userIds);
 
   const recipients: string[] = [];
-  for (const [userId, info] of candidates) {
-    if (userId === authorId) {
+  for (const [userId, info] of targets) {
+    const chosen = chosenPref(prefsByUser.get(userId), info.channelId);
+    const level = chosen?.level ?? "all";
+    if (level === "nothing") {
       continue;
     }
-    const pref = await resolvePref(ctx, userId, info.channelId);
-    if (pref.level === "nothing") {
+    if (chosen?.muteUntil !== undefined && chosen.muteUntil > now) {
       continue;
     }
-    if (pref.muteUntil !== undefined && pref.muteUntil > now) {
-      continue;
-    }
-    if (pref.level === "mentions" && !info.mentioned) {
+    if (level === "mentions" && !info.mentioned) {
       continue;
     }
     const presence = presenceByUser.get(userId);

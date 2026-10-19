@@ -264,20 +264,11 @@ export const send = mutation({
       channelId: args.channelId,
       messageId,
     });
-    // Burst behavior: every message enqueues two zero-delay jobs (web push and
-    // mobile push), so a burst of thousands of messages enqueues two jobs per
-    // message. `notifications.ts` has no safe coalescing helper — each dispatch
-    // resolves recipients and targets per message and swallows delivery when the
-    // transport is unconfigured — so we intentionally leave the two independent
-    // jobs rather than invent one. The cost is scheduler fan-out, not delivery
-    // semantics.
-    //
-    // Resolve recipients and send content-free Web Push wakes asynchronously;
-    // the action no-ops when VAPID is not configured.
+    // Resolve recipients once and fan out content-free wakes (Web Push and the
+    // mobile relay) from a single scheduled job, so a burst of messages no
+    // longer resolves recipients twice per message. The action no-ops when
+    // neither transport is configured.
     await ctx.scheduler.runAfter(0, internal.notifications.dispatchForMessage, { messageId });
-    // Route content-free mobile wakes (APNs/FCM/UnifiedPush) via the push relay;
-    // also a no-op when the relay is unconfigured.
-    await ctx.scheduler.runAfter(0, internal.notifications.dispatchMobileForMessage, { messageId });
     await recordLicenseActivity(ctx, access.userId);
     return messageId;
   },
