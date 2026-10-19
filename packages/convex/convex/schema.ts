@@ -266,7 +266,11 @@ export default defineSchema({
     roleIds: v.array(v.string()),
     joinedAt: v.number(),
     timeoutUntil: v.optional(v.number()),
-  }).index("by_user", ["userId"]),
+  })
+    .index("by_user", ["userId"])
+    // Join order, so the member directory can paginate/search without a full
+    // collect. Matches the ascending `joinedAt` order `members.list` sorts by.
+    .index("by_joined", ["joinedAt"]),
 
   /**
    * Reverse index for member↔role membership. `members.roleIds` stays

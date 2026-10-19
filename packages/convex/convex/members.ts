@@ -34,6 +34,11 @@ const BIO_CONTEXT = { scope: "member.bio" } as const;
 const MAX_BIO_LENGTH = 500;
 const MAX_AVATAR_BYTES = 4 * 1024 * 1024;
 
+/** Default page size for {@link page}; capped at {@link MEMBER_PAGE_MAX}. */
+const MEMBER_PAGE_DEFAULT = 100;
+/** Hard ceiling on a single {@link page} call. */
+const MEMBER_PAGE_MAX = 500;
+
 function isAvatarImage(metadata: {
   readonly size: number;
   readonly contentType?: string | null;
@@ -286,6 +291,41 @@ export const list = query({
         .sort((a, b) => a.joinedAt - b.joinedAt)
         .map((member) => toMemberView(ctx, member, names.get(member.userId) ?? null)),
     );
+  },
+});
+
+/**
+ * Paginated member directory, ordered by `joinedAt` ascending (the same order
+ * {@link list} produces). Each entry has the exact {@link MemberView} shape
+ * {@link list} returns; account names and avatar URLs are resolved only for the
+ * rows on the requested page, so the read scales with `numItems` and not the
+ * workspace size. Clients that used to full-collect {@link list} move here.
+ */
+export const page = query({
+  args: { cursor: v.optional(v.string()), numItems: v.optional(v.number()) },
+  handler: async (ctx, args) => {
+    const { userId } = await requireAuth(ctx);
+    await requireMember(ctx, userId);
+    const numItems = Math.min(
+      Math.max(Math.floor(args.numItems ?? MEMBER_PAGE_DEFAULT), 1),
+      MEMBER_PAGE_MAX,
+    );
+    const result = await ctx.db
+      .query("members")
+      .withIndex("by_joined")
+      .order("asc")
+      .paginate({ numItems, cursor: args.cursor ?? null });
+    const names = await accountNames(
+      ctx,
+      result.page.map((member) => member.userId),
+    );
+    return {
+      page: await Promise.all(
+        result.page.map((member) => toMemberView(ctx, member, names.get(member.userId) ?? null)),
+      ),
+      isDone: result.isDone,
+      continueCursor: result.continueCursor,
+    };
   },
 });
 
