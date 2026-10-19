@@ -103,7 +103,9 @@ export function Composer(props: ComposerProps) {
   const onClearTypingRef = useRef(onClearTyping);
   onClearTypingRef.current = onClearTyping;
   const typingThrottleRef = useRef<{
+    // eslint-disable-next-line no-unused-vars -- parameter name documents the contract
     ping(channelId: string): void;
+    // eslint-disable-next-line no-unused-vars -- parameter name documents the contract
     reset(channelId: string): void;
   } | null>(null);
   if (typingThrottleRef.current === null) {
