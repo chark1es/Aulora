@@ -14,8 +14,8 @@ shared packages, the Convex backend, and the deployment/infra layer.
 - Web bundle figures come from a real production build (`vite build`, Vite 8.3.1 /
   rolldown); docs and asset sizes from `du`/`wc`; backend figures from reading the
   Convex query/mutation/cron code and estimating call volume at 100k users.
-- The raw per-area working notes were `docs/optimization/findings-*.md`; their content
-  is consolidated here and the intermediates were removed.
+- Per-area working notes were consolidated into this file; the intermediate
+  scratch files were removed before opening the pull request.
 
 ## 1. Architecture map
 
@@ -292,10 +292,6 @@ unused `tailwindcss` removal (P15, `aa49187`); `.dockerignore` trim (P21,
 `be45bd4`); updater progress throttle (P3, `d2df500`); desktop crate types /
 bundle targets (P4/P6, `148da14`); remote-backup retention docs (P20, `c6e5a25`).
 `a348316` sorts the docs build imports (lint fix). Infra tests: 71 node + 6 bun.
-
-Supporting reports with per-item evidence: `docs/optimization/impl-backend.md`,
-`impl-web.md`, `impl-mobile.md`, `impl-platform.md`; raw per-area audits:
-`docs/optimization/findings-*.md`.
 
 ### Verification status
 
