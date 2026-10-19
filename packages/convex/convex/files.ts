@@ -53,8 +53,20 @@ export const generateUploadUrl = mutation({
   handler: async (ctx, args) => {
     const { userId } = await requireWorkspacePermission(ctx, Permission.AttachFiles);
     await assertMayParticipate(ctx, userId);
-    // A companion thumbnail upload shares the original's rate-limit budget.
-    if (args.skipRateLimit !== true) {
+    // A companion thumbnail upload has its own equally bounded bucket, so it
+    // shares the image allowance without letting a client skip rate limiting.
+    if (args.skipRateLimit === true) {
+      await enforceRateLimit(ctx, {
+        key: userRateLimitKey("upload-thumb", userId),
+        limit: uploadLimit(),
+        windowMs: uploadWindowMs(),
+      });
+      await enforceRateLimit(ctx, {
+        key: ipRateLimitKey("upload-thumb", await requestIp(ctx)),
+        limit: uploadLimit() * 5,
+        windowMs: uploadWindowMs(),
+      });
+    } else {
       await enforceRateLimit(ctx, {
         key: userRateLimitKey("upload", userId),
         limit: uploadLimit(),

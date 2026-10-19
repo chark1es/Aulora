@@ -626,9 +626,10 @@ scale/compatibility gaps. All blockers and actionable concerns were fixed.
 - **Thumbnails consumed a second rate-limit budget.** Each image generated two
   upload URLs and finalized with two `authorizeUpload` calls, halving the image
   allowance (30/min → ~7 images). `generateUploadUrl` and `authorizeUpload` now
-  accept `skipRateLimit`, which the thumbnail upload/finalize uses; the original
-  still consumes the normal budget. Clients fall back to the old call shape on
-  older servers.
+  accept `skipRateLimit`; the companion upload draws from a separate, equally
+  bounded `upload-thumb` bucket (so the client flag cannot bypass rate limiting)
+  while the original consumes the normal budget. Clients fall back to the old
+  call shape on older servers.
 - **Top-level mentions appeared as empty threads.** `messages.send` wrote a
   participation row for every mention even with no thread, so a 0-reply message
   showed in the Threads inbox. Participation rows are now written only for
@@ -678,3 +679,10 @@ scale/compatibility gaps. All blockers and actionable concerns were fixed.
   in-flight sends; per-request stream teardown is the follow-up.
 - **`members.search`** scans a bounded 500-row join-order window and has no
   production callers yet.
+
+
+A narrow Claude follow-up found that the first `skipRateLimit` implementation
+let any client bypass the limiter entirely by passing the flag on the public
+`generateUploadUrl`; it now uses a dedicated bounded bucket instead. The runner
+also clamps every poll delay to 25 s so an operator override or larger jitter
+cannot push the heartbeat past the server's 30 s online window.

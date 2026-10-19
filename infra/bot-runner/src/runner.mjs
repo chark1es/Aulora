@@ -44,12 +44,16 @@ export function createRunner({ config, api, logger = console, now = Date.now }) 
   // A tracked bot (running, launching or waiting on a restart backoff) keeps
   // the active cadence so a relaunch is not delayed by the idle interval.
   function nextDelay() {
-    return pollDelayMs({
+    const delay = pollDelayMs({
       active: reconciler.snapshot().length > 0,
       activeMs: config.pollIntervalMs,
       idleMs: config.pollIdleIntervalMs,
       jitter: config.pollJitter,
     });
+    // The server marks a runner offline after 30 s without a poll (which is
+    // what touches its heartbeat). Keep headroom even if an operator configures
+    // a long idle interval or larger jitter.
+    return Math.min(delay, 25_000);
   }
 
   function start() {
