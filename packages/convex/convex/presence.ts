@@ -1,4 +1,5 @@
 import { v } from "convex/values";
+import { internal } from "./_generated/api";
 import type { MutationCtx } from "./_generated/server";
 import { internalMutation, mutation, query } from "./_generated/server";
 import { requireAuth } from "./lib/auth";
@@ -12,6 +13,8 @@ export const PRESENCE_HEARTBEAT_MS = 30_000;
 export const PRESENCE_IDLE_MS = 60_000;
 /** Older than this marks any session offline. */
 export const PRESENCE_OFFLINE_MS = 150_000;
+/** Presence rows examined per sweep invocation before rescheduling. */
+const PRESENCE_SWEEP_BATCH = 500;
 
 const presenceStatusValidator = v.union(
   v.literal("online"),
@@ -192,14 +195,26 @@ export const get = query({
  * Cron hook: moves stale `online` sessions to `idle`, then any stale session to
  * `offline`. Rows the user set manually are skipped entirely so a deliberate
  * `dnd`/`idle`/`offline` survives inactivity.
+ *
+ * The sweep reads only rows past the idle threshold via the `by_lastHeartbeat`
+ * index instead of collecting the whole `presence` table, so the cost scales
+ * with the number of stale sessions, not the workspace size. Rows are swept in
+ * index (oldest-heartbeat first) pages of {@link PRESENCE_SWEEP_BATCH}; while a
+ * page is full a follow-up run continues from the returned cursor. Patching a
+ * row's `status` does not move `lastHeartbeat`, so a cursor (rather than a
+ * re-scan from the front) is what gives the drain forward progress.
  */
 export const sweepStale = internalMutation({
-  args: {},
-  handler: async (ctx) => {
+  args: { cursor: v.optional(v.union(v.string(), v.null())) },
+  handler: async (ctx, args) => {
     const now = Date.now();
-    const rows = await ctx.db.query("presence").collect();
+    const idleCutoff = now - PRESENCE_IDLE_MS;
+    const result = await ctx.db
+      .query("presence")
+      .withIndex("by_lastHeartbeat", (q) => q.lt("lastHeartbeat", idleCutoff))
+      .paginate({ numItems: PRESENCE_SWEEP_BATCH, cursor: args.cursor ?? null });
     let changed = 0;
-    for (const row of rows) {
+    for (const row of result.page) {
       if (row.manual === true) {
         continue;
       }
@@ -213,6 +228,11 @@ export const sweepStale = internalMutation({
         await ctx.db.patch(row._id, { status: "idle" });
         changed += 1;
       }
+    }
+    if (!result.isDone) {
+      await ctx.scheduler.runAfter(0, internal.presence.sweepStale, {
+        cursor: result.continueCursor,
+      });
     }
     return changed;
   },

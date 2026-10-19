@@ -510,7 +510,11 @@ export default defineSchema({
      * the row follows automatic online/idle/offline behaviour.
      */
     manual: v.optional(v.boolean()),
-  }).index("by_user", ["userId"]),
+  })
+    .index("by_user", ["userId"])
+    // Ordered by heartbeat so the staleness sweep and the long-term prune can
+    // read only rows past a cutoff instead of collecting the whole table.
+    .index("by_lastHeartbeat", ["lastHeartbeat"]),
 
   typing: defineTable({
     channelId: v.id("channels"),
