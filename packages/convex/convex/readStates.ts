@@ -2,7 +2,9 @@ import { Permission } from "@aulora/core";
 import { ConvexError, v } from "convex/values";
 import type { Id } from "./_generated/dataModel";
 import { mutation, query } from "./_generated/server";
-import { requireChannelAccess } from "./lib/channels";
+import { requireAuth } from "./lib/auth";
+import { requireChannelAccess, requireChannelAccessFromContext } from "./lib/channels";
+import { loadPermissionContext, type PermissionContext } from "./lib/permissions";
 
 /**
  * Counts plaintext `mentionUserIds` strictly after the read cursor, ignoring
@@ -133,8 +135,9 @@ async function summarizeChannel(
 ): Promise<ChannelUnreadSummary> {
   const latest = await ctx.db
     .query("messages")
-    .withIndex("by_channel_created", (q) => q.eq("channelId", channelId))
-    .filter((q) => q.eq(q.field("threadRootId"), undefined))
+    .withIndex("by_channel_thread", (q) =>
+      q.eq("channelId", channelId).eq("threadRootId", undefined),
+    )
     .order("desc")
     .first();
   const state = await ctx.db
@@ -184,15 +187,21 @@ async function summarizeChannel(
 export const summary = query({
   args: { channelIds: v.array(v.id("channels")) },
   handler: async (ctx, args) => {
+    let context: PermissionContext;
+    try {
+      const { userId } = await requireAuth(ctx);
+      context = await loadPermissionContext(ctx, userId);
+    } catch {
+      return [];
+    }
     const rows: ChannelUnreadSummary[] = [];
     for (const channelId of args.channelIds.slice(0, SUMMARY_CHANNEL_LIMIT)) {
-      let userId: string;
       try {
-        ({ userId } = await requireChannelAccess(ctx, channelId, Permission.ViewChannel));
+        await requireChannelAccessFromContext(ctx, context, channelId, Permission.ViewChannel);
       } catch {
         continue;
       }
-      rows.push(await summarizeChannel(ctx, channelId, userId));
+      rows.push(await summarizeChannel(ctx, channelId, context.userId));
     }
     return rows;
   },
