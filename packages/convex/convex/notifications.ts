@@ -178,6 +178,8 @@ export const setPref = mutation({
  * limit rather than to the full channel history.
  */
 const UNREAD_SCAN_LIMIT = 100;
+/** Tail pages examined before a channel is treated as having no unread mail. */
+const UNREAD_SCAN_PAGES = 5;
 
 /**
  * Live unread + mention totals for the caller across their joined channels.
@@ -223,27 +225,41 @@ export const unreadSummary = query({
         }
         after = cursor._creationTime;
       }
-      const messages = await ctx.db
-        .query("messages")
-        .withIndex("by_channel_created", (q) =>
-          after === null
-            ? q.eq("channelId", membership.channelId)
-            : q.eq("channelId", membership.channelId).gt("_creationTime", after),
-        )
-        .take(UNREAD_SCAN_LIMIT);
-      for (const message of messages) {
-        if (
-          message.deletedAt !== undefined ||
-          message.authorId === userId ||
-          message.systemKind !== undefined
-        ) {
-          continue;
+      // Scan the tail in bounded pages until a message from someone else is
+      // found. A run of the viewer's own messages at the cursor must not hide
+      // older unread messages from other people.
+      let pageCursor: string | null = null;
+      let channelUnread = 0;
+      let channelMentions = 0;
+      for (let pageIndex = 0; pageIndex < UNREAD_SCAN_PAGES; pageIndex += 1) {
+        const page = await ctx.db
+          .query("messages")
+          .withIndex("by_channel_created", (q) =>
+            after === null
+              ? q.eq("channelId", membership.channelId)
+              : q.eq("channelId", membership.channelId).gt("_creationTime", after),
+          )
+          .paginate({ numItems: UNREAD_SCAN_LIMIT, cursor: pageCursor });
+        for (const message of page.page) {
+          if (
+            message.deletedAt !== undefined ||
+            message.authorId === userId ||
+            message.systemKind !== undefined
+          ) {
+            continue;
+          }
+          channelUnread += 1;
+          if (message.mentionUserIds.includes(userId)) {
+            channelMentions += 1;
+          }
         }
-        total += 1;
-        if (message.mentionUserIds.includes(userId)) {
-          mentions += 1;
+        if (channelUnread > 0 || page.isDone) {
+          break;
         }
+        pageCursor = page.continueCursor;
       }
+      total += channelUnread;
+      mentions += channelMentions;
     }
     return { total, mentions };
   },

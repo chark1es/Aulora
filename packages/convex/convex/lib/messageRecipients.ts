@@ -130,19 +130,34 @@ interface UserPrefs {
 }
 
 /**
- * Loads notification preferences for every candidate in a single pass. The
- * preference table only holds rows for users who changed a setting, so one
- * collect grouped by user replaces a separate indexed collect per candidate.
+ * Loads notification preferences for every candidate in one pass. Server-scope
+ * rows are read through `by_scope` and the relevant channel rows through
+ * `by_channel`, so the read is bounded by users who changed a setting in the
+ * channels involved rather than by the entire preferences table.
  */
 async function loadPrefsByUser(
   ctx: QueryCtx,
   userIds: ReadonlySet<string>,
+  channelIds: ReadonlySet<Id<"channels">>,
 ): Promise<Map<string, UserPrefs>> {
   const prefs = new Map<string, UserPrefs>();
   if (userIds.size === 0) {
     return prefs;
   }
-  const rows = await ctx.db.query("notificationPrefs").collect();
+  const rows: Doc<"notificationPrefs">[] = [
+    ...(await ctx.db
+      .query("notificationPrefs")
+      .withIndex("by_scope", (q) => q.eq("scope", "server"))
+      .collect()),
+  ];
+  for (const channelId of channelIds) {
+    rows.push(
+      ...(await ctx.db
+        .query("notificationPrefs")
+        .withIndex("by_channel", (q) => q.eq("channelId", channelId))
+        .collect()),
+    );
+  }
   const serverByUser = new Map<string, Doc<"notificationPrefs">>();
   const channelsByUser = new Map<string, Map<string, Doc<"notificationPrefs">>>();
   for (const row of rows) {
@@ -196,7 +211,8 @@ async function filterRecipients(
       presenceByUser.set(userId, presence);
     }
   }
-  const prefsByUser = await loadPrefsByUser(ctx, userIds);
+  const channelIds = new Set(targets.map(([, info]) => info.channelId));
+  const prefsByUser = await loadPrefsByUser(ctx, userIds, channelIds);
 
   const recipients: string[] = [];
   for (const [userId, info] of targets) {

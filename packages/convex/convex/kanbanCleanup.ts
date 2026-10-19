@@ -10,6 +10,9 @@ async function deleteFile(ctx: MutationCtx, id: Id<"files">) {
   const row = await ctx.db.get(id);
   if (!row) return;
   await ctx.storage.delete(row.storageId);
+  if (row.thumbnailStorageId !== undefined) {
+    await ctx.storage.delete(row.thumbnailStorageId);
+  }
   await ctx.db.delete(row._id);
   await adjustInstanceCounters(ctx, { files: -1, fileBytes: -row.sizeBytes });
 }

@@ -1,6 +1,6 @@
 import { Permission } from "@aulora/core";
 import { ConvexError, v } from "convex/values";
-import type { Id } from "./_generated/dataModel";
+import type { Doc, Id } from "./_generated/dataModel";
 import { mutation, query } from "./_generated/server";
 import { requireAuth } from "./lib/auth";
 import { requireChannelAccess, requireChannelAccessFromContext } from "./lib/channels";
@@ -30,17 +30,28 @@ async function countMentionsAfter(
     }
     cursorAt = cursor._creationTime;
   }
-  const messages = await ctx.db
-    .query("messages")
-    .withIndex("by_channel_created", (q) =>
-      cursorAt === null
-        ? q.eq("channelId", channelId)
-        : q.eq("channelId", channelId).gt("_creationTime", cursorAt),
-    )
-    .take(MENTION_SCAN_LIMIT);
-  return messages.filter(
-    (message) => message.deletedAt === undefined && message.mentionUserIds.includes(userId),
-  ).length;
+  let mentions = 0;
+  let pageCursor: string | null = null;
+  for (let pageIndex = 0; pageIndex < MENTION_SCAN_PAGES; pageIndex += 1) {
+    const page = await ctx.db
+      .query("messages")
+      .withIndex("by_channel_created", (q) =>
+        cursorAt === null
+          ? q.eq("channelId", channelId)
+          : q.eq("channelId", channelId).gt("_creationTime", cursorAt),
+      )
+      .paginate({ numItems: MENTION_SCAN_LIMIT, cursor: pageCursor });
+    mentions += page.page.filter(
+      (message) => message.deletedAt === undefined && message.mentionUserIds.includes(userId),
+    ).length;
+    // Stop once a mention is found; the scan exists to avoid a run of the
+    // viewer's own messages hiding an older mention from someone else.
+    if (mentions > 0 || page.isDone) {
+      break;
+    }
+    pageCursor = page.continueCursor;
+  }
+  return mentions;
 }
 
 /** Moves the read cursor for a channel and recomputes the mention count. */
@@ -126,9 +137,13 @@ export const get = query({
 
 /** Upper bound on mentions counted per channel; the badge shows "99+" anyway. */
 const MENTION_SCAN_LIMIT = 200;
+/** Pages examined when the bounded tail contains no qualifying message. */
+const MENTION_SCAN_PAGES = 5;
 
 /** Upper bound on channels per summary call, matching the sidebar page size. */
 const SUMMARY_CHANNEL_LIMIT = 200;
+/** Pages examined when a channel's tail contains only excluded messages. */
+const SUMMARY_SCAN_PAGES = 5;
 
 interface ChannelUnreadSummary {
   channelId: Id<"channels">;
@@ -159,21 +174,31 @@ async function summarizeChannel(
     state?.lastReadMessageId !== undefined ? await ctx.db.get(state.lastReadMessageId) : null;
   const cursorAt = cursor?._creationTime ?? null;
 
-  const after = await ctx.db
-    .query("messages")
-    .withIndex("by_channel_created", (q) =>
-      cursorAt === null
-        ? q.eq("channelId", channelId)
-        : q.eq("channelId", channelId).gt("_creationTime", cursorAt),
-    )
-    .order("desc")
-    .take(MENTION_SCAN_LIMIT);
-  const fromOthers = after.filter(
-    (message) =>
-      message.authorId !== userId &&
-      message.deletedAt === undefined &&
-      message.threadRootId === undefined,
-  );
+  let fromOthers: Doc<"messages">[] = [];
+  let pageCursor: string | null = null;
+  for (let pageIndex = 0; pageIndex < SUMMARY_SCAN_PAGES; pageIndex += 1) {
+    const page = await ctx.db
+      .query("messages")
+      .withIndex("by_channel_created", (q) =>
+        cursorAt === null
+          ? q.eq("channelId", channelId)
+          : q.eq("channelId", channelId).gt("_creationTime", cursorAt),
+      )
+      .order("desc")
+      .paginate({ numItems: MENTION_SCAN_LIMIT, cursor: pageCursor });
+    fromOthers = page.page.filter(
+      (message) =>
+        message.authorId !== userId &&
+        message.deletedAt === undefined &&
+        message.threadRootId === undefined,
+    );
+    // A run of the viewer's own messages at the cursor must not hide older
+    // unread messages from other people.
+    if (fromOthers.length > 0 || page.isDone) {
+      break;
+    }
+    pageCursor = page.continueCursor;
+  }
   const mentionCount = fromOthers.filter((message) =>
     message.mentionUserIds.includes(userId),
   ).length;

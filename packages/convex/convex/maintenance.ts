@@ -100,17 +100,22 @@ export const backfillMemberRoles = internalMutation({
       await ctx.scheduler.runAfter(0, internal.maintenance.backfillMemberRoles, {
         cursor: page.continueCursor,
       });
+      return null;
+    }
+    const server = await ctx.db.query("server").first();
+    if (server !== null) {
+      await ctx.db.patch(server._id, { memberRolesBackfilled: true });
     }
     return null;
   },
 });
 
 /**
- * Idempotent migration: seeds `threadParticipants` from existing thread roots'
- * `replyParticipantIds` and `mentionUserIds`. Paged over `messages` and
- * rescheduled while more remain, so it never scans the whole table in one
- * transaction. Safe to re-run: the upsert only moves `lastReplyAt` forward and
- * ORs `mentioned`.
+ * Idempotent migration: seeds `threadParticipants` from existing threads —
+ * each reply's author and mentions, plus each root's recent repliers and own
+ * mentions. Paged over `messages` and rescheduled while more remain, so it
+ * never scans the whole table in one transaction. Safe to re-run: the upsert
+ * only moves `lastReplyAt` forward and ORs `mentioned`.
  */
 export const backfillThreadParticipants = internalMutation({
   args: { cursor: v.optional(v.union(v.string(), v.null())) },
@@ -119,9 +124,25 @@ export const backfillThreadParticipants = internalMutation({
       .query("messages")
       .paginate({ numItems: THREAD_PARTICIPANT_BACKFILL_BATCH, cursor: args.cursor ?? null });
     for (const message of page.page) {
-      // Only thread roots carry `replyParticipantIds`; replies are covered when
-      // their root is processed (and by live writes going forward).
+      // A reply records its author and anyone it mentions against the root.
+      // The root's `replyParticipantIds` is capped, so it cannot replace this.
       if (message.threadRootId !== undefined) {
+        await upsertThreadParticipant(ctx, {
+          userId: message.authorId,
+          threadRootId: message.threadRootId,
+          channelId: message.channelId,
+          at: message._creationTime,
+          mentioned: false,
+        });
+        for (const userId of message.mentionUserIds) {
+          await upsertThreadParticipant(ctx, {
+            userId,
+            threadRootId: message.threadRootId,
+            channelId: message.channelId,
+            at: message._creationTime,
+            mentioned: true,
+          });
+        }
         continue;
       }
       const at = message.lastReplyAt ?? message._creationTime;

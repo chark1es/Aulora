@@ -73,10 +73,10 @@ export async function deleteMemberRolesForUser(ctx: MutationCtx, userId: string)
   }
 }
 
-/** True when the reverse table has any row (i.e. the backfill has run). */
+/** True once the reverse table has been fully backfilled. */
 export async function hasMemberRoleLinks(ctx: MutationCtx): Promise<boolean> {
-  const any = await ctx.db.query("memberRoles").take(1);
-  return any.length > 0;
+  const server = await ctx.db.query("server").first();
+  return server?.memberRolesBackfilled === true;
 }
 
 /**

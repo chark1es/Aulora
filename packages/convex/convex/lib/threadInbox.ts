@@ -116,14 +116,18 @@ function threadCandidate(
   root: Doc<"messages">,
   accumulator: ThreadAccumulator,
   userId: string,
+  participation: Doc<"threadParticipants"> | undefined,
 ): Omit<ThreadInboxRow, "body"> | null {
   const participantIds = [...accumulator.participantIds].sort();
   const mentionedUserIds = [
     ...new Set([...(root.mentionUserIds ?? []), ...accumulator.mentionedUserIds]),
   ].sort();
-  const viewerParticipated = participantIds.includes(userId);
-  const viewerMentioned = mentionedUserIds.includes(userId);
-  if (!viewerParticipated && !viewerMentioned) {
+  // The reply scan is bounded, so a viewer whose reply falls outside it would
+  // otherwise lose the thread. The participation row proves a stake: a reply
+  // row has `mentioned === false`, a mention-only row has `mentioned === true`.
+  const viewerParticipated = participantIds.includes(userId) || participation?.mentioned === false;
+  const viewerMentioned = mentionedUserIds.includes(userId) || participation?.mentioned === true;
+  if (participation === undefined && !viewerParticipated && !viewerMentioned) {
     return null;
   }
   return {
@@ -161,8 +165,13 @@ export async function loadThreadInbox(ctx: QueryCtx, userId: string): Promise<Th
 
   // One participation row per (viewer, thread); keep the newest.
   const rootIds = new Set<Id<"messages">>();
+  const participationByRoot = new Map<Id<"messages">, Doc<"threadParticipants">>();
   for (const row of participations) {
     rootIds.add(row.threadRootId);
+    const existing = participationByRoot.get(row.threadRootId);
+    if (existing === undefined || row.lastReplyAt > existing.lastReplyAt) {
+      participationByRoot.set(row.threadRootId, row);
+    }
   }
   const rootEntries = await Promise.all(
     [...rootIds].map(async (rootId) => {
@@ -191,7 +200,13 @@ export async function loadThreadInbox(ctx: QueryCtx, userId: string): Promise<Th
       .query("messages")
       .withIndex("by_thread", (q) => q.eq("threadRootId", root._id))
       .take(THREAD_INBOX_REPLY_LIMIT);
-    const candidate = threadCandidate(root._id, root, accumulateReplies(replies), userId);
+    const candidate = threadCandidate(
+      root._id,
+      root,
+      accumulateReplies(replies),
+      userId,
+      participationByRoot.get(root._id),
+    );
     if (candidate !== null) {
       candidates.push(candidate);
     }

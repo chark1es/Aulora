@@ -291,24 +291,32 @@ export const sweepStale = internalMutation({
 /**
  * Cron hook: deletes presence rows last heartbeated longer than
  * {@link PRESENCE_RETENTION_MS} ago, reclaiming storage for members who left.
- * Reads only rows past the cutoff via `by_lastHeartbeat` and reschedules while
- * a batch is full. Rows inside the retention window (including any a user could
- * still be sending heartbeats for) are never deleted.
+ * Reads only rows past the cutoff via `by_lastHeartbeat`, pages past manual
+ * rows (a manual status is intentionally immune to staleness and is kept until
+ * the user changes it), and reschedules while more pages remain. Rows inside
+ * the retention window are never deleted.
  */
 export const pruneStalePresence = internalMutation({
-  args: {},
-  handler: async (ctx) => {
+  args: { cursor: v.optional(v.union(v.string(), v.null())) },
+  handler: async (ctx, args) => {
     const cutoff = Date.now() - PRESENCE_RETENTION_MS;
-    const rows = await ctx.db
+    const page = await ctx.db
       .query("presence")
       .withIndex("by_lastHeartbeat", (q) => q.lt("lastHeartbeat", cutoff))
-      .take(PRESENCE_PRUNE_BATCH);
-    for (const row of rows) {
+      .paginate({ numItems: PRESENCE_PRUNE_BATCH, cursor: args.cursor ?? null });
+    let deleted = 0;
+    for (const row of page.page) {
+      if (row.manual === true) {
+        continue;
+      }
       await ctx.db.delete(row._id);
+      deleted += 1;
     }
-    if (rows.length === PRESENCE_PRUNE_BATCH) {
-      await ctx.scheduler.runAfter(0, internal.presence.pruneStalePresence, {});
+    if (!page.isDone) {
+      await ctx.scheduler.runAfter(0, internal.presence.pruneStalePresence, {
+        cursor: page.continueCursor,
+      });
     }
-    return rows.length;
+    return deleted;
   },
 });

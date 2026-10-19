@@ -104,6 +104,13 @@ export default defineSchema({
      * means "not backfilled yet" and readers fall back to a member scan.
      */
     memberCount: v.optional(v.number()),
+    /**
+     * True once `maintenance:backfillMemberRoles` has seeded the whole
+     * `memberRoles` reverse table. Role deletion uses the reverse table only
+     * after this marker, so a partially backfilled workspace keeps the safe
+     * full-scan fallback.
+     */
+    memberRolesBackfilled: v.optional(v.boolean()),
     licenseKey: v.optional(v.string()),
     licenseValidation: v.optional(
       v.object({
@@ -678,7 +685,9 @@ export default defineSchema({
     pinnedAt: v.optional(v.number()),
   })
     .index("by_user_scope", ["userId", "scope"])
-    .index("by_user_channel", ["userId", "channelId"]),
+    .index("by_user_channel", ["userId", "channelId"])
+    .index("by_scope", ["scope"])
+    .index("by_channel", ["channelId"]),
 
   /**
    * Invites. `code` stores the SHA-256 hex digest of the normalised plaintext
