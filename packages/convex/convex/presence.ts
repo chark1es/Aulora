@@ -1,5 +1,6 @@
 import { v } from "convex/values";
 import { internal } from "./_generated/api";
+import type { Doc } from "./_generated/dataModel";
 import type { MutationCtx } from "./_generated/server";
 import { internalMutation, mutation, query } from "./_generated/server";
 import { requireAuth } from "./lib/auth";
@@ -23,6 +24,12 @@ const PRESENCE_PRUNE_BATCH = 500;
  * reclaims storage for members who are gone.
  */
 export const PRESENCE_RETENTION_MS = 30 * 24 * 60 * 60 * 1000;
+/**
+ * Hard ceiling on ids one `getMany` call will look up, after de-duplication.
+ * Clients scope presence to a channel's members/view; the cap stops a
+ * pathological id list from fanning out into unbounded index reads.
+ */
+const PRESENCE_GET_MANY_MAX = 300;
 
 const presenceStatusValidator = v.union(
   v.literal("online"),
@@ -34,6 +41,16 @@ const presenceStatusValidator = v.union(
 type PresenceStatus = "online" | "idle" | "dnd" | "offline";
 
 const CUSTOM_STATUS_CONTEXT = { scope: "presence.status" } as const;
+
+/** The row shape every presence read returns; custom status opened inline. */
+async function toPresenceRow(row: Doc<"presence">) {
+  return {
+    userId: row.userId,
+    status: row.status,
+    customStatus: await openContentOptional(CUSTOM_STATUS_CONTEXT, row.customStatusCiphertext),
+    lastHeartbeat: row.lastHeartbeat,
+  };
+}
 
 interface PresencePatch {
   readonly status?: PresenceStatus;
@@ -168,14 +185,7 @@ export const list = query({
     const { userId } = await requireAuth(ctx);
     await requireMember(ctx, userId);
     const rows = await ctx.db.query("presence").collect();
-    return await Promise.all(
-      rows.map(async (row) => ({
-        userId: row.userId,
-        status: row.status,
-        customStatus: await openContentOptional(CUSTOM_STATUS_CONTEXT, row.customStatusCiphertext),
-        lastHeartbeat: row.lastHeartbeat,
-      })),
-    );
+    return await Promise.all(rows.map((row) => toPresenceRow(row)));
   },
 });
 
@@ -192,12 +202,33 @@ export const get = query({
     if (row === null) {
       return null;
     }
-    return {
-      userId: row.userId,
-      status: row.status,
-      customStatus: await openContentOptional(CUSTOM_STATUS_CONTEXT, row.customStatusCiphertext),
-      lastHeartbeat: row.lastHeartbeat,
-    };
+    return await toPresenceRow(row);
+  },
+});
+
+/**
+ * Scoped presence for a set of user ids — the replacement for the full
+ * {@link list} read. Ids are de-duplicated and capped at
+ * {@link PRESENCE_GET_MANY_MAX}; each remaining id is looked up through the
+ * `by_user` index rather than collecting the table. Rows are returned in the
+ * caller's id order (duplicates dropped), each with the exact shape
+ * {@link list} returns. Ids with no presence row are omitted.
+ */
+export const getMany = query({
+  args: { userIds: v.array(v.string()) },
+  handler: async (ctx, args) => {
+    const { userId } = await requireAuth(ctx);
+    await requireMember(ctx, userId);
+    const ids = [...new Set(args.userIds)].slice(0, PRESENCE_GET_MANY_MAX);
+    const rows = await Promise.all(
+      ids.map((id) =>
+        ctx.db
+          .query("presence")
+          .withIndex("by_user", (q) => q.eq("userId", id))
+          .unique(),
+      ),
+    );
+    return await Promise.all(rows.filter((row) => row !== null).map((row) => toPresenceRow(row)));
   },
 });
 
