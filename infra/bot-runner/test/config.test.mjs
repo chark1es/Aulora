@@ -32,7 +32,7 @@ test("loadConfig requires a runner token and applies safe defaults", () => {
   assert.equal(config.botMemoryMb, 256);
   assert.equal(config.uidBase, 20000);
   assert.equal(config.pollIntervalMs, 3000);
-  assert.equal(config.pollIdleIntervalMs, 45000);
+  assert.equal(config.pollIdleIntervalMs, 20000);
   assert.equal(config.pollJitter, 0.2);
 });
 

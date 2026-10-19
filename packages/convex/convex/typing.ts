@@ -22,7 +22,7 @@ export const set = mutation({
       .withIndex("by_channel_user", (q) =>
         q.eq("channelId", args.channelId).eq("userId", access.userId),
       )
-      .unique();
+      .first();
     if (existing !== null) {
       await ctx.db.patch(existing._id, { expiresAt });
     } else {
@@ -46,7 +46,7 @@ export const clear = mutation({
       .withIndex("by_channel_user", (q) =>
         q.eq("channelId", args.channelId).eq("userId", access.userId),
       )
-      .unique();
+      .first();
     if (match !== null) {
       await ctx.db.delete(match._id);
     }

@@ -441,7 +441,9 @@ function useChatScreenPresenceScope(
           // The members pane (right pane) and the new-conversation picker render
           // the directory; only count it while it is actually on screen so a
           // large workspace stays bounded while reading chat.
-          ...(pane === 2 || newMessageOpen ? members.map((member) => member.userId) : []),
+          ...(pane === 0 || pane === 2 || newMessageOpen
+            ? members.map((member) => member.userId)
+            : []),
         ],
         channels,
       }),

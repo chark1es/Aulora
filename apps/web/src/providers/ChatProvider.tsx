@@ -357,6 +357,13 @@ export function ChatProvider({
     }
     activeOpenedRef.current = channel.id;
     await active.session.openChannel(channel);
+    if (activeOpenedRef.current !== channel.id) {
+      // A newer switch won the race; do not leave an untracked subscription.
+      if (!eagerSetRef.current.has(channel.id)) {
+        active.session.closeChannel(channel.id);
+      }
+      return;
+    }
     openedRef.current.add(channel.id);
   }, []);
 

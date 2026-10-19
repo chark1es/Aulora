@@ -112,6 +112,9 @@ export const finalize = internalMutation({
       ownerId: args.ownerId,
       // The owner is the only member at bootstrap; joins/kicks keep this exact.
       memberCount: 1,
+      // The reverse role index is complete for a fresh install because the
+      // bootstrap owner's link is written below and later changes dual-write.
+      memberRolesBackfilled: true,
       settings: {
         signupEnabled: true,
         inviteOnly: true,

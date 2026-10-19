@@ -588,7 +588,10 @@ export default defineSchema({
     .index("by_user", ["userId"])
     // Ordered by heartbeat so the staleness sweep and the long-term prune can
     // read only rows past a cutoff instead of collecting the whole table.
-    .index("by_lastHeartbeat", ["lastHeartbeat"]),
+    .index("by_lastHeartbeat", ["lastHeartbeat"])
+    // Status-scoped sweep: offline rows stay in the table for the retention
+    // window, so sweeping by status avoids re-reading them every 30 seconds.
+    .index("by_status_lastHeartbeat", ["status", "lastHeartbeat"]),
 
   typing: defineTable({
     channelId: v.id("channels"),

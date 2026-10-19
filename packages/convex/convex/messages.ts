@@ -247,15 +247,28 @@ export const send = mutation({
         participated: true,
       });
     }
-    if (mentions.mentionUserIds.length > 0) {
-      const rootId = threadRoot !== null ? threadRoot._id : messageId;
-      const at = threadRoot !== null ? replyAt : Date.now();
+    // Thread participation rows only exist for actual threads: a top-level
+    // message's mentions are notified, not added to the Threads inbox. When the
+    // first reply arrives, seed the root's mentions so they still surface.
+    if (threadRoot !== null && (threadRoot.replyCount ?? 0) === 0) {
+      for (const mentioned of threadRoot.mentionUserIds) {
+        await upsertThreadParticipant(ctx, {
+          userId: mentioned,
+          threadRootId: threadRoot._id,
+          channelId: args.channelId,
+          at: replyAt,
+          mentioned: true,
+          participated: false,
+        });
+      }
+    }
+    if (threadRoot !== null && mentions.mentionUserIds.length > 0) {
       for (const mentioned of mentions.mentionUserIds) {
         await upsertThreadParticipant(ctx, {
           userId: mentioned,
-          threadRootId: rootId,
+          threadRootId: threadRoot._id,
           channelId: args.channelId,
-          at,
+          at: replyAt,
           mentioned: true,
           participated: false,
         });

@@ -118,6 +118,11 @@ function threadCandidate(
   userId: string,
   participation: Doc<"threadParticipants"> | undefined,
 ): Omit<ThreadInboxRow, "body"> | null {
+  // A root with no replies is not a thread; ignore any legacy participation
+  // rows created before thread participation was reply-only.
+  if ((root.replyCount ?? 0) === 0) {
+    return null;
+  }
   const participantIds = [...accumulator.participantIds].sort();
   const mentionedUserIds = [
     ...new Set([...(root.mentionUserIds ?? []), ...accumulator.mentionedUserIds]),

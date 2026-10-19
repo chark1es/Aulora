@@ -136,10 +136,7 @@ export async function detectClient() {
  * These are plain files, so they avoid the unauthenticated GitHub API, which
  * rate-limits per IP.
  */
-export const STATIC_MANIFEST_URLS = [
-  "/downloads/latest.json",
-  "https://github.com/chark1es/Aulora/releases/latest/download/latest.json",
-];
+export const STATIC_MANIFEST_URLS = ["/downloads/latest.json"];
 
 /**
  * Converts a release manifest into the `{ tag_name, assets }` shape the buttons

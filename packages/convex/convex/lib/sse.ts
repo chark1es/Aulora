@@ -170,6 +170,10 @@ async function deriveDataKey(
       ["encrypt", "decrypt"],
     );
   })();
+  // A rejected derivation must not stay cached forever; the next call retries.
+  derived.catch(() => {
+    dataKeyCache.delete(cacheKey);
+  });
   dataKeyCache.set(cacheKey, derived);
   return await derived;
 }

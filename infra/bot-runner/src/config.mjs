@@ -71,9 +71,10 @@ export function loadConfig(env = process.env) {
     botFileSizeBytes: positiveInt(env.BOT_RUNNER_BOT_FSIZE_BYTES, 64 * 1024 * 1024),
     uidBase: positiveInt(env.BOT_RUNNER_UID_BASE, 20000),
     pollIntervalMs: positiveInt(env.BOT_RUNNER_POLL_INTERVAL_MS, 3000),
-    // Cadence while no bot is tracked (idle deployment). 30-60 s keeps an empty
-    // runner cheap without a noticeable start latency for a new bot.
-    pollIdleIntervalMs: positiveInt(env.BOT_RUNNER_POLL_IDLE_MS, 45000),
+    // Cadence while no bot is tracked (idle deployment). Kept under the
+    // server's 30 s runner-online window (with jitter) so an idle runner never
+    // shows as offline; still 6x cheaper than the active cadence.
+    pollIdleIntervalMs: positiveInt(env.BOT_RUNNER_POLL_IDLE_MS, 20000),
     pollJitter: nonNegativeNumber(env.BOT_RUNNER_POLL_JITTER, 0.2),
     logFlushIntervalMs: positiveInt(env.BOT_RUNNER_LOG_FLUSH_MS, 1000),
     logBatchLines: positiveInt(env.BOT_RUNNER_LOG_BATCH_LINES, 200),

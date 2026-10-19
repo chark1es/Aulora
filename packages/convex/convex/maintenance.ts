@@ -138,6 +138,10 @@ async function seedThreadParticipants(ctx: MutationCtx, message: Doc<"messages">
     }
     return;
   }
+  // Only roots with replies are threads worth an inbox row.
+  if ((message.replyCount ?? 0) === 0) {
+    return;
+  }
   const at = message.lastReplyAt ?? message._creationTime;
   for (const userId of message.replyParticipantIds ?? []) {
     await upsertThreadParticipant(ctx, {

@@ -259,9 +259,13 @@ export const sweepStale = internalMutation({
   handler: async (ctx, args) => {
     const now = Date.now();
     const idleCutoff = now - PRESENCE_IDLE_MS;
+    // Only currently-online rows can transition; offline rows stay in the table
+    // for the retention window and must not be re-read on every sweep.
     const result = await ctx.db
       .query("presence")
-      .withIndex("by_lastHeartbeat", (q) => q.lt("lastHeartbeat", idleCutoff))
+      .withIndex("by_status_lastHeartbeat", (q) =>
+        q.eq("status", "online").lt("lastHeartbeat", idleCutoff),
+      )
       .paginate({ numItems: PRESENCE_SWEEP_BATCH, cursor: args.cursor ?? null });
     let changed = 0;
     for (const row of result.page) {
@@ -270,17 +274,48 @@ export const sweepStale = internalMutation({
       }
       const age = now - row.lastHeartbeat;
       if (age >= PRESENCE_OFFLINE_MS) {
-        if (row.status !== "offline") {
-          await ctx.db.patch(row._id, { status: "offline" });
-          changed += 1;
-        }
-      } else if (age >= PRESENCE_IDLE_MS && row.status === "online") {
+        await ctx.db.patch(row._id, { status: "offline" });
+        changed += 1;
+      } else if (age >= PRESENCE_IDLE_MS) {
         await ctx.db.patch(row._id, { status: "idle" });
         changed += 1;
       }
     }
     if (!result.isDone) {
       await ctx.scheduler.runAfter(0, internal.presence.sweepStale, {
+        cursor: result.continueCursor,
+      });
+    }
+    return changed;
+  },
+});
+
+/**
+ * Second half of the staleness sweep: idle rows older than the offline
+ * threshold become offline. Split from {@link sweepStale} so each mutation uses
+ * one status-scoped pagination and neither re-reads the offline backlog.
+ */
+export const sweepIdle = internalMutation({
+  args: { cursor: v.optional(v.union(v.string(), v.null())) },
+  handler: async (ctx, args) => {
+    const now = Date.now();
+    const offlineCutoff = now - PRESENCE_OFFLINE_MS;
+    const result = await ctx.db
+      .query("presence")
+      .withIndex("by_status_lastHeartbeat", (q) =>
+        q.eq("status", "idle").lt("lastHeartbeat", offlineCutoff),
+      )
+      .paginate({ numItems: PRESENCE_SWEEP_BATCH, cursor: args.cursor ?? null });
+    let changed = 0;
+    for (const row of result.page) {
+      if (row.manual === true) {
+        continue;
+      }
+      await ctx.db.patch(row._id, { status: "offline" });
+      changed += 1;
+    }
+    if (!result.isDone) {
+      await ctx.scheduler.runAfter(0, internal.presence.sweepIdle, {
         cursor: result.continueCursor,
       });
     }

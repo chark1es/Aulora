@@ -568,8 +568,10 @@ fixed.
 4. `npx convex run maintenance:backfillInstanceCounters`
 
 All remain idempotent and self-rescheduling. Until (2) completes, role deletion
-keeps the full-scan fallback; until (3) completes, the inbox relies on the
-bounded reply scan and the participation rows written since deploy.
+keeps the full-scan fallback. Until (3) completes, the inbox only shows threads
+that gained participation rows since deploy (or were seeded by the backfill);
+pre-existing threads are absent from the inbox during that window, so run (3)
+immediately after deploying.
 
 ### 8.5 Final verification round
 
@@ -607,3 +609,72 @@ mutation that takes two rows per index and deletes only when nothing else
 references the blob. A fifth confirmation run was started but the Codex
 provider hit its usage limit, so the final state is covered by the typechecks,
 the 593 backend tests and the reasoning above rather than a fifth review.
+
+## 9. Claude Sonnet 5.5 audit
+
+A fourth independent audit used the T3 Code Claude subagent
+(`claudeAgent` / `claude-sonnet-5-5`, high effort). It confirmed the backend
+scan loops, backfills and file path, and found three blockers plus several
+scale/compatibility gaps. All blockers and actionable concerns were fixed.
+
+### 9.1 Blockers fixed
+
+- **Idle bot runner appeared offline.** The server's runner-online window is
+  30 s, but the idle poll was 45 s ±20% (36–54 s), so `touchRunner` on the poll
+  was the only heartbeat and an idle runner looked offline. The idle default is
+  now 20 s (16–24 s with jitter), still 6.7x cheaper than the 3 s active poll.
+- **Thumbnails consumed a second rate-limit budget.** Each image generated two
+  upload URLs and finalized with two `authorizeUpload` calls, halving the image
+  allowance (30/min → ~7 images). `generateUploadUrl` and `authorizeUpload` now
+  accept `skipRateLimit`, which the thumbnail upload/finalize uses; the original
+  still consumes the normal budget. Clients fall back to the old call shape on
+  older servers.
+- **Top-level mentions appeared as empty threads.** `messages.send` wrote a
+  participation row for every mention even with no thread, so a 0-reply message
+  showed in the Threads inbox. Participation rows are now written only for
+  actual threads (a reply, or the root's mentions seeded on the first reply),
+  the inbox ignores roots with no replies, and the backfill skips them. This
+  also avoids one row per mentioned user per ordinary message.
+
+### 9.2 Concerns fixed
+
+- **Presence sweep cost:** added `presence.by_status_lastHeartbeat`; the sweep
+  now reads only `online` rows (and a separate `sweepIdle` reads `idle`), instead
+  of re-reading the offline backlog every 30 s.
+- **nginx `/assets/`:** a location-level `add_header` drops inherited headers;
+  the security headers are now repeated alongside the immutable cache header.
+- **Retention opt-out:** `AUDIT_LOG_RETENTION_DAYS` and `DEVICE_RETENTION_DAYS`
+  (0 keeps forever) control the two default 180-day prunes.
+- **Push dispatch:** web push and mobile wakeups now run independently
+  (`Promise.allSettled`) so a slow/failing web-push loop cannot starve mobile.
+- **Mobile "Here now":** the presence scope now includes the directory while
+  the channel-list pane is visible, not only the members pane.
+- **Unread channel cap:** `unreadSummary` reads at most 200 memberships,
+  bounding the aggregate document budget.
+- **Older-server compatibility:** clients fall back to the old
+  `presence.list` (filtered to scope) and to finalizing without a thumbnail when
+  the server predates those arguments.
+- **Robustness:** a rejected HKDF derivation is no longer cached forever;
+  `typing.set/clear` use `.first()` so legacy duplicate rows cannot throw; a
+  fresh install marks `memberRolesBackfilled`; the docs no longer attempt a
+  CORS-blocked github.com manifest; a rapid channel switch closes the losing
+  subscription instead of leaking it.
+
+### 9.3 Remaining documented tradeoffs
+
+- **Summary byte budget.** The 32k-document limit is addressed, but Convex also
+  caps bytes read per function (16 MiB) and message bodies are sealed; a very
+  large `summary`/`unreadSummary` can still approach that with large messages.
+  The real fix is maintained per-user counters, not scanning.
+- **Thread-inbox ordering.** Candidates are the viewer's 500 most recent
+  participation rows before ordering by thread activity; a heavy participant
+  can still displace an older-but-recently-active thread.
+- **Backfill snapshot races.** Counter backfills overwrite with a snapshot; a
+  membership/device change between pages can leave a counter slightly stale
+  until the next run.
+- **Concurrent finalize of one source** leaves the plaintext blob undeleted
+  (each reclaim sees the other's row). It is a leak, not corruption.
+- **APNs timeout** drops the shared HTTP/2 session, so a timeout can fail other
+  in-flight sends; per-request stream teardown is the follow-up.
+- **`members.search`** scans a bounded 500-row join-order window and has no
+  production callers yet.

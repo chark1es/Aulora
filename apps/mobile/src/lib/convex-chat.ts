@@ -262,8 +262,18 @@ export function convexPort(client: ConvexReactClient): ChatPort {
       return null;
     },
     async uploadFile(args) {
-      const putBytes = async (bytes: Uint8Array, mime: string): Promise<string> => {
-        const uploadUrl = await client.mutation(api.files.generateUploadUrl, {});
+      const putBytes = async (
+        bytes: Uint8Array,
+        mime: string,
+        skipRateLimit = false,
+      ): Promise<string> => {
+        // A thumbnail shares the original upload's budget; older servers do not
+        // know the flag, so fall back to the plain call.
+        const uploadUrl = skipRateLimit
+          ? await client
+              .mutation(api.files.generateUploadUrl, { skipRateLimit: true })
+              .catch(async () => await client.mutation(api.files.generateUploadUrl, {}))
+          : await client.mutation(api.files.generateUploadUrl, {});
         const response = await fetch(uploadUrl, {
           method: "POST",
           headers: { "Content-Type": mime },
@@ -283,22 +293,32 @@ export function convexPort(client: ConvexReactClient): ChatPort {
       let thumbnailStorageId: string | undefined;
       if (args.thumbnail !== undefined) {
         try {
-          thumbnailStorageId = await putBytes(args.thumbnail.bytes, args.mime);
+          thumbnailStorageId = await putBytes(args.thumbnail.bytes, args.mime, true);
         } catch {
           thumbnailStorageId = undefined;
         }
       }
-      return await client.action(api.files.finalize, {
+      const baseArgs = {
         storageId: storageId as never,
         name: args.name,
         mime: args.mime,
         ...(args.dimensions !== undefined ? { dimensions: JSON.stringify(args.dimensions) } : {}),
         ...(args.blurhash !== undefined ? { blurhash: args.blurhash } : {}),
-        ...(thumbnailStorageId !== undefined
-          ? { thumbnailStorageId: thumbnailStorageId as never }
-          : {}),
         ...(args.channelId !== undefined ? { channelId: args.channelId as never } : {}),
-      });
+      };
+      const finalizeArgs =
+        thumbnailStorageId !== undefined
+          ? { ...baseArgs, thumbnailStorageId: thumbnailStorageId as never }
+          : baseArgs;
+      try {
+        return await client.action(api.files.finalize, finalizeArgs);
+      } catch (error) {
+        if (thumbnailStorageId === undefined) {
+          throw error;
+        }
+        // Older servers do not accept the thumbnail argument; keep the image.
+        return await client.action(api.files.finalize, baseArgs);
+      }
     },
     async getFile(args) {
       const view = await client.query(api.files.get, { fileId: args.fileId as never });
@@ -554,17 +574,34 @@ export function createScopedPresence(client: ConvexReactClient): ScopedPresence 
       emit();
       return;
     }
-    const watch = client.watchQuery(api.presence.getMany, { userIds: scopeIds as never[] });
-    const update = () => {
-      const value = watch.localQueryResult();
-      if (value !== undefined) {
-        latest = value as PresenceRow[];
-        emit();
-      }
-    };
-    const off = watch.onUpdate(update);
-    // A warm client can deliver the first result before `onUpdate` is attached.
-    update();
+    let off: () => void;
+    try {
+      const watch = client.watchQuery(api.presence.getMany, { userIds: scopeIds as never[] });
+      const update = () => {
+        const value = watch.localQueryResult();
+        if (value !== undefined) {
+          latest = value as PresenceRow[];
+          emit();
+        }
+      };
+      off = watch.onUpdate(update);
+      // A warm client can deliver the first result before `onUpdate` is attached.
+      update();
+    } catch {
+      // Older servers do not have `presence.getMany`; keep only the ids this
+      // client renders from the full list instead of breaking presence.
+      const watch = client.watchQuery(api.presence.list, {});
+      const scoped = new Set(scopeIds);
+      const update = () => {
+        const value = watch.localQueryResult();
+        if (value !== undefined) {
+          latest = (value as PresenceRow[]).filter((row) => scoped.has(row.userId));
+          emit();
+        }
+      };
+      off = watch.onUpdate(update);
+      update();
+    }
     teardown = () => {
       off();
     };

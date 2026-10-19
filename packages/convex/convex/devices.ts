@@ -12,6 +12,10 @@ const DEVICE_PRUNE_BATCH = 500;
  * uninstalled apps can otherwise linger forever; six months is far beyond any
  * realistic gap between app launches.
  */
+/**
+ * Default device retention. Override with `DEVICE_RETENTION_DAYS`; a value of
+ * 0 disables the prune entirely (keep forever).
+ */
 export const DEVICE_RETENTION_MS = 180 * 24 * 60 * 60 * 1000;
 
 /**
@@ -112,7 +116,12 @@ export const revoke = mutation({
 export const pruneStaleDevices = internalMutation({
   args: {},
   handler: async (ctx) => {
-    const cutoff = Date.now() - DEVICE_RETENTION_MS;
+    const defaultDays = DEVICE_RETENTION_MS / (24 * 60 * 60 * 1000);
+    const days = Number(process.env.DEVICE_RETENTION_DAYS ?? defaultDays);
+    if (!Number.isFinite(days) || days <= 0) {
+      return 0;
+    }
+    const cutoff = Date.now() - days * 24 * 60 * 60 * 1000;
     const rows = await ctx.db
       .query("devices")
       .withIndex("by_lastSeen", (q) => q.lt("lastSeen", cutoff))

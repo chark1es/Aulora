@@ -9,6 +9,7 @@ import { getEkmSettings } from "./lib/ekm";
 const crons = cronJobs();
 
 crons.interval("presence sweep", { seconds: 30 }, internal.presence.sweepStale, {});
+crons.interval("presence idle sweep", { seconds: 30 }, internal.presence.sweepIdle, {});
 crons.interval("typing purge", { seconds: 30 }, internal.typing.purgeExpired, {});
 // Drops participants/signalling from crashed clients and ends abandoned or
 // timed-out calls, so a voice channel never shows a ghost participant.

@@ -49,20 +49,23 @@ const BLURHASH_CONTEXT = { scope: "file.blurhash" } as const;
  * plaintext bytes; `finalize` seals them.
  */
 export const generateUploadUrl = mutation({
-  args: {},
-  handler: async (ctx) => {
+  args: { skipRateLimit: v.optional(v.boolean()) },
+  handler: async (ctx, args) => {
     const { userId } = await requireWorkspacePermission(ctx, Permission.AttachFiles);
     await assertMayParticipate(ctx, userId);
-    await enforceRateLimit(ctx, {
-      key: userRateLimitKey("upload", userId),
-      limit: uploadLimit(),
-      windowMs: uploadWindowMs(),
-    });
-    await enforceRateLimit(ctx, {
-      key: ipRateLimitKey("upload", await requestIp(ctx)),
-      limit: uploadLimit() * 5,
-      windowMs: uploadWindowMs(),
-    });
+    // A companion thumbnail upload shares the original's rate-limit budget.
+    if (args.skipRateLimit !== true) {
+      await enforceRateLimit(ctx, {
+        key: userRateLimitKey("upload", userId),
+        limit: uploadLimit(),
+        windowMs: uploadWindowMs(),
+      });
+      await enforceRateLimit(ctx, {
+        key: ipRateLimitKey("upload", await requestIp(ctx)),
+        limit: uploadLimit() * 5,
+        windowMs: uploadWindowMs(),
+      });
+    }
     return await ctx.storage.generateUploadUrl();
   },
 });
@@ -73,20 +76,26 @@ export const generateUploadUrl = mutation({
  * can run it with the caller's identity.
  */
 export const authorizeUpload = internalMutation({
-  args: { storageId: v.id("_storage"), kanbanBoardId: v.optional(v.id("kanbanBoards")) },
+  args: {
+    storageId: v.id("_storage"),
+    kanbanBoardId: v.optional(v.id("kanbanBoards")),
+    skipRateLimit: v.optional(v.boolean()),
+  },
   handler: async (ctx, args) => {
     const { userId } = await requireWorkspacePermission(ctx, Permission.AttachFiles);
     await assertMayParticipate(ctx, userId);
-    await enforceRateLimit(ctx, {
-      key: userRateLimitKey("upload", userId),
-      limit: uploadLimit(),
-      windowMs: uploadWindowMs(),
-    });
-    await enforceRateLimit(ctx, {
-      key: ipRateLimitKey("upload", await requestIp(ctx)),
-      limit: uploadLimit() * 5,
-      windowMs: uploadWindowMs(),
-    });
+    if (args.skipRateLimit !== true) {
+      await enforceRateLimit(ctx, {
+        key: userRateLimitKey("upload", userId),
+        limit: uploadLimit(),
+        windowMs: uploadWindowMs(),
+      });
+      await enforceRateLimit(ctx, {
+        key: ipRateLimitKey("upload", await requestIp(ctx)),
+        limit: uploadLimit() * 5,
+        windowMs: uploadWindowMs(),
+      });
+    }
     if (args.kanbanBoardId !== undefined) await writableBoard(ctx, args.kanbanBoardId);
     const metadata = await ctx.db.system.get("_storage", args.storageId);
     if (metadata === null) {
@@ -225,6 +234,7 @@ export const finalize = action({
       await ctx.runMutation(internal.files.authorizeUpload, {
         storageId: args.thumbnailStorageId,
         ...(args.kanbanBoardId !== undefined ? { kanbanBoardId: args.kanbanBoardId } : {}),
+        skipRateLimit: true,
       });
     }
     const blob = await ctx.storage.get(args.storageId);

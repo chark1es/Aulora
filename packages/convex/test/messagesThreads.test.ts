@@ -264,6 +264,7 @@ describe("messages.threadInbox bounded reply scan", () => {
           threadRootId: root,
         });
       }
+      await ctx.db.patch(root, { replyCount: 201, lastReplyAt: Date.now() });
       await ctx.db.insert("threadParticipants", {
         userId: "user-2",
         threadRootId: root,

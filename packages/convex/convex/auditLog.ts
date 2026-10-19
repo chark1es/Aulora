@@ -14,6 +14,10 @@ const AUDIT_PRUNE_BATCH = 500;
  * and then dropped; a daily cron enforces it via the `by_at` index. Documented
  * constant so the policy is explicit rather than implied.
  */
+/**
+ * Default audit-log retention. Override with `AUDIT_LOG_RETENTION_DAYS`; a
+ * value of 0 disables the prune entirely (keep forever).
+ */
 export const AUDIT_LOG_RETENTION_MS = 180 * 24 * 60 * 60 * 1000;
 
 /**
@@ -90,7 +94,12 @@ export const list = query({
 export const pruneAuditLog = internalMutation({
   args: {},
   handler: async (ctx) => {
-    const cutoff = Date.now() - AUDIT_LOG_RETENTION_MS;
+    const defaultDays = AUDIT_LOG_RETENTION_MS / (24 * 60 * 60 * 1000);
+    const days = Number(process.env.AUDIT_LOG_RETENTION_DAYS ?? defaultDays);
+    if (!Number.isFinite(days) || days <= 0) {
+      return 0;
+    }
+    const cutoff = Date.now() - days * 24 * 60 * 60 * 1000;
     const rows = await ctx.db
       .query("auditLog")
       .withIndex("by_at", (q) => q.lt("at", cutoff))

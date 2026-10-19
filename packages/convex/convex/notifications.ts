@@ -183,6 +183,8 @@ const UNREAD_SCAN_PAGES = 2;
 /** Extra tail pages shared by the whole call, so a pathological run of the
  * viewer's own messages cannot push the query past Convex's read limit. */
 const UNREAD_EXTRA_PAGE_BUDGET = 20;
+/** Channels examined per call; keeps the aggregate read/byte budget bounded. */
+const UNREAD_CHANNEL_LIMIT = 200;
 
 /**
  * Live unread + mention totals for the caller across their joined channels.
@@ -201,7 +203,7 @@ export const unreadSummary = query({
     const memberships = await ctx.db
       .query("channelMembers")
       .withIndex("by_user", (q) => q.eq("userId", userId))
-      .collect();
+      .take(UNREAD_CHANNEL_LIMIT);
 
     let total = 0;
     let mentions = 0;
@@ -473,28 +475,42 @@ export const dispatchForMessage = internalAction({
     if (recipients.length === 0) {
       return { sent: 0, skipped: "no-message" };
     }
-    let sent = 0;
-    if (vapid !== null) {
+    const web = (async () => {
+      if (vapid === null) {
+        return 0;
+      }
+      let webSent = 0;
       const subscriptions = await ctx.runQuery(internal.notifications.deviceSubscriptions, {
         userIds: recipients,
       });
       for (const { subscription } of subscriptions) {
         const result = await sendWebPush(subscription, vapid);
         if (result.ok) {
-          sent += 1;
+          webSent += 1;
         }
       }
-    }
-    if (relay !== null) {
+      return webSent;
+    })();
+    const mobile = (async () => {
+      if (relay === null) {
+        return 0;
+      }
       // Hand off the already-resolved recipients so the mobile path never
       // re-resolves them.
-      const mobile = await ctx.runAction(internal.notifications.dispatchMobileForMessage, {
+      const result = await ctx.runAction(internal.notifications.dispatchMobileForMessage, {
         messageId: args.messageId,
         recipients,
       });
-      sent += mobile.sent;
-    }
-    return { sent };
+      return result.sent;
+    })();
+    // Independent paths: a slow or failing web-push loop must not starve the
+    // mobile wakeup (and vice versa).
+    const [webResult, mobileResult] = await Promise.allSettled([web, mobile]);
+    return {
+      sent:
+        (webResult.status === "fulfilled" ? webResult.value : 0) +
+        (mobileResult.status === "fulfilled" ? mobileResult.value : 0),
+    };
   },
 });
 
