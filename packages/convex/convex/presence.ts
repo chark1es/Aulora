@@ -15,6 +15,14 @@ export const PRESENCE_IDLE_MS = 60_000;
 export const PRESENCE_OFFLINE_MS = 150_000;
 /** Presence rows examined per sweep invocation before rescheduling. */
 const PRESENCE_SWEEP_BATCH = 500;
+/** Presence rows deleted per prune run before rescheduling. */
+const PRESENCE_PRUNE_BATCH = 500;
+/**
+ * Presence rows not heartbeated within this window are dropped outright. The
+ * staleness sweep already marks them offline long before this; the prune only
+ * reclaims storage for members who are gone.
+ */
+export const PRESENCE_RETENTION_MS = 30 * 24 * 60 * 60 * 1000;
 
 const presenceStatusValidator = v.union(
   v.literal("online"),
@@ -235,5 +243,30 @@ export const sweepStale = internalMutation({
       });
     }
     return changed;
+  },
+});
+
+/**
+ * Cron hook: deletes presence rows last heartbeated longer than
+ * {@link PRESENCE_RETENTION_MS} ago, reclaiming storage for members who left.
+ * Reads only rows past the cutoff via `by_lastHeartbeat` and reschedules while
+ * a batch is full. Rows inside the retention window (including any a user could
+ * still be sending heartbeats for) are never deleted.
+ */
+export const pruneStalePresence = internalMutation({
+  args: {},
+  handler: async (ctx) => {
+    const cutoff = Date.now() - PRESENCE_RETENTION_MS;
+    const rows = await ctx.db
+      .query("presence")
+      .withIndex("by_lastHeartbeat", (q) => q.lt("lastHeartbeat", cutoff))
+      .take(PRESENCE_PRUNE_BATCH);
+    for (const row of rows) {
+      await ctx.db.delete(row._id);
+    }
+    if (rows.length === PRESENCE_PRUNE_BATCH) {
+      await ctx.scheduler.runAfter(0, internal.presence.pruneStalePresence, {});
+    }
+    return rows.length;
   },
 });

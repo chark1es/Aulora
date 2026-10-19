@@ -24,6 +24,11 @@ crons.interval("rate limit prune", { hours: 1 }, internal.rateLimits.pruneRateLi
 // Six-month audit-log retention; drops only rows past the window.
 crons.cron("audit log prune", "0 4 * * *", internal.auditLog.pruneAuditLog, {});
 
+// Reclaims storage for presence rows and device installs that have been gone
+// well past any activity window; never touches rows inside retention.
+crons.cron("stale presence prune", "30 4 * * *", internal.presence.pruneStalePresence, {});
+crons.cron("stale device prune", "45 4 * * *", internal.devices.pruneStaleDevices, {});
+
 // Records the nightly backup intent at 03:00 UTC. The outside backup runner
 // (`infra/docker/backup`) performs the actual export + dump + upload.
 crons.cron("nightly backup", "0 3 * * *", internal.backups.nightly, {});

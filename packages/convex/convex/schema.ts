@@ -500,7 +500,10 @@ export default defineSchema({
     platform: v.string(),
     pushToken: v.optional(v.string()),
     lastSeen: v.number(),
-  }).index("by_user", ["userId"]),
+  })
+    .index("by_user", ["userId"])
+    // The retention prune reads only installs unseen past the cutoff.
+    .index("by_lastSeen", ["lastSeen"]),
 
   presence: defineTable({
     userId: v.string(),
