@@ -9,7 +9,10 @@ import { loadPermissionContext, type PermissionContext } from "./lib/permissions
 /**
  * Counts plaintext `mentionUserIds` strictly after the read cursor, ignoring
  * deleted messages. The mention text itself stays encrypted; only the id list
- * is visible to the server by design.
+ * is visible to the server by design. The tail is read as a `by_channel_created`
+ * index range starting after the cursor's `_creationTime` and truncated at
+ * {@link MENTION_SCAN_LIMIT}, so the count saturates instead of collecting the
+ * whole channel history.
  */
 async function countMentionsAfter(
   ctx: Parameters<typeof requireChannelAccess>[0],
@@ -17,19 +20,27 @@ async function countMentionsAfter(
   userId: string,
   lastReadMessageId: string | undefined,
 ): Promise<number> {
+  let cursorAt: number | null = null;
+  if (lastReadMessageId !== undefined) {
+    const cursor = await ctx.db.get(lastReadMessageId as Id<"messages">);
+    // A cursor that no longer resolves in this channel reads as fully read,
+    // matching the previous positional `findIndex === -1` behaviour.
+    if (cursor === null || cursor.channelId !== channelId) {
+      return 0;
+    }
+    cursorAt = cursor._creationTime;
+  }
   const messages = await ctx.db
     .query("messages")
-    .withIndex("by_channel_created", (q) => q.eq("channelId", channelId))
-    .collect();
-  let start = messages.length;
-  if (lastReadMessageId !== undefined) {
-    const index = messages.findIndex((message) => message._id === lastReadMessageId);
-    start = index === -1 ? messages.length : index + 1;
-  }
-  return messages
-    .slice(start)
-    .filter((message) => message.deletedAt === undefined && message.mentionUserIds.includes(userId))
-    .length;
+    .withIndex("by_channel_created", (q) =>
+      cursorAt === null
+        ? q.eq("channelId", channelId)
+        : q.eq("channelId", channelId).gt("_creationTime", cursorAt),
+    )
+    .take(MENTION_SCAN_LIMIT);
+  return messages.filter(
+    (message) => message.deletedAt === undefined && message.mentionUserIds.includes(userId),
+  ).length;
 }
 
 /** Moves the read cursor for a channel and recomputes the mention count. */
