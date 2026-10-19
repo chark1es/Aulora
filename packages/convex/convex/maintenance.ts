@@ -1,5 +1,6 @@
 import { v } from "convex/values";
 import { internal } from "./_generated/api";
+import type { Doc } from "./_generated/dataModel";
 import { internalMutation, type MutationCtx } from "./_generated/server";
 import { DEFAULT_INSTANCE_SETTINGS } from "./lib/instance";
 import { syncMemberRoles } from "./lib/memberRoles";
@@ -112,6 +113,54 @@ export const backfillMemberRoles = internalMutation({
   },
 });
 
+/** Seeds the participation rows implied by one message (reply or root). */
+async function seedThreadParticipants(ctx: MutationCtx, message: Doc<"messages">): Promise<void> {
+  // A reply records its author and anyone it mentions against the root. The
+  // root's `replyParticipantIds` is capped, so it cannot replace this.
+  if (message.threadRootId !== undefined) {
+    await upsertThreadParticipant(ctx, {
+      userId: message.authorId,
+      threadRootId: message.threadRootId,
+      channelId: message.channelId,
+      at: message._creationTime,
+      mentioned: false,
+      participated: true,
+    });
+    for (const userId of message.mentionUserIds) {
+      await upsertThreadParticipant(ctx, {
+        userId,
+        threadRootId: message.threadRootId,
+        channelId: message.channelId,
+        at: message._creationTime,
+        mentioned: true,
+        participated: false,
+      });
+    }
+    return;
+  }
+  const at = message.lastReplyAt ?? message._creationTime;
+  for (const userId of message.replyParticipantIds ?? []) {
+    await upsertThreadParticipant(ctx, {
+      userId,
+      threadRootId: message._id,
+      channelId: message.channelId,
+      at,
+      mentioned: false,
+      participated: true,
+    });
+  }
+  for (const userId of message.mentionUserIds) {
+    await upsertThreadParticipant(ctx, {
+      userId,
+      threadRootId: message._id,
+      channelId: message.channelId,
+      at: message._creationTime,
+      mentioned: true,
+      participated: false,
+    });
+  }
+}
+
 /**
  * Idempotent migration: seeds `threadParticipants` from existing threads —
  * each reply's author and mentions, plus each root's recent repliers and own
@@ -126,50 +175,7 @@ export const backfillThreadParticipants = internalMutation({
       .query("messages")
       .paginate({ numItems: THREAD_PARTICIPANT_BACKFILL_BATCH, cursor: args.cursor ?? null });
     for (const message of page.page) {
-      // A reply records its author and anyone it mentions against the root.
-      // The root's `replyParticipantIds` is capped, so it cannot replace this.
-      if (message.threadRootId !== undefined) {
-        await upsertThreadParticipant(ctx, {
-          userId: message.authorId,
-          threadRootId: message.threadRootId,
-          channelId: message.channelId,
-          at: message._creationTime,
-          mentioned: false,
-          participated: true,
-        });
-        for (const userId of message.mentionUserIds) {
-          await upsertThreadParticipant(ctx, {
-            userId,
-            threadRootId: message.threadRootId,
-            channelId: message.channelId,
-            at: message._creationTime,
-            mentioned: true,
-            participated: false,
-          });
-        }
-        continue;
-      }
-      const at = message.lastReplyAt ?? message._creationTime;
-      for (const userId of message.replyParticipantIds ?? []) {
-        await upsertThreadParticipant(ctx, {
-          userId,
-          threadRootId: message._id,
-          channelId: message.channelId,
-          at,
-          mentioned: false,
-          participated: true,
-        });
-      }
-      for (const userId of message.mentionUserIds) {
-        await upsertThreadParticipant(ctx, {
-          userId,
-          threadRootId: message._id,
-          channelId: message.channelId,
-          at: message._creationTime,
-          mentioned: true,
-          participated: false,
-        });
-      }
+      await seedThreadParticipants(ctx, message);
     }
     if (!page.isDone) {
       await ctx.scheduler.runAfter(0, internal.maintenance.backfillThreadParticipants, {

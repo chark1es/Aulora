@@ -599,3 +599,11 @@ Remaining documented tradeoffs after this round:
   500 most recent participation rows before ordering by thread activity; a very
   heavy participant can still displace an older-but-recently-active thread.
   Maintaining per-thread activity on the participation row is the follow-up.
+
+A fourth Codex pass found that the first reference check used `.first()` (which
+could return the newly inserted row and miss a concurrent second reference) and
+ran separately from the delete. It is now a single `reclaimUploadSource`
+mutation that takes two rows per index and deletes only when nothing else
+references the blob. A fifth confirmation run was started but the Codex
+provider hit its usage limit, so the final state is covered by the typechecks,
+the 593 backend tests and the reasoning above rather than a fifth review.

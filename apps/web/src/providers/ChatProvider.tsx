@@ -67,6 +67,7 @@ export interface ChatContextValue {
    * Opens a channel's live stream and records it with the provider, so it is
    * released when the reader switches away instead of accumulating.
    */
+  // eslint-disable-next-line no-unused-vars -- parameter name documents the contract
   openChannel: (_channel: ChannelView) => Promise<void>;
   readonly presence: readonly PresenceRow[];
   readonly channels: readonly ChannelView[];
