@@ -12,7 +12,7 @@ target's checks were run after every commit, and the whole repo was run through
 | # | Finding | Status | Commit |
 | --- | --- | --- | --- |
 | 1 | M6 — server thumbnail variant (web + mobile + backend) | **landed** | `ab8df76` |
-| 2 | P1 — desktop stops embedding on-demand ML effect assets | **landed (smaller safe win; effects tradeoff documented)** | `99b452d` |
+| 2 | P1 — desktop stops embedding the duplicated legal notices | **landed (legal-only dedup; ML-appetite deferred)** | `99b452d`, reverted to legal-only in `95e586e` |
 | 3 | P17 — push relay token/connection reuse + request bounds | **landed** | `673873b` |
 | 4 | P11 — docs prefer a static release manifest over the GitHub API | **landed** | `e33a076` |
 | 5 | P13 — `@aulora/core` subpath exports | **partial (subpaths added; one consumer migrated)** | `8022001` |
@@ -67,40 +67,35 @@ Measured before/after (where measurable):
   carries the thumbnail URL and omits it when absent; web asserts the inline
   `<img>` uses the server thumbnail without downloading the original.
 
-## 2. P1 — desktop embed (`99b452d`)
+## 2. P1 — desktop embed (`99b452d`, corrected in `95e586e`)
 
 - **Files:** `apps/desktop/scripts/prepare-frontend.mjs` (new),
   `prepare-frontend.test.mjs` (new), `verify-config.mjs`, `package.json`,
   `src-tauri/tauri.conf.json`, `apps/web/biome.json`, `.gitignore`.
-- **Before:** `frontendDist` was `../../web/dist` (17 MB), of which 13.4 MB is
-  MediaPipe/RNNoise wasm + the selfie `.tflite` model used only for background
-  effects/noise suppression, plus a 1.4 MB duplicate of the `legal/` notices the
-  Tauri bundle already ships as resources.
-- **What:** `prepare-frontend.mjs` copies `apps/web/dist` to
-  `apps/web/dist-desktop`, skipping `assets/vision_wasm_*`,
-  `assets/vision_bundle-*`, `assets/selfie_segmenter_*`,
-  `assets/rnnoise-*`/`assets/rnnoise_*` and `legal/`. `frontendDist` points at
-  `dist-desktop`; `beforeBuildCommand` builds the web bundle then runs the
-  filtered copy. Measured embed: **17 MB → 2.3 MB (14.8 MB smaller)**.
-- **Guardrails:** `verify-config.mjs` checks the `dist-desktop` target, the two
-  build commands and that the prepare script still excludes each asset family;
-  `prepare-frontend.test.mjs` covers the exclusion predicate and the copy.
-- **Tradeoff (the pre-authorized smaller safe win):** the desktop build no
-  longer carries the call-effect assets, so background blur/segmentation and the
-  RNNoise denoiser degrade gracefully (the mic pipeline still works, video still
-  connects) instead of running. Serving them from the workspace origin — the
-  primary P1 idea — is **not** safe under the current shell policy: the effect
-  JS (the MediaPipe wasm loader and the RNNoise/noise-gate worklet modules) is
-  loaded as script/worker code, and the no-remote-code CSP
-  (`script-src 'self' 'wasm-unsafe-eval'`, no `worker-src`) forbids loading it
-  cross-origin. `connect-src https:` only helps the wasm/module **fetches**.
-  Making online effects work again needs a deliberate CSP relaxation
-  (`script-src`/`worker-src` for the workspace origin) and a version-matched
-  asset path, or shipping the assets again. Documented as follow-up.
-- **Verification:** `bun run --cwd apps/web build`, `bun run --cwd apps/desktop
-  lint`, `bun run --cwd apps/desktop verify`, `bun test apps/desktop/scripts/*.test.mjs`
-  all green. The Rust/Tauri binary cannot be compiled here (no toolchain); CI
-  `tauri build` remains the final authority for the config change.
+- **What landed:** `prepare-frontend.mjs` copies `apps/web/dist` to
+  `apps/web/dist-desktop` without the duplicated `legal/` notices (the Tauri
+  bundle already ships them as resources at `bundle.resources.legal`);
+  `frontendDist` points at `dist-desktop`. Measured embed: **17 MB → 15.2 MB
+  (1.4 MB smaller)**.
+- **What was deliberately reverted (`95e586e`):** the first pass also stripped
+  the call-effect assets (`vision_wasm_*`, `vision_bundle-*`,
+  `selfie_segmenter_*`, `rnnoise-*`) for a 14.8 MB saving. That turned out to be
+  a **functional regression**, not just an offline tradeoff: under the shell's
+  no-remote-code CSP (`script-src 'self' 'wasm-unsafe-eval'`, no `worker-src`)
+  the MediaPipe wasm loader and RNNoise modules are script/worker code and
+  cannot be loaded from the workspace origin, so background blur/segmentation
+  and the denoiser were silently disabled. Per the "do not degrade UX" rule the
+  effect assets are kept; `verify-config.mjs` now asserts they are *not*
+  excluded, and the test locks that in.
+- **Follow-up for the 13.6 MB win:** either (a) deliberately relax the shell CSP
+  (`script-src`/`worker-src` for the workspace origin, plus a version-matched
+  asset path), or (b) download the effect assets once into the app's local data
+  directory and load them from a `'self'` custom-protocol path in Rust. Both need
+  a security decision; neither is verified by the local toolchain (no Rust).
+- **Verification:** `bun run --cwd apps/web build`, desktop lint, `verify`, and
+  `bun test apps/desktop/scripts/*.test.mjs` all green. The Rust/Tauri binary
+  cannot be compiled here (no toolchain); CI `tauri build` remains the final
+  authority for the config change.
 
 ## 3. P17 — push relay efficiency (`673873b`)
 
