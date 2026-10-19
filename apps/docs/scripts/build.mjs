@@ -7,10 +7,20 @@
 // Blobatar build the clients use, so the site always matches the app. Pages are
 // declared in order below so the nav is stable.
 
-import { cpSync, existsSync, mkdirSync, readFileSync, rmSync, writeFileSync } from "node:fs";
+import {
+  cpSync,
+  existsSync,
+  mkdirSync,
+  readFileSync,
+  readdirSync,
+  rmSync,
+  statSync,
+  writeFileSync,
+} from "node:fs";
 import { createRequire } from "node:module";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
+import { gzipSync } from "node:zlib";
 import { readEnvCatalog } from "../lib/env-catalog.mjs";
 import { ENV_REFERENCE_PAGE, renderEnvReference } from "../lib/env-reference.mjs";
 import { EXTRA_ENV_VARS, EXTRA_GROUPS } from "../lib/env-reference-extras.mjs";
@@ -425,6 +435,29 @@ for (const file of ["LICENSE", "NOTICE", "COMMERCIAL.md", "CLA.md", "THIRD_PARTY
     );
   }
 }
+// Precompress text assets so a host can serve `.gz` with `gzip_static` without
+// compressing per request. Deterministic: a sorted walk, level 9, and an
+// existing `.gz` is left as-is. Files under 1 KB are not worth the sibling.
+const TEXT_ASSET = /\.(?:html|js|css|json|svg)$/;
+const GZIP_MIN_BYTES = 1024;
+
+function precompress(directory) {
+  for (const name of readdirSync(directory).sort()) {
+    const path = join(directory, name);
+    if (statSync(path).isDirectory()) {
+      precompress(path);
+      continue;
+    }
+    if (!TEXT_ASSET.test(name)) continue;
+    const contents = readFileSync(path);
+    if (contents.byteLength < GZIP_MIN_BYTES) continue;
+    const target = `${path}.gz`;
+    if (!existsSync(target)) writeFileSync(target, gzipSync(contents, { level: 9 }));
+  }
+}
+
+precompress(outDir);
+
 process.stdout.write(
   `docs: wrote ${LANDING_PAGES.length} marketing pages and ${PAGES.length} docs pages to ${outDir}\n`,
 );
