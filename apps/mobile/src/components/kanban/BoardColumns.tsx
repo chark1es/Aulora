@@ -38,7 +38,7 @@ interface StripProps {
 
 /** Column names with their counts; tapping one brings that column into view. */
 function ColumnStrip({ ctl, board, active, onShow }: StripProps) {
-  const strip = useRef<ScrollViewInstance | null>(null);
+  const strip = useRef<ScrollViewInstance>(null);
   const offsets = useRef(new Map<number, number>());
   // Keeps the highlighted column name in view as the board is swiped.
   useEffect(() => {
@@ -97,7 +97,7 @@ export function BoardColumns({
   readonly ctl: BoardController;
   readonly board: Board;
 }) {
-  const pager = useRef<ScrollViewInstance | null>(null);
+  const pager = useRef<ScrollViewInstance>(null);
   const [active, setActive] = useState(0);
   const now = useNow(false);
   const { wide, columnWidth, interval } = useColumnWidth(board.columns.length);

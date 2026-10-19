@@ -69,7 +69,7 @@ export interface BoardColumnProps {
 /** One column: its cards in order, and the composer for a new one. */
 export function BoardColumn(props: BoardColumnProps) {
   const { ctl, board, column } = props;
-  const list = useRef<ScrollViewInstance | null>(null);
+  const list = useRef<ScrollViewInstance>(null);
   const cards = cardsInColumn(ctl.filtered, column.id);
   const full = isColumnFull(column, ctl.cards ?? []);
   const composing = ctl.composing === column.id;

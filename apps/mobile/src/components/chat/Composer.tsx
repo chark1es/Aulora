@@ -94,7 +94,7 @@ export function Composer(props: ComposerProps) {
   const [files, setFiles] = useState<readonly { key: string; file: PickedFile }[]>([]);
   const [menuOpen, setMenuOpen] = useState(false);
   const [busy, setBusy] = useState(false);
-  const inputRef = useRef<TextInputInstance | null>(null);
+  const inputRef = useRef<TextInputInstance>(null);
   const fileSeq = useRef(0);
 
   // Latest callbacks, so the throttle instance below can be created once.
