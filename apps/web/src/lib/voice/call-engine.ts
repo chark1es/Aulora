@@ -374,10 +374,22 @@ export class VoiceEngine {
     if (this.micStream === null) {
       return;
     }
+    // Track the last value pushed into the shared context so a level that only
+    // jitters within a whole percent does not re-render every voice consumer
+    // (the whole chat tree) on every meter tick.
+    let emittedLevel = -1;
+    let emittedSpeaking = false;
     this.levelUnsub = createLevelMeter(this.micStream, (level) => {
-      this.micLevel = level;
+      const quantized = Math.round(level * 100) / 100;
       const transmitting = !this.local.muted && (!this.pushToTalk || this.talking);
-      this.localSpeaking = transmitting && (this.localSpeaking ? level > 0.035 : level > 0.08);
+      const speaking = transmitting && (this.localSpeaking ? level > 0.035 : level > 0.08);
+      this.micLevel = quantized;
+      this.localSpeaking = speaking;
+      if (quantized === emittedLevel && speaking === emittedSpeaking) {
+        return;
+      }
+      emittedLevel = quantized;
+      emittedSpeaking = speaking;
       this.emit();
     });
   }

@@ -154,9 +154,10 @@ export function createOutputGain(stream: MediaStream, volume: number): OutputGai
   };
 }
 
-const METER_INTERVAL_MS = 33;
-/** Per-tick fall-off, chosen so the level decays at the same rate as the old 60 Hz loop. */
-const METER_DECAY = 0.72;
+/** How often the level meter samples the analyser. ~10 Hz is plenty for a bar. */
+const METER_INTERVAL_MS = 100;
+/** Per-tick fall-off, retuned so the level decays at the same rate as the old 33 ms loop. */
+const METER_DECAY = 0.37;
 
 /** Live microphone level, 0..1, with a fast attack and a slow decay. */
 export function createLevelMeter(
