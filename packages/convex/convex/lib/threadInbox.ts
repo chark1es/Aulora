@@ -26,8 +26,18 @@ export interface ThreadInboxRow {
   readonly viewerMentioned: boolean;
 }
 
-/** Newest messages scanned when assembling the inbox (no new index). */
-const THREAD_INBOX_SCAN_LIMIT = 1000;
+/**
+ * The viewer's most recent `threadParticipants` rows examined, newest first.
+ * Bounds how many thread roots are loaded; the previous implementation scanned
+ * a fixed 1000-message global window instead.
+ */
+const THREAD_INBOX_CANDIDATE_LIMIT = 200;
+/**
+ * Replies scanned per returned thread when reconstructing reply-derived fields
+ * (`participantIds`, `mentionedUserIds`, reply counts). Bounds the per-thread
+ * read; the root's maintained `replyCount`/`lastReplyAt` stay authoritative.
+ */
+const THREAD_INBOX_REPLY_LIMIT = 200;
 /** Maximum threads returned, most recently active first. */
 const THREAD_INBOX_MAX_ROWS = 50;
 
@@ -76,52 +86,28 @@ interface ThreadAccumulator {
   maxReplyAt: number;
 }
 
-/** Groups recent replies by their thread root, collecting authors and mentions. */
-function accumulateThreads(
-  recent: readonly Doc<"messages">[],
-): Map<Id<"messages">, ThreadAccumulator> {
-  const byRoot = new Map<Id<"messages">, ThreadAccumulator>();
-  for (const message of recent) {
-    const rootId = message.threadRootId;
-    if (rootId === undefined) {
-      continue;
-    }
-    const accumulator =
-      byRoot.get(rootId) ??
-      ({
-        participantIds: new Set<string>(),
-        mentionedUserIds: new Set<string>(),
-        replyCount: 0,
-        maxReplyAt: 0,
-      } satisfies ThreadAccumulator);
+/** Collects reply authors and mentions for one thread's scanned replies. */
+function accumulateReplies(replies: readonly Doc<"messages">[]): ThreadAccumulator {
+  const accumulator: ThreadAccumulator = {
+    participantIds: new Set<string>(),
+    mentionedUserIds: new Set<string>(),
+    replyCount: 0,
+    maxReplyAt: 0,
+  };
+  for (const message of replies) {
     accumulator.participantIds.add(message.authorId);
     for (const mentioned of message.mentionUserIds) {
       accumulator.mentionedUserIds.add(mentioned);
     }
     accumulator.replyCount += 1;
     accumulator.maxReplyAt = Math.max(accumulator.maxReplyAt, message._creationTime);
-    byRoot.set(rootId, accumulator);
   }
-  return byRoot;
+  return accumulator;
 }
 
-async function loadRoots(
-  ctx: QueryCtx,
-  byRoot: Map<Id<"messages">, ThreadAccumulator>,
-): Promise<Map<Id<"messages">, Doc<"messages">>> {
-  const rootEntries = await Promise.all(
-    [...byRoot.keys()].map(async (rootId) => {
-      const root = await ctx.db.get(rootId);
-      return root === null ? null : { rootId, root };
-    }),
-  );
-  const rootById = new Map<Id<"messages">, Doc<"messages">>();
-  for (const entry of rootEntries) {
-    if (entry !== null) {
-      rootById.set(entry.rootId, entry.root);
-    }
-  }
-  return rootById;
+/** The thread's most recent activity, for ordering the inbox. */
+function activityAt(root: Doc<"messages">): number {
+  return root.lastReplyAt ?? root._creationTime;
 }
 
 /** Builds an inbox row for a root, or `null` when the viewer has no stake in it. */
@@ -160,28 +146,52 @@ function threadCandidate(
  * any reply counts). Participation is reply-only — authoring the root alone does
  * not add the viewer. Bodies are opened server-side so the client always
  * receives plaintext, never ciphertext.
+ *
+ * Candidate threads come from the viewer's `threadParticipants` rows, so the
+ * read scales with the viewer's participation rather than the whole `messages`
+ * table. Reply-derived fields are reconstructed only for the threads we return,
+ * each bounded by {@link THREAD_INBOX_REPLY_LIMIT}.
  */
 export async function loadThreadInbox(ctx: QueryCtx, userId: string): Promise<ThreadInboxRow[]> {
-  const recent = await ctx.db.query("messages").order("desc").take(THREAD_INBOX_SCAN_LIMIT);
+  const participations = await ctx.db
+    .query("threadParticipants")
+    .withIndex("by_user", (q) => q.eq("userId", userId))
+    .order("desc")
+    .take(THREAD_INBOX_CANDIDATE_LIMIT);
 
-  const byRoot = accumulateThreads(recent);
-  const rootById = await loadRoots(ctx, byRoot);
+  // One participation row per (viewer, thread); keep the newest.
+  const rootIds = new Set<Id<"messages">>();
+  for (const row of participations) {
+    rootIds.add(row.threadRootId);
+  }
+  const rootEntries = await Promise.all(
+    [...rootIds].map(async (rootId) => {
+      const root = await ctx.db.get(rootId);
+      return root === null ? null : root;
+    }),
+  );
+  const roots = rootEntries.filter((root): root is Doc<"messages"> => root !== null);
+
   const viewable = await viewableChannelIds(
     ctx,
     userId,
-    [...rootById.values()].map((root) => root.channelId),
+    roots.map((root) => root.channelId),
   );
 
+  // Order by activity before reconstructing reply-derived fields, so replies are
+  // scanned only for the threads that can make the response.
+  const ordered = roots
+    .filter((root) => viewable.has(root.channelId))
+    .sort((a, b) => activityAt(b) - activityAt(a))
+    .slice(0, THREAD_INBOX_MAX_ROWS);
+
   const candidates: Omit<ThreadInboxRow, "body">[] = [];
-  for (const [rootId, root] of rootById) {
-    if (!viewable.has(root.channelId)) {
-      continue;
-    }
-    const accumulator = byRoot.get(rootId);
-    if (accumulator === undefined) {
-      continue;
-    }
-    const candidate = threadCandidate(rootId, root, accumulator, userId);
+  for (const root of ordered) {
+    const replies = await ctx.db
+      .query("messages")
+      .withIndex("by_thread", (q) => q.eq("threadRootId", root._id))
+      .take(THREAD_INBOX_REPLY_LIMIT);
+    const candidate = threadCandidate(root._id, root, accumulateReplies(replies), userId);
     if (candidate !== null) {
       candidates.push(candidate);
     }
@@ -190,6 +200,7 @@ export async function loadThreadInbox(ctx: QueryCtx, userId: string): Promise<Th
   candidates.sort((a, b) => (b.lastReplyAt ?? b.createdAt) - (a.lastReplyAt ?? a.createdAt));
 
   const top = candidates.slice(0, THREAD_INBOX_MAX_ROWS);
+  const rootById = new Map(roots.map((root) => [root._id, root]));
   return await Promise.all(
     top.map(async (row) => {
       const root = rootById.get(row.id);

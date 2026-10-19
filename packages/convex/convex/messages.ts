@@ -520,9 +520,9 @@ export type { ThreadInboxRow } from "./lib/threadInbox";
  * root or any reply counts). Participation is reply-only — authoring the root
  * alone does not add the viewer.
  *
- * Without a dedicated per-user index this scans the newest `messages` and groups
- * replies by `threadRootId`, which fits small workspaces. Bodies are opened
- * server-side so the client always receives plaintext, never ciphertext.
+ * Reads the viewer's `threadParticipants` rows (bounded, newest first) rather
+ * than scanning the newest `messages` globally; bodies are opened server-side so
+ * the client always receives plaintext, never ciphertext.
  */
 export const threadInbox = query({
   args: {},
