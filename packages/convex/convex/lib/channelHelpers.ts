@@ -11,6 +11,7 @@ import type { Doc, Id } from "../_generated/dataModel";
 import type { MutationCtx } from "../_generated/server";
 import type { requireChannelAccess } from "./channels";
 import { addChannelMember, computeDmKey } from "./channels";
+import { adjustInstanceCounters } from "./instance";
 import { categoryOverridesFor } from "./permissions";
 import { openContentOptional } from "./sealed";
 import type { Nullable } from "./types";
@@ -361,6 +362,7 @@ export async function createDmChannel(
     archived: false,
     dmKey,
   });
+  await adjustInstanceCounters(ctx, { channels: 1 });
   const now = Date.now();
   for (const memberId of memberIds) {
     await addChannelMember(ctx, channelId, memberId, now);

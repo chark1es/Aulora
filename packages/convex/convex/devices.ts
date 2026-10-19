@@ -3,6 +3,7 @@ import { internal } from "./_generated/api";
 import type { Id } from "./_generated/dataModel";
 import { internalMutation, mutation, query } from "./_generated/server";
 import { requireAuth } from "./lib/auth";
+import { adjustInstanceCounters } from "./lib/instance";
 
 /** Devices deleted per prune run before rescheduling. */
 const DEVICE_PRUNE_BATCH = 500;
@@ -53,6 +54,7 @@ export const upsert = mutation({
       lastSeen: now,
       ...(pushToken !== undefined ? { pushToken } : {}),
     });
+    await adjustInstanceCounters(ctx, { devices: 1 });
     return { deviceId };
   },
 });
@@ -96,6 +98,7 @@ export const revoke = mutation({
     const { userId } = await requireAuth(ctx);
     await requireOwnedDevice(ctx, args.deviceId, userId);
     await ctx.db.delete(args.deviceId);
+    await adjustInstanceCounters(ctx, { devices: -1 });
     return null;
   },
 });
@@ -117,6 +120,7 @@ export const pruneStaleDevices = internalMutation({
     for (const row of rows) {
       await ctx.db.delete(row._id);
     }
+    await adjustInstanceCounters(ctx, { devices: -rows.length });
     if (rows.length === DEVICE_PRUNE_BATCH) {
       await ctx.scheduler.runAfter(0, internal.devices.pruneStaleDevices, {});
     }

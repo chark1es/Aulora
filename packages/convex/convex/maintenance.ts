@@ -1,6 +1,7 @@
 import { v } from "convex/values";
 import { internal } from "./_generated/api";
 import { internalMutation } from "./_generated/server";
+import { DEFAULT_INSTANCE_SETTINGS } from "./lib/instance";
 import { syncMemberRoles } from "./lib/memberRoles";
 import { upsertThreadParticipant } from "./lib/threadParticipants";
 
@@ -10,6 +11,8 @@ const MEMBER_BACKFILL_BATCH = 500;
 const MEMBER_ROLE_BACKFILL_BATCH = 200;
 /** Messages scanned per thread-participant backfill page. */
 const THREAD_PARTICIPANT_BACKFILL_BATCH = 200;
+/** Rows counted per instance-counter backfill page. */
+const INSTANCE_COUNTER_BATCH = 200;
 
 /**
  * Idempotent migration: recount `members` and store the total on the singleton
@@ -110,6 +113,102 @@ export const backfillThreadParticipants = internalMutation({
     if (!page.isDone) {
       await ctx.scheduler.runAfter(0, internal.maintenance.backfillThreadParticipants, {
         cursor: page.continueCursor,
+      });
+    }
+    return null;
+  },
+});
+
+/**
+ * Idempotent migration: seeds the maintained instance counters the admin
+ * overview reads (`instanceSettings.fileCount`/`fileBytes`/`channelCount`/
+ * `deviceCount`) from the existing tables. Pages one table at a time (files →
+ * channels → devices) with a running total, rescheduling between pages, then
+ * writes the totals in a final page. Safe to re-run: it overwrites the counters
+ * with fresh totals, creating the singleton settings row with defaults when
+ * none exists.
+ */
+export const backfillInstanceCounters = internalMutation({
+  args: {
+    /** 0 = files, 1 = channels, 2 = devices. */
+    stage: v.optional(v.number()),
+    cursor: v.optional(v.union(v.string(), v.null())),
+    files: v.optional(v.number()),
+    fileBytes: v.optional(v.number()),
+    channels: v.optional(v.number()),
+    devices: v.optional(v.number()),
+  },
+  handler: async (ctx, args) => {
+    const stage = args.stage ?? 0;
+    const totals = {
+      files: args.files ?? 0,
+      fileBytes: args.fileBytes ?? 0,
+      channels: args.channels ?? 0,
+      devices: args.devices ?? 0,
+    };
+
+    if (stage === 0) {
+      const page = await ctx.db
+        .query("files")
+        .paginate({ numItems: INSTANCE_COUNTER_BATCH, cursor: args.cursor ?? null });
+      totals.files += page.page.length;
+      for (const file of page.page) {
+        totals.fileBytes += file.sizeBytes;
+      }
+      const next = page.isDone ? 1 : 0;
+      await ctx.scheduler.runAfter(0, internal.maintenance.backfillInstanceCounters, {
+        ...totals,
+        stage: next,
+        ...(page.isDone ? {} : { cursor: page.continueCursor }),
+      });
+      return null;
+    }
+
+    if (stage === 1) {
+      const page = await ctx.db
+        .query("channels")
+        .paginate({ numItems: INSTANCE_COUNTER_BATCH, cursor: args.cursor ?? null });
+      totals.channels += page.page.length;
+      const next = page.isDone ? 2 : 1;
+      await ctx.scheduler.runAfter(0, internal.maintenance.backfillInstanceCounters, {
+        ...totals,
+        stage: next,
+        ...(page.isDone ? {} : { cursor: page.continueCursor }),
+      });
+      return null;
+    }
+
+    const page = await ctx.db
+      .query("devices")
+      .paginate({ numItems: INSTANCE_COUNTER_BATCH, cursor: args.cursor ?? null });
+    totals.devices += page.page.length;
+    if (!page.isDone) {
+      await ctx.scheduler.runAfter(0, internal.maintenance.backfillInstanceCounters, {
+        ...totals,
+        stage: 2,
+        cursor: page.continueCursor,
+      });
+      return null;
+    }
+
+    const row = await ctx.db.query("instanceSettings").first();
+    if (row === null) {
+      await ctx.db.insert("instanceSettings", {
+        storageQuotaBytes: DEFAULT_INSTANCE_SETTINGS.storageQuotaBytes,
+        maxUploadBytes: DEFAULT_INSTANCE_SETTINGS.maxUploadBytes,
+        pushRelayEnabled: DEFAULT_INSTANCE_SETTINGS.pushRelayEnabled,
+        backupsEnabled: DEFAULT_INSTANCE_SETTINGS.backupsEnabled,
+        fileCount: totals.files,
+        fileBytes: totals.fileBytes,
+        channelCount: totals.channels,
+        deviceCount: totals.devices,
+      });
+    } else {
+      await ctx.db.patch(row._id, {
+        fileCount: totals.files,
+        fileBytes: totals.fileBytes,
+        channelCount: totals.channels,
+        deviceCount: totals.devices,
       });
     }
     return null;

@@ -9,7 +9,7 @@ import { assertMayParticipate, listActiveBans } from "./lib/bans";
 import { requireChannelAccessForUser, requireChannelAccessFromContext } from "./lib/channels";
 import { getEkmSettings } from "./lib/ekm";
 import { DOWNLOAD_TOKEN_TTL_MS, signDownloadToken, verifyDownloadToken } from "./lib/fileTokens";
-import { effectiveMaxUploadBytes } from "./lib/instance";
+import { adjustInstanceCounters, effectiveMaxUploadBytes } from "./lib/instance";
 import { requireBoardForUser, requireBoardForUserFromContext, writableBoard } from "./lib/kanban";
 import {
   loadPermissionContext,
@@ -119,7 +119,7 @@ export const insertFinalized = internalMutation({
       if (access.board.archived) throw new ConvexError("Restore the board before uploading files");
       await assertMayParticipate(ctx, args.uploaderId);
     }
-    return await ctx.db.insert("files", {
+    const fileId = await ctx.db.insert("files", {
       storageId: args.storageId,
       sealedStorageId: args.sealedStorageId,
       uploaderId: args.uploaderId,
@@ -136,6 +136,8 @@ export const insertFinalized = internalMutation({
       ...(args.channelId !== undefined ? { channelId: args.channelId } : {}),
       ...(args.kanbanBoardId !== undefined ? { kanbanBoardId: args.kanbanBoardId } : {}),
     });
+    await adjustInstanceCounters(ctx, { files: 1, fileBytes: args.sizeBytes });
+    return fileId;
   },
 });
 

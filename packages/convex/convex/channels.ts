@@ -30,6 +30,7 @@ import {
   requireChannelAccess,
   requireChannelMember,
 } from "./lib/channels";
+import { adjustInstanceCounters } from "./lib/instance";
 import { overwriteValidator, validateOverrides } from "./lib/overrides";
 import {
   categoryOverridesFor,
@@ -99,6 +100,7 @@ export const create = mutation({
       ...(args.private === true ? { private: true } : {}),
       ...(args.categoryId !== undefined ? { categoryId: args.categoryId } : {}),
     });
+    await adjustInstanceCounters(ctx, { channels: 1 });
     if (args.private === true) {
       await insertChannelMember(ctx, channelId, userId);
       for (const memberId of memberUserIds) {

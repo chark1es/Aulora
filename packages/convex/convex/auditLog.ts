@@ -41,8 +41,17 @@ export const list = query({
       }
     }
     const names = await accountNames(ctx, [...ids]);
-    const members = await ctx.db.query("members").collect();
-    const nicknameByUser = new Map(members.map((member) => [member.userId, member.nickname]));
+    // Resolve nicknames only for the ids on this page, not every member.
+    const nicknameByUser = new Map<string, string | undefined>();
+    for (const id of ids) {
+      const member = await ctx.db
+        .query("members")
+        .withIndex("by_user", (q) => q.eq("userId", id))
+        .unique();
+      if (member !== null) {
+        nicknameByUser.set(id, member.nickname);
+      }
+    }
 
     const resolveName = (id: string | undefined): string => {
       if (id === undefined) {

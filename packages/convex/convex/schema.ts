@@ -183,6 +183,17 @@ export default defineSchema({
         local: v.optional(v.boolean()),
       }),
     ),
+    /**
+     * Maintained row counts for the admin overview, kept in step with the
+     * relevant write paths (file finalize/delete, channel create, device
+     * upsert/revoke/prune). Optional so a workspace that predates them stays
+     * valid; an absent value means "not backfilled yet" and the overview falls
+     * back to a bounded scan. Seeded by `maintenance.backfillInstanceCounters`.
+     */
+    fileCount: v.optional(v.number()),
+    fileBytes: v.optional(v.number()),
+    channelCount: v.optional(v.number()),
+    deviceCount: v.optional(v.number()),
   }),
 
   /** Owner-managed mail transport. Secrets are server-sealed and never returned by public queries. */

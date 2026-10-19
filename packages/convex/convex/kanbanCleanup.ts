@@ -2,6 +2,7 @@ import { v } from "convex/values";
 import { internal } from "./_generated/api";
 import type { Id } from "./_generated/dataModel";
 import { internalMutation, type MutationCtx } from "./_generated/server";
+import { adjustInstanceCounters } from "./lib/instance";
 
 /** Removes what a deleted card or board leaves behind, a batch at a time. */
 
@@ -10,6 +11,7 @@ async function deleteFile(ctx: MutationCtx, id: Id<"files">) {
   if (!row) return;
   await ctx.storage.delete(row.storageId);
   await ctx.db.delete(row._id);
+  await adjustInstanceCounters(ctx, { files: -1, fileBytes: -row.sizeBytes });
 }
 export const cleanupCard = internalMutation({
   args: {
