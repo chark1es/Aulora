@@ -15,6 +15,7 @@ import { Platform } from "react-native";
 import { api } from "../../../../../packages/convex/convex/_generated/api";
 import { useIncomingCallNotification, useLocalNotifications } from "../../lib/notifications";
 import { presenceLabel, typingLabel } from "../../lib/presence";
+import { buildPresenceScope } from "../../lib/presence-scope";
 import { recentSearchKey } from "../../lib/search-ui";
 import { useChannelSession } from "../../lib/use-channel";
 import { usePushRegistration } from "../../lib/use-push-registration";
@@ -415,6 +416,49 @@ function channelSubtitleFor(
 
 export type ChatScreenConversation = ReturnType<typeof useChatScreenConversation>;
 
+/**
+ * Reports the bounded set of user ids whose presence the UI is rendering — the
+ * open timeline's authors, the members pane and DM partners in the list — to the
+ * runtime, which serves `presence.getMany` for exactly that set. Keeps the whole
+ * `presence` table off the wire and updates as the set changes.
+ */
+function useChatScreenPresenceScope(
+  session: ChatScreenSession,
+  ui: ChatScreenUiState,
+  conversation: ChatScreenConversation,
+) {
+  const { runtime, ownUserId, channels, members } = session;
+  const { pane, newMessageOpen } = ui;
+  const { sessionState, conversationMemberIds } = conversation;
+  const presenceScope = useMemo(
+    () =>
+      buildPresenceScope({
+        ownUserId,
+        timelineAuthorIds: sessionState.messages.map((message) => message.authorId),
+        displayedMemberIds: [
+          ...(conversationMemberIds ?? []),
+          // The members pane (right pane) and the new-conversation picker render
+          // the directory; only count it while it is actually on screen so a
+          // large workspace stays bounded while reading chat.
+          ...(pane === 2 || newMessageOpen ? members.map((member) => member.userId) : []),
+        ],
+        channels,
+      }),
+    [
+      ownUserId,
+      sessionState.messages,
+      conversationMemberIds,
+      pane,
+      newMessageOpen,
+      members,
+      channels,
+    ],
+  );
+  useEffect(() => {
+    runtime?.setPresenceScope?.(presenceScope);
+  }, [runtime, presenceScope]);
+}
+
 function useChatScreenMessages(
   session: ChatScreenSession,
   ui: ChatScreenUiState,
@@ -509,6 +553,10 @@ export function useChatScreenData({ onSignOut }: ChatScreenProps) {
   const list = useChatScreenChannelList(session, ui, mentions);
   const conversation = useChatScreenConversation(session, ui, mentions, list);
   const messages = useChatScreenMessages(session, ui, conversation);
+
+  // Presence is fetched only for the people on screen (bounded), not the whole
+  // workspace table; the scope is reported to the runtime on every change.
+  useChatScreenPresenceScope(session, ui, conversation);
 
   // The offline capture opens one thread; live surfaces never set this, and the
   // guard keeps closing the thread from reopening it.

@@ -17,7 +17,6 @@ import type {
   ChatPort,
   ChatSubscriptions,
   MessagePayload,
-  PresenceRow,
   ReactionRow,
   StoredFileView,
 } from "./port.js";
@@ -115,7 +114,6 @@ export class ChatSession {
   private readonly openChannels = new Map<string, OpenChannelState>();
   private readonly channelNames = new Map<string, string>();
   private channelSummaries: readonly ChannelSummary[] = [];
-  private latestPresence: readonly PresenceRow[] = [];
 
   private latestMessages: readonly MessagePayload[] = [];
   private readonly decrypted = new Map<string, string>();
@@ -148,8 +146,11 @@ export class ChatSession {
   }
 
   /**
-   * Starts the session: subscribes to the workspace channel list and presence.
-   * Idempotent; concurrent callers await the same work.
+   * Starts the session: subscribes to the workspace channel list so plaintext
+   * channel names are cached. Idempotent; concurrent callers await the same
+   * work. Presence is not subscribed here: the apps scope it (via a
+   * `presence.getMany` controller) to the users they render, and nothing reads
+   * `session.presence()`, so an aggregate subscription would only duplicate it.
    */
   start(): Promise<void> {
     if (this.started !== undefined) {
@@ -160,11 +161,6 @@ export class ChatSession {
         this.hydrateChannelNames(channels);
       }),
     );
-    this.startUnsubscribers.push(
-      this.subscriptions.watchPresence((presence) => {
-        this.latestPresence = presence;
-      }),
-    );
     this.started = Promise.resolve();
     return this.started;
   }
@@ -172,11 +168,6 @@ export class ChatSession {
   /** The latest channel summaries observed by {@link start}. */
   channels(): readonly ChannelSummary[] {
     return this.channelSummaries;
-  }
-
-  /** The latest presence rows observed by {@link start}. */
-  presence(): readonly PresenceRow[] {
-    return this.latestPresence;
   }
 
   /**

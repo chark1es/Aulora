@@ -2,7 +2,7 @@ import { type ChannelSummary, ChatSession, type MessagePayload } from "@aulora/c
 import type { ConvexReactClient } from "convex/react";
 import { api } from "../../../../packages/convex/convex/_generated/api";
 import type { ChatSurfaceRuntime } from "./chat-surface";
-import { convexPort, convexSubscriptions } from "./convex-chat";
+import { convexPort, convexSubscriptions, createScopedPresence } from "./convex-chat";
 import { devicePushPlatform } from "./push";
 
 /**
@@ -15,6 +15,12 @@ import { devicePushPlatform } from "./push";
  */
 export interface MobileChatRuntime extends ChatSurfaceRuntime {
   readonly client: ConvexReactClient;
+  /**
+   * Narrows the live presence subscription to the users the UI is rendering,
+   * backed by `presence.getMany` rather than the whole-table `presence.list`.
+   * De-duplicated and capped; safe to call on every scope change.
+   */
+  setPresenceScope?(userIds: readonly string[]): void;
 }
 
 export interface CreateMobileChatRuntimeOptions {
@@ -27,7 +33,13 @@ export async function createMobileChatRuntime(
   options: CreateMobileChatRuntimeOptions,
 ): Promise<MobileChatRuntime> {
   const port = convexPort(options.client);
-  const subscriptions = convexSubscriptions(options.client);
+  // Presence is scoped to what the UI renders; the session's aggregate
+  // `watchPresence` and the provider's subscription share this one controller.
+  const presence = createScopedPresence(options.client);
+  const subscriptions = {
+    ...convexSubscriptions(options.client),
+    watchPresence: presence.watch,
+  };
   const session = ChatSession.create({ port, subscriptions });
   await port.upsertDevice({ platform: options.platform ?? devicePushPlatform() });
   await session.start();
@@ -36,6 +48,7 @@ export async function createMobileChatRuntime(
     port,
     subscriptions,
     client: options.client,
+    setPresenceScope: presence.setScope,
     watchHistory(channelId, cursor, onChange) {
       const watch = options.client.watchQuery(api.messages.list, {
         channelId: channelId as never,

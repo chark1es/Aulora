@@ -212,12 +212,20 @@ export function ChatProvider({ client, userId, children }: ChatProviderProps) {
   useEffect(() => {
     const subs = convexSubscriptions(client);
     const offChannels = subs.watchChannels(setSummaries);
-    const offPresence = subs.watchPresence(setPresence);
     return () => {
       offChannels();
-      offPresence();
     };
   }, [client]);
+
+  // Presence is scoped to the people the UI renders, so it is served by the
+  // runtime's shared `presence.getMany` controller (the screen reports the
+  // scope); the whole-table `presence.list` is never requested.
+  useEffect(() => {
+    if (runtime === undefined) {
+      return;
+    }
+    return runtime.subscriptions.watchPresence(setPresence);
+  }, [runtime]);
 
   useEffect(() => {
     if (runtime === undefined) {
