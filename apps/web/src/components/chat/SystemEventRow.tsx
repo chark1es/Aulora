@@ -1,9 +1,9 @@
 import type { MessagePayload } from "@aulora/core";
 import { Icon } from "@aulora/ui-web";
-import type { MessageListProps } from "./MessageList";
+import type { MessageRowListProps } from "./MessageList";
 import { revealMessage } from "./reveal-message";
 
-function systemActorName(list: MessageListProps, actorId: string | undefined) {
+function systemActorName(list: MessageRowListProps, actorId: string | undefined) {
   if (actorId === undefined) {
     return "Someone";
   }
@@ -22,7 +22,7 @@ export function SystemEventRow({
   list,
   message,
 }: {
-  readonly list: MessageListProps;
+  readonly list: MessageRowListProps;
   readonly message: MessagePayload;
 }) {
   const actorId = message.systemActorId;

@@ -6,6 +6,7 @@ import {
   useCallback,
   useContext,
   useEffect,
+  useMemo,
   useRef,
   useState,
 } from "react";
@@ -40,15 +41,26 @@ export function WorkspaceUpdateProvider({
   const busy = useRef(false);
   const restartingFrom = useRef<string | null>(null);
   const [now, setNow] = useState(Date.now);
+  // `now` only needs to advance far enough to notice that the host heartbeat
+  // went stale (`hostSeenAt + 30s`). A fixed 5 s tick re-rendered the wrapped
+  // chat surface for owners even with no update in flight, so schedule a single
+  // timeout at the staleness deadline instead and let heartbeat updates re-arm it.
+  const hostSeenAt = host?.hostSeenAt;
   useEffect(() => {
-    if (!isOwner) return;
-    const timer = setInterval(() => {
+    if (!isOwner || hostSeenAt === undefined) return;
+    const deadline = hostSeenAt + 30_000;
+    const remaining = deadline - Date.now();
+    if (remaining <= 0) {
+      setNow((current) => (current < deadline ? Date.now() : current));
+      return;
+    }
+    const timer = setTimeout(() => {
       setNow(Date.now());
-    }, 5000);
+    }, remaining);
     return () => {
-      clearInterval(timer);
+      clearTimeout(timer);
     };
-  }, [isOwner]);
+  }, [isOwner, hostSeenAt]);
   const check = useCallback(async () => {
     if (!isOwner || busy.current) return;
     busy.current = true;
@@ -57,7 +69,11 @@ export function WorkspaceUpdateProvider({
     try {
       const next = await checkRelease({});
       if (next.error) setError(next.error);
-      else setResult(next);
+      else {
+        setResult(next);
+        // Stamp the check time; `now` no longer advances on a fixed tick.
+        setNow(Date.now());
+      }
     } catch (cause) {
       setError(cause instanceof Error ? cause.message : "Update check failed. Try again.");
     } finally {
@@ -65,16 +81,24 @@ export function WorkspaceUpdateProvider({
       setPhase("idle");
     }
   }, [isOwner, checkRelease]);
+  const hostConnected = host != null && now - host.hostSeenAt < 30_000;
   useEffect(() => {
     if (!isOwner) return;
-    void check();
-    const timer = setInterval(() => void check(), 6 * 60 * 60 * 1000);
+    // The host watcher is authoritative while its heartbeat is fresh, so skip
+    // the redundant release check in that case (manual Check still routes
+    // through `checkNow`). Re-run the check when the heartbeat goes stale.
+    if (!hostConnected) void check();
+    const timer = setInterval(
+      () => {
+        if (!hostConnected) void check();
+      },
+      6 * 60 * 60 * 1000,
+    );
     return () => {
       clearInterval(timer);
     };
-  }, [check, isOwner]);
+  }, [check, isOwner, hostConnected]);
 
-  const hostConnected = host != null && now - host.hostSeenAt < 30_000;
   const coolify = capabilities?.provider === "coolify";
   const managed = coolify ? capabilities.status : null;
   // A live watcher is authoritative, including its prepared release version.
@@ -92,7 +116,7 @@ export function WorkspaceUpdateProvider({
       : useHost && (hostConnected || host.phase === "ready")
         ? host.phase
         : phase;
-  async function install() {
+  const install = useCallback(async () => {
     if (busy.current) return;
     busy.current = true;
     setError(null);
@@ -109,21 +133,24 @@ export function WorkspaceUpdateProvider({
       busy.current = false;
       setPhase("idle");
     }
-  }
-  async function send(command: "download" | "restart") {
-    if (busy.current) return;
-    busy.current = true;
-    setError(null);
-    try {
-      await request({ command });
-      if (command === "restart") restartingFrom.current = host?.currentVersion ?? null;
-    } catch (cause) {
-      setError(cause instanceof Error ? cause.message : "Update request failed. Try again.");
-    } finally {
-      busy.current = false;
-    }
-  }
-  async function checkNow() {
+  }, [currentVersion, installCoolify]);
+  const send = useCallback(
+    async (command: "download" | "restart") => {
+      if (busy.current) return;
+      busy.current = true;
+      setError(null);
+      try {
+        await request({ command });
+        if (command === "restart") restartingFrom.current = host?.currentVersion ?? null;
+      } catch (cause) {
+        setError(cause instanceof Error ? cause.message : "Update request failed. Try again.");
+      } finally {
+        busy.current = false;
+      }
+    },
+    [host, request],
+  );
+  const checkNow = useCallback(async () => {
     if (hostConnected && !coolify) {
       try {
         setError(null);
@@ -132,7 +159,7 @@ export function WorkspaceUpdateProvider({
         setError(cause instanceof Error ? cause.message : "Update check failed. Try again.");
       }
     } else await check();
-  }
+  }, [check, coolify, hostConnected, request]);
   useEffect(() => {
     if (coolify && managed?.phase === "installed" && restartingFrom.current !== null) {
       restartingFrom.current = null;
@@ -150,63 +177,85 @@ export function WorkspaceUpdateProvider({
       globalThis.location.reload();
     }
   }, [host, coolify, managed?.phase]);
-  const settings = (
-    <>
-      {isOwner ? (
-        <UpdateSettings
-          title="Workspace instance"
-          currentVersion={useHost ? host.currentVersion : (currentVersion ?? null)}
-          latestVersion={
-            managed?.phase === "installing"
-              ? managed.targetVersion
-              : useHost
-                ? host.latestVersion
-                : (result?.latestVersion ?? null)
-          }
-          available={available}
-          checked={useHost ? host.checkedAt > 0 : result !== undefined}
-          phase={shownPhase}
-          error={
-            error ??
-            capabilities?.error ??
-            managed?.error ??
-            (useHost ? host.error : result?.error) ??
-            null
-          }
-          notes={(useHost ? host.notes : result?.notes) ?? null}
-          releaseDate={useHost ? null : (result?.pubDate ?? null)}
-          lastCheckedAt={
-            useHost
-              ? host.checkedAt > 0
-                ? host.checkedAt
-                : null
-              : result !== undefined
-                ? now
-                : null
-          }
-          canDownload={
-            capabilities !== undefined && (coolify ? capabilities.configured : hostConnected)
-          }
-          installDirectly={coolify}
-          detail={
-            coolify
-              ? "Coolify builds and installs the release in one step. Deployment briefly interrupts the workspace for everyone."
-              : !hostConnected
-                ? "The server updater is offline. Start infra/docker/update.sh --watch on the server to enable Download and Restart."
-                : shownPhase === "ready"
-                  ? "Restarting briefly takes the workspace offline for everyone. Your messages and settings are kept."
-                  : "The server prepares the release while your workspace stays online."
-          }
-          onCheck={() => void checkNow()}
-          onDownload={() => void (coolify ? install() : send("download"))}
-          onRestart={() => void send("restart")}
-        />
-      ) : null}
-    </>
+  // Hoist the derived settings strings out of the memo below so its JSX stays
+  // small (Codacy's complexity budget) without changing what is rendered.
+  const settingsLatestVersion =
+    managed?.phase === "installing"
+      ? managed.targetVersion
+      : useHost
+        ? host.latestVersion
+        : (result?.latestVersion ?? null);
+  const settingsError =
+    error ??
+    capabilities?.error ??
+    managed?.error ??
+    (useHost ? host.error : result?.error) ??
+    null;
+  const settingsNotes = (useHost ? host.notes : result?.notes) ?? null;
+  const settingsLastCheckedAt = useHost
+    ? host.checkedAt > 0
+      ? host.checkedAt
+      : null
+    : result !== undefined
+      ? now
+      : null;
+  const settingsCanDownload =
+    capabilities !== undefined && (coolify ? capabilities.configured : hostConnected);
+  const settingsDetail = coolify
+    ? "Coolify builds and installs the release in one step. Deployment briefly interrupts the workspace for everyone."
+    : !hostConnected
+      ? "The server updater is offline. Start infra/docker/update.sh --watch on the server to enable Download and Restart."
+      : shownPhase === "ready"
+        ? "Restarting briefly takes the workspace offline for everyone. Your messages and settings are kept."
+        : "The server prepares the release while your workspace stays online.";
+  const settings = useMemo(
+    () => (
+      <>
+        {isOwner ? (
+          <UpdateSettings
+            title="Workspace instance"
+            currentVersion={useHost ? host.currentVersion : (currentVersion ?? null)}
+            latestVersion={settingsLatestVersion}
+            available={available}
+            checked={useHost ? host.checkedAt > 0 : result !== undefined}
+            phase={shownPhase}
+            error={settingsError}
+            notes={settingsNotes}
+            releaseDate={useHost ? null : (result?.pubDate ?? null)}
+            lastCheckedAt={settingsLastCheckedAt}
+            canDownload={settingsCanDownload}
+            installDirectly={coolify}
+            detail={settingsDetail}
+            onCheck={() => void checkNow()}
+            onDownload={() => void (coolify ? install() : send("download"))}
+            onRestart={() => void send("restart")}
+          />
+        ) : null}
+      </>
+    ),
+    [
+      available,
+      checkNow,
+      coolify,
+      currentVersion,
+      host,
+      install,
+      isOwner,
+      result,
+      send,
+      settingsCanDownload,
+      settingsDetail,
+      settingsError,
+      settingsLastCheckedAt,
+      settingsLatestVersion,
+      settingsNotes,
+      shownPhase,
+      useHost,
+    ],
   );
-  return (
-    <Context.Provider value={{ available: isOwner && available, settings }}>
-      {children}
-    </Context.Provider>
+  const value = useMemo(
+    () => ({ available: isOwner && available, settings }),
+    [isOwner, available, settings],
   );
+  return <Context.Provider value={value}>{children}</Context.Provider>;
 }

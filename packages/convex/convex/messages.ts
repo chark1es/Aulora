@@ -15,6 +15,7 @@ import { enforceRateLimit, userRateLimitKey } from "./lib/rateLimit";
 import { openContent } from "./lib/sealed";
 import { sealString } from "./lib/sse";
 import { loadThreadInbox, type ThreadInboxRow } from "./lib/threadInbox";
+import { upsertThreadParticipant } from "./lib/threadParticipants";
 import type { Nullable } from "./lib/types";
 
 /** Per-user send budget: 30 messages per 10 seconds unless overridden. */
@@ -226,33 +227,63 @@ export const send = mutation({
       ...(args.threadRootId !== undefined ? { threadRootId: args.threadRootId } : {}),
       ...(args.replyToId !== undefined ? { replyToId: args.replyToId } : {}),
     });
+    let replyAt = 0;
     if (threadRoot !== null) {
       const reply = await ctx.db.get(messageId);
+      replyAt = reply?._creationTime ?? Date.now();
       await ctx.db.patch(threadRoot._id, {
         replyCount: (threadRoot.replyCount ?? 0) + 1,
-        lastReplyAt: reply?._creationTime ?? Date.now(),
+        lastReplyAt: replyAt,
         replyParticipantIds: withReplyParticipant(threadRoot.replyParticipantIds, access.userId),
       });
+      // Replying makes the author a thread participant (authoring a root alone
+      // does not). Mentions count wherever they appear in the thread.
+      await upsertThreadParticipant(ctx, {
+        userId: access.userId,
+        threadRootId: threadRoot._id,
+        channelId: args.channelId,
+        at: replyAt,
+        mentioned: false,
+        participated: true,
+      });
+    }
+    // Thread participation rows only exist for actual threads: a top-level
+    // message's mentions are notified, not added to the Threads inbox. When the
+    // first reply arrives, seed the root's mentions so they still surface.
+    if (threadRoot !== null && (threadRoot.replyCount ?? 0) === 0) {
+      for (const mentioned of threadRoot.mentionUserIds) {
+        await upsertThreadParticipant(ctx, {
+          userId: mentioned,
+          threadRootId: threadRoot._id,
+          channelId: args.channelId,
+          at: replyAt,
+          mentioned: true,
+          participated: false,
+        });
+      }
+    }
+    if (threadRoot !== null && mentions.mentionUserIds.length > 0) {
+      for (const mentioned of mentions.mentionUserIds) {
+        await upsertThreadParticipant(ctx, {
+          userId: mentioned,
+          threadRootId: threadRoot._id,
+          channelId: args.channelId,
+          at: replyAt,
+          mentioned: true,
+          participated: false,
+        });
+      }
     }
     await emitBotEvent(ctx, {
       type: "message.created",
       channelId: args.channelId,
       messageId,
     });
-    // Burst behavior: every message enqueues two zero-delay jobs (web push and
-    // mobile push), so a burst of thousands of messages enqueues two jobs per
-    // message. `notifications.ts` has no safe coalescing helper — each dispatch
-    // resolves recipients and targets per message and swallows delivery when the
-    // transport is unconfigured — so we intentionally leave the two independent
-    // jobs rather than invent one. The cost is scheduler fan-out, not delivery
-    // semantics.
-    //
-    // Resolve recipients and send content-free Web Push wakes asynchronously;
-    // the action no-ops when VAPID is not configured.
+    // Resolve recipients once and fan out content-free wakes (Web Push and the
+    // mobile relay) from a single scheduled job, so a burst of messages no
+    // longer resolves recipients twice per message. The action no-ops when
+    // neither transport is configured.
     await ctx.scheduler.runAfter(0, internal.notifications.dispatchForMessage, { messageId });
-    // Route content-free mobile wakes (APNs/FCM/UnifiedPush) via the push relay;
-    // also a no-op when the relay is unconfigured.
-    await ctx.scheduler.runAfter(0, internal.notifications.dispatchMobileForMessage, { messageId });
     await recordLicenseActivity(ctx, access.userId);
     return messageId;
   },
@@ -495,9 +526,9 @@ export type { ThreadInboxRow } from "./lib/threadInbox";
  * root or any reply counts). Participation is reply-only — authoring the root
  * alone does not add the viewer.
  *
- * Without a dedicated per-user index this scans the newest `messages` and groups
- * replies by `threadRootId`, which fits small workspaces. Bodies are opened
- * server-side so the client always receives plaintext, never ciphertext.
+ * Reads the viewer's `threadParticipants` rows (bounded, newest first) rather
+ * than scanning the newest `messages` globally; bodies are opened server-side so
+ * the client always receives plaintext, never ciphertext.
  */
 export const threadInbox = query({
   args: {},

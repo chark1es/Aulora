@@ -5,6 +5,7 @@ import type { ConvexReactClient } from "convex/react";
 import { useQuery } from "convex/react";
 import { useMemo } from "react";
 import { api } from "../../../../../packages/convex/convex/_generated/api";
+import { selectEagerChannelIds } from "../../lib/channel-priority";
 import { useStuckTimeout } from "../../lib/use-stuck-timeout";
 import {
   type CategoryView,
@@ -107,6 +108,14 @@ export function ChatSessionShell({
   const roles = (rolesResult ?? []) as readonly RoleView[];
   const memberViews = (membersResult ?? []) as readonly MemberView[];
   const categories = (categoriesResult ?? []) as readonly CategoryView[];
+
+  // The only message streams opened eagerly: the highlighted (unread/mention)
+  // conversations plus a small fill. The open channel is served separately by
+  // `useChannelSession`, so it never needs to be in this set.
+  const eagerChannelIds = useMemo(
+    () => selectEagerChannelIds(channels, unreadByChannel),
+    [channels, unreadByChannel],
+  );
   const viewerMember = meResult?.member ?? null;
   const ownName = memberDisplayName(viewerMember, user.name ?? user.email ?? "You");
   const isOwner = meResult?.isOwner ?? false;
@@ -180,7 +189,13 @@ export function ChatSessionShell({
 
   return (
     <MemberAvatarProvider members={memberViews}>
-      <ChatProvider client={client} userId={user.id} displayName={ownName} channels={channels}>
+      <ChatProvider
+        client={client}
+        userId={user.id}
+        displayName={ownName}
+        channels={channels}
+        eagerChannelIds={eagerChannelIds}
+      >
         <VoiceProvider
           client={client}
           userId={user.id}

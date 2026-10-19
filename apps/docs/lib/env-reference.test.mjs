@@ -71,6 +71,13 @@ test("generated page lists every catalog and extra variable", () => {
   }
 });
 
+test("variable rows carry no duplicated data-search payload", () => {
+  const catalog = readEnvCatalog(root);
+  const { html } = renderEnvReference(catalog, extras, renderIcon);
+  assert.ok(html.includes("data-env-var"), "rows are still marked for the filter");
+  assert.ok(!html.includes("data-search="), "the page must not duplicate every field");
+});
+
 test("generated page renders one section per non-empty group", () => {
   const catalog = readEnvCatalog(root);
   const groups = buildGroups(catalog, extras);

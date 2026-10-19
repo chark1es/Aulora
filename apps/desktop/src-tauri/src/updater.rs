@@ -5,6 +5,8 @@
 //! `latest.json` on GitHub Releases. Artifacts are minisign-verified by the
 //! updater plugin; the private key never ships in the app.
 
+use std::time::{Duration, Instant};
+
 use serde::Serialize;
 use tauri::async_runtime::Mutex;
 use tauri::{AppHandle, Emitter, Manager, Runtime};
@@ -98,19 +100,31 @@ pub async fn download_app_update(app: AppHandle) -> Result<(), String> {
     };
     let handle = app.clone();
     let mut downloaded: usize = 0;
+    // Emit progress coarsely instead of once per network chunk: the first
+    // chunk always goes out, then at most every ~100 ms, plus the final one.
+    // The download itself and the signature check are unchanged.
+    let mut last_emit: Option<Instant> = None;
     // download() verifies the signature before returning bytes. Installation
     // stays behind the explicit restart command, including on Windows.
     let bytes = update
         .download(
             |chunk, total| {
                 downloaded += chunk;
-                let _ = handle.emit(
-                    "aulora://app-update-progress",
-                    serde_json::json!({
-                        "downloaded": downloaded,
-                        "contentLength": total,
-                    }),
-                );
+                let complete = matches!(total, Some(size) if downloaded as u64 >= size);
+                let due = match last_emit {
+                    None => true,
+                    Some(at) => at.elapsed() >= Duration::from_millis(100),
+                };
+                if due || complete {
+                    last_emit = Some(Instant::now());
+                    let _ = handle.emit(
+                        "aulora://app-update-progress",
+                        serde_json::json!({
+                            "downloaded": downloaded,
+                            "contentLength": total,
+                        }),
+                    );
+                }
             },
             || {},
         )

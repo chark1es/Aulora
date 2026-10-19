@@ -47,9 +47,17 @@ export abstract class CallEngineMedia extends CallEngineCore {
       return;
     }
     this.applyInputVolume();
+    // Quantize the meter to whole percent and only emit when it actually moved,
+    // so a level that jitters below that step does not re-render the chat tree.
+    let emittedLevel = -1;
     const meter = createLevelMeter(this.micStream, (level) => {
-      this.micLevel = level;
       this.applyNoiseGate(level);
+      const quantized = Math.round(level * 100) / 100;
+      if (quantized === emittedLevel) {
+        return;
+      }
+      emittedLevel = quantized;
+      this.micLevel = quantized;
       this.emit();
     });
     this.micLevelAvailable = meter.available;
@@ -147,9 +155,12 @@ export abstract class CallEngineMedia extends CallEngineCore {
           if (level === null) {
             return;
           }
+          const quantized = Math.round(level * 100) / 100;
           const previous = this.remoteLevels.get(remoteId) ?? -1;
-          if (Math.abs(previous - level) > 0.02) {
-            this.remoteLevels.set(remoteId, level);
+          // Ignore sub-2 % deltas: a level that only jitters would otherwise
+          // emit into the shared voice context on every poll.
+          if (Math.abs(previous - quantized) > 0.02) {
+            this.remoteLevels.set(remoteId, quantized);
             changed = true;
           }
         } catch {

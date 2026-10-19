@@ -1,5 +1,5 @@
 import { afterEach, describe, expect, it } from "vitest";
-import { api } from "../convex/_generated/api";
+import { api, internal } from "../convex/_generated/api";
 import { newTest, seedWorkspace } from "./helpers";
 
 afterEach(() => {
@@ -136,6 +136,33 @@ describe("instance.overview", () => {
     expect(overview.license.state).toBe("unlicensed");
     expect(overview.auth.local.enabled).toBe(true);
     expect(JSON.stringify(overview)).not.toContain("clientSecret");
+  });
+
+  it("maintains counters after the backfill migration", async () => {
+    const { t, asOwner, asUser } = await ownerTest();
+    await t.run(async (ctx) => {
+      const storageId = await ctx.storage.store(new Blob([new Uint8Array(10)]));
+      await ctx.db.insert("files", {
+        storageId,
+        sealedStorageId: storageId,
+        uploaderId: "owner-1",
+        sizeBytes: 2048,
+        keyVersion: "1",
+      });
+      await ctx.db.insert("channels", { kind: "text", overrides: [], archived: false });
+    });
+
+    await t.mutation(internal.maintenance.backfillInstanceCounters, {});
+    await t.finishAllScheduledFunctions(() => {});
+
+    const seeded = await asOwner.query(api.instance.overview, {});
+    expect(seeded.counts).toMatchObject({ members: 2, channels: 1, files: 1, devices: 0 });
+    expect(seeded.storage.usedBytes).toBe(2048);
+
+    // A write now updates the maintained counter directly (no scan).
+    await asUser.mutation(api.devices.upsert, { platform: "web" });
+    const after = await asOwner.query(api.instance.overview, {});
+    expect(after.counts.devices).toBe(1);
   });
 });
 

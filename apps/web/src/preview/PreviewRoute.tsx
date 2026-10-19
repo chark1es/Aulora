@@ -79,6 +79,9 @@ export function PreviewRoute() {
       runtime: demo.runtime,
       channelNames: demo.names,
       reportChannelNames: () => undefined,
+      async openChannel(channel) {
+        await demo.runtime.session.openChannel(channel);
+      },
       presence,
       channels,
       ready: true,

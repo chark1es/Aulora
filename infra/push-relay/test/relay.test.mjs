@@ -1,12 +1,16 @@
 import assert from "node:assert/strict";
 import { createVerify, generateKeyPairSync } from "node:crypto";
 import { once } from "node:events";
+import { createServer as createHttp2Server } from "node:http2";
 import test from "node:test";
 import { loadRelayConfig } from "../src/config.mjs";
 import {
   bearerMatches,
   buildApnsJwt,
+  createApnsProvider,
+  createConcurrencyLimiter,
   createFcmProvider,
+  createHttp2Requester,
   createProviderRegistry,
   createUnifiedPushProvider,
   RelayError,
@@ -219,6 +223,89 @@ test("builds a verifiable ES256 APNs provider token", () => {
   );
 });
 
+test("reuses the APNs provider token and refreshes it inside Apple's window", async () => {
+  const { privateKey } = generateKeyPairSync("ec", { namedCurve: "prime256v1" });
+  const pem = privateKey.export({ type: "pkcs8", format: "pem" }).toString();
+  // Unique ids so the module-level JWT cache is not shared with other tests.
+  const keyId = `key-${process.pid}-${Date.now()}`;
+  const teamId = `team-${keyId}`;
+  const tokens = [];
+  let nowSeconds = 1_700_000_000;
+  const provider = createApnsProvider({
+    keyId,
+    teamId,
+    key: pem,
+    topic: "dev.spwnd.aulora",
+    now: () => nowSeconds,
+    request: async ({ headers }) => {
+      tokens.push(headers.authorization);
+      return { ok: true, status: 200 };
+    },
+  });
+
+  await provider.deliver(VALID_WAKE);
+  await provider.deliver(VALID_WAKE);
+  assert.equal(tokens.length, 2);
+  assert.equal(tokens[0], tokens[1]);
+
+  // Just past the 45 minute refresh window the token is minted again.
+  nowSeconds += 46 * 60;
+  await provider.deliver(VALID_WAKE);
+  assert.notEqual(tokens[2], tokens[1]);
+});
+
+test("reuses one HTTP/2 session per origin and times out a stalled request", async () => {
+  const sessions = [];
+  const server = createHttp2Server();
+  server.on("session", (session) => {
+    sessions.push(session);
+    session.on("error", () => {});
+  });
+  server.on("stream", (stream, headers) => {
+    if (headers[":path"] === "/slow") {
+      return; // never respond: the requester must time out
+    }
+    stream.respond({ ":status": 200 });
+    stream.end("ok");
+  });
+  server.listen(0);
+  await once(server, "listening");
+  const { port } = server.address();
+  const origin = `http://127.0.0.1:${port}`;
+  const request = createHttp2Requester({ defaultTimeoutMs: 200 });
+  try {
+    const first = await request({ url: `${origin}/a`, headers: {}, body: "x" });
+    const second = await request({ url: `${origin}/b`, headers: {}, body: "x" });
+    assert.equal(first.ok, true);
+    assert.equal(second.ok, true);
+    assert.equal(sessions.length, 1);
+    await assert.rejects(request({ url: `${origin}/slow`, headers: {}, body: "x" }));
+  } finally {
+    server.close();
+    await once(server, "close");
+  }
+});
+
+test("bounds deliveries in flight and sheds load past the queue", async () => {
+  const limit = createConcurrencyLimiter({ maxConcurrent: 1, maxQueued: 1 });
+  let release;
+  const gate = new Promise((resolve) => {
+    release = resolve;
+  });
+  const running = limit(async () => {
+    await gate;
+    return "first";
+  });
+  const queued = limit(async () => "second");
+  await assert.rejects(
+    limit(async () => "third"),
+    (error) => error instanceof RelayError,
+  );
+  release();
+  assert.equal(await running, "first");
+  assert.equal(await queued, "second");
+});
+
 const NON_KEY_FAILURE_TEXT = "invalid service account key";
 
 test("loadRelayConfig enables only fully configured providers", () => {
@@ -267,4 +354,46 @@ test("FCM exchanges a service account assertion and reuses the short-lived token
   await provider.deliver({ ...VALID_WAKE, platform: "android" });
   assert.equal(requests.filter(({ url }) => url.includes("oauth2.googleapis.com")).length, 1);
   assert.equal(requests[1].init.headers.authorization, "Bearer fresh-token");
+  // Every outbound FCM request is bounded by a timeout signal.
+  assert.ok(requests[0].init.signal instanceof AbortSignal);
+  assert.ok(requests[1].init.signal instanceof AbortSignal);
+});
+
+test("sheds load with 503 when the relay is at capacity", async () => {
+  let started;
+  const startedPromise = new Promise((resolve) => {
+    started = resolve;
+  });
+  let release;
+  const gate = new Promise((resolve) => {
+    release = resolve;
+  });
+  const provider = {
+    name: "fake",
+    async deliver() {
+      started();
+      await gate;
+      return { ok: true, status: 202 };
+    },
+  };
+  await withServer({
+    relay: { token: "t", providers: { ios: provider }, maxConcurrent: 1, maxQueued: 0 },
+    run: async ({ wake }) => {
+      const init = {
+        method: "POST",
+        headers: { authorization: "Bearer t" },
+        body: JSON.stringify(VALID_WAKE),
+      };
+      const first = wake(init);
+      await startedPromise;
+      const second = await wake(init);
+      assert.equal(second.status, 503);
+      assert.deepEqual(await second.json(), {
+        error: "relay-busy",
+        message: "relay is at capacity",
+      });
+      release();
+      assert.equal((await first).status, 202);
+    },
+  });
 });

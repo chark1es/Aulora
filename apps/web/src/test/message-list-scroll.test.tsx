@@ -187,4 +187,13 @@ describe("MessageList scrolling", () => {
 
     expect(screen.queryByRole("button", { name: "Jump to latest" })).not.toBeInTheDocument();
   });
+
+  it("marks the history seam and re-anchors the window when the reader is at the tail", () => {
+    const onResetHistory = vi.fn();
+    render(<MessageList {...props({ historySeamId: "m1", onResetHistory })} />);
+
+    expect(screen.getByTestId("history-seam")).toBeInTheDocument();
+    // The reader starts at the bottom, so the truncated window re-anchors.
+    expect(onResetHistory).toHaveBeenCalled();
+  });
 });

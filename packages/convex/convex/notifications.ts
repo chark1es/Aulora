@@ -173,8 +173,27 @@ export const setPref = mutation({
 });
 
 /**
+ * Unread messages read per channel before the count saturates. The badge shows
+ * "99+" anyway, so a bounded tail keeps the query cost proportional to the
+ * limit rather than to the full channel history.
+ */
+const UNREAD_SCAN_LIMIT = 100;
+/** Tail pages examined before a channel is treated as having no unread mail. */
+const UNREAD_SCAN_PAGES = 2;
+/** Extra tail pages shared by the whole call, so a pathological run of the
+ * viewer's own messages cannot push the query past Convex's read limit. */
+const UNREAD_EXTRA_PAGE_BUDGET = 20;
+/** Channels examined per call; keeps the aggregate read/byte budget bounded. */
+const UNREAD_CHANNEL_LIMIT = 200;
+
+/**
  * Live unread + mention totals for the caller across their joined channels.
  * Drives the desktop Dock/taskbar badge and `navigator.setAppBadge`.
+ *
+ * Each channel's tail is read as an index range starting *after* the viewer's
+ * read cursor (`by_channel_created` with `.gt("_creationTime", cursorTime)`)
+ * and truncated at {@link UNREAD_SCAN_LIMIT}, saturating the count instead of
+ * collecting the entire channel history.
  */
 export const unreadSummary = query({
   args: {},
@@ -184,10 +203,11 @@ export const unreadSummary = query({
     const memberships = await ctx.db
       .query("channelMembers")
       .withIndex("by_user", (q) => q.eq("userId", userId))
-      .collect();
+      .take(UNREAD_CHANNEL_LIMIT);
 
     let total = 0;
     let mentions = 0;
+    let extraPages = UNREAD_EXTRA_PAGE_BUDGET;
     for (const membership of memberships) {
       const channel = await ctx.db.get(membership.channelId);
       if (channel === null || channel.archived) {
@@ -199,28 +219,63 @@ export const unreadSummary = query({
           q.eq("userId", userId).eq("channelId", membership.channelId),
         )
         .unique();
-      const messages = await ctx.db
-        .query("messages")
-        .withIndex("by_channel_created", (q) => q.eq("channelId", membership.channelId))
-        .collect();
-      let start = 0;
+      // Resolve the cursor message's timestamp so the tail is an index range
+      // rather than a whole-channel collect. A cursor that no longer resolves
+      // in this channel (stale id) reads as fully read, matching the previous
+      // positional `findIndex === -1` behaviour.
+      let after: number | null = null;
       if (state?.lastReadMessageId !== undefined) {
-        const index = messages.findIndex((message) => message._id === state.lastReadMessageId);
-        start = index === -1 ? messages.length : index + 1;
-      }
-      for (const message of messages.slice(start)) {
-        if (
-          message.deletedAt !== undefined ||
-          message.authorId === userId ||
-          message.systemKind !== undefined
-        ) {
+        const cursor = await ctx.db.get(state.lastReadMessageId);
+        if (cursor === null || cursor.channelId !== membership.channelId) {
           continue;
         }
-        total += 1;
-        if (message.mentionUserIds.includes(userId)) {
-          mentions += 1;
-        }
+        after = cursor._creationTime;
       }
+      // Scan the tail in bounded pages until a message from someone else is
+      // found. A run of the viewer's own messages at the cursor must not hide
+      // older unread messages from other people.
+      let lower = after;
+      let channelUnread = 0;
+      let channelMentions = 0;
+      for (let pageIndex = 0; pageIndex < UNREAD_SCAN_PAGES; pageIndex += 1) {
+        if (pageIndex > 0) {
+          if (extraPages <= 0) {
+            break;
+          }
+          extraPages -= 1;
+        }
+        const messages = await ctx.db
+          .query("messages")
+          .withIndex("by_channel_created", (q) => {
+            const base = q.eq("channelId", membership.channelId);
+            return lower === null ? base : base.gt("_creationTime", lower);
+          })
+          .take(UNREAD_SCAN_LIMIT);
+        for (const message of messages) {
+          if (
+            message.deletedAt !== undefined ||
+            message.authorId === userId ||
+            message.systemKind !== undefined
+          ) {
+            continue;
+          }
+          channelUnread = Math.min(channelUnread + 1, UNREAD_SCAN_LIMIT);
+          if (message.mentionUserIds.includes(userId)) {
+            channelMentions = Math.min(channelMentions + 1, UNREAD_SCAN_LIMIT);
+          }
+        }
+        const last = messages.at(-1);
+        if (
+          last === undefined ||
+          messages.length < UNREAD_SCAN_LIMIT ||
+          (channelUnread >= UNREAD_SCAN_LIMIT && channelMentions >= UNREAD_SCAN_LIMIT)
+        ) {
+          break;
+        }
+        lower = last._creationTime;
+      }
+      total += channelUnread;
+      mentions += channelMentions;
     }
     return { total, mentions };
   },
@@ -400,15 +455,18 @@ export const dispatchMobileCallRinging = internalAction({
 });
 
 /**
- * Sends content-free Web Push wakes for one message. Scheduled by
- * `messages.send`; no-ops when VAPID is not configured, so a deployment without
- * web push never fails on send.
+ * Sends content-free Web Push wakes for one message and hands the resolved
+ * recipients to the mobile relay, so recipient resolution runs once per
+ * message. Scheduled by `messages.send`; no-ops when neither transport is
+ * configured, so a deployment without push never fails on send.
  */
 export const dispatchForMessage = internalAction({
   args: { messageId: v.id("messages") },
   handler: async (ctx, args): Promise<DispatchResult> => {
-    const config: VapidConfig | null = vapidConfigFromEnv();
-    if (config === null) {
+    const vapid: VapidConfig | null = vapidConfigFromEnv();
+    const relay: PushRelayConfig | null = pushRelayConfigFromEnv();
+    // Neither transport configured: skip the recipient read entirely.
+    if (vapid === null && relay === null) {
       return { sent: 0, skipped: "unconfigured" };
     }
     const recipients = await ctx.runQuery(internal.notifications.resolveRecipients, {
@@ -417,17 +475,42 @@ export const dispatchForMessage = internalAction({
     if (recipients.length === 0) {
       return { sent: 0, skipped: "no-message" };
     }
-    const subscriptions = await ctx.runQuery(internal.notifications.deviceSubscriptions, {
-      userIds: recipients,
-    });
-    let sent = 0;
-    for (const { subscription } of subscriptions) {
-      const result = await sendWebPush(subscription, config);
-      if (result.ok) {
-        sent += 1;
+    const web = (async () => {
+      if (vapid === null) {
+        return 0;
       }
-    }
-    return { sent };
+      let webSent = 0;
+      const subscriptions = await ctx.runQuery(internal.notifications.deviceSubscriptions, {
+        userIds: recipients,
+      });
+      for (const { subscription } of subscriptions) {
+        const result = await sendWebPush(subscription, vapid);
+        if (result.ok) {
+          webSent += 1;
+        }
+      }
+      return webSent;
+    })();
+    const mobile = (async () => {
+      if (relay === null) {
+        return 0;
+      }
+      // Hand off the already-resolved recipients so the mobile path never
+      // re-resolves them.
+      const result = await ctx.runAction(internal.notifications.dispatchMobileForMessage, {
+        messageId: args.messageId,
+        recipients,
+      });
+      return result.sent;
+    })();
+    // Independent paths: a slow or failing web-push loop must not starve the
+    // mobile wakeup (and vice versa).
+    const [webResult, mobileResult] = await Promise.allSettled([web, mobile]);
+    return {
+      sent:
+        (webResult.status === "fulfilled" ? webResult.value : 0) +
+        (mobileResult.status === "fulfilled" ? mobileResult.value : 0),
+    };
   },
 });
 
@@ -499,10 +582,11 @@ export const messageChannelId = internalQuery({
  * Routes content-free mobile wakes for one message to the project push relay.
  * No-ops when `PUSH_RELAY_URL`/`PUSH_RELAY_TOKEN` are unset, so a deployment
  * without mobile push never fails on send. Scheduled alongside the web push
- * dispatch by `messages.send`.
+ * dispatch by `messages.send`; when invoked from {@link dispatchForMessage} the
+ * already-resolved `recipients` are passed in so resolution runs only once.
  */
 export const dispatchMobileForMessage = internalAction({
-  args: { messageId: v.id("messages") },
+  args: { messageId: v.id("messages"), recipients: v.optional(v.array(v.string())) },
   handler: async (ctx, args): Promise<DispatchResult> => {
     const config: PushRelayConfig | null = pushRelayConfigFromEnv();
     if (config === null) {
@@ -514,9 +598,11 @@ export const dispatchMobileForMessage = internalAction({
     if (channelId === null) {
       return { sent: 0, skipped: "no-message" };
     }
-    const recipients = await ctx.runQuery(internal.notifications.resolveRecipients, {
-      messageId: args.messageId,
-    });
+    const recipients =
+      args.recipients ??
+      (await ctx.runQuery(internal.notifications.resolveRecipients, {
+        messageId: args.messageId,
+      }));
     if (recipients.length === 0) {
       return { sent: 0, skipped: "no-message" };
     }

@@ -353,6 +353,9 @@ function ChatComposer({
       onTyping={(typingChannelId) => {
         void model.runtime?.port.setTyping({ channelId: typingChannelId });
       }}
+      onClearTyping={(typingChannelId) => {
+        void model.runtime?.port.clearTyping({ channelId: typingChannelId });
+      }}
       onSend={makeSendHandler(model, channel.id)}
     />
   );

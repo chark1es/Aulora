@@ -1,6 +1,7 @@
 /* eslint-disable no-unused-vars -- the base rule reports parameter names in type signatures; Biome checks real unused code */
 import {
   type AttachmentDescriptor,
+  type CallView,
   type ChannelView,
   conversationTitle,
   dmPartnerId,
@@ -9,11 +10,12 @@ import {
   Permission,
 } from "@aulora/core";
 import { useMutation, useQuery } from "convex/react";
-import { useEffect, useMemo, useRef } from "react";
+import { useCallback, useEffect, useMemo, useRef } from "react";
 import { Platform } from "react-native";
 import { api } from "../../../../../packages/convex/convex/_generated/api";
 import { useIncomingCallNotification, useLocalNotifications } from "../../lib/notifications";
 import { presenceLabel, typingLabel } from "../../lib/presence";
+import { buildPresenceScope } from "../../lib/presence-scope";
 import { recentSearchKey } from "../../lib/search-ui";
 import { useChannelSession } from "../../lib/use-channel";
 import { usePushRegistration } from "../../lib/use-push-registration";
@@ -160,10 +162,12 @@ function useChatScreenMentions(session: ChatScreenSession) {
     return map;
   }, [members]);
 
-  useIncomingCallNotification(
-    voice.incoming,
-    (call) => memberNames.get(call.initiatorId) ?? call.initiatorId,
+  const callerName = useCallback(
+    (call: CallView) => memberNames.get(call.initiatorId) ?? call.initiatorId,
+    [memberNames],
   );
+
+  useIncomingCallNotification(voice.incoming, callerName);
 
   return {
     channelNames,
@@ -209,6 +213,7 @@ function useChatScreenChannelList(
 
   useLocalNotifications(runtime, ownUserId, channelNames, {
     mutedChannelIds,
+    activeChannelId,
     onCue: (event) => sound?.play(event),
   });
 
@@ -412,6 +417,51 @@ function channelSubtitleFor(
 
 export type ChatScreenConversation = ReturnType<typeof useChatScreenConversation>;
 
+/**
+ * Reports the bounded set of user ids whose presence the UI is rendering — the
+ * open timeline's authors, the members pane and DM partners in the list — to the
+ * runtime, which serves `presence.getMany` for exactly that set. Keeps the whole
+ * `presence` table off the wire and updates as the set changes.
+ */
+function useChatScreenPresenceScope(
+  session: ChatScreenSession,
+  ui: ChatScreenUiState,
+  conversation: ChatScreenConversation,
+) {
+  const { runtime, ownUserId, channels, members } = session;
+  const { pane, newMessageOpen } = ui;
+  const { sessionState, conversationMemberIds } = conversation;
+  const presenceScope = useMemo(
+    () =>
+      buildPresenceScope({
+        ownUserId,
+        timelineAuthorIds: sessionState.messages.map((message) => message.authorId),
+        displayedMemberIds: [
+          ...(conversationMemberIds ?? []),
+          // The members pane (right pane) and the new-conversation picker render
+          // the directory; only count it while it is actually on screen so a
+          // large workspace stays bounded while reading chat.
+          ...(pane === 0 || pane === 2 || newMessageOpen
+            ? members.map((member) => member.userId)
+            : []),
+        ],
+        channels,
+      }),
+    [
+      ownUserId,
+      sessionState.messages,
+      conversationMemberIds,
+      pane,
+      newMessageOpen,
+      members,
+      channels,
+    ],
+  );
+  useEffect(() => {
+    runtime?.setPresenceScope?.(presenceScope);
+  }, [runtime, presenceScope]);
+}
+
 function useChatScreenMessages(
   session: ChatScreenSession,
   ui: ChatScreenUiState,
@@ -421,10 +471,17 @@ function useChatScreenMessages(
   const { activeChannelId } = ui;
   const { sessionState, messageContext } = conversation;
 
-  const attachmentsByMessage = (() => {
+  const history = messageContext?.history;
+  const liveMessages = sessionState.messages;
+  // `sessionState.decrypted` doubles as the hydration signal: `receiveMessages`
+  // resolves attachment descriptors and then notifies decrypted listeners, so a
+  // new identity is what makes freshly hydrated attachments visible.
+  const attachmentsRevision = sessionState.decrypted;
+  const attachmentsByMessage = useMemo(() => {
+    void attachmentsRevision;
     const map = new Map<string, readonly AttachmentDescriptor[]>();
     if (runtime !== undefined) {
-      for (const message of [...(messageContext?.history ?? []), ...sessionState.messages]) {
+      for (const message of [...(history ?? []), ...liveMessages]) {
         const list = runtime.session.attachmentsFor(message.id);
         if (list.length > 0) {
           map.set(message.id, list);
@@ -432,7 +489,7 @@ function useChatScreenMessages(
       }
     }
     return map;
-  })();
+  }, [runtime, history, liveMessages, attachmentsRevision]);
 
   const pendingItems = useMemo(
     () => outbox.filter((item) => item.channelId === activeChannelId),
@@ -504,6 +561,10 @@ export function useChatScreenData({ onSignOut }: ChatScreenProps) {
   const list = useChatScreenChannelList(session, ui, mentions);
   const conversation = useChatScreenConversation(session, ui, mentions, list);
   const messages = useChatScreenMessages(session, ui, conversation);
+
+  // Presence is fetched only for the people on screen (bounded), not the whole
+  // workspace table; the scope is reported to the runtime on every change.
+  useChatScreenPresenceScope(session, ui, conversation);
 
   // The offline capture opens one thread; live surfaces never set this, and the
   // guard keeps closing the thread from reopening it.

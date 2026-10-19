@@ -276,6 +276,32 @@ test("relaunches a crashed bot after a backoff", async (t) => {
   });
 });
 
+test("polls on the active cadence with a bot and backs off once none remain", async (t) => {
+  await withHarness(t, async ({ fake, start }) => {
+    const botId = "bot_poll";
+    fake.state.desired = [desiredBot(botId)];
+    fake.state.bundles.set(botId, bundleFor(botId, [file("main.mjs", markerSource("POLL"))]));
+
+    // Active interval stays 20 ms (makeConfig); idle is 1 s with no jitter so the
+    // two cadences are clearly distinguishable.
+    start({ pollIdleIntervalMs: 1000, pollJitter: 0 });
+    await waitFor(() => reportCount(fake, botId, "running") >= 1, { message: "running report" });
+
+    const activeStart = fake.state.desiredCalls;
+    await new Promise((resolve) => setTimeout(resolve, 120));
+    const activePolls = fake.state.desiredCalls - activeStart;
+    assert.ok(activePolls >= 3, `expected fast polls with a bot, saw ${activePolls}`);
+
+    fake.state.desired = [];
+    await waitFor(() => reportCount(fake, botId, "stopped") >= 1, { message: "stopped report" });
+
+    const idleStart = fake.state.desiredCalls;
+    await new Promise((resolve) => setTimeout(resolve, 300));
+    const idlePolls = fake.state.desiredCalls - idleStart;
+    assert.ok(idlePolls <= 1, `expected idle backoff, saw ${idlePolls} polls in 300 ms`);
+  });
+});
+
 test("batches and clips bot logs", async (t) => {
   await withHarness(t, async ({ fake, start }) => {
     const botId = "bot_logs";

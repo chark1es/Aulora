@@ -39,6 +39,14 @@ Pass container settings with `-e`. Prefixing a Compose command with a shell vari
 
 Local pruning does not delete remote objects. Configure remote bucket lifecycle rules separately. A failed result-recording request does not mean the backup itself failed; inspect the runner log and actual artifacts.
 
+Set an object-lifecycle rule on the backup prefix so remote objects are not kept forever. On the default MinIO instance those objects share the disk with uploads and search indexes, so an unmanaged `backups/` prefix grows without bound. A conservative window of 30 days is a reasonable starting point:
+
+```sh
+mc ilm rule add --expire-days 30 local/aulora-backups
+```
+
+Adjust the alias, bucket and day count to the deployment, and keep the window longer than the restore-drill cadence because expiring objects removes recovery points. If the backups share a bucket with live data, scope the rule to the `backups/` prefix. `BACKUP_RETENTION` counts local run directories only; it does not affect the bucket.
+
 Securely back up `infra/docker/.env` separately. It includes `INSTANCE_SECRET`, `AULORA_ENCRYPTION_KEY`, and authentication/storage configuration. For an external key manager, also preserve access to the original KEK and all key versions needed by historical content. `encryption.json` contains no key material.
 
 ## Restore a Convex snapshot to an isolated stack

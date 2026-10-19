@@ -4,10 +4,10 @@
   "version": "1.1.0",
   "identifier": "dev.spwnd.aulora",
   "build": {
-    "frontendDist": "../../web/dist",
+    "frontendDist": "../../web/dist-desktop",
     "devUrl": "http://localhost:5173",
     "beforeDevCommand": "bun run --filter @aulora/web dev",
-    "beforeBuildCommand": "bun run --filter @aulora/web build"
+    "beforeBuildCommand": "bun run --filter @aulora/web build && bun run --filter @aulora/desktop prepare:frontend"
   },
   "app": {
     "withGlobalTauri": true,
@@ -35,7 +35,7 @@
   },
   "bundle": {
     "active": true,
-    "targets": "all",
+    "targets": ["app"],
     "icon": [
       "icons/32x32.png",
       "icons/128x128.png",

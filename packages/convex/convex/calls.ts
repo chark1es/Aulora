@@ -45,6 +45,9 @@ import { categoryOverridesFor, channelPermissions, loadPermissionContext } from 
 export { isCallMember } from "./lib/calls";
 export { CALL_RETENTION_MS, PARTICIPANT_STALE_MS, RING_TIMEOUT_MS, SIGNAL_STALE_MS };
 
+/** Stale participant/signal rows processed per sweep run before rescheduling. */
+const SWEEP_BATCH = 500;
+
 /**
  * Starts (or reuses) the call on a channel. A DM/group-DM call begins ringing;
  * a voice-channel call is active immediately and others join when they want.
@@ -413,10 +416,19 @@ export const activeCalls = query({
   args: {},
   handler: async (ctx) => {
     const { userId } = await requireAuth(ctx);
-    const live = await ctx.db
-      .query("calls")
-      .filter((q) => q.neq(q.field("status"), "ended"))
-      .collect();
+    // Read the two live statuses straight off `by_status` instead of scanning
+    // the whole table and post-filtering `status !== "ended"`.
+    const [ringing, active] = await Promise.all([
+      ctx.db
+        .query("calls")
+        .withIndex("by_status", (q) => q.eq("status", "ringing"))
+        .collect(),
+      ctx.db
+        .query("calls")
+        .withIndex("by_status", (q) => q.eq("status", "active"))
+        .collect(),
+    ]);
+    const live = [...ringing, ...active].sort((a, b) => a._creationTime - b._creationTime);
     if (live.length === 0) {
       return [];
     }
@@ -475,47 +487,71 @@ export const signals = query({
 /**
  * Cron sweep: drop stale participants and signals, end abandoned or timed-out
  * calls, and prune ended calls after a short retention window.
+ *
+ * Each table is read by index rather than collected: participants past the
+ * heartbeat cutoff via `by_lastSeen`, orphaned envelopes past their age via
+ * `by_created`, and live calls via `by_status`. Stale rows are deleted one
+ * bounded batch at a time and the sweep reschedules itself while a batch is
+ * full, so cleanup scales with the number of stale rows instead of total call
+ * volume. `endCall` still clears a call's participants and signalling, so an
+ * ended call never leaves seats behind.
  */
 export const sweep = internalMutation({
   args: {},
   handler: async (ctx) => {
     const now = Date.now();
-    const participants = await ctx.db.query("callParticipants").collect();
-    for (const participant of participants) {
-      const call = await ctx.db.get(participant.callId);
-      if (
-        call === null ||
-        call.status === "ended" ||
-        participant.lastSeen < now - PARTICIPANT_STALE_MS
-      ) {
-        await ctx.db.delete(participant._id);
-      }
+
+    const staleParticipants = await ctx.db
+      .query("callParticipants")
+      .withIndex("by_lastSeen", (q) => q.lt("lastSeen", now - PARTICIPANT_STALE_MS))
+      .take(SWEEP_BATCH);
+    for (const participant of staleParticipants) {
+      await ctx.db.delete(participant._id);
     }
-    const signals = await ctx.db.query("callSignals").collect();
-    for (const signal of signals) {
-      if (signal.createdAt < now - SIGNAL_STALE_MS) {
-        await ctx.db.delete(signal._id);
-      }
+
+    const staleSignals = await ctx.db
+      .query("callSignals")
+      .withIndex("by_created", (q) => q.lt("createdAt", now - SIGNAL_STALE_MS))
+      .take(SWEEP_BATCH);
+    for (const signal of staleSignals) {
+      await ctx.db.delete(signal._id);
     }
-    const calls = await ctx.db.query("calls").collect();
-    for (const call of calls) {
-      if (call.status === "ended") {
-        if ((call.endedAt ?? call.updatedAt) < now - CALL_RETENTION_MS) {
-          await ctx.db.delete(call._id);
-        }
-        continue;
-      }
-      const members = await ctx.db
-        .query("callParticipants")
-        .withIndex("by_call", (q) => q.eq("callId", call._id))
+
+    // The non-ended statuses are the only calls that can still change state;
+    // read them straight off `by_status` instead of scanning every call row.
+    for (const status of ["ringing", "active"] as const) {
+      const calls = await ctx.db
+        .query("calls")
+        .withIndex("by_status", (q) => q.eq("status", status))
         .collect();
-      if (members.length === 0) {
-        await endCall(ctx, call);
-        continue;
+      for (const call of calls) {
+        const members = await ctx.db
+          .query("callParticipants")
+          .withIndex("by_call", (q) => q.eq("callId", call._id))
+          .collect();
+        if (members.length === 0) {
+          await endCall(ctx, call);
+          continue;
+        }
+        if (call.status === "ringing" && call.startedAt < now - RING_TIMEOUT_MS) {
+          await endCall(ctx, call);
+        }
       }
-      if (call.status === "ringing" && call.startedAt < now - RING_TIMEOUT_MS) {
-        await endCall(ctx, call);
+    }
+
+    // Ended calls are retained briefly so clients can settle, then removed.
+    const ended = await ctx.db
+      .query("calls")
+      .withIndex("by_status", (q) => q.eq("status", "ended"))
+      .collect();
+    for (const call of ended) {
+      if ((call.endedAt ?? call.updatedAt) < now - CALL_RETENTION_MS) {
+        await ctx.db.delete(call._id);
       }
+    }
+
+    if (staleParticipants.length === SWEEP_BATCH || staleSignals.length === SWEEP_BATCH) {
+      await ctx.scheduler.runAfter(0, internal.calls.sweep, {});
     }
     return null;
   },

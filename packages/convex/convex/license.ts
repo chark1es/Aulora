@@ -61,10 +61,13 @@ export const validationInput = internalQuery({
   handler: async (ctx) => {
     const server = await ctx.db.query("server").first();
     if (!server?.licenseKey || !isLicenseKey(server.licenseKey)) return null;
+    // Prefer the maintained count; a workspace that has not been backfilled
+    // yet keeps validating via the (capped) member scan.
+    const members = server.memberCount ?? (await ctx.db.query("members").take(100001)).length;
     return {
       instanceId: server._id,
       key: server.licenseKey,
-      members: (await ctx.db.query("members").take(100001)).length,
+      members,
     };
   },
 });

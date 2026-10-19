@@ -43,6 +43,8 @@ infra/docker/.update-ready.json
 
 # build output
 dist/
+# filtered frontend the desktop shell embeds (see apps/desktop/scripts/prepare-frontend.mjs)
+apps/web/dist-desktop/
 build/
 out/
 .turbo/

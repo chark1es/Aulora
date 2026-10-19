@@ -4,6 +4,7 @@
   "private": true,
   "description": "Aulora React Native design-system primitives mirroring @aulora/ui-web, styled with NativeWind and the shared token preset.",
   "type": "module",
+  "sideEffects": false,
   "exports": {
     ".": "./src/index.ts"
   },
@@ -30,7 +31,6 @@
     "react": "19.2.3",
     "react-native": "0.86.3",
     "react-native-svg": "15.15.4",
-    "tailwindcss": "3.4.19",
     "typescript": "5.9.3",
     "vitest": "5.0.2"
   },

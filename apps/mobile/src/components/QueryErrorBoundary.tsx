@@ -34,21 +34,38 @@ export function QueryErrorBoundary({ client, onSignOut, children }: QueryErrorBo
 
   useEffect(() => {
     // Convex re-sends queries after it reconnects; re-mounting lets them be
-    // observed again. The timer covers failures it does not retry on its own.
+    // observed again. The timer covers failures it does not retry on its own,
+    // and only runs while the app is in the foreground.
     const unsubscribe = client.subscribeToConnectionState((state) => {
       if (state.isWebSocketConnected) {
         retry();
       }
     });
-    const timer = setInterval(retry, RETRY_INTERVAL_MS);
+    let timer: ReturnType<typeof setInterval> | undefined;
+    const start = () => {
+      if (timer === undefined) timer = setInterval(retry, RETRY_INTERVAL_MS);
+    };
+    const stop = () => {
+      if (timer !== undefined) {
+        clearInterval(timer);
+        timer = undefined;
+      }
+    };
+    if (AppState.currentState === "active") {
+      start();
+    }
     const foreground = AppState.addEventListener("change", (state) => {
       if (state === "active") {
         retry();
+        start();
+      } else {
+        // Pause the retry ticker while backgrounded.
+        stop();
       }
     });
     return () => {
       unsubscribe();
-      clearInterval(timer);
+      stop();
       foreground.remove();
     };
   }, [client, retry]);

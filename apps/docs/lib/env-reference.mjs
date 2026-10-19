@@ -86,17 +86,10 @@ function metaFor(variable) {
   return items.join("\n");
 }
 
-function searchText(variable) {
-  return [variable.key, variable.label, variable.group ?? "", variable.description]
-    .join(" ")
-    .toLowerCase()
-    .replaceAll('"', "");
-}
-
 function renderVariable(variable) {
   const id = `env-${variable.key}`;
   const head = `<code class="env-key" id="${escapeHtml(id)}">${escapeHtml(variable.key)}</code>`;
-  return `      <div class="env-var" data-env-var data-search="${escapeHtml(searchText(variable))}">
+  return `      <div class="env-var" data-env-var>
         <div class="env-var-head">
           ${head}
           <button type="button" class="env-copy" data-copy="${escapeHtml(id)}">Copy</button>

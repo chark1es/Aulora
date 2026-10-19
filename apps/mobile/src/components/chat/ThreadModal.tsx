@@ -181,6 +181,9 @@ export function ThreadModal(props: ThreadModalProps) {
         onTyping={(id) => {
           void runtime.port.setTyping({ channelId: id });
         }}
+        onClearTyping={(id) => {
+          void runtime.port.clearTyping({ channelId: id });
+        }}
         onSend={(input) =>
           onSendReply({ text: input.text, files: input.files, replyInThread: !alsoSend })
         }

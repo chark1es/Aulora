@@ -4,6 +4,7 @@
 // production `start()` runs it every `BOT_RUNNER_POLL_INTERVAL_MS`.
 
 import { writeFileSync } from "node:fs";
+import { pollDelayMs } from "./config.mjs";
 import { createLogShipper } from "./logs.mjs";
 import { createReconciler } from "./reconciler.mjs";
 
@@ -17,6 +18,8 @@ export function createRunner({ config, api, logger = console, now = Date.now }) 
   });
   const reconciler = createReconciler({ config, api, shipper, logger, now });
   let timer = null;
+  let healthTimer = null;
+  let started = false;
   let stopped = false;
 
   function touchHealth() {
@@ -38,11 +41,32 @@ export function createRunner({ config, api, logger = console, now = Date.now }) 
     touchHealth();
   }
 
+  // A tracked bot (running, launching or waiting on a restart backoff) keeps
+  // the active cadence so a relaunch is not delayed by the idle interval.
+  function nextDelay() {
+    const delay = pollDelayMs({
+      active: reconciler.snapshot().length > 0,
+      activeMs: config.pollIntervalMs,
+      idleMs: config.pollIdleIntervalMs,
+      jitter: config.pollJitter,
+    });
+    // The server marks a runner offline after 30 s without a poll (which is
+    // what touches its heartbeat). Keep headroom even if an operator configures
+    // a long idle interval or larger jitter.
+    return Math.min(delay, 25_000);
+  }
+
   function start() {
-    if (timer !== null || stopped) return;
+    if (started || stopped) return;
+    started = true;
+    touchHealth();
+    // The healthcheck rejects heartbeats older than ~30 s. The idle reconcile
+    // cadence can be longer, so refresh the liveness file independently.
+    healthTimer = setInterval(touchHealth, Math.min(config.pollIntervalMs, 10_000));
+    healthTimer.unref?.();
     const loop = async () => {
       await tick();
-      if (!stopped) timer = setTimeout(loop, config.pollIntervalMs);
+      if (!stopped) timer = setTimeout(loop, nextDelay());
     };
     void loop();
   }
@@ -52,6 +76,10 @@ export function createRunner({ config, api, logger = console, now = Date.now }) 
     if (timer !== null) {
       clearTimeout(timer);
       timer = null;
+    }
+    if (healthTimer !== null) {
+      clearInterval(healthTimer);
+      healthTimer = null;
     }
     await reconciler.shutdown();
     shipper.stop();

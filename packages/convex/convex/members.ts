@@ -8,6 +8,13 @@ import { writeAudit } from "./lib/audit";
 import { requireAuth } from "./lib/auth";
 import { pruneExpiredBans } from "./lib/bans";
 import { assertNotBot } from "./lib/botAuth";
+import { adjustMemberCount } from "./lib/memberCount";
+import {
+  addMemberRoleLink,
+  deleteMemberRolesForUser,
+  removeMemberRoleLink,
+  syncMemberRoles,
+} from "./lib/memberRoles";
 import {
   requireCanGrant,
   requireMember,
@@ -26,6 +33,22 @@ type ReadCtx = Parameters<typeof requireAuth>[0];
 const BIO_CONTEXT = { scope: "member.bio" } as const;
 const MAX_BIO_LENGTH = 500;
 const MAX_AVATAR_BYTES = 4 * 1024 * 1024;
+
+/** Default page size for {@link page}; capped at {@link MEMBER_PAGE_MAX}. */
+const MEMBER_PAGE_DEFAULT = 100;
+/** Hard ceiling on a single {@link page} call. */
+const MEMBER_PAGE_MAX = 500;
+/** Default match count for {@link search}; capped at {@link MEMBER_SEARCH_MAX}. */
+const MEMBER_SEARCH_DEFAULT = 25;
+/** Hard ceiling on matches returned by {@link search}. */
+const MEMBER_SEARCH_MAX = 100;
+/**
+ * Hard cap on how many members (and therefore account-name lookups)
+ * {@link search} examines before returning what it has. Search-as-you-type
+ * must stay bounded even when nothing matches, so a miss costs one window
+ * rather than a full table scan.
+ */
+const MEMBER_SEARCH_SCAN_LIMIT = 500;
 
 function isAvatarImage(metadata: {
   readonly size: number;
@@ -211,13 +234,17 @@ export const attachRolesFromAuth = internalMutation({
     }
 
     if (existing === null) {
+      const joinedAt = Date.now();
       await ctx.db.insert("members", {
         userId: args.userId,
         roleIds: [...roleIds],
-        joinedAt: Date.now(),
+        joinedAt,
       });
+      await adjustMemberCount(ctx, 1);
+      await syncMemberRoles(ctx, args.userId, [...roleIds], joinedAt);
     } else {
       await ctx.db.patch(existing._id, { roleIds: [...roleIds] });
+      await syncMemberRoles(ctx, args.userId, [...roleIds], existing.joinedAt);
     }
     return null;
   },
@@ -279,6 +306,92 @@ export const list = query({
 });
 
 /**
+ * Paginated member directory, ordered by `joinedAt` ascending (the same order
+ * {@link list} produces). Each entry has the exact {@link MemberView} shape
+ * {@link list} returns; account names and avatar URLs are resolved only for the
+ * rows on the requested page, so the read scales with `numItems` and not the
+ * workspace size. Clients that used to full-collect {@link list} move here.
+ */
+export const page = query({
+  args: { cursor: v.optional(v.string()), numItems: v.optional(v.number()) },
+  handler: async (ctx, args) => {
+    const { userId } = await requireAuth(ctx);
+    await requireMember(ctx, userId);
+    const numItems = Math.min(
+      Math.max(Math.floor(args.numItems ?? MEMBER_PAGE_DEFAULT), 1),
+      MEMBER_PAGE_MAX,
+    );
+    const result = await ctx.db
+      .query("members")
+      .withIndex("by_joined")
+      .order("asc")
+      .paginate({ numItems, cursor: args.cursor ?? null });
+    const names = await accountNames(
+      ctx,
+      result.page.map((member) => member.userId),
+    );
+    return {
+      page: await Promise.all(
+        result.page.map((member) => toMemberView(ctx, member, names.get(member.userId) ?? null)),
+      ),
+      isDone: result.isDone,
+      continueCursor: result.continueCursor,
+    };
+  },
+});
+
+/**
+ * Search-as-you-type directory. Matches, case-insensitively, a member's
+ * nickname or their resolved account display name (profile name, else the
+ * email local part), and returns {@link MemberView} entries in join order — the
+ * same shape as {@link list}/{@link page}. Used by the mention autocomplete and
+ * member picker.
+ *
+ * Bounded: reads and resolves at most {@link MEMBER_SEARCH_SCAN_LIMIT} members
+ * from `by_joined` in one index window, then returns the first `limit` matches.
+ * A query that matches nothing therefore costs one window instead of the whole
+ * table; results are complete within that window. (Convex allows a single
+ * `.paginate()` per function, so the window is read in one `.take()`.)
+ */
+export const search = query({
+  args: { query: v.string(), limit: v.optional(v.number()) },
+  handler: async (ctx, args) => {
+    const { userId } = await requireAuth(ctx);
+    await requireMember(ctx, userId);
+    const needle = args.query.trim().toLowerCase();
+    if (needle.length === 0) {
+      return [];
+    }
+    const limit = Math.min(
+      Math.max(Math.floor(args.limit ?? MEMBER_SEARCH_DEFAULT), 1),
+      MEMBER_SEARCH_MAX,
+    );
+    const candidates = await ctx.db
+      .query("members")
+      .withIndex("by_joined")
+      .order("asc")
+      .take(MEMBER_SEARCH_SCAN_LIMIT);
+    const names = await accountNames(
+      ctx,
+      candidates.map((member) => member.userId),
+    );
+    const matches: MemberView[] = [];
+    for (const member of candidates) {
+      const accountName = names.get(member.userId) ?? null;
+      const nickname = member.nickname?.toLowerCase() ?? "";
+      const account = accountName?.toLowerCase() ?? "";
+      if (nickname.includes(needle) || account.includes(needle)) {
+        matches.push(await toMemberView(ctx, member, accountName));
+        if (matches.length >= limit) {
+          break;
+        }
+      }
+    }
+    return matches;
+  },
+});
+
+/**
  * The caller's own membership plus the workspace owner id. Used by clients to
  * gate admin UI and to protect the owner from moderation controls.
  */
@@ -330,6 +443,7 @@ export const assignRole = mutation({
       return null;
     }
     await ctx.db.patch(member._id, { roleIds: [...member.roleIds, roleRef] });
+    await addMemberRoleLink(ctx, member.userId, roleRef, member.joinedAt);
     await writeAudit(ctx, {
       actorId: userId,
       action: "member.role.add",
@@ -362,6 +476,7 @@ export const removeRole = mutation({
     }
     const nextRoleIds = member.roleIds.filter((roleId) => roleId !== roleRef);
     await ctx.db.patch(member._id, { roleIds: nextRoleIds });
+    await removeMemberRoleLink(ctx, member.userId, roleRef);
     await writeAudit(ctx, {
       actorId: userId,
       action: "member.role.remove",
@@ -422,6 +537,8 @@ export const kick = mutation({
     const member = await requireMemberRow(ctx, args.userId);
     await detachFromChannels(ctx, args.userId);
     await ctx.db.delete(member._id);
+    await deleteMemberRolesForUser(ctx, args.userId);
+    await adjustMemberCount(ctx, -1);
     await writeAudit(ctx, { actorId: userId, action: "member.kick", targetId: args.userId });
     return null;
   },
@@ -471,6 +588,8 @@ export const ban = mutation({
     }
     await detachFromChannels(ctx, args.userId);
     await ctx.db.delete(member._id);
+    await deleteMemberRolesForUser(ctx, args.userId);
+    await adjustMemberCount(ctx, -1);
     await writeAudit(ctx, {
       actorId: userId,
       action: "member.ban",

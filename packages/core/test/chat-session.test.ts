@@ -185,6 +185,41 @@ describe("ChatSession attachments", () => {
     expect(session.attachmentsFor(messageId)[0]?.dimensions).toEqual({ width: 64, height: 32 });
   });
 
+  it("carries a thumbnail URL from the stored file into the descriptor", async () => {
+    const port = createMockPort();
+    const session = makeSession(port);
+    await session.start();
+    await session.openChannel(channelFor("c1"));
+
+    const fileId = await port.uploadFile({
+      name: "photo.png",
+      mime: "image/png",
+      bytes: new Uint8Array([1, 2, 3, 4]),
+      blurhash: "abc",
+      thumbnail: { bytes: new Uint8Array([5, 6]) },
+    });
+    const messageId = await session.sendMessage("c1", "", { attachmentIds: [fileId] });
+
+    const descriptor = session.attachmentsFor(messageId)[0];
+    expect(descriptor?.thumbnail?.url).toBe(`blob://${fileId}:thumb`);
+    expect(descriptor?.thumbnail?.fileId).toBe(fileId);
+  });
+
+  it("omits the thumbnail when the stored file has none", async () => {
+    const port = createMockPort();
+    const session = makeSession(port);
+    await session.start();
+    await session.openChannel(channelFor("c1"));
+
+    const fileId = await port.uploadFile({
+      name: "photo.png",
+      mime: "image/png",
+      bytes: new Uint8Array([1, 2, 3]),
+    });
+    const messageId = await session.sendMessage("c1", "", { attachmentIds: [fileId] });
+    expect(session.attachmentsFor(messageId)[0]?.thumbnail).toBeUndefined();
+  });
+
   it("resolves attachments for received messages", async () => {
     const port = createMockPort();
     const session = makeSession(port);

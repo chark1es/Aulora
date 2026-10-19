@@ -505,4 +505,30 @@ describe("channels.visibleMemberIds", () => {
     const visible = await asUser1.query(api.channels.visibleMemberIds, { channelId: privateId });
     expect(visible).toEqual(["user-1"]);
   });
+
+  it("resolves visibility per role set without re-resolving shared roles", async () => {
+    const t = newTest();
+    await seedWorkspace(t, {
+      extraRoles: [{ key: "blocked", permissions: EVERYONE_BASE }],
+      members: [
+        { userId: "user-1", roleIds: [EVERYONE_ROLE_ID, "blocked"] },
+        { userId: "user-2", roleIds: [EVERYONE_ROLE_ID, "blocked"] },
+        { userId: "user-3" },
+      ],
+    });
+    const channelId = await seedChannel(t, {
+      overrides: [
+        {
+          targetId: "blocked",
+          targetType: "role",
+          allow: 0n,
+          deny: Permission.ViewChannel,
+        },
+      ],
+    });
+
+    const asUser3 = t.withIdentity({ subject: "user-3" });
+    const visible = await asUser3.query(api.channels.visibleMemberIds, { channelId });
+    expect(visible.sort()).toEqual(["user-3"]);
+  });
 });

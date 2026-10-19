@@ -129,6 +129,70 @@ export async function detectClient() {
   });
 }
 
+/**
+ * Static release manifests, tried in order. The release workflow already emits
+ * `latest.json` (same shape as `apps/desktop/scripts/release-manifest.mjs`) and
+ * publishes it both as a release asset and, optionally, on the docs origin.
+ * These are plain files, so they avoid the unauthenticated GitHub API, which
+ * rate-limits per IP.
+ */
+export const STATIC_MANIFEST_URLS = ["/downloads/latest.json"];
+
+/**
+ * Converts a release manifest into the `{ tag_name, assets }` shape the buttons
+ * use. Prefers an explicit installer list (`assets`); falls back to the updater
+ * `platforms` URLs. Returns `null` when the manifest carries no usable files.
+ */
+export function releaseFromManifest(manifest) {
+  if (typeof manifest !== "object" || manifest === null || Array.isArray(manifest)) {
+    return null;
+  }
+  const version = typeof manifest.version === "string" ? manifest.version : "";
+  const assets = [];
+  if (Array.isArray(manifest.assets)) {
+    for (const asset of manifest.assets) {
+      const name = typeof asset?.name === "string" ? asset.name : "";
+      const url = asset?.browser_download_url ?? asset?.url;
+      if (name.length > 0 && typeof url === "string" && url.length > 0) {
+        assets.push({ name, browser_download_url: url });
+      }
+    }
+  }
+  if (
+    assets.length === 0 &&
+    typeof manifest.platforms === "object" &&
+    manifest.platforms !== null
+  ) {
+    for (const entry of Object.values(manifest.platforms)) {
+      const url = typeof entry?.url === "string" ? entry.url : "";
+      if (url.length === 0) continue;
+      const name = url.split("/").pop() ?? "";
+      if (name.length > 0) assets.push({ name, browser_download_url: url });
+    }
+  }
+  if (assets.length === 0) return null;
+  const tag = version.length === 0 ? "" : version.startsWith("v") ? version : `v${version}`;
+  return { tag_name: tag, assets };
+}
+
+/** The GitHub API release, used when the static manifest is unavailable. */
+async function loadGithubRelease(fetchImpl) {
+  const response = await fetchImpl("https://api.github.com/repos/chark1es/Aulora/releases/latest", {
+    headers: { Accept: "application/vnd.github+json" },
+  });
+  if (!response.ok) return null;
+  const data = await response.json();
+  return {
+    tag_name: typeof data.tag_name === "string" ? data.tag_name : "",
+    assets: Array.isArray(data.assets)
+      ? data.assets.map((asset) => ({
+          name: asset.name,
+          browser_download_url: asset.browser_download_url,
+        }))
+      : [],
+  };
+}
+
 export async function loadRelease(
   fetchImpl = globalThis.fetch,
   storage = globalThis.sessionStorage,
@@ -141,22 +205,31 @@ export async function loadRelease(
       if (parsed && Date.now() - parsed.at < 60 * 60 * 1000 && parsed.data) return parsed.data;
     }
   } catch {
-    // Ignore a broken cache and ask GitHub.
+    // Ignore a broken cache and fetch again.
   }
-  const response = await fetchImpl("https://api.github.com/repos/chark1es/Aulora/releases/latest", {
-    headers: { Accept: "application/vnd.github+json" },
-  });
-  if (!response.ok) return null;
-  const data = await response.json();
-  const release = {
-    tag_name: typeof data.tag_name === "string" ? data.tag_name : "",
-    assets: Array.isArray(data.assets)
-      ? data.assets.map((asset) => ({
-          name: asset.name,
-          browser_download_url: asset.browser_download_url,
-        }))
-      : [],
-  };
+  // Prefer a static manifest; any failure falls back to the GitHub API.
+  let release = null;
+  for (const url of STATIC_MANIFEST_URLS) {
+    try {
+      const response = await fetchImpl(url, { headers: { Accept: "application/json" } });
+      if (response?.ok) {
+        const manifest = await response.json();
+        // Legacy updater manifests only list `platforms` (update archives);
+        // they cannot satisfy direct installer selectors such as the macOS
+        // `.dmg`, so fall through to the GitHub API instead of suppressing it.
+        if (Array.isArray(manifest?.assets)) {
+          release = releaseFromManifest(manifest);
+        }
+      }
+    } catch {
+      release = null;
+    }
+    if (release !== null) break;
+  }
+  if (release === null) {
+    release = await loadGithubRelease(fetchImpl);
+  }
+  if (release === null) return null;
   try {
     storage?.setItem(cacheKey, JSON.stringify({ at: Date.now(), data: release }));
   } catch {

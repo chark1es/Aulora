@@ -15,6 +15,7 @@ import {
 import { OIDC_REQUIRED_ENV_KEYS } from "./lib/envCatalog";
 import { envLookup, isEnvValueSet, loadEffectiveEnv } from "./lib/envOverrides";
 import {
+  loadInstanceCounters,
   loadInstanceSettings,
   normalizePushRelayUrl,
   requireInstanceAdmin,
@@ -37,6 +38,14 @@ import { encryptionConfigured } from "./lib/sse";
 function nonEmpty(value: string | undefined): boolean {
   return value !== undefined && value.trim().length > 0;
 }
+
+/**
+ * Upper bound on rows read per table when the admin overview falls back to a
+ * scan (only before `backfillInstanceCounters` has seeded the maintained
+ * counters). Instances above the cap see a saturated count / approximate
+ * `usedBytes` until they run the backfill.
+ */
+const OVERVIEW_SCAN_LIMIT = 5000;
 
 type Env = Record<string, string | undefined>;
 
@@ -119,11 +128,23 @@ export const overview = query({
     const { env, applied } = await loadEffectiveEnv(ctx);
     const settings = await loadInstanceSettings(ctx);
 
-    const files = await ctx.db.query("files").collect();
-    const usedBytes = files.reduce((total, file) => total + file.sizeBytes, 0);
-    const memberCount = (await ctx.db.query("members").collect()).length;
-    const channelCount = (await ctx.db.query("channels").collect()).length;
-    const deviceCount = (await ctx.db.query("devices").collect()).length;
+    // Prefer the maintained counters. Before `backfillInstanceCounters` runs
+    // they are absent, so fall back to a bounded scan that saturates at
+    // OVERVIEW_SCAN_LIMIT rather than collecting every row.
+    const counters = await loadInstanceCounters(ctx);
+    const files =
+      counters.fileCount === undefined || counters.fileBytes === undefined
+        ? await ctx.db.query("files").take(OVERVIEW_SCAN_LIMIT)
+        : null;
+    const usedBytes =
+      counters.fileBytes ?? (files ?? []).reduce((total, file) => total + file.sizeBytes, 0);
+    const fileCount = counters.fileCount ?? files?.length ?? 0;
+    const memberCount =
+      server.memberCount ?? (await ctx.db.query("members").take(OVERVIEW_SCAN_LIMIT)).length;
+    const channelCount =
+      counters.channelCount ?? (await ctx.db.query("channels").take(OVERVIEW_SCAN_LIMIT)).length;
+    const deviceCount =
+      counters.deviceCount ?? (await ctx.db.query("devices").take(OVERVIEW_SCAN_LIMIT)).length;
     const lastBackup =
       (await ctx.db.query("backups").withIndex("by_started").order("desc").first()) ?? null;
 
@@ -166,7 +187,7 @@ export const overview = query({
         members: memberCount,
         channels: channelCount,
         devices: deviceCount,
-        files: files.length,
+        files: fileCount,
       },
       storage: {
         usedBytes,

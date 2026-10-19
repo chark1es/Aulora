@@ -1,7 +1,8 @@
 // Reconciliation loop: turn a desired-state list into running bot processes.
 //
-// One state entry per known bot. Each tick (every 3 s in production) the runner
-// fetches the desired list and:
+// One state entry per known bot. Each tick (every 3 s with bots, backing off to
+// BOT_RUNNER_POLL_IDLE_MS when none are tracked) the runner fetches the desired
+// list and:
 //   - starts bots that are missing (up to BOT_RUNNER_MAX_BOTS);
 //   - stops bots that were removed or disabled;
 //   - relaunches a bot when its `revision` or `restartNonce` changed;

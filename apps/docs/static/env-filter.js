@@ -1,9 +1,21 @@
-// Filter box for the generated environment-variable reference. Each row carries
-// its key, label and description in `data-search`; typing narrows the rows and
-// hides any group left empty. Progressive: without JavaScript every row shows.
+// Filter box for the generated environment-variable reference. The haystack is
+// built from each row's own text (key, description and metadata) plus its group
+// id, so the page does not carry a duplicate copy of every field in a
+// `data-search` attribute. Typing narrows the rows and hides any group left
+// empty. Progressive: without JavaScript every row shows.
 
 function matches(haystack, tokens) {
   return tokens.every((token) => haystack.includes(token));
+}
+
+/** Lowercased haystack for a row, built once and cached on the element. */
+function haystackFor(variable, cache) {
+  const cached = cache.get(variable);
+  if (cached !== undefined) return cached;
+  const group = variable.closest("[data-env-group]")?.querySelector("h2");
+  const text = `${variable.textContent} ${group?.id ?? ""}`.toLowerCase();
+  cache.set(variable, text);
+  return text;
 }
 
 /** Mounts the filter inside a `[data-env-filter]` box, if present. */
@@ -14,12 +26,13 @@ export function mountEnvFilter(root = document) {
   const variables = [...root.querySelectorAll("[data-env-var]")];
   const empty = root.querySelector("[data-env-empty]");
   const clear = root.querySelector("[data-env-filter-clear]");
+  const haystacks = new WeakMap();
 
   const apply = () => {
     const tokens = input.value.toLowerCase().split(/\s+/).filter(Boolean);
     let shown = 0;
     for (const variable of variables) {
-      const match = matches(variable.dataset.search ?? "", tokens);
+      const match = matches(haystackFor(variable, haystacks), tokens);
       variable.hidden = !match;
       if (match) shown += 1;
     }

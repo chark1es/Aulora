@@ -1,7 +1,18 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
-import { loadConfig, normalizeBaseUrl } from "../src/config.mjs";
+import { loadConfig, normalizeBaseUrl, pollDelayMs } from "../src/config.mjs";
 import { nextBackoff } from "../src/reconciler.mjs";
+
+test("pollDelayMs uses the active cadence with bots and the idle cadence when empty", () => {
+  const base = { activeMs: 3000, idleMs: 45000, jitter: 0.2 };
+  assert.equal(pollDelayMs({ ...base, active: true, random: () => 0.5 }), 3000);
+  assert.equal(pollDelayMs({ ...base, active: false, random: () => 0.5 }), 45000);
+  // The ±20% spread bounds the delay on both sides.
+  assert.equal(pollDelayMs({ ...base, active: true, random: () => 0 }), 2400);
+  assert.equal(pollDelayMs({ ...base, active: true, random: () => 1 }), 3600);
+  assert.equal(pollDelayMs({ ...base, active: false, random: () => 1 }), 54000);
+  assert.equal(pollDelayMs({ ...base, active: false, random: () => 0 }), 36000);
+});
 
 test("normalizeBaseUrl canonicalizes and rejects non-http schemes", () => {
   assert.equal(normalizeBaseUrl("http://convex-backend:3211", "x"), "http://convex-backend:3211");
@@ -21,6 +32,8 @@ test("loadConfig requires a runner token and applies safe defaults", () => {
   assert.equal(config.botMemoryMb, 256);
   assert.equal(config.uidBase, 20000);
   assert.equal(config.pollIntervalMs, 3000);
+  assert.equal(config.pollIdleIntervalMs, 20000);
+  assert.equal(config.pollJitter, 0.2);
 });
 
 test("loadConfig rejects a relative WORK_DIR", () => {

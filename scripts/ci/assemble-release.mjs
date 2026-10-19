@@ -44,11 +44,20 @@ export async function assembleRelease(version, repository, notes = "") {
   ]) {
     if (!files.includes(file)) throw new Error(`Missing release notice: ${file}`);
   }
+  // Every signed/distributable file, for the docs download buttons to read from
+  // a static manifest instead of the rate-limited GitHub API. Manifests, the
+  // checksum file, notes and detached signatures are not downloads.
+  const NOT_ASSETS = new Set(["latest.json", "SHA256SUMS", "RELEASE_NOTES.md"]);
+  const assets = files
+    .filter((file) => !NOT_ASSETS.has(file) && !file.endsWith(".sig"))
+    .sort()
+    .map((file) => ({ name: file, url: `${baseUrl}/${file}` }));
   const manifest = buildReleaseManifest({
     version,
     notes,
     pubDate: new Date().toISOString(),
     platforms,
+    ...(assets.length > 0 ? { assets } : {}),
   });
   writeFileSync(join(RELEASE_DIRECTORY, "latest.json"), `${JSON.stringify(manifest, null, 2)}\n`);
 }

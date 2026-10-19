@@ -15,6 +15,8 @@ import {
 } from "@aulora/core";
 import { Badge, Button, cn, Icon, Spinner, useContextMenu } from "@aulora/ui-web";
 import {
+  Fragment,
+  memo,
   type ReactNode,
   useCallback,
   useEffect,
@@ -65,6 +67,17 @@ export interface MessageListProps {
   readonly hasOlder: boolean;
   readonly loading: boolean;
   readonly onLoadOlder: () => void;
+  /**
+   * When the retained history window has been truncated by the page cap, the id
+   * of the oldest live-tail message. A boundary is drawn before it so the
+   * dropped region is explicit rather than a silent jump in the timeline.
+   */
+  readonly historySeamId?: string | null;
+  /**
+   * Re-anchors the history window to the live tail once the reader is back at
+   * the newest message, so evicted pages can be re-fetched on the next scroll.
+   */
+  readonly onResetHistory?: () => void;
   readonly onReply: (message: MessagePayload) => void;
   readonly onEdit: (message: MessagePayload, text: string) => void;
   readonly onDelete: (message: MessagePayload) => void;
@@ -83,6 +96,42 @@ export interface MessageListProps {
   >;
   /** Which side the viewer's own messages render on. Defaults to "left". */
   readonly ownSide?: "left" | "right";
+}
+
+/**
+ * The subset of {@link MessageListProps} the timeline rows actually read. Rows
+ * receive a memoized object of this shape so a re-render of the list (a typing
+ * tick, a reaction, the voice snapshot) does not invalidate every mounted row.
+ */
+export interface MessageRowListProps {
+  readonly runtime: ChatRuntime | undefined;
+  readonly ownUserId: string;
+  readonly ownName: string;
+  readonly permissions: bigint;
+  readonly memberNames: ReadonlyMap<string, string>;
+  readonly memberColors: ReadonlyMap<string, string> | undefined;
+  readonly mentionNames: readonly string[];
+  readonly ownSide: "left" | "right" | undefined;
+  readonly pendingIds: ReadonlySet<string>;
+  readonly failedIds: ReadonlySet<string> | undefined;
+  readonly decrypted: ReadonlyMap<string, string>;
+  readonly attachments: ReadonlyMap<string, readonly AttachmentDescriptor[]>;
+  readonly replyPreviews: MessageListProps["replyPreviews"];
+  readonly channelNames: readonly string[] | undefined;
+  // eslint-disable-next-line no-unused-vars -- parameter name documents the callback contract
+  readonly onChannelClick: ((name: string) => void) | undefined;
+  readonly inThread: boolean | undefined;
+  // eslint-disable-next-line no-unused-vars -- parameter name documents the callback contract
+  readonly onRetrySend: ((pendingId: string) => void) | undefined;
+  // eslint-disable-next-line no-unused-vars -- parameter name documents the callback contract
+  readonly onDiscardSend: ((pendingId: string) => void) | undefined;
+  readonly onEdit: (message: MessagePayload, text: string) => void;
+  readonly onDelete: (message: MessagePayload) => void;
+  readonly onPinToggle: (message: MessagePayload) => void;
+  readonly onReact: (message: MessagePayload, emoji: string) => void;
+  readonly onReply: (message: MessagePayload) => void;
+  // eslint-disable-next-line no-unused-vars -- parameter name documents the callback contract
+  readonly onReplyTo: ((message: MessagePayload) => void) | undefined;
 }
 
 /** Stable empty value so rows without reactions do not re-render needlessly. */
@@ -110,6 +159,8 @@ export function MessageList(props: MessageListProps) {
     memberNames,
     memberColors,
   } = props;
+  const historySeamId = props.historySeamId ?? null;
+  const onResetHistory = props.onResetHistory;
   const scrollRef = useRef<HTMLDivElement | null>(null);
   const contentRef = useRef<HTMLDivElement | null>(null);
   const stickRef = useRef(true);
@@ -178,6 +229,15 @@ export function MessageList(props: MessageListProps) {
     stickRef.current = pinned;
     setAtBottom(pinned);
   }, []);
+
+  // Once the reader settles back at the newest message, drop the truncated
+  // history window so the pages the cap evicted are re-fetched from the tail
+  // cursor on the next scroll up. No-op while the window is contiguous.
+  useEffect(() => {
+    if (atBottom && historySeamId !== null && onResetHistory !== undefined) {
+      onResetHistory();
+    }
+  }, [atBottom, historySeamId, onResetHistory]);
 
   // A new channel starts pinned to the bottom until it is first positioned.
   // biome-ignore lint/correctness/useExhaustiveDependencies: channelId is the reset trigger
@@ -257,6 +317,63 @@ export function MessageList(props: MessageListProps) {
     }
   };
 
+  // Rows read only this slice; keying the memo on the values they use lets a
+  // memoized row skip re-rendering when only unrelated list state changes.
+  const rowList = useMemo<MessageRowListProps>(
+    () => ({
+      runtime: props.runtime,
+      ownUserId: props.ownUserId,
+      ownName: props.ownName,
+      permissions: props.permissions,
+      memberNames: props.memberNames,
+      memberColors: props.memberColors,
+      mentionNames: props.mentionNames,
+      ownSide: props.ownSide,
+      pendingIds: props.pendingIds,
+      failedIds: props.failedIds,
+      decrypted: props.decrypted,
+      attachments: props.attachments,
+      replyPreviews: props.replyPreviews,
+      channelNames: props.channelNames,
+      onChannelClick: props.onChannelClick,
+      inThread: props.inThread,
+      onRetrySend: props.onRetrySend,
+      onDiscardSend: props.onDiscardSend,
+      onEdit: props.onEdit,
+      onDelete: props.onDelete,
+      onPinToggle: props.onPinToggle,
+      onReact: props.onReact,
+      onReply: props.onReply,
+      onReplyTo: props.onReplyTo,
+    }),
+    [
+      props.runtime,
+      props.ownUserId,
+      props.ownName,
+      props.permissions,
+      props.memberNames,
+      props.memberColors,
+      props.mentionNames,
+      props.ownSide,
+      props.pendingIds,
+      props.failedIds,
+      props.decrypted,
+      props.attachments,
+      props.replyPreviews,
+      props.channelNames,
+      props.onChannelClick,
+      props.inThread,
+      props.onRetrySend,
+      props.onDiscardSend,
+      props.onEdit,
+      props.onDelete,
+      props.onPinToggle,
+      props.onReact,
+      props.onReply,
+      props.onReplyTo,
+    ],
+  );
+
   return (
     <div className="relative flex min-h-0 flex-1 flex-col">
       <div
@@ -295,12 +412,12 @@ export function MessageList(props: MessageListProps) {
             props.emptyState
           ) : (
             items.map((item) => (
-              <TimelineRow
-                key={item.key}
-                item={item}
-                list={props}
-                reactionsByMessage={reactionsByMessage}
-              />
+              <Fragment key={item.key}>
+                {historySeamId !== null &&
+                  item.kind === "message" &&
+                  item.message.id === historySeamId && <HistorySeamRow />}
+                <TimelineRow item={item} list={rowList} reactionsByMessage={reactionsByMessage} />
+              </Fragment>
             ))
           )}
           {typers.length > 0 && (
@@ -327,13 +444,13 @@ export function MessageList(props: MessageListProps) {
   );
 }
 
-function TimelineRow({
+const TimelineRow = memo(function TimelineRow({
   item,
   list,
   reactionsByMessage,
 }: {
   readonly item: TimelineItem;
-  readonly list: MessageListProps;
+  readonly list: MessageRowListProps;
   readonly reactionsByMessage: ReadonlyMap<string, readonly ReactionGroup[]>;
 }) {
   if (item.kind === "day") {
@@ -369,15 +486,144 @@ function TimelineRow({
       reactions={reactionsByMessage.get(item.message.id) ?? NO_REACTIONS}
     />
   );
+});
+
+/**
+ * Marks the seam where the page cap dropped history between the retained window
+ * and the live tail, so the timeline never silently jumps in time.
+ */
+type ReplyPreview = {
+  readonly authorName: string;
+  readonly text: string;
+  readonly authorId?: string;
+};
+
+/** Inline edit form, split out so the row stays within the complexity budget. */
+function MessageEditForm({
+  draft,
+  text,
+  onDraftChange,
+  onSave,
+  onCancel,
+}: {
+  readonly draft: string | undefined;
+  readonly text: string;
+  // eslint-disable-next-line no-unused-vars -- parameter name documents the callback contract
+  readonly onDraftChange: (value: string) => void;
+  // eslint-disable-next-line no-unused-vars -- parameter name documents the callback contract
+  readonly onSave: (next: string) => void;
+  readonly onCancel: () => void;
+}) {
+  return (
+    <form
+      className="flex w-[min(560px,100%)] flex-col gap-2 rounded-[10px] border border-accent bg-surface-2 p-2 shadow-lg shadow-black/10"
+      onSubmit={(event) => {
+        event.preventDefault();
+        if ((draft ?? "").trim().length > 0 && draft !== undefined && draft !== text) {
+          onSave(draft);
+        }
+        onCancel();
+      }}
+    >
+      <textarea
+        aria-label="Edit message"
+        // biome-ignore lint/a11y/noAutofocus: editing was explicitly requested
+        autoFocus
+        className="min-h-[64px] resize-none bg-transparent px-1.5 py-1 text-[14px] leading-relaxed text-text focus-visible:outline-none"
+        value={draft ?? ""}
+        onChange={(event) => {
+          onDraftChange(event.target.value);
+        }}
+        onKeyDown={(event) => {
+          if (event.key === "Escape") {
+            onCancel();
+          }
+          if (event.key === "Enter" && !event.shiftKey) {
+            event.preventDefault();
+            event.currentTarget.form?.requestSubmit();
+          }
+        }}
+      />
+      <div className="flex items-center justify-end gap-2 text-xs">
+        <span className="mr-auto pl-1.5 text-text-muted">Esc to cancel · Enter to save</span>
+        <Button type="button" size="sm" variant="ghost" onClick={onCancel}>
+          Cancel
+        </Button>
+        <Button type="submit" size="sm">
+          Save
+        </Button>
+      </div>
+    </form>
+  );
 }
 
-function MessageRow({
+/** Quoted inline reply, split out so the row stays within the complexity budget. */
+function ReplyLine({
+  replyToId,
+  replyPreview,
+  mirror,
+  list,
+  onJump,
+}: {
+  readonly replyToId: string;
+  readonly replyPreview: ReplyPreview | undefined;
+  readonly mirror: boolean;
+  readonly list: MessageRowListProps;
+  // eslint-disable-next-line no-unused-vars -- parameter name documents the callback contract
+  readonly onJump: (id: string) => void;
+}) {
+  const replyAuthorId = replyPreview?.authorId;
+  const replyAuthorColor =
+    replyAuthorId !== undefined ? list.memberColors?.get(replyAuthorId) : undefined;
+  return (
+    <button
+      type="button"
+      onClick={() => {
+        onJump(replyToId);
+      }}
+      aria-label="Jump to replied message"
+      className={cn(
+        "flex min-w-0 max-w-full items-center text-left transition hover:opacity-80 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent",
+        mirror && "text-right",
+      )}
+    >
+      <div className="flex min-w-0 items-baseline gap-1 text-[12px] leading-4">
+        {replyPreview !== undefined ? (
+          <>
+            <span
+              className={cn(
+                "min-w-0 truncate font-semibold",
+                replyAuthorColor === undefined && "text-accent",
+              )}
+              style={replyAuthorColor !== undefined ? { color: replyAuthorColor } : undefined}
+            >
+              {replyPreview.authorName}
+            </span>
+            <div className="min-w-0 text-text-muted">
+              <RichText
+                variant="inline"
+                text={replyPreview.text}
+                mentionNames={list.mentionNames}
+                {...(list.channelNames !== undefined ? { channelNames: list.channelNames } : {})}
+                viewerName={list.ownName}
+              />
+            </div>
+          </>
+        ) : (
+          <span className="truncate italic text-text-muted">Replying to a message</span>
+        )}
+      </div>
+    </button>
+  );
+}
+
+function MessageRowContent({
   list,
   message,
   startsGroup,
   reactions,
 }: {
-  readonly list: MessageListProps;
+  readonly list: MessageRowListProps;
   readonly message: MessagePayload;
   readonly startsGroup: boolean;
   readonly reactions: readonly ReactionGroup[];
@@ -461,52 +707,17 @@ function MessageRow({
   const replyCount = message.replyCount ?? 0;
 
   const body = editing ? (
-    <form
-      className="flex w-[min(560px,100%)] flex-col gap-2 rounded-[10px] border border-accent bg-surface-2 p-2 shadow-lg shadow-black/10"
-      onSubmit={(event) => {
-        event.preventDefault();
-        if ((draft ?? "").trim().length > 0 && draft !== undefined && draft !== text) {
-          list.onEdit(message, draft);
-        }
+    <MessageEditForm
+      draft={draft}
+      text={text}
+      onDraftChange={setDraft}
+      onSave={(next) => {
+        list.onEdit(message, next);
+      }}
+      onCancel={() => {
         setEditing(false);
       }}
-    >
-      <textarea
-        aria-label="Edit message"
-        // biome-ignore lint/a11y/noAutofocus: editing was explicitly requested
-        autoFocus
-        className="min-h-[64px] resize-none bg-transparent px-1.5 py-1 text-[14px] leading-relaxed text-text focus-visible:outline-none"
-        value={draft ?? ""}
-        onChange={(event) => {
-          setDraft(event.target.value);
-        }}
-        onKeyDown={(event) => {
-          if (event.key === "Escape") {
-            setEditing(false);
-          }
-          if (event.key === "Enter" && !event.shiftKey) {
-            event.preventDefault();
-            event.currentTarget.form?.requestSubmit();
-          }
-        }}
-      />
-      <div className="flex items-center justify-end gap-2 text-xs">
-        <span className="mr-auto pl-1.5 text-text-muted">Esc to cancel · Enter to save</span>
-        <Button
-          type="button"
-          size="sm"
-          variant="ghost"
-          onClick={() => {
-            setEditing(false);
-          }}
-        >
-          Cancel
-        </Button>
-        <Button type="submit" size="sm">
-          Save
-        </Button>
-      </div>
-    </form>
+    />
   ) : hasText ? (
     <div
       className={cn(
@@ -529,44 +740,13 @@ function MessageRow({
     replyAuthorId !== undefined ? memberColors?.get(replyAuthorId) : undefined;
 
   const replyLine = replyToId !== null && (
-    <button
-      type="button"
-      onClick={() => {
-        scrollToOriginal(replyToId);
-      }}
-      aria-label="Jump to replied message"
-      className={cn(
-        "flex min-w-0 max-w-full items-center text-left transition hover:opacity-80 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent",
-        mirror && "text-right",
-      )}
-    >
-      <div className="flex min-w-0 items-baseline gap-1 text-[12px] leading-4">
-        {replyPreview !== undefined ? (
-          <>
-            <span
-              className={cn(
-                "min-w-0 truncate font-semibold",
-                replyAuthorColor === undefined && "text-accent",
-              )}
-              style={replyAuthorColor !== undefined ? { color: replyAuthorColor } : undefined}
-            >
-              {replyPreview.authorName}
-            </span>
-            <div className="min-w-0 text-text-muted">
-              <RichText
-                variant="inline"
-                text={replyPreview.text}
-                mentionNames={list.mentionNames}
-                {...(list.channelNames !== undefined ? { channelNames: list.channelNames } : {})}
-                viewerName={list.ownName}
-              />
-            </div>
-          </>
-        ) : (
-          <span className="truncate italic text-text-muted">Replying to a message</span>
-        )}
-      </div>
-    </button>
+    <ReplyLine
+      replyToId={replyToId}
+      replyPreview={replyPreview}
+      mirror={mirror}
+      list={list}
+      onJump={scrollToOriginal}
+    />
   );
 
   const toolbar = !unsent && !editing && (
@@ -832,6 +1012,8 @@ function MessageRow({
   );
 }
 
+const MessageRow = memo(MessageRowContent);
+
 function ToolbarButton({
   label,
   onClick,
@@ -944,4 +1126,24 @@ function groupReactionsByMessage(
     grouped.set(messageId, groupReactions(list, ownUserId));
   }
   return grouped;
+}
+
+/**
+ * Marks the seam where the page cap dropped history between the retained window
+ * and the live tail, so the timeline never silently jumps in time.
+ *
+ * Declared last because Lizard's JSX parser otherwise attributes the large row
+ * component that follows to this function.
+ */
+function HistorySeamRow() {
+  return (
+    <div
+      data-testid="history-seam"
+      className="flex items-center gap-3 py-3 text-[11px] text-text-muted"
+    >
+      <span className="h-px flex-1 bg-border" />
+      <span className="whitespace-nowrap">Some messages were unloaded to keep this view fast</span>
+      <span className="h-px flex-1 bg-border" />
+    </div>
+  );
 }

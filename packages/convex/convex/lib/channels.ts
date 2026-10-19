@@ -1,8 +1,14 @@
+import { hasPermission } from "@aulora/core";
 import { ConvexError } from "convex/values";
 import type { Id } from "../_generated/dataModel";
 import type { MutationCtx, QueryCtx } from "../_generated/server";
 import { requireAuth } from "./auth";
-import { requirePermissionForUser } from "./permissions";
+import {
+  categoryOverridesFor,
+  channelPermissions,
+  type PermissionContext,
+  requirePermissionForUser,
+} from "./permissions";
 
 export type ChannelKind = "text" | "announcement" | "voice" | "dm" | "group_dm";
 
@@ -119,4 +125,30 @@ export async function requireChannelAccessForUser(
     await requireChannelMember(ctx, channelId, result.userId);
   }
   return result;
+}
+
+/**
+ * {@link requireChannelAccess} for an actor whose {@link PermissionContext} is
+ * already loaded, so a caller gating many channels pays the role/server load
+ * once instead of once per channel. Access decisions are identical.
+ */
+export async function requireChannelAccessFromContext(
+  ctx: QueryCtx | MutationCtx,
+  context: PermissionContext,
+  channelId: Id<"channels">,
+  flag: bigint,
+) {
+  const channel = await ctx.db.get(channelId);
+  if (channel === null) {
+    throw new ConvexError("Channel not found");
+  }
+  const categoryOverrides = await categoryOverridesFor(ctx, channel);
+  const permissions = channelPermissions(context, channel, categoryOverrides);
+  if (!hasPermission(permissions, flag)) {
+    throw new ConvexError("Missing permission");
+  }
+  if (isDmKind(channel.kind) || channel.private === true) {
+    await requireChannelMember(ctx, channelId, context.userId);
+  }
+  return { userId: context.userId, channel, permissions };
 }

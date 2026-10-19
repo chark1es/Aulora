@@ -23,6 +23,7 @@ import {
   useRef,
   useState,
 } from "react";
+import { type ChannelUnreadState, selectEagerChannelIds } from "../lib/channel-priority";
 import { type ChatRuntime, createChatRuntime } from "../lib/chat-runtime";
 import { webOutboxStore } from "../lib/outbox-store";
 import { webSearchStore } from "../lib/search-store";
@@ -30,6 +31,9 @@ import { usePresenceHeartbeat } from "../lib/use-presence-heartbeat";
 
 /** A mutable ref target that starts unset without spelling out a union at each use. */
 type Maybe<T> = T | undefined;
+
+/** No unread state; the fallback when no eager set is supplied. */
+const EMPTY_UNREAD: ReadonlyMap<string, ChannelUnreadState> = new Map();
 
 export interface ChatSearchHit extends SearchHit {
   readonly channelName: string;
@@ -59,6 +63,12 @@ export interface ChatContextValue {
   readonly channelNames: ReadonlyMap<string, string>;
   /** Caches plaintext channel names for the given channels. */
   reportChannelNames: (_entries: readonly { id: string; name: string }[]) => void;
+  /**
+   * Opens a channel's live stream and records it with the provider, so it is
+   * released when the reader switches away instead of accumulating.
+   */
+  // eslint-disable-next-line no-unused-vars -- parameter name documents the contract
+  openChannel: (_channel: ChannelView) => Promise<void>;
   readonly presence: readonly PresenceRow[];
   readonly channels: readonly ChannelView[];
   readonly ready: boolean;
@@ -92,6 +102,13 @@ export interface ChatProviderProps {
   readonly userId: string;
   readonly displayName: string;
   readonly channels: readonly ChannelSummary[];
+  /**
+   * The bounded set of channels whose message streams stay open eagerly for
+   * background alerts. Everything else is opened lazily when selected (or not
+   * at all); channel *names* are still cached for every channel. Defaults to
+   * the first few openable channels when omitted.
+   */
+  readonly eagerChannelIds?: readonly string[];
   readonly children: ReactNode;
 }
 
@@ -105,6 +122,7 @@ export function ChatProvider({
   userId,
   displayName,
   channels,
+  eagerChannelIds,
   children,
 }: ChatProviderProps) {
   const [runtime, setRuntime] = useState<ChatRuntime | undefined>(undefined);
@@ -117,6 +135,10 @@ export function ChatProvider({
   const [outbox, setOutbox] = useState<readonly OutboxItem[]>([]);
   const runtimeRef = useRef<ChatRuntime | undefined>(undefined);
   const outboxRef = useRef<Maybe<Outbox>>(undefined);
+  // The last snapshot handed to the context, so an unchanged refresh can keep
+  // the old array reference and leave the context value (and tree) untouched.
+  const outboxItemsRef = useRef<readonly OutboxItem[]>([]);
+  outboxItemsRef.current = outbox;
   const searchRef = useRef<Maybe<SearchIndex>>(undefined);
   const backfillRef = useRef<Maybe<ArchiveBackfill>>(undefined);
   const channelsRef = useRef(channels);
@@ -211,7 +233,10 @@ export function ChatProvider({
     if (active === undefined) {
       return;
     }
-    setOutbox(await active.list());
+    const next = await active.list();
+    // `list()` always returns a fresh array; keep the previous reference when
+    // nothing queued actually changed so the context value stays stable.
+    setOutbox((current) => (sameOutbox(current, next) ? current : next));
   }, []);
 
   const flush = useCallback(async () => {
@@ -270,12 +295,14 @@ export function ChatProvider({
   }, [runtime, online, flush]);
 
   // Retry/backoff ticker: even if `online` events are missed, queued sends are
-  // attempted once the browser reports a connection.
+  // attempted once the browser reports a connection. Stays idle (no flush, no
+  // context update) while nothing is queued.
   useEffect(() => {
     const timer = setInterval(() => {
       const connected = typeof navigator === "undefined" ? true : navigator.onLine;
       setOnline(connected);
-      if (connected) {
+      const queued = outboxItemsRef.current.some((item) => item.status !== "failed");
+      if (connected && queued) {
         void flush();
       }
     }, 5_000);
@@ -299,7 +326,47 @@ export function ChatProvider({
     });
   }, []);
 
-  // Open each channel once the runtime is ready and cache its plaintext name.
+  // Open only a bounded eager set of channels once the runtime is ready, and
+  // cache each channel's plaintext name. Opening every channel fanned out to
+  // one live `messages.list` subscription (and its decrypted history) per
+  // conversation. The open conversation is streamed separately by
+  // `useChannelSession`, and every other channel's unread/mention alerts come
+  // from the already-subscribed `readStates.summary`.
+  const eagerSet = useMemo(() => {
+    const ids = eagerChannelIds ?? selectEagerChannelIds(channels, EMPTY_UNREAD);
+    return new Set(ids);
+  }, [eagerChannelIds, channels]);
+  // Channels this provider currently holds open, so ones that leave the eager
+  // set (e.g. after being read) are closed instead of accumulating.
+  const openedRef = useRef(new Set<string>());
+  // The channel opened on demand by the reader; tracked separately so switching
+  // releases the previous one and the eager cleanup does not close it.
+  const activeOpenedRef = useRef<string | null>(null);
+  const eagerSetRef = useRef(eagerSet);
+  eagerSetRef.current = eagerSet;
+
+  const openChannel = useCallback(async (channel: ChannelView) => {
+    const active = runtimeRef.current;
+    if (active === undefined) {
+      return;
+    }
+    const previous = activeOpenedRef.current;
+    if (previous !== null && previous !== channel.id && !eagerSetRef.current.has(previous)) {
+      active.session.closeChannel(previous);
+      openedRef.current.delete(previous);
+    }
+    activeOpenedRef.current = channel.id;
+    await active.session.openChannel(channel);
+    if (activeOpenedRef.current !== channel.id) {
+      // A newer switch won the race; do not leave an untracked subscription.
+      if (!eagerSetRef.current.has(channel.id)) {
+        active.session.closeChannel(channel.id);
+      }
+      return;
+    }
+    openedRef.current.add(channel.id);
+  }, []);
+
   useEffect(() => {
     const active = runtimeRef.current;
     if (runtime === undefined || active === undefined || channels.length === 0) {
@@ -307,15 +374,24 @@ export function ChatProvider({
     }
     let cancelled = false;
     const isCancelled = () => cancelled;
+    for (const channelId of [...openedRef.current]) {
+      if (!eagerSet.has(channelId) && channelId !== activeOpenedRef.current) {
+        active.session.closeChannel(channelId);
+        openedRef.current.delete(channelId);
+      }
+    }
     void Promise.allSettled(
       channels.map((channel) =>
         (async () => {
           if (isCancelled()) {
             return;
           }
-          await active.session.openChannel(channel);
-          if (isCancelled()) {
-            return;
+          if (eagerSet.has(channel.id)) {
+            await active.session.openChannel(channel);
+            openedRef.current.add(channel.id);
+            if (isCancelled()) {
+              return;
+            }
           }
           active.session.hydrateChannelNames([channel]);
           if (isCancelled()) {
@@ -335,7 +411,7 @@ export function ChatProvider({
     return () => {
       cancelled = true;
     };
-  }, [runtime, channels]);
+  }, [runtime, channels, eagerSet]);
 
   const sendMessage = useCallback(
     async (
@@ -481,6 +557,7 @@ export function ChatProvider({
       runtime,
       channelNames,
       reportChannelNames,
+      openChannel,
       presence,
       channels: views,
       ready,
@@ -496,6 +573,7 @@ export function ChatProvider({
       runtime,
       channelNames,
       reportChannelNames,
+      openChannel,
       presence,
       views,
       ready,
@@ -510,6 +588,36 @@ export function ChatProvider({
   );
 
   return <ChatContext.Provider value={value}>{children}</ChatContext.Provider>;
+}
+
+/**
+ * Whether two outbox snapshots are equivalent, so a refresh that changed
+ * nothing can keep the previous array reference (and the context value stable).
+ */
+function sameOutbox(a: readonly OutboxItem[], b: readonly OutboxItem[]): boolean {
+  if (a === b) {
+    return true;
+  }
+  if (a.length !== b.length) {
+    return false;
+  }
+  for (let index = 0; index < a.length; index += 1) {
+    const previous = a.at(index);
+    const next = b.at(index);
+    if (previous === undefined || next === undefined) {
+      return false;
+    }
+    if (
+      previous.id !== next.id ||
+      previous.status !== next.status ||
+      previous.attempts !== next.attempts ||
+      previous.lastAttemptAt !== next.lastAttemptAt ||
+      previous.nextAttemptAt !== next.nextAttemptAt
+    ) {
+      return false;
+    }
+  }
+  return true;
 }
 
 function placeholder(channel: ChannelSummary): string {

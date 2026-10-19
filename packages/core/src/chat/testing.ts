@@ -279,9 +279,19 @@ export function createMockPort(options: { readonly now?: () => number } = {}): M
       return Promise.resolve(state.members.get(args.channelId) ?? []);
     },
     uploadFile(args) {
-      record("uploadFile", { ...args, bytes: args.bytes.length });
+      record("uploadFile", {
+        ...args,
+        bytes: args.bytes.length,
+        ...(args.thumbnail !== undefined ? { thumbnail: args.thumbnail.bytes.length } : {}),
+      });
       const fileId = nextId("file");
       state.blobs.set(fileId, new Uint8Array(args.bytes));
+      let thumbnailUrl: string | null = null;
+      if (args.thumbnail !== undefined) {
+        const thumbnailKey = `${fileId}:thumb`;
+        state.blobs.set(thumbnailKey, new Uint8Array(args.thumbnail.bytes));
+        thumbnailUrl = `blob://${thumbnailKey}`;
+      }
       state.files.set(fileId, {
         id: fileId,
         uploaderId: "me",
@@ -291,6 +301,7 @@ export function createMockPort(options: { readonly now?: () => number } = {}): M
         dimensions: args.dimensions !== undefined ? JSON.stringify(args.dimensions) : null,
         blurhash: args.blurhash ?? null,
         url: `blob://${fileId}`,
+        thumbnailUrl,
       });
       return Promise.resolve(fileId);
     },

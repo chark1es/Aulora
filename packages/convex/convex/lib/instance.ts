@@ -76,6 +76,77 @@ export async function loadInstanceSettings(ctx: ReadCtx): Promise<InstanceSettin
   };
 }
 
+/** The maintained overview counters; an `undefined` field means "not backfilled". */
+export interface InstanceCounters {
+  readonly fileCount: number | undefined;
+  readonly fileBytes: number | undefined;
+  readonly channelCount: number | undefined;
+  readonly deviceCount: number | undefined;
+}
+
+/** Reads the maintained overview counters from the singleton settings row. */
+export async function loadInstanceCounters(ctx: ReadCtx): Promise<InstanceCounters> {
+  const row = await ctx.db.query("instanceSettings").first();
+  return {
+    fileCount: row?.fileCount,
+    fileBytes: row?.fileBytes,
+    channelCount: row?.channelCount,
+    deviceCount: row?.deviceCount,
+  };
+}
+
+export interface InstanceCounterDelta {
+  readonly files?: number;
+  readonly fileBytes?: number;
+  readonly channels?: number;
+  readonly devices?: number;
+}
+
+/**
+ * Adjusts the maintained overview counters. Each field is only patched once it
+ * has been backfilled; an absent field stays absent so readers fall back to a
+ * bounded scan (see {@link backfillInstanceCounters}). A no-op without a
+ * settings row or a zero delta.
+ */
+export async function adjustInstanceCounters(
+  ctx: MutationCtx,
+  delta: InstanceCounterDelta,
+): Promise<void> {
+  if (
+    (delta.files ?? 0) === 0 &&
+    (delta.fileBytes ?? 0) === 0 &&
+    (delta.channels ?? 0) === 0 &&
+    (delta.devices ?? 0) === 0
+  ) {
+    return;
+  }
+  const row = await ctx.db.query("instanceSettings").first();
+  if (row === null) {
+    return;
+  }
+  const patch: {
+    fileCount?: number;
+    fileBytes?: number;
+    channelCount?: number;
+    deviceCount?: number;
+  } = {};
+  if (delta.files !== undefined && row.fileCount !== undefined) {
+    patch.fileCount = Math.max(0, row.fileCount + delta.files);
+  }
+  if (delta.fileBytes !== undefined && row.fileBytes !== undefined) {
+    patch.fileBytes = Math.max(0, row.fileBytes + delta.fileBytes);
+  }
+  if (delta.channels !== undefined && row.channelCount !== undefined) {
+    patch.channelCount = Math.max(0, row.channelCount + delta.channels);
+  }
+  if (delta.devices !== undefined && row.deviceCount !== undefined) {
+    patch.deviceCount = Math.max(0, row.deviceCount + delta.devices);
+  }
+  if (Object.keys(patch).length > 0) {
+    await ctx.db.patch(row._id, patch);
+  }
+}
+
 /**
  * Largest single upload from the deployment environment, or the built-in
  * default when `UPLOAD_MAX_BYTES` is unset or invalid. This is only a fallback:

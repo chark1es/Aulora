@@ -156,7 +156,9 @@ export function ChannelSidebar(props: ChannelSidebarProps) {
               </h1>
               <p className="flex items-center gap-1.5 text-[11px] text-text-muted">
                 <span className="h-1.5 w-1.5 rounded-full bg-secondary" aria-hidden="true" />
-                {props.onlineCount} online
+                <span title="Online among the people currently shown">
+                  {props.onlineCount} online
+                </span>
               </p>
             </div>
           </>

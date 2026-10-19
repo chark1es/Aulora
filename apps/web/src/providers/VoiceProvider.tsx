@@ -249,9 +249,13 @@ export function VoiceProvider({
   }, [callActive]);
 
   // Keep a Convex token cached so the unload beacon can authenticate without
-  // awaiting anything once the page is going away. Fetched on mount so it is
-  // warm before the first call, then refreshed well inside the token lifetime.
+  // awaiting anything once the page is going away. A seat only exists during a
+  // call, so fetch lazily when the call starts and refresh while it lasts
+  // instead of polling the auth endpoint once a minute for every signed-in tab.
   useEffect(() => {
+    if (!callActive) {
+      return;
+    }
     let cancelled = false;
     const refresh = async () => {
       try {
@@ -273,7 +277,7 @@ export function VoiceProvider({
       cancelled = true;
       clearInterval(timer);
     };
-  }, []);
+  }, [callActive]);
 
   // Closing the tab, navigating away or quitting the desktop app drops the
   // caller out of the call right away. `beforeunload` covers the exits browsers

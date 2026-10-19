@@ -19,11 +19,18 @@ export interface AttachmentDimensions {
   readonly height: number;
 }
 
-/** A small image preview of an attachment. */
+/**
+ * A small image preview of an attachment. It is a variant of the parent file,
+ * so `fileId` is the parent id; `url` is the signed URL the server returns for
+ * the thumbnail bytes. `width`/`height` are absent until a server advertises
+ * them, so clients must not require them.
+ */
 export interface AttachmentThumbnail {
   readonly fileId: string;
-  readonly width: number;
-  readonly height: number;
+  /** Signed, short-lived URL for the thumbnail bytes, when the server provides one. */
+  readonly url?: string;
+  readonly width?: number;
+  readonly height?: number;
   readonly blurhash?: string;
 }
 
@@ -162,6 +169,8 @@ export interface StoredFileView {
   readonly dimensions: string | null;
   readonly blurhash: string | null;
   readonly url: string | null;
+  /** Signed URL for the small thumbnail variant, or `null`/absent when there is none. */
+  readonly thumbnailUrl?: string | null;
 }
 
 /**
@@ -230,6 +239,13 @@ export interface ChatPort {
     bytes: Uint8Array;
     dimensions?: AttachmentDimensions;
     blurhash?: string;
+    /**
+     * A small downscaled preview uploaded alongside the original and recorded on
+     * the same file row, so inline grids never download the full original.
+     * Optional: uploaders that cannot generate one (or non-images) omit it and
+     * readers fall back to the original bytes.
+     */
+    thumbnail?: { bytes: Uint8Array };
     channelId?: string;
   }): Promise<string>;
   getFile(args: { fileId: string }): Promise<StoredFileView | null>;

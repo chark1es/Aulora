@@ -131,15 +131,30 @@ export function DesktopUpdateProvider({ children }: { readonly children: ReactNo
         if (!disposed) setError(message(cause));
       });
     void register();
-    const interval = setInterval(
-      () => {
-        if (!disposed) void check();
-      },
-      6 * 60 * 60 * 1000,
-    );
+    // Re-check every ~6 h with ±30 min of jitter so a fleet of launches does
+    // not hit the update endpoint in lockstep.
+    const intervalMs = 6 * 60 * 60 * 1000;
+    const jitterMs = 30 * 60 * 1000;
+    let timer: ReturnType<typeof setTimeout> | undefined;
+    // Random jitter only spreads a fleet's update checks; it is not a secret,
+    // but use the platform CSPRNG so static analysis does not flag Math.random.
+    const jitterFraction = () => {
+      const words = new Uint32Array(1);
+      crypto.getRandomValues(words);
+      return (words[0] as number) / 2 ** 32;
+    };
+    const scheduleNext = () => {
+      const delay = intervalMs + (jitterFraction() * 2 - 1) * jitterMs;
+      timer = setTimeout(() => {
+        if (disposed) return;
+        void check();
+        scheduleNext();
+      }, delay);
+    };
+    scheduleNext();
     return () => {
       disposed = true;
-      clearInterval(interval);
+      if (timer !== undefined) clearTimeout(timer);
       for (const off of subscriptions) off();
     };
   }, [apply, check]);

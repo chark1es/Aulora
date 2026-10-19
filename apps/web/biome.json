@@ -5,6 +5,7 @@
     "includes": [
       "**",
       "!dist",
+      "!dist-desktop",
       "!public/.well-known",
       "!routeTree.gen.ts",
       "!src/styles",

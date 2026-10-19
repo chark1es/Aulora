@@ -122,13 +122,14 @@ function verifyMainConfig(config) {
   check("productName must be Aulora", config.productName === "Aulora");
   check("identifier must be dev.spwnd.aulora", config.identifier === "dev.spwnd.aulora");
   check(
-    "frontendDist must point at the web build",
+    "frontendDist must point at the filtered desktop web build",
     typeof config.build?.frontendDist === "string" &&
-      config.build.frontendDist.endsWith("web/dist"),
+      config.build.frontendDist.endsWith("web/dist-desktop"),
   );
   check(
-    "beforeBuildCommand must build @aulora/web",
-    /@aulora\/web build/.test(config.build?.beforeBuildCommand ?? ""),
+    "beforeBuildCommand must build @aulora/web and prepare the filtered desktop dist",
+    /@aulora\/web build/.test(config.build?.beforeBuildCommand ?? "") &&
+      /@aulora\/desktop prepare:frontend/.test(config.build?.beforeBuildCommand ?? ""),
   );
   check("withGlobalTauri must be enabled", config.app?.withGlobalTauri === true);
   check("windows[0] must be the main window", config.app?.windows?.[0]?.label === "main");
@@ -174,6 +175,27 @@ function verifyMacos(macos) {
   );
 }
 
+// The filtered desktop frontend is produced by prepare-frontend.mjs; keep the
+// exclusion list from silently drifting away from what the config expects. Only
+// the duplicated legal notices are excluded — the call-effect assets must stay
+// so background blur/noise suppression keep working under the shell CSP.
+function verifyPrepareFrontend() {
+  const source = readFileSync(resolve(srcTauri, "..", "scripts", "prepare-frontend.mjs"), "utf8");
+  check('prepare-frontend.mjs must exclude "legal"', source.includes('"legal"'));
+  for (const pattern of [
+    "vision_wasm_",
+    "vision_bundle-",
+    "selfie_segmenter_",
+    "rnnoise-",
+    "rnnoise_",
+  ]) {
+    check(
+      `prepare-frontend.mjs must keep the effect asset ${pattern}`,
+      !source.includes(`"${pattern}"`),
+    );
+  }
+}
+
 function verifyCapabilities(capabilities) {
   check(
     "capability must target the main window",
@@ -195,6 +217,7 @@ function main() {
   if (config !== null) {
     verifyMainConfig(config);
   }
+  verifyPrepareFrontend();
 
   const macos = readJson("tauri.macos.conf.json", readMacos);
   if (macos !== null) {

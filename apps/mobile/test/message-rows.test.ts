@@ -1,6 +1,6 @@
 import type { MessagePayload } from "@aulora/core";
 import { describe, expect, it } from "vitest";
-import { buildMessageRows, groupReactions } from "../src/lib/message-rows";
+import { buildMessageRows, groupReactions, groupReactionsByMessage } from "../src/lib/message-rows";
 
 const NOON = new Date(2026, 8, 30, 12, 0, 0).getTime();
 const MINUTE = 60_000;
@@ -120,5 +120,22 @@ describe("groupReactions", () => {
       { emoji: "👍", count: 2, mine: true },
       { emoji: "🎉", count: 1, mine: false },
     ]);
+  });
+});
+
+describe("groupReactionsByMessage", () => {
+  it("splits a batched page into one group list per message", () => {
+    const grouped = groupReactionsByMessage(
+      [
+        { messageId: "m1", userId: "u1", emoji: "👍" },
+        { messageId: "m1", userId: "me", emoji: "👍" },
+        { messageId: "m2", userId: "u2", emoji: "🎉" },
+      ],
+      "me",
+    );
+    expect(grouped.get("m1")).toEqual([{ emoji: "👍", count: 2, mine: true }]);
+    expect(grouped.get("m2")).toEqual([{ emoji: "🎉", count: 1, mine: false }]);
+    // A message with no reactions has no entry, so its row renders nothing.
+    expect(grouped.get("m3")).toBeUndefined();
   });
 });

@@ -148,16 +148,35 @@ export const report = internalMutation({
 
 /** Keeps only the newest `BOT_LIMITS.maxLogLines` rows for a bot. */
 async function trimLogs(ctx: MutationCtx, botId: Id<"bots">): Promise<void> {
-  const rows = await ctx.db
+  const cap = BOT_LIMITS.maxLogLines;
+  // Read only the newest `cap` rows. `by_bot` appends `_creationTime`, so
+  // "desc" is newest-first; once we know the oldest row we keep, we can delete
+  // just the older remainder instead of collecting the bot's whole log history.
+  const newest = await ctx.db
     .query("botLogs")
     .withIndex("by_bot", (q) => q.eq("botId", botId))
-    .collect();
-  if (rows.length <= BOT_LIMITS.maxLogLines) {
+    .order("desc")
+    .take(cap);
+  if (newest.length < cap) {
     return;
   }
-  rows.sort((left, right) => left.at - right.at);
-  for (const row of rows.slice(0, rows.length - BOT_LIMITS.maxLogLines)) {
-    await ctx.db.delete(row._id);
+  const oldestKept = newest[newest.length - 1];
+  if (oldestKept === undefined) {
+    return;
+  }
+  for (;;) {
+    const overflow = await ctx.db
+      .query("botLogs")
+      .withIndex("by_bot", (q) =>
+        q.eq("botId", botId).lt("_creationTime", oldestKept._creationTime),
+      )
+      .take(cap);
+    for (const row of overflow) {
+      await ctx.db.delete(row._id);
+    }
+    if (overflow.length < cap) {
+      break;
+    }
   }
 }
 

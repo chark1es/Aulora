@@ -169,3 +169,69 @@ describe("presence", () => {
     expect(after[0]?.status).toBe("offline");
   });
 });
+
+describe("presence.getMany", () => {
+  it("returns the same rows as presence.list for the requested ids, deduped", async () => {
+    const t = newTest();
+    await seedWorkspace(t, {
+      members: [{ userId: "user-1" }, { userId: "user-2" }, { userId: "user-3" }],
+    });
+    const asUser1 = t.withIdentity({ subject: "user-1" });
+    await asUser1.mutation(api.presence.heartbeat, { status: "online" });
+    await t
+      .withIdentity({ subject: "user-2" })
+      .mutation(api.presence.setStatus, { status: "dnd", customStatus: "heads down" });
+
+    const listed = await asUser1.query(api.presence.list);
+    const many = await asUser1.query(api.presence.getMany, {
+      // Order preserved, duplicate collapsed, unknown id skipped.
+      userIds: ["user-2", "user-1", "user-2", "missing"],
+    });
+
+    expect(many.map((row) => row.userId)).toEqual(["user-2", "user-1"]);
+    const byUser = new Map(listed.map((row) => [row.userId, row]));
+    for (const row of many) {
+      expect(row).toEqual(byUser.get(row.userId));
+    }
+  });
+
+  it("caps how many ids it looks up", async () => {
+    const t = newTest();
+    await seedWorkspace(t, { members: [{ userId: "user-1" }] });
+    const asUser1 = t.withIdentity({ subject: "user-1" });
+    const ids = Array.from({ length: 301 }, (_, i) => `u${i}`);
+    await t.run(async (ctx) => {
+      for (const userId of ids) {
+        await ctx.db.insert("presence", { userId, status: "online", lastHeartbeat: 1 });
+      }
+    });
+
+    const rows = await asUser1.query(api.presence.getMany, { userIds: ids });
+    expect(rows.map((row) => row.userId)).toEqual(ids.slice(0, 300));
+  });
+
+  it("requires workspace membership", async () => {
+    const t = newTest();
+    await seedWorkspace(t, { members: [{ userId: "user-1" }] });
+    await expect(t.query(api.presence.getMany, { userIds: ["user-1"] })).rejects.toThrow();
+  });
+});
+
+describe("presence retention", () => {
+  it("keeps a deliberately chosen manual status past the retention window", async () => {
+    const t = newTest();
+    await seedWorkspace(t, { members: [{ userId: "manual" }] });
+    await t.run(async (ctx) => {
+      await ctx.db.insert("presence", {
+        userId: "manual",
+        status: "dnd",
+        lastHeartbeat: Date.now() - 60 * 24 * 60 * 60 * 1000,
+        manual: true,
+      });
+    });
+    await t.mutation(internal.presence.pruneStalePresence, {});
+    const rows = await t.run(async (ctx) => await ctx.db.query("presence").collect());
+    expect(rows).toHaveLength(1);
+    expect(rows[0]).toMatchObject({ userId: "manual", manual: true });
+  });
+});

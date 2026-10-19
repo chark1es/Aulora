@@ -6,6 +6,7 @@
  */
 import { hasPermission, Permission } from "@aulora/core";
 import { ConvexError, v } from "convex/values";
+import { internal } from "./_generated/api";
 import type { Doc, Id } from "./_generated/dataModel";
 import { internalMutation, type QueryCtx, query } from "./_generated/server";
 import { requireAuth } from "./lib/auth";
@@ -207,6 +208,7 @@ export const prune = internalMutation({
   args: {},
   handler: async (ctx): Promise<null> => {
     const cutoff = Date.now() - RETENTION_MS;
+    let batchFull = false;
     for (let batch = 0; batch < PRUNE_MAX_BATCHES; batch += 1) {
       const old = await ctx.db
         .query("botEvents")
@@ -215,9 +217,17 @@ export const prune = internalMutation({
       for (const row of old) {
         await ctx.db.delete(row._id);
       }
-      if (old.length < PRUNE_BATCH) {
+      batchFull = old.length === PRUNE_BATCH;
+      if (!batchFull) {
         break;
       }
+    }
+    // A full final batch means older rows still remain. Keep draining now
+    // rather than waiting for the next hourly tick, so a busy workspace cannot
+    // grow a backlog larger than one run's ceiling. Each run re-computes the
+    // cutoff, so rows newer than the retention window are never deleted.
+    if (batchFull) {
+      await ctx.scheduler.runAfter(0, internal.botEvents.prune, {});
     }
     return null;
   },

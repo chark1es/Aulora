@@ -1,7 +1,22 @@
 import { ConvexError, v } from "convex/values";
+import { internal } from "./_generated/api";
 import type { Id } from "./_generated/dataModel";
-import { mutation, query } from "./_generated/server";
+import { internalMutation, mutation, query } from "./_generated/server";
 import { requireAuth } from "./lib/auth";
+import { adjustInstanceCounters } from "./lib/instance";
+
+/** Devices deleted per prune run before rescheduling. */
+const DEVICE_PRUNE_BATCH = 500;
+/**
+ * Installs unseen for this long are dropped from the registry. Push tokens for
+ * uninstalled apps can otherwise linger forever; six months is far beyond any
+ * realistic gap between app launches.
+ */
+/**
+ * Default device retention. Override with `DEVICE_RETENTION_DAYS`; a value of
+ * 0 disables the prune entirely (keep forever).
+ */
+export const DEVICE_RETENTION_MS = 180 * 24 * 60 * 60 * 1000;
 
 /**
  * Device registry. A device is one client install used for push delivery and
@@ -43,6 +58,7 @@ export const upsert = mutation({
       lastSeen: now,
       ...(pushToken !== undefined ? { pushToken } : {}),
     });
+    await adjustInstanceCounters(ctx, { devices: 1 });
     return { deviceId };
   },
 });
@@ -86,6 +102,37 @@ export const revoke = mutation({
     const { userId } = await requireAuth(ctx);
     await requireOwnedDevice(ctx, args.deviceId, userId);
     await ctx.db.delete(args.deviceId);
+    await adjustInstanceCounters(ctx, { devices: -1 });
     return null;
+  },
+});
+
+/**
+ * Cron hook: deletes device rows unseen longer than {@link DEVICE_RETENTION_MS}
+ * so stale push tokens stop accumulating. Reads only rows past the cutoff via
+ * `by_lastSeen` and reschedules while a batch is full; rows inside the
+ * retention window are never deleted.
+ */
+export const pruneStaleDevices = internalMutation({
+  args: {},
+  handler: async (ctx) => {
+    const defaultDays = DEVICE_RETENTION_MS / (24 * 60 * 60 * 1000);
+    const days = Number(process.env.DEVICE_RETENTION_DAYS ?? defaultDays);
+    if (!Number.isFinite(days) || days <= 0) {
+      return 0;
+    }
+    const cutoff = Date.now() - days * 24 * 60 * 60 * 1000;
+    const rows = await ctx.db
+      .query("devices")
+      .withIndex("by_lastSeen", (q) => q.lt("lastSeen", cutoff))
+      .take(DEVICE_PRUNE_BATCH);
+    for (const row of rows) {
+      await ctx.db.delete(row._id);
+    }
+    await adjustInstanceCounters(ctx, { devices: -rows.length });
+    if (rows.length === DEVICE_PRUNE_BATCH) {
+      await ctx.scheduler.runAfter(0, internal.devices.pruneStaleDevices, {});
+    }
+    return rows.length;
   },
 });
