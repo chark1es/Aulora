@@ -167,9 +167,128 @@ const APNS_HOSTS = new Map([
   ["sandbox", "https://api.sandbox.push.apple.com"],
 ]);
 
+/** Upper bound for a single outbound provider request. */
+export const REQUEST_TIMEOUT_MS = 10_000;
+
 /**
- * APNs adapter. `request` is injectable (defaults to Node's HTTP/2 client) so
- * the provider can be exercised without contacting Apple.
+ * Apple rejects an APNs provider JWT older than one hour and requires a fresh
+ * one at least every 60 minutes; refresh well inside that window and reuse the
+ * token across notifications. Cached per `teamId:keyId`.
+ */
+export const APNS_JWT_TTL_SECONDS = 45 * 60;
+const apnsJwtCache = new Map();
+
+function apnsJwtFor({ keyId, teamId, key, nowSeconds }) {
+  const cacheKey = `${teamId}:${keyId}`;
+  const cached = apnsJwtCache.get(cacheKey);
+  if (cached !== undefined && nowSeconds - cached.issuedAt < APNS_JWT_TTL_SECONDS) {
+    return cached.jwt;
+  }
+  const jwt = buildApnsJwt({ keyId, teamId, key, nowSeconds });
+  apnsJwtCache.set(cacheKey, { jwt, issuedAt: nowSeconds });
+  return jwt;
+}
+
+let http2Promise = null;
+function loadHttp2() {
+  http2Promise ??= import("node:http2");
+  return http2Promise;
+}
+
+/**
+ * A reusable HTTP/2 requester: one session per origin, reconnected on an error
+ * or a GOAWAY, so a burst of wakeups does not open a fresh TLS connection per
+ * notification. Every request is bounded by `signal` (the APNs provider passes
+ * `AbortSignal.timeout`) or the default timeout, and a timed-out connection is
+ * dropped so the next request reconnects.
+ */
+export function createHttp2Requester({ defaultTimeoutMs = REQUEST_TIMEOUT_MS } = {}) {
+  const sessions = new Map();
+
+  function sessionFor(module, origin) {
+    const existing = sessions.get(origin);
+    if (existing !== undefined) {
+      return existing;
+    }
+    const client = module.connect(origin);
+    const entry = { client };
+    const drop = () => {
+      if (sessions.get(origin) === entry) {
+        sessions.delete(origin);
+      }
+    };
+    client.on("error", drop);
+    client.on("goaway", () => {
+      drop();
+      client.close();
+    });
+    client.on("close", drop);
+    sessions.set(origin, entry);
+    return entry;
+  }
+
+  function forget(origin, entry) {
+    if (sessions.get(origin) === entry) {
+      sessions.delete(origin);
+    }
+  }
+
+  return async function request({ url, headers, body, signal, timeoutMs }) {
+    const module = await loadHttp2();
+    const target = new URL(url);
+    const entry = sessionFor(module, target.origin);
+    const effectiveSignal = signal ?? AbortSignal.timeout(timeoutMs ?? defaultTimeoutMs);
+    return await new Promise((resolve, reject) => {
+      let settled = false;
+      const onAbort = () => {
+        // A dead or slow connection may be unusable; drop it so the next
+        // request reconnects.
+        forget(target.origin, entry);
+        entry.client.destroy();
+        finish(
+          reject,
+          effectiveSignal.reason instanceof Error
+            ? effectiveSignal.reason
+            : new RelayError("provider-error", "APNs request timed out", 504),
+        );
+      };
+      const finish = (settle, value) => {
+        if (settled) {
+          return;
+        }
+        settled = true;
+        effectiveSignal.removeEventListener("abort", onAbort);
+        settle(value);
+      };
+      if (effectiveSignal.aborted) {
+        onAbort();
+        return;
+      }
+      effectiveSignal.addEventListener("abort", onAbort, { once: true });
+      let status = 0;
+      const stream = entry.client.request({
+        ":method": "POST",
+        ":path": target.pathname,
+        ...headers,
+      });
+      stream.on("response", (responseHeaders) => {
+        status = Number(responseHeaders[":status"] ?? 0);
+      });
+      stream.on("error", (error) => finish(reject, error));
+      stream.on("close", () => finish(resolve, { ok: status >= 200 && status < 300, status }));
+      // Drain the response body so the stream reaches `close` and the shared
+      // session is not left with an unconsumed, back-pressured stream.
+      stream.resume();
+      stream.end(body);
+    });
+  };
+}
+
+const defaultApnsRequest = createHttp2Requester();
+
+/**
+ * APNs adapter. `request` is injectable (defaults to the shared HTTP/2
+ * requester) so the provider can be exercised without contacting Apple.
  */
 export function createApnsProvider({
   keyId,
@@ -189,7 +308,7 @@ export function createApnsProvider({
   return {
     name: "apns",
     async deliver(wake) {
-      const jwt = buildApnsJwt({ keyId, teamId, key, nowSeconds: now() });
+      const jwt = apnsJwtFor({ keyId, teamId, key, nowSeconds: now() });
       const body = JSON.stringify({
         aps: {
           alert: wake.kind === "call" ? "Incoming Aulora call" : "New Aulora message",
@@ -208,32 +327,10 @@ export function createApnsProvider({
           "content-type": "application/json",
         },
         body,
+        signal: AbortSignal.timeout(REQUEST_TIMEOUT_MS),
       });
     },
   };
-}
-
-async function defaultApnsRequest({ url, headers, body }) {
-  const http2 = await import("node:http2");
-  return await new Promise((resolve, reject) => {
-    const target = new URL(url);
-    const client = http2.connect(target.origin);
-    const request = client.request({
-      ":method": "POST",
-      ":path": target.pathname,
-      ...headers,
-    });
-    let status = 0;
-    request.on("response", (responseHeaders) => {
-      status = Number(responseHeaders[":status"] ?? 0);
-    });
-    request.on("error", reject);
-    request.on("close", () => {
-      client.close();
-      resolve({ ok: status >= 200 && status < 300, status });
-    });
-    request.end(body);
-  });
 }
 
 /** FCM HTTP v1 adapter. The OAuth access token is supplied by the operator. */
@@ -282,6 +379,7 @@ export function createFcmProvider({
         grant_type: "urn:ietf:params:oauth:grant-type:jwt-bearer",
         assertion,
       }),
+      signal: AbortSignal.timeout(REQUEST_TIMEOUT_MS),
     });
     if (!response.ok) throw new RelayError("provider-error", "FCM token request failed", 502);
     const data = await response.json();
@@ -304,6 +402,7 @@ export function createFcmProvider({
             authorization: `Bearer ${token}`,
             "content-type": "application/json",
           },
+          signal: AbortSignal.timeout(REQUEST_TIMEOUT_MS),
           body: JSON.stringify({
             message: {
               token: wake.token,
@@ -349,6 +448,35 @@ export function createUnifiedPushProvider({ fetchImpl = fetch } = {}) {
       });
       return { ok: response.ok, status: response.status };
     },
+  };
+}
+
+/**
+ * Bounds provider deliveries in flight so a burst of wakeups cannot open an
+ * unbounded number of outbound requests or grow memory without limit. Requests
+ * above the in-flight cap queue up to `maxQueued`; beyond that the relay sheds
+ * load with a retryable 503.
+ */
+export function createConcurrencyLimiter({ maxConcurrent = 64, maxQueued = 512 } = {}) {
+  let active = 0;
+  const queue = [];
+  return async function limit(fn) {
+    if (active >= maxConcurrent) {
+      if (queue.length >= maxQueued) {
+        throw new RelayError("relay-busy", "relay is at capacity", 503);
+      }
+      await new Promise((resolve) => queue.push(resolve));
+    }
+    active += 1;
+    try {
+      return await fn();
+    } finally {
+      active -= 1;
+      const next = queue.shift();
+      if (next !== undefined) {
+        next();
+      }
+    }
   };
 }
 
