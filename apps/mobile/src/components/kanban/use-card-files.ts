@@ -29,7 +29,7 @@ function cacheFile(file: StoredFile, bytes: ArrayBuffer): string {
   );
   directory.create({ idempotent: true, intermediates: true });
   const target = new File(directory, safeName(file.name));
-  target.write(new Uint8Array(bytes));
+  target.writeSync(new Uint8Array(bytes));
   return target.uri;
 }
 

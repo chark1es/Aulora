@@ -33,7 +33,7 @@ async function cacheAttachmentFile(
       .replace(/^\.+/, "")
       .slice(0, 160) || "attachment",
   );
-  file.write(bytes);
+  await file.write(bytes);
   return file.uri;
 }
 
@@ -61,7 +61,7 @@ async function loadThumbnailUri(
     );
     directory.create({ idempotent: true, intermediates: true });
     const file = new File(directory, "thumbnail.jpg");
-    file.write(bytes);
+    await file.write(bytes);
     return file.uri;
   }
   const bytes = await downloadAttachment(port, descriptor);

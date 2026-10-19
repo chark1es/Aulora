@@ -2,7 +2,7 @@ import { createTypingThrottle, type RoleMentionTarget } from "@aulora/core";
 import type { IconName } from "@aulora/tokens";
 import { Icon, Text, usePalette } from "@aulora/ui-native";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { Pressable, TextInput, View } from "react-native";
+import { Pressable, TextInput, type TextInputInstance, View } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import {
   type PickedFile,
@@ -94,7 +94,7 @@ export function Composer(props: ComposerProps) {
   const [files, setFiles] = useState<readonly { key: string; file: PickedFile }[]>([]);
   const [menuOpen, setMenuOpen] = useState(false);
   const [busy, setBusy] = useState(false);
-  const inputRef = useRef<TextInput | null>(null);
+  const inputRef = useRef<TextInputInstance | null>(null);
   const fileSeq = useRef(0);
 
   // Latest callbacks, so the throttle instance below can be created once.
