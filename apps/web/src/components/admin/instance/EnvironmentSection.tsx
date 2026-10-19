@@ -1,6 +1,6 @@
 /* eslint-disable no-unused-vars -- the base rule reports parameter names in type signatures; Biome checks real unused code */
-import { Button, Card, Text } from "@aulora/ui-web";
-import { useState } from "react";
+import { Button, Card, cn, Text } from "@aulora/ui-web";
+import { type ReactNode, useState } from "react";
 import {
   type EnvFilter,
   type EnvGroupBlock,
@@ -183,19 +183,49 @@ function EnvGroup({
       {showOidc && block.id === "oidc" && (
         <OidcGroupEditor model={model} variables={block.variables} />
       )}
-      <ul className="flex flex-col rounded-card border border-border bg-surface-2">
-        {block.variables.map((variable) => (
-          <EnvVariableRow
-            key={variable.key}
-            variable={variable}
-            locked={model.data.locked}
-            encryptionReady={model.data.encryptionConfigured}
-            onSave={(value) => model.save(variable.key, value)}
-            onReset={() => model.reset(variable.key)}
-          />
-        ))}
-      </ul>
+      <div className="overflow-x-auto rounded-card border border-border bg-surface-2">
+        <table className="w-full min-w-[640px] table-fixed text-left">
+          <thead>
+            <tr className="border-b border-border">
+              <EnvHeaderCell className="w-[46%]">Variable</EnvHeaderCell>
+              <EnvHeaderCell className="w-28">Source</EnvHeaderCell>
+              <EnvHeaderCell>Value</EnvHeaderCell>
+              <EnvHeaderCell className="w-24 text-right">
+                <span className="sr-only">Actions</span>
+              </EnvHeaderCell>
+            </tr>
+          </thead>
+          <tbody>
+            {block.variables.map((variable) => (
+              <EnvVariableRow
+                key={variable.key}
+                variable={variable}
+                locked={model.data.locked}
+                encryptionReady={model.data.encryptionConfigured}
+                onSave={(value) => model.save(variable.key, value)}
+                onReset={() => model.reset(variable.key)}
+              />
+            ))}
+          </tbody>
+        </table>
+      </div>
     </section>
+  );
+}
+
+function EnvHeaderCell({
+  className,
+  children,
+}: {
+  readonly className?: string;
+  readonly children: ReactNode;
+}) {
+  return (
+    <th scope="col" className={cn("px-3 py-2", className)}>
+      <Text size="xs" tone="muted" className="font-medium uppercase tracking-wide">
+        {children}
+      </Text>
+    </th>
   );
 }
 

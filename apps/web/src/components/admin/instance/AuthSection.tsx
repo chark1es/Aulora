@@ -92,7 +92,10 @@ function toggleEnabled(
   toggles: Record<string, boolean | undefined>,
   provider: AuthProvider,
 ): boolean {
-  return new Map(Object.entries(toggles)).get(provider.id) ?? provider.enabled;
+  // An unconfigured provider is never offered, whatever was toggled before.
+  return (
+    provider.configured && (new Map(Object.entries(toggles)).get(provider.id) ?? provider.enabled)
+  );
 }
 
 function AuthProviderList({

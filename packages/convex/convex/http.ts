@@ -3,6 +3,7 @@ import { httpRouter } from "convex/server";
 import { api } from "./_generated/api";
 import { httpAction } from "./_generated/server";
 import { authComponent, createAuth } from "./auth";
+import { registerBotRoutes } from "./botHttp";
 
 const http = httpRouter();
 
@@ -11,6 +12,9 @@ const http = httpRouter();
 authComponent.registerRoutes(http, createAuth, {
   cors: { allowedHeaders: [], exposedHeaders: ["set-auth-token"] },
 });
+
+// Bot token exchange and the bot-runner API (see `botHttp.ts`).
+registerBotRoutes(http);
 
 // Discovery uses current workspace settings and does not depend on setup's
 // static document. Keep the response limited to the client discovery contract.

@@ -1,5 +1,6 @@
 import { render, screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
+import type { ReactElement } from "react";
 import { describe, expect, it, vi } from "vitest";
 import {
   type EnvironmentSectionModel,
@@ -23,14 +24,24 @@ function variable(overrides: EnvVariableOverrides): EnvVariable {
     managedInSection: null,
     source: "environment",
     isSet: true,
+    redirectUrl: null,
   };
   return Object.assign(base, overrides);
+}
+
+function renderRow(row: ReactElement) {
+  return render(
+    <table>
+      <tbody>{row}</tbody>
+    </table>,
+  );
 }
 
 function buildModel(overrides: Partial<EnvVariablesModel> = {}): EnvironmentSectionModel {
   const data: EnvVariablesModel = {
     locked: false,
     encryptionConfigured: true,
+    siteUrl: "https://chat.example.com",
     groups: [
       { id: "auth-providers", label: "Auth providers" },
       { id: "oidc", label: "Single sign-on (OIDC)" },
@@ -112,15 +123,57 @@ describe("EnvironmentSectionView", () => {
     expect(screen.getByTestId("env-locked")).toHaveTextContent(
       "AULORA_ALLOW_UI_ENV_OVERRIDES=false",
     );
-    for (const button of screen.getAllByRole("button", { name: "Override" })) {
-      expect(button).toBeDisabled();
-    }
+    expect(screen.queryByRole("button", { name: "Override" })).not.toBeInTheDocument();
+    expect(screen.getByTestId("env-lock-GITHUB_CLIENT_ID")).toHaveAttribute(
+      "aria-label",
+      expect.stringContaining("AULORA_ALLOW_UI_ENV_OVERRIDES=false"),
+    );
   });
 
   it("blocks storing when encryption is not configured", () => {
     render(<EnvironmentSectionView model={buildModel({ encryptionConfigured: false })} />);
     expect(screen.getByTestId("env-encryption-missing")).toBeInTheDocument();
-    expect(screen.getAllByRole("button", { name: "Override" })[0]).toBeDisabled();
+    expect(screen.queryByRole("button", { name: "Override" })).not.toBeInTheDocument();
+    expect(screen.getByTestId("env-lock-GITHUB_CLIENT_ID")).toHaveAttribute(
+      "aria-label",
+      expect.stringContaining("encryption is not configured"),
+    );
+  });
+
+  it("locks deployment-managed variables with an explanatory tooltip", () => {
+    const model = buildModel({
+      variables: [variable({ key: "SITE_URL", group: "auth-providers", overridable: false })],
+    });
+    render(<EnvironmentSectionView model={model} />);
+    const lock = screen.getByTestId("env-lock-SITE_URL");
+    expect(lock).toHaveAttribute(
+      "aria-label",
+      expect.stringContaining("Managed by the deployment"),
+    );
+    expect(lock.parentElement).toHaveAttribute(
+      "title",
+      expect.stringContaining("Managed by the deployment"),
+    );
+  });
+
+  it("renders the variables as a table with the provider redirect URL", () => {
+    const url = "https://chat.example.com/api/auth/callback/github";
+    const model = buildModel({
+      variables: [
+        variable({ key: "GITHUB_CLIENT_ID", group: "auth-providers", redirectUrl: url }),
+        variable({ key: "GITHUB_CLIENT_SECRET", group: "auth-providers", secret: true }),
+      ],
+    });
+    render(<EnvironmentSectionView model={model} />);
+    expect(screen.getByRole("table")).toBeInTheDocument();
+    expect(screen.getAllByRole("columnheader").map((cell) => cell.textContent)).toEqual([
+      "Variable",
+      "Source",
+      "Value",
+      "Actions",
+    ]);
+    expect(screen.getAllByTestId("env-redirect-url")).toHaveLength(1);
+    expect(screen.getByTestId("env-redirect-url")).toHaveTextContent(url);
   });
 });
 
@@ -128,7 +181,7 @@ describe("EnvVariableRow", () => {
   it("keeps secrets write-only and saves inline", async () => {
     const onSave = vi.fn(async () => null);
     const user = userEvent.setup();
-    render(
+    renderRow(
       <EnvVariableRow
         variable={variable({
           key: "OIDC_CLIENT_SECRET",
@@ -160,7 +213,7 @@ describe("EnvVariableRow", () => {
   it("keeps an existing secret when saved blank", async () => {
     const onSave = vi.fn(async () => null);
     const user = userEvent.setup();
-    render(
+    renderRow(
       <EnvVariableRow
         variable={variable({
           key: "GITHUB_CLIENT_SECRET",
@@ -186,7 +239,7 @@ describe("EnvVariableRow", () => {
   it("resets through a confirmation and reports results", async () => {
     const onReset = vi.fn(async () => null);
     const user = userEvent.setup();
-    render(
+    renderRow(
       <EnvVariableRow
         variable={variable({
           key: "OIDC_CLIENT_ID",
@@ -214,7 +267,7 @@ describe("EnvVariableRow editors", () => {
   it("uses a switch for booleans", async () => {
     const onSave = vi.fn(async () => null);
     const user = userEvent.setup();
-    render(
+    renderRow(
       <EnvVariableRow
         variable={variable({
           key: "AUTH_LOCAL_ENABLED",
@@ -240,7 +293,7 @@ describe("EnvVariableRow editors", () => {
   it("edits lists as removable chips", async () => {
     const onSave = vi.fn(async () => null);
     const user = userEvent.setup();
-    render(
+    renderRow(
       <EnvVariableRow
         variable={variable({
           key: "OIDC_SCOPES",

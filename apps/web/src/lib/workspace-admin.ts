@@ -40,6 +40,8 @@ export interface MemberView {
   readonly timeoutUntil: number | null;
   /** This workspace's profile picture. Missing on older payloads. */
   readonly avatarUrl?: string | null;
+  /** True for a bot member. Missing on older servers. */
+  readonly isBot?: boolean;
 }
 
 export type OverrideView = Overwrite;
@@ -239,6 +241,7 @@ export const PERMISSION_GROUPS: readonly PermissionGroup[] = [
       "ViewAuditLog",
       "CreateInvites",
       "DeleteInvites",
+      "ManageBots",
       "ManageEmoji",
     ],
   },
@@ -290,6 +293,7 @@ export const PERMISSION_LABELS: Record<PermissionName, string> = {
   ViewAuditLog: "View audit log",
   CreateInvites: "Create invites",
   DeleteInvites: "Delete invites",
+  ManageBots: "Manage bots",
   ManageEmoji: "Manage emoji",
   Kick: "Kick members",
   Ban: "Ban members",

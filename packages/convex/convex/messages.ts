@@ -7,6 +7,7 @@ import { type MutationCtx, mutation, query } from "./_generated/server";
 import { writeAudit } from "./lib/audit";
 import { requireAuth } from "./lib/auth";
 import { assertMayParticipate } from "./lib/bans";
+import { emitBotEvent } from "./lib/botEvents";
 import { requireChannelAccess } from "./lib/channels";
 import { recordLicenseActivity } from "./lib/licenseActivity";
 import { requireMember } from "./lib/permissions";
@@ -233,6 +234,11 @@ export const send = mutation({
         replyParticipantIds: withReplyParticipant(threadRoot.replyParticipantIds, access.userId),
       });
     }
+    await emitBotEvent(ctx, {
+      type: "message.created",
+      channelId: args.channelId,
+      messageId,
+    });
     // Burst behavior: every message enqueues two zero-delay jobs (web push and
     // mobile push), so a burst of thousands of messages enqueues two jobs per
     // message. `notifications.ts` has no safe coalescing helper — each dispatch
@@ -350,6 +356,11 @@ export const edit = mutation({
     }
     const ciphertext = await sealString(messageContext(message.channelId), args.body);
     await ctx.db.patch(args.messageId, { ciphertext, editedAt: Date.now() });
+    await emitBotEvent(ctx, {
+      type: "message.updated",
+      channelId: message.channelId,
+      messageId: args.messageId,
+    });
     // A moderator editing someone else's message is a moderation act worth an
     // audit row; the author editing their own message is routine.
     if (!isAuthor) {
@@ -379,6 +390,11 @@ export const remove = mutation({
     }
     if (message.deletedAt === undefined) {
       await ctx.db.patch(args.messageId, { deletedAt: Date.now() });
+      await emitBotEvent(ctx, {
+        type: "message.deleted",
+        channelId: message.channelId,
+        messageId: args.messageId,
+      });
     }
     // A moderator deleting someone else's message is a moderation act; a
     // self-delete stays out of the audit log.

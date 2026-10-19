@@ -16,6 +16,7 @@ export {
   utf8Encode,
 } from "./binary";
 export { blurhashDecode, blurhashEncode } from "./blurhash";
+export * from "./bots";
 export * from "./chat/index";
 export {
   classifyError,

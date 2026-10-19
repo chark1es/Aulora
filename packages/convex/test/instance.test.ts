@@ -175,4 +175,24 @@ describe("instance.updateAuthProviders local sign-in", () => {
       }),
     ).rejects.toThrow("no other sign-in provider is configured");
   });
+
+  it("reports a provider without credentials as disabled", async () => {
+    const { asOwner } = await ownerTest();
+    const before = await asOwner.query(api.instance.overview, {});
+    for (const provider of before.auth.availableProviders) {
+      expect(provider).toMatchObject({ configured: false, enabled: false });
+    }
+
+    process.env.GITHUB_CLIENT_ID = "gh-id";
+    process.env.GITHUB_CLIENT_SECRET = "gh-secret";
+    const configured = await asOwner.query(api.instance.overview, {});
+    const github = configured.auth.availableProviders.find((entry) => entry.id === "github");
+    expect(github).toMatchObject({ configured: true, enabled: true });
+
+    await asOwner.mutation(api.instance.updateAuthProviders, { providers: { github: false } });
+    const switchedOff = await asOwner.query(api.instance.overview, {});
+    expect(
+      switchedOff.auth.availableProviders.find((entry) => entry.id === "github"),
+    ).toMatchObject({ configured: true, enabled: false });
+  });
 });

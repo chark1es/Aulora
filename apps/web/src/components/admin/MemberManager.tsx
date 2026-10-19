@@ -160,11 +160,10 @@ export function MemberManager({ viewer, ownerId, permissions }: MemberManagerPro
                       >
                         {displayName}
                       </Text>
-                      {member.userId === ownerId && (
-                        <Badge size="sm" tone="accent" className="uppercase">
-                          Owner
-                        </Badge>
-                      )}
+                      <MemberBadges
+                        isOwner={member.userId === ownerId}
+                        isBot={member.isBot === true}
+                      />
                       {notedUserIds.has(member.userId) && (
                         <Icon name="note" size={12} className="shrink-0 text-text-muted" />
                       )}
@@ -347,5 +346,28 @@ export function MemberManager({ viewer, ownerId, permissions }: MemberManagerPro
         </section>
       </Modal>
     </div>
+  );
+}
+
+interface MemberBadgesProps {
+  readonly isOwner: boolean;
+  readonly isBot: boolean;
+}
+
+/** The Owner and BOT chips shown next to a member's name. */
+function MemberBadges({ isOwner, isBot }: MemberBadgesProps) {
+  return (
+    <>
+      {isOwner && (
+        <Badge size="sm" tone="accent" className="uppercase">
+          Owner
+        </Badge>
+      )}
+      {isBot && (
+        <Badge size="sm" tone="accent" className="uppercase">
+          BOT
+        </Badge>
+      )}
+    </>
   );
 }

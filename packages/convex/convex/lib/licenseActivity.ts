@@ -1,3 +1,4 @@
+import { isBotUserId } from "@aulora/core";
 import type { MutationCtx } from "../_generated/server";
 import { isLicenseKey } from "./license";
 
@@ -6,6 +7,10 @@ export function utcMonth(now: number): string {
 }
 /** Counts a real authenticated member once per licensed UTC month. */
 export async function recordLicenseActivity(ctx: MutationCtx, userId: string, now = Date.now()) {
+  // Bots are never a seat: they must not count toward monthly active users.
+  if (isBotUserId(userId)) {
+    return;
+  }
   const server = await ctx.db.query("server").first();
   const proof = server?.licenseValidation;
   if (

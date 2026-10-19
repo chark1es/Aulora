@@ -75,6 +75,28 @@ export function envManagedReason(variable: EnvVariable): string | null {
   return "Managed by the deployment; changing it from here could lock everyone out.";
 }
 
+/**
+ * Why a row cannot be changed from the UI, or `null` when it can. Covers the
+ * three cases that all end in a lock icon: the deployment owns the variable,
+ * the deployment disabled overrides, or there is no key to seal them with.
+ */
+export function envLockReason(
+  variable: EnvVariable,
+  state: { readonly locked: boolean; readonly encryptionReady: boolean },
+): string | null {
+  const managed = envManagedReason(variable);
+  if (managed !== null) {
+    return managed;
+  }
+  if (state.locked) {
+    return "Overrides are disabled by the deployment (AULORA_ALLOW_UI_ENV_OVERRIDES=false).";
+  }
+  if (!state.encryptionReady) {
+    return "Server-side encryption is not configured, so overrides cannot be stored.";
+  }
+  return null;
+}
+
 export function envValuePlaceholder(variable: EnvVariable): string {
   if (variable.secret) {
     return "Set — enter a new value to replace";
