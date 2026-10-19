@@ -130,52 +130,31 @@ interface UserPrefs {
 }
 
 /**
- * Loads notification preferences for every candidate in one pass. Server-scope
- * rows are read through `by_scope` and the relevant channel rows through
- * `by_channel`, so the read is bounded by users who changed a setting in the
- * channels involved rather than by the entire preferences table.
+ * Loads notification preferences for the candidates, using the per-user
+ * indexes (`by_user_scope`, `by_user_channel`) so a resolution reads only the
+ * rows for the people it is about. Nothing here scans the workspace table.
  */
 async function loadPrefsByUser(
   ctx: QueryCtx,
-  userIds: ReadonlySet<string>,
-  channelIds: ReadonlySet<Id<"channels">>,
+  channelByUser: ReadonlyMap<string, Id<"channels">>,
 ): Promise<Map<string, UserPrefs>> {
   const prefs = new Map<string, UserPrefs>();
-  if (userIds.size === 0) {
-    return prefs;
-  }
-  const rows: Doc<"notificationPrefs">[] = [
-    ...(await ctx.db
+  for (const [userId, channelId] of channelByUser) {
+    const server = await ctx.db
       .query("notificationPrefs")
-      .withIndex("by_scope", (q) => q.eq("scope", "server"))
-      .collect()),
-  ];
-  for (const channelId of channelIds) {
-    rows.push(
-      ...(await ctx.db
-        .query("notificationPrefs")
-        .withIndex("by_channel", (q) => q.eq("channelId", channelId))
-        .collect()),
-    );
-  }
-  const serverByUser = new Map<string, Doc<"notificationPrefs">>();
-  const channelsByUser = new Map<string, Map<string, Doc<"notificationPrefs">>>();
-  for (const row of rows) {
-    if (!userIds.has(row.userId)) {
-      continue;
+      .withIndex("by_user_scope", (q) => q.eq("userId", userId).eq("scope", "server"))
+      .unique();
+    const channel = await ctx.db
+      .query("notificationPrefs")
+      .withIndex("by_user_channel", (q) => q.eq("userId", userId).eq("channelId", channelId))
+      .unique();
+    const channels = new Map<string, Doc<"notificationPrefs">>();
+    if (channel !== null) {
+      channels.set(channelId, channel);
     }
-    if (row.scope === "server") {
-      serverByUser.set(row.userId, row);
-    } else if (row.channelId !== undefined) {
-      const channels = channelsByUser.get(row.userId) ?? new Map();
-      channels.set(row.channelId, row);
-      channelsByUser.set(row.userId, channels);
-    }
-  }
-  for (const userId of userIds) {
     prefs.set(userId, {
-      server: serverByUser.get(userId),
-      channels: channelsByUser.get(userId) ?? new Map(),
+      server: server ?? undefined,
+      channels,
     });
   }
   return prefs;
@@ -211,8 +190,8 @@ async function filterRecipients(
       presenceByUser.set(userId, presence);
     }
   }
-  const channelIds = new Set(targets.map(([, info]) => info.channelId));
-  const prefsByUser = await loadPrefsByUser(ctx, userIds, channelIds);
+  const channelByUser = new Map(targets.map(([userId, info]) => [userId, info.channelId] as const));
+  const prefsByUser = await loadPrefsByUser(ctx, channelByUser);
 
   const recipients: string[] = [];
   for (const [userId, info] of targets) {

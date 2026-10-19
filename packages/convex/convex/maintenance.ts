@@ -51,9 +51,11 @@ async function writeInstanceCounters(
 /**
  * Idempotent migration: recount `members` and store the total on the singleton
  * `server` row so the license seat/MAU check no longer has to read up to 100k
- * member rows every 30 minutes. Safe to re-run at any time: a run started with
- * no cursor recounts from zero and overwrites an existing value. Pages through
- * members and reschedules while more remain.
+ * member rows every 30 minutes. Run it while membership is quiet and re-run it
+ * if members joined or left mid-backfill: the final write is a snapshot, so a
+ * concurrent change between pages can leave the stored count slightly stale.
+ * Safe to re-run: a run with no cursor recounts from zero and overwrites the
+ * existing value, paging through members and rescheduling while more remain.
  */
 export const backfillMemberCount = internalMutation({
   args: {
@@ -133,6 +135,7 @@ export const backfillThreadParticipants = internalMutation({
           channelId: message.channelId,
           at: message._creationTime,
           mentioned: false,
+          participated: true,
         });
         for (const userId of message.mentionUserIds) {
           await upsertThreadParticipant(ctx, {
@@ -141,6 +144,7 @@ export const backfillThreadParticipants = internalMutation({
             channelId: message.channelId,
             at: message._creationTime,
             mentioned: true,
+            participated: false,
           });
         }
         continue;
@@ -153,6 +157,7 @@ export const backfillThreadParticipants = internalMutation({
           channelId: message.channelId,
           at,
           mentioned: false,
+          participated: true,
         });
       }
       for (const userId of message.mentionUserIds) {
@@ -162,6 +167,7 @@ export const backfillThreadParticipants = internalMutation({
           channelId: message.channelId,
           at: message._creationTime,
           mentioned: true,
+          participated: false,
         });
       }
     }

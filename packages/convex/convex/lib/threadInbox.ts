@@ -31,7 +31,7 @@ export interface ThreadInboxRow {
  * Bounds how many thread roots are loaded; the previous implementation scanned
  * a fixed 1000-message global window instead.
  */
-const THREAD_INBOX_CANDIDATE_LIMIT = 200;
+const THREAD_INBOX_CANDIDATE_LIMIT = 500;
 /**
  * Replies scanned per returned thread when reconstructing reply-derived fields
  * (`participantIds`, `mentionedUserIds`, reply counts). Bounds the per-thread
@@ -123,9 +123,10 @@ function threadCandidate(
     ...new Set([...(root.mentionUserIds ?? []), ...accumulator.mentionedUserIds]),
   ].sort();
   // The reply scan is bounded, so a viewer whose reply falls outside it would
-  // otherwise lose the thread. The participation row proves a stake: a reply
-  // row has `mentioned === false`, a mention-only row has `mentioned === true`.
-  const viewerParticipated = participantIds.includes(userId) || participation?.mentioned === false;
+  // otherwise lose the thread. The participation row proves a stake and keeps
+  // "replied" independent of "was mentioned".
+  const viewerParticipated =
+    participantIds.includes(userId) || participation?.participated === true;
   const viewerMentioned = mentionedUserIds.includes(userId) || participation?.mentioned === true;
   if (participation === undefined && !viewerParticipated && !viewerMentioned) {
     return null;

@@ -216,3 +216,22 @@ describe("presence.getMany", () => {
     await expect(t.query(api.presence.getMany, { userIds: ["user-1"] })).rejects.toThrow();
   });
 });
+
+describe("presence retention", () => {
+  it("keeps a deliberately chosen manual status past the retention window", async () => {
+    const t = newTest();
+    await seedWorkspace(t, { members: [{ userId: "manual" }] });
+    await t.run(async (ctx) => {
+      await ctx.db.insert("presence", {
+        userId: "manual",
+        status: "dnd",
+        lastHeartbeat: Date.now() - 60 * 24 * 60 * 60 * 1000,
+        manual: true,
+      });
+    });
+    await t.mutation(internal.presence.pruneStalePresence, {});
+    const rows = await t.run(async (ctx) => await ctx.db.query("presence").collect());
+    expect(rows).toHaveLength(1);
+    expect(rows[0]).toMatchObject({ userId: "manual", manual: true });
+  });
+});

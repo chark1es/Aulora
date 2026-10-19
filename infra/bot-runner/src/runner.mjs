@@ -52,6 +52,11 @@ export function createRunner({ config, api, logger = console, now = Date.now }) 
 
   function start() {
     if (timer !== null || stopped) return;
+    touchHealth();
+    // The healthcheck rejects heartbeats older than ~30 s. The idle reconcile
+    // cadence can be longer, so refresh the liveness file independently.
+    const healthTimer = setInterval(touchHealth, Math.min(config.pollIntervalMs, 10_000));
+    healthTimer.unref?.();
     const loop = async () => {
       await tick();
       if (!stopped) timer = setTimeout(loop, nextDelay());

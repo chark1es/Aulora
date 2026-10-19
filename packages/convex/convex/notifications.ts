@@ -228,19 +228,18 @@ export const unreadSummary = query({
       // Scan the tail in bounded pages until a message from someone else is
       // found. A run of the viewer's own messages at the cursor must not hide
       // older unread messages from other people.
-      let pageCursor: string | null = null;
+      let lower = after;
       let channelUnread = 0;
       let channelMentions = 0;
       for (let pageIndex = 0; pageIndex < UNREAD_SCAN_PAGES; pageIndex += 1) {
-        const page = await ctx.db
+        const messages = await ctx.db
           .query("messages")
-          .withIndex("by_channel_created", (q) =>
-            after === null
-              ? q.eq("channelId", membership.channelId)
-              : q.eq("channelId", membership.channelId).gt("_creationTime", after),
-          )
-          .paginate({ numItems: UNREAD_SCAN_LIMIT, cursor: pageCursor });
-        for (const message of page.page) {
+          .withIndex("by_channel_created", (q) => {
+            const base = q.eq("channelId", membership.channelId);
+            return lower === null ? base : base.gt("_creationTime", lower);
+          })
+          .take(UNREAD_SCAN_LIMIT);
+        for (const message of messages) {
           if (
             message.deletedAt !== undefined ||
             message.authorId === userId ||
@@ -248,15 +247,20 @@ export const unreadSummary = query({
           ) {
             continue;
           }
-          channelUnread += 1;
+          channelUnread = Math.min(channelUnread + 1, UNREAD_SCAN_LIMIT);
           if (message.mentionUserIds.includes(userId)) {
-            channelMentions += 1;
+            channelMentions = Math.min(channelMentions + 1, UNREAD_SCAN_LIMIT);
           }
         }
-        if (channelUnread > 0 || page.isDone) {
+        const last = messages.at(-1);
+        if (
+          last === undefined ||
+          messages.length < UNREAD_SCAN_LIMIT ||
+          (channelUnread >= UNREAD_SCAN_LIMIT && channelMentions >= UNREAD_SCAN_LIMIT)
+        ) {
           break;
         }
-        pageCursor = page.continueCursor;
+        lower = last._creationTime;
       }
       total += channelUnread;
       mentions += channelMentions;

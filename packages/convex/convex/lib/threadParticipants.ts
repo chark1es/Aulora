@@ -8,6 +8,8 @@ export interface ThreadParticipantInput {
   /** Creation time of the reply (or mention) being recorded. */
   readonly at: number;
   readonly mentioned: boolean;
+  /** True when this write is a reply, not just a mention. */
+  readonly participated: boolean;
 }
 
 /**
@@ -32,16 +34,24 @@ export async function upsertThreadParticipant(
       channelId: input.channelId,
       lastReplyAt: input.at,
       mentioned: input.mentioned,
+      participated: input.participated,
     });
     return;
   }
   const lastReplyAt = Math.max(existing.lastReplyAt, input.at);
   const mentioned = existing.mentioned || input.mentioned;
+  const participated = existing.participated === true || input.participated;
   if (
     lastReplyAt !== existing.lastReplyAt ||
     mentioned !== existing.mentioned ||
+    participated !== (existing.participated === true) ||
     existing.channelId !== input.channelId
   ) {
-    await ctx.db.patch(existing._id, { lastReplyAt, mentioned, channelId: input.channelId });
+    await ctx.db.patch(existing._id, {
+      lastReplyAt,
+      mentioned,
+      participated,
+      channelId: input.channelId,
+    });
   }
 }

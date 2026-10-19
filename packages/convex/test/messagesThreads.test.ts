@@ -244,3 +244,39 @@ describe("messages pins", () => {
     ).toBe(false);
   });
 });
+
+describe("messages.threadInbox bounded reply scan", () => {
+  it("keeps a thread whose participation row is beyond the scanned replies", async () => {
+    const t = newTest();
+    await seedWorkspace(t, { members: [{ userId: "user-1" }, { userId: "user-2" }] });
+    const channelId = await seedChannel(t);
+    const asUser1 = t.withIdentity({ subject: "user-1" });
+    const asUser2 = t.withIdentity({ subject: "user-2" });
+    const root = await asUser1.mutation(api.messages.send, { channelId, body: "cm9vdA==" });
+    await t.run(async (ctx) => {
+      for (let index = 0; index < 201; index += 1) {
+        await ctx.db.insert("messages", {
+          channelId,
+          authorId: "user-1",
+          ciphertext: "aulora-sse-v1:opaque",
+          attachmentIds: [],
+          mentionUserIds: [],
+          threadRootId: root,
+        });
+      }
+      await ctx.db.insert("threadParticipants", {
+        userId: "user-2",
+        threadRootId: root,
+        channelId,
+        lastReplyAt: Date.now(),
+        mentioned: false,
+        participated: true,
+      });
+    });
+
+    const rows = await asUser2.query(api.messages.threadInbox, {});
+    const row = rows.find((entry) => entry.id === root);
+    expect(row).toBeDefined();
+    expect(row?.viewerParticipated).toBe(true);
+  });
+});

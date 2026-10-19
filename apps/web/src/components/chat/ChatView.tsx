@@ -979,7 +979,7 @@ function ChatViewContent({
     if (runtime === undefined || activeSummary === undefined) {
       return;
     }
-    void runtime.session.openChannel(activeSummary).then(() => {
+    void chat.openChannel(activeSummary).then(() => {
       if (activeSummary.name.length > 0) {
         chat.reportChannelNames([{ id: activeSummary.id, name: activeSummary.name }]);
       }

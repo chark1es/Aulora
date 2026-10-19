@@ -471,7 +471,12 @@ function useChatScreenMessages(
 
   const history = messageContext?.history;
   const liveMessages = sessionState.messages;
+  // `sessionState.decrypted` doubles as the hydration signal: `receiveMessages`
+  // resolves attachment descriptors and then notifies decrypted listeners, so a
+  // new identity is what makes freshly hydrated attachments visible.
+  const attachmentsRevision = sessionState.decrypted;
   const attachmentsByMessage = useMemo(() => {
+    void attachmentsRevision;
     const map = new Map<string, readonly AttachmentDescriptor[]>();
     if (runtime !== undefined) {
       for (const message of [...(history ?? []), ...liveMessages]) {
@@ -482,7 +487,7 @@ function useChatScreenMessages(
       }
     }
     return map;
-  }, [runtime, history, liveMessages]);
+  }, [runtime, history, liveMessages, attachmentsRevision]);
 
   const pendingItems = useMemo(
     () => outbox.filter((item) => item.channelId === activeChannelId),

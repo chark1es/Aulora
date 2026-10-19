@@ -493,3 +493,80 @@ their original fallbacks, so a partial rollout is safe. The retention crons
 (rate-limits TTL, audit-log 180-day, presence 30-day, devices 180-day) begin
 deleting only data outside their windows; take a backup before first deploy if
 you want the option to revert the deletions.
+
+## 8. Independent review and post-review fixes
+
+Two independent reviews were run on the PR: a native GPT-6 Luna review, then a
+T3 Code Codex review (`codex/gpt-6.1-sol`, high reasoning). The second round
+found issues the first missed; all valid blockers and actionable concerns were
+fixed.
+
+### 8.1 Blockers fixed
+
+- **Repeated `.paginate()` in one Convex function** (`readStates.summary`,
+  `readStates.set`, `notifications.unreadSummary`). Convex permits one
+  pagination per function, so the multi-page loops failed as soon as a second
+  channel/page was involved. Replaced with bounded index reads advanced by
+  `_creationTime` bounds. Regression tests now call both summaries with two
+  channels.
+- **Notification preference lookup still collected the whole server-scope
+  table.** Replaced with per-candidate `by_user_scope` / `by_user_channel`
+  lookups; the unused `by_scope`/`by_channel` indexes were removed again.
+- **Mobile attachment memo ignored hydration completion.** Added the
+  `sessionState.decrypted` hydration signal to the memo so attachments resolved
+  asynchronously by `receiveMessages` become visible without waiting for another
+  message.
+
+### 8.2 Concerns fixed
+
+- `threadParticipants` now stores an independent `participated` flag (not
+  inferred from `mentioned`), so a mentioned viewer whose reply is outside the
+  bounded reply scan is still shown as a participant.
+- Unread/mention scans now page past a run of the viewer's own messages and
+  saturate at the display cap instead of reporting zero; mention counts are
+  accumulated across the bounded window.
+- `pruneStalePresence` keeps manual statuses and pages past them instead of
+  deleting a deliberately chosen status.
+- Role detachment uses the `memberRoles` reverse index only after
+  `memberRolesBackfilled` is set, so a partial backfill keeps the safe
+  member-scan fallback.
+- Kanban cleanup deletes the sealed thumbnail blob as well as the original.
+- File finalisation validates the thumbnail before storing the sealed original
+  and removes both sealed blobs if finalisation fails (no orphans).
+- Docs no longer accept a legacy updater-only manifest as a complete release;
+  it falls through to the GitHub API so direct macOS/Windows installers remain.
+- The bot runner refreshes its health file on a 10 s timer, independent of the
+  longer idle reconcile cadence, so liveness probes stay green.
+- The web active-channel subscription is now opened through the provider and
+  released when the reader switches, instead of accumulating outside the eager
+  cap.
+- The thread-inbox candidate window was raised to 500 to reduce the chance that
+  a very heavy participant's active thread is displaced by their own older
+  participation rows.
+
+### 8.3 Documented tradeoffs (not changed)
+
+- **Counter backfills are snapshots.** A member joining/leaving between
+  backfill pages can leave `memberCount` slightly stale; the same applies to
+  instance counters. Run `maintenance:backfillMemberCount` and
+  `maintenance:backfillInstanceCounters` while membership is quiet, and re-run
+  them after a migration window. The values self-correct on the next run.
+- **`members.list` is still subscribed by both clients.** Paging it requires
+  the symbolic `@everyone`/`@role` mention change described in §7.6; the new
+  `members.page`/`search` APIs exist but are not yet the global path.
+- **Mobile older history pages are one-off snapshots.** Edits/deletions of very
+  old messages are not pushed into an already-loaded page; reopening the channel
+  re-fetches. This is the bounded-subscription tradeoff recorded for M11.
+
+### 8.4 Migrations after this round (in order)
+
+1. `npx convex run maintenance:backfillMemberCount`
+2. `npx convex run maintenance:backfillMemberRoles` (now sets
+   `memberRolesBackfilled` when complete)
+3. `npx convex run maintenance:backfillThreadParticipants` (now seeds every
+   reply author and reply mention, plus `participated`)
+4. `npx convex run maintenance:backfillInstanceCounters`
+
+All remain idempotent and self-rescheduling. Until (2) completes, role deletion
+keeps the full-scan fallback; until (3) completes, the inbox relies on the
+bounded reply scan and the participation rows written since deploy.

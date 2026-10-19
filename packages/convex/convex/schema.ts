@@ -410,6 +410,8 @@ export default defineSchema({
     channelId: v.id("channels"),
     lastReplyAt: v.number(),
     mentioned: v.boolean(),
+    /** True when the user posted a reply (not merely a mention). Optional on pre-upgrade rows until backfilled. */
+    participated: v.optional(v.boolean()),
   })
     .index("by_user", ["userId", "lastReplyAt"])
     .index("by_thread_user", ["threadRootId", "userId"]),
@@ -685,9 +687,7 @@ export default defineSchema({
     pinnedAt: v.optional(v.number()),
   })
     .index("by_user_scope", ["userId", "scope"])
-    .index("by_user_channel", ["userId", "channelId"])
-    .index("by_scope", ["scope"])
-    .index("by_channel", ["channelId"]),
+    .index("by_user_channel", ["userId", "channelId"]),
 
   /**
    * Invites. `code` stores the SHA-256 hex digest of the normalised plaintext

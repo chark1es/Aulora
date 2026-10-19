@@ -1,6 +1,6 @@
 import { Permission } from "@aulora/core";
 import { ConvexError, v } from "convex/values";
-import type { Doc, Id } from "./_generated/dataModel";
+import type { Id } from "./_generated/dataModel";
 import { mutation, query } from "./_generated/server";
 import { requireAuth } from "./lib/auth";
 import { requireChannelAccess, requireChannelAccessFromContext } from "./lib/channels";
@@ -31,25 +31,28 @@ async function countMentionsAfter(
     cursorAt = cursor._creationTime;
   }
   let mentions = 0;
-  let pageCursor: string | null = null;
+  let lower = cursorAt;
   for (let pageIndex = 0; pageIndex < MENTION_SCAN_PAGES; pageIndex += 1) {
-    const page = await ctx.db
+    const messages = await ctx.db
       .query("messages")
-      .withIndex("by_channel_created", (q) =>
-        cursorAt === null
-          ? q.eq("channelId", channelId)
-          : q.eq("channelId", channelId).gt("_creationTime", cursorAt),
-      )
-      .paginate({ numItems: MENTION_SCAN_LIMIT, cursor: pageCursor });
-    mentions += page.page.filter(
+      .withIndex("by_channel_created", (q) => {
+        const base = q.eq("channelId", channelId);
+        return lower === null ? base : base.gt("_creationTime", lower);
+      })
+      .take(MENTION_SCAN_LIMIT);
+    mentions += messages.filter(
       (message) => message.deletedAt === undefined && message.mentionUserIds.includes(userId),
     ).length;
-    // Stop once a mention is found; the scan exists to avoid a run of the
-    // viewer's own messages hiding an older mention from someone else.
-    if (mentions > 0 || page.isDone) {
+    mentions = Math.min(mentions, MENTION_SCAN_LIMIT);
+    const last = messages.at(-1);
+    if (
+      last === undefined ||
+      messages.length < MENTION_SCAN_LIMIT ||
+      mentions >= MENTION_SCAN_LIMIT
+    ) {
       break;
     }
-    pageCursor = page.continueCursor;
+    lower = last._creationTime;
   }
   return mentions;
 }
@@ -174,38 +177,56 @@ async function summarizeChannel(
     state?.lastReadMessageId !== undefined ? await ctx.db.get(state.lastReadMessageId) : null;
   const cursorAt = cursor?._creationTime ?? null;
 
-  let fromOthers: Doc<"messages">[] = [];
-  let pageCursor: string | null = null;
+  let upper: number | null = null;
+  let unread = false;
+  let mentionCount = 0;
   for (let pageIndex = 0; pageIndex < SUMMARY_SCAN_PAGES; pageIndex += 1) {
-    const page = await ctx.db
+    const messages = await ctx.db
       .query("messages")
-      .withIndex("by_channel_created", (q) =>
-        cursorAt === null
-          ? q.eq("channelId", channelId)
-          : q.eq("channelId", channelId).gt("_creationTime", cursorAt),
-      )
+      .withIndex("by_channel_created", (q) => {
+        const base = q.eq("channelId", channelId);
+        if (cursorAt !== null && upper !== null) {
+          return base.gt("_creationTime", cursorAt).lt("_creationTime", upper);
+        }
+        if (cursorAt !== null) {
+          return base.gt("_creationTime", cursorAt);
+        }
+        if (upper !== null) {
+          return base.lt("_creationTime", upper);
+        }
+        return base;
+      })
       .order("desc")
-      .paginate({ numItems: MENTION_SCAN_LIMIT, cursor: pageCursor });
-    fromOthers = page.page.filter(
-      (message) =>
-        message.authorId !== userId &&
-        message.deletedAt === undefined &&
-        message.threadRootId === undefined,
-    );
-    // A run of the viewer's own messages at the cursor must not hide older
-    // unread messages from other people.
-    if (fromOthers.length > 0 || page.isDone) {
+      .take(MENTION_SCAN_LIMIT);
+    for (const message of messages) {
+      if (
+        message.authorId === userId ||
+        message.deletedAt !== undefined ||
+        message.threadRootId !== undefined
+      ) {
+        continue;
+      }
+      unread = true;
+      if (message.mentionUserIds.includes(userId)) {
+        mentionCount = Math.min(mentionCount + 1, MENTION_SCAN_LIMIT);
+      }
+    }
+    const last = messages.at(-1);
+    if (
+      last === undefined ||
+      messages.length < MENTION_SCAN_LIMIT ||
+      mentionCount >= MENTION_SCAN_LIMIT
+    ) {
       break;
     }
-    pageCursor = page.continueCursor;
+    // Continue past a run of the viewer's own messages: an older page may
+    // still contain unread messages or mentions from other people.
+    upper = last._creationTime;
   }
-  const mentionCount = fromOthers.filter((message) =>
-    message.mentionUserIds.includes(userId),
-  ).length;
 
   return {
     channelId,
-    unread: fromOthers.length > 0,
+    unread,
     mentionCount,
     lastActivityAt: latest?._creationTime ?? null,
     lastAuthorId: latest?.authorId ?? null,

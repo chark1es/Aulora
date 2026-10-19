@@ -244,6 +244,7 @@ export const send = mutation({
         channelId: args.channelId,
         at: replyAt,
         mentioned: false,
+        participated: true,
       });
     }
     if (mentions.mentionUserIds.length > 0) {
@@ -256,6 +257,7 @@ export const send = mutation({
           channelId: args.channelId,
           at,
           mentioned: true,
+          participated: false,
         });
       }
     }

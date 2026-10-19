@@ -173,8 +173,9 @@ describe("notifications.unreadSummary", () => {
 
     const asUser2 = t.withIdentity({ subject: "user-2" });
     const summary = await asUser2.query(api.notifications.unreadSummary);
-    // The tail is bounded at UNREAD_SCAN_LIMIT (100), so both counts saturate.
-    expect(summary).toEqual({ total: 100, mentions: 10 });
+    // The bounded scan covers several pages: the total saturates at the display
+    // cap while mentions are counted across the scanned window (13 here).
+    expect(summary).toEqual({ total: 100, mentions: 13 });
   });
 });
 
@@ -344,5 +345,30 @@ describe("notifications.dispatchForMessage", () => {
     const result = await t.action(internal.notifications.dispatchForMessage, { messageId });
     expect(result).toEqual({ sent: 1 });
     expect(calls).toEqual(["https://push.example.com/sub/device-2"]);
+  });
+});
+
+describe("notifications.unreadSummary multi-channel", () => {
+  it("sums unread across several channels in one call", async () => {
+    const t = newTest();
+    await seedWorkspace(t, { members: [{ userId: "user-1" }, { userId: "user-2" }] });
+    const first = await seedChannel(t, { memberIds: ["user-1", "user-2"] });
+    const second = await seedChannel(t, { memberIds: ["user-1", "user-2"] });
+    await t.run(async (ctx) => {
+      for (const channelId of [first, second]) {
+        await ctx.db.insert("messages", {
+          channelId,
+          authorId: "user-1",
+          ciphertext: "aulora-sse-v1:opaque",
+          attachmentIds: [],
+          mentionUserIds: [],
+        });
+      }
+    });
+    const asUser2 = t.withIdentity({ subject: "user-2" });
+    expect(await asUser2.query(api.notifications.unreadSummary)).toEqual({
+      total: 2,
+      mentions: 0,
+    });
   });
 });

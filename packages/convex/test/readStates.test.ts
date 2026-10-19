@@ -203,3 +203,15 @@ describe("readStates.summary", () => {
     expect(rows.map((row) => row.channelId)).toEqual([channelId]);
   });
 });
+
+describe("readStates.summary multi-channel", () => {
+  it("answers for several channels in one call", async () => {
+    const { t, channelId } = await setup();
+    const asUser2 = t.withIdentity({ subject: "user-2" });
+    const other = await seedChannel(t);
+    const rows = await asUser2.query(api.readStates.summary, {
+      channelIds: [channelId, other],
+    });
+    expect(rows.map((row) => row.channelId).sort()).toEqual([channelId, other].sort());
+  });
+});

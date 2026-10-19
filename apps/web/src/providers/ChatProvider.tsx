@@ -63,6 +63,11 @@ export interface ChatContextValue {
   readonly channelNames: ReadonlyMap<string, string>;
   /** Caches plaintext channel names for the given channels. */
   reportChannelNames: (_entries: readonly { id: string; name: string }[]) => void;
+  /**
+   * Opens a channel's live stream and records it with the provider, so it is
+   * released when the reader switches away instead of accumulating.
+   */
+  openChannel: (_channel: ChannelView) => Promise<void>;
   readonly presence: readonly PresenceRow[];
   readonly channels: readonly ChannelView[];
   readonly ready: boolean;
@@ -333,6 +338,26 @@ export function ChatProvider({
   // Channels this provider currently holds open, so ones that leave the eager
   // set (e.g. after being read) are closed instead of accumulating.
   const openedRef = useRef(new Set<string>());
+  // The channel opened on demand by the reader; tracked separately so switching
+  // releases the previous one and the eager cleanup does not close it.
+  const activeOpenedRef = useRef<string | null>(null);
+  const eagerSetRef = useRef(eagerSet);
+  eagerSetRef.current = eagerSet;
+
+  const openChannel = useCallback(async (channel: ChannelView) => {
+    const active = runtimeRef.current;
+    if (active === undefined) {
+      return;
+    }
+    const previous = activeOpenedRef.current;
+    if (previous !== null && previous !== channel.id && !eagerSetRef.current.has(previous)) {
+      active.session.closeChannel(previous);
+      openedRef.current.delete(previous);
+    }
+    activeOpenedRef.current = channel.id;
+    await active.session.openChannel(channel);
+    openedRef.current.add(channel.id);
+  }, []);
 
   useEffect(() => {
     const active = runtimeRef.current;
@@ -342,7 +367,7 @@ export function ChatProvider({
     let cancelled = false;
     const isCancelled = () => cancelled;
     for (const channelId of [...openedRef.current]) {
-      if (!eagerSet.has(channelId)) {
+      if (!eagerSet.has(channelId) && channelId !== activeOpenedRef.current) {
         active.session.closeChannel(channelId);
         openedRef.current.delete(channelId);
       }
@@ -524,6 +549,7 @@ export function ChatProvider({
       runtime,
       channelNames,
       reportChannelNames,
+      openChannel,
       presence,
       channels: views,
       ready,
@@ -539,6 +565,7 @@ export function ChatProvider({
       runtime,
       channelNames,
       reportChannelNames,
+      openChannel,
       presence,
       views,
       ready,

@@ -216,7 +216,13 @@ export async function loadRelease(
     try {
       const response = await fetchImpl(url, { headers: { Accept: "application/json" } });
       if (response?.ok) {
-        release = releaseFromManifest(await response.json());
+        const manifest = await response.json();
+        // Legacy updater manifests only list `platforms` (update archives);
+        // they cannot satisfy direct installer selectors such as the macOS
+        // `.dmg`, so fall through to the GitHub API instead of suppressing it.
+        if (Array.isArray(manifest?.assets)) {
+          release = releaseFromManifest(manifest);
+        }
       }
     } catch {
       release = null;

@@ -188,30 +188,35 @@ export const finalize = action({
     if (blob === null) {
       throw new ConvexError("Upload not found");
     }
+    // Validate the thumbnail before storing the sealed original so a missing or
+    // oversized variant cannot orphan it.
+    const thumbnailBlob =
+      args.thumbnailStorageId === undefined ? null : await ctx.storage.get(args.thumbnailStorageId);
+    if (args.thumbnailStorageId !== undefined && thumbnailBlob === null) {
+      throw new ConvexError("Thumbnail upload not found");
+    }
+    if (thumbnailBlob !== null && thumbnailBlob.size > THUMBNAIL_MAX_BYTES) {
+      throw new ConvexError("Thumbnail exceeds the size cap");
+    }
     const plaintext = new Uint8Array(await blob.arrayBuffer());
     const sealed = await sealBytes({ ...BYTES_CONTEXT, recordId: args.storageId }, plaintext);
     const sealedStorageId = await ctx.storage.store(new Blob([sealed]));
-    const sealThumbnail = async (storageId: Id<"_storage">) => {
-      const thumbnailBlob = await ctx.storage.get(storageId);
-      if (thumbnailBlob === null) {
-        throw new ConvexError("Thumbnail upload not found");
+    const stored: { thumbnailId?: Id<"_storage"> } = {};
+    if (thumbnailBlob !== null) {
+      try {
+        const thumbnailPlaintext = new Uint8Array(await thumbnailBlob.arrayBuffer());
+        const thumbnailSealed = await sealBytes(
+          // Derive a distinct record id from the original upload so the thumbnail
+          // can be re-opened without persisting a second sealed-record id.
+          { ...BYTES_CONTEXT, recordId: `${args.storageId}:thumb` },
+          thumbnailPlaintext,
+        );
+        stored.thumbnailId = await ctx.storage.store(new Blob([thumbnailSealed]));
+      } catch (error) {
+        await ctx.storage.delete(sealedStorageId);
+        throw error;
       }
-      if (thumbnailBlob.size > THUMBNAIL_MAX_BYTES) {
-        throw new ConvexError("Thumbnail exceeds the size cap");
-      }
-      const thumbnailPlaintext = new Uint8Array(await thumbnailBlob.arrayBuffer());
-      const thumbnailSealed = await sealBytes(
-        // Derive a distinct record id from the original upload so the thumbnail
-        // can be re-opened without persisting a second sealed-record id.
-        { ...BYTES_CONTEXT, recordId: `${args.storageId}:thumb` },
-        thumbnailPlaintext,
-      );
-      return await ctx.storage.store(new Blob([thumbnailSealed]));
-    };
-    const thumbnailSealedStorageId =
-      args.thumbnailStorageId === undefined
-        ? undefined
-        : await sealThumbnail(args.thumbnailStorageId);
+    }
     const keyVersion = getEkmSettings(process.env).keyVersion;
     const nameCiphertext = await sealString(NAME_CONTEXT, args.name);
     const mimeCiphertext = await sealString(MIME_CONTEXT, args.mime);
@@ -221,22 +226,30 @@ export const finalize = action({
         : undefined;
     const blurhashCiphertext =
       args.blurhash !== undefined ? await sealString(BLURHASH_CONTEXT, args.blurhash) : undefined;
-    const fileId = await ctx.runMutation(internal.files.insertFinalized, {
-      storageId: sealedStorageId,
-      sealedStorageId: args.storageId,
-      uploaderId: userId,
-      sizeBytes,
-      keyVersion,
-      nameCiphertext,
-      mimeCiphertext,
-      ...(dimensionsCiphertext !== undefined ? { dimensionsCiphertext } : {}),
-      ...(blurhashCiphertext !== undefined ? { blurhashCiphertext } : {}),
-      ...(thumbnailSealedStorageId !== undefined
-        ? { thumbnailStorageId: thumbnailSealedStorageId }
-        : {}),
-      ...(args.channelId !== undefined ? { channelId: args.channelId } : {}),
-      ...(args.kanbanBoardId !== undefined ? { kanbanBoardId: args.kanbanBoardId } : {}),
-    });
+    let fileId: Id<"files">;
+    try {
+      fileId = await ctx.runMutation(internal.files.insertFinalized, {
+        storageId: sealedStorageId,
+        sealedStorageId: args.storageId,
+        uploaderId: userId,
+        sizeBytes,
+        keyVersion,
+        nameCiphertext,
+        mimeCiphertext,
+        ...(dimensionsCiphertext !== undefined ? { dimensionsCiphertext } : {}),
+        ...(blurhashCiphertext !== undefined ? { blurhashCiphertext } : {}),
+        ...(stored.thumbnailId !== undefined ? { thumbnailStorageId: stored.thumbnailId } : {}),
+        ...(args.channelId !== undefined ? { channelId: args.channelId } : {}),
+        ...(args.kanbanBoardId !== undefined ? { kanbanBoardId: args.kanbanBoardId } : {}),
+      });
+    } catch (error) {
+      // No row references the sealed blobs yet, so both are safe to remove.
+      await ctx.storage.delete(sealedStorageId);
+      if (stored.thumbnailId !== undefined) {
+        await ctx.storage.delete(stored.thumbnailId);
+      }
+      throw error;
+    }
     await ctx.storage.delete(args.storageId);
     if (args.thumbnailStorageId !== undefined) {
       await ctx.storage.delete(args.thumbnailStorageId);
