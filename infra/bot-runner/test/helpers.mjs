@@ -35,31 +35,53 @@ async function readJson(request) {
   return JSON.parse(Buffer.concat(chunks).toString("utf8"));
 }
 
+function desiredResponse(state) {
+  return [200, { bots: state.desired }];
+}
+
+function bundleResponse(url, state) {
+  const bundle = state.bundles.get(url.searchParams.get("botId"));
+  return bundle === undefined ? [404, { error: "not_found" }] : [200, bundle];
+}
+
+function credentialResponse(body, state) {
+  const botId = body?.botId;
+  const seq = (state.credentialCalls.get(botId) ?? 0) + 1;
+  state.credentialCalls.set(botId, seq);
+  const issued = `abt_${botId}_${seq}`;
+  state.credentials.set(botId, issued);
+  return [200, { token: issued }];
+}
+
+function reportResponse(body, state) {
+  state.reports.push(body);
+  return [200, { ok: true }];
+}
+
+function logsResponse(body, state) {
+  state.logBatches.push(body);
+  for (const line of body?.lines ?? []) state.lines.push({ botId: body.botId, ...line });
+  return [200, { ok: true }];
+}
+
+function notFound() {
+  return [404, { error: "not_found" }];
+}
+
 function route(url, body, state) {
   switch (url.pathname) {
     case "/bots/runner/desired":
-      return [200, { bots: state.desired }];
-    case "/bots/runner/bundle": {
-      const bundle = state.bundles.get(url.searchParams.get("botId"));
-      return bundle === undefined ? [404, { error: "not_found" }] : [200, bundle];
-    }
-    case "/bots/runner/credential": {
-      const botId = body?.botId;
-      const seq = (state.credentialCalls.get(botId) ?? 0) + 1;
-      state.credentialCalls.set(botId, seq);
-      const issued = `abt_${botId}_${seq}`;
-      state.credentials.set(botId, issued);
-      return [200, { token: issued }];
-    }
+      return desiredResponse(state);
+    case "/bots/runner/bundle":
+      return bundleResponse(url, state);
+    case "/bots/runner/credential":
+      return credentialResponse(body, state);
     case "/bots/runner/report":
-      state.reports.push(body);
-      return [200, { ok: true }];
+      return reportResponse(body, state);
     case "/bots/runner/logs":
-      state.logBatches.push(body);
-      for (const line of body?.lines ?? []) state.lines.push({ botId: body.botId, ...line });
-      return [200, { ok: true }];
+      return logsResponse(body, state);
     default:
-      return [404, { error: "not_found" }];
+      return notFound();
   }
 }
 

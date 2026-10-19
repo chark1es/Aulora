@@ -22,6 +22,7 @@ import {
 
 function makeConfig(fake, workDir, overrides = {}) {
   const env = {
+    // nosemgrep: codacy.yaml.security.hard-coded-tokens
     BOT_RUNNER_TOKEN: RUNNER_SECRET,
     CONVEX_HTTP_URL: fake.baseUrl,
     CONVEX_SELF_HOSTED_URL: fake.baseUrl,
@@ -45,7 +46,7 @@ function createTestRunner(fake, workDir, overrides = {}) {
   const runner = createRunner({
     config,
     api: createRunnerApi(config),
-    logger: { warn: (m) => warnings.push(m), log() {}, error: (m) => warnings.push(m) },
+    logger: { warn: (m) => warnings.push(m), log: () => undefined, error: (m) => warnings.push(m) },
   });
   return Object.assign(runner, { warnings, config });
 }
@@ -254,6 +255,8 @@ test("stops and removes a bot that becomes disabled", async (t) => {
     await runner.tick();
     await waitFor(() => reportCount(fake, botId, "stopped") >= 1, { message: "stopped report" });
     assert.deepEqual(runner.snapshot(), []);
+    // Stopping on purpose is not a crash, and must not schedule a relaunch.
+    assert.equal(reportCount(fake, botId, "crashed"), 0);
   });
 });
 
@@ -310,6 +313,7 @@ test("refuses a bundle file that escapes the bot directory", async (t) => {
     await waitFor(() => reportCount(fake, botId, "crashed") >= 1, { message: "crashed report" });
     const crash = fake.state.reports.find((r) => r.botId === botId && r.status === "crashed");
     assert.match(crash.message, /unsafe bot file path/);
+    // eslint-disable-next-line security/detect-non-literal-fs-filename -- `workDir` is this test's mkdtemp directory; the checked name is a literal traversal probe.
     assert.equal(existsSync(join(workDir, "escape.mjs")), false);
   });
 });
@@ -317,6 +321,7 @@ test("refuses a bundle file that escapes the bot directory", async (t) => {
 test("reports crashed when dependency installation fails", async (t) => {
   await withHarness(t, async ({ fake, workDir, start }) => {
     const npmStub = join(workDir, "npm-stub.sh");
+    // eslint-disable-next-line security/detect-non-literal-fs-filename -- `npmStub` is a fixed script name inside this test's mkdtemp directory.
     writeFileSync(npmStub, "#!/bin/sh\nexit 3\n", { mode: 0o755 });
     const botId = "bot_deps";
     fake.state.desired = [desiredBot(botId)];
@@ -347,6 +352,7 @@ test("graceful shutdown stops bots and cleans the work directory", async (t) => 
     await runner.stop();
     await waitFor(() => reportCount(fake, botId, "stopped") >= 1, { message: "stopped report" });
     assert.deepEqual(runner.snapshot(), []);
+    // eslint-disable-next-line security/detect-non-literal-fs-filename -- `workDir` is this test's mkdtemp directory and `botId` is a literal test id.
     assert.equal(existsSync(join(workDir, botId)), false);
     await waitFor(() => !isAlive(entry.pid), { message: "process gone" });
   });

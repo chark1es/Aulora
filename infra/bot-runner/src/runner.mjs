@@ -21,6 +21,7 @@ export function createRunner({ config, api, logger = console, now = Date.now }) 
 
   function touchHealth() {
     try {
+      // eslint-disable-next-line security/detect-non-literal-fs-filename -- config.healthFile is the runner's own heartbeat path (BOT_RUNNER_HEALTH_FILE), a fixed container path from validated config.
       writeFileSync(config.healthFile, String(now()));
     } catch {
       // The health file lives on tmpfs in the image; missing in unit tests.

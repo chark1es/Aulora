@@ -75,7 +75,7 @@ export function createLogShipper({
     for (const [botId, lines] of batches) {
       Promise.resolve()
         .then(() => post(botId, lines))
-        .catch(() => {});
+        .catch(() => undefined);
     }
   }
 

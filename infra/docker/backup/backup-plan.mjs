@@ -10,7 +10,10 @@ import { pathToFileURL } from "node:url";
 
 /** Compact UTC timestamp used in filenames and object prefixes. */
 export function timestamp(now = Date.now()) {
-  return new Date(now).toISOString().replace(/[-:]/g, "").replace(/\.\d{3}Z$/, "Z");
+  return new Date(now)
+    .toISOString()
+    .replace(/[-:]/g, "")
+    .replace(/\.\d{3}Z$/, "Z");
 }
 
 /** Convex names its database after the instance, with dashes as underscores. */

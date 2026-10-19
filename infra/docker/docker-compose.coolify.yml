@@ -330,6 +330,8 @@ services:
       BETTER_AUTH_SECRET: ${BETTER_AUTH_SECRET:-}
       SETUP_TOKEN: ${SETUP_TOKEN}
       # --- bots (setup generates these; persisted in the setup-state volume) ---
+      # The runner token is read from the environment here; the value is an interpolation, not a stored credential.
+      # nosemgrep: codacy.yaml.security.hard-coded-tokens
       BOT_RUNNER_TOKEN: ${BOT_RUNNER_TOKEN:-}
       BOT_JWT_PRIVATE_JWK: ${BOT_JWT_PRIVATE_JWK:-}
       BOT_JWT_PUBLIC_JWK: ${BOT_JWT_PUBLIC_JWK:-}
@@ -433,6 +435,8 @@ services:
       - SETUID
       - SETGID
       - CHOWN
+      # Signal bots running as other uids; without it stop/restart cannot kill them.
+      - KILL
     security_opt:
       - no-new-privileges:true
     pids_limit: 1024

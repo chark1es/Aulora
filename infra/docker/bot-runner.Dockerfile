@@ -5,7 +5,7 @@
 # Supervises user-created TypeScript and Python bots: one sandboxed process per
 # enabled bot, each with its own uid/gid, work directory and resource limits.
 # The supervisor runs as root ONLY to switch uids; compose drops every other
-# capability (cap_drop: ALL with cap_add SETUID/SETGID/CHOWN). See
+# capability (cap_drop: ALL with cap_add SETUID/SETGID/CHOWN/KILL). See
 # ../../docs/bots-design.md for the contract.
 #
 # Build context is the repo root; see ../../.dockerignore.
@@ -25,6 +25,9 @@ FROM node:24-bookworm-slim
 
 # python3 + venv for Python bots and their `pip install --target` step;
 # util-linux provides `prlimit` for per-bot resource limits.
+# Pinning exact Debian package versions would break the build whenever the
+# bookworm repositories move, so install the current bookworm packages.
+# hadolint ignore=DL3008
 RUN apt-get update \
   && apt-get install -y --no-install-recommends \
     python3 \
@@ -57,4 +60,7 @@ COPY infra/bot-runner/package.json /app/package.json
 ENV HOME=/tmp
 ENV NODE_ENV=production
 
+# The supervisor starts as root only to give every bot its own uid/gid; compose
+# grants SETUID/SETGID/CHOWN/KILL and drops every other capability.
+# nosemgrep: dockerfile.security.missing-user-entrypoint.missing-user-entrypoint
 ENTRYPOINT ["node", "/app/src/main.mjs"]

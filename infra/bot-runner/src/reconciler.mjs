@@ -42,6 +42,7 @@ function createState(desired, usePrlimit, uidSlot) {
     startedAt: 0,
     crashCount: 0,
     nextStartAt: null,
+    stopping: false,
     usePrlimit,
   };
 }
@@ -82,6 +83,8 @@ export function createReconciler({
   async function terminate(state) {
     const child = state.child;
     if (!child) return;
+    // An exit caused by this stop is not a crash: handleExit skips it.
+    state.stopping = true;
     signalBotGroup(child, "SIGTERM");
     await waitForExit(child, config.shutdownGraceMs);
     if (child.exitCode === null && child.signalCode === null) {
@@ -92,6 +95,7 @@ export function createReconciler({
   async function stopBot(state, { remove = false } = {}) {
     await terminate(state);
     state.child = null;
+    state.stopping = false;
     state.status = "stopped";
     state.nextStartAt = null;
     await report(state.botId, "stopped");
@@ -121,7 +125,7 @@ export function createReconciler({
   }
 
   function handleExit(state, child, info) {
-    if (state.child !== child) return;
+    if (state.child !== child || state.stopping) return;
     state.child = null;
     state.status = "crashed";
     const reason = info.error
@@ -209,7 +213,12 @@ export function createReconciler({
     const dir = await writeBotDir(state, bundle);
     if (dir === null) return;
 
-    const deps = await install({ config, dir });
+    // Hand the directory to the bot before anything of the bot's runs, so the
+    // dependency install executes as the bot's uid and never as the supervisor.
+    const uidGid = botUidGid(config, state.uidSlot);
+    if (uidGid) chownTree(dir, uidGid.uid, uidGid.gid);
+
+    const deps = await install({ config, dir, uidGid });
     if (!deps.ok) {
       await failLaunch(state, deps.message);
       return;
@@ -224,10 +233,7 @@ export function createReconciler({
       env: bundle.env ?? {},
       uidSlot: state.uidSlot,
     };
-    if (bot.language !== "python") linkTsSdk(config, dir);
-
-    const uidGid = botUidGid(config, state.uidSlot);
-    if (uidGid) chownTree(dir, uidGid.uid, uidGid.gid);
+    if (bot.language !== "python") linkTsSdk(config, dir, uidGid);
     launch(state, bot, dir, credential);
   }
 
@@ -285,6 +291,7 @@ export function createReconciler({
   async function shutdown() {
     const states = [...bots.values()];
     for (const state of states) {
+      state.stopping = true;
       if (state.child) signalBotGroup(state.child, "SIGTERM");
     }
     await Promise.all(states.map((state) => waitForExit(state.child, config.shutdownGraceMs)));

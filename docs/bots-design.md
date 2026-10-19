@@ -67,7 +67,7 @@ Plain Node ESM (`.mjs`, no deps), tests with `node --test`. Loop every 3 s: `GET
 
 Commands: TypeScript `tsx main.ts` (tsx pinned in the image; `@aulora/bot` resolved from a symlink `node_modules/@aulora/bot -> /opt/aulora/bot-sdk` created after any npm install); Python `/opt/venv/bin/python -u main.py` with the SDK installed in `/opt/venv` and `PYTHONPATH=<dir>/.deps`.
 
-Container hardening (compose): own network `bots` shared only with `convex-backend` (no route to postgres/minio/web), `read_only: true`, tmpfs `/work` and `/tmp`, `cap_drop: [ALL]` + `cap_add: [SETUID, SETGID, CHOWN]` only for the uid switch, `security_opt: [no-new-privileges:true]`, `pids_limit`, `mem_limit`, `cpus`, `user: "0:0"` for the supervisor only (bots never run as root). Config env: `BOT_RUNNER_TOKEN`, `CONVEX_HTTP_URL`, `CONVEX_SELF_HOSTED_URL`, `BOT_RUNNER_MAX_BOTS` (default 10), `BOT_RUNNER_BOT_MEMORY_MB` (default 256).
+Container hardening (compose): own network `bots` shared only with `convex-backend` (no route to postgres/minio/web), `read_only: true`, tmpfs `/work` and `/tmp`, `cap_drop: [ALL]` + `cap_add: [SETUID, SETGID, CHOWN, KILL]` only for the uid switch, `security_opt: [no-new-privileges:true]`, `pids_limit`, `mem_limit`, `cpus`, `user: "0:0"` for the supervisor only (bots never run as root). Config env: `BOT_RUNNER_TOKEN`, `CONVEX_HTTP_URL`, `CONVEX_SELF_HOSTED_URL`, `BOT_RUNNER_MAX_BOTS` (default 10), `BOT_RUNNER_BOT_MEMORY_MB` (default 256).
 
 ## SDKs (stdlib only, polling transport)
 

@@ -210,7 +210,7 @@ the runner as its own resource or from the host with `--profile bots`.
 | Variable | Default | Purpose |
 | --- | --- | --- |
 | `BOT_RUNNER_MAX_BOTS` | `10` | Concurrent bot processes |
-| `BOT_RUNNER_BOT_MEMORY_MB` | `256` | Per-bot memory cap (plus `prlimit` and V8) |
+| `BOT_RUNNER_BOT_MEMORY_MB` | `256` | Per-bot memory cap: V8 heap for TypeScript, address space x4 for Python |
 | `BOT_RUNNER_TOKEN` | generated | Shared runner secret |
 | `BOT_JWT_PRIVATE_JWK_B64` / `BOT_JWT_PUBLIC_JWK_B64` | generated | ES256 key pair, base64url JWK |
 

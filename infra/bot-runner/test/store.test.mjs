@@ -56,9 +56,13 @@ test("writeBundleFiles writes files with restrictive modes and refuses traversal
       { path: "main.mjs", content: "console.log('hi');" },
       { path: "src/lib/mod.ts", content: "export {};" },
     ]);
+    // eslint-disable-next-line security/detect-non-literal-fs-filename -- `root` is this test's mkdtemp directory; the read name is a literal under it.
     assert.equal(readFileSync(join(root, "main.mjs"), "utf8"), "console.log('hi');");
+    // eslint-disable-next-line security/detect-non-literal-fs-filename -- same test mkdtemp root with a literal relative name.
     assert.equal(readFileSync(join(root, "src/lib/mod.ts"), "utf8"), "export {};");
+    // eslint-disable-next-line security/detect-non-literal-fs-filename -- stat of a literal file under this test's mkdtemp root.
     assert.equal(statSync(join(root, "main.mjs")).mode & 0o777, 0o600);
+    // eslint-disable-next-line security/detect-non-literal-fs-filename -- stat of a literal directory under this test's mkdtemp root.
     assert.equal(statSync(join(root, "src")).mode & 0o777, 0o700);
 
     assert.throws(

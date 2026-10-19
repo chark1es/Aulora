@@ -23,12 +23,7 @@
 import { createServer } from "node:http";
 import { fileURLToPath } from "node:url";
 import { loadRelayConfig } from "./config.mjs";
-import {
-  bearerMatches,
-  createProviderRegistry,
-  RelayError,
-  validateWake,
-} from "./providers.mjs";
+import { bearerMatches, createProviderRegistry, RelayError, validateWake } from "./providers.mjs";
 
 const MAX_BODY_BYTES = 8 * 1024;
 const WAKE_PATH = "/v1/wake";

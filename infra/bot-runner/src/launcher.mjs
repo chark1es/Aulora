@@ -15,6 +15,8 @@ import { join } from "node:path";
 import { createLineBuffer } from "./logs.mjs";
 
 export const UID_SLOT_COUNT = 1000;
+const PYTHON_AS_FACTOR = 4;
+const PYTHON_MIN_ADDRESS_SPACE_MB = 1024;
 
 /**
  * Per-bot uid/gid for a unique `slot` handed out by the reconciler, so no two
@@ -63,38 +65,68 @@ export function detectPrlimit(config) {
   return result.error === undefined && result.status === 0;
 }
 
-/** `prlimit` arguments for the configured limits. */
-export function resourceLimitArgs(config) {
-  return [
-    `--nproc=${config.botNproc}`,
-    `--as=${config.botMemoryMb * 1024 * 1024}`,
-    `--fsize=${config.botFileSizeBytes}`,
-  ];
+/**
+ * `prlimit` arguments for the configured limits. Process count and file size
+ * apply to every bot. An address-space cap (`--as`) is only safe for Python:
+ * V8 reserves far more virtual memory than it uses, so Node cannot even start
+ * under a small `RLIMIT_AS` on Linux. TypeScript bots are capped by the V8 heap
+ * limit in `NODE_OPTIONS` instead, and the container's `mem_limit` backs both.
+ * Python gets a generous multiple because threads and libraries reserve virtual
+ * address space well beyond what they touch.
+ */
+export function resourceLimitArgs(config, language) {
+  const args = [`--nproc=${config.botNproc}`, `--fsize=${config.botFileSizeBytes}`];
+  if (language === "python") {
+    const mebibytes = Math.max(PYTHON_MIN_ADDRESS_SPACE_MB, config.botMemoryMb * PYTHON_AS_FACTOR);
+    args.push(`--as=${mebibytes * 1024 * 1024}`);
+  }
+  return args;
 }
 
 /**
  * Symlinks the TypeScript SDK into the bot's `node_modules` after any npm
- * install, so `import "@aulora/bot"` resolves to the image's built copy.
+ * install, so `import "@aulora/bot"` resolves to the image's built copy. When
+ * the supervisor is root the directory already belongs to the bot, which the
+ * supervisor cannot write into, so the link is made as the bot's own uid.
  */
-export function linkTsSdk(config, dir) {
+export function linkTsSdk(config, dir, uidGid = null) {
+  // eslint-disable-next-line security/detect-non-literal-fs-filename -- config.botSdkTsDir is the image's fixed /opt/aulora/bot-sdk build output from validated config, not remote input.
   if (!existsSync(config.botSdkTsDir)) return;
   const scope = join(dir, "node_modules", "@aulora");
-  mkdirSync(scope, { recursive: true, mode: 0o700 });
   const link = join(scope, "bot");
+  if (uidGid) {
+    const asBot = { uid: uidGid.uid, gid: uidGid.gid, stdio: "ignore" };
+    spawnSync("mkdir", ["-p", scope], asBot);
+    spawnSync("ln", ["-sfn", config.botSdkTsDir, link], asBot);
+    return;
+  }
+  // eslint-disable-next-line security/detect-non-literal-fs-filename -- `scope` sits under the bot's own work directory `dir`, which the reconciler builds from a isSafeBotId-validated bot id.
+  mkdirSync(scope, { recursive: true, mode: 0o700 });
   rmSync(link, { recursive: true, force: true });
+  // eslint-disable-next-line security/detect-non-literal-fs-filename -- `link` is always `<bot work dir>/node_modules/@aulora/bot`, derived from that same validated work directory.
   symlinkSync(config.botSdkTsDir, link, "dir");
 }
 
-function spawnOptions(dir, env, uidGid) {
-  const options = {
-    cwd: dir,
-    env,
-    detached: true,
-    stdio: ["ignore", "pipe", "pipe"],
+/**
+ * Runs `command` inside `dir` for a process that switches uid. libuv changes
+ * directory in the child BEFORE it drops to the target uid, i.e. still as root,
+ * and root (holding only SETUID/SETGID/CHOWN/KILL) cannot enter a directory owned by
+ * the bot at mode 0700. A tiny `sh` therefore does the `cd` after the switch.
+ */
+export function inDirAfterSwitch(dir, command, args) {
+  return {
+    command: "/bin/sh",
+    args: ["-c", 'cd "$1" && shift && exec "$@"', "sh", dir, command, ...args],
   };
+}
+
+function spawnOptions(dir, env, uidGid) {
+  const options = { env, detached: true, stdio: ["ignore", "pipe", "pipe"] };
   if (uidGid) {
     options.uid = uidGid.uid;
     options.gid = uidGid.gid;
+  } else {
+    options.cwd = dir;
   }
   return options;
 }
@@ -109,9 +141,14 @@ export function spawnBot({ config, bot, dir, credential, usePrlimit, onLine, onE
   const env = buildBotEnv({ config, bot, dir, credential });
   const uidGid = botUidGid(config, bot.uidSlot);
   const options = spawnOptions(dir, env, uidGid);
-  const child = usePrlimit
-    ? spawn(config.prlimitBin, [...resourceLimitArgs(config), "--", command, ...args], options)
-    : spawn(command, args, options);
+  const argv = usePrlimit
+    ? {
+        command: config.prlimitBin,
+        args: [...resourceLimitArgs(config, bot.language), "--", command, ...args],
+      }
+    : { command, args };
+  const launch = uidGid ? inDirAfterSwitch(dir, argv.command, argv.args) : argv;
+  const child = spawn(launch.command, launch.args, options);
 
   let exited = false;
   const finish = (info) => {

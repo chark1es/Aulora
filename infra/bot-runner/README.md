@@ -37,12 +37,14 @@ On `SIGTERM`/`SIGINT` it sends `SIGTERM` to every bot's process group, waits
   `HOME=/work/<botId>`, `LANG` (plus `PYTHONPATH` for Python, `NODE_OPTIONS`
   with `--max-old-space-size` for TypeScript).
 - **Own uid/gid.** When the supervisor runs as root (the compose default), each
-  bot gets a deterministic uid/gid (`BOT_RUNNER_UID_BASE` + a per-bot slot) and
+  bot gets its own uid/gid (`BOT_RUNNER_UID_BASE` + a unique slot held while it runs) and
   its directory is chowned to it, mode 0700. Locally (non-root) bots run as the
   current user so tests and development work.
-- **Resource limits.** `prlimit` caps `nproc`, address space
-  (`BOT_RUNNER_BOT_MEMORY_MB`) and file size; TypeScript bots also get a V8 heap
-  cap. The container's `mem_limit`, `cpus` and `pids_limit` are the backstop.
+- **Resource limits.** `prlimit` caps `nproc` and file size for every bot.
+  `BOT_RUNNER_BOT_MEMORY_MB` is the V8 heap cap for TypeScript bots and, times
+  four (at least 1 GiB), the address-space cap for Python bots. Node cannot start
+  under a small address-space limit, so it gets the heap cap only. The
+  container's `mem_limit`, `cpus` and `pids_limit` are the backstop.
 - **Path safety.** Bundle file paths are validated against `BOT_LIMITS` and
   resolved under the bot directory; anything that escapes it is refused.
 - **No secrets in logs.** The runner token is only ever sent as an
@@ -66,7 +68,7 @@ accordingly.
 | `CONVEX_HTTP_URL` | `http://convex-backend:3211` | Convex HTTP-actions origin |
 | `CONVEX_SELF_HOSTED_URL` | `http://convex-backend:3210` | Convex API origin given to bots |
 | `BOT_RUNNER_MAX_BOTS` | `10` | Concurrent bot processes |
-| `BOT_RUNNER_BOT_MEMORY_MB` | `256` | Per-bot memory cap |
+| `BOT_RUNNER_BOT_MEMORY_MB` | `256` | Per-bot memory cap (V8 heap; Python address space x4) |
 | `WORK_DIR` | `/work` | tmpfs holding each bot's directory |
 | `BOT_SDK_TS_DIR` | `/opt/aulora/bot-sdk` | Built `@aulora/bot` package |
 

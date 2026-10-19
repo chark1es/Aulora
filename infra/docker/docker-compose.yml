@@ -319,6 +319,8 @@ services:
     # code. The runner token is the only secret and it comes from the
     # environment of `docker compose` (the `.env` next to this file).
     environment:
+      # Compose reads the runner token from the operator's environment; the value is an interpolation, not a stored credential.
+      # nosemgrep: codacy.yaml.security.hard-coded-tokens
       BOT_RUNNER_TOKEN: ${BOT_RUNNER_TOKEN:-}
       CONVEX_HTTP_URL: http://convex-backend:3211
       CONVEX_SELF_HOSTED_URL: http://convex-backend:3210
@@ -341,6 +343,8 @@ services:
       - SETUID
       - SETGID
       - CHOWN
+      # Signal bots running as other uids; without it stop/restart cannot kill them.
+      - KILL
     security_opt:
       - no-new-privileges:true
     pids_limit: 1024
