@@ -231,16 +231,32 @@ export function ChatProvider({ client, userId, children }: ChatProviderProps) {
     if (runtime === undefined) {
       return;
     }
+    // `onDecrypted` re-emits the whole loaded list on every change, so track the
+    // text already indexed per id and only (re-)index what is new or edited —
+    // and drop deleted messages — instead of walking every message each time.
+    const indexed = new Map<string, string>();
     return runtime.session.onDecrypted((messages) => {
       const index = searchRef.current;
       if (index === undefined) {
         return;
       }
       for (const message of messages) {
+        const previous = indexed.get(message.id);
+        if (message.deletedAt !== null) {
+          if (previous !== undefined) {
+            indexed.delete(message.id);
+            void index.remove(message.id);
+          }
+          continue;
+        }
         const text = runtime.session.decryptedText(message.id);
         if (text.length === 0) {
           continue;
         }
+        if (previous === text) {
+          continue;
+        }
+        indexed.set(message.id, text);
         void index.index({ ...searchDocumentFor(message), text });
       }
     });

@@ -25,6 +25,13 @@ import { PRESENCE_SCOPE_MAX } from "./presence-scope";
 
 const PAGE = { numItems: 100, cursor: null } as const;
 
+/**
+ * Roots/replies per archive page read by the search backfill. Larger than a
+ * display page so backfilling a long history costs fewer round trips; the
+ * backfill itself is bounded per query in `use-search.ts`.
+ */
+const ARCHIVE_PAGE_NUM = 200;
+
 /** Message ids per reactions batch; matches the server's `listForMessages` cap. */
 const REACTION_BATCH_SIZE = 100;
 
@@ -339,13 +346,13 @@ export function convexPort(client: ConvexReactClient): ChatPort {
     async listMessages(args) {
       return await client.query(api.messages.list, {
         channelId: args.channelId as never,
-        paginationOpts: { numItems: PAGE.numItems, cursor: args.cursor },
+        paginationOpts: { numItems: ARCHIVE_PAGE_NUM, cursor: args.cursor },
       });
     },
     async listThreadMessages(args) {
       return await client.query(api.messages.listThread, {
         threadRootId: args.threadRootId as never,
-        paginationOpts: { numItems: PAGE.numItems, cursor: args.cursor },
+        paginationOpts: { numItems: ARCHIVE_PAGE_NUM, cursor: args.cursor },
       });
     },
     async heartbeat(args) {
