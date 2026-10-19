@@ -1,9 +1,10 @@
 import { userAvatarSeed } from "@aulora/avatars";
 import { NativeAvatar } from "@aulora/avatars/native";
+import { memo } from "react";
 import { useAvatarUrls } from "../../providers/AvatarProvider";
 
 /** A person, using this workspace's picture when they have set one. */
-export function MemberAvatar({
+export const MemberAvatar = memo(function MemberAvatar({
   userId,
   size = 32,
   roleColor,
@@ -27,4 +28,4 @@ export function MemberAvatar({
       {...(title !== undefined ? { title } : {})}
     />
   );
-}
+});

@@ -1,4 +1,5 @@
 import { darkPalette, lightPalette } from "@aulora/tokens";
+import { memo, useMemo } from "react";
 import {
   Image,
   type StyleProp,
@@ -67,7 +68,11 @@ function AvatarBody({
   readonly seed: string;
   readonly size: number;
 }) {
-  if (src !== undefined && src.length > 0) {
+  const hasSrc = src !== undefined && src.length > 0;
+  // The generated SVG is deterministic per (seed, size); memoize it so rows
+  // re-rendered for unrelated reasons do not rebuild the blobatar geometry.
+  const xml = useMemo(() => (hasSrc ? "" : avatarSvg(seed, { size })), [hasSrc, seed, size]);
+  if (hasSrc) {
     return (
       <Image
         source={{ uri: src }}
@@ -77,7 +82,7 @@ function AvatarBody({
       />
     );
   }
-  return <SvgXml xml={avatarSvg(seed, { size })} width={size} height={size} />;
+  return <SvgXml xml={xml} width={size} height={size} />;
 }
 
 export interface NativeBlobatarProps {
@@ -100,7 +105,13 @@ export interface NativeBlobatarProps {
  * is the subject — a hero, an empty state — and {@link NativeAvatar} where it
  * stands in for someone in a list and needs a frame and a ring.
  */
-export function NativeBlobatar({ seed, size = 32, title, src, style }: NativeBlobatarProps) {
+export const NativeBlobatar = memo(function NativeBlobatar({
+  seed,
+  size = 32,
+  title,
+  src,
+  style,
+}: NativeBlobatarProps) {
   return (
     <View
       accessible={title !== undefined}
@@ -110,9 +121,9 @@ export function NativeBlobatar({ seed, size = 32, title, src, style }: NativeBlo
       <AvatarBody src={src} seed={seed} size={size} />
     </View>
   );
-}
+});
 
-export function NativeAvatar({
+export const NativeAvatar = memo(function NativeAvatar({
   seed,
   size = 32,
   roleColor,
@@ -142,7 +153,7 @@ export function NativeAvatar({
       <AvatarBody src={src} seed={seed} size={size} />
     </View>
   );
-}
+});
 
 const styles = StyleSheet.create({
   frame: {
