@@ -651,15 +651,15 @@ function ChatViewContent({
     api.channels.visibleMemberIds,
     channel !== undefined ? { channelId: channel.id as never } : "skip",
   );
-  const visibleMembers = useMemo(
-    () =>
-      visibleMemberIds === undefined
-        ? members
-        : members.filter((member) =>
-            (visibleMemberIds as readonly string[]).includes(member.userId),
-          ),
-    [members, visibleMemberIds],
-  );
+  const visibleMembers = useMemo(() => {
+    if (visibleMemberIds === undefined) {
+      return members;
+    }
+    // A Set keeps the visibility filter O(members) instead of scanning the
+    // visible id list per member.
+    const visible = new Set(visibleMemberIds as readonly string[]);
+    return members.filter((member) => visible.has(member.userId));
+  }, [members, visibleMemberIds]);
 
   // Roles the members panel can render as their own sections. Members store a
   // role's stable key when it has one, so match on that ref.
