@@ -73,9 +73,11 @@ server {
   }
 
   # Hashed build assets (vite emits content-hashed filenames): safe to cache
-  # for a year. A new deploy ships new names, so the old URLs are never reused.
+  # for a year, and `immutable` lets the browser skip even a conditional
+  # revalidation. A new deploy ships new names, so old URLs are never reused.
   location ^~ /assets/ {
     expires 1y;
+    add_header Cache-Control "public, max-age=31536000, immutable";
     try_files $uri =404;
   }
 
@@ -158,5 +160,23 @@ server {
   add_header Permissions-Policy "camera=(self), microphone=(self), display-capture=(self), geolocation=()" always;
 
   gzip on;
+  # Level 6 recovers most of the ratio for the multi-MB JS chunk; the default
+  # (1) leaves a meaningful fraction on every cold load.
+  gzip_comp_level 6;
+  # Tiny responses are not worth the CPU or the variant.
+  gzip_min_length 1024;
+  # Required once a shared cache can store the compressed body.
+  gzip_vary on;
+  # Serve a precompressed `.gz` sibling when one exists (the docs build emits
+  # them; a web build host may too), falling back to on-the-fly compression.
+  gzip_static on;
   gzip_types text/plain text/css application/json application/javascript application/wasm image/svg+xml;
+  # Brotli is NOT compiled into the official nginx:1.27-alpine image
+  # (`nginx -V` has no ngx_brotli). Leave these off; a build that adds the
+  # module can enable `brotli`/`brotli_static` here without an `unknown
+  # directive` failure on the stock image.
+  # brotli on;
+  # brotli_comp_level 6;
+  # brotli_static on;
+  # brotli_types text/plain text/css application/json application/javascript application/wasm image/svg+xml;
 }
