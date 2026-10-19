@@ -12,7 +12,7 @@ import {
 } from "@aulora/core";
 import { cn, Icon, Spinner } from "@aulora/ui-web";
 import { useMutation, useQuery } from "convex/react";
-import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { lazy, Suspense, useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { api } from "../../../../../packages/convex/convex/_generated/api";
 import {
   attachmentUploadErrorMessage,
@@ -42,17 +42,12 @@ import {
   useWorkspaceUpdates,
   WorkspaceUpdateProvider,
 } from "../../providers/WorkspaceUpdateProvider";
-import { AdminPanel, type AdminPanelViewer } from "../admin/AdminPanel";
-import { KanbanView } from "../kanban/KanbanView";
-import { NotesView } from "../notes/NotesView";
+import type { AdminPanelViewer } from "../admin/AdminPanel";
 import { DesktopUpdateSettings } from "../UpdateSettings";
-import { CallDock } from "../voice/CallDock";
 import { CallPictureInPicture } from "../voice/CallPictureInPicture";
-import { CallStage } from "../voice/CallStage";
 import { DeviceSettingsSection } from "../voice/DeviceSettingsSection";
 import { IncomingCallModal } from "../voice/IncomingCallModal";
 import type { CallIdentity } from "../voice/identity";
-import { VoiceChannelView } from "../voice/VoiceChannelView";
 import { WorkspaceMenu } from "../WorkspaceMenu";
 import { ChannelMembersModal } from "./ChannelMembersModal";
 import { ChannelPane } from "./ChannelPane";
@@ -79,6 +74,36 @@ import { type SearchArchiveState, SearchPanel } from "./SearchPanel";
 import { type ThreadInboxItem, ThreadsInbox } from "./ThreadsInbox";
 import { ThreadsPanel } from "./ThreadsPanel";
 import { UserSettingsView } from "./UserSettingsView";
+
+// Heavy surfaces only render conditionally (admin, board, notes, a call). Load
+// them on demand so the signed-in shell does not ship their code up front.
+const AdminPanel = lazy(() =>
+  import("../admin/AdminPanel").then((module) => ({ default: module.AdminPanel })),
+);
+const KanbanView = lazy(() =>
+  import("../kanban/KanbanView").then((module) => ({ default: module.KanbanView })),
+);
+const NotesView = lazy(() =>
+  import("../notes/NotesView").then((module) => ({ default: module.NotesView })),
+);
+const CallStage = lazy(() =>
+  import("../voice/CallStage").then((module) => ({ default: module.CallStage })),
+);
+const CallDock = lazy(() =>
+  import("../voice/CallDock").then((module) => ({ default: module.CallDock })),
+);
+const VoiceChannelView = lazy(() =>
+  import("../voice/VoiceChannelView").then((module) => ({ default: module.VoiceChannelView })),
+);
+
+/** Centered placeholder shown while a lazily-loaded surface streams in. */
+function SurfaceFallback() {
+  return (
+    <div className="flex flex-1 items-center justify-center py-16">
+      <Spinner size={24} label="Loading" />
+    </div>
+  );
+}
 
 export interface ChatViewProps {
   readonly workspaceName: string;
@@ -1401,19 +1426,21 @@ function ChatViewContent({
       )}
 
       {adminView ? (
-        <AdminPanel
-          viewer={admin.viewer}
-          ownerId={admin.ownerId}
-          roles={admin.roleViews}
-          members={admin.memberViews}
-          categories={admin.categories}
-          channels={channels}
-          channelNames={channelNames}
-          origin={typeof window === "undefined" ? "" : window.location.origin}
-          onClose={() => {
-            setAdminOpen(false);
-          }}
-        />
+        <Suspense fallback={<SurfaceFallback />}>
+          <AdminPanel
+            viewer={admin.viewer}
+            ownerId={admin.ownerId}
+            roles={admin.roleViews}
+            members={admin.memberViews}
+            categories={admin.categories}
+            channels={channels}
+            channelNames={channelNames}
+            origin={typeof window === "undefined" ? "" : window.location.origin}
+            onClose={() => {
+              setAdminOpen(false);
+            }}
+          />
+        </Suspense>
       ) : userSettingsOpen ? (
         <UserSettingsView
           ownUserId={ownUserId}
@@ -1443,27 +1470,31 @@ function ChatViewContent({
       ) : mainView === "kanban" &&
         kanbanEnabled &&
         hasPermission(permissions, Permission.ViewKanban) ? (
-        <KanbanView
-          ownUserId={ownUserId}
-          permissions={permissions}
-          members={members}
-          onBack={() => {
-            setMainView("chat");
-            setMobilePane("list");
-          }}
-        />
+        <Suspense fallback={<SurfaceFallback />}>
+          <KanbanView
+            ownUserId={ownUserId}
+            permissions={permissions}
+            members={members}
+            onBack={() => {
+              setMainView("chat");
+              setMobilePane("list");
+            }}
+          />
+        </Suspense>
       ) : mainView === "notes" &&
         notesEnabled &&
         hasPermission(permissions, Permission.ViewNotes) ? (
-        <NotesView
-          ownUserId={ownUserId}
-          permissions={permissions}
-          members={members}
-          onBack={() => {
-            setMainView("chat");
-            setMobilePane("list");
-          }}
-        />
+        <Suspense fallback={<SurfaceFallback />}>
+          <NotesView
+            ownUserId={ownUserId}
+            permissions={permissions}
+            members={members}
+            onBack={() => {
+              setMainView("chat");
+              setMobilePane("list");
+            }}
+          />
+        </Suspense>
       ) : (
         <section
           className={cn(
@@ -1500,7 +1531,9 @@ function ChatViewContent({
               </p>
             </div>
           ) : channel.kind === "voice" ? (
-            <VoiceChannelView channel={channel} title={title} identity={callIdentity} />
+            <Suspense fallback={<SurfaceFallback />}>
+              <VoiceChannelView channel={channel} title={title} identity={callIdentity} />
+            </Suspense>
           ) : (
             <ChannelPane
               runtime={runtime}
@@ -1711,9 +1744,15 @@ function ChatViewContent({
       )}
 
       {!(channel?.kind === "voice" && voice.call?.channelId === channel.id) && (
-        <CallDock title={callTitle} identity={callIdentity} />
+        <Suspense fallback={null}>
+          <CallDock title={callTitle} identity={callIdentity} />
+        </Suspense>
       )}
-      {voice.view === "stage" && <CallStage title={callTitle} identity={callIdentity} />}
+      {voice.view === "stage" && (
+        <Suspense fallback={null}>
+          <CallStage title={callTitle} identity={callIdentity} />
+        </Suspense>
+      )}
       <CallPictureInPicture title={callTitle} identity={callIdentity} />
 
       {searchOpen && (
