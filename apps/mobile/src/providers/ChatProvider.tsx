@@ -141,6 +141,8 @@ export function ChatProvider({ client, userId, children }: ChatProviderProps) {
     setStartupAttempt((attempt) => attempt + 1);
   }, []);
   const [outbox, setOutbox] = useState<readonly OutboxItem[]>([]);
+  const outboxItemsRef = useRef<readonly OutboxItem[]>(outbox);
+  outboxItemsRef.current = outbox;
   const runtimeRef = useRef<MobileChatRuntime | undefined>(undefined);
   const outboxRef = useRef<Outbox>(undefined);
   const searchRef = useRef<SearchIndex>(undefined);
@@ -238,30 +240,55 @@ export function ChatProvider({ client, userId, children }: ChatProviderProps) {
 
   const refreshOutbox = useCallback(async () => {
     const active = outboxRef.current;
-    if (active !== undefined) {
-      const items = await active.list();
-      if (outboxRef.current === active) setOutbox(items);
+    if (active === undefined) {
+      return;
     }
+    const items = await active.list();
+    // `list()` always returns a fresh sorted array; keep the previous reference
+    // when nothing queued actually changed so the context value stays stable.
+    setOutbox((current) => (sameOutbox(current, items) ? current : items));
   }, []);
   const flush = useCallback(async () => {
     const active = outboxRef.current;
     const chat = runtimeRef.current;
     if (active === undefined || chat === undefined || AppState.currentState !== "active") return;
+    // Nothing is due once the queue is empty or every item has permanently
+    // failed; skip the flush and the refresh so an idle provider never churns.
+    if ((await active.pendingCount()) === 0) return;
     await active.flush((item) => sendOutboxItem(chat.session, item));
     await refreshOutbox();
   }, [refreshOutbox]);
   useEffect(() => {
     if (runtime === undefined) return;
+    let timer: ReturnType<typeof setInterval> | undefined;
     const retry = () => {
+      if (AppState.currentState !== "active") return;
+      // The in-memory list answers "is anything queued?" without a store read.
+      if (!outboxItemsRef.current.some((item) => item.status !== "failed")) return;
       void flush().catch(() => undefined);
     };
+    const start = () => {
+      if (timer === undefined) timer = setInterval(retry, 5000);
+    };
+    const stop = () => {
+      if (timer !== undefined) {
+        clearInterval(timer);
+        timer = undefined;
+      }
+    };
     retry();
-    const timer = setInterval(retry, 5000);
+    start();
     const off = AppState.addEventListener("change", (state) => {
-      if (state === "active") retry();
+      if (state === "active") {
+        retry();
+        start();
+      } else {
+        // Pause the ticker while backgrounded; queued items retry on resume.
+        stop();
+      }
     });
     return () => {
-      clearInterval(timer);
+      stop();
       off.remove();
     };
   }, [runtime, flush]);
@@ -581,6 +608,36 @@ function placeholder(channel: ChannelSummary): string {
     return "Group message";
   }
   return channel.archived ? "archived" : "channel";
+}
+
+/**
+ * Whether two outbox snapshots are equivalent, so a refresh that changed
+ * nothing can keep the previous array reference (and the context value stable).
+ */
+function sameOutbox(a: readonly OutboxItem[], b: readonly OutboxItem[]): boolean {
+  if (a === b) {
+    return true;
+  }
+  if (a.length !== b.length) {
+    return false;
+  }
+  for (let index = 0; index < a.length; index += 1) {
+    const previous = a[index];
+    const next = b[index];
+    if (previous === undefined || next === undefined) {
+      return false;
+    }
+    if (
+      previous.id !== next.id ||
+      previous.status !== next.status ||
+      previous.attempts !== next.attempts ||
+      previous.lastAttemptAt !== next.lastAttemptAt ||
+      previous.nextAttemptAt !== next.nextAttemptAt
+    ) {
+      return false;
+    }
+  }
+  return true;
 }
 
 /** Reads the chat context; throws outside a {@link ChatProvider}. */
