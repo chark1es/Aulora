@@ -722,7 +722,10 @@ export default defineSchema({
     key: v.string(),
     windowStart: v.number(),
     count: v.number(),
-  }).index("by_key", ["key"]),
+  })
+    .index("by_key", ["key"])
+    // The TTL prune reads only counters whose window is long past.
+    .index("by_window_start", ["windowStart"]),
 
   ...botTables,
 });

@@ -97,6 +97,7 @@ import type * as messages from "../messages.js";
 import type * as notes from "../notes.js";
 import type * as notifications from "../notifications.js";
 import type * as presence from "../presence.js";
+import type * as rateLimits from "../rateLimits.js";
 import type * as reactions from "../reactions.js";
 import type * as readStates from "../readStates.js";
 import type * as roles from "../roles.js";
@@ -204,6 +205,7 @@ declare const fullApi: ApiFromModules<{
   notes: typeof notes;
   notifications: typeof notifications;
   presence: typeof presence;
+  rateLimits: typeof rateLimits;
   reactions: typeof reactions;
   readStates: typeof readStates;
   roles: typeof roles;
