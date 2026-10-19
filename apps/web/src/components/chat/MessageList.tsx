@@ -492,20 +492,129 @@ const TimelineRow = memo(function TimelineRow({
  * Marks the seam where the page cap dropped history between the retained window
  * and the live tail, so the timeline never silently jumps in time.
  */
-function HistorySeamRow() {
+type ReplyPreview = {
+  readonly authorName: string;
+  readonly text: string;
+  readonly authorId?: string;
+};
+
+/** Inline edit form, split out so the row stays within the complexity budget. */
+function MessageEditForm({
+  draft,
+  text,
+  onDraftChange,
+  onSave,
+  onCancel,
+}: {
+  readonly draft: string | undefined;
+  readonly text: string;
+  readonly onDraftChange: (value: string) => void;
+  readonly onSave: (next: string) => void;
+  readonly onCancel: () => void;
+}) {
   return (
-    <div
-      data-testid="history-seam"
-      className="flex items-center gap-3 py-3 text-[11px] text-text-muted"
+    <form
+      className="flex w-[min(560px,100%)] flex-col gap-2 rounded-[10px] border border-accent bg-surface-2 p-2 shadow-lg shadow-black/10"
+      onSubmit={(event) => {
+        event.preventDefault();
+        if ((draft ?? "").trim().length > 0 && draft !== undefined && draft !== text) {
+          onSave(draft);
+        }
+        onCancel();
+      }}
     >
-      <span className="h-px flex-1 bg-border" />
-      <span className="whitespace-nowrap">Some messages were unloaded to keep this view fast</span>
-      <span className="h-px flex-1 bg-border" />
-    </div>
+      <textarea
+        aria-label="Edit message"
+        // biome-ignore lint/a11y/noAutofocus: editing was explicitly requested
+        autoFocus
+        className="min-h-[64px] resize-none bg-transparent px-1.5 py-1 text-[14px] leading-relaxed text-text focus-visible:outline-none"
+        value={draft ?? ""}
+        onChange={(event) => {
+          onDraftChange(event.target.value);
+        }}
+        onKeyDown={(event) => {
+          if (event.key === "Escape") {
+            onCancel();
+          }
+          if (event.key === "Enter" && !event.shiftKey) {
+            event.preventDefault();
+            event.currentTarget.form?.requestSubmit();
+          }
+        }}
+      />
+      <div className="flex items-center justify-end gap-2 text-xs">
+        <span className="mr-auto pl-1.5 text-text-muted">Esc to cancel · Enter to save</span>
+        <Button type="button" size="sm" variant="ghost" onClick={onCancel}>
+          Cancel
+        </Button>
+        <Button type="submit" size="sm">
+          Save
+        </Button>
+      </div>
+    </form>
   );
 }
 
-const MessageRow = memo(function MessageRow({
+/** Quoted inline reply, split out so the row stays within the complexity budget. */
+function ReplyLine({
+  replyToId,
+  replyPreview,
+  mirror,
+  list,
+  onJump,
+}: {
+  readonly replyToId: string;
+  readonly replyPreview: ReplyPreview | undefined;
+  readonly mirror: boolean;
+  readonly list: MessageRowListProps;
+  readonly onJump: (id: string) => void;
+}) {
+  const replyAuthorId = replyPreview?.authorId;
+  const replyAuthorColor =
+    replyAuthorId !== undefined ? list.memberColors?.get(replyAuthorId) : undefined;
+  return (
+    <button
+      type="button"
+      onClick={() => {
+        onJump(replyToId);
+      }}
+      aria-label="Jump to replied message"
+      className={cn(
+        "flex min-w-0 max-w-full items-center text-left transition hover:opacity-80 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent",
+        mirror && "text-right",
+      )}
+    >
+      <div className="flex min-w-0 items-baseline gap-1 text-[12px] leading-4">
+        {replyPreview !== undefined ? (
+          <>
+            <span
+              className={cn(
+                "min-w-0 truncate font-semibold",
+                replyAuthorColor === undefined && "text-accent",
+              )}
+              style={replyAuthorColor !== undefined ? { color: replyAuthorColor } : undefined}
+            >
+              {replyPreview.authorName}
+            </span>
+            <div className="min-w-0 text-text-muted">
+              <RichText
+                variant="inline"
+                text={replyPreview.text}
+                mentionNames={list.mentionNames}
+                {...(list.channelNames !== undefined ? { channelNames: list.channelNames } : {})}
+                viewerName={list.ownName}
+              />
+            </div>
+          </>
+        ) : (
+          <span className="truncate italic text-text-muted">Replying to a message</span>
+        )}
+      </div>
+    </button>
+  );
+}
+
+function MessageRowContent({
   list,
   message,
   startsGroup,
@@ -595,52 +704,17 @@ const MessageRow = memo(function MessageRow({
   const replyCount = message.replyCount ?? 0;
 
   const body = editing ? (
-    <form
-      className="flex w-[min(560px,100%)] flex-col gap-2 rounded-[10px] border border-accent bg-surface-2 p-2 shadow-lg shadow-black/10"
-      onSubmit={(event) => {
-        event.preventDefault();
-        if ((draft ?? "").trim().length > 0 && draft !== undefined && draft !== text) {
-          list.onEdit(message, draft);
-        }
+    <MessageEditForm
+      draft={draft}
+      text={text}
+      onDraftChange={setDraft}
+      onSave={(next) => {
+        list.onEdit(message, next);
+      }}
+      onCancel={() => {
         setEditing(false);
       }}
-    >
-      <textarea
-        aria-label="Edit message"
-        // biome-ignore lint/a11y/noAutofocus: editing was explicitly requested
-        autoFocus
-        className="min-h-[64px] resize-none bg-transparent px-1.5 py-1 text-[14px] leading-relaxed text-text focus-visible:outline-none"
-        value={draft ?? ""}
-        onChange={(event) => {
-          setDraft(event.target.value);
-        }}
-        onKeyDown={(event) => {
-          if (event.key === "Escape") {
-            setEditing(false);
-          }
-          if (event.key === "Enter" && !event.shiftKey) {
-            event.preventDefault();
-            event.currentTarget.form?.requestSubmit();
-          }
-        }}
-      />
-      <div className="flex items-center justify-end gap-2 text-xs">
-        <span className="mr-auto pl-1.5 text-text-muted">Esc to cancel · Enter to save</span>
-        <Button
-          type="button"
-          size="sm"
-          variant="ghost"
-          onClick={() => {
-            setEditing(false);
-          }}
-        >
-          Cancel
-        </Button>
-        <Button type="submit" size="sm">
-          Save
-        </Button>
-      </div>
-    </form>
+    />
   ) : hasText ? (
     <div
       className={cn(
@@ -663,44 +737,13 @@ const MessageRow = memo(function MessageRow({
     replyAuthorId !== undefined ? memberColors?.get(replyAuthorId) : undefined;
 
   const replyLine = replyToId !== null && (
-    <button
-      type="button"
-      onClick={() => {
-        scrollToOriginal(replyToId);
-      }}
-      aria-label="Jump to replied message"
-      className={cn(
-        "flex min-w-0 max-w-full items-center text-left transition hover:opacity-80 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent",
-        mirror && "text-right",
-      )}
-    >
-      <div className="flex min-w-0 items-baseline gap-1 text-[12px] leading-4">
-        {replyPreview !== undefined ? (
-          <>
-            <span
-              className={cn(
-                "min-w-0 truncate font-semibold",
-                replyAuthorColor === undefined && "text-accent",
-              )}
-              style={replyAuthorColor !== undefined ? { color: replyAuthorColor } : undefined}
-            >
-              {replyPreview.authorName}
-            </span>
-            <div className="min-w-0 text-text-muted">
-              <RichText
-                variant="inline"
-                text={replyPreview.text}
-                mentionNames={list.mentionNames}
-                {...(list.channelNames !== undefined ? { channelNames: list.channelNames } : {})}
-                viewerName={list.ownName}
-              />
-            </div>
-          </>
-        ) : (
-          <span className="truncate italic text-text-muted">Replying to a message</span>
-        )}
-      </div>
-    </button>
+    <ReplyLine
+      replyToId={replyToId}
+      replyPreview={replyPreview}
+      mirror={mirror}
+      list={list}
+      onJump={scrollToOriginal}
+    />
   );
 
   const toolbar = !unsent && !editing && (
@@ -964,7 +1007,9 @@ const MessageRow = memo(function MessageRow({
       )}
     </article>
   );
-});
+}
+
+const MessageRow = memo(MessageRowContent);
 
 function ToolbarButton({
   label,
@@ -1078,4 +1123,24 @@ function groupReactionsByMessage(
     grouped.set(messageId, groupReactions(list, ownUserId));
   }
   return grouped;
+}
+
+/**
+ * Marks the seam where the page cap dropped history between the retained window
+ * and the live tail, so the timeline never silently jumps in time.
+ *
+ * Declared last because Lizard's JSX parser otherwise attributes the large row
+ * component that follows to this function.
+ */
+function HistorySeamRow() {
+  return (
+    <div
+      data-testid="history-seam"
+      className="flex items-center gap-3 py-3 text-[11px] text-text-muted"
+    >
+      <span className="h-px flex-1 bg-border" />
+      <span className="whitespace-nowrap">Some messages were unloaded to keep this view fast</span>
+      <span className="h-px flex-1 bg-border" />
+    </div>
+  );
 }

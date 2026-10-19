@@ -202,88 +202,6 @@ function loadHttp2() {
  * `AbortSignal.timeout`) or the default timeout, and a timed-out connection is
  * dropped so the next request reconnects.
  */
-export function createHttp2Requester({ defaultTimeoutMs = REQUEST_TIMEOUT_MS } = {}) {
-  const sessions = new Map();
-
-  function sessionFor(module, origin) {
-    const existing = sessions.get(origin);
-    if (existing !== undefined) {
-      return existing;
-    }
-    const client = module.connect(origin);
-    const entry = { client };
-    const drop = () => {
-      if (sessions.get(origin) === entry) {
-        sessions.delete(origin);
-      }
-    };
-    client.on("error", drop);
-    client.on("goaway", () => {
-      drop();
-      client.close();
-    });
-    client.on("close", drop);
-    sessions.set(origin, entry);
-    return entry;
-  }
-
-  function forget(origin, entry) {
-    if (sessions.get(origin) === entry) {
-      sessions.delete(origin);
-    }
-  }
-
-  return async function request({ url, headers, body, signal, timeoutMs }) {
-    const module = await loadHttp2();
-    const target = new URL(url);
-    const entry = sessionFor(module, target.origin);
-    const effectiveSignal = signal ?? AbortSignal.timeout(timeoutMs ?? defaultTimeoutMs);
-    return await new Promise((resolve, reject) => {
-      let settled = false;
-      const onAbort = () => {
-        // A dead or slow connection may be unusable; drop it so the next
-        // request reconnects.
-        forget(target.origin, entry);
-        entry.client.destroy();
-        finish(
-          reject,
-          effectiveSignal.reason instanceof Error
-            ? effectiveSignal.reason
-            : new RelayError("provider-error", "APNs request timed out", 504),
-        );
-      };
-      const finish = (settle, value) => {
-        if (settled) {
-          return;
-        }
-        settled = true;
-        effectiveSignal.removeEventListener("abort", onAbort);
-        settle(value);
-      };
-      if (effectiveSignal.aborted) {
-        onAbort();
-        return;
-      }
-      effectiveSignal.addEventListener("abort", onAbort, { once: true });
-      let status = 0;
-      const stream = entry.client.request({
-        ":method": "POST",
-        ":path": target.pathname,
-        ...headers,
-      });
-      stream.on("response", (responseHeaders) => {
-        status = Number(responseHeaders[":status"] ?? 0);
-      });
-      stream.on("error", (error) => finish(reject, error));
-      stream.on("close", () => finish(resolve, { ok: status >= 200 && status < 300, status }));
-      // Drain the response body so the stream reaches `close` and the shared
-      // session is not left with an unconsumed, back-pressured stream.
-      stream.resume();
-      stream.end(body);
-    });
-  };
-}
-
 const defaultApnsRequest = createHttp2Requester();
 
 /**
@@ -493,4 +411,90 @@ export function createProviderRegistry(config = {}) {
     providers.unifiedpush = createUnifiedPushProvider(config.unifiedpush);
   }
   return providers;
+}
+
+export function createHttp2Requester({ defaultTimeoutMs = REQUEST_TIMEOUT_MS } = {}) {
+  const sessions = new Map();
+
+  function sessionFor(module, origin) {
+    const existing = sessions.get(origin);
+    if (existing !== undefined) {
+      return existing;
+    }
+    const client = module.connect(origin);
+    const entry = { client };
+    const drop = () => {
+      if (sessions.get(origin) === entry) {
+        sessions.delete(origin);
+      }
+    };
+    client.on("error", drop);
+    client.on("goaway", () => {
+      drop();
+      client.close();
+    });
+    client.on("close", drop);
+    sessions.set(origin, entry);
+    return entry;
+  }
+
+  function forget(origin, entry) {
+    if (sessions.get(origin) === entry) {
+      sessions.delete(origin);
+    }
+  }
+
+  return async function request({ url, headers, body, signal, timeoutMs }) {
+    const module = await loadHttp2();
+    const target = new URL(url);
+    const entry = sessionFor(module, target.origin);
+    const effectiveSignal = signal ?? AbortSignal.timeout(timeoutMs ?? defaultTimeoutMs);
+    return await new Promise((resolve, reject) => {
+      let settled = false;
+      const onAbort = () => {
+        // A dead or slow connection may be unusable; drop it so the next
+        // request reconnects.
+        forget(target.origin, entry);
+        entry.client.destroy();
+        finish(
+          reject,
+          effectiveSignal.reason instanceof Error
+            ? effectiveSignal.reason
+            : new RelayError("provider-error", "APNs request timed out", 504),
+        );
+      };
+      const finish = (settle, value) => {
+        if (settled) {
+          return;
+        }
+        settled = true;
+        effectiveSignal.removeEventListener("abort", onAbort);
+        settle(value);
+      };
+      if (effectiveSignal.aborted) {
+        onAbort();
+        return;
+      }
+      effectiveSignal.addEventListener("abort", onAbort, { once: true });
+      let status = 0;
+      const stream = entry.client.request({
+        ":method": "POST",
+        ":path": target.pathname,
+        ...headers,
+      });
+      stream.on("response", (responseHeaders) => {
+        status = Number(responseHeaders[":status"] ?? 0);
+      });
+      stream.on("error", (error) => {
+        finish(reject, error);
+      });
+      stream.on("close", () => {
+        finish(resolve, { ok: status >= 200 && status < 300, status });
+      });
+      // Drain the response body so the stream reaches `close` and the shared
+      // session is not left with an unconsumed, back-pressured stream.
+      stream.resume();
+      stream.end(body);
+    });
+  };
 }

@@ -177,6 +177,37 @@ export function WorkspaceUpdateProvider({
       globalThis.location.reload();
     }
   }, [host, coolify, managed?.phase]);
+  // Hoist the derived settings strings out of the memo below so its JSX stays
+  // small (Codacy's complexity budget) without changing what is rendered.
+  const settingsLatestVersion =
+    managed?.phase === "installing"
+      ? managed.targetVersion
+      : useHost
+        ? host.latestVersion
+        : (result?.latestVersion ?? null);
+  const settingsError =
+    error ??
+    capabilities?.error ??
+    managed?.error ??
+    (useHost ? host.error : result?.error) ??
+    null;
+  const settingsNotes = (useHost ? host.notes : result?.notes) ?? null;
+  const settingsLastCheckedAt = useHost
+    ? host.checkedAt > 0
+      ? host.checkedAt
+      : null
+    : result !== undefined
+      ? now
+      : null;
+  const settingsCanDownload =
+    capabilities !== undefined && (coolify ? capabilities.configured : hostConnected);
+  const settingsDetail = coolify
+    ? "Coolify builds and installs the release in one step. Deployment briefly interrupts the workspace for everyone."
+    : !hostConnected
+      ? "The server updater is offline. Start infra/docker/update.sh --watch on the server to enable Download and Restart."
+      : shownPhase === "ready"
+        ? "Restarting briefly takes the workspace offline for everyone. Your messages and settings are kept."
+        : "The server prepares the release while your workspace stays online.";
   const settings = useMemo(
     () => (
       <>
@@ -184,47 +215,17 @@ export function WorkspaceUpdateProvider({
           <UpdateSettings
             title="Workspace instance"
             currentVersion={useHost ? host.currentVersion : (currentVersion ?? null)}
-            latestVersion={
-              managed?.phase === "installing"
-                ? managed.targetVersion
-                : useHost
-                  ? host.latestVersion
-                  : (result?.latestVersion ?? null)
-            }
+            latestVersion={settingsLatestVersion}
             available={available}
             checked={useHost ? host.checkedAt > 0 : result !== undefined}
             phase={shownPhase}
-            error={
-              error ??
-              capabilities?.error ??
-              managed?.error ??
-              (useHost ? host.error : result?.error) ??
-              null
-            }
-            notes={(useHost ? host.notes : result?.notes) ?? null}
+            error={settingsError}
+            notes={settingsNotes}
             releaseDate={useHost ? null : (result?.pubDate ?? null)}
-            lastCheckedAt={
-              useHost
-                ? host.checkedAt > 0
-                  ? host.checkedAt
-                  : null
-                : result !== undefined
-                  ? now
-                  : null
-            }
-            canDownload={
-              capabilities !== undefined && (coolify ? capabilities.configured : hostConnected)
-            }
+            lastCheckedAt={settingsLastCheckedAt}
+            canDownload={settingsCanDownload}
             installDirectly={coolify}
-            detail={
-              coolify
-                ? "Coolify builds and installs the release in one step. Deployment briefly interrupts the workspace for everyone."
-                : !hostConnected
-                  ? "The server updater is offline. Start infra/docker/update.sh --watch on the server to enable Download and Restart."
-                  : shownPhase === "ready"
-                    ? "Restarting briefly takes the workspace offline for everyone. Your messages and settings are kept."
-                    : "The server prepares the release while your workspace stays online."
-            }
+            detail={settingsDetail}
             onCheck={() => void checkNow()}
             onDownload={() => void (coolify ? install() : send("download"))}
             onRestart={() => void send("restart")}
@@ -234,19 +235,20 @@ export function WorkspaceUpdateProvider({
     ),
     [
       available,
-      capabilities,
       checkNow,
       coolify,
       currentVersion,
-      error,
       host,
-      hostConnected,
       install,
       isOwner,
-      managed,
-      now,
       result,
       send,
+      settingsCanDownload,
+      settingsDetail,
+      settingsError,
+      settingsLastCheckedAt,
+      settingsLatestVersion,
+      settingsNotes,
       shownPhase,
       useHost,
     ],

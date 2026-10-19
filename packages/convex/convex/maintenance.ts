@@ -1,6 +1,6 @@
 import { v } from "convex/values";
 import { internal } from "./_generated/api";
-import { internalMutation } from "./_generated/server";
+import { internalMutation, type MutationCtx } from "./_generated/server";
 import { DEFAULT_INSTANCE_SETTINGS } from "./lib/instance";
 import { syncMemberRoles } from "./lib/memberRoles";
 import { upsertThreadParticipant } from "./lib/threadParticipants";
@@ -13,6 +13,40 @@ const MEMBER_ROLE_BACKFILL_BATCH = 200;
 const THREAD_PARTICIPANT_BACKFILL_BATCH = 200;
 /** Rows counted per instance-counter backfill page. */
 const INSTANCE_COUNTER_BATCH = 200;
+
+type InstanceCounterTotals = {
+  files: number;
+  fileBytes: number;
+  channels: number;
+  devices: number;
+};
+
+/** Writes the recounted totals onto the singleton settings row. */
+async function writeInstanceCounters(
+  ctx: MutationCtx,
+  totals: InstanceCounterTotals,
+): Promise<void> {
+  const row = await ctx.db.query("instanceSettings").first();
+  if (row === null) {
+    await ctx.db.insert("instanceSettings", {
+      storageQuotaBytes: DEFAULT_INSTANCE_SETTINGS.storageQuotaBytes,
+      maxUploadBytes: DEFAULT_INSTANCE_SETTINGS.maxUploadBytes,
+      pushRelayEnabled: DEFAULT_INSTANCE_SETTINGS.pushRelayEnabled,
+      backupsEnabled: DEFAULT_INSTANCE_SETTINGS.backupsEnabled,
+      fileCount: totals.files,
+      fileBytes: totals.fileBytes,
+      channelCount: totals.channels,
+      deviceCount: totals.devices,
+    });
+    return;
+  }
+  await ctx.db.patch(row._id, {
+    fileCount: totals.files,
+    fileBytes: totals.fileBytes,
+    channelCount: totals.channels,
+    deviceCount: totals.devices,
+  });
+}
 
 /**
  * Idempotent migration: recount `members` and store the total on the singleton
@@ -119,6 +153,20 @@ export const backfillThreadParticipants = internalMutation({
   },
 });
 
+/** Schedules the next page of the instance-counter backfill. */
+async function scheduleNextCounterPage(
+  ctx: MutationCtx,
+  totals: InstanceCounterTotals,
+  stage: number,
+  cursor: string | null,
+): Promise<void> {
+  await ctx.scheduler.runAfter(0, internal.maintenance.backfillInstanceCounters, {
+    ...totals,
+    stage,
+    ...(cursor === null ? {} : { cursor }),
+  });
+}
+
 /**
  * Idempotent migration: seeds the maintained instance counters the admin
  * overview reads (`instanceSettings.fileCount`/`fileBytes`/`channelCount`/
@@ -156,11 +204,7 @@ export const backfillInstanceCounters = internalMutation({
         totals.fileBytes += file.sizeBytes;
       }
       const next = page.isDone ? 1 : 0;
-      await ctx.scheduler.runAfter(0, internal.maintenance.backfillInstanceCounters, {
-        ...totals,
-        stage: next,
-        ...(page.isDone ? {} : { cursor: page.continueCursor }),
-      });
+      await scheduleNextCounterPage(ctx, totals, next, page.isDone ? null : page.continueCursor);
       return null;
     }
 
@@ -170,11 +214,7 @@ export const backfillInstanceCounters = internalMutation({
         .paginate({ numItems: INSTANCE_COUNTER_BATCH, cursor: args.cursor ?? null });
       totals.channels += page.page.length;
       const next = page.isDone ? 2 : 1;
-      await ctx.scheduler.runAfter(0, internal.maintenance.backfillInstanceCounters, {
-        ...totals,
-        stage: next,
-        ...(page.isDone ? {} : { cursor: page.continueCursor }),
-      });
+      await scheduleNextCounterPage(ctx, totals, next, page.isDone ? null : page.continueCursor);
       return null;
     }
 
@@ -183,34 +223,11 @@ export const backfillInstanceCounters = internalMutation({
       .paginate({ numItems: INSTANCE_COUNTER_BATCH, cursor: args.cursor ?? null });
     totals.devices += page.page.length;
     if (!page.isDone) {
-      await ctx.scheduler.runAfter(0, internal.maintenance.backfillInstanceCounters, {
-        ...totals,
-        stage: 2,
-        cursor: page.continueCursor,
-      });
+      await scheduleNextCounterPage(ctx, totals, 2, page.continueCursor);
       return null;
     }
 
-    const row = await ctx.db.query("instanceSettings").first();
-    if (row === null) {
-      await ctx.db.insert("instanceSettings", {
-        storageQuotaBytes: DEFAULT_INSTANCE_SETTINGS.storageQuotaBytes,
-        maxUploadBytes: DEFAULT_INSTANCE_SETTINGS.maxUploadBytes,
-        pushRelayEnabled: DEFAULT_INSTANCE_SETTINGS.pushRelayEnabled,
-        backupsEnabled: DEFAULT_INSTANCE_SETTINGS.backupsEnabled,
-        fileCount: totals.files,
-        fileBytes: totals.fileBytes,
-        channelCount: totals.channels,
-        deviceCount: totals.devices,
-      });
-    } else {
-      await ctx.db.patch(row._id, {
-        fileCount: totals.files,
-        fileBytes: totals.fileBytes,
-        channelCount: totals.channels,
-        deviceCount: totals.devices,
-      });
-    }
+    await writeInstanceCounters(ctx, totals);
     return null;
   },
 });

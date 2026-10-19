@@ -141,7 +141,7 @@ export function DesktopUpdateProvider({ children }: { readonly children: ReactNo
     const jitterFraction = () => {
       const words = new Uint32Array(1);
       crypto.getRandomValues(words);
-      return words[0] / 2 ** 32;
+      return (words[0] as number) / 2 ** 32;
     };
     const scheduleNext = () => {
       const delay = intervalMs + (jitterFraction() * 2 - 1) * jitterMs;
