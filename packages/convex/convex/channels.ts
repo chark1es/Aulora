@@ -120,6 +120,13 @@ export const create = mutation({
  * members. Non-private channels without `ViewChannel` after category and
  * channel overrides are filtered out of the page. DMs are listed separately by
  * {@link listDms}.
+ *
+ * DMs and group DMs are the only rows the app writes with a `dmKey`, so the
+ * `by_dm_key` index with an equality on `undefined` narrows the paginated scan
+ * to non-DM channels in creation order instead of walking past every DM row.
+ * The kind filter is kept as a guard for any row that reaches the table without
+ * a `dmKey`; ordering, page size and cursor behaviour for the channels returned
+ * are unchanged.
  */
 export const list = query({
   args: { paginationOpts: v.optional(paginationOptsValidator) },
@@ -131,6 +138,7 @@ export const list = query({
     // a page; they are listed by `listDms`.
     const result = await ctx.db
       .query("channels")
+      .withIndex("by_dm_key", (q) => q.eq("dmKey", undefined))
       .filter((q) => q.and(q.neq(q.field("kind"), "dm"), q.neq(q.field("kind"), "group_dm")))
       .order("asc")
       .paginate(args.paginationOpts ?? { numItems: 50, cursor: null });
