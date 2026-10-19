@@ -1,3 +1,4 @@
+/* eslint-disable no-unused-vars -- the base rule reports parameter names in type signatures; Biome checks real unused code */
 export type EventListener<T> = (payload: T) => void | Promise<void>;
 
 function isPromise(value: unknown): value is Promise<unknown> {
@@ -27,7 +28,7 @@ export class TypedEmitter<Events extends object> {
     this.listeners.get(event)?.delete(listener as EventListener<never>);
   }
 
-  emit<K extends keyof Events>(event: K, payload: Events[K]): void {
+  dispatch<K extends keyof Events>(event: K, payload: Events[K]): void {
     const set = this.listeners.get(event);
     if (set === undefined) {
       return;
@@ -36,7 +37,9 @@ export class TypedEmitter<Events extends object> {
       try {
         const result = (listener as EventListener<Events[K]>)(payload);
         if (isPromise(result)) {
-          result.catch((error: unknown) => this.onListenerError(error));
+          result.catch((error: unknown) => {
+            this.onListenerError(error);
+          });
         }
       } catch (error) {
         this.onListenerError(error);

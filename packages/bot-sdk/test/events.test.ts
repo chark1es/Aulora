@@ -16,6 +16,73 @@ function makeBot(fake: FakeAulora, includeSelf = false): Bot {
   });
 }
 
+/** Queues one poll result carrying every event type the SDK dispatches. */
+function pushEveryEventType(fake: FakeAulora): void {
+  fake.pollQueue.push({
+    events: [
+      event("message.created", { seq: 1, message: message({ body: "hello" }) }),
+      event("message.updated", {
+        seq: 2,
+        message: message({ body: "edited", editedAt: 123 }),
+      }),
+      event("message.deleted", {
+        seq: 3,
+        message: message({ body: "", deletedAt: 456 }),
+      }),
+      event("reaction.added", {
+        seq: 4,
+        reaction: { messageId: "msg_1", userId: "user_2", emoji: "👍" },
+      }),
+      event("reaction.removed", {
+        seq: 5,
+        reaction: { messageId: "msg_1", userId: "user_2", emoji: "👍" },
+      }),
+    ],
+    cursor: 500,
+    me: { userId: "bot_1", name: "Test Bot" },
+  });
+}
+
+type CollectedEvents = {
+  readonly ready: BotIdentity[];
+  readonly created: Message[];
+  readonly updated: Message[];
+  readonly deleted: Message[];
+  readonly added: ReactionEvent[];
+  readonly removed: ReactionEvent[];
+};
+
+/** Records each event type in its own array so a test can assert per-type payloads. */
+function collectEvents(bot: Bot): CollectedEvents {
+  const collected: CollectedEvents = {
+    ready: [],
+    created: [],
+    updated: [],
+    deleted: [],
+    added: [],
+    removed: [],
+  };
+  bot.on("ready", (identity) => {
+    collected.ready.push(identity);
+  });
+  bot.on("message", (entry) => {
+    collected.created.push(entry);
+  });
+  bot.on("messageUpdate", (entry) => {
+    collected.updated.push(entry);
+  });
+  bot.on("messageDelete", (entry) => {
+    collected.deleted.push(entry);
+  });
+  bot.on("reactionAdd", (reaction) => {
+    collected.added.push(reaction);
+  });
+  bot.on("reactionRemove", (reaction) => {
+    collected.removed.push(reaction);
+  });
+  return collected;
+}
+
 describe("event polling", () => {
   let fake: FakeAulora;
 
@@ -29,75 +96,34 @@ describe("event polling", () => {
   });
 
   it("dispatches every event type with typed payloads", async () => {
-    fake.pollQueue.push({
-      events: [
-        event("message.created", { seq: 1, message: message({ body: "hello" }) }),
-        event("message.updated", {
-          seq: 2,
-          message: message({ body: "edited", editedAt: 123 }),
-        }),
-        event("message.deleted", {
-          seq: 3,
-          message: message({ body: "", deletedAt: 456 }),
-        }),
-        event("reaction.added", {
-          seq: 4,
-          reaction: { messageId: "msg_1", userId: "user_2", emoji: "👍" },
-        }),
-        event("reaction.removed", {
-          seq: 5,
-          reaction: { messageId: "msg_1", userId: "user_2", emoji: "👍" },
-        }),
-      ],
-      cursor: 500,
-      me: { userId: "bot_1", name: "Test Bot" },
-    });
+    pushEveryEventType(fake);
     const bot = makeBot(fake);
-    const ready: BotIdentity[] = [];
-    const created: Message[] = [];
-    const updated: Message[] = [];
-    const deleted: Message[] = [];
-    const added: ReactionEvent[] = [];
-    const removed: ReactionEvent[] = [];
-    bot.on("ready", (identity) => {
-      ready.push(identity);
-    });
-    bot.on("message", (entry) => {
-      created.push(entry);
-    });
-    bot.on("messageUpdate", (entry) => {
-      updated.push(entry);
-    });
-    bot.on("messageDelete", (entry) => {
-      deleted.push(entry);
-    });
-    bot.on("reactionAdd", (reaction) => {
-      added.push(reaction);
-    });
-    bot.on("reactionRemove", (reaction) => {
-      removed.push(reaction);
-    });
+    const collected = collectEvents(bot);
 
     const started = bot.start();
-    await waitFor(() => removed.length === 1 && ready.length === 1, 2000, "all events");
+    await waitFor(
+      () => collected.removed.length === 1 && collected.ready.length === 1,
+      2000,
+      "all events",
+    );
     await bot.stop();
     await started;
 
-    expect(ready[0]).toEqual({ userId: "bot_1", name: "Test Bot" });
-    expect(created[0]?.body).toBe("hello");
-    expect(created[0]).toBeInstanceOf(Message);
-    expect(updated[0]?.body).toBe("edited");
-    expect(updated[0]?.editedAt).toBe(123);
-    expect(deleted[0]?.body).toBe("");
-    expect(deleted[0]?.deletedAt).toBe(456);
-    expect(added[0]).toEqual({
+    expect(collected.ready[0]).toEqual({ userId: "bot_1", name: "Test Bot" });
+    expect(collected.created[0]?.body).toBe("hello");
+    expect(collected.created[0]).toBeInstanceOf(Message);
+    expect(collected.updated[0]?.body).toBe("edited");
+    expect(collected.updated[0]?.editedAt).toBe(123);
+    expect(collected.deleted[0]?.body).toBe("");
+    expect(collected.deleted[0]?.deletedAt).toBe(456);
+    expect(collected.added[0]).toEqual({
       messageId: "msg_1",
       channelId: "chan_1",
       userId: "user_2",
       emoji: "👍",
       self: false,
     });
-    expect(removed[0]?.emoji).toBe("👍");
+    expect(collected.removed[0]?.emoji).toBe("👍");
   });
 
   it("skips the bot's own events by default and delivers them with includeSelf", async () => {

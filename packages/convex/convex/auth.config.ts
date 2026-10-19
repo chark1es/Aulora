@@ -9,31 +9,33 @@ import { BOT_JWT_ALGORITHM, BOT_JWT_AUDIENCE, BOT_JWT_ISSUER } from "@aulora/cor
 import { getAuthConfigProvider } from "@convex-dev/better-auth/auth-config";
 import type { AuthConfig, AuthProvider } from "convex/server";
 
-/** The bot provider, or `null` when the public key is absent or malformed. */
-function botProvider(): AuthProvider | null {
+/** The bot provider as a list: empty when the public key is absent or malformed. */
+function botProviders(): AuthProvider[] {
   const publicJwk = (process.env.BOT_JWT_PUBLIC_JWK ?? "").trim();
   if (publicJwk.length === 0) {
-    return null;
+    return [];
   }
   try {
     const key = JSON.parse(publicJwk);
     const jwks = `data:text/plain;charset=utf-8;base64,${btoa(JSON.stringify({ keys: [key] }))}`;
-    return {
-      type: "customJwt",
-      applicationID: BOT_JWT_AUDIENCE,
-      issuer: BOT_JWT_ISSUER,
-      jwks,
-      algorithm: BOT_JWT_ALGORITHM,
-    };
+    return [
+      {
+        type: "customJwt",
+        applicationID: BOT_JWT_AUDIENCE,
+        issuer: BOT_JWT_ISSUER,
+        jwks,
+        algorithm: BOT_JWT_ALGORITHM,
+      },
+    ];
   } catch {
     // Fail closed: a malformed key must not register a provider that can never
     // verify a token, and must never break the whole auth config.
-    return null;
+    return [];
   }
 }
 
-const bot = botProvider();
+const bot = botProviders();
 
 export default {
-  providers: bot === null ? [getAuthConfigProvider()] : [getAuthConfigProvider(), bot],
+  providers: [getAuthConfigProvider(), ...bot],
 } satisfies AuthConfig;

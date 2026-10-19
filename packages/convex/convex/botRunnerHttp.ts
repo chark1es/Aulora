@@ -44,7 +44,7 @@ function equalBytes(left: Uint8Array, right: Uint8Array): boolean {
   let difference = left.length ^ right.length;
   const length = Math.max(left.length, right.length);
   for (let index = 0; index < length; index += 1) {
-    difference |= (left[index] ?? 0) ^ (right[index] ?? 0);
+    difference |= (left.at(index) ?? 0) ^ (right.at(index) ?? 0);
   }
   return difference === 0;
 }
@@ -77,12 +77,13 @@ async function readBody(request: Request): Promise<JsonObject | null> {
   return parsed as JsonObject;
 }
 
-function readBotId(body: JsonObject): Id<"bots"> | null {
+/** The `botId` field when it is a plausible id, else `null`; callers cast it. */
+function readBotId(body: JsonObject): string | null {
   const value = body.botId;
   if (typeof value !== "string" || value.length === 0 || value.length > MAX_ID_LENGTH) {
     return null;
   }
-  return value as Id<"bots">;
+  return value;
 }
 
 async function handleDesired(ctx: ActionCtx, request: Request): Promise<Response> {
@@ -128,7 +129,9 @@ async function handleCredential(ctx: ActionCtx, request: Request): Promise<Respo
     return json({ error: "invalid_body" }, 400);
   }
   try {
-    const result = await ctx.runMutation(internal.botRuntime.credential, { botId });
+    const result = await ctx.runMutation(internal.botRuntime.credential, {
+      botId: botId as Id<"bots">,
+    });
     if (result === null) {
       return json({ error: "not_found" }, 404);
     }
@@ -160,7 +163,7 @@ async function handleReport(ctx: ActionCtx, request: Request): Promise<Response>
     return json({ error: "invalid_body" }, 400);
   }
   const found = await ctx.runMutation(internal.botRuntime.report, {
-    botId,
+    botId: botId as Id<"bots">,
     status: reportStatus as BotStatus,
     ...(typeof message === "string" ? { message } : {}),
   });
@@ -212,7 +215,10 @@ async function handleLogs(ctx: ActionCtx, request: Request): Promise<Response> {
   if (botId === null || lines === null) {
     return json({ error: "invalid_body" }, 400);
   }
-  const found = await ctx.runMutation(internal.botRuntime.appendLogs, { botId, lines });
+  const found = await ctx.runMutation(internal.botRuntime.appendLogs, {
+    botId: botId as Id<"bots">,
+    lines,
+  });
   if (!found) {
     return json({ error: "not_found" }, 404);
   }

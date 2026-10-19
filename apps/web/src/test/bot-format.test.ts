@@ -2,9 +2,9 @@ import { BOT_LIMITS } from "@aulora/core";
 import { describe, expect, it } from "vitest";
 import {
   BOT_RUNNER_OFFLINE_MESSAGE,
-  BOT_STATUS_META,
   botFileBytes,
   botFilesLimitError,
+  botStatusMeta,
   filesDiff,
   formatBytes,
   validateBotDescription,
@@ -15,10 +15,10 @@ import {
 
 describe("bot-format", () => {
   it("labels every bot status", () => {
-    expect(BOT_STATUS_META.running.label).toBe("Running");
-    expect(BOT_STATUS_META.crashed.label).toBe("Crashed");
-    expect(BOT_STATUS_META.stopped.label).toBe("Stopped");
-    expect(BOT_STATUS_META.starting.label).toBe("Starting");
+    expect(botStatusMeta("running").label).toBe("Running");
+    expect(botStatusMeta("crashed").label).toBe("Crashed");
+    expect(botStatusMeta("stopped").label).toBe("Stopped");
+    expect(botStatusMeta("starting").label).toBe("Starting");
     expect(BOT_RUNNER_OFFLINE_MESSAGE).toContain("docker compose --profile bots up -d");
   });
 

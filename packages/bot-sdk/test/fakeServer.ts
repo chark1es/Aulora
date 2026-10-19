@@ -1,3 +1,4 @@
+/* eslint-disable no-unused-vars -- the base rule reports parameter names in type signatures; Biome checks real unused code */
 import { createServer, type IncomingMessage, type Server, type ServerResponse } from "node:http";
 import type { AddressInfo } from "node:net";
 import type { BotPollResult } from "../src/types.js";
@@ -17,10 +18,7 @@ export interface Failure {
   remaining: number;
 }
 
-export type ApiHandler = (
-  args: Record<string, unknown>,
-  kind: string,
-) => unknown | Promise<unknown>;
+export type ApiHandler = (args: Record<string, unknown>, kind: string) => unknown;
 
 /** Thrown by a test handler to make the fake server answer with a Convex error. */
 export class FakeConvexError extends Error {
@@ -58,7 +56,7 @@ function takeFailure(failures: Failure[], path?: string): Failure | null {
   if (index === -1) {
     return null;
   }
-  const failure = failures[index];
+  const failure = failures.at(index);
   if (failure === undefined) {
     return null;
   }
@@ -118,7 +116,9 @@ export class FakeAulora {
       return;
     }
     await new Promise<void>((resolve) => {
-      server.close(() => resolve());
+      server.close(() => {
+        resolve();
+      });
       server.closeAllConnections();
     });
     this.server = null;
@@ -146,12 +146,12 @@ export class FakeAulora {
     this.send(response, 404, { error: "not_found" });
   }
 
-  private async handleToken(request: IncomingMessage, response: ServerResponse): Promise<void> {
+  private handleToken(request: IncomingMessage, response: ServerResponse): Promise<void> {
     this.tokenAuthorizations.push(request.headers.authorization ?? "");
     const failure = takeFailure(this.tokenFailures);
     if (failure !== null) {
       this.respondWithFailure(response, failure);
-      return;
+      return Promise.resolve();
     }
     this.tokenRequests += 1;
     this.send(response, 200, {
@@ -161,6 +161,7 @@ export class FakeAulora {
       botId: this.botId,
       name: this.name,
     });
+    return Promise.resolve();
   }
 
   private async handleApi(
@@ -194,13 +195,7 @@ export class FakeAulora {
       await delay(this.pollDelayMs);
     }
     try {
-      const handler = this.handlers.get(path);
-      const value =
-        handler !== undefined
-          ? await handler(args, kind)
-          : path === "botEvents:poll"
-            ? this.poll(args)
-            : null;
+      const value = await this.resolveValue(path, args, kind);
       this.send(response, 200, { status: "success", value });
     } catch (error) {
       if (error instanceof FakeConvexError) {
@@ -213,6 +208,21 @@ export class FakeAulora {
       }
       this.send(response, 500, { error: "handler_failed" });
     }
+  }
+
+  private async resolveValue(
+    path: string,
+    args: Record<string, unknown>,
+    kind: string,
+  ): Promise<unknown> {
+    const handler = this.handlers.get(path);
+    if (handler !== undefined) {
+      return await handler(args, kind);
+    }
+    if (path === "botEvents:poll") {
+      return this.poll(args);
+    }
+    return null;
   }
 
   private poll(args: Record<string, unknown>): BotPollResult {

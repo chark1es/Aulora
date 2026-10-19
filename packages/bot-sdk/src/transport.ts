@@ -1,3 +1,4 @@
+/* eslint-disable no-unused-vars -- the base rule reports parameter names in type signatures; Biome checks real unused code */
 import { AuloraError } from "./errors.js";
 
 export interface RawResponse {
@@ -31,8 +32,9 @@ export async function readResponse(response: Response): Promise<RawResponse> {
 export function serverMessage(payload: unknown, fallback: string): string {
   const record = asRecord(payload);
   if (record !== null) {
+    const entries = new Map(Object.entries(record));
     for (const key of ["errorMessage", "error", "message"]) {
-      const candidate = record[key];
+      const candidate = entries.get(key);
       if (typeof candidate === "string" && candidate.length > 0) {
         return candidate;
       }
@@ -44,12 +46,12 @@ export function serverMessage(payload: unknown, fallback: string): string {
   return fallback;
 }
 
-const TOKEN_ERROR_MESSAGES: Readonly<Record<string, string>> = {
-  invalid_token: "The bot API token is invalid",
-  bot_disabled: "This bot is disabled",
-  bots_unavailable: "Bots are not available on this deployment",
-  rate_limited: "The bot token endpoint is rate limited; retry shortly",
-};
+const TOKEN_ERROR_MESSAGES = new Map<string, string>([
+  ["invalid_token", "The bot API token is invalid"],
+  ["bot_disabled", "This bot is disabled"],
+  ["bots_unavailable", "Bots are not available on this deployment"],
+  ["rate_limited", "The bot token endpoint is rate limited; retry shortly"],
+]);
 
 /** Maps `POST /bots/token` failures to a code bots can branch on. */
 export function tokenError(status: number, payload: unknown): AuloraError {
@@ -57,7 +59,7 @@ export function tokenError(status: number, payload: unknown): AuloraError {
   const errorValue = record?.error;
   const code =
     typeof errorValue === "string" && errorValue.length > 0 ? errorValue : `http_${status}`;
-  const fallback = TOKEN_ERROR_MESSAGES[code] ?? `Token exchange failed with HTTP ${status}`;
+  const fallback = TOKEN_ERROR_MESSAGES.get(code) ?? `Token exchange failed with HTTP ${status}`;
   return new AuloraError(serverMessage(payload, fallback), {
     code,
     status,

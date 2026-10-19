@@ -94,7 +94,7 @@ export function BotTokenTab({ bot }: { readonly bot: BotDetail }) {
           Outside the server
         </Text>
         <pre className="overflow-x-auto rounded-[10px] border border-border bg-surface-1 p-3 font-mono text-[12px] text-text-secondary">
-          {`AULORA_TOKEN=${token ?? "<token>"}\nAULORA_SITE_URL=https://your-site-url\nAULORA_CONVEX_URL=https://your-convex-url`}
+          {`AULORA_TOKEN=${token ?? "YOUR_TOKEN"}\nAULORA_SITE_URL=https://your-site-url\nAULORA_CONVEX_URL=https://your-convex-url`}
         </pre>
       </div>
     </div>

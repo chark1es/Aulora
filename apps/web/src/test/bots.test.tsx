@@ -247,13 +247,18 @@ describe("Bot code tab", () => {
 
     await user.click(screen.getByRole("button", { name: "Add file" }));
     const dialog = await screen.findByRole("dialog", { name: "Add file" });
-    const path = within(dialog).getByLabelText("File path");
-    await user.type(path, "../evil.ts");
+    // Re-query the field each time: the modal may swap the node while it mounts,
+    // and typing into a stale element loses the keystrokes on a busy machine.
+    const pathField = () => within(dialog).getByLabelText("File path");
+    await user.click(pathField());
+    await user.type(pathField(), "../evil.ts");
+    await waitFor(() => expect(pathField()).toHaveValue("../evil.ts"));
     await user.click(within(dialog).getByRole("button", { name: "Add file" }));
     expect(screen.getByRole("alert")).toHaveTextContent("relative");
 
-    await user.clear(path);
-    await user.type(path, "lib/util.ts");
+    await user.clear(pathField());
+    await user.type(pathField(), "lib/util.ts");
+    await waitFor(() => expect(pathField()).toHaveValue("lib/util.ts"));
     await user.click(within(dialog).getByRole("button", { name: "Add file" }));
     await waitFor(() => expect(screen.queryByRole("dialog")).not.toBeInTheDocument());
     expect(screen.getByText("lib/util.ts")).toBeInTheDocument();

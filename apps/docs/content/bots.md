@@ -125,5 +125,5 @@ The **Token** tab creates an API token. A bot using it works from any machine th
 | Files per bot | 50, 256 KiB each, 1 MiB total |
 | Environment variables | 32, 4 KiB each |
 | Running at once | 10 by default (`BOT_RUNNER_MAX_BOTS`) |
-| Memory per bot | 256 MiB by default (`BOT_RUNNER_BOT_MEMORY_MB`) |
+| Memory per bot | About 256 MiB by default (`BOT_RUNNER_BOT_MEMORY_MB`); a heap cap for TypeScript, a looser address-space cap for Python |
 | Messages | The normal send rate limit applies to bots too |

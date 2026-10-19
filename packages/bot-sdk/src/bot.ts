@@ -1,3 +1,4 @@
+/* eslint-disable no-unused-vars -- the base rule reports parameter names in type signatures; Biome checks real unused code */
 import { type CallArgs, ConvexClient } from "./client.js";
 import {
   type BotIdentity,
@@ -113,14 +114,20 @@ export class Bot {
     this.config = resolveBotConfig(options);
     const tokens = new TokenManager(this.config);
     this.client = new ConvexClient(this.config, tokens);
-    this.emitter = new TypedEmitter<BotEvents>((error) => this.emitError(error));
+    this.emitter = new TypedEmitter<BotEvents>((error) => {
+      this.emitError(error);
+    });
     this.actions = this.createActions();
     this.poller = new EventPoller({
       intervalMs: this.config.pollIntervalMs,
       backoffMs: ERROR_BACKOFF_MS,
       poll: async (cursor, signal) => await this.poll(cursor, signal),
-      onResult: (result) => this.handlePoll(result),
-      onError: (error) => this.emitError(error),
+      onResult: (result) => {
+        this.handlePoll(result);
+      },
+      onError: (error) => {
+        this.emitError(error);
+      },
     });
     this.channels = { list: async () => await this.listChannels() };
     this.messages = this.createMessagesApi();
@@ -190,24 +197,27 @@ export class Bot {
     if (this.stopped) {
       throw new AuloraError("This bot has already been stopped", { code: "bot_stopped" });
     }
-    if (this.startPromise !== null) {
-      return await this.startPromise;
+    const existingStart = this.startPromise;
+    if (existingStart !== null) {
+      await existingStart;
+      return;
     }
-    this.startPromise = new Promise<void>((resolve) => {
+    const started = new Promise<void>((resolve) => {
       this.resolveStart = resolve;
     });
+    this.startPromise = started;
     if (this.config.handleSignals) {
       process.on("SIGTERM", this.signalHandler);
       process.on("SIGINT", this.signalHandler);
     }
     this.poller.start();
-    return await this.startPromise;
+    await started;
   }
 
   /** Stops polling and releases signal handlers and timers. */
-  async stop(): Promise<void> {
+  stop(): Promise<void> {
     if (this.stopped) {
-      return;
+      return Promise.resolve();
     }
     this.stopped = true;
     process.off("SIGTERM", this.signalHandler);
@@ -215,6 +225,7 @@ export class Bot {
     this.poller.stop();
     this.resolveStart?.();
     this.resolveStart = null;
+    return Promise.resolve();
   }
 
   /** Escape hatch for any Convex function not wrapped by this SDK. */
@@ -321,7 +332,7 @@ export class Bot {
     this.polledIdentity = { userId: result.me.userId, name: result.me.name };
     if (!this.readyEmitted) {
       this.readyEmitted = true;
-      this.emitter.emit("ready", this.polledIdentity);
+      this.emitter.dispatch("ready", this.polledIdentity);
     }
     for (const event of result.events) {
       if (event.self && !this.config.includeSelf) {
@@ -357,11 +368,11 @@ export class Bot {
     }
     const message = this.toMessage(event.message);
     if (name === "message") {
-      this.emitter.emit("message", message);
+      this.emitter.dispatch("message", message);
     } else if (name === "messageUpdate") {
-      this.emitter.emit("messageUpdate", message);
+      this.emitter.dispatch("messageUpdate", message);
     } else {
-      this.emitter.emit("messageDelete", message);
+      this.emitter.dispatch("messageDelete", message);
     }
   }
 
@@ -377,9 +388,9 @@ export class Bot {
       self: event.self,
     };
     if (name === "reactionAdd") {
-      this.emitter.emit("reactionAdd", reaction);
+      this.emitter.dispatch("reactionAdd", reaction);
     } else {
-      this.emitter.emit("reactionRemove", reaction);
+      this.emitter.dispatch("reactionRemove", reaction);
     }
   }
 
@@ -407,7 +418,7 @@ export class Bot {
     }
     this.reportingError = true;
     try {
-      this.emitter.emit("error", toError(error));
+      this.emitter.dispatch("error", toError(error));
     } finally {
       this.reportingError = false;
     }

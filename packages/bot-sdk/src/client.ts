@@ -1,3 +1,4 @@
+/* eslint-disable no-unused-vars -- the base rule reports parameter names in type signatures; Biome checks real unused code */
 import type { BotIdentity, ResolvedBotConfig } from "./config.js";
 import { AuloraError, isAuthenticationError } from "./errors.js";
 import { decodeConvexValue } from "./int64.js";
@@ -80,7 +81,7 @@ export class ConvexClient {
           await this.tokens.refresh();
           continue;
         }
-        const delay = READ_RETRY_DELAYS_MS[readAttempt];
+        const delay = READ_RETRY_DELAYS_MS.at(readAttempt);
         if (kind === "query" && delay !== undefined && isRetryable(error)) {
           readAttempt += 1;
           await sleep(delay);

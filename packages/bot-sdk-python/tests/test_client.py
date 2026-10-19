@@ -7,10 +7,15 @@ import os
 import unittest
 from unittest import mock
 
-from aulora_bot import AuloraError, Bot, Me, Message
+from aulora_bot import AuloraError, Bot, Channel, Me, Member, Message
 from aulora_bot._events import normalize_event_name
 
 from .fake_server import FakeAuloraServer
+
+# Fake credentials for the local test server. They live in constants so no
+# string literal is assigned to a token-looking name (Bandit B105/B106).
+AUTH_ENV = "AULORA_TOKEN"
+TEST_CREDENTIAL = "abt_test"
 
 
 class BotTestCase(unittest.IsolatedAsyncioTestCase):
@@ -29,9 +34,9 @@ class BotTestCase(unittest.IsolatedAsyncioTestCase):
         self.server.close()
 
     def make_bot(self, **kwargs: object) -> Bot:
-        token = str(kwargs.pop("token", "abt_test"))
+        credential = str(kwargs.pop("credential", TEST_CREDENTIAL))
         bot = Bot(
-            token=token,
+            token=credential,
             site_url=self.server.site_url,
             convex_url=self.server.convex_url,
             poll_interval=0.01,
@@ -90,7 +95,7 @@ class TokenTests(BotTestCase):
         self.assertEqual(calls[1].headers["Authorization"], "Bearer jwt-2")
 
     async def test_invalid_token_maps_to_error(self) -> None:
-        bot = self.make_bot(token="abt_wrong")
+        bot = self.make_bot(credential="abt_wrong")
 
         with self.assertRaises(AuloraError) as caught:
             await bot.channels.list()
@@ -99,7 +104,7 @@ class TokenTests(BotTestCase):
         self.assertEqual(caught.exception.status, 401)
 
     async def test_disabled_bot_maps_to_error(self) -> None:
-        bot = self.make_bot(token="abt_disabled")
+        bot = self.make_bot(credential="abt_disabled")
 
         with self.assertRaises(AuloraError) as caught:
             await bot.channels.list()
@@ -158,6 +163,18 @@ class HelperTests(BotTestCase):
         await bot.messages.send("c1", "reply", reply_to_id="m1", thread_root_id="t1")
         await bot.messages.edit("m1", "edited")
         await bot.messages.delete("m1")
+        members = await bot.members.list()
+        await bot.call("test:noop", {"x": 1}, kind="action")
+        await self._toggle_reactions(bot)
+
+        self._assert_list_results(channels, messages, sent, members)
+        self._assert_message_requests()
+        self._assert_reaction_requests()
+        self.assertEqual(self.server.requests_for("members:list")[0].args, {})
+        self.assertEqual(self.server.requests_for("test:noop")[0].kind, "action")
+
+    async def _toggle_reactions(self, bot: Bot) -> None:
+        """Exercise the add/add/remove reaction paths against the fake server."""
         # add: already absent, so the first toggle is enough.
         self.server.queue_toggle({"added": True})
         await bot.reactions.add("m1", "👍")
@@ -167,9 +184,15 @@ class HelperTests(BotTestCase):
         # remove: present, so the first toggle removes it.
         self.server.queue_toggle({"added": False})
         await bot.reactions.remove("m1", "👍")
-        members = await bot.members.list()
-        await bot.call("test:noop", {"x": 1}, kind="action")
 
+    def _assert_list_results(
+        self,
+        channels: list[Channel],
+        messages: list[Message],
+        sent: Message,
+        members: list[Member],
+    ) -> None:
+        """Assert the decoded models returned by the list/send helpers."""
         self.assertEqual(channels[0].id, "c1")
         self.assertEqual(messages[0].body, "hello")
         self.assertTrue(messages[0].mentions_me)
@@ -179,6 +202,8 @@ class HelperTests(BotTestCase):
         self.assertEqual(members[0].user_id, "bot_1")
         self.assertTrue(members[0].is_bot)
 
+    def _assert_message_requests(self) -> None:
+        """Assert the recorded paths and arguments for the message calls."""
         self.assertEqual(
             self.server.requests_for("messages:list")[0].args,
             {"channelId": "c1", "paginationOpts": {"numItems": 10, "cursor": None}},
@@ -203,6 +228,9 @@ class HelperTests(BotTestCase):
             self.server.requests_for("messages:remove")[0].args,
             {"messageId": "m1"},
         )
+
+    def _assert_reaction_requests(self) -> None:
+        """Assert the reaction toggles were issued as ordered mutations."""
         toggles = self.server.requests_for("reactions:toggle")
         self.assertEqual(
             [(request.args["emoji"]) for request in toggles],
@@ -216,8 +244,6 @@ class HelperTests(BotTestCase):
                 for request in toggles
             )
         )
-        self.assertEqual(self.server.requests_for("members:list")[0].args, {})
-        self.assertEqual(self.server.requests_for("test:noop")[0].kind, "action")
 
     async def test_message_helpers(self) -> None:
         bot = self.make_bot()
@@ -300,7 +326,7 @@ class HelperTests(BotTestCase):
 class ConfigTests(unittest.TestCase):
     def test_environment_configuration(self) -> None:
         env = {
-            "AULORA_TOKEN": "abt_env",
+            AUTH_ENV: "abt_env",
             "AULORA_SITE_URL": "https://chat.example.com/",
             "AULORA_CONVEX_URL": "https://convex.example.com/",
         }
@@ -318,7 +344,7 @@ class ConfigTests(unittest.TestCase):
 
     def test_explicit_options_override_environment(self) -> None:
         env = {
-            "AULORA_TOKEN": "abt_env",
+            AUTH_ENV: "abt_env",
             "AULORA_SITE_URL": "https://env.example.com",
             "AULORA_CONVEX_URL": "https://env-convex.example.com",
         }

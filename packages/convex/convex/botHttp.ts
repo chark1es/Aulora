@@ -15,16 +15,14 @@ function json(body: unknown, status: number): Response {
   });
 }
 
-/** Extracts the token from `Authorization: Bot <token>`; never logged. */
-function readBotToken(header: string | null): string | null {
-  if (header === null) {
-    return null;
+const BOT_SCHEME_PREFIX = "Bot ";
+
+/** The credential in `Authorization: Bot <credential>`, or "" when absent; never logged. */
+function readBotCredential(header: string | null): string {
+  if (header === null || !header.startsWith(BOT_SCHEME_PREFIX)) {
+    return "";
   }
-  const [scheme, value] = header.split(" ");
-  if (scheme !== "Bot" || value === undefined || value.length === 0) {
-    return null;
-  }
-  return value;
+  return header.slice(BOT_SCHEME_PREFIX.length).trim();
 }
 
 /**
@@ -40,11 +38,11 @@ function registerTokenRoute(http: HttpRouter): void {
       if (!botJwtConfigured(process.env)) {
         return json({ error: "bots_unavailable" }, 503);
       }
-      const token = readBotToken(request.headers.get("Authorization"));
-      if (token === null) {
+      const credential = readBotCredential(request.headers.get("Authorization"));
+      if (credential.length === 0) {
         return json({ error: "invalid_token" }, 401);
       }
-      const tokenHash = await hashBotToken(token);
+      const tokenHash = await hashBotToken(credential);
       try {
         await ctx.runMutation(internal.botAuthInternal.enforceTokenRateLimit, { tokenHash });
       } catch {

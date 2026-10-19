@@ -1,3 +1,4 @@
+/* eslint-disable no-unused-vars -- the base rule reports parameter names in type signatures; Biome checks real unused code */
 import type { BotPollResult } from "./types.js";
 
 export interface PollerOptions {
@@ -49,6 +50,11 @@ export class EventPoller {
     this.controller = null;
   }
 
+  /** Reads the current run flag; a method call is not narrowed across an await. */
+  private isRunning(): boolean {
+    return this.running;
+  }
+
   private schedule(delay: number): void {
     if (!this.running) {
       return;
@@ -67,14 +73,14 @@ export class EventPoller {
     this.controller = controller;
     try {
       const result = await this.options.poll(this.cursor, controller.signal);
-      if (!this.running) {
+      if (!this.isRunning()) {
         return;
       }
       this.cursor = result.cursor;
       this.options.onResult(result);
       this.schedule(this.options.intervalMs);
     } catch (error) {
-      if (!this.running || isAbortError(error)) {
+      if (!this.isRunning() || isAbortError(error)) {
         return;
       }
       this.options.onError(error);

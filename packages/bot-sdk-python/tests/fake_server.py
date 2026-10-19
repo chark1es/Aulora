@@ -137,136 +137,143 @@ class FakeAuloraServer:
 
         if path == "botEvents:poll":
             self._handle_poll(args, send)
-            return
-        if path == "channels:list":
-            send(
-                200,
-                {
-                    "status": "success",
-                    "value": {
-                        "page": [
-                            {
-                                "id": "c1",
-                                "kind": "text",
-                                "categoryId": None,
-                                "name": "general",
-                                "topic": "hello",
-                                "archived": False,
-                                "isPrivate": False,
-                                "overrides": [],
-                                "position": 1,
-                                "hidden": False,
-                                "muted": False,
-                                "pinned": False,
-                                "pinnedAt": None,
-                            }
-                        ],
-                        "isDone": True,
-                        "continueCursor": "",
-                    },
-                },
-            )
-            return
-        if path == "messages:list":
-            send(
-                200,
-                {
-                    "status": "success",
-                    "value": {
-                        "page": [
-                            {
-                                "id": "m1",
-                                "channelId": "c1",
-                                "authorId": "u2",
-                                "body": "hello",
-                                "threadRootId": None,
-                                "replyToId": None,
-                                "attachmentIds": [],
-                                "mentionUserIds": ["bot_1"],
-                                "mentionChannelIds": [],
-                                "mentionCategoryIds": [],
-                                "editedAt": None,
-                                "deletedAt": None,
-                                "pinnedAt": None,
-                                "replyCount": 0,
-                                "lastReplyAt": None,
-                                "createdAt": 1000,
-                            }
-                        ],
-                        "isDone": True,
-                        "continueCursor": "",
-                    },
-                },
-            )
-            return
-        if path == "messages:send":
+        elif path == "channels:list":
+            self._send_channels(send)
+        elif path == "messages:list":
+            self._send_messages(send)
+        elif path == "messages:send":
             send(200, {"status": "success", "value": "msg_new"})
-            return
-        if path in {"messages:edit", "messages:remove"}:
+        elif path in {"messages:edit", "messages:remove"}:
             send(200, {"status": "success", "value": None})
-            return
-        if path == "reactions:toggle":
-            with self.lock:
-                result = self.toggle_results.pop(0) if self.toggle_results else {"added": True}
-            send(200, {"status": "success", "value": result})
-            return
-        if path == "members:list":
-            send(
-                200,
-                {
-                    "status": "success",
-                    "value": [
+        elif path == "reactions:toggle":
+            self._send_toggle(send)
+        elif path == "members:list":
+            self._send_members(send)
+        elif path == "test:error":
+            self._send_missing_permission(send)
+        elif path == "test:authfail":
+            self._handle_auth_failure(send)
+        elif path == "test:http500":
+            send(500, {"error": "boom"})
+        elif path == "test:int64":
+            send(200, {"status": "success", "value": {"n": integer(-2)}})
+        elif path == "test:429":
+            send(429, {"error": "rate_limited"})
+        else:
+            send(200, {"status": "success", "value": None})
+
+    def _send_channels(self, send: Any) -> None:
+        send(
+            200,
+            {
+                "status": "success",
+                "value": {
+                    "page": [
                         {
-                            "id": "mem_bot",
-                            "userId": "bot_1",
-                            "nickname": "Test Bot",
-                            "accountName": "Test Bot",
-                            "roleIds": [],
-                            "joinedAt": 1,
-                            "timeoutUntil": None,
-                            "avatarUrl": None,
-                            "isBot": True,
+                            "id": "c1",
+                            "kind": "text",
+                            "categoryId": None,
+                            "name": "general",
+                            "topic": "hello",
+                            "archived": False,
+                            "isPrivate": False,
+                            "overrides": [],
+                            "position": 1,
+                            "hidden": False,
+                            "muted": False,
+                            "pinned": False,
+                            "pinnedAt": None,
                         }
                     ],
+                    "isDone": True,
+                    "continueCursor": "",
                 },
-            )
-            return
-        if path == "test:error":
+            },
+        )
+
+    def _send_messages(self, send: Any) -> None:
+        send(
+            200,
+            {
+                "status": "success",
+                "value": {
+                    "page": [
+                        {
+                            "id": "m1",
+                            "channelId": "c1",
+                            "authorId": "u2",
+                            "body": "hello",
+                            "threadRootId": None,
+                            "replyToId": None,
+                            "attachmentIds": [],
+                            "mentionUserIds": ["bot_1"],
+                            "mentionChannelIds": [],
+                            "mentionCategoryIds": [],
+                            "editedAt": None,
+                            "deletedAt": None,
+                            "pinnedAt": None,
+                            "replyCount": 0,
+                            "lastReplyAt": None,
+                            "createdAt": 1000,
+                        }
+                    ],
+                    "isDone": True,
+                    "continueCursor": "",
+                },
+            },
+        )
+
+    def _send_toggle(self, send: Any) -> None:
+        with self.lock:
+            result = self.toggle_results.pop(0) if self.toggle_results else {"added": True}
+        send(200, {"status": "success", "value": result})
+
+    def _send_members(self, send: Any) -> None:
+        send(
+            200,
+            {
+                "status": "success",
+                "value": [
+                    {
+                        "id": "mem_bot",
+                        "userId": "bot_1",
+                        "nickname": "Test Bot",
+                        "accountName": "Test Bot",
+                        "roleIds": [],
+                        "joinedAt": 1,
+                        "timeoutUntil": None,
+                        "avatarUrl": None,
+                        "isBot": True,
+                    }
+                ],
+            },
+        )
+
+    def _send_missing_permission(self, send: Any) -> None:
+        send(
+            200,
+            {
+                "status": "error",
+                "errorMessage": "Missing permission",
+                "errorData": {"code": "forbidden", "detail": "no"},
+            },
+        )
+
+    def _handle_auth_failure(self, send: Any) -> None:
+        with self.lock:
+            self.auth_failures += 1
+            first = self.auth_failures == 1
+        if first:
             send(
                 200,
                 {
                     "status": "error",
-                    "errorMessage": "Missing permission",
-                    "errorData": {"code": "forbidden", "detail": "no"},
+                    "errorMessage": "Unauthenticated",
+                    "errorData": {},
                 },
             )
-            return
-        if path == "test:authfail":
-            with self.lock:
-                self.auth_failures += 1
-                first = self.auth_failures == 1
-            if first:
-                send(
-                    200,
-                    {
-                        "status": "error",
-                        "errorMessage": "Unauthenticated",
-                        "errorData": {},
-                    },
-                )
-            else:
-                send(200, {"status": "success", "value": "ok"})
-            return
-        if path == "test:http500":
-            send(500, {"error": "boom"})
-            return
-        if path == "test:int64":
-            send(200, {"status": "success", "value": {"n": integer(-2)}})
-            return
-        if path == "test:429":
-            send(429, {"error": "rate_limited"})
-            return
-        send(200, {"status": "success", "value": None})
+        else:
+            send(200, {"status": "success", "value": "ok"})
 
     def _handle_poll(self, args: Mapping[str, Any], send: Any) -> None:
         cursor = args.get("cursor")
@@ -342,5 +349,9 @@ class _Handler(BaseHTTPRequestHandler):
             return
         send(404, {"error": "not_found"})
 
-    def log_message(self, format: str, *args: Any) -> None:
+    # Same positional arity as BaseHTTPRequestHandler.log_message; logging is
+    # intentionally disabled, so `fmt`/`args` are unused.
+    def log_message(  # pylint: disable=arguments-differ
+        self, fmt: str, *args: Any  # pylint: disable=unused-argument
+    ) -> None:
         return

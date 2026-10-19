@@ -16,7 +16,7 @@ import {
 } from "@aulora/core";
 import { ConvexError, v } from "convex/values";
 import type { Id } from "./_generated/dataModel";
-import type { MutationCtx, QueryCtx } from "./_generated/server";
+import type { MutationCtx } from "./_generated/server";
 import { mutation, query } from "./_generated/server";
 import { writeAudit } from "./lib/audit";
 import { botTokenLast4, generateBotToken, hashBotToken } from "./lib/botAuth";
@@ -71,13 +71,14 @@ interface BotPatch {
 interface UpdateInput {
   name: string | undefined;
   description: string | null | undefined;
-  language: BotLanguage | undefined;
+  /** Validated by the `update` args to be one of the bot languages. */
+  language: string | undefined;
   enabled: boolean | undefined;
 }
 
 /** Builds the patch for `update`; returns the changed field names for the audit. */
 async function planUpdate(
-  ctx: QueryCtx | MutationCtx,
+  ctx: MutationCtx,
   bot: BotDoc,
   input: UpdateInput,
 ): Promise<{ patch: BotPatch; changed: string[] }> {
@@ -100,7 +101,7 @@ async function planUpdate(
     }
   }
   if (input.language !== undefined && input.language !== bot.language) {
-    patch.language = input.language;
+    patch.language = input.language as BotLanguage;
     patch.revision = bot.revision + 1;
     changed.push("language");
   }

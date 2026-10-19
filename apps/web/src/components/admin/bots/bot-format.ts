@@ -27,35 +27,49 @@ export interface BotStatusMeta {
   readonly textClass: string;
 }
 
-export const BOT_STATUS_META: Readonly<Record<BotStatus, BotStatusMeta>> = {
-  stopped: { label: "Stopped", dotClass: "bg-text-muted", textClass: "text-text-muted" },
-  starting: { label: "Starting", dotClass: "animate-pulse bg-accent", textClass: "text-accent" },
-  running: { label: "Running", dotClass: "bg-secondary", textClass: "text-secondary" },
-  crashed: { label: "Crashed", dotClass: "bg-danger", textClass: "text-danger" },
-};
+const BOT_STATUS_META = new Map<BotStatus, BotStatusMeta>([
+  ["stopped", { label: "Stopped", dotClass: "bg-text-muted", textClass: "text-text-muted" }],
+  [
+    "starting",
+    { label: "Starting", dotClass: "animate-pulse bg-accent", textClass: "text-accent" },
+  ],
+  ["running", { label: "Running", dotClass: "bg-secondary", textClass: "text-secondary" }],
+  ["crashed", { label: "Crashed", dotClass: "bg-danger", textClass: "text-danger" }],
+]);
+
+/** Label and colours for a bot status; an unknown status reads as stopped. */
+export function botStatusMeta(status: BotStatus): BotStatusMeta {
+  return (
+    BOT_STATUS_META.get(status) ?? {
+      label: "Stopped",
+      dotClass: "bg-text-muted",
+      textClass: "text-text-muted",
+    }
+  );
+}
 
 export const BOT_RUNNER_OFFLINE_MESSAGE =
   "The bot runner is not running. Start it with `docker compose --profile bots up -d`.";
 
 /** Powerful grants that deserve a line of caution beside the checkbox. */
-export const BOT_CAUTION_PERMISSIONS: Partial<Record<PermissionName, string>> = {
-  ManageMessages: "Can delete or edit anyone's messages.",
-  Kick: "Can remove members from the workspace.",
-  Ban: "Can ban members and keep them from rejoining.",
-  Timeout: "Can mute members for a while.",
-  MentionEveryone: "Can mention @everyone and every role.",
-};
+export const BOT_CAUTION_PERMISSIONS: ReadonlyMap<PermissionName, string> = new Map([
+  ["ManageMessages", "Can delete or edit anyone's messages."],
+  ["Kick", "Can remove members from the workspace."],
+  ["Ban", "Can ban members and keep them from rejoining."],
+  ["Timeout", "Can mute members for a while."],
+  ["MentionEveryone", "Can mention @everyone and every role."],
+]);
 
 /** Why a blocked bit can never be granted to a bot. */
-export const BOT_BLOCKED_REASONS: Partial<Record<PermissionName, string>> = {
-  Administrator: "Would give the bot full control of the workspace.",
-  ManageRoles: "Bots cannot change roles.",
-  ManageWorkspace: "Bots cannot change workspace settings.",
-  ManageBots: "Bots cannot create or change other bots.",
-  CreateInvites: "Bots cannot invite people.",
-  DeleteInvites: "Bots cannot manage invites.",
-  ViewAuditLog: "Bots cannot read the audit log.",
-};
+export const BOT_BLOCKED_REASONS: ReadonlyMap<PermissionName, string> = new Map([
+  ["Administrator", "Would give the bot full control of the workspace."],
+  ["ManageRoles", "Bots cannot change roles."],
+  ["ManageWorkspace", "Bots cannot change workspace settings."],
+  ["ManageBots", "Bots cannot create or change other bots."],
+  ["CreateInvites", "Bots cannot invite people."],
+  ["DeleteInvites", "Bots cannot manage invites."],
+  ["ViewAuditLog", "Bots cannot read the audit log."],
+]);
 
 const BOT_PATH_PATTERN = /^[A-Za-z0-9._/-]+$/;
 const BOT_PATH_MAX_LENGTH = 128;

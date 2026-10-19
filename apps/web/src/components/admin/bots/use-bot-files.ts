@@ -22,12 +22,12 @@ export interface BotFilesModel {
   readonly limitError: string | null;
   readonly busy: boolean;
   readonly error: string | null;
-  select(path: string): void;
-  changeContent(content: string): void;
-  addFile(path: string): void;
-  renameFile(from: string, to: string): void;
-  removeFile(path: string): void;
-  save(): void;
+  readonly select: (path: string) => void;
+  readonly changeContent: (content: string) => void;
+  readonly addFile: (path: string) => void;
+  readonly renameFile: (from: string, to: string) => void;
+  readonly removeFile: (path: string) => void;
+  readonly save: () => void;
 }
 
 /**

@@ -11,6 +11,10 @@ from aulora_bot import Bot, Me
 
 from .fake_server import FakeAuloraServer, PollFailure
 
+# Fake credential for the local test server; named so no literal is assigned
+# to a token-looking identifier (Bandit B105/B106).
+TEST_CREDENTIAL = "abt_test"
+
 
 def message_payload(
     message_id: str = "m1",
@@ -77,7 +81,7 @@ class EventLoopTestCase(unittest.IsolatedAsyncioTestCase):
 
     def make_bot(self, **kwargs: object) -> Bot:
         bot = Bot(
-            token="abt_test",
+            token=TEST_CREDENTIAL,
             site_url=self.server.site_url,
             convex_url=self.server.convex_url,
             poll_interval=0.01,

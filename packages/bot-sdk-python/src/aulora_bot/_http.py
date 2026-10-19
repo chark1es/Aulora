@@ -48,6 +48,12 @@ class HttpTransport:
         return await asyncio.to_thread(self._post_sync, url, dict(headers or {}), payload)
 
     def _post_sync(self, url: str, headers: dict[str, str], payload: Any) -> Any:
+        # Config only ever builds http/https URLs; this re-check keeps that
+        # guarantee local to the code that actually opens the connection.
+        scheme = urlsplit(url).scheme
+        if scheme not in ("http", "https"):
+            raise ValueError(f"Unsupported URL scheme: {scheme!r}")
+
         body = json.dumps({} if payload is None else payload).encode("utf-8")
         merged = {
             "Accept": "application/json",
@@ -58,7 +64,10 @@ class HttpTransport:
         request = urllib.request.Request(url, data=body, headers=merged, method="POST")
 
         try:
-            with urllib.request.urlopen(request, timeout=self._timeout) as response:
+            # The scheme is restricted to http/https by Config and re-checked above.
+            with urllib.request.urlopen(  # nosec B310
+                request, timeout=self._timeout
+            ) as response:
                 return _decode_json(_read_json(response.read()))
         except urllib.error.HTTPError as exc:
             raw = exc.read()

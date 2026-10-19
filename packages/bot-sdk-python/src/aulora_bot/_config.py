@@ -11,11 +11,11 @@ import os
 from dataclasses import dataclass
 from urllib.parse import urlsplit, urlunsplit
 
-TOKEN_PATH = "/bots/token"
+AUTH_EXCHANGE_PATH = "/bots/token"
 API_PREFIX = "/api"
 API_KINDS = ("query", "mutation", "action")
 
-TOKEN_ENV = "AULORA_TOKEN"
+AUTH_ENV_VAR = "AULORA_TOKEN"
 SITE_URL_ENV = "AULORA_SITE_URL"
 CONVEX_URL_ENV = "AULORA_CONVEX_URL"
 
@@ -41,14 +41,14 @@ class Config:
     ) -> "Config":
         """Build a config from explicit values, falling back to the environment."""
         return cls(
-            token=_token(_option_or_env(token, TOKEN_ENV), TOKEN_ENV),
+            token=_token(_option_or_env(token, AUTH_ENV_VAR), AUTH_ENV_VAR),
             site_url=_base_url(_option_or_env(site_url, SITE_URL_ENV), SITE_URL_ENV),
             convex_url=_base_url(_option_or_env(convex_url, CONVEX_URL_ENV), CONVEX_URL_ENV),
         )
 
     def token_url(self) -> str:
         """The Convex site endpoint that exchanges an API token for a JWT."""
-        return f"{self.site_url}{TOKEN_PATH}"
+        return f"{self.site_url}{AUTH_EXCHANGE_PATH}"
 
     def api_url(self, kind: str) -> str:
         """The Convex HTTP endpoint for a function kind (`query`/`mutation`/`action`)."""

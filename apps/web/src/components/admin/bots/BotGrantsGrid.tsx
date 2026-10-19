@@ -32,7 +32,7 @@ interface BotGrantRowProps {
 
 function BotGrantRow({ name, value, disabled, onChange }: BotGrantRowProps) {
   const checked = (value & (PERMISSION_BITS.get(name) ?? 0n)) !== 0n;
-  const caution = BOT_CAUTION_PERMISSIONS[name];
+  const caution = BOT_CAUTION_PERMISSIONS.get(name);
   return (
     <label
       htmlFor={`bot-permission-${name}`}
@@ -124,13 +124,15 @@ export function BotBlockedPermissions() {
                 label={labelFor(name)}
                 checked={false}
                 disabled
-                onChange={() => {}}
+                onChange={() => {
+                  // Display only: a blocked permission can never be granted.
+                }}
               />
             </span>
             <span className="min-w-0 flex-1">
               <span className="block text-[12px] text-text-muted">{labelFor(name)}</span>
               <span className="mt-0.5 block text-[10px] leading-snug text-text-muted">
-                {BOT_BLOCKED_REASONS[name] ?? "Bots can never have this permission."}
+                {BOT_BLOCKED_REASONS.get(name) ?? "Bots can never have this permission."}
               </span>
             </span>
           </li>
