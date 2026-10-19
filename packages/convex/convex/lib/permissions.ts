@@ -89,14 +89,15 @@ async function requireBotMayBrowse(ctx: ReadCtx, userId: string): Promise<void> 
   }
 }
 
-export async function requireMember(ctx: ReadCtx, userId: string): Promise<void> {
-  if ((await memberRow(ctx, userId)) !== null) {
+export async function requireMember(ctx: ReadCtx, userId: string): Promise<MemberDoc | null> {
+  const member = await memberRow(ctx, userId);
+  if (member !== null) {
     await requireBotMayBrowse(ctx, userId);
-    return;
+    return member;
   }
   const server = await ctx.db.query("server").first();
   if (server !== null && server.ownerId === userId) {
-    return;
+    return null;
   }
   throw new ConvexError("Not a member of this workspace");
 }

@@ -99,8 +99,10 @@ export const heartbeat = mutation({
   args: { status: v.optional(presenceStatusValidator) },
   handler: async (ctx, args) => {
     const { userId } = await requireAuth(ctx);
-    await requireMember(ctx, userId);
-    await recordLicenseActivity(ctx, userId);
+    const member = await requireMember(ctx, userId);
+    // Reuse the membership `requireMember` already resolved instead of reading
+    // the member row again inside the licence-activity recorder.
+    await recordLicenseActivity(ctx, userId, Date.now(), { isMember: member !== null });
     const now = Date.now();
     const existing = await ctx.db
       .query("presence")
