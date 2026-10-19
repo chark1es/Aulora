@@ -6,7 +6,17 @@
   "type": "module",
   "sideEffects": false,
   "exports": {
-    ".": "./src/index.ts"
+    ".": "./src/index.ts",
+    "./attachments": "./src/attachments.ts",
+    "./blurhash": "./src/blurhash.ts",
+    "./chat": "./src/chat/index.ts",
+    "./kanban": "./src/kanban.ts",
+    "./notes": "./src/notes/index.ts",
+    "./outbox": "./src/outbox/index.ts",
+    "./permissions": "./src/permissions.ts",
+    "./search": "./src/search/index.ts",
+    "./updates": "./src/updates.ts",
+    "./voice": "./src/voice/index.ts"
   },
   "scripts": {
     "typecheck": "tsc --noEmit",
