@@ -81,16 +81,24 @@ export function WorkspaceUpdateProvider({
       setPhase("idle");
     }
   }, [isOwner, checkRelease]);
+  const hostConnected = host != null && now - host.hostSeenAt < 30_000;
   useEffect(() => {
     if (!isOwner) return;
-    void check();
-    const timer = setInterval(() => void check(), 6 * 60 * 60 * 1000);
+    // The host watcher is authoritative while its heartbeat is fresh, so skip
+    // the redundant release check in that case (manual Check still routes
+    // through `checkNow`). Re-run the check when the heartbeat goes stale.
+    if (!hostConnected) void check();
+    const timer = setInterval(
+      () => {
+        if (!hostConnected) void check();
+      },
+      6 * 60 * 60 * 1000,
+    );
     return () => {
       clearInterval(timer);
     };
-  }, [check, isOwner]);
+  }, [check, isOwner, hostConnected]);
 
-  const hostConnected = host != null && now - host.hostSeenAt < 30_000;
   const coolify = capabilities?.provider === "coolify";
   const managed = coolify ? capabilities.status : null;
   // A live watcher is authoritative, including its prepared release version.

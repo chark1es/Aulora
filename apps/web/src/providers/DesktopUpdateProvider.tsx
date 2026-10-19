@@ -131,15 +131,23 @@ export function DesktopUpdateProvider({ children }: { readonly children: ReactNo
         if (!disposed) setError(message(cause));
       });
     void register();
-    const interval = setInterval(
-      () => {
-        if (!disposed) void check();
-      },
-      6 * 60 * 60 * 1000,
-    );
+    // Re-check every ~6 h with ±30 min of jitter so a fleet of launches does
+    // not hit the update endpoint in lockstep.
+    const intervalMs = 6 * 60 * 60 * 1000;
+    const jitterMs = 30 * 60 * 1000;
+    let timer: ReturnType<typeof setTimeout> | undefined;
+    const scheduleNext = () => {
+      const delay = intervalMs + (Math.random() * 2 - 1) * jitterMs;
+      timer = setTimeout(() => {
+        if (disposed) return;
+        void check();
+        scheduleNext();
+      }, delay);
+    };
+    scheduleNext();
     return () => {
       disposed = true;
-      clearInterval(interval);
+      if (timer !== undefined) clearTimeout(timer);
       for (const off of subscriptions) off();
     };
   }, [apply, check]);
