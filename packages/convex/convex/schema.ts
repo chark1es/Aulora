@@ -376,6 +376,22 @@ export default defineSchema({
     .index("by_thread", ["threadRootId"])
     .index("by_channel_pinned", ["channelId", "pinnedAt"]),
 
+  /**
+   * Per-user thread participation, maintained on reply/mention so the Threads
+   * inbox can later be read from a user index instead of scanning recent
+   * messages. Plaintext ids/timestamps only. The inbox read path is not switched
+   * over yet — this table is created and populated first.
+   */
+  threadParticipants: defineTable({
+    userId: v.string(),
+    threadRootId: v.id("messages"),
+    channelId: v.id("channels"),
+    lastReplyAt: v.number(),
+    mentioned: v.boolean(),
+  })
+    .index("by_user", ["userId", "lastReplyAt"])
+    .index("by_thread_user", ["threadRootId", "userId"]),
+
   reactions: defineTable({
     messageId: v.id("messages"),
     userId: v.string(),

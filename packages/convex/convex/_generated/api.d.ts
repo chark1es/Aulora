@@ -86,6 +86,7 @@ import type * as lib_rateLimit from "../lib/rateLimit.js";
 import type * as lib_sealed from "../lib/sealed.js";
 import type * as lib_sse from "../lib/sse.js";
 import type * as lib_threadInbox from "../lib/threadInbox.js";
+import type * as lib_threadParticipants from "../lib/threadParticipants.js";
 import type * as lib_types from "../lib/types.js";
 import type * as lib_webPush from "../lib/webPush.js";
 import type * as lib_workspaceNotes from "../lib/workspaceNotes.js";
@@ -197,6 +198,7 @@ declare const fullApi: ApiFromModules<{
   "lib/sealed": typeof lib_sealed;
   "lib/sse": typeof lib_sse;
   "lib/threadInbox": typeof lib_threadInbox;
+  "lib/threadParticipants": typeof lib_threadParticipants;
   "lib/types": typeof lib_types;
   "lib/webPush": typeof lib_webPush;
   "lib/workspaceNotes": typeof lib_workspaceNotes;

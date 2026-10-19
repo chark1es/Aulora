@@ -15,6 +15,7 @@ import { enforceRateLimit, userRateLimitKey } from "./lib/rateLimit";
 import { openContent } from "./lib/sealed";
 import { sealString } from "./lib/sse";
 import { loadThreadInbox, type ThreadInboxRow } from "./lib/threadInbox";
+import { upsertThreadParticipant } from "./lib/threadParticipants";
 import type { Nullable } from "./lib/types";
 
 /** Per-user send budget: 30 messages per 10 seconds unless overridden. */
@@ -226,13 +227,37 @@ export const send = mutation({
       ...(args.threadRootId !== undefined ? { threadRootId: args.threadRootId } : {}),
       ...(args.replyToId !== undefined ? { replyToId: args.replyToId } : {}),
     });
+    let replyAt = 0;
     if (threadRoot !== null) {
       const reply = await ctx.db.get(messageId);
+      replyAt = reply?._creationTime ?? Date.now();
       await ctx.db.patch(threadRoot._id, {
         replyCount: (threadRoot.replyCount ?? 0) + 1,
-        lastReplyAt: reply?._creationTime ?? Date.now(),
+        lastReplyAt: replyAt,
         replyParticipantIds: withReplyParticipant(threadRoot.replyParticipantIds, access.userId),
       });
+      // Replying makes the author a thread participant (authoring a root alone
+      // does not). Mentions count wherever they appear in the thread.
+      await upsertThreadParticipant(ctx, {
+        userId: access.userId,
+        threadRootId: threadRoot._id,
+        channelId: args.channelId,
+        at: replyAt,
+        mentioned: false,
+      });
+    }
+    if (mentions.mentionUserIds.length > 0) {
+      const rootId = threadRoot !== null ? threadRoot._id : messageId;
+      const at = threadRoot !== null ? replyAt : Date.now();
+      for (const mentioned of mentions.mentionUserIds) {
+        await upsertThreadParticipant(ctx, {
+          userId: mentioned,
+          threadRootId: rootId,
+          channelId: args.channelId,
+          at,
+          mentioned: true,
+        });
+      }
     }
     await emitBotEvent(ctx, {
       type: "message.created",

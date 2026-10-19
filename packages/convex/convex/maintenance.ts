@@ -2,11 +2,14 @@ import { v } from "convex/values";
 import { internal } from "./_generated/api";
 import { internalMutation } from "./_generated/server";
 import { syncMemberRoles } from "./lib/memberRoles";
+import { upsertThreadParticipant } from "./lib/threadParticipants";
 
 /** Members processed per backfill page before rescheduling. */
 const MEMBER_BACKFILL_BATCH = 500;
 /** Members whose role links are synced per backfill page. */
 const MEMBER_ROLE_BACKFILL_BATCH = 200;
+/** Messages scanned per thread-participant backfill page. */
+const THREAD_PARTICIPANT_BACKFILL_BATCH = 200;
 
 /**
  * Idempotent migration: recount `members` and store the total on the singleton
@@ -58,6 +61,54 @@ export const backfillMemberRoles = internalMutation({
     }
     if (!page.isDone) {
       await ctx.scheduler.runAfter(0, internal.maintenance.backfillMemberRoles, {
+        cursor: page.continueCursor,
+      });
+    }
+    return null;
+  },
+});
+
+/**
+ * Idempotent migration: seeds `threadParticipants` from existing thread roots'
+ * `replyParticipantIds` and `mentionUserIds`. Paged over `messages` and
+ * rescheduled while more remain, so it never scans the whole table in one
+ * transaction. Safe to re-run: the upsert only moves `lastReplyAt` forward and
+ * ORs `mentioned`.
+ */
+export const backfillThreadParticipants = internalMutation({
+  args: { cursor: v.optional(v.union(v.string(), v.null())) },
+  handler: async (ctx, args) => {
+    const page = await ctx.db
+      .query("messages")
+      .paginate({ numItems: THREAD_PARTICIPANT_BACKFILL_BATCH, cursor: args.cursor ?? null });
+    for (const message of page.page) {
+      // Only thread roots carry `replyParticipantIds`; replies are covered when
+      // their root is processed (and by live writes going forward).
+      if (message.threadRootId !== undefined) {
+        continue;
+      }
+      const at = message.lastReplyAt ?? message._creationTime;
+      for (const userId of message.replyParticipantIds ?? []) {
+        await upsertThreadParticipant(ctx, {
+          userId,
+          threadRootId: message._id,
+          channelId: message.channelId,
+          at,
+          mentioned: false,
+        });
+      }
+      for (const userId of message.mentionUserIds) {
+        await upsertThreadParticipant(ctx, {
+          userId,
+          threadRootId: message._id,
+          channelId: message.channelId,
+          at: message._creationTime,
+          mentioned: true,
+        });
+      }
+    }
+    if (!page.isDone) {
+      await ctx.scheduler.runAfter(0, internal.maintenance.backfillThreadParticipants, {
         cursor: page.continueCursor,
       });
     }
