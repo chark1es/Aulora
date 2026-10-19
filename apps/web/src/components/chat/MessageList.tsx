@@ -508,7 +508,9 @@ function MessageEditForm({
 }: {
   readonly draft: string | undefined;
   readonly text: string;
+  // eslint-disable-next-line no-unused-vars -- parameter name documents the callback contract
   readonly onDraftChange: (value: string) => void;
+  // eslint-disable-next-line no-unused-vars -- parameter name documents the callback contract
   readonly onSave: (next: string) => void;
   readonly onCancel: () => void;
 }) {
@@ -567,6 +569,7 @@ function ReplyLine({
   readonly replyPreview: ReplyPreview | undefined;
   readonly mirror: boolean;
   readonly list: MessageRowListProps;
+  // eslint-disable-next-line no-unused-vars -- parameter name documents the callback contract
   readonly onJump: (id: string) => void;
 }) {
   const replyAuthorId = replyPreview?.authorId;
