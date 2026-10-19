@@ -30,6 +30,13 @@ export const PRESENCE_RETENTION_MS = 30 * 24 * 60 * 60 * 1000;
  * pathological id list from fanning out into unbounded index reads.
  */
 const PRESENCE_GET_MANY_MAX = 300;
+/**
+ * Safety bound for `list`: a client that has not migrated to `getMany` yet can
+ * still not trigger an unbounded read. Far above a typical workspace's presence
+ * rows, so ordinary clients see every row; `list` no longer promises the whole
+ * table.
+ */
+const PRESENCE_LIST_LIMIT = 1000;
 
 const presenceStatusValidator = v.union(
   v.literal("online"),
@@ -184,7 +191,9 @@ export const list = query({
   handler: async (ctx) => {
     const { userId } = await requireAuth(ctx);
     await requireMember(ctx, userId);
-    const rows = await ctx.db.query("presence").collect();
+    // Bounded so a client still on `list` cannot trigger an unbounded read;
+    // `getMany` is the scoped replacement.
+    const rows = await ctx.db.query("presence").take(PRESENCE_LIST_LIMIT);
     return await Promise.all(rows.map((row) => toPresenceRow(row)));
   },
 });
