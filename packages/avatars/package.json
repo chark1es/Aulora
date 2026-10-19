@@ -4,8 +4,14 @@
   "private": true,
   "description": "Deterministic Blobatar avatars for Aulora web and native clients.",
   "type": "module",
+  "sideEffects": [
+    "./src/live.tsx",
+    "**/*.css"
+  ],
   "exports": {
     ".": "./src/index.ts",
+    "./avatar": "./src/Avatar.tsx",
+    "./svg": "./src/svg.ts",
     "./live": "./src/live.tsx",
     "./native": "./src/native.tsx"
   },

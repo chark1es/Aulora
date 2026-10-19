@@ -4,6 +4,7 @@
   "private": true,
   "description": "Aulora shared client logic: server profiles, well-known validation, permissions, unread math.",
   "type": "module",
+  "sideEffects": false,
   "exports": {
     ".": "./src/index.ts"
   },
