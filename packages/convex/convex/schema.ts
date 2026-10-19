@@ -520,7 +520,12 @@ export default defineSchema({
     channelId: v.id("channels"),
     userId: v.string(),
     expiresAt: v.number(),
-  }).index("by_channel", ["channelId"]),
+  })
+    .index("by_channel", ["channelId"])
+    // One typing row per (channel, user), looked up directly on set/clear.
+    .index("by_channel_user", ["channelId", "userId"])
+    // The purge cron reads only expired rows instead of scanning the table.
+    .index("by_expires", ["expiresAt"]),
 
   /**
    * An active (or recently ended) voice/video call on a channel. Media never
