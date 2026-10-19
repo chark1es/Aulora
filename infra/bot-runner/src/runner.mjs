@@ -18,6 +18,7 @@ export function createRunner({ config, api, logger = console, now = Date.now }) 
   });
   const reconciler = createReconciler({ config, api, shipper, logger, now });
   let timer = null;
+  let healthTimer = null;
   let stopped = false;
 
   function touchHealth() {
@@ -55,7 +56,7 @@ export function createRunner({ config, api, logger = console, now = Date.now }) 
     touchHealth();
     // The healthcheck rejects heartbeats older than ~30 s. The idle reconcile
     // cadence can be longer, so refresh the liveness file independently.
-    const healthTimer = setInterval(touchHealth, Math.min(config.pollIntervalMs, 10_000));
+    healthTimer = setInterval(touchHealth, Math.min(config.pollIntervalMs, 10_000));
     healthTimer.unref?.();
     const loop = async () => {
       await tick();
@@ -69,6 +70,10 @@ export function createRunner({ config, api, logger = console, now = Date.now }) 
     if (timer !== null) {
       clearTimeout(timer);
       timer = null;
+    }
+    if (healthTimer !== null) {
+      clearInterval(healthTimer);
+      healthTimer = null;
     }
     await reconciler.shutdown();
     shipper.stop();

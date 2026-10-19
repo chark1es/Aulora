@@ -179,7 +179,10 @@ export const setPref = mutation({
  */
 const UNREAD_SCAN_LIMIT = 100;
 /** Tail pages examined before a channel is treated as having no unread mail. */
-const UNREAD_SCAN_PAGES = 5;
+const UNREAD_SCAN_PAGES = 2;
+/** Extra tail pages shared by the whole call, so a pathological run of the
+ * viewer's own messages cannot push the query past Convex's read limit. */
+const UNREAD_EXTRA_PAGE_BUDGET = 20;
 
 /**
  * Live unread + mention totals for the caller across their joined channels.
@@ -202,6 +205,7 @@ export const unreadSummary = query({
 
     let total = 0;
     let mentions = 0;
+    let extraPages = UNREAD_EXTRA_PAGE_BUDGET;
     for (const membership of memberships) {
       const channel = await ctx.db.get(membership.channelId);
       if (channel === null || channel.archived) {
@@ -232,6 +236,12 @@ export const unreadSummary = query({
       let channelUnread = 0;
       let channelMentions = 0;
       for (let pageIndex = 0; pageIndex < UNREAD_SCAN_PAGES; pageIndex += 1) {
+        if (pageIndex > 0) {
+          if (extraPages <= 0) {
+            break;
+          }
+          extraPages -= 1;
+        }
         const messages = await ctx.db
           .query("messages")
           .withIndex("by_channel_created", (q) => {

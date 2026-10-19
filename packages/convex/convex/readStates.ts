@@ -145,8 +145,16 @@ const MENTION_SCAN_PAGES = 5;
 
 /** Upper bound on channels per summary call, matching the sidebar page size. */
 const SUMMARY_CHANNEL_LIMIT = 200;
+/** Rows read per channel per summary page (smaller page bounds the total read). */
+const SUMMARY_PAGE_SIZE = 100;
 /** Pages examined when a channel's tail contains only excluded messages. */
-const SUMMARY_SCAN_PAGES = 5;
+const SUMMARY_SCAN_PAGES = 2;
+/** Extra pages shared by the whole summary call, bounding total document reads. */
+const SUMMARY_EXTRA_PAGE_BUDGET = 20;
+
+interface ScanBudget {
+  extraPages: number;
+}
 
 interface ChannelUnreadSummary {
   channelId: Id<"channels">;
@@ -161,6 +169,7 @@ async function summarizeChannel(
   ctx: Parameters<typeof requireChannelAccess>[0],
   channelId: Id<"channels">,
   userId: string,
+  budget: ScanBudget,
 ): Promise<ChannelUnreadSummary> {
   const latest = await ctx.db
     .query("messages")
@@ -181,6 +190,17 @@ async function summarizeChannel(
   let unread = false;
   let mentionCount = 0;
   for (let pageIndex = 0; pageIndex < SUMMARY_SCAN_PAGES; pageIndex += 1) {
+    if (pageIndex > 0) {
+      if (budget.extraPages <= 0) {
+        // Conservatively treat an unscanned tail as unread rather than
+        // reporting a false "read" state.
+        if (!unread) {
+          unread = true;
+        }
+        break;
+      }
+      budget.extraPages -= 1;
+    }
     const messages = await ctx.db
       .query("messages")
       .withIndex("by_channel_created", (q) => {
@@ -197,7 +217,7 @@ async function summarizeChannel(
         return base;
       })
       .order("desc")
-      .take(MENTION_SCAN_LIMIT);
+      .take(SUMMARY_PAGE_SIZE);
     for (const message of messages) {
       if (
         message.authorId === userId ||
@@ -214,7 +234,7 @@ async function summarizeChannel(
     const last = messages.at(-1);
     if (
       last === undefined ||
-      messages.length < MENTION_SCAN_LIMIT ||
+      messages.length < SUMMARY_PAGE_SIZE ||
       mentionCount >= MENTION_SCAN_LIMIT
     ) {
       break;
@@ -252,13 +272,14 @@ export const summary = query({
       return [];
     }
     const rows: ChannelUnreadSummary[] = [];
+    const budget: ScanBudget = { extraPages: SUMMARY_EXTRA_PAGE_BUDGET };
     for (const channelId of args.channelIds.slice(0, SUMMARY_CHANNEL_LIMIT)) {
       try {
         await requireChannelAccessFromContext(ctx, context, channelId, Permission.ViewChannel);
       } catch {
         continue;
       }
-      rows.push(await summarizeChannel(ctx, channelId, context.userId));
+      rows.push(await summarizeChannel(ctx, channelId, context.userId, budget));
     }
     return rows;
   },

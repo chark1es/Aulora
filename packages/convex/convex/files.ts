@@ -198,6 +198,15 @@ export const finalize = action({
     if (thumbnailBlob !== null && thumbnailBlob.size > THUMBNAIL_MAX_BYTES) {
       throw new ConvexError("Thumbnail exceeds the size cap");
     }
+    const keyVersion = getEkmSettings(process.env).keyVersion;
+    const nameCiphertext = await sealString(NAME_CONTEXT, args.name);
+    const mimeCiphertext = await sealString(MIME_CONTEXT, args.mime);
+    const dimensionsCiphertext =
+      args.dimensions !== undefined
+        ? await sealString(DIMENSIONS_CONTEXT, args.dimensions)
+        : undefined;
+    const blurhashCiphertext =
+      args.blurhash !== undefined ? await sealString(BLURHASH_CONTEXT, args.blurhash) : undefined;
     const plaintext = new Uint8Array(await blob.arrayBuffer());
     const sealed = await sealBytes({ ...BYTES_CONTEXT, recordId: args.storageId }, plaintext);
     const sealedStorageId = await ctx.storage.store(new Blob([sealed]));
@@ -217,15 +226,6 @@ export const finalize = action({
         throw error;
       }
     }
-    const keyVersion = getEkmSettings(process.env).keyVersion;
-    const nameCiphertext = await sealString(NAME_CONTEXT, args.name);
-    const mimeCiphertext = await sealString(MIME_CONTEXT, args.mime);
-    const dimensionsCiphertext =
-      args.dimensions !== undefined
-        ? await sealString(DIMENSIONS_CONTEXT, args.dimensions)
-        : undefined;
-    const blurhashCiphertext =
-      args.blurhash !== undefined ? await sealString(BLURHASH_CONTEXT, args.blurhash) : undefined;
     let fileId: Id<"files">;
     try {
       fileId = await ctx.runMutation(internal.files.insertFinalized, {

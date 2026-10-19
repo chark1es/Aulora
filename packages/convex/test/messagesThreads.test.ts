@@ -269,7 +269,7 @@ describe("messages.threadInbox bounded reply scan", () => {
         threadRootId: root,
         channelId,
         lastReplyAt: Date.now(),
-        mentioned: false,
+        mentioned: true,
         participated: true,
       });
     });
@@ -278,5 +278,6 @@ describe("messages.threadInbox bounded reply scan", () => {
     const row = rows.find((entry) => entry.id === root);
     expect(row).toBeDefined();
     expect(row?.viewerParticipated).toBe(true);
+    expect(row?.viewerMentioned).toBe(true);
   });
 });
