@@ -1,6 +1,7 @@
 /* eslint-disable no-unused-vars -- the base rule reports parameter names in type signatures; Biome checks real unused code */
 import {
   type AttachmentDescriptor,
+  type CallView,
   type ChannelView,
   conversationTitle,
   dmPartnerId,
@@ -9,7 +10,7 @@ import {
   Permission,
 } from "@aulora/core";
 import { useMutation, useQuery } from "convex/react";
-import { useEffect, useMemo, useRef } from "react";
+import { useCallback, useEffect, useMemo, useRef } from "react";
 import { Platform } from "react-native";
 import { api } from "../../../../../packages/convex/convex/_generated/api";
 import { useIncomingCallNotification, useLocalNotifications } from "../../lib/notifications";
@@ -160,10 +161,12 @@ function useChatScreenMentions(session: ChatScreenSession) {
     return map;
   }, [members]);
 
-  useIncomingCallNotification(
-    voice.incoming,
-    (call) => memberNames.get(call.initiatorId) ?? call.initiatorId,
+  const callerName = useCallback(
+    (call: CallView) => memberNames.get(call.initiatorId) ?? call.initiatorId,
+    [memberNames],
   );
+
+  useIncomingCallNotification(voice.incoming, callerName);
 
   return {
     channelNames,
