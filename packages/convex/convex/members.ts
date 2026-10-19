@@ -38,6 +38,17 @@ const MAX_AVATAR_BYTES = 4 * 1024 * 1024;
 const MEMBER_PAGE_DEFAULT = 100;
 /** Hard ceiling on a single {@link page} call. */
 const MEMBER_PAGE_MAX = 500;
+/** Default match count for {@link search}; capped at {@link MEMBER_SEARCH_MAX}. */
+const MEMBER_SEARCH_DEFAULT = 25;
+/** Hard ceiling on matches returned by {@link search}. */
+const MEMBER_SEARCH_MAX = 100;
+/**
+ * Hard cap on how many members (and therefore account-name lookups)
+ * {@link search} examines before returning what it has. Search-as-you-type
+ * must stay bounded even when nothing matches, so a miss costs one window
+ * rather than a full table scan.
+ */
+const MEMBER_SEARCH_SCAN_LIMIT = 500;
 
 function isAvatarImage(metadata: {
   readonly size: number;
@@ -326,6 +337,57 @@ export const page = query({
       isDone: result.isDone,
       continueCursor: result.continueCursor,
     };
+  },
+});
+
+/**
+ * Search-as-you-type directory. Matches, case-insensitively, a member's
+ * nickname or their resolved account display name (profile name, else the
+ * email local part), and returns {@link MemberView} entries in join order — the
+ * same shape as {@link list}/{@link page}. Used by the mention autocomplete and
+ * member picker.
+ *
+ * Bounded: reads and resolves at most {@link MEMBER_SEARCH_SCAN_LIMIT} members
+ * from `by_joined` in one index window, then returns the first `limit` matches.
+ * A query that matches nothing therefore costs one window instead of the whole
+ * table; results are complete within that window. (Convex allows a single
+ * `.paginate()` per function, so the window is read in one `.take()`.)
+ */
+export const search = query({
+  args: { query: v.string(), limit: v.optional(v.number()) },
+  handler: async (ctx, args) => {
+    const { userId } = await requireAuth(ctx);
+    await requireMember(ctx, userId);
+    const needle = args.query.trim().toLowerCase();
+    if (needle.length === 0) {
+      return [];
+    }
+    const limit = Math.min(
+      Math.max(Math.floor(args.limit ?? MEMBER_SEARCH_DEFAULT), 1),
+      MEMBER_SEARCH_MAX,
+    );
+    const candidates = await ctx.db
+      .query("members")
+      .withIndex("by_joined")
+      .order("asc")
+      .take(MEMBER_SEARCH_SCAN_LIMIT);
+    const names = await accountNames(
+      ctx,
+      candidates.map((member) => member.userId),
+    );
+    const matches: MemberView[] = [];
+    for (const member of candidates) {
+      const accountName = names.get(member.userId) ?? null;
+      const nickname = member.nickname?.toLowerCase() ?? "";
+      const account = accountName?.toLowerCase() ?? "";
+      if (nickname.includes(needle) || account.includes(needle)) {
+        matches.push(await toMemberView(ctx, member, accountName));
+        if (matches.length >= limit) {
+          break;
+        }
+      }
+    }
+    return matches;
   },
 });
 

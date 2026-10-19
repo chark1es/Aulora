@@ -1,7 +1,7 @@
 import { EVERYONE_ROLE_ID } from "@aulora/core";
 import { describe, expect, it } from "vitest";
 import { api } from "../convex/_generated/api";
-import { newTest, seedWorkspace, type Test } from "./helpers";
+import { newTest, newTestWithAccounts, seedAccount, seedWorkspace, type Test } from "./helpers";
 
 interface MemberSeedRow {
   readonly userId: string;
@@ -82,5 +82,89 @@ describe("members.page", () => {
     });
     expect(tail.page.map((member) => member.userId)).toEqual(["m500"]);
     expect(tail.isDone).toBe(true);
+  });
+});
+
+describe("members.search", () => {
+  it("matches nicknames case-insensitively and reuses the MemberView shape", async () => {
+    const t = newTest();
+    await seedWorkspace(t, { members: [] });
+    await seedMembers(t, [
+      { userId: "ada", joinedAt: 1, nickname: "Countess" },
+      { userId: "bob", joinedAt: 2 },
+      { userId: "grace", joinedAt: 3, nickname: "Amazing Grace" },
+    ]);
+    const asOwner = t.withIdentity({ subject: "owner-1" });
+
+    const found = await asOwner.query(api.members.search, { query: "AMAZING" });
+    expect(found.map((member) => member.userId)).toEqual(["grace"]);
+
+    const listed = await asOwner.query(api.members.list, {});
+    expect(found[0]).toEqual(listed.find((member) => member.userId === "grace"));
+
+    // Blank input and a miss return an empty list.
+    expect(await asOwner.query(api.members.search, { query: "   " })).toEqual([]);
+    expect(await asOwner.query(api.members.search, { query: "nobody" })).toEqual([]);
+  });
+
+  it("caps matches at the limit while preserving join order", async () => {
+    const t = newTest();
+    await seedWorkspace(t, { members: [] });
+    await seedMembers(t, [
+      { userId: "m0", joinedAt: 1, nickname: "aloe" },
+      { userId: "m1", joinedAt: 2, nickname: "almond" },
+      { userId: "m2", joinedAt: 3, nickname: "alpine" },
+    ]);
+    const asOwner = t.withIdentity({ subject: "owner-1" });
+
+    const limited = await asOwner.query(api.members.search, { query: "al", limit: 2 });
+    expect(limited.map((member) => member.userId)).toEqual(["m0", "m1"]);
+
+    const all = await asOwner.query(api.members.search, { query: "al", limit: 100 });
+    expect(all.map((member) => member.userId)).toEqual(["m0", "m1", "m2"]);
+  });
+
+  it("matches the resolved account name and email local part", async () => {
+    const t = newTestWithAccounts();
+    const ada = await seedAccount(t, { email: "ada@acme.com", name: "Ada Lovelace" });
+    const grace = await seedAccount(t, { email: "grace@acme.com", name: "Grace Hopper" });
+    // An account with no profile name falls back to its email local part.
+    const zoe = await seedAccount(t, { email: "zoe@corp.io", name: "" });
+    await seedWorkspace(t, {
+      ownerId: ada,
+      members: [{ userId: ada }, { userId: grace }, { userId: zoe }],
+    });
+    const asAda = t.withIdentity({ subject: ada });
+
+    const byName = await asAda.query(api.members.search, { query: "hopper" });
+    expect(byName.map((member) => member.userId)).toEqual([grace]);
+    expect(byName[0]?.accountName).toBe("Grace Hopper");
+
+    const byLocalPart = await asAda.query(api.members.search, { query: "ZOE" });
+    expect(byLocalPart.map((member) => member.userId)).toEqual([zoe]);
+    expect(byLocalPart[0]?.accountName).toBe("zoe");
+  });
+
+  it("never scans past its hard window", async () => {
+    const t = newTest();
+    await seedWorkspace(t, { members: [] });
+    await seedMembers(
+      t,
+      Array.from({ length: 501 }, (_, i) => ({
+        userId: `m${i}`,
+        joinedAt: i,
+        ...(i === 500 ? { nickname: "needle" } : {}),
+        ...(i === 0 ? { nickname: "edge" } : {}),
+      })),
+    );
+    const asOwner = t.withIdentity({ subject: "owner-1" });
+
+    // The only "needle" sits just past the 500-row scan window, so the search
+    // stops at the cap instead of walking the whole table.
+    expect(await asOwner.query(api.members.search, { query: "needle" })).toEqual([]);
+    // A match inside the window is still found.
+    expect(
+      (await asOwner.query(api.members.search, { query: "edge" })).map((m) => m.userId),
+    ).toEqual(["m0"]);
   });
 });
