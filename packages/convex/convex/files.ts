@@ -154,32 +154,37 @@ export const insertFinalized = internalMutation({
 });
 
 /**
- * True when a storage object is still referenced by a file row other than the
- * one being finalized. Prevents a client-supplied storage id from deleting
- * another file's bytes.
+ * Atomically deletes an upload's plaintext source when no file row other than
+ * `exceptFileId` references it. Runs as one mutation so a concurrent finalize
+ * cannot insert a reference between the check and the delete; taking two rows
+ * per index avoids the new row hiding a second reference.
  */
-export const isStorageReferenced = internalQuery({
+export const reclaimUploadSource = internalMutation({
   args: { storageId: v.id("_storage"), exceptFileId: v.id("files") },
   handler: async (ctx, args) => {
     const byStorage = await ctx.db
       .query("files")
       .withIndex("by_storage", (q) => q.eq("storageId", args.storageId))
-      .first();
-    if (byStorage !== null && byStorage._id !== args.exceptFileId) {
-      return true;
+      .take(2);
+    if (byStorage.some((row) => row._id !== args.exceptFileId)) {
+      return false;
     }
     const bySealed = await ctx.db
       .query("files")
       .withIndex("by_sealed_storage", (q) => q.eq("sealedStorageId", args.storageId))
-      .first();
-    if (bySealed !== null && bySealed._id !== args.exceptFileId) {
-      return true;
+      .take(2);
+    if (bySealed.some((row) => row._id !== args.exceptFileId)) {
+      return false;
     }
     const byThumbnail = await ctx.db
       .query("files")
       .withIndex("by_thumbnail_storage", (q) => q.eq("thumbnailStorageId", args.storageId))
-      .first();
-    return byThumbnail !== null && byThumbnail._id !== args.exceptFileId;
+      .take(2);
+    if (byThumbnail.some((row) => row._id !== args.exceptFileId)) {
+      return false;
+    }
+    await ctx.storage.delete(args.storageId);
+    return true;
   },
 });
 
@@ -288,21 +293,15 @@ export const finalize = action({
       }
       throw error;
     }
-    const sourceReferenced = await ctx.runQuery(internal.files.isStorageReferenced, {
+    await ctx.runMutation(internal.files.reclaimUploadSource, {
       storageId: args.storageId,
       exceptFileId: fileId,
     });
-    if (!sourceReferenced) {
-      await ctx.storage.delete(args.storageId);
-    }
     if (args.thumbnailStorageId !== undefined) {
-      const thumbnailReferenced = await ctx.runQuery(internal.files.isStorageReferenced, {
+      await ctx.runMutation(internal.files.reclaimUploadSource, {
         storageId: args.thumbnailStorageId,
         exceptFileId: fileId,
       });
-      if (!thumbnailReferenced) {
-        await ctx.storage.delete(args.thumbnailStorageId);
-      }
     }
     return fileId;
   },

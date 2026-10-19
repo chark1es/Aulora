@@ -579,9 +579,11 @@ A third Codex pass confirmed the read-budget arithmetic (`summary`: 200×100 +
 path: a client-supplied `thumbnailStorageId` was authorized only as a storage
 object and then deleted, so a referenced blob could be removed. Fixed by
 authorizing the thumbnail through the same `authorizeUpload` path, adding
-`files.by_storage`/`by_sealed_storage`/`by_thumbnail_storage` indexes, and
-skipping deletion of any storage id still referenced by another file row. The
-post-insert cleanup now also attempts both deletions independently. The bot
+`files.by_storage`/`by_sealed_storage`/`by_thumbnail_storage` indexes, and an
+atomic `files.reclaimUploadSource` mutation that scans two rows per index (so
+the new row cannot hide a concurrent reference) and deletes only when nothing
+else references the blob. The post-insert cleanup now also attempts both
+deletions independently. The bot
 runner gained a single-start guard so a second `start()` cannot orphan the
 health interval.
 
