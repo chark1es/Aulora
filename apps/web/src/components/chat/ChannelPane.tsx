@@ -245,6 +245,8 @@ function ChannelTimeline(props: ChannelPaneProps) {
       hasOlder={props.sessionState.hasOlder}
       loading={props.sessionState.loading}
       onLoadOlder={props.sessionState.loadOlder}
+      historySeamId={props.sessionState.historySeamId}
+      onResetHistory={props.sessionState.resetHistoryWindow}
       onReply={onReply}
       onReplyTo={onReplyTo}
       replyPreviews={props.replyPreviews}

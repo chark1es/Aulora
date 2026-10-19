@@ -12,6 +12,17 @@ import type { ChatRuntime } from "./chat-runtime";
 /** Roots per page: the live tail, and each older history page loaded on scroll. */
 export const MESSAGE_PAGE_SIZE = 100;
 
+/**
+ * How many older history pages stay retained at once. Scrolling back through a
+ * long channel used to keep every loaded page mounted for the life of the view
+ * (unbounded DOM/RAM/CPU). The window slides with the reader instead: loading a
+ * page past this cap evicts the page retained the longest — the one nearest the
+ * live tail, already far below the viewport — so the mounted window stays
+ * bounded (~1,200 messages) while the live tail is always kept. The evicted
+ * pages are re-fetched from the tail cursor if the reader returns to the bottom.
+ */
+export const MAX_RETAINED_PAGES = 12;
+
 /** Stable empty list returned while a channel's state has not settled yet. */
 const EMPTY_MESSAGES: readonly MessagePayload[] = [];
 const EMPTY_DECRYPTED: ReadonlyMap<string, string> = new Map();
@@ -43,8 +54,21 @@ export interface ChannelSessionState {
   readonly loading: boolean;
   /** `true` while an older history page is in flight. */
   readonly loadingOlder: boolean;
+  /**
+   * Id of the oldest live-tail message when the retained history window has
+   * been truncated (older pages were evicted). The timeline draws a boundary
+   * before it instead of silently showing a gap; `null` when nothing was
+   * evicted and the window is still contiguous with the tail.
+   */
+  readonly historySeamId: string | null;
   /** Loads the next older page of history, keeping the live tail intact. */
   readonly loadOlder: () => void;
+  /**
+   * Drops the retained older pages and re-anchors the window to the live tail so
+   * the pages evicted by the cap are re-fetched from the tail cursor. The
+   * timeline calls this when the reader settles back at the newest message.
+   */
+  readonly resetHistoryWindow: () => void;
 }
 
 interface OlderPage {
@@ -159,6 +183,9 @@ export function useChannelSession(
   const [loading, setLoading] = useState(true);
   const [loadingOlder, setLoadingOlder] = useState(false);
   const [tailNext, setTailNext] = useState<string | null>(null);
+  // `true` once the retained window has outgrown {@link MAX_RETAINED_PAGES} and
+  // the oldest page was dropped, so the timeline can mark the seam.
+  const [truncated, setTruncated] = useState(false);
   const [now, setNow] = useState(() => Date.now());
   // Which channel the currently-held state belongs to. Until it matches the
   // active channel we render the empty state, so a switch never flashes the
@@ -175,6 +202,16 @@ export function useChannelSession(
     olderOffs.current.clear();
   }, []);
 
+  // Re-anchor the history window to the live tail, dropping the retained pages
+  // (and their subscriptions) so any pages the cap evicted are re-fetched from
+  // the tail cursor the next time the reader scrolls up.
+  const resetHistoryWindow = useCallback(() => {
+    releaseOlder();
+    setOlderPages([]);
+    setLoadingOlder(false);
+    setTruncated(false);
+  }, [releaseOlder]);
+
   // A new channel starts from the live tail again: tear down older pages so the
   // next scroll load begins from the tail's cursor.
   useEffect(() => {
@@ -185,6 +222,7 @@ export function useChannelSession(
     setLoading(true);
     setLoadingOlder(false);
     setTailNext(null);
+    setTruncated(false);
     setReadState(null);
     setReadStateLoaded(false);
   }, [channelId, releaseOlder]);
@@ -250,7 +288,18 @@ export function useChannelSession(
           messages: page.page,
           nextCursor: page.isDone ? null : page.continueCursor,
         };
-        setOlderPages((current) => [...current.filter((item) => item.cursor !== cursor), entry]);
+        // Replace in place when this page is already loaded (a live edit) so the
+        // chronological order — which the window cap relies on — is preserved;
+        // otherwise append it as the newly-deepest page.
+        setOlderPages((current) => {
+          const index = current.findIndex((item) => item.cursor === cursor);
+          if (index === -1) {
+            return [...current, entry];
+          }
+          const next = [...current];
+          next[index] = entry;
+          return next;
+        });
         setLoadingOlder(false);
         void runtime.session.receiveMessages(page.page);
       },
@@ -267,6 +316,27 @@ export function useChannelSession(
     merged.push(...tail);
     return merged;
   }, [olderPages, tail]);
+
+  // Bound the retained window: once older pages exceed the cap, drop the ones
+  // that have been retained the longest (nearest the live tail) and release
+  // their live subscriptions. The window therefore slides with the reader and
+  // mounting/CPU stay flat no matter how far back they scroll; the newest page
+  // of history and the live tail are always kept.
+  useEffect(() => {
+    if (olderPages.length <= MAX_RETAINED_PAGES) {
+      return;
+    }
+    const excess = olderPages.length - MAX_RETAINED_PAGES;
+    for (const page of olderPages.slice(0, excess)) {
+      const off = olderOffs.current.get(page.cursor);
+      if (off !== undefined) {
+        olderOffs.current.delete(page.cursor);
+        off();
+      }
+    }
+    setOlderPages(olderPages.slice(excess));
+    setTruncated(true);
+  }, [olderPages]);
 
   const settled = loadedChannelId === channelId;
   const activeMessages = settled ? messages : EMPTY_MESSAGES;
@@ -289,6 +359,11 @@ export function useChannelSession(
   const hasOlder =
     settled && (olderPages.length === 0 ? tailNext : olderPages.at(-1)?.nextCursor) !== null;
 
+  // When the window has been truncated, the retained history no longer reaches
+  // the live tail; mark the seam so the timeline can make the dropped region
+  // explicit rather than silently jumping in time.
+  const historySeamId = settled && truncated ? (tail[0]?.id ?? null) : null;
+
   return {
     messages: activeMessages,
     decrypted: settled ? decrypted : EMPTY_DECRYPTED,
@@ -299,7 +374,9 @@ export function useChannelSession(
     hasOlder,
     loading: settled ? loading : true,
     loadingOlder: settled && loadingOlder,
+    historySeamId,
     loadOlder,
+    resetHistoryWindow,
   };
 }
 

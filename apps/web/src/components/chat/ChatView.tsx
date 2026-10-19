@@ -1062,6 +1062,8 @@ function ChatViewContent({
     loadingOlder,
     hasOlder,
     loadOlder,
+    historySeamId,
+    resetHistoryWindow,
   } = sessionState;
   useEffect(() => {
     if (pendingJump === null) {
@@ -1081,6 +1083,13 @@ function ChatViewContent({
         pendingJump.createdAt !== undefined &&
         oldest !== undefined &&
         oldest.createdAt < pendingJump.createdAt;
+      if (passed && historySeamId !== null) {
+        // The retained window was truncated by the page cap and the target sits
+        // in the pages evicted between it and the live tail. Re-anchor to the
+        // tail so the walk can find it instead of silently giving up.
+        resetHistoryWindow();
+        return;
+      }
       if (hasOlder && !passed) {
         loadOlder();
       } else {
@@ -1108,6 +1117,8 @@ function ChatViewContent({
     loadingOlder,
     hasOlder,
     loadOlder,
+    historySeamId,
+    resetHistoryWindow,
   ]);
 
   if (!ready || runtime === undefined) {

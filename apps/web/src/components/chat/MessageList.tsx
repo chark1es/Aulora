@@ -15,6 +15,7 @@ import {
 } from "@aulora/core";
 import { Badge, Button, cn, Icon, Spinner, useContextMenu } from "@aulora/ui-web";
 import {
+  Fragment,
   memo,
   type ReactNode,
   useCallback,
@@ -66,6 +67,17 @@ export interface MessageListProps {
   readonly hasOlder: boolean;
   readonly loading: boolean;
   readonly onLoadOlder: () => void;
+  /**
+   * When the retained history window has been truncated by the page cap, the id
+   * of the oldest live-tail message. A boundary is drawn before it so the
+   * dropped region is explicit rather than a silent jump in the timeline.
+   */
+  readonly historySeamId?: string | null;
+  /**
+   * Re-anchors the history window to the live tail once the reader is back at
+   * the newest message, so evicted pages can be re-fetched on the next scroll.
+   */
+  readonly onResetHistory?: () => void;
   readonly onReply: (message: MessagePayload) => void;
   readonly onEdit: (message: MessagePayload, text: string) => void;
   readonly onDelete: (message: MessagePayload) => void;
@@ -143,6 +155,8 @@ export function MessageList(props: MessageListProps) {
     memberNames,
     memberColors,
   } = props;
+  const historySeamId = props.historySeamId ?? null;
+  const onResetHistory = props.onResetHistory;
   const scrollRef = useRef<HTMLDivElement | null>(null);
   const contentRef = useRef<HTMLDivElement | null>(null);
   const stickRef = useRef(true);
@@ -211,6 +225,15 @@ export function MessageList(props: MessageListProps) {
     stickRef.current = pinned;
     setAtBottom(pinned);
   }, []);
+
+  // Once the reader settles back at the newest message, drop the truncated
+  // history window so the pages the cap evicted are re-fetched from the tail
+  // cursor on the next scroll up. No-op while the window is contiguous.
+  useEffect(() => {
+    if (atBottom && historySeamId !== null && onResetHistory !== undefined) {
+      onResetHistory();
+    }
+  }, [atBottom, historySeamId, onResetHistory]);
 
   // A new channel starts pinned to the bottom until it is first positioned.
   // biome-ignore lint/correctness/useExhaustiveDependencies: channelId is the reset trigger
@@ -385,12 +408,12 @@ export function MessageList(props: MessageListProps) {
             props.emptyState
           ) : (
             items.map((item) => (
-              <TimelineRow
-                key={item.key}
-                item={item}
-                list={rowList}
-                reactionsByMessage={reactionsByMessage}
-              />
+              <Fragment key={item.key}>
+                {historySeamId !== null &&
+                  item.kind === "message" &&
+                  item.message.id === historySeamId && <HistorySeamRow />}
+                <TimelineRow item={item} list={rowList} reactionsByMessage={reactionsByMessage} />
+              </Fragment>
             ))
           )}
           {typers.length > 0 && (
@@ -460,6 +483,23 @@ const TimelineRow = memo(function TimelineRow({
     />
   );
 });
+
+/**
+ * Marks the seam where the page cap dropped history between the retained window
+ * and the live tail, so the timeline never silently jumps in time.
+ */
+function HistorySeamRow() {
+  return (
+    <div
+      data-testid="history-seam"
+      className="flex items-center gap-3 py-3 text-[11px] text-text-muted"
+    >
+      <span className="h-px flex-1 bg-border" />
+      <span className="whitespace-nowrap">Some messages were unloaded to keep this view fast</span>
+      <span className="h-px flex-1 bg-border" />
+    </div>
+  );
+}
 
 const MessageRow = memo(function MessageRow({
   list,
