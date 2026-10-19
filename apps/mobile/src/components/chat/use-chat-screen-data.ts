@@ -421,10 +421,12 @@ function useChatScreenMessages(
   const { activeChannelId } = ui;
   const { sessionState, messageContext } = conversation;
 
-  const attachmentsByMessage = (() => {
+  const history = messageContext?.history;
+  const liveMessages = sessionState.messages;
+  const attachmentsByMessage = useMemo(() => {
     const map = new Map<string, readonly AttachmentDescriptor[]>();
     if (runtime !== undefined) {
-      for (const message of [...(messageContext?.history ?? []), ...sessionState.messages]) {
+      for (const message of [...(history ?? []), ...liveMessages]) {
         const list = runtime.session.attachmentsFor(message.id);
         if (list.length > 0) {
           map.set(message.id, list);
@@ -432,7 +434,7 @@ function useChatScreenMessages(
       }
     }
     return map;
-  })();
+  }, [runtime, history, liveMessages]);
 
   const pendingItems = useMemo(
     () => outbox.filter((item) => item.channelId === activeChannelId),
