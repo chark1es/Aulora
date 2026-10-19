@@ -6,12 +6,16 @@ import type { QueryCtx } from "./_generated/server";
 import { action, internalMutation, internalQuery, mutation, query } from "./_generated/server";
 import { requireAuth } from "./lib/auth";
 import { assertMayParticipate, listActiveBans } from "./lib/bans";
-import { requireChannelAccessForUser } from "./lib/channels";
+import { requireChannelAccessForUser, requireChannelAccessFromContext } from "./lib/channels";
 import { getEkmSettings } from "./lib/ekm";
 import { DOWNLOAD_TOKEN_TTL_MS, signDownloadToken, verifyDownloadToken } from "./lib/fileTokens";
 import { effectiveMaxUploadBytes } from "./lib/instance";
-import { requireBoardForUser, writableBoard } from "./lib/kanban";
-import { requireMember, requireWorkspacePermission } from "./lib/permissions";
+import { requireBoardForUser, requireBoardForUserFromContext, writableBoard } from "./lib/kanban";
+import {
+  loadPermissionContext,
+  requireMember,
+  requireWorkspacePermission,
+} from "./lib/permissions";
 import { enforceRateLimit, ipRateLimitKey, requestIp, userRateLimitKey } from "./lib/rateLimit";
 import { openContentOptional } from "./lib/sealed";
 import { openBytes, sealBytes, sealString } from "./lib/sse";
@@ -328,10 +332,54 @@ export const getMany = query({
   handler: async (ctx, args) => {
     const { userId } = await requireAuth(ctx);
     await requireMember(ctx, userId);
+    // Load the permission context once and resolve access per distinct
+    // channel/board, rather than re-loading roles and server state per file.
+    const context = await loadPermissionContext(ctx, userId);
+
+    const rows = await Promise.all(args.fileIds.map(async (fileId) => await ctx.db.get(fileId)));
+
+    const channelIds = new Set<Id<"channels">>();
+    const boardIds = new Set<Id<"kanbanBoards">>();
+    for (const row of rows) {
+      if (row === null) continue;
+      // A board-scoped file takes precedence over the channel check, matching
+      // canAccessFile.
+      if (row.kanbanBoardId !== undefined) {
+        boardIds.add(row.kanbanBoardId);
+      } else if (row.channelId !== undefined) {
+        channelIds.add(row.channelId);
+      }
+    }
+
+    const allowedChannels = new Set<Id<"channels">>();
+    for (const channelId of channelIds) {
+      try {
+        await requireChannelAccessFromContext(ctx, context, channelId, Permission.ViewChannel);
+        allowedChannels.add(channelId);
+      } catch {
+        // A channel the viewer cannot see simply drops its files.
+      }
+    }
+    const allowedBoards = new Set<Id<"kanbanBoards">>();
+    for (const boardId of boardIds) {
+      try {
+        await requireBoardForUserFromContext(ctx, context, boardId);
+        allowedBoards.add(boardId);
+      } catch {
+        // A board the viewer cannot see simply drops its files.
+      }
+    }
+
     const views: FileView[] = [];
-    for (const fileId of args.fileIds) {
-      const row = await ctx.db.get(fileId);
-      if (row !== null && (await canAccessFile(ctx, userId, row))) {
+    for (const row of rows) {
+      if (row === null) continue;
+      const allowed =
+        row.kanbanBoardId !== undefined
+          ? allowedBoards.has(row.kanbanBoardId)
+          : row.channelId !== undefined
+            ? allowedChannels.has(row.channelId)
+            : row.uploaderId === userId;
+      if (allowed) {
         views.push(await toFileView(row, userId));
       }
     }

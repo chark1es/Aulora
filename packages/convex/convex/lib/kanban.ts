@@ -4,7 +4,7 @@ import type { Id } from "../_generated/dataModel";
 import type { MutationCtx, QueryCtx } from "../_generated/server";
 import { requireAuth } from "./auth";
 import { assertMayParticipate, listActiveBans } from "./bans";
-import { loadPermissionContext, workspacePermissions } from "./permissions";
+import { loadPermissionContext, type PermissionContext, workspacePermissions } from "./permissions";
 import { openContent } from "./sealed";
 
 type ReadCtx = QueryCtx | MutationCtx;
@@ -54,6 +54,38 @@ export async function requireBoard(
 ) {
   const { userId } = await requireAuth(ctx);
   return requireBoardForUser(ctx, userId, boardId, flag);
+}
+
+/**
+ * {@link requireBoardForUser} for an actor whose {@link PermissionContext} is
+ * already loaded, so a caller gating many boards pays the role/member load once
+ * instead of once per board. Workspace kanban state, bans and the board's own
+ * visibility are checked with the same order and errors.
+ */
+export async function requireBoardForUserFromContext(
+  ctx: ReadCtx,
+  context: PermissionContext,
+  boardId: Id<"kanbanBoards">,
+  flag = Permission.ViewKanban,
+) {
+  const server = await ctx.db.query("server").first();
+  if (server?.settings.kanbanEnabled !== true) throw new ConvexError("Kanban is disabled");
+  if ((await listActiveBans(ctx, context.userId)).length > 0)
+    throw new ConvexError("You are banned from this workspace");
+  const permissions = workspacePermissions(context);
+  if (!hasPermission(permissions, Permission.ViewKanban) || !hasPermission(permissions, flag)) {
+    throw new ConvexError("Missing Kanban permission");
+  }
+  const board = await ctx.db.get(boardId);
+  if (board === null || board.deleted) throw new ConvexError("Board not found");
+  if (
+    board.private &&
+    !board.memberIds.includes(context.userId) &&
+    !hasPermission(permissions, Permission.ManageKanban)
+  ) {
+    throw new ConvexError("You do not have access to this board");
+  }
+  return { userId: context.userId, permissions, board };
 }
 export async function writableBoard(
   ctx: MutationCtx,
