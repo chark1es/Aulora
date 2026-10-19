@@ -1,7 +1,7 @@
-import type { RoleMentionTarget } from "@aulora/core";
+import { createTypingThrottle, type RoleMentionTarget } from "@aulora/core";
 import type { IconName } from "@aulora/tokens";
 import { Icon, Text, usePalette } from "@aulora/ui-native";
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { Pressable, TextInput, View } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import {
@@ -35,7 +35,10 @@ export interface ComposerProps {
   readonly channels?: readonly { readonly id: string; readonly name: string }[];
   readonly canMentionEveryone?: boolean;
   readonly viewerName?: string;
+  /** Announces that the viewer is typing; throttled to one ping per few seconds. */
   readonly onTyping: (channelId: string) => void;
+  /** Retracts the typing indicator on send, blur and channel switch. */
+  readonly onClearTyping?: ((channelId: string) => void) | undefined;
   readonly onSend: (input: { text: string; files: readonly PickedFile[] }) => void | Promise<void>;
 }
 
@@ -81,6 +84,7 @@ export function Composer(props: ComposerProps) {
     canMentionEveryone = false,
     viewerName = "You",
     onTyping,
+    onClearTyping,
     onSend,
   } = props;
   const palette = usePalette();
@@ -92,11 +96,29 @@ export function Composer(props: ComposerProps) {
   const inputRef = useRef<TextInput | null>(null);
   const fileSeq = useRef(0);
 
-  // biome-ignore lint/correctness/useExhaustiveDependencies: channelId is the reset trigger
+  // Latest callbacks, so the throttle instance below can be created once.
+  const onTypingRef = useRef(onTyping);
+  onTypingRef.current = onTyping;
+  const onClearTypingRef = useRef(onClearTyping);
+  onClearTypingRef.current = onClearTyping;
+  const typingThrottleRef = useRef<ReturnType<typeof createTypingThrottle> | null>(null);
+  if (typingThrottleRef.current === null) {
+    typingThrottleRef.current = createTypingThrottle((id) => onTypingRef.current(id));
+  }
+
+  const stopTyping = useCallback((id: string) => {
+    typingThrottleRef.current?.reset(id);
+    onClearTypingRef.current?.(id);
+  }, []);
+
   useEffect(() => {
     setValue("");
     setFiles([]);
-  }, [channelId]);
+    return () => {
+      // Leaving the channel (or unmounting) drops its typing indicator.
+      stopTyping(channelId);
+    };
+  }, [channelId, stopTyping]);
 
   const candidates = useMemo<MentionCandidate[]>(() => {
     const broadcast: MentionCandidate[] = canMentionEveryone
@@ -183,6 +205,7 @@ export function Composer(props: ComposerProps) {
       return;
     }
     impactFeedback();
+    stopTyping(channelId);
     void onSend({ text, files: files.map((entry) => entry.file) });
     setValue("");
     setFiles([]);
@@ -275,8 +298,11 @@ export function Composer(props: ComposerProps) {
             onChangeText={(next) => {
               setValue(next);
               if (next.length > 0) {
-                onTyping(channelId);
+                typingThrottleRef.current?.ping(channelId);
               }
+            }}
+            onBlur={() => {
+              stopTyping(channelId);
             }}
             className="max-h-32 py-2.5 text-[17px] leading-[22px] text-text"
           />
