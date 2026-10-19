@@ -213,6 +213,7 @@ function useChatScreenChannelList(
 
   useLocalNotifications(runtime, ownUserId, channelNames, {
     mutedChannelIds,
+    activeChannelId,
     onCue: (event) => sound?.play(event),
   });
 
