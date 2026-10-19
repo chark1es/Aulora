@@ -1,10 +1,17 @@
 // Builds the frontend the desktop shell embeds from the web build.
 //
-// `apps/web/dist` is the browser bundle; the desktop shell should not carry the
-// on-demand call-effect assets (MediaPipe/RNNoise WebAssembly and the selfie
-// segmentation model, ~13.4 MB) nor a second copy of the legal notices it also
-// ships as Tauri bundle resources. This copies the web build to
-// `apps/web/dist-desktop` without those files and points `frontendDist` at it.
+// `apps/web/dist` is the browser bundle; the desktop shell already ships the
+// same legal notices as Tauri bundle resources (`bundle.resources.legal`), so
+// embedding a second copy under `legal/` is pure duplication. This copies the
+// web build to `apps/web/dist-desktop` without that duplicate and points
+// `frontendDist` at it.
+//
+// The on-demand call-effect assets (MediaPipe/RNNoise WebAssembly and the
+// selfie segmentation model) are deliberately KEPT: under the shell's
+// no-remote-code CSP (`script-src 'self' 'wasm-unsafe-eval'`) they cannot be
+// re-fetched from the workspace origin, so dropping them from the embed would
+// silently disable background blur and noise suppression. Shrinking the embed
+// further needs a deliberate local-asset/CSP decision first.
 //
 //   node scripts/prepare-frontend.mjs
 import { cpSync, readdirSync, rmSync, statSync } from "node:fs";
@@ -21,29 +28,14 @@ const targetDir = resolve(repoRoot, "apps", "web", "dist-desktop");
  * Whether a web build file is left out of the desktop embed. `relativePath` is
  * relative to the web `dist` root and uses POSIX separators.
  *
- * Excluded:
- * - `legal/` — the Tauri bundle already ships the same notices under
- *   `bundle.resources.legal` (see `src-tauri/tauri.conf.json`).
- * - the call-effect assets only loaded when background effects or noise
- *   suppression are enabled: `vision_wasm_*`, `vision_bundle-*`,
- *   `selfie_segmenter_*`, `rnnoise-*` and `rnnoise_*`.
+ * Only `legal/` is excluded: the Tauri bundle already ships the same notices
+ * under `bundle.resources.legal` (see `src-tauri/tauri.conf.json`). The
+ * call-effect assets are deliberately kept so background blur and noise
+ * suppression keep working offline under the shell CSP.
  */
 export function isExcludedDesktopAsset(relativePath) {
   const path = relativePath.split(sep).join("/");
-  if (path === "legal" || path.startsWith("legal/")) {
-    return true;
-  }
-  if (!path.startsWith("assets/")) {
-    return false;
-  }
-  const name = path.slice("assets/".length);
-  return (
-    name.startsWith("vision_wasm_") ||
-    name.startsWith("vision_bundle-") ||
-    name.startsWith("selfie_segmenter_") ||
-    name.startsWith("rnnoise-") ||
-    name.startsWith("rnnoise_")
-  );
+  return path === "legal" || path.startsWith("legal/");
 }
 
 /** Total size of a directory tree in bytes. */

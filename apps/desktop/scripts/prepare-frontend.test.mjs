@@ -4,24 +4,14 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { isExcludedDesktopAsset, prepareFrontend } from "./prepare-frontend.mjs";
 
-test("excludes the effect assets and the duplicated legal notices", () => {
-  const excluded = [
-    "legal",
-    "legal/LICENSE",
-    "legal/third-party/foo",
-    "assets/vision_wasm_internal-BWEwtLSW.wasm",
-    "assets/vision_wasm_internal-CaWMRP85.js",
-    "assets/vision_bundle-BpHKGcJN.js",
-    "assets/selfie_segmenter_landscape-C0qNgSaC.tflite",
-    "assets/rnnoise-lVVwgm0Y.wasm",
-    "assets/rnnoise_simd-BsE3sPy6.wasm",
-  ];
+test("excludes the duplicated legal notices", () => {
+  const excluded = ["legal", "legal/LICENSE", "legal/third-party/foo"];
   for (const path of excluded) {
     expect(isExcludedDesktopAsset(path)).toBe(true);
   }
 });
 
-test("keeps the app shell, vendors and unrelated assets", () => {
+test("keeps the app shell, vendors, effect assets and unrelated files", () => {
   const kept = [
     "index.html",
     "theme-boot.js",
@@ -30,6 +20,14 @@ test("keeps the app shell, vendors and unrelated assets", () => {
     "assets/index-Byphdv-Q.js",
     "assets/react-CHUBdPbd.js",
     "assets/workletProcessor-CHZrfIcS.js",
+    // Call-effect assets must stay: the shell CSP cannot refetch them from the
+    // workspace origin, so dropping them would disable background effects.
+    "assets/vision_wasm_internal-BWEwtLSW.wasm",
+    "assets/vision_wasm_internal-CaWMRP85.js",
+    "assets/vision_bundle-BpHKGcJN.js",
+    "assets/selfie_segmenter_landscape-C0qNgSaC.tflite",
+    "assets/rnnoise-lVVwgm0Y.wasm",
+    "assets/rnnoise_simd-BsE3sPy6.wasm",
   ];
   for (const path of kept) {
     expect(isExcludedDesktopAsset(path)).toBe(false);
@@ -52,7 +50,11 @@ test("prepareFrontend copies the shell without the excluded files", () => {
     prepareFrontend({ source, target });
 
     expect(readdirSync(target).sort()).toEqual(["assets", "index.html"]);
-    expect(readdirSync(join(target, "assets"))).toEqual(["index-abc.js"]);
+    expect(readdirSync(join(target, "assets")).sort()).toEqual([
+      "index-abc.js",
+      "rnnoise_simd-abc.wasm",
+      "vision_wasm_internal-abc.wasm",
+    ]);
   } finally {
     rmSync(root, { recursive: true, force: true });
   }

@@ -176,18 +176,23 @@ function verifyMacos(macos) {
 }
 
 // The filtered desktop frontend is produced by prepare-frontend.mjs; keep the
-// exclusion list from silently drifting away from what the config expects.
+// exclusion list from silently drifting away from what the config expects. Only
+// the duplicated legal notices are excluded — the call-effect assets must stay
+// so background blur/noise suppression keep working under the shell CSP.
 function verifyPrepareFrontend() {
   const source = readFileSync(resolve(srcTauri, "..", "scripts", "prepare-frontend.mjs"), "utf8");
+  check('prepare-frontend.mjs must exclude "legal"', source.includes('"legal"'));
   for (const pattern of [
-    "legal",
     "vision_wasm_",
     "vision_bundle-",
     "selfie_segmenter_",
     "rnnoise-",
     "rnnoise_",
   ]) {
-    check(`prepare-frontend.mjs must exclude ${pattern}`, source.includes(`"${pattern}"`));
+    check(
+      `prepare-frontend.mjs must keep the effect asset ${pattern}`,
+      !source.includes(`"${pattern}"`),
+    );
   }
 }
 
