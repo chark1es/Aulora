@@ -11,6 +11,7 @@ import {
   createServerProfile,
   type MessagePayload,
   type ProfileStore,
+  withReplyParticipant,
 } from "@aulora/core";
 import type { ConvexReactClient } from "convex/react";
 import { createMockPort, type MockPort } from "../../../../packages/core/src/chat/testing";
@@ -163,6 +164,10 @@ export async function createDemoWorkspace(): Promise<DemoWorkspace> {
         createdAt: entry.at,
         replyCount: entry.replies?.length ?? 0,
         lastReplyAt: entry.replies?.at(-1)?.at ?? null,
+        replyParticipantIds: (entry.replies ?? []).reduce<string[]>(
+          (ids, reply) => withReplyParticipant(ids, reply.author),
+          [],
+        ),
       };
       port.state.messages.set(id, message);
       for (const reply of entry.replies ?? []) {
@@ -259,6 +264,8 @@ export async function createDemoWorkspace(): Promise<DemoWorkspace> {
           text: "I'll wire it into the native theme after lunch.",
           at: now - 42 * MINUTE,
         },
+        { author: "u-ludmil", text: "Same here, shipping it Monday.", at: now - 40 * MINUTE },
+        { author: "u-wade", text: "Reviewed. Looks good to me.", at: now - 38 * MINUTE },
       ],
     },
     {
@@ -274,6 +281,25 @@ export async function createDemoWorkspace(): Promise<DemoWorkspace> {
       at: now - 12 * MINUTE,
     },
   ]);
+
+  // The quiet "pinned a message" line lives in history so the preview shows
+  // what a pin posts (the seed pins a message directly, not via `pinMessage`).
+  port.state.messages.set("seed-pin-notice-design", {
+    id: "seed-pin-notice-design",
+    channelId: design.id,
+    authorId: "u-kathryn",
+    body: "",
+    threadRootId: null,
+    attachmentIds: [],
+    mentionUserIds: [],
+    editedAt: null,
+    deletedAt: null,
+    pinnedAt: null,
+    createdAt: now - 59 * MINUTE,
+    systemKind: "pin",
+    systemActorId: "u-kathryn",
+    systemTargetId: `seed-${design.id}-${now - 95 * MINUTE}-${DEMO_OWN_ID}`,
+  });
 
   await seed(general, [
     { author: "u-theresa", text: "Morning all ☕", at: now - 5 * 60 * MINUTE },

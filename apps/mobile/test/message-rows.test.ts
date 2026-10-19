@@ -26,7 +26,11 @@ function message(id: string, authorId: string, at: number, extra: Partial<Messag
 function shape(messages: readonly MessagePayload[]): string[] {
   return buildMessageRows(messages)
     .reverse()
-    .map((row) => (row.kind === "day" ? "day" : `${row.message.id}:${row.grouped}`));
+    .map((row) => {
+      if (row.kind === "day") return "day";
+      if (row.kind === "system") return `system:${row.key}`;
+      return `${row.message.id}:${row.grouped}`;
+    });
 }
 
 describe("buildMessageRows", () => {
@@ -69,6 +73,35 @@ describe("buildMessageRows", () => {
 
   it("handles an empty conversation", () => {
     expect(buildMessageRows([])).toEqual([]);
+  });
+
+  it("renders a pin notice as a standalone system row that breaks the author block", () => {
+    const rows = buildMessageRows([
+      message("a", "u1", NOON, { pinnedAt: NOON }),
+      message("notice", "u1", NOON + MINUTE, {
+        body: "",
+        systemKind: "pin",
+        systemActorId: "u1",
+        systemTargetId: "a",
+      }),
+      message("after", "u1", NOON + 2 * MINUTE),
+    ]);
+    // Newest first: `after` must not group with the notice, and the notice is
+    // its own row rather than a message bubble.
+    expect(
+      shape([
+        message("a", "u1", NOON, { pinnedAt: NOON }),
+        message("notice", "u1", NOON + MINUTE, {
+          body: "",
+          systemKind: "pin",
+          systemActorId: "u1",
+          systemTargetId: "a",
+        }),
+        message("after", "u1", NOON + 2 * MINUTE),
+      ]),
+    ).toEqual(["day", "a:false", "system:notice", "after:false"]);
+    const notice = rows.find((row) => row.kind === "system");
+    expect(notice).toMatchObject({ kind: "system", actorId: "u1", targetId: "a" });
   });
 });
 

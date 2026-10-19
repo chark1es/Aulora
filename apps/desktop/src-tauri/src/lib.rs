@@ -44,6 +44,7 @@ pub fn run() {
             commands::is_mini_window,
             commands::set_unread_badge,
             commands::show_notification,
+            commands::open_external,
             commands::take_deep_links,
             updater::app_version,
             updater::check_for_app_update,

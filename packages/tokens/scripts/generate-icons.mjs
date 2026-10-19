@@ -55,6 +55,7 @@ const ICONS = {
   pencil: "edit-outline-rounded",
   trash: "delete-outline-rounded",
   pin: "keep-outline-rounded",
+  "pin-off": "keep-off-outline-rounded",
   "chevron-down": "keyboard-arrow-down-rounded",
   "chevron-left": "chevron-left-rounded",
   "chevron-right": "chevron-right-rounded",

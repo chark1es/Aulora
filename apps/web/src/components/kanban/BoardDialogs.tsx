@@ -165,6 +165,7 @@ export function BoardDialogs({ ctl }: Props) {
           key={board.id}
           board={board}
           members={ctl.members}
+          cards={ctl.cards}
           onClose={() => {
             ctl.setSettings(false);
           }}

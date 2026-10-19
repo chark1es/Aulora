@@ -255,6 +255,27 @@ describe("mock port message window", () => {
     await port.sendMessage({ channelId: "c1", body: "reply", threadRootId: root });
     expect(port.state.messages.get(root)?.replyCount).toBe(1);
   });
+
+  it("posts a quiet pin notice on pin and none on unpin", async () => {
+    const port = createMockPort();
+    const session = makeSession(port);
+    await session.start();
+    await session.openChannel(channelFor("c1"));
+    const messageId = await session.sendMessage("c1", "pin me");
+
+    await session.pinMessage("c1", messageId);
+    const notices = () => [...port.state.messages.values()].filter((m) => m.systemKind === "pin");
+    expect(notices()).toHaveLength(1);
+    expect(notices()[0]).toMatchObject({
+      channelId: "c1",
+      body: "",
+      systemActorId: "me",
+      systemTargetId: messageId,
+    });
+
+    await session.unpinMessage("c1", messageId);
+    expect(notices()).toHaveLength(1);
+  });
 });
 
 describe("ChatSubscriptions passthrough", () => {

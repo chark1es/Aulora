@@ -268,6 +268,22 @@ export async function showDesktopNotification(title: string, body: string): Prom
 }
 
 /**
+ * Opens an external URL in the system browser: a new tab on the web, the OS
+ * default application inside the desktop shell. The Tauri webview swallows a
+ * `target="_blank"` link instead of opening a window, so links hand the URL to
+ * the shell. Best-effort: a refused hand-off never breaks the page.
+ */
+export function openExternal(url: string): void {
+  if (isDesktop()) {
+    void invokeCommand("open_external", { url }).catch(() => {
+      // The browser may still let the person copy the link instead.
+    });
+    return;
+  }
+  window.open(url, "_blank", "noopener,noreferrer");
+}
+
+/**
  * Parses a deep link into a router target.
  *
  * Accepts both the custom `aulora://` scheme (desktop + native) and https

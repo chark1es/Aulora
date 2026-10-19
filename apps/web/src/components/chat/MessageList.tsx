@@ -6,7 +6,6 @@ import type {
   TypingRow,
 } from "@aulora/core";
 import {
-  activityLabel,
   buildTimeline,
   dayLabel,
   hasPermission,
@@ -14,15 +13,7 @@ import {
   messageTime,
   Permission,
 } from "@aulora/core";
-import {
-  Badge,
-  Button,
-  type ContextMenuItem,
-  cn,
-  Icon,
-  Spinner,
-  useContextMenu,
-} from "@aulora/ui-web";
+import { Badge, Button, cn, Icon, Spinner, useContextMenu } from "@aulora/ui-web";
 import {
   type ReactNode,
   useCallback,
@@ -35,9 +26,13 @@ import {
 import type { ChatRuntime } from "../../lib/chat-runtime";
 import { AttachmentView } from "./AttachmentView";
 import { EmojiPicker } from "./EmojiPicker";
+import { messageMenuItems } from "./message-menu";
 import { PresenceAvatar } from "./PresenceAvatar";
 import { ReactionChips, type ReactionGroup } from "./ReactionChips";
 import { RichText } from "./RichText";
+import { revealMessage } from "./reveal-message";
+import { SystemEventRow } from "./SystemEventRow";
+import { ThreadSummary } from "./ThreadSummary";
 
 export interface MessageListProps {
   readonly runtime: ChatRuntime | undefined;
@@ -97,7 +92,6 @@ const NO_REACTIONS: readonly ReactionGroup[] = [];
 const STICK_THRESHOLD_PX = 96;
 /** Within this distance of the top the list fetches older history. */
 const LOAD_OLDER_THRESHOLD_PX = 160;
-
 /**
  * The conversation timeline: message bubbles grouped into author runs, day
  * separators, the unread divider and a typing bubble. It follows the live tail
@@ -123,17 +117,23 @@ export function MessageList(props: MessageListProps) {
   const positionedChannelRef = useRef<string | null>(null);
   const [atBottom, setAtBottom] = useState(true);
 
-  const items = useMemo(
-    () =>
-      buildTimeline(messages, { firstUnreadId }).map((item) =>
-        // A pinned message needs its author header (and the pin itself) even
-        // when it continues an author run, so force the run to start here.
-        item.kind === "message" && item.message.pinnedAt !== null
-          ? { ...item, startsGroup: true }
-          : item,
-      ),
-    [messages, firstUnreadId],
-  );
+  const items = useMemo(() => {
+    const built = buildTimeline(messages, { firstUnreadId });
+    return built.map((item, index) => {
+      if (item.kind !== "message") {
+        return item;
+      }
+      // A pinned message needs its author header (and the pin itself) even
+      // when it continues an author run, so force the run to start here. A
+      // system event always stands alone, and so does the message after it.
+      const previous = built[index - 1];
+      const afterSystem = previous?.kind === "message" && previous.message.systemKind !== undefined;
+      if (item.message.systemKind !== undefined || afterSystem || item.message.pinnedAt !== null) {
+        return { ...item, startsGroup: true };
+      }
+      return item;
+    });
+  }, [messages, firstUnreadId]);
 
   // One batched reactions subscription for the whole timeline, chunked by the
   // adapter, instead of one live query per rendered message.
@@ -358,6 +358,9 @@ function TimelineRow({
       </div>
     );
   }
+  if (item.message.systemKind !== undefined) {
+    return <SystemEventRow list={list} message={item.message} />;
+  }
   return (
     <MessageRow
       list={list}
@@ -394,17 +397,7 @@ function MessageRow({
   const replyPreview = replyToId !== null ? list.replyPreviews?.get(replyToId) : undefined;
 
   const scrollToOriginal = (id: string): void => {
-    const node = document.getElementById(`message-${id}`);
-    node?.scrollIntoView({
-      behavior: "smooth",
-      block: "center",
-    });
-    if (node !== null && typeof node.animate === "function") {
-      node.animate(
-        [{ backgroundColor: "var(--aulora-accent-soft)" }, { backgroundColor: "transparent" }],
-        { duration: 1600, easing: "ease-out" },
-      );
-    }
+    revealMessage(id);
   };
 
   const [editing, setEditing] = useState(false);
@@ -428,82 +421,19 @@ function MessageRow({
       return;
     }
     event.preventDefault();
-    const items: ContextMenuItem[] = [];
-    if (canReact) {
-      items.push({
-        id: "react",
-        label: "Custom reaction",
-        icon: <Icon name="smile" size={14} />,
-        onSelect: () => {
-          setPickerOpen(true);
-        },
-      });
-    }
-    if (list.onReplyTo !== undefined && hasPermission(permissions, Permission.SendMessages)) {
-      items.push({
-        id: "reply",
-        label: "Reply",
-        icon: <Icon name="reply" size={14} />,
-        separatorBefore: items.length > 0,
-        onSelect: () => list.onReplyTo?.(message),
-      });
-    }
-    if (canThread) {
-      items.push({
-        id: "thread",
-        label: "Reply in thread",
-        icon: <Icon name="thread" size={14} />,
-        separatorBefore: items.length > 0,
-        onSelect: () => {
-          list.onReply(message);
-        },
-      });
-    }
-    if (canEdit) {
-      items.push({
-        id: "edit",
-        label: "Edit message",
-        icon: <Icon name="pencil" size={14} />,
-        separatorBefore: items.length > 0,
-        onSelect: () => {
-          setDraft(text);
-          setEditing(true);
-        },
-      });
-    }
-    if (canPin) {
-      items.push({
-        id: "pin",
-        label: message.pinnedAt !== null ? "Unpin message" : "Pin message",
-        icon: <Icon name="pin" size={14} />,
-        onSelect: () => {
-          list.onPinToggle(message);
-        },
-      });
-    }
-    if (text.trim().length > 0) {
-      items.push({
-        id: "copy",
-        label: "Copy text",
-        icon: <Icon name="file" size={14} />,
-        separatorBefore: items.length > 0,
-        onSelect: () => {
-          void navigator.clipboard.writeText(text).catch(() => undefined);
-        },
-      });
-    }
-    if (canDelete) {
-      items.push({
-        id: "delete",
-        label: "Delete message",
-        icon: <Icon name="trash" size={14} />,
-        danger: true,
-        separatorBefore: items.length > 0,
-        onSelect: () => {
-          list.onDelete(message);
-        },
-      });
-    }
+    const items = messageMenuItems({
+      list,
+      message,
+      text,
+      can: { react: canReact, thread: canThread, edit: canEdit, pin: canPin, delete: canDelete },
+      openPicker: () => {
+        setPickerOpen(true);
+      },
+      startEdit: () => {
+        setDraft(text);
+        setEditing(true);
+      },
+    });
     if (items.length > 0) {
       openMenu({
         clientX: event.clientX,
@@ -645,7 +575,7 @@ function MessageRow({
         // Pinned to the far edge of the full-width row and revealed on hover or
         // keyboard focus. Mirrored own messages pin it to the left instead.
         "absolute top-0 z-20 hidden items-center gap-0.5 rounded-[9px] border border-border bg-surface-2 p-0.5 shadow-lg shadow-black/20 group-focus-within/message:flex group-hover/message:flex",
-        mirror ? "left-2" : "right-2",
+        mirror ? "left-3" : "right-3",
         pickerOpen && "flex",
       )}
     >
@@ -706,7 +636,7 @@ function MessageRow({
             list.onPinToggle(message);
           }}
         >
-          <Icon name="pin" size={18} />
+          <Icon name={message.pinnedAt !== null ? "pin-off" : "pin"} size={18} />
         </ToolbarButton>
       )}
       {canDelete &&
@@ -744,7 +674,7 @@ function MessageRow({
       data-message-row
       onContextMenu={openContextMenu}
       className={cn(
-        "group/message relative w-full py-0.5 transition-colors",
+        "group/message relative -mx-1 w-full px-1 py-0.5 transition-colors",
         startsGroup ? "mt-3" : "mt-0.5",
       )}
     >
@@ -762,7 +692,7 @@ function MessageRow({
             fill="none"
             className={cn(
               "pointer-events-none absolute top-[9px] h-[18px] w-[28px] overflow-visible",
-              mirror ? "right-[15px] -scale-x-100" : "left-[15px]",
+              mirror ? "right-[19px] -scale-x-100" : "left-[19px]",
               replyAuthorColor === undefined && "text-text-muted",
             )}
             style={replyAuthorColor !== undefined ? { color: replyAuthorColor } : undefined}
@@ -824,9 +754,9 @@ function MessageRow({
                   role="img"
                   aria-label="Pinned"
                   title="Pinned"
-                  className="inline-flex shrink-0 items-center text-accent"
+                  className="inline-flex shrink-0 self-center text-accent"
                 >
-                  <Icon name="pin" size={12} align="baseline" />
+                  <Icon name="pin" size={12} block />
                 </span>
               )}
             </div>
@@ -884,26 +814,20 @@ function MessageRow({
               }}
             />
           )}
-          {replyCount > 0 && list.inThread !== true && (
-            <button
-              type="button"
-              onClick={() => {
-                list.onReply(message);
-              }}
-              className="mt-1 flex items-center gap-1.5 rounded-full px-2 py-0.5 text-xs font-semibold text-accent transition hover:bg-accent-soft"
-            >
-              <Icon name="thread" size={14} />
-              {replyCount === 1 ? "1 reply" : `${replyCount} replies`}
-              {message.lastReplyAt != null && (
-                <span className="font-normal text-text-muted">
-                  · {activityLabel(message.lastReplyAt)}
-                </span>
-              )}
-            </button>
-          )}
           {toolbar}
         </div>
       </div>
+      {replyCount > 0 && list.inThread !== true && (
+        <ThreadSummary
+          replyCount={replyCount}
+          lastReplyAt={message.lastReplyAt}
+          participantIds={message.replyParticipantIds ?? []}
+          mirror={mirror}
+          onOpen={() => {
+            list.onReply(message);
+          }}
+        />
+      )}
     </article>
   );
 }

@@ -4,7 +4,11 @@ import { useAction, useMutation, useQuery } from "convex/react";
 import { useState } from "react";
 import { api } from "../../../../../packages/convex/convex/_generated/api";
 import type { GitHubBrowseResult } from "../../../../../packages/convex/convex/kanbanGithub";
+import { openExternal } from "../../lib/desktop";
 import { failure } from "./types";
+
+/** A fine-grained token keeps GitHub access scoped to the repositories we read. */
+const GITHUB_TOKEN_URL = "https://github.com/settings/personal-access-tokens/new";
 
 export function GithubBrowser({
   onClose,
@@ -88,10 +92,14 @@ export function GithubBrowser({
               hint="Use a fine-grained token limited to the repositories you need, with read access to metadata, issues and pull requests. Your token is encrypted and only used on the server."
             />
             <a
-              href="https://github.com/settings/personal-access-tokens/new"
+              href={GITHUB_TOKEN_URL}
               target="_blank"
-              rel="noreferrer"
+              rel="noopener noreferrer"
               className="text-[13px] text-accent underline underline-offset-2"
+              onClick={(event) => {
+                event.preventDefault();
+                openExternal(GITHUB_TOKEN_URL);
+              }}
             >
               Create a GitHub token
             </a>
@@ -186,7 +194,11 @@ export function GithubBrowser({
                         className="break-words text-[13px] font-medium text-text hover:text-accent"
                         href={r.url}
                         target="_blank"
-                        rel="noreferrer"
+                        rel="noopener noreferrer"
+                        onClick={(event) => {
+                          event.preventDefault();
+                          openExternal(r.url);
+                        }}
                       >
                         {r.name}
                       </a>
@@ -225,7 +237,11 @@ export function GithubBrowser({
                         className="break-words text-[13px] font-medium text-text hover:text-accent"
                         href={item.url}
                         target="_blank"
-                        rel="noreferrer"
+                        rel="noopener noreferrer"
+                        onClick={(event) => {
+                          event.preventDefault();
+                          openExternal(item.url);
+                        }}
                       >
                         #{item.number} {item.title}
                       </a>

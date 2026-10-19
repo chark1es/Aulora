@@ -328,10 +328,21 @@ export default defineSchema({
     deletedAt: v.optional(v.number()),
     /** Set while the message is pinned; cleared on unpin. */
     pinnedAt: v.optional(v.number()),
+    /**
+     * A system event rendered as a quiet timeline line instead of a bubble.
+     * Absent on ordinary messages, so existing rows stay valid.
+     */
+    systemKind: v.optional(v.union(v.literal("pin"))),
+    /** Who triggered a system event (the pinner). */
+    systemActorId: v.optional(v.string()),
+    /** The message a system event refers to (the pinned message). */
+    systemTargetId: v.optional(v.id("messages")),
     /** Thread roots only: number of replies, bumped on each reply send. */
     replyCount: v.optional(v.number()),
     /** Thread roots only: creation time of the newest reply. */
     lastReplyAt: v.optional(v.number()),
+    /** Thread roots only: recent distinct repliers, newest first, capped. Absent on older threads. */
+    replyParticipantIds: v.optional(v.array(v.string())),
   })
     // Convex appends `_creationTime` to every index, so this is
     // (channelId, _creationTime): chronological messages per channel.

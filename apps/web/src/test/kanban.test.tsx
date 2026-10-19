@@ -6,7 +6,10 @@ import { getFunctionName } from "convex/server";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import type { Id } from "../../../../packages/convex/convex/_generated/dataModel";
 import { AddonsSettings } from "../components/admin/AddonsSettings";
+import { BoardSettings } from "../components/kanban/BoardSettings";
 import { CardDetail } from "../components/kanban/CardDetail";
+import { moveColumnBy, reorderColumns } from "../components/kanban/column-reorder";
+import { GithubBrowser } from "../components/kanban/GithubBrowser";
 import { KanbanView } from "../components/kanban/KanbanView";
 import type { Board, Card } from "../components/kanban/types";
 
@@ -400,6 +403,20 @@ describe("Kanban UI", () => {
     await user.click(start);
     expect(state.mutations.get("kanban:timer")).toHaveBeenCalledTimes(1);
   });
+  it("opens the GitHub token page in the browser instead of inside the board", async () => {
+    state.values.set("kanbanGithub:status", { connected: false });
+    const open = vi.spyOn(window, "open").mockReturnValue(null);
+    render(<GithubBrowser onClose={vi.fn()} />);
+    const link = screen.getByRole("link", { name: "Create a GitHub token" });
+    expect(link).toHaveAttribute("href", "https://github.com/settings/personal-access-tokens/new");
+    await userEvent.setup().click(link);
+    expect(open).toHaveBeenCalledWith(
+      "https://github.com/settings/personal-access-tokens/new",
+      "_blank",
+      "noopener,noreferrer",
+    );
+    open.mockRestore();
+  });
   it("uploads through the public Docker backend and attaches the finalized file", async () => {
     const user = userEvent.setup();
     const fetch = vi
@@ -440,5 +457,169 @@ describe("Kanban UI", () => {
       mime: "text/plain",
       kanbanBoardId: board.id,
     });
+  });
+});
+
+const PLAIN_COLUMNS = [
+  { id: "backlog", name: "Backlog" },
+  { id: "todo", name: "To do" },
+  { id: "progress", name: "In progress" },
+  { id: "done", name: "Done" },
+];
+
+describe("column reorder logic", () => {
+  it("moves a column before and after another", () => {
+    expect(reorderColumns(PLAIN_COLUMNS, "done", "backlog", "before")?.map((c) => c.id)).toEqual([
+      "done",
+      "backlog",
+      "todo",
+      "progress",
+    ]);
+    expect(reorderColumns(PLAIN_COLUMNS, "backlog", "progress", "after")?.map((c) => c.id)).toEqual(
+      ["todo", "progress", "backlog", "done"],
+    );
+  });
+
+  it("returns null when the drop would change nothing", () => {
+    expect(reorderColumns(PLAIN_COLUMNS, "todo", "todo", "before")).toBeNull();
+    // Already directly after the target: a no-op, so nothing is written.
+    expect(reorderColumns(PLAIN_COLUMNS, "todo", "backlog", "after")).toBeNull();
+    expect(reorderColumns(PLAIN_COLUMNS, "missing", "todo", "before")).toBeNull();
+    expect(reorderColumns(PLAIN_COLUMNS, "todo", "missing", "before")).toBeNull();
+  });
+
+  it("moves a column by one for the keyboard shortcut and stops at the edges", () => {
+    expect(moveColumnBy(PLAIN_COLUMNS, "backlog", 1)?.map((c) => c.id)).toEqual([
+      "todo",
+      "backlog",
+      "progress",
+      "done",
+    ]);
+    expect(moveColumnBy(PLAIN_COLUMNS, "done", -1)?.map((c) => c.id)).toEqual([
+      "backlog",
+      "todo",
+      "done",
+      "progress",
+    ]);
+    expect(moveColumnBy(PLAIN_COLUMNS, "backlog", -1)).toBeNull();
+    expect(moveColumnBy(PLAIN_COLUMNS, "done", 1)).toBeNull();
+  });
+});
+
+/** The column-name inputs of the open settings, in the order they are shown. */
+function columnNames(): string[] {
+  const inputs = document.querySelectorAll<HTMLInputElement>(
+    '[data-column-row] input[aria-label$=" name"]',
+  );
+  return [...inputs].map((input) => input.value);
+}
+
+function dataTransferStub() {
+  return {
+    effectAllowed: "none",
+    dropEffect: "none",
+    types: [] as string[],
+    setData: vi.fn<(type: string, value: string) => void>(),
+  };
+}
+
+describe("board settings columns", () => {
+  async function openSettings() {
+    const user = userEvent.setup();
+    render(<BoardSettings board={board} members={members} cards={[card]} onClose={vi.fn()} />);
+    // The dialog takes focus a frame after opening; wait so it does not steal ours.
+    await waitFor(() =>
+      expect(screen.getByRole("dialog")).toContainElement(document.activeElement as HTMLElement),
+    );
+    return user;
+  }
+
+  it("shows each column's card count and saves an inline rename", async () => {
+    const user = await openSettings();
+    const backlog = document.querySelector('[data-column-row="backlog"]') as HTMLElement;
+    const todo = document.querySelector('[data-column-row="todo"]') as HTMLElement;
+    expect(backlog.querySelector("[data-column-count]")).toHaveTextContent("0");
+    expect(todo.querySelector("[data-column-count]")).toHaveTextContent("1");
+    const name = screen.getByRole("textbox", { name: "Column 1 name" });
+    await user.clear(name);
+    await user.type(name, "Ideas");
+    await user.click(screen.getByRole("button", { name: "Save board" }));
+    await waitFor(() =>
+      expect(state.mutations.get("kanban:updateBoard")).toHaveBeenCalledWith(
+        expect.objectContaining({
+          columns: [
+            { id: "backlog", name: "Ideas" },
+            { id: "todo", name: "To do" },
+            { id: "progress", name: "In progress" },
+            { id: "done", name: "Done" },
+          ],
+        }),
+      ),
+    );
+  });
+
+  it("reorders columns by dragging a handle and saves the new order", async () => {
+    const user = await openSettings();
+    const dataTransfer = dataTransferStub();
+    const backlog = document.querySelector('[data-column-row="backlog"]') as HTMLElement;
+    fireEvent.dragStart(screen.getByRole("button", { name: "Reorder Backlog column" }), {
+      dataTransfer,
+    });
+    expect(backlog).toHaveAttribute("data-dragging", "true");
+    const todo = document.querySelector('[data-column-row="todo"]') as HTMLElement;
+    fireEvent.dragOver(todo, { dataTransfer });
+    expect(todo.querySelector("[data-column-drop]")).not.toBeNull();
+    fireEvent.drop(todo, { dataTransfer });
+    expect(columnNames()).toEqual(["To do", "Backlog", "In progress", "Done"]);
+    await user.click(screen.getByRole("button", { name: "Save board" }));
+    await waitFor(() =>
+      expect(state.mutations.get("kanban:updateBoard")).toHaveBeenCalledWith(
+        expect.objectContaining({
+          columns: [
+            { id: "todo", name: "To do" },
+            { id: "backlog", name: "Backlog" },
+            { id: "progress", name: "In progress" },
+            { id: "done", name: "Done" },
+          ],
+        }),
+      ),
+    );
+  });
+
+  it("reorders a column with the handle's keyboard shortcut", async () => {
+    const user = await openSettings();
+    const grip = screen.getByRole("button", { name: "Reorder Backlog column" });
+    grip.focus();
+    await user.keyboard(" ");
+    expect(grip).toHaveAttribute("aria-pressed", "true");
+    await user.keyboard("{ArrowDown}");
+    expect(columnNames()).toEqual(["To do", "Backlog", "In progress", "Done"]);
+    await user.keyboard(" ");
+    expect(grip).toHaveAttribute("aria-pressed", "false");
+    await user.click(screen.getByRole("button", { name: "Save board" }));
+    await waitFor(() =>
+      expect(state.mutations.get("kanban:updateBoard")).toHaveBeenCalledWith(
+        expect.objectContaining({
+          columns: [
+            { id: "todo", name: "To do" },
+            { id: "backlog", name: "Backlog" },
+            { id: "progress", name: "In progress" },
+            { id: "done", name: "Done" },
+          ],
+        }),
+      ),
+    );
+  });
+
+  it("restores the order when a keyboard grab is cancelled without closing the dialog", async () => {
+    const user = await openSettings();
+    const grip = screen.getByRole("button", { name: "Reorder Backlog column" });
+    grip.focus();
+    await user.keyboard(" ");
+    await user.keyboard("{ArrowDown}");
+    expect(columnNames()).toEqual(["To do", "Backlog", "In progress", "Done"]);
+    await user.keyboard("{Escape}");
+    expect(columnNames()).toEqual(["Backlog", "To do", "In progress", "Done"]);
+    expect(screen.getByRole("dialog", { name: "Board settings" })).toBeInTheDocument();
   });
 });

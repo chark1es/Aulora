@@ -1,9 +1,9 @@
-import { hasPermission, Permission } from "@aulora/core";
+import { hasPermission, Permission, withReplyParticipant } from "@aulora/core";
 import { paginationOptsValidator } from "convex/server";
 import { ConvexError, v } from "convex/values";
 import { internal } from "./_generated/api";
 import type { Doc, Id } from "./_generated/dataModel";
-import { mutation, query } from "./_generated/server";
+import { type MutationCtx, mutation, query } from "./_generated/server";
 import { writeAudit } from "./lib/audit";
 import { requireAuth } from "./lib/auth";
 import { assertMayParticipate } from "./lib/bans";
@@ -49,7 +49,12 @@ interface MessageView {
   readonly pinnedAt: number | null;
   readonly replyCount: number;
   readonly lastReplyAt: number | null;
+  readonly replyParticipantIds?: string[];
   readonly createdAt: number;
+  /** Present only on system events (e.g. a pin). */
+  readonly systemKind?: "pin";
+  readonly systemActorId?: string;
+  readonly systemTargetId?: Id<"messages">;
 }
 
 async function toMessage(message: Doc<"messages">): Promise<MessageView> {
@@ -70,6 +75,12 @@ async function toMessage(message: Doc<"messages">): Promise<MessageView> {
     replyCount: message.replyCount ?? 0,
     lastReplyAt: message.lastReplyAt ?? null,
     createdAt: message._creationTime,
+    ...(message.replyParticipantIds !== undefined
+      ? { replyParticipantIds: message.replyParticipantIds }
+      : {}),
+    ...(message.systemKind !== undefined ? { systemKind: message.systemKind } : {}),
+    ...(message.systemActorId !== undefined ? { systemActorId: message.systemActorId } : {}),
+    ...(message.systemTargetId !== undefined ? { systemTargetId: message.systemTargetId } : {}),
   };
 }
 
@@ -220,6 +231,7 @@ export const send = mutation({
       await ctx.db.patch(threadRoot._id, {
         replyCount: (threadRoot.replyCount ?? 0) + 1,
         lastReplyAt: reply?._creationTime ?? Date.now(),
+        replyParticipantIds: withReplyParticipant(threadRoot.replyParticipantIds, access.userId),
       });
     }
     await emitBotEvent(ctx, {
@@ -398,6 +410,30 @@ export const remove = mutation({
   },
 });
 
+/**
+ * Posts the quiet "<actor> pinned a message" line the timeline renders for a
+ * pin. The body is sealed empty: the client renders the event from the system
+ * fields, never from message text, so nothing about the pinned message leaks.
+ */
+async function insertPinNotice(
+  ctx: MutationCtx,
+  channelId: Id<"channels">,
+  actorId: string,
+  targetId: Id<"messages">,
+): Promise<void> {
+  const ciphertext = await sealString(messageContext(channelId), "");
+  await ctx.db.insert("messages", {
+    channelId,
+    authorId: actorId,
+    ciphertext,
+    attachmentIds: [],
+    mentionUserIds: [],
+    systemKind: "pin",
+    systemActorId: actorId,
+    systemTargetId: targetId,
+  });
+}
+
 /** Pins a message. Requires `PinMessages`. */
 export const pin = mutation({
   args: { messageId: v.id("messages") },
@@ -406,9 +442,10 @@ export const pin = mutation({
     if (message === null) {
       throw new ConvexError("Message not found");
     }
-    await requireChannelAccess(ctx, message.channelId, Permission.PinMessages);
+    const access = await requireChannelAccess(ctx, message.channelId, Permission.PinMessages);
     if (message.pinnedAt === undefined) {
       await ctx.db.patch(args.messageId, { pinnedAt: Date.now() });
+      await insertPinNotice(ctx, message.channelId, access.userId, args.messageId);
     }
     return null;
   },

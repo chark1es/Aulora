@@ -9,6 +9,7 @@
 import { type Overwrite, Permission } from "../permissions.js";
 import { createMockHub, type MockPortState } from "./mock-hub.js";
 import type { ChatPort, ChatSubscriptions, StoredFileView } from "./port.js";
+import { withReplyParticipant } from "./timeline.js";
 
 export type { MockPortState } from "./mock-hub.js";
 
@@ -90,6 +91,7 @@ export function createMockPort(options: { readonly now?: () => number } = {}): M
           ...root,
           replyCount: (root.replyCount ?? 0) + 1,
           lastReplyAt: createdAt,
+          replyParticipantIds: withReplyParticipant(root.replyParticipantIds, "me"),
         });
       }
     }
@@ -339,7 +341,29 @@ export function createMockPort(options: { readonly now?: () => number } = {}): M
       record("pinMessage", args);
       const message = state.messages.get(args.messageId);
       if (message !== undefined) {
+        const firstPin = message.pinnedAt === null;
         state.messages.set(args.messageId, { ...message, pinnedAt: Date.now() });
+        // Mirror the server: a first pin posts the quiet timeline line; a
+        // repeated pin or an unpin (below) does not.
+        if (firstPin) {
+          const noticeId = nextId("pin-notice");
+          state.messages.set(noticeId, {
+            id: noticeId,
+            channelId: message.channelId,
+            authorId: "me",
+            body: "",
+            threadRootId: null,
+            attachmentIds: [],
+            mentionUserIds: [],
+            editedAt: null,
+            deletedAt: null,
+            pinnedAt: null,
+            createdAt: Date.now(),
+            systemKind: "pin",
+            systemActorId: "me",
+            systemTargetId: message.id,
+          });
+        }
         hub.emitMessages(message.channelId);
       }
       return Promise.resolve(null);
