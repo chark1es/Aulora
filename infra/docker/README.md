@@ -151,6 +151,73 @@ an hour. Behind NAT, or on a LAN without a public address, set `rtc.node_ip` in
 bitrate (1 to 3.5 Mbps) times the number of viewers in outbound bandwidth; a
 1 Gbps host serves a few hundred viewers.
 
+## Bots (optional)
+
+Bots are small TypeScript or Python programs that act like members: they call
+the same Convex functions with their own identity and can only do what an admin
+granted them. Users with `ManageBots` create them in **Workspace settings →
+Bots**. The runner is off by default, behind the `bots` profile:
+
+```bash
+docker compose --profile bots up -d --build
+docker compose logs -f bot-runner
+```
+
+The runner is a supervisor, not a sandbox daemon: it starts one process per
+enabled bot inside the `bot-runner` container, writes each bot's files to a
+tmpfs under `/work/<botId>`, gives it its own uid/gid and resource limits, and
+streams its output back to Convex. Bots reach Convex over the dedicated `bots`
+network, which only `convex-backend` also joins, so a bot has no route to
+Postgres, MinIO or the web container.
+
+> **Treat `ManageBots` like code execution on the server.** The isolation is
+> container-level, not a VM: bots run as separate users in one container, share
+> its kernel, and can use the network (that is how they call Convex). A kernel
+> or runtime escape is in scope for a malicious bot. Grant `ManageBots` only to
+> people you would let run code on the host.
+
+All permissions start off. The runner only ever sees the same API a person
+does; a bot's identity (`bot_<id>`) is a real member row, so mentions, threads
+and permission checks work unchanged. The `bot-runner` container holds the
+shared `BOT_RUNNER_TOKEN`, which is never passed to a bot process.
+
+Enable it on a stack that is already running. `setup` has to run first because
+it generates the secrets the runner needs, and Compose reads `.env` when it
+starts a service, so bring the runner up after `setup`:
+
+```bash
+docker compose run --rm setup                 # generates BOT_RUNNER_TOKEN + the JWT keys
+docker compose --profile bots up -d --build   # starts the runner with the token
+```
+
+`setup` generates `BOT_RUNNER_TOKEN` and an ES256 key pair, sets them on the
+deployment (the public key is read by `auth.config.ts` at deploy time), and
+persists them to `.env`. Until then bots are dormant and the UI says the runner
+is offline. A runner started before `setup` has no token and exits; run the
+second command again afterwards.
+
+The runner container gets **only** `BOT_RUNNER_TOKEN` from the environment. It
+deliberately has no `env_file` and no host mounts, because every bot shares that
+container (as its own user) and could read anything mounted into it.
+
+On Coolify the `bots` profile is not started (Coolify skips profiled services).
+Set `BOT_RUNNER_TOKEN` yourself in the Coolify environment (any random string of
+48 or more characters; `setup` then uses it instead of generating one) and run
+the runner as its own resource or from the host with `--profile bots`.
+
+### Bot environment knobs
+
+| Variable | Default | Purpose |
+| --- | --- | --- |
+| `BOT_RUNNER_MAX_BOTS` | `10` | Concurrent bot processes |
+| `BOT_RUNNER_BOT_MEMORY_MB` | `256` | Per-bot memory cap: V8 heap for TypeScript, address space x4 for Python |
+| `BOT_RUNNER_TOKEN` | generated | Shared runner secret |
+| `BOT_JWT_PRIVATE_JWK_B64` / `BOT_JWT_PUBLIC_JWK_B64` | generated | ES256 key pair, base64url JWK |
+
+The container's `mem_limit` (4g), `cpus` (4) and `pids_limit` (1024) are the
+backstop; raise `mem_limit` if you raise `BOT_RUNNER_MAX_BOTS` much above the
+default, since each bot's memory counts against it.
+
 ## Object storage (MinIO)
 
 MinIO discontinued its community/open-source edition and removed its Docker Hub

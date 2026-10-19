@@ -11,6 +11,7 @@ import {
 } from "../../lib/workspace-admin";
 import { AddonsSettings } from "./AddonsSettings";
 import { AuditLogViewer } from "./AuditLogViewer";
+import { BotsSettings } from "./bots/BotsSettings";
 import type { Callback } from "./callbacks";
 import { InviteManager } from "./InviteManager";
 import { InstanceAdminPanel } from "./instance/InstanceAdminPanel";
@@ -48,6 +49,7 @@ type TabId =
   | "audit"
   | "workspace"
   | "addons"
+  | "bots"
   | "instance";
 
 type AdminPage = RolePage | ScopePage;
@@ -70,6 +72,7 @@ const TAB_LABELS = new Map<TabId, string>([
   ["audit", "Audit log"],
   ["workspace", "Workspace"],
   ["addons", "Addons"],
+  ["bots", "Bots"],
   ["instance", "Instance"],
 ]);
 
@@ -106,6 +109,9 @@ function buildTabs(
   if (permission("ManageWorkspace")) {
     tabs.push({ id: "workspace", label: "Workspace" });
     tabs.push({ id: "addons", label: "Addons" });
+  }
+  if (permission("ManageBots")) {
+    tabs.push({ id: "bots", label: "Bots" });
   }
   if (isOwner) {
     tabs.push({ id: "instance", label: "Instance" });
@@ -294,6 +300,7 @@ function AdminPanelBody(props: AdminPanelBodyProps) {
     props.nav.tab === "audit" ||
     props.nav.tab === "workspace" ||
     props.nav.tab === "addons" ||
+    props.nav.tab === "bots" ||
     props.nav.tab === "instance"
   ) {
     return <AdminPanelSystemBody {...props} />;
@@ -387,6 +394,7 @@ function AdminPanelSystemBody(props: AdminPanelBodyProps) {
       {nav.tab === "addons" && (
         <AddonsSettings canManageWorkspace={permission("ManageWorkspace")} />
       )}
+      {nav.tab === "bots" && <BotsSettings canManageBots={permission("ManageBots")} />}
       {nav.tab === "instance" && <InstanceAdminPanel canManage={viewer.isOwner} variant="inline" />}
     </>
   );

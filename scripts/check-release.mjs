@@ -54,7 +54,11 @@ const tauriConfig = JSON.parse(
 );
 const version = validateVersion(tauriConfig.version);
 const license = "PolyForm-Noncommercial-1.0.0";
-const manifests = ["package.json", "infra/push-relay/package.json"];
+const manifests = [
+  "package.json",
+  "infra/push-relay/package.json",
+  "infra/bot-runner/package.json",
+];
 for (const parent of ["apps", "packages"]) {
   for (const entry of readdirSync(resolve(root, parent), { withFileTypes: true })) {
     if (entry.isDirectory()) manifests.push(`${parent}/${entry.name}/package.json`);
@@ -72,6 +76,12 @@ if (Number(version.split(".")[0]) >= 1) {
       `${path}: version differs from ${version}`,
       JSON.parse(readFileSync(path, "utf8")).version === version,
     );
+  check(
+    "Python SDK version differs",
+    readFileSync(resolve(root, "packages/bot-sdk-python/pyproject.toml"), "utf8").includes(
+      `version = "${version}"`,
+    ),
+  );
   const mobileConfig = JSON.parse(readFileSync(resolve(root, "apps/mobile/app.json"), "utf8"));
   check("Mobile version differs", mobileConfig.expo.version === version);
   check(

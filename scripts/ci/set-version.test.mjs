@@ -12,6 +12,9 @@ const files = [
   "package.json",
   "bun.lock",
   "infra/push-relay/package.json",
+  "infra/bot-runner/package.json",
+  "packages/bot-sdk-python/package.json",
+  "packages/bot-sdk-python/pyproject.toml",
   "apps/desktop/package.json",
   "apps/docs/package.json",
   "apps/mobile/package.json",
@@ -66,9 +69,16 @@ test("version preparation rejects prereleases without edits and synchronizes eve
       "versionName (System.getenv('RELEASE_VERSION') ?: \"1.2.3\")",
     );
     expect(read("apps/web/.env.example")).toContain("AULORA_VERSION=1.2.3");
+    expect(read("packages/bot-sdk-python/pyproject.toml")).toContain('version = "1.2.3"');
     const split = (lock) => lock.slice(lock.indexOf('  "packages":'));
     expect(split(read("bun.lock"))).toBe(split(before));
-    for (const file of ["package.json", "apps/web/package.json", "packages/core/package.json"]) {
+    for (const file of [
+      "package.json",
+      "apps/web/package.json",
+      "packages/core/package.json",
+      "infra/bot-runner/package.json",
+      "packages/bot-sdk-python/package.json",
+    ]) {
       expect(JSON.parse(read(file)).version).toBe("1.2.3");
     }
   } finally {

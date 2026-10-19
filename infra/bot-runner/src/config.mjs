@@ -1,0 +1,75 @@
+// Bot runner configuration, read from the environment.
+//
+// Every value has a safe default except the runner token. Base URLs are parsed
+// and normalized here so `api.mjs` is the only module that builds request URLs
+// (and does so from validated config, never from a caller-supplied string).
+//
+// `BOT_RUNNER_TOKEN` must never reach a bot process; only `config.mjs` and the
+// API client ever hold it.
+
+function nonEmpty(value) {
+  return typeof value === "string" && value.length > 0 ? value : undefined;
+}
+
+function positiveInt(value, fallback) {
+  const parsed = Number.parseInt(nonEmpty(value) ?? "", 10);
+  return Number.isInteger(parsed) && parsed > 0 ? parsed : fallback;
+}
+
+/** Parses and canonicalizes a base URL, rejecting anything but http(s). */
+export function normalizeBaseUrl(value, fallback) {
+  const raw = (nonEmpty(value) ?? fallback).replace(/\/+$/, "");
+  let url;
+  try {
+    url = new URL(raw);
+  } catch {
+    throw new Error(`invalid URL: ${raw}`);
+  }
+  if (url.protocol !== "http:" && url.protocol !== "https:") {
+    throw new Error(`unsupported URL scheme: ${url.protocol}`);
+  }
+  return url.origin + url.pathname.replace(/\/+$/, "");
+}
+
+export function loadConfig(env = process.env) {
+  // Environment only: bots share this container, so the token must never come
+  // from a file mount a bot uid could also read.
+  const runnerToken = nonEmpty(env.BOT_RUNNER_TOKEN);
+  if (typeof runnerToken !== "string" || runnerToken.length === 0) {
+    throw new Error("BOT_RUNNER_TOKEN is required");
+  }
+  const workDir = nonEmpty(env.WORK_DIR) ?? "/work";
+  if (!workDir.startsWith("/")) {
+    throw new Error("WORK_DIR must be an absolute path");
+  }
+  return {
+    runnerToken,
+    convexHttpUrl: normalizeBaseUrl(env.CONVEX_HTTP_URL, "http://convex-backend:3211"),
+    convexSelfHostedUrl: normalizeBaseUrl(env.CONVEX_SELF_HOSTED_URL, "http://convex-backend:3210"),
+    workDir,
+    maxBots: positiveInt(env.BOT_RUNNER_MAX_BOTS, 10),
+    botMemoryMb: positiveInt(env.BOT_RUNNER_BOT_MEMORY_MB, 256),
+    botNproc: positiveInt(env.BOT_RUNNER_BOT_NPROC, 256),
+    botFileSizeBytes: positiveInt(env.BOT_RUNNER_BOT_FSIZE_BYTES, 64 * 1024 * 1024),
+    uidBase: positiveInt(env.BOT_RUNNER_UID_BASE, 20000),
+    pollIntervalMs: positiveInt(env.BOT_RUNNER_POLL_INTERVAL_MS, 3000),
+    logFlushIntervalMs: positiveInt(env.BOT_RUNNER_LOG_FLUSH_MS, 1000),
+    logBatchLines: positiveInt(env.BOT_RUNNER_LOG_BATCH_LINES, 200),
+    logLineBytes: positiveInt(env.BOT_RUNNER_LOG_LINE_BYTES, 4096),
+    dependencyTimeoutMs: positiveInt(env.BOT_RUNNER_DEP_TIMEOUT_MS, 120000),
+    backoffBaseMs: positiveInt(env.BOT_RUNNER_BACKOFF_BASE_MS, 1000),
+    backoffMaxMs: positiveInt(env.BOT_RUNNER_BACKOFF_MAX_MS, 60000),
+    uptimeResetMs: positiveInt(env.BOT_RUNNER_UPTIME_RESET_MS, 60000),
+    shutdownGraceMs: positiveInt(env.BOT_RUNNER_SHUTDOWN_GRACE_MS, 5000),
+    healthFile: nonEmpty(env.BOT_RUNNER_HEALTH_FILE) ?? "/tmp/bot-runner-ready",
+    botSdkTsDir: nonEmpty(env.BOT_SDK_TS_DIR) ?? "/opt/aulora/bot-sdk",
+    pythonBin: nonEmpty(env.BOT_RUNNER_PYTHON) ?? "/opt/venv/bin/python",
+    pipBin: nonEmpty(env.BOT_RUNNER_PIP) ?? "/opt/venv/bin/pip",
+    nodeBin: nonEmpty(env.BOT_RUNNER_NODE) ?? process.execPath,
+    tsxBin: nonEmpty(env.BOT_RUNNER_TSX) ?? "tsx",
+    npmBin: nonEmpty(env.BOT_RUNNER_NPM) ?? "npm",
+    childPath: nonEmpty(env.BOT_RUNNER_PATH) ?? "/opt/venv/bin:/usr/local/bin:/usr/bin:/bin",
+    prlimitBin: nonEmpty(env.BOT_RUNNER_PRLIMIT) ?? "prlimit",
+    lang: nonEmpty(env.BOT_RUNNER_LANG) ?? "C.UTF-8",
+  };
+}

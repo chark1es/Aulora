@@ -3,6 +3,7 @@ import { ConvexError, v } from "convex/values";
 import type { Id } from "./_generated/dataModel";
 import { mutation, query } from "./_generated/server";
 import { assertMayParticipate } from "./lib/bans";
+import { emitBotEvent } from "./lib/botEvents";
 import { requireChannelAccess } from "./lib/channels";
 import { openContent } from "./lib/sealed";
 import { sealString } from "./lib/sse";
@@ -37,11 +38,25 @@ export const toggle = mutation({
       const emoji = await openContent(emojiContext(args.messageId), reaction.emojiCiphertext);
       if (emoji === args.emoji) {
         await ctx.db.delete(reaction._id);
+        await emitBotEvent(ctx, {
+          type: "reaction.removed",
+          channelId: message.channelId,
+          messageId: args.messageId,
+          userId: access.userId,
+          emojiCiphertext: reaction.emojiCiphertext,
+        });
         return { added: false };
       }
     }
     const emojiCiphertext = await sealString(emojiContext(args.messageId), args.emoji);
     await ctx.db.insert("reactions", {
+      messageId: args.messageId,
+      userId: access.userId,
+      emojiCiphertext,
+    });
+    await emitBotEvent(ctx, {
+      type: "reaction.added",
+      channelId: message.channelId,
       messageId: args.messageId,
       userId: access.userId,
       emojiCiphertext,

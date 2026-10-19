@@ -35,6 +35,7 @@ const GROUPS = [
       { file: "user-guide.md", label: "User guide" },
       { file: "kanban.md", label: "Kanban" },
       { file: "notes.md", label: "Notes" },
+      { file: "bots.md", label: "Bots" },
     ],
   },
   {

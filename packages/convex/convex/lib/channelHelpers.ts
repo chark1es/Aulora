@@ -1,4 +1,10 @@
-import { EVERYONE_ROLE_ID, hasPermission, Permission, resolvePermissions } from "@aulora/core";
+import {
+  EVERYONE_ROLE_ID,
+  hasPermission,
+  isBotUserId,
+  Permission,
+  resolvePermissions,
+} from "@aulora/core";
 import { ConvexError } from "convex/values";
 import type { Doc, Id } from "../_generated/dataModel";
 import type { MutationCtx } from "../_generated/server";
@@ -275,6 +281,11 @@ export async function resolveVisibleMemberIds(
   const categoryOverrides = await categoryOverridesFor(ctx, channel);
   const visible: string[] = [];
   for (const member of members) {
+    // Bots do not inherit `@everyone`, so the generic resolution below would
+    // wrongly count them; they are not an audience for "who can view" either.
+    if (isBotUserId(member.userId)) {
+      continue;
+    }
     const permissions = resolvePermissions({
       actor: {
         userId: member.userId,
