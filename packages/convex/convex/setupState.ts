@@ -1,6 +1,7 @@
 import { EVERYONE_ROLE_ID, Permission } from "@aulora/core";
 import { ConvexError, v } from "convex/values";
 import { internalMutation, internalQuery } from "./_generated/server";
+import { addMemberRoleLink } from "./lib/memberRoles";
 
 /** Baseline permissions granted to `@everyone`. */
 const EVERYONE_PERMISSIONS: bigint =
@@ -137,6 +138,7 @@ export const finalize = internalMutation({
         roleIds: [...existingMember.roleIds, EVERYONE_ROLE_ID],
       });
     }
+    await addMemberRoleLink(ctx, args.ownerId, EVERYONE_ROLE_ID);
 
     return { serverId, roleId, ownerId: args.ownerId };
   },

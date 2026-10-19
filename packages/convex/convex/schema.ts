@@ -257,6 +257,22 @@ export default defineSchema({
     timeoutUntil: v.optional(v.number()),
   }).index("by_user", ["userId"]),
 
+  /**
+   * Reverse index for member↔role membership. `members.roleIds` stays
+   * authoritative for reads; this table is maintained alongside it (dual-write)
+   * so a role mutation can find just the members holding a role instead of
+   * collecting every member. `roleId` stores the same `role.key ?? role._id`
+   * reference used in `members.roleIds`. Populated by
+   * `maintenance.backfillMemberRoles` for rows that predate it.
+   */
+  memberRoles: defineTable({
+    roleId: v.string(),
+    userId: v.string(),
+    joinedAt: v.number(),
+  })
+    .index("by_role", ["roleId"])
+    .index("by_user_role", ["userId", "roleId"]),
+
   roles: defineTable({
     /** Stable key such as `@everyone`; `_id` is used when absent. */
     key: v.optional(v.string()),

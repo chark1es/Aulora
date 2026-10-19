@@ -2,6 +2,7 @@ import { EVERYONE_ROLE_ID } from "@aulora/core";
 import type { MutationCtx } from "../_generated/server";
 import { assertNotBanned } from "./bans";
 import { adjustMemberCount } from "./memberCount";
+import { addMemberRoleLink } from "./memberRoles";
 
 /**
  * Makes `userId` a member carrying `@everyone`. Refuses a banned account.
@@ -22,6 +23,7 @@ export async function admitMember(ctx: MutationCtx, userId: string): Promise<boo
     roleIds: [EVERYONE_ROLE_ID],
     joinedAt: Date.now(),
   });
+  await addMemberRoleLink(ctx, userId, EVERYONE_ROLE_ID);
   await adjustMemberCount(ctx, 1);
   return true;
 }

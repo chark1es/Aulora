@@ -1,9 +1,12 @@
 import { v } from "convex/values";
 import { internal } from "./_generated/api";
 import { internalMutation } from "./_generated/server";
+import { syncMemberRoles } from "./lib/memberRoles";
 
 /** Members processed per backfill page before rescheduling. */
 const MEMBER_BACKFILL_BATCH = 500;
+/** Members whose role links are synced per backfill page. */
+const MEMBER_ROLE_BACKFILL_BATCH = 200;
 
 /**
  * Idempotent migration: recount `members` and store the total on the singleton
@@ -34,6 +37,30 @@ export const backfillMemberCount = internalMutation({
       return null;
     }
     await ctx.db.patch(server._id, { memberCount: counted });
+    return null;
+  },
+});
+
+/**
+ * Idempotent migration: seeds the `memberRoles` reverse index from
+ * `members.roleIds`, which stays authoritative for reads. Safe to re-run; each
+ * run rewrites the links for the members it pages over. Reschedules while more
+ * members remain.
+ */
+export const backfillMemberRoles = internalMutation({
+  args: { cursor: v.optional(v.union(v.string(), v.null())) },
+  handler: async (ctx, args) => {
+    const page = await ctx.db
+      .query("members")
+      .paginate({ numItems: MEMBER_ROLE_BACKFILL_BATCH, cursor: args.cursor ?? null });
+    for (const member of page.page) {
+      await syncMemberRoles(ctx, member.userId, member.roleIds, member.joinedAt);
+    }
+    if (!page.isDone) {
+      await ctx.scheduler.runAfter(0, internal.maintenance.backfillMemberRoles, {
+        cursor: page.continueCursor,
+      });
+    }
     return null;
   },
 });

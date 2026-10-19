@@ -75,6 +75,7 @@ import type * as lib_licenseActivity from "../lib/licenseActivity.js";
 import type * as lib_licenseAuthority from "../lib/licenseAuthority.js";
 import type * as lib_licenseProof from "../lib/licenseProof.js";
 import type * as lib_memberCount from "../lib/memberCount.js";
+import type * as lib_memberRoles from "../lib/memberRoles.js";
 import type * as lib_membership from "../lib/membership.js";
 import type * as lib_messageRecipients from "../lib/messageRecipients.js";
 import type * as lib_oidc from "../lib/oidc.js";
@@ -185,6 +186,7 @@ declare const fullApi: ApiFromModules<{
   "lib/licenseAuthority": typeof lib_licenseAuthority;
   "lib/licenseProof": typeof lib_licenseProof;
   "lib/memberCount": typeof lib_memberCount;
+  "lib/memberRoles": typeof lib_memberRoles;
   "lib/membership": typeof lib_membership;
   "lib/messageRecipients": typeof lib_messageRecipients;
   "lib/oidc": typeof lib_oidc;

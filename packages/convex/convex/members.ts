@@ -10,6 +10,12 @@ import { pruneExpiredBans } from "./lib/bans";
 import { assertNotBot } from "./lib/botAuth";
 import { adjustMemberCount } from "./lib/memberCount";
 import {
+  addMemberRoleLink,
+  deleteMemberRolesForUser,
+  removeMemberRoleLink,
+  syncMemberRoles,
+} from "./lib/memberRoles";
+import {
   requireCanGrant,
   requireMember,
   requireModerator,
@@ -212,14 +218,17 @@ export const attachRolesFromAuth = internalMutation({
     }
 
     if (existing === null) {
+      const joinedAt = Date.now();
       await ctx.db.insert("members", {
         userId: args.userId,
         roleIds: [...roleIds],
-        joinedAt: Date.now(),
+        joinedAt,
       });
       await adjustMemberCount(ctx, 1);
+      await syncMemberRoles(ctx, args.userId, [...roleIds], joinedAt);
     } else {
       await ctx.db.patch(existing._id, { roleIds: [...roleIds] });
+      await syncMemberRoles(ctx, args.userId, [...roleIds], existing.joinedAt);
     }
     return null;
   },
@@ -332,6 +341,7 @@ export const assignRole = mutation({
       return null;
     }
     await ctx.db.patch(member._id, { roleIds: [...member.roleIds, roleRef] });
+    await addMemberRoleLink(ctx, member.userId, roleRef, member.joinedAt);
     await writeAudit(ctx, {
       actorId: userId,
       action: "member.role.add",
@@ -364,6 +374,7 @@ export const removeRole = mutation({
     }
     const nextRoleIds = member.roleIds.filter((roleId) => roleId !== roleRef);
     await ctx.db.patch(member._id, { roleIds: nextRoleIds });
+    await removeMemberRoleLink(ctx, member.userId, roleRef);
     await writeAudit(ctx, {
       actorId: userId,
       action: "member.role.remove",
@@ -424,6 +435,7 @@ export const kick = mutation({
     const member = await requireMemberRow(ctx, args.userId);
     await detachFromChannels(ctx, args.userId);
     await ctx.db.delete(member._id);
+    await deleteMemberRolesForUser(ctx, args.userId);
     await adjustMemberCount(ctx, -1);
     await writeAudit(ctx, { actorId: userId, action: "member.kick", targetId: args.userId });
     return null;
@@ -474,6 +486,7 @@ export const ban = mutation({
     }
     await detachFromChannels(ctx, args.userId);
     await ctx.db.delete(member._id);
+    await deleteMemberRolesForUser(ctx, args.userId);
     await adjustMemberCount(ctx, -1);
     await writeAudit(ctx, {
       actorId: userId,
