@@ -30,7 +30,7 @@ async function main() {
   process.on("SIGINT", () => void shutdown("SIGINT"));
 
   console.log(
-    `bot runner: supervising up to ${config.maxBots} bots every ${config.pollIntervalMs}ms`,
+    `bot runner: supervising up to ${config.maxBots} bots (poll ${config.pollIntervalMs}ms active, ${config.pollIdleIntervalMs}ms idle)`,
   );
   runner.start();
 }

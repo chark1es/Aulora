@@ -16,6 +16,24 @@ function positiveInt(value, fallback) {
   return Number.isInteger(parsed) && parsed > 0 ? parsed : fallback;
 }
 
+function nonNegativeNumber(value, fallback) {
+  const parsed = Number.parseFloat(nonEmpty(value) ?? "");
+  return Number.isFinite(parsed) && parsed >= 0 ? parsed : fallback;
+}
+
+/**
+ * Poll delay for the supervisor. With bots to supervise, poll on the active
+ * cadence; with nothing tracked (the desired set is empty), fall back to the
+ * idle cadence so an empty deployment is not a 3 s request stream. A jitter
+ * fraction spreads deployments so their polls do not align. `random` is
+ * injectable so tests are deterministic.
+ */
+export function pollDelayMs({ active, activeMs, idleMs, jitter = 0.2, random = Math.random }) {
+  const base = active ? activeMs : idleMs;
+  const spread = base * jitter;
+  return Math.max(1, Math.round(base - spread + random() * spread * 2));
+}
+
 /** Parses and canonicalizes a base URL, rejecting anything but http(s). */
 export function normalizeBaseUrl(value, fallback) {
   const raw = (nonEmpty(value) ?? fallback).replace(/\/+$/, "");
@@ -53,6 +71,10 @@ export function loadConfig(env = process.env) {
     botFileSizeBytes: positiveInt(env.BOT_RUNNER_BOT_FSIZE_BYTES, 64 * 1024 * 1024),
     uidBase: positiveInt(env.BOT_RUNNER_UID_BASE, 20000),
     pollIntervalMs: positiveInt(env.BOT_RUNNER_POLL_INTERVAL_MS, 3000),
+    // Cadence while no bot is tracked (idle deployment). 30-60 s keeps an empty
+    // runner cheap without a noticeable start latency for a new bot.
+    pollIdleIntervalMs: positiveInt(env.BOT_RUNNER_POLL_IDLE_MS, 45000),
+    pollJitter: nonNegativeNumber(env.BOT_RUNNER_POLL_JITTER, 0.2),
     logFlushIntervalMs: positiveInt(env.BOT_RUNNER_LOG_FLUSH_MS, 1000),
     logBatchLines: positiveInt(env.BOT_RUNNER_LOG_BATCH_LINES, 200),
     logLineBytes: positiveInt(env.BOT_RUNNER_LOG_LINE_BYTES, 4096),

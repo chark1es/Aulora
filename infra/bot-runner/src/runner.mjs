@@ -4,6 +4,7 @@
 // production `start()` runs it every `BOT_RUNNER_POLL_INTERVAL_MS`.
 
 import { writeFileSync } from "node:fs";
+import { pollDelayMs } from "./config.mjs";
 import { createLogShipper } from "./logs.mjs";
 import { createReconciler } from "./reconciler.mjs";
 
@@ -38,11 +39,22 @@ export function createRunner({ config, api, logger = console, now = Date.now }) 
     touchHealth();
   }
 
+  // A tracked bot (running, launching or waiting on a restart backoff) keeps
+  // the active cadence so a relaunch is not delayed by the idle interval.
+  function nextDelay() {
+    return pollDelayMs({
+      active: reconciler.snapshot().length > 0,
+      activeMs: config.pollIntervalMs,
+      idleMs: config.pollIdleIntervalMs,
+      jitter: config.pollJitter,
+    });
+  }
+
   function start() {
     if (timer !== null || stopped) return;
     const loop = async () => {
       await tick();
-      if (!stopped) timer = setTimeout(loop, config.pollIntervalMs);
+      if (!stopped) timer = setTimeout(loop, nextDelay());
     };
     void loop();
   }

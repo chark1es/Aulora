@@ -36,6 +36,7 @@ async function readJson(request) {
 }
 
 function desiredResponse(state) {
+  state.desiredCalls += 1;
   return [200, { bots: state.desired }];
 }
 
@@ -88,6 +89,7 @@ function route(url, body, state) {
 export async function createFakeConvex() {
   const state = {
     desired: [],
+    desiredCalls: 0,
     bundles: new Map(),
     credentials: new Map(),
     credentialCalls: new Map(),
