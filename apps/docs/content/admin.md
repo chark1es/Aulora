@@ -99,8 +99,11 @@ instance-level concerns live:
   refused while no other provider is configured and enabled, so the instance can
   never be locked out, and first-run owner creation is never blocked by it. See
   [Disabling email & password sign-in](self-hosting.md#disabling-email-password-sign-in).
-- **Environment** — every environment variable the app reads, with where each
-  value comes from (environment, overridden here, or unset). Deployment values
+- **Environment** — every environment variable the app reads, in a table with
+  where each value comes from (environment, overridden here, or unset). A lock
+  icon marks a row that cannot be changed from here; hover it for the reason.
+  Each provider's client id row shows the redirect URL to register with that
+  provider (built from `SITE_URL`). Deployment values
   are never returned, secret or not. The owner can override a curated set, reset
   it back to the deployment value, and add a custom OIDC provider without
   editing `.env`. Every save is validated, rate-limited and audited with key

@@ -14,6 +14,8 @@ function resetEnv(): void {
   delete process.env.OIDC_DISPLAY_NAME;
   delete process.env.AULORA_ALLOW_UI_ENV_OVERRIDES;
   delete process.env.AULORA_ENCRYPTION_ENABLED;
+  delete process.env.SITE_URL;
+  delete process.env.CONVEX_SITE_URL;
 }
 
 afterEach(resetEnv);
@@ -159,6 +161,28 @@ describe("envOverrides storage", () => {
     expect(secretRow?.source).toBe("environment");
     expect(secretRow?.isSet).toBe(true);
     expect(secretRow?.value).toBeUndefined();
+  });
+});
+
+describe("envOverrides redirect URLs", () => {
+  it("gives each provider client id the callback URL to register", async () => {
+    const { asOwner } = await ownerTest();
+    process.env.SITE_URL = "https://chat.example.com/";
+    const list = await asOwner.query(api.envOverrides.list, {});
+    expect(list.siteUrl).toBe("https://chat.example.com");
+    const urls = Object.fromEntries(list.variables.map((entry) => [entry.key, entry.redirectUrl]));
+    expect(urls.GITHUB_CLIENT_ID).toBe("https://chat.example.com/api/auth/callback/github");
+    expect(urls.GOOGLE_CLIENT_ID).toBe("https://chat.example.com/api/auth/callback/google");
+    expect(urls.OIDC_CLIENT_ID).toBe("https://chat.example.com/api/auth/oauth2/callback/oidc");
+    expect(urls.GITHUB_CLIENT_SECRET).toBeNull();
+    expect(urls.OIDC_ISSUER).toBeNull();
+  });
+
+  it("reports no redirect URL when the site origin is unknown", async () => {
+    const { asOwner } = await ownerTest();
+    const list = await asOwner.query(api.envOverrides.list, {});
+    expect(list.siteUrl).toBeNull();
+    expect(list.variables.every((entry) => entry.redirectUrl === null)).toBe(true);
   });
 });
 
