@@ -23,6 +23,7 @@ import {
   useRef,
   useState,
 } from "react";
+import { type ChannelUnreadState, selectEagerChannelIds } from "../lib/channel-priority";
 import { type ChatRuntime, createChatRuntime } from "../lib/chat-runtime";
 import { webOutboxStore } from "../lib/outbox-store";
 import { webSearchStore } from "../lib/search-store";
@@ -30,6 +31,9 @@ import { usePresenceHeartbeat } from "../lib/use-presence-heartbeat";
 
 /** A mutable ref target that starts unset without spelling out a union at each use. */
 type Maybe<T> = T | undefined;
+
+/** No unread state; the fallback when no eager set is supplied. */
+const EMPTY_UNREAD: ReadonlyMap<string, ChannelUnreadState> = new Map();
 
 export interface ChatSearchHit extends SearchHit {
   readonly channelName: string;
@@ -92,6 +96,13 @@ export interface ChatProviderProps {
   readonly userId: string;
   readonly displayName: string;
   readonly channels: readonly ChannelSummary[];
+  /**
+   * The bounded set of channels whose message streams stay open eagerly for
+   * background alerts. Everything else is opened lazily when selected (or not
+   * at all); channel *names* are still cached for every channel. Defaults to
+   * the first few openable channels when omitted.
+   */
+  readonly eagerChannelIds?: readonly string[];
   readonly children: ReactNode;
 }
 
@@ -105,6 +116,7 @@ export function ChatProvider({
   userId,
   displayName,
   channels,
+  eagerChannelIds,
   children,
 }: ChatProviderProps) {
   const [runtime, setRuntime] = useState<ChatRuntime | undefined>(undefined);
@@ -308,7 +320,20 @@ export function ChatProvider({
     });
   }, []);
 
-  // Open each channel once the runtime is ready and cache its plaintext name.
+  // Open only a bounded eager set of channels once the runtime is ready, and
+  // cache each channel's plaintext name. Opening every channel fanned out to
+  // one live `messages.list` subscription (and its decrypted history) per
+  // conversation. The open conversation is streamed separately by
+  // `useChannelSession`, and every other channel's unread/mention alerts come
+  // from the already-subscribed `readStates.summary`.
+  const eagerSet = useMemo(() => {
+    const ids = eagerChannelIds ?? selectEagerChannelIds(channels, EMPTY_UNREAD);
+    return new Set(ids);
+  }, [eagerChannelIds, channels]);
+  // Channels this provider currently holds open, so ones that leave the eager
+  // set (e.g. after being read) are closed instead of accumulating.
+  const openedRef = useRef(new Set<string>());
+
   useEffect(() => {
     const active = runtimeRef.current;
     if (runtime === undefined || active === undefined || channels.length === 0) {
@@ -316,15 +341,24 @@ export function ChatProvider({
     }
     let cancelled = false;
     const isCancelled = () => cancelled;
+    for (const channelId of [...openedRef.current]) {
+      if (!eagerSet.has(channelId)) {
+        active.session.closeChannel(channelId);
+        openedRef.current.delete(channelId);
+      }
+    }
     void Promise.allSettled(
       channels.map((channel) =>
         (async () => {
           if (isCancelled()) {
             return;
           }
-          await active.session.openChannel(channel);
-          if (isCancelled()) {
-            return;
+          if (eagerSet.has(channel.id)) {
+            await active.session.openChannel(channel);
+            openedRef.current.add(channel.id);
+            if (isCancelled()) {
+              return;
+            }
           }
           active.session.hydrateChannelNames([channel]);
           if (isCancelled()) {
@@ -344,7 +378,7 @@ export function ChatProvider({
     return () => {
       cancelled = true;
     };
-  }, [runtime, channels]);
+  }, [runtime, channels, eagerSet]);
 
   const sendMessage = useCallback(
     async (

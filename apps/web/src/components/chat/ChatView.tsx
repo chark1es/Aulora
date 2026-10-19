@@ -19,6 +19,7 @@ import {
   DEFAULT_MAX_UPLOAD_BYTES,
   uploadFiles,
 } from "../../lib/attachments";
+import { selectEagerChannelIds } from "../../lib/channel-priority";
 import { isDesktop } from "../../lib/desktop";
 import { buildPresenceScope, PRESENCE_SCOPE_MAX } from "../../lib/presence-scope";
 import { playSound } from "../../lib/sounds";
@@ -28,6 +29,7 @@ import {
   useDesktopNotifications,
 } from "../../lib/use-desktop-notifications";
 import { useLiveUnreadBadge } from "../../lib/use-desktop-unread";
+import { useUnopenedChannelAlerts } from "../../lib/use-unopened-channel-alerts";
 import { useWebPush } from "../../lib/use-web-push";
 import {
   type CategoryView,
@@ -321,6 +323,20 @@ function ChatViewContent({
   useDesktopNotifications(runtime, ownUserId, channelNames, mutedChannelIds);
   useWebPush(runtime);
   useLiveUnreadBadge();
+
+  // The same bounded eager set the provider opens. Channels outside it have no
+  // message stream, so their chimes/notifications come from the unread summary.
+  const eagerChannelIds = useMemo(
+    () => new Set(selectEagerChannelIds(channels, unreadByChannel)),
+    [channels, unreadByChannel],
+  );
+  useUnopenedChannelAlerts({
+    unreadByChannel,
+    eagerChannelIds,
+    activeChannelId,
+    mutedChannelIds,
+    channelNames,
+  });
 
   // Synthesized cues: a message/mention chime for new messages in channels that
   // are not muted. Background channels notify too, so this mirrors the OS
