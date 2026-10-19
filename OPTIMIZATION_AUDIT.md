@@ -301,12 +301,13 @@ Supporting reports with per-item evidence: `docs/optimization/impl-backend.md`,
 
 `bun run check` (lint + typecheck + test + build + infra tests + release tests +
 `docs:check` + `release:check`) **passes against the branch (exit 0)**: all turbo
-tasks green (12/12 lint, 11/11 typecheck, 11/11 test, 3/3 build), 572 backend +
-515 web + 142 mobile tests, 71 infra node + 6 infra bun tests, 29 release-script
-tests and 13 Play-upload tests, and the docs link checker (64 guides). The only
-"failed" lines in the log are the intentional Play-upload timeout/retry fixtures.
-The desktop Rust target was not compiled locally (no toolchain/target here);
-`tauri build` in CI remains the final authority for `src-tauri` changes.
+tasks green (12/12 lint, 11/11 typecheck, 11/11 test, 3/3 build). After the Tier 2
+waves the counts grew to 589 backend + 532 web + 149 mobile tests, 75+6 infra
+tests, 29 release-script tests and 13 Play-upload tests, plus the docs link
+checker; the only "failed" lines in the log are the intentional Play-upload
+timeout/retry fixtures. The desktop Rust target was not compiled locally (no
+toolchain/target here); `tauri build` in CI remains the final authority for
+`src-tauri` changes.
 
 ## 5. Migrations and rollout order
 
@@ -394,3 +395,105 @@ Watch these at 100k users; each maps to a finding above.
   requests points at the missing timeout / connection reuse (P17).
 - Docs: `.gz` served (check `Content-Encoding`), GitHub API fallback rate-limit
   failures (P11).
+
+## 7. Tier 2 implementation results (approved)
+
+All five approved groups were implemented, in dependency order, as focused
+commits with per-target verification. Schema/index additions are additive and
+zero-downtime; the client-visible changes were staged server-first.
+
+### 7.1 Schema, bounded sweeps and retention (additive)
+
+| ID | Change | Commit |
+| --- | --- | --- |
+| B5 | `presence.by_lastHeartbeat` + cursor-batched stale sweep (no full collect) | `1582d1c` |
+| B6 | `typing.by_channel_user` + `by_expires`; indexed set/clear + bounded purge | `53526b9` |
+| B11 | `callParticipants.by_lastSeen`, `callSignals.by_created`; indexed call sweeps | `0753f96` |
+| B15 | `channels.list` reads non-DM channels by the existing `by_dm_key == undefined` index instead of post-filtering | `738c445` |
+| B18+S1 | `rateLimits.by_window_start` + hourly `pruneRateLimits` TTL | `f11371f` |
+| B17 | `server.memberCount` maintained + `internal.maintenance.backfillMemberCount` | `0ed3f1a` |
+| S2 | Daily 180-day `pruneAuditLog` | `3e11919` |
+| S3+S6 | 30-day `pruneStalePresence`, 180-day `pruneStaleDevices` (new `devices.by_lastSeen`) | `56d6551` |
+| B14 | `memberRoles` reverse table (dual-write) + `backfillMemberRoles`; `roles.remove` by `by_role` | `c83f829` |
+| B9 | `threadParticipants` table + `backfillThreadParticipants` | `c67c4eb` |
+
+### 7.2 Bounded read paths (no API-shape change)
+
+| ID | Change | Commit |
+| --- | --- | --- |
+| B1 | `unreadSummary` reads a saturating 100-row tail per channel after the read cursor | `dd762b1` |
+| B9 | `threadInbox` reads `threadParticipants.by_user` (bounded) instead of the global 1000-message scan | `773b8c0` |
+| B10 | Notification recipients resolved once per message; presence looked up by candidate id; prefs in one pass | `e56a9ea` |
+| B4 | Heartbeat reuses the member row; `recordLicenseActivity` short-circuits when unlicensed | `1cab62b` |
+| B7 | Mark-read mention count reads a bounded range after the cursor | `3898fcf` |
+| B13 | `visibleMemberIds` memoizes role-set resolution | `426796e` |
+| B16 | `instanceSettings` maintained counters (+ `backfillInstanceCounters`); `auditLog.list` resolves only page nicknames | `5b436d7` |
+| B22 | Notes search capped at 300 pages; revision prune by index range | `c0e6354` |
+
+### 7.3 New additive client APIs
+
+`api.members.page({cursor,numItems})` (default 100, cap 500, `by_joined`);
+`api.members.search({query,limit})` (default 25, cap 100, bounded 500-row window);
+`api.presence.getMany({userIds})` (deduped, cap 300); `presence.list` now has a
+1000-row safety bound. Commits `294602c`, `99f2803`, `fbb2d8a`, `07cb045`.
+
+### 7.4 Client fan-out
+
+- **Web** (`a67996a`): scoped `presence.getMany` (cap 300) replaces the
+  whole-table `presence.list` subscription; single map build per update.
+- **Web** (`3be780f`): eager channel subscriptions bounded to
+  `EAGER_CHANNEL_OPEN_CAP = 8` (unread/mentioning first); background chimes/OS
+  notifications now diff the already-subscribed `readStates.summary`.
+- **Mobile** (`9481b16`): scoped presence (cap 300); the duplicate presence
+  subscription in `ChatSession.start` removed.
+- **Mobile** (`330649a`): one batched reaction subscription per timeline instead
+  of one live query per row.
+- **Mobile** (`6fc1073`): local notifications skip/clear the channel being read.
+- **Mobile** (`6cd69c0`): incremental search indexing (seen-id set) + bounded
+  backfill (12 × 200).
+- **Mobile** (`6132823`): one live history subscription; older pages fetched as
+  snapshot prepends.
+- **Web** (`3823692`): bounded timeline window (`MAX_RETAINED_PAGES = 12`,
+  ~1,200 messages) with a visible history seam.
+
+### 7.5 Media/pipeline and medium refactors
+
+- **M6** (`ab8df76`): `files.thumbnailStorageId` + a sealed 320 px variant;
+  `finalize` accepts it and `get`/`getMany` return `thumbnailUrl`; web and mobile
+  upload and render the thumbnail inline instead of the full original.
+- **P1** (`99b452d`, corrected `95e586e`): desktop embed drops only the
+  duplicated legal notices (17 MB → 15.2 MB). The larger 13.6 MB ML-asset win was
+  reverted because it silently disabled background blur/noise suppression under
+  the shell's no-remote-code CSP — a UX regression, not an offline-only tradeoff.
+- **P17** (`673873b`): push relay caches the APNs JWT (45 min), reuses HTTP/2
+  sessions, adds request timeouts and an in-flight cap.
+- **P11** (`e33a076`): docs prefer the static `latest.json` manifest over the
+  unauthenticated GitHub API (API kept as fallback).
+- **P13** (`8022001`): `@aulora/core` gained subpath exports (root kept); one
+  consumer migrated.
+
+### 7.6 Deferred, with the reason
+
+| Item | Why deferred | Concrete plan |
+| --- | --- | --- |
+| **B2 remainder** — paging the member panel/mention picker off `members.list` | `members.list` also feeds display names for off-page timeline authors and client-side `@everyone`/`@role` broadcast expansion (which would need all ids and would store a 100 k-element array on a message). Paging alone regresses both. | (1) Add `members.names({userIds})` (bounded, id→display name) for rendered authors; (2) represent broadcasts symbolically (`mentionEveryone`/`mentionRoleIds` on messages) and resolve recipients server-side; (3) then move the panel/pickers to `members.page`/`members.search` and retire `members.list`. Needs a message-format + notification change, so its own PR. |
+| **P1 full 13.6 MB desktop win** | Requires relaxing the shell's no-remote-code CSP or a Rust local-asset download path; unverifiable without a Rust toolchain. | Deliberate CSP (`script-src`/`worker-src` for the workspace origin) or download-to-local-custom-protocol; needs a security sign-off. |
+| **P13 breadth** | `sideEffects: false` already tree-shakes the root barrel; migrating every import site is a large mechanical diff with little remaining gain. | Migrate heaviest consumers (`chat`, `voice`, `notes`, `kanban`) incrementally. |
+| **W4 full virtualization** | A virtualizer risks subtle scroll-anchor/unread-divider regressions. | The bounded window shipped bounds the DOM; adopt `@tanstack/react-virtual` later behind the existing scroll tests. |
+| **W10/W11 badge counters, M6 CDN stage** | Server bounds landed; a maintained badge counter / edge thumbnail CDN are further steps. | Separate follow-ups. |
+
+### 7.7 Migrations to run after deploying Tier 2 (order)
+
+Convex applies the additive indexes automatically. Run the backfills once, in
+this order (all idempotent and self-rescheduling; safe to re-run):
+
+1. `npx convex run maintenance:backfillMemberCount`
+2. `npx convex run maintenance:backfillMemberRoles`
+3. `npx convex run maintenance:backfillThreadParticipants`
+4. `npx convex run maintenance:backfillInstanceCounters`
+
+Until (1)/(2)/(4) run, `license.ts`, `roles.remove` and `instance.overview` keep
+their original fallbacks, so a partial rollout is safe. The retention crons
+(rate-limits TTL, audit-log 180-day, presence 30-day, devices 180-day) begin
+deleting only data outside their windows; take a backup before first deploy if
+you want the option to revert the deletions.
