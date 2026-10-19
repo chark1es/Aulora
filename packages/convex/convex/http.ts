@@ -60,12 +60,19 @@ http.route({
   path: "/files/download",
   method: "GET",
   handler: httpAction(async (ctx, request) => {
-    const token = new URL(request.url).searchParams.get("token");
+    const params = new URL(request.url).searchParams;
+    const token = params.get("token");
     if (token === null || token.length === 0) {
       return new Response("Missing token", { status: 400 });
     }
+    // `variant` selects the small thumbnail when one exists; anything else
+    // (including a missing thumbnail) serves the original bytes.
+    const variant = params.get("variant") === "thumbnail" ? ("thumbnail" as const) : undefined;
     try {
-      const { bytes } = await ctx.runAction(api.files.download, { token });
+      const { bytes } = await ctx.runAction(api.files.download, {
+        token,
+        ...(variant !== undefined ? { variant } : {}),
+      });
       return new Response(bytes, {
         status: 200,
         headers: {

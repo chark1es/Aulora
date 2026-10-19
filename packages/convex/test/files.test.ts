@@ -89,6 +89,66 @@ describe("files", () => {
     expect(Array.from(new Uint8Array(bytes))).toEqual(Array.from(new Uint8Array(16)));
   });
 
+  it("seals and serves a thumbnail variant without changing the original", async () => {
+    const { t, asUser1 } = await setup();
+    const storageId = await storeBlob(t, 16);
+    const thumbnailBytes = Uint8Array.from({ length: 8 }, (_, index) => 7 + index);
+    const thumbnailId = await t.run(
+      async (ctx) => await ctx.storage.store(new Blob([thumbnailBytes])),
+    );
+
+    const fileId = await asUser1.action(api.files.finalize, {
+      storageId,
+      name: "photo.png",
+      mime: "image/png",
+      sizeBytes: 16,
+      thumbnailStorageId: thumbnailId,
+    });
+
+    const file = await asUser1.query(api.files.get, { fileId });
+    expect(typeof file?.thumbnailUrl).toBe("string");
+    // `thumbnailUrl` is a distinct signed variant from the original URL.
+    expect(file?.thumbnailUrl).not.toBe(file?.url);
+
+    const row = await t.run(async (ctx) => await ctx.db.get(fileId));
+    if (row === null) throw new Error("file row missing");
+    expect(row.thumbnailStorageId).toBeDefined();
+    expect(row.thumbnailStorageId).not.toBe(row.storageId);
+
+    // Both plaintext uploads are gone; the sealed variants remain.
+    expect(await t.run(async (ctx) => await ctx.storage.get(storageId))).toBeNull();
+    expect(await t.run(async (ctx) => await ctx.storage.get(thumbnailId))).toBeNull();
+
+    const original = await asUser1.action(api.files.download, {
+      token: tokenFromUrl(file?.url ?? ""),
+    });
+    expect(Array.from(new Uint8Array(original.bytes))).toEqual(Array.from(new Uint8Array(16)));
+
+    const thumbnail = await asUser1.action(api.files.download, {
+      token: tokenFromUrl(file?.thumbnailUrl ?? ""),
+      variant: "thumbnail",
+    });
+    expect(Array.from(new Uint8Array(thumbnail.bytes))).toEqual(Array.from(thumbnailBytes));
+  });
+
+  it("serves the original when a thumbnail variant is requested but absent", async () => {
+    const { t, asUser1 } = await setup();
+    const storageId = await storeBlob(t, 12);
+    const fileId = await asUser1.action(api.files.finalize, {
+      storageId,
+      name: "plain.txt",
+      mime: "text/plain",
+      sizeBytes: 12,
+    });
+    const file = await asUser1.query(api.files.get, { fileId });
+    expect(file?.thumbnailUrl).toBeNull();
+    const { bytes } = await asUser1.action(api.files.download, {
+      token: tokenFromUrl(file?.url ?? ""),
+      variant: "thumbnail",
+    });
+    expect(Array.from(new Uint8Array(bytes))).toEqual(Array.from(new Uint8Array(12)));
+  });
+
   it("returns plaintext metadata for a batch of files", async () => {
     const { t, asUser1 } = await setup();
     const ids: Id<"files">[] = [];

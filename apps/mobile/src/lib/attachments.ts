@@ -20,13 +20,38 @@ export interface PickedFile {
   readonly mime: string;
   readonly width?: number;
   readonly height?: number;
+  /** Small downscaled preview uploaded alongside the image; omitted on failure. */
+  readonly thumbnail?: { bytes: Uint8Array };
 }
 
 const MAX_IMAGE_EDGE = 1920;
+/** Longest edge of the inline thumbnail variant. */
+const THUMBNAIL_EDGE = 320;
 
 async function readBytes(uri: string): Promise<Uint8Array> {
   const response = await fetch(uri);
   return new Uint8Array(await response.arrayBuffer());
+}
+
+/**
+ * Builds a small JPEG preview from an already-processed image. Returns
+ * `undefined` (never throws) so a thumbnail failure never blocks the upload.
+ */
+async function buildThumbnail(
+  sourceUri: string,
+  sourceWidth: number,
+): Promise<{ bytes: Uint8Array } | undefined> {
+  try {
+    const context = ImageManipulator.manipulate(sourceUri);
+    if (sourceWidth > THUMBNAIL_EDGE) {
+      context.resize({ width: THUMBNAIL_EDGE });
+    }
+    const rendered = await context.renderAsync();
+    const saved = await rendered.saveAsync({ format: SaveFormat.JPEG, compress: 0.7 });
+    return { bytes: await readBytes(saved.uri) };
+  } catch {
+    return undefined;
+  }
 }
 
 async function processImage(asset: ImagePicker.ImagePickerAsset): Promise<PickedFile> {
@@ -37,12 +62,14 @@ async function processImage(asset: ImagePicker.ImagePickerAsset): Promise<Picked
     }
     const rendered = await context.renderAsync();
     const saved = await rendered.saveAsync({ format: SaveFormat.JPEG, compress: 0.82 });
+    const thumbnail = await buildThumbnail(saved.uri, saved.width);
     return {
       uri: saved.uri,
       name: asset.fileName ?? `photo-${Date.now()}.jpg`,
       mime: "image/jpeg",
       width: saved.width,
       height: saved.height,
+      ...(thumbnail !== undefined ? { thumbnail } : {}),
     };
   } catch {
     return {
@@ -131,6 +158,7 @@ export async function uploadPickedFile(
     ...(file.width !== undefined && file.height !== undefined
       ? { dimensions: { width: file.width, height: file.height } }
       : {}),
+    ...(file.thumbnail !== undefined ? { thumbnail: { bytes: file.thumbnail.bytes } } : {}),
   });
 }
 

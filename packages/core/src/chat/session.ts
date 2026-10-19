@@ -90,6 +90,7 @@ function descriptorFromStoredFile(file: StoredFileView): AttachmentDescriptor | 
   }
   const dimensions = parseDimensions(file.dimensions);
   const blurhash = file.blurhash ?? undefined;
+  const thumbnailUrl = file.thumbnailUrl ?? undefined;
   return {
     fileId: file.id,
     name: file.name,
@@ -97,6 +98,9 @@ function descriptorFromStoredFile(file: StoredFileView): AttachmentDescriptor | 
     size: file.sizeBytes,
     ...(dimensions !== undefined ? { dimensions } : {}),
     ...(blurhash !== undefined ? { blurhash } : {}),
+    ...(thumbnailUrl !== undefined
+      ? { thumbnail: { fileId: file.id, url: thumbnailUrl, ...(blurhash ? { blurhash } : {}) } }
+      : {}),
   };
 }
 

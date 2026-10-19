@@ -535,6 +535,12 @@ export default defineSchema({
     mimeCiphertext: v.optional(v.string()),
     dimensionsCiphertext: v.optional(v.string()),
     blurhashCiphertext: v.optional(v.string()),
+    /**
+     * Storage id of a small, server-sealed thumbnail variant, when the uploader
+     * produced one. Optional so records written before the variant existed (and
+     * non-image uploads) keep working; readers fall back to the original bytes.
+     */
+    thumbnailStorageId: v.optional(v.id("_storage")),
     channelId: v.optional(v.id("channels")),
     kanbanBoardId: v.optional(v.id("kanbanBoards")),
   })

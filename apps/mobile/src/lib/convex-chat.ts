@@ -98,6 +98,7 @@ function toStoredFile(file: {
   dimensions: string | null;
   blurhash: string | null;
   url: string | null;
+  thumbnailUrl?: string | null;
 }): StoredFileView {
   return {
     id: file.id,
@@ -108,6 +109,7 @@ function toStoredFile(file: {
     dimensions: file.dimensions,
     blurhash: file.blurhash,
     url: file.url,
+    thumbnailUrl: file.thumbnailUrl ?? null,
   };
 }
 
@@ -260,25 +262,41 @@ export function convexPort(client: ConvexReactClient): ChatPort {
       return null;
     },
     async uploadFile(args) {
-      const uploadUrl = await client.mutation(api.files.generateUploadUrl, {});
-      const response = await fetch(uploadUrl, {
-        method: "POST",
-        headers: { "Content-Type": args.mime },
-        body: args.bytes as unknown as BodyInit,
-      });
-      if (!response.ok) {
-        throw new Error(`Upload failed with status ${response.status}`);
-      }
-      const body = (await response.json()) as { storageId?: unknown };
-      if (typeof body.storageId !== "string") {
-        throw new Error("Upload response did not include a storageId");
+      const putBytes = async (bytes: Uint8Array, mime: string): Promise<string> => {
+        const uploadUrl = await client.mutation(api.files.generateUploadUrl, {});
+        const response = await fetch(uploadUrl, {
+          method: "POST",
+          headers: { "Content-Type": mime },
+          body: bytes as unknown as BodyInit,
+        });
+        if (!response.ok) {
+          throw new Error(`Upload failed with status ${response.status}`);
+        }
+        const body = (await response.json()) as { storageId?: unknown };
+        if (typeof body.storageId !== "string") {
+          throw new Error("Upload response did not include a storageId");
+        }
+        return body.storageId;
+      };
+      const storageId = await putBytes(args.bytes, args.mime);
+      // A thumbnail failure must not fail the upload: fall back to the original.
+      let thumbnailStorageId: string | undefined;
+      if (args.thumbnail !== undefined) {
+        try {
+          thumbnailStorageId = await putBytes(args.thumbnail.bytes, args.mime);
+        } catch {
+          thumbnailStorageId = undefined;
+        }
       }
       return await client.action(api.files.finalize, {
-        storageId: body.storageId as never,
+        storageId: storageId as never,
         name: args.name,
         mime: args.mime,
         ...(args.dimensions !== undefined ? { dimensions: JSON.stringify(args.dimensions) } : {}),
         ...(args.blurhash !== undefined ? { blurhash: args.blurhash } : {}),
+        ...(thumbnailStorageId !== undefined
+          ? { thumbnailStorageId: thumbnailStorageId as never }
+          : {}),
         ...(args.channelId !== undefined ? { channelId: args.channelId as never } : {}),
       });
     },

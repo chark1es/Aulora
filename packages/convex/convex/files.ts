@@ -30,6 +30,13 @@ function uploadWindowMs(): number {
   return Number.isFinite(configured) && configured > 0 ? configured : 60_000;
 }
 
+/**
+ * Cap for an optional thumbnail variant upload. Thumbnails are generated at a
+ * small edge length client-side, so this is generous; it only bounds a
+ * malicious multi-megabyte "thumbnail".
+ */
+const THUMBNAIL_MAX_BYTES = 1024 * 1024;
+
 const BYTES_CONTEXT = { scope: "file.bytes" } as const;
 const NAME_CONTEXT = { scope: "file.name" } as const;
 const MIME_CONTEXT = { scope: "file.mime" } as const;
@@ -105,6 +112,8 @@ export const insertFinalized = internalMutation({
     mimeCiphertext: v.string(),
     dimensionsCiphertext: v.optional(v.string()),
     blurhashCiphertext: v.optional(v.string()),
+    /** Sealed thumbnail variant bytes, when one was produced. */
+    thumbnailStorageId: v.optional(v.id("_storage")),
     channelId: v.optional(v.id("channels")),
     kanbanBoardId: v.optional(v.id("kanbanBoards")),
   },
@@ -133,6 +142,9 @@ export const insertFinalized = internalMutation({
       ...(args.blurhashCiphertext !== undefined
         ? { blurhashCiphertext: args.blurhashCiphertext }
         : {}),
+      ...(args.thumbnailStorageId !== undefined
+        ? { thumbnailStorageId: args.thumbnailStorageId }
+        : {}),
       ...(args.channelId !== undefined ? { channelId: args.channelId } : {}),
       ...(args.kanbanBoardId !== undefined ? { kanbanBoardId: args.kanbanBoardId } : {}),
     });
@@ -155,6 +167,13 @@ export const finalize = action({
     sizeBytes: v.optional(v.number()),
     dimensions: v.optional(v.string()),
     blurhash: v.optional(v.string()),
+    /**
+     * Optional small thumbnail/placeholder variant, uploaded through the same
+     * generated URL flow as the original. It is sealed with the same
+     * `file.bytes` scope, bound to a record id derived from the original upload,
+     * so no extra key material is required.
+     */
+    thumbnailStorageId: v.optional(v.id("_storage")),
     channelId: v.optional(v.id("channels")),
     kanbanBoardId: v.optional(v.id("kanbanBoards")),
   },
@@ -172,6 +191,24 @@ export const finalize = action({
     const plaintext = new Uint8Array(await blob.arrayBuffer());
     const sealed = await sealBytes({ ...BYTES_CONTEXT, recordId: args.storageId }, plaintext);
     const sealedStorageId = await ctx.storage.store(new Blob([sealed]));
+    let thumbnailSealedStorageId: Id<"_storage"> | undefined;
+    if (args.thumbnailStorageId !== undefined) {
+      const thumbnailBlob = await ctx.storage.get(args.thumbnailStorageId);
+      if (thumbnailBlob === null) {
+        throw new ConvexError("Thumbnail upload not found");
+      }
+      if (thumbnailBlob.size > THUMBNAIL_MAX_BYTES) {
+        throw new ConvexError("Thumbnail exceeds the size cap");
+      }
+      const thumbnailPlaintext = new Uint8Array(await thumbnailBlob.arrayBuffer());
+      const thumbnailSealed = await sealBytes(
+        // Derive a distinct record id from the original upload so the thumbnail
+        // can be re-opened without persisting a second sealed-record id.
+        { ...BYTES_CONTEXT, recordId: `${args.storageId}:thumb` },
+        thumbnailPlaintext,
+      );
+      thumbnailSealedStorageId = await ctx.storage.store(new Blob([thumbnailSealed]));
+    }
     const keyVersion = getEkmSettings(process.env).keyVersion;
     const nameCiphertext = await sealString(NAME_CONTEXT, args.name);
     const mimeCiphertext = await sealString(MIME_CONTEXT, args.mime);
@@ -191,10 +228,16 @@ export const finalize = action({
       mimeCiphertext,
       ...(dimensionsCiphertext !== undefined ? { dimensionsCiphertext } : {}),
       ...(blurhashCiphertext !== undefined ? { blurhashCiphertext } : {}),
+      ...(thumbnailSealedStorageId !== undefined
+        ? { thumbnailStorageId: thumbnailSealedStorageId }
+        : {}),
       ...(args.channelId !== undefined ? { channelId: args.channelId } : {}),
       ...(args.kanbanBoardId !== undefined ? { kanbanBoardId: args.kanbanBoardId } : {}),
     });
     await ctx.storage.delete(args.storageId);
+    if (args.thumbnailStorageId !== undefined) {
+      await ctx.storage.delete(args.thumbnailStorageId);
+    }
     return fileId;
   },
 });
@@ -224,7 +267,11 @@ export const authorizeDownload = internalQuery({
     } else if (row.uploaderId !== args.userId) {
       throw new ConvexError("You do not have access to this file");
     }
-    return { storageId: row.storageId, sealedStorageId: row.sealedStorageId };
+    return {
+      storageId: row.storageId,
+      sealedStorageId: row.sealedStorageId,
+      thumbnailStorageId: row.thumbnailStorageId ?? null,
+    };
   },
 });
 
@@ -234,7 +281,16 @@ export const authorizeDownload = internalQuery({
  * `ArrayBuffer` (`v.bytes()`), so that is what clients receive.
  */
 export const download = action({
-  args: { token: v.string() },
+  args: {
+    token: v.string(),
+    /**
+     * Which variant to return: the original bytes (default) or the small
+     * thumbnail produced at upload time. The token still authorizes the file,
+     * so both variants require the same access; an absent thumbnail falls back
+     * to the original so old records and non-image uploads keep working.
+     */
+    variant: v.optional(v.union(v.literal("original"), v.literal("thumbnail"))),
+  },
   handler: async (ctx, args): Promise<{ bytes: ArrayBuffer }> => {
     const payload = await verifyDownloadToken(args.token);
     const row = await ctx.runQuery(internal.files.authorizeDownload, {
@@ -244,23 +300,35 @@ export const download = action({
     if (row === null) {
       throw new ConvexError("File not found");
     }
-    const blob = await ctx.storage.get(row.storageId);
+    const thumbnailStorageId =
+      args.variant === "thumbnail" && row.thumbnailStorageId !== null
+        ? row.thumbnailStorageId
+        : null;
+    const storageId = thumbnailStorageId ?? row.storageId;
+    const recordId =
+      thumbnailStorageId !== null ? `${row.sealedStorageId}:thumb` : row.sealedStorageId;
+    const blob = await ctx.storage.get(storageId);
     if (blob === null) {
       throw new ConvexError("Sealed file bytes not found");
     }
     const sealed = new Uint8Array(await blob.arrayBuffer());
-    const bytes = await openBytes({ ...BYTES_CONTEXT, recordId: row.sealedStorageId }, sealed);
+    const bytes = await openBytes({ ...BYTES_CONTEXT, recordId }, sealed);
     return { bytes: bytes.buffer };
   },
 });
 
-async function downloadUrl(fileId: Id<"files">, userId: string): Promise<string> {
+async function downloadUrl(
+  fileId: Id<"files">,
+  userId: string,
+  variant?: "thumbnail",
+): Promise<string> {
   const token = await signDownloadToken({
     fileId,
     userId,
     exp: Date.now() + DOWNLOAD_TOKEN_TTL_MS,
   });
-  const path = `/files/download?token=${encodeURIComponent(token)}`;
+  const variantParam = variant === undefined ? "" : `&variant=${variant}`;
+  const path = `/files/download?token=${encodeURIComponent(token)}${variantParam}`;
   const site = process.env.CONVEX_SITE_URL?.trim().replace(/\/+$/, "");
   return site !== undefined && site.length > 0 ? `${site}${path}` : path;
 }
@@ -275,6 +343,11 @@ interface FileView {
   readonly blurhash: string | null;
   /** Signed, short-lived URL that yields decrypted bytes. */
   readonly url: string;
+  /**
+   * Signed, short-lived URL for the small thumbnail variant, or `null` when the
+   * row has none (old records, non-image uploads). Clients fall back to `url`.
+   */
+  readonly thumbnailUrl: string | null;
 }
 
 async function toFileView(row: Doc<"files">, userId: string): Promise<FileView> {
@@ -287,6 +360,8 @@ async function toFileView(row: Doc<"files">, userId: string): Promise<FileView> 
     dimensions: await openContentOptional(DIMENSIONS_CONTEXT, row.dimensionsCiphertext),
     blurhash: await openContentOptional(BLURHASH_CONTEXT, row.blurhashCiphertext),
     url: await downloadUrl(row._id, userId),
+    thumbnailUrl:
+      row.thumbnailStorageId !== undefined ? await downloadUrl(row._id, userId, "thumbnail") : null,
   };
 }
 
