@@ -11,6 +11,7 @@ import { memo } from "react";
 import { Pressable, View } from "react-native";
 import Svg, { Path } from "react-native-svg";
 import type { ChatSurfaceRuntime } from "../../lib/chat-surface";
+import type { ReactionGroup } from "../../lib/message-rows";
 import { AttachmentView } from "./AttachmentView";
 import { MemberAvatar } from "./MemberAvatar";
 import { ReactionRow } from "./ReactionRow";
@@ -54,6 +55,12 @@ export interface MessageRowProps {
   readonly pending: boolean;
   readonly authorName: string;
   readonly authorColor: string | undefined;
+  /**
+   * Batched reaction groups for this message, from the timeline's single
+   * subscription. `undefined` falls back to a per-row subscription (used by
+   * adapters without `watchReactionsBatch`).
+   */
+  readonly reactionGroups?: readonly ReactionGroup[] | undefined;
 }
 
 interface ReplyLineProps {
@@ -225,6 +232,7 @@ function MessageBody(props: MessageRowProps) {
           channelId={context.channelId}
           messageId={message.id}
           ownUserId={context.ownUserId}
+          groups={props.reactionGroups}
           onAdd={() => {
             context.onActions(message);
           }}

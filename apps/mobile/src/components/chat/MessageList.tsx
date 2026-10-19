@@ -6,7 +6,12 @@ import { Pressable, View } from "react-native";
 import { FlatList } from "react-native-gesture-handler";
 import type { ChatSurfaceRuntime } from "../../lib/chat-surface";
 import { impactFeedback, selectionFeedback } from "../../lib/haptics";
-import { buildMessageRows, type MessageListRow } from "../../lib/message-rows";
+import {
+  buildMessageRows,
+  groupReactionsByMessage,
+  type MessageListRow,
+  type ReactionGroup,
+} from "../../lib/message-rows";
 import { MessageActionsSheet } from "./MessageActionsSheet";
 import { MessageRow, type MessageRowContext, type ReplyPreview } from "./MessageRow";
 
@@ -173,10 +178,17 @@ interface RowData {
   readonly memberNames: ReadonlyMap<string, string>;
   readonly memberColors: ReadonlyMap<string, string>;
   readonly ownUserId: string;
+  /** Whether reactions come from one batched subscription (vs. per-row fallback). */
+  readonly batchedReactions: boolean;
+  /** Emoji groups per message, from the batched subscription. */
+  readonly reactionsByMessage: ReadonlyMap<string, readonly ReactionGroup[]>;
 }
 
 /** Shared empty attachment list, so absent rows keep a stable reference. */
 const EMPTY_ATTACHMENTS: readonly AttachmentDescriptor[] = [];
+
+/** Shared empty reaction list, stable so a row without reactions does not re-render. */
+const EMPTY_REACTION_GROUPS: readonly ReactionGroup[] = [];
 
 /** What the message a reply answers looks like from here, or `null` when it is not a reply. */
 function replyPreview(data: RowData, message: MessagePayload): ReplyPreview | null {
@@ -265,6 +277,11 @@ const RowItem = memo(function RowItem({ row, data, context, highlighted }: RowIt
       pending={data.pendingIds.has(current.id)}
       authorName={data.memberNames.get(current.authorId) ?? current.authorId}
       authorColor={data.memberColors.get(current.authorId)}
+      reactionGroups={
+        data.batchedReactions
+          ? (data.reactionsByMessage.get(current.id) ?? EMPTY_REACTION_GROUPS)
+          : undefined
+      }
     />
   );
 });
@@ -305,6 +322,36 @@ export function MessageList(props: MessageListProps) {
     hide: closeActions,
   } = useActionsSheet();
   const { viewerName, mentionNames, channelNames } = useNames(props);
+
+  // One batched reactions subscription for the whole timeline (chunked by the
+  // adapter) instead of one live query per rendered message. When the adapter
+  // does not implement the batch, `batchedReactions` stays false and each row
+  // falls back to its own subscription.
+  const subscriptions = runtime?.subscriptions;
+  const batchedReactions = subscriptions?.watchReactionsBatch !== undefined;
+  const messageIds = useMemo(
+    () => rows.flatMap((row) => (row.kind === "message" ? [row.message.id] : [])),
+    [rows],
+  );
+  const [reactionsByMessage, setReactionsByMessage] = useState<
+    ReadonlyMap<string, readonly ReactionGroup[]>
+  >(() => new Map());
+  const ownUserId = props.ownUserId;
+  useEffect(() => {
+    const watch = subscriptions?.watchReactionsBatch;
+    if (watch === undefined || messageIds.length === 0) {
+      return;
+    }
+    return watch.call(subscriptions, messageIds, (rows) => {
+      const updated = groupReactionsByMessage(rows, ownUserId);
+      setReactionsByMessage((current) => {
+        const next = new Map(current);
+        for (const id of messageIds) next.delete(id);
+        for (const [id, groups] of updated) next.set(id, groups);
+        return next;
+      });
+    });
+  }, [subscriptions, messageIds, ownUserId]);
 
   // The parent recreates its callbacks on every render; read them through a ref
   // so the row context below stays referentially stable and memoized rows only
@@ -367,6 +414,8 @@ export function MessageList(props: MessageListProps) {
       memberNames: props.memberNames,
       memberColors: props.memberColors,
       ownUserId: props.ownUserId,
+      batchedReactions,
+      reactionsByMessage,
     }),
     [
       messagesById,
@@ -376,6 +425,8 @@ export function MessageList(props: MessageListProps) {
       props.memberNames,
       props.memberColors,
       props.ownUserId,
+      batchedReactions,
+      reactionsByMessage,
     ],
   );
 

@@ -84,3 +84,28 @@ export function groupReactions(
   }
   return [...groups.values()];
 }
+
+/**
+ * Groups a batched reactions page (one row per reaction, keyed by message) into
+ * per-message emoji groups, so the timeline can render every row from one
+ * subscription instead of one query per message.
+ */
+export function groupReactionsByMessage(
+  rows: readonly { readonly messageId: string; readonly userId: string; readonly emoji: string }[],
+  ownUserId: string,
+): Map<string, readonly ReactionGroup[]> {
+  const byMessage = new Map<string, { userId: string; emoji: string }[]>();
+  for (const row of rows) {
+    const list = byMessage.get(row.messageId);
+    if (list === undefined) {
+      byMessage.set(row.messageId, [{ userId: row.userId, emoji: row.emoji }]);
+    } else {
+      list.push({ userId: row.userId, emoji: row.emoji });
+    }
+  }
+  const grouped = new Map<string, readonly ReactionGroup[]>();
+  for (const [messageId, list] of byMessage) {
+    grouped.set(messageId, groupReactions(list, ownUserId));
+  }
+  return grouped;
+}
