@@ -4,6 +4,9 @@ import type { Doc, Id } from "../_generated/dataModel";
 import type { MutationCtx } from "../_generated/server";
 import { type NoteSnapshotData, noteContent, sealSnapshot } from "./workspaceNotes";
 
+/** Extra revisions read past the cap so a small backlog self-heals per edit. */
+const REVISION_PRUNE_BATCH = 100;
+
 /** Decrypted before/after content of a note, for change classification. */
 export async function currentSnapshot(note: Doc<"notePages">): Promise<NoteSnapshotData> {
   const { title, body } = await noteContent(note);
@@ -76,14 +79,15 @@ export async function recordRevision(
       ...(sealedAfter !== undefined ? { afterCiphertext: sealedAfter } : {}),
     });
   }
-  const revisions = await ctx.db
+  // Prune with a bounded index range: read the newest `NOTE_MAX_REVISIONS` plus
+  // a batch of slack and delete anything older, instead of collecting every
+  // revision the note ever had.
+  const kept = await ctx.db
     .query("noteRevisions")
     .withIndex("by_note", (q) => q.eq("noteId", noteId))
-    .collect();
-  if (revisions.length > NOTE_MAX_REVISIONS) {
-    const oldestFirst = revisions.sort((a, b) => a.at - b.at);
-    for (const stale of oldestFirst.slice(0, revisions.length - NOTE_MAX_REVISIONS)) {
-      await ctx.db.delete(stale._id);
-    }
+    .order("desc")
+    .take(NOTE_MAX_REVISIONS + REVISION_PRUNE_BATCH);
+  for (const stale of kept.slice(NOTE_MAX_REVISIONS)) {
+    await ctx.db.delete(stale._id);
   }
 }

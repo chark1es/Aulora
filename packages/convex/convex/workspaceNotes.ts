@@ -40,6 +40,14 @@ import {
 
 const HEX_COLOR = /^#[0-9a-f]{6}$/i;
 
+/**
+ * Note pages scanned (and decrypted) per search, newest-first. Deliberately
+ * well below {@link NOTE_MAX_NOTES} (2000): search decrypts every scanned body,
+ * so the cost is bounded and results are complete within the most-recent scan
+ * window. Older notes beyond the window are not searched.
+ */
+const NOTE_SEARCH_SCAN_LIMIT = 300;
+
 /** Enables or disables the Notes addon. Requires `ManageWorkspace`. */
 export const setEnabled = mutation({
   args: { enabled: v.boolean() },
@@ -169,7 +177,7 @@ export const search = query({
       .query("notePages")
       .withIndex("by_updated")
       .order("desc")
-      .take(NOTE_MAX_NOTES);
+      .take(NOTE_SEARCH_SCAN_LIMIT);
     const documents = await Promise.all(
       notes.map(async (note) => {
         const { title, body } = await noteContent(note);
