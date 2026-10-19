@@ -66,6 +66,15 @@ const textDecoder = new TextDecoder();
 /** Master key cache keyed by `provider|kekId|keyVersion`. */
 const masterKeyCache = new Map<string, EkmMasterKey>();
 
+/**
+ * Derived data-key cache. A data key depends only on the master key, the key
+ * version, the workspace salt and the scope — never on `recordId`, which is
+ * bound into the GCM additional data instead. Caching the promise (not just the
+ * settled key) lets concurrent seals/opens for one scope share a single HKDF
+ * derivation.
+ */
+const dataKeyCache = new Map<string, Promise<CryptoKey>>();
+
 type Env = Record<string, string | undefined>;
 
 /** A byte view on a plain `ArrayBuffer`, as WebCrypto's overloads require. */
@@ -111,9 +120,10 @@ export function encryptionConfigured(env: Env = process.env): boolean {
   return ekmConfigured(settings);
 }
 
-/** Clears the in-memory master-key cache. Test seam. */
+/** Clears the in-memory master-key and derived-data-key caches. Test seam. */
 export function clearKeyCache(): void {
   masterKeyCache.clear();
+  dataKeyCache.clear();
 }
 
 function deriveAad(context: EncryptionContext, keyVersion: string): Bytes {
@@ -122,26 +132,46 @@ function deriveAad(context: EncryptionContext, keyVersion: string): Bytes {
   );
 }
 
+function dataKeyCacheKey(
+  master: EkmMasterKey,
+  context: EncryptionContext,
+  keyVersion: string,
+): string {
+  // recordId is deliberately omitted: it is only AAD and does not affect the key.
+  return `${master.provider}|${master.kekId}|${keyVersion}|${context.workspaceId ?? "default"}|${
+    context.scope
+  }`;
+}
+
 async function deriveDataKey(
-  master: Bytes,
+  master: EkmMasterKey,
   context: EncryptionContext,
   keyVersion: string,
 ): Promise<CryptoKey> {
-  const imported = await globalThis.crypto.subtle.importKey("raw", master, "HKDF", false, [
-    "deriveKey",
-  ]);
-  return await globalThis.crypto.subtle.deriveKey(
-    {
-      name: "HKDF",
-      hash: "SHA-256",
-      salt: textEncoder.encode(context.workspaceId ?? "default"),
-      info: textEncoder.encode(`aulora/sse/v1/${keyVersion}/${context.scope}`),
-    },
-    imported,
-    { name: SUBTLE_ALGORITHM, length: 256 },
-    false,
-    ["encrypt", "decrypt"],
-  );
+  const cacheKey = dataKeyCacheKey(master, context, keyVersion);
+  const cached = dataKeyCache.get(cacheKey);
+  if (cached !== undefined) {
+    return await cached;
+  }
+  const derived = (async () => {
+    const imported = await globalThis.crypto.subtle.importKey("raw", master.bytes, "HKDF", false, [
+      "deriveKey",
+    ]);
+    return await globalThis.crypto.subtle.deriveKey(
+      {
+        name: "HKDF",
+        hash: "SHA-256",
+        salt: textEncoder.encode(context.workspaceId ?? "default"),
+        info: textEncoder.encode(`aulora/sse/v1/${keyVersion}/${context.scope}`),
+      },
+      imported,
+      { name: SUBTLE_ALGORITHM, length: 256 },
+      false,
+      ["encrypt", "decrypt"],
+    );
+  })();
+  dataKeyCache.set(cacheKey, derived);
+  return await derived;
 }
 
 async function resolveMasterKey(env: Env, requestedVersion?: string): Promise<EkmMasterKey> {
@@ -213,7 +243,7 @@ export async function sealString(
   const master = await resolveMasterKey(env);
   const iv = new Uint8Array(IV_BYTES);
   globalThis.crypto.getRandomValues(iv);
-  const dataKey = await deriveDataKey(master.bytes, context, master.keyVersion);
+  const dataKey = await deriveDataKey(master, context, master.keyVersion);
   const ciphertext = await globalThis.crypto.subtle.encrypt(
     {
       name: SUBTLE_ALGORITHM,
@@ -279,7 +309,7 @@ export async function openString(
   const { keyVersion, iv, ciphertext } = parseSealedString(sealed);
   const env = opts.env ?? process.env;
   const master = await resolveMasterKey(env, keyVersion);
-  const dataKey = await deriveDataKey(master.bytes, context, keyVersion);
+  const dataKey = await deriveDataKey(master, context, keyVersion);
   try {
     const plaintext = await globalThis.crypto.subtle.decrypt(
       {
@@ -340,7 +370,7 @@ export async function sealBytes(
   const master = await resolveMasterKey(env);
   const iv = new Uint8Array(IV_BYTES);
   globalThis.crypto.getRandomValues(iv);
-  const dataKey = await deriveDataKey(master.bytes, context, master.keyVersion);
+  const dataKey = await deriveDataKey(master, context, master.keyVersion);
   const ciphertext = new Uint8Array(
     await globalThis.crypto.subtle.encrypt(
       {
@@ -386,7 +416,7 @@ export async function openBytes(
   const ciphertext = sealed.subarray(4 + headerLength);
   const env = opts.env ?? process.env;
   const master = await resolveMasterKey(env, header.keyVersion);
-  const dataKey = await deriveDataKey(master.bytes, context, header.keyVersion);
+  const dataKey = await deriveDataKey(master, context, header.keyVersion);
   try {
     const plaintext = await globalThis.crypto.subtle.decrypt(
       {
