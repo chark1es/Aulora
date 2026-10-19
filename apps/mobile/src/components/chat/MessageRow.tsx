@@ -7,6 +7,7 @@ import {
   Permission,
 } from "@aulora/core";
 import { Icon, Text, usePalette } from "@aulora/ui-native";
+import { memo } from "react";
 import { Pressable, View } from "react-native";
 import Svg, { Path } from "react-native-svg";
 import type { ChatSurfaceRuntime } from "../../lib/chat-surface";
@@ -244,7 +245,7 @@ function MessageBody(props: MessageRowProps) {
 }
 
 /** One message. Tap or long-press it for reactions, replies and the rest of its actions. */
-export function MessageRow(props: MessageRowProps) {
+export const MessageRow = memo(function MessageRow(props: MessageRowProps) {
   const { context, message, grouped, reply, pending, authorName } = props;
   const openActions = () => {
     context.onActions(message);
@@ -289,4 +290,4 @@ export function MessageRow(props: MessageRowProps) {
       </View>
     </Pressable>
   );
-}
+});

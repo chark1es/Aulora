@@ -1,7 +1,7 @@
 /* eslint-disable no-unused-vars -- the base rule reports parameter names in type signatures; Biome checks real unused code */
 import type { AttachmentDescriptor, MessagePayload } from "@aulora/core";
 import { Icon, Spinner, Text, usePalette } from "@aulora/ui-native";
-import { useEffect, useMemo, useRef, useState } from "react";
+import { memo, useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { Pressable, View } from "react-native";
 import { FlatList } from "react-native-gesture-handler";
 import type { ChatSurfaceRuntime } from "../../lib/chat-surface";
@@ -49,6 +49,10 @@ const FLASH_MS = 1600;
 function useJump(rows: readonly MessageListRow[], requestedId: string | null) {
   const listRef = useRef<ListHandle>(null);
   const [flashId, setFlashId] = useState<string | null>(null);
+  // Read the latest rows without making `jumpTo` change identity every time the
+  // list updates, so the memoized row context stays stable.
+  const rowsRef = useRef(rows);
+  rowsRef.current = rows;
   useEffect(() => {
     if (flashId === null) return;
     const timer = setTimeout(() => {
@@ -79,13 +83,13 @@ function useJump(rows: readonly MessageListRow[], requestedId: string | null) {
     };
   }, [requestedId, requestedIndex]);
 
-  function jumpTo(messageId: string) {
-    const index = indexOfMessage(rows, messageId);
+  const jumpTo = useCallback((messageId: string) => {
+    const index = indexOfMessage(rowsRef.current, messageId);
     if (index < 0) return;
     selectionFeedback();
     listRef.current?.scrollToIndex({ index, animated: true, viewPosition: 0.5 });
     setFlashId(messageId);
-  }
+  }, []);
 
   return { listRef, flashId, jumpTo };
 }
@@ -95,14 +99,14 @@ function useActionsSheet() {
   const [visible, setVisible] = useState(false);
   // Kept after closing so the sheet's content stays put while it slides away.
   const [message, setMessage] = useState<MessagePayload>();
-  function show(next: MessagePayload) {
+  const show = useCallback((next: MessagePayload) => {
     impactFeedback();
     setMessage(next);
     setVisible(true);
-  }
-  function hide() {
+  }, []);
+  const hide = useCallback(() => {
     setVisible(false);
-  }
+  }, []);
   return { visible, message, show, hide };
 }
 
@@ -157,24 +161,41 @@ function UnreadPill({ onPress }: { readonly onPress: () => void }) {
   );
 }
 
+/**
+ * The maps and ids a row needs to render itself. Built once per data change so
+ * the memoized rows below can compare a single stable reference.
+ */
+interface RowData {
+  readonly messagesById: ReadonlyMap<string, MessagePayload>;
+  readonly decrypted: ReadonlyMap<string, string>;
+  readonly attachments: ReadonlyMap<string, readonly AttachmentDescriptor[]>;
+  readonly pendingIds: ReadonlySet<string>;
+  readonly memberNames: ReadonlyMap<string, string>;
+  readonly memberColors: ReadonlyMap<string, string>;
+  readonly ownUserId: string;
+}
+
+/** Shared empty attachment list, so absent rows keep a stable reference. */
+const EMPTY_ATTACHMENTS: readonly AttachmentDescriptor[] = [];
+
 /** What the message a reply answers looks like from here, or `null` when it is not a reply. */
-function replyPreview(props: MessageListProps, message: MessagePayload): ReplyPreview | null {
+function replyPreview(data: RowData, message: MessagePayload): ReplyPreview | null {
   const replyToId = message.replyToId;
   if (replyToId === null || replyToId === undefined) return null;
-  const original = props.messages.find((entry) => entry.id === replyToId);
+  const original = data.messagesById.get(replyToId);
   const deleted = original !== undefined && original.deletedAt !== null;
   return {
     messageId: replyToId,
-    authorName: original === undefined ? undefined : props.memberNames.get(original.authorId),
-    authorColor: original === undefined ? undefined : props.memberColors.get(original.authorId),
-    text: deleted ? undefined : props.decrypted.get(replyToId),
+    authorName: original === undefined ? undefined : data.memberNames.get(original.authorId),
+    authorColor: original === undefined ? undefined : data.memberColors.get(original.authorId),
+    text: deleted ? undefined : data.decrypted.get(replyToId),
   };
 }
 
-function systemActorName(list: MessageListProps, actorId: string | undefined): string {
+function systemActorName(data: RowData, actorId: string | undefined): string {
   if (actorId === undefined) return "Someone";
-  if (actorId === list.ownUserId) return "You";
-  return list.memberNames.get(actorId) ?? "Someone";
+  if (actorId === data.ownUserId) return "You";
+  return data.memberNames.get(actorId) ?? "Someone";
 }
 
 /** The quiet "<actor> pinned a message" line, with a jump to the pinned row. */
@@ -208,15 +229,20 @@ function SystemNotice({
 
 interface RowItemProps {
   readonly row: MessageListRow;
-  readonly list: MessageListProps;
+  readonly data: RowData;
   readonly context: MessageRowContext;
-  readonly flashId: string | null;
+  readonly highlighted: boolean;
 }
 
-function RowItem({ row, list, context, flashId }: RowItemProps) {
+const RowItem = memo(function RowItem({ row, data, context, highlighted }: RowItemProps) {
+  const message = row.kind === "message" ? row.message : undefined;
+  const reply = useMemo(
+    () => (message === undefined ? null : replyPreview(data, message)),
+    [data, message],
+  );
   if (row.kind === "day") return <DaySeparator label={row.label} />;
   if (row.kind === "system") {
-    const actorName = systemActorName(list, row.actorId);
+    const actorName = systemActorName(data, row.actorId);
     return (
       <SystemNotice
         actorName={actorName}
@@ -226,22 +252,22 @@ function RowItem({ row, list, context, flashId }: RowItemProps) {
       />
     );
   }
-  const { message } = row;
+  const { message: current } = row;
   return (
     <MessageRow
       context={context}
-      message={message}
+      message={current}
       grouped={row.grouped}
-      highlighted={message.id === flashId}
-      text={list.decrypted.get(message.id)}
-      reply={replyPreview(list, message)}
-      attachments={list.attachments.get(message.id) ?? []}
-      pending={list.pendingIds.has(message.id)}
-      authorName={list.memberNames.get(message.authorId) ?? message.authorId}
-      authorColor={list.memberColors.get(message.authorId)}
+      highlighted={highlighted}
+      text={data.decrypted.get(current.id)}
+      reply={reply}
+      attachments={data.attachments.get(current.id) ?? EMPTY_ATTACHMENTS}
+      pending={data.pendingIds.has(current.id)}
+      authorName={data.memberNames.get(current.authorId) ?? current.authorId}
+      authorColor={data.memberColors.get(current.authorId)}
     />
   );
-}
+});
 
 /** The part of a row's context that only depends on who is in the conversation. */
 function useNames(props: MessageListProps) {
@@ -264,23 +290,107 @@ function useNames(props: MessageListProps) {
  */
 export function MessageList(props: MessageListProps) {
   const { runtime, messages, firstUnreadId, hasOlder = false, onReply, onQuote } = props;
-  const rows = useMemo(() => buildMessageRows(messages), [messages]);
+  // The reply index is built in the same pass as the rows, so a reply preview is
+  // an O(1) lookup instead of a scan of every loaded message.
+  const { rows, messagesById } = useMemo(() => {
+    const byId = new Map<string, MessagePayload>();
+    for (const message of messages) byId.set(message.id, message);
+    return { rows: buildMessageRows(messages), messagesById: byId };
+  }, [messages]);
   const { listRef, flashId, jumpTo } = useJump(rows, props.jumpToMessageId ?? null);
-  const sheet = useActionsSheet();
-  const names = useNames(props);
-  const context: MessageRowContext = {
-    ...names,
-    runtime,
-    channelId: props.channelId,
-    permissions: props.permissions ?? 0n,
-    ownUserId: props.ownUserId,
-    onActions: sheet.show,
-    onJumpToReply: jumpTo,
-    onReply,
-    onMemberPress: props.onMemberPress,
-    onChannelPress: props.onChannelPress,
-  };
-  const sheetMessage = sheet.message;
+  const {
+    visible: sheetVisible,
+    message: sheetMessage,
+    show: openActions,
+    hide: closeActions,
+  } = useActionsSheet();
+  const { viewerName, mentionNames, channelNames } = useNames(props);
+
+  // The parent recreates its callbacks on every render; read them through a ref
+  // so the row context below stays referentially stable and memoized rows only
+  // re-render when their own data changes.
+  const latest = useRef(props);
+  latest.current = props;
+  const openReply = useCallback((message: MessagePayload) => {
+    latest.current.onReply?.(message);
+  }, []);
+  const pressMember = useCallback((userId: string) => {
+    latest.current.onMemberPress?.(userId);
+  }, []);
+  const pressChannel = useCallback((name: string) => {
+    latest.current.onChannelPress?.(name);
+  }, []);
+  const hasReply = props.onReply !== undefined;
+  const hasMemberPress = props.onMemberPress !== undefined;
+  const hasChannelPress = props.onChannelPress !== undefined;
+
+  const context = useMemo<MessageRowContext>(
+    () => ({
+      runtime,
+      channelId: props.channelId,
+      permissions: props.permissions ?? 0n,
+      ownUserId: props.ownUserId,
+      viewerName,
+      mentionNames,
+      channelNames,
+      onActions: openActions,
+      onJumpToReply: jumpTo,
+      ...(hasReply ? { onReply: openReply } : {}),
+      ...(hasMemberPress ? { onMemberPress: pressMember } : {}),
+      ...(hasChannelPress ? { onChannelPress: pressChannel } : {}),
+    }),
+    [
+      runtime,
+      props.channelId,
+      props.permissions,
+      props.ownUserId,
+      viewerName,
+      mentionNames,
+      channelNames,
+      openActions,
+      jumpTo,
+      hasReply,
+      hasMemberPress,
+      hasChannelPress,
+      openReply,
+      pressMember,
+      pressChannel,
+    ],
+  );
+
+  const data = useMemo<RowData>(
+    () => ({
+      messagesById,
+      decrypted: props.decrypted,
+      attachments: props.attachments,
+      pendingIds: props.pendingIds,
+      memberNames: props.memberNames,
+      memberColors: props.memberColors,
+      ownUserId: props.ownUserId,
+    }),
+    [
+      messagesById,
+      props.decrypted,
+      props.attachments,
+      props.pendingIds,
+      props.memberNames,
+      props.memberColors,
+      props.ownUserId,
+    ],
+  );
+
+  const renderItem = useCallback(
+    ({ item }: { readonly item: MessageListRow }) => (
+      <RowItem
+        row={item}
+        data={data}
+        context={context}
+        highlighted={item.kind === "message" && item.message.id === flashId}
+      />
+    ),
+    [data, context, flashId],
+  );
+  const keyExtractor = useCallback((row: MessageListRow) => row.key, []);
 
   return (
     <View className="flex-1">
@@ -292,7 +402,7 @@ export function MessageList(props: MessageListProps) {
         }}
         className="flex-1"
         data={rows}
-        keyExtractor={(row) => row.key}
+        keyExtractor={keyExtractor}
         keyboardDismissMode="interactive"
         keyboardShouldPersistTaps="handled"
         contentContainerStyle={{ paddingVertical: 8 }}
@@ -302,9 +412,7 @@ export function MessageList(props: MessageListProps) {
         }}
         ListFooterComponent={hasOlder ? <OlderSpinner /> : null}
         ListEmptyComponent={<EmptyConversation />}
-        renderItem={({ item }) => (
-          <RowItem row={item} list={props} context={context} flashId={flashId} />
-        )}
+        renderItem={renderItem}
       />
       {firstUnreadId !== null && indexOfMessage(rows, firstUnreadId) >= 0 && (
         <UnreadPill
@@ -316,14 +424,14 @@ export function MessageList(props: MessageListProps) {
       )}
       {sheetMessage !== undefined && runtime !== undefined && (
         <MessageActionsSheet
-          visible={sheet.visible}
+          visible={sheetVisible}
           runtime={runtime}
           message={sheetMessage}
           text={props.decrypted.get(sheetMessage.id) ?? ""}
           authorName={props.memberNames.get(sheetMessage.authorId) ?? "Member"}
           ownUserId={props.ownUserId}
           permissions={props.permissions ?? 0n}
-          onClose={sheet.hide}
+          onClose={closeActions}
           onReply={
             onReply === undefined
               ? undefined
