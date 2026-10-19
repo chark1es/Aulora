@@ -576,7 +576,9 @@ export default defineSchema({
     .index("by_call", ["callId"])
     .index("by_call_user", ["callId", "userId"])
     .index("by_user", ["userId"])
-    .index("by_channel", ["channelId"]),
+    .index("by_channel", ["channelId"])
+    // The sweep drops abandoned seats past a heartbeat cutoff without scanning.
+    .index("by_lastSeen", ["lastSeen"]),
 
   /**
    * Short-lived WebRTC signalling envelopes (SDP offers/answers and ICE
@@ -596,7 +598,9 @@ export default defineSchema({
   })
     .index("by_call", ["callId"])
     .index("by_to", ["toUserId"])
-    .index("by_call_to", ["callId", "toUserId"]),
+    .index("by_call_to", ["callId", "toUserId"])
+    // The sweep expires orphaned envelopes by age instead of scanning.
+    .index("by_created", ["createdAt"]),
 
   notificationPrefs: defineTable({
     userId: v.string(),
