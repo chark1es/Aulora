@@ -116,4 +116,81 @@ describe("createScopedPresence", () => {
     offA();
     offB();
   });
+
+  describe("against a server without presence.getMany", () => {
+    /** Convex delivers the missing-function error with the result, not from `watchQuery`. */
+    function oldServerClient(failsFirstRead: boolean) {
+      const watched: { query: unknown; args: unknown; closed: boolean }[] = [];
+      const listeners: (() => void)[] = [];
+      let scopedFailing = failsFirstRead;
+      const client = {
+        watchQuery: (query: unknown, args: unknown) => {
+          const entry = { query, args, closed: false };
+          watched.push(entry);
+          const isScoped = watched.length === 1;
+          return {
+            localQueryResult: () => {
+              if (isScoped) {
+                if (scopedFailing) {
+                  throw new Error("Could not find public function for 'presence:getMany'");
+                }
+                return undefined;
+              }
+              return [row("a"), row("z")];
+            },
+            onUpdate: (listener: () => void) => {
+              if (isScoped) {
+                listeners.push(listener);
+              }
+              return () => {
+                entry.closed = true;
+              };
+            },
+          };
+        },
+      };
+      return {
+        client,
+        watched,
+        failNow: () => {
+          scopedFailing = true;
+          for (const listener of listeners) {
+            listener();
+          }
+        },
+      };
+    }
+
+    it("falls back to the scoped slice of presence.list when the result errors later", () => {
+      const { client, watched, failNow } = oldServerClient(false);
+      const presence = createScopedPresence(client as never);
+      const seen: PresenceRow[][] = [];
+      const off = presence.watch((rows) => {
+        seen.push([...rows]);
+      });
+      presence.setScope(["a", "b"]);
+      expect(watched).toHaveLength(1);
+
+      expect(() => failNow()).not.toThrow();
+      expect(watched).toHaveLength(2);
+      expect(watched[0]?.closed).toBe(true);
+      expect(watched[1]?.args).toEqual({});
+      expect(seen.at(-1)?.map((entry) => entry.userId)).toEqual(["a"]);
+      off();
+      expect(watched[1]?.closed).toBe(true);
+    });
+
+    it("falls back at once when the first read already errors", () => {
+      const { client, watched } = oldServerClient(true);
+      const presence = createScopedPresence(client as never);
+      const seen: PresenceRow[][] = [];
+      const off = presence.watch((rows) => {
+        seen.push([...rows]);
+      });
+      expect(() => presence.setScope(["a", "b"])).not.toThrow();
+      expect(watched).toHaveLength(2);
+      expect(seen.at(-1)?.map((entry) => entry.userId)).toEqual(["a"]);
+      off();
+    });
+  });
 });

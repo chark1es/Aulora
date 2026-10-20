@@ -124,7 +124,7 @@ services:
 
   convex-backend:
     # Pinned by digest: Convex revision 0cf49cbf8c4b7e22e631ceda9b5111f6cccbcd49.
-    image: ghcr.io/get-convex/convex-backend@sha256:b756b06641d15a55b5ec0692897ce5ad3715ddccfd02e1e213621e9e764255c8
+    image: ghcr.io/convex/convex-backend@sha256:b756b06641d15a55b5ec0692897ce5ad3715ddccfd02e1e213621e9e764255c8
     restart: unless-stopped
     stop_grace_period: 10s
     stop_signal: SIGINT
@@ -204,7 +204,7 @@ services:
 
   convex-dashboard:
     # Pinned by digest (Convex dashboard image has no stable version tag).
-    image: ghcr.io/get-convex/convex-dashboard@sha256:4ebaebfd300c203753e5016be459a2408d1655b81beeb2b793229a6878f1ac45
+    image: ghcr.io/convex/convex-dashboard@sha256:4ebaebfd300c203753e5016be459a2408d1655b81beeb2b793229a6878f1ac45
     restart: unless-stopped
     stop_grace_period: 10s
     stop_signal: SIGINT

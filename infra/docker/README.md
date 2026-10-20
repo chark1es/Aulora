@@ -89,8 +89,8 @@ Reproducibility matters more than freshness here, so every image is pinned:
 
 | Image | Pin | Why |
 | --- | --- | --- |
-| `ghcr.io/get-convex/convex-backend` | **digest** `sha256:b756b066…` | Convex publishes only `latest` + commit tags; the digest corresponds to revision `0cf49cbf` |
-| `ghcr.io/get-convex/convex-dashboard` | **digest** `sha256:4ebaebfd…` | same |
+| `ghcr.io/convex/convex-backend` | **digest** `sha256:b756b066…` | Convex publishes only `latest` + commit tags; the digest corresponds to revision `0cf49cbf` |
+| `ghcr.io/convex/convex-dashboard` | **digest** `sha256:4ebaebfd…` | same |
 | `postgres` | `postgres:17` | explicit major |
 | `nginx` (web runtime) | `nginx:1.27-alpine` | explicit minor |
 | `oven/bun` (build + setup) | `oven/bun:1.4.0` | matches `packageManager` |
@@ -102,8 +102,8 @@ Reproducibility matters more than freshness here, so every image is pinned:
 To bump the Convex digest:
 
 ```powershell
-docker pull ghcr.io/get-convex/convex-backend:latest
-docker inspect ghcr.io/get-convex/convex-backend:latest `
+docker pull ghcr.io/convex/convex-backend:latest
+docker inspect ghcr.io/convex/convex-backend:latest `
   --format '{{index .RepoDigests 0}} {{index .Config.Labels "org.opencontainers.image.revision"}}'
 ```
 

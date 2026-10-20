@@ -1,6 +1,6 @@
 {
   "name": "@aulora/bot",
-  "version": "1.2.0",
+  "version": "1.2.1",
   "private": true,
   "description": "TypeScript SDK for Aulora bots: exchanges a bot API token for a short-lived JWT, polls events, and calls Convex as the bot.",
   "type": "module",
