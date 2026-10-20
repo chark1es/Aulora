@@ -13,14 +13,14 @@
     },
     "apps/desktop": {
       "name": "@aulora/desktop",
-      "version": "1.1.0",
+      "version": "1.2.0",
       "devDependencies": {
         "@tauri-apps/cli": "^2.9.0",
       },
     },
     "apps/docs": {
       "name": "@aulora/docs",
-      "version": "1.1.0",
+      "version": "1.2.0",
       "devDependencies": {
         "@aulora/avatars": "workspace:*",
         "@aulora/tokens": "workspace:*",
@@ -28,7 +28,7 @@
     },
     "apps/mobile": {
       "name": "@aulora/mobile",
-      "version": "1.1.0",
+      "version": "1.2.0",
       "dependencies": {
         "@aulora/avatars": "workspace:*",
         "@aulora/core": "workspace:*",
@@ -89,7 +89,7 @@
     },
     "apps/web": {
       "name": "@aulora/web",
-      "version": "1.1.0",
+      "version": "1.2.0",
       "dependencies": {
         "@aulora/avatars": "workspace:*",
         "@aulora/core": "workspace:*",
@@ -127,7 +127,7 @@
     },
     "packages/avatars": {
       "name": "@aulora/avatars",
-      "version": "1.1.0",
+      "version": "1.2.0",
       "dependencies": {
         "@aulora/tokens": "workspace:*",
         "@blobatar/react": "2.7.0",
@@ -160,7 +160,7 @@
     },
     "packages/bot-sdk": {
       "name": "@aulora/bot",
-      "version": "1.1.0",
+      "version": "1.2.0",
       "devDependencies": {
         "@aulora/config": "workspace:*",
         "@types/node": "26.6.3",
@@ -170,15 +170,15 @@
     },
     "packages/bot-sdk-python": {
       "name": "@aulora/bot-python",
-      "version": "1.1.0",
+      "version": "1.2.0",
     },
     "packages/config": {
       "name": "@aulora/config",
-      "version": "1.1.0",
+      "version": "1.2.0",
     },
     "packages/convex": {
       "name": "@aulora/convex",
-      "version": "1.1.0",
+      "version": "1.2.0",
       "dependencies": {
         "@aulora/core": "workspace:*",
         "@convex-dev/better-auth": "0.12.5",
@@ -197,7 +197,7 @@
     },
     "packages/core": {
       "name": "@aulora/core",
-      "version": "1.1.0",
+      "version": "1.2.0",
       "devDependencies": {
         "@aulora/config": "workspace:*",
         "@types/node": "26.6.3",
@@ -207,7 +207,7 @@
     },
     "packages/tokens": {
       "name": "@aulora/tokens",
-      "version": "1.1.0",
+      "version": "1.2.0",
       "devDependencies": {
         "@aulora/config": "workspace:*",
         "@iconify-json/material-symbols": "1.2.93",
@@ -218,7 +218,7 @@
     },
     "packages/ui-native": {
       "name": "@aulora/ui-native",
-      "version": "1.1.0",
+      "version": "1.2.0",
       "dependencies": {
         "@aulora/tokens": "workspace:*",
       },
@@ -241,7 +241,7 @@
     },
     "packages/ui-web": {
       "name": "@aulora/ui-web",
-      "version": "1.1.0",
+      "version": "1.2.0",
       "dependencies": {
         "@aulora/tokens": "workspace:*",
       },
