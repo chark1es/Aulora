@@ -1,0 +1,8 @@
+# Store submissions contain shipped app code only. Tests, end-to-end seeds,
+# fixtures, the docs site, and spikes never enter an IPA or AAB, so their sample
+# URLs, placeholder column ids, and debug logging are not review findings.
+ignore:
+  - test
+  - e2e
+  - spikes
+  - apps/docs

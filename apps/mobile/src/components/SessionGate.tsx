@@ -7,6 +7,7 @@ import { useEffect, useState } from "react";
 import { View } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
 import type { AuloraAuthClient } from "../lib/auth-client";
+import { authActionsFromClient } from "../lib/auth-client";
 import type { CookieStore } from "../lib/cookie-fetch";
 import { bindPendingInvite } from "../lib/pending-invite";
 import { useStuckTimeout } from "../lib/stuck-timeout";
@@ -142,12 +143,17 @@ function SignedInChat({
     const result = await authClient.signOut();
     if (result.error) throw new Error(result.error.message ?? "Couldn't sign out");
   };
+  const deleteAccount = async () => {
+    const result = await authActionsFromClient(authClient).deleteAccount();
+    if (result.error) throw new Error(result.error.message ?? "Couldn't delete account");
+  };
   return (
     <QueryErrorBoundary client={client} onSignOut={() => void signOut()}>
       <MembershipGate
         workspaceIconSeed={profile.iconSeed}
         signedInAs={user.email ?? user.name ?? null}
         onSignOut={() => void signOut()}
+        onDeleteAccount={deleteAccount}
       >
         <SoundProvider>
           <ChatProvider key={user.id} client={client} userId={user.id}>
@@ -157,6 +163,7 @@ function SignedInChat({
                 ownUserId={user.id}
                 ownDisplayName={user.name ?? user.email ?? "You"}
                 onSignOut={signOut}
+                onDeleteAccount={deleteAccount}
               />
             </VoiceProvider>
           </ChatProvider>

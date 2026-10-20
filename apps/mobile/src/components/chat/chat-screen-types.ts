@@ -3,6 +3,8 @@ export interface ChatScreenProps {
   readonly ownUserId: string;
   readonly ownDisplayName: string;
   readonly onSignOut: () => void | Promise<void>;
+  /** Permanently deletes the signed-in account. */
+  readonly onDeleteAccount: () => void | Promise<void>;
 }
 
 export type Nullable<T> = T | null;

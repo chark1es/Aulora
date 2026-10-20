@@ -11,6 +11,8 @@
  * credentials. Nothing here logs the token or the shared secret.
  */
 
+// A relay protocol tag, never user-facing copy.
+// greenlight:ignore platform-reference
 export type MobilePlatform = "ios" | "android" | "unifiedpush" | "mobile";
 
 export interface PushRelayConfig {

@@ -45,6 +45,8 @@ export interface SettingsViewProps {
   readonly pushState: PushRegistrationState;
   readonly onSetStatus: (status: PresenceStatus, customStatus?: string) => void;
   readonly onSignOut: () => void;
+  /** Permanently deletes the signed-in account. */
+  readonly onDeleteAccount: () => void;
   /** Profile an offline surface already holds; when set the editor stays local. */
   readonly profileData?: ViewerProfileData | null | undefined;
   /** Persists an offline profile edit for the life of the surface. */
@@ -265,6 +267,13 @@ export function SettingsView(props: SettingsViewProps) {
         onOpen={setPage}
       />
       <ListGroup>
+        <ListRow
+          icon="trash"
+          title="Delete account"
+          subtitle="Permanently delete your account and data"
+          tone="danger"
+          onPress={props.onDeleteAccount}
+        />
         <ListRow
           icon="logout"
           title={`Sign out of ${props.workspaceName}`}

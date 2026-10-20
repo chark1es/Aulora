@@ -397,13 +397,48 @@ function useChatScreenSignOut(data: ChatScreenData) {
   return { confirmSignOut };
 }
 
+/**
+ * Deletes the account and everything tied to this device. The server keeps
+ * messages the person sent, which belong to the workspace, but the member
+ * profile, sessions, devices, and notification preferences are removed.
+ */
+function useChatScreenDeleteAccount(data: ChatScreenData) {
+  const { onDeleteAccount, unregisterPush, recentKey } = data;
+  const confirmDeleteAccount = useCallback(() => {
+    Alert.alert(
+      "Delete your account?",
+      "This permanently deletes your account, profile, sessions, and notification settings. Messages you sent stay in the workspace for other members. This cannot be undone.",
+      [
+        { text: "Cancel", style: "cancel" },
+        {
+          text: "Delete account",
+          style: "destructive",
+          onPress: () => {
+            void unregisterPush()
+              .then(() => AsyncStorage.removeItem(recentKey).catch(() => undefined))
+              .then(onDeleteAccount)
+              .catch((cause: unknown) => {
+                Alert.alert(
+                  "Couldn't delete account",
+                  `${errorMessage(cause)} If you signed in a while ago, sign out, sign back in, and try again.`,
+                );
+              });
+          },
+        },
+      ],
+    );
+  }, [onDeleteAccount, unregisterPush, recentKey]);
+  return { confirmDeleteAccount };
+}
+
 export function useChatScreenActions(data: ChatScreenData) {
   const navigation = useChatScreenNavigation(data);
   const creation = useChatScreenCreation(data, navigation.openChannel);
   const channels = useChatScreenChannelActions(data);
   const moderation = useChatScreenModeration(data);
   const signOut = useChatScreenSignOut(data);
-  return { ...navigation, ...creation, ...channels, ...moderation, ...signOut };
+  const deletion = useChatScreenDeleteAccount(data);
+  return { ...navigation, ...creation, ...channels, ...moderation, ...signOut, ...deletion };
 }
 
 export type ChatScreenActions = ReturnType<typeof useChatScreenActions>;

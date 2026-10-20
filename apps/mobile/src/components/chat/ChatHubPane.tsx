@@ -223,6 +223,7 @@ function ChatHubSettingsTab({ model }: { readonly model: ChatScreenModel }) {
         });
       }}
       onSignOut={model.confirmSignOut}
+      onDeleteAccount={model.confirmDeleteAccount}
       profileData={model.viewerProfile}
       onSaveProfile={model.onSaveViewerProfile}
     />
