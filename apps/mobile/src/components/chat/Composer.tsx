@@ -1,8 +1,8 @@
-import type { RoleMentionTarget } from "@aulora/core";
+import { createTypingThrottle, type RoleMentionTarget } from "@aulora/core";
 import type { IconName } from "@aulora/tokens";
 import { Icon, Text, usePalette } from "@aulora/ui-native";
-import { useEffect, useMemo, useRef, useState } from "react";
-import { Pressable, TextInput, View } from "react-native";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { Pressable, TextInput, type TextInputInstance, View } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import {
   type PickedFile,
@@ -11,6 +11,7 @@ import {
   pickFromClipboard,
   pickFromLibrary,
 } from "../../lib/attachments";
+import { impactFeedback } from "../../lib/haptics";
 import { BottomSheet } from "./BottomSheet";
 import { ListGroup, ListRow } from "./List";
 import { RichText } from "./RichText";
@@ -34,7 +35,11 @@ export interface ComposerProps {
   readonly channels?: readonly { readonly id: string; readonly name: string }[];
   readonly canMentionEveryone?: boolean;
   readonly viewerName?: string;
+  /** Announces that the viewer is typing; throttled to one ping per few seconds. */
   readonly onTyping: (channelId: string) => void;
+  /** Retracts the typing indicator on send, blur and channel switch. */
+  // eslint-disable-next-line no-unused-vars -- parameter name documents the callback contract
+  readonly onClearTyping?: ((channelId: string) => void) | undefined;
   readonly onSend: (input: { text: string; files: readonly PickedFile[] }) => void | Promise<void>;
 }
 
@@ -80,6 +85,7 @@ export function Composer(props: ComposerProps) {
     canMentionEveryone = false,
     viewerName = "You",
     onTyping,
+    onClearTyping,
     onSend,
   } = props;
   const palette = usePalette();
@@ -88,14 +94,39 @@ export function Composer(props: ComposerProps) {
   const [files, setFiles] = useState<readonly { key: string; file: PickedFile }[]>([]);
   const [menuOpen, setMenuOpen] = useState(false);
   const [busy, setBusy] = useState(false);
-  const inputRef = useRef<TextInput | null>(null);
+  const inputRef = useRef<TextInputInstance>(null);
   const fileSeq = useRef(0);
 
-  // biome-ignore lint/correctness/useExhaustiveDependencies: channelId is the reset trigger
+  // Latest callbacks, so the throttle instance below can be created once.
+  const onTypingRef = useRef(onTyping);
+  onTypingRef.current = onTyping;
+  const onClearTypingRef = useRef(onClearTyping);
+  onClearTypingRef.current = onClearTyping;
+  const typingThrottleRef = useRef<{
+    // eslint-disable-next-line no-unused-vars -- parameter name documents the contract
+    ping(channelId: string): void;
+    // eslint-disable-next-line no-unused-vars -- parameter name documents the contract
+    reset(channelId: string): void;
+  } | null>(null);
+  if (typingThrottleRef.current === null) {
+    typingThrottleRef.current = createTypingThrottle((id) => {
+      onTypingRef.current(id);
+    });
+  }
+
+  const stopTyping = useCallback((id: string) => {
+    typingThrottleRef.current?.reset(id);
+    onClearTypingRef.current?.(id);
+  }, []);
+
   useEffect(() => {
     setValue("");
     setFiles([]);
-  }, [channelId]);
+    return () => {
+      // Leaving the channel (or unmounting) drops its typing indicator.
+      stopTyping(channelId);
+    };
+  }, [channelId, stopTyping]);
 
   const candidates = useMemo<MentionCandidate[]>(() => {
     const broadcast: MentionCandidate[] = canMentionEveryone
@@ -181,6 +212,8 @@ export function Composer(props: ComposerProps) {
     if (text.length === 0 && files.length === 0) {
       return;
     }
+    impactFeedback();
+    stopTyping(channelId);
     void onSend({ text, files: files.map((entry) => entry.file) });
     setValue("");
     setFiles([]);
@@ -273,8 +306,11 @@ export function Composer(props: ComposerProps) {
             onChangeText={(next) => {
               setValue(next);
               if (next.length > 0) {
-                onTyping(channelId);
+                typingThrottleRef.current?.ping(channelId);
               }
+            }}
+            onBlur={() => {
+              stopTyping(channelId);
             }}
             className="max-h-32 py-2.5 text-[17px] leading-[22px] text-text"
           />

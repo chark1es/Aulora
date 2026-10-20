@@ -9,6 +9,6 @@
  * (`background`/`inactive`) heartbeats `idle`. On mobile, idle means the app is
  * not in the foreground — the mobile analogue of the web inactivity timer.
  */
-export function heartbeatStatusForAppState(state: string): "online" | "idle" {
+export function heartbeatStatusForAppState(state: string | null | undefined): "online" | "idle" {
   return state === "active" ? "online" : "idle";
 }

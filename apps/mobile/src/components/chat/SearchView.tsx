@@ -2,7 +2,7 @@
 import type { ChannelView, PresenceRow, SearchHit } from "@aulora/core";
 import { Icon, Text, usePalette } from "@aulora/ui-native";
 import { useMemo, useRef, useState } from "react";
-import { Pressable, TextInput, View } from "react-native";
+import { Pressable, TextInput, type TextInputInstance, View } from "react-native";
 import { ScrollView } from "react-native-gesture-handler";
 import { useReanimatedKeyboardAnimation } from "react-native-keyboard-controller";
 import Animated, { useAnimatedStyle } from "react-native-reanimated";
@@ -112,7 +112,7 @@ interface SearchFieldProps {
 /** The query field. It sits just above the dock so it stays within thumb reach. */
 function SearchField({ value, onChange, onSubmit }: SearchFieldProps) {
   const palette = usePalette();
-  const inputRef = useRef<TextInput>(null);
+  const inputRef = useRef<TextInputInstance>(null);
   // Tapping anywhere on the pill, not just the text, focuses the field.
   function focusInput() {
     inputRef.current?.focus();
@@ -288,9 +288,9 @@ export function SearchView(props: SearchViewProps) {
         className="flex-1"
         keyboardShouldPersistTaps="handled"
         keyboardDismissMode="on-drag"
-        contentContainerStyle={{ paddingHorizontal: 12, paddingBottom: 16, gap: 16 }}
+        contentContainerStyle={{ paddingHorizontal: 16, paddingBottom: 16, gap: 16 }}
       >
-        <View className="-mx-3">
+        <View className="-mx-4">
           <PaneHeader title="Search" subtitle="Messages, conversations and people" />
         </View>
         <SearchBody

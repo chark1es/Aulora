@@ -7,7 +7,7 @@ import {
   resolveChannelMentions,
   resolveMentions,
 } from "@aulora/core";
-import { Button, Icon, Text, usePalette } from "@aulora/ui-native";
+import { Button, EmptyState, Icon, Text, usePalette } from "@aulora/ui-native";
 import { Pressable, View } from "react-native";
 import { KeyboardAvoidingView } from "react-native-keyboard-controller";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
@@ -189,10 +189,7 @@ function ChatConversationBody({
 
 function ChatEmptyState({ model }: { readonly model: ChatScreenModel }) {
   return (
-    <View className="flex-1 items-center justify-center gap-3 px-8">
-      <Text tone="muted" className="text-center">
-        Pick a conversation to start.
-      </Text>
+    <EmptyState icon="message" title="Pick a conversation to start">
       <Button
         variant="secondary"
         onPress={() => {
@@ -201,7 +198,7 @@ function ChatEmptyState({ model }: { readonly model: ChatScreenModel }) {
       >
         Browse conversations
       </Button>
-    </View>
+    </EmptyState>
   );
 }
 
@@ -355,6 +352,9 @@ function ChatComposer({
       viewerName={model.ownDisplayName}
       onTyping={(typingChannelId) => {
         void model.runtime?.port.setTyping({ channelId: typingChannelId });
+      }}
+      onClearTyping={(typingChannelId) => {
+        void model.runtime?.port.clearTyping({ channelId: typingChannelId });
       }}
       onSend={makeSendHandler(model, channel.id)}
     />

@@ -1,6 +1,6 @@
 [package]
 name = "aulora-desktop"
-version = "1.1.0"
+version = "1.2.0"
 description = "Aulora desktop shell (Tauri 2) wrapping the web client."
 authors = ["Aulora"]
 license = "PolyForm-Noncommercial-1.0.0"
@@ -9,7 +9,9 @@ rust-version = "1.77.2"
 
 [lib]
 name = "aulora_desktop_lib"
-crate-type = ["staticlib", "cdylib", "rlib"]
+# Desktop-only workspace: the binary links this as an rlib. The mobile
+# scaffolding types (staticlib/cdylib) are unused here and only add build time.
+crate-type = ["rlib"]
 
 [build-dependencies]
 tauri-build = { version = "2", features = [] }

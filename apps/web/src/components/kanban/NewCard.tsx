@@ -73,13 +73,13 @@ export function NewCard(props: NewCardProps) {
         className="w-full resize-none bg-transparent text-[13px] font-medium leading-snug text-text placeholder:font-normal placeholder:text-text-muted focus-visible:outline-none"
       />
       <div className="flex items-center gap-1.5">
-        <Button size="sm" type="submit" disabled={!title.trim()} loading={saving}>
-          Add card
-        </Button>
+        <span className="mr-auto text-[11px] text-text-muted">Enter to add</span>
         <Button size="sm" variant="ghost" onClick={props.onClose}>
           Cancel
         </Button>
-        <span className="ml-auto text-[11px] text-text-muted">Enter to add</span>
+        <Button size="sm" type="submit" disabled={!title.trim()} loading={saving}>
+          Add card
+        </Button>
       </div>
     </form>
   );

@@ -11,4 +11,8 @@
 -keep class com.swmansion.reanimated.** { *; }
 -keep class com.facebook.react.turbomodule.** { *; }
 
+# react-native-webrtc: R8 cannot resolve this JNI-only class (it is absent on
+# some ABIs), so treat the reference as an external symbol instead of failing.
+-dontwarn org.webrtc.Dav1dDecoder$Natives
+
 # Add any project specific keep options here:

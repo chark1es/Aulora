@@ -45,6 +45,15 @@ describe("audit-format", () => {
     );
   });
 
+  it("lists the auth providers changed in an auth-providers update", () => {
+    expect(
+      describeAuditAction("instance.authProviders.update", '{"local":false,"github":true}'),
+    ).toBe("Updated sign-in providers: GitHub on, Email & password off");
+    expect(describeAuditAction("instance.authProviders.update", "{}")).toBe(
+      "Updated sign-in providers",
+    );
+  });
+
   it("groups actions into categories and shortens opaque ids", () => {
     expect(auditCategory("member.ban")).toBe("member");
     expect(auditCategory("channel.rename")).toBe("channel");

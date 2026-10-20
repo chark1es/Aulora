@@ -450,4 +450,57 @@ describe("Notes search", () => {
       "disabled",
     );
   });
+
+  it("matches a single character against titles and decrypted bodies", async () => {
+    const { alice } = await setup();
+    const roadmap = await alice.mutation(api.workspaceNotes.createNote, {
+      title: "Roadmap",
+      body: "annual planning",
+    });
+    const groceries = await alice.mutation(api.workspaceNotes.createNote, {
+      title: "Groceries",
+      body: "milk and eggs",
+    });
+    const oneCharBody = await alice.query(api.workspaceNotes.search, { query: "a" });
+    expect(oneCharBody.map((hit) => hit.id).sort()).toEqual([groceries, roadmap].sort());
+    const oneCharTitle = await alice.query(api.workspaceNotes.search, { query: "g" });
+    expect(oneCharTitle.map((hit) => hit.id)).toEqual([groceries]);
+    expect(oneCharTitle[0]?.snippet).toContain("milk");
+  });
+
+  it("bounds the scan to the most recently updated notes", async () => {
+    const { t, alice } = await setup();
+    await t.run(async (ctx) => {
+      const now = Date.now();
+      const base = {
+        tagIds: [],
+        creatorId: "alice",
+        lastEditorId: "alice",
+        archived: false,
+        createdAt: now,
+        revision: 0,
+      };
+      await ctx.db.insert("notePages", {
+        ...base,
+        titleCiphertext: "Old",
+        bodyCiphertext: "needle",
+        updatedAt: 0,
+      });
+      for (let i = 1; i <= 304; i += 1) {
+        await ctx.db.insert("notePages", {
+          ...base,
+          titleCiphertext: `Note ${i}`,
+          bodyCiphertext: "haystack",
+          updatedAt: i,
+        });
+      }
+    });
+
+    // The oldest note sits beyond the 300-note scan window, so its term is not
+    // found; terms inside the window still match.
+    expect(await alice.query(api.workspaceNotes.search, { query: "needle" })).toEqual([]);
+    const recent = await alice.query(api.workspaceNotes.search, { query: "haystack" });
+    expect(recent.length).toBeGreaterThan(0);
+    expect(recent.length).toBeLessThanOrEqual(30);
+  });
 });

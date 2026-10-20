@@ -53,6 +53,37 @@ export default defineConfig(({ mode }) => {
       // Vite would otherwise inline a small one as a `data:` URL, which the
       // production Content-Security-Policy (`script-src 'self'`) refuses to run.
       assetsInlineLimit: keepLoadableAssetsAsFiles,
+      rolldownOptions: {
+        output: {
+          // Keep the vendor libraries in their own stable chunks: the entry
+          // chunk then ships mostly app code, and a dependency bump only
+          // invalidates the one vendor chunk (not the whole bundle).
+          codeSplitting: {
+            groups: [
+              {
+                name: "react",
+                test: /node_modules[\\/](?:react|react-dom|scheduler)[\\/]/,
+                priority: 30,
+              },
+              {
+                name: "convex",
+                test: /node_modules[\\/]convex[\\/]/,
+                priority: 25,
+              },
+              {
+                name: "tanstack",
+                test: /node_modules[\\/]@tanstack[\\/]/,
+                priority: 20,
+              },
+              {
+                name: "auth",
+                test: /node_modules[\\/](?:better-auth|@better-fetch|nanostores|@convex-dev)[\\/]/,
+                priority: 15,
+              },
+            ],
+          },
+        },
+      },
     },
   };
 });

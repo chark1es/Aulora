@@ -1,6 +1,7 @@
 import { EVERYONE_ROLE_ID, Permission } from "@aulora/core";
 import { ConvexError, v } from "convex/values";
 import { internalMutation, internalQuery } from "./_generated/server";
+import { addMemberRoleLink } from "./lib/memberRoles";
 
 /** Baseline permissions granted to `@everyone`. */
 const EVERYONE_PERMISSIONS: bigint =
@@ -109,6 +110,11 @@ export const finalize = internalMutation({
       name: args.name,
       iconSeed: `aulora:server:${args.ownerId}`,
       ownerId: args.ownerId,
+      // The owner is the only member at bootstrap; joins/kicks keep this exact.
+      memberCount: 1,
+      // The reverse role index is complete for a fresh install because the
+      // bootstrap owner's link is written below and later changes dual-write.
+      memberRolesBackfilled: true,
       settings: {
         signupEnabled: true,
         inviteOnly: true,
@@ -135,6 +141,7 @@ export const finalize = internalMutation({
         roleIds: [...existingMember.roleIds, EVERYONE_ROLE_ID],
       });
     }
+    await addMemberRoleLink(ctx, args.ownerId, EVERYONE_ROLE_ID);
 
     return { serverId, roleId, ownerId: args.ownerId };
   },

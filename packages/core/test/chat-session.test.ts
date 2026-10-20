@@ -185,6 +185,41 @@ describe("ChatSession attachments", () => {
     expect(session.attachmentsFor(messageId)[0]?.dimensions).toEqual({ width: 64, height: 32 });
   });
 
+  it("carries a thumbnail URL from the stored file into the descriptor", async () => {
+    const port = createMockPort();
+    const session = makeSession(port);
+    await session.start();
+    await session.openChannel(channelFor("c1"));
+
+    const fileId = await port.uploadFile({
+      name: "photo.png",
+      mime: "image/png",
+      bytes: new Uint8Array([1, 2, 3, 4]),
+      blurhash: "abc",
+      thumbnail: { bytes: new Uint8Array([5, 6]) },
+    });
+    const messageId = await session.sendMessage("c1", "", { attachmentIds: [fileId] });
+
+    const descriptor = session.attachmentsFor(messageId)[0];
+    expect(descriptor?.thumbnail?.url).toBe(`blob://${fileId}:thumb`);
+    expect(descriptor?.thumbnail?.fileId).toBe(fileId);
+  });
+
+  it("omits the thumbnail when the stored file has none", async () => {
+    const port = createMockPort();
+    const session = makeSession(port);
+    await session.start();
+    await session.openChannel(channelFor("c1"));
+
+    const fileId = await port.uploadFile({
+      name: "photo.png",
+      mime: "image/png",
+      bytes: new Uint8Array([1, 2, 3]),
+    });
+    const messageId = await session.sendMessage("c1", "", { attachmentIds: [fileId] });
+    expect(session.attachmentsFor(messageId)[0]?.thumbnail).toBeUndefined();
+  });
+
   it("resolves attachments for received messages", async () => {
     const port = createMockPort();
     const session = makeSession(port);
@@ -254,6 +289,27 @@ describe("mock port message window", () => {
     const root = await port.sendMessage({ channelId: "c1", body: "root" });
     await port.sendMessage({ channelId: "c1", body: "reply", threadRootId: root });
     expect(port.state.messages.get(root)?.replyCount).toBe(1);
+  });
+
+  it("posts a quiet pin notice on pin and none on unpin", async () => {
+    const port = createMockPort();
+    const session = makeSession(port);
+    await session.start();
+    await session.openChannel(channelFor("c1"));
+    const messageId = await session.sendMessage("c1", "pin me");
+
+    await session.pinMessage("c1", messageId);
+    const notices = () => [...port.state.messages.values()].filter((m) => m.systemKind === "pin");
+    expect(notices()).toHaveLength(1);
+    expect(notices()[0]).toMatchObject({
+      channelId: "c1",
+      body: "",
+      systemActorId: "me",
+      systemTargetId: messageId,
+    });
+
+    await session.unpinMessage("c1", messageId);
+    expect(notices()).toHaveLength(1);
   });
 });
 

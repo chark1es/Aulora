@@ -8,6 +8,7 @@ import {
   type OidcFormValues,
   oidcFormFromVariables,
 } from "../../../lib/instance-env";
+import { EnvRedirectUrl } from "./EnvRedirectUrl";
 
 /**
  * Sets the whole OIDC_* group at once so a custom identity provider can be
@@ -59,7 +60,7 @@ export function OidcProviderForm(props: OidcProviderFormProps) {
         submitOidcForm({ step, values, hasSavedSecret, setError, setStep, onSave });
       }}
     >
-      <OidcFormIntro />
+      <OidcFormIntro redirectUrl={oidcRedirectUrl(variables)} />
       {step === "edit" ? (
         <>
           <OidcCoreFields values={values} hasSavedSecret={hasSavedSecret} onChange={update} />
@@ -106,7 +107,12 @@ function submitOidcForm(input: {
   input.setStep("confirm");
 }
 
-function OidcFormIntro() {
+/** The OIDC redirect URL the server attached to the client-id variable. */
+function oidcRedirectUrl(variables: readonly EnvVariable[]): string | null {
+  return variables.find((variable) => variable.key === "OIDC_CLIENT_ID")?.redirectUrl ?? null;
+}
+
+function OidcFormIntro({ redirectUrl }: { readonly redirectUrl: string | null }) {
   return (
     <>
       <Text size="sm">Add a custom OIDC provider</Text>
@@ -114,6 +120,10 @@ function OidcFormIntro() {
         Saves OIDC_ISSUER, OIDC_DISCOVERY_URL, OIDC_CLIENT_ID and OIDC_CLIENT_SECRET together (plus
         any optional fields). The client secret is write-only.
       </Text>
+      <Text size="xs" tone="muted">
+        Register this redirect URL with your identity provider before signing in:
+      </Text>
+      <EnvRedirectUrl url={redirectUrl} />
     </>
   );
 }
@@ -146,7 +156,15 @@ function OidcFormActions({
   readonly onCancel: () => void;
 }) {
   return (
-    <div className="flex flex-wrap items-center gap-2">
+    <div className="flex flex-wrap items-center justify-end gap-2">
+      <Button type="button" size="sm" variant="ghost" disabled={busy} onClick={onCancel}>
+        Cancel
+      </Button>
+      {step === "confirm" && (
+        <Button type="button" size="sm" variant="secondary" disabled={busy} onClick={onBack}>
+          Back
+        </Button>
+      )}
       {step === "edit" ? (
         <Button type="submit" size="sm" disabled={busy} data-testid="oidc-review">
           Review
@@ -163,14 +181,6 @@ function OidcFormActions({
           Save OIDC provider
         </Button>
       )}
-      {step === "confirm" && (
-        <Button type="button" size="sm" variant="secondary" disabled={busy} onClick={onBack}>
-          Back
-        </Button>
-      )}
-      <Button type="button" size="sm" variant="ghost" disabled={busy} onClick={onCancel}>
-        Cancel
-      </Button>
     </div>
   );
 }

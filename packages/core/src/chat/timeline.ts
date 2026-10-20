@@ -245,3 +245,15 @@ export function createTypingThrottle(
     },
   };
 }
+
+/** How many distinct repliers a thread root remembers: three shown, one more to signal "and others". */
+export const THREAD_PARTICIPANT_LIMIT = 4;
+
+/** The thread's recent repliers after `authorId` replies: newest first, distinct, capped. */
+export function withReplyParticipant(
+  current: readonly string[] | undefined,
+  authorId: string,
+): string[] {
+  const others = (current ?? []).filter((id) => id !== authorId);
+  return [authorId, ...others].slice(0, THREAD_PARTICIPANT_LIMIT);
+}

@@ -155,10 +155,6 @@ export function WorkspaceBranding({ canManageWorkspace }: WorkspaceBrandingProps
                 }
               }}
             />
-            <Button type="button" variant="secondary" onClick={() => logoInputRef.current?.click()}>
-              <Icon name="image-plus" size={15} />
-              Upload logo
-            </Button>
             {server.logoUrl !== null && (
               <Button
                 type="button"
@@ -169,6 +165,10 @@ export function WorkspaceBranding({ canManageWorkspace }: WorkspaceBrandingProps
                 Clear logo
               </Button>
             )}
+            <Button type="button" variant="secondary" onClick={() => logoInputRef.current?.click()}>
+              <Icon name="image-plus" size={15} />
+              Upload logo
+            </Button>
             <Button type="submit" loading={busy} disabled={busy || !dirty}>
               Save branding
             </Button>

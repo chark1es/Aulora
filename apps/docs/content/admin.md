@@ -79,7 +79,7 @@ grant it from the role editor where it is wanted.
 
 ## Addons
 
-The Addons tab controls optional tools. Kanban and Notes are off by default and require Manage workspace to enable. Grant their separate role permissions before inviting members to use them. See [Kanban](kanban.md) for board permissions, timers, attachments and GitHub connections, and [Notes](notes.md) for folders, tags, search and history.
+The Addons tab controls optional tools. Kanban and Notes are off by default and require Manage workspace to enable. Grant their separate role permissions before inviting members to use them. See [Kanban](kanban.md) for board permissions, timers, attachments and GitHub connections, and [Notes](notes.md) for folders, tags, search and history. Bots have their own tab, described in [Bots](bots.md); it needs the Manage bots permission.
 
 ## Instance admin
 
@@ -94,9 +94,16 @@ instance-level concerns live:
   overrides saved in the **Environment** section; set credentials in
   `infra/docker/.env` (or the Environment tab) and re-run `setup`. Secrets are
   never shown, only whether each provider is configured, and values that came
-  from the deployment are hidden even from the owner.
-- **Environment** — every environment variable the app reads, with where each
-  value comes from (environment, overridden here, or unset). Deployment values
+  from the deployment are hidden even from the owner. The **Email & password
+  sign-in** switch turns local sign-in on or off at runtime (no redeploy); it is
+  refused while no other provider is configured and enabled, so the instance can
+  never be locked out, and first-run owner creation is never blocked by it. See
+  [Disabling email & password sign-in](self-hosting.md#disabling-email-password-sign-in).
+- **Environment** — every environment variable the app reads, in a table with
+  where each value comes from (environment, overridden here, or unset). A lock
+  icon marks a row that cannot be changed from here; hover it for the reason.
+  Each provider's client id row shows the redirect URL to register with that
+  provider (built from `SITE_URL`). Deployment values
   are never returned, secret or not. The owner can override a curated set, reset
   it back to the deployment value, and add a custom OIDC provider without
   editing `.env`. Every save is validated, rate-limited and audited with key
@@ -107,7 +114,9 @@ instance-level concerns live:
   group's deployment values from applying, so a deployment secret is never
   paired with an endpoint the owner chose. Overrides take effect on the next
   request, with no restart. Set `AULORA_ALLOW_UI_ENV_OVERRIDES=false` in `.env`
-  and re-run `setup` to disable the section.
+  and re-run `setup` to disable the section. The
+  [environment variables reference](environment-variables.md) lists every
+  variable the app reads.
 - **Storage** — the total upload quota (`0` means unlimited) and the largest
   single upload. Both are validated server-side.
 - **Encryption** — the EKM provider (default `local`), the KEK id and the active

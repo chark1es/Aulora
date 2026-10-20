@@ -1,6 +1,6 @@
 import type { MessagePayload } from "@aulora/core";
 import { describe, expect, it } from "vitest";
-import { buildMessageRows, groupReactions } from "../src/lib/message-rows";
+import { buildMessageRows, groupReactions, groupReactionsByMessage } from "../src/lib/message-rows";
 
 const NOON = new Date(2026, 8, 30, 12, 0, 0).getTime();
 const MINUTE = 60_000;
@@ -26,7 +26,11 @@ function message(id: string, authorId: string, at: number, extra: Partial<Messag
 function shape(messages: readonly MessagePayload[]): string[] {
   return buildMessageRows(messages)
     .reverse()
-    .map((row) => (row.kind === "day" ? "day" : `${row.message.id}:${row.grouped}`));
+    .map((row) => {
+      if (row.kind === "day") return "day";
+      if (row.kind === "system") return `system:${row.key}`;
+      return `${row.message.id}:${row.grouped}`;
+    });
 }
 
 describe("buildMessageRows", () => {
@@ -70,6 +74,35 @@ describe("buildMessageRows", () => {
   it("handles an empty conversation", () => {
     expect(buildMessageRows([])).toEqual([]);
   });
+
+  it("renders a pin notice as a standalone system row that breaks the author block", () => {
+    const rows = buildMessageRows([
+      message("a", "u1", NOON, { pinnedAt: NOON }),
+      message("notice", "u1", NOON + MINUTE, {
+        body: "",
+        systemKind: "pin",
+        systemActorId: "u1",
+        systemTargetId: "a",
+      }),
+      message("after", "u1", NOON + 2 * MINUTE),
+    ]);
+    // Newest first: `after` must not group with the notice, and the notice is
+    // its own row rather than a message bubble.
+    expect(
+      shape([
+        message("a", "u1", NOON, { pinnedAt: NOON }),
+        message("notice", "u1", NOON + MINUTE, {
+          body: "",
+          systemKind: "pin",
+          systemActorId: "u1",
+          systemTargetId: "a",
+        }),
+        message("after", "u1", NOON + 2 * MINUTE),
+      ]),
+    ).toEqual(["day", "a:false", "system:notice", "after:false"]);
+    const notice = rows.find((row) => row.kind === "system");
+    expect(notice).toMatchObject({ kind: "system", actorId: "u1", targetId: "a" });
+  });
 });
 
 describe("groupReactions", () => {
@@ -87,5 +120,22 @@ describe("groupReactions", () => {
       { emoji: "👍", count: 2, mine: true },
       { emoji: "🎉", count: 1, mine: false },
     ]);
+  });
+});
+
+describe("groupReactionsByMessage", () => {
+  it("splits a batched page into one group list per message", () => {
+    const grouped = groupReactionsByMessage(
+      [
+        { messageId: "m1", userId: "u1", emoji: "👍" },
+        { messageId: "m1", userId: "me", emoji: "👍" },
+        { messageId: "m2", userId: "u2", emoji: "🎉" },
+      ],
+      "me",
+    );
+    expect(grouped.get("m1")).toEqual([{ emoji: "👍", count: 2, mine: true }]);
+    expect(grouped.get("m2")).toEqual([{ emoji: "🎉", count: 1, mine: false }]);
+    // A message with no reactions has no entry, so its row renders nothing.
+    expect(grouped.get("m3")).toBeUndefined();
   });
 });

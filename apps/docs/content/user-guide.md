@@ -14,7 +14,7 @@ If a server does not answer, the app stops waiting silently. After about ten sec
 
 This installs a client, not a workspace. To run a server, follow [getting started](getting-started.md#install-a-workspace).
 
-Published files are listed in [GitHub Releases](https://github.com/chark1es/Aulora/releases). iOS and Android are in beta. Check the version and choose your platform:
+Desktop installers are listed in [GitHub Releases](https://github.com/chark1es/Aulora/releases). iOS and Android are in beta and do not install from a released file; join the beta and install through TestFlight or Google Play. Check the version and choose your platform:
 
 | Platform | File and installation |
 | --- | --- |
@@ -22,9 +22,12 @@ Published files are listed in [GitHub Releases](https://github.com/chark1es/Aulo
 | macOS Intel | x86_64 DMG; open it and move Aulora to Applications |
 | Windows x64 | `_x64-setup.exe`; run the installer |
 | Linux x64 | AppImage for in-app updates, or a Debian package for manual installation |
-| Android | APK for direct installation; AAB is for Google Play submission |
-| iOS | Use a published App Store or TestFlight invitation; an IPA download is not a general installer |
+| Android | Join the testers group, then install from the Play Store; there is no APK to sideload |
+| iOS | Join the TestFlight beta from the invitation; there is no IPA to install |
 | Browser | Open your server's web URL |
+
+- **iOS beta:** open the [TestFlight invitation](https://testflight.apple.com/join/YUp4ugyv), install TestFlight if you have not already, and accept the Aulora build. Builds come through TestFlight, not as a downloadable file.
+- **Android beta:** join the [Aulora testing Google group](https://groups.google.com/g/aulora-testing) with the Google account you use on the Play Store, then install Aulora from its [Play Store listing](https://play.google.com/store/apps/details?id=dev.spwnd.aulora) or the opt-in link Play sends. Google Play handles installation and updates.
 
 For an AppImage, grant execute permission before opening it, for example `chmod +x Aulora*.AppImage`. Linux desktop integration and system dependencies vary by distribution.
 
@@ -34,13 +37,19 @@ Windows downloads are currently unsigned, so Windows may show an unknown-publish
 
 Choose a channel in the sidebar to read or send messages. Start a direct conversation from the conversation controls and choose a member. Use a message's action menu for replies, reactions, editing, or other available actions.
 
-Threads keep replies attached to a message. The threads inbox helps you return to discussions. Drag a file into the web/desktop composer or use the attachment control; mobile offers the device's file and photo pickers. Upload limits depend on the server.
+Threads keep replies attached to a message. Under a thread's first message, a reply line shows the count, the people who replied and when the last reply arrived; select it to open the thread. The threads inbox helps you return to discussions. Drag a file into the web/desktop composer or use the attachment control; mobile offers the device's file and photo pickers. Upload limits depend on the server.
+
+Pin a message in a channel or conversation if you have the Pin messages permission. Choose **Pin message** from the message's action menu, then open the channel's **Pinned messages** panel from the pin button in its header to read, un-pin or load more pins. Pinning also posts a quiet line in the timeline, such as *You pinned a message*; select the word **message** in it to jump to the pinned message and briefly highlight it. Pinning a message is separate from pinning a conversation: pin a direct message or group chat to keep it in a Pinned block at the top of your Direct messages list. That conversation pin is personal to you and does not affect the other people in the conversation.
 
 Role permissions control who can create channels, upload, moderate, or manage a workspace. If an action is missing or denied, ask the workspace administrator.
 
-Pin a direct message or group chat to keep it in a Pinned block at the top of your Direct messages list. A pin is personal to you and does not affect the other people in the conversation.
-
 In a channel's member list, roles an administrator has set to display separately get their own section above Online and Offline, titled in the role's colour. Only online members appear under a role; everyone offline is listed under Offline.
+
+## Search
+
+Press `Cmd+K` on macOS or `Ctrl+K` on Windows and Linux, or choose the search button in a conversation header, to open search. Type part of a conversation name to jump to it, or a word to search message history. Search runs on your device over content the server decrypted for it and loads older history as needed, so what you type is not sent to the server. Results open the matching message and highlight it.
+
+On iPhone and Android, open the **Search** tab in the hub. It searches messages, conversations and people, keeps recent searches on the device, and lets you narrow the results with the scope chips.
 
 ## Kanban
 

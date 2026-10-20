@@ -1,13 +1,10 @@
 /* eslint-disable no-unused-vars -- the base rule reports parameter names in type signatures; Biome checks real unused code */
-import { Button, Input, Text } from "@aulora/ui-web";
+import { Button, Text } from "@aulora/ui-web";
 import { useState } from "react";
-import type { EnvVariable } from "../../../lib/instance-env";
+import { type EnvVariable, envFieldMeta, envValueError } from "../../../lib/instance-env";
+import { EnvRedirectUrl } from "./EnvRedirectUrl";
+import { EnvValueEditor } from "./EnvValueEditor";
 
-/**
- * Two-step editor for a single environment override: edit the value, then
- * confirm. Secrets are write-only, so the field starts empty even when a value
- * is already saved; non-secret UI values are prefilled for editing.
- */
 export interface EnvOverrideFormProps {
   readonly variable: EnvVariable;
   readonly busy: boolean;
@@ -15,175 +12,100 @@ export interface EnvOverrideFormProps {
   readonly onSave: (value: string) => Promise<unknown>;
 }
 
+/**
+ * Inline editor for one override. The control matches the variable's type, the
+ * description and bounds sit above it, and a single footer puts Cancel (ghost)
+ * left of the primary Save. Escape cancels; the control reports its own
+ * validation error as the value changes.
+ */
 export function EnvOverrideForm(props: EnvOverrideFormProps) {
   const { variable, busy, onCancel, onSave } = props;
+  const keepBlank = variable.secret && variable.source === "ui";
   const [value, setValue] = useState(variable.secret ? "" : (variable.value ?? ""));
-  const [step, setStep] = useState<"edit" | "confirm">("edit");
   const [error, setError] = useState<string | null>(null);
 
   function submit(): void {
-    if (step === "confirm") {
-      void onSave(value);
-      return;
-    }
-    if (value.trim().length === 0) {
+    if (value.trim().length === 0 && !keepBlank) {
       setError("Enter a value");
       return;
     }
+    // An already-saved secret left blank means "keep the current value", so close
+    // without a mutation rather than sending an empty value the server rejects.
+    if (keepBlank && value.trim().length === 0) {
+      onCancel();
+      return;
+    }
     setError(null);
-    setStep("confirm");
+    if (envValueError(variable, value) !== null) {
+      return;
+    }
+    void onSave(value.trim());
   }
 
   return (
     <form
-      className="flex flex-col gap-2 rounded-input border border-border bg-surface-1 p-3"
+      className="flex flex-col gap-3 rounded-input border border-border bg-surface-1 p-3"
       data-testid={`env-form-${variable.key}`}
+      onKeyDown={(event) => {
+        if (event.key === "Escape") {
+          event.stopPropagation();
+          onCancel();
+        }
+      }}
       onSubmit={(event) => {
         event.preventDefault();
         submit();
       }}
     >
-      {step === "edit" ? (
-        <EnvValueField variable={variable} value={value} onChange={setValue} />
-      ) : (
-        <ConfirmStep variable={variable} />
-      )}
+      <EnvOverrideHelper variable={variable} />
+      <EnvValueEditor
+        variable={variable}
+        value={value}
+        onChange={(next) => {
+          setValue(next);
+          setError(null);
+        }}
+      />
       {error !== null && (
         <Text tone="danger" size="xs" role="alert">
           {error}
         </Text>
       )}
-      <FormActions
-        variable={variable}
-        step={step}
-        busy={busy}
-        onBack={() => {
-          setStep("edit");
-        }}
-        onCancel={onCancel}
-      />
+      <div className="flex items-center justify-end gap-2">
+        <Button type="button" size="sm" variant="ghost" disabled={busy} onClick={onCancel}>
+          Cancel
+        </Button>
+        <Button
+          type="submit"
+          size="sm"
+          loading={busy}
+          disabled={busy}
+          data-testid={`env-save-${variable.key}`}
+        >
+          Save override
+        </Button>
+      </div>
     </form>
   );
 }
 
-function ConfirmStep({ variable }: { readonly variable: EnvVariable }) {
+function EnvOverrideHelper({ variable }: { readonly variable: EnvVariable }) {
+  const meta = envFieldMeta(variable);
   return (
-    <div className="flex flex-col gap-1">
-      <Text size="sm">
-        Override <span className="font-mono">{variable.key}</span> for everyone on this instance?
-      </Text>
+    <div className="flex flex-col gap-0.5">
       <Text size="xs" tone="muted">
-        The deployment value stops being used and cannot be shown again from here. Values saved here
-        live in the workspace database, encrypted with the server key — less secure than an
-        environment variable.
+        {variable.description}
+      </Text>
+      {meta.defaultValue !== null && (
+        <Text size="xs" tone="muted">
+          Default: <span className="font-mono">{meta.defaultValue}</span>
+        </Text>
+      )}
+      {variable.redirectUrl !== null && <EnvRedirectUrl url={variable.redirectUrl} />}
+      <Text size="xs" tone="muted">
+        Saved in the workspace database, encrypted with the server key — less secure than a
+        deploy-time variable.
       </Text>
     </div>
-  );
-}
-
-function FormActions({
-  variable,
-  step,
-  busy,
-  onBack,
-  onCancel,
-}: {
-  readonly variable: EnvVariable;
-  readonly step: "edit" | "confirm";
-  readonly busy: boolean;
-  readonly onBack: () => void;
-  readonly onCancel: () => void;
-}) {
-  return (
-    <div className="flex flex-wrap items-center gap-2">
-      {step === "confirm" ? (
-        <Button
-          type="submit"
-          size="sm"
-          variant="danger"
-          loading={busy}
-          disabled={busy}
-          data-testid={`env-confirm-${variable.key}`}
-        >
-          Save override
-        </Button>
-      ) : (
-        <Button type="submit" size="sm" disabled={busy} data-testid={`env-review-${variable.key}`}>
-          Review
-        </Button>
-      )}
-      {step === "confirm" && (
-        <Button type="button" size="sm" variant="secondary" disabled={busy} onClick={onBack}>
-          Back
-        </Button>
-      )}
-      <Button type="button" size="sm" variant="ghost" disabled={busy} onClick={onCancel}>
-        Cancel
-      </Button>
-    </div>
-  );
-}
-
-function EnvValueField({
-  variable,
-  value,
-  onChange,
-}: {
-  readonly variable: EnvVariable;
-  readonly value: string;
-  readonly onChange: (value: string) => void;
-}) {
-  if (variable.type === "boolean" || variable.type === "enum") {
-    return <ChoiceField variable={variable} value={value} onChange={onChange} />;
-  }
-  return (
-    <Input
-      label={variable.label}
-      type={variable.type === "number" ? "number" : variable.secret ? "password" : "text"}
-      value={value}
-      placeholder={variable.secret ? "Set — enter a new value to replace" : undefined}
-      onChange={(event) => {
-        onChange(event.currentTarget.value);
-      }}
-      autoComplete="off"
-      spellCheck={false}
-    />
-  );
-}
-
-function ChoiceField({
-  variable,
-  value,
-  onChange,
-}: {
-  readonly variable: EnvVariable;
-  readonly value: string;
-  readonly onChange: (value: string) => void;
-}) {
-  const options =
-    variable.type === "boolean"
-      ? [
-          { value: "true", label: "Enabled" },
-          { value: "false", label: "Disabled" },
-        ]
-      : (variable.enumValues ?? []).map((option) => ({ value: option, label: option }));
-  return (
-    <label className="flex flex-col gap-1.5 text-[13px] font-medium text-text">
-      {variable.label}
-      <select
-        className="h-10 rounded-[8px] border border-border bg-surface-2 px-3 text-text"
-        value={value}
-        onChange={(event) => {
-          onChange(event.target.value);
-        }}
-      >
-        <option value="">Choose…</option>
-        {options.map((option) => (
-          <option key={option.value} value={option.value}>
-            {option.label}
-          </option>
-        ))}
-      </select>
-    </label>
   );
 }

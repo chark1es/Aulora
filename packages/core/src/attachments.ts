@@ -22,6 +22,8 @@ export interface UploadAttachmentInput {
   readonly size?: number;
   readonly dimensions?: AttachmentDimensions;
   readonly blurhash?: string;
+  /** Small downscaled preview uploaded alongside the original; optional. */
+  readonly thumbnail?: { bytes: Uint8Array };
   readonly channelId?: string;
 }
 
@@ -39,6 +41,7 @@ export async function uploadAttachment(
     bytes: input.bytes,
     ...(input.dimensions !== undefined ? { dimensions: input.dimensions } : {}),
     ...(input.blurhash !== undefined ? { blurhash: input.blurhash } : {}),
+    ...(input.thumbnail !== undefined ? { thumbnail: input.thumbnail } : {}),
     ...(input.channelId !== undefined ? { channelId: input.channelId } : {}),
   });
   return {
@@ -95,13 +98,22 @@ function parseThumbnail(value: unknown): AttachmentThumbnail | undefined {
     return undefined;
   }
   const fileId = readString(value.fileId);
-  const width = value.width;
-  const height = value.height;
-  if (fileId === undefined || typeof width !== "number" || typeof height !== "number") {
+  if (fileId === undefined) {
     return undefined;
   }
+  // `width`/`height`/`url` are optional: a server-described thumbnail carries a
+  // URL, while a legacy body-carried descriptor may carry dimensions only.
+  const url = readString(value.url);
   const blurhash = readString(value.blurhash);
-  return { fileId, width, height, ...(blurhash !== undefined ? { blurhash } : {}) };
+  const width = typeof value.width === "number" && value.width > 0 ? value.width : undefined;
+  const height = typeof value.height === "number" && value.height > 0 ? value.height : undefined;
+  return {
+    fileId,
+    ...(url !== undefined ? { url } : {}),
+    ...(width !== undefined ? { width } : {}),
+    ...(height !== undefined ? { height } : {}),
+    ...(blurhash !== undefined ? { blurhash } : {}),
+  };
 }
 
 /**

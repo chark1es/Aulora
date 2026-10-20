@@ -1,4 +1,4 @@
-import { Button, Icon } from "@aulora/ui-web";
+import { Button, Icon, SearchInput } from "@aulora/ui-web";
 import { UNASSIGNED } from "./board-logic";
 import {
   ChecklistMenu,
@@ -19,22 +19,15 @@ interface Props {
 
 function SearchBox({ ctl }: { ctl: BoardController }) {
   return (
-    <label className="relative min-w-[160px] max-w-[280px] flex-1">
-      <Icon
-        name="search"
-        size={14}
-        className="pointer-events-none absolute left-2.5 top-1/2 -translate-y-1/2 text-text-muted"
-      />
-      <input
-        aria-label="Search cards"
-        placeholder="Search cards"
-        value={ctl.filters.search}
-        onChange={(event) => {
-          ctl.setFilters({ ...ctl.filters, search: event.target.value });
-        }}
-        className="h-8 w-full rounded-[8px] border border-border bg-surface-2 pl-8 pr-2.5 text-[13px] text-text placeholder:text-text-muted focus-visible:border-accent focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent-soft"
-      />
-    </label>
+    <SearchInput
+      label="Search cards"
+      placeholder="Search cards"
+      value={ctl.filters.search}
+      onChange={(search) => {
+        ctl.setFilters({ ...ctl.filters, search });
+      }}
+      className="min-w-[160px] max-w-[280px] flex-1"
+    />
   );
 }
 

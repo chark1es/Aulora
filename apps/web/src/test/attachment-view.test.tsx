@@ -56,4 +56,23 @@ describe("AttachmentView media playback", () => {
     expect(screen.queryByRole("button", { name: /Play/ })).toBeNull();
     expect(screen.getByRole("button", { name: "Download" })).toBeTruthy();
   });
+
+  it("renders the server thumbnail without downloading the original", async () => {
+    const fetchSpy = vi.fn(async () => new Response(new Uint8Array([9, 9, 9]), { status: 200 }));
+    vi.stubGlobal("fetch", fetchSpy);
+    const runtime = runtimeWith(new Uint8Array([1, 2, 3]));
+    render(
+      <AttachmentView
+        runtime={runtime}
+        descriptor={{
+          ...descriptor("image/png", "pic.png"),
+          thumbnail: { fileId: "f1", url: "https://example.test/thumb" },
+        }}
+      />,
+    );
+    expect(await screen.findByTestId("thumbnail-f1")).toBeTruthy();
+    expect(fetchSpy).toHaveBeenCalledWith("https://example.test/thumb");
+    // The full original is not fetched for the inline grid.
+    expect(runtime.port.downloadFile).not.toHaveBeenCalled();
+  });
 });

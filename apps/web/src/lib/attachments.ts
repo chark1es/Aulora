@@ -102,6 +102,8 @@ export async function uploadFiles(
           mime: processed.mime,
           dimensions: { width: processed.width, height: processed.height },
           blurhash: processed.blurhash,
+          // Downscaled preview so inline grids never fetch the full original.
+          thumbnail: { bytes: processed.thumbnail.bytes },
         }),
       );
     } else {
@@ -126,15 +128,29 @@ export async function loadAttachmentUrl(
   return URL.createObjectURL(new Blob([bytes as unknown as BlobPart], { type: descriptor.mime }));
 }
 
-/** Fetches the thumbnail into a local object URL, when present. */
+/**
+ * Fetches the small thumbnail into a local object URL, when present. A server
+ * thumbnail carries its own signed `url` (a variant of the parent file), which
+ * is fetched directly; legacy descriptors that only carry a `fileId` fall back
+ * to downloading through the port.
+ */
 export async function loadThumbnailUrl(
   port: ChatPort,
   descriptor: AttachmentDescriptor,
 ): Promise<string | undefined> {
+  const mime = descriptor.mime === "image/png" ? "image/png" : "image/jpeg";
+  const thumbnailUrl = descriptor.thumbnail?.url;
+  if (thumbnailUrl !== undefined) {
+    const response = await fetch(thumbnailUrl);
+    if (!response.ok) {
+      throw new Error(`Thumbnail download failed with status ${response.status}`);
+    }
+    const bytes = new Uint8Array(await response.arrayBuffer());
+    return URL.createObjectURL(new Blob([bytes as unknown as BlobPart], { type: mime }));
+  }
   const bytes = await downloadThumbnail(port, descriptor);
   if (bytes === undefined) {
     return undefined;
   }
-  const mime = descriptor.mime === "image/png" ? "image/png" : "image/jpeg";
   return URL.createObjectURL(new Blob([bytes as unknown as BlobPart], { type: mime }));
 }

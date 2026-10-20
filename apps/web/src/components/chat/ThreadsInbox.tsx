@@ -1,5 +1,5 @@
 import { activityLabel } from "@aulora/core";
-import { Spinner } from "@aulora/ui-web";
+import { Icon, Spinner } from "@aulora/ui-web";
 import { PersonAvatar } from "./member-avatars";
 
 /** One row of the Threads inbox, as returned by `api.messages.threadInbox`. */
@@ -68,9 +68,7 @@ export function ThreadsInbox({
         className="flex flex-1 flex-col items-center justify-center gap-3 p-8 text-center"
       >
         <span className="flex h-12 w-12 items-center justify-center rounded-[10px] bg-accent-soft text-accent">
-          <span className="text-[22px] leading-none" aria-hidden="true">
-            #
-          </span>
+          <Icon name="thread" size={24} />
         </span>
         <h3 className="text-lg font-semibold text-text">No threads yet</h3>
         <p className="max-w-xs text-sm text-text-muted">

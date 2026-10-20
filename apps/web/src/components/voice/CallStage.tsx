@@ -27,7 +27,7 @@ export function CallStage({
 
   return (
     <div
-      className="fixed inset-0 z-[80] flex flex-col bg-bg/95 backdrop-blur-xl"
+      className="desktop-below-titlebar z-[80] flex flex-col bg-bg/95 backdrop-blur-xl"
       role="dialog"
       aria-modal="true"
       aria-label={`${callKindLabel(call.kind)} in ${title}`}

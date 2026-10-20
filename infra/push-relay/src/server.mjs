@@ -25,6 +25,7 @@ import { fileURLToPath } from "node:url";
 import { loadRelayConfig } from "./config.mjs";
 import {
   bearerMatches,
+  createConcurrencyLimiter,
   createProviderRegistry,
   RelayError,
   validateWake,
@@ -64,10 +65,17 @@ function readBody(request, maxBytes = MAX_BODY_BYTES) {
  * Creates the relay's HTTP server. `providers` maps a platform to a provider
  * with an async `deliver(wake)`; inject a fake for tests.
  */
-export function createRelayServer({ token, providers = {}, maxBodyBytes = MAX_BODY_BYTES } = {}) {
+export function createRelayServer({
+  token,
+  providers = {},
+  maxBodyBytes = MAX_BODY_BYTES,
+  maxConcurrent = 64,
+  maxQueued = 512,
+} = {}) {
   if (typeof token !== "string" || token.length === 0) {
     throw new Error("relay token is required");
   }
+  const limitDeliveries = createConcurrencyLimiter({ maxConcurrent, maxQueued });
   return createServer(async (request, response) => {
     try {
       const url = new URL(request.url ?? "/", "http://localhost");
@@ -98,7 +106,7 @@ export function createRelayServer({ token, providers = {}, maxBodyBytes = MAX_BO
         sendJson(response, 503, { error: "provider-unavailable", platform: wake.platform });
         return;
       }
-      const result = await provider.deliver(wake);
+      const result = await limitDeliveries(() => provider.deliver(wake));
       if (!result?.ok) {
         sendJson(response, 502, { error: "delivery-failed", status: result?.status ?? 0 });
         return;

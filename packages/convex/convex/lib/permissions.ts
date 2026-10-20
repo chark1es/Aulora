@@ -6,6 +6,8 @@ import {
   EVERYONE_ROLE_ID,
   hasPermission,
   highestRolePosition,
+  isBotUserId,
+  Permission,
   type Role,
   resolvePermissions,
 } from "@aulora/core";
@@ -13,6 +15,10 @@ import { ConvexError } from "convex/values";
 import type { Doc, Id } from "../_generated/dataModel";
 import type { MutationCtx, QueryCtx } from "../_generated/server";
 import { requireAuth } from "./auth";
+import { loadBotByUserId } from "./botAuth";
+
+/** Synthetic role id a bot holds instead of `@everyone`. */
+export const BOT_ROLE_ID = "@bot";
 
 export type ServerDoc = Doc<"server">;
 export type MemberDoc = Doc<"members">;
@@ -38,6 +44,20 @@ export interface PermissionContext {
   readonly isOwner: boolean;
   readonly roleIds: readonly string[];
   readonly roles: readonly Role[];
+  /**
+   * Present only for a bot actor: its workspace-level `grants` and optional
+   * channel scope. Channel resolution clamps a bot to `grants`; people never
+   * carry this field. See {@link channelPermissions}.
+   */
+  readonly bot?: BotPermissionInfo;
+}
+
+/** The bot-specific slice of a {@link PermissionContext}. */
+export interface BotPermissionInfo {
+  readonly id: Id<"bots">;
+  readonly grants: bigint;
+  /** `null` means every channel the grants reach. */
+  readonly allowedChannelIds: readonly Id<"channels">[] | null;
 }
 
 async function memberRow(ctx: ReadCtx, userId: string): Promise<MemberDoc | null> {
@@ -54,13 +74,30 @@ async function memberRow(ctx: ReadCtx, userId: string): Promise<MemberDoc | null
  * without a stored row so owner/setup flows are never locked out; an empty
  * `@everyone` baseline must never make a non-member look privileged.
  */
-export async function requireMember(ctx: ReadCtx, userId: string): Promise<void> {
-  if ((await memberRow(ctx, userId)) !== null) {
+/**
+ * Membership alone opens a handful of workspace-wide reads (member list, roles,
+ * categories). A person gets those for free; a bot only with the workspace-level
+ * `ViewChannel` grant, so a bot with no permissions really can do nothing.
+ */
+async function requireBotMayBrowse(ctx: ReadCtx, userId: string): Promise<void> {
+  if (!isBotUserId(userId)) {
     return;
+  }
+  const bot = await loadBotByUserId(ctx, userId);
+  if (bot === null || !bot.enabled || !hasPermission(bot.grants, Permission.ViewChannel)) {
+    throw new ConvexError("Missing permission");
+  }
+}
+
+export async function requireMember(ctx: ReadCtx, userId: string): Promise<MemberDoc | null> {
+  const member = await memberRow(ctx, userId);
+  if (member !== null) {
+    await requireBotMayBrowse(ctx, userId);
+    return member;
   }
   const server = await ctx.db.query("server").first();
   if (server !== null && server.ownerId === userId) {
-    return;
+    return null;
   }
   throw new ConvexError("Not a member of this workspace");
 }
@@ -69,6 +106,29 @@ export async function loadPermissionContext(
   ctx: ReadCtx,
   userId: string,
 ): Promise<PermissionContext> {
+  // A bot is recognised by its `bot_` user id plus a `bots` row. It does not
+  // inherit `@everyone`: it holds one synthetic role carrying exactly its
+  // `grants`. A disabled bot is rejected outright so a not-yet-expired JWT
+  // cannot act after an admin turns it off.
+  if (isBotUserId(userId)) {
+    const bot = await loadBotByUserId(ctx, userId);
+    if (bot !== null) {
+      if (!bot.enabled) {
+        throw new ConvexError("Bot is disabled");
+      }
+      return {
+        userId,
+        isOwner: false,
+        roleIds: [BOT_ROLE_ID],
+        roles: [{ id: BOT_ROLE_ID, position: 0, permissions: bot.grants, isEveryone: false }],
+        bot: {
+          id: bot._id,
+          grants: bot.grants,
+          allowedChannelIds: bot.allowedChannelIds ?? null,
+        },
+      };
+    }
+  }
   const server = await ctx.db.query("server").first();
   const isOwner = server !== null && server.ownerId === userId;
   const member = await memberRow(ctx, userId);
@@ -97,12 +157,18 @@ export async function categoryOverridesFor(
   return category?.overrides ?? [];
 }
 
+/** Clamps a bot actor to its grants; a person's permissions pass through. */
+function clampBotGrants(context: PermissionContext, permissions: bigint): bigint {
+  const bot = context.bot;
+  return bot === undefined ? permissions : permissions & bot.grants;
+}
+
 export function channelPermissions(
   context: PermissionContext,
   channel: ChannelDoc,
   categoryOverrides: Doc<"categories">["overrides"],
 ): bigint {
-  return resolvePermissions({
+  const resolved = resolvePermissions({
     actor: {
       userId: context.userId,
       roleIds: context.roleIds,
@@ -112,6 +178,15 @@ export function channelPermissions(
     categoryOverrides,
     channelOverrides: channel.overrides,
   });
+  const bot = context.bot;
+  // A bot is clamped to its grants (channel overrides can only narrow them),
+  // and to nothing at all when the admin scoped it to other channels.
+  if (bot !== undefined && bot.allowedChannelIds !== null) {
+    if (!bot.allowedChannelIds.includes(channel._id)) {
+      return 0n;
+    }
+  }
+  return clampBotGrants(context, resolved);
 }
 
 /**
@@ -119,14 +194,17 @@ export function channelPermissions(
  * category overrides). This is the ceiling for anything they can grant.
  */
 export function workspacePermissions(context: PermissionContext): bigint {
-  return resolvePermissions({
-    actor: {
-      userId: context.userId,
-      roleIds: context.roleIds,
-      isOwner: context.isOwner,
-    },
-    roles: context.roles,
-  });
+  return clampBotGrants(
+    context,
+    resolvePermissions({
+      actor: {
+        userId: context.userId,
+        roleIds: context.roleIds,
+        isOwner: context.isOwner,
+      },
+      roles: context.roles,
+    }),
+  );
 }
 
 /** The position of the actor's highest role; owners sit above every role. */
@@ -217,15 +295,18 @@ export async function requireWorkspaceContext(
     }
     categoryOverrides = category.overrides;
   }
-  const permissions = resolvePermissions({
-    actor: {
-      userId: context.userId,
-      roleIds: context.roleIds,
-      isOwner: context.isOwner,
-    },
-    roles: context.roles,
-    categoryOverrides,
-  });
+  const permissions = clampBotGrants(
+    context,
+    resolvePermissions({
+      actor: {
+        userId: context.userId,
+        roleIds: context.roleIds,
+        isOwner: context.isOwner,
+      },
+      roles: context.roles,
+      categoryOverrides,
+    }),
+  );
   if (flag !== undefined && !hasPermission(permissions, flag)) {
     throw new ConvexError("Missing permission");
   }

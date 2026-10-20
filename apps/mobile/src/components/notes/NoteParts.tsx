@@ -1,7 +1,6 @@
 /* eslint-disable no-unused-vars -- the base rule reports parameter names in type signatures; Biome checks real unused code */
-import { Icon, IconButton, Spinner, Text, usePalette } from "@aulora/ui-native";
-import { Pressable, View } from "react-native";
-import Animated, { FadeInDown, FadeOut } from "react-native-reanimated";
+import { ErrorBanner, Icon, IconButton, Spinner, Text, usePalette } from "@aulora/ui-native";
+import { View } from "react-native";
 import type { NotesController, NoteTagView } from "./use-notes";
 
 /** A centred spinner while a query is in flight. */
@@ -15,30 +14,14 @@ export function NotesLoading({ label }: { readonly label: string }) {
 
 /** A failed write, shown until it is dismissed or the next write starts. */
 export function NotesError({ ctl }: { readonly ctl: NotesController }) {
-  const palette = usePalette();
   if (ctl.error === undefined) return null;
   return (
-    <Animated.View
-      entering={FadeInDown.duration(200)}
-      exiting={FadeOut.duration(120)}
-      accessibilityRole="alert"
-      className="flex-row items-center gap-2 border-b border-border px-4 py-2"
-      style={{ backgroundColor: `${palette.danger}1F` }}
-    >
-      <Text size="sm" tone="danger" className="flex-1">
-        {ctl.error}
-      </Text>
-      <Pressable
-        accessibilityRole="button"
-        accessibilityLabel="Dismiss error"
-        hitSlop={10}
-        onPress={() => {
-          ctl.setError(undefined);
-        }}
-      >
-        <Icon name="x" size={18} color={palette.danger} />
-      </Pressable>
-    </Animated.View>
+    <ErrorBanner
+      message={ctl.error}
+      onDismiss={() => {
+        ctl.setError(undefined);
+      }}
+    />
   );
 }
 
@@ -58,10 +41,16 @@ export function NoteTagChip({ tag }: { readonly tag: NoteTagView }) {
 }
 
 /** A round back button used by the editor and history headers. */
-export function NoteBackButton({ onPress }: { readonly onPress: () => void }) {
+export function NoteBackButton({
+  onPress,
+  label = "Back to notes",
+}: {
+  readonly onPress: () => void;
+  readonly label?: string;
+}) {
   const palette = usePalette();
   return (
-    <IconButton label="Back to notes" size="sm" onPress={onPress}>
+    <IconButton label={label} size="sm" onPress={onPress}>
       <Icon name="chevron-left" size={22} color={palette.text} />
     </IconButton>
   );

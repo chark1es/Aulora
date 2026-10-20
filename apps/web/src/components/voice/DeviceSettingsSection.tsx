@@ -1,5 +1,5 @@
 import type { MediaDeviceInfo, VoiceDeviceSettings } from "@aulora/core";
-import { cn, Icon, SegmentedControl, Select, Switch, Text } from "@aulora/ui-web";
+import { Button, cn, Icon, SegmentedControl, Select, Switch, Text } from "@aulora/ui-web";
 import { useCallback, useEffect, useRef, useState } from "react";
 import { acquireUserMedia, createLevelMeter, supportsOutputSelection } from "../../lib/voice/media";
 import { useVoice } from "../../providers/VoiceProvider";
@@ -92,20 +92,16 @@ export function DeviceSettingsSection() {
               style={{ width: `${Math.round(level * 100)}%` }}
             />
           </div>
-          <button
+          <Button
             type="button"
+            size="sm"
+            variant={testing ? "danger" : "secondary"}
             onClick={() => {
               testing ? stopTest() : void startTest();
             }}
-            className={cn(
-              "h-7 shrink-0 rounded-[7px] px-2.5 text-[12px] font-medium transition",
-              testing
-                ? "bg-danger/15 text-danger hover:bg-danger/25"
-                : "bg-surface-3 text-text hover:brightness-110",
-            )}
           >
             {testing ? "Stop test" : "Test"}
-          </button>
+          </Button>
         </div>
       </div>
 

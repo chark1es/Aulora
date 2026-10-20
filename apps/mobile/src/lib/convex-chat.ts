@@ -3,6 +3,7 @@ import type {
   ChatPort,
   ChatSubscriptions,
   MessagePayload,
+  MessageReactionRow,
   Paginated,
   PresenceRow,
   ReactionRow,
@@ -12,6 +13,7 @@ import type {
 } from "@aulora/core";
 import type { ConvexReactClient } from "convex/react";
 import { api } from "../../../../packages/convex/convex/_generated/api";
+import { PRESENCE_SCOPE_MAX } from "./presence-scope";
 
 /**
  * Live Convex adapter for `@aulora/core`'s `ChatPort` + `ChatSubscriptions`,
@@ -22,6 +24,16 @@ import { api } from "../../../../packages/convex/convex/_generated/api";
  */
 
 const PAGE = { numItems: 100, cursor: null } as const;
+
+/**
+ * Roots/replies per archive page read by the search backfill. Larger than a
+ * display page so backfilling a long history costs fewer round trips; the
+ * backfill itself is bounded per query in `use-search.ts`.
+ */
+const ARCHIVE_PAGE_NUM = 200;
+
+/** Message ids per reactions batch; matches the server's `listForMessages` cap. */
+const REACTION_BATCH_SIZE = 100;
 
 /**
  * Whether a mutation failed because the running server does not know an
@@ -86,6 +98,7 @@ function toStoredFile(file: {
   dimensions: string | null;
   blurhash: string | null;
   url: string | null;
+  thumbnailUrl?: string | null;
 }): StoredFileView {
   return {
     id: file.id,
@@ -96,6 +109,7 @@ function toStoredFile(file: {
     dimensions: file.dimensions,
     blurhash: file.blurhash,
     url: file.url,
+    thumbnailUrl: file.thumbnailUrl ?? null,
   };
 }
 
@@ -248,27 +262,63 @@ export function convexPort(client: ConvexReactClient): ChatPort {
       return null;
     },
     async uploadFile(args) {
-      const uploadUrl = await client.mutation(api.files.generateUploadUrl, {});
-      const response = await fetch(uploadUrl, {
-        method: "POST",
-        headers: { "Content-Type": args.mime },
-        body: args.bytes as unknown as BodyInit,
-      });
-      if (!response.ok) {
-        throw new Error(`Upload failed with status ${response.status}`);
+      const putBytes = async (
+        bytes: Uint8Array,
+        mime: string,
+        skipRateLimit = false,
+      ): Promise<string> => {
+        // A thumbnail shares the original upload's budget; older servers do not
+        // know the flag, so fall back to the plain call.
+        const uploadUrl = skipRateLimit
+          ? await client
+              .mutation(api.files.generateUploadUrl, { skipRateLimit: true })
+              .catch(async () => await client.mutation(api.files.generateUploadUrl, {}))
+          : await client.mutation(api.files.generateUploadUrl, {});
+        const response = await fetch(uploadUrl, {
+          method: "POST",
+          headers: { "Content-Type": mime },
+          body: bytes as unknown as BodyInit,
+        });
+        if (!response.ok) {
+          throw new Error(`Upload failed with status ${response.status}`);
+        }
+        const body = (await response.json()) as { storageId?: unknown };
+        if (typeof body.storageId !== "string") {
+          throw new Error("Upload response did not include a storageId");
+        }
+        return body.storageId;
+      };
+      const storageId = await putBytes(args.bytes, args.mime);
+      // A thumbnail failure must not fail the upload: fall back to the original.
+      let thumbnailStorageId: string | undefined;
+      if (args.thumbnail !== undefined) {
+        try {
+          thumbnailStorageId = await putBytes(args.thumbnail.bytes, args.mime, true);
+        } catch {
+          thumbnailStorageId = undefined;
+        }
       }
-      const body = (await response.json()) as { storageId?: unknown };
-      if (typeof body.storageId !== "string") {
-        throw new Error("Upload response did not include a storageId");
-      }
-      return await client.action(api.files.finalize, {
-        storageId: body.storageId as never,
+      const baseArgs = {
+        storageId: storageId as never,
         name: args.name,
         mime: args.mime,
         ...(args.dimensions !== undefined ? { dimensions: JSON.stringify(args.dimensions) } : {}),
         ...(args.blurhash !== undefined ? { blurhash: args.blurhash } : {}),
         ...(args.channelId !== undefined ? { channelId: args.channelId as never } : {}),
-      });
+      };
+      const finalizeArgs =
+        thumbnailStorageId !== undefined
+          ? { ...baseArgs, thumbnailStorageId: thumbnailStorageId as never }
+          : baseArgs;
+      try {
+        return await client.action(api.files.finalize, finalizeArgs);
+      } catch (error) {
+        if (thumbnailStorageId === undefined) {
+          throw error;
+        }
+        // Older servers do not accept the thumbnail argument; keep the image.
+        return await client.action(api.files.finalize, baseArgs);
+      }
     },
     async getFile(args) {
       const view = await client.query(api.files.get, { fileId: args.fileId as never });
@@ -334,13 +384,13 @@ export function convexPort(client: ConvexReactClient): ChatPort {
     async listMessages(args) {
       return await client.query(api.messages.list, {
         channelId: args.channelId as never,
-        paginationOpts: { numItems: PAGE.numItems, cursor: args.cursor },
+        paginationOpts: { numItems: ARCHIVE_PAGE_NUM, cursor: args.cursor },
       });
     },
     async listThreadMessages(args) {
       return await client.query(api.messages.listThread, {
         threadRootId: args.threadRootId as never,
-        paginationOpts: { numItems: PAGE.numItems, cursor: args.cursor },
+        paginationOpts: { numItems: ARCHIVE_PAGE_NUM, cursor: args.cursor },
       });
     },
     async heartbeat(args) {
@@ -439,6 +489,35 @@ export function convexSubscriptions(client: ConvexReactClient): ChatSubscription
     watchReactions(messageId, onChange) {
       return watch<ReactionRow[]>(api.reactions.list, { messageId }, onChange);
     },
+    watchReactionsBatch(messageIds, onChange) {
+      // One subscription per 100-message chunk, so a timeline of thousands of
+      // messages costs a handful of queries instead of one per row.
+      const unique = [...new Set(messageIds)];
+      if (unique.length === 0) {
+        onChange([]);
+        return () => undefined;
+      }
+      const chunks: string[][] = [];
+      for (let index = 0; index < unique.length; index += REACTION_BATCH_SIZE) {
+        chunks.push(unique.slice(index, index + REACTION_BATCH_SIZE));
+      }
+      const latest = new Map<number, readonly MessageReactionRow[]>();
+      const offs = chunks.map((chunk, index) =>
+        watch<MessageReactionRow[]>(
+          api.reactions.listForMessages,
+          { messageIds: chunk as never[] },
+          (rows) => {
+            latest.set(index, rows);
+            onChange([...latest.values()].flat());
+          },
+        ),
+      );
+      return () => {
+        for (const off of offs) {
+          off();
+        }
+      };
+    },
     watchPresence(onChange) {
       return watch<PresenceRow[]>(api.presence.list, {}, onChange);
     },
@@ -447,6 +526,114 @@ export function convexSubscriptions(client: ConvexReactClient): ChatSubscription
     },
     watchReadState(channelId, onChange) {
       return watch<ReadStateRow | null>(api.readStates.get, { channelId }, onChange);
+    },
+  };
+}
+
+/**
+ * Scoped presence subscription.
+ *
+ * The full `presence.list` query returns every workspace member's row to every
+ * client and re-sends it on each heartbeat. The app only renders a bounded set
+ * of people at a time (the open timeline, the displayed members pane, the list's
+ * DM partners), so this serves `presence.getMany` over exactly that set instead.
+ * Every listener shares one underlying query, and changing the scope tears the
+ * old query down and starts a new one for the new ids.
+ */
+export interface ScopedPresence {
+  /** Subscribes to the current scope; emits immediately with the latest rows. */
+  watch(onChange: (rows: readonly PresenceRow[]) => void): () => void;
+  /** Replaces the scope. Ids are de-duplicated and capped client-side. */
+  setScope(userIds: readonly string[]): void;
+}
+
+export function createScopedPresence(client: ConvexReactClient): ScopedPresence {
+  const listeners = new Set<(rows: readonly PresenceRow[]) => void>();
+  let latest: readonly PresenceRow[] = [];
+  let scopeIds: readonly string[] = [];
+  let scopeKey = "";
+  let teardown: (() => void) | null = null;
+
+  const emit = (): void => {
+    for (const listener of [...listeners]) {
+      listener(latest);
+    }
+  };
+
+  const stop = (): void => {
+    teardown?.();
+    teardown = null;
+  };
+
+  const start = (): void => {
+    if (teardown !== null || listeners.size === 0) {
+      return;
+    }
+    if (scopeIds.length === 0) {
+      latest = [];
+      emit();
+      return;
+    }
+    let off: () => void;
+    try {
+      const watch = client.watchQuery(api.presence.getMany, { userIds: scopeIds as never[] });
+      const update = () => {
+        const value = watch.localQueryResult();
+        if (value !== undefined) {
+          latest = value as PresenceRow[];
+          emit();
+        }
+      };
+      off = watch.onUpdate(update);
+      // A warm client can deliver the first result before `onUpdate` is attached.
+      update();
+    } catch {
+      // Older servers do not have `presence.getMany`; keep only the ids this
+      // client renders from the full list instead of breaking presence.
+      const watch = client.watchQuery(api.presence.list, {});
+      const scoped = new Set(scopeIds);
+      const update = () => {
+        const value = watch.localQueryResult();
+        if (value !== undefined) {
+          latest = (value as PresenceRow[]).filter((row) => scoped.has(row.userId));
+          emit();
+        }
+      };
+      off = watch.onUpdate(update);
+      update();
+    }
+    teardown = () => {
+      off();
+    };
+  };
+
+  return {
+    watch(onChange) {
+      listeners.add(onChange);
+      onChange(latest);
+      start();
+      return () => {
+        listeners.delete(onChange);
+        if (listeners.size === 0) {
+          stop();
+          latest = [];
+        }
+      };
+    },
+    setScope(userIds) {
+      const next = [...new Set(userIds.filter((id) => id.length > 0))].slice(0, PRESENCE_SCOPE_MAX);
+      const key = next.join("\u0000");
+      if (key === scopeKey) {
+        return;
+      }
+      scopeKey = key;
+      scopeIds = next;
+      stop();
+      // Clear stale rows at once so a status for someone the UI no longer
+      // renders can never linger; `start` repopulates from the new query.
+      latest = [];
+      start();
+      emit();
     },
   };
 }

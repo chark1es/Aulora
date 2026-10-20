@@ -1,5 +1,6 @@
 import { defineSchema, defineTable } from "convex/server";
 import { v } from "convex/values";
+import { botTables } from "./botSchema";
 
 /**
  * Aulora data model (one server = one workspace, so no `workspaceId`).
@@ -97,6 +98,19 @@ export default defineSchema({
     iconSeed: v.string(),
     ownerId: v.string(),
     settings: serverSettings,
+    /**
+     * Maintained number of `members` rows, kept on join/kick/ban/bot-create.
+     * Optional so workspaces created before it remain valid; an absent value
+     * means "not backfilled yet" and readers fall back to a member scan.
+     */
+    memberCount: v.optional(v.number()),
+    /**
+     * True once `maintenance:backfillMemberRoles` has seeded the whole
+     * `memberRoles` reverse table. Role deletion uses the reverse table only
+     * after this marker, so a partially backfilled workspace keeps the safe
+     * full-scan fallback.
+     */
+    memberRolesBackfilled: v.optional(v.boolean()),
     licenseKey: v.optional(v.string()),
     licenseValidation: v.optional(
       v.object({
@@ -163,7 +177,8 @@ export default defineSchema({
     /**
      * Per-provider auth toggles. Absent means "inherits the deployment
      * environment"; an explicit `false` hides a provider even when its
-     * credentials are present.
+     * credentials are present. `local` gates email/password sign-in and takes
+     * precedence over `AUTH_LOCAL_ENABLED`.
      */
     authProviders: v.optional(
       v.object({
@@ -172,8 +187,20 @@ export default defineSchema({
         microsoft: v.optional(v.boolean()),
         apple: v.optional(v.boolean()),
         oidc: v.optional(v.boolean()),
+        local: v.optional(v.boolean()),
       }),
     ),
+    /**
+     * Maintained row counts for the admin overview, kept in step with the
+     * relevant write paths (file finalize/delete, channel create, device
+     * upsert/revoke/prune). Optional so a workspace that predates them stays
+     * valid; an absent value means "not backfilled yet" and the overview falls
+     * back to a bounded scan. Seeded by `maintenance.backfillInstanceCounters`.
+     */
+    fileCount: v.optional(v.number()),
+    fileBytes: v.optional(v.number()),
+    channelCount: v.optional(v.number()),
+    deviceCount: v.optional(v.number()),
   }),
 
   /** Owner-managed mail transport. Secrets are server-sealed and never returned by public queries. */
@@ -246,7 +273,27 @@ export default defineSchema({
     roleIds: v.array(v.string()),
     joinedAt: v.number(),
     timeoutUntil: v.optional(v.number()),
-  }).index("by_user", ["userId"]),
+  })
+    .index("by_user", ["userId"])
+    // Join order, so the member directory can paginate/search without a full
+    // collect. Matches the ascending `joinedAt` order `members.list` sorts by.
+    .index("by_joined", ["joinedAt"]),
+
+  /**
+   * Reverse index for member↔role membership. `members.roleIds` stays
+   * authoritative for reads; this table is maintained alongside it (dual-write)
+   * so a role mutation can find just the members holding a role instead of
+   * collecting every member. `roleId` stores the same `role.key ?? role._id`
+   * reference used in `members.roleIds`. Populated by
+   * `maintenance.backfillMemberRoles` for rows that predate it.
+   */
+  memberRoles: defineTable({
+    roleId: v.string(),
+    userId: v.string(),
+    joinedAt: v.number(),
+  })
+    .index("by_role", ["roleId"])
+    .index("by_user_role", ["userId", "roleId"]),
 
   roles: defineTable({
     /** Stable key such as `@everyone`; `_id` is used when absent. */
@@ -325,10 +372,21 @@ export default defineSchema({
     deletedAt: v.optional(v.number()),
     /** Set while the message is pinned; cleared on unpin. */
     pinnedAt: v.optional(v.number()),
+    /**
+     * A system event rendered as a quiet timeline line instead of a bubble.
+     * Absent on ordinary messages, so existing rows stay valid.
+     */
+    systemKind: v.optional(v.union(v.literal("pin"))),
+    /** Who triggered a system event (the pinner). */
+    systemActorId: v.optional(v.string()),
+    /** The message a system event refers to (the pinned message). */
+    systemTargetId: v.optional(v.id("messages")),
     /** Thread roots only: number of replies, bumped on each reply send. */
     replyCount: v.optional(v.number()),
     /** Thread roots only: creation time of the newest reply. */
     lastReplyAt: v.optional(v.number()),
+    /** Thread roots only: recent distinct repliers, newest first, capped. Absent on older threads. */
+    replyParticipantIds: v.optional(v.array(v.string())),
   })
     // Convex appends `_creationTime` to every index, so this is
     // (channelId, _creationTime): chronological messages per channel.
@@ -339,6 +397,24 @@ export default defineSchema({
     .index("by_channel_thread", ["channelId", "threadRootId"])
     .index("by_thread", ["threadRootId"])
     .index("by_channel_pinned", ["channelId", "pinnedAt"]),
+
+  /**
+   * Per-user thread participation, maintained on reply/mention so the Threads
+   * inbox can later be read from a user index instead of scanning recent
+   * messages. Plaintext ids/timestamps only. The inbox read path is not switched
+   * over yet — this table is created and populated first.
+   */
+  threadParticipants: defineTable({
+    userId: v.string(),
+    threadRootId: v.id("messages"),
+    channelId: v.id("channels"),
+    lastReplyAt: v.number(),
+    mentioned: v.boolean(),
+    /** True when the user posted a reply (not merely a mention). Optional on pre-upgrade rows until backfilled. */
+    participated: v.optional(v.boolean()),
+  })
+    .index("by_user", ["userId", "lastReplyAt"])
+    .index("by_thread_user", ["threadRootId", "userId"]),
 
   reactions: defineTable({
     messageId: v.id("messages"),
@@ -468,19 +544,31 @@ export default defineSchema({
     mimeCiphertext: v.optional(v.string()),
     dimensionsCiphertext: v.optional(v.string()),
     blurhashCiphertext: v.optional(v.string()),
+    /**
+     * Storage id of a small, server-sealed thumbnail variant, when the uploader
+     * produced one. Optional so records written before the variant existed (and
+     * non-image uploads) keep working; readers fall back to the original bytes.
+     */
+    thumbnailStorageId: v.optional(v.id("_storage")),
     channelId: v.optional(v.id("channels")),
     kanbanBoardId: v.optional(v.id("kanbanBoards")),
   })
     .index("by_uploader", ["uploaderId"])
     .index("by_kanban_board", ["kanbanBoardId"])
-    .index("by_channel", ["channelId"]),
+    .index("by_channel", ["channelId"])
+    .index("by_storage", ["storageId"])
+    .index("by_sealed_storage", ["sealedStorageId"])
+    .index("by_thumbnail_storage", ["thumbnailStorageId"]),
 
   devices: defineTable({
     userId: v.string(),
     platform: v.string(),
     pushToken: v.optional(v.string()),
     lastSeen: v.number(),
-  }).index("by_user", ["userId"]),
+  })
+    .index("by_user", ["userId"])
+    // The retention prune reads only installs unseen past the cutoff.
+    .index("by_lastSeen", ["lastSeen"]),
 
   presence: defineTable({
     userId: v.string(),
@@ -496,13 +584,25 @@ export default defineSchema({
      * the row follows automatic online/idle/offline behaviour.
      */
     manual: v.optional(v.boolean()),
-  }).index("by_user", ["userId"]),
+  })
+    .index("by_user", ["userId"])
+    // Ordered by heartbeat so the staleness sweep and the long-term prune can
+    // read only rows past a cutoff instead of collecting the whole table.
+    .index("by_lastHeartbeat", ["lastHeartbeat"])
+    // Status-scoped sweep: offline rows stay in the table for the retention
+    // window, so sweeping by status avoids re-reading them every 30 seconds.
+    .index("by_status_lastHeartbeat", ["status", "lastHeartbeat"]),
 
   typing: defineTable({
     channelId: v.id("channels"),
     userId: v.string(),
     expiresAt: v.number(),
-  }).index("by_channel", ["channelId"]),
+  })
+    .index("by_channel", ["channelId"])
+    // One typing row per (channel, user), looked up directly on set/clear.
+    .index("by_channel_user", ["channelId", "userId"])
+    // The purge cron reads only expired rows instead of scanning the table.
+    .index("by_expires", ["expiresAt"]),
 
   /**
    * An active (or recently ended) voice/video call on a channel. Media never
@@ -553,7 +653,9 @@ export default defineSchema({
     .index("by_call", ["callId"])
     .index("by_call_user", ["callId", "userId"])
     .index("by_user", ["userId"])
-    .index("by_channel", ["channelId"]),
+    .index("by_channel", ["channelId"])
+    // The sweep drops abandoned seats past a heartbeat cutoff without scanning.
+    .index("by_lastSeen", ["lastSeen"]),
 
   /**
    * Short-lived WebRTC signalling envelopes (SDP offers/answers and ICE
@@ -573,7 +675,9 @@ export default defineSchema({
   })
     .index("by_call", ["callId"])
     .index("by_to", ["toUserId"])
-    .index("by_call_to", ["callId", "toUserId"]),
+    .index("by_call_to", ["callId", "toUserId"])
+    // The sweep expires orphaned envelopes by age instead of scanning.
+    .index("by_created", ["createdAt"]),
 
   notificationPrefs: defineTable({
     userId: v.string(),
@@ -695,5 +799,10 @@ export default defineSchema({
     key: v.string(),
     windowStart: v.number(),
     count: v.number(),
-  }).index("by_key", ["key"]),
+  })
+    .index("by_key", ["key"])
+    // The TTL prune reads only counters whose window is long past.
+    .index("by_window_start", ["windowStart"]),
+
+  ...botTables,
 });

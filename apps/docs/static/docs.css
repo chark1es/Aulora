@@ -378,6 +378,195 @@ body.docs {
   font-weight: 500;
 }
 
+/* Environment variables reference (generated page) */
+
+.env-filter {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  max-width: 700px;
+  height: 44px;
+  margin: 0 0 28px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-input);
+  background: var(--surface-1);
+  padding: 0 6px 0 12px;
+  transition:
+    border-color 140ms var(--ease-out),
+    box-shadow 140ms var(--ease-out);
+}
+
+.env-filter:focus-within {
+  border-color: var(--accent);
+  box-shadow: 0 0 0 3px color-mix(in srgb, var(--accent) 20%, transparent);
+}
+
+.env-filter-icon {
+  display: flex;
+  color: var(--text-muted);
+}
+
+.env-filter-icon .icon {
+  width: 18px;
+  height: 18px;
+}
+
+.env-filter input {
+  flex: 1;
+  min-width: 0;
+  height: 100%;
+  border: 0;
+  background: transparent;
+  color: var(--text);
+  font: inherit;
+  font-size: 15px;
+  outline: none;
+}
+
+.env-filter input::placeholder {
+  color: var(--text-muted);
+}
+
+.env-filter input::-webkit-search-cancel-button {
+  display: none;
+}
+
+.env-filter-clear {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 30px;
+  height: 30px;
+  border: 0;
+  border-radius: 6px;
+  background: transparent;
+  color: var(--text-muted);
+  cursor: pointer;
+}
+
+.env-filter-clear:hover {
+  background: var(--surface-3);
+  color: var(--text);
+}
+
+.env-filter-clear .icon {
+  width: 15px;
+  height: 15px;
+}
+
+.prose .env-empty {
+  max-width: 700px;
+  margin: 0 0 24px;
+  color: var(--text-muted);
+}
+
+.env-group {
+  max-width: 760px;
+}
+
+.env-var {
+  margin: 0 0 14px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-card);
+  background: var(--surface-1);
+  padding: 16px 18px;
+}
+
+.env-var-head {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px;
+}
+
+.prose .env-key {
+  border-radius: 5px;
+  background: var(--surface-3);
+  padding: 2px 7px;
+  font-size: 13.5px;
+  font-weight: 600;
+  overflow-wrap: anywhere;
+}
+
+.env-copy {
+  min-height: 24px;
+  border: 1px solid var(--border);
+  border-radius: 5px;
+  background: var(--surface-2);
+  padding: 0 8px;
+  color: var(--text-muted);
+  font: 500 12px var(--font-sans);
+  cursor: pointer;
+}
+
+.env-copy:hover {
+  background: var(--surface-3);
+  color: var(--text);
+}
+
+.env-badges {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  margin-left: auto;
+}
+
+.env-badge {
+  border-radius: 999px;
+  padding: 2px 9px;
+  font-size: 11.5px;
+  font-weight: 600;
+  white-space: nowrap;
+}
+
+.env-badge-secret {
+  background: color-mix(in srgb, var(--accent) 18%, transparent);
+  color: var(--link);
+}
+
+.env-badge-overridable {
+  background: var(--surface-3);
+  color: var(--text);
+}
+
+.env-badge-internal {
+  background: var(--surface-3);
+  color: var(--text-muted);
+}
+
+.prose .env-desc {
+  margin: 10px 0 12px;
+}
+
+.env-meta {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px 28px;
+  margin: 0;
+  font-size: 13.5px;
+}
+
+.env-meta > div {
+  display: flex;
+  gap: 6px;
+}
+
+.env-meta dt {
+  color: var(--text-muted);
+  font-weight: 500;
+}
+
+.env-meta dd {
+  margin: 0;
+}
+
+.prose .env-meta code {
+  border-radius: 4px;
+  background: var(--surface-3);
+  padding: 1px 5px;
+  font-size: 12.5px;
+}
+
 @media (max-width: 1180px) {
   .docs-shell {
     grid-template-columns: 220px minmax(0, 1fr);

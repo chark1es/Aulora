@@ -1,58 +1,82 @@
 /* eslint-disable no-unused-vars -- the base rule reports parameter names in type signatures; Biome checks real unused code */
-import { Button, Heading, Icon, IconButton, Text, usePalette } from "@aulora/ui-native";
+
+import { highlightMatches } from "@aulora/core";
+import { Button, EmptyState, Icon, IconButton, Text, usePalette } from "@aulora/ui-native";
 import { Pressable, ScrollView, View } from "react-native";
 import Animated, { FadeIn } from "react-native-reanimated";
 import { timeAgo } from "../../lib/kanban";
-import { folderPath, noteCountLabel, noteTitle, tagsForIds } from "../../lib/notes";
+import { folderChildren, folderPath, noteCountLabel, noteTitle, tagsForIds } from "../../lib/notes";
 import { PaneHeader, RoundButton } from "../chat/HubPane";
 import { HorizontalScroll } from "../chat/SwipePanes";
 import { SearchField } from "../kanban/sheets";
 import { NoteBackButton, NotesError, NotesLoading, NoteTagChip } from "./NoteParts";
-import type { NoteListItem, NotesController } from "./use-notes";
+import type { NoteFolderView, NoteListItem, NotesController } from "./use-notes";
+
+/** Search, new-note, and the overflow menu in the pane header. */
+function NotesHeaderActions({ ctl }: { readonly ctl: NotesController }) {
+  const palette = usePalette();
+  return (
+    <View className="flex-row items-center gap-1">
+      <IconButton
+        label={ctl.searching ? "Close search" : "Search notes"}
+        size="sm"
+        onPress={() => {
+          if (ctl.searching) ctl.setFilters({ ...ctl.filters, query: "" });
+          ctl.setSearching(!ctl.searching);
+        }}
+      >
+        <Icon
+          name={ctl.searching ? "x" : "search"}
+          size={20}
+          color={ctl.filters.query.trim() ? palette.accent : palette.text}
+        />
+      </IconButton>
+      {ctl.permissions.create && (
+        <>
+          <RoundButton icon="plus" label="New note" tone="accent" onPress={ctl.newNote} />
+          <IconButton
+            label="New note options"
+            size="sm"
+            onPress={() => {
+              ctl.setOpen({ kind: "create" });
+            }}
+          >
+            <Icon name="chevron-down" size={18} color={palette.text} />
+          </IconButton>
+        </>
+      )}
+      <IconButton
+        label="More note actions"
+        size="sm"
+        onPress={() => {
+          ctl.setOpen({ kind: "more" });
+        }}
+      >
+        <Icon name="more-horizontal" size={20} color={palette.text} />
+      </IconButton>
+    </View>
+  );
+}
 
 function NotesHeader({ ctl }: { readonly ctl: NotesController }) {
-  const palette = usePalette();
-  const folder =
-    ctl.filters.folderId === undefined || ctl.filters.folderId === null
-      ? undefined
-      : ctl.folders.find((entry) => entry.id === ctl.filters.folderId);
+  const inFolder = ctl.filters.folderId !== undefined && ctl.filters.folderId !== null;
+  const folder = inFolder
+    ? ctl.folders.find((entry) => entry.id === ctl.filters.folderId)
+    : undefined;
   const title = folder?.name ?? (ctl.filters.archived ? "Archived notes" : "Notes");
   const subtitle = folder === undefined ? undefined : folderPath(ctl.folders, folder.id);
   return (
     <PaneHeader
       title={title}
       subtitle={subtitle}
-      leading={ctl.onBack === undefined ? undefined : <NoteBackButton onPress={ctl.onBack} />}
-      trailing={
-        <View className="flex-row items-center gap-1">
-          <IconButton
-            label={ctl.searching ? "Close search" : "Search notes"}
-            size="sm"
-            onPress={() => {
-              if (ctl.searching) ctl.setFilters({ ...ctl.filters, query: "" });
-              ctl.setSearching(!ctl.searching);
-            }}
-          >
-            <Icon
-              name={ctl.searching ? "x" : "search"}
-              size={20}
-              color={ctl.filters.query.trim() ? palette.accent : palette.text}
-            />
-          </IconButton>
-          {ctl.permissions.create && (
-            <RoundButton icon="plus" label="New note" tone="accent" onPress={ctl.newNote} />
-          )}
-          <IconButton
-            label="More note actions"
-            size="sm"
-            onPress={() => {
-              ctl.setOpen({ kind: "more" });
-            }}
-          >
-            <Icon name="more-horizontal" size={20} color={palette.text} />
-          </IconButton>
-        </View>
+      leading={
+        inFolder ? (
+          <NoteBackButton label="Up one folder" onPress={ctl.goUpFolder} />
+        ) : ctl.onBack === undefined ? undefined : (
+          <NoteBackButton onPress={ctl.onBack} />
+        )
       }
+      trailing={<NotesHeaderActions ctl={ctl} />}
     />
   );
 }
@@ -75,6 +99,7 @@ function RailChip({
     <Pressable
       accessibilityRole="button"
       accessibilityState={{ selected: active }}
+      hitSlop={4}
       onPress={onPress}
       onLongPress={onLongPress}
       delayLongPress={280}
@@ -164,6 +189,33 @@ function FolderRail({ ctl }: { readonly ctl: NotesController }) {
   );
 }
 
+function NoteRowSnippet({
+  ctl,
+  note,
+}: {
+  readonly ctl: NotesController;
+  readonly note: NoteListItem;
+}) {
+  const query = ctl.filters.query.trim();
+  const snippet = ctl.hits.get(note.id)?.snippet;
+  if (query.length === 0 || snippet === undefined || snippet.length === 0) return null;
+  return (
+    <Text size="xs" tone="muted" numberOfLines={2}>
+      {highlightMatches(snippet, query).map((segment, index) =>
+        segment.match ? (
+          // biome-ignore lint/suspicious/noArrayIndexKey: segments are positional text runs
+          <Text key={index} className="font-semibold text-accent">
+            {segment.text}
+          </Text>
+        ) : (
+          // biome-ignore lint/suspicious/noArrayIndexKey: segments are positional text runs
+          <Text key={index}>{segment.text}</Text>
+        ),
+      )}
+    </Text>
+  );
+}
+
 function NoteRowTitle({
   ctl,
   note,
@@ -223,6 +275,7 @@ function NoteRow({
         className="gap-1.5 border-b border-border px-4 py-3 active:bg-surface-2"
       >
         <NoteRowTitle ctl={ctl} note={note} />
+        <NoteRowSnippet ctl={ctl} note={note} />
         {tags.length > 0 && (
           <View className="flex-row flex-wrap gap-1">
             {tags.map((tag) => (
@@ -232,7 +285,11 @@ function NoteRow({
         )}
         <View className="flex-row items-center gap-2">
           <Text size="xs" tone="muted" className="min-w-0 flex-1" numberOfLines={1}>
-            {folder?.name ?? "Unfiled"}
+            {ctl.searching
+              ? folder === undefined
+                ? "Unfiled"
+                : folderPath(ctl.folders, folder.id)
+              : (folder?.name ?? "Unfiled")}
           </Text>
           <Text size="xs" tone="muted">
             {timeAgo(note.updatedAt, now)}
@@ -243,41 +300,103 @@ function NoteRow({
   );
 }
 
-function NotesEmpty({ ctl }: { readonly ctl: NotesController }) {
+/** A subfolder row: name, an item count and a chevron to drill in. */
+function FolderRow({
+  ctl,
+  folder,
+  onOpen,
+}: {
+  readonly ctl: NotesController;
+  readonly folder: NoteFolderView;
+  readonly onOpen: () => void;
+}) {
   const palette = usePalette();
+  const childCount = folderChildren(ctl.folders, folder.id).length;
+  const noteCount = ctl.notes.filter(
+    (note) => note.folderId === folder.id && note.archived === ctl.filters.archived,
+  ).length;
+  const parts = [
+    childCount > 0 ? `${childCount} ${childCount === 1 ? "folder" : "folders"}` : "",
+    noteCount > 0 ? `${noteCount} ${noteCount === 1 ? "note" : "notes"}` : "",
+  ].filter((part) => part.length > 0);
+  return (
+    <Pressable
+      accessibilityRole="button"
+      accessibilityLabel={`Open folder ${folder.name}`}
+      onPress={onOpen}
+      onLongPress={() => {
+        if (ctl.permissions.edit || ctl.permissions.remove) {
+          ctl.setOpen({ kind: "folder", folderId: folder.id });
+        }
+      }}
+      className="flex-row items-center gap-3 border-b border-border px-4 py-3 active:bg-surface-2"
+    >
+      <Icon name="file" size={20} color={palette.accent} />
+      <View className="min-w-0 flex-1">
+        <Text className="font-medium" numberOfLines={1}>
+          {folder.name}
+        </Text>
+        <Text size="xs" tone="muted" numberOfLines={1}>
+          {parts.length > 0 ? parts.join(" · ") : "Empty"}
+        </Text>
+      </View>
+      <Icon name="chevron-right" size={20} color={palette["text-muted"]} />
+    </Pressable>
+  );
+}
+
+function NotesEmpty({ ctl }: { readonly ctl: NotesController }) {
   const heading = ctl.filters.archived
     ? "No archived notes"
     : ctl.selecting
       ? "No matching notes"
       : "Write your first note";
   return (
-    <View className="flex-1 items-center justify-center gap-3 px-8">
-      <View className="h-16 w-16 items-center justify-center rounded-card bg-accent-soft">
-        <Icon name="note" size={32} color={palette.accent} />
-      </View>
-      <Heading level={3} className="text-center">
-        {heading}
-      </Heading>
-      <Text size="sm" tone="muted" className="text-center">
-        {ctl.filters.archived
+    <EmptyState
+      icon="note"
+      title={heading}
+      message={
+        ctl.filters.archived
           ? "Notes you archive are kept here until you restore or delete them."
           : ctl.selecting
             ? "Try a different search or clear the filters."
-            : "Notes are written in Markdown and can be filed into folders and tagged."}
-      </Text>
+            : "Notes are written in Markdown and can be filed into folders and tagged."
+      }
+    >
       {!ctl.filters.archived && ctl.permissions.create && (
         <Button onPress={ctl.newNote}>New note</Button>
       )}
-    </View>
+    </EmptyState>
   );
 }
 
 function NoteListBody({ ctl }: { readonly ctl: NotesController }) {
   const now = Date.now();
-  if (ctl.visible.length === 0) return <NotesEmpty ctl={ctl} />;
+  const folders = ctl.childFoldersInView;
+  if (ctl.visible.length === 0 && folders.length === 0) return <NotesEmpty ctl={ctl} />;
   const grouped = ctl.filters.query.trim().length === 0 && ctl.order === "updated";
   return (
     <ScrollView keyboardShouldPersistTaps="handled" contentContainerStyle={{ paddingBottom: 16 }}>
+      {folders.map((folder) => (
+        <FolderRow
+          key={folder.id}
+          ctl={ctl}
+          folder={folder}
+          onOpen={() => {
+            ctl.openFolder(folder.id);
+          }}
+        />
+      ))}
+      {ctl.visible.length > 0 && folders.length > 0 && (
+        <Text
+          size="xs"
+          tone="muted"
+          className="px-4 pb-1 pt-3 font-semibold uppercase"
+          accessibilityRole="header"
+        >
+          Notes
+        </Text>
+      )}
       {grouped
         ? ctl.groups.map((group) => (
             <View key={group.key}>

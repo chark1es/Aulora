@@ -8,7 +8,7 @@ A client is the app: the browser, or a desktop or mobile download. You use it to
 
 You do not need Git, Docker, or a compiler to join a workspace.
 
-Ask the person who runs it for the web URL, and an invitation if signup is closed. Open that URL in a browser, or install a desktop or mobile app and enter the URL on the connect screen. Choose a sign-in method the server offers. iOS and Android are in beta. File names and install steps are in the [user guide](user-guide.md#install-a-desktop-or-mobile-client).
+Ask the person who runs it for the web URL, and an invitation if signup is closed. Open that URL in a browser, or install a desktop or mobile app and enter the URL on the connect screen. Choose a sign-in method the server offers. iOS and Android are in beta: iOS installs through [TestFlight](https://testflight.apple.com/join/YUp4ugyv), and Android through [Google Play](https://play.google.com/store/apps/details?id=dev.spwnd.aulora) after you [join the testers group](https://groups.google.com/g/aulora-testing). No APK or IPA is downloaded. File names and install steps are in the [user guide](user-guide.md#install-a-desktop-or-mobile-client).
 
 ## Install a workspace
 
@@ -47,7 +47,7 @@ curl --fail http://localhost:8080/.well-known/aulora.json
 
 On PowerShell use `curl.exe` for the last command. Setup should finish successfully and discovery should return JSON with the workspace name and a reachable Convex URL. Create a channel, send a message, upload a small file, and invite a second test account.
 
-Keep `infra/docker/.env` private and back it up securely. It contains the encryption key needed to recover your messages. Database backups alone are insufficient.
+Keep `infra/docker/.env` private and back it up securely. It contains the encryption key needed to recover your messages. Database backups alone are insufficient. The [environment variables reference](environment-variables.md) lists every variable the stack reads and how to set it.
 
 ## Make it available to your team
 

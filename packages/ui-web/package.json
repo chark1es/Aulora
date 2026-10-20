@@ -1,9 +1,10 @@
 {
   "name": "@aulora/ui-web",
-  "version": "1.1.0",
+  "version": "1.2.0",
   "private": true,
   "description": "Aulora React DOM design-system primitives: buttons, inputs, cards, text, dot grid, logo and the particle spinner.",
   "type": "module",
+  "sideEffects": false,
   "exports": {
     ".": "./src/index.ts"
   },
@@ -29,8 +30,8 @@
     "@types/react": "19.3.0",
     "@types/react-dom": "19.3.0",
     "jsdom": "30.1.1",
-    "react": "19.2.3",
-    "react-dom": "19.2.3",
+    "react": "19.3.0",
+    "react-dom": "19.3.0",
     "typescript": "5.9.3",
     "vitest": "5.0.2"
   },

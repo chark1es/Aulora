@@ -58,6 +58,24 @@ pub fn show_notification(app: tauri::AppHandle, title: String, body: String) -> 
         .map_err(|error| error.to_string())
 }
 
+/// Opens an http(s) URL in the machine's default browser. The webview swallows
+/// a `target="_blank"` link, so external links hand the URL to the shell.
+#[tauri::command]
+pub fn open_external(url: String) -> Result<(), String> {
+    if !url.starts_with("http://") && !url.starts_with("https://") {
+        return Err(String::from("Only http and https links can be opened."));
+    }
+    #[cfg(target_os = "macos")]
+    let opened = std::process::Command::new("open").arg(&url).spawn();
+    #[cfg(target_os = "windows")]
+    let opened = std::process::Command::new("rundll32")
+        .args(["url.dll,FileProtocolHandler", url.as_str()])
+        .spawn();
+    #[cfg(not(any(target_os = "macos", target_os = "windows")))]
+    let opened = std::process::Command::new("xdg-open").arg(&url).spawn();
+    opened.map(|_| ()).map_err(|error| error.to_string())
+}
+
 /// Returns deep links received before the webview subscribed, then clears them.
 #[tauri::command]
 pub fn take_deep_links(state: State<'_, DeepLinkState>) -> Vec<String> {

@@ -1,0 +1,11 @@
+{
+  "name": "@aulora/bot-python",
+  "version": "1.2.0",
+  "private": true,
+  "description": "Python SDK for Aulora bots (aulora_bot). This manifest only wires the package into the workspace's test and release tooling; the real metadata is in pyproject.toml.",
+  "scripts": {
+    "typecheck": "python3 -m compileall -q src",
+    "test": "PYTHONPATH=src python3 -m unittest discover -s tests -t ."
+  },
+  "license": "PolyForm-Noncommercial-1.0.0"
+}

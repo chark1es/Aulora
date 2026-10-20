@@ -10,12 +10,13 @@ import {
 } from "react";
 import {
   ScrollView,
+  type ScrollViewInstance,
   type ScrollViewProps,
   StyleSheet,
   useWindowDimensions,
   View,
 } from "react-native";
-import { Gesture, GestureDetector, type NativeGesture } from "react-native-gesture-handler";
+import { Gesture, GestureDetector } from "react-native-gesture-handler";
 import Animated, {
   type SharedValue,
   useAnimatedStyle,
@@ -26,6 +27,13 @@ import { scheduleOnRN } from "react-native-worklets";
 import { dismissKeyboard } from "../../lib/keyboard";
 
 export type PaneIndex = 0 | 1 | 2;
+
+/**
+ * `Gesture.Native()` returns the legacy gesture class while the exported
+ * `NativeGesture` type names the hook-API variant, so derive the instance type
+ * from the builder itself.
+ */
+type NativeGestureInstance = ReturnType<typeof Gesture.Native>;
 
 const SPRING = { damping: 34, stiffness: 320, mass: 0.9, overshootClamping: true } as const;
 /** A flick this fast changes pane even when the drag itself was short. */
@@ -59,7 +67,7 @@ export function SwipePanes({
     position.value = withSpring(index, SPRING);
   }, [index, position]);
 
-  const [blockers, setBlockers] = useState<readonly NativeGesture[]>([]);
+  const [blockers, setBlockers] = useState<readonly NativeGestureInstance[]>([]);
   const registry = useMemo<PaneSwipeRegistry>(
     () => ({
       add(gesture) {
@@ -129,7 +137,7 @@ export function SwipePanes({
 
 interface PaneSwipeRegistry {
   /** Registers a gesture the pane swipe must yield to; returns its removal. */
-  readonly add: (gesture: NativeGesture) => () => void;
+  readonly add: (gesture: NativeGestureInstance) => () => void;
 }
 
 const PaneSwipeContext = createContext<PaneSwipeRegistry | null>(null);
@@ -142,7 +150,7 @@ const PaneSwipeContext = createContext<PaneSwipeRegistry | null>(null);
 export function HorizontalScroll({
   ref,
   ...props
-}: Omit<ScrollViewProps, "horizontal"> & { readonly ref?: Ref<ScrollView> }) {
+}: Omit<ScrollViewProps, "horizontal"> & { readonly ref?: Ref<ScrollViewInstance> }) {
   const registry = useContext(PaneSwipeContext);
   const native = useMemo(() => Gesture.Native(), []);
   useEffect(() => registry?.add(native), [registry, native]);

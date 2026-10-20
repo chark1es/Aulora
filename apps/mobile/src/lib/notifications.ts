@@ -11,12 +11,22 @@ export interface LocalNotificationOptions {
   readonly mutedChannelIds?: ReadonlySet<string>;
   /** Plays the device sound cue for a message or mention. */
   readonly onCue?: (event: SoundEvent) => void;
+  /**
+   * The conversation currently on screen. While the app is foregrounded a new
+   * message in it is announced neither as a banner nor a cue (the reader can see
+   * it), and opening a conversation clears the badge.
+   */
+  readonly activeChannelId?: string | undefined;
 }
 
 /**
  * Local display of incoming messages. The server holds message bodies only
  * sealed at rest and returns them to this device; opening the app does not
  * replay history. The body shown is the message text for this device.
+ *
+ * Messages in the conversation the reader is currently looking at (foreground)
+ * are skipped so a banner never competes with the message already on screen;
+ * every other channel still notifies, and calls keep their own path.
  */
 export function useLocalNotifications(
   runtime: MobileChatRuntime | undefined,
@@ -28,6 +38,17 @@ export function useLocalNotifications(
   namesRef.current = channelNames;
   const optionsRef = useRef(options);
   optionsRef.current = options;
+  /** Badge count, shared so opening a conversation can clear it. */
+  const unreadRef = useRef(0);
+  const activeChannelId = options.activeChannelId;
+
+  // Opening a conversation means the reader is reading it: the badge should no
+  // longer count what is now on screen.
+  // biome-ignore lint/correctness/useExhaustiveDependencies: the channel id is the trigger; the body only resets the badge counter
+  useEffect(() => {
+    unreadRef.current = 0;
+    void Notifications.setBadgeCountAsync(0);
+  }, [activeChannelId]);
 
   useEffect(() => {
     if (runtime === undefined) {
@@ -36,7 +57,6 @@ export function useLocalNotifications(
     const mountedAt = Date.now();
     const seen = new Set<string>();
     let seeded = false;
-    let unread = 0;
 
     const off = runtime.session.onDecrypted((messages: readonly MessagePayload[]) => {
       if (!seeded) {
@@ -52,6 +72,16 @@ export function useLocalNotifications(
           continue;
         }
         seen.add(message.id);
+        // The reader is looking at this conversation in the foreground: no
+        // banner, cue or badge for a message already on screen.
+        const activeChannelId = optionsRef.current.activeChannelId;
+        if (
+          AppState.currentState === "active" &&
+          activeChannelId !== undefined &&
+          message.channelId === activeChannelId
+        ) {
+          continue;
+        }
         const text = runtime.session.decryptedText(message.id);
         if (
           !shouldNotify(
@@ -77,13 +107,18 @@ export function useLocalNotifications(
           mention: mentioned,
         });
         void Notifications.scheduleNotificationAsync({
-          content: { title: content.title, body: content.body },
+          // The channel id lets the OS group per-conversation notifications.
+          content: {
+            title: content.title,
+            body: content.body,
+            data: { channelId: message.channelId },
+          },
           trigger: null,
         });
       }
       if (added > 0) {
-        unread += added;
-        void Notifications.setBadgeCountAsync(unread);
+        unreadRef.current += added;
+        void Notifications.setBadgeCountAsync(unreadRef.current);
       }
     });
 

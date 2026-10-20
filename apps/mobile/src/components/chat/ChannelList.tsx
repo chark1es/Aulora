@@ -2,6 +2,7 @@
 import { activityLabel, type CallView, type ChannelView, type PresenceRow } from "@aulora/core";
 import type { IconName } from "@aulora/tokens";
 import { Heading, Icon, Text, usePalette } from "@aulora/ui-native";
+import { useMemo } from "react";
 import { Pressable, View } from "react-native";
 import { ScrollView } from "react-native-gesture-handler";
 import type { CategoryView, MobileMemberEntry } from "../../providers/ChatProvider";
@@ -19,13 +20,12 @@ const THREAD_PREVIEW_COUNT = 3;
 /** Most available first. */
 const PRESENCE_ORDER = { online: 0, idle: 1, dnd: 2, offline: 3 } as const;
 
+/** How many faces the "here now" strip renders; the remainder is implied by the count. */
+const HERE_NOW_LIMIT = 24;
+
 function channelIcon(channel: ChannelView): IconName {
   if (channel.isPrivate === true) return "lock";
   return channel.kind === "announcement" ? "megaphone" : "hash";
-}
-
-function statusIn(presence: readonly PresenceRow[], userId: string): PresenceRow["status"] {
-  return presence.find((row) => row.userId === userId)?.status ?? "offline";
 }
 
 /** The muted and hidden markers at the trailing edge of a conversation row. */
@@ -50,14 +50,30 @@ interface HereNowProps {
 /** Everyone else who is around right now, as a strip of faces. */
 function HereNow({ members, presence, ownUserId, onMemberPress }: HereNowProps) {
   const palette = usePalette();
-  const here = members
-    .filter(
-      (member) => member.userId !== ownUserId && statusIn(presence, member.userId) !== "offline",
-    )
-    .sort(
-      (a, b) =>
-        PRESENCE_ORDER[statusIn(presence, a.userId)] - PRESENCE_ORDER[statusIn(presence, b.userId)],
-    );
+  // Index presence once; the sort and the strip then look a user up in O(1)
+  // instead of scanning the presence list inside the comparator.
+  const statusByUser = useMemo(() => {
+    const map = new Map<string, PresenceRow["status"]>();
+    for (const row of presence) {
+      map.set(row.userId, row.status);
+    }
+    return map;
+  }, [presence]);
+  const here = useMemo(
+    () =>
+      members
+        .filter(
+          (member) =>
+            member.userId !== ownUserId &&
+            (statusByUser.get(member.userId) ?? "offline") !== "offline",
+        )
+        .sort(
+          (a, b) =>
+            PRESENCE_ORDER[statusByUser.get(a.userId) ?? "offline"] -
+            PRESENCE_ORDER[statusByUser.get(b.userId) ?? "offline"],
+        ),
+    [members, statusByUser, ownUserId],
+  );
   if (here.length === 0) {
     return (
       <Text size="sm" tone="muted" className="px-1">
@@ -67,34 +83,38 @@ function HereNow({ members, presence, ownUserId, onMemberPress }: HereNowProps) 
       </Text>
     );
   }
+  const shown = here.slice(0, HERE_NOW_LIMIT);
   return (
     <HorizontalScroll
       accessibilityLabel={`Here now, ${here.length} ${here.length === 1 ? "person" : "people"}`}
-      className="-mx-3"
-      contentContainerStyle={{ paddingHorizontal: 12, gap: 4 }}
+      className="-mx-4"
+      contentContainerStyle={{ paddingHorizontal: 16, gap: 4 }}
     >
-      {here.map((member) => (
-        <Pressable
-          key={member.userId}
-          accessibilityRole="button"
-          accessibilityLabel={`${member.displayName}, ${statusIn(presence, member.userId)}`}
-          onPress={() => {
-            onMemberPress(member.userId);
-          }}
-          className="w-16 items-center gap-1 py-1 active:opacity-70"
-        >
-          <PresenceAvatar
-            userId={member.userId}
-            status={statusIn(presence, member.userId)}
-            roleColor={member.roleColor}
-            size={48}
-            surface={palette.bg}
-          />
-          <Text size="xs" tone="muted" numberOfLines={1} maxFontSizeMultiplier={1.3}>
-            {member.displayName.split(" ")[0]}
-          </Text>
-        </Pressable>
-      ))}
+      {shown.map((member) => {
+        const status = statusByUser.get(member.userId) ?? "offline";
+        return (
+          <Pressable
+            key={member.userId}
+            accessibilityRole="button"
+            accessibilityLabel={`${member.displayName}, ${status}`}
+            onPress={() => {
+              onMemberPress(member.userId);
+            }}
+            className="w-16 items-center gap-1 py-1 active:opacity-70"
+          >
+            <PresenceAvatar
+              userId={member.userId}
+              status={status}
+              roleColor={member.roleColor}
+              size={48}
+              surface={palette.bg}
+            />
+            <Text size="xs" tone="muted" numberOfLines={1} maxFontSizeMultiplier={1.3}>
+              {member.displayName.split(" ")[0]}
+            </Text>
+          </Pressable>
+        );
+      })}
     </HorizontalScroll>
   );
 }
@@ -381,7 +401,7 @@ export function ChannelList(props: ChannelListProps) {
   return (
     <ScrollView
       className="flex-1"
-      contentContainerStyle={{ paddingHorizontal: 12, paddingBottom: clearance, gap: 18 }}
+      contentContainerStyle={{ paddingHorizontal: 16, paddingBottom: clearance, gap: 18 }}
     >
       <WorkspaceHeading
         name={props.workspaceName}

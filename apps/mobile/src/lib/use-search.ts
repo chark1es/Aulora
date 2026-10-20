@@ -5,6 +5,21 @@ import { useCallback, useEffect, useState } from "react";
 
 const RECENT_LIMIT = 6;
 
+/**
+ * How many archive pages one query is allowed to pull before it stops refining.
+ * The backfill walks the server one page at a time; without a ceiling a search
+ * in a large workspace would page the whole archive on the foreground thread.
+ * Results stay complete for everything indexed within the cap.
+ */
+const ARCHIVE_STEP_CAP = 12;
+
+/**
+ * Re-run the (device-local) index query every few backfill steps instead of
+ * after every single page, so refining results does not allocate and sort on
+ * each page read.
+ */
+const SEARCH_REFRESH_EVERY = 3;
+
 export interface RecentSearches {
   readonly recent: readonly string[];
   /** Puts a query at the front of the list; ignores anything under two characters. */
@@ -96,14 +111,23 @@ export function useMessageSearch(
           if (!stopped()) setBusy(false);
         }
         // Results from loaded history show at once; older pages refine them.
+        // Bounded: at most `ARCHIVE_STEP_CAP` pages are read per query, and the
+        // index query re-runs every few pages rather than after every one.
         try {
-          for (;;) {
+          let steps = 0;
+          while (steps < ARCHIVE_STEP_CAP) {
             const complete = await loadHistory();
             if (stopped()) return;
-            setHits(await search(query));
-            if (stopped()) return;
+            steps += 1;
             if (complete) break;
+            if (steps % SEARCH_REFRESH_EVERY === 0) {
+              setHits(await search(query));
+              if (stopped()) return;
+            }
           }
+          // Reflect the last batch read (and any completion).
+          setHits(await search(query));
+          if (stopped()) return;
           setArchive("complete");
         } catch {
           if (!stopped()) setArchive("failed");

@@ -2,6 +2,7 @@ import { ConvexError, v } from "convex/values";
 import type { MutationCtx } from "./_generated/server";
 import { internalQuery, mutation, query } from "./_generated/server";
 import { writeAudit } from "./lib/audit";
+import { authRedirectUrlForKey, authSiteOrigin } from "./lib/env";
 import { ENV_VAR_CATALOG, ENV_VAR_GROUPS, findEnvVarDefinition } from "./lib/envCatalog";
 import {
   assertUiEnvOverridesEnabled,
@@ -131,12 +132,14 @@ export const list = query({
         managedInSection: definition.managedInSection ?? null,
         source,
         isSet: source !== "unset",
+        redirectUrl: authRedirectUrlForKey(process.env, definition.key),
         ...(value !== undefined ? { value } : {}),
       });
     }
     return {
       locked: !uiEnvOverridesEnabled(),
       encryptionConfigured: encryptionConfigured(),
+      siteUrl: authSiteOrigin(process.env),
       groups: ENV_VAR_GROUPS.map((group) => ({ id: group.id, label: group.label })),
       variables,
     };

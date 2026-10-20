@@ -12,14 +12,16 @@ import {
 } from "@aulora/core";
 import { cn, Icon, Spinner } from "@aulora/ui-web";
 import { useMutation, useQuery } from "convex/react";
-import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { lazy, Suspense, useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { api } from "../../../../../packages/convex/convex/_generated/api";
 import {
   attachmentUploadErrorMessage,
   DEFAULT_MAX_UPLOAD_BYTES,
   uploadFiles,
 } from "../../lib/attachments";
+import { selectEagerChannelIds } from "../../lib/channel-priority";
 import { isDesktop } from "../../lib/desktop";
+import { buildPresenceScope, PRESENCE_SCOPE_MAX } from "../../lib/presence-scope";
 import { playSound } from "../../lib/sounds";
 import { useChannelSession } from "../../lib/use-channel";
 import {
@@ -27,6 +29,7 @@ import {
   useDesktopNotifications,
 } from "../../lib/use-desktop-notifications";
 import { useLiveUnreadBadge } from "../../lib/use-desktop-unread";
+import { useUnopenedChannelAlerts } from "../../lib/use-unopened-channel-alerts";
 import { useWebPush } from "../../lib/use-web-push";
 import {
   type CategoryView,
@@ -42,17 +45,12 @@ import {
   useWorkspaceUpdates,
   WorkspaceUpdateProvider,
 } from "../../providers/WorkspaceUpdateProvider";
-import { AdminPanel, type AdminPanelViewer } from "../admin/AdminPanel";
-import { KanbanView } from "../kanban/KanbanView";
-import { NotesView } from "../notes/NotesView";
+import type { AdminPanelViewer } from "../admin/AdminPanel";
 import { DesktopUpdateSettings } from "../UpdateSettings";
-import { CallDock } from "../voice/CallDock";
 import { CallPictureInPicture } from "../voice/CallPictureInPicture";
-import { CallStage } from "../voice/CallStage";
 import { DeviceSettingsSection } from "../voice/DeviceSettingsSection";
 import { IncomingCallModal } from "../voice/IncomingCallModal";
 import type { CallIdentity } from "../voice/identity";
-import { VoiceChannelView } from "../voice/VoiceChannelView";
 import { WorkspaceMenu } from "../WorkspaceMenu";
 import { ChannelMembersModal } from "./ChannelMembersModal";
 import { ChannelPane } from "./ChannelPane";
@@ -79,6 +77,36 @@ import { type SearchArchiveState, SearchPanel } from "./SearchPanel";
 import { type ThreadInboxItem, ThreadsInbox } from "./ThreadsInbox";
 import { ThreadsPanel } from "./ThreadsPanel";
 import { UserSettingsView } from "./UserSettingsView";
+
+// Heavy surfaces only render conditionally (admin, board, notes, a call). Load
+// them on demand so the signed-in shell does not ship their code up front.
+const AdminPanel = lazy(() =>
+  import("../admin/AdminPanel").then((module) => ({ default: module.AdminPanel })),
+);
+const KanbanView = lazy(() =>
+  import("../kanban/KanbanView").then((module) => ({ default: module.KanbanView })),
+);
+const NotesView = lazy(() =>
+  import("../notes/NotesView").then((module) => ({ default: module.NotesView })),
+);
+const CallStage = lazy(() =>
+  import("../voice/CallStage").then((module) => ({ default: module.CallStage })),
+);
+const CallDock = lazy(() =>
+  import("../voice/CallDock").then((module) => ({ default: module.CallDock })),
+);
+const VoiceChannelView = lazy(() =>
+  import("../voice/VoiceChannelView").then((module) => ({ default: module.VoiceChannelView })),
+);
+
+/** Centered placeholder shown while a lazily-loaded surface streams in. */
+function SurfaceFallback() {
+  return (
+    <div className="flex flex-1 items-center justify-center py-16">
+      <Spinner size={24} label="Loading" />
+    </div>
+  );
+}
 
 export interface ChatViewProps {
   readonly workspaceName: string;
@@ -296,6 +324,20 @@ function ChatViewContent({
   useWebPush(runtime);
   useLiveUnreadBadge();
 
+  // The same bounded eager set the provider opens. Channels outside it have no
+  // message stream, so their chimes/notifications come from the unread summary.
+  const eagerChannelIds = useMemo(
+    () => new Set(selectEagerChannelIds(channels, unreadByChannel)),
+    [channels, unreadByChannel],
+  );
+  useUnopenedChannelAlerts({
+    unreadByChannel,
+    eagerChannelIds,
+    activeChannelId,
+    mutedChannelIds,
+    channelNames,
+  });
+
   // Synthesized cues: a message/mention chime for new messages in channels that
   // are not muted. Background channels notify too, so this mirrors the OS
   // notification path rather than only the open conversation.
@@ -425,6 +467,9 @@ function ChatViewContent({
     (userId: string): PresenceStatus => presenceByUser.get(userId) ?? "offline",
     [presenceByUser],
   );
+  // Counted over the scoped presence set (the people currently on screen), not
+  // the whole workspace. For a workspace with more people than the scope cap it
+  // is a lower bound; the header labels it as scoped via its title.
   const onlineCount = useMemo(
     () => presence.filter((row) => row.status !== "offline").length,
     [presence],
@@ -515,15 +560,20 @@ function ChatViewContent({
   }, [runtime, channels, chat]);
 
   useEffect(() => {
-    for (const row of presence) {
-      if (row.customStatus !== null && row.customStatus.length > 0) {
-        setCustomStatuses((current) => {
-          const next = new Map(current);
-          next.set(row.userId, row.customStatus as string);
-          return next;
-        });
+    // Build the map once per presence update instead of a `setState` per row,
+    // so a scoped refresh of N rows costs one render, not N.
+    setCustomStatuses((current) => {
+      let next: Map<string, string> | null = null;
+      for (const row of presence) {
+        if (row.customStatus !== null && row.customStatus.length > 0) {
+          if (next === null) {
+            next = new Map(current);
+          }
+          next.set(row.userId, row.customStatus);
+        }
       }
-    }
+      return next ?? current;
+    });
   }, [presence]);
 
   // Seed the settings dialog's custom status from live presence when it opens.
@@ -651,15 +701,49 @@ function ChatViewContent({
     api.channels.visibleMemberIds,
     channel !== undefined ? { channelId: channel.id as never } : "skip",
   );
-  const visibleMembers = useMemo(
+  const visibleMembers = useMemo(() => {
+    if (visibleMemberIds === undefined) {
+      return members;
+    }
+    // A Set keeps the visibility filter O(members) instead of scanning the
+    // visible id list per member.
+    const visible = new Set(visibleMemberIds as readonly string[]);
+    return members.filter((member) => visible.has(member.userId));
+  }, [members, visibleMemberIds]);
+
+  // Presence is fetched only for the people on screen: the open timeline's
+  // authors, the member panel/modal's displayed members, the sidebar's DM
+  // partners and any open picker. Bounded well under the server's 300-id cap
+  // (see `buildPresenceScope`), so the client never reads the whole table.
+  const presenceScope = useMemo(
     () =>
-      visibleMemberIds === undefined
-        ? members
-        : members.filter((member) =>
-            (visibleMemberIds as readonly string[]).includes(member.userId),
-          ),
-    [members, visibleMemberIds],
+      buildPresenceScope({
+        ownUserId,
+        timelineAuthorIds: sessionState.messages.map((message) => message.authorId),
+        displayedMemberIds: [
+          ...(membersOpen ? visibleMembers.map((member) => member.userId) : []),
+          ...(membersModalChannel?.memberIds ?? []),
+          ...(newConversationOpen && members.length <= PRESENCE_SCOPE_MAX
+            ? members.map((member) => member.userId)
+            : []),
+        ],
+        channels,
+      }),
+    [
+      ownUserId,
+      sessionState.messages,
+      membersOpen,
+      visibleMembers,
+      membersModalChannel,
+      newConversationOpen,
+      members,
+      channels,
+    ],
   );
+
+  useEffect(() => {
+    runtime?.setPresenceScope?.(presenceScope);
+  }, [runtime, presenceScope]);
 
   // Roles the members panel can render as their own sections. Members store a
   // role's stable key when it has one, so match on that ref.
@@ -895,7 +979,7 @@ function ChatViewContent({
     if (runtime === undefined || activeSummary === undefined) {
       return;
     }
-    void runtime.session.openChannel(activeSummary).then(() => {
+    void chat.openChannel(activeSummary).then(() => {
       if (activeSummary.name.length > 0) {
         chat.reportChannelNames([{ id: activeSummary.id, name: activeSummary.name }]);
       }
@@ -978,6 +1062,8 @@ function ChatViewContent({
     loadingOlder,
     hasOlder,
     loadOlder,
+    historySeamId,
+    resetHistoryWindow,
   } = sessionState;
   useEffect(() => {
     if (pendingJump === null) {
@@ -997,6 +1083,13 @@ function ChatViewContent({
         pendingJump.createdAt !== undefined &&
         oldest !== undefined &&
         oldest.createdAt < pendingJump.createdAt;
+      if (passed && historySeamId !== null) {
+        // The retained window was truncated by the page cap and the target sits
+        // in the pages evicted between it and the live tail. Re-anchor to the
+        // tail so the walk can find it instead of silently giving up.
+        resetHistoryWindow();
+        return;
+      }
       if (hasOlder && !passed) {
         loadOlder();
       } else {
@@ -1024,6 +1117,8 @@ function ChatViewContent({
     loadingOlder,
     hasOlder,
     loadOlder,
+    historySeamId,
+    resetHistoryWindow,
   ]);
 
   if (!ready || runtime === undefined) {
@@ -1401,19 +1496,21 @@ function ChatViewContent({
       )}
 
       {adminView ? (
-        <AdminPanel
-          viewer={admin.viewer}
-          ownerId={admin.ownerId}
-          roles={admin.roleViews}
-          members={admin.memberViews}
-          categories={admin.categories}
-          channels={channels}
-          channelNames={channelNames}
-          origin={typeof window === "undefined" ? "" : window.location.origin}
-          onClose={() => {
-            setAdminOpen(false);
-          }}
-        />
+        <Suspense fallback={<SurfaceFallback />}>
+          <AdminPanel
+            viewer={admin.viewer}
+            ownerId={admin.ownerId}
+            roles={admin.roleViews}
+            members={admin.memberViews}
+            categories={admin.categories}
+            channels={channels}
+            channelNames={channelNames}
+            origin={typeof window === "undefined" ? "" : window.location.origin}
+            onClose={() => {
+              setAdminOpen(false);
+            }}
+          />
+        </Suspense>
       ) : userSettingsOpen ? (
         <UserSettingsView
           ownUserId={ownUserId}
@@ -1443,27 +1540,31 @@ function ChatViewContent({
       ) : mainView === "kanban" &&
         kanbanEnabled &&
         hasPermission(permissions, Permission.ViewKanban) ? (
-        <KanbanView
-          ownUserId={ownUserId}
-          permissions={permissions}
-          members={members}
-          onBack={() => {
-            setMainView("chat");
-            setMobilePane("list");
-          }}
-        />
+        <Suspense fallback={<SurfaceFallback />}>
+          <KanbanView
+            ownUserId={ownUserId}
+            permissions={permissions}
+            members={members}
+            onBack={() => {
+              setMainView("chat");
+              setMobilePane("list");
+            }}
+          />
+        </Suspense>
       ) : mainView === "notes" &&
         notesEnabled &&
         hasPermission(permissions, Permission.ViewNotes) ? (
-        <NotesView
-          ownUserId={ownUserId}
-          permissions={permissions}
-          members={members}
-          onBack={() => {
-            setMainView("chat");
-            setMobilePane("list");
-          }}
-        />
+        <Suspense fallback={<SurfaceFallback />}>
+          <NotesView
+            ownUserId={ownUserId}
+            permissions={permissions}
+            members={members}
+            onBack={() => {
+              setMainView("chat");
+              setMobilePane("list");
+            }}
+          />
+        </Suspense>
       ) : (
         <section
           className={cn(
@@ -1500,7 +1601,9 @@ function ChatViewContent({
               </p>
             </div>
           ) : channel.kind === "voice" ? (
-            <VoiceChannelView channel={channel} title={title} identity={callIdentity} />
+            <Suspense fallback={<SurfaceFallback />}>
+              <VoiceChannelView channel={channel} title={title} identity={callIdentity} />
+            </Suspense>
           ) : (
             <ChannelPane
               runtime={runtime}
@@ -1711,9 +1814,15 @@ function ChatViewContent({
       )}
 
       {!(channel?.kind === "voice" && voice.call?.channelId === channel.id) && (
-        <CallDock title={callTitle} identity={callIdentity} />
+        <Suspense fallback={null}>
+          <CallDock title={callTitle} identity={callIdentity} />
+        </Suspense>
       )}
-      {voice.view === "stage" && <CallStage title={callTitle} identity={callIdentity} />}
+      {voice.view === "stage" && (
+        <Suspense fallback={null}>
+          <CallStage title={callTitle} identity={callIdentity} />
+        </Suspense>
+      )}
       <CallPictureInPicture title={callTitle} identity={callIdentity} />
 
       {searchOpen && (

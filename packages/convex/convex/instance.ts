@@ -1,6 +1,6 @@
-import { v } from "convex/values";
+import { ConvexError, v } from "convex/values";
 import type { QueryCtx } from "./_generated/server";
-import { mutation, query } from "./_generated/server";
+import { internalQuery, mutation, query } from "./_generated/server";
 import { writeAudit } from "./lib/audit";
 import { parseEmailConfig } from "./lib/email";
 import {
@@ -9,11 +9,13 @@ import {
   getEncryptionSettings,
   getOidcSettings,
   getPublicAuthConfig,
+  hasOtherSignInProvider,
   SOCIAL_PROVIDER_DEFINITIONS,
 } from "./lib/env";
 import { OIDC_REQUIRED_ENV_KEYS } from "./lib/envCatalog";
 import { envLookup, isEnvValueSet, loadEffectiveEnv } from "./lib/envOverrides";
 import {
+  loadInstanceCounters,
   loadInstanceSettings,
   normalizePushRelayUrl,
   requireInstanceAdmin,
@@ -36,6 +38,14 @@ import { encryptionConfigured } from "./lib/sse";
 function nonEmpty(value: string | undefined): boolean {
   return value !== undefined && value.trim().length > 0;
 }
+
+/**
+ * Upper bound on rows read per table when the admin overview falls back to a
+ * scan (only before `backfillInstanceCounters` has seeded the maintained
+ * counters). Instances above the cap see a saturated count / approximate
+ * `usedBytes` until they run the backfill.
+ */
+const OVERVIEW_SCAN_LIMIT = 5000;
 
 type Env = Record<string, string | undefined>;
 
@@ -118,11 +128,23 @@ export const overview = query({
     const { env, applied } = await loadEffectiveEnv(ctx);
     const settings = await loadInstanceSettings(ctx);
 
-    const files = await ctx.db.query("files").collect();
-    const usedBytes = files.reduce((total, file) => total + file.sizeBytes, 0);
-    const memberCount = (await ctx.db.query("members").collect()).length;
-    const channelCount = (await ctx.db.query("channels").collect()).length;
-    const deviceCount = (await ctx.db.query("devices").collect()).length;
+    // Prefer the maintained counters. Before `backfillInstanceCounters` runs
+    // they are absent, so fall back to a bounded scan that saturates at
+    // OVERVIEW_SCAN_LIMIT rather than collecting every row.
+    const counters = await loadInstanceCounters(ctx);
+    const files =
+      counters.fileCount === undefined || counters.fileBytes === undefined
+        ? await ctx.db.query("files").take(OVERVIEW_SCAN_LIMIT)
+        : null;
+    const usedBytes =
+      counters.fileBytes ?? (files ?? []).reduce((total, file) => total + file.sizeBytes, 0);
+    const fileCount = counters.fileCount ?? files?.length ?? 0;
+    const memberCount =
+      server.memberCount ?? (await ctx.db.query("members").take(OVERVIEW_SCAN_LIMIT)).length;
+    const channelCount =
+      counters.channelCount ?? (await ctx.db.query("channels").take(OVERVIEW_SCAN_LIMIT)).length;
+    const deviceCount =
+      counters.deviceCount ?? (await ctx.db.query("devices").take(OVERVIEW_SCAN_LIMIT)).length;
     const lastBackup =
       (await ctx.db.query("backups").withIndex("by_started").order("desc").first()) ?? null;
 
@@ -139,16 +161,21 @@ export const overview = query({
         definition.clientSecretEnv,
       ]),
     );
-    const availableProviders = SOCIAL_PROVIDER_DEFINITIONS.map((definition) => ({
-      id: definition.id,
-      displayName: definition.displayName,
-      configured:
+    const availableProviders = SOCIAL_PROVIDER_DEFINITIONS.map((definition) => {
+      const configured =
         isEnvValueSet(envMap, definition.clientIdEnv) &&
-        isEnvValueSet(envMap, definition.clientSecretEnv),
-      enabled:
-        settings.authProviders?.[definition.id as "github" | "google" | "microsoft" | "apple"] !==
-        false,
-    }));
+        isEnvValueSet(envMap, definition.clientSecretEnv);
+      const toggle =
+        settings.authProviders?.[definition.id as "github" | "google" | "microsoft" | "apple"];
+      return {
+        id: definition.id,
+        displayName: definition.displayName,
+        configured,
+        // A provider with no credentials is never offered, so it reads as
+        // disabled rather than "on but unusable".
+        enabled: configured && toggle !== false,
+      };
+    });
     const email = await overviewEmail(ctx, env);
 
     return {
@@ -160,7 +187,7 @@ export const overview = query({
         members: memberCount,
         channels: channelCount,
         devices: deviceCount,
-        files: files.length,
+        files: fileCount,
       },
       storage: {
         usedBytes,
@@ -265,9 +292,35 @@ export const updateBackups = mutation({
 });
 
 /**
+ * Operator-saved auth-provider toggles for the auth request handler. Internal
+ * only: the handler needs the same `local` gate the public config advertises,
+ * without exposing the raw row. Returns `null` when no row is saved.
+ */
+export const authProviderToggles = internalQuery({
+  args: {},
+  returns: v.union(
+    v.object({
+      github: v.optional(v.boolean()),
+      google: v.optional(v.boolean()),
+      microsoft: v.optional(v.boolean()),
+      apple: v.optional(v.boolean()),
+      oidc: v.optional(v.boolean()),
+      local: v.optional(v.boolean()),
+    }),
+    v.null(),
+  ),
+  handler: async (ctx) => {
+    const row = await ctx.db.query("instanceSettings").first();
+    return row?.authProviders ?? null;
+  },
+});
+
+/**
  * Sets per-provider auth toggles. An explicit `false` hides a provider from
  * `server.publicConfig` even when its credentials are configured; absent
- * values inherit the deployment environment.
+ * values inherit the deployment environment. Turning local sign-in off is
+ * refused when no other provider is configured and enabled, so the instance is
+ * never locked out.
  */
 export const updateAuthProviders = mutation({
   args: {
@@ -277,10 +330,19 @@ export const updateAuthProviders = mutation({
       microsoft: v.optional(v.boolean()),
       apple: v.optional(v.boolean()),
       oidc: v.optional(v.boolean()),
+      local: v.optional(v.boolean()),
     }),
   },
   handler: async (ctx, args) => {
     const { userId } = await requireInstanceAdmin(ctx);
+    if (args.providers.local === false) {
+      const { env } = await loadEffectiveEnv(ctx);
+      if (!hasOtherSignInProvider(env, args.providers)) {
+        throw new ConvexError(
+          "Email & password sign-in can’t be turned off while no other sign-in provider is configured and enabled. Set up GitHub, Google, Microsoft, Apple or OIDC first.",
+        );
+      }
+    }
     const settings = await saveInstanceSettings(ctx, { authProviders: args.providers });
     await writeAudit(ctx, {
       actorId: userId,

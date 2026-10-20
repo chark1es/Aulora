@@ -66,8 +66,10 @@ export {
   GROUP_WINDOW_MS,
   messageTime,
   startOfLocalDay,
+  THREAD_PARTICIPANT_LIMIT,
   type TimelineItem,
   type TimelineOptions,
   TYPING_THROTTLE_MS,
   typingLabel,
+  withReplyParticipant,
 } from "./timeline.js";

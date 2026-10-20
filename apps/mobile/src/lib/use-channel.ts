@@ -63,43 +63,73 @@ export function useChannelSession(
       setMessages(incoming);
       void runtime.session.receiveMessages(incoming);
     };
-    const pages = new Map<string | null, readonly MessagePayload[]>();
-    const historyOff: (() => void)[] = [];
-    let nextCursor: string | null = null;
-    let oldestCursor: string | null = null;
+    // The newest page stays live; older pages are fetched on demand as one-off
+    // snapshots (not subscriptions) and prepended, so scrolling back N pages
+    // leaves exactly one live query open and never re-sorts the whole window.
+    let tail: readonly MessagePayload[] = [];
+    let tailNext: string | null = null;
+    let tailLoaded = false;
     let loading = false;
-    function subscribePage(cursor: string | null) {
-      oldestCursor = cursor;
-      const off = runtime?.watchHistory?.(channelId ?? "", cursor, (page) => {
-        pages.set(cursor, page.messages);
-        const all = new Map<string, MessagePayload>();
-        for (const messages of pages.values())
-          for (const message of messages) all.set(message.id, message);
-        receive([...all.values()].sort((a, b) => a.createdAt - b.createdAt));
-        // The oldest subscribed page owns the next continuation.
-        if (cursor === oldestCursor) {
-          nextCursor = page.isDone ? null : page.cursor;
-          setHasOlder(!page.isDone);
-          loading = false;
-          setLoadingOlder(false);
-        }
-      });
-      if (off !== undefined) historyOff.push(off);
+    let cancelled = false;
+    const olderPages: { messages: readonly MessagePayload[]; nextCursor: string | null }[] = [];
+
+    function hasOlderNow(): boolean {
+      if (!tailLoaded) return false;
+      const last = olderPages.at(-1);
+      return (last === undefined ? tailNext : last.nextCursor) !== null;
+    }
+    function merge() {
+      const merged: MessagePayload[] = [];
+      // Oldest loaded page first, then newer pages, then the live tail — the
+      // pages are already chronological, so no re-sort is needed.
+      for (let index = olderPages.length - 1; index >= 0; index -= 1) {
+        merged.push(...(olderPages[index]?.messages ?? []));
+      }
+      merged.push(...tail);
+      receive(merged);
     }
     const offMessages =
       runtime.watchHistory === undefined
-        ? runtime.subscriptions.watchMessages(channelId, receive)
-        : (() => {
-            subscribePage(null);
-            return () => {
-              for (const off of historyOff) off();
-            };
-          })();
+        ? runtime.subscriptions.watchMessages(channelId, (messages) => {
+            tail = messages;
+            tailNext = null;
+            tailLoaded = true;
+            setHasOlder(false);
+            merge();
+          })
+        : runtime.watchHistory(channelId, null, (page) => {
+            tail = page.messages;
+            tailNext = page.isDone ? null : page.cursor;
+            tailLoaded = true;
+            setHasOlder(hasOlderNow());
+            merge();
+          });
     loadOlderRef.current = () => {
-      if (nextCursor === null || loading) return;
+      if (loading) return;
+      const last = olderPages.at(-1);
+      const cursor = last === undefined ? tailNext : last.nextCursor;
+      const listMessages = runtime.port.listMessages;
+      if (cursor === null || listMessages === undefined) return;
       loading = true;
       setLoadingOlder(true);
-      subscribePage(nextCursor);
+      void listMessages
+        .call(runtime.port, { channelId, cursor })
+        .then((page) => {
+          if (cancelled) return;
+          olderPages.push({
+            messages: page.page,
+            nextCursor: page.isDone ? null : page.continueCursor,
+          });
+          void runtime.session.receiveMessages(page.page);
+          setHasOlder(hasOlderNow());
+          merge();
+        })
+        .catch(() => undefined)
+        .finally(() => {
+          if (cancelled) return;
+          loading = false;
+          setLoadingOlder(false);
+        });
     };
     const offDecrypted = runtime.session.onDecrypted((opened) => {
       setDecrypted((current) => {
@@ -116,6 +146,7 @@ export function useChannelSession(
     const offTyping = runtime.subscriptions.watchTyping(channelId, setTypers);
     const offRead = runtime.subscriptions.watchReadState(channelId, setReadState);
     return () => {
+      cancelled = true;
       offMessages();
       offDecrypted();
       offTyping();

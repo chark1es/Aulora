@@ -6,12 +6,16 @@ import type { QueryCtx } from "./_generated/server";
 import { action, internalMutation, internalQuery, mutation, query } from "./_generated/server";
 import { requireAuth } from "./lib/auth";
 import { assertMayParticipate, listActiveBans } from "./lib/bans";
-import { requireChannelAccessForUser } from "./lib/channels";
+import { requireChannelAccessForUser, requireChannelAccessFromContext } from "./lib/channels";
 import { getEkmSettings } from "./lib/ekm";
 import { DOWNLOAD_TOKEN_TTL_MS, signDownloadToken, verifyDownloadToken } from "./lib/fileTokens";
-import { effectiveMaxUploadBytes } from "./lib/instance";
-import { requireBoardForUser, writableBoard } from "./lib/kanban";
-import { requireMember, requireWorkspacePermission } from "./lib/permissions";
+import { adjustInstanceCounters, effectiveMaxUploadBytes } from "./lib/instance";
+import { requireBoardForUser, requireBoardForUserFromContext, writableBoard } from "./lib/kanban";
+import {
+  loadPermissionContext,
+  requireMember,
+  requireWorkspacePermission,
+} from "./lib/permissions";
 import { enforceRateLimit, ipRateLimitKey, requestIp, userRateLimitKey } from "./lib/rateLimit";
 import { openContentOptional } from "./lib/sealed";
 import { openBytes, sealBytes, sealString } from "./lib/sse";
@@ -26,6 +30,13 @@ function uploadWindowMs(): number {
   return Number.isFinite(configured) && configured > 0 ? configured : 60_000;
 }
 
+/**
+ * Cap for an optional thumbnail variant upload. Thumbnails are generated at a
+ * small edge length client-side, so this is generous; it only bounds a
+ * malicious multi-megabyte "thumbnail".
+ */
+const THUMBNAIL_MAX_BYTES = 1024 * 1024;
+
 const BYTES_CONTEXT = { scope: "file.bytes" } as const;
 const NAME_CONTEXT = { scope: "file.name" } as const;
 const MIME_CONTEXT = { scope: "file.mime" } as const;
@@ -38,20 +49,35 @@ const BLURHASH_CONTEXT = { scope: "file.blurhash" } as const;
  * plaintext bytes; `finalize` seals them.
  */
 export const generateUploadUrl = mutation({
-  args: {},
-  handler: async (ctx) => {
+  args: { skipRateLimit: v.optional(v.boolean()) },
+  handler: async (ctx, args) => {
     const { userId } = await requireWorkspacePermission(ctx, Permission.AttachFiles);
     await assertMayParticipate(ctx, userId);
-    await enforceRateLimit(ctx, {
-      key: userRateLimitKey("upload", userId),
-      limit: uploadLimit(),
-      windowMs: uploadWindowMs(),
-    });
-    await enforceRateLimit(ctx, {
-      key: ipRateLimitKey("upload", await requestIp(ctx)),
-      limit: uploadLimit() * 5,
-      windowMs: uploadWindowMs(),
-    });
+    // A companion thumbnail upload has its own equally bounded bucket, so it
+    // shares the image allowance without letting a client skip rate limiting.
+    if (args.skipRateLimit === true) {
+      await enforceRateLimit(ctx, {
+        key: userRateLimitKey("upload-thumb", userId),
+        limit: uploadLimit(),
+        windowMs: uploadWindowMs(),
+      });
+      await enforceRateLimit(ctx, {
+        key: ipRateLimitKey("upload-thumb", await requestIp(ctx)),
+        limit: uploadLimit() * 5,
+        windowMs: uploadWindowMs(),
+      });
+    } else {
+      await enforceRateLimit(ctx, {
+        key: userRateLimitKey("upload", userId),
+        limit: uploadLimit(),
+        windowMs: uploadWindowMs(),
+      });
+      await enforceRateLimit(ctx, {
+        key: ipRateLimitKey("upload", await requestIp(ctx)),
+        limit: uploadLimit() * 5,
+        windowMs: uploadWindowMs(),
+      });
+    }
     return await ctx.storage.generateUploadUrl();
   },
 });
@@ -62,20 +88,26 @@ export const generateUploadUrl = mutation({
  * can run it with the caller's identity.
  */
 export const authorizeUpload = internalMutation({
-  args: { storageId: v.id("_storage"), kanbanBoardId: v.optional(v.id("kanbanBoards")) },
+  args: {
+    storageId: v.id("_storage"),
+    kanbanBoardId: v.optional(v.id("kanbanBoards")),
+    skipRateLimit: v.optional(v.boolean()),
+  },
   handler: async (ctx, args) => {
     const { userId } = await requireWorkspacePermission(ctx, Permission.AttachFiles);
     await assertMayParticipate(ctx, userId);
-    await enforceRateLimit(ctx, {
-      key: userRateLimitKey("upload", userId),
-      limit: uploadLimit(),
-      windowMs: uploadWindowMs(),
-    });
-    await enforceRateLimit(ctx, {
-      key: ipRateLimitKey("upload", await requestIp(ctx)),
-      limit: uploadLimit() * 5,
-      windowMs: uploadWindowMs(),
-    });
+    if (args.skipRateLimit !== true) {
+      await enforceRateLimit(ctx, {
+        key: userRateLimitKey("upload", userId),
+        limit: uploadLimit(),
+        windowMs: uploadWindowMs(),
+      });
+      await enforceRateLimit(ctx, {
+        key: ipRateLimitKey("upload", await requestIp(ctx)),
+        limit: uploadLimit() * 5,
+        windowMs: uploadWindowMs(),
+      });
+    }
     if (args.kanbanBoardId !== undefined) await writableBoard(ctx, args.kanbanBoardId);
     const metadata = await ctx.db.system.get("_storage", args.storageId);
     if (metadata === null) {
@@ -101,6 +133,8 @@ export const insertFinalized = internalMutation({
     mimeCiphertext: v.string(),
     dimensionsCiphertext: v.optional(v.string()),
     blurhashCiphertext: v.optional(v.string()),
+    /** Sealed thumbnail variant bytes, when one was produced. */
+    thumbnailStorageId: v.optional(v.id("_storage")),
     channelId: v.optional(v.id("channels")),
     kanbanBoardId: v.optional(v.id("kanbanBoards")),
   },
@@ -115,7 +149,7 @@ export const insertFinalized = internalMutation({
       if (access.board.archived) throw new ConvexError("Restore the board before uploading files");
       await assertMayParticipate(ctx, args.uploaderId);
     }
-    return await ctx.db.insert("files", {
+    const fileId = await ctx.db.insert("files", {
       storageId: args.storageId,
       sealedStorageId: args.sealedStorageId,
       uploaderId: args.uploaderId,
@@ -129,9 +163,49 @@ export const insertFinalized = internalMutation({
       ...(args.blurhashCiphertext !== undefined
         ? { blurhashCiphertext: args.blurhashCiphertext }
         : {}),
+      ...(args.thumbnailStorageId !== undefined
+        ? { thumbnailStorageId: args.thumbnailStorageId }
+        : {}),
       ...(args.channelId !== undefined ? { channelId: args.channelId } : {}),
       ...(args.kanbanBoardId !== undefined ? { kanbanBoardId: args.kanbanBoardId } : {}),
     });
+    await adjustInstanceCounters(ctx, { files: 1, fileBytes: args.sizeBytes });
+    return fileId;
+  },
+});
+
+/**
+ * Atomically deletes an upload's plaintext source when no file row other than
+ * `exceptFileId` references it. Runs as one mutation so a concurrent finalize
+ * cannot insert a reference between the check and the delete; taking two rows
+ * per index avoids the new row hiding a second reference.
+ */
+export const reclaimUploadSource = internalMutation({
+  args: { storageId: v.id("_storage"), exceptFileId: v.id("files") },
+  handler: async (ctx, args) => {
+    const byStorage = await ctx.db
+      .query("files")
+      .withIndex("by_storage", (q) => q.eq("storageId", args.storageId))
+      .take(2);
+    if (byStorage.some((row) => row._id !== args.exceptFileId)) {
+      return false;
+    }
+    const bySealed = await ctx.db
+      .query("files")
+      .withIndex("by_sealed_storage", (q) => q.eq("sealedStorageId", args.storageId))
+      .take(2);
+    if (bySealed.some((row) => row._id !== args.exceptFileId)) {
+      return false;
+    }
+    const byThumbnail = await ctx.db
+      .query("files")
+      .withIndex("by_thumbnail_storage", (q) => q.eq("thumbnailStorageId", args.storageId))
+      .take(2);
+    if (byThumbnail.some((row) => row._id !== args.exceptFileId)) {
+      return false;
+    }
+    await ctx.storage.delete(args.storageId);
+    return true;
   },
 });
 
@@ -149,6 +223,13 @@ export const finalize = action({
     sizeBytes: v.optional(v.number()),
     dimensions: v.optional(v.string()),
     blurhash: v.optional(v.string()),
+    /**
+     * Optional small thumbnail/placeholder variant, uploaded through the same
+     * generated URL flow as the original. It is sealed with the same
+     * `file.bytes` scope, bound to a record id derived from the original upload,
+     * so no extra key material is required.
+     */
+    thumbnailStorageId: v.optional(v.id("_storage")),
     channelId: v.optional(v.id("channels")),
     kanbanBoardId: v.optional(v.id("kanbanBoards")),
   },
@@ -159,13 +240,29 @@ export const finalize = action({
       storageId: args.storageId,
       ...(args.kanbanBoardId !== undefined ? { kanbanBoardId: args.kanbanBoardId } : {}),
     });
+    if (args.thumbnailStorageId !== undefined) {
+      // Authorize the variant through the same path as the original rather than
+      // trusting a client-supplied storage id.
+      await ctx.runMutation(internal.files.authorizeUpload, {
+        storageId: args.thumbnailStorageId,
+        ...(args.kanbanBoardId !== undefined ? { kanbanBoardId: args.kanbanBoardId } : {}),
+        skipRateLimit: true,
+      });
+    }
     const blob = await ctx.storage.get(args.storageId);
     if (blob === null) {
       throw new ConvexError("Upload not found");
     }
-    const plaintext = new Uint8Array(await blob.arrayBuffer());
-    const sealed = await sealBytes({ ...BYTES_CONTEXT, recordId: args.storageId }, plaintext);
-    const sealedStorageId = await ctx.storage.store(new Blob([sealed]));
+    // Validate the thumbnail before storing the sealed original so a missing or
+    // oversized variant cannot orphan it.
+    const thumbnailBlob =
+      args.thumbnailStorageId === undefined ? null : await ctx.storage.get(args.thumbnailStorageId);
+    if (args.thumbnailStorageId !== undefined && thumbnailBlob === null) {
+      throw new ConvexError("Thumbnail upload not found");
+    }
+    if (thumbnailBlob !== null && thumbnailBlob.size > THUMBNAIL_MAX_BYTES) {
+      throw new ConvexError("Thumbnail exceeds the size cap");
+    }
     const keyVersion = getEkmSettings(process.env).keyVersion;
     const nameCiphertext = await sealString(NAME_CONTEXT, args.name);
     const mimeCiphertext = await sealString(MIME_CONTEXT, args.mime);
@@ -175,20 +272,59 @@ export const finalize = action({
         : undefined;
     const blurhashCiphertext =
       args.blurhash !== undefined ? await sealString(BLURHASH_CONTEXT, args.blurhash) : undefined;
-    const fileId = await ctx.runMutation(internal.files.insertFinalized, {
-      storageId: sealedStorageId,
-      sealedStorageId: args.storageId,
-      uploaderId: userId,
-      sizeBytes,
-      keyVersion,
-      nameCiphertext,
-      mimeCiphertext,
-      ...(dimensionsCiphertext !== undefined ? { dimensionsCiphertext } : {}),
-      ...(blurhashCiphertext !== undefined ? { blurhashCiphertext } : {}),
-      ...(args.channelId !== undefined ? { channelId: args.channelId } : {}),
-      ...(args.kanbanBoardId !== undefined ? { kanbanBoardId: args.kanbanBoardId } : {}),
+    const plaintext = new Uint8Array(await blob.arrayBuffer());
+    const sealed = await sealBytes({ ...BYTES_CONTEXT, recordId: args.storageId }, plaintext);
+    const sealedStorageId = await ctx.storage.store(new Blob([sealed]));
+    const stored: { thumbnailId?: Id<"_storage"> } = {};
+    if (thumbnailBlob !== null) {
+      try {
+        const thumbnailPlaintext = new Uint8Array(await thumbnailBlob.arrayBuffer());
+        const thumbnailSealed = await sealBytes(
+          // Derive a distinct record id from the original upload so the thumbnail
+          // can be re-opened without persisting a second sealed-record id.
+          { ...BYTES_CONTEXT, recordId: `${args.storageId}:thumb` },
+          thumbnailPlaintext,
+        );
+        stored.thumbnailId = await ctx.storage.store(new Blob([thumbnailSealed]));
+      } catch (error) {
+        await ctx.storage.delete(sealedStorageId);
+        throw error;
+      }
+    }
+    let fileId: Id<"files">;
+    try {
+      fileId = await ctx.runMutation(internal.files.insertFinalized, {
+        storageId: sealedStorageId,
+        sealedStorageId: args.storageId,
+        uploaderId: userId,
+        sizeBytes,
+        keyVersion,
+        nameCiphertext,
+        mimeCiphertext,
+        ...(dimensionsCiphertext !== undefined ? { dimensionsCiphertext } : {}),
+        ...(blurhashCiphertext !== undefined ? { blurhashCiphertext } : {}),
+        ...(stored.thumbnailId !== undefined ? { thumbnailStorageId: stored.thumbnailId } : {}),
+        ...(args.channelId !== undefined ? { channelId: args.channelId } : {}),
+        ...(args.kanbanBoardId !== undefined ? { kanbanBoardId: args.kanbanBoardId } : {}),
+      });
+    } catch (error) {
+      // No row references the sealed blobs yet, so both are safe to remove.
+      await ctx.storage.delete(sealedStorageId).catch(() => undefined);
+      if (stored.thumbnailId !== undefined) {
+        await ctx.storage.delete(stored.thumbnailId).catch(() => undefined);
+      }
+      throw error;
+    }
+    await ctx.runMutation(internal.files.reclaimUploadSource, {
+      storageId: args.storageId,
+      exceptFileId: fileId,
     });
-    await ctx.storage.delete(args.storageId);
+    if (args.thumbnailStorageId !== undefined) {
+      await ctx.runMutation(internal.files.reclaimUploadSource, {
+        storageId: args.thumbnailStorageId,
+        exceptFileId: fileId,
+      });
+    }
     return fileId;
   },
 });
@@ -218,7 +354,11 @@ export const authorizeDownload = internalQuery({
     } else if (row.uploaderId !== args.userId) {
       throw new ConvexError("You do not have access to this file");
     }
-    return { storageId: row.storageId, sealedStorageId: row.sealedStorageId };
+    return {
+      storageId: row.storageId,
+      sealedStorageId: row.sealedStorageId,
+      thumbnailStorageId: row.thumbnailStorageId ?? null,
+    };
   },
 });
 
@@ -228,7 +368,16 @@ export const authorizeDownload = internalQuery({
  * `ArrayBuffer` (`v.bytes()`), so that is what clients receive.
  */
 export const download = action({
-  args: { token: v.string() },
+  args: {
+    token: v.string(),
+    /**
+     * Which variant to return: the original bytes (default) or the small
+     * thumbnail produced at upload time. The token still authorizes the file,
+     * so both variants require the same access; an absent thumbnail falls back
+     * to the original so old records and non-image uploads keep working.
+     */
+    variant: v.optional(v.union(v.literal("original"), v.literal("thumbnail"))),
+  },
   handler: async (ctx, args): Promise<{ bytes: ArrayBuffer }> => {
     const payload = await verifyDownloadToken(args.token);
     const row = await ctx.runQuery(internal.files.authorizeDownload, {
@@ -238,23 +387,35 @@ export const download = action({
     if (row === null) {
       throw new ConvexError("File not found");
     }
-    const blob = await ctx.storage.get(row.storageId);
+    const thumbnailStorageId =
+      args.variant === "thumbnail" && row.thumbnailStorageId !== null
+        ? row.thumbnailStorageId
+        : null;
+    const storageId = thumbnailStorageId ?? row.storageId;
+    const recordId =
+      thumbnailStorageId !== null ? `${row.sealedStorageId}:thumb` : row.sealedStorageId;
+    const blob = await ctx.storage.get(storageId);
     if (blob === null) {
       throw new ConvexError("Sealed file bytes not found");
     }
     const sealed = new Uint8Array(await blob.arrayBuffer());
-    const bytes = await openBytes({ ...BYTES_CONTEXT, recordId: row.sealedStorageId }, sealed);
+    const bytes = await openBytes({ ...BYTES_CONTEXT, recordId }, sealed);
     return { bytes: bytes.buffer };
   },
 });
 
-async function downloadUrl(fileId: Id<"files">, userId: string): Promise<string> {
+async function downloadUrl(
+  fileId: Id<"files">,
+  userId: string,
+  variant?: "thumbnail",
+): Promise<string> {
   const token = await signDownloadToken({
     fileId,
     userId,
     exp: Date.now() + DOWNLOAD_TOKEN_TTL_MS,
   });
-  const path = `/files/download?token=${encodeURIComponent(token)}`;
+  const variantParam = variant === undefined ? "" : `&variant=${variant}`;
+  const path = `/files/download?token=${encodeURIComponent(token)}${variantParam}`;
   const site = process.env.CONVEX_SITE_URL?.trim().replace(/\/+$/, "");
   return site !== undefined && site.length > 0 ? `${site}${path}` : path;
 }
@@ -269,6 +430,11 @@ interface FileView {
   readonly blurhash: string | null;
   /** Signed, short-lived URL that yields decrypted bytes. */
   readonly url: string;
+  /**
+   * Signed, short-lived URL for the small thumbnail variant, or `null` when the
+   * row has none (old records, non-image uploads). Clients fall back to `url`.
+   */
+  readonly thumbnailUrl: string | null;
 }
 
 async function toFileView(row: Doc<"files">, userId: string): Promise<FileView> {
@@ -281,6 +447,8 @@ async function toFileView(row: Doc<"files">, userId: string): Promise<FileView> 
     dimensions: await openContentOptional(DIMENSIONS_CONTEXT, row.dimensionsCiphertext),
     blurhash: await openContentOptional(BLURHASH_CONTEXT, row.blurhashCiphertext),
     url: await downloadUrl(row._id, userId),
+    thumbnailUrl:
+      row.thumbnailStorageId !== undefined ? await downloadUrl(row._id, userId, "thumbnail") : null,
   };
 }
 
@@ -328,10 +496,54 @@ export const getMany = query({
   handler: async (ctx, args) => {
     const { userId } = await requireAuth(ctx);
     await requireMember(ctx, userId);
+    // Load the permission context once and resolve access per distinct
+    // channel/board, rather than re-loading roles and server state per file.
+    const context = await loadPermissionContext(ctx, userId);
+
+    const rows = await Promise.all(args.fileIds.map(async (fileId) => await ctx.db.get(fileId)));
+
+    const channelIds = new Set<Id<"channels">>();
+    const boardIds = new Set<Id<"kanbanBoards">>();
+    for (const row of rows) {
+      if (row === null) continue;
+      // A board-scoped file takes precedence over the channel check, matching
+      // canAccessFile.
+      if (row.kanbanBoardId !== undefined) {
+        boardIds.add(row.kanbanBoardId);
+      } else if (row.channelId !== undefined) {
+        channelIds.add(row.channelId);
+      }
+    }
+
+    const allowedChannels = new Set<Id<"channels">>();
+    for (const channelId of channelIds) {
+      try {
+        await requireChannelAccessFromContext(ctx, context, channelId, Permission.ViewChannel);
+        allowedChannels.add(channelId);
+      } catch {
+        // A channel the viewer cannot see simply drops its files.
+      }
+    }
+    const allowedBoards = new Set<Id<"kanbanBoards">>();
+    for (const boardId of boardIds) {
+      try {
+        await requireBoardForUserFromContext(ctx, context, boardId);
+        allowedBoards.add(boardId);
+      } catch {
+        // A board the viewer cannot see simply drops its files.
+      }
+    }
+
     const views: FileView[] = [];
-    for (const fileId of args.fileIds) {
-      const row = await ctx.db.get(fileId);
-      if (row !== null && (await canAccessFile(ctx, userId, row))) {
+    for (const row of rows) {
+      if (row === null) continue;
+      const allowed =
+        row.kanbanBoardId !== undefined
+          ? allowedBoards.has(row.kanbanBoardId)
+          : row.channelId !== undefined
+            ? allowedChannels.has(row.channelId)
+            : row.uploaderId === userId;
+      if (allowed) {
         views.push(await toFileView(row, userId));
       }
     }

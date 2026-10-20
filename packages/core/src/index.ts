@@ -16,7 +16,13 @@ export {
   utf8Encode,
 } from "./binary";
 export { blurhashDecode, blurhashEncode } from "./blurhash";
+export * from "./bots";
 export * from "./chat/index";
+export {
+  classifyError,
+  type ErrorDisposition,
+  isAuthenticationError,
+} from "./errors/index";
 export {
   allowlistAdmits,
   formatAccessCode,
@@ -100,6 +106,7 @@ export {
   type SearchOptions,
   type SearchStore,
   searchDocumentFor,
+  searchScopeKey,
   tokenize,
 } from "./search/index";
 export {
@@ -109,6 +116,11 @@ export {
   tryNormalizeServerUrl,
   wellKnownUrl,
 } from "./server-url";
+export {
+  providerInitial,
+  resolveSignInMethods,
+  type SignInMethods,
+} from "./sign-in";
 export {
   DEFAULT_SOUND_SETTINGS,
   loadSoundSettings,

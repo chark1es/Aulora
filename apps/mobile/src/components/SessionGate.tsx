@@ -21,6 +21,7 @@ import {
 import { ChatScreen } from "./chat/ChatScreen";
 import { WorkspaceSwitcherSheet } from "./chat/WorkspaceSwitcherSheet";
 import { MembershipGate } from "./MembershipGate";
+import { QueryErrorBoundary } from "./QueryErrorBoundary";
 import { SignInScreen } from "./SignInScreen";
 
 export interface SessionGateProps {
@@ -142,23 +143,25 @@ function SignedInChat({
     if (result.error) throw new Error(result.error.message ?? "Couldn't sign out");
   };
   return (
-    <MembershipGate
-      workspaceIconSeed={profile.iconSeed}
-      signedInAs={user.email ?? user.name ?? null}
-      onSignOut={() => void signOut()}
-    >
-      <SoundProvider>
-        <ChatProvider key={user.id} client={client} userId={user.id}>
-          <VoiceProvider client={client} userId={user.id}>
-            <ChatScreen
-              workspaceName={profile.name}
-              ownUserId={user.id}
-              ownDisplayName={user.name ?? user.email ?? "You"}
-              onSignOut={signOut}
-            />
-          </VoiceProvider>
-        </ChatProvider>
-      </SoundProvider>
-    </MembershipGate>
+    <QueryErrorBoundary client={client} onSignOut={() => void signOut()}>
+      <MembershipGate
+        workspaceIconSeed={profile.iconSeed}
+        signedInAs={user.email ?? user.name ?? null}
+        onSignOut={() => void signOut()}
+      >
+        <SoundProvider>
+          <ChatProvider key={user.id} client={client} userId={user.id}>
+            <VoiceProvider client={client} userId={user.id}>
+              <ChatScreen
+                workspaceName={profile.name}
+                ownUserId={user.id}
+                ownDisplayName={user.name ?? user.email ?? "You"}
+                onSignOut={signOut}
+              />
+            </VoiceProvider>
+          </ChatProvider>
+        </SoundProvider>
+      </MembershipGate>
+    </QueryErrorBoundary>
   );
 }

@@ -1,5 +1,5 @@
 import type { IconName } from "@aulora/tokens";
-import { Button, Heading, Icon, Spinner, Text } from "@aulora/ui-web";
+import { Button, EmptyState, Heading, Icon, Spinner, Text } from "@aulora/ui-web";
 import { useQuery } from "convex/react";
 import { useState } from "react";
 import { api } from "../../../../../packages/convex/convex/_generated/api";
@@ -112,9 +112,7 @@ export function AuditLogViewer({
           <Spinner size={22} label="Loading audit log" />
         </div>
       ) : rows.length === 0 ? (
-        <Text tone="muted" size="sm">
-          Nothing recorded yet.
-        </Text>
+        <EmptyState size="sm" icon="file" title="Nothing recorded yet" />
       ) : (
         <ul className="divide-y divide-border overflow-hidden rounded-[12px] border border-border bg-surface-2">
           {rows.map((row) => {
@@ -128,9 +126,9 @@ export function AuditLogViewer({
                 className="flex items-center gap-3 px-3.5 py-2.5 transition hover:bg-surface-3/50"
               >
                 <span
-                  className={`flex h-7 w-7 shrink-0 items-center justify-center rounded-[8px] ${CATEGORY_ACCENT.get(category) ?? ""}`}
+                  className={`flex h-8 w-8 shrink-0 items-center justify-center rounded-[9px] ${CATEGORY_ACCENT.get(category) ?? ""}`}
                 >
-                  <Icon name={CATEGORY_ICON.get(category) ?? "file"} size={14} />
+                  <Icon name={CATEGORY_ICON.get(category) ?? "file"} size={16} />
                 </span>
                 <div className="min-w-0 flex-1">
                   <Text size="sm" className="truncate">

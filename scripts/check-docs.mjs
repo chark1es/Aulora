@@ -5,6 +5,10 @@ import { fileURLToPath } from "node:url";
 
 const root = resolve(dirname(fileURLToPath(import.meta.url)), "..");
 const failures = [];
+// Pages the docs build renders from a generator rather than a Markdown file in
+// apps/docs/content. Source guides may link to them as `*.md` even though no
+// such file exists on disk.
+const GENERATED_DOC_PAGES = new Set(["environment-variables"]);
 // Every current source guide participates, including newly added untracked guides.
 // Historical investigations preserve obsolete paths and are indexed by their README.
 const docs = execFileSync("git", ["ls-files", "--cached", "--others", "--exclude-standard", "-z"], {
@@ -44,6 +48,8 @@ function checkLink(file, href, generated = false) {
       ) ?? path;
   }
   if (!existsSync(path) || !statSync(path).isFile()) {
+    const generated = path.split("/").at(-1).replace(/\.md$/, "");
+    if (file.startsWith("apps/docs/content/") && GENERATED_DOC_PAGES.has(generated)) return;
     failures.push(`${file}: missing target ${href}`);
     return;
   }

@@ -1,6 +1,7 @@
 import { Permission } from "@aulora/core";
 import { describe, expect, it } from "vitest";
 import { api } from "../convex/_generated/api";
+import type { Id } from "../convex/_generated/dataModel";
 import { isSealed } from "../convex/lib/sse";
 import { newTest, seedChannel, seedWorkspace } from "./helpers";
 
@@ -123,6 +124,52 @@ describe("messages.threadInbox", () => {
     expect(rows.map((row) => row.id)).toEqual([newerRoot, olderRoot]);
     expect(rows[0]?.lastReplyAt ?? 0).toBeGreaterThanOrEqual(rows[1]?.lastReplyAt ?? 0);
   });
+
+  it("reads from the participant index and caps the response at 50 threads", async () => {
+    const t = newTest();
+    await seedWorkspace(t, { members: [{ userId: "user-1" }] });
+    const channelId = await seedChannel(t);
+    const rootIds = await t.run(async (ctx) => {
+      const ids: Id<"messages">[] = [];
+      for (let i = 0; i < 60; i += 1) {
+        const rootId = await ctx.db.insert("messages", {
+          channelId,
+          authorId: "user-1",
+          ciphertext: "cm9vdA==",
+          attachmentIds: [],
+          mentionUserIds: [],
+          replyCount: 1,
+          lastReplyAt: i,
+        });
+        // A reply by the viewer is what makes them a participant.
+        await ctx.db.insert("messages", {
+          channelId,
+          authorId: "user-1",
+          ciphertext: "cmVwbHk=",
+          attachmentIds: [],
+          mentionUserIds: [],
+          threadRootId: rootId,
+        });
+        // The participant row is what the inbox now reads from; no global
+        // messages scan is involved.
+        await ctx.db.insert("threadParticipants", {
+          userId: "user-1",
+          threadRootId: rootId,
+          channelId,
+          lastReplyAt: i,
+          mentioned: false,
+        });
+        ids.push(rootId);
+      }
+      return ids;
+    });
+
+    const asUser = t.withIdentity({ subject: "user-1" });
+    const rows = await asUser.query(api.messages.threadInbox, {});
+    expect(rows).toHaveLength(50);
+    // The most recently active thread (highest lastReplyAt) sorts first.
+    expect(rows[0]?.id).toBe(rootIds[59]);
+  });
 });
 
 describe("messages pins", () => {
@@ -169,5 +216,69 @@ describe("messages pins", () => {
     await expect(asUser1.mutation(api.messages.pin, { messageId })).rejects.toThrow(
       "Missing permission",
     );
+  });
+
+  it("posts a quiet pin notice once and never on unpin", async () => {
+    const { t, channelId, messageId } = await setup();
+    const asPinner = t.withIdentity({ subject: "pinner-user" });
+
+    await asPinner.mutation(api.messages.pin, { messageId });
+    const timeline = await asPinner.query(api.messages.list, { channelId, paginationOpts: PAGE });
+    const notices = timeline.page.filter((message) => message.systemKind === "pin");
+    expect(notices).toHaveLength(1);
+    expect(notices[0]).toMatchObject({
+      systemActorId: "pinner-user",
+      systemTargetId: messageId,
+      body: "",
+    });
+    // The pinned message is still in the timeline alongside the notice.
+    expect(timeline.page.some((message) => message.id === messageId)).toBe(true);
+
+    // Pinning again is a no-op and unpinning never posts another notice.
+    await asPinner.mutation(api.messages.pin, { messageId });
+    await asPinner.mutation(api.messages.unpin, { messageId });
+    const after = await asPinner.query(api.messages.list, { channelId, paginationOpts: PAGE });
+    expect(after.page.filter((message) => message.systemKind === "pin")).toHaveLength(1);
+    expect(
+      after.page.some((message) => message.id === messageId && message.pinnedAt !== null),
+    ).toBe(false);
+  });
+});
+
+describe("messages.threadInbox bounded reply scan", () => {
+  it("keeps a thread whose participation row is beyond the scanned replies", async () => {
+    const t = newTest();
+    await seedWorkspace(t, { members: [{ userId: "user-1" }, { userId: "user-2" }] });
+    const channelId = await seedChannel(t);
+    const asUser1 = t.withIdentity({ subject: "user-1" });
+    const asUser2 = t.withIdentity({ subject: "user-2" });
+    const root = await asUser1.mutation(api.messages.send, { channelId, body: "cm9vdA==" });
+    await t.run(async (ctx) => {
+      for (let index = 0; index < 201; index += 1) {
+        await ctx.db.insert("messages", {
+          channelId,
+          authorId: "user-1",
+          ciphertext: "aulora-sse-v1:opaque",
+          attachmentIds: [],
+          mentionUserIds: [],
+          threadRootId: root,
+        });
+      }
+      await ctx.db.patch(root, { replyCount: 201, lastReplyAt: Date.now() });
+      await ctx.db.insert("threadParticipants", {
+        userId: "user-2",
+        threadRootId: root,
+        channelId,
+        lastReplyAt: Date.now(),
+        mentioned: true,
+        participated: true,
+      });
+    });
+
+    const rows = await asUser2.query(api.messages.threadInbox, {});
+    const row = rows.find((entry) => entry.id === root);
+    expect(row).toBeDefined();
+    expect(row?.viewerParticipated).toBe(true);
+    expect(row?.viewerMentioned).toBe(true);
   });
 });

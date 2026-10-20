@@ -1,4 +1,4 @@
-import { Button, Heading, Icon, Modal, Spinner, Text } from "@aulora/ui-web";
+import { Badge, Button, Heading, Icon, Modal, Spinner, Text } from "@aulora/ui-web";
 import { useMutation, useQuery } from "convex/react";
 import { useState } from "react";
 import { api } from "../../../../../packages/convex/convex/_generated/api";
@@ -160,11 +160,10 @@ export function MemberManager({ viewer, ownerId, permissions }: MemberManagerPro
                       >
                         {displayName}
                       </Text>
-                      {member.userId === ownerId && (
-                        <span className="rounded-[5px] bg-accent-soft px-1 text-[10px] font-semibold uppercase text-accent">
-                          Owner
-                        </span>
-                      )}
+                      <MemberBadges
+                        isOwner={member.userId === ownerId}
+                        isBot={member.isBot === true}
+                      />
                       {notedUserIds.has(member.userId) && (
                         <Icon name="note" size={12} className="shrink-0 text-text-muted" />
                       )}
@@ -347,5 +346,28 @@ export function MemberManager({ viewer, ownerId, permissions }: MemberManagerPro
         </section>
       </Modal>
     </div>
+  );
+}
+
+interface MemberBadgesProps {
+  readonly isOwner: boolean;
+  readonly isBot: boolean;
+}
+
+/** The Owner and BOT chips shown next to a member's name. */
+function MemberBadges({ isOwner, isBot }: MemberBadgesProps) {
+  return (
+    <>
+      {isOwner && (
+        <Badge size="sm" tone="accent" className="uppercase">
+          Owner
+        </Badge>
+      )}
+      {isBot && (
+        <Badge size="sm" tone="accent" className="uppercase">
+          BOT
+        </Badge>
+      )}
+    </>
   );
 }

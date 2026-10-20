@@ -85,6 +85,35 @@ const DEFAULT_ICE: readonly { urls: readonly string[] }[] = [
   { urls: ["stun:stun.l.google.com:19302", "stun:stun1.l.google.com:19302"] },
 ];
 
+/** Whether two per-participant level maps hold the same values. */
+function sameLevels(a: ReadonlyMap<string, number>, b: ReadonlyMap<string, number>): boolean {
+  if (a.size !== b.size) {
+    return false;
+  }
+  for (const [key, value] of a) {
+    if (b.get(key) !== value) {
+      return false;
+    }
+  }
+  return true;
+}
+
+/** Whether two per-participant stream maps point at the same streams. */
+function sameStreams(
+  a: ReadonlyMap<string, VoiceStream>,
+  b: ReadonlyMap<string, VoiceStream>,
+): boolean {
+  if (a.size !== b.size) {
+    return false;
+  }
+  for (const [key, value] of a) {
+    if (b.get(key) !== value) {
+      return false;
+    }
+  }
+  return true;
+}
+
 const HEARTBEAT_MS = 15_000;
 
 /**
@@ -122,6 +151,8 @@ export abstract class CallEngineCore {
   protected readonly remoteStreams = new Map<string, VoiceStream>();
   protected readonly remoteLevels = new Map<string, number>();
   protected readonly processedSignals = new Set<string>();
+  /** Last snapshot handed out, reused while nothing it represents changed. */
+  protected cachedSnapshot: MobileVoiceSnapshot | null = null;
   protected callUnsub: (() => void) | null = null;
   protected signalUnsub: (() => void) | null = null;
   protected heartbeat: ReturnType<typeof setInterval> | null = null;
@@ -154,19 +185,43 @@ export abstract class CallEngineCore {
   }
 
   getSnapshot(): MobileVoiceSnapshot {
-    return {
+    // Snapshot the maps so an in-place mutation is still detected as a change;
+    // the stream objects themselves are shared, so track changes stay visible.
+    const remoteStreams = new Map(this.remoteStreams);
+    const remoteLevels = new Map(this.remoteLevels);
+    const localVideoTrack = this.screenTrack ?? this.cameraTrack;
+    const previous = this.cachedSnapshot;
+    if (
+      previous !== null &&
+      previous.callId === this.callId &&
+      previous.call === this.call &&
+      previous.local === this.local &&
+      previous.micStream === this.micStream &&
+      previous.localVideoTrack === localVideoTrack &&
+      previous.pending === this.pending &&
+      previous.error === this.error &&
+      previous.micLevelAvailable === this.micLevelAvailable &&
+      previous.micLevel === this.micLevel &&
+      sameLevels(previous.remoteLevels, remoteLevels) &&
+      sameStreams(previous.remoteStreams, remoteStreams)
+    ) {
+      return previous;
+    }
+    const snapshot: MobileVoiceSnapshot = {
       callId: this.callId,
       call: this.call,
       local: this.local,
       micStream: this.micStream,
-      localVideoTrack: this.screenTrack ?? this.cameraTrack,
-      remoteStreams: this.remoteStreams,
-      remoteLevels: this.remoteLevels,
+      localVideoTrack,
+      remoteStreams,
+      remoteLevels,
       micLevel: this.micLevel,
       micLevelAvailable: this.micLevelAvailable,
       pending: this.pending,
       error: this.error,
     };
+    this.cachedSnapshot = snapshot;
+    return snapshot;
   }
 
   isActive(): boolean {

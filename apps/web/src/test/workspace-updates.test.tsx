@@ -73,7 +73,7 @@ describe("workspace update settings", () => {
     await act(async () => {});
     expect(screen.queryByRole("button", { name: "Install update" })).not.toBeInTheDocument();
     expect(screen.queryByText("Workspace settings dot")).not.toBeInTheDocument();
-    expect(screen.getByRole("status")).toHaveTextContent("No newer release is available.");
+    expect(screen.getByRole("status")).toHaveTextContent("You’re on the latest version.");
   });
   it("installs through Coolify without requiring a host watcher or a separate download", async () => {
     mocks.capabilities = { provider: "coolify", configured: true, error: null, status: null };
@@ -86,7 +86,7 @@ describe("workspace update settings", () => {
     await user.click(await screen.findByRole("button", { name: "Install update" }));
     expect(mocks.install).toHaveBeenCalledWith({});
     expect(mocks.request).not.toHaveBeenCalled();
-    expect(screen.queryByRole("button", { name: "Download update" })).not.toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: "Update now" })).not.toBeInTheDocument();
   });
 
   it("shows Coolify deployment progress and disables duplicate installs", async () => {
@@ -101,11 +101,9 @@ describe("workspace update settings", () => {
         <Surface />
       </WorkspaceUpdateProvider>,
     );
-    expect(await screen.findByRole("button", { name: "Install update" })).toBeDisabled();
+    expect(await screen.findByRole("button", { name: "Installing…" })).toBeDisabled();
     expect(screen.getByRole("button", { name: "Check for updates" })).toBeDisabled();
-    expect(screen.getByRole("status")).toHaveTextContent(
-      "Coolify is building and deploying the update",
-    );
+    expect(screen.getByRole("status")).toHaveTextContent("Installing the update");
   });
 
   it("explains incomplete Coolify configuration without falling back to host commands", async () => {
@@ -160,15 +158,15 @@ describe("workspace update settings", () => {
         <Surface />
       </WorkspaceUpdateProvider>,
     );
-    expect(await screen.findByRole("button", { name: "Download update" })).toBeDisabled();
+    expect(await screen.findByRole("button", { name: "Update now" })).toBeDisabled();
     mocks.host = { ...release, phase: "ready", hostSeenAt: Date.now() };
     view.rerender(
       <WorkspaceUpdateProvider isOwner>
         <Surface />
       </WorkspaceUpdateProvider>,
     );
-    expect(screen.queryByRole("button", { name: "Download update" })).not.toBeInTheDocument();
-    await user.click(screen.getByRole("button", { name: "Restart to update" }));
+    expect(screen.queryByRole("button", { name: "Update now" })).not.toBeInTheDocument();
+    await user.click(screen.getByRole("button", { name: "Restart to finish" }));
     expect(mocks.request).toHaveBeenCalledWith({ command: "restart" });
   });
 });

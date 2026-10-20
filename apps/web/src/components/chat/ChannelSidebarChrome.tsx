@@ -83,7 +83,7 @@ export function HeaderButton({
       {...(expanded === undefined ? {} : { "aria-expanded": expanded })}
       onClick={onClick}
       className={cn(
-        "flex shrink-0 items-center justify-center rounded-[7px] text-text-muted transition hover:bg-surface-3 hover:text-text focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent",
+        "flex shrink-0 items-center justify-center rounded-[8px] text-text-muted transition hover:bg-surface-3 hover:text-text focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent",
         small ? "h-6 w-6" : "h-8 w-8",
       )}
     >

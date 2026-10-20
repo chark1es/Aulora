@@ -29,19 +29,23 @@ import { buildProviders, type Env, read, readBoolean, readInt } from "./well-kno
  */
 
 export function buildWellKnown(env: Env): Record<string, unknown> {
+  const providers = buildProviders(env);
+  const localRequested = readBoolean(env, "AUTH_LOCAL_ENABLED", true);
   return {
     name: read(env, "INSTANCE_NAME") ?? "Aulora",
-    version: read(env, "AULORA_VERSION") ?? "1.1.0",
+    version: read(env, "AULORA_VERSION") ?? "1.2.0",
     apiVersion: readInt(env, "API_VERSION", 1),
     convexUrl: read(env, "CONVEX_URL") ?? "http://127.0.0.1:3210",
     siteUrl: read(env, "SITE_URL") ?? "http://localhost:5173",
     iconSeed: read(env, "ICON_SEED") ?? "aulora:server:local",
     auth: {
       local: {
-        enabled: readBoolean(env, "AUTH_LOCAL_ENABLED", true),
+        // Mirrors the server's lock-out guard: never advertise local sign-in as
+        // off when no other provider could sign anyone in.
+        enabled: localRequested || providers.length === 0,
         signup: readBoolean(env, "AUTH_LOCAL_SIGNUP", true),
       },
-      providers: buildProviders(env),
+      providers,
     },
     // Non-secret encryption descriptor, mirroring `@aulora/convex`
     // `getEncryptionSettings`; no key material is read or emitted.

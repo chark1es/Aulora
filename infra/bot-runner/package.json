@@ -1,0 +1,16 @@
+{
+  "name": "aulora-bot-runner",
+  "version": "1.2.0",
+  "private": true,
+  "description": "Aulora bot runner: supervises user-created TypeScript and Python bots in a locked-down container.",
+  "type": "module",
+  "main": "src/main.mjs",
+  "scripts": {
+    "start": "node src/main.mjs",
+    "test": "node --test \"test/**/*.test.mjs\""
+  },
+  "engines": {
+    "node": ">=22.0.0"
+  },
+  "license": "PolyForm-Noncommercial-1.0.0"
+}

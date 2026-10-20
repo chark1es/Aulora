@@ -48,24 +48,37 @@ export interface ReactionRowProps {
   readonly onAdd: () => void;
   readonly pending: boolean;
   readonly canReact: boolean;
+  /**
+   * Reaction groups supplied by the timeline's batched subscription. When
+   * omitted, this row opens its own live subscription (the fallback for
+   * adapters with no batch support).
+   */
+  readonly groups?: readonly ReactionGroup[] | undefined;
 }
 
 /** The reactions on one message, kept live; hidden until there is at least one. */
 export function ReactionRow(props: ReactionRowProps) {
   const { runtime, channelId, messageId, ownUserId, pending, canReact } = props;
   const palette = usePalette();
-  const [groups, setGroups] = useState<readonly ReactionGroup[]>([]);
+  const [ownGroups, setOwnGroups] = useState<readonly ReactionGroup[]>([]);
 
+  // Only subscribe per-row when the timeline did not hand us batched groups.
+  const batched = props.groups !== undefined;
   useEffect(() => {
+    if (batched) {
+      return;
+    }
     const off = runtime.subscriptions.watchReactions(messageId, (rows) => {
       void runtime.session.loadReactions(channelId, messageId, rows).then((resolved) => {
-        setGroups(groupReactions(resolved, ownUserId));
+        setOwnGroups(groupReactions(resolved, ownUserId));
       });
     });
     return () => {
       off();
     };
-  }, [runtime, channelId, messageId, ownUserId]);
+  }, [batched, runtime, channelId, messageId, ownUserId]);
+
+  const groups = batched ? (props.groups ?? []) : ownGroups;
 
   function toggle(emoji: string) {
     selectionFeedback();

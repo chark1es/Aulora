@@ -1,4 +1,6 @@
 import { v } from "convex/values";
+import { internal } from "./_generated/api";
+import type { Doc } from "./_generated/dataModel";
 import type { MutationCtx } from "./_generated/server";
 import { internalMutation, mutation, query } from "./_generated/server";
 import { requireAuth } from "./lib/auth";
@@ -12,6 +14,29 @@ export const PRESENCE_HEARTBEAT_MS = 30_000;
 export const PRESENCE_IDLE_MS = 60_000;
 /** Older than this marks any session offline. */
 export const PRESENCE_OFFLINE_MS = 150_000;
+/** Presence rows examined per sweep invocation before rescheduling. */
+const PRESENCE_SWEEP_BATCH = 500;
+/** Presence rows deleted per prune run before rescheduling. */
+const PRESENCE_PRUNE_BATCH = 500;
+/**
+ * Presence rows not heartbeated within this window are dropped outright. The
+ * staleness sweep already marks them offline long before this; the prune only
+ * reclaims storage for members who are gone.
+ */
+export const PRESENCE_RETENTION_MS = 30 * 24 * 60 * 60 * 1000;
+/**
+ * Hard ceiling on ids one `getMany` call will look up, after de-duplication.
+ * Clients scope presence to a channel's members/view; the cap stops a
+ * pathological id list from fanning out into unbounded index reads.
+ */
+const PRESENCE_GET_MANY_MAX = 300;
+/**
+ * Safety bound for `list`: a client that has not migrated to `getMany` yet can
+ * still not trigger an unbounded read. Far above a typical workspace's presence
+ * rows, so ordinary clients see every row; `list` no longer promises the whole
+ * table.
+ */
+const PRESENCE_LIST_LIMIT = 1000;
 
 const presenceStatusValidator = v.union(
   v.literal("online"),
@@ -23,6 +48,16 @@ const presenceStatusValidator = v.union(
 type PresenceStatus = "online" | "idle" | "dnd" | "offline";
 
 const CUSTOM_STATUS_CONTEXT = { scope: "presence.status" } as const;
+
+/** The row shape every presence read returns; custom status opened inline. */
+async function toPresenceRow(row: Doc<"presence">) {
+  return {
+    userId: row.userId,
+    status: row.status,
+    customStatus: await openContentOptional(CUSTOM_STATUS_CONTEXT, row.customStatusCiphertext),
+    lastHeartbeat: row.lastHeartbeat,
+  };
+}
 
 interface PresencePatch {
   readonly status?: PresenceStatus;
@@ -88,8 +123,10 @@ export const heartbeat = mutation({
   args: { status: v.optional(presenceStatusValidator) },
   handler: async (ctx, args) => {
     const { userId } = await requireAuth(ctx);
-    await requireMember(ctx, userId);
-    await recordLicenseActivity(ctx, userId);
+    const member = await requireMember(ctx, userId);
+    // Reuse the membership `requireMember` already resolved instead of reading
+    // the member row again inside the licence-activity recorder.
+    await recordLicenseActivity(ctx, userId, Date.now(), { isMember: member !== null });
     const now = Date.now();
     const existing = await ctx.db
       .query("presence")
@@ -154,15 +191,10 @@ export const list = query({
   handler: async (ctx) => {
     const { userId } = await requireAuth(ctx);
     await requireMember(ctx, userId);
-    const rows = await ctx.db.query("presence").collect();
-    return await Promise.all(
-      rows.map(async (row) => ({
-        userId: row.userId,
-        status: row.status,
-        customStatus: await openContentOptional(CUSTOM_STATUS_CONTEXT, row.customStatusCiphertext),
-        lastHeartbeat: row.lastHeartbeat,
-      })),
-    );
+    // Bounded so a client still on `list` cannot trigger an unbounded read;
+    // `getMany` is the scoped replacement.
+    const rows = await ctx.db.query("presence").take(PRESENCE_LIST_LIMIT);
+    return await Promise.all(rows.map((row) => toPresenceRow(row)));
   },
 });
 
@@ -179,12 +211,33 @@ export const get = query({
     if (row === null) {
       return null;
     }
-    return {
-      userId: row.userId,
-      status: row.status,
-      customStatus: await openContentOptional(CUSTOM_STATUS_CONTEXT, row.customStatusCiphertext),
-      lastHeartbeat: row.lastHeartbeat,
-    };
+    return await toPresenceRow(row);
+  },
+});
+
+/**
+ * Scoped presence for a set of user ids — the replacement for the full
+ * {@link list} read. Ids are de-duplicated and capped at
+ * {@link PRESENCE_GET_MANY_MAX}; each remaining id is looked up through the
+ * `by_user` index rather than collecting the table. Rows are returned in the
+ * caller's id order (duplicates dropped), each with the exact shape
+ * {@link list} returns. Ids with no presence row are omitted.
+ */
+export const getMany = query({
+  args: { userIds: v.array(v.string()) },
+  handler: async (ctx, args) => {
+    const { userId } = await requireAuth(ctx);
+    await requireMember(ctx, userId);
+    const ids = [...new Set(args.userIds)].slice(0, PRESENCE_GET_MANY_MAX);
+    const rows = await Promise.all(
+      ids.map((id) =>
+        ctx.db
+          .query("presence")
+          .withIndex("by_user", (q) => q.eq("userId", id))
+          .unique(),
+      ),
+    );
+    return await Promise.all(rows.filter((row) => row !== null).map((row) => toPresenceRow(row)));
   },
 });
 
@@ -192,28 +245,113 @@ export const get = query({
  * Cron hook: moves stale `online` sessions to `idle`, then any stale session to
  * `offline`. Rows the user set manually are skipped entirely so a deliberate
  * `dnd`/`idle`/`offline` survives inactivity.
+ *
+ * The sweep reads only rows past the idle threshold via the `by_lastHeartbeat`
+ * index instead of collecting the whole `presence` table, so the cost scales
+ * with the number of stale sessions, not the workspace size. Rows are swept in
+ * index (oldest-heartbeat first) pages of {@link PRESENCE_SWEEP_BATCH}; while a
+ * page is full a follow-up run continues from the returned cursor. Patching a
+ * row's `status` does not move `lastHeartbeat`, so a cursor (rather than a
+ * re-scan from the front) is what gives the drain forward progress.
  */
 export const sweepStale = internalMutation({
-  args: {},
-  handler: async (ctx) => {
+  args: { cursor: v.optional(v.union(v.string(), v.null())) },
+  handler: async (ctx, args) => {
     const now = Date.now();
-    const rows = await ctx.db.query("presence").collect();
+    const idleCutoff = now - PRESENCE_IDLE_MS;
+    // Only currently-online rows can transition; offline rows stay in the table
+    // for the retention window and must not be re-read on every sweep.
+    const result = await ctx.db
+      .query("presence")
+      .withIndex("by_status_lastHeartbeat", (q) =>
+        q.eq("status", "online").lt("lastHeartbeat", idleCutoff),
+      )
+      .paginate({ numItems: PRESENCE_SWEEP_BATCH, cursor: args.cursor ?? null });
     let changed = 0;
-    for (const row of rows) {
+    for (const row of result.page) {
       if (row.manual === true) {
         continue;
       }
       const age = now - row.lastHeartbeat;
       if (age >= PRESENCE_OFFLINE_MS) {
-        if (row.status !== "offline") {
-          await ctx.db.patch(row._id, { status: "offline" });
-          changed += 1;
-        }
-      } else if (age >= PRESENCE_IDLE_MS && row.status === "online") {
+        await ctx.db.patch(row._id, { status: "offline" });
+        changed += 1;
+      } else if (age >= PRESENCE_IDLE_MS) {
         await ctx.db.patch(row._id, { status: "idle" });
         changed += 1;
       }
     }
+    if (!result.isDone) {
+      await ctx.scheduler.runAfter(0, internal.presence.sweepStale, {
+        cursor: result.continueCursor,
+      });
+    }
     return changed;
+  },
+});
+
+/**
+ * Second half of the staleness sweep: idle rows older than the offline
+ * threshold become offline. Split from {@link sweepStale} so each mutation uses
+ * one status-scoped pagination and neither re-reads the offline backlog.
+ */
+export const sweepIdle = internalMutation({
+  args: { cursor: v.optional(v.union(v.string(), v.null())) },
+  handler: async (ctx, args) => {
+    const now = Date.now();
+    const offlineCutoff = now - PRESENCE_OFFLINE_MS;
+    const result = await ctx.db
+      .query("presence")
+      .withIndex("by_status_lastHeartbeat", (q) =>
+        q.eq("status", "idle").lt("lastHeartbeat", offlineCutoff),
+      )
+      .paginate({ numItems: PRESENCE_SWEEP_BATCH, cursor: args.cursor ?? null });
+    let changed = 0;
+    for (const row of result.page) {
+      if (row.manual === true) {
+        continue;
+      }
+      await ctx.db.patch(row._id, { status: "offline" });
+      changed += 1;
+    }
+    if (!result.isDone) {
+      await ctx.scheduler.runAfter(0, internal.presence.sweepIdle, {
+        cursor: result.continueCursor,
+      });
+    }
+    return changed;
+  },
+});
+
+/**
+ * Cron hook: deletes presence rows last heartbeated longer than
+ * {@link PRESENCE_RETENTION_MS} ago, reclaiming storage for members who left.
+ * Reads only rows past the cutoff via `by_lastHeartbeat`, pages past manual
+ * rows (a manual status is intentionally immune to staleness and is kept until
+ * the user changes it), and reschedules while more pages remain. Rows inside
+ * the retention window are never deleted.
+ */
+export const pruneStalePresence = internalMutation({
+  args: { cursor: v.optional(v.union(v.string(), v.null())) },
+  handler: async (ctx, args) => {
+    const cutoff = Date.now() - PRESENCE_RETENTION_MS;
+    const page = await ctx.db
+      .query("presence")
+      .withIndex("by_lastHeartbeat", (q) => q.lt("lastHeartbeat", cutoff))
+      .paginate({ numItems: PRESENCE_PRUNE_BATCH, cursor: args.cursor ?? null });
+    let deleted = 0;
+    for (const row of page.page) {
+      if (row.manual === true) {
+        continue;
+      }
+      await ctx.db.delete(row._id);
+      deleted += 1;
+    }
+    if (!page.isDone) {
+      await ctx.scheduler.runAfter(0, internal.presence.pruneStalePresence, {
+        cursor: page.continueCursor,
+      });
+    }
+    return deleted;
   },
 });

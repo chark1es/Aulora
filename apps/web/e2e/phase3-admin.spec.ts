@@ -22,9 +22,9 @@ async function createSecondAccount(browser: Browser, invitePath: string) {
   const signupPassword = "phase3-test-password-1234567890";
 
   await pageB.goto("/");
-  await expect(pageB.getByRole("heading", { name: "Connect to a server" })).toBeVisible();
+  await expect(pageB.getByRole("heading", { name: "Connect to your workspace" })).toBeVisible();
   await pageB.getByLabel("Server address").fill(baseURL);
-  await pageB.getByRole("button", { name: "Connect" }).click();
+  await pageB.getByRole("button", { name: "Continue" }).click();
   await expect(pageB.getByRole("button", { name: "Continue" })).toBeVisible();
   await pageB.getByRole("button", { name: "Continue" }).click();
 

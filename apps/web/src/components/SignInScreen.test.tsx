@@ -81,6 +81,21 @@ describe("SignInScreen", () => {
     expect(screen.getByRole("button", { name: "Continue with Keycloak" })).toBeInTheDocument();
   });
 
+  it("shows only the SSO buttons and an explanation when local sign-in is off", () => {
+    render(
+      <SignInScreen
+        profile={makeProfile({ enabled: false, signup: true })}
+        actions={fakeActions()}
+      />,
+    );
+
+    expect(screen.queryByLabelText("Email")).toBeNull();
+    expect(screen.queryByLabelText("Password")).toBeNull();
+    expect(screen.queryByRole("button", { name: "Create an account" })).toBeNull();
+    expect(screen.getByRole("button", { name: "Continue with GitHub" })).toBeInTheDocument();
+    expect(screen.getByText(/signs in through its configured provider/i)).toBeInTheDocument();
+  });
+
   it("signs in through the generic OIDC action for an oidc provider", async () => {
     const actions = fakeActions();
     const user = userEvent.setup();

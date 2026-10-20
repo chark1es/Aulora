@@ -1,9 +1,17 @@
-import { EVERYONE_ROLE_ID, hasPermission, Permission, resolvePermissions } from "@aulora/core";
+import {
+  ALL_PERMISSIONS,
+  EVERYONE_ROLE_ID,
+  hasPermission,
+  isBotUserId,
+  Permission,
+  resolvePermissions,
+} from "@aulora/core";
 import { ConvexError } from "convex/values";
 import type { Doc, Id } from "../_generated/dataModel";
 import type { MutationCtx } from "../_generated/server";
 import type { requireChannelAccess } from "./channels";
 import { addChannelMember, computeDmKey } from "./channels";
+import { adjustInstanceCounters } from "./instance";
 import { categoryOverridesFor } from "./permissions";
 import { openContentOptional } from "./sealed";
 import type { Nullable } from "./types";
@@ -255,7 +263,15 @@ export function computeBlockedOverrides(
   return { next, previouslyBlocked };
 }
 
-/** Every workspace member whose effective permissions can view the channel. */
+/**
+ * Every workspace member whose effective permissions can view the channel.
+ *
+ * Roles are loaded once and a member's resolved bitfield is memoized by its
+ * role set, so members sharing the same roles (the common case: only
+ * `@everyone`) do not each re-resolve the role bitfields. Member-targeted
+ * overrides are user-specific, so the memo is only used when the channel and
+ * category overrides contain no member entries.
+ */
 export async function resolveVisibleMemberIds(
   ctx: ReadCtx,
   channel: Doc<"channels">,
@@ -273,18 +289,45 @@ export async function resolveVisibleMemberIds(
     };
   });
   const categoryOverrides = await categoryOverridesFor(ctx, channel);
-  const visible: string[] = [];
-  for (const member of members) {
-    const permissions = resolvePermissions({
-      actor: {
-        userId: member.userId,
-        roleIds: member.roleIds,
-        isOwner: member.userId === ownerId,
-      },
+  const hasMemberOverrides = [...categoryOverrides, ...channel.overrides].some(
+    (override) => override.targetType === "member",
+  );
+  const permissionsByRoleSet = new Map<string, bigint>();
+  const resolve = (userId: string, roleIds: readonly string[], isOwner: boolean): bigint => {
+    if (isOwner) {
+      return ALL_PERMISSIONS;
+    }
+    if (hasMemberOverrides) {
+      return resolvePermissions({
+        actor: { userId, roleIds, isOwner },
+        roles,
+        categoryOverrides,
+        channelOverrides: channel.overrides,
+      });
+    }
+    const key = [...roleIds].sort().join("\u0000");
+    const cached = permissionsByRoleSet.get(key);
+    if (cached !== undefined) {
+      return cached;
+    }
+    const resolved = resolvePermissions({
+      actor: { userId, roleIds, isOwner: false },
       roles,
       categoryOverrides,
       channelOverrides: channel.overrides,
     });
+    permissionsByRoleSet.set(key, resolved);
+    return resolved;
+  };
+
+  const visible: string[] = [];
+  for (const member of members) {
+    // Bots do not inherit `@everyone`, so the generic resolution below would
+    // wrongly count them; they are not an audience for "who can view" either.
+    if (isBotUserId(member.userId)) {
+      continue;
+    }
+    const permissions = resolve(member.userId, member.roleIds, member.userId === ownerId);
     if (hasPermission(permissions, Permission.ViewChannel)) {
       visible.push(member.userId);
     }
@@ -319,6 +362,7 @@ export async function createDmChannel(
     archived: false,
     dmKey,
   });
+  await adjustInstanceCounters(ctx, { channels: 1 });
   const now = Date.now();
   for (const memberId of memberIds) {
     await addChannelMember(ctx, channelId, memberId, now);

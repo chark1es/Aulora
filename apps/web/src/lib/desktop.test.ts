@@ -1,5 +1,12 @@
-import { afterEach, describe, expect, it } from "vitest";
-import { checkDesktopUpdate, desktopPlatform, isDesktop, parseDeepLink } from "./desktop";
+import { afterEach, describe, expect, it, vi } from "vitest";
+import {
+  checkDesktopUpdate,
+  desktopPlatform,
+  isDesktop,
+  openExternal,
+  parseDeepLink,
+  showsDesktopTitleBar,
+} from "./desktop";
 
 describe("parseDeepLink", () => {
   it("parses connect deep links in query and path forms", () => {
@@ -99,6 +106,7 @@ describe("checkDesktopUpdate", () => {
             currentVersion: "0.1.0",
             notes: "Faster calls.",
             error: null,
+            pubDate: 1_700_000_000,
           }),
       },
     };
@@ -108,7 +116,42 @@ describe("checkDesktopUpdate", () => {
       currentVersion: "0.1.0",
       notes: "Faster calls.",
       error: null,
+      pubDate: 1_700_000_000,
     });
+  });
+});
+
+describe("openExternal", () => {
+  const globalWithTauri = globalThis as { __TAURI__?: unknown };
+  const saved = globalWithTauri.__TAURI__;
+
+  afterEach(() => {
+    if (saved === undefined) {
+      delete globalWithTauri.__TAURI__;
+    } else {
+      globalWithTauri.__TAURI__ = saved;
+    }
+    vi.restoreAllMocks();
+  });
+
+  it("opens a new tab on the web", () => {
+    delete globalWithTauri.__TAURI__;
+    const open = vi.spyOn(window, "open").mockReturnValue(null);
+    openExternal("https://github.com/settings/personal-access-tokens/new");
+    expect(open).toHaveBeenCalledWith(
+      "https://github.com/settings/personal-access-tokens/new",
+      "_blank",
+      "noopener,noreferrer",
+    );
+  });
+
+  it("hands the URL to the desktop shell", () => {
+    const invoke = vi.fn().mockResolvedValue(undefined);
+    globalWithTauri.__TAURI__ = { core: { invoke } };
+    const open = vi.spyOn(window, "open").mockReturnValue(null);
+    openExternal("https://example.com");
+    expect(invoke).toHaveBeenCalledWith("open_external", { url: "https://example.com" });
+    expect(open).not.toHaveBeenCalled();
   });
 });
 
@@ -123,5 +166,17 @@ describe("desktopPlatform", () => {
       desktopPlatform("Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 Edg/140.0"),
     ).toBe("windows");
     expect(desktopPlatform("Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/605.1.15")).toBe("linux");
+  });
+});
+
+describe("showsDesktopTitleBar", () => {
+  it("only asks the macOS shell for a dedicated title bar", () => {
+    expect(showsDesktopTitleBar(true, "macos")).toBe(true);
+    expect(showsDesktopTitleBar(true, "windows")).toBe(false);
+    expect(showsDesktopTitleBar(true, "linux")).toBe(false);
+  });
+
+  it("never asks the web build for one", () => {
+    expect(showsDesktopTitleBar(false, "macos")).toBe(false);
   });
 });

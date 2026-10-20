@@ -1,9 +1,11 @@
 import { Permission } from "@aulora/core";
 import { ConvexError, v } from "convex/values";
+import { internal } from "./_generated/api";
 import type { Doc } from "./_generated/dataModel";
-import { mutation, query } from "./_generated/server";
+import { internalMutation, mutation, query } from "./_generated/server";
 import { writeAudit } from "./lib/audit";
 import { requireAuth } from "./lib/auth";
+import { detachRoleBatch, hasMemberRoleLinks } from "./lib/memberRoles";
 import {
   actorTopPosition,
   assertValidPermissionBits,
@@ -169,6 +171,11 @@ export const update = mutation({
 /**
  * Deletes a manageable role and detaches it from every member. `@everyone`
  * cannot be deleted.
+ *
+ * With the reverse `memberRoles` index populated, only members holding the role
+ * are touched, in bounded batches that reschedule while more remain. Before the
+ * backfill has run (no links at all) it falls back to the original member scan
+ * so detachment is never skipped.
  */
 export const remove = mutation({
   args: { roleId: v.id("roles") },
@@ -184,12 +191,17 @@ export const remove = mutation({
     requireRoleManageable(context, role);
 
     const roleRef = role.key ?? role._id;
-    const members = await ctx.db.query("members").collect();
-    for (const member of members) {
-      if (member.roleIds.includes(roleRef)) {
-        await ctx.db.patch(member._id, {
-          roleIds: member.roleIds.filter((roleId) => roleId !== roleRef),
-        });
+    let detachMore = false;
+    if (await hasMemberRoleLinks(ctx)) {
+      detachMore = await detachRoleBatch(ctx, roleRef);
+    } else {
+      const members = await ctx.db.query("members").collect();
+      for (const member of members) {
+        if (member.roleIds.includes(roleRef)) {
+          await ctx.db.patch(member._id, {
+            roleIds: member.roleIds.filter((roleId) => roleId !== roleRef),
+          });
+        }
       }
     }
     await ctx.db.delete(args.roleId);
@@ -199,6 +211,23 @@ export const remove = mutation({
       targetId: args.roleId,
       meta: JSON.stringify({ name: role.name }),
     });
+    if (detachMore) {
+      await ctx.scheduler.runAfter(0, internal.roles.detachRole, { roleRef });
+    }
+    return null;
+  },
+});
+
+/**
+ * Continues detaching an already-deleted role from its remaining holders, one
+ * bounded batch per run, rescheduling while a full batch remains.
+ */
+export const detachRole = internalMutation({
+  args: { roleRef: v.string() },
+  handler: async (ctx, args) => {
+    if (await detachRoleBatch(ctx, args.roleRef)) {
+      await ctx.scheduler.runAfter(0, internal.roles.detachRole, { roleRef: args.roleRef });
+    }
     return null;
   },
 });

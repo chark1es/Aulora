@@ -155,6 +155,21 @@ function allowlistDetail(meta: Record<string, unknown>): string | null {
   return nonEmpty(meta.pattern);
 }
 
+/** "GitHub on, Email & password off" for the providers present as booleans. */
+function authProviderDetail(meta: Record<string, unknown>): string | null {
+  const candidates: ReadonlyArray<readonly [string, unknown]> = [
+    ["GitHub", meta.github],
+    ["Google", meta.google],
+    ["Microsoft", meta.microsoft],
+    ["Apple", meta.apple],
+    ["SSO", meta.oidc],
+    ["Email & password", meta.local],
+  ];
+  const parts = candidates
+    .filter((entry) => typeof entry[1] === "boolean")
+    .map((entry) => `${entry[0]} ${entry[1] === true ? "on" : "off"}`);
+  return parts.length > 0 ? parts.join(", ") : null;
+}
 function metaDetail(action: string, meta: Record<string, unknown> | null): string | null {
   if (meta === null) {
     return null;
@@ -174,8 +189,9 @@ function metaDetail(action: string, meta: Record<string, unknown> | null): strin
     case "role.update":
       return changed.length > 0 ? changed.join(", ") : name;
     case "server.updateSettings":
-    case "instance.authProviders.update":
       return changed.length > 0 ? changed.join(", ") : null;
+    case "instance.authProviders.update":
+      return authProviderDetail(meta);
     case "channel.create":
       return channelCreateDetail(meta, name);
     case "member.ban":

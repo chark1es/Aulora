@@ -51,7 +51,7 @@ const MESSAGES: Record<string, string[]> = {
 async function signIn(page: Page): Promise<void> {
   await page.goto(`${BASE}/`);
   await page.getByLabel("Server address").fill(BASE);
-  await page.getByRole("button", { name: "Connect" }).click();
+  await page.getByRole("button", { name: "Continue" }).click();
   await page.getByRole("button", { name: "Continue" }).click();
   await page.getByLabel("Email").fill(EMAIL);
   await page.getByLabel("Password").fill(PASSWORD);

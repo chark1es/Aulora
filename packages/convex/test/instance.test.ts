@@ -1,9 +1,11 @@
 import { afterEach, describe, expect, it } from "vitest";
-import { api } from "../convex/_generated/api";
+import { api, internal } from "../convex/_generated/api";
 import { newTest, seedWorkspace } from "./helpers";
 
 afterEach(() => {
   delete process.env.UPLOAD_MAX_BYTES;
+  delete process.env.GITHUB_CLIENT_ID;
+  delete process.env.GITHUB_CLIENT_SECRET;
 });
 
 async function ownerTest() {
@@ -134,5 +136,90 @@ describe("instance.overview", () => {
     expect(overview.license.state).toBe("unlicensed");
     expect(overview.auth.local.enabled).toBe(true);
     expect(JSON.stringify(overview)).not.toContain("clientSecret");
+  });
+
+  it("maintains counters after the backfill migration", async () => {
+    const { t, asOwner, asUser } = await ownerTest();
+    await t.run(async (ctx) => {
+      const storageId = await ctx.storage.store(new Blob([new Uint8Array(10)]));
+      await ctx.db.insert("files", {
+        storageId,
+        sealedStorageId: storageId,
+        uploaderId: "owner-1",
+        sizeBytes: 2048,
+        keyVersion: "1",
+      });
+      await ctx.db.insert("channels", { kind: "text", overrides: [], archived: false });
+    });
+
+    await t.mutation(internal.maintenance.backfillInstanceCounters, {});
+    await t.finishAllScheduledFunctions(() => {});
+
+    const seeded = await asOwner.query(api.instance.overview, {});
+    expect(seeded.counts).toMatchObject({ members: 2, channels: 1, files: 1, devices: 0 });
+    expect(seeded.storage.usedBytes).toBe(2048);
+
+    // A write now updates the maintained counter directly (no scan).
+    await asUser.mutation(api.devices.upsert, { platform: "web" });
+    const after = await asOwner.query(api.instance.overview, {});
+    expect(after.counts.devices).toBe(1);
+  });
+});
+
+describe("instance.updateAuthProviders local sign-in", () => {
+  it("refuses to disable email/password when nothing else is configured", async () => {
+    const { asOwner } = await ownerTest();
+    await expect(
+      asOwner.mutation(api.instance.updateAuthProviders, { providers: { local: false } }),
+    ).rejects.toThrow("no other sign-in provider is configured");
+  });
+
+  it("disables local sign-in once another provider is configured", async () => {
+    process.env.GITHUB_CLIENT_ID = "gh-id";
+    process.env.GITHUB_CLIENT_SECRET = "gh-secret";
+    const { asOwner } = await ownerTest();
+
+    const saved = await asOwner.mutation(api.instance.updateAuthProviders, {
+      providers: { local: false },
+    });
+    expect(saved.authProviders).toMatchObject({ local: false });
+
+    const config = await asOwner.query(api.server.publicConfig);
+    expect(config.auth.local.enabled).toBe(false);
+    const overview = await asOwner.query(api.instance.overview, {});
+    expect(overview.auth.local.enabled).toBe(false);
+    expect(overview.auth.providersConfigured).toMatchObject({ local: false });
+  });
+
+  it("keeps local sign-in on when the other provider is switched off", async () => {
+    process.env.GITHUB_CLIENT_ID = "gh-id";
+    process.env.GITHUB_CLIENT_SECRET = "gh-secret";
+    const { asOwner } = await ownerTest();
+
+    await expect(
+      asOwner.mutation(api.instance.updateAuthProviders, {
+        providers: { github: false, local: false },
+      }),
+    ).rejects.toThrow("no other sign-in provider is configured");
+  });
+
+  it("reports a provider without credentials as disabled", async () => {
+    const { asOwner } = await ownerTest();
+    const before = await asOwner.query(api.instance.overview, {});
+    for (const provider of before.auth.availableProviders) {
+      expect(provider).toMatchObject({ configured: false, enabled: false });
+    }
+
+    process.env.GITHUB_CLIENT_ID = "gh-id";
+    process.env.GITHUB_CLIENT_SECRET = "gh-secret";
+    const configured = await asOwner.query(api.instance.overview, {});
+    const github = configured.auth.availableProviders.find((entry) => entry.id === "github");
+    expect(github).toMatchObject({ configured: true, enabled: true });
+
+    await asOwner.mutation(api.instance.updateAuthProviders, { providers: { github: false } });
+    const switchedOff = await asOwner.query(api.instance.overview, {});
+    expect(
+      switchedOff.auth.availableProviders.find((entry) => entry.id === "github"),
+    ).toMatchObject({ configured: true, enabled: false });
   });
 });

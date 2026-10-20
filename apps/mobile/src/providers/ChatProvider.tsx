@@ -141,6 +141,8 @@ export function ChatProvider({ client, userId, children }: ChatProviderProps) {
     setStartupAttempt((attempt) => attempt + 1);
   }, []);
   const [outbox, setOutbox] = useState<readonly OutboxItem[]>([]);
+  const outboxItemsRef = useRef<readonly OutboxItem[]>(outbox);
+  outboxItemsRef.current = outbox;
   const runtimeRef = useRef<MobileChatRuntime | undefined>(undefined);
   const outboxRef = useRef<Outbox>(undefined);
   const searchRef = useRef<SearchIndex>(undefined);
@@ -210,27 +212,51 @@ export function ChatProvider({ client, userId, children }: ChatProviderProps) {
   useEffect(() => {
     const subs = convexSubscriptions(client);
     const offChannels = subs.watchChannels(setSummaries);
-    const offPresence = subs.watchPresence(setPresence);
     return () => {
       offChannels();
-      offPresence();
     };
   }, [client]);
+
+  // Presence is scoped to the people the UI renders, so it is served by the
+  // runtime's shared `presence.getMany` controller (the screen reports the
+  // scope); the whole-table `presence.list` is never requested.
+  useEffect(() => {
+    if (runtime === undefined) {
+      return;
+    }
+    return runtime.subscriptions.watchPresence(setPresence);
+  }, [runtime]);
 
   useEffect(() => {
     if (runtime === undefined) {
       return;
     }
+    // `onDecrypted` re-emits the whole loaded list on every change, so track the
+    // text already indexed per id and only (re-)index what is new or edited —
+    // and drop deleted messages — instead of walking every message each time.
+    const indexed = new Map<string, string>();
     return runtime.session.onDecrypted((messages) => {
       const index = searchRef.current;
       if (index === undefined) {
         return;
       }
       for (const message of messages) {
+        const previous = indexed.get(message.id);
+        if (message.deletedAt !== null) {
+          if (previous !== undefined) {
+            indexed.delete(message.id);
+            void index.remove(message.id);
+          }
+          continue;
+        }
         const text = runtime.session.decryptedText(message.id);
         if (text.length === 0) {
           continue;
         }
+        if (previous === text) {
+          continue;
+        }
+        indexed.set(message.id, text);
         void index.index({ ...searchDocumentFor(message), text });
       }
     });
@@ -238,30 +264,55 @@ export function ChatProvider({ client, userId, children }: ChatProviderProps) {
 
   const refreshOutbox = useCallback(async () => {
     const active = outboxRef.current;
-    if (active !== undefined) {
-      const items = await active.list();
-      if (outboxRef.current === active) setOutbox(items);
+    if (active === undefined) {
+      return;
     }
+    const items = await active.list();
+    // `list()` always returns a fresh sorted array; keep the previous reference
+    // when nothing queued actually changed so the context value stays stable.
+    setOutbox((current) => (sameOutbox(current, items) ? current : items));
   }, []);
   const flush = useCallback(async () => {
     const active = outboxRef.current;
     const chat = runtimeRef.current;
     if (active === undefined || chat === undefined || AppState.currentState !== "active") return;
+    // Nothing is due once the queue is empty or every item has permanently
+    // failed; skip the flush and the refresh so an idle provider never churns.
+    if ((await active.pendingCount()) === 0) return;
     await active.flush((item) => sendOutboxItem(chat.session, item));
     await refreshOutbox();
   }, [refreshOutbox]);
   useEffect(() => {
     if (runtime === undefined) return;
+    let timer: ReturnType<typeof setInterval> | undefined;
     const retry = () => {
+      if (AppState.currentState !== "active") return;
+      // The in-memory list answers "is anything queued?" without a store read.
+      if (!outboxItemsRef.current.some((item) => item.status !== "failed")) return;
       void flush().catch(() => undefined);
     };
+    const start = () => {
+      if (timer === undefined) timer = setInterval(retry, 5000);
+    };
+    const stop = () => {
+      if (timer !== undefined) {
+        clearInterval(timer);
+        timer = undefined;
+      }
+    };
     retry();
-    const timer = setInterval(retry, 5000);
+    start();
     const off = AppState.addEventListener("change", (state) => {
-      if (state === "active") retry();
+      if (state === "active") {
+        retry();
+        start();
+      } else {
+        // Pause the ticker while backgrounded; queued items retry on resume.
+        stop();
+      }
     });
     return () => {
-      clearInterval(timer);
+      stop();
       off.remove();
     };
   }, [runtime, flush]);
@@ -581,6 +632,36 @@ function placeholder(channel: ChannelSummary): string {
     return "Group message";
   }
   return channel.archived ? "archived" : "channel";
+}
+
+/**
+ * Whether two outbox snapshots are equivalent, so a refresh that changed
+ * nothing can keep the previous array reference (and the context value stable).
+ */
+function sameOutbox(a: readonly OutboxItem[], b: readonly OutboxItem[]): boolean {
+  if (a === b) {
+    return true;
+  }
+  if (a.length !== b.length) {
+    return false;
+  }
+  for (let index = 0; index < a.length; index += 1) {
+    const previous = a.at(index);
+    const next = b.at(index);
+    if (previous === undefined || next === undefined) {
+      return false;
+    }
+    if (
+      previous.id !== next.id ||
+      previous.status !== next.status ||
+      previous.attempts !== next.attempts ||
+      previous.lastAttemptAt !== next.lastAttemptAt ||
+      previous.nextAttemptAt !== next.nextAttemptAt
+    ) {
+      return false;
+    }
+  }
+  return true;
 }
 
 /** Reads the chat context; throws outside a {@link ChatProvider}. */

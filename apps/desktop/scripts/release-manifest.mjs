@@ -17,7 +17,7 @@ export function validateVersion(version) {
   return version;
 }
 
-export function buildReleaseManifest({ version, notes, pubDate, platforms }) {
+export function buildReleaseManifest({ version, notes, pubDate, platforms, assets }) {
   validateVersion(version);
   if (!Array.isArray(platforms) || platforms.length === 0) {
     throw new Error("At least one signed platform artifact is required.");
@@ -39,7 +39,7 @@ export function buildReleaseManifest({ version, notes, pubDate, platforms }) {
     }
     entries[platform.target] = { signature, url: platform.url };
   }
-  return {
+  const manifest = {
     version,
     notes: notes ?? "",
     pub_date: pubDate,
@@ -49,6 +49,24 @@ export function buildReleaseManifest({ version, notes, pubDate, platforms }) {
       gitTag: `v${version}`,
     },
   };
+  // Optional installer list for the docs download buttons, so they can read a
+  // static manifest instead of the rate-limited GitHub API. The desktop updater
+  // only reads `version`/`platforms`/`workspace` and ignores this.
+  if (assets !== undefined) {
+    if (!Array.isArray(assets) || assets.length === 0) {
+      throw new Error("`assets` must be a non-empty list when provided.");
+    }
+    manifest.assets = assets.map((asset) => {
+      if (typeof asset?.name !== "string" || asset.name.length === 0) {
+        throw new Error("Each manifest asset needs a name.");
+      }
+      if (typeof asset.url !== "string" || !asset.url.startsWith("https://")) {
+        throw new Error(`Asset ${asset.name} needs an https url.`);
+      }
+      return { name: asset.name, browser_download_url: asset.url };
+    });
+  }
+  return manifest;
 }
 
 export async function platformFromFile(target, file, baseUrl) {

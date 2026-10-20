@@ -13,7 +13,7 @@ Aulora is self-hosted team chat. Each server hosts one workspace; clients can jo
 
 ## What Aulora provides
 
-Channels, direct and group messages, threads, reactions, file sharing, search, permissions, and voice/video calls. Browser, desktop, and mobile clients connect to the same server.
+Channels, direct and group messages, threads, pinned messages, reactions, file sharing, search, permissions, and voice/video calls. Browser, desktop, and mobile clients connect to the same server.
 
 Content encryption happens on the server. The operator can decrypt content for authorized users. This is not end-to-end encryption. See [privacy](privacy.md) for the trust model and optional external services.
 

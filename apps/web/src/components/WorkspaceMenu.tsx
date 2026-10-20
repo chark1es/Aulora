@@ -130,7 +130,7 @@ function WorkspaceHeaderTrigger({
         {activeProfile !== undefined && (
           <span className="flex items-center gap-1.5 text-[11px] text-text-muted">
             <span className="h-1.5 w-1.5 rounded-full bg-secondary" aria-hidden="true" />
-            {onlineCount ?? 0} online
+            <span title="Online among the people currently shown">{onlineCount ?? 0} online</span>
           </span>
         )}
       </span>

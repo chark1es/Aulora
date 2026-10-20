@@ -1,4 +1,12 @@
-import { Button, cn, Icon, IconButton, SegmentedControl, Spinner } from "@aulora/ui-web";
+import {
+  Button,
+  cn,
+  Icon,
+  IconButton,
+  SegmentedControl,
+  Spinner,
+  usePrefersReducedMotion,
+} from "@aulora/ui-web";
 import { Component, type ReactNode, useState } from "react";
 import { NoteDialogs } from "./NoteDialogs";
 import { NoteEditor } from "./NoteEditor";
@@ -181,14 +189,7 @@ function DetailTabs({ ctl }: { ctl: NotesController }) {
   const path = folderPath(ctl.folders, ctl.detail?.folderId ?? null);
   return (
     <div className="flex shrink-0 flex-wrap items-center gap-2 border-b border-border px-4 py-2">
-      <IconButton
-        label="Back to list"
-        size="sm"
-        className="md:hidden"
-        onClick={() => {
-          ctl.setNoteId(undefined);
-        }}
-      >
+      <IconButton label="Back to list" size="sm" onClick={ctl.closeNote}>
         <Icon name="chevron-left" size={16} />
       </IconButton>
       <nav
@@ -224,31 +225,28 @@ function DetailTabs({ ctl }: { ctl: NotesController }) {
   );
 }
 
-function EmptyDetail({ ctl }: { ctl: NotesController }) {
+/** The right-hand pane: the open note, or a spinner while it loads. */
+function DetailPane({ ctl }: { ctl: NotesController }) {
+  if (ctl.detail === undefined) {
+    return (
+      <div className="flex flex-1 items-center justify-center">
+        <Spinner label="Loading note" />
+      </div>
+    );
+  }
   return (
-    <div className="flex flex-1 flex-col items-center justify-center gap-3 p-8 text-center">
-      <span className="flex h-14 w-14 items-center justify-center rounded-[16px] bg-accent-soft text-accent">
-        <Icon name="note" size={28} />
-      </span>
-      <h2 className="text-lg font-semibold">
-        {ctl.notes.length === 0 ? "Write your first note" : "Pick a note"}
-      </h2>
-      <p className="max-w-sm text-sm text-text-muted">
-        {ctl.canCreate
-          ? "Create a note and it opens in the editor, ready to write."
-          : "No note is available to you yet."}
-      </p>
-      {ctl.canCreate && (
-        <Button leading={<Icon name="plus" size={14} />} onClick={() => void ctl.createNote()}>
-          New note
-        </Button>
-      )}
-    </div>
+    <>
+      <DetailTabs ctl={ctl} />
+      <div className="min-h-0 flex-1 overflow-y-auto">
+        {ctl.tab === "edit" ? <NoteEditor ctl={ctl} /> : <NoteHistory ctl={ctl} />}
+      </div>
+    </>
   );
 }
 
 function NotesContent(props: NotesProps) {
   const ctl = useNotes(props);
+  const reduced = usePrefersReducedMotion();
   const selected = ctl.noteId !== undefined;
   if (!ctl.canView) {
     return (
@@ -268,26 +266,16 @@ function NotesContent(props: NotesProps) {
       ) : (
         <div className="flex min-h-0 min-w-0 flex-1">
           <NotesLibrary ctl={ctl} />
-          <div
-            className={cn("min-h-0 min-w-0 flex-1 flex-col", selected ? "flex" : "hidden md:flex")}
-          >
-            {selected ? (
-              ctl.detail === undefined ? (
-                <div className="flex flex-1 items-center justify-center">
-                  <Spinner label="Loading note" />
-                </div>
-              ) : (
-                <>
-                  <DetailTabs ctl={ctl} />
-                  <div className="min-h-0 flex-1 overflow-y-auto">
-                    {ctl.tab === "edit" ? <NoteEditor ctl={ctl} /> : <NoteHistory ctl={ctl} />}
-                  </div>
-                </>
-              )
-            ) : (
-              <EmptyDetail ctl={ctl} />
-            )}
-          </div>
+          {selected && (
+            <div
+              className={cn(
+                "flex min-h-0 min-w-0 flex-1 flex-col",
+                !reduced && "animate-slide-in-right",
+              )}
+            >
+              <DetailPane ctl={ctl} />
+            </div>
+          )}
         </div>
       )}
       <NoteDialogs ctl={ctl} />

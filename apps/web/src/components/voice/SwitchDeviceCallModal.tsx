@@ -1,4 +1,4 @@
-import { Icon, Modal } from "@aulora/ui-web";
+import { Button, Icon, Modal } from "@aulora/ui-web";
 
 /** Confirms that joining will disconnect the call on the user's other device. */
 export function SwitchDeviceCallModal({
@@ -24,21 +24,17 @@ export function SwitchDeviceCallModal({
       }
       footer={
         <>
-          <button
-            type="button"
-            onClick={onCancel}
-            className="flex h-9 items-center rounded-[8px] px-3.5 text-[13px] font-semibold text-text-muted transition hover:bg-surface-3 hover:text-text"
-          >
+          <Button type="button" variant="ghost" onClick={onCancel}>
             Cancel
-          </button>
-          <button
+          </Button>
+          <Button
             type="button"
+            variant="success"
+            leading={<Icon name="phone" size={15} />}
             onClick={onConfirm}
-            className="flex h-9 items-center gap-1.5 rounded-[8px] bg-secondary px-3.5 text-[13px] font-semibold text-white transition hover:brightness-110"
           >
-            <Icon name="phone" size={15} />
             Join here
-          </button>
+          </Button>
         </>
       }
     >

@@ -1,12 +1,13 @@
-import { hasPermission, Permission } from "@aulora/core";
+import { hasPermission, Permission, withReplyParticipant } from "@aulora/core";
 import { paginationOptsValidator } from "convex/server";
 import { ConvexError, v } from "convex/values";
 import { internal } from "./_generated/api";
 import type { Doc, Id } from "./_generated/dataModel";
-import { mutation, query } from "./_generated/server";
+import { type MutationCtx, mutation, query } from "./_generated/server";
 import { writeAudit } from "./lib/audit";
 import { requireAuth } from "./lib/auth";
 import { assertMayParticipate } from "./lib/bans";
+import { emitBotEvent } from "./lib/botEvents";
 import { requireChannelAccess } from "./lib/channels";
 import { recordLicenseActivity } from "./lib/licenseActivity";
 import { requireMember } from "./lib/permissions";
@@ -14,6 +15,7 @@ import { enforceRateLimit, userRateLimitKey } from "./lib/rateLimit";
 import { openContent } from "./lib/sealed";
 import { sealString } from "./lib/sse";
 import { loadThreadInbox, type ThreadInboxRow } from "./lib/threadInbox";
+import { upsertThreadParticipant } from "./lib/threadParticipants";
 import type { Nullable } from "./lib/types";
 
 /** Per-user send budget: 30 messages per 10 seconds unless overridden. */
@@ -48,7 +50,12 @@ interface MessageView {
   readonly pinnedAt: number | null;
   readonly replyCount: number;
   readonly lastReplyAt: number | null;
+  readonly replyParticipantIds?: string[];
   readonly createdAt: number;
+  /** Present only on system events (e.g. a pin). */
+  readonly systemKind?: "pin";
+  readonly systemActorId?: string;
+  readonly systemTargetId?: Id<"messages">;
 }
 
 async function toMessage(message: Doc<"messages">): Promise<MessageView> {
@@ -69,6 +76,12 @@ async function toMessage(message: Doc<"messages">): Promise<MessageView> {
     replyCount: message.replyCount ?? 0,
     lastReplyAt: message.lastReplyAt ?? null,
     createdAt: message._creationTime,
+    ...(message.replyParticipantIds !== undefined
+      ? { replyParticipantIds: message.replyParticipantIds }
+      : {}),
+    ...(message.systemKind !== undefined ? { systemKind: message.systemKind } : {}),
+    ...(message.systemActorId !== undefined ? { systemActorId: message.systemActorId } : {}),
+    ...(message.systemTargetId !== undefined ? { systemTargetId: message.systemTargetId } : {}),
   };
 }
 
@@ -214,27 +227,63 @@ export const send = mutation({
       ...(args.threadRootId !== undefined ? { threadRootId: args.threadRootId } : {}),
       ...(args.replyToId !== undefined ? { replyToId: args.replyToId } : {}),
     });
+    let replyAt = 0;
     if (threadRoot !== null) {
       const reply = await ctx.db.get(messageId);
+      replyAt = reply?._creationTime ?? Date.now();
       await ctx.db.patch(threadRoot._id, {
         replyCount: (threadRoot.replyCount ?? 0) + 1,
-        lastReplyAt: reply?._creationTime ?? Date.now(),
+        lastReplyAt: replyAt,
+        replyParticipantIds: withReplyParticipant(threadRoot.replyParticipantIds, access.userId),
+      });
+      // Replying makes the author a thread participant (authoring a root alone
+      // does not). Mentions count wherever they appear in the thread.
+      await upsertThreadParticipant(ctx, {
+        userId: access.userId,
+        threadRootId: threadRoot._id,
+        channelId: args.channelId,
+        at: replyAt,
+        mentioned: false,
+        participated: true,
       });
     }
-    // Burst behavior: every message enqueues two zero-delay jobs (web push and
-    // mobile push), so a burst of thousands of messages enqueues two jobs per
-    // message. `notifications.ts` has no safe coalescing helper — each dispatch
-    // resolves recipients and targets per message and swallows delivery when the
-    // transport is unconfigured — so we intentionally leave the two independent
-    // jobs rather than invent one. The cost is scheduler fan-out, not delivery
-    // semantics.
-    //
-    // Resolve recipients and send content-free Web Push wakes asynchronously;
-    // the action no-ops when VAPID is not configured.
+    // Thread participation rows only exist for actual threads: a top-level
+    // message's mentions are notified, not added to the Threads inbox. When the
+    // first reply arrives, seed the root's mentions so they still surface.
+    if (threadRoot !== null && (threadRoot.replyCount ?? 0) === 0) {
+      for (const mentioned of threadRoot.mentionUserIds) {
+        await upsertThreadParticipant(ctx, {
+          userId: mentioned,
+          threadRootId: threadRoot._id,
+          channelId: args.channelId,
+          at: replyAt,
+          mentioned: true,
+          participated: false,
+        });
+      }
+    }
+    if (threadRoot !== null && mentions.mentionUserIds.length > 0) {
+      for (const mentioned of mentions.mentionUserIds) {
+        await upsertThreadParticipant(ctx, {
+          userId: mentioned,
+          threadRootId: threadRoot._id,
+          channelId: args.channelId,
+          at: replyAt,
+          mentioned: true,
+          participated: false,
+        });
+      }
+    }
+    await emitBotEvent(ctx, {
+      type: "message.created",
+      channelId: args.channelId,
+      messageId,
+    });
+    // Resolve recipients once and fan out content-free wakes (Web Push and the
+    // mobile relay) from a single scheduled job, so a burst of messages no
+    // longer resolves recipients twice per message. The action no-ops when
+    // neither transport is configured.
     await ctx.scheduler.runAfter(0, internal.notifications.dispatchForMessage, { messageId });
-    // Route content-free mobile wakes (APNs/FCM/UnifiedPush) via the push relay;
-    // also a no-op when the relay is unconfigured.
-    await ctx.scheduler.runAfter(0, internal.notifications.dispatchMobileForMessage, { messageId });
     await recordLicenseActivity(ctx, access.userId);
     return messageId;
   },
@@ -338,6 +387,11 @@ export const edit = mutation({
     }
     const ciphertext = await sealString(messageContext(message.channelId), args.body);
     await ctx.db.patch(args.messageId, { ciphertext, editedAt: Date.now() });
+    await emitBotEvent(ctx, {
+      type: "message.updated",
+      channelId: message.channelId,
+      messageId: args.messageId,
+    });
     // A moderator editing someone else's message is a moderation act worth an
     // audit row; the author editing their own message is routine.
     if (!isAuthor) {
@@ -367,6 +421,11 @@ export const remove = mutation({
     }
     if (message.deletedAt === undefined) {
       await ctx.db.patch(args.messageId, { deletedAt: Date.now() });
+      await emitBotEvent(ctx, {
+        type: "message.deleted",
+        channelId: message.channelId,
+        messageId: args.messageId,
+      });
     }
     // A moderator deleting someone else's message is a moderation act; a
     // self-delete stays out of the audit log.
@@ -382,6 +441,30 @@ export const remove = mutation({
   },
 });
 
+/**
+ * Posts the quiet "<actor> pinned a message" line the timeline renders for a
+ * pin. The body is sealed empty: the client renders the event from the system
+ * fields, never from message text, so nothing about the pinned message leaks.
+ */
+async function insertPinNotice(
+  ctx: MutationCtx,
+  channelId: Id<"channels">,
+  actorId: string,
+  targetId: Id<"messages">,
+): Promise<void> {
+  const ciphertext = await sealString(messageContext(channelId), "");
+  await ctx.db.insert("messages", {
+    channelId,
+    authorId: actorId,
+    ciphertext,
+    attachmentIds: [],
+    mentionUserIds: [],
+    systemKind: "pin",
+    systemActorId: actorId,
+    systemTargetId: targetId,
+  });
+}
+
 /** Pins a message. Requires `PinMessages`. */
 export const pin = mutation({
   args: { messageId: v.id("messages") },
@@ -390,9 +473,10 @@ export const pin = mutation({
     if (message === null) {
       throw new ConvexError("Message not found");
     }
-    await requireChannelAccess(ctx, message.channelId, Permission.PinMessages);
+    const access = await requireChannelAccess(ctx, message.channelId, Permission.PinMessages);
     if (message.pinnedAt === undefined) {
       await ctx.db.patch(args.messageId, { pinnedAt: Date.now() });
+      await insertPinNotice(ctx, message.channelId, access.userId, args.messageId);
     }
     return null;
   },
@@ -442,9 +526,9 @@ export type { ThreadInboxRow } from "./lib/threadInbox";
  * root or any reply counts). Participation is reply-only — authoring the root
  * alone does not add the viewer.
  *
- * Without a dedicated per-user index this scans the newest `messages` and groups
- * replies by `threadRootId`, which fits small workspaces. Bodies are opened
- * server-side so the client always receives plaintext, never ciphertext.
+ * Reads the viewer's `threadParticipants` rows (bounded, newest first) rather
+ * than scanning the newest `messages` globally; bodies are opened server-side so
+ * the client always receives plaintext, never ciphertext.
  */
 export const threadInbox = query({
   args: {},

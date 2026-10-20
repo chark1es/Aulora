@@ -1,5 +1,5 @@
 import type { AttachmentDescriptor } from "@aulora/core";
-import { Icon, Text } from "@aulora/ui-web";
+import { Button, Icon, Text } from "@aulora/ui-web";
 import { useCallback, useEffect, useRef, useState } from "react";
 import { loadAttachmentUrl, loadThumbnailUrl } from "../../lib/attachments";
 import type { ChatRuntime } from "../../lib/chat-runtime";
@@ -45,6 +45,22 @@ export function AttachmentView({ runtime, descriptor }: AttachmentViewProps) {
   // channel does not fetch every image's bytes as soon as it loads.
   const [visible, setVisible] = useState(false);
   const buttonRef = useRef<HTMLButtonElement | null>(null);
+  // The lightbox object URL, tracked so it can be revoked when the attachment
+  // unmounts without the reader explicitly closing it (a timeline scroll-away).
+  const fullUrlRef = useRef<string | undefined>(undefined);
+  const mountedRef = useRef(true);
+
+  useEffect(() => {
+    mountedRef.current = true;
+    return () => {
+      mountedRef.current = false;
+      const url = fullUrlRef.current;
+      if (url !== undefined) {
+        URL.revokeObjectURL(url);
+        fullUrlRef.current = undefined;
+      }
+    };
+  }, []);
 
   useEffect(() => {
     if (visible) {
@@ -97,30 +113,39 @@ export function AttachmentView({ runtime, descriptor }: AttachmentViewProps) {
   }, [runtime, descriptor, isImage, visible]);
 
   const openFull = useCallback(() => {
-    if (runtime === undefined || fullUrl !== undefined) {
+    if (runtime === undefined || fullUrlRef.current !== undefined) {
       return;
     }
     setBusy(true);
     void loadAttachmentUrl(runtime.port, descriptor)
       .then((url) => {
+        if (!mountedRef.current) {
+          URL.revokeObjectURL(url);
+          return;
+        }
+        fullUrlRef.current = url;
         setFullUrl(url);
         setThumbnailError(false);
       })
       .catch(() => {
-        setError("Unable to open this attachment.");
+        if (mountedRef.current) {
+          setError("Unable to open this attachment.");
+        }
       })
       .finally(() => {
-        setBusy(false);
+        if (mountedRef.current) {
+          setBusy(false);
+        }
       });
-  }, [runtime, descriptor, fullUrl]);
+  }, [runtime, descriptor]);
 
   const closeFull = useCallback(() => {
-    setFullUrl((current) => {
-      if (current !== undefined) {
-        URL.revokeObjectURL(current);
-      }
-      return undefined;
-    });
+    const url = fullUrlRef.current;
+    if (url !== undefined) {
+      URL.revokeObjectURL(url);
+      fullUrlRef.current = undefined;
+    }
+    setFullUrl(undefined);
   }, []);
 
   // Close the lightbox on Escape while it is open.
@@ -146,8 +171,10 @@ export function AttachmentView({ runtime, descriptor }: AttachmentViewProps) {
       return;
     }
     let cancelled = false;
+    let objectUrl: string | undefined;
     void loadAttachmentUrl(runtime.port, descriptor)
       .then((url) => {
+        objectUrl = url;
         if (!cancelled) {
           setThumbnailUrl(url);
         }
@@ -159,6 +186,10 @@ export function AttachmentView({ runtime, descriptor }: AttachmentViewProps) {
       });
     return () => {
       cancelled = true;
+      // Release the fallback preview's blob when it is no longer shown.
+      if (objectUrl !== undefined) {
+        URL.revokeObjectURL(objectUrl);
+      }
     };
   }, [runtime, descriptor, isImage, thumbnailError, visible]);
 
@@ -293,23 +324,20 @@ export function AttachmentView({ runtime, descriptor }: AttachmentViewProps) {
         </Text>
       </div>
       {media !== null && mediaUrl === undefined && (
-        <button
+        <Button
           type="button"
+          size="sm"
+          variant="secondary"
           onClick={play}
           disabled={busy || runtime === undefined}
           aria-label={`Play ${descriptor.name}`}
-          className="rounded-pill border border-border px-2 py-0.5 text-xs text-text-muted hover:text-text disabled:opacity-60"
         >
           {busy ? "Loading…" : "Play"}
-        </button>
+        </Button>
       )}
-      <button
-        type="button"
-        onClick={download}
-        className="rounded-pill border border-border px-2 py-0.5 text-xs text-text-muted hover:text-text"
-      >
+      <Button type="button" size="sm" variant="secondary" onClick={download}>
         Download
-      </button>
+      </Button>
     </div>
   );
 

@@ -144,10 +144,11 @@ export function MembersPanel({
         <button
           type="button"
           aria-label="Close members"
+          title="Close members"
           onClick={onClose}
-          className="flex h-8 w-8 items-center justify-center rounded-[7px] text-text-muted hover:bg-surface-3 hover:text-text"
+          className="flex h-8 w-8 items-center justify-center rounded-[8px] text-text-muted transition hover:bg-surface-3 hover:text-text focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent"
         >
-          <Icon name="x" size={18} />
+          <Icon name="x" size={20} />
         </button>
       </header>
       <div className="min-h-0 flex-1 overflow-y-auto px-2 py-3">

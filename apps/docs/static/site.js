@@ -1,9 +1,8 @@
 // Progressive enhancements for the marketing pages and docs. Without JavaScript
 // the pages still read, the workspace switcher still works, and download links
-// still open the right section.
-
-import { mountDemo } from "./demo.js";
-import { applyDownloads, detectClient, loadRelease } from "./downloads.js";
+// still open the right section. Feature modules are imported only when their
+// markup is present, so the demo, downloads and environment filter never cost a
+// page that does not use them.
 
 for (const button of document.querySelectorAll("[data-copy]")) {
   button.addEventListener("click", async () => {
@@ -50,21 +49,43 @@ if (tocLinks.length > 0 && "IntersectionObserver" in window) {
   }
 }
 
-const demo = document.querySelector("[data-demo]");
-if (demo) mountDemo(demo);
+// The interactive demo is mounted only on the pages that embed it.
+if (document.querySelector("[data-demo]")) {
+  void import("./demo.js").then(({ mountDemo }) => {
+    const demo = document.querySelector("[data-demo]");
+    if (demo) mountDemo(demo);
+  });
+}
 
+// Download buttons appear on the landing and install pages.
 if (document.querySelector("[data-downloads], [data-download]")) {
-  detectClient()
-    .then(async (client) => {
-      let release = null;
-      try {
-        release = await loadRelease();
-      } catch {
-        release = null;
-      }
-      applyDownloads(document, client, release);
-    })
-    .catch(() => {
-      // Leave the authored links in place.
-    });
+  void import("./downloads.js").then(({ applyDownloads, detectClient, loadRelease }) => {
+    detectClient()
+      .then(async (client) => {
+        let release = null;
+        try {
+          release = await loadRelease();
+        } catch {
+          release = null;
+        }
+        applyDownloads(document, client, release);
+      })
+      .catch(() => {
+        // Leave the authored links in place.
+      });
+  });
+}
+
+// The filter box is generated only on the environment reference page.
+if (document.querySelector("[data-env-filter]")) {
+  void import("./env-filter.js").then(({ mountEnvFilter }) => {
+    mountEnvFilter();
+  });
+}
+
+// The search palette sits in the shared header on every page.
+if (document.querySelector("[data-search]")) {
+  void import("./search.js").then(({ mountSearch }) => {
+    mountSearch();
+  });
 }

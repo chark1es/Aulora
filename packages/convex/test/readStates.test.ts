@@ -63,6 +63,36 @@ describe("readStates.set", () => {
     expect(result.mentionCount).toBe(0);
   });
 
+  it("saturates the mention count for a long unread tail", async () => {
+    const { t, channelId, asUser1 } = await setup();
+    const cursor = await t.run(async (ctx) => {
+      const cursorId = await ctx.db.insert("messages", {
+        channelId,
+        authorId: "user-1",
+        ciphertext: "bXNn",
+        attachmentIds: [],
+        mentionUserIds: [],
+      });
+      for (let i = 0; i < 250; i += 1) {
+        await ctx.db.insert("messages", {
+          channelId,
+          authorId: "user-1",
+          ciphertext: "bXNn",
+          attachmentIds: [],
+          mentionUserIds: ["user-1"],
+        });
+      }
+      return cursorId;
+    });
+
+    const result = await asUser1.mutation(api.readStates.set, {
+      channelId,
+      lastReadMessageId: cursor,
+    });
+    // Bounded at MENTION_SCAN_LIMIT (200) rather than collecting the whole tail.
+    expect(result.mentionCount).toBe(200);
+  });
+
   it("returns null before a cursor is set and the state afterwards", async () => {
     const { channelId, asUser1, send } = await setup();
     expect(await asUser1.query(api.readStates.get, { channelId })).toBeNull();
@@ -171,5 +201,17 @@ describe("readStates.summary", () => {
     const asUser2 = t.withIdentity({ subject: "user-2" });
     const rows = await asUser2.query(api.readStates.summary, { channelIds: [hidden, channelId] });
     expect(rows.map((row) => row.channelId)).toEqual([channelId]);
+  });
+});
+
+describe("readStates.summary multi-channel", () => {
+  it("answers for several channels in one call", async () => {
+    const { t, channelId } = await setup();
+    const asUser2 = t.withIdentity({ subject: "user-2" });
+    const other = await seedChannel(t);
+    const rows = await asUser2.query(api.readStates.summary, {
+      channelIds: [channelId, other],
+    });
+    expect(rows.map((row) => row.channelId).sort()).toEqual([channelId, other].sort());
   });
 });

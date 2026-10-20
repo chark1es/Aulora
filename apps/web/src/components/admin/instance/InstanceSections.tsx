@@ -1,7 +1,7 @@
-import { Button, Card, Heading, Input, Switch, Text } from "@aulora/ui-web";
+import { Button, Card, Text } from "@aulora/ui-web";
 import { useMutation, useQuery } from "convex/react";
 import type { FunctionReturnType } from "convex/server";
-import { useEffect, useState } from "react";
+import { useState } from "react";
 import { api } from "../../../../../../packages/convex/convex/_generated/api";
 import {
   backupStatusLabel,
@@ -10,20 +10,20 @@ import {
   formatQuota,
   formatTimestamp,
 } from "../../../lib/instance-admin";
-import type { Callback } from "../callbacks";
+import { SettingsSectionHeader } from "../SettingsSection";
 import { UpdatesCard } from "./UpdatesCard";
 
 export type Overview = FunctionReturnType<typeof api.instance.overview>;
 
-type AuthProvider = Overview["auth"]["availableProviders"][number];
-
+/** At-a-glance server status: version, counts, storage, license and backups. */
 export function OverviewSection({ overview }: { readonly overview: Overview }) {
   return (
     <div className="flex flex-col gap-4" data-testid="instance-overview">
-      <Heading level={3}>{overview.name}</Heading>
-      <Text tone="muted" size="sm" mono>
-        Aulora v{overview.version} · API v{overview.apiVersion}
-      </Text>
+      <SettingsSectionHeader
+        icon="shield"
+        title={overview.name}
+        description={`Aulora v${overview.version} · API v${overview.apiVersion}`}
+      />
       <UpdatesCard />
       <dl className="grid grid-cols-2 gap-x-4 gap-y-2 text-sm sm:grid-cols-4">
         <Stat label="Members" value={String(overview.counts.members)} />
@@ -58,192 +58,6 @@ export function OverviewSection({ overview }: { readonly overview: Overview }) {
   );
 }
 
-async function persistAuthProviders(
-  update: (args: { providers: Record<string, boolean | undefined> }) => Promise<unknown>,
-  toggles: Record<string, boolean | undefined>,
-  setError: (value: string | null) => void,
-  setSaved: (value: boolean) => void,
-  setBusy: (value: boolean) => void,
-): Promise<void> {
-  setError(null);
-  setSaved(false);
-  setBusy(true);
-  try {
-    await update({ providers: providersPayload(toggles) });
-    setSaved(true);
-  } catch (cause) {
-    setError(cause instanceof Error ? cause.message : "Could not save providers.");
-  } finally {
-    setBusy(false);
-  }
-}
-
-function providersPayload(
-  toggles: Record<string, boolean | undefined>,
-): Record<string, boolean | undefined> {
-  return {
-    ...(toggles.github !== undefined ? { github: toggles.github } : {}),
-    ...(toggles.google !== undefined ? { google: toggles.google } : {}),
-    ...(toggles.microsoft !== undefined ? { microsoft: toggles.microsoft } : {}),
-    ...(toggles.apple !== undefined ? { apple: toggles.apple } : {}),
-    ...(toggles.oidc !== undefined ? { oidc: toggles.oidc } : {}),
-  };
-}
-
-function AuthProviderList({
-  providers,
-  toggles,
-  onToggle,
-}: {
-  readonly providers: readonly AuthProvider[];
-  readonly toggles: Record<string, boolean | undefined>;
-  readonly onToggle: Callback<[providerId: string, value: boolean]>;
-}) {
-  return (
-    <ul className="flex flex-col gap-1" data-testid="instance-auth-providers">
-      {providers.map((provider) => (
-        <AuthProviderToggle
-          key={provider.id}
-          provider={provider}
-          enabled={toggles[provider.id] ?? provider.enabled}
-          onToggle={(value) => {
-            onToggle(provider.id, value);
-          }}
-        />
-      ))}
-    </ul>
-  );
-}
-
-interface AuthSectionModel {
-  readonly overview: Overview;
-  readonly toggles: Record<string, boolean | undefined>;
-  readonly saved: boolean;
-  readonly error: string | null;
-  readonly busy: boolean;
-  readonly onToggle: Callback<[providerId: string, value: boolean]>;
-  readonly onSave: () => void;
-}
-
-function useAuthSectionModel(overview: Overview): AuthSectionModel {
-  const updateAuthProviders = useMutation(api.instance.updateAuthProviders);
-  const stored = (overview.auth.providersConfigured ?? {}) as Record<string, boolean | undefined>;
-  const [toggles, setToggles] = useState<Record<string, boolean | undefined>>(stored);
-  const [error, setError] = useState<string | null>(null);
-  const [saved, setSaved] = useState(false);
-  const [busy, setBusy] = useState(false);
-
-  return {
-    overview,
-    toggles,
-    saved,
-    error,
-    busy,
-    onToggle: (providerId, value) => {
-      setToggles((current) => ({ ...current, [providerId]: value }));
-      setSaved(false);
-    },
-    onSave: () => {
-      void persistAuthProviders(updateAuthProviders, toggles, setError, setSaved, setBusy);
-    },
-  };
-}
-
-export function AuthSection({ overview }: { readonly overview: Overview }) {
-  return <AuthSectionView model={useAuthSectionModel(overview)} />;
-}
-
-function AuthSectionView({ model }: { readonly model: AuthSectionModel }) {
-  return (
-    <div className="flex flex-col gap-4" data-testid="instance-auth">
-      <Heading level={3}>Auth providers</Heading>
-      <Text tone="muted" size="sm">
-        Credentials come from the deployment environment or from overrides saved in the Environment
-        section; a provider is offered only when it is both configured and switched on here.
-      </Text>
-      <Card className="flex flex-col gap-1">
-        <Text size="sm">
-          Local email/password: {model.overview.auth.local.enabled ? "enabled" : "disabled"} ·
-          signup {model.overview.auth.local.signup ? "open" : "closed"}
-        </Text>
-      </Card>
-      <AuthProviderList
-        providers={model.overview.auth.availableProviders}
-        toggles={model.toggles}
-        onToggle={model.onToggle}
-      />
-      {model.overview.auth.oidc !== null && <OidcSummary oidc={model.overview.auth.oidc} />}
-      <div className="flex items-center gap-3">
-        <Button loading={model.busy} disabled={model.busy} onClick={model.onSave}>
-          Save providers
-        </Button>
-        {model.saved && (
-          <Text tone="secondary" size="sm" role="status">
-            Saved.
-          </Text>
-        )}
-        {model.error !== null && (
-          <Text tone="danger" size="sm" role="alert">
-            {model.error}
-          </Text>
-        )}
-      </div>
-    </div>
-  );
-}
-
-function AuthProviderToggle({
-  provider,
-  enabled,
-  onToggle,
-}: {
-  readonly provider: AuthProvider;
-  readonly enabled: boolean;
-  readonly onToggle: Callback<[value: boolean]>;
-}) {
-  return (
-    <li className="rounded-input border border-border bg-surface-2 px-3 py-2">
-      <Switch
-        checked={enabled}
-        disabled={!provider.configured}
-        onChange={onToggle}
-        label={provider.displayName}
-        {...(provider.configured
-          ? {}
-          : {
-              description:
-                "Not configured — set credentials in the Environment section or the deployment environment.",
-            })}
-      />
-    </li>
-  );
-}
-
-/** OIDC summary that never renders environment-sourced values. */
-function OidcSummary({ oidc }: { readonly oidc: NonNullable<Overview["auth"]["oidc"]> }) {
-  if (oidc.source === "environment") {
-    return (
-      <Card className="flex flex-col gap-1">
-        <Text size="sm">OIDC: configured from the deployment environment</Text>
-        <Text size="xs" tone="muted">
-          Its values are hidden here. Replace or adjust it in the Environment section.
-        </Text>
-      </Card>
-    );
-  }
-  return (
-    <Card className="flex flex-col gap-1">
-      <Text size="sm">OIDC: {oidc.displayName}</Text>
-      <Text size="xs" tone="muted" mono>
-        {oidc.discoveryUrl}
-      </Text>
-      <Text size="xs" tone="muted">
-        scopes: {oidc.scopes.join(" ")}
-      </Text>
-    </Card>
-  );
-}
-
 export function BackupsSection({ overview }: { readonly overview: Overview }) {
   const backups = useQuery(api.backups.list, {});
   const updateBackups = useMutation(api.instance.updateBackups);
@@ -265,17 +79,17 @@ export function BackupsSection({ overview }: { readonly overview: Overview }) {
 
   return (
     <div className="flex flex-col gap-4" data-testid="instance-backups">
-      <Heading level={3}>Backups</Heading>
-      <Text tone="muted" size="sm">
-        The Convex cron records a nightly intent at 03:00 UTC. The backup runner exports Convex and
-        dumps Postgres to S3, then reports back here.
-      </Text>
+      <SettingsSectionHeader
+        icon="history"
+        title="Backups"
+        description="The Convex cron records a nightly intent at 03:00 UTC. The backup runner exports Convex and dumps Postgres to S3, then reports back here."
+      />
       <Text size="sm" tone={overview.backups.runnerConfigured ? "secondary" : "danger"}>
         {overview.backups.runnerConfigured
           ? "Backup runner token is configured."
           : "No BACKUP_TOKEN set: the runner cannot record results yet."}
       </Text>
-      <div className="flex flex-wrap gap-2">
+      <div className="flex flex-wrap items-center gap-2">
         <Button
           variant="secondary"
           disabled={busy}
@@ -300,19 +114,19 @@ export function BackupsSection({ overview }: { readonly overview: Overview }) {
         </Text>
       )}
       <ul className="flex flex-col gap-1" data-testid="instance-backup-list">
-        {(backups ?? []).map((run) => (
+        {(backups ?? []).map((entry) => (
           <li
-            key={run.id}
+            key={entry.id}
             className="flex items-center justify-between rounded-input border border-border bg-surface-2 px-3 py-2"
           >
             <div className="flex flex-col">
-              <Text size="sm" tone={backupStatusTone(run.status)} mono>
-                {backupStatusLabel(run.status)} · {run.trigger}
+              <Text size="sm" tone={backupStatusTone(entry.status)} mono>
+                {backupStatusLabel(entry.status)} · {entry.trigger}
               </Text>
               <Text size="xs" tone="muted">
-                {formatTimestamp(run.startedAt)}
-                {run.sizeBytes !== null ? ` · ${formatBytes(run.sizeBytes)}` : ""}
-                {run.location !== null ? ` · ${run.location}` : ""}
+                {formatTimestamp(entry.startedAt)}
+                {entry.sizeBytes !== null ? ` · ${formatBytes(entry.sizeBytes)}` : ""}
+                {entry.location !== null ? ` · ${entry.location}` : ""}
               </Text>
             </div>
           </li>
@@ -324,134 +138,6 @@ export function BackupsSection({ overview }: { readonly overview: Overview }) {
         )}
       </ul>
     </div>
-  );
-}
-
-export function PushRelaySection({ overview }: { readonly overview: Overview }) {
-  const updatePushRelay = useMutation(api.instance.updatePushRelay);
-  const [enabled, setEnabled] = useState(overview.pushRelay.enabled);
-  const [url, setUrl] = useState(overview.pushRelay.url ?? "");
-  const [serverId, setServerId] = useState(overview.pushRelay.serverId ?? "");
-  const [error, setError] = useState<string | null>(null);
-  const [saved, setSaved] = useState(false);
-  const [busy, setBusy] = useState(false);
-
-  useEffect(() => {
-    setEnabled(overview.pushRelay.enabled);
-    setUrl(overview.pushRelay.url ?? "");
-    setServerId(overview.pushRelay.serverId ?? "");
-  }, [overview.pushRelay.enabled, overview.pushRelay.url, overview.pushRelay.serverId]);
-
-  return (
-    <form
-      className="flex flex-col gap-4"
-      data-testid="instance-push"
-      onSubmit={(event) => {
-        event.preventDefault();
-        setError(null);
-        setSaved(false);
-        setBusy(true);
-        void updatePushRelay({
-          enabled,
-          url: url.trim().length > 0 ? url.trim() : null,
-          serverId: serverId.trim().length > 0 ? serverId.trim() : null,
-        })
-          .then(() => {
-            setSaved(true);
-          })
-          .catch((cause: unknown) => {
-            setError(cause instanceof Error ? cause.message : "Could not save the relay.");
-          })
-          .finally(() => {
-            setBusy(false);
-          });
-      }}
-    >
-      <Heading level={3}>Push relay</Heading>
-      <RelayStatus configured={overview.pushRelay.configured} />
-      <div className="rounded-[10px] border border-border bg-surface-1 px-3.5">
-        <Switch
-          checked={enabled}
-          onChange={setEnabled}
-          label="Enable mobile push relay"
-          description="Forward pushes for store-built mobile apps through the relay."
-        />
-      </div>
-      <RelayIdentityFields
-        url={url}
-        serverId={serverId}
-        onUrlChange={setUrl}
-        onServerIdChange={setServerId}
-      />
-      {error !== null && (
-        <Text tone="danger" size="sm" role="alert">
-          {error}
-        </Text>
-      )}
-      {saved && (
-        <Text tone="secondary" size="sm" role="status">
-          Relay settings saved.
-        </Text>
-      )}
-      <div>
-        <Button type="submit" loading={busy} disabled={busy}>
-          Save relay settings
-        </Button>
-      </div>
-    </form>
-  );
-}
-
-function RelayStatus({ configured }: { readonly configured: boolean }) {
-  return (
-    <>
-      <Text tone="muted" size="sm">
-        Optional relay for store-built mobile apps. The shared token stays in the deployment env
-        (PUSH_RELAY_TOKEN); only its presence is shown.
-      </Text>
-      <Text size="sm" tone={configured ? "secondary" : "muted"}>
-        {configured
-          ? "Relay URL and token are set in the environment."
-          : "Relay token is not set in the environment."}
-      </Text>
-    </>
-  );
-}
-
-function RelayIdentityFields({
-  url,
-  serverId,
-  onUrlChange,
-  onServerIdChange,
-}: {
-  readonly url: string;
-  readonly serverId: string;
-  readonly onUrlChange: Callback<[value: string]>;
-  readonly onServerIdChange: Callback<[value: string]>;
-}) {
-  return (
-    <>
-      <Input
-        label="Relay URL"
-        hint="Base URL the Convex action calls, e.g. https://relay.example.com."
-        value={url}
-        onChange={(event) => {
-          onUrlChange(event.currentTarget.value);
-        }}
-        autoComplete="off"
-        spellCheck={false}
-      />
-      <Input
-        label="Server id"
-        hint="Opaque id echoed in wakeups; defaults to the site URL."
-        value={serverId}
-        onChange={(event) => {
-          onServerIdChange(event.currentTarget.value);
-        }}
-        autoComplete="off"
-        spellCheck={false}
-      />
-    </>
   );
 }
 

@@ -59,9 +59,16 @@ describe("filters", () => {
   const ids = (patch: Partial<typeof NO_NOTE_FILTERS>) =>
     filterNotes(notes, { ...NO_NOTE_FILTERS, ...patch }).map((entry) => entry.id);
 
-  it("matches the query against titles, ignoring case and padding", () => {
+  it("matches the query against titles and server body hits, ignoring case and padding", () => {
     expect(ids({ query: " LOGIN " })).toEqual(["login", "docs"]);
     expect(ids({ query: "nope" })).toEqual([]);
+    const hits = new Map([["ship", { id: "ship", snippet: "ship it later" }]]);
+    const found = filterNotes(notes, { ...NO_NOTE_FILTERS, query: "later" }, hits);
+    expect(found.map((n) => n.id)).toEqual(["ship"]);
+  });
+  it("searches across every folder while a query is active", () => {
+    expect(ids({ query: "login", folderId: "eng" })).toEqual(["login", "docs"]);
+    expect(ids({ folderId: "eng" })).toEqual(["login", "ship"]);
   });
   it("narrows by folder, with null meaning unfiled", () => {
     expect(ids({ folderId: "eng" })).toEqual(["login", "ship"]);

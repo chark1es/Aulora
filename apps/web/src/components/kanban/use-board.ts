@@ -124,15 +124,44 @@ function useBoardData(props: KanbanProps, state: BoardState) {
   };
 }
 
-/** The current time, for timers and due dates. */
+/** The current time, for timers and due dates. Paused while the tab is hidden. */
 function useClock(): number {
   const [now, setNow] = useState(() => Date.now());
   useEffect(() => {
-    const tick = setInterval(() => {
+    if (typeof document === "undefined") {
+      return;
+    }
+    let timer: ReturnType<typeof setInterval> | undefined;
+    const start = () => {
+      if (timer !== undefined) {
+        return;
+      }
+      // Refresh once on resume so a countdown is correct immediately.
       setNow(Date.now());
-    }, 1000);
+      timer = setInterval(() => {
+        setNow(Date.now());
+      }, 1000);
+    };
+    const stop = () => {
+      if (timer !== undefined) {
+        clearInterval(timer);
+        timer = undefined;
+      }
+    };
+    const onVisibility = () => {
+      if (document.visibilityState === "hidden") {
+        stop();
+      } else {
+        start();
+      }
+    };
+    if (document.visibilityState !== "hidden") {
+      start();
+    }
+    document.addEventListener("visibilitychange", onVisibility);
     return () => {
-      clearInterval(tick);
+      stop();
+      document.removeEventListener("visibilitychange", onVisibility);
     };
   }, []);
   return now;

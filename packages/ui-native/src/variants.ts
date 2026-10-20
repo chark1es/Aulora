@@ -174,6 +174,44 @@ export function textClass(options: {
 }
 
 /**
+ * A grouped settings row: label (and optional description) on the leading edge,
+ * a control on the trailing edge. Every row clears the 44pt touch target.
+ */
+export function settingRowClass(
+  options: { pressable?: boolean; disabled?: boolean; className?: string } = {},
+): string {
+  return [
+    "min-h-[52px] flex-row items-center gap-3 px-4 py-2.5",
+    options.pressable === true ? "active:bg-surface-3" : "",
+    options.disabled === true ? "opacity-50" : "",
+    options.className ?? "",
+  ]
+    .filter(Boolean)
+    .join(" ");
+}
+
+/** The track that holds a segmented control's options. */
+export function segmentedTrackClass(): string {
+  return "flex-row gap-2";
+}
+
+/** One option pill inside a segmented control; the active one keeps a tint. */
+export function segmentedOptionClass(options: {
+  active: boolean;
+  disabled?: boolean;
+  className?: string;
+}): string {
+  return [
+    "min-h-11 flex-1 flex-row items-center justify-center rounded-input border px-3",
+    options.active ? "border-accent bg-accent-soft" : "border-border bg-surface-3",
+    options.disabled === true ? "opacity-50" : "active:opacity-80",
+    options.className ?? "",
+  ]
+    .filter(Boolean)
+    .join(" ");
+}
+
+/**
  * Minimum heights keep inputs usable with touch and system font scaling.
  */
 const INPUT_SIZES = new Map<InputSize, string>([

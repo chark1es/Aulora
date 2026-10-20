@@ -33,8 +33,39 @@ async function cacheAttachmentFile(
       .replace(/^\.+/, "")
       .slice(0, 160) || "attachment",
   );
-  file.write(bytes);
+  await file.write(bytes);
   return file.uri;
+}
+
+/**
+ * Resolves the inline preview for an image: the small server thumbnail variant
+ * when the descriptor carries one, cached as a local file (no full-size bytes
+ * and no base64). Records without a thumbnail fall back to the previous
+ * behaviour, a base64 data URI of the original.
+ */
+async function loadThumbnailUri(
+  port: ChatSurfaceRuntime["port"],
+  descriptor: AttachmentDescriptor,
+): Promise<string> {
+  const thumbnailUrl = descriptor.thumbnail?.url;
+  if (thumbnailUrl !== undefined) {
+    const response = await fetch(thumbnailUrl);
+    if (!response.ok) {
+      throw new Error(`Thumbnail download failed with status ${response.status}`);
+    }
+    const bytes = new Uint8Array(await response.arrayBuffer());
+    const directory = new Directory(
+      Paths.cache,
+      "shared-thumbnails",
+      descriptor.fileId.replace(/[^a-zA-Z0-9_-]/g, "_"),
+    );
+    directory.create({ idempotent: true, intermediates: true });
+    const file = new File(directory, "thumbnail.jpg");
+    await file.write(bytes);
+    return file.uri;
+  }
+  const bytes = await downloadAttachment(port, descriptor);
+  return `data:${descriptor.mime};base64,${bytesToBase64(bytes)}`;
 }
 
 function useAttachmentPreview(
@@ -42,7 +73,11 @@ function useAttachmentPreview(
   descriptor: AttachmentDescriptor,
   isImage: boolean,
 ) {
-  const [dataUri, setDataUri] = useState<string | null>(null);
+  // `thumbUri` is the small inline preview (a thumbnail file, or a data-URI
+  // fallback); `fullUri` is the original, cached only when the reader opens the
+  // preview, so a long timeline never downloads full images for every row.
+  const [thumbUri, setThumbUri] = useState<string | null>(null);
+  const [fullUri, setFullUri] = useState<string | null>(null);
   const [failed, setFailed] = useState(false);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -50,14 +85,15 @@ function useAttachmentPreview(
   const [loadingMedia, setLoadingMedia] = useState(false);
 
   useEffect(() => {
-    setDataUri(null);
+    setThumbUri(null);
+    setFullUri(null);
     setFailed(false);
     setMediaUri(null);
     if (runtime === undefined || !isImage) return;
     let cancelled = false;
-    void downloadAttachment(runtime.port, descriptor)
-      .then((bytes) => {
-        if (!cancelled) setDataUri(`data:${descriptor.mime};base64,${bytesToBase64(bytes)}`);
+    void loadThumbnailUri(runtime.port, descriptor)
+      .then((uri) => {
+        if (!cancelled) setThumbUri(uri);
       })
       .catch(() => {
         if (!cancelled) setFailed(true);
@@ -66,6 +102,15 @@ function useAttachmentPreview(
       cancelled = true;
     };
   }, [runtime, descriptor, isImage]);
+
+  async function loadFull() {
+    if (runtime === undefined || fullUri !== null) return;
+    try {
+      setFullUri(await cacheAttachmentFile(runtime.port, descriptor));
+    } catch {
+      setError(`Couldn't load ${descriptor.name}. Try again.`);
+    }
+  }
 
   async function share() {
     if (runtime === undefined || busy) return;
@@ -98,7 +143,18 @@ function useAttachmentPreview(
     }
   }
 
-  return { dataUri, failed, busy, error, mediaUri, loadingMedia, share, loadMedia };
+  return {
+    thumbUri,
+    fullUri,
+    failed,
+    busy,
+    error,
+    mediaUri,
+    loadingMedia,
+    share,
+    loadMedia,
+    loadFull,
+  };
 }
 
 function AttachmentActions(props: {
@@ -143,18 +199,18 @@ function AttachmentActions(props: {
 
 function AttachmentThumb({
   isImage,
-  dataUri,
+  uri,
   failed,
   name,
   onPreview,
 }: {
   readonly isImage: boolean;
-  readonly dataUri: string | null;
+  readonly uri: string | null;
   readonly failed: boolean;
   readonly name: string;
   readonly onPreview: () => void;
 }) {
-  if (isImage && dataUri !== null) {
+  if (isImage && uri !== null) {
     return (
       <Pressable
         accessibilityRole="button"
@@ -162,7 +218,7 @@ function AttachmentThumb({
         onPress={onPreview}
       >
         <Image
-          source={{ uri: dataUri }}
+          source={{ uri }}
           accessibilityLabel={name}
           resizeMode="contain"
           style={{ width: "100%", maxWidth: 320, height: 180, borderRadius: 12 }}
@@ -203,17 +259,29 @@ export function AttachmentView({ runtime, descriptor }: AttachmentViewProps) {
     : descriptor.mime.startsWith("video/")
       ? "video"
       : null;
-  const { dataUri, failed, busy, error, mediaUri, loadingMedia, share, loadMedia } =
-    useAttachmentPreview(runtime, descriptor, isImage);
+  const {
+    thumbUri,
+    fullUri,
+    failed,
+    busy,
+    error,
+    mediaUri,
+    loadingMedia,
+    share,
+    loadMedia,
+    loadFull,
+  } = useAttachmentPreview(runtime, descriptor, isImage);
   return (
     <View className="gap-2">
       <AttachmentThumb
         isImage={isImage}
-        dataUri={dataUri}
+        uri={thumbUri}
         failed={failed}
         name={descriptor.name}
         onPreview={() => {
           setPreview(true);
+          // The full-size original is fetched only when the reader opens it.
+          void loadFull();
         }}
       />
       <AttachmentMedia mediaUri={mediaUri} media={media} name={descriptor.name} />
@@ -232,9 +300,9 @@ export function AttachmentView({ runtime, descriptor }: AttachmentViewProps) {
           {error}
         </Text>
       )}
-      {preview && dataUri !== null && (
+      {preview && (
         <AttachmentPreview
-          dataUri={dataUri}
+          uri={fullUri}
           name={descriptor.name}
           busy={busy}
           onShare={() => void share()}
@@ -248,13 +316,13 @@ export function AttachmentView({ runtime, descriptor }: AttachmentViewProps) {
 }
 
 function AttachmentPreview({
-  dataUri,
+  uri,
   name,
   busy,
   onShare,
   onClose,
 }: {
-  readonly dataUri: string;
+  readonly uri: string | null;
   readonly name: string;
   readonly busy: boolean;
   readonly onShare: () => void;
@@ -263,12 +331,16 @@ function AttachmentPreview({
   return (
     <Sheet visible title={name} dismiss="done" onClose={onClose}>
       <ScrollView contentContainerStyle={{ padding: 16, gap: 16 }}>
-        <Image
-          source={{ uri: dataUri }}
-          accessibilityLabel={name}
-          resizeMode="contain"
-          style={{ width: "100%", height: 420 }}
-        />
+        {uri !== null ? (
+          <Image
+            source={{ uri }}
+            accessibilityLabel={name}
+            resizeMode="contain"
+            style={{ width: "100%", height: 420 }}
+          />
+        ) : (
+          <Text tone="muted">Loading preview…</Text>
+        )}
         <Button loading={busy} onPress={onShare}>
           Share or save image
         </Button>

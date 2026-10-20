@@ -1,5 +1,6 @@
 import { Button, Icon, IconButton, usePalette } from "@aulora/ui-native";
 import { ScrollView, View } from "react-native";
+import { impactFeedback } from "../../lib/haptics";
 import { hasNoteContent, noteTitle } from "../../lib/notes";
 import { PaneHeader } from "../chat/HubPane";
 import { ActionSheet } from "../kanban/sheets";
@@ -59,7 +60,14 @@ export function NoteEditorScreen({ ctl }: { readonly ctl: NotesController }) {
         <NoteProperties ctl={ctl} editor={editor} />
       </ScrollView>
       <View className="border-t border-border px-4 py-3">
-        <Button loading={busy} disabled={!hasNoteContent(title, body)} onPress={save}>
+        <Button
+          loading={busy}
+          disabled={!hasNoteContent(title, body)}
+          onPress={() => {
+            impactFeedback();
+            save();
+          }}
+        >
           {isNew ? "Create note" : "Save note"}
         </Button>
       </View>

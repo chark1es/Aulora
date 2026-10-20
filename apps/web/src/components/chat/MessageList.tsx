@@ -6,15 +6,17 @@ import type {
   TypingRow,
 } from "@aulora/core";
 import {
-  activityLabel,
   buildTimeline,
   dayLabel,
   hasPermission,
+  isBotUserId,
   messageTime,
   Permission,
 } from "@aulora/core";
-import { Button, type ContextMenuItem, cn, Icon, Spinner, useContextMenu } from "@aulora/ui-web";
+import { Badge, Button, cn, Icon, Spinner, useContextMenu } from "@aulora/ui-web";
 import {
+  Fragment,
+  memo,
   type ReactNode,
   useCallback,
   useEffect,
@@ -26,9 +28,13 @@ import {
 import type { ChatRuntime } from "../../lib/chat-runtime";
 import { AttachmentView } from "./AttachmentView";
 import { EmojiPicker } from "./EmojiPicker";
+import { messageMenuItems } from "./message-menu";
 import { PresenceAvatar } from "./PresenceAvatar";
 import { ReactionChips, type ReactionGroup } from "./ReactionChips";
 import { RichText } from "./RichText";
+import { revealMessage } from "./reveal-message";
+import { SystemEventRow } from "./SystemEventRow";
+import { ThreadSummary } from "./ThreadSummary";
 
 export interface MessageListProps {
   readonly runtime: ChatRuntime | undefined;
@@ -61,6 +67,17 @@ export interface MessageListProps {
   readonly hasOlder: boolean;
   readonly loading: boolean;
   readonly onLoadOlder: () => void;
+  /**
+   * When the retained history window has been truncated by the page cap, the id
+   * of the oldest live-tail message. A boundary is drawn before it so the
+   * dropped region is explicit rather than a silent jump in the timeline.
+   */
+  readonly historySeamId?: string | null;
+  /**
+   * Re-anchors the history window to the live tail once the reader is back at
+   * the newest message, so evicted pages can be re-fetched on the next scroll.
+   */
+  readonly onResetHistory?: () => void;
   readonly onReply: (message: MessagePayload) => void;
   readonly onEdit: (message: MessagePayload, text: string) => void;
   readonly onDelete: (message: MessagePayload) => void;
@@ -81,6 +98,42 @@ export interface MessageListProps {
   readonly ownSide?: "left" | "right";
 }
 
+/**
+ * The subset of {@link MessageListProps} the timeline rows actually read. Rows
+ * receive a memoized object of this shape so a re-render of the list (a typing
+ * tick, a reaction, the voice snapshot) does not invalidate every mounted row.
+ */
+export interface MessageRowListProps {
+  readonly runtime: ChatRuntime | undefined;
+  readonly ownUserId: string;
+  readonly ownName: string;
+  readonly permissions: bigint;
+  readonly memberNames: ReadonlyMap<string, string>;
+  readonly memberColors: ReadonlyMap<string, string> | undefined;
+  readonly mentionNames: readonly string[];
+  readonly ownSide: "left" | "right" | undefined;
+  readonly pendingIds: ReadonlySet<string>;
+  readonly failedIds: ReadonlySet<string> | undefined;
+  readonly decrypted: ReadonlyMap<string, string>;
+  readonly attachments: ReadonlyMap<string, readonly AttachmentDescriptor[]>;
+  readonly replyPreviews: MessageListProps["replyPreviews"];
+  readonly channelNames: readonly string[] | undefined;
+  // eslint-disable-next-line no-unused-vars -- parameter name documents the callback contract
+  readonly onChannelClick: ((name: string) => void) | undefined;
+  readonly inThread: boolean | undefined;
+  // eslint-disable-next-line no-unused-vars -- parameter name documents the callback contract
+  readonly onRetrySend: ((pendingId: string) => void) | undefined;
+  // eslint-disable-next-line no-unused-vars -- parameter name documents the callback contract
+  readonly onDiscardSend: ((pendingId: string) => void) | undefined;
+  readonly onEdit: (message: MessagePayload, text: string) => void;
+  readonly onDelete: (message: MessagePayload) => void;
+  readonly onPinToggle: (message: MessagePayload) => void;
+  readonly onReact: (message: MessagePayload, emoji: string) => void;
+  readonly onReply: (message: MessagePayload) => void;
+  // eslint-disable-next-line no-unused-vars -- parameter name documents the callback contract
+  readonly onReplyTo: ((message: MessagePayload) => void) | undefined;
+}
+
 /** Stable empty value so rows without reactions do not re-render needlessly. */
 const NO_REACTIONS: readonly ReactionGroup[] = [];
 
@@ -88,7 +141,6 @@ const NO_REACTIONS: readonly ReactionGroup[] = [];
 const STICK_THRESHOLD_PX = 96;
 /** Within this distance of the top the list fetches older history. */
 const LOAD_OLDER_THRESHOLD_PX = 160;
-
 /**
  * The conversation timeline: message bubbles grouped into author runs, day
  * separators, the unread divider and a typing bubble. It follows the live tail
@@ -107,6 +159,8 @@ export function MessageList(props: MessageListProps) {
     memberNames,
     memberColors,
   } = props;
+  const historySeamId = props.historySeamId ?? null;
+  const onResetHistory = props.onResetHistory;
   const scrollRef = useRef<HTMLDivElement | null>(null);
   const contentRef = useRef<HTMLDivElement | null>(null);
   const stickRef = useRef(true);
@@ -114,17 +168,23 @@ export function MessageList(props: MessageListProps) {
   const positionedChannelRef = useRef<string | null>(null);
   const [atBottom, setAtBottom] = useState(true);
 
-  const items = useMemo(
-    () =>
-      buildTimeline(messages, { firstUnreadId }).map((item) =>
-        // A pinned message needs its author header (and the pin itself) even
-        // when it continues an author run, so force the run to start here.
-        item.kind === "message" && item.message.pinnedAt !== null
-          ? { ...item, startsGroup: true }
-          : item,
-      ),
-    [messages, firstUnreadId],
-  );
+  const items = useMemo(() => {
+    const built = buildTimeline(messages, { firstUnreadId });
+    return built.map((item, index) => {
+      if (item.kind !== "message") {
+        return item;
+      }
+      // A pinned message needs its author header (and the pin itself) even
+      // when it continues an author run, so force the run to start here. A
+      // system event always stands alone, and so does the message after it.
+      const previous = built[index - 1];
+      const afterSystem = previous?.kind === "message" && previous.message.systemKind !== undefined;
+      if (item.message.systemKind !== undefined || afterSystem || item.message.pinnedAt !== null) {
+        return { ...item, startsGroup: true };
+      }
+      return item;
+    });
+  }, [messages, firstUnreadId]);
 
   // One batched reactions subscription for the whole timeline, chunked by the
   // adapter, instead of one live query per rendered message.
@@ -169,6 +229,15 @@ export function MessageList(props: MessageListProps) {
     stickRef.current = pinned;
     setAtBottom(pinned);
   }, []);
+
+  // Once the reader settles back at the newest message, drop the truncated
+  // history window so the pages the cap evicted are re-fetched from the tail
+  // cursor on the next scroll up. No-op while the window is contiguous.
+  useEffect(() => {
+    if (atBottom && historySeamId !== null && onResetHistory !== undefined) {
+      onResetHistory();
+    }
+  }, [atBottom, historySeamId, onResetHistory]);
 
   // A new channel starts pinned to the bottom until it is first positioned.
   // biome-ignore lint/correctness/useExhaustiveDependencies: channelId is the reset trigger
@@ -248,6 +317,63 @@ export function MessageList(props: MessageListProps) {
     }
   };
 
+  // Rows read only this slice; keying the memo on the values they use lets a
+  // memoized row skip re-rendering when only unrelated list state changes.
+  const rowList = useMemo<MessageRowListProps>(
+    () => ({
+      runtime: props.runtime,
+      ownUserId: props.ownUserId,
+      ownName: props.ownName,
+      permissions: props.permissions,
+      memberNames: props.memberNames,
+      memberColors: props.memberColors,
+      mentionNames: props.mentionNames,
+      ownSide: props.ownSide,
+      pendingIds: props.pendingIds,
+      failedIds: props.failedIds,
+      decrypted: props.decrypted,
+      attachments: props.attachments,
+      replyPreviews: props.replyPreviews,
+      channelNames: props.channelNames,
+      onChannelClick: props.onChannelClick,
+      inThread: props.inThread,
+      onRetrySend: props.onRetrySend,
+      onDiscardSend: props.onDiscardSend,
+      onEdit: props.onEdit,
+      onDelete: props.onDelete,
+      onPinToggle: props.onPinToggle,
+      onReact: props.onReact,
+      onReply: props.onReply,
+      onReplyTo: props.onReplyTo,
+    }),
+    [
+      props.runtime,
+      props.ownUserId,
+      props.ownName,
+      props.permissions,
+      props.memberNames,
+      props.memberColors,
+      props.mentionNames,
+      props.ownSide,
+      props.pendingIds,
+      props.failedIds,
+      props.decrypted,
+      props.attachments,
+      props.replyPreviews,
+      props.channelNames,
+      props.onChannelClick,
+      props.inThread,
+      props.onRetrySend,
+      props.onDiscardSend,
+      props.onEdit,
+      props.onDelete,
+      props.onPinToggle,
+      props.onReact,
+      props.onReply,
+      props.onReplyTo,
+    ],
+  );
+
   return (
     <div className="relative flex min-h-0 flex-1 flex-col">
       <div
@@ -286,12 +412,12 @@ export function MessageList(props: MessageListProps) {
             props.emptyState
           ) : (
             items.map((item) => (
-              <TimelineRow
-                key={item.key}
-                item={item}
-                list={props}
-                reactionsByMessage={reactionsByMessage}
-              />
+              <Fragment key={item.key}>
+                {historySeamId !== null &&
+                  item.kind === "message" &&
+                  item.message.id === historySeamId && <HistorySeamRow />}
+                <TimelineRow item={item} list={rowList} reactionsByMessage={reactionsByMessage} />
+              </Fragment>
             ))
           )}
           {typers.length > 0 && (
@@ -318,13 +444,13 @@ export function MessageList(props: MessageListProps) {
   );
 }
 
-function TimelineRow({
+const TimelineRow = memo(function TimelineRow({
   item,
   list,
   reactionsByMessage,
 }: {
   readonly item: TimelineItem;
-  readonly list: MessageListProps;
+  readonly list: MessageRowListProps;
   readonly reactionsByMessage: ReadonlyMap<string, readonly ReactionGroup[]>;
 }) {
   if (item.kind === "day") {
@@ -349,6 +475,9 @@ function TimelineRow({
       </div>
     );
   }
+  if (item.message.systemKind !== undefined) {
+    return <SystemEventRow list={list} message={item.message} />;
+  }
   return (
     <MessageRow
       list={list}
@@ -357,179 +486,43 @@ function TimelineRow({
       reactions={reactionsByMessage.get(item.message.id) ?? NO_REACTIONS}
     />
   );
-}
+});
 
-function MessageRow({
-  list,
-  message,
-  startsGroup,
-  reactions,
+/**
+ * Marks the seam where the page cap dropped history between the retained window
+ * and the live tail, so the timeline never silently jumps in time.
+ */
+type ReplyPreview = {
+  readonly authorName: string;
+  readonly text: string;
+  readonly authorId?: string;
+};
+
+/** Inline edit form, split out so the row stays within the complexity budget. */
+function MessageEditForm({
+  draft,
+  text,
+  onDraftChange,
+  onSave,
+  onCancel,
 }: {
-  readonly list: MessageListProps;
-  readonly message: MessagePayload;
-  readonly startsGroup: boolean;
-  readonly reactions: readonly ReactionGroup[];
+  readonly draft: string | undefined;
+  readonly text: string;
+  // eslint-disable-next-line no-unused-vars -- parameter name documents the callback contract
+  readonly onDraftChange: (value: string) => void;
+  // eslint-disable-next-line no-unused-vars -- parameter name documents the callback contract
+  readonly onSave: (next: string) => void;
+  readonly onCancel: () => void;
 }) {
-  const { runtime, ownUserId, ownName, permissions, memberNames, memberColors, mentionNames } =
-    list;
-  const own = message.authorId === ownUserId;
-  const mirror = (list.ownSide ?? "left") === "right" && own;
-  const pending = list.pendingIds.has(message.id);
-  const failed = list.failedIds?.has(message.id) ?? false;
-  const unsent = pending || failed;
-  const text = list.decrypted.get(message.id) ?? message.body;
-  const attachments = list.attachments.get(message.id) ?? [];
-  const authorName = own ? "You" : (memberNames.get(message.authorId) ?? "Unknown member");
-  const authorColor = memberColors?.get(message.authorId);
-  const replyToId = message.replyToId ?? null;
-  const replyPreview = replyToId !== null ? list.replyPreviews?.get(replyToId) : undefined;
-
-  const scrollToOriginal = (id: string): void => {
-    const node = document.getElementById(`message-${id}`);
-    node?.scrollIntoView({
-      behavior: "smooth",
-      block: "center",
-    });
-    if (node !== null && typeof node.animate === "function") {
-      node.animate(
-        [{ backgroundColor: "var(--aulora-accent-soft)" }, { backgroundColor: "transparent" }],
-        { duration: 1600, easing: "ease-out" },
-      );
-    }
-  };
-
-  const [editing, setEditing] = useState(false);
-  const [draft, setDraft] = useState<string>();
-  const [confirmDelete, setConfirmDelete] = useState(false);
-  const [pickerOpen, setPickerOpen] = useState(false);
-
-  const canModerate = hasPermission(permissions, Permission.ManageMessages);
-  const canEdit = own;
-  const canDelete = own || canModerate;
-  const canPin = hasPermission(permissions, Permission.PinMessages);
-  const canReact = hasPermission(permissions, Permission.AddReactions);
-  const canThread =
-    list.inThread !== true &&
-    hasPermission(permissions, Permission.SendInThreads) &&
-    ((message.replyCount ?? 0) > 0 || hasPermission(permissions, Permission.CreateThreads));
-  const openMenu = useContextMenu();
-
-  const openContextMenu = (event: React.MouseEvent) => {
-    if (unsent || editing) {
-      return;
-    }
-    event.preventDefault();
-    const items: ContextMenuItem[] = [];
-    if (canReact) {
-      items.push({
-        id: "react",
-        label: "Custom reaction",
-        icon: <Icon name="smile" size={14} />,
-        onSelect: () => {
-          setPickerOpen(true);
-        },
-      });
-    }
-    if (list.onReplyTo !== undefined && hasPermission(permissions, Permission.SendMessages)) {
-      items.push({
-        id: "reply",
-        label: "Reply",
-        icon: <Icon name="reply" size={14} />,
-        separatorBefore: items.length > 0,
-        onSelect: () => list.onReplyTo?.(message),
-      });
-    }
-    if (canThread) {
-      items.push({
-        id: "thread",
-        label: "Reply in thread",
-        icon: <Icon name="thread" size={14} />,
-        separatorBefore: items.length > 0,
-        onSelect: () => {
-          list.onReply(message);
-        },
-      });
-    }
-    if (canEdit) {
-      items.push({
-        id: "edit",
-        label: "Edit message",
-        icon: <Icon name="pencil" size={14} />,
-        separatorBefore: items.length > 0,
-        onSelect: () => {
-          setDraft(text);
-          setEditing(true);
-        },
-      });
-    }
-    if (canPin) {
-      items.push({
-        id: "pin",
-        label: message.pinnedAt !== null ? "Unpin message" : "Pin message",
-        icon: <Icon name="pin" size={14} />,
-        onSelect: () => {
-          list.onPinToggle(message);
-        },
-      });
-    }
-    if (text.trim().length > 0) {
-      items.push({
-        id: "copy",
-        label: "Copy text",
-        icon: <Icon name="file" size={14} />,
-        separatorBefore: items.length > 0,
-        onSelect: () => {
-          void navigator.clipboard.writeText(text).catch(() => undefined);
-        },
-      });
-    }
-    if (canDelete) {
-      items.push({
-        id: "delete",
-        label: "Delete message",
-        icon: <Icon name="trash" size={14} />,
-        danger: true,
-        separatorBefore: items.length > 0,
-        onSelect: () => {
-          list.onDelete(message);
-        },
-      });
-    }
-    if (items.length > 0) {
-      openMenu({
-        clientX: event.clientX,
-        clientY: event.clientY,
-        items,
-        label: `Message from ${authorName}`,
-      });
-    }
-  };
-
-  useEffect(() => {
-    if (!confirmDelete) {
-      return;
-    }
-    const timer = setTimeout(() => {
-      setConfirmDelete(false);
-    }, 4_000);
-    return () => {
-      clearTimeout(timer);
-    };
-  }, [confirmDelete]);
-
-  const hasText = text.trim().length > 0;
-  const time = messageTime(message.createdAt);
-  const replyCount = message.replyCount ?? 0;
-
-  const body = editing ? (
+  return (
     <form
       className="flex w-[min(560px,100%)] flex-col gap-2 rounded-[10px] border border-accent bg-surface-2 p-2 shadow-lg shadow-black/10"
       onSubmit={(event) => {
         event.preventDefault();
         if ((draft ?? "").trim().length > 0 && draft !== undefined && draft !== text) {
-          list.onEdit(message, draft);
+          onSave(draft);
         }
-        setEditing(false);
+        onCancel();
       }}
     >
       <textarea
@@ -539,11 +532,11 @@ function MessageRow({
         className="min-h-[64px] resize-none bg-transparent px-1.5 py-1 text-[14px] leading-relaxed text-text focus-visible:outline-none"
         value={draft ?? ""}
         onChange={(event) => {
-          setDraft(event.target.value);
+          onDraftChange(event.target.value);
         }}
         onKeyDown={(event) => {
           if (event.key === "Escape") {
-            setEditing(false);
+            onCancel();
           }
           if (event.key === "Enter" && !event.shiftKey) {
             event.preventDefault();
@@ -553,14 +546,7 @@ function MessageRow({
       />
       <div className="flex items-center justify-end gap-2 text-xs">
         <span className="mr-auto pl-1.5 text-text-muted">Esc to cancel · Enter to save</span>
-        <Button
-          type="button"
-          size="sm"
-          variant="ghost"
-          onClick={() => {
-            setEditing(false);
-          }}
-        >
+        <Button type="button" size="sm" variant="ghost" onClick={onCancel}>
           Cancel
         </Button>
         <Button type="submit" size="sm">
@@ -568,32 +554,32 @@ function MessageRow({
         </Button>
       </div>
     </form>
-  ) : hasText ? (
-    <div
-      className={cn(
-        "min-w-0 max-w-full whitespace-pre-wrap break-words text-[14px] leading-relaxed text-text [overflow-wrap:anywhere]",
-        unsent && "opacity-70",
-      )}
-    >
-      <RichText
-        text={text}
-        mentionNames={mentionNames}
-        {...(list.channelNames !== undefined ? { channelNames: list.channelNames } : {})}
-        {...(list.onChannelClick !== undefined ? { onChannelClick: list.onChannelClick } : {})}
-        viewerName={ownName}
-      />
-    </div>
-  ) : null;
+  );
+}
 
+/** Quoted inline reply, split out so the row stays within the complexity budget. */
+function ReplyLine({
+  replyToId,
+  replyPreview,
+  mirror,
+  list,
+  onJump,
+}: {
+  readonly replyToId: string;
+  readonly replyPreview: ReplyPreview | undefined;
+  readonly mirror: boolean;
+  readonly list: MessageRowListProps;
+  // eslint-disable-next-line no-unused-vars -- parameter name documents the callback contract
+  readonly onJump: (id: string) => void;
+}) {
   const replyAuthorId = replyPreview?.authorId;
   const replyAuthorColor =
-    replyAuthorId !== undefined ? memberColors?.get(replyAuthorId) : undefined;
-
-  const replyLine = replyToId !== null && (
+    replyAuthorId !== undefined ? list.memberColors?.get(replyAuthorId) : undefined;
+  return (
     <button
       type="button"
       onClick={() => {
-        scrollToOriginal(replyToId);
+        onJump(replyToId);
       }}
       aria-label="Jump to replied message"
       className={cn(
@@ -629,6 +615,139 @@ function MessageRow({
       </div>
     </button>
   );
+}
+
+function MessageRowContent({
+  list,
+  message,
+  startsGroup,
+  reactions,
+}: {
+  readonly list: MessageRowListProps;
+  readonly message: MessagePayload;
+  readonly startsGroup: boolean;
+  readonly reactions: readonly ReactionGroup[];
+}) {
+  const { runtime, ownUserId, ownName, permissions, memberNames, memberColors, mentionNames } =
+    list;
+  const own = message.authorId === ownUserId;
+  const mirror = (list.ownSide ?? "left") === "right" && own;
+  const pending = list.pendingIds.has(message.id);
+  const failed = list.failedIds?.has(message.id) ?? false;
+  const unsent = pending || failed;
+  const text = list.decrypted.get(message.id) ?? message.body;
+  const attachments = list.attachments.get(message.id) ?? [];
+  const authorName = own ? "You" : (memberNames.get(message.authorId) ?? "Unknown member");
+  const authorColor = memberColors?.get(message.authorId);
+  const replyToId = message.replyToId ?? null;
+  const replyPreview = replyToId !== null ? list.replyPreviews?.get(replyToId) : undefined;
+
+  const scrollToOriginal = (id: string): void => {
+    revealMessage(id);
+  };
+
+  const [editing, setEditing] = useState(false);
+  const [draft, setDraft] = useState<string>();
+  const [confirmDelete, setConfirmDelete] = useState(false);
+  const [pickerOpen, setPickerOpen] = useState(false);
+
+  const canModerate = hasPermission(permissions, Permission.ManageMessages);
+  const canEdit = own;
+  const canDelete = own || canModerate;
+  const canPin = hasPermission(permissions, Permission.PinMessages);
+  const canReact = hasPermission(permissions, Permission.AddReactions);
+  const canThread =
+    list.inThread !== true &&
+    hasPermission(permissions, Permission.SendInThreads) &&
+    ((message.replyCount ?? 0) > 0 || hasPermission(permissions, Permission.CreateThreads));
+  const openMenu = useContextMenu();
+
+  const openContextMenu = (event: React.MouseEvent) => {
+    if (unsent || editing) {
+      return;
+    }
+    event.preventDefault();
+    const items = messageMenuItems({
+      list,
+      message,
+      text,
+      can: { react: canReact, thread: canThread, edit: canEdit, pin: canPin, delete: canDelete },
+      openPicker: () => {
+        setPickerOpen(true);
+      },
+      startEdit: () => {
+        setDraft(text);
+        setEditing(true);
+      },
+    });
+    if (items.length > 0) {
+      openMenu({
+        clientX: event.clientX,
+        clientY: event.clientY,
+        items,
+        label: `Message from ${authorName}`,
+      });
+    }
+  };
+
+  useEffect(() => {
+    if (!confirmDelete) {
+      return;
+    }
+    const timer = setTimeout(() => {
+      setConfirmDelete(false);
+    }, 4_000);
+    return () => {
+      clearTimeout(timer);
+    };
+  }, [confirmDelete]);
+
+  const hasText = text.trim().length > 0;
+  const time = messageTime(message.createdAt);
+  const replyCount = message.replyCount ?? 0;
+
+  const body = editing ? (
+    <MessageEditForm
+      draft={draft}
+      text={text}
+      onDraftChange={setDraft}
+      onSave={(next) => {
+        list.onEdit(message, next);
+      }}
+      onCancel={() => {
+        setEditing(false);
+      }}
+    />
+  ) : hasText ? (
+    <div
+      className={cn(
+        "min-w-0 max-w-full whitespace-pre-wrap break-words text-[14px] leading-relaxed text-text [overflow-wrap:anywhere]",
+        unsent && "opacity-70",
+      )}
+    >
+      <RichText
+        text={text}
+        mentionNames={mentionNames}
+        {...(list.channelNames !== undefined ? { channelNames: list.channelNames } : {})}
+        {...(list.onChannelClick !== undefined ? { onChannelClick: list.onChannelClick } : {})}
+        viewerName={ownName}
+      />
+    </div>
+  ) : null;
+
+  const replyAuthorId = replyPreview?.authorId;
+  const replyAuthorColor =
+    replyAuthorId !== undefined ? memberColors?.get(replyAuthorId) : undefined;
+
+  const replyLine = replyToId !== null && (
+    <ReplyLine
+      replyToId={replyToId}
+      replyPreview={replyPreview}
+      mirror={mirror}
+      list={list}
+      onJump={scrollToOriginal}
+    />
+  );
 
   const toolbar = !unsent && !editing && (
     <div
@@ -636,7 +755,7 @@ function MessageRow({
         // Pinned to the far edge of the full-width row and revealed on hover or
         // keyboard focus. Mirrored own messages pin it to the left instead.
         "absolute top-0 z-20 hidden items-center gap-0.5 rounded-[9px] border border-border bg-surface-2 p-0.5 shadow-lg shadow-black/20 group-focus-within/message:flex group-hover/message:flex",
-        mirror ? "left-2" : "right-2",
+        mirror ? "left-3" : "right-3",
         pickerOpen && "flex",
       )}
     >
@@ -697,7 +816,7 @@ function MessageRow({
             list.onPinToggle(message);
           }}
         >
-          <Icon name="pin" size={18} />
+          <Icon name={message.pinnedAt !== null ? "pin-off" : "pin"} size={18} />
         </ToolbarButton>
       )}
       {canDelete &&
@@ -735,7 +854,7 @@ function MessageRow({
       data-message-row
       onContextMenu={openContextMenu}
       className={cn(
-        "group/message relative w-full py-0.5 transition-colors",
+        "group/message relative -mx-1 w-full px-1 py-0.5 transition-colors",
         startsGroup ? "mt-3" : "mt-0.5",
       )}
     >
@@ -753,7 +872,7 @@ function MessageRow({
             fill="none"
             className={cn(
               "pointer-events-none absolute top-[9px] h-[18px] w-[28px] overflow-visible",
-              mirror ? "right-[15px] -scale-x-100" : "left-[15px]",
+              mirror ? "right-[19px] -scale-x-100" : "left-[19px]",
               replyAuthorColor === undefined && "text-text-muted",
             )}
             style={replyAuthorColor !== undefined ? { color: replyAuthorColor } : undefined}
@@ -799,6 +918,11 @@ function MessageRow({
               >
                 {authorName}
               </span>
+              {!own && isBotUserId(message.authorId) && (
+                <Badge size="sm" tone="accent" className="shrink-0 uppercase">
+                  BOT
+                </Badge>
+              )}
               <time
                 className="shrink-0 text-[11px] text-text-muted"
                 dateTime={new Date(message.createdAt).toISOString()}
@@ -810,9 +934,9 @@ function MessageRow({
                   role="img"
                   aria-label="Pinned"
                   title="Pinned"
-                  className="inline-flex shrink-0 items-center text-accent"
+                  className="inline-flex shrink-0 self-center text-accent"
                 >
-                  <Icon name="pin" size={12} align="baseline" />
+                  <Icon name="pin" size={12} block />
                 </span>
               )}
             </div>
@@ -870,29 +994,25 @@ function MessageRow({
               }}
             />
           )}
-          {replyCount > 0 && list.inThread !== true && (
-            <button
-              type="button"
-              onClick={() => {
-                list.onReply(message);
-              }}
-              className="mt-1 flex items-center gap-1.5 rounded-full px-2 py-0.5 text-xs font-semibold text-accent transition hover:bg-accent-soft"
-            >
-              <Icon name="thread" size={14} />
-              {replyCount === 1 ? "1 reply" : `${replyCount} replies`}
-              {message.lastReplyAt != null && (
-                <span className="font-normal text-text-muted">
-                  · {activityLabel(message.lastReplyAt)}
-                </span>
-              )}
-            </button>
-          )}
           {toolbar}
         </div>
       </div>
+      {replyCount > 0 && list.inThread !== true && (
+        <ThreadSummary
+          replyCount={replyCount}
+          lastReplyAt={message.lastReplyAt}
+          participantIds={message.replyParticipantIds ?? []}
+          mirror={mirror}
+          onOpen={() => {
+            list.onReply(message);
+          }}
+        />
+      )}
     </article>
   );
 }
+
+const MessageRow = memo(MessageRowContent);
 
 function ToolbarButton({
   label,
@@ -1006,4 +1126,24 @@ function groupReactionsByMessage(
     grouped.set(messageId, groupReactions(list, ownUserId));
   }
   return grouped;
+}
+
+/**
+ * Marks the seam where the page cap dropped history between the retained window
+ * and the live tail, so the timeline never silently jumps in time.
+ *
+ * Declared last because Lizard's JSX parser otherwise attributes the large row
+ * component that follows to this function.
+ */
+function HistorySeamRow() {
+  return (
+    <div
+      data-testid="history-seam"
+      className="flex items-center gap-3 py-3 text-[11px] text-text-muted"
+    >
+      <span className="h-px flex-1 bg-border" />
+      <span className="whitespace-nowrap">Some messages were unloaded to keep this view fast</span>
+      <span className="h-px flex-1 bg-border" />
+    </div>
+  );
 }

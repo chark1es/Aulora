@@ -11,7 +11,7 @@
  * canvas pipeline itself is covered by the live-browser Playwright test.
  */
 
-import { blurhashDecode, blurhashEncode } from "@aulora/core";
+import { blurhashDecode, blurhashEncode } from "@aulora/core/blurhash";
 
 /** Longest edge of the re-encoded full image. */
 export const MAX_IMAGE_EDGE = 4096;

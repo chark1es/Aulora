@@ -3,13 +3,22 @@
 
 const ASSET_PREFIX = "/chark1es/Aulora/releases/download/";
 
+/** The public TestFlight invitation for the iOS beta. */
+export const IOS_TESTFLIGHT_URL = "https://testflight.apple.com/join/YUp4ugyv";
+
+/** Android beta testers must join this group before the Play Store listing opens. */
+export const ANDROID_TESTERS_URL = "https://groups.google.com/g/aulora-testing";
+
+/** The Play Store listing for the Android beta. */
+export const ANDROID_PLAY_URL = "https://play.google.com/store/apps/details?id=dev.spwnd.aulora";
+
+// Mobile betas are distributed through TestFlight and Google Play, not as
+// release assets, so only desktop files are matched here.
 const RULES = [
   ["windows", (name) => /_x64-setup\.exe$/i.test(name)],
   ["macosArm", (name) => /\.dmg$/i.test(name) && /aarch64|arm64/i.test(name)],
   ["macosIntel", (name) => /\.dmg$/i.test(name) && /(x86_64|_x64)\.dmg$/i.test(name)],
   ["linux", (name) => /\.AppImage$/i.test(name)],
-  ["android", (name) => /_android\.apk$/i.test(name)],
-  ["ios", (name) => /_ios\.ipa$/i.test(name)],
 ];
 
 export function isReleaseAssetUrl(url) {
@@ -63,9 +72,9 @@ export function primaryCopy(os) {
     case "windows":
       return { label: "Download for Windows", beta: false };
     case "ios":
-      return { label: "iOS beta", beta: true };
+      return { label: "Join the iOS beta", beta: true };
     case "android":
-      return { label: "Android beta", beta: true };
+      return { label: "Join the Android beta", beta: true };
     case "linux":
       return { label: "Download for Linux", beta: false };
     default:
@@ -80,7 +89,6 @@ export function assetFor(picks, key, arch) {
     return picks.get("macosArm") ?? picks.get("macosIntel");
   }
   if (key === "windows") return picks.get("windows");
-  if (key === "android") return picks.get("android");
   if (key === "linux") return picks.get("linux");
   return undefined;
 }
@@ -93,9 +101,9 @@ export function statusLine(os, arch, version) {
     case "windows":
       return `${prefix}Windows installer. It is unsigned, so the first launch may warn you.`;
     case "ios":
-      return `${prefix}iOS is in beta. This opens the TestFlight notes, not a file you can tap to install.`;
+      return `${prefix}iOS is in beta. The button opens the TestFlight invitation.`;
     case "android":
-      return `${prefix}Android is in beta. The button is the APK.`;
+      return `${prefix}Android is in beta. Join the testers group, then install from Google Play.`;
     case "linux":
       return `${prefix}Linux AppImage.`;
     default:
@@ -121,6 +129,70 @@ export async function detectClient() {
   });
 }
 
+/**
+ * Static release manifests, tried in order. The release workflow already emits
+ * `latest.json` (same shape as `apps/desktop/scripts/release-manifest.mjs`) and
+ * publishes it both as a release asset and, optionally, on the docs origin.
+ * These are plain files, so they avoid the unauthenticated GitHub API, which
+ * rate-limits per IP.
+ */
+export const STATIC_MANIFEST_URLS = ["/downloads/latest.json"];
+
+/**
+ * Converts a release manifest into the `{ tag_name, assets }` shape the buttons
+ * use. Prefers an explicit installer list (`assets`); falls back to the updater
+ * `platforms` URLs. Returns `null` when the manifest carries no usable files.
+ */
+export function releaseFromManifest(manifest) {
+  if (typeof manifest !== "object" || manifest === null || Array.isArray(manifest)) {
+    return null;
+  }
+  const version = typeof manifest.version === "string" ? manifest.version : "";
+  const assets = [];
+  if (Array.isArray(manifest.assets)) {
+    for (const asset of manifest.assets) {
+      const name = typeof asset?.name === "string" ? asset.name : "";
+      const url = asset?.browser_download_url ?? asset?.url;
+      if (name.length > 0 && typeof url === "string" && url.length > 0) {
+        assets.push({ name, browser_download_url: url });
+      }
+    }
+  }
+  if (
+    assets.length === 0 &&
+    typeof manifest.platforms === "object" &&
+    manifest.platforms !== null
+  ) {
+    for (const entry of Object.values(manifest.platforms)) {
+      const url = typeof entry?.url === "string" ? entry.url : "";
+      if (url.length === 0) continue;
+      const name = url.split("/").pop() ?? "";
+      if (name.length > 0) assets.push({ name, browser_download_url: url });
+    }
+  }
+  if (assets.length === 0) return null;
+  const tag = version.length === 0 ? "" : version.startsWith("v") ? version : `v${version}`;
+  return { tag_name: tag, assets };
+}
+
+/** The GitHub API release, used when the static manifest is unavailable. */
+async function loadGithubRelease(fetchImpl) {
+  const response = await fetchImpl("https://api.github.com/repos/chark1es/Aulora/releases/latest", {
+    headers: { Accept: "application/vnd.github+json" },
+  });
+  if (!response.ok) return null;
+  const data = await response.json();
+  return {
+    tag_name: typeof data.tag_name === "string" ? data.tag_name : "",
+    assets: Array.isArray(data.assets)
+      ? data.assets.map((asset) => ({
+          name: asset.name,
+          browser_download_url: asset.browser_download_url,
+        }))
+      : [],
+  };
+}
+
 export async function loadRelease(
   fetchImpl = globalThis.fetch,
   storage = globalThis.sessionStorage,
@@ -133,22 +205,31 @@ export async function loadRelease(
       if (parsed && Date.now() - parsed.at < 60 * 60 * 1000 && parsed.data) return parsed.data;
     }
   } catch {
-    // Ignore a broken cache and ask GitHub.
+    // Ignore a broken cache and fetch again.
   }
-  const response = await fetchImpl("https://api.github.com/repos/chark1es/Aulora/releases/latest", {
-    headers: { Accept: "application/vnd.github+json" },
-  });
-  if (!response.ok) return null;
-  const data = await response.json();
-  const release = {
-    tag_name: typeof data.tag_name === "string" ? data.tag_name : "",
-    assets: Array.isArray(data.assets)
-      ? data.assets.map((asset) => ({
-          name: asset.name,
-          browser_download_url: asset.browser_download_url,
-        }))
-      : [],
-  };
+  // Prefer a static manifest; any failure falls back to the GitHub API.
+  let release = null;
+  for (const url of STATIC_MANIFEST_URLS) {
+    try {
+      const response = await fetchImpl(url, { headers: { Accept: "application/json" } });
+      if (response?.ok) {
+        const manifest = await response.json();
+        // Legacy updater manifests only list `platforms` (update archives);
+        // they cannot satisfy direct installer selectors such as the macOS
+        // `.dmg`, so fall through to the GitHub API instead of suppressing it.
+        if (Array.isArray(manifest?.assets)) {
+          release = releaseFromManifest(manifest);
+        }
+      }
+    } catch {
+      release = null;
+    }
+    if (release !== null) break;
+  }
+  if (release === null) {
+    release = await loadGithubRelease(fetchImpl);
+  }
+  if (release === null) return null;
   try {
     storage?.setItem(cacheKey, JSON.stringify({ at: Date.now(), data: release }));
   } catch {
@@ -165,8 +246,15 @@ const SECTIONS = new Map([
   ["linux", "#linux"],
 ]);
 
+/**
+ * Where the primary button points. The mobile betas never serve a file: iOS
+ * opens the TestFlight invitation and Android opens the testers group, which is
+ * the step before the Play Store listing becomes available.
+ */
 function destination(primary, os, asset) {
-  if (os !== "ios" && asset) return asset.url;
+  if (os === "ios") return IOS_TESTFLIGHT_URL;
+  if (os === "android") return ANDROID_TESTERS_URL;
+  if (asset) return asset.url;
   const authored = primary.getAttribute("href") || "install";
   const section = SECTIONS.get(os);
   if (!section) return authored;
@@ -203,6 +291,8 @@ export function applyDownloads(root, client, release) {
 
   for (const link of root.querySelectorAll("[data-download]")) {
     const key = link.dataset.download;
+    // iOS and Android keep their authored links (TestFlight and the Play
+    // Store testers group); only desktop platforms attach a release file.
     if (key === "primary" || key === "ios") continue;
     const asset = assetFor(picks, key, link.dataset.arch ?? client.arch);
     if (asset) link.href = asset.url;

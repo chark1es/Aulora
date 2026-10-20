@@ -1,21 +1,18 @@
-import { Button, Icon, IconButton, Input, Text, usePalette } from "@aulora/ui-native";
+import {
+  Button,
+  DEFAULT_LABEL_COLOR,
+  Icon,
+  IconButton,
+  Input,
+  LABEL_COLOR_SWATCHES,
+  Text,
+  usePalette,
+} from "@aulora/ui-native";
 import { type Dispatch, type SetStateAction, useState } from "react";
 import { Pressable, ScrollView, View } from "react-native";
 import { confirm } from "../kanban/board-menus";
 import { BottomSheet } from "../kanban/sheets";
 import type { NotesController, NoteTagView } from "./use-notes";
-
-const TAG_COLORS = [
-  "#E5484D",
-  "#E4571C",
-  "#E8A33B",
-  "#46A758",
-  "#12A594",
-  "#3E63DD",
-  "#8E4EC6",
-  "#D6409F",
-  "#8B8D98",
-] as const;
 
 type TagDraft = { readonly id: string | undefined; readonly name: string; readonly color: string };
 type SetTagDraft = Dispatch<SetStateAction<TagDraft | undefined>>;
@@ -116,7 +113,7 @@ function TagColorPicker({
 }) {
   return (
     <View className="flex-row flex-wrap gap-2">
-      {TAG_COLORS.map((color) => (
+      {LABEL_COLOR_SWATCHES.map((color) => (
         <ColorSwatch
           key={color}
           color={color}
@@ -224,7 +221,7 @@ export function TagManager({
               variant="secondary"
               className="self-start"
               onPress={() => {
-                setForm({ id: undefined, name: "", color: TAG_COLORS[0] });
+                setForm({ id: undefined, name: "", color: DEFAULT_LABEL_COLOR });
               }}
             >
               Add tag

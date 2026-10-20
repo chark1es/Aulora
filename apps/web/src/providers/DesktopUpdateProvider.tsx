@@ -26,6 +26,7 @@ interface DesktopUpdates {
   readonly error: string | null;
   readonly progress: DesktopUpdateProgress | null;
   readonly menuNote: string | null;
+  readonly checkedAt: number | null;
   check(): Promise<void>;
   download(): Promise<void>;
   restart(): Promise<void>;
@@ -38,6 +39,7 @@ const Context = createContext<DesktopUpdates>({
   error: null,
   progress: null,
   menuNote: null,
+  checkedAt: null,
   check: noop,
   download: noop,
   restart: noop,
@@ -51,13 +53,17 @@ export function DesktopUpdateProvider({ children }: { readonly children: ReactNo
   const [error, setError] = useState<string | null>(null);
   const [progress, setProgress] = useState<DesktopUpdateProgress | null>(null);
   const [menuNote, setMenuNote] = useState<string | null>(null);
+  const [checkedAt, setCheckedAt] = useState<number | null>(null);
   const busy = useRef(false);
   const ready = useRef(false);
   const isReady = useCallback(() => ready.current, []);
   const apply = useCallback((next: DesktopUpdateStatus) => {
     // Failed checks must not erase a known update or a verified download.
     if (next.currentVersion) setCurrentVersion(next.currentVersion);
-    if (!next.error) setStatus(next);
+    if (!next.error) {
+      setStatus(next);
+      setCheckedAt(Date.now());
+    }
     if (next.downloaded) {
       ready.current = true;
       setPhase("ready");
@@ -96,8 +102,8 @@ export function DesktopUpdateProvider({ children }: { readonly children: ReactNo
                 setMenuNote(
                   payload.error ??
                     (payload.updateAvailable
-                      ? "An app update is available in Your settings → Updates."
-                      : "You're on the latest version."),
+                      ? "An app update is available. Use the update prompt to install it."
+                      : "You’re on the latest version."),
                 );
             },
           ],
@@ -125,15 +131,30 @@ export function DesktopUpdateProvider({ children }: { readonly children: ReactNo
         if (!disposed) setError(message(cause));
       });
     void register();
-    const interval = setInterval(
-      () => {
-        if (!disposed) void check();
-      },
-      6 * 60 * 60 * 1000,
-    );
+    // Re-check every ~6 h with ±30 min of jitter so a fleet of launches does
+    // not hit the update endpoint in lockstep.
+    const intervalMs = 6 * 60 * 60 * 1000;
+    const jitterMs = 30 * 60 * 1000;
+    let timer: ReturnType<typeof setTimeout> | undefined;
+    // Random jitter only spreads a fleet's update checks; it is not a secret,
+    // but use the platform CSPRNG so static analysis does not flag Math.random.
+    const jitterFraction = () => {
+      const words = new Uint32Array(1);
+      crypto.getRandomValues(words);
+      return (words[0] as number) / 2 ** 32;
+    };
+    const scheduleNext = () => {
+      const delay = intervalMs + (jitterFraction() * 2 - 1) * jitterMs;
+      timer = setTimeout(() => {
+        if (disposed) return;
+        void check();
+        scheduleNext();
+      }, delay);
+    };
+    scheduleNext();
     return () => {
       disposed = true;
-      clearInterval(interval);
+      if (timer !== undefined) clearTimeout(timer);
       for (const off of subscriptions) off();
     };
   }, [apply, check]);
@@ -180,7 +201,18 @@ export function DesktopUpdateProvider({ children }: { readonly children: ReactNo
   }
   return (
     <Context.Provider
-      value={{ status, currentVersion, phase, error, progress, menuNote, check, download, restart }}
+      value={{
+        status,
+        currentVersion,
+        phase,
+        error,
+        progress,
+        menuNote,
+        checkedAt,
+        check,
+        download,
+        restart,
+      }}
     >
       {children}
     </Context.Provider>

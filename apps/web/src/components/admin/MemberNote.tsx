@@ -1,4 +1,4 @@
-import { Icon, Text } from "@aulora/ui-web";
+import { Icon, Text, Textarea } from "@aulora/ui-web";
 import { useMutation, useQuery } from "convex/react";
 import { useEffect, useState } from "react";
 import { api } from "../../../../../packages/convex/convex/_generated/api";
@@ -32,17 +32,18 @@ export function MemberNote({ userId }: { readonly userId: string }) {
           <span className="flex h-1.5 w-1.5 rounded-full bg-accent" title="Note saved" />
         )}
       </div>
-      <textarea
-        aria-label="Private note"
+      <Textarea
+        label="Private note"
+        hideLabel
         rows={3}
         value={body}
         maxLength={1000}
         placeholder="Only you can see this note about this member."
+        className="resize-none"
         onChange={(event) => {
           setBody(event.currentTarget.value);
           setSaved(false);
         }}
-        className="resize-none rounded-[8px] border border-border bg-surface-1 px-2.5 py-2 text-[13px] text-text placeholder:text-text-muted focus:border-accent focus:outline-none"
       />
       <NoteActions
         busy={busy}
