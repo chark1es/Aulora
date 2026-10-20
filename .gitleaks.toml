@@ -20,6 +20,12 @@ regexTarget = "line"
 regexes = ['replace-with-64-hex-chars']
 
 [[allowlists]]
+description = "CocoaPods spec checksums in the lockfile"
+targetRules = ["generic-api-key"]
+regexTarget = "match"
+regexes = ['^React-[A-Za-z0-9-]+: [0-9a-f]{40}$']
+
+[[allowlists]]
 description = "Environment-override test fixtures, not authentication secrets"
 targetRules = ["generic-api-key"]
 condition = "AND"

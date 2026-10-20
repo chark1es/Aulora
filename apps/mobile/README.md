@@ -4,7 +4,7 @@ Expo/React Native client for iOS and Android. It connects to an Aulora server, u
 
 ## Local development
 
-Install workspace dependencies at the repository root with `bun install --frozen-lockfile`. Use Bun 1.4.0 and Node.js 22.18.0. For Android install JDK 17 and the Android SDK; for iOS use macOS with Xcode and CocoaPods.
+Install workspace dependencies at the repository root with `bun install --frozen-lockfile`. Use Bun 1.4.0 and Node.js 22.18.0. The app targets Expo SDK 58, which needs Xcode 26.4 or newer and CocoaPods on macOS; for Android install JDK 17 and Android SDK platform 37 with build-tools 37.0.0.
 
 Start a backend using the [development guide](../../docs/development.md), then run:
 

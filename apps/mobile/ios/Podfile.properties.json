@@ -1,5 +1,8 @@
 {
   "expo.jsEngine": "hermes",
+  "expo.useHermesV1": "true",
+  "EXPO_USE_PRECOMPILED_MODULES": "1",
+  "ios.buildReactNativeFromSource": "false",
   "EX_DEV_CLIENT_NETWORK_INSPECTOR": "true",
   "expo.inlineModules.watchedDirectories": "[]",
   "expo.inlineModules.xcodeProjectTargets": "{\"mainTarget\":\"Aulora\",\"targets\":[]}"

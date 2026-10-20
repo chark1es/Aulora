@@ -461,7 +461,7 @@ export function MessageList(props: MessageListProps) {
         onEndReached={() => {
           if (hasOlder && props.loadingOlder !== true) props.onLoadOlder?.();
         }}
-        ListFooterComponent={hasOlder ? <OlderSpinner /> : null}
+        ListFooterComponent={hasOlder ? <OlderSpinner /> : undefined}
         ListEmptyComponent={<EmptyConversation />}
         renderItem={renderItem}
       />

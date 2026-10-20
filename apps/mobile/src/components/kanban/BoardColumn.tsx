@@ -1,7 +1,7 @@
 /* eslint-disable no-unused-vars -- the base rule reports parameter names in type signatures; Biome checks real unused code */
 import { Button, Icon, IconButton, Text, usePalette } from "@aulora/ui-native";
 import { useRef, useState } from "react";
-import { Pressable, ScrollView, TextInput, View } from "react-native";
+import { Pressable, ScrollView, type ScrollViewInstance, TextInput, View } from "react-native";
 import Animated, { FadeIn, FadeInDown, LinearTransition } from "react-native-reanimated";
 import { impactFeedback } from "../../lib/haptics";
 import { type Board, type Card, type Column, cardsInColumn, isColumnFull } from "../../lib/kanban";
@@ -69,7 +69,7 @@ export interface BoardColumnProps {
 /** One column: its cards in order, and the composer for a new one. */
 export function BoardColumn(props: BoardColumnProps) {
   const { ctl, board, column } = props;
-  const list = useRef<ScrollView | null>(null);
+  const list = useRef<ScrollViewInstance>(null);
   const cards = cardsInColumn(ctl.filtered, column.id);
   const full = isColumnFull(column, ctl.cards ?? []);
   const composing = ctl.composing === column.id;
