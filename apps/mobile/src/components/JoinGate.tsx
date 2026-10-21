@@ -8,7 +8,7 @@ import {
 import { Button, Heading, Input, Spinner, Text } from "@aulora/ui-native";
 import { useMutation, useQuery } from "convex/react";
 import { useState, useSyncExternalStore } from "react";
-import { KeyboardAvoidingView, Platform, ScrollView, View } from "react-native";
+import { Alert, KeyboardAvoidingView, Platform, ScrollView, View } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
 import { api } from "../../../../packages/convex/convex/_generated/api";
 import {
@@ -22,6 +22,8 @@ export interface JoinGateProps {
   readonly workspaceIconSeed: string;
   readonly signedInAs: string | null;
   readonly onSignOut: () => void;
+  /** Permanently deletes the signed-in account, even without workspace membership. */
+  readonly onDeleteAccount: () => void | Promise<void>;
 }
 
 function errorMessage(cause: unknown, fallback: string): string {
@@ -33,7 +35,12 @@ function errorMessage(cause: unknown, fallback: string): string {
  * or link, or join straight away when an admin pre-approved the address.
  * Membership is reactive, so the chat appears the moment a join lands.
  */
-export function JoinGate({ workspaceIconSeed, signedInAs, onSignOut }: JoinGateProps) {
+export function JoinGate({
+  workspaceIconSeed,
+  signedInAs,
+  onSignOut,
+  onDeleteAccount,
+}: JoinGateProps) {
   const status = useQuery(api.joinAccess.status, {});
   if (status === undefined) {
     return (
@@ -47,6 +54,24 @@ export function JoinGate({ workspaceIconSeed, signedInAs, onSignOut }: JoinGateP
     : status.inviteOnly
       ? "This workspace is invite only. Enter your invite to continue."
       : "You’re signed in. Join to get started.";
+  const confirmDeleteAccount = () => {
+    Alert.alert(
+      "Delete your account?",
+      "This permanently deletes your account, profile, sessions, and notification settings. Messages you sent stay in the workspace for other members. This cannot be undone.",
+      [
+        { text: "Cancel", style: "cancel" },
+        {
+          text: "Delete account",
+          style: "destructive",
+          onPress: () => {
+            void Promise.resolve(onDeleteAccount()).catch((cause: unknown) => {
+              Alert.alert("Couldn't delete account", errorMessage(cause, "Try again in a moment."));
+            });
+          },
+        },
+      ],
+    );
+  };
   return (
     <SafeAreaView className="flex-1" edges={["top", "bottom"]}>
       <KeyboardAvoidingView
@@ -71,9 +96,14 @@ export function JoinGate({ workspaceIconSeed, signedInAs, onSignOut }: JoinGateP
               signedInAs={signedInAs}
             />
             {!status.banned && <JoinOptions status={status} />}
-            <Button variant="ghost" onPress={onSignOut}>
-              Sign out
-            </Button>
+            <View className="gap-2">
+              <Button variant="ghost" onPress={onSignOut}>
+                Sign out
+              </Button>
+              <Button variant="ghost" onPress={confirmDeleteAccount}>
+                Delete account
+              </Button>
+            </View>
           </AuthScaffold>
         </ScrollView>
       </KeyboardAvoidingView>

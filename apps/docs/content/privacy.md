@@ -26,6 +26,14 @@ Ask your server operator about retention, account deletion, access requests, and
 
 The default backup bucket is on the same MinIO deployment. Operators should keep protected off-machine copies and a separately secured encryption-key backup. See [backups](backups.md).
 
+## Delete your account
+
+In the mobile app, open **You → Delete account** and confirm. Deletion removes the account, workspace membership, sessions, registered devices, presence, read state, notification preferences, reactions, private notes, and other settings tied to that account.
+
+Messages, attachments, and other content the person shared with a workspace stay in that workspace for its other members, the same way they do when a member is removed. The workspace operator controls that shared history and its retention. To request deletion when you cannot sign in to the app, contact your server operator. Server operators can remove the account from the backend and should follow their own retention and legal obligations.
+
+Official mobile builds must keep this in-app path available to every signed-in account, including an account that is not currently a member of a workspace.
+
 ## Release publisher responsibilities
 
 Before distributing official mobile apps, the publisher must publish a reachable privacy-policy URL, complete store data disclosures accurately, and provide any required account-deletion process. A page in this repository alone does not establish a hosted policy or store compliance.

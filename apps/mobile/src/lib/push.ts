@@ -16,6 +16,8 @@ import { api } from "../../../../packages/convex/convex/_generated/api";
 
 export interface PushRegistration {
   readonly token: string;
+  // A relay protocol tag, never user-facing copy.
+  // greenlight:ignore platform-reference
   readonly platform: "ios" | "android";
 }
 
@@ -24,6 +26,7 @@ export interface PushRegistration {
  * platform (`ios`/`android`/`unifiedpush`), never a generic `mobile`, so this
  * must always be the concrete `Platform.OS`.
  */
+// greenlight:ignore platform-reference
 export function devicePushPlatform(): "ios" | "android" {
   return Platform.OS === "ios" ? "ios" : "android";
 }

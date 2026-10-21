@@ -47,6 +47,8 @@ export interface AuthActions {
   signInEmail(input: { email: string; password: string }): Promise<AuthActionResult>;
   signUpEmail(input: { email: string; password: string; name: string }): Promise<AuthActionResult>;
   signOut(): Promise<AuthActionResult>;
+  /** Permanently deletes this account on the server, then ends the session. */
+  deleteAccount(): Promise<AuthActionResult>;
 }
 
 export function authActionsFromClient(client: AuloraAuthClient): AuthActions {
@@ -59,6 +61,16 @@ export function authActionsFromClient(client: AuloraAuthClient): AuthActions {
     },
     async signOut() {
       return toResult(await client.signOut());
+    },
+    async deleteAccount() {
+      const result = await client.deleteUser({});
+      if (result.error) {
+        return toResult(result);
+      }
+      // The server has deleted the account; make this device forget the now
+      // invalid session instead of leaving a stale cookie behind.
+      await client.signOut().catch(() => undefined);
+      return { error: null };
     },
   };
 }

@@ -125,6 +125,19 @@ export const createAuthOptions = (
       minPasswordLength: minPasswordLength(env.AUTH_MIN_PASSWORD_LENGTH),
     },
     plugins,
+    user: {
+      deleteUser: {
+        // Required by App Store guideline 5.1.1(v): an app that creates
+        // accounts must let people delete theirs. Better Auth removes its own
+        // user/account/session rows first; the app cleanup runs afterwards.
+        enabled: true,
+        afterDelete: async (user) => {
+          await requireActionCtx(ctx).runMutation(internal.accountDeletion.deleteUserData, {
+            userId: user.id,
+          });
+        },
+      },
+    },
     databaseHooks: {
       session: {
         create: {

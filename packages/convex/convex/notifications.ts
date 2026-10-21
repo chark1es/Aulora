@@ -529,6 +529,7 @@ export const dispatchNow = action({
 
 // "mobile" is accepted as a defensive alias for a client that mis-tags its
 // platform; the concrete `ios`/`android` tags remain the intended values.
+// greenlight:ignore platform-reference
 const MOBILE_PLATFORMS: readonly MobilePlatform[] = ["ios", "android", "unifiedpush", "mobile"];
 
 function isMobilePlatform(value: string): value is MobilePlatform {

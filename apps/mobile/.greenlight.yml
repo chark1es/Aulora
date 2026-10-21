@@ -1,0 +1,3 @@
+# Test fixtures are not shipped in the app bundle. The scan targets app source.
+ignore:
+  - test
