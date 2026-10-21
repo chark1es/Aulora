@@ -106,12 +106,10 @@ wait_for_backend() {
 
 random_hex() { openssl rand -hex "$1"; }
 random_b64() { openssl rand -base64 "$1"; }
-random_b64url() {
-  node -e 'process.stdout.write(require("node:crypto").randomBytes(Number(process.argv[1])).toString("base64url"))' "$1"
-}
-b64url_encode() {
-  node -e 'process.stdout.write(Buffer.from(process.argv[1], "utf8").toString("base64url"))' "$1"
-}
+# File-based helpers: Bun's `node` shim drops arguments after `-e`, which made
+# process.argv[1] undefined and aborted setup before any Convex work.
+random_b64url() { node "$SETUP_DIR/b64url.mjs" random "$1"; }
+b64url_encode() { node "$SETUP_DIR/b64url.mjs" encode "$1"; }
 
 # --- convex helpers ---------------------------------------------------------
 
