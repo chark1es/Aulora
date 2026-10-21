@@ -554,7 +554,7 @@ function useChatScreenMessages(
   };
 }
 
-export function useChatScreenData({ onSignOut }: ChatScreenProps) {
+export function useChatScreenData({ onSignOut, onDeleteAccount }: ChatScreenProps) {
   const session = useChatScreenSessionValue();
   const ui = useChatScreenUiState();
   const mentions = useChatScreenMentions(session);
@@ -585,6 +585,7 @@ export function useChatScreenData({ onSignOut }: ChatScreenProps) {
 
   return {
     onSignOut,
+    onDeleteAccount,
     ...session,
     ...ui,
     ...mentions,

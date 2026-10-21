@@ -23,6 +23,8 @@ export interface KanbanCardContent {
 }
 export const DEFAULT_KANBAN_COLUMNS: KanbanColumn[] = [
   { id: "backlog", name: "Backlog" },
+  // A real default column id, not placeholder copy.
+  // greenlight:ignore placeholder-content
   { id: "todo", name: "To do" },
   { id: "progress", name: "In progress" },
   { id: "done", name: "Done" },

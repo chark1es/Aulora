@@ -421,7 +421,10 @@ export default defineSchema({
     userId: v.string(),
     /** Server-sealed emoji (`aulora-sse-v1` envelope). */
     emojiCiphertext: v.string(),
-  }).index("by_message", ["messageId"]),
+  })
+    .index("by_message", ["messageId"])
+    // Account deletion removes a departing user's own reactions by user.
+    .index("by_user", ["userId"]),
 
   readStates: defineTable({
     userId: v.string(),

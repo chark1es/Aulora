@@ -100,9 +100,11 @@ android {
     defaultConfig {
         applicationId 'dev.spwnd.aulora'
         minSdkVersion rootProject.ext.minSdkVersion
-        targetSdkVersion rootProject.ext.targetSdkVersion
+        // Pinned to Expo SDK 58's default so the shipped API level is explicit
+        // in the app module instead of only in the Expo Gradle plugin.
+        targetSdkVersion 36
         versionCode ((System.getenv('BUILD_NUMBER') ?: '1').toInteger())
-        versionName (System.getenv('RELEASE_VERSION') ?: "1.2.0")
+        versionName (System.getenv('RELEASE_VERSION') ?: "1.2.1")
 
         buildConfigField "String", "REACT_NATIVE_RELEASE_LEVEL", "\"${findProperty('reactNativeReleaseLevel') ?: 'stable'}\""
     }

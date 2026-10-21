@@ -10,7 +10,7 @@
 # Build context is the repo root; see ../../.dockerignore.
 
 # Source of the `generate_key` binary only.
-FROM ghcr.io/get-convex/convex-backend@sha256:b756b06641d15a55b5ec0692897ce5ad3715ddccfd02e1e213621e9e764255c8 AS backend
+FROM ghcr.io/convex/convex-backend@sha256:b756b06641d15a55b5ec0692897ce5ad3715ddccfd02e1e213621e9e764255c8 AS backend
 
 # Bun runtime. `generate_key` was built on Ubuntu 24.04 (older glibc) and runs
 # fine on this newer Debian base; the reverse is not guaranteed.

@@ -78,6 +78,7 @@ export function ReviewDemoScreen({
               ownUserId={session.ownUserId}
               ownDisplayName={session.ownDisplayName}
               onSignOut={onExit}
+              onDeleteAccount={onExit}
               notice={showNotice ? <DemoNotice onExit={onExit} /> : undefined}
             />
           </ChatScreenSessionProvider>

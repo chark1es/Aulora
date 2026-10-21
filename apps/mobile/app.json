@@ -2,13 +2,18 @@
   "expo": {
     "name": "Aulora",
     "slug": "aulora",
-    "version": "1.2.0",
+    "description": "Team chat you run on your own server, with channels, direct messages, threads, calls, and encrypted messages.",
+    "version": "1.2.1",
     "orientation": "portrait",
     "scheme": "aulora",
     "userInterfaceStyle": "automatic",
+    "icon": "./assets/icon.png",
     "ios": {
       "supportsTablet": true,
-      "bundleIdentifier": "dev.spwnd.aulora"
+      "bundleIdentifier": "dev.spwnd.aulora",
+      "config": {
+        "usesNonExemptEncryption": false
+      }
     },
     "android": {
       "package": "dev.spwnd.aulora",
@@ -20,7 +25,9 @@
         "android.permission.RECORD_AUDIO",
         "android.permission.MODIFY_AUDIO_SETTINGS",
         "android.permission.FOREGROUND_SERVICE",
-        "android.permission.FOREGROUND_SERVICE_MEDIA_PROJECTION"
+        "android.permission.FOREGROUND_SERVICE_CAMERA",
+        "android.permission.FOREGROUND_SERVICE_MEDIA_PROJECTION",
+        "android.permission.FOREGROUND_SERVICE_MICROPHONE"
       ],
       "googleServicesFile": "./android/app/google-services.json"
     },
@@ -46,6 +53,9 @@
       ],
       "expo-audio"
     ],
+    "extra": {
+      "privacyPolicyUrl": "https://aulora.chark1es.dev/docs/privacy"
+    },
     "experiments": {
       "typedRoutes": false
     }

@@ -9,6 +9,7 @@ export interface MembershipGateProps {
   readonly workspaceIconSeed: string;
   readonly signedInAs: string | null;
   readonly onSignOut: () => void;
+  readonly onDeleteAccount: () => void | Promise<void>;
   readonly children: ReactNode;
 }
 
@@ -21,6 +22,7 @@ export function MembershipGate({
   workspaceIconSeed,
   signedInAs,
   onSignOut,
+  onDeleteAccount,
   children,
 }: MembershipGateProps) {
   const me = useQuery(api.members.me, {});
@@ -37,6 +39,7 @@ export function MembershipGate({
         workspaceIconSeed={workspaceIconSeed}
         signedInAs={signedInAs}
         onSignOut={onSignOut}
+        onDeleteAccount={onDeleteAccount}
       />
     );
   }

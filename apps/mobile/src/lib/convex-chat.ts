@@ -565,6 +565,48 @@ export function createScopedPresence(client: ConvexReactClient): ScopedPresence 
     teardown = null;
   };
 
+  /**
+   * Publishes a watched query's rows. If reading its result throws, it
+   * unsubscribes and runs `onError` once, whether that happens on the first
+   * read or later from the query's own update.
+   */
+  const subscribe = (
+    open: () => { localQueryResult(): unknown; onUpdate(listener: () => void): () => void },
+    toRows: (value: unknown) => PresenceRow[],
+    onError: () => void,
+  ): (() => void) => {
+    const watch = open();
+    let closed = false;
+    let off: (() => void) | undefined;
+    const close = (): void => {
+      if (!closed) {
+        closed = true;
+        off?.();
+      }
+    };
+    const update = (): void => {
+      if (closed) {
+        return;
+      }
+      let value: unknown;
+      try {
+        value = watch.localQueryResult();
+      } catch {
+        close();
+        onError();
+        return;
+      }
+      if (value !== undefined) {
+        latest = toRows(value);
+        emit();
+      }
+    };
+    off = watch.onUpdate(update);
+    // A warm client can deliver the first result before `onUpdate` is attached.
+    update();
+    return close;
+  };
+
   const start = (): void => {
     if (teardown !== null || listeners.size === 0) {
       return;
@@ -574,36 +616,27 @@ export function createScopedPresence(client: ConvexReactClient): ScopedPresence 
       emit();
       return;
     }
-    let off: () => void;
-    try {
-      const watch = client.watchQuery(api.presence.getMany, { userIds: scopeIds as never[] });
-      const update = () => {
-        const value = watch.localQueryResult();
-        if (value !== undefined) {
-          latest = value as PresenceRow[];
-          emit();
-        }
-      };
-      off = watch.onUpdate(update);
-      // A warm client can deliver the first result before `onUpdate` is attached.
-      update();
-    } catch {
-      // Older servers do not have `presence.getMany`; keep only the ids this
-      // client renders from the full list instead of breaking presence.
-      const watch = client.watchQuery(api.presence.list, {});
-      const scoped = new Set(scopeIds);
-      const update = () => {
-        const value = watch.localQueryResult();
-        if (value !== undefined) {
-          latest = (value as PresenceRow[]).filter((row) => scoped.has(row.userId));
-          emit();
-        }
-      };
-      off = watch.onUpdate(update);
-      update();
-    }
+    const scoped = new Set(scopeIds);
+    // A server that predates `presence.getMany` does not fail `watchQuery`: the
+    // error arrives with the query result, so `localQueryResult()` throws from
+    // the Convex message handler and an uncaught throw there kills a release
+    // build. Catch it and keep only the ids this client renders from the full
+    // list instead.
+    let offFallback: (() => void) | undefined;
+    const offScoped = subscribe(
+      () => client.watchQuery(api.presence.getMany, { userIds: scopeIds as never[] }),
+      (value) => value as PresenceRow[],
+      () => {
+        offFallback = subscribe(
+          () => client.watchQuery(api.presence.list, {}),
+          (value) => (value as PresenceRow[]).filter((row) => scoped.has(row.userId)),
+          () => undefined,
+        );
+      },
+    );
     teardown = () => {
-      off();
+      offScoped();
+      offFallback?.();
     };
   };
 
