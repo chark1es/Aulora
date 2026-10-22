@@ -26,6 +26,7 @@ for (const file of ["docker-compose.yml", "docker-compose.coolify.yml"]) {
   test(`bot-runner starts by default in ${file}`, () => {
     const block = serviceBlock(file, "bot-runner");
     assert.doesNotMatch(block, /^\s+profiles:/m);
+    assert.match(block, /^ {6}BOT_RUNNER_ENABLED: \$\{BOT_RUNNER_ENABLED:-true\}$/m);
     assert.match(block, /^ {4}restart: unless-stopped$/m);
     assert.match(block, /^ {4}read_only: true$/m);
     assert.match(block, /^ {6}- ALL$/m);

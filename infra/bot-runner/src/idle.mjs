@@ -1,10 +1,10 @@
-// Keeps the container healthy while no runner token is configured.
+// Keeps the container healthy while bots are off.
 //
-// The runner starts with the stack, but `BOT_RUNNER_TOKEN` only exists after
-// `setup` has provisioned it (and, in Compose, after the next `up` re-reads
-// `.env`). Exiting here would make the container restart forever, so the
-// entrypoint idles instead: it refreshes the health file and waits for a
-// restart that supplies the token.
+// The runner starts with the stack, but bots can be off: the operator set
+// `BOT_RUNNER_ENABLED=false`, or `BOT_RUNNER_TOKEN` does not exist yet (it
+// comes from `setup`, and Compose only re-reads `.env` on the next `up`).
+// Exiting here would make the container restart forever, so the entrypoint
+// idles instead: it refreshes the health file and waits for a restart.
 
 import { writeFileSync } from "node:fs";
 
@@ -12,6 +12,7 @@ const DEFAULT_INTERVAL_MS = 10_000;
 
 export function createIdleKeeper({
   healthFile,
+  reason = "BOT_RUNNER_TOKEN is not set; idling. Set it and restart the container to run bots.",
   intervalMs = DEFAULT_INTERVAL_MS,
   logger = console,
   now = Date.now,
@@ -32,9 +33,7 @@ export function createIdleKeeper({
     touch();
     timer = setInterval(touch, intervalMs);
     timer.unref?.();
-    logger.log(
-      "bot runner: BOT_RUNNER_TOKEN is not set; idling. Set it and restart the container to run bots.",
-    );
+    logger.log(`bot runner: ${reason}`);
   }
 
   function stop() {

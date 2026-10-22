@@ -182,6 +182,35 @@ test("an unknown option is rejected", { skip }, () => {
   }
 });
 
+test("a fresh install writes a bot runner token before the stack starts", { skip }, () => {
+  const dir = makeEnvDir();
+  try {
+    const bin = join(dir, "bin");
+    mkdirSync(bin);
+    writeFileSync(join(bin, "docker"), "#!/usr/bin/env bash\nexit 0\n", { mode: 0o755 });
+    const result = spawnSync(
+      "bash",
+      [INSTALL, "--email", "owner@acme.test", "--password", "correct horse battery staple"],
+      {
+        encoding: "utf8",
+        input: "",
+        env: {
+          ...process.env,
+          AULORA_ENV_FILE: join(dir, ".env"),
+          PATH: `${bin}:${process.env.PATH}`,
+        },
+      },
+    );
+    assert.equal(result.status, 0, result.stderr);
+    const env = readFileSync(join(dir, ".env"), "utf8");
+    const token = env.match(/^BOT_RUNNER_TOKEN=(.*)$/m)?.[1] ?? "";
+    assert.match(token, /^[A-Za-z0-9_-]{48,}$/);
+    assert.match(env, /^BOT_RUNNER_ENABLED=true$/m);
+  } finally {
+    rmSync(dir, { recursive: true, force: true });
+  }
+});
+
 test("installer waits for Compose setup instead of launching a conflicting second setup", {
   skip,
 }, () => {
