@@ -10,6 +10,7 @@ import {
   dayLabel,
   hasPermission,
   isBotUserId,
+  isWebhookUserId,
   messageTime,
   Permission,
 } from "@aulora/core";
@@ -557,6 +558,19 @@ function MessageEditForm({
   );
 }
 
+/** BOT or WEBHOOK next to an automated author's name; nothing for a person. */
+function AuthorBadge({ authorId }: { readonly authorId: string }) {
+  const label = isBotUserId(authorId) ? "BOT" : isWebhookUserId(authorId) ? "WEBHOOK" : null;
+  if (label === null) {
+    return null;
+  }
+  return (
+    <Badge size="sm" tone="accent" className="shrink-0 uppercase">
+      {label}
+    </Badge>
+  );
+}
+
 /** Quoted inline reply, split out so the row stays within the complexity budget. */
 function ReplyLine({
   replyToId,
@@ -918,11 +932,7 @@ function MessageRowContent({
               >
                 {authorName}
               </span>
-              {!own && isBotUserId(message.authorId) && (
-                <Badge size="sm" tone="accent" className="shrink-0 uppercase">
-                  BOT
-                </Badge>
-              )}
+              {!own && <AuthorBadge authorId={message.authorId} />}
               <time
                 className="shrink-0 text-[11px] text-text-muted"
                 dateTime={new Date(message.createdAt).toISOString()}

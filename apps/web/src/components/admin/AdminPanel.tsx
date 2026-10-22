@@ -23,6 +23,7 @@ import { RoleEditor, type RolePage } from "./RoleEditor";
 import { buildSections, type TabId } from "./sections";
 import { WorkspaceBranding } from "./WorkspaceBranding";
 import { WorkspaceSettings } from "./WorkspaceSettings";
+import { WebhooksSettings } from "./webhooks/WebhooksSettings";
 
 export interface AdminPanelViewer {
   readonly userId: string;
@@ -251,6 +252,14 @@ function AdminPanelWorkspaceBody(props: AdminPanelBodyProps) {
         <InviteManager
           canCreateInvites={permission("CreateInvites")}
           canDeleteInvites={permission("DeleteInvites")}
+          origin={origin}
+        />
+      )}
+      {nav.tab === "webhooks" && (
+        <WebhooksSettings
+          canManageWebhooks={permission("ManageWebhooks")}
+          channels={channels}
+          channelNames={channelNames}
           origin={origin}
         />
       )}

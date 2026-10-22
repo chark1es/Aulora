@@ -90,6 +90,7 @@ import type * as lib_threadInbox from "../lib/threadInbox.js";
 import type * as lib_threadParticipants from "../lib/threadParticipants.js";
 import type * as lib_types from "../lib/types.js";
 import type * as lib_webPush from "../lib/webPush.js";
+import type * as lib_webhookAuth from "../lib/webhookAuth.js";
 import type * as lib_workspaceNotes from "../lib/workspaceNotes.js";
 import type * as lib_workspaceNotesMutations from "../lib/workspaceNotesMutations.js";
 import type * as license from "../license.js";
@@ -111,6 +112,10 @@ import type * as setup from "../setup.js";
 import type * as setupState from "../setupState.js";
 import type * as typing from "../typing.js";
 import type * as updates from "../updates.js";
+import type * as webhookHttp from "../webhookHttp.js";
+import type * as webhookIngest from "../webhookIngest.js";
+import type * as webhookSchema from "../webhookSchema.js";
+import type * as webhooks from "../webhooks.js";
 import type * as workspaceNotes from "../workspaceNotes.js";
 import type * as workspaceNotesCleanup from "../workspaceNotesCleanup.js";
 
@@ -203,6 +208,7 @@ declare const fullApi: ApiFromModules<{
   "lib/threadParticipants": typeof lib_threadParticipants;
   "lib/types": typeof lib_types;
   "lib/webPush": typeof lib_webPush;
+  "lib/webhookAuth": typeof lib_webhookAuth;
   "lib/workspaceNotes": typeof lib_workspaceNotes;
   "lib/workspaceNotesMutations": typeof lib_workspaceNotesMutations;
   license: typeof license;
@@ -224,6 +230,10 @@ declare const fullApi: ApiFromModules<{
   setupState: typeof setupState;
   typing: typeof typing;
   updates: typeof updates;
+  webhookHttp: typeof webhookHttp;
+  webhookIngest: typeof webhookIngest;
+  webhookSchema: typeof webhookSchema;
+  webhooks: typeof webhooks;
   workspaceNotes: typeof workspaceNotes;
   workspaceNotesCleanup: typeof workspaceNotesCleanup;
 }>;

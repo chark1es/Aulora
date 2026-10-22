@@ -4,6 +4,7 @@ import { api } from "./_generated/api";
 import { httpAction } from "./_generated/server";
 import { authComponent, createAuth } from "./auth";
 import { registerBotRoutes } from "./botHttp";
+import { registerWebhookRoutes } from "./webhookHttp";
 
 const http = httpRouter();
 
@@ -15,6 +16,9 @@ authComponent.registerRoutes(http, createAuth, {
 
 // Bot token exchange and the bot-runner API (see `botHttp.ts`).
 registerBotRoutes(http);
+
+// Incoming webhooks (see `webhookHttp.ts`).
+registerWebhookRoutes(http);
 
 // Discovery uses current workspace settings and does not depend on setup's
 // static document. Keep the response limited to the client discovery contract.
