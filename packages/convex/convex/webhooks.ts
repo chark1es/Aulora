@@ -66,10 +66,7 @@ async function assertPostable(ctx: MutationCtx, channelId: Id<"channels">) {
   }
 }
 
-async function activeInChannel(
-  ctx: MutationCtx,
-  channelId: Id<"channels">,
-): Promise<WebhookDoc[]> {
+async function activeInChannel(ctx: MutationCtx, channelId: Id<"channels">): Promise<WebhookDoc[]> {
   const rows = await ctx.db
     .query("webhooks")
     .withIndex("by_channel", (q) => q.eq("channelId", channelId))
