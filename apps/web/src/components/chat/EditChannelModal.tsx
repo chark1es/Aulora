@@ -224,6 +224,33 @@ function DetailsSection({ form }: { readonly form: EditChannelForm }) {
   );
 }
 
+interface EditChannelFooterProps {
+  readonly disabled: boolean;
+  readonly loading: boolean;
+  readonly onCancel: () => void;
+  readonly onSave: () => void;
+}
+
+/** Cancel and save, with save held while the name is empty or a save is running. */
+function EditChannelFooter(props: EditChannelFooterProps) {
+  return (
+    <>
+      <Button type="button" variant="ghost" onClick={props.onCancel}>
+        Cancel
+      </Button>
+      <Button
+        type="button"
+        variant="primary"
+        disabled={props.disabled}
+        loading={props.loading}
+        onClick={props.onSave}
+      >
+        Save changes
+      </Button>
+    </>
+  );
+}
+
 /**
  * Edits an existing channel: rename, retopic, switch public/private, pick who
  * can access and block specific members. One sheet of titled sections (no
@@ -265,20 +292,12 @@ export function EditChannelModal(props: EditChannelModalProps) {
       icon={<Icon name={form.privateChannel ? "lock" : "hash"} size={18} />}
       size="lg"
       footer={
-        <>
-          <Button type="button" variant="ghost" onClick={onClose}>
-            Cancel
-          </Button>
-          <Button
-            type="button"
-            variant="primary"
-            disabled={disabled}
-            loading={busy || form.saving}
-            onClick={submit}
-          >
-            Save changes
-          </Button>
-        </>
+        <EditChannelFooter
+          disabled={disabled}
+          loading={busy || form.saving}
+          onCancel={onClose}
+          onSave={submit}
+        />
       }
     >
       <form
