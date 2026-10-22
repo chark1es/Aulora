@@ -40,10 +40,10 @@ export function parseWebhookPath(pathname: string): { id: string; token: string 
     return null;
   }
   const parts = pathname.slice(WEBHOOK_ROUTE_PREFIX.length).split("/");
-  const [id, token] = parts;
-  if (parts.length !== 2 || id === undefined || token === undefined) {
+  if (parts.length !== 2) {
     return null;
   }
+  const [id = "", token = ""] = parts;
   return id.length > 0 && token.length > 0 ? { id, token } : null;
 }
 

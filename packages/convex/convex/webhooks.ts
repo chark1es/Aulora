@@ -10,7 +10,7 @@
 import { Permission, WEBHOOK_LIMITS, WEBHOOK_USER_ID_PREFIX } from "@aulora/core";
 import { ConvexError, v } from "convex/values";
 import type { Doc, Id } from "./_generated/dataModel";
-import { type MutationCtx, mutation, type QueryCtx, query } from "./_generated/server";
+import { type MutationCtx, mutation, query } from "./_generated/server";
 import { writeAudit } from "./lib/audit";
 import { requireAuth } from "./lib/auth";
 import { requireChannelAccess, requireChannelAccessFromContext } from "./lib/channels";
@@ -53,7 +53,7 @@ function validateName(raw: string): string {
 }
 
 /** Webhooks post into text and announcement channels, never DMs or voice. */
-async function assertPostable(ctx: QueryCtx | MutationCtx, channelId: Id<"channels">) {
+async function assertPostable(ctx: MutationCtx, channelId: Id<"channels">) {
   const channel = await ctx.db.get(channelId);
   if (channel === null) {
     throw new ConvexError("Channel not found");
@@ -67,7 +67,7 @@ async function assertPostable(ctx: QueryCtx | MutationCtx, channelId: Id<"channe
 }
 
 async function activeInChannel(
-  ctx: QueryCtx | MutationCtx,
+  ctx: MutationCtx,
   channelId: Id<"channels">,
 ): Promise<WebhookDoc[]> {
   const rows = await ctx.db
@@ -77,7 +77,7 @@ async function activeInChannel(
   return rows.filter((row) => row.deletedAt === undefined);
 }
 
-async function assertRoomInChannel(ctx: QueryCtx | MutationCtx, channelId: Id<"channels">) {
+async function assertRoomInChannel(ctx: MutationCtx, channelId: Id<"channels">) {
   if ((await activeInChannel(ctx, channelId)).length >= WEBHOOK_LIMITS.maxPerChannel) {
     throw new ConvexError(`A channel may have at most ${WEBHOOK_LIMITS.maxPerChannel} webhooks`);
   }
@@ -85,7 +85,7 @@ async function assertRoomInChannel(ctx: QueryCtx | MutationCtx, channelId: Id<"c
 
 /** The webhook, once the caller is known to manage it. Deleted ones count as missing. */
 async function requireManageable(
-  ctx: QueryCtx | MutationCtx,
+  ctx: MutationCtx,
   webhookId: Id<"webhooks">,
 ): Promise<{ webhook: WebhookDoc; userId: string }> {
   const webhook = await ctx.db.get(webhookId);
