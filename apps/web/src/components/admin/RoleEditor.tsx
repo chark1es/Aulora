@@ -1,11 +1,15 @@
-import { Badge, Button, Heading, Icon, IconButton, Input, Switch, Text } from "@aulora/ui-web";
+import { Button, Input, Switch, Text } from "@aulora/ui-web";
 import { useMutation, useQuery } from "convex/react";
 import { useEffect, useState } from "react";
 import { api } from "../../../../../packages/convex/convex/_generated/api";
 import { canManageRoleUi, type RoleView } from "../../lib/workspace-admin";
+import { AdminPageHeader } from "./AdminPageHeader";
 import type { Callback } from "./callbacks";
 import { PermissionsToggles } from "./PermissionsToggles";
 import { RoleColorPicker } from "./RoleColorPicker";
+import { RoleList } from "./RoleList";
+import { SettingsGroup, SettingsGroupRow } from "./SettingsGroup";
+import { SettingsSection } from "./SettingsSection";
 
 export interface RoleEditorViewer {
   readonly userId: string;
@@ -93,9 +97,15 @@ export function RoleEditor({ viewer, canManageRoles, page = null, onNavigate }: 
 
   if (!canManageRoles) {
     return (
-      <Text tone="muted" size="sm" data-testid="role-editor-locked">
-        You need the Manage roles permission to edit roles.
-      </Text>
+      <div className="flex flex-col gap-8" data-testid="role-editor">
+        <AdminPageHeader
+          title="Roles"
+          description="Higher roles sit above lower ones in the member list and hierarchy."
+        />
+        <Text tone="muted" size="sm" data-testid="role-editor-locked">
+          You need the Manage roles permission to edit roles.
+        </Text>
+      </div>
     );
   }
 
@@ -123,9 +133,24 @@ export function RoleEditor({ viewer, canManageRoles, page = null, onNavigate }: 
     }
 
     return (
-      <div className="flex flex-col gap-4" data-testid="role-editor">
+      <div className="flex flex-col gap-8" data-testid="role-editor">
+        <AdminPageHeader
+          title={mode === "create" ? "New role" : (selected?.name ?? "Role")}
+          description={
+            mode === "create"
+              ? "Name the role, pick a colour and grant only what it needs."
+              : "Change what this role can do. Members keep it until you remove it."
+          }
+          back={{
+            label: "Roles",
+            onClick: () => {
+              navigate(null);
+            },
+          }}
+        />
+
         <form
-          className="flex flex-col gap-3"
+          className="flex flex-col gap-8"
           data-testid="role-form"
           onSubmit={(event) => {
             event.preventDefault();
@@ -160,43 +185,53 @@ export function RoleEditor({ viewer, canManageRoles, page = null, onNavigate }: 
             }
           }}
         >
-          <Input
-            label="Role name"
-            value={draft.name}
-            disabled={selected?.isEveryone ?? false}
-            onChange={(event) => {
-              setDraft({ ...draft, name: event.currentTarget.value });
-            }}
-          />
-          <RoleColorPicker
-            value={draft.color}
-            onChange={(color) => {
-              setDraft({ ...draft, color });
-            }}
-          />
-          <div className="overflow-hidden rounded-[10px] border border-border bg-surface-2">
-            <div className="px-3.5 py-1.5">
-              <Switch
-                checked={draft.hoisted}
-                onChange={(hoisted) => {
-                  setDraft({ ...draft, hoisted });
+          <SettingsSection title="Details">
+            <div className="flex flex-col gap-4 rounded-[12px] bg-surface-2 p-4">
+              <Input
+                label="Role name"
+                value={draft.name}
+                disabled={selected?.isEveryone ?? false}
+                onChange={(event) => {
+                  setDraft({ ...draft, name: event.currentTarget.value });
                 }}
-                label="Display role members separately from online members"
-                description="Show this role as its own section at the top of the member list."
+              />
+              <RoleColorPicker
+                value={draft.color}
+                onChange={(color) => {
+                  setDraft({ ...draft, color });
+                }}
               />
             </div>
-            <div className="h-px bg-border" />
-            <div className="px-3.5 py-1.5">
-              <Switch
-                checked={draft.mentionable}
-                onChange={(mentionable) => {
-                  setDraft({ ...draft, mentionable });
-                }}
-                label="Mentionable"
-                description="Let members @mention this role."
-              />
-            </div>
-          </div>
+          </SettingsSection>
+
+          <SettingsSection title="Display">
+            <SettingsGroup>
+              <SettingsGroupRow
+                label="Show members separately"
+                description="Display this role as its own section at the top of the member list."
+              >
+                <Switch
+                  bare
+                  checked={draft.hoisted}
+                  label="Display role members separately"
+                  onChange={(hoisted) => {
+                    setDraft({ ...draft, hoisted });
+                  }}
+                />
+              </SettingsGroupRow>
+              <SettingsGroupRow label="Mentionable" description="Let members @mention this role.">
+                <Switch
+                  bare
+                  checked={draft.mentionable}
+                  label="Mentionable"
+                  onChange={(mentionable) => {
+                    setDraft({ ...draft, mentionable });
+                  }}
+                />
+              </SettingsGroupRow>
+            </SettingsGroup>
+          </SettingsSection>
+
           <PermissionsToggles
             value={draft.permissions}
             onChange={(next) => {
@@ -204,7 +239,8 @@ export function RoleEditor({ viewer, canManageRoles, page = null, onNavigate }: 
             }}
             disabled={busy}
           />
-          <div className="flex items-center gap-2">
+
+          <div className="flex items-center gap-2 border-t border-border/60 pt-4">
             {mode === "edit" && selected !== null && canManageRoleUi(viewer, selected) && (
               <Button
                 type="button"
@@ -258,193 +294,6 @@ export function RoleEditor({ viewer, canManageRoles, page = null, onNavigate }: 
         );
       }}
     />
-  );
-}
-
-interface RoleListProps {
-  readonly sorted: readonly RoleView[];
-  readonly viewer: RoleEditorViewer;
-  readonly busy: boolean;
-  readonly error: string | null;
-  readonly manageableCount: number;
-  readonly onNavigate: Callback<[page: RolePage | null]>;
-  readonly onMove: Callback<[index: number, otherIndex: number]>;
-}
-
-function RoleList(props: RoleListProps) {
-  const { sorted, viewer, busy, error, manageableCount, onNavigate, onMove } = props;
-  return (
-    <div className="flex flex-col gap-4" data-testid="role-editor">
-      <div className="flex items-center justify-between">
-        <div>
-          <Heading level={3}>Roles</Heading>
-          <p className="text-[12px] text-text-muted">
-            Higher roles sit above lower ones in the member list and hierarchy.
-          </p>
-        </div>
-        <Button
-          size="sm"
-          disabled={busy}
-          leading={<Icon name="plus" size={14} />}
-          onClick={() => {
-            onNavigate({ kind: "role-create" });
-          }}
-        >
-          New role
-        </Button>
-      </div>
-
-      {error !== null && (
-        <Text tone="danger" size="sm" role="alert">
-          {error}
-        </Text>
-      )}
-
-      <ul className="stagger flex flex-col gap-1.5" data-testid="role-list">
-        {sorted.map((role, index) => (
-          <RoleRow
-            key={role.id}
-            role={role}
-            index={index}
-            count={sorted.length}
-            previous={sorted.at(index - 1)}
-            viewer={viewer}
-            busy={busy}
-            onNavigate={onNavigate}
-            onMove={onMove}
-          />
-        ))}
-      </ul>
-
-      {manageableCount === 0 && (
-        <Text tone="muted" size="sm">
-          No roles are below your highest role.
-        </Text>
-      )}
-    </div>
-  );
-}
-
-interface RoleRowProps {
-  readonly role: RoleView;
-  readonly index: number;
-  readonly count: number;
-  readonly previous: RoleView | undefined;
-  readonly viewer: RoleEditorViewer;
-  readonly busy: boolean;
-  readonly onNavigate: Callback<[page: RolePage | null]>;
-  readonly onMove: Callback<[index: number, otherIndex: number]>;
-}
-
-function RoleRow(props: RoleRowProps) {
-  const { role, index, count, previous, viewer, busy, onNavigate, onMove } = props;
-  const editable = canManageRoleUi(viewer, role);
-  const canMoveUp =
-    editable && index > 0 && previous !== undefined && canManageRoleUi(viewer, previous);
-  const canMoveDown = editable && index < count - 1;
-  return (
-    <li
-      className="flex items-center gap-2.5 rounded-[10px] border border-border bg-surface-2 px-3 py-2 transition hover:border-text-muted/30"
-      data-testid={`role-row-${role.name}`}
-    >
-      <span
-        aria-hidden="true"
-        className="flex h-6 w-6 shrink-0 items-center justify-center rounded-[7px] border border-border"
-        style={{ backgroundColor: role.color ?? "transparent" }}
-      >
-        {role.color === null && <Icon name="shield" size={12} className="text-text-muted" />}
-      </span>
-      <button
-        type="button"
-        className="min-w-0 flex-1 text-left"
-        onClick={() => {
-          onNavigate({ kind: "role", id: role.id });
-        }}
-      >
-        <span className="flex items-center gap-1.5">
-          <Text as="span" size="sm" className="font-medium">
-            {role.name}
-          </Text>
-          {role.isEveryone && (
-            <Badge size="sm" tone="outline">
-              default
-            </Badge>
-          )}
-          {role.hoisted && (
-            <Badge size="sm" tone="neutral">
-              shown
-            </Badge>
-          )}
-          {role.mentionable && (
-            <Badge size="sm" tone="neutral">
-              mentionable
-            </Badge>
-          )}
-        </span>
-        <Text as="span" size="xs" tone="muted" className="block">
-          {role.permissions === 0n
-            ? "No permissions"
-            : `${role.permissions.toString(2).split("1").length - 1} permissions`}
-        </Text>
-      </button>
-      <Icon
-        name="chevron-right"
-        size={14}
-        className="shrink-0 text-text-muted/50"
-        aria-hidden="true"
-      />
-      {editable && (
-        <RoleMoveButtons
-          roleName={role.name}
-          index={index}
-          canMoveUp={canMoveUp}
-          canMoveDown={canMoveDown}
-          busy={busy}
-          onMove={onMove}
-        />
-      )}
-    </li>
-  );
-}
-
-function RoleMoveButtons({
-  roleName,
-  index,
-  canMoveUp,
-  canMoveDown,
-  busy,
-  onMove,
-}: {
-  readonly roleName: string;
-  readonly index: number;
-  readonly canMoveUp: boolean;
-  readonly canMoveDown: boolean;
-  readonly busy: boolean;
-  readonly onMove: Callback<[index: number, otherIndex: number]>;
-}) {
-  return (
-    <div className="flex items-center gap-0.5">
-      <IconButton
-        label={`Move ${roleName} up`}
-        size="sm"
-        disabled={!canMoveUp || busy}
-        onClick={() => {
-          onMove(index, index - 1);
-        }}
-      >
-        <Icon name="chevron-down" size={14} className="rotate-180" />
-      </IconButton>
-      <IconButton
-        label={`Move ${roleName} down`}
-        size="sm"
-        disabled={!canMoveDown || busy}
-        onClick={() => {
-          onMove(index, index + 1);
-        }}
-      >
-        <Icon name="chevron-down" size={14} />
-      </IconButton>
-    </div>
   );
 }
 

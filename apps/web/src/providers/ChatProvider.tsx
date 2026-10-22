@@ -28,6 +28,7 @@ import { type ChatRuntime, createChatRuntime } from "../lib/chat-runtime";
 import { webOutboxStore } from "../lib/outbox-store";
 import { webSearchStore } from "../lib/search-store";
 import { usePresenceHeartbeat } from "../lib/use-presence-heartbeat";
+import { channelViewName } from "./channel-view-name";
 
 /** A mutable ref target that starts unset without spelling out a union at each use. */
 type Maybe<T> = T | undefined;
@@ -547,7 +548,7 @@ export function ChatProvider({
     () =>
       channels.map((channel) => ({
         ...channel,
-        name: channelNames.get(channel.id) ?? placeholder(channel),
+        name: channelViewName(channel, channelNames),
       })),
     [channels, channelNames],
   );
@@ -618,16 +619,6 @@ function sameOutbox(a: readonly OutboxItem[], b: readonly OutboxItem[]): boolean
     }
   }
   return true;
-}
-
-function placeholder(channel: ChannelSummary): string {
-  if (channel.kind === "dm") {
-    return "Direct message";
-  }
-  if (channel.kind === "group_dm") {
-    return "Group message";
-  }
-  return channel.archived ? "archived" : "channel";
 }
 
 /** Reads the chat context; throws outside a {@link ChatProvider}. */

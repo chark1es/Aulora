@@ -120,6 +120,22 @@ nobody could use. Configure and enable an SSO provider first. First-run owner
 creation is never blocked by this gate: the setup container can always create
 the operator credential.
 
+## Same account across sign-in methods
+
+If someone creates an account with email/password and later signs in with
+Google, GitHub, Microsoft or Apple using the same address, the OAuth identity is
+linked to the existing account instead of failing with `account not linked`.
+Local addresses are never verified, so the link only happens when the provider
+asserts that the address is verified, and sessions created before the link are
+revoked. That way an address someone registered first, without owning it, cannot
+keep access after the real owner signs in.
+
+The generic OIDC provider is not trusted by default because many IdPs omit or
+misreport `email_verified`. An OIDC sign-in therefore creates a separate account
+unless you set `OIDC_TRUST_EMAIL=true` in the deployment environment (`.env`
+plus `docker compose run --rm setup`, or the Coolify environment). Enable it
+only when the IdP verifies addresses and you control who it issues them to.
+
 ## Encryption
 
 Encryption is on by default and runs **server-side**: content and files are

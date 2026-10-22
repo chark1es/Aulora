@@ -57,6 +57,7 @@ function fixture(options = {}) {
             web: { image: "web:local" },
             setup: { image: "setup:local" },
             "smtp-gateway": { image: "smtp:local" },
+            "bot-runner": { image: "bot-runner:local" },
           },
         });
       if (args[1] === "run" && failSetup) throw new Error("Setup failed.");
@@ -94,6 +95,12 @@ describe("staged workspace updates", () => {
     ).toBe(true);
     expect(readFileSync(resolve(f.dockerDir, ".deployed-version"), "utf8")).toBe("0.2.0\n");
     expect(f.updater.ready()).toBeNull();
+    expect(
+      f.calls.some(
+        ([command, args]) =>
+          command === "docker" && args[1] === "up" && args.includes("bot-runner"),
+      ),
+    ).toBe(true);
   });
   it("requires a prepared release and refuses dirty or diverged checkouts", async () => {
     await expect(fixture().updater.restart()).rejects.toThrow("Download the update");

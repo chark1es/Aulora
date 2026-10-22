@@ -2,7 +2,8 @@ import { Spinner, Switch, Text } from "@aulora/ui-web";
 import { useMutation, useQuery } from "convex/react";
 import { useState } from "react";
 import { api } from "../../../../../packages/convex/convex/_generated/api";
-import { SettingsSectionHeader } from "./SettingsSection";
+import { AdminPageHeader } from "./AdminPageHeader";
+import { SettingsGroup, SettingsGroupRow } from "./SettingsGroup";
 
 interface AddonToggleProps {
   label: string;
@@ -18,12 +19,12 @@ function AddonToggle({ label, description, checked, onToggle, failureMessage }: 
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
   return (
-    <div className="rounded-[14px] border border-border bg-surface-2 px-4 py-3">
+    <SettingsGroupRow label={label} description={description}>
       <Switch
+        bare
         checked={checked}
         disabled={busy}
         label={label}
-        description={description}
         onChange={(enabled) => {
           setBusy(true);
           setError(null);
@@ -37,10 +38,30 @@ function AddonToggle({ label, description, checked, onToggle, failureMessage }: 
         }}
       />
       {error !== null && (
-        <Text role="alert" tone="danger" size="sm" className="mt-2">
+        <Text role="alert" tone="danger" size="sm" className="max-w-[220px] text-right">
           {error}
         </Text>
       )}
+    </SettingsGroupRow>
+  );
+}
+
+/** What enabling an addon does to permissions and data, under the toggles. */
+function AddonNotes() {
+  return (
+    <div className="flex flex-col gap-2 text-[12px] leading-relaxed text-text-muted">
+      <p>
+        Grant View Kanban, Edit Kanban, Comment on Kanban and Manage Kanban permissions in Roles.
+        Existing roles keep their permissions. Board managers can access all private boards.
+      </p>
+      <p>
+        Grant View Notes, Create Notes, Edit Notes, Delete Notes and Manage Notes permissions in
+        Roles. Existing roles keep their permissions.
+      </p>
+      <p>
+        Turning an addon off keeps its data for when you enable it again. Turning Kanban off stops
+        work timers.
+      </p>
     </div>
   );
 }
@@ -49,42 +70,47 @@ export function AddonsSettings({ canManageWorkspace }: { canManageWorkspace: boo
   const config = useQuery(api.server.settings, canManageWorkspace ? {} : "skip");
   const setKanbanEnabled = useMutation(api.kanban.setEnabled);
   const setNotesEnabled = useMutation(api.workspaceNotes.setEnabled);
-  if (!canManageWorkspace)
-    return <Text tone="muted">You need Manage workspace permission to change addons.</Text>;
-  if (!config) return <Spinner label="Loading addons" />;
+  if (!canManageWorkspace) {
+    return (
+      <div data-testid="settings-addons">
+        <AdminPageHeader
+          title="Addons"
+          description="Choose which optional tools are available in this workspace."
+        />
+        <Text tone="muted">You need Manage workspace permission to change addons.</Text>
+      </div>
+    );
+  }
+  if (!config) {
+    return <Spinner label="Loading addons" />;
+  }
   return (
-    <div className="flex flex-col gap-5" data-testid="settings-addons">
-      <SettingsSectionHeader
-        icon="settings"
+    <div className="flex flex-col gap-8" data-testid="settings-addons">
+      <AdminPageHeader
         title="Addons"
-        description="Choose which tools are available in this workspace."
+        description="Choose which optional tools are available in this workspace."
       />
-      <AddonToggle
-        label="Kanban"
-        description="Plan work on shared or private boards with cards, comments, attachments, timers and GitHub links. Off by default."
-        checked={config.settings.kanbanEnabled ?? false}
-        onToggle={(enabled) => setKanbanEnabled({ enabled })}
-        failureMessage="Could not change Kanban. Try again."
-      />
-      <AddonToggle
-        label="Notes"
-        description="Shared Markdown notes with folders, tags, permissions and history. Off by default."
-        checked={config.settings.notesEnabled ?? false}
-        onToggle={(enabled) => setNotesEnabled({ enabled })}
-        failureMessage="Could not change Notes. Try again."
-      />
-      <Text size="sm" tone="muted">
-        Grant View Kanban, Edit Kanban, Comment on Kanban and Manage Kanban permissions in Roles.
-        Existing roles keep their permissions. Board managers can access all private boards.
-      </Text>
-      <Text size="sm" tone="muted">
-        Grant View Notes, Create Notes, Edit Notes, Delete Notes and Manage Notes permissions in
-        Roles. Existing roles keep their permissions.
-      </Text>
-      <Text size="sm" tone="muted">
-        Turning an addon off keeps its data for when you enable it again. Turning Kanban off stops
-        work timers.
-      </Text>
+
+      <div className="flex flex-col gap-4">
+        <SettingsGroup title="Tools">
+          <AddonToggle
+            label="Kanban"
+            description="Plan work on shared or private boards with cards, comments, attachments, timers and GitHub links. Off by default."
+            checked={config.settings.kanbanEnabled ?? false}
+            onToggle={(enabled) => setKanbanEnabled({ enabled })}
+            failureMessage="Could not change Kanban. Try again."
+          />
+          <AddonToggle
+            label="Notes"
+            description="Shared Markdown notes with folders, tags, permissions and history. Off by default."
+            checked={config.settings.notesEnabled ?? false}
+            onToggle={(enabled) => setNotesEnabled({ enabled })}
+            failureMessage="Could not change Notes. Try again."
+          />
+        </SettingsGroup>
+
+        <AddonNotes />
+      </div>
     </div>
   );
 }

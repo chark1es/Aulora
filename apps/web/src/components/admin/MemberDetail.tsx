@@ -1,3 +1,4 @@
+/* eslint-disable no-unused-vars -- the base rule reports parameter names in type signatures; Biome checks real unused code */
 import { EVERYONE_ROLE_ID } from "@aulora/core";
 import { Icon, Text } from "@aulora/ui-web";
 import { useEffect, useState } from "react";
@@ -265,7 +266,7 @@ function MemberRolesSection(props: MemberRolesSectionProps) {
 
   return (
     <section className="flex flex-col gap-2.5">
-      <Text as="h4" size="xs" tone="muted" className="font-semibold uppercase tracking-[0.06em]">
+      <Text as="h4" size="xs" tone="muted" className="font-semibold">
         Roles
       </Text>
       <div className="flex flex-wrap items-center gap-1.5">

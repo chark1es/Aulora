@@ -271,6 +271,7 @@ set_env_if_present OIDC_DISCOVERY_URL "$(host_value OIDC_DISCOVERY_URL)"
 set_env_if_present OIDC_CLIENT_ID "$(host_value OIDC_CLIENT_ID)"
 set_env_if_present OIDC_CLIENT_SECRET "$(host_value OIDC_CLIENT_SECRET)" 1
 set_env_if_present OIDC_SCOPES "$(host_value OIDC_SCOPES)"
+set_env_if_present OIDC_TRUST_EMAIL "$(host_value OIDC_TRUST_EMAIL)"
 set_env_if_present OIDC_GROUP_CLAIM "$(host_value OIDC_GROUP_CLAIM)"
 set_env_if_present OIDC_GROUP_ROLE_MAP "$(host_value OIDC_GROUP_ROLE_MAP)"
 

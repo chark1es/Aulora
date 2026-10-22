@@ -1,6 +1,7 @@
 //! System tray / menu-bar item.
 //!
-//! Closing the window hides it here; the tray offers reopen, connect, update and quit.
+//! Closing the window hides it here; the tray offers reopen, connect, the quick
+//! switcher, the sidebar toggle, update and quit on every platform.
 
 use tauri::menu::{Menu, MenuItem, PredefinedMenuItem};
 use tauri::tray::{MouseButton, MouseButtonState, TrayIconBuilder, TrayIconEvent};
@@ -12,6 +13,20 @@ fn build_menu<R: Runtime>(app: &App<R>) -> tauri::Result<Menu<R>> {
         app,
         "tray_connect",
         "Connect to Server…",
+        true,
+        None::<&str>,
+    )?;
+    let quick_switcher = MenuItem::with_id(
+        app,
+        "tray_quick_switcher",
+        "Quick Switcher",
+        true,
+        None::<&str>,
+    )?;
+    let toggle_sidebar = MenuItem::with_id(
+        app,
+        "tray_toggle_sidebar",
+        "Toggle Sidebar",
         true,
         None::<&str>,
     )?;
@@ -28,6 +43,8 @@ fn build_menu<R: Runtime>(app: &App<R>) -> tauri::Result<Menu<R>> {
         &[
             &open,
             &connect,
+            &quick_switcher,
+            &toggle_sidebar,
             &updates,
             &PredefinedMenuItem::separator(app)?,
             &quit,
@@ -46,6 +63,12 @@ pub fn install<R: Runtime>(app: &App<R>) -> tauri::Result<()> {
             "tray_open" => crate::deep_link::focus_main_window(app),
             "tray_connect" => {
                 let _ = app.emit("aulora://deep-link", vec![String::from("aulora://connect")]);
+            }
+            "tray_quick_switcher" => {
+                let _ = app.emit("aulora://quick-switcher", ());
+            }
+            "tray_toggle_sidebar" => {
+                let _ = app.emit("aulora://toggle-sidebar", ());
             }
             "tray_updates" => crate::updater::spawn_menu_check(app),
             "tray_quit" => app.exit(0),

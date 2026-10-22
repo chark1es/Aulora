@@ -1,6 +1,6 @@
 # syntax=docker/dockerfile:1.7
 #
-# Aulora bot runner image (compose profile `bots`).
+# Aulora bot runner image (the `bot-runner` compose service, started by default).
 #
 # Supervises user-created TypeScript and Python bots: one sandboxed process per
 # enabled bot, each with its own uid/gid, work directory and resource limits.

@@ -1,6 +1,6 @@
 import type { ChannelSummary } from "@aulora/core";
 import { hasPermission, Permission, type PermissionName } from "@aulora/core";
-import { Heading, Icon, IconButton, Text } from "@aulora/ui-web";
+import { Icon, IconButton, Text } from "@aulora/ui-web";
 import { useMemo, useState } from "react";
 import {
   type CategoryView,
@@ -10,6 +10,8 @@ import {
   roleRef,
 } from "../../lib/workspace-admin";
 import { AddonsSettings } from "./AddonsSettings";
+import { AdminNav } from "./AdminNav";
+import { AdminPageHeader } from "./AdminPageHeader";
 import { AuditLogViewer } from "./AuditLogViewer";
 import { BotsSettings } from "./bots/BotsSettings";
 import type { Callback } from "./callbacks";
@@ -18,6 +20,7 @@ import { InstanceAdminPanel } from "./instance/InstanceAdminPanel";
 import { MemberManager } from "./MemberManager";
 import { PermissionsPanel, type ScopePage } from "./PermissionsPanel";
 import { RoleEditor, type RolePage } from "./RoleEditor";
+import { buildSections, type TabId } from "./sections";
 import { WorkspaceBranding } from "./WorkspaceBranding";
 import { WorkspaceSettings } from "./WorkspaceSettings";
 
@@ -41,17 +44,6 @@ export interface AdminPanelProps {
   readonly onClose: () => void;
 }
 
-type TabId =
-  | "roles"
-  | "members"
-  | "invites"
-  | "permissions"
-  | "audit"
-  | "workspace"
-  | "addons"
-  | "bots"
-  | "instance";
-
 type AdminPage = RolePage | ScopePage;
 
 interface Nav {
@@ -59,75 +51,21 @@ interface Nav {
   readonly page: AdminPage | null;
 }
 
-interface AdminTab {
-  readonly id: TabId;
-  readonly label: string;
-}
-
-const TAB_LABELS = new Map<TabId, string>([
-  ["roles", "Roles"],
-  ["members", "Members"],
-  ["invites", "Invites"],
-  ["permissions", "Permissions"],
-  ["audit", "Audit log"],
-  ["workspace", "Workspace"],
-  ["addons", "Addons"],
-  ["bots", "Bots"],
-  ["instance", "Instance"],
-]);
-
 const PERMISSION_BITS = new Map<PermissionName, bigint>(
   Object.entries(Permission) as [PermissionName, bigint][],
 );
 
-function buildTabs(
-  permission: Callback<[name: PermissionName], boolean>,
-  isOwner: boolean,
-): AdminTab[] {
-  const tabs: AdminTab[] = [];
-  if (permission("ManageRoles")) {
-    tabs.push({ id: "roles", label: "Roles" });
-  }
-  if (
-    permission("ManageRoles") ||
-    permission("Kick") ||
-    permission("Ban") ||
-    permission("Timeout") ||
-    permission("ManageNicknames")
-  ) {
-    tabs.push({ id: "members", label: "Members" });
-  }
-  if (permission("CreateInvites") || permission("DeleteInvites")) {
-    tabs.push({ id: "invites", label: "Invites" });
-  }
-  if (permission("ManageChannels")) {
-    tabs.push({ id: "permissions", label: "Permissions" });
-  }
-  if (permission("ViewAuditLog")) {
-    tabs.push({ id: "audit", label: "Audit log" });
-  }
-  if (permission("ManageWorkspace")) {
-    tabs.push({ id: "workspace", label: "Workspace" });
-    tabs.push({ id: "addons", label: "Addons" });
-  }
-  if (permission("ManageBots")) {
-    tabs.push({ id: "bots", label: "Bots" });
-  }
-  if (isOwner) {
-    tabs.push({ id: "instance", label: "Instance" });
-  }
-  return tabs;
+interface AdminLookups {
+  readonly memberNames: ReadonlyMap<string, string>;
+  readonly roleNames: ReadonlyMap<string, string>;
+  readonly categoryNames: ReadonlyMap<string, string>;
 }
 
-/** The workspace admin console: roles, members, overrides and audit. */
-export function AdminPanel(props: AdminPanelProps) {
-  const { viewer, ownerId, roles, members, categories, channels, channelNames, origin, onClose } =
-    props;
-  const permission = (name: PermissionName): boolean =>
-    hasPermission(viewer.permissions, PERMISSION_BITS.get(name) ?? 0n);
-
-  const tabs = buildTabs(permission, viewer.isOwner);
-
+function useAdminLookups(
+  roles: readonly RoleView[],
+  members: readonly MemberView[],
+  categories: readonly CategoryView[],
+): AdminLookups {
   const memberNames = useMemo(() => {
     const map = new Map<string, string>();
     for (const member of members) {
@@ -153,126 +91,84 @@ export function AdminPanel(props: AdminPanelProps) {
     return map;
   }, [categories]);
 
-  const [nav, setNav] = useState<Nav>({ tab: tabs[0]?.id ?? "roles", page: null });
+  return { memberNames, roleNames, categoryNames };
+}
 
-  const drilled = nav.page !== null;
+function AdminPanelHeader({ onClose }: { readonly onClose: () => void }) {
+  return (
+    <header className="material-chrome flex h-[52px] shrink-0 items-center gap-2 border-b border-border px-3">
+      <h2 className="min-w-0 flex-1 truncate text-[14px] font-semibold tracking-[-0.01em] text-text">
+        Workspace settings
+      </h2>
+      <IconButton label="Close admin panel" onClick={onClose}>
+        <Icon name="x" size={16} />
+      </IconButton>
+    </header>
+  );
+}
+
+/**
+ * Workspace settings: a grouped sidebar of admin pages next to one page at a
+ * time, with page headers, inset lists and inline save rows. Every section
+ * still obeys the same permission checks as before.
+ */
+export function AdminPanel(props: AdminPanelProps) {
+  const { viewer, ownerId, roles, members, categories, channels, channelNames, origin, onClose } =
+    props;
+  const permission = (name: PermissionName): boolean =>
+    hasPermission(viewer.permissions, PERMISSION_BITS.get(name) ?? 0n);
+
+  const sections = buildSections(permission, viewer.isOwner);
+  const { memberNames, roleNames, categoryNames } = useAdminLookups(roles, members, categories);
+
+  const [nav, setNav] = useState<Nav>({ tab: sections[0]?.id ?? "roles", page: null });
 
   function goToTab(tab: TabId) {
     setNav({ tab, page: null });
-  }
-
-  function goBack() {
-    setNav({ tab: nav.tab, page: null });
   }
 
   return (
     <section
       className="pane flex h-full min-w-0 flex-1 flex-col bg-surface-1"
       data-testid="admin-panel"
-      aria-label="Workspace admin"
+      aria-label="Workspace settings"
     >
-      <AdminPanelHeader
-        drilled={drilled}
-        tab={nav.tab}
-        isOwner={viewer.isOwner}
-        tabs={tabs}
-        onGoToTab={goToTab}
-        onBack={goBack}
-        onClose={onClose}
-      />
+      <AdminPanelHeader onClose={onClose} />
 
-      <div className="min-h-0 flex-1 overflow-y-auto">
-        <div className="mx-auto flex w-full max-w-[1120px] flex-col gap-6 p-5">
-          <AdminPanelBody
-            nav={nav}
-            tabs={tabs}
-            permission={permission}
-            viewer={viewer}
-            ownerId={ownerId}
-            roles={roles}
-            members={members}
-            categories={categories}
-            channels={channels}
-            {...(channelNames !== undefined ? { channelNames } : {})}
-            origin={origin}
-            memberNames={memberNames}
-            roleNames={roleNames}
-            categoryNames={categoryNames}
-            onNavigate={(tab, page) => {
-              setNav({ tab, page });
-            }}
-          />
+      <div className="flex min-h-0 flex-1 flex-col md:flex-row">
+        <AdminNav sections={sections} active={nav.tab} onSelect={goToTab} />
+
+        <div className="min-h-0 flex-1 overflow-y-auto">
+          <div className="flex w-full max-w-[784px] flex-col px-8 pb-20 pt-8 lg:px-12">
+            <AdminPanelBody
+              nav={nav}
+              hasSections={sections.length > 0}
+              permission={permission}
+              viewer={viewer}
+              ownerId={ownerId}
+              roles={roles}
+              members={members}
+              categories={categories}
+              channels={channels}
+              {...(channelNames !== undefined ? { channelNames } : {})}
+              origin={origin}
+              memberNames={memberNames}
+              roleNames={roleNames}
+              categoryNames={categoryNames}
+              onNavigate={(tab, page) => {
+                setNav({ tab, page });
+              }}
+            />
+          </div>
         </div>
       </div>
     </section>
   );
 }
 
-interface AdminPanelHeaderProps {
-  readonly drilled: boolean;
-  readonly tab: TabId;
-  readonly isOwner: boolean;
-  readonly tabs: readonly AdminTab[];
-  readonly onGoToTab: Callback<[tab: TabId]>;
-  readonly onBack: () => void;
-  readonly onClose: () => void;
-}
-
-function AdminPanelHeader(props: AdminPanelHeaderProps) {
-  const { drilled, tab, isOwner, tabs, onGoToTab, onBack, onClose } = props;
-  return (
-    <>
-      <header className="material-chrome flex h-[52px] shrink-0 items-center gap-2 border-b border-border px-3">
-        {drilled && (
-          <IconButton label="Back" onClick={onBack}>
-            <Icon name="chevron-left" size={16} />
-          </IconButton>
-        )}
-        <Heading level={3} className="min-w-0 flex-1 truncate">
-          {drilled ? (TAB_LABELS.get(tab) ?? "Workspace admin") : "Workspace admin"}
-        </Heading>
-        {!drilled && isOwner && (
-          <span
-            className="shrink-0 rounded-full bg-accent-soft px-2 py-0.5 text-[11px] font-medium text-accent"
-            data-testid="admin-owner-badge"
-          >
-            Admin
-          </span>
-        )}
-        <IconButton label="Close admin panel" onClick={onClose}>
-          <Icon name="x" size={16} />
-        </IconButton>
-      </header>
-
-      <nav
-        className="flex shrink-0 flex-wrap gap-1 border-b border-border px-3 py-2"
-        aria-label="Admin sections"
-      >
-        {tabs.map((entry) => (
-          <button
-            key={entry.id}
-            type="button"
-            aria-current={tab === entry.id ? "page" : undefined}
-            className={
-              tab === entry.id
-                ? "rounded-[7px] bg-surface-3 px-3 py-1 text-[13px] font-medium text-text"
-                : "rounded-[7px] px-3 py-1 text-[13px] text-text-muted transition hover:bg-surface-2 hover:text-text"
-            }
-            onClick={() => {
-              onGoToTab(entry.id);
-            }}
-          >
-            {entry.label}
-          </button>
-        ))}
-      </nav>
-    </>
-  );
-}
-
 interface AdminPanelBodyProps {
   readonly nav: Nav;
-  readonly tabs: readonly AdminTab[];
+  readonly hasSections: boolean;
   readonly permission: Callback<[name: PermissionName], boolean>;
   readonly viewer: AdminPanelViewer;
   readonly ownerId: string | null;
@@ -288,21 +184,17 @@ interface AdminPanelBodyProps {
   readonly onNavigate: Callback<[tab: TabId, page: AdminPage | null]>;
 }
 
+const SYSTEM_TABS = new Set<TabId>(["audit", "workspace", "addons", "bots", "instance"]);
+
 function AdminPanelBody(props: AdminPanelBodyProps) {
-  if (props.tabs.length === 0) {
+  if (!props.hasSections) {
     return (
       <Text tone="muted" size="sm">
         You do not have access to any admin sections.
       </Text>
     );
   }
-  if (
-    props.nav.tab === "audit" ||
-    props.nav.tab === "workspace" ||
-    props.nav.tab === "addons" ||
-    props.nav.tab === "bots" ||
-    props.nav.tab === "instance"
-  ) {
+  if (SYSTEM_TABS.has(props.nav.tab)) {
     return <AdminPanelSystemBody {...props} />;
   }
   return <AdminPanelWorkspaceBody {...props} />;
@@ -346,6 +238,13 @@ function AdminPanelWorkspaceBody(props: AdminPanelBodyProps) {
             manageNicknames: permission("ManageNicknames"),
             changeOwnNickname: permission("ChangeOwnNickname"),
           }}
+          {...(permission("CreateInvites") || permission("DeleteInvites")
+            ? {
+                onOpenInvites: () => {
+                  onNavigate("invites", null);
+                },
+              }
+            : {})}
         />
       )}
       {nav.tab === "invites" && (
@@ -387,6 +286,10 @@ function AdminPanelSystemBody(props: AdminPanelBodyProps) {
       )}
       {nav.tab === "workspace" && (
         <div className="flex flex-col gap-8" data-testid="settings-workspace">
+          <AdminPageHeader
+            title="General"
+            description="Name, branding, how people join, and calling."
+          />
           <WorkspaceBranding canManageWorkspace={permission("ManageWorkspace")} />
           <WorkspaceSettings canManageWorkspace={permission("ManageWorkspace")} />
         </div>

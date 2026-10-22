@@ -1,5 +1,5 @@
 import type { IconName } from "@aulora/tokens";
-import { Button, EmptyState, Heading, Icon, Spinner, Text } from "@aulora/ui-web";
+import { Button, EmptyState, Icon, Spinner, Text } from "@aulora/ui-web";
 import { useQuery } from "convex/react";
 import { useState } from "react";
 import { api } from "../../../../../packages/convex/convex/_generated/api";
@@ -9,6 +9,7 @@ import {
   formatAuditEvent,
   shortId,
 } from "../../lib/audit-format";
+import { AdminPageHeader } from "./AdminPageHeader";
 
 export interface AuditLogViewerProps {
   readonly canViewAuditLog: boolean;
@@ -27,15 +28,6 @@ const CATEGORY_ICON = new Map<AuditCategory, IconName>([
   ["channel", "hash"],
   ["server", "settings"],
   ["other", "file"],
-]);
-
-const CATEGORY_ACCENT = new Map<AuditCategory, string>([
-  ["role", "bg-accent-soft text-accent"],
-  ["member", "bg-secondary/10 text-secondary"],
-  ["category", "bg-surface-3 text-text-muted"],
-  ["channel", "bg-accent-soft text-accent"],
-  ["server", "bg-surface-3 text-text-muted"],
-  ["other", "bg-surface-3 text-text-muted"],
 ]);
 
 /** A compact "2h ago"-style age for a timestamp. */
@@ -76,9 +68,15 @@ export function AuditLogViewer({
 
   if (!canViewAuditLog) {
     return (
-      <Text tone="muted" size="sm" data-testid="audit-locked">
-        You need the View audit log permission to read the audit log.
-      </Text>
+      <div className="flex flex-col gap-8" data-testid="audit-locked">
+        <AdminPageHeader
+          title="Audit log"
+          description="Recent admin activity across this workspace."
+        />
+        <Text tone="muted" size="sm">
+          You need the View audit log permission to read the audit log.
+        </Text>
+      </div>
     );
   }
 
@@ -99,22 +97,25 @@ export function AuditLogViewer({
   }
 
   return (
-    <div className="flex flex-col gap-3" data-testid="audit-log">
-      <header className="flex flex-col gap-1">
-        <Heading level={3}>Audit log</Heading>
-        <Text size="sm" tone="muted">
-          Recent admin activity across this workspace.
-        </Text>
-      </header>
+    <div className="flex flex-col gap-8" data-testid="audit-log">
+      <AdminPageHeader
+        title="Audit log"
+        description="Recent admin activity across this workspace."
+      />
 
       {result === undefined ? (
         <div className="flex justify-center py-8">
           <Spinner size={22} label="Loading audit log" />
         </div>
       ) : rows.length === 0 ? (
-        <EmptyState size="sm" icon="file" title="Nothing recorded yet" />
+        <EmptyState
+          size="sm"
+          icon="file"
+          title="Nothing recorded yet"
+          description="Admin actions appear here as they happen."
+        />
       ) : (
-        <ul className="divide-y divide-border overflow-hidden rounded-[12px] border border-border bg-surface-2">
+        <ul className="divide-y divide-border/60 overflow-hidden rounded-[12px] bg-surface-2">
           {rows.map((row) => {
             const category = auditCategory(row.action);
             const actor = row.actorName || memberNames?.get(row.actorId) || shortId(row.actorId);
@@ -123,13 +124,13 @@ export function AuditLogViewer({
               <li
                 key={row.id}
                 data-testid="audit-row"
-                className="flex items-center gap-3 px-3.5 py-2.5 transition hover:bg-surface-3/50"
+                className="flex min-h-[44px] items-center gap-2.5 px-4 py-2 transition hover:bg-surface-3/40"
               >
-                <span
-                  className={`flex h-8 w-8 shrink-0 items-center justify-center rounded-[9px] ${CATEGORY_ACCENT.get(category) ?? ""}`}
-                >
-                  <Icon name={CATEGORY_ICON.get(category) ?? "file"} size={16} />
-                </span>
+                <Icon
+                  name={CATEGORY_ICON.get(category) ?? "file"}
+                  size={14}
+                  className="shrink-0 text-text-muted"
+                />
                 <div className="min-w-0 flex-1">
                   <Text size="sm" className="truncate">
                     {formatAuditEvent(row.action, row.meta, {

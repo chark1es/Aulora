@@ -15,7 +15,27 @@ mod tray;
 mod updater;
 mod window;
 
+use tauri::webview::{PermissionKind, PermissionResponse};
 use tauri::Manager;
+
+/// Auto-allows the media and notification prompts the bundled client asks for
+/// in its own main webview. The OS-level prompt (the macOS microphone/camera
+/// TCC dialog) is the native one and is untouched; anything else keeps the
+/// webview's default prompt.
+fn permission_response<R: tauri::Runtime>(
+    webview: &tauri::Webview<R>,
+    kind: PermissionKind,
+) -> PermissionResponse {
+    if webview.label() != "main" {
+        return PermissionResponse::Default;
+    }
+    match kind {
+        PermissionKind::Microphone | PermissionKind::Camera | PermissionKind::Notifications => {
+            PermissionResponse::Allow
+        }
+        _ => PermissionResponse::Default,
+    }
+}
 
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
@@ -34,6 +54,7 @@ pub fn run() {
     builder
         .plugin(tauri_plugin_deep_link::init())
         .plugin(tauri_plugin_notification::init())
+        .on_permission_request(|webview, kind| permission_response(&webview, kind))
         .manage(deep_link::DeepLinkState::default())
         .manage(updater::AppUpdateState::default())
         .manage(mini_window::MiniWindowState::default())
@@ -42,6 +63,7 @@ pub fn run() {
             commands::enter_mini_window,
             commands::exit_mini_window,
             commands::is_mini_window,
+            commands::toggle_fullscreen,
             commands::set_unread_badge,
             commands::show_notification,
             commands::open_external,
@@ -66,16 +88,31 @@ pub fn run() {
         .expect("error while building the Aulora desktop shell")
         .run(|app, event| {
             // Closing the last window keeps the app in the tray/menu bar on
-            // desktop; quitting goes through the app/tray Quit items.
-            if let tauri::RunEvent::WindowEvent { label, event, .. } = event {
-                if label == "main" {
-                    if let tauri::WindowEvent::CloseRequested { api, .. } = event {
-                        api.prevent_close();
-                        if let Some(window) = app.get_webview_window("main") {
-                            let _ = window.hide();
-                        }
+            // desktop; quitting goes through the app/tray Quit items. The same
+            // path runs while the window is a call PiP window: hiding it leaves
+            // the call (and its audio) running. The shell never resizes the
+            // window back on hide, so reopening shows the same PiP window.
+            match event {
+                tauri::RunEvent::WindowEvent {
+                    label,
+                    event: tauri::WindowEvent::CloseRequested { api, .. },
+                    ..
+                } if label == "main" => {
+                    api.prevent_close();
+                    if let Some(window) = app.get_webview_window("main") {
+                        let _ = window.hide();
                     }
                 }
+                // A Dock click on macOS reopens the app; restore whatever the
+                // window was (normal or call PiP) and focus it.
+                #[cfg(target_os = "macos")]
+                tauri::RunEvent::Reopen {
+                    has_visible_windows: false,
+                    ..
+                } => {
+                    deep_link::focus_main_window(app);
+                }
+                _ => {}
             }
         });
 }

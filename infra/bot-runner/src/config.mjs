@@ -1,8 +1,9 @@
 // Bot runner configuration, read from the environment.
 //
-// Every value has a safe default except the runner token. Base URLs are parsed
-// and normalized here so `api.mjs` is the only module that builds request URLs
-// (and does so from validated config, never from a caller-supplied string).
+// Every value has a safe default; a missing runner token means "bots are off"
+// and the entrypoint idles rather than crash-looping. Base URLs are parsed and
+// normalized here so `api.mjs` is the only module that builds request URLs (and
+// does so from validated config, never from a caller-supplied string).
 //
 // `BOT_RUNNER_TOKEN` must never reach a bot process; only `config.mjs` and the
 // API client ever hold it.
@@ -51,11 +52,9 @@ export function normalizeBaseUrl(value, fallback) {
 
 export function loadConfig(env = process.env) {
   // Environment only: bots share this container, so the token must never come
-  // from a file mount a bot uid could also read.
-  const runnerToken = nonEmpty(env.BOT_RUNNER_TOKEN);
-  if (typeof runnerToken !== "string" || runnerToken.length === 0) {
-    throw new Error("BOT_RUNNER_TOKEN is required");
-  }
+  // from a file mount a bot uid could also read. `undefined` means bots are off
+  // (first boot, or before `setup` generated the token): `main.mjs` idles.
+  const runnerToken = nonEmpty(env.BOT_RUNNER_TOKEN?.trim());
   const workDir = nonEmpty(env.WORK_DIR) ?? "/work";
   if (!workDir.startsWith("/")) {
     throw new Error("WORK_DIR must be an absolute path");

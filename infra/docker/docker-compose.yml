@@ -299,18 +299,18 @@ services:
         required: false
     logging: *logging
 
-  # Optional bot runner: supervises user-created bots, one sandboxed process
-  # per enabled bot. Enable with `docker compose --profile bots up -d`. Bots
-  # share the dedicated `bots` network with convex-backend only, so they cannot
-  # reach postgres, minio or the web container. This is container-level
-  # isolation, not a VM, and `ManageBots` is effectively code execution on this
-  # host: read README.md "Bots" before turning it on.
+  # Bot runner: supervises user-created bots, one sandboxed process per enabled
+  # bot. It starts with the stack; with no bots and no `BOT_RUNNER_TOKEN` it
+  # idles without crash-looping. Bots share the dedicated `bots` network with
+  # convex-backend only, so they cannot reach postgres, minio or the web
+  # container. This is container-level isolation, not a VM, and `ManageBots` is
+  # effectively code execution on this host: read README.md "Bots" before
+  # granting it.
   bot-runner:
     build:
       context: ../..
       dockerfile: infra/docker/bot-runner.Dockerfile
     image: aulora-bot-runner:local
-    profiles: ["bots"]
     restart: unless-stopped
     # Give the supervisor time to SIGTERM/SIGKILL every bot on stop.
     stop_grace_period: 20s

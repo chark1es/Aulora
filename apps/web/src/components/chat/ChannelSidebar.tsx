@@ -2,17 +2,19 @@
 import { Avatar } from "@aulora/avatars";
 import type { ChannelView } from "@aulora/core";
 import { partitionPinnedDms } from "@aulora/core";
-import { cn, Icon, useContextMenu } from "@aulora/ui-web";
+import { Icon, useContextMenu } from "@aulora/ui-web";
 import { Fragment, useEffect, useMemo, useState } from "react";
+import { shortcutLabel } from "../../lib/shortcuts";
 import type { CategoryView } from "../../lib/workspace-admin";
 import { VoiceChannelRow } from "../voice/VoiceChannelRow";
 import {
   AccountFooter,
-  CreateMenuButton,
   HeaderButton,
   SectionHeader,
+  SidebarNavButton,
 } from "./ChannelSidebarChrome";
 import { CategoryDropLine, ChannelRow, DmRow, DropLine } from "./ChannelSidebarRows";
+import { CreateMenuButton } from "./CreateMenu";
 import {
   buildChannelGroups,
   type ChannelSidebarProps,
@@ -25,6 +27,9 @@ import { useChannelDrag } from "./use-channel-drag";
 
 export { STATUS_OPTIONS, StatusDot } from "./ChannelSidebarChrome";
 export type { ChannelSidebarProps, ChannelUnread } from "./channel-sidebar-model";
+
+/** Built once so the keyboard hint matches the platform the app runs on. */
+const SEARCH_SHORTCUT = shortcutLabel(["Mod", "K"]);
 
 /**
  * The workspace sidebar: header, quick switcher trigger, channels grouped by
@@ -191,84 +196,51 @@ export function ChannelSidebar(props: ChannelSidebarProps) {
         <button
           type="button"
           onClick={props.onOpenSearch}
-          className="flex h-8 w-full items-center gap-2 rounded-[8px] bg-surface-3 px-2.5 text-[13px] text-text-muted transition hover:text-text"
+          className="flex h-8 w-full items-center gap-2 rounded-[8px] bg-surface-3 px-2.5 text-[13px] text-text-muted transition hover:text-text focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent"
         >
           <Icon name="search" size={15} />
           <span className="flex-1 text-left">Jump to or search…</span>
           <kbd className="rounded-[5px] border border-border bg-surface-2 px-1.5 font-sans text-[10px] font-medium">
-            ⌘K
+            {SEARCH_SHORTCUT}
           </kbd>
         </button>
       </div>
 
-      {props.onOpenThreads !== undefined && (
-        <div className="px-3 pb-2">
-          <button
-            type="button"
-            data-testid="sidebar-threads"
-            aria-current={props.mainView === "threads" ? "page" : undefined}
-            onClick={props.onOpenThreads}
-            className={cn(
-              "relative flex h-8 w-full items-center gap-2.5 rounded-[8px] pl-3 pr-2 text-left text-[13px] transition",
-              props.mainView === "threads"
-                ? "bg-surface-3 font-semibold text-text"
-                : "text-text-muted hover:bg-surface-3 hover:text-text",
-            )}
-          >
-            <Icon
-              name="thread"
-              size={16}
-              className={cn(props.mainView === "threads" && "text-accent")}
+      {(props.onOpenThreads !== undefined ||
+        props.onOpenKanban !== undefined ||
+        props.onOpenNotes !== undefined) && (
+        <nav aria-label="Workspace" className="flex flex-col gap-0.5 px-3 pb-2">
+          {props.onOpenThreads !== undefined && (
+            <SidebarNavButton
+              label="Threads"
+              testId="sidebar-threads"
+              icon={<Icon name="thread" size={16} />}
+              active={props.mainView === "threads"}
+              onClick={props.onOpenThreads}
+              badge={props.threadMentionCount ?? 0}
             />
-            <span className="min-w-0 flex-1 truncate">Threads</span>
-            {(props.threadMentionCount ?? 0) > 0 && (
-              <span className="flex h-4 min-w-4 items-center justify-center rounded-full bg-accent px-1 text-[10px] font-bold text-on-accent">
-                {(props.threadMentionCount ?? 0) > 9 ? "9+" : String(props.threadMentionCount)}
-              </span>
-            )}
-          </button>
-        </div>
+          )}
+          {props.onOpenKanban !== undefined && (
+            <SidebarNavButton
+              label="Kanban"
+              testId="sidebar-kanban"
+              icon={<Icon name="kanban" size={16} />}
+              active={props.mainView === "kanban"}
+              onClick={props.onOpenKanban}
+            />
+          )}
+          {props.onOpenNotes !== undefined && (
+            <SidebarNavButton
+              label="Notes"
+              testId="sidebar-notes"
+              icon={<Icon name="note" size={16} />}
+              active={props.mainView === "notes"}
+              onClick={props.onOpenNotes}
+            />
+          )}
+        </nav>
       )}
-
-      {props.onOpenKanban && (
-        <div className="px-3 pb-2">
-          <button
-            type="button"
-            data-testid="sidebar-kanban"
-            aria-current={props.mainView === "kanban" ? "page" : undefined}
-            onClick={props.onOpenKanban}
-            className={cn(
-              "flex h-8 w-full items-center gap-2.5 rounded-[8px] pl-3 pr-2 text-left text-[13px] transition focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent",
-              props.mainView === "kanban"
-                ? "bg-surface-3 font-semibold text-text"
-                : "text-text-muted hover:bg-surface-3 hover:text-text",
-            )}
-          >
-            <Icon name="kanban" size={16} />
-            <span>Kanban</span>
-          </button>
-        </div>
-      )}
-      {props.onOpenNotes && (
-        <div className="px-3 pb-2">
-          <button
-            type="button"
-            data-testid="sidebar-notes"
-            aria-current={props.mainView === "notes" ? "page" : undefined}
-            onClick={props.onOpenNotes}
-            className={cn(
-              "flex h-8 w-full items-center gap-2.5 rounded-[8px] pl-3 pr-2 text-left text-[13px] transition focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent",
-              props.mainView === "notes"
-                ? "bg-surface-3 font-semibold text-text"
-                : "text-text-muted hover:bg-surface-3 hover:text-text",
-            )}
-          >
-            <Icon name="note" size={16} />
-            <span>Notes</span>
-          </button>
-        </div>
-      )}
-      <nav className="min-h-0 flex-1 overflow-y-auto px-2 pb-3">
+      <nav aria-label="Channels" className="min-h-0 flex-1 overflow-y-auto px-2 pb-3">
         {groups.map((group) => {
           const category = group.category;
           const categoryDrag =

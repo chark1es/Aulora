@@ -633,12 +633,19 @@ export const listBans = query({
   handler: async (ctx) => {
     await requireWorkspacePermission(ctx, Permission.Ban);
     const rows = await ctx.db.query("bans").collect();
+    // Banned people are no longer members, so their names come from their accounts.
+    const names = await accountNames(
+      ctx,
+      rows.flatMap((row) => [row.userId, row.actorId]),
+    );
     return rows
       .sort((a, b) => b.at - a.at)
       .map((row) => ({
         id: row._id,
         userId: row.userId,
+        name: names.get(row.userId) ?? null,
         actorId: row.actorId,
+        actorName: names.get(row.actorId) ?? null,
         reason: row.reason ?? null,
         at: row.at,
         expiresAt: row.expiresAt ?? null,

@@ -25,6 +25,7 @@
         "decorations": true,
         "transparent": false,
         "dragDropEnabled": false,
+        "backgroundThrottling": "disabled",
         "visible": true
       }
     ],

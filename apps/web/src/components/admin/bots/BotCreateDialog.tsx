@@ -2,11 +2,11 @@
 import { BOT_LIMITS, type BotLanguage } from "@aulora/core";
 import {
   Button,
+  ChoiceList,
+  type ChoiceOption,
+  Icon,
   Input,
   Modal,
-  SegmentedControl,
-  Select,
-  type SelectOption,
   Text,
   Textarea,
 } from "@aulora/ui-web";
@@ -20,14 +20,29 @@ import {
   validateBotName,
 } from "./bot-format";
 
-const LANGUAGE_OPTIONS: readonly SelectOption<BotLanguage>[] = [
-  { value: "typescript", label: "TypeScript" },
-  { value: "python", label: "Python" },
+/** A language's mark in its tile: the file extension people already know it by. */
+function LanguageMark({ children }: { readonly children: string }) {
+  return <span className="font-mono text-[11px] font-semibold">{children}</span>;
+}
+
+const LANGUAGE_OPTIONS: readonly ChoiceOption<BotLanguage>[] = [
+  { value: "typescript", title: "TypeScript", leading: <LanguageMark>.ts</LanguageMark> },
+  { value: "python", title: "Python", leading: <LanguageMark>.py</LanguageMark> },
 ];
 
-const TEMPLATE_OPTIONS: readonly { value: BotTemplate; label: string }[] = [
-  { value: "hello", label: BOT_TEMPLATE_LABELS.hello },
-  { value: "blank", label: BOT_TEMPLATE_LABELS.blank },
+const TEMPLATE_OPTIONS: readonly ChoiceOption<BotTemplate>[] = [
+  {
+    value: "hello",
+    title: BOT_TEMPLATE_LABELS.hello,
+    description: "A working bot that answers a message, to edit from",
+    leading: <Icon name="message" size={16} />,
+  },
+  {
+    value: "blank",
+    title: BOT_TEMPLATE_LABELS.blank,
+    description: "Just the connection, nothing else",
+    leading: <Icon name="file" size={16} />,
+  },
 ];
 
 export interface BotCreateDialogProps {
@@ -42,17 +57,14 @@ interface BotTemplateFieldProps {
 }
 
 function BotTemplateField(props: BotTemplateFieldProps) {
-  const { template, onChange } = props;
   return (
     <div className="flex flex-col gap-1.5">
-      <span className="text-[13px] font-medium text-text-muted">Template</span>
-      <SegmentedControl
+      <span className="text-[12.5px] font-medium text-text">Start from</span>
+      <ChoiceList
         label="Template"
-        value={template}
+        value={props.template}
         options={TEMPLATE_OPTIONS}
-        onChange={(next) => {
-          onChange(next);
-        }}
+        onChange={props.onChange}
       />
     </div>
   );
@@ -83,7 +95,7 @@ function BotCreateFields(props: BotCreateFieldsProps) {
     onTemplateChange,
   } = props;
   return (
-    <div className="flex flex-col gap-4">
+    <div className="flex flex-col gap-5">
       <Input
         label="Name"
         value={name}
@@ -103,14 +115,16 @@ function BotCreateFields(props: BotCreateFieldsProps) {
           onDescriptionChange(event.currentTarget.value);
         }}
       />
-      <Select
-        label="Language"
-        value={language}
-        options={LANGUAGE_OPTIONS}
-        onChange={(next) => {
-          onLanguageChange(next);
-        }}
-      />
+      <div className="flex flex-col gap-1.5">
+        <span className="text-[12.5px] font-medium text-text">Language</span>
+        <ChoiceList
+          label="Language"
+          layout="grid"
+          value={language}
+          options={LANGUAGE_OPTIONS}
+          onChange={onLanguageChange}
+        />
+      </div>
       <BotTemplateField template={template} onChange={onTemplateChange} />
       {error !== null && (
         <Text role="alert" tone="danger" size="sm">
@@ -188,7 +202,8 @@ export function BotCreateDialog(props: BotCreateDialogProps) {
       size="md"
       label="New bot"
       title="New bot"
-      description="Bots start disabled with no permissions. Add code and grants once it exists."
+      description="It starts switched off with no permissions. Add code and grant access once it exists."
+      icon={<Icon name="code" size={18} />}
       footer={<BotCreateFooter busy={busy} onClose={onClose} onSubmit={submit} />}
     >
       <BotCreateFields

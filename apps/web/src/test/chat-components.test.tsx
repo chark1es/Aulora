@@ -7,12 +7,14 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { createMockPort } from "../../../../packages/core/src/chat/testing";
 import { ChannelSidebar, type ChannelSidebarProps } from "../components/chat/ChannelSidebar";
 import { Composer } from "../components/chat/Composer";
+import { CreateCategoryModal } from "../components/chat/CreateCategoryModal";
 import { CreateChannelModal } from "../components/chat/CreateChannelModal";
 import { MessageList, type MessageListProps } from "../components/chat/MessageList";
 import { NewConversationDialog } from "../components/chat/NewConversationDialog";
 import { RichText } from "../components/chat/RichText";
 import type { ChatRuntime } from "../lib/chat-runtime";
 import { readDraft, writeDraft } from "../lib/drafts";
+import { shortcutLabel } from "../lib/shortcuts";
 import { useChannelSession } from "../lib/use-channel";
 
 const NOW = new Date(2026, 8, 25, 12, 0, 0).getTime();
@@ -430,6 +432,63 @@ describe("ChannelSidebar", () => {
     expect(screen.queryByRole("button", { name: "Create channel" })).not.toBeInTheDocument();
   });
 
+  it("stacks Threads, Kanban and Notes in one workspace nav", () => {
+    render(
+      <ChannelSidebar
+        {...sidebarProps({
+          onOpenThreads: vi.fn(),
+          onOpenKanban: vi.fn(),
+          onOpenNotes: vi.fn(),
+          mainView: "kanban",
+          threadMentionCount: 12,
+        })}
+      />,
+    );
+    const nav = screen.getByRole("navigation", { name: "Workspace" });
+    const rows = within(nav).getAllByRole("button");
+    expect(rows.map((row) => row.textContent)).toEqual(["Threads9+", "Kanban", "Notes"]);
+    expect(within(nav).getByTestId("sidebar-kanban")).toHaveAttribute("aria-current", "page");
+    expect(within(nav).getByTestId("sidebar-threads")).not.toHaveAttribute("aria-current");
+  });
+
+  it("shows the platform's search shortcut", () => {
+    render(<ChannelSidebar {...sidebarProps()} />);
+    const search = screen.getByRole("button", { name: /Jump to or search/ });
+    expect(within(search).getByText(shortcutLabel(["Mod", "K"]))).toBeInTheDocument();
+  });
+
+  it("offers New channel and New category, with keyboard navigation", async () => {
+    const user = userEvent.setup();
+    const onCreateChannel = vi.fn();
+    const onCreateCategory = vi.fn();
+    render(
+      <ChannelSidebar
+        {...sidebarProps({ onCreateChannel, onCreateCategory, canManageCategories: true })}
+      />,
+    );
+    const trigger = screen.getByRole("button", { name: "Create channel or category" });
+    await user.click(trigger);
+    expect(screen.queryByRole("menuitem", { name: "New text channel" })).not.toBeInTheDocument();
+    expect(screen.queryByRole("menuitem", { name: "New voice channel" })).not.toBeInTheDocument();
+    const channelItem = screen.getByRole("menuitem", { name: "New channel" });
+    const categoryItem = screen.getByRole("menuitem", { name: "New category" });
+    await waitFor(() => {
+      expect(channelItem).toHaveFocus();
+    });
+    await user.keyboard("{ArrowDown}");
+    expect(categoryItem).toHaveFocus();
+    await user.keyboard("{ArrowUp}");
+    expect(channelItem).toHaveFocus();
+    await user.keyboard("{Escape}");
+    expect(screen.queryByRole("menu")).not.toBeInTheDocument();
+    expect(trigger).toHaveFocus();
+
+    await user.click(trigger);
+    await user.click(screen.getByRole("menuitem", { name: "New channel" }));
+    expect(onCreateChannel).toHaveBeenCalledWith("text");
+    expect(onCreateCategory).not.toHaveBeenCalled();
+  });
+
   it("collapses a section and remembers it", async () => {
     const user = userEvent.setup();
     const { unmount } = render(<ChannelSidebar {...sidebarProps()} />);
@@ -614,15 +673,21 @@ describe("NewConversationDialog", () => {
   });
 });
 
+async function focusChannelName() {
+  await waitFor(() => {
+    expect(screen.getByLabelText("Channel name")).toHaveFocus();
+  });
+}
+
 describe("CreateChannelModal", () => {
   it("submits a slugged name, kind and privacy", async () => {
-    const { CreateChannelModal } = await import("../components/chat/CreateChannelModal");
     const user = userEvent.setup();
     const onCreate = vi.fn();
     render(<CreateChannelModal open onClose={vi.fn()} onCreate={onCreate} />);
+    await focusChannelName();
     await user.type(screen.getByLabelText("Channel name"), "Release Notes");
-    await user.click(screen.getByRole("radio", { name: /Announcements/ }));
-    await user.click(screen.getByRole("switch", { name: "Make private" }));
+    await user.click(screen.getByRole("radio", { name: /Announcement/ }));
+    await user.click(screen.getByRole("switch", { name: "Private channel" }));
     await user.click(screen.getByRole("button", { name: "Create channel" }));
     expect(onCreate).toHaveBeenCalledWith({
       name: "release-notes",
@@ -634,6 +699,30 @@ describe("CreateChannelModal", () => {
   it("keeps the primary action disabled until a name is given", () => {
     render(<CreateChannelModal open onClose={vi.fn()} onCreate={vi.fn()} />);
     expect(screen.getByRole("button", { name: "Create channel" })).toBeDisabled();
+  });
+
+  it("preselects the requested kind and moves it with arrow keys", async () => {
+    const user = userEvent.setup();
+    render(<CreateChannelModal open initialKind="voice" onClose={vi.fn()} onCreate={vi.fn()} />);
+    await focusChannelName();
+    const voice = screen.getByRole("radio", { name: /Voice/ });
+    expect(voice).toBeChecked();
+    const text = screen.getByRole("radio", { name: /^Text/ });
+    await user.click(text);
+    await user.keyboard("{ArrowDown}");
+    expect(voice).toBeChecked();
+    expect(voice).toHaveFocus();
+  });
+
+  it("hints at the slug only when it differs from the typed name", async () => {
+    const user = userEvent.setup();
+    render(<CreateChannelModal open onClose={vi.fn()} onCreate={vi.fn()} />);
+    await focusChannelName();
+    const name = screen.getByLabelText("Channel name");
+    await user.type(name, "product");
+    expect(screen.queryByText("Will be created as #product")).not.toBeInTheDocument();
+    await user.type(name, " Launch");
+    expect(screen.getByText("Will be created as #product-launch")).toBeInTheDocument();
   });
 
   it("collects role and member whitelists for a private channel", async () => {
@@ -651,8 +740,9 @@ describe("CreateChannelModal", () => {
         roles={[{ id: "r-admin", name: "Admin" }]}
       />,
     );
+    await focusChannelName();
     await user.type(screen.getByLabelText("Channel name"), "secret");
-    await user.click(screen.getByRole("switch", { name: "Make private" }));
+    await user.click(screen.getByRole("switch", { name: "Private channel" }));
     await user.click(screen.getByRole("button", { name: /^Admin/ }));
     await user.click(screen.getByRole("button", { name: /Ada Lovelace/ }));
     await user.click(screen.getByRole("button", { name: "Create channel" }));
@@ -664,5 +754,19 @@ describe("CreateChannelModal", () => {
         memberIds: ["u-ada"],
       }),
     );
+  });
+});
+
+describe("CreateCategoryModal", () => {
+  it("submits the trimmed category name", async () => {
+    const user = userEvent.setup();
+    const onSubmit = vi.fn();
+    render(<CreateCategoryModal open onClose={vi.fn()} onSubmit={onSubmit} />);
+    await waitFor(() => {
+      expect(screen.getByLabelText("Category name")).toHaveFocus();
+    });
+    await user.type(screen.getByLabelText("Category name"), "  Product  ");
+    await user.click(screen.getByRole("button", { name: "Create category" }));
+    expect(onSubmit).toHaveBeenCalledWith("Product");
   });
 });

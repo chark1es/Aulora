@@ -136,8 +136,8 @@ function ColumnRow(props: ColumnRowProps) {
       onDragLeave={drag.onDragLeave}
       onDrop={drag.onDrop}
       className={cn(
-        "group relative flex items-center gap-1.5 rounded-[10px] border border-border bg-surface-1 py-1 pl-1 pr-1.5",
-        "motion-safe:transition hover:border-text-muted/30 hover:bg-surface-2",
+        "group relative flex items-center gap-1.5 rounded-[9px] border border-transparent py-1 pl-1 pr-1.5",
+        "motion-safe:transition hover:bg-surface-3/60",
         drag.dragging &&
           "border-accent/60 bg-surface-2 shadow-lg shadow-black/20 ring-1 ring-accent/30 motion-safe:scale-[1.01]",
       )}
@@ -276,18 +276,18 @@ export function ColumnList({ boardId, columns, cards, onChange }: ColumnListProp
   };
 
   return (
-    <fieldset className="flex flex-col gap-2">
-      <legend className="flex w-full items-baseline justify-between gap-3 text-[13px] font-medium">
+    <fieldset className="flex flex-col gap-3">
+      <legend className="mb-1.5 flex w-full items-baseline justify-between gap-3 text-[13.5px] font-semibold text-text">
         <span>Columns</span>
-        <span className="text-[11px] font-normal tabular-nums text-text-muted">
+        <span className="text-[12px] font-normal tabular-nums text-text-muted">
           {columns.length} / {MAX_COLUMNS}
         </span>
       </legend>
-      <p id={hintId} className="text-xs text-text-muted">
+      <p id={hintId} className="text-[12.5px] leading-snug text-text-muted">
         Drag a handle to reorder, or focus it and press space, then use the arrow keys. Move every
         card out of a column, including archived cards, before removing it.
       </p>
-      <ul className="flex flex-col gap-1.5">
+      <ul className="flex flex-col gap-0.5 rounded-[12px] bg-surface-1/70 p-1">
         {columns.map((column, index) => {
           const dragProps = drag.rowDrag(column.id);
           return (
@@ -318,7 +318,8 @@ export function ColumnList({ boardId, columns, cards, onChange }: ColumnListProp
         })}
       </ul>
       <Button
-        variant="secondary"
+        variant="ghost"
+        size="sm"
         className="self-start"
         leading={<Icon name="plus" size={14} />}
         disabled={columns.length >= MAX_COLUMNS}

@@ -1,5 +1,6 @@
+/* eslint-disable no-unused-vars -- the base rule reports parameter names in type signatures; Biome checks real unused code */
 import { Button, Icon, Input, Modal } from "@aulora/ui-web";
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useState } from "react";
 
 export interface CreateCategoryModalProps {
   readonly open: boolean;
@@ -29,22 +30,13 @@ export function CreateCategoryModal({
 }: CreateCategoryModalProps) {
   const [name, setName] = useState(initialName);
   const [submitting, setSubmitting] = useState(false);
-  const inputRef = useRef<HTMLInputElement | null>(null);
 
   // Reset the form each time the dialog opens.
   useEffect(() => {
     if (open) {
       setName(initialName);
       setSubmitting(false);
-      const frame = requestAnimationFrame(() => {
-        inputRef.current?.focus();
-        inputRef.current?.select();
-      });
-      return () => {
-        cancelAnimationFrame(frame);
-      };
     }
-    return undefined;
   }, [open, initialName]);
 
   const trimmed = name.trim();
@@ -74,11 +66,7 @@ export function CreateCategoryModal({
           ? "Give this category a new name."
           : "Group related channels together in the sidebar."
       }
-      icon={
-        <span className="flex h-9 w-9 items-center justify-center rounded-[9px] bg-accent-soft text-accent">
-          <Icon name={mode === "rename" ? "pencil" : "plus"} size={18} />
-        </span>
-      }
+      icon={<Icon name={mode === "rename" ? "pencil" : "folder-plus"} size={18} />}
       footer={
         <>
           <Button type="button" variant="ghost" onClick={onClose}>
@@ -97,18 +85,22 @@ export function CreateCategoryModal({
       }
     >
       <form
-        className="flex flex-col gap-3.5"
+        className="flex flex-col gap-4"
         onSubmit={(event) => {
           event.preventDefault();
           submit();
         }}
       >
         <Input
-          ref={inputRef}
           label="Category name"
           placeholder="e.g. Product"
           value={name}
           maxLength={80}
+          leading={<Icon name={mode === "rename" ? "pencil" : "folder-plus"} size={15} />}
+          onFocus={(event) => {
+            // Renaming starts with the old name selected, ready to replace.
+            event.currentTarget.select();
+          }}
           onChange={(event) => {
             setName(event.target.value);
           }}

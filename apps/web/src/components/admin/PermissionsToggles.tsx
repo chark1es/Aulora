@@ -33,15 +33,15 @@ export function PermissionsToggles({
     <div className="flex flex-col gap-5" data-testid={testId}>
       {PERMISSION_GROUPS.map((group) => (
         <fieldset key={group.label} className="flex flex-col gap-2" disabled={disabled}>
-          <legend className="mb-1 flex items-center gap-2 text-[11px] font-semibold uppercase tracking-[0.06em] text-text-muted">
+          <legend className="mb-1 flex items-center gap-2 text-[13px] font-semibold text-text">
             {group.label}
-            <span className="text-[10px] font-normal normal-case tracking-normal text-text-muted">
+            <span className="text-[11px] font-normal text-text-muted">
               {
                 group.permissions.filter(
                   (name) => (value & (PERMISSION_BITS.get(name) ?? 0n)) !== 0n,
                 ).length
               }
-              {group.permissions.length}
+              /{group.permissions.length}
             </span>
           </legend>
           <div className="grid grid-cols-1 gap-1.5 sm:grid-cols-2">
@@ -52,10 +52,10 @@ export function PermissionsToggles({
                   key={name}
                   htmlFor={`permission-${name}`}
                   className={cn(
-                    "group flex cursor-pointer items-center gap-2.5 rounded-[9px] border px-2.5 py-1.5 text-[12px] transition",
+                    "group flex cursor-pointer items-center gap-2.5 rounded-[8px] px-2.5 py-1.5 text-[12px] transition",
                     checked
-                      ? "border-accent/40 bg-accent-soft text-text"
-                      : "border-border bg-surface-2 text-text-muted hover:border-text-muted/40 hover:text-text",
+                      ? "bg-accent-soft text-text ring-1 ring-inset ring-accent/40"
+                      : "bg-surface-2 text-text-muted hover:bg-surface-3 hover:text-text",
                     disabled && "pointer-events-none opacity-50",
                   )}
                 >

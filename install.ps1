@@ -159,6 +159,11 @@ Write-Log "building and starting the stack (this can take a few minutes)..."
 Invoke-Compose @("up", "-d", "--build")
 Write-Log "waiting for first-run setup (idempotent)..."
 Invoke-Compose @("wait", "setup")
+# `setup` writes BOT_RUNNER_TOKEN to the env file, but Compose resolved the
+# token when the stack was created. Recreate the runner so it reads the current
+# value; it idles safely if no token exists.
+Write-Log "starting the bot runner..."
+Invoke-Compose @("up", "-d", "--no-deps", "--force-recreate", "bot-runner")
 if ($Backups) {
   Write-Log "starting the nightly backup runner..."
   Invoke-Compose @("--profile", "backups", "up", "-d", "--build")

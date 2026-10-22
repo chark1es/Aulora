@@ -1,4 +1,4 @@
-import { cn, Icon, IconButton } from "@aulora/ui-web";
+import { cn, Icon, IconButton, MODAL_SHADOW } from "@aulora/ui-web";
 import { type ReactNode, type RefObject, useEffect, useRef, useState } from "react";
 import { type NoteFolder, relativeTime } from "./types";
 import type { NotesController } from "./use-notes";
@@ -84,7 +84,8 @@ export function Menu({
         ref={ref}
         role="menu"
         className={cn(
-          "absolute z-50 max-h-[360px] overflow-y-auto rounded-[12px] border border-border bg-surface-2 p-1.5 shadow-xl",
+          "absolute z-50 max-h-[360px] overflow-y-auto rounded-[12px] bg-surface-2 p-1.5",
+          MODAL_SHADOW,
           className,
         )}
       >
