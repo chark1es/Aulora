@@ -18,7 +18,7 @@ bun run check
 
 Only stable `major.minor.patch` versions are supported by the release automation. API discovery's `apiVersion` is separate and remains 1 unless that contract changes.
 
-`main` is the development branch. The long-lived `release` branch is the stable install and Coolify deploy target. It is protected like `main`, so it advances only by merging a pull request from `main`, as recorded in the final checklist below.
+`main` is the development branch. The long-lived `release` branch is the stable install and Coolify deploy target. After a stable release is published, the Sync release branch workflow opens a promotion PR into `release` and enables auto-merge after required checks. Enable the repository automation settings described in [GitHub Actions builds and releases](github-actions.md#start-a-release).
 
 For a candidate, run [Actions, Release](https://github.com/chark1es/Aulora/actions/workflows/release.yml) on `main` with `publish=false`. It builds the current version and uploads a `complete-release` artifact without publishing. For v1, finish preparation at the current version, build a candidate, then merge the v1 version bump once ready. To test v1 installers separately, use the desktop candidate workflow with `version=1.0.0`; mobile candidates use the main Release workflow's current version.
 
@@ -71,7 +71,7 @@ For a candidate, run [Actions, Release](https://github.com/chark1es/Aulora/actio
 - [ ] Verify `SHA256SUMS`, license/notice files, and the web/docs and legal ZIP contents.
 - [ ] Host the docs site and privacy policy at stable public URLs and test navigation on desktop and mobile.
 - [ ] Merge the version bump to publish, or manually dispatch Release on `main` with `publish=true` for an unpublished current version.
-- [ ] Promote the protected `release` branch: open a pull request from `main` into `release`, let `Required checks` pass, and merge it. Protection requires a pull request, so the promotion can land a merge or squash commit rather than moving `release` to the exact tag object; `release` must *contain* the released code, not match the tag by SHA. Keep `release` an ancestor of `main` (prefer a fast-forwarding merge; if it lands ahead of `main`, merge it back before the next release) so the next promotion stays clean, then confirm a fresh `git clone --branch release` reports the released version.
+- [ ] Confirm the promotion PR created by Sync release branch passed its checks and merged, then confirm a fresh `git clone --branch release` reports the expected version. It promotes the current `main`, which may have advanced beyond the built commit. If promotion fails, resolve merge conflicts or workflow permissions and retry the sync workflow with the published tag.
 - [ ] Verify the release tag points to the built commit, assets are publicly downloadable, and updater/discovery URLs work.
 
 Windows installers are unsigned in the initial distribution. iOS IPA downloads are App Store submissions, and mobile store availability depends on approval. State these limitations in release notes.
