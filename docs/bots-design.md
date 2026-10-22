@@ -69,7 +69,7 @@ Commands: TypeScript `tsx main.ts` (tsx pinned in the image; `@aulora/bot` resol
 
 Container hardening (compose): own network `bots` shared only with `convex-backend` (no route to postgres/minio/web), `read_only: true`, tmpfs `/work` and `/tmp`, `cap_drop: [ALL]` + `cap_add: [SETUID, SETGID, CHOWN, KILL]` only for the uid switch, `security_opt: [no-new-privileges:true]`, `pids_limit`, `mem_limit`, `cpus`, `user: "0:0"` for the supervisor only (bots never run as root), no `env_file` and no host mounts. Config env: `BOT_RUNNER_TOKEN`, `CONVEX_HTTP_URL`, `CONVEX_SELF_HOSTED_URL`, `BOT_RUNNER_MAX_BOTS` (default 10), `BOT_RUNNER_BOT_MEMORY_MB` (default 256).
 
-The service has no Compose profile and starts with the stack. Without `BOT_RUNNER_TOKEN` (first boot, or the interval between `setup` writing `.env` and the next `up`) the entrypoint refreshes the health file and idles; it does not exit, so it cannot crash-loop. A Convex outage is also non-fatal: poll errors are logged and retried with the idle cadence.
+The service has no Compose profile and starts with the stack. The installers write `BOT_RUNNER_TOKEN` to `.env` before the first start (Coolify generates `SERVICE_PASSWORD_64_BOTRUNNER` for both `setup` and the runner). `BOT_RUNNER_ENABLED=false` is the off switch. When it is false, or `BOT_RUNNER_TOKEN` is missing (an older `.env`, or the interval between `setup` writing `.env` and the next `up`), the entrypoint refreshes the health file and idles; it does not exit, so it cannot crash-loop. A Convex outage is also non-fatal: poll errors are logged and retried with the idle cadence.
 
 ## SDKs (stdlib only, polling transport)
 

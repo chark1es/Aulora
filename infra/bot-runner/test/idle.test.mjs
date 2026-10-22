@@ -38,3 +38,16 @@ test("idle keeper survives an unwritable health file and stops cleanly", () => {
   idle.stop();
   assert.equal(logger.lines.length, 1);
 });
+
+test("idle keeper logs a custom reason, such as bots being disabled", () => {
+  const logger = silentLogger();
+  const idle = createIdleKeeper({
+    healthFile: "/definitely/not/writable/ready",
+    reason: "BOT_RUNNER_ENABLED is false; idling.",
+    intervalMs: 60_000,
+    logger,
+  });
+  idle.start();
+  idle.stop();
+  assert.match(logger.lines.join("\n"), /BOT_RUNNER_ENABLED is false/);
+});

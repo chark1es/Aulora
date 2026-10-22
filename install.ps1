@@ -140,6 +140,13 @@ if ($DryRun) {
 
 if (-not (Test-Path -LiteralPath $EnvFile)) {
   Copy-Item -LiteralPath $EnvExample -Destination $EnvFile
+  # Generate the bot runner token now so Compose has it when it first creates the
+  # runner; `setup` keeps an existing value instead of generating its own.
+  $tokenBytes = New-Object byte[] 48
+  $rng = [System.Security.Cryptography.RandomNumberGenerator]::Create()
+  try { $rng.GetBytes($tokenBytes) } finally { $rng.Dispose() }
+  $runnerToken = [Convert]::ToBase64String($tokenBytes).TrimEnd('=').Replace('+', '-').Replace('/', '_')
+  Write-EnvValue $EnvFile "BOT_RUNNER_TOKEN" $runnerToken
   Write-EnvValue $EnvFile "INSTANCE_NAME" $Instance
   Write-EnvValue $EnvFile "WORKSPACE_NAME" $Name
   Write-EnvValue $EnvFile "OWNER_EMAIL" $Email
@@ -159,9 +166,10 @@ Write-Log "building and starting the stack (this can take a few minutes)..."
 Invoke-Compose @("up", "-d", "--build")
 Write-Log "waiting for first-run setup (idempotent)..."
 Invoke-Compose @("wait", "setup")
-# `setup` writes BOT_RUNNER_TOKEN to the env file, but Compose resolved the
-# token when the stack was created. Recreate the runner so it reads the current
-# value; it idles safely if no token exists.
+# A fresh install already has BOT_RUNNER_TOKEN in the env file. An older env file
+# may not, and `setup` writes one then, but Compose resolved the token when the
+# stack was created. Recreate the runner so it reads the current value; it idles
+# safely if no token exists or BOT_RUNNER_ENABLED=false.
 Write-Log "starting the bot runner..."
 Invoke-Compose @("up", "-d", "--no-deps", "--force-recreate", "bot-runner")
 if ($Backups) {
