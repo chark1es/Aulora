@@ -27,6 +27,7 @@ export const BOT_BLOCKED_PERMISSIONS: bigint =
   Permission.ManageRoles |
   Permission.ManageWorkspace |
   Permission.ManageBots |
+  Permission.ManageWebhooks |
   Permission.CreateInvites |
   Permission.DeleteInvites |
   Permission.ViewAuditLog;

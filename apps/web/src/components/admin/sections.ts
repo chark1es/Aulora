@@ -13,6 +13,7 @@ export type TabId =
   | "workspace"
   | "addons"
   | "bots"
+  | "webhooks"
   | "instance";
 
 export type PermissionCheck = (name: PermissionName) => boolean;
@@ -61,6 +62,13 @@ const SECTION_DEFINITIONS: readonly SectionDefinition[] = [
     group: "workspace",
     icon: "code",
     allowed: (permission) => permission("ManageBots"),
+  },
+  {
+    id: "webhooks",
+    label: "Webhooks",
+    group: "workspace",
+    icon: "link",
+    allowed: (permission) => permission("ManageWebhooks"),
   },
   {
     id: "members",

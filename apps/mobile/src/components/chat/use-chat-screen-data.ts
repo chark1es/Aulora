@@ -19,6 +19,7 @@ import { buildPresenceScope } from "../../lib/presence-scope";
 import { recentSearchKey } from "../../lib/search-ui";
 import { useChannelSession } from "../../lib/use-channel";
 import { usePushRegistration } from "../../lib/use-push-registration";
+import { useWebhookNames } from "../../lib/use-webhook-names";
 import { useChat } from "../../providers/ChatProvider";
 import { useProfiles } from "../../providers/ProfileProvider";
 import { useSound } from "../../providers/SoundProvider";
@@ -138,8 +139,9 @@ function useChatScreenMentions(session: ChatScreenSession) {
   );
   const mentionMemberIds = useMemo(() => members.map((member) => member.userId), [members]);
 
+  const webhookNames = useWebhookNames();
   const memberNames = useMemo(() => {
-    const map = new Map<string, string>();
+    const map = new Map<string, string>(webhookNames);
     map.set(ownUserId, ownDisplayName);
     for (const member of members) {
       map.set(member.userId, member.displayName);
@@ -150,7 +152,7 @@ function useChatScreenMentions(session: ChatScreenSession) {
       }
     }
     return map;
-  }, [members, presence, ownUserId, ownDisplayName]);
+  }, [members, presence, ownUserId, ownDisplayName, webhookNames]);
 
   const memberColors = useMemo(() => {
     const map = new Map<string, string>();

@@ -46,6 +46,7 @@ const GROUPS = [
       { file: "kanban.md", label: "Kanban" },
       { file: "notes.md", label: "Notes" },
       { file: "bots.md", label: "Bots" },
+      { file: "webhooks.md", label: "Webhooks" },
     ],
   },
   {
