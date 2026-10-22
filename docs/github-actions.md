@@ -77,6 +77,22 @@ and creates `v1.0.0` at the exact commit it compiled only after every build
 succeeds. Files upload to a draft first; it becomes the latest release only after the upload completes. A rerun can resume an unpublished draft for the same source commit. Changing other settings without increasing the version does not
 publish a release. Existing published versions cannot be overwritten.
 
+After publication, [Sync release branch](../.github/workflows/sync-release.yml)
+merges the current `main` into a promotion branch, opens a PR into `release`, and
+enables auto-merge after required checks pass. It preserves commits already on
+`release`, reuses an open promotion PR on retries, and fails on conflicts. Drafts and prereleases are
+skipped, and the published tag must be an ancestor of `main`. The Release pipeline
+calls it directly because releases published with `GITHUB_TOKEN` do not trigger
+another workflow. Its `release: published` trigger also handles manual publication.
+To retry a failed promotion, run Sync release branch on `main` with the published
+`tag`; this does not rebuild or republish artifacts.
+
+Enable **Allow auto-merge** in repository settings and **Allow GitHub Actions to
+create and approve pull requests** in Actions settings. No additional token or
+branch protection bypass is needed. The workflow dispatches CI explicitly on the
+promotion branch because pushes made with `GITHUB_TOKEN` do not start CI. It uses
+`native=false` because the release pipeline already built the native apps.
+
 For a candidate or retry, open [Actions → Release](https://github.com/chark1es/Aulora/actions/workflows/release.yml),
 select `main`, and leave `publish` off. It builds the current checked-in version
 and uploads the complete release as an Actions artifact. Turning `publish` on

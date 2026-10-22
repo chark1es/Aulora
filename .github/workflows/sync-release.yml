@@ -1,0 +1,81 @@
+name: Sync release branch
+
+on:
+  release:
+    types: [published]
+  workflow_call:
+    inputs:
+      tag:
+        description: Published release tag
+        required: true
+        type: string
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: Published release tag to retry promotion for
+        required: true
+        type: string
+
+permissions:
+  actions: write
+  contents: write
+  pull-requests: write
+
+concurrency:
+  group: sync-release-branch
+  cancel-in-progress: false
+
+jobs:
+  sync:
+    name: Promote main through a release PR
+    runs-on: ubuntu-22.04
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: main
+          fetch-depth: 0
+      - name: Verify published stable release
+        id: release
+        env:
+          GH_TOKEN: ${{ github.token }}
+          RELEASE_TAG: ${{ inputs.tag || github.event.release.tag_name }}
+        run: |
+          gh release view "$RELEASE_TAG" --json isDraft,isPrerelease --jq '(.isDraft == false) and (.isPrerelease == false)' > "$RUNNER_TEMP/promote-release.txt"
+          if [ "$(cat "$RUNNER_TEMP/promote-release.txt")" != true ]; then
+            echo 'Skipping draft or prerelease.'
+            exit 0
+          fi
+          git merge-base --is-ancestor "refs/tags/$RELEASE_TAG" HEAD
+          echo 'promote=true' >> "$GITHUB_OUTPUT"
+      - name: Open promotion PR and enable auto-merge
+        if: steps.release.outputs.promote == 'true'
+        env:
+          GH_TOKEN: ${{ github.token }}
+          RELEASE_TAG: ${{ inputs.tag || github.event.release.tag_name }}
+        run: |
+          main_commit="$(git rev-parse HEAD)"
+          git fetch origin refs/heads/release:refs/remotes/origin/release
+          if git merge-base --is-ancestor "$main_commit" refs/remotes/origin/release; then
+            echo 'Release already contains main.'
+            exit 0
+          fi
+          branch="automation/sync-release-$RELEASE_TAG"
+          if git show-ref --verify --quiet "refs/remotes/origin/$branch"; then
+            git checkout -B "$branch" "refs/remotes/origin/$branch"
+          else
+            git checkout -b "$branch" refs/remotes/origin/release
+          fi
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          git merge --no-edit refs/remotes/origin/release
+          git merge --no-edit -m "Merge main into release after $RELEASE_TAG" "$main_commit"
+          git push origin "HEAD:refs/heads/$branch"
+          pr_url="$(gh pr list --base release --head "$branch" --state open --json url --jq '.[0].url // empty')"
+          if [ -z "$pr_url" ]; then
+            pr_url="$(gh pr create --base release --head "$branch" --title "Promote $RELEASE_TAG to release" --body "Merge main into release after publication of $RELEASE_TAG. Auto-merge waits for the required checks.")"
+          fi
+          # GITHUB_TOKEN pushes do not start CI, so dispatch it explicitly.
+          gh workflow run ci.yml --ref "$branch" -f native=false
+          gh pr merge "$pr_url" --auto --merge
+          echo "Promotion PR: $pr_url" >> "$GITHUB_STEP_SUMMARY"

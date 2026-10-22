@@ -168,3 +168,14 @@ jobs:
             gh release create "$tag" --draft --target "$GITHUB_SHA" --title "Aulora ${RELEASE_VERSION}" --notes-file dist/release/RELEASE_NOTES.md dist/release/*
           fi
           gh release edit "$tag" --notes-file dist/release/RELEASE_NOTES.md --draft=false --latest
+
+  sync-release:
+    name: Promote main to release
+    needs: [plan, publish]
+    permissions:
+      actions: write
+      contents: write
+      pull-requests: write
+    uses: ./.github/workflows/sync-release.yml
+    with:
+      tag: v${{ needs.plan.outputs.version }}
