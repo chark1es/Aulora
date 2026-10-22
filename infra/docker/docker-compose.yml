@@ -324,6 +324,7 @@ services:
       BOT_RUNNER_TOKEN: ${BOT_RUNNER_TOKEN:-}
       CONVEX_HTTP_URL: http://convex-backend:3211
       CONVEX_SELF_HOSTED_URL: http://convex-backend:3210
+      BOT_RUNNER_ENABLED: ${BOT_RUNNER_ENABLED:-true}
       BOT_RUNNER_MAX_BOTS: ${BOT_RUNNER_MAX_BOTS:-10}
       BOT_RUNNER_BOT_MEMORY_MB: ${BOT_RUNNER_BOT_MEMORY_MB:-256}
       WORK_DIR: /work

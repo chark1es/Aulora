@@ -27,6 +27,17 @@ test("loadConfig leaves the runner token unset so the entrypoint can idle", () =
   assert.equal(loadConfig({ BOT_RUNNER_TOKEN: "   " }).runnerToken, undefined);
 });
 
+test("loadConfig runs bots by default and honors BOT_RUNNER_ENABLED", () => {
+  assert.equal(loadConfig({}).enabled, true);
+  assert.equal(loadConfig({ BOT_RUNNER_ENABLED: "" }).enabled, true);
+  assert.equal(loadConfig({ BOT_RUNNER_ENABLED: "true" }).enabled, true);
+  for (const off of ["false", "FALSE", " 0 ", "no", "off"]) {
+    assert.equal(loadConfig({ BOT_RUNNER_ENABLED: off }).enabled, false, off);
+  }
+  // An unrecognized value must not silently disable bots.
+  assert.equal(loadConfig({ BOT_RUNNER_ENABLED: "maybe" }).enabled, true);
+});
+
 test("loadConfig reads the runner token and applies safe defaults", () => {
   const config = loadConfig({ BOT_RUNNER_TOKEN: "secret", CONVEX_HTTP_URL: "http://x:3211/" });
   assert.equal(config.runnerToken, "secret");

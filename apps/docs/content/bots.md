@@ -15,7 +15,7 @@ docker compose run --rm setup
 docker compose up -d --no-deps --force-recreate bot-runner
 ```
 
-The installer and `deploy.sh` do the recreate step for you. Without a runner token the container idles and stays healthy instead of restarting; until it has one, **Workspace settings → Bots** shows a banner and bots stay stopped. On Coolify, set `BOT_RUNNER_TOKEN` to a random string of at least 48 characters in the environment. See the Bots section of the [Docker README](https://github.com/chark1es/Aulora/blob/main/infra/docker/README.md#bots) for the sandbox model and tuning variables.
+The installer and `deploy.sh` do the recreate step for you. Without a runner token the container idles and stays healthy instead of restarting; until it has one, **Workspace settings → Bots** shows a banner and bots stay stopped. The installers generate the runner token before the first start, and Coolify generates one for you. To keep bots off, set `BOT_RUNNER_ENABLED=false` in `.env` (or the Coolify environment) and recreate the runner; the container then stays up but idle. See the Bots section of the [Docker README](https://github.com/chark1es/Aulora/blob/main/infra/docker/README.md#bots) for the sandbox model and tuning variables.
 
 ## Create a bot
 
