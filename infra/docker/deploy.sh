@@ -4,9 +4,11 @@
 #
 # Why this exists: `docker compose run setup` reuses whatever `aulora-setup`
 # image already exists, so a code change can silently deploy an old API. This
-# script always rebuilds the images that embed repository source (`web` and
-# `setup`) before recreating the web container and redeploying the Convex
-# functions. It is idempotent and safe to run after every update.
+# script always rebuilds the images that embed repository source (`web`,
+# `setup`, `smtp-gateway` and `bot-runner`) before recreating the web container
+# and redeploying the Convex functions. It is idempotent and safe to run after
+# every update. The bot runner is recreated after `setup` so it picks up a
+# newly generated BOT_RUNNER_TOKEN from `.env`.
 #
 # Usage:
 #   ./deploy.sh                     # rebuild + recreate web + redeploy functions
@@ -50,8 +52,8 @@ if [ "${pull}" = 1 ]; then
   "${compose[@]}" pull --ignore-buildable
 fi
 
-echo "==> Rebuilding local images (web, setup, smtp-gateway)"
-"${compose[@]}" build web setup smtp-gateway
+echo "==> Rebuilding local images (web, setup, smtp-gateway, bot-runner)"
+"${compose[@]}" build web setup smtp-gateway bot-runner
 
 echo "==> Recreating the web container"
 "${compose[@]}" up -d --no-deps --force-recreate web
@@ -59,6 +61,11 @@ echo "==> Recreating the web container"
 echo "==> Deploying Convex functions and refreshing the well-known document"
 "${compose[@]}" run --rm setup
 "${compose[@]}" up -d --no-deps --force-recreate smtp-gateway
+
+# `setup` may have just generated BOT_RUNNER_TOKEN. Recreate the runner so it
+# reads the current `.env` value; without a token it idles instead of exiting.
+echo "==> Starting the bot runner"
+"${compose[@]}" up -d --no-deps --force-recreate bot-runner
 
 version="$(sed -n 's/^export const AULORA_VERSION = "\([^"]*\)";.*/\1/p' ../../packages/convex/convex/lib/env.ts)"
 [ -n "$version" ] && printf '%s\n' "$version" > .deployed-version

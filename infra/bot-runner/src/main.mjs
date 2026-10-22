@@ -7,10 +7,26 @@
 
 import { createRunnerApi } from "./api.mjs";
 import { loadConfig } from "./config.mjs";
+import { createIdleKeeper } from "./idle.mjs";
 import { createRunner } from "./runner.mjs";
 
 async function main() {
   const config = loadConfig();
+  // No token yet (first boot before `setup`, or before the next Compose `up`
+  // re-reads `.env`): stay healthy and idle instead of exiting into a restart
+  // loop. The token is read from the environment at process start.
+  if (config.runnerToken === undefined) {
+    const idle = createIdleKeeper({ healthFile: config.healthFile });
+    idle.start();
+    const stopIdle = () => {
+      idle.stop();
+      process.exit(0);
+    };
+    process.on("SIGTERM", stopIdle);
+    process.on("SIGINT", stopIdle);
+    return;
+  }
+
   const api = createRunnerApi(config);
   const runner = createRunner({ config, api });
 

@@ -8,14 +8,14 @@ Bots are managed on the web app in **Workspace settings → Bots**, which needs 
 
 ## Turn it on
 
-Bots need the bot runner, which is an optional container. Run `setup` once so it generates the bot signing key and runner secret, then start the runner with the `bots` profile:
+Bots need the `bot-runner` container, which starts with the stack. Run `setup` once so it generates the bot signing key and runner secret, then recreate the runner so it reads the generated token:
 
 ```bash
 docker compose run --rm setup
-docker compose --profile bots up -d --build
+docker compose up -d --no-deps --force-recreate bot-runner
 ```
 
-Until the runner is up, **Workspace settings → Bots** shows a banner saying so and bots stay stopped. On Coolify, set `BOT_RUNNER_TOKEN` to a random string of at least 48 characters in the environment first, then run the runner from the host with `--profile bots`. See the Bots section of the [Docker README](https://github.com/chark1es/Aulora/blob/main/infra/docker/README.md#bots-optional) for the sandbox model and tuning variables.
+The installer and `deploy.sh` do the recreate step for you. Without a runner token the container idles and stays healthy instead of restarting; until it has one, **Workspace settings → Bots** shows a banner and bots stay stopped. On Coolify, set `BOT_RUNNER_TOKEN` to a random string of at least 48 characters in the environment. See the Bots section of the [Docker README](https://github.com/chark1es/Aulora/blob/main/infra/docker/README.md#bots) for the sandbox model and tuning variables.
 
 ## Create a bot
 

@@ -225,6 +225,12 @@ if ! compose wait setup; then
   die "setup failed; inspect the setup logs above"
 fi
 
+# `setup` writes BOT_RUNNER_TOKEN to the env file, but Compose resolved the
+# token when the stack was created. Recreate the runner so it reads the current
+# value; it idles safely if no token exists.
+log "starting the bot runner…"
+compose up -d --no-deps --force-recreate bot-runner
+
 if [ "$WITH_BACKUPS" = "1" ]; then
   log "starting the nightly backup runner…"
   compose --profile backups up -d --build

@@ -41,6 +41,17 @@ pub fn is_mini_window(state: State<'_, MiniWindowState>) -> bool {
     state.is_active()
 }
 
+/// Toggles the calling window between fullscreen and its restored size.
+/// Bound to F11 on Windows and Linux, where the shell has no menu bar.
+#[tauri::command]
+pub fn toggle_fullscreen(window: WebviewWindow) -> Result<bool, String> {
+    let fullscreen = window.is_fullscreen().map_err(|error| error.to_string())?;
+    window
+        .set_fullscreen(!fullscreen)
+        .map_err(|error| error.to_string())?;
+    Ok(!fullscreen)
+}
+
 /// Updates the Dock/taskbar unread badge for the calling window.
 #[tauri::command]
 pub fn set_unread_badge(window: WebviewWindow, count: i64) -> Result<(), String> {

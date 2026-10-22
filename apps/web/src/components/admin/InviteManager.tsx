@@ -3,10 +3,10 @@ import { useMutation, usePaginatedQuery } from "convex/react";
 import { useState } from "react";
 import { api } from "../../../../../packages/convex/convex/_generated/api";
 import type { Id } from "../../../../../packages/convex/convex/_generated/dataModel";
+import { AdminPageHeader } from "./AdminPageHeader";
 import { AllowlistManager } from "./invites/AllowlistManager";
 import { InviteCreateForm } from "./invites/InviteCreateForm";
 import { InviteList, type InviteRow } from "./invites/InviteList";
-import { SettingsSectionHeader } from "./SettingsSection";
 
 export interface InviteManagerProps {
   readonly canCreateInvites: boolean;
@@ -29,16 +29,21 @@ export function InviteManager({ canCreateInvites, canDeleteInvites, origin }: In
 
   if (!canCreateInvites && !canDeleteInvites) {
     return (
-      <Text tone="muted" size="sm" data-testid="invites-locked">
-        You need the Create invites or Delete invites permission to manage invites.
-      </Text>
+      <div className="flex flex-col gap-8" data-testid="invites-locked">
+        <AdminPageHeader
+          title="Invites"
+          description="Bring people in with a link, an emailed one-time invitation or a short code."
+        />
+        <Text tone="muted" size="sm">
+          You need the Create invites or Delete invites permission to manage invites.
+        </Text>
+      </div>
     );
   }
 
   return (
-    <div className="flex flex-col gap-5" data-testid="invite-manager">
-      <SettingsSectionHeader
-        icon="user-plus"
+    <div className="flex flex-col gap-8" data-testid="invite-manager">
+      <AdminPageHeader
         title="Invites"
         description="Bring people in with a link, an emailed one-time invitation or a short code — or pre-approve their address."
         trailing={
@@ -77,7 +82,7 @@ function InvitesView({
   const remove = useMutation(api.invites.remove);
 
   return (
-    <div className="flex flex-col gap-5">
+    <div className="flex flex-col gap-8">
       {canCreate && <InviteCreateForm origin={origin} />}
 
       {list.status === "LoadingFirstPage" ? (

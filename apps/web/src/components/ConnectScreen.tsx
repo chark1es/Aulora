@@ -131,8 +131,8 @@ interface ConnectFormProps {
   readonly onHostChange: (value: string) => void;
   readonly onSubmit: () => void;
   readonly onTouch: () => void;
-  /** Reports the focused field so the hero can look at it. */
-  readonly onWatch: (target: Element | null) => void;
+  /** Reports the focused field, or `"pointer"` when nothing is focused. */
+  readonly onWatch: (target: Element | "pointer") => void;
 }
 
 /** Reads the clipboard into the field; a denied or missing permission is a no-op. */
@@ -188,7 +188,7 @@ function HostField(props: ConnectFormProps) {
         onWatch(event.currentTarget);
       }}
       onBlur={() => {
-        onWatch(null);
+        onWatch("pointer");
         onTouch();
       }}
       error={error}
@@ -293,7 +293,7 @@ function PreviewView({ preview, busy, error, onContinue, onBack }: PreviewProps)
       seed={wellKnown.iconSeed}
       stage={
         <AuthStage
-          hero={<BlobatarHero seed={wellKnown.iconSeed} size={190} />}
+          hero={<BlobatarHero seed={wellKnown.iconSeed} size={190} watch="pointer" />}
           headline="Found it."
           caption={serverHost(preview.baseUrl)}
         />
@@ -335,7 +335,7 @@ function useConnect(
   const [error, setError] = useState<string | null>(null);
   const [touched, setTouched] = useState(false);
   const [preview, setPreview] = useState<Preview | null>(null);
-  const [watch, setWatch] = useState<Element | null>(null);
+  const [watch, setWatch] = useState<Element | "pointer">("pointer");
   const { profiles, refresh } = useRecentProfiles(store);
 
   useEffect(() => {

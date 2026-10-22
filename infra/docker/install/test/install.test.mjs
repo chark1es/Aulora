@@ -232,6 +232,50 @@ exit 0
   }
 });
 
+test("installer recreates the bot runner after setup so it reads the generated token", {
+  skip,
+}, () => {
+  const dir = makeEnvDir();
+  try {
+    const bin = join(dir, "bin");
+    mkdirSync(bin);
+    writeFileSync(
+      join(dir, ".env"),
+      "SITE_URL=http://localhost:18080\nOWNER_EMAIL=owner@example.test\n",
+    );
+    writeFileSync(
+      join(bin, "docker"),
+      `#!/usr/bin/env bash
+printf '%s\\n' "$*" >> "$INSTALL_TEST_LOG"
+exit 0
+`,
+      { mode: 0o755 },
+    );
+    const log = join(dir, "commands");
+    const result = spawnSync("bash", [INSTALL], {
+      encoding: "utf8",
+      input: "",
+      env: {
+        ...process.env,
+        AULORA_ENV_FILE: join(dir, ".env"),
+        PATH: `${bin}:${process.env.PATH}`,
+        INSTALL_TEST_LOG: log,
+      },
+    });
+    assert.equal(result.status, 0, result.stderr);
+    const commands = readFileSync(log, "utf8").trim().split("\n");
+    const setup = commands.findIndex((line) => line.includes("wait setup"));
+    const runner = commands.findIndex(
+      (line) =>
+        line.includes("up -d --no-deps --force-recreate bot-runner") && line.includes("--env-file"),
+    );
+    assert.ok(setup !== -1, commands.join(" | "));
+    assert.ok(runner > setup, `bot runner should start after setup: ${commands.join(" | ")}`);
+  } finally {
+    rmSync(dir, { recursive: true, force: true });
+  }
+});
+
 const releaseBranchSkip =
   currentBranch() === "release" ? "the checkout is already on the release branch" : false;
 

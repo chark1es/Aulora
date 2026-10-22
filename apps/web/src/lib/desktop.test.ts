@@ -6,6 +6,7 @@ import {
   openExternal,
   parseDeepLink,
   showsDesktopTitleBar,
+  toggleDesktopFullscreen,
 } from "./desktop";
 
 describe("parseDeepLink", () => {
@@ -152,6 +153,31 @@ describe("openExternal", () => {
     openExternal("https://example.com");
     expect(invoke).toHaveBeenCalledWith("open_external", { url: "https://example.com" });
     expect(open).not.toHaveBeenCalled();
+  });
+});
+
+describe("toggleDesktopFullscreen", () => {
+  const globalWithTauri = globalThis as { __TAURI__?: unknown };
+  const saved = globalWithTauri.__TAURI__;
+
+  afterEach(() => {
+    if (saved === undefined) {
+      delete globalWithTauri.__TAURI__;
+    } else {
+      globalWithTauri.__TAURI__ = saved;
+    }
+  });
+
+  it("does nothing outside the shell", async () => {
+    delete globalWithTauri.__TAURI__;
+    await expect(toggleDesktopFullscreen()).resolves.toBeUndefined();
+  });
+
+  it("asks the shell to toggle the window", async () => {
+    const invoke = vi.fn().mockResolvedValue(true);
+    globalWithTauri.__TAURI__ = { core: { invoke } };
+    await toggleDesktopFullscreen();
+    expect(invoke).toHaveBeenCalledWith("toggle_fullscreen", undefined);
   });
 });
 

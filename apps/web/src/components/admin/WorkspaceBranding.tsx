@@ -1,15 +1,37 @@
+/* eslint-disable no-unused-vars -- the base rule reports parameter names in type signatures; Biome checks real unused code */
 import { Avatar } from "@aulora/avatars";
 import { Button, Icon, Input, Spinner, Text } from "@aulora/ui-web";
 import { useMutation, useQuery } from "convex/react";
-import { useEffect, useRef, useState } from "react";
+import { type RefObject, useEffect, useRef, useState } from "react";
 import { api } from "../../../../../packages/convex/convex/_generated/api";
-import { SettingsSectionHeader } from "./SettingsSection";
+import { SaveRow } from "./SettingsSaveRow";
+import { SettingsSection } from "./SettingsSection";
 
 export interface WorkspaceBrandingProps {
   readonly canManageWorkspace: boolean;
 }
 
 const MAX_LOGO_BYTES = 4 * 1024 * 1024;
+
+interface BrandingModel {
+  readonly name: string;
+  readonly iconSeed: string;
+  readonly description: string;
+  readonly logoUrl: string | null;
+  readonly busy: boolean;
+  readonly dirty: boolean;
+  readonly saved: boolean;
+  readonly error: string | null;
+  readonly logoInputRef: RefObject<HTMLInputElement | null>;
+  readonly onNameChange: (value: string) => void;
+  readonly onIconSeedChange: (value: string) => void;
+  readonly onDescriptionChange: (value: string) => void;
+  readonly onSubmit: () => void;
+  readonly onUploadClick: () => void;
+  readonly onLogoFile: (file: File) => void;
+  readonly onClearLogo: () => void;
+  readonly onDiscard: () => void;
+}
 
 /**
  * Workspace branding: name, icon seed, description and logo, with a live
@@ -92,122 +114,173 @@ export function WorkspaceBranding({ canManageWorkspace }: WorkspaceBrandingProps
     iconSeed.trim() !== server.iconSeed ||
     description !== server.description;
 
+  const model: BrandingModel = {
+    name,
+    iconSeed,
+    description,
+    logoUrl: server.logoUrl,
+    busy,
+    dirty,
+    saved,
+    error,
+    logoInputRef,
+    onNameChange: setName,
+    onIconSeedChange: setIconSeed,
+    onDescriptionChange: setDescription,
+    onSubmit: () => {
+      void run(() => updateBranding({ name: name.trim(), iconSeed: iconSeed.trim(), description }));
+    },
+    onUploadClick: () => {
+      logoInputRef.current?.click();
+    },
+    onLogoFile: (file) => {
+      void uploadLogo(file);
+    },
+    onClearLogo: () => {
+      void run(() => setLogo({}));
+    },
+    onDiscard: () => {
+      setName(server.name);
+      setIconSeed(server.iconSeed);
+      setDescription(server.description);
+      setError(null);
+      setSaved(false);
+    },
+  };
+
   return (
-    <section className="flex flex-col gap-5" data-testid="workspace-branding">
-      <SettingsSectionHeader
-        icon="image"
+    <div data-testid="workspace-branding">
+      <SettingsSection
         title="Branding"
         description="How this workspace looks to members and on the sign-in screen."
+      >
+        <div className="grid gap-6 sm:grid-cols-[minmax(0,1fr)_220px]">
+          <BrandingForm model={model} />
+          <BrandingPreview
+            model={model}
+            storedName={server.name}
+            storedIconSeed={server.iconSeed}
+          />
+        </div>
+      </SettingsSection>
+    </div>
+  );
+}
+
+/** Upload or clear the uploaded logo, with the accepted formats beside it. */
+function LogoControls({ model }: { readonly model: BrandingModel }) {
+  return (
+    <div className="flex flex-wrap items-center gap-2 border-t border-border/60 pt-3">
+      <input
+        ref={model.logoInputRef}
+        type="file"
+        accept="image/*"
+        className="hidden"
+        aria-label="Upload workspace logo"
+        onChange={(event) => {
+          const file = event.target.files?.[0];
+          event.target.value = "";
+          if (file !== undefined) {
+            model.onLogoFile(file);
+          }
+        }}
       />
+      <Button
+        type="button"
+        variant="secondary"
+        disabled={model.busy}
+        onClick={model.onUploadClick}
+        leading={<Icon name="image-plus" size={15} />}
+      >
+        Upload logo
+      </Button>
+      {model.logoUrl !== null && (
+        <Button type="button" variant="ghost" disabled={model.busy} onClick={model.onClearLogo}>
+          Clear logo
+        </Button>
+      )}
+      <Text size="xs" tone="muted">
+        PNG, JPEG or WebP up to 4 MB.
+      </Text>
+    </div>
+  );
+}
 
-      <div className="grid gap-4 sm:grid-cols-[minmax(0,1fr)_220px]">
-        <form
-          className="flex flex-col gap-4"
-          onSubmit={(event) => {
-            event.preventDefault();
-            void run(() =>
-              updateBranding({
-                name: name.trim(),
-                iconSeed: iconSeed.trim(),
-                description,
-              }),
-            );
+function BrandingForm({ model }: { readonly model: BrandingModel }) {
+  return (
+    <form
+      className="flex flex-col gap-4"
+      onSubmit={(event) => {
+        event.preventDefault();
+        model.onSubmit();
+      }}
+    >
+      <div className="flex flex-col gap-4 rounded-[12px] bg-surface-2 p-4">
+        <Input
+          label="Workspace name"
+          value={model.name}
+          maxLength={80}
+          onChange={(event) => {
+            model.onNameChange(event.currentTarget.value);
           }}
-        >
-          <Input
-            label="Workspace name"
-            value={name}
-            maxLength={80}
-            onChange={(event) => {
-              setName(event.currentTarget.value);
-            }}
-          />
-          <Input
-            label="Icon seed"
-            value={iconSeed}
-            onChange={(event) => {
-              setIconSeed(event.currentTarget.value);
-            }}
-            hint="Drives the generated icon when no logo is set."
-          />
-          <Input
-            label="Description"
-            value={description}
-            maxLength={280}
-            onChange={(event) => {
-              setDescription(event.currentTarget.value);
-            }}
-            hint="A short line shown under the workspace name."
-          />
+        />
+        <Input
+          label="Icon seed"
+          value={model.iconSeed}
+          onChange={(event) => {
+            model.onIconSeedChange(event.currentTarget.value);
+          }}
+          hint="Drives the generated icon when no logo is set."
+        />
+        <Input
+          label="Description"
+          value={model.description}
+          maxLength={280}
+          onChange={(event) => {
+            model.onDescriptionChange(event.currentTarget.value);
+          }}
+          hint="A short line shown under the workspace name."
+        />
+        <LogoControls model={model} />
+      </div>
 
-          <div className="flex flex-wrap items-center gap-2">
-            <input
-              ref={logoInputRef}
-              type="file"
-              accept="image/*"
-              className="hidden"
-              aria-label="Upload workspace logo"
-              onChange={(event) => {
-                const file = event.target.files?.[0];
-                event.target.value = "";
-                if (file !== undefined) {
-                  void uploadLogo(file);
-                }
-              }}
-            />
-            {server.logoUrl !== null && (
-              <Button
-                type="button"
-                variant="ghost"
-                onClick={() => void run(() => setLogo({}))}
-                disabled={busy}
-              >
-                Clear logo
-              </Button>
-            )}
-            <Button type="button" variant="secondary" onClick={() => logoInputRef.current?.click()}>
-              <Icon name="image-plus" size={15} />
-              Upload logo
-            </Button>
-            <Button type="submit" loading={busy} disabled={busy || !dirty}>
-              Save branding
-            </Button>
-            {saved && (
-              <span
-                className="flex items-center gap-1 text-[12px] font-medium text-secondary"
-                role="status"
-              >
-                <Icon name="check" size={13} />
-                Saved
-              </span>
-            )}
-          </div>
-          {error !== null && (
-            <Text tone="danger" size="sm" role="alert">
-              {error}
-            </Text>
-          )}
-        </form>
+      <SaveRow
+        busy={model.busy}
+        dirty={model.dirty}
+        saved={model.saved}
+        error={model.error}
+        onDiscard={model.onDiscard}
+        inset
+      />
+    </form>
+  );
+}
 
-        <div className="flex flex-col gap-2">
-          <span className="text-[11px] font-semibold uppercase tracking-[0.06em] text-text-muted">
-            Login preview
-          </span>
-          <div className="flex flex-col items-center gap-3 rounded-[12px] border border-border bg-surface-2 p-5 text-center">
-            {server.logoUrl !== null ? (
-              <img src={server.logoUrl} alt="" className="h-16 w-16 rounded-[16px] object-cover" />
-            ) : (
-              <Avatar seed={iconSeed || server.iconSeed} size={64} shape="squircle" />
-            )}
-            <div className="min-w-0">
-              <p className="truncate text-[15px] font-semibold text-text">{name || server.name}</p>
-              <p className="mt-0.5 line-clamp-2 text-[11px] text-text-muted">
-                {description || "A self-hosted Aulora workspace."}
-              </p>
-            </div>
-          </div>
+function BrandingPreview({
+  model,
+  storedName,
+  storedIconSeed,
+}: {
+  readonly model: BrandingModel;
+  readonly storedName: string;
+  readonly storedIconSeed: string;
+}) {
+  return (
+    <aside className="flex flex-col gap-2">
+      <span className="text-[12px] font-medium text-text-muted">Preview</span>
+      <div className="flex flex-col items-center gap-3 rounded-[12px] bg-surface-2 p-5 text-center">
+        {model.logoUrl !== null ? (
+          <img src={model.logoUrl} alt="" className="h-16 w-16 rounded-[16px] object-cover" />
+        ) : (
+          <Avatar seed={model.iconSeed || storedIconSeed} size={64} shape="squircle" />
+        )}
+        <div className="min-w-0">
+          <p className="truncate text-[15px] font-semibold text-text">{model.name || storedName}</p>
+          <p className="mt-0.5 line-clamp-2 text-[11px] text-text-muted">
+            {model.description || "A self-hosted Aulora workspace."}
+          </p>
         </div>
       </div>
-    </section>
+    </aside>
   );
 }

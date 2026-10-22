@@ -1,5 +1,6 @@
+/* eslint-disable no-unused-vars -- the base rule reports parameter names in type signatures; Biome checks real unused code */
 import { useNavigate } from "@tanstack/react-router";
-import { useEffect } from "react";
+import { useCallback, useEffect } from "react";
 import {
   desktopPlatform,
   isDesktop,
@@ -7,14 +8,15 @@ import {
   parseDeepLink,
   takeDesktopDeepLinks,
 } from "../lib/desktop";
+import { useDesktopShortcuts } from "../lib/use-desktop-shortcuts";
+
+type RouteDeepLinks = (urls: readonly string[]) => void;
 
 /**
- * Runs inside the router so deep links and native menu commands can navigate.
- * A no-op on the web: nothing is registered unless the Tauri shell is present.
+ * Wires the shell's deep links, quick switcher and sidebar events into the
+ * page. Only runs inside the Tauri shell; shared by the bridge below.
  */
-export function DesktopBridge() {
-  const navigate = useNavigate();
-
+function useDesktopEvents(route: RouteDeepLinks): void {
   useEffect(() => {
     if (!isDesktop()) {
       return;
@@ -23,20 +25,6 @@ export function DesktopBridge() {
     document.documentElement.dataset.platform = desktopPlatform();
     let disposed = false;
     let unlisten: (() => void) | undefined;
-
-    const route = (urls: readonly string[]) => {
-      for (const raw of urls) {
-        const target = parseDeepLink(raw);
-        if (target === null) {
-          continue;
-        }
-        if (target.kind === "connect") {
-          void navigate({ to: "/connect", search: { server: target.server } });
-        } else {
-          void navigate({ to: "/invite/$code", params: { code: target.code } });
-        }
-      }
-    };
 
     const register = async () => {
       // Links that launched the app are buffered by the shell; drain them first.
@@ -72,7 +60,40 @@ export function DesktopBridge() {
       delete document.documentElement.dataset.desktop;
       delete document.documentElement.dataset.platform;
     };
-  }, [navigate]);
+  }, [route]);
+}
+
+/**
+ * Runs inside the router so deep links and native menu commands can navigate.
+ * A no-op on the web: nothing is registered unless the Tauri shell is present.
+ */
+export function DesktopBridge() {
+  const navigate = useNavigate();
+
+  const route = useCallback<RouteDeepLinks>(
+    (urls) => {
+      for (const raw of urls) {
+        const target = parseDeepLink(raw);
+        if (target === null) {
+          continue;
+        }
+        if (target.kind === "connect") {
+          void navigate({ to: "/connect", search: { server: target.server } });
+        } else {
+          void navigate({ to: "/invite/$code", params: { code: target.code } });
+        }
+      }
+    },
+    [navigate],
+  );
+
+  // Ctrl+N on Windows/Linux takes the same route as the native menu item.
+  const connect = useCallback(() => {
+    route(["aulora://connect"]);
+  }, [route]);
+
+  useDesktopShortcuts({ onConnect: connect });
+  useDesktopEvents(route);
 
   return null;
 }

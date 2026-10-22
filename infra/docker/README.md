@@ -151,17 +151,20 @@ an hour. Behind NAT, or on a LAN without a public address, set `rtc.node_ip` in
 bitrate (1 to 3.5 Mbps) times the number of viewers in outbound bandwidth; a
 1 Gbps host serves a few hundred viewers.
 
-## Bots (optional)
+## Bots
 
 Bots are small TypeScript or Python programs that act like members: they call
 the same Convex functions with their own identity and can only do what an admin
 granted them. Users with `ManageBots` create them in **Workspace settings →
-Bots**. The runner is off by default, behind the `bots` profile:
+Bots**. The `bot-runner` container starts with the stack:
 
 ```bash
-docker compose --profile bots up -d --build
+docker compose up -d --build
 docker compose logs -f bot-runner
 ```
+
+With no bots and no `BOT_RUNNER_TOKEN` it idles and reports itself healthy, so
+it never crash-loops.
 
 The runner is a supervisor, not a sandbox daemon: it starts one process per
 enabled bot inside the `bot-runner` container, writes each bot's files to a
@@ -181,29 +184,29 @@ does; a bot's identity (`bot_<id>`) is a real member row, so mentions, threads
 and permission checks work unchanged. The `bot-runner` container holds the
 shared `BOT_RUNNER_TOKEN`, which is never passed to a bot process.
 
-Enable it on a stack that is already running. `setup` has to run first because
-it generates the secrets the runner needs, and Compose reads `.env` when it
-starts a service, so bring the runner up after `setup`:
-
-```bash
-docker compose run --rm setup                 # generates BOT_RUNNER_TOKEN + the JWT keys
-docker compose --profile bots up -d --build   # starts the runner with the token
-```
-
 `setup` generates `BOT_RUNNER_TOKEN` and an ES256 key pair, sets them on the
 deployment (the public key is read by `auth.config.ts` at deploy time), and
-persists them to `.env`. Until then bots are dormant and the UI says the runner
-is offline. A runner started before `setup` has no token and exits; run the
-second command again afterwards.
+persists them to `.env`. Compose reads `.env` when it creates a container, so
+the runner started before `setup` has no token and idles until it is recreated:
+
+```bash
+docker compose run --rm setup                     # generates BOT_RUNNER_TOKEN + the JWT keys
+docker compose up -d --no-deps --force-recreate bot-runner
+```
+
+`install.sh`, `install.ps1` and `deploy.sh` do that recreate step automatically
+after `setup`. Until the runner has the token, bots are dormant and the UI says
+the runner is offline.
 
 The runner container gets **only** `BOT_RUNNER_TOKEN` from the environment. It
 deliberately has no `env_file` and no host mounts, because every bot shares that
 container (as its own user) and could read anything mounted into it.
 
-On Coolify the `bots` profile is not started (Coolify skips profiled services).
-Set `BOT_RUNNER_TOKEN` yourself in the Coolify environment (any random string of
-48 or more characters; `setup` then uses it instead of generating one) and run
-the runner as its own resource or from the host with `--profile bots`.
+On Coolify the runner also starts by default. Coolify creates the containers
+from its own environment rather than the `setup-state` volume, so set
+`BOT_RUNNER_TOKEN` yourself in the Coolify environment (any random string of 48
+or more characters; `setup` then uses it instead of generating one). Without it
+the runner idles instead of failing.
 
 ### Bot environment knobs
 
@@ -389,8 +392,10 @@ cd infra/docker
 ./deploy.sh --pull
 ```
 
-`deploy.sh` always rebuilds the `web` and `setup` images before recreating the
-web container and redeploying the Convex functions. Do not skip the rebuild:
+`deploy.sh` always rebuilds the `web`, `setup`, `smtp-gateway` and `bot-runner`
+images before recreating the web container and redeploying the Convex
+functions, then recreates the runner so it gets the current token. Do not skip
+the rebuild:
 `docker compose run --rm setup` reuses whatever `aulora-setup` image already
 exists, so a stale image would redeploy an **old API** against a new client.
 `setup` self-checks after deploying and fails loudly if any module in

@@ -140,6 +140,21 @@ export async function setDesktopAlwaysOnTop(on: boolean): Promise<void> {
 }
 
 /**
+ * Toggles the shell window between fullscreen and restored. Only Windows and
+ * Linux need this (F11): macOS has the native View > Enter Full Screen item.
+ */
+export async function toggleDesktopFullscreen(): Promise<void> {
+  if (!isDesktop()) {
+    return;
+  }
+  try {
+    await invokeCommand("toggle_fullscreen");
+  } catch {
+    // Fullscreen is a convenience; a refused toggle must never break the app.
+  }
+}
+
+/**
  * Shrinks the app window into a small always-ready picture-in-picture window
  * for a call. Resolves `true` when the shell did it, `false` outside the shell
  * or if the request failed, so callers can fall back to something else.

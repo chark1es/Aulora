@@ -11,7 +11,7 @@ import {
   selectEnvBlocks,
   useEnvOverrides,
 } from "../../../lib/instance-env";
-import { SettingsSectionHeader } from "../SettingsSection";
+import { SettingsSection } from "../SettingsSection";
 import { EnvGroupNav } from "./EnvGroupNav";
 import { EnvToolbar } from "./EnvToolbar";
 import { EnvVariableRow } from "./EnvVariableRow";
@@ -83,8 +83,7 @@ export function EnvironmentSectionView({ model }: { readonly model: EnvironmentS
 
   return (
     <div className="flex flex-col gap-4" data-testid="instance-environment">
-      <SettingsSectionHeader
-        icon="code"
+      <SettingsSection
         title="Environment"
         description="Every environment variable the app reads, and where each value comes from. Deployment values are never shown here."
       />
@@ -222,7 +221,7 @@ function EnvHeaderCell({
 }) {
   return (
     <th scope="col" className={cn("px-3 py-2", className)}>
-      <Text size="xs" tone="muted" className="font-medium uppercase tracking-wide">
+      <Text size="xs" tone="muted" className="font-medium">
         {children}
       </Text>
     </th>

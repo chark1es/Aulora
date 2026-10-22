@@ -30,10 +30,15 @@ export function ReleaseNotes(props: ReleaseNotesProps) {
       aria-label="What’s new"
       data-testid="release-notes"
     >
-      <h4 className="text-[12px] font-semibold uppercase tracking-wide text-text-muted">
-        What’s new
-      </h4>
-      <div className={cn("relative", collapsed && "max-h-[5.5rem] overflow-hidden")}>
+      <h4 className="text-[13px] font-semibold text-text">What’s new</h4>
+      {/* Release notes are written as a page (## What’s Changed); inside a card
+          their headings drop to body scale so the card keeps one hierarchy. */}
+      <div
+        className={cn(
+          "relative text-[13px] [&_h1]:my-1 [&_h1]:text-[13px] [&_h1]:font-semibold [&_h2]:my-1 [&_h2]:text-[13px] [&_h2]:font-semibold [&_h3]:my-1 [&_h3]:text-[13px] [&_h3]:font-semibold",
+          collapsed && "max-h-[5.5rem] overflow-hidden",
+        )}
+      >
         <NoteMarkdown text={notes} />
         {collapsed && (
           <div

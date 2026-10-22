@@ -7,12 +7,12 @@
 import {
   applyHeading,
   cycleHeading,
-  formatShortcut,
   insertLink,
   type NoteEdit,
   toggleList,
   toggleWrap,
 } from "@aulora/core";
+import { isApplePlatform, shortcutLabel } from "../../lib/shortcuts";
 
 export type EditorActionId =
   | "bold"
@@ -97,17 +97,14 @@ export function runHeading(value: string, start: number, end: number, level: num
 }
 
 /** The tooltip/aria label for a toolbar button, with its shortcut appended. */
-export function actionLabel(spec: ShortcutSpec, mac: boolean): string {
-  return `${spec.label} (${formatShortcut(spec.shortcut, mac)})`;
+export function actionLabel(spec: ShortcutSpec, apple: boolean = isApplePlatform()): string {
+  return `${spec.label} (${shortcutLabel(spec.shortcut, apple)})`;
 }
 
 /**
- * Whether the platform uses the Command key. Reads `navigator` defensively so it
- * is safe during SSR and in tests.
+ * Whether the platform uses the Command key. Kept as the editor's name for
+ * `isApplePlatform` so the toolbar and its tests read the same.
  */
 export function detectMac(): boolean {
-  if (typeof navigator === "undefined") return false;
-  const platform = String(navigator.platform);
-  const agent = String(navigator.userAgent);
-  return /mac|iphone|ipad|ipod/i.test(platform) || /mac os x/i.test(agent);
+  return isApplePlatform();
 }

@@ -15,11 +15,12 @@ export interface LiveBlobatarProps {
   readonly title?: string;
   /**
    * Where the eyes should look while this is supplied — the address or email
-   * field currently focused, for instance, or `"rest"` for a field whose
-   * contents the creature should pointedly not read. Omitted or `null` lets it
-   * glance around on its own.
+   * field currently focused, for instance, `"pointer"` to follow the cursor, or
+   * `"rest"` for a field whose contents the creature should pointedly not read.
+   * `null` lets it glance around on its own; a device without a hovering pointer
+   * treats `"pointer"` the same way so the eyes do not freeze at the last tap.
    */
-  readonly watch?: Element | "rest" | null;
+  readonly watch?: Element | "pointer" | "rest" | null;
   /** How far the eyes travel when looking, in viewBox units (roughly a fifth). */
   readonly travel?: number;
   readonly className?: string;
@@ -54,11 +55,31 @@ function canTrack(): boolean {
 }
 
 /**
+ * Whether the device has a pointer that can hover. Touch-only devices match
+ * `(hover: none)`; following `"pointer"` there would leave the eyes parked at
+ * the last tap, so they fall back to the idle glance instead.
+ */
+function canHover(): boolean {
+  if (typeof window === "undefined" || typeof window.matchMedia !== "function") {
+    return true;
+  }
+  return !window.matchMedia("(hover: none)").matches;
+}
+
+/** Resolves a watch target against what this device can actually do. */
+function resolveWatch(watch: LiveBlobatarProps["watch"]): GazeTarget {
+  if (watch === "pointer") {
+    return canHover() ? "pointer" : null;
+  }
+  return watch ?? null;
+}
+
+/**
  * The living blobatar: the same deterministic creature as {@link Avatar}, but
  * animated (breathe, bob, blink, idle glance) with the eyes able to follow an
- * element. Animation requires inline SVG plus Blobatar's stylesheets, so this is
- * a separate entry point from the static `<img>` path — a list of hundreds of
- * avatars should not pay for it.
+ * element or the pointer. Animation requires inline SVG plus Blobatar's
+ * stylesheets, so this is a separate entry point from the static `<img>` path —
+ * a list of hundreds of avatars should not pay for it.
  *
  * Motion is CSS the library ships: it stops entirely under
  * `prefers-reduced-motion`, and the gaze driver is never attached there.
@@ -85,8 +106,7 @@ export function LiveBlobatar(props: LiveBlobatarProps) {
   }, []);
 
   useEffect(() => {
-    const target: GazeTarget = watch ?? null;
-    driver.current?.lookAt(target);
+    driver.current?.lookAt(resolveWatch(watch));
   }, [watch]);
 
   return (

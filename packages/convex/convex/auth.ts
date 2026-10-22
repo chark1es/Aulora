@@ -7,6 +7,7 @@ import { components, internal } from "./_generated/api";
 import type { DataModel } from "./_generated/dataModel";
 import { query } from "./_generated/server";
 import authConfig from "./auth.config";
+import { getAccountLinkingSettings, revokePreLinkSessions } from "./lib/authLinking";
 import { type SignupPolicy, shouldAutoAttachRoles, signupBlocked } from "./lib/authPolicy";
 import {
   type Env,
@@ -98,6 +99,14 @@ export const createAuthOptions = (
     trustedOrigins: getTrustedOrigins(env),
     database: authComponent.adapter(ctx),
     socialProviders: getSocialProviderCredentials(env),
+    // A person who signed up with email/password can sign in with Google (or
+    // another provider) using the same address: the OAuth identity links to the
+    // existing user instead of failing with "account not linked". See
+    // `lib/authLinking.ts` for why local verification is not required and why
+    // the built-in providers are not trusted by name.
+    account: {
+      accountLinking: getAccountLinkingSettings(env, oidc?.providerId ?? null),
+    },
     // Better Auth's built-in limiter protects sign-in/sign-up/OAuth endpoints.
     // The `rateLimits` table in `lib/rateLimit.ts` covers our own send/upload
     // mutations, which the auth HTTP surface does not pass through.
@@ -139,6 +148,24 @@ export const createAuthOptions = (
       },
     },
     databaseHooks: {
+      account: {
+        create: {
+          after: async (account, hookContext) => {
+            try {
+              // An email/password account never proves who owns the address, so
+              // sessions that existed before this link may belong to someone
+              // who only pre-registered it. The session this sign-in creates is
+              // newer than the account row and survives.
+              await revokePreLinkSessions(authComponent.adapter(ctx)({}), account);
+            } catch (error) {
+              hookContext?.context.logger.error(
+                "Could not revoke sessions created before an account link",
+                error,
+              );
+            }
+          },
+        },
+      },
       session: {
         create: {
           after: async (session) => {

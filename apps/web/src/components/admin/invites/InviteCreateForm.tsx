@@ -157,54 +157,62 @@ export function InviteCreateForm({ origin }: InviteCreateFormProps) {
   }
 
   return (
-    <form
-      className="flex flex-col gap-4 rounded-[14px] border border-border bg-surface-2 p-4"
-      onSubmit={submit}
-      data-testid="invite-create-form"
-    >
-      <div className="flex flex-col gap-1.5">
-        <span className="text-[13px] font-medium text-text-muted">How should they join?</span>
-        <SegmentedControl
-          label="Invite method"
-          value={draft.kind}
-          options={KIND_OPTIONS}
-          className="self-start"
-          onChange={(kind) => {
-            set({ kind, uses: defaultUses(kind) });
+    <form className="flex flex-col gap-5" onSubmit={submit} data-testid="invite-create-form">
+      <div className="flex items-center justify-between gap-3">
+        <div className="min-w-0">
+          <h2 className="text-[14px] font-semibold text-text">Create an invite</h2>
+          <p className="mt-0.5 text-[12px] text-text-muted">
+            Pick how they join, then how long the invite lasts and who can use it.
+          </p>
+        </div>
+      </div>
+
+      <div className="flex flex-col gap-4 rounded-[12px] bg-surface-2 p-4">
+        <div className="flex flex-col gap-1.5">
+          <span className="text-[13px] font-medium text-text-muted">How should they join?</span>
+          <SegmentedControl
+            label="Invite method"
+            value={draft.kind}
+            options={KIND_OPTIONS}
+            className="self-start"
+            onChange={(kind) => {
+              set({ kind, uses: defaultUses(kind) });
+            }}
+          />
+          <Text size="xs" tone="muted">
+            {KIND_SUMMARIES.get(draft.kind)}
+          </Text>
+        </div>
+
+        <RecipientField draft={draft} set={set} />
+
+        <div className="grid gap-4 sm:grid-cols-2">
+          <ExpiryField draft={draft} set={set} />
+          <UsesField draft={draft} set={set} />
+        </div>
+
+        <Input
+          label="Note (optional)"
+          placeholder="Who is this for?"
+          maxLength={80}
+          value={draft.note}
+          onChange={(event) => {
+            set({ note: event.currentTarget.value });
           }}
+          hint="Only admins see this. It helps you tell invites apart."
         />
-        <Text size="xs" tone="muted">
-          {KIND_SUMMARIES.get(draft.kind)}
-        </Text>
-      </div>
 
-      <RecipientField draft={draft} set={set} />
+        {error !== null && (
+          <Text tone="danger" size="sm" role="alert">
+            {error}
+          </Text>
+        )}
 
-      <div className="grid gap-4 sm:grid-cols-2">
-        <ExpiryField draft={draft} set={set} />
-        <UsesField draft={draft} set={set} />
-      </div>
-
-      <Input
-        label="Note (optional)"
-        placeholder="Who is this for?"
-        maxLength={80}
-        value={draft.note}
-        onChange={(event) => {
-          set({ note: event.currentTarget.value });
-        }}
-        hint="Only admins see this. It helps you tell invites apart."
-      />
-
-      {error !== null && (
-        <Text tone="danger" size="sm" role="alert">
-          {error}
-        </Text>
-      )}
-      <div>
-        <Button type="submit" loading={busy} disabled={busy}>
-          {draft.kind === "email" ? "Send invite" : "Create invite"}
-        </Button>
+        <div>
+          <Button type="submit" loading={busy} disabled={busy}>
+            {draft.kind === "email" ? "Send invite" : "Create invite"}
+          </Button>
+        </div>
       </div>
 
       {created !== null && <InviteCreated invite={created} />}

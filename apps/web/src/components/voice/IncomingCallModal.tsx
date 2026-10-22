@@ -17,18 +17,16 @@ export function IncomingCallModal({
 }) {
   const voice = useVoice();
   const caller = identity.nameOf(call.initiatorId);
+  const group = call.ringingUserIds.length > 1;
   return (
     <Modal
       open
       onClose={() => void voice.declineCall(call.id)}
       label="Incoming call"
-      title="Incoming call"
-      description={`${caller} · ${callKindLabel(call.kind)}`}
-      icon={
-        <span className="flex h-9 w-9 items-center justify-center rounded-[9px] bg-secondary/15 text-secondary">
-          <Icon name="phone-incoming" size={18} />
-        </span>
-      }
+      hideHeader
+      hideClose
+      initialFocus="panel"
+      size="sm"
       footer={
         <IncomingCallActions
           onDecline={() => void voice.declineCall(call.id)}
@@ -36,14 +34,17 @@ export function IncomingCallModal({
         />
       }
     >
-      <div className="flex items-center gap-3">
-        <PresenceAvatar userId={call.initiatorId} size={52} ringClassName="ring-surface-2" />
-        <div className="min-w-0 flex-1">
-          <p className="truncate text-[15px] font-semibold text-text">{title}</p>
-          <p className="truncate text-[13px] text-text-muted">
-            {call.ringingUserIds.length > 1
-              ? `${call.ringingUserIds.length} people are being rung`
-              : "Ringing…"}
+      <div className="flex flex-col items-center gap-4 pb-2 pt-1 text-center">
+        <PresenceAvatar userId={call.initiatorId} size={80} ringClassName="ring-surface-2" />
+        <div className="flex min-w-0 flex-col gap-1">
+          <p className="truncate text-[19px] font-semibold tracking-[-0.015em] text-text">
+            {title}
+          </p>
+          <p className="text-[13.5px] leading-relaxed text-text-muted">
+            Incoming call{caller !== title ? ` from ${caller}` : ""} · {callKindLabel(call.kind)}
+          </p>
+          <p className="text-[12px] text-text-muted">
+            {group ? `${call.ringingUserIds.length} people are being rung` : "Ringing…"}
           </p>
         </div>
       </div>
@@ -58,24 +59,29 @@ function IncomingCallActions({
   readonly onDecline: () => void;
   readonly onAccept: () => void;
 }) {
+  // Centred under the caller, two equal targets, like a phone's call sheet.
   return (
-    <>
+    <div className="flex w-full gap-3 [&>button]:flex-1">
       <Button
         type="button"
+        size="lg"
         variant="danger"
-        leading={<Icon name="phone-hangup" size={15} />}
+        className="rounded-full"
+        leading={<Icon name="phone-hangup" size={18} />}
         onClick={onDecline}
       >
         Decline
       </Button>
       <Button
         type="button"
+        size="lg"
         variant="success"
-        leading={<Icon name="phone" size={15} />}
+        className="rounded-full"
+        leading={<Icon name="phone" size={18} />}
         onClick={onAccept}
       >
         Accept
       </Button>
-    </>
+    </div>
   );
 }

@@ -1,3 +1,4 @@
+/* eslint-disable no-unused-vars -- the base rule reports parameter names in type signatures; Biome checks real unused code */
 import { Button, Icon, Modal } from "@aulora/ui-web";
 import { useMemo, useState } from "react";
 import { PresenceAvatar, type PresenceStatus } from "./PresenceAvatar";
@@ -57,11 +58,7 @@ export function ChannelMembersModal({
           ? "Only the people listed here can see this channel."
           : "Anyone with the View channel permission can join this channel."
       }
-      icon={
-        <span className="flex h-9 w-9 items-center justify-center rounded-[9px] bg-accent-soft text-accent">
-          <Icon name={isPrivate ? "lock" : "users"} size={17} />
-        </span>
-      }
+      icon={<Icon name={isPrivate ? "lock" : "users"} size={18} />}
     >
       <div className="flex flex-col gap-3">
         {isPrivate && canManage && (

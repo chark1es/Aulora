@@ -1,5 +1,5 @@
 import type { AttachmentDescriptor } from "@aulora/core";
-import { Button, Icon, Text } from "@aulora/ui-web";
+import { Button, cn, Icon, Text, usePrefersReducedMotion } from "@aulora/ui-web";
 import { useCallback, useEffect, useRef, useState } from "react";
 import { loadAttachmentUrl, loadThumbnailUrl } from "../../lib/attachments";
 import type { ChatRuntime } from "../../lib/chat-runtime";
@@ -289,21 +289,12 @@ export function AttachmentView({ runtime, descriptor }: AttachmentViewProps) {
           {descriptor.name}
         </Text>
         {fullUrl !== undefined && (
-          // biome-ignore lint/a11y/noStaticElementInteractions: backdrop click closes the lightbox; Escape already handled
-          <div
-            data-testid="attachment-lightbox"
-            className="fixed inset-0 z-50 flex items-center justify-center bg-bg/90 p-6"
-            onClick={closeFull}
-            role="presentation"
-          >
-            <img
-              src={fullUrl}
-              alt={descriptor.name}
-              data-testid={`fullimage-${descriptor.fileId}`}
-              decoding="async"
-              className="max-h-full max-w-full rounded-card"
-            />
-          </div>
+          <ImageLightbox
+            url={fullUrl}
+            name={descriptor.name}
+            fileId={descriptor.fileId}
+            onClose={closeFull}
+          />
         )}
       </>
     );
@@ -369,6 +360,85 @@ export function AttachmentView({ runtime, descriptor }: AttachmentViewProps) {
         />
       )}
       {file}
+    </div>
+  );
+}
+
+/** Flips to true after the first frame so enter transitions can run. */
+function useEntered(): boolean {
+  const reduced = usePrefersReducedMotion();
+  const [entered, setEntered] = useState(reduced);
+  useEffect(() => {
+    if (reduced) {
+      setEntered(true);
+      return undefined;
+    }
+    const frame = requestAnimationFrame(() => {
+      setEntered(true);
+    });
+    return () => {
+      cancelAnimationFrame(frame);
+    };
+  }, [reduced]);
+  return entered;
+}
+
+function LightboxClose({ onClose }: { readonly onClose: () => void }) {
+  return (
+    <button
+      type="button"
+      aria-label="Close image"
+      onClick={(event) => {
+        event.stopPropagation();
+        onClose();
+      }}
+      className="absolute right-4 top-4 flex h-9 w-9 items-center justify-center rounded-full bg-white/10 text-white/80 transition hover:bg-white/20 hover:text-white focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-white/70 active:bg-white/25"
+    >
+      <Icon name="x" size={20} />
+    </button>
+  );
+}
+
+/** Full-bleed image viewer: dark backdrop, aligned close control, short rise. */
+function ImageLightbox({
+  url,
+  name,
+  fileId,
+  onClose,
+}: {
+  readonly url: string;
+  readonly name: string;
+  readonly fileId: string;
+  readonly onClose: () => void;
+}) {
+  const entered = useEntered();
+  return (
+    // biome-ignore lint/a11y/noStaticElementInteractions: backdrop click closes the lightbox; Escape already handled
+    <div
+      data-testid="attachment-lightbox"
+      className={cn(
+        "fixed inset-0 z-50 flex items-center justify-center bg-black/85 p-6 backdrop-blur-[3px]",
+        "transition-opacity duration-[160ms] motion-reduce:transition-none",
+        entered ? "opacity-100" : "opacity-0",
+      )}
+      onClick={onClose}
+      role="presentation"
+    >
+      <LightboxClose onClose={onClose} />
+      <img
+        src={url}
+        alt={name}
+        data-testid={`fullimage-${fileId}`}
+        decoding="async"
+        className={cn(
+          "max-h-full max-w-full rounded-[12px]",
+          "shadow-[0_24px_70px_-20px_rgba(0,0,0,0.8)]",
+          "transition-[opacity,transform] motion-reduce:transition-none",
+          entered
+            ? "scale-100 opacity-100 duration-200 ease-[cubic-bezier(.2,.9,.3,1)]"
+            : "scale-[0.97] opacity-0 duration-[140ms] ease-in",
+        )}
+      />
     </div>
   );
 }

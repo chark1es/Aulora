@@ -3,6 +3,7 @@ import {
   cn,
   Icon,
   IconButton,
+  MODAL_SHADOW,
   SegmentedControl,
   Spinner,
   usePrefersReducedMotion,
@@ -120,7 +121,10 @@ function DetailMenu({ ctl }: { ctl: NotesController }) {
           />
           <div
             role="menu"
-            className="absolute right-0 top-[calc(100%+4px)] z-50 w-44 rounded-[10px] border border-border bg-surface-2 p-1 shadow-xl"
+            className={cn(
+              "absolute right-0 top-[calc(100%+4px)] z-50 w-44 rounded-[12px] bg-surface-2 p-1",
+              MODAL_SHADOW,
+            )}
           >
             <button
               type="button"

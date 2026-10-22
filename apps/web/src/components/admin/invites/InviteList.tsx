@@ -6,9 +6,9 @@ import {
   type BadgeTone,
   Button,
   ConfirmDialog,
+  EmptyState,
   Icon,
   SegmentedControl,
-  Text,
 } from "@aulora/ui-web";
 import { type ReactNode, useState } from "react";
 import {
@@ -79,6 +79,31 @@ export interface InviteListProps {
   readonly onDelete: (id: string) => void;
 }
 
+const FILTER_OPTIONS = [
+  { value: "active" as const, label: "Active" },
+  { value: "ended" as const, label: "Ended" },
+  { value: "all" as const, label: "All" },
+];
+
+/** The empty row for the current filter. */
+function InviteListEmpty({ filter }: { readonly filter: Filter }) {
+  const active = filter === "active";
+  return (
+    <li className="px-4 py-2">
+      <EmptyState
+        size="sm"
+        icon="link"
+        title={active ? "No active invites" : "Nothing here yet"}
+        description={
+          active
+            ? "Create an invite above to bring someone new in."
+            : "Invites appear here once they have been used, revoked or have expired."
+        }
+      />
+    </li>
+  );
+}
+
 /** The invite history: who made each one, how, its limits, and who joined. */
 export function InviteList(props: InviteListProps) {
   const { rows, canDelete, canLoadMore, onLoadMore, onRevoke, onDelete } = props;
@@ -89,20 +114,16 @@ export function InviteList(props: InviteListProps) {
   return (
     <section className="flex flex-col gap-3" aria-label="Invite history">
       <div className="flex items-center justify-between gap-3">
-        <span className="text-[13px] font-medium text-text">History</span>
+        <h2 className="text-[14px] font-semibold text-text">History</h2>
         <SegmentedControl
           label="Filter invites"
           value={filter}
           onChange={setFilter}
-          options={[
-            { value: "active", label: "Active" },
-            { value: "ended", label: "Ended" },
-            { value: "all", label: "All" },
-          ]}
+          options={FILTER_OPTIONS}
         />
       </div>
 
-      <ul className="flex flex-col divide-y divide-border overflow-hidden rounded-[14px] border border-border bg-surface-2">
+      <ul className="flex flex-col divide-y divide-border/60 overflow-hidden rounded-[12px] bg-surface-2">
         {visible.map((invite) => (
           <InviteItem
             key={invite.id}
@@ -116,13 +137,7 @@ export function InviteList(props: InviteListProps) {
             }}
           />
         ))}
-        {visible.length === 0 && (
-          <li className="px-4 py-5 text-center">
-            <Text tone="muted" size="sm">
-              {filter === "active" ? "No active invites." : "Nothing here yet."}
-            </Text>
-          </li>
-        )}
+        {visible.length === 0 && <InviteListEmpty filter={filter} />}
       </ul>
 
       {canLoadMore && (
@@ -144,6 +159,7 @@ export function InviteList(props: InviteListProps) {
         }
         confirmLabel={pending?.action === "delete" ? "Delete" : "Revoke"}
         variant="danger"
+        icon={pending?.action === "delete" ? "trash" : "x"}
         onConfirm={() => {
           if (pending?.action === "delete") {
             onDelete(pending.id);
@@ -190,7 +206,7 @@ function InviteItem({ invite, canDelete, onRevoke, onDelete }: InviteItemProps) 
   const joined = joinedLine(invite.redemptions, invite.uses);
   const active = invite.status === "active";
   return (
-    <li className="flex items-start gap-3 px-4 py-3" data-testid="invite-row">
+    <li className="group flex items-start gap-3 px-4 py-3" data-testid="invite-row">
       <span className="mt-0.5 flex h-8 w-8 shrink-0 items-center justify-center rounded-[9px] bg-surface-3 text-text-muted">
         <Icon name={KIND_ICONS.get(invite.kind) ?? "link"} size={15} />
       </span>
@@ -207,7 +223,7 @@ function InviteItem({ invite, canDelete, onRevoke, onDelete }: InviteItemProps) 
           <StatusBadge status={invite.status} />
         </div>
         {invite.note !== null && (
-          <span className="truncate text-[12px] text-text-secondary">{invite.note}</span>
+          <span className="truncate text-[12px] text-text-muted">{invite.note}</span>
         )}
         <div className="flex flex-wrap items-center gap-x-3 gap-y-0.5 text-[12px] text-text-muted">
           <Meta>By {invite.createdByName ?? "a former member"}</Meta>
@@ -222,7 +238,7 @@ function InviteItem({ invite, canDelete, onRevoke, onDelete }: InviteItemProps) 
         {joined !== null && <span className="truncate text-[12px] text-text-muted">{joined}</span>}
       </div>
       {canDelete && (
-        <div className="flex shrink-0 items-center gap-1">
+        <div className="flex shrink-0 items-center gap-1 opacity-100 transition md:opacity-0 md:group-hover:opacity-100 md:group-focus-within:opacity-100">
           {active && (
             <Button type="button" variant="ghost" size="sm" onClick={onRevoke}>
               Revoke

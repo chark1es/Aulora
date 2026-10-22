@@ -356,6 +356,8 @@ services:
       OIDC_SCOPES: ${OIDC_SCOPES:-}
       OIDC_GROUP_CLAIM: ${OIDC_GROUP_CLAIM:-}
       OIDC_GROUP_ROLE_MAP: ${OIDC_GROUP_ROLE_MAP:-}
+      # Trust the generic IdP's email_verified claim for implicit account linking.
+      OIDC_TRUST_EMAIL: ${OIDC_TRUST_EMAIL:-}
       VAPID_SUBJECT: ${VAPID_SUBJECT:-mailto:owner@example.com}
       VAPID_PUBLIC_KEY: ${VAPID_PUBLIC_KEY:-}
       VAPID_PRIVATE_KEY: ${VAPID_PRIVATE_KEY:-}
@@ -394,18 +396,17 @@ services:
         condition: service_completed_successfully
     logging: *logging
 
-  # Optional bot runner: supervises user-created bots, one sandboxed process
-  # per enabled bot. Profile `bots`; Coolify does not start profiled services,
-  # so enable it with a separate resource or on the host:
-  #   docker compose -f docker-compose.coolify.yml --profile bots up -d
-  # This is container-level isolation, not a VM, and `ManageBots` is
-  # effectively code execution on this host: read README.md "Bots" first.
+  # Bot runner: supervises user-created bots, one sandboxed process per enabled
+  # bot. It starts with the stack; without `BOT_RUNNER_TOKEN` it idles instead
+  # of crash-looping. Set that token in the Coolify environment (48+ random
+  # characters) to turn bots on. This is container-level isolation, not a VM,
+  # and `ManageBots` is effectively code execution on this host: read README.md
+  # "Bots" first.
   bot-runner:
     build:
       context: ../..
       dockerfile: infra/docker/bot-runner.Dockerfile
     image: aulora-bot-runner:local
-    profiles: ["bots"]
     restart: unless-stopped
     stop_grace_period: 20s
     # No env_file and no host mounts on purpose: every bot shares this container

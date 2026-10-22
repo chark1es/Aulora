@@ -17,11 +17,7 @@ export function SwitchDeviceCallModal({
       label="Join on this device"
       title="Join on this device?"
       description="You're already in a call on another device."
-      icon={
-        <span className="flex h-9 w-9 items-center justify-center rounded-[9px] bg-accent-soft text-accent">
-          <Icon name="monitor" size={18} />
-        </span>
-      }
+      icon={<Icon name="monitor" size={18} />}
       footer={
         <>
           <Button type="button" variant="ghost" onClick={onCancel}>

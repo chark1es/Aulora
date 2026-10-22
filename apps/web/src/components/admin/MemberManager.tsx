@@ -1,4 +1,4 @@
-import { Badge, Button, Heading, Icon, Modal, Spinner, Text } from "@aulora/ui-web";
+import { Badge, Button, EmptyState, Icon, Modal, Spinner, Text } from "@aulora/ui-web";
 import { useMutation, useQuery } from "convex/react";
 import { useState } from "react";
 import { api } from "../../../../../packages/convex/convex/_generated/api";
@@ -10,6 +10,8 @@ import {
   roleNamesFor,
 } from "../../lib/workspace-admin";
 import { PersonAvatar } from "../chat/member-avatars";
+import { AdminPageHeader } from "./AdminPageHeader";
+import { BanList } from "./BanList";
 import { MemberDetail } from "./MemberDetail";
 
 export interface MemberManagerViewer {
@@ -30,6 +32,8 @@ export interface MemberManagerProps {
     readonly manageNicknames: boolean;
     readonly changeOwnNickname: boolean;
   };
+  /** Opens the Invites page when the viewer may create or delete invites. */
+  readonly onOpenInvites?: () => void;
 }
 
 const ANY_MANAGE = (p: MemberManagerProps["permissions"]): boolean =>
@@ -41,7 +45,7 @@ const ANY_MANAGE = (p: MemberManagerProps["permissions"]): boolean =>
  * effective permissions + hierarchy; the server enforces the same rules and any
  * rejection shows inline.
  */
-export function MemberManager({ viewer, ownerId, permissions }: MemberManagerProps) {
+export function MemberManager({ viewer, ownerId, permissions, onOpenInvites }: MemberManagerProps) {
   const members = useQuery(api.members.list, {});
   const roles = useQuery(api.roles.list, {});
   const bans = useQuery(api.members.listBans, permissions.ban ? {} : "skip");
@@ -63,7 +67,11 @@ export function MemberManager({ viewer, ownerId, permissions }: MemberManagerPro
 
   if (!ANY_MANAGE(permissions)) {
     return (
-      <div data-testid="member-manager">
+      <div className="flex flex-col gap-8" data-testid="member-manager">
+        <AdminPageHeader
+          title="Members"
+          description="Review this workspace’s people, their roles and moderation state."
+        />
         <Text tone="muted" size="sm" data-testid="member-manager-locked">
           You do not have permission to manage members.
         </Text>
@@ -105,13 +113,11 @@ export function MemberManager({ viewer, ownerId, permissions }: MemberManagerPro
   }
 
   return (
-    <div className="flex flex-col gap-4" data-testid="member-manager">
-      <header className="flex flex-col gap-1">
-        <Heading level={3}>Members</Heading>
-        <Text size="sm" tone="muted">
-          Pick a member to moderate in a focused panel, or review the ban list.
-        </Text>
-      </header>
+    <div className="flex flex-col gap-8" data-testid="member-manager">
+      <AdminPageHeader
+        title="Members"
+        description="Pick a member to moderate in a focused panel, or review the ban list."
+      />
 
       {error !== null && !memberOpen && (
         <Text tone="danger" size="sm" role="alert">
@@ -126,13 +132,25 @@ export function MemberManager({ viewer, ownerId, permissions }: MemberManagerPro
       )}
 
       {members !== undefined && memberList.length === 0 && (
-        <Text tone="muted" size="sm">
-          No members yet.
-        </Text>
+        <EmptyState
+          icon="users"
+          size="sm"
+          title="No members yet"
+          description="Invite someone to join this workspace."
+          {...(onOpenInvites !== undefined
+            ? {
+                action: (
+                  <Button variant="secondary" onClick={onOpenInvites}>
+                    Open invites
+                  </Button>
+                ),
+              }
+            : {})}
+        />
       )}
 
-      {members !== undefined && (
-        <ul className="flex flex-col gap-2">
+      {members !== undefined && memberList.length > 0 && (
+        <ul className="divide-y divide-border/60 overflow-hidden rounded-[12px] bg-surface-2">
           {memberList.map((member) => {
             const displayName = memberDisplayName(member, member.userId);
             const color = roleColorFor(member, roleList);
@@ -147,9 +165,9 @@ export function MemberManager({ viewer, ownerId, permissions }: MemberManagerPro
                     setError(null);
                     setMemberOpen(true);
                   }}
-                  className="flex w-full items-center gap-3 rounded-[12px] border border-border bg-surface-2 p-3 text-left transition hover:border-text-muted/30 hover:bg-surface-3/60"
+                  className="group flex min-h-[52px] w-full items-center gap-3 px-4 py-2 text-left transition hover:bg-surface-3/50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-accent"
                 >
-                  <PersonAvatar userId={member.userId} size={34} roleColor={color} />
+                  <PersonAvatar userId={member.userId} size={28} roleColor={color} />
                   <span className="min-w-0 flex-1">
                     <span className="flex items-center gap-1.5">
                       <Text
@@ -168,14 +186,14 @@ export function MemberManager({ viewer, ownerId, permissions }: MemberManagerPro
                         <Icon name="note" size={12} className="shrink-0 text-text-muted" />
                       )}
                     </span>
-                    <Text as="span" size="xs" tone="muted" className="block truncate">
+                    <Text as="span" size="xs" tone="muted" className="block truncate text-[12px]">
                       {names.length === 0 ? "No roles" : names.join(", ")}
                     </Text>
                   </span>
                   <Icon
                     name="chevron-right"
                     size={14}
-                    className="shrink-0 text-text-muted/50"
+                    className="shrink-0 text-text-muted/50 transition group-hover:text-text"
                     aria-hidden="true"
                   />
                 </button>
@@ -284,12 +302,9 @@ export function MemberManager({ viewer, ownerId, permissions }: MemberManagerPro
         size="md"
         label="Banned members"
         title="Banned members"
-        description="People who cannot rejoin until they are unbanned."
-        icon={
-          <span className="flex h-9 w-9 items-center justify-center rounded-[9px] bg-danger/10 text-danger">
-            <Icon name="lock" size={18} />
-          </span>
-        }
+        description="They cannot rejoin until the ban ends or you lift it."
+        tone="danger"
+        icon={<Icon name="lock" size={18} />}
         footer={
           <Button
             variant="secondary"
@@ -301,48 +316,14 @@ export function MemberManager({ viewer, ownerId, permissions }: MemberManagerPro
           </Button>
         }
       >
-        <section className="flex flex-col gap-2" data-testid="ban-list">
-          {(bans ?? []).length === 0 ? (
-            <Text tone="muted" size="sm">
-              No banned members.
-            </Text>
-          ) : (
-            <ul className="flex flex-col divide-y divide-border overflow-hidden rounded-[10px] border border-border">
-              {(bans ?? []).map((entry) => (
-                <li
-                  key={entry.id}
-                  className="flex items-center justify-between gap-3 bg-surface-1 px-3 py-2"
-                >
-                  <span className="min-w-0">
-                    <Text size="sm" mono className="block truncate">
-                      {entry.userId}
-                    </Text>
-                    {entry.reason !== null && entry.reason.length > 0 && (
-                      <Text size="xs" tone="muted" className="block truncate">
-                        {entry.reason}
-                      </Text>
-                    )}
-                    <Text size="xs" tone="muted" className="block truncate">
-                      {(entry.expiresAt ?? null) === null
-                        ? "Permanent"
-                        : `Expires ${new Date(entry.expiresAt as number).toLocaleString()}`}
-                    </Text>
-                  </span>
-                  <Button
-                    type="button"
-                    size="sm"
-                    variant="secondary"
-                    disabled={busy}
-                    onClick={() => {
-                      void run(() => unban({ userId: entry.userId }));
-                    }}
-                  >
-                    Unban
-                  </Button>
-                </li>
-              ))}
-            </ul>
-          )}
+        <section data-testid="ban-list">
+          <BanList
+            bans={bans ?? []}
+            busy={busy}
+            onUnban={(userId) => {
+              void run(() => unban({ userId }));
+            }}
+          />
         </section>
       </Modal>
     </div>

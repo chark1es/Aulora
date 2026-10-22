@@ -21,8 +21,13 @@ test("normalizeBaseUrl canonicalizes and rejects non-http schemes", () => {
   assert.throws(() => normalizeBaseUrl("not a url", "x"), /invalid URL/);
 });
 
-test("loadConfig requires a runner token and applies safe defaults", () => {
-  assert.throws(() => loadConfig({}), /BOT_RUNNER_TOKEN is required/);
+test("loadConfig leaves the runner token unset so the entrypoint can idle", () => {
+  // The container starts with the stack; a missing token must not crash-loop it.
+  assert.equal(loadConfig({}).runnerToken, undefined);
+  assert.equal(loadConfig({ BOT_RUNNER_TOKEN: "   " }).runnerToken, undefined);
+});
+
+test("loadConfig reads the runner token and applies safe defaults", () => {
   const config = loadConfig({ BOT_RUNNER_TOKEN: "secret", CONVEX_HTTP_URL: "http://x:3211/" });
   assert.equal(config.runnerToken, "secret");
   assert.equal(config.convexHttpUrl, "http://x:3211");
@@ -44,7 +49,7 @@ test("loadConfig rejects a relative WORK_DIR", () => {
 });
 
 test("loadConfig ignores HOST_ENV_FILE: the token only comes from the environment", () => {
-  assert.throws(() => loadConfig({ HOST_ENV_FILE: "/host/.env" }), /BOT_RUNNER_TOKEN is required/);
+  assert.equal(loadConfig({ HOST_ENV_FILE: "/host/.env" }).runnerToken, undefined);
 });
 
 test("nextBackoff doubles to the cap and resets after a healthy uptime", () => {

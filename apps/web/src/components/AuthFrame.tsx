@@ -1,4 +1,4 @@
-import { cn, Logo, Spinner } from "@aulora/ui-web";
+import { cn, Spinner } from "@aulora/ui-web";
 import {
   type ButtonHTMLAttributes,
   type CSSProperties,
@@ -60,21 +60,8 @@ export function AuthFrame({ children, seed, stage }: AuthFrameProps) {
       )}
       <div className="relative my-auto flex w-full max-w-[420px] animate-pop-in flex-col gap-5">
         {children}
-        <p className="flex items-center justify-center gap-1.5 text-xs text-text-muted">
-          <Logo size={14} />
-          aulora · team chat on your own server
-        </p>
       </div>
     </div>
-  );
-}
-
-function AuthFooter() {
-  return (
-    <p className="flex items-center gap-1.5 text-xs text-text-muted">
-      <Logo size={14} />
-      aulora · team chat on your own server
-    </p>
   );
 }
 
@@ -107,7 +94,6 @@ function SplitFrame({ children, seed, stage }: SplitFrameProps) {
       <main className="flex flex-1 flex-col justify-center px-6 py-8 lg:px-16 lg:py-12">
         <div className="mx-auto flex w-full max-w-[380px] animate-pop-in flex-col gap-8">
           {children}
-          <AuthFooter />
         </div>
       </main>
     </div>
@@ -123,14 +109,14 @@ export interface AuthStageProps {
   readonly caption?: string;
 }
 
-/** The content of the colour panel: wordmark, hero, then one confident line. */
+/**
+ * The content of the colour panel: the hero, then one confident line. The
+ * desktop top padding stands in for the wordmark and its gap that used to sit
+ * above the hero, so removing it does not pull the creature upward.
+ */
 export function AuthStage({ hero, headline, caption }: AuthStageProps) {
   return (
-    <div className="flex w-full flex-1 flex-col justify-between gap-6">
-      <p className="hidden items-center gap-2 text-[13px] font-semibold tracking-[-0.01em] text-text lg:flex">
-        <Logo size={18} />
-        Aulora
-      </p>
+    <div className="flex w-full flex-1 flex-col justify-between gap-6 lg:pt-11">
       <div className="grid flex-1 place-items-center">{hero}</div>
       <div className="hidden flex-col gap-3 lg:flex">
         <p className="max-w-[13ch] text-balance text-[clamp(2.25rem,3.6vw,3.6rem)] font-semibold leading-[1.02] tracking-[-0.035em] text-text">

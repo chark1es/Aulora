@@ -44,8 +44,8 @@ export interface BlobatarHeroProps {
   readonly size?: number;
   /** Accessible name for the creature. */
   readonly title?: string;
-  /** Where the eyes look: a focused field, `"rest"`, or nothing. */
-  readonly watch?: Element | "rest" | null;
+  /** Where the eyes look: a focused field, the pointer, `"rest"`, or nothing. */
+  readonly watch?: Element | "pointer" | "rest" | null;
   /** Uploaded workspace logo; replaces the generated creature when set. */
   readonly src?: string | null;
   readonly className?: string;

@@ -4,7 +4,7 @@ import { useMutation } from "convex/react";
 import { useEffect, useState } from "react";
 import { api } from "../../../../../../packages/convex/convex/_generated/api";
 import { SaveRow } from "../SettingsSaveRow";
-import { SettingsSectionHeader } from "../SettingsSection";
+import { SettingsSection } from "../SettingsSection";
 import type { Overview } from "./InstanceSections";
 
 /** Mobile push relay settings: one switch plus two identity fields, one save row. */
@@ -60,8 +60,7 @@ export function PushRelaySection({ overview }: { readonly overview: Overview }) 
         save();
       }}
     >
-      <SettingsSectionHeader
-        icon="megaphone"
+      <SettingsSection
         title="Push relay"
         description="Optional relay for store-built mobile apps. The shared token stays in the deployment env (PUSH_RELAY_TOKEN); only its presence is shown."
       />
