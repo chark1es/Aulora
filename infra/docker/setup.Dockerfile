@@ -14,7 +14,7 @@ FROM ghcr.io/convex/convex-backend@sha256:b756b06641d15a55b5ec0692897ce5ad3715dd
 
 # Bun runtime. `generate_key` was built on Ubuntu 24.04 (older glibc) and runs
 # fine on this newer Debian base; the reverse is not guaranteed.
-FROM oven/bun:1.4.0 AS setup
+FROM oven/bun:1.4.4 AS setup
 
 COPY --from=backend /convex/generate_key /usr/local/bin/generate_key
 

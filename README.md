@@ -58,7 +58,7 @@ iOS and Android are betas that install from their stores, not from a release fil
 
 ## Build from source
 
-Use Bun 1.4.0 and Node.js 22.18.0, the versions pinned in CI, plus Git:
+Use Bun 1.4.4 and Node.js 22.23.4, the versions pinned in CI, plus Git:
 
 ```sh
 bun install --frozen-lockfile

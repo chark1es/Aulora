@@ -437,7 +437,7 @@ services:
   # production point VAULT_ADDR at a persistent Vault instead and back up the
   # KEK. See README.md "Encryption and the external key manager".
   vault:
-    image: hashicorp/vault:1.18
+    image: hashicorp/vault:1.21.4
     profiles: ["ekm"]
     restart: unless-stopped
     environment:
@@ -461,7 +461,7 @@ services:
   # local key is present, writing the result back to infra/docker/.env. Re-run
   # `setup` afterwards so the deployment picks the new provider settings up.
   vault-init:
-    image: hashicorp/vault:1.18
+    image: hashicorp/vault:1.21.4
     profiles: ["ekm"]
     restart: "no"
     env_file:
@@ -501,7 +501,7 @@ services:
     logging: *logging
 
   livekit:
-    image: livekit/livekit-server:v1.13.8
+    image: livekit/livekit-server:v1.13.10
     profiles: ["streaming"]
     restart: unless-stopped
     command: ["--config", "/etc/livekit.yaml"]

@@ -4,7 +4,7 @@
   "private": true,
   "description": "Aulora: self-hosted team chat with browser, desktop, and mobile clients.",
   "license": "PolyForm-Noncommercial-1.0.0",
-  "packageManager": "bun@1.4.0",
+  "packageManager": "bun@1.4.4",
   "workspaces": [
     "apps/*",
     "packages/*"
@@ -27,11 +27,16 @@
     "release:version": "node scripts/set-version.mjs",
     "notices": "node scripts/legal-notices.mjs"
   },
+  "overrides": {
+    "postcss-selector-parser": "7.1.7",
+    "shell-quote": "1.12.0",
+    "source-map-js": "1.2.2"
+  },
   "devDependencies": {
     "@biomejs/biome": "2.5.14",
-    "turbo": "2.11.4",
+    "turbo": "2.11.10",
     "typescript": "5.9.3",
-    "vitest": "5.0.2"
+    "vitest": "5.0.5"
   },
   "repository": {
     "type": "git",

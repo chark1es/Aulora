@@ -12,7 +12,7 @@
 
 # Builder: compile the TypeScript bot SDK in the Bun workspace (it extends
 # `@aulora/config` and is a `workspace:*` consumer), then ship only its dist.
-FROM oven/bun:1.4.0 AS ts-sdk
+FROM oven/bun:1.4.4 AS ts-sdk
 WORKDIR /app
 COPY package.json bun.lock turbo.json ./
 COPY apps/web/package.json apps/web/
@@ -21,7 +21,7 @@ COPY packages ./packages
 RUN bun install --frozen-lockfile
 RUN bun run --cwd packages/bot-sdk build
 
-FROM node:24-bookworm-slim
+FROM node:24.22.1-bookworm-slim
 
 # python3 + venv for Python bots and their `pip install --target` step;
 # util-linux provides `prlimit` for per-bot resource limits.
@@ -37,8 +37,10 @@ RUN apt-get update \
     ca-certificates \
   && rm -rf /var/lib/apt/lists/*
 
-# Python bot SDK: installed once into a shared venv that bots reuse.
+# Python bot SDK: installed once into a shared venv that bots reuse. pip is
+# upgraded first so the bot install path never runs a pip with a known advisory.
 RUN python3 -m venv /opt/venv
+RUN /opt/venv/bin/python -m pip install --no-cache-dir --disable-pip-version-check --upgrade "pip==26.2.2"
 COPY packages/bot-sdk-python /tmp/bot-sdk-python
 RUN /opt/venv/bin/pip install --no-cache-dir --disable-pip-version-check /tmp/bot-sdk-python \
   && rm -rf /tmp/bot-sdk-python

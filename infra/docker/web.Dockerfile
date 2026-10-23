@@ -9,7 +9,7 @@
 #
 # Build context is the repo root; see ../../.dockerignore.
 
-FROM oven/bun:1.4.0 AS build
+FROM oven/bun:1.4.4 AS build
 WORKDIR /app
 
 # Public values baked into the build-time dev well-known document. The runtime
@@ -35,7 +35,7 @@ RUN bun install --frozen-lockfile
 
 RUN bun run --cwd apps/web build
 
-FROM nginx:1.27-alpine AS runtime
+FROM nginx:1.30.6-alpine AS runtime
 # Maximum request body forwarded through this origin. The official nginx image
 # envsubst-expands files in /etc/nginx/templates into /etc/nginx/conf.d at
 # startup, substituting only environment variables (nginx's own `$var` tokens

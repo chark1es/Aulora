@@ -92,12 +92,12 @@ Reproducibility matters more than freshness here, so every image is pinned:
 | `ghcr.io/convex/convex-backend` | **digest** `sha256:b756b066…` | Convex publishes only `latest` + commit tags; the digest corresponds to revision `0cf49cbf` |
 | `ghcr.io/convex/convex-dashboard` | **digest** `sha256:4ebaebfd…` | same |
 | `postgres` | `postgres:17` | explicit major |
-| `nginx` (web runtime) | `nginx:1.27-alpine` | explicit minor |
-| `oven/bun` (build + setup) | `oven/bun:1.4.0` | matches `packageManager` |
+| `nginx` (web runtime) | `nginx:1.30.6-alpine` | explicit patch on the 1.30 stable line |
+| `oven/bun` (build + setup) | `oven/bun:1.4.4` | matches `packageManager` |
 | `sourcemation/minio` | `RELEASE.2025-10-15T17-29-55Z-20260920` | last AGPL MinIO release (see below) |
 | `pgsty/mc` | digest `sha256:cfc831…` | MinIO client used for bucket init |
-| `hashicorp/vault` | `1.18` | optional EKM for the `ekm` profile (see below) |
-| `livekit/livekit-server` | `v1.13.8` | optional screen-streaming server for the `streaming` profile (Apache-2.0; see below) |
+| `hashicorp/vault` | `1.21.4` | optional EKM for the `ekm` profile (see below) |
+| `livekit/livekit-server` | `v1.13.10` | optional screen-streaming server for the `streaming` profile (Apache-2.0; see below) |
 
 To bump the Convex digest:
 

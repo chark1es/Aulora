@@ -538,7 +538,7 @@ services:
 
   # Optional external key manager (HashiCorp Vault dev mode). Profile `ekm`.
   vault:
-    image: hashicorp/vault:1.18
+    image: hashicorp/vault:1.21.4
     profiles: ["ekm"]
     restart: unless-stopped
     environment:
@@ -558,7 +558,7 @@ services:
   # One-shot: enables the transit engine, creates the KEK and (when a local key
   # is present) wraps it into AULORA_KEK_WRAPPED in the setup-state volume.
   vault-init:
-    image: hashicorp/vault:1.18
+    image: hashicorp/vault:1.21.4
     profiles: ["ekm"]
     restart: "no"
     exclude_from_hc: true
@@ -603,7 +603,7 @@ services:
     logging: *logging
 
   livekit:
-    image: livekit/livekit-server:v1.13.8
+    image: livekit/livekit-server:v1.13.10
     restart: unless-stopped
     command: ["--config", "/etc/livekit/livekit.yaml"]
     volumes:
