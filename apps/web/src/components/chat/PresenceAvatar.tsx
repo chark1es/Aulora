@@ -32,20 +32,18 @@ export function PresenceAvatar({
   userId,
   size = 36,
   status,
-  roleColor,
   ringClassName = "ring-surface-1",
 }: {
   readonly userId: string;
   readonly size?: number;
   readonly status?: PresenceStatus | undefined;
-  readonly roleColor?: string | null | undefined;
   /** Matches the surface behind the avatar so the dot looks cut out. */
   readonly ringClassName?: string;
 }) {
   const dot = Math.max(8, Math.round(size * 0.28));
   return (
     <span className="relative inline-flex shrink-0">
-      <PersonAvatar userId={userId} size={size} roleColor={roleColor} />
+      <PersonAvatar userId={userId} size={size} />
       {status !== undefined && (
         <span
           role="img"

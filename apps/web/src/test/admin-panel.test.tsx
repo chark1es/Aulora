@@ -50,8 +50,12 @@ const moderator: RoleView = {
   isEveryone: false,
 };
 
-function viewer(permissions = FULL_PERMISSIONS, isOwner = true): AdminPanelViewer {
-  return { userId: "u1", isOwner, roleIds: [moderator.id], permissions, topPosition: 10 };
+function viewer(
+  permissions = FULL_PERMISSIONS,
+  isOwner = true,
+  topPosition = 10,
+): AdminPanelViewer {
+  return { userId: "u1", isOwner, roleIds: [moderator.id], permissions, topPosition };
 }
 
 function renderPanel(overrides: Partial<Parameters<typeof AdminPanel>[0]> = {}) {
@@ -150,5 +154,85 @@ describe("AdminPanel drill-in pages", () => {
 
     expect(screen.getByRole("heading", { name: "Roles" })).toBeInTheDocument();
     expect(screen.getByRole("button", { name: "New role" })).toBeInTheDocument();
+  });
+
+  it("opens a role at or above the viewer read-only", async () => {
+    const user = userEvent.setup();
+    const high: RoleView = {
+      ...moderator,
+      id: "r-high",
+      name: "Admin",
+      position: 9,
+      permissions: Permission.Administrator,
+    };
+    const low: RoleView = { ...moderator, id: "r-low", name: "Helper", position: 2 };
+    renderPanel({
+      roles: [high, low],
+      viewer: viewer(Permission.ManageRoles | Permission.Kick, false, 5),
+    });
+
+    await user.click(within(nav()).getByRole("button", { name: "Roles" }));
+    await user.click(
+      within(screen.getByTestId("role-row-Admin")).getByRole("button", { name: /^Admin/ }),
+    );
+    expect(screen.getByTestId("role-readonly-note")).toBeInTheDocument();
+    expect(screen.getByLabelText("Role name")).toBeDisabled();
+    expect(screen.queryByRole("button", { name: "Save changes" })).not.toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "Close" })).toBeInTheDocument();
+  });
+
+  it("only lets the viewer grant permissions they hold", async () => {
+    const user = userEvent.setup();
+    const low: RoleView = {
+      ...moderator,
+      id: "r-low",
+      name: "Helper",
+      position: 2,
+      permissions: 0n,
+    };
+    renderPanel({
+      roles: [low],
+      viewer: viewer(Permission.ManageRoles | Permission.Kick, false, 5),
+    });
+
+    await user.click(within(nav()).getByRole("button", { name: "Roles" }));
+    await user.click(
+      within(screen.getByTestId("role-row-Helper")).getByRole("button", { name: /^Helper/ }),
+    );
+
+    expect(screen.getByLabelText("Kick members")).toBeEnabled();
+    expect(screen.getByLabelText("Ban members")).toBeDisabled();
+    expect(screen.getByLabelText("Administrator")).toBeDisabled();
+    const hoisted = screen.getByLabelText("Display role members separately");
+    expect(hoisted).not.toBeChecked();
+    await user.click(hoisted);
+    expect(hoisted).toBeChecked();
+  });
+
+  it("keeps the default role read-only for non-owners", async () => {
+    const user = userEvent.setup();
+    const everyone: RoleView = {
+      ...moderator,
+      id: "r-everyone",
+      key: "@everyone",
+      name: "@everyone",
+      position: 0,
+      isEveryone: true,
+    };
+    renderPanel({
+      roles: [everyone],
+      viewer: viewer(Permission.ManageRoles | Permission.Kick, false, 5),
+    });
+
+    await user.click(within(nav()).getByRole("button", { name: "Roles" }));
+    await user.click(
+      within(screen.getByTestId("role-row-@everyone")).getByRole("button", { name: /^@everyone/ }),
+    );
+
+    expect(screen.getByTestId("role-readonly-note")).toHaveTextContent(
+      "Only the workspace owner can change the default role.",
+    );
+    expect(screen.queryByLabelText("Display role members separately")).not.toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: "Save changes" })).not.toBeInTheDocument();
   });
 });

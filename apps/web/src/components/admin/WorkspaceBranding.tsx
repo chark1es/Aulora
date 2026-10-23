@@ -215,7 +215,7 @@ function BrandingForm({ model }: { readonly model: BrandingModel }) {
         model.onSubmit();
       }}
     >
-      <div className="flex flex-col gap-4 rounded-[12px] bg-surface-2 p-4">
+      <div className="flex flex-col gap-4 border-y border-border/60 py-4">
         <Input
           label="Workspace name"
           value={model.name}

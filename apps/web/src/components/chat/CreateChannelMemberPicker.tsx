@@ -7,7 +7,6 @@ import { type PeopleOption, PeoplePicker } from "./PeoplePicker";
 export interface CreateChannelMemberOption {
   readonly userId: string;
   readonly displayName: string;
-  readonly roleColor?: string | null;
 }
 
 export interface CreateChannelRoleOption {
@@ -63,9 +62,7 @@ function useWhitelistOptions(
       .map((member) => ({
         id: member.userId,
         label: member.displayName,
-        leading: (size: number) => (
-          <PersonAvatar userId={member.userId} size={size} roleColor={member.roleColor} />
-        ),
+        leading: (size: number) => <PersonAvatar userId={member.userId} size={size} />,
       }));
     return [...roleRows, ...memberRows];
   }, [roles, members]);

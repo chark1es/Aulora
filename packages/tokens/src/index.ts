@@ -4,6 +4,8 @@ export {
   darkPalette,
   IDLE_COLOR,
   lightPalette,
+  MENTION_BACKGROUND,
+  MENTION_COLOR,
   type Palette,
   paletteFor,
   palettes,

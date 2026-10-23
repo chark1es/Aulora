@@ -79,7 +79,7 @@ export function BanList(props: {
     );
   }
   return (
-    <ul className="flex flex-col gap-0.5 rounded-[12px] bg-surface-1/70 p-1">
+    <ul className="flex flex-col divide-y divide-border/60 border-y border-border/60">
       {bans.map((entry) => (
         <BanRow
           key={entry.id}

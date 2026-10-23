@@ -57,7 +57,7 @@ export function NotificationsSettingsSection() {
         </div>
       </div>
 
-      <div className="rounded-[10px] border border-border bg-surface-1 px-3.5">
+      <div className="border-y border-border/60 px-3.5">
         <Switch
           checked={settings.enabled}
           onChange={(enabled) => {
@@ -87,9 +87,9 @@ export function NotificationsSettingsSection() {
         />
       </label>
 
-      <ul className="overflow-hidden rounded-[10px] border border-border bg-surface-1">
-        {EVENT_ROWS.map((row, index) => (
-          <li key={row.event} className={index > 0 ? "border-t border-border" : undefined}>
+      <ul className="divide-y divide-border/60 border-y border-border/60">
+        {EVENT_ROWS.map((row) => (
+          <li key={row.event}>
             <div className="flex items-center gap-3 px-3.5 py-2.5">
               <div className="min-w-0 flex-1">
                 <span className="block text-[13px] font-medium text-text">{row.label}</span>

@@ -1,6 +1,6 @@
 /* eslint-disable no-unused-vars -- the base rule reports parameter names in type signatures; Biome checks real unused code */
 import type { ChannelView } from "@aulora/core";
-import { activityLabel, badgeCount, dmPartnerId } from "@aulora/core";
+import { badgeCount, dmPartnerId } from "@aulora/core";
 import { cn, Icon } from "@aulora/ui-web";
 import { ActiveBar } from "./ActiveBar";
 import type { ChannelUnread } from "./channel-sidebar-model";
@@ -175,34 +175,25 @@ export function DmRow({
         />
       )}
       <span className="min-w-0 flex-1">
-        <span className="flex items-baseline justify-between gap-2">
-          <span
-            className={cn(
-              "truncate text-[13px]",
-              active
+        <span
+          className={cn(
+            "block truncate text-[13px]",
+            active
+              ? "font-semibold text-text"
+              : isUnread
                 ? "font-semibold text-text"
-                : isUnread
-                  ? "font-semibold text-text"
-                  : "font-medium text-text",
-            )}
-          >
-            {title}
-          </span>
-          {unread?.lastActivityAt != null && (
-            <span className="shrink-0 text-[11px] text-text-muted">
-              {activityLabel(unread.lastActivityAt)}
-            </span>
+                : "font-medium text-text",
           )}
+        >
+          {title}
         </span>
-        <span className="mt-0.5 flex items-center justify-between gap-2">
-          <span className="truncate text-xs text-text-muted">{subtitle}</span>
-          <span className="flex shrink-0 items-center gap-1.5">
-            {channel.pinned === true && (
-              <Icon name="pin" size={12} className="shrink-0 text-text-muted" />
-            )}
-            {!active && <UnreadBadge unread={unread} />}
-          </span>
-        </span>
+        <span className="mt-0.5 block truncate text-xs text-text-muted">{subtitle}</span>
+      </span>
+      <span className="flex shrink-0 items-center gap-1.5">
+        {channel.pinned === true && (
+          <Icon name="pin" size={12} className="shrink-0 text-text-muted" />
+        )}
+        {!active && <UnreadBadge unread={unread} />}
       </span>
     </button>
   );

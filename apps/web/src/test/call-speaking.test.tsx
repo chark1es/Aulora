@@ -27,7 +27,7 @@ describe("voice speaking indicator", () => {
         localUserId="self"
         localVideoTrack={null}
         settings={DEFAULT_VOICE_SETTINGS}
-        identity={{ nameOf: () => "Me", colorOf: () => null }}
+        identity={{ nameOf: () => "Me" }}
         speakingIds={new Set()}
         localSpeaking
       />,

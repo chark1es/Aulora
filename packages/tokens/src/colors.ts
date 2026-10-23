@@ -27,6 +27,14 @@ export type Palette = { readonly [K in ColorToken]: string };
 export const IDLE_COLOR = "#E8A33B";
 
 /**
+ * Marks a message that pings the viewer (`@everyone`, `@here`, a role or their
+ * name): a warm gold bar and a faint wash, readable on both themes without
+ * competing with the Ember accent.
+ */
+export const MENTION_COLOR = "#E8A33B";
+export const MENTION_BACKGROUND = "rgba(232, 163, 59, 0.14)";
+
+/**
  * Dark theme ("Loam"): Apple-style system neutrals (near-black window, lighter
  * elevated surfaces) with Ember kept as a signal, not a wash. `accent` is dark
  * enough that white-on-accent stays above 3.5:1 for outgoing bubbles.

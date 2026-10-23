@@ -167,7 +167,7 @@ export function InviteCreateForm({ origin }: InviteCreateFormProps) {
         </div>
       </div>
 
-      <div className="flex flex-col gap-4 rounded-[12px] bg-surface-2 p-4">
+      <div className="flex flex-col gap-4 border-y border-border/60 py-4">
         <div className="flex flex-col gap-1.5">
           <span className="text-[13px] font-medium text-text-muted">How should they join?</span>
           <SegmentedControl

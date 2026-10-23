@@ -31,16 +31,6 @@ describe("Avatar", () => {
     expect(container.querySelector("img")).not.toBeNull();
   });
 
-  it("draws a 2px role-color ring", () => {
-    const { container } = render(
-      <Avatar seed="aulora:user:8f3a1c" size={32} roleColor="#F5A45B" />,
-    );
-    const wrapper = container.querySelector("span");
-    expect(wrapper).not.toBeNull();
-    expect(wrapper?.style.boxShadow).toContain("2px");
-    expect(wrapper?.style.boxShadow).toContain("#F5A45B");
-  });
-
   it("uses an uploaded picture instead of the generated avatar", () => {
     render(
       <Avatar seed="aulora:user:8f3a1c" size={40} title="Ada" src="https://cdn.example/ada.png" />,

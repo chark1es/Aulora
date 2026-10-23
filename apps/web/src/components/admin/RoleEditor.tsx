@@ -1,5 +1,6 @@
+import { ALL_PERMISSIONS } from "@aulora/core";
 import { Button, Input, Switch, Text } from "@aulora/ui-web";
-import { useMutation, useQuery } from "convex/react";
+import { useMutation } from "convex/react";
 import { useEffect, useState } from "react";
 import { api } from "../../../../../packages/convex/convex/_generated/api";
 import { canManageRoleUi, type RoleView } from "../../lib/workspace-admin";
@@ -15,6 +16,7 @@ export interface RoleEditorViewer {
   readonly userId: string;
   readonly isOwner: boolean;
   readonly roleIds: readonly string[];
+  readonly permissions: bigint;
   readonly topPosition: number;
 }
 
@@ -24,6 +26,8 @@ export type RolePage =
 
 export interface RoleEditorProps {
   readonly viewer: RoleEditorViewer;
+  /** The workspace roles from the shared admin query, sorted by the editor. */
+  readonly roles: readonly RoleView[];
   readonly canManageRoles: boolean;
   readonly page?: RolePage | null;
   readonly onNavigate?: Callback<[page: RolePage | null]>;
@@ -54,8 +58,13 @@ type PageMode = "list" | "create" | "edit";
  * focused create/edit page. Every control is gated by the same hierarchy rule
  * the server enforces; any rejection is surfaced inline.
  */
-export function RoleEditor({ viewer, canManageRoles, page = null, onNavigate }: RoleEditorProps) {
-  const roles = useQuery(api.roles.list, {});
+export function RoleEditor({
+  viewer,
+  roles,
+  canManageRoles,
+  page = null,
+  onNavigate,
+}: RoleEditorProps) {
   const createRole = useMutation(api.roles.create);
   const updateRole = useMutation(api.roles.update);
   const removeRole = useMutation(api.roles.remove);
@@ -67,7 +76,7 @@ export function RoleEditor({ viewer, canManageRoles, page = null, onNavigate }: 
 
   const mode: PageMode = page === null ? "list" : page.kind === "role-create" ? "create" : "edit";
 
-  const sorted = [...(roles ?? [])].sort((a, b) => b.position - a.position);
+  const sorted = [...roles].sort((a, b) => b.position - a.position);
   const selected =
     mode === "edit" && page !== null && page.kind === "role"
       ? (sorted.find((role) => role.id === page.id) ?? null)
@@ -86,7 +95,7 @@ export function RoleEditor({ viewer, canManageRoles, page = null, onNavigate }: 
     }
     if (mode === "edit") {
       const role = sorted.find((entry) => entry.id === selected?.id) ?? null;
-      if (role !== null || roles !== undefined) {
+      if (role !== null) {
         setDraft(draftFor(role));
         setError(null);
       }
@@ -110,6 +119,17 @@ export function RoleEditor({ viewer, canManageRoles, page = null, onNavigate }: 
   }
 
   const manageable = sorted.filter((role) => canManageRoleUi(viewer, role));
+  // The default role is a special case: only the owner may change it, and it
+  // can never be deleted or rendered as its own member-list section.
+  const everyoneSelected = selected?.isEveryone === true;
+  const editableSelected =
+    selected !== null && (everyoneSelected ? viewer.isOwner : canManageRoleUi(viewer, selected));
+  const readOnly = mode === "edit" && !editableSelected;
+  const readOnlyNote =
+    everyoneSelected && !viewer.isOwner
+      ? "Only the workspace owner can change the default role."
+      : "Only roles below your highest role can be edited or assigned.";
+  const grantable = viewer.isOwner ? ALL_PERMISSIONS : viewer.permissions;
 
   async function run(task: () => Promise<unknown>) {
     setError(null);
@@ -137,9 +157,11 @@ export function RoleEditor({ viewer, canManageRoles, page = null, onNavigate }: 
         <AdminPageHeader
           title={mode === "create" ? "New role" : (selected?.name ?? "Role")}
           description={
-            mode === "create"
-              ? "Name the role, pick a colour and grant only what it needs."
-              : "Change what this role can do. Members keep it until you remove it."
+            readOnly
+              ? "Role details and permissions."
+              : mode === "create"
+                ? "Name the role, pick a colour and grant only what it needs."
+                : "Change what this role can do. Members keep it until you remove it."
           }
           back={{
             label: "Roles",
@@ -149,11 +171,20 @@ export function RoleEditor({ viewer, canManageRoles, page = null, onNavigate }: 
           }}
         />
 
+        {readOnly && (
+          <p className="-mt-4 text-[12px] text-text-muted" data-testid="role-readonly-note">
+            {readOnlyNote}
+          </p>
+        )}
+
         <form
           className="flex flex-col gap-8"
           data-testid="role-form"
           onSubmit={(event) => {
             event.preventDefault();
+            if (readOnly) {
+              return;
+            }
             const name = draft.name.trim();
             if (name.length === 0) {
               setError("Role name is required");
@@ -186,17 +217,18 @@ export function RoleEditor({ viewer, canManageRoles, page = null, onNavigate }: 
           }}
         >
           <SettingsSection title="Details">
-            <div className="flex flex-col gap-4 rounded-[12px] bg-surface-2 p-4">
+            <div className="flex flex-col gap-4 border-y border-border/60 py-4">
               <Input
                 label="Role name"
                 value={draft.name}
-                disabled={selected?.isEveryone ?? false}
+                disabled={(selected?.isEveryone ?? false) || readOnly}
                 onChange={(event) => {
                   setDraft({ ...draft, name: event.currentTarget.value });
                 }}
               />
               <RoleColorPicker
                 value={draft.color}
+                disabled={readOnly}
                 onChange={(color) => {
                   setDraft({ ...draft, color });
                 }}
@@ -204,62 +236,70 @@ export function RoleEditor({ viewer, canManageRoles, page = null, onNavigate }: 
             </div>
           </SettingsSection>
 
-          <SettingsSection title="Display">
-            <SettingsGroup>
-              <SettingsGroupRow
-                label="Show members separately"
-                description="Display this role as its own section at the top of the member list."
-              >
-                <Switch
-                  bare
-                  checked={draft.hoisted}
-                  label="Display role members separately"
-                  onChange={(hoisted) => {
-                    setDraft({ ...draft, hoisted });
-                  }}
-                />
-              </SettingsGroupRow>
-              <SettingsGroupRow label="Mentionable" description="Let members @mention this role.">
-                <Switch
-                  bare
-                  checked={draft.mentionable}
-                  label="Mentionable"
-                  onChange={(mentionable) => {
-                    setDraft({ ...draft, mentionable });
-                  }}
-                />
-              </SettingsGroupRow>
-            </SettingsGroup>
-          </SettingsSection>
+          {!(selected?.isEveryone ?? false) && (
+            <SettingsSection title="Display">
+              <SettingsGroup>
+                <SettingsGroupRow
+                  label="Show members separately"
+                  description="List this role as its own section in the member panel."
+                >
+                  <Switch
+                    bare
+                    checked={draft.hoisted}
+                    label="Display role members separately"
+                    disabled={readOnly}
+                    onChange={(hoisted) => {
+                      setDraft({ ...draft, hoisted });
+                    }}
+                  />
+                </SettingsGroupRow>
+                <SettingsGroupRow label="Mentionable" description="Let members @mention this role.">
+                  <Switch
+                    bare
+                    checked={draft.mentionable}
+                    label="Mentionable"
+                    disabled={readOnly}
+                    onChange={(mentionable) => {
+                      setDraft({ ...draft, mentionable });
+                    }}
+                  />
+                </SettingsGroupRow>
+              </SettingsGroup>
+            </SettingsSection>
+          )}
 
           <PermissionsToggles
             value={draft.permissions}
             onChange={(next) => {
               setDraft({ ...draft, permissions: next });
             }}
-            disabled={busy}
+            disabled={busy || readOnly}
+            grantable={grantable}
           />
 
           <div className="flex items-center gap-2 border-t border-border/60 pt-4">
-            {mode === "edit" && selected !== null && canManageRoleUi(viewer, selected) && (
-              <Button
-                type="button"
-                variant="ghost"
-                className="mr-auto text-danger hover:bg-danger/10 hover:text-danger"
-                disabled={busy}
-                onClick={() => {
-                  if (selected.isEveryone) {
-                    return;
-                  }
-                  void run(async () => {
-                    await removeRole({ roleId: selected.id as never });
-                    navigate(null);
-                  });
-                }}
-              >
-                Delete role
-              </Button>
-            )}
+            {!readOnly &&
+              mode === "edit" &&
+              selected !== null &&
+              canManageRoleUi(viewer, selected) && (
+                <Button
+                  type="button"
+                  variant="ghost"
+                  className="mr-auto text-danger hover:bg-danger/10 hover:text-danger"
+                  disabled={busy}
+                  onClick={() => {
+                    if (selected.isEveryone) {
+                      return;
+                    }
+                    void run(async () => {
+                      await removeRole({ roleId: selected.id as never });
+                      navigate(null);
+                    });
+                  }}
+                >
+                  Delete role
+                </Button>
+              )}
             <Button
               type="button"
               variant="secondary"
@@ -267,11 +307,13 @@ export function RoleEditor({ viewer, canManageRoles, page = null, onNavigate }: 
                 navigate(null);
               }}
             >
-              Cancel
+              {readOnly ? "Close" : "Cancel"}
             </Button>
-            <Button type="submit" loading={busy}>
-              {mode === "create" ? "Create role" : "Save changes"}
-            </Button>
+            {!readOnly && (
+              <Button type="submit" loading={busy}>
+                {mode === "create" ? "Create role" : "Save changes"}
+              </Button>
+            )}
           </div>
         </form>
       </div>

@@ -7,6 +7,8 @@
  * mentions and route push); the mention text itself stays encrypted.
  */
 
+import { EVERYONE_ROLE_ID } from "../permissions.js";
+
 export interface MentionTarget {
   readonly userId: string;
   /** Display name, without the leading `@`. */
@@ -20,6 +22,18 @@ export interface RoleMentionTarget {
   readonly name: string;
   readonly mentionable: boolean;
   readonly memberUserIds: readonly string[];
+}
+
+/**
+ * Whether a message pings `viewerId`: they were mentioned directly, by role, or
+ * through `@here`/`@everyone` (which the composer expands to every member id).
+ * The author never counts as pinged by their own message.
+ */
+export function pingsViewer(
+  message: { readonly authorId: string; readonly mentionUserIds: readonly string[] },
+  viewerId: string,
+): boolean {
+  return message.authorId !== viewerId && message.mentionUserIds.includes(viewerId);
 }
 
 export interface MentionResolution {
@@ -74,7 +88,10 @@ export function resolveMentions(
   }
 
   const directMembers = [...members].sort((a, b) => b.displayName.length - a.displayName.length);
-  const mentionableRoles = roles.filter((role) => role.mentionable);
+  // The default role is reached through `@everyone`, never as a role mention.
+  const mentionableRoles = roles.filter(
+    (role) => role.mentionable && role.roleId !== EVERYONE_ROLE_ID,
+  );
 
   for (const token of text.matchAll(MENTION_TOKEN)) {
     const raw = token.at(1) ?? "";

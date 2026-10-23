@@ -11,8 +11,6 @@ export interface AvatarProps {
   seed: string;
   /** Rendered size in pixels. */
   size?: number;
-  /** Role color; when set, draws a 2px ring around the avatar. */
-  roleColor?: string;
   /** Blobatar animation mode. Omit for a static `<img>` avatar. */
   animate?: "hover" | "always";
   /** Optional accessible label. When omitted the avatar is decorative. */
@@ -28,12 +26,12 @@ export interface AvatarProps {
 }
 
 /**
- * The Aulora avatar: a Blobatar seeded by a stable id, with an optional 2px
- * role-color ring. Presentational and dependency-light; animation is opt-in
- * because it switches Blobatar from an `<img>` to inline SVG.
+ * The Aulora avatar: a Blobatar seeded by a stable id. Presentational and
+ * dependency-light; animation is opt-in because it switches Blobatar from an
+ * `<img>` to inline SVG.
  */
 export function Avatar(props: AvatarProps) {
-  const { seed, size = 32, roleColor, animate, title, src, shape = "circle", className } = props;
+  const { seed, size = 32, animate, title, src, shape = "circle", className } = props;
   const photo = src !== undefined && src.length > 0;
   const content = photo ? (
     <img
@@ -60,9 +58,6 @@ export function Avatar(props: AvatarProps) {
     height: size,
     borderRadius: avatarRadius(size, shape),
   };
-  if (roleColor !== undefined) {
-    style.boxShadow = `0 0 0 2px ${roleColor}`;
-  }
 
   return (
     <span

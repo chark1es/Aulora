@@ -63,7 +63,7 @@ export function RoleList(props: RoleListProps) {
         />
       ) : (
         <ul
-          className="stagger divide-y divide-border/60 overflow-hidden rounded-[12px] bg-surface-2"
+          className="stagger divide-y divide-border/60 border-y border-border/60"
           data-testid="role-list"
         >
           {sorted.map((role, index) => (
@@ -145,6 +145,16 @@ function RoleRow(props: RoleRowProps) {
             <Badge size="sm" tone="neutral">
               mentionable
             </Badge>
+          )}
+          {!editable && !role.isEveryone && (
+            <span
+              role="img"
+              aria-label="Not editable: at or above your highest role"
+              title="At or above your highest role"
+              className="inline-flex items-center text-text-muted"
+            >
+              <Icon name="lock" size={11} />
+            </span>
           )}
         </span>
         <Text as="span" size="xs" tone="muted" className="block text-[12px]">

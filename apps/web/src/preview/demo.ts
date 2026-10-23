@@ -10,6 +10,7 @@ import {
   createMemoryProfileStore,
   createServerProfile,
   type MessagePayload,
+  Permission,
   type ProfileStore,
   withReplyParticipant,
 } from "@aulora/core";
@@ -21,16 +22,92 @@ export const DEMO_OWN_ID = "me";
 export const DEMO_OWN_NAME = "Alex Rivera";
 
 export const DEMO_MEMBERS = [
-  { userId: "me", displayName: DEMO_OWN_NAME, roleColor: null, isOwner: true },
-  { userId: "u-ludmil", displayName: "Ludmil Popov", roleColor: null },
-  { userId: "u-kathryn", displayName: "Kathryn Murphy", roleColor: "#7C5CFF" },
-  { userId: "u-savannah", displayName: "Savannah Nguyen", roleColor: null },
-  { userId: "u-jacob", displayName: "Jacob Jones", roleColor: "#0E9F8E" },
-  { userId: "u-marvin", displayName: "Marvin McKinney", roleColor: null },
-  { userId: "u-wade", displayName: "Wade Warren", roleColor: null },
-  { userId: "u-theresa", displayName: "Theresa Webb", roleColor: null },
-  { userId: "u-leslie", displayName: "Leslie Alexander", roleColor: null },
-  { userId: "u-floyd", displayName: "Floyd Miles", roleColor: null },
+  { userId: "me", displayName: DEMO_OWN_NAME, roleColor: null, roleIds: [], isOwner: true },
+  {
+    userId: "u-ludmil",
+    displayName: "Ludmil Popov",
+    roleColor: null,
+    roleIds: ["design"],
+  },
+  {
+    userId: "u-kathryn",
+    displayName: "Kathryn Murphy",
+    roleColor: "#7C5CFF",
+    roleIds: ["design"],
+  },
+  {
+    userId: "u-savannah",
+    displayName: "Savannah Nguyen",
+    roleColor: null,
+    roleIds: ["engineering"],
+  },
+  {
+    userId: "u-jacob",
+    displayName: "Jacob Jones",
+    roleColor: "#0E9F8E",
+    roleIds: ["engineering", "moderator"],
+  },
+  {
+    userId: "u-marvin",
+    displayName: "Marvin McKinney",
+    roleColor: null,
+    roleIds: ["moderator"],
+  },
+  { userId: "u-wade", displayName: "Wade Warren", roleColor: null, roleIds: ["design"] },
+  { userId: "u-theresa", displayName: "Theresa Webb", roleColor: null, roleIds: [] },
+  { userId: "u-leslie", displayName: "Leslie Alexander", roleColor: null, roleIds: [] },
+  { userId: "u-floyd", displayName: "Floyd Miles", roleColor: null, roleIds: [] },
+] as const;
+
+/**
+ * Demo roles for the settings and member panels. `hoisted` roles render as
+ * their own sections in the right-hand member list.
+ */
+export const DEMO_ROLES = [
+  {
+    id: "role-moderator",
+    key: "moderator",
+    name: "Moderators",
+    color: "#C2410C",
+    position: 5,
+    permissions: Permission.ManageMessages | Permission.Kick | Permission.MuteMembers,
+    hoisted: true,
+    mentionable: true,
+    isEveryone: false,
+  },
+  {
+    id: "role-design",
+    key: "design",
+    name: "Design",
+    color: "#7C5CFF",
+    position: 4,
+    permissions: Permission.SendMessages | Permission.AttachFiles | Permission.AddReactions,
+    hoisted: true,
+    mentionable: true,
+    isEveryone: false,
+  },
+  {
+    id: "role-engineering",
+    key: "engineering",
+    name: "Engineering",
+    color: "#0E9F8E",
+    position: 3,
+    permissions: Permission.SendMessages | Permission.CreateThreads | Permission.EmbedLinks,
+    hoisted: true,
+    mentionable: true,
+    isEveryone: false,
+  },
+  {
+    id: "role-everyone",
+    key: "@everyone",
+    name: "@everyone",
+    color: null,
+    position: 0,
+    permissions: Permission.ViewChannel | Permission.SendMessages | Permission.ReadHistory,
+    hoisted: false,
+    mentionable: false,
+    isEveryone: true,
+  },
 ] as const;
 
 const PRESENCE: Record<string, "online" | "idle" | "dnd" | "offline"> = {

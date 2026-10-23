@@ -123,7 +123,7 @@ export function InviteList(props: InviteListProps) {
         />
       </div>
 
-      <ul className="flex flex-col divide-y divide-border/60 overflow-hidden rounded-[12px] bg-surface-2">
+      <ul className="flex flex-col divide-y divide-border/60 border-y border-border/60">
         {visible.map((invite) => (
           <InviteItem
             key={invite.id}

@@ -111,8 +111,12 @@ describe("roles CRUD", () => {
 
   it("only manages roles strictly below the actor's top role", async () => {
     const { t, asOwner, asManager } = await managerSetup();
+    const own = await roleByKey(t, "manager");
     const high = await asOwner.mutation(api.roles.create, { name: "High", position: 10 });
 
+    await expect(
+      asManager.mutation(api.roles.update, { roleId: own._id, name: "Renamed" }),
+    ).rejects.toThrow("not below");
     await expect(
       asManager.mutation(api.roles.update, { roleId: high, name: "Renamed" }),
     ).rejects.toThrow("not below");
@@ -122,6 +126,38 @@ describe("roles CRUD", () => {
       }),
     ).rejects.toThrow("not below");
     expect((await roles(t)).find((role) => role._id === high)?.name).toBe("High");
+  });
+
+  it("keeps an elevated permission on a lower role it does not grant", async () => {
+    const { t, asOwner, asManager } = await managerSetup();
+    const elevated = await asOwner.mutation(api.roles.create, {
+      name: "Elevated",
+      position: 2,
+      permissions: Permission.Administrator,
+    });
+
+    await asManager.mutation(api.roles.update, {
+      roleId: elevated,
+      name: "Elevated renamed",
+      permissions: Permission.Administrator,
+    });
+
+    const renamed = (await roles(t)).find((role) => role._id === elevated);
+    expect(renamed?.name).toBe("Elevated renamed");
+    expect(renamed?.permissions).toBe(Permission.Administrator);
+  });
+
+  it("refuses to grant Administrator to a lower role without holding it", async () => {
+    const { t, asOwner, asManager } = await managerSetup();
+    const plain = await asOwner.mutation(api.roles.create, { name: "Plain", position: 2 });
+
+    await expect(
+      asManager.mutation(api.roles.update, {
+        roleId: plain,
+        permissions: Permission.Administrator,
+      }),
+    ).rejects.toThrow("Cannot grant");
+    expect((await roles(t)).find((role) => role._id === plain)?.permissions).toBe(0n);
   });
 
   it("forbids a non-owner from changing @everyone permissions but allows the owner", async () => {

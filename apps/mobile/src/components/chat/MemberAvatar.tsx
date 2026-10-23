@@ -7,12 +7,10 @@ import { useAvatarUrls } from "../../providers/AvatarProvider";
 export const MemberAvatar = memo(function MemberAvatar({
   userId,
   size = 32,
-  roleColor,
   title,
 }: {
   readonly userId: string;
   readonly size?: number;
-  readonly roleColor?: string | null;
   readonly title?: string;
 }) {
   const avatarUrls = useAvatarUrls();
@@ -22,9 +20,6 @@ export const MemberAvatar = memo(function MemberAvatar({
       seed={userAvatarSeed(userId)}
       size={size}
       {...(src !== undefined ? { src } : {})}
-      {...(roleColor !== null && roleColor !== undefined && roleColor.length > 0
-        ? { roleColor }
-        : {})}
       {...(title !== undefined ? { title } : {})}
     />
   );

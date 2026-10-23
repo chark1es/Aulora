@@ -8,8 +8,6 @@ export {
   IDLE_COLOR,
   paletteForScheme,
   presenceColor,
-  type RoleRing,
-  roleRing,
 } from "./colors";
 export { EmptyState, type EmptyStateProps } from "./EmptyState";
 export { ErrorBanner, type ErrorBannerProps } from "./ErrorBanner";

@@ -10,7 +10,6 @@ import { type PeopleOption, PeoplePicker } from "./PeoplePicker";
 export interface EditChannelMemberOption {
   readonly userId: string;
   readonly displayName: string;
-  readonly roleColor?: string | null;
 }
 
 export interface EditChannelPatch {
@@ -61,9 +60,7 @@ function usePeopleOptions(
           id: member.userId,
           label: member.displayName,
           ...(member.userId === ownUserId ? { sublabel: "You", locked: true } : {}),
-          leading: (size: number) => (
-            <PersonAvatar userId={member.userId} size={size} roleColor={member.roleColor} />
-          ),
+          leading: (size: number) => <PersonAvatar userId={member.userId} size={size} />,
         })),
     [members, ownUserId],
   );

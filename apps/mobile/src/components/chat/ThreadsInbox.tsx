@@ -24,7 +24,6 @@ export interface ThreadsInboxProps {
   readonly loading?: boolean;
   readonly channelNames: ReadonlyMap<string, string>;
   readonly memberNames: ReadonlyMap<string, string>;
-  readonly memberColors?: ReadonlyMap<string, string>;
   /** Display title per channel id, used for DMs (named after their members). */
   readonly titles?: ReadonlyMap<string, string>;
   readonly ownUserId: string;
@@ -41,16 +40,7 @@ function replyLabel(count: number): string {
  * sheet over the chat.
  */
 export function ThreadsInbox(props: ThreadsInboxProps) {
-  const {
-    threads,
-    loading = false,
-    channelNames,
-    memberNames,
-    memberColors,
-    titles,
-    ownUserId,
-    onOpen,
-  } = props;
+  const { threads, loading = false, channelNames, memberNames, titles, ownUserId, onOpen } = props;
   const palette = usePalette();
   if (loading) {
     return (
@@ -88,7 +78,6 @@ export function ThreadsInbox(props: ThreadsInboxProps) {
           thread.authorId === ownUserId
             ? "You"
             : (memberNames.get(thread.authorId) ?? "Unknown member");
-        const roleColor = memberColors?.get(thread.authorId);
         const lastActivity = thread.lastReplyAt ?? thread.createdAt;
         return (
           <Pressable
@@ -99,7 +88,7 @@ export function ThreadsInbox(props: ThreadsInboxProps) {
             }}
             className="flex-row items-start gap-3 rounded-input px-2.5 py-2"
           >
-            <MemberAvatar userId={thread.authorId} size={32} roleColor={roleColor} />
+            <MemberAvatar userId={thread.authorId} size={32} />
             <View className="min-w-0 flex-1 gap-0.5">
               <View className="flex-row items-baseline gap-2">
                 <Text size="xs" className="font-semibold" numberOfLines={1}>
