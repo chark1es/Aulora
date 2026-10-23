@@ -36,8 +36,8 @@ function hexToRgb(value: string): Rgb | null {
   if (match === null) {
     return null;
   }
-  const raw = match[1];
-  if (raw === undefined) {
+  const [, raw = ""] = match;
+  if (raw.length === 0) {
     return null;
   }
   let hex = raw;

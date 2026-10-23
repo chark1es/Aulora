@@ -32,7 +32,7 @@ export function PreviewRoute() {
   // `?viewer=manager` previews the same workspace as a Design lead, for
   // checking hierarchy-gated roles and grant limits without a server.
   const managerPreview =
-    new URLSearchParams(globalThis.location?.search ?? "").get("viewer") === "manager";
+    new URLSearchParams(globalThis.location.search).get("viewer") === "manager";
   const viewer = managerPreview
     ? {
         userId: DEMO_OWN_ID,
