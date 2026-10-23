@@ -37,6 +37,11 @@ chat.example.com {
 		}
 	}
 
+	# Incoming webhooks are Convex HTTP actions too. Same rule, same upstream.
+	handle /api/webhooks/* {
+		reverse_proxy convex-backend:3211
+	}
+
 	# Convex's client API + WebSocket, same-origin (single-host). Must come after
 	# /api/auth/* (more specific wins) and must not buffer the sync connection.
 	# Skip this block if you set CONVEX_CLOUD_ORIGIN to a separate Convex host.

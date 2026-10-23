@@ -49,6 +49,12 @@ services:
       traefik.http.routers.aulora-auth.tls.certresolver: "letsencrypt"
       traefik.http.routers.aulora-auth.priority: "100"
       traefik.http.services.aulora-auth.loadbalancer.server.port: "3211"
+      # Incoming webhooks are Convex HTTP actions too: same host, same upstream.
+      traefik.http.routers.aulora-webhooks.rule: "Host(`chat.example.com`) && PathPrefix(`/api/webhooks`)"
+      traefik.http.routers.aulora-webhooks.entrypoints: "websecure"
+      traefik.http.routers.aulora-webhooks.tls.certresolver: "letsencrypt"
+      traefik.http.routers.aulora-webhooks.priority: "100"
+      traefik.http.routers.aulora-webhooks.service: "aulora-auth"
       # Convex API + WebSocket origin (clients connect here directly).
       traefik.http.routers.aulora-convex.rule: "Host(`convex.example.com`)"
       traefik.http.routers.aulora-convex.entrypoints: "websecure"

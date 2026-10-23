@@ -166,8 +166,16 @@ fi
 
 # --- plan -------------------------------------------------------------------
 
+# URL-safe random token. Reads /dev/urandom directly so the host needs no openssl.
+random_token() {
+  head -c 48 /dev/urandom | base64 | tr '+/' '-_' | tr -d '=\n'
+}
+
 write_env() {
   cp "$ENV_EXAMPLE" "$ENV_FILE"
+  # Generate the bot runner token now so Compose has it when it first creates the
+  # runner; `setup` keeps an existing value instead of generating its own.
+  env_set BOT_RUNNER_TOKEN "$(random_token)" "$ENV_FILE"
   env_set INSTANCE_NAME "$INSTANCE_NAME" "$ENV_FILE"
   env_set WORKSPACE_NAME "$WORKSPACE_NAME" "$ENV_FILE"
   env_set OWNER_EMAIL "$OWNER_EMAIL" "$ENV_FILE"
@@ -225,9 +233,10 @@ if ! compose wait setup; then
   die "setup failed; inspect the setup logs above"
 fi
 
-# `setup` writes BOT_RUNNER_TOKEN to the env file, but Compose resolved the
-# token when the stack was created. Recreate the runner so it reads the current
-# value; it idles safely if no token exists.
+# A fresh install already has BOT_RUNNER_TOKEN in the env file. An older env file
+# may not, and `setup` writes one then, but Compose resolved the token when the
+# stack was created. Recreate the runner so it reads the current value; it idles
+# safely if no token exists or BOT_RUNNER_ENABLED=false.
 log "starting the bot runner…"
 compose up -d --no-deps --force-recreate bot-runner
 

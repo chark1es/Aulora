@@ -429,13 +429,19 @@ function ChatViewContent({
     [runtime],
   );
 
+  // Webhooks are authors but not members, so their names join the lookup
+  // here instead of the member list.
+  const webhookIdentities = useQuery(api.webhooks.identities, {});
   const memberNames = useMemo(() => {
     const map = new Map<string, string>();
+    for (const identity of webhookIdentities ?? []) {
+      map.set(identity.userId, identity.name);
+    }
     for (const member of members) {
       map.set(member.userId, member.displayName);
     }
     return map;
-  }, [members]);
+  }, [members, webhookIdentities]);
 
   const memberColors = useMemo(() => {
     const map = new Map<string, string>();
