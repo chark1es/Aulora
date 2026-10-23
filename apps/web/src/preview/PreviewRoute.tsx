@@ -1,8 +1,10 @@
 import type { ChannelView, PresenceRow } from "@aulora/core";
+import { Permission } from "@aulora/core";
 import { Spinner } from "@aulora/ui-web";
 import { ConvexProvider, ConvexReactClient } from "convex/react";
 import { useEffect, useMemo, useState } from "react";
 import { ChatView } from "../components/chat/ChatView";
+import type { MemberView } from "../lib/workspace-admin";
 import {
   ChatContextProvider,
   type ChatContextValue,
@@ -14,6 +16,7 @@ import {
   DEMO_MEMBERS,
   DEMO_OWN_ID,
   DEMO_OWN_NAME,
+  DEMO_ROLES,
   type DemoWorkspace,
 } from "./demo";
 
@@ -26,6 +29,32 @@ export function PreviewRoute() {
   const [demo, setDemo] = useState<DemoWorkspace | null>(null);
   const [presence, setPresence] = useState<readonly PresenceRow[]>([]);
   const convex = useMemo(() => new ConvexReactClient("http://127.0.0.1:9"), []);
+  // `?viewer=manager` previews the same workspace as a Design lead, for
+  // checking hierarchy-gated roles and grant limits without a server.
+  const managerPreview =
+    new URLSearchParams(globalThis.location?.search ?? "").get("viewer") === "manager";
+  const viewer = managerPreview
+    ? {
+        userId: DEMO_OWN_ID,
+        isOwner: false,
+        roleIds: ["design"],
+        permissions:
+          Permission.ViewChannel |
+          Permission.SendMessages |
+          Permission.ReadHistory |
+          Permission.ManageRoles |
+          Permission.Kick |
+          Permission.ManageMessages |
+          Permission.MuteMembers,
+        topPosition: 4,
+      }
+    : {
+        userId: DEMO_OWN_ID,
+        isOwner: true,
+        roleIds: [] as readonly string[],
+        permissions: -1n,
+        topPosition: Number.POSITIVE_INFINITY,
+      };
   const voicePolicy = useMemo<VoicePolicy>(
     () => ({
       enabled: true,
@@ -127,21 +156,32 @@ export function PreviewRoute() {
             workspaceIconSeed="aulora:server:acme-studio"
             ownUserId={DEMO_OWN_ID}
             ownName={DEMO_OWN_NAME}
-            permissions={-1n}
+            permissions={viewer.permissions}
             members={DEMO_MEMBERS.map((member) => ({ ...member }))}
-            roles={[]}
+            roles={DEMO_ROLES.filter((role) => !role.isEveryone).map((role) => ({
+              roleId: role.key,
+              name: role.name,
+              mentionable: role.mentionable,
+              memberUserIds: DEMO_MEMBERS.filter((member) =>
+                (member.roleIds as readonly string[]).includes(role.key),
+              ).map((member) => member.userId),
+            }))}
             unreadByChannel={demo.unread}
             admin={{
-              viewer: {
-                userId: DEMO_OWN_ID,
-                isOwner: true,
-                roleIds: [],
-                permissions: -1n,
-                topPosition: Number.POSITIVE_INFINITY,
-              },
+              viewer,
               ownerId: DEMO_OWN_ID,
-              roleViews: [],
-              memberViews: [],
+              roleViews: [...DEMO_ROLES],
+              memberViews: DEMO_MEMBERS.map(
+                (member): MemberView => ({
+                  id: `member-${member.userId}`,
+                  userId: member.userId,
+                  nickname: null,
+                  accountName: member.displayName,
+                  roleIds: [...member.roleIds],
+                  joinedAt: 0,
+                  timeoutUntil: null,
+                }),
+              ),
               categories: demo.categories,
             }}
             onSignOut={() => undefined}

@@ -1,7 +1,11 @@
 import { act, fireEvent, render, screen } from "@testing-library/react";
 import type { ConvexReactClient } from "convex/react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import { QueryErrorBoundary, RETRY_INTERVAL_MS } from "../components/QueryErrorBoundary";
+import {
+  MAX_AUTO_RETRIES,
+  QueryErrorBoundary,
+  RETRY_INTERVAL_MS,
+} from "../components/QueryErrorBoundary";
 
 /** Only the connection subscription is exercised; the rest of the client is unused. */
 function stubClient(): ConvexReactClient {
@@ -48,6 +52,38 @@ describe("QueryErrorBoundary", () => {
     act(() => {
       vi.advanceTimersByTime(RETRY_INTERVAL_MS);
     });
+    expect(screen.getByText("Recovered")).toBeInTheDocument();
+  });
+
+  it("stops retrying after the limit and offers switch, retry and sign out", () => {
+    const onSwitchServer = vi.fn();
+    render(
+      <QueryErrorBoundary client={stubClient()} onSignOut={vi.fn()} onSwitchServer={onSwitchServer}>
+        <Flaky />
+      </QueryErrorBoundary>,
+    );
+    expect(screen.queryByRole("button", { name: "Switch server" })).not.toBeInTheDocument();
+
+    // One act per tick: React batches updates made inside a single act.
+    for (let tick = 0; tick < MAX_AUTO_RETRIES; tick += 1) {
+      act(() => {
+        vi.advanceTimersByTime(RETRY_INTERVAL_MS);
+      });
+    }
+    expect(screen.getByText("Can’t reach the server")).toBeInTheDocument();
+    expect(screen.queryByText("Reconnecting…")).not.toBeInTheDocument();
+
+    // Once spent, the timer no longer re-mounts the subtree on its own.
+    shouldThrow = false;
+    act(() => {
+      vi.advanceTimersByTime(RETRY_INTERVAL_MS * 3);
+    });
+    expect(screen.queryByText("Recovered")).not.toBeInTheDocument();
+
+    fireEvent.click(screen.getByRole("button", { name: "Switch server" }));
+    expect(onSwitchServer).toHaveBeenCalledTimes(1);
+
+    fireEvent.click(screen.getByRole("button", { name: "Try again" }));
     expect(screen.getByText("Recovered")).toBeInTheDocument();
   });
 

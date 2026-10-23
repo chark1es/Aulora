@@ -36,8 +36,6 @@ export interface NativeAvatarProps {
   seed: string;
   /** Rendered size in pixels. */
   size?: number;
-  /** Role color; when set, draws a 2px ring around the avatar. */
-  roleColor?: string;
   /** Accessible label. When omitted the avatar is decorative. */
   title?: string;
   /** Workspace profile picture. When set, it replaces the generated avatar. */
@@ -49,16 +47,10 @@ export interface NativeAvatarProps {
 
 /**
  * The Aulora avatar on iOS/Android: the deterministic Blobatar `<svg>` string
- * (`avatarSvg`) rendered through `react-native-svg`'s `SvgXml`, with an
- * optional 2px role-color ring. The web entrypoint (`Avatar`) renders the same
- * seed through `@blobatar/react`, so a user looks identical on every client.
+ * (`avatarSvg`) rendered through `react-native-svg`'s `SvgXml`. The web
+ * entrypoint (`Avatar`) renders the same seed through `@blobatar/react`, so a
+ * user looks identical on every client.
  */
-function avatarRing(roleColor: string | undefined): ViewStyle | null {
-  return roleColor !== undefined && roleColor.length > 0
-    ? { borderColor: roleColor, borderWidth: 2 }
-    : null;
-}
-
 function AvatarBody({
   src,
   seed,
@@ -126,7 +118,6 @@ export const NativeBlobatar = memo(function NativeBlobatar({
 export const NativeAvatar = memo(function NativeAvatar({
   seed,
   size = 32,
-  roleColor,
   title,
   src,
   shape = "circle",
@@ -146,7 +137,6 @@ export const NativeAvatar = memo(function NativeAvatar({
           borderRadius: avatarRadius(size, shape),
           backgroundColor: frameColor,
         },
-        avatarRing(roleColor),
         style,
       ]}
     >

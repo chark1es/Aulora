@@ -168,7 +168,7 @@ function renderMentionSegment(
   onAccent: boolean,
   palette: Palette,
 ): ReactNode {
-  const self = segment.broadcast || segment.name.toLowerCase() === viewerName.toLowerCase();
+  const self = !segment.broadcast && segment.name.toLowerCase() === viewerName.toLowerCase();
   const tint = onAccent || self;
   const background = onAccent ? ACCENT_OVERLAY : self ? palette.accent : palette["accent-soft"];
   return (

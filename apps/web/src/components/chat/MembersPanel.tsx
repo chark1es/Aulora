@@ -245,12 +245,7 @@ function MemberGroup({
                   dim && "opacity-60 hover:opacity-100",
                 )}
               >
-                <PresenceAvatar
-                  userId={member.userId}
-                  size={30}
-                  status={statusOf(member.userId)}
-                  roleColor={member.roleColor}
-                />
+                <PresenceAvatar userId={member.userId} size={30} status={statusOf(member.userId)} />
                 <span className="min-w-0 flex-1">
                   <span className="flex items-center gap-1.5">
                     <span

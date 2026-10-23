@@ -83,7 +83,6 @@ export interface ParticipantTileProps {
   readonly participant: CallParticipantView;
   readonly isSelf: boolean;
   readonly name: string;
-  readonly roleColor: string | null;
   readonly stream: MediaStream | null;
   readonly localVideoTrack: MediaStreamTrack | null;
   readonly settings: VoiceDeviceSettings;
@@ -99,7 +98,6 @@ export function ParticipantTile(props: ParticipantTileProps) {
     participant,
     isSelf,
     name,
-    roleColor,
     stream,
     localVideoTrack,
     settings,
@@ -126,7 +124,6 @@ export function ParticipantTile(props: ParticipantTileProps) {
         localVideoTrack={localVideoTrack}
         settings={settings}
         avatarSize={avatarSize}
-        roleColor={roleColor}
       />
 
       <ParticipantChrome
@@ -152,7 +149,6 @@ function ParticipantMedia({
   localVideoTrack,
   settings,
   avatarSize,
-  roleColor,
 }: {
   readonly participant: CallParticipantView;
   readonly isSelf: boolean;
@@ -160,7 +156,6 @@ function ParticipantMedia({
   readonly localVideoTrack: MediaStreamTrack | null;
   readonly settings: VoiceDeviceSettings;
   readonly avatarSize: number;
-  readonly roleColor: string | null;
 }) {
   // A share counts as video even with the camera off: the sharer's screen is
   // the thing to look at.
@@ -171,7 +166,7 @@ function ParticipantMedia({
   if (!hasVideo) {
     return (
       <div className="flex h-full w-full items-center justify-center">
-        <PersonAvatar userId={participant.userId} size={avatarSize} roleColor={roleColor} />
+        <PersonAvatar userId={participant.userId} size={avatarSize} />
       </div>
     );
   }
@@ -363,7 +358,6 @@ function Tile({
       participant={participant}
       isSelf={participant.userId === context.localUserId}
       name={context.identity.nameOf(participant.userId)}
-      roleColor={context.identity.colorOf(participant.userId)}
       stream={streamFor(participant, context)}
       localVideoTrack={context.localVideoTrack}
       settings={context.settings}

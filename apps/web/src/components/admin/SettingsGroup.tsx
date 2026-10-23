@@ -14,9 +14,7 @@ export interface SettingsGroupProps {
 export function SettingsGroup(props: SettingsGroupProps) {
   const { title, description, trailing, children, className } = props;
   const list = (
-    <div className="divide-y divide-border/60 overflow-hidden rounded-[12px] bg-surface-2">
-      {children}
-    </div>
+    <div className="divide-y divide-border/60 border-y border-border/60">{children}</div>
   );
   if (title === undefined && trailing === undefined) {
     return <div className={className}>{list}</div>;

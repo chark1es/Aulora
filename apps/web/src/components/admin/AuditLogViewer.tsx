@@ -115,7 +115,7 @@ export function AuditLogViewer({
           description="Admin actions appear here as they happen."
         />
       ) : (
-        <ul className="divide-y divide-border/60 overflow-hidden rounded-[12px] bg-surface-2">
+        <ul className="divide-y divide-border/60 border-y border-border/60">
           {rows.map((row) => {
             const category = auditCategory(row.action);
             const actor = row.actorName || memberNames?.get(row.actorId) || shortId(row.actorId);

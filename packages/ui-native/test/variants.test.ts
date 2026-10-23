@@ -6,7 +6,6 @@ import {
   nativeLightPalette,
   paletteForScheme,
   presenceColor,
-  roleRing,
 } from "../src/colors";
 import {
   buttonClass,
@@ -41,15 +40,6 @@ describe("presenceColor", () => {
     expect(presenceColor("dnd")).toBe(darkPalette.danger);
     expect(presenceColor("offline")).toBe(darkPalette["text-muted"]);
     expect(presenceColor("away")).toBe(darkPalette["text-muted"]);
-  });
-});
-
-describe("roleRing", () => {
-  it("returns a 2px ring only for a non-empty color", () => {
-    expect(roleRing("#F5A45B")).toEqual({ borderColor: "#F5A45B", borderWidth: 2 });
-    expect(roleRing("")).toBeUndefined();
-    expect(roleRing(null)).toBeUndefined();
-    expect(roleRing(undefined)).toBeUndefined();
   });
 });
 

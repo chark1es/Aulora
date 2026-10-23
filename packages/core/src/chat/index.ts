@@ -13,6 +13,7 @@ export {
   expandBroadcast,
   type MentionResolution,
   type MentionTarget,
+  pingsViewer,
   type RoleMentionTarget,
   resolveChannelMentions,
   resolveMentions,

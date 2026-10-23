@@ -131,7 +131,7 @@ function renderInline(
           </a>
         );
       case "mention": {
-        const self = segment.broadcast || segment.name.toLowerCase() === viewerName.toLowerCase();
+        const self = !segment.broadcast && segment.name.toLowerCase() === viewerName.toLowerCase();
         return (
           <span
             key={key}

@@ -251,7 +251,7 @@ function ScopeGroup({
   return (
     <section className="flex flex-col gap-3">
       <h2 className="text-[14px] font-semibold text-text">{title}</h2>
-      <ul className="divide-y divide-border/60 overflow-hidden rounded-[12px] bg-surface-2">
+      <ul className="divide-y divide-border/60 border-y border-border/60">
         {scopes.map((scope) => (
           <li key={scope.key}>
             <button

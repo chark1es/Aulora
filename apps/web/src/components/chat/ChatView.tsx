@@ -454,9 +454,8 @@ function ChatViewContent({
   const callIdentity = useMemo<CallIdentity>(
     () => ({
       nameOf: (id: string) => (id === ownUserId ? ownName : (memberNames.get(id) ?? "Member")),
-      colorOf: (id: string) => memberColors.get(id) ?? null,
     }),
-    [ownUserId, ownName, memberNames, memberColors],
+    [ownUserId, ownName, memberNames],
   );
 
   const presenceByUser = useMemo(
@@ -1579,7 +1578,6 @@ function ChatViewContent({
               loading={threadRows === undefined}
               channelNames={channelNames}
               memberNames={memberNames}
-              memberColors={memberColors}
               titles={titles}
               ownUserId={ownUserId}
               onOpen={openThreadFromInbox}

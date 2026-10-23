@@ -219,6 +219,7 @@ function AdminPanelWorkspaceBody(props: AdminPanelBodyProps) {
       {nav.tab === "roles" && (
         <RoleEditor
           viewer={viewer}
+          roles={roles}
           canManageRoles={permission("ManageRoles")}
           page={isRolePage(nav.page) ? nav.page : null}
           onNavigate={(page) => {

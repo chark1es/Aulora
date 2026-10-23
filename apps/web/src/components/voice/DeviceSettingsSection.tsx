@@ -149,7 +149,7 @@ export function DeviceSettingsSection() {
 
       <NoiseSuppressionSetting />
 
-      <div className="rounded-[10px] border border-border bg-surface-1 px-3.5">
+      <div className="divide-y divide-border/60 border-y border-border/60 px-3.5">
         <Switch
           checked={settings.echoCancellation}
           onChange={(echoCancellation) => void voice.updateSettings({ echoCancellation })}
@@ -181,7 +181,7 @@ export function DeviceSettingsSection() {
 
       <BackgroundSettings />
 
-      <div className="rounded-[10px] border border-border bg-surface-1 px-3.5">
+      <div className="divide-y divide-border/60 border-y border-border/60 px-3.5">
         <Switch
           checked={settings.mirrorCamera}
           onChange={(mirrorCamera) => void voice.updateSettings({ mirrorCamera })}

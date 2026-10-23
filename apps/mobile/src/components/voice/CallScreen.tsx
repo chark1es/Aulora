@@ -17,7 +17,6 @@ import { CallVideo } from "./CallVideo";
 export interface CallScreenProps {
   readonly channelName: string;
   readonly memberNames: ReadonlyMap<string, string>;
-  readonly memberColors: ReadonlyMap<string, string>;
 }
 
 type Voice = ReturnType<typeof useVoice>;
@@ -26,10 +25,10 @@ function displayName(userId: string, memberNames: ReadonlyMap<string, string>): 
   return memberNames.get(userId) ?? userId;
 }
 
-function AvatarFallback({ seed, color }: { readonly seed: string; readonly color?: string }) {
+function AvatarFallback({ seed }: { readonly seed: string }) {
   return (
     <View className="flex-1 items-center justify-center">
-      <MemberAvatar userId={seed} size={56} roleColor={color} />
+      <MemberAvatar userId={seed} size={56} />
     </View>
   );
 }
@@ -68,7 +67,6 @@ function ParticipantOverlay({
 interface ParticipantTileProps {
   readonly participant: CallParticipantView;
   readonly name: string;
-  readonly color: string | undefined;
   readonly stream: VoiceStream | null;
   readonly level?: number;
   readonly prominent?: boolean;
@@ -78,7 +76,7 @@ interface ParticipantTileProps {
 }
 
 function ParticipantTile(props: ParticipantTileProps) {
-  const { participant, name, color, stream } = props;
+  const { participant, name, stream } = props;
   const { level = 0, prominent = false, mirror = false, floats = false } = props;
   const palette = usePalette();
   const showVideo = participant.video || participant.sharingScreen;
@@ -98,10 +96,10 @@ function ParticipantTile(props: ParticipantTileProps) {
           stream={stream}
           mirror={mirror}
           pip={floats}
-          fallback={<AvatarFallback seed={participant.userId} color={color} />}
+          fallback={<AvatarFallback seed={participant.userId} />}
         />
       ) : (
-        <AvatarFallback seed={participant.userId} color={color} />
+        <AvatarFallback seed={participant.userId} />
       )}
       <ParticipantOverlay participant={participant} name={name} />
     </View>
@@ -111,13 +109,11 @@ function ParticipantTile(props: ParticipantTileProps) {
 function ParticipantGrid({
   voice,
   memberNames,
-  memberColors,
   localStream,
   mainUserId,
 }: {
   readonly voice: Voice;
   readonly memberNames: ReadonlyMap<string, string>;
-  readonly memberColors: ReadonlyMap<string, string>;
   readonly localStream: VoiceStream | null;
   readonly mainUserId: string | null;
 }) {
@@ -135,7 +131,6 @@ function ParticipantGrid({
         <ParticipantTile
           participant={sharer}
           name={displayName(sharer.userId, memberNames)}
-          color={memberColors.get(sharer.userId)}
           stream={voice.remoteStreams.get(sharer.userId) ?? null}
           level={voice.remoteLevels.get(sharer.userId)}
           prominent
@@ -150,7 +145,6 @@ function ParticipantGrid({
               key={participant.userId}
               participant={participant}
               name={isSelf ? "You" : displayName(participant.userId, memberNames)}
-              color={memberColors.get(participant.userId)}
               stream={isSelf ? localStream : (voice.remoteStreams.get(participant.userId) ?? null)}
               level={isSelf ? voice.micLevel : voice.remoteLevels.get(participant.userId)}
               mirror={isSelf}
@@ -201,25 +195,14 @@ function CallError({ error }: { readonly error: string }) {
  * What the floating window shows: the main video edge to edge, or the avatar of
  * whoever would be on it. No controls: the window is too small to use them.
  */
-function FloatingCall({
-  voice,
-  memberColors,
-  main,
-}: {
-  readonly voice: Voice;
-  readonly memberColors: ReadonlyMap<string, string>;
-  readonly main: MainVideo | null;
-}) {
+function FloatingCall({ voice, main }: { readonly voice: Voice; readonly main: MainVideo | null }) {
   const fallbackId =
     main?.userId ??
     voice.call?.participants.find((entry) => entry.userId !== voice.selfUserId)?.userId ??
     voice.selfUserId;
   return (
     <View className="flex-1 bg-black">
-      <CallVideo
-        stream={main?.stream ?? null}
-        fallback={<AvatarFallback seed={fallbackId} color={memberColors.get(fallbackId)} />}
-      />
+      <CallVideo stream={main?.stream ?? null} fallback={<AvatarFallback seed={fallbackId} />} />
     </View>
   );
 }
@@ -271,7 +254,7 @@ function InCallControls({ voice }: { readonly voice: Voice }) {
  * deafen and speaking state, an enlarged screen-share tile, the elapsed
  * duration and the pinned control bar.
  */
-export function CallScreen({ channelName, memberNames, memberColors }: CallScreenProps) {
+export function CallScreen({ channelName, memberNames }: CallScreenProps) {
   const voice = useVoice();
   const { call } = voice;
   const startedAt = call?.startedAt ?? null;
@@ -294,7 +277,7 @@ export function CallScreen({ channelName, memberNames, memberColors }: CallScree
   if (voice.pip.active) {
     return (
       <Modal visible transparent onRequestClose={() => undefined}>
-        <FloatingCall voice={voice} memberColors={memberColors} main={main} />
+        <FloatingCall voice={voice} main={main} />
       </Modal>
     );
   }
@@ -311,7 +294,6 @@ export function CallScreen({ channelName, memberNames, memberColors }: CallScree
         <ParticipantGrid
           voice={voice}
           memberNames={memberNames}
-          memberColors={memberColors}
           localStream={localStream}
           mainUserId={main?.userId ?? null}
         />

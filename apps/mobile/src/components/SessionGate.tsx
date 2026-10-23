@@ -74,7 +74,15 @@ export function SessionGate({ profile, authClient, cookieStore, client }: Sessio
 
   const user = session.data?.user;
   if (user !== undefined && user !== null) {
-    return <SignedInChat profile={profile} authClient={authClient} client={client} user={user} />;
+    return (
+      <SignedInChat
+        profile={profile}
+        authClient={authClient}
+        client={client}
+        user={user}
+        onSwitchServer={backToConnect}
+      />
+    );
   }
 
   // The chat surface lays out its own safe areas; only sign-in needs the frame.
@@ -129,10 +137,12 @@ function SignedInChat({
   authClient,
   client,
   user,
+  onSwitchServer,
 }: {
   readonly profile: ServerProfile;
   readonly authClient: AuloraAuthClient;
   readonly client: ConvexReactClient;
+  readonly onSwitchServer: () => void;
   readonly user: {
     readonly id: string;
     readonly name?: string | null;
@@ -148,7 +158,11 @@ function SignedInChat({
     if (result.error) throw new Error(result.error.message ?? "Couldn't delete account");
   };
   return (
-    <QueryErrorBoundary client={client} onSignOut={() => void signOut()}>
+    <QueryErrorBoundary
+      client={client}
+      onSignOut={() => void signOut()}
+      onSwitchServer={onSwitchServer}
+    >
       <MembershipGate
         workspaceIconSeed={profile.iconSeed}
         signedInAs={user.email ?? user.name ?? null}

@@ -69,7 +69,7 @@ export function PushRelaySection({ overview }: { readonly overview: Overview }) 
           ? "Relay URL and token are set in the environment."
           : "Relay token is not set in the environment."}
       </Text>
-      <div className="rounded-input border border-border bg-surface-1 px-3.5">
+      <div className="border-y border-border/60 px-3.5">
         <Switch
           checked={enabled}
           onChange={(value) => {

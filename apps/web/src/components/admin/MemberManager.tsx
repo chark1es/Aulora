@@ -150,7 +150,7 @@ export function MemberManager({ viewer, ownerId, permissions, onOpenInvites }: M
       )}
 
       {members !== undefined && memberList.length > 0 && (
-        <ul className="divide-y divide-border/60 overflow-hidden rounded-[12px] bg-surface-2">
+        <ul className="divide-y divide-border/60 border-y border-border/60">
           {memberList.map((member) => {
             const displayName = memberDisplayName(member, member.userId);
             const color = roleColorFor(member, roleList);
@@ -167,7 +167,7 @@ export function MemberManager({ viewer, ownerId, permissions, onOpenInvites }: M
                   }}
                   className="group flex min-h-[52px] w-full items-center gap-3 px-4 py-2 text-left transition hover:bg-surface-3/50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-accent"
                 >
-                  <PersonAvatar userId={member.userId} size={28} roleColor={color} />
+                  <PersonAvatar userId={member.userId} size={28} />
                   <span className="min-w-0 flex-1">
                     <span className="flex items-center gap-1.5">
                       <Text

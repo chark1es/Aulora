@@ -5,7 +5,9 @@ import {
   type MessagePayload,
   messageTime,
   Permission,
+  pingsViewer,
 } from "@aulora/core";
+import { MENTION_BACKGROUND, MENTION_COLOR } from "@aulora/tokens";
 import { Icon, Text, usePalette } from "@aulora/ui-native";
 import { memo } from "react";
 import { Pressable, View } from "react-native";
@@ -259,6 +261,7 @@ export const MessageRow = memo(function MessageRow(props: MessageRowProps) {
     context.onActions(message);
   };
   const { onMemberPress } = context;
+  const pinged = pingsViewer(message, context.ownUserId);
   return (
     <Pressable
       accessibilityLabel={`${authorName}, ${messageTime(message.createdAt)}. ${props.text ?? ""}`}
@@ -270,7 +273,15 @@ export const MessageRow = memo(function MessageRow(props: MessageRowProps) {
       className={`px-4 active:bg-surface-1 ${grouped ? "py-0.5" : "pb-0.5 pt-2.5"} ${
         props.highlighted ? "bg-accent-soft" : ""
       } ${pending ? "opacity-60" : ""}`}
+      style={pinged && !props.highlighted ? { backgroundColor: MENTION_BACKGROUND } : undefined}
     >
+      {pinged && (
+        <View
+          pointerEvents="none"
+          className="absolute inset-y-0 left-0 w-[3px]"
+          style={{ backgroundColor: MENTION_COLOR }}
+        />
+      )}
       {reply !== null && (
         <ReplyLine
           reply={reply}
@@ -291,7 +302,7 @@ export const MessageRow = memo(function MessageRow(props: MessageRowProps) {
             onPress={() => onMemberPress?.(message.authorId)}
             className="pt-0.5"
           >
-            <MemberAvatar userId={message.authorId} size={36} roleColor={props.authorColor} />
+            <MemberAvatar userId={message.authorId} size={36} />
           </Pressable>
         )}
         <MessageBody {...props} />

@@ -41,7 +41,7 @@ export function AllowlistManager({ canAdd, canRemove }: AllowlistManagerProps) {
           <Spinner size={22} label="Loading allowlist" />
         </div>
       ) : (
-        <ul className="flex flex-col divide-y divide-border/60 overflow-hidden rounded-[12px] bg-surface-2">
+        <ul className="flex flex-col divide-y divide-border/60 border-y border-border/60">
           {entries.map((entry) => (
             <li
               key={entry.id}
@@ -129,7 +129,7 @@ function AllowlistAddForm() {
   }
 
   return (
-    <form className="flex flex-col gap-3 rounded-[12px] bg-surface-2 p-4" onSubmit={submit}>
+    <form className="flex flex-col gap-3 border-y border-border/60 py-4" onSubmit={submit}>
       <div className="grid gap-3 sm:grid-cols-2">
         <Input
           label="Email or domain"

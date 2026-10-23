@@ -283,7 +283,7 @@ export function EditChannelSheet(props: EditChannelSheetProps) {
                       toggleMember(member.userId);
                     }}
                   >
-                    <MemberAvatar userId={member.userId} size={26} roleColor={member.roleColor} />
+                    <MemberAvatar userId={member.userId} size={26} />
                     <Text size="sm" className="min-w-0 flex-1" numberOfLines={1}>
                       {member.displayName}
                       {self ? " (you)" : ""}

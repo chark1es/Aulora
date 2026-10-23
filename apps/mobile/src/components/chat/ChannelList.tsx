@@ -102,13 +102,7 @@ function HereNow({ members, presence, ownUserId, onMemberPress }: HereNowProps) 
             }}
             className="w-16 items-center gap-1 py-1 active:opacity-70"
           >
-            <PresenceAvatar
-              userId={member.userId}
-              status={status}
-              roleColor={member.roleColor}
-              size={48}
-              surface={palette.bg}
-            />
+            <PresenceAvatar userId={member.userId} status={status} size={48} surface={palette.bg} />
             <Text size="xs" tone="muted" numberOfLines={1} maxFontSizeMultiplier={1.3}>
               {member.displayName.split(" ")[0]}
             </Text>

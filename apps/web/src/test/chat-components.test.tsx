@@ -1,5 +1,5 @@
 import type { ChannelView, MessagePayload } from "@aulora/core";
-import { ChatSession, Permission } from "@aulora/core";
+import { activityLabel, ChatSession, Permission } from "@aulora/core";
 import { act, render, screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { ConvexReactClient } from "convex/react";
@@ -407,13 +407,15 @@ describe("ChannelSidebar", () => {
 
   it("names DMs after the other person and shows mention badges", () => {
     render(<ChannelSidebar {...sidebarProps()} />);
-    expect(
-      within(screen.getByTestId("channel-row-dm-ada")).getByText("Ada Lovelace"),
-    ).toBeInTheDocument();
+    const row = screen.getByTestId("channel-row-dm-ada");
+    expect(within(row).getByText("Ada Lovelace")).toBeInTheDocument();
     expect(within(screen.getByTestId("channel-row-design")).getByText("3")).toBeInTheDocument();
-    expect(
-      within(screen.getByTestId("channel-row-dm-ada")).getByText("Unread"),
-    ).toBeInTheDocument();
+    expect(within(row).getByText("Unread")).toBeInTheDocument();
+    // DM rows keep the dot on the right, vertically centred, with no timestamp
+    // stacked above it.
+    const dot = within(row).getByText("Unread").parentElement;
+    expect(dot?.parentElement).toBe(row.lastElementChild);
+    expect(row.textContent).not.toContain(activityLabel(NOW));
   });
 
   it("opens the create-channel dialog without reflowing the list", async () => {

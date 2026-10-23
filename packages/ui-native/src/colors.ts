@@ -43,19 +43,3 @@ export function presenceColor(status: string, palette: Palette = darkPalette): s
       return palette["text-muted"];
   }
 }
-
-export interface RoleRing {
-  readonly borderColor: string;
-  readonly borderWidth: number;
-}
-
-/**
- * A 2px role-color ring for an avatar, or `undefined` when no color is set.
- * Mirrors the ring `@aulora/avatars` draws on web.
- */
-export function roleRing(roleColor: string | null | undefined): RoleRing | undefined {
-  if (roleColor === null || roleColor === undefined || roleColor.length === 0) {
-    return undefined;
-  }
-  return { borderColor: roleColor, borderWidth: 2 };
-}

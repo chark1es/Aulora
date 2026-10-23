@@ -121,7 +121,7 @@ export function BackupsSection({ overview }: { readonly overview: Overview }) {
           </Text>
         )}
         <ul
-          className="divide-y divide-border/60 overflow-hidden rounded-[12px] bg-surface-2"
+          className="divide-y divide-border/60 border-y border-border/60"
           data-testid="instance-backup-list"
         >
           {(backups ?? []).map((entry) => (
