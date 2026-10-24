@@ -12,21 +12,35 @@ import { AppState, View } from "react-native";
  */
 export const RETRY_INTERVAL_MS = 4_000;
 
+/**
+ * How many automatic retries a transient error gets before the boundary stops
+ * and hands the choice back to the person.
+ */
+export const MAX_AUTO_RETRIES = 5;
+
 export interface QueryErrorBoundaryProps {
   readonly client: ConvexReactClient;
   /** Signs the person out to reach the sign-in screen. */
   readonly onSignOut: () => void;
+  /** Leaves for a different server; offered once automatic retries run out. */
+  readonly onSwitchServer?: () => void;
   readonly children: ReactNode;
 }
 
 /**
  * Keeps a Convex/query failure from taking over the app. A connectivity or
  * not-yet-authenticated error shows a lightweight "Reconnecting…" state and
- * re-mounts the subtree once the connection or auth returns; any other error
- * offers an explicit "Try again". The signed-in shell stays mounted, so the
- * stored session is never cleared here.
+ * re-mounts the subtree once the connection or auth returns, giving up after
+ * {@link MAX_AUTO_RETRIES} attempts so the person can retry or leave; any other
+ * error offers an explicit "Try again". The signed-in shell stays mounted, so
+ * the stored session is never cleared here.
  */
-export function QueryErrorBoundary({ client, onSignOut, children }: QueryErrorBoundaryProps) {
+export function QueryErrorBoundary({
+  client,
+  onSignOut,
+  onSwitchServer,
+  children,
+}: QueryErrorBoundaryProps) {
   const [attempt, setAttempt] = useState(0);
   const retry = useCallback(() => {
     setAttempt((current) => current + 1);
@@ -71,7 +85,7 @@ export function QueryErrorBoundary({ client, onSignOut, children }: QueryErrorBo
   }, [client, retry]);
 
   return (
-    <QueryBoundary attempt={attempt} onSignOut={onSignOut}>
+    <QueryBoundary attempt={attempt} onSignOut={onSignOut} onSwitchServer={onSwitchServer}>
       {children}
     </QueryBoundary>
   );
@@ -80,34 +94,56 @@ export function QueryErrorBoundary({ client, onSignOut, children }: QueryErrorBo
 interface QueryBoundaryProps {
   readonly attempt: number;
   readonly onSignOut: () => void;
+  readonly onSwitchServer: (() => void) | undefined;
   readonly children: ReactNode;
 }
 
 interface QueryBoundaryState {
   readonly error: unknown;
+  /** Automatic retries are spent; waiting on the person to choose. */
+  readonly exhausted: boolean;
 }
 
 class QueryBoundary extends Component<QueryBoundaryProps, QueryBoundaryState> {
-  override state: QueryBoundaryState = { error: null };
+  override state: QueryBoundaryState = { error: null, exhausted: false };
 
-  static getDerivedStateFromError(error: unknown): QueryBoundaryState {
+  /** Automatic retries since the subtree last rendered cleanly. */
+  private failedRetries = 0;
+
+  static getDerivedStateFromError(error: unknown): Partial<QueryBoundaryState> {
     return { error };
   }
 
-  override componentDidUpdate(previous: QueryBoundaryProps): void {
+  override componentDidUpdate(
+    previous: QueryBoundaryProps,
+    previousState: QueryBoundaryState,
+  ): void {
+    if (this.state.error === null) {
+      if (previousState.error !== null) {
+        this.failedRetries = 0;
+      }
+      return;
+    }
     // Only a transient error recovers on its own; a fatal one waits for the
     // explicit retry so it cannot loop.
     if (
-      previous.attempt !== this.props.attempt &&
-      this.state.error !== null &&
-      classifyError(this.state.error) === "reconnecting"
+      previous.attempt === this.props.attempt ||
+      this.state.exhausted ||
+      classifyError(this.state.error) !== "reconnecting"
     ) {
-      this.setState({ error: null });
+      return;
     }
+    this.failedRetries += 1;
+    if (this.failedRetries >= MAX_AUTO_RETRIES) {
+      this.setState({ exhausted: true });
+      return;
+    }
+    this.setState({ error: null });
   }
 
   private readonly retry = (): void => {
-    this.setState({ error: null });
+    this.failedRetries = 0;
+    this.setState({ error: null, exhausted: false });
   };
 
   override render(): ReactNode {
@@ -117,8 +153,10 @@ class QueryBoundary extends Component<QueryBoundaryProps, QueryBoundaryState> {
     return (
       <ErrorRecovery
         disposition={classifyError(this.state.error)}
+        exhausted={this.state.exhausted}
         onRetry={this.retry}
         onSignOut={this.props.onSignOut}
+        onSwitchServer={this.props.onSwitchServer}
       />
     );
   }
@@ -126,26 +164,43 @@ class QueryBoundary extends Component<QueryBoundaryProps, QueryBoundaryState> {
 
 function ErrorRecovery({
   disposition,
+  exhausted,
   onRetry,
   onSignOut,
+  onSwitchServer,
 }: {
   readonly disposition: ErrorDisposition;
+  readonly exhausted: boolean;
   readonly onRetry: () => void;
   readonly onSignOut: () => void;
+  readonly onSwitchServer: (() => void) | undefined;
 }) {
-  const reconnecting = disposition === "reconnecting";
+  const reconnecting = disposition === "reconnecting" && !exhausted;
+  let title = "Something went wrong";
+  let description = "This view could not load. Try again, or sign out to use a different account.";
+  if (reconnecting) {
+    title = "Reconnecting…";
+    description = "You’re still signed in. This view will pick up where it left off.";
+  } else if (exhausted) {
+    title = "Can’t reach the server";
+    description =
+      "Reconnecting is taking too long. You’re still signed in; try again, switch servers, or sign out.";
+  }
   return (
     <View className="flex-1 items-center justify-center gap-3 px-6">
       {reconnecting && <Spinner size={28} label="Reconnecting" />}
       <Text size="md" className="text-center font-medium">
-        {reconnecting ? "Reconnecting…" : "Something went wrong"}
+        {title}
       </Text>
       <Text size="sm" tone="muted" className="text-center">
-        {reconnecting
-          ? "You’re still signed in. This view will pick up where it left off."
-          : "This view could not load. Try again, or sign out to use a different account."}
+        {description}
       </Text>
       <Button onPress={onRetry}>Try again</Button>
+      {exhausted && onSwitchServer !== undefined && (
+        <Button variant="secondary" onPress={onSwitchServer}>
+          Switch server
+        </Button>
+      )}
       <Button variant="ghost" onPress={onSignOut}>
         Sign out
       </Button>

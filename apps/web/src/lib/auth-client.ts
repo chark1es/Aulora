@@ -1,3 +1,4 @@
+/* eslint-disable no-unused-vars -- the base rule reports parameter names in type signatures; Biome checks real unused code */
 import { convexClient } from "@convex-dev/better-auth/client/plugins";
 import { genericOAuthClient } from "better-auth/client/plugins";
 import { createAuthClient } from "better-auth/react";
@@ -100,10 +101,16 @@ export function authActionsFromClient(client: AuloraAuthClient): AuthActions {
       return toResult(await client.signUp.email({ email, password, name }));
     },
     async signInSocial({ provider, callbackURL }) {
-      return toResult(await client.signIn.social({ provider, callbackURL }));
+      // A failed sign-in (for example an unconfirmed email on an existing
+      // account) comes back to the app with `?error=`, not to a server page.
+      return toResult(
+        await client.signIn.social({ provider, callbackURL, errorCallbackURL: callbackURL }),
+      );
     },
     async signInOAuth2({ providerId, callbackURL }) {
-      return toResult(await client.signIn.oauth2({ providerId, callbackURL }));
+      return toResult(
+        await client.signIn.oauth2({ providerId, callbackURL, errorCallbackURL: callbackURL }),
+      );
     },
     async signOut() {
       return toResult(await client.signOut());

@@ -424,7 +424,6 @@ function CallOverlays({ model }: { readonly model: ChatScreenModel }) {
       <CallScreen
         channelName={model.channel?.name ?? model.workspaceName}
         memberNames={model.memberNames}
-        memberColors={model.memberColors}
       />
     </>
   );

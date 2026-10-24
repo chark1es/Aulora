@@ -9,7 +9,7 @@ import {
   splitByteSize,
 } from "../../../lib/instance-admin";
 import { SaveRow } from "../SettingsSaveRow";
-import { SettingsSectionHeader } from "../SettingsSection";
+import { SettingsSection } from "../SettingsSection";
 
 /**
  * The `instance.overview` fields the storage form reads. Kept structural so this
@@ -95,8 +95,7 @@ export function StorageSection({ overview }: { readonly overview: StorageOvervie
         submit();
       }}
     >
-      <SettingsSectionHeader
-        icon="archive"
+      <SettingsSection
         title="Storage"
         description="The quota is the total upload budget; 0 means unlimited. The max upload caps a single file. Type a number and choose its binary unit."
       />

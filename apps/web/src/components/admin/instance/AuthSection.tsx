@@ -5,7 +5,7 @@ import { useState } from "react";
 import { api } from "../../../../../../packages/convex/convex/_generated/api";
 import type { Callback } from "../callbacks";
 import { SaveRow } from "../SettingsSaveRow";
-import { SettingsSectionHeader } from "../SettingsSection";
+import { SettingsSection } from "../SettingsSection";
 import type { Overview } from "./InstanceSections";
 
 type AuthProvider = Overview["auth"]["availableProviders"][number];
@@ -62,8 +62,7 @@ export function AuthSection({ overview }: { readonly overview: Overview }) {
         save();
       }}
     >
-      <SettingsSectionHeader
-        icon="users"
+      <SettingsSection
         title="Auth providers"
         description="Credentials come from the deployment environment or from overrides saved in the Environment section; a provider is offered only when it is both configured and switched on here."
       />

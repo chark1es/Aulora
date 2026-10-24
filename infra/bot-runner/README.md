@@ -64,7 +64,7 @@ accordingly.
 
 | Variable | Default | Purpose |
 | --- | --- | --- |
-| `BOT_RUNNER_TOKEN` | – | Shared secret for `/bots/runner/*` (required) |
+| `BOT_RUNNER_TOKEN` | – | Shared secret for `/bots/runner/*`; when unset the runner idles |
 | `CONVEX_HTTP_URL` | `http://convex-backend:3211` | Convex HTTP-actions origin |
 | `CONVEX_SELF_HOSTED_URL` | `http://convex-backend:3210` | Convex API origin given to bots |
 | `BOT_RUNNER_MAX_BOTS` | `10` | Concurrent bot processes |
@@ -84,7 +84,7 @@ overrides used by the tests.
 
 ```sh
 node --test "test/*.test.mjs"   # fake Convex server + real child processes
-node src/main.mjs               # requires BOT_RUNNER_TOKEN
+BOT_RUNNER_TOKEN=dev node src/main.mjs   # without the token it idles
 ```
 
 The tests spin up a fake Convex HTTP server that implements the five runner

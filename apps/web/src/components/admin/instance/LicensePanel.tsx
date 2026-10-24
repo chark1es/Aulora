@@ -3,7 +3,7 @@ import { useAction, useMutation, useQuery } from "convex/react";
 import type { FunctionReturnType } from "convex/server";
 import { useState } from "react";
 import { api } from "../../../../../../packages/convex/convex/_generated/api";
-import { SettingsSectionHeader } from "../SettingsSection";
+import { SettingsSection } from "../SettingsSection";
 import { LicenseStatusCard } from "./LicenseStatusCard";
 
 type LicenseUsageRow = NonNullable<FunctionReturnType<typeof api.licenseUsage.summary>>[number];
@@ -39,8 +39,7 @@ export function LicensePanel({ canManage }: LicensePanelProps) {
 
   return (
     <div className="flex flex-col gap-5" data-testid="license-panel">
-      <SettingsSectionHeader
-        icon="key"
+      <SettingsSection
         title="License"
         description="Personal and noncommercial use is free. A company running Aulora for work needs a monthly subscription at $1 per active user."
       />

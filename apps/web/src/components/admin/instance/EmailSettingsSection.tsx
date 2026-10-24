@@ -5,7 +5,7 @@ import { useEffect, useState } from "react";
 import { api } from "../../../../../../packages/convex/convex/_generated/api";
 import type { Callback } from "../callbacks";
 import { SaveRow } from "../SettingsSaveRow";
-import { SettingsSectionHeader } from "../SettingsSection";
+import { SettingsSection } from "../SettingsSection";
 
 type EmailSettings = NonNullable<FunctionReturnType<typeof api.email.settings>>;
 type EmailProvider = "none" | "resend" | "smtp";
@@ -27,8 +27,7 @@ export function EmailSection() {
 
   return (
     <section className="flex flex-col gap-4" data-testid="instance-email">
-      <SettingsSectionHeader
-        icon="mail"
+      <SettingsSection
         title="Email"
         description="Configure invite delivery. Credentials are encrypted on the server and are never shown again."
       />

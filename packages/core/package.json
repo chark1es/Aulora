@@ -1,6 +1,6 @@
 {
   "name": "@aulora/core",
-  "version": "1.2.1",
+  "version": "1.3.0",
   "private": true,
   "description": "Aulora shared client logic: server profiles, well-known validation, permissions, unread math.",
   "type": "module",
@@ -27,9 +27,9 @@
   },
   "devDependencies": {
     "@aulora/config": "workspace:*",
-    "@types/node": "26.6.3",
+    "@types/node": "26.6.5",
     "typescript": "5.9.3",
-    "vitest": "5.0.2"
+    "vitest": "5.0.5"
   },
   "license": "PolyForm-Noncommercial-1.0.0"
 }

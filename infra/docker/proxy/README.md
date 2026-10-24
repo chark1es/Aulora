@@ -37,6 +37,11 @@ Three things must be true at the public edge:
    > `web` container proxy it (see `Caddyfile.example` and
    > `traefik.labels.yml`). Either way the upstream is `3211`, never `3210`.
 
+   **`<web origin>/api/webhooks/*` follows the same rule.** Incoming webhooks are
+   Convex HTTP actions at `convex-backend:3211`. The `web` container proxies
+   them already; if your edge sends `/api/*` straight to `3210`, add a more
+   specific route for `/api/webhooks/*` to `3211`, as for `/api/auth/*`.
+
 4. **`<web origin>/api/*` (the Convex client API + WebSocket) is forwarded to the
    Convex cloud origin (`convex-backend:3210`), on the same origin as the web
    app.**
@@ -60,6 +65,7 @@ Three things must be true at the public edge:
 | ------------------------ | ------------------------ | ----- | ----- |
 | `chat.example.com`       | `web`                    | `80`  | SPA + `/.well-known` |
 | `chat.example.com/api/auth/*` | `convex-backend`   | `3211`| First-party auth |
+| `chat.example.com/api/webhooks/*` | `convex-backend` | `3211`| Incoming webhooks |
 | `chat.example.com/api/*` | `convex-backend`         | `3210`| Convex API + WebSocket (single-host) |
 | `convex.example.com`     | `convex-backend`         | `3210`| Convex API + WebSocket (split-host) |
 | `dashboard.example.com`  | `convex-dashboard`       | `6791`| Keep private or behind auth |
@@ -178,6 +184,9 @@ The backend has no built-in rate limiting, so put it at the edge:
 
 - Auth (`/api/auth/*`): a strict per-IP limit, e.g. **20 requests / minute**
   with a small burst. This is the credential-stuffing surface.
+- Webhooks (`/api/webhooks/*`): the backend limits each webhook to 30 messages
+  per 10 seconds, so an edge limit only needs to stop floods of bad URLs,
+  e.g. **60 requests / minute** per IP.
 - Well-known (`/.well-known`): generous, it is cacheable and static.
 - Message/upload traffic does not flow through the web origin; it goes to the
   Convex origin. If you expose that publicly, apply a per-IP connection limit.

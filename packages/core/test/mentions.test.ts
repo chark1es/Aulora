@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { expandBroadcast, resolveMentions } from "../src/chat/index.js";
+import { expandBroadcast, pingsViewer, resolveMentions } from "../src/chat/index.js";
 
 const members = [
   { userId: "u-alice", displayName: "Alice" },
@@ -54,5 +54,21 @@ describe("resolveMentions", () => {
         members.map((m) => m.userId),
       ),
     ).toEqual(["u-alice", "u-alice-smith", "u-bob"]);
+  });
+});
+
+describe("pingsViewer", () => {
+  const message = { authorId: "alice", mentionUserIds: ["alice", "bob"] };
+
+  it("pings a mentioned viewer", () => {
+    expect(pingsViewer(message, "bob")).toBe(true);
+  });
+
+  it("does not ping the author, even when the broadcast expanded to include them", () => {
+    expect(pingsViewer(message, "alice")).toBe(false);
+  });
+
+  it("does not ping a viewer who was not mentioned", () => {
+    expect(pingsViewer(message, "carol")).toBe(false);
   });
 });

@@ -8,6 +8,16 @@ import { SignInScreen } from "./SignInScreen";
 
 vi.mock("convex/react", () => ({ useQuery: vi.fn(() => undefined) }));
 
+const heroWatch = vi.hoisted(() => ({ current: null as unknown }));
+
+vi.mock("./BlobatarHero", () => ({
+  BlobatarHero: (props: { readonly watch?: unknown; readonly src?: string | null }) => {
+    heroWatch.current = props.watch;
+    // Keep the workspace-logo path visible to the existing public-config test.
+    return props.src ? <img src={props.src} alt="" /> : null;
+  },
+}));
+
 const providers: WellKnownAuth["providers"] = [
   { id: "github", type: "oauth", displayName: "GitHub" },
   {
@@ -160,5 +170,28 @@ describe("SignInScreen", () => {
 
     expect(screen.getByText("A calm place to ship.")).toBeInTheDocument();
     expect(container.querySelector("img")).toHaveAttribute("src", "https://chat.acme.com/logo.png");
+  });
+
+  it("has the hero follow the pointer until a field takes its attention", async () => {
+    const user = userEvent.setup();
+    render(
+      <SignInScreen
+        profile={makeProfile({ enabled: true, signup: false })}
+        actions={fakeActions()}
+      />,
+    );
+
+    expect(heroWatch.current).toBe("pointer");
+
+    const email = screen.getByLabelText("Email");
+    await user.click(email);
+    expect(heroWatch.current).toBe(email);
+
+    await user.click(screen.getByLabelText("Password"));
+    expect(heroWatch.current).toBe("rest");
+
+    await user.tab();
+    expect(heroWatch.current).toBe("pointer");
+    expect(screen.queryByText(/team chat on your own server/)).toBeNull();
   });
 });

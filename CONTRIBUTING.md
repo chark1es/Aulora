@@ -8,7 +8,7 @@ Read [CLA.md](CLA.md), then follow the CLA bot's comment on your pull request. I
 
 ## Setup and checks
 
-Use Bun 1.4.0, Node.js 22.18.0, and Git. Docker is needed for a live local backend. Native clients also need platform SDKs.
+Use Bun 1.4.4, Node.js 22.23.4, and Git. Docker is needed for a live local backend. Native clients also need platform SDKs.
 
 ```sh
 bun install --frozen-lockfile

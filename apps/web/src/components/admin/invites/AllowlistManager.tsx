@@ -1,5 +1,5 @@
 import { parseAllowlistEntry } from "@aulora/core";
-import { Button, Icon, Input, Spinner, Text } from "@aulora/ui-web";
+import { Button, EmptyState, Icon, Input, Spinner, Text } from "@aulora/ui-web";
 import { useMutation, useQuery } from "convex/react";
 import { type FormEvent, useState } from "react";
 import { api } from "../../../../../../packages/convex/convex/_generated/api";
@@ -41,15 +41,15 @@ export function AllowlistManager({ canAdd, canRemove }: AllowlistManagerProps) {
           <Spinner size={22} label="Loading allowlist" />
         </div>
       ) : (
-        <ul className="flex flex-col divide-y divide-border overflow-hidden rounded-[14px] border border-border bg-surface-2">
+        <ul className="flex flex-col divide-y divide-border/60 border-y border-border/60">
           {entries.map((entry) => (
             <li
               key={entry.id}
-              className="flex items-center gap-3 px-4 py-3"
+              className="group flex min-h-[44px] items-center gap-3 px-4 py-2.5"
               data-testid="allowlist-row"
             >
-              <span className="flex h-8 w-8 shrink-0 items-center justify-center rounded-[9px] bg-surface-3 text-text-muted">
-                <Icon name={entry.kind === "domain" ? "users" : "user-plus"} size={15} />
+              <span className="flex h-7 w-7 shrink-0 items-center justify-center rounded-[8px] bg-surface-3 text-text-muted">
+                <Icon name={entry.kind === "domain" ? "users" : "user-plus"} size={14} />
               </span>
               <div className="flex min-w-0 flex-1 flex-col gap-0.5">
                 <div className="flex items-center gap-2">
@@ -68,6 +68,7 @@ export function AllowlistManager({ canAdd, canRemove }: AllowlistManagerProps) {
                   type="button"
                   variant="ghost"
                   size="sm"
+                  className="opacity-100 transition md:opacity-0 md:group-hover:opacity-100 md:group-focus-within:opacity-100"
                   aria-label={`Remove ${entry.pattern}`}
                   onClick={() => {
                     setRemoveError(null);
@@ -84,10 +85,13 @@ export function AllowlistManager({ canAdd, canRemove }: AllowlistManagerProps) {
             </li>
           ))}
           {entries.length === 0 && (
-            <li className="px-4 py-5 text-center">
-              <Text tone="muted" size="sm">
-                Nobody is pre-approved yet.
-              </Text>
+            <li className="px-4 py-2">
+              <EmptyState
+                size="sm"
+                icon="mail"
+                title="Nobody is pre-approved yet"
+                description="Add an email address or domain above to let those people join without an invite."
+              />
             </li>
           )}
         </ul>
@@ -125,10 +129,7 @@ function AllowlistAddForm() {
   }
 
   return (
-    <form
-      className="flex flex-col gap-3 rounded-[14px] border border-border bg-surface-2 p-4"
-      onSubmit={submit}
-    >
+    <form className="flex flex-col gap-3 border-y border-border/60 py-4" onSubmit={submit}>
       <div className="grid gap-3 sm:grid-cols-2">
         <Input
           label="Email or domain"

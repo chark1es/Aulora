@@ -17,11 +17,15 @@
         "hiddenTitle": true,
         "trafficLightPosition": { "x": 18, "y": 13 },
         "dragDropEnabled": false,
+        "backgroundThrottling": "disabled",
         "visible": true
       }
     ]
   },
   "bundle": {
-    "targets": ["app", "dmg"]
+    "targets": ["app", "dmg"],
+    "macOS": {
+      "entitlements": "Entitlements.plist"
+    }
   }
 }

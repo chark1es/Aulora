@@ -9,7 +9,7 @@ import {
   useState,
 } from "react";
 import { cn } from "./cn";
-import { Icon } from "./Icon";
+import { ModalShell } from "./ModalShell";
 import { usePrefersReducedMotion } from "./usePrefersReducedMotion";
 
 export interface ModalProps {
@@ -19,23 +19,46 @@ export interface ModalProps {
   readonly label: string;
   readonly title?: string;
   readonly description?: string;
-  /** Leading element beside the title, e.g. a channel-kind glyph. */
+  /** Leading element beside the title. A bare {@link Icon} is tinted by `tone`. */
   readonly icon?: ReactNode;
   readonly children: ReactNode;
   /** Footer actions, usually buttons. */
   readonly footer?: ReactNode;
   readonly size?: "sm" | "md" | "lg";
   readonly className?: string;
+  /** `danger` tints an icon tile and is used by destructive confirms. */
+  readonly tone?: "default" | "danger";
+  /** Hides the corner close button, for a fully custom action row. */
+  readonly hideClose?: boolean;
+  /** Hides the title block, for sheet-style dialogs such as an incoming call. */
+  readonly hideHeader?: boolean;
+  /** Where focus lands on open. `panel` avoids arming a destructive first button. */
+  readonly initialFocus?: "first" | "panel";
 }
-
-const SIZE = new Map<NonNullable<ModalProps["size"]>, string>([
-  ["sm", "max-w-[400px]"],
-  ["md", "max-w-[520px]"],
-  ["lg", "max-w-[720px]"],
-]);
 
 const FOCUSABLE_SELECTOR =
   "input,textarea,select,button:not([disabled]),[tabindex]:not([tabindex='-1'])";
+
+/** Text entry wins initial focus, so a form dialog can be typed into at once. */
+const TEXT_FIELD_SELECTOR =
+  "[data-autofocus],input:not([type=hidden]):not([type=radio]):not([type=checkbox]):not([disabled]),textarea:not([disabled])";
+
+/**
+ * Where focus lands when a dialog opens: an explicit `data-autofocus` element,
+ * else the first text field, else the first control that is not the corner
+ * close button (usually Cancel, never an armed destructive action), else the
+ * panel itself.
+ */
+function initialFocusTarget(panel: HTMLElement): HTMLElement {
+  const field = panel.querySelector<HTMLElement>(TEXT_FIELD_SELECTOR);
+  if (field !== null) {
+    return field;
+  }
+  const control = [...panel.querySelectorAll<HTMLElement>(FOCUSABLE_SELECTOR)].find(
+    (node) => node.dataset.modalClose === undefined,
+  );
+  return control ?? panel;
+}
 
 /** Keeps the element mounted through the exit transition. */
 function useModalPresence(open: boolean, reducedMotion: boolean) {
@@ -45,6 +68,10 @@ function useModalPresence(open: boolean, reducedMotion: boolean) {
   useEffect(() => {
     if (open) {
       setRendered(true);
+      if (reducedMotion) {
+        setEntered(true);
+        return undefined;
+      }
       const frame = requestAnimationFrame(() => {
         setEntered(true);
       });
@@ -55,7 +82,7 @@ function useModalPresence(open: boolean, reducedMotion: boolean) {
     setEntered(false);
     if (reducedMotion) {
       setRendered(false);
-      return;
+      return undefined;
     }
     const timer = setTimeout(() => {
       setRendered(false);
@@ -69,10 +96,14 @@ function useModalPresence(open: boolean, reducedMotion: boolean) {
 }
 
 /** Moves focus into the dialog when it opens, and restores it on close. */
-function useModalFocusTrap(open: boolean, panelRef: RefObject<HTMLDivElement | null>) {
+function useModalFocusTrap(
+  open: boolean,
+  panelRef: RefObject<HTMLDivElement | null>,
+  initialFocus: "first" | "panel",
+) {
   useEffect(() => {
     if (!open) {
-      return;
+      return undefined;
     }
     const previous = document.activeElement;
     const frame = requestAnimationFrame(() => {
@@ -80,8 +111,7 @@ function useModalFocusTrap(open: boolean, panelRef: RefObject<HTMLDivElement | n
       if (panel === null) {
         return;
       }
-      const focusable = panel.querySelector<HTMLElement>(FOCUSABLE_SELECTOR);
-      (focusable ?? panel).focus();
+      (initialFocus === "panel" ? panel : initialFocusTarget(panel)).focus();
     });
     return () => {
       cancelAnimationFrame(frame);
@@ -89,7 +119,7 @@ function useModalFocusTrap(open: boolean, panelRef: RefObject<HTMLDivElement | n
         previous.focus();
       }
     };
-  }, [open, panelRef]);
+  }, [open, panelRef, initialFocus]);
 }
 
 /** Escape closes; Tab cycles focus within the panel. */
@@ -128,131 +158,20 @@ function useModalKeyDown(onClose: () => void, panelRef: RefObject<HTMLDivElement
   );
 }
 
-function ModalHeader({
-  label,
-  title,
-  description,
-  icon,
-  titleId,
-  descriptionId,
-  onClose,
-}: {
-  readonly label: string;
-  readonly title?: string;
-  readonly description?: string;
-  readonly icon?: ReactNode;
-  readonly titleId: string;
-  readonly descriptionId: string;
-  readonly onClose: () => void;
-}) {
-  return (
-    <header className="flex items-start gap-3 px-5 pb-1 pt-5">
-      {icon !== undefined && <span className="mt-0.5 shrink-0">{icon}</span>}
-      <div className="min-w-0 flex-1">
-        <h2 id={titleId} className="text-[15px] font-semibold tracking-[-0.01em] text-text">
-          {title ?? label}
-        </h2>
-        {description !== undefined && (
-          <p id={descriptionId} className="mt-0.5 text-[13px] leading-snug text-text-muted">
-            {description}
-          </p>
-        )}
-      </div>
-      <button
-        type="button"
-        aria-label="Close"
-        onClick={onClose}
-        className="-mr-1 -mt-0.5 flex h-7 w-7 shrink-0 items-center justify-center rounded-[7px] text-text-muted transition hover:bg-surface-3 hover:text-text"
-      >
-        <Icon name="x" size={16} />
-      </button>
-    </header>
-  );
-}
-
-interface ModalPanelProps extends ModalProps {
-  readonly entered: boolean;
-  readonly titleId: string;
-  readonly descriptionId: string;
-  readonly panelRef: RefObject<HTMLDivElement | null>;
-  readonly onKeyDown: (event: React.KeyboardEvent) => void;
-}
-
-function ModalPanel(props: ModalPanelProps) {
-  const { entered, titleId, descriptionId, panelRef, onKeyDown } = props;
-  return (
-    <div
-      ref={panelRef}
-      role="dialog"
-      aria-modal="true"
-      aria-label={props.title === undefined ? props.label : undefined}
-      aria-labelledby={props.title !== undefined ? titleId : undefined}
-      aria-describedby={props.description !== undefined ? descriptionId : undefined}
-      tabIndex={-1}
-      onKeyDown={onKeyDown}
-      className={cn(
-        "w-full overflow-hidden rounded-[14px] border border-border bg-surface-2 shadow-2xl shadow-black/30",
-        "transition-all duration-150 ease-out focus:outline-none",
-        entered ? "translate-y-0 scale-100 opacity-100" : "translate-y-1 scale-[0.98] opacity-0",
-        SIZE.get(props.size ?? "md"),
-        props.className,
-      )}
-    >
-      <ModalHeader
-        label={props.label}
-        {...(props.title !== undefined ? { title: props.title } : {})}
-        {...(props.description !== undefined ? { description: props.description } : {})}
-        icon={props.icon}
-        titleId={titleId}
-        descriptionId={descriptionId}
-        onClose={props.onClose}
-      />
-      <div className="px-5 pb-1 pt-2">{props.children}</div>
-      {props.footer !== undefined && (
-        <footer className="flex items-center justify-end gap-2 border-t border-border bg-surface-1/60 px-5 py-3.5">
-          {props.footer}
-        </footer>
-      )}
-    </div>
-  );
-}
-
-function ModalSurface(props: ModalPanelProps) {
-  const { entered, onClose } = props;
-  return (
-    // biome-ignore lint/a11y/noStaticElementInteractions: backdrop press dismisses the dialog
-    // biome-ignore lint/a11y/useKeyWithClickEvents: Escape and Tab are handled on the panel
-    <div
-      className={cn(
-        "fixed inset-0 z-50 flex items-center justify-center bg-black/40 px-4 backdrop-blur-[2px]",
-        "transition-opacity duration-150",
-        entered ? "opacity-100" : "opacity-0",
-      )}
-      onClick={(event) => {
-        if (event.target === event.currentTarget) {
-          onClose();
-        }
-      }}
-    >
-      <ModalPanel {...props} />
-    </div>
-  );
-}
-
 /**
- * A focused, centered dialog. Opens with a subtle scale-and-fade, traps the
- * initial focus, closes on Escape or a backdrop press, and restores focus to
- * the trigger. Uses the native `dialog`-style semantics (`role="dialog"` +
- * `aria-modal`) so it is identical in the web and Tauri builds.
+ * A focused dialog. Opens with a scale-and-fade on desktop and rises as a
+ * bottom sheet on phones; traps focus, closes on Escape or a backdrop press,
+ * and restores focus to the trigger. Uses `role="dialog"` + `aria-modal` so it
+ * behaves the same in the web and Tauri builds.
  */
 export function Modal(props: ModalProps) {
-  const { open, onClose } = props;
+  const { open, onClose, initialFocus = "first" } = props;
   const reducedMotion = usePrefersReducedMotion();
   const titleId = useId();
   const descriptionId = useId();
   const panelRef = useRef<HTMLDivElement | null>(null);
   const { rendered, entered } = useModalPresence(open, reducedMotion);
-  useModalFocusTrap(open, panelRef);
+  useModalFocusTrap(open, panelRef, initialFocus);
   const onKeyDown = useModalKeyDown(onClose, panelRef);
 
   if (!rendered) {
@@ -260,7 +179,7 @@ export function Modal(props: ModalProps) {
   }
 
   return (
-    <ModalSurface
+    <ModalShell
       {...props}
       entered={entered}
       titleId={titleId}
@@ -287,11 +206,11 @@ export function Field({
 } & HTMLAttributes<HTMLDivElement>) {
   return (
     <div className={cn("flex flex-col gap-1.5", className)} {...rest}>
-      <span className="text-[12px] font-medium text-text-muted">{label}</span>
+      <span className="text-[12.5px] font-medium text-text">{label}</span>
       {children}
-      {hint !== undefined && <span className="text-[11px] text-text-muted">{hint}</span>}
+      {hint !== undefined && <span className="text-[12px] text-text-muted">{hint}</span>}
       {error !== undefined && (
-        <span role="alert" className="text-[11px] text-danger">
+        <span role="alert" className="text-[12px] text-danger">
           {error}
         </span>
       )}

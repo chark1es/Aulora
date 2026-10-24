@@ -90,7 +90,7 @@ export function BotTokenTab({ bot }: { readonly bot: BotDetail }) {
       )}
 
       <div className="flex flex-col gap-1.5">
-        <Text size="xs" tone="muted" className="font-semibold uppercase tracking-[0.06em]">
+        <Text size="xs" tone="muted" className="font-semibold">
           Outside the server
         </Text>
         <pre className="overflow-x-auto rounded-[10px] border border-border bg-surface-1 p-3 font-mono text-[12px] text-text-secondary">

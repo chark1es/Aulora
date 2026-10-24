@@ -3,6 +3,7 @@ import { describe, expect, it, vi } from "vitest";
 import {
   Button,
   Card,
+  ConfirmDialog,
   DotGrid,
   Heading,
   Icon,
@@ -260,5 +261,33 @@ describe("Modal", () => {
       </Modal>,
     );
     await waitFor(() => expect(screen.queryByRole("dialog")).not.toBeInTheDocument());
+  });
+
+  it("can hide the close control and the header", () => {
+    render(
+      <Modal open onClose={() => undefined} label="Incoming call" hideHeader hideClose>
+        <p>Body</p>
+      </Modal>,
+    );
+    expect(screen.getByRole("dialog", { name: "Incoming call" })).toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: "Close" })).not.toBeInTheDocument();
+    expect(screen.queryByRole("heading")).not.toBeInTheDocument();
+  });
+
+  it("renders a danger confirm with body copy and a tinted icon", () => {
+    render(
+      <ConfirmDialog
+        open
+        onClose={() => undefined}
+        onConfirm={() => undefined}
+        title="Delete message"
+        description="This cannot be undone."
+        confirmLabel="Delete"
+        variant="danger"
+      />,
+    );
+    expect(screen.getByText("This cannot be undone.").className).toContain("text-[14px]");
+    const tile = screen.getByRole("dialog").querySelector("header span");
+    expect(tile?.className).toContain("text-danger");
   });
 });

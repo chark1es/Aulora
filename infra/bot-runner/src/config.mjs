@@ -1,14 +1,24 @@
 // Bot runner configuration, read from the environment.
 //
-// Every value has a safe default except the runner token. Base URLs are parsed
-// and normalized here so `api.mjs` is the only module that builds request URLs
-// (and does so from validated config, never from a caller-supplied string).
+// Every value has a safe default; a missing runner token or
+// `BOT_RUNNER_ENABLED=false` means "bots are off" and the entrypoint idles
+// rather than crash-looping. Base URLs are parsed and
+// normalized here so `api.mjs` is the only module that builds request URLs (and
+// does so from validated config, never from a caller-supplied string).
 //
 // `BOT_RUNNER_TOKEN` must never reach a bot process; only `config.mjs` and the
 // API client ever hold it.
 
 function nonEmpty(value) {
   return typeof value === "string" && value.length > 0 ? value : undefined;
+}
+
+function enabledFlag(value, fallback) {
+  const normalized = nonEmpty(value?.trim())?.toLowerCase();
+  if (normalized === undefined) return fallback;
+  if (["0", "false", "no", "off"].includes(normalized)) return false;
+  if (["1", "true", "yes", "on"].includes(normalized)) return true;
+  return fallback;
 }
 
 function positiveInt(value, fallback) {
@@ -51,16 +61,17 @@ export function normalizeBaseUrl(value, fallback) {
 
 export function loadConfig(env = process.env) {
   // Environment only: bots share this container, so the token must never come
-  // from a file mount a bot uid could also read.
-  const runnerToken = nonEmpty(env.BOT_RUNNER_TOKEN);
-  if (typeof runnerToken !== "string" || runnerToken.length === 0) {
-    throw new Error("BOT_RUNNER_TOKEN is required");
-  }
+  // from a file mount a bot uid could also read. `undefined` means bots are off
+  // (first boot, or before `setup` generated the token): `main.mjs` idles.
+  const runnerToken = nonEmpty(env.BOT_RUNNER_TOKEN?.trim());
   const workDir = nonEmpty(env.WORK_DIR) ?? "/work";
   if (!workDir.startsWith("/")) {
     throw new Error("WORK_DIR must be an absolute path");
   }
   return {
+    // The runner starts with the stack. `BOT_RUNNER_ENABLED=false` keeps the
+    // container up and healthy but idle, so bots can be switched off from `.env`.
+    enabled: enabledFlag(env.BOT_RUNNER_ENABLED, true),
     runnerToken,
     convexHttpUrl: normalizeBaseUrl(env.CONVEX_HTTP_URL, "http://convex-backend:3211"),
     convexSelfHostedUrl: normalizeBaseUrl(env.CONVEX_SELF_HOSTED_URL, "http://convex-backend:3210"),

@@ -20,7 +20,7 @@ jobs:
       matrix:
         os: [macos-latest, ubuntu-22.04, windows-latest]
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
         with:
           persist-credentials: false
       - uses: ./.github/actions/setup-js
@@ -48,7 +48,7 @@ jobs:
       - name: Compile desktop without release credentials
         working-directory: apps/desktop
         run: bun run tauri:build
-      - uses: actions/upload-artifact@v4
+      - uses: actions/upload-artifact@v7
         with:
           name: ci-desktop-${{ matrix.os }}
           path: apps/desktop/src-tauri/target/release/bundle/**

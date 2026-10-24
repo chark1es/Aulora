@@ -1,3 +1,4 @@
+/* eslint-disable no-unused-vars -- the base rule reports parameter names in type signatures; Biome checks real unused code */
 import { Button, Icon, Input, Modal } from "@aulora/ui-web";
 import { useEffect, useRef, useState } from "react";
 
@@ -53,11 +54,7 @@ export function RenameChannelModal({
       label="Rename channel"
       title="Rename channel"
       description={`New name for this ${kindLabel}.`}
-      icon={
-        <span className="flex h-9 w-9 items-center justify-center rounded-[9px] bg-accent-soft text-accent">
-          <Icon name="pencil" size={17} />
-        </span>
-      }
+      icon={<Icon name="pencil" size={18} />}
       footer={
         <>
           <Button type="button" variant="ghost" onClick={onClose}>

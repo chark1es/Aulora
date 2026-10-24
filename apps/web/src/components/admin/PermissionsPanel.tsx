@@ -1,5 +1,5 @@
 import type { ChannelSummary } from "@aulora/core";
-import { Heading, Icon, Text } from "@aulora/ui-web";
+import { EmptyState, Icon, Text } from "@aulora/ui-web";
 import { useMutation } from "convex/react";
 import { useMemo, useState } from "react";
 import { api } from "../../../../../packages/convex/convex/_generated/api";
@@ -12,11 +12,14 @@ import {
   type RoleView,
   roleRef,
 } from "../../lib/workspace-admin";
+import { AdminPageHeader } from "./AdminPageHeader";
 import type { Callback } from "./callbacks";
 import { OverridesEditor } from "./OverridesEditor";
 
 export interface Scope {
   readonly kind: "category" | "channel";
+  /** Announcement channels draw their own glyph in the scope list. */
+  readonly announcement?: boolean;
   readonly id: string;
   readonly name: string;
   readonly key: string;
@@ -56,6 +59,7 @@ export function buildScopes(
       .filter((channel) => channel.kind === "text" || channel.kind === "announcement")
       .map((channel) => ({
         kind: "channel" as const,
+        announcement: channel.kind === "announcement",
         id: channel.id,
         name: channelNames?.get(channel.id) ?? channel.id,
         key: `channel:${channel.id}`,
@@ -88,13 +92,25 @@ export function PermissionsPanel({
 
   if (scope !== null) {
     return (
-      <ScopeOverridesPage
-        scope={scope}
-        roles={roles}
-        members={members}
-        categories={categories}
-        channels={channels}
-      />
+      <div className="flex flex-col gap-8" data-testid="permissions-panel">
+        <AdminPageHeader
+          title={scope.name}
+          description={`Permission overrides for this ${scope.kind === "category" ? "category" : "channel"}. Unset flags inherit from roles.`}
+          back={{
+            label: "Permissions",
+            onClick: () => {
+              navigate(null);
+            },
+          }}
+        />
+        <ScopeOverridesPage
+          scope={scope}
+          roles={roles}
+          members={members}
+          categories={categories}
+          channels={channels}
+        />
+      </div>
     );
   }
 
@@ -102,20 +118,21 @@ export function PermissionsPanel({
   const channelScopes = scopes.filter((entry) => entry.kind === "channel");
 
   return (
-    <div className="flex flex-col gap-5" data-testid="permissions-panel">
-      <header className="flex flex-col gap-1">
-        <Heading level={3}>Permissions</Heading>
-        <Text size="sm" tone="muted">
-          Choose a category or channel to review its overrides.
-        </Text>
-      </header>
+    <div className="flex flex-col gap-8" data-testid="permissions-panel">
+      <AdminPageHeader
+        title="Permissions"
+        description="Choose a category or channel, then set what each role and member may do there."
+      />
 
       {scopes.length === 0 ? (
-        <Text size="sm" tone="muted">
-          There are no categories or channels to configure yet.
-        </Text>
+        <EmptyState
+          size="sm"
+          icon="lock"
+          title="No channels to configure yet"
+          description="Create a category or channel first, then come back to set its overrides."
+        />
       ) : (
-        <div className="flex flex-col gap-5">
+        <div className="flex flex-col gap-8">
           {categoriesScopes.length > 0 && (
             <ScopeGroup
               title="Categories"
@@ -180,9 +197,10 @@ function ScopeOverridesPage(props: ScopeOverridesPageProps) {
       : (channels.find((channel) => channel.id === scope.id)?.overrides ?? []);
 
   return (
-    <div className="flex flex-col gap-4" data-testid="permissions-panel">
+    <div className="flex flex-col gap-4">
       <OverridesEditor
         title={scope.name}
+        hideTitle
         overrides={currentOverrides}
         targets={targets}
         busy={busy}
@@ -214,6 +232,13 @@ function ScopeOverridesPage(props: ScopeOverridesPageProps) {
   );
 }
 
+function scopeIcon(scope: Scope): "sidebar" | "announce" | "hash" {
+  if (scope.kind === "category") {
+    return "sidebar";
+  }
+  return scope.announcement === true ? "announce" : "hash";
+}
+
 function ScopeGroup({
   title,
   scopes,
@@ -224,23 +249,20 @@ function ScopeGroup({
   onSelect: Callback<[scope: Scope]>;
 }) {
   return (
-    <section className="flex flex-col gap-2">
-      <Text as="h4" size="xs" tone="muted" className="font-semibold uppercase tracking-[0.06em]">
-        {title}
-      </Text>
-      <ul className="overflow-hidden rounded-[12px] border border-border bg-surface-2">
-        {scopes.map((scope, index) => (
+    <section className="flex flex-col gap-3">
+      <h2 className="text-[14px] font-semibold text-text">{title}</h2>
+      <ul className="divide-y divide-border/60 border-y border-border/60">
+        {scopes.map((scope) => (
           <li key={scope.key}>
-            {index > 0 && <div className="ml-4 h-px bg-border" />}
             <button
               type="button"
               onClick={() => {
                 onSelect(scope);
               }}
-              className="group flex w-full items-center gap-3 px-4 py-2.5 text-left transition hover:bg-surface-3 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-accent"
+              className="group flex min-h-[44px] w-full items-center gap-3 px-4 py-2 text-left transition hover:bg-surface-3/50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-accent"
             >
-              <span className="flex h-8 w-8 shrink-0 items-center justify-center rounded-[9px] border border-border bg-surface-1 text-text-muted group-hover:text-accent">
-                <Icon name={scope.kind === "category" ? "sidebar" : "hash"} size={16} />
+              <span className="flex h-7 w-7 shrink-0 items-center justify-center rounded-[8px] bg-surface-3 text-text-muted group-hover:text-accent">
+                <Icon name={scopeIcon(scope)} size={15} />
               </span>
               <Text as="span" size="sm" className="min-w-0 flex-1 truncate font-medium">
                 {scope.name}

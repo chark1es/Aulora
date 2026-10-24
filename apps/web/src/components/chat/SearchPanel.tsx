@@ -1,6 +1,7 @@
+/* eslint-disable no-unused-vars -- the base rule reports parameter names in type signatures; Biome checks real unused code */
 import type { ChannelView } from "@aulora/core";
 import { activityLabel, dmPartnerId } from "@aulora/core";
-import { cn, Icon, Spinner } from "@aulora/ui-web";
+import { cn, Icon, Kbd, MODAL_SHADOW, Spinner, usePrefersReducedMotion } from "@aulora/ui-web";
 import { useEffect, useMemo, useRef, useState } from "react";
 import type { ChatSearchHit } from "../../providers/ChatProvider";
 import { GroupAvatar, PresenceAvatar } from "./PresenceAvatar";
@@ -50,11 +51,26 @@ export function SearchPanel({
 }: SearchPanelProps) {
   const inputRef = useRef<HTMLInputElement | null>(null);
   const [active, setActive] = useState(0);
+  const reduced = usePrefersReducedMotion();
+  const [entered, setEntered] = useState(reduced);
   const trimmed = query.trim().toLowerCase();
 
   useEffect(() => {
     inputRef.current?.focus();
   }, []);
+
+  useEffect(() => {
+    if (reduced) {
+      setEntered(true);
+      return undefined;
+    }
+    const frame = requestAnimationFrame(() => {
+      setEntered(true);
+    });
+    return () => {
+      cancelAnimationFrame(frame);
+    };
+  }, [reduced]);
 
   const matches = useMemo(() => {
     const list = conversations.filter((channel) => !channel.archived);
@@ -91,7 +107,12 @@ export function SearchPanel({
     // biome-ignore lint/a11y/noStaticElementInteractions: clicking the backdrop dismisses the palette
     // biome-ignore lint/a11y/useKeyWithClickEvents: Escape is handled on the input
     <div
-      className="fixed inset-0 z-40 flex animate-fade-in items-start justify-center bg-black/30 px-4 pt-[12vh] backdrop-blur-[2px]"
+      className={cn(
+        "fixed inset-0 z-40 flex items-start justify-center px-4 pt-[12vh]",
+        "bg-black/25 backdrop-blur-[3px] dark:bg-black/45",
+        "transition-opacity duration-[160ms] motion-reduce:transition-none",
+        entered ? "opacity-100" : "opacity-0",
+      )}
       onClick={(event) => {
         if (event.target === event.currentTarget) {
           onClose();
@@ -102,7 +123,14 @@ export function SearchPanel({
         data-testid="search-panel"
         role="dialog"
         aria-label="Search"
-        className="w-full max-w-[600px] animate-pop-in overflow-hidden rounded-[12px] border border-border bg-surface-2 shadow-2xl shadow-black/25"
+        className={cn(
+          "w-full max-w-[600px] overflow-hidden rounded-[16px] bg-surface-2",
+          "transition-[opacity,transform] motion-reduce:transition-none",
+          entered
+            ? "translate-y-0 scale-100 opacity-100 duration-200 ease-[cubic-bezier(.2,.9,.3,1)]"
+            : "translate-y-2 scale-[0.96] opacity-0 duration-[140ms] ease-in",
+          MODAL_SHADOW,
+        )}
       >
         <div className="flex items-center gap-3 border-b border-border px-4">
           <Icon name="search" size={20} className="text-text-muted" />
@@ -131,9 +159,7 @@ export function SearchPanel({
             className="h-12 flex-1 bg-transparent text-[15px] text-text placeholder:text-text-muted focus-visible:outline-none"
           />
           {searching && <Spinner size={18} label="Searching" />}
-          <kbd className="rounded-[6px] border border-border px-1.5 py-0.5 text-[10px] font-medium text-text-muted">
-            esc
-          </kbd>
+          <Kbd size="sm">esc</Kbd>
         </div>
 
         <div className="max-h-[min(60vh,440px)] overflow-y-auto p-2">

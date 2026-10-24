@@ -3,8 +3,9 @@ import { useMutation, useQuery } from "convex/react";
 import { type Dispatch, type SetStateAction, useEffect, useState } from "react";
 import { api } from "../../../../../packages/convex/convex/_generated/api";
 import type { Callback } from "./callbacks";
+import { SettingsGroup, SettingsGroupRow } from "./SettingsGroup";
 import { SaveRow } from "./SettingsSaveRow";
-import { SettingsSectionHeader } from "./SettingsSection";
+import { SettingsSection } from "./SettingsSection";
 
 export interface WorkspaceSettingsProps {
   readonly canManageWorkspace: boolean;
@@ -219,9 +220,24 @@ export function WorkspaceSettings({ canManageWorkspace }: WorkspaceSettingsProps
     state.screenShareEnabled !== (server.settings.screenShareEnabled ?? true) ||
     state.maxParticipants !== (server.settings.maxCallParticipants ?? 10);
 
+  function discard() {
+    if (server === undefined) {
+      return;
+    }
+    state.setJoinMode(storedMode);
+    state.setSignupEnabled(server.settings.signupEnabled);
+    state.setDomains(server.settings.allowedEmailDomains);
+    state.setDomainInput("");
+    state.setVoiceEnabled(server.settings.voiceEnabled ?? true);
+    state.setVideoEnabled(server.settings.videoEnabled ?? true);
+    state.setScreenShareEnabled(server.settings.screenShareEnabled ?? true);
+    state.setMaxParticipants(server.settings.maxCallParticipants ?? 10);
+    saver.markEdited();
+  }
+
   return (
     <form
-      className="flex w-full flex-col gap-5"
+      className="flex w-full flex-col gap-8"
       data-testid="workspace-settings"
       onSubmit={(event) => {
         event.preventDefault();
@@ -240,7 +256,13 @@ export function WorkspaceSettings({ canManageWorkspace }: WorkspaceSettingsProps
 
       <VoiceSettings state={state} onEdited={saver.markEdited} />
 
-      <SaveRow busy={saver.busy} dirty={dirty} saved={saver.saved} error={saver.error} />
+      <SaveRow
+        busy={saver.busy}
+        dirty={dirty}
+        saved={saver.saved}
+        error={saver.error}
+        onDiscard={discard}
+      />
     </form>
   );
 }
@@ -281,45 +303,45 @@ function JoiningSettings({
   }
 
   return (
-    <>
-      <SettingsSectionHeader
-        icon="user-plus"
-        title="Joining"
-        description={`Who can become a member of ${serverName}, and how they get in.`}
-      />
-
-      <JoinModeCard
-        joinMode={joinMode}
-        onChange={(value) => {
-          setJoinMode(value);
-          onEdited();
-        }}
-      />
-
-      <DomainsCard
-        domains={domains}
-        domainInput={domainInput}
-        onDomainInputChange={setDomainInput}
-        onAddDomains={addDomains}
-        onRemoveDomain={removeDomain}
-      />
-
-      <div className="overflow-hidden rounded-[14px] border border-border bg-surface-2 px-4 py-2.5">
-        <Switch
-          checked={signupEnabled}
+    <SettingsSection
+      title="Joining"
+      description={`Who can become a member of ${serverName}, and how they get in.`}
+    >
+      <SettingsGroup>
+        <JoinModeRow
+          joinMode={joinMode}
           onChange={(value) => {
-            setSignupEnabled(value);
+            setJoinMode(value);
             onEdited();
           }}
+        />
+        <DomainsRow
+          domains={domains}
+          domainInput={domainInput}
+          onDomainInputChange={setDomainInput}
+          onAddDomains={addDomains}
+          onRemoveDomain={removeDomain}
+        />
+        <SettingsGroupRow
           label="Allow account creation"
           description="When off, no one can create an account here — existing members keep full access."
-        />
-      </div>
-    </>
+        >
+          <Switch
+            bare
+            checked={signupEnabled}
+            label="Allow account creation"
+            onChange={(value) => {
+              setSignupEnabled(value);
+              onEdited();
+            }}
+          />
+        </SettingsGroupRow>
+      </SettingsGroup>
+    </SettingsSection>
   );
 }
 
-function JoinModeCard({
+function JoinModeRow({
   joinMode,
   onChange,
 }: {
@@ -327,34 +349,28 @@ function JoinModeCard({
   readonly onChange: Callback<[mode: JoinMode]>;
 }) {
   return (
-    <div className="overflow-hidden rounded-[14px] border border-border bg-surface-2">
-      <div className="flex flex-wrap items-center justify-between gap-x-4 gap-y-2 px-4 py-3.5">
-        <div className="min-w-0">
-          <span className="block text-[13px] font-medium text-text">
-            {joinMode === "anyone" ? "Open to anyone" : "Invite only"}
-          </span>
-          <span className="mt-0.5 block text-[11px] leading-snug text-text-muted">
-            {joinMode === "anyone"
-              ? "People with an allowed email domain can create an account."
-              : "New members must redeem an invite before they can join."}
-          </span>
-        </div>
-        <SegmentedControl<JoinMode>
-          label="How people join"
-          value={joinMode}
-          onChange={onChange}
-          className="shrink-0"
-          options={[
-            { value: "anyone", label: "Anyone" },
-            { value: "invite", label: "Invite only" },
-          ]}
-        />
-      </div>
-    </div>
+    <SettingsGroupRow
+      label={joinMode === "anyone" ? "Open to anyone" : "Invite only"}
+      description={
+        joinMode === "anyone"
+          ? "People with an allowed email domain can create an account."
+          : "New members must redeem an invite before they can join."
+      }
+    >
+      <SegmentedControl<JoinMode>
+        label="How people join"
+        value={joinMode}
+        onChange={onChange}
+        options={[
+          { value: "anyone", label: "Anyone" },
+          { value: "invite", label: "Invite only" },
+        ]}
+      />
+    </SettingsGroupRow>
   );
 }
 
-function DomainsCard({
+function DomainsRow({
   domains,
   domainInput,
   onDomainInputChange,
@@ -368,44 +384,42 @@ function DomainsCard({
   readonly onRemoveDomain: Callback<[domain: string]>;
 }) {
   return (
-    <div className="overflow-hidden rounded-[14px] border border-border bg-surface-2">
-      <div className="flex flex-col gap-3 px-4 py-3.5">
-        <div className="flex flex-col gap-0.5">
-          <span className="text-[13px] font-medium text-text">Allowed email domains</span>
-          <span className="text-[11px] text-text-muted">
-            Restrict sign-ups to specific domains, or leave empty to allow any.
-          </span>
-        </div>
-
-        <div className="flex items-end gap-2">
-          <div className="flex-1">
-            <Input
-              label="Add a domain"
-              placeholder="example.com"
-              value={domainInput}
-              onChange={(event) => {
-                onDomainInputChange(event.currentTarget.value);
-              }}
-              onKeyDown={(event) => {
-                if (event.key === "Enter") {
-                  event.preventDefault();
-                  onAddDomains();
-                }
-              }}
-            />
-          </div>
-          <Button
-            type="button"
-            variant="secondary"
-            onClick={onAddDomains}
-            disabled={domainInput.trim().length === 0}
-          >
-            Add
-          </Button>
-        </div>
-
-        <DomainChips domains={domains} onRemoveDomain={onRemoveDomain} />
+    <div className="flex flex-col gap-3 px-4 py-3.5">
+      <div className="flex flex-col gap-0.5">
+        <span className="text-[13px] font-medium text-text">Allowed email domains</span>
+        <span className="text-[12px] text-text-muted">
+          Restrict sign-ups to specific domains, or leave empty to allow any.
+        </span>
       </div>
+
+      <div className="flex items-end gap-2">
+        <div className="flex-1">
+          <Input
+            label="Add a domain"
+            placeholder="example.com"
+            value={domainInput}
+            onChange={(event) => {
+              onDomainInputChange(event.currentTarget.value);
+            }}
+            onKeyDown={(event) => {
+              if (event.key === "Enter") {
+                event.preventDefault();
+                onAddDomains();
+              }
+            }}
+          />
+        </div>
+        <Button
+          type="button"
+          variant="secondary"
+          onClick={onAddDomains}
+          disabled={domainInput.trim().length === 0}
+        >
+          Add
+        </Button>
+      </div>
+
+      <DomainChips domains={domains} onRemoveDomain={onRemoveDomain} />
     </div>
   );
 }
@@ -499,41 +513,39 @@ function VoiceSettings({
   readonly onEdited: () => void;
 }) {
   return (
-    <>
-      <SettingsSectionHeader
-        icon="volume"
-        title="Voice &amp; video"
-        description="Turn calling on or off, and choose which parts members can use."
-      />
-
-      <div className="overflow-hidden rounded-[14px] border border-border bg-surface-2">
+    <SettingsSection
+      title="Voice & video"
+      description="Turn calling on or off, and choose which parts members can use."
+    >
+      <SettingsGroup>
         {voiceToggleSpecs(state, onEdited).map((toggle) => (
-          <div key={toggle.key} className="px-4 py-2.5">
+          <SettingsGroupRow key={toggle.key} label={toggle.label} description={toggle.description}>
             <Switch
+              bare
               checked={toggle.checked}
               onChange={toggle.onChange}
               label={toggle.label}
-              description={toggle.description}
               disabled={toggle.disabled}
             />
-          </div>
+          </SettingsGroupRow>
         ))}
-        <div className="h-px bg-border" />
         <div className="px-4 py-3.5">
-          <Input
-            label="Maximum call participants"
-            type="number"
-            min={2}
-            max={50}
-            value={String(state.maxParticipants)}
-            onChange={(event) => {
-              state.setMaxParticipants(Number(event.currentTarget.value) || 2);
-              onEdited();
-            }}
-            hint="Calls are peer-to-peer; keep this modest for reliable quality."
-          />
+          <div className="max-w-[280px]">
+            <Input
+              label="Maximum call participants"
+              type="number"
+              min={2}
+              max={50}
+              value={String(state.maxParticipants)}
+              onChange={(event) => {
+                state.setMaxParticipants(Number(event.currentTarget.value) || 2);
+                onEdited();
+              }}
+              hint="Calls are peer-to-peer; keep this modest for reliable quality."
+            />
+          </div>
         </div>
-      </div>
-    </>
+      </SettingsGroup>
+    </SettingsSection>
   );
 }

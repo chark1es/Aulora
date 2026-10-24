@@ -34,13 +34,11 @@ export function useMemberAvatarUrl(userId: string): string | null {
 export function PersonAvatar({
   userId,
   size = 32,
-  roleColor,
   title,
   className,
 }: {
   readonly userId: string;
   readonly size?: number;
-  readonly roleColor?: string | null | undefined;
   readonly title?: string;
   readonly className?: string;
 }) {
@@ -50,9 +48,6 @@ export function PersonAvatar({
       seed={userAvatarSeed(userId)}
       size={size}
       {...(src !== null ? { src } : {})}
-      {...(roleColor !== null && roleColor !== undefined && roleColor.length > 0
-        ? { roleColor }
-        : {})}
       {...(title !== undefined ? { title } : {})}
       {...(className !== undefined ? { className } : {})}
     />

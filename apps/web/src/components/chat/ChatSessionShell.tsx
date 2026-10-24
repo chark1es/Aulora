@@ -156,7 +156,7 @@ export function ChatSessionShell({
         return {
           roleId: ref,
           name: role.name,
-          mentionable: role.mentionable,
+          mentionable: role.mentionable && !role.isEveryone,
           memberUserIds: memberViews
             .filter((member) => member.roleIds.includes(ref))
             .map((member) => member.userId),

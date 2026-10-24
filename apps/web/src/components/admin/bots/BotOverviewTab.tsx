@@ -14,6 +14,7 @@ import { useMutation } from "convex/react";
 import { useState } from "react";
 import { api } from "../../../../../../packages/convex/convex/_generated/api";
 import type { BotDetail } from "../../../../../../packages/convex/convex/lib/botTypes";
+import { SettingsGroup, SettingsGroupRow } from "../SettingsGroup";
 import { validateBotDescription, validateBotName } from "./bot-format";
 import { useBotAction } from "./use-bot-action";
 
@@ -38,18 +39,21 @@ function BotEnableToggle({ bot }: { readonly bot: BotDetail }) {
   const update = useMutation(api.bots.update);
   const { busy, error, run } = useBotAction();
   return (
-    <div className="rounded-[14px] border border-border bg-surface-2 px-4 py-3">
+    <SettingsGroupRow
+      label="Enabled"
+      description="Run this bot on the runner whenever it is online."
+    >
       <Switch
+        bare
         checked={bot.enabled}
         disabled={busy}
         label="Enabled"
-        description="Run this bot on the runner whenever it is online."
         onChange={(enabled) => {
           void run(() => update({ botId: bot.id, enabled }), "Could not change the bot.");
         }}
       />
       <ActionError error={error} />
-    </div>
+    </SettingsGroupRow>
   );
 }
 
@@ -62,7 +66,7 @@ function BotNameForm({ bot }: { readonly bot: BotDetail }) {
   const errorProp = invalid !== null ? { error: invalid } : {};
   return (
     <form
-      className="flex items-end gap-2"
+      className="flex flex-col gap-2"
       onSubmit={(event) => {
         event.preventDefault();
         if (invalid !== null || unchanged) {
@@ -80,9 +84,17 @@ function BotNameForm({ bot }: { readonly bot: BotDetail }) {
           setName(event.currentTarget.value);
         }}
       />
-      <Button type="submit" variant="secondary" loading={busy} disabled={busy || unchanged}>
-        Save name
-      </Button>
+      <div>
+        <Button
+          type="submit"
+          variant="secondary"
+          className="whitespace-nowrap"
+          loading={busy}
+          disabled={busy || unchanged}
+        >
+          Save name
+        </Button>
+      </div>
       <ActionError error={error} />
     </form>
   );
@@ -195,16 +207,11 @@ function BotRestartRow({ bot }: { readonly bot: BotDetail }) {
   const restart = useMutation(api.bots.restart);
   const { busy, error, run } = useBotAction();
   return (
-    <div className="flex items-center justify-between gap-3 rounded-[14px] border border-border bg-surface-2 px-4 py-3">
-      <div className="min-w-0">
-        <Text size="sm" className="font-medium">
-          Restart
-        </Text>
-        <Text size="xs" tone="muted">
-          Ask the runner to relaunch the bot with its current code.
-        </Text>
-        <ActionError error={error} />
-      </div>
+    <SettingsGroupRow
+      label="Restart"
+      description="Ask the runner to relaunch the bot with its current code."
+      align="start"
+    >
       <Button
         variant="secondary"
         loading={busy}
@@ -215,34 +222,40 @@ function BotRestartRow({ bot }: { readonly bot: BotDetail }) {
       >
         Restart
       </Button>
-    </div>
+      <ActionError error={error} />
+    </SettingsGroupRow>
   );
 }
 
-function BotDeleteRow({ bot, onBack }: { readonly bot: BotDetail; readonly onBack: () => void }) {
+interface BotRowProps {
+  readonly bot: BotDetail;
+  readonly onBack: () => void;
+}
+
+function BotDeleteRow(props: BotRowProps) {
+  const { bot, onBack } = props;
   const remove = useMutation(api.bots.remove);
   const { busy, error, run } = useBotAction();
   const [confirming, setConfirming] = useState(false);
   return (
-    <div className="flex items-center justify-between gap-3 rounded-[14px] border border-danger/30 bg-danger/5 px-4 py-3">
-      <div className="min-w-0">
-        <Text size="sm" className="font-medium">
-          Delete bot
-        </Text>
-        <Text size="xs" tone="muted">
-          Messages it sent stay in channels, marked as from a deleted bot.
-        </Text>
-        <ActionError error={error} />
-      </div>
-      <Button
-        variant="danger"
-        disabled={busy}
-        onClick={() => {
-          setConfirming(true);
-        }}
+    <>
+      <SettingsGroupRow
+        label="Delete bot"
+        description="Messages it sent stay in channels, marked as from a deleted bot."
+        align="start"
+        className="bg-danger/5"
       >
-        Delete bot
-      </Button>
+        <Button
+          variant="danger"
+          disabled={busy}
+          onClick={() => {
+            setConfirming(true);
+          }}
+        >
+          Delete bot
+        </Button>
+        <ActionError error={error} />
+      </SettingsGroupRow>
       <ConfirmDialog
         open={confirming}
         onClose={() => {
@@ -261,26 +274,27 @@ function BotDeleteRow({ bot, onBack }: { readonly bot: BotDetail; readonly onBac
           });
         }}
       />
-    </div>
+    </>
   );
 }
 
 /** Identity and lifecycle controls for one bot. */
-export function BotOverviewTab({
-  bot,
-  onBack,
-}: {
-  readonly bot: BotDetail;
-  readonly onBack: () => void;
-}) {
+export function BotOverviewTab(props: BotRowProps) {
+  const { bot, onBack } = props;
   return (
-    <div className="flex flex-col gap-4" data-testid="bot-overview">
-      <BotEnableToggle bot={bot} />
-      <BotNameForm bot={bot} />
-      <BotDescriptionForm bot={bot} />
-      <BotLanguageForm bot={bot} />
-      <BotRestartRow bot={bot} />
-      <BotDeleteRow bot={bot} onBack={onBack} />
+    <div className="flex flex-col gap-8" data-testid="bot-overview">
+      <SettingsGroup title="Identity">
+        <BotEnableToggle bot={bot} />
+        <div className="flex flex-col gap-4 px-4 py-3.5">
+          <BotNameForm bot={bot} />
+          <BotDescriptionForm bot={bot} />
+          <BotLanguageForm bot={bot} />
+        </div>
+      </SettingsGroup>
+      <SettingsGroup title="Lifecycle">
+        <BotRestartRow bot={bot} />
+        <BotDeleteRow bot={bot} onBack={onBack} />
+      </SettingsGroup>
     </div>
   );
 }

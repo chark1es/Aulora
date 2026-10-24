@@ -3,7 +3,7 @@
     "name": "Aulora",
     "slug": "aulora",
     "description": "Team chat you run on your own server, with channels, direct messages, threads, calls, and encrypted messages.",
-    "version": "1.2.1",
+    "version": "1.3.0",
     "orientation": "portrait",
     "scheme": "aulora",
     "userInterfaceStyle": "automatic",

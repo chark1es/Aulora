@@ -79,7 +79,7 @@ grant it from the role editor where it is wanted.
 
 ## Addons
 
-The Addons tab controls optional tools. Kanban and Notes are off by default and require Manage workspace to enable. Grant their separate role permissions before inviting members to use them. See [Kanban](kanban.md) for board permissions, timers, attachments and GitHub connections, and [Notes](notes.md) for folders, tags, search and history. Bots have their own tab, described in [Bots](bots.md); it needs the Manage bots permission.
+The Addons tab controls optional tools. Kanban and Notes are off by default and require Manage workspace to enable. Grant their separate role permissions before inviting members to use them. See [Kanban](kanban.md) for board permissions, timers, attachments and GitHub connections, and [Notes](notes.md) for folders, tags, search and history. Bots have their own tab, described in [Bots](bots.md); it needs the Manage bots permission. Webhooks, which let other tools post into a channel, have their own tab too: see [Webhooks](webhooks.md).
 
 ## Instance admin
 

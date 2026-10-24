@@ -1,6 +1,6 @@
 /* eslint-disable no-unused-vars -- the base rule reports parameter names in type signatures; Biome checks real unused code */
 import { ConfirmDialog, cn, Icon } from "@aulora/ui-web";
-import { type ReactNode, useEffect, useRef, useState } from "react";
+import { forwardRef, type ReactNode, useEffect, useRef, useState } from "react";
 import type { ChannelSidebarProps } from "./channel-sidebar-model";
 import { PresenceAvatar, type PresenceStatus } from "./PresenceAvatar";
 import type { CategoryHeaderDrag } from "./use-category-drag";
@@ -59,23 +59,20 @@ export function SectionHeader({
   );
 }
 
-export function HeaderButton({
-  label,
-  onClick,
-  children,
-  small = false,
-  hasPopup,
-  expanded,
-}: {
-  readonly label: string;
-  readonly onClick: () => void;
-  readonly children: ReactNode;
-  readonly small?: boolean;
-  readonly hasPopup?: React.AriaAttributes["aria-haspopup"];
-  readonly expanded?: boolean;
-}) {
+export const HeaderButton = forwardRef<
+  HTMLButtonElement,
+  {
+    readonly label: string;
+    readonly onClick: () => void;
+    readonly children: ReactNode;
+    readonly small?: boolean;
+    readonly hasPopup?: React.AriaAttributes["aria-haspopup"];
+    readonly expanded?: boolean;
+  }
+>(function HeaderButton({ label, onClick, children, small = false, hasPopup, expanded }, ref) {
   return (
     <button
+      ref={ref}
       type="button"
       aria-label={label}
       title={label}
@@ -90,113 +87,49 @@ export function HeaderButton({
       {children}
     </button>
   );
-}
+});
 
-export function CreateMenuButton({
-  canCreateChannel,
-  canManageCategories,
-  onCreateChannel,
-  onCreateCategory,
+/**
+ * One row of the workspace nav above the channel list (Threads, Kanban,
+ * Notes). The three share this row so they read as one tight list.
+ */
+export function SidebarNavButton({
+  label,
+  icon,
+  testId,
+  active,
+  onClick,
+  badge,
 }: {
-  readonly canCreateChannel: boolean;
-  readonly canManageCategories: boolean;
-  readonly onCreateChannel: (kind?: "text" | "voice") => void;
-  readonly onCreateCategory?: (() => void) | undefined;
+  readonly label: string;
+  readonly icon: ReactNode;
+  readonly testId: string;
+  readonly active: boolean;
+  readonly onClick: () => void;
+  /** Unread mention count; omitted or zero renders no badge. */
+  readonly badge?: number;
 }) {
-  const [open, setOpen] = useState(false);
-  const ref = useRef<HTMLDivElement | null>(null);
-
-  useEffect(() => {
-    if (!open) {
-      return;
-    }
-    const onPointer = (event: PointerEvent) => {
-      if (ref.current !== null && !ref.current.contains(event.target as Node)) {
-        setOpen(false);
-      }
-    };
-    const onKey = (event: KeyboardEvent) => {
-      if (event.key === "Escape") {
-        setOpen(false);
-      }
-    };
-    document.addEventListener("pointerdown", onPointer);
-    document.addEventListener("keydown", onKey);
-    return () => {
-      document.removeEventListener("pointerdown", onPointer);
-      document.removeEventListener("keydown", onKey);
-    };
-  }, [open]);
-
-  const hasExtras = canManageCategories;
-  const label = canManageCategories ? "Create channel or category" : "Create channel";
-
   return (
-    <div ref={ref} className="relative">
-      <HeaderButton
-        label={label}
-        small
-        hasPopup="menu"
-        expanded={open}
-        onClick={() => {
-          if (!hasExtras) {
-            onCreateChannel("text");
-            return;
-          }
-          setOpen((current) => !current);
-        }}
-      >
-        <Icon name="plus" size={15} />
-      </HeaderButton>
-      {open && hasExtras && (
-        <div
-          role="menu"
-          aria-label="Create"
-          className="absolute right-0 top-full z-20 mt-1 min-w-[184px] animate-pop-in rounded-[10px] border border-border bg-surface-2 p-1 shadow-xl shadow-black/20"
-        >
-          {canCreateChannel && (
-            <button
-              type="button"
-              role="menuitem"
-              onClick={() => {
-                setOpen(false);
-                onCreateChannel("text");
-              }}
-              className="flex w-full items-center gap-2.5 rounded-[7px] px-2.5 py-1.5 text-left text-[13px] text-text transition hover:bg-surface-3"
-            >
-              <Icon name="hash" size={14} className="text-text-muted" />
-              New text channel
-            </button>
-          )}
-          {canCreateChannel && (
-            <button
-              type="button"
-              role="menuitem"
-              onClick={() => {
-                setOpen(false);
-                onCreateChannel("voice");
-              }}
-              className="flex w-full items-center gap-2.5 rounded-[7px] px-2.5 py-1.5 text-left text-[13px] text-text transition hover:bg-surface-3"
-            >
-              <Icon name="volume" size={14} className="text-text-muted" />
-              New voice channel
-            </button>
-          )}
-          <button
-            type="button"
-            role="menuitem"
-            onClick={() => {
-              setOpen(false);
-              onCreateCategory?.();
-            }}
-            className="flex w-full items-center gap-2.5 rounded-[7px] px-2.5 py-1.5 text-left text-[13px] text-text transition hover:bg-surface-3"
-          >
-            <Icon name="plus" size={14} className="text-text-muted" />
-            New category
-          </button>
-        </div>
+    <button
+      type="button"
+      data-testid={testId}
+      aria-current={active ? "page" : undefined}
+      onClick={onClick}
+      className={cn(
+        "flex h-8 w-full items-center gap-2.5 rounded-[8px] pl-3 pr-2 text-left text-[13px] transition focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent",
+        active
+          ? "bg-surface-3 font-semibold text-text"
+          : "text-text-muted hover:bg-surface-3 hover:text-text",
       )}
-    </div>
+    >
+      <span className={cn("flex shrink-0 items-center", active && "text-accent")}>{icon}</span>
+      <span className="min-w-0 flex-1 truncate">{label}</span>
+      {badge !== undefined && badge > 0 && (
+        <span className="flex h-4 min-w-4 items-center justify-center rounded-full bg-accent px-1 text-[10px] font-bold text-on-accent">
+          {badge > 9 ? "9+" : String(badge)}
+        </span>
+      )}
+    </button>
   );
 }
 
@@ -388,6 +321,7 @@ export function AccountFooter(props: ChannelSidebarProps) {
         description="You can sign back in at any time."
         confirmLabel="Sign out"
         variant="danger"
+        icon="logout"
         onConfirm={() => {
           setConfirmSignOut(false);
           props.onSignOut();

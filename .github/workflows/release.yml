@@ -38,13 +38,13 @@ jobs:
       build: ${{ steps.plan.outputs.build }}
       publish: ${{ steps.plan.outputs.publish }}
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
         with:
           fetch-depth: 0
           persist-credentials: false
-      - uses: actions/setup-node@v4
+      - uses: actions/setup-node@v7
         with:
-          node-version: 22.18.0
+          node-version: 22.23.4
       - name: Detect a new version on main
         id: plan
         env:
@@ -81,7 +81,7 @@ jobs:
     env:
       RELEASE_VERSION: ${{ needs.plan.outputs.version }}
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
         with:
           persist-credentials: false
       - uses: ./.github/actions/setup-js
@@ -101,7 +101,7 @@ jobs:
                   shutil.copy2(source, Path('dist/release-web') / source.name)
           shutil.make_archive('dist/release-web/Aulora_' + os.environ['RELEASE_VERSION'] + '_legal', 'zip', 'dist/legal')
           PY
-      - uses: actions/upload-artifact@v4
+      - uses: actions/upload-artifact@v7
         with:
           name: release-web
           path: dist/release-web/*
@@ -119,11 +119,11 @@ jobs:
       RELEASE_VERSION: ${{ needs.plan.outputs.version }}
       RELEASE_NOTES: ${{ inputs.notes }}
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
         with:
           persist-credentials: false
       - uses: ./.github/actions/setup-js
-      - uses: actions/download-artifact@v4
+      - uses: actions/download-artifact@v8
         with:
           pattern: release-*
           merge-multiple: true
@@ -134,7 +134,7 @@ jobs:
         run: |
           node scripts/ci/assemble-release.mjs
           node scripts/ci/assemble-release.mjs checksums
-      - uses: actions/upload-artifact@v4
+      - uses: actions/upload-artifact@v7
         with:
           name: complete-release
           path: dist/release/*
@@ -153,7 +153,7 @@ jobs:
       GH_REPO: ${{ github.repository }}
       RELEASE_VERSION: ${{ needs.plan.outputs.version }}
     steps:
-      - uses: actions/download-artifact@v4
+      - uses: actions/download-artifact@v8
         with:
           name: complete-release
           path: dist/release
@@ -168,3 +168,14 @@ jobs:
             gh release create "$tag" --draft --target "$GITHUB_SHA" --title "Aulora ${RELEASE_VERSION}" --notes-file dist/release/RELEASE_NOTES.md dist/release/*
           fi
           gh release edit "$tag" --notes-file dist/release/RELEASE_NOTES.md --draft=false --latest
+
+  sync-release:
+    name: Promote main to release
+    needs: [plan, publish]
+    permissions:
+      actions: write
+      contents: write
+      pull-requests: write
+    uses: ./.github/workflows/sync-release.yml
+    with:
+      tag: v${{ needs.plan.outputs.version }}

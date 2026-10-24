@@ -168,6 +168,7 @@ export {
   type WorkspaceUpdatePlan,
 } from "./updates";
 export * from "./voice/index";
+export * from "./webhooks";
 export {
   containsSecretField,
   type FetchWellKnownOptions,

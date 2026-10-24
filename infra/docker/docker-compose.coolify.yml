@@ -330,9 +330,11 @@ services:
       BETTER_AUTH_SECRET: ${BETTER_AUTH_SECRET:-}
       SETUP_TOKEN: ${SETUP_TOKEN}
       # --- bots (setup generates these; persisted in the setup-state volume) ---
-      # The runner token is read from the environment here; the value is an interpolation, not a stored credential.
+      # Coolify generates this magic variable once and hands the same value to
+      # `setup` and `bot-runner`, so the runner has its token on the first start.
+      # The value is an interpolation, not a stored credential.
       # nosemgrep: codacy.yaml.security.hard-coded-tokens
-      BOT_RUNNER_TOKEN: ${BOT_RUNNER_TOKEN:-}
+      BOT_RUNNER_TOKEN: ${SERVICE_PASSWORD_64_BOTRUNNER:-}
       BOT_JWT_PRIVATE_JWK: ${BOT_JWT_PRIVATE_JWK:-}
       BOT_JWT_PUBLIC_JWK: ${BOT_JWT_PUBLIC_JWK:-}
       BOT_JWT_PRIVATE_JWK_B64: ${BOT_JWT_PRIVATE_JWK_B64:-}
@@ -356,6 +358,8 @@ services:
       OIDC_SCOPES: ${OIDC_SCOPES:-}
       OIDC_GROUP_CLAIM: ${OIDC_GROUP_CLAIM:-}
       OIDC_GROUP_ROLE_MAP: ${OIDC_GROUP_ROLE_MAP:-}
+      # Trust the generic IdP's email_verified claim for implicit account linking.
+      OIDC_TRUST_EMAIL: ${OIDC_TRUST_EMAIL:-}
       VAPID_SUBJECT: ${VAPID_SUBJECT:-mailto:owner@example.com}
       VAPID_PUBLIC_KEY: ${VAPID_PUBLIC_KEY:-}
       VAPID_PRIVATE_KEY: ${VAPID_PRIVATE_KEY:-}
@@ -394,18 +398,17 @@ services:
         condition: service_completed_successfully
     logging: *logging
 
-  # Optional bot runner: supervises user-created bots, one sandboxed process
-  # per enabled bot. Profile `bots`; Coolify does not start profiled services,
-  # so enable it with a separate resource or on the host:
-  #   docker compose -f docker-compose.coolify.yml --profile bots up -d
-  # This is container-level isolation, not a VM, and `ManageBots` is
-  # effectively code execution on this host: read README.md "Bots" first.
+  # Bot runner: supervises user-created bots, one sandboxed process per enabled
+  # bot. It starts with the stack, using the token Coolify generates for
+  # `SERVICE_PASSWORD_64_BOTRUNNER`. Set `BOT_RUNNER_ENABLED=false` to keep bots
+  # off; the container then idles instead of crash-looping. This is
+  # container-level isolation, not a VM, and `ManageBots` is effectively code
+  # execution on this host: read README.md "Bots" first.
   bot-runner:
     build:
       context: ../..
       dockerfile: infra/docker/bot-runner.Dockerfile
     image: aulora-bot-runner:local
-    profiles: ["bots"]
     restart: unless-stopped
     stop_grace_period: 20s
     # No env_file and no host mounts on purpose: every bot shares this container
@@ -413,11 +416,12 @@ services:
     # code. The runner token is the only secret and it comes from the
     # environment of `docker compose` (the `.env` next to this file).
     environment:
-      # The value is an interpolation of the operator's environment, not a stored credential.
+      # Same Coolify-generated value as `setup` above; an interpolation, not a stored credential.
       # nosemgrep: codacy.yaml.security.hard-coded-tokens
-      BOT_RUNNER_TOKEN: ${BOT_RUNNER_TOKEN:-}
+      BOT_RUNNER_TOKEN: ${SERVICE_PASSWORD_64_BOTRUNNER:-}
       CONVEX_HTTP_URL: http://convex-backend:3211
       CONVEX_SELF_HOSTED_URL: http://convex-backend:3210
+      BOT_RUNNER_ENABLED: ${BOT_RUNNER_ENABLED:-true}
       BOT_RUNNER_MAX_BOTS: ${BOT_RUNNER_MAX_BOTS:-10}
       BOT_RUNNER_BOT_MEMORY_MB: ${BOT_RUNNER_BOT_MEMORY_MB:-256}
       WORK_DIR: /work
@@ -534,7 +538,7 @@ services:
 
   # Optional external key manager (HashiCorp Vault dev mode). Profile `ekm`.
   vault:
-    image: hashicorp/vault:1.18
+    image: hashicorp/vault:1.21.4
     profiles: ["ekm"]
     restart: unless-stopped
     environment:
@@ -554,7 +558,7 @@ services:
   # One-shot: enables the transit engine, creates the KEK and (when a local key
   # is present) wraps it into AULORA_KEK_WRAPPED in the setup-state volume.
   vault-init:
-    image: hashicorp/vault:1.18
+    image: hashicorp/vault:1.21.4
     profiles: ["ekm"]
     restart: "no"
     exclude_from_hc: true
@@ -599,7 +603,7 @@ services:
     logging: *logging
 
   livekit:
-    image: livekit/livekit-server:v1.13.8
+    image: livekit/livekit-server:v1.13.10
     restart: unless-stopped
     command: ["--config", "/etc/livekit/livekit.yaml"]
     volumes:

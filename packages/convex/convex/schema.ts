@@ -1,6 +1,7 @@
 import { defineSchema, defineTable } from "convex/server";
 import { v } from "convex/values";
 import { botTables } from "./botSchema";
+import { webhookTables } from "./webhookSchema";
 
 /**
  * Aulora data model (one server = one workspace, so no `workspaceId`).
@@ -808,4 +809,5 @@ export default defineSchema({
     .index("by_window_start", ["windowStart"]),
 
   ...botTables,
+  ...webhookTables,
 });

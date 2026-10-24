@@ -23,7 +23,7 @@ Content encryption happens on the server. The operator can decrypt content for a
 | --- | --- |
 | Join a workspace | A server URL, an account or invitation, and a supported client |
 | Run a server | Git, Docker, and Compose v2.24 or newer |
-| Build JavaScript apps | Bun 1.4.0 and Node.js 22.18.0 |
+| Build JavaScript apps | Bun 1.4.4 and Node.js 22.23.4 |
 | Build native clients | Platform SDKs, plus Rust for desktop |
 
 Release binaries and store listings become available when published. A successful source build does not establish store availability or live push delivery.

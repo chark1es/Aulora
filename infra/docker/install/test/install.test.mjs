@@ -182,6 +182,35 @@ test("an unknown option is rejected", { skip }, () => {
   }
 });
 
+test("a fresh install writes a bot runner token before the stack starts", { skip }, () => {
+  const dir = makeEnvDir();
+  try {
+    const bin = join(dir, "bin");
+    mkdirSync(bin);
+    writeFileSync(join(bin, "docker"), "#!/usr/bin/env bash\nexit 0\n", { mode: 0o755 });
+    const result = spawnSync(
+      "bash",
+      [INSTALL, "--email", "owner@acme.test", "--password", "correct horse battery staple"],
+      {
+        encoding: "utf8",
+        input: "",
+        env: {
+          ...process.env,
+          AULORA_ENV_FILE: join(dir, ".env"),
+          PATH: `${bin}:${process.env.PATH}`,
+        },
+      },
+    );
+    assert.equal(result.status, 0, result.stderr);
+    const env = readFileSync(join(dir, ".env"), "utf8");
+    const token = env.match(/^BOT_RUNNER_TOKEN=(.*)$/m)?.[1] ?? "";
+    assert.match(token, /^[A-Za-z0-9_-]{48,}$/);
+    assert.match(env, /^BOT_RUNNER_ENABLED=true$/m);
+  } finally {
+    rmSync(dir, { recursive: true, force: true });
+  }
+});
+
 test("installer waits for Compose setup instead of launching a conflicting second setup", {
   skip,
 }, () => {
@@ -227,6 +256,50 @@ exit 0
     const commands = readFileSync(log, "utf8");
     assert.match(commands, / wait setup/);
     assert.ok(!commands.includes("run --rm setup"));
+  } finally {
+    rmSync(dir, { recursive: true, force: true });
+  }
+});
+
+test("installer recreates the bot runner after setup so it reads the generated token", {
+  skip,
+}, () => {
+  const dir = makeEnvDir();
+  try {
+    const bin = join(dir, "bin");
+    mkdirSync(bin);
+    writeFileSync(
+      join(dir, ".env"),
+      "SITE_URL=http://localhost:18080\nOWNER_EMAIL=owner@example.test\n",
+    );
+    writeFileSync(
+      join(bin, "docker"),
+      `#!/usr/bin/env bash
+printf '%s\\n' "$*" >> "$INSTALL_TEST_LOG"
+exit 0
+`,
+      { mode: 0o755 },
+    );
+    const log = join(dir, "commands");
+    const result = spawnSync("bash", [INSTALL], {
+      encoding: "utf8",
+      input: "",
+      env: {
+        ...process.env,
+        AULORA_ENV_FILE: join(dir, ".env"),
+        PATH: `${bin}:${process.env.PATH}`,
+        INSTALL_TEST_LOG: log,
+      },
+    });
+    assert.equal(result.status, 0, result.stderr);
+    const commands = readFileSync(log, "utf8").trim().split("\n");
+    const setup = commands.findIndex((line) => line.includes("wait setup"));
+    const runner = commands.findIndex(
+      (line) =>
+        line.includes("up -d --no-deps --force-recreate bot-runner") && line.includes("--env-file"),
+    );
+    assert.ok(setup !== -1, commands.join(" | "));
+    assert.ok(runner > setup, `bot runner should start after setup: ${commands.join(" | ")}`);
   } finally {
     rmSync(dir, { recursive: true, force: true });
   }

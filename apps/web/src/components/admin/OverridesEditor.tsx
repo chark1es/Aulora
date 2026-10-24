@@ -16,6 +16,8 @@ import { OverrideTriState } from "./OverrideTriState";
 
 export interface OverridesEditorProps {
   readonly title: string;
+  /** Hide the editor's own heading when a page header already shows the title. */
+  readonly hideTitle?: boolean;
   readonly overrides: readonly OverrideView[];
   readonly targets: readonly OverrideTarget[];
   readonly onSave: Callback<[next: readonly OverrideView[]], void | Promise<void>>;
@@ -143,6 +145,7 @@ export function OverridesEditor(props: OverridesEditorProps) {
 
 interface OverridesEditorModel {
   readonly title: string;
+  readonly hideTitle: boolean;
   readonly disabled: boolean;
   readonly busy: boolean;
   readonly error: string | null;
@@ -169,6 +172,7 @@ interface OverridesEditorModel {
 function useOverridesEditorModel(props: OverridesEditorProps): OverridesEditorModel {
   const {
     title,
+    hideTitle = false,
     overrides,
     targets,
     onSave,
@@ -196,6 +200,7 @@ function useOverridesEditorModel(props: OverridesEditorProps): OverridesEditorMo
 
   return {
     title,
+    hideTitle,
     disabled,
     busy,
     error,
@@ -229,6 +234,7 @@ function OverridesEditorView({ model }: { readonly model: OverridesEditorModel }
     <div className="flex flex-col gap-3" data-testid={model.testId}>
       <OverridesToolbar
         title={model.title}
+        hideTitle={model.hideTitle}
         busy={model.busy}
         disabled={model.disabled}
         error={model.error}
@@ -266,12 +272,14 @@ function OverridesEditorView({ model }: { readonly model: OverridesEditorModel }
 
 function OverridesToolbar({
   title,
+  hideTitle,
   busy,
   disabled,
   error,
   onSave,
 }: {
   readonly title: string;
+  readonly hideTitle: boolean;
   readonly busy: boolean;
   readonly disabled: boolean;
   readonly error: string | null;
@@ -280,7 +288,11 @@ function OverridesToolbar({
   return (
     <>
       <div className="flex items-center justify-between">
-        <Heading level={3}>{title}</Heading>
+        {hideTitle ? (
+          <span className="text-[14px] font-semibold text-text">Overrides</span>
+        ) : (
+          <Heading level={3}>{title}</Heading>
+        )}
         <Button size="sm" loading={busy} disabled={disabled || busy} onClick={onSave}>
           Save overrides
         </Button>
@@ -521,7 +533,7 @@ function GroupHeader({
   return (
     <header className="sticky top-0 z-[1] flex items-center justify-between gap-2 border-b border-border bg-surface-2/95 px-3 py-1.5 backdrop-blur-sm">
       <div className="flex min-w-0 items-center gap-2">
-        <Text as="h4" size="xs" tone="muted" className="font-semibold uppercase tracking-[0.06em]">
+        <Text as="h4" size="xs" className="font-semibold text-text">
           {group.label}
         </Text>
         <GroupPills counts={counts} />
@@ -610,7 +622,7 @@ function OverrideSummarySection(props: OverrideSummarySectionProps) {
         className="flex w-full items-center justify-between gap-2 px-3.5 py-2 text-left transition hover:bg-surface-3/40"
       >
         <span className="flex min-w-0 items-center gap-2">
-          <Text as="span" size="xs" tone="muted" mono className="uppercase tracking-[0.06em]">
+          <Text as="span" size="xs" tone="muted" className="font-semibold">
             Active overrides
           </Text>
           <span className="rounded-full bg-surface-3 px-1.5 py-0.5 text-[10px] font-medium text-text-muted">

@@ -34,7 +34,7 @@ export function StreamSettings() {
       <Text tone="muted" size="xs">
         {describe(settings.streamQuality)} Applies the next time you start sharing.
       </Text>
-      <div className="rounded-[10px] border border-border bg-surface-1 px-3.5">
+      <div className="border-y border-border/60 px-3.5">
         <Switch
           checked={settings.streamAudio}
           onChange={(streamAudio) => void voice.updateSettings({ streamAudio })}

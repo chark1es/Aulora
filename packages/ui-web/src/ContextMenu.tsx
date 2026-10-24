@@ -1,3 +1,4 @@
+/* eslint-disable no-unused-vars -- the base rule reports parameter names in type signatures; Biome checks real unused code */
 import {
   createContext,
   type ReactNode,
@@ -9,6 +10,7 @@ import {
   useState,
 } from "react";
 import { cn } from "./cn";
+import { MODAL_SHADOW } from "./ModalShell";
 
 export interface ContextMenuItem {
   readonly id: string;
@@ -149,7 +151,10 @@ function ContextMenu({
       onContextMenu={(event) => {
         event.preventDefault();
       }}
-      className="fixed z-[60] min-w-[196px] animate-pop-in rounded-[10px] border border-border bg-surface-2 p-1 shadow-2xl shadow-black/30"
+      className={cn(
+        "fixed z-[60] min-w-[196px] animate-pop-in rounded-[10px] bg-surface-2 p-1",
+        MODAL_SHADOW,
+      )}
     >
       {state.items.map((item) => (
         <div key={item.id}>

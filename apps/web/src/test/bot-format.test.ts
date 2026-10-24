@@ -19,7 +19,7 @@ describe("bot-format", () => {
     expect(botStatusMeta("crashed").label).toBe("Crashed");
     expect(botStatusMeta("stopped").label).toBe("Stopped");
     expect(botStatusMeta("starting").label).toBe("Starting");
-    expect(BOT_RUNNER_OFFLINE_MESSAGE).toContain("docker compose --profile bots up -d");
+    expect(BOT_RUNNER_OFFLINE_MESSAGE).toContain("docker compose up -d bot-runner");
   });
 
   it("validates names and descriptions against the limits", () => {
