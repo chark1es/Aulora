@@ -71,14 +71,7 @@ function MemberRow({ member, status, customStatus, own, onActions, onPress }: Me
       subtitle={
         customStatus.length > 0 ? customStatus : member.isOwner ? "Workspace owner" : undefined
       }
-      leading={
-        <PresenceAvatar
-          userId={member.userId}
-          status={status}
-          roleColor={member.roleColor}
-          size={36}
-        />
-      }
+      leading={<PresenceAvatar userId={member.userId} status={status} size={36} />}
       trailing={
         onActions !== undefined ? (
           <Pressable

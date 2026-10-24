@@ -5,6 +5,15 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 import { memoryStorage } from "../test/memoryStorage";
 import { ConnectScreen } from "./ConnectScreen";
 
+const heroWatch = vi.hoisted(() => ({ current: null as unknown }));
+
+vi.mock("./BlobatarHero", () => ({
+  BlobatarHero: (props: { readonly watch?: unknown }) => {
+    heroWatch.current = props.watch;
+    return null;
+  },
+}));
+
 const wellKnown = {
   name: "Acme Chat",
   version: "0.1.0",
@@ -84,5 +93,18 @@ describe("ConnectScreen", () => {
 
     expect(await screen.findByRole("alert")).toHaveTextContent("Enter a valid server address");
     expect(fetchMock).not.toHaveBeenCalled();
+  });
+
+  it("points the hero at the address field, then back at the pointer", async () => {
+    const user = userEvent.setup();
+    render(<ConnectScreen store={webLocalStorageStore({ storage: memoryStorage() })} />);
+
+    const field = screen.getByLabelText("Server address");
+    await user.click(field);
+    expect(heroWatch.current).toBe(field);
+
+    await user.tab();
+    expect(heroWatch.current).toBe("pointer");
+    expect(screen.queryByText(/team chat on your own server/)).toBeNull();
   });
 });

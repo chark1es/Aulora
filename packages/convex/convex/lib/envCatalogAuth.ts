@@ -135,6 +135,16 @@ export const AUTH_ENV_VARS: readonly EnvVarDefinition[] = [
     overridable: true,
   },
   {
+    key: "OIDC_TRUST_EMAIL",
+    group: "oidc",
+    label: "Trust OIDC email",
+    description:
+      "Link an OIDC sign-in to an existing account with the same email even when the IdP does not report it as verified. Only for an IdP that owns its addresses.",
+    type: "boolean",
+    secret: false,
+    overridable: true,
+  },
+  {
     key: "OIDC_GROUP_CLAIM",
     group: "oidc",
     label: "OIDC group claim",

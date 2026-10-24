@@ -11,6 +11,7 @@ import { useQuery } from "convex/react";
 import { type FocusEvent, type FormEvent, useState } from "react";
 import { api } from "../../../../packages/convex/convex/_generated/api";
 import type { AuthActions } from "../lib/auth-client";
+import { describeAuthError, takeAuthErrorFromUrl } from "../lib/auth-errors";
 import {
   AuthButton,
   AuthDivider,
@@ -29,8 +30,8 @@ export interface SignInScreenProps {
   readonly onSwitchServer?: () => void;
 }
 
-/** Where the hero's eyes are pointed: a focused field, `"rest"`, or nothing. */
-type Watch = Element | "rest" | null;
+/** Where the hero's eyes are pointed: a focused field, the pointer, `"rest"`, or nothing. */
+type Watch = Element | "pointer" | "rest" | null;
 
 function hostOf(baseUrl: string): string {
   try {
@@ -73,7 +74,10 @@ const INITIAL: FormState = {
 
 /** The form state and submit handlers behind {@link SignInScreen}. */
 function useSignInForm(actions: AuthActions) {
-  const [state, setState] = useState<FormState>(INITIAL);
+  const [state, setState] = useState<FormState>(() => ({
+    ...INITIAL,
+    error: takeAuthErrorFromUrl(),
+  }));
   const patch = (next: Partial<FormState>) => {
     setState((current) => ({ ...current, ...next }));
   };
@@ -84,7 +88,10 @@ function useSignInForm(actions: AuthActions) {
       const result = await task();
       if (result.error !== null) {
         patch({
-          error: result.error.message ?? "That did not work. Check your details and try again.",
+          error:
+            result.error.message === undefined
+              ? "That did not work. Check your details and try again."
+              : describeAuthError(result.error.message),
         });
       }
     } catch {
@@ -236,7 +243,7 @@ function PasswordField({
         onWatch("rest");
       }}
       onBlur={() => {
-        onWatch(null);
+        onWatch("pointer");
       }}
       trailing={
         <IconButton
@@ -284,7 +291,7 @@ function LocalForm({ state, signup, onPatch, onWatch, onSubmit, onToggleMode }: 
           value={state.name}
           onFocus={watchSelf}
           onBlur={() => {
-            onWatch(null);
+            onWatch("pointer");
           }}
           onChange={(event) => {
             onPatch({ name: event.currentTarget.value });
@@ -299,7 +306,7 @@ function LocalForm({ state, signup, onPatch, onWatch, onSubmit, onToggleMode }: 
         value={state.email}
         onFocus={watchSelf}
         onBlur={() => {
-          onWatch(null);
+          onWatch("pointer");
         }}
         onChange={(event) => {
           onPatch({ email: event.currentTarget.value });
@@ -386,7 +393,7 @@ export function SignInScreen({ profile, actions, onSwitchServer }: SignInScreenP
   const methods = resolveSignInMethods(profile.auth);
   const config = useQuery(api.server.publicConfig, {});
   const { state, patch, submit, provider } = useSignInForm(actions);
-  const [watch, setWatch] = useState<Watch>(null);
+  const [watch, setWatch] = useState<Watch>("pointer");
   const signUp = state.mode === "sign-up";
 
   return (

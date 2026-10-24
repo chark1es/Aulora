@@ -2,7 +2,7 @@
 
 The [repository contribution guide](https://github.com/chark1es/Aulora/blob/main/CONTRIBUTING.md) describes pull requests, tests, and documentation changes. Follow the [development guide](https://github.com/chark1es/Aulora/blob/main/docs/development.md) to run a working local backend and client.
 
-Use Bun 1.4.0 and Node.js 22.18.0, then run from the repository root:
+Use Bun 1.4.4 and Node.js 22.23.4, then run from the repository root:
 
 ```sh
 bun install --frozen-lockfile

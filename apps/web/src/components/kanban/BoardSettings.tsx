@@ -2,20 +2,20 @@ import type { KanbanBoardContent } from "@aulora/core";
 import {
   Button,
   ConfirmDialog,
+  DialogToggleRow,
   Icon,
-  IconButton,
   Input,
   Modal,
   ModalFooter,
-  Switch,
   Textarea,
 } from "@aulora/ui-web";
 import { useMutation } from "convex/react";
 import { useState } from "react";
 import { api } from "../../../../../packages/convex/convex/_generated/api";
+import { BoardLabels } from "./BoardLabels";
 import { ColumnList } from "./ColumnList";
 import { PeoplePicker } from "./controls";
-import { type Board, type BoardMember, type Card, failure, newItemId } from "./types";
+import { type Board, type BoardMember, type Card, failure } from "./types";
 
 export function BoardSettings({
   board,
@@ -82,8 +82,10 @@ export function BoardSettings({
         open
         onClose={close}
         label="Board settings"
+        title="Board settings"
+        icon={<Icon name="kanban" size={18} />}
         size="lg"
-        className="flex max-h-[calc(100dvh-32px)] flex-col [&>div]:min-h-0 [&>div]:overflow-y-auto [&>footer]:shrink-0 [&>footer]:flex-wrap [&>header]:shrink-0"
+        className="[&>footer]:flex-wrap"
         footer={
           <ModalFooter
             destructive={
@@ -106,7 +108,7 @@ export function BoardSettings({
           </ModalFooter>
         }
       >
-        <div className="flex flex-col gap-5 pb-4">
+        <div className="flex flex-col gap-5">
           <Input
             label="Board name"
             maxLength={120}
@@ -124,15 +126,20 @@ export function BoardSettings({
               setDraft({ ...draft, description: e.target.value });
             }}
           />
-          <Switch
-            label="Private board"
-            description="Only selected members and board managers can access it. Workspace Kanban permissions still apply."
-            checked={privateBoard}
-            onChange={setPrivate}
-          />
+          <div className="border-t border-border/60 pt-5">
+            <DialogToggleRow
+              icon="lock"
+              title="Private board"
+              description="Only chosen members and board managers can open it"
+              checked={privateBoard}
+              onChange={setPrivate}
+            />
+          </div>
           {privateBoard && (
-            <fieldset>
-              <legend className="mb-2 text-[13px] font-medium">Board members</legend>
+            <fieldset className="pl-11">
+              <legend className="mb-2 text-[12.5px] font-medium text-text-muted">
+                Board members
+              </legend>
               <PeoplePicker
                 label="Board members"
                 addLabel="Add members"
@@ -144,81 +151,24 @@ export function BoardSettings({
               />
             </fieldset>
           )}
-          <ColumnList
-            boardId={board.id}
-            columns={draft.columns}
-            cards={cards}
-            onChange={(columns) => {
-              setDraft((current) => ({ ...current, columns }));
-            }}
-          />
-          <fieldset className="flex flex-col gap-2">
-            <legend className="mb-2 text-[13px] font-medium">Labels</legend>
-            {draft.labels.map((l) => (
-              <div key={l.id} className="flex items-end gap-2 [&>button]:mb-1.5">
-                <Input
-                  label="Label name"
-                  maxLength={50}
-                  value={l.name}
-                  onChange={(e) => {
-                    setDraft({
-                      ...draft,
-                      labels: draft.labels.map((entry) =>
-                        entry.id === l.id ? { ...entry, name: e.target.value } : entry,
-                      ),
-                    });
-                  }}
-                />
-                <label className="flex flex-col gap-1 text-xs text-text-muted">
-                  Color
-                  <input
-                    type="color"
-                    aria-label={`Color for ${l.name}`}
-                    value={l.color}
-                    onChange={(e) => {
-                      setDraft({
-                        ...draft,
-                        labels: draft.labels.map((entry) =>
-                          entry.id === l.id ? { ...entry, color: e.target.value } : entry,
-                        ),
-                      });
-                    }}
-                    className="h-10 w-10 bg-transparent"
-                  />
-                </label>
-                <IconButton
-                  size="sm"
-                  variant="danger"
-                  label={`Remove ${l.name} label`}
-                  onClick={() => {
-                    setDraft({
-                      ...draft,
-                      labels: draft.labels.filter((entry) => entry.id !== l.id),
-                    });
-                  }}
-                >
-                  <Icon name="trash" size={16} />
-                </IconButton>
-              </div>
-            ))}
-            <Button
-              variant="secondary"
-              size="sm"
-              className="self-start"
-              disabled={draft.labels.length >= 50}
-              onClick={() => {
-                setDraft({
-                  ...draft,
-                  labels: [
-                    ...draft.labels,
-                    { id: newItemId(), name: "New label", color: "#d47838" },
-                  ],
-                });
+          <div className="border-t border-border/60 pt-5">
+            <ColumnList
+              boardId={board.id}
+              columns={draft.columns}
+              cards={cards}
+              onChange={(columns) => {
+                setDraft((current) => ({ ...current, columns }));
               }}
-            >
-              Add label
-            </Button>
-          </fieldset>
+            />
+          </div>
+          <div className="border-t border-border/60 pt-5">
+            <BoardLabels
+              labels={draft.labels}
+              onChange={(labels) => {
+                setDraft((current) => ({ ...current, labels }));
+              }}
+            />
+          </div>
           {error && (
             <p role="alert" className="text-sm text-danger">
               {error}

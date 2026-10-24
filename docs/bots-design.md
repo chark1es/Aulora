@@ -61,13 +61,15 @@ Runner API — header `Authorization: Bearer <BOT_RUNNER_TOKEN>` (constant-time 
 
 `entry` is `main.ts` for TypeScript and `main.py` for Python (`BOT_ENTRY_FILES`).
 
-## Runner (`infra/bot-runner`, image `infra/docker/bot-runner.Dockerfile`, compose profile `bots`)
+## Runner (`infra/bot-runner`, image `infra/docker/bot-runner.Dockerfile`, started by default)
 
 Plain Node ESM (`.mjs`, no deps), tests with `node --test`. Loop every 3 s: `GET desired`, reconcile (start missing, stop removed/disabled, relaunch when `revision` or `restartNonce` changed), restart crashed bots with exponential backoff (1 s .. 60 s; reset after 60 s of uptime). Per launch: fetch bundle, write files to `/work/<botId>/` (tmpfs), mint hosted credential, optionally install deps (`requirements.txt` -> `pip install --target .deps`; `package.json` -> `npm install --omit=dev --ignore-scripts`; 120 s timeout), spawn with a **fresh environment** (never the runner's), its own uid/gid, `cwd` = its dir (mode 0700), rlimits (nproc, memory, cpu-time off, file size), and capture stdout/stderr into batched log posts. Child env: `AULORA_TOKEN`, `AULORA_SITE_URL` (`CONVEX_HTTP_URL`), `AULORA_CONVEX_URL` (`CONVEX_SELF_HOSTED_URL`), `AULORA_BOT_ID`, `AULORA_BOT_USER_ID`, `AULORA_BOT_NAME`, plus the bot's own env vars, plus `PATH`, `HOME=/work/<botId>`, `LANG`.
 
 Commands: TypeScript `tsx main.ts` (tsx pinned in the image; `@aulora/bot` resolved from a symlink `node_modules/@aulora/bot -> /opt/aulora/bot-sdk` created after any npm install); Python `/opt/venv/bin/python -u main.py` with the SDK installed in `/opt/venv` and `PYTHONPATH=<dir>/.deps`.
 
-Container hardening (compose): own network `bots` shared only with `convex-backend` (no route to postgres/minio/web), `read_only: true`, tmpfs `/work` and `/tmp`, `cap_drop: [ALL]` + `cap_add: [SETUID, SETGID, CHOWN, KILL]` only for the uid switch, `security_opt: [no-new-privileges:true]`, `pids_limit`, `mem_limit`, `cpus`, `user: "0:0"` for the supervisor only (bots never run as root). Config env: `BOT_RUNNER_TOKEN`, `CONVEX_HTTP_URL`, `CONVEX_SELF_HOSTED_URL`, `BOT_RUNNER_MAX_BOTS` (default 10), `BOT_RUNNER_BOT_MEMORY_MB` (default 256).
+Container hardening (compose): own network `bots` shared only with `convex-backend` (no route to postgres/minio/web), `read_only: true`, tmpfs `/work` and `/tmp`, `cap_drop: [ALL]` + `cap_add: [SETUID, SETGID, CHOWN, KILL]` only for the uid switch, `security_opt: [no-new-privileges:true]`, `pids_limit`, `mem_limit`, `cpus`, `user: "0:0"` for the supervisor only (bots never run as root), no `env_file` and no host mounts. Config env: `BOT_RUNNER_TOKEN`, `CONVEX_HTTP_URL`, `CONVEX_SELF_HOSTED_URL`, `BOT_RUNNER_MAX_BOTS` (default 10), `BOT_RUNNER_BOT_MEMORY_MB` (default 256).
+
+The service has no Compose profile and starts with the stack. The installers write `BOT_RUNNER_TOKEN` to `.env` before the first start (Coolify generates `SERVICE_PASSWORD_64_BOTRUNNER` for both `setup` and the runner). `BOT_RUNNER_ENABLED=false` is the off switch. When it is false, or `BOT_RUNNER_TOKEN` is missing (an older `.env`, or the interval between `setup` writing `.env` and the next `up`), the entrypoint refreshes the health file and idles; it does not exit, so it cannot crash-loop. A Convex outage is also non-fatal: poll errors are logged and retried with the idle cadence.
 
 ## SDKs (stdlib only, polling transport)
 
@@ -83,7 +85,7 @@ Surface (TypeScript `@aulora/bot` / Python `aulora_bot`, same shape, idiomatic n
 
 ## Web UI
 
-Settings hub -> Bots (visible with `ManageBots`; read-only hint otherwise). List with status dot, create dialog (name, language, template), detail with tabs Overview / Code / Permissions / Environment / Logs / Token. Permissions tab: grouped checkboxes over `BOT_GRANTABLE_PERMISSIONS` (blocked ones listed as unavailable with a reason), channel scope (all granted channels or selected), warning copy for powerful grants (ManageMessages, Kick, Ban, MentionEveryone). Banner when `runnerStatus.online` is false ("Start the bot runner: `docker compose --profile bots up -d`"). Roles editor shows `ManageBots` with a label. Bot messages/members get a `BOT` badge.
+Settings hub -> Bots (visible with `ManageBots`; read-only hint otherwise). List with status dot, create dialog (name, language, template), detail with tabs Overview / Code / Permissions / Environment / Logs / Token. Permissions tab: grouped checkboxes over `BOT_GRANTABLE_PERMISSIONS` (blocked ones listed as unavailable with a reason), channel scope (all granted channels or selected), warning copy for powerful grants (ManageMessages, Kick, Ban, MentionEveryone). Banner when `runnerStatus.online` is false ("The bot runner is not running. Start it with `docker compose up -d bot-runner`."). Roles editor shows `ManageBots` with a label. Bot messages/members get a `BOT` badge.
 
 ## Quality bar
 

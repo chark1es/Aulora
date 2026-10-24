@@ -39,7 +39,7 @@ export function BotChannelScope({
     .map((channel) => ({ value: channel.id, label: channel.name }));
   return (
     <section className="flex flex-col gap-2">
-      <Text as="h4" size="xs" tone="muted" className="font-semibold uppercase tracking-[0.06em]">
+      <Text as="h4" size="xs" tone="muted" className="font-semibold">
         Channel scope
       </Text>
       <SegmentedControl

@@ -1,5 +1,5 @@
 # Aulora push relay. Dependency-free Node service; no build step needed.
-FROM node:22-alpine
+FROM node:22.23.4-alpine
 
 WORKDIR /app
 

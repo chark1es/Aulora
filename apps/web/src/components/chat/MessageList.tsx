@@ -10,9 +10,12 @@ import {
   dayLabel,
   hasPermission,
   isBotUserId,
+  isWebhookUserId,
   messageTime,
   Permission,
+  pingsViewer,
 } from "@aulora/core";
+import { MENTION_BACKGROUND, MENTION_COLOR } from "@aulora/tokens";
 import { Badge, Button, cn, Icon, Spinner, useContextMenu } from "@aulora/ui-web";
 import {
   Fragment,
@@ -157,7 +160,6 @@ export function MessageList(props: MessageListProps) {
     loading,
     onLoadOlder,
     memberNames,
-    memberColors,
   } = props;
   const historySeamId = props.historySeamId ?? null;
   const onResetHistory = props.onResetHistory;
@@ -420,9 +422,7 @@ export function MessageList(props: MessageListProps) {
               </Fragment>
             ))
           )}
-          {typers.length > 0 && (
-            <TypingBubble typers={typers} memberNames={memberNames} memberColors={memberColors} />
-          )}
+          {typers.length > 0 && <TypingBubble typers={typers} memberNames={memberNames} />}
         </div>
       </div>
 
@@ -557,6 +557,19 @@ function MessageEditForm({
   );
 }
 
+/** BOT or WEBHOOK next to an automated author's name; nothing for a person. */
+function AuthorBadge({ authorId }: { readonly authorId: string }) {
+  const label = isBotUserId(authorId) ? "BOT" : isWebhookUserId(authorId) ? "WEBHOOK" : null;
+  if (label === null) {
+    return null;
+  }
+  return (
+    <Badge size="sm" tone="accent" className="shrink-0 uppercase">
+      {label}
+    </Badge>
+  );
+}
+
 /** Quoted inline reply, split out so the row stays within the complexity budget. */
 function ReplyLine({
   replyToId,
@@ -631,6 +644,7 @@ function MessageRowContent({
   const { runtime, ownUserId, ownName, permissions, memberNames, memberColors, mentionNames } =
     list;
   const own = message.authorId === ownUserId;
+  const pinged = pingsViewer(message, ownUserId);
   const mirror = (list.ownSide ?? "left") === "right" && own;
   const pending = list.pendingIds.has(message.id);
   const failed = list.failedIds?.has(message.id) ?? false;
@@ -857,6 +871,12 @@ function MessageRowContent({
         "group/message relative -mx-1 w-full px-1 py-0.5 transition-colors",
         startsGroup ? "mt-3" : "mt-0.5",
       )}
+      data-pinged={pinged ? "true" : undefined}
+      style={
+        pinged
+          ? { backgroundColor: MENTION_BACKGROUND, boxShadow: `-3px 0 0 ${MENTION_COLOR}` }
+          : undefined
+      }
     >
       {replyToId !== null && (
         <>
@@ -889,7 +909,7 @@ function MessageRowContent({
       <div className={cn("relative flex w-full gap-2.5", mirror && "flex-row-reverse")}>
         <div className="flex w-8 shrink-0 items-start justify-end pt-0.5">
           {startsGroup ? (
-            <PresenceAvatar userId={message.authorId} size={32} roleColor={authorColor} />
+            <PresenceAvatar userId={message.authorId} size={32} />
           ) : (
             !editing && (
               <time
@@ -918,11 +938,7 @@ function MessageRowContent({
               >
                 {authorName}
               </span>
-              {!own && isBotUserId(message.authorId) && (
-                <Badge size="sm" tone="accent" className="shrink-0 uppercase">
-                  BOT
-                </Badge>
-              )}
+              {!own && <AuthorBadge authorId={message.authorId} />}
               <time
                 className="shrink-0 text-[11px] text-text-muted"
                 dateTime={new Date(message.createdAt).toISOString()}
@@ -1047,11 +1063,9 @@ function ToolbarButton({
 function TypingBubble({
   typers,
   memberNames,
-  memberColors,
 }: {
   readonly typers: readonly TypingRow[];
   readonly memberNames: ReadonlyMap<string, string>;
-  readonly memberColors: ReadonlyMap<string, string> | undefined;
 }) {
   const first = typers[0];
   if (first === undefined) {
@@ -1067,11 +1081,7 @@ function TypingBubble({
   return (
     <div className="mt-3 flex animate-fade-in gap-2.5" aria-live="polite">
       <div className="w-8 shrink-0 pt-0.5">
-        <PresenceAvatar
-          userId={first.userId}
-          size={32}
-          roleColor={memberColors?.get(first.userId)}
-        />
+        <PresenceAvatar userId={first.userId} size={32} />
       </div>
       <div className="flex flex-col items-start">
         <span className="mb-1 text-[13px] font-semibold text-text">{label}</span>

@@ -122,7 +122,11 @@ function SignedInShell({
     void actions.signOut();
   };
   return (
-    <QueryErrorBoundary client={client} onSignOut={signOut}>
+    <QueryErrorBoundary
+      client={client}
+      onSignOut={signOut}
+      onSwitchServer={recovery.onSwitchServer}
+    >
       <MembershipGate
         workspaceIconSeed={profile.iconSeed}
         signedInAs={signedInUser.email ?? signedInUser.name ?? null}

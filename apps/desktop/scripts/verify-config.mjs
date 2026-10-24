@@ -21,6 +21,8 @@ const readLinux = () => readFileSync(resolve(srcTauri, "tauri.linux.conf.json"),
 const readRelease = () => readFileSync(resolve(srcTauri, "tauri.release.conf.json"), "utf8");
 const readMiniWindow = () => readFileSync(resolve(srcTauri, "src/mini_window.rs"), "utf8");
 const readCapabilities = () => readFileSync(resolve(srcTauri, "capabilities/default.json"), "utf8");
+const readInfoPlist = () => readFileSync(resolve(srcTauri, "Info.plist"), "utf8");
+const readEntitlements = () => readFileSync(resolve(srcTauri, "Entitlements.plist"), "utf8");
 
 function readJson(relative, read) {
   try {
@@ -138,6 +140,10 @@ function verifyMainConfig(config) {
     "windows[0] must set dragDropEnabled to false so the app-wide web file drop reaches the webview",
     config.app?.windows?.[0]?.dragDropEnabled === false,
   );
+  check(
+    "windows[0] must disable background throttling so a hidden call keeps its timers and audio",
+    config.app?.windows?.[0]?.backgroundThrottling === "disabled",
+  );
   verifyCsp(config.app?.security?.csp);
   check(
     "deep-link scheme must be aulora",
@@ -168,6 +174,14 @@ function verifyMacos(macos) {
   check(
     "macOS window must set dragDropEnabled to false so the app-wide web file drop reaches the webview",
     window?.dragDropEnabled === false,
+  );
+  check(
+    "macOS window must disable background throttling so a hidden call keeps its timers and audio",
+    window?.backgroundThrottling === "disabled",
+  );
+  check(
+    "macOS bundles must use the entitlements file",
+    macos.bundle?.macOS?.entitlements === "Entitlements.plist",
   );
   check(
     "macOS bundles must be app + dmg",
@@ -212,12 +226,41 @@ function verifyCapabilities(capabilities) {
   );
 }
 
+function verifyNativeMediaPermissions() {
+  let plist = "";
+  try {
+    plist = readInfoPlist();
+  } catch {
+    failures.push("src-tauri/Info.plist is missing (macOS media permission purposes)");
+  }
+  for (const key of ["NSMicrophoneUsageDescription", "NSCameraUsageDescription"]) {
+    check(`Info.plist must declare ${key}`, plist.includes(`<key>${key}</key>`));
+  }
+
+  let entitlements = "";
+  try {
+    entitlements = readEntitlements();
+  } catch {
+    failures.push("src-tauri/Entitlements.plist is missing (hardened runtime media access)");
+  }
+  for (const entitlement of [
+    "com.apple.security.device.audio-input",
+    "com.apple.security.device.camera",
+  ]) {
+    check(
+      `Entitlements.plist must grant ${entitlement}`,
+      entitlements.includes(`<key>${entitlement}</key>`),
+    );
+  }
+}
+
 function main() {
   const config = readJson("tauri.conf.json", readConfig);
   if (config !== null) {
     verifyMainConfig(config);
   }
   verifyPrepareFrontend();
+  verifyNativeMediaPermissions();
 
   const macos = readJson("tauri.macos.conf.json", readMacos);
   if (macos !== null) {

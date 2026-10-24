@@ -1,6 +1,6 @@
 /* eslint-disable no-unused-vars -- the base rule reports parameter names in type signatures; Biome checks real unused code */
 import type { PermissionName } from "@aulora/core";
-import { Button, cn, Icon } from "@aulora/ui-web";
+import { Button, cn, DialogSection, Icon } from "@aulora/ui-web";
 import { useMemo, useState } from "react";
 import {
   type OverrideLevel,
@@ -91,32 +91,22 @@ export function ChannelRoleOverrides({
   };
 
   return (
-    <section
-      data-testid="channel-role-overrides"
-      className="flex flex-col gap-2.5 rounded-[10px] border border-border bg-surface-1 p-3"
-    >
-      <header className="flex items-center justify-between gap-2">
-        <span className="text-[12px] font-medium text-text-muted">Role permissions</span>
-        <span className="flex items-center gap-1 text-[11px] text-text-muted">
-          <Icon name="shield" size={12} />
-          Per channel
-        </span>
-      </header>
-
-      <RoleList
-        roles={sorted}
-        overrides={overrides}
-        disabled={disabled}
-        expandedId={expandedId}
-        onToggle={toggle}
-        onSetLevel={setLevel}
-        onClear={clearRole}
-      />
-
-      <p className="text-[11px] leading-snug text-text-muted">
-        Inherit uses the workspace and category defaults; allow and deny change this channel only.
-      </p>
-    </section>
+    <div data-testid="channel-role-overrides">
+      <DialogSection
+        title="Role permissions"
+        hint="Inherit follows the workspace and category; allow and deny change this channel only."
+      >
+        <RoleList
+          roles={sorted}
+          overrides={overrides}
+          disabled={disabled}
+          expandedId={expandedId}
+          onToggle={toggle}
+          onSetLevel={setLevel}
+          onClear={clearRole}
+        />
+      </DialogSection>
+    </div>
   );
 }
 

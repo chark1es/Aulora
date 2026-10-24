@@ -1,9 +1,10 @@
 /* eslint-disable no-unused-vars -- the base rule reports parameter names in type signatures; Biome checks real unused code */
-import { Badge, Button, Heading, Icon, IconButton, Spinner, Text } from "@aulora/ui-web";
+import { Button, Spinner, Text } from "@aulora/ui-web";
 import { useQuery } from "convex/react";
 import { useState } from "react";
 import { api } from "../../../../../../packages/convex/convex/_generated/api";
 import type { BotDetail as BotDetailData } from "../../../../../../packages/convex/convex/lib/botTypes";
+import { AdminPageHeader } from "../AdminPageHeader";
 import { BotCodeTab } from "./BotCodeTab";
 import { BotEnvironmentTab } from "./BotEnvironmentTab";
 import { BotLogsTab } from "./BotLogsTab";
@@ -32,7 +33,10 @@ function BotTabNav({
   readonly onSelect: (tab: BotTab) => void;
 }) {
   return (
-    <nav className="flex flex-wrap gap-1 border-b border-border pb-2" aria-label="Bot sections">
+    <nav
+      className="flex gap-1 overflow-x-auto border-b border-border pb-2"
+      aria-label="Bot sections"
+    >
       {TABS.map((entry) => (
         <button
           key={entry.id}
@@ -40,8 +44,8 @@ function BotTabNav({
           aria-current={tab === entry.id ? "page" : undefined}
           className={
             tab === entry.id
-              ? "rounded-[7px] bg-surface-3 px-3 py-1 text-[13px] font-medium text-text"
-              : "rounded-[7px] px-3 py-1 text-[13px] text-text-muted transition hover:bg-surface-2 hover:text-text"
+              ? "shrink-0 rounded-[7px] bg-surface-3 px-2.5 py-1 text-[12px] font-medium text-text"
+              : "shrink-0 rounded-[7px] px-2.5 py-1 text-[12px] text-text-muted transition hover:bg-surface-2 hover:text-text"
           }
           onClick={() => {
             onSelect(entry.id);
@@ -63,23 +67,13 @@ function BotDetailView({
 }) {
   const [tab, setTab] = useState<BotTab>("overview");
   return (
-    <div className="flex flex-col gap-5" data-testid="bot-detail">
-      <header className="flex items-center gap-3">
-        <IconButton label="Back to bots" onClick={onBack}>
-          <Icon name="chevron-left" size={16} />
-        </IconButton>
-        <div className="min-w-0 flex-1">
-          <span className="flex items-center gap-2">
-            <Heading level={3} className="truncate">
-              {bot.name}
-            </Heading>
-            <Badge tone="outline" size="sm">
-              {BOT_LANGUAGE_LABELS[bot.language]}
-            </Badge>
-          </span>
-          <BotStatusDot status={bot.status} message={bot.statusMessage} />
-        </div>
-      </header>
+    <div className="flex flex-col gap-8" data-testid="bot-detail">
+      <AdminPageHeader
+        title={bot.name}
+        description={BOT_LANGUAGE_LABELS[bot.language]}
+        meta={<BotStatusDot status={bot.status} message={bot.statusMessage} />}
+        back={{ label: "Bots", onClick: onBack }}
+      />
       <BotTabNav tab={tab} onSelect={setTab} />
       {tab === "overview" && <BotOverviewTab bot={bot} onBack={onBack} />}
       {tab === "code" && <BotCodeTab bot={bot} />}

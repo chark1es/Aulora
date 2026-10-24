@@ -25,7 +25,7 @@ export function MemberNote({ userId }: { readonly userId: string }) {
     >
       <div className="flex items-center gap-1.5">
         <Icon name="note" size={14} className="text-text-muted" />
-        <Text as="h4" size="xs" tone="muted" className="font-semibold uppercase tracking-[0.06em]">
+        <Text as="h4" size="xs" tone="muted" className="font-semibold">
           Private note
         </Text>
         {(note?.body ?? "").trim().length > 0 && (

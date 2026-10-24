@@ -49,7 +49,7 @@ export function botStatusMeta(status: BotStatus): BotStatusMeta {
 }
 
 export const BOT_RUNNER_OFFLINE_MESSAGE =
-  "The bot runner is not running. Start it with `docker compose --profile bots up -d`.";
+  "The bot runner is not running. Start it with `docker compose up -d bot-runner`.";
 
 /** Powerful grants that deserve a line of caution beside the checkbox. */
 export const BOT_CAUTION_PERMISSIONS: ReadonlyMap<PermissionName, string> = new Map([

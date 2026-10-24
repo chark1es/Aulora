@@ -92,12 +92,12 @@ Reproducibility matters more than freshness here, so every image is pinned:
 | `ghcr.io/convex/convex-backend` | **digest** `sha256:b756b066…` | Convex publishes only `latest` + commit tags; the digest corresponds to revision `0cf49cbf` |
 | `ghcr.io/convex/convex-dashboard` | **digest** `sha256:4ebaebfd…` | same |
 | `postgres` | `postgres:17` | explicit major |
-| `nginx` (web runtime) | `nginx:1.27-alpine` | explicit minor |
-| `oven/bun` (build + setup) | `oven/bun:1.4.0` | matches `packageManager` |
+| `nginx` (web runtime) | `nginx:1.30.6-alpine` | explicit patch on the 1.30 stable line |
+| `oven/bun` (build + setup) | `oven/bun:1.4.4` | matches `packageManager` |
 | `sourcemation/minio` | `RELEASE.2025-10-15T17-29-55Z-20260920` | last AGPL MinIO release (see below) |
 | `pgsty/mc` | digest `sha256:cfc831…` | MinIO client used for bucket init |
-| `hashicorp/vault` | `1.18` | optional EKM for the `ekm` profile (see below) |
-| `livekit/livekit-server` | `v1.13.8` | optional screen-streaming server for the `streaming` profile (Apache-2.0; see below) |
+| `hashicorp/vault` | `1.21.4` | optional EKM for the `ekm` profile (see below) |
+| `livekit/livekit-server` | `v1.13.10` | optional screen-streaming server for the `streaming` profile (Apache-2.0; see below) |
 
 To bump the Convex digest:
 
@@ -151,17 +151,23 @@ an hour. Behind NAT, or on a LAN without a public address, set `rtc.node_ip` in
 bitrate (1 to 3.5 Mbps) times the number of viewers in outbound bandwidth; a
 1 Gbps host serves a few hundred viewers.
 
-## Bots (optional)
+## Bots
 
 Bots are small TypeScript or Python programs that act like members: they call
 the same Convex functions with their own identity and can only do what an admin
 granted them. Users with `ManageBots` create them in **Workspace settings →
-Bots**. The runner is off by default, behind the `bots` profile:
+Bots**. The `bot-runner` container starts with the stack:
 
 ```bash
-docker compose --profile bots up -d --build
+docker compose up -d --build
 docker compose logs -f bot-runner
 ```
+
+With no bots, no `BOT_RUNNER_TOKEN`, or `BOT_RUNNER_ENABLED=false` it idles and
+reports itself healthy, so it never crash-loops. To keep bots off, set
+`BOT_RUNNER_ENABLED=false` in `.env` and recreate the runner
+(`docker compose up -d --no-deps --force-recreate bot-runner`); set it back to
+`true` (the default) to turn them on again.
 
 The runner is a supervisor, not a sandbox daemon: it starts one process per
 enabled bot inside the `bot-runner` container, writes each bot's files to a
@@ -181,34 +187,38 @@ does; a bot's identity (`bot_<id>`) is a real member row, so mentions, threads
 and permission checks work unchanged. The `bot-runner` container holds the
 shared `BOT_RUNNER_TOKEN`, which is never passed to a bot process.
 
-Enable it on a stack that is already running. `setup` has to run first because
-it generates the secrets the runner needs, and Compose reads `.env` when it
-starts a service, so bring the runner up after `setup`:
+`install.sh` and `install.ps1` generate `BOT_RUNNER_TOKEN` into `.env` before
+the first start, so the runner has it from the beginning. `setup` generates the
+ES256 key pair, sets both on the deployment (the public key is read by
+`auth.config.ts` at deploy time) and persists anything it generated to `.env`.
+If you create `.env` yourself and leave the token blank, `setup` generates it,
+but Compose reads `.env` when it creates a container, so the runner started
+before `setup` has no token and idles until it is recreated:
 
 ```bash
-docker compose run --rm setup                 # generates BOT_RUNNER_TOKEN + the JWT keys
-docker compose --profile bots up -d --build   # starts the runner with the token
+docker compose run --rm setup                     # generates BOT_RUNNER_TOKEN + the JWT keys
+docker compose up -d --no-deps --force-recreate bot-runner
 ```
 
-`setup` generates `BOT_RUNNER_TOKEN` and an ES256 key pair, sets them on the
-deployment (the public key is read by `auth.config.ts` at deploy time), and
-persists them to `.env`. Until then bots are dormant and the UI says the runner
-is offline. A runner started before `setup` has no token and exits; run the
-second command again afterwards.
+The installers and `deploy.sh` do that recreate step automatically after
+`setup`. Until the runner has the token, bots are dormant and the UI says the
+runner is offline.
 
 The runner container gets **only** `BOT_RUNNER_TOKEN` from the environment. It
 deliberately has no `env_file` and no host mounts, because every bot shares that
 container (as its own user) and could read anything mounted into it.
 
-On Coolify the `bots` profile is not started (Coolify skips profiled services).
-Set `BOT_RUNNER_TOKEN` yourself in the Coolify environment (any random string of
-48 or more characters; `setup` then uses it instead of generating one) and run
-the runner as its own resource or from the host with `--profile bots`.
+On Coolify the runner also starts by default. Coolify generates
+`SERVICE_PASSWORD_64_BOTRUNNER` once and passes the same value to `setup` and
+`bot-runner`, so no manual token is needed. Edit that variable in Coolify to use
+your own (48 or more random characters). Set `BOT_RUNNER_ENABLED=false` to keep
+bots off.
 
 ### Bot environment knobs
 
 | Variable | Default | Purpose |
 | --- | --- | --- |
+| `BOT_RUNNER_ENABLED` | `true` | `false` keeps the container up but idle, so no bot runs |
 | `BOT_RUNNER_MAX_BOTS` | `10` | Concurrent bot processes |
 | `BOT_RUNNER_BOT_MEMORY_MB` | `256` | Per-bot memory cap: V8 heap for TypeScript, address space x4 for Python |
 | `BOT_RUNNER_TOKEN` | generated | Shared runner secret |
@@ -389,8 +399,10 @@ cd infra/docker
 ./deploy.sh --pull
 ```
 
-`deploy.sh` always rebuilds the `web` and `setup` images before recreating the
-web container and redeploying the Convex functions. Do not skip the rebuild:
+`deploy.sh` always rebuilds the `web`, `setup`, `smtp-gateway` and `bot-runner`
+images before recreating the web container and redeploying the Convex
+functions, then recreates the runner so it gets the current token. Do not skip
+the rebuild:
 `docker compose run --rm setup` reuses whatever `aulora-setup` image already
 exists, so a stale image would redeploy an **old API** against a new client.
 `setup` self-checks after deploying and fails loudly if any module in

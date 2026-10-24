@@ -148,7 +148,10 @@ export const update = mutation({
 
     if (args.permissions !== undefined) {
       assertValidPermissionBits(args.permissions);
-      requireCanGrant(context, args.permissions);
+      // Keeping a bit the role already has is not a grant, so a manager can
+      // still rename or restyle a lower role that carries a permission above
+      // their own. Only newly added bits need to be within the actor's grant.
+      requireCanGrant(context, args.permissions & ~role.permissions);
     }
 
     await ctx.db.patch(args.roleId, {

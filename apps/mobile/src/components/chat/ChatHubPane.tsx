@@ -166,7 +166,6 @@ function ChatHubThreadsTab({ model }: { readonly model: ChatScreenModel }) {
         loading={model.threadRows === undefined}
         channelNames={model.textChannelNames}
         memberNames={model.memberNames}
-        memberColors={model.memberColors}
         titles={model.titles}
         ownUserId={model.ownUserId}
         onOpen={model.openThreadFromInbox}

@@ -131,7 +131,6 @@ export function MemberProfilePopover({
           userId={member.userId}
           size={44}
           status={status}
-          roleColor={member.roleColor}
           ringClassName="ring-surface-2"
         />
         <div className="min-w-0 flex-1">

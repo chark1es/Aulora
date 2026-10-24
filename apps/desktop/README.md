@@ -10,8 +10,9 @@ store of its own.
 
 | Feature | Where |
 | --- | --- |
-| Native menu bar (app/File/Edit/View/Window), `Cmd/Ctrl+K` quick switcher | `src-tauri/src/menu.rs` |
-| System tray / menu-bar item with open, connect and quit | `src-tauri/src/tray.rs` |
+| Native menu bar (app/File/Edit/View/Window), `Cmd/Ctrl+K` quick switcher | `src-tauri/src/menu.rs` (macOS only; Windows and Linux use the tray and the webview shortcuts) |
+| System tray / menu-bar item with open, connect, quick switcher, sidebar toggle and quit | `src-tauri/src/tray.rs` |
+| Windows/Linux shortcuts: Ctrl+N connect, Ctrl+Shift+D sidebar, F11 fullscreen | `apps/web/src/lib/use-desktop-shortcuts.ts` |
 | Native notifications with device-computed text | `commands.rs` (`show_notification`) |
 | Dock/taskbar unread badge (macOS/Linux count, Windows overlay icon) | `commands.rs`, `window.rs` |
 | `aulora://connect` and `aulora://invite` deep links, single instance | `deep_link.rs` |
@@ -19,6 +20,8 @@ store of its own.
 | macOS Sidebar vibrancy behind translucent rails | `window.rs`, `tauri.macos.conf.json` |
 | Locked-down CSP: bundled code only, no remote script origins (`'wasm-unsafe-eval'` allows WebAssembly for noise suppression and background blur, not JavaScript `eval`) | `tauri.conf.json` |
 | Call picture-in-picture: the window shrinks to a small always-on-top window; `bun run verify` keeps its restore size in sync | `src-tauri/src/mini_window.rs` |
+| Closing the PiP window hides it without ending the call; reopening restores the same window | `src-tauri/src/lib.rs`, `tauri.conf.json` (`backgroundThrottling`) |
+| Native media prompts: mic/camera/notifications in the main webview are auto-allowed, macOS keeps its TCC prompt | `src-tauri/src/lib.rs`, `Info.plist`, `Entitlements.plist` |
 | Native drag-drop disabled (`dragDropEnabled: false`) so the web composer accepts files dropped anywhere in the window | `tauri.conf.json`, `tauri.macos.conf.json` |
 
 The web player (`apps/web`) talks to the shell through `window.__TAURI__`
@@ -116,6 +119,7 @@ path, building the shell on macOS, Windows and Linux and uploading the bundles.
 ## Caveats
 
 - Call picture-in-picture, background effects and screen capture are exercised in Chromium. The system webviews (WKWebView on macOS, WebView2 on Windows, WebKitGTK on Linux) differ, so confirm each on real installs: the window shrinking and staying on top, `getDisplayMedia`, and WebAssembly in the audio worklet. Record the evidence in the release checklist.
+- Mic, camera and notification prompts in the main webview are auto-allowed (the OS TCC prompt on macOS is unchanged). Screen sharing is only routable through the permission handler on Linux; on macOS the WKWebView screen picker and on Windows WebView2 draw their own capture picker, so an in-app source picker would require new native code.
 - Release acceptance covers menus, tray, badges, deep links, vibrancy, and installed updates. Configuration checks and successful builds do not verify those interactions. Record platform evidence in the [release checklist](../../docs/releasing.md).
 - The dev CSP is strict (`script-src 'self'`); if Vite's HMR needs more during
   `tauri:dev`, pass a relaxed `--config` override rather than weakening the

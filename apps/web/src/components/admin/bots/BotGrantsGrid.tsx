@@ -83,9 +83,7 @@ export function BotGrantsGrid({ value, disabled, onChange }: BotGrantsGridProps)
         }
         return (
           <fieldset key={group.label} className="flex flex-col gap-2" disabled={disabled}>
-            <legend className="mb-1 text-[11px] font-semibold uppercase tracking-[0.06em] text-text-muted">
-              {group.label}
-            </legend>
+            <legend className="mb-1 text-[13px] font-semibold text-text">{group.label}</legend>
             <div className="grid grid-cols-1 gap-1.5 sm:grid-cols-2">
               {permissions.map((name) => (
                 <BotGrantRow
@@ -108,7 +106,7 @@ export function BotGrantsGrid({ value, disabled, onChange }: BotGrantsGridProps)
 export function BotBlockedPermissions() {
   return (
     <section className="flex flex-col gap-2" aria-label="Permissions bots cannot have">
-      <Text as="h4" size="xs" tone="muted" className="font-semibold uppercase tracking-[0.06em]">
+      <Text as="h4" size="xs" className="font-semibold text-text">
         Never available to bots
       </Text>
       <ul className="grid grid-cols-1 gap-1.5 sm:grid-cols-2">

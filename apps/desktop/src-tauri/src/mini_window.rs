@@ -123,20 +123,34 @@ pub fn enter(
     Ok(())
 }
 
+/// Whether the saved maximize/fullscreen state may be re-applied when leaving
+/// picture-in-picture. A hidden window keeps its restored size but is never
+/// shown by restoring state: some window managers reveal a hidden window when
+/// it is maximized or made fullscreen. It stays hidden until the user reopens
+/// it, which is the promise of closing the PiP window.
+pub fn may_restore_window_state(visible: bool) -> bool {
+    visible
+}
+
 /// Puts the window back the way it was. A no-op when it is not a PiP window.
 pub fn exit(window: &WebviewWindow, state: &MiniWindowState) -> tauri::Result<()> {
     let saved = state.0.lock().expect("mini window state poisoned").take();
     let Some(saved) = saved else {
         return Ok(());
     };
+    // Read visibility before resizing: the window may be hidden (the close
+    // button on the PiP window) while the call is still running.
+    let visible = window.is_visible()?;
     window.set_min_size(Some(LogicalSize::new(MAIN_MIN_WIDTH, MAIN_MIN_HEIGHT)))?;
     window.set_size(saved.size)?;
     window.set_position(saved.position)?;
-    if saved.maximized {
-        window.maximize()?;
-    }
-    if saved.fullscreen {
-        window.set_fullscreen(true)?;
+    if may_restore_window_state(visible) {
+        if saved.maximized {
+            window.maximize()?;
+        }
+        if saved.fullscreen {
+            window.set_fullscreen(true)?;
+        }
     }
     Ok(())
 }
@@ -199,5 +213,11 @@ mod tests {
     #[test]
     fn a_fresh_state_is_not_a_pip_window() {
         assert!(!MiniWindowState::default().is_active());
+    }
+
+    #[test]
+    fn restore_state_only_runs_for_a_visible_window() {
+        assert!(may_restore_window_state(true));
+        assert!(!may_restore_window_state(false));
     }
 }

@@ -429,13 +429,19 @@ function ChatViewContent({
     [runtime],
   );
 
+  // Webhooks are authors but not members, so their names join the lookup
+  // here instead of the member list.
+  const webhookIdentities = useQuery(api.webhooks.identities, {});
   const memberNames = useMemo(() => {
     const map = new Map<string, string>();
+    for (const identity of webhookIdentities ?? []) {
+      map.set(identity.userId, identity.name);
+    }
     for (const member of members) {
       map.set(member.userId, member.displayName);
     }
     return map;
-  }, [members]);
+  }, [members, webhookIdentities]);
 
   const memberColors = useMemo(() => {
     const map = new Map<string, string>();
@@ -454,9 +460,8 @@ function ChatViewContent({
   const callIdentity = useMemo<CallIdentity>(
     () => ({
       nameOf: (id: string) => (id === ownUserId ? ownName : (memberNames.get(id) ?? "Member")),
-      colorOf: (id: string) => memberColors.get(id) ?? null,
     }),
-    [ownUserId, ownName, memberNames, memberColors],
+    [ownUserId, ownName, memberNames],
   );
 
   const presenceByUser = useMemo(
@@ -1579,7 +1584,6 @@ function ChatViewContent({
               loading={threadRows === undefined}
               channelNames={channelNames}
               memberNames={memberNames}
-              memberColors={memberColors}
               titles={titles}
               ownUserId={ownUserId}
               onOpen={openThreadFromInbox}

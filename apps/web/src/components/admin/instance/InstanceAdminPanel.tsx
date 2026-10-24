@@ -2,7 +2,7 @@ import { Button, Heading, Icon, IconButton, Text } from "@aulora/ui-web";
 import { useQuery } from "convex/react";
 import { useState } from "react";
 import { api } from "../../../../../../packages/convex/convex/_generated/api";
-import { SettingsSectionHeader } from "../SettingsSection";
+import { AdminPageHeader } from "../AdminPageHeader";
 import { AuthSection } from "./AuthSection";
 import { EmailSection } from "./EmailSettingsSection";
 import { EnvironmentSection } from "./EnvironmentSection";
@@ -56,16 +56,15 @@ export function InstanceAdminPanel({
   if (variant === "inline") {
     return (
       <section
-        className="flex flex-col gap-5"
+        className="flex flex-col gap-8"
         data-testid="instance-admin-panel"
         aria-label="Instance admin"
       >
-        <SettingsSectionHeader
-          icon="shield"
+        <AdminPageHeader
           title="Instance"
           description="Server status, auth providers, environment overrides, storage quotas, backups, push relay and licensing. Visible to the workspace owner only."
         />
-        <InstanceAdminContent canManage={canManage} bodyClassName="flex flex-col gap-5" />
+        <InstanceAdminContent canManage={canManage} bodyClassName="flex flex-col gap-8" />
       </section>
     );
   }
@@ -115,7 +114,7 @@ function InstanceAdminContent({
   return (
     <>
       <nav
-        className="flex flex-wrap gap-1 border-b border-border pb-2"
+        className="flex gap-1 overflow-x-auto border-b border-border pb-2"
         aria-label="Instance admin sections"
       >
         {TABS.map((tab) => (
@@ -126,8 +125,8 @@ function InstanceAdminContent({
             data-testid={`instance-tab-${tab.id}`}
             className={
               active === tab.id
-                ? "rounded-[7px] bg-surface-3 px-3 py-1 text-[13px] font-medium text-text"
-                : "rounded-[7px] px-3 py-1 text-[13px] text-text-muted hover:bg-surface-2 hover:text-text"
+                ? "shrink-0 rounded-[7px] bg-surface-3 px-2.5 py-1 text-[12px] font-medium text-text"
+                : "shrink-0 rounded-[7px] px-2.5 py-1 text-[12px] text-text-muted transition hover:bg-surface-2 hover:text-text"
             }
             onClick={() => {
               setActive(tab.id);

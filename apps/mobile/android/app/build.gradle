@@ -104,7 +104,7 @@ android {
         // in the app module instead of only in the Expo Gradle plugin.
         targetSdkVersion 36
         versionCode ((System.getenv('BUILD_NUMBER') ?: '1').toInteger())
-        versionName (System.getenv('RELEASE_VERSION') ?: "1.2.1")
+        versionName (System.getenv('RELEASE_VERSION') ?: "1.3.0")
 
         buildConfigField "String", "REACT_NATIVE_RELEASE_LEVEL", "\"${findProperty('reactNativeReleaseLevel') ?: 'stable'}\""
     }

@@ -1,13 +1,15 @@
-import { Button, cn, Icon, Input, Modal, Switch } from "@aulora/ui-web";
-import { useEffect, useMemo, useRef, useState } from "react";
+/* eslint-disable no-unused-vars -- the base rule reports parameter names in type signatures; Biome checks real unused code */
+import { Button, DialogSection, DialogToggleRow, Icon, Input, Modal } from "@aulora/ui-web";
+import { useEffect, useMemo, useState } from "react";
 import type { OverrideView } from "../../lib/workspace-admin";
 import { ChannelRoleOverrides } from "./ChannelRoleOverrides";
 import type { ChannelRoleOption } from "./channel-role-overrides";
+import { PersonAvatar } from "./member-avatars";
+import { type PeopleOption, PeoplePicker } from "./PeoplePicker";
 
 export interface EditChannelMemberOption {
   readonly userId: string;
   readonly displayName: string;
-  readonly roleColor?: string | null;
 }
 
 export interface EditChannelPatch {
@@ -40,112 +42,241 @@ export interface EditChannelModalProps {
   readonly onSave: (patch: EditChannelPatch) => void | Promise<void>;
 }
 
-/**
- * Edits an existing channel: rename, retopic, switch public/private, pick who
- * can access and block specific members. Mirrors the create-channel dialog's
- * modal grammar; reuses the channel override system for blocked users.
- */
-export function EditChannelModal({
-  open,
-  channelName,
-  channelTopic,
-  isPrivate,
-  initialMemberIds,
-  initialBlockedUserIds,
-  roles = [],
-  initialRoleOverrides = [],
-  canManageRoleOverrides = false,
-  ownUserId,
-  members,
-  busy = false,
-  error = null,
-  onClose,
-  onSave,
-}: EditChannelModalProps) {
-  const [name, setName] = useState(channelName);
-  const [topic, setTopic] = useState(channelTopic);
-  const [privateChannel, setPrivateChannel] = useState(isPrivate);
-  const [selectedMembers, setSelectedMembers] = useState<readonly string[]>(initialMemberIds);
-  const [blockedUserIds, setBlockedUserIds] = useState<readonly string[]>(initialBlockedUserIds);
-  const [roleOverrides, setRoleOverrides] = useState<readonly OverrideView[]>(initialRoleOverrides);
+/** Adds or removes one id, never touching the viewer's own entry. */
+function toggleIn(list: readonly string[], id: string): readonly string[] {
+  return list.includes(id) ? list.filter((value) => value !== id) : [...list, id];
+}
+
+/** The people in the workspace as picker rows, with the viewer marked and locked. */
+function usePeopleOptions(
+  members: readonly EditChannelMemberOption[],
+  ownUserId: string,
+): readonly PeopleOption[] {
+  return useMemo(
+    () =>
+      [...members]
+        .sort((a, b) => a.displayName.localeCompare(b.displayName))
+        .map((member) => ({
+          id: member.userId,
+          label: member.displayName,
+          ...(member.userId === ownUserId ? { sublabel: "You", locked: true } : {}),
+          leading: (size: number) => <PersonAvatar userId={member.userId} size={size} />,
+        })),
+    [members, ownUserId],
+  );
+}
+
+/** The dialog's form state, reset from the channel each time it opens. */
+function useEditChannelForm(props: EditChannelModalProps) {
+  const [name, setName] = useState(props.channelName);
+  const [topic, setTopic] = useState(props.channelTopic);
+  const [privateChannel, setPrivateChannel] = useState(props.isPrivate);
+  const [selectedMembers, setSelectedMembers] = useState(props.initialMemberIds);
+  const [blockedUserIds, setBlockedUserIds] = useState(props.initialBlockedUserIds);
+  const [roleOverrides, setRoleOverrides] = useState(props.initialRoleOverrides ?? []);
   const [memberQuery, setMemberQuery] = useState("");
   const [blockQuery, setBlockQuery] = useState("");
   const [saving, setSaving] = useState(false);
-  const inputRef = useRef<HTMLInputElement | null>(null);
 
-  // Reset the form each time the dialog opens.
   // biome-ignore lint/correctness/useExhaustiveDependencies: reset only on open, not on every prop identity change
   useEffect(() => {
-    if (!open) {
-      return undefined;
+    if (!props.open) {
+      return;
     }
-    setName(channelName);
-    setTopic(channelTopic);
-    setPrivateChannel(isPrivate);
-    setSelectedMembers(initialMemberIds);
-    setBlockedUserIds(initialBlockedUserIds);
-    setRoleOverrides(initialRoleOverrides);
+    setName(props.channelName);
+    setTopic(props.channelTopic);
+    setPrivateChannel(props.isPrivate);
+    setSelectedMembers(props.initialMemberIds);
+    setBlockedUserIds(props.initialBlockedUserIds);
+    setRoleOverrides(props.initialRoleOverrides ?? []);
     setMemberQuery("");
     setBlockQuery("");
     setSaving(false);
-    const frame = requestAnimationFrame(() => inputRef.current?.focus());
-    return () => {
-      cancelAnimationFrame(frame);
-    };
-  }, [open]);
+  }, [props.open]);
 
-  const sortedMembers = useMemo(
-    () => [...members].sort((a, b) => a.displayName.localeCompare(b.displayName)),
-    [members],
-  );
-  const memberNeedle = memberQuery.trim().toLowerCase();
-  const blockNeedle = blockQuery.trim().toLowerCase();
-  const filteredMembers = useMemo(
-    () => sortedMembers.filter((member) => member.displayName.toLowerCase().includes(memberNeedle)),
-    [sortedMembers, memberNeedle],
-  );
-  const filteredBlockMembers = useMemo(
-    () => sortedMembers.filter((member) => member.displayName.toLowerCase().includes(blockNeedle)),
-    [sortedMembers, blockNeedle],
-  );
-
-  const toggleMember = (userId: string) => {
-    if (userId === ownUserId) {
-      return;
-    }
-    setSelectedMembers((current) =>
-      current.includes(userId) ? current.filter((value) => value !== userId) : [...current, userId],
-    );
+  return {
+    name,
+    setName,
+    topic,
+    setTopic,
+    privateChannel,
+    setPrivateChannel,
+    selectedMembers,
+    toggleMember: (id: string) => {
+      setSelectedMembers((current) => toggleIn(current, id));
+    },
+    blockedUserIds,
+    toggleBlocked: (id: string) => {
+      setBlockedUserIds((current) => toggleIn(current, id));
+    },
+    roleOverrides,
+    setRoleOverrides,
+    memberQuery,
+    setMemberQuery,
+    blockQuery,
+    setBlockQuery,
+    saving,
+    setSaving,
   };
+}
 
-  const toggleBlocked = (userId: string) => {
-    if (userId === ownUserId) {
-      return;
-    }
-    setBlockedUserIds((current) =>
-      current.includes(userId) ? current.filter((value) => value !== userId) : [...current, userId],
-    );
-  };
+type EditChannelForm = ReturnType<typeof useEditChannelForm>;
 
-  const trimmedName = name.trim();
-  const disabled = trimmedName.length === 0 || busy || saving;
+interface SectionProps {
+  readonly form: EditChannelForm;
+  readonly people: readonly PeopleOption[];
+  readonly ownUserId: string;
+}
+
+/** Public or private, and when private, exactly who is in. */
+function AccessSection({ form, people, ownUserId }: SectionProps) {
+  // The viewer always keeps access to a channel they make private (the save
+  // adds them), so the list shows them as included rather than unticked.
+  const withAccess = [...new Set([ownUserId, ...form.selectedMembers])];
+  const count = withAccess.length;
+  return (
+    <DialogSection title="Access">
+      <DialogToggleRow
+        icon="lock"
+        title="Private channel"
+        description="Only the people you add can see it and its history"
+        checked={form.privateChannel}
+        onChange={form.setPrivateChannel}
+      />
+      {form.privateChannel && (
+        <div className="animate-fade-in flex flex-col gap-2 pl-11">
+          <span className="text-[12px] text-text-muted">
+            {count === 1 ? "1 person has access" : `${count} people have access`}
+          </span>
+          <PeoplePicker
+            options={people}
+            selected={withAccess}
+            onToggle={form.toggleMember}
+            query={form.memberQuery}
+            onQueryChange={form.setMemberQuery}
+            searchLabel="Search members"
+            placeholder="Add people"
+            emptyText="No people match that search."
+            rowTestId={(id) => `member-option-${id}`}
+            listClassName="max-h-[196px]"
+          />
+        </div>
+      )}
+    </DialogSection>
+  );
+}
+
+/** Members denied this channel only, whatever their roles allow elsewhere. */
+function BlockedSection({ form, people }: SectionProps) {
+  const count = form.blockedUserIds.length;
+  return (
+    <DialogSection
+      title="Blocked members"
+      hint="They cannot see or join this channel. Nothing changes for them elsewhere."
+      trailing={count > 0 ? `${count} blocked` : undefined}
+    >
+      <PeoplePicker
+        options={people}
+        selected={form.blockedUserIds}
+        onToggle={form.toggleBlocked}
+        query={form.blockQuery}
+        onQueryChange={form.setBlockQuery}
+        searchLabel="Search people to block"
+        placeholder="Find someone to block"
+        tone="danger"
+        chipVerb="Unblock"
+        chipTestId={(id) => `blocked-chip-${id}`}
+        rowTestId={(id) => `blocked-option-${id}`}
+        emptyText="No people match that search."
+        listClassName="max-h-[196px]"
+      />
+    </DialogSection>
+  );
+}
+
+/** Name and topic, the two things people change most. */
+function DetailsSection({ form }: { readonly form: EditChannelForm }) {
+  return (
+    <DialogSection title="Details">
+      <Input
+        label="Name"
+        placeholder="e.g. product-launch"
+        value={form.name}
+        maxLength={80}
+        leading={<Icon name="hash" size={15} />}
+        onChange={(event) => {
+          form.setName(event.target.value);
+        }}
+      />
+      <Input
+        label="Topic"
+        placeholder="What is this channel about?"
+        value={form.topic}
+        maxLength={160}
+        onChange={(event) => {
+          form.setTopic(event.target.value);
+        }}
+      />
+    </DialogSection>
+  );
+}
+
+interface EditChannelFooterProps {
+  readonly disabled: boolean;
+  readonly loading: boolean;
+  readonly onCancel: () => void;
+  readonly onSave: () => void;
+}
+
+/** Cancel and save, with save held while the name is empty or a save is running. */
+function EditChannelFooter(props: EditChannelFooterProps) {
+  return (
+    <>
+      <Button type="button" variant="ghost" onClick={props.onCancel}>
+        Cancel
+      </Button>
+      <Button
+        type="button"
+        variant="primary"
+        disabled={props.disabled}
+        loading={props.loading}
+        onClick={props.onSave}
+      >
+        Save changes
+      </Button>
+    </>
+  );
+}
+
+/**
+ * Edits an existing channel: rename, retopic, switch public/private, pick who
+ * can access and block specific members. One sheet of titled sections (no
+ * boxes inside the dialog), sharing the people picker with the other dialogs;
+ * blocked users reuse the channel override system.
+ */
+export function EditChannelModal(props: EditChannelModalProps) {
+  const { open, ownUserId, busy = false, error = null, onClose, onSave } = props;
+  const form = useEditChannelForm(props);
+  const people = usePeopleOptions(props.members, ownUserId);
+  const trimmedName = form.name.trim();
+  const disabled = trimmedName.length === 0 || busy || form.saving;
 
   const submit = () => {
     if (disabled) {
       return;
     }
-    setSaving(true);
+    form.setSaving(true);
     void Promise.resolve(
       onSave({
         name: trimmedName,
-        topic: topic.trim(),
-        private: privateChannel,
-        memberIds: privateChannel ? [...new Set([ownUserId, ...selectedMembers])] : [],
-        blockedUserIds: [...new Set(blockedUserIds)],
-        roleOverrides: [...roleOverrides],
+        topic: form.topic.trim(),
+        private: form.privateChannel,
+        memberIds: form.privateChannel ? [...new Set([ownUserId, ...form.selectedMembers])] : [],
+        blockedUserIds: [...new Set(form.blockedUserIds)],
+        roleOverrides: [...form.roleOverrides],
       }),
     ).finally(() => {
-      setSaving(false);
+      form.setSaving(false);
     });
   };
 
@@ -154,283 +285,43 @@ export function EditChannelModal({
       open={open}
       onClose={onClose}
       label="Edit channel"
-      title="Edit channel"
-      description="Rename the channel, set its topic, control access and block members."
-      icon={
-        <span className="flex h-9 w-9 items-center justify-center rounded-[9px] bg-accent-soft text-accent">
-          <Icon name={privateChannel ? "lock" : "hash"} size={17} />
-        </span>
-      }
+      title={`Edit #${props.channelName}`}
+      icon={<Icon name={form.privateChannel ? "lock" : "hash"} size={18} />}
       size="lg"
       footer={
-        <>
-          <Button type="button" variant="ghost" onClick={onClose}>
-            Cancel
-          </Button>
-          <Button
-            type="button"
-            variant="primary"
-            disabled={disabled}
-            loading={busy || saving}
-            onClick={submit}
-          >
-            Save changes
-          </Button>
-        </>
+        <EditChannelFooter
+          disabled={disabled}
+          loading={busy || form.saving}
+          onCancel={onClose}
+          onSave={submit}
+        />
       }
     >
-      <div data-testid="edit-channel-modal" className="flex flex-col gap-4">
-        <form
-          className="flex flex-col gap-4"
-          onSubmit={(event) => {
-            event.preventDefault();
-            submit();
-          }}
-        >
-          <Input
-            ref={inputRef}
-            label="Name"
-            placeholder="e.g. product-launch"
-            value={name}
-            maxLength={80}
-            onChange={(event) => {
-              setName(event.target.value);
-            }}
+      <form
+        data-testid="edit-channel-modal"
+        className="flex flex-col gap-5"
+        onSubmit={(event) => {
+          event.preventDefault();
+          submit();
+        }}
+      >
+        <DetailsSection form={form} />
+        <AccessSection form={form} people={people} ownUserId={ownUserId} />
+        <BlockedSection form={form} people={people} ownUserId={ownUserId} />
+        {props.canManageRoleOverrides === true && (
+          <ChannelRoleOverrides
+            roles={props.roles ?? []}
+            overrides={form.roleOverrides}
+            disabled={busy || form.saving}
+            onChange={form.setRoleOverrides}
           />
-
-          <Input
-            label="Topic"
-            placeholder="What is this channel about?"
-            value={topic}
-            maxLength={160}
-            onChange={(event) => {
-              setTopic(event.target.value);
-            }}
-          />
-
-          <div className="rounded-[10px] border border-border bg-surface-1 px-3.5 py-2.5">
-            <Switch
-              checked={privateChannel}
-              onChange={setPrivateChannel}
-              label="Private channel"
-              description="Only people you add can see this channel or its history."
-            />
-          </div>
-
-          {privateChannel && (
-            <div className="animate-message-in flex flex-col gap-2.5 rounded-[10px] border border-border bg-surface-1 p-3">
-              <div className="flex items-center justify-between gap-2">
-                <span className="text-[12px] font-medium text-text-muted">Who can access</span>
-                <span className="flex items-center gap-1 text-[11px] text-text-muted">
-                  <Icon name="lock" size={12} />
-                  Private
-                </span>
-              </div>
-
-              <div className="flex max-h-[92px] min-h-9 flex-wrap items-center gap-1.5 overflow-y-auto rounded-[8px] border border-border bg-surface-3 px-2 py-1.5 transition focus-within:border-accent">
-                {selectedMembers.map((userId) => {
-                  const member = members.find((entry) => entry.userId === userId);
-                  const self = userId === ownUserId;
-                  return (
-                    <span
-                      key={`member:${userId}`}
-                      className="flex max-w-[180px] items-center gap-1 rounded-full bg-accent-soft py-0.5 pl-2 pr-1 text-[11px] font-medium text-accent"
-                    >
-                      {member?.roleColor !== null &&
-                        member?.roleColor !== undefined &&
-                        member.roleColor.length > 0 && (
-                          <span
-                            aria-hidden="true"
-                            className="h-1.5 w-1.5 shrink-0 rounded-full"
-                            style={{ backgroundColor: member.roleColor }}
-                          />
-                        )}
-                      <span className="truncate">
-                        {member?.displayName ?? userId}
-                        {self ? " (you)" : ""}
-                      </span>
-                      {!self && (
-                        <button
-                          type="button"
-                          aria-label={`Remove ${member?.displayName ?? userId}`}
-                          onClick={() => {
-                            toggleMember(userId);
-                          }}
-                          className="shrink-0"
-                        >
-                          <Icon name="x" size={11} />
-                        </button>
-                      )}
-                    </span>
-                  );
-                })}
-                <input
-                  aria-label="Search members"
-                  placeholder={selectedMembers.length === 0 ? "Add people" : ""}
-                  value={memberQuery}
-                  onChange={(event) => {
-                    setMemberQuery(event.target.value);
-                  }}
-                  className="min-w-[8rem] flex-1 bg-transparent px-1 text-[13px] text-text placeholder:text-text-muted focus-visible:outline-none"
-                />
-              </div>
-
-              <ul className="stagger flex max-h-[148px] flex-col overflow-y-auto">
-                {filteredMembers.map((member) => {
-                  const checked = selectedMembers.includes(member.userId);
-                  const self = member.userId === ownUserId;
-                  return (
-                    <li key={`member:${member.userId}`}>
-                      <button
-                        type="button"
-                        data-testid={`member-option-${member.userId}`}
-                        aria-pressed={checked}
-                        disabled={self}
-                        onClick={() => {
-                          toggleMember(member.userId);
-                        }}
-                        className="flex w-full items-center gap-2.5 rounded-[8px] px-2.5 py-1.5 text-left transition hover:bg-surface-3 disabled:cursor-default disabled:opacity-60"
-                      >
-                        <span className="min-w-0 flex-1 truncate text-[13px] text-text">
-                          {member.displayName}
-                          {self ? " (you)" : ""}
-                        </span>
-                        <span
-                          className={cn(
-                            "flex h-5 w-5 shrink-0 items-center justify-center rounded-full border transition",
-                            checked ? "border-accent bg-accent text-on-accent" : "border-border",
-                          )}
-                        >
-                          {checked && <Icon name="check" size={13} />}
-                        </span>
-                      </button>
-                    </li>
-                  );
-                })}
-                {filteredMembers.length === 0 && (
-                  <li className="px-2.5 py-4 text-center text-[12px] text-text-muted">
-                    No people match that search.
-                  </li>
-                )}
-              </ul>
-            </div>
-          )}
-
-          <div className="flex flex-col gap-2.5 rounded-[10px] border border-border bg-surface-1 p-3">
-            <div className="flex items-center justify-between gap-2">
-              <span className="text-[12px] font-medium text-text-muted">Blocked users</span>
-              <span className="flex items-center gap-1 text-[11px] text-text-muted">
-                <Icon name="x" size={12} />
-                Cannot view
-              </span>
-            </div>
-
-            <div
-              data-testid="blocked-chips"
-              className="flex min-h-9 flex-wrap items-center gap-1.5 rounded-[8px] border border-border bg-surface-3 px-2 py-1.5"
-            >
-              {blockedUserIds.length === 0 && (
-                <span className="text-[11px] text-text-muted">No one is blocked.</span>
-              )}
-              {blockedUserIds.map((userId) => {
-                const member = members.find((entry) => entry.userId === userId);
-                const label = member?.displayName ?? userId;
-                return (
-                  <span
-                    key={`blocked:${userId}`}
-                    data-testid={`blocked-chip-${userId}`}
-                    className="flex max-w-[180px] items-center gap-1 rounded-full bg-danger/15 py-0.5 pl-2 pr-1 text-[11px] font-medium text-danger"
-                  >
-                    <span className="truncate">{label}</span>
-                    <button
-                      type="button"
-                      aria-label={`Unblock ${label}`}
-                      onClick={() => {
-                        toggleBlocked(userId);
-                      }}
-                      className="shrink-0"
-                    >
-                      <Icon name="x" size={11} />
-                    </button>
-                  </span>
-                );
-              })}
-            </div>
-
-            <div className="flex items-center gap-2 rounded-[8px] border border-border bg-surface-3 px-2.5 focus-within:border-accent">
-              <Icon name="search" size={14} className="text-text-muted" />
-              <input
-                aria-label="Search people to block"
-                placeholder="Block a member…"
-                value={blockQuery}
-                onChange={(event) => {
-                  setBlockQuery(event.target.value);
-                }}
-                className="h-8 flex-1 bg-transparent text-[13px] text-text placeholder:text-text-muted focus-visible:outline-none"
-              />
-            </div>
-
-            <ul className="stagger flex max-h-[148px] flex-col overflow-y-auto">
-              {filteredBlockMembers.map((member) => {
-                const checked = blockedUserIds.includes(member.userId);
-                const self = member.userId === ownUserId;
-                return (
-                  <li key={`block:${member.userId}`}>
-                    <button
-                      type="button"
-                      data-testid={`blocked-option-${member.userId}`}
-                      aria-pressed={checked}
-                      disabled={self}
-                      onClick={() => {
-                        toggleBlocked(member.userId);
-                      }}
-                      className="flex w-full items-center gap-2.5 rounded-[8px] px-2.5 py-1.5 text-left transition hover:bg-surface-3 disabled:cursor-default disabled:opacity-60"
-                    >
-                      <span className="min-w-0 flex-1 truncate text-[13px] text-text">
-                        {member.displayName}
-                        {self ? " (you)" : ""}
-                      </span>
-                      <span
-                        className={cn(
-                          "flex h-5 w-5 shrink-0 items-center justify-center rounded-full border transition",
-                          checked ? "border-danger bg-danger text-on-accent" : "border-border",
-                        )}
-                      >
-                        {checked && <Icon name="check" size={13} />}
-                      </span>
-                    </button>
-                  </li>
-                );
-              })}
-              {filteredBlockMembers.length === 0 && (
-                <li className="px-2.5 py-4 text-center text-[12px] text-text-muted">
-                  No people match that search.
-                </li>
-              )}
-            </ul>
-
-            <p className="text-[11px] leading-snug text-text-muted">
-              Blocked users cannot view or join this channel. Blocking denies the View channel
-              permission on this channel only.
-            </p>
-          </div>
-
-          {canManageRoleOverrides && (
-            <ChannelRoleOverrides
-              roles={roles}
-              overrides={roleOverrides}
-              disabled={busy || saving}
-              onChange={setRoleOverrides}
-            />
-          )}
-
-          {error !== null && (
-            <p role="alert" className="text-[13px] text-danger">
-              {error}
-            </p>
-          )}
-        </form>
-      </div>
+        )}
+        {error !== null && (
+          <p role="alert" className="text-[13px] text-danger">
+            {error}
+          </p>
+        )}
+      </form>
     </Modal>
   );
 }

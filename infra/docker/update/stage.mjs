@@ -41,13 +41,15 @@ export function createStagedUpdater({
   const stamp = resolve(dockerDir, ".deployed-version");
   const git = (...args) => execute("git", ["-C", repoRoot, ...args], repoRoot);
   const compose = (cwd, ...args) => execute("docker", ["compose", ...args], cwd);
+  const recreate = (service) =>
+    compose(dockerDir, "up", "-d", "--no-deps", "--no-build", "--force-recreate", service);
   const fingerprint = () => createHash("sha256").update(readFileSync(envFile)).digest("hex");
   const read = (path) => JSON.parse(readFileSync(path, "utf8"));
   const write = (path, value) =>
     writeFileSync(path, `${JSON.stringify(value, null, 2)}\n`, { mode: 0o600 });
   async function inspectImages(images) {
     const entries = [];
-    for (const service of ["web", "setup", "smtp-gateway"]) {
+    for (const service of ["web", "setup", "smtp-gateway", "bot-runner"]) {
       const serviceConfig = Object.getOwnPropertyDescriptor(images.services, service)?.value;
       const name = serviceConfig?.image ?? `${images.name}-${service}`;
       const id = await execute(
@@ -124,7 +126,7 @@ export function createStagedUpdater({
       const envHash = fingerprint();
       const stageDocker = resolve(stage, "infra/docker");
       writeFileSync(resolve(stageDocker, ".env"), readFileSync(envFile), { mode: 0o600 });
-      await compose(stageDocker, "build", "web", "setup", "smtp-gateway");
+      await compose(stageDocker, "build", "web", "setup", "smtp-gateway", "bot-runner");
       const images = JSON.parse(await compose(stageDocker, "config", "--format", "json"));
       // Record immutable image IDs so a later rebuild cannot substitute another release.
       const imageIds = await inspectImages(images);
@@ -154,17 +156,12 @@ export function createStagedUpdater({
     status(prepared.plan, "applying");
     try {
       if (head !== prepared.commit) await git("merge", "--ff-only", prepared.commit);
-      await compose(dockerDir, "up", "-d", "--no-deps", "--no-build", "--force-recreate", "web");
+      await recreate("web");
       await compose(dockerDir, "run", "--rm", "setup");
-      await compose(
-        dockerDir,
-        "up",
-        "-d",
-        "--no-deps",
-        "--no-build",
-        "--force-recreate",
-        "smtp-gateway",
-      );
+      await recreate("smtp-gateway");
+      // The runner starts with the stack. Recreate it so it picks up a token
+      // that `setup` just generated, and so existing installs get it at all.
+      await recreate("bot-runner");
       const version =
         prepared.plan.apply === "redeploy"
           ? prepared.plan.sourceVersion

@@ -207,13 +207,14 @@ export function CardDetail(props: CardDetailProps) {
         open
         onClose={editor.close}
         size="lg"
-        className="flex max-h-[calc(100dvh-32px)] !max-w-[900px] flex-col [&>div]:min-h-0 [&>div]:overflow-y-auto [&>footer]:shrink-0 [&>footer]:flex-wrap [&>header]:shrink-0 [&>header_h2]:truncate"
+        className="sm:!max-w-[900px] [&>footer]:flex-wrap [&>header_h2]:truncate"
         label="Card details"
+        initialFocus="panel"
         title={`${board.name} · ${column?.name ?? "Unknown column"}`}
-        icon={<Icon name="kanban" size={18} className="text-accent" />}
+        icon={<Icon name="kanban" size={18} />}
         footer={<CardFooter editor={editor} />}
       >
-        <div className="flex flex-col gap-6 pb-5 md:flex-row md:items-start">
+        <div className="flex flex-col gap-6 md:flex-row md:items-start">
           <div className="flex min-w-0 flex-1 flex-col gap-6">
             <CardBanners editor={editor} />
             <fieldset

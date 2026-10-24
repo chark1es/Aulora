@@ -1,3 +1,4 @@
+/* eslint-disable no-unused-vars -- the base rule reports parameter names in type signatures; Biome checks real unused code */
 import {
   Button,
   ConfirmDialog,
@@ -427,6 +428,7 @@ export function UserSettingsView({
         description="You can sign back in at any time."
         confirmLabel="Sign out"
         variant="danger"
+        icon="logout"
         onConfirm={() => {
           setConfirmSignOut(false);
           onSignOut?.();

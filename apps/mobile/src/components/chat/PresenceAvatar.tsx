@@ -8,13 +8,11 @@ export function PresenceAvatar({
   userId,
   status,
   size = 36,
-  roleColor,
   surface,
 }: {
   readonly userId: string;
   readonly status: string;
   readonly size?: number;
-  readonly roleColor?: string | null | undefined;
   /** Color of the surface behind the avatar, so the dot reads as a cut-out. */
   readonly surface?: string;
 }) {
@@ -24,7 +22,7 @@ export function PresenceAvatar({
   const ring = surface ?? palette["surface-2"];
   return (
     <View style={{ width: size, height: size }}>
-      <MemberAvatar userId={userId} size={size} roleColor={roleColor ?? null} />
+      <MemberAvatar userId={userId} size={size} />
       {/* Offline is a hollow ring, not just a duller dot, so it reads without color. */}
       <View
         accessible

@@ -127,7 +127,6 @@ export function PeopleResults({ people, presence, preview, onOpen }: PeopleResul
                 <PresenceAvatar
                   userId={member.userId}
                   status={row?.status ?? "offline"}
-                  roleColor={member.roleColor}
                   size={36}
                 />
               }

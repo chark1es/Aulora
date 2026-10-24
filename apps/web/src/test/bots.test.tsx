@@ -118,7 +118,7 @@ describe("BotsSettings gate and list", () => {
     state.values.set("bots:runnerStatus", { online: false, lastSeenAt: null });
     render(<BotsSettings canManageBots />);
     expect(screen.getByTestId("bot-runner-offline")).toHaveTextContent(
-      "docker compose --profile bots up -d",
+      "docker compose up -d bot-runner",
     );
   });
 

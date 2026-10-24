@@ -48,7 +48,7 @@ After setup, create a channel and send a message. Use Workspace settings to invi
 
 Kanban and Notes are optional addons, off by default and enabled in **Workspace settings → Addons** by a member with the Manage workspace permission. They ship in the web and setup images and use the same backend, so an upgrade rebuilds both images and re-runs `setup` before recreating `web`. See the [Kanban](apps/docs/content/kanban.md) and [Notes](apps/docs/content/notes.md) guides.
 
-Members with the Manage bots permission can also host their own bots, written in TypeScript or Python, from **Workspace settings → Bots**. Bots run in an optional sandboxed `bot-runner` container (`docker compose --profile bots up -d`) and have no permissions until an admin grants them. See the [Bots](apps/docs/content/bots.md) guide.
+Members with the Manage bots permission can also host their own bots, written in TypeScript or Python, from **Workspace settings → Bots**. Bots run in a sandboxed `bot-runner` container that starts with the rest of the stack, and have no permissions until an admin grants them. See the [Bots](apps/docs/content/bots.md) guide. Members with the Manage webhooks permission can create incoming webhooks that let other tools post into a channel; see [Webhooks](apps/docs/content/webhooks.md).
 
 ## Get the clients
 
@@ -58,7 +58,7 @@ iOS and Android are betas that install from their stores, not from a release fil
 
 ## Build from source
 
-Use Bun 1.4.0 and Node.js 22.18.0, the versions pinned in CI, plus Git:
+Use Bun 1.4.4 and Node.js 22.23.4, the versions pinned in CI, plus Git:
 
 ```sh
 bun install --frozen-lockfile

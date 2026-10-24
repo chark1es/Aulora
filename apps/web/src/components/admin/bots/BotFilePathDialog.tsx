@@ -1,5 +1,5 @@
 /* eslint-disable no-unused-vars -- the base rule reports parameter names in type signatures; Biome checks real unused code */
-import { Button, Input, Modal } from "@aulora/ui-web";
+import { Button, Icon, Input, Modal } from "@aulora/ui-web";
 import { useState } from "react";
 import { validateBotPath } from "./bot-format";
 
@@ -42,6 +42,7 @@ export function BotFilePathDialog({
       size="sm"
       label={adding ? "Add file" : "Rename file"}
       title={adding ? "Add file" : "Rename file"}
+      icon={<Icon name="file" size={18} />}
       footer={
         <>
           <Button variant="ghost" onClick={onCancel}>
@@ -57,8 +58,9 @@ export function BotFilePathDialog({
           value={path}
           autoComplete="off"
           placeholder="lib/util.ts"
+          className="font-mono"
           {...(error !== null ? { error } : {})}
-          hint="Relative path, for example lib/util.ts."
+          hint="Relative to the bot’s folder."
           onChange={(event) => {
             setPath(event.currentTarget.value);
             setError(null);

@@ -112,7 +112,7 @@ function EnvList(props: EnvListProps) {
     );
   }
   return (
-    <ul className="flex flex-col divide-y divide-border overflow-hidden rounded-[12px] border border-border bg-surface-2">
+    <ul className="divide-y divide-border/60 border-y border-border/60">
       {names.map((entry) => (
         <EnvRow
           key={entry}

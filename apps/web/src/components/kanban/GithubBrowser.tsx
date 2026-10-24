@@ -58,7 +58,7 @@ export function GithubBrowser({
       label="GitHub"
       description="Browse with your own GitHub access. Linking a title or URL shares it with everyone who can read this board."
     >
-      <div className="flex max-h-[70vh] flex-col gap-4 overflow-y-auto pb-5">
+      <div className="flex flex-col gap-4">
         {status === undefined ? (
           <Spinner label="Loading GitHub connection" />
         ) : !status.connected ? (
