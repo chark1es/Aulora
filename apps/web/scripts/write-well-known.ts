@@ -33,7 +33,7 @@ export function buildWellKnown(env: Env): Record<string, unknown> {
   const localRequested = readBoolean(env, "AUTH_LOCAL_ENABLED", true);
   return {
     name: read(env, "INSTANCE_NAME") ?? "Aulora",
-    version: read(env, "AULORA_VERSION") ?? "1.2.1",
+    version: read(env, "AULORA_VERSION") ?? "1.3.0",
     apiVersion: readInt(env, "API_VERSION", 1),
     convexUrl: read(env, "CONVEX_URL") ?? "http://127.0.0.1:3210",
     siteUrl: read(env, "SITE_URL") ?? "http://localhost:5173",

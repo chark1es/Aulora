@@ -1,6 +1,6 @@
 {
   "name": "@aulora/ui-web",
-  "version": "1.2.1",
+  "version": "1.3.0",
   "private": true,
   "description": "Aulora React DOM design-system primitives: buttons, inputs, cards, text, dot grid, logo and the particle spinner.",
   "type": "module",
