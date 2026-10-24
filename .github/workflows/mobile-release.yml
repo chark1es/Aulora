@@ -28,7 +28,10 @@ jobs:
     name: Signed Android
     runs-on: ubuntu-22.04
     environment: release-signing
-    timeout-minutes: 90
+    # Four-ABI CMake plus the release JS bundle took 81 minutes on a degraded
+    # runner in the 1.3.0 release; the previous 90-minute cap cancelled it while
+    # the last native libraries were still building.
+    timeout-minutes: 150
     env:
       RELEASE_VERSION: ${{ inputs.version }}
       BUILD_NUMBER: ${{ inputs.build-number }}
