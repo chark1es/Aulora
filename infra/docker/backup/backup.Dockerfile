@@ -14,7 +14,7 @@
 FROM ghcr.io/convex/convex-backend@sha256:b756b06641d15a55b5ec0692897ce5ad3715ddccfd02e1e213621e9e764255c8 AS backend
 FROM docker.io/pgsty/mc@sha256:cfc83108c3abb371f8fb84d99c1fdc88f8c237e022409b0081fb7c0a3be634dd AS minio-client
 
-FROM oven/bun:1.4.0
+FROM oven/bun:1.4.4
 
 RUN apt-get update \
   && apt-get install -y --no-install-recommends \

@@ -4,7 +4,7 @@ This guide starts a real self-hosted backend and connects a development client t
 
 ## Tools
 
-Use Bun 1.4.0 and Node.js 22.18.0, matching CI. Install Git and Docker with Compose v2.24 or newer. Native builds also need Rust/Tauri prerequisites for desktop, Xcode/CocoaPods on macOS for iOS, or JDK 17 and the Android SDK for Android.
+Use Bun 1.4.4 and Node.js 22.23.4, matching CI. Install Git and Docker with Compose v2.24 or newer. Native builds also need Rust/Tauri prerequisites for desktop, Xcode/CocoaPods on macOS for iOS, or JDK 17 and the Android SDK for Android.
 
 ```sh
 git clone https://github.com/chark1es/Aulora.git
