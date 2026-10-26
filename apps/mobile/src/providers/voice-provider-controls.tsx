@@ -20,6 +20,7 @@ import {
 import { Alert } from "react-native";
 import type { MobileVoiceEngine, MobileVoiceSnapshot } from "../lib/voice/call-engine";
 import {
+  useCallForegroundService,
   useVoiceClientId,
   useVoiceDevices,
   useVoiceEngine,
@@ -293,6 +294,7 @@ export function useVoiceValue(input: {
     settingsRef,
     engineRef,
   );
+  useCallForegroundService(snapshot);
   const ui = useVoiceUi(snapshot.callId !== null);
   const activeCallsRef = useRef(activeCalls);
   activeCallsRef.current = activeCalls;
