@@ -87,6 +87,8 @@ Keep a call in view while you work in other apps.
 - **iPhone and iPad:** leave the app during a video call and the other person's video keeps playing in a small window. You can also use the **Picture in picture** button.
 - **Android:** leave the app (the home gesture or button) during a video call and the call shrinks into a floating window. The same button does it on demand. Needs Android 8 or later.
 
+On Android an ongoing call also keeps your microphone and camera available while you use other apps, even without picture in picture, and an ongoing **Aulora call in progress** notification shows that it is still running. Android asks for that notification permission with the others; without it the call still runs while you are in the app.
+
 ## Notifications
 
 Allow notifications when prompted and check channel mute and user notification settings. OS focus modes, battery restrictions, and denied permissions can suppress alerts.
