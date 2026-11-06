@@ -170,8 +170,8 @@ jobs:
             printf '\n# ---------------------------------------------------------------------------\n'
             printf '# Prebuilt images (added by the release bundle)\n'
             printf '# ---------------------------------------------------------------------------\n'
-            printf '# Pull the published images instead of building. Change AULORA_VERSION, then\n'
-            printf '# `docker compose pull && docker compose up -d`, to upgrade.\n'
+            printf '# Pull the published images instead of building. To upgrade, change\n'
+            printf '# AULORA_VERSION, then run: docker compose pull && docker compose up -d\n'
             printf 'COMPOSE_FILE=docker-compose.yml:docker-compose.images.yml\n'
             printf 'AULORA_VERSION=%s\n' "$VERSION"
             printf 'AULORA_IMAGE_REGISTRY=%s\n' "$registry"
