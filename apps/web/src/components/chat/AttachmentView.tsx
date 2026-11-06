@@ -271,6 +271,7 @@ export function AttachmentView({ runtime, descriptor }: AttachmentViewProps) {
             <img
               src={thumbnailUrl}
               alt={descriptor.name}
+              data-context-menu-media
               data-testid={`thumbnail-${descriptor.fileId}`}
               loading="lazy"
               decoding="async"
@@ -345,6 +346,7 @@ export function AttachmentView({ runtime, descriptor }: AttachmentViewProps) {
           autoPlay
           playsInline
           aria-label={descriptor.name}
+          data-context-menu-media
           data-testid={`video-${descriptor.fileId}`}
           className="max-h-80 w-full max-w-md rounded-input border border-border bg-black"
         />
@@ -355,6 +357,7 @@ export function AttachmentView({ runtime, descriptor }: AttachmentViewProps) {
           controls
           autoPlay
           aria-label={descriptor.name}
+          data-context-menu-media
           data-testid={`audio-${descriptor.fileId}`}
           className="w-72"
         />
@@ -428,6 +431,7 @@ function ImageLightbox({
       <img
         src={url}
         alt={name}
+        data-context-menu-media
         data-testid={`fullimage-${fileId}`}
         decoding="async"
         className={cn(

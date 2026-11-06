@@ -19,7 +19,9 @@ const readMacos = () => readFileSync(resolve(srcTauri, "tauri.macos.conf.json"),
 const readWindows = () => readFileSync(resolve(srcTauri, "tauri.windows.conf.json"), "utf8");
 const readLinux = () => readFileSync(resolve(srcTauri, "tauri.linux.conf.json"), "utf8");
 const readRelease = () => readFileSync(resolve(srcTauri, "tauri.release.conf.json"), "utf8");
-const readMiniWindow = () => readFileSync(resolve(srcTauri, "src/mini_window.rs"), "utf8");
+const readPipWindow = () => readFileSync(resolve(srcTauri, "src/pip_window.rs"), "utf8");
+const readPipBridge = () =>
+  readFileSync(resolve(srcTauri, "..", "..", "web", "src", "lib", "call-pip.ts"), "utf8");
 const readCapabilities = () => readFileSync(resolve(srcTauri, "capabilities/default.json"), "utf8");
 const readInfoPlist = () => readFileSync(resolve(srcTauri, "Info.plist"), "utf8");
 const readEntitlements = () => readFileSync(resolve(srcTauri, "Entitlements.plist"), "utf8");
@@ -103,20 +105,47 @@ function verifyUpdater(updater) {
   );
 }
 
-// The picture-in-picture window lowers the main window's minimum size and puts
-// it back with constants in Rust (the webview cannot be asked for it). They have
-// to equal the configured minimum or leaving PiP would resize the window wrongly.
-function verifyMiniWindowMinimums(window) {
-  const source = readMiniWindow();
-  const width = /const MAIN_MIN_WIDTH: f64 = ([0-9.]+);/.exec(source)?.[1];
-  const height = /const MAIN_MIN_HEIGHT: f64 = ([0-9.]+);/.exec(source)?.[1];
+// The call picture-in-picture window is a second webview the shell creates at
+// runtime. Its label is what the main webview addresses events to and what the
+// capability must grant, and its entry has to be the hash the web build renders
+// as the PiP view — check the two halves together so they cannot drift.
+function verifyPipWindow() {
+  let source = "";
+  try {
+    source = readPipWindow();
+  } catch {
+    failures.push("src-tauri/src/pip_window.rs is missing (the call window)");
+    return;
+  }
+  const label = /pub const LABEL: &str = "([^"]+)";/.exec(source)?.[1];
+  check('pip_window.rs must label the call window "pip"', label === "pip");
+
+  const number = (name) => {
+    const value = new RegExp(`const ${name}: f64 = ([0-9.]+);`).exec(source)?.[1];
+    return value === undefined ? Number.NaN : Number(value);
+  };
+  const [minWidth, minHeight, maxWidth, maxHeight] = [
+    number("MIN_WIDTH"),
+    number("MIN_HEIGHT"),
+    number("MAX_WIDTH"),
+    number("MAX_HEIGHT"),
+  ];
   check(
-    "mini_window.rs MAIN_MIN_WIDTH must equal windows[0].minWidth",
-    width !== undefined && Number(width) === window?.minWidth,
+    "pip_window.rs size bounds must be ordered (0 < min < max on both axes)",
+    minWidth > 0 && minHeight > 0 && minWidth < maxWidth && minHeight < maxHeight,
   );
+
+  let hash = "";
+  try {
+    hash = /PIP_WINDOW_HASH = "([^"]+)";/.exec(readPipBridge())?.[1] ?? "";
+  } catch {
+    failures.push("apps/web/src/lib/call-pip.ts is missing (the call window bridge)");
+  }
+  check('call-pip.ts must define the PiP entry hash "#pip"', hash === "#pip");
+  const entry = /pub const ENTRY: &str = "([^"]+)";/.exec(source)?.[1];
   check(
-    "mini_window.rs MAIN_MIN_HEIGHT must equal windows[0].minHeight",
-    height !== undefined && Number(height) === window?.minHeight,
+    "pip_window.rs must load the same entry the web client renders",
+    entry === `index.html${hash}`,
   );
 }
 
@@ -135,7 +164,11 @@ function verifyMainConfig(config) {
   );
   check("withGlobalTauri must be enabled", config.app?.withGlobalTauri === true);
   check("windows[0] must be the main window", config.app?.windows?.[0]?.label === "main");
-  verifyMiniWindowMinimums(config.app?.windows?.[0]);
+  check(
+    "windows[0] must keep a minimum size so the main window is never shrunk by the call window",
+    typeof config.app?.windows?.[0]?.minWidth === "number" &&
+      typeof config.app?.windows?.[0]?.minHeight === "number",
+  );
   check(
     "windows[0] must set dragDropEnabled to false so the app-wide web file drop reaches the webview",
     config.app?.windows?.[0]?.dragDropEnabled === false,
@@ -212,15 +245,15 @@ function verifyPrepareFrontend() {
 
 function verifyCapabilities(capabilities) {
   check(
-    "capability must target the main window",
-    JSON.stringify(capabilities.windows) === JSON.stringify(["main"]),
+    "capability must target the main and call windows",
+    JSON.stringify(capabilities.windows) === JSON.stringify(["main", "pip"]),
   );
   check(
     "capability must grant core:default",
     Array.isArray(capabilities.permissions) && capabilities.permissions.includes("core:default"),
   );
   check(
-    "capability must allow the webview title bar to drag the window",
+    "capability must allow the webview drag regions to move the window",
     Array.isArray(capabilities.permissions) &&
       capabilities.permissions.includes("core:window:allow-start-dragging"),
   );
@@ -260,6 +293,7 @@ function main() {
     verifyMainConfig(config);
   }
   verifyPrepareFrontend();
+  verifyPipWindow();
   verifyNativeMediaPermissions();
 
   const macos = readJson("tauri.macos.conf.json", readMacos);

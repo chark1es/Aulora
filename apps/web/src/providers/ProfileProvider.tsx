@@ -15,6 +15,7 @@ import {
   useMemo,
   useState,
 } from "react";
+import { setActiveServerBaseUrl } from "../lib/public-origin";
 
 export interface ProfileContextValue {
   readonly store: ProfileStore;
@@ -95,6 +96,11 @@ export function ProfileProvider({ store, children }: ProfileProviderProps) {
     () => profiles.find((profile) => profile.id === activeId),
     [profiles, activeId],
   );
+
+  // Shared links must name the workspace, not the desktop shell's own origin.
+  useEffect(() => {
+    setActiveServerBaseUrl(activeProfile?.baseUrl);
+  }, [activeProfile]);
 
   const value = useMemo<ProfileContextValue>(
     () => ({

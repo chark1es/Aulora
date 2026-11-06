@@ -2,15 +2,19 @@
 //!
 //! A thin Tauri 2 host around the web client. It owns the native surface
 //! (menus, tray, notifications, unread badge, deep links and macOS vibrancy)
-//! while the webview stays the single React app.
+//! while the React app in the main webview stays the single client. The call
+//! picture-in-picture window is a second webview loading the same bundle at a
+//! dedicated entry; see `pip_window`.
 //!
 //! Security posture: the webview loads only bundled assets, the CSP forbids
 //! remote code, and every native capability is a narrowly-scoped command.
 
+mod capture;
+mod capture_audio;
 mod commands;
 mod deep_link;
 mod menu;
-mod mini_window;
+mod pip_window;
 mod tray;
 mod updater;
 mod window;
@@ -57,17 +61,25 @@ pub fn run() {
         .on_permission_request(|webview, kind| permission_response(&webview, kind))
         .manage(deep_link::DeepLinkState::default())
         .manage(updater::AppUpdateState::default())
-        .manage(mini_window::MiniWindowState::default())
+        .manage(capture_audio::AudioCaptureState::default())
         .invoke_handler(tauri::generate_handler![
             commands::set_always_on_top,
-            commands::enter_mini_window,
-            commands::exit_mini_window,
-            commands::is_mini_window,
+            commands::open_pip_window,
+            commands::close_pip_window,
+            commands::is_pip_window_open,
+            commands::focus_main_window,
             commands::toggle_fullscreen,
             commands::set_unread_badge,
             commands::show_notification,
             commands::open_external,
             commands::take_deep_links,
+            commands::list_capture_sources,
+            commands::capture_source_frame,
+            commands::screen_capture_permission,
+            commands::open_capture_permission_settings,
+            commands::system_audio_support,
+            commands::start_audio_capture,
+            commands::stop_audio_capture,
             updater::app_version,
             updater::check_for_app_update,
             updater::download_app_update,
@@ -88,10 +100,7 @@ pub fn run() {
         .expect("error while building the Aulora desktop shell")
         .run(|app, event| {
             // Closing the last window keeps the app in the tray/menu bar on
-            // desktop; quitting goes through the app/tray Quit items. The same
-            // path runs while the window is a call PiP window: hiding it leaves
-            // the call (and its audio) running. The shell never resizes the
-            // window back on hide, so reopening shows the same PiP window.
+            // desktop; quitting goes through the app/tray Quit items.
             match event {
                 tauri::RunEvent::WindowEvent {
                     label,
@@ -103,8 +112,19 @@ pub fn run() {
                         let _ = window.hide();
                     }
                 }
-                // A Dock click on macOS reopens the app; restore whatever the
-                // window was (normal or call PiP) and focus it.
+                // The call window closing never ends the call: the main window
+                // keeps the peer connections and the media, and only needs to
+                // stop claiming the call is floating. A control inside the PiP
+                // window, the main window's own call UI and this event all end
+                // up in the same place.
+                tauri::RunEvent::WindowEvent {
+                    label,
+                    event: tauri::WindowEvent::Destroyed,
+                    ..
+                } if label == pip_window::LABEL => {
+                    pip_window::emit_closed(app);
+                }
+                // A Dock click on macOS reopens the app and focuses the window.
                 #[cfg(target_os = "macos")]
                 tauri::RunEvent::Reopen {
                     has_visible_windows: false,

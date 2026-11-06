@@ -22,6 +22,7 @@ import {
 import { selectEagerChannelIds } from "../../lib/channel-priority";
 import { isDesktop } from "../../lib/desktop";
 import { buildPresenceScope, PRESENCE_SCOPE_MAX } from "../../lib/presence-scope";
+import { publicOrigin } from "../../lib/public-origin";
 import { playSound } from "../../lib/sounds";
 import { useChannelSession } from "../../lib/use-channel";
 import {
@@ -1412,7 +1413,7 @@ function ChatViewContent({
                 }
               },
               copyLink: (channel) => {
-                const url = `${window.location.origin}/?channel=${channel.id}`;
+                const url = `${publicOrigin()}/?channel=${channel.id}`;
                 void navigator.clipboard.writeText(url).catch(() => undefined);
               },
               hide: (channel) => {
@@ -1510,7 +1511,7 @@ function ChatViewContent({
             categories={admin.categories}
             channels={channels}
             channelNames={channelNames}
-            origin={typeof window === "undefined" ? "" : window.location.origin}
+            origin={publicOrigin()}
             onClose={() => {
               setAdminOpen(false);
             }}

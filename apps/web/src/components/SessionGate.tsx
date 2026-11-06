@@ -2,8 +2,12 @@
 import type { ServerProfile } from "@aulora/core";
 import { Spinner, Text } from "@aulora/ui-web";
 import type { ConvexReactClient } from "convex/react";
-import { useCallback, useMemo, useState } from "react";
+import { useConvexAuth } from "convex/react";
+import { useCallback, useEffect, useMemo, useRef } from "react";
 import { type AuloraAuthClient, type AuthActions, authActionsFromClient } from "../lib/auth-client";
+import { isInvalidSessionError } from "../lib/auth-errors";
+import type { ConnectionRecovery } from "../lib/connection-recovery";
+import { clearSessionToken, readSessionToken } from "../lib/session-token";
 import { useServerRecovery } from "../lib/use-server-recovery";
 import { useStuckTimeout } from "../lib/use-stuck-timeout";
 import {
@@ -19,51 +23,96 @@ export interface SessionGateProps {
   readonly profile: ServerProfile;
   readonly authClient: AuloraAuthClient;
   readonly client: ConvexReactClient;
+  /**
+   * Owns rebuilding the Convex and Better Auth clients. Every retry goes
+   * through it: the clients keep the dead websocket, token cache and auth
+   * backoff that made the connection stick, so retrying them in place cannot
+   * succeed.
+   */
+  readonly connection: ConnectionRecovery;
 }
 
 /** Chooses between the sign-in screen and the signed-in shell from the session. */
-export function SessionGate({ profile, authClient, client }: SessionGateProps) {
+export function SessionGate({ profile, authClient, client, connection }: SessionGateProps) {
   const session = authClient.useSession();
   const actions = useMemo(() => authActionsFromClient(authClient), [authClient]);
-  const [sessionAttempt, setSessionAttempt] = useState(0);
-  const [shellAttempt, setShellAttempt] = useState(0);
-  const sessionStuck = useStuckTimeout(session.isPending, sessionAttempt);
+  const { isAuthenticated: convexAuthenticated } = useConvexAuth();
+  const user = session.data?.user;
+  const signedIn = user !== undefined;
+  const invalidSession = isInvalidSessionError(session.error);
+  const droppedInvalidSession = useRef(false);
 
-  const retrySession = useCallback(() => {
-    void session.refetch();
-    setSessionAttempt((attempt) => attempt + 1);
-  }, [session]);
-  const { recovery, switchServer } = useServerRecovery(profile, retrySession);
+  const retry = useCallback(() => {
+    connection.retry();
+  }, [connection]);
+  const { recovery, switchServer } = useServerRecovery(profile, retry);
+
+  // Better Auth answers 401 only for credentials that are gone, so a stored
+  // token that gets one is dead: drop it and start over. Any other failure may
+  // be an outage and must keep the login (see `isInvalidSessionError`). Only a
+  // token that was actually stored warrants a rebuild — with none, the rejected
+  // cookie cannot be cleared here, and rebuilding would replay the same answer
+  // forever, so the sign-in form is the honest end state.
+  useEffect(() => {
+    if (!invalidSession || droppedInvalidSession.current) {
+      return;
+    }
+    droppedInvalidSession.current = true;
+    const storedToken = readSessionToken(profile.siteUrl) !== null;
+    clearSessionToken(profile.siteUrl);
+    if (storedToken) {
+      connection.retry();
+    }
+  }, [invalidSession, profile.siteUrl, connection]);
+
+  // Every wait a server restart can break: a session lookup that never answers
+  // or fails, and — the case that used to stick forever — a signed-in session
+  // Convex will not accept. Nothing inside a rendered screen can clear that,
+  // because the dead client is the one it would retry, so rebuild on a backoff
+  // until the connection is healthy again.
+  const waiting =
+    !invalidSession &&
+    (session.isPending || session.error !== undefined || (signedIn && !convexAuthenticated));
+  const stuck = useStuckTimeout(waiting);
+  useEffect(() => {
+    if (stuck) {
+      connection.stuck();
+    } else if (!waiting) {
+      connection.healthy();
+    }
+    // While a wait is running but not yet stuck, leave the backoff alone:
+    // clearing it here would restart every rebuild at the shortest delay.
+  }, [stuck, waiting, connection]);
 
   if (session.isPending) {
-    return <SessionPending stuck={sessionStuck} recovery={recovery} />;
+    return <SessionPending stuck={stuck} recovery={recovery} />;
   }
 
-  const user = session.data?.user;
-
-  // A failed lookup is not a signed-out session: the stored login is still
-  // valid, so offer a retry instead of sending the person to the sign-in form.
-  if (user === undefined && session.error) {
-    return <SessionUnreachable profileName={profile.name} recovery={recovery} />;
+  // A rejected login means signed out, even if the stored error would otherwise
+  // read as a connectivity problem; the effect above has already dropped it.
+  if (invalidSession) {
+    return <SignInScreen profile={profile} actions={actions} onSwitchServer={switchServer} />;
   }
 
-  if (user !== undefined) {
-    return (
-      <SignedInShell
-        client={client}
-        profile={profile}
-        user={user}
-        actions={actions}
-        recovery={recovery}
-        attempt={shellAttempt}
-        onRetry={() => {
-          setShellAttempt((attempt) => attempt + 1);
-        }}
-      />
-    );
+  if (user === undefined) {
+    // A failed lookup is not a signed-out session: the stored login is still
+    // valid, so offer a retry instead of sending the person to the sign-in form.
+    if (session.error) {
+      return <SessionUnreachable profileName={profile.name} recovery={recovery} />;
+    }
+    return <SignInScreen profile={profile} actions={actions} onSwitchServer={switchServer} />;
   }
 
-  return <SignInScreen profile={profile} actions={actions} onSwitchServer={switchServer} />;
+  return (
+    <SignedInShell
+      client={client}
+      profile={profile}
+      user={user}
+      actions={actions}
+      recovery={recovery}
+      onRetry={retry}
+    />
+  );
 }
 
 function SessionPending({
@@ -97,7 +146,6 @@ function SignedInShell({
   user,
   actions,
   recovery,
-  attempt,
   onRetry,
 }: {
   readonly client: ConvexReactClient;
@@ -109,7 +157,6 @@ function SignedInShell({
   };
   readonly actions: AuthActions;
   readonly recovery: ConnectionRecoveryActionsProps;
-  readonly attempt: number;
   readonly onRetry: () => void;
 }) {
   const signedInUser = {
@@ -124,6 +171,7 @@ function SignedInShell({
   return (
     <QueryErrorBoundary
       client={client}
+      onReconnect={onRetry}
       onSignOut={signOut}
       onSwitchServer={recovery.onSwitchServer}
     >
@@ -133,7 +181,6 @@ function SignedInShell({
         onSignOut={signOut}
       >
         <ChatSessionShell
-          key={attempt}
           client={client}
           workspaceName={profile.name}
           workspaceIconSeed={profile.iconSeed}

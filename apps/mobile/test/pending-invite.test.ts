@@ -1,3 +1,4 @@
+import { isInviteInputReady } from "@aulora/core";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import {
   bindPendingInvite,
@@ -30,6 +31,16 @@ describe("pending invite", () => {
     setPendingInvite("later");
     expect(listener).toHaveBeenCalledTimes(2);
     setPendingInvite(null);
+  });
+
+  it("keeps a custom code exactly as typed through the deep link", () => {
+    setPendingInvite("  aulora2026 ");
+    expect(getPendingInvite()).toBe("aulora2026");
+    expect(isInviteInputReady(getPendingInvite() ?? "")).toBe(true);
+
+    setPendingInvite("TEAM-01");
+    expect(getPendingInvite()).toBe("TEAM-01");
+    expect(isInviteInputReady("TEAM-01")).toBe(true);
   });
 
   it("keeps an unclaimed code across the unauthenticated sign-in flow", () => {

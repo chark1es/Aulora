@@ -38,29 +38,37 @@ export const CALL_CHANNEL_ID = "calls";
  * Shows foreground notifications; without this, they are silent. Also declares
  * the high-importance Android `calls` channel so a backgrounded incoming call
  * rings and pops, rather than arriving as a quiet default notification.
+ *
+ * Called from the root layout's first effect, so it must never throw: a build
+ * without the notifications module (or an OS call that rejects) would otherwise
+ * replace the whole app with the error boundary at launch.
  */
 export function configureNotificationHandler(): void {
-  Notifications.setNotificationHandler({
-    handleNotification: async (notification) => {
-      const isCall = notification.request.content.data?.kind === "call";
-      return {
-        shouldShowBanner: true,
-        shouldShowList: true,
-        // Only calls ring; message cues are synthesized separately, so a
-        // foreground message notification must not double up with them.
-        shouldPlaySound: isCall,
-        shouldSetBadge: true,
-      };
-    },
-  });
-  if (Platform.OS === "android") {
-    void Notifications.setNotificationChannelAsync(CALL_CHANNEL_ID, {
-      name: "Calls",
-      importance: Notifications.AndroidImportance.MAX,
-      vibrationPattern: [0, 400, 200, 400],
-      lockscreenVisibility: Notifications.AndroidNotificationVisibility.PUBLIC,
-      sound: "default",
+  try {
+    Notifications.setNotificationHandler({
+      handleNotification: async (notification) => {
+        const isCall = notification.request.content.data?.kind === "call";
+        return {
+          shouldShowBanner: true,
+          shouldShowList: true,
+          // Only calls ring; message cues are synthesized separately, so a
+          // foreground message notification must not double up with them.
+          shouldPlaySound: isCall,
+          shouldSetBadge: true,
+        };
+      },
     });
+    if (Platform.OS === "android") {
+      void Notifications.setNotificationChannelAsync(CALL_CHANNEL_ID, {
+        name: "Calls",
+        importance: Notifications.AndroidImportance.MAX,
+        vibrationPattern: [0, 400, 200, 400],
+        lockscreenVisibility: Notifications.AndroidNotificationVisibility.PUBLIC,
+        sound: "default",
+      }).catch(() => undefined);
+    }
+  } catch {
+    // Notifications stay silent; every screen keeps working.
   }
 }
 

@@ -1,11 +1,13 @@
 /* eslint-disable no-unused-vars -- the base rule reports parameter names in type signatures; Biome checks real unused code */
-import type { InviteKind } from "@aulora/core";
+import { type InviteKind, validateCustomInviteCode } from "@aulora/core";
 import { Button, Input, SegmentedControl, Select, Text } from "@aulora/ui-web";
 import { useMutation } from "convex/react";
 import { type FormEvent, useState } from "react";
 import { api } from "../../../../../../packages/convex/convex/_generated/api";
 import {
   buildCreateArgs,
+  CODE_MODE_OPTIONS,
+  CUSTOM_CODE_RULE,
   defaultUses,
   EXPIRY_OPTIONS,
   INITIAL_DRAFT,
@@ -23,6 +25,54 @@ const KIND_OPTIONS: readonly { value: InviteKind; label: string }[] = [
 ];
 
 type SetDraft = (patch: Partial<InviteDraft>) => void;
+
+/**
+ * Code invites only: a random code, or one the admin types. Validation is the
+ * same pure rule the server applies, so the message appears before submitting
+ * and the server repeats it.
+ */
+function CodeModeField({ draft, set }: { readonly draft: InviteDraft; readonly set: SetDraft }) {
+  if (draft.kind !== "code") {
+    return null;
+  }
+  const validation = validateCustomInviteCode(draft.customCode);
+  const invalidMessage = validation.ok ? null : validation.message;
+  const showError =
+    draft.codeMode === "custom" && draft.customCode.trim().length > 0 && invalidMessage !== null;
+  return (
+    <div className="flex flex-col gap-1.5">
+      <span className="text-[13px] font-medium text-text-muted">Code</span>
+      <SegmentedControl
+        label="Code source"
+        value={draft.codeMode}
+        options={CODE_MODE_OPTIONS}
+        className="self-start"
+        onChange={(codeMode) => {
+          set({ codeMode });
+        }}
+      />
+      {draft.codeMode === "custom" ? (
+        <Input
+          label="Custom code"
+          placeholder="WELCOME-TEAM"
+          autoComplete="off"
+          autoCapitalize="characters"
+          spellCheck={false}
+          value={draft.customCode}
+          onChange={(event) => {
+            set({ customCode: event.currentTarget.value });
+          }}
+          hint={CUSTOM_CODE_RULE}
+          {...(showError && invalidMessage !== null ? { error: invalidMessage } : {})}
+        />
+      ) : (
+        <Text size="xs" tone="muted">
+          We generate a random 12-character code.
+        </Text>
+      )}
+    </div>
+  );
+}
 
 function RecipientField({ draft, set }: { readonly draft: InviteDraft; readonly set: SetDraft }) {
   const required = draft.kind === "email";
@@ -145,8 +195,9 @@ export function InviteCreateForm({ origin }: InviteCreateFormProps) {
           kind: result.kind,
           link: inviteUrl(origin, result.code),
           emailedTo: result.kind === "email" ? (built.args.email ?? null) : null,
+          custom: result.custom,
         });
-        setDraft((current) => ({ ...current, email: "", note: "" }));
+        setDraft((current) => ({ ...current, email: "", note: "", customCode: "" }));
       })
       .catch((cause: unknown) => {
         setError(cause instanceof Error ? cause.message : "Could not create the invite.");
@@ -183,6 +234,8 @@ export function InviteCreateForm({ origin }: InviteCreateFormProps) {
             {KIND_SUMMARIES.get(draft.kind)}
           </Text>
         </div>
+
+        <CodeModeField draft={draft} set={set} />
 
         <RecipientField draft={draft} set={set} />
 

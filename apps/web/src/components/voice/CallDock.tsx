@@ -28,13 +28,14 @@ function readPosition(): DockPosition | null {
 }
 
 /**
- * The floating call window (picture-in-picture).
+ * The floating call dock inside the page.
  *
  *  - Draggable anywhere, with the position remembered across sessions.
  *  - Pinnable to the top of the window; on desktop the shell is also asked to
  *    keep the whole window above other apps' windows.
- *  - Can float out of the page as real picture-in-picture (see
- *    `CallPictureInPicture`), which the compact view's PiP button controls.
+ *  - Can hand the call to a real picture-in-picture surface — the desktop
+ *    shell's own call window, or the browser's (`CallPictureInPicture`) — which
+ *    the compact view's PiP button controls. The dock hides while it does.
  */
 export function CallDock({
   title,

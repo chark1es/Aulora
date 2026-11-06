@@ -4,6 +4,7 @@ import {
   ACTIVE_PROFILE_KEY,
   type AsyncKeyValueStore,
   createMobileProfileStore,
+  loadProfilesSafely,
   PROFILES_KEY,
   sanitizeProfile,
 } from "../src/lib/profiles";
@@ -99,5 +100,52 @@ describe("sanitizeProfile", () => {
       },
     });
     expect(clean?.auth.providers).toEqual([{ id: "ok", type: "oauth", displayName: "Okta" }]);
+  });
+});
+
+describe("loadProfilesSafely", () => {
+  it("reads the profiles and the active id together", async () => {
+    const { storage } = memoryStore();
+    const store = createMobileProfileStore(storage);
+    const server = profile();
+    await store.add(server);
+    await store.setActive(server.id);
+
+    await expect(loadProfilesSafely(store)).resolves.toEqual({
+      profiles: [server],
+      activeId: server.id,
+    });
+  });
+
+  it("treats an unreadable store as having no saved profiles", async () => {
+    const store = createMobileProfileStore({
+      getItem: async () => {
+        throw new Error("container is locked");
+      },
+      setItem: async () => undefined,
+      removeItem: async () => undefined,
+    });
+
+    // A rejection here used to leave the provider's `ready` false forever, so
+    // the home screen spun instead of offering the connect screen.
+    await expect(loadProfilesSafely(store)).resolves.toEqual({
+      profiles: [],
+      activeId: undefined,
+    });
+  });
+
+  it("treats a failing active-profile read as no active workspace", async () => {
+    const { storage } = memoryStore();
+    const store = createMobileProfileStore(storage);
+    await store.add(profile());
+
+    await expect(
+      loadProfilesSafely({
+        ...store,
+        getActive: async () => {
+          throw new Error("read failed");
+        },
+      }),
+    ).resolves.toEqual({ profiles: [], activeId: undefined });
   });
 });

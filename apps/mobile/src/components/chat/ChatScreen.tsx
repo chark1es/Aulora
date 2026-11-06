@@ -152,7 +152,9 @@ function ChatStartupRecovery({ model }: { readonly model: ReturnType<typeof useC
           if (activeProfileId === undefined) {
             return;
           }
-          void remove(activeProfileId);
+          // The screen leaves either way; a refused write just keeps the saved
+          // profile for the next launch.
+          void remove(activeProfileId).catch(() => undefined);
           router.push("/connect");
         }}
       />

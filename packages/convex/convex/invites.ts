@@ -6,6 +6,7 @@ import {
   normalizeEmail,
   normalizeInviteCode,
   Permission,
+  validateCustomInviteCode,
 } from "@aulora/core";
 import { paginationOptsValidator } from "convex/server";
 import { ConvexError, v } from "convex/values";
@@ -18,7 +19,7 @@ import { requireAuth } from "./lib/auth";
 import { assertNotBanned } from "./lib/bans";
 import { randomAccessCode, randomToken, sha256Hex } from "./lib/crypto";
 import { parseEmailConfig } from "./lib/email";
-import { type InviteStatus, inviteStatus } from "./lib/inviteState";
+import { type InviteStatus, inviteStatus, pickInviteByCode } from "./lib/inviteState";
 import { admitMember } from "./lib/membership";
 import { requireWorkspaceContext, requireWorkspacePermission } from "./lib/permissions";
 import { enforceRateLimit, userRateLimitKey } from "./lib/rateLimit";
@@ -85,6 +86,15 @@ interface CreateArgs {
   readonly expiresAt?: number | null | undefined;
   readonly email?: string | undefined;
   readonly note?: string | undefined;
+  /** An admin-chosen code; only for `kind: "code"`. */
+  readonly customCode?: string | undefined;
+}
+
+interface CustomCode {
+  /** Trimmed exactly as typed, for echoing back once. */
+  readonly code: string;
+  /** Canonical form the hash is taken over. */
+  readonly normalized: string;
 }
 
 interface InviteSpec {
@@ -94,6 +104,7 @@ interface InviteSpec {
   readonly expiresAt: number | undefined;
   readonly restrictedEmail: string | undefined;
   readonly note: string | undefined;
+  readonly customCode: CustomCode | undefined;
 }
 
 function resolveMaxUses(kind: InviteKind, requested: number | undefined): number {
@@ -133,6 +144,17 @@ function resolveSpec(args: CreateArgs, now: number): InviteSpec {
   if (kind === "email" && !hasRecipient) {
     throw new ConvexError("Enter the email address to send the invite to");
   }
+  let customCode: CustomCode | undefined;
+  if (args.customCode !== undefined) {
+    if (kind !== "code") {
+      throw new ConvexError("Custom codes are only available for code invites");
+    }
+    const validated = validateCustomInviteCode(args.customCode);
+    if (!validated.ok) {
+      throw new ConvexError(validated.message);
+    }
+    customCode = { code: validated.code, normalized: validated.normalized };
+  }
   const note = args.note?.trim();
   if (note !== undefined && note.length > NOTE_MAX_LENGTH) {
     throw new ConvexError(`Notes can be at most ${NOTE_MAX_LENGTH} characters`);
@@ -143,16 +165,18 @@ function resolveSpec(args: CreateArgs, now: number): InviteSpec {
     expiresAt: resolveExpiry(args.expiresAt, now),
     restrictedEmail: hasRecipient ? normalizeEmail(recipient) : undefined,
     note: note !== undefined && note.length > 0 ? note : undefined,
+    customCode,
   };
 }
 
 /** Looks an invite up by whatever the person pasted or typed. */
 async function findInviteByCode(ctx: QueryCtx, input: string) {
   const codeHash = await sha256Hex(normalizeInviteCode(input));
-  return await ctx.db
+  const matches = await ctx.db
     .query("invites")
     .withIndex("by_code", (q) => q.eq("code", codeHash))
-    .unique();
+    .collect();
+  return pickInviteByCode(matches, Date.now());
 }
 
 interface RedemptionView {
@@ -221,6 +245,7 @@ export const create = mutation({
     expiresAt: v.optional(v.union(v.number(), v.null())),
     email: v.optional(v.string()),
     note: v.optional(v.string()),
+    customCode: v.optional(v.string()),
   },
   handler: async (ctx, args) => {
     const { userId } = await requireWorkspacePermission(ctx, Permission.CreateInvites);
@@ -236,8 +261,18 @@ export const create = mutation({
     }
     await assertPendingInviteBudget(ctx, userId, now);
 
-    const code = spec.kind === "code" ? randomAccessCode() : randomToken();
-    const codeHash = await sha256Hex(normalizeInviteCode(code));
+    const code =
+      spec.customCode?.code ?? (spec.kind === "code" ? randomAccessCode() : randomToken());
+    const codeHash = await sha256Hex(spec.customCode?.normalized ?? normalizeInviteCode(code));
+    if (spec.customCode !== undefined) {
+      const sameCode = await ctx.db
+        .query("invites")
+        .withIndex("by_code", (q) => q.eq("code", codeHash))
+        .collect();
+      if (sameCode.some((invite) => inviteStatus(invite, now) === "active")) {
+        throw new ConvexError("That code is already in use");
+      }
+    }
     const inviteId = await ctx.db.insert("invites", {
       code: codeHash,
       createdBy: userId,
@@ -272,9 +307,10 @@ export const create = mutation({
         expiresAt: spec.expiresAt ?? null,
         email: spec.restrictedEmail ?? null,
         note: spec.note ?? null,
+        custom: spec.customCode !== undefined,
       }),
     });
-    return { inviteId, code, kind: spec.kind };
+    return { inviteId, code, kind: spec.kind, custom: spec.customCode !== undefined };
   },
 });
 
