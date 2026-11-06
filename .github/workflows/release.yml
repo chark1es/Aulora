@@ -169,6 +169,16 @@ jobs:
           fi
           gh release edit "$tag" --notes-file dist/release/RELEASE_NOTES.md --draft=false --latest
 
+  docker:
+    name: Publish Docker images
+    needs: [plan, publish]
+    permissions:
+      contents: write # Attaches the self-host bundle to the release.
+      packages: write
+    uses: ./.github/workflows/docker-publish.yml
+    with:
+      version: ${{ needs.plan.outputs.version }}
+
   sync-release:
     name: Promote main to release
     needs: [plan, publish]
