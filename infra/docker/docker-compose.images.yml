@@ -1,0 +1,42 @@
+# Aulora — run the published images instead of building from source.
+#
+# An override for docker-compose.yml. It swaps each service that is built from
+# this repository for the matching image on GitHub Container Registry, so a
+# server needs no clone, no Bun and no build step:
+#
+#   docker compose -f docker-compose.yml -f docker-compose.images.yml up -d
+#
+# The release bundle (`aulora-selfhost-<version>.tar.gz`) sets COMPOSE_FILE and
+# AULORA_VERSION in its .env.example, so plain `docker compose up -d` is enough.
+# See README.md "Run the published images".
+#
+#   AULORA_VERSION         release to run (default `latest`; pin it in production)
+#   AULORA_IMAGE_REGISTRY  registry path, for forks that publish their own images
+#
+# Requires Docker Compose 2.24 or newer (the `!reset` tag), which docker-compose.yml
+# already needs for `env_file: required`.
+
+services:
+  web:
+    image: ${AULORA_IMAGE_REGISTRY:-ghcr.io/chark1es}/aulora-web:${AULORA_VERSION:-latest}
+    build: !reset null
+
+  setup:
+    image: ${AULORA_IMAGE_REGISTRY:-ghcr.io/chark1es}/aulora-setup:${AULORA_VERSION:-latest}
+    build: !reset null
+
+  bot-runner:
+    image: ${AULORA_IMAGE_REGISTRY:-ghcr.io/chark1es}/aulora-bot-runner:${AULORA_VERSION:-latest}
+    build: !reset null
+
+  smtp-gateway:
+    image: ${AULORA_IMAGE_REGISTRY:-ghcr.io/chark1es}/aulora-smtp-gateway:${AULORA_VERSION:-latest}
+    build: !reset null
+
+  backup:
+    image: ${AULORA_IMAGE_REGISTRY:-ghcr.io/chark1es}/aulora-backup:${AULORA_VERSION:-latest}
+    build: !reset null
+
+  push-relay:
+    image: ${AULORA_IMAGE_REGISTRY:-ghcr.io/chark1es}/aulora-push-relay:${AULORA_VERSION:-latest}
+    build: !reset null

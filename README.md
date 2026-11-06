@@ -42,6 +42,8 @@ pwsh ./install.ps1
 
 Enter an owner email and a password with at least 16 characters when prompted. Open the URL printed by the installer, normally <http://localhost:8080>, and sign in with that account. The installer creates the workspace and saves configuration and generated secrets in `infra/docker/.env`. Re-running it reuses that configuration.
 
+To skip the clone and the build, run the prebuilt multi-architecture images from GitHub Container Registry instead: download the `aulora-selfhost` bundle from the [latest release](https://github.com/chark1es/Aulora/releases/latest) and follow [Run the published images](infra/docker/README.md#run-the-published-images). It needs only Docker with Compose v2.24 or newer.
+
 The default addresses are for a local trial. For phones, other computers, or a public server, configure reachable URLs and HTTPS using the [self-hosting guide](apps/docs/content/self-hosting.md). Replace the database and object-storage example passwords before a public deployment. A domain passed to the installer does not configure DNS or TLS for you.
 
 After setup, create a channel and send a message. Use Workspace settings to invite a second user and configure signup policy. Back up `.env` securely, including `AULORA_ENCRYPTION_KEY`, then set up [off-machine backups](apps/docs/content/backups.md).

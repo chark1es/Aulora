@@ -57,6 +57,56 @@ functions, creates the workspace + owner account, and writes the public
 | MinIO console     | http://localhost:9001   | `MINIO_ROOT_USER` / `MINIO_ROOT_PASSWORD` |
 | Postgres          | localhost:5432          | `POSTGRES_USER` / `POSTGRES_PASSWORD` |
 
+## Run the published images
+
+Every release publishes the server images to GitHub Container Registry, so you
+can run Aulora without cloning the repository or building anything:
+
+| Image | Purpose |
+| --- | --- |
+| `ghcr.io/chark1es/aulora-web` | Web app and nginx gateway |
+| `ghcr.io/chark1es/aulora-setup` | First-run provisioning and function deploys |
+| `ghcr.io/chark1es/aulora-bot-runner` | Bot supervisor |
+| `ghcr.io/chark1es/aulora-backup` | Nightly backups (`backups` profile) |
+| `ghcr.io/chark1es/aulora-smtp-gateway` | Private SMTP bridge |
+| `ghcr.io/chark1es/aulora-push-relay` | Push relay (`push-relay` profile) |
+
+All are multi-architecture (`linux/amd64` and `linux/arm64`) and tagged
+`<version>`, `<major>.<minor>`, `<major>` and `latest`. Prereleases get only
+their exact tag. The images are not secret-bearing and contain no per-instance
+configuration; everything comes from `.env` at runtime.
+
+Download the bundle attached to the latest [release](https://github.com/chark1es/Aulora/releases),
+which holds the compose files, `.env.example` and the small config directories
+they mount:
+
+```bash
+curl -fsSL https://github.com/chark1es/Aulora/releases/latest/download/aulora-selfhost-<version>.tar.gz | tar -xz
+cd aulora
+cp .env.example .env     # edit the CHANGE ME values: owner, password, SITE_URL
+docker compose up -d
+docker compose wait setup
+```
+
+(Release asset names include the version, so copy the exact link from the
+release page.) The bundle's `.env.example` sets `COMPOSE_FILE` and
+`AULORA_VERSION`, so plain `docker compose` commands use the published images.
+
+To upgrade, change `AULORA_VERSION` in `.env`, then:
+
+```bash
+docker compose pull
+docker compose up -d      # setup re-runs and deploys the new functions
+docker compose wait setup
+```
+
+Back up `.env` first; it holds `AULORA_ENCRYPTION_KEY`. Inside a clone, use
+`docker compose -f docker-compose.yml -f docker-compose.images.yml up -d` to run
+the published images instead of building. `update.sh` and `install.sh` are for
+source checkouts and do not manage a bundle install. Maintainers: images are
+built by `.github/workflows/docker-publish.yml`, called from the release
+workflow once a release is published, and it can be run by hand to rebuild a tag.
+
 ## Optional addons
 
 Kanban and Notes are optional addons that ship in the web and setup images and use the existing backend and encrypted storage. Rebuild both images when upgrading, run `setup` to deploy the new functions, then recreate `web`. No additional container or GitHub environment secret is needed. Enable them in Workspace settings → Addons; they are off by default, and existing roles need explicit permissions for each addon.
