@@ -52,11 +52,11 @@ export function ServerSession({ profile }: { readonly profile: ServerProfile }) 
   );
 }
 
-const ADDRESS_LABELS: Record<ProfileUrlField, string> = {
-  baseUrl: "The workspace address",
-  convexUrl: "The Convex address this server advertises",
-  siteUrl: "The site address this server advertises",
-};
+const ADDRESS_LABELS: ReadonlyMap<ProfileUrlField, string> = new Map([
+  ["baseUrl", "The workspace address"],
+  ["convexUrl", "The Convex address this server advertises"],
+  ["siteUrl", "The site address this server advertises"],
+]);
 
 /**
  * Shown instead of the session when a stored profile cannot be connected to.
@@ -84,8 +84,9 @@ function ServerAddressProblem({
           {profile.name} cannot be opened
         </Text>
         <Text size="sm" tone="muted" className="text-center">
-          {ADDRESS_LABELS[field]} is not a full http or https address, so this app cannot reach it.
-          Check the address the server publishes, or ask whoever runs it.
+          {ADDRESS_LABELS.get(field) ?? "The server address"} is not a full http or https address,
+          so this app cannot reach it. Check the address the server publishes, or ask whoever runs
+          it.
         </Text>
         <Text size="xs" tone="muted" mono className="text-center">
           {shown}

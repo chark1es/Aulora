@@ -438,6 +438,18 @@ function downloadUrl(url: string, fileName: string): void {
   anchor.remove();
 }
 
+/** The URL when it is a plain http(s) address without credentials. */
+function remoteHttpUrl(url: string): URL | null {
+  try {
+    const parsed = new URL(url);
+    const ok =
+      (parsed.protocol === "https:" || parsed.protocol === "http:") && parsed.username === "";
+    return ok ? parsed : null;
+  } catch {
+    return null;
+  }
+}
+
 /**
  * Saves media locally. Attachments are object URLs, which the anchor can
  * download directly; a remote image is fetched first because a cross-origin
@@ -448,7 +460,12 @@ export function saveMediaFile(url: string, fileName: string): void {
     downloadUrl(url, fileName);
     return;
   }
-  void fetch(url)
+  const remote = remoteHttpUrl(url);
+  if (remote === null) {
+    return;
+  }
+  // nosemgrep -- `remote` is an http(s) URL already shown in this window (an attachment or image the person right-clicked), never typed input
+  void fetch(remote)
     .then((response) => {
       if (!response.ok) {
         throw new Error(`HTTP ${response.status}`);

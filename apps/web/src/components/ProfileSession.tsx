@@ -27,7 +27,12 @@ export function ProfileSession({ profile }: { readonly profile: ServerProfile })
     setGeneration((current) => current + 1);
   }, []);
   const connection = useMemo(() => createConnectionRecovery({ reset }), [reset]);
-  useEffect(() => () => connection.dispose(), [connection]);
+  useEffect(
+    () => () => {
+      connection.dispose();
+    },
+    [connection],
+  );
   useDisposeSuperseded(clients);
 
   return (

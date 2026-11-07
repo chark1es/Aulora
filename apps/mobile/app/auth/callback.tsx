@@ -22,18 +22,18 @@ export default function AuthCallbackRoute() {
   const cookie = typeof params.cookie === "string" ? params.cookie : undefined;
 
   useEffect(() => {
-    let cancelled = false;
+    const state = { cancelled: false };
     void (async () => {
       await completeAuthCallback(AsyncStorage, {
         cookie,
         initialUrl: () => Linking.getInitialURL(),
       });
-      if (!cancelled) {
+      if (!state.cancelled) {
         router.replace("/");
       }
     })();
     return () => {
-      cancelled = true;
+      state.cancelled = true;
     };
   }, [cookie, router]);
 

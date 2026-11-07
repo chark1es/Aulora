@@ -216,6 +216,7 @@ function AudioToggle({
 }: {
   readonly audio: SystemAudioSupport;
   readonly requested: boolean;
+  // eslint-disable-next-line no-unused-vars -- parameter name documents the callback contract
   readonly onChange: (on: boolean) => void;
 }) {
   return (
@@ -262,6 +263,7 @@ function SourceSection({
   readonly title: string;
   readonly sources: readonly DisplaySource[];
   readonly selectedId: string | null;
+  // eslint-disable-next-line no-unused-vars -- parameter name documents the callback contract
   readonly onSelect: (sourceId: string) => void;
 }) {
   return (
@@ -295,7 +297,9 @@ function SourceTile({
       type="button"
       aria-pressed={selected}
       aria-label={source.name}
-      onClick={() => onSelect(source.id)}
+      onClick={() => {
+        onSelect(source.id);
+      }}
       className={cn(
         "flex min-w-0 flex-col gap-1.5 rounded-[10px] p-1.5 text-left transition",
         selected

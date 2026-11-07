@@ -10,6 +10,9 @@
  * be bundled, inlined or rewritten as TypeScript.
  */
 
+/* global sampleRate -- provided by AudioWorkletGlobalScope */
+/* eslint-disable security/detect-object-injection -- every index is a bounded frame counter into a typed array; no key comes from outside the worklet */
+
 /** Frames kept in the ring buffer: bounds playback latency regardless of input rate. */
 const MAX_BUFFER_SECONDS = 0.3;
 

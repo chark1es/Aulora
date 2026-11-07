@@ -106,11 +106,21 @@ export function CallPipWindow() {
             canSpeak={state.canSpeak}
             canVideo={state.canVideo}
             canStream={state.canStream}
-            onToggleMute={() => sendPipAction("toggle-mute")}
-            onToggleDeafen={() => sendPipAction("toggle-deafen")}
-            onToggleCamera={() => sendPipAction("toggle-camera")}
-            onToggleScreen={() => sendPipAction("toggle-screen")}
-            onLeave={() => sendPipAction("leave")}
+            onToggleMute={() => {
+              sendPipAction("toggle-mute");
+            }}
+            onToggleDeafen={() => {
+              sendPipAction("toggle-deafen");
+            }}
+            onToggleCamera={() => {
+              sendPipAction("toggle-camera");
+            }}
+            onToggleScreen={() => {
+              sendPipAction("toggle-screen");
+            }}
+            onLeave={() => {
+              sendPipAction("leave");
+            }}
           />
         </div>
       )}

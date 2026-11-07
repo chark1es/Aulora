@@ -115,6 +115,20 @@ export function subscribeDisplayPicker(listener: () => void): () => void {
   };
 }
 
+/** A picker state with every field at its idle value except what is given. */
+function stateOf(
+  fields: Pick<DisplayPickerState, "status" | "audioRequested"> & Partial<DisplayPickerState>,
+): DisplayPickerState {
+  return {
+    sources: [],
+    error: null,
+    selectedId: null,
+    audio: null,
+    permission: null,
+    ...fields,
+  };
+}
+
 function abortError(): DOMException {
   return new DOMException("Screen sharing was cancelled.", "AbortError");
 }
@@ -127,15 +141,7 @@ function abortError(): DOMException {
 async function load(audioRequested: boolean): Promise<void> {
   const token = loadToken + 1;
   loadToken = token;
-  setState({
-    status: "checking",
-    sources: [],
-    error: null,
-    selectedId: null,
-    audioRequested,
-    audio: null,
-    permission: null,
-  });
+  setState(stateOf({ status: "checking", audioRequested }));
   const settled = (next: DisplayPickerState) => {
     if (token === loadToken && pending !== null) {
       setState(next);
@@ -152,15 +158,7 @@ async function load(audioRequested: boolean): Promise<void> {
     readAudio().catch(() => null),
   ]);
   if (!permission.ok) {
-    settled({
-      status: "error",
-      sources: [],
-      error: messageOf(permission.error),
-      selectedId: null,
-      audioRequested,
-      audio: null,
-      permission: null,
-    });
+    settled(stateOf({ status: "error", error: messageOf(permission.error), audioRequested }));
     return;
   }
   const permissionVerdict = permission.value;
@@ -170,15 +168,14 @@ async function load(audioRequested: boolean): Promise<void> {
     return;
   }
   if (permissionVerdict.status !== "granted") {
-    settled({
-      status: "permission",
-      sources: [],
-      error: null,
-      selectedId: null,
-      audioRequested: audioWanted,
-      audio,
-      permission: permissionVerdict,
-    });
+    settled(
+      stateOf({
+        status: "permission",
+        audioRequested: audioWanted,
+        audio,
+        permission: permissionVerdict,
+      }),
+    );
     return;
   }
 
@@ -186,43 +183,44 @@ async function load(audioRequested: boolean): Promise<void> {
   try {
     sources = await readSources();
   } catch (error) {
-    settled({
-      status: "error",
-      sources: [],
-      error: messageOf(error),
-      selectedId: null,
-      audioRequested: audioWanted,
-      audio,
-      permission: permissionVerdict,
-    });
+    settled(
+      stateOf({
+        status: "error",
+        error: messageOf(error),
+        audioRequested: audioWanted,
+        audio,
+        permission: permissionVerdict,
+      }),
+    );
     return;
   }
   if (token !== loadToken || pending === null) {
     return;
   }
   if (sources.length === 0) {
-    settled({
-      status: "error",
-      sources: [],
-      error: NOTHING_TO_SHARE,
-      selectedId: null,
-      audioRequested: audioWanted,
-      audio,
-      permission: permissionVerdict,
-    });
+    settled(
+      stateOf({
+        status: "error",
+        error: NOTHING_TO_SHARE,
+        audioRequested: audioWanted,
+        audio,
+        permission: permissionVerdict,
+      }),
+    );
     return;
   }
   // A screen is the common share, so the first one starts selected.
   const first = sources.find((source) => source.kind === "screen") ?? sources[0];
-  settled({
-    status: "ready",
-    sources,
-    error: null,
-    selectedId: first?.id ?? null,
-    audioRequested: audioWanted,
-    audio,
-    permission: permissionVerdict,
-  });
+  settled(
+    stateOf({
+      status: "ready",
+      sources,
+      selectedId: first?.id ?? null,
+      audioRequested: audioWanted,
+      audio,
+      permission: permissionVerdict,
+    }),
+  );
 }
 
 /**

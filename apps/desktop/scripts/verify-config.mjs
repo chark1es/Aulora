@@ -121,8 +121,10 @@ function verifyPipWindow() {
   check('pip_window.rs must label the call window "pip"', label === "pip");
 
   const number = (name) => {
-    const value = new RegExp(`const ${name}: f64 = ([0-9.]+);`).exec(source)?.[1];
-    return value === undefined ? Number.NaN : Number(value);
+    const prefix = `const ${name}: f64 = `;
+    const start = source.indexOf(prefix);
+    const end = start === -1 ? -1 : source.indexOf(";", start);
+    return end === -1 ? Number.NaN : Number(source.slice(start + prefix.length, end));
   };
   const [minWidth, minHeight, maxWidth, maxHeight] = [
     number("MIN_WIDTH"),

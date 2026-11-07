@@ -52,9 +52,8 @@ function deps(overrides: Partial<ContextMenuHandlerDeps> = {}): MockDeps {
 }
 
 function element(markup: string): Element {
-  const host = document.createElement("div");
-  host.innerHTML = markup;
-  return host.firstElementChild as Element;
+  const parsed = new DOMParser().parseFromString(markup, "text/html");
+  return document.importNode(parsed.body.firstElementChild as Element, true);
 }
 
 function decisionFor(
