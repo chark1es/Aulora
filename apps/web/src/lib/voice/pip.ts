@@ -5,8 +5,9 @@ import { videoPipSupported } from "./video-pip";
 /**
  * Picture-in-picture for calls, in the best form each platform offers:
  *
- *  - `window`: the desktop app shrinks its own window to a small one that can
- *    float above others. Used whenever the desktop shell is present, because it
+ *  - `window`: the desktop shell's own call window — a separate small, always-
+ *    on-top webview the user can drag anywhere, while the app window stays
+ *    visible and usable. Used whenever the desktop shell is present, because it
  *    is the only form that behaves identically on macOS, Windows and Linux.
  *  - `document`: Document Picture-in-Picture (Chrome and Edge), a real always-
  *    on-top window holding the call UI.

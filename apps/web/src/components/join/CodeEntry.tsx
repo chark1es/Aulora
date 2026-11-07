@@ -1,4 +1,4 @@
-import { normalizeInviteCode } from "@aulora/core";
+import { isInviteInputReady } from "@aulora/core";
 import { Button, Input, Text } from "@aulora/ui-web";
 import { useMutation } from "convex/react";
 import { type FormEvent, useState } from "react";
@@ -19,7 +19,7 @@ export function CodeEntry({ onJoined }: CodeEntryProps) {
   const [value, setValue] = useState("");
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
-  const ready = normalizeInviteCode(value).length >= 8;
+  const ready = isInviteInputReady(value);
 
   function submit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();

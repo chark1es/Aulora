@@ -6,6 +6,15 @@ import type { MobileChatRuntime } from "./chat-runtime";
 import { notificationContent, shouldNotify } from "./notifications-format";
 import { CALL_CHANNEL_ID } from "./push";
 
+/**
+ * Badge and local-notification calls are decoration: a denied permission or a
+ * missing module rejects, and an unhandled rejection would fire on every
+ * message. Nothing here reports a failure to the person.
+ */
+function bestEffort(task: Promise<unknown>): void {
+  void task.catch(() => undefined);
+}
+
 export interface LocalNotificationOptions {
   /** Channels the viewer muted: never cue or notify for them. */
   readonly mutedChannelIds?: ReadonlySet<string>;
@@ -47,7 +56,7 @@ export function useLocalNotifications(
   // biome-ignore lint/correctness/useExhaustiveDependencies: the channel id is the trigger; the body only resets the badge counter
   useEffect(() => {
     unreadRef.current = 0;
-    void Notifications.setBadgeCountAsync(0);
+    bestEffort(Notifications.setBadgeCountAsync(0));
   }, [activeChannelId]);
 
   useEffect(() => {
@@ -106,25 +115,27 @@ export function useLocalNotifications(
         const content = notificationContent(namesRef.current.get(message.channelId), text, {
           mention: mentioned,
         });
-        void Notifications.scheduleNotificationAsync({
-          // The channel id lets the OS group per-conversation notifications.
-          content: {
-            title: content.title,
-            body: content.body,
-            data: { channelId: message.channelId },
-          },
-          trigger: null,
-        });
+        bestEffort(
+          Notifications.scheduleNotificationAsync({
+            // The channel id lets the OS group per-conversation notifications.
+            content: {
+              title: content.title,
+              body: content.body,
+              data: { channelId: message.channelId },
+            },
+            trigger: null,
+          }),
+        );
       }
       if (added > 0) {
         unreadRef.current += added;
-        void Notifications.setBadgeCountAsync(unreadRef.current);
+        bestEffort(Notifications.setBadgeCountAsync(unreadRef.current));
       }
     });
 
     return () => {
       off();
-      void Notifications.setBadgeCountAsync(0);
+      bestEffort(Notifications.setBadgeCountAsync(0));
     };
   }, [runtime, ownUserId]);
 }
@@ -148,20 +159,22 @@ export function useIncomingCallNotification(
       if (AppState.currentState === "active") {
         continue;
       }
-      void Notifications.scheduleNotificationAsync({
-        content: {
-          title: `Incoming call from ${callerName(call)}`,
-          body: call.kind === "video" ? "Video call" : "Voice call",
-          sound: "default",
-          // Lets the notification handler ring for calls (and only calls).
-          data: { kind: "call", callId: call.id },
-          ...(Platform.OS === "android" ? { channelId: CALL_CHANNEL_ID } : {}),
-          ...(Platform.OS === "android"
-            ? { priority: Notifications.AndroidNotificationPriority.MAX }
-            : {}),
-        },
-        trigger: null,
-      });
+      bestEffort(
+        Notifications.scheduleNotificationAsync({
+          content: {
+            title: `Incoming call from ${callerName(call)}`,
+            body: call.kind === "video" ? "Video call" : "Voice call",
+            sound: "default",
+            // Lets the notification handler ring for calls (and only calls).
+            data: { kind: "call", callId: call.id },
+            ...(Platform.OS === "android" ? { channelId: CALL_CHANNEL_ID } : {}),
+            ...(Platform.OS === "android"
+              ? { priority: Notifications.AndroidNotificationPriority.MAX }
+              : {}),
+          },
+          trigger: null,
+        }),
+      );
     }
   }, [incoming, callerName]);
 }

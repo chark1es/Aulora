@@ -4,7 +4,7 @@ import { Spinner, Text } from "@aulora/ui-native";
 import type { ConvexReactClient } from "convex/react";
 import { useRouter } from "expo-router";
 import { useEffect, useState } from "react";
-import { View } from "react-native";
+import { Alert, View } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
 import type { AuloraAuthClient } from "../lib/auth-client";
 import { authActionsFromClient } from "../lib/auth-client";
@@ -64,7 +64,9 @@ export function SessionGate({ profile, authClient, cookieStore, client }: Sessio
           },
           onSwitchServer: backToConnect,
           onRemoveServer: () => {
-            void remove(profile.id);
+            // The screen leaves either way; a refused write just keeps the
+            // saved profile for the next launch.
+            void remove(profile.id).catch(() => undefined);
             backToConnect();
           },
         }}
@@ -132,6 +134,41 @@ function SessionPending({
   );
 }
 
+/**
+ * Ends the session, reporting a failure in place.
+ *
+ * Callers hand this to buttons and boundaries that do not await it (`void
+ * signOut()`, `<Button onPress={onSignOut}>`), so a rejection would surface as
+ * an unhandled rejection on the recovery and join screens. The person gets the
+ * same message either way.
+ */
+function signOutAction(authClient: AuloraAuthClient) {
+  return async () => {
+    const result = await authClient.signOut().catch(() => null);
+    if (result === null || result.error) {
+      Alert.alert(
+        "Couldn't sign out",
+        result?.error?.message ?? "Check your connection and try again.",
+      );
+    }
+  };
+}
+
+/** Deletes the account on the server, reporting a failure in place. */
+function deleteAccountAction(authClient: AuloraAuthClient) {
+  return async () => {
+    const result = await authActionsFromClient(authClient)
+      .deleteAccount()
+      .catch(() => null);
+    if (result === null || result.error) {
+      Alert.alert(
+        "Couldn't delete account",
+        result?.error?.message ?? "Check your connection and try again.",
+      );
+    }
+  };
+}
+
 function SignedInChat({
   profile,
   authClient,
@@ -149,14 +186,8 @@ function SignedInChat({
     readonly email?: string | null;
   };
 }) {
-  const signOut = async () => {
-    const result = await authClient.signOut();
-    if (result.error) throw new Error(result.error.message ?? "Couldn't sign out");
-  };
-  const deleteAccount = async () => {
-    const result = await authActionsFromClient(authClient).deleteAccount();
-    if (result.error) throw new Error(result.error.message ?? "Couldn't delete account");
-  };
+  const signOut = signOutAction(authClient);
+  const deleteAccount = deleteAccountAction(authClient);
   return (
     <QueryErrorBoundary
       client={client}

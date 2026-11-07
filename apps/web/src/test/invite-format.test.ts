@@ -112,6 +112,55 @@ describe("buildCreateArgs", () => {
       ok: false,
     });
   });
+
+  it("sends a chosen code, trimmed, for a code invite", () => {
+    const result = buildCreateArgs(
+      { ...base, kind: "code", codeMode: "custom", customCode: " welcome-team " },
+      NOW,
+    );
+    expect(result).toMatchObject({
+      ok: true,
+      args: { kind: "code", customCode: "welcome-team" },
+    });
+  });
+
+  it("leaves the code to the server in generated mode", () => {
+    const result = buildCreateArgs(
+      {
+        ...base,
+        kind: "code",
+        codeMode: "generated",
+        customCode: "WELCOME-TEAM",
+      },
+      NOW,
+    );
+    expect(result).toMatchObject({ ok: true });
+    expect(result.ok && "customCode" in result.args).toBe(false);
+  });
+
+  it("reports why a chosen code cannot be used", () => {
+    expect(
+      buildCreateArgs({ ...base, kind: "code", codeMode: "custom", customCode: "" }, NOW),
+    ).toMatchObject({ ok: false, error: expect.stringContaining("Enter a code") });
+    expect(
+      buildCreateArgs({ ...base, kind: "code", codeMode: "custom", customCode: "short" }, NOW),
+    ).toMatchObject({ ok: false, error: expect.stringContaining("at least 6") });
+    expect(
+      buildCreateArgs(
+        { ...base, kind: "code", codeMode: "custom", customCode: "welcome team" },
+        NOW,
+      ),
+    ).toMatchObject({ ok: false, error: expect.stringContaining("letters, digits") });
+  });
+
+  it("ignores a chosen code for other invite kinds", () => {
+    const result = buildCreateArgs(
+      { ...base, kind: "link", codeMode: "custom", customCode: "WELCOME-TEAM" },
+      NOW,
+    );
+    expect(result).toMatchObject({ ok: true });
+    expect(result.ok && "customCode" in result.args).toBe(false);
+  });
 });
 
 describe("defaultUses", () => {

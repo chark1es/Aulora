@@ -18,7 +18,13 @@ export default function ConnectRoute() {
           {...(initialHost !== undefined ? { initialHost } : {})}
           onConnected={() => {
             void refresh();
-            router.back();
+            // A deep link can open this route as the only entry, so there may
+            // be nothing to go back to.
+            if (router.canGoBack()) {
+              router.back();
+            } else {
+              router.replace("/");
+            }
           }}
         />
       </View>

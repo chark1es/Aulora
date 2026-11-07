@@ -111,9 +111,7 @@ export function ParticipantTile(props: ParticipantTileProps) {
     <div
       className={cn(
         "relative flex min-h-0 min-w-0 items-center justify-center overflow-hidden rounded-card border bg-surface-2 transition",
-        isSpeaking && !participant.muted
-          ? "border-secondary/70 shadow-[0_0_0_2px_var(--aulora-secondary)]"
-          : "border-border",
+        isSpeaking && !participant.muted ? "border-secondary/70" : "border-border",
         className,
       )}
     >
@@ -132,6 +130,16 @@ export function ParticipantTile(props: ParticipantTileProps) {
         name={name}
         isSpeaking={isSpeaking}
       />
+
+      {/* Drawn inside the tile, above the media. An outer shadow is clipped by the
+          filmstrip's scroll container and the video paints over an inset one. */}
+      {isSpeaking && !participant.muted && (
+        <span
+          aria-hidden="true"
+          data-speaking-ring=""
+          className="pointer-events-none absolute inset-0 rounded-card ring-2 ring-inset ring-secondary"
+        />
+      )}
 
       {participant.deafened && (
         <span className="absolute right-2 top-2 flex h-6 w-6 items-center justify-center rounded-full bg-black/55 text-white">

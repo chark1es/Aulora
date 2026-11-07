@@ -1,6 +1,6 @@
 [package]
 name = "aulora-desktop"
-version = "1.3.0"
+version = "1.3.1"
 description = "Aulora desktop shell (Tauri 2) wrapping the web client."
 authors = ["Aulora"]
 license = "PolyForm-Noncommercial-1.0.0"
@@ -24,6 +24,46 @@ tauri-plugin-notification = "2"
 tauri-plugin-updater = "2"
 serde = { version = "1", features = ["derive"] }
 serde_json = "1"
+
+# In-app share picker: screen/window enumeration and frame capture. `xcap` stays
+# on the 0.4 line on purpose: 0.9 pulls PipeWire and zbus on Linux, which needs
+# libpipewire-0.3-dev plus libclang (bindgen) in every Linux build, and edition
+# 2024 raises the toolchain floor to Rust 1.85. 0.4 needs only libdbus and libxcb
+# and keeps the 1.77.2 minimum.
+xcap = "0.4.1"
+# JPEG encoding for thumbnails and frames. `xcap` already pulls `image` in, so
+# this adds only the codec, not a second copy of the crate.
+image = { version = "0.25", default-features = false, features = ["jpeg"] }
+base64 = "0.22"
+
+# System audio capture, one backend per platform (see src/capture_audio/).
+# Every version below keeps the crate's 1.77.2 floor.
+[target.'cfg(target_os = "windows")'.dependencies]
+# WASAPI loopback. 0.23 is the newest line that still builds on Rust 1.76+ and
+# it already wraps process loopback in exclude mode (Windows 10 2004+).
+wasapi = "0.23"
+# Finds the WebView2 browser process (Toolhelp snapshot) so its playback can be
+# excluded from the loopback capture. 0.60 is already in the lock file.
+windows-sys = { version = "0.60", features = ["Win32_Foundation", "Win32_System_Diagnostics_ToolHelp"] }
+
+[target.'cfg(all(unix, not(target_os = "macos"), not(target_os = "android")))'.dependencies]
+# The default sink's monitor source, which covers PulseAudio and pipewire-pulse.
+libpulse-binding = "2.30"
+libpulse-simple-binding = "2.29"
+
+[target.'cfg(target_os = "macos")'.dependencies]
+# Screen Recording state (CGPreflightScreenCaptureAccess /
+# CGRequestScreenCaptureAccess); `xcap` already pulls the same crate.
+objc2-core-graphics = { version = "0.3", features = ["CGWindow"] }
+# ScreenCaptureKit audio, which rides on the same Screen Recording grant. The
+# objc2 bindings are pure Rust, so no Swift toolchain is needed.
+objc2 = "0.6"
+objc2-foundation = "0.3"
+objc2-core-audio-types = "0.3"
+objc2-core-media = { version = "0.3", features = ["CMBlockBuffer"] }
+objc2-screen-capture-kit = { version = "0.3", features = ["SCStream", "SCShareableContent", "block2", "objc2-core-media"] }
+block2 = "0.6"
+dispatch2 = "0.3"
 
 [features]
 # Used by `tauri build` for production; the desktop shell loads the bundled web

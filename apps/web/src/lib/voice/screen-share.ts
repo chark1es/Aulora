@@ -135,6 +135,12 @@ export class ScreenShare {
       void this.stop();
     });
     this.capture = capture;
+    // A degraded share (video without the system audio that was asked for) is
+    // still a share: say why on the call's dismissible notice rather than
+    // refusing to publish.
+    if (capture.notice !== null && capture.notice !== undefined) {
+      this.host.onError(capture.notice);
+    }
     this.viaServer = await this.streamer.publish(capture, settings);
     this.host.reportSharing(true);
     await this.host.refreshMesh();

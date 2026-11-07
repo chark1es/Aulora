@@ -7,6 +7,8 @@ export interface CreatedInvite {
   readonly kind: InviteKind;
   readonly link: string;
   readonly emailedTo: string | null;
+  /** True when an admin chose the code, so show it exactly as typed. */
+  readonly custom: boolean;
 }
 
 function Secret({
@@ -54,7 +56,7 @@ export function InviteCreated({ invite }: { readonly invite: CreatedInvite }) {
 
       {invite.kind === "code" && (
         <Secret
-          value={formatAccessCode(invite.code)}
+          value={invite.custom ? invite.code : formatAccessCode(invite.code)}
           label="Access code"
           mono="min-w-0 flex-1 rounded-[8px] border border-border bg-surface-1 px-3 py-2 text-center font-mono text-[18px] font-semibold tracking-[0.18em] text-text"
         />
