@@ -4,7 +4,12 @@ import { expect, test } from "bun:test";
 import { mkdirSync, mkdtempSync, readdirSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { isExcludedDesktopAsset, prepareFrontend } from "./prepare-frontend.mjs";
+import {
+  assertFrontendBudget,
+  budgetFromBytes,
+  isExcludedDesktopAsset,
+  prepareFrontend,
+} from "./prepare-frontend.mjs";
 
 test("excludes the duplicated legal notices", () => {
   const excluded = ["legal", "legal/LICENSE", "legal/third-party/foo"];
@@ -60,4 +65,16 @@ test("prepareFrontend copies the shell without the excluded files", () => {
   } finally {
     rmSync(root, { recursive: true, force: true });
   }
+});
+
+test("the committed embed budget allows the measured size and fails above it", () => {
+  const budget = budgetFromBytes(10 * 1024 * 1024);
+  expect(budget.maxBytes).toBeGreaterThan(10 * 1024 * 1024);
+  expect(budget.maxBytes).toBeLessThanOrEqual(11 * 1024 * 1024);
+  expect(assertFrontendBudget({ bytes: 10 * 1024 * 1024, budget }).remaining).toBeGreaterThan(0);
+  expect(() => assertFrontendBudget({ bytes: budget.maxBytes + 1, budget })).toThrow("over the");
+});
+
+test("a missing embed budget fails with the update command", () => {
+  expect(() => assertFrontendBudget({ bytes: 1, budget: undefined })).toThrow("--update-budget");
 });

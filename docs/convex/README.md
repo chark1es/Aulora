@@ -36,6 +36,12 @@ of an upgrade.
   memory on representative self-hosting hardware. Identify the query or write
   responsible before changing the architecture.
 
+CI enforces the first two points with `bun run perf:convex`
+([performance guards](../performance.md)): new `.collect()` calls, `.filter()`
+without `.withIndex()`, and dynamic `.paginate()` windows are rejected. Fix the
+query rather than adding an allowlist entry, and remove an entry when its read
+becomes bounded.
+
 For affected paths, test both a large history and concurrent activity in a busy
 channel. Include the number and size of records read, subscription update
 volume, and any remaining limits in the PR. Avoid presenting a test with a few

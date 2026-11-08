@@ -18,6 +18,23 @@ The same checks run after merges and for merge groups, without the native builds
 
 The separate [CLA bot](cla-bot.md) records contributor acceptance and publishes the `CLA` commit status on pull requests. After enabling it, require that status alongside `Required checks`. Its privileged job runs default-branch code without executing the PR's code.
 
+## Performance and regression guards
+
+The `quality` job enforces three guards after the workspace build:
+
+- `bun run perf:bundle` compares every `apps/web/dist` asset, the initial chunk
+  graph, and total bundle size with the committed budget, and fails if LiveKit,
+  MediaPipe or RNNoise becomes reachable from the initial graph.
+- `bun run perf:embed` checks the frontend Tauri embeds against its size
+  ceiling.
+- `bun run perf:convex` rejects new unbounded Convex reads; it runs as part of
+  `bun run lint`.
+
+All three are required checks. [Performance and regression guards](performance.md)
+explains each rule, how `--update` works, and how to add a reviewed exception.
+The `apps/web/e2e` Playwright suite is not part of these checks: it needs a live
+deployment and credentials.
+
 ## PR-Agent reviews
 
 [PR-Agent](https://github.com/The-PR-Agent/pr-agent) runs separately from CI in
