@@ -12,6 +12,7 @@ import {
 } from "@aulora/core";
 import { mediaMessage, messageOf } from "./call-errors";
 import type { VoiceEngineOptions, VoiceLocalState, VoiceSnapshot } from "./call-types";
+import { IceServerSource } from "./ice-servers";
 import { LocalCamera } from "./local-camera";
 import { applySinkId, createLevelMeter } from "./media";
 import { type MicPipeline, micProcessingKey, openMicPipeline } from "./mic-pipeline";
@@ -77,6 +78,8 @@ export class VoiceEngine {
   private readonly mesh: PeerMesh;
   private readonly screen: ScreenShare;
   private readonly camera: LocalCamera;
+  /** Deployment ICE overrides plus the ephemeral TURN credential for this call. */
+  private readonly ice: IceServerSource;
   private callUnsub: (() => void) | null = null;
   private signalUnsub: (() => void) | null = null;
   private heartbeat: ReturnType<typeof setInterval> | null = null;
@@ -89,10 +92,19 @@ export class VoiceEngine {
     this.getSettings = options.getSettings;
     this.getIceServers = options.getIceServers ?? (() => DEFAULT_ICE);
     this.onError = options.onError ?? (() => undefined);
+    this.ice = new IceServerSource({
+      base: () => this.getIceServers(),
+      fetchTurn: async () => (await this.port.turnCredentials?.()) ?? null,
+      // A credential that arrives after peers exist cannot change their
+      // already-gathered candidates, but it applies to every new peer.
+      onChange: () => {
+        this.emit();
+      },
+    });
     this.mesh = new PeerMesh({
       userId: this.userId,
       getCallId: () => this.callId,
-      getIceServers: () => this.getIceServers(),
+      getIceServers: () => this.ice.current(),
       sendSignal: (signal) => this.port.sendSignal(signal),
       ackSignals: (signalIds) =>
         this.port.ackSignals({ signalIds: signalIds.map((id) => id as never) }),
@@ -318,6 +330,7 @@ export class VoiceEngine {
     this.applyMicEnabled();
     void this.port.updateParticipant({ callId, muted: settings.joinMuted }).catch(() => undefined);
     void this.screen.probe();
+    void this.ice.load();
     this.emit();
   }
 
@@ -331,6 +344,7 @@ export class VoiceEngine {
       this.heartbeat = null;
     }
     this.mesh.reset();
+    this.ice.dispose();
     this.stopLevelMeter();
     this.micPipeline?.stop();
     this.micPipeline = null;

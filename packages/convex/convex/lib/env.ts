@@ -342,3 +342,47 @@ export function getEncryptionSettings(env: Env): EncryptionSettings {
     keyVersion: ekm.keyVersion,
   };
 }
+
+/** Default lifetime of a minted TURN credential, in seconds. */
+export const TURN_DEFAULT_TTL_SECONDS = 3_600;
+/** Lower bound that keeps a credential usable long enough to gather a candidate. */
+export const TURN_MIN_TTL_SECONDS = 60;
+/** Upper bound; coturn itself caps `static-auth-secret` lifetimes at 24h. */
+export const TURN_MAX_TTL_SECONDS = 86_400;
+
+export interface TurnSettings {
+  /** `turn:`/`turns:` URLs clients try, in order. */
+  readonly urls: readonly string[];
+  /** Coturn `static-auth-secret`, used only to sign time-limited usernames. */
+  readonly secret: string;
+  readonly ttlSeconds: number;
+}
+
+const TURN_URL_PATTERN = /^turns?:\S+$/i;
+
+/**
+ * Reads the deployment's TURN relay settings. Returns `null` unless the URLs and
+ * a non-trivial shared secret are configured, so a workspace without a TURN
+ * server keeps the client's public-STUN default. An unusable `TURN_TTL_SECONDS`
+ * falls back to the default rather than disabling the relay.
+ */
+export function getTurnSettings(env: Env): TurnSettings | null {
+  const rawUrls = read(env, "TURN_URLS");
+  const secret = read(env, "TURN_SECRET");
+  // A short shared secret is a weak HMAC key; refuse it rather than mint
+  // credentials anyone could forge.
+  if (rawUrls === undefined || secret === undefined || secret.length < 16) {
+    return null;
+  }
+  const urls = rawUrls.split(/[\s,]+/).filter((url) => url.length > 0);
+  if (urls.length === 0 || urls.some((url) => !TURN_URL_PATTERN.test(url))) {
+    return null;
+  }
+  const rawTtl = read(env, "TURN_TTL_SECONDS");
+  const parsed = rawTtl === undefined ? Number.NaN : Number(rawTtl);
+  const ttlSeconds =
+    Number.isInteger(parsed) && parsed >= TURN_MIN_TTL_SECONDS && parsed <= TURN_MAX_TTL_SECONDS
+      ? parsed
+      : TURN_DEFAULT_TTL_SECONDS;
+  return { urls, secret, ttlSeconds };
+}
