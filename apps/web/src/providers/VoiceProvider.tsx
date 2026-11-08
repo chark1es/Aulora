@@ -28,7 +28,7 @@ import {
   writeVoiceSettings,
 } from "../lib/voice/device-settings";
 import { sendLeaveBeacon } from "../lib/voice/leave-beacon";
-import { listMediaDevices, onDeviceChange } from "../lib/voice/media";
+import { listMediaDevices, onDeviceChange, resumeLevelMeterContext } from "../lib/voice/media";
 import { type PipControl, type PipSurface, useCallPip } from "./use-call-pip";
 import { loadBrowserVoiceClientId, withScreenAudio } from "./voice-provider-utils";
 import { RemoteAudio } from "./voice-remote-audio";
@@ -200,6 +200,18 @@ export function VoiceProvider({
     return onDeviceChange(() => {
       void listMediaDevices().then(setDevices);
     });
+  }, []);
+
+  // Browsers keep an AudioContext suspended until a gesture. The level meters
+  // share one context, so a pointer or key press anywhere resumes all of them.
+  useEffect(() => {
+    const resume = () => resumeLevelMeterContext();
+    window.addEventListener("pointerdown", resume, { passive: true });
+    window.addEventListener("keydown", resume);
+    return () => {
+      window.removeEventListener("pointerdown", resume);
+      window.removeEventListener("keydown", resume);
+    };
   }, []);
 
   // Push-to-talk: hold Space to transmit. Ignored while typing in a field.
