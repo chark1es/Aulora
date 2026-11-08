@@ -89,7 +89,7 @@ A workspace manager sets them with `server.updateSettings`; clients see the new 
 
 The desktop updater reads an optional top-level `rollout` percentage from the static `latest.json` manifest. Omitted or `100` keeps the previous behavior. Each installation persists an `update-client-id` in its app config directory; the shell hashes that id into a stable 0–99 bucket and only offers the update when the bucket is below the percentage.
 
-- Set the percentage with the Release workflow's `rollout` input, or `RELEASE_ROLLOUT` when running `scripts/ci/assemble-release.mjs` directly. The manifest builder rejects values outside 0–100.
+- Set the percentage with the Release workflow's `rollout` input, the repository `RELEASE_ROLLOUT` variable for automatic releases, or `RELEASE_ROLLOUT` when running `scripts/ci/assemble-release.mjs` directly. The manifest builder rejects values outside 0–100.
 - Limitation: the feed is a static GitHub release asset. GitHub still serves the artifacts to anyone who asks, so this is staged delivery, not access control. A published release cannot be re-gated without publishing a new version; plan the percentage when publishing.
 - Use `100` for security fixes. Stage risky client changes instead.
 

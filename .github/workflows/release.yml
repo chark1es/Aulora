@@ -124,7 +124,7 @@ jobs:
       GH_TOKEN: ${{ github.token }}
       RELEASE_VERSION: ${{ needs.plan.outputs.version }}
       RELEASE_NOTES: ${{ inputs.notes }}
-      RELEASE_ROLLOUT: ${{ inputs.rollout }}
+      RELEASE_ROLLOUT: ${{ inputs.rollout || vars.RELEASE_ROLLOUT }}
     steps:
       - uses: actions/checkout@v7
         with:
