@@ -1,3 +1,5 @@
+/* eslint-disable security/detect-non-literal-fs-filename -- Paths are the repository checkout, build output or a temp fixture, joined from fixed names or this script's own arguments, never request data. */
+/* eslint-disable xss/no-mixed-html -- Strings containing markup or generics are parsed as text; nothing is rendered or inserted into a page. */
 // Regression guard for unbounded Convex data access.
 //
 // Scans `packages/convex/convex` (excluding `_generated` and tests) for three

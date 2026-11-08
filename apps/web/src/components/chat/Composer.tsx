@@ -1,3 +1,4 @@
+/* eslint-disable no-unused-vars -- the base rule reports parameter names in type signatures; Biome checks real unused code */
 import type { MentionTarget, RoleMentionTarget } from "@aulora/core";
 import { expandBroadcast, resolveChannelMentions, resolveMentions } from "@aulora/core";
 import { cn, Icon } from "@aulora/ui-web";
@@ -324,7 +325,9 @@ export function Composer({
     const mention = MENTION_QUERY.exec(slice);
     if (mention !== null) {
       suggestionQuery.current = "mention";
+      // eslint-disable-next-line @typescript-eslint/no-unnecessary-condition -- capture groups are `string | undefined` under noUncheckedIndexedAccess
       const query = (mention[2] ?? "").toLowerCase();
+      // eslint-disable-next-line @typescript-eslint/no-unnecessary-condition -- capture groups are `string | undefined` under noUncheckedIndexedAccess
       setMentionQuery(mention[2] ?? "");
       setSuggestions(
         mentionSuggestions
@@ -514,6 +517,7 @@ export function Composer({
     const knownNames = new Set(members.map((member) => member.displayName.toLowerCase()));
     const unknown: string[] = [];
     for (const match of text.matchAll(/@([A-Za-z0-9_.-]+)/g)) {
+      // eslint-disable-next-line @typescript-eslint/no-unnecessary-condition -- capture groups are `string | undefined` under noUncheckedIndexedAccess
       const token = match[1] ?? "";
       if (token.length === 0 || /^(here|everyone)$/i.test(token)) {
         continue;

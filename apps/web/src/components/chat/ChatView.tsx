@@ -326,11 +326,7 @@ function ChatViewContent({
     }
     // Then authors and mentions, newest first: the retained history window can
     // hold more distinct authors than one `members.brief` call resolves.
-    for (let index = sessionState.messages.length - 1; index >= 0; index -= 1) {
-      const message = sessionState.messages[index];
-      if (message === undefined) {
-        continue;
-      }
+    for (const message of sessionState.messages.slice().reverse()) {
       ids.add(message.authorId);
       for (const mentioned of message.mentionUserIds) {
         ids.add(mentioned);

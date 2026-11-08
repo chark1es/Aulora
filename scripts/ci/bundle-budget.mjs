@@ -1,3 +1,6 @@
+/* eslint-disable security/detect-non-literal-fs-filename -- Paths are the repository checkout, build output or a temp fixture, joined from fixed names or this script's own arguments, never request data. */
+/* eslint-disable security/detect-object-injection -- Keys come from files in this checkout and fixed tables, and index loops are bounded by the array they walk; nothing here is request input. */
+/* eslint-disable xss/no-mixed-html -- Strings containing markup or generics are parsed as text; nothing is rendered or inserted into a page. */
 // Bundle size and lazy-loading guard for the web client.
 //
 // `apps/web/dist` is measured after `bun run build`; every emitted asset has a

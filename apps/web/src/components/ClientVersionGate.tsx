@@ -24,13 +24,16 @@ import {
 const DISMISSED_KEY = "aulora:client-version-dismissed";
 
 /** The server's advertised compatibility policy, or `null` while it loads. */
+// eslint-disable-next-line @typescript-eslint/no-redundant-type-constituents -- `ClientVersionPolicy` comes from @aulora/core, which this linter cannot resolve
 export function useClientVersionPolicy(): ClientVersionPolicy | null {
   const config = useQuery(api.server.publicConfig, {});
   if (config === undefined) {
     return null;
   }
   return {
+    // eslint-disable-next-line @typescript-eslint/no-unnecessary-condition -- absent on servers from before this release
     minClientVersion: config.clientVersion?.minClientVersion ?? null,
+    // eslint-disable-next-line @typescript-eslint/no-unnecessary-condition -- absent on servers from before this release
     recommendedClientVersion: config.clientVersion?.recommendedClientVersion ?? null,
   };
 }
@@ -172,6 +175,7 @@ export function ServerUpdateRequired({
 
 function readDismissed(): string | null {
   try {
+    // eslint-disable-next-line @typescript-eslint/no-unnecessary-condition -- storage is absent when the browser disables it
     return globalThis.localStorage?.getItem(DISMISSED_KEY) ?? null;
   } catch {
     return null;
@@ -180,6 +184,7 @@ function readDismissed(): string | null {
 
 function persistDismissed(version: string): void {
   try {
+    // eslint-disable-next-line @typescript-eslint/no-unnecessary-condition -- storage is absent when the browser disables it
     globalThis.localStorage?.setItem(DISMISSED_KEY, version);
   } catch {
     // Storage can be disabled; the banner simply returns on the next visit.

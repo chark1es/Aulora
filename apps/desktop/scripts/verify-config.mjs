@@ -408,6 +408,9 @@ function verifyWebviewPermissions() {
   const end = start === -1 ? -1 : source.indexOf("\n}\n", start);
   const body = end === -1 ? "" : source.slice(start, end);
   check("lib.rs must define permission_response", body.length > 0);
+  const allowedKinds = new Set(
+    [...body.matchAll(/PermissionKind::(\w+)/g)].map((match) => match[1]),
+  );
   for (const kind of [
     "Microphone",
     "Camera",
@@ -419,7 +422,7 @@ function verifyWebviewPermissions() {
   ]) {
     check(
       `permission_response must allow PermissionKind::${kind} in the main webview`,
-      new RegExp(`PermissionKind::${kind}\\b`).test(body),
+      allowedKinds.has(kind),
     );
   }
   check(

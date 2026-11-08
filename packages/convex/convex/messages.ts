@@ -1,4 +1,4 @@
-import { EVERYONE_ROLE_ID, hasPermission, Permission, withReplyParticipant } from "@aulora/core";
+import { hasPermission, Permission, withReplyParticipant } from "@aulora/core";
 import { paginationOptsValidator } from "convex/server";
 import { ConvexError, v } from "convex/values";
 import { internal } from "./_generated/api";
@@ -10,7 +10,7 @@ import { assertMayParticipate } from "./lib/bans";
 import { emitBotEvent } from "./lib/botEvents";
 import { requireChannelAccess } from "./lib/channels";
 import { recordLicenseActivity } from "./lib/licenseActivity";
-import { memberIdsForRole } from "./lib/memberRoles";
+import { filterMentionIds, mentionUserIdsForRoles } from "./lib/mentionIds";
 import { requireMember } from "./lib/permissions";
 import { enforceRateLimit, userRateLimitKey } from "./lib/rateLimit";
 import { openContent } from "./lib/sealed";
@@ -18,13 +18,6 @@ import { sealString } from "./lib/sse";
 import { countThreadMentions, loadThreadInbox, type ThreadInboxRow } from "./lib/threadInbox";
 import { upsertThreadParticipant } from "./lib/threadParticipants";
 import type { Nullable } from "./lib/types";
-
-/**
- * Members one `@role` mention expands to on send. Roles are normally small;
- * the cap keeps a pathological role from turning one send into an unbounded
- * read, and the legacy fallback scan uses the same bound.
- */
-const ROLE_MENTION_MEMBER_LIMIT = 500;
 
 /** Per-user send budget: 30 messages per 10 seconds unless overridden. */
 function sendLimit(): number {
@@ -95,106 +88,6 @@ async function toMessage(message: Doc<"messages">): Promise<MessageView> {
 
 async function toMessages(messages: readonly Doc<"messages">[]): Promise<MessageView[]> {
   return await Promise.all(messages.map(toMessage));
-}
-
-/**
- * Drops mention ids that do not resolve: a stored mention must point at a real
- * member, channel or category, so a client can never route a notification wake
- * to an arbitrary string. Unknown ids are filtered rather than stored.
- */
-async function filterMentionIds(
-  ctx: Parameters<typeof requireChannelAccess>[0],
-  mentionUserIds: readonly string[],
-  mentionChannelIds: readonly string[],
-  mentionCategoryIds: readonly string[],
-): Promise<{
-  mentionUserIds: string[];
-  mentionChannelIds: string[];
-  mentionCategoryIds: string[];
-}> {
-  const ids = [...new Set(mentionUserIds)];
-  // Resolve the mentioned ids in one parallel batch of indexed reads instead of
-  // awaiting each one before starting the next.
-  const rows = await Promise.all(
-    ids.map((userId) =>
-      ctx.db
-        .query("members")
-        .withIndex("by_user", (q) => q.eq("userId", userId))
-        .unique(),
-    ),
-  );
-  const users = ids.filter((_userId, index) => rows[index] !== null);
-  const channels: string[] = [];
-  for (const channelId of new Set(mentionChannelIds)) {
-    try {
-      if ((await ctx.db.get(channelId as Id<"channels">)) !== null) {
-        channels.push(channelId);
-      }
-    } catch {
-      // A malformed id is not a known channel; drop it.
-    }
-  }
-  const categories: string[] = [];
-  for (const categoryId of new Set(mentionCategoryIds)) {
-    try {
-      if ((await ctx.db.get(categoryId as Id<"categories">)) !== null) {
-        categories.push(categoryId);
-      }
-    } catch {
-      // A malformed id is not a known category; drop it.
-    }
-  }
-  return {
-    mentionUserIds: users,
-    mentionChannelIds: channels,
-    mentionCategoryIds: categories,
-  };
-}
-
-/**
- * `@role` mentions are expanded here (once per send) instead of on every
- * client, which no longer holds the whole member table. Direct and broadcast
- * mentions still arrive as user ids from the client. The reverse `memberRoles`
- * index bounds the read; rows on a workspace that predates the backfill fall
- * back to a bounded scan of `members.roleIds`.
- */
-async function mentionUserIdsForRoles(
-  ctx: Parameters<typeof requireChannelAccess>[0],
-  roleIds: readonly string[],
-): Promise<string[]> {
-  const requested = new Set(roleIds);
-  if (requested.size === 0) {
-    return [];
-  }
-  // Only mentionable roles expand, matching the client's own resolution: a
-  // role an admin silenced must not be pingable by calling the API directly.
-  const roles = await ctx.db.query("roles").collect();
-  const mentionable = new Set(
-    roles
-      .filter((role) => role.mentionable && (role.key ?? role._id) !== EVERYONE_ROLE_ID)
-      .map((role) => role.key ?? role._id),
-  );
-  const userIds: string[] = [];
-  for (const roleId of requested) {
-    if (!mentionable.has(roleId)) {
-      continue;
-    }
-    const linked = await memberIdsForRole(ctx, roleId, ROLE_MENTION_MEMBER_LIMIT);
-    if (linked.length > 0) {
-      userIds.push(...linked);
-      continue;
-    }
-    const legacy = await ctx.db
-      .query("members")
-      .withIndex("by_joined")
-      .take(ROLE_MENTION_MEMBER_LIMIT);
-    for (const member of legacy) {
-      if (member.roleIds.includes(roleId)) {
-        userIds.push(member.userId);
-      }
-    }
-  }
-  return userIds;
 }
 
 /** Validates and returns the thread root a reply targets, or `null`. */

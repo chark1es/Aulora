@@ -71,9 +71,13 @@ export function CallPipWindow() {
     if (node === null) {
       return;
     }
-    const onDoubleClick = () => returnToApp();
+    const onDoubleClick = () => {
+      returnToApp();
+    };
     node.addEventListener("dblclick", onDoubleClick);
-    return () => node.removeEventListener("dblclick", onDoubleClick);
+    return () => {
+      node.removeEventListener("dblclick", onDoubleClick);
+    };
   }, []);
 
   return (
@@ -111,7 +115,9 @@ export function CallPipWindow() {
           type="button"
           aria-label="Close the call window"
           title="Close the call window — the call continues"
-          onClick={() => returnToApp()}
+          onClick={() => {
+            returnToApp();
+          }}
           className="flex h-6 w-6 shrink-0 items-center justify-center rounded-[6px] text-text-muted transition hover:bg-surface-3 hover:text-text focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent"
         >
           <Icon name="x" size={13} />

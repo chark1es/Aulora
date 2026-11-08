@@ -1,3 +1,4 @@
+/* eslint-disable security/detect-non-literal-fs-filename -- Paths are the repository checkout, build output or a temp fixture, joined from fixed names or this script's own arguments, never request data. */
 // Pin and restore the previous web image for a deployment.
 //
 // `deploy.sh` runs `pin` before rebuilding, which tags the currently running
@@ -99,7 +100,7 @@ export async function pinCurrentWebImage({
 export async function rollbackWeb({
   dockerDir = defaultDockerDir,
   execute = run,
-  log = () => {},
+  log = () => undefined,
 } = {}) {
   const state = readState(dockerDir);
   if (state === null) {

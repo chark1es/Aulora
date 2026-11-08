@@ -218,6 +218,7 @@ mod tests {
 
     #[test]
     fn remembers_geometry_across_a_restart() {
+        // nosemgrep: rust.lang.security.temp-dir.temp-dir -- unit test: writes a fixture directory it creates and removes, never a security decision
         let dir = std::env::temp_dir().join(format!("aulora-pip-geometry-{}", std::process::id()));
         let _ = fs::remove_dir_all(&dir);
         let geometry = PipGeometry {
@@ -233,6 +234,7 @@ mod tests {
 
     #[test]
     fn ignores_a_missing_or_corrupt_file() {
+        // nosemgrep: rust.lang.security.temp-dir.temp-dir -- unit test: writes a fixture directory it creates and removes, never a security decision
         let dir = std::env::temp_dir().join(format!("aulora-pip-bad-{}", std::process::id()));
         let _ = fs::remove_dir_all(&dir);
         assert_eq!(read_geometry(&dir), None);
@@ -250,6 +252,7 @@ mod tests {
 
     #[test]
     fn rejects_a_geometry_without_finite_size() {
+        // nosemgrep: rust.lang.security.temp-dir.temp-dir -- unit test: writes a fixture directory it creates and removes, never a security decision
         let dir = std::env::temp_dir().join(format!("aulora-pip-nan-{}", std::process::id()));
         let _ = fs::remove_dir_all(&dir);
         fs::create_dir_all(&dir).expect("mkdir");

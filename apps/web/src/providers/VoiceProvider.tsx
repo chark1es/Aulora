@@ -230,7 +230,9 @@ export function VoiceProvider({
   // Browsers keep an AudioContext suspended until a gesture. The level meters
   // share one context, so a pointer or key press anywhere resumes all of them.
   useEffect(() => {
-    const resume = () => resumeLevelMeterContext();
+    const resume = () => {
+      resumeLevelMeterContext();
+    };
     window.addEventListener("pointerdown", resume, { passive: true });
     window.addEventListener("keydown", resume);
     return () => {

@@ -345,42 +345,47 @@ describe("camera tuning by mesh size", () => {
   });
 });
 
+/** Two consecutive stats reports for one audio peer: 10% then 12% cumulative loss. */
+function lossyAudioReports() {
+  return [
+    [
+      {
+        type: "inbound-rtp",
+        kind: "audio",
+        packetsReceived: 900,
+        packetsLost: 100,
+        jitter: 0.02,
+      },
+      {
+        type: "candidate-pair",
+        state: "succeeded",
+        selected: true,
+        currentRoundTripTime: 0.12,
+      },
+    ],
+    [
+      {
+        type: "inbound-rtp",
+        kind: "audio",
+        packetsReceived: 1_000,
+        packetsLost: 120,
+        jitter: 0.03,
+      },
+      {
+        type: "candidate-pair",
+        state: "succeeded",
+        selected: true,
+        currentRoundTripTime: 0.12,
+      },
+    ],
+  ];
+}
+
 describe("PeerMesh.collectStats", () => {
   type MeshPeer = Parameters<PeerMesh["peers"]["set"]>[1];
 
   it("measures loss over the interval and reads the selected pair's RTT", async () => {
-    const reports = [
-      [
-        {
-          type: "inbound-rtp",
-          kind: "audio",
-          packetsReceived: 900,
-          packetsLost: 100,
-          jitter: 0.02,
-        },
-        {
-          type: "candidate-pair",
-          state: "succeeded",
-          selected: true,
-          currentRoundTripTime: 0.12,
-        },
-      ],
-      [
-        {
-          type: "inbound-rtp",
-          kind: "audio",
-          packetsReceived: 1_000,
-          packetsLost: 120,
-          jitter: 0.03,
-        },
-        {
-          type: "candidate-pair",
-          state: "succeeded",
-          selected: true,
-          currentRoundTripTime: 0.12,
-        },
-      ],
-    ];
+    const reports = lossyAudioReports();
     let call = 0;
     const peer = {
       pc: {

@@ -201,12 +201,17 @@ export function startPipFrameSender(options: PipFrameSenderOptions): PipFrameSen
  * registrations racing (React re-mounts) leaving the shell pointed at a channel
  * whose handler has already been removed. Returns the unregister function.
  */
+/** Counts receiver registrations so each mount gets a distinct token. */
+let nextRegistration = 0;
+
 export function registerPipFrames(onFrame: (bytes: Uint8Array) => void): () => void {
   const channel = createDesktopChannel();
   if (channel === null) {
     return () => {};
   }
-  const token = `${Date.now().toString(36)}-${Math.random().toString(36).slice(2)}`;
+  // Only has to differ between mounts of the receiver; it is not a secret.
+  nextRegistration += 1;
+  const token = `${Date.now().toString(36)}-${nextRegistration}`;
   let active = true;
   channel.onmessage = (message) => {
     if (Array.isArray(message)) {

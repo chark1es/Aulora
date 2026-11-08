@@ -18,7 +18,7 @@ describe("client version gate", () => {
     expect(screen.getByTestId("client-update-required")).toBeInTheDocument();
     expect(screen.getByText(/needs Aulora v9\.0\.0 or newer/)).toBeInTheDocument();
     expect(
-      screen.getByText(new RegExp(`running v${CLIENT_VERSION.replaceAll(".", "\\.")}`)),
+      screen.getByText((text) => text.includes(`running v${CLIENT_VERSION}`)),
     ).toBeInTheDocument();
     expect(screen.getByRole("button", { name: "Reload to update" })).toBeInTheDocument();
   });

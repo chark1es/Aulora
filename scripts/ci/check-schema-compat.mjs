@@ -1,3 +1,5 @@
+/* eslint-disable security/detect-non-literal-fs-filename -- Paths are the repository checkout, build output or a temp fixture, joined from fixed names or this script's own arguments, never request data. */
+/* eslint-disable security/detect-object-injection -- Keys come from files in this checkout and fixed tables, and index loops are bounded by the array they walk; nothing here is request input. */
 // Schema compatibility snapshot for release checks.
 //
 // This is intentionally a heuristic, not a Convex schema parser: it records

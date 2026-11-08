@@ -32,12 +32,19 @@ export function resolveFeatureFlags(value: unknown): FeatureFlags {
     typeof value === "object" && value !== null && !Array.isArray(value)
       ? (value as Record<string, unknown>)
       : {};
-  const flags = { ...DEFAULT_FEATURE_FLAGS };
-  for (const name of FEATURE_FLAG_NAMES) {
-    const candidate = record[name];
-    if (typeof candidate === "boolean") {
-      flags[name] = candidate;
-    }
-  }
-  return flags;
+  const values = new Map(Object.entries(record));
+  const flag = (name: FeatureFlagName, fallback: boolean): boolean => {
+    const candidate = values.get(name);
+    return typeof candidate === "boolean" ? candidate : fallback;
+  };
+  // Spelled out so adding a name to FEATURE_FLAG_NAMES is a type error here
+  // until it is read, and no flag is ever looked up by a computed key.
+  return {
+    disableNewCallTransport: flag(
+      "disableNewCallTransport",
+      DEFAULT_FEATURE_FLAGS.disableNewCallTransport,
+    ),
+    disablePipVideo: flag("disablePipVideo", DEFAULT_FEATURE_FLAGS.disablePipVideo),
+    disableAutoDegrade: flag("disableAutoDegrade", DEFAULT_FEATURE_FLAGS.disableAutoDegrade),
+  };
 }

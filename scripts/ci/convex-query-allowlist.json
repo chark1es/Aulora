@@ -263,6 +263,10 @@
       "reason": "Pre-existing collect() on \"memberRoles\"; replace it with a bounded index query."
     },
     {
+      "key": "lib/mentionIds.ts#mentionUserIdsForRoles#collect",
+      "reason": "Workspace configuration: the roles table is small by design (admin-created roles). Read once per send that mentions a role."
+    },
+    {
       "key": "lib/messageRecipients.ts#addChannelMembers#collect",
       "reason": "Pre-existing collect() on \"channelMembers\"; replace it with a bounded index query."
     },
@@ -317,10 +321,6 @@
     {
       "key": "messages.ts#listThread#paginate-unbounded",
       "reason": "Pre-existing paginate with args.paginationOpts; clamp numItems or keep the window small."
-    },
-    {
-      "key": "messages.ts#mentionUserIdsForRoles#collect",
-      "reason": "Workspace configuration: the roles table is small by design (admin-created roles). Read once per send that mentions a role."
     },
     {
       "key": "notes.ts#list#collect",

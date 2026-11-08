@@ -164,11 +164,9 @@ function sameReactionGroups(a: readonly ReactionGroup[], b: readonly ReactionGro
   if (a.length !== b.length) {
     return false;
   }
-  for (let index = 0; index < a.length; index += 1) {
-    const left = a[index];
-    const right = b[index];
+  for (const [index, left] of a.entries()) {
+    const right = b.at(index);
     if (
-      left === undefined ||
       right === undefined ||
       left.emoji !== right.emoji ||
       left.count !== right.count ||
