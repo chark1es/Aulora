@@ -2,6 +2,7 @@ import { ConvexError, v } from "convex/values";
 import type { QueryCtx } from "./_generated/server";
 import { internalQuery, mutation, query } from "./_generated/server";
 import { writeAudit } from "./lib/audit";
+import { backupHistory } from "./lib/backupHistory";
 import { parseEmailConfig } from "./lib/email";
 import {
   API_VERSION,
@@ -145,8 +146,7 @@ export const overview = query({
       counters.channelCount ?? (await ctx.db.query("channels").take(OVERVIEW_SCAN_LIMIT)).length;
     const deviceCount =
       counters.deviceCount ?? (await ctx.db.query("devices").take(OVERVIEW_SCAN_LIMIT)).length;
-    const lastBackup =
-      (await ctx.db.query("backups").withIndex("by_started").order("desc").first()) ?? null;
+    const lastBackup = await backupHistory(ctx).first();
 
     const auth = getPublicAuthConfig(
       env,

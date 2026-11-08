@@ -77,12 +77,11 @@ describe("EnvironmentSectionView", () => {
     const user = userEvent.setup();
     render(<EnvironmentSectionView model={buildModel()} />);
     expect(screen.getByTestId("env-source-GITHUB_CLIENT_ID")).toHaveTextContent("Deployment");
-    expect(screen.getByTestId("env-value-GITHUB_CLIENT_ID")).toHaveTextContent(
-      "Set by the deployment (value hidden)",
-    );
+    // The pill already says it; no repeated value text for deployment/unset rows.
+    expect(screen.queryByTestId("env-value-GITHUB_CLIENT_ID")).not.toBeInTheDocument();
 
     await user.click(screen.getByTestId("env-group-tab-oidc"));
-    expect(screen.getByTestId("env-value-OIDC_CLIENT_ID")).toHaveTextContent("Not set");
+    expect(screen.getByTestId("env-source-OIDC_CLIENT_ID")).toHaveTextContent("Not set");
     expect(screen.queryByTestId("env-reset-OIDC_CLIENT_ID")).not.toBeInTheDocument();
   });
 
@@ -168,7 +167,6 @@ describe("EnvironmentSectionView", () => {
     expect(screen.getByRole("table")).toBeInTheDocument();
     expect(screen.getAllByRole("columnheader").map((cell) => cell.textContent)).toEqual([
       "Variable",
-      "Source",
       "Value",
       "Actions",
     ]);
