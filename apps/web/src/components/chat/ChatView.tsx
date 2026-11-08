@@ -30,6 +30,7 @@ import {
   useDesktopNotifications,
 } from "../../lib/use-desktop-notifications";
 import { useUnreadBadge } from "../../lib/use-desktop-unread";
+import { useMemberPages } from "../../lib/use-member-pages";
 import { useUnopenedChannelAlerts } from "../../lib/use-unopened-channel-alerts";
 import { useWebPush } from "../../lib/use-web-push";
 import {
@@ -145,8 +146,6 @@ export interface ChatViewProps {
 const MEMBER_DIRECTORY_MAX = 300;
 /** Member panel page size, grown by one step per "Show more". */
 const MEMBER_PAGE_INITIAL = 100;
-const MEMBER_PAGE_STEP = 100;
-const MEMBER_PAGE_MAX = 500;
 /** Roster rows loaded for pickers, the admin surface and the addons. */
 const MEMBER_ROSTER_PAGE = 500;
 /** Threads returned by the open inbox (server caps at 50). */
@@ -309,7 +308,6 @@ function ChatViewContent({
   // resolves exactly the people this view renders (timeline authors, the users
   // they mention, DM partners and an open profile), while the member panel
   // pages and the pickers load a bounded roster only while they are open.
-  const [memberPageSize, setMemberPageSize] = useState(MEMBER_PAGE_INITIAL);
   const directoryIds = useMemo(() => {
     const ids = new Set<string>();
     // People whose names are always needed come first, so the cap never trims
@@ -386,15 +384,10 @@ function ChatViewContent({
   );
 
   // The member panel owns a paged read of the directory.
-  const panelRoster = useQuery(
-    api.members.page,
-    membersOpen ? { numItems: memberPageSize } : "skip",
-  );
-  const panelHasMore =
-    panelRoster !== undefined && !panelRoster.isDone && memberPageSize < MEMBER_PAGE_MAX;
-  const loadMoreMembers = useCallback(() => {
-    setMemberPageSize((size) => Math.min(size + MEMBER_PAGE_STEP, MEMBER_PAGE_MAX));
-  }, []);
+  const panelPages = useMemberPages(membersOpen, MEMBER_PAGE_INITIAL);
+  const panelRows = panelPages.rows;
+  const panelHasMore = panelPages.hasMore;
+  const loadMoreMembers = panelPages.loadMore;
 
   // Pickers, the admin surface and the addons need more than the timeline's
   // people. They load one bounded directory page, and only while open.
@@ -406,16 +399,15 @@ function ChatViewContent({
     adminOpen ||
     mainView === "kanban" ||
     mainView === "notes";
-  const rosterRows = useQuery(
-    api.members.page,
-    rosterOpen ? { numItems: MEMBER_ROSTER_PAGE } : "skip",
-  );
+  // Everyone, page by page: an admin must be able to reach every member.
+  const rosterPages = useMemberPages(rosterOpen, MEMBER_ROSTER_PAGE, true);
+  const rosterRows = rosterPages.rows;
   const roster = useMemo(() => {
     const merged = new Map<string, MemberEntry>();
     for (const entry of directory) {
       merged.set(entry.userId, entry);
     }
-    for (const member of rosterRows?.page ?? []) {
+    for (const member of rosterRows) {
       if (!merged.has(member.userId)) {
         merged.set(member.userId, toEntry(member));
       }
@@ -427,13 +419,13 @@ function ChatViewContent({
   // member panel's page and any open picker's roster.
   const avatarRows = useMemo(() => {
     const merged = new Map<string, { userId: string; avatarUrl?: string | null }>();
-    for (const list of [directoryRows ?? [], panelRoster?.page ?? [], rosterRows?.page ?? []]) {
+    for (const list of [directoryRows ?? [], panelRows, rosterRows]) {
       for (const member of list) {
         merged.set(member.userId, member);
       }
     }
     return [...merged.values()];
-  }, [directoryRows, panelRoster, rosterRows]);
+  }, [directoryRows, panelRows, rosterRows]);
 
   const createCategory = useMutation(api.categories.create);
   const updateCategory = useMutation(api.categories.update);
@@ -879,7 +871,7 @@ function ChatViewContent({
     channel !== undefined ? { channelId: channel.id as never } : "skip",
   );
   const visibleMembers = useMemo(() => {
-    const page = panelRoster?.page ?? [];
+    const page = panelRows;
     const entries = page.map(toEntry);
     if (visibleMemberIds === undefined) {
       return entries;
@@ -888,7 +880,7 @@ function ChatViewContent({
     // visible id list per member.
     const visible = new Set(visibleMemberIds as readonly string[]);
     return entries.filter((member) => visible.has(member.userId));
-  }, [panelRoster, toEntry, visibleMemberIds]);
+  }, [panelRows, toEntry, visibleMemberIds]);
 
   // Presence is fetched only for the people on screen: the open timeline's
   // authors, the member panel/modal's displayed members, the sidebar's DM
@@ -1703,7 +1695,7 @@ function ChatViewContent({
               viewer={admin.viewer}
               ownerId={admin.ownerId}
               roles={admin.roleViews}
-              members={rosterRows?.page ?? EMPTY_MEMBERS}
+              members={rosterRows.length > 0 ? rosterRows : EMPTY_MEMBERS}
               categories={admin.categories}
               channels={channels}
               channelNames={channelNames}
