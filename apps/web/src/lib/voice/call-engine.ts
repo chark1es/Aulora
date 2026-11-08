@@ -473,6 +473,9 @@ export class VoiceEngine {
       return;
     }
     const stats = await this.mesh.collectStats();
+    if (this.callId === null) {
+      return;
+    }
     const qualities: LinkQuality[] = [];
     for (const [peerId, link] of stats) {
       const quality = qualityOf(link);
