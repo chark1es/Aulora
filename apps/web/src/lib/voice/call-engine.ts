@@ -1073,6 +1073,9 @@ export class VoiceEngine {
     const synced = this.micSync.then(() => this.sfu.setMic(this.micSending)).catch(() => undefined);
     this.micSync = synced;
     await synced;
+    // The camera has the same gap: switched on or off while the room connected,
+    // it reached only the mesh, which stops sending video from here on.
+    await this.sfu.setCamera(this.local.video ? this.camera.track : null);
     // The SFU path is proven: silence the mesh in both directions so nothing
     // is heard or uploaded twice. Video follows through `getVideoTrack`.
     this.mesh.setRemoteAudioEnabled(false);
