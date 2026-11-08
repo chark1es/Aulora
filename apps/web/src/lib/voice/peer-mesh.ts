@@ -6,6 +6,7 @@ import {
   type VoiceDeviceSettings,
 } from "@aulora/core";
 import { messageOf } from "./call-errors";
+import { IceSignalBuffer } from "./ice-buffer";
 import { createLevelMeter } from "./media";
 import { type PeerLinkStats, type RtpCounters, type RtpStatsSample, summarizeStats } from "./stats";
 
@@ -37,6 +38,11 @@ export interface PeerMeshHost {
     toUserId: string;
     kind: "offer" | "answer" | "ice" | "renegotiate";
     payload: string;
+    /**
+     * Additional payloads carried by the same signal. Only ICE batches use it;
+     * `payload` repeats the first entry for older backends.
+     */
+    payloads?: readonly string[];
   }): Promise<unknown>;
   ackSignals(signalIds: readonly string[]): Promise<unknown>;
   onError(message: string): void;
@@ -160,12 +166,30 @@ export class PeerMesh {
   private readonly processedSignals = new Set<string>();
   /** Cumulative RTP counters per peer, so loss is measured per interval. */
   private readonly statBaselines = new Map<string, RtpCounters>();
+  private readonly ice: IceSignalBuffer;
 
-  constructor(private readonly host: PeerMeshHost) {}
+  constructor(private readonly host: PeerMeshHost) {
+    this.ice = new IceSignalBuffer((toUserId, payloads) => {
+      const callId = this.host.getCallId();
+      if (callId === null) {
+        return;
+      }
+      void this.host
+        .sendSignal({
+          callId,
+          toUserId,
+          kind: "ice",
+          payload: payloads[0] ?? "{}",
+          ...(payloads.length > 1 ? { payloads } : {}),
+        })
+        .catch(() => undefined);
+    });
+  }
 
   /** Drops every connection and all per-call bookkeeping. */
   reset(): void {
     this.closeAllPeers();
+    this.ice.clear();
     this.remoteSpeaking.clear();
     this.processedSignals.clear();
   }
@@ -322,16 +346,9 @@ export class PeerMesh {
     this.remoteStreams.set(remoteId, peer.stream);
 
     pc.onicecandidate = (event) => {
-      const callId = this.host.getCallId();
-      if (event.candidate !== null && callId !== null) {
-        void this.host
-          .sendSignal({
-            callId,
-            toUserId: remoteId,
-            kind: "ice",
-            payload: JSON.stringify(event.candidate.toJSON()),
-          })
-          .catch(() => undefined);
+      if (event.candidate !== null) {
+        // Pooled for a few tens of milliseconds so one gather costs one signal.
+        this.ice.add(remoteId, JSON.stringify(event.candidate.toJSON()));
       }
     };
     pc.ontrack = (event) => {
@@ -523,6 +540,7 @@ export class PeerMesh {
 
   private closePeer(remoteId: string, peer: Peer): void {
     peer.levelUnsub?.();
+    this.ice.drop(remoteId);
     this.statBaselines.delete(remoteId);
     this.host.onRemoteLevel(remoteId, 0);
     this.remoteSpeaking.delete(remoteId);

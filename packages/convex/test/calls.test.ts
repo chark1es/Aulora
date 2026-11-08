@@ -159,6 +159,70 @@ describe("calls lifecycle", () => {
     expect(after).toHaveLength(0);
   });
 
+  it("relays a pooled ICE batch as one signal", async () => {
+    const t = await seed({ members: [{ userId: "user-1" }, { userId: "user-2" }] });
+    const channelId = await seedChannel(t, { kind: "voice", name: "Lounge" });
+    const { callId } = await t
+      .withIdentity({ subject: "user-1" })
+      .mutation(api.calls.start, { channelId, kind: "voice", clientId: "device-a" });
+    await t
+      .withIdentity({ subject: "user-2" })
+      .mutation(api.calls.join, { callId, clientId: "device-a" });
+
+    const payloads = ["candidate-a", "candidate-b", "candidate-c"];
+    await t.withIdentity({ subject: "user-1" }).mutation(api.calls.signal, {
+      callId,
+      clientId: "device-a",
+      toUserId: "user-2",
+      kind: "ice",
+      payload: "candidate-a",
+      payloads,
+    });
+
+    const rows = await t.withIdentity({ subject: "user-2" }).query(api.calls.signals, { callId });
+    expect(rows).toHaveLength(3);
+    expect(rows.map((row) => row.payload).sort()).toEqual([
+      "candidate-a",
+      "candidate-b",
+      "candidate-c",
+    ]);
+    expect(rows.every((row) => row.kind === "ice")).toBe(true);
+  });
+
+  it("still takes a single payload and rejects an empty or oversized signal", async () => {
+    const t = await seed({ members: [{ userId: "user-1" }, { userId: "user-2" }] });
+    const channelId = await seedChannel(t, { kind: "voice", name: "Lounge" });
+    const { callId } = await t
+      .withIdentity({ subject: "user-1" })
+      .mutation(api.calls.start, { channelId, kind: "voice", clientId: "device-a" });
+    await t
+      .withIdentity({ subject: "user-2" })
+      .mutation(api.calls.join, { callId, clientId: "device-a" });
+    const signal = {
+      callId,
+      clientId: "device-a",
+      toUserId: "user-2",
+      kind: "ice" as const,
+    };
+
+    await t.withIdentity({ subject: "user-1" }).mutation(api.calls.signal, {
+      ...signal,
+      payload: "candidate-a",
+    });
+    await expect(
+      t.withIdentity({ subject: "user-1" }).mutation(api.calls.signal, signal),
+    ).rejects.toThrow(/payload/);
+    await expect(
+      t.withIdentity({ subject: "user-1" }).mutation(api.calls.signal, {
+        ...signal,
+        payloads: Array.from({ length: 33 }, (_, index) => `candidate-${index}`),
+      }),
+    ).rejects.toThrow(/Too many/);
+
+    const rows = await t.withIdentity({ subject: "user-2" }).query(api.calls.signals, { callId });
+    expect(rows).toHaveLength(1);
+  });
+
   it("gates camera and screen sharing by permission", async () => {
     const t = await seed({
       everyonePermissions: Permission.ViewChannel | Permission.Connect,

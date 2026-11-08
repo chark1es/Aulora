@@ -18,6 +18,11 @@ export const SIGNAL_STALE_MS = 60_000;
 export const CALL_RETENTION_MS = 5 * 60_000;
 /** Hard cap on a single signalling payload (SDP with a large candidate list). */
 export const MAX_SIGNAL_BYTES = 65_536;
+/**
+ * Hard cap on how many payloads one signal may carry. The client pools ICE
+ * candidates for ~75 ms and flushes at 16, so this is a safety ceiling.
+ */
+export const MAX_SIGNAL_BATCH = 32;
 
 export type ReadCtx = Parameters<typeof requireChannelAccess>[0];
 
