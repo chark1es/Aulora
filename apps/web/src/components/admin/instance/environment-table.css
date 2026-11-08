@@ -1,0 +1,107 @@
+/*
+ * Environment variable table. Three columns (variable, value, actions) so each
+ * row is two short lines: the label/key and a description. The first line of
+ * every cell shares one 1.75rem band so the pill, the key and the action
+ * buttons sit on a common baseline.
+ */
+.env-table-container {
+  container: env-table / inline-size;
+}
+
+.env-table .env-value-col {
+  width: 9rem;
+}
+
+.env-table .env-actions-col {
+  width: 6.5rem;
+}
+
+.env-lead,
+.env-value-status,
+.env-actions {
+  min-height: 1.75rem;
+}
+
+.env-value-status {
+  display: flex;
+  flex-wrap: wrap;
+  align-content: flex-start;
+  align-items: center;
+  gap: 0 0.5rem;
+}
+
+/* 22px pill + 3px either side = the shared 1.75rem first-line band. */
+.env-pill {
+  margin-block: 0.1875rem;
+}
+
+.env-actions {
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 0.125rem;
+}
+
+/* The redirect URL wraps in full; the copy button never adds row height. */
+.env-redirect {
+  display: flex;
+  align-items: center;
+  gap: 0.25rem;
+  margin-top: 0.125rem;
+}
+
+.env-redirect > code {
+  flex: 0 1 auto;
+}
+
+.env-redirect button {
+  flex-shrink: 0;
+  margin-block: -0.375rem;
+}
+
+/* Use the panel's available width, including when desktop sidebars are open. */
+@container env-table (width < 36rem) {
+  .env-table,
+  .env-table tbody {
+    display: block;
+  }
+
+  /* Keep the column headers available to assistive technology. */
+  .env-table thead {
+    position: absolute;
+    width: 1px;
+    height: 1px;
+    padding: 0;
+    overflow: hidden;
+    clip-path: inset(50%);
+    white-space: nowrap;
+  }
+
+  /* Line one: the variable. Line two: status on the left, action on the right. */
+  .env-table tbody > tr {
+    display: grid;
+    grid-template-columns: minmax(0, 1fr) auto;
+    align-items: center;
+    padding-block: 0.375rem;
+  }
+
+  .env-table td {
+    display: block;
+    min-width: 0;
+    padding-block: 0;
+  }
+
+  .env-table .env-variable-cell,
+  .env-table .env-editor-row > td {
+    grid-column: 1 / -1;
+    width: auto;
+  }
+
+  .env-table .env-value-cell {
+    padding-top: 0.125rem;
+  }
+
+  .env-table .env-actions-cell {
+    padding-top: 0.125rem;
+  }
+}

@@ -13,6 +13,17 @@ describe("Outbox", () => {
     expect(await outbox.pendingCount()).toBe(2);
   });
 
+  it("keeps role mentions on a queued send so they survive an offline retry", async () => {
+    const outbox = new Outbox({ createId: ids("a") });
+    await outbox.enqueue({ channelId: "c1", text: "@ops hi", mentionRoleIds: ["role-ops"] }, 1);
+
+    const [queued] = await outbox.list();
+    expect(queued?.mentionRoleIds).toEqual(["role-ops"]);
+    const send = vi.fn(async () => {});
+    await outbox.flush(send, { now: () => 1 });
+    expect(send).toHaveBeenCalledWith(expect.objectContaining({ mentionRoleIds: ["role-ops"] }));
+  });
+
   it("flushes due items and deletes the ones that succeed", async () => {
     const outbox = new Outbox({ createId: ids("a") });
     await outbox.enqueue({ channelId: "c1", text: "hello" }, 1);

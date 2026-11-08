@@ -55,6 +55,7 @@ export type {
   PeerConnectionState,
   SfuAccess,
   StreamQuality,
+  TurnCredentials,
   VoiceDeviceSettings,
   VoicePort,
   VoiceSubscriptions,

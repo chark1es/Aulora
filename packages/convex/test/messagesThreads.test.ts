@@ -56,7 +56,10 @@ describe("messages.threadInbox", () => {
     expect(rows.map((row) => row.id)).toEqual([root]);
     expect(rows[0]?.viewerMentioned).toBe(true);
     expect(rows[0]?.viewerParticipated).toBe(false);
-    expect(rows[0]?.mentionedUserIds).toEqual(["user-2"]);
+    // Reply-derived fields come from the root's maintained counters, so the
+    // inbox no longer scans reply bodies just to list who they mentioned; the
+    // viewer's own mention is still tracked on their participation row.
+    expect(rows[0]?.mentionedUserIds).toEqual([]);
   });
 
   it("returns a thread where the viewer is only mentioned in the root", async () => {

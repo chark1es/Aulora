@@ -101,6 +101,14 @@ describe("staged workspace updates", () => {
           command === "docker" && args[1] === "up" && args.includes("bot-runner"),
       ),
     ).toBe(true);
+    const setupIndex = f.calls.findIndex(
+      ([command, args]) => command === "docker" && args[1] === "run" && args.includes("setup"),
+    );
+    const webIndex = f.calls.findIndex(
+      ([command, args]) => command === "docker" && args[1] === "up" && args.includes("web"),
+    );
+    expect(setupIndex).toBeGreaterThan(-1);
+    expect(webIndex).toBeGreaterThan(setupIndex);
   });
   it("requires a prepared release and refuses dirty or diverged checkouts", async () => {
     await expect(fixture().updater.restart()).rejects.toThrow("Download the update");

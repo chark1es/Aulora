@@ -23,6 +23,12 @@ export interface QueryErrorBoundaryProps {
   readonly onSignOut: () => void;
   /** Leaves for a different server; offered once automatic retries run out. */
   readonly onSwitchServer?: () => void;
+  /**
+   * Rebuilds the Convex and Better Auth clients. An explicit retry goes
+   * through it because the client holding the failure — a dead websocket or
+   * an auth token the server will not accept — cannot be retried in place.
+   */
+  readonly onReconnect?: () => void;
   readonly children: ReactNode;
 }
 
@@ -38,6 +44,7 @@ export function QueryErrorBoundary({
   client,
   onSignOut,
   onSwitchServer,
+  onReconnect,
   children,
 }: QueryErrorBoundaryProps) {
   const [attempt, setAttempt] = useState(0);
@@ -61,7 +68,12 @@ export function QueryErrorBoundary({
   }, [client, retry]);
 
   return (
-    <QueryBoundary attempt={attempt} onSignOut={onSignOut} onSwitchServer={onSwitchServer}>
+    <QueryBoundary
+      attempt={attempt}
+      onSignOut={onSignOut}
+      onSwitchServer={onSwitchServer}
+      onReconnect={onReconnect}
+    >
       {children}
     </QueryBoundary>
   );
@@ -71,6 +83,7 @@ interface QueryBoundaryProps {
   readonly attempt: number;
   readonly onSignOut: () => void;
   readonly onSwitchServer: (() => void) | undefined;
+  readonly onReconnect: (() => void) | undefined;
   readonly children: ReactNode;
 }
 
@@ -120,6 +133,9 @@ class QueryBoundary extends Component<QueryBoundaryProps, QueryBoundaryState> {
   private readonly retry = (): void => {
     this.failedRetries = 0;
     this.setState({ error: null, exhausted: false });
+    // A fresh client is what actually clears a dead socket or a rejected auth
+    // token; re-mounting the subtree alone retried the client that failed.
+    this.props.onReconnect?.();
   };
 
   override render(): ReactNode {

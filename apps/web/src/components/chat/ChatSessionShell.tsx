@@ -1,5 +1,5 @@
 /* eslint-disable no-unused-vars -- the base rule reports parameter names in type signatures; Biome checks real unused code */
-import type { ChannelSummary, RoleMentionTarget } from "@aulora/core";
+import { type ChannelSummary, type RoleMentionTarget, resolveFeatureFlags } from "@aulora/core";
 import { Spinner, Text } from "@aulora/ui-web";
 import type { ConvexReactClient } from "convex/react";
 import { useQuery } from "convex/react";
@@ -10,12 +10,9 @@ import { useStuckTimeout } from "../../lib/use-stuck-timeout";
 import {
   type CategoryView,
   heldRoleIds,
-  type MemberView,
   memberDisplayName,
   type RoleView,
   resolveViewerPermissions,
-  roleColorFor,
-  roleNamesFor,
   roleRef,
   topPositionForRefs,
 } from "../../lib/workspace-admin";
@@ -27,7 +24,6 @@ import {
 } from "../ConnectionRecoveryActions";
 import type { ChannelUnread } from "./ChannelSidebar";
 import { ChatView } from "./ChatView";
-import { MemberAvatarProvider } from "./member-avatars";
 
 const PAGE = { numItems: 100, cursor: null } as const;
 
@@ -45,10 +41,16 @@ export interface ChatSessionShellProps {
 }
 
 /**
- * Loads the workspace's channels, roles, members and the caller's own
+ * Loads the workspace's channels, roles, the caller's own membership and
  * permissions, then hands them to {@link ChatView}. Channel metadata arrives
  * as plaintext; the server seals it at rest. Admin controls are gated by the
  * resolved bitfield; the server re-checks.
+ *
+ * The full member directory is deliberately not subscribed here: names, role
+ * colors and mention targets are resolved for the ids a view displays
+ * (`members.brief`), the member panel pages (`members.page`) and mention
+ * autocomplete searches (`members.search`). A workspace member list is not a
+ * per-message dependency, so it must not be an always-on subscription.
  */
 export function ChatSessionShell({
   client,
@@ -61,7 +63,6 @@ export function ChatSessionShell({
   const channelResult = useQuery(api.channels.list, { paginationOpts: PAGE });
   const dmResult = useQuery(api.channels.listDms, { paginationOpts: PAGE });
   const rolesResult = useQuery(api.roles.list, {});
-  const membersResult = useQuery(api.members.list, {});
   const categoriesResult = useQuery(api.categories.list, {});
   const meResult = useQuery(api.members.me, {});
   const publicConfig = useQuery(api.server.publicConfig, {});
@@ -76,6 +77,8 @@ export function ChatSessionShell({
       iceServers: (voice?.iceServers ?? []) as readonly RTCIceServer[],
     };
   }, [publicConfig]);
+
+  const voiceFlags = useMemo(() => resolveFeatureFlags(publicConfig?.features), [publicConfig]);
 
   const channels = useMemo<readonly ChannelSummary[]>(() => {
     const list: ChannelSummary[] = [];
@@ -98,6 +101,7 @@ export function ChatSessionShell({
     for (const row of summaryResult ?? []) {
       map.set(row.channelId, {
         unread: row.unread,
+        unreadCount: row.unreadCount,
         mentionCount: row.mentionCount,
         lastActivityAt: row.lastActivityAt,
       });
@@ -106,7 +110,6 @@ export function ChatSessionShell({
   }, [summaryResult]);
 
   const roles = (rolesResult ?? []) as readonly RoleView[];
-  const memberViews = (membersResult ?? []) as readonly MemberView[];
   const categories = (categoriesResult ?? []) as readonly CategoryView[];
 
   // The only message streams opened eagerly: the highlighted (unread/mention)
@@ -133,36 +136,17 @@ export function ChatSessionShell({
   );
   const topPosition = isOwner ? Number.POSITIVE_INFINITY : topPositionForRefs(viewerRoleIds, roles);
 
-  const members = useMemo(
-    () =>
-      memberViews.map((member) => ({
-        userId: member.userId,
-        displayName: memberDisplayName(
-          member,
-          member.userId === user.id ? (user.name ?? user.email ?? "You") : "Member",
-        ),
-        roleIds: member.roleIds,
-        roleNames: roleNamesFor(member, roles),
-        isOwner: member.userId === ownerId,
-        roleColor: roleColorFor(member, roles),
-      })),
-    [memberViews, roles, ownerId, user.id, user.name, user.email],
-  );
-
+  // The server expands `@role` mentions from the role id (see
+  // `messages.send`), so the shell no longer needs every member's roles here.
   const mentionRoles = useMemo<readonly RoleMentionTarget[]>(
     () =>
-      roles.map((role) => {
-        const ref = roleRef(role);
-        return {
-          roleId: ref,
-          name: role.name,
-          mentionable: role.mentionable && !role.isEveryone,
-          memberUserIds: memberViews
-            .filter((member) => member.roleIds.includes(ref))
-            .map((member) => member.userId),
-        };
-      }),
-    [roles, memberViews],
+      roles.map((role) => ({
+        roleId: roleRef(role),
+        name: role.name,
+        mentionable: role.mentionable && !role.isEveryone,
+        memberUserIds: [],
+      })),
+    [roles],
   );
 
   const isLoading = channelResult === undefined || meResult === undefined;
@@ -188,48 +172,46 @@ export function ChatSessionShell({
   }
 
   return (
-    <MemberAvatarProvider members={memberViews}>
-      <ChatProvider
+    <ChatProvider
+      client={client}
+      userId={user.id}
+      displayName={ownName}
+      channels={channels}
+      eagerChannelIds={eagerChannelIds}
+    >
+      <VoiceProvider
         client={client}
         userId={user.id}
-        displayName={ownName}
-        channels={channels}
-        eagerChannelIds={eagerChannelIds}
+        permissions={permissions}
+        policy={voicePolicy}
+        featureFlags={voiceFlags}
       >
-        <VoiceProvider
-          client={client}
-          userId={user.id}
+        <ChatView
+          workspaceName={workspaceName}
+          workspaceIconSeed={workspaceIconSeed}
+          ownUserId={user.id}
+          ownName={ownName}
+          ownAvatarUrl={viewerMember?.avatarUrl ?? null}
+          unreadByChannel={unreadByChannel}
+          onSignOut={onSignOut}
           permissions={permissions}
-          policy={voicePolicy}
-        >
-          <ChatView
-            workspaceName={workspaceName}
-            workspaceIconSeed={workspaceIconSeed}
-            ownUserId={user.id}
-            ownName={ownName}
-            unreadByChannel={unreadByChannel}
-            onSignOut={onSignOut}
-            permissions={permissions}
-            kanbanEnabled={publicConfig?.addons.kanban ?? false}
-            notesEnabled={publicConfig?.addons.notes ?? false}
-            members={members}
-            roles={mentionRoles}
-            admin={{
-              viewer: {
-                userId: user.id,
-                isOwner,
-                roleIds: viewerRoleIds,
-                permissions,
-                topPosition,
-              },
-              ownerId,
-              roleViews: roles,
-              memberViews,
-              categories,
-            }}
-          />
-        </VoiceProvider>
-      </ChatProvider>
-    </MemberAvatarProvider>
+          kanbanEnabled={publicConfig?.addons.kanban ?? false}
+          notesEnabled={publicConfig?.addons.notes ?? false}
+          roles={mentionRoles}
+          admin={{
+            viewer: {
+              userId: user.id,
+              isOwner,
+              roleIds: viewerRoleIds,
+              permissions,
+              topPosition,
+            },
+            ownerId,
+            roleViews: roles,
+            categories,
+          }}
+        />
+      </VoiceProvider>
+    </ChatProvider>
   );
 }

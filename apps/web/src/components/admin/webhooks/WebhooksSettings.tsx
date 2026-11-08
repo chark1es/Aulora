@@ -16,8 +16,8 @@ export interface WebhooksSettingsProps {
   readonly canManageWebhooks: boolean;
   readonly channels: readonly ChannelSummary[];
   readonly channelNames: ReadonlyMap<string, string> | undefined;
-  /** Public origin of the workspace; the URL a webhook posts to is built from it. */
-  readonly origin: string;
+  /** Public origin of the workspace, or `null` while it is unknown. */
+  readonly origin: string | null;
 }
 
 type DialogState = { readonly kind: "create" } | { readonly kind: "edit"; readonly id: string };
@@ -49,6 +49,10 @@ function WebhooksPage(props: Omit<WebhooksSettingsProps, "canManageWebhooks">) {
   const [deleting, setDeleting] = useState<WebhookSummary | null>(null);
 
   function replaceUrl(webhook: WebhookSummary): void {
+    // A rotation is only useful together with the new URL it reveals.
+    if (origin === null) {
+      return;
+    }
     void run(
       () =>
         rotate({ webhookId: webhook.id }).then((result) => {
@@ -70,6 +74,7 @@ function WebhooksPage(props: Omit<WebhooksSettingsProps, "canManageWebhooks">) {
   const addButton = (
     <Button
       leading={<Icon name="plus" size={14} />}
+      disabled={origin === null}
       onClick={() => {
         setDialog({ kind: "create" });
       }}
@@ -126,6 +131,7 @@ function WebhooksPage(props: Omit<WebhooksSettingsProps, "canManageWebhooks">) {
               onRotate={() => {
                 replaceUrl(webhook);
               }}
+              rotateDisabled={origin === null}
               onDelete={() => {
                 setDeleting(webhook);
               }}
@@ -146,10 +152,14 @@ function WebhooksPage(props: Omit<WebhooksSettingsProps, "canManageWebhooks">) {
           }}
           onCreated={(created) => {
             setDialog(null);
-            setSecret({
-              name: created.name,
-              url: webhookUrl(origin, created.webhookId, created.token),
-            });
+            // Creation is disabled while the origin is unknown, so this is
+            // only a guard against showing a URL that names no workspace.
+            if (origin !== null) {
+              setSecret({
+                name: created.name,
+                url: webhookUrl(origin, created.webhookId, created.token),
+              });
+            }
           }}
         />
       )}

@@ -110,6 +110,7 @@ import type * as roles from "../roles.js";
 import type * as server from "../server.js";
 import type * as setup from "../setup.js";
 import type * as setupState from "../setupState.js";
+import type * as turn from "../turn.js";
 import type * as typing from "../typing.js";
 import type * as updates from "../updates.js";
 import type * as webhookHttp from "../webhookHttp.js";
@@ -228,6 +229,7 @@ declare const fullApi: ApiFromModules<{
   server: typeof server;
   setup: typeof setup;
   setupState: typeof setupState;
+  turn: typeof turn;
   typing: typeof typing;
   updates: typeof updates;
   webhookHttp: typeof webhookHttp;

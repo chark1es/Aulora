@@ -54,6 +54,11 @@ export interface VoiceTrack {
   enabled: boolean;
   readonly id?: string;
   stop(): void;
+  /**
+   * Native teardown. `stop()` only disables the track in JS; on Android this is
+   * what ends the screen capture and its mediaProjection foreground service.
+   */
+  release?(): void;
   getSettings?(): { readonly deviceId?: string };
   addEventListener?(type: string, listener: () => void): void;
   /** Native gain control where the platform exposes it. */
@@ -339,6 +344,12 @@ export async function acquireDisplay(settings: VoiceDeviceSettings): Promise<Voi
   }
   applyContentHint(track, settings.screenCodec);
   return track;
+}
+
+/** Stops a track and, where the platform has one, releases its native capturer. */
+export function endTrack(track: VoiceTrack | null): void {
+  track?.stop();
+  track?.release?.();
 }
 
 function applyContentHint(track: VoiceTrack, codec: VoiceDeviceSettings["screenCodec"]): void {

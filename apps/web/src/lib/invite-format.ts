@@ -1,4 +1,10 @@
-import { type InviteKind, isValidEmail } from "@aulora/core";
+import {
+  CUSTOM_INVITE_CODE_MAX_LENGTH,
+  CUSTOM_INVITE_CODE_MIN_LENGTH,
+  type InviteKind,
+  isValidEmail,
+  validateCustomInviteCode,
+} from "@aulora/core";
 
 export type InviteStatus = "active" | "revoked" | "expired" | "exhausted";
 
@@ -137,6 +143,17 @@ export function allowlistKindLabel(kind: "email" | "domain"): string {
   return kind === "domain" ? "Domain" : "Address";
 }
 
+/** Whether a code invite gets a random code or one the admin chooses. */
+export type CodeMode = "generated" | "custom";
+
+export const CODE_MODE_OPTIONS: readonly { value: CodeMode; label: string }[] = [
+  { value: "generated", label: "Generate for me" },
+  { value: "custom", label: "Choose my own" },
+];
+
+/** The rule shown under the custom-code field. */
+export const CUSTOM_CODE_RULE = `Use ${CUSTOM_INVITE_CODE_MIN_LENGTH}–${CUSTOM_INVITE_CODE_MAX_LENGTH} letters, digits, dashes or underscores.`;
+
 export interface InviteDraft {
   readonly kind: InviteKind;
   readonly email: string;
@@ -145,6 +162,8 @@ export interface InviteDraft {
   readonly uses: UsesMode;
   readonly count: string;
   readonly note: string;
+  readonly codeMode: CodeMode;
+  readonly customCode: string;
 }
 
 export const INITIAL_DRAFT: InviteDraft = {
@@ -155,6 +174,8 @@ export const INITIAL_DRAFT: InviteDraft = {
   uses: "unlimited",
   count: "5",
   note: "",
+  codeMode: "generated",
+  customCode: "",
 };
 
 /** The use limit a method starts with: an emailed or typed code is for one person. */
@@ -169,6 +190,7 @@ export interface CreateInviteArgs {
   readonly maxUses?: number;
   readonly email?: string;
   readonly note?: string;
+  readonly customCode?: string;
 }
 
 export type DraftResult =
@@ -193,6 +215,14 @@ export function buildCreateArgs(draft: InviteDraft, now: number): DraftResult {
     return uses;
   }
   const note = draft.note.trim();
+  let customCode: string | undefined;
+  if (draft.kind === "code" && draft.codeMode === "custom") {
+    const validated = validateCustomInviteCode(draft.customCode);
+    if (!validated.ok) {
+      return { ok: false, error: validated.message };
+    }
+    customCode = validated.code;
+  }
   return {
     ok: true,
     args: {
@@ -201,6 +231,7 @@ export function buildCreateArgs(draft: InviteDraft, now: number): DraftResult {
       ...(draft.kind !== "email" ? { maxUses: uses.maxUses } : {}),
       ...(email.length > 0 ? { email } : {}),
       ...(note.length > 0 ? { note } : {}),
+      ...(customCode !== undefined ? { customCode } : {}),
     },
   };
 }

@@ -1,14 +1,15 @@
-import type {
-  WellKnownAuth,
-  WellKnownOAuthProvider,
-  WellKnownOidcProvider,
-  WellKnownProvider,
+import {
+  parseSemver,
+  type WellKnownAuth,
+  type WellKnownOAuthProvider,
+  type WellKnownOidcProvider,
+  type WellKnownProvider,
 } from "@aulora/core";
 import { getEkmSettings } from "./ekm";
 import { type GroupRoleMap, parseGroupRoleMap } from "./oidc";
 
 /** Version advertised through `server:publicConfig` and the well-known doc. */
-export const AULORA_VERSION = "1.3.0";
+export const AULORA_VERSION = "1.4.0";
 
 /** Shape version of the public config / well-known document. */
 export const API_VERSION = 1;
@@ -341,4 +342,71 @@ export function getEncryptionSettings(env: Env): EncryptionSettings {
     provider: ekm.provider,
     keyVersion: ekm.keyVersion,
   };
+}
+
+/**
+ * Client compatibility policy advertised through `server.publicConfig`.
+ * Both settings are optional; absent (or an invalid version) means no minimum
+ * and no recommendation, so existing deployments keep their behaviour. The
+ * client compares these against its own injected version.
+ */
+export interface ClientVersionPolicy {
+  readonly minClientVersion: string | null;
+  readonly recommendedClientVersion: string | null;
+}
+
+function versionSetting(env: Env, name: string): string | null {
+  const value = read(env, name);
+  return value !== undefined && parseSemver(value) !== null ? value : null;
+}
+
+export function getClientVersionPolicy(env: Env): ClientVersionPolicy {
+  return {
+    minClientVersion: versionSetting(env, "AULORA_MIN_CLIENT_VERSION"),
+    recommendedClientVersion: versionSetting(env, "AULORA_RECOMMENDED_CLIENT_VERSION"),
+  };
+}
+
+/** Default lifetime of a minted TURN credential, in seconds. */
+export const TURN_DEFAULT_TTL_SECONDS = 3_600;
+/** Lower bound that keeps a credential usable long enough to gather a candidate. */
+export const TURN_MIN_TTL_SECONDS = 60;
+/** Upper bound; coturn itself caps `static-auth-secret` lifetimes at 24h. */
+export const TURN_MAX_TTL_SECONDS = 86_400;
+
+export interface TurnSettings {
+  /** `turn:`/`turns:` URLs clients try, in order. */
+  readonly urls: readonly string[];
+  /** Coturn `static-auth-secret`, used only to sign time-limited usernames. */
+  readonly secret: string;
+  readonly ttlSeconds: number;
+}
+
+const TURN_URL_PATTERN = /^turns?:\S+$/i;
+
+/**
+ * Reads the deployment's TURN relay settings. Returns `null` unless the URLs and
+ * a non-trivial shared secret are configured, so a workspace without a TURN
+ * server keeps the client's public-STUN default. An unusable `TURN_TTL_SECONDS`
+ * falls back to the default rather than disabling the relay.
+ */
+export function getTurnSettings(env: Env): TurnSettings | null {
+  const rawUrls = read(env, "TURN_URLS");
+  const secret = read(env, "TURN_SECRET");
+  // A short shared secret is a weak HMAC key; refuse it rather than mint
+  // credentials anyone could forge.
+  if (rawUrls === undefined || secret === undefined || secret.length < 16) {
+    return null;
+  }
+  const urls = rawUrls.split(/[\s,]+/).filter((url) => url.length > 0);
+  if (urls.length === 0 || urls.some((url) => !TURN_URL_PATTERN.test(url))) {
+    return null;
+  }
+  const rawTtl = read(env, "TURN_TTL_SECONDS");
+  const parsed = rawTtl === undefined ? Number.NaN : Number(rawTtl);
+  const ttlSeconds =
+    Number.isInteger(parsed) && parsed >= TURN_MIN_TTL_SECONDS && parsed <= TURN_MAX_TTL_SECONDS
+      ? parsed
+      : TURN_DEFAULT_TTL_SECONDS;
+  return { urls, secret, ttlSeconds };
 }

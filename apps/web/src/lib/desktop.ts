@@ -17,12 +17,37 @@ type TauriInvoke = (command: string, args?: Record<string, unknown>) => Promise<
 
 interface TauriEventApi {
   listen(event: string, handler: (event: { payload: unknown }) => void): Promise<() => void>;
+  /** Present with `withGlobalTauri`; used to reach another window by label. */
+  emitTo?(target: string, event: string, payload?: unknown): Promise<void>;
+}
+
+/**
+ * A shell IPC channel: the streaming half of a command. Its `onmessage` receives
+ * JSON values and raw byte payloads (an `ArrayBuffer` for `Raw` responses).
+ */
+export interface DesktopChannel {
+  onmessage: ((message: unknown) => void) | null;
+  onerror?: ((error: unknown) => void) | null;
+}
+
+interface TauriChannelConstructor {
+  new (): DesktopChannel;
+}
+
+/** The core `Window` object from `withGlobalTauri`; only what is needed here. */
+interface TauriWindowHandle {
+  startResizeDragging?(direction: string): Promise<void>;
+}
+
+interface TauriWindowApi {
+  getCurrentWindow?(): TauriWindowHandle;
 }
 
 interface TauriGlobal {
-  core?: { invoke?: TauriInvoke };
+  core?: { invoke?: TauriInvoke; Channel?: TauriChannelConstructor };
   invoke?: TauriInvoke;
   event?: TauriEventApi;
+  window?: TauriWindowApi;
 }
 
 function tauri(): TauriGlobal | undefined {
@@ -38,13 +63,47 @@ export function isDesktop(): boolean {
   return tauri() !== undefined;
 }
 
-async function invokeCommand(command: string, args?: Record<string, unknown>): Promise<unknown> {
+/**
+ * Creates a channel a command can stream into (used for PCM audio). Returns
+ * `null` outside the shell, so callers can degrade instead of throwing.
+ */
+export function createDesktopChannel(): DesktopChannel | null {
+  const Channel = tauri()?.core?.Channel;
+  if (typeof Channel !== "function") {
+    return null;
+  }
+  return new Channel();
+}
+
+/**
+ * Runs one shell command. Most capabilities below are wrapped in a typed helper;
+ * this is exported for the few (capture) that own their parsing elsewhere.
+ */
+export async function invokeDesktopCommand(
+  command: string,
+  args?: Record<string, unknown>,
+): Promise<unknown> {
   const global = tauri();
   const invoke = global?.core?.invoke ?? global?.invoke;
   if (typeof invoke !== "function") {
     throw new Error("Aulora desktop bridge: the Tauri invoke bridge is unavailable.");
   }
   return invoke(command, args);
+}
+
+/**
+ * Runs one shell command whose payload is raw bytes (a `tauri::ipc::Request`
+ * with an `InvokeBody::Raw` body). Used for video frames, which must not be
+ * base64-encoded or JSON-encoded on the way to the shell.
+ */
+export async function invokeDesktopRaw(command: string, bytes: Uint8Array): Promise<unknown> {
+  const global = tauri();
+  const invoke = global?.core?.invoke ?? global?.invoke;
+  if (typeof invoke !== "function") {
+    throw new Error("Aulora desktop bridge: the Tauri invoke bridge is unavailable.");
+  }
+  // The bridge treats an ArrayBuffer view as an octet-stream body.
+  return invoke(command, bytes as unknown as Record<string, unknown>);
 }
 
 /**
@@ -103,7 +162,7 @@ export async function takeDesktopDeepLinks(): Promise<string[]> {
     return [];
   }
   try {
-    const value = await invokeCommand("take_deep_links");
+    const value = await invokeDesktopCommand("take_deep_links");
     return Array.isArray(value)
       ? value.filter((entry): entry is string => typeof entry === "string")
       : [];
@@ -118,7 +177,7 @@ export async function setDesktopUnreadBadge(count: number): Promise<void> {
     return;
   }
   try {
-    await invokeCommand("set_unread_badge", { count });
+    await invokeDesktopCommand("set_unread_badge", { count });
   } catch {
     // The badge is decoration; a missing platform API must never break chat.
   }
@@ -133,7 +192,7 @@ export async function setDesktopAlwaysOnTop(on: boolean): Promise<void> {
     return;
   }
   try {
-    await invokeCommand("set_always_on_top", { on });
+    await invokeDesktopCommand("set_always_on_top", { on });
   } catch {
     // Always-on-top is a nicety; a missing platform API must never break calls.
   }
@@ -148,50 +207,158 @@ export async function toggleDesktopFullscreen(): Promise<void> {
     return;
   }
   try {
-    await invokeCommand("toggle_fullscreen");
+    await invokeDesktopCommand("toggle_fullscreen");
   } catch {
     // Fullscreen is a convenience; a refused toggle must never break the app.
   }
 }
 
+/** A corner or edge of the call window a resize handle starts dragging. */
+export type PipResizeDirection =
+  | "North"
+  | "South"
+  | "East"
+  | "West"
+  | "NorthEast"
+  | "NorthWest"
+  | "SouthEast"
+  | "SouthWest";
+
 /**
- * Shrinks the app window into a small always-ready picture-in-picture window
- * for a call. Resolves `true` when the shell did it, `false` outside the shell
- * or if the request failed, so callers can fall back to something else.
+ * How the shell can float a call on this desktop. Wayland compositors do not
+ * let an app keep an always-on-top, undecorated window reliably, so the shell
+ * reports `"dock"` there and the in-app call dock stays the floating surface.
  */
-export async function enterDesktopMiniWindow(width: number, height: number): Promise<boolean> {
+export type DesktopPipMode = "window" | "dock";
+
+/** Asks the shell which floating surface it can offer; `"window"` off desktop. */
+export async function desktopPipMode(): Promise<DesktopPipMode> {
+  if (!isDesktop()) {
+    return "window";
+  }
+  try {
+    return (await invokeDesktopCommand("pip_window_mode")) === "dock" ? "dock" : "window";
+  } catch {
+    return "window";
+  }
+}
+
+/**
+ * Opens the shell's separate call window: a small, always-on-top window the user
+ * can drag anywhere on any screen. The main window keeps the call and stays as
+ * it is. Resolves `true` when a real window is open, `false` outside the shell,
+ * on a compositor that cannot float one, or if the request failed, so callers
+ * keep the in-app dock instead.
+ */
+export async function openDesktopPipWindow(width: number, height: number): Promise<boolean> {
   if (!isDesktop()) {
     return false;
   }
   try {
-    await invokeCommand("enter_mini_window", { width, height });
-    return true;
+    return (await invokeDesktopCommand("open_pip_window", { width, height })) !== "dock";
   } catch {
     return false;
   }
 }
 
-/** Restores the app window after picture-in-picture; a no-op when it is not one. */
-export async function exitDesktopMiniWindow(): Promise<void> {
+/** Snaps the call window to the nearest corner or edge of its screen. */
+export async function snapDesktopPipWindow(): Promise<void> {
   if (!isDesktop()) {
     return;
   }
   try {
-    await invokeCommand("exit_mini_window");
+    await invokeDesktopCommand("snap_pip_window");
   } catch {
-    // The window stays small; the user can resize it.
+    // Snapping is cosmetic; the window keeps where the user left it.
   }
 }
 
-/** Whether the shell's window is currently a picture-in-picture window. */
-export async function isDesktopMiniWindow(): Promise<boolean> {
+/** Resizes the call window from the web client, clamped by the shell. */
+export async function setDesktopPipSize(width: number, height: number): Promise<void> {
+  if (!isDesktop()) {
+    return;
+  }
+  try {
+    await invokeDesktopCommand("set_pip_size", { width, height });
+  } catch {
+    // A refused resize leaves the window as it was.
+  }
+}
+
+/**
+ * Starts an undecorated window resize from one of the call window's own edge
+ * handles. Undecorated windows have no native border to grab on Windows and
+ * Linux, so the webview has to ask the window manager to take over the drag.
+ */
+export async function startDesktopResize(direction: PipResizeDirection): Promise<void> {
+  const current = tauri()?.window?.getCurrentWindow?.();
+  if (current?.startResizeDragging === undefined) {
+    return;
+  }
+  try {
+    await current.startResizeDragging(direction);
+  } catch {
+    // Without the permission or on an unsupported platform, resizing stays off.
+  }
+}
+
+/**
+ * Closes the call window. The call keeps running in the main window; a no-op
+ * when the window is not open.
+ */
+export async function closeDesktopPipWindow(): Promise<void> {
+  if (!isDesktop()) {
+    return;
+  }
+  try {
+    await invokeDesktopCommand("close_pip_window");
+  } catch {
+    // The window is decoration; a refused close must never break the call.
+  }
+}
+
+/** Whether the shell's separate call window is open. */
+export async function isDesktopPipWindowOpen(): Promise<boolean> {
   if (!isDesktop()) {
     return false;
   }
   try {
-    return (await invokeCommand("is_mini_window")) === true;
+    return (await invokeDesktopCommand("is_pip_window_open")) === true;
   } catch {
     return false;
+  }
+}
+
+/** Brings the main window back to the front, e.g. from the call window. */
+export async function focusDesktopMainWindow(): Promise<void> {
+  if (!isDesktop()) {
+    return;
+  }
+  try {
+    await invokeDesktopCommand("focus_main_window");
+  } catch {
+    // Focus is a convenience; the window can be clicked instead.
+  }
+}
+
+/**
+ * Sends one event to another window of the shell, addressed by label. This is
+ * how the main webview and the call window keep each other in step. Best-effort:
+ * a missing event bridge must never break a call.
+ */
+export async function emitDesktopEventTo(
+  target: string,
+  event: string,
+  payload: unknown,
+): Promise<void> {
+  const api = tauri()?.event;
+  if (api === undefined || typeof api.emitTo !== "function") {
+    return;
+  }
+  try {
+    await api.emitTo(target, event, payload);
+  } catch {
+    // The other window may be gone; the state is resent on the next change.
   }
 }
 
@@ -229,7 +396,7 @@ export async function checkDesktopUpdate(): Promise<DesktopUpdateStatus | null> 
     return null;
   }
   try {
-    const value = await invokeCommand("check_for_app_update");
+    const value = await invokeDesktopCommand("check_for_app_update");
     if (!isUpdateStatus(value)) {
       return null;
     }
@@ -255,19 +422,19 @@ export async function checkDesktopUpdate(): Promise<DesktopUpdateStatus | null> 
 
 /** Reads the installed version without needing a successful network check. */
 export async function desktopVersion(): Promise<string> {
-  const value = await invokeCommand("app_version");
+  const value = await invokeDesktopCommand("app_version");
   if (typeof value !== "string") throw new Error("Desktop version is unavailable.");
   return value;
 }
 
 /** Downloads and verifies the update without interrupting the app. */
 export async function downloadDesktopUpdate(): Promise<void> {
-  await invokeCommand("download_app_update");
+  await invokeDesktopCommand("download_app_update");
 }
 
 /** Installs the verified download and restarts the shell. */
 export async function installDesktopUpdate(): Promise<void> {
-  await invokeCommand("install_app_update");
+  await invokeDesktopCommand("install_app_update");
 }
 
 /** Shows a native notification with device-computed text; best-effort. */
@@ -276,7 +443,7 @@ export async function showDesktopNotification(title: string, body: string): Prom
     return;
   }
   try {
-    await invokeCommand("show_notification", { title, body });
+    await invokeDesktopCommand("show_notification", { title, body });
   } catch {
     // Notifications are best-effort and never block the message pipeline.
   }
@@ -290,7 +457,7 @@ export async function showDesktopNotification(title: string, body: string): Prom
  */
 export function openExternal(url: string): void {
   if (isDesktop()) {
-    void invokeCommand("open_external", { url }).catch(() => {
+    void invokeDesktopCommand("open_external", { url }).catch(() => {
       // The browser may still let the person copy the link instead.
     });
     return;

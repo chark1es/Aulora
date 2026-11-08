@@ -12,6 +12,7 @@ import { type FocusEvent, type FormEvent, useState } from "react";
 import { api } from "../../../../packages/convex/convex/_generated/api";
 import type { AuthActions } from "../lib/auth-client";
 import { describeAuthError, takeAuthErrorFromUrl } from "../lib/auth-errors";
+import { authCallbackUrl } from "../lib/public-origin";
 import {
   AuthButton,
   AuthDivider,
@@ -39,10 +40,6 @@ function hostOf(baseUrl: string): string {
   } catch {
     return baseUrl;
   }
-}
-
-function callbackUrl(): string {
-  return typeof window === "undefined" ? "http://localhost" : window.location.origin;
 }
 
 interface AuthFailure {
@@ -115,8 +112,8 @@ function useSignInForm(actions: AuthActions) {
     return () => {
       void run(providerId, () =>
         type === "oauth"
-          ? actions.signInSocial({ provider: providerId, callbackURL: callbackUrl() })
-          : actions.signInOAuth2({ providerId, callbackURL: callbackUrl() }),
+          ? actions.signInSocial({ provider: providerId, callbackURL: authCallbackUrl() })
+          : actions.signInOAuth2({ providerId, callbackURL: authCallbackUrl() }),
       );
     };
   }
@@ -379,7 +376,7 @@ function subtitleFor(methods: SignInMethods, signUp: boolean, description: strin
 }
 
 /**
- * Sign-in driven entirely by the server's well-known `auth` block: the local
+ * Sign-in driven entirely by the server's live `auth` block (the same shape as well-known): the local
  * email/password form appears only when `auth.local.enabled`, a sign-up toggle
  * only when `auth.local.signup`, and exactly one button per `auth.providers`
  * entry. No provider is hardcoded here. When local sign-in is off, only the SSO
@@ -390,8 +387,12 @@ function subtitleFor(methods: SignInMethods, signUp: boolean, description: strin
  * directly on the page beside it, with no card.
  */
 export function SignInScreen({ profile, actions, onSwitchServer }: SignInScreenProps) {
-  const methods = resolveSignInMethods(profile.auth);
   const config = useQuery(api.server.publicConfig, {});
+  // The stored profile's `auth` is a snapshot from when the workspace was added,
+  // so a provider enabled later would never get a button. The live public config
+  // is authoritative once it loads; the snapshot only covers the first paint.
+  const auth = config?.auth ?? profile.auth;
+  const methods = resolveSignInMethods(auth);
   const { state, patch, submit, provider } = useSignInForm(actions);
   const [watch, setWatch] = useState<Watch>("pointer");
   const signUp = state.mode === "sign-up";
@@ -420,7 +421,7 @@ export function SignInScreen({ profile, actions, onSwitchServer }: SignInScreenP
       />
       <SignInPanel
         methods={methods}
-        providers={profile.auth.providers}
+        providers={auth.providers}
         state={state}
         pending={state.pending}
         signup={methods.showSignUp}

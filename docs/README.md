@@ -6,6 +6,8 @@ Current contributor and maintainer guides:
 
 - [Project audit, mobile parity, and remaining work](project-status.md)
 - [Development setup](development.md)
+- [Convex performance and upgrades](convex/README.md)
+- [Performance and regression guards](performance.md)
 - [Release checklist](releasing.md)
 - [Release notes draft](release-notes-v1.md)
 - [Android and TestFlight testing](mobile-testing.md)

@@ -262,6 +262,8 @@ export interface ChatPort {
     mentionUserIds?: readonly string[];
     mentionChannelIds?: readonly string[];
     mentionCategoryIds?: readonly string[];
+    /** Mentioned roles; servers that support it expand these server-side. */
+    mentionRoleIds?: readonly string[];
     attachmentIds?: readonly string[];
   }): Promise<string>;
   editMessage(args: { messageId: string; body: string }): Promise<null>;

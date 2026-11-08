@@ -3,6 +3,7 @@ import { existsSync, readdirSync, readFileSync } from "node:fs";
 import { dirname, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 import { validateVersion } from "../apps/desktop/scripts/release-version.mjs";
+import { checkSchemaCompat } from "./ci/check-schema-compat.mjs";
 
 const root = resolve(dirname(fileURLToPath(import.meta.url)), "..");
 
@@ -140,6 +141,18 @@ check(
   "Docker context must exclude private credentials",
   readFileSync(resolve(root, ".dockerignore"), "utf8").includes("**/.secrets"),
 );
+try {
+  for (const violation of checkSchemaCompat({ rootDir: root })) {
+    check(`Schema compatibility: ${violation}`, false);
+  }
+} catch (cause) {
+  check(
+    `Schema compatibility snapshot cannot be checked: ${
+      cause instanceof Error ? cause.message : String(cause)
+    }`,
+    false,
+  );
+}
 if (existsSync(resolve(root, ".git"))) {
   const tracked = execFileSync("git", ["ls-files", "-z"], { cwd: root, encoding: "utf8" }).split(
     "\0",

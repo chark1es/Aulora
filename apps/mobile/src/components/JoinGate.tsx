@@ -1,7 +1,7 @@
 import { NativeBlobatar } from "@aulora/avatars/native";
 import {
+  isInviteInputReady,
   joinCodeFailureMessage,
-  normalizeInviteCode,
   type RedeemOutcome,
   redeemOutcomeMessage,
 } from "@aulora/core";
@@ -165,7 +165,7 @@ function CodeEntry() {
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const value = typed ?? pendingFromLink ?? "";
-  const ready = normalizeInviteCode(value).length >= 8;
+  const ready = isInviteInputReady(value);
   const errorProps = error !== null ? { error } : {};
 
   const submit = async () => {

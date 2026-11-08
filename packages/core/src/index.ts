@@ -19,18 +19,36 @@ export { blurhashDecode, blurhashEncode } from "./blurhash";
 export * from "./bots";
 export * from "./chat/index";
 export {
+  type ClientVersionPolicy,
+  type ClientVersionState,
+  clientVersionState,
+  compareClientVersions,
+} from "./client-version";
+export {
   classifyError,
   type ErrorDisposition,
   isAuthenticationError,
 } from "./errors/index";
 export {
+  DEFAULT_FEATURE_FLAGS,
+  FEATURE_FLAG_NAMES,
+  type FeatureFlagName,
+  type FeatureFlags,
+  resolveFeatureFlags,
+} from "./feature-flags";
+export {
   allowlistAdmits,
+  CUSTOM_INVITE_CODE_MAX_LENGTH,
+  CUSTOM_INVITE_CODE_MIN_LENGTH,
+  type CustomInviteCodeProblem,
+  type CustomInviteCodeResult,
   formatAccessCode,
   INVITE_CODE_ALPHABET,
   INVITE_CODE_LENGTH,
   INVITE_KINDS,
   type InviteKind,
   isAccessCodeShape,
+  isInviteInputReady,
   isValidEmail,
   joinCodeFailureMessage,
   maskEmail,
@@ -39,6 +57,7 @@ export {
   parseAllowlistEntry,
   type RedeemOutcome,
   redeemOutcomeMessage,
+  validateCustomInviteCode,
 } from "./invites";
 export * from "./kanban.js";
 export {

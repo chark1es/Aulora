@@ -12,8 +12,9 @@ export const DOCK_HEIGHT = 232;
 
 /**
  * The small call window: who is in the call, the controls, and a few buttons.
- * Used for the in-page dock and for both kinds of picture-in-picture (the
- * browser's floating window and the desktop app's shrunken window).
+ * Used for the in-page dock and for the browser's own floating window. The
+ * desktop shell's call window is a separate webview with its own view, so it is
+ * not drawn by this component.
  */
 export function CallCompactView({
   title,
@@ -59,6 +60,7 @@ export function CallCompactView({
           identity={identity}
           speakingIds={voice.remoteSpeaking}
           localSpeaking={voice.localSpeaking}
+          attachVideo={voice.attachRemoteVideo}
           className="h-full"
         />
       </div>
@@ -108,16 +110,10 @@ function CompactButtons({
   const voice = useVoice();
   const { pip } = voice;
   // The browser's own floating window is already above everything, so only the
-  // in-page dock and the desktop window have anything to pin.
-  const canPin = !floating || pip.mode === "window";
-  const pinLabel =
-    pip.mode === "window"
-      ? voice.pipPinned
-        ? "Stop keeping on top"
-        : "Keep on top of other windows"
-      : voice.pipPinned
-        ? "Unpin from top"
-        : "Pin to top";
+  // in-page dock has anything to pin. The desktop shell's call window is always
+  // on top by construction and lives in its own webview.
+  const canPin = !floating;
+  const pinLabel = voice.pipPinned ? "Unpin from top" : "Pin to top";
   return (
     <>
       {canPin && (

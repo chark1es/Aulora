@@ -3,6 +3,8 @@ import {
   type CallKind,
   type CallView,
   claimCallSeat,
+  DEFAULT_FEATURE_FLAGS,
+  type FeatureFlags,
   hasPermission,
   mergeVoiceSettings,
   Permission,
@@ -28,8 +30,10 @@ import {
   writeVoiceSettings,
 } from "../lib/voice/device-settings";
 import { sendLeaveBeacon } from "../lib/voice/leave-beacon";
-import { listMediaDevices, onDeviceChange } from "../lib/voice/media";
+import { VoiceLevelsStore } from "../lib/voice/levels";
+import { listMediaDevices, onDeviceChange, resumeLevelMeterContext } from "../lib/voice/media";
 import { type PipControl, type PipSurface, useCallPip } from "./use-call-pip";
+import { VoiceLevelsProvider } from "./voice-levels";
 import { loadBrowserVoiceClientId, withScreenAudio } from "./voice-provider-utils";
 import { RemoteAudio } from "./voice-remote-audio";
 
@@ -88,6 +92,10 @@ export interface VoiceContextValue extends VoiceSnapshot {
   updateSettings(_partial: Partial<VoiceDeviceSettings>): Promise<void>;
   refreshDevices(): Promise<void>;
   clearError(): void;
+  /** Hides an automatic quality-reduction notice, keeping the reduction. */
+  dismissQualityNotice(): void;
+  /** Restores the camera and stops automatic degradation for this call. */
+  undoQualityChange(): void;
 }
 
 const VoiceContext = createContext<VoiceContextValue | null>(null);
@@ -101,11 +109,12 @@ const EMPTY_SNAPSHOT: VoiceSnapshot = {
   remoteStreams: new Map(),
   remoteScreens: new Map(),
   remoteSpeaking: new Set(),
-  micLevel: 0,
+  attachRemoteVideo: () => false,
   localSpeaking: false,
   pending: false,
   error: null,
   mediaError: null,
+  qualityNotice: null,
 };
 
 export interface VoiceProviderProps {
@@ -113,6 +122,8 @@ export interface VoiceProviderProps {
   readonly userId: string;
   readonly permissions: bigint;
   readonly policy: VoicePolicy;
+  /** The operator's kill switches; absent means every feature is on. */
+  readonly featureFlags?: FeatureFlags;
   readonly children: ReactNode;
 }
 
@@ -126,10 +137,12 @@ export function VoiceProvider({
   userId,
   permissions,
   policy,
+  featureFlags = DEFAULT_FEATURE_FLAGS,
   children,
 }: VoiceProviderProps) {
   const [clientId] = useState(loadBrowserVoiceClientId);
   const engineRef = useRef<VoiceEngine | null>(null);
+  const [levels] = useState(() => new VoiceLevelsStore());
   const [snapshot, setSnapshot] = useState<VoiceSnapshot>(EMPTY_SNAPSHOT);
   const [incoming, setIncoming] = useState<readonly CallView[]>([]);
   const [activeCalls, setActiveCalls] = useState<readonly CallView[]>([]);
@@ -149,6 +162,10 @@ export function VoiceProvider({
   const authTokenRef = useRef<string | null>(null);
   const activeCallsRef = useRef(activeCalls);
   activeCallsRef.current = activeCalls;
+  // The operator's kill switches. The engine reads them on each decision; the
+  // effect below tells it when they change so a call in progress follows.
+  const featureFlagsRef = useRef(featureFlags);
+  featureFlagsRef.current = featureFlags;
 
   // Engine lifetime is tied to the signed-in client + identity.
   useEffect(() => {
@@ -159,6 +176,8 @@ export function VoiceProvider({
       clientId,
       getSettings: () => settingsRef.current,
       getIceServers: () => iceServersRef.current,
+      getFeatureFlags: () => featureFlagsRef.current,
+      levels,
     });
     engineRef.current = engine;
     setSnapshot(engine.getSnapshot());
@@ -189,7 +208,13 @@ export function VoiceProvider({
       engine.dispose();
       engineRef.current = null;
     };
-  }, [client, clientId, userId]);
+  }, [client, clientId, levels, userId]);
+
+  const transportOff = featureFlags.disableNewCallTransport;
+  // biome-ignore lint/correctness/useExhaustiveDependencies: the flag is only a trigger; the engine reads the current value itself
+  useEffect(() => {
+    engineRef.current?.refreshFeatureFlags();
+  }, [transportOff]);
 
   // Load local device settings, enumerate devices and follow device changes.
   useEffect(() => {
@@ -200,6 +225,20 @@ export function VoiceProvider({
     return onDeviceChange(() => {
       void listMediaDevices().then(setDevices);
     });
+  }, []);
+
+  // Browsers keep an AudioContext suspended until a gesture. The level meters
+  // share one context, so a pointer or key press anywhere resumes all of them.
+  useEffect(() => {
+    const resume = () => {
+      resumeLevelMeterContext();
+    };
+    window.addEventListener("pointerdown", resume, { passive: true });
+    window.addEventListener("keydown", resume);
+    return () => {
+      window.removeEventListener("pointerdown", resume);
+      window.removeEventListener("keydown", resume);
+    };
   }, []);
 
   // Push-to-talk: hold Space to transmit. Ignored while typing in a field.
@@ -436,31 +475,50 @@ export function VoiceProvider({
     engineRef.current?.clearError();
   }, []);
 
+  const dismissQualityNotice = useCallback(() => {
+    engineRef.current?.dismissQualityNotice();
+  }, []);
+
+  const undoQualityChange = useCallback(() => {
+    engineRef.current?.undoQualityChange();
+  }, []);
+
+  const canConnect = policy.enabled && hasPermission(permissions, Permission.Connect);
+  const canSpeak = hasPermission(permissions, Permission.Speak);
+  const canStream = policy.screenShareEnabled && hasPermission(permissions, Permission.Stream);
+  const canVideo = policy.videoEnabled && hasPermission(permissions, Permission.UseVideo);
+
   const { pip, surface: pipSurface } = useCallPip({
     callActive,
     snapshot,
     selfUserId: userId,
+    canSpeak,
+    canVideo,
+    canStream,
+    videoDisabled: featureFlags.disablePipVideo,
     pinned: pipPinned,
-    setPinned: setPipPinned,
     controls: {
       toggleMicrophone: () => {
         const engine = engineRef.current;
         void engine?.setMuted(!engine.getSnapshot().local.muted);
       },
+      toggleDeafen: () => {
+        const engine = engineRef.current;
+        engine?.setDeafened(!engine.getSnapshot().local.deafened);
+      },
       toggleCamera: () => {
         const engine = engineRef.current;
         void engine?.setCamera(!engine.getSnapshot().local.video);
+      },
+      toggleScreen: () => {
+        const engine = engineRef.current;
+        void engine?.setScreenSharing(!engine.getSnapshot().local.sharingScreen);
       },
       hangUp: () => {
         void leave();
       },
     },
   });
-
-  const canConnect = policy.enabled && hasPermission(permissions, Permission.Connect);
-  const canSpeak = hasPermission(permissions, Permission.Speak);
-  const canStream = policy.screenShareEnabled && hasPermission(permissions, Permission.Stream);
-  const canVideo = policy.videoEnabled && hasPermission(permissions, Permission.UseVideo);
 
   const value = useMemo<VoiceContextValue>(
     () => ({
@@ -495,6 +553,8 @@ export function VoiceProvider({
       updateSettings,
       refreshDevices,
       clearError,
+      dismissQualityNotice,
+      undoQualityChange,
     }),
     [
       snapshot,
@@ -526,6 +586,8 @@ export function VoiceProvider({
       updateSettings,
       refreshDevices,
       clearError,
+      dismissQualityNotice,
+      undoQualityChange,
     ],
   );
 
@@ -534,22 +596,24 @@ export function VoiceProvider({
 
   return (
     <VoiceContext.Provider value={value}>
-      {children}
-      <SwitchDeviceCallModal
-        open={switchPrompt !== null}
-        onCancel={() => {
-          settleSwitch(false);
-        }}
-        onConfirm={() => {
-          settleSwitch(true);
-        }}
-      />
-      <RemoteAudio
-        streams={audioStreams}
-        deafened={snapshot.local.deafened}
-        outputDeviceId={settings.outputDeviceId}
-        outputVolume={settings.outputVolume}
-      />
+      <VoiceLevelsProvider store={levels}>
+        {children}
+        <SwitchDeviceCallModal
+          open={switchPrompt !== null}
+          onCancel={() => {
+            settleSwitch(false);
+          }}
+          onConfirm={() => {
+            settleSwitch(true);
+          }}
+        />
+        <RemoteAudio
+          streams={audioStreams}
+          deafened={snapshot.local.deafened}
+          outputDeviceId={settings.outputDeviceId}
+          outputVolume={settings.outputVolume}
+        />
+      </VoiceLevelsProvider>
     </VoiceContext.Provider>
   );
 }

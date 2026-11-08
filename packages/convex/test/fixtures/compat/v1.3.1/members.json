@@ -1,0 +1,7 @@
+[
+  {
+    "userId": "user-1",
+    "roleIds": ["@everyone"],
+    "joinedAt": 1700000000000
+  }
+]

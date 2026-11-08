@@ -10,12 +10,13 @@ import {
   type VoiceSubscriptions,
 } from "@aulora/core";
 import { messageOf } from "./call-engine-helpers";
-import type {
-  VoiceIceCandidateInit,
-  VoicePeerConnection,
-  VoiceStream,
-  VoiceTrack,
-  VoiceTransceiver,
+import {
+  endTrack,
+  type VoiceIceCandidateInit,
+  type VoicePeerConnection,
+  type VoiceStream,
+  type VoiceTrack,
+  type VoiceTransceiver,
 } from "./webrtc";
 
 /**
@@ -370,7 +371,7 @@ export abstract class CallEngineCore {
     this.micStream = null;
     this.cameraTrack?.stop();
     this.cameraTrack = null;
-    this.screenTrack?.stop();
+    endTrack(this.screenTrack);
     this.screenTrack = null;
     this.remoteStreams.clear();
     this.callId = null;

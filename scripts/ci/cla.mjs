@@ -22,6 +22,34 @@ function isBot(user) {
   return user.type === "Bot" || user.login.endsWith("[bot]");
 }
 
+// Match both fields: a display name or provider domain alone can belong to a
+// human. These are attribution labels, not verified identities or signatories.
+function isAgentCoauthor(actor) {
+  const names = {
+    "noreply@anthropic.com": [
+      /^Claude$/i,
+      /^Claude Code$/i,
+      /^Claude (?:Opus|Sonnet|Haiku) [\d.]+$/i,
+      /^Claude (?:Opus|Sonnet|Haiku) [\d.]+ \([\d.]+[MK] context\)$/i,
+    ],
+    "noreply@openai.com": [/^(?:Codex|ChatGPT)$/i],
+    "cursoragent@cursor.com": [/^Cursor(?: Agent)?$/i],
+    "noreply@cursor.sh": [/^Cursor$/i],
+  };
+  const patterns = names[actor.email?.trim().toLowerCase()];
+  return (
+    Array.isArray(patterns) && patterns.some((pattern) => pattern.test(actor.name?.trim() ?? ""))
+  );
+}
+
+function addContributor(actor, oid, people, unknown) {
+  if (!actor?.user?.databaseId) {
+    unknown.add(`${actor?.name || "Unlinked author"} (${oid.slice(0, 7)})`);
+  } else if (!isBot(actor.user)) {
+    people.set(actor.user.databaseId, actor.user.login);
+  }
+}
+
 async function readFile(github, repo, path, ref) {
   const { data } = await github.rest.repos.getContent({ ...repo, path, ref });
   if (data.type !== "file" || data.encoding !== "base64") {
@@ -134,9 +162,10 @@ async function contributors(github, repo, pull) {
               pageInfo { hasNextPage endCursor }
               nodes { commit {
                 oid
+                author { name email user { databaseId login } }
                 authors(first: 100) {
                   pageInfo { hasNextPage }
-                  nodes { name user { databaseId login } }
+                  nodes { name email user { databaseId login } }
                 }
               } }
             }
@@ -155,12 +184,11 @@ async function contributors(github, repo, pull) {
           "A commit has more than 100 co-authors. Split it before rechecking the CLA.",
         );
       }
+      // The primary author is checked even if its name/email matches a tool.
+      // Only co-author attribution labels receive the tool exemption.
+      addContributor(commit.author, commit.oid, people, unknown);
       for (const actor of commit.authors.nodes) {
-        if (!actor.user?.databaseId) {
-          unknown.add(`${actor.name || "Unlinked author"} (${commit.oid.slice(0, 7)})`);
-        } else if (!isBot(actor.user)) {
-          people.set(actor.user.databaseId, actor.user.login);
-        }
+        if (!isAgentCoauthor(actor)) addContributor(actor, commit.oid, people, unknown);
       }
     }
     cursor = current.commits.pageInfo.hasNextPage ? current.commits.pageInfo.endCursor : null;

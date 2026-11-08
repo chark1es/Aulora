@@ -109,6 +109,27 @@ export function sanitizeProfile(value: unknown): ServerProfile | null {
   return readRequiredProfileFields(value);
 }
 
+/**
+ * Reads the saved profiles and the active id together.
+ *
+ * Storage can fail — a locked container, a corrupted migration — and a rejected
+ * read inside the provider would leave `ready` false forever, so the connect
+ * screen would spin instead of letting the person add a server. A failed read
+ * is treated as "no saved profiles"; saving a new one still reports its own
+ * error.
+ */
+export async function loadProfilesSafely(store: ProfileStore): Promise<{
+  readonly profiles: ServerProfile[];
+  readonly activeId: string | undefined;
+}> {
+  try {
+    const [profiles, active] = await Promise.all([store.list(), store.getActive()]);
+    return { profiles, activeId: active?.id };
+  } catch {
+    return { profiles: [], activeId: undefined };
+  }
+}
+
 /** AsyncStorage-backed {@link ProfileStore} for iOS/Android. */
 export function createMobileProfileStore(storage: AsyncKeyValueStore): ProfileStore {
   async function readProfiles(): Promise<ServerProfile[]> {

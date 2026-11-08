@@ -69,6 +69,8 @@ A browser needs HTTPS or localhost for media permissions. Screen sharing depends
 
 Open **Settings → Voice & video** to choose how you sound and look. Changes apply to the current call straight away.
 
+If the connection to the other people stays poor, Aulora lowers your camera quality first and then turns the camera off so the voice call keeps working; the call shows a notice with an **Undo** button and a close button, and undoing it stops the automatic steps for that call.
+
 - **Noise suppression** has three levels. *Standard* uses your browser's built-in filter. *Enhanced* runs a small AI model on your device that removes keyboard clatter, fans and room noise while keeping your voice. It needs a little more processing power and is available in the web and desktop apps. Where it cannot run, Standard is used and the settings say so.
 - **Background** blurs the room behind you or replaces it with a built-in image or a picture of your own. It runs entirely on your device, so your camera picture is not sent anywhere to do this. It is available in the web and desktop apps and needs WebGL 2.
 - **Screen sharing quality** sets how sharp a shared screen is. *Smooth* is 1080p at 30 frames a second, *Balanced* is 1080p at 15 for sharp text, and *Data saver* is 720p at 15.
@@ -81,11 +83,13 @@ Choose **Share** in a call, then pick a whole screen, one window or a browser ta
 
 Keep a call in view while you work in other apps.
 
-- **Desktop app:** choose the **Picture in picture** button in the call window. The app shrinks to a small window in the corner of the screen. Choose **Keep on top of other windows** (the pin) to keep it above everything else, and the expand button to return to the full app.
+- **Desktop app:** choose the **Picture in picture** button in the call. A small, always-on-top call window opens in the corner of the screen and the app window stays open and usable behind it. Drag the new window by its header to put it anywhere, on any screen. It shows who is in the call and who is speaking, and its buttons mute, deafen, switch the camera, share a screen or leave. Closing it with its **X** leaves the call running in the app window; the app's own **Picture in picture** button brings it back or closes it.
 - **Chrome and Edge:** the button opens a floating window that stays above other windows. Chrome can also open it for you when you switch to another tab during a call.
 - **Safari and Firefox:** the button floats a video of whoever is sharing their screen or speaking.
 - **iPhone and iPad:** leave the app during a video call and the other person's video keeps playing in a small window. You can also use the **Picture in picture** button.
 - **Android:** leave the app (the home gesture or button) during a video call and the call shrinks into a floating window. The same button does it on demand. Needs Android 8 or later.
+
+On Android an ongoing call also keeps your microphone and camera available while you use other apps, even without picture in picture, and an ongoing **Aulora call in progress** notification shows that it is still running. Android asks for that notification permission with the others; without it the call still runs while you are in the app.
 
 ## Notifications
 

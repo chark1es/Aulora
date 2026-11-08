@@ -12,13 +12,23 @@
 
 # Builder: compile the TypeScript bot SDK in the Bun workspace (it extends
 # `@aulora/config` and is a `workspace:*` consumer), then ship only its dist.
-FROM oven/bun:1.4.4 AS ts-sdk
-WORKDIR /app
-COPY package.json bun.lock turbo.json ./
+# Package manifests only; see web.Dockerfile for why.
+FROM oven/bun:1.4.4 AS manifests
+WORKDIR /src
+COPY package.json bun.lock ./
 COPY apps/web/package.json apps/web/
 COPY apps/docs/package.json apps/docs/
 COPY packages ./packages
-RUN bun install --frozen-lockfile
+RUN find packages -type f ! -name package.json -delete \
+  && find packages -type d -empty -delete
+
+FROM oven/bun:1.4.4 AS ts-sdk
+WORKDIR /app
+COPY --from=manifests /src ./
+RUN --mount=type=cache,target=/bun-cache \
+  BUN_INSTALL_CACHE_DIR=/bun-cache bun install --frozen-lockfile --filter '@aulora/bot'
+COPY turbo.json ./
+COPY packages ./packages
 RUN bun run --cwd packages/bot-sdk build
 
 FROM node:24.22.1-bookworm-slim
