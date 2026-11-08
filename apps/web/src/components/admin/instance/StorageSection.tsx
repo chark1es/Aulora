@@ -143,30 +143,31 @@ function ByteSizeField({
   readonly onChange: Dispatch<SetStateAction<ByteSizeDraft>>;
 }) {
   return (
-    <div className="flex items-end gap-2">
-      <div className="min-w-0 flex-1">
-        <Input
-          label={label}
-          hint={hint}
-          type="number"
-          min={0}
-          step={1}
-          inputMode="numeric"
-          value={draft.value}
-          onChange={(event) => {
-            onChange({ ...draft, value: event.currentTarget.value });
+    <Input
+      label={label}
+      hint={hint}
+      type="number"
+      min={0}
+      step={1}
+      inputMode="numeric"
+      value={draft.value}
+      onChange={(event) => {
+        onChange({ ...draft, value: event.currentTarget.value });
+      }}
+      trailing={
+        <Select
+          label={`${label} unit`}
+          variant="bare"
+          className="w-[4.5rem] shrink-0 [&>label]:sr-only"
+          triggerClassName="w-full focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent-soft"
+          popupClassName="left-auto w-28"
+          value={draft.unit}
+          options={BYTE_UNIT_OPTIONS}
+          onChange={(unit) => {
+            onChange({ ...draft, unit });
           }}
         />
-      </div>
-      <Select
-        label="Unit"
-        className="w-24 shrink-0"
-        value={draft.unit}
-        options={BYTE_UNIT_OPTIONS}
-        onChange={(unit) => {
-          onChange({ ...draft, unit });
-        }}
-      />
-    </div>
+      }
+    />
   );
 }

@@ -1,6 +1,7 @@
 import { v } from "convex/values";
 import { internalMutation, mutation, query } from "./_generated/server";
 import { writeAudit } from "./lib/audit";
+import { backupHistory } from "./lib/backupHistory";
 import { verifySetupToken } from "./lib/crypto";
 import { loadInstanceSettings, requireInstanceAdmin } from "./lib/instance";
 
@@ -18,7 +19,7 @@ export const list = query({
   args: {},
   handler: async (ctx) => {
     await requireInstanceAdmin(ctx);
-    const rows = await ctx.db.query("backups").withIndex("by_started").order("desc").take(50);
+    const rows = await backupHistory(ctx).take(50);
     return rows.map((row) => ({
       id: row._id,
       trigger: row.trigger,
@@ -38,8 +39,7 @@ export const status = query({
   handler: async (ctx) => {
     await requireInstanceAdmin(ctx);
     const settings = await loadInstanceSettings(ctx);
-    const lastRun =
-      (await ctx.db.query("backups").withIndex("by_started").order("desc").first()) ?? null;
+    const lastRun = await backupHistory(ctx).first();
     return {
       enabled: settings.backupsEnabled,
       runnerConfigured:
@@ -118,14 +118,14 @@ export const record = mutation({
 });
 
 /**
- * Cron entry point: records the nightly intent unless backups are disabled.
+ * Cron entry point: records the nightly intent when backups and reporting are configured.
  * The actual export + dump + upload is the backup runner's job.
  */
 export const nightly = internalMutation({
   args: {},
   handler: async (ctx) => {
     const settings = await loadInstanceSettings(ctx);
-    if (!settings.backupsEnabled) {
+    if (!settings.backupsEnabled || !process.env.BACKUP_TOKEN?.trim()) {
       return null;
     }
     const id = await ctx.db.insert("backups", {

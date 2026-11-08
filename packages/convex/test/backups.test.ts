@@ -74,18 +74,64 @@ describe("backups.record", () => {
 });
 
 describe("backups.nightly", () => {
-  it("records the nightly intent while backups are enabled", async () => {
+  it("records the nightly intent without presenting it as a backup run", async () => {
+    process.env.BACKUP_TOKEN = "runner-token";
     const { t, asOwner } = await ownerTest();
-    await t.mutation(internal.backups.nightly, {});
-    const rows = await asOwner.query(api.backups.list, {});
-    expect(rows[0]).toMatchObject({ trigger: "cron", status: "requested" });
+    const id = await t.mutation(internal.backups.nightly, {});
+    if (id === null) throw new Error("Expected a nightly intent");
+    expect(await t.run((ctx) => ctx.db.get(id))).toMatchObject({
+      trigger: "cron",
+      status: "requested",
+    });
+    expect(await asOwner.query(api.backups.list, {})).toEqual([]);
+    expect((await asOwner.query(api.backups.status, {})).lastRun).toBeNull();
+    expect((await asOwner.query(api.instance.overview, {})).backups.lastRun).toBeNull();
+  });
+
+  it.each([undefined, "", "   "])("skips nightly intents with token %s", async (token) => {
+    if (token !== undefined) process.env.BACKUP_TOKEN = token;
+    const { t } = await ownerTest();
+    expect(await t.mutation(internal.backups.nightly, {})).toBeNull();
+    expect(await t.run((ctx) => ctx.db.query("backups").collect())).toEqual([]);
   });
 
   it("does nothing once the owner disables backups", async () => {
+    process.env.BACKUP_TOKEN = "runner-token";
     const { t, asOwner } = await ownerTest();
     await asOwner.mutation(api.instance.updateBackups, { enabled: false });
     const result = await t.mutation(internal.backups.nightly, {});
     expect(result).toBeNull();
     expect(await asOwner.query(api.backups.list, {})).toHaveLength(0);
+  });
+});
+
+describe("backup history", () => {
+  it("keeps runner results and manual requests visible behind old cron intents", async () => {
+    const { t, asOwner } = await ownerTest();
+    await t.run(async (ctx) => {
+      const statuses = ["succeeded", "failed", "running", "requested"] as const;
+      for (const [index, status] of statuses.entries()) {
+        await ctx.db.insert("backups", {
+          trigger: status === "requested" ? "manual" : "cron",
+          status,
+          startedAt: index,
+        });
+      }
+      // Filter before applying the history limit so stale intents cannot hide results.
+      for (let index = 0; index < 60; index++) {
+        await ctx.db.insert("backups", {
+          trigger: "cron",
+          status: "requested",
+          startedAt: index + 10,
+        });
+      }
+    });
+    const rows = await asOwner.query(api.backups.list, {});
+    expect(rows.map((row) => row.status)).toEqual(["requested", "running", "failed", "succeeded"]);
+    const latest = rows[0];
+    if (latest === undefined) throw new Error("Expected backup history");
+    expect(latest.trigger).toBe("manual");
+    expect((await asOwner.query(api.backups.status, {})).lastRun?._id).toBe(latest.id);
+    expect((await asOwner.query(api.instance.overview, {})).backups.lastRun?._id).toBe(latest.id);
   });
 });
