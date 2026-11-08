@@ -28,8 +28,10 @@ import {
   writeVoiceSettings,
 } from "../lib/voice/device-settings";
 import { sendLeaveBeacon } from "../lib/voice/leave-beacon";
-import { listMediaDevices, onDeviceChange } from "../lib/voice/media";
+import { VoiceLevelsStore } from "../lib/voice/levels";
+import { listMediaDevices, onDeviceChange, resumeLevelMeterContext } from "../lib/voice/media";
 import { type PipControl, type PipSurface, useCallPip } from "./use-call-pip";
+import { VoiceLevelsProvider } from "./voice-levels";
 import { loadBrowserVoiceClientId, withScreenAudio } from "./voice-provider-utils";
 import { RemoteAudio } from "./voice-remote-audio";
 
@@ -88,6 +90,10 @@ export interface VoiceContextValue extends VoiceSnapshot {
   updateSettings(_partial: Partial<VoiceDeviceSettings>): Promise<void>;
   refreshDevices(): Promise<void>;
   clearError(): void;
+  /** Hides an automatic quality-reduction notice, keeping the reduction. */
+  dismissQualityNotice(): void;
+  /** Restores the camera and stops automatic degradation for this call. */
+  undoQualityChange(): void;
 }
 
 const VoiceContext = createContext<VoiceContextValue | null>(null);
@@ -101,11 +107,11 @@ const EMPTY_SNAPSHOT: VoiceSnapshot = {
   remoteStreams: new Map(),
   remoteScreens: new Map(),
   remoteSpeaking: new Set(),
-  micLevel: 0,
   localSpeaking: false,
   pending: false,
   error: null,
   mediaError: null,
+  qualityNotice: null,
 };
 
 export interface VoiceProviderProps {
@@ -130,6 +136,7 @@ export function VoiceProvider({
 }: VoiceProviderProps) {
   const [clientId] = useState(loadBrowserVoiceClientId);
   const engineRef = useRef<VoiceEngine | null>(null);
+  const [levels] = useState(() => new VoiceLevelsStore());
   const [snapshot, setSnapshot] = useState<VoiceSnapshot>(EMPTY_SNAPSHOT);
   const [incoming, setIncoming] = useState<readonly CallView[]>([]);
   const [activeCalls, setActiveCalls] = useState<readonly CallView[]>([]);
@@ -159,6 +166,7 @@ export function VoiceProvider({
       clientId,
       getSettings: () => settingsRef.current,
       getIceServers: () => iceServersRef.current,
+      levels,
     });
     engineRef.current = engine;
     setSnapshot(engine.getSnapshot());
@@ -189,7 +197,7 @@ export function VoiceProvider({
       engine.dispose();
       engineRef.current = null;
     };
-  }, [client, clientId, userId]);
+  }, [client, clientId, levels, userId]);
 
   // Load local device settings, enumerate devices and follow device changes.
   useEffect(() => {
@@ -200,6 +208,18 @@ export function VoiceProvider({
     return onDeviceChange(() => {
       void listMediaDevices().then(setDevices);
     });
+  }, []);
+
+  // Browsers keep an AudioContext suspended until a gesture. The level meters
+  // share one context, so a pointer or key press anywhere resumes all of them.
+  useEffect(() => {
+    const resume = () => resumeLevelMeterContext();
+    window.addEventListener("pointerdown", resume, { passive: true });
+    window.addEventListener("keydown", resume);
+    return () => {
+      window.removeEventListener("pointerdown", resume);
+      window.removeEventListener("keydown", resume);
+    };
   }, []);
 
   // Push-to-talk: hold Space to transmit. Ignored while typing in a field.
@@ -436,6 +456,14 @@ export function VoiceProvider({
     engineRef.current?.clearError();
   }, []);
 
+  const dismissQualityNotice = useCallback(() => {
+    engineRef.current?.dismissQualityNotice();
+  }, []);
+
+  const undoQualityChange = useCallback(() => {
+    engineRef.current?.undoQualityChange();
+  }, []);
+
   const canConnect = policy.enabled && hasPermission(permissions, Permission.Connect);
   const canSpeak = hasPermission(permissions, Permission.Speak);
   const canStream = policy.screenShareEnabled && hasPermission(permissions, Permission.Stream);
@@ -505,6 +533,8 @@ export function VoiceProvider({
       updateSettings,
       refreshDevices,
       clearError,
+      dismissQualityNotice,
+      undoQualityChange,
     }),
     [
       snapshot,
@@ -536,6 +566,8 @@ export function VoiceProvider({
       updateSettings,
       refreshDevices,
       clearError,
+      dismissQualityNotice,
+      undoQualityChange,
     ],
   );
 
@@ -544,22 +576,24 @@ export function VoiceProvider({
 
   return (
     <VoiceContext.Provider value={value}>
-      {children}
-      <SwitchDeviceCallModal
-        open={switchPrompt !== null}
-        onCancel={() => {
-          settleSwitch(false);
-        }}
-        onConfirm={() => {
-          settleSwitch(true);
-        }}
-      />
-      <RemoteAudio
-        streams={audioStreams}
-        deafened={snapshot.local.deafened}
-        outputDeviceId={settings.outputDeviceId}
-        outputVolume={settings.outputVolume}
-      />
+      <VoiceLevelsProvider store={levels}>
+        {children}
+        <SwitchDeviceCallModal
+          open={switchPrompt !== null}
+          onCancel={() => {
+            settleSwitch(false);
+          }}
+          onConfirm={() => {
+            settleSwitch(true);
+          }}
+        />
+        <RemoteAudio
+          streams={audioStreams}
+          deafened={snapshot.local.deafened}
+          outputDeviceId={settings.outputDeviceId}
+          outputVolume={settings.outputVolume}
+        />
+      </VoiceLevelsProvider>
     </VoiceContext.Provider>
   );
 }

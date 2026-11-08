@@ -5,6 +5,7 @@ import {
   type CallView,
   isCallElsewhereError,
   isOnThisDevice,
+  resolutionConstraints,
   streamProfile,
   type VoiceDeviceSettings,
   type VoicePort,
@@ -12,11 +13,13 @@ import {
 } from "@aulora/core";
 import { mediaMessage, messageOf } from "./call-errors";
 import type { VoiceEngineOptions, VoiceLocalState, VoiceSnapshot } from "./call-types";
+import { type LinkQuality, VoiceLevelsStore } from "./levels";
 import { LocalCamera } from "./local-camera";
 import { applySinkId, createLevelMeter } from "./media";
 import { type MicPipeline, micProcessingKey, openMicPipeline } from "./mic-pipeline";
 import { DEFAULT_ICE, PeerMesh } from "./peer-mesh";
 import { ScreenShare } from "./screen-share";
+import { QualityGovernor, qualityOf, STATS_INTERVAL_MS, worstQuality } from "./stats";
 
 export type { VoiceEngineOptions, VoiceLocalState, VoiceSnapshot } from "./call-types";
 
@@ -33,15 +36,27 @@ export type { VoiceEngineOptions, VoiceLocalState, VoiceSnapshot } from "./call-
  *  - `max-bundle` + `rtcpMuxPolicy: "require"` so each peer uses one transport.
  *  - A persistent audio *and* video transceiver per peer, so toggling a camera
  *    or starting a screen share swaps tracks with **no renegotiation round-trip**.
- *  - Opus tuned for voice (40 kbps, in-band FEC); video tuned for either
+ *  - Opus tuned for voice (40 kbps, in-band FEC, DTX); video tuned for either
  *    motion (`maintain-framerate`) or screen clarity (`maintain-resolution`).
- *  - `playoutDelayHint`/`jitterBufferTarget` pinned low where supported.
+ *  - A modest jitter-buffer target where the browser supports it, so loss
+ *    concealment and clock-drift correction keep working.
  *
  * The engine is plain TypeScript (no React) and reports every change through a
  * single `onChange` listener so the provider can mirror it into React state.
  */
 
 const HEARTBEAT_MS = 15_000;
+
+/**
+ * The camera bitrate a single peer's copy gets at each capture size. More peers
+ * mean more encodes, so the mesh policy scales this down (see
+ * `cameraTuningFor`). 720p30 at 1.5 Mbps is the long-standing default.
+ */
+const CAMERA_BITRATE: Record<VoiceDeviceSettings["videoResolution"], number> = {
+  "360p": 600_000,
+  "720p": 1_500_000,
+  "1080p": 3_000_000,
+};
 
 export class VoiceEngine {
   private readonly port: VoicePort;
@@ -64,7 +79,12 @@ export class VoiceEngine {
   private micStream: MediaStream | null = null;
   private micPipeline: MicPipeline | null = null;
   private micProcessingKey = "";
-  private micLevel = 0;
+  /** The audio track peers currently receive, or `null` while we send nothing. */
+  private micSending: MediaStreamTrack | null = null;
+  /** Serializes sender swaps so quick mute/unmute lands in the requested order. */
+  private micSync: Promise<void> = Promise.resolve();
+  /** High-frequency values that must not rebuild the context value. */
+  private readonly levels: VoiceLevelsStore;
   private localSpeaking = false;
   private levelUnsub: (() => void) | null = null;
   private pending = false;
@@ -80,6 +100,12 @@ export class VoiceEngine {
   private callUnsub: (() => void) | null = null;
   private signalUnsub: (() => void) | null = null;
   private heartbeat: ReturnType<typeof setInterval> | null = null;
+  private statsTimer: ReturnType<typeof setInterval> | null = null;
+  /** Steps the camera down when the link stays poor (see `stats.ts`). */
+  private governor = new QualityGovernor();
+  /** Multiplier on the camera budget while the governor has stepped it down. */
+  private cameraTrim = 1;
+  private qualityNotice: string | null = null;
 
   constructor(options: VoiceEngineOptions) {
     this.port = options.port;
@@ -89,6 +115,7 @@ export class VoiceEngine {
     this.getSettings = options.getSettings;
     this.getIceServers = options.getIceServers ?? (() => DEFAULT_ICE);
     this.onError = options.onError ?? (() => undefined);
+    this.levels = options.levels ?? new VoiceLevelsStore();
     this.mesh = new PeerMesh({
       userId: this.userId,
       getCallId: () => this.callId,
@@ -102,13 +129,26 @@ export class VoiceEngine {
       onChange: () => {
         this.emit();
       },
-      getAudioTrack: () => this.micStream?.getAudioTracks()[0] ?? null,
+      onRemoteLevel: (userId, level) => {
+        this.levels.setRemoteLevel(userId, level);
+      },
+      getAudioTrack: () => this.micSending,
       getVideoTrack: (peerId) =>
         this.screen.trackForPeer(peerId) ?? (this.local.video ? this.camera.track : null),
       isScreenSharing: (peerId) => this.screen.trackForPeer(peerId) !== null,
       getScreenProfile: () => {
         const profile = streamProfile(this.getSettings().streamQuality);
         return { maxBitrate: profile.maxBitrate, frameRate: profile.frameRate };
+      },
+      getVideoCodec: () => this.getSettings().screenCodec,
+      getCameraProfile: () => {
+        const resolution = this.getSettings().videoResolution;
+        return {
+          // What a single peer gets at this capture size; the mesh thins it,
+          // and the quality governor may trim the base while the link is poor.
+          maxBitrate: Math.round(CAMERA_BITRATE[resolution] * this.cameraTrim),
+          frameRate: resolutionConstraints(resolution).frameRate,
+        };
       },
     });
     this.camera = new LocalCamera({
@@ -181,11 +221,11 @@ export class VoiceEngine {
       remoteStreams: this.mesh.remoteStreams,
       remoteScreens: this.screen.relayed,
       remoteSpeaking: this.mesh.remoteSpeaking,
-      micLevel: this.micLevel,
       localSpeaking: this.localSpeaking,
       pending: this.pending,
       error: this.error,
       mediaError: this.mediaError,
+      qualityNotice: this.qualityNotice,
     };
   }
 
@@ -309,6 +349,10 @@ export class VoiceEngine {
         void this.port.callHeartbeat({ callId: this.callId }).catch(() => undefined);
       }
     }, HEARTBEAT_MS);
+    this.governor = new QualityGovernor();
+    this.cameraTrim = 1;
+    this.qualityNotice = null;
+    this.startStatsSampler();
     const settings = this.getSettings();
     this.local = { ...this.local, muted: settings.joinMuted };
     this.pushToTalk = settings.pushToTalk;
@@ -330,14 +374,21 @@ export class VoiceEngine {
       clearInterval(this.heartbeat);
       this.heartbeat = null;
     }
+    this.stopStatsSampler();
+    this.governor = new QualityGovernor();
+    this.cameraTrim = 1;
+    this.qualityNotice = null;
     this.mesh.reset();
     this.stopLevelMeter();
+    this.levels.reset();
     this.micPipeline?.stop();
     this.micPipeline = null;
     this.micStream?.getTracks().forEach((track) => {
       track.stop();
     });
     this.micStream = null;
+    this.micSending = null;
+    this.micSync = Promise.resolve();
     this.camera.close();
     void this.screen.reset();
     this.mediaError = null;
@@ -366,7 +417,7 @@ export class VoiceEngine {
     this.startLevelMeter();
     // A peer may have been created (and offered) before the mic resolved; give
     // it the real track now that we have it. `replaceTrack` needs no renegotiation.
-    await this.mesh.applyAudioTrack(this.micStream.getAudioTracks()[0] ?? null);
+    this.applyMicEnabled();
   }
 
   private startLevelMeter(): void {
@@ -374,22 +425,17 @@ export class VoiceEngine {
     if (this.micStream === null) {
       return;
     }
-    // Track the last value pushed into the shared context so a level that only
-    // jitters within a whole percent does not re-render every voice consumer
-    // (the whole chat tree) on every meter tick.
-    let emittedLevel = -1;
-    let emittedSpeaking = false;
+    // The level goes to the external store, which only wakes the meter that
+    // reads it. The snapshot changes only when the speaking threshold is
+    // crossed, so a 10 Hz meter tick no longer re-renders every voice consumer.
     this.levelUnsub = createLevelMeter(this.micStream, (level) => {
-      const quantized = Math.round(level * 100) / 100;
       const transmitting = !this.local.muted && (!this.pushToTalk || this.talking);
       const speaking = transmitting && (this.localSpeaking ? level > 0.035 : level > 0.08);
-      this.micLevel = quantized;
-      this.localSpeaking = speaking;
-      if (quantized === emittedLevel && speaking === emittedSpeaking) {
+      this.levels.setMicLevel(level);
+      if (speaking === this.localSpeaking) {
         return;
       }
-      emittedLevel = quantized;
-      emittedSpeaking = speaking;
+      this.localSpeaking = speaking;
       this.emit();
     });
   }
@@ -397,8 +443,80 @@ export class VoiceEngine {
   private stopLevelMeter(): void {
     this.levelUnsub?.();
     this.levelUnsub = null;
-    this.micLevel = 0;
+    this.levels.setMicLevel(0);
     this.localSpeaking = false;
+  }
+
+  // ---- Link quality and auto-degrade ---------------------------------------
+
+  private startStatsSampler(): void {
+    this.stopStatsSampler();
+    // Only in a call, and only every few seconds: getStats walks every stream.
+    this.statsTimer = setInterval(() => {
+      void this.sampleStats();
+    }, STATS_INTERVAL_MS);
+  }
+
+  private stopStatsSampler(): void {
+    if (this.statsTimer !== null) {
+      clearInterval(this.statsTimer);
+      this.statsTimer = null;
+    }
+  }
+
+  /**
+   * Publishes each peer's measured quality to the level store and walks the
+   * conservative degrade ladder when the worst link stays poor.
+   */
+  private async sampleStats(): Promise<void> {
+    if (this.callId === null) {
+      return;
+    }
+    const stats = await this.mesh.collectStats();
+    if (this.callId === null) {
+      return;
+    }
+    const qualities: LinkQuality[] = [];
+    for (const [peerId, link] of stats) {
+      const quality = qualityOf(link);
+      this.levels.setQuality(peerId, quality);
+      qualities.push(quality);
+    }
+    const action = this.governor.sample(worstQuality(qualities));
+    if (action === "reduce") {
+      this.cameraTrim = 0.5;
+      this.qualityNotice =
+        "Your connection is struggling, so the camera quality was lowered to keep the call clear.";
+      void this.mesh.refreshVideo();
+      this.emit();
+    } else if (action === "audio-only") {
+      this.qualityNotice =
+        "Your connection is struggling, so the camera was turned off. Audio keeps going.";
+      void this.setCamera(false);
+    }
+  }
+
+  /** Hides the quality notice, keeping whatever reduction is in place. */
+  dismissQualityNotice(): void {
+    if (this.qualityNotice === null) {
+      return;
+    }
+    this.qualityNotice = null;
+    this.emit();
+  }
+
+  /** Undoes an automatic reduction and stops degrading for the rest of the call. */
+  undoQualityChange(): void {
+    const wasAudioOnly = this.governor.currentStage === "audioOnly";
+    this.governor.suppress();
+    this.cameraTrim = 1;
+    this.qualityNotice = null;
+    void this.mesh.refreshVideo();
+    if (wasAudioOnly) {
+      void this.setCamera(true);
+    } else {
+      this.emit();
+    }
   }
 
   // ---- Media controls ------------------------------------------------------
@@ -415,17 +533,26 @@ export class VoiceEngine {
 
   /**
    * The microphone only transmits while allowed: not muted, and either not in
-   * push-to-talk mode or actively holding the talk key. Keep the track enabled
-   * (sending silence) rather than removed so no renegotiation is needed.
+   * push-to-talk mode or actively holding the talk key.
+   *
+   * A muted sender is detached with `replaceTrack(null)` rather than left
+   * sending a silent track. `track.enabled = false` still runs the Opus encoder
+   * and uploads packets, which costs the uplink and keeps every peer's jitter
+   * buffer busy for nothing. Detaching needs no renegotiation, so unmuting
+   * re-attaches the same transceiver instantly. Swaps are serialized so a quick
+   * mute/unmute cannot land out of order.
    */
   private applyMicEnabled(): void {
-    if (this.micStream === null) {
+    const track = this.micStream?.getAudioTracks()[0] ?? null;
+    const enabled = !this.local.muted && (!this.pushToTalk || this.talking);
+    const wanted = enabled ? track : null;
+    if (wanted === this.micSending) {
       return;
     }
-    const enabled = !this.local.muted && (!this.pushToTalk || this.talking);
-    for (const track of this.micStream.getAudioTracks()) {
-      track.enabled = enabled;
-    }
+    this.micSending = wanted;
+    this.micSync = this.micSync
+      .then(() => this.mesh.applyAudioTrack(wanted))
+      .catch(() => undefined);
     if (!enabled && this.localSpeaking) {
       this.localSpeaking = false;
       this.emit();
@@ -523,7 +650,6 @@ export class VoiceEngine {
       this.mediaError = null;
       this.applyMicEnabled();
       this.startLevelMeter();
-      await this.mesh.applyAudioTrack(this.micStream.getAudioTracks()[0] ?? null);
     } catch (error) {
       this.mediaError = mediaMessage(error);
       this.onError(messageOf(error));

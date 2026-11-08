@@ -188,6 +188,12 @@ export interface VoicePort {
     readonly toUserId: string;
     readonly kind: CallSignalKind;
     readonly payload: string;
+    /**
+     * More payloads carried by the same envelope, for pooled ICE candidates.
+     * `payload` repeats the first one so a backend that predates batching can
+     * still accept the signal.
+     */
+    readonly payloads?: readonly string[];
   }): Promise<null>;
   /** Removes signalling rows this client has already processed. */
   ackSignals(args: { readonly signalIds: readonly string[] }): Promise<null>;

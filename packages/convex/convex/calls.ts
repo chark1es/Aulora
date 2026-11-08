@@ -17,6 +17,7 @@ import {
   insertNewCall,
   insertParticipant,
   loadVoicePolicy,
+  MAX_SIGNAL_BATCH,
   MAX_SIGNAL_BYTES,
   PARTICIPANT_STALE_MS,
   prepareSeat,
@@ -292,7 +293,15 @@ export const heartbeat = mutation({
   },
 });
 
-/** Sends one WebRTC signalling envelope to another participant. */
+/**
+ * Sends one WebRTC signalling envelope to another participant.
+ *
+ * `payloads` adds pooled ICE candidates to the same envelope (one write instead
+ * of one per candidate). It is optional and `payload` stays accepted, so a
+ * client from before batching keeps working against this backend; the batched
+ * client repeats the first payload in `payload` so an older backend can still
+ * take the signal.
+ */
 export const signal = mutation({
   args: {
     callId: v.id("calls"),
@@ -304,10 +313,23 @@ export const signal = mutation({
       v.literal("ice"),
       v.literal("renegotiate"),
     ),
-    payload: v.string(),
+    payload: v.optional(v.string()),
+    payloads: v.optional(v.array(v.string())),
   },
   handler: async (ctx, args) => {
     const { userId } = await requireAuth(ctx);
+    const payloads =
+      args.payloads !== undefined && args.payloads.length > 0
+        ? args.payloads
+        : args.payload !== undefined
+          ? [args.payload]
+          : [];
+    if (payloads.length === 0) {
+      throw new ConvexError("A signal needs a payload");
+    }
+    if (payloads.length > MAX_SIGNAL_BATCH) {
+      throw new ConvexError("Too many signalling payloads");
+    }
     const call = await ctx.db.get(args.callId);
     if (call === null || call.status === "ended") {
       throw new ConvexError("This call has ended");
@@ -323,19 +345,25 @@ export const signal = mutation({
     if (receiver === null) {
       throw new ConvexError("Signalling target is not in this call");
     }
-    if (args.payload.length > MAX_SIGNAL_BYTES) {
-      throw new ConvexError("Signalling payload is too large");
+    for (const payload of payloads) {
+      if (payload.length > MAX_SIGNAL_BYTES) {
+        throw new ConvexError("Signalling payload is too large");
+      }
     }
-    await ctx.db.insert("callSignals", {
-      callId: call._id,
-      channelId: call.channelId,
-      fromUserId: userId,
-      toUserId: args.toUserId,
-      kind: args.kind,
-      payload: args.payload,
-      session: sender.session ?? 0,
-      createdAt: Date.now(),
-    });
+    const session = sender.session ?? 0;
+    const createdAt = Date.now();
+    for (const payload of payloads) {
+      await ctx.db.insert("callSignals", {
+        callId: call._id,
+        channelId: call.channelId,
+        fromUserId: userId,
+        toUserId: args.toUserId,
+        kind: args.kind,
+        payload,
+        session,
+        createdAt,
+      });
+    }
     return null;
   },
 });

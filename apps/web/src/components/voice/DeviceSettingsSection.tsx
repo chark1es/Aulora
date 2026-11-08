@@ -3,6 +3,7 @@ import { Button, cn, Icon, SegmentedControl, Select, Switch, Text } from "@aulor
 import { useCallback, useEffect, useRef, useState } from "react";
 import { acquireUserMedia, createLevelMeter, supportsOutputSelection } from "../../lib/voice/media";
 import { useVoice } from "../../providers/VoiceProvider";
+import { useMicLevel } from "../../providers/voice-levels";
 import type { Callback } from "../admin/callbacks";
 import { BackgroundSettings } from "./BackgroundSettings";
 import { NoiseSuppressionSetting } from "./NoiseSuppressionSetting";
@@ -26,6 +27,7 @@ function deviceOptions(devices: readonly MediaDeviceInfo[], kind: MediaDeviceInf
  */
 export function DeviceSettingsSection() {
   const voice = useVoice();
+  const micLevel = useMicLevel();
   const { settings, devices } = voice;
   const [testing, setTesting] = useState(false);
   const [testLevel, setTestLevel] = useState(0);
@@ -56,7 +58,7 @@ export function DeviceSettingsSection() {
     }
   }, [settings]);
 
-  const level = voice.call !== null ? voice.micLevel : testLevel;
+  const level = voice.call !== null ? micLevel : testLevel;
   const outputSelectable = supportsOutputSelection();
 
   return (

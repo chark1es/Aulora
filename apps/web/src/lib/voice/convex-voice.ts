@@ -87,13 +87,31 @@ export function convexVoicePort(client: ConvexReactClient, clientId: string): Vo
       return null;
     },
     async sendSignal(args) {
-      await client.mutation(api.calls.signal, {
+      const signal = {
         callId: args.callId as never,
         clientId,
         toUserId: args.toUserId,
         kind: args.kind as CallSignalKind,
-        payload: args.payload,
-      });
+      };
+      const payloads = args.payloads;
+      if (payloads === undefined || payloads.length <= 1) {
+        await client.mutation(api.calls.signal, { ...signal, payload: args.payload });
+        return null;
+      }
+      try {
+        await client.mutation(api.calls.signal, {
+          ...signal,
+          payload: payloads[0] ?? args.payload,
+          payloads: [...payloads],
+        });
+      } catch {
+        // A backend from before batched signalling rejects the extra field (or
+        // the batch failed): fall back to one envelope per candidate so a
+        // roll-out in either order still connects the call.
+        await Promise.all(
+          payloads.map((payload) => client.mutation(api.calls.signal, { ...signal, payload })),
+        );
+      }
       return null;
     },
     async ackSignals(args) {

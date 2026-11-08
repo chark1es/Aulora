@@ -1,5 +1,6 @@
 /* eslint-disable no-unused-vars -- the base rule reports parameter names in type signatures; Biome checks real unused code */
 import type { CallView, VoiceDeviceSettings, VoicePort, VoiceSubscriptions } from "@aulora/core";
+import type { VoiceLevelsStore } from "./levels";
 
 export interface VoiceLocalState {
   readonly muted: boolean;
@@ -20,13 +21,17 @@ export interface VoiceSnapshot {
   readonly remoteScreens: ReadonlyMap<string, MediaStream>;
   /** Remote users whose audio is currently above the speaking threshold. */
   readonly remoteSpeaking: ReadonlySet<string>;
-  readonly micLevel: number;
   /** Whether this device is currently transmitting speech. */
   readonly localSpeaking: boolean;
   readonly pending: boolean;
   readonly error: string | null;
   /** Set when the microphone/camera could not be acquired for this call. */
   readonly mediaError: string | null;
+  /**
+   * An automatic quality reduction the person can undo or dismiss, e.g. the
+   * camera was turned off because the link stayed poor. `null` when none.
+   */
+  readonly qualityNotice: string | null;
 }
 
 export interface VoiceEngineOptions {
@@ -39,4 +44,9 @@ export interface VoiceEngineOptions {
   /** Read lazily on each peer so late-loaded deployment config still applies. */
   readonly getIceServers?: () => readonly RTCIceServer[];
   readonly onError?: (message: string) => void;
+  /**
+   * Where high-frequency values (mic level, per-participant levels, link
+   * quality) go. Absent in tests, which then get a private store.
+   */
+  readonly levels?: VoiceLevelsStore;
 }

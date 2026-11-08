@@ -1,7 +1,14 @@
 /* eslint-disable no-unused-vars -- the base rule reports parameter names in type signatures; Biome checks real unused code */
-import { type CallSignalRow, type PeerConnectionState, shouldOffer } from "@aulora/core";
+import {
+  type CallSignalRow,
+  type PeerConnectionState,
+  shouldOffer,
+  type VoiceDeviceSettings,
+} from "@aulora/core";
 import { messageOf } from "./call-errors";
+import { IceSignalBuffer } from "./ice-buffer";
 import { createLevelMeter } from "./media";
+import { type PeerLinkStats, type RtpCounters, type RtpStatsSample, summarizeStats } from "./stats";
 
 interface Peer {
   readonly pc: RTCPeerConnection;
@@ -31,6 +38,11 @@ export interface PeerMeshHost {
     toUserId: string;
     kind: "offer" | "answer" | "ice" | "renegotiate";
     payload: string;
+    /**
+     * Additional payloads carried by the same signal. Only ICE batches use it;
+     * `payload` repeats the first entry for older backends.
+     */
+    payloads?: readonly string[];
   }): Promise<unknown>;
   ackSignals(signalIds: readonly string[]): Promise<unknown>;
   onError(message: string): void;
@@ -45,7 +57,19 @@ export interface PeerMeshHost {
   isScreenSharing(peerId: string): boolean;
   /** The chosen stream quality: the most a single viewer's copy may use. */
   getScreenProfile(): ScreenBudget;
+  /** The camera the user asked for: the budget a single peer would get. */
+  getCameraProfile(): ScreenBudget;
+  /**
+   * A remote participant's audio level, at meter rate. Kept out of `onChange`:
+   * it must not rebuild the call snapshot ten times a second.
+   */
+  onRemoteLevel(userId: string, level: number): void;
+  /** The screen-share codec preference, applied to the mesh video transceiver. */
+  getVideoCodec(): VideoCodecPreference;
 }
+
+/** The user's screen-share codec choice, or `auto` to let the browser default. */
+export type VideoCodecPreference = VoiceDeviceSettings["screenCodec"];
 
 /** What a screen share may spend, per viewer. */
 export interface ScreenBudget {
@@ -53,18 +77,73 @@ export interface ScreenBudget {
   readonly frameRate: number;
 }
 
+/** What one peer's encoder is told for the video it receives from us. */
+export interface VideoTuning {
+  readonly maxBitrate: number;
+  readonly maxFramerate: number;
+  /** 1 keeps the captured size; higher values scale it down before frames drop. */
+  readonly scaleResolutionDownBy: number;
+  readonly degradationPreference: RTCDegradationPreference;
+}
+
 /**
- * Sending a share to each viewer separately multiplies the upload, so the whole
- * mesh upload is capped at this many full-quality copies and each viewer's copy
- * shrinks once more people than that are watching.
+ * A share is encoded once per viewer, so the whole mesh upload is capped at this
+ * many full-quality copies and each viewer's copy thins out beyond that. The
+ * floor keeps text legible: below roughly a megabit a 1080p desktop becomes a
+ * slideshow, so the resolution ladder (not the bitrate) is what gives way.
  */
 const SCREEN_COPIES = 3;
-const MIN_SCREEN_BITRATE = 500_000;
+export const MIN_SCREEN_BITRATE = 900_000;
 
 /** One viewer's share of the budget: full quality for a few viewers, then thinner. */
 export function screenBitrateFor(budget: ScreenBudget, viewers: number): number {
   const shared = (budget.maxBitrate * SCREEN_COPIES) / Math.max(1, viewers);
   return Math.round(Math.min(budget.maxBitrate, Math.max(MIN_SCREEN_BITRATE, shared)));
+}
+
+/**
+ * The resolution ladder for a share. Instead of squeezing the bitrate until the
+ * encoder drops frames (a slideshow under `maintain-resolution`), shrink the
+ * picture in steps; the frame rate stays at the profile's rate at every step.
+ */
+export function screenScaleFor(viewers: number): number {
+  if (viewers <= SCREEN_COPIES) {
+    return 1;
+  }
+  if (viewers <= 5) {
+    return 1.5;
+  }
+  if (viewers <= 8) {
+    return 2;
+  }
+  return 3;
+}
+
+/** The smallest camera bitrate the policy will ask for, whatever the mesh size. */
+export const MIN_CAMERA_BITRATE = 200_000;
+
+/**
+ * Camera encoder limits by how many peers receive the camera.
+ *
+ * Every peer gets its own encode, so a 720p30 @1.5 Mbps camera on a six-person
+ * call would ask for nine megabits up. Thin every copy as the mesh grows:
+ * bitrate first, then frame rate and resolution a step at a time, so a busy
+ * call shows smooth-ish faces instead of a frozen uplink. `maintain-framerate`
+ * keeps the camera lifelike when the network tightens.
+ */
+export function cameraTuningFor(budget: ScreenBudget, receivers: number): VideoTuning {
+  const peers = Math.max(1, receivers);
+  const factor = peers === 1 ? 1 : peers <= 3 ? 0.75 : peers <= 5 ? 0.5 : 0.35;
+  const frameRate =
+    peers === 1
+      ? budget.frameRate
+      : Math.min(budget.frameRate, peers <= 3 ? 24 : peers <= 5 ? 20 : 15);
+  return {
+    maxBitrate: Math.max(MIN_CAMERA_BITRATE, Math.round(budget.maxBitrate * factor)),
+    maxFramerate: frameRate,
+    scaleResolutionDownBy: peers <= 3 ? 1 : peers <= 5 ? 1.5 : 2,
+    degradationPreference: "maintain-framerate",
+  };
 }
 
 function parsePayload<T>(payload: string): T | null {
@@ -85,12 +164,32 @@ export class PeerMesh {
   readonly remoteStreams = new Map<string, MediaStream>();
   readonly remoteSpeaking = new Set<string>();
   private readonly processedSignals = new Set<string>();
+  /** Cumulative RTP counters per peer, so loss is measured per interval. */
+  private readonly statBaselines = new Map<string, RtpCounters>();
+  private readonly ice: IceSignalBuffer;
 
-  constructor(private readonly host: PeerMeshHost) {}
+  constructor(private readonly host: PeerMeshHost) {
+    this.ice = new IceSignalBuffer((toUserId, payloads) => {
+      const callId = this.host.getCallId();
+      if (callId === null) {
+        return;
+      }
+      void this.host
+        .sendSignal({
+          callId,
+          toUserId,
+          kind: "ice",
+          payload: payloads[0] ?? "{}",
+          ...(payloads.length > 1 ? { payloads } : {}),
+        })
+        .catch(() => undefined);
+    });
+  }
 
   /** Drops every connection and all per-call bookkeeping. */
   reset(): void {
     this.closeAllPeers();
+    this.ice.clear();
     this.remoteSpeaking.clear();
     this.processedSignals.clear();
   }
@@ -142,25 +241,41 @@ export class PeerMesh {
     const viewers = [...this.peers.keys()].filter((id) => this.host.isScreenSharing(id)).length;
     for (const [peerId, peer] of this.peers) {
       const track = this.host.getVideoTrack(peerId);
-      const screen = this.screenTuning(peerId, viewers);
+      const tuning = this.videoTuning(peerId, viewers);
       for (const transceiver of this.transceiversFor(peer, "video")) {
         if (transceiver.sender.track !== track) {
           transceiver.direction = "sendrecv";
           await transceiver.sender.replaceTrack(track).catch(() => undefined);
         }
         // Retune even when the track is unchanged: the viewer count may have moved.
-        tuneVideoSender(transceiver.sender, screen);
+        tuneVideoSender(transceiver.sender, tuning);
       }
     }
   }
 
+  /** What to send this peer: a screen share's ladder, or the adaptive camera. */
+  private videoTuning(peerId: string, viewers: number): VideoTuning {
+    const screen = this.screenTuning(peerId, viewers);
+    if (screen !== null) {
+      return screen;
+    }
+    return cameraTuningFor(this.host.getCameraProfile(), this.peers.size);
+  }
+
   /** The encoder limits for what this peer receives; `null` means a camera. */
-  private screenTuning(peerId: string, viewers: number): ScreenBudget | null {
+  private screenTuning(peerId: string, viewers: number): VideoTuning | null {
     if (!this.host.isScreenSharing(peerId)) {
       return null;
     }
     const budget = this.host.getScreenProfile();
-    return { ...budget, maxBitrate: screenBitrateFor(budget, viewers) };
+    return {
+      maxBitrate: screenBitrateFor(budget, viewers),
+      maxFramerate: budget.frameRate,
+      scaleResolutionDownBy: screenScaleFor(viewers),
+      // Text stays sharp: the ladder shrinks the picture instead of letting the
+      // encoder throw frames away to hold the resolution.
+      degradationPreference: "maintain-resolution",
+    };
   }
 
   async applyAudioTrack(track: MediaStreamTrack | null): Promise<void> {
@@ -171,6 +286,33 @@ export class PeerMesh {
         tuneAudioSender(transceiver.sender);
       }
     }
+  }
+
+  /**
+   * Samples every peer's inbound audio for loss, RTT and jitter. Meant for a
+   * low-frequency timer in an active call; each report is read once and the
+   * cumulative counters are kept so loss is measured over the interval.
+   */
+  async collectStats(): Promise<Map<string, PeerLinkStats>> {
+    const result = new Map<string, PeerLinkStats>();
+    for (const [peerId, peer] of this.peers) {
+      try {
+        const report = await peer.pc.getStats();
+        const samples: RtpStatsSample[] = [];
+        report.forEach((entry) => {
+          samples.push(entry);
+        });
+        const summarized = summarizeStats(samples, this.statBaselines.get(peerId) ?? null);
+        if (summarized === null) {
+          continue;
+        }
+        this.statBaselines.set(peerId, summarized.counters);
+        result.set(peerId, summarized.stats);
+      } catch {
+        // A closing connection reports nothing; try again next tick.
+      }
+    }
+    return result;
   }
 
   private async createPeer(
@@ -204,16 +346,9 @@ export class PeerMesh {
     this.remoteStreams.set(remoteId, peer.stream);
 
     pc.onicecandidate = (event) => {
-      const callId = this.host.getCallId();
-      if (event.candidate !== null && callId !== null) {
-        void this.host
-          .sendSignal({
-            callId,
-            toUserId: remoteId,
-            kind: "ice",
-            payload: JSON.stringify(event.candidate.toJSON()),
-          })
-          .catch(() => undefined);
+      if (event.candidate !== null) {
+        // Pooled for a few tens of milliseconds so one gather costs one signal.
+        this.ice.add(remoteId, JSON.stringify(event.candidate.toJSON()));
       }
     };
     pc.ontrack = (event) => {
@@ -221,6 +356,7 @@ export class PeerMesh {
       if (event.track.kind === "audio") {
         peer.levelUnsub?.();
         peer.levelUnsub = createLevelMeter(peer.stream, (level) => {
+          this.host.onRemoteLevel(remoteId, level);
           this.setRemoteLevel(remoteId, level);
         });
       }
@@ -246,8 +382,7 @@ export class PeerMesh {
       peer.audioTx = pc.addTransceiver("audio", { direction: "sendrecv" });
       peer.videoTx = pc.addTransceiver("video", { direction: "sendrecv" });
       await this.attachLocalTracks(peer, remoteId);
-      const offer = await pc.createOffer();
-      await pc.setLocalDescription(offer);
+      await pc.setLocalDescription(await withOpusVoice(pc.createOffer()));
       this.sendDescription(remoteId, "offer", pc.localDescription);
     }
     return peer;
@@ -282,10 +417,11 @@ export class PeerMesh {
         await transceiver.sender.replaceTrack(this.host.getAudioTrack()).catch(() => undefined);
         tuneAudioSender(transceiver.sender);
       } else {
+        applyVideoCodecs(transceiver, this.host.getVideoCodec());
         await transceiver.sender
           .replaceTrack(this.host.getVideoTrack(remoteId))
           .catch(() => undefined);
-        tuneVideoSender(transceiver.sender, this.screenTuning(remoteId, this.screenViewers()));
+        tuneVideoSender(transceiver.sender, this.videoTuning(remoteId, this.screenViewers()));
         tuneReceiver(transceiver.receiver);
       }
     }
@@ -352,8 +488,7 @@ export class PeerMesh {
       await peer.pc.setRemoteDescription(description);
       await this.attachLocalTracks(peer, signal.fromUserId);
       await this.flushCandidates(peer);
-      const answer = await peer.pc.createAnswer();
-      await peer.pc.setLocalDescription(answer);
+      await peer.pc.setLocalDescription(await withOpusVoice(peer.pc.createAnswer()));
       this.sendDescription(signal.fromUserId, "answer", peer.pc.localDescription);
       return;
     }
@@ -391,8 +526,7 @@ export class PeerMesh {
         return;
       }
       await peer.pc.setRemoteDescription(description);
-      const answer = await peer.pc.createAnswer();
-      await peer.pc.setLocalDescription(answer);
+      await peer.pc.setLocalDescription(await withOpusVoice(peer.pc.createAnswer()));
       this.sendDescription(signal.fromUserId, "answer", peer.pc.localDescription);
     }
   }
@@ -406,6 +540,9 @@ export class PeerMesh {
 
   private closePeer(remoteId: string, peer: Peer): void {
     peer.levelUnsub?.();
+    this.ice.drop(remoteId);
+    this.statBaselines.delete(remoteId);
+    this.host.onRemoteLevel(remoteId, 0);
     this.remoteSpeaking.delete(remoteId);
     peer.pc.onicecandidate = null;
     peer.pc.ontrack = null;
@@ -465,6 +602,10 @@ function mapConnection(state: RTCPeerConnectionState): PeerConnectionState {
 /**
  * Voice-tuned Opus: in-band FEC on, DTX on, stereo off, a tight bitrate cap and
  * high network priority. All parameters are best-effort (Safari is picky).
+ *
+ * `setParameters` has no way to reach Opus fmtp attributes, so the FEC/DTX/
+ * stereo defaults are written into the local SDP (see
+ * {@link applyOpusVoiceParams}) and this keeps the bitrate side.
  */
 function tuneAudioSender(sender: RTCRtpSender): void {
   try {
@@ -473,7 +614,9 @@ function tuneAudioSender(sender: RTCRtpSender): void {
     const encoding = params.encodings[0];
     if (encoding !== undefined) {
       encoding.maxBitrate = 40_000;
-      (encoding as { networkPriority?: string }).networkPriority = "high";
+      // Chromium-only field that the DOM typings do not carry.
+      const prioritised = encoding as RTCRtpEncodingParameters & { networkPriority?: string };
+      prioritised.networkPriority = "high";
     }
     params.degradationPreference = "balanced";
     void sender.setParameters(params).catch(() => undefined);
@@ -482,41 +625,236 @@ function tuneAudioSender(sender: RTCRtpSender): void {
   }
 }
 
+/** `a=rtpmap:<pt> opus/48000/2` in either CRLF or LF SDP. */
+const OPUS_RTPMAP = /^a=rtpmap:(\d+) opus\/48000\/2\s*$/i;
+const FMTP_LINE = /^a=fmtp:(\d+)\s?(.*)$/i;
+
+/** The Opus parameters every Aulora sender asks for. */
+const OPUS_VOICE_PARAMS: Readonly<Record<string, string>> = {
+  useinbandfec: "1",
+  usedtx: "1",
+  stereo: "0",
+};
+
+/** Folds the voice parameters into one `a=fmtp` parameter string, keeping others. */
+function mergeOpusParams(params: string): string {
+  const merged = new Map<string, string>();
+  for (const part of params.split(";")) {
+    const trimmed = part.trim();
+    if (trimmed.length === 0) {
+      continue;
+    }
+    const equals = trimmed.indexOf("=");
+    const key = (equals === -1 ? trimmed : trimmed.slice(0, equals)).trim().toLowerCase();
+    const value = equals === -1 ? "" : trimmed.slice(equals + 1).trim();
+    merged.set(key, value);
+  }
+  for (const [key, value] of Object.entries(OPUS_VOICE_PARAMS)) {
+    merged.set(key, value);
+  }
+  return [...merged]
+    .map(([key, value]) => (value.length === 0 ? key : `${key}=${value}`))
+    .join(";");
+}
+
+/** Rewrites the fmtp lines of one audio media section; other sections are untouched. */
+function tuneAudioSection(lines: readonly string[]): string[] {
+  if (!(lines[0] ?? "").startsWith("m=audio")) {
+    return [...lines];
+  }
+  const types = new Set<string>();
+  for (const line of lines) {
+    const match = OPUS_RTPMAP.exec(line);
+    if (match?.[1] !== undefined) {
+      types.add(match[1]);
+    }
+  }
+  if (types.size === 0) {
+    return [...lines];
+  }
+  const tuned = new Set<string>();
+  const result = lines.map((line) => {
+    const match = FMTP_LINE.exec(line);
+    if (match === null || match[1] === undefined || !types.has(match[1])) {
+      return line;
+    }
+    tuned.add(match[1]);
+    return `a=fmtp:${match[1]} ${mergeOpusParams(match[2] ?? "")}`;
+  });
+  let insertAt = result.length;
+  while (insertAt > 0 && (result[insertAt - 1] ?? "").trim().length === 0) {
+    insertAt -= 1;
+  }
+  const missing = [...types]
+    .filter((type) => !tuned.has(type))
+    .map((type) => `a=fmtp:${type} ${mergeOpusParams("")}`);
+  result.splice(insertAt, 0, ...missing);
+  return result;
+}
+
+/** Applies {@link applyOpusVoiceParams} to a freshly created offer or answer. */
+async function withOpusVoice(
+  created: Promise<RTCSessionDescriptionInit>,
+): Promise<RTCSessionDescriptionInit> {
+  const description = await created;
+  if (typeof description.sdp !== "string" || description.sdp.length === 0) {
+    return description;
+  }
+  return { type: description.type, sdp: applyOpusVoiceParams(description.sdp) };
+}
+
 /**
- * Video tuning. Screen share prioritizes resolution so text stays legible;
- * camera prioritizes framerate. Bitrates scale with resolution by the browser,
- * but the cap keeps a share from starving the audio on a thin uplink.
+ * Adds `useinbandfec=1; usedtx=1; stereo=0` to every Opus payload in the local
+ * SDP. FEC lets a receiver repair an isolated lost packet from the next one and
+ * DTX stops sending during silence, which is what the old comment promised and
+ * nothing configured.
+ *
+ * Only our own local description is rewritten (the answerer's fmtp governs the
+ * offerer's encoder), and unknown Opus parameters are preserved. A peer that
+ * does not understand these attributes ignores them, as RFC 7587 requires, so
+ * this stays interoperable with other clients.
  */
-function tuneVideoSender(sender: RTCRtpSender, screen: ScreenBudget | null): void {
+export function applyOpusVoiceParams(sdp: string): string {
+  const eol = sdp.includes("\r\n") ? "\r\n" : "\n";
+  const lines = sdp.split(/\r\n|\n/);
+  const out: string[] = [];
+  let section: string[] = [];
+  const flush = () => {
+    if (section.length > 0) {
+      out.push(...tuneAudioSection(section));
+    }
+    section = [];
+  };
+  for (const line of lines) {
+    if (line.startsWith("m=")) {
+      flush();
+    }
+    if (section.length === 0 && !line.startsWith("m=") && !line.startsWith("a=")) {
+      // Session-level lines (v=, o=, s=, t=) stay where they are.
+      out.push(line);
+      continue;
+    }
+    section.push(line);
+  }
+  flush();
+  return out.join(eol);
+}
+
+/**
+ * Video tuning. A screen share keeps the frame rate and gives up resolution in
+ * steps instead, and prioritizes resolution so text stays legible; a camera
+ * prioritizes framerate. The cap keeps video from starving audio on a thin
+ * uplink.
+ */
+function tuneVideoSender(sender: RTCRtpSender, tuning: VideoTuning | null): void {
   try {
     const params = sender.getParameters();
     params.encodings = params.encodings.length > 0 ? params.encodings : [{}];
     const encoding = params.encodings[0];
     if (encoding !== undefined) {
-      encoding.maxBitrate = screen?.maxBitrate ?? 1_500_000;
-      encoding.maxFramerate = screen?.frameRate ?? 30;
+      encoding.maxBitrate = tuning?.maxBitrate ?? 1_500_000;
+      encoding.maxFramerate = tuning?.maxFramerate ?? 30;
+      encoding.scaleResolutionDownBy = tuning?.scaleResolutionDownBy ?? 1;
     }
-    params.degradationPreference = screen !== null ? "maintain-resolution" : "maintain-framerate";
+    params.degradationPreference = tuning?.degradationPreference ?? "maintain-framerate";
     void sender.setParameters(params).catch(() => undefined);
   } catch {
     // Best-effort.
   }
 }
 
-/** Asks the browser to keep playout delay low for interactive conversation. */
-function tuneReceiver(receiver: RTCRtpReceiver): void {
-  const target = receiver as RTCRtpReceiver & {
-    playoutDelayHint?: number;
-    jitterBufferTarget?: number;
+/**
+ * The codec order to ask the video transceiver for. VP9 encodes a mostly-static
+ * desktop screen better than VP8 at the same bitrate in Chromium; WebKit
+ * (Safari, WebKitGTK) has no VP9 encoder and ships H.264 hardware paths, so it
+ * gets H.264 first. VP8 stays the universal fallback.
+ */
+export function preferredVideoCodecs(
+  codec: VideoCodecPreference,
+  webKit: boolean,
+): readonly string[] {
+  const fallback = "video/VP8";
+  switch (codec) {
+    case "av1":
+      return ["video/AV1", "video/VP9", fallback];
+    case "vp9":
+      return ["video/VP9", fallback];
+    case "h264":
+      return ["video/H264", fallback];
+    default:
+      return webKit ? ["video/H264", "video/VP9", fallback] : ["video/VP9", "video/H264", fallback];
+  }
+}
+
+/** Whether the engine is WebKit rather than Chromium, by user agent. */
+export function prefersH264ByDefault(userAgent: string): boolean {
+  return /AppleWebKit/i.test(userAgent) && !/(Chrome|Chromium|Edg)\//i.test(userAgent);
+}
+
+/** One codec capability as `getCapabilities` reports it. */
+export type VideoCodecCapability = RTCRtpCapabilities["codecs"][number];
+
+/** Orders the engine's codec capabilities by preference, keeping the rest after. */
+export function orderVideoCodecs(
+  codecs: readonly VideoCodecCapability[],
+  preferred: readonly string[],
+): VideoCodecCapability[] {
+  const rank = (mimeType: string): number => {
+    const index = preferred.findIndex((entry) => entry.toLowerCase() === mimeType.toLowerCase());
+    return index === -1 ? preferred.length : index;
   };
+  return [...codecs].sort((a, b) => rank(a.mimeType) - rank(b.mimeType));
+}
+
+/**
+ * Asks the transceiver for the preferred codec order. Best-effort: engines
+ * without codec control, or a transceiver that already negotiated, keep their
+ * default and the call carries on.
+ */
+function applyVideoCodecs(transceiver: RTCRtpTransceiver, codec: VideoCodecPreference): void {
+  if (typeof transceiver.setCodecPreferences !== "function") {
+    return;
+  }
+  if (typeof RTCRtpSender === "undefined" || typeof RTCRtpSender.getCapabilities !== "function") {
+    return;
+  }
+  const capabilities = RTCRtpSender.getCapabilities("video");
+  if (capabilities === null || capabilities.codecs.length === 0) {
+    return;
+  }
+  const webKit = prefersH264ByDefault(typeof navigator === "undefined" ? "" : navigator.userAgent);
   try {
-    target.playoutDelayHint = 0;
+    transceiver.setCodecPreferences(
+      orderVideoCodecs(capabilities.codecs, preferredVideoCodecs(codec, webKit)),
+    );
   } catch {
-    // Unsupported.
+    // The browser refused the list (e.g. after negotiation); the default stands.
+  }
+}
+
+/**
+ * A modest jitter buffer target, in milliseconds.
+ *
+ * Pinning the buffer to zero (`playoutDelayHint = 0` plus a zero target) turns
+ * jitter-buffer adaptation off, so every late or lost packet becomes concealment
+ * work on the audio thread: clicks, warble and video stalls on any link that is
+ * not perfectly smooth. ~150 ms keeps cancellation, clock-drift correction and
+ * loss concealment working while staying inside conversational latency.
+ */
+export const JITTER_BUFFER_TARGET_MS = 150;
+
+/**
+ * Asks the browser for a modest jitter buffer, leaving its own default where the
+ * property is absent. Exported for the tuning test.
+ */
+export function tuneReceiver(receiver: RTCRtpReceiver): void {
+  const target = receiver as RTCRtpReceiver & { jitterBufferTarget?: number };
+  if (!("jitterBufferTarget" in target)) {
+    return;
   }
   try {
-    target.jitterBufferTarget = 0;
+    target.jitterBufferTarget = JITTER_BUFFER_TARGET_MS;
   } catch {
-    // Unsupported.
+    // Read-only or unsupported on this engine; the browser default stands.
   }
 }
