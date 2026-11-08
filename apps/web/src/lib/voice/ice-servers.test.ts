@@ -120,6 +120,23 @@ describe("IceServerSource", () => {
     source.dispose();
   });
 
+  it("stops retrying after three consecutive failures", async () => {
+    vi.useFakeTimers();
+    const fetchTurn = vi
+      .fn<() => Promise<TurnCredentials | null>>()
+      .mockRejectedValue(new Error("unknown function"));
+    const source = new IceServerSource({ base: () => [STUN], fetchTurn });
+
+    await source.load();
+    await vi.advanceTimersByTimeAsync(60 * 1000);
+    await vi.advanceTimersByTimeAsync(60 * 1000);
+    expect(fetchTurn).toHaveBeenCalledTimes(3);
+    await vi.advanceTimersByTimeAsync(60 * 60 * 1000);
+    expect(fetchTurn).toHaveBeenCalledTimes(3);
+    expect(source.current()).toEqual([STUN]);
+    source.dispose();
+  });
+
   it("stops refreshing after dispose", async () => {
     vi.useFakeTimers();
     const fetchTurn = vi.fn<() => Promise<TurnCredentials | null>>().mockResolvedValue(turn());

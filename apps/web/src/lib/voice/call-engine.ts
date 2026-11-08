@@ -224,7 +224,7 @@ export class VoiceEngine {
       micStream: this.micStream,
       localVideoTrack: this.screen.track ?? this.camera.track,
       remoteStreams: this.transport === "sfu" ? this.sfu.mediaStreams : this.mesh.remoteStreams,
-      remoteScreens: this.screen.relayed,
+      remoteScreens: this.currentRemoteScreens(),
       remoteSpeaking: this.transport === "sfu" ? this.sfuSpeaking : this.mesh.remoteSpeaking,
       attachRemoteVideo: this.attachRemoteVideo,
       micLevel: this.micLevel,
@@ -248,6 +248,32 @@ export class VoiceEngine {
     userId: string,
     element: HTMLVideoElement | null,
   ): boolean => (this.transport === "sfu" ? this.sfu.attachVideo(userId, element) : false);
+
+  /**
+   * The screens to render. On the mesh this is just the relayed map. On the
+   * SFU path `remoteStreams` carries only the media room, so a share that still
+   * travels over the mesh (the sharer cannot use the streaming server) is
+   * surfaced here from the peer stream instead of disappearing.
+   */
+  private currentRemoteScreens(): ReadonlyMap<string, MediaStream> {
+    const relayed = this.screen.relayed;
+    if (this.transport !== "sfu") {
+      return relayed;
+    }
+    const shares = new Map(relayed);
+    for (const [userId, stream] of this.mesh.remoteStreams) {
+      if (shares.has(userId) || stream.getVideoTracks().length === 0) {
+        continue;
+      }
+      const sharing = this.call?.participants.some(
+        (participant) => participant.userId === userId && participant.sharingScreen,
+      );
+      if (sharing === true) {
+        shares.set(userId, stream);
+      }
+    }
+    return shares;
+  }
 
   /** Speaking ring for the SFU path, with the same hysteresis as the mesh. */
   private setSfuLevel(userId: string, level: number): void {
@@ -437,6 +463,15 @@ export class VoiceEngine {
     this.emit();
   }
 
+  /** Routes a microphone change to whichever transport currently carries it. */
+  private async applyAudioTrack(track: MediaStreamTrack | null): Promise<void> {
+    if (this.transport === "sfu") {
+      await this.sfu.setMic(track);
+      return;
+    }
+    await this.mesh.applyAudioTrack(track);
+  }
+
   private async acquireMic(): Promise<void> {
     this.mediaError = null;
     try {
@@ -453,7 +488,7 @@ export class VoiceEngine {
     this.startLevelMeter();
     // A peer may have been created (and offered) before the mic resolved; give
     // it the real track now that we have it. `replaceTrack` needs no renegotiation.
-    await this.mesh.applyAudioTrack(this.micStream.getAudioTracks()[0] ?? null);
+    await this.applyAudioTrack(this.micStream.getAudioTracks()[0] ?? null);
   }
 
   private startLevelMeter(): void {
@@ -616,8 +651,7 @@ export class VoiceEngine {
       this.mediaError = null;
       this.applyMicEnabled();
       this.startLevelMeter();
-      await this.mesh.applyAudioTrack(this.micStream.getAudioTracks()[0] ?? null);
-      void this.sfu.setMic(this.micStream.getAudioTracks()[0] ?? null);
+      await this.applyAudioTrack(this.micStream.getAudioTracks()[0] ?? null);
     } catch (error) {
       this.mediaError = mediaMessage(error);
       this.onError(messageOf(error));
@@ -692,19 +726,19 @@ export class VoiceEngine {
     if (this.transport === "sfu" || this.sfuSwitching || Date.now() < this.sfuRetryAt) {
       return;
     }
-    const configured = await this.probeSfu();
-    if (
-      decideTransport({
-        participants,
-        sfuConfigured: configured,
-        capabilities,
-        threshold: SFU_CALL_THRESHOLD,
-      }) !== "sfu"
-    ) {
-      return;
-    }
     this.sfuSwitching = true;
     try {
+      const configured = await this.probeSfu();
+      if (
+        decideTransport({
+          participants,
+          sfuConfigured: configured,
+          capabilities,
+          threshold: SFU_CALL_THRESHOLD,
+        }) !== "sfu"
+      ) {
+        return;
+      }
       if (!(await this.connectSfu())) {
         // Fail fast: stay on the mesh and do not hammer a down server.
         this.sfuRetryAt = Date.now() + SFU_RETRY_MS;
@@ -712,6 +746,10 @@ export class VoiceEngine {
     } finally {
       this.sfuSwitching = false;
     }
+    // A roster change may have arrived during the switch; run the decision once
+    // more so a participant leaving never strands the call on the SFU path.
+    // This returns immediately when the choice still holds.
+    void this.evaluateTransport();
   }
 
   /** Asks the backend once per call whether a streaming server is available. */
@@ -741,7 +779,9 @@ export class VoiceEngine {
       return null;
     }
     try {
-      return (await this.port.sfuAccess?.({ callId, scope: "call" })) ?? null;
+      const access = (await this.port.sfuAccess?.({ callId, scope: "call" })) ?? null;
+      this.sfuAccess = access;
+      return access;
     } catch {
       return null;
     }
@@ -753,7 +793,9 @@ export class VoiceEngine {
    * interrupts the call.
    */
   private async connectSfu(): Promise<boolean> {
-    const access = this.sfuAccess;
+    // Re-mint rather than reuse the probe's grant: a fallback followed by a
+    // retry can come hours later, after the original token expired.
+    const access = await this.sfuAccessForCall();
     if (access === null) {
       return false;
     }
@@ -771,7 +813,7 @@ export class VoiceEngine {
           this.setSfuLevel(userId, level);
         },
         onLost: () => {
-          void this.fallBackToMesh();
+          void this.fallBackToMesh(SFU_RETRY_MS);
         },
       },
       {
@@ -793,12 +835,14 @@ export class VoiceEngine {
   }
 
   /** Returns the call to the peer mesh without dropping it. */
-  private async fallBackToMesh(): Promise<void> {
+  private async fallBackToMesh(retryDelayMs = 0): Promise<void> {
     if (this.transport !== "sfu") {
       return;
     }
     this.transport = "mesh";
-    this.sfuRetryAt = Date.now() + SFU_RETRY_MS;
+    if (retryDelayMs > 0) {
+      this.sfuRetryAt = Date.now() + retryDelayMs;
+    }
     await this.sfu.disconnect();
     this.sfuSpeaking.clear();
     this.mesh.setRemoteAudioEnabled(true);

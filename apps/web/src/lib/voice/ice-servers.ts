@@ -16,6 +16,9 @@ export const TURN_REFRESH_MARGIN_SECONDS = 300;
 /** Retry delay after a failed refresh, so a down backend is not hammered. */
 export const TURN_RETRY_SECONDS = 60;
 
+/** Stop retrying after this many consecutive failures (e.g. an old backend). */
+const TURN_MAX_FAILURES = 3;
+
 function urlsOf(server: RTCIceServer): readonly string[] {
   const urls = server.urls as string | readonly string[];
   return typeof urls === "string" ? [urls] : urls;
@@ -67,6 +70,7 @@ export class IceServerSource {
   private timer: ReturnType<typeof setTimeout> | null = null;
   private started = false;
   private generation = 0;
+  private failures = 0;
   private readonly now: () => number;
 
   constructor(private readonly options: IceServerSourceOptions) {
@@ -93,6 +97,7 @@ export class IceServerSource {
     this.clearTimer();
     this.turn = null;
     this.started = false;
+    this.failures = 0;
   }
 
   private async refresh(): Promise<void> {
@@ -103,6 +108,7 @@ export class IceServerSource {
         return;
       }
       this.turn = turn;
+      this.failures = 0;
       if (turn === null) {
         // No relay here: nothing to refresh.
         return;
@@ -121,7 +127,12 @@ export class IceServerSource {
       if (generation !== this.generation) {
         return;
       }
-      this.schedule(TURN_RETRY_SECONDS);
+      this.failures += 1;
+      // An old backend rejects the credentials mutation; three attempts is
+      // enough to ride out a blip without asking once a minute forever.
+      if (this.failures < TURN_MAX_FAILURES) {
+        this.schedule(TURN_RETRY_SECONDS);
+      }
     }
   }
 

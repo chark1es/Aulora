@@ -187,11 +187,13 @@ function ParticipantMedia({
   // Stable per tile: a new function every render would re-attach the video
   // element on every state change.
   const bindVideo = useMemo(() => {
-    if (attachVideo === undefined || isSelf) {
+    // A screen share keeps its own relay path (`screens`), so only a camera
+    // tile is bound to the call's SFU subscriber.
+    if (attachVideo === undefined || isSelf || participant.sharingScreen) {
       return undefined;
     }
     return (element: HTMLVideoElement | null) => attachVideo(participant.userId, element);
-  }, [attachVideo, isSelf, participant.userId]);
+  }, [attachVideo, isSelf, participant.sharingScreen, participant.userId]);
   // A share counts as video even with the camera off: the sharer's screen is
   // the thing to look at.
   const hasVideo =
