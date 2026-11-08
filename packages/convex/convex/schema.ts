@@ -37,6 +37,15 @@ const serverSettings = v.object({
   videoEnabled: v.optional(v.boolean()),
   screenShareEnabled: v.optional(v.boolean()),
   maxCallParticipants: v.optional(v.number()),
+  /**
+   * Operator kill switches. Optional and absent by default; absent or `false`
+   * means the feature stays on. Readers normalize with
+   * `resolveFeatureFlags`, so a malformed stored value cannot disable a
+   * feature.
+   */
+  disableNewCallTransport: v.optional(v.boolean()),
+  disablePipVideo: v.optional(v.boolean()),
+  disableAutoDegrade: v.optional(v.boolean()),
 });
 
 const notificationScope = v.union(v.literal("server"), v.literal("channel"));

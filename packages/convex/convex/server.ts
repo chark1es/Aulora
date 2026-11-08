@@ -1,9 +1,15 @@
-import { Permission } from "@aulora/core";
+import { Permission, resolveFeatureFlags } from "@aulora/core";
 import { ConvexError, v } from "convex/values";
 import type { QueryCtx } from "./_generated/server";
 import { mutation, query } from "./_generated/server";
 import { writeAudit } from "./lib/audit";
-import { API_VERSION, AULORA_VERSION, getEncryptionSettings, getPublicAuthConfig } from "./lib/env";
+import {
+  API_VERSION,
+  AULORA_VERSION,
+  getClientVersionPolicy,
+  getEncryptionSettings,
+  getPublicAuthConfig,
+} from "./lib/env";
 import { loadEffectiveEnv } from "./lib/envOverrides";
 import { effectiveMaxUploadBytes } from "./lib/instance";
 import { requireWorkspacePermission } from "./lib/permissions";
@@ -92,6 +98,11 @@ async function buildPublicConfig(ctx: QueryCtx) {
     server?.logoStorageId !== undefined ? await ctx.storage.getUrl(server.logoStorageId) : null;
   const vapidPublicKey = env.VAPID_PUBLIC_KEY?.trim();
   const encryption = getEncryptionSettings(env);
+  // Optional compatibility policy. Both values stay null unless the operator
+  // sets a valid version, so existing clients see no new enforcement.
+  const clientVersion = getClientVersionPolicy(env);
+  // Kill switches default to off; the client normalizes malformed values.
+  const features = resolveFeatureFlags(server?.settings);
   // The effective single-upload cap, so clients can pre-check sizes and show a
   // specific error instead of failing at finalize.
   const maxUploadBytes = await effectiveMaxUploadBytes(ctx);
@@ -113,6 +124,10 @@ async function buildPublicConfig(ctx: QueryCtx) {
     signupEnabled,
     version: AULORA_VERSION,
     apiVersion: API_VERSION,
+    // Compatibility policy for this release; see `ClientVersionPolicy`.
+    clientVersion,
+    // Operator kill switches; all false (features enabled) by default.
+    features,
     convexUrl: env.CONVEX_CLOUD_URL ?? "",
     siteUrl: env.SITE_URL ?? env.CONVEX_SITE_URL ?? "",
     auth: getPublicAuthConfig(env, signupEnabled, instance?.authProviders ?? undefined),
@@ -271,6 +286,9 @@ export const updateSettings = mutation({
     videoEnabled: v.optional(v.boolean()),
     screenShareEnabled: v.optional(v.boolean()),
     maxCallParticipants: v.optional(v.number()),
+    disableNewCallTransport: v.optional(v.boolean()),
+    disablePipVideo: v.optional(v.boolean()),
+    disableAutoDegrade: v.optional(v.boolean()),
   },
   handler: async (ctx, args) => {
     const { userId } = await requireWorkspacePermission(ctx, Permission.ManageWorkspace);
@@ -299,6 +317,13 @@ export const updateSettings = mutation({
           : {}),
         ...(args.maxCallParticipants !== undefined
           ? { maxCallParticipants: Math.max(2, Math.min(50, Math.round(args.maxCallParticipants))) }
+          : {}),
+        ...(args.disableNewCallTransport !== undefined
+          ? { disableNewCallTransport: args.disableNewCallTransport }
+          : {}),
+        ...(args.disablePipVideo !== undefined ? { disablePipVideo: args.disablePipVideo } : {}),
+        ...(args.disableAutoDegrade !== undefined
+          ? { disableAutoDegrade: args.disableAutoDegrade }
           : {}),
       },
     });

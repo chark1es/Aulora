@@ -16,8 +16,21 @@ export {
   utf8Encode,
 } from "./binary";
 export { blurhashDecode, blurhashEncode } from "./blurhash";
+export {
+  compareClientVersions,
+  clientVersionState,
+  type ClientVersionPolicy,
+  type ClientVersionState,
+} from "./client-version";
 export * from "./bots";
 export * from "./chat/index";
+export {
+  DEFAULT_FEATURE_FLAGS,
+  FEATURE_FLAG_NAMES,
+  type FeatureFlagName,
+  type FeatureFlags,
+  resolveFeatureFlags,
+} from "./feature-flags";
 export {
   classifyError,
   type ErrorDisposition,
