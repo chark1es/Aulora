@@ -83,6 +83,15 @@ function frameView(value: unknown): Uint8Array<ArrayBuffer> | null {
     const buffer = value.buffer as ArrayBuffer;
     return new Uint8Array(buffer, value.byteOffset, value.byteLength);
   }
+  if (Array.isArray(value)) {
+    // macOS/iOS webviews cannot take the raw channel path, so Tauri serializes
+    // the body as a JSON byte array there. Copy once into a plain buffer.
+    const bytes = value as number[];
+    if (!bytes.every((entry) => typeof entry === "number")) {
+      return null;
+    }
+    return Uint8Array.from(bytes);
+  }
   return null;
 }
 

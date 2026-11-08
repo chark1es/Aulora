@@ -207,6 +207,12 @@ describe("parseCaptureFrame", () => {
     expect([...frame.bytes]).toEqual(JPEG);
   });
 
+  it("accepts the JSON byte array a macOS webview receives", () => {
+    const frame = parseCaptureFrame([...new Uint8Array(frameBuffer(JPEG, 320, 180))]);
+    expect({ width: frame.width, height: frame.height }).toEqual({ width: 320, height: 180 });
+    expect([...frame.bytes]).toEqual(JPEG);
+  });
+
   it("rejects a body that is not one of our frames", () => {
     const cases: unknown[] = [
       new ArrayBuffer(FRAME_HEADER_BYTES),
