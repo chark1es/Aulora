@@ -33,9 +33,7 @@ describe("clientVersionState", () => {
   });
 
   it("recommends an update below the recommended version", () => {
-    expect(clientVersionState("1.0.0", { recommendedClientVersion: "1.1.0" })).toBe(
-      "recommended",
-    );
+    expect(clientVersionState("1.0.0", { recommendedClientVersion: "1.1.0" })).toBe("recommended");
     expect(clientVersionState("1.1.0", { recommendedClientVersion: "1.1.0" })).toBe("ok");
   });
 

@@ -16,14 +16,19 @@ export {
   utf8Encode,
 } from "./binary";
 export { blurhashDecode, blurhashEncode } from "./blurhash";
-export {
-  compareClientVersions,
-  clientVersionState,
-  type ClientVersionPolicy,
-  type ClientVersionState,
-} from "./client-version";
 export * from "./bots";
 export * from "./chat/index";
+export {
+  type ClientVersionPolicy,
+  type ClientVersionState,
+  clientVersionState,
+  compareClientVersions,
+} from "./client-version";
+export {
+  classifyError,
+  type ErrorDisposition,
+  isAuthenticationError,
+} from "./errors/index";
 export {
   DEFAULT_FEATURE_FLAGS,
   FEATURE_FLAG_NAMES,
@@ -31,11 +36,6 @@ export {
   type FeatureFlags,
   resolveFeatureFlags,
 } from "./feature-flags";
-export {
-  classifyError,
-  type ErrorDisposition,
-  isAuthenticationError,
-} from "./errors/index";
 export {
   allowlistAdmits,
   CUSTOM_INVITE_CODE_MAX_LENGTH,

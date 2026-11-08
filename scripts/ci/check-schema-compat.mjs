@@ -109,7 +109,9 @@ export function readSchema(rootDir = root) {
 export function loadSnapshot(rootDir = root) {
   const path = resolve(rootDir, SNAPSHOT_PATH);
   if (!existsSync(path)) {
-    throw new Error(`Missing ${SNAPSHOT_PATH}; run node scripts/ci/check-schema-compat.mjs --update`);
+    throw new Error(
+      `Missing ${SNAPSHOT_PATH}; run node scripts/ci/check-schema-compat.mjs --update`,
+    );
   }
   return JSON.parse(readFileSync(path, "utf8"));
 }

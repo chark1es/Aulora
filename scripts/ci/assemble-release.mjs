@@ -57,9 +57,7 @@ export async function assembleRelease(version, repository, notes = "", rollout =
     notes,
     pubDate: new Date().toISOString(),
     platforms,
-    ...(rollout !== undefined && rollout.trim() !== ""
-      ? { rollout: Number(rollout.trim()) }
-      : {}),
+    ...(rollout !== undefined && rollout.trim() !== "" ? { rollout: Number(rollout.trim()) } : {}),
     ...(assets.length > 0 ? { assets } : {}),
   });
   writeFileSync(join(RELEASE_DIRECTORY, "latest.json"), `${JSON.stringify(manifest, null, 2)}\n`);

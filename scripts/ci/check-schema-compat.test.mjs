@@ -33,34 +33,39 @@ describe("schema compatibility snapshot", () => {
   });
 
   it("fails when a field becomes required", () => {
-    const before = snapshotSchema(schema(`    name: v.string(),
-    nickname: v.optional(v.string()),`));
-    const after = snapshotSchema(schema(`    name: v.string(),
-    nickname: v.string(),`));
+    const before = snapshotSchema(
+      schema(`    name: v.string(),
+    nickname: v.optional(v.string()),`),
+    );
+    const after = snapshotSchema(
+      schema(`    name: v.string(),
+    nickname: v.string(),`),
+    );
     expect(schemaViolations(before, after)).toEqual([
       "server.nickname: became required without a @compat-allow-tighten marker and backfill",
     ]);
   });
 
   it("fails on a new required field, a removed field, or a removed table", () => {
-    const before = snapshotSchema(schema(`    name: v.string(),
-    nickname: v.optional(v.string()),`));
+    const before = snapshotSchema(
+      schema(`    name: v.string(),
+    nickname: v.optional(v.string()),`),
+    );
     expect(
       schemaViolations(
         before,
-        snapshotSchema(schema(`    name: v.string(),
+        snapshotSchema(
+          schema(`    name: v.string(),
     nickname: v.optional(v.string()),
-    requiredNew: v.string(),`)),
+    requiredNew: v.string(),`),
+        ),
       ),
     ).toEqual([
       "server.requiredNew: new required field needs a @compat-allow-tighten marker and backfill",
     ]);
-    expect(
-      schemaViolations(
-        before,
-        snapshotSchema(schema(`    name: v.string(),`)),
-      ),
-    ).toEqual(["server.nickname: field was removed without a compatibility marker"]);
+    expect(schemaViolations(before, snapshotSchema(schema(`    name: v.string(),`)))).toEqual([
+      "server.nickname: field was removed without a compatibility marker",
+    ]);
     expect(schemaViolations(before, { tables: {} })).toEqual([
       "server: table was removed without a compatibility marker",
       "members: table was removed without a compatibility marker",
@@ -68,8 +73,10 @@ describe("schema compatibility snapshot", () => {
   });
 
   it("allows a documented tightening", () => {
-    const before = snapshotSchema(schema(`    name: v.string(),
-    nickname: v.optional(v.string()),`));
+    const before = snapshotSchema(
+      schema(`    name: v.string(),
+    nickname: v.optional(v.string()),`),
+    );
     const afterSource = schema(`    name: v.string(),
     // @compat-allow-tighten: server.nickname -- backfill released in 1.3.0
     nickname: v.string(),`);

@@ -86,16 +86,14 @@ describe("schema compatibility with supported older releases", () => {
     for (const document of tables.get("messages") ?? []) {
       for (const channelId of channelIds) {
         await t.run(
-          async (ctx) =>
-            await ctx.db.insert("messages", { ...document, channelId } as never),
+          async (ctx) => await ctx.db.insert("messages", { ...document, channelId } as never),
         );
       }
     }
     for (const document of tables.get("readStates") ?? []) {
       for (const channelId of channelIds) {
         await t.run(
-          async (ctx) =>
-            await ctx.db.insert("readStates", { ...document, channelId } as never),
+          async (ctx) => await ctx.db.insert("readStates", { ...document, channelId } as never),
         );
       }
     }

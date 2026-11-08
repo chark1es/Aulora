@@ -25,8 +25,8 @@ export function useClientVersionPolicy(): ClientVersionPolicy | null {
     return null;
   }
   return {
-    minClientVersion: config.clientVersion.minClientVersion,
-    recommendedClientVersion: config.clientVersion.recommendedClientVersion,
+    minClientVersion: config.clientVersion?.minClientVersion ?? null,
+    recommendedClientVersion: config.clientVersion?.recommendedClientVersion ?? null,
   };
 }
 
