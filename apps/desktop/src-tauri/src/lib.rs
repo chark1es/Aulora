@@ -39,12 +39,21 @@ use tauri::Manager;
 ///
 /// The call picture-in-picture webview plays what the main webview captured and
 /// asks for nothing, so it keeps the engine's default answer.
+///
+/// The answer only applies while the main webview shows the bundled client.
+/// Sign-in navigates that same webview to the identity provider's own pages;
+/// those are remote content and keep the engine's default prompt, which names
+/// their real origin.
 fn permission_response<R: tauri::Runtime>(
     webview: &tauri::Webview<R>,
     kind: PermissionKind,
 ) -> PermissionResponse {
     if webview.label() != "main" {
         return PermissionResponse::Default;
+    }
+    match webview.url() {
+        Ok(url) if is_bundled_app_url(&url) => {}
+        _ => return PermissionResponse::Default,
     }
     match kind {
         PermissionKind::Microphone
@@ -55,6 +64,51 @@ fn permission_response<R: tauri::Runtime>(
         | PermissionKind::Autoplay
         | PermissionKind::AutomaticDownloads => PermissionResponse::Allow,
         _ => PermissionResponse::Deny,
+    }
+}
+
+/// Whether `url` is the bundled client rather than remote content. The bundle is
+/// served from `tauri://localhost` (macOS, Linux) or `http(s)://tauri.localhost`
+/// (Windows); debug builds also load the Vite dev server.
+fn is_bundled_app_url(url: &tauri::Url) -> bool {
+    match (url.scheme(), url.host_str()) {
+        ("tauri", Some("localhost")) => true,
+        ("http" | "https", Some("tauri.localhost")) => true,
+        ("http", Some("localhost")) => cfg!(debug_assertions),
+        _ => false,
+    }
+}
+
+#[cfg(test)]
+mod bundled_url_tests {
+    use super::is_bundled_app_url;
+
+    fn url(value: &str) -> tauri::Url {
+        value.parse().expect("valid url")
+    }
+
+    #[test]
+    fn accepts_the_bundled_origins() {
+        assert!(is_bundled_app_url(&url("tauri://localhost/")));
+        assert!(is_bundled_app_url(&url("tauri://localhost/connect")));
+        assert!(is_bundled_app_url(&url("http://tauri.localhost/")));
+        assert!(is_bundled_app_url(&url("https://tauri.localhost/#pip")));
+    }
+
+    #[test]
+    fn rejects_remote_and_lookalike_origins() {
+        assert!(!is_bundled_app_url(&url(
+            "https://accounts.google.com/o/oauth2/auth"
+        )));
+        assert!(!is_bundled_app_url(&url(
+            "https://tauri.localhost.evil.example/"
+        )));
+        assert!(!is_bundled_app_url(&url(
+            "https://evil.example/tauri.localhost"
+        )));
+        assert!(!is_bundled_app_url(&url("tauri://evil.example/")));
+        assert!(!is_bundled_app_url(&url("file:///etc/passwd")));
+        assert!(!is_bundled_app_url(&url("about:blank")));
     }
 }
 

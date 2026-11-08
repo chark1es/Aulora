@@ -526,8 +526,14 @@ mod tests {
         let width = u32::from_le_bytes(frame[8..12].try_into().expect("width"));
         let height = u32::from_le_bytes(frame[12..16].try_into().expect("height"));
         assert_eq!((width, height), (200, 100));
-        assert_eq!(&frame[FRAME_HEADER_BYTES..FRAME_HEADER_BYTES + 2], &[0xFF, 0xD8]);
-        assert!(frame.len() > FRAME_HEADER_BYTES + 2, "header plus JPEG body");
+        assert_eq!(
+            &frame[FRAME_HEADER_BYTES..FRAME_HEADER_BYTES + 2],
+            &[0xFF, 0xD8]
+        );
+        assert!(
+            frame.len() > FRAME_HEADER_BYTES + 2,
+            "header plus JPEG body"
+        );
     }
 
     #[test]
