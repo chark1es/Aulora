@@ -6,9 +6,11 @@
 //! per request, which keeps the cost of a share proportional to the frame rate
 //! the client asks for and stops the work the moment the client stops polling.
 //!
-//! Frames travel as base64 JPEG. That is the cheap, boring encoding: small
-//! enough to cross the IPC bridge at call bitrates, and decodable by the webview
-//! with no custom decoder.
+//! Frames travel as raw JPEG bytes behind a 16-byte header, returned as a Tauri
+//! raw IPC response. Base64 would inflate every frame by a third, allocate a
+//! string per frame, and cost the webview an `atob` pass and a byte-by-byte copy
+//! before it could even decode the image; the raw body goes straight into a
+//! `Blob` and `createImageBitmap`.
 
 use base64::engine::general_purpose::STANDARD as BASE64;
 use base64::Engine as _;
@@ -24,6 +26,25 @@ const THUMBNAIL_QUALITY: u8 = 60;
 
 /// Frame quality: sharp enough for text, small enough to cross the IPC bridge.
 const FRAME_QUALITY: u8 = 72;
+
+/// Magic, version, format byte and two sizes: the raw frame prefix. The
+/// web client validates these before handing the rest to the image decoder.
+pub const FRAME_MAGIC: [u8; 4] = *b"AULF";
+pub const FRAME_VERSION: u8 = 1;
+pub const FRAME_FORMAT_JPEG: u8 = 1;
+pub const FRAME_HEADER_BYTES: usize = 16;
+
+/// The header a frame body starts with. Sizes are little endian so the webview
+/// reads them with `DataView.getUint32(offset, true)`.
+fn frame_header(width: u32, height: u32) -> [u8; FRAME_HEADER_BYTES] {
+    let mut header = [0u8; FRAME_HEADER_BYTES];
+    header[..4].copy_from_slice(&FRAME_MAGIC);
+    header[4] = FRAME_VERSION;
+    header[5] = FRAME_FORMAT_JPEG;
+    header[8..12].copy_from_slice(&width.to_le_bytes());
+    header[12..16].copy_from_slice(&height.to_le_bytes());
+    header
+}
 
 /// Windows offered in the picker. Every entry costs a full capture for its
 /// tile, so a long window list would make the picker slow to open.
@@ -112,12 +133,13 @@ fn fit_within(width: u32, height: u32, max_width: u32, max_height: u32) -> (u32,
     }
 }
 
-fn encode_frame(
+/// Encodes one captured image to JPEG at the requested size.
+fn encode_jpeg(
     image: RgbaImage,
     max_width: u32,
     max_height: u32,
     quality: u8,
-) -> Result<CaptureFrame, String> {
+) -> Result<(Vec<u8>, u32, u32), String> {
     // Scale first, while the frame is the capture's own RGBA buffer, and only
     // then drop the alpha channel: a 4K screen is 8 million pixels, so doing
     // the conversion (or a slow filter) at full size dominated the frame time.
@@ -136,12 +158,39 @@ fn encode_frame(
     JpegEncoder::new_with_quality(&mut bytes, quality)
         .write_image(scaled.as_raw(), width, height, ExtendedColorType::Rgb8)
         .map_err(|error| format!("Could not encode the captured frame: {error}"))?;
+    Ok((bytes, width, height))
+}
+
+/// A base64 JPEG data URL, used only for the picker's one-off tiles.
+fn encode_frame(
+    image: RgbaImage,
+    max_width: u32,
+    max_height: u32,
+    quality: u8,
+) -> Result<CaptureFrame, String> {
+    let (bytes, width, height) = encode_jpeg(image, max_width, max_height, quality)?;
     Ok(CaptureFrame {
         mime: "image/jpeg",
         data: BASE64.encode(&bytes),
         width,
         height,
     })
+}
+
+/// One frame as the raw IPC body: a [`FRAME_HEADER_BYTES`] header followed by
+/// the JPEG. Exposed for the header test; [`capture_frame_bytes`] captures a
+/// real source first.
+pub fn frame_bytes(
+    image: RgbaImage,
+    max_width: u32,
+    max_height: u32,
+    quality: u8,
+) -> Result<Vec<u8>, String> {
+    let (jpeg, width, height) = encode_jpeg(image, max_width, max_height, quality)?;
+    let mut body = Vec::with_capacity(FRAME_HEADER_BYTES + jpeg.len());
+    body.extend_from_slice(&frame_header(width, height));
+    body.extend_from_slice(&jpeg);
+    Ok(body)
 }
 
 fn thumbnail(image: RgbaImage) -> Option<String> {
@@ -227,14 +276,15 @@ pub fn list_sources() -> Result<Vec<CaptureSource>, String> {
     Ok(sources)
 }
 
-/// One frame of `source_id`, scaled to fit `max_width`×`max_height` (either may
-/// be zero for no limit). Sources are looked up again on every frame so a closed
-/// window reports a clear error instead of a stale image.
-pub fn capture_frame(
+/// Captures one frame of `source_id` as raw header-plus-JPEG bytes, scaled to
+/// fit `max_width`×`max_height` (either may be zero for no limit). Sources are
+/// looked up again on every frame so a closed window reports a clear error
+/// instead of a stale image.
+pub fn capture_frame_bytes(
     source_id: &str,
     max_width: u32,
     max_height: u32,
-) -> Result<CaptureFrame, String> {
+) -> Result<Vec<u8>, String> {
     let image = match parse_source_id(source_id)? {
         SourceTarget::Screen(id) => Monitor::all()
             .map_err(|error| format!("Could not list screens: {error}"))?
@@ -251,7 +301,7 @@ pub fn capture_frame(
     }
     .map_err(|error| format!("Could not capture that source: {error}"))?;
 
-    encode_frame(image, max_width, max_height, FRAME_QUALITY)
+    frame_bytes(image, max_width, max_height, FRAME_QUALITY)
 }
 
 /// Whether the OS lets Aulora read the screen, and how to grant it.
@@ -464,6 +514,20 @@ mod tests {
         assert_eq!((frame.width, frame.height), (200, 100));
         let bytes = BASE64.decode(frame.data).expect("base64");
         assert_eq!(&bytes[..2], &[0xFF, 0xD8], "JPEG start of image");
+    }
+
+    #[test]
+    fn raw_frames_carry_a_parsable_header_and_jpeg_body() {
+        let source = RgbaImage::from_pixel(400, 200, image::Rgba([10, 20, 30, 255]));
+        let frame = frame_bytes(source, 200, 100, FRAME_QUALITY).expect("frame");
+        assert_eq!(&frame[..4], &FRAME_MAGIC);
+        assert_eq!(frame[4], FRAME_VERSION);
+        assert_eq!(frame[5], FRAME_FORMAT_JPEG);
+        let width = u32::from_le_bytes(frame[8..12].try_into().expect("width"));
+        let height = u32::from_le_bytes(frame[12..16].try_into().expect("height"));
+        assert_eq!((width, height), (200, 100));
+        assert_eq!(&frame[FRAME_HEADER_BYTES..FRAME_HEADER_BYTES + 2], &[0xFF, 0xD8]);
+        assert!(frame.len() > FRAME_HEADER_BYTES + 2, "header plus JPEG body");
     }
 
     #[test]

@@ -111,17 +111,21 @@ pub async fn list_capture_sources() -> Result<Vec<capture::CaptureSource>, Strin
 
 /// Captures one frame of the chosen source, scaled to fit the requested box
 /// (zero means no limit on that axis). The web client polls this while sharing.
+///
+/// The reply is a raw IPC body (a 16-byte header plus JPEG), so no base64 string
+/// is built or parsed per frame.
 #[tauri::command]
 pub async fn capture_source_frame(
     source_id: String,
     max_width: u32,
     max_height: u32,
-) -> Result<capture::CaptureFrame, String> {
-    tauri::async_runtime::spawn_blocking(move || {
-        capture::capture_frame(&source_id, max_width, max_height)
+) -> Result<tauri::ipc::Response, String> {
+    let bytes = tauri::async_runtime::spawn_blocking(move || {
+        capture::capture_frame_bytes(&source_id, max_width, max_height)
     })
     .await
-    .map_err(|error| format!("Could not capture that source: {error}"))?
+    .map_err(|error| format!("Could not capture that source: {error}"))??;
+    Ok(tauri::ipc::Response::new(bytes))
 }
 
 /// Reports whether the OS lets the shell read the screen, so the share picker
