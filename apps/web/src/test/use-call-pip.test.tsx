@@ -250,6 +250,24 @@ describe("desktop window mode", () => {
     expect(result.current.pip.active).toBe(false);
   });
 
+  it("offers no document PiP while the operator has switched video off", async () => {
+    mocks.mode = "document";
+    const { result } = setup({ videoDisabled: true });
+    expect(result.current.pip.mode).toBe("none");
+    act(() => {
+      result.current.pip.toggle();
+    });
+    await Promise.resolve();
+    expect(mocks.openDocument).not.toHaveBeenCalled();
+    expect(result.current.pip.active).toBe(false);
+  });
+
+  it("keeps the document PiP available when video is on", async () => {
+    mocks.mode = "document";
+    const { result } = setup();
+    expect(result.current.pip.mode).toBe("document");
+  });
+
   it("closes a floating video when the operator switches video off", async () => {
     mocks.mode = "video";
     const stop = vi.fn();

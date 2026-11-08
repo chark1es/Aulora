@@ -202,6 +202,10 @@ export function useCallPip(options: CallPipOptions): { pip: PipControl; surface:
         setDesktopOpen(true);
       }
     } else if (mode === "document") {
+      // The browser window draws the call grid, video tiles included.
+      if (videoDisabled) {
+        return;
+      }
       const created = await openDocumentPip(PIP_WIDTH, PIP_HEIGHT);
       if (created !== null) {
         created.addEventListener("pagehide", () => {
@@ -530,7 +534,7 @@ export function useCallPip(options: CallPipOptions): { pip: PipControl; surface:
       return;
     }
     return registerCallSession({
-      enterPictureInPicture: mode === "document" ? () => void open() : undefined,
+      enterPictureInPicture: mode === "document" && !videoDisabled ? () => void open() : undefined,
       toggleMicrophone: () => {
         latest.current.controls.toggleMicrophone();
       },
@@ -541,14 +545,14 @@ export function useCallPip(options: CallPipOptions): { pip: PipControl; surface:
         latest.current.controls.hangUp();
       },
     });
-  }, [callActive, mode, open]);
+  }, [callActive, mode, open, videoDisabled]);
 
-  // The operator can switch the picture off while a floating video is open.
+  // The operator can switch the picture off while a floating surface is open.
   useEffect(() => {
-    if (videoDisabled && floatingVideo) {
+    if (videoDisabled && (floatingVideo || pipWindow !== null)) {
       close();
     }
-  }, [videoDisabled, floatingVideo, close]);
+  }, [videoDisabled, floatingVideo, pipWindow, close]);
 
   // Keep a floating video on whoever is worth watching.
   useEffect(() => {
@@ -563,9 +567,12 @@ export function useCallPip(options: CallPipOptions): { pip: PipControl; surface:
     };
   }, [floatingVideo, source]);
 
-  // A video-only surface has nothing to show with video switched off, so it is
-  // reported as unavailable and the page offers no button for it.
-  const exposedMode: PipMode = videoDisabled && mode === "video" ? "none" : mode;
+  // The browser surfaces (a video-only window and the document window, which
+  // draws the call grid) have nothing to show with video switched off, so they
+  // are reported as unavailable and the page offers no button for them. The
+  // desktop window keeps its avatars.
+  const exposedMode: PipMode =
+    videoDisabled && (mode === "video" || mode === "document") ? "none" : mode;
   const pip = useMemo<PipControl>(
     () => ({ mode: exposedMode, active, toggle }),
     [exposedMode, active, toggle],
