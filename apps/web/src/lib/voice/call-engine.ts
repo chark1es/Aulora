@@ -33,9 +33,10 @@ export type { VoiceEngineOptions, VoiceLocalState, VoiceSnapshot } from "./call-
  *  - `max-bundle` + `rtcpMuxPolicy: "require"` so each peer uses one transport.
  *  - A persistent audio *and* video transceiver per peer, so toggling a camera
  *    or starting a screen share swaps tracks with **no renegotiation round-trip**.
- *  - Opus tuned for voice (40 kbps, in-band FEC); video tuned for either
+ *  - Opus tuned for voice (40 kbps, in-band FEC, DTX); video tuned for either
  *    motion (`maintain-framerate`) or screen clarity (`maintain-resolution`).
- *  - `playoutDelayHint`/`jitterBufferTarget` pinned low where supported.
+ *  - A modest jitter-buffer target where the browser supports it, so loss
+ *    concealment and clock-drift correction keep working.
  *
  * The engine is plain TypeScript (no React) and reports every change through a
  * single `onChange` listener so the provider can mirror it into React state.

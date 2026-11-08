@@ -2,7 +2,7 @@ import { DEFAULT_VOICE_SETTINGS } from "@aulora/core";
 import { describe, expect, it } from "vitest";
 import { smoothMask } from "../lib/voice/effects/segmenter";
 import { gateOpenThresholdDb, micProcessingKey } from "../lib/voice/mic-pipeline";
-import { screenBitrateFor } from "../lib/voice/peer-mesh";
+import { JITTER_BUFFER_TARGET_MS, screenBitrateFor, tuneReceiver } from "../lib/voice/peer-mesh";
 
 describe("gateOpenThresholdDb", () => {
   it("has no gate at zero", () => {
@@ -70,5 +70,29 @@ describe("smoothMask", () => {
 describe("the mesh upload budget stays consistent with the stream profile", () => {
   it("never asks for more than one viewer's cap", () => {
     expect(screenBitrateFor({ maxBitrate: 3_500_000, frameRate: 30 }, 1)).toBe(3_500_000);
+  });
+});
+
+describe("tuneReceiver", () => {
+  it("asks for a modest jitter buffer instead of disabling concealment", () => {
+    const receiver = { jitterBufferTarget: 0 };
+    tuneReceiver(receiver as unknown as RTCRtpReceiver);
+    expect(receiver.jitterBufferTarget).toBe(JITTER_BUFFER_TARGET_MS);
+    expect(JITTER_BUFFER_TARGET_MS).toBeGreaterThanOrEqual(100);
+  });
+
+  it("leaves a receiver without the property on the browser default", () => {
+    const receiver: Record<string, unknown> = {};
+    expect(() => tuneReceiver(receiver as unknown as RTCRtpReceiver)).not.toThrow();
+    expect("jitterBufferTarget" in receiver).toBe(false);
+  });
+
+  it("survives an engine that refuses the write", () => {
+    const receiver = {
+      get jitterBufferTarget(): number {
+        return 0;
+      },
+    };
+    expect(() => tuneReceiver(receiver as unknown as RTCRtpReceiver)).not.toThrow();
   });
 });

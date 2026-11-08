@@ -503,20 +503,29 @@ function tuneVideoSender(sender: RTCRtpSender, screen: ScreenBudget | null): voi
   }
 }
 
-/** Asks the browser to keep playout delay low for interactive conversation. */
-function tuneReceiver(receiver: RTCRtpReceiver): void {
-  const target = receiver as RTCRtpReceiver & {
-    playoutDelayHint?: number;
-    jitterBufferTarget?: number;
-  };
-  try {
-    target.playoutDelayHint = 0;
-  } catch {
-    // Unsupported.
+/**
+ * A modest jitter buffer target, in milliseconds.
+ *
+ * Pinning the buffer to zero (`playoutDelayHint = 0` plus a zero target) turns
+ * jitter-buffer adaptation off, so every late or lost packet becomes concealment
+ * work on the audio thread: clicks, warble and video stalls on any link that is
+ * not perfectly smooth. ~150 ms keeps cancellation, clock-drift correction and
+ * loss concealment working while staying inside conversational latency.
+ */
+export const JITTER_BUFFER_TARGET_MS = 150;
+
+/**
+ * Asks the browser for a modest jitter buffer, leaving its own default where the
+ * property is absent. Exported for the tuning test.
+ */
+export function tuneReceiver(receiver: RTCRtpReceiver): void {
+  const target = receiver as RTCRtpReceiver & { jitterBufferTarget?: number };
+  if (!("jitterBufferTarget" in target)) {
+    return;
   }
   try {
-    target.jitterBufferTarget = 0;
+    target.jitterBufferTarget = JITTER_BUFFER_TARGET_MS;
   } catch {
-    // Unsupported.
+    // Read-only or unsupported on this engine; the browser default stands.
   }
 }
