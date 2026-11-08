@@ -21,6 +21,13 @@ export interface VoiceSnapshot {
   readonly remoteScreens: ReadonlyMap<string, MediaStream>;
   /** Remote users whose audio is currently above the speaking threshold. */
   readonly remoteSpeaking: ReadonlySet<string>;
+  /**
+   * Binds a remote tile's `<video>` element to the streaming server's
+   * subscriber so adaptive-stream sizing can pick a simulcast layer. Returns
+   * `false` when the peer mesh owns the media, in which case the tile keeps
+   * using {@link remoteStreams}.
+   */
+  readonly attachRemoteVideo: (userId: string, element: HTMLVideoElement | null) => boolean;
   /** Whether this device is currently transmitting speech. */
   readonly localSpeaking: boolean;
   readonly pending: boolean;

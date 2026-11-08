@@ -13,12 +13,18 @@ export function VideoSurface({
   track,
   mirror = false,
   fit = "cover",
+  attach,
   className,
 }: {
   readonly stream?: MediaStream | null;
   readonly track?: MediaStreamTrack | null;
   readonly mirror?: boolean;
   readonly fit?: "cover" | "contain";
+  /**
+   * Binds the element to a streaming-server subscriber. Returns `false` when
+   * the mesh owns the media, in which case `stream`/`track` is used instead.
+   */
+  readonly attach?: (element: HTMLVideoElement | null) => boolean;
   readonly className?: string;
 }) {
   const ref = useRef<HTMLVideoElement | null>(null);
@@ -37,6 +43,13 @@ export function VideoSurface({
     if (element === null) {
       return;
     }
+    // A subscriber-managed element must be attached (not just given a
+    // srcObject) so adaptive streaming can observe its rendered size.
+    if (attach?.(element) === true) {
+      return () => {
+        attach(null);
+      };
+    }
     element.srcObject = media;
     if (media !== null) {
       void element.play().catch(() => undefined);
@@ -44,9 +57,9 @@ export function VideoSurface({
     return () => {
       element.srcObject = null;
     };
-  }, [media]);
+  }, [media, attach]);
 
-  if (media === null) {
+  if (media === null && attach === undefined) {
     return null;
   }
   return (
@@ -90,6 +103,8 @@ export interface ParticipantTileProps {
   readonly speaking?: boolean | undefined;
   readonly className?: string;
   readonly avatarSize?: number;
+  /** Binds the tile to the SFU subscriber while that path carries the video. */
+  readonly attachVideo?: (userId: string, element: HTMLVideoElement | null) => boolean;
 }
 
 /** One participant tile: video when available, avatar otherwise, plus status. */
@@ -104,6 +119,7 @@ export function ParticipantTile(props: ParticipantTileProps) {
     speaking,
     className,
     avatarSize = 64,
+    attachVideo,
   } = props;
   const isSpeaking = speaking ?? participant.speaking;
 
@@ -122,6 +138,7 @@ export function ParticipantTile(props: ParticipantTileProps) {
         localVideoTrack={localVideoTrack}
         settings={settings}
         avatarSize={avatarSize}
+        {...(attachVideo !== undefined ? { attachVideo } : {})}
       />
 
       <ParticipantChrome
@@ -157,6 +174,7 @@ function ParticipantMedia({
   localVideoTrack,
   settings,
   avatarSize,
+  attachVideo,
 }: {
   readonly participant: CallParticipantView;
   readonly isSelf: boolean;
@@ -164,7 +182,18 @@ function ParticipantMedia({
   readonly localVideoTrack: MediaStreamTrack | null;
   readonly settings: VoiceDeviceSettings;
   readonly avatarSize: number;
+  readonly attachVideo?: (userId: string, element: HTMLVideoElement | null) => boolean;
 }) {
+  // Stable per tile: a new function every render would re-attach the video
+  // element on every state change.
+  const bindVideo = useMemo(() => {
+    // A screen share keeps its own relay path (`screens`), so only a camera
+    // tile is bound to the call's SFU subscriber.
+    if (attachVideo === undefined || isSelf || participant.sharingScreen) {
+      return undefined;
+    }
+    return (element: HTMLVideoElement | null) => attachVideo(participant.userId, element);
+  }, [attachVideo, isSelf, participant.sharingScreen, participant.userId]);
   // A share counts as video even with the camera off: the sharer's screen is
   // the thing to look at.
   const hasVideo =
@@ -184,6 +213,7 @@ function ParticipantMedia({
       track={isSelf ? localVideoTrack : null}
       mirror={shouldMirror(isSelf, participant.sharingScreen, settings)}
       fit={participant.sharingScreen ? "contain" : "cover"}
+      {...(bindVideo !== undefined ? { attach: bindVideo } : {})}
     />
   );
 }
@@ -246,6 +276,8 @@ export interface CallGridProps {
   /** Remote users currently speaking, from the local audio level meter. */
   readonly speakingIds?: ReadonlySet<string>;
   readonly localSpeaking?: boolean;
+  /** Binds remote video tiles to the SFU subscriber (adaptive streaming). */
+  readonly attachVideo?: (userId: string, element: HTMLVideoElement | null) => boolean;
   readonly className?: string;
 }
 
@@ -258,6 +290,7 @@ interface TileContext {
   readonly identity: CallIdentity;
   readonly speakingIds: ReadonlySet<string> | undefined;
   readonly localSpeaking: boolean;
+  readonly attachVideo: ((userId: string, element: HTMLVideoElement | null) => boolean) | undefined;
 }
 
 const NO_SCREENS: ReadonlyMap<string, MediaStream> = new Map();
@@ -283,6 +316,7 @@ export function CallGrid(props: CallGridProps) {
     identity,
     speakingIds,
     localSpeaking = false,
+    attachVideo,
     className,
   } = props;
   const context: TileContext = {
@@ -294,6 +328,7 @@ export function CallGrid(props: CallGridProps) {
     identity,
     speakingIds,
     localSpeaking,
+    attachVideo,
   };
   const sorted = useMemo(() => sortParticipants(participants), [participants]);
   const sharer = sorted.find((participant) => participant.sharingScreen);
@@ -374,6 +409,7 @@ function Tile({
           ? context.localSpeaking
           : context.speakingIds?.has(participant.userId)
       }
+      {...(context.attachVideo !== undefined ? { attachVideo: context.attachVideo } : {})}
       {...(className !== undefined ? { className } : {})}
       {...(avatarSize !== undefined ? { avatarSize } : {})}
     />

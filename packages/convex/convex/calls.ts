@@ -224,6 +224,7 @@ export const updateParticipant = mutation({
     video: v.optional(v.boolean()),
     sharingScreen: v.optional(v.boolean()),
     sfu: v.optional(v.boolean()),
+    sfuCall: v.optional(v.boolean()),
   },
   handler: async (ctx, args) => {
     const { userId } = await requireAuth(ctx);
@@ -248,6 +249,7 @@ export const updateParticipant = mutation({
       ...(args.video !== undefined ? { video: args.video } : {}),
       ...(args.sharingScreen !== undefined ? { sharingScreen: args.sharingScreen } : {}),
       ...(args.sfu !== undefined ? { sfu: args.sfu } : {}),
+      ...(args.sfuCall !== undefined ? { sfuCall: args.sfuCall } : {}),
       lastSeen: Date.now(),
     });
     if (args.sharingScreen !== undefined) {

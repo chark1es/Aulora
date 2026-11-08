@@ -231,8 +231,20 @@ The standard Compose file publishes database and administration ports for local 
 
 Start with a small test team and measure CPU, memory, storage, and upload growth on your host. There is no published capacity guarantee. Container builds need more resources than an idle server. Configure a TURN server if calls must work across restrictive networks.
 
+## TURN relay (optional)
+
+Calls connect peer to peer, which fails when both sides sit behind symmetric NAT or a firewall that blocks outbound media. A TURN server relays those calls. The stack ships coturn as an optional profile; it is off by default and a deployment without it behaves exactly as before, using public STUN.
+
+1. Generate a shared secret with `openssl rand -hex 32` and set `TURN_SECRET` in `infra/docker/.env`.
+2. Set `TURN_URLS` to the addresses clients can reach, for example `turn:chat.example.com:3478?transport=udp,turn:chat.example.com:3478?transport=tcp`. Add a `turns:` URL when TLS is configured.
+3. Open `3478/udp`, `3478/tcp`, `5349/tcp` and the relay range `49160-49200` udp/tcp on the host. Widen the range in `docker-compose.yml` if many calls run at once.
+4. Start the relay with `docker compose --profile turn up -d`, then re-run `docker compose run --rm setup` so Convex receives `TURN_SECRET`, `TURN_URLS` and `TURN_TTL_SECONDS`.
+5. Behind 1:1 NAT, set `TURN_EXTERNAL_IP` to the public address so the relay advertises it. For TURN over TLS, place `cert.pem` and `key.pem` in `infra/docker/coturn/certs`.
+
+The backend never stores a user password. `turn.credentials` mints a member-only, time-limited username (`<expiry>:<user id>`) and its HMAC-SHA1 credential from `TURN_SECRET`; clients refresh it before it expires and merge it with any `AULORA_ICE_SERVERS` override. Credentials are valid for `TURN_TTL_SECONDS` (default one hour), so a leaked credential stops working on its own. Keep `TURN_REALM` identical to the realm coturn serves (default `aulora`).
+
 ## Screen streaming server (optional)
 
-Calls are peer to peer, which suits small calls. To stream a desktop or application to many people, enable the optional LiveKit streaming server: open `7881/tcp` and `7882/udp` on the host and run `docker compose --profile streaming up -d`. It creates its own keys and is served from your existing web address, so there is nothing to configure. Under Coolify it is already running and only needs those two ports opened. Only screen and window shares go through it; voice and camera stay peer to peer, and clients that cannot use it (the mobile apps today) still receive shares directly. LiveKit is Apache-2.0 software run as a separate container. Details are in [infra/docker/README.md](https://github.com/chark1es/Aulora/blob/main/infra/docker/README.md#screen-streaming-optional).
+Calls are peer to peer, which suits small calls. To stream a desktop or application to many people, enable the optional LiveKit streaming server: open `7881/tcp` and `7882/udp` on the host and run `docker compose --profile streaming up -d`. It creates its own keys and is served from your existing web address, so there is nothing to configure. Under Coolify it is already running and only needs those two ports opened. Screen and window shares always use it when it is available. Calls with more than four participants also send microphone and camera through it, but only when every participant supports that path; a phone or an older client keeps the whole call peer to peer, and a member who cannot connect to the server stays on the mesh. LiveKit is Apache-2.0 software run as a separate container. Details are in [infra/docker/README.md](https://github.com/chark1es/Aulora/blob/main/infra/docker/README.md#screen-streaming-optional) and [apps/web/src/lib/voice/README.md](https://github.com/chark1es/Aulora/blob/main/apps/web/src/lib/voice/README.md).
 
 Set signup/invitation policy, verify backups and a restore, and check the server from another network before inviting users. See [updates](updates.md), [backups](backups.md), and [troubleshooting](troubleshooting.md). Business use requires a [paid commercial agreement](licensing.md).

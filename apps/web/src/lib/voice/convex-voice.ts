@@ -80,7 +80,11 @@ export function convexVoicePort(client: ConvexReactClient, clientId: string): Vo
       return await client.action(api.callStreaming.access, {
         callId: args.callId as never,
         clientId,
+        ...(args.scope !== undefined ? { scope: args.scope } : {}),
       });
+    },
+    async turnCredentials() {
+      return await client.mutation(api.turn.credentials, {});
     },
     async callHeartbeat(args) {
       await client.mutation(api.calls.heartbeat, { callId: args.callId as never, clientId });

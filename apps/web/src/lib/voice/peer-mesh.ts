@@ -168,6 +168,9 @@ export class PeerMesh {
   private readonly statBaselines = new Map<string, RtpCounters>();
   private readonly ice: IceSignalBuffer;
 
+  /** False while a streaming server carries the call's audio. */
+  private remoteAudioEnabled = true;
+
   constructor(private readonly host: PeerMeshHost) {
     this.ice = new IceSignalBuffer((toUserId, payloads) => {
       const callId = this.host.getCallId();
@@ -192,6 +195,22 @@ export class PeerMesh {
     this.ice.clear();
     this.remoteSpeaking.clear();
     this.processedSignals.clear();
+    this.remoteAudioEnabled = true;
+  }
+
+  /**
+   * Silences (or restores) every remote mesh audio track without tearing the
+   * peer connections down. Used for the hand-over to a streaming server: the
+   * mesh keeps video signalling and the fallback path ready, but only one of
+   * the two paths may play or upload audio at a time.
+   */
+  setRemoteAudioEnabled(enabled: boolean): void {
+    this.remoteAudioEnabled = enabled;
+    for (const peer of this.peers.values()) {
+      for (const track of peer.stream.getAudioTracks()) {
+        track.enabled = enabled;
+      }
+    }
   }
 
   /** Opens/closes peers so they match the call's current participant list. */
@@ -354,6 +373,9 @@ export class PeerMesh {
     pc.ontrack = (event) => {
       peer.stream.addTrack(event.track);
       if (event.track.kind === "audio") {
+        // A track that arrives during an SFU hand-over must stay silent until
+        // the mesh takes the call back.
+        event.track.enabled = this.remoteAudioEnabled;
         peer.levelUnsub?.();
         peer.levelUnsub = createLevelMeter(peer.stream, (level) => {
           this.host.onRemoteLevel(remoteId, level);
