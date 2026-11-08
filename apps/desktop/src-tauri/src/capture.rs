@@ -60,7 +60,7 @@ const MIN_WINDOW_HEIGHT: u32 = 60;
 #[derive(Debug, Clone, Serialize)]
 #[serde(rename_all = "camelCase")]
 pub struct CaptureSource {
-    /// Opaque id handed back to [`capture_frame`]: `screen:<id>` or
+    /// Opaque id handed back to [`capture_frame_bytes`]: `screen:<id>` or
     /// `window:<id>`.
     pub id: String,
     pub name: String,
