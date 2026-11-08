@@ -154,37 +154,27 @@
   "lazyOnly": [
     {
       "match": "livekit-client",
-      "contentMarkers": [
-        "livekit"
-      ],
+      "contentMarkers": ["livekit"],
       "reason": "LiveKit is imported by the call screen only; it must stay a lazy chunk."
     },
     {
       "match": "vision_bundle",
-      "contentMarkers": [
-        "mediapipe"
-      ],
+      "contentMarkers": ["mediapipe"],
       "reason": "MediaPipe tasks-vision is imported only when a call enables background blur."
     },
     {
       "match": "vision_wasm_internal",
-      "contentMarkers": [
-        "vision_wasm_internal"
-      ],
+      "contentMarkers": ["vision_wasm_internal"],
       "reason": "MediaPipe WebAssembly loader is fetched on demand by the vision runtime."
     },
     {
       "match": "selfie_segmenter",
-      "contentMarkers": [
-        "selfie_segmenter"
-      ],
+      "contentMarkers": ["selfie_segmenter"],
       "reason": "The selfie segmentation model is fetched when background blur starts."
     },
     {
       "match": "rnnoise",
-      "contentMarkers": [
-        "rnnoise"
-      ],
+      "contentMarkers": ["rnnoise"],
       "reason": "RNNoise noise suppression is loaded by the audio pipeline on demand."
     }
   ]
