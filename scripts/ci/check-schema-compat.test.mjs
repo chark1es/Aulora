@@ -98,24 +98,33 @@ describe("schema compatibility snapshot", () => {
       const snapshotPath = resolve(root, SNAPSHOT_PATH);
       mkdirSync(dirname(schemaPath), { recursive: true });
       mkdirSync(dirname(snapshotPath), { recursive: true });
-      writeFileSync(schemaPath, schema(`    name: v.string(),
-    nickname: v.optional(v.string()),`));
+      writeFileSync(
+        schemaPath,
+        schema(`    name: v.string(),
+    nickname: v.optional(v.string()),`),
+      );
       const before = snapshotSchema(readFileSync(schemaPath, "utf8"));
       writeSnapshot(before, root);
 
-      writeFileSync(schemaPath, schema(`    name: v.string(),
-    nickname: v.string(),`));
+      writeFileSync(
+        schemaPath,
+        schema(`    name: v.string(),
+    nickname: v.string(),`),
+      );
       const violations = checkSchemaCompat({ rootDir: root, update: true });
       expect(violations.length).toBe(1);
       expect(JSON.parse(readFileSync(snapshotPath, "utf8"))).toEqual(before);
 
-      writeFileSync(schemaPath, schema(`    name: v.string(),
+      writeFileSync(
+        schemaPath,
+        schema(`    name: v.string(),
     // @compat-allow-tighten: server.nickname -- backfill completed
-    nickname: v.string(),`));
+    nickname: v.string(),`),
+      );
       expect(checkSchemaCompat({ rootDir: root, update: true })).toEqual([]);
-      expect(
-        JSON.parse(readFileSync(snapshotPath, "utf8")).tables.server.fields.nickname,
-      ).toBe("required");
+      expect(JSON.parse(readFileSync(snapshotPath, "utf8")).tables.server.fields.nickname).toBe(
+        "required",
+      );
     } finally {
       rmSync(root, { recursive: true, force: true });
     }

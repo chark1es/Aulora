@@ -130,11 +130,7 @@ export function checkSchemaCompat({ rootDir = root, update = false } = {}) {
       writeSnapshot(current, rootDir);
       return [];
     }
-    const violations = schemaViolations(
-      loadSnapshot(rootDir),
-      current,
-      allowedTightenings(source),
-    );
+    const violations = schemaViolations(loadSnapshot(rootDir), current, allowedTightenings(source));
     if (violations.length === 0) {
       writeSnapshot(current, rootDir);
     }
