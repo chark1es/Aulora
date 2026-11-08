@@ -9,6 +9,7 @@ scripts. Apply the relevant performance and upgrade checks before submitting.
 
 ## Boundaries
 
-- Never commit credentials, encryption keys, or private user data.
+- Keep real credentials, encryption keys, and private user data out of Git. Use
+  synthetic fixtures or documented public test credentials instead.
 - Do not bypass backend authorization or disable schema validation to make a
   change pass.
