@@ -62,7 +62,7 @@ vi.mock("../lib/voice/peer-mesh", () => ({
     async applyAudioTrack(track: unknown): Promise<void> {
       mock.meshAudio.push(track);
     }
-    async collectStats(): Promise<Map<string, never>> {
+    async collectStats(): Promise<Map<string, unknown>> {
       return new Map();
     }
   },

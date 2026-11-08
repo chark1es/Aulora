@@ -35,7 +35,9 @@ import {
 } from "../lib/voice/pip-frames";
 import {
   createPipSender,
+  type LoopbackHealth,
   loopbackSupported,
+  nextLoopbackHealth,
   type PipSenderHandle,
   parseLoopbackSignal,
 } from "../lib/voice/pip-loopback";
@@ -297,8 +299,7 @@ export function useCallPip(options: CallPipOptions): { pip: PipControl; surface:
     let disposed = false;
     let unlisten: (() => void) | undefined;
     let frames: PipFrameSender | null = null;
-    let connected = false;
-    let failed = false;
+    let health: LoopbackHealth = { connected: false, failed: false };
     const startedAt = Date.now();
     const canSendFrames = isDesktop() && framesSupported();
     const initial = pickPipVideoSource(
@@ -320,8 +321,8 @@ export function useCallPip(options: CallPipOptions): { pip: PipControl; surface:
       const kind = choosePipTransport({
         loopbackSupported: sender !== null,
         framesSupported: canSendFrames,
-        loopbackConnected: connected,
-        loopbackFailed: failed,
+        loopbackConnected: health.connected,
+        loopbackFailed: health.failed,
         elapsedMs: Date.now() - startedAt,
         timeoutMs: LOOPBACK_FALLBACK_MS,
       });
@@ -337,12 +338,11 @@ export function useCallPip(options: CallPipOptions): { pip: PipControl; surface:
           void emitDesktopEventTo(PIP_WINDOW_LABEL, PIP_SIGNAL_EVENT, signal);
         },
         onState: (state) => {
+          health = nextLoopbackHealth(health, state);
           if (state === "connected") {
-            connected = true;
             frames?.close();
             frames = null;
           } else if (state === "failed") {
-            failed = true;
             fallBack();
           }
         },
@@ -352,7 +352,7 @@ export function useCallPip(options: CallPipOptions): { pip: PipControl; surface:
     }
 
     const timer = setTimeout(() => {
-      if (!disposed && !connected) {
+      if (!disposed && !health.connected) {
         fallBack();
       }
     }, LOOPBACK_FALLBACK_MS);

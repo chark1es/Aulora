@@ -36,6 +36,28 @@ export type LoopbackSignal =
 
 export type LoopbackState = "idle" | "connecting" | "connected" | "failed" | "closed";
 
+/** What the transport choice needs to know about the loopback right now. */
+export interface LoopbackHealth {
+  readonly connected: boolean;
+  readonly failed: boolean;
+}
+
+/**
+ * Folds a sender state into the health the fallback decision reads. A later
+ * `failed` must clear `connected`: the decision prefers a connected loopback, so
+ * a link that worked and then died would otherwise never fall back to frames.
+ * `connected` likewise clears an earlier failure after a renegotiation.
+ */
+export function nextLoopbackHealth(health: LoopbackHealth, state: LoopbackState): LoopbackHealth {
+  if (state === "connected") {
+    return { connected: true, failed: false };
+  }
+  if (state === "failed") {
+    return { connected: false, failed: true };
+  }
+  return health;
+}
+
 export interface LoopbackOptions {
   /** Posts one signalling message to the other webview. */
   readonly send: (signal: LoopbackSignal) => void;

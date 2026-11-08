@@ -5,6 +5,7 @@ import {
   LOOPBACK_PEER_CONFIG,
   type LoopbackSignal,
   loopbackSupported,
+  nextLoopbackHealth,
   parseLoopbackSignal,
 } from "../lib/voice/pip-loopback";
 
@@ -347,5 +348,30 @@ describe("loopbackSupported", () => {
   it("is true when the constructor exists", () => {
     vi.stubGlobal("RTCPeerConnection", FakePeer);
     expect(loopbackSupported()).toBe(true);
+  });
+});
+
+describe("nextLoopbackHealth", () => {
+  const idle = { connected: false, failed: false };
+
+  it("tracks a connection", () => {
+    expect(nextLoopbackHealth(idle, "connected")).toEqual({ connected: true, failed: false });
+  });
+
+  it("clears a working connection when it later fails, so the fallback can start", () => {
+    const connected = nextLoopbackHealth(idle, "connected");
+    expect(nextLoopbackHealth(connected, "failed")).toEqual({ connected: false, failed: true });
+  });
+
+  it("clears an earlier failure once a renegotiation connects", () => {
+    const failed = nextLoopbackHealth(idle, "failed");
+    expect(nextLoopbackHealth(failed, "connected")).toEqual({ connected: true, failed: false });
+  });
+
+  it("leaves the health alone for transient states", () => {
+    const connected = nextLoopbackHealth(idle, "connected");
+    expect(nextLoopbackHealth(connected, "connecting")).toBe(connected);
+    expect(nextLoopbackHealth(connected, "closed")).toBe(connected);
+    expect(nextLoopbackHealth(connected, "idle")).toBe(connected);
   });
 });
