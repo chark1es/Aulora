@@ -43,7 +43,24 @@ cd infra/docker
 # Include --profile backups if you use the backup runner.
 ```
 
-Running setup alone reuses its current image and can deploy old code. `deploy.sh` rebuilds the source-containing images before redeploying.
+Running setup alone reuses its current image and can deploy old code. `deploy.sh` rebuilds the source-containing images, deploys the backend first, and recreates the web container only after `setup` succeeds. The release's schema and functions must accept the previous web build during that window.
+
+`deploy.sh` pins the serving web image before rebuilding. If a new frontend is broken while the backend is still compatible, restore the previous web build:
+
+```sh
+cd infra/docker
+./deploy.sh --rollback
+```
+
+Rollback restores only the web container. It does not undo function, schema, engine, or migration changes; use a compatible backup and the [restore guide](backups.md) for those.
+
+## Client compatibility and kill switches
+
+A server can advertise a minimum and recommended client version. Older clients show an update screen or a dismissible notice instead of continuing into the workspace. The values are optional environment settings and are unset by default; see the release guide in the repository for the operator procedure.
+
+Workspace managers can also turn off a new call, picture-in-picture, or auto-degrade path through the server's `disableNewCallTransport`, `disablePipVideo`, and `disableAutoDegrade` settings. They default to off (features enabled) and take effect on the client's next configuration read.
+
+Desktop updates can be staged: the release manifest may carry a rollout percentage, and each installation deterministically receives or defers the update. A published release cannot be re-gated without publishing a new version, and the static download artifacts remain public.
 
 ## Verify and recover
 

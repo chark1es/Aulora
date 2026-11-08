@@ -6,6 +6,7 @@ import { dirname, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 import { isReleaseTag, readDeclaredVersion } from "../../../packages/core/src/updates.ts";
 import { checkWorkspace } from "./cli.mjs";
+import { pinCurrentWebImage } from "./rollback.mjs";
 
 export function run(command, args, cwd) {
   return new Promise((resolveResult, reject) => {
@@ -126,6 +127,10 @@ export function createStagedUpdater({
       const envHash = fingerprint();
       const stageDocker = resolve(stage, "infra/docker");
       writeFileSync(resolve(stageDocker, ".env"), readFileSync(envFile), { mode: 0o600 });
+      // The staged build reuses the live image tags, so capture the currently
+      // serving web image before it is overwritten. Best effort: a first
+      // install has no previous image.
+      await pinCurrentWebImage({ dockerDir, execute }).catch(() => null);
       await compose(stageDocker, "build", "web", "setup", "smtp-gateway", "bot-runner");
       const images = JSON.parse(await compose(stageDocker, "config", "--format", "json"));
       // Record immutable image IDs so a later rebuild cannot substitute another release.
@@ -156,8 +161,10 @@ export function createStagedUpdater({
     status(prepared.plan, "applying");
     try {
       if (head !== prepared.commit) await git("merge", "--ff-only", prepared.commit);
-      await recreate("web");
+      // Backend first: a failed setup must leave the previous frontend serving,
+      // and the new functions must accept that old bundle during the window.
       await compose(dockerDir, "run", "--rm", "setup");
+      await recreate("web");
       await recreate("smtp-gateway");
       // The runner starts with the stack. Recreate it so it picks up a token
       // that `setup` just generated, and so existing installs get it at all.
