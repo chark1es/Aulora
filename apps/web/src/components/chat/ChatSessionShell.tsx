@@ -1,5 +1,5 @@
 /* eslint-disable no-unused-vars -- the base rule reports parameter names in type signatures; Biome checks real unused code */
-import type { ChannelSummary, RoleMentionTarget } from "@aulora/core";
+import { type ChannelSummary, type RoleMentionTarget, resolveFeatureFlags } from "@aulora/core";
 import { Spinner, Text } from "@aulora/ui-web";
 import type { ConvexReactClient } from "convex/react";
 import { useQuery } from "convex/react";
@@ -77,6 +77,8 @@ export function ChatSessionShell({
       iceServers: (voice?.iceServers ?? []) as readonly RTCIceServer[],
     };
   }, [publicConfig]);
+
+  const voiceFlags = useMemo(() => resolveFeatureFlags(publicConfig?.features), [publicConfig]);
 
   const channels = useMemo<readonly ChannelSummary[]>(() => {
     const list: ChannelSummary[] = [];
@@ -182,6 +184,7 @@ export function ChatSessionShell({
         userId={user.id}
         permissions={permissions}
         policy={voicePolicy}
+        featureFlags={voiceFlags}
       >
         <ChatView
           workspaceName={workspaceName}

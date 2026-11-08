@@ -3,6 +3,8 @@ import {
   type CallKind,
   type CallView,
   claimCallSeat,
+  DEFAULT_FEATURE_FLAGS,
+  type FeatureFlags,
   hasPermission,
   mergeVoiceSettings,
   Permission,
@@ -120,6 +122,8 @@ export interface VoiceProviderProps {
   readonly userId: string;
   readonly permissions: bigint;
   readonly policy: VoicePolicy;
+  /** The operator's kill switches; absent means every feature is on. */
+  readonly featureFlags?: FeatureFlags;
   readonly children: ReactNode;
 }
 
@@ -133,6 +137,7 @@ export function VoiceProvider({
   userId,
   permissions,
   policy,
+  featureFlags = DEFAULT_FEATURE_FLAGS,
   children,
 }: VoiceProviderProps) {
   const [clientId] = useState(loadBrowserVoiceClientId);
@@ -157,6 +162,10 @@ export function VoiceProvider({
   const authTokenRef = useRef<string | null>(null);
   const activeCallsRef = useRef(activeCalls);
   activeCallsRef.current = activeCalls;
+  // The operator's kill switches. The engine reads them on each decision; the
+  // effect below tells it when they change so a call in progress follows.
+  const featureFlagsRef = useRef(featureFlags);
+  featureFlagsRef.current = featureFlags;
 
   // Engine lifetime is tied to the signed-in client + identity.
   useEffect(() => {
@@ -167,6 +176,7 @@ export function VoiceProvider({
       clientId,
       getSettings: () => settingsRef.current,
       getIceServers: () => iceServersRef.current,
+      getFeatureFlags: () => featureFlagsRef.current,
       levels,
     });
     engineRef.current = engine;
@@ -199,6 +209,12 @@ export function VoiceProvider({
       engineRef.current = null;
     };
   }, [client, clientId, levels, userId]);
+
+  const transportOff = featureFlags.disableNewCallTransport;
+  // biome-ignore lint/correctness/useExhaustiveDependencies: the flag is only a trigger; the engine reads the current value itself
+  useEffect(() => {
+    engineRef.current?.refreshFeatureFlags();
+  }, [transportOff]);
 
   // Load local device settings, enumerate devices and follow device changes.
   useEffect(() => {
@@ -477,6 +493,7 @@ export function VoiceProvider({
     canSpeak,
     canVideo,
     canStream,
+    videoDisabled: featureFlags.disablePipVideo,
     pinned: pipPinned,
     controls: {
       toggleMicrophone: () => {

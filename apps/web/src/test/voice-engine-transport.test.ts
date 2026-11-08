@@ -1,6 +1,8 @@
 import {
   type CallView,
+  DEFAULT_FEATURE_FLAGS,
   DEFAULT_VOICE_SETTINGS,
+  type FeatureFlags,
   type SfuAccess,
   type TurnCredentials,
   type VoicePort,
@@ -133,7 +135,10 @@ interface Harness {
   emit(call: CallView | null): void;
 }
 
-function harness(overrides: Partial<VoicePort> = {}): Harness {
+function harness(
+  overrides: Partial<VoicePort> = {},
+  flags: { current: FeatureFlags } = { current: DEFAULT_FEATURE_FLAGS },
+): Harness {
   let listener: ((call: CallView | null) => void) | null = null;
   const watchCallById = vi.fn((_id: string, next: (call: CallView | null) => void) => {
     listener = next;
@@ -164,6 +169,7 @@ function harness(overrides: Partial<VoicePort> = {}): Harness {
     userId: "me",
     clientId: "client-a",
     getSettings: () => DEFAULT_VOICE_SETTINGS,
+    getFeatureFlags: () => flags.current,
   });
   return {
     engine,
@@ -280,6 +286,51 @@ describe("streaming-server hand-over", () => {
     await settle();
 
     expect(mock.sfu.setMic).toHaveBeenLastCalledWith(mock.track);
+    engine.dispose();
+  });
+});
+
+describe("kill switches", () => {
+  beforeEach(() => {
+    mock.meshAudio.length = 0;
+    mock.sfu.connect.mockReset();
+    mock.sfu.setMic.mockClear();
+    mock.sfu.disconnect.mockClear();
+  });
+
+  it("keeps a large call on the mesh and advertises nothing when the transport is switched off", async () => {
+    const sfuAccess = vi.fn(async (_args: { callId: string; scope?: string }) => ACCESS);
+    const flags = { current: { ...DEFAULT_FEATURE_FLAGS, disableNewCallTransport: true } };
+    const { engine, emit, port } = harness({ sfuAccess }, flags);
+    await engine.joinCall("call-1");
+
+    emit(bigCall());
+    await settle();
+
+    expect(sfuAccess.mock.calls.filter(([args]) => args.scope === "call")).toHaveLength(0);
+    expect(mock.sfu.connect).not.toHaveBeenCalled();
+    const updates = (port.updateParticipant as ReturnType<typeof vi.fn>).mock.calls;
+    expect(updates.some(([args]) => "sfuCall" in (args as object))).toBe(false);
+    engine.dispose();
+  });
+
+  it("returns a call in progress to the mesh when the switch is turned on", async () => {
+    mock.sfu.connect.mockResolvedValue(true);
+    const flags = { current: DEFAULT_FEATURE_FLAGS };
+    const { engine, emit, port } = harness({ sfuAccess: async () => ACCESS }, flags);
+    await engine.joinCall("call-1");
+    emit(bigCall());
+    await settle();
+    expect(mock.sfu.connect).toHaveBeenCalledTimes(1);
+
+    flags.current = { ...DEFAULT_FEATURE_FLAGS, disableNewCallTransport: true };
+    engine.refreshFeatureFlags();
+    await settle();
+
+    expect(mock.sfu.disconnect).toHaveBeenCalled();
+    // The mesh carries the microphone again, and the roster says this client left the server.
+    expect(mock.meshAudio.at(-1)).toBe(mock.track);
+    expect(port.updateParticipant).toHaveBeenLastCalledWith({ callId: "call-1", sfuCall: false });
     engine.dispose();
   });
 });

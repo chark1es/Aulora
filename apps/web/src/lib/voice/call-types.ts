@@ -1,5 +1,11 @@
 /* eslint-disable no-unused-vars -- the base rule reports parameter names in type signatures; Biome checks real unused code */
-import type { CallView, VoiceDeviceSettings, VoicePort, VoiceSubscriptions } from "@aulora/core";
+import type {
+  CallView,
+  FeatureFlags,
+  VoiceDeviceSettings,
+  VoicePort,
+  VoiceSubscriptions,
+} from "@aulora/core";
 import type { VoiceLevelsStore } from "./levels";
 
 export interface VoiceLocalState {
@@ -51,6 +57,11 @@ export interface VoiceEngineOptions {
   /** Read lazily on each peer so late-loaded deployment config still applies. */
   readonly getIceServers?: () => readonly RTCIceServer[];
   readonly onError?: (message: string) => void;
+  /**
+   * The server's kill switches, read on every decision so a change applies to
+   * the call in progress. Absent in tests, which then run with every feature on.
+   */
+  readonly getFeatureFlags?: () => FeatureFlags;
   /**
    * Where high-frequency values (mic level, per-participant levels, link
    * quality) go. Absent in tests, which then get a private store.

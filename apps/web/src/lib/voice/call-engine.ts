@@ -3,6 +3,8 @@ import {
   type CallKind,
   type CallSeatResult,
   type CallView,
+  DEFAULT_FEATURE_FLAGS,
+  type FeatureFlags,
   isCallElsewhereError,
   isOnThisDevice,
   resolutionConstraints,
@@ -84,6 +86,7 @@ export class VoiceEngine {
   private readonly clientId: string;
   private readonly getSettings: () => VoiceDeviceSettings;
   private readonly getIceServers: () => readonly RTCIceServer[];
+  private readonly getFlags: () => FeatureFlags;
   private readonly onError: (message: string) => void;
   private readonly listeners = new Set<() => void>();
 
@@ -154,6 +157,7 @@ export class VoiceEngine {
     this.clientId = options.clientId;
     this.getSettings = options.getSettings;
     this.getIceServers = options.getIceServers ?? (() => DEFAULT_ICE);
+    this.getFlags = options.getFeatureFlags ?? (() => DEFAULT_FEATURE_FLAGS);
     this.onError = options.onError ?? (() => undefined);
     this.levels = options.levels ?? new VoiceLevelsStore();
     this.ice = new IceServerSource({
@@ -255,13 +259,27 @@ export class VoiceEngine {
     }
   }
 
+  /** Whether this client may use the streaming-server transport right now. */
+  private sfuAllowed(): boolean {
+    return SFU_CALL_ENABLED && !this.getFlags().disableNewCallTransport;
+  }
+
+  /**
+   * Re-reads the kill switches after the server changed them. Turning the new
+   * transport off returns a call in progress to the mesh; turning it back on
+   * lets the next roster decision use it again.
+   */
+  refreshFeatureFlags(): void {
+    void this.evaluateTransport();
+  }
+
   /**
    * Publishes the SFU transport capability, once per change. Withdrawing it
    * makes every other client return the call to the mesh, so a client that
    * cannot reach the server never ends up cut off from the others.
    */
   private reportSfuCapability(capable: boolean): void {
-    if (!SFU_CALL_ENABLED || this.sfuCapabilityReported === capable) {
+    if (!this.sfuAllowed() || this.sfuCapabilityReported === capable) {
       return;
     }
     this.sfuCapabilityReported = capable;
@@ -499,10 +517,10 @@ export class VoiceEngine {
       .updateParticipant({
         callId,
         muted: settings.joinMuted,
-        ...(SFU_CALL_ENABLED ? { sfuCall: true } : {}),
+        ...(this.sfuAllowed() ? { sfuCall: true } : {}),
       })
       .catch(() => undefined);
-    this.sfuCapabilityReported = SFU_CALL_ENABLED ? true : null;
+    this.sfuCapabilityReported = this.sfuAllowed() ? true : null;
     void this.screen.probe();
     this.emit();
   }
@@ -655,6 +673,9 @@ export class VoiceEngine {
       const quality = qualityOf(link);
       this.levels.setQuality(peerId, quality);
       qualities.push(quality);
+    }
+    if (this.getFlags().disableAutoDegrade) {
+      return;
     }
     const action = this.governor.sample(worstQuality(qualities));
     if (action === "reduce") {
@@ -882,12 +903,24 @@ export class VoiceEngine {
    * throughout, so the fallback needs no renegotiation.
    */
   private async evaluateTransport(): Promise<void> {
-    if (!SFU_CALL_ENABLED) {
-      return;
-    }
     const call = this.call;
     if (call === null || this.callId === null) {
       return;
+    }
+    if (!this.sfuAllowed()) {
+      // Switched off (here, or by the operator): return to the mesh and tell the
+      // roster, so nobody waits for this client on the streaming server.
+      await this.fallBackToMesh();
+      if (SFU_CALL_ENABLED && this.sfuCapabilityReported === true) {
+        // `reportSfuCapability` is a no-op while disallowed; publish directly.
+        this.sfuCapabilityReported = false;
+        this.report({ sfuCall: false });
+      }
+      return;
+    }
+    if (this.sfuCapabilityReported === false && this.sfuConfigured !== false) {
+      // The switch was turned back on and this client never lost the server.
+      this.reportSfuCapability(true);
     }
     const capabilities = capabilitiesOf(call.participants);
     const participants = call.participants.length;

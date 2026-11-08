@@ -98,6 +98,8 @@ export interface CallPipOptions {
   readonly canSpeak: boolean;
   readonly canVideo: boolean;
   readonly canStream: boolean;
+  /** Operator kill switch: show avatars only, with no video sent to the window. */
+  readonly videoDisabled?: boolean;
   /** Keeps the app window above others while the in-page dock is pinned. */
   readonly pinned: boolean;
   readonly controls: {
@@ -122,8 +124,17 @@ const IDENTITY = (userId: string): string => userId;
  * window, streams the call to it and runs the controls it sends back.
  */
 export function useCallPip(options: CallPipOptions): { pip: PipControl; surface: PipSurface } {
-  const { callActive, snapshot, selfUserId, canSpeak, canVideo, canStream, pinned, controls } =
-    options;
+  const {
+    callActive,
+    snapshot,
+    selfUserId,
+    canSpeak,
+    canVideo,
+    canStream,
+    pinned,
+    controls,
+    videoDisabled = false,
+  } = options;
   const detected = useMemo(detectPipMode, []);
   const [mode, setMode] = useState<PipMode>(detected);
   const [pipWindow, setPipWindow] = useState<Window | null>(null);
@@ -293,7 +304,8 @@ export function useCallPip(options: CallPipOptions): { pip: PipControl; surface:
   // does not connect in time — the same picture goes over as JPEG frames, and
   // with neither the window draws avatars.
   useEffect(() => {
-    if (mode !== "window" || !desktopOpen || !callActive) {
+    // The operator can switch the picture off; the window then keeps avatars.
+    if (mode !== "window" || !desktopOpen || !callActive || videoDisabled) {
       return;
     }
     let disposed = false;
@@ -398,7 +410,7 @@ export function useCallPip(options: CallPipOptions): { pip: PipControl; surface:
       frames?.close();
       frames = null;
     };
-  }, [mode, desktopOpen, callActive]);
+  }, [mode, desktopOpen, callActive, videoDisabled]);
 
   // Controls pressed in the call window reach the call through the same helpers
   // the browser's media keys use. Subscribed even when the window is closed: the
