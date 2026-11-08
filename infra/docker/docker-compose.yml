@@ -527,7 +527,7 @@ services:
   # apps/docs/content/self-hosting.md. Certificates for 5349 are optional: with
   # none mounted coturn logs a TLS warning and still serves 3478.
   coturn:
-    image: coturn/coturn:4.6.3
+    image: coturn/coturn:4.18.0-r0
     profiles: ["turn"]
     restart: unless-stopped
     command:
