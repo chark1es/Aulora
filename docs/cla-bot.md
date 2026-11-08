@@ -2,6 +2,8 @@
 
 The [workflow](../.github/workflows/cla.yml) checks the pull request author and every commit author and co-author against the published [CLA](../CLA.md). GitHub bot accounts are excluded. Human maintainers must accept the agreement like other contributors.
 
+Coding assistants and agents are tools, not CLA signatories. Their use alone does not require author or co-author attribution. When a tool submits through a bot account, the responsible person must still accept the agreement from their own account and be identified in the PR. The bot's account exclusion does not verify that person's acceptance or tool-output rights; maintainers must check these before merging an automated submission. Human authors and co-authors remain subject to the normal checks.
+
 ## Accept an agreement
 
 Open a pull request and follow the bot's comment. Read its link to the agreement, then copy the exact statement into a new comment from your own GitHub account. Every listed contributor accepts separately. The statement includes the agreement revision and SHA-256, so an old comment cannot sign a changed agreement.
