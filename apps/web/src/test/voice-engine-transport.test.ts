@@ -460,6 +460,29 @@ describe("devices that finish opening after hang-up", () => {
     engine.dispose();
   });
 
+  it("does not let a replaced entry into the same call finish joining", async () => {
+    const opening = deferred<void>();
+    mock.devices.micGate = opening.promise;
+    const { engine, port } = harness();
+
+    // Join, leave and join the same call again while the microphone is opening:
+    // the call id is the same, so only the entry itself can be told apart.
+    const first = engine.joinCall("call-1");
+    await settle();
+    await engine.leave();
+    const second = engine.joinCall("call-1");
+    await settle();
+    opening.resolve();
+    await Promise.all([first, second]);
+    await settle();
+
+    const announcedCapability = (port.updateParticipant as ReturnType<typeof vi.fn>).mock.calls
+      .map(([args]) => args as { sfuCall?: boolean })
+      .filter((args) => args.sfuCall === true);
+    expect(announcedCapability).toHaveLength(1);
+    engine.dispose();
+  });
+
   it("closes a camera that opened for a call that already ended", async () => {
     const { engine, port } = harness();
     await engine.joinCall("call-1");

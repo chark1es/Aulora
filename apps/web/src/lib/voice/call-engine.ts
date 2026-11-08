@@ -487,12 +487,15 @@ export class VoiceEngine {
       return;
     }
     this.enterTeardown();
+    // Leaving and rejoining the same call keeps its id, so only the epoch can
+    // tell this entry from the one that was replaced.
+    const epoch = this.callEpoch;
     this.callId = callId;
     this.mesh.reset();
     // Peers are created as soon as the roster arrives and keep the ICE servers
     // they start with, so the relay credential is fetched first.
     await this.preloadIce();
-    if (this.callId !== callId) {
+    if (epoch !== this.callEpoch) {
       return;
     }
     const watched = callId;
@@ -520,7 +523,7 @@ export class VoiceEngine {
     this.talking = false;
     this.cameraInitialised = false;
     await this.acquireMic();
-    if (this.callId !== callId) {
+    if (epoch !== this.callEpoch) {
       return;
     }
     this.applyMicEnabled();
@@ -686,8 +689,10 @@ export class VoiceEngine {
     if (this.callId === null) {
       return;
     }
+    const epoch = this.callEpoch;
     const stats = await this.mesh.collectStats();
-    if (this.callId === null) {
+    // Samples of a finished call must not move the next call's levels or ladder.
+    if (this.callId === null || epoch !== this.callEpoch) {
       return;
     }
     const qualities: LinkQuality[] = [];
@@ -815,8 +820,11 @@ export class VoiceEngine {
         return;
       }
       if (epoch !== this.callEpoch) {
-        // The call ended while the camera opened; do not leave it running.
-        this.camera.close();
+        // The call ended while the camera opened; do not leave it running. The
+        // camera is shared, so leave it alone if the next call already uses it.
+        if (!this.local.video) {
+          this.camera.close();
+        }
         return;
       }
     } else {
@@ -844,6 +852,7 @@ export class VoiceEngine {
 
   /** Re-reads device settings: swaps a changed microphone and rebuilds the meter. */
   async applySettings(settings: VoiceDeviceSettings): Promise<void> {
+    const epoch = this.callEpoch;
     const previousInput = this.currentInputId();
     const nextInput = settings.inputDeviceId;
     const previousProcessing = this.micProcessingKey;
@@ -854,14 +863,31 @@ export class VoiceEngine {
     ) {
       await this.reacquireMic();
     }
+    // The devices changed under a call that has since ended; the next call
+    // brings its own settings, so none of this belongs to it.
+    if (epoch !== this.callEpoch) {
+      return;
+    }
     this.micPipeline?.setSettings(settings);
     this.pushToTalk = settings.pushToTalk;
     this.applyMicEnabled();
-    if (this.local.video && (await this.camera.sync(settings))) {
-      if (this.transport === "sfu") {
-        await this.sfu.setCamera(this.camera.track);
+    if (this.local.video) {
+      const changed = await this.camera.sync(settings);
+      if (epoch !== this.callEpoch) {
+        return;
       }
-      await this.mesh.refreshVideo();
+      if (changed) {
+        if (this.transport === "sfu") {
+          await this.sfu.setCamera(this.camera.track);
+        }
+        if (epoch !== this.callEpoch) {
+          return;
+        }
+        await this.mesh.refreshVideo();
+      }
+    }
+    if (epoch !== this.callEpoch) {
+      return;
     }
     this.emit();
   }
@@ -955,7 +981,11 @@ export class VoiceEngine {
     if (!this.sfuAllowed()) {
       // Switched off (here, or by the operator): return to the mesh and tell the
       // roster, so nobody waits for this client on the streaming server.
+      const epoch = this.callEpoch;
       await this.fallBackToMesh();
+      if (epoch !== this.callEpoch) {
+        return;
+      }
       if (SFU_CALL_ENABLED && this.sfuCapabilityReported === true) {
         // `reportSfuCapability` is a no-op while disallowed; publish directly.
         this.sfuCapabilityReported = false;
