@@ -39,6 +39,12 @@ export function pingsViewer(
 export interface MentionResolution {
   /** De-duplicated user ids to store as plaintext `mentionUserIds`. */
   readonly userIds: readonly string[];
+  /**
+   * De-duplicated role ids mentioned as `@role`. Servers that support it expand
+   * these to member ids themselves, so a client without the full roster can
+   * still route role mentions.
+   */
+  readonly roleIds: readonly string[];
   readonly here: boolean;
   readonly everyone: boolean;
 }
@@ -77,6 +83,7 @@ export function resolveMentions(
   roles: readonly RoleMentionTarget[] = [],
 ): MentionResolution {
   const userIds = new Set<string>();
+  const roleIds = new Set<string>();
   let here = false;
   let everyone = false;
 
@@ -111,6 +118,7 @@ export function resolveMentions(
     }
     for (const role of mentionableRoles) {
       if (hasTag(text, role.name, "@")) {
+        roleIds.add(role.roleId);
         for (const userId of role.memberUserIds) {
           userIds.add(userId);
         }
@@ -121,6 +129,7 @@ export function resolveMentions(
 
   return {
     userIds: [...userIds].sort(),
+    roleIds: [...roleIds].sort(),
     here,
     everyone,
   };

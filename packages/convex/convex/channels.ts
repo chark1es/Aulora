@@ -33,9 +33,10 @@ import {
 import { adjustInstanceCounters } from "./lib/instance";
 import { overwriteValidator, validateOverrides } from "./lib/overrides";
 import {
-  categoryOverridesFor,
+  categoryOverridesById,
   channelPermissions,
   loadPermissionContext,
+  overridesForChannel,
   type PermissionContext,
   requireCanGrant,
   requireMember,
@@ -46,6 +47,13 @@ import {
 import { sealString } from "./lib/sse";
 
 export { MAX_GROUP_DM_MEMBERS } from "./lib/channelHelpers";
+
+/**
+ * How many of the viewer's `channelMembers` rows one `list` call scans to prove
+ * private-channel access. Above this, the query falls back to per-channel point
+ * reads so no private channel is ever hidden.
+ */
+const MEMBERSHIP_SCAN_LIMIT = 1000;
 
 const createKindValidator = v.union(
   v.literal("text"),
@@ -137,7 +145,9 @@ export const list = query({
     const context = await loadPermissionContext(ctx, userId);
     const viewerPrefs = await viewerChannelPrefs(ctx, userId);
     // DMs are filtered before pagination so they never crowd channels out of
-    // a page; they are listed by `listDms`.
+    // a page; they are listed by `listDms`. `by_dm_key` is defined on DMs only,
+    // so the equality on `undefined` already excludes every DM row; the kind
+    // filter stays as a guard for legacy rows.
     const result = await ctx.db
       .query("channels")
       .withIndex("by_dm_key", (q) => q.eq("dmKey", undefined))
@@ -145,23 +155,38 @@ export const list = query({
       .order("asc")
       .paginate(args.paginationOpts ?? { numItems: 50, cursor: null });
 
+    // Category overrides are read once for the whole page instead of one
+    // `db.get` per channel; the category table is workspace configuration.
+    const overridesByCategory = await categoryOverridesById(ctx);
+    // The viewer's explicit memberships, read once through `by_user`, prove
+    // private-channel access for the page instead of a point read per channel.
+    const memberships = await viewerChannelMemberships(ctx, userId);
+
     const page: ChannelSummary[] = [];
     for (const channel of result.page) {
       if (channel.private === true) {
         // Membership is the only gate for a private channel.
-        if (await findChannelMember(ctx, channel._id, userId)) {
-          page.push(
-            await toSummary(
-              channel,
-              await listChannelMemberIds(ctx, channel._id),
-              viewerPrefs.get(channel._id),
-            ),
-          );
+        const isMember =
+          memberships === null
+            ? await findChannelMember(ctx, channel._id, userId)
+            : memberships.has(channel._id);
+        if (!isMember) {
+          continue;
         }
+        page.push(
+          await toSummary(
+            channel,
+            await listChannelMemberIds(ctx, channel._id),
+            viewerPrefs.get(channel._id),
+          ),
+        );
         continue;
       }
-      const categoryOverrides = await categoryOverridesFor(ctx, channel);
-      const permissions = channelPermissions(context, channel, categoryOverrides);
+      const permissions = channelPermissions(
+        context,
+        channel,
+        overridesForChannel(overridesByCategory, channel),
+      );
       if (!hasPermission(permissions, Permission.ViewChannel)) {
         continue;
       }
@@ -170,6 +195,26 @@ export const list = query({
     return { ...result, page };
   },
 });
+
+/**
+ * The viewer's explicit channel memberships in one `by_user` read, or `null`
+ * when the user is in more channels than {@link MEMBERSHIP_SCAN_LIMIT} so the
+ * caller falls back to point lookups. Returning `null` rather than a truncated
+ * set keeps private channels visible no matter how many the viewer joined.
+ */
+async function viewerChannelMemberships(
+  ctx: Parameters<typeof viewerChannelPrefs>[0],
+  userId: string,
+): Promise<Set<string> | null> {
+  const rows = await ctx.db
+    .query("channelMembers")
+    .withIndex("by_user", (q) => q.eq("userId", userId))
+    .take(MEMBERSHIP_SCAN_LIMIT);
+  if (rows.length >= MEMBERSHIP_SCAN_LIMIT) {
+    return null;
+  }
+  return new Set(rows.map((row) => row.channelId));
+}
 
 /**
  * Applies a batch of drag-and-drop moves. Each move needs `ManageChannels` on

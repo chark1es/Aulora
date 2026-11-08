@@ -69,6 +69,8 @@ export interface ChannelPaneProps {
   readonly memberColors: ReadonlyMap<string, string>;
   readonly mentionNames: readonly string[];
   readonly mentionMembers: readonly MentionTarget[];
+  /** Server-side member search for mention autocomplete and resolution. */
+  readonly searchMembers?: (query: string) => Promise<readonly MentionTarget[]>;
   readonly memberIds: readonly string[];
   readonly roles: readonly RoleMentionTarget[];
   readonly channelMentions: readonly ChannelMentionEntry[];
@@ -103,6 +105,7 @@ export interface ChannelPaneProps {
       mentionUserIds: readonly string[];
       mentionChannelIds?: readonly string[];
       mentionCategoryIds?: readonly string[];
+      mentionRoleIds?: readonly string[];
       files: readonly File[];
     },
     extra?: { threadRootId?: string; replyToId?: string },
@@ -291,6 +294,7 @@ function ChannelComposer(props: ChannelPaneProps) {
       channelId={channel.id}
       draftKey={channel.id}
       members={props.mentionMembers}
+      {...(props.searchMembers !== undefined ? { searchMembers: props.searchMembers } : {})}
       roles={props.roles}
       memberIds={props.memberIds}
       channels={props.channelMentions}

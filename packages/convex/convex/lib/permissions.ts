@@ -157,6 +157,30 @@ export async function categoryOverridesFor(
   return category?.overrides ?? [];
 }
 
+/**
+ * Every category's override list, keyed by category id, read in one query.
+ * `categoryOverridesFor` costs one `db.get` per channel; a page of channels in
+ * a handful of categories is better served by this single small read. Category
+ * rows are workspace configuration, so the table stays small.
+ */
+export async function categoryOverridesById(
+  ctx: ReadCtx,
+): Promise<Map<string, Doc<"categories">["overrides"]>> {
+  const categories = await ctx.db.query("categories").collect();
+  return new Map(categories.map((category) => [category._id, category.overrides]));
+}
+
+/** The overrides for a channel from a {@link categoryOverridesById} map. */
+export function overridesForChannel(
+  overrides: ReadonlyMap<string, Doc<"categories">["overrides"]>,
+  channel: ChannelDoc,
+): Doc<"categories">["overrides"] {
+  if (channel.categoryId === undefined) {
+    return [];
+  }
+  return overrides.get(channel.categoryId) ?? [];
+}
+
 /** Clamps a bot actor to its grants; a person's permissions pass through. */
 function clampBotGrants(context: PermissionContext, permissions: bigint): bigint {
   const bot = context.bot;

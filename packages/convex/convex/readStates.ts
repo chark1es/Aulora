@@ -4,7 +4,11 @@ import type { Id } from "./_generated/dataModel";
 import { mutation, query } from "./_generated/server";
 import { requireAuth } from "./lib/auth";
 import { requireChannelAccess, requireChannelAccessFromContext } from "./lib/channels";
-import { loadPermissionContext, type PermissionContext } from "./lib/permissions";
+import {
+  categoryOverridesById,
+  loadPermissionContext,
+  type PermissionContext,
+} from "./lib/permissions";
 
 /**
  * Counts plaintext `mentionUserIds` strictly after the read cursor, ignoring
@@ -151,6 +155,11 @@ const SUMMARY_PAGE_SIZE = 100;
 const SUMMARY_SCAN_PAGES = 2;
 /** Extra pages shared by the whole summary call, bounding total document reads. */
 const SUMMARY_EXTRA_PAGE_BUDGET = 20;
+/**
+ * Upper bound on `unreadCount` per channel. The desktop badge shows "99+", so
+ * the count saturates instead of walking the whole unread tail.
+ */
+const SUMMARY_UNREAD_CAP = 100;
 
 interface ScanBudget {
   extraPages: number;
@@ -159,6 +168,8 @@ interface ScanBudget {
 interface ChannelUnreadSummary {
   channelId: Id<"channels">;
   unread: boolean;
+  /** Unread root messages from other people, saturated at {@link SUMMARY_UNREAD_CAP}. */
+  unreadCount: number;
   mentionCount: number;
   lastActivityAt: number | null;
   lastAuthorId: string | null;
@@ -188,6 +199,7 @@ async function summarizeChannel(
 
   let upper: number | null = null;
   let unread = false;
+  let unreadCount = 0;
   let mentionCount = 0;
   for (let pageIndex = 0; pageIndex < SUMMARY_SCAN_PAGES; pageIndex += 1) {
     if (pageIndex > 0) {
@@ -197,6 +209,7 @@ async function summarizeChannel(
         if (!unread) {
           unread = true;
         }
+        unreadCount = Math.max(unreadCount, 1);
         break;
       }
       budget.extraPages -= 1;
@@ -227,6 +240,7 @@ async function summarizeChannel(
         continue;
       }
       unread = true;
+      unreadCount = Math.min(unreadCount + 1, SUMMARY_UNREAD_CAP);
       if (message.mentionUserIds.includes(userId)) {
         mentionCount = Math.min(mentionCount + 1, MENTION_SCAN_LIMIT);
       }
@@ -247,6 +261,7 @@ async function summarizeChannel(
   return {
     channelId,
     unread,
+    unreadCount,
     mentionCount,
     lastActivityAt: latest?._creationTime ?? null,
     lastAuthorId: latest?.authorId ?? null,
@@ -256,10 +271,14 @@ async function summarizeChannel(
 /**
  * Live unread summary for the sidebar: for each requested channel the caller
  * can view, whether it has unread root messages from other people, how many of
- * those mention the caller, and when it last had activity. Mentions are
- * counted live from plaintext `mentionUserIds` rather than the cached count on
- * the read state, so new mentions show up without the client moving its
- * cursor. Channels the caller cannot view are omitted, never an error.
+ * those mention the caller, how many are unread (saturated), and when it last
+ * had activity. Mentions are counted live from plaintext `mentionUserIds`
+ * rather than the cached count on the read state, so new mentions show up
+ * without the client moving its cursor. Channels the caller cannot view are
+ * omitted, never an error.
+ *
+ * The desktop/app badge sums `unreadCount` from this same result, so a client
+ * does not need a second query that re-scans every channel tail.
  */
 export const summary = query({
   args: { channelIds: v.array(v.id("channels")) },
@@ -273,9 +292,17 @@ export const summary = query({
     }
     const rows: ChannelUnreadSummary[] = [];
     const budget: ScanBudget = { extraPages: SUMMARY_EXTRA_PAGE_BUDGET };
+    // One category read for every gated channel instead of one per channel.
+    const overridesByCategory = await categoryOverridesById(ctx);
     for (const channelId of args.channelIds.slice(0, SUMMARY_CHANNEL_LIMIT)) {
       try {
-        await requireChannelAccessFromContext(ctx, context, channelId, Permission.ViewChannel);
+        await requireChannelAccessFromContext(
+          ctx,
+          context,
+          channelId,
+          Permission.ViewChannel,
+          overridesByCategory,
+        );
       } catch {
         continue;
       }

@@ -9,6 +9,7 @@ import { ChannelSidebar, type ChannelSidebarProps } from "../components/chat/Cha
 import { Composer } from "../components/chat/Composer";
 import { CreateCategoryModal } from "../components/chat/CreateCategoryModal";
 import { CreateChannelModal } from "../components/chat/CreateChannelModal";
+import { MembersPanel } from "../components/chat/MembersPanel";
 import { MessageList, type MessageListProps } from "../components/chat/MessageList";
 import { NewConversationDialog } from "../components/chat/NewConversationDialog";
 import { RichText } from "../components/chat/RichText";
@@ -381,8 +382,8 @@ function sidebarProps(overrides: Partial<ChannelSidebarProps> = {}): ChannelSide
     presenceOf: () => "online",
     activeChannelId: "general",
     unreadByChannel: new Map([
-      ["design", { unread: true, mentionCount: 3, lastActivityAt: NOW }],
-      ["dm-ada", { unread: true, mentionCount: 0, lastActivityAt: NOW }],
+      ["design", { unread: true, unreadCount: 5, mentionCount: 3, lastActivityAt: NOW }],
+      ["dm-ada", { unread: true, unreadCount: 1, mentionCount: 0, lastActivityAt: NOW }],
     ]),
     canCreateChannel: true,
     onSelect: vi.fn(),
@@ -553,6 +554,7 @@ describe("Composer", () => {
       mentionUserIds: ["u-ada"],
       mentionChannelIds: [],
       mentionCategoryIds: [],
+      mentionRoleIds: [],
       files: [],
     });
     expect(input).toHaveValue("");
@@ -623,6 +625,43 @@ describe("drafts", () => {
     };
     expect(() => writeDraft("c1", "x", broken)).not.toThrow();
     expect(readDraft("c1", broken)).toBe("");
+  });
+});
+
+describe("MembersPanel paging", () => {
+  const members = [
+    { userId: "u-ada", displayName: "Ada Lovelace" },
+    { userId: "u-bob", displayName: "Bob Stone" },
+  ];
+
+  function panel(overrides: { hasMore?: boolean; onLoadMore?: () => void } = {}) {
+    return (
+      <MembersPanel
+        members={members}
+        presence={[]}
+        customStatuses={new Map()}
+        ownUserId="me"
+        onViewProfile={vi.fn()}
+        onMessage={vi.fn()}
+        onClose={vi.fn()}
+        {...overrides}
+      />
+    );
+  }
+
+  it("offers the next page while the directory has more rows", async () => {
+    const onLoadMore = vi.fn();
+    const user = userEvent.setup();
+    render(panel({ hasMore: true, onLoadMore }));
+    expect(screen.getByText(/2\+ shown/)).toBeInTheDocument();
+    await user.click(screen.getByRole("button", { name: "Show more members" }));
+    expect(onLoadMore).toHaveBeenCalledTimes(1);
+  });
+
+  it("hides the paging control on the last page", () => {
+    render(panel());
+    expect(screen.queryByRole("button", { name: "Show more members" })).not.toBeInTheDocument();
+    expect(screen.getByText(/2 shown/)).toBeInTheDocument();
   });
 });
 

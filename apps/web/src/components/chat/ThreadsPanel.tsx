@@ -17,6 +17,8 @@ export interface ThreadsPanelProps {
   readonly root: MessagePayload;
   readonly rootText: string | undefined;
   readonly members: readonly MentionTarget[];
+  /** Server-side member search for mention autocomplete. */
+  readonly searchMembers?: (query: string) => Promise<readonly MentionTarget[]>;
   readonly roles: readonly RoleMentionTarget[];
   readonly memberIds: readonly string[];
   readonly permissions: bigint;
@@ -34,6 +36,7 @@ export interface ThreadsPanelProps {
     mentionUserIds: readonly string[];
     mentionChannelIds?: readonly string[];
     mentionCategoryIds?: readonly string[];
+    mentionRoleIds?: readonly string[];
     files: readonly File[];
     /** Also post the reply to the channel timeline, not only the thread. */
     alsoSendToChannel: boolean;
@@ -155,6 +158,7 @@ export function ThreadsPanel(props: ThreadsPanelProps) {
         channelId={channelId}
         draftKey={`thread:${root.id}`}
         members={props.members}
+        {...(props.searchMembers !== undefined ? { searchMembers: props.searchMembers } : {})}
         roles={props.roles}
         memberIds={props.memberIds}
         maxUploadBytes={props.maxUploadBytes}
@@ -167,6 +171,7 @@ export function ThreadsPanel(props: ThreadsPanelProps) {
             mentionUserIds: input.mentionUserIds,
             mentionChannelIds: input.mentionChannelIds,
             mentionCategoryIds: input.mentionCategoryIds,
+            mentionRoleIds: input.mentionRoleIds,
             files: input.files,
             alsoSendToChannel: alsoSend,
           })

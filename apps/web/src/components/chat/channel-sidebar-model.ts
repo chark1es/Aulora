@@ -7,6 +7,8 @@ import type { CategoryActions, ChannelActions } from "./sidebar-menus";
 
 export interface ChannelUnread {
   readonly unread: boolean;
+  /** Unread root messages from other people, saturated server-side. */
+  readonly unreadCount: number;
   readonly mentionCount: number;
   readonly lastActivityAt: number | null;
 }

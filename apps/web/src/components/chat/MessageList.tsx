@@ -140,6 +140,46 @@ export interface MessageRowListProps {
 /** Stable empty value so rows without reactions do not re-render needlessly. */
 const NO_REACTIONS: readonly ReactionGroup[] = [];
 
+/** True when two rows would render identically from the same props. */
+function sameTimelineItem(a: TimelineItem, b: TimelineItem): boolean {
+  if (a.kind !== b.kind || a.key !== b.key) {
+    return false;
+  }
+  if (a.kind === "day" && b.kind === "day") {
+    return a.dayStart === b.dayStart;
+  }
+  if (a.kind === "message" && b.kind === "message") {
+    return (
+      a.message === b.message && a.startsGroup === b.startsGroup && a.endsGroup === b.endsGroup
+    );
+  }
+  return a.kind === "unread";
+}
+
+/** Shallow comparison of grouped reactions, so unchanged rows keep identity. */
+function sameReactionGroups(a: readonly ReactionGroup[], b: readonly ReactionGroup[]): boolean {
+  if (a === b) {
+    return true;
+  }
+  if (a.length !== b.length) {
+    return false;
+  }
+  for (let index = 0; index < a.length; index += 1) {
+    const left = a[index];
+    const right = b[index];
+    if (
+      left === undefined ||
+      right === undefined ||
+      left.emoji !== right.emoji ||
+      left.count !== right.count ||
+      left.mine !== right.mine
+    ) {
+      return false;
+    }
+  }
+  return true;
+}
+
 /** Within this distance of the bottom the list follows new messages. */
 const STICK_THRESHOLD_PX = 96;
 /** Within this distance of the top the list fetches older history. */
@@ -170,22 +210,37 @@ export function MessageList(props: MessageListProps) {
   const positionedChannelRef = useRef<string | null>(null);
   const [atBottom, setAtBottom] = useState(true);
 
+  // Reuse the previous render's item object when a message and its run flags
+  // are unchanged. Appending one message must not hand every memoized row a new
+  // `item` prop, or the whole timeline re-renders on each send.
+  const itemCache = useRef(new Map<string, TimelineItem>());
   const items = useMemo(() => {
     const built = buildTimeline(messages, { firstUnreadId });
-    return built.map((item, index) => {
-      if (item.kind !== "message") {
-        return item;
+    const nextCache = new Map<string, TimelineItem>();
+    const stable = built.map((item, index) => {
+      let shaped = item;
+      if (item.kind === "message") {
+        // A pinned message needs its author header (and the pin itself) even
+        // when it continues an author run, so force the run to start here. A
+        // system event always stands alone, and so does the message after it.
+        const previous = built[index - 1];
+        const afterSystem =
+          previous?.kind === "message" && previous.message.systemKind !== undefined;
+        if (
+          item.message.systemKind !== undefined ||
+          afterSystem ||
+          item.message.pinnedAt !== null
+        ) {
+          shaped = { ...item, startsGroup: true };
+        }
       }
-      // A pinned message needs its author header (and the pin itself) even
-      // when it continues an author run, so force the run to start here. A
-      // system event always stands alone, and so does the message after it.
-      const previous = built[index - 1];
-      const afterSystem = previous?.kind === "message" && previous.message.systemKind !== undefined;
-      if (item.message.systemKind !== undefined || afterSystem || item.message.pinnedAt !== null) {
-        return { ...item, startsGroup: true };
-      }
-      return item;
+      const cached = itemCache.current.get(item.key);
+      const reused = cached !== undefined && sameTimelineItem(cached, shaped) ? cached : shaped;
+      nextCache.set(item.key, reused);
+      return reused;
     });
+    itemCache.current = nextCache;
+    return stable;
   }, [messages, firstUnreadId]);
 
   // One batched reactions subscription for the whole timeline, chunked by the
@@ -206,10 +261,23 @@ export function MessageList(props: MessageListProps) {
     return subscriptions.watchReactionsBatch(messageIds, (rows: readonly MessageReactionRow[]) => {
       const updated = groupReactionsByMessage(rows, ownUserId);
       setReactionsByMessage((current) => {
-        const next = new Map(current);
-        for (const id of messageIds) next.delete(id);
-        for (const [id, groups] of updated) next.set(id, groups);
-        return next;
+        // Structural sharing: an unchanged message keeps the same group array,
+        // so only the row whose reactions changed gets a new prop.
+        let next: Map<string, readonly ReactionGroup[]> | null = null;
+        for (const id of messageIds) {
+          const groups = updated.get(id) ?? NO_REACTIONS;
+          const previous = current.get(id) ?? NO_REACTIONS;
+          if (sameReactionGroups(previous, groups)) {
+            continue;
+          }
+          next ??= new Map(current);
+          if (groups.length === 0) {
+            next.delete(id);
+          } else {
+            next.set(id, groups);
+          }
+        }
+        return next ?? current;
       });
     });
   }, [subscriptions, messageIds, ownUserId]);
@@ -418,7 +486,11 @@ export function MessageList(props: MessageListProps) {
                 {historySeamId !== null &&
                   item.kind === "message" &&
                   item.message.id === historySeamId && <HistorySeamRow />}
-                <TimelineRow item={item} list={rowList} reactionsByMessage={reactionsByMessage} />
+                <TimelineRow
+                  item={item}
+                  list={rowList}
+                  reactions={reactionsByMessage.get(item.key) ?? NO_REACTIONS}
+                />
               </Fragment>
             ))
           )}
@@ -447,11 +519,11 @@ export function MessageList(props: MessageListProps) {
 const TimelineRow = memo(function TimelineRow({
   item,
   list,
-  reactionsByMessage,
+  reactions,
 }: {
   readonly item: TimelineItem;
   readonly list: MessageRowListProps;
-  readonly reactionsByMessage: ReadonlyMap<string, readonly ReactionGroup[]>;
+  readonly reactions: readonly ReactionGroup[];
 }) {
   if (item.kind === "day") {
     return (
@@ -483,7 +555,7 @@ const TimelineRow = memo(function TimelineRow({
       list={list}
       message={item.message}
       startsGroup={item.startsGroup}
-      reactions={reactionsByMessage.get(item.message.id) ?? NO_REACTIONS}
+      reactions={reactions}
     />
   );
 });
@@ -873,11 +945,16 @@ function MessageRowContent({
         startsGroup ? "mt-3" : "mt-0.5",
       )}
       data-pinged={pinged ? "true" : undefined}
-      style={
-        pinged
+      style={{
+        // Skip layout and paint for rows far outside the viewport. The
+        // remembered intrinsic size keeps the scrollbar stable once a row has
+        // rendered, and `auto` lets the browser reuse its last measurement.
+        contentVisibility: "auto",
+        containIntrinsicSize: startsGroup ? "auto 96px" : "auto 44px",
+        ...(pinged
           ? { backgroundColor: MENTION_BACKGROUND, boxShadow: `-3px 0 0 ${MENTION_COLOR}` }
-          : undefined
-      }
+          : {}),
+      }}
     >
       {replyToId !== null && (
         <>
