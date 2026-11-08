@@ -17,6 +17,7 @@ import {
   useState,
 } from "react";
 import { api } from "../../../../packages/convex/convex/_generated/api";
+import { syncCallService } from "../../modules/aulora-call-service";
 import { MobileVoiceEngine, type MobileVoiceSnapshot } from "../lib/voice/call-engine";
 import { convexVoicePort, convexVoiceSubscriptions } from "../lib/voice/convex-voice";
 import {
@@ -187,4 +188,23 @@ export function normalizeIceServers(
     ...(server.username !== undefined ? { username: server.username } : {}),
     ...(server.credential !== undefined ? { credential: server.credential } : {}),
   }));
+}
+
+/**
+ * Keeps Android capturing the microphone and camera when the app is not on
+ * screen. The foreground service runs only while the engine holds a capture,
+ * and stops when the call ends or the mic and camera are released.
+ */
+export function useCallForegroundService(snapshot: MobileVoiceSnapshot): void {
+  const microphone = snapshot.callId !== null && snapshot.micStream !== null;
+  const camera = snapshot.callId !== null && snapshot.local.video;
+  useEffect(() => {
+    syncCallService({ microphone, camera });
+  }, [microphone, camera]);
+  useEffect(
+    () => () => {
+      syncCallService({ microphone: false, camera: false });
+    },
+    [],
+  );
 }
