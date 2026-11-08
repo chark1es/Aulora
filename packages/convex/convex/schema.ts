@@ -37,6 +37,15 @@ const serverSettings = v.object({
   videoEnabled: v.optional(v.boolean()),
   screenShareEnabled: v.optional(v.boolean()),
   maxCallParticipants: v.optional(v.number()),
+  /**
+   * Operator kill switches. Optional and absent by default; absent or `false`
+   * means the feature stays on. Readers normalize with
+   * `resolveFeatureFlags`, so a malformed stored value cannot disable a
+   * feature.
+   */
+  disableNewCallTransport: v.optional(v.boolean()),
+  disablePipVideo: v.optional(v.boolean()),
+  disableAutoDegrade: v.optional(v.boolean()),
 });
 
 const notificationScope = v.union(v.literal("server"), v.literal("channel"));
@@ -651,6 +660,12 @@ export default defineSchema({
     sharingScreen: v.boolean(),
     /** The device can send and receive screen shares through the streaming server. */
     sfu: v.optional(v.boolean()),
+    /**
+     * The device can carry microphone and camera through the streaming server
+     * (`sfu-call` capability). Absent on older clients and mobile, which keeps a
+     * mixed call entirely on the peer mesh.
+     */
+    sfuCall: v.optional(v.boolean()),
     joinedAt: v.number(),
     lastSeen: v.number(),
   })

@@ -44,6 +44,7 @@ export interface ChatSendOptions {
   readonly mentionUserIds?: readonly string[];
   readonly mentionChannelIds?: readonly string[];
   readonly mentionCategoryIds?: readonly string[];
+  readonly mentionRoleIds?: readonly string[];
   readonly threadRootId?: string;
   readonly replyToId?: string;
   readonly attachments?: readonly AttachmentDescriptor[];
@@ -256,6 +257,7 @@ export function ChatProvider({
           ...(item.mentionCategoryIds !== undefined
             ? { mentionCategoryIds: item.mentionCategoryIds }
             : {}),
+          ...(item.mentionRoleIds !== undefined ? { mentionRoleIds: item.mentionRoleIds } : {}),
           ...(item.threadRootId !== undefined ? { threadRootId: item.threadRootId } : {}),
           ...(item.replyToId !== undefined ? { replyToId: item.replyToId } : {}),
           ...(item.attachments !== undefined && item.attachments.length > 0
@@ -443,6 +445,9 @@ export function ChatProvider({
             ...(options.mentionCategoryIds !== undefined
               ? { mentionCategoryIds: options.mentionCategoryIds }
               : {}),
+            ...(options.mentionRoleIds !== undefined
+              ? { mentionRoleIds: options.mentionRoleIds }
+              : {}),
             ...(options.threadRootId !== undefined ? { threadRootId: options.threadRootId } : {}),
             ...(options.attachments !== undefined ? { attachments: options.attachments } : {}),
           },
@@ -472,6 +477,9 @@ export function ChatProvider({
             : {}),
           ...(options.mentionCategoryIds !== undefined
             ? { mentionCategoryIds: options.mentionCategoryIds }
+            : {}),
+          ...(options.mentionRoleIds !== undefined
+            ? { mentionRoleIds: options.mentionRoleIds }
             : {}),
           ...(options.threadRootId !== undefined ? { threadRootId: options.threadRootId } : {}),
           ...(options.replyToId !== undefined ? { replyToId: options.replyToId } : {}),

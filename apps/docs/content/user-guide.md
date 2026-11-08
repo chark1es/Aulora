@@ -69,6 +69,8 @@ A browser needs HTTPS or localhost for media permissions. Screen sharing depends
 
 Open **Settings → Voice & video** to choose how you sound and look. Changes apply to the current call straight away.
 
+If the connection to the other people stays poor, Aulora lowers your camera quality first and then turns the camera off so the voice call keeps working; the call shows a notice with an **Undo** button and a close button, and undoing it stops the automatic steps for that call.
+
 - **Noise suppression** has three levels. *Standard* uses your browser's built-in filter. *Enhanced* runs a small AI model on your device that removes keyboard clatter, fans and room noise while keeping your voice. It needs a little more processing power and is available in the web and desktop apps. Where it cannot run, Standard is used and the settings say so.
 - **Background** blurs the room behind you or replaces it with a built-in image or a picture of your own. It runs entirely on your device, so your camera picture is not sent anywhere to do this. It is available in the web and desktop apps and needs WebGL 2.
 - **Screen sharing quality** sets how sharp a shared screen is. *Smooth* is 1080p at 30 frames a second, *Balanced* is 1080p at 15 for sharp text, and *Data saver* is 720p at 15.

@@ -1,15 +1,23 @@
 /* eslint-disable no-unused-vars -- the base rule reports parameter names in type signatures; Biome checks real unused code */
-import type { ServerProfile } from "@aulora/core";
+import { clientVersionState, type ServerProfile } from "@aulora/core";
 import { Spinner, Text } from "@aulora/ui-web";
 import type { ConvexReactClient } from "convex/react";
 import { useConvexAuth } from "convex/react";
 import { useCallback, useEffect, useMemo, useRef } from "react";
 import { type AuloraAuthClient, type AuthActions, authActionsFromClient } from "../lib/auth-client";
 import { isInvalidSessionError } from "../lib/auth-errors";
+import { CLIENT_VERSION } from "../lib/client-version";
 import type { ConnectionRecovery } from "../lib/connection-recovery";
 import { clearSessionToken, readSessionToken } from "../lib/session-token";
 import { useServerRecovery } from "../lib/use-server-recovery";
 import { useStuckTimeout } from "../lib/use-stuck-timeout";
+import {
+  ClientVersionNotice,
+  ClientVersionRequired,
+  ServerUpdateRequired,
+  useClientVersionPolicy,
+  useOutdatedServer,
+} from "./ClientVersionGate";
 import {
   ConnectionRecoveryActions,
   type ConnectionRecoveryActionsProps,
@@ -34,6 +42,8 @@ export interface SessionGateProps {
 
 /** Chooses between the sign-in screen and the signed-in shell from the session. */
 export function SessionGate({ profile, authClient, client, connection }: SessionGateProps) {
+  const clientVersion = useClientVersionPolicy();
+  const outdatedServer = useOutdatedServer();
   const session = authClient.useSession();
   const actions = useMemo(() => authActionsFromClient(authClient), [authClient]);
   const { isAuthenticated: convexAuthenticated } = useConvexAuth();
@@ -84,6 +94,16 @@ export function SessionGate({ profile, authClient, client, connection }: Session
     // clearing it here would restart every rebuild at the shortest delay.
   }, [stuck, waiting, connection]);
 
+  // Compatibility gate: a too-old client must not reach the sign-in form or
+  // talk to a backend it cannot understand. Placed after every hook so the
+  // hook order stays stable when the config query resolves.
+  if (clientVersion !== null && clientVersionState(CLIENT_VERSION, clientVersion) === "required") {
+    return <ClientVersionRequired policy={clientVersion} />;
+  }
+  if (outdatedServer !== null) {
+    return <ServerUpdateRequired serverVersion={outdatedServer.version} recovery={recovery} />;
+  }
+
   if (session.isPending) {
     return <SessionPending stuck={stuck} recovery={recovery} />;
   }
@@ -110,6 +130,7 @@ export function SessionGate({ profile, authClient, client, connection }: Session
       user={user}
       actions={actions}
       recovery={recovery}
+      recommendedClientVersion={clientVersion?.recommendedClientVersion ?? null}
       onRetry={retry}
     />
   );
@@ -146,6 +167,7 @@ function SignedInShell({
   user,
   actions,
   recovery,
+  recommendedClientVersion,
   onRetry,
 }: {
   readonly client: ConvexReactClient;
@@ -157,6 +179,7 @@ function SignedInShell({
   };
   readonly actions: AuthActions;
   readonly recovery: ConnectionRecoveryActionsProps;
+  readonly recommendedClientVersion: string | null;
   readonly onRetry: () => void;
 }) {
   const signedInUser = {
@@ -169,27 +192,30 @@ function SignedInShell({
     void actions.signOut();
   };
   return (
-    <QueryErrorBoundary
-      client={client}
-      onReconnect={onRetry}
-      onSignOut={signOut}
-      onSwitchServer={recovery.onSwitchServer}
-    >
-      <MembershipGate
-        workspaceIconSeed={profile.iconSeed}
-        signedInAs={signedInUser.email ?? signedInUser.name ?? null}
+    <>
+      <ClientVersionNotice recommendedVersion={recommendedClientVersion} />
+      <QueryErrorBoundary
+        client={client}
+        onReconnect={onRetry}
         onSignOut={signOut}
+        onSwitchServer={recovery.onSwitchServer}
       >
-        <ChatSessionShell
-          client={client}
-          workspaceName={profile.name}
+        <MembershipGate
           workspaceIconSeed={profile.iconSeed}
-          user={signedInUser}
+          signedInAs={signedInUser.email ?? signedInUser.name ?? null}
           onSignOut={signOut}
-          recovery={shellRecovery}
-        />
-      </MembershipGate>
-    </QueryErrorBoundary>
+        >
+          <ChatSessionShell
+            client={client}
+            workspaceName={profile.name}
+            workspaceIconSeed={profile.iconSeed}
+            user={signedInUser}
+            onSignOut={signOut}
+            recovery={shellRecovery}
+          />
+        </MembershipGate>
+      </QueryErrorBoundary>
+    </>
   );
 }
 

@@ -20,6 +20,12 @@ import type { VoiceLocalState } from "./voice/call-types";
 export const PIP_STATE_EVENT = "aulora://call-pip-state";
 /** Sends a control press from the PiP window to the main window. */
 export const PIP_ACTION_EVENT = "aulora://call-pip-action";
+/**
+ * Carries the loopback video handshake between the two webviews: an SDP
+ * offer/answer and the host ICE candidates of the peer connections that move
+ * the picture without a network. Payloads are validated by `pip-loopback.ts`.
+ */
+export const PIP_SIGNAL_EVENT = "aulora://call-pip-signal";
 /** Raised on the main window by the shell when the PiP window goes away. */
 export const PIP_CLOSED_EVENT = "aulora://call-pip-closed";
 /** The shell's label for the PiP window; events are addressed to it. */
@@ -44,6 +50,9 @@ export interface PipParticipant {
   readonly self: boolean;
 }
 
+/** What the picture in the window is showing. */
+export type PipMediaKind = "screen" | "camera" | "local" | "none";
+
 /** Everything the PiP window draws. Small: it is sent several times a second. */
 export interface PipCallState {
   readonly kind: CallKind;
@@ -56,6 +65,14 @@ export interface PipCallState {
   readonly canVideo: boolean;
   readonly canStream: boolean;
   readonly participants: readonly PipParticipant[];
+  /**
+   * What the video surface shows: a shared screen, a remote camera, the
+   * caller's own picture, or nothing (avatars). Optional on the wire so a main
+   * window from before this field existed still parses.
+   */
+  readonly mediaKind: PipMediaKind;
+  /** Who the picture belongs to, for the overlay. Empty when there is none. */
+  readonly speakerName: string;
 }
 
 /** A control press the PiP window can send to the call. */
@@ -80,6 +97,10 @@ export interface PipStateInput {
   readonly canVideo: boolean;
   readonly canStream: boolean;
   readonly nameOf: (userId: string) => string;
+  /** What the video surface is showing; defaults to `"none"` (avatars). */
+  readonly mediaKind?: PipMediaKind;
+  /** The name to show over the picture; defaults to empty. */
+  readonly speakerName?: string;
 }
 
 /**
@@ -116,7 +137,22 @@ export function buildPipState(input: PipStateInput): PipCallState | null {
     canVideo: input.canVideo,
     canStream: input.canStream,
     participants,
+    mediaKind: input.mediaKind ?? "none",
+    speakerName: input.speakerName ?? "",
   };
+}
+
+/** Reads the media kind off the wire; anything unknown is `"none"`. */
+export function parsePipMediaKind(value: unknown): PipMediaKind {
+  switch (value) {
+    case "screen":
+    case "camera":
+    case "local":
+    case "none":
+      return value;
+    default:
+      return "none";
+  }
 }
 
 function parseParticipant(value: unknown): PipParticipant | null {
@@ -171,6 +207,8 @@ export function parsePipState(value: unknown): PipCallState | null {
     canVideo: state.canVideo === true,
     canStream: state.canStream === true,
     participants: parsed,
+    mediaKind: parsePipMediaKind(state.mediaKind),
+    speakerName: typeof state.speakerName === "string" ? state.speakerName : "",
   };
 }
 

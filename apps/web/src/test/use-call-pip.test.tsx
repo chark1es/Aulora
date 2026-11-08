@@ -3,6 +3,7 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 import {
   PIP_ACTION_EVENT,
   PIP_CLOSED_EVENT,
+  PIP_SIGNAL_EVENT,
   PIP_STATE_EVENT,
   PIP_WINDOW_LABEL,
   parsePipState,
@@ -24,6 +25,13 @@ const mocks = vi.hoisted(() => {
     register: vi.fn(),
     unregister: vi.fn(),
     startVideo: vi.fn(),
+    desktopMode: vi.fn(async () => "window"),
+    frames: [] as { setTrack: ReturnType<typeof vi.fn>; close: ReturnType<typeof vi.fn> }[],
+    startFrames: vi.fn(() => {
+      const instance = { setTrack: vi.fn(), close: vi.fn() };
+      mocks.frames.push(instance);
+      return instance;
+    }),
     handlers,
     listen: vi.fn(async (event: string, handler: (payload: unknown) => void) => {
       handlers.set(event, handler);
@@ -41,6 +49,13 @@ vi.mock("../lib/desktop", () => ({
   emitDesktopEventTo: mocks.emitTo,
   listenDesktopEvent: mocks.listen,
   setDesktopAlwaysOnTop: mocks.alwaysOnTop,
+  desktopPipMode: mocks.desktopMode,
+  isDesktop: () => true,
+}));
+vi.mock("../lib/voice/pip-frames", () => ({
+  choosePipTransport: () => "frames",
+  framesSupported: () => true,
+  startPipFrameSender: mocks.startFrames,
 }));
 vi.mock("../lib/voice/pip", () => ({
   detectPipMode: () => mocks.mode,
@@ -130,9 +145,11 @@ beforeEach(() => {
     }
   }
   mocks.handlers.clear();
+  mocks.frames.length = 0;
   mocks.mode = "window";
   mocks.openPip.mockResolvedValue(true);
   mocks.isPipOpen.mockResolvedValue(false);
+  mocks.desktopMode.mockResolvedValue("window");
 });
 
 describe("desktop window mode", () => {
@@ -148,6 +165,15 @@ describe("desktop window mode", () => {
     expect(mocks.openPip).toHaveBeenCalledWith(380, 292);
     // The app window is never pinned or resized for the call window.
     expect(mocks.alwaysOnTop).not.toHaveBeenCalledWith(true);
+  });
+
+  it("keeps the in-app dock on a compositor that cannot float a window", async () => {
+    mocks.desktopMode.mockResolvedValue("dock");
+    const { result } = setup();
+    await waitFor(() => {
+      expect(result.current.pip.mode).toBe("none");
+    });
+    expect(result.current.pip.active).toBe(false);
   });
 
   it("does not claim to be floating when the shell refuses", async () => {
@@ -193,6 +219,85 @@ describe("desktop window mode", () => {
     });
     const update = mocks.emitTo.mock.calls.at(-1) as unknown as [string, string, unknown];
     expect(parsePipState(update[2])?.muted).toBe(true);
+  });
+
+  it("falls back to frames when the webview has no loopback peer connection", async () => {
+    const { result } = setup();
+    act(() => {
+      result.current.pip.toggle();
+    });
+    await waitFor(() => {
+      expect(result.current.pip.active).toBe(true);
+    });
+    await waitFor(() => {
+      expect(mocks.startFrames).toHaveBeenCalledTimes(1);
+    });
+    // The window's end of the loopback is heard even though the fallback is up.
+    expect(mocks.handlers.has(PIP_SIGNAL_EVENT)).toBe(true);
+    // Nobody has a camera in this call, so the sender starts with no track.
+    expect(mocks.startFrames).toHaveBeenCalledWith({ track: null });
+  });
+
+  it("offers no video-only PiP while the operator has switched video off", async () => {
+    mocks.mode = "video";
+    const { result } = setup({ videoDisabled: true });
+    expect(result.current.pip.mode).toBe("none");
+    act(() => {
+      result.current.pip.toggle();
+    });
+    await Promise.resolve();
+    expect(mocks.startVideo).not.toHaveBeenCalled();
+    expect(result.current.pip.active).toBe(false);
+  });
+
+  it("offers no document PiP while the operator has switched video off", async () => {
+    mocks.mode = "document";
+    const { result } = setup({ videoDisabled: true });
+    expect(result.current.pip.mode).toBe("none");
+    act(() => {
+      result.current.pip.toggle();
+    });
+    await Promise.resolve();
+    expect(mocks.openDocument).not.toHaveBeenCalled();
+    expect(result.current.pip.active).toBe(false);
+  });
+
+  it("keeps the document PiP available when video is on", async () => {
+    mocks.mode = "document";
+    const { result } = setup();
+    expect(result.current.pip.mode).toBe("document");
+  });
+
+  it("closes a floating video when the operator switches video off", async () => {
+    mocks.mode = "video";
+    const stop = vi.fn();
+    mocks.startVideo.mockResolvedValue({ setSource: vi.fn(), stop });
+    const { result, rerender, initial } = setup();
+    act(() => {
+      result.current.pip.toggle();
+    });
+    await waitFor(() => {
+      expect(result.current.pip.active).toBe(true);
+    });
+    rerender({ ...initial, videoDisabled: true });
+    await waitFor(() => {
+      expect(stop).toHaveBeenCalled();
+    });
+  });
+
+  it("stops the frame fallback when the window goes away", async () => {
+    const { result } = setup();
+    act(() => {
+      result.current.pip.toggle();
+    });
+    await waitFor(() => {
+      expect(result.current.pip.active).toBe(true);
+    });
+    await waitFor(() => {
+      expect(mocks.frames).toHaveLength(1);
+    });
+    fire(PIP_CLOSED_EVENT);
+    expect(mocks.frames[0]?.close).toHaveBeenCalledTimes(1);
   });
 
   it("stops floating when the shell says the window is gone", async () => {

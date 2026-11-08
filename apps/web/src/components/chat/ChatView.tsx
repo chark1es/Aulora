@@ -11,7 +11,7 @@ import {
   type RoleMentionTarget,
 } from "@aulora/core";
 import { cn, Icon, Spinner } from "@aulora/ui-web";
-import { useMutation, useQuery } from "convex/react";
+import { useConvex, useMutation, useQuery } from "convex/react";
 import { lazy, Suspense, useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { api } from "../../../../../packages/convex/convex/_generated/api";
 import {
@@ -22,21 +22,25 @@ import {
 import { selectEagerChannelIds } from "../../lib/channel-priority";
 import { isDesktop } from "../../lib/desktop";
 import { buildPresenceScope, PRESENCE_SCOPE_MAX } from "../../lib/presence-scope";
-import { publicOrigin } from "../../lib/public-origin";
+import { publicOriginOrNull, publicUrl } from "../../lib/public-origin";
 import { playSound } from "../../lib/sounds";
 import { useChannelSession } from "../../lib/use-channel";
 import {
   showUnfocusedNotification,
   useDesktopNotifications,
 } from "../../lib/use-desktop-notifications";
-import { useLiveUnreadBadge } from "../../lib/use-desktop-unread";
+import { useUnreadBadge } from "../../lib/use-desktop-unread";
+import { useMemberPages } from "../../lib/use-member-pages";
 import { useUnopenedChannelAlerts } from "../../lib/use-unopened-channel-alerts";
 import { useWebPush } from "../../lib/use-web-push";
 import {
   type CategoryView,
   type MemberView,
+  memberDisplayName,
   type RoleView,
   resolveViewerPermissions,
+  roleColorFor,
+  roleNamesFor,
   roleRef,
 } from "../../lib/workspace-admin";
 import { type ChatSearchHit, useChat } from "../../providers/ChatProvider";
@@ -68,7 +72,8 @@ import {
 } from "./channel-role-overrides";
 import { EditChannelModal, type EditChannelPatch } from "./EditChannelModal";
 import { MemberProfilePopover } from "./MemberProfilePopover";
-import { MembersPanel } from "./MembersPanel";
+import { type MemberEntry, MembersPanel } from "./MembersPanel";
+import { MemberAvatarProvider } from "./member-avatars";
 import { NewConversationDialog } from "./NewConversationDialog";
 import { NotificationsSettingsSection } from "./NotificationsSettingsSection";
 import type { PresenceStatus } from "./PresenceAvatar";
@@ -117,14 +122,14 @@ export interface ChatViewProps {
   readonly permissions: bigint;
   readonly kanbanEnabled?: boolean;
   readonly notesEnabled?: boolean;
-  readonly members: readonly {
-    userId: string;
-    displayName: string;
-    roleIds?: readonly string[];
-    roleNames?: readonly string[];
-    isOwner?: boolean;
-    roleColor?: string | null;
-  }[];
+  /** The viewer's own workspace avatar, if they set one. */
+  readonly ownAvatarUrl: string | null;
+  /**
+   * Extra directory rows for a host that supplies its own people instead of a
+   * Convex backend (the dev `/__preview` surface). Merged over the scoped
+   * lookup; production never passes it.
+   */
+  readonly membersFallback?: readonly MemberEntry[];
   readonly roles: readonly RoleMentionTarget[];
   /** Live per-channel unread state from the server, keyed by channel id. */
   readonly unreadByChannel: ReadonlyMap<string, ChannelUnread>;
@@ -132,11 +137,21 @@ export interface ChatViewProps {
     readonly viewer: AdminPanelViewer;
     readonly ownerId: string | null;
     readonly roleViews: readonly RoleView[];
-    readonly memberViews: readonly MemberView[];
     readonly categories: readonly CategoryView[];
   };
   readonly onSignOut: () => void;
 }
+
+/** Ids one `members.brief` call resolves (matches the server's cap). */
+const MEMBER_DIRECTORY_MAX = 300;
+/** Member panel page size, grown by one step per "Show more". */
+const MEMBER_PAGE_INITIAL = 100;
+/** Roster rows loaded for pickers, the admin surface and the addons. */
+const MEMBER_ROSTER_PAGE = 500;
+/** Threads returned by the open inbox (server caps at 50). */
+const THREAD_INBOX_PAGE = 50;
+/** Stable empty roster so `skip`ped pages do not allocate a new array. */
+const EMPTY_MEMBERS: readonly MemberView[] = [];
 
 const LAST_CHANNEL_KEY = "aulora.lastChannel.v1:";
 const MEMBERS_OPEN_KEY = "aulora.membersOpen.v1";
@@ -211,7 +226,8 @@ function ChatViewContent({
   permissions,
   kanbanEnabled = false,
   notesEnabled = false,
-  members,
+  ownAvatarUrl,
+  membersFallback,
   roles,
   unreadByChannel,
   admin,
@@ -284,6 +300,129 @@ function ChatViewContent({
   const reported = useRef(new Set<string>());
   const attentive = useAttentive();
 
+  // The open channel's live session. Declared before the member directory
+  // because the directory is scoped to the authors and mentions it displays.
+  const sessionState = useChannelSession(runtime, activeChannelId, ownUserId);
+
+  // Member data is scoped instead of subscribed wholesale: `members.brief`
+  // resolves exactly the people this view renders (timeline authors, the users
+  // they mention, DM partners and an open profile), while the member panel
+  // pages and the pickers load a bounded roster only while they are open.
+  const directoryIds = useMemo(() => {
+    const ids = new Set<string>();
+    // People whose names are always needed come first, so the cap never trims
+    // DM partners or the open profile.
+    ids.add(ownUserId);
+    for (const entry of channels) {
+      if (entry.kind !== "dm" && entry.kind !== "group_dm") {
+        continue;
+      }
+      for (const memberId of entry.memberIds ?? []) {
+        ids.add(memberId);
+      }
+    }
+    if (profileTarget !== null) {
+      ids.add(profileTarget.userId);
+    }
+    // Then authors and mentions, newest first: the retained history window can
+    // hold more distinct authors than one `members.brief` call resolves.
+    for (const message of sessionState.messages.slice().reverse()) {
+      ids.add(message.authorId);
+      for (const mentioned of message.mentionUserIds) {
+        ids.add(mentioned);
+      }
+    }
+    return [...ids].slice(0, MEMBER_DIRECTORY_MAX);
+  }, [channels, ownUserId, profileTarget, sessionState.messages]);
+  const directoryRows = useQuery(
+    api.members.brief,
+    directoryIds.length > 0 ? { userIds: directoryIds } : "skip",
+  );
+  const toEntry = useCallback(
+    (member: MemberView) => ({
+      userId: member.userId,
+      displayName: memberDisplayName(member, member.userId === ownUserId ? ownName : "Member"),
+      roleIds: member.roleIds,
+      roleNames: roleNamesFor(member, admin.roleViews),
+      isOwner: member.userId === admin.ownerId,
+      roleColor: roleColorFor(member, admin.roleViews),
+    }),
+    [admin.ownerId, admin.roleViews, ownUserId, ownName],
+  );
+  const convex = useConvex();
+  // Mention autocomplete searches the server instead of filtering a roster the
+  // client no longer holds; results merge with the people already on screen.
+  const searchMembers = useCallback(
+    async (query: string): Promise<readonly MentionTarget[]> => {
+      const rows = await convex.query(api.members.search, { query, limit: 8 });
+      return rows.map((member) => ({
+        userId: member.userId,
+        displayName: memberDisplayName(member, "Member"),
+        roleIds: member.roleIds,
+      }));
+    },
+    [convex],
+  );
+  const directory = useMemo(() => {
+    const merged = new Map<string, MemberEntry>();
+    for (const member of directoryRows ?? []) {
+      merged.set(member.userId, toEntry(member));
+    }
+    // Preview hosts inject their own people; production has none.
+    for (const member of membersFallback ?? []) {
+      merged.set(member.userId, member);
+    }
+    return [...merged.values()];
+  }, [directoryRows, toEntry, membersFallback]);
+  const directoryRoster = useMemo(
+    () => (directoryRows ?? []).map((member) => ({ userId: member.userId })),
+    [directoryRows],
+  );
+
+  // The member panel owns a paged read of the directory.
+  const panelPages = useMemberPages(membersOpen, MEMBER_PAGE_INITIAL);
+  const panelRows = panelPages.rows;
+  const panelHasMore = panelPages.hasMore;
+  const loadMoreMembers = panelPages.loadMore;
+
+  // Pickers, the admin surface and the addons need more than the timeline's
+  // people. They load one bounded directory page, and only while open.
+  const rosterOpen =
+    newConversationOpen ||
+    createChannelOpen ||
+    membersModalChannel !== undefined ||
+    editChannelModal !== undefined ||
+    adminOpen ||
+    mainView === "kanban" ||
+    mainView === "notes";
+  // Everyone, page by page: an admin must be able to reach every member.
+  const rosterPages = useMemberPages(rosterOpen, MEMBER_ROSTER_PAGE, true);
+  const rosterRows = rosterPages.rows;
+  const roster = useMemo(() => {
+    const merged = new Map<string, MemberEntry>();
+    for (const entry of directory) {
+      merged.set(entry.userId, entry);
+    }
+    for (const member of rosterRows) {
+      if (!merged.has(member.userId)) {
+        merged.set(member.userId, toEntry(member));
+      }
+    }
+    return [...merged.values()];
+  }, [directory, rosterRows, toEntry]);
+
+  // Avatar URLs for everyone this view can render: the scoped directory, the
+  // member panel's page and any open picker's roster.
+  const avatarRows = useMemo(() => {
+    const merged = new Map<string, { userId: string; avatarUrl?: string | null }>();
+    for (const list of [directoryRows ?? [], panelRows, rosterRows]) {
+      for (const member of list) {
+        merged.set(member.userId, member);
+      }
+    }
+    return [...merged.values()];
+  }, [directoryRows, panelRows, rosterRows]);
+
   const createCategory = useMutation(api.categories.create);
   const updateCategory = useMutation(api.categories.update);
   const removeCategory = useMutation(api.categories.remove);
@@ -300,21 +439,22 @@ function ChatViewContent({
     api.members.profile,
     userSettingsOpen ? { userId: ownUserId } : "skip",
   );
-  const profileMember = members.find((member) => member.userId === profileTarget?.userId);
+  const profileMember = directory.find((member) => member.userId === profileTarget?.userId);
   const kickMember = useMutation(api.members.kick);
   const banMember = useMutation(api.members.ban);
 
-  // The Threads inbox is always subscribed so its tab can badge mentions.
-  const threadRows = useQuery(api.messages.threadInbox, {});
+  // The Threads badge comes from a cheap participation-row count; the inbox
+  // itself (root lookups plus opened bodies) is only subscribed while open.
+  const threadMentionCount = useQuery(api.messages.threadMentionCount, {}) ?? 0;
+  const threadRows = useQuery(
+    api.messages.threadInbox,
+    mainView === "threads" ? { limit: THREAD_INBOX_PAGE } : "skip",
+  );
   // The effective single-upload cap, so the composer can reject oversized picks
   // before any bytes leave the browser. Falls back to the shared default while
   // the query loads.
   const publicConfig = useQuery(api.server.publicConfig, {});
   const maxUploadBytes = publicConfig?.uploads?.maxBytes ?? DEFAULT_MAX_UPLOAD_BYTES;
-  const threadMentionCount = useMemo(
-    () => (threadRows ?? []).filter((row) => row.viewerMentioned).length,
-    [threadRows],
-  );
 
   const mutedChannelIds = useMemo(
     () =>
@@ -323,7 +463,16 @@ function ChatViewContent({
   );
   useDesktopNotifications(runtime, ownUserId, channelNames, mutedChannelIds);
   useWebPush(runtime);
-  useLiveUnreadBadge();
+  // The badge sums the summary rows the sidebar already holds, so one message
+  // insert no longer triggers a second per-channel tail scan.
+  const unreadTotal = useMemo(() => {
+    let total = 0;
+    for (const row of unreadByChannel.values()) {
+      total += row.unreadCount;
+    }
+    return total;
+  }, [unreadByChannel]);
+  useUnreadBadge(unreadTotal);
 
   // The same bounded eager set the provider opens. Channels outside it have no
   // message stream, so their chimes/notifications come from the unread summary.
@@ -438,15 +587,15 @@ function ChatViewContent({
     for (const identity of webhookIdentities ?? []) {
       map.set(identity.userId, identity.name);
     }
-    for (const member of members) {
+    for (const member of directory) {
       map.set(member.userId, member.displayName);
     }
     return map;
-  }, [members, webhookIdentities]);
+  }, [directory, webhookIdentities]);
 
   const memberColors = useMemo(() => {
     const map = new Map<string, string>();
-    for (const member of members) {
+    for (const member of directory) {
       if (
         member.roleColor !== null &&
         member.roleColor !== undefined &&
@@ -456,7 +605,7 @@ function ChatViewContent({
       }
     }
     return map;
-  }, [members]);
+  }, [directory]);
 
   const callIdentity = useMemo<CallIdentity>(
     () => ({
@@ -494,10 +643,10 @@ function ChatViewContent({
 
   const mentionNames = useMemo(
     () => [
-      ...members.map((member) => member.displayName),
+      ...directory.map((member) => member.displayName),
       ...roles.filter((r) => r.mentionable).map((r) => r.name),
     ],
-    [members, roles],
+    [directory, roles],
   );
 
   const channelMentions = useMemo(
@@ -687,7 +836,19 @@ function ChatViewContent({
   }, [membersOpen]);
 
   const channel = channels.find((entry) => entry.id === activeChannelId);
-  const viewerMember = admin.memberViews.find((entry) => entry.userId === ownUserId) ?? null;
+  // The viewer's role refs come from the shell's resolved viewer, so channel
+  // permission math no longer needs a member-roster subscription.
+  const viewerMember: MemberView | null = {
+    id: ownUserId,
+    userId: ownUserId,
+    nickname: null,
+    accountName: null,
+    isBot: false,
+    roleIds: [...admin.viewer.roleIds],
+    joinedAt: 0,
+    timeoutUntil: null,
+    avatarUrl: ownAvatarUrl,
+  };
   const category = admin.categories.find((entry) => entry.id === channel?.categoryId);
   const channelPermissions =
     channel === undefined
@@ -699,23 +860,23 @@ function ChatViewContent({
           categoryOverrides: category?.overrides ?? [],
           channelOverrides: channel.overrides ?? [],
         });
-  const sessionState = useChannelSession(runtime, activeChannelId, ownUserId);
-
-  // Who can actually see the open channel; falls back to the workspace list
-  // while the query loads so the member panel never flashes empty.
+  // Who can actually see the open channel. The panel starts empty until its
+  // first page arrives (it no longer holds the whole roster).
   const visibleMemberIds = useQuery(
     api.channels.visibleMemberIds,
     channel !== undefined ? { channelId: channel.id as never } : "skip",
   );
   const visibleMembers = useMemo(() => {
+    const page = panelRows;
+    const entries = page.map(toEntry);
     if (visibleMemberIds === undefined) {
-      return members;
+      return entries;
     }
-    // A Set keeps the visibility filter O(members) instead of scanning the
+    // A Set keeps the visibility filter O(page) instead of scanning the
     // visible id list per member.
     const visible = new Set(visibleMemberIds as readonly string[]);
-    return members.filter((member) => visible.has(member.userId));
-  }, [members, visibleMemberIds]);
+    return entries.filter((member) => visible.has(member.userId));
+  }, [panelRows, toEntry, visibleMemberIds]);
 
   // Presence is fetched only for the people on screen: the open timeline's
   // authors, the member panel/modal's displayed members, the sidebar's DM
@@ -729,8 +890,8 @@ function ChatViewContent({
         displayedMemberIds: [
           ...(membersOpen ? visibleMembers.map((member) => member.userId) : []),
           ...(membersModalChannel?.memberIds ?? []),
-          ...(newConversationOpen && members.length <= PRESENCE_SCOPE_MAX
-            ? members.map((member) => member.userId)
+          ...(newConversationOpen && roster.length <= PRESENCE_SCOPE_MAX
+            ? roster.map((member) => member.userId)
             : []),
         ],
         channels,
@@ -742,7 +903,7 @@ function ChatViewContent({
       visibleMembers,
       membersModalChannel,
       newConversationOpen,
-      members,
+      roster,
       channels,
     ],
   );
@@ -852,15 +1013,23 @@ function ChatViewContent({
 
   const mentionMembers: readonly MentionTarget[] = useMemo(
     () =>
-      members.map((member) => ({
+      directory.map((member) => ({
         userId: member.userId,
         displayName: member.displayName,
         ...(member.roleIds !== undefined ? { roleIds: member.roleIds } : {}),
       })),
-    [members],
+    [directory],
   );
 
-  const memberIds = useMemo(() => members.map((member) => member.userId), [members]);
+  // `@here`/`@everyone` expand over the open channel's viewers rather than the
+  // whole workspace; the server still filters to actual recipients.
+  const memberIds = useMemo(
+    () =>
+      visibleMemberIds !== undefined
+        ? [...(visibleMemberIds as readonly string[])]
+        : directoryRoster.map((member) => member.userId),
+    [directoryRoster, visibleMemberIds],
+  );
 
   const sidebarUnread = useMemo(() => {
     if (activeChannelId === undefined) {
@@ -1151,6 +1320,7 @@ function ChatViewContent({
       mentionUserIds: readonly string[];
       mentionChannelIds?: readonly string[];
       mentionCategoryIds?: readonly string[];
+      mentionRoleIds?: readonly string[];
       files: readonly File[];
     },
     extra: { threadRootId?: string; replyToId?: string } = {},
@@ -1175,6 +1345,7 @@ function ChatViewContent({
       ...(input.mentionCategoryIds !== undefined
         ? { mentionCategoryIds: input.mentionCategoryIds }
         : {}),
+      ...(input.mentionRoleIds !== undefined ? { mentionRoleIds: input.mentionRoleIds } : {}),
       ...(extra.threadRootId !== undefined ? { threadRootId: extra.threadRootId } : {}),
       ...(extra.replyToId !== undefined ? { replyToId: extra.replyToId } : {}),
       ...(attachments !== undefined && attachments.length > 0 ? { attachments } : {}),
@@ -1250,6 +1421,10 @@ function ChatViewContent({
   const callTitle =
     voice.call !== null ? (titles.get(voice.call.channelId) ?? channel?.name ?? "") : "";
   const incomingCall = voice.incoming[0];
+  // Shareable links need the workspace origin, which `ProfileProvider` records
+  // after mount. Until then the sharing actions are hidden rather than building
+  // a bare path that looks like a link.
+  const shareableOrigin = publicOriginOrNull();
 
   const submitChannelEdit = async (patch: EditChannelPatch) => {
     const target = editChannelModal;
@@ -1298,686 +1473,699 @@ function ChatViewContent({
   };
 
   return (
-    <div className="relative flex min-h-0 min-w-0 flex-1">
-      {!sidebarHidden && (
-        <div className={cn("min-h-0 w-full md:flex md:w-auto", showList ? "flex" : "hidden")}>
-          <ChannelSidebar
-            workspaceName={workspaceName}
-            workspaceIconSeed={workspaceIconSeed}
-            ownUserId={ownUserId}
-            ownName={ownName}
-            ownStatus={presenceOf(ownUserId)}
-            onlineCount={onlineCount}
-            channels={channels}
-            categories={admin.categories}
-            titles={titles}
-            presenceOf={presenceOf}
-            memberNameOf={(id) => (id === ownUserId ? ownName : (memberNames.get(id) ?? "Member"))}
-            activeChannelId={activeChannelId}
-            unreadByChannel={sidebarUnread}
-            canCreateChannel={canCreateChannel}
-            mainView={mainView}
-            {...(kanbanEnabled && hasPermission(permissions, Permission.ViewKanban)
-              ? {
-                  onOpenKanban: () => {
-                    setMainView("kanban");
-                    setMobilePane("chat");
-                    setThreadRoot(undefined);
-                    setAdminOpen(false);
-                    setUserSettingsOpen(false);
-                  },
-                }
-              : {})}
-            {...(notesEnabled && hasPermission(permissions, Permission.ViewNotes)
-              ? {
-                  onOpenNotes: () => {
-                    setMainView("notes");
-                    setMobilePane("chat");
-                    setThreadRoot(undefined);
-                    setAdminOpen(false);
-                    setUserSettingsOpen(false);
-                  },
-                }
-              : {})}
-            threadMentionCount={threadMentionCount}
-            onOpenThreads={() => {
-              setMainView("threads");
-              setThreadRoot(undefined);
-              setAdminOpen(false);
-              setUserSettingsOpen(false);
-            }}
-            onCreateCategory={() => {
-              setCreateCategoryOpen(true);
-            }}
-            canManageCategories={canManageCategories}
-            appUpdateAvailable={desktopUpdate.status?.updateAvailable ?? false}
-            workspaceUpdateAvailable={workspaceUpdate.available}
-            onOpenUserSettings={() => {
-              setAdminOpen(false);
-              setUserSettingsOpen(true);
-            }}
-            showAdmin={showAdmin}
-            onOpenAdmin={() => {
-              setUserSettingsOpen(false);
-              setAdminOpen(true);
-            }}
-            workspaceSwitcher={<WorkspaceMenu onlineCount={onlineCount} variant="header" />}
-            onSelect={(channelId) => {
-              openChannel(channelId);
-            }}
-            onCreateChannel={(kind) => {
-              setCreateChannelKind(kind);
-              setCreateChannelCategoryId(undefined);
-              setCreateChannelOpen(true);
-            }}
-            categoryActions={{
-              rename: (category) => {
-                setCategoryModal({ category });
-              },
-              delete: (category) => void removeCategory({ categoryId: category.id as never }),
-              createChannel: (category) => {
-                setCreateChannelKind("text");
-                setCreateChannelCategoryId(category.id);
-                setCreateChannelOpen(true);
-              },
-            }}
-            channelActions={{
-              open: (channel) => {
-                openChannel(channel.id);
-              },
-              invite: (channel) => {
-                setMembersModalChannel(channel);
-              },
-              ...(admin.viewer.isOwner || hasPermission(permissions, Permission.ManageChannels)
-                ? {
-                    rename: (channel: ChannelView) => {
-                      setRenameModalChannel(channel);
-                    },
-                  }
-                : {}),
-              ...(canManageChannels
-                ? {
-                    edit: (channel: ChannelView) => {
-                      if (channel.kind === "dm" || channel.kind === "group_dm") {
-                        return;
-                      }
-                      setEditChannelError(null);
-                      setEditChannelModal(channel);
-                    },
-                  }
-                : {}),
-              markRead: (channel) => {
-                const newestId = channel.id === activeChannelId ? newest?.id : undefined;
-                if (newestId !== undefined) {
-                  void runtime.session.markRead(channel.id, newestId).catch(() => undefined);
-                }
-              },
-              copyLink: (channel) => {
-                const url = `${publicOrigin()}/?channel=${channel.id}`;
-                void navigator.clipboard.writeText(url).catch(() => undefined);
-              },
-              hide: (channel) => {
-                restoreTracking.current.baseline.set(
-                  channel.id,
-                  unreadByChannel.get(channel.id)?.mentionCount ?? 0,
-                );
-                void runtime.port
-                  .setChannelHidden?.({ channelId: channel.id, hidden: true })
-                  .catch(() => undefined);
-              },
-              unhide: (channel) => {
-                void runtime.port
-                  .setChannelHidden?.({ channelId: channel.id, hidden: false })
-                  .catch(() => undefined);
-              },
-              mute: (channel) => {
-                void runtime.port
-                  .setChannelMuted?.({ channelId: channel.id, muted: true })
-                  .catch(() => undefined);
-              },
-              unmute: (channel) => {
-                void runtime.port
-                  .setChannelMuted?.({ channelId: channel.id, muted: false })
-                  .catch(() => undefined);
-              },
-              pin: (channel) => {
-                void runtime.port
-                  .setChannelPinned?.({ channelId: channel.id, pinned: true })
-                  .catch(() => undefined);
-              },
-              unpin: (channel) => {
-                void runtime.port
-                  .setChannelPinned?.({ channelId: channel.id, pinned: false })
-                  .catch(() => undefined);
-              },
-              ...(admin.viewer.isOwner || hasPermission(permissions, Permission.ManageChannels)
-                ? {
-                    archive: (channel: ChannelView) => {
-                      void archiveChannel(runtime, channel.id);
-                    },
-                  }
-                : {}),
-            }}
-            onNewConversation={() => {
-              setNewConversationOpen(true);
-            }}
-            onOpenSearch={() => {
-              setSearchOpen(true);
-            }}
-            onSetStatus={(status) => {
-              void runtime.port.setStatus({ status });
-            }}
-            customStatus={customStatus}
-            onSetCustomStatus={(text) => {
-              setCustomStatus(text);
-              setCustomStatuses((current) => {
-                const next = new Map(current);
-                if (text.length > 0) {
-                  next.set(ownUserId, text);
-                } else {
-                  next.delete(ownUserId);
-                }
-                return next;
-              });
-              void runtime.port.setStatus({ status: presenceOf(ownUserId), customStatus: text });
-            }}
-            canReorderChannels={
-              admin.viewer.isOwner || hasPermission(permissions, Permission.ManageChannels)
-            }
-            onReorderChannels={(moves) =>
-              void runtime.port.reorderChannels({ moves }).catch(() => undefined)
-            }
-            canReorderCategories={canManageCategories}
-            onReorderCategories={(moves) =>
-              void reorderCategories({
-                moves: moves.map((move) => ({
-                  categoryId: move.categoryId as never,
-                  position: move.position,
-                })),
-              }).catch(() => undefined)
-            }
-            onSignOut={onSignOut}
-          />
-        </div>
-      )}
-
-      {adminView ? (
-        <Suspense fallback={<SurfaceFallback />}>
-          <AdminPanel
-            viewer={admin.viewer}
-            ownerId={admin.ownerId}
-            roles={admin.roleViews}
-            members={admin.memberViews}
-            categories={admin.categories}
-            channels={channels}
-            channelNames={channelNames}
-            origin={publicOrigin()}
-            onClose={() => {
-              setAdminOpen(false);
-            }}
-          />
-        </Suspense>
-      ) : userSettingsOpen ? (
-        <UserSettingsView
-          ownUserId={ownUserId}
-          ownName={ownName}
-          ownBio={ownProfile?.bio ?? ""}
-          busy={ownProfile === undefined}
-          alignment={alignment}
-          canEditNickname={canEditNickname}
-          isOwner={admin.viewer.isOwner}
-          onSave={saveUserSettings}
-          hasAvatar={
-            admin.memberViews.find((member) => member.userId === ownUserId)?.avatarUrl != null
-          }
-          onChangeAvatar={changeAvatar}
-          onClearAvatar={async () => {
-            await setAvatar({});
-          }}
-          onBack={() => {
-            setUserSettingsOpen(false);
-          }}
-          onSignOut={onSignOut}
-          voiceSettings={<DeviceSettingsSection />}
-          soundSettings={<NotificationsSettingsSection />}
-          {...(isDesktop() ? { updateSettings: <DesktopUpdateSettings /> } : {})}
-          updateAvailable={updateAvailable}
-        />
-      ) : mainView === "kanban" &&
-        kanbanEnabled &&
-        hasPermission(permissions, Permission.ViewKanban) ? (
-        <Suspense fallback={<SurfaceFallback />}>
-          <KanbanView
-            ownUserId={ownUserId}
-            permissions={permissions}
-            members={members}
-            onBack={() => {
-              setMainView("chat");
-              setMobilePane("list");
-            }}
-          />
-        </Suspense>
-      ) : mainView === "notes" &&
-        notesEnabled &&
-        hasPermission(permissions, Permission.ViewNotes) ? (
-        <Suspense fallback={<SurfaceFallback />}>
-          <NotesView
-            ownUserId={ownUserId}
-            permissions={permissions}
-            members={members}
-            onBack={() => {
-              setMainView("chat");
-              setMobilePane("list");
-            }}
-          />
-        </Suspense>
-      ) : (
-        <section
-          className={cn(
-            "pane chat-canvas relative min-h-0 min-w-0 flex-1 flex-col",
-            showList ? "hidden md:flex" : "flex",
-          )}
-          aria-label={mainView === "threads" ? "Threads inbox" : "Conversation"}
-        >
-          {mainView === "threads" ? (
-            <ThreadsInbox
-              threads={threadRows ?? []}
-              loading={threadRows === undefined}
-              channelNames={channelNames}
-              memberNames={memberNames}
-              titles={titles}
-              ownUserId={ownUserId}
-              onOpen={openThreadFromInbox}
-            />
-          ) : channel === undefined ? (
-            <div className="flex flex-1 flex-col items-center justify-center gap-3 p-8 text-center">
-              <span className="flex h-12 w-12 items-center justify-center rounded-[10px] bg-accent-soft text-accent">
-                <Icon name="message" size={24} />
-              </span>
-              <h2 className="text-lg font-semibold text-text">
-                {channels.length === 0 ? "No conversations yet" : "Pick a conversation"}
-              </h2>
-              <p className="max-w-xs text-sm text-text-muted">
-                {channels.length === 0
-                  ? canCreateChannel
-                    ? "Create a channel from the sidebar, or start a direct message."
-                    : "Start a direct message, or ask an admin to add you to a channel."
-                  : "Choose a channel or direct message from the sidebar."}
-              </p>
-            </div>
-          ) : channel.kind === "voice" ? (
-            <Suspense fallback={<SurfaceFallback />}>
-              <VoiceChannelView channel={channel} title={title} identity={callIdentity} />
-            </Suspense>
-          ) : (
-            <ChannelPane
-              runtime={runtime}
-              channel={channel}
-              title={title}
-              placeholder={placeholder}
+    <MemberAvatarProvider members={avatarRows}>
+      <div className="relative flex min-h-0 min-w-0 flex-1">
+        {!sidebarHidden && (
+          <div className={cn("min-h-0 w-full md:flex md:w-auto", showList ? "flex" : "hidden")}>
+            <ChannelSidebar
+              workspaceName={workspaceName}
+              workspaceIconSeed={workspaceIconSeed}
               ownUserId={ownUserId}
               ownName={ownName}
-              alignment={alignment}
-              channelPermissions={channelPermissions}
-              sessionState={sessionState}
-              mergedMessages={mergedMessages}
-              mergedDecrypted={mergedDecrypted}
-              attachments={attachmentsByMessage}
-              pendingIds={pendingIds}
-              failedIds={failedIds}
-              replyPreviews={replyPreviews}
-              memberNames={memberNames}
-              memberColors={memberColors}
-              mentionNames={mentionNames}
-              mentionMembers={mentionMembers}
-              memberIds={memberIds}
-              roles={roles}
-              channelMentions={channelMentions}
-              categoryMentions={categoryMentions}
-              visibleMemberCount={visibleMembers.length}
+              ownStatus={presenceOf(ownUserId)}
+              onlineCount={onlineCount}
+              channels={channels}
+              categories={admin.categories}
+              titles={titles}
               presenceOf={presenceOf}
-              voice={voice}
-              chat={chat}
-              canSend={canSend}
-              canAttach={canAttach}
-              canMentionEveryone={canMentionEveryone}
-              maxUploadBytes={maxUploadBytes}
-              pinsOpen={pinsOpen}
-              membersOpen={rightPanel === "members"}
-              {...(replyTarget !== undefined ? { replyTarget } : {})}
-              sendError={sendError}
-              typingPing={(channelId) => {
-                typing.ping(channelId);
-              }}
-              onOpenChannel={openChannel}
-              onSetReplyTarget={setReplyTarget}
-              onSetThreadRoot={setThreadRoot}
-              onToggleMembers={() => {
+              memberNameOf={(id) =>
+                id === ownUserId ? ownName : (memberNames.get(id) ?? "Member")
+              }
+              activeChannelId={activeChannelId}
+              unreadByChannel={sidebarUnread}
+              canCreateChannel={canCreateChannel}
+              mainView={mainView}
+              {...(kanbanEnabled && hasPermission(permissions, Permission.ViewKanban)
+                ? {
+                    onOpenKanban: () => {
+                      setMainView("kanban");
+                      setMobilePane("chat");
+                      setThreadRoot(undefined);
+                      setAdminOpen(false);
+                      setUserSettingsOpen(false);
+                    },
+                  }
+                : {})}
+              {...(notesEnabled && hasPermission(permissions, Permission.ViewNotes)
+                ? {
+                    onOpenNotes: () => {
+                      setMainView("notes");
+                      setMobilePane("chat");
+                      setThreadRoot(undefined);
+                      setAdminOpen(false);
+                      setUserSettingsOpen(false);
+                    },
+                  }
+                : {})}
+              threadMentionCount={threadMentionCount}
+              onOpenThreads={() => {
+                setMainView("threads");
                 setThreadRoot(undefined);
-                setMembersOpen((open) => (threadRoot !== undefined ? true : !open));
+                setAdminOpen(false);
+                setUserSettingsOpen(false);
+              }}
+              onCreateCategory={() => {
+                setCreateCategoryOpen(true);
+              }}
+              canManageCategories={canManageCategories}
+              appUpdateAvailable={desktopUpdate.status?.updateAvailable ?? false}
+              workspaceUpdateAvailable={workspaceUpdate.available}
+              onOpenUserSettings={() => {
+                setAdminOpen(false);
+                setUserSettingsOpen(true);
+              }}
+              showAdmin={showAdmin}
+              onOpenAdmin={() => {
+                setUserSettingsOpen(false);
+                setAdminOpen(true);
+              }}
+              workspaceSwitcher={<WorkspaceMenu onlineCount={onlineCount} variant="header" />}
+              onSelect={(channelId) => {
+                openChannel(channelId);
+              }}
+              onCreateChannel={(kind) => {
+                setCreateChannelKind(kind);
+                setCreateChannelCategoryId(undefined);
+                setCreateChannelOpen(true);
+              }}
+              categoryActions={{
+                rename: (category) => {
+                  setCategoryModal({ category });
+                },
+                delete: (category) => void removeCategory({ categoryId: category.id as never }),
+                createChannel: (category) => {
+                  setCreateChannelKind("text");
+                  setCreateChannelCategoryId(category.id);
+                  setCreateChannelOpen(true);
+                },
+              }}
+              channelActions={{
+                open: (channel) => {
+                  openChannel(channel.id);
+                },
+                invite: (channel) => {
+                  setMembersModalChannel(channel);
+                },
+                ...(admin.viewer.isOwner || hasPermission(permissions, Permission.ManageChannels)
+                  ? {
+                      rename: (channel: ChannelView) => {
+                        setRenameModalChannel(channel);
+                      },
+                    }
+                  : {}),
+                ...(canManageChannels
+                  ? {
+                      edit: (channel: ChannelView) => {
+                        if (channel.kind === "dm" || channel.kind === "group_dm") {
+                          return;
+                        }
+                        setEditChannelError(null);
+                        setEditChannelModal(channel);
+                      },
+                    }
+                  : {}),
+                markRead: (channel) => {
+                  const newestId = channel.id === activeChannelId ? newest?.id : undefined;
+                  if (newestId !== undefined) {
+                    void runtime.session.markRead(channel.id, newestId).catch(() => undefined);
+                  }
+                },
+                ...(shareableOrigin === null
+                  ? {}
+                  : {
+                      copyLink: (channel: ChannelView) => {
+                        const url = publicUrl(`/?channel=${channel.id}`);
+                        if (url !== null) {
+                          void navigator.clipboard.writeText(url).catch(() => undefined);
+                        }
+                      },
+                    }),
+                hide: (channel) => {
+                  restoreTracking.current.baseline.set(
+                    channel.id,
+                    unreadByChannel.get(channel.id)?.mentionCount ?? 0,
+                  );
+                  void runtime.port
+                    .setChannelHidden?.({ channelId: channel.id, hidden: true })
+                    .catch(() => undefined);
+                },
+                unhide: (channel) => {
+                  void runtime.port
+                    .setChannelHidden?.({ channelId: channel.id, hidden: false })
+                    .catch(() => undefined);
+                },
+                mute: (channel) => {
+                  void runtime.port
+                    .setChannelMuted?.({ channelId: channel.id, muted: true })
+                    .catch(() => undefined);
+                },
+                unmute: (channel) => {
+                  void runtime.port
+                    .setChannelMuted?.({ channelId: channel.id, muted: false })
+                    .catch(() => undefined);
+                },
+                pin: (channel) => {
+                  void runtime.port
+                    .setChannelPinned?.({ channelId: channel.id, pinned: true })
+                    .catch(() => undefined);
+                },
+                unpin: (channel) => {
+                  void runtime.port
+                    .setChannelPinned?.({ channelId: channel.id, pinned: false })
+                    .catch(() => undefined);
+                },
+                ...(admin.viewer.isOwner || hasPermission(permissions, Permission.ManageChannels)
+                  ? {
+                      archive: (channel: ChannelView) => {
+                        void archiveChannel(runtime, channel.id);
+                      },
+                    }
+                  : {}),
+              }}
+              onNewConversation={() => {
+                setNewConversationOpen(true);
               }}
               onOpenSearch={() => {
                 setSearchOpen(true);
               }}
-              onTogglePins={() => {
-                setPinsOpen((open) => !open);
+              onSetStatus={(status) => {
+                void runtime.port.setStatus({ status });
               }}
-              onBack={() => {
-                setMobilePane("list");
+              customStatus={customStatus}
+              onSetCustomStatus={(text) => {
+                setCustomStatus(text);
+                setCustomStatuses((current) => {
+                  const next = new Map(current);
+                  if (text.length > 0) {
+                    next.set(ownUserId, text);
+                  } else {
+                    next.delete(ownUserId);
+                  }
+                  return next;
+                });
+                void runtime.port.setStatus({ status: presenceOf(ownUserId), customStatus: text });
               }}
-              onSetSendError={setSendError}
-              onSetNewConversationOpen={setNewConversationOpen}
-              sendWithFiles={sendWithFiles}
+              canReorderChannels={
+                admin.viewer.isOwner || hasPermission(permissions, Permission.ManageChannels)
+              }
+              onReorderChannels={(moves) =>
+                void runtime.port.reorderChannels({ moves }).catch(() => undefined)
+              }
+              canReorderCategories={canManageCategories}
+              onReorderCategories={(moves) =>
+                void reorderCategories({
+                  moves: moves.map((move) => ({
+                    categoryId: move.categoryId as never,
+                    position: move.position,
+                  })),
+                }).catch(() => undefined)
+              }
+              onSignOut={onSignOut}
             />
-          )}
-        </section>
-      )}
-
-      {rightPanel !== null &&
-        channel !== undefined &&
-        !adminView &&
-        mainView !== "kanban" &&
-        mainView !== "notes" &&
-        !userSettingsOpen &&
-        mainView === "chat" && (
-          <div className="fixed inset-y-2.5 right-2.5 z-30 flex lg:static lg:z-auto">
-            {rightPanel === "thread" && threadRoot !== undefined ? (
-              <ThreadsPanel
-                key={threadRoot.id}
-                runtime={runtime}
-                channelId={channel.id}
-                channelTitle={
-                  channel.kind === "text" || channel.kind === "announcement" ? `#${title}` : title
-                }
-                root={threadRoot}
-                rootText={sessionState.decrypted.get(threadRoot.id)}
-                members={mentionMembers}
-                roles={roles}
-                memberIds={memberIds}
-                permissions={channelPermissions}
-                maxUploadBytes={maxUploadBytes}
-                ownUserId={ownUserId}
-                ownName={ownName}
-                memberNames={memberNames}
-                memberColors={memberColors}
-                mentionNames={mentionNames}
-                onClose={() => {
-                  setThreadRoot(undefined);
-                }}
-                onTyping={(channelId) => {
-                  typing.ping(channelId);
-                }}
-                onSendReply={async ({ alsoSendToChannel, ...input }) => {
-                  await sendWithFiles(channel.id, input, { threadRootId: threadRoot.id });
-                  if (alsoSendToChannel) {
-                    await sendWithFiles(channel.id, { ...input, files: [] });
-                  }
-                }}
-                onEdit={(message, text) => {
-                  void runtime.session.editMessage(channel.id, message.id, text);
-                }}
-                onDelete={(message) => {
-                  void runtime.session.deleteMessage(channel.id, message.id);
-                  if (message.id === threadRoot.id) {
-                    setThreadRoot(undefined);
-                  }
-                }}
-                onPinToggle={(message) => {
-                  void (message.pinnedAt !== null
-                    ? runtime.session.unpinMessage(channel.id, message.id)
-                    : runtime.session.pinMessage(channel.id, message.id));
-                }}
-                onReact={(message, emoji) => {
-                  void runtime.session.toggleReaction(channel.id, message.id, emoji);
-                }}
-              />
-            ) : (
-              <MembersPanel
-                members={visibleMembers}
-                presence={presence}
-                roles={memberRoleGroups}
-                customStatuses={customStatuses}
-                ownUserId={ownUserId}
-                onViewProfile={(userId, anchor) => {
-                  setProfileTarget((current) =>
-                    current?.userId === userId ? null : { userId, anchor },
-                  );
-                }}
-                onMessage={(userId) => void startConversation([userId])}
-                onClose={() => {
-                  setMembersOpen(false);
-                }}
-                memberActions={{
-                  message: (userId) => {
-                    void startConversation([userId]);
-                  },
-                  ...(hasPermission(permissions, Permission.ManageRoles)
-                    ? {
-                        assignRoles: () => {
-                          setAdminOpen(true);
-                        },
-                      }
-                    : {}),
-                  ...(hasPermission(permissions, Permission.Kick)
-                    ? {
-                        kick: (userId: string) => {
-                          void kickMember({ userId });
-                        },
-                      }
-                    : {}),
-                  ...(hasPermission(permissions, Permission.Ban)
-                    ? {
-                        ban: (userId: string) => {
-                          void banMember({ userId });
-                        },
-                      }
-                    : {}),
-                }}
-              />
-            )}
           </div>
         )}
 
-      {profileMember !== undefined && profileTarget !== null && rightPanel === "members" && (
-        <MemberProfilePopover
-          key={profileMember.userId}
-          member={profileMember}
-          anchor={profileTarget.anchor}
-          status={presenceOf(profileMember.userId)}
-          profile={memberProfile}
-          onMessage={(userId) => startConversation([userId])}
-          onClose={closeProfile}
-        />
-      )}
-
-      {incomingCall !== undefined && (
-        <IncomingCallModal
-          call={incomingCall}
-          title={titles.get(incomingCall.channelId) ?? ""}
-          identity={callIdentity}
-        />
-      )}
-
-      {voice.error !== null && (
-        <div
-          role="alert"
-          className="fixed bottom-4 left-1/2 z-[75] flex -translate-x-1/2 items-center gap-3 rounded-[10px] border border-danger/30 bg-surface-2 px-4 py-2.5 text-[13px] text-text shadow-2xl shadow-black/30"
-        >
-          <Icon name="phone-off" size={16} className="shrink-0 text-danger" />
-          <span className="max-w-[420px]">{voice.error}</span>
-          <button
-            type="button"
-            aria-label="Dismiss call error"
-            onClick={() => {
-              voice.clearError();
+        {adminView ? (
+          <Suspense fallback={<SurfaceFallback />}>
+            <AdminPanel
+              viewer={admin.viewer}
+              ownerId={admin.ownerId}
+              roles={admin.roleViews}
+              members={rosterRows.length > 0 ? rosterRows : EMPTY_MEMBERS}
+              categories={admin.categories}
+              channels={channels}
+              channelNames={channelNames}
+              origin={shareableOrigin}
+              onClose={() => {
+                setAdminOpen(false);
+              }}
+            />
+          </Suspense>
+        ) : userSettingsOpen ? (
+          <UserSettingsView
+            ownUserId={ownUserId}
+            ownName={ownName}
+            ownBio={ownProfile?.bio ?? ""}
+            busy={ownProfile === undefined}
+            alignment={alignment}
+            canEditNickname={canEditNickname}
+            isOwner={admin.viewer.isOwner}
+            onSave={saveUserSettings}
+            hasAvatar={ownAvatarUrl !== null}
+            onChangeAvatar={changeAvatar}
+            onClearAvatar={async () => {
+              await setAvatar({});
             }}
-            className="shrink-0 text-text-muted transition hover:text-text"
+            onBack={() => {
+              setUserSettingsOpen(false);
+            }}
+            onSignOut={onSignOut}
+            voiceSettings={<DeviceSettingsSection />}
+            soundSettings={<NotificationsSettingsSection />}
+            {...(isDesktop() ? { updateSettings: <DesktopUpdateSettings /> } : {})}
+            updateAvailable={updateAvailable}
+          />
+        ) : mainView === "kanban" &&
+          kanbanEnabled &&
+          hasPermission(permissions, Permission.ViewKanban) ? (
+          <Suspense fallback={<SurfaceFallback />}>
+            <KanbanView
+              ownUserId={ownUserId}
+              permissions={permissions}
+              members={roster}
+              onBack={() => {
+                setMainView("chat");
+                setMobilePane("list");
+              }}
+            />
+          </Suspense>
+        ) : mainView === "notes" &&
+          notesEnabled &&
+          hasPermission(permissions, Permission.ViewNotes) ? (
+          <Suspense fallback={<SurfaceFallback />}>
+            <NotesView
+              ownUserId={ownUserId}
+              permissions={permissions}
+              members={roster}
+              onBack={() => {
+                setMainView("chat");
+                setMobilePane("list");
+              }}
+            />
+          </Suspense>
+        ) : (
+          <section
+            className={cn(
+              "pane chat-canvas relative min-h-0 min-w-0 flex-1 flex-col",
+              showList ? "hidden md:flex" : "flex",
+            )}
+            aria-label={mainView === "threads" ? "Threads inbox" : "Conversation"}
           >
-            <Icon name="x" size={15} />
-          </button>
-        </div>
-      )}
+            {mainView === "threads" ? (
+              <ThreadsInbox
+                threads={threadRows ?? []}
+                loading={threadRows === undefined}
+                channelNames={channelNames}
+                memberNames={memberNames}
+                titles={titles}
+                ownUserId={ownUserId}
+                onOpen={openThreadFromInbox}
+              />
+            ) : channel === undefined ? (
+              <div className="flex flex-1 flex-col items-center justify-center gap-3 p-8 text-center">
+                <span className="flex h-12 w-12 items-center justify-center rounded-[10px] bg-accent-soft text-accent">
+                  <Icon name="message" size={24} />
+                </span>
+                <h2 className="text-lg font-semibold text-text">
+                  {channels.length === 0 ? "No conversations yet" : "Pick a conversation"}
+                </h2>
+                <p className="max-w-xs text-sm text-text-muted">
+                  {channels.length === 0
+                    ? canCreateChannel
+                      ? "Create a channel from the sidebar, or start a direct message."
+                      : "Start a direct message, or ask an admin to add you to a channel."
+                    : "Choose a channel or direct message from the sidebar."}
+                </p>
+              </div>
+            ) : channel.kind === "voice" ? (
+              <Suspense fallback={<SurfaceFallback />}>
+                <VoiceChannelView channel={channel} title={title} identity={callIdentity} />
+              </Suspense>
+            ) : (
+              <ChannelPane
+                runtime={runtime}
+                channel={channel}
+                title={title}
+                placeholder={placeholder}
+                ownUserId={ownUserId}
+                ownName={ownName}
+                alignment={alignment}
+                channelPermissions={channelPermissions}
+                sessionState={sessionState}
+                mergedMessages={mergedMessages}
+                mergedDecrypted={mergedDecrypted}
+                attachments={attachmentsByMessage}
+                pendingIds={pendingIds}
+                failedIds={failedIds}
+                replyPreviews={replyPreviews}
+                memberNames={memberNames}
+                memberColors={memberColors}
+                mentionNames={mentionNames}
+                mentionMembers={mentionMembers}
+                searchMembers={searchMembers}
+                memberIds={memberIds}
+                roles={roles}
+                channelMentions={channelMentions}
+                categoryMentions={categoryMentions}
+                visibleMemberCount={visibleMembers.length}
+                presenceOf={presenceOf}
+                voice={voice}
+                chat={chat}
+                canSend={canSend}
+                canAttach={canAttach}
+                canMentionEveryone={canMentionEveryone}
+                maxUploadBytes={maxUploadBytes}
+                pinsOpen={pinsOpen}
+                membersOpen={rightPanel === "members"}
+                {...(replyTarget !== undefined ? { replyTarget } : {})}
+                sendError={sendError}
+                typingPing={(channelId) => {
+                  typing.ping(channelId);
+                }}
+                onOpenChannel={openChannel}
+                onSetReplyTarget={setReplyTarget}
+                onSetThreadRoot={setThreadRoot}
+                onToggleMembers={() => {
+                  setThreadRoot(undefined);
+                  setMembersOpen((open) => (threadRoot !== undefined ? true : !open));
+                }}
+                onOpenSearch={() => {
+                  setSearchOpen(true);
+                }}
+                onTogglePins={() => {
+                  setPinsOpen((open) => !open);
+                }}
+                onBack={() => {
+                  setMobilePane("list");
+                }}
+                onSetSendError={setSendError}
+                onSetNewConversationOpen={setNewConversationOpen}
+                sendWithFiles={sendWithFiles}
+              />
+            )}
+          </section>
+        )}
 
-      {!(channel?.kind === "voice" && voice.call?.channelId === channel.id) && (
-        <Suspense fallback={null}>
-          <CallDock title={callTitle} identity={callIdentity} />
-        </Suspense>
-      )}
-      {voice.view === "stage" && (
-        <Suspense fallback={null}>
-          <CallStage title={callTitle} identity={callIdentity} />
-        </Suspense>
-      )}
-      <CallPictureInPicture title={callTitle} identity={callIdentity} />
-
-      {searchOpen && (
-        <SearchPanel
-          query={searchQuery}
-          results={searchResults}
-          searching={searching}
-          archive={searchArchive}
-          conversations={channels}
-          titles={titles}
-          ownUserId={ownUserId}
-          memberNames={memberNames}
-          onQueryChange={setSearchQuery}
-          onSelectConversation={(channelId) => {
-            setSearchOpen(false);
-            openChannel(channelId);
-          }}
-          onSelect={selectSearchHit}
-          onClose={() => {
-            setSearchOpen(false);
-          }}
-        />
-      )}
-
-      {newConversationOpen && (
-        <NewConversationDialog
-          members={members}
-          ownUserId={ownUserId}
-          presenceOf={presenceOf}
-          onStart={(userIds) => void startConversation(userIds)}
-          onClose={() => {
-            setNewConversationOpen(false);
-          }}
-        />
-      )}
-
-      <CreateChannelModal
-        open={createChannelOpen}
-        {...(createChannelCategoryId !== undefined
-          ? { initialCategoryId: createChannelCategoryId }
-          : {})}
-        {...(createChannelKind !== undefined ? { initialKind: createChannelKind } : {})}
-        members={members}
-        roles={channelRoleOptions}
-        onClose={() => {
-          setCreateChannelOpen(false);
-          setCreateChannelCategoryId(undefined);
-          setCreateChannelKind(undefined);
-        }}
-        onCreate={async (input: CreateChannelInput) => {
-          setCreateChannelOpen(false);
-          setCreateChannelCategoryId(undefined);
-          setCreateChannelKind(undefined);
-          const channelId = await createChannel(runtime, input);
-          if (channelId !== undefined) {
-            setActiveChannelId(channelId);
-            setMobilePane("chat");
-          }
-        }}
-      />
-
-      <CreateCategoryModal
-        open={createCategoryOpen || categoryModal !== null}
-        mode={categoryModal !== null ? "rename" : "create"}
-        {...(categoryModal !== null
-          ? { initialName: categoryModal.category.name, title: "Rename category" }
-          : {})}
-        busy={categoryBusy}
-        error={categoryError}
-        onClose={closeCategoryModal}
-        onSubmit={submitCategory}
-      />
-
-      {renameModalChannel !== undefined && (
-        <RenameChannelModal
-          open
-          currentName={titles.get(renameModalChannel.id) ?? renameModalChannel.name}
-          kindLabel={
-            renameModalChannel.kind === "announcement" ? "announcement channel" : "channel"
-          }
-          onClose={() => {
-            setRenameModalChannel(undefined);
-          }}
-          onRename={async (name) => {
-            setRenameModalChannel(undefined);
-            await runtime.session.setChannelName(renameModalChannel.id, name);
-          }}
-        />
-      )}
-
-      {membersModalChannel !== undefined && (
-        <ChannelMembersModal
-          open
-          channelName={titles.get(membersModalChannel.id) ?? membersModalChannel.name}
-          isPrivate={membersModalChannel.isPrivate === true}
-          members={members}
-          {...(membersModalChannel.memberIds !== undefined
-            ? { memberIds: membersModalChannel.memberIds }
-            : {})}
-          ownUserId={ownUserId}
-          presenceOf={presenceOf}
-          canManage={admin.viewer.isOwner || hasPermission(permissions, Permission.ManageChannels)}
-          onAdd={(userId) => {
-            void runtime.port
-              .addChannelMember({ channelId: membersModalChannel.id, userId })
-              .catch(() => undefined);
-          }}
-          onRemove={(userId) => {
-            void runtime.port
-              .removeChannelMember({ channelId: membersModalChannel.id, userId })
-              .catch(() => undefined);
-          }}
-          onClose={() => {
-            setMembersModalChannel(undefined);
-          }}
-        />
-      )}
-
-      {editChannelModal !== undefined && (
-        <EditChannelModal
-          open
-          channelName={titles.get(editChannelModal.id) ?? editChannelModal.name}
-          channelTopic={editChannelModal.topic ?? ""}
-          isPrivate={editChannelModal.isPrivate === true}
-          initialMemberIds={
-            editChannelModal.isPrivate === true
-              ? [...new Set([ownUserId, ...(editChannelModal.memberIds ?? [])])]
-              : (editChannelModal.memberIds ?? [])
-          }
-          initialBlockedUserIds={(editChannelModal.overrides ?? [])
-            .filter((override) => override.targetType === "member")
-            .filter((override) => (override.deny & Permission.ViewChannel) !== 0n)
-            .map((override) => override.targetId)}
-          roles={manageableRoles}
-          initialRoleOverrides={roleOverridesFor(editChannelModal.overrides ?? []).filter(
-            (override) => manageableRoleIds.has(override.targetId),
+        {rightPanel !== null &&
+          channel !== undefined &&
+          !adminView &&
+          mainView !== "kanban" &&
+          mainView !== "notes" &&
+          !userSettingsOpen &&
+          mainView === "chat" && (
+            <div className="fixed inset-y-2.5 right-2.5 z-30 flex lg:static lg:z-auto">
+              {rightPanel === "thread" && threadRoot !== undefined ? (
+                <ThreadsPanel
+                  key={threadRoot.id}
+                  runtime={runtime}
+                  channelId={channel.id}
+                  channelTitle={
+                    channel.kind === "text" || channel.kind === "announcement" ? `#${title}` : title
+                  }
+                  root={threadRoot}
+                  rootText={sessionState.decrypted.get(threadRoot.id)}
+                  members={mentionMembers}
+                  roles={roles}
+                  memberIds={memberIds}
+                  permissions={channelPermissions}
+                  maxUploadBytes={maxUploadBytes}
+                  ownUserId={ownUserId}
+                  ownName={ownName}
+                  memberNames={memberNames}
+                  memberColors={memberColors}
+                  mentionNames={mentionNames}
+                  onClose={() => {
+                    setThreadRoot(undefined);
+                  }}
+                  onTyping={(channelId) => {
+                    typing.ping(channelId);
+                  }}
+                  onSendReply={async ({ alsoSendToChannel, ...input }) => {
+                    await sendWithFiles(channel.id, input, { threadRootId: threadRoot.id });
+                    if (alsoSendToChannel) {
+                      await sendWithFiles(channel.id, { ...input, files: [] });
+                    }
+                  }}
+                  onEdit={(message, text) => {
+                    void runtime.session.editMessage(channel.id, message.id, text);
+                  }}
+                  onDelete={(message) => {
+                    void runtime.session.deleteMessage(channel.id, message.id);
+                    if (message.id === threadRoot.id) {
+                      setThreadRoot(undefined);
+                    }
+                  }}
+                  onPinToggle={(message) => {
+                    void (message.pinnedAt !== null
+                      ? runtime.session.unpinMessage(channel.id, message.id)
+                      : runtime.session.pinMessage(channel.id, message.id));
+                  }}
+                  onReact={(message, emoji) => {
+                    void runtime.session.toggleReaction(channel.id, message.id, emoji);
+                  }}
+                />
+              ) : (
+                <MembersPanel
+                  members={visibleMembers}
+                  hasMore={panelHasMore}
+                  onLoadMore={loadMoreMembers}
+                  presence={presence}
+                  roles={memberRoleGroups}
+                  customStatuses={customStatuses}
+                  ownUserId={ownUserId}
+                  onViewProfile={(userId, anchor) => {
+                    setProfileTarget((current) =>
+                      current?.userId === userId ? null : { userId, anchor },
+                    );
+                  }}
+                  onMessage={(userId) => void startConversation([userId])}
+                  onClose={() => {
+                    setMembersOpen(false);
+                  }}
+                  memberActions={{
+                    message: (userId) => {
+                      void startConversation([userId]);
+                    },
+                    ...(hasPermission(permissions, Permission.ManageRoles)
+                      ? {
+                          assignRoles: () => {
+                            setAdminOpen(true);
+                          },
+                        }
+                      : {}),
+                    ...(hasPermission(permissions, Permission.Kick)
+                      ? {
+                          kick: (userId: string) => {
+                            void kickMember({ userId });
+                          },
+                        }
+                      : {}),
+                    ...(hasPermission(permissions, Permission.Ban)
+                      ? {
+                          ban: (userId: string) => {
+                            void banMember({ userId });
+                          },
+                        }
+                      : {}),
+                  }}
+                />
+              )}
+            </div>
           )}
-          canManageRoleOverrides={canManageChannels && manageableRoles.length > 0}
-          ownUserId={ownUserId}
-          members={members}
-          busy={editChannelBusy}
-          error={editChannelError}
+
+        {profileMember !== undefined && profileTarget !== null && rightPanel === "members" && (
+          <MemberProfilePopover
+            key={profileMember.userId}
+            member={profileMember}
+            anchor={profileTarget.anchor}
+            status={presenceOf(profileMember.userId)}
+            profile={memberProfile}
+            onMessage={(userId) => startConversation([userId])}
+            onClose={closeProfile}
+          />
+        )}
+
+        {incomingCall !== undefined && (
+          <IncomingCallModal
+            call={incomingCall}
+            title={titles.get(incomingCall.channelId) ?? ""}
+            identity={callIdentity}
+          />
+        )}
+
+        {voice.error !== null && (
+          <div
+            role="alert"
+            className="fixed bottom-4 left-1/2 z-[75] flex -translate-x-1/2 items-center gap-3 rounded-[10px] border border-danger/30 bg-surface-2 px-4 py-2.5 text-[13px] text-text shadow-2xl shadow-black/30"
+          >
+            <Icon name="phone-off" size={16} className="shrink-0 text-danger" />
+            <span className="max-w-[420px]">{voice.error}</span>
+            <button
+              type="button"
+              aria-label="Dismiss call error"
+              onClick={() => {
+                voice.clearError();
+              }}
+              className="shrink-0 text-text-muted transition hover:text-text"
+            >
+              <Icon name="x" size={15} />
+            </button>
+          </div>
+        )}
+
+        {!(channel?.kind === "voice" && voice.call?.channelId === channel.id) && (
+          <Suspense fallback={null}>
+            <CallDock title={callTitle} identity={callIdentity} />
+          </Suspense>
+        )}
+        {voice.view === "stage" && (
+          <Suspense fallback={null}>
+            <CallStage title={callTitle} identity={callIdentity} />
+          </Suspense>
+        )}
+        <CallPictureInPicture title={callTitle} identity={callIdentity} />
+
+        {searchOpen && (
+          <SearchPanel
+            query={searchQuery}
+            results={searchResults}
+            searching={searching}
+            archive={searchArchive}
+            conversations={channels}
+            titles={titles}
+            ownUserId={ownUserId}
+            memberNames={memberNames}
+            onQueryChange={setSearchQuery}
+            onSelectConversation={(channelId) => {
+              setSearchOpen(false);
+              openChannel(channelId);
+            }}
+            onSelect={selectSearchHit}
+            onClose={() => {
+              setSearchOpen(false);
+            }}
+          />
+        )}
+
+        {newConversationOpen && (
+          <NewConversationDialog
+            members={roster}
+            ownUserId={ownUserId}
+            presenceOf={presenceOf}
+            onStart={(userIds) => void startConversation(userIds)}
+            onClose={() => {
+              setNewConversationOpen(false);
+            }}
+          />
+        )}
+
+        <CreateChannelModal
+          open={createChannelOpen}
+          {...(createChannelCategoryId !== undefined
+            ? { initialCategoryId: createChannelCategoryId }
+            : {})}
+          {...(createChannelKind !== undefined ? { initialKind: createChannelKind } : {})}
+          members={roster}
+          roles={channelRoleOptions}
           onClose={() => {
-            setEditChannelModal(undefined);
-            setEditChannelError(null);
+            setCreateChannelOpen(false);
+            setCreateChannelCategoryId(undefined);
+            setCreateChannelKind(undefined);
           }}
-          onSave={submitChannelEdit}
+          onCreate={async (input: CreateChannelInput) => {
+            setCreateChannelOpen(false);
+            setCreateChannelCategoryId(undefined);
+            setCreateChannelKind(undefined);
+            const channelId = await createChannel(runtime, input);
+            if (channelId !== undefined) {
+              setActiveChannelId(channelId);
+              setMobilePane("chat");
+            }
+          }}
         />
-      )}
-    </div>
+
+        <CreateCategoryModal
+          open={createCategoryOpen || categoryModal !== null}
+          mode={categoryModal !== null ? "rename" : "create"}
+          {...(categoryModal !== null
+            ? { initialName: categoryModal.category.name, title: "Rename category" }
+            : {})}
+          busy={categoryBusy}
+          error={categoryError}
+          onClose={closeCategoryModal}
+          onSubmit={submitCategory}
+        />
+
+        {renameModalChannel !== undefined && (
+          <RenameChannelModal
+            open
+            currentName={titles.get(renameModalChannel.id) ?? renameModalChannel.name}
+            kindLabel={
+              renameModalChannel.kind === "announcement" ? "announcement channel" : "channel"
+            }
+            onClose={() => {
+              setRenameModalChannel(undefined);
+            }}
+            onRename={async (name) => {
+              setRenameModalChannel(undefined);
+              await runtime.session.setChannelName(renameModalChannel.id, name);
+            }}
+          />
+        )}
+
+        {membersModalChannel !== undefined && (
+          <ChannelMembersModal
+            open
+            channelName={titles.get(membersModalChannel.id) ?? membersModalChannel.name}
+            isPrivate={membersModalChannel.isPrivate === true}
+            members={roster}
+            {...(membersModalChannel.memberIds !== undefined
+              ? { memberIds: membersModalChannel.memberIds }
+              : {})}
+            ownUserId={ownUserId}
+            presenceOf={presenceOf}
+            canManage={
+              admin.viewer.isOwner || hasPermission(permissions, Permission.ManageChannels)
+            }
+            onAdd={(userId) => {
+              void runtime.port
+                .addChannelMember({ channelId: membersModalChannel.id, userId })
+                .catch(() => undefined);
+            }}
+            onRemove={(userId) => {
+              void runtime.port
+                .removeChannelMember({ channelId: membersModalChannel.id, userId })
+                .catch(() => undefined);
+            }}
+            onClose={() => {
+              setMembersModalChannel(undefined);
+            }}
+          />
+        )}
+
+        {editChannelModal !== undefined && (
+          <EditChannelModal
+            open
+            channelName={titles.get(editChannelModal.id) ?? editChannelModal.name}
+            channelTopic={editChannelModal.topic ?? ""}
+            isPrivate={editChannelModal.isPrivate === true}
+            initialMemberIds={
+              editChannelModal.isPrivate === true
+                ? [...new Set([ownUserId, ...(editChannelModal.memberIds ?? [])])]
+                : (editChannelModal.memberIds ?? [])
+            }
+            initialBlockedUserIds={(editChannelModal.overrides ?? [])
+              .filter((override) => override.targetType === "member")
+              .filter((override) => (override.deny & Permission.ViewChannel) !== 0n)
+              .map((override) => override.targetId)}
+            roles={manageableRoles}
+            initialRoleOverrides={roleOverridesFor(editChannelModal.overrides ?? []).filter(
+              (override) => manageableRoleIds.has(override.targetId),
+            )}
+            canManageRoleOverrides={canManageChannels && manageableRoles.length > 0}
+            ownUserId={ownUserId}
+            members={roster}
+            busy={editChannelBusy}
+            error={editChannelError}
+            onClose={() => {
+              setEditChannelModal(undefined);
+              setEditChannelError(null);
+            }}
+            onSave={submitChannelEdit}
+          />
+        )}
+      </div>
+    </MemberAvatarProvider>
   );
 }
 

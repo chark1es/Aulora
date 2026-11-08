@@ -1,0 +1,16 @@
+[
+  {
+    "name": "Acme",
+    "iconSeed": "aulora:server:acme",
+    "ownerId": "owner-1",
+    "settings": {
+      "signupEnabled": true,
+      "inviteOnly": true,
+      "allowedEmailDomains": [],
+      "voiceEnabled": true,
+      "videoEnabled": true,
+      "screenShareEnabled": true,
+      "maxCallParticipants": 10
+    }
+  }
+]

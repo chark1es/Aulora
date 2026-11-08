@@ -22,7 +22,7 @@ store of its own.
 | Call picture-in-picture: a separate small, always-on-top call window that can be dragged anywhere — including off the app window and onto another screen — while the app window stays visible and usable | `src-tauri/src/pip_window.rs`, `apps/web/src/components/voice/CallPipWindow.tsx` |
 | The call window is a second webview of the same bundle (`index.html#pip`); the app streams the call to it over events and it sends control presses back, because the peer connections and media cannot leave the main webview | `apps/web/src/lib/call-pip.ts`, `apps/web/src/providers/use-call-pip.ts` |
 | Closing the call window never ends the call: the app window keeps the audio, the participants and its own controls; `bun run verify` keeps the window's entry and label in sync | `src-tauri/src/lib.rs`, `tauri.conf.json` (`backgroundThrottling`) |
-| Native media prompts: mic/camera/notifications in the main webview are auto-allowed, macOS keeps its TCC prompt | `src-tauri/src/lib.rs`, `Info.plist`, `Entitlements.plist` |
+| Native media prompts: mic/camera/screen capture, notifications, clipboard reads (the connect screen's paste button) and media autoplay in the main webview are auto-allowed, macOS keeps its TCC prompt; unknown permission kinds are denied rather than prompted | `src-tauri/src/lib.rs`, `Info.plist`, `Entitlements.plist` |
 | Native drag-drop disabled (`dragDropEnabled: false`) so the web composer accepts files dropped anywhere in the window | `tauri.conf.json`, `tauri.macos.conf.json` |
 | In-app screen/window share picker: the shell lists the screens and windows (with thumbnails) and streams the chosen one as frames, so no engine picker names the `tauri.localhost` origin | `src-tauri/src/capture.rs`, `apps/web/src/lib/voice/display-picker.ts`, `apps/web/src/components/voice/DisplaySourcePicker.tsx` |
 | Screen-sharing permission prompt: the picker asks the OS before capturing, explains why the permission is needed, and opens the pane that grants it instead of showing black frames | `src-tauri/src/capture.rs` (`screen_capture_permission`, `open_capture_permission_settings`), `apps/web/src/components/voice/DisplaySourcePicker.tsx` |
@@ -35,6 +35,38 @@ The web player (`apps/web`) talks to the shell through `window.__TAURI__`
 `aulora://deep-link`, `aulora://quick-switcher`, `aulora://call-pip-state`,
 `aulora://call-pip-action`, `aulora://call-pip-closed`). It carries no
 `@tauri-apps/*` npm dependency, so the web build is unchanged.
+
+## Sign-in and OAuth
+
+Local email/password sign-in posts from the webview, so only the server origin is
+involved. Provider sign-in (OAuth/OIDC) is an in-webview round trip: the client
+passes the webview's own origin (`tauri://localhost` on macOS/Linux,
+`http://tauri.localhost` on Windows) as `callbackURL`, the server trusts those
+origins, and the provider redirects the webview back to the app. That origin is
+never rendered, copied or put in a shared link; `authCallbackUrl()` in
+`apps/web/src/lib/public-origin.ts` is the only place that names it.
+
+The system-browser alternative (open the provider in the default browser and
+return through the `aulora://auth/callback` deep link) is **not implemented**,
+because the current server does not hand a session back to a custom-scheme
+redirect. The mobile client expects a `?cookie=` parameter on that redirect, but
+the installed Better Auth/generic-OAuth callback only sets a `Set-Cookie` header
+on the server origin and redirects to the callback URL as-is — a custom scheme
+has no cookie jar, so the desktop app would come back signed out.
+
+Making it safe needs, in order:
+
+1. A server-side handoff: after a successful OAuth callback for a trusted desktop
+   client, mint a single-use, short-lived code and redirect to
+   `aulora://auth/callback?code=<code>`.
+2. An exchange endpoint that trades the code for the same bearer session token
+   `set-auth-token` carries today (single use, bound to the code's lifetime, no
+   session cookie written).
+3. Desktop: `open_external` for the authorization URL, buffer the deep link
+   (`take_deep_links`), exchange the code, then persist it with
+   `writeSessionToken`.
+4. Tests for code reuse, expiry and the deep-link race before the in-webview
+   fallback is removed.
 
 ## Requirements
 

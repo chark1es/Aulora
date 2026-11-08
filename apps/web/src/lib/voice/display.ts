@@ -81,6 +81,18 @@ function hint(track: MediaStreamTrack, value: string): void {
 }
 
 /**
+ * What the encoder should optimize for. Desktops and applications are `detail`:
+ * text and UI edges stay sharp and the encoder trades frame rate first. The
+ * `smooth` profile exists for motion (30 fps with the largest bitrate budget),
+ * where a `motion` hint spends bits on movement instead of static detail.
+ */
+export function displayContentHint(
+  quality: VoiceDeviceSettings["streamQuality"],
+): "detail" | "motion" {
+  return quality === "smooth" ? "motion" : "detail";
+}
+
+/**
  * Whether the shell provides its own capture sources. When it does, Aulora
  * draws the picker and no engine picker (`tauri.localhost wants to share your
  * screen`) is shown.
@@ -101,7 +113,7 @@ async function acquireDesktopDisplay(settings: VoiceDeviceSettings): Promise<Dis
   const profile = streamProfile(settings.streamQuality);
   const choice = await requestDisplaySource({ audioRequested: settings.streamAudio });
   const stream = await openDisplayStream(choice.source, profile);
-  hint(stream.track, "detail");
+  hint(stream.track, displayContentHint(settings.streamQuality));
 
   let audio: SystemAudioCapture | null = null;
   let notice: string | null = null;
@@ -145,7 +157,7 @@ export async function acquireDisplay(settings: VoiceDeviceSettings): Promise<Dis
     throw new Error("No screen track was produced");
   }
   const audio = stream.getAudioTracks()[0] ?? null;
-  hint(video, "detail");
+  hint(video, displayContentHint(settings.streamQuality));
   if (audio !== null) {
     hint(audio, "music");
   }

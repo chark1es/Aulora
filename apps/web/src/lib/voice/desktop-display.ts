@@ -9,6 +9,10 @@ import { createDesktopChannel, invokeDesktopCommand } from "../desktop";
  * one JPEG frame per request. This module draws those frames into a canvas and
  * captures the canvas, which keeps encoding and pacing in the webview's own
  * video pipeline instead of adding a native streaming path.
+ *
+ * Frames arrive as a raw Tauri IPC body: a small header followed by JPEG bytes.
+ * Nothing is base64-encoded, copied byte-by-byte or parsed as JSON, so a share
+ * costs one `Blob` and one `createImageBitmap` per frame.
  */
 
 export type DisplaySourceKind = "screen" | "window";
@@ -23,14 +27,23 @@ export interface DisplaySource {
   readonly thumbnail: string | null;
 }
 
-/** One captured frame, already scaled down by the shell. */
+/**
+ * One captured frame: the shell scaled it down and JPEG-encoded it, and the
+ * header says how big the picture is. `bytes` is a view into the IPC buffer.
+ */
 export interface CaptureFrame {
   readonly mime: string;
-  /** Base64 JPEG bytes, without a data-URL prefix. */
-  readonly data: string;
+  /** Encoded JPEG bytes, without a data-URL prefix. */
+  readonly bytes: Uint8Array<ArrayBuffer>;
   readonly width: number;
   readonly height: number;
 }
+
+/** Magic, version, format, reserved and two sizes: see the shell's `capture.rs`. */
+export const FRAME_HEADER_BYTES = 16;
+const FRAME_MAGIC = [0x41, 0x55, 0x4c, 0x46]; // "AULF"
+const FRAME_VERSION = 1;
+const FRAME_FORMAT_JPEG = 1;
 
 function parseSource(value: unknown): DisplaySource | null {
   if (typeof value !== "object" || value === null) {
@@ -60,28 +73,58 @@ function parseSources(value: unknown): DisplaySource[] {
     : [];
 }
 
-function parseFrame(value: unknown): CaptureFrame {
-  if (typeof value === "object" && value !== null) {
-    const record = value as Record<string, unknown>;
-    const { data, width, height } = record;
-    if (
-      typeof data === "string" &&
-      data.length > 0 &&
-      typeof width === "number" &&
-      width > 0 &&
-      typeof height === "number" &&
-      height > 0
-    ) {
-      return {
-        mime:
-          typeof record.mime === "string" && record.mime.length > 0 ? record.mime : "image/jpeg",
-        data,
-        width,
-        height,
-      };
+/** Reads the IPC body as bytes: Tauri sends an ArrayBuffer, tests may pass a view. */
+function frameView(value: unknown): Uint8Array<ArrayBuffer> | null {
+  if (value instanceof ArrayBuffer) {
+    return new Uint8Array(value);
+  }
+  if (ArrayBuffer.isView(value)) {
+    // IPC bodies are never shared memory, and `Blob` requires a plain buffer.
+    const buffer = value.buffer as ArrayBuffer;
+    return new Uint8Array(buffer, value.byteOffset, value.byteLength);
+  }
+  if (Array.isArray(value)) {
+    // macOS/iOS webviews cannot take the raw channel path, so Tauri serializes
+    // the body as a JSON byte array there. Copy once into a plain buffer.
+    const bytes = value as number[];
+    if (!bytes.every((entry) => typeof entry === "number")) {
+      return null;
+    }
+    return Uint8Array.from(bytes);
+  }
+  return null;
+}
+
+/**
+ * Validates the shell's frame header and returns the JPEG as a view. A frame
+ * that is short, not ours, or from another version is rejected instead of
+ * drawn as garbage.
+ */
+export function parseCaptureFrame(value: unknown): CaptureFrame {
+  const view = frameView(value);
+  if (view === null || view.byteLength <= FRAME_HEADER_BYTES) {
+    throw new Error("The desktop app returned an unreadable screen frame.");
+  }
+  for (let index = 0; index < FRAME_MAGIC.length; index += 1) {
+    if (view[index] !== FRAME_MAGIC[index]) {
+      throw new Error("The desktop app returned an unreadable screen frame.");
     }
   }
-  throw new Error("The desktop app returned an unreadable screen frame.");
+  if (view[4] !== FRAME_VERSION || view[5] !== FRAME_FORMAT_JPEG) {
+    throw new Error("The desktop app returned an unreadable screen frame.");
+  }
+  const header = new DataView(view.buffer, view.byteOffset, FRAME_HEADER_BYTES);
+  const width = header.getUint32(8, true);
+  const height = header.getUint32(12, true);
+  if (width === 0 || height === 0) {
+    throw new Error("The desktop app returned an unreadable screen frame.");
+  }
+  return {
+    mime: "image/jpeg",
+    bytes: view.subarray(FRAME_HEADER_BYTES),
+    width,
+    height,
+  };
 }
 
 /** Lists the screens and windows the shell can share, with picker tiles. */
@@ -95,7 +138,7 @@ export async function captureDisplayFrame(
   maxWidth: number,
   maxHeight: number,
 ): Promise<CaptureFrame> {
-  return parseFrame(
+  return parseCaptureFrame(
     await invokeDesktopCommand("capture_source_frame", {
       sourceId,
       maxWidth,
@@ -297,17 +340,6 @@ export interface DisplayStream {
  */
 const MAX_CONSECUTIVE_FAILURES = 15;
 
-/** Decodes a frame's base64 into bytes, ready for a `Blob`. */
-export function frameBytes(data: string): ArrayBuffer {
-  const binary = atob(data);
-  const buffer = new ArrayBuffer(binary.length);
-  const bytes = new Uint8Array(buffer);
-  for (let index = 0; index < binary.length; index += 1) {
-    bytes[index] = binary.charCodeAt(index);
-  }
-  return buffer;
-}
-
 /** Draws JPEG frames into a canvas and captures that canvas as a video track. */
 function canvasSurface(width: number, height: number): FrameSurface | null {
   if (typeof document === "undefined") {
@@ -322,9 +354,7 @@ function canvasSurface(width: number, height: number): FrameSurface | null {
   }
   return {
     async draw(frame) {
-      const bitmap = await createImageBitmap(
-        new Blob([frameBytes(frame.data)], { type: frame.mime }),
-      );
+      const bitmap = await createImageBitmap(new Blob([frame.bytes], { type: frame.mime }));
       try {
         context.drawImage(bitmap, 0, 0, canvas.width, canvas.height);
       } finally {

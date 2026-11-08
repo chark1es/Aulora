@@ -4,11 +4,12 @@ import {
   type CaptureFrame,
   captureDisplayFrame,
   type DisplaySource,
+  FRAME_HEADER_BYTES,
   type FrameSurface,
-  frameBytes,
   listDisplaySources,
   openCapturePermissionSettings,
   openDisplayStream,
+  parseCaptureFrame,
   requestScreenCapturePermission,
   screenCapturePermission,
 } from "./desktop-display";
@@ -22,7 +23,35 @@ const PROFILE: StreamProfile = {
   maxBitrate: 2_200_000,
 };
 
-const FRAME: CaptureFrame = { mime: "image/jpeg", data: "AAAA", width: 1280, height: 720 };
+const JPEG = [0xff, 0xd8, 0xff];
+const FRAME: CaptureFrame = {
+  mime: "image/jpeg",
+  bytes: Uint8Array.from(JPEG),
+  width: 1280,
+  height: 720,
+};
+
+/** Builds the raw IPC body the shell returns: header plus JPEG. */
+function frameBuffer(
+  jpeg: readonly number[] = JPEG,
+  width = 1280,
+  height = 720,
+  overrides: { readonly magic?: number; readonly version?: number; readonly format?: number } = {},
+): ArrayBuffer {
+  const buffer = new ArrayBuffer(FRAME_HEADER_BYTES + jpeg.length);
+  const bytes = new Uint8Array(buffer);
+  bytes.set([0x41, 0x55, 0x4c, 0x46], 0);
+  if (overrides.magic !== undefined) {
+    bytes[0] = overrides.magic;
+  }
+  bytes[4] = overrides.version ?? 1;
+  bytes[5] = overrides.format ?? 1;
+  const view = new DataView(buffer);
+  view.setUint32(8, width, true);
+  view.setUint32(12, height, true);
+  bytes.set(jpeg, FRAME_HEADER_BYTES);
+  return buffer;
+}
 
 interface Harness {
   readonly track: MediaStreamTrack & { stop: Mock; dispatchEvent: Mock };
@@ -78,12 +107,16 @@ describe("desktop capture bridge", () => {
   });
 
   it("asks for one scaled frame of a source", async () => {
-    const invoke = vi.fn(() =>
-      Promise.resolve({ data: "AAAA", width: 1280, height: 720, mime: "image/jpeg" }),
-    );
+    const invoke = vi.fn(() => Promise.resolve(frameBuffer()));
     globalWithTauri.__TAURI__ = { core: { invoke } };
 
-    await expect(captureDisplayFrame("screen:1", 1920, 1080)).resolves.toEqual(FRAME);
+    const frame = await captureDisplayFrame("screen:1", 1920, 1080);
+    expect(frame.mime).toBe(FRAME.mime);
+    expect([...frame.bytes]).toEqual(JPEG);
+    expect({ width: frame.width, height: frame.height }).toEqual({
+      width: FRAME.width,
+      height: FRAME.height,
+    });
     expect(invoke).toHaveBeenCalledWith("capture_source_frame", {
       sourceId: "screen:1",
       maxWidth: 1920,
@@ -160,12 +193,40 @@ describe("screen capture permission", () => {
   });
 });
 
-describe("frameBytes", () => {
-  it("decodes the base64 a frame carries", () => {
-    expect([...new Uint8Array(frameBytes("AAECAw=="))]).toEqual([0, 1, 2, 3]);
-    // A real JPEG prefix, which is what the shell sends.
-    expect([...new Uint8Array(frameBytes("/9j/"))].slice(0, 2)).toEqual([0xff, 0xd8]);
-    expect(new Uint8Array(frameBytes("")).length).toBe(0);
+describe("parseCaptureFrame", () => {
+  it("reads the header and exposes the JPEG as a view", () => {
+    const frame = parseCaptureFrame(frameBuffer(JPEG, 1280, 720));
+    expect(frame.mime).toBe("image/jpeg");
+    expect({ width: frame.width, height: frame.height }).toEqual({ width: 1280, height: 720 });
+    expect([...frame.bytes]).toEqual(JPEG);
+  });
+
+  it("accepts a typed-array view of the same body", () => {
+    const frame = parseCaptureFrame(new Uint8Array(frameBuffer(JPEG, 640, 360)));
+    expect({ width: frame.width, height: frame.height }).toEqual({ width: 640, height: 360 });
+    expect([...frame.bytes]).toEqual(JPEG);
+  });
+
+  it("accepts the JSON byte array a macOS webview receives", () => {
+    const frame = parseCaptureFrame([...new Uint8Array(frameBuffer(JPEG, 320, 180))]);
+    expect({ width: frame.width, height: frame.height }).toEqual({ width: 320, height: 180 });
+    expect([...frame.bytes]).toEqual(JPEG);
+  });
+
+  it("rejects a body that is not one of our frames", () => {
+    const cases: unknown[] = [
+      new ArrayBuffer(FRAME_HEADER_BYTES),
+      "AAAA",
+      null,
+      frameBuffer(JPEG, 1280, 720, { magic: 0 }),
+      frameBuffer(JPEG, 1280, 720, { version: 2 }),
+      frameBuffer(JPEG, 1280, 720, { format: 2 }),
+      frameBuffer(JPEG, 0, 720),
+      frameBuffer(JPEG, 1280, 0),
+    ];
+    for (const value of cases) {
+      expect(() => parseCaptureFrame(value)).toThrow("unreadable screen frame");
+    }
   });
 });
 

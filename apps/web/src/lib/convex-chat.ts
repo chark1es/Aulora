@@ -314,6 +314,7 @@ export function convexPort(client: ConvexReactClient): ChatPort {
         ...(args.threadRootId !== undefined ? { threadRootId: args.threadRootId as never } : {}),
         ...(args.replyToId !== undefined ? { replyToId: args.replyToId as never } : {}),
         ...(args.mentionUserIds !== undefined ? { mentionUserIds: [...args.mentionUserIds] } : {}),
+        ...(args.mentionRoleIds !== undefined ? { mentionRoleIds: [...args.mentionRoleIds] } : {}),
         ...(args.attachmentIds !== undefined
           ? { attachmentIds: [...args.attachmentIds] as never[] }
           : {}),

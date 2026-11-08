@@ -517,6 +517,57 @@ services:
       - "7882:7882/udp"
     logging: *logging
 
+  # Optional TURN relay (coturn), profile `turn`, OFF by default. A TURN server
+  # is what lets a call connect when both peers are behind symmetric NAT or a
+  # restrictive firewall; without one clients only have public STUN and keep
+  # the peer mesh unchanged. The backend mints short-lived credentials from
+  # TURN_SECRET (RFC 5766 time-limited HMAC), so no user password is stored
+  # here. Point TURN_URLS at the addresses clients can reach, open 3478
+  # udp/tcp, 5349/tcp and the relay range below, and see
+  # apps/docs/content/self-hosting.md. Certificates for 5349 are optional: with
+  # none mounted coturn logs a TLS warning and still serves 3478.
+  coturn:
+    image: coturn/coturn:4.18.0-r0
+    profiles: ["turn"]
+    restart: unless-stopped
+    command:
+      - "--no-cli"
+      - "--log-file=stdout"
+      - "--fingerprint"
+      - "--lt-cred-mech"
+      - "--use-auth-secret"
+      # Interpolated from the operator's environment at deploy time; the secret
+      # is never committed. Blank leaves the relay refusing every credential.
+      - "--static-auth-secret=${TURN_SECRET:-}"
+      - "--realm=${TURN_REALM:-aulora}"
+      - "--server-name=${TURN_REALM:-aulora}"
+      - "--stale-nonce=600"
+      - "--listening-port=3478"
+      - "--tls-listening-port=5349"
+      - "--no-dtls"
+      - "--cert=${TURN_TLS_CERT:-/certs/cert.pem}"
+      - "--pkey=${TURN_TLS_KEY:-/certs/key.pem}"
+      - "--min-port=49160"
+      - "--max-port=49200"
+      - "--no-multicast-peers"
+      - "--no-software-attribute"
+      # `$$` escapes compose interpolation; the image's entrypoint evaluates the
+      # helper so the relay advertises the host's public address. Set
+      # TURN_EXTERNAL_IP for 1:1 NAT or a host the probe cannot resolve.
+      - "--external-ip=${TURN_EXTERNAL_IP:-$$(detect-external-ip)}"
+    ports:
+      - "${TURN_PORT:-3478}:3478/udp"
+      - "${TURN_PORT:-3478}:3478/tcp"
+      - "${TURN_TLS_PORT:-5349}:5349/tcp"
+      # Bounded relay allocation range. Each concurrent relayed stream uses one
+      # UDP (and, over TCP, one TCP) port; widen both when calls get cut off.
+      - "49160-49200:49160-49200/udp"
+      - "49160-49200:49160-49200/tcp"
+    volumes:
+      # Optional TLS certificate and key for 5349/tcp.
+      - ./coturn/certs:/certs:ro
+    logging: *logging
+
 volumes:
   pgdata:
   convex-data:

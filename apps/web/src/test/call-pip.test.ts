@@ -190,7 +190,38 @@ describe("parsePipState", () => {
           self: false,
         },
       ],
+      // A main window from before the picture was sent still parses.
+      mediaKind: "none",
+      speakerName: "",
     });
+  });
+
+  it("carries what the picture shows and whose it is", () => {
+    const built = buildPipState(input({ mediaKind: "screen", speakerName: "Grace" }));
+    expect(built?.mediaKind).toBe("screen");
+    expect(built?.speakerName).toBe("Grace");
+
+    const parsed = parsePipState({
+      kind: "video",
+      startedAt: 0,
+      participants: [],
+      mediaKind: "camera",
+      speakerName: "Ada",
+    });
+    expect(parsed?.mediaKind).toBe("camera");
+    expect(parsed?.speakerName).toBe("Ada");
+  });
+
+  it("treats an unknown media kind as no picture", () => {
+    const parsed = parsePipState({
+      kind: "voice",
+      startedAt: 0,
+      participants: [],
+      mediaKind: "hologram",
+      speakerName: 7,
+    });
+    expect(parsed?.mediaKind).toBe("none");
+    expect(parsed?.speakerName).toBe("");
   });
 
   it("rejects anything that is not a state", () => {

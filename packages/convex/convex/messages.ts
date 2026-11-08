@@ -10,11 +10,12 @@ import { assertMayParticipate } from "./lib/bans";
 import { emitBotEvent } from "./lib/botEvents";
 import { requireChannelAccess } from "./lib/channels";
 import { recordLicenseActivity } from "./lib/licenseActivity";
+import { filterMentionIds, mentionUserIdsForRoles } from "./lib/mentionIds";
 import { requireMember } from "./lib/permissions";
 import { enforceRateLimit, userRateLimitKey } from "./lib/rateLimit";
 import { openContent } from "./lib/sealed";
 import { sealString } from "./lib/sse";
-import { loadThreadInbox, type ThreadInboxRow } from "./lib/threadInbox";
+import { countThreadMentions, loadThreadInbox, type ThreadInboxRow } from "./lib/threadInbox";
 import { upsertThreadParticipant } from "./lib/threadParticipants";
 import type { Nullable } from "./lib/types";
 
@@ -89,58 +90,6 @@ async function toMessages(messages: readonly Doc<"messages">[]): Promise<Message
   return await Promise.all(messages.map(toMessage));
 }
 
-/**
- * Drops mention ids that do not resolve: a stored mention must point at a real
- * member, channel or category, so a client can never route a notification wake
- * to an arbitrary string. Unknown ids are filtered rather than stored.
- */
-async function filterMentionIds(
-  ctx: Parameters<typeof requireChannelAccess>[0],
-  mentionUserIds: readonly string[],
-  mentionChannelIds: readonly string[],
-  mentionCategoryIds: readonly string[],
-): Promise<{
-  mentionUserIds: string[];
-  mentionChannelIds: string[];
-  mentionCategoryIds: string[];
-}> {
-  const users: string[] = [];
-  for (const userId of new Set(mentionUserIds)) {
-    const member = await ctx.db
-      .query("members")
-      .withIndex("by_user", (q) => q.eq("userId", userId))
-      .unique();
-    if (member !== null) {
-      users.push(userId);
-    }
-  }
-  const channels: string[] = [];
-  for (const channelId of new Set(mentionChannelIds)) {
-    try {
-      if ((await ctx.db.get(channelId as Id<"channels">)) !== null) {
-        channels.push(channelId);
-      }
-    } catch {
-      // A malformed id is not a known channel; drop it.
-    }
-  }
-  const categories: string[] = [];
-  for (const categoryId of new Set(mentionCategoryIds)) {
-    try {
-      if ((await ctx.db.get(categoryId as Id<"categories">)) !== null) {
-        categories.push(categoryId);
-      }
-    } catch {
-      // A malformed id is not a known category; drop it.
-    }
-  }
-  return {
-    mentionUserIds: users,
-    mentionChannelIds: channels,
-    mentionCategoryIds: categories,
-  };
-}
-
 /** Validates and returns the thread root a reply targets, or `null`. */
 async function resolveThreadRoot(
   ctx: Parameters<typeof requireChannelAccess>[0],
@@ -193,6 +142,12 @@ export const send = mutation({
     mentionUserIds: v.optional(v.array(v.string())),
     mentionChannelIds: v.optional(v.array(v.string())),
     mentionCategoryIds: v.optional(v.array(v.string())),
+    /**
+     * Roles mentioned as `@role`. The server expands them to member ids, so a
+     * client does not need the workspace roster to resolve role mentions.
+     * Older clients keep sending pre-expanded `mentionUserIds`.
+     */
+    mentionRoleIds: v.optional(v.array(v.string())),
   },
   handler: async (ctx, args) => {
     const access = await requireChannelAccess(ctx, args.channelId, Permission.SendMessages);
@@ -209,9 +164,10 @@ export const send = mutation({
       limit: sendLimit(),
       windowMs: sendWindowMs(),
     });
+    const roleMentions = await mentionUserIdsForRoles(ctx, args.mentionRoleIds ?? []);
     const mentions = await filterMentionIds(
       ctx,
-      args.mentionUserIds ?? [],
+      [...(args.mentionUserIds ?? []), ...roleMentions],
       args.mentionChannelIds ?? [],
       args.mentionCategoryIds ?? [],
     );
@@ -528,13 +484,30 @@ export type { ThreadInboxRow } from "./lib/threadInbox";
  *
  * Reads the viewer's `threadParticipants` rows (bounded, newest first) rather
  * than scanning the newest `messages` globally; bodies are opened server-side so
- * the client always receives plaintext, never ciphertext.
+ * the client always receives plaintext, never ciphertext. `limit` bounds the
+ * page (default 50, max 50), so an always-on subscription stays cheap; the full
+ * inbox should only be subscribed while it is open.
  */
 export const threadInbox = query({
-  args: {},
-  handler: async (ctx): Promise<ThreadInboxRow[]> => {
+  args: { limit: v.optional(v.number()) },
+  handler: async (ctx, args): Promise<ThreadInboxRow[]> => {
     const { userId } = await requireAuth(ctx);
     await requireMember(ctx, userId);
-    return await loadThreadInbox(ctx, userId);
+    return await loadThreadInbox(ctx, userId, args.limit);
+  },
+});
+
+/**
+ * The Threads badge: how many threads the viewer was mentioned in and can still
+ * view. Reads participation rows only — no root lookup, no reply scan, no
+ * message body opened — so the sidebar can show it while the inbox itself is
+ * closed.
+ */
+export const threadMentionCount = query({
+  args: {},
+  handler: async (ctx): Promise<number> => {
+    const { userId } = await requireAuth(ctx);
+    await requireMember(ctx, userId);
+    return await countThreadMentions(ctx, userId);
   },
 });

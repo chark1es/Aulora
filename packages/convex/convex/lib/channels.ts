@@ -1,11 +1,12 @@
 import { hasPermission } from "@aulora/core";
 import { ConvexError } from "convex/values";
-import type { Id } from "../_generated/dataModel";
+import type { Doc, Id } from "../_generated/dataModel";
 import type { MutationCtx, QueryCtx } from "../_generated/server";
 import { requireAuth } from "./auth";
 import {
   categoryOverridesFor,
   channelPermissions,
+  overridesForChannel,
   type PermissionContext,
   requirePermissionForUser,
 } from "./permissions";
@@ -131,19 +132,26 @@ export async function requireChannelAccessForUser(
  * {@link requireChannelAccess} for an actor whose {@link PermissionContext} is
  * already loaded, so a caller gating many channels pays the role/server load
  * once instead of once per channel. Access decisions are identical.
+ *
+ * Pass `categoryOverrides` from `categoryOverridesById` when gating a set
+ * of channels, so the category table is read once rather than once per channel.
  */
 export async function requireChannelAccessFromContext(
   ctx: QueryCtx | MutationCtx,
   context: PermissionContext,
   channelId: Id<"channels">,
   flag: bigint,
+  categoryOverrides?: ReadonlyMap<string, Doc<"categories">["overrides"]>,
 ) {
   const channel = await ctx.db.get(channelId);
   if (channel === null) {
     throw new ConvexError("Channel not found");
   }
-  const categoryOverrides = await categoryOverridesFor(ctx, channel);
-  const permissions = channelPermissions(context, channel, categoryOverrides);
+  const overrides =
+    categoryOverrides === undefined
+      ? await categoryOverridesFor(ctx, channel)
+      : overridesForChannel(categoryOverrides, channel);
+  const permissions = channelPermissions(context, channel, overrides);
   if (!hasPermission(permissions, flag)) {
     throw new ConvexError("Missing permission");
   }

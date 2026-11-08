@@ -1,3 +1,4 @@
+/* eslint-disable no-unused-vars -- the base rule reports parameter names in type signatures; Biome checks real unused code */
 import type { MentionTarget, RoleMentionTarget } from "@aulora/core";
 import { expandBroadcast, resolveChannelMentions, resolveMentions } from "@aulora/core";
 import { cn, Icon } from "@aulora/ui-web";
@@ -15,11 +16,23 @@ import { readDraft, writeDraft } from "../../lib/drafts";
 import { formatBytes } from "../../lib/instance-admin";
 import { EmojiPicker } from "./EmojiPicker";
 import { PersonAvatar } from "./member-avatars";
+import {
+  type MemberSearch,
+  mentionTargetsFor,
+  mergeMentionTargets,
+  useSearchedMembers,
+} from "./mention-directory";
 import { RichText } from "./RichText";
 
 export interface ComposerProps {
   readonly channelId: string;
   readonly members: readonly MentionTarget[];
+  /**
+   * Server-side member search. The composer no longer holds the whole roster,
+   * so autocomplete and `@name` resolution for people outside the timeline ask
+   * the directory instead.
+   */
+  readonly searchMembers?: MemberSearch;
   readonly roles: readonly RoleMentionTarget[];
   readonly memberIds: readonly string[];
   /** Channels and categories offered by `#` autocomplete. */
@@ -42,6 +55,7 @@ export interface ComposerProps {
     mentionUserIds: readonly string[];
     mentionChannelIds: readonly string[];
     mentionCategoryIds: readonly string[];
+    mentionRoleIds: readonly string[];
     files: readonly File[];
   }) => void | Promise<void>;
   /** Optional thread mode label, e.g. "Replying in thread". */
@@ -125,6 +139,7 @@ function fileReferenceKey(file: File): string {
 export function Composer({
   channelId,
   members,
+  searchMembers,
   roles,
   memberIds,
   channels = [],
@@ -151,6 +166,9 @@ export function Composer({
   const [windowDragging, setWindowDragging] = useState(false);
   const [suggestions, setSuggestions] = useState<readonly Suggestion[]>([]);
   const [activeSuggestion, setActiveSuggestion] = useState(0);
+  /** The text typed after `@`, driving the debounced directory search. */
+  const [mentionQuery, setMentionQuery] = useState("");
+  const searchedMembers = useSearchedMembers(searchMembers, mentionQuery);
   const [emojiOpen, setEmojiOpen] = useState(false);
   const textareaRef = useRef<HTMLTextAreaElement | null>(null);
   const fileInputRef = useRef<HTMLInputElement | null>(null);
@@ -221,7 +239,7 @@ export function Composer({
       : [];
     return [
       ...broadcast,
-      ...members.map((member) => ({
+      ...mergeMentionTargets(members, searchedMembers).map((member) => ({
         key: `user:${member.userId}`,
         label: member.displayName,
         insert: `@${member.displayName}`,
@@ -239,7 +257,21 @@ export function Composer({
           kind: "mention" as const,
         })),
     ];
-  }, [canMentionEveryone, members, roles]);
+  }, [canMentionEveryone, members, roles, searchedMembers]);
+
+  // Directory results arrive after the keystroke that asked for them, so the
+  // open dropdown is re-filtered when they land.
+  useEffect(() => {
+    if (mentionQuery.length === 0 || suggestionQuery.current !== "mention") {
+      return;
+    }
+    const query = mentionQuery.toLowerCase();
+    setSuggestions(
+      mentionSuggestions
+        .filter((suggestion) => suggestion.label.toLowerCase().includes(query))
+        .slice(0, 6),
+    );
+  }, [mentionQuery, mentionSuggestions]);
 
   const channelSuggestions: Suggestion[] = useMemo(
     () =>
@@ -261,7 +293,10 @@ export function Composer({
     const mention = MENTION_QUERY.exec(slice);
     if (mention !== null) {
       suggestionQuery.current = "mention";
+      // eslint-disable-next-line @typescript-eslint/no-unnecessary-condition -- capture groups are `string | undefined` under noUncheckedIndexedAccess
       const query = (mention[2] ?? "").toLowerCase();
+      // eslint-disable-next-line @typescript-eslint/no-unnecessary-condition -- capture groups are `string | undefined` under noUncheckedIndexedAccess
+      setMentionQuery(mention[2] ?? "");
       setSuggestions(
         mentionSuggestions
           .filter((suggestion) => suggestion.label.toLowerCase().includes(query))
@@ -273,6 +308,7 @@ export function Composer({
     const channel = CHANNEL_QUERY.exec(slice);
     if (channel !== null && channelSuggestions.length > 0) {
       suggestionQuery.current = "channel";
+      setMentionQuery("");
       const query = (channel[2] ?? "").toLowerCase();
       setSuggestions(
         channelSuggestions
@@ -283,6 +319,7 @@ export function Composer({
       return;
     }
     setSuggestions([]);
+    setMentionQuery("");
   }
 
   function applySuggestion(suggestion: Suggestion): void {
@@ -435,30 +472,36 @@ export function Composer({
     };
   }, [addFiles, disabled, windowDropEnabled]);
 
+  async function submit(text: string, pickedFiles: readonly File[]): Promise<void> {
+    const targets = await mentionTargetsFor(text, members, searchMembers);
+    const resolution = resolveMentions(text, targets, roles);
+    const mentionUserIds = expandBroadcast(resolution, memberIds);
+    const channelMentionResolution = resolveChannelMentions(text, channels, categories);
+    await onSend({
+      text,
+      mentionUserIds,
+      mentionChannelIds: channelMentionResolution.channelIds,
+      mentionCategoryIds: channelMentionResolution.categoryIds,
+      mentionRoleIds: resolution.roleIds,
+      files: pickedFiles,
+    });
+  }
+
   function send(): void {
     const text = value.trim();
     if (disabled || (text.length === 0 && files.length === 0)) {
       return;
     }
-    const resolution = resolveMentions(text, members, roles);
-    const mentionUserIds = expandBroadcast(resolution, memberIds);
-    const channelMentionResolution = resolveChannelMentions(text, channels, categories);
-    const mentionChannelIds = channelMentionResolution.channelIds;
-    const mentionCategoryIds = channelMentionResolution.categoryIds;
-    void onSend({
-      text,
-      mentionUserIds,
-      mentionChannelIds,
-      mentionCategoryIds,
-      files,
-    });
+    const pickedFiles = files;
     setValue("");
     setFiles([]);
     setAttachmentError(null);
     setSuggestions([]);
+    setMentionQuery("");
     if (draftKey !== undefined) {
       writeDraft(draftKey, "");
     }
+    void submit(text, pickedFiles);
   }
 
   const canSend = !disabled && (value.trim().length > 0 || files.length > 0);

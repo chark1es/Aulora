@@ -1,4 +1,4 @@
-import { act, render, screen, waitFor } from "@testing-library/react";
+import { act, fireEvent, render, screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { CallPipWindow } from "../components/voice/CallPipWindow";
@@ -22,6 +22,8 @@ const mocks = vi.hoisted(() => {
     emitTo: vi.fn(async () => undefined),
     close: vi.fn(async () => undefined),
     focus: vi.fn(async () => undefined),
+    snap: vi.fn(async () => undefined),
+    resize: vi.fn(async () => undefined),
   };
 });
 
@@ -30,6 +32,11 @@ vi.mock("../lib/desktop", () => ({
   emitDesktopEventTo: mocks.emitTo,
   closeDesktopPipWindow: mocks.close,
   focusDesktopMainWindow: mocks.focus,
+  snapDesktopPipWindow: mocks.snap,
+  startDesktopResize: mocks.resize,
+  createDesktopChannel: () => null,
+  invokeDesktopCommand: vi.fn(async () => undefined),
+  invokeDesktopRaw: vi.fn(async () => undefined),
 }));
 
 const state: PipCallState = {
@@ -42,6 +49,8 @@ const state: PipCallState = {
   canSpeak: true,
   canVideo: true,
   canStream: true,
+  mediaKind: "none",
+  speakerName: "",
   participants: [
     {
       id: "me",
@@ -138,6 +147,35 @@ describe("the call window", () => {
     expect(mocks.close).toHaveBeenCalledTimes(1);
     // Nothing is sent to the call: it is still running.
     expect(mocks.emitTo).not.toHaveBeenCalled();
+  });
+
+  it("plays the picture muted and never the call's audio", async () => {
+    await mount({ ...state, mediaKind: "camera", speakerName: "Grace" });
+    const video = document.querySelector("video");
+    expect(video).not.toBeNull();
+    expect(video?.muted).toBe(true);
+    expect(document.querySelector("audio")).toBeNull();
+    // The overlay names whose picture it is.
+    expect(screen.getByText("Grace")).toBeInTheDocument();
+  });
+
+  it("goes back to the app when the picture is double-clicked", async () => {
+    await mount({ ...state, mediaKind: "camera", speakerName: "Grace" });
+    const video = document.querySelector("video");
+    expect(video).not.toBeNull();
+    act(() => {
+      video?.dispatchEvent(new MouseEvent("dblclick", { bubbles: true }));
+    });
+    expect(mocks.focus).toHaveBeenCalledTimes(1);
+    expect(mocks.close).toHaveBeenCalledTimes(1);
+  });
+
+  it("resizes from its own edges, since an undecorated window has none", async () => {
+    await mount(state);
+    const handle = document.querySelector('[data-pip-resize="East"]');
+    expect(handle).not.toBeNull();
+    fireEvent.pointerDown(handle as Element);
+    expect(mocks.resize).toHaveBeenCalledWith("East");
   });
 
   it("offers only the controls the caller may use", async () => {

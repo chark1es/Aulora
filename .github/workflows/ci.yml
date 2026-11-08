@@ -43,6 +43,10 @@ jobs:
       - run: bun run typecheck
       - run: bun run test
       - run: bun run build
+      - name: Bundle size and lazy-loading budget
+        run: bun run perf:bundle
+      - name: Desktop embed budget
+        run: bun run perf:embed
       - run: bun run docs:check
       - run: bun run release:check
       - name: Release automation tests

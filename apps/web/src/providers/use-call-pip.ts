@@ -4,6 +4,7 @@ import {
   buildPipState,
   PIP_ACTION_EVENT,
   PIP_CLOSED_EVENT,
+  PIP_SIGNAL_EVENT,
   PIP_STATE_EVENT,
   PIP_WINDOW_LABEL,
   type PipCallState,
@@ -11,7 +12,9 @@ import {
 } from "../lib/call-pip";
 import {
   closeDesktopPipWindow,
+  desktopPipMode,
   emitDesktopEventTo,
+  isDesktop,
   isDesktopPipWindowOpen,
   listenDesktopEvent,
   openDesktopPipWindow,
@@ -24,13 +27,34 @@ import {
   type PipMode,
   registerCallSession,
 } from "../lib/voice/pip";
-import { type PipSource, pickPipSource } from "../lib/voice/pip-source";
+import {
+  choosePipTransport,
+  framesSupported,
+  type PipFrameSender,
+  startPipFrameSender,
+} from "../lib/voice/pip-frames";
+import {
+  createPipSender,
+  type LoopbackHealth,
+  loopbackSupported,
+  nextLoopbackHealth,
+  type PipSenderHandle,
+  parseLoopbackSignal,
+} from "../lib/voice/pip-loopback";
+import { type PipSource, pickPipSource, pickPipVideoSource } from "../lib/voice/pip-source";
 import { startVideoPip, type VideoPip } from "../lib/voice/video-pip";
 
 /** The floating window's size: wide enough for the controls, tall enough for a tile. */
 const PIP_WIDTH = 380;
 const PIP_HEIGHT = 292;
 const SOURCE_REFRESH_MS = 500;
+/**
+ * How long the loopback peer connection gets to connect before the window is
+ * fed still frames instead. Building a webview and negotiating takes a moment;
+ * four seconds is long enough for a healthy machine and short enough that a
+ * webview without working WebRTC still shows the call while it matters.
+ */
+const LOOPBACK_FALLBACK_MS = 4_000;
 /**
  * How often the shell's call window is refreshed while a call runs. It is a
  * second webview, so every update crosses IPC: often enough that a speaking ring
@@ -74,6 +98,8 @@ export interface CallPipOptions {
   readonly canSpeak: boolean;
   readonly canVideo: boolean;
   readonly canStream: boolean;
+  /** Operator kill switch: show avatars only, with no video sent to the window. */
+  readonly videoDisabled?: boolean;
   /** Keeps the app window above others while the in-page dock is pinned. */
   readonly pinned: boolean;
   readonly controls: {
@@ -98,9 +124,19 @@ const IDENTITY = (userId: string): string => userId;
  * window, streams the call to it and runs the controls it sends back.
  */
 export function useCallPip(options: CallPipOptions): { pip: PipControl; surface: PipSurface } {
-  const { callActive, snapshot, selfUserId, canSpeak, canVideo, canStream, pinned, controls } =
-    options;
-  const mode = useMemo(detectPipMode, []);
+  const {
+    callActive,
+    snapshot,
+    selfUserId,
+    canSpeak,
+    canVideo,
+    canStream,
+    pinned,
+    controls,
+    videoDisabled = false,
+  } = options;
+  const detected = useMemo(detectPipMode, []);
+  const [mode, setMode] = useState<PipMode>(detected);
   const [pipWindow, setPipWindow] = useState<Window | null>(null);
   const [desktopOpen, setDesktopOpen] = useState(false);
   const [floatingVideo, setFloatingVideo] = useState(false);
@@ -115,6 +151,23 @@ export function useCallPip(options: CallPipOptions): { pip: PipControl; surface:
   const pendingState = useRef<PipCallState | null>(null);
   const sentState = useRef<string | null>(null);
   const sentAt = useRef(0);
+
+  // A compositor that cannot float an always-on-top window (Wayland) keeps the
+  // call in the in-app dock: no call window is offered, so its button hides.
+  useEffect(() => {
+    if (detected !== "window") {
+      return;
+    }
+    let disposed = false;
+    void desktopPipMode().then((surface) => {
+      if (!disposed && surface === "dock") {
+        setMode("none");
+      }
+    });
+    return () => {
+      disposed = true;
+    };
+  }, [detected]);
 
   const close = useCallback(() => {
     windowRef.current?.close();
@@ -149,6 +202,10 @@ export function useCallPip(options: CallPipOptions): { pip: PipControl; surface:
         setDesktopOpen(true);
       }
     } else if (mode === "document") {
+      // The browser window draws the call grid, video tiles included.
+      if (videoDisabled) {
+        return;
+      }
       const created = await openDocumentPip(PIP_WIDTH, PIP_HEIGHT);
       if (created !== null) {
         created.addEventListener("pagehide", () => {
@@ -161,6 +218,9 @@ export function useCallPip(options: CallPipOptions): { pip: PipControl; surface:
         setPipWindow(created);
       }
     } else if (mode === "video") {
+      if (videoDisabled) {
+        return;
+      }
       try {
         videoRef.current = await startVideoPip(source(), () => {
           videoRef.current = null;
@@ -171,7 +231,7 @@ export function useCallPip(options: CallPipOptions): { pip: PipControl; surface:
         videoRef.current = null;
       }
     }
-  }, [mode, source]);
+  }, [mode, source, videoDisabled]);
 
   const active = pipWindow !== null || desktopOpen || floatingVideo;
   const activeRef = useRef(active);
@@ -245,6 +305,120 @@ export function useCallPip(options: CallPipOptions): { pip: PipControl; surface:
     };
   }, [desktopOpen]);
 
+  // The picture itself. The call lives in this webview, so this is the sender:
+  // a host-only loopback peer connection that carries exactly one video track
+  // to the call window. When WebRTC between two webviews is unavailable — or
+  // does not connect in time — the same picture goes over as JPEG frames, and
+  // with neither the window draws avatars.
+  useEffect(() => {
+    // The operator can switch the picture off; the window then keeps avatars.
+    if (mode !== "window" || !desktopOpen || !callActive || videoDisabled) {
+      return;
+    }
+    let disposed = false;
+    let unlisten: (() => void) | undefined;
+    let frames: PipFrameSender | null = null;
+    let health: LoopbackHealth = { connected: false, failed: false };
+    const startedAt = Date.now();
+    const canSendFrames = isDesktop() && framesSupported();
+    const initial = pickPipVideoSource(
+      latest.current.snapshot,
+      latest.current.selfUserId,
+      nameOf.current,
+    );
+    let lastTrack: MediaStreamTrack | null = initial.track;
+
+    let sender: PipSenderHandle | null = null;
+
+    const startFrames = () => {
+      if (disposed || frames !== null || !canSendFrames) {
+        return;
+      }
+      frames = startPipFrameSender({ track: lastTrack });
+    };
+    const fallBack = () => {
+      const kind = choosePipTransport({
+        loopbackSupported: sender !== null,
+        framesSupported: canSendFrames,
+        loopbackConnected: health.connected,
+        loopbackFailed: health.failed,
+        elapsedMs: Date.now() - startedAt,
+        timeoutMs: LOOPBACK_FALLBACK_MS,
+      });
+      if (kind === "frames") {
+        startFrames();
+      }
+    };
+
+    if (loopbackSupported()) {
+      sender = createPipSender({
+        track: initial.track,
+        send: (signal) => {
+          void emitDesktopEventTo(PIP_WINDOW_LABEL, PIP_SIGNAL_EVENT, signal);
+        },
+        onState: (state) => {
+          health = nextLoopbackHealth(health, state);
+          if (state === "connected") {
+            frames?.close();
+            frames = null;
+          } else if (state === "failed") {
+            fallBack();
+          }
+        },
+      });
+    } else {
+      startFrames();
+    }
+
+    const timer = setTimeout(() => {
+      if (!disposed && !health.connected) {
+        fallBack();
+      }
+    }, LOOPBACK_FALLBACK_MS);
+
+    // The source changes under the call: a new sharer, a camera turned on, the
+    // talker changing. Replace the track rather than renegotiating.
+    const timerSource = setInterval(() => {
+      if (disposed) {
+        return;
+      }
+      const source = pickPipVideoSource(
+        latest.current.snapshot,
+        latest.current.selfUserId,
+        nameOf.current,
+      );
+      if (source.track === lastTrack) {
+        return;
+      }
+      lastTrack = source.track;
+      void sender?.transport.setTrack(source.track);
+      frames?.setTrack(source.track);
+    }, SOURCE_REFRESH_MS);
+
+    void listenDesktopEvent(PIP_SIGNAL_EVENT, (payload) => {
+      const signal = parseLoopbackSignal(payload);
+      if (signal !== null) {
+        sender?.receive(signal);
+      }
+    }).then((off) => {
+      if (disposed) {
+        off();
+      } else {
+        unlisten = off;
+      }
+    });
+
+    return () => {
+      disposed = true;
+      clearTimeout(timer);
+      clearInterval(timerSource);
+      unlisten?.();
+      sender?.transport.close();
+      frames?.close();
+      frames = null;
+    };
+  }, [mode, desktopOpen, callActive, videoDisabled]);
+
   // Controls pressed in the call window reach the call through the same helpers
   // the browser's media keys use. Subscribed even when the window is closed: the
   // actions are harmless and a press cannot arrive without a window.
@@ -295,6 +469,7 @@ export function useCallPip(options: CallPipOptions): { pip: PipControl; surface:
     if (mode !== "window" || !desktopOpen) {
       return null;
     }
+    const media = pickPipVideoSource(snapshot, selfUserId, nameOf.current);
     return buildPipState({
       call: snapshot.call,
       local: snapshot.local,
@@ -305,6 +480,8 @@ export function useCallPip(options: CallPipOptions): { pip: PipControl; surface:
       canVideo,
       canStream,
       nameOf: nameOf.current,
+      mediaKind: media.kind,
+      speakerName: media.kind === "none" ? "" : media.label,
     });
   }, [mode, desktopOpen, snapshot, selfUserId, canSpeak, canVideo, canStream]);
 
@@ -357,7 +534,7 @@ export function useCallPip(options: CallPipOptions): { pip: PipControl; surface:
       return;
     }
     return registerCallSession({
-      enterPictureInPicture: mode === "document" ? () => void open() : undefined,
+      enterPictureInPicture: mode === "document" && !videoDisabled ? () => void open() : undefined,
       toggleMicrophone: () => {
         latest.current.controls.toggleMicrophone();
       },
@@ -368,7 +545,14 @@ export function useCallPip(options: CallPipOptions): { pip: PipControl; surface:
         latest.current.controls.hangUp();
       },
     });
-  }, [callActive, mode, open]);
+  }, [callActive, mode, open, videoDisabled]);
+
+  // The operator can switch the picture off while a floating surface is open.
+  useEffect(() => {
+    if (videoDisabled && (floatingVideo || pipWindow !== null)) {
+      close();
+    }
+  }, [videoDisabled, floatingVideo, pipWindow, close]);
 
   // Keep a floating video on whoever is worth watching.
   useEffect(() => {
@@ -383,7 +567,16 @@ export function useCallPip(options: CallPipOptions): { pip: PipControl; surface:
     };
   }, [floatingVideo, source]);
 
-  const pip = useMemo<PipControl>(() => ({ mode, active, toggle }), [mode, active, toggle]);
+  // The browser surfaces (a video-only window and the document window, which
+  // draws the call grid) have nothing to show with video switched off, so they
+  // are reported as unavailable and the page offers no button for them. The
+  // desktop window keeps its avatars.
+  const exposedMode: PipMode =
+    videoDisabled && (mode === "video" || mode === "document") ? "none" : mode;
+  const pip = useMemo<PipControl>(
+    () => ({ mode: exposedMode, active, toggle }),
+    [exposedMode, active, toggle],
+  );
   const surface = useMemo<PipSurface>(() => ({ window: pipWindow }), [pipWindow]);
   return { pip, surface };
 }

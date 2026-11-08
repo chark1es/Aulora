@@ -190,6 +190,11 @@ const UNREAD_CHANNEL_LIMIT = 200;
  * Live unread + mention totals for the caller across their joined channels.
  * Drives the desktop Dock/taskbar badge and `navigator.setAppBadge`.
  *
+ * Compatibility: installed clients still call this, so it keeps its shape and
+ * semantics. Clients that already hold `readStates.summary` (the sidebar) sum
+ * its `unreadCount` instead, so one message insert no longer re-scans every
+ * channel tail twice per client.
+ *
  * Each channel's tail is read as an index range starting *after* the viewer's
  * read cursor (`by_channel_created` with `.gt("_creationTime", cursorTime)`)
  * and truncated at {@link UNREAD_SCAN_LIMIT}, saturating the count instead of

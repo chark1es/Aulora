@@ -24,6 +24,8 @@ const ENV_KEYS = [
   "AUTH_LOCAL_ENABLED",
   "AULORA_EKM_PROVIDER",
   "AULORA_ENCRYPTION_KEY_VERSION",
+  "AULORA_MIN_CLIENT_VERSION",
+  "AULORA_RECOMMENDED_CLIENT_VERSION",
 ] as const;
 
 function clearEnv(): void {
@@ -177,6 +179,69 @@ describe("server.publicConfig", () => {
     await expect(asUser.mutation(api.server.setLogo, { storageId: imageId })).rejects.toThrow(
       "Missing permission",
     );
+  });
+
+  it("advertises no client version policy or kill switch by default", async () => {
+    clearEnv();
+    const t = convexTest(schema, modules);
+    const config = await t.query(api.server.publicConfig);
+
+    expect(config.clientVersion).toEqual({
+      minClientVersion: null,
+      recommendedClientVersion: null,
+    });
+    expect(config.features).toEqual({
+      disableNewCallTransport: false,
+      disablePipVideo: false,
+      disableAutoDegrade: false,
+    });
+  });
+
+  it("advertises valid client version settings and ignores invalid ones", async () => {
+    clearEnv();
+    process.env.AULORA_MIN_CLIENT_VERSION = "1.2.0";
+    process.env.AULORA_RECOMMENDED_CLIENT_VERSION = "1.3.0";
+    const t = convexTest(schema, modules);
+    expect((await t.query(api.server.publicConfig)).clientVersion).toEqual({
+      minClientVersion: "1.2.0",
+      recommendedClientVersion: "1.3.0",
+    });
+
+    process.env.AULORA_MIN_CLIENT_VERSION = "latest";
+    process.env.AULORA_RECOMMENDED_CLIENT_VERSION = "  ";
+    expect((await t.query(api.server.publicConfig)).clientVersion).toEqual({
+      minClientVersion: null,
+      recommendedClientVersion: null,
+    });
+  });
+
+  it("round-trips operator kill switches through publicConfig", async () => {
+    clearEnv();
+    const t = newTest();
+    await seedWorkspace(t, {
+      ownerId: "owner-1",
+      members: [{ userId: "owner-1" }, { userId: "user-1" }],
+    });
+    const asOwner = t.withIdentity({ subject: "owner-1" });
+
+    await asOwner.mutation(api.server.updateSettings, {
+      disablePipVideo: true,
+      disableNewCallTransport: true,
+    });
+    const config = await t.query(api.server.publicConfig);
+    expect(config.features).toEqual({
+      disableNewCallTransport: true,
+      disablePipVideo: true,
+      disableAutoDegrade: false,
+    });
+
+    await asOwner.mutation(api.server.updateSettings, { disablePipVideo: false });
+    expect((await t.query(api.server.publicConfig)).features.disablePipVideo).toBe(false);
+
+    const asUser = t.withIdentity({ subject: "user-1" });
+    await expect(
+      asUser.mutation(api.server.updateSettings, { disableAutoDegrade: true }),
+    ).rejects.toThrow("Missing permission");
   });
 
   it("uses the stored server name and signup setting", async () => {

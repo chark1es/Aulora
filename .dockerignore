@@ -34,6 +34,7 @@ infra/docker/.update-host.lock
 infra/docker/.update.lock
 infra/docker/.update-ready.json
 infra/docker/.update-status.json
+infra/docker/.deployed-web-image.json
 **/.gitattributes
 **/*.log
 

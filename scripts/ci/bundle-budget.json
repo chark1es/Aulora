@@ -1,0 +1,181 @@
+{
+  "version": 1,
+  "tolerance": 0.1,
+  "chunks": {
+    "assets/AdminPanel.css": {
+      "raw": 1280,
+      "gzip": 576
+    },
+    "assets/AdminPanel.js": {
+      "raw": 214720,
+      "gzip": 55936
+    },
+    "assets/api.js": {
+      "raw": 51840,
+      "gzip": 18432
+    },
+    "assets/auth.js": {
+      "raw": 34496,
+      "gzip": 13120
+    },
+    "assets/CallDock.js": {
+      "raw": 2304,
+      "gzip": 1216
+    },
+    "assets/CallParticipant.js": {
+      "raw": 102016,
+      "gzip": 31360
+    },
+    "assets/CallStage.js": {
+      "raw": 3904,
+      "gzip": 1600
+    },
+    "assets/convex.js": {
+      "raw": 83072,
+      "gzip": 23232
+    },
+    "assets/dist.js": {
+      "raw": 1536,
+      "gzip": 576
+    },
+    "assets/EmptyState.js": {
+      "raw": 1024,
+      "gzip": 512
+    },
+    "assets/index.css": {
+      "raw": 97216,
+      "gzip": 16960
+    },
+    "assets/index.js": {
+      "raw": 112000,
+      "gzip": 35328
+    },
+    "assets/KanbanView.js": {
+      "raw": 94208,
+      "gzip": 25216
+    },
+    "assets/livekit-client.esm.js": {
+      "raw": 627584,
+      "gzip": 161408
+    },
+    "assets/member-avatars.js": {
+      "raw": 17984,
+      "gzip": 7680
+    },
+    "assets/NoteMarkdown.js": {
+      "raw": 7232,
+      "gzip": 2816
+    },
+    "assets/NotesView.js": {
+      "raw": 62720,
+      "gzip": 16768
+    },
+    "assets/permissions.js": {
+      "raw": 2624,
+      "gzip": 1088
+    },
+    "assets/PictureInPictureButton.js": {
+      "raw": 704,
+      "gzip": 512
+    },
+    "assets/pip-ticker.worker.js": {
+      "raw": 128,
+      "gzip": 128
+    },
+    "assets/preload-helper.js": {
+      "raw": 24064,
+      "gzip": 8576
+    },
+    "assets/ProfileSession.js": {
+      "raw": 313856,
+      "gzip": 88576
+    },
+    "assets/react.js": {
+      "raw": 240640,
+      "gzip": 74112
+    },
+    "assets/rnnoise_simd.wasm": {
+      "raw": 172992,
+      "gzip": 127232
+    },
+    "assets/rnnoise.wasm": {
+      "raw": 167936,
+      "gzip": 125312
+    },
+    "assets/rolldown-runtime.js": {
+      "raw": 704,
+      "gzip": 448
+    },
+    "assets/SearchInput.js": {
+      "raw": 1792,
+      "gzip": 896
+    },
+    "assets/selfie_segmenter_landscape.tflite": {
+      "raw": 275200,
+      "gzip": 232256
+    },
+    "assets/tanstack.js": {
+      "raw": 81600,
+      "gzip": 28544
+    },
+    "assets/Textarea.js": {
+      "raw": 2944,
+      "gzip": 1280
+    },
+    "assets/vision_bundle.js": {
+      "raw": 169664,
+      "gzip": 49664
+    },
+    "assets/vision_wasm_internal.js": {
+      "raw": 367552,
+      "gzip": 89088
+    },
+    "assets/vision_wasm_internal.wasm": {
+      "raw": 14871936,
+      "gzip": 4354304
+    },
+    "assets/VoiceChannelView.js": {
+      "raw": 6528,
+      "gzip": 2176
+    },
+    "assets/workletProcessor.js": {
+      "raw": 72192,
+      "gzip": 13568
+    }
+  },
+  "initial": {
+    "raw": 751360,
+    "gzip": 229248
+  },
+  "total": {
+    "raw": 18287040,
+    "gzip": 5609280
+  },
+  "lazyOnly": [
+    {
+      "match": "livekit-client",
+      "contentMarkers": ["livekit"],
+      "reason": "LiveKit is imported by the call screen only; it must stay a lazy chunk."
+    },
+    {
+      "match": "vision_bundle",
+      "contentMarkers": ["mediapipe"],
+      "reason": "MediaPipe tasks-vision is imported only when a call enables background blur."
+    },
+    {
+      "match": "vision_wasm_internal",
+      "contentMarkers": ["vision_wasm_internal"],
+      "reason": "MediaPipe WebAssembly loader is fetched on demand by the vision runtime."
+    },
+    {
+      "match": "selfie_segmenter",
+      "contentMarkers": ["selfie_segmenter"],
+      "reason": "The selfie segmentation model is fetched when background blur starts."
+    },
+    {
+      "match": "rnnoise",
+      "contentMarkers": ["rnnoise"],
+      "reason": "RNNoise noise suppression is loaded by the audio pipeline on demand."
+    }
+  ]
+}

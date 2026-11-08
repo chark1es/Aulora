@@ -36,6 +36,12 @@ of an upgrade.
   memory on representative self-hosting hardware. Identify the query or write
   responsible before changing the architecture.
 
+CI enforces the first two points with `bun run perf:convex`
+([performance guards](../performance.md)): new `.collect()` calls, `.filter()`
+without `.withIndex()`, and dynamic `.paginate()` windows are rejected. Fix the
+query rather than adding an allowlist entry, and remove an entry when its read
+becomes bounded.
+
 For affected paths, test both a large history and concurrent activity in a busy
 channel. Include the number and size of records read, subscription update
 volume, and any remaining limits in the PR. Avoid presenting a test with a few
@@ -58,6 +64,23 @@ the documented upgrade path when operators skip intermediate releases.
 3. Tighten validators or retire legacy fields and APIs only after the backfill
    and supported-client compatibility checks pass. Publish any minimum client
    version and enforce it before making an incompatible change.
+
+Record stored-shape compatibility with synthetic fixtures in
+`packages/convex/test/fixtures/compat/v<release>/*.json`. The
+`packages/convex/test/compat/schema-compat.test.ts` test inserts them through
+the current validators, and `scripts/ci/schema-snapshot.json` plus
+`scripts/ci/check-schema-compat.mjs` (run by `release:check`) fails when a field
+becomes required, a required field is added, or a table/field is removed. An
+intentional tightening is allowed only with a marker comment in `schema.ts`:
+
+```
+// @compat-allow-tighten: server.exampleField -- backfilled by migration X
+```
+
+Only add the marker after the backfill has completed for every supported
+upgrade path and supported old clients are no longer expected to write the old
+shape. Regenerate the snapshot with
+`node scripts/ci/check-schema-compat.mjs --update` and review the diff.
 
 Convex validates existing documents when a schema changes; incompatible records
 can reject a deployment. Schema deployment does not fill in missing values.
@@ -94,17 +117,22 @@ The target sequence is:
 
 Current gaps to account for when changing the updater:
 
-- [deploy.sh](../../infra/docker/deploy.sh) and the
-  [staged updater](../../infra/docker/update/stage.mjs) currently recreate the
-  web service before running setup. A failed backend deploy can therefore leave
-  a new frontend talking to old functions. Fixing this order requires a code
-  change; this guide does not change it.
+- The frontend/backend deploy-order gap is fixed:
+  [deploy.sh](../../infra/docker/deploy.sh) and the
+  [staged updater](../../infra/docker/update/stage.mjs) now run `setup` before
+  recreating the web container. A failed backend deploy leaves the previous web
+  build serving, so the release schema must accept both that old frontend and
+  the new one.
 - Those paths do not explicitly recreate the Convex engine. A release that
   changes its pinned image needs a tested runtime-upgrade step, not just a new
   setup image or function deploy. Review the Coolify path separately as well.
 - The [setup script](../../infra/docker/setup/entrypoint.sh) currently treats
   the voice-permission migration as best effort. Required future migrations
   need explicit failure handling and completion verification.
+- A web-only rollback exists in `deploy.sh --rollback`: it restores the web
+  image pinned by the previous deployment. It does not roll back functions,
+  schemas, or the engine, so use a tested backup/restore for an irreversible
+  migration.
 
 Engine upgrades may have their own storage-format and downgrade constraints.
 Redeploying old application code does not undo a data migration or guarantee

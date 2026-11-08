@@ -2,12 +2,15 @@
 import type { ServerProfile } from "@aulora/core";
 import { Spinner, Text } from "@aulora/ui-native";
 import type { ConvexReactClient } from "convex/react";
+import { useQuery } from "convex/react";
 import { useRouter } from "expo-router";
 import { useEffect, useState } from "react";
 import { Alert, View } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
+import { api } from "../../../../packages/convex/convex/_generated/api";
 import type { AuloraAuthClient } from "../lib/auth-client";
 import { authActionsFromClient } from "../lib/auth-client";
+import { mobileVersionState } from "../lib/client-version";
 import type { CookieStore } from "../lib/cookie-fetch";
 import { bindPendingInvite } from "../lib/pending-invite";
 import { useStuckTimeout } from "../lib/stuck-timeout";
@@ -15,6 +18,7 @@ import { ChatProvider } from "../providers/ChatProvider";
 import { useProfiles } from "../providers/ProfileProvider";
 import { SoundProvider } from "../providers/SoundProvider";
 import { VoiceProvider } from "../providers/VoiceProvider";
+import { ClientVersionRequired } from "./ClientVersionGate";
 import {
   ConnectionRecoveryActions,
   type ConnectionRecoveryActionsProps,
@@ -35,6 +39,7 @@ export interface SessionGateProps {
 /** Chooses between the sign-in screen and the signed-in chat surface. */
 export function SessionGate({ profile, authClient, cookieStore, client }: SessionGateProps) {
   const session = authClient.useSession();
+  const config = useQuery(api.server.publicConfig, {});
   const [switcherOpen, setSwitcherOpen] = useState(false);
   const [sessionAttempt, setSessionAttempt] = useState(0);
   const router = useRouter();
@@ -50,6 +55,13 @@ export function SessionGate({ profile, authClient, cookieStore, client }: Sessio
   useEffect(() => {
     bindPendingInvite(identity);
   }, [identity]);
+
+  // Compatibility gate: all hooks above run unconditionally, so returning here
+  // is safe even when the config query resolves later.
+  const versionPolicy = config?.clientVersion ?? null;
+  if (versionPolicy !== null && mobileVersionState(versionPolicy) === "required") {
+    return <ClientVersionRequired policy={versionPolicy} />;
+  }
 
   if (session.isPending) {
     return (

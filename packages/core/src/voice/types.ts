@@ -89,6 +89,27 @@ export interface SfuAccess {
   readonly token: string;
   /** Whether this user may publish a screen share. */
   readonly canPublish: boolean;
+  /**
+   * Track sources the grant allows. Absent on grants minted before the field
+   * existed, where `canPublish` alone decides screen sharing.
+   */
+  readonly canPublishSources?: readonly string[];
+  /** Epoch seconds at which the token stops being accepted on a new join. */
+  readonly expiresAt?: number;
+}
+
+/**
+ * One member's short-lived TURN credential (RFC 5766 time-limited HMAC). The
+ * relay derives the password from a shared secret, so no long-lived password
+ * exists on the client or in the roster.
+ */
+export interface TurnCredentials {
+  readonly urls: readonly string[];
+  readonly username: string;
+  readonly credential: string;
+  readonly ttlSeconds: number;
+  /** Epoch seconds at which the relay stops accepting the credential. */
+  readonly expiresAt: number;
 }
 
 /** One participant of a live call, as rendered by every client. */
@@ -104,6 +125,12 @@ export interface CallParticipantView {
    * mobile keep working unchanged.
    */
   readonly sfu: boolean;
+  /**
+   * The client can carry microphone and camera through the streaming server
+   * ("sfu-call" capability). Absent on older clients and mobile, which keeps a
+   * mixed call entirely on the peer mesh.
+   */
+  readonly sfuCall?: boolean;
   readonly joinedAt: number;
   /**
    * Which client owns this seat. Set only on the viewer's own row; everyone
@@ -175,12 +202,27 @@ export interface VoicePort {
     readonly video?: boolean;
     readonly sharingScreen?: boolean;
     readonly sfu?: boolean;
+    /** Whether this client can carry call media through the streaming server. */
+    readonly sfuCall?: boolean;
   }): Promise<null>;
   /**
    * Credentials for the optional streaming server, or `null` when the workspace
    * has none. Absent on clients that only support the peer mesh.
    */
-  sfuAccess?(args: { readonly callId: string }): Promise<SfuAccess | null>;
+  sfuAccess?(args: {
+    readonly callId: string;
+    /**
+     * `screen` (default) grants screen-share publishing; `call` grants
+     * microphone and camera for the SFU call transport.
+     */
+    readonly scope?: "screen" | "call";
+  }): Promise<SfuAccess | null>;
+  /**
+   * A short-lived TURN credential for this member, or `null` when the
+   * deployment has no TURN server. Absent on clients that only use the built-in
+   * STUN defaults.
+   */
+  turnCredentials?(): Promise<TurnCredentials | null>;
   /** Keeps the participant row fresh so the server can sweep abandoned calls. */
   callHeartbeat(args: { readonly callId: string }): Promise<null>;
   sendSignal(args: {
@@ -188,6 +230,12 @@ export interface VoicePort {
     readonly toUserId: string;
     readonly kind: CallSignalKind;
     readonly payload: string;
+    /**
+     * More payloads carried by the same envelope, for pooled ICE candidates.
+     * `payload` repeats the first one so a backend that predates batching can
+     * still accept the signal.
+     */
+    readonly payloads?: readonly string[];
   }): Promise<null>;
   /** Removes signalling rows this client has already processed. */
   ackSignals(args: { readonly signalIds: readonly string[] }): Promise<null>;

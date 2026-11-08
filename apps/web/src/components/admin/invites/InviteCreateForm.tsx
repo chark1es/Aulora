@@ -159,7 +159,8 @@ function UsesField({ draft, set }: { readonly draft: InviteDraft; readonly set: 
 }
 
 export interface InviteCreateFormProps {
-  readonly origin: string;
+  /** Public workspace origin, or `null` while it is unknown. */
+  readonly origin: string | null;
 }
 
 /**
@@ -180,6 +181,10 @@ export function InviteCreateForm({ origin }: InviteCreateFormProps) {
 
   function submit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
+    if (origin === null) {
+      setError("The workspace address is not known yet. Try again in a moment.");
+      return;
+    }
     const built = buildCreateArgs(draft, Date.now());
     if (!built.ok) {
       setError(built.error);
@@ -261,10 +266,15 @@ export function InviteCreateForm({ origin }: InviteCreateFormProps) {
           </Text>
         )}
 
-        <div>
-          <Button type="submit" loading={busy} disabled={busy}>
+        <div className="flex flex-col gap-1.5">
+          <Button type="submit" loading={busy} disabled={busy || origin === null}>
             {draft.kind === "email" ? "Send invite" : "Create invite"}
           </Button>
+          {origin === null && (
+            <Text size="xs" tone="muted">
+              Invites need the workspace address, which is not known yet.
+            </Text>
+          )}
         </div>
       </div>
 

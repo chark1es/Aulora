@@ -14,6 +14,7 @@ mod capture_audio;
 mod commands;
 mod deep_link;
 mod menu;
+mod pip_geometry;
 mod pip_window;
 mod tray;
 mod updater;
@@ -22,10 +23,27 @@ mod window;
 use tauri::webview::{PermissionKind, PermissionResponse};
 use tauri::Manager;
 
-/// Auto-allows the media and notification prompts the bundled client asks for
-/// in its own main webview. The OS-level prompt (the macOS microphone/camera
-/// TCC dialog) is the native one and is untouched; anything else keeps the
-/// webview's default prompt.
+/// Auto-answers the permission requests the bundled client makes in its own
+/// main webview. Answering `Default` hands the request to the web engine, which
+/// draws a prompt naming the bundle's internal origin (`tauri://localhost` on
+/// macOS/Linux, `http://tauri.localhost` on Windows). That origin is an
+/// implementation detail the person never sees anywhere else, so every kind the
+/// client actually uses is answered here instead: capture (microphone, camera,
+/// screen), notification display, clipboard reads (the connect screen's paste
+/// button), autoplay for call and notification audio, and repeated attachment
+/// downloads.
+///
+/// Every other kind is denied rather than deferred: the client does not use
+/// those APIs, and a dialog would only leak the origin. The OS-level prompt (the
+/// macOS microphone/camera TCC dialog) is the native one and is untouched.
+///
+/// The call picture-in-picture webview plays what the main webview captured and
+/// asks for nothing, so it keeps the engine's default answer.
+///
+/// The answer only applies while the main webview shows the bundled client.
+/// Sign-in navigates that same webview to the identity provider's own pages;
+/// those are remote content and keep the engine's default prompt, which names
+/// their real origin.
 fn permission_response<R: tauri::Runtime>(
     webview: &tauri::Webview<R>,
     kind: PermissionKind,
@@ -33,11 +51,64 @@ fn permission_response<R: tauri::Runtime>(
     if webview.label() != "main" {
         return PermissionResponse::Default;
     }
+    match webview.url() {
+        Ok(url) if is_bundled_app_url(&url) => {}
+        _ => return PermissionResponse::Default,
+    }
     match kind {
-        PermissionKind::Microphone | PermissionKind::Camera | PermissionKind::Notifications => {
-            PermissionResponse::Allow
-        }
-        _ => PermissionResponse::Default,
+        PermissionKind::Microphone
+        | PermissionKind::Camera
+        | PermissionKind::DisplayCapture
+        | PermissionKind::Notifications
+        | PermissionKind::ClipboardRead
+        | PermissionKind::Autoplay
+        | PermissionKind::AutomaticDownloads => PermissionResponse::Allow,
+        _ => PermissionResponse::Deny,
+    }
+}
+
+/// Whether `url` is the bundled client rather than remote content. The bundle is
+/// served from `tauri://localhost` (macOS, Linux) or `http(s)://tauri.localhost`
+/// (Windows); debug builds also load the Vite dev server.
+fn is_bundled_app_url(url: &tauri::Url) -> bool {
+    match (url.scheme(), url.host_str()) {
+        ("tauri", Some("localhost")) => true,
+        ("http" | "https", Some("tauri.localhost")) => true,
+        ("http", Some("localhost")) => cfg!(debug_assertions),
+        _ => false,
+    }
+}
+
+#[cfg(test)]
+mod bundled_url_tests {
+    use super::is_bundled_app_url;
+
+    fn url(value: &str) -> tauri::Url {
+        value.parse().expect("valid url")
+    }
+
+    #[test]
+    fn accepts_the_bundled_origins() {
+        assert!(is_bundled_app_url(&url("tauri://localhost/")));
+        assert!(is_bundled_app_url(&url("tauri://localhost/connect")));
+        assert!(is_bundled_app_url(&url("http://tauri.localhost/")));
+        assert!(is_bundled_app_url(&url("https://tauri.localhost/#pip")));
+    }
+
+    #[test]
+    fn rejects_remote_and_lookalike_origins() {
+        assert!(!is_bundled_app_url(&url(
+            "https://accounts.google.com/o/oauth2/auth"
+        )));
+        assert!(!is_bundled_app_url(&url(
+            "https://tauri.localhost.evil.example/"
+        )));
+        assert!(!is_bundled_app_url(&url(
+            "https://evil.example/tauri.localhost"
+        )));
+        assert!(!is_bundled_app_url(&url("tauri://evil.example/")));
+        assert!(!is_bundled_app_url(&url("file:///etc/passwd")));
+        assert!(!is_bundled_app_url(&url("about:blank")));
     }
 }
 
@@ -62,11 +133,18 @@ pub fn run() {
         .manage(deep_link::DeepLinkState::default())
         .manage(updater::AppUpdateState::default())
         .manage(capture_audio::AudioCaptureState::default())
+        .manage(pip_window::PipFrameState::default())
         .invoke_handler(tauri::generate_handler![
             commands::set_always_on_top,
             commands::open_pip_window,
+            commands::pip_window_mode,
             commands::close_pip_window,
             commands::is_pip_window_open,
+            commands::snap_pip_window,
+            commands::set_pip_size,
+            commands::register_pip_frames,
+            commands::unregister_pip_frames,
+            commands::push_pip_frame,
             commands::focus_main_window,
             commands::toggle_fullscreen,
             commands::set_unread_badge,
@@ -122,6 +200,9 @@ pub fn run() {
                     event: tauri::WindowEvent::Destroyed,
                     ..
                 } if label == pip_window::LABEL => {
+                    // No webview is left to receive frames; the main window's
+                    // next push is a silent no-op until a new window registers.
+                    app.state::<pip_window::PipFrameState>().clear();
                     pip_window::emit_closed(app);
                 }
                 // A Dock click on macOS reopens the app and focuses the window.

@@ -41,7 +41,8 @@ export interface AdminPanelProps {
   readonly categories: readonly CategoryView[];
   readonly channels: readonly ChannelSummary[];
   readonly channelNames?: ReadonlyMap<string, string>;
-  readonly origin: string;
+  /** Public workspace origin, or `null` until the client knows it. */
+  readonly origin: string | null;
   readonly onClose: () => void;
 }
 
@@ -178,7 +179,8 @@ interface AdminPanelBodyProps {
   readonly categories: readonly CategoryView[];
   readonly channels: readonly ChannelSummary[];
   readonly channelNames?: ReadonlyMap<string, string>;
-  readonly origin: string;
+  /** Public workspace origin, or `null` until the client knows it. */
+  readonly origin: string | null;
   readonly memberNames: ReadonlyMap<string, string>;
   readonly roleNames: ReadonlyMap<string, string>;
   readonly categoryNames: ReadonlyMap<string, string>;
