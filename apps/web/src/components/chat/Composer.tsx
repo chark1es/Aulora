@@ -16,6 +16,12 @@ import { readDraft, writeDraft } from "../../lib/drafts";
 import { formatBytes } from "../../lib/instance-admin";
 import { EmojiPicker } from "./EmojiPicker";
 import { PersonAvatar } from "./member-avatars";
+import {
+  type MemberSearch,
+  mentionTargetsFor,
+  mergeMentionTargets,
+  useSearchedMembers,
+} from "./mention-directory";
 import { RichText } from "./RichText";
 
 export interface ComposerProps {
@@ -26,7 +32,7 @@ export interface ComposerProps {
    * so autocomplete and `@name` resolution for people outside the timeline ask
    * the directory instead.
    */
-  readonly searchMembers?: (query: string) => Promise<readonly MentionTarget[]>;
+  readonly searchMembers?: MemberSearch;
   readonly roles: readonly RoleMentionTarget[];
   readonly memberIds: readonly string[];
   /** Channels and categories offered by `#` autocomplete. */
@@ -89,10 +95,6 @@ interface Suggestion {
 const MAX_TEXTAREA_PX = 220;
 const MENTION_QUERY = /(^|\s)@([^\s@]*)$/;
 const CHANNEL_QUERY = /(^|\s)#([^\s#]*)$/;
-/** Wait after the last keystroke before asking the directory for matches. */
-const MENTION_SEARCH_DEBOUNCE_MS = 150;
-/** Distinct typed names one send resolves through the directory. */
-const MENTION_RESOLVE_TOKENS = 8;
 
 function collectFiles(list: FileList | ArrayLike<File> | null): File[] {
   if (list === null) {
@@ -166,7 +168,7 @@ export function Composer({
   const [activeSuggestion, setActiveSuggestion] = useState(0);
   /** The text typed after `@`, driving the debounced directory search. */
   const [mentionQuery, setMentionQuery] = useState("");
-  const [searchedMembers, setSearchedMembers] = useState<readonly MentionTarget[]>([]);
+  const searchedMembers = useSearchedMembers(searchMembers, mentionQuery);
   const [emojiOpen, setEmojiOpen] = useState(false);
   const textareaRef = useRef<HTMLTextAreaElement | null>(null);
   const fileInputRef = useRef<HTMLInputElement | null>(null);
@@ -216,31 +218,6 @@ export function Composer({
     }
   }, [value]);
 
-  useEffect(() => {
-    if (searchMembers === undefined || mentionQuery.length === 0) {
-      setSearchedMembers([]);
-      return;
-    }
-    let cancelled = false;
-    const timer = setTimeout(() => {
-      void searchMembers(mentionQuery)
-        .then((rows) => {
-          if (!cancelled) {
-            setSearchedMembers(rows);
-          }
-        })
-        .catch(() => {
-          if (!cancelled) {
-            setSearchedMembers([]);
-          }
-        });
-    }, MENTION_SEARCH_DEBOUNCE_MS);
-    return () => {
-      cancelled = true;
-      clearTimeout(timer);
-    };
-  }, [mentionQuery, searchMembers]);
-
   const mentionSuggestions: Suggestion[] = useMemo(() => {
     const broadcast: Suggestion[] = canMentionEveryone
       ? [
@@ -260,18 +237,9 @@ export function Composer({
           },
         ]
       : [];
-    const known = new Map<string, MentionTarget>();
-    for (const member of members) {
-      known.set(member.userId, member);
-    }
-    for (const member of searchedMembers) {
-      if (!known.has(member.userId)) {
-        known.set(member.userId, member);
-      }
-    }
     return [
       ...broadcast,
-      ...[...known.values()].map((member) => ({
+      ...mergeMentionTargets(members, searchedMembers).map((member) => ({
         key: `user:${member.userId}`,
         label: member.displayName,
         insert: `@${member.displayName}`,
@@ -504,51 +472,8 @@ export function Composer({
     };
   }, [addFiles, disabled, windowDropEnabled]);
 
-  /**
-   * The mention targets to resolve `text` against. The composer holds only the
-   * people already on screen, so names it does not know are looked up in the
-   * directory before sending; otherwise a typed `@name` for someone outside the
-   * timeline would silently lose its mention id.
-   */
-  async function mentionTargetsFor(text: string): Promise<readonly MentionTarget[]> {
-    if (searchMembers === undefined) {
-      return members;
-    }
-    const knownNames = new Set(members.map((member) => member.displayName.toLowerCase()));
-    const unknown: string[] = [];
-    for (const match of text.matchAll(/@([A-Za-z0-9_.-]+)/g)) {
-      // eslint-disable-next-line @typescript-eslint/no-unnecessary-condition -- capture groups are `string | undefined` under noUncheckedIndexedAccess
-      const token = match[1] ?? "";
-      if (token.length === 0 || /^(here|everyone)$/i.test(token)) {
-        continue;
-      }
-      if (!knownNames.has(token.toLowerCase()) && !unknown.includes(token)) {
-        unknown.push(token);
-      }
-      if (unknown.length >= MENTION_RESOLVE_TOKENS) {
-        break;
-      }
-    }
-    if (unknown.length === 0) {
-      return members;
-    }
-    const found = (
-      await Promise.all(unknown.map((query) => searchMembers(query).catch(() => [])))
-    ).flat();
-    if (found.length === 0) {
-      return members;
-    }
-    const merged = new Map(members.map((member) => [member.userId, member] as const));
-    for (const member of found) {
-      if (!merged.has(member.userId)) {
-        merged.set(member.userId, member);
-      }
-    }
-    return [...merged.values()];
-  }
-
   async function submit(text: string, pickedFiles: readonly File[]): Promise<void> {
-    const targets = await mentionTargetsFor(text);
+    const targets = await mentionTargetsFor(text, members, searchMembers);
     const resolution = resolveMentions(text, targets, roles);
     const mentionUserIds = expandBroadcast(resolution, memberIds);
     const channelMentionResolution = resolveChannelMentions(text, channels, categories);
