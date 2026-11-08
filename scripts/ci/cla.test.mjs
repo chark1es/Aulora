@@ -31,7 +31,22 @@ function notFound() {
 
 // An in-memory Git store exercises archive creation, subsequent commits, and
 // optimistic ref updates rather than mocking the signature persistence itself.
-function fixture({ comments = [], authors = [alice], stored = [], pages, pr = pull } = {}) {
+function gitActor(user) {
+  return {
+    name: user?.login ?? "Unlinked `author` @somebody",
+    email: user ? `${user.login}@example.com` : null,
+    user: user ? { databaseId: user.id, login: user.login } : null,
+  };
+}
+
+function fixture({
+  comments = [],
+  authors = [alice],
+  coauthors = [],
+  stored = [],
+  pages,
+  pr = pull,
+} = {}) {
   const state = {
     comments: [...comments],
     authors,
@@ -139,12 +154,13 @@ function fixture({ comments = [], authors = [alice], stored = [], pages, pr = pu
               {
                 commit: {
                   oid: "abcdef123",
+                  author: gitActor((pages ? pages[cursor ? 1 : 0] : state.authors)[0]),
                   authors: {
                     pageInfo: { hasNextPage: false },
-                    nodes: (pages ? pages[cursor ? 1 : 0] : state.authors).map((user) => ({
-                      name: user?.login ?? "Unlinked `author` @somebody",
-                      user: user ? { databaseId: user.id, login: user.login } : null,
-                    })),
+                    nodes: [
+                      ...(pages ? pages[cursor ? 1 : 0] : state.authors).map(gitActor),
+                      ...coauthors,
+                    ],
                   },
                 },
               },
@@ -263,6 +279,106 @@ test("bot-authored PRs pass without synthetic human signatures", async () => {
   await checkPullRequest(github, repo, "main", 7);
   expect(state.statuses.at(-1).state).toBe("success");
   expect(state.head).toBeNull();
+});
+
+const agentCoauthors = [
+  { name: "Claude", email: "noreply@anthropic.com", user: null },
+  { name: "Claude Code", email: "noreply@anthropic.com", user: null },
+  { name: "Claude Opus 4.7 (1M context)", email: "noreply@anthropic.com", user: null },
+  { name: "Claude Sonnet 4.6", email: "noreply@anthropic.com", user: null },
+  { name: "Claude Haiku 4.5", email: "noreply@anthropic.com", user: null },
+  { name: "Codex", email: "noreply@openai.com", user: null },
+  { name: "ChatGPT", email: "noreply@openai.com", user: null },
+  { name: "Cursor", email: "cursoragent@cursor.com", user: null },
+  { name: "Cursor Agent", email: "cursoragent@cursor.com", user: null },
+  { name: "Cursor", email: "noreply@cursor.sh", user: null },
+];
+
+test("recognized agent co-authors need no signature or linked account", async () => {
+  const { github, state, records } = fixture({
+    comments: [signature(alice)],
+    coauthors: agentCoauthors,
+  });
+  await checkPullRequest(github, repo, "main", 7);
+  expect(state.statuses.at(-1).state).toBe("success");
+  expect(records().map((record) => record.login)).toEqual(["alice"]);
+});
+
+test("agent labels linked to an unrelated account do not require its acceptance", async () => {
+  const { github, state, records } = fixture({
+    comments: [signature(alice)],
+    coauthors: [{ ...agentCoauthors[0], user: { databaseId: bob.id, login: bob.login } }],
+  });
+  await checkPullRequest(github, repo, "main", 7);
+  expect(state.statuses.at(-1).state).toBe("success");
+  expect(records().map((record) => record.login)).toEqual(["alice"]);
+});
+
+test("agent co-author matching normalizes case and surrounding whitespace", async () => {
+  const { github, state } = fixture({
+    comments: [signature(alice)],
+    coauthors: [{ name: "  cOdEx ", email: " NOREPLY@OPENAI.COM ", user: null }],
+  });
+  await checkPullRequest(github, repo, "main", 7);
+  expect(state.statuses.at(-1).state).toBe("success");
+});
+
+test("human co-authors still sign alongside recognized agents", async () => {
+  const { github, state } = fixture({
+    comments: [signature(alice)],
+    coauthors: [agentCoauthors[0], { ...gitActor(bob), name: "Codex" }],
+  });
+  await checkPullRequest(github, repo, "main", 7);
+  expect(state.statuses.at(-1).state).toBe("failure");
+  expect(state.comments.at(-1).body).toContain("Acceptance needed from @bob");
+  state.comments.push(signature(bob));
+  await checkPullRequest(github, repo, "main", 7);
+  expect(state.statuses.at(-1).state).toBe("success");
+});
+
+test("unknown co-authors are not exempted by a tool name or provider domain alone", async () => {
+  for (const actor of [
+    { name: "Claude", email: "person@example.com" },
+    { name: "Person", email: "noreply@anthropic.com" },
+    { name: "Codex", email: "person@openai.com" },
+    { name: "Cursor", email: "cursoragent@cursor.com.example.com" },
+    { name: "Other Agent", email: "agent@example.com" },
+    { name: "Claude", email: null },
+    { name: "Person", email: "constructor" },
+  ]) {
+    const { github, state } = fixture({
+      comments: [signature(alice)],
+      coauthors: [{ ...actor, user: null }],
+    });
+    await checkPullRequest(github, repo, "main", 7);
+    expect(state.statuses.at(-1).state).toBe("failure");
+    expect(state.comments.at(-1).body).toContain("no linked GitHub identity");
+  }
+});
+
+test("agent co-authors do not waive the PR submitter's acceptance", async () => {
+  const { github, state } = fixture({ coauthors: agentCoauthors });
+  await checkPullRequest(github, repo, "main", 7);
+  expect(state.statuses.at(-1).state).toBe("failure");
+  expect(state.comments.at(-1).body).toContain("Acceptance needed from @alice");
+});
+
+test("primary authors matching agent labels still need a linked identity and acceptance", async () => {
+  for (const user of [null, { databaseId: bob.id, login: bob.login }]) {
+    const { github, state } = fixture({ comments: [signature(alice)] });
+    const graphql = github.graphql;
+    github.graphql = async (...args) => {
+      const response = await graphql(...args);
+      const commit = response.repository.pullRequest.commits.nodes[0].commit;
+      commit.author = { ...agentCoauthors[0], user };
+      commit.authors.nodes = [commit.author];
+      return response;
+    };
+    await checkPullRequest(github, repo, "main", 7);
+    expect(state.statuses.at(-1).state).toBe("failure");
+    if (user) expect(state.comments.at(-1).body).toContain("Acceptance needed from @bob");
+    else expect(state.comments.at(-1).body).toContain("no linked GitHub identity");
+  }
 });
 
 test("unlinked authors fail even when the PR author has signed, and names cannot escape the code block", async () => {

@@ -1,8 +1,23 @@
 # CLA bot
 
-The [workflow](../.github/workflows/cla.yml) checks the pull request author and every commit author and co-author against the published [CLA](../CLA.md). GitHub bot accounts are excluded. Human maintainers must accept the agreement like other contributors.
+The [workflow](../.github/workflows/cla.yml) checks the pull request author and every commit author and human co-author against the published [CLA](../CLA.md). GitHub bot accounts and recognized tool co-author labels are excluded. Human maintainers must accept the agreement like other contributors.
 
 Coding assistants and agents are tools, not CLA signatories. Their use alone does not require author or co-author attribution. When a tool submits through a bot account, the responsible person must still accept the agreement from their own account and be identified in the PR. The bot's account exclusion does not verify that person's acceptance or tool-output rights; maintainers must check these before merging an automated submission. Human authors and co-authors remain subject to the normal checks.
+
+## Agent co-author attribution
+
+An optional `Co-authored-by` trailer can credit a tool without requiring it to sign the CLA or link an email to a GitHub account. The checker recognizes these name/email pairs, ignoring case and surrounding whitespace:
+
+| Co-author name | Email |
+| --- | --- |
+| Claude, Claude Code, or Claude Opus/Sonnet/Haiku followed by a numeric version and optional context suffix such as `(1M context)` | `noreply@anthropic.com` |
+| Codex or ChatGPT | `noreply@openai.com` |
+| Cursor or Cursor Agent | `cursoragent@cursor.com` |
+| Cursor | `noreply@cursor.sh` |
+
+Both name and email must match. These are attribution conventions, not proof that a provider created the commit. A matching co-author label is excluded even if GitHub links that shared email to an unrelated account. The PR submitter and primary commit author are still checked independently, as are all human co-authors. Matching a tool label does not exempt a primary author; an agent-authored commit needs accurate human attribution or an actual GitHub bot identity.
+
+Other agents using GitHub bot accounts follow the existing bot-account rule. Unrecognized or custom tool labels remain subject to identity checks. To support another convention, maintainers must add a narrow name/email match in [the checker](../scripts/ci/cla.mjs) and regression tests for accepted labels, lookalikes, and human acceptance. Do not exempt arbitrary names containing "AI" or "agent", whole email domains, or unmatched addresses supplied by a PR.
 
 ## Accept an agreement
 

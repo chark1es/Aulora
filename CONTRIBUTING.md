@@ -6,7 +6,7 @@ Read the [development guide](docs/development.md) for a working local frontend a
 
 Read [CLA.md](CLA.md), then follow the CLA bot's comment on your pull request. It checks the author and commit co-authors, records acceptance, and publishes the `CLA` status. Previous acceptance is reused while the agreement text is unchanged. The [bot guide](docs/cla-bot.md) covers missing identities and rechecks.
 
-Contributions prepared with coding assistants or agents are welcome under the same agreement. The person directing the work must review the result, have permission to submit it, and accept the CLA. Tools cannot accept for you, and using one alone does not require author or co-author attribution. Preserve third-party licenses and notices as described in the CLA.
+Contributions prepared with coding assistants or agents are welcome under the same agreement. The person directing the work must review the result, have permission to submit it, and accept the CLA. Tools cannot accept for you, and using one alone does not require author or co-author attribution. Optional tool co-author trailers follow the [recognized attribution conventions](docs/cla-bot.md#agent-co-author-attribution); human co-authors still accept separately. Preserve third-party licenses and notices as described in the CLA.
 
 ## Setup and checks
 
