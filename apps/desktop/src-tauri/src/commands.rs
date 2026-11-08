@@ -21,11 +21,24 @@ pub fn set_always_on_top(window: WebviewWindow, on: bool) -> Result<(), String> 
 /// Opens the separate always-on-top call window, or focuses it when it is
 /// already open. The main window keeps the call and stays as it is.
 ///
-/// Async because building a webview from a synchronous command deadlocks on
-/// Windows.
+/// Resolves `"window"` when an OS window is floating the call, and `"dock"` on
+/// Wayland, where the in-app call dock stays the floating surface. Async
+/// because building a webview from a synchronous command deadlocks on Windows.
 #[tauri::command]
-pub async fn open_pip_window(app: tauri::AppHandle, width: f64, height: f64) -> Result<(), String> {
-    pip_window::open(&app, width, height).map_err(|error| error.to_string())
+pub async fn open_pip_window(
+    app: tauri::AppHandle,
+    width: f64,
+    height: f64,
+) -> Result<&'static str, String> {
+    pip_window::open(&app, width, height)
+        .map(pip_window::PipSurface::as_str)
+        .map_err(|error| error.to_string())
+}
+
+/// Which floating surface this desktop offers for a call.
+#[tauri::command]
+pub fn pip_window_mode() -> &'static str {
+    pip_window::display_mode().as_str()
 }
 
 /// Closes the call window. The call itself keeps running.
@@ -38,6 +51,75 @@ pub fn close_pip_window(app: tauri::AppHandle) -> Result<(), String> {
 #[tauri::command]
 pub fn is_pip_window_open(app: tauri::AppHandle) -> bool {
     pip_window::is_open(&app)
+}
+
+/// Remembers the call window's place when the user lets go, and snaps it to a
+/// screen edge when it is close to one.
+#[tauri::command]
+pub fn snap_pip_window(window: WebviewWindow) -> Result<(), String> {
+    if window.label() != pip_window::LABEL {
+        return Err("snap_pip_window is only for the call window".to_string());
+    }
+    pip_window::snap_now(&window);
+    Ok(())
+}
+
+/// Resizes the call window from the web client's own resize handles. The shell
+/// clamps the size; a window manager may still refuse on a given compositor.
+#[tauri::command]
+pub fn set_pip_size(window: WebviewWindow, width: f64, height: f64) -> Result<(), String> {
+    if window.label() != pip_window::LABEL {
+        return Err("set_pip_size is only for the call window".to_string());
+    }
+    pip_window::resize(&window, width, height).map_err(|error| error.to_string())
+}
+
+/// Points the shell at the call window's frame channel (the fallback transport
+/// for webviews without a working loopback peer connection).
+#[tauri::command]
+pub fn register_pip_frames(
+    webview: tauri::Webview,
+    state: State<'_, pip_window::PipFrameState>,
+    channel: Channel<Vec<u8>>,
+    token: String,
+) -> Result<(), String> {
+    if webview.label() != pip_window::LABEL {
+        return Err("register_pip_frames is only for the call window".to_string());
+    }
+    state.register(token, channel)
+}
+
+/// Forgets the frame channel again when the call window goes away or re-mounts.
+#[tauri::command]
+pub fn unregister_pip_frames(
+    webview: tauri::Webview,
+    state: State<'_, pip_window::PipFrameState>,
+    token: String,
+) -> Result<(), String> {
+    if webview.label() != pip_window::LABEL {
+        return Err("unregister_pip_frames is only for the call window".to_string());
+    }
+    state.unregister(&token);
+    Ok(())
+}
+
+/// Forwards one raw JPEG frame from the main window to the call window. The
+/// payload is the `InvokeBody::Raw` bytes, never base64 or JSON.
+#[tauri::command]
+pub fn push_pip_frame(
+    webview: tauri::Webview,
+    state: State<'_, pip_window::PipFrameState>,
+    request: tauri::ipc::Request<'_>,
+) -> Result<(), String> {
+    if webview.label() != pip_window::MAIN_LABEL {
+        return Err("push_pip_frame is only for the app window".to_string());
+    }
+    match request.body() {
+        tauri::ipc::InvokeBody::Raw(bytes) => state.forward(bytes.clone()),
+        tauri::ipc::InvokeBody::Json(_) => {
+            Err("push_pip_frame expects raw frame bytes".to_string())
+        }
+    }
 }
 
 /// Shows and focuses the main window, e.g. from the call window's close button.

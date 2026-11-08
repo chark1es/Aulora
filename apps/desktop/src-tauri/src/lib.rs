@@ -14,6 +14,7 @@ mod capture_audio;
 mod commands;
 mod deep_link;
 mod menu;
+mod pip_geometry;
 mod pip_window;
 mod tray;
 mod updater;
@@ -62,11 +63,18 @@ pub fn run() {
         .manage(deep_link::DeepLinkState::default())
         .manage(updater::AppUpdateState::default())
         .manage(capture_audio::AudioCaptureState::default())
+        .manage(pip_window::PipFrameState::default())
         .invoke_handler(tauri::generate_handler![
             commands::set_always_on_top,
             commands::open_pip_window,
+            commands::pip_window_mode,
             commands::close_pip_window,
             commands::is_pip_window_open,
+            commands::snap_pip_window,
+            commands::set_pip_size,
+            commands::register_pip_frames,
+            commands::unregister_pip_frames,
+            commands::push_pip_frame,
             commands::focus_main_window,
             commands::toggle_fullscreen,
             commands::set_unread_badge,
@@ -122,6 +130,9 @@ pub fn run() {
                     event: tauri::WindowEvent::Destroyed,
                     ..
                 } if label == pip_window::LABEL => {
+                    // No webview is left to receive frames; the main window's
+                    // next push is a silent no-op until a new window registers.
+                    app.state::<pip_window::PipFrameState>().clear();
                     pip_window::emit_closed(app);
                 }
                 // A Dock click on macOS reopens the app and focuses the window.
