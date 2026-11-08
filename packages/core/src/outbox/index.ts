@@ -189,6 +189,7 @@ export class Outbox {
       ...(input.mentionCategoryIds !== undefined
         ? { mentionCategoryIds: [...input.mentionCategoryIds] }
         : {}),
+      ...(input.mentionRoleIds !== undefined ? { mentionRoleIds: [...input.mentionRoleIds] } : {}),
       ...(input.threadRootId !== undefined ? { threadRootId: input.threadRootId } : {}),
       ...(input.replyToId !== undefined ? { replyToId: input.replyToId } : {}),
       ...(input.attachments !== undefined ? { attachments: input.attachments } : {}),
