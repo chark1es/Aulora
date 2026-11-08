@@ -28,8 +28,10 @@ import {
   writeVoiceSettings,
 } from "../lib/voice/device-settings";
 import { sendLeaveBeacon } from "../lib/voice/leave-beacon";
+import { VoiceLevelsStore } from "../lib/voice/levels";
 import { listMediaDevices, onDeviceChange, resumeLevelMeterContext } from "../lib/voice/media";
 import { type PipControl, type PipSurface, useCallPip } from "./use-call-pip";
+import { VoiceLevelsProvider } from "./voice-levels";
 import { loadBrowserVoiceClientId, withScreenAudio } from "./voice-provider-utils";
 import { RemoteAudio } from "./voice-remote-audio";
 
@@ -101,7 +103,6 @@ const EMPTY_SNAPSHOT: VoiceSnapshot = {
   remoteStreams: new Map(),
   remoteScreens: new Map(),
   remoteSpeaking: new Set(),
-  micLevel: 0,
   localSpeaking: false,
   pending: false,
   error: null,
@@ -130,6 +131,7 @@ export function VoiceProvider({
 }: VoiceProviderProps) {
   const [clientId] = useState(loadBrowserVoiceClientId);
   const engineRef = useRef<VoiceEngine | null>(null);
+  const [levels] = useState(() => new VoiceLevelsStore());
   const [snapshot, setSnapshot] = useState<VoiceSnapshot>(EMPTY_SNAPSHOT);
   const [incoming, setIncoming] = useState<readonly CallView[]>([]);
   const [activeCalls, setActiveCalls] = useState<readonly CallView[]>([]);
@@ -159,6 +161,7 @@ export function VoiceProvider({
       clientId,
       getSettings: () => settingsRef.current,
       getIceServers: () => iceServersRef.current,
+      levels,
     });
     engineRef.current = engine;
     setSnapshot(engine.getSnapshot());
@@ -189,7 +192,7 @@ export function VoiceProvider({
       engine.dispose();
       engineRef.current = null;
     };
-  }, [client, clientId, userId]);
+  }, [client, clientId, levels, userId]);
 
   // Load local device settings, enumerate devices and follow device changes.
   useEffect(() => {
@@ -556,22 +559,24 @@ export function VoiceProvider({
 
   return (
     <VoiceContext.Provider value={value}>
-      {children}
-      <SwitchDeviceCallModal
-        open={switchPrompt !== null}
-        onCancel={() => {
-          settleSwitch(false);
-        }}
-        onConfirm={() => {
-          settleSwitch(true);
-        }}
-      />
-      <RemoteAudio
-        streams={audioStreams}
-        deafened={snapshot.local.deafened}
-        outputDeviceId={settings.outputDeviceId}
-        outputVolume={settings.outputVolume}
-      />
+      <VoiceLevelsProvider store={levels}>
+        {children}
+        <SwitchDeviceCallModal
+          open={switchPrompt !== null}
+          onCancel={() => {
+            settleSwitch(false);
+          }}
+          onConfirm={() => {
+            settleSwitch(true);
+          }}
+        />
+        <RemoteAudio
+          streams={audioStreams}
+          deafened={snapshot.local.deafened}
+          outputDeviceId={settings.outputDeviceId}
+          outputVolume={settings.outputVolume}
+        />
+      </VoiceLevelsProvider>
     </VoiceContext.Provider>
   );
 }

@@ -45,6 +45,11 @@ export interface PeerMeshHost {
   isScreenSharing(peerId: string): boolean;
   /** The chosen stream quality: the most a single viewer's copy may use. */
   getScreenProfile(): ScreenBudget;
+  /**
+   * A remote participant's audio level, at meter rate. Kept out of `onChange`:
+   * it must not rebuild the call snapshot ten times a second.
+   */
+  onRemoteLevel(userId: string, level: number): void;
 }
 
 /** What a screen share may spend, per viewer. */
@@ -221,6 +226,7 @@ export class PeerMesh {
       if (event.track.kind === "audio") {
         peer.levelUnsub?.();
         peer.levelUnsub = createLevelMeter(peer.stream, (level) => {
+          this.host.onRemoteLevel(remoteId, level);
           this.setRemoteLevel(remoteId, level);
         });
       }
@@ -403,6 +409,7 @@ export class PeerMesh {
 
   private closePeer(remoteId: string, peer: Peer): void {
     peer.levelUnsub?.();
+    this.host.onRemoteLevel(remoteId, 0);
     this.remoteSpeaking.delete(remoteId);
     peer.pc.onicecandidate = null;
     peer.pc.ontrack = null;

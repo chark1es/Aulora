@@ -12,6 +12,7 @@ import {
 } from "@aulora/core";
 import { mediaMessage, messageOf } from "./call-errors";
 import type { VoiceEngineOptions, VoiceLocalState, VoiceSnapshot } from "./call-types";
+import { VoiceLevelsStore } from "./levels";
 import { LocalCamera } from "./local-camera";
 import { applySinkId, createLevelMeter } from "./media";
 import { type MicPipeline, micProcessingKey, openMicPipeline } from "./mic-pipeline";
@@ -69,7 +70,8 @@ export class VoiceEngine {
   private micSending: MediaStreamTrack | null = null;
   /** Serializes sender swaps so quick mute/unmute lands in the requested order. */
   private micSync: Promise<void> = Promise.resolve();
-  private micLevel = 0;
+  /** High-frequency values that must not rebuild the context value. */
+  private readonly levels: VoiceLevelsStore;
   private localSpeaking = false;
   private levelUnsub: (() => void) | null = null;
   private pending = false;
@@ -94,6 +96,7 @@ export class VoiceEngine {
     this.getSettings = options.getSettings;
     this.getIceServers = options.getIceServers ?? (() => DEFAULT_ICE);
     this.onError = options.onError ?? (() => undefined);
+    this.levels = options.levels ?? new VoiceLevelsStore();
     this.mesh = new PeerMesh({
       userId: this.userId,
       getCallId: () => this.callId,
@@ -106,6 +109,9 @@ export class VoiceEngine {
       },
       onChange: () => {
         this.emit();
+      },
+      onRemoteLevel: (userId, level) => {
+        this.levels.setRemoteLevel(userId, level);
       },
       getAudioTrack: () => this.micSending,
       getVideoTrack: (peerId) =>
@@ -186,7 +192,6 @@ export class VoiceEngine {
       remoteStreams: this.mesh.remoteStreams,
       remoteScreens: this.screen.relayed,
       remoteSpeaking: this.mesh.remoteSpeaking,
-      micLevel: this.micLevel,
       localSpeaking: this.localSpeaking,
       pending: this.pending,
       error: this.error,
@@ -337,6 +342,7 @@ export class VoiceEngine {
     }
     this.mesh.reset();
     this.stopLevelMeter();
+    this.levels.reset();
     this.micPipeline?.stop();
     this.micPipeline = null;
     this.micStream?.getTracks().forEach((track) => {
@@ -381,22 +387,17 @@ export class VoiceEngine {
     if (this.micStream === null) {
       return;
     }
-    // Track the last value pushed into the shared context so a level that only
-    // jitters within a whole percent does not re-render every voice consumer
-    // (the whole chat tree) on every meter tick.
-    let emittedLevel = -1;
-    let emittedSpeaking = false;
+    // The level goes to the external store, which only wakes the meter that
+    // reads it. The snapshot changes only when the speaking threshold is
+    // crossed, so a 10 Hz meter tick no longer re-renders every voice consumer.
     this.levelUnsub = createLevelMeter(this.micStream, (level) => {
-      const quantized = Math.round(level * 100) / 100;
       const transmitting = !this.local.muted && (!this.pushToTalk || this.talking);
       const speaking = transmitting && (this.localSpeaking ? level > 0.035 : level > 0.08);
-      this.micLevel = quantized;
-      this.localSpeaking = speaking;
-      if (quantized === emittedLevel && speaking === emittedSpeaking) {
+      this.levels.setMicLevel(level);
+      if (speaking === this.localSpeaking) {
         return;
       }
-      emittedLevel = quantized;
-      emittedSpeaking = speaking;
+      this.localSpeaking = speaking;
       this.emit();
     });
   }
@@ -404,7 +405,7 @@ export class VoiceEngine {
   private stopLevelMeter(): void {
     this.levelUnsub?.();
     this.levelUnsub = null;
-    this.micLevel = 0;
+    this.levels.setMicLevel(0);
     this.localSpeaking = false;
   }
 
