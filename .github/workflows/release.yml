@@ -21,6 +21,12 @@ on:
           internal, beta, production). Empty skips the upload.
         type: string
         default: ''
+      rollout:
+        description: >-
+          Desktop updater rollout percentage (0-100). Empty or 100 offers the
+          update to every device.
+        type: string
+        default: ''
 
 permissions:
   contents: read
@@ -118,6 +124,7 @@ jobs:
       GH_TOKEN: ${{ github.token }}
       RELEASE_VERSION: ${{ needs.plan.outputs.version }}
       RELEASE_NOTES: ${{ inputs.notes }}
+      RELEASE_ROLLOUT: ${{ inputs.rollout }}
     steps:
       - uses: actions/checkout@v7
         with:

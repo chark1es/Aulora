@@ -19,6 +19,20 @@ describe("release manifest", () => {
     ).toThrow(/sig file/);
   });
 
+  it("includes an optional, validated rollout percentage", () => {
+    const base = {
+      version: "1.2.3",
+      pubDate: "2026-09-29T00:00:00.000Z",
+      platforms: [
+        { target: "darwin-aarch64", url: "https://example.com/a", signature: "sig" },
+      ],
+    };
+    expect(buildReleaseManifest(base)).not.toHaveProperty("rollout");
+    expect(buildReleaseManifest({ ...base, rollout: 25 }).rollout).toBe(25);
+    expect(buildReleaseManifest({ ...base, rollout: 99.6 }).rollout).toBe(100);
+    expect(() => buildReleaseManifest({ ...base, rollout: 101 })).toThrow(/0 to 100/);
+  });
+
   it("builds a feed the workspace updater can plan from", async () => {
     const dir = await mkdtemp(join(tmpdir(), "aulora-release-"));
     try {
