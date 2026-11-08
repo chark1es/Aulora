@@ -22,10 +22,22 @@ mod window;
 use tauri::webview::{PermissionKind, PermissionResponse};
 use tauri::Manager;
 
-/// Auto-allows the media and notification prompts the bundled client asks for
-/// in its own main webview. The OS-level prompt (the macOS microphone/camera
-/// TCC dialog) is the native one and is untouched; anything else keeps the
-/// webview's default prompt.
+/// Auto-answers the permission requests the bundled client makes in its own
+/// main webview. Answering `Default` hands the request to the web engine, which
+/// draws a prompt naming the bundle's internal origin (`tauri://localhost` on
+/// macOS/Linux, `http://tauri.localhost` on Windows). That origin is an
+/// implementation detail the person never sees anywhere else, so every kind the
+/// client actually uses is answered here instead: capture (microphone, camera,
+/// screen), notification display, clipboard reads (the connect screen's paste
+/// button), autoplay for call and notification audio, and repeated attachment
+/// downloads.
+///
+/// Every other kind is denied rather than deferred: the client does not use
+/// those APIs, and a dialog would only leak the origin. The OS-level prompt (the
+/// macOS microphone/camera TCC dialog) is the native one and is untouched.
+///
+/// The call picture-in-picture webview plays what the main webview captured and
+/// asks for nothing, so it keeps the engine's default answer.
 fn permission_response<R: tauri::Runtime>(
     webview: &tauri::Webview<R>,
     kind: PermissionKind,
@@ -34,10 +46,14 @@ fn permission_response<R: tauri::Runtime>(
         return PermissionResponse::Default;
     }
     match kind {
-        PermissionKind::Microphone | PermissionKind::Camera | PermissionKind::Notifications => {
-            PermissionResponse::Allow
-        }
-        _ => PermissionResponse::Default,
+        PermissionKind::Microphone
+        | PermissionKind::Camera
+        | PermissionKind::DisplayCapture
+        | PermissionKind::Notifications
+        | PermissionKind::ClipboardRead
+        | PermissionKind::Autoplay
+        | PermissionKind::AutomaticDownloads => PermissionResponse::Allow,
+        _ => PermissionResponse::Deny,
     }
 }
 
