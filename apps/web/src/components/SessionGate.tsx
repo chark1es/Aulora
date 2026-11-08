@@ -14,7 +14,9 @@ import { useStuckTimeout } from "../lib/use-stuck-timeout";
 import {
   ClientVersionNotice,
   ClientVersionRequired,
+  ServerUpdateRequired,
   useClientVersionPolicy,
+  useOutdatedServer,
 } from "./ClientVersionGate";
 import {
   ConnectionRecoveryActions,
@@ -41,6 +43,7 @@ export interface SessionGateProps {
 /** Chooses between the sign-in screen and the signed-in shell from the session. */
 export function SessionGate({ profile, authClient, client, connection }: SessionGateProps) {
   const clientVersion = useClientVersionPolicy();
+  const outdatedServer = useOutdatedServer();
   const session = authClient.useSession();
   const actions = useMemo(() => authActionsFromClient(authClient), [authClient]);
   const { isAuthenticated: convexAuthenticated } = useConvexAuth();
@@ -96,6 +99,9 @@ export function SessionGate({ profile, authClient, client, connection }: Session
   // hook order stays stable when the config query resolves.
   if (clientVersion !== null && clientVersionState(CLIENT_VERSION, clientVersion) === "required") {
     return <ClientVersionRequired policy={clientVersion} />;
+  }
+  if (outdatedServer !== null) {
+    return <ServerUpdateRequired serverVersion={outdatedServer.version} recovery={recovery} />;
   }
 
   if (session.isPending) {

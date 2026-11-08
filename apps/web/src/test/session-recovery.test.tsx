@@ -65,7 +65,9 @@ vi.mock("convex/react", () => {
       isAuthenticated: harness.server.convexAuthenticated,
       isRefreshing: false,
     }),
-    useQuery: () => ({ member: { userId: "u1" }, isOwner: false }),
+    // One answer for every query. `features` marks a current server; without it
+    // the session gate would treat this one as older than the app.
+    useQuery: () => ({ member: { userId: "u1" }, isOwner: false, features: {} }),
   };
 });
 

@@ -16,6 +16,11 @@ import {
   isDesktop,
 } from "../lib/desktop";
 
+import {
+  ConnectionRecoveryActions,
+  type ConnectionRecoveryActionsProps,
+} from "./ConnectionRecoveryActions";
+
 const DISMISSED_KEY = "aulora:client-version-dismissed";
 
 /** The server's advertised compatibility policy, or `null` while it loads. */
@@ -28,6 +33,22 @@ export function useClientVersionPolicy(): ClientVersionPolicy | null {
     minClientVersion: config.clientVersion?.minClientVersion ?? null,
     recommendedClientVersion: config.clientVersion?.recommendedClientVersion ?? null,
   };
+}
+
+/**
+ * The connected server's version when it is older than this client can talk to,
+ * otherwise `null` (also while the config loads). Servers from before this
+ * release never send `features`, and the shell relies on the queries that
+ * arrived with it, so such a server would break the app instead of degrading.
+ * New clients keep working against new servers and old clients against new
+ * servers; only this newer-client-than-server pairing needs the screen.
+ */
+export function useOutdatedServer(): { readonly version: string } | null {
+  const config = useQuery(api.server.publicConfig, {});
+  if (config === undefined || config.features !== undefined) {
+    return null;
+  }
+  return { version: config.version };
 }
 
 /** Runs the platform's update path: the signed desktop updater or a reload. */
@@ -108,6 +129,42 @@ export function ClientVersionRequired({ policy }: { readonly policy: ClientVersi
         <Button loading={action.busy} onClick={() => void action.run()}>
           {action.desktop ? "Update now" : "Reload to update"}
         </Button>
+      </Card>
+    </div>
+  );
+}
+
+/**
+ * Shown when this app is newer than the server it is connected to. The fix is
+ * on the server, so the person is told who has to act and can switch or remove
+ * the workspace instead of being left on a broken screen.
+ */
+export function ServerUpdateRequired({
+  serverVersion,
+  recovery,
+}: {
+  readonly serverVersion: string;
+  readonly recovery: ConnectionRecoveryActionsProps;
+}) {
+  return (
+    <div className="pane flex flex-1 flex-col items-center justify-center gap-4 px-6 text-center">
+      <Card
+        className="flex w-full max-w-md flex-col gap-4 p-6"
+        data-testid="server-update-required"
+      >
+        <span className="mx-auto flex h-11 w-11 items-center justify-center rounded-full bg-accent-soft text-accent">
+          <Icon name="download" size={22} />
+        </span>
+        <div className="flex flex-col gap-1.5">
+          <Text size="lg" className="font-semibold">
+            This server needs an update
+          </Text>
+          <Text tone="muted" size="sm">
+            The server runs Aulora {versionLabel(serverVersion)}, which is older than this app (
+            {RUNNING_VERSION}). Ask a workspace administrator to update the server, then reconnect.
+          </Text>
+        </div>
+        <ConnectionRecoveryActions {...recovery} />
       </Card>
     </div>
   );
