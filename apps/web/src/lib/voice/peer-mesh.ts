@@ -7,6 +7,7 @@ import {
 } from "@aulora/core";
 import { messageOf } from "./call-errors";
 import { createLevelMeter } from "./media";
+import { type PeerLinkStats, type RtpCounters, type RtpStatsSample, summarizeStats } from "./stats";
 
 interface Peer {
   readonly pc: RTCPeerConnection;
@@ -157,6 +158,8 @@ export class PeerMesh {
   readonly remoteStreams = new Map<string, MediaStream>();
   readonly remoteSpeaking = new Set<string>();
   private readonly processedSignals = new Set<string>();
+  /** Cumulative RTP counters per peer, so loss is measured per interval. */
+  private readonly statBaselines = new Map<string, RtpCounters>();
 
   constructor(private readonly host: PeerMeshHost) {}
 
@@ -259,6 +262,33 @@ export class PeerMesh {
         tuneAudioSender(transceiver.sender);
       }
     }
+  }
+
+  /**
+   * Samples every peer's inbound audio for loss, RTT and jitter. Meant for a
+   * low-frequency timer in an active call; each report is read once and the
+   * cumulative counters are kept so loss is measured over the interval.
+   */
+  async collectStats(): Promise<Map<string, PeerLinkStats>> {
+    const result = new Map<string, PeerLinkStats>();
+    for (const [peerId, peer] of this.peers) {
+      try {
+        const report = await peer.pc.getStats();
+        const samples: RtpStatsSample[] = [];
+        report.forEach((entry) => {
+          samples.push(entry);
+        });
+        const summarized = summarizeStats(samples, this.statBaselines.get(peerId) ?? null);
+        if (summarized === null) {
+          continue;
+        }
+        this.statBaselines.set(peerId, summarized.counters);
+        result.set(peerId, summarized.stats);
+      } catch {
+        // A closing connection reports nothing; try again next tick.
+      }
+    }
+    return result;
   }
 
   private async createPeer(
@@ -493,6 +523,7 @@ export class PeerMesh {
 
   private closePeer(remoteId: string, peer: Peer): void {
     peer.levelUnsub?.();
+    this.statBaselines.delete(remoteId);
     this.host.onRemoteLevel(remoteId, 0);
     this.remoteSpeaking.delete(remoteId);
     peer.pc.onicecandidate = null;

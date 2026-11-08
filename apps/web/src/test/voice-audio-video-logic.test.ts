@@ -344,3 +344,92 @@ describe("camera tuning by mesh size", () => {
     expect(cameraTuningFor(budget, 0)).toEqual(cameraTuningFor(budget, 1));
   });
 });
+
+describe("PeerMesh.collectStats", () => {
+  type MeshPeer = Parameters<PeerMesh["peers"]["set"]>[1];
+
+  it("measures loss over the interval and reads the selected pair's RTT", async () => {
+    const reports = [
+      [
+        {
+          type: "inbound-rtp",
+          kind: "audio",
+          packetsReceived: 900,
+          packetsLost: 100,
+          jitter: 0.02,
+        },
+        {
+          type: "candidate-pair",
+          state: "succeeded",
+          selected: true,
+          currentRoundTripTime: 0.12,
+        },
+      ],
+      [
+        {
+          type: "inbound-rtp",
+          kind: "audio",
+          packetsReceived: 1_000,
+          packetsLost: 120,
+          jitter: 0.03,
+        },
+        {
+          type: "candidate-pair",
+          state: "succeeded",
+          selected: true,
+          currentRoundTripTime: 0.12,
+        },
+      ],
+    ];
+    let call = 0;
+    const peer = {
+      pc: {
+        async getStats() {
+          const samples = reports[call] ?? [];
+          call += 1;
+          return {
+            forEach(callback: (value: unknown) => void) {
+              for (const sample of samples) {
+                callback(sample);
+              }
+            },
+          };
+        },
+      },
+      stream: { getTracks: () => [] },
+      initiator: true,
+      pendingCandidates: [],
+      connection: "connected",
+      levelUnsub: null,
+      session: 1,
+    } as unknown as MeshPeer;
+    const mesh = new PeerMesh({} as PeerMeshHost);
+    mesh.peers.set("them", peer);
+
+    await mesh.collectStats();
+    const second = await mesh.collectStats();
+    const stats = second.get("them");
+    expect(stats?.packetLoss).toBeCloseTo(20 / 120);
+    expect(stats?.roundTripTimeMs).toBeCloseTo(120);
+    expect(stats?.jitterMs).toBeCloseTo(30);
+  });
+
+  it("skips a peer whose connection is closing", async () => {
+    const peer = {
+      pc: {
+        async getStats(): Promise<never> {
+          throw new Error("closed");
+        },
+      },
+      stream: { getTracks: () => [] },
+      initiator: true,
+      pendingCandidates: [],
+      connection: "failed",
+      levelUnsub: null,
+      session: 1,
+    } as unknown as MeshPeer;
+    const mesh = new PeerMesh({} as PeerMeshHost);
+    mesh.peers.set("them", peer);
+    await expect(mesh.collectStats()).resolves.toEqual(new Map());
+  });
+});

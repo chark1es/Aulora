@@ -90,6 +90,10 @@ export interface VoiceContextValue extends VoiceSnapshot {
   updateSettings(_partial: Partial<VoiceDeviceSettings>): Promise<void>;
   refreshDevices(): Promise<void>;
   clearError(): void;
+  /** Hides an automatic quality-reduction notice, keeping the reduction. */
+  dismissQualityNotice(): void;
+  /** Restores the camera and stops automatic degradation for this call. */
+  undoQualityChange(): void;
 }
 
 const VoiceContext = createContext<VoiceContextValue | null>(null);
@@ -107,6 +111,7 @@ const EMPTY_SNAPSHOT: VoiceSnapshot = {
   pending: false,
   error: null,
   mediaError: null,
+  qualityNotice: null,
 };
 
 export interface VoiceProviderProps {
@@ -451,6 +456,14 @@ export function VoiceProvider({
     engineRef.current?.clearError();
   }, []);
 
+  const dismissQualityNotice = useCallback(() => {
+    engineRef.current?.dismissQualityNotice();
+  }, []);
+
+  const undoQualityChange = useCallback(() => {
+    engineRef.current?.undoQualityChange();
+  }, []);
+
   const canConnect = policy.enabled && hasPermission(permissions, Permission.Connect);
   const canSpeak = hasPermission(permissions, Permission.Speak);
   const canStream = policy.screenShareEnabled && hasPermission(permissions, Permission.Stream);
@@ -520,6 +533,8 @@ export function VoiceProvider({
       updateSettings,
       refreshDevices,
       clearError,
+      dismissQualityNotice,
+      undoQualityChange,
     }),
     [
       snapshot,
@@ -551,6 +566,8 @@ export function VoiceProvider({
       updateSettings,
       refreshDevices,
       clearError,
+      dismissQualityNotice,
+      undoQualityChange,
     ],
   );
 

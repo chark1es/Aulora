@@ -13,12 +13,13 @@ import {
 } from "@aulora/core";
 import { mediaMessage, messageOf } from "./call-errors";
 import type { VoiceEngineOptions, VoiceLocalState, VoiceSnapshot } from "./call-types";
-import { VoiceLevelsStore } from "./levels";
+import { type LinkQuality, VoiceLevelsStore } from "./levels";
 import { LocalCamera } from "./local-camera";
 import { applySinkId, createLevelMeter } from "./media";
 import { type MicPipeline, micProcessingKey, openMicPipeline } from "./mic-pipeline";
 import { DEFAULT_ICE, PeerMesh } from "./peer-mesh";
 import { ScreenShare } from "./screen-share";
+import { QualityGovernor, qualityOf, STATS_INTERVAL_MS, worstQuality } from "./stats";
 
 export type { VoiceEngineOptions, VoiceLocalState, VoiceSnapshot } from "./call-types";
 
@@ -99,6 +100,12 @@ export class VoiceEngine {
   private callUnsub: (() => void) | null = null;
   private signalUnsub: (() => void) | null = null;
   private heartbeat: ReturnType<typeof setInterval> | null = null;
+  private statsTimer: ReturnType<typeof setInterval> | null = null;
+  /** Steps the camera down when the link stays poor (see `stats.ts`). */
+  private governor = new QualityGovernor();
+  /** Multiplier on the camera budget while the governor has stepped it down. */
+  private cameraTrim = 1;
+  private qualityNotice: string | null = null;
 
   constructor(options: VoiceEngineOptions) {
     this.port = options.port;
@@ -137,8 +144,9 @@ export class VoiceEngine {
       getCameraProfile: () => {
         const resolution = this.getSettings().videoResolution;
         return {
-          // What a single peer gets at this capture size; the mesh thins it.
-          maxBitrate: CAMERA_BITRATE[resolution],
+          // What a single peer gets at this capture size; the mesh thins it,
+          // and the quality governor may trim the base while the link is poor.
+          maxBitrate: Math.round(CAMERA_BITRATE[resolution] * this.cameraTrim),
           frameRate: resolutionConstraints(resolution).frameRate,
         };
       },
@@ -217,6 +225,7 @@ export class VoiceEngine {
       pending: this.pending,
       error: this.error,
       mediaError: this.mediaError,
+      qualityNotice: this.qualityNotice,
     };
   }
 
@@ -340,6 +349,10 @@ export class VoiceEngine {
         void this.port.callHeartbeat({ callId: this.callId }).catch(() => undefined);
       }
     }, HEARTBEAT_MS);
+    this.governor = new QualityGovernor();
+    this.cameraTrim = 1;
+    this.qualityNotice = null;
+    this.startStatsSampler();
     const settings = this.getSettings();
     this.local = { ...this.local, muted: settings.joinMuted };
     this.pushToTalk = settings.pushToTalk;
@@ -361,6 +374,10 @@ export class VoiceEngine {
       clearInterval(this.heartbeat);
       this.heartbeat = null;
     }
+    this.stopStatsSampler();
+    this.governor = new QualityGovernor();
+    this.cameraTrim = 1;
+    this.qualityNotice = null;
     this.mesh.reset();
     this.stopLevelMeter();
     this.levels.reset();
@@ -428,6 +445,75 @@ export class VoiceEngine {
     this.levelUnsub = null;
     this.levels.setMicLevel(0);
     this.localSpeaking = false;
+  }
+
+  // ---- Link quality and auto-degrade ---------------------------------------
+
+  private startStatsSampler(): void {
+    this.stopStatsSampler();
+    // Only in a call, and only every few seconds: getStats walks every stream.
+    this.statsTimer = setInterval(() => {
+      void this.sampleStats();
+    }, STATS_INTERVAL_MS);
+  }
+
+  private stopStatsSampler(): void {
+    if (this.statsTimer !== null) {
+      clearInterval(this.statsTimer);
+      this.statsTimer = null;
+    }
+  }
+
+  /**
+   * Publishes each peer's measured quality to the level store and walks the
+   * conservative degrade ladder when the worst link stays poor.
+   */
+  private async sampleStats(): Promise<void> {
+    if (this.callId === null) {
+      return;
+    }
+    const stats = await this.mesh.collectStats();
+    const qualities: LinkQuality[] = [];
+    for (const [peerId, link] of stats) {
+      const quality = qualityOf(link);
+      this.levels.setQuality(peerId, quality);
+      qualities.push(quality);
+    }
+    const action = this.governor.sample(worstQuality(qualities));
+    if (action === "reduce") {
+      this.cameraTrim = 0.5;
+      this.qualityNotice =
+        "Your connection is struggling, so the camera quality was lowered to keep the call clear.";
+      void this.mesh.refreshVideo();
+      this.emit();
+    } else if (action === "audio-only") {
+      this.qualityNotice =
+        "Your connection is struggling, so the camera was turned off. Audio keeps going.";
+      void this.setCamera(false);
+    }
+  }
+
+  /** Hides the quality notice, keeping whatever reduction is in place. */
+  dismissQualityNotice(): void {
+    if (this.qualityNotice === null) {
+      return;
+    }
+    this.qualityNotice = null;
+    this.emit();
+  }
+
+  /** Undoes an automatic reduction and stops degrading for the rest of the call. */
+  undoQualityChange(): void {
+    const wasAudioOnly = this.governor.currentStage === "audioOnly";
+    this.governor.suppress();
+    this.cameraTrim = 1;
+    this.qualityNotice = null;
+    void this.mesh.refreshVideo();
+    if (wasAudioOnly) {
+      void this.setCamera(true);
+    } else {
+      this.emit();
+    }
   }
 
   // ---- Media controls ------------------------------------------------------

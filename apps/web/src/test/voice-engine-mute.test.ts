@@ -23,6 +23,7 @@ const mock = vi.hoisted(() => {
     stream,
     levels: [] as ((level: number) => void)[],
     applied: [] as unknown[],
+    stats: new Map<string, { packetLoss: number; roundTripTimeMs: number; jitterMs: number }>(),
   };
 });
 
@@ -55,6 +56,9 @@ vi.mock("../lib/voice/peer-mesh", () => ({
     async refreshVideo(): Promise<void> {}
     async applyAudioTrack(track: unknown): Promise<void> {
       mock.applied.push(track);
+    }
+    async collectStats(): Promise<typeof mock.stats> {
+      return mock.stats;
     }
   },
 }));
@@ -179,5 +183,37 @@ describe("mute stops sending", () => {
     await settle();
     expect(mock.applied).toHaveLength(0);
     engine.dispose();
+  });
+});
+
+describe("automatic quality reduction", () => {
+  const INTERVAL = 3_000;
+
+  beforeEach(() => {
+    mock.stats.clear();
+  });
+
+  it("lowers the camera quality, then turns the camera off, and can be undone", async () => {
+    mock.stats.set("them", { packetLoss: 0.25, roundTripTimeMs: 520, jitterMs: 40 });
+    vi.useFakeTimers();
+    try {
+      const engine = await joinedEngine(fakePort());
+
+      await vi.advanceTimersByTimeAsync(INTERVAL * 3 + 100);
+      expect(engine.getSnapshot().qualityNotice).toContain("lowered");
+
+      await vi.advanceTimersByTimeAsync(INTERVAL * 3 + 100);
+      expect(engine.getSnapshot().qualityNotice).toContain("turned off");
+
+      engine.undoQualityChange();
+      expect(engine.getSnapshot().qualityNotice).toBeNull();
+
+      // Undo suppresses further degradation for this call.
+      await vi.advanceTimersByTimeAsync(INTERVAL * 6 + 100);
+      expect(engine.getSnapshot().qualityNotice).toBeNull();
+      engine.dispose();
+    } finally {
+      vi.useRealTimers();
+    }
   });
 });

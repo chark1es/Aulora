@@ -27,6 +27,11 @@ export interface VoiceSnapshot {
   readonly error: string | null;
   /** Set when the microphone/camera could not be acquired for this call. */
   readonly mediaError: string | null;
+  /**
+   * An automatic quality reduction the person can undo or dismiss, e.g. the
+   * camera was turned off because the link stayed poor. `null` when none.
+   */
+  readonly qualityNotice: string | null;
 }
 
 export interface VoiceEngineOptions {
