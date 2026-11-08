@@ -6,8 +6,10 @@ import {
   decideContextMenu,
   handleContextMenuEvent,
   isEditableTarget,
+  isShellUrl,
   mediaFileName,
   mediaTarget,
+  resolveLinkHref,
 } from "./context-menu-policy";
 
 interface MockEvent extends ContextMenuEventLike {
@@ -237,6 +239,27 @@ describe("handleContextMenuEvent", () => {
     expect(d.copyText).toHaveBeenCalledWith("https://example.com/x");
   });
 
+  it("opens and copies in-app paths at the workspace origin", () => {
+    const event = eventFor(element('<a href="/invite/ABC">x</a>'));
+    const d = deps();
+    handleContextMenuEvent(event, d);
+    const menu = d.openMenu.mock.calls[0]?.[0] as {
+      items: { id: string; onSelect: () => void }[];
+    };
+    const expected = new URL("/invite/ABC", window.location.origin).href;
+    menu.items[0]?.onSelect();
+    expect(d.openExternal).toHaveBeenCalledWith(expected);
+    menu.items[1]?.onSelect();
+    expect(d.copyText).toHaveBeenCalledWith(expected);
+  });
+
+  it("suppresses the menu for a link to the shell itself", () => {
+    const event = eventFor(element('<a href="http://tauri.localhost/invite/ABC">x</a>'));
+    const d = deps();
+    expect(handleContextMenuEvent(event, d)).toEqual({ action: "suppress", reason: "plain" });
+    expect(d.openMenu).not.toHaveBeenCalled();
+  });
+
   it("disables address actions for blob media but still saves it", () => {
     const event = eventFor(
       element('<img data-context-menu-media src="blob:https://app/1" alt="cat.png" />'),
@@ -295,5 +318,68 @@ describe("menu helpers", () => {
       null,
     );
     expect(menu.items.find((item) => item.id === "select-all")?.disabled).toBe(true);
+  });
+});
+
+describe("resolveLinkHref", () => {
+  it("turns an in-app path into a workspace URL", () => {
+    expect(resolveLinkHref("/invite/ABC", "https://chat.acme.com")).toBe(
+      "https://chat.acme.com/invite/ABC",
+    );
+    expect(resolveLinkHref("?channel=c1", "https://chat.acme.com")).toBe(
+      "https://chat.acme.com/?channel=c1",
+    );
+  });
+
+  it("keeps an absolute http(s) link unchanged", () => {
+    expect(resolveLinkHref("https://example.com/x", "")).toBe("https://example.com/x");
+  });
+
+  it("builds nothing from a relative path with no known origin", () => {
+    expect(resolveLinkHref("/invite/ABC", "")).toBeNull();
+    expect(resolveLinkHref("#section", "")).toBeNull();
+    expect(resolveLinkHref("   ", "https://chat.acme.com")).toBeNull();
+  });
+
+  it("refuses the shell's own schemes and hosts", () => {
+    for (const url of [
+      "tauri://localhost/x",
+      "asset://localhost/x",
+      "ipc://localhost/x",
+      "file:///etc/passwd",
+      "http://tauri.localhost/x",
+      "http://asset.localhost/x",
+      "http://ipc.localhost/x",
+      "//tauri.localhost/x",
+    ]) {
+      expect(resolveLinkHref(url, "https://chat.acme.com")).toBeNull();
+    }
+  });
+
+  it("refuses non-web schemes instead of handing them to open_external", () => {
+    expect(resolveLinkHref("mailto:team@acme.com", "https://chat.acme.com")).toBeNull();
+    expect(resolveLinkHref("javascript:alert(1)", "https://chat.acme.com")).toBeNull();
+  });
+});
+
+describe("isShellUrl", () => {
+  it("recognises the shell's schemes and bundled-asset hosts", () => {
+    for (const url of [
+      "tauri://localhost/",
+      "asset://localhost/",
+      "ipc://localhost/",
+      "file:///tmp/x",
+      "http://tauri.localhost/",
+      "http://asset.localhost/",
+      "http://ipc.localhost/",
+    ]) {
+      expect(isShellUrl(url)).toBe(true);
+    }
+  });
+
+  it("leaves workspace and third-party URLs alone", () => {
+    expect(isShellUrl("https://chat.acme.com/invite/ABC")).toBe(false);
+    expect(isShellUrl("/invite/ABC")).toBe(false);
+    expect(isShellUrl("not a url")).toBe(false);
   });
 });

@@ -12,6 +12,7 @@ import { type FocusEvent, type FormEvent, useState } from "react";
 import { api } from "../../../../packages/convex/convex/_generated/api";
 import type { AuthActions } from "../lib/auth-client";
 import { describeAuthError, takeAuthErrorFromUrl } from "../lib/auth-errors";
+import { authCallbackUrl } from "../lib/public-origin";
 import {
   AuthButton,
   AuthDivider,
@@ -39,10 +40,6 @@ function hostOf(baseUrl: string): string {
   } catch {
     return baseUrl;
   }
-}
-
-function callbackUrl(): string {
-  return typeof window === "undefined" ? "http://localhost" : window.location.origin;
 }
 
 interface AuthFailure {
@@ -115,8 +112,8 @@ function useSignInForm(actions: AuthActions) {
     return () => {
       void run(providerId, () =>
         type === "oauth"
-          ? actions.signInSocial({ provider: providerId, callbackURL: callbackUrl() })
-          : actions.signInOAuth2({ providerId, callbackURL: callbackUrl() }),
+          ? actions.signInSocial({ provider: providerId, callbackURL: authCallbackUrl() })
+          : actions.signInOAuth2({ providerId, callbackURL: authCallbackUrl() }),
       );
     };
   }

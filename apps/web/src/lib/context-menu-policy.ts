@@ -28,6 +28,8 @@
  * suppressed case.
  */
 
+import { publicOrigin } from "./public-origin";
+
 export type ContextMenuMediaKind = "image" | "video" | "audio";
 
 export type ContextMenuTarget =
@@ -89,6 +91,15 @@ export const TEXT_SCOPE_ATTRIBUTE = "data-context-menu-text";
 const MEDIA_SELECTOR = `img[${MEDIA_ATTRIBUTE}], video[${MEDIA_ATTRIBUTE}], audio[${MEDIA_ATTRIBUTE}]`;
 const TEXT_SCOPE_SELECTOR = `[${TEXT_SCOPE_ATTRIBUTE}], p, pre, blockquote, li`;
 const OPENABLE_URL = /^https?:\/\//i;
+// The shell serves its own bundle and IPC from these; a link action must never
+// hand them to `open_external` or the clipboard, where they only name the
+// bundle's internal origin and work for nobody else.
+const SHELL_SCHEME = /^(?:tauri|asset|ipc|file):/i;
+const SHELL_HOSTS: Readonly<Record<string, true>> = {
+  "tauri.localhost": true,
+  "asset.localhost": true,
+  "ipc.localhost": true,
+};
 
 const TEXT_INPUT_TYPES: Readonly<Record<string, true>> = {
   text: true,
@@ -156,12 +167,52 @@ export function linkTarget(element: Element | null): { href: string } | null {
     return null;
   }
   const href = anchor.getAttribute("href");
+  const resolved = href === null ? null : resolveLinkHref(href);
   // The shell's `open_external` only accepts http(s); a dead "Open link" item
-  // is worse than no menu, so other schemes stay suppressed.
-  if (href === null || !OPENABLE_URL.test(href)) {
+  // is worse than no menu, so anything else stays suppressed.
+  return resolved === null ? null : { href: resolved };
+}
+
+/**
+ * Whether `url` names one of the shell's own addresses. Those only resolve
+ * inside this bundle, so copying or opening them produces a dead link that also
+ * names the shell's internal origin.
+ */
+export function isShellUrl(url: string): boolean {
+  if (SHELL_SCHEME.test(url)) {
+    return true;
+  }
+  try {
+    return SHELL_HOSTS[new URL(url).hostname.toLowerCase()] === true;
+  } catch {
+    return false;
+  }
+}
+
+/**
+ * The shareable absolute URL for an anchor's `href`, or `null` when it has no
+ * destination worth acting on. Relative links resolve against the workspace
+ * origin — never the shell's own — so a right-click on an in-app path copies a
+ * URL other people can open. A relative path with no known workspace origin is
+ * `null` rather than a bare fragment.
+ */
+export function resolveLinkHref(href: string, origin: string = publicOrigin()): string | null {
+  const trimmed = href.trim();
+  if (trimmed.length === 0 || isShellUrl(trimmed)) {
     return null;
   }
-  return { href };
+  if (/^[a-z][a-z0-9+.-]*:/i.test(trimmed)) {
+    return OPENABLE_URL.test(trimmed) ? trimmed : null;
+  }
+  if (origin.length === 0) {
+    return null;
+  }
+  try {
+    const resolved = new URL(trimmed, origin);
+    return OPENABLE_URL.test(resolved.href) && !isShellUrl(resolved.href) ? resolved.href : null;
+  } catch {
+    return null;
+  }
 }
 
 export function mediaTarget(element: Element | null): ContextMenuTarget | null {

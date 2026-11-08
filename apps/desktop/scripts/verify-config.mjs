@@ -25,6 +25,7 @@ const readPipBridge = () =>
 const readCapabilities = () => readFileSync(resolve(srcTauri, "capabilities/default.json"), "utf8");
 const readInfoPlist = () => readFileSync(resolve(srcTauri, "Info.plist"), "utf8");
 const readEntitlements = () => readFileSync(resolve(srcTauri, "Entitlements.plist"), "utf8");
+const readShell = () => readFileSync(resolve(srcTauri, "src", "lib.rs"), "utf8");
 
 function readJson(relative, read) {
   try {
@@ -52,7 +53,7 @@ function parseCsp(csp) {
   return directives;
 }
 
-function verifyCsp(csp) {
+function verifyCsp(csp, devCsp) {
   check("a CSP string must be set", typeof csp === "string");
   if (typeof csp !== "string") {
     return;
@@ -76,6 +77,40 @@ function verifyCsp(csp) {
     "connect-src must allow http://ipc.localhost for Windows IPC",
     connectSrc.includes("http://ipc.localhost"),
   );
+  // The dev server origin only exists while `tauri dev` runs. Shipping it in the
+  // bundle's CSP would let a released app talk to whatever listens on 5173.
+  check(
+    "the production CSP must not allow the dev server origin",
+    !connectSrc.includes("localhost:5173"),
+  );
+  // The asset protocol converts local paths into `asset:` URLs. Nothing in the
+  // client calls `convertFileSrc`, so the protocol and its CSP entries are dead
+  // surface (and name the shell's internal `asset.localhost` origin).
+  const imgSrc = (directives.get("img-src") ?? []).join(" ");
+  check(
+    "the production CSP must not allow the unused asset protocol",
+    !imgSrc.includes("asset:") && !csp.includes("asset.localhost"),
+  );
+  check("a dev CSP string must be set", typeof devCsp === "string");
+  if (typeof devCsp === "string") {
+    const devDirectives = parseCsp(devCsp);
+    const devConnect = (devDirectives.get("connect-src") ?? []).join(" ");
+    check(
+      "the dev CSP must allow the dev server over http and ws (HMR)",
+      devConnect.includes("http://localhost:5173") && devConnect.includes("ws://localhost:5173"),
+    );
+    check(
+      "the dev CSP must keep IPC",
+      devConnect.includes("ipc:") && devConnect.includes("http://ipc.localhost"),
+    );
+    for (const directive of ["default-src", "script-src", "object-src", "frame-ancestors"]) {
+      check(
+        `the dev CSP must keep the production ${directive}`,
+        (devDirectives.get(directive) ?? []).join(" ") ===
+          (directives.get(directive) ?? []).join(" "),
+      );
+    }
+  }
 }
 
 function verifyUpdater(updater) {
@@ -179,7 +214,7 @@ function verifyMainConfig(config) {
     "windows[0] must disable background throttling so a hidden call keeps its timers and audio",
     config.app?.windows?.[0]?.backgroundThrottling === "disabled",
   );
-  verifyCsp(config.app?.security?.csp);
+  verifyCsp(config.app?.security?.csp, config.app?.security?.devCsp);
   check(
     "deep-link scheme must be aulora",
     (config.plugins?.["deep-link"]?.desktop?.schemes ?? []).includes("aulora"),
@@ -261,6 +296,46 @@ function verifyCapabilities(capabilities) {
   );
 }
 
+// The webview permission handler is the other half of the no-origin-prompt
+// posture: the main webview must answer for itself the permission kinds the
+// client uses. A deferred answer (`PermissionResponse::Default`) makes the web
+// engine draw a prompt that names the bundle's internal origin.
+function verifyWebviewPermissions() {
+  let source = "";
+  try {
+    source = readShell();
+  } catch {
+    failures.push("src-tauri/src/lib.rs is missing (the webview permission handler)");
+    return;
+  }
+  const start = source.indexOf("fn permission_response");
+  const end = start === -1 ? -1 : source.indexOf("\n}\n", start);
+  const body = end === -1 ? "" : source.slice(start, end);
+  check("lib.rs must define permission_response", body.length > 0);
+  for (const kind of [
+    "Microphone",
+    "Camera",
+    "DisplayCapture",
+    "Notifications",
+    "ClipboardRead",
+    "Autoplay",
+    "AutomaticDownloads",
+  ]) {
+    check(
+      `permission_response must allow PermissionKind::${kind} in the main webview`,
+      new RegExp(`PermissionKind::${kind}\\b`).test(body),
+    );
+  }
+  check(
+    "permission_response must answer only for the main webview",
+    /webview\.label\(\) != "main"/.test(body),
+  );
+  check(
+    "permission_response must deny every other kind instead of prompting",
+    /PermissionResponse::Deny/.test(body),
+  );
+}
+
 function verifyNativeMediaPermissions() {
   let plist = "";
   try {
@@ -297,6 +372,7 @@ function main() {
   verifyPrepareFrontend();
   verifyPipWindow();
   verifyNativeMediaPermissions();
+  verifyWebviewPermissions();
 
   const macos = readJson("tauri.macos.conf.json", readMacos);
   if (macos !== null) {

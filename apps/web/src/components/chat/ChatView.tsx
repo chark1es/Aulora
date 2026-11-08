@@ -22,7 +22,7 @@ import {
 import { selectEagerChannelIds } from "../../lib/channel-priority";
 import { isDesktop } from "../../lib/desktop";
 import { buildPresenceScope, PRESENCE_SCOPE_MAX } from "../../lib/presence-scope";
-import { publicOrigin } from "../../lib/public-origin";
+import { publicOriginOrNull, publicUrl } from "../../lib/public-origin";
 import { playSound } from "../../lib/sounds";
 import { useChannelSession } from "../../lib/use-channel";
 import {
@@ -1433,6 +1433,10 @@ function ChatViewContent({
   const callTitle =
     voice.call !== null ? (titles.get(voice.call.channelId) ?? channel?.name ?? "") : "";
   const incomingCall = voice.incoming[0];
+  // Shareable links need the workspace origin, which `ProfileProvider` records
+  // after mount. Until then the sharing actions are hidden rather than building
+  // a bare path that looks like a link.
+  const shareableOrigin = publicOriginOrNull();
 
   const submitChannelEdit = async (patch: EditChannelPatch) => {
     const target = editChannelModal;
@@ -1598,10 +1602,16 @@ function ChatViewContent({
                     void runtime.session.markRead(channel.id, newestId).catch(() => undefined);
                   }
                 },
-                copyLink: (channel) => {
-                  const url = `${publicOrigin()}/?channel=${channel.id}`;
-                  void navigator.clipboard.writeText(url).catch(() => undefined);
-                },
+                ...(shareableOrigin === null
+                  ? {}
+                  : {
+                      copyLink: (channel: ChannelView) => {
+                        const url = publicUrl(`/?channel=${channel.id}`);
+                        if (url !== null) {
+                          void navigator.clipboard.writeText(url).catch(() => undefined);
+                        }
+                      },
+                    }),
                 hide: (channel) => {
                   restoreTracking.current.baseline.set(
                     channel.id,
@@ -1697,7 +1707,7 @@ function ChatViewContent({
               categories={admin.categories}
               channels={channels}
               channelNames={channelNames}
-              origin={publicOrigin()}
+              origin={shareableOrigin}
               onClose={() => {
                 setAdminOpen(false);
               }}

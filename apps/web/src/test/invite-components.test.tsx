@@ -134,6 +134,17 @@ describe("InviteCreateForm custom code", () => {
 
     expect(await screen.findByRole("alert")).toHaveTextContent("That code is already in use");
   });
+
+  it("cannot create an invite before the workspace origin is known", async () => {
+    convex.create.mockReset();
+    const user = userEvent.setup();
+    render(<InviteCreateForm origin={null} />);
+
+    expect(screen.getByRole("button", { name: "Create invite" })).toBeDisabled();
+    expect(screen.getByText(/workspace address/)).toBeInTheDocument();
+    await user.click(screen.getByRole("button", { name: "Create invite" }));
+    expect(convex.create).not.toHaveBeenCalled();
+  });
 });
 
 describe("InviteCreated", () => {
