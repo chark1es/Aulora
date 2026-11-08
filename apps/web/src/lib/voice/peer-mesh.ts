@@ -50,6 +50,8 @@ export interface PeerMeshHost {
   isScreenSharing(peerId: string): boolean;
   /** The chosen stream quality: the most a single viewer's copy may use. */
   getScreenProfile(): ScreenBudget;
+  /** The camera the user asked for: the budget a single peer would get. */
+  getCameraProfile(): ScreenBudget;
   /**
    * A remote participant's audio level, at meter rate. Kept out of `onChange`:
    * it must not rebuild the call snapshot ten times a second.
@@ -108,6 +110,33 @@ export function screenScaleFor(viewers: number): number {
     return 2;
   }
   return 3;
+}
+
+/** The smallest camera bitrate the policy will ask for, whatever the mesh size. */
+export const MIN_CAMERA_BITRATE = 200_000;
+
+/**
+ * Camera encoder limits by how many peers receive the camera.
+ *
+ * Every peer gets its own encode, so a 720p30 @1.5 Mbps camera on a six-person
+ * call would ask for nine megabits up. Thin every copy as the mesh grows:
+ * bitrate first, then frame rate and resolution a step at a time, so a busy
+ * call shows smooth-ish faces instead of a frozen uplink. `maintain-framerate`
+ * keeps the camera lifelike when the network tightens.
+ */
+export function cameraTuningFor(budget: ScreenBudget, receivers: number): VideoTuning {
+  const peers = Math.max(1, receivers);
+  const factor = peers === 1 ? 1 : peers <= 3 ? 0.75 : peers <= 5 ? 0.5 : 0.35;
+  const frameRate =
+    peers === 1
+      ? budget.frameRate
+      : Math.min(budget.frameRate, peers <= 3 ? 24 : peers <= 5 ? 20 : 15);
+  return {
+    maxBitrate: Math.max(MIN_CAMERA_BITRATE, Math.round(budget.maxBitrate * factor)),
+    maxFramerate: frameRate,
+    scaleResolutionDownBy: peers <= 3 ? 1 : peers <= 5 ? 1.5 : 2,
+    degradationPreference: "maintain-framerate",
+  };
 }
 
 function parsePayload<T>(payload: string): T | null {
@@ -185,16 +214,25 @@ export class PeerMesh {
     const viewers = [...this.peers.keys()].filter((id) => this.host.isScreenSharing(id)).length;
     for (const [peerId, peer] of this.peers) {
       const track = this.host.getVideoTrack(peerId);
-      const screen = this.screenTuning(peerId, viewers);
+      const tuning = this.videoTuning(peerId, viewers);
       for (const transceiver of this.transceiversFor(peer, "video")) {
         if (transceiver.sender.track !== track) {
           transceiver.direction = "sendrecv";
           await transceiver.sender.replaceTrack(track).catch(() => undefined);
         }
         // Retune even when the track is unchanged: the viewer count may have moved.
-        tuneVideoSender(transceiver.sender, screen);
+        tuneVideoSender(transceiver.sender, tuning);
       }
     }
+  }
+
+  /** What to send this peer: a screen share's ladder, or the adaptive camera. */
+  private videoTuning(peerId: string, viewers: number): VideoTuning {
+    const screen = this.screenTuning(peerId, viewers);
+    if (screen !== null) {
+      return screen;
+    }
+    return cameraTuningFor(this.host.getCameraProfile(), this.peers.size);
   }
 
   /** The encoder limits for what this peer receives; `null` means a camera. */
@@ -336,7 +374,7 @@ export class PeerMesh {
         await transceiver.sender
           .replaceTrack(this.host.getVideoTrack(remoteId))
           .catch(() => undefined);
-        tuneVideoSender(transceiver.sender, this.screenTuning(remoteId, this.screenViewers()));
+        tuneVideoSender(transceiver.sender, this.videoTuning(remoteId, this.screenViewers()));
         tuneReceiver(transceiver.receiver);
       }
     }

@@ -5,6 +5,7 @@ import {
   type CallView,
   isCallElsewhereError,
   isOnThisDevice,
+  resolutionConstraints,
   streamProfile,
   type VoiceDeviceSettings,
   type VoicePort,
@@ -44,6 +45,17 @@ export type { VoiceEngineOptions, VoiceLocalState, VoiceSnapshot } from "./call-
  */
 
 const HEARTBEAT_MS = 15_000;
+
+/**
+ * The camera bitrate a single peer's copy gets at each capture size. More peers
+ * mean more encodes, so the mesh policy scales this down (see
+ * `cameraTuningFor`). 720p30 at 1.5 Mbps is the long-standing default.
+ */
+const CAMERA_BITRATE: Record<VoiceDeviceSettings["videoResolution"], number> = {
+  "360p": 600_000,
+  "720p": 1_500_000,
+  "1080p": 3_000_000,
+};
 
 export class VoiceEngine {
   private readonly port: VoicePort;
@@ -122,6 +134,14 @@ export class VoiceEngine {
         return { maxBitrate: profile.maxBitrate, frameRate: profile.frameRate };
       },
       getVideoCodec: () => this.getSettings().screenCodec,
+      getCameraProfile: () => {
+        const resolution = this.getSettings().videoResolution;
+        return {
+          // What a single peer gets at this capture size; the mesh thins it.
+          maxBitrate: CAMERA_BITRATE[resolution],
+          frameRate: resolutionConstraints(resolution).frameRate,
+        };
+      },
     });
     this.camera = new LocalCamera({
       onError: (message) => {

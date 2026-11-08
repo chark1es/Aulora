@@ -5,7 +5,9 @@ import { smoothMask } from "../lib/voice/effects/segmenter";
 import { gateOpenThresholdDb, micProcessingKey } from "../lib/voice/mic-pipeline";
 import {
   applyOpusVoiceParams,
+  cameraTuningFor,
   JITTER_BUFFER_TARGET_MS,
+  MIN_CAMERA_BITRATE,
   MIN_SCREEN_BITRATE,
   orderVideoCodecs,
   PeerMesh,
@@ -16,6 +18,7 @@ import {
   screenScaleFor,
   tuneReceiver,
   type VideoCodecCapability,
+  type VideoTuning,
 } from "../lib/voice/peer-mesh";
 
 describe("gateOpenThresholdDb", () => {
@@ -306,5 +309,38 @@ describe("displayContentHint", () => {
     expect(displayContentHint("saver")).toBe("detail");
     expect(displayContentHint("balanced")).toBe("detail");
     expect(displayContentHint("smooth")).toBe("motion");
+  });
+});
+
+describe("camera tuning by mesh size", () => {
+  const budget = { maxBitrate: 1_500_000, frameRate: 30 };
+
+  it("gives a single peer the user's full setting", () => {
+    expect(cameraTuningFor(budget, 1)).toEqual({
+      maxBitrate: 1_500_000,
+      maxFramerate: 30,
+      scaleResolutionDownBy: 1,
+      degradationPreference: "maintain-framerate",
+    });
+  });
+
+  it("keeps the policy monotonic as peers are added", () => {
+    const tunings: VideoTuning[] = [1, 2, 4, 6, 12].map((peers) => cameraTuningFor(budget, peers));
+    for (let index = 1; index < tunings.length; index += 1) {
+      const previous = tunings[index - 1] as VideoTuning;
+      const current = tunings[index] as VideoTuning;
+      expect(current.maxBitrate).toBeLessThanOrEqual(previous.maxBitrate);
+      expect(current.maxFramerate).toBeLessThanOrEqual(previous.maxFramerate);
+      expect(current.scaleResolutionDownBy).toBeGreaterThanOrEqual(previous.scaleResolutionDownBy);
+    }
+    expect(tunings[2]?.scaleResolutionDownBy).toBeGreaterThan(1);
+    expect(tunings.at(-1)?.maxFramerate).toBeLessThanOrEqual(15);
+  });
+
+  it("never asks for less than the floor, and treats no peers as one", () => {
+    expect(cameraTuningFor({ maxBitrate: 300_000, frameRate: 24 }, 10).maxBitrate).toBe(
+      MIN_CAMERA_BITRATE,
+    );
+    expect(cameraTuningFor(budget, 0)).toEqual(cameraTuningFor(budget, 1));
   });
 });
