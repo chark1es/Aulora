@@ -1,9 +1,15 @@
 import { describe, expect, it } from "bun:test";
+import { mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
+import { tmpdir } from "node:os";
+import { dirname, resolve } from "node:path";
 import {
   allowedTightenings,
   checkSchemaCompat,
+  SCHEMA_PATH,
+  SNAPSHOT_PATH,
   schemaViolations,
   snapshotSchema,
+  writeSnapshot,
 } from "./check-schema-compat.mjs";
 
 const schema = (fields) => `import { defineSchema, defineTable } from "convex/server";
@@ -83,6 +89,36 @@ describe("schema compatibility snapshot", () => {
     const allowed = allowedTightenings(afterSource);
     expect([...allowed]).toEqual(["server.nickname"]);
     expect(schemaViolations(before, snapshotSchema(afterSource), allowed)).toEqual([]);
+  });
+
+  it("refuses to regenerate the snapshot over an unmarked tightening", () => {
+    const root = mkdtempSync(resolve(tmpdir(), "aulora-schema-"));
+    try {
+      const schemaPath = resolve(root, SCHEMA_PATH);
+      const snapshotPath = resolve(root, SNAPSHOT_PATH);
+      mkdirSync(dirname(schemaPath), { recursive: true });
+      mkdirSync(dirname(snapshotPath), { recursive: true });
+      writeFileSync(schemaPath, schema(`    name: v.string(),
+    nickname: v.optional(v.string()),`));
+      const before = snapshotSchema(readFileSync(schemaPath, "utf8"));
+      writeSnapshot(before, root);
+
+      writeFileSync(schemaPath, schema(`    name: v.string(),
+    nickname: v.string(),`));
+      const violations = checkSchemaCompat({ rootDir: root, update: true });
+      expect(violations.length).toBe(1);
+      expect(JSON.parse(readFileSync(snapshotPath, "utf8"))).toEqual(before);
+
+      writeFileSync(schemaPath, schema(`    name: v.string(),
+    // @compat-allow-tighten: server.nickname -- backfill completed
+    nickname: v.string(),`));
+      expect(checkSchemaCompat({ rootDir: root, update: true })).toEqual([]);
+      expect(
+        JSON.parse(readFileSync(snapshotPath, "utf8")).tables.server.fields.nickname,
+      ).toBe("required");
+    } finally {
+      rmSync(root, { recursive: true, force: true });
+    }
   });
 
   it("accepts the committed schema and snapshot", () => {

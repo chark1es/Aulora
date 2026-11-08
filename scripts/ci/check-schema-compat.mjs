@@ -124,8 +124,21 @@ export function checkSchemaCompat({ rootDir = root, update = false } = {}) {
   const source = readSchema(rootDir);
   const current = snapshotSchema(source);
   if (update) {
-    writeSnapshot(current, rootDir);
-    return [];
+    // A regeneration must not silently bless a tightening: the previous
+    // snapshot and the documented markers are still checked first.
+    if (!existsSync(resolve(rootDir, SNAPSHOT_PATH))) {
+      writeSnapshot(current, rootDir);
+      return [];
+    }
+    const violations = schemaViolations(
+      loadSnapshot(rootDir),
+      current,
+      allowedTightenings(source),
+    );
+    if (violations.length === 0) {
+      writeSnapshot(current, rootDir);
+    }
+    return violations;
   }
   return schemaViolations(loadSnapshot(rootDir), current, allowedTightenings(source));
 }
@@ -135,7 +148,15 @@ if (process.argv[1] && resolve(process.argv[1]) === fileURLToPath(import.meta.ur
   try {
     const violations = checkSchemaCompat({ update });
     if (update) {
-      console.log(`Wrote ${SNAPSHOT_PATH}`);
+      if (violations.length > 0) {
+        for (const violation of violations) console.error(violation);
+        console.error(
+          "Snapshot not updated. Add a @compat-allow-tighten marker after the backfill, then rerun.",
+        );
+        process.exitCode = 1;
+      } else {
+        console.log(`Wrote ${SNAPSHOT_PATH}`);
+      }
     } else if (violations.length > 0) {
       for (const violation of violations) console.error(violation);
       process.exitCode = 1;

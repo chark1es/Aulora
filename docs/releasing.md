@@ -99,7 +99,7 @@ The desktop updater reads an optional top-level `rollout` percentage from the st
 - `scripts/ci/schema-snapshot.json` records each table's required/optional fields. `node scripts/ci/check-schema-compat.mjs` (also run by `release:check`) fails when a field becomes required, a required field is added, or a table/field is removed.
 - An intentional tightening after a completed backfill is allowed with a marker comment in `schema.ts`:
   `// @compat-allow-tighten: server.exampleField -- backfill ...`
-- After an intentional change, run `node scripts/ci/check-schema-compat.mjs --update`, review the snapshot diff, and commit it with the schema change.
+- After an intentional change, add the marker only once the backfill is complete, then run `node scripts/ci/check-schema-compat.mjs --update`, review the snapshot diff, and commit it with the schema change. The update command refuses to bless an unmarked tightening.
 
 ### Deploy order and rollback
 
