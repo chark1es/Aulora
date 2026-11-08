@@ -55,7 +55,28 @@ describe("web image rollback", () => {
       pinnedAt: "2026-01-02T03:04:05.000Z",
     });
     expect(f.state()).toEqual(state);
-    expect(f.calls).toContainEqual(["docker", ["tag", WEB_IMAGE, PREVIOUS_WEB_IMAGE], f.dockerDir]);
+    expect(f.calls).toContainEqual([
+      "docker",
+      ["tag", "sha256:old", PREVIOUS_WEB_IMAGE],
+      f.dockerDir,
+    ]);
+  });
+
+  it("pins the running container image even when the local tag moved", async () => {
+    const f = fixture({ [WEB_IMAGE]: "sha256:never-served" });
+    const execute = async (command, args, cwd) => {
+      f.calls.push([command, args, cwd]);
+      if (command === "docker" && args[1] === "ps") return "container-1";
+      if (command === "docker" && args[1] === "inspect") return "sha256:serving";
+      return "";
+    };
+    const state = await pinCurrentWebImage({ dockerDir: f.dockerDir, execute });
+    expect(state?.imageId).toBe("sha256:serving");
+    expect(f.calls).toContainEqual([
+      "docker",
+      ["tag", "sha256:serving", PREVIOUS_WEB_IMAGE],
+      f.dockerDir,
+    ]);
   });
 
   it("does not fail a first deployment when no web image exists", async () => {

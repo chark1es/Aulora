@@ -63,14 +63,30 @@ export async function pinCurrentWebImage({
   execute = run,
   now = () => new Date(),
 } = {}) {
-  let current;
+  let current = null;
   try {
-    current = await imageId(execute, dockerDir, WEB_IMAGE);
+    // Prefer the image the running container actually uses: a failed earlier
+    // deploy can leave the local tag pointing at a build that never served.
+    const container = await execute("docker", ["compose", "ps", "-q", "web"], dockerDir);
+    if (container !== "") {
+      current = await execute(
+        "docker",
+        ["inspect", "--format", "{{.Image}}", container],
+        dockerDir,
+      );
+    }
   } catch {
-    // A first install has no web image yet; there is nothing to roll back to.
-    return null;
+    // Fall back to the local tag below.
   }
-  await execute("docker", ["tag", WEB_IMAGE, PREVIOUS_WEB_IMAGE], dockerDir);
+  if (current === null || current === "") {
+    try {
+      current = await imageId(execute, dockerDir, WEB_IMAGE);
+    } catch {
+      // A first install has no web image yet; there is nothing to roll back to.
+      return null;
+    }
+  }
+  await execute("docker", ["tag", current, PREVIOUS_WEB_IMAGE], dockerDir);
   const state = {
     imageId: current,
     version: readVersionStamp(dockerDir),
