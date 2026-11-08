@@ -6,14 +6,13 @@ import { api } from "../../../../packages/convex/convex/_generated/api";
 type MemberPage = FunctionReturnType<typeof api.members.page>;
 export type PagedMember = MemberPage["page"][number];
 
-interface MoreState {
+/** One page after the first, kept live by its own subscription. */
+interface LoadedPage {
   readonly rows: readonly PagedMember[];
-  /** The cursor after the rows loaded so far, or `undefined` before any load. */
-  readonly cursor: string | undefined;
-  readonly done: boolean;
+  /** Where the next page starts. Fixed once a later page is anchored to it. */
+  readonly continueCursor: string;
+  readonly isDone: boolean;
 }
-
-const NOTHING_MORE: MoreState = { rows: [], cursor: undefined, done: false };
 
 export interface MemberPages {
   readonly rows: readonly PagedMember[];
@@ -24,10 +23,15 @@ export interface MemberPages {
 }
 
 /**
- * The member directory as bounded pages. The first page is a live query; later
- * pages follow its `continueCursor` and are one-off reads, so the list is
- * complete for any workspace size while every read stays at `pageSize` rows.
- * Nothing is read while `enabled` is false.
+ * The member directory as bounded pages. Every page, not just the first, is a
+ * live subscription, so a role change or a removal anywhere in the list shows
+ * up, while each read stays at `pageSize` rows and the list is complete for any
+ * workspace size. Nothing is read while `enabled` is false.
+ *
+ * A later page is pinned to the cursor it started from. A removal earlier in the
+ * list can make a page pull in the next page's first row; rows are keyed by
+ * member, so the overlap collapses. New members join at the end and only extend
+ * the last page.
  *
  * `autoLoadAll` keeps loading until the directory is exhausted, for pickers and
  * admin lists that must offer everyone; the member panel loads on demand.
@@ -39,10 +43,11 @@ export function useMemberPages(
 ): MemberPages {
   const convex = useConvex();
   const first = useQuery(api.members.page, enabled ? { numItems: pageSize } : "skip");
-  const [more, setMore] = useState<MoreState>(NOTHING_MORE);
+  const [pages, setPages] = useState<readonly LoadedPage[]>([]);
   const [loading, setLoading] = useState(false);
-  const moreRef = useRef(more);
-  moreRef.current = more;
+  const pagesRef = useRef(pages);
+  pagesRef.current = pages;
+  const subscriptions = useRef<(() => void)[]>([]);
   const loadingRef = useRef(false);
   // After a failed read the automatic loading stops, so a down backend is not
   // asked in a loop; a manual `loadMore` still tries again.
@@ -50,55 +55,93 @@ export function useMemberPages(
   // Bumped when the list is closed, so a page still in flight cannot reappear.
   const epoch = useRef(0);
 
-  const done = first === undefined ? false : more.cursor === undefined ? first.isDone : more.done;
+  const tail = pages.at(-1);
+  const done = first === undefined ? false : tail === undefined ? first.isDone : tail.isDone;
+
+  const release = useCallback(() => {
+    for (const off of subscriptions.current) {
+      off();
+    }
+    subscriptions.current = [];
+  }, []);
 
   useEffect(() => {
     if (!enabled) {
       epoch.current += 1;
       loadingRef.current = false;
       failedRef.current = false;
+      release();
       setLoading(false);
-      setMore(NOTHING_MORE);
+      setPages([]);
     }
-  }, [enabled]);
+  }, [enabled, release]);
+
+  // Drop every subscription when the owner goes away.
+  useEffect(() => release, [release]);
 
   const loadMore = useCallback(() => {
     if (!enabled || first === undefined || loadingRef.current) {
       return;
     }
-    const current = moreRef.current;
-    const isDone = current.cursor === undefined ? first.isDone : current.done;
-    if (isDone) {
+    const current = pagesRef.current.at(-1);
+    if (current === undefined ? first.isDone : current.isDone) {
       return;
     }
-    const cursor = current.cursor ?? first.continueCursor;
+    const cursor = current?.continueCursor ?? first.continueCursor;
+    const index = pagesRef.current.length;
     const started = epoch.current;
     loadingRef.current = true;
     setLoading(true);
-    void convex
-      .query(api.members.page, { cursor, numItems: pageSize })
-      .then((result) => {
-        if (started !== epoch.current) {
-          return;
+
+    const watch = convex.watchQuery(api.members.page, { cursor, numItems: pageSize });
+    let settled = false;
+    let off: (() => void) | undefined;
+    const fail = () => {
+      failedRef.current = true;
+      loadingRef.current = false;
+      setLoading(false);
+      off?.();
+    };
+    const apply = () => {
+      if (started !== epoch.current) {
+        return;
+      }
+      let result: MemberPage | undefined;
+      try {
+        result = watch.localQueryResult();
+      } catch {
+        if (!settled) {
+          fail();
         }
-        failedRef.current = false;
-        setMore({
-          rows: [...moreRef.current.rows, ...result.page],
-          cursor: result.continueCursor,
-          done: result.isDone,
-        });
-      })
-      .catch(() => {
-        if (started === epoch.current) {
-          failedRef.current = true;
-        }
-      })
-      .finally(() => {
-        if (started === epoch.current) {
-          loadingRef.current = false;
-          setLoading(false);
-        }
+        return;
+      }
+      if (result === undefined) {
+        return;
+      }
+      const latest = result;
+      setPages((previous) => {
+        const next = [...previous];
+        const existing = next[index];
+        // Only the last page may move its end: a later page is anchored to it.
+        const anchored = existing !== undefined && index < next.length - 1;
+        next[index] = {
+          rows: latest.page,
+          continueCursor: anchored ? existing.continueCursor : latest.continueCursor,
+          isDone: anchored ? existing.isDone : latest.isDone,
+        };
+        return next;
       });
+      if (!settled) {
+        settled = true;
+        failedRef.current = false;
+        loadingRef.current = false;
+        setLoading(false);
+      }
+    };
+    off = watch.onUpdate(apply);
+    subscriptions.current.push(off);
+    // The result may already be cached, and then no update would announce it.
+    apply();
   }, [convex, enabled, first, pageSize]);
 
   useEffect(() => {
@@ -109,11 +152,11 @@ export function useMemberPages(
 
   const rows = useMemo(() => {
     const byId = new Map<string, PagedMember>();
-    for (const member of [...(first?.page ?? []), ...more.rows]) {
+    for (const member of [...(first?.page ?? []), ...pages.flatMap((page) => page.rows)]) {
       byId.set(member.userId, member);
     }
     return [...byId.values()];
-  }, [first, more.rows]);
+  }, [first, pages]);
 
   return { rows, hasMore: enabled && first !== undefined && !done, loading, loadMore };
 }
