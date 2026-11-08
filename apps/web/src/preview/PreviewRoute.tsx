@@ -4,7 +4,6 @@ import { Spinner } from "@aulora/ui-web";
 import { ConvexProvider, ConvexReactClient } from "convex/react";
 import { useEffect, useMemo, useState } from "react";
 import { ChatView } from "../components/chat/ChatView";
-import type { MemberView } from "../lib/workspace-admin";
 import {
   ChatContextProvider,
   type ChatContextValue,
@@ -157,7 +156,8 @@ export function PreviewRoute() {
             ownUserId={DEMO_OWN_ID}
             ownName={DEMO_OWN_NAME}
             permissions={viewer.permissions}
-            members={DEMO_MEMBERS.map((member) => ({ ...member }))}
+            ownAvatarUrl={null}
+            membersFallback={DEMO_MEMBERS.map((member) => ({ ...member }))}
             roles={DEMO_ROLES.filter((role) => !role.isEveryone).map((role) => ({
               roleId: role.key,
               name: role.name,
@@ -171,17 +171,6 @@ export function PreviewRoute() {
               viewer,
               ownerId: DEMO_OWN_ID,
               roleViews: [...DEMO_ROLES],
-              memberViews: DEMO_MEMBERS.map(
-                (member): MemberView => ({
-                  id: `member-${member.userId}`,
-                  userId: member.userId,
-                  nickname: null,
-                  accountName: member.displayName,
-                  roleIds: [...member.roleIds],
-                  joinedAt: 0,
-                  timeoutUntil: null,
-                }),
-              ),
               categories: demo.categories,
             }}
             onSignOut={() => undefined}

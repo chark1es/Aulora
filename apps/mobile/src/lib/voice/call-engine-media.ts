@@ -6,6 +6,7 @@ import {
   acquireUserMedia,
   acquireVideo,
   createLevelMeter,
+  endTrack,
   extractAudioLevel,
   setTrackVolume,
   type VoiceTrack,
@@ -234,7 +235,7 @@ export abstract class CallEngineMedia extends CallEngineCore {
       this.local = { ...this.local, sharingScreen: true };
       await this.applyVideoTrack(this.screenTrack, "screen");
     } else {
-      this.screenTrack?.stop();
+      endTrack(this.screenTrack);
       this.screenTrack = null;
       this.local = { ...this.local, sharingScreen: false };
       await this.applyVideoTrack(this.local.video ? this.cameraTrack : null);

@@ -166,6 +166,36 @@ describe("readStates.summary", () => {
     expect(row).toMatchObject({ unread: false, mentionCount: 0 });
   });
 
+  it("reports a saturated message count for the desktop badge", async () => {
+    const { t, channelId, send } = await setup();
+    const asUser2 = t.withIdentity({ subject: "user-2" });
+
+    let [row] = await asUser2.query(api.readStates.summary, { channelIds: [channelId] });
+    expect(row?.unreadCount).toBe(0);
+
+    await send();
+    await send();
+    await send();
+    [row] = await asUser2.query(api.readStates.summary, { channelIds: [channelId] });
+    expect(row).toMatchObject({ unread: true, unreadCount: 3 });
+
+    // The count saturates instead of walking the whole unread tail. Inserted
+    // directly to stay inside the send rate limit.
+    await t.run(async (ctx) => {
+      for (let index = 0; index < 240; index += 1) {
+        await ctx.db.insert("messages", {
+          channelId,
+          authorId: "user-1",
+          ciphertext: "Ym9keQ==",
+          attachmentIds: [],
+          mentionUserIds: [],
+        });
+      }
+    });
+    [row] = await asUser2.query(api.readStates.summary, { channelIds: [channelId] });
+    expect(row?.unreadCount).toBe(100);
+  }, 30_000);
+
   it("does not count the caller's own messages as unread", async () => {
     const { channelId, asUser1, send } = await setup();
     await send(["user-1"]);

@@ -18,6 +18,11 @@ export const SIGNAL_STALE_MS = 60_000;
 export const CALL_RETENTION_MS = 5 * 60_000;
 /** Hard cap on a single signalling payload (SDP with a large candidate list). */
 export const MAX_SIGNAL_BYTES = 65_536;
+/**
+ * Hard cap on how many payloads one signal may carry. The client pools ICE
+ * candidates for ~75 ms and flushes at 16, so this is a safety ceiling.
+ */
+export const MAX_SIGNAL_BATCH = 32;
 
 export type ReadCtx = Parameters<typeof requireChannelAccess>[0];
 
@@ -28,6 +33,8 @@ export interface CallParticipantSummary {
   readonly video: boolean;
   readonly sharingScreen: boolean;
   readonly sfu: boolean;
+  /** The device can carry microphone and camera through the streaming server. */
+  readonly sfuCall: boolean;
   readonly joinedAt: number;
   /** Present only for the viewer's own row. */
   readonly clientId: string | null;
@@ -68,6 +75,7 @@ export async function loadParticipants(
       video: row.video,
       sharingScreen: row.sharingScreen,
       sfu: row.sfu ?? false,
+      sfuCall: row.sfuCall ?? false,
       joinedAt: row.joinedAt,
       clientId: row.userId === viewerId ? (row.clientId ?? null) : null,
       session: row.session ?? 0,

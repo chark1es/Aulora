@@ -360,6 +360,7 @@ export class ChatSession {
       readonly mentionUserIds?: readonly string[];
       readonly mentionChannelIds?: readonly string[];
       readonly mentionCategoryIds?: readonly string[];
+      readonly mentionRoleIds?: readonly string[];
       readonly attachmentIds?: readonly string[];
     } = {},
   ): Promise<string> {
@@ -376,6 +377,7 @@ export class ChatSession {
       ...(options.mentionCategoryIds !== undefined
         ? { mentionCategoryIds: options.mentionCategoryIds }
         : {}),
+      ...(options.mentionRoleIds !== undefined ? { mentionRoleIds: options.mentionRoleIds } : {}),
       ...(attachmentIds.length > 0 ? { attachmentIds } : {}),
     });
     let body: MessagePayloadBody = {

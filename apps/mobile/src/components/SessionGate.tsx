@@ -2,12 +2,15 @@
 import type { ServerProfile } from "@aulora/core";
 import { Spinner, Text } from "@aulora/ui-native";
 import type { ConvexReactClient } from "convex/react";
+import { useQuery } from "convex/react";
 import { useRouter } from "expo-router";
 import { useEffect, useState } from "react";
-import { View } from "react-native";
+import { Alert, View } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
+import { api } from "../../../../packages/convex/convex/_generated/api";
 import type { AuloraAuthClient } from "../lib/auth-client";
 import { authActionsFromClient } from "../lib/auth-client";
+import { mobileVersionState } from "../lib/client-version";
 import type { CookieStore } from "../lib/cookie-fetch";
 import { bindPendingInvite } from "../lib/pending-invite";
 import { useStuckTimeout } from "../lib/stuck-timeout";
@@ -15,6 +18,7 @@ import { ChatProvider } from "../providers/ChatProvider";
 import { useProfiles } from "../providers/ProfileProvider";
 import { SoundProvider } from "../providers/SoundProvider";
 import { VoiceProvider } from "../providers/VoiceProvider";
+import { ClientVersionRequired } from "./ClientVersionGate";
 import {
   ConnectionRecoveryActions,
   type ConnectionRecoveryActionsProps,
@@ -35,6 +39,7 @@ export interface SessionGateProps {
 /** Chooses between the sign-in screen and the signed-in chat surface. */
 export function SessionGate({ profile, authClient, cookieStore, client }: SessionGateProps) {
   const session = authClient.useSession();
+  const config = useQuery(api.server.publicConfig, {});
   const [switcherOpen, setSwitcherOpen] = useState(false);
   const [sessionAttempt, setSessionAttempt] = useState(0);
   const router = useRouter();
@@ -51,6 +56,13 @@ export function SessionGate({ profile, authClient, cookieStore, client }: Sessio
     bindPendingInvite(identity);
   }, [identity]);
 
+  // Compatibility gate: all hooks above run unconditionally, so returning here
+  // is safe even when the config query resolves later.
+  const versionPolicy = config?.clientVersion ?? null;
+  if (versionPolicy !== null && mobileVersionState(versionPolicy) === "required") {
+    return <ClientVersionRequired policy={versionPolicy} />;
+  }
+
   if (session.isPending) {
     return (
       <SessionPending
@@ -64,7 +76,9 @@ export function SessionGate({ profile, authClient, cookieStore, client }: Sessio
           },
           onSwitchServer: backToConnect,
           onRemoveServer: () => {
-            void remove(profile.id);
+            // The screen leaves either way; a refused write just keeps the
+            // saved profile for the next launch.
+            void remove(profile.id).catch(() => undefined);
             backToConnect();
           },
         }}
@@ -132,6 +146,41 @@ function SessionPending({
   );
 }
 
+/**
+ * Ends the session, reporting a failure in place.
+ *
+ * Callers hand this to buttons and boundaries that do not await it (`void
+ * signOut()`, `<Button onPress={onSignOut}>`), so a rejection would surface as
+ * an unhandled rejection on the recovery and join screens. The person gets the
+ * same message either way.
+ */
+function signOutAction(authClient: AuloraAuthClient) {
+  return async () => {
+    const result = await authClient.signOut().catch(() => null);
+    if (result === null || result.error) {
+      Alert.alert(
+        "Couldn't sign out",
+        result?.error?.message ?? "Check your connection and try again.",
+      );
+    }
+  };
+}
+
+/** Deletes the account on the server, reporting a failure in place. */
+function deleteAccountAction(authClient: AuloraAuthClient) {
+  return async () => {
+    const result = await authActionsFromClient(authClient)
+      .deleteAccount()
+      .catch(() => null);
+    if (result === null || result.error) {
+      Alert.alert(
+        "Couldn't delete account",
+        result?.error?.message ?? "Check your connection and try again.",
+      );
+    }
+  };
+}
+
 function SignedInChat({
   profile,
   authClient,
@@ -149,14 +198,8 @@ function SignedInChat({
     readonly email?: string | null;
   };
 }) {
-  const signOut = async () => {
-    const result = await authClient.signOut();
-    if (result.error) throw new Error(result.error.message ?? "Couldn't sign out");
-  };
-  const deleteAccount = async () => {
-    const result = await authActionsFromClient(authClient).deleteAccount();
-    if (result.error) throw new Error(result.error.message ?? "Couldn't delete account");
-  };
+  const signOut = signOutAction(authClient);
+  const deleteAccount = deleteAccountAction(authClient);
   return (
     <QueryErrorBoundary
       client={client}

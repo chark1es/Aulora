@@ -159,23 +159,82 @@ const METER_INTERVAL_MS = 100;
 /** Per-tick fall-off, retuned so the level decays at the same rate as the old 33 ms loop. */
 const METER_DECAY = 0.37;
 
+/**
+ * One `AudioContext` for every level meter in the app, reference counted.
+ *
+ * A meter used to construct its own context, so a five-person call opened five
+ * extra audio threads (plus the microphone pipeline's) and paid the autoplay
+ * resume dance for each. They all measure the same way, so one context with an
+ * `AnalyserNode` per stream is enough and keeps the meter CPU cost flat as the
+ * call grows. It is released when the last meter stops, and recreated lazily.
+ */
+let meterContext: { readonly context: AudioContext; users: number } | null = null;
+
+function acquireMeterContext(): AudioContext | null {
+  if (meterContext !== null) {
+    meterContext.users += 1;
+    void meterContext.context.resume().catch(() => undefined);
+    return meterContext.context;
+  }
+  const Ctor = audioContextCtor();
+  if (Ctor === null) {
+    return null;
+  }
+  try {
+    const context = new Ctor();
+    meterContext = { context, users: 1 };
+    // Not awaited: while the browser withholds autoplay the promise stays
+    // pending, and a meter must never block the call that started it.
+    void context.resume().catch(() => undefined);
+    return context;
+  } catch {
+    return null;
+  }
+}
+
+function releaseMeterContext(context: AudioContext): void {
+  if (meterContext === null || meterContext.context !== context) {
+    return;
+  }
+  meterContext.users -= 1;
+  if (meterContext.users > 0) {
+    return;
+  }
+  meterContext = null;
+  void context.close().catch(() => undefined);
+}
+
+/**
+ * Resumes the shared meter context from a user gesture. Browsers hold audio
+ * contexts until one happens, and a meter that never resumes reads zeros.
+ */
+export function resumeLevelMeterContext(): void {
+  void meterContext?.context.resume().catch(() => undefined);
+}
+
 /** Live microphone level, 0..1, with a fast attack and a slow decay. */
 export function createLevelMeter(
   stream: MediaStream,
   onLevel: (level: number) => void,
 ): () => void {
-  if (typeof AudioContext === "undefined") {
+  const context = acquireMeterContext();
+  if (context === null) {
     return () => {};
   }
-  const context = new AudioContext();
-  const source = context.createMediaStreamSource(stream);
+  let source: MediaStreamAudioSourceNode;
+  try {
+    source = context.createMediaStreamSource(stream);
+  } catch {
+    // A stream with no live audio track, or a closed context.
+    releaseMeterContext(context);
+    return () => {};
+  }
   const analyser = context.createAnalyser();
   analyser.fftSize = 512;
   analyser.smoothingTimeConstant = 0.6;
   source.connect(analyser);
   const data = new Uint8Array(analyser.frequencyBinCount);
   let smoothed = 0;
-  void context.resume().catch(() => undefined);
   const tick = () => {
     analyser.getByteFrequencyData(data);
     let sum = 0;
@@ -195,7 +254,7 @@ export function createLevelMeter(
     clearInterval(timer);
     source.disconnect();
     analyser.disconnect();
-    void context.close().catch(() => undefined);
+    releaseMeterContext(context);
   };
 }
 

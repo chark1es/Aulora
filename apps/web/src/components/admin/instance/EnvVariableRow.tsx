@@ -46,7 +46,7 @@ function useOverrideTask() {
 
 /**
  * One catalog row of the Environment table: the variable (label, key, a
- * one-line description and, for provider client ids, the redirect URL), where
+ * description and, for provider client ids, the redirect URL), where
  * its value comes from, the value, and one fixed action cell. The inline
  * editor opens in a second row spanning the table.
  */
@@ -63,14 +63,10 @@ export function EnvVariableRow(props: EnvVariableRowProps) {
         className="border-b border-border align-top last:border-b-0"
         data-testid={`env-var-${variable.key}`}
       >
-        <td className="min-w-0 px-3 py-2">
+        <td className="env-variable-cell min-w-0 px-3 py-1.5">
           <EnvRowHeader variable={variable} />
           <EnvDescription variable={variable} />
-          {variable.redirectUrl !== null && (
-            <div className="mt-1">
-              <EnvRedirectUrl url={variable.redirectUrl} />
-            </div>
-          )}
+          {variable.redirectUrl !== null && <EnvRedirectUrl url={variable.redirectUrl} />}
           {status !== null && (
             <Text tone="secondary" size="xs" className="mt-1" role="status">
               {status}
@@ -82,27 +78,10 @@ export function EnvVariableRow(props: EnvVariableRowProps) {
             </Text>
           )}
         </td>
-        <td className="px-3 py-2">
-          <Text
-            size="xs"
-            tone={envSourceTone(variable.source)}
-            data-testid={`env-source-${variable.key}`}
-            className="inline-block whitespace-nowrap rounded-pill border border-border px-1.5 py-0.5"
-          >
-            {envSourceLabel(variable.source)}
-          </Text>
+        <td className="env-value-cell min-w-0 px-3 py-1.5">
+          <EnvValueStatus variable={variable} />
         </td>
-        <td className="min-w-0 px-3 py-2">
-          <Text
-            size="xs"
-            tone="muted"
-            className="break-words"
-            data-testid={`env-value-${variable.key}`}
-          >
-            {envValueLabel(variable)}
-          </Text>
-        </td>
-        <td className="w-24 px-3 py-1.5">
+        <td className="env-actions-cell px-3 py-1.5">
           <EnvRowActions
             variable={variable}
             lockReason={lockReason}
@@ -119,8 +98,8 @@ export function EnvVariableRow(props: EnvVariableRowProps) {
         </td>
       </tr>
       {editing && (
-        <tr className="border-b border-border last:border-b-0">
-          <td colSpan={4} className="px-3 pb-3">
+        <tr className="env-editor-row border-b border-border last:border-b-0">
+          <td colSpan={3} className="px-3 pb-3">
             <EnvOverrideForm
               variable={variable}
               busy={busy}
@@ -155,32 +134,56 @@ export function EnvVariableRow(props: EnvVariableRowProps) {
   );
 }
 
-function EnvRowHeader({ variable }: { readonly variable: EnvVariable }) {
+/**
+ * Where the value comes from, as one pill. Only an override has a value worth
+ * showing next to it; "Not set" and "Deployment" would just repeat the pill.
+ */
+function EnvValueStatus({ variable }: { readonly variable: EnvVariable }) {
   return (
-    <div className="flex min-w-0 flex-wrap items-center gap-1.5">
-      <Text size="sm" className="truncate">
-        {variable.label}
+    <div className="env-value-status">
+      <Text
+        size="xs"
+        tone={envSourceTone(variable.source)}
+        data-testid={`env-source-${variable.key}`}
+        className="env-pill inline-block whitespace-nowrap rounded-pill border border-border px-1.5 py-0.5"
+      >
+        {envSourceLabel(variable.source)}
       </Text>
-      <code className="rounded-[5px] border border-border bg-surface-3 px-1.5 py-0.5 font-mono text-[11px] text-text-muted">
-        {variable.key}
-      </code>
-      {variable.secret && (
-        <Text size="xs" tone="muted" className="rounded-pill border border-border px-1.5 py-0.5">
-          Secret
+      {variable.source === "ui" && (
+        <Text
+          size="xs"
+          tone="muted"
+          className="min-w-0 [overflow-wrap:anywhere]"
+          data-testid={`env-value-${variable.key}`}
+        >
+          {envValueLabel(variable)}
         </Text>
       )}
     </div>
   );
 }
 
-/** One truncated line; the full text is on hover so the table stays compact. */
+function EnvRowHeader({ variable }: { readonly variable: EnvVariable }) {
+  return (
+    <div className="env-lead flex min-w-0 flex-wrap items-center gap-x-1.5 gap-y-0.5">
+      <Text size="sm" className="[overflow-wrap:anywhere]">
+        {variable.label}
+      </Text>
+      <code className="min-w-0 rounded-[5px] border border-border bg-surface-3 px-1.5 py-0.5 font-mono text-[11px] text-text-muted [overflow-wrap:anywhere]">
+        {variable.key}
+      </code>
+      {/* The write-only description and masked value say it visually; keep the flag for screen readers. */}
+      {variable.secret && <span className="sr-only">Secret</span>}
+    </div>
+  );
+}
+
+/** Keep setup instructions readable without requiring hover. */
 function EnvDescription({ variable }: { readonly variable: EnvVariable }) {
   return (
-    <Tooltip label={variable.description} className="mt-0.5 flex max-w-full">
-      <Text size="xs" tone="muted" className="truncate">
-        {variable.description}
-      </Text>
-    </Tooltip>
+    <Text size="xs" tone="muted" className="leading-snug [overflow-wrap:anywhere]">
+      {variable.description}
+    </Text>
   );
 }
 
@@ -201,7 +204,7 @@ function EnvRowActions({
 }) {
   if (lockReason !== null) {
     return (
-      <div className="flex justify-end">
+      <div className="env-actions">
         <Tooltip label={lockReason}>
           <button
             type="button"
@@ -217,7 +220,7 @@ function EnvRowActions({
   }
   if (variable.source === "ui") {
     return (
-      <div className="flex items-center justify-end gap-0.5">
+      <div className="env-actions">
         <IconButton
           label="Edit"
           title="Edit override"
@@ -243,7 +246,7 @@ function EnvRowActions({
     );
   }
   return (
-    <div className="flex items-center justify-end">
+    <div className="env-actions">
       <Button
         size="sm"
         variant="secondary"

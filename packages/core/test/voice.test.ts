@@ -1,4 +1,4 @@
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, vi } from "vitest";
 import {
   type CallParticipantView,
   type CallView,
@@ -7,6 +7,7 @@ import {
   callOnAnotherDevice,
   callStatusLabel,
   claimCallSeat,
+  createVoiceClientId,
   DEFAULT_VOICE_SETTINGS,
   ensureVoiceClientId,
   formatCallDuration,
@@ -262,5 +263,19 @@ describe("call seat", () => {
     expect(error?.callId).toBe("call-9");
     expect(error?.channelId).toBe("channel-9");
     expect(callElsewhereFromUnknown(new Error("nope"))).toBeNull();
+  });
+});
+
+describe("voice client id without Web Crypto", () => {
+  it("still creates a valid id where globalThis.crypto is missing, as on Hermes", () => {
+    vi.stubGlobal("crypto", undefined);
+    try {
+      const first = createVoiceClientId();
+      const second = createVoiceClientId();
+      expect(isVoiceClientId(first)).toBe(true);
+      expect(first).not.toBe(second);
+    } finally {
+      vi.unstubAllGlobals();
+    }
   });
 });

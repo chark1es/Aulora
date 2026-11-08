@@ -1,0 +1,491 @@
+{
+  "tables": {
+    "coolifyUpdate": {
+      "fields": {
+        "targetVersion": "required",
+        "gitTag": "required",
+        "githubRepo": "required",
+        "phase": "required",
+        "startedAt": "required",
+        "deploymentUuid": "optional",
+        "error": "required"
+      }
+    },
+    "workspaceUpdate": {
+      "fields": {
+        "currentVersion": "required",
+        "latestVersion": "required",
+        "updateAvailable": "required",
+        "notes": "required",
+        "error": "required",
+        "autoUpdate": "required",
+        "phase": "required",
+        "hostSeenAt": "required",
+        "checkedAt": "required",
+        "request": "optional"
+      }
+    },
+    "server": {
+      "fields": {
+        "name": "required",
+        "iconSeed": "required",
+        "ownerId": "required",
+        "settings": "required",
+        "memberCount": "optional",
+        "memberRolesBackfilled": "optional",
+        "licenseKey": "optional",
+        "licenseValidation": "optional",
+        "description": "optional",
+        "logoStorageId": "optional"
+      }
+    },
+    "licenseReportKeys": {
+      "fields": {
+        "licenseId": "required",
+        "keyHash": "required",
+        "ciphertext": "required",
+        "instanceId": "required"
+      }
+    },
+    "licenseActivity": {
+      "fields": {
+        "licenseId": "required",
+        "month": "required",
+        "userId": "required"
+      }
+    },
+    "licenseUsageMonths": {
+      "fields": {
+        "licenseId": "required",
+        "month": "required",
+        "activeUsers": "required",
+        "reportedAt": "optional",
+        "reportedUsers": "optional",
+        "finalReported": "optional"
+      }
+    },
+    "instanceSettings": {
+      "fields": {
+        "storageQuotaBytes": "required",
+        "maxUploadBytes": "required",
+        "pushRelayEnabled": "required",
+        "pushRelayUrl": "optional",
+        "serverId": "optional",
+        "backupsEnabled": "required",
+        "authProviders": "optional",
+        "fileCount": "optional",
+        "fileBytes": "optional",
+        "channelCount": "optional",
+        "deviceCount": "optional"
+      }
+    },
+    "emailSettings": {
+      "fields": {
+        "provider": "required",
+        "from": "required",
+        "resendApiKeyCiphertext": "optional",
+        "smtpHost": "optional",
+        "smtpPort": "optional",
+        "smtpSecure": "optional",
+        "smtpUser": "optional",
+        "smtpPasswordCiphertext": "optional"
+      }
+    },
+    "envOverrides": {
+      "fields": {
+        "key": "required",
+        "valueCiphertext": "required",
+        "updatedAt": "required",
+        "updatedBy": "required"
+      }
+    },
+    "backups": {
+      "fields": {
+        "trigger": "required",
+        "status": "required",
+        "startedAt": "required",
+        "finishedAt": "optional",
+        "sizeBytes": "optional",
+        "location": "optional",
+        "message": "optional"
+      }
+    },
+    "encryptionKeys": {
+      "fields": {
+        "keyVersion": "required",
+        "provider": "required",
+        "kekId": "required",
+        "status": "required",
+        "createdAt": "required",
+        "retiredAt": "optional"
+      }
+    },
+    "members": {
+      "fields": {
+        "userId": "required",
+        "nickname": "optional",
+        "bioCiphertext": "optional",
+        "avatarStorageId": "optional",
+        "roleIds": "required",
+        "joinedAt": "required",
+        "timeoutUntil": "optional"
+      }
+    },
+    "memberRoles": {
+      "fields": {
+        "roleId": "required",
+        "userId": "required",
+        "joinedAt": "required"
+      }
+    },
+    "roles": {
+      "fields": {
+        "key": "optional",
+        "name": "required",
+        "color": "optional",
+        "position": "required",
+        "permissions": "required",
+        "hoisted": "required",
+        "mentionable": "required"
+      }
+    },
+    "categories": {
+      "fields": {
+        "name": "required",
+        "position": "required",
+        "overrides": "required"
+      }
+    },
+    "channels": {
+      "fields": {
+        "categoryId": "optional",
+        "kind": "required",
+        "position": "optional",
+        "private": "optional",
+        "nameCiphertext": "optional",
+        "topicCiphertext": "optional",
+        "overrides": "required",
+        "archived": "required",
+        "dmKey": "optional"
+      }
+    },
+    "channelMembers": {
+      "fields": {
+        "channelId": "required",
+        "userId": "required",
+        "joinedAt": "required"
+      }
+    },
+    "messages": {
+      "fields": {
+        "channelId": "required",
+        "authorId": "required",
+        "ciphertext": "required",
+        "threadRootId": "optional",
+        "replyToId": "optional",
+        "attachmentIds": "required",
+        "mentionUserIds": "required",
+        "mentionChannelIds": "optional",
+        "mentionCategoryIds": "optional",
+        "editedAt": "optional",
+        "deletedAt": "optional",
+        "pinnedAt": "optional",
+        "systemKind": "optional",
+        "systemActorId": "optional",
+        "systemTargetId": "optional",
+        "replyCount": "optional",
+        "lastReplyAt": "optional",
+        "replyParticipantIds": "optional"
+      }
+    },
+    "threadParticipants": {
+      "fields": {
+        "userId": "required",
+        "threadRootId": "required",
+        "channelId": "required",
+        "lastReplyAt": "required",
+        "mentioned": "required",
+        "participated": "optional"
+      }
+    },
+    "reactions": {
+      "fields": {
+        "messageId": "required",
+        "userId": "required",
+        "emojiCiphertext": "required"
+      }
+    },
+    "readStates": {
+      "fields": {
+        "userId": "required",
+        "channelId": "required",
+        "lastReadMessageId": "optional",
+        "mentionCount": "required"
+      }
+    },
+    "kanbanBoards": {
+      "fields": {
+        "deleted": "optional",
+        "contentCiphertext": "required",
+        "private": "required",
+        "memberIds": "required",
+        "creatorId": "required",
+        "archived": "required",
+        "updatedAt": "required"
+      }
+    },
+    "kanbanCards": {
+      "fields": {
+        "boardId": "required",
+        "contentCiphertext": "required",
+        "columnId": "required",
+        "position": "required",
+        "labelIds": "required",
+        "assigneeIds": "required",
+        "priority": "required",
+        "startAt": "optional",
+        "dueAt": "optional",
+        "estimateMinutes": "optional",
+        "fileIds": "required",
+        "creatorId": "required",
+        "archived": "required",
+        "trackedMs": "required",
+        "timerStartedAt": "optional",
+        "timerUserId": "optional",
+        "updatedAt": "required",
+        "revision": "required"
+      }
+    },
+    "kanbanComments": {
+      "fields": {
+        "cardId": "required",
+        "authorId": "required",
+        "bodyCiphertext": "required",
+        "updatedAt": "required"
+      }
+    },
+    "kanbanActivity": {
+      "fields": {
+        "cardId": "required",
+        "actorId": "required",
+        "bodyCiphertext": "required",
+        "at": "required"
+      }
+    },
+    "kanbanGithub": {
+      "fields": {
+        "userId": "required",
+        "tokenCiphertext": "required"
+      }
+    },
+    "noteFolders": {
+      "fields": {
+        "nameCiphertext": "required",
+        "parentId": "optional",
+        "position": "required",
+        "creatorId": "required",
+        "createdAt": "required",
+        "updatedAt": "required"
+      }
+    },
+    "notePages": {
+      "fields": {
+        "folderId": "optional",
+        "titleCiphertext": "required",
+        "bodyCiphertext": "required",
+        "tagIds": "required",
+        "creatorId": "required",
+        "lastEditorId": "required",
+        "archived": "required",
+        "createdAt": "required",
+        "updatedAt": "required",
+        "revision": "required"
+      }
+    },
+    "noteRevisions": {
+      "fields": {
+        "noteId": "required",
+        "actorId": "required",
+        "action": "required",
+        "beforeCiphertext": "optional",
+        "afterCiphertext": "optional",
+        "at": "required"
+      }
+    },
+    "noteTags": {
+      "fields": {
+        "nameCiphertext": "required",
+        "color": "required",
+        "creatorId": "required",
+        "createdAt": "required"
+      }
+    },
+    "files": {
+      "fields": {
+        "storageId": "required",
+        "sealedStorageId": "required",
+        "uploaderId": "required",
+        "sizeBytes": "required",
+        "keyVersion": "required",
+        "nameCiphertext": "optional",
+        "mimeCiphertext": "optional",
+        "dimensionsCiphertext": "optional",
+        "blurhashCiphertext": "optional",
+        "thumbnailStorageId": "optional",
+        "channelId": "optional",
+        "kanbanBoardId": "optional"
+      }
+    },
+    "devices": {
+      "fields": {
+        "userId": "required",
+        "platform": "required",
+        "pushToken": "optional",
+        "lastSeen": "required"
+      }
+    },
+    "presence": {
+      "fields": {
+        "userId": "required",
+        "status": "required",
+        "customStatusCiphertext": "optional",
+        "lastHeartbeat": "required",
+        "lastOnlineAt": "optional",
+        "manual": "optional"
+      }
+    },
+    "typing": {
+      "fields": {
+        "channelId": "required",
+        "userId": "required",
+        "expiresAt": "required"
+      }
+    },
+    "calls": {
+      "fields": {
+        "channelId": "required",
+        "kind": "required",
+        "initiatorId": "required",
+        "status": "required",
+        "ringingUserIds": "required",
+        "startedAt": "required",
+        "endedAt": "optional",
+        "screenShareUserId": "optional",
+        "updatedAt": "required"
+      }
+    },
+    "callParticipants": {
+      "fields": {
+        "callId": "required",
+        "channelId": "required",
+        "userId": "required",
+        "clientId": "optional",
+        "session": "optional",
+        "muted": "required",
+        "deafened": "required",
+        "video": "required",
+        "sharingScreen": "required",
+        "sfu": "optional",
+        "joinedAt": "required",
+        "lastSeen": "required"
+      }
+    },
+    "callSignals": {
+      "fields": {
+        "callId": "required",
+        "channelId": "required",
+        "fromUserId": "required",
+        "toUserId": "required",
+        "kind": "required",
+        "payload": "required",
+        "session": "optional",
+        "createdAt": "required"
+      }
+    },
+    "notificationPrefs": {
+      "fields": {
+        "userId": "required",
+        "scope": "required",
+        "channelId": "optional",
+        "level": "required",
+        "muteUntil": "optional",
+        "hidden": "optional",
+        "pinned": "optional",
+        "pinnedAt": "optional"
+      }
+    },
+    "invites": {
+      "fields": {
+        "code": "required",
+        "createdBy": "required",
+        "maxUses": "required",
+        "uses": "required",
+        "expiresAt": "optional",
+        "revokedAt": "optional",
+        "kind": "optional",
+        "restrictedEmail": "optional",
+        "note": "optional",
+        "codeHint": "optional",
+        "emailStatus": "optional"
+      }
+    },
+    "inviteRedemptions": {
+      "fields": {
+        "inviteId": "required",
+        "userId": "required",
+        "at": "required"
+      }
+    },
+    "inviteAllowlist": {
+      "fields": {
+        "pattern": "required",
+        "kind": "required",
+        "addedBy": "required",
+        "note": "optional",
+        "addedAt": "required"
+      }
+    },
+    "joinCodes": {
+      "fields": {
+        "userId": "required",
+        "email": "required",
+        "codeHash": "required",
+        "expiresAt": "required",
+        "attempts": "required"
+      }
+    },
+    "bans": {
+      "fields": {
+        "userId": "required",
+        "actorId": "required",
+        "reason": "optional",
+        "at": "required",
+        "expiresAt": "optional"
+      }
+    },
+    "userNotes": {
+      "fields": {
+        "authorId": "required",
+        "targetUserId": "required",
+        "bodyCiphertext": "required",
+        "updatedAt": "required"
+      }
+    },
+    "auditLog": {
+      "fields": {
+        "actorId": "required",
+        "action": "required",
+        "targetId": "optional",
+        "meta": "optional",
+        "at": "required"
+      }
+    },
+    "rateLimits": {
+      "fields": {
+        "key": "required",
+        "windowStart": "required",
+        "count": "required"
+      }
+    }
+  }
+}

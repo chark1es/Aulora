@@ -31,6 +31,10 @@ export interface MembersPanelProps {
   readonly onViewProfile: (userId: string, anchor: HTMLButtonElement) => void;
   readonly onMessage: (userId: string) => void;
   readonly onClose: () => void;
+  /** True while the paged directory has more rows than are loaded. */
+  readonly hasMore?: boolean;
+  /** Loads the next page of the directory. */
+  readonly onLoadMore?: () => void;
   /** Optional member actions surfaced in the right-click menu. */
   readonly memberActions?: {
     readonly message?: (userId: string) => void;
@@ -55,6 +59,8 @@ export function MembersPanel({
   onViewProfile,
   onMessage,
   onClose,
+  hasMore = false,
+  onLoadMore,
   memberActions,
 }: MembersPanelProps) {
   const byUser = useMemo(() => new Map(presence.map((row) => [row.userId, row])), [presence]);
@@ -138,7 +144,8 @@ export function MembersPanel({
         <div>
           <h2 className="text-[14px] font-semibold tracking-[-0.01em] text-text">Members</h2>
           <p className="text-[11px] text-text-muted">
-            {onlineCount} online · {members.length} total
+            {onlineCount} online · {members.length}
+            {hasMore ? "+" : ""} shown
           </p>
         </div>
         <button
@@ -184,6 +191,15 @@ export function MembersPanel({
           onContextMenu={memberMenu}
           dim
         />
+        {hasMore && onLoadMore !== undefined && (
+          <button
+            type="button"
+            onClick={onLoadMore}
+            className="mx-2 mb-2 w-[calc(100%-1rem)] rounded-[8px] border border-border bg-surface-2 py-1.5 text-[12px] font-medium text-text-muted transition hover:bg-surface-3 hover:text-text"
+          >
+            Show more members
+          </button>
+        )}
       </div>
     </aside>
   );

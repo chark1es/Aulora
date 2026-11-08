@@ -1,0 +1,4 @@
+# Gradle output from building the module.
+android/build/
+android/.gradle/
+android/.cxx/

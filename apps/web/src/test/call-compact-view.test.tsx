@@ -72,25 +72,25 @@ describe("CallCompactView buttons", () => {
     );
   });
 
-  it("has a keep-on-top button on the desktop, in the small window too", async () => {
+  it("pins the in-page dock, including inside the desktop app", async () => {
     const user = userEvent.setup();
-    view(true);
-    await user.click(screen.getByRole("button", { name: "Keep on top of other windows" }));
+    view(false);
+    await user.click(screen.getByRole("button", { name: "Pin to top" }));
     expect(state.setPinned).toHaveBeenCalledWith(true);
   });
 
   it("says so, and offers to stop, once pinned", async () => {
     state.pinned = true;
     const user = userEvent.setup();
-    view(true);
-    await user.click(screen.getByRole("button", { name: "Stop keeping on top" }));
+    view(false);
+    await user.click(screen.getByRole("button", { name: "Unpin from top" }));
     expect(state.setPinned).toHaveBeenCalledWith(false);
   });
 
   it("offers no pin inside the browser's own floating window, which is always on top", () => {
     state.mode = "document";
     view(true);
-    expect(screen.queryByRole("button", { name: /pin to top|keep on top/i })).toBeNull();
+    expect(screen.queryByRole("button", { name: /pin to top|unpin from top/i })).toBeNull();
   });
 
   it("still pins the in-page dock in the browser", () => {

@@ -33,7 +33,7 @@ export function showUnfocusedNotification(title: string, body: string): void {
  * unfocused, on web and desktop alike. The notification body is the message
  * text the server returned to this device; messages that predate mount are
  * ignored so opening the app does not replay history. The unread badge is owned
- * by {@link useLiveUnreadBadge}, which reads live read cursors.
+ * by `useUnreadBadge`, fed from the sidebar's live read-state summary.
  */
 export function useDesktopNotifications(
   runtime: ChatRuntime | undefined,

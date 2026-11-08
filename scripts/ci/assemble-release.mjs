@@ -9,7 +9,7 @@ import {
 
 const RELEASE_DIRECTORY = "dist/release";
 
-export async function assembleRelease(version, repository, notes = "") {
+export async function assembleRelease(version, repository, notes = "", rollout = undefined) {
   const files = readdirSync(RELEASE_DIRECTORY);
   const patterns = {
     "darwin-aarch64": /_darwin-aarch64\.app\.tar\.gz$/,
@@ -57,6 +57,7 @@ export async function assembleRelease(version, repository, notes = "") {
     notes,
     pubDate: new Date().toISOString(),
     platforms,
+    ...(rollout !== undefined && rollout.trim() !== "" ? { rollout: Number(rollout.trim()) } : {}),
     ...(assets.length > 0 ? { assets } : {}),
   });
   writeFileSync(join(RELEASE_DIRECTORY, "latest.json"), `${JSON.stringify(manifest, null, 2)}\n`);
@@ -82,5 +83,6 @@ if (process.argv[1] && resolve(process.argv[1]) === fileURLToPath(import.meta.ur
       process.env.RELEASE_VERSION,
       process.env.GITHUB_REPOSITORY,
       readFileSync(join(RELEASE_DIRECTORY, "RELEASE_NOTES.md"), "utf8"),
+      process.env.RELEASE_ROLLOUT,
     );
 }

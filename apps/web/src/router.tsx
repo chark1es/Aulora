@@ -9,9 +9,11 @@ import {
 } from "@tanstack/react-router";
 import { lazy, Suspense, useEffect, useState } from "react";
 import { DesktopBridge } from "./components/DesktopBridge";
+import { DesktopContextMenu } from "./components/DesktopContextMenu";
 import { DesktopTitleBar } from "./components/DesktopTitleBar";
 import { DesktopUpdateNotice } from "./components/DesktopUpdateNotice";
 import { RouteError } from "./components/RouteError";
+import { DisplaySourcePicker } from "./components/voice/DisplaySourcePicker";
 import { WorkspaceMenu } from "./components/WorkspaceMenu";
 import { DesktopUpdateProvider } from "./providers/DesktopUpdateProvider";
 import { ProfileProvider, useProfiles } from "./providers/ProfileProvider";
@@ -60,8 +62,10 @@ function RootLayout() {
     <ProfileProvider {...(previewing && previewStore !== undefined ? { store: previewStore } : {})}>
       <DesktopUpdateProvider>
         <ContextMenuProvider>
+          <DesktopContextMenu />
           <DesktopBridge />
           <DesktopUpdateNotice />
+          <DisplaySourcePicker />
           <AppShell />
         </ContextMenuProvider>
       </DesktopUpdateProvider>

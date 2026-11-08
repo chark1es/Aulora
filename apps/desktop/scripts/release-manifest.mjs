@@ -17,7 +17,7 @@ export function validateVersion(version) {
   return version;
 }
 
-export function buildReleaseManifest({ version, notes, pubDate, platforms, assets }) {
+export function buildReleaseManifest({ version, notes, pubDate, platforms, assets, rollout }) {
   validateVersion(version);
   if (!Array.isArray(platforms) || platforms.length === 0) {
     throw new Error("At least one signed platform artifact is required.");
@@ -49,6 +49,16 @@ export function buildReleaseManifest({ version, notes, pubDate, platforms, asset
       gitTag: `v${version}`,
     },
   };
+  // Optional staged-rollout percentage. Omitted means every client sees the
+  // update, which is the previous behavior. The desktop shell hashes its
+  // persisted installation id into the percentage; GitHub still serves the
+  // artifacts, so this is staged delivery, not access control.
+  if (rollout !== undefined) {
+    if (typeof rollout !== "number" || !Number.isFinite(rollout) || rollout < 0 || rollout > 100) {
+      throw new Error("`rollout` must be a number from 0 to 100 when provided.");
+    }
+    manifest.rollout = Math.round(rollout);
+  }
   // Optional installer list for the docs download buttons, so they can read a
   // static manifest instead of the rate-limited GitHub API. The desktop updater
   // only reads `version`/`platforms`/`workspace` and ignores this.
@@ -82,6 +92,7 @@ async function main() {
       notes: { type: "string" },
       "base-url": { type: "string" },
       platform: { type: "string", multiple: true },
+      rollout: { type: "string" },
       output: { type: "string" },
       help: { type: "boolean" },
     },
@@ -116,6 +127,7 @@ async function main() {
     notes: values.notes ?? "",
     pubDate: new Date().toISOString(),
     platforms,
+    ...(values.rollout !== undefined ? { rollout: Number(values.rollout) } : {}),
   });
   const output = resolve(values.output ?? "latest.json");
   await writeFile(output, `${JSON.stringify(manifest, null, 2)}\n`);

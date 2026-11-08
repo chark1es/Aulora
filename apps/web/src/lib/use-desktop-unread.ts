@@ -1,6 +1,4 @@
-import { useQuery } from "convex/react";
 import { useEffect } from "react";
-import { api } from "../../../../packages/convex/convex/_generated/api";
 import { isDesktop, setDesktopUnreadBadge } from "./desktop";
 
 interface AppBadgeNavigator {
@@ -9,15 +7,17 @@ interface AppBadgeNavigator {
 }
 
 /**
- * Streams the server-computed unread total into the desktop Dock/taskbar badge
- * and the OS app badge (`navigator.setAppBadge`) where supported. Unlike the
- * old arrival counter, this reflects the real per-channel read cursors, so it
- * stays correct across devices and after a reload.
+ * Mirrors an unread total into the desktop Dock/taskbar badge and the OS app
+ * badge (`navigator.setAppBadge`) where supported.
+ *
+ * The total is summed from the sidebar's live `readStates.summary` rows
+ * (`unreadCount`), which already scan each channel's read cursor and tail. This
+ * hook used to subscribe `notifications.unreadSummary` as well, so every
+ * message insert re-ran two independent per-channel tail scans per client.
+ * `unreadSummary` stays in the backend for installed clients.
  */
-export function useLiveUnreadBadge(): number {
+export function useUnreadBadge(total: number): number {
   const desktop = isDesktop();
-  const summary = useQuery(api.notifications.unreadSummary, {});
-  const total = summary?.total ?? 0;
 
   useEffect(() => {
     if (!desktop) {

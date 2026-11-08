@@ -9,7 +9,7 @@ import { useClipboardCopy } from "../useClipboardCopy";
 export function EnvRedirectUrl({ url }: { readonly url: string | null }) {
   if (url === null) {
     return (
-      <Text size="xs" tone="muted">
+      <Text size="xs" tone="muted" className="mt-0.5">
         Redirect URL unavailable: set SITE_URL on the deployment first.
       </Text>
     );
@@ -20,11 +20,9 @@ export function EnvRedirectUrl({ url }: { readonly url: string | null }) {
 function RedirectUrlRow({ url }: { readonly url: string }) {
   const { copied, copy } = useClipboardCopy(url);
   return (
-    <div className="flex min-w-0 items-center gap-1" data-testid="env-redirect-url">
-      <Text size="xs" tone="muted" className="shrink-0">
-        Redirect URL
-      </Text>
-      <code className="min-w-0 truncate rounded-[5px] border border-border bg-surface-3 px-1.5 py-0.5 font-mono text-[11px] text-text-muted">
+    <div className="env-redirect" data-testid="env-redirect-url">
+      <span className="sr-only">Redirect URL: </span>
+      <code className="min-w-0 font-mono text-[11px] leading-4 text-text-muted [overflow-wrap:anywhere]">
         {url}
       </code>
       <IconButton

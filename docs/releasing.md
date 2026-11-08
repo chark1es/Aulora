@@ -41,6 +41,7 @@ For a candidate, run [Actions, Release](https://github.com/chark1es/Aulora/actio
 
 - [ ] Run `bun install --frozen-lockfile` with Bun 1.4.4 and Node.js 22.23.4.
 - [ ] Run `bun run check`, desktop configuration verification, and the required native CI builds.
+- [ ] Confirm the [performance guards](performance.md) passed with the release build. Record the bundle, embed and Convex query results, and review every budget or allowlist change since the previous release; an unexplained growth is a release blocker.
 - [ ] Install a fresh isolated stack using the documented installer. Verify setup completes and reruns without regenerating the encryption key.
 - [ ] Verify discovery, owner sign-in, registration/invite-only policy, roles, and denied actions with a second account.
 - [ ] Exercise messages, DMs, threads, reactions, editing, search, pinned messages, uploads/downloads, reconnect, and workspace switching.
@@ -48,7 +49,64 @@ For a candidate, run [Actions, Release](https://github.com/chark1es/Aulora/actio
 - [ ] Test the intended public HTTPS/WSS deployment from another network. Check DNS, cookies, provider callbacks, proxy upload limits, and private administrative ports.
 - [ ] Replace example database and MinIO credentials in production.
 - [ ] Test backup creation with uploaded files, copy it off-machine, and restore it to an isolated stack using the original key. Verify both old messages and downloaded files.
-- [ ] Exercise server update check/download/restart and document migration/recovery steps.
+- [ ] Exercise server update check/download/restart and document migration/recovery steps. For backend, schema, subscription, engine, or updater changes, complete the applicable [Convex performance and upgrade checks](convex/README.md#verification-before-release), including populated older installs, skipped versions, client compatibility, failed-update retries, and recovery.
+- [ ] Decide whether this release needs a minimum/recommended client version, a kill switch, or a staged desktop rollout. Record the chosen values and the rollback plan in the release notes.
+- [ ] Run `bun run release:check` (includes the schema snapshot gate) and `bun --cwd packages/convex run test -- test/compat/schema-compat.test.ts` before merging the version bump.
+
+## Upgrade safety controls
+
+### Client compatibility gate
+
+`server.publicConfig.clientVersion` advertises two optional settings read from the deployment environment:
+
+| Variable | Effect | Default |
+| --- | --- | --- |
+| `AULORA_MIN_CLIENT_VERSION` | Clients older than this show an update-required screen and cannot continue into the workspace. | unset (no gate) |
+| `AULORA_RECOMMENDED_CLIENT_VERSION` | Older clients still work but see a dismissible update notice. | unset (no notice) |
+
+Both accept a full stable SemVer such as `1.4.0`; an invalid value is ignored. The client compares against the version injected from its own manifest at build time. Desktop's action starts the signed updater, web reloads for the newest bundle, and a mobile client should link to its store listing.
+
+Bump procedure:
+
+1. Ship the backend change with a schema and API that accept the previous supported client, and publish the client that understands the new behavior.
+2. Verify the new client against the new backend before enforcing anything.
+3. Set `AULORA_RECOMMENDED_CLIENT_VERSION` first for visibility; raise `AULORA_MIN_CLIENT_VERSION` only once every supported client can actually install the new build. Raising it early strands users with no update path.
+4. Keep the minimum in place while the incompatible backend is running. Lower it only with a compatible backend.
+5. Never set the minimum above the oldest client the release notes still support.
+
+### Kill switches
+
+`server.settings` stores three optional booleans, all defaulting to `false` (feature enabled). They are advertised through `server.publicConfig.features` and read with `resolveFeatureFlags`; unknown or malformed values fall back to enabled.
+
+| Setting | Disables |
+| --- | --- |
+| `disableNewCallTransport` | The new call transport path. |
+| `disablePipVideo` | Picture-in-picture video. |
+| `disableAutoDegrade` | Automatic call quality degradation. |
+
+A workspace manager sets them with `server.updateSettings`; clients see the new value on their next config read. Use them to turn off a new path during an incident without shipping a client. They are product guards, not authorization: keep every server-side permission and validation check in place.
+
+### Staged desktop rollout
+
+The desktop updater reads an optional top-level `rollout` percentage from the static `latest.json` manifest. Omitted or `100` keeps the previous behavior. Each installation persists an `update-client-id` in its app config directory; the shell hashes that id into a stable 0–99 bucket and only offers the update when the bucket is below the percentage.
+
+- Set the percentage with the Release workflow's `rollout` input, the repository `RELEASE_ROLLOUT` variable for automatic releases, or `RELEASE_ROLLOUT` when running `scripts/ci/assemble-release.mjs` directly. The manifest builder rejects values outside 0–100.
+- Limitation: the feed is a static GitHub release asset. GitHub still serves the artifacts to anyone who asks, so this is staged delivery, not access control. A published release cannot be re-gated without publishing a new version; plan the percentage when publishing.
+- Use `100` for security fixes. Stage risky client changes instead.
+
+### Schema compatibility gate
+
+- `packages/convex/test/fixtures/compat/vX.Y.Z/*.json` holds synthetic documents shaped like a supported older release. Add a folder for each supported release; `packages/convex/test/compat/schema-compat.test.ts` inserts every document through the current validators with `convex-test`.
+- `scripts/ci/schema-snapshot.json` records each table's required/optional fields. `node scripts/ci/check-schema-compat.mjs` (also run by `release:check`) fails when a field becomes required, a required field is added, or a table/field is removed.
+- An intentional tightening after a completed backfill is allowed with a marker comment in `schema.ts`:
+  `// @compat-allow-tighten: server.exampleField -- backfill ...`
+- After an intentional change, add the marker only once the backfill is complete, then run `node scripts/ci/check-schema-compat.mjs --update`, review the snapshot diff, and commit it with the schema change. The update command refuses to bless an unmarked tightening.
+
+### Deploy order and rollback
+
+`infra/docker/deploy.sh` and the staged updater now deploy the backend (`setup`) before recreating the web container. The release schema and functions must accept both the old and new frontend during that window. A failed `setup` leaves the previous web container serving.
+
+`deploy.sh` pins the serving web image as `aulora-web:previous` and records its id plus the deployed version in `infra/docker/.deployed-web-image.json` before rebuilding. `./deploy.sh --rollback` verifies that pin, restores it as `aulora-web:local`, and recreates only the web service. Backend functions and schemas are **not** rolled back; use a compatible backup/restore when a migration is irreversible. See [Convex recovery](convex/README.md#deploy-a-release-in-a-safe-order).
 
 ## Signed applications and services
 

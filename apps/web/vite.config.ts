@@ -1,5 +1,6 @@
 import react from "@vitejs/plugin-react";
 import { defineConfig, loadEnv } from "vite";
+import pkg from "./package.json" with { type: "json" };
 
 /** Never inline code or models; images and fonts keep Vite's default size rule. */
 export function keepLoadableAssetsAsFiles(file: string): boolean | undefined {
@@ -19,6 +20,12 @@ export default defineConfig(({ mode }) => {
 
   return {
     plugins: [react()],
+    // The running client's own version, compared against the server's minimum
+    // and recommended versions. Read from the workspace manifest so a release
+    // bump cannot leave it stale.
+    define: {
+      __AULORA_CLIENT_VERSION__: JSON.stringify(pkg.version),
+    },
     server: {
       host: "127.0.0.1",
       port: 5173,

@@ -23,6 +23,7 @@ export function NoteMarkdown({ text, className }: { text: string; className?: st
   }
   return (
     <div
+      data-context-menu-text
       className={cn(
         "flex flex-col gap-3 break-words text-[14px] leading-relaxed text-text",
         className,

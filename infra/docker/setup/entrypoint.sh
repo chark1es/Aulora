@@ -296,6 +296,13 @@ set_env_if_present BOT_RUNNER_TOKEN "$BOT_RUNNER_TOKEN_VALUE" 1
 # clients on their built-in public STUN defaults; calls need no media server.
 set_env_if_present AULORA_ICE_SERVERS "$(host_value AULORA_ICE_SERVERS)"
 
+# Optional TURN relay. `turn.credentials` mints short-lived HMAC credentials
+# from TURN_SECRET, so the backend needs the secret and the URLs clients should
+# try. Without all of them, clients keep their public-STUN default.
+set_env_if_present TURN_URLS "$(host_value TURN_URLS)"
+set_env_if_present TURN_SECRET "$(host_value TURN_SECRET)" 1
+set_env_if_present TURN_TTL_SECONDS "$(host_value TURN_TTL_SECONDS)"
+
 # Optional screen-streaming server (compose profile `streaming`). Convex only
 # mints room tokens from these; the media never passes through it. With the
 # profile on, `livekit-init` has already written the key pair to a volume and the

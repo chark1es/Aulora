@@ -49,7 +49,11 @@ export function WorkspaceSwitcherSheet({ visible, onClose }: WorkspaceSwitcherSh
                 }
                 onPress={() => {
                   onClose();
-                  if (!active) void setActive(profile.id);
+                  if (!active) {
+                    // A refused write leaves the current workspace active; the
+                    // sheet is already closed, so there is nothing to correct.
+                    void setActive(profile.id).catch(() => undefined);
+                  }
                 }}
               />
             );

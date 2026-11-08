@@ -6,7 +6,7 @@ import { Button, Heading, Icon, IconButton, Text, usePalette } from "@aulora/ui-
 import { ConvexReactClient } from "convex/react";
 import * as Clipboard from "expo-clipboard";
 import { useRouter } from "expo-router";
-import { useState } from "react";
+import { useRef, useState } from "react";
 import {
   Animated,
   Image,
@@ -20,6 +20,7 @@ import {
 } from "react-native";
 import { api } from "../../../../packages/convex/convex/_generated/api";
 import { SUPPORTED_API_VERSION } from "../lib/api-version";
+import { type Branding, fetchBranding } from "../lib/branding";
 import { shouldOpenReviewDemo } from "../lib/review-demo";
 import { useEntrance, useReduceMotion } from "../lib/use-entrance";
 import { useProfiles } from "../providers/ProfileProvider";
@@ -30,11 +31,6 @@ import { ThresholdAura } from "./ThresholdAura";
 interface Preview {
   readonly baseUrl: string;
   readonly wellKnown: WellKnown;
-}
-
-interface Branding {
-  readonly description: string;
-  readonly logoUrl: string | null;
 }
 
 interface ConnectOutcome {
@@ -74,19 +70,6 @@ function messageForError(error: unknown): string {
     }
   }
   return "Enter a valid server address, like chat.acme.com.";
-}
-
-/** Best-effort branding (description/logo) read from the server's public config. */
-async function fetchBranding(convexUrl: string): Promise<Branding> {
-  const client = new ConvexReactClient(convexUrl);
-  try {
-    const config = await client.query(api.server.publicConfig, {});
-    return { description: config.description ?? "", logoUrl: config.logoUrl ?? null };
-  } catch {
-    return { description: "", logoUrl: null };
-  } finally {
-    client.close();
-  }
 }
 
 /** Fetches and validates the well-known document, mapping errors to copy. */
@@ -139,6 +122,9 @@ function useConnectModel(onConnected: () => void, initialHost: string | undefine
   const [error, setError] = useState<string | null>(null);
   const [preview, setPreview] = useState<Preview | null>(null);
   const [branding, setBranding] = useState<Branding | null>(null);
+  /** Identifies the preview whose branding is allowed to land, so a slow read
+   * for a previous address cannot overwrite the one on screen. */
+  const brandingRequest = useRef(0);
 
   async function connect() {
     setError(null);
@@ -154,15 +140,29 @@ function useConnectModel(onConnected: () => void, initialHost: string | undefine
       return;
     }
     setBusy(true);
-    const outcome = await discover(value);
-    if (outcome.preview !== null) {
-      setPreview(outcome.preview);
-      setBranding(null);
-      void fetchBranding(outcome.preview.wellKnown.convexUrl).then(setBranding);
-    } else if (outcome.message.length > 0) {
-      setError(outcome.message);
+    try {
+      const outcome = await discover(value);
+      if (outcome.preview !== null) {
+        const request = brandingRequest.current + 1;
+        brandingRequest.current = request;
+        setPreview(outcome.preview);
+        setBranding(null);
+        // Decoration only, and it must not keep the button spinning or reject.
+        void fetchBranding(
+          outcome.preview.wellKnown.convexUrl,
+          (url) => new ConvexReactClient(url),
+          api.server.publicConfig,
+        ).then((next) => {
+          if (brandingRequest.current === request) {
+            setBranding(next);
+          }
+        });
+      } else if (outcome.message.length > 0) {
+        setError(outcome.message);
+      }
+    } finally {
+      setBusy(false);
     }
-    setBusy(false);
   }
 
   async function save() {
@@ -216,12 +216,16 @@ function useConnectModel(onConnected: () => void, initialHost: string | undefine
     },
     paste,
     back: () => {
+      brandingRequest.current += 1;
       setPreview(null);
+      setBranding(null);
       setError(null);
     },
     switchTo,
     removeProfile: (id) => {
-      void remove(id);
+      // Forgetting a workspace is best-effort: storage can refuse the write,
+      // and the list below is re-read from it, so a failure leaves the row.
+      void remove(id).catch(() => undefined);
     },
   };
 }

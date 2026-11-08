@@ -1,8 +1,13 @@
-import { render, screen, within } from "@testing-library/react";
+import { render, screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { describe, expect, it, vi } from "vitest";
 import { InviteCreated } from "../components/admin/invites/InviteCreated";
+import { InviteCreateForm } from "../components/admin/invites/InviteCreateForm";
 import { InviteList, type InviteRow } from "../components/admin/invites/InviteList";
+
+const convex = vi.hoisted(() => ({ create: vi.fn() }));
+
+vi.mock("convex/react", () => ({ useMutation: () => convex.create }));
 
 const NOW = Date.now();
 
@@ -82,6 +87,66 @@ describe("InviteList", () => {
   });
 });
 
+describe("InviteCreateForm custom code", () => {
+  it("validates a chosen code and submits it", async () => {
+    convex.create.mockReset();
+    convex.create.mockResolvedValue({
+      inviteId: "i1",
+      code: "WELCOME-TEAM",
+      kind: "code",
+      custom: true,
+    });
+    const user = userEvent.setup();
+    render(<InviteCreateForm origin="https://x" />);
+
+    await user.click(screen.getByRole("radio", { name: "Code" }));
+    expect(screen.queryByLabelText("Custom code")).toBeNull();
+
+    await user.click(screen.getByRole("radio", { name: "Choose my own" }));
+    const field = screen.getByLabelText("Custom code");
+
+    await user.type(field, "short");
+    expect(screen.getByText(/at least 6/)).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "Create invite" })).toBeEnabled();
+
+    await user.clear(field);
+    await user.type(field, "welcome-team");
+    expect(screen.queryByText(/at least 6/)).toBeNull();
+
+    await user.click(screen.getByRole("button", { name: "Create invite" }));
+    await waitFor(() => {
+      expect(convex.create).toHaveBeenCalledWith(
+        expect.objectContaining({ kind: "code", customCode: "welcome-team" }),
+      );
+    });
+  });
+
+  it("shows the server's duplicate-code refusal inline", async () => {
+    convex.create.mockReset();
+    convex.create.mockRejectedValue(new Error("That code is already in use"));
+    const user = userEvent.setup();
+    render(<InviteCreateForm origin="https://x" />);
+
+    await user.click(screen.getByRole("radio", { name: "Code" }));
+    await user.click(screen.getByRole("radio", { name: "Choose my own" }));
+    await user.type(screen.getByLabelText("Custom code"), "welcome-team");
+    await user.click(screen.getByRole("button", { name: "Create invite" }));
+
+    expect(await screen.findByRole("alert")).toHaveTextContent("That code is already in use");
+  });
+
+  it("cannot create an invite before the workspace origin is known", async () => {
+    convex.create.mockReset();
+    const user = userEvent.setup();
+    render(<InviteCreateForm origin={null} />);
+
+    expect(screen.getByRole("button", { name: "Create invite" })).toBeDisabled();
+    expect(screen.getByText(/workspace address/)).toBeInTheDocument();
+    await user.click(screen.getByRole("button", { name: "Create invite" }));
+    expect(convex.create).not.toHaveBeenCalled();
+  });
+});
+
 describe("InviteCreated", () => {
   it("shows a grouped access code beside the link", () => {
     render(
@@ -91,11 +156,27 @@ describe("InviteCreated", () => {
           kind: "code",
           link: "https://x/invite/7QXM2KD9TV4B",
           emailedTo: null,
+          custom: false,
         }}
       />,
     );
     expect(screen.getByText("7QXM-2KD9-TV4B")).toBeInTheDocument();
     expect(screen.getByText("https://x/invite/7QXM2KD9TV4B")).toBeInTheDocument();
+  });
+
+  it("shows a custom code exactly as chosen", () => {
+    render(
+      <InviteCreated
+        invite={{
+          code: "HELLO2026XYZ",
+          kind: "code",
+          link: "https://x/invite/HELLO2026XYZ",
+          emailedTo: null,
+          custom: true,
+        }}
+      />,
+    );
+    expect(screen.getByText("HELLO2026XYZ")).toBeInTheDocument();
   });
 
   it("says where an emailed invite went", () => {
@@ -106,6 +187,7 @@ describe("InviteCreated", () => {
           kind: "email",
           link: "https://x/invite/abc",
           emailedTo: "sam@acme.com",
+          custom: false,
         }}
       />,
     );

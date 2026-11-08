@@ -263,8 +263,8 @@ describe("screenBitrateFor", () => {
     expect(screenBitrateFor(budget, 9) * 9).toBeLessThanOrEqual(3_000_000 * 3);
   });
 
-  it("never drops below a watchable floor", () => {
-    expect(screenBitrateFor(budget, 100)).toBe(500_000);
+  it("never drops below a legible floor, shrinking resolution instead", () => {
+    expect(screenBitrateFor(budget, 100)).toBe(900_000);
   });
 
   it("treats zero viewers as one", () => {

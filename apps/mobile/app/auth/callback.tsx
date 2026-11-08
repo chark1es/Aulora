@@ -5,31 +5,37 @@ import { useLocalSearchParams, useRouter } from "expo-router";
 import { useEffect } from "react";
 import { View } from "react-native";
 import { ThresholdAura } from "../../src/components/ThresholdAura";
-import { AUTH_COOKIE_KEY, storeRedirectCookie } from "../../src/lib/cookie-fetch";
+import { completeAuthCallback } from "../../src/lib/auth-callback";
 
 /**
  * Deep-link target for `aulora://auth/callback`. Better Auth appends the
  * freshly minted session cookie to the redirect; persist it, then return home
  * so the session query picks it up.
+ *
+ * The persist step never rejects, so a malformed cookie or an unreadable store
+ * still lands the person back on the sign-in/chat surface instead of leaving
+ * this spinner up for good.
  */
 export default function AuthCallbackRoute() {
   const params = useLocalSearchParams<{ cookie?: string }>();
   const router = useRouter();
+  const cookie = typeof params.cookie === "string" ? params.cookie : undefined;
 
   useEffect(() => {
+    const state = { cancelled: false };
     void (async () => {
-      const cookie = typeof params.cookie === "string" ? params.cookie : undefined;
-      if (cookie !== undefined && cookie.length > 0) {
-        await AsyncStorage.setItem(AUTH_COOKIE_KEY, decodeURIComponent(cookie));
-      } else {
-        const initial = await Linking.getInitialURL();
-        if (initial !== null) {
-          await storeRedirectCookie(AsyncStorage, initial);
-        }
+      await completeAuthCallback(AsyncStorage, {
+        cookie,
+        initialUrl: () => Linking.getInitialURL(),
+      });
+      if (!state.cancelled) {
+        router.replace("/");
       }
-      router.replace("/");
     })();
-  }, [params.cookie, router]);
+    return () => {
+      state.cancelled = true;
+    };
+  }, [cookie, router]);
 
   return (
     <View className="flex-1 items-center justify-center gap-4 bg-bg">

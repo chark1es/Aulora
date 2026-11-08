@@ -19,10 +19,20 @@ const readMacos = () => readFileSync(resolve(srcTauri, "tauri.macos.conf.json"),
 const readWindows = () => readFileSync(resolve(srcTauri, "tauri.windows.conf.json"), "utf8");
 const readLinux = () => readFileSync(resolve(srcTauri, "tauri.linux.conf.json"), "utf8");
 const readRelease = () => readFileSync(resolve(srcTauri, "tauri.release.conf.json"), "utf8");
-const readMiniWindow = () => readFileSync(resolve(srcTauri, "src/mini_window.rs"), "utf8");
+// Windows checks sources out with CRLF line endings. The Rust checks below look
+// for line-based shapes such as a closing `}` at the start of a line, so Rust is
+// read with LF endings on every platform.
+const lf = (text) => text.replaceAll("\r\n", "\n");
+const readPipWindow = () => lf(readFileSync(resolve(srcTauri, "src/pip_window.rs"), "utf8"));
+const readPipGeometry = () => lf(readFileSync(resolve(srcTauri, "src/pip_geometry.rs"), "utf8"));
+const readCommands = () => lf(readFileSync(resolve(srcTauri, "src/commands.rs"), "utf8"));
+const readLib = () => lf(readFileSync(resolve(srcTauri, "src/lib.rs"), "utf8"));
+const readPipBridge = () =>
+  readFileSync(resolve(srcTauri, "..", "..", "web", "src", "lib", "call-pip.ts"), "utf8");
 const readCapabilities = () => readFileSync(resolve(srcTauri, "capabilities/default.json"), "utf8");
 const readInfoPlist = () => readFileSync(resolve(srcTauri, "Info.plist"), "utf8");
 const readEntitlements = () => readFileSync(resolve(srcTauri, "Entitlements.plist"), "utf8");
+const readShell = () => lf(readFileSync(resolve(srcTauri, "src", "lib.rs"), "utf8"));
 
 function readJson(relative, read) {
   try {
@@ -50,7 +60,7 @@ function parseCsp(csp) {
   return directives;
 }
 
-function verifyCsp(csp) {
+function verifyCsp(csp, devCsp) {
   check("a CSP string must be set", typeof csp === "string");
   if (typeof csp !== "string") {
     return;
@@ -74,6 +84,40 @@ function verifyCsp(csp) {
     "connect-src must allow http://ipc.localhost for Windows IPC",
     connectSrc.includes("http://ipc.localhost"),
   );
+  // The dev server origin only exists while `tauri dev` runs. Shipping it in the
+  // bundle's CSP would let a released app talk to whatever listens on 5173.
+  check(
+    "the production CSP must not allow the dev server origin",
+    !connectSrc.includes("localhost:5173"),
+  );
+  // The asset protocol converts local paths into `asset:` URLs. Nothing in the
+  // client calls `convertFileSrc`, so the protocol and its CSP entries are dead
+  // surface (and name the shell's internal `asset.localhost` origin).
+  const imgSrc = (directives.get("img-src") ?? []).join(" ");
+  check(
+    "the production CSP must not allow the unused asset protocol",
+    !imgSrc.includes("asset:") && !csp.includes("asset.localhost"),
+  );
+  check("a dev CSP string must be set", typeof devCsp === "string");
+  if (typeof devCsp === "string") {
+    const devDirectives = parseCsp(devCsp);
+    const devConnect = (devDirectives.get("connect-src") ?? []).join(" ");
+    check(
+      "the dev CSP must allow the dev server over http and ws (HMR)",
+      devConnect.includes("http://localhost:5173") && devConnect.includes("ws://localhost:5173"),
+    );
+    check(
+      "the dev CSP must keep IPC",
+      devConnect.includes("ipc:") && devConnect.includes("http://ipc.localhost"),
+    );
+    for (const directive of ["default-src", "script-src", "object-src", "frame-ancestors"]) {
+      check(
+        `the dev CSP must keep the production ${directive}`,
+        (devDirectives.get(directive) ?? []).join(" ") ===
+          (directives.get(directive) ?? []).join(" "),
+      );
+    }
+  }
 }
 
 function verifyUpdater(updater) {
@@ -103,20 +147,137 @@ function verifyUpdater(updater) {
   );
 }
 
-// The picture-in-picture window lowers the main window's minimum size and puts
-// it back with constants in Rust (the webview cannot be asked for it). They have
-// to equal the configured minimum or leaving PiP would resize the window wrongly.
-function verifyMiniWindowMinimums(window) {
-  const source = readMiniWindow();
-  const width = /const MAIN_MIN_WIDTH: f64 = ([0-9.]+);/.exec(source)?.[1];
-  const height = /const MAIN_MIN_HEIGHT: f64 = ([0-9.]+);/.exec(source)?.[1];
+// The call picture-in-picture window is a second webview the shell creates at
+// runtime. Its label is what the main webview addresses events to and what the
+// capability must grant, and its entry has to be the hash the web build renders
+// as the PiP view — check the two halves together so they cannot drift.
+function verifyPipWindow() {
+  let source = "";
+  try {
+    source = readPipWindow();
+  } catch {
+    failures.push("src-tauri/src/pip_window.rs is missing (the call window)");
+    return;
+  }
+  const label = /pub const LABEL: &str = "([^"]+)";/.exec(source)?.[1];
+  check('pip_window.rs must label the call window "pip"', label === "pip");
+
+  const number = (name) => {
+    const prefix = `const ${name}: f64 = `;
+    const start = source.indexOf(prefix);
+    const end = start === -1 ? -1 : source.indexOf(";", start);
+    return end === -1 ? Number.NaN : Number(source.slice(start + prefix.length, end));
+  };
+  const [minWidth, minHeight, maxWidth, maxHeight] = [
+    number("MIN_WIDTH"),
+    number("MIN_HEIGHT"),
+    number("MAX_WIDTH"),
+    number("MAX_HEIGHT"),
+  ];
   check(
-    "mini_window.rs MAIN_MIN_WIDTH must equal windows[0].minWidth",
-    width !== undefined && Number(width) === window?.minWidth,
+    "pip_window.rs size bounds must be ordered (0 < min < max on both axes)",
+    minWidth > 0 && minHeight > 0 && minWidth < maxWidth && minHeight < maxHeight,
   );
+
+  let hash = "";
+  try {
+    hash = /PIP_WINDOW_HASH = "([^"]+)";/.exec(readPipBridge())?.[1] ?? "";
+  } catch {
+    failures.push("apps/web/src/lib/call-pip.ts is missing (the call window bridge)");
+  }
+  check('call-pip.ts must define the PiP entry hash "#pip"', hash === "#pip");
+  const entry = /pub const ENTRY: &str = "([^"]+)";/.exec(source)?.[1];
   check(
-    "mini_window.rs MAIN_MIN_HEIGHT must equal windows[0].minHeight",
-    height !== undefined && Number(height) === window?.minHeight,
+    "pip_window.rs must load the same entry the web client renders",
+    entry === `index.html${hash}`,
+  );
+
+  // The pop-out is a native-feeling window: shadowed, on every workspace,
+  // focusable, and never throttled while it paints the picture.
+  for (const [label, needle] of [
+    ["a shadow", ".shadow(true)"],
+    ["all workspaces", ".visible_on_all_workspaces(true)"],
+    ["focus", ".focusable(true)"],
+    ["no background throttling", "BackgroundThrottlingPolicy::Disabled"],
+    ["a remembered geometry", "app_config_dir"],
+    ["edge snapping", "snap_to_edges"],
+    ["Wayland detection", "WAYLAND_DISPLAY"],
+    ["the Wayland session type", "XDG_SESSION_TYPE"],
+  ]) {
+    check(`pip_window.rs must use ${label}`, source.includes(needle));
+  }
+  check(
+    "pip_window.rs must not skip the taskbar on macOS",
+    source.includes('if !cfg!(target_os = "macos")'),
+  );
+
+  let geometry = "";
+  try {
+    geometry = readPipGeometry();
+  } catch {
+    failures.push("src-tauri/src/pip_geometry.rs is missing (call window geometry)");
+  }
+  for (const helper of ["clamp_to_area", "snap_to_edges", "read_geometry", "write_geometry"]) {
+    check(`pip_geometry.rs must define ${helper}`, geometry.includes(helper));
+  }
+
+  let bridge = "";
+  try {
+    bridge = readPipBridge();
+  } catch {
+    // Already reported above.
+  }
+  for (const event of [
+    "aulora://call-pip-state",
+    "aulora://call-pip-action",
+    "aulora://call-pip-closed",
+    "aulora://call-pip-signal",
+  ]) {
+    check(`call-pip.ts must define the ${event} event`, bridge.includes(event));
+  }
+}
+
+// The frame fallback is a shell command pair plus the raw forwarder. Check that
+// the window's commands are registered, since a missing handler is a runtime
+// "command not found" only the fallback path would ever hit.
+function verifyPipCommands() {
+  let commands = "";
+  try {
+    commands = readCommands();
+  } catch {
+    failures.push("src-tauri/src/commands.rs is missing");
+    return;
+  }
+  for (const command of [
+    "pip_window_mode",
+    "snap_pip_window",
+    "set_pip_size",
+    "register_pip_frames",
+    "unregister_pip_frames",
+    "push_pip_frame",
+  ]) {
+    check(`commands.rs must define ${command}`, commands.includes(`fn ${command}`));
+  }
+  let lib = "";
+  try {
+    lib = readLib();
+  } catch {
+    failures.push("src-tauri/src/lib.rs is missing");
+    return;
+  }
+  for (const command of [
+    "commands::pip_window_mode",
+    "commands::snap_pip_window",
+    "commands::set_pip_size",
+    "commands::register_pip_frames",
+    "commands::unregister_pip_frames",
+    "commands::push_pip_frame",
+  ]) {
+    check(`lib.rs must register ${command}`, lib.includes(command));
+  }
+  check(
+    "lib.rs must manage the call-window frame state",
+    lib.includes("pip_window::PipFrameState::default()"),
   );
 }
 
@@ -135,7 +296,11 @@ function verifyMainConfig(config) {
   );
   check("withGlobalTauri must be enabled", config.app?.withGlobalTauri === true);
   check("windows[0] must be the main window", config.app?.windows?.[0]?.label === "main");
-  verifyMiniWindowMinimums(config.app?.windows?.[0]);
+  check(
+    "windows[0] must keep a minimum size so the main window is never shrunk by the call window",
+    typeof config.app?.windows?.[0]?.minWidth === "number" &&
+      typeof config.app?.windows?.[0]?.minHeight === "number",
+  );
   check(
     "windows[0] must set dragDropEnabled to false so the app-wide web file drop reaches the webview",
     config.app?.windows?.[0]?.dragDropEnabled === false,
@@ -144,7 +309,7 @@ function verifyMainConfig(config) {
     "windows[0] must disable background throttling so a hidden call keeps its timers and audio",
     config.app?.windows?.[0]?.backgroundThrottling === "disabled",
   );
-  verifyCsp(config.app?.security?.csp);
+  verifyCsp(config.app?.security?.csp, config.app?.security?.devCsp);
   check(
     "deep-link scheme must be aulora",
     (config.plugins?.["deep-link"]?.desktop?.schemes ?? []).includes("aulora"),
@@ -212,17 +377,65 @@ function verifyPrepareFrontend() {
 
 function verifyCapabilities(capabilities) {
   check(
-    "capability must target the main window",
-    JSON.stringify(capabilities.windows) === JSON.stringify(["main"]),
+    "capability must target the main and call windows",
+    JSON.stringify(capabilities.windows) === JSON.stringify(["main", "pip"]),
   );
   check(
     "capability must grant core:default",
     Array.isArray(capabilities.permissions) && capabilities.permissions.includes("core:default"),
   );
   check(
-    "capability must allow the webview title bar to drag the window",
+    "capability must allow the webview drag regions to move the window",
     Array.isArray(capabilities.permissions) &&
       capabilities.permissions.includes("core:window:allow-start-dragging"),
+  );
+  check(
+    "capability must allow the call window's edge handles to resize it",
+    Array.isArray(capabilities.permissions) &&
+      capabilities.permissions.includes("core:window:allow-start-resize-dragging"),
+  );
+}
+
+// The webview permission handler is the other half of the no-origin-prompt
+// posture: the main webview must answer for itself the permission kinds the
+// client uses. A deferred answer (`PermissionResponse::Default`) makes the web
+// engine draw a prompt that names the bundle's internal origin.
+function verifyWebviewPermissions() {
+  let source = "";
+  try {
+    source = readShell();
+  } catch {
+    failures.push("src-tauri/src/lib.rs is missing (the webview permission handler)");
+    return;
+  }
+  const start = source.indexOf("fn permission_response");
+  const end = start === -1 ? -1 : source.indexOf("\n}\n", start);
+  const body = end === -1 ? "" : source.slice(start, end);
+  check("lib.rs must define permission_response", body.length > 0);
+  const allowedKinds = new Set(
+    [...body.matchAll(/PermissionKind::(\w+)/g)].map((match) => match[1]),
+  );
+  for (const kind of [
+    "Microphone",
+    "Camera",
+    "DisplayCapture",
+    "Notifications",
+    "ClipboardRead",
+    "Autoplay",
+    "AutomaticDownloads",
+  ]) {
+    check(
+      `permission_response must allow PermissionKind::${kind} in the main webview`,
+      allowedKinds.has(kind),
+    );
+  }
+  check(
+    "permission_response must answer only for the main webview",
+    /webview\.label\(\) != "main"/.test(body),
+  );
+  check(
+    "permission_response must deny every other kind instead of prompting",
+    /PermissionResponse::Deny/.test(body),
   );
 }
 
@@ -260,7 +473,10 @@ function main() {
     verifyMainConfig(config);
   }
   verifyPrepareFrontend();
+  verifyPipWindow();
+  verifyPipCommands();
   verifyNativeMediaPermissions();
+  verifyWebviewPermissions();
 
   const macos = readJson("tauri.macos.conf.json", readMacos);
   if (macos !== null) {

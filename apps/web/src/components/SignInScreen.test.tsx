@@ -4,6 +4,7 @@ import userEvent from "@testing-library/user-event";
 import { useQuery } from "convex/react";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import type { AuthActions } from "../lib/auth-client";
+import { authCallbackUrl } from "../lib/public-origin";
 import { SignInScreen } from "./SignInScreen";
 
 vi.mock("convex/react", () => ({ useQuery: vi.fn(() => undefined) }));
@@ -118,7 +119,7 @@ describe("SignInScreen", () => {
     await waitFor(() => {
       expect(actions.signInOAuth2).toHaveBeenCalledWith({
         providerId: "keycloak",
-        callbackURL: expect.any(String),
+        callbackURL: authCallbackUrl(),
       });
     });
   });
@@ -170,6 +171,26 @@ describe("SignInScreen", () => {
 
     expect(screen.getByText("A calm place to ship.")).toBeInTheDocument();
     expect(container.querySelector("img")).toHaveAttribute("src", "https://chat.acme.com/logo.png");
+  });
+
+  it("shows a provider enabled after the workspace was added, from the live config", () => {
+    // The stored profile is a snapshot; the server now also offers GitHub.
+    vi.mocked(useQuery).mockReturnValue({
+      auth: {
+        local: { enabled: true, signup: false },
+        providers: [{ id: "github", type: "oauth", displayName: "GitHub" }],
+      },
+    });
+    const stale = {
+      ...makeProfile({ enabled: true, signup: false }),
+      auth: {
+        local: { enabled: true, signup: false },
+        providers: [],
+      },
+    };
+    render(<SignInScreen profile={stale} actions={fakeActions()} />);
+
+    expect(screen.getByRole("button", { name: "Continue with GitHub" })).toBeInTheDocument();
   });
 
   it("has the hero follow the pointer until a field takes its attention", async () => {

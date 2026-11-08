@@ -34,7 +34,9 @@ export function useCardFiles(editor: CardEditor) {
 
   const download = (file: StoredFile) => {
     void editor.run(async () => {
-      const grant = new URL(file.url, window.location.origin).searchParams.get("token") ?? "";
+      // Only the `token` parameter matters; a fixed base keeps the page origin
+      // (the shell's own inside the desktop app) out of it.
+      const grant = new URL(file.url, "https://localhost/").searchParams.get("token") ?? "";
       if (grant.length === 0)
         throw new Error("Download link expired. Reopen the card to refresh it.");
       const { bytes } = await downloadFile({ token: grant });
