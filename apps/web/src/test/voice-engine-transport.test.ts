@@ -21,9 +21,20 @@ const mock = vi.hoisted(() => {
     kind: "audio",
     enabled: true,
     getSettings: () => ({ deviceId: "mic" }),
-    stop: () => {},
+    stop: () => {
+      devices.trackStops += 1;
+    },
+  };
+  // What the fake microphone and camera did, and gates that hold them "opening".
+  const devices = {
+    trackStops: 0,
+    pipelineStops: 0,
+    micGate: null as Promise<void> | null,
+    cameraGate: null as Promise<void> | null,
+    cameraOpen: false,
   };
   return {
+    devices,
     track,
     stream: { getAudioTracks: () => [track], getTracks: () => [track] },
     meshAudio: [] as unknown[],
@@ -38,13 +49,41 @@ const mock = vi.hoisted(() => {
 });
 
 vi.mock("../lib/voice/mic-pipeline", () => ({
-  openMicPipeline: async () => ({
-    stream: mock.stream,
-    enhanced: false,
-    setSettings: () => {},
-    stop: () => {},
-  }),
+  openMicPipeline: async () => {
+    if (mock.devices.micGate !== null) {
+      await mock.devices.micGate;
+    }
+    return {
+      stream: mock.stream,
+      enhanced: false,
+      setSettings: () => {},
+      stop: () => {
+        mock.devices.pipelineStops += 1;
+      },
+    };
+  },
   micProcessingKey: () => "processing",
+}));
+
+vi.mock("../lib/voice/local-camera", () => ({
+  LocalCamera: class {
+    readonly track = { kind: "video", stop: () => {} };
+    get isOpen(): boolean {
+      return mock.devices.cameraOpen;
+    }
+    async open(): Promise<void> {
+      if (mock.devices.cameraGate !== null) {
+        await mock.devices.cameraGate;
+      }
+      mock.devices.cameraOpen = true;
+    }
+    close(): void {
+      mock.devices.cameraOpen = false;
+    }
+    async sync(): Promise<boolean> {
+      return false;
+    }
+  },
 }));
 
 vi.mock("../lib/voice/media", () => ({
@@ -85,6 +124,14 @@ vi.mock("../lib/voice/sfu-call", () => ({
     }
   },
 }));
+
+beforeEach(() => {
+  mock.devices.trackStops = 0;
+  mock.devices.pipelineStops = 0;
+  mock.devices.micGate = null;
+  mock.devices.cameraGate = null;
+  mock.devices.cameraOpen = false;
+});
 
 function deferred<T>() {
   let resolve!: (value: T) => void;
@@ -301,6 +348,36 @@ describe("streaming-server hand-over", () => {
     engine.dispose();
   });
 
+  it("leaves the next call alone when the previous fallback finishes after hang-up", async () => {
+    mock.sfu.connect.mockResolvedValue(true);
+    const flags = { current: DEFAULT_FEATURE_FLAGS };
+    const { engine, emit } = harness({ sfuAccess: async () => ACCESS }, flags);
+    await engine.joinCall("call-1");
+    emit(bigCall());
+    await settle();
+    expect(mock.sfu.connect).toHaveBeenCalledTimes(1);
+
+    // Falling back to the mesh closes the room, which takes a while.
+    const closing = deferred<void>();
+    mock.sfu.disconnect.mockImplementationOnce(async () => await closing.promise);
+    flags.current = { ...DEFAULT_FEATURE_FLAGS, disableNewCallTransport: true };
+    engine.refreshFeatureFlags();
+    await settle();
+
+    await engine.leave();
+    await engine.joinCall("call-2");
+    mock.remoteAudio.length = 0;
+    mock.meshAudio.length = 0;
+
+    closing.resolve();
+    await settle();
+
+    // Nothing from the finished fallback touched the new call's mesh.
+    expect(mock.remoteAudio).toEqual([]);
+    expect(mock.meshAudio).toEqual([]);
+    engine.dispose();
+  });
+
   it("keeps the microphone live when a mute made while connecting was undone", async () => {
     const connecting = deferred<boolean>();
     mock.sfu.connect.mockReturnValue(connecting.promise);
@@ -361,6 +438,45 @@ describe("kill switches", () => {
     // The mesh carries the microphone again, and the roster says this client left the server.
     expect(mock.meshAudio.at(-1)).toBe(mock.track);
     expect(port.updateParticipant).toHaveBeenLastCalledWith({ callId: "call-1", sfuCall: false });
+    engine.dispose();
+  });
+});
+
+describe("devices that finish opening after hang-up", () => {
+  it("releases a microphone that opened for a call that already ended", async () => {
+    const opening = deferred<void>();
+    mock.devices.micGate = opening.promise;
+    const { engine } = harness();
+
+    const joining = engine.joinCall("call-1");
+    await settle();
+    await engine.leave();
+    opening.resolve();
+    await joining;
+    await settle();
+
+    expect(mock.devices.pipelineStops).toBe(1);
+    expect(mock.devices.trackStops).toBeGreaterThan(0);
+    engine.dispose();
+  });
+
+  it("closes a camera that opened for a call that already ended", async () => {
+    const { engine, port } = harness();
+    await engine.joinCall("call-1");
+
+    const opening = deferred<void>();
+    mock.devices.cameraGate = opening.promise;
+    const turningOn = engine.setCamera(true);
+    await settle();
+    await engine.leave();
+    opening.resolve();
+    await turningOn;
+    await settle();
+
+    expect(mock.devices.cameraOpen).toBe(false);
+    expect(engine.getSnapshot().local.video).toBe(false);
+    const updates = (port.updateParticipant as ReturnType<typeof vi.fn>).mock.calls;
+    expect(updates.some(([args]) => (args as { video?: boolean }).video === true)).toBe(false);
     engine.dispose();
   });
 });

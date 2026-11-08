@@ -79,6 +79,14 @@ const CAMERA_BITRATE: Record<VoiceDeviceSettings["videoResolution"], number> = {
   "1080p": 3_000_000,
 };
 
+/** Stops a freshly opened microphone that no call is going to use. */
+function releasePipeline(pipeline: MicPipeline): void {
+  pipeline.stop();
+  for (const track of pipeline.stream.getTracks()) {
+    track.stop();
+  }
+}
+
 export class VoiceEngine {
   private readonly port: VoicePort;
   private readonly subscriptions: VoiceSubscriptions;
@@ -512,6 +520,9 @@ export class VoiceEngine {
     this.talking = false;
     this.cameraInitialised = false;
     await this.acquireMic();
+    if (this.callId !== callId) {
+      return;
+    }
     this.applyMicEnabled();
     void this.port
       .updateParticipant({
@@ -595,11 +606,22 @@ export class VoiceEngine {
 
   private async acquireMic(): Promise<void> {
     this.mediaError = null;
+    const epoch = this.callEpoch;
     try {
-      this.micPipeline = await openMicPipeline(this.getSettings());
-      this.micStream = this.micPipeline.stream;
+      const pipeline = await openMicPipeline(this.getSettings());
+      if (epoch !== this.callEpoch) {
+        // The call ended while the browser opened the microphone: release it
+        // rather than leaving a capture running for a call that is gone.
+        releasePipeline(pipeline);
+        return;
+      }
+      this.micPipeline = pipeline;
+      this.micStream = pipeline.stream;
       this.micProcessingKey = micProcessingKey(this.getSettings());
     } catch (error) {
+      if (epoch !== this.callEpoch) {
+        return;
+      }
       // Surface why media is unavailable; the call still connects for others.
       this.mediaError = mediaMessage(error);
       this.micStream = null;
@@ -780,13 +802,21 @@ export class VoiceEngine {
   }
 
   async setCamera(on: boolean): Promise<void> {
+    const epoch = this.callEpoch;
     if (on) {
       try {
         if (!this.camera.isOpen) {
           await this.camera.open(this.getSettings());
         }
       } catch (error) {
-        this.onError(messageOf(error));
+        if (epoch === this.callEpoch) {
+          this.onError(messageOf(error));
+        }
+        return;
+      }
+      if (epoch !== this.callEpoch) {
+        // The call ended while the camera opened; do not leave it running.
+        this.camera.close();
         return;
       }
     } else {
@@ -797,6 +827,9 @@ export class VoiceEngine {
       await this.sfu.setCamera(on ? this.camera.track : null);
     }
     await this.mesh.refreshVideo();
+    if (epoch !== this.callEpoch) {
+      return;
+    }
     this.report({ video: on });
     this.emit();
   }
@@ -839,8 +872,13 @@ export class VoiceEngine {
   }
 
   private async reacquireMic(): Promise<void> {
+    const epoch = this.callEpoch;
     try {
       const pipeline = await openMicPipeline(this.getSettings());
+      if (epoch !== this.callEpoch) {
+        releasePipeline(pipeline);
+        return;
+      }
       const previousPipeline = this.micPipeline;
       const previousStream = this.micStream;
       this.micPipeline = pipeline;
@@ -854,6 +892,9 @@ export class VoiceEngine {
       this.applyMicEnabled();
       this.startLevelMeter();
     } catch (error) {
+      if (epoch !== this.callEpoch) {
+        return;
+      }
       this.mediaError = mediaMessage(error);
       this.onError(messageOf(error));
     }
@@ -1112,6 +1153,7 @@ export class VoiceEngine {
     if (this.transport !== "sfu") {
       return;
     }
+    const epoch = this.callEpoch;
     this.transport = "mesh";
     if (retryDelayMs > 0) {
       this.sfuRetryAt = Date.now() + retryDelayMs;
@@ -1120,10 +1162,21 @@ export class VoiceEngine {
       this.disableSfu();
     }
     await this.sfu.disconnect();
+    // If the call ended while the room closed, the mesh and the microphone now
+    // belong to the next call, which has its own transport.
+    if (epoch !== this.callEpoch) {
+      return;
+    }
     this.sfuSpeaking.clear();
     this.mesh.setRemoteAudioEnabled(true);
     await this.mesh.applyAudioTrack(this.micSending);
+    if (epoch !== this.callEpoch) {
+      return;
+    }
     await this.mesh.refreshVideo();
+    if (epoch !== this.callEpoch) {
+      return;
+    }
     this.emit();
   }
 
