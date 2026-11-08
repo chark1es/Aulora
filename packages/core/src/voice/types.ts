@@ -202,6 +202,8 @@ export interface VoicePort {
     readonly video?: boolean;
     readonly sharingScreen?: boolean;
     readonly sfu?: boolean;
+    /** Whether this client can carry call media through the streaming server. */
+    readonly sfuCall?: boolean;
   }): Promise<null>;
   /**
    * Credentials for the optional streaming server, or `null` when the workspace

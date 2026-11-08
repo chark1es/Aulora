@@ -73,6 +73,7 @@ export function convexVoicePort(client: ConvexReactClient, clientId: string): Vo
         ...(args.video !== undefined ? { video: args.video } : {}),
         ...(args.sharingScreen !== undefined ? { sharingScreen: args.sharingScreen } : {}),
         ...(args.sfu !== undefined ? { sfu: args.sfu } : {}),
+        ...(args.sfuCall !== undefined ? { sfuCall: args.sfuCall } : {}),
       });
       return null;
     },
