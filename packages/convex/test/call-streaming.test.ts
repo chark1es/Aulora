@@ -216,19 +216,19 @@ describe("callStreaming.access", () => {
     expect(result?.expiresAt).toBe(claims.exp);
   });
 
-  it("withholds microphone and camera sources from a member without those permissions", async () => {
+  it("withholds the camera from a member without video rights but keeps audio", async () => {
     stubStreamingEnv();
     const { t, callId } = await seedCall({
-      everyone: EVERYONE_BASE & ~(Permission.Speak | Permission.UseVideo),
+      everyone: EVERYONE_BASE & ~Permission.UseVideo,
     });
     const result = await t
       .withIdentity({ subject: "user-1" })
       .action(api.callStreaming.access, { callId, clientId: "device-a1", scope: "call" });
-    expect(result?.canPublish).toBe(false);
-    expect(result?.canPublishSources).toEqual([]);
+    expect(result?.canPublish).toBe(true);
+    expect(result?.canPublishSources).toEqual(["microphone"]);
     expect(
       (decodeJwt(result?.token ?? "").video as Record<string, unknown>).canPublishSources,
-    ).toBeUndefined();
+    ).toEqual(["microphone"]);
   });
 });
 

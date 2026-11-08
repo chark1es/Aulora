@@ -33,14 +33,16 @@ export const grant = internalQuery({
       throw new ConvexError("You are not in this call");
     }
     const policy = await loadVoicePolicy(ctx);
-    // The sender's microphone is gated on `Speak` and their camera on
-    // `UseVideo`, mirroring what the roster mutation enforces.
+    // The mesh does not gate audio on `Speak` (anyone in the call may send it),
+    // so the SFU grant matches that: `Connect` got them into the call. The
+    // camera stays gated on `UseVideo`, which `calls.updateParticipant` also
+    // enforces for the roster flag.
     const callPublishSources: string[] = [];
-    if (policy.enabled && hasPermission(permissions, Permission.Speak)) {
+    if (policy.enabled) {
       callPublishSources.push("microphone");
-    }
-    if (policy.enabled && policy.videoEnabled && hasPermission(permissions, Permission.UseVideo)) {
-      callPublishSources.push("camera");
+      if (policy.videoEnabled && hasPermission(permissions, Permission.UseVideo)) {
+        callPublishSources.push("camera");
+      }
     }
     return {
       userId,

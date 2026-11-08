@@ -102,6 +102,8 @@ export class VoiceEngine {
   private sfuSwitching = false;
   /** Do not retry a failed switch before this timestamp. */
   private sfuRetryAt = 0;
+  /** Last `sfuCall` value published on the roster, to avoid redundant writes. */
+  private sfuCapabilityReported: boolean | null = null;
   /** Remote users speaking on the SFU path, merged with the mesh's set. */
   private readonly sfuSpeaking = new Set<string>();
   private callUnsub: (() => void) | null = null;
@@ -201,6 +203,25 @@ export class VoiceEngine {
     if (this.callId !== null) {
       void this.port.updateParticipant({ callId: this.callId, ...flags }).catch(() => undefined);
     }
+  }
+
+  /**
+   * Publishes the SFU transport capability, once per change. Withdrawing it
+   * makes every other client return the call to the mesh, so a client that
+   * cannot reach the server never ends up cut off from the others.
+   */
+  private reportSfuCapability(capable: boolean): void {
+    if (!SFU_CALL_ENABLED || this.sfuCapabilityReported === capable) {
+      return;
+    }
+    this.sfuCapabilityReported = capable;
+    this.report({ sfuCall: capable });
+  }
+
+  /** Gives up on the streaming server for the rest of this call. */
+  private disableSfu(): void {
+    this.sfuConfigured = false;
+    this.reportSfuCapability(false);
   }
 
   // ---- Observation ---------------------------------------------------------
@@ -420,6 +441,7 @@ export class VoiceEngine {
         ...(SFU_CALL_ENABLED ? { sfuCall: true } : {}),
       })
       .catch(() => undefined);
+    this.sfuCapabilityReported = SFU_CALL_ENABLED ? true : null;
     void this.screen.probe();
     void this.ice.load();
     this.emit();
@@ -443,6 +465,7 @@ export class VoiceEngine {
     this.sfuProbe = null;
     this.sfuSwitching = false;
     this.sfuRetryAt = 0;
+    this.sfuCapabilityReported = null;
     this.sfuSpeaking.clear();
     this.stopLevelMeter();
     this.micPipeline?.stop();
@@ -730,6 +753,7 @@ export class VoiceEngine {
     try {
       const configured = await this.probeSfu();
       if (
+        !configured ||
         decideTransport({
           participants,
           sfuConfigured: configured,
@@ -737,6 +761,12 @@ export class VoiceEngine {
           threshold: SFU_CALL_THRESHOLD,
         }) !== "sfu"
       ) {
+        // This client cannot join the server. Withdraw the capability so the
+        // whole call stays on the mesh; otherwise clients that did switch would
+        // stop listening to its mesh audio.
+        if (!configured) {
+          this.reportSfuCapability(false);
+        }
         return;
       }
       if (!(await this.connectSfu())) {
@@ -822,6 +852,9 @@ export class VoiceEngine {
     );
     if (!connected) {
       await this.sfu.disconnect();
+      // Tell the roster this client cannot use the server, so nobody stays on
+      // the SFU path while this client's audio is only on the mesh.
+      this.disableSfu();
       return false;
     }
     this.transport = "sfu";
@@ -842,6 +875,9 @@ export class VoiceEngine {
     this.transport = "mesh";
     if (retryDelayMs > 0) {
       this.sfuRetryAt = Date.now() + retryDelayMs;
+      // A lost server is a capability loss for this call: keep everyone on the
+      // mesh rather than splitting the room across two transports.
+      this.disableSfu();
     }
     await this.sfu.disconnect();
     this.sfuSpeaking.clear();

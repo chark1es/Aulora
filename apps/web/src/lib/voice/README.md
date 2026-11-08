@@ -26,6 +26,10 @@ configured. `sfu-call.ts` carries the microphone and camera for a large call:
 - **Every** participant must advertise the additive `sfu-call` capability on its
   roster row. One mobile or older client keeps the whole call on the mesh, so a
   mixed room never splits its media across two paths.
+- A client that cannot join the server (unreachable, rejected grant, or a lost
+  connection) withdraws its capability on the roster, which returns every
+  client to the mesh. A room never ends up with half its audio on the SFU and
+  the other half on the mesh. The remaining call runs on the mesh.
 - `SFU_CALL_ENABLED` in `sfu-call-policy.ts` is the kill switch; set it to
   `false` to keep every call on the mesh.
 
