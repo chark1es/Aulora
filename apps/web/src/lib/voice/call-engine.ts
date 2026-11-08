@@ -1065,9 +1065,11 @@ export class VoiceEngine {
     }
     if (!connected) {
       await this.sfu.disconnect();
-      // Tell the roster this client cannot use the server, so nobody stays on
-      // the SFU path while this client's audio is only on the mesh.
-      this.disableSfu();
+      if (epoch === this.callEpoch) {
+        // Tell the roster this client cannot use the server, so nobody stays on
+        // the SFU path while this client's audio is only on the mesh.
+        this.disableSfu();
+      }
       return false;
     }
     this.transport = "sfu";
@@ -1094,7 +1096,13 @@ export class VoiceEngine {
     // is heard or uploaded twice. Video follows through `getVideoTrack`.
     this.mesh.setRemoteAudioEnabled(false);
     await this.mesh.applyAudioTrack(null);
+    if (epoch !== this.callEpoch) {
+      return false;
+    }
     await this.mesh.refreshVideo();
+    if (epoch !== this.callEpoch) {
+      return false;
+    }
     this.emit();
     return true;
   }

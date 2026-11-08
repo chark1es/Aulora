@@ -258,7 +258,8 @@ export class PeerMesh {
    */
   async refreshVideo(): Promise<void> {
     const viewers = [...this.peers.keys()].filter((id) => this.host.isScreenSharing(id)).length;
-    for (const [peerId, peer] of this.peers) {
+    // A snapshot, for the same reason as `applyAudioTrack`.
+    for (const [peerId, peer] of [...this.peers]) {
       const track = this.host.getVideoTrack(peerId);
       const tuning = this.videoTuning(peerId, viewers);
       for (const transceiver of this.transceiversFor(peer, "video")) {
@@ -298,7 +299,9 @@ export class PeerMesh {
   }
 
   async applyAudioTrack(track: MediaStreamTrack | null): Promise<void> {
-    for (const peer of this.peers.values()) {
+    // A snapshot: the awaits below can outlive the call, and the live map may by
+    // then hold the next call's peers, which this update must not touch.
+    for (const peer of [...this.peers.values()]) {
       for (const transceiver of this.transceiversFor(peer, "audio")) {
         transceiver.direction = "sendrecv";
         await transceiver.sender.replaceTrack(track).catch(() => undefined);

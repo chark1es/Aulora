@@ -138,17 +138,38 @@ export function useMemberPages(
         setLoading(false);
       }
     };
-    off = watch.onUpdate(apply);
+    // A failed page disposes its own subscription, and closing the list would
+    // dispose it again; Convex's disposer is not safe to call twice.
+    const unsubscribe = watch.onUpdate(apply);
+    let disposed = false;
+    off = () => {
+      if (!disposed) {
+        disposed = true;
+        unsubscribe();
+      }
+    };
     subscriptions.current.push(off);
     // The result may already be cached, and then no update would announce it.
     apply();
   }, [convex, enabled, first, pageSize]);
 
+  // Where the next page starts. It moves every time a page lands, which is what
+  // makes the next automatic load due even when the page was already cached and
+  // finished loading in the same render.
+  const nextCursor = tail?.continueCursor ?? first?.continueCursor;
+
   useEffect(() => {
-    if (autoLoadAll && enabled && first !== undefined && !done && !loading && !failedRef.current) {
+    if (
+      autoLoadAll &&
+      enabled &&
+      nextCursor !== undefined &&
+      !done &&
+      !loading &&
+      !failedRef.current
+    ) {
       loadMore();
     }
-  }, [autoLoadAll, enabled, first, done, loading, loadMore]);
+  }, [autoLoadAll, enabled, nextCursor, done, loading, loadMore]);
 
   const rows = useMemo(() => {
     const byId = new Map<string, PagedMember>();

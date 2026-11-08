@@ -12,27 +12,31 @@ const mock = vi.hoisted(() => ({
   firstArgs: [] as unknown[],
 }));
 
+// One client for the life of the test, as in the app: a client that changes on
+// every render would hide effects that only re-run when something else moves.
+const client = vi.hoisted(() => ({
+  watchQuery: (_ref: unknown, args: { cursor: string }) => {
+    mock.watched.push(args.cursor);
+    return {
+      onUpdate: (callback: () => void) => {
+        mock.listeners.set(args.cursor, callback);
+        return () => {
+          mock.unsubscribed.push(args.cursor);
+        };
+      },
+      localQueryResult: () => {
+        const value = mock.results.get(args.cursor);
+        if (value instanceof Error) {
+          throw value;
+        }
+        return value;
+      },
+    };
+  },
+}));
+
 vi.mock("convex/react", () => ({
-  useConvex: () => ({
-    watchQuery: (_ref: unknown, args: { cursor: string }) => {
-      mock.watched.push(args.cursor);
-      return {
-        onUpdate: (callback: () => void) => {
-          mock.listeners.set(args.cursor, callback);
-          return () => {
-            mock.unsubscribed.push(args.cursor);
-          };
-        },
-        localQueryResult: () => {
-          const value = mock.results.get(args.cursor);
-          if (value instanceof Error) {
-            throw value;
-          }
-          return value;
-        },
-      };
-    },
-  }),
+  useConvex: () => client,
   useQuery: (_ref: unknown, args: unknown) => {
     mock.firstArgs.push(args);
     return args === "skip" ? undefined : mock.first;
@@ -168,6 +172,27 @@ describe("useMemberPages", () => {
     await waitFor(() => {
       expect(ids(result.current.rows)).toEqual(["a", "b", "c"]);
     });
+  });
+
+  it("disposes a page that failed to load only once, even when the list closes after", async () => {
+    mock.results.set("c1", new Error("down"));
+    const { result, rerender } = renderHook(
+      ({ open }: { open: boolean }) => useMemberPages(open, 2, true),
+      { initialProps: { open: true } },
+    );
+    await waitFor(() => {
+      expect(mock.watched).toEqual(["c1"]);
+    });
+    await waitFor(() => {
+      expect(result.current.loading).toBe(false);
+    });
+    expect(mock.unsubscribed).toEqual(["c1"]);
+
+    rerender({ open: false });
+    await act(async () => {
+      await Promise.resolve();
+    });
+    expect(mock.unsubscribed).toEqual(["c1"]);
   });
 
   it("drops every page subscription when the list closes", async () => {
