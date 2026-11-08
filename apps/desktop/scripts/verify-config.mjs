@@ -19,16 +19,20 @@ const readMacos = () => readFileSync(resolve(srcTauri, "tauri.macos.conf.json"),
 const readWindows = () => readFileSync(resolve(srcTauri, "tauri.windows.conf.json"), "utf8");
 const readLinux = () => readFileSync(resolve(srcTauri, "tauri.linux.conf.json"), "utf8");
 const readRelease = () => readFileSync(resolve(srcTauri, "tauri.release.conf.json"), "utf8");
-const readPipWindow = () => readFileSync(resolve(srcTauri, "src/pip_window.rs"), "utf8");
-const readPipGeometry = () => readFileSync(resolve(srcTauri, "src/pip_geometry.rs"), "utf8");
-const readCommands = () => readFileSync(resolve(srcTauri, "src/commands.rs"), "utf8");
-const readLib = () => readFileSync(resolve(srcTauri, "src/lib.rs"), "utf8");
+// Windows checks sources out with CRLF line endings. The Rust checks below look
+// for line-based shapes such as a closing `}` at the start of a line, so Rust is
+// read with LF endings on every platform.
+const lf = (text) => text.replaceAll("\r\n", "\n");
+const readPipWindow = () => lf(readFileSync(resolve(srcTauri, "src/pip_window.rs"), "utf8"));
+const readPipGeometry = () => lf(readFileSync(resolve(srcTauri, "src/pip_geometry.rs"), "utf8"));
+const readCommands = () => lf(readFileSync(resolve(srcTauri, "src/commands.rs"), "utf8"));
+const readLib = () => lf(readFileSync(resolve(srcTauri, "src/lib.rs"), "utf8"));
 const readPipBridge = () =>
   readFileSync(resolve(srcTauri, "..", "..", "web", "src", "lib", "call-pip.ts"), "utf8");
 const readCapabilities = () => readFileSync(resolve(srcTauri, "capabilities/default.json"), "utf8");
 const readInfoPlist = () => readFileSync(resolve(srcTauri, "Info.plist"), "utf8");
 const readEntitlements = () => readFileSync(resolve(srcTauri, "Entitlements.plist"), "utf8");
-const readShell = () => readFileSync(resolve(srcTauri, "src", "lib.rs"), "utf8");
+const readShell = () => lf(readFileSync(resolve(srcTauri, "src", "lib.rs"), "utf8"));
 
 function readJson(relative, read) {
   try {
