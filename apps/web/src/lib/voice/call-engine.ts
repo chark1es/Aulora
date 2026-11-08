@@ -745,7 +745,11 @@ export class VoiceEngine {
       return;
     }
     this.micSending = wanted;
-    this.micSync = this.micSync.then(() => this.applyAudioTrack(wanted)).catch(() => undefined);
+    // A swap still queued when the call ends must not reach the next call.
+    const epoch = this.callEpoch;
+    this.micSync = this.micSync
+      .then(() => (epoch === this.callEpoch ? this.applyAudioTrack(wanted) : undefined))
+      .catch(() => undefined);
     if (!enabled && this.localSpeaking) {
       this.localSpeaking = false;
       this.emit();
@@ -1070,12 +1074,22 @@ export class VoiceEngine {
     // The room was opened with the microphone as it was before connecting. A
     // mute or unmute during the connection only reached the mesh, so apply the
     // current decision now, in line with other microphone changes.
-    const synced = this.micSync.then(() => this.sfu.setMic(this.micSending)).catch(() => undefined);
+    const synced = this.micSync
+      .then(() => (epoch === this.callEpoch ? this.sfu.setMic(this.micSending) : undefined))
+      .catch(() => undefined);
     this.micSync = synced;
     await synced;
+    if (epoch !== this.callEpoch) {
+      // The call ended while the microphone was being applied: the mesh now
+      // belongs to the next call, so it must not be silenced.
+      return false;
+    }
     // The camera has the same gap: switched on or off while the room connected,
     // it reached only the mesh, which stops sending video from here on.
     await this.sfu.setCamera(this.local.video ? this.camera.track : null);
+    if (epoch !== this.callEpoch) {
+      return false;
+    }
     // The SFU path is proven: silence the mesh in both directions so nothing
     // is heard or uploaded twice. Video follows through `getVideoTrack`.
     this.mesh.setRemoteAudioEnabled(false);

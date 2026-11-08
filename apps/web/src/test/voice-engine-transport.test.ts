@@ -27,6 +27,7 @@ const mock = vi.hoisted(() => {
     track,
     stream: { getAudioTracks: () => [track], getTracks: () => [track] },
     meshAudio: [] as unknown[],
+    remoteAudio: [] as boolean[],
     sfu: {
       connect: vi.fn(),
       setMic: vi.fn(async (_track: unknown) => {}),
@@ -58,7 +59,9 @@ vi.mock("../lib/voice/peer-mesh", () => ({
     readonly remoteSpeaking = new Set<string>();
     reset(): void {}
     reconcile(): void {}
-    setRemoteAudioEnabled(): void {}
+    setRemoteAudioEnabled(enabled: boolean): void {
+      mock.remoteAudio.push(enabled);
+    }
     async handleSignals(): Promise<void> {}
     async refreshVideo(): Promise<void> {}
     async applyAudioTrack(track: unknown): Promise<void> {
@@ -219,8 +222,10 @@ describe("relay credential before peers", () => {
 describe("streaming-server hand-over", () => {
   beforeEach(() => {
     mock.meshAudio.length = 0;
+    mock.remoteAudio.length = 0;
     mock.sfu.connect.mockReset();
-    mock.sfu.setMic.mockClear();
+    mock.sfu.setMic.mockReset();
+    mock.sfu.setMic.mockImplementation(async () => {});
     mock.sfu.disconnect.mockClear();
   });
 
@@ -268,6 +273,31 @@ describe("streaming-server hand-over", () => {
     await settle();
 
     expect(mock.sfu.setMic).toHaveBeenLastCalledWith(null);
+    engine.dispose();
+  });
+
+  it("leaves the next call alone when the previous hand-over finishes after hang-up", async () => {
+    const applying = deferred<void>();
+    mock.sfu.connect.mockResolvedValue(true);
+    mock.sfu.setMic.mockImplementationOnce(async () => await applying.promise);
+    const { engine, emit } = harness({ sfuAccess: async () => ACCESS });
+    await engine.joinCall("call-1");
+    emit(bigCall());
+    await settle();
+    // The room is connected and the hand-over is waiting on the microphone.
+    expect(mock.sfu.setMic).toHaveBeenCalledTimes(1);
+
+    await engine.leave();
+    await engine.joinCall("call-2");
+    mock.remoteAudio.length = 0;
+    mock.meshAudio.length = 0;
+
+    applying.resolve();
+    await settle();
+
+    // Nothing from the finished hand-over touched the new call's mesh.
+    expect(mock.remoteAudio).toEqual([]);
+    expect(mock.meshAudio).not.toContain(null);
     engine.dispose();
   });
 
