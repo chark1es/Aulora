@@ -1,7 +1,7 @@
 /* eslint-disable no-unused-vars -- the base rule reports parameter names in type signatures; Biome checks real unused code */
 import { callKindLabel } from "@aulora/core";
 import { cn, Icon } from "@aulora/ui-web";
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import {
   MAIN_WINDOW_LABEL,
   PIP_ACTION_EVENT,
@@ -16,33 +16,88 @@ import {
   emitDesktopEventTo,
   focusDesktopMainWindow,
   listenDesktopEvent,
+  type PipResizeDirection,
+  snapDesktopPipWindow,
+  startDesktopResize,
 } from "../../lib/desktop";
 import { PersonAvatar } from "../chat/member-avatars";
 import { CallControls } from "./CallControls";
 import { useCallDuration } from "./hooks";
+import { usePipMedia } from "./use-pip-media";
+
+/** The undecorated window's own edge handles: (direction, placement, cursor). */
+const RESIZE_HANDLES: ReadonlyArray<{
+  readonly direction: PipResizeDirection;
+  readonly className: string;
+}> = [
+  { direction: "North", className: "left-2 right-2 top-0 h-1.5 cursor-ns-resize" },
+  { direction: "South", className: "bottom-0 left-2 right-2 h-1.5 cursor-ns-resize" },
+  { direction: "West", className: "bottom-2 left-0 top-2 w-1.5 cursor-ew-resize" },
+  { direction: "East", className: "bottom-2 right-0 top-2 w-1.5 cursor-ew-resize" },
+  { direction: "NorthWest", className: "left-0 top-0 h-3 w-3 cursor-nwse-resize" },
+  { direction: "NorthEast", className: "right-0 top-0 h-3 w-3 cursor-nesw-resize" },
+  { direction: "SouthWest", className: "bottom-0 left-0 h-3 w-3 cursor-nesw-resize" },
+  { direction: "SouthEast", className: "bottom-0 right-0 h-3 w-3 cursor-nwse-resize" },
+];
 
 /**
  * The shell's call picture-in-picture window.
  *
  * A separate webview with its own entry (`#pip`), so it renders on its own: the
  * call itself — peer connections and media — stays in the main window, which
- * streams what is happening over Tauri events and runs whatever is pressed here.
- * Nothing in this window plays audio and nothing asks for a device; the call's
- * audio keeps coming from the main window.
+ * sends the picture over a loopback peer connection (or, where that cannot
+ * work, as JPEG frames) and runs whatever is pressed here. Nothing in this
+ * window plays audio and nothing asks for a device; the call's audio keeps
+ * coming from the main window.
  *
- * The header is the drag region, so the window can be dragged anywhere on any
- * screen. Closing it only closes this window: the call and the app carry on.
+ * The header is the drag region and the eight thin edges resize the window, so
+ * the undecorated window behaves like a native one. The controls only appear on
+ * hover; otherwise the surface is just the picture. Double-clicking the picture
+ * (or the close button) returns to the app with the call still running.
  */
 export function CallPipWindow() {
   const state = usePipCallState();
   const duration = useCallDuration(state?.startedAt ?? null);
+  const media = usePipMedia();
+  const mediaArea = useRef<HTMLDivElement | null>(null);
   const participants = state?.participants ?? [];
   const columns = participants.length <= 1 ? 1 : 2;
 
+  // Double-clicking the picture goes back to the app. A native listener rather
+  // than a JSX handler: the surface is not a control, and the close button is
+  // its keyboard-reachable equivalent.
+  useEffect(() => {
+    const node = mediaArea.current;
+    if (node === null) {
+      return;
+    }
+    const onDoubleClick = () => returnToApp();
+    node.addEventListener("dblclick", onDoubleClick);
+    return () => node.removeEventListener("dblclick", onDoubleClick);
+  }, []);
+
   return (
-    <div className="flex h-full flex-col overflow-hidden bg-bg text-text">
+    <div className="group relative flex h-full flex-col overflow-hidden bg-bg text-text">
+      {RESIZE_HANDLES.map((handle) => (
+        <div
+          key={handle.direction}
+          aria-hidden="true"
+          data-pip-resize={handle.direction}
+          onPointerDown={(event) => {
+            event.preventDefault();
+            void startDesktopResize(handle.direction);
+          }}
+          className={cn("absolute z-20", handle.className)}
+        />
+      ))}
+
       <header
         data-tauri-drag-region="deep"
+        onPointerUp={() => {
+          // The shell also snaps after its own drag debounce; this covers the
+          // case where the webview sees the drop first.
+          void snapDesktopPipWindow();
+        }}
         className="flex shrink-0 select-none items-center gap-2 border-b border-border px-2.5 py-2"
       >
         <span className="flex h-6 w-6 shrink-0 items-center justify-center rounded-[6px] bg-accent-soft text-accent">
@@ -56,76 +111,115 @@ export function CallPipWindow() {
           type="button"
           aria-label="Close the call window"
           title="Close the call window — the call continues"
-          onClick={() => {
-            // Back to the app, with the call still running there.
-            void focusDesktopMainWindow();
-            void closeDesktopPipWindow();
-          }}
+          onClick={() => returnToApp()}
           className="flex h-6 w-6 shrink-0 items-center justify-center rounded-[6px] text-text-muted transition hover:bg-surface-3 hover:text-text focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent"
         >
           <Icon name="x" size={13} />
         </button>
       </header>
 
-      <div className="min-h-0 flex-1 overflow-y-auto p-2">
+      <div
+        ref={mediaArea}
+        className="relative min-h-0 flex-1"
+        title="Double-click to return to the app"
+      >
+        {/* The live picture. Always mounted so the track has a sink the moment
+            it arrives; it is only shown when it is the active surface. */}
+        <video
+          ref={media.videoRef}
+          autoPlay
+          muted
+          playsInline
+          className={cn(
+            "absolute inset-0 h-full w-full bg-black object-contain",
+            media.kind !== "loopback" && "hidden",
+          )}
+        />
+        <canvas
+          ref={media.canvasRef}
+          width={480}
+          height={270}
+          className={cn(
+            "absolute inset-0 h-full w-full bg-black object-contain",
+            media.kind !== "frames" && "hidden",
+          )}
+        />
+
         {state === null ? (
           <div className="flex h-full items-center justify-center px-2 text-center text-[11px] text-text-muted">
             Waiting for the call…
           </div>
         ) : (
-          // Rows share the window's height so a small call still fills it, and
-          // grow past it — the column scrolls — once there are more people
-          // than fit.
-          <div
-            className="grid gap-1.5"
-            style={{
-              minHeight: "100%",
-              gridTemplateColumns: `repeat(${columns}, minmax(0, 1fr))`,
-              gridAutoRows: "minmax(min-content, 1fr)",
-            }}
-          >
-            {participants.map((participant) => (
-              <PipTile
-                key={participant.id}
-                participant={participant}
-                avatarSize={participants.length <= 1 ? 56 : 36}
+          media.kind === "none" && (
+            // No picture: the same participant tiles the window always drew.
+            <div
+              className="grid h-full gap-1.5 overflow-y-auto p-2"
+              style={{
+                gridTemplateColumns: `repeat(${columns}, minmax(0, 1fr))`,
+                gridAutoRows: "minmax(min-content, 1fr)",
+              }}
+            >
+              {participants.map((participant) => (
+                <PipTile
+                  key={participant.id}
+                  participant={participant}
+                  avatarSize={participants.length <= 1 ? 56 : 36}
+                />
+              ))}
+            </div>
+          )
+        )}
+
+        {state !== null && media.kind !== "none" && state.speakerName !== "" && (
+          <span className="absolute left-2 top-2 flex max-w-[calc(100%-1rem)] items-center gap-1 rounded-full bg-black/55 px-2 py-0.5 text-[10px] font-medium text-white">
+            {state.mediaKind === "screen" && <Icon name="monitor" size={10} />}
+            {state.mediaKind === "camera" && <Icon name="video" size={10} />}
+            {state.mediaKind === "local" && <Icon name="users" size={10} />}
+            <span className="truncate">{state.speakerName}</span>
+          </span>
+        )}
+
+        {state !== null && (
+          // A clean picture until the pointer arrives.
+          <div className="pointer-events-none absolute inset-x-0 bottom-0 bg-gradient-to-t from-black/80 to-transparent px-2 pb-1.5 pt-6 opacity-0 transition-opacity duration-150 focus-within:opacity-100 group-hover:opacity-100">
+            <div className="pointer-events-auto">
+              <CallControls
+                compact
+                muted={state.muted}
+                deafened={state.deafened}
+                video={state.camera}
+                sharingScreen={state.screen}
+                canSpeak={state.canSpeak}
+                canVideo={state.canVideo}
+                canStream={state.canStream}
+                onToggleMute={() => {
+                  sendPipAction("toggle-mute");
+                }}
+                onToggleDeafen={() => {
+                  sendPipAction("toggle-deafen");
+                }}
+                onToggleCamera={() => {
+                  sendPipAction("toggle-camera");
+                }}
+                onToggleScreen={() => {
+                  sendPipAction("toggle-screen");
+                }}
+                onLeave={() => {
+                  sendPipAction("leave");
+                }}
               />
-            ))}
+            </div>
           </div>
         )}
       </div>
-
-      {state !== null && (
-        <div className="shrink-0 border-t border-border px-2 py-2">
-          <CallControls
-            compact
-            muted={state.muted}
-            deafened={state.deafened}
-            video={state.camera}
-            sharingScreen={state.screen}
-            canSpeak={state.canSpeak}
-            canVideo={state.canVideo}
-            canStream={state.canStream}
-            onToggleMute={() => {
-              sendPipAction("toggle-mute");
-            }}
-            onToggleDeafen={() => {
-              sendPipAction("toggle-deafen");
-            }}
-            onToggleCamera={() => {
-              sendPipAction("toggle-camera");
-            }}
-            onToggleScreen={() => {
-              sendPipAction("toggle-screen");
-            }}
-            onLeave={() => {
-              sendPipAction("leave");
-            }}
-          />
-        </div>
-      )}
     </div>
   );
+}
+
+/** Back to the app, with the call still running there. */
+function returnToApp(): void {
+  void focusDesktopMainWindow();
+  void closeDesktopPipWindow();
 }
 
 /** Sends one control press to the main window, which owns the call. */
