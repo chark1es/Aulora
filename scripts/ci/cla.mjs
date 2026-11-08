@@ -26,14 +26,20 @@ function isBot(user) {
 // human. These are attribution labels, not verified identities or signatories.
 function isAgentCoauthor(actor) {
   const names = {
-    "noreply@anthropic.com":
-      /^Claude(?: Code| (?:Opus|Sonnet|Haiku) [\d.]+(?: \([\d.]+[MK] context\))?)?$/i,
-    "noreply@openai.com": /^(?:Codex|ChatGPT)$/i,
-    "cursoragent@cursor.com": /^Cursor(?: Agent)?$/i,
-    "noreply@cursor.sh": /^Cursor$/i,
+    "noreply@anthropic.com": [
+      /^Claude$/i,
+      /^Claude Code$/i,
+      /^Claude (?:Opus|Sonnet|Haiku) [\d.]+$/i,
+      /^Claude (?:Opus|Sonnet|Haiku) [\d.]+ \([\d.]+[MK] context\)$/i,
+    ],
+    "noreply@openai.com": [/^(?:Codex|ChatGPT)$/i],
+    "cursoragent@cursor.com": [/^Cursor(?: Agent)?$/i],
+    "noreply@cursor.sh": [/^Cursor$/i],
   };
-  const namePattern = names[actor.email?.trim().toLowerCase()];
-  return namePattern instanceof RegExp && namePattern.test(actor.name?.trim() ?? "");
+  const patterns = names[actor.email?.trim().toLowerCase()];
+  return (
+    Array.isArray(patterns) && patterns.some((pattern) => pattern.test(actor.name?.trim() ?? ""))
+  );
 }
 
 function addContributor(actor, oid, people, unknown) {

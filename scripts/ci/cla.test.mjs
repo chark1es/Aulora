@@ -29,8 +29,6 @@ function notFound() {
   return Object.assign(new Error("Not found"), { status: 404 });
 }
 
-// An in-memory Git store exercises archive creation, subsequent commits, and
-// optimistic ref updates rather than mocking the signature persistence itself.
 function gitActor(user) {
   return {
     name: user?.login ?? "Unlinked `author` @somebody",
@@ -39,15 +37,8 @@ function gitActor(user) {
   };
 }
 
-function fixture({
-  comments = [],
-  authors = [alice],
-  coauthors = [],
-  stored = [],
-  pages,
-  pr = pull,
-} = {}) {
-  const state = {
+function fixtureState(comments, authors) {
+  return {
     comments: [...comments],
     authors,
     statuses: [],
@@ -58,6 +49,19 @@ function fixture({
     conflict: null,
     commentWrites: 0,
   };
+}
+
+// An in-memory Git store exercises archive creation, subsequent commits, and
+// optimistic ref updates rather than mocking the signature persistence itself.
+function fixture({
+  comments = [],
+  authors = [alice],
+  coauthors = [],
+  stored = [],
+  pages,
+  pr = pull,
+} = {}) {
+  const state = fixtureState(comments, authors);
   let sequence = 0;
   const id = () => `object-${++sequence}`;
   if (stored.length) {
