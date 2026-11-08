@@ -13,6 +13,22 @@
 **/playwright-report
 **/blob-report
 **/.git
+# Rust, Android, iOS and desktop build output. None of it is reachable from an
+# image, and `target/` alone can be several GB once Tauri has been built here.
+**/target
+**/.gradle
+**/.cxx
+**/Pods
+**/dist-desktop
+**/.cache
+**/.tauri
+**/out
+**/*.apk
+**/*.aab
+**/*.ipa
+**/*.dmg
+**/*.msi
+**/*.exe
 infra/docker/.update-stage
 infra/docker/.update-host.lock
 infra/docker/.update.lock
@@ -43,6 +59,18 @@ infra/docker/.update-status.json
 
 # Generated per-instance well-known document; infra writes the real one at runtime.
 apps/web/public/.well-known
+
+# The native clients are not part of any image (the lockfile lists them, but a
+# frozen install is fine without their directories).
+apps/mobile
+apps/desktop
+# The docs site is only needed for its manifest (the lockfile lists the workspace).
+apps/docs/*
+!apps/docs/package.json
+apps/web/e2e
+.github
+.claude
+.t3
 
 # Spikes, docs, marketing art and the unpacked Python wheels are not needed to
 # build or run any image (the licenses/ dir is copied, so it stays).
