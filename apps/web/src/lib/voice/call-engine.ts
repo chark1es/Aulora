@@ -121,6 +121,7 @@ export class VoiceEngine {
         const profile = streamProfile(this.getSettings().streamQuality);
         return { maxBitrate: profile.maxBitrate, frameRate: profile.frameRate };
       },
+      getVideoCodec: () => this.getSettings().screenCodec,
     });
     this.camera = new LocalCamera({
       onError: (message) => {

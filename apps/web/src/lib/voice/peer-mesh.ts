@@ -1,5 +1,10 @@
 /* eslint-disable no-unused-vars -- the base rule reports parameter names in type signatures; Biome checks real unused code */
-import { type CallSignalRow, type PeerConnectionState, shouldOffer } from "@aulora/core";
+import {
+  type CallSignalRow,
+  type PeerConnectionState,
+  shouldOffer,
+  type VoiceDeviceSettings,
+} from "@aulora/core";
 import { messageOf } from "./call-errors";
 import { createLevelMeter } from "./media";
 
@@ -50,7 +55,12 @@ export interface PeerMeshHost {
    * it must not rebuild the call snapshot ten times a second.
    */
   onRemoteLevel(userId: string, level: number): void;
+  /** The screen-share codec preference, applied to the mesh video transceiver. */
+  getVideoCodec(): VideoCodecPreference;
 }
+
+/** The user's screen-share codec choice, or `auto` to let the browser default. */
+export type VideoCodecPreference = VoiceDeviceSettings["screenCodec"];
 
 /** What a screen share may spend, per viewer. */
 export interface ScreenBudget {
@@ -58,18 +68,46 @@ export interface ScreenBudget {
   readonly frameRate: number;
 }
 
+/** What one peer's encoder is told for the video it receives from us. */
+export interface VideoTuning {
+  readonly maxBitrate: number;
+  readonly maxFramerate: number;
+  /** 1 keeps the captured size; higher values scale it down before frames drop. */
+  readonly scaleResolutionDownBy: number;
+  readonly degradationPreference: RTCDegradationPreference;
+}
+
 /**
- * Sending a share to each viewer separately multiplies the upload, so the whole
- * mesh upload is capped at this many full-quality copies and each viewer's copy
- * shrinks once more people than that are watching.
+ * A share is encoded once per viewer, so the whole mesh upload is capped at this
+ * many full-quality copies and each viewer's copy thins out beyond that. The
+ * floor keeps text legible: below roughly a megabit a 1080p desktop becomes a
+ * slideshow, so the resolution ladder (not the bitrate) is what gives way.
  */
 const SCREEN_COPIES = 3;
-const MIN_SCREEN_BITRATE = 500_000;
+export const MIN_SCREEN_BITRATE = 900_000;
 
 /** One viewer's share of the budget: full quality for a few viewers, then thinner. */
 export function screenBitrateFor(budget: ScreenBudget, viewers: number): number {
   const shared = (budget.maxBitrate * SCREEN_COPIES) / Math.max(1, viewers);
   return Math.round(Math.min(budget.maxBitrate, Math.max(MIN_SCREEN_BITRATE, shared)));
+}
+
+/**
+ * The resolution ladder for a share. Instead of squeezing the bitrate until the
+ * encoder drops frames (a slideshow under `maintain-resolution`), shrink the
+ * picture in steps; the frame rate stays at the profile's rate at every step.
+ */
+export function screenScaleFor(viewers: number): number {
+  if (viewers <= SCREEN_COPIES) {
+    return 1;
+  }
+  if (viewers <= 5) {
+    return 1.5;
+  }
+  if (viewers <= 8) {
+    return 2;
+  }
+  return 3;
 }
 
 function parsePayload<T>(payload: string): T | null {
@@ -160,12 +198,19 @@ export class PeerMesh {
   }
 
   /** The encoder limits for what this peer receives; `null` means a camera. */
-  private screenTuning(peerId: string, viewers: number): ScreenBudget | null {
+  private screenTuning(peerId: string, viewers: number): VideoTuning | null {
     if (!this.host.isScreenSharing(peerId)) {
       return null;
     }
     const budget = this.host.getScreenProfile();
-    return { ...budget, maxBitrate: screenBitrateFor(budget, viewers) };
+    return {
+      maxBitrate: screenBitrateFor(budget, viewers),
+      maxFramerate: budget.frameRate,
+      scaleResolutionDownBy: screenScaleFor(viewers),
+      // Text stays sharp: the ladder shrinks the picture instead of letting the
+      // encoder throw frames away to hold the resolution.
+      degradationPreference: "maintain-resolution",
+    };
   }
 
   async applyAudioTrack(track: MediaStreamTrack | null): Promise<void> {
@@ -287,6 +332,7 @@ export class PeerMesh {
         await transceiver.sender.replaceTrack(this.host.getAudioTrack()).catch(() => undefined);
         tuneAudioSender(transceiver.sender);
       } else {
+        applyVideoCodecs(transceiver, this.host.getVideoCodec());
         await transceiver.sender
           .replaceTrack(this.host.getVideoTrack(remoteId))
           .catch(() => undefined);
@@ -608,23 +654,94 @@ export function applyOpusVoiceParams(sdp: string): string {
 }
 
 /**
- * Video tuning. Screen share prioritizes resolution so text stays legible;
- * camera prioritizes framerate. Bitrates scale with resolution by the browser,
- * but the cap keeps a share from starving the audio on a thin uplink.
+ * Video tuning. A screen share keeps the frame rate and gives up resolution in
+ * steps instead, and prioritizes resolution so text stays legible; a camera
+ * prioritizes framerate. The cap keeps video from starving audio on a thin
+ * uplink.
  */
-function tuneVideoSender(sender: RTCRtpSender, screen: ScreenBudget | null): void {
+function tuneVideoSender(sender: RTCRtpSender, tuning: VideoTuning | null): void {
   try {
     const params = sender.getParameters();
     params.encodings = params.encodings.length > 0 ? params.encodings : [{}];
     const encoding = params.encodings[0];
     if (encoding !== undefined) {
-      encoding.maxBitrate = screen?.maxBitrate ?? 1_500_000;
-      encoding.maxFramerate = screen?.frameRate ?? 30;
+      encoding.maxBitrate = tuning?.maxBitrate ?? 1_500_000;
+      encoding.maxFramerate = tuning?.maxFramerate ?? 30;
+      encoding.scaleResolutionDownBy = tuning?.scaleResolutionDownBy ?? 1;
     }
-    params.degradationPreference = screen !== null ? "maintain-resolution" : "maintain-framerate";
+    params.degradationPreference = tuning?.degradationPreference ?? "maintain-framerate";
     void sender.setParameters(params).catch(() => undefined);
   } catch {
     // Best-effort.
+  }
+}
+
+/**
+ * The codec order to ask the video transceiver for. VP9 encodes a mostly-static
+ * desktop screen better than VP8 at the same bitrate in Chromium; WebKit
+ * (Safari, WebKitGTK) has no VP9 encoder and ships H.264 hardware paths, so it
+ * gets H.264 first. VP8 stays the universal fallback.
+ */
+export function preferredVideoCodecs(
+  codec: VideoCodecPreference,
+  webKit: boolean,
+): readonly string[] {
+  const fallback = "video/VP8";
+  switch (codec) {
+    case "av1":
+      return ["video/AV1", "video/VP9", fallback];
+    case "vp9":
+      return ["video/VP9", fallback];
+    case "h264":
+      return ["video/H264", fallback];
+    default:
+      return webKit ? ["video/H264", "video/VP9", fallback] : ["video/VP9", "video/H264", fallback];
+  }
+}
+
+/** Whether the engine is WebKit rather than Chromium, by user agent. */
+export function prefersH264ByDefault(userAgent: string): boolean {
+  return /AppleWebKit/i.test(userAgent) && !/(Chrome|Chromium|Edg)\//i.test(userAgent);
+}
+
+/** One codec capability as `getCapabilities` reports it. */
+export type VideoCodecCapability = RTCRtpCapabilities["codecs"][number];
+
+/** Orders the engine's codec capabilities by preference, keeping the rest after. */
+export function orderVideoCodecs(
+  codecs: readonly VideoCodecCapability[],
+  preferred: readonly string[],
+): VideoCodecCapability[] {
+  const rank = (mimeType: string): number => {
+    const index = preferred.findIndex((entry) => entry.toLowerCase() === mimeType.toLowerCase());
+    return index === -1 ? preferred.length : index;
+  };
+  return [...codecs].sort((a, b) => rank(a.mimeType) - rank(b.mimeType));
+}
+
+/**
+ * Asks the transceiver for the preferred codec order. Best-effort: engines
+ * without codec control, or a transceiver that already negotiated, keep their
+ * default and the call carries on.
+ */
+function applyVideoCodecs(transceiver: RTCRtpTransceiver, codec: VideoCodecPreference): void {
+  if (typeof transceiver.setCodecPreferences !== "function") {
+    return;
+  }
+  if (typeof RTCRtpSender === "undefined" || typeof RTCRtpSender.getCapabilities !== "function") {
+    return;
+  }
+  const capabilities = RTCRtpSender.getCapabilities("video");
+  if (capabilities === null || capabilities.codecs.length === 0) {
+    return;
+  }
+  const webKit = prefersH264ByDefault(typeof navigator === "undefined" ? "" : navigator.userAgent);
+  try {
+    transceiver.setCodecPreferences(
+      orderVideoCodecs(capabilities.codecs, preferredVideoCodecs(codec, webKit)),
+    );
+  } catch {
+    // The browser refused the list (e.g. after negotiation); the default stands.
   }
 }
 

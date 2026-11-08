@@ -1,14 +1,21 @@
 import { DEFAULT_VOICE_SETTINGS } from "@aulora/core";
 import { describe, expect, it } from "vitest";
+import { displayContentHint } from "../lib/voice/display";
 import { smoothMask } from "../lib/voice/effects/segmenter";
 import { gateOpenThresholdDb, micProcessingKey } from "../lib/voice/mic-pipeline";
 import {
   applyOpusVoiceParams,
   JITTER_BUFFER_TARGET_MS,
+  MIN_SCREEN_BITRATE,
+  orderVideoCodecs,
   PeerMesh,
   type PeerMeshHost,
+  preferredVideoCodecs,
+  prefersH264ByDefault,
   screenBitrateFor,
+  screenScaleFor,
   tuneReceiver,
+  type VideoCodecCapability,
 } from "../lib/voice/peer-mesh";
 
 describe("gateOpenThresholdDb", () => {
@@ -227,5 +234,77 @@ describe("PeerMesh.applyAudioTrack", () => {
     await mesh.applyAudioTrack(track);
     expect(audioReplace.at(-1)).toBe(track);
     expect(videoReplace).toEqual([]);
+  });
+});
+
+describe("screen share mesh budget", () => {
+  const budget = { maxBitrate: 3_500_000, frameRate: 30 };
+
+  it("keeps a legible bitrate floor as viewers multiply", () => {
+    for (const viewers of [4, 6, 10, 25]) {
+      expect(screenBitrateFor(budget, viewers)).toBeGreaterThanOrEqual(MIN_SCREEN_BITRATE);
+    }
+    expect(screenBitrateFor({ maxBitrate: 1_200_000, frameRate: 15 }, 12)).toBe(MIN_SCREEN_BITRATE);
+  });
+
+  it("never exceeds the profile's own cap", () => {
+    expect(screenBitrateFor(budget, 0)).toBe(3_500_000);
+    expect(screenBitrateFor(budget, 1)).toBe(3_500_000);
+  });
+
+  it("scales resolution down before frame rate", () => {
+    expect(screenScaleFor(1)).toBe(1);
+    expect(screenScaleFor(3)).toBe(1);
+    expect(screenScaleFor(4)).toBeGreaterThan(1);
+    expect(screenScaleFor(6)).toBeGreaterThan(screenScaleFor(4));
+    expect(screenScaleFor(9)).toBeGreaterThan(screenScaleFor(6));
+  });
+});
+
+describe("mesh video codec preferences", () => {
+  it("prefers VP9 on Chromium and H.264 on WebKit, with VP8 as the fallback", () => {
+    expect(preferredVideoCodecs("auto", false)[0]).toBe("video/VP9");
+    expect(preferredVideoCodecs("auto", true)[0]).toBe("video/H264");
+    expect(preferredVideoCodecs("auto", false).at(-1)).toBe("video/VP8");
+  });
+
+  it("honours an explicit codec choice", () => {
+    expect(preferredVideoCodecs("av1", false)[0]).toBe("video/AV1");
+    expect(preferredVideoCodecs("h264", false)[0]).toBe("video/H264");
+    expect(preferredVideoCodecs("vp9", true)[0]).toBe("video/VP9");
+  });
+
+  it("orders the engine's capabilities by preference, keeping the rest after", () => {
+    const codecs = ["video/VP8", "video/rtx", "video/VP9", "video/H264"].map(
+      (mimeType) => ({ mimeType }) as VideoCodecCapability,
+    );
+    const ordered = orderVideoCodecs(codecs, preferredVideoCodecs("auto", false)).map(
+      (codec) => codec.mimeType,
+    );
+    expect(ordered[0]).toBe("video/VP9");
+    expect(ordered.indexOf("video/H264")).toBeGreaterThan(ordered.indexOf("video/VP9"));
+    expect(ordered.at(-1)).toBe("video/rtx");
+  });
+
+  it("recognises WebKit engines and Chromium shells", () => {
+    expect(
+      prefersH264ByDefault(
+        "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/17.0 Safari/605.1.15",
+      ),
+    ).toBe(true);
+    expect(
+      prefersH264ByDefault(
+        "Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36",
+      ),
+    ).toBe(false);
+    expect(prefersH264ByDefault("")).toBe(false);
+  });
+});
+
+describe("displayContentHint", () => {
+  it("keeps detail for desktops and asks for motion only in the smooth profile", () => {
+    expect(displayContentHint("saver")).toBe("detail");
+    expect(displayContentHint("balanced")).toBe("detail");
+    expect(displayContentHint("smooth")).toBe("motion");
   });
 });
