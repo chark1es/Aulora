@@ -275,18 +275,27 @@ mod tests {
             rollout_percentage(&serde_json::json!({ "rollout": "half" })),
             100
         );
-        assert_eq!(rollout_percentage(&serde_json::json!({ "rollout": null })), 100);
+        assert_eq!(
+            rollout_percentage(&serde_json::json!({ "rollout": null })),
+            100
+        );
     }
 
     #[test]
     fn rollout_is_clamped_and_rounded() {
-        assert_eq!(rollout_percentage(&serde_json::json!({ "rollout": 25 })), 25);
+        assert_eq!(
+            rollout_percentage(&serde_json::json!({ "rollout": 25 })),
+            25
+        );
         assert_eq!(
             rollout_percentage(&serde_json::json!({ "rollout": 12.6 })),
             13
         );
         assert_eq!(rollout_percentage(&serde_json::json!({ "rollout": -5 })), 0);
-        assert_eq!(rollout_percentage(&serde_json::json!({ "rollout": 500 })), 100);
+        assert_eq!(
+            rollout_percentage(&serde_json::json!({ "rollout": 500 })),
+            100
+        );
     }
 
     #[test]
