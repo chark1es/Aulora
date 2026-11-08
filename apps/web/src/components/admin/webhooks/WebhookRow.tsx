@@ -8,13 +8,15 @@ export interface WebhookRowProps {
   readonly channelLabel: string;
   readonly busy: boolean;
   readonly now: number;
+  /** The new URL cannot be shown while the workspace origin is unknown. */
+  readonly rotateDisabled?: boolean;
   readonly onEdit: () => void;
   readonly onRotate: () => void;
   readonly onDelete: () => void;
 }
 
 export function WebhookRow(props: WebhookRowProps) {
-  const { webhook, channelLabel, busy, now, onEdit, onRotate, onDelete } = props;
+  const { webhook, channelLabel, busy, rotateDisabled, now, onEdit, onRotate, onDelete } = props;
   return (
     <li
       className="flex min-h-[52px] flex-wrap items-center gap-3 px-4 py-2"
@@ -33,7 +35,12 @@ export function WebhookRow(props: WebhookRowProps) {
         <Button variant="secondary" size="sm" disabled={busy} onClick={onEdit}>
           Edit
         </Button>
-        <Button variant="secondary" size="sm" disabled={busy} onClick={onRotate}>
+        <Button
+          variant="secondary"
+          size="sm"
+          disabled={busy || rotateDisabled === true}
+          onClick={onRotate}
+        >
           New URL
         </Button>
         <Button variant="danger" size="sm" disabled={busy} onClick={onDelete}>

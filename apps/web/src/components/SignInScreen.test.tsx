@@ -4,6 +4,7 @@ import userEvent from "@testing-library/user-event";
 import { useQuery } from "convex/react";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import type { AuthActions } from "../lib/auth-client";
+import { authCallbackUrl } from "../lib/public-origin";
 import { SignInScreen } from "./SignInScreen";
 
 vi.mock("convex/react", () => ({ useQuery: vi.fn(() => undefined) }));
@@ -118,7 +119,7 @@ describe("SignInScreen", () => {
     await waitFor(() => {
       expect(actions.signInOAuth2).toHaveBeenCalledWith({
         providerId: "keycloak",
-        callbackURL: expect.any(String),
+        callbackURL: authCallbackUrl(),
       });
     });
   });

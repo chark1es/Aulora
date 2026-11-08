@@ -11,7 +11,8 @@ import { InviteList, type InviteRow } from "./invites/InviteList";
 export interface InviteManagerProps {
   readonly canCreateInvites: boolean;
   readonly canDeleteInvites: boolean;
-  readonly origin: string;
+  /** Public workspace origin, or `null` until the client knows it. */
+  readonly origin: string | null;
 }
 
 type View = "invites" | "allowlist";
@@ -75,7 +76,8 @@ function InvitesView({
 }: {
   readonly canCreate: boolean;
   readonly canDelete: boolean;
-  readonly origin: string;
+  /** Public workspace origin, or `null` until the client knows it. */
+  readonly origin: string | null;
 }) {
   const list = usePaginatedQuery(api.invites.list, {}, { initialNumItems: PAGE_SIZE });
   const revoke = useMutation(api.invites.revoke);

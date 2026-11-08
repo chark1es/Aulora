@@ -50,13 +50,13 @@ function mutationFor(name: string): ReturnType<typeof vi.fn> {
   return found;
 }
 
-function renderSettings(canManage = true) {
+function renderSettings(canManage = true, origin: string | null = "https://chat.example.com") {
   return render(
     <WebhooksSettings
       canManageWebhooks={canManage}
       channels={channels}
       channelNames={undefined}
-      origin="https://chat.example.com"
+      origin={origin}
     />,
   );
 }
@@ -114,6 +114,13 @@ describe("WebhooksSettings", () => {
 
     await user.click(screen.getByRole("button", { name: "I have copied it" }));
     expect(screen.queryByTestId("webhook-secret")).not.toBeInTheDocument();
+  });
+
+  it("hides URL actions until the workspace origin is known", () => {
+    renderSettings(true, null);
+    expect(screen.getByRole("button", { name: "New webhook" })).toBeDisabled();
+    expect(screen.getByRole("button", { name: "New URL" })).toBeDisabled();
+    expect(screen.getByTestId("webhooks-settings")).toBeInTheDocument();
   });
 
   it("refuses an empty name before calling the server", async () => {
