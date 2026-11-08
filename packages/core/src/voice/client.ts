@@ -24,7 +24,7 @@ export function createVoiceClientId(): string {
   const entropy =
     cryptoObj !== undefined && typeof cryptoObj.getRandomValues === "function"
       ? Array.from(cryptoObj.getRandomValues(new Uint8Array(8)))
-      : [Math.trunc(globalThis.performance?.now() ?? 0), fallbackCounter];
+      : [Date.now() % 1_000_000, fallbackCounter];
   const suffix = entropy
     .map((value) => value.toString(36).padStart(2, "0"))
     .join("")
