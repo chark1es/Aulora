@@ -48,7 +48,7 @@ For a candidate, run [Actions, Release](https://github.com/chark1es/Aulora/actio
 - [ ] Test the intended public HTTPS/WSS deployment from another network. Check DNS, cookies, provider callbacks, proxy upload limits, and private administrative ports.
 - [ ] Replace example database and MinIO credentials in production.
 - [ ] Test backup creation with uploaded files, copy it off-machine, and restore it to an isolated stack using the original key. Verify both old messages and downloaded files.
-- [ ] Exercise server update check/download/restart and document migration/recovery steps.
+- [ ] Exercise server update check/download/restart and document migration/recovery steps. For backend, schema, subscription, engine, or updater changes, complete the applicable [Convex performance and upgrade checks](convex/README.md#verification-before-release), including populated older installs, skipped versions, client compatibility, failed-update retries, and recovery.
 
 ## Signed applications and services
 
