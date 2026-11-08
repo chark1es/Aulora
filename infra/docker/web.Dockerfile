@@ -9,6 +9,19 @@
 #
 # Build context is the repo root; see ../../.dockerignore.
 
+# Only the package manifests, so the dependency layer below is rebuilt when a
+# dependency changes and not on every source edit. The copied sources are
+# stripped to their package.json files; a later COPY --from is keyed on content,
+# so unchanged manifests keep the install cached.
+FROM oven/bun:1.4.4 AS manifests
+WORKDIR /src
+COPY package.json bun.lock ./
+COPY apps/web/package.json apps/web/
+COPY apps/docs/package.json apps/docs/
+COPY packages ./packages
+RUN find packages -type f ! -name package.json -delete \
+  && find packages -type d -empty -delete
+
 FROM oven/bun:1.4.4 AS build
 WORKDIR /app
 
@@ -22,16 +35,19 @@ ENV INSTANCE_NAME=$INSTANCE_NAME
 ENV SITE_URL=$SITE_URL
 ENV CONVEX_URL=$CONVEX_URL
 
-# Manifests first for a cacheable install.
-COPY package.json bun.lock turbo.json tsconfig.json biome.json ./
-COPY apps/web/package.json apps/web/
-COPY apps/docs/package.json apps/docs/
-COPY packages ./packages
+COPY --from=manifests /src ./
+# The package cache survives between builds, so even a changed dependency only
+# downloads what is new.
+RUN --mount=type=cache,target=/bun-cache \
+  BUN_INSTALL_CACHE_DIR=/bun-cache bun install --frozen-lockfile
+
+# Sources come after the install so editing them never reinstalls.
+COPY turbo.json tsconfig.json biome.json ./
 COPY LICENSE NOTICE COMMERCIAL.md THIRD_PARTY_NOTICES.md ./
 COPY licenses ./licenses
 COPY scripts/legal-notices.mjs ./scripts/legal-notices.mjs
+COPY packages ./packages
 COPY apps/web ./apps/web
-RUN bun install --frozen-lockfile
 
 RUN bun run --cwd apps/web build
 
