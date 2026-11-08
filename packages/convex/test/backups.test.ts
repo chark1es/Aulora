@@ -88,12 +88,15 @@ describe("backups.nightly", () => {
     expect((await asOwner.query(api.instance.overview, {})).backups.lastRun).toBeNull();
   });
 
-  it.each([undefined, "", "   "])("skips nightly intents with token %s", async (token) => {
-    if (token !== undefined) process.env.BACKUP_TOKEN = token;
-    const { t } = await ownerTest();
-    expect(await t.mutation(internal.backups.nightly, {})).toBeNull();
-    expect(await t.run((ctx) => ctx.db.query("backups").collect())).toEqual([]);
-  });
+  it.each([{}, { BACKUP_TOKEN: "" }, { BACKUP_TOKEN: "   " }])(
+    "skips nightly intents with configuration %j",
+    async (configuration) => {
+      Object.assign(process.env, configuration);
+      const { t } = await ownerTest();
+      expect(await t.mutation(internal.backups.nightly, {})).toBeNull();
+      expect(await t.run((ctx) => ctx.db.query("backups").collect())).toEqual([]);
+    },
+  );
 
   it("does nothing once the owner disables backups", async () => {
     process.env.BACKUP_TOKEN = "runner-token";
