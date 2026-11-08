@@ -23,8 +23,8 @@
       "gzip": 1216
     },
     "assets/CallParticipant.js": {
-      "raw": 89152,
-      "gzip": 28160
+      "raw": 102016,
+      "gzip": 31360
     },
     "assets/CallStage.js": {
       "raw": 3904,
@@ -87,8 +87,8 @@
       "gzip": 8576
     },
     "assets/ProfileSession.js": {
-      "raw": 308736,
-      "gzip": 86976
+      "raw": 313856,
+      "gzip": 88576
     },
     "assets/react.js": {
       "raw": 240640,
@@ -135,8 +135,8 @@
       "gzip": 4354304
     },
     "assets/VoiceChannelView.js": {
-      "raw": 6464,
-      "gzip": 2112
+      "raw": 6528,
+      "gzip": 2176
     },
     "assets/workletProcessor.js": {
       "raw": 72192,
@@ -148,8 +148,8 @@
     "gzip": 229248
   },
   "total": {
-    "raw": 18269056,
-    "gzip": 5604416
+    "raw": 18287040,
+    "gzip": 5609280
   },
   "lazyOnly": [
     {
