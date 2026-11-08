@@ -214,6 +214,9 @@ export function useCallPip(options: CallPipOptions): { pip: PipControl; surface:
         setPipWindow(created);
       }
     } else if (mode === "video") {
+      if (videoDisabled) {
+        return;
+      }
       try {
         videoRef.current = await startVideoPip(source(), () => {
           videoRef.current = null;
@@ -224,7 +227,7 @@ export function useCallPip(options: CallPipOptions): { pip: PipControl; surface:
         videoRef.current = null;
       }
     }
-  }, [mode, source]);
+  }, [mode, source, videoDisabled]);
 
   const active = pipWindow !== null || desktopOpen || floatingVideo;
   const activeRef = useRef(active);
@@ -540,6 +543,13 @@ export function useCallPip(options: CallPipOptions): { pip: PipControl; surface:
     });
   }, [callActive, mode, open]);
 
+  // The operator can switch the picture off while a floating video is open.
+  useEffect(() => {
+    if (videoDisabled && floatingVideo) {
+      close();
+    }
+  }, [videoDisabled, floatingVideo, close]);
+
   // Keep a floating video on whoever is worth watching.
   useEffect(() => {
     if (!floatingVideo) {
@@ -553,7 +563,13 @@ export function useCallPip(options: CallPipOptions): { pip: PipControl; surface:
     };
   }, [floatingVideo, source]);
 
-  const pip = useMemo<PipControl>(() => ({ mode, active, toggle }), [mode, active, toggle]);
+  // A video-only surface has nothing to show with video switched off, so it is
+  // reported as unavailable and the page offers no button for it.
+  const exposedMode: PipMode = videoDisabled && mode === "video" ? "none" : mode;
+  const pip = useMemo<PipControl>(
+    () => ({ mode: exposedMode, active, toggle }),
+    [exposedMode, active, toggle],
+  );
   const surface = useMemo<PipSurface>(() => ({ window: pipWindow }), [pipWindow]);
   return { pip, surface };
 }

@@ -238,6 +238,35 @@ describe("desktop window mode", () => {
     expect(mocks.startFrames).toHaveBeenCalledWith({ track: null });
   });
 
+  it("offers no video-only PiP while the operator has switched video off", async () => {
+    mocks.mode = "video";
+    const { result } = setup({ videoDisabled: true });
+    expect(result.current.pip.mode).toBe("none");
+    act(() => {
+      result.current.pip.toggle();
+    });
+    await Promise.resolve();
+    expect(mocks.startVideo).not.toHaveBeenCalled();
+    expect(result.current.pip.active).toBe(false);
+  });
+
+  it("closes a floating video when the operator switches video off", async () => {
+    mocks.mode = "video";
+    const stop = vi.fn();
+    mocks.startVideo.mockResolvedValue({ setSource: vi.fn(), stop });
+    const { result, rerender, initial } = setup();
+    act(() => {
+      result.current.pip.toggle();
+    });
+    await waitFor(() => {
+      expect(result.current.pip.active).toBe(true);
+    });
+    rerender({ ...initial, videoDisabled: true });
+    await waitFor(() => {
+      expect(stop).toHaveBeenCalled();
+    });
+  });
+
   it("stops the frame fallback when the window goes away", async () => {
     const { result } = setup();
     act(() => {
