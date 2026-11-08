@@ -132,7 +132,7 @@ export function CallControls(props: CallControlsProps) {
     onLeave,
   } = props;
   return (
-    <View className="flex-row items-center justify-center gap-3 rounded-card border border-border bg-surface-2 px-4 py-3">
+    <View className="flex-row flex-wrap items-center justify-center gap-3 rounded-card border border-border bg-surface-2 px-4 py-3">
       <CoreControls
         muted={muted}
         deafened={deafened}

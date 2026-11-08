@@ -7,6 +7,7 @@ import {
 import { Heading, Icon, Text, usePalette } from "@aulora/ui-native";
 import { useEffect, useMemo, useState } from "react";
 import { Modal, ScrollView, View } from "react-native";
+import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { type MainVideo, pickMainVideo } from "../../lib/voice/pip";
 import { tryCreateMediaStream, type VoiceStream } from "../../lib/voice/webrtc";
 import { useVoice } from "../../providers/VoiceProvider";
@@ -36,24 +37,37 @@ function AvatarFallback({ seed }: { readonly seed: string }) {
 function ParticipantOverlay({
   participant,
   name,
+  overVideo,
 }: {
   readonly participant: CallParticipantView;
   readonly name: string;
+  /** Video behind the label: draw a scrim and light text so it stays legible. */
+  readonly overVideo: boolean;
 }) {
   const palette = usePalette();
   const talking = !participant.muted && participant.speaking;
+  const iconColor = overVideo ? "#ffffff" : palette["text-muted"];
   return (
-    <View className="absolute bottom-2 left-2 right-2 flex-row items-center gap-1.5">
+    <View
+      className={
+        overVideo
+          ? "absolute bottom-0 left-0 right-0 flex-row items-center gap-1.5 bg-black/50 px-2 py-1.5"
+          : "absolute bottom-0 left-0 right-0 flex-row items-center gap-1.5 px-2 py-1.5"
+      }
+    >
       {talking && (
         <View className="h-1.5 w-1.5 rounded-pill" style={{ backgroundColor: palette.secondary }} />
       )}
-      <Text size="xs" numberOfLines={1} className="flex-1 font-medium">
+      <Text
+        size="xs"
+        numberOfLines={1}
+        className="min-w-0 flex-1 font-medium"
+        style={overVideo ? { color: "#ffffff" } : undefined}
+      >
         {name}
       </Text>
-      {participant.muted && <Icon name="mic-off" size={13} color={palette["text-muted"]} />}
-      {participant.deafened && (
-        <Icon name="headphones-off" size={13} color={palette["text-muted"]} />
-      )}
+      {participant.muted && <Icon name="mic-off" size={13} color={iconColor} />}
+      {participant.deafened && <Icon name="headphones-off" size={13} color={iconColor} />}
       {participant.connection === "failed" && (
         <Icon name="signal" size={13} color={palette.danger} />
       )}
@@ -101,7 +115,11 @@ function ParticipantTile(props: ParticipantTileProps) {
       ) : (
         <AvatarFallback seed={participant.userId} />
       )}
-      <ParticipantOverlay participant={participant} name={name} />
+      <ParticipantOverlay
+        participant={participant}
+        name={name}
+        overVideo={showVideo && stream !== null}
+      />
     </View>
   );
 }
@@ -126,7 +144,7 @@ function ParticipantGrid({
   const sharer = sharerId === null ? undefined : ordered.find((entry) => entry.userId === sharerId);
   const tiles = ordered.filter((entry) => entry.userId !== sharerId);
   return (
-    <ScrollView contentContainerStyle={{ padding: 12, gap: 12 }}>
+    <ScrollView className="flex-1" contentContainerStyle={{ padding: 12, gap: 12 }}>
       {sharer !== undefined && (
         <ParticipantTile
           participant={sharer}
@@ -167,8 +185,8 @@ function CallHeader({
   readonly duration: string;
 }) {
   return (
-    <View className="flex-row items-center justify-between border-b border-border px-4 py-3">
-      <View className="flex-1">
+    <View className="flex-row items-center justify-between gap-3 border-b border-border px-4 py-3">
+      <View className="min-w-0 flex-1">
         <Heading level={3} numberOfLines={1}>
           {channelName}
         </Heading>
@@ -176,7 +194,7 @@ function CallHeader({
           {callKindLabel(kind)} · {duration}
         </Text>
       </View>
-      <View className="h-2.5 w-2.5 rounded-pill bg-secondary" />
+      <View className="h-2.5 w-2.5 shrink-0 rounded-pill bg-secondary" />
     </View>
   );
 }
@@ -259,6 +277,7 @@ export function CallScreen({ channelName, memberNames }: CallScreenProps) {
   const { call } = voice;
   const startedAt = call?.startedAt ?? null;
   const now = useNow(startedAt);
+  const insets = useSafeAreaInsets();
 
   const localStream = useMemo(
     () => (voice.localVideoTrack === null ? null : tryCreateMediaStream([voice.localVideoTrack])),
@@ -284,7 +303,15 @@ export function CallScreen({ channelName, memberNames }: CallScreenProps) {
 
   return (
     <Modal visible transparent animationType="slide" onRequestClose={() => void voice.leave()}>
-      <View className="flex-1 bg-bg">
+      <View
+        className="flex-1 bg-bg"
+        style={{
+          paddingTop: insets.top,
+          paddingBottom: insets.bottom,
+          paddingLeft: insets.left,
+          paddingRight: insets.right,
+        }}
+      >
         <CallHeader
           channelName={channelName}
           kind={call.kind}
@@ -297,7 +324,7 @@ export function CallScreen({ channelName, memberNames }: CallScreenProps) {
           localStream={localStream}
           mainUserId={main?.userId ?? null}
         />
-        <View className="px-4 pb-6 pt-2">
+        <View className="px-4 pb-4 pt-2">
           <InCallControls voice={voice} />
         </View>
       </View>

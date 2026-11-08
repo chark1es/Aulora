@@ -130,8 +130,7 @@ function DaySeparator({ label }: { readonly label: string }) {
 function EmptyConversation() {
   const palette = usePalette();
   return (
-    // An inverted list flips its empty state too; flip it back.
-    <View className="items-center gap-2 px-8 py-16" style={{ transform: [{ scaleY: -1 }] }}>
+    <View pointerEvents="none" className="absolute inset-0 items-center justify-center gap-2 px-8">
       <View className="h-14 w-14 items-center justify-center rounded-pill bg-surface-2">
         <Icon name="message" size={24} color={palette["text-muted"]} />
       </View>
@@ -462,9 +461,9 @@ export function MessageList(props: MessageListProps) {
           if (hasOlder && props.loadingOlder !== true) props.onLoadOlder?.();
         }}
         ListFooterComponent={hasOlder ? <OlderSpinner /> : undefined}
-        ListEmptyComponent={<EmptyConversation />}
         renderItem={renderItem}
       />
+      {rows.length === 0 && <EmptyConversation />}
       {firstUnreadId !== null && indexOfMessage(rows, firstUnreadId) >= 0 && (
         <UnreadPill
           onPress={() => {
