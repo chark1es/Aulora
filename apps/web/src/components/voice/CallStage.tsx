@@ -54,6 +54,7 @@ export function CallStage({
           identity={identity}
           speakingIds={voice.remoteSpeaking}
           localSpeaking={voice.localSpeaking}
+          attachVideo={voice.attachRemoteVideo}
           className="h-full"
         />
       </div>

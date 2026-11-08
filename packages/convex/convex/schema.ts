@@ -651,6 +651,12 @@ export default defineSchema({
     sharingScreen: v.boolean(),
     /** The device can send and receive screen shares through the streaming server. */
     sfu: v.optional(v.boolean()),
+    /**
+     * The device can carry microphone and camera through the streaming server
+     * (`sfu-call` capability). Absent on older clients and mobile, which keeps a
+     * mixed call entirely on the peer mesh.
+     */
+    sfuCall: v.optional(v.boolean()),
     joinedAt: v.number(),
     lastSeen: v.number(),
   })

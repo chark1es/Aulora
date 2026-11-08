@@ -2,7 +2,14 @@ import { Permission } from "@aulora/core";
 import { decodeJwt, decodeProtectedHeader, jwtVerify } from "jose";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { api } from "../convex/_generated/api";
-import { readSfuConfig, SFU_TOKEN_TTL_SECONDS, sfuRoomName, signSfuToken } from "../convex/lib/sfu";
+import {
+  readSfuConfig,
+  SFU_CALL_TOKEN_TTL_SECONDS,
+  SFU_TOKEN_TTL_SECONDS,
+  sfuCallRoomName,
+  sfuRoomName,
+  signSfuToken,
+} from "../convex/lib/sfu";
 import { EVERYONE_BASE, newTest, seedChannel, seedWorkspace } from "./helpers";
 
 const ENV = {
@@ -87,6 +94,35 @@ describe("signSfuToken", () => {
       jwtVerify(token, new TextEncoder().encode("a-different-secret-of-similar-length-xx")),
     ).rejects.toThrow();
   });
+
+  it("scopes a call grant to the media room, microphone/camera and a long TTL", async () => {
+    const token = await signSfuToken({
+      config,
+      callId: "abc",
+      identity: "u",
+      canPublish: true,
+      scope: "call",
+      canPublishSources: ["microphone", "camera"],
+      now: 1_700_000_000,
+    });
+    const decoded = decodeJwt(token);
+    const video = decoded.video as Record<string, unknown>;
+    expect(video.room).toBe(sfuCallRoomName("abc"));
+    expect(video.room).not.toBe(sfuRoomName("abc"));
+    expect(video.canPublishSources).toEqual(["microphone", "camera"]);
+    expect(decoded.exp).toBe(1_700_000_000 + SFU_CALL_TOKEN_TTL_SECONDS);
+  });
+
+  it("keeps a call grant without publish rights silent", async () => {
+    const token = await signSfuToken({
+      config,
+      callId: "abc",
+      identity: "u",
+      canPublish: false,
+      scope: "call",
+    });
+    expect((decodeJwt(token).video as Record<string, unknown>).canPublishSources).toBeUndefined();
+  });
 });
 
 async function seedCall(options: { everyone?: bigint } = {}) {
@@ -163,6 +199,37 @@ describe("callStreaming.access", () => {
       t.action(api.callStreaming.access, { callId, clientId: "device-a1" }),
     ).rejects.toThrow(/Not authenticated/);
   });
+
+  it("hands the call transport a separate room, camera/mic sources and a long token", async () => {
+    stubStreamingEnv();
+    const { t, callId } = await seedCall();
+    const before = Math.floor(Date.now() / 1000);
+    const result = await t
+      .withIdentity({ subject: "user-1" })
+      .action(api.callStreaming.access, { callId, clientId: "device-a1", scope: "call" });
+    const claims = decodeJwt(result?.token ?? "");
+    const video = claims.video as Record<string, unknown>;
+    expect(video.room).toBe(sfuCallRoomName(callId));
+    expect(video.canPublishSources).toEqual(["microphone", "camera"]);
+    expect(claims.exp).toBeGreaterThanOrEqual(before + SFU_CALL_TOKEN_TTL_SECONDS);
+    expect(result?.canPublishSources).toEqual(["microphone", "camera"]);
+    expect(result?.expiresAt).toBe(claims.exp);
+  });
+
+  it("withholds microphone and camera sources from a member without those permissions", async () => {
+    stubStreamingEnv();
+    const { t, callId } = await seedCall({
+      everyone: EVERYONE_BASE & ~(Permission.Speak | Permission.UseVideo),
+    });
+    const result = await t
+      .withIdentity({ subject: "user-1" })
+      .action(api.callStreaming.access, { callId, clientId: "device-a1", scope: "call" });
+    expect(result?.canPublish).toBe(false);
+    expect(result?.canPublishSources).toEqual([]);
+    expect(
+      (decodeJwt(result?.token ?? "").video as Record<string, unknown>).canPublishSources,
+    ).toBeUndefined();
+  });
 });
 
 describe("calls.updateParticipant sfu flag", () => {
@@ -179,5 +246,23 @@ describe("calls.updateParticipant sfu flag", () => {
     });
     const after = await asUser.query(api.calls.forChannel, { channelId });
     expect(after?.participants[0]?.sfu).toBe(true);
+  });
+
+  it("records and exposes the additive sfu-call capability", async () => {
+    const { t, channelId, callId } = await seedCall();
+    const asUser = t.withIdentity({ subject: "user-1" });
+    const before = await asUser.query(api.calls.forChannel, { channelId });
+    // Old rows and older clients default to the peer mesh.
+    expect(before?.participants[0]?.sfuCall).toBe(false);
+
+    await asUser.mutation(api.calls.updateParticipant, {
+      callId,
+      clientId: "device-a1",
+      sfuCall: true,
+    });
+    const after = await asUser.query(api.calls.forChannel, { channelId });
+    expect(after?.participants[0]?.sfuCall).toBe(true);
+    // The screen capability is independent; advertising one must not grant the other.
+    expect(after?.participants[0]?.sfu).toBe(false);
   });
 });

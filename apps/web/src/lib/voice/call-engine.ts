@@ -5,6 +5,7 @@ import {
   type CallView,
   isCallElsewhereError,
   isOnThisDevice,
+  type SfuAccess,
   streamProfile,
   type VoiceDeviceSettings,
   type VoicePort,
@@ -18,6 +19,15 @@ import { applySinkId, createLevelMeter } from "./media";
 import { type MicPipeline, micProcessingKey, openMicPipeline } from "./mic-pipeline";
 import { DEFAULT_ICE, PeerMesh } from "./peer-mesh";
 import { ScreenShare } from "./screen-share";
+import { SfuCall } from "./sfu-call";
+import {
+  type CallTransport,
+  capabilitiesOf,
+  decideTransport,
+  SFU_CALL_CAPABILITY,
+  SFU_CALL_ENABLED,
+  SFU_CALL_THRESHOLD,
+} from "./sfu-call-policy";
 
 export type { VoiceEngineOptions, VoiceLocalState, VoiceSnapshot } from "./call-types";
 
@@ -43,6 +53,8 @@ export type { VoiceEngineOptions, VoiceLocalState, VoiceSnapshot } from "./call-
  */
 
 const HEARTBEAT_MS = 15_000;
+/** Back-off before retrying a failed switch to the streaming server. */
+const SFU_RETRY_MS = 30_000;
 
 export class VoiceEngine {
   private readonly port: VoicePort;
@@ -80,6 +92,18 @@ export class VoiceEngine {
   private readonly camera: LocalCamera;
   /** Deployment ICE overrides plus the ephemeral TURN credential for this call. */
   private readonly ice: IceServerSource;
+  /** Microphone and camera over the streaming server while a call is large. */
+  private readonly sfu: SfuCall;
+  private transport: CallTransport = "mesh";
+  /** Cached per call: `null` until the backend is asked once. */
+  private sfuConfigured: boolean | null = null;
+  private sfuAccess: SfuAccess | null = null;
+  private sfuProbe: Promise<boolean> | null = null;
+  private sfuSwitching = false;
+  /** Do not retry a failed switch before this timestamp. */
+  private sfuRetryAt = 0;
+  /** Remote users speaking on the SFU path, merged with the mesh's set. */
+  private readonly sfuSpeaking = new Set<string>();
   private callUnsub: (() => void) | null = null;
   private signalUnsub: (() => void) | null = null;
   private heartbeat: ReturnType<typeof setInterval> | null = null;
@@ -114,15 +138,20 @@ export class VoiceEngine {
       onChange: () => {
         this.emit();
       },
-      getAudioTrack: () => this.micStream?.getAudioTracks()[0] ?? null,
+      // While the streaming server carries the call, a new peer must not get a
+      // second copy of the microphone or camera.
+      getAudioTrack: () =>
+        this.transport === "sfu" ? null : (this.micStream?.getAudioTracks()[0] ?? null),
       getVideoTrack: (peerId) =>
-        this.screen.trackForPeer(peerId) ?? (this.local.video ? this.camera.track : null),
+        this.screen.trackForPeer(peerId) ??
+        (this.local.video && this.transport !== "sfu" ? this.camera.track : null),
       isScreenSharing: (peerId) => this.screen.trackForPeer(peerId) !== null,
       getScreenProfile: () => {
         const profile = streamProfile(this.getSettings().streamQuality);
         return { maxBitrate: profile.maxBitrate, frameRate: profile.frameRate };
       },
     });
+    this.sfu = new SfuCall();
     this.camera = new LocalCamera({
       onError: (message) => {
         this.onError(message);
@@ -130,6 +159,9 @@ export class VoiceEngine {
       onFailed: () => {
         // The effect broke mid-call: carry on with the plain camera.
         this.camera.fallBack();
+        if (this.transport === "sfu") {
+          void this.sfu.setCamera(this.camera.track);
+        }
         void this.mesh.refreshVideo();
         this.emit();
       },
@@ -162,6 +194,7 @@ export class VoiceEngine {
   /** Publishes participant flags; the roster is advisory, so a failure is not fatal. */
   private report(flags: {
     readonly sfu?: boolean;
+    readonly sfuCall?: boolean;
     readonly sharingScreen?: boolean;
     readonly video?: boolean;
   }): void {
@@ -190,9 +223,10 @@ export class VoiceEngine {
       local: this.local,
       micStream: this.micStream,
       localVideoTrack: this.screen.track ?? this.camera.track,
-      remoteStreams: this.mesh.remoteStreams,
+      remoteStreams: this.transport === "sfu" ? this.sfu.mediaStreams : this.mesh.remoteStreams,
       remoteScreens: this.screen.relayed,
-      remoteSpeaking: this.mesh.remoteSpeaking,
+      remoteSpeaking: this.transport === "sfu" ? this.sfuSpeaking : this.mesh.remoteSpeaking,
+      attachRemoteVideo: this.attachRemoteVideo,
       micLevel: this.micLevel,
       localSpeaking: this.localSpeaking,
       pending: this.pending,
@@ -203,6 +237,31 @@ export class VoiceEngine {
 
   isActive(): boolean {
     return this.callId !== null;
+  }
+
+  /**
+   * Binds a tile's video element to the SFU subscriber while the streaming
+   * server carries the call. Stable identity: the tile effect re-runs only
+   * when its stream changes.
+   */
+  private readonly attachRemoteVideo = (
+    userId: string,
+    element: HTMLVideoElement | null,
+  ): boolean => (this.transport === "sfu" ? this.sfu.attachVideo(userId, element) : false);
+
+  /** Speaking ring for the SFU path, with the same hysteresis as the mesh. */
+  private setSfuLevel(userId: string, level: number): void {
+    const speaking = this.sfuSpeaking.has(userId);
+    const next = speaking ? level > 0.035 : level > 0.08;
+    if (next === speaking) {
+      return;
+    }
+    if (next) {
+      this.sfuSpeaking.add(userId);
+    } else {
+      this.sfuSpeaking.delete(userId);
+    }
+    this.emit();
   }
 
   // ---- Call lifecycle ------------------------------------------------------
@@ -328,7 +387,13 @@ export class VoiceEngine {
     this.cameraInitialised = false;
     await this.acquireMic();
     this.applyMicEnabled();
-    void this.port.updateParticipant({ callId, muted: settings.joinMuted }).catch(() => undefined);
+    void this.port
+      .updateParticipant({
+        callId,
+        muted: settings.joinMuted,
+        ...(SFU_CALL_ENABLED ? { sfuCall: true } : {}),
+      })
+      .catch(() => undefined);
     void this.screen.probe();
     void this.ice.load();
     this.emit();
@@ -345,6 +410,14 @@ export class VoiceEngine {
     }
     this.mesh.reset();
     this.ice.dispose();
+    void this.sfu.disconnect();
+    this.transport = "mesh";
+    this.sfuAccess = null;
+    this.sfuConfigured = null;
+    this.sfuProbe = null;
+    this.sfuSwitching = false;
+    this.sfuRetryAt = 0;
+    this.sfuSpeaking.clear();
     this.stopLevelMeter();
     this.micPipeline?.stop();
     this.micPipeline = null;
@@ -483,6 +556,9 @@ export class VoiceEngine {
       this.camera.close();
     }
     this.local = { ...this.local, video: on };
+    if (this.transport === "sfu") {
+      await this.sfu.setCamera(on ? this.camera.track : null);
+    }
     await this.mesh.refreshVideo();
     this.report({ video: on });
     this.emit();
@@ -512,6 +588,9 @@ export class VoiceEngine {
     this.pushToTalk = settings.pushToTalk;
     this.applyMicEnabled();
     if (this.local.video && (await this.camera.sync(settings))) {
+      if (this.transport === "sfu") {
+        await this.sfu.setCamera(this.camera.track);
+      }
       await this.mesh.refreshVideo();
     }
     this.emit();
@@ -538,6 +617,7 @@ export class VoiceEngine {
       this.applyMicEnabled();
       this.startLevelMeter();
       await this.mesh.applyAudioTrack(this.micStream.getAudioTracks()[0] ?? null);
+      void this.sfu.setMic(this.micStream.getAudioTracks()[0] ?? null);
     } catch (error) {
       this.mediaError = mediaMessage(error);
       this.onError(messageOf(error));
@@ -571,6 +651,7 @@ export class VoiceEngine {
     if (this.screen.active) {
       void this.mesh.refreshVideo();
     }
+    void this.evaluateTransport();
     // Honour "join video calls with camera on" once, as the call first arrives.
     if (!this.cameraInitialised) {
       this.cameraInitialised = true;
@@ -578,6 +659,151 @@ export class VoiceEngine {
         void this.setCamera(true);
       }
     }
+    this.emit();
+  }
+
+  // ---- Transport -----------------------------------------------------------
+
+  /**
+   * Chooses between the peer mesh and the streaming server for the call's
+   * microphone and camera. Runs on every roster update, so a call that grows
+   * past the threshold switches, and one that shrinks (or gains a client that
+   * cannot use the SFU) returns to the mesh. The mesh stays fully connected
+   * throughout, so the fallback needs no renegotiation.
+   */
+  private async evaluateTransport(): Promise<void> {
+    if (!SFU_CALL_ENABLED) {
+      return;
+    }
+    const call = this.call;
+    if (call === null || this.callId === null) {
+      return;
+    }
+    const capabilities = capabilitiesOf(call.participants);
+    const participants = call.participants.length;
+    // Cheap gate first: never probe the backend for a small or mixed call.
+    if (
+      participants <= SFU_CALL_THRESHOLD ||
+      !capabilities.every((sources) => sources.includes(SFU_CALL_CAPABILITY))
+    ) {
+      await this.fallBackToMesh();
+      return;
+    }
+    if (this.transport === "sfu" || this.sfuSwitching || Date.now() < this.sfuRetryAt) {
+      return;
+    }
+    const configured = await this.probeSfu();
+    if (
+      decideTransport({
+        participants,
+        sfuConfigured: configured,
+        capabilities,
+        threshold: SFU_CALL_THRESHOLD,
+      }) !== "sfu"
+    ) {
+      return;
+    }
+    this.sfuSwitching = true;
+    try {
+      if (!(await this.connectSfu())) {
+        // Fail fast: stay on the mesh and do not hammer a down server.
+        this.sfuRetryAt = Date.now() + SFU_RETRY_MS;
+      }
+    } finally {
+      this.sfuSwitching = false;
+    }
+  }
+
+  /** Asks the backend once per call whether a streaming server is available. */
+  private async probeSfu(): Promise<boolean> {
+    if (this.sfuConfigured !== null) {
+      return this.sfuConfigured;
+    }
+    if (this.sfuProbe !== null) {
+      return await this.sfuProbe;
+    }
+    const callId = this.callId;
+    if (callId === null) {
+      return false;
+    }
+    this.sfuProbe = (async () => {
+      this.sfuAccess = await this.sfuAccessForCall();
+      this.sfuConfigured = this.sfuAccess !== null;
+      this.sfuProbe = null;
+      return this.sfuConfigured;
+    })();
+    return await this.sfuProbe;
+  }
+
+  private async sfuAccessForCall(): Promise<SfuAccess | null> {
+    const callId = this.callId;
+    if (callId === null) {
+      return null;
+    }
+    try {
+      return (await this.port.sfuAccess?.({ callId, scope: "call" })) ?? null;
+    } catch {
+      return null;
+    }
+  }
+
+  /**
+   * Opens the media room and publishes the microphone and camera. The mesh is
+   * only muted once this returns `true`, so a failed or slow server never
+   * interrupts the call.
+   */
+  private async connectSfu(): Promise<boolean> {
+    const access = this.sfuAccess;
+    if (access === null) {
+      return false;
+    }
+    const connected = await this.sfu.connect(
+      access,
+      {
+        mic: this.micStream?.getAudioTracks()[0] ?? null,
+        camera: this.local.video ? this.camera.track : null,
+      },
+      {
+        onStreams: () => {
+          this.emit();
+        },
+        onLevel: (userId, level) => {
+          this.setSfuLevel(userId, level);
+        },
+        onLost: () => {
+          void this.fallBackToMesh();
+        },
+      },
+      {
+        refreshAccess: () => this.sfuAccessForCall(),
+      },
+    );
+    if (!connected) {
+      await this.sfu.disconnect();
+      return false;
+    }
+    this.transport = "sfu";
+    // The SFU path is proven: silence the mesh in both directions so nothing
+    // is heard or uploaded twice. Video follows through `getVideoTrack`.
+    this.mesh.setRemoteAudioEnabled(false);
+    await this.mesh.applyAudioTrack(null);
+    await this.mesh.refreshVideo();
+    this.emit();
+    return true;
+  }
+
+  /** Returns the call to the peer mesh without dropping it. */
+  private async fallBackToMesh(): Promise<void> {
+    if (this.transport !== "sfu") {
+      return;
+    }
+    this.transport = "mesh";
+    this.sfuRetryAt = Date.now() + SFU_RETRY_MS;
+    await this.sfu.disconnect();
+    this.sfuSpeaking.clear();
+    this.mesh.setRemoteAudioEnabled(true);
+    await this.mesh.applyAudioTrack(this.micStream?.getAudioTracks()[0] ?? null);
+    await this.mesh.refreshVideo();
     this.emit();
   }
 
