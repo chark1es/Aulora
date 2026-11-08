@@ -11,10 +11,19 @@ import {
 class FakeSender {
   track: MediaStreamTrack | null = null;
   readonly replaced: (MediaStreamTrack | null)[] = [];
+  params = { encodings: [{}] } as { encodings: RTCRtpEncodingParameters[] };
 
   async replaceTrack(track: MediaStreamTrack | null) {
     this.track = track;
     this.replaced.push(track);
+  }
+
+  getParameters() {
+    return this.params as unknown as RTCRtpSendParameters;
+  }
+
+  async setParameters(parameters: RTCRtpSendParameters) {
+    this.params = parameters as unknown as { encodings: RTCRtpEncodingParameters[] };
   }
 }
 
@@ -178,6 +187,21 @@ describe("the sender (main window)", () => {
     expect(peer.transceivers.every((transceiver) => transceiver.kind === "video")).toBe(true);
     // A track swap is not a new offer.
     expect(sent.filter((signal) => signal.kind === "offer")).toHaveLength(1);
+  });
+
+  it("caps the picture at 720p, 30 fps and a fixed bitrate", async () => {
+    const { options } = harness();
+    const track = {
+      kind: "video",
+      getSettings: () => ({ height: 1440 }),
+    } as unknown as MediaStreamTrack;
+    createPipSender({ ...options, track });
+    await flush();
+    const encoding = lastPeer().transceivers[0]?.sender.params.encodings[0];
+    expect(encoding?.maxFramerate).toBe(30);
+    expect(encoding?.maxBitrate).toBe(2_000_000);
+    // A 1440p source is halved on the way out.
+    expect(encoding?.scaleResolutionDownBy).toBe(2);
   });
 
   it("says goodbye and closes the connection", async () => {

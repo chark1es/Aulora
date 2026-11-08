@@ -127,6 +127,33 @@ function iceInit(signal: Extract<LoopbackSignal, { kind: "ice" }>): RTCIceCandid
   };
 }
 
+/**
+ * The window is small: the picture is capped so a 4K share does not burn the
+ * whole machine on encoding a frame that will be drawn 380px wide.
+ */
+const MAX_HEIGHT = 720;
+const MAX_FRAME_RATE = 30;
+const MAX_BITRATE = 2_000_000;
+
+async function capEncoding(sender: RTCRtpSender, track: MediaStreamTrack | null): Promise<void> {
+  try {
+    const parameters = sender.getParameters();
+    if (parameters.encodings.length === 0) {
+      parameters.encodings = [{}];
+    }
+    const height = track?.getSettings?.().height ?? 0;
+    const scale = height > MAX_HEIGHT ? height / MAX_HEIGHT : 1;
+    for (const encoding of parameters.encodings) {
+      encoding.maxFramerate = MAX_FRAME_RATE;
+      encoding.maxBitrate = MAX_BITRATE;
+      encoding.scaleResolutionDownBy = scale;
+    }
+    await sender.setParameters(parameters);
+  } catch {
+    // Parameter updates are optional; the picture still flows at the defaults.
+  }
+}
+
 function localSdp(description: RTCSessionDescription | null, fallback: string): string {
   return description?.sdp ?? fallback;
 }
@@ -241,6 +268,7 @@ export function createPipSender(
     if (track !== null) {
       await videoSender.replaceTrack(track);
     }
+    await capEncoding(videoSender, track);
     const description = await connection.createOffer();
     await connection.setLocalDescription(description);
     if (mine !== generation) {
@@ -310,6 +338,7 @@ export function createPipSender(
       }
       try {
         await sender.replaceTrack(next);
+        await capEncoding(sender, next);
       } catch {
         // A track that cannot be swapped (different codec) needs a new offer;
         // neither side should die because of it.
