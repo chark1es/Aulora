@@ -2,7 +2,12 @@ import { DEFAULT_VOICE_SETTINGS } from "@aulora/core";
 import { describe, expect, it } from "vitest";
 import { smoothMask } from "../lib/voice/effects/segmenter";
 import { gateOpenThresholdDb, micProcessingKey } from "../lib/voice/mic-pipeline";
-import { JITTER_BUFFER_TARGET_MS, screenBitrateFor, tuneReceiver } from "../lib/voice/peer-mesh";
+import {
+  applyOpusVoiceParams,
+  JITTER_BUFFER_TARGET_MS,
+  screenBitrateFor,
+  tuneReceiver,
+} from "../lib/voice/peer-mesh";
 
 describe("gateOpenThresholdDb", () => {
   it("has no gate at zero", () => {
@@ -94,5 +99,81 @@ describe("tuneReceiver", () => {
       },
     };
     expect(() => tuneReceiver(receiver as unknown as RTCRtpReceiver)).not.toThrow();
+  });
+});
+
+/** A realistic local description: Opus plus RED audio, one VP8 video section. */
+const SDP = [
+  "v=0",
+  "o=- 4611 2 IN IP4 127.0.0.1",
+  "s=-",
+  "t=0 0",
+  "a=group:BUNDLE 0 1",
+  "m=audio 9 UDP/TLS/RTP/SAVPF 111 63",
+  "c=IN IP4 0.0.0.0",
+  "a=rtpmap:111 opus/48000/2",
+  "a=rtcp-fb:111 transport-cc",
+  "a=fmtp:111 minptime=10;useinbandfec=1",
+  "a=rtpmap:63 red/48000/2",
+  "a=fmtp:63 111/111",
+  "a=sendrecv",
+  "m=video 9 UDP/TLS/RTP/SAVPF 96",
+  "c=IN IP4 0.0.0.0",
+  "a=rtpmap:96 VP8/90000",
+  "a=fmtp:96 max-fs=12288",
+  "a=sendrecv",
+  "",
+].join("\r\n");
+
+function fmtpOf(sdp: string, payloadType: string): string | undefined {
+  return sdp
+    .split(/\r\n|\n/)
+    .find((line) => line.startsWith(`a=fmtp:${payloadType} `))
+    ?.slice(`a=fmtp:${payloadType} `.length);
+}
+
+describe("applyOpusVoiceParams", () => {
+  it("turns on FEC and DTX and turns stereo off, keeping other Opus parameters", () => {
+    const tuned = applyOpusVoiceParams(SDP);
+    const params = fmtpOf(tuned, "111")?.split(";") ?? [];
+    expect(params).toContain("useinbandfec=1");
+    expect(params).toContain("usedtx=1");
+    expect(params).toContain("stereo=0");
+    expect(params).toContain("minptime=10");
+  });
+
+  it("overrides values the browser or a peer left off", () => {
+    const tuned = applyOpusVoiceParams(
+      SDP.replace("minptime=10;useinbandfec=1", "useinbandfec=0;usedtx=0;stereo=1"),
+    );
+    const params = fmtpOf(tuned, "111")?.split(";") ?? [];
+    expect(params).toContain("useinbandfec=1");
+    expect(params).toContain("usedtx=1");
+    expect(params).toContain("stereo=0");
+    expect(params).not.toContain("useinbandfec=0");
+  });
+
+  it("adds an fmtp line when the audio section has none", () => {
+    const tuned = applyOpusVoiceParams(
+      SDP.replace("a=fmtp:111 minptime=10;useinbandfec=1\r\n", ""),
+    );
+    expect(fmtpOf(tuned, "111")).toBe("useinbandfec=1;usedtx=1;stereo=0");
+  });
+
+  it("leaves other codecs and the video section alone", () => {
+    const tuned = applyOpusVoiceParams(SDP);
+    expect(fmtpOf(tuned, "63")).toBe("111/111");
+    expect(fmtpOf(tuned, "96")).toBe("max-fs=12288");
+  });
+
+  it("keeps the SDP line endings and is idempotent", () => {
+    const tuned = applyOpusVoiceParams(SDP);
+    expect(tuned).toContain("\r\n");
+    expect(applyOpusVoiceParams(tuned)).toBe(tuned);
+  });
+
+  it("returns an SDP without Opus unchanged", () => {
+    const noOpus = SDP.replace("a=rtpmap:111 opus/48000/2", "a=rtpmap:111 G722/80000");
+    expect(applyOpusVoiceParams(noOpus)).toBe(noOpus);
   });
 });

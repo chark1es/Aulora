@@ -246,8 +246,7 @@ export class PeerMesh {
       peer.audioTx = pc.addTransceiver("audio", { direction: "sendrecv" });
       peer.videoTx = pc.addTransceiver("video", { direction: "sendrecv" });
       await this.attachLocalTracks(peer, remoteId);
-      const offer = await pc.createOffer();
-      await pc.setLocalDescription(offer);
+      await pc.setLocalDescription(await withOpusVoice(pc.createOffer()));
       this.sendDescription(remoteId, "offer", pc.localDescription);
     }
     return peer;
@@ -352,8 +351,7 @@ export class PeerMesh {
       await peer.pc.setRemoteDescription(description);
       await this.attachLocalTracks(peer, signal.fromUserId);
       await this.flushCandidates(peer);
-      const answer = await peer.pc.createAnswer();
-      await peer.pc.setLocalDescription(answer);
+      await peer.pc.setLocalDescription(await withOpusVoice(peer.pc.createAnswer()));
       this.sendDescription(signal.fromUserId, "answer", peer.pc.localDescription);
       return;
     }
@@ -391,8 +389,7 @@ export class PeerMesh {
         return;
       }
       await peer.pc.setRemoteDescription(description);
-      const answer = await peer.pc.createAnswer();
-      await peer.pc.setLocalDescription(answer);
+      await peer.pc.setLocalDescription(await withOpusVoice(peer.pc.createAnswer()));
       this.sendDescription(signal.fromUserId, "answer", peer.pc.localDescription);
     }
   }
@@ -465,6 +462,10 @@ function mapConnection(state: RTCPeerConnectionState): PeerConnectionState {
 /**
  * Voice-tuned Opus: in-band FEC on, DTX on, stereo off, a tight bitrate cap and
  * high network priority. All parameters are best-effort (Safari is picky).
+ *
+ * `setParameters` has no way to reach Opus fmtp attributes, so the FEC/DTX/
+ * stereo defaults are written into the local SDP (see
+ * {@link applyOpusVoiceParams}) and this keeps the bitrate side.
  */
 function tuneAudioSender(sender: RTCRtpSender): void {
   try {
@@ -473,13 +474,127 @@ function tuneAudioSender(sender: RTCRtpSender): void {
     const encoding = params.encodings[0];
     if (encoding !== undefined) {
       encoding.maxBitrate = 40_000;
-      (encoding as { networkPriority?: string }).networkPriority = "high";
+      // Chromium-only field that the DOM typings do not carry.
+      const prioritised = encoding as RTCRtpEncodingParameters & { networkPriority?: string };
+      prioritised.networkPriority = "high";
     }
     params.degradationPreference = "balanced";
     void sender.setParameters(params).catch(() => undefined);
   } catch {
     // Older engines expose read-only parameters.
   }
+}
+
+/** `a=rtpmap:<pt> opus/48000/2` in either CRLF or LF SDP. */
+const OPUS_RTPMAP = /^a=rtpmap:(\d+) opus\/48000\/2\s*$/i;
+const FMTP_LINE = /^a=fmtp:(\d+)\s?(.*)$/i;
+
+/** The Opus parameters every Aulora sender asks for. */
+const OPUS_VOICE_PARAMS: Readonly<Record<string, string>> = {
+  useinbandfec: "1",
+  usedtx: "1",
+  stereo: "0",
+};
+
+/** Folds the voice parameters into one `a=fmtp` parameter string, keeping others. */
+function mergeOpusParams(params: string): string {
+  const merged = new Map<string, string>();
+  for (const part of params.split(";")) {
+    const trimmed = part.trim();
+    if (trimmed.length === 0) {
+      continue;
+    }
+    const equals = trimmed.indexOf("=");
+    const key = (equals === -1 ? trimmed : trimmed.slice(0, equals)).trim().toLowerCase();
+    const value = equals === -1 ? "" : trimmed.slice(equals + 1).trim();
+    merged.set(key, value);
+  }
+  for (const [key, value] of Object.entries(OPUS_VOICE_PARAMS)) {
+    merged.set(key, value);
+  }
+  return [...merged]
+    .map(([key, value]) => (value.length === 0 ? key : `${key}=${value}`))
+    .join(";");
+}
+
+/** Rewrites the fmtp lines of one audio media section; other sections are untouched. */
+function tuneAudioSection(lines: readonly string[]): string[] {
+  if (!(lines[0] ?? "").startsWith("m=audio")) {
+    return [...lines];
+  }
+  const types = new Set<string>();
+  for (const line of lines) {
+    const match = OPUS_RTPMAP.exec(line);
+    if (match?.[1] !== undefined) {
+      types.add(match[1]);
+    }
+  }
+  if (types.size === 0) {
+    return [...lines];
+  }
+  const tuned = new Set<string>();
+  const result = lines.map((line) => {
+    const match = FMTP_LINE.exec(line);
+    if (match === null || match[1] === undefined || !types.has(match[1])) {
+      return line;
+    }
+    tuned.add(match[1]);
+    return `a=fmtp:${match[1]} ${mergeOpusParams(match[2] ?? "")}`;
+  });
+  const insertAt = result.findLastIndex((line) => line.trim().length > 0) + 1;
+  const missing = [...types]
+    .filter((type) => !tuned.has(type))
+    .map((type) => `a=fmtp:${type} ${mergeOpusParams("")}`);
+  result.splice(insertAt, 0, ...missing);
+  return result;
+}
+
+/** Applies {@link applyOpusVoiceParams} to a freshly created offer or answer. */
+async function withOpusVoice(
+  created: Promise<RTCSessionDescriptionInit>,
+): Promise<RTCSessionDescriptionInit> {
+  const description = await created;
+  if (typeof description.sdp !== "string" || description.sdp.length === 0) {
+    return description;
+  }
+  return { type: description.type, sdp: applyOpusVoiceParams(description.sdp) };
+}
+
+/**
+ * Adds `useinbandfec=1; usedtx=1; stereo=0` to every Opus payload in the local
+ * SDP. FEC lets a receiver repair an isolated lost packet from the next one and
+ * DTX stops sending during silence, which is what the old comment promised and
+ * nothing configured.
+ *
+ * Only our own local description is rewritten (the answerer's fmtp governs the
+ * offerer's encoder), and unknown Opus parameters are preserved. A peer that
+ * does not understand these attributes ignores them, as RFC 7587 requires, so
+ * this stays interoperable with other clients.
+ */
+export function applyOpusVoiceParams(sdp: string): string {
+  const eol = sdp.includes("\r\n") ? "\r\n" : "\n";
+  const lines = sdp.split(/\r\n|\n/);
+  const out: string[] = [];
+  let section: string[] = [];
+  const flush = () => {
+    if (section.length > 0) {
+      out.push(...tuneAudioSection(section));
+    }
+    section = [];
+  };
+  for (const line of lines) {
+    if (line.startsWith("m=")) {
+      flush();
+    }
+    if (section.length === 0 && !line.startsWith("m=") && !line.startsWith("a=")) {
+      // Session-level lines (v=, o=, s=, t=) stay where they are.
+      out.push(line);
+      continue;
+    }
+    section.push(line);
+  }
+  flush();
+  return out.join(eol);
 }
 
 /**
