@@ -34,10 +34,20 @@ interface TauriChannelConstructor {
   new (): DesktopChannel;
 }
 
+/** The core `Window` object from `withGlobalTauri`; only what is needed here. */
+interface TauriWindowHandle {
+  startResizeDragging?(direction: string): Promise<void>;
+}
+
+interface TauriWindowApi {
+  getCurrentWindow?(): TauriWindowHandle;
+}
+
 interface TauriGlobal {
   core?: { invoke?: TauriInvoke; Channel?: TauriChannelConstructor };
   invoke?: TauriInvoke;
   event?: TauriEventApi;
+  window?: TauriWindowApi;
 }
 
 function tauri(): TauriGlobal | undefined {
@@ -79,6 +89,21 @@ export async function invokeDesktopCommand(
     throw new Error("Aulora desktop bridge: the Tauri invoke bridge is unavailable.");
   }
   return invoke(command, args);
+}
+
+/**
+ * Runs one shell command whose payload is raw bytes (a `tauri::ipc::Request`
+ * with an `InvokeBody::Raw` body). Used for video frames, which must not be
+ * base64-encoded or JSON-encoded on the way to the shell.
+ */
+export async function invokeDesktopRaw(command: string, bytes: Uint8Array): Promise<unknown> {
+  const global = tauri();
+  const invoke = global?.core?.invoke ?? global?.invoke;
+  if (typeof invoke !== "function") {
+    throw new Error("Aulora desktop bridge: the Tauri invoke bridge is unavailable.");
+  }
+  // The bridge treats an ArrayBuffer view as an octet-stream body.
+  return invoke(command, bytes as unknown as Record<string, unknown>);
 }
 
 /**
@@ -188,21 +213,92 @@ export async function toggleDesktopFullscreen(): Promise<void> {
   }
 }
 
+/** A corner or edge of the call window a resize handle starts dragging. */
+export type PipResizeDirection =
+  | "North"
+  | "South"
+  | "East"
+  | "West"
+  | "NorthEast"
+  | "NorthWest"
+  | "SouthEast"
+  | "SouthWest";
+
+/**
+ * How the shell can float a call on this desktop. Wayland compositors do not
+ * let an app keep an always-on-top, undecorated window reliably, so the shell
+ * reports `"dock"` there and the in-app call dock stays the floating surface.
+ */
+export type DesktopPipMode = "window" | "dock";
+
+/** Asks the shell which floating surface it can offer; `"window"` off desktop. */
+export async function desktopPipMode(): Promise<DesktopPipMode> {
+  if (!isDesktop()) {
+    return "window";
+  }
+  try {
+    return (await invokeDesktopCommand("pip_window_mode")) === "dock" ? "dock" : "window";
+  } catch {
+    return "window";
+  }
+}
+
 /**
  * Opens the shell's separate call window: a small, always-on-top window the user
  * can drag anywhere on any screen. The main window keeps the call and stays as
- * it is. Resolves `true` when the window is open, `false` outside the shell or
- * if the request failed, so callers can fall back to another surface.
+ * it is. Resolves `true` when a real window is open, `false` outside the shell,
+ * on a compositor that cannot float one, or if the request failed, so callers
+ * keep the in-app dock instead.
  */
 export async function openDesktopPipWindow(width: number, height: number): Promise<boolean> {
   if (!isDesktop()) {
     return false;
   }
   try {
-    await invokeDesktopCommand("open_pip_window", { width, height });
-    return true;
+    return (await invokeDesktopCommand("open_pip_window", { width, height })) !== "dock";
   } catch {
     return false;
+  }
+}
+
+/** Snaps the call window to the nearest corner or edge of its screen. */
+export async function snapDesktopPipWindow(): Promise<void> {
+  if (!isDesktop()) {
+    return;
+  }
+  try {
+    await invokeDesktopCommand("snap_pip_window");
+  } catch {
+    // Snapping is cosmetic; the window keeps where the user left it.
+  }
+}
+
+/** Resizes the call window from the web client, clamped by the shell. */
+export async function setDesktopPipSize(width: number, height: number): Promise<void> {
+  if (!isDesktop()) {
+    return;
+  }
+  try {
+    await invokeDesktopCommand("set_pip_size", { width, height });
+  } catch {
+    // A refused resize leaves the window as it was.
+  }
+}
+
+/**
+ * Starts an undecorated window resize from one of the call window's own edge
+ * handles. Undecorated windows have no native border to grab on Windows and
+ * Linux, so the webview has to ask the window manager to take over the drag.
+ */
+export async function startDesktopResize(direction: PipResizeDirection): Promise<void> {
+  const current = tauri()?.window?.getCurrentWindow?.();
+  if (current?.startResizeDragging === undefined) {
+    return;
+  }
+  try {
+    await current.startResizeDragging(direction);
+  } catch {
+    // Without the permission or on an unsupported platform, resizing stays off.
   }
 }
 

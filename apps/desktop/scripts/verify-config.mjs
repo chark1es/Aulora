@@ -20,6 +20,9 @@ const readWindows = () => readFileSync(resolve(srcTauri, "tauri.windows.conf.jso
 const readLinux = () => readFileSync(resolve(srcTauri, "tauri.linux.conf.json"), "utf8");
 const readRelease = () => readFileSync(resolve(srcTauri, "tauri.release.conf.json"), "utf8");
 const readPipWindow = () => readFileSync(resolve(srcTauri, "src/pip_window.rs"), "utf8");
+const readPipGeometry = () => readFileSync(resolve(srcTauri, "src/pip_geometry.rs"), "utf8");
+const readCommands = () => readFileSync(resolve(srcTauri, "src/commands.rs"), "utf8");
+const readLib = () => readFileSync(resolve(srcTauri, "src/lib.rs"), "utf8");
 const readPipBridge = () =>
   readFileSync(resolve(srcTauri, "..", "..", "web", "src", "lib", "call-pip.ts"), "utf8");
 const readCapabilities = () => readFileSync(resolve(srcTauri, "capabilities/default.json"), "utf8");
@@ -184,6 +187,94 @@ function verifyPipWindow() {
     "pip_window.rs must load the same entry the web client renders",
     entry === `index.html${hash}`,
   );
+
+  // The pop-out is a native-feeling window: shadowed, on every workspace,
+  // focusable, and never throttled while it paints the picture.
+  for (const [label, needle] of [
+    ["a shadow", ".shadow(true)"],
+    ["all workspaces", ".visible_on_all_workspaces(true)"],
+    ["focus", ".focusable(true)"],
+    ["no background throttling", "BackgroundThrottlingPolicy::Disabled"],
+    ["a remembered geometry", "app_config_dir"],
+    ["edge snapping", "snap_to_edges"],
+    ["Wayland detection", "WAYLAND_DISPLAY"],
+    ["the Wayland session type", "XDG_SESSION_TYPE"],
+  ]) {
+    check(`pip_window.rs must use ${label}`, source.includes(needle));
+  }
+  check(
+    "pip_window.rs must not skip the taskbar on macOS",
+    source.includes('if !cfg!(target_os = "macos")'),
+  );
+
+  let geometry = "";
+  try {
+    geometry = readPipGeometry();
+  } catch {
+    failures.push("src-tauri/src/pip_geometry.rs is missing (call window geometry)");
+  }
+  for (const helper of ["clamp_to_area", "snap_to_edges", "read_geometry", "write_geometry"]) {
+    check(`pip_geometry.rs must define ${helper}`, geometry.includes(helper));
+  }
+
+  let bridge = "";
+  try {
+    bridge = readPipBridge();
+  } catch {
+    // Already reported above.
+  }
+  for (const event of [
+    "aulora://call-pip-state",
+    "aulora://call-pip-action",
+    "aulora://call-pip-closed",
+    "aulora://call-pip-signal",
+  ]) {
+    check(`call-pip.ts must define the ${event} event`, bridge.includes(event));
+  }
+}
+
+// The frame fallback is a shell command pair plus the raw forwarder. Check that
+// the window's commands are registered, since a missing handler is a runtime
+// "command not found" only the fallback path would ever hit.
+function verifyPipCommands() {
+  let commands = "";
+  try {
+    commands = readCommands();
+  } catch {
+    failures.push("src-tauri/src/commands.rs is missing");
+    return;
+  }
+  for (const command of [
+    "pip_window_mode",
+    "snap_pip_window",
+    "set_pip_size",
+    "register_pip_frames",
+    "unregister_pip_frames",
+    "push_pip_frame",
+  ]) {
+    check(`commands.rs must define ${command}`, commands.includes(`fn ${command}`));
+  }
+  let lib = "";
+  try {
+    lib = readLib();
+  } catch {
+    failures.push("src-tauri/src/lib.rs is missing");
+    return;
+  }
+  for (const command of [
+    "commands::pip_window_mode",
+    "commands::snap_pip_window",
+    "commands::set_pip_size",
+    "commands::register_pip_frames",
+    "commands::unregister_pip_frames",
+    "commands::push_pip_frame",
+  ]) {
+    check(`lib.rs must register ${command}`, lib.includes(command));
+  }
+  check(
+    "lib.rs must manage the call-window frame state",
+    lib.includes("pip_window::PipFrameState::default()"),
+  );
 }
 
 function verifyMainConfig(config) {
@@ -294,6 +385,11 @@ function verifyCapabilities(capabilities) {
     Array.isArray(capabilities.permissions) &&
       capabilities.permissions.includes("core:window:allow-start-dragging"),
   );
+  check(
+    "capability must allow the call window's edge handles to resize it",
+    Array.isArray(capabilities.permissions) &&
+      capabilities.permissions.includes("core:window:allow-start-resize-dragging"),
+  );
 }
 
 // The webview permission handler is the other half of the no-origin-prompt
@@ -371,6 +467,7 @@ function main() {
   }
   verifyPrepareFrontend();
   verifyPipWindow();
+  verifyPipCommands();
   verifyNativeMediaPermissions();
   verifyWebviewPermissions();
 
