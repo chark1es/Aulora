@@ -68,6 +68,10 @@ function versionLabel(version: string | null | undefined): string {
     : `v${version}`;
 }
 
+/** How the running client identifies itself in update copy. */
+const RUNNING_VERSION =
+  CLIENT_VERSION === "0.0.0-dev" ? "a development build" : `v${CLIENT_VERSION}`;
+
 /**
  * Hard gate for a client older than the server's minimum supported version.
  * The server still validates everything it is told; this screen only keeps an
@@ -90,7 +94,7 @@ export function ClientVersionRequired({ policy }: { readonly policy: ClientVersi
           </Text>
           <Text tone="muted" size="sm">
             This workspace needs Aulora {versionLabel(policy.minClientVersion)} or newer. You are
-            running {versionLabel(CLIENT_VERSION === "0.0.0-dev" ? null : CLIENT_VERSION)}.
+            running {RUNNING_VERSION}.
           </Text>
           <Text tone="muted" size="sm">
             Update before signing in so your messages and calls stay compatible with the server.
@@ -154,8 +158,7 @@ export function ClientVersionNotice({
       >
         <Icon name="download" size={16} />
         <Text size="sm" className="min-w-0 flex-1">
-          Aulora {versionLabel(recommendedVersion)} is available. You are running{" "}
-          {versionLabel(CLIENT_VERSION === "0.0.0-dev" ? null : CLIENT_VERSION)}.
+          Aulora {versionLabel(recommendedVersion)} is available. You are running {RUNNING_VERSION}.
         </Text>
         <Button
           size="sm"
