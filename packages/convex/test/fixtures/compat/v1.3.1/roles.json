@@ -1,0 +1,10 @@
+[
+  {
+    "key": "@everyone",
+    "name": "@everyone",
+    "position": 0,
+    "permissions": "1100000000000000000",
+    "hoisted": false,
+    "mentionable": true
+  }
+]

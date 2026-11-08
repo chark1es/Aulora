@@ -19,10 +19,23 @@ export { blurhashDecode, blurhashEncode } from "./blurhash";
 export * from "./bots";
 export * from "./chat/index";
 export {
+  type ClientVersionPolicy,
+  type ClientVersionState,
+  clientVersionState,
+  compareClientVersions,
+} from "./client-version";
+export {
   classifyError,
   type ErrorDisposition,
   isAuthenticationError,
 } from "./errors/index";
+export {
+  DEFAULT_FEATURE_FLAGS,
+  FEATURE_FLAG_NAMES,
+  type FeatureFlagName,
+  type FeatureFlags,
+  resolveFeatureFlags,
+} from "./feature-flags";
 export {
   allowlistAdmits,
   CUSTOM_INVITE_CODE_MAX_LENGTH,

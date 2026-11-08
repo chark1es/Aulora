@@ -1,8 +1,9 @@
-import type {
-  WellKnownAuth,
-  WellKnownOAuthProvider,
-  WellKnownOidcProvider,
-  WellKnownProvider,
+import {
+  parseSemver,
+  type WellKnownAuth,
+  type WellKnownOAuthProvider,
+  type WellKnownOidcProvider,
+  type WellKnownProvider,
 } from "@aulora/core";
 import { getEkmSettings } from "./ekm";
 import { type GroupRoleMap, parseGroupRoleMap } from "./oidc";
@@ -340,5 +341,28 @@ export function getEncryptionSettings(env: Env): EncryptionSettings {
     mode: "server",
     provider: ekm.provider,
     keyVersion: ekm.keyVersion,
+  };
+}
+
+/**
+ * Client compatibility policy advertised through `server.publicConfig`.
+ * Both settings are optional; absent (or an invalid version) means no minimum
+ * and no recommendation, so existing deployments keep their behaviour. The
+ * client compares these against its own injected version.
+ */
+export interface ClientVersionPolicy {
+  readonly minClientVersion: string | null;
+  readonly recommendedClientVersion: string | null;
+}
+
+function versionSetting(env: Env, name: string): string | null {
+  const value = read(env, name);
+  return value !== undefined && parseSemver(value) !== null ? value : null;
+}
+
+export function getClientVersionPolicy(env: Env): ClientVersionPolicy {
+  return {
+    minClientVersion: versionSetting(env, "AULORA_MIN_CLIENT_VERSION"),
+    recommendedClientVersion: versionSetting(env, "AULORA_RECOMMENDED_CLIENT_VERSION"),
   };
 }

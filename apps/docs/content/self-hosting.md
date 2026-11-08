@@ -193,6 +193,19 @@ waits for the owner to restart. Restart the watcher and re-run `setup` after
 changing update settings. Without the watcher, version information and release
 checks remain available; use host or hosting-provider controls to install.
 
+The update path deploys backend functions before recreating the web container,
+so a failed backend step leaves the previous frontend serving. `deploy.sh` also
+pins the previous web image; restore it after a bad frontend deploy with:
+
+```sh
+cd infra/docker
+./deploy.sh --rollback
+```
+
+Rollback is web-only. It does not reverse a function, schema, engine, or
+migration change; restore a compatible backup when the backend change is
+irreversible.
+
 A checkout that is not a git clone, including Coolify, still updates by
 redeploying the stable `release` branch:
 
