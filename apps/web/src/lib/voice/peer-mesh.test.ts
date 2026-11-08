@@ -16,6 +16,9 @@ function host(): PeerMeshHost {
     getVideoTrack: () => null,
     isScreenSharing: () => false,
     getScreenProfile: () => ({ maxBitrate: 0, frameRate: 0 }),
+    getCameraProfile: () => ({ maxBitrate: 0, frameRate: 0 }),
+    getVideoCodec: () => "auto",
+    onRemoteLevel: () => undefined,
   };
 }
 
