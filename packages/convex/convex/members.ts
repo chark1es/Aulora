@@ -49,6 +49,11 @@ const MEMBER_SEARCH_MAX = 100;
  * rather than a full table scan.
  */
 const MEMBER_SEARCH_SCAN_LIMIT = 500;
+/**
+ * Hard cap on the ids one {@link brief} call resolves. Matches the client's
+ * presence scope so a single view never asks for more people than it renders.
+ */
+const MEMBER_BRIEF_MAX = 300;
 
 function isAvatarImage(metadata: {
   readonly size: number;
@@ -286,7 +291,14 @@ async function toMemberView(
   };
 }
 
-/** Every member with their roles and moderation state. Members only. */
+/**
+ * Every member with their roles and moderation state. Members only.
+ *
+ * Compatibility: reads the whole `members` table, so it stays available for
+ * already-installed clients and the bot SDK. The web client uses {@link page}
+ * for the directory, {@link search} for autocomplete, and {@link brief} for the
+ * ids a view displays; nothing new should subscribe to this.
+ */
 export const list = query({
   args: {},
   handler: async (ctx) => {
@@ -388,6 +400,39 @@ export const search = query({
       }
     }
     return matches;
+  },
+});
+
+/**
+ * Scoped directory lookup: the {@link MemberView} rows for a set of user ids.
+ * This is the replacement for subscribing to the whole-table {@link list} just
+ * to resolve author names, role colors and mention targets. Ids are
+ * de-duplicated and capped at {@link MEMBER_BRIEF_MAX}; each is read through
+ * the `by_user` index, so the cost scales with the ids the view actually
+ * displays. Unknown ids are omitted; the shape matches {@link list}.
+ */
+export const brief = query({
+  args: { userIds: v.array(v.string()) },
+  handler: async (ctx, args) => {
+    const { userId } = await requireAuth(ctx);
+    await requireMember(ctx, userId);
+    const ids = [...new Set(args.userIds)].slice(0, MEMBER_BRIEF_MAX);
+    const rows = await Promise.all(
+      ids.map((id) =>
+        ctx.db
+          .query("members")
+          .withIndex("by_user", (q) => q.eq("userId", id))
+          .unique(),
+      ),
+    );
+    const members = rows.filter((member): member is Doc<"members"> => member !== null);
+    const names = await accountNames(
+      ctx,
+      members.map((member) => member.userId),
+    );
+    return await Promise.all(
+      members.map((member) => toMemberView(ctx, member, names.get(member.userId) ?? null)),
+    );
   },
 });
 

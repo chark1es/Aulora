@@ -171,7 +171,7 @@ export interface DemoWorkspace {
   readonly categories: readonly { id: string; name: string; position: number; overrides: [] }[];
   readonly unread: ReadonlyMap<
     string,
-    { unread: boolean; mentionCount: number; lastActivityAt: number | null }
+    { unread: boolean; unreadCount: number; mentionCount: number; lastActivityAt: number | null }
   >;
   readonly firstChannelId: string;
 }
@@ -191,7 +191,7 @@ export async function createDemoWorkspace(): Promise<DemoWorkspace> {
   const channels: ChannelSummary[] = [];
   const unread = new Map<
     string,
-    { unread: boolean; mentionCount: number; lastActivityAt: number | null }
+    { unread: boolean; unreadCount: number; mentionCount: number; lastActivityAt: number | null }
   >();
 
   async function channel(
@@ -460,17 +460,29 @@ export async function createDemoWorkspace(): Promise<DemoWorkspace> {
   for (const entry of channels) {
     unread.set(entry.id, {
       unread: false,
+      unreadCount: 0,
       mentionCount: 0,
       lastActivityAt: lastAt(entry.id) || null,
     });
   }
   unread.set(engineering.id, {
     unread: true,
+    unreadCount: 4,
     mentionCount: 2,
     lastActivityAt: lastAt(engineering.id),
   });
-  unread.set(random.id, { unread: true, mentionCount: 0, lastActivityAt: lastAt(random.id) });
-  unread.set(dmJacob.id, { unread: true, mentionCount: 1, lastActivityAt: lastAt(dmJacob.id) });
+  unread.set(random.id, {
+    unread: true,
+    unreadCount: 2,
+    mentionCount: 0,
+    lastActivityAt: lastAt(random.id),
+  });
+  unread.set(dmJacob.id, {
+    unread: true,
+    unreadCount: 1,
+    mentionCount: 1,
+    lastActivityAt: lastAt(dmJacob.id),
+  });
 
   const runtime: ChatRuntime = {
     session,

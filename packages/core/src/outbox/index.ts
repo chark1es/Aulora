@@ -77,6 +77,8 @@ export interface OutboxItem {
   readonly mentionUserIds: readonly string[];
   readonly mentionChannelIds?: readonly string[];
   readonly mentionCategoryIds?: readonly string[];
+  /** Mentioned roles, expanded by servers that support server-side expansion. */
+  readonly mentionRoleIds?: readonly string[];
   readonly threadRootId?: string;
   readonly replyToId?: string;
   readonly attachments?: readonly AttachmentDescriptor[];
@@ -122,6 +124,8 @@ export interface EnqueueInput {
   readonly mentionUserIds?: readonly string[];
   readonly mentionChannelIds?: readonly string[];
   readonly mentionCategoryIds?: readonly string[];
+  /** Mentioned roles, expanded by servers that support server-side expansion. */
+  readonly mentionRoleIds?: readonly string[];
   readonly threadRootId?: string;
   readonly replyToId?: string;
   readonly attachments?: readonly AttachmentDescriptor[];

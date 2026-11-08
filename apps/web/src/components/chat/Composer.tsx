@@ -20,6 +20,12 @@ import { RichText } from "./RichText";
 export interface ComposerProps {
   readonly channelId: string;
   readonly members: readonly MentionTarget[];
+  /**
+   * Server-side member search. The composer no longer holds the whole roster,
+   * so autocomplete and `@name` resolution for people outside the timeline ask
+   * the directory instead.
+   */
+  readonly searchMembers?: (query: string) => Promise<readonly MentionTarget[]>;
   readonly roles: readonly RoleMentionTarget[];
   readonly memberIds: readonly string[];
   /** Channels and categories offered by `#` autocomplete. */
@@ -42,6 +48,7 @@ export interface ComposerProps {
     mentionUserIds: readonly string[];
     mentionChannelIds: readonly string[];
     mentionCategoryIds: readonly string[];
+    mentionRoleIds: readonly string[];
     files: readonly File[];
   }) => void | Promise<void>;
   /** Optional thread mode label, e.g. "Replying in thread". */
@@ -81,6 +88,10 @@ interface Suggestion {
 const MAX_TEXTAREA_PX = 220;
 const MENTION_QUERY = /(^|\s)@([^\s@]*)$/;
 const CHANNEL_QUERY = /(^|\s)#([^\s#]*)$/;
+/** Wait after the last keystroke before asking the directory for matches. */
+const MENTION_SEARCH_DEBOUNCE_MS = 150;
+/** Distinct typed names one send resolves through the directory. */
+const MENTION_RESOLVE_TOKENS = 8;
 
 function collectFiles(list: FileList | ArrayLike<File> | null): File[] {
   if (list === null) {
@@ -125,6 +136,7 @@ function fileReferenceKey(file: File): string {
 export function Composer({
   channelId,
   members,
+  searchMembers,
   roles,
   memberIds,
   channels = [],
@@ -151,6 +163,9 @@ export function Composer({
   const [windowDragging, setWindowDragging] = useState(false);
   const [suggestions, setSuggestions] = useState<readonly Suggestion[]>([]);
   const [activeSuggestion, setActiveSuggestion] = useState(0);
+  /** The text typed after `@`, driving the debounced directory search. */
+  const [mentionQuery, setMentionQuery] = useState("");
+  const [searchedMembers, setSearchedMembers] = useState<readonly MentionTarget[]>([]);
   const [emojiOpen, setEmojiOpen] = useState(false);
   const textareaRef = useRef<HTMLTextAreaElement | null>(null);
   const fileInputRef = useRef<HTMLInputElement | null>(null);
@@ -200,6 +215,31 @@ export function Composer({
     }
   }, [value]);
 
+  useEffect(() => {
+    if (searchMembers === undefined || mentionQuery.length === 0) {
+      setSearchedMembers([]);
+      return;
+    }
+    let cancelled = false;
+    const timer = setTimeout(() => {
+      void searchMembers(mentionQuery)
+        .then((rows) => {
+          if (!cancelled) {
+            setSearchedMembers(rows);
+          }
+        })
+        .catch(() => {
+          if (!cancelled) {
+            setSearchedMembers([]);
+          }
+        });
+    }, MENTION_SEARCH_DEBOUNCE_MS);
+    return () => {
+      cancelled = true;
+      clearTimeout(timer);
+    };
+  }, [mentionQuery, searchMembers]);
+
   const mentionSuggestions: Suggestion[] = useMemo(() => {
     const broadcast: Suggestion[] = canMentionEveryone
       ? [
@@ -219,9 +259,18 @@ export function Composer({
           },
         ]
       : [];
+    const known = new Map<string, MentionTarget>();
+    for (const member of members) {
+      known.set(member.userId, member);
+    }
+    for (const member of searchedMembers) {
+      if (!known.has(member.userId)) {
+        known.set(member.userId, member);
+      }
+    }
     return [
       ...broadcast,
-      ...members.map((member) => ({
+      ...[...known.values()].map((member) => ({
         key: `user:${member.userId}`,
         label: member.displayName,
         insert: `@${member.displayName}`,
@@ -239,7 +288,21 @@ export function Composer({
           kind: "mention" as const,
         })),
     ];
-  }, [canMentionEveryone, members, roles]);
+  }, [canMentionEveryone, members, roles, searchedMembers]);
+
+  // Directory results arrive after the keystroke that asked for them, so the
+  // open dropdown is re-filtered when they land.
+  useEffect(() => {
+    if (mentionQuery.length === 0 || suggestionQuery.current !== "mention") {
+      return;
+    }
+    const query = mentionQuery.toLowerCase();
+    setSuggestions(
+      mentionSuggestions
+        .filter((suggestion) => suggestion.label.toLowerCase().includes(query))
+        .slice(0, 6),
+    );
+  }, [mentionQuery, mentionSuggestions]);
 
   const channelSuggestions: Suggestion[] = useMemo(
     () =>
@@ -262,6 +325,7 @@ export function Composer({
     if (mention !== null) {
       suggestionQuery.current = "mention";
       const query = (mention[2] ?? "").toLowerCase();
+      setMentionQuery(mention[2] ?? "");
       setSuggestions(
         mentionSuggestions
           .filter((suggestion) => suggestion.label.toLowerCase().includes(query))
@@ -273,6 +337,7 @@ export function Composer({
     const channel = CHANNEL_QUERY.exec(slice);
     if (channel !== null && channelSuggestions.length > 0) {
       suggestionQuery.current = "channel";
+      setMentionQuery("");
       const query = (channel[2] ?? "").toLowerCase();
       setSuggestions(
         channelSuggestions
@@ -283,6 +348,7 @@ export function Composer({
       return;
     }
     setSuggestions([]);
+    setMentionQuery("");
   }
 
   function applySuggestion(suggestion: Suggestion): void {
@@ -435,30 +501,78 @@ export function Composer({
     };
   }, [addFiles, disabled, windowDropEnabled]);
 
+  /**
+   * The mention targets to resolve `text` against. The composer holds only the
+   * people already on screen, so names it does not know are looked up in the
+   * directory before sending; otherwise a typed `@name` for someone outside the
+   * timeline would silently lose its mention id.
+   */
+  async function mentionTargetsFor(text: string): Promise<readonly MentionTarget[]> {
+    if (searchMembers === undefined) {
+      return members;
+    }
+    const knownNames = new Set(members.map((member) => member.displayName.toLowerCase()));
+    const unknown: string[] = [];
+    for (const match of text.matchAll(/@([A-Za-z0-9_.-]+)/g)) {
+      const token = match[1] ?? "";
+      if (token.length === 0 || /^(here|everyone)$/i.test(token)) {
+        continue;
+      }
+      if (!knownNames.has(token.toLowerCase()) && !unknown.includes(token)) {
+        unknown.push(token);
+      }
+      if (unknown.length >= MENTION_RESOLVE_TOKENS) {
+        break;
+      }
+    }
+    if (unknown.length === 0) {
+      return members;
+    }
+    const found = (
+      await Promise.all(unknown.map((query) => searchMembers(query).catch(() => [])))
+    ).flat();
+    if (found.length === 0) {
+      return members;
+    }
+    const merged = new Map(members.map((member) => [member.userId, member] as const));
+    for (const member of found) {
+      if (!merged.has(member.userId)) {
+        merged.set(member.userId, member);
+      }
+    }
+    return [...merged.values()];
+  }
+
+  async function submit(text: string, pickedFiles: readonly File[]): Promise<void> {
+    const targets = await mentionTargetsFor(text);
+    const resolution = resolveMentions(text, targets, roles);
+    const mentionUserIds = expandBroadcast(resolution, memberIds);
+    const channelMentionResolution = resolveChannelMentions(text, channels, categories);
+    await onSend({
+      text,
+      mentionUserIds,
+      mentionChannelIds: channelMentionResolution.channelIds,
+      mentionCategoryIds: channelMentionResolution.categoryIds,
+      mentionRoleIds: resolution.roleIds,
+      files: pickedFiles,
+    });
+  }
+
   function send(): void {
     const text = value.trim();
     if (disabled || (text.length === 0 && files.length === 0)) {
       return;
     }
-    const resolution = resolveMentions(text, members, roles);
-    const mentionUserIds = expandBroadcast(resolution, memberIds);
-    const channelMentionResolution = resolveChannelMentions(text, channels, categories);
-    const mentionChannelIds = channelMentionResolution.channelIds;
-    const mentionCategoryIds = channelMentionResolution.categoryIds;
-    void onSend({
-      text,
-      mentionUserIds,
-      mentionChannelIds,
-      mentionCategoryIds,
-      files,
-    });
+    const pickedFiles = files;
     setValue("");
     setFiles([]);
     setAttachmentError(null);
     setSuggestions([]);
+    setMentionQuery("");
     if (draftKey !== undefined) {
       writeDraft(draftKey, "");
     }
+    void submit(text, pickedFiles);
   }
 
   const canSend = !disabled && (value.trim().length > 0 || files.length > 0);

@@ -351,6 +351,7 @@ export function convexPort(client: ConvexReactClient): ChatPort {
         ...(args.mentionChannelIds !== undefined
           ? { mentionChannelIds: [...args.mentionChannelIds] }
           : {}),
+        ...(args.mentionRoleIds !== undefined ? { mentionRoleIds: [...args.mentionRoleIds] } : {}),
         ...(args.attachmentIds !== undefined
           ? { attachmentIds: args.attachmentIds as never[] }
           : {}),
