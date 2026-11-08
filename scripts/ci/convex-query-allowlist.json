@@ -275,6 +275,10 @@
       "reason": "Pre-existing collect() on \"notificationPrefs\"; replace it with a bounded index query."
     },
     {
+      "key": "lib/permissions.ts#categoryOverridesById#collect",
+      "reason": "Workspace configuration: the categories table is small by design (admin-created channel groups). One read replaces a db.get per channel in channels.list."
+    },
+    {
       "key": "lib/permissions.ts#loadPermissionContext#collect",
       "reason": "Pre-existing collect() on \"roles\"; replace it with a bounded index query."
     },
@@ -313,6 +317,10 @@
     {
       "key": "messages.ts#listThread#paginate-unbounded",
       "reason": "Pre-existing paginate with args.paginationOpts; clamp numItems or keep the window small."
+    },
+    {
+      "key": "messages.ts#mentionUserIdsForRoles#collect",
+      "reason": "Workspace configuration: the roles table is small by design (admin-created roles). Read once per send that mentions a role."
     },
     {
       "key": "notes.ts#list#collect",

@@ -7,8 +7,8 @@
       "gzip": 576
     },
     "assets/AdminPanel.js": {
-      "raw": 214336,
-      "gzip": 55808
+      "raw": 214720,
+      "gzip": 55936
     },
     "assets/api.js": {
       "raw": 51840,
@@ -23,8 +23,8 @@
       "gzip": 1216
     },
     "assets/CallParticipant.js": {
-      "raw": 75712,
-      "gzip": 24064
+      "raw": 89152,
+      "gzip": 28160
     },
     "assets/CallStage.js": {
       "raw": 3904,
@@ -43,12 +43,12 @@
       "gzip": 512
     },
     "assets/index.css": {
-      "raw": 96256,
-      "gzip": 16832
+      "raw": 97216,
+      "gzip": 16960
     },
     "assets/index.js": {
-      "raw": 108224,
-      "gzip": 34176
+      "raw": 112000,
+      "gzip": 35328
     },
     "assets/KanbanView.js": {
       "raw": 94208,
@@ -59,8 +59,8 @@
       "gzip": 161408
     },
     "assets/member-avatars.js": {
-      "raw": 17408,
-      "gzip": 7552
+      "raw": 17984,
+      "gzip": 7680
     },
     "assets/NoteMarkdown.js": {
       "raw": 7232,
@@ -83,12 +83,12 @@
       "gzip": 128
     },
     "assets/preload-helper.js": {
-      "raw": 15808,
-      "gzip": 5824
+      "raw": 24064,
+      "gzip": 8576
     },
     "assets/ProfileSession.js": {
-      "raw": 303872,
-      "gzip": 85440
+      "raw": 308736,
+      "gzip": 86976
     },
     "assets/react.js": {
       "raw": 240640,
@@ -136,7 +136,7 @@
     },
     "assets/VoiceChannelView.js": {
       "raw": 6464,
-      "gzip": 2176
+      "gzip": 2112
     },
     "assets/workletProcessor.js": {
       "raw": 72192,
@@ -144,37 +144,47 @@
     }
   },
   "initial": {
-    "raw": 737792,
-    "gzip": 225152
+    "raw": 751360,
+    "gzip": 229248
   },
   "total": {
-    "raw": 18236800,
-    "gzip": 5594432
+    "raw": 18269056,
+    "gzip": 5604416
   },
   "lazyOnly": [
     {
       "match": "livekit-client",
-      "contentMarkers": ["livekit"],
+      "contentMarkers": [
+        "livekit"
+      ],
       "reason": "LiveKit is imported by the call screen only; it must stay a lazy chunk."
     },
     {
       "match": "vision_bundle",
-      "contentMarkers": ["mediapipe"],
+      "contentMarkers": [
+        "mediapipe"
+      ],
       "reason": "MediaPipe tasks-vision is imported only when a call enables background blur."
     },
     {
       "match": "vision_wasm_internal",
-      "contentMarkers": ["vision_wasm_internal"],
+      "contentMarkers": [
+        "vision_wasm_internal"
+      ],
       "reason": "MediaPipe WebAssembly loader is fetched on demand by the vision runtime."
     },
     {
       "match": "selfie_segmenter",
-      "contentMarkers": ["selfie_segmenter"],
+      "contentMarkers": [
+        "selfie_segmenter"
+      ],
       "reason": "The selfie segmentation model is fetched when background blur starts."
     },
     {
       "match": "rnnoise",
-      "contentMarkers": ["rnnoise"],
+      "contentMarkers": [
+        "rnnoise"
+      ],
       "reason": "RNNoise noise suppression is loaded by the audio pipeline on demand."
     }
   ]
