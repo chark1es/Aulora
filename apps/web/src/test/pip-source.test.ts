@@ -1,6 +1,6 @@
 import type { CallParticipantView } from "@aulora/core";
 import { describe, expect, it } from "vitest";
-import { pickPipSource } from "../lib/voice/pip-source";
+import { pickPipSource, pickPipVideoSource } from "../lib/voice/pip-source";
 
 function person(userId: string, overrides: Partial<CallParticipantView> = {}): CallParticipantView {
   return {
@@ -112,5 +112,114 @@ describe("pickPipSource", () => {
     );
     expect(source.stream).toBeNull();
     expect(source.muted).toBe(true);
+  });
+});
+
+function videoSourceSnapshot(
+  participants: CallParticipantView[],
+  extras: {
+    streams?: [string, MediaStream][];
+    screens?: [string, MediaStream][];
+    speaking?: string[];
+    localTrack?: MediaStreamTrack | null;
+    sharingScreen?: boolean;
+  } = {},
+) {
+  return {
+    call: { participants } as never,
+    remoteStreams: new Map(extras.streams ?? []),
+    remoteScreens: new Map(extras.screens ?? []),
+    remoteSpeaking: new Set(extras.speaking ?? []),
+    localVideoTrack: extras.localTrack ?? null,
+    local: {
+      muted: false,
+      deafened: false,
+      video: false,
+      sharingScreen: extras.sharingScreen ?? false,
+    },
+  };
+}
+
+function videoTrack(): MediaStreamTrack {
+  return { kind: "video" } as MediaStreamTrack;
+}
+
+function streamWithTrack(track: MediaStreamTrack | null): MediaStream {
+  return { getVideoTracks: () => (track === null ? [] : [track]) } as unknown as MediaStream;
+}
+
+describe("pickPipVideoSource", () => {
+  it("sends the shared screen of the sharer", () => {
+    const track = videoTrack();
+    const source = pickPipVideoSource(
+      videoSourceSnapshot([person("me"), person("sharer", { sharingScreen: true })], {
+        screens: [["sharer", streamWithTrack(track)]],
+      }),
+      "me",
+      nameOf,
+    );
+    expect(source.track).toBe(track);
+    expect(source.kind).toBe("screen");
+    expect(source.label).toBe("Name of sharer");
+  });
+
+  it("sends a remote camera when nobody shares", () => {
+    const track = videoTrack();
+    const source = pickPipVideoSource(
+      videoSourceSnapshot([person("me"), person("them")], {
+        streams: [["them", streamWithTrack(track)]],
+      }),
+      "me",
+      nameOf,
+    );
+    expect(source.track).toBe(track);
+    expect(source.kind).toBe("camera");
+  });
+
+  it("shows your own picture when nobody else has one", () => {
+    const track = videoTrack();
+    const source = pickPipVideoSource(
+      videoSourceSnapshot([person("me"), person("them")], { localTrack: track }),
+      "me",
+      nameOf,
+    );
+    expect(source.track).toBe(track);
+    expect(source.kind).toBe("local");
+    expect(source.label).toBe("Name of me");
+  });
+
+  it("marks your own screen share as a screen", () => {
+    const track = videoTrack();
+    const source = pickPipVideoSource(
+      videoSourceSnapshot([person("me")], { localTrack: track, sharingScreen: true }),
+      "me",
+      nameOf,
+    );
+    expect(source.kind).toBe("screen");
+  });
+
+  it("has nothing to send when there is no video anywhere", () => {
+    const source = pickPipVideoSource(
+      videoSourceSnapshot([person("me"), person("muted", { muted: true })], {
+        streams: [["muted", streamWithTrack(null)]],
+      }),
+      "me",
+      nameOf,
+    );
+    expect(source.track).toBeNull();
+    expect(source.kind).toBe("none");
+    expect(source.muted).toBe(true);
+  });
+
+  it("ignores an ended local track", () => {
+    const source = pickPipVideoSource(
+      videoSourceSnapshot([person("me")], {
+        localTrack: { kind: "video", readyState: "ended" } as MediaStreamTrack,
+      }),
+      "me",
+      nameOf,
+    );
+    expect(source.track).toBeNull();
+    expect(source.kind).toBe("none");
   });
 });
