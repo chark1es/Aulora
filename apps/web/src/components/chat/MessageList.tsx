@@ -734,6 +734,7 @@ function MessageRowContent({
     />
   ) : hasText ? (
     <div
+      data-context-menu-text
       className={cn(
         "min-w-0 max-w-full whitespace-pre-wrap break-words text-[14px] leading-relaxed text-text [overflow-wrap:anywhere]",
         unsent && "opacity-70",

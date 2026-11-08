@@ -51,6 +51,31 @@ Ways to invite:
 - **Code** — a short code such as `7QXM-2KD9-TV4B`. A new member signs in, sees
   the join screen and types it in; it is one-time by default.
 
+### Custom invite codes
+
+A **Code** invite can use a random code or one you choose. Pick **Choose my own**,
+type something memorable such as `WELCOME-TEAM` or `aulora2026`, and share it
+like any other code.
+
+Rules, checked in the form and again on the server:
+
+- 6 to 32 characters after dashes are removed. Shorter codes are too easy to
+  guess, so the minimum applies even to a one-time or expiring invite.
+- Letters, digits, dashes (`-`) and underscores (`_`) only, with at least one
+  letter or digit. Spaces, emoji and other punctuation are refused.
+- Case, dashes and spaces do not matter when redeeming: `welcome-team`,
+  `WELCOME TEAM` and `welcome-team` all find the same invite. Lookalike letters
+  are folded the same way as generated codes, so `aulora2026` also opens with
+  `au1ora2026`.
+- The code must not already belong to an **active** invite. You can reuse a code
+  once the previous invite is revoked, expired or used up; the old invite stops
+  working and the new code takes over. The plaintext code is still shown only
+  once, and only its hash is stored.
+
+For a code people may share repeatedly, choose a longer phrase, allow multiple
+uses, and give it an expiry. For one person, keep the default single use or add
+an **Only for** address, which also limits it to that account.
+
 Every invite can have an expiry (an hour to 30 days, a date you pick, or never;
 the default is 7 days), a use limit (one time, a number, or unlimited), an
 optional **Only for** address that limits it to one account, and a note that only

@@ -14,7 +14,7 @@ import {
   useMemo,
   useState,
 } from "react";
-import { createMobileProfileStore } from "../lib/profiles";
+import { createMobileProfileStore, loadProfilesSafely } from "../lib/profiles";
 
 export interface ProfileContextValue {
   readonly store: ProfileStore;
@@ -43,20 +43,20 @@ export function ProfileProvider({ store, children }: ProfileProviderProps) {
   const [ready, setReady] = useState(false);
 
   const refresh = useCallback(async () => {
-    const [list, active] = await Promise.all([profileStore.list(), profileStore.getActive()]);
+    const { profiles: list, activeId: active } = await loadProfilesSafely(profileStore);
     setProfiles(list);
-    setActiveId(active?.id);
+    setActiveId(active);
   }, [profileStore]);
 
   useEffect(() => {
     const controller = new AbortController();
     void (async () => {
-      const [list, active] = await Promise.all([profileStore.list(), profileStore.getActive()]);
+      const { profiles: list, activeId: active } = await loadProfilesSafely(profileStore);
       if (controller.signal.aborted) {
         return;
       }
       setProfiles(list);
-      setActiveId(active?.id);
+      setActiveId(active);
       setReady(true);
     })();
     return () => {

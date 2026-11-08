@@ -436,31 +436,41 @@ export function VoiceProvider({
     engineRef.current?.clearError();
   }, []);
 
+  const canConnect = policy.enabled && hasPermission(permissions, Permission.Connect);
+  const canSpeak = hasPermission(permissions, Permission.Speak);
+  const canStream = policy.screenShareEnabled && hasPermission(permissions, Permission.Stream);
+  const canVideo = policy.videoEnabled && hasPermission(permissions, Permission.UseVideo);
+
   const { pip, surface: pipSurface } = useCallPip({
     callActive,
     snapshot,
     selfUserId: userId,
+    canSpeak,
+    canVideo,
+    canStream,
     pinned: pipPinned,
-    setPinned: setPipPinned,
     controls: {
       toggleMicrophone: () => {
         const engine = engineRef.current;
         void engine?.setMuted(!engine.getSnapshot().local.muted);
       },
+      toggleDeafen: () => {
+        const engine = engineRef.current;
+        engine?.setDeafened(!engine.getSnapshot().local.deafened);
+      },
       toggleCamera: () => {
         const engine = engineRef.current;
         void engine?.setCamera(!engine.getSnapshot().local.video);
+      },
+      toggleScreen: () => {
+        const engine = engineRef.current;
+        void engine?.setScreenSharing(!engine.getSnapshot().local.sharingScreen);
       },
       hangUp: () => {
         void leave();
       },
     },
   });
-
-  const canConnect = policy.enabled && hasPermission(permissions, Permission.Connect);
-  const canSpeak = hasPermission(permissions, Permission.Speak);
-  const canStream = policy.screenShareEnabled && hasPermission(permissions, Permission.Stream);
-  const canVideo = policy.videoEnabled && hasPermission(permissions, Permission.UseVideo);
 
   const value = useMemo<VoiceContextValue>(
     () => ({

@@ -16,6 +16,7 @@ import { EnvGroupNav } from "./EnvGroupNav";
 import { EnvToolbar } from "./EnvToolbar";
 import { EnvVariableRow } from "./EnvVariableRow";
 import { OidcProviderForm } from "./OidcProviderForm";
+import "./environment-table.css";
 
 /** Data + actions the Environment view needs; the container wires them up. */
 export interface EnvironmentSectionModel {
@@ -182,14 +183,13 @@ function EnvGroup({
       {showOidc && block.id === "oidc" && (
         <OidcGroupEditor model={model} variables={block.variables} />
       )}
-      <div className="overflow-x-auto rounded-card border border-border bg-surface-2">
-        <table className="w-full min-w-[640px] table-fixed text-left">
+      <div className="env-table-container min-w-0 rounded-card border border-border bg-surface-2">
+        <table className="env-table w-full table-fixed text-left" aria-label={block.label}>
           <thead>
             <tr className="border-b border-border">
-              <EnvHeaderCell className="w-[46%]">Variable</EnvHeaderCell>
-              <EnvHeaderCell className="w-28">Source</EnvHeaderCell>
-              <EnvHeaderCell>Value</EnvHeaderCell>
-              <EnvHeaderCell className="w-24 text-right">
+              <EnvHeaderCell>Variable</EnvHeaderCell>
+              <EnvHeaderCell className="env-value-col">Value</EnvHeaderCell>
+              <EnvHeaderCell className="env-actions-col text-right">
                 <span className="sr-only">Actions</span>
               </EnvHeaderCell>
             </tr>
@@ -220,7 +220,7 @@ function EnvHeaderCell({
   readonly children: ReactNode;
 }) {
   return (
-    <th scope="col" className={cn("px-3 py-2", className)}>
+    <th scope="col" className={cn("px-3 py-1", className)}>
       <Text size="xs" tone="muted" className="font-medium">
         {children}
       </Text>

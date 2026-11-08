@@ -59,6 +59,91 @@ export function formatAccessCode(code: string): string {
   return [normalized.slice(0, 4), normalized.slice(4, 8), normalized.slice(8)].join("-");
 }
 
+/**
+ * Shortest admin-chosen code we accept. Six characters still leaves 36^6
+ * possibilities, and redeem guesses are capped per person; shorter memorable
+ * strings are too easy to walk through.
+ */
+export const CUSTOM_INVITE_CODE_MIN_LENGTH = 6;
+
+/** Longest admin-chosen code; a code is typed by hand, so keep it short. */
+export const CUSTOM_INVITE_CODE_MAX_LENGTH = 32;
+
+/** Letters, digits and the two separators a person can type without guessing. */
+const CUSTOM_INVITE_CODE_PATTERN = /^[A-Za-z0-9_-]+$/;
+
+/** Why a chosen code was refused; clients map this to their own wording. */
+export type CustomInviteCodeProblem =
+  | "empty"
+  | "characters"
+  | "needs_letter_or_digit"
+  | "too_short"
+  | "too_long";
+
+export type CustomInviteCodeResult =
+  | {
+      readonly ok: true;
+      /** The trimmed string as typed, for showing back at creation. */
+      readonly code: string;
+      /** The canonical lookup/hash form, exactly what {@link normalizeInviteCode} gives. */
+      readonly normalized: string;
+    }
+  | { readonly ok: false; readonly problem: CustomInviteCodeProblem; readonly message: string };
+
+const CUSTOM_INVITE_CODE_MESSAGES: Record<CustomInviteCodeProblem, string> = {
+  empty: "Enter a code.",
+  characters: "Use only letters, digits, dashes and underscores.",
+  needs_letter_or_digit: "Include at least one letter or digit.",
+  too_short: `Use at least ${CUSTOM_INVITE_CODE_MIN_LENGTH} characters, not counting dashes.`,
+  too_long: `Use at most ${CUSTOM_INVITE_CODE_MAX_LENGTH} characters, not counting dashes.`,
+};
+
+function customCodeRefusal(problem: CustomInviteCodeProblem): CustomInviteCodeResult {
+  return { ok: false, problem, message: CUSTOM_INVITE_CODE_MESSAGES[problem] };
+}
+
+/**
+ * Validates an admin-chosen invite code. The rule: trim; only letters,
+ * digits, `-` and `_`; at least one letter or digit; and 6–32 characters
+ * after {@link normalizeInviteCode} (which strips dashes and upper-cases, so
+ * `welcome-team` and `WELCOMETEAM` are the same code; `I`/`L`/`O` are folded to
+ * `1`/`0` by that same function, so `aulora2026` and `au1ora2o26` are one
+ * code). Case, grouping and lookalike letters are therefore forgiving, while
+ * the code that is hashed and later looked up is canonical. The minimum is
+ * unconditional: "code" invites default to a single use *and* the default
+ * week's expiry, so an exception for those would cover almost every code and
+ * leave only the risky short ones behind.
+ */
+export function validateCustomInviteCode(input: string): CustomInviteCodeResult {
+  const code = input.trim();
+  if (code.length === 0) {
+    return customCodeRefusal("empty");
+  }
+  if (!CUSTOM_INVITE_CODE_PATTERN.test(code)) {
+    return customCodeRefusal("characters");
+  }
+  if (!/[A-Za-z0-9]/.test(code)) {
+    return customCodeRefusal("needs_letter_or_digit");
+  }
+  const normalized = normalizeInviteCode(code);
+  if (normalized.length < CUSTOM_INVITE_CODE_MIN_LENGTH) {
+    return customCodeRefusal("too_short");
+  }
+  if (normalized.length > CUSTOM_INVITE_CODE_MAX_LENGTH) {
+    return customCodeRefusal("too_long");
+  }
+  return { ok: true, code, normalized };
+}
+
+/**
+ * Whether what has been typed or pasted is worth submitting: a link token, a
+ * generated 12-character code, or any custom code at least the minimum length.
+ * Join screens use this instead of assuming the generated code's shape.
+ */
+export function isInviteInputReady(input: string): boolean {
+  return normalizeInviteCode(input).length >= CUSTOM_INVITE_CODE_MIN_LENGTH;
+}
+
 /** Lowercased, trimmed address used for every email comparison. */
 export function normalizeEmail(email: string): string {
   return email.trim().toLowerCase();

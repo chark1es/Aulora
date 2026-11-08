@@ -1,13 +1,100 @@
 import { act, fireEvent, render, renderHook, screen } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { ConnectionRecoveryActions } from "../components/ConnectionRecoveryActions";
+import { createConnectionRecovery, RECOVERY_DELAYS_MS } from "../lib/connection-recovery";
 import { STUCK_TIMEOUT_MS, useStuckTimeout } from "../lib/use-stuck-timeout";
+
+const [FIRST_DELAY, SECOND_DELAY] = RECOVERY_DELAYS_MS;
+const LAST_DELAY = RECOVERY_DELAYS_MS[RECOVERY_DELAYS_MS.length - 1] ?? 0;
 
 function advance(ms: number): void {
   act(() => {
     vi.advanceTimersByTime(ms);
   });
 }
+
+describe("createConnectionRecovery", () => {
+  beforeEach(() => {
+    vi.useFakeTimers();
+  });
+
+  afterEach(() => {
+    vi.useRealTimers();
+  });
+
+  it("waits before rebuilding and backs off further each time", () => {
+    const reset = vi.fn();
+    const loop = createConnectionRecovery({ reset });
+
+    loop.stuck();
+    expect(loop.attempts()).toBe(1);
+    advance(FIRST_DELAY - 1);
+    expect(reset).not.toHaveBeenCalled();
+    advance(1);
+    expect(reset).toHaveBeenCalledTimes(1);
+
+    loop.stuck();
+    advance(SECOND_DELAY - 1);
+    expect(reset).toHaveBeenCalledTimes(1);
+    advance(1);
+    expect(reset).toHaveBeenCalledTimes(2);
+  });
+
+  it("caps the wait at the longest step", () => {
+    const reset = vi.fn();
+    const loop = createConnectionRecovery({ reset });
+    for (let attempt = 0; attempt < RECOVERY_DELAYS_MS.length + 3; attempt += 1) {
+      loop.stuck();
+      advance(LAST_DELAY);
+    }
+    expect(reset).toHaveBeenCalledTimes(RECOVERY_DELAYS_MS.length + 3);
+    expect(loop.attempts()).toBe(RECOVERY_DELAYS_MS.length + 3);
+  });
+
+  it("queues at most one rebuild per report", () => {
+    const reset = vi.fn();
+    const loop = createConnectionRecovery({ reset });
+    loop.stuck();
+    loop.stuck();
+    loop.stuck();
+    advance(FIRST_DELAY);
+    expect(reset).toHaveBeenCalledTimes(1);
+  });
+
+  it("cancels a pending rebuild once the connection is healthy, restarting the backoff", () => {
+    const reset = vi.fn();
+    const loop = createConnectionRecovery({ reset });
+    loop.stuck();
+    loop.healthy();
+    advance(FIRST_DELAY);
+    expect(reset).not.toHaveBeenCalled();
+    expect(loop.attempts()).toBe(0);
+
+    loop.stuck();
+    advance(FIRST_DELAY);
+    expect(reset).toHaveBeenCalledTimes(1);
+  });
+
+  it("rebuilds immediately for a manual retry and restarts the backoff", () => {
+    const reset = vi.fn();
+    const loop = createConnectionRecovery({ reset });
+    loop.stuck();
+    loop.retry();
+    expect(reset).toHaveBeenCalledTimes(1);
+    expect(loop.attempts()).toBe(0);
+    advance(LAST_DELAY);
+    expect(reset).toHaveBeenCalledTimes(1);
+  });
+
+  it("cancels on dispose", () => {
+    const reset = vi.fn();
+    const loop = createConnectionRecovery({ reset });
+    loop.stuck();
+    loop.dispose();
+    advance(LAST_DELAY);
+    expect(reset).not.toHaveBeenCalled();
+  });
+});
 
 describe("useStuckTimeout", () => {
   beforeEach(() => {

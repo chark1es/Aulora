@@ -8,6 +8,20 @@ const EXISTING_ACCOUNT =
 const NOT_LINKED =
   "This email belongs to an account that uses a different sign-in method, and the provider did not confirm the address. Sign in the way you first did.";
 
+/**
+ * Whether a failed session lookup is a definitive rejection rather than an
+ * outage. Better Auth answers 401 only when the credentials it was given are
+ * dead; a server that is down or restarting fails without a status. So this is
+ * the one answer that may drop a stored session token — a person is never
+ * signed out because a request timed out.
+ */
+export function isInvalidSessionError(error: unknown): boolean {
+  if (typeof error !== "object" || error === null || !("status" in error)) {
+    return false;
+  }
+  return error.status === 401;
+}
+
 export function describeAuthError(message: string): string {
   const normalized = message.toLowerCase().replaceAll("_", " ");
   if (normalized.includes("user already exists")) {

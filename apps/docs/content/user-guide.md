@@ -81,7 +81,7 @@ Choose **Share** in a call, then pick a whole screen, one window or a browser ta
 
 Keep a call in view while you work in other apps.
 
-- **Desktop app:** choose the **Picture in picture** button in the call window. The app shrinks to a small window in the corner of the screen. Choose **Keep on top of other windows** (the pin) to keep it above everything else, and the expand button to return to the full app.
+- **Desktop app:** choose the **Picture in picture** button in the call. A small, always-on-top call window opens in the corner of the screen and the app window stays open and usable behind it. Drag the new window by its header to put it anywhere, on any screen. It shows who is in the call and who is speaking, and its buttons mute, deafen, switch the camera, share a screen or leave. Closing it with its **X** leaves the call running in the app window; the app's own **Picture in picture** button brings it back or closes it.
 - **Chrome and Edge:** the button opens a floating window that stays above other windows. Chrome can also open it for you when you switch to another tab during a call.
 - **Safari and Firefox:** the button floats a video of whoever is sharing their screen or speaking.
 - **iPhone and iPad:** leave the app during a video call and the other person's video keeps playing in a small window. You can also use the **Picture in picture** button.

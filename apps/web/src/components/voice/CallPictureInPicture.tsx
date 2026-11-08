@@ -4,10 +4,12 @@ import { CallCompactView } from "./CallCompactView";
 import type { CallIdentity } from "./identity";
 
 /**
- * Draws the call into whichever floating surface is open: the browser's
- * Document Picture-in-Picture window, or the desktop window once it has shrunk
- * to a small one. Mounted next to the dock so the window survives moving between
- * views; renders nothing otherwise (the floating-video fallback draws itself).
+ * Draws the call into the browser's Document Picture-in-Picture window.
+ *
+ * The desktop shell's call window is a separate webview with its own entry
+ * (`CallPipWindow`), not a portal, so only browsers reach this. Mounted next to
+ * the dock so the window survives moving between views; renders nothing
+ * otherwise (the floating-video fallback draws itself).
  */
 export function CallPictureInPicture({
   title,
@@ -17,25 +19,14 @@ export function CallPictureInPicture({
   readonly identity: CallIdentity;
 }) {
   const voice = useVoice();
-  const { window: pipWindow, mini } = voice.pipSurface;
-  if (voice.call === null) {
+  const pipWindow = voice.pipSurface.window;
+  if (voice.call === null || pipWindow === null) {
     return null;
   }
-  if (pipWindow !== null) {
-    return createPortal(
-      <div className="h-screen">
-        <CallCompactView title={title} identity={identity} floating />
-      </div>,
-      pipWindow.document.body,
-    );
-  }
-  if (mini) {
-    return createPortal(
-      <div className="desktop-below-titlebar z-[120] bg-bg">
-        <CallCompactView title={title} identity={identity} floating />
-      </div>,
-      document.body,
-    );
-  }
-  return null;
+  return createPortal(
+    <div className="h-screen">
+      <CallCompactView title={title} identity={identity} floating />
+    </div>,
+    pipWindow.document.body,
+  );
 }

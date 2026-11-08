@@ -191,14 +191,14 @@ type SignInController = ReturnType<typeof useSignInController>;
 
 /** The sign-in panel's view of the form state and the controller's actions. */
 function panelFor(
-  profile: ServerProfile,
+  providers: SignInPanelProps["providers"],
   methods: SignInMethods,
   controller: SignInController,
 ): SignInPanelProps {
   const { state, patch, submitLocal, signInWithProvider } = controller;
   return {
     methods,
-    providers: profile.auth.providers,
+    providers,
     mode: state.mode,
     values: { email: state.email, name: state.name, password: state.password },
     pending: state.pending,
@@ -231,9 +231,12 @@ function panelFor(
  */
 export function SignInScreen(props: SignInScreenProps) {
   const { profile, authClient, cookieStore, onOpenWorkspaces, onConnectDifferentServer } = props;
-  const methods = resolveSignInMethods(profile.auth);
   const actions = authActionsFromClient(authClient);
   const config = useQuery(api.server.publicConfig, {});
+  // The stored profile's `auth` is a snapshot from when the workspace was added,
+  // so a provider enabled later would never get a button. Prefer the live config.
+  const auth = config?.auth ?? profile.auth;
+  const methods = resolveSignInMethods(auth);
   const reduceMotion = useReduceMotion();
   const { animatedStyle } = useEntrance(reduceMotion);
   const { width } = useWindowDimensions();
@@ -265,7 +268,7 @@ export function SignInScreen(props: SignInScreenProps) {
           </Animated.View>
         }
       >
-        <SignInPanel panel={panelFor(profile, methods, controller)} />
+        <SignInPanel panel={panelFor(auth.providers, methods, controller)} />
         {onConnectDifferentServer !== undefined && (
           <Button
             variant="ghost"

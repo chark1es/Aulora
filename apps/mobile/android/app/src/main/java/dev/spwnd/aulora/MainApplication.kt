@@ -11,6 +11,8 @@ import com.facebook.react.ReactHost
 import com.facebook.react.common.ReleaseLevel
 import com.facebook.react.defaults.DefaultNewArchitectureEntryPoint
 
+import com.oney.WebRTCModule.WebRTCModuleOptions
+
 import expo.modules.ApplicationLifecycleDispatcher
 import expo.modules.ExpoReactHostFactory
 
@@ -34,6 +36,9 @@ class MainApplication : Application(), ReactApplication {
     } catch (e: IllegalArgumentException) {
       ReleaseLevel.STABLE
     }
+    // Android 14+ refuses a screen capture unless a mediaProjection foreground service is
+    // running. react-native-webrtc ships that service but only starts it when this is on.
+    WebRTCModuleOptions.getInstance().enableMediaProjectionService = true
     loadReactNative(this)
     ApplicationLifecycleDispatcher.onApplicationCreate(this)
   }
