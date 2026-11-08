@@ -65,6 +65,10 @@ export class VoiceEngine {
   private micStream: MediaStream | null = null;
   private micPipeline: MicPipeline | null = null;
   private micProcessingKey = "";
+  /** The audio track peers currently receive, or `null` while we send nothing. */
+  private micSending: MediaStreamTrack | null = null;
+  /** Serializes sender swaps so quick mute/unmute lands in the requested order. */
+  private micSync: Promise<void> = Promise.resolve();
   private micLevel = 0;
   private localSpeaking = false;
   private levelUnsub: (() => void) | null = null;
@@ -103,7 +107,7 @@ export class VoiceEngine {
       onChange: () => {
         this.emit();
       },
-      getAudioTrack: () => this.micStream?.getAudioTracks()[0] ?? null,
+      getAudioTrack: () => this.micSending,
       getVideoTrack: (peerId) =>
         this.screen.trackForPeer(peerId) ?? (this.local.video ? this.camera.track : null),
       isScreenSharing: (peerId) => this.screen.trackForPeer(peerId) !== null,
@@ -339,6 +343,8 @@ export class VoiceEngine {
       track.stop();
     });
     this.micStream = null;
+    this.micSending = null;
+    this.micSync = Promise.resolve();
     this.camera.close();
     void this.screen.reset();
     this.mediaError = null;
@@ -367,7 +373,7 @@ export class VoiceEngine {
     this.startLevelMeter();
     // A peer may have been created (and offered) before the mic resolved; give
     // it the real track now that we have it. `replaceTrack` needs no renegotiation.
-    await this.mesh.applyAudioTrack(this.micStream.getAudioTracks()[0] ?? null);
+    this.applyMicEnabled();
   }
 
   private startLevelMeter(): void {
@@ -416,17 +422,26 @@ export class VoiceEngine {
 
   /**
    * The microphone only transmits while allowed: not muted, and either not in
-   * push-to-talk mode or actively holding the talk key. Keep the track enabled
-   * (sending silence) rather than removed so no renegotiation is needed.
+   * push-to-talk mode or actively holding the talk key.
+   *
+   * A muted sender is detached with `replaceTrack(null)` rather than left
+   * sending a silent track. `track.enabled = false` still runs the Opus encoder
+   * and uploads packets, which costs the uplink and keeps every peer's jitter
+   * buffer busy for nothing. Detaching needs no renegotiation, so unmuting
+   * re-attaches the same transceiver instantly. Swaps are serialized so a quick
+   * mute/unmute cannot land out of order.
    */
   private applyMicEnabled(): void {
-    if (this.micStream === null) {
+    const track = this.micStream?.getAudioTracks()[0] ?? null;
+    const enabled = !this.local.muted && (!this.pushToTalk || this.talking);
+    const wanted = enabled ? track : null;
+    if (wanted === this.micSending) {
       return;
     }
-    const enabled = !this.local.muted && (!this.pushToTalk || this.talking);
-    for (const track of this.micStream.getAudioTracks()) {
-      track.enabled = enabled;
-    }
+    this.micSending = wanted;
+    this.micSync = this.micSync
+      .then(() => this.mesh.applyAudioTrack(wanted))
+      .catch(() => undefined);
     if (!enabled && this.localSpeaking) {
       this.localSpeaking = false;
       this.emit();
@@ -524,7 +539,6 @@ export class VoiceEngine {
       this.mediaError = null;
       this.applyMicEnabled();
       this.startLevelMeter();
-      await this.mesh.applyAudioTrack(this.micStream.getAudioTracks()[0] ?? null);
     } catch (error) {
       this.mediaError = mediaMessage(error);
       this.onError(messageOf(error));

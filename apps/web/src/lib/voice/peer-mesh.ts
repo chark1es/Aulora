@@ -541,7 +541,10 @@ function tuneAudioSection(lines: readonly string[]): string[] {
     tuned.add(match[1]);
     return `a=fmtp:${match[1]} ${mergeOpusParams(match[2] ?? "")}`;
   });
-  const insertAt = result.findLastIndex((line) => line.trim().length > 0) + 1;
+  let insertAt = result.length;
+  while (insertAt > 0 && (result[insertAt - 1] ?? "").trim().length === 0) {
+    insertAt -= 1;
+  }
   const missing = [...types]
     .filter((type) => !tuned.has(type))
     .map((type) => `a=fmtp:${type} ${mergeOpusParams("")}`);

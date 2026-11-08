@@ -5,6 +5,8 @@ import { gateOpenThresholdDb, micProcessingKey } from "../lib/voice/mic-pipeline
 import {
   applyOpusVoiceParams,
   JITTER_BUFFER_TARGET_MS,
+  PeerMesh,
+  type PeerMeshHost,
   screenBitrateFor,
   tuneReceiver,
 } from "../lib/voice/peer-mesh";
@@ -175,5 +177,55 @@ describe("applyOpusVoiceParams", () => {
   it("returns an SDP without Opus unchanged", () => {
     const noOpus = SDP.replace("a=rtpmap:111 opus/48000/2", "a=rtpmap:111 G722/80000");
     expect(applyOpusVoiceParams(noOpus)).toBe(noOpus);
+  });
+});
+
+describe("PeerMesh.applyAudioTrack", () => {
+  type MeshPeer = Parameters<PeerMesh["peers"]["set"]>[1];
+  type FakeSender = {
+    readonly track: { kind: string };
+    replaceTrack(track: unknown): Promise<void>;
+    getParameters(): { encodings: unknown[] };
+    setParameters(params: unknown): Promise<void>;
+  };
+
+  function sender(kind: string, log: unknown[]): FakeSender {
+    return {
+      track: { kind },
+      async replaceTrack(track) {
+        log.push(track);
+      },
+      getParameters: () => ({ encodings: [{}] }),
+      setParameters: async () => {},
+    };
+  }
+
+  it("detaches audio while muted without touching the video transceiver", async () => {
+    const audioReplace: unknown[] = [];
+    const videoReplace: unknown[] = [];
+    const mesh = new PeerMesh({} as PeerMeshHost);
+    // Test double for the peer's connection internals; only the transceivers matter.
+    const peer = {
+      pc: {},
+      stream: { getTracks: () => [] },
+      initiator: true,
+      pendingCandidates: [],
+      audioTx: { direction: "sendrecv", sender: sender("audio", audioReplace) },
+      videoTx: { direction: "sendrecv", sender: sender("video", videoReplace) },
+      connection: "connected",
+      levelUnsub: null,
+      session: 1,
+    } as unknown as MeshPeer;
+    mesh.peers.set("them", peer);
+
+    await mesh.applyAudioTrack(null);
+    expect(audioReplace).toEqual([null]);
+    expect(videoReplace).toEqual([]);
+    expect(peer.audioTx?.direction).toBe("sendrecv");
+
+    const track = { kind: "audio" } as unknown as MediaStreamTrack;
+    await mesh.applyAudioTrack(track);
+    expect(audioReplace.at(-1)).toBe(track);
+    expect(videoReplace).toEqual([]);
   });
 });
