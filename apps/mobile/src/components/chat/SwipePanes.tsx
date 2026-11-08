@@ -57,7 +57,12 @@ export function SwipePanes({
   readonly center: ReactNode;
   readonly right: ReactNode;
 }) {
-  const { width } = useWindowDimensions();
+  // The drag maths needs the width the panes really have. The window width can
+  // lag it when the window resizes (leaving picture-in-picture), so measure the
+  // container and fall back to the window until the first layout.
+  const windowWidth = useWindowDimensions().width;
+  const [measured, setMeasured] = useState<number | null>(null);
+  const width = measured ?? windowWidth;
   const position = useSharedValue<number>(index);
   const start = useSharedValue<number>(index);
   const origin = useSharedValue<number>(index);
@@ -116,14 +121,18 @@ export function SwipePanes({
   return (
     <PaneSwipeContext.Provider value={registry}>
       <GestureDetector gesture={pan}>
-        <View style={{ flex: 1, overflow: "hidden" }}>
+        <View
+          style={{ flex: 1, overflow: "hidden" }}
+          onLayout={(event) => {
+            setMeasured(event.nativeEvent.layout.width);
+          }}
+        >
           {[left, center, right].map((pane, paneIndex) => (
             <Pane
               // biome-ignore lint/suspicious/noArrayIndexKey: the three panes never reorder
               key={paneIndex}
               slot={paneIndex}
               position={position}
-              width={width}
               active={paneIndex === index}
             >
               {pane}
@@ -169,18 +178,17 @@ export function HorizontalScroll({
 function Pane({
   slot,
   position,
-  width,
   active,
   children,
 }: {
   readonly slot: number;
   readonly position: SharedValue<number>;
-  readonly width: number;
   readonly active: boolean;
   readonly children: ReactNode;
 }) {
   const style = useAnimatedStyle(() => ({
-    transform: [{ translateX: (slot - position.value) * width }],
+    // A share of the pane's own width, so it can never disagree with its layout.
+    transform: [{ translateX: `${(slot - position.value) * 100}%` }],
   }));
   return (
     <Animated.View

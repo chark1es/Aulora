@@ -9,14 +9,24 @@ export function isVoiceClientId(value: string): boolean {
   return CLIENT_ID_PATTERN.test(value);
 }
 
+let fallbackCounter = 0;
+
+/**
+ * The id only tells one install from another; it is not a secret. React Native's
+ * Hermes runtime has no `globalThis.crypto`, so fall back to a clock plus counter.
+ */
 export function createVoiceClientId(): string {
-  const cryptoObj = globalThis.crypto;
-  if (typeof cryptoObj.randomUUID === "function") {
+  const cryptoObj = globalThis.crypto as Crypto | undefined;
+  if (cryptoObj !== undefined && typeof cryptoObj.randomUUID === "function") {
     return cryptoObj.randomUUID();
   }
-  const bytes = new Uint8Array(8);
-  cryptoObj.getRandomValues(bytes);
-  const suffix = Array.from(bytes, (value) => value.toString(36).padStart(2, "0"))
+  fallbackCounter += 1;
+  const entropy =
+    cryptoObj !== undefined && typeof cryptoObj.getRandomValues === "function"
+      ? Array.from(cryptoObj.getRandomValues(new Uint8Array(8)))
+      : [Math.trunc(globalThis.performance?.now() ?? 0), fallbackCounter];
+  const suffix = entropy
+    .map((value) => value.toString(36).padStart(2, "0"))
     .join("")
     .slice(0, 10);
   return `c_${Date.now().toString(36)}_${suffix}`;

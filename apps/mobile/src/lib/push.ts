@@ -64,7 +64,8 @@ export function configureNotificationHandler(): void {
         importance: Notifications.AndroidImportance.MAX,
         vibrationPattern: [0, 400, 200, 400],
         lockscreenVisibility: Notifications.AndroidNotificationVisibility.PUBLIC,
-        sound: "default",
+        // No `sound` key: the system default. On a channel any string is read as a
+        // bundled file name, so "default" pointed at a file that does not exist.
       }).catch(() => undefined);
     }
   } catch {
