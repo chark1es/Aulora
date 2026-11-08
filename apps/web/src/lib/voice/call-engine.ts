@@ -59,6 +59,12 @@ export type { VoiceEngineOptions, VoiceLocalState, VoiceSnapshot } from "./call-
 const HEARTBEAT_MS = 15_000;
 /** Back-off before retrying a failed switch to the streaming server. */
 const SFU_RETRY_MS = 30_000;
+/**
+ * How long joining waits for the relay credential. Peers keep the ICE servers
+ * they were created with, so the credential has to be in hand before the roster
+ * creates them; a slow backend must not hold the join up for longer than this.
+ */
+const ICE_PRELOAD_MS = 2_000;
 
 /**
  * The camera bitrate a single peer's copy gets at each capture size. More peers
@@ -117,9 +123,14 @@ export class VoiceEngine {
   private transport: CallTransport = "mesh";
   /** Cached per call: `null` until the backend is asked once. */
   private sfuConfigured: boolean | null = null;
-  private sfuAccess: SfuAccess | null = null;
   private sfuProbe: Promise<boolean> | null = null;
   private sfuSwitching = false;
+  /**
+   * Bumped every time the engine leaves or replaces a call. Work that awaits the
+   * backend or the streaming server compares it afterwards so a result for a
+   * call that has already ended cannot touch the next one.
+   */
+  private callEpoch = 0;
   /** Do not retry a failed switch before this timestamp. */
   private sfuRetryAt = 0;
   /** Last `sfuCall` value published on the roster, to avoid redundant writes. */
@@ -452,6 +463,12 @@ export class VoiceEngine {
     this.enterTeardown();
     this.callId = callId;
     this.mesh.reset();
+    // Peers are created as soon as the roster arrives and keep the ICE servers
+    // they start with, so the relay credential is fetched first.
+    await this.preloadIce();
+    if (this.callId !== callId) {
+      return;
+    }
     const watched = callId;
     this.callUnsub = this.subscriptions.watchCallById(callId, (call) => {
       if (this.callId !== watched) {
@@ -487,11 +504,24 @@ export class VoiceEngine {
       .catch(() => undefined);
     this.sfuCapabilityReported = SFU_CALL_ENABLED ? true : null;
     void this.screen.probe();
-    void this.ice.load();
     this.emit();
   }
 
+  /** Waits briefly for the relay credential; never fails the join. */
+  private async preloadIce(): Promise<void> {
+    let timer: ReturnType<typeof setTimeout> | undefined;
+    const timeout = new Promise<void>((resolve) => {
+      timer = setTimeout(resolve, ICE_PRELOAD_MS);
+    });
+    try {
+      await Promise.race([this.ice.load(), timeout]);
+    } finally {
+      clearTimeout(timer);
+    }
+  }
+
   private enterTeardown(): void {
+    this.callEpoch += 1;
     this.callUnsub?.();
     this.signalUnsub?.();
     this.callUnsub = null;
@@ -508,7 +538,6 @@ export class VoiceEngine {
     this.ice.dispose();
     void this.sfu.disconnect();
     this.transport = "mesh";
-    this.sfuAccess = null;
     this.sfuConfigured = null;
     this.sfuProbe = null;
     this.sfuSwitching = false;
@@ -874,8 +903,12 @@ export class VoiceEngine {
       return;
     }
     this.sfuSwitching = true;
+    const epoch = this.callEpoch;
     try {
       const configured = await this.probeSfu();
+      if (epoch !== this.callEpoch) {
+        return;
+      }
       if (
         !configured ||
         decideTransport({
@@ -893,17 +926,22 @@ export class VoiceEngine {
         }
         return;
       }
-      if (!(await this.connectSfu())) {
+      if (!(await this.connectSfu()) && epoch === this.callEpoch) {
         // Fail fast: stay on the mesh and do not hammer a down server.
         this.sfuRetryAt = Date.now() + SFU_RETRY_MS;
       }
     } finally {
-      this.sfuSwitching = false;
+      // A new call resets this flag itself; do not clear one that belongs to it.
+      if (epoch === this.callEpoch) {
+        this.sfuSwitching = false;
+      }
     }
     // A roster change may have arrived during the switch; run the decision once
     // more so a participant leaving never strands the call on the SFU path.
     // This returns immediately when the choice still holds.
-    void this.evaluateTransport();
+    if (epoch === this.callEpoch) {
+      void this.evaluateTransport();
+    }
   }
 
   /** Asks the backend once per call whether a streaming server is available. */
@@ -918,9 +956,14 @@ export class VoiceEngine {
     if (callId === null) {
       return false;
     }
+    const epoch = this.callEpoch;
     this.sfuProbe = (async () => {
-      this.sfuAccess = await this.sfuAccessForCall();
-      this.sfuConfigured = this.sfuAccess !== null;
+      const access = await this.sfuAccessForCall();
+      if (epoch !== this.callEpoch) {
+        // The call ended meanwhile; leave the next call's state alone.
+        return false;
+      }
+      this.sfuConfigured = access !== null;
       this.sfuProbe = null;
       return this.sfuConfigured;
     })();
@@ -932,9 +975,12 @@ export class VoiceEngine {
     if (callId === null) {
       return null;
     }
+    const epoch = this.callEpoch;
     try {
       const access = (await this.port.sfuAccess?.({ callId, scope: "call" })) ?? null;
-      this.sfuAccess = access;
+      if (epoch !== this.callEpoch) {
+        return null;
+      }
       return access;
     } catch {
       return null;
@@ -949,8 +995,9 @@ export class VoiceEngine {
   private async connectSfu(): Promise<boolean> {
     // Re-mint rather than reuse the probe's grant: a fallback followed by a
     // retry can come hours later, after the original token expired.
+    const epoch = this.callEpoch;
     const access = await this.sfuAccessForCall();
-    if (access === null) {
+    if (access === null || epoch !== this.callEpoch) {
       return false;
     }
     const connected = await this.sfu.connect(
@@ -974,6 +1021,11 @@ export class VoiceEngine {
         refreshAccess: () => this.sfuAccessForCall(),
       },
     );
+    if (epoch !== this.callEpoch) {
+      // The call ended while connecting. Ending it already closed the room, and
+      // the next call may own the connection now, so leave it untouched.
+      return false;
+    }
     if (!connected) {
       await this.sfu.disconnect();
       // Tell the roster this client cannot use the server, so nobody stays on
@@ -982,6 +1034,12 @@ export class VoiceEngine {
       return false;
     }
     this.transport = "sfu";
+    // The room was opened with the microphone as it was before connecting. A
+    // mute or unmute during the connection only reached the mesh, so apply the
+    // current decision now, in line with other microphone changes.
+    const synced = this.micSync.then(() => this.sfu.setMic(this.micSending)).catch(() => undefined);
+    this.micSync = synced;
+    await synced;
     // The SFU path is proven: silence the mesh in both directions so nothing
     // is heard or uploaded twice. Video follows through `getVideoTrack`.
     this.mesh.setRemoteAudioEnabled(false);
