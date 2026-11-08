@@ -1,0 +1,53 @@
+{
+  "$schema": "https://docs.renovatebot.com/renovate-schema.json",
+  "extends": ["config:recommended"],
+  "timezone": "UTC",
+  "schedule": ["before 6am on monday"],
+  "commitMessagePrefix": "chore(deps):",
+  "rebaseWhen": "conflicted",
+  "prConcurrentLimit": 5,
+  "separateMajorMinor": true,
+  "automerge": false,
+  "requiredStatusChecks": ["Required checks"],
+  "lockFileMaintenance": {
+    "enabled": true,
+    "schedule": ["before 6am on the first day of the month"]
+  },
+  "packageRules": [
+    {
+      "description": "Convex SDK, helpers and the self-hosted engine image move together; review engine upgrades against docs/convex/README.md.",
+      "groupName": "convex",
+      "matchPackageNames": ["convex", "convex-*", "@convex-dev/*", "ghcr.io/convex/convex-backend"],
+      "automerge": false
+    },
+    {
+      "description": "Tauri shell, CLI, plugins and Rust crates.",
+      "groupName": "tauri",
+      "matchPackageNames": ["tauri", "tauri-*", "tauri-build", "tauri-plugin-*", "@tauri-apps/*"],
+      "automerge": false
+    },
+    {
+      "description": "Desktop shell changes need a native build and manual installer review.",
+      "matchFileNames": ["apps/desktop/**"],
+      "automerge": false
+    },
+    {
+      "description": "Expo SDK and React Native must stay version-aligned.",
+      "groupName": "expo-react-native",
+      "matchPackageNames": [
+        "expo",
+        "expo-*",
+        "@expo/*",
+        "react-native",
+        "react-native-*",
+        "@react-native/*",
+        "@react-native-community/*"
+      ]
+    },
+    {
+      "description": "The web and desktop share one React runtime.",
+      "groupName": "react",
+      "matchPackageNames": ["react", "react-dom", "@types/react", "@types/react-dom"]
+    }
+  ]
+}

@@ -41,6 +41,7 @@ For a candidate, run [Actions, Release](https://github.com/chark1es/Aulora/actio
 
 - [ ] Run `bun install --frozen-lockfile` with Bun 1.4.4 and Node.js 22.23.4.
 - [ ] Run `bun run check`, desktop configuration verification, and the required native CI builds.
+- [ ] Confirm the [performance guards](performance.md) passed with the release build. Record the bundle, embed and Convex query results, and review every budget or allowlist change since the previous release; an unexplained growth is a release blocker.
 - [ ] Install a fresh isolated stack using the documented installer. Verify setup completes and reruns without regenerating the encryption key.
 - [ ] Verify discovery, owner sign-in, registration/invite-only policy, roles, and denied actions with a second account.
 - [ ] Exercise messages, DMs, threads, reactions, editing, search, pinned messages, uploads/downloads, reconnect, and workspace switching.

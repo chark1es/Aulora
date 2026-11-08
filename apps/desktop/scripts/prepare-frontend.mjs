@@ -13,8 +13,22 @@
 // silently disable background blur and noise suppression. Shrinking the embed
 // further needs a deliberate local-asset/CSP decision first.
 //
-//   node scripts/prepare-frontend.mjs
-import { cpSync, readdirSync, rmSync, statSync } from "node:fs";
+// The embed also has a committed size ceiling (`frontend-budget.json`) so a
+// feature that ships every asset eagerly fails the desktop build instead of
+// silently growing the installer. The ceiling is deliberately close to the
+// measured size: raise it with `--update-budget` and review the diff.
+//
+//   node scripts/prepare-frontend.mjs                   # copy and check the ceiling
+//   node scripts/prepare-frontend.mjs --update-budget   # rewrite the ceiling
+import {
+  cpSync,
+  existsSync,
+  readdirSync,
+  readFileSync,
+  rmSync,
+  statSync,
+  writeFileSync,
+} from "node:fs";
 import { dirname, join, relative, resolve, sep } from "node:path";
 import { fileURLToPath } from "node:url";
 
@@ -23,6 +37,10 @@ const desktopDir = resolve(scriptDir, "..");
 const repoRoot = resolve(desktopDir, "..", "..");
 const sourceDir = resolve(repoRoot, "apps", "web", "dist");
 const targetDir = resolve(repoRoot, "apps", "web", "dist-desktop");
+export const budgetPath = resolve(scriptDir, "frontend-budget.json");
+
+/** Headroom added to the measured embed when `--update-budget` writes it. */
+export const DEFAULT_TOLERANCE = 0.1;
 
 /**
  * Whether a web build file is left out of the desktop embed. `relativePath` is
@@ -50,6 +68,33 @@ function directorySize(dir) {
   return total;
 }
 
+/**
+ * Fail when the prepared embed exceeds its committed ceiling. `bytes` is the
+ * total size of `apps/web/dist-desktop`, the directory Tauri ships.
+ */
+export function assertFrontendBudget({ bytes, budget }) {
+  if (!budget || typeof budget.maxBytes !== "number") {
+    throw new Error(
+      `No embed budget at ${budgetPath}. Run \`node scripts/prepare-frontend.mjs --update-budget\`.`,
+    );
+  }
+  if (bytes > budget.maxBytes) {
+    const overMb = ((bytes - budget.maxBytes) / (1024 * 1024)).toFixed(2);
+    throw new Error(
+      `embedded frontend is ${(bytes / (1024 * 1024)).toFixed(1)} MB, over the ` +
+        `${(budget.maxBytes / (1024 * 1024)).toFixed(1)} MB ceiling by ${overMb} MB. ` +
+        "Load new bulk assets on demand or run `node scripts/prepare-frontend.mjs --update-budget` " +
+        "with a reviewed reason.",
+    );
+  }
+  return { bytes, remaining: budget.maxBytes - bytes };
+}
+
+/** A ceiling for the measured embed: the size plus `tolerance` headroom. */
+export function budgetFromBytes(bytes, tolerance = DEFAULT_TOLERANCE) {
+  return { version: 1, tolerance, maxBytes: Math.ceil((bytes * (1 + tolerance)) / 1024) * 1024 };
+}
+
 export function prepareFrontend({ source = sourceDir, target = targetDir } = {}) {
   rmSync(target, { recursive: true, force: true });
   cpSync(source, target, {
@@ -62,9 +107,20 @@ export function prepareFrontend({ source = sourceDir, target = targetDir } = {})
   return { source, target, before: directorySize(source), after: directorySize(target) };
 }
 
-function main() {
+function main(argv = process.argv.slice(2)) {
+  const update = argv.includes("--update-budget");
   const { before, after, target } = prepareFrontend();
   const savedMb = ((before - after) / (1024 * 1024)).toFixed(1);
+  if (update) {
+    const budget = budgetFromBytes(after);
+    writeFileSync(budgetPath, `${JSON.stringify(budget, null, 2)}\n`);
+    process.stdout.write(`prepare-frontend: wrote ${budgetPath} (${budget.maxBytes} B)\n`);
+  } else {
+    const budget = existsSync(budgetPath)
+      ? JSON.parse(readFileSync(budgetPath, "utf8"))
+      : undefined;
+    assertFrontendBudget({ bytes: after, budget });
+  }
   process.stdout.write(
     `prepare-frontend: ${target} is ${(after / (1024 * 1024)).toFixed(1)} MB ` +
       `(${savedMb} MB smaller than the web build)\n`,
