@@ -1,0 +1,14 @@
+[
+  {
+    "userId": 24929257,
+    "login": "chark1es",
+    "acceptedAt": "2026-11-08T16:55:41Z",
+    "statement": "I have read and agree to the Aulora Contributor License Agreement, revision 2026-11-07, SHA-256 5d05aea60ae2b86d92728f07111563ac6df7645b64512fe147f4a9387081e8b3. I have the authority to make its grants for my contributions.",
+    "revision": "2026-11-07",
+    "agreementHash": "5d05aea60ae2b86d92728f07111563ac6df7645b64512fe147f4a9387081e8b3",
+    "agreementUrl": "https://github.com/chark1es/Aulora/blob/78db4549e809decbed1d4fe3d46ebd358f41f5a4/CLA.md",
+    "pullRequest": "https://github.com/chark1es/Aulora/pull/84",
+    "commentId": 6724320053,
+    "commentUrl": "https://github.com/chark1es/Aulora/pull/84#issuecomment-6724320053"
+  }
+]
