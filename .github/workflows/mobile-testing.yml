@@ -1,6 +1,15 @@
 name: Prepare mobile testing
 
 on:
+  workflow_call:
+    inputs:
+      tag:
+        required: true
+        type: string
+      upload-ios:
+        type: boolean
+        default: true
+    secrets: inherit
   workflow_dispatch:
     inputs:
       tag:
