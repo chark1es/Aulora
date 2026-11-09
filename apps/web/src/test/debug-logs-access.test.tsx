@@ -28,7 +28,7 @@ describe("signed-out debug logs", () => {
       setup(desktop);
       // Retry the interaction until the lazy desktop policy has mounted.
       await waitFor(() => {
-        fireEvent.contextMenu(screen.getByTestId("connect"));
+        fireEvent.contextMenu(screen.getByTestId("connect"), { button: 2 });
         expect(screen.getByRole("menuitem", { name: "Debug logs" })).toBeInTheDocument();
       });
       await userEvent.click(await screen.findByRole("menuitem", { name: "Debug logs" }));
@@ -36,6 +36,15 @@ describe("signed-out debug logs", () => {
       expect(screen.getByRole("button", { name: "Download debug report" })).toBeInTheDocument();
     });
   }
+
+  it("preserves Shift+right-click and keyboard native menus", () => {
+    setup();
+    expect(
+      fireEvent.contextMenu(screen.getByTestId("connect"), { button: 2, shiftKey: true }),
+    ).toBe(true);
+    expect(fireEvent.contextMenu(screen.getByTestId("connect"), { button: 0 })).toBe(true);
+    expect(screen.queryByRole("menu")).not.toBeInTheDocument();
+  });
 
   it("preserves browser editing and link menus", () => {
     setup();

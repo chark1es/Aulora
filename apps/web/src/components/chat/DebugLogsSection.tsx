@@ -17,8 +17,13 @@ export function DebugLogsSection() {
       const anchor = document.createElement("a");
       anchor.href = url;
       anchor.download = "aulora-debug-log.json";
-      anchor.click();
-      setTimeout(() => URL.revokeObjectURL(url), 1_000);
+      document.body.appendChild(anchor);
+      try {
+        anchor.click();
+      } finally {
+        anchor.remove();
+      }
+      setTimeout(() => URL.revokeObjectURL(url), 10_000);
       setStatus("Debug report downloaded.");
     } catch {
       setStatus("Could not download the report. Please try again.");

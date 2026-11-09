@@ -77,6 +77,20 @@ describe("debug logs", () => {
     }
   });
 
+  it("scrubs prefixed and camel-case credential keys", () => {
+    for (const key of [
+      "client_secret",
+      "session_token",
+      "db_password",
+      "x_api_key",
+      "authToken",
+      "secretKey",
+      "private_key",
+    ]) {
+      expect(redactDebugText(`${key}=sentinel-value`)).not.toContain("sentinel-value");
+    }
+  });
+
   it("notifies subscribers, preserves snapshot identity between writes, and clears", () => {
     const log = createDebugLog();
     const listener = vi.fn();

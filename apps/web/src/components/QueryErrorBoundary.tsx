@@ -100,7 +100,7 @@ class QueryBoundary extends Component<QueryBoundaryProps, QueryBoundaryState> {
   private failedRetries = 0;
 
   override componentDidCatch(error: Error, info: { componentStack?: string | null }): void {
-    debugLog.record("react.boundary", error, info.componentStack);
+    debugLog.record("react.boundary", info.componentStack, error);
   }
 
   static getDerivedStateFromError(error: unknown): Partial<QueryBoundaryState> {

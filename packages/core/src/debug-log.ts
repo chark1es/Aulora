@@ -22,7 +22,7 @@ export function redactDebugText(text: string): string {
       )
       .replace(/\bBearer\s+[^\s,;"']+/gi, "Bearer [REDACTED]")
       .replace(
-        /\b((?:(?:access|refresh|id)[_-]?)?token|password|secret|cookie|authorization|api[_-]?key)\b["']?\s*[:=]\s*(?:"(?:\\.|[^"\\])*(?:"|\\?$)|'(?:\\.|[^'\\])*(?:'|\\?$)|[^\s,;}]+)/gi,
+        /\b([a-z0-9_-]*(?:token|password|secret|cookie|authorization|api[_-]?key|private[_-]?key)[a-z0-9_-]*)\b["']?\s*[:=]\s*(?:"(?:\\.|[^"\\])*(?:"|\\?$)|'(?:\\.|[^'\\])*(?:'|\\?$)|[^\s,;}]+)/gi,
         "$1=[REDACTED]",
       )
       .replace(/\beyJ[A-Za-z0-9_-]+\.[A-Za-z0-9_-]+\.[A-Za-z0-9_-]+\b/g, "[REDACTED JWT]")

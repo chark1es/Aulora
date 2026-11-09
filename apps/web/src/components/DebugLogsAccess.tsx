@@ -1,8 +1,10 @@
-import { Modal, useContextMenu } from "@aulora/ui-web";
-import { useCallback, useEffect, useState } from "react";
-import { currentSelectionText, decideContextMenu } from "../lib/context-menu-policy";
+import { useContextMenu } from "@aulora/ui-web";
+import { lazy, Suspense, useCallback, useEffect, useState } from "react";
+import { elementFromTarget, isEditableTarget } from "../lib/context-menu-target";
 import { isDesktop } from "../lib/desktop";
-import { DebugLogsSection } from "./chat/DebugLogsSection";
+
+const DebugLogsDialog = lazy(() => import("./DebugLogsDialog"));
+
 import { DesktopContextMenu } from "./DesktopContextMenu";
 
 /** Local diagnostics must remain reachable on connect/sign-in screens. */
@@ -13,12 +15,15 @@ export function DebugLogsAccess() {
   useEffect(() => {
     if (isDesktop()) return;
     const onContextMenu = (event: MouseEvent) => {
-      const decision = decideContextMenu(event, {
-        dev: import.meta.env.DEV,
-        selectionText: currentSelectionText(),
-      });
-      // Keep browser editing, link, media, selection and app-specific menus.
-      if (decision.action !== "suppress") return;
+      // Shift+right-click and keyboard context menus retain the native menu.
+      if (event.defaultPrevented || event.shiftKey || event.button !== 2) return;
+      const element = elementFromTarget(event.target);
+      if (
+        isEditableTarget(element) ||
+        element?.closest("a[href], [data-context-menu-media]") ||
+        window.getSelection()?.toString()
+      )
+        return;
       event.preventDefault();
       openMenu({
         clientX: event.clientX,
@@ -33,9 +38,11 @@ export function DebugLogsAccess() {
   return (
     <>
       <DesktopContextMenu onOpenDebugLogs={showLogs} />
-      <Modal open={open} onClose={() => setOpen(false)} label="Debug logs" size="lg">
-        {open && <DebugLogsSection />}
-      </Modal>
+      {open && (
+        <Suspense fallback={null}>
+          <DebugLogsDialog onClose={() => setOpen(false)} />
+        </Suspense>
+      )}
     </>
   );
 }

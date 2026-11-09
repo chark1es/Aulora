@@ -61,3 +61,8 @@ On web and desktop, right-click an empty area and choose **Debug logs**. This
 works on the connect and sign-in screens with no server session. Text fields
 keep their normal editing menus. Desktop link and media menus also include
 **Debug logs**; app-specific row menus keep their existing actions.
+
+Logs are cleared on successful sign-out, account deletion, and when changing or
+removing server profiles. In a browser, Shift+right-click opens the native
+browser menu; keyboard context-menu actions also keep the native menu. Mobile
+log export currently requires opening settings after sign-in.

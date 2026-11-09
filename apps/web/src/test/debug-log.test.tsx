@@ -36,7 +36,11 @@ describe("client diagnostics", () => {
         static override revokeObjectURL = revokeURL;
       },
     );
-    const click = vi.spyOn(HTMLAnchorElement.prototype, "click").mockImplementation(() => {});
+    const click = vi.spyOn(HTMLAnchorElement.prototype, "click").mockImplementation(function (
+      this: HTMLAnchorElement,
+    ) {
+      expect(document.body.contains(this)).toBe(true);
+    });
     const report = vi.spyOn(debugLog, "report");
     render(<DebugLogsSection />);
     await user.click(screen.getByRole("button", { name: "Generate test error" }));
