@@ -7,6 +7,7 @@ import { KeyboardAwareScrollView } from "react-native-keyboard-controller";
 import { presenceLabel } from "../../lib/presence";
 import type { PushRegistrationState } from "../../lib/use-push-registration";
 import { DeviceSettingsSection } from "../voice/DeviceSettingsSection";
+import { DebugLogsSection } from "./DebugLogsSection";
 import { PaneHeader, RoundButton, useDockClearance } from "./HubPane";
 import { ListGroup, ListHeader, ListRow } from "./List";
 import { PresenceAvatar } from "./PresenceAvatar";
@@ -15,10 +16,11 @@ import { SoundSettingsSection } from "./SoundSettingsSection";
 import { StatusEditor } from "./StatusEditor";
 import type { ViewerProfileData } from "./use-chat-screen-data";
 
-type DetailPage = "profile" | "notifications" | "voice";
+type DetailPage = "profile" | "notifications" | "voice" | "debug";
 type PresenceStatus = PresenceRow["status"];
 
 const PAGE_TITLES: ReadonlyMap<DetailPage, string> = new Map([
+  ["debug", "Debug logs"],
   ["profile", "Profile"],
   ["notifications", "Notifications & sounds"],
   ["voice", "Voice & video"],
@@ -94,6 +96,7 @@ function SettingsDetail({
           </KeyboardAwareScrollView>
         )}
         {page === "notifications" && <SoundSettingsSection />}
+        {page === "debug" && <DebugLogsSection />}
         {page === "voice" && <DeviceSettingsSection />}
       </View>
     </View>
@@ -175,6 +178,13 @@ function SettingsMenu({ canChangeNickname, pushState, onOpen }: SettingsMenuProp
     <View>
       <ListHeader title="Settings" />
       <ListGroup>
+        <ListRow
+          icon="settings"
+          title="Debug logs"
+          subtitle="Export errors and reproduction steps"
+          chevron
+          onPress={() => onOpen("debug")}
+        />
         <ListRow
           icon="pencil"
           title="Profile"

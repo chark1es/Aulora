@@ -177,6 +177,10 @@
     "assets/workletProcessor.js": {
       "raw": 72192,
       "gzip": 13568
+    },
+    "assets/desktop.js": {
+      "raw": 4608,
+      "gzip": 1728
     }
   },
   "initial": {

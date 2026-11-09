@@ -8,8 +8,8 @@ import {
   useRouterState,
 } from "@tanstack/react-router";
 import { lazy, Suspense, useEffect, useState } from "react";
+import { DebugLogsAccess } from "./components/DebugLogsAccess";
 import { DesktopBridge } from "./components/DesktopBridge";
-import { DesktopContextMenu } from "./components/DesktopContextMenu";
 import { DesktopTitleBar } from "./components/DesktopTitleBar";
 import { DesktopUpdateNotice } from "./components/DesktopUpdateNotice";
 import { RouteError } from "./components/RouteError";
@@ -62,7 +62,7 @@ function RootLayout() {
     <ProfileProvider {...(previewing && previewStore !== undefined ? { store: previewStore } : {})}>
       <DesktopUpdateProvider>
         <ContextMenuProvider>
-          <DesktopContextMenu />
+          <DebugLogsAccess />
           <DesktopBridge />
           <DesktopUpdateNotice />
           <DisplaySourcePickerGate />

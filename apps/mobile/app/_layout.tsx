@@ -1,4 +1,5 @@
-import { classifyError } from "@aulora/core";
+import "../src/lib/debug-log";
+import { classifyError, debugLog } from "@aulora/core";
 import { type ErrorBoundaryProps, Stack } from "expo-router";
 import { StatusBar } from "expo-status-bar";
 import { useEffect } from "react";
@@ -79,6 +80,9 @@ export default function RootLayout() {
  * the route, and a transient failure is framed as reconnecting.
  */
 export function ErrorBoundary({ error, retry }: ErrorBoundaryProps) {
+  useEffect(() => {
+    debugLog.record("route.error", error);
+  }, [error]);
   const reconnecting = classifyError(error) === "reconnecting";
   return (
     <View className="flex-1 items-center justify-center gap-3 bg-bg px-6">
