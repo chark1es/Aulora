@@ -125,6 +125,10 @@ export function ChannelSidebar(props: ChannelSidebarProps) {
     return partitionPinnedDms(direct);
   }, [channels, unreadByChannel]);
 
+  // A workspace surface (Notes, Kanban, …) and a conversation are separate
+  // selections: only a chat view may highlight a channel row.
+  const conversationActive = props.mainView === undefined || props.mainView === "chat";
+
   const channelMenu = (channel: ChannelView, active: boolean) =>
     channelMenuItems(channel, active, props.channelActions);
 
@@ -335,7 +339,7 @@ export function ChannelSidebar(props: ChannelSidebarProps) {
                           <VoiceChannelRow
                             channel={channel}
                             title={props.titles.get(channel.id) ?? channel.name}
-                            active={channel.id === activeChannelId}
+                            active={conversationActive && channel.id === activeChannelId}
                             onSelect={selectChannel}
                             nameOf={props.memberNameOf ?? ((id: string) => id)}
                             onContextMenu={(event) => {
@@ -354,7 +358,7 @@ export function ChannelSidebar(props: ChannelSidebarProps) {
                           <ChannelRow
                             channel={channel}
                             title={props.titles.get(channel.id) ?? channel.name}
-                            active={channel.id === activeChannelId}
+                            active={conversationActive && channel.id === activeChannelId}
                             unread={unreadByChannel.get(channel.id)}
                             onSelect={selectChannel}
                             {...(canReorder
@@ -422,7 +426,7 @@ export function ChannelSidebar(props: ChannelSidebarProps) {
                     channel={channel}
                     title={props.titles.get(channel.id) ?? channel.name}
                     viewer={{ ownUserId: props.ownUserId, presenceOf: props.presenceOf }}
-                    active={channel.id === activeChannelId}
+                    active={conversationActive && channel.id === activeChannelId}
                     unread={unreadByChannel.get(channel.id)}
                     onSelect={onSelect}
                     onContextMenu={(event) => {
