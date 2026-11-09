@@ -1,5 +1,5 @@
 /* eslint-disable no-unused-vars -- the base rule reports parameter names in type signatures; Biome checks real unused code */
-import { Badge, Button, EmptyState, Icon, Spinner, Switch, Text } from "@aulora/ui-web";
+import { Badge, Button, cn, EmptyState, Icon, Spinner, Switch, Text } from "@aulora/ui-web";
 import { useMutation, useQuery } from "convex/react";
 import { useState } from "react";
 import { api } from "../../../../../../packages/convex/convex/_generated/api";
@@ -105,6 +105,7 @@ export function BotList({ onOpen }: BotListProps) {
   // The empty state carries its own "New bot"; the header only offers it once
   // there is a list to add to.
   const hasBots = bots !== undefined && bots.length > 0;
+  const isEmpty = bots !== undefined && bots.length === 0;
   const headerAction = hasBots ? (
     <Button
       leading={<Icon name="plus" size={14} />}
@@ -117,7 +118,7 @@ export function BotList({ onOpen }: BotListProps) {
   ) : null;
 
   return (
-    <div className="flex flex-col gap-8" data-testid="bots-settings">
+    <div className={cn("flex flex-col", isEmpty ? "gap-6" : "gap-8")} data-testid="bots-settings">
       <AdminPageHeader
         title="Bots"
         description="Helpers that call the same Convex functions people do, with their own identity."
@@ -138,6 +139,7 @@ export function BotList({ onOpen }: BotListProps) {
         </div>
       ) : bots.length === 0 ? (
         <EmptyState
+          size="sm"
           title="No bots yet"
           description="Create one to give it its own identity, then add code and grant only the permissions it needs."
           details={<SetupSteps steps={BOT_SETUP_STEPS} />}

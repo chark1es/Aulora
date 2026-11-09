@@ -1,6 +1,6 @@
 /* eslint-disable no-unused-vars -- the base rule reports parameter names in type signatures; Biome checks real unused code */
 import { type ChannelSummary, webhookUrl } from "@aulora/core";
-import { Button, ConfirmDialog, EmptyState, Icon, Spinner, Text } from "@aulora/ui-web";
+import { Button, ConfirmDialog, cn, EmptyState, Icon, Spinner, Text } from "@aulora/ui-web";
 import { useMutation, useQuery } from "convex/react";
 import { useState } from "react";
 import { api } from "../../../../../../packages/convex/convex/_generated/api";
@@ -87,6 +87,7 @@ function WebhooksPage(props: Omit<WebhooksSettingsProps, "canManageWebhooks">) {
   }
 
   const editing = dialog?.kind === "edit" ? webhooks?.find((w) => w.id === dialog.id) : undefined;
+  const isEmpty = webhooks !== undefined && webhooks.length === 0;
   const addButton = (
     <Button
       leading={<Icon name="plus" size={14} />}
@@ -101,7 +102,10 @@ function WebhooksPage(props: Omit<WebhooksSettingsProps, "canManageWebhooks">) {
   const setupSteps = <SetupSteps steps={WEBHOOK_STEPS} />;
 
   return (
-    <div className="flex flex-col gap-8" data-testid="webhooks-settings">
+    <div
+      className={cn("flex flex-col", isEmpty ? "gap-6" : "gap-8")}
+      data-testid="webhooks-settings"
+    >
       <AdminPageHeader
         title="Webhooks"
         description="Let other tools post messages into a channel by sending an HTTP request to a secret URL."
@@ -128,6 +132,7 @@ function WebhooksPage(props: Omit<WebhooksSettingsProps, "canManageWebhooks">) {
         </div>
       ) : webhooks.length === 0 ? (
         <EmptyState
+          size="sm"
           title="No webhooks yet"
           description="Create one to get a secret URL for the tool that should post."
           details={setupSteps}
