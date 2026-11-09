@@ -486,6 +486,22 @@ describe("ChannelSidebar", () => {
     expect(within(nav).getByTestId("sidebar-threads")).not.toHaveAttribute("aria-current");
   });
 
+  it("highlights only the open workspace view, not the last channel", () => {
+    render(
+      <ChannelSidebar
+        {...sidebarProps({
+          onOpenThreads: vi.fn(),
+          onOpenNotes: vi.fn(),
+          mainView: "notes",
+          activeChannelId: "general",
+        })}
+      />,
+    );
+    expect(screen.getByTestId("sidebar-notes")).toHaveAttribute("aria-current", "page");
+    expect(screen.getByTestId("channel-row-general")).not.toHaveAttribute("aria-current");
+    expect(screen.getByTestId("channel-row-dm-ada")).not.toHaveAttribute("aria-current");
+  });
+
   it("shows the platform's search shortcut", () => {
     render(<ChannelSidebar {...sidebarProps()} />);
     const search = screen.getByRole("button", { name: /Jump to or search/ });
