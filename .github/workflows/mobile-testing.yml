@@ -9,7 +9,13 @@ on:
       upload-ios:
         type: boolean
         default: true
-    secrets: inherit
+    secrets:
+      APPLE_API_KEY:
+        required: false
+      APPLE_API_ISSUER:
+        required: false
+      APPLE_API_PRIVATE_KEY:
+        required: false
   workflow_dispatch:
     inputs:
       tag:
