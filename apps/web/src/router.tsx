@@ -13,7 +13,7 @@ import { DesktopContextMenu } from "./components/DesktopContextMenu";
 import { DesktopTitleBar } from "./components/DesktopTitleBar";
 import { DesktopUpdateNotice } from "./components/DesktopUpdateNotice";
 import { RouteError } from "./components/RouteError";
-import { DisplaySourcePicker } from "./components/voice/DisplaySourcePicker";
+import { DisplaySourcePickerGate } from "./components/voice/DisplaySourcePickerGate";
 import { WorkspaceMenu } from "./components/WorkspaceMenu";
 import { DesktopUpdateProvider } from "./providers/DesktopUpdateProvider";
 import { ProfileProvider, useProfiles } from "./providers/ProfileProvider";
@@ -65,7 +65,7 @@ function RootLayout() {
           <DesktopContextMenu />
           <DesktopBridge />
           <DesktopUpdateNotice />
-          <DisplaySourcePicker />
+          <DisplaySourcePickerGate />
           <AppShell />
         </ContextMenuProvider>
       </DesktopUpdateProvider>

@@ -23,6 +23,12 @@ export const MAX_SIGNAL_BYTES = 65_536;
  * candidates for ~75 ms and flushes at 16, so this is a safety ceiling.
  */
 export const MAX_SIGNAL_BATCH = 32;
+/**
+ * Bound on the participant rows read when counting a call's seats. Workspace
+ * settings cap a call at 50, so a read at this size always sees every seat and
+ * can never be mistaken for a full-table scan.
+ */
+export const MAX_CALL_SEATS = 64;
 
 export type ReadCtx = Parameters<typeof requireChannelAccess>[0];
 
@@ -54,6 +60,40 @@ export interface CallSummary {
   readonly screenShareUserId: string | null;
   readonly startedAt: number;
   readonly participants: readonly CallParticipantSummary[];
+  /**
+   * Server clock time at which a still-solo call is disconnected, or `null`
+   * when the call has more than one participant. Additive: older clients
+   * ignore it, and older backends omit it (the client then hides the hint).
+   */
+  readonly aloneDeadline: number | null;
+  /**
+   * The workspace's solo-call window in seconds, or `null` when it no longer
+   * applies. Kept on a call that ended for being solo so the notice can name
+   * the configured duration instead of assuming five minutes.
+   */
+  readonly aloneTimeoutSeconds: number | null;
+  /** Why the call ended, when not just its last person leaving. */
+  readonly endedReason: string | null;
+}
+
+/**
+ * A call's participant rows, read in one bounded batch. A seat count at the
+ * cap already means "more than one user", so the solo check never needs the
+ * rest of an oversized roster.
+ */
+export async function loadCallSeats(
+  ctx: ReadCtx,
+  callId: Id<"calls">,
+): Promise<Doc<"callParticipants">[]> {
+  return await ctx.db
+    .query("callParticipants")
+    .withIndex("by_call", (q) => q.eq("callId", callId))
+    .take(MAX_CALL_SEATS);
+}
+
+/** Distinct users in a call; devices never add a second participant. */
+export function distinctParticipantCount(rows: readonly Doc<"callParticipants">[]): number {
+  return new Set(rows.map((row) => row.userId)).size;
 }
 
 /** Loads a call's participants as client views (media state is client-local). */
@@ -62,10 +102,7 @@ export async function loadParticipants(
   callId: Id<"calls">,
   viewerId: string,
 ): Promise<CallParticipantSummary[]> {
-  const rows = await ctx.db
-    .query("callParticipants")
-    .withIndex("by_call", (q) => q.eq("callId", callId))
-    .collect();
+  const rows = await loadCallSeats(ctx, callId);
   return rows
     .sort((a, b) => a.joinedAt - b.joinedAt)
     .map((row) => ({
@@ -100,6 +137,12 @@ export async function toCallSummary(
     screenShareUserId: call.screenShareUserId ?? null,
     startedAt: call.startedAt,
     participants: await loadParticipants(ctx, call._id, viewerId),
+    aloneDeadline: call.aloneDeadline ?? null,
+    aloneTimeoutSeconds:
+      call.aloneSince !== undefined && call.aloneDeadline !== undefined
+        ? Math.round((call.aloneDeadline - call.aloneSince) / 1000)
+        : null,
+    endedReason: call.endedReason ?? null,
   };
 }
 
@@ -177,8 +220,32 @@ export async function removeParticipant(
   }
 }
 
+/**
+ * Cancels a call's pending solo-call enforcement job. Cancelling a job that
+ * has already run throws, which is harmless while ending a call: the outcome
+ * it would have produced is already happening.
+ */
+export async function cancelAloneJob(
+  ctx: MutationCtx,
+  jobId: Id<"_scheduled_functions"> | undefined,
+): Promise<void> {
+  if (jobId === undefined) {
+    return;
+  }
+  try {
+    await ctx.scheduler.cancel(jobId);
+  } catch {
+    // Already completed: there is nothing left to cancel.
+  }
+}
+
 /** Ends a call: clears participants, signalling and ringing, marks it ended. */
-export async function endCall(ctx: MutationCtx, call: Doc<"calls">): Promise<void> {
+export async function endCall(
+  ctx: MutationCtx,
+  call: Doc<"calls">,
+  options: { readonly endedReason?: Doc<"calls">["endedReason"] } = {},
+): Promise<void> {
+  await cancelAloneJob(ctx, call.aloneJobId);
   const participants = await ctx.db
     .query("callParticipants")
     .withIndex("by_call", (q) => q.eq("callId", call._id))
@@ -197,6 +264,12 @@ export async function endCall(ctx: MutationCtx, call: Doc<"calls">): Promise<voi
     status: "ended",
     ringingUserIds: [],
     screenShareUserId: undefined,
+    // The enforcement job that may have triggered this end has fired; keep the
+    // window on an alone-ended call so the client notice can name the
+    // configured duration, but every other end clears it.
+    aloneJobId: undefined,
+    ...(options.endedReason === "alone" ? {} : { aloneSince: undefined, aloneDeadline: undefined }),
+    ...(options.endedReason !== undefined ? { endedReason: options.endedReason } : {}),
     endedAt: Date.now(),
     updatedAt: Date.now(),
   });
@@ -406,21 +479,29 @@ async function evictStaleSeat(
   ctx: MutationCtx,
   row: Doc<"callParticipants">,
   userId: string,
-): Promise<void> {
+): Promise<Id<"calls"> | null> {
   const other = await ctx.db.get(row.callId);
   if (other !== null && other.status !== "ended") {
     await removeParticipant(ctx, other, userId);
     await finishIfEmpty(ctx, other._id);
-  } else {
-    await ctx.db.delete(row._id);
+    return other._id;
   }
+  await ctx.db.delete(row._id);
+  return null;
+}
+
+/** Where {@link prepareSeat} left the caller, and any call it emptied them from. */
+export interface PreparedSeat {
+  /** `present` when this call already had a row for the user. */
+  readonly seat: "present" | "absent";
+  /** Calls the user left because the same device switched to this one. */
+  readonly leftCallIds: readonly Id<"calls">[];
 }
 
 /**
  * A user is in one call, from one device. The same device switching calls
  * drops the previous seat. A different device must pass `takeover`, which
- * disconnects the other one. Returns whether this call already had a seat
- * for the user (so the caller must not insert a second row).
+ * disconnects the other one.
  */
 export async function prepareSeat(
   ctx: MutationCtx,
@@ -431,7 +512,7 @@ export async function prepareSeat(
     readonly call: Nullable<Doc<"calls">>;
     readonly maxParticipants: number;
   },
-): Promise<"present" | "absent"> {
+): Promise<PreparedSeat> {
   const clientId = assertClientId(args.clientId);
   const rows = await ctx.db
     .query("callParticipants")
@@ -444,14 +525,18 @@ export async function prepareSeat(
   if (target !== null) {
     await ensureSeatAvailable(ctx, target, here !== undefined, args.maxParticipants);
   }
+  const leftCallIds: Id<"calls">[] = [];
   for (const row of rows) {
     if (target !== null && row.callId === target._id) {
       await claimSeat(ctx, row, target, args.userId, clientId);
     } else {
-      await evictStaleSeat(ctx, row, args.userId);
+      const left = await evictStaleSeat(ctx, row, args.userId);
+      if (left !== null) {
+        leftCallIds.push(left);
+      }
     }
   }
-  return here === undefined ? "absent" : "present";
+  return { seat: here === undefined ? "absent" : "present", leftCallIds };
 }
 
 /** Internal helper kept for feature parity with the other domain modules. */

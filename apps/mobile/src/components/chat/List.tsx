@@ -1,7 +1,9 @@
+import { badgeCount } from "@aulora/core";
 import type { IconName } from "@aulora/tokens";
-import { Icon, Text, usePalette } from "@aulora/ui-native";
+import { CountBadge, Icon, Text, usePalette } from "@aulora/ui-native";
 import { Children, type ReactNode } from "react";
 import { Pressable, StyleSheet, View } from "react-native";
+import { type RowUnread, rowAccessibilityLabel } from "../../lib/conversation-row";
 
 /** Small caps label above a group, with an optional action on the right. */
 export function ListHeader({
@@ -64,6 +66,12 @@ export interface ListRowProps {
   readonly trailing?: ReactNode;
   readonly tone?: "default" | "danger" | "accent";
   readonly selected?: boolean;
+  /** Draws the small inset accent tick used by conversation rows. */
+  readonly activeTick?: boolean;
+  /** Unread state; mentions become a count pill, plain unread a dot. */
+  readonly unread?: RowUnread | undefined;
+  /** Muted rows keep legible text instead of losing contrast. */
+  readonly muted?: boolean;
   readonly chevron?: boolean;
   readonly disabled?: boolean;
   readonly accessibilityLabel?: string;
@@ -106,7 +114,7 @@ function RowLabel({
     <View className="min-w-0 flex-1">
       <Text
         numberOfLines={1}
-        className={emphasized ? "font-semibold" : ""}
+        className={emphasized ? "font-medium" : ""}
         style={color !== undefined ? { color } : undefined}
       >
         {title}
@@ -120,35 +128,97 @@ function RowLabel({
   );
 }
 
+/** The quiet inset tick that anchors the selected conversation. */
+function ActiveTick() {
+  const palette = usePalette();
+  return (
+    <View
+      accessibilityElementsHidden
+      importantForAccessibility="no-hide-descendants"
+      style={{
+        position: "absolute",
+        left: 4,
+        top: "50%",
+        marginTop: -6,
+        width: 2,
+        height: 12,
+        borderRadius: 1,
+        backgroundColor: palette.accent,
+      }}
+    />
+  );
+}
+
+/** The fixed 16pt trailing slot shared by a mention pill and a plain unread dot. */
+function UnreadSlot({ unread, muted }: { readonly unread: RowUnread; readonly muted: boolean }) {
+  const palette = usePalette();
+  const count = badgeCount(unread.mentionCount);
+  if (count !== null) {
+    return (
+      <CountBadge
+        count={unread.mentionCount}
+        max={99}
+        size="sm"
+        tone={muted ? "muted" : "accent"}
+        className="shrink-0"
+      />
+    );
+  }
+  if (!unread.unread) return null;
+  return (
+    <View className="h-4 w-4 shrink-0 items-center justify-center">
+      <View
+        className="h-2 w-2 rounded-full"
+        style={{ backgroundColor: muted ? palette["text-muted"] : palette.accent }}
+      />
+    </View>
+  );
+}
+
 /** One tappable row: leading glyph or avatar, title and detail, trailing accessory. */
 export function ListRow(props: ListRowProps) {
   const { title, tone = "default", selected = false, disabled = false } = props;
   const palette = usePalette();
+  const muted = props.muted === true;
   const tint =
     tone === "danger" ? palette.danger : tone === "accent" || selected ? palette.accent : null;
+  const emphasized = selected || (props.unread?.unread === true && !muted);
+  const labelColor = selected
+    ? undefined
+    : tint !== null
+      ? tint
+      : muted
+        ? palette["text-muted"]
+        : undefined;
   // A row with nothing to do is plain content, not a button that does nothing.
   const inert = disabled || (props.onPress === undefined && props.onLongPress === undefined);
   return (
     <Pressable
       accessibilityRole={inert && !disabled ? undefined : "button"}
-      accessibilityLabel={props.accessibilityLabel ?? title}
+      accessibilityLabel={
+        props.accessibilityLabel ?? rowAccessibilityLabel(title, props.unread, muted)
+      }
       accessibilityState={{ selected, disabled: inert }}
       disabled={inert}
       onPress={props.onPress}
       onLongPress={props.onLongPress}
       delayLongPress={280}
-      className={`min-h-[52px] flex-row items-center gap-3 px-3 py-2 active:bg-surface-3 ${
-        selected ? "bg-accent-soft" : ""
+      className={`relative min-h-[52px] flex-row items-center gap-3 px-3 py-2 ${
+        selected ? "bg-accent-soft active:bg-accent-soft" : "active:bg-surface-3"
       } ${disabled ? "opacity-50" : ""}`}
     >
+      {props.activeTick === true && <ActiveTick />}
       <RowLeading leading={props.leading} icon={props.icon} color={tint ?? palette["text-muted"]} />
       <RowLabel
         title={title}
         subtitle={props.subtitle}
-        emphasized={selected}
-        color={tint !== null && tone !== "default" ? tint : undefined}
+        emphasized={emphasized}
+        color={labelColor}
       />
       {props.trailing}
+      {!selected && props.unread !== undefined && (
+        <UnreadSlot unread={props.unread} muted={muted} />
+      )}
       {props.chevron === true && (
         <Icon name="chevron-right" size={18} color={palette["text-muted"]} />
       )}

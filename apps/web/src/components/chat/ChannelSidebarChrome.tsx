@@ -1,6 +1,7 @@
 /* eslint-disable no-unused-vars -- the base rule reports parameter names in type signatures; Biome checks real unused code */
 import { ConfirmDialog, cn, Icon } from "@aulora/ui-web";
 import { forwardRef, type ReactNode, useEffect, useRef, useState } from "react";
+import { ActiveBar } from "./ActiveBar";
 import type { ChannelSidebarProps } from "./channel-sidebar-model";
 import { PresenceAvatar, type PresenceStatus } from "./PresenceAvatar";
 import type { CategoryHeaderDrag } from "./use-category-drag";
@@ -116,16 +117,28 @@ export function SidebarNavButton({
       aria-current={active ? "page" : undefined}
       onClick={onClick}
       className={cn(
-        "flex h-8 w-full items-center gap-2.5 rounded-[8px] pl-3 pr-2 text-left text-[13px] transition focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent",
+        "relative flex h-8 w-full items-center gap-2 rounded-[6px] px-2 text-left text-[13px] transition-colors duration-150 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-accent",
         active
-          ? "bg-surface-3 font-semibold text-text"
-          : "text-text-muted hover:bg-surface-3 hover:text-text",
+          ? "bg-accent-soft font-medium text-text"
+          : "text-text-muted hover:bg-surface-2 hover:text-text",
       )}
     >
-      <span className={cn("flex shrink-0 items-center", active && "text-accent")}>{icon}</span>
+      <ActiveBar active={active} />
+      <span
+        className={cn(
+          "flex shrink-0 items-center transition-colors",
+          active ? "text-accent" : "text-text-muted",
+        )}
+      >
+        {icon}
+      </span>
       <span className="min-w-0 flex-1 truncate">{label}</span>
       {badge !== undefined && badge > 0 && (
-        <span className="flex h-4 min-w-4 items-center justify-center rounded-full bg-accent px-1 text-[10px] font-bold text-on-accent">
+        <span
+          role="img"
+          aria-label={`${badge > 9 ? "9+" : String(badge)} unread mentions`}
+          className="flex h-4 min-w-4 items-center justify-center rounded-full bg-accent px-1 pt-px text-[11px] font-semibold leading-none tabular-nums text-on-accent dark:text-bg"
+        >
           {badge > 9 ? "9+" : String(badge)}
         </span>
       )}

@@ -51,6 +51,7 @@ const state: PipCallState = {
   canStream: true,
   mediaKind: "none",
   speakerName: "",
+  aloneDeadline: null,
   participants: [
     {
       id: "me",
@@ -137,6 +138,14 @@ describe("the call window", () => {
     await mount(state);
     await user.click(screen.getByRole("button", { name: "Leave call" }));
     expect(mocks.emitTo).toHaveBeenCalledWith(MAIN_WINDOW_LABEL, PIP_ACTION_EVENT, "leave");
+  });
+
+  it("warns about a solo call and can ask the server to stay", async () => {
+    const user = userEvent.setup();
+    await mount({ ...state, aloneDeadline: Date.now() + 30_000 });
+    expect(screen.getByText("0:30")).toBeInTheDocument();
+    await user.click(screen.getByRole("button", { name: "Stay" }));
+    expect(mocks.emitTo).toHaveBeenCalledWith(MAIN_WINDOW_LABEL, PIP_ACTION_EVENT, "stay");
   });
 
   it("closes only itself, and hands focus back to the app", async () => {

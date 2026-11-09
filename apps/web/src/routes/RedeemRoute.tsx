@@ -1,8 +1,15 @@
-import { Button, Card, Heading, Text } from "@aulora/ui-web";
+import { Button, Card, Heading, Spinner, Text } from "@aulora/ui-web";
 import { useNavigate, useParams } from "@tanstack/react-router";
-import { RedeemSession } from "../components/admin/RedeemScreen";
+import { lazy, Suspense } from "react";
 import { parseInviteCode } from "../lib/invites";
 import { useProfiles } from "../providers/ProfileProvider";
+
+// Redeeming pulls in the whole signed-out session gate (and its sign-in screen),
+// which no other route needs once the workspace is joined. An invite link is a
+// rare entry point, so its session surface loads after the route resolves.
+const RedeemSession = lazy(() =>
+  import("../components/admin/RedeemScreen").then((module) => ({ default: module.RedeemSession })),
+);
 
 /** `/invite/:code` — accepts an invite for the active server profile. */
 export function RedeemRoute() {
@@ -39,6 +46,18 @@ export function RedeemRoute() {
   }
 
   return (
-    <RedeemSession profile={activeProfile} code={code} onDone={() => void navigate({ to: "/" })} />
+    <Suspense
+      fallback={
+        <div className="pane flex flex-1 items-center justify-center">
+          <Spinner size={28} label="Loading invite" />
+        </div>
+      }
+    >
+      <RedeemSession
+        profile={activeProfile}
+        code={code}
+        onDone={() => void navigate({ to: "/" })}
+      />
+    </Suspense>
   );
 }

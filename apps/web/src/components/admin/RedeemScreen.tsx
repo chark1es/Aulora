@@ -1,4 +1,5 @@
 import type { ServerProfile } from "@aulora/core";
+import { CONVEX_AUTH_CLIENT_OPTIONS } from "@aulora/core";
 import { Button, Card, Heading, Spinner, Text } from "@aulora/ui-web";
 import { type AuthClient, ConvexBetterAuthProvider } from "@convex-dev/better-auth/react";
 import { ConvexReactClient, useMutation, useQuery } from "convex/react";
@@ -10,6 +11,7 @@ import {
   createAuloraAuthClient,
 } from "../../lib/auth-client";
 import { redeemErrorMessage, redeemOutcomeMessage } from "../../lib/invites";
+import { createProviderAuth } from "../../lib/provider-auth";
 import { AuthFrame } from "../AuthFrame";
 import { SignInScreen } from "../SignInScreen";
 
@@ -77,14 +79,19 @@ export interface RedeemSessionProps {
 
 /** Convex + Better Auth session scoped to the redeem route. */
 export function RedeemSession({ profile, code, onDone }: RedeemSessionProps) {
-  const convex = useMemo(() => new ConvexReactClient(profile.convexUrl), [profile.convexUrl]);
+  const convex = useMemo(
+    () => new ConvexReactClient(profile.convexUrl, CONVEX_AUTH_CLIENT_OPTIONS),
+    [profile.convexUrl],
+  );
   const authClient = useMemo(() => createAuloraAuthClient(profile.siteUrl), [profile.siteUrl]);
+  const providerAuth = useMemo(() => createProviderAuth(authClient), [authClient]);
   return (
     <ConvexBetterAuthProvider
       client={convex}
       // Same upstream prop-generation friction as ProfileSession; runtime is
-      // unchanged.
-      authClient={authClient as unknown as AuthClient}
+      // unchanged. `providerAuth.client` keeps the last token across a transient
+      // auth outage instead of reporting the person signed out.
+      authClient={providerAuth.client as unknown as AuthClient}
     >
       <RedeemGate authClient={authClient} profile={profile} code={code} onDone={onDone} />
     </ConvexBetterAuthProvider>

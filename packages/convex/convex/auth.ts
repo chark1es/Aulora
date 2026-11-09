@@ -3,6 +3,7 @@ import { convex } from "@convex-dev/better-auth/plugins";
 import { requireActionCtx } from "@convex-dev/better-auth/utils";
 import { type BetterAuthOptions, betterAuth } from "better-auth/minimal";
 import { bearer, genericOAuth, twoFactor } from "better-auth/plugins";
+import { ConvexError } from "convex/values";
 import { components, internal } from "./_generated/api";
 import type { DataModel } from "./_generated/dataModel";
 import { query } from "./_generated/server";
@@ -12,6 +13,7 @@ import { type SignupPolicy, shouldAutoAttachRoles, signupBlocked } from "./lib/a
 import {
   type Env,
   getBetterAuthSecret,
+  getMinPasswordLength,
   getOidcSettings,
   getSocialProviderCredentials,
   getTrustedOrigins,
@@ -28,15 +30,6 @@ const SESSION_REFRESH_SECONDS = 60 * 60 * 24;
 
 function publicSiteUrl(env: Env): string {
   return env.SITE_URL ?? env.CONVEX_SITE_URL ?? "http://localhost:3211";
-}
-
-/** Better Auth's minimum password length; clamped to a sane range, default 8. */
-function minPasswordLength(raw: string | undefined): number {
-  const parsed = Number(raw);
-  if (!Number.isFinite(parsed)) {
-    return 8;
-  }
-  return Math.min(128, Math.max(1, Math.floor(parsed)));
 }
 
 /**
@@ -56,6 +49,12 @@ export const createAuthOptions = (
   pendingGroups: Map<string, string[]>,
   env: Env = process.env,
   localEnabled: boolean = resolveLocalAuthEnabled(env, undefined).enabled,
+  /**
+   * First-run owner creation. It bypasses the public signup policy explicitly:
+   * a fresh instance has no server/owner yet, so ordinary signup is denied
+   * (`signupBlocked`) while the setup credential path must still work.
+   */
+  setupMode = false,
 ) => {
   const secret = getBetterAuthSecret(env);
   const oidc = getOidcSettings(env);
@@ -131,7 +130,7 @@ export const createAuthOptions = (
       disableSignUp: env.AUTH_LOCAL_SIGNUP === "false",
       // Safe default of 8; an operator running a throwaway test deployment can
       // lower it via AUTH_MIN_PASSWORD_LENGTH (e.g. short demo accounts).
-      minPasswordLength: minPasswordLength(env.AUTH_MIN_PASSWORD_LENGTH),
+      minPasswordLength: getMinPasswordLength(env),
     },
     plugins,
     user: {
@@ -140,6 +139,29 @@ export const createAuthOptions = (
         // accounts must let people delete theirs. Better Auth removes its own
         // user/account/session rows first; the app cleanup runs afterwards.
         enabled: true,
+        // Account deletion is the only "leave" path, so the last owner must
+        // hand ownership to someone else first. Without this check a sole
+        // owner could leave the workspace with no owner at all.
+        beforeDelete: async (user) => {
+          // Check the last-owner guard before Better Auth removes anything.
+          // `deletionCheck` also treats an id whose auth user is gone as not
+          // live, so a ghost cannot make a sole real owner look replaceable.
+          const check = await requireActionCtx(ctx).runQuery(internal.owners.deletionCheck, {
+            userId: user.id,
+          });
+          if (!check.allowed) {
+            throw new ConvexError(
+              check.reason ??
+                "You are the only owner. Make another member an owner before deleting your account.",
+            );
+          }
+          // Reserve the ownership transition atomically. A read-only check
+          // cannot keep two simultaneous owner deletions from both passing;
+          // the reservation serializes them and is consumed by `afterDelete`.
+          await requireActionCtx(ctx).runMutation(internal.owners.reserveAccountDeletion, {
+            userId: user.id,
+          });
+        },
         afterDelete: async (user) => {
           await requireActionCtx(ctx).runMutation(internal.accountDeletion.deleteUserData, {
             userId: user.id,
@@ -185,6 +207,9 @@ export const createAuthOptions = (
       user: {
         create: {
           before: async (user): Promise<boolean> => {
+            if (setupMode) {
+              return true;
+            }
             const policy: SignupPolicy = await requireActionCtx(ctx).runQuery(
               internal.setupState.authPolicy,
               {},
@@ -250,7 +275,7 @@ export const createAuth = (ctx: GenericCtx<DataModel>) => {
  * sign-in, or runs invite-only, can still create the operator credential.
  */
 export const createSetupAuth = (ctx: GenericCtx<DataModel>) => {
-  const options = createAuthOptions(ctx, new Map(), process.env, true);
+  const options = createAuthOptions(ctx, new Map(), process.env, true, true);
   return betterAuth({
     ...options,
     emailAndPassword: { ...options.emailAndPassword, enabled: true, disableSignUp: false },

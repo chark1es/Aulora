@@ -96,7 +96,6 @@ function emptyMessage(ctl: BoardController): string {
 export function BoardEmpty({ ctl }: { readonly ctl: BoardController }) {
   return (
     <EmptyState
-      icon="kanban"
       title={ctl.archivedBoards ? "No archived boards" : "Plan your next project"}
       message={emptyMessage(ctl)}
     >

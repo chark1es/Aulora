@@ -4,6 +4,7 @@ import { api } from "./_generated/api";
 import { httpAction } from "./_generated/server";
 import { authComponent, createAuth } from "./auth";
 import { registerBotRoutes } from "./botHttp";
+import { registerNativeAuthRoutes } from "./nativeAuth";
 import { registerWebhookRoutes } from "./webhookHttp";
 
 const http = httpRouter();
@@ -13,6 +14,9 @@ const http = httpRouter();
 authComponent.registerRoutes(http, createAuth, {
   cors: { allowedHeaders: [], exposedHeaders: ["set-auth-token"] },
 });
+
+// First-party OAuth start/finish/exchange for native and desktop clients.
+registerNativeAuthRoutes(http);
 
 // Bot token exchange and the bot-runner API (see `botHttp.ts`).
 registerBotRoutes(http);
@@ -40,7 +44,16 @@ http.route({
       convexUrl,
       siteUrl: config.siteUrl,
       iconSeed: config.iconSeed,
-      auth: config.auth,
+      // The discovery contract is consumed by older strict parsers. Do not add
+      // fields here: `minPasswordLength` is newer and is exposed only through
+      // the live `server.publicConfig` query, which old clients do not validate.
+      auth: {
+        local: {
+          enabled: config.auth.local.enabled,
+          signup: config.auth.local.signup,
+        },
+        providers: config.auth.providers,
+      },
       encryption: config.encryption,
     };
     return new Response(JSON.stringify(document), {

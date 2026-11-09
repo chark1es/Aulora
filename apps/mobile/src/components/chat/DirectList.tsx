@@ -1,9 +1,11 @@
 /* eslint-disable no-unused-vars -- the base rule reports parameter names in type signatures; Biome checks real unused code */
 import { type ChannelView, dmPartnerId, type PresenceRow, partitionPinnedDms } from "@aulora/core";
-import { Icon, Text, usePalette } from "@aulora/ui-native";
+import { Heading, Icon, Text, usePalette } from "@aulora/ui-native";
 import { View } from "react-native";
 import { ScrollView } from "react-native-gesture-handler";
+import type { RowUnread } from "../../lib/conversation-row";
 import { ChannelFlags } from "./ChannelList";
+import { GroupAvatar } from "./GroupAvatar";
 import { PaneHeader, RoundButton, useDockClearance } from "./HubPane";
 import { ListGroup, ListRow } from "./List";
 import { MemberAvatar } from "./MemberAvatar";
@@ -17,7 +19,6 @@ interface DirectAvatarProps {
 
 /** The other person with their presence, two overlapped faces for a group, or yourself for notes. */
 function DirectAvatar({ channel, ownUserId, presence }: DirectAvatarProps) {
-  const palette = usePalette();
   const partner = dmPartnerId(channel, ownUserId);
   const others = (channel.memberIds ?? []).filter((userId) => userId !== ownUserId);
   if (partner !== undefined) {
@@ -27,17 +28,7 @@ function DirectAvatar({ channel, ownUserId, presence }: DirectAvatarProps) {
   if (others.length < 2) {
     return <MemberAvatar userId={ownUserId} size={36} />;
   }
-  return (
-    <View style={{ width: 36, height: 36 }}>
-      <MemberAvatar userId={others[0] ?? ownUserId} size={24} />
-      <View
-        className="absolute bottom-0 right-0 rounded-pill border-2"
-        style={{ borderColor: palette["surface-2"] }}
-      >
-        <MemberAvatar userId={others[1] ?? ownUserId} size={22} />
-      </View>
-    </View>
-  );
+  return <GroupAvatar userIds={others} size={36} />;
 }
 
 /** Group size for a group, otherwise the other person's custom status when they set one. */
@@ -55,13 +46,12 @@ function directSubtitle(
 }
 
 function DirectEmpty() {
-  const palette = usePalette();
   return (
-    <View className="items-center gap-3 px-8 pt-16">
-      <View className="h-14 w-14 items-center justify-center rounded-pill bg-surface-2">
-        <Icon name="message" size={24} color={palette["text-muted"]} />
-      </View>
-      <Text tone="muted" className="text-center">
+    <View className="gap-1 px-1 pt-12">
+      <Heading level={3} accessibilityRole="header">
+        No direct messages yet
+      </Heading>
+      <Text size="sm" tone="muted">
         Message a teammate directly, or start a group.
       </Text>
     </View>
@@ -83,6 +73,7 @@ export interface DirectListProps {
   readonly channels: readonly ChannelView[];
   readonly titles: ReadonlyMap<string, string>;
   readonly activeChannelId: string | undefined;
+  readonly unreadByChannel: ReadonlyMap<string, RowUnread>;
   readonly ownUserId: string;
   readonly presence: readonly PresenceRow[];
   readonly onOpenChannel: (channelId: string) => void;
@@ -125,6 +116,9 @@ export function DirectList(props: DirectListProps) {
               title={titles.get(entry.id) ?? entry.name}
               subtitle={directSubtitle(entry, ownUserId, presence)}
               selected={entry.id === props.activeChannelId}
+              activeTick={entry.id === props.activeChannelId}
+              muted={entry.muted === true}
+              unread={props.unreadByChannel.get(entry.id)}
               trailing={<DirectTrailing channel={entry} />}
               leading={<DirectAvatar channel={entry} ownUserId={ownUserId} presence={presence} />}
               onPress={() => {

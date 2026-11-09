@@ -10,7 +10,7 @@ import {
   Permission,
   type RoleMentionTarget,
 } from "@aulora/core";
-import { cn, Icon, Spinner } from "@aulora/ui-web";
+import { cn, EmptyState, Icon, Spinner } from "@aulora/ui-web";
 import { useConvex, useMutation, useQuery } from "convex/react";
 import { lazy, Suspense, useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { api } from "../../../../../packages/convex/convex/_generated/api";
@@ -135,7 +135,9 @@ export interface ChatViewProps {
   readonly unreadByChannel: ReadonlyMap<string, ChannelUnread>;
   readonly admin: {
     readonly viewer: AdminPanelViewer;
-    readonly ownerId: string | null;
+    readonly ownerIds: readonly string[];
+    /** False against a backend that predates multiple-owner management. */
+    readonly ownerManagementAvailable: boolean;
     readonly roleViews: readonly RoleView[];
     readonly categories: readonly CategoryView[];
   };
@@ -344,10 +346,10 @@ function ChatViewContent({
       displayName: memberDisplayName(member, member.userId === ownUserId ? ownName : "Member"),
       roleIds: member.roleIds,
       roleNames: roleNamesFor(member, admin.roleViews),
-      isOwner: member.userId === admin.ownerId,
+      isOwner: admin.ownerIds.includes(member.userId),
       roleColor: roleColorFor(member, admin.roleViews),
     }),
-    [admin.ownerId, admin.roleViews, ownUserId, ownName],
+    [admin.ownerIds, admin.roleViews, ownUserId, ownName],
   );
   const convex = useConvex();
   // Mention autocomplete searches the server instead of filtering a roster the
@@ -1689,7 +1691,8 @@ function ChatViewContent({
           <Suspense fallback={<SurfaceFallback />}>
             <AdminPanel
               viewer={admin.viewer}
-              ownerId={admin.ownerId}
+              ownerIds={admin.ownerIds}
+              ownerManagementAvailable={admin.ownerManagementAvailable}
               roles={admin.roleViews}
               members={rosterRows.length > 0 ? rosterRows : EMPTY_MEMBERS}
               categories={admin.categories}
@@ -1772,21 +1775,17 @@ function ChatViewContent({
                 onOpen={openThreadFromInbox}
               />
             ) : channel === undefined ? (
-              <div className="flex flex-1 flex-col items-center justify-center gap-3 p-8 text-center">
-                <span className="flex h-12 w-12 items-center justify-center rounded-[10px] bg-accent-soft text-accent">
-                  <Icon name="message" size={24} />
-                </span>
-                <h2 className="text-lg font-semibold text-text">
-                  {channels.length === 0 ? "No conversations yet" : "Pick a conversation"}
-                </h2>
-                <p className="max-w-xs text-sm text-text-muted">
-                  {channels.length === 0
+              <EmptyState
+                className="px-8"
+                title={channels.length === 0 ? "No conversations yet" : "Pick a conversation"}
+                description={
+                  channels.length === 0
                     ? canCreateChannel
                       ? "Create a channel from the sidebar, or start a direct message."
                       : "Start a direct message, or ask an admin to add you to a channel."
-                    : "Choose a channel or direct message from the sidebar."}
-                </p>
-              </div>
+                    : "Choose a channel or direct message from the sidebar."
+                }
+              />
             ) : channel.kind === "voice" ? (
               <Suspense fallback={<SurfaceFallback />}>
                 <VoiceChannelView channel={channel} title={title} identity={callIdentity} />

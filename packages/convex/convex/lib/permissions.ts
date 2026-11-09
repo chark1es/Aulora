@@ -16,6 +16,7 @@ import type { Doc, Id } from "../_generated/dataModel";
 import type { MutationCtx, QueryCtx } from "../_generated/server";
 import { requireAuth } from "./auth";
 import { loadBotByUserId } from "./botAuth";
+import { isOwner as isWorkspaceOwner } from "./owners";
 
 /** Synthetic role id a bot holds instead of `@everyone`. */
 export const BOT_ROLE_ID = "@bot";
@@ -96,7 +97,7 @@ export async function requireMember(ctx: ReadCtx, userId: string): Promise<Membe
     return member;
   }
   const server = await ctx.db.query("server").first();
-  if (server !== null && server.ownerId === userId) {
+  if (isWorkspaceOwner(server, userId)) {
     return null;
   }
   throw new ConvexError("Not a member of this workspace");
@@ -130,7 +131,7 @@ export async function loadPermissionContext(
     }
   }
   const server = await ctx.db.query("server").first();
-  const isOwner = server !== null && server.ownerId === userId;
+  const isOwner = isWorkspaceOwner(server, userId);
   const member = await memberRow(ctx, userId);
   // Fail closed: without a member row (or owner status) the actor holds no
   // roles, so resolving `@everyone` would otherwise grant a non-member access.
@@ -288,7 +289,7 @@ export async function requireModerator(
     target: {
       userId: targetUserId,
       roleIds: target?.roleIds ?? [],
-      isOwner: server !== null && server.ownerId === targetUserId,
+      isOwner: isWorkspaceOwner(server, targetUserId),
     },
     roles: context.roles,
   });

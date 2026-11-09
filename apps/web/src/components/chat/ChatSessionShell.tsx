@@ -6,6 +6,8 @@ import { useQuery } from "convex/react";
 import { useMemo } from "react";
 import { api } from "../../../../../packages/convex/convex/_generated/api";
 import { selectEagerChannelIds } from "../../lib/channel-priority";
+import { useRemountLog } from "../../lib/remount-debug";
+import { useLastDefined } from "../../lib/use-last-defined";
 import { useStuckTimeout } from "../../lib/use-stuck-timeout";
 import {
   type CategoryView,
@@ -60,12 +62,15 @@ export function ChatSessionShell({
   onSignOut,
   recovery,
 }: ChatSessionShellProps) {
-  const channelResult = useQuery(api.channels.list, { paginationOpts: PAGE });
-  const dmResult = useQuery(api.channels.listDms, { paginationOpts: PAGE });
-  const rolesResult = useQuery(api.roles.list, {});
-  const categoriesResult = useQuery(api.categories.list, {});
-  const meResult = useQuery(api.members.me, {});
-  const publicConfig = useQuery(api.server.publicConfig, {});
+  useRemountLog("ChatSessionShell");
+  const channelResult = useLastDefined(useQuery(api.channels.list, { paginationOpts: PAGE }));
+  const dmResult = useLastDefined(useQuery(api.channels.listDms, { paginationOpts: PAGE }));
+  const rolesResult = useLastDefined(useQuery(api.roles.list, {}));
+  const categoriesResult = useLastDefined(useQuery(api.categories.list, {}));
+  // Keep the last answer across a reconnect: a momentarily missing membership
+  // must not swap the whole chat surface for the loading spinner.
+  const meResult = useLastDefined(useQuery(api.members.me, {}));
+  const publicConfig = useLastDefined(useQuery(api.server.publicConfig, {}));
 
   const voicePolicy = useMemo<VoicePolicy>(() => {
     const voice = publicConfig?.voice;
@@ -122,7 +127,12 @@ export function ChatSessionShell({
   const viewerMember = meResult?.member ?? null;
   const ownName = memberDisplayName(viewerMember, user.name ?? user.email ?? "You");
   const isOwner = meResult?.isOwner ?? false;
-  const ownerId = meResult?.ownerId ?? null;
+  const ownerIds =
+    meResult?.ownerIds ??
+    (meResult?.ownerId !== undefined && meResult.ownerId !== null ? [meResult.ownerId] : []);
+  // Owner management is absent on a backend from before multiple owners; do
+  // not offer a control that the old deployment cannot serve during rollout.
+  const ownerManagementAvailable = meResult?.ownerIds !== undefined;
 
   const viewerRoleIds = useMemo(() => heldRoleIds(viewerMember, roles), [viewerMember, roles]);
   const permissions = useMemo(
@@ -206,7 +216,8 @@ export function ChatSessionShell({
               permissions,
               topPosition,
             },
-            ownerId,
+            ownerIds,
+            ownerManagementAvailable,
             roleViews: roles,
             categories,
           }}

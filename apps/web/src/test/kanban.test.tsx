@@ -106,6 +106,7 @@ describe("Kanban UI", () => {
         onBack={vi.fn()}
       />,
     );
+    expect(screen.getByRole("status")).toHaveTextContent(/view-only access/);
     expect(screen.queryByRole("button", { name: "New board" })).not.toBeInTheDocument();
     expect(screen.queryByRole("button", { name: "Board settings" })).not.toBeInTheDocument();
     expect(screen.queryByRole("button", { name: "Add card" })).not.toBeInTheDocument();

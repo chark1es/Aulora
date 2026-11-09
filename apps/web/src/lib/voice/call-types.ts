@@ -1,5 +1,6 @@
 /* eslint-disable no-unused-vars -- the base rule reports parameter names in type signatures; Biome checks real unused code */
 import type {
+  CallEndNotice,
   CallView,
   FeatureFlags,
   VoiceDeviceSettings,
@@ -45,6 +46,11 @@ export interface VoiceSnapshot {
    * camera was turned off because the link stayed poor. `null` when none.
    */
   readonly qualityNotice: string | null;
+  /**
+   * Why the last call ended, when the person should be told. Stays set after
+   * the call tears down until dismissed or a new call starts.
+   */
+  readonly endedNotice: CallEndNotice | null;
 }
 
 export interface VoiceEngineOptions {

@@ -1,11 +1,11 @@
 import { describe, expect, it, vi } from "vitest";
 import {
   AUTH_COOKIE_KEY,
+  authTokenKey,
   type CookieStore,
   createCookieFetch,
   mergeCookieHeader,
   readSetCookies,
-  storeRedirectCookie,
 } from "../src/lib/cookie-fetch";
 
 function memoryCookieStore(): { store: CookieStore; map: Map<string, string> } {
@@ -129,22 +129,42 @@ describe("createCookieFetch", () => {
     await cookieFetch("https://chat.acme.com/api/auth/get-session");
     expect(map.get(AUTH_COOKIE_KEY)).toBeUndefined();
   });
-});
 
-describe("storeRedirectCookie", () => {
-  it("stores a cookie from a native redirect URL", async () => {
+  it("drops the stored bearer token on sign-out", async () => {
     const { store, map } = memoryCookieStore();
-    const stored = await storeRedirectCookie(
+    const tokenKey = authTokenKey("https://chat.acme.com");
+    await store.setItem(tokenKey, "token-1");
+    const baseFetch = vi.fn(async () => Promise.resolve(new Response("{}", { status: 200 })));
+    const cookieFetch = createCookieFetch({
       store,
-      "aulora://auth/callback?cookie=session%3Dxyz%3B%20Path%3D%2F",
-    );
-    expect(stored).toBe(true);
-    expect(map.get(AUTH_COOKIE_KEY)).toContain("session=xyz");
+      baseFetch: baseFetch as unknown as typeof fetch,
+      tokenKey,
+    });
+
+    await cookieFetch("https://chat.acme.com/api/auth/sign-out", { method: "POST" });
+    expect(map.get(tokenKey)).toBeUndefined();
   });
 
-  it("returns false when there is no cookie parameter", async () => {
-    const { store } = memoryCookieStore();
-    expect(await storeRedirectCookie(store, "aulora://auth/callback?state=1")).toBe(false);
-    expect(await storeRedirectCookie(store, "not a url")).toBe(false);
+  it("replays an OAuth bearer token and refreshes it from set-auth-token", async () => {
+    const { store, map } = memoryCookieStore();
+    const tokenKey = authTokenKey("https://chat.acme.com");
+    await store.setItem(tokenKey, "token-1");
+    const seen: Array<string | null> = [];
+    const baseFetch = vi.fn(async (_input: RequestInfo | URL, init?: RequestInit) => {
+      seen.push(new Headers(init?.headers).get("authorization"));
+      return new Response("{}", {
+        status: 200,
+        headers: { "set-auth-token": "token-2" },
+      });
+    });
+    const cookieFetch = createCookieFetch({
+      store,
+      baseFetch: baseFetch as unknown as typeof fetch,
+      tokenKey,
+    });
+
+    await cookieFetch("https://chat.acme.com/api/auth/get-session");
+    expect(seen[0]).toBe("Bearer token-1");
+    expect(map.get(tokenKey)).toBe("token-2");
   });
 });

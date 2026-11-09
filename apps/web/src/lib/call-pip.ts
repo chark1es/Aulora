@@ -73,6 +73,12 @@ export interface PipCallState {
   readonly mediaKind: PipMediaKind;
   /** Who the picture belongs to, for the overlay. Empty when there is none. */
   readonly speakerName: string;
+  /**
+   * Server clock time at which a still-solo call is disconnected, or `null`.
+   * Optional on the wire so a main window from before this field existed still
+   * parses (as `null`).
+   */
+  readonly aloneDeadline: number | null;
 }
 
 /** A control press the PiP window can send to the call. */
@@ -81,12 +87,14 @@ export type PipAction =
   | "toggle-deafen"
   | "toggle-camera"
   | "toggle-screen"
+  | "stay"
   | "leave";
 
 export interface PipStateInput {
   readonly call: {
     readonly kind: CallKind;
     readonly startedAt: number;
+    readonly aloneDeadline?: number | null;
     readonly participants: readonly CallParticipantView[];
   } | null;
   readonly local: VoiceLocalState;
@@ -139,6 +147,7 @@ export function buildPipState(input: PipStateInput): PipCallState | null {
     participants,
     mediaKind: input.mediaKind ?? "none",
     speakerName: input.speakerName ?? "",
+    aloneDeadline: call.aloneDeadline ?? null,
   };
 }
 
@@ -209,6 +218,10 @@ export function parsePipState(value: unknown): PipCallState | null {
     participants: parsed,
     mediaKind: parsePipMediaKind(state.mediaKind),
     speakerName: typeof state.speakerName === "string" ? state.speakerName : "",
+    aloneDeadline:
+      typeof state.aloneDeadline === "number" && Number.isFinite(state.aloneDeadline)
+        ? state.aloneDeadline
+        : null,
   };
 }
 
@@ -219,6 +232,7 @@ export function parsePipAction(value: unknown): PipAction | null {
     case "toggle-deafen":
     case "toggle-camera":
     case "toggle-screen":
+    case "stay":
     case "leave":
       return value;
     default:

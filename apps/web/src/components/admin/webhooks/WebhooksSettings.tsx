@@ -7,6 +7,7 @@ import { api } from "../../../../../../packages/convex/convex/_generated/api";
 import type { WebhookSummary } from "../../../../../../packages/convex/convex/webhooks";
 import { AdminPageHeader } from "../AdminPageHeader";
 import { useBotAction } from "../bots/use-bot-action";
+import { SetupSteps } from "../SetupSteps";
 import { WebhookDialog } from "./WebhookDialog";
 import { WebhookRow } from "./WebhookRow";
 import { type WebhookSecret, WebhookSecretNotice } from "./WebhookSecretNotice";
@@ -21,6 +22,21 @@ export interface WebhooksSettingsProps {
 }
 
 type DialogState = { readonly kind: "create" } | { readonly kind: "edit"; readonly id: string };
+
+const WEBHOOK_STEPS = [
+  {
+    label: "Create",
+    body: "Name it and pick the channel it posts into.",
+  },
+  {
+    label: "Copy",
+    body: "Paste its URL into the tool that should post. The URL is shown once.",
+  },
+  {
+    label: "Post",
+    body: "Requests to that URL appear as messages in the channel you chose.",
+  },
+] as const;
 
 /**
  * The Webhooks page in Settings: every webhook the viewer can manage, with
@@ -82,6 +98,7 @@ function WebhooksPage(props: Omit<WebhooksSettingsProps, "canManageWebhooks">) {
       New webhook
     </Button>
   );
+  const setupSteps = <SetupSteps steps={WEBHOOK_STEPS} />;
 
   return (
     <div className="flex flex-col gap-8" data-testid="webhooks-settings">
@@ -111,9 +128,9 @@ function WebhooksPage(props: Omit<WebhooksSettingsProps, "canManageWebhooks">) {
         </div>
       ) : webhooks.length === 0 ? (
         <EmptyState
-          icon="link"
           title="No webhooks yet"
-          description="Create one, copy its URL into the tool that should post, and messages appear in the channel you chose."
+          description="Create one to get a secret URL for the tool that should post."
+          details={setupSteps}
           action={addButton}
         />
       ) : (

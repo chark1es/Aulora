@@ -43,14 +43,16 @@ export const SERVER_ENV_VARS = [
     key: "OWNER_EMAIL",
     group: "instance",
     label: "Owner email",
-    description: "Email of the owner account created by setup. Set it before the first run.",
+    description:
+      "Legacy automation: email of the owner account seeded by setup. Leave unset on a fresh install and create the owner in the app.",
     type: "string",
   },
   {
     key: "OWNER_PASSWORD",
     group: "instance",
     label: "Owner password",
-    description: "Password for the owner account, at least 16 characters.",
+    description:
+      "Legacy automation: password for the environment-seeded owner, at least 16 characters. Used only when OWNER_EMAIL is also set.",
     type: "string",
     secret: true,
   },

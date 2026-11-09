@@ -45,7 +45,11 @@ describe("server.publicConfig", () => {
     expect(config.name).toBe("Aulora");
     expect(typeof config.version).toBe("string");
     expect(config.apiVersion).toBe(1);
-    expect(config.auth.local).toEqual({ enabled: true, signup: true });
+    expect(config.auth.local).toEqual({
+      enabled: true,
+      signup: true,
+      minPasswordLength: 8,
+    });
     expect(config.auth.providers).toEqual([]);
     expect(config.encryption).toEqual({
       mode: "server",
@@ -54,6 +58,24 @@ describe("server.publicConfig", () => {
       provider: "local",
     });
     expect(containsSecretField(config)).toBe(false);
+  });
+
+  it("keeps the password minimum out of the strict discovery contract", async () => {
+    clearEnv();
+    const t = convexTest(schema, modules);
+    const config = await t.query(api.server.publicConfig);
+    // The live config exposes the setting additively for current clients.
+    expect(config.auth.local.minPasswordLength).toBe(8);
+
+    const response = await t.fetch("/.well-known/aulora.json");
+    expect(response.status).toBe(200);
+    const document = (await response.json()) as {
+      auth: { local: Record<string, unknown> };
+    };
+    // Older strict parsers reject unknown `auth.local` keys, so discovery must
+    // not carry it even though publicConfig does.
+    expect(document.auth.local).toEqual({ enabled: true, signup: true });
+    expect(document.auth.local).not.toHaveProperty("minPasswordLength");
   });
 
   it("advertises the EKM provider and key version without secrets", async () => {

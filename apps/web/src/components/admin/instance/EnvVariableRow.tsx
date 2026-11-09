@@ -6,6 +6,7 @@ import {
   envLockReason,
   envSourceLabel,
   envSourceTone,
+  envUpdatedLabel,
   envValueLabel,
 } from "../../../lib/instance-env";
 import { EnvOverrideForm } from "./EnvOverrideForm";
@@ -139,6 +140,7 @@ export function EnvVariableRow(props: EnvVariableRowProps) {
  * showing next to it; "Not set" and "Deployment" would just repeat the pill.
  */
 function EnvValueStatus({ variable }: { readonly variable: EnvVariable }) {
+  const updated = envUpdatedLabel(variable.updatedAt);
   return (
     <div className="env-value-status">
       <Text
@@ -157,6 +159,16 @@ function EnvValueStatus({ variable }: { readonly variable: EnvVariable }) {
           data-testid={`env-value-${variable.key}`}
         >
           {envValueLabel(variable)}
+        </Text>
+      )}
+      {variable.source === "ui" && updated !== null && (
+        <Text
+          size="xs"
+          tone="muted"
+          className="whitespace-nowrap text-[11px]"
+          data-testid={`env-updated-${variable.key}`}
+        >
+          Updated {updated}
         </Text>
       )}
     </div>

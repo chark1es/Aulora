@@ -110,9 +110,7 @@ function InCallHeader({
 }) {
   return (
     <header className="material-chrome flex h-[52px] shrink-0 items-center gap-2.5 border-b border-border px-4">
-      <span className="flex h-7 w-7 items-center justify-center rounded-[7px] bg-accent-soft text-accent">
-        <Icon name="volume" size={16} />
-      </span>
+      <Icon name="volume" size={18} className="shrink-0 text-text-muted" />
       <div className="min-w-0 flex-1">
         <h2 className="truncate text-[14px] font-semibold text-text">{title}</h2>
         <p className="truncate text-[11px] text-text-muted">
@@ -174,10 +172,7 @@ function PreJoinVoiceView({
 }) {
   return (
     <div className="pane flex min-h-0 flex-1 flex-col items-center justify-center bg-surface-1 p-8 text-center">
-      <span className="flex h-16 w-16 items-center justify-center rounded-[16px] bg-accent-soft text-accent">
-        <Icon name="volume" size={30} />
-      </span>
-      <h2 className="mt-4 text-xl font-semibold tracking-tight text-text">{title}</h2>
+      <h2 className="text-xl font-semibold tracking-tight text-text">{title}</h2>
       <p className="mt-1 max-w-sm text-[13px] text-text-muted">
         {channel.topic !== null && channel.topic.length > 0
           ? channel.topic

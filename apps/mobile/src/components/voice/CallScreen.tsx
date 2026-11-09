@@ -1,12 +1,15 @@
 import {
+  CALL_ALONE_HINT_MESSAGE,
   type CallParticipantView,
+  callAloneRemainingMs,
   callKindLabel,
+  formatAloneCountdown,
   formatCallDuration,
   sortParticipants,
 } from "@aulora/core";
 import { Heading, Icon, Text, usePalette } from "@aulora/ui-native";
 import { useEffect, useMemo, useState } from "react";
-import { Modal, ScrollView, View } from "react-native";
+import { AccessibilityInfo, Modal, Pressable, ScrollView, View } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { type MainVideo, pickMainVideo } from "../../lib/voice/pip";
 import { tryCreateMediaStream, type VoiceStream } from "../../lib/voice/webrtc";
@@ -210,6 +213,63 @@ function CallError({ error }: { readonly error: string }) {
 }
 
 /**
+ * The last-minute warning while this device is the only participant. The
+ * deadline comes from the server, so it survives a reconnect; "Stay" asks the
+ * server to restart the window. Mute, deafen and camera changes do not reset
+ * it, which keeps the rule predictable.
+ */
+function CallAloneBanner({ voice, now }: { readonly voice: Voice; readonly now: number }) {
+  const remaining = callAloneRemainingMs(voice.call?.aloneDeadline ?? null, now);
+  if (remaining === null) {
+    return null;
+  }
+  return <CallAloneBannerContent voice={voice} remaining={remaining} />;
+}
+
+/**
+ * Mounts only while the warning is visible, so the one-time iOS announcement
+ * happens when the banner appears rather than at the start of the call. The
+ * countdown text is exposed as the static sentence, so it is not re-read on
+ * every tick.
+ */
+function CallAloneBannerContent({
+  voice,
+  remaining,
+}: {
+  readonly voice: Voice;
+  readonly remaining: number;
+}) {
+  const palette = usePalette();
+  useEffect(() => {
+    // iOS has no live-region equivalent; announce the static sentence once.
+    AccessibilityInfo.announceForAccessibility(CALL_ALONE_HINT_MESSAGE);
+  }, []);
+  const countdown = formatAloneCountdown(remaining);
+  return (
+    <View
+      accessibilityLiveRegion="polite"
+      className="mx-4 mt-2 flex-row items-center gap-2 rounded-input border border-secondary bg-surface-2 px-3 py-2"
+    >
+      <Icon name="timer" size={14} color={palette.secondary} />
+      <Text size="xs" className="min-w-0 flex-1" accessibilityLabel={CALL_ALONE_HINT_MESSAGE}>
+        Leaving in {countdown} — nobody else is here
+      </Text>
+      <Pressable
+        accessibilityRole="button"
+        accessibilityLabel="Stay in the call"
+        hitSlop={8}
+        onPress={() => void voice.stayInCall()}
+        className="rounded-input px-2 py-1"
+      >
+        <Text size="xs" className="font-semibold" style={{ color: palette.secondary }}>
+          Stay
+        </Text>
+      </Pressable>
+    </View>
+  );
+}
+
+/**
  * What the floating window shows: the main video edge to edge, or the avatar of
  * whoever would be on it. No controls: the window is too small to use them.
  */
@@ -318,6 +378,7 @@ export function CallScreen({ channelName, memberNames }: CallScreenProps) {
           duration={formatCallDuration(now - call.startedAt)}
         />
         {voice.error !== null && <CallError error={voice.error} />}
+        <CallAloneBanner voice={voice} now={now} />
         <ParticipantGrid
           voice={voice}
           memberNames={memberNames}

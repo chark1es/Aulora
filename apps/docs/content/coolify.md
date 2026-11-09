@@ -46,9 +46,12 @@ list.
 ```sh
 INSTANCE_NAME=aulora
 WORKSPACE_NAME=Aulora
-OWNER_EMAIL=owner@example.com
-OWNER_PASSWORD=change-me-please-32-chars-min
-OWNER_NAME=Aulora Owner
+
+# Legacy automation only; leave these blank on a fresh install and create the
+# owner in the app with the setup token printed by the setup container.
+# OWNER_EMAIL=owner@example.com
+# OWNER_PASSWORD=change-me-please-32-chars-min
+# OWNER_NAME=Aulora Owner
 
 # Public origins — must match the domains you add in step 3.
 SITE_URL=https://chat.example.com
@@ -64,6 +67,12 @@ POSTGRES_URL=postgresql://convex:aulora-postgres@postgres:5432
 MINIO_ROOT_USER=aulora
 MINIO_ROOT_PASSWORD=aulora-minio-secret
 ```
+
+After the first deploy, open the setup container's logs and copy the one-time
+`setup token`; enter it on the app's **Set up your instance** screen to create
+the owner. Re-run the `setup` container to rotate and print a new token. An
+explicit `SETUP_TOKEN` environment value overrides the printed token for
+automated deployments.
 
 You can leave the generated secrets blank and let `setup` create them, but on
 Coolify it is safer to set them explicitly in this list so they are stable
@@ -111,11 +120,13 @@ and the push relay stay on the internal Docker network.
 
 Press **Deploy**. Coolify builds `web` and `setup` from the repository, starts
 the stack, and runs the one-shot `setup` service. `setup` mints the admin key,
-creates the workspace and owner, deploys the Convex functions, and writes the
+deploys the Convex functions, prints a one-time setup token, and writes the
 public `/.well-known/aulora.json`. It is idempotent and safe on every deploy.
 
-To watch it, open the `setup` service logs (or the deployment logs) and wait for
-`[setup] done`. Then open `https://chat.example.com` and sign in as the owner.
+To watch it, open the `setup` service logs (or the deployment logs), wait for
+`[setup] done`, and copy the `setup token` line. Then open
+`https://chat.example.com`, choose **Set up your instance**, and create the owner
+account with that token.
 
 To re-run `setup` after changing auth providers or `TRUSTED_ORIGINS`, redeploy the same Coolify resource.
 

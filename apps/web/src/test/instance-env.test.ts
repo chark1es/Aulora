@@ -10,9 +10,11 @@ import {
   envManagedReason,
   envSourceLabel,
   envSourceTone,
+  envUpdatedLabel,
   envValueError,
   envValueLabel,
   firstEnvGroup,
+  needsProviderSetup,
   oidcFormFromVariables,
   parseEnvList,
   prettyJson,
@@ -35,6 +37,7 @@ function variable(overrides: EnvVariableOverrides): EnvVariable {
     managedInSection: null,
     source: "environment",
     isSet: true,
+    updatedAt: null,
     redirectUrl: null,
   };
   return Object.assign(base, overrides);
@@ -61,7 +64,7 @@ describe("environment labels", () => {
       "ui-id",
     );
     expect(envValueLabel(variable({ key: "OIDC_CLIENT_SECRET", secret: true, source: "ui" }))).toBe(
-      "••••••",
+      "Set",
     );
   });
 
@@ -75,6 +78,39 @@ describe("environment labels", () => {
     expect(envManagedReason(variable({ key: "SITE_URL", overridable: false }))).toContain(
       "lock everyone out",
     );
+  });
+});
+
+describe("first-run provider detection", () => {
+  it("prompts only when no OAuth or OIDC provider is complete", () => {
+    expect(
+      needsProviderSetup([
+        variable({ key: "GITHUB_CLIENT_ID", source: "unset", isSet: false }),
+        variable({ key: "GITHUB_CLIENT_SECRET", source: "unset", isSet: false }),
+      ]),
+    ).toBe(true);
+    expect(
+      needsProviderSetup([
+        variable({ key: "GITHUB_CLIENT_ID", source: "ui", isSet: true }),
+        variable({ key: "GITHUB_CLIENT_SECRET", source: "ui", isSet: true }),
+      ]),
+    ).toBe(false);
+    expect(
+      needsProviderSetup([
+        variable({ key: "OIDC_ISSUER", source: "ui", isSet: true }),
+        variable({ key: "OIDC_DISCOVERY_URL", source: "ui", isSet: true }),
+        variable({ key: "OIDC_CLIENT_ID", source: "ui", isSet: true }),
+        variable({ key: "OIDC_CLIENT_SECRET", source: "ui", isSet: true }),
+      ]),
+    ).toBe(false);
+  });
+});
+
+describe("override timestamps", () => {
+  it("formats only a real timestamp", () => {
+    expect(envUpdatedLabel(null)).toBeNull();
+    expect(envUpdatedLabel(Number.NaN)).toBeNull();
+    expect(envUpdatedLabel(Date.UTC(2026, 0, 2, 3, 4))).not.toBeNull();
   });
 });
 

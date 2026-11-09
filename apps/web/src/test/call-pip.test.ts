@@ -162,6 +162,21 @@ describe("parsePipState", () => {
     expect(parsePipState(built)).toEqual(built);
   });
 
+  it("carries the solo-call deadline", () => {
+    const built = buildPipState(
+      input({
+        call: {
+          kind: "voice",
+          startedAt: 1_000,
+          aloneDeadline: 9_000,
+          participants: [participant("me")],
+        },
+      }),
+    );
+    expect(built?.aloneDeadline).toBe(9_000);
+    expect(parsePipState(built)?.aloneDeadline).toBe(9_000);
+  });
+
   it("defaults the flags it was not sent", () => {
     const parsed = parsePipState({
       kind: "voice",
@@ -193,6 +208,8 @@ describe("parsePipState", () => {
       // A main window from before the picture was sent still parses.
       mediaKind: "none",
       speakerName: "",
+      // And one from before the solo-call warning existed.
+      aloneDeadline: null,
     });
   });
 

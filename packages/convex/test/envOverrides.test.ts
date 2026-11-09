@@ -14,8 +14,10 @@ function resetEnv(): void {
   delete process.env.OIDC_DISPLAY_NAME;
   delete process.env.AULORA_ALLOW_UI_ENV_OVERRIDES;
   delete process.env.AULORA_ENCRYPTION_ENABLED;
+  delete process.env.AULORA_ENCRYPTION_KEY_VERSION;
   delete process.env.SITE_URL;
   delete process.env.CONVEX_SITE_URL;
+  delete process.env.BETTER_AUTH_SECRET;
 }
 
 afterEach(resetEnv);
@@ -121,6 +123,11 @@ describe("envOverrides kill switch and limits", () => {
     await expect(
       asOwner.mutation(api.envOverrides.clear, { key: "OIDC_CLIENT_ID" }),
     ).rejects.toThrow("disabled by the deployment");
+    await expect(
+      asOwner.mutation(api.envOverrides.setMany, {
+        entries: [{ key: "OIDC_CLIENT_ID", value: "x" }],
+      }),
+    ).rejects.toThrow("disabled by the deployment");
 
     process.env.AULORA_ALLOW_UI_ENV_OVERRIDES = "0";
     expect((await asOwner.query(api.envOverrides.list, {})).locked).toBe(false);
@@ -147,6 +154,64 @@ describe("envOverrides storage", () => {
     expect(variable?.secret).toBe(true);
     expect(variable?.value).toBeUndefined();
     expect(JSON.stringify(list)).not.toContain(secret);
+  });
+
+  it("names the master-key version and stays readable after a rotation", async () => {
+    const { t, asOwner } = await ownerTest();
+    await asOwner.mutation(api.envOverrides.set, {
+      key: "OIDC_CLIENT_SECRET",
+      value: "rotation-secret",
+    });
+    const row = await t.run(async (ctx) => {
+      const rows = await ctx.db.query("envOverrides").collect();
+      return rows.find((candidate) => candidate.key === "OIDC_CLIENT_SECRET") ?? null;
+    });
+    expect(row?.valueCiphertext.split(".")[1]).toBe("1");
+
+    process.env.AULORA_ENCRYPTION_KEY_VERSION = "2";
+    const effective = await t.run(
+      async (ctx) => (await loadEffectiveEnv(ctx)).env.OIDC_CLIENT_SECRET,
+    );
+    // The open path follows the version named in the envelope, so rotating the
+    // deployment key version does not strand existing override rows.
+    expect(effective).toBe("rotation-secret");
+  });
+
+  it("reports a timestamp for UI overrides and none for deployment values", async () => {
+    const { asOwner } = await ownerTest();
+    await asOwner.mutation(api.envOverrides.set, {
+      key: "OIDC_CLIENT_ID",
+      value: "ui-client",
+    });
+    const before = Date.now();
+    const list = await asOwner.query(api.envOverrides.list, {});
+    const overridden = list.variables.find((entry) => entry.key === "OIDC_CLIENT_ID");
+    expect(overridden?.updatedAt).toBeGreaterThanOrEqual(before - 1000);
+    expect(overridden?.updatedAt).toBeLessThanOrEqual(Date.now() + 1000);
+    const environment = list.variables.find((entry) => entry.key === "SITE_URL");
+    expect(environment?.updatedAt).toBeNull();
+  });
+
+  it("does not report a stale row as a UI source for a non-overridable key", async () => {
+    const { t, asOwner } = await ownerTest();
+    process.env.BETTER_AUTH_SECRET = "deployment-secret";
+    await t.run(async (ctx) => {
+      await ctx.db.insert("envOverrides", {
+        key: "BETTER_AUTH_SECRET",
+        valueCiphertext: "sealed",
+        updatedAt: Date.now(),
+        updatedBy: "owner-1",
+      });
+    });
+
+    const list = await asOwner.query(api.envOverrides.list, {});
+    const variable = list.variables.find((entry) => entry.key === "BETTER_AUTH_SECRET");
+    expect(variable?.source).toBe("environment");
+    // The stale row is ignored by the effective environment as well.
+    const effective = await t.run(
+      async (ctx) => (await loadEffectiveEnv(ctx)).env.BETTER_AUTH_SECRET,
+    );
+    expect(effective).toBe("deployment-secret");
   });
 
   it("never returns deployment environment values", async () => {
@@ -300,5 +365,25 @@ describe("envOverrides audit trail", () => {
     }
     expect(rows[0]?.meta).toContain("OIDC_CLIENT_SECRET");
     expect(rows[2]?.meta).toContain("OIDC_CLIENT_SECRET");
+  });
+
+  it("records batch saves by key only", async () => {
+    const { t, asOwner } = await ownerTest();
+    const secret = "batch-audit-secret";
+    await asOwner.mutation(api.envOverrides.setMany, {
+      entries: [
+        { key: "OIDC_ISSUER", value: "https://audit-idp.example" },
+        { key: "OIDC_CLIENT_SECRET", value: secret },
+      ],
+    });
+    const row = await t.run(async (ctx) =>
+      (await ctx.db.query("auditLog").collect()).find(
+        (entry) => entry.action === "instance.env.override",
+      ),
+    );
+    expect(row?.meta).toContain("OIDC_ISSUER");
+    expect(row?.meta).toContain("OIDC_CLIENT_SECRET");
+    expect(row?.meta ?? "").not.toContain(secret);
+    expect(row?.meta ?? "").not.toContain("audit-idp.example");
   });
 });

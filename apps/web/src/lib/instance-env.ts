@@ -53,8 +53,10 @@ export function envSourceTone(source: EnvSource): TextTone {
  */
 export function envValueLabel(variable: EnvVariable): string {
   if (variable.source === "ui") {
+    // Secrets are write-only: never render a mask derived from the value, its
+    // prefix/suffix or its length. "Set" is the whole disclosure.
     if (variable.secret) {
-      return "••••••";
+      return "Set";
     }
     return variable.value !== undefined && variable.value.length > 0 ? variable.value : "Set";
   }
@@ -62,6 +64,40 @@ export function envValueLabel(variable: EnvVariable): string {
     return "Set by the deployment (value hidden)";
   }
   return "Not set";
+}
+
+/** Short, locale-aware timestamp for an override row. */
+export function envUpdatedLabel(updatedAt: number | null): string | null {
+  if (updatedAt === null || !Number.isFinite(updatedAt)) {
+    return null;
+  }
+  return new Date(updatedAt).toLocaleString(undefined, {
+    dateStyle: "medium",
+    timeStyle: "short",
+  });
+}
+
+const SOCIAL_PROVIDER_KEYS = ["GITHUB", "GOOGLE", "MICROSOFT", "APPLE"] as const;
+const OIDC_REQUIRED_KEYS = [
+  "OIDC_ISSUER",
+  "OIDC_DISCOVERY_URL",
+  "OIDC_CLIENT_ID",
+  "OIDC_CLIENT_SECRET",
+] as const;
+
+/**
+ * True when neither a built-in OAuth provider nor the generic OIDC provider is
+ * fully configured. Local email/password sign-in still works, so this only
+ * drives a first-run prompt, never a lock-out.
+ */
+export function needsProviderSetup(variables: readonly EnvVariable[]): boolean {
+  const isSet = (key: string): boolean =>
+    variables.some((variable) => variable.key === key && variable.isSet);
+  const social = SOCIAL_PROVIDER_KEYS.some(
+    (prefix) => isSet(`${prefix}_CLIENT_ID`) && isSet(`${prefix}_CLIENT_SECRET`),
+  );
+  const oidc = OIDC_REQUIRED_KEYS.every((key) => isSet(key));
+  return !social && !oidc;
 }
 
 /** Explanation shown on rows the deployment owns. */

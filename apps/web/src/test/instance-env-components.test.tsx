@@ -24,6 +24,7 @@ function variable(overrides: EnvVariableOverrides): EnvVariable {
     managedInSection: null,
     source: "environment",
     isSet: true,
+    updatedAt: null,
     redirectUrl: null,
   };
   return Object.assign(base, overrides);
@@ -83,6 +84,8 @@ describe("EnvironmentSectionView", () => {
     await user.click(screen.getByTestId("env-group-tab-oidc"));
     expect(screen.getByTestId("env-source-OIDC_CLIENT_ID")).toHaveTextContent("Not set");
     expect(screen.queryByTestId("env-reset-OIDC_CLIENT_ID")).not.toBeInTheDocument();
+    // A configured social provider means no first-run invitation.
+    expect(screen.queryByTestId("env-first-run")).not.toBeInTheDocument();
   });
 
   it("shows one group at a time unless searching", async () => {
@@ -155,6 +158,57 @@ describe("EnvironmentSectionView", () => {
     );
   });
 
+  it("guides first-run owners to configure a sign-in provider", async () => {
+    const user = userEvent.setup();
+    const model = buildModel({
+      variables: [
+        variable({
+          key: "GITHUB_CLIENT_ID",
+          group: "auth-providers",
+          source: "unset",
+          isSet: false,
+        }),
+        variable({
+          key: "GITHUB_CLIENT_SECRET",
+          group: "auth-providers",
+          secret: true,
+          source: "unset",
+          isSet: false,
+        }),
+        variable({ key: "OIDC_CLIENT_ID", group: "oidc", source: "unset", isSet: false }),
+      ],
+    });
+    render(<EnvironmentSectionView model={model} />);
+    expect(screen.getByTestId("env-first-run")).toBeInTheDocument();
+
+    await user.click(screen.getByTestId("env-first-run-social"));
+    expect(screen.getByTestId("env-var-GITHUB_CLIENT_ID")).toBeInTheDocument();
+
+    await user.click(screen.getByTestId("env-group-tab-oidc"));
+    expect(screen.getByTestId("env-first-run-oidc")).toBeInTheDocument();
+  });
+
+  it("shows when an override was last updated, never its secret", () => {
+    render(
+      <EnvironmentSectionView
+        model={buildModel({
+          variables: [
+            variable({
+              key: "OIDC_CLIENT_SECRET",
+              group: "auth-providers",
+              secret: true,
+              source: "ui",
+              updatedAt: Date.UTC(2026, 0, 2, 3, 4),
+            }),
+          ],
+        })}
+      />,
+    );
+    expect(screen.getByTestId("env-value-OIDC_CLIENT_SECRET")).toHaveTextContent("Set");
+    expect(screen.getByTestId("env-updated-OIDC_CLIENT_SECRET")).toHaveTextContent("Updated");
+    expect(screen.queryByText(/••/)).not.toBeInTheDocument();
+  });
+
   it("renders the variables as a table with the provider redirect URL", () => {
     const url = "https://chat.example.com/api/auth/callback/github";
     const model = buildModel({
@@ -225,7 +279,7 @@ describe("EnvVariableRow", () => {
         onReset={vi.fn(async () => null)}
       />,
     );
-    expect(screen.getByTestId("env-value-GITHUB_CLIENT_SECRET")).toHaveTextContent("••••••");
+    expect(screen.getByTestId("env-value-GITHUB_CLIENT_SECRET")).toHaveTextContent("Set");
     await user.click(screen.getByRole("button", { name: "Edit" }));
     await user.click(screen.getByTestId("env-save-GITHUB_CLIENT_SECRET"));
     await waitFor(() => {

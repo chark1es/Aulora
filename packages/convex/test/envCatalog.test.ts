@@ -1,6 +1,8 @@
 import { ConvexError } from "convex/values";
 import { describe, expect, it } from "vitest";
 import {
+  BOOTSTRAP_ENV_KEYS,
+  DEPLOY_TIME_ENV_KEYS,
   ENV_VAR_CATALOG,
   ENV_VAR_GROUPS,
   findEnvVarDefinition,
@@ -35,6 +37,11 @@ const READ_ONLY_KEYS = [
   "AULORA_KEK_WRAPPED",
   "VAULT_TOKEN",
   "AULORA_ALLOW_UI_ENV_OVERRIDES",
+  "BOT_JWT_PUBLIC_JWK",
+  "BOT_JWT_PRIVATE_JWK",
+  "BOT_RUNNER_TOKEN",
+  "AULORA_MIN_CLIENT_VERSION",
+  "AULORA_RECOMMENDED_CLIENT_VERSION",
 ];
 
 describe("environment catalog", () => {
@@ -42,6 +49,28 @@ describe("environment catalog", () => {
     const keys = ENV_VAR_CATALOG.map((definition) => definition.key);
     expect(new Set(keys).size).toBe(keys.length);
     expect(keys.length).toBeGreaterThan(60);
+  });
+
+  it("classifies every key into exactly one tier", () => {
+    const bootstrap = new Set(BOOTSTRAP_ENV_KEYS);
+    const deployTime = new Set(DEPLOY_TIME_ENV_KEYS);
+    expect([...bootstrap].filter((key) => deployTime.has(key))).toEqual([]);
+    for (const definition of ENV_VAR_CATALOG) {
+      expect(["bootstrap", "deploy-time", "overridable"]).toContain(definition.tier);
+      if (definition.overridable) {
+        expect(definition.tier, definition.key).toBe("overridable");
+      } else if (bootstrap.has(definition.key)) {
+        expect(definition.tier, definition.key).toBe("bootstrap");
+      } else {
+        expect(definition.tier, definition.key).toBe("deploy-time");
+      }
+    }
+    // The explicit deploy-time list only covers values whose module-load or
+    // host-tool timing deserves a note; everything else non-overridable is
+    // still deploy-time by default.
+    for (const key of DEPLOY_TIME_ENV_KEYS) {
+      expect(findEnvVarDefinition(key)?.tier, key).toBe("deploy-time");
+    }
   });
 
   it("lists bootstrap and lock-out variables as read-only", () => {

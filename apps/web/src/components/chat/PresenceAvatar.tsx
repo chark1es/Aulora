@@ -64,9 +64,12 @@ export function PresenceAvatar({
 export function GroupAvatar({
   userIds,
   size = 36,
+  padClassName = "bg-surface-1",
 }: {
   readonly userIds: readonly string[];
   readonly size?: number;
+  /** Matches the surface behind the second avatar so it looks cut out. */
+  readonly padClassName?: string;
 }) {
   const inner = Math.round(size * 0.72);
   const [first, second] = userIds;
@@ -78,7 +81,9 @@ export function GroupAvatar({
         </span>
       )}
       {second !== undefined && (
-        <span className="absolute -bottom-0.5 -right-0.5 flex rounded-full bg-surface-1 p-0.5">
+        <span
+          className={cn("absolute -bottom-0.5 -right-0.5 flex rounded-full p-0.5", padClassName)}
+        >
           <PersonAvatar userId={second} size={inner} />
         </span>
       )}

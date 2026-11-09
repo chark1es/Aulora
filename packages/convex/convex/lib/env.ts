@@ -1,4 +1,5 @@
 import {
+  OWNER_PASSWORD_MIN_LENGTH,
   parseSemver,
   type WellKnownAuth,
   type WellKnownOAuthProvider,
@@ -9,7 +10,7 @@ import { getEkmSettings } from "./ekm";
 import { type GroupRoleMap, parseGroupRoleMap } from "./oidc";
 
 /** Version advertised through `server:publicConfig` and the well-known doc. */
-export const AULORA_VERSION = "1.4.0";
+export const AULORA_VERSION = "1.4.1";
 
 /** Shape version of the public config / well-known document. */
 export const API_VERSION = 1;
@@ -78,6 +79,20 @@ export interface AuthProviderToggles {
   readonly apple?: boolean;
   readonly oidc?: boolean;
   readonly local?: boolean;
+}
+
+/**
+ * The effective local password minimum: `AUTH_MIN_PASSWORD_LENGTH` clamped to
+ * 1–128, defaulting to the shared owner floor (8). Used by Better Auth, the
+ * setup action and the public config so all three agree.
+ */
+export function getMinPasswordLength(env: Env): number {
+  const raw = env.AUTH_MIN_PASSWORD_LENGTH;
+  const parsed = Number(raw);
+  if (raw === undefined || raw.trim().length === 0 || !Number.isFinite(parsed)) {
+    return OWNER_PASSWORD_MIN_LENGTH;
+  }
+  return Math.min(128, Math.max(1, Math.floor(parsed)));
 }
 
 /** A provider is offered unless its toggle is explicitly `false`. */
@@ -234,7 +249,8 @@ export function resolveLocalAuthEnabled(
 
 /**
  * Public (secret-free) auth configuration. Safe to return from a query and to
- * publish in `/.well-known/aulora.json`.
+ * publish in `/.well-known/aulora.json`, except that the discovery route strips
+ * `minPasswordLength`: older strict parsers reject unknown `auth.local` keys.
  */
 export function getPublicAuthConfig(
   env: Env,
@@ -280,6 +296,10 @@ export function getPublicAuthConfig(
     local: {
       enabled: local.enabled,
       signup: signupEnabled,
+      // Live config only: the discovery route strips this key because older
+      // strict parsers reject unknown `auth.local` fields. Clients fall back
+      // to 8 when it is absent.
+      minPasswordLength: getMinPasswordLength(env),
     },
     providers,
   };
@@ -373,6 +393,32 @@ export const TURN_DEFAULT_TTL_SECONDS = 3_600;
 export const TURN_MIN_TTL_SECONDS = 60;
 /** Upper bound; coturn itself caps `static-auth-secret` lifetimes at 24h. */
 export const TURN_MAX_TTL_SECONDS = 86_400;
+
+/**
+ * Default time a participant may stay alone in a call before the backend
+ * disconnects them, in seconds. An unusable override falls back to this value
+ * rather than disabling the feature, so a typo never strands a solo caller.
+ */
+export const CALL_ALONE_TIMEOUT_SECONDS_DEFAULT = 300;
+/** Lower bound: long enough that a reconnect blip cannot trip it. */
+export const CALL_ALONE_TIMEOUT_MIN_SECONDS = 60;
+/** Upper bound: a day. */
+export const CALL_ALONE_TIMEOUT_MAX_SECONDS = 86_400;
+
+/**
+ * Reads the solo-call auto-disconnect timeout. The value is an overridable
+ * environment setting; an unset or unusable value keeps the five-minute
+ * default.
+ */
+export function getCallAloneTimeoutSeconds(env: Env): number {
+  const raw = read(env, "AULORA_CALL_ALONE_TIMEOUT_SECONDS");
+  const parsed = raw === undefined ? Number.NaN : Number(raw);
+  return Number.isInteger(parsed) &&
+    parsed >= CALL_ALONE_TIMEOUT_MIN_SECONDS &&
+    parsed <= CALL_ALONE_TIMEOUT_MAX_SECONDS
+    ? parsed
+    : CALL_ALONE_TIMEOUT_SECONDS_DEFAULT;
+}
 
 export interface TurnSettings {
   /** `turn:`/`turns:` URLs clients try, in order. */

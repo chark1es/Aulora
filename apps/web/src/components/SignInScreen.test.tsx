@@ -1,13 +1,25 @@
 import type { ServerProfile, WellKnownAuth } from "@aulora/core";
-import { render, screen, waitFor } from "@testing-library/react";
+import { act, render, screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { useQuery } from "convex/react";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import type { AuthActions } from "../lib/auth-client";
-import { authCallbackUrl } from "../lib/public-origin";
+import { notifyAuthError } from "../lib/auth-events";
+import { beginOAuth, storeAuthHandoffError } from "../lib/oauth-start";
 import { SignInScreen } from "./SignInScreen";
 
 vi.mock("convex/react", () => ({ useQuery: vi.fn(() => undefined) }));
+
+const desktop = vi.hoisted(() => ({ value: false }));
+vi.mock("../lib/desktop", async (importOriginal) => {
+  const actual = await importOriginal<typeof import("../lib/desktop")>();
+  return { ...actual, isDesktop: () => desktop.value };
+});
+
+vi.mock("../lib/oauth-start", async (importOriginal) => {
+  const actual = await importOriginal<typeof import("../lib/oauth-start")>();
+  return { ...actual, beginOAuth: vi.fn() };
+});
 
 const heroWatch = vi.hoisted(() => ({ current: null as unknown }));
 
@@ -60,6 +72,8 @@ function fakeActions(): AuthActions {
 describe("SignInScreen", () => {
   beforeEach(() => {
     vi.mocked(useQuery).mockReturnValue(undefined);
+    desktop.value = false;
+    vi.mocked(beginOAuth).mockClear();
   });
 
   it("renders exactly the providers from the well-known and the local form", () => {
@@ -107,37 +121,80 @@ describe("SignInScreen", () => {
     expect(screen.getByText(/signs in through its configured provider/i)).toBeInTheDocument();
   });
 
-  it("signs in through the generic OIDC action for an oidc provider", async () => {
-    const actions = fakeActions();
+  it("starts OAuth through the workspace origin for an OIDC provider", async () => {
     const user = userEvent.setup();
     render(
-      <SignInScreen profile={makeProfile({ enabled: true, signup: false })} actions={actions} />,
+      <SignInScreen
+        profile={makeProfile({ enabled: true, signup: false })}
+        actions={fakeActions()}
+      />,
     );
 
     await user.click(screen.getByRole("button", { name: "Continue with Keycloak" }));
 
     await waitFor(() => {
-      expect(actions.signInOAuth2).toHaveBeenCalledWith({
-        providerId: "keycloak",
-        callbackURL: authCallbackUrl(),
-      });
+      expect(beginOAuth).toHaveBeenCalledWith(
+        expect.stringContaining("/api/auth/native/start?provider=keycloak&kind=oidc"),
+        "in-app",
+      );
     });
   });
 
-  it("uses signIn.social for a built-in oauth provider", async () => {
-    const actions = fakeActions();
+  it("starts OAuth through the workspace origin for a built-in provider", async () => {
     const user = userEvent.setup();
     render(
-      <SignInScreen profile={makeProfile({ enabled: true, signup: false })} actions={actions} />,
+      <SignInScreen
+        profile={makeProfile({ enabled: true, signup: false })}
+        actions={fakeActions()}
+      />,
     );
 
     await user.click(screen.getByRole("button", { name: "Continue with GitHub" }));
 
     await waitFor(() => {
-      expect(actions.signInSocial).toHaveBeenCalledWith({
-        provider: "github",
-        callbackURL: expect.any(String),
-      });
+      expect(beginOAuth).toHaveBeenCalledWith(
+        expect.stringContaining("/api/auth/native/start?provider=github&kind=oauth"),
+        "in-app",
+      );
+    });
+  });
+
+  it("shows a real brand mark only for a provider that has one", () => {
+    render(
+      <SignInScreen
+        profile={makeProfile({ enabled: true, signup: false })}
+        actions={fakeActions()}
+      />,
+    );
+
+    expect(
+      screen.getByRole("button", { name: "Continue with GitHub" }).querySelector("svg"),
+    ).not.toBeNull();
+    // Keycloak has no shipped mark, so its button is text only.
+    expect(
+      screen.getByRole("button", { name: "Continue with Keycloak" }).querySelector("svg"),
+    ).toBeNull();
+  });
+
+  it("asks a desktop app where to finish and honors the choice", async () => {
+    desktop.value = true;
+    const user = userEvent.setup();
+    render(
+      <SignInScreen
+        profile={makeProfile({ enabled: true, signup: false })}
+        actions={fakeActions()}
+      />,
+    );
+
+    await user.click(screen.getByRole("button", { name: "Continue with GitHub" }));
+    expect(screen.getByText("Continue with GitHub")).toBeInTheDocument();
+
+    await user.click(screen.getByText("Open in browser"));
+    await user.click(screen.getByRole("button", { name: "Continue" }));
+
+    // The handoff is prepared asynchronously before the browser opens.
+    await waitFor(() => {
+      expect(beginOAuth).toHaveBeenCalledWith(expect.any(String), "external");
     });
   });
 
@@ -150,7 +207,7 @@ describe("SignInScreen", () => {
       />,
     );
 
-    const toggle = screen.getByRole("button", { name: "Create an account" });
+    const toggle = screen.getByRole("tab", { name: "Create an account" });
     await user.click(toggle);
 
     expect(screen.getByLabelText("Name")).toBeInTheDocument();
@@ -214,5 +271,46 @@ describe("SignInScreen", () => {
     await user.tab();
     expect(heroWatch.current).toBe("pointer");
     expect(screen.queryByText(/team chat on your own server/)).toBeNull();
+  });
+
+  it("shows an accepted handoff error stored after the form mounted", async () => {
+    render(
+      <SignInScreen
+        profile={makeProfile({ enabled: true, signup: false })}
+        actions={fakeActions()}
+      />,
+    );
+
+    storeAuthHandoffError("auth_expired", "https://chat.acme.com");
+    act(() => {
+      notifyAuthError();
+    });
+
+    expect(await screen.findByRole("alert")).toHaveTextContent(
+      "Sign-in took too long, please try again.",
+    );
+  });
+
+  it("ignores a stored handoff error for another workspace", async () => {
+    render(
+      <SignInScreen
+        profile={makeProfile({ enabled: true, signup: false })}
+        actions={fakeActions()}
+      />,
+    );
+
+    storeAuthHandoffError("auth_expired", "https://other.example.com");
+    act(() => {
+      notifyAuthError();
+    });
+    expect(screen.queryByRole("alert")).toBeNull();
+
+    storeAuthHandoffError("auth_expired", "https://chat.acme.com");
+    act(() => {
+      notifyAuthError();
+    });
+    expect(await screen.findByRole("alert")).toHaveTextContent(
+      "Sign-in took too long, please try again.",
+    );
   });
 });

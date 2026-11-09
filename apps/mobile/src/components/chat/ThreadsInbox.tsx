@@ -1,5 +1,5 @@
 import { activityLabel } from "@aulora/core";
-import { Icon, Spinner, Text, usePalette } from "@aulora/ui-native";
+import { EmptyState, Spinner, Text } from "@aulora/ui-native";
 import { Pressable, View } from "react-native";
 import { ScrollView } from "react-native-gesture-handler";
 import { MemberAvatar } from "./MemberAvatar";
@@ -41,7 +41,6 @@ function replyLabel(count: number): string {
  */
 export function ThreadsInbox(props: ThreadsInboxProps) {
   const { threads, loading = false, channelNames, memberNames, titles, ownUserId, onOpen } = props;
-  const palette = usePalette();
   if (loading) {
     return (
       <View className="flex-1 items-center justify-center gap-3">
@@ -55,14 +54,10 @@ export function ThreadsInbox(props: ThreadsInboxProps) {
 
   if (threads.length === 0) {
     return (
-      <View className="flex-1 items-center justify-center gap-3 px-8">
-        <View className="h-14 w-14 items-center justify-center rounded-pill bg-surface-2">
-          <Icon name="thread" size={24} color={palette["text-muted"]} />
-        </View>
-        <Text tone="muted" className="text-center">
-          No threads yet. Reply to a message in a thread and it shows up here.
-        </Text>
-      </View>
+      <EmptyState
+        title="No threads yet"
+        message="Reply to a message in a thread and it shows up here."
+      />
     );
   }
 

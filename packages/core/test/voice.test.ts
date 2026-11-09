@@ -1,7 +1,10 @@
 import { describe, expect, it, vi } from "vitest";
 import {
+  CALL_ALONE_HINT_MESSAGE,
+  CALL_ALONE_HINT_MS,
   type CallParticipantView,
   type CallView,
+  callAloneRemainingMs,
   callElsewhereFromUnknown,
   callKindLabel,
   callOnAnotherDevice,
@@ -10,6 +13,7 @@ import {
   createVoiceClientId,
   DEFAULT_VOICE_SETTINGS,
   ensureVoiceClientId,
+  formatAloneCountdown,
   formatCallDuration,
   isOnAnotherDevice,
   isOnThisDevice,
@@ -277,5 +281,35 @@ describe("voice client id without Web Crypto", () => {
     } finally {
       vi.unstubAllGlobals();
     }
+  });
+});
+
+describe("solo-call countdown", () => {
+  it("shows the warning only during the last minute before the deadline", () => {
+    const deadline = 1_000_000;
+    expect(callAloneRemainingMs(deadline, deadline - CALL_ALONE_HINT_MS - 1)).toBeNull();
+    expect(callAloneRemainingMs(deadline, deadline - CALL_ALONE_HINT_MS)).toBe(CALL_ALONE_HINT_MS);
+    expect(callAloneRemainingMs(deadline, deadline - 45_000)).toBe(45_000);
+    expect(callAloneRemainingMs(deadline, deadline)).toBeNull();
+    expect(callAloneRemainingMs(deadline, deadline + 1)).toBeNull();
+  });
+
+  it("stays hidden without a deadline or with a bad one", () => {
+    expect(callAloneRemainingMs(null, 0)).toBeNull();
+    expect(callAloneRemainingMs(undefined, 0)).toBeNull();
+    expect(callAloneRemainingMs(Number.NaN, 0)).toBeNull();
+  });
+
+  it("formats a short countdown", () => {
+    expect(formatAloneCountdown(60_000)).toBe("1:00");
+    expect(formatAloneCountdown(45_000)).toBe("0:45");
+    expect(formatAloneCountdown(1_500)).toBe("0:02");
+    expect(formatAloneCountdown(0)).toBe("0:00");
+  });
+
+  it("announces a static hint instead of the ticking seconds", () => {
+    expect(CALL_ALONE_HINT_MESSAGE).toContain("Press Stay to remain");
+    // A digit would make assistive tech read a changing number every tick.
+    expect(CALL_ALONE_HINT_MESSAGE).not.toMatch(/\d/);
   });
 });

@@ -21,6 +21,7 @@ import {
   useRef,
   useState,
 } from "react";
+import { CallEndedNotice } from "../components/voice/CallEndedNotice";
 import { SwitchDeviceCallModal } from "../components/voice/SwitchDeviceCallModal";
 import { VoiceEngine, type VoiceSnapshot } from "../lib/voice/call-engine";
 import { convexVoicePort, convexVoiceSubscriptions } from "../lib/voice/convex-voice";
@@ -96,6 +97,10 @@ export interface VoiceContextValue extends VoiceSnapshot {
   dismissQualityNotice(): void;
   /** Restores the camera and stops automatic degradation for this call. */
   undoQualityChange(): void;
+  /** Restarts the solo-call countdown after the person chooses to stay. */
+  stayInCall(): Promise<void>;
+  /** Hides the notice shown after the server's solo-call disconnect. */
+  dismissEndedNotice(): void;
 }
 
 const VoiceContext = createContext<VoiceContextValue | null>(null);
@@ -115,6 +120,7 @@ const EMPTY_SNAPSHOT: VoiceSnapshot = {
   error: null,
   mediaError: null,
   qualityNotice: null,
+  endedNotice: null,
 };
 
 export interface VoiceProviderProps {
@@ -483,6 +489,14 @@ export function VoiceProvider({
     engineRef.current?.undoQualityChange();
   }, []);
 
+  const stayInCall = useCallback(async () => {
+    await engineRef.current?.stayInCall();
+  }, []);
+
+  const dismissEndedNotice = useCallback(() => {
+    engineRef.current?.dismissEndedNotice();
+  }, []);
+
   const canConnect = policy.enabled && hasPermission(permissions, Permission.Connect);
   const canSpeak = hasPermission(permissions, Permission.Speak);
   const canStream = policy.screenShareEnabled && hasPermission(permissions, Permission.Stream);
@@ -513,6 +527,9 @@ export function VoiceProvider({
       toggleScreen: () => {
         const engine = engineRef.current;
         void engine?.setScreenSharing(!engine.getSnapshot().local.sharingScreen);
+      },
+      stay: () => {
+        void stayInCall();
       },
       hangUp: () => {
         void leave();
@@ -555,6 +572,8 @@ export function VoiceProvider({
       clearError,
       dismissQualityNotice,
       undoQualityChange,
+      stayInCall,
+      dismissEndedNotice,
     }),
     [
       snapshot,
@@ -588,6 +607,8 @@ export function VoiceProvider({
       clearError,
       dismissQualityNotice,
       undoQualityChange,
+      stayInCall,
+      dismissEndedNotice,
     ],
   );
 
@@ -613,6 +634,7 @@ export function VoiceProvider({
           outputDeviceId={settings.outputDeviceId}
           outputVolume={settings.outputVolume}
         />
+        <CallEndedNotice />
       </VoiceLevelsProvider>
     </VoiceContext.Provider>
   );

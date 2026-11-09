@@ -26,9 +26,14 @@ export {
   VOICE_SETTINGS_KEY,
 } from "./settings";
 export {
+  CALL_ALONE_HINT_MESSAGE,
+  CALL_ALONE_HINT_MS,
+  callAloneRemainingMs,
+  callAloneTimeoutLabel,
   callKindLabel,
   callOnAnotherDevice,
   callStatusLabel,
+  formatAloneCountdown,
   formatCallDuration,
   isOnAnotherDevice,
   isOnThisDevice,
@@ -44,6 +49,7 @@ export {
 export type {
   BackgroundBlur,
   BackgroundEffect,
+  CallEndNotice,
   CallKind,
   CallParticipantView,
   CallSignalKind,

@@ -11,7 +11,19 @@
 
 export type DeepLinkTarget =
   | { readonly kind: "connect"; readonly server: string }
-  | { readonly kind: "invite"; readonly code: string };
+  | { readonly kind: "invite"; readonly code: string }
+  | {
+      readonly kind: "auth";
+      readonly code: string;
+      readonly server: string;
+      readonly tx?: string | undefined;
+    }
+  | {
+      readonly kind: "auth-error";
+      readonly error: string;
+      readonly server: string;
+      readonly tx?: string | undefined;
+    };
 
 type TauriInvoke = (command: string, args?: Record<string, unknown>) => Promise<unknown>;
 
@@ -511,6 +523,22 @@ export function parseDeepLink(raw: string): DeepLinkTarget | null {
   if (action === "invite") {
     const code = (url.searchParams.get("code") ?? segments[0] ?? "").trim();
     return code.length > 0 ? { kind: "invite", code } : null;
+  }
+  if (action === "auth") {
+    const code = (url.searchParams.get("code") ?? "").trim();
+    const error = (url.searchParams.get("error") ?? "").trim();
+    const server = (url.searchParams.get("server") ?? "").trim();
+    const tx = (url.searchParams.get("tx") ?? "").trim() || undefined;
+    if (code.length > 0 && server.length > 0) {
+      return { kind: "auth", code, server, tx };
+    }
+    // The finish route sends `error`, `server` and `tx` when the provider
+    // cancels or fails; a server-only link still needs the client's `tx` to be
+    // accepted, which the caller checks against its pending transaction.
+    if (error.length > 0 && server.length > 0) {
+      return { kind: "auth-error", error, server, tx };
+    }
+    return null;
   }
   return null;
 }

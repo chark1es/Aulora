@@ -1,7 +1,14 @@
 /* eslint-disable no-unused-vars -- the base rule reports parameter names in type signatures; Biome checks real unused code */
-import { Button, Icon, IconButton, Text, usePalette } from "@aulora/ui-native";
+import { Button, countBadgeTextStyle, Icon, IconButton, Text, usePalette } from "@aulora/ui-native";
 import { useRef, useState } from "react";
-import { Pressable, ScrollView, type ScrollViewInstance, TextInput, View } from "react-native";
+import {
+  Platform,
+  Pressable,
+  ScrollView,
+  type ScrollViewInstance,
+  TextInput,
+  View,
+} from "react-native";
 import Animated, { FadeIn, FadeInDown, LinearTransition } from "react-native-reanimated";
 import { impactFeedback } from "../../lib/haptics";
 import { type Board, type Card, type Column, cardsInColumn, isColumnFull } from "../../lib/kanban";
@@ -37,10 +44,11 @@ function ColumnHeader({ column, count, full, onAdd }: ColumnHeaderProps) {
         <Text
           size="xs"
           className="font-medium"
-          style={{
+          style={countBadgeTextStyle({
+            size: 18,
             color: full ? palette.danger : palette["text-muted"],
-            fontVariant: ["tabular-nums"],
-          }}
+            platform: Platform.OS,
+          })}
         >
           {count}
           {limit}

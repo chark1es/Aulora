@@ -1,6 +1,6 @@
 /* eslint-disable no-unused-vars -- the base rule reports parameter names in type signatures; Biome checks real unused code */
 import { EVERYONE_ROLE_ID } from "@aulora/core";
-import { Icon, Text } from "@aulora/ui-web";
+import { Button, Icon, Text } from "@aulora/ui-web";
 import { useEffect, useState } from "react";
 import {
   canManageRoleUi,
@@ -19,11 +19,14 @@ export interface MemberDetailProps {
   readonly member: MemberView;
   readonly roles: readonly RoleView[];
   readonly viewer: MemberManagerViewer;
-  readonly ownerId: string | null;
+  readonly ownerIds: readonly string[];
+  readonly canManageOwners: boolean;
   readonly permissions: MemberManagerProps["permissions"];
   readonly moderatable: boolean;
   readonly busy: boolean;
   readonly error: string | null;
+  readonly onPromoteOwner: () => void;
+  readonly onDemoteOwner: () => void;
   readonly onAssignRole: Callback<[roleId: string]>;
   readonly onRemoveRole: Callback<[roleId: string]>;
   readonly onNickname: Callback<[nickname: string]>;
@@ -42,6 +45,9 @@ interface MemberDetailModel {
   readonly busy: boolean;
   readonly error: string | null;
   readonly isOwner: boolean;
+  readonly isLastOwner: boolean;
+  readonly isBot: boolean;
+  readonly canManageOwners: boolean;
   readonly timedOut: boolean;
   readonly canEditNickname: boolean;
   readonly canAssignRoles: boolean;
@@ -53,19 +59,31 @@ interface MemberDetailModel {
   readonly onTimeout: Callback<[until: number | undefined]>;
   readonly onKick: () => void;
   readonly onBan: Callback<[durationMs?: number, reason?: string]>;
+  readonly onPromoteOwner: () => void;
+  readonly onDemoteOwner: () => void;
   readonly onAssignRole: Callback<[roleId: string]>;
   readonly onRemoveRole: Callback<[roleId: string]>;
 }
 
 function useMemberDetailModel(props: MemberDetailProps): MemberDetailModel {
-  const { member, roles, viewer, ownerId, permissions, moderatable, busy, error } = props;
+  const {
+    member,
+    roles,
+    viewer,
+    ownerIds,
+    canManageOwners,
+    permissions,
+    moderatable,
+    busy,
+    error,
+  } = props;
   const [nickname, setNickname] = useState(member.nickname ?? "");
 
   useEffect(() => {
     setNickname(member.nickname ?? "");
   }, [member.nickname]);
 
-  const { isSelf, displayName, timedOut, isOwner } = memberFlags(member, viewer, ownerId);
+  const { isSelf, displayName, timedOut, isOwner } = memberFlags(member, viewer, ownerIds);
   const { canEditNickname, canAssignRoles, canTimeout, canKick, canBan } = memberActions(
     permissions,
     viewer,
@@ -86,6 +104,9 @@ function useMemberDetailModel(props: MemberDetailProps): MemberDetailModel {
     busy,
     error,
     isOwner,
+    isLastOwner: isOwner && ownerIds.length <= 1,
+    isBot: member.isBot === true,
+    canManageOwners,
     timedOut,
     canEditNickname,
     canAssignRoles,
@@ -97,6 +118,8 @@ function useMemberDetailModel(props: MemberDetailProps): MemberDetailModel {
     onTimeout: props.onTimeout,
     onKick: props.onKick,
     onBan: props.onBan,
+    onPromoteOwner: props.onPromoteOwner,
+    onDemoteOwner: props.onDemoteOwner,
     onAssignRole: props.onAssignRole,
     onRemoveRole: props.onRemoveRole,
   };
@@ -105,7 +128,7 @@ function useMemberDetailModel(props: MemberDetailProps): MemberDetailModel {
 function memberFlags(
   member: MemberView,
   viewer: MemberManagerViewer,
-  ownerId: string | null,
+  ownerIds: readonly string[],
 ): {
   readonly isSelf: boolean;
   readonly displayName: string;
@@ -116,7 +139,7 @@ function memberFlags(
     isSelf: member.userId === viewer.userId,
     displayName: memberDisplayName(member, member.userId),
     timedOut: member.timeoutUntil !== null && member.timeoutUntil > Date.now(),
-    isOwner: member.userId === ownerId,
+    isOwner: ownerIds.includes(member.userId),
   };
 }
 
@@ -130,6 +153,17 @@ function MemberDetailView({ model }: { readonly model: MemberDetailModel }) {
       <MemberBadges isOwner={model.isOwner} timedOut={model.timedOut} />
 
       <MemberError error={model.error} />
+
+      {model.canManageOwners && !model.isBot && (
+        <OwnerSection
+          isOwner={model.isOwner}
+          isLastOwner={model.isLastOwner}
+          displayName={model.displayName}
+          busy={model.busy}
+          onPromote={model.onPromoteOwner}
+          onDemote={model.onDemoteOwner}
+        />
+      )}
 
       <MemberRolesSection
         member={model.member}
@@ -197,6 +231,52 @@ function MemberError({ error }: { readonly error: string | null }) {
     <Text tone="danger" size="sm" role="alert">
       {error}
     </Text>
+  );
+}
+
+interface OwnerSectionProps {
+  readonly isOwner: boolean;
+  readonly isLastOwner: boolean;
+  readonly displayName: string;
+  readonly busy: boolean;
+  readonly onPromote: () => void;
+  readonly onDemote: () => void;
+}
+
+/**
+ * Owner access for one member. Owners are peers with full workspace and
+ * instance authority, so promotion is deliberately a separate, confirmed
+ * action rather than part of the role picker.
+ */
+function OwnerSection(props: OwnerSectionProps) {
+  const { isOwner, isLastOwner, displayName, busy, onPromote, onDemote } = props;
+  return (
+    <section className="flex flex-col gap-2 border-t border-border pt-4">
+      <Text as="h4" size="xs" tone="muted" className="font-semibold">
+        Owner access
+      </Text>
+      <Text size="sm" tone="muted" className="leading-relaxed">
+        {isOwner
+          ? `${displayName} is an owner: full control over roles, members, instance settings and environment credentials.`
+          : `Owners are peers with full control over roles, members, instance settings and environment credentials.`}
+      </Text>
+      {isLastOwner ? (
+        <Text size="xs" tone="muted">
+          This is the last owner. Make another member an owner before removing this role.
+        </Text>
+      ) : (
+        <div>
+          <Button
+            variant={isOwner ? "secondary" : "primary"}
+            size="sm"
+            disabled={busy}
+            onClick={isOwner ? onDemote : onPromote}
+          >
+            {isOwner ? "Remove owner" : "Make owner"}
+          </Button>
+        </div>
+      )}
+    </section>
   );
 }
 

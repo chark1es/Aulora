@@ -34,6 +34,32 @@ describe("Kanban authorization", () => {
       alice.mutation(api.kanban.createBoard, { name: "No", private: false, memberIds: [] }),
     ).rejects.toThrow("Missing Kanban permission");
   });
+  it("keeps comment-only members read-only on cards and boards", async () => {
+    const { owner, alice, boardId } = await setup(Permission.ViewKanban | Permission.CommentKanban);
+    const cardId = await owner.mutation(api.kanban.createCard, {
+      boardId,
+      columnId: "todo",
+      title: "Owner's card",
+    });
+
+    // Viewing and commenting still work.
+    await expect(alice.query(api.kanban.listCards, { boardId })).resolves.toHaveLength(1);
+    await alice.mutation(api.kanbanComments.comment, { cardId, body: "Looks good" });
+
+    // Every board or card change needs an explicit Edit/Manage grant.
+    await expect(
+      alice.mutation(api.kanban.createCard, { boardId, columnId: "todo", title: "No" }),
+    ).rejects.toThrow("Missing Kanban permission");
+    await expect(alice.mutation(api.kanban.moveCard, { cardId, columnId: "done" })).rejects.toThrow(
+      "Missing Kanban permission",
+    );
+    await expect(
+      alice.mutation(api.kanban.archiveCard, { cardId, archived: true }),
+    ).rejects.toThrow("Missing Kanban permission");
+    await expect(
+      alice.mutation(api.kanban.archiveBoard, { boardId, archived: true }),
+    ).rejects.toThrow("Missing Kanban permission");
+  });
   it("hides private boards and protects all card reads and writes", async () => {
     const { owner, alice, bob } = await setup();
     const boardId = await owner.mutation(api.kanban.createBoard, {

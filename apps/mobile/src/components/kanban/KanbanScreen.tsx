@@ -1,7 +1,7 @@
 import { View } from "react-native";
 import { KeyboardAvoidingView } from "react-native-keyboard-controller";
 import { BoardColumns } from "./BoardColumns";
-import { ArchivedBanner, BoardFilters } from "./BoardFilters";
+import { ArchivedBanner, BoardFilters, ReadOnlyBanner } from "./BoardFilters";
 import { BoardEmpty, BoardError, BoardHeader, BoardLoading } from "./BoardHeader";
 import { BoardSheets } from "./BoardSheets";
 import { CardSheet } from "./CardSheet";
@@ -15,6 +15,7 @@ function BoardBody({ ctl }: { readonly ctl: BoardController }) {
   return (
     <View className="flex-1">
       <BoardFilters ctl={ctl} board={board} />
+      <ReadOnlyBanner ctl={ctl} board={board} />
       <ArchivedBanner ctl={ctl} board={board} />
       {ctl.cards === undefined ? (
         <BoardLoading label="Loading cards" />

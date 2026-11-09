@@ -132,6 +132,9 @@ export const list = query({
         managedInSection: definition.managedInSection ?? null,
         source,
         isSet: source !== "unset",
+        // Metadata only: when an owner saved (or last replaced) this override.
+        // Environment-sourced values have no row and therefore no timestamp.
+        updatedAt: row?.updatedAt ?? null,
         redirectUrl: authRedirectUrlForKey(process.env, definition.key),
         ...(value !== undefined ? { value } : {}),
       });

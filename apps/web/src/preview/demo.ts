@@ -291,6 +291,13 @@ export async function createDemoWorkspace(): Promise<DemoWorkspace> {
     memberIds: ["u-kathryn", "u-wade", "u-leslie"],
   });
   const dmSavannah = await channel("dm", "Savannah Nguyen", { memberIds: ["u-savannah"] });
+  // Empty conversations, so the preview always has the first-message state
+  // reachable without creating a channel that the demo's static list omits.
+  await channel("dm", "Theresa Webb", { memberIds: ["u-theresa"] });
+  await channel("dm", "Notes to self", { memberIds: [] });
+  await channel("group_dm", "Wade Warren, Leslie Alexander", {
+    memberIds: ["u-wade", "u-leslie"],
+  });
 
   await seed(design, [
     {

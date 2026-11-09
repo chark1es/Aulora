@@ -174,6 +174,42 @@ export function textClass(options: {
 }
 
 /**
+ * The text inside a fixed-height numeric badge. RN centres text differently on
+ * each platform: Android types honour `includeFontPadding`/`textAlignVertical`,
+ * while iOS centres inside `lineHeight`. Both get the same effective line box,
+ * and the iOS baseline keeps a single point of optical correction. Tabular
+ * numerals keep a two-digit count from shifting the badge's neighbours.
+ */
+export function countBadgeTextStyle(options: {
+  readonly size: number;
+  readonly color: string;
+  readonly platform?: string | undefined;
+  readonly fontSize?: number | undefined;
+}): {
+  readonly color: string;
+  readonly fontSize: number;
+  readonly lineHeight: number;
+  readonly includeFontPadding: false;
+  readonly textAlign: "center";
+  readonly textAlignVertical: "center";
+  readonly fontVariant: "tabular-nums"[];
+  readonly paddingTop: number;
+} {
+  const ios = options.platform === "ios";
+  const fontSize = options.fontSize ?? (options.size >= 18 ? 12 : 11);
+  return {
+    color: options.color,
+    fontSize,
+    lineHeight: options.size - (ios ? 1 : 0),
+    includeFontPadding: false,
+    textAlign: "center",
+    textAlignVertical: "center",
+    fontVariant: ["tabular-nums"],
+    paddingTop: ios ? 1 : 0,
+  };
+}
+
+/**
  * A grouped settings row: label (and optional description) on the leading edge,
  * a control on the trailing edge. Every row clears the 44pt touch target.
  */

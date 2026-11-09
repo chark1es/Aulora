@@ -1,7 +1,7 @@
 /* eslint-disable no-unused-vars -- the base rule reports parameter names in type signatures; Biome checks real unused code */
 import { activityLabel, type ChannelView, type PresenceRow, type SearchHit } from "@aulora/core";
 import type { IconName } from "@aulora/tokens";
-import { Icon, Spinner, Text, usePalette } from "@aulora/ui-native";
+import { EmptyState, Heading, Spinner, Text, usePalette } from "@aulora/ui-native";
 import { Pressable, View } from "react-native";
 import { highlightParts } from "../../lib/search-ui";
 import type { MessageSearch, RecentSearches } from "../../lib/use-search";
@@ -26,17 +26,12 @@ interface RecentListProps {
 
 /** What shows before anything is typed: past queries, or a hint when there are none. */
 export function RecentList({ searches, onPick }: RecentListProps) {
-  const palette = usePalette();
   if (searches.recent.length === 0) {
     return (
-      <View className="items-center gap-2 px-8 pt-16">
-        <View className="h-14 w-14 items-center justify-center rounded-pill bg-surface-2">
-          <Icon name="search" size={26} color={palette["text-muted"]} />
-        </View>
-        <Text tone="muted" className="text-center">
-          Find a message by what was said, or jump straight to a conversation or a person.
-        </Text>
-      </View>
+      <EmptyState
+        title="Search this workspace"
+        message="Find a message by what was said, or jump straight to a conversation or a person."
+      />
     );
   }
   return (
@@ -254,9 +249,11 @@ export function SearchStatus({ query, state, nothing, showsMessages }: SearchSta
   }
   if (nothing) {
     return (
-      <View className="items-center gap-1 px-8 pt-10">
-        <Text className="font-semibold">{`No results for “${query}”`}</Text>
-        <Text size="sm" tone="muted" className="text-center">
+      <View className="items-start gap-1 pt-8">
+        <Heading level={3} accessibilityRole="header">
+          {`No results for “${query}”`}
+        </Heading>
+        <Text size="sm" tone="muted">
           Check the spelling, or try a different word from the message.
         </Text>
       </View>

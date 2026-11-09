@@ -149,6 +149,12 @@ function useSessionControls(engineRef: EngineRef, setView: Dispatch<SetStateActi
   const clearError = useCallback(() => {
     engineRef.current?.clearError();
   }, [engineRef]);
+  const stayInCall = useCallback(async () => {
+    await engineRef.current?.stayInCall();
+  }, [engineRef]);
+  const dismissEndedNotice = useCallback(() => {
+    engineRef.current?.dismissEndedNotice();
+  }, [engineRef]);
   return {
     declineCall,
     leave,
@@ -157,6 +163,8 @@ function useSessionControls(engineRef: EngineRef, setView: Dispatch<SetStateActi
     setDeafened,
     setCamera,
     setScreenSharing,
+    stayInCall,
+    dismissEndedNotice,
     clearError,
   };
 }

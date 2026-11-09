@@ -1,5 +1,5 @@
 import { activityLabel, type MessagePayload } from "@aulora/core";
-import { Button, Icon, Spinner, Text, usePalette } from "@aulora/ui-native";
+import { Button, EmptyState, Spinner, Text, usePalette } from "@aulora/ui-native";
 import { usePaginatedQuery } from "convex/react";
 import { Pressable, View } from "react-native";
 import { api } from "../../../../../packages/convex/convex/_generated/api";
@@ -39,12 +39,10 @@ export function PinnedMessagesSheet({
           <Spinner label="Loading pinned messages" />
         </View>
       ) : pins.length === 0 ? (
-        <View className="items-center gap-2 px-6 py-8">
-          <Icon name="pin" size={26} color={palette["text-muted"]} />
-          <Text tone="muted" className="text-center">
-            Nothing pinned yet. Long-press a message to pin it here.
-          </Text>
-        </View>
+        <EmptyState
+          title="No pins yet"
+          message="Long-press a message to pin it here for everyone in the conversation."
+        />
       ) : (
         <ListGroup inset={56}>
           {pins.map((message) => (

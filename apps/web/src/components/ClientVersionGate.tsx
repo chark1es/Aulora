@@ -109,9 +109,6 @@ export function ClientVersionRequired({ policy }: { readonly policy: ClientVersi
         className="flex w-full max-w-md flex-col gap-4 p-6"
         data-testid="client-update-required"
       >
-        <span className="mx-auto flex h-11 w-11 items-center justify-center rounded-full bg-accent-soft text-accent">
-          <Icon name="download" size={22} />
-        </span>
         <div className="flex flex-col gap-1.5">
           <Text size="lg" className="font-semibold">
             Update required
@@ -155,9 +152,6 @@ export function ServerUpdateRequired({
         className="flex w-full max-w-md flex-col gap-4 p-6"
         data-testid="server-update-required"
       >
-        <span className="mx-auto flex h-11 w-11 items-center justify-center rounded-full bg-accent-soft text-accent">
-          <Icon name="download" size={22} />
-        </span>
         <div className="flex flex-col gap-1.5">
           <Text size="lg" className="font-semibold">
             This server needs an update

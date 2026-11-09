@@ -7,6 +7,9 @@ backend queries or mutations, client subscriptions, schemas or indexes, data
 migrations, Convex dependencies or engine images, or deployment and update
 scripts. Apply the relevant performance and upgrade checks before submitting.
 
+Read [Releases and client compatibility](docs/releases.md) before changing
+client/server APIs or marking a release as a breaking change.
+
 ## Boundaries
 
 - Keep real credentials, encryption keys, and private user data out of Git. Use

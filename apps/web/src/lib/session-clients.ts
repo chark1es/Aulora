@@ -9,24 +9,32 @@
  * replaced. See `connection-recovery.ts` for when that happens.
  */
 
-import type { ServerProfile } from "@aulora/core";
+import { CONVEX_AUTH_CLIENT_OPTIONS, type ServerProfile } from "@aulora/core";
 import { ConvexReactClient } from "convex/react";
 import { type AuloraAuthClient, createAuloraAuthClient } from "./auth-client";
+import { createProviderAuth } from "./provider-auth";
 
 export interface SessionClients {
   readonly convex: ConvexReactClient;
   readonly authClient: AuloraAuthClient;
+  /**
+   * The auth client the Convex provider should use: the same session, with a
+   * token call that keeps the last token across a transient auth outage.
+   */
+  readonly providerAuthClient: AuloraAuthClient;
   /** Closes the websocket and drops every subscription. Safe to call twice. */
   dispose(): void;
 }
 
 export function createSessionClients(profile: ServerProfile): SessionClients {
-  const convex = new ConvexReactClient(profile.convexUrl);
+  const convex = new ConvexReactClient(profile.convexUrl, CONVEX_AUTH_CLIENT_OPTIONS);
   const authClient = createAuloraAuthClient(profile.siteUrl);
+  const providerAuth = createProviderAuth(authClient);
   let disposed = false;
   return {
     convex,
     authClient,
+    providerAuthClient: providerAuth.client,
     dispose() {
       if (disposed) {
         return;

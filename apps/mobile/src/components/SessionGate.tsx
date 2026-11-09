@@ -10,9 +10,11 @@ import { SafeAreaView } from "react-native-safe-area-context";
 import { api } from "../../../../packages/convex/convex/_generated/api";
 import type { AuloraAuthClient } from "../lib/auth-client";
 import { authActionsFromClient } from "../lib/auth-client";
+import { subscribeAuthChanged } from "../lib/auth-events";
 import { mobileVersionState } from "../lib/client-version";
 import type { CookieStore } from "../lib/cookie-fetch";
 import { bindPendingInvite } from "../lib/pending-invite";
+import { resetProviderToken, setProviderTokenIdentity } from "../lib/provider-auth";
 import { useStuckTimeout } from "../lib/stuck-timeout";
 import { ChatProvider } from "../providers/ChatProvider";
 import { useProfiles } from "../providers/ProfileProvider";
@@ -27,6 +29,7 @@ import { ChatScreen } from "./chat/ChatScreen";
 import { WorkspaceSwitcherSheet } from "./chat/WorkspaceSwitcherSheet";
 import { MembershipGate } from "./MembershipGate";
 import { QueryErrorBoundary } from "./QueryErrorBoundary";
+import { SetupScreen } from "./SetupScreen";
 import { SignInScreen } from "./SignInScreen";
 
 export interface SessionGateProps {
@@ -56,11 +59,46 @@ export function SessionGate({ profile, authClient, cookieStore, client }: Sessio
     bindPendingInvite(identity);
   }, [identity]);
 
+  // Bind the Convex token cache to this Better Auth session. Sign-out resets it
+  // synchronously below; this covers an account switch inside one client, where
+  // the next transient failure would otherwise serve the previous person's
+  // token. The session id is not part of the native session payload, so the
+  // user id is the identity here.
+  useEffect(() => {
+    if (identity !== null) {
+      setProviderTokenIdentity(authClient, identity);
+    }
+  }, [authClient, identity]);
+
+  // A native OAuth finish in the system browser persists a token outside this
+  // client's session atom; re-check once that route says the session changed.
+  useEffect(
+    () =>
+      subscribeAuthChanged(() => {
+        void session.refetch();
+      }),
+    [session],
+  );
+
   // Compatibility gate: all hooks above run unconditionally, so returning here
   // is safe even when the config query resolves later.
   const versionPolicy = config?.clientVersion ?? null;
   if (versionPolicy !== null && mobileVersionState(versionPolicy) === "required") {
     return <ClientVersionRequired policy={versionPolicy} />;
+  }
+
+  // A fresh instance has no owner to sign in with; claim it first. An older
+  // backend omits the field, so this stays false during a mixed rollout.
+  if (config?.setupRequired === true) {
+    return (
+      <SafeAreaView className="flex-1" edges={["top", "bottom"]}>
+        <SetupScreen
+          profile={profile}
+          authClient={authClient}
+          onConnectDifferentServer={backToConnect}
+        />
+      </SafeAreaView>
+    );
   }
 
   if (session.isPending) {
@@ -156,6 +194,9 @@ function SessionPending({
  */
 function signOutAction(authClient: AuloraAuthClient) {
   return async () => {
+    // Clear the Convex token cache before the request so a token refresh that
+    // races the sign-out cannot fall back to the account that is leaving.
+    resetProviderToken(authClient);
     const result = await authClient.signOut().catch(() => null);
     if (result === null || result.error) {
       Alert.alert(

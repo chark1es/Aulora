@@ -108,9 +108,10 @@ The Addons tab controls optional tools. Kanban and Notes are off by default and 
 
 ## Instance admin
 
-Opened from **Instance admin** in the sidebar, visible only to the operator
-account created by first-run setup (the workspace owner). This is where
-instance-level concerns live:
+Opened from **Instance admin** in the sidebar, visible to workspace owners.
+Owners are peers: every owner can open this panel, manage environment
+overrides, backups, updates and other owners. This is where instance-level
+concerns live:
 
 - **Overview** — version, member/channel/device/file counts, storage used, the
   current license state and the last backup.
@@ -125,13 +126,15 @@ instance-level concerns live:
   never be locked out, and first-run owner creation is never blocked by it. See
   [Disabling email & password sign-in](self-hosting.md#disabling-email-password-sign-in).
 - **Environment** — every environment variable the app reads, in a table with
-  where each value comes from (environment, overridden here, or unset). A lock
-  icon marks a row that cannot be changed from here; hover it for the reason.
-  Each provider's client id row shows the redirect URL to register with that
-  provider (built from `SITE_URL`). Deployment values
-  are never returned, secret or not. The owner can override a curated set, reset
-  it back to the deployment value, and add a custom OIDC provider without
-  editing `.env`. Every save is validated, rate-limited and audited with key
+  where each value comes from (environment, overridden here, or unset), when an
+  override was last updated. A lock icon marks a row that cannot be changed
+  from here; hover it for the reason. Each provider's client id row shows the redirect URL to
+  register with that provider (built from `SITE_URL`). Deployment values
+  are never returned, secret or not; a saved secret is shown only as **Set**,
+  never as a mask, prefix, suffix or length. The owner can override a curated
+  set, reset it back to the deployment value, and add a custom OIDC provider
+  without editing `.env`; a first-run prompt points to the provider rows when
+  none is configured. Every save is validated, rate-limited and audited with key
   names only, and stored sealed with the server encryption key; secrets typed
   here are write-only. Bootstrap variables such as `BETTER_AUTH_SECRET`, the
   encryption keys and `SITE_URL` are read-only. Overriding any key in a
@@ -158,7 +161,29 @@ instance-level concerns live:
 
 ## First-run setup
 
-The operator account is created by the `setup` container from `.env`
-(`OWNER_EMAIL`, `OWNER_PASSWORD`, `OWNER_NAME`). To change instance settings
-later, use the panel; to change auth credentials or the public origin, edit
-`.env` and re-run `docker compose run --rm setup`.
+On a fresh instance the app shows **Set up your instance**. Copy the one-time
+setup token from the `setup` container's logs, then register the first owner
+account (name, email and a strong password) on that screen. The token is stored
+server-side only as a hash, expires after 24 hours, and is deleted once the
+claim succeeds. Re-run `docker compose run --rm setup` to rotate and print a new
+one.
+
+Automation can still seed the owner from `OWNER_EMAIL` / `OWNER_PASSWORD`, or
+supply a `SETUP_TOKEN` override; existing instances with an owner never see the
+setup screen. To change instance settings later, use the panel; to change the
+public origin or the encryption configuration, edit `.env` and re-run setup.
+
+## Owners
+
+Owners can promote an existing member from **Members → member → Owner access →
+Make owner**, and remove owner access from another owner the same way. Every
+promotion and removal is confirmed in a dialog, audited with actor, target and
+time, and rejected server-side if it would leave the workspace with no owner.
+Bots and non-members can never be owners.
+
+This release has no separate password re-authentication (step-up) prompt, so
+promotion relies on an active owner session plus the confirmation dialog. The
+target sees the Owner badge and the new permissions live; the app has no
+generic account-event notification transport. Existing single-owner installations
+keep working: the legacy `ownerId` remains populated with one of the owners for
+older clients.

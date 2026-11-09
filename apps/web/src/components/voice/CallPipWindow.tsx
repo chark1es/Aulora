@@ -1,5 +1,5 @@
 /* eslint-disable no-unused-vars -- the base rule reports parameter names in type signatures; Biome checks real unused code */
-import { callKindLabel } from "@aulora/core";
+import { callAloneRemainingMs, callKindLabel, formatAloneCountdown } from "@aulora/core";
 import { cn, Icon } from "@aulora/ui-web";
 import { useEffect, useRef, useState } from "react";
 import {
@@ -41,6 +41,27 @@ const RESIZE_HANDLES: ReadonlyArray<{
 ];
 
 /**
+ * Ticks once a second while a solo-call deadline is set, so the tiny window can
+ * show the same last-minute warning as the main call surface.
+ */
+function useDeadlineTick(deadline: number | null): number {
+  const [now, setNow] = useState(() => Date.now());
+  useEffect(() => {
+    if (deadline === null) {
+      return;
+    }
+    setNow(Date.now());
+    const timer = setInterval(() => {
+      setNow(Date.now());
+    }, 1_000);
+    return () => {
+      clearInterval(timer);
+    };
+  }, [deadline]);
+  return now;
+}
+
+/**
  * The shell's call picture-in-picture window.
  *
  * A separate webview with its own entry (`#pip`), so it renders on its own: the
@@ -58,6 +79,10 @@ const RESIZE_HANDLES: ReadonlyArray<{
 export function CallPipWindow() {
   const state = usePipCallState();
   const duration = useCallDuration(state?.startedAt ?? null);
+  const aloneRemaining = callAloneRemainingMs(
+    state?.aloneDeadline ?? null,
+    useDeadlineTick(state?.aloneDeadline ?? null),
+  );
   const media = usePipMedia();
   const mediaArea = useRef<HTMLDivElement | null>(null);
   const participants = state?.participants ?? [];
@@ -104,9 +129,6 @@ export function CallPipWindow() {
         }}
         className="flex shrink-0 select-none items-center gap-2 border-b border-border px-2.5 py-2"
       >
-        <span className="flex h-6 w-6 shrink-0 items-center justify-center rounded-[6px] bg-accent-soft text-accent">
-          <Icon name={state?.kind === "video" ? "video" : "volume"} size={13} />
-        </span>
         <span className="min-w-0 flex-1 truncate text-[12px] font-semibold">
           {state === null ? "Aulora" : callKindLabel(state.kind)}
         </span>
@@ -183,6 +205,22 @@ export function CallPipWindow() {
             {state.mediaKind === "local" && <Icon name="users" size={10} />}
             <span className="truncate">{state.speakerName}</span>
           </span>
+        )}
+
+        {state !== null && aloneRemaining !== null && (
+          <div className="absolute right-2 top-2 z-10 flex items-center gap-1 rounded-full bg-black/70 px-2 py-0.5 text-[10px] font-medium text-white">
+            <Icon name="timer" size={10} className="text-accent" />
+            <span className="tabular-nums">{formatAloneCountdown(aloneRemaining)}</span>
+            <button
+              type="button"
+              onClick={() => {
+                sendPipAction("stay");
+              }}
+              className="rounded-full px-1 font-semibold text-accent transition hover:bg-white/10 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent"
+            >
+              Stay
+            </button>
+          </div>
         )}
 
         {state !== null && (
