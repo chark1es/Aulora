@@ -60,6 +60,8 @@ Check that `SITE_URL` matches the browser origin, including scheme and port. Add
 
 Register the callback URL used by your configured provider exactly. The backend must be able to reach its configured HTTP-actions/JWKS origin. Check DNS, TLS, forwarded protocol headers, and WebSocket proxy support.
 
+If desktop sign-in gets stuck after Google returns, check both the preflight and POST response for `/api/auth/native/exchange`. Both must include `Access-Control-Allow-Origin` for the app's origin (on Windows, usually `http://tauri.localhost`). A POST can return 200 and consume its single-use code while the webview blocks access to the token because that header is missing. Restart sign-in after fixing the response; refreshing the old Google callback can produce `state_mismatch` because its state was already consumed.
+
 ## Uploads fail
 
 Check the per-file and total quotas in Instance admin and the reverse proxy's upload-body limit. Verify MinIO/object-storage health and bucket credentials. The bundled nginx limit is 25 MB; align it with application quotas if changing the maximum.
