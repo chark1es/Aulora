@@ -3,6 +3,7 @@ import type { Doc } from "../_generated/dataModel";
 import type { MutationCtx, QueryCtx } from "../_generated/server";
 import { requireAuth } from "./auth";
 import type { AuthProviderToggles } from "./env";
+import { isOwner } from "./owners";
 
 /**
  * Instance-admin authority. The operator account created by first-run setup is
@@ -46,14 +47,14 @@ export interface InstanceAdmin {
   readonly server: Doc<"server">;
 }
 
-/** Throws unless the caller is the operator (workspace owner) account. */
+/** Throws unless the caller is one of the workspace owners. */
 export async function requireInstanceAdmin(ctx: ReadCtx): Promise<InstanceAdmin> {
   const { userId } = await requireAuth(ctx);
   const server = await ctx.db.query("server").first();
   if (server === null) {
     throw new ConvexError("Workspace is not initialized");
   }
-  if (server.ownerId !== userId) {
+  if (!isOwner(server, userId)) {
     throw new ConvexError("Instance admin only");
   }
   return { userId, server };

@@ -11,6 +11,7 @@ export const INSTANCE_ENV_VARS: readonly EnvVarDefinition[] = [
   {
     key: "VAPID_PUBLIC_KEY",
     group: "web-push",
+    tier: "deploy-time",
     label: "VAPID public key",
     description:
       "Web push public key; clients need it, and it must stay paired with the private key.",
@@ -21,6 +22,7 @@ export const INSTANCE_ENV_VARS: readonly EnvVarDefinition[] = [
   {
     key: "VAPID_PRIVATE_KEY",
     group: "web-push",
+    tier: "deploy-time",
     label: "VAPID private key",
     description: "Web push private key used to sign deliveries; managed by the deployment.",
     type: "string",
@@ -30,6 +32,7 @@ export const INSTANCE_ENV_VARS: readonly EnvVarDefinition[] = [
   {
     key: "VAPID_SUBJECT",
     group: "web-push",
+    tier: "deploy-time",
     label: "VAPID subject",
     description: "mailto: or https: contact sent to the push service.",
     type: "string",
@@ -39,6 +42,7 @@ export const INSTANCE_ENV_VARS: readonly EnvVarDefinition[] = [
   {
     key: "UPLOAD_MAX_BYTES",
     group: "uploads",
+    tier: "deploy-time",
     label: "Max upload size",
     description: "Fallback single-upload cap; the Storage section setting wins once saved.",
     type: "number",
@@ -51,6 +55,7 @@ export const INSTANCE_ENV_VARS: readonly EnvVarDefinition[] = [
   {
     key: "UPLOAD_RATE_LIMIT",
     group: "uploads",
+    tier: "deploy-time",
     label: "Upload rate limit",
     description: "Uploads allowed per uploader per window; deployment tuning.",
     type: "number",
@@ -62,6 +67,7 @@ export const INSTANCE_ENV_VARS: readonly EnvVarDefinition[] = [
   {
     key: "UPLOAD_RATE_WINDOW_MS",
     group: "uploads",
+    tier: "deploy-time",
     label: "Upload rate window",
     description: "Upload rate-limit window in milliseconds; deployment tuning.",
     type: "number",
@@ -73,6 +79,7 @@ export const INSTANCE_ENV_VARS: readonly EnvVarDefinition[] = [
   {
     key: "SEND_RATE_LIMIT",
     group: "tuning",
+    tier: "deploy-time",
     label: "Message rate limit",
     description: "Messages allowed per sender per window; deployment tuning.",
     type: "number",
@@ -84,6 +91,7 @@ export const INSTANCE_ENV_VARS: readonly EnvVarDefinition[] = [
   {
     key: "SEND_RATE_WINDOW_MS",
     group: "tuning",
+    tier: "deploy-time",
     label: "Message rate window",
     description: "Message rate-limit window in milliseconds; deployment tuning.",
     type: "number",
@@ -95,6 +103,7 @@ export const INSTANCE_ENV_VARS: readonly EnvVarDefinition[] = [
   {
     key: "INVITE_RATE_LIMIT",
     group: "tuning",
+    tier: "deploy-time",
     label: "Invite rate limit",
     description: "Invites allowed per creator per window; deployment tuning.",
     type: "number",
@@ -106,6 +115,7 @@ export const INSTANCE_ENV_VARS: readonly EnvVarDefinition[] = [
   {
     key: "INVITE_RATE_WINDOW_MS",
     group: "tuning",
+    tier: "deploy-time",
     label: "Invite rate window",
     description: "Invite rate-limit window in milliseconds; deployment tuning.",
     type: "number",
@@ -117,6 +127,7 @@ export const INSTANCE_ENV_VARS: readonly EnvVarDefinition[] = [
   {
     key: "INVITE_PENDING_LIMIT",
     group: "tuning",
+    tier: "deploy-time",
     label: "Pending invite limit",
     description: "Outstanding invite links allowed per creator; deployment tuning.",
     type: "number",
@@ -126,8 +137,57 @@ export const INSTANCE_ENV_VARS: readonly EnvVarDefinition[] = [
     max: 100000,
   },
   {
+    key: "AUDIT_LOG_RETENTION_DAYS",
+    group: "tuning",
+    tier: "deploy-time",
+    label: "Audit log retention",
+    description: "Days an audit-log row is kept before pruning; deployment tuning.",
+    type: "number",
+    secret: false,
+    overridable: false,
+    min: 1,
+    max: 3650,
+  },
+  {
+    key: "DEVICE_RETENTION_DAYS",
+    group: "tuning",
+    tier: "deploy-time",
+    label: "Device retention",
+    description: "Days an inactive device row is kept before pruning; deployment tuning.",
+    type: "number",
+    secret: false,
+    overridable: false,
+    min: 1,
+    max: 3650,
+  },
+  {
+    key: "INVITE_REDEEM_RATE_LIMIT",
+    group: "tuning",
+    tier: "deploy-time",
+    label: "Invite redeem rate limit",
+    description: "Invite redemptions allowed per client per window; deployment tuning.",
+    type: "number",
+    secret: false,
+    overridable: false,
+    min: 1,
+    max: 100000,
+  },
+  {
+    key: "INVITE_REDEEM_RATE_WINDOW_MS",
+    group: "tuning",
+    tier: "deploy-time",
+    label: "Invite redeem rate window",
+    description: "Invite redemption rate-limit window in milliseconds; deployment tuning.",
+    type: "number",
+    secret: false,
+    overridable: false,
+    min: 1000,
+    max: 86400000,
+  },
+  {
     key: "AULORA_ICE_SERVERS",
     group: "calls",
+    tier: "overridable",
     label: "ICE servers",
     description:
       'JSON array of RTCIceServer entries, e.g. [{"urls":["stun:stun.example.com:3478"]}].',
@@ -139,6 +199,7 @@ export const INSTANCE_ENV_VARS: readonly EnvVarDefinition[] = [
   {
     key: "TURN_URLS",
     group: "calls",
+    tier: "overridable",
     label: "TURN URLs",
     description:
       "Comma-separated turn:/turns: URLs clients should try, e.g. turn:chat.example.com:3478?transport=udp.",
@@ -149,6 +210,7 @@ export const INSTANCE_ENV_VARS: readonly EnvVarDefinition[] = [
   {
     key: "TURN_TTL_SECONDS",
     group: "calls",
+    tier: "overridable",
     label: "TURN credential TTL",
     description: "Lifetime of a minted TURN credential in seconds (60-86400).",
     type: "number",
@@ -158,8 +220,22 @@ export const INSTANCE_ENV_VARS: readonly EnvVarDefinition[] = [
     max: 86400,
   },
   {
+    key: "AULORA_CALL_ALONE_TIMEOUT_SECONDS",
+    group: "calls",
+    tier: "overridable",
+    label: "Solo call timeout",
+    description:
+      "Seconds a person may be alone in a call before the server disconnects them (60-86400). Defaults to 300.",
+    type: "number",
+    secret: false,
+    overridable: true,
+    min: 60,
+    max: 86400,
+  },
+  {
     key: "TURN_SECRET",
     group: "calls",
+    tier: "deploy-time",
     label: "TURN shared secret",
     description: "coturn static-auth-secret used to sign short-lived TURN credentials.",
     type: "string",
@@ -169,6 +245,7 @@ export const INSTANCE_ENV_VARS: readonly EnvVarDefinition[] = [
   {
     key: "LIVEKIT_URL",
     group: "calls",
+    tier: "deploy-time",
     label: "LiveKit URL",
     description: "LiveKit WebSocket URL for screen streaming; managed by the deployment.",
     type: "url",
@@ -178,6 +255,7 @@ export const INSTANCE_ENV_VARS: readonly EnvVarDefinition[] = [
   {
     key: "LIVEKIT_API_KEY",
     group: "calls",
+    tier: "deploy-time",
     label: "LiveKit API key",
     description: "LiveKit API key for screen streaming; managed by the deployment.",
     type: "string",
@@ -187,6 +265,7 @@ export const INSTANCE_ENV_VARS: readonly EnvVarDefinition[] = [
   {
     key: "LIVEKIT_API_SECRET",
     group: "calls",
+    tier: "deploy-time",
     label: "LiveKit API secret",
     description: "LiveKit API secret for screen streaming; managed by the deployment.",
     type: "string",

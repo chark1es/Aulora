@@ -114,6 +114,19 @@ describe("BotsSettings gate and list", () => {
     expect(screen.getByRole("switch", { name: "Enable Beta" })).not.toBeChecked();
   });
 
+  it("leads the empty state with the setup steps, not an icon tile", () => {
+    state.values.set("bots:list", []);
+    const { container } = render(<BotsSettings canManageBots />);
+
+    expect(screen.getByRole("heading", { name: "No bots yet" })).toBeInTheDocument();
+    const steps = screen.getByRole("list");
+    expect(steps).toHaveTextContent("Create.");
+    expect(steps).toHaveTextContent("Write.");
+    expect(steps).toHaveTextContent("Grant.");
+    expect(container.querySelector("svg")).toBeNull();
+    expect(screen.getAllByRole("button", { name: "New bot" })).toHaveLength(1);
+  });
+
   it("shows the runner-offline banner", () => {
     state.values.set("bots:runnerStatus", { online: false, lastSeenAt: null });
     render(<BotsSettings canManageBots />);

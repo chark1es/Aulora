@@ -24,6 +24,13 @@ import {
 } from "./mention-directory";
 import { RichText } from "./RichText";
 
+/** A first-message suggestion placed in the composer. */
+export interface ComposerSeed {
+  /** Bumped on every suggestion so the same text can be applied again. */
+  readonly token: number;
+  readonly text: string;
+}
+
 export interface ComposerProps {
   readonly channelId: string;
   readonly members: readonly MentionTarget[];
@@ -49,6 +56,8 @@ export interface ComposerProps {
   readonly placeholder?: string;
   /** Storage key for this composer's draft; omit to keep no draft. */
   readonly draftKey?: string;
+  /** A first-message suggestion to place in the input and focus. */
+  readonly seedText?: ComposerSeed;
   readonly onTyping: (channelId: string) => void;
   readonly onSend: (input: {
     text: string;
@@ -149,6 +158,7 @@ export function Composer({
   ownName,
   placeholder = "Message",
   draftKey,
+  seedText,
   onTyping,
   onSend,
   threadHint,
@@ -200,6 +210,26 @@ export function Composer({
       clearTimeout(timer);
     };
   }, [draftKey, value]);
+
+  // A first-message suggestion replaces an empty draft and puts the caret at
+  // the end, ready to edit or send. Existing text is never clobbered.
+  useEffect(() => {
+    if (seedText === undefined) {
+      return;
+    }
+    const node = textareaRef.current;
+    const current = node?.value ?? "";
+    if (current.trim().length === 0) {
+      pendingSelection.current = [seedText.text.length, seedText.text.length];
+      setValue(seedText.text);
+    } else if (node !== null) {
+      node.setSelectionRange(current.length, current.length);
+    }
+    setSuggestions([]);
+    setMentionQuery("");
+    setEmojiOpen(false);
+    node?.focus();
+  }, [seedText]);
 
   // Grow with the content up to a cap, then scroll.
   // biome-ignore lint/correctness/useExhaustiveDependencies: re-measure whenever the value changes

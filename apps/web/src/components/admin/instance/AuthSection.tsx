@@ -72,6 +72,16 @@ export function AuthSection({ overview }: { readonly overview: Overview }) {
           {overview.auth.local.signup ? "open" : "closed"}
         </Text>
       </Card>
+      {overview.auth.availableProviders.every((provider) => !provider.configured) &&
+        overview.auth.oidc === null && (
+          <Card className="flex flex-col gap-1" data-testid="auth-first-run">
+            <Text size="sm">No external sign-in provider is configured yet.</Text>
+            <Text size="xs" tone="muted">
+              Open the Environment section to add GitHub, Google, Microsoft, Apple or a custom OIDC
+              provider. Email and password sign-in keeps working while you decide.
+            </Text>
+          </Card>
+        )}
       <AuthProviderList
         providers={overview.auth.availableProviders}
         toggles={toggles}

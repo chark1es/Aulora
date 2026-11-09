@@ -313,9 +313,11 @@ services:
       AULORA_UPDATE_MANIFEST_URL: ${AULORA_UPDATE_MANIFEST_URL:-}
       AULORA_UPDATE_GITHUB_REPO: ${AULORA_UPDATE_GITHUB_REPO:-}
       AULORA_UPDATE_CHANNEL: ${AULORA_UPDATE_CHANNEL:-stable}
-      # --- instance identity + owner (operator-required) ---
+      # --- instance identity (operator-required) ---
       INSTANCE_NAME: ${INSTANCE_NAME:-aulora}
       WORKSPACE_NAME: ${WORKSPACE_NAME:-Aulora}
+      # Optional legacy automation only. Leave blank on a fresh install: the
+      # first-run screen registers the owner after setup prints a setup token.
       OWNER_EMAIL: ${OWNER_EMAIL:-}
       OWNER_PASSWORD: ${OWNER_PASSWORD:-}
       OWNER_NAME: ${OWNER_NAME:-}
@@ -340,8 +342,16 @@ services:
       BOT_JWT_PRIVATE_JWK_B64: ${BOT_JWT_PRIVATE_JWK_B64:-}
       BOT_JWT_PUBLIC_JWK_B64: ${BOT_JWT_PUBLIC_JWK_B64:-}
       # --- auth ---
-      AUTH_LOCAL_ENABLED: ${AUTH_LOCAL_ENABLED:-true}
-      AUTH_LOCAL_SIGNUP: ${AUTH_LOCAL_SIGNUP:-true}
+      # Overridable keys have no default here: unset stays unset on the Convex
+      # deployment so the owner's Environment override is never shadowed. Set
+      # one in Coolify to pin a deployment fallback instead.
+      AUTH_LOCAL_ENABLED: ${AUTH_LOCAL_ENABLED:-}
+      AUTH_LOCAL_SIGNUP: ${AUTH_LOCAL_SIGNUP:-}
+      AUTH_MIN_PASSWORD_LENGTH: ${AUTH_MIN_PASSWORD_LENGTH:-}
+      AUTH_RATE_LIMIT_MAX: ${AUTH_RATE_LIMIT_MAX:-}
+      AULORA_ICE_SERVERS: ${AULORA_ICE_SERVERS:-}
+      TURN_URLS: ${TURN_URLS:-}
+      TURN_TTL_SECONDS: ${TURN_TTL_SECONDS:-}
       GITHUB_CLIENT_ID: ${GITHUB_CLIENT_ID:-}
       GITHUB_CLIENT_SECRET: ${GITHUB_CLIENT_SECRET:-}
       GOOGLE_CLIENT_ID: ${GOOGLE_CLIENT_ID:-}
@@ -360,6 +370,26 @@ services:
       OIDC_GROUP_ROLE_MAP: ${OIDC_GROUP_ROLE_MAP:-}
       # Trust the generic IdP's email_verified claim for implicit account linking.
       OIDC_TRUST_EMAIL: ${OIDC_TRUST_EMAIL:-}
+      # --- deployment tuning (optional; empty keeps the built-in default) ---
+      UPLOAD_MAX_BYTES: ${UPLOAD_MAX_BYTES:-}
+      UPLOAD_RATE_LIMIT: ${UPLOAD_RATE_LIMIT:-}
+      UPLOAD_RATE_WINDOW_MS: ${UPLOAD_RATE_WINDOW_MS:-}
+      SEND_RATE_LIMIT: ${SEND_RATE_LIMIT:-}
+      SEND_RATE_WINDOW_MS: ${SEND_RATE_WINDOW_MS:-}
+      INVITE_RATE_LIMIT: ${INVITE_RATE_LIMIT:-}
+      INVITE_RATE_WINDOW_MS: ${INVITE_RATE_WINDOW_MS:-}
+      INVITE_PENDING_LIMIT: ${INVITE_PENDING_LIMIT:-}
+      INVITE_REDEEM_RATE_LIMIT: ${INVITE_REDEEM_RATE_LIMIT:-}
+      INVITE_REDEEM_RATE_WINDOW_MS: ${INVITE_REDEEM_RATE_WINDOW_MS:-}
+      AUDIT_LOG_RETENTION_DAYS: ${AUDIT_LOG_RETENTION_DAYS:-}
+      DEVICE_RETENTION_DAYS: ${DEVICE_RETENTION_DAYS:-}
+      AULORA_MIN_CLIENT_VERSION: ${AULORA_MIN_CLIENT_VERSION:-}
+      AULORA_RECOMMENDED_CLIENT_VERSION: ${AULORA_RECOMMENDED_CLIENT_VERSION:-}
+      PUSH_RELAY_URL: ${PUSH_RELAY_URL:-}
+      PUSH_RELAY_TOKEN: ${PUSH_RELAY_TOKEN:-}
+      AULORA_SERVER_ID: ${AULORA_SERVER_ID:-}
+      BACKUP_TOKEN: ${BACKUP_TOKEN:-}
+      SMTP_HOST: ${SMTP_HOST:-}
       VAPID_SUBJECT: ${VAPID_SUBJECT:-mailto:owner@example.com}
       VAPID_PUBLIC_KEY: ${VAPID_PUBLIC_KEY:-}
       VAPID_PRIVATE_KEY: ${VAPID_PRIVATE_KEY:-}

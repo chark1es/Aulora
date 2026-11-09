@@ -1,5 +1,5 @@
 import type { IconName } from "@aulora/tokens";
-import { Button, Icon, Text, usePalette } from "@aulora/ui-native";
+import { Button, CountBadge, Icon, Text, usePalette } from "@aulora/ui-native";
 import { Pressable, View } from "react-native";
 import Animated, { FadeIn, FadeInDown, FadeOut } from "react-native-reanimated";
 import { type Board, NO_FILTERS } from "../../lib/kanban";
@@ -34,13 +34,8 @@ function FilterChip({ icon, label, count, onPress }: FilterChipProps) {
         {label}
       </Text>
       {active && (
-        <Animated.View
-          entering={FadeIn.duration(160)}
-          className="h-5 min-w-5 items-center justify-center rounded-pill bg-accent px-1"
-        >
-          <Text className="text-[11px] font-bold" style={{ color: palette["on-accent"] }}>
-            {count}
-          </Text>
+        <Animated.View entering={FadeIn.duration(160)}>
+          <CountBadge count={count} size="md" />
         </Animated.View>
       )}
       <Icon name="chevron-down" size={14} color={palette["text-muted"]} />
@@ -137,6 +132,30 @@ export function BoardFilters({
         </HorizontalScroll>
       </View>
     </>
+  );
+}
+
+/** Explains that the viewer may read the board but not change it. */
+export function ReadOnlyBanner({
+  ctl,
+  board,
+}: {
+  readonly ctl: BoardController;
+  readonly board: Board;
+}) {
+  const palette = usePalette();
+  if (board.archived || ctl.canEdit) return null;
+  return (
+    <Animated.View
+      entering={FadeIn.duration(180)}
+      className="flex-row items-center gap-3 border-b border-border bg-surface-2 px-4 py-2"
+    >
+      <Icon name="eye" size={16} color={palette["text-muted"]} />
+      <Text size="sm" tone="muted" className="flex-1">
+        You have view-only access to this board. Ask a workspace admin to grant you the Edit Kanban
+        permission to add, move or change cards.
+      </Text>
+    </Animated.View>
   );
 }
 

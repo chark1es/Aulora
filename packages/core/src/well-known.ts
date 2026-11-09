@@ -3,6 +3,13 @@ import { normalizeServerUrl } from "./server-url";
 export interface WellKnownLocalAuth {
   readonly enabled: boolean;
   readonly signup: boolean;
+  /**
+   * Effective deployment minimum for local passwords. Accepted for
+   * compatibility but no longer advertised in the discovery document (older
+   * strict parsers reject unknown keys); clients read the live
+   * `server.publicConfig` query and fall back to 8.
+   */
+  readonly minPasswordLength?: number;
 }
 
 export interface WellKnownOAuthProvider {
@@ -88,7 +95,7 @@ const TOP_LEVEL_KEYS = new Set([
 ]);
 const AUTH_KEYS = new Set(["local", "providers"]);
 const ENCRYPTION_KEYS = new Set(["mode", "algorithm", "keyVersion", "provider"]);
-const LOCAL_KEYS = new Set(["enabled", "signup"]);
+const LOCAL_KEYS = new Set(["enabled", "signup", "minPasswordLength"]);
 const OAUTH_KEYS = new Set(["id", "type", "displayName"]);
 const OIDC_KEYS = new Set([
   "id",
@@ -198,9 +205,20 @@ function parseLocalAuth(value: unknown, path: string): WellKnownLocalAuth {
     fail(path, "an object");
   }
   assertOnlyKeys(value, LOCAL_KEYS, path);
+  const minPasswordLength = value.minPasswordLength;
+  if (
+    minPasswordLength !== undefined &&
+    (typeof minPasswordLength !== "number" ||
+      !Number.isInteger(minPasswordLength) ||
+      minPasswordLength < 1 ||
+      minPasswordLength > 128)
+  ) {
+    fail(`${path}.minPasswordLength`, "an integer from 1 to 128");
+  }
   return {
     enabled: readBoolean(value.enabled, `${path}.enabled`),
     signup: readBoolean(value.signup, `${path}.signup`),
+    ...(minPasswordLength !== undefined ? { minPasswordLength } : {}),
   };
 }
 

@@ -16,6 +16,7 @@ import {
   JOIN_CODE_TTL_MINUTES,
 } from "./lib/joinCodes";
 import { admitMember } from "./lib/membership";
+import { isOwner } from "./lib/owners";
 import { enforceRateLimit, userRateLimitKey } from "./lib/rateLimit";
 
 /**
@@ -46,7 +47,7 @@ export const status = query({
     const address = identity?.email ?? null;
     const allowlisted = await emailIsAllowlisted(ctx, address);
     return {
-      isMember: member !== null || server?.ownerId === userId,
+      isMember: member !== null || isOwner(server, userId),
       workspaceName: server?.name ?? "Aulora",
       inviteOnly: server?.settings.inviteOnly ?? true,
       banned: (await listActiveBans(ctx, userId)).length > 0,

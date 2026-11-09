@@ -398,7 +398,7 @@ function LibraryBody({ ctl, now }: { ctl: NotesController; now: number }) {
     return (
       <EmptyState
         size="sm"
-        icon="note"
+        className="px-3 py-12"
         title={
           ctl.searching
             ? "No notes match your search"
@@ -406,7 +406,13 @@ function LibraryBody({ ctl, now }: { ctl: NotesController; now: number }) {
               ? "No archived notes"
               : "No notes here yet"
         }
-        className="py-12"
+        description={
+          ctl.searching
+            ? "Try a different search or clear the filters."
+            : ctl.showArchived
+              ? "Notes you archive are kept here until you restore or delete them."
+              : "Notes are written in Markdown and can be filed into folders and tagged."
+        }
       />
     );
   }

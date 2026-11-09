@@ -5,6 +5,7 @@ import userEvent from "@testing-library/user-event";
 import { ConvexReactClient } from "convex/react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { createMockPort } from "../../../../packages/core/src/chat/testing";
+import { ConversationStart, type ConversationStartProps } from "../components/chat/ChannelPane";
 import { ChannelSidebar, type ChannelSidebarProps } from "../components/chat/ChannelSidebar";
 import { Composer } from "../components/chat/Composer";
 import { CreateCategoryModal } from "../components/chat/CreateCategoryModal";
@@ -410,13 +411,44 @@ describe("ChannelSidebar", () => {
     render(<ChannelSidebar {...sidebarProps()} />);
     const row = screen.getByTestId("channel-row-dm-ada");
     expect(within(row).getByText("Ada Lovelace")).toBeInTheDocument();
-    expect(within(screen.getByTestId("channel-row-design")).getByText("3")).toBeInTheDocument();
+    const design = screen.getByTestId("channel-row-design");
+    expect(within(design).getByText("3")).toBeInTheDocument();
+    expect(within(design).getByRole("img", { name: "3 mentions" })).toBeInTheDocument();
+    expect(screen.getByTestId("channel-row-general")).toHaveAttribute("aria-current", "page");
+    expect(row).not.toHaveAttribute("aria-current");
     expect(within(row).getByText("Unread")).toBeInTheDocument();
-    // DM rows keep the dot on the right, vertically centred, with no timestamp
-    // stacked above it.
+    // DM rows keep the dot on the right, centred in a fixed trailing slot, with
+    // no timestamp stacked above it.
     const dot = within(row).getByText("Unread").parentElement;
-    expect(dot?.parentElement).toBe(row.lastElementChild);
+    const slot = dot?.parentElement;
+    expect(slot?.parentElement).toBe(row.lastElementChild);
+    expect(row.lastElementChild).toHaveClass("items-center");
     expect(row.textContent).not.toContain(activityLabel(NOW));
+  });
+
+  it("keeps muted conversations quiet but announces the state", () => {
+    render(
+      <ChannelSidebar
+        {...sidebarProps({
+          channels: [
+            {
+              id: "quiet",
+              kind: "text",
+              categoryId: null,
+              name: "quiet",
+              topic: null,
+              archived: false,
+              muted: true,
+            },
+          ],
+          activeChannelId: undefined,
+        })}
+      />,
+    );
+    const row = screen.getByTestId("channel-row-quiet");
+    expect(within(row).getByText("Muted")).toBeInTheDocument();
+    expect(row).not.toHaveAttribute("aria-current");
+    expect(row).toHaveClass("text-text-muted");
   });
 
   it("opens the create-channel dialog without reflowing the list", async () => {
@@ -527,6 +559,130 @@ describe("ChannelSidebar", () => {
   });
 });
 
+describe("ConversationStart", () => {
+  function channel(overrides: Partial<ChannelView> = {}): ChannelView {
+    return {
+      id: "dm-aiden",
+      kind: "dm",
+      categoryId: null,
+      name: "Direct message",
+      topic: null,
+      archived: false,
+      memberIds: ["me", "u-aiden"],
+      ...overrides,
+    };
+  }
+
+  function startProps(overrides: Partial<ConversationStartProps> = {}): ConversationStartProps {
+    return {
+      channel: channel(),
+      title: "aiden",
+      ownUserId: "me",
+      memberNames: new Map([
+        ["me", "Me"],
+        ["u-aiden", "aiden"],
+      ]),
+      presenceOf: () => "online",
+      canSend: true,
+      canStartCall: false,
+      onSayHi: vi.fn(),
+      onStartCall: vi.fn(),
+      ...overrides,
+    };
+  }
+
+  it("opens a direct message with the person, their presence and the first action", () => {
+    render(<ConversationStart {...startProps()} />);
+
+    expect(screen.getByRole("heading", { name: "aiden" })).toBeInTheDocument();
+    expect(screen.getByText("Online · Direct message")).toBeInTheDocument();
+    expect(screen.getByText("The first message is yours.")).toBeInTheDocument();
+    expect(screen.getByRole("img", { name: "Online" })).toBeInTheDocument();
+  });
+
+  it("prefills a personal greeting from Say hi", async () => {
+    const user = userEvent.setup();
+    const onSayHi = vi.fn();
+    render(<ConversationStart {...startProps({ onSayHi })} />);
+
+    await user.click(screen.getByRole("button", { name: "Say hi" }));
+    expect(onSayHi).toHaveBeenCalledWith("Hey aiden 👋");
+  });
+
+  it("offers a call when the conversation supports one", async () => {
+    const user = userEvent.setup();
+    const onStartCall = vi.fn();
+    render(<ConversationStart {...startProps({ canStartCall: true, onStartCall })} />);
+
+    await user.click(screen.getByRole("button", { name: "Start a call" }));
+    expect(onStartCall).toHaveBeenCalledTimes(1);
+  });
+
+  it("keeps notes-to-self quiet and does not offer a greeting", () => {
+    render(
+      <ConversationStart
+        {...startProps({
+          channel: channel({ memberIds: ["me"] }),
+          title: "Notes to self",
+          canStartCall: true,
+        })}
+      />,
+    );
+
+    expect(screen.getByText("Just you")).toBeInTheDocument();
+    expect(
+      screen.getByText("A place for notes, links, and reminders to yourself."),
+    ).toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: "Say hi" })).not.toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: "Start a call" })).not.toBeInTheDocument();
+  });
+
+  it("names the group and its size, and greets everyone", async () => {
+    const user = userEvent.setup();
+    const onSayHi = vi.fn();
+    render(
+      <ConversationStart
+        {...startProps({
+          channel: channel({
+            id: "group-1",
+            kind: "group_dm",
+            memberIds: ["me", "u-ada", "u-grace"],
+          }),
+          title: "Ada Lovelace, Grace Hopper",
+          memberNames: new Map([
+            ["me", "Me"],
+            ["u-ada", "Ada Lovelace"],
+            ["u-grace", "Grace Hopper"],
+          ]),
+          onSayHi,
+        })}
+      />,
+    );
+
+    expect(screen.getByRole("heading", { name: "Ada Lovelace, Grace Hopper" })).toBeInTheDocument();
+    expect(screen.getByText("3 people in this conversation")).toBeInTheDocument();
+    expect(
+      screen.getByText("The first message is yours. Everyone here will see it."),
+    ).toBeInTheDocument();
+
+    await user.click(screen.getByRole("button", { name: "Say hi" }));
+    expect(onSayHi).toHaveBeenCalledWith("Hey everyone 👋");
+  });
+
+  it("leaves channel onboarding unchanged", () => {
+    render(
+      <ConversationStart
+        {...startProps({ channel: channel({ id: "general", kind: "text" }), title: "general" })}
+      />,
+    );
+
+    expect(screen.getByRole("heading", { name: "Welcome to #general" })).toBeInTheDocument();
+    expect(
+      screen.getByText("This is the very beginning of the channel. Say hello."),
+    ).toBeInTheDocument();
+  });
+});
+
 describe("Composer", () => {
   beforeEach(() => localStorage.clear());
   afterEach(() => vi.useRealTimers());
@@ -592,6 +748,21 @@ describe("Composer", () => {
     expect(screen.getByRole("textbox", { name: "Message" })).toHaveValue("");
     rerender(<Composer {...base} draftKey="c1" onSend={vi.fn()} />);
     expect(screen.getByRole("textbox", { name: "Message" })).toHaveValue("half-written");
+  });
+
+  it("prefills the input from a first-message suggestion", () => {
+    render(<Composer {...base} seedText={{ token: 1, text: "Hey aiden 👋" }} onSend={vi.fn()} />);
+    expect(screen.getByRole("textbox", { name: "Message" })).toHaveValue("Hey aiden 👋");
+  });
+
+  it("never clobbers a draft that already has text", async () => {
+    const user = userEvent.setup();
+    const { rerender } = render(<Composer {...base} onSend={vi.fn()} />);
+    const input = screen.getByRole("textbox", { name: "Message" });
+    await user.type(input, "my own draft");
+
+    rerender(<Composer {...base} seedText={{ token: 1, text: "Hey aiden 👋" }} onSend={vi.fn()} />);
+    expect(input).toHaveValue("my own draft");
   });
 
   it("inserts a code fence from the toolbar", async () => {

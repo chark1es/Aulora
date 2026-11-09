@@ -60,6 +60,10 @@ export interface VoiceContextValue extends MobileVoiceSnapshot {
   readonly setDeafened: (_deafened: boolean) => void;
   readonly setCamera: (_on: boolean) => Promise<void>;
   readonly setScreenSharing: (_on: boolean) => Promise<void>;
+  /** Restarts the solo-call countdown after the person chooses to stay. */
+  readonly stayInCall: () => Promise<void>;
+  /** Hides the notice shown after a server-side solo-call disconnect. */
+  readonly dismissEndedNotice: () => void;
   readonly updateSettings: (_partial: Partial<VoiceDeviceSettings>) => Promise<void>;
   readonly refreshDevices: () => Promise<void>;
   readonly clearError: () => void;
@@ -79,6 +83,7 @@ export const EMPTY_SNAPSHOT: MobileVoiceSnapshot = {
   micLevelAvailable: false,
   pending: false,
   error: null,
+  endedNotice: null,
 };
 
 export interface EngineRef {
@@ -111,5 +116,7 @@ export interface VoiceControls {
   readonly setDeafened: VoiceContextValue["setDeafened"];
   readonly setCamera: VoiceContextValue["setCamera"];
   readonly setScreenSharing: VoiceContextValue["setScreenSharing"];
+  readonly stayInCall: VoiceContextValue["stayInCall"];
+  readonly dismissEndedNotice: VoiceContextValue["dismissEndedNotice"];
   readonly clearError: VoiceContextValue["clearError"];
 }

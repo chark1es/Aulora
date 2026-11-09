@@ -55,6 +55,24 @@ export function useConvexChatScreenSession(
     () => (threadRows ?? []).filter((row) => row.viewerMentioned).length,
     [threadRows],
   );
+  // One bounded subscription serves every conversation row in the sidebar,
+  // matching the web sidebar; the open channel keeps its own live read state.
+  const channelIds = useMemo(() => chat.channels.map((channel) => channel.id), [chat.channels]);
+  const unreadRows = useQuery(
+    api.readStates.summary,
+    channelIds.length > 0 ? { channelIds: channelIds as never[] } : "skip",
+  );
+  const unreadByChannel = useMemo(() => {
+    const map = new Map<string, { unread: boolean; unreadCount: number; mentionCount: number }>();
+    for (const row of unreadRows ?? []) {
+      map.set(row.channelId, {
+        unread: row.unread,
+        unreadCount: row.unreadCount,
+        mentionCount: row.mentionCount,
+      });
+    }
+    return map;
+  }, [unreadRows]);
   return {
     ...chat,
     workspaceName,
@@ -71,6 +89,7 @@ export function useConvexChatScreenSession(
     showNotes,
     threadRows,
     threadMentionCount,
+    unreadByChannel,
   };
 }
 

@@ -7,24 +7,32 @@
       "gzip": 576
     },
     "assets/AdminPanel.js": {
-      "raw": 214720,
-      "gzip": 55936
+      "raw": 220544,
+      "gzip": 57728
     },
     "assets/api.js": {
-      "raw": 51840,
-      "gzip": 18432
+      "raw": 128,
+      "gzip": 128
     },
     "assets/auth.js": {
       "raw": 34496,
       "gzip": 13120
+    },
+    "assets/CallAloneNotice.js": {
+      "raw": 1600,
+      "gzip": 896
     },
     "assets/CallDock.js": {
       "raw": 2304,
       "gzip": 1216
     },
     "assets/CallParticipant.js": {
-      "raw": 102016,
-      "gzip": 31360
+      "raw": 107520,
+      "gzip": 33024
+    },
+    "assets/CallPipWindow.js": {
+      "raw": 7872,
+      "gzip": 2944
     },
     "assets/CallStage.js": {
       "raw": 3904,
@@ -34,41 +42,57 @@
       "raw": 83072,
       "gzip": 23232
     },
+    "assets/DesktopContextMenuPolicy.js": {
+      "raw": 5824,
+      "gzip": 2496
+    },
+    "assets/display-picker.js": {
+      "raw": 10752,
+      "gzip": 4224
+    },
+    "assets/DisplaySourcePicker.js": {
+      "raw": 6336,
+      "gzip": 2240
+    },
     "assets/dist.js": {
       "raw": 1536,
       "gzip": 576
     },
-    "assets/EmptyState.js": {
-      "raw": 1024,
-      "gzip": 512
+    "assets/hooks.js": {
+      "raw": 11456,
+      "gzip": 4352
+    },
+    "assets/Icon.js": {
+      "raw": 41600,
+      "gzip": 13824
     },
     "assets/index.css": {
-      "raw": 97216,
-      "gzip": 16960
+      "raw": 99392,
+      "gzip": 17344
     },
     "assets/index.js": {
-      "raw": 112000,
-      "gzip": 35328
+      "raw": 108096,
+      "gzip": 35520
     },
     "assets/KanbanView.js": {
-      "raw": 94208,
-      "gzip": 25216
+      "raw": 94528,
+      "gzip": 25408
     },
     "assets/livekit-client.esm.js": {
       "raw": 627584,
       "gzip": 161408
     },
-    "assets/member-avatars.js": {
-      "raw": 17984,
-      "gzip": 7680
-    },
-    "assets/NoteMarkdown.js": {
-      "raw": 7232,
-      "gzip": 2816
+    "assets/Modal.js": {
+      "raw": 2688,
+      "gzip": 1280
     },
     "assets/NotesView.js": {
-      "raw": 62720,
-      "gzip": 16768
+      "raw": 62976,
+      "gzip": 16896
+    },
+    "assets/oauth-start.js": {
+      "raw": 7808,
+      "gzip": 3008
     },
     "assets/permissions.js": {
       "raw": 2624,
@@ -82,17 +106,21 @@
       "raw": 128,
       "gzip": 128
     },
-    "assets/preload-helper.js": {
-      "raw": 24064,
-      "gzip": 8576
-    },
     "assets/ProfileSession.js": {
-      "raw": 313856,
-      "gzip": 88576
+      "raw": 332992,
+      "gzip": 94208
     },
     "assets/react.js": {
       "raw": 240640,
       "gzip": 74112
+    },
+    "assets/RedeemScreen.js": {
+      "raw": 3456,
+      "gzip": 1536
+    },
+    "assets/remount-debug-log.js": {
+      "raw": 1280,
+      "gzip": 640
     },
     "assets/rnnoise_simd.wasm": {
       "raw": 172992,
@@ -103,8 +131,8 @@
       "gzip": 125312
     },
     "assets/rolldown-runtime.js": {
-      "raw": 704,
-      "gzip": 448
+      "raw": 832,
+      "gzip": 512
     },
     "assets/SearchInput.js": {
       "raw": 1792,
@@ -113,6 +141,14 @@
     "assets/selfie_segmenter_landscape.tflite": {
       "raw": 275200,
       "gzip": 232256
+    },
+    "assets/SetupScreen.js": {
+      "raw": 6144,
+      "gzip": 2752
+    },
+    "assets/SignInScreen.js": {
+      "raw": 23104,
+      "gzip": 9280
     },
     "assets/tanstack.js": {
       "raw": 81600,
@@ -135,8 +171,8 @@
       "gzip": 4354304
     },
     "assets/VoiceChannelView.js": {
-      "raw": 6528,
-      "gzip": 2176
+      "raw": 5888,
+      "gzip": 2112
     },
     "assets/workletProcessor.js": {
       "raw": 72192,
@@ -144,12 +180,12 @@
     }
   },
   "initial": {
-    "raw": 751360,
-    "gzip": 229248
+    "raw": 572800,
+    "gzip": 170176
   },
   "total": {
-    "raw": 18287040,
-    "gzip": 5609280
+    "raw": 18343552,
+    "gzip": 5630592
   },
   "lazyOnly": [
     {

@@ -1,7 +1,7 @@
 /* eslint-disable no-unused-vars -- the base rule reports parameter names in type signatures; Biome checks real unused code */
 import { NativeAvatar } from "@aulora/avatars/native";
 import type { IconName } from "@aulora/tokens";
-import { Heading, Icon, Text, usePalette } from "@aulora/ui-native";
+import { CountBadge, Heading, Icon, Text, usePalette } from "@aulora/ui-native";
 import type { ReactNode } from "react";
 import { Pressable, View } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
@@ -115,7 +115,6 @@ interface DockTabProps {
 
 /** One labelled tab inside the dock's tab bar. */
 function DockTab({ label, active, badge = 0, onPress, children }: DockTabProps) {
-  const palette = usePalette();
   return (
     <Pressable
       accessibilityRole="tab"
@@ -129,14 +128,8 @@ function DockTab({ label, active, badge = 0, onPress, children }: DockTabProps) 
       <View>
         {children}
         {badge > 0 && (
-          <View className="absolute -right-3 -top-1 min-w-[18px] items-center rounded-pill bg-accent px-1">
-            <Text
-              className="font-bold"
-              style={{ color: palette["on-accent"], fontSize: 11, lineHeight: 16 }}
-              maxFontSizeMultiplier={1.2}
-            >
-              {badge > 9 ? "9+" : String(badge)}
-            </Text>
+          <View className="absolute -right-3 -top-1">
+            <CountBadge count={badge} max={9} size="md" />
           </View>
         )}
       </View>

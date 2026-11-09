@@ -5,6 +5,7 @@ import { useState } from "react";
 import { api } from "../../../../../../packages/convex/convex/_generated/api";
 import type { BotSummary } from "../../../../../../packages/convex/convex/lib/botTypes";
 import { AdminPageHeader } from "../AdminPageHeader";
+import { SetupSteps } from "../SetupSteps";
 import { BotCreateDialog } from "./BotCreateDialog";
 import { BotRunnerBanner } from "./BotRunnerBanner";
 import { BotStatusDot } from "./BotStatusDot";
@@ -60,6 +61,21 @@ function BotRow({ bot, busy, onOpen, onToggle }: BotRowProps) {
   );
 }
 
+const BOT_SETUP_STEPS = [
+  {
+    label: "Create",
+    body: "Name it and pick TypeScript or Python. It starts switched off with no permissions.",
+  },
+  {
+    label: "Write",
+    body: "Edit its files here, or run it outside the server with a token.",
+  },
+  {
+    label: "Grant",
+    body: "Turn on only the permissions it needs, scoped to the channels you choose.",
+  },
+] as const;
+
 export interface BotListProps {
   readonly onOpen: (botId: string) => void;
 }
@@ -104,7 +120,7 @@ export function BotList({ onOpen }: BotListProps) {
     <div className="flex flex-col gap-8" data-testid="bots-settings">
       <AdminPageHeader
         title="Bots"
-        description="Helpers that call the same Convex functions people do, with their own identity. All permissions start off."
+        description="Helpers that call the same Convex functions people do, with their own identity."
         trailing={headerAction}
       />
 
@@ -122,9 +138,9 @@ export function BotList({ onOpen }: BotListProps) {
         </div>
       ) : bots.length === 0 ? (
         <EmptyState
-          icon="code"
           title="No bots yet"
-          description="Create a bot, write its code, then grant only the permissions it needs."
+          description="Create one to give it its own identity, then add code and grant only the permissions it needs."
+          details={<SetupSteps steps={BOT_SETUP_STEPS} />}
           action={
             <Button
               onClick={() => {

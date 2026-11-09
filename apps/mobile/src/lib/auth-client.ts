@@ -1,9 +1,21 @@
 import { convexClient } from "@convex-dev/better-auth/client/plugins";
 import { genericOAuthClient } from "better-auth/client/plugins";
 import { createAuthClient } from "better-auth/react";
+import * as Crypto from "expo-crypto";
 import * as Linking from "expo-linking";
 import * as WebBrowser from "expo-web-browser";
-import { type CookieStore, createCookieFetch, storeRedirectCookie } from "./cookie-fetch";
+import {
+  authStartUrl,
+  beginAuthHandoff,
+  clearPendingAuthHandoff,
+  completeAuthRedirect,
+  exchangeAuthCode,
+  isAuthExchangeTimeout,
+  providerSignInErrorMessage,
+  readAuthRedirectParams,
+} from "./auth-handoff";
+import { authTokenKey, type CookieStore, createCookieFetch } from "./cookie-fetch";
+import { resetProviderToken } from "./provider-auth";
 
 /**
  * Better Auth client for one server profile on iOS/Android.
@@ -17,7 +29,9 @@ export function createAuloraAuthClient(siteUrl: string, cookieStore: CookieStore
   return createAuthClient({
     baseURL: siteUrl,
     plugins: [convexClient(), genericOAuthClient()],
-    fetchOptions: { customFetchImpl: createCookieFetch({ store: cookieStore }) },
+    fetchOptions: {
+      customFetchImpl: createCookieFetch({ store: cookieStore, tokenKey: authTokenKey(siteUrl) }),
+    },
   });
 }
 
@@ -60,6 +74,9 @@ export function authActionsFromClient(client: AuloraAuthClient): AuthActions {
       return toResult(await client.signUp.email({ email, password, name }));
     },
     async signOut() {
+      // Drop the cached Convex token before the request: a token fetch that
+      // races the sign-out must not fall back to the account that is leaving.
+      resetProviderToken(client);
       return toResult(await client.signOut());
     },
     async deleteAccount() {
@@ -69,6 +86,7 @@ export function authActionsFromClient(client: AuloraAuthClient): AuthActions {
       }
       // The server has deleted the account; make this device forget the now
       // invalid session instead of leaving a stale cookie behind.
+      resetProviderToken(client);
       await client.signOut().catch(() => undefined);
       return { error: null };
     },
@@ -80,60 +98,116 @@ export function authRedirectUri(): string {
   return Linking.createURL("auth/callback");
 }
 
+export type ProviderDelivery = "in-app" | "external";
+
 export type ProviderSignInResult =
   | { readonly status: "success" }
   | { readonly status: "cancel" }
+  | { readonly status: "opened" }
   | { readonly status: "error"; readonly message: string };
 
+/** `aulora://auth/callback` regardless of whether Expo is running in dev. */
+function callbackScheme(): string {
+  return "aulora://auth/callback";
+}
+
+function bytesToHex(bytes: Uint8Array): string {
+  return Array.from(bytes, (byte) => byte.toString(16).padStart(2, "0")).join("");
+}
+
+/** A 256-bit verifier; the server only ever sees its SHA-256 digest. */
+async function createHandoffVerifier(): Promise<string> {
+  return bytesToHex(await Crypto.getRandomBytesAsync(32));
+}
+
 /**
- * Authorization Code + PKCE in the system browser.
+ * A 256-bit transaction id, independent of the verifier (the verifier must
+ * never leave the install). The workspace echoes this on every redirect back
+ * so a link that only names the workspace origin cannot end the sign-in.
+ */
+async function createAuthTransactionId(): Promise<string> {
+  return bytesToHex(await Crypto.getRandomBytesAsync(32));
+}
+
+async function handoffChallenge(verifier: string): Promise<string> {
+  return await Crypto.digestStringAsync(Crypto.CryptoDigestAlgorithm.SHA256, verifier, {
+    encoding: Crypto.CryptoEncoding.HEX,
+  });
+}
+
+/**
+ * Authorization Code + PKCE started on the workspace's own origin.
  *
- * The client asks the backend's generic OAuth/OIDC plugin for the provider
- * authorization URL (the backend holds the PKCE verifier and the client secret,
- * per the self-hosted design), opens it in the system browser, and captures the
- * `aulora://auth/callback` redirect. Better Auth then appends the session
- * cookie to that redirect, which {@link storeRedirectCookie} persists.
+ * Better Auth binds the callback to the browser context that started sign-in
+ * with a signed state cookie. A native app has its own cookie jar, separate
+ * from the browser, so asking the app's fetch stack for the authorization URL
+ * and then finishing in a browser always lost the state cookie. The start URL
+ * is a first-party page that begins the flow inside the browser that will
+ * receive the callback.
+ *
+ * `in-app` finishes in `expo-web-browser` (SFSafariViewController / Custom
+ * Tabs); `external` opens the system browser and the app is resumed by the
+ * `aulora://auth/callback` deep link. Both return a short-lived code that is
+ * exchanged for the bearer token kept with {@link storeAuthToken}.
  */
 export async function startProviderSignIn(
   client: AuloraAuthClient,
   cookieStore: CookieStore,
+  siteUrl: string,
   providerId: string,
   type: "oauth" | "oidc",
+  delivery: ProviderDelivery,
 ): Promise<ProviderSignInResult> {
-  const redirectUri = authRedirectUri();
-  const result =
-    type === "oidc"
-      ? await client.signIn.oauth2({
-          providerId,
-          callbackURL: redirectUri,
-          disableRedirect: true,
-        })
-      : await client.signIn.social({
-          provider: providerId,
-          callbackURL: redirectUri,
-          disableRedirect: true,
-        });
-
-  const envelope = result as {
-    data?: { url?: string } | null;
-    error?: { message?: string } | null;
-  };
-  if (envelope.error) {
-    return { status: "error", message: envelope.error.message ?? "Sign-in failed." };
-  }
-  const url = envelope.data?.url;
-  if (url === undefined) {
-    return { status: "error", message: "The server did not return an authorization URL." };
+  const returnUrl = delivery === "in-app" ? authRedirectUri() : callbackScheme();
+  let startUrl: string;
+  try {
+    const verifier = await createHandoffVerifier();
+    const tx = await createAuthTransactionId();
+    const challenge = await handoffChallenge(verifier);
+    await beginAuthHandoff(cookieStore, siteUrl, verifier, tx);
+    startUrl = authStartUrl(siteUrl, providerId, type, returnUrl, challenge, tx);
+  } catch {
+    return { status: "error", message: "Could not start sign-in. Try again." };
   }
 
-  const session = await WebBrowser.openAuthSessionAsync(url, redirectUri);
+  if (delivery === "external") {
+    await Linking.openURL(startUrl);
+    return { status: "opened" };
+  }
+
+  const session = await WebBrowser.openAuthSessionAsync(startUrl, returnUrl);
   if (session.type === "cancel" || session.type === "dismiss") {
+    // The person closed the auth sheet: that is not a forged link, so this is
+    // the one place a callback-less dismissal ends the pending transaction.
+    await clearPendingAuthHandoff(cookieStore).catch(() => undefined);
     return { status: "cancel" };
   }
-  if (session.type === "success" && session.url !== undefined) {
-    await storeRedirectCookie(cookieStore, session.url);
-    await client.getSession();
-    return { status: "success" };
+  if (session.type !== "success" || session.url === undefined) {
+    return { status: "error", message: "Sign-in did not complete." };
   }
-  return { status: "error", message: "Sign-in did not complete." };
+  const params = readAuthRedirectParams(session.url);
+  if (params === null) {
+    return { status: "error", message: "Sign-in did not complete." };
+  }
+  let result: Awaited<ReturnType<typeof completeAuthRedirect>>;
+  try {
+    result = await completeAuthRedirect(cookieStore, params, exchangeAuthCode);
+  } catch (error) {
+    return {
+      status: "error",
+      message: isAuthExchangeTimeout(error)
+        ? "Sign-in timed out, please try again"
+        : "Could not complete sign-in.",
+    };
+  }
+  if (result.status === "error") {
+    return { status: "error", message: providerSignInErrorMessage(result.error) };
+  }
+  if (result.status !== "success") {
+    // A forged or unbound redirect: the pending transaction is untouched, so
+    // the browser sheet cannot cancel or finish someone else's sign-in.
+    return { status: "error", message: "Sign-in did not complete." };
+  }
+  await client.getSession();
+  return { status: "success" };
 }

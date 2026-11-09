@@ -6,6 +6,15 @@ export {
   uploadAttachment,
 } from "./attachments";
 export {
+  CONVEX_AUTH_CLIENT_OPTIONS,
+  type ConvexTokenResponse,
+  createProviderTokenFetcher,
+  isTokenRejection,
+  type ProviderTokenFetcher,
+  type ProviderTokenFetcherOptions,
+  tokenExpiryMs,
+} from "./auth-token";
+export {
   base64ToBytes,
   base64UrlToBytes,
   bytesToBase64,
@@ -67,6 +76,7 @@ export {
   type MembersGroupingRole,
   type MembersGroupingRoleSection,
 } from "./members-grouping";
+export { NATIVE_AUTH_EXPIRED_ERROR, NATIVE_AUTH_TX_TTL_MS } from "./native-auth";
 export * from "./notes/index.js";
 export {
   type EnqueueInput,
@@ -136,10 +146,12 @@ export {
   wellKnownUrl,
 } from "./server-url";
 export {
-  providerInitial,
-  resolveSignInMethods,
-  type SignInMethods,
-} from "./sign-in";
+  assessOwnerPassword,
+  OWNER_PASSWORD_MIN_LENGTH,
+  OWNER_PASSWORD_PASSPHRASE_LENGTH,
+  type OwnerPasswordAssessment,
+} from "./setup";
+export { resolveSignInMethods, type SignInMethods } from "./sign-in";
 export {
   DEFAULT_SOUND_SETTINGS,
   loadSoundSettings,

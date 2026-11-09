@@ -1,6 +1,7 @@
 import { type CallView, callKindLabel, callStatusLabel, isOnThisDevice } from "@aulora/core";
 import { Button, cn, Icon } from "@aulora/ui-web";
 import { useVoice, type VoiceContextValue } from "../../providers/VoiceProvider";
+import { CallAloneNotice } from "./CallAloneNotice";
 import { CallControls } from "./CallControls";
 import { CallMediaNotice } from "./CallMediaNotice";
 import { CallGrid } from "./CallParticipant";
@@ -42,6 +43,7 @@ export function CallStage({
       />
 
       <CallMediaNotice />
+      <CallAloneNotice />
 
       <div className="min-h-0 flex-1 p-3">
         <CallGrid
@@ -81,9 +83,11 @@ function CallStageHeader({
 }) {
   return (
     <header className="flex h-14 shrink-0 items-center gap-3 border-b border-border px-4">
-      <span className="flex h-8 w-8 items-center justify-center rounded-[8px] bg-accent-soft text-accent">
-        <Icon name={call.kind === "video" ? "video" : "volume"} size={17} />
-      </span>
+      <Icon
+        name={call.kind === "video" ? "video" : "volume"}
+        size={18}
+        className="shrink-0 text-text-muted"
+      />
       <div className="min-w-0 flex-1">
         <h2 className="truncate text-[14px] font-semibold text-text">{title}</h2>
         <p className="truncate text-[11px] text-text-muted">

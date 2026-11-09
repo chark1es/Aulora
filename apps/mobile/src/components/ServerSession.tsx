@@ -1,4 +1,5 @@
 import type { ServerProfile } from "@aulora/core";
+import { CONVEX_AUTH_CLIENT_OPTIONS } from "@aulora/core";
 import { Button, Text } from "@aulora/ui-native";
 import { type AuthClient, ConvexBetterAuthProvider } from "@convex-dev/better-auth/react";
 import AsyncStorage from "@react-native-async-storage/async-storage";
@@ -8,6 +9,7 @@ import { useMemo } from "react";
 import { View } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
 import { createAuloraAuthClient } from "../lib/auth-client";
+import { createProviderAuth } from "../lib/provider-auth";
 import { type ProfileUrlField, profileUrlProblem } from "../lib/session-profile";
 import { SessionGate } from "./SessionGate";
 
@@ -19,18 +21,27 @@ import { SessionGate } from "./SessionGate";
 export function ServerSession({ profile }: { readonly profile: ServerProfile }) {
   const problem = profileUrlProblem(profile);
   const convex = useMemo(
-    () => (problem === null ? new ConvexReactClient(profile.convexUrl) : null),
+    () =>
+      problem === null
+        ? new ConvexReactClient(profile.convexUrl, CONVEX_AUTH_CLIENT_OPTIONS)
+        : null,
     [problem, profile.convexUrl],
   );
   const authClient = useMemo(
     () => (problem === null ? createAuloraAuthClient(profile.siteUrl, AsyncStorage) : null),
     [problem, profile.siteUrl],
   );
+  // Same session, with a `convex.token` that survives a transient outage
+  // instead of reporting the person signed out.
+  const providerAuth = useMemo(
+    () => (authClient === null ? null : createProviderAuth(authClient)),
+    [authClient],
+  );
 
   // `ConvexReactClient` throws on an address that is not absolute, and every
   // retry from the route boundary would throw again with no way out. A stored
   // profile the server described badly gets an explanation instead.
-  if (problem !== null || convex === null || authClient === null) {
+  if (problem !== null || convex === null || authClient === null || providerAuth === null) {
     return <ServerAddressProblem profile={profile} field={problem ?? "baseUrl"} />;
   }
 
@@ -40,7 +51,7 @@ export function ServerSession({ profile }: { readonly profile: ServerProfile }) 
       // The provider's `AuthClient` prop erases plugin generics (`useSession`
       // collapses to `never`), which our browser-cookie client doesn't match.
       // The runtime contract is identical; narrow only for the prop.
-      authClient={authClient as unknown as AuthClient}
+      authClient={providerAuth.client as unknown as AuthClient}
     >
       <SessionGate
         profile={profile}

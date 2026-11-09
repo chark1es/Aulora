@@ -25,7 +25,20 @@ const SETUP_HTML = `    <h2 id="how-variables-are-set">How variables are set</h2
       <li><strong>Precedence:</strong> an admin override beats the deployment environment for a key that allows overrides; everything else comes from the deployment. Overriding any key in a credential group (OIDC or a social provider's id and secret) stops that group's deployment values from applying, so a deployment secret is never paired with an endpoint the owner chose. Overrides apply on the next request, with no restart.</li>
       <li><strong>Disable overrides</strong> with <code>AULORA_ALLOW_UI_ENV_OVERRIDES=false</code> in <code>.env</code>, then re-run <code>docker compose run --rm setup</code>.</li>
     </ul>
+    <h2 id="variable-tiers">Variable tiers</h2>
+    <p>The generated reference marks every variable with one tier. The default <code>.env.example</code> ships the bootstrap values plus optional deploy-time settings; overridable variables are intentionally absent so an owner can set them from the panel on a fresh install.</p>
+    <ul>
+      <li><strong>Bootstrap</strong> — required before the database, auth or encryption path can serve a request, such as <code>INSTANCE_SECRET</code>, <code>BETTER_AUTH_SECRET</code>, the origins and the master key. Keep these in <code>.env</code> and back them up.</li>
+      <li><strong>Deploy-time</strong> — read at deploy, module load or container start: bot keys, EKM cron settings, updater, backup, push-provider credentials and tuning. A deployment value is supported, but a change needs a redeploy or restart.</li>
+      <li><strong>Overridable</strong> — OAuth/OIDC credentials, local-auth switches, ICE/TURN client settings. The owner can set, replace or clear these from the panel; an environment value still works as the fallback.</li>
+    </ul>
     <p>Bootstrap and security variables such as <code>BETTER_AUTH_SECRET</code>, the encryption keys and <code>SITE_URL</code> are read-only in the panel. Keep credentials that should never change in <code>.env</code>. See <a href="self-hosting">self-hosting</a> and <a href="admin">Admin panel</a>.</p>`;
+
+const TIER_LABELS = {
+  bootstrap: "Bootstrap",
+  "deploy-time": "Deploy-time",
+  overridable: "Overridable",
+};
 
 function badge(text, kind) {
   return `<span class="env-badge env-badge-${kind}">${escapeHtml(text)}</span>`;
@@ -55,24 +68,34 @@ function setInHtml(variable) {
     return `Instance admin → ${escapeHtml(variable.managedInSection)}; the deployment environment is the fallback`;
   }
   if (variable.overridable === true) {
-    return "<code>infra/docker/.env</code>, overridable in Instance admin → Environment";
+    return "Instance admin → Environment; an <code>infra/docker/.env</code> value is the fallback";
+  }
+  if (variable.tier === "bootstrap") {
+    return "<code>infra/docker/.env</code>; required before the first start";
   }
   if (variable.internal === true) {
     return "Internal; normally left at its default";
   }
-  return "<code>infra/docker/.env</code> or the compose environment";
+  return "<code>infra/docker/.env</code>, the compose environment or a container start setting";
+}
+
+function tierOf(variable) {
+  if (variable.tier !== undefined) return variable.tier;
+  return variable.overridable === true ? "overridable" : "deploy-time";
 }
 
 function badgesFor(variable) {
   const badges = [];
   if (variable.secret === true) badges.push(badge("Secret", "secret"));
-  if (variable.overridable === true) badges.push(badge("Overridable in admin UI", "overridable"));
+  const tier = tierOf(variable);
+  badges.push(badge(TIER_LABELS[tier] ?? tier, tier));
   if (variable.internal === true) badges.push(badge("Internal", "internal"));
   return badges.join("");
 }
 
 function metaFor(variable) {
   const items = [metaItem("Type", `<code>${escapeHtml(variable.type)}</code>`)];
+  items.push(metaItem("Tier", escapeHtml(TIER_LABELS[tierOf(variable)] ?? tierOf(variable))));
   items.push(metaItem("Required", variable.required === true ? "Required with SSO" : "Optional"));
   if (variable.default !== undefined) {
     items.push(metaItem("Default", `<code>${escapeHtml(variable.default)}</code>`));

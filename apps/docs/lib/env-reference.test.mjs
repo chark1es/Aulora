@@ -55,6 +55,39 @@ test("parses multi-line descriptions and the optional fields", () => {
   assert.equal(byKey.get("AULORA_EKM_PROVIDER").type, "enum");
 });
 
+test("parses the tier of every catalog entry", () => {
+  const catalog = readEnvCatalog(root);
+  for (const variable of catalog.variables) {
+    assert.ok(
+      ["bootstrap", "deploy-time", "overridable"].includes(variable.tier),
+      `${variable.key} has no tier`,
+    );
+  }
+  const byKey = new Map(catalog.variables.map((variable) => [variable.key, variable]));
+  assert.equal(byKey.get("BETTER_AUTH_SECRET").tier, "bootstrap");
+  assert.equal(byKey.get("BOT_JWT_PUBLIC_JWK").tier, "deploy-time");
+  assert.equal(byKey.get("GITHUB_CLIENT_ID").tier, "overridable");
+});
+
+test("the internal classification page names every overridable and bootstrap key", () => {
+  const catalog = readEnvCatalog(root);
+  const doc = readFileSync(join(root, "docs", "environment.md"), "utf8");
+  for (const variable of catalog.variables) {
+    if (variable.tier === "overridable" || variable.tier === "bootstrap") {
+      assert.ok(doc.includes(variable.key), `docs/environment.md is missing ${variable.key}`);
+    }
+  }
+});
+
+test("catalog and hand-maintained extras never declare the same key twice", () => {
+  const catalog = readEnvCatalog(root);
+  const seen = new Set(catalog.variables.map((variable) => variable.key));
+  for (const variable of EXTRA_ENV_VARS) {
+    assert.equal(seen.has(variable.key), false, `${variable.key} is both catalog and extra`);
+    seen.add(variable.key);
+  }
+});
+
 test("includes the local-auth switch that gates email/password sign-in", () => {
   const catalog = readEnvCatalog(root);
   assert.ok(catalog.variables.some((variable) => variable.key === "AUTH_LOCAL_ENABLED"));

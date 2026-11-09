@@ -71,12 +71,11 @@ export function publicUrl(path: string): string | null {
 /**
  * The URL an OAuth provider sends the browser back to.
  *
- * The desktop client is the webview, so the round trip has to land in the
+ * The desktop client is the webview, so an in-app round trip has to land in the
  * webview's own origin (`tauri://localhost` / `http://tauri.localhost`). That
  * origin is a Tauri implementation detail: it is never rendered, copied or put
  * in a shared link, and this is the only place in the client that names it. See
- * `apps/desktop/README.md` for why the system-browser deep-link flow is not
- * used.
+ * `apps/desktop/README.md` for the two sign-in paths.
  */
 export function authCallbackUrl(): string {
   return typeof window === "undefined" ? "http://localhost" : window.location.origin;

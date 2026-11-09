@@ -32,9 +32,58 @@ export type EnvVarFormat = "ice-servers" | "group-role-map";
 /** Admin section that owns a value when it is not editable in Environment. */
 export type EnvVarManagedSection = "Email" | "Push relay" | "Storage";
 
+/**
+ * Where a variable belongs in the deployment's configuration surface.
+ *
+ * - `bootstrap`: required before the database, auth or encryption path can
+ *   serve a request. It stays in `infra/docker/.env` on a fresh install.
+ * - `deploy-time`: read at deploy, module load or container start (auth config,
+ *   EKM cron selection, updater, bot keys, tuning). It stays in the deployment
+ *   environment because a running deployment cannot change it live.
+ * - `overridable`: the owner can set, replace or clear it from Instance admin →
+ *   Environment. It is intentionally absent from the default `.env.example`,
+ *   and a deployment value is still supported when an operator sets one.
+ */
+export type EnvVarTier = "bootstrap" | "deploy-time" | "overridable";
+
+/**
+ * Non-overridable variables that must exist before the instance can start.
+ * Remote-key-manager credentials are bootstrap because the server needs them to
+ * unwrap the master key before it can read sealed rows.
+ */
+export const BOOTSTRAP_ENV_KEYS: readonly string[] = [
+  "BETTER_AUTH_SECRET",
+  "SETUP_TOKEN",
+  "INSTANCE_SECRET",
+  "SITE_URL",
+  "CONVEX_SITE_URL",
+  "CONVEX_CLOUD_URL",
+  "TRUSTED_ORIGINS",
+  "AULORA_ENCRYPTION_ENABLED",
+  "AULORA_ENCRYPTION_KEY",
+  "AULORA_KEK_WRAPPED",
+  "VAULT_ADDR",
+  "VAULT_TOKEN",
+  "AWS_KMS_KEY_ID",
+  "GCP_KMS_KEY_NAME",
+  "EKM_PROXY_URL",
+  "EKM_PROXY_TOKEN",
+];
+
+/** Deploy-time values that a running deployment cannot change without a redeploy. */
+export const DEPLOY_TIME_ENV_KEYS: readonly string[] = [
+  "AULORA_EKM_PROVIDER",
+  "AULORA_EKM_KEY_ID",
+  "AULORA_ENCRYPTION_KEY_VERSION",
+  "BOT_JWT_PUBLIC_JWK",
+  "BOT_JWT_PRIVATE_JWK",
+  "BOT_RUNNER_TOKEN",
+];
+
 export interface EnvVarDefinition {
   readonly key: string;
   readonly group: EnvVarGroup;
+  readonly tier: EnvVarTier;
   readonly label: string;
   readonly description: string;
   readonly type: EnvVarType;

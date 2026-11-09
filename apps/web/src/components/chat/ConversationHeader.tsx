@@ -81,14 +81,11 @@ export function ConversationHeader({
       ) : channel.kind === "group_dm" ? (
         <GroupAvatar userIds={others} size={30} />
       ) : (
-        <span className="flex h-7 w-7 shrink-0 items-center justify-center rounded-[7px] bg-accent-soft text-accent">
-          <Icon
-            name={
-              channel.kind === "announcement" ? "announce" : channel.isPrivate ? "lock" : "hash"
-            }
-            size={16}
-          />
-        </span>
+        <Icon
+          name={channel.kind === "announcement" ? "announce" : channel.isPrivate ? "lock" : "hash"}
+          size={18}
+          className="shrink-0 text-text-muted"
+        />
       )}
       <div className="min-w-0 flex-1">
         <h2 className="truncate text-[14px] font-semibold tracking-[-0.01em] text-text">{title}</h2>

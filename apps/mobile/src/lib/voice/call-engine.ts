@@ -35,6 +35,12 @@ export class MobileVoiceEngine extends CallEngineMedia {
 
   protected async onCallUpdate(call: CallView | null): Promise<void> {
     if (call === null || call.status === "ended") {
+      if (call?.endedReason === "alone") {
+        this.endedNotice = {
+          kind: "alone-timeout",
+          timeoutSeconds: call.aloneTimeoutSeconds ?? null,
+        };
+      }
       this.enterTeardown();
       return;
     }

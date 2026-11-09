@@ -47,6 +47,53 @@ channel. Include the number and size of records read, subscription update
 volume, and any remaining limits in the PR. Avoid presenting a test with a few
 messages as evidence that the path scales.
 
+## Session and access-token lifecycle
+
+Convex authenticates every request with a short-lived JWT that the Better Auth
+`convex` plugin mints (`packages/convex/convex/auth.ts`). With no
+`jwt.expirationSeconds` override the plugin's default is **15 minutes**, and the
+client refreshes it shortly before it expires. That rotation is routine and must
+never unmount the signed-in tree; treat it as part of normal operation when
+changing session code.
+
+- Create every `ConvexReactClient` with `CONVEX_AUTH_CLIENT_OPTIONS` from
+  `@aulora/core`. It refreshes 60 seconds before expiry
+  (`authRefreshTokenLeewaySeconds`) instead of the 10-second default, so a
+  throttled or briefly offline tab still rotates in time, and it reuses the
+  token the socket already confirmed (`initialAuthTokenReuse`) instead of
+  re-authenticating every query for a second identity on each page load.
+- Hand `ConvexBetterAuthProvider` the client from `createProviderAuth(...)`, not
+  the raw Better Auth client. Convex reads a `null` token as "signed out"; the
+  wrapper keeps the last issued token when `/api/auth/convex/token` cannot be
+  reached and only reports `null` when the auth server answers `401`. Without
+  it, a single failed refresh makes `useConvexAuth()` report
+  `isAuthenticated: false`, and the session gate rebuilds the whole client pair,
+  which looks like an app reload.
+- `useConvexAuth().isRefreshing` means the server rejected the current token and
+  the socket is paused while a replacement is fetched; `isAuthenticated` stays
+  `true`. Do not unmount on that state.
+- Long-lived WebSockets must be allowed to idle. The shipped web container sets
+  `proxy_read_timeout`/`proxy_send_timeout` to 3600s on `/api/`; an edge proxy in
+  front of it (Coolify's Traefik, Cloudflare, a tunnel) must not enforce a
+  shorter WebSocket idle timeout. Convex sends periodic pings, so a much shorter
+  edge timeout shows up as a reconnect every N minutes.
+
+When diagnosing a reported "the app refreshes every few minutes", enable
+`localStorage.setItem("aulora.debug.remount", "1")` in the browser. It logs:
+
+- each document boot with its `PerformanceNavigationTiming.type` (`navigate`,
+  `reload`, `back_forward`) and a session-scoped boot count, so a real page
+  reload is distinguishable from a React remount;
+- the mount and unmount of `ProfileSession`, `SessionGate`, `MembershipGate` and
+  `ChatSessionShell`;
+- every Convex auth state change (`isAuthenticated`, `isLoading`,
+  `isRefreshing`);
+- every Convex connection state change (`connectionCount`,
+  `connectionRetries`, connected), where a count that grows on a fixed cadence
+  points at a websocket idle timeout in front of the backend.
+
+Every line carries an ISO timestamp. Turn it off by removing the key.
+
 ## Evolve schemas and APIs across versions
 
 Existing installations contain old records, and desktop or mobile clients can
@@ -127,8 +174,10 @@ Current gaps to account for when changing the updater:
   changes its pinned image needs a tested runtime-upgrade step, not just a new
   setup image or function deploy. Review the Coolify path separately as well.
 - The [setup script](../../infra/docker/setup/entrypoint.sh) currently treats
-  the voice-permission migration as best effort. Required future migrations
-  need explicit failure handling and completion verification.
+  the voice-permission migration as best effort. Value-detected migrations must
+  record a marker in `server.appliedMigrations` (as `restrictKanbanEditing`
+  does) so a later owner re-grant survives the next deploy. Required future
+  migrations need explicit failure handling and completion verification.
 - A web-only rollback exists in `deploy.sh --rollback`: it restores the web
   image pinned by the previous deployment. It does not roll back functions,
   schemas, or the engine, so use a tested backup/restore for an irreversible

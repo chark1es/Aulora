@@ -107,6 +107,8 @@ export interface CallPipOptions {
     readonly toggleDeafen: () => void;
     readonly toggleCamera: () => void;
     readonly toggleScreen: () => void;
+    /** Restarts the solo-call window from the desktop call window. */
+    readonly stay: () => void;
     readonly hangUp: () => void;
   };
 }
@@ -445,6 +447,9 @@ export function useCallPip(options: CallPipOptions): { pip: PipControl; surface:
           break;
         case "toggle-screen":
           latest.current.controls.toggleScreen();
+          break;
+        case "stay":
+          latest.current.controls.stay();
           break;
         case "leave":
           latest.current.controls.hangUp();

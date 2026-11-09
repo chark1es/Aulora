@@ -11,6 +11,7 @@ import {
   buttonClass,
   buttonLabelClass,
   buttonLabelText,
+  countBadgeTextStyle,
   iconButtonClass,
   inputClass,
   segmentedOptionClass,
@@ -93,6 +94,29 @@ describe("class composers", () => {
     expect(segmentedOptionClass({ active: true })).toContain("border-accent bg-accent-soft");
     expect(segmentedOptionClass({ active: false })).toContain("border-border bg-surface-3");
     expect(segmentedTrackClass()).toContain("flex-row");
+  });
+});
+
+describe("countBadgeTextStyle", () => {
+  it("shares one measured line box on both platforms", () => {
+    const android = countBadgeTextStyle({ size: 16, color: "#ffffff", platform: "android" });
+    expect(android.lineHeight).toBe(16);
+    expect(android.paddingTop).toBe(0);
+    expect(android.includeFontPadding).toBe(false);
+    expect(android.textAlignVertical).toBe("center");
+    expect(android.textAlign).toBe("center");
+    expect(android.fontVariant).toEqual(["tabular-nums"]);
+
+    const ios = countBadgeTextStyle({ size: 16, color: "#ffffff", platform: "ios" });
+    expect(ios.lineHeight + ios.paddingTop).toBe(16);
+    expect(ios.paddingTop).toBe(1);
+  });
+
+  it("steps the numeral up with a larger badge", () => {
+    expect(countBadgeTextStyle({ size: 16, color: "#ffffff" }).fontSize).toBe(11);
+    expect(countBadgeTextStyle({ size: 18, color: "#ffffff" }).fontSize).toBe(12);
+    expect(countBadgeTextStyle({ size: 20, color: "#ffffff" }).fontSize).toBe(12);
+    expect(countBadgeTextStyle({ size: 20, color: "#ffffff", fontSize: 10 }).fontSize).toBe(10);
   });
 });
 

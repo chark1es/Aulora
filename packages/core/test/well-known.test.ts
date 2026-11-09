@@ -52,6 +52,26 @@ describe("parseWellKnown", () => {
     expect(isWellKnown(doc)).toBe(true);
   });
 
+  it("accepts an optional local password minimum", () => {
+    const doc = {
+      ...validWellKnown,
+      auth: {
+        ...validWellKnown.auth,
+        local: { enabled: true, signup: false, minPasswordLength: 12 },
+      },
+    };
+    expect(parseWellKnown(doc).auth.local.minPasswordLength).toBe(12);
+    expect(
+      isWellKnown({
+        ...validWellKnown,
+        auth: {
+          ...validWellKnown.auth,
+          local: { enabled: true, signup: false, minPasswordLength: 0 },
+        },
+      }),
+    ).toBe(false);
+  });
+
   it("accepts an absent encryption block", () => {
     const { encryption: _encryption, ...withoutEncryption } = validWellKnown;
     expect(isWellKnown(withoutEncryption)).toBe(true);
@@ -204,6 +224,57 @@ describe("parseWellKnown", () => {
       expect(error).toBeInstanceOf(WellKnownError);
       expect(String((error as Error).message)).not.toContain("super-secret-value");
     }
+  });
+});
+
+describe("discovery compatibility with the previous release's strict parser", () => {
+  /**
+   * A literal copy of the strict key check from the 1.4.0 release
+   * (`packages/core/src/well-known.ts` at HEAD). It rejects any `auth.local`
+   * field other than `enabled` and `signup`, so the current server must not
+   * publish `minPasswordLength` in `/.well-known/aulora.json`.
+   */
+  const OLD_LOCAL_KEYS = new Set(["enabled", "signup"]);
+
+  function assertOldLocalKeys(value: unknown): void {
+    if (typeof value !== "object" || value === null || Array.isArray(value)) {
+      throw new Error("auth.local must be an object");
+    }
+    for (const key of Object.keys(value)) {
+      if (!OLD_LOCAL_KEYS.has(key)) {
+        throw new Error(`auth.local.${key} must be a known field`);
+      }
+    }
+  }
+
+  it("accepts the document the current server publishes", () => {
+    // http.ts now builds auth.local from only `enabled` and `signup`.
+    const published = {
+      ...validWellKnown,
+      auth: {
+        local: { enabled: true, signup: false },
+        providers: validWellKnown.auth.providers,
+      },
+    };
+    expect(() => assertOldLocalKeys(published.auth.local)).not.toThrow();
+    expect(isWellKnown(published)).toBe(true);
+  });
+
+  it("would reject the newly added key, which is why it stays out of discovery", () => {
+    expect(() =>
+      assertOldLocalKeys({ enabled: true, signup: false, minPasswordLength: 12 }),
+    ).toThrow("minPasswordLength");
+  });
+
+  it("still accepts the key if a future document carries it", () => {
+    const doc = {
+      ...validWellKnown,
+      auth: {
+        ...validWellKnown.auth,
+        local: { enabled: true, signup: false, minPasswordLength: 12 },
+      },
+    };
+    expect(parseWellKnown(doc).auth.local.minPasswordLength).toBe(12);
   });
 });
 

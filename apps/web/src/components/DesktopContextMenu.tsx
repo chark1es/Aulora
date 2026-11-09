@@ -1,52 +1,26 @@
-import { useContextMenu } from "@aulora/ui-web";
-import { useEffect } from "react";
-import {
-  copyTextToClipboard,
-  currentSelectionText,
-  handleContextMenuEvent,
-  saveMediaFile,
-  selectAllText,
-} from "../lib/context-menu-policy";
-import { isDesktop, openExternal } from "../lib/desktop";
+import { lazy, Suspense } from "react";
+import { isDesktop } from "../lib/desktop";
+
+const DesktopContextMenuPolicy = lazy(() =>
+  import("./DesktopContextMenuPolicy").then((module) => ({
+    default: module.DesktopContextMenuPolicy,
+  })),
+);
 
 /**
- * Installs the desktop right-click policy.
+ * Installs the desktop right-click policy where the Tauri shell is present.
  *
- * The browser build keeps its normal native menu, so this mounts a listener
- * only inside the Tauri shell. Surfaces with their own `useContextMenu` handler
- * are unaffected: the policy suppresses the webview's menu without stopping
- * propagation, and component handlers still open their menus.
+ * The browser build returns nothing, and the policy module (plus the menu
+ * renderer it imports) is fetched only inside the shell, so neither is part of
+ * the entry chunk.
  */
 export function DesktopContextMenu() {
-  const openMenu = useContextMenu();
-
-  useEffect(() => {
-    if (!isDesktop()) {
-      return undefined;
-    }
-    const onContextMenu = (event: MouseEvent) => {
-      handleContextMenuEvent(event, {
-        dev: import.meta.env.DEV,
-        selectionText: currentSelectionText,
-        openMenu: (menu) => {
-          openMenu(menu);
-        },
-        copyText: (text) => {
-          void copyTextToClipboard(text);
-        },
-        openExternal,
-        saveMedia: saveMediaFile,
-        selectAll: selectAllText,
-      });
-    };
-    // Capture phase: cancel the webview menu before it can open. Component
-    // handlers still run for suppressed surfaces (we never stop propagation
-    // there), so app menus are untouched.
-    window.addEventListener("contextmenu", onContextMenu, { capture: true });
-    return () => {
-      window.removeEventListener("contextmenu", onContextMenu, { capture: true });
-    };
-  }, [openMenu]);
-
-  return null;
+  if (!isDesktop()) {
+    return null;
+  }
+  return (
+    <Suspense fallback={null}>
+      <DesktopContextMenuPolicy />
+    </Suspense>
+  );
 }

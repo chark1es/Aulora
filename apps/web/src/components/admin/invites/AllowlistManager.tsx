@@ -48,9 +48,6 @@ export function AllowlistManager({ canAdd, canRemove }: AllowlistManagerProps) {
               className="group flex min-h-[44px] items-center gap-3 px-4 py-2.5"
               data-testid="allowlist-row"
             >
-              <span className="flex h-7 w-7 shrink-0 items-center justify-center rounded-[8px] bg-surface-3 text-text-muted">
-                <Icon name={entry.kind === "domain" ? "users" : "user-plus"} size={14} />
-              </span>
               <div className="flex min-w-0 flex-1 flex-col gap-0.5">
                 <div className="flex items-center gap-2">
                   <span className="truncate font-mono text-[13px] text-text">{entry.pattern}</span>
@@ -88,7 +85,6 @@ export function AllowlistManager({ canAdd, canRemove }: AllowlistManagerProps) {
             <li className="px-4 py-2">
               <EmptyState
                 size="sm"
-                icon="mail"
                 title="Nobody is pre-approved yet"
                 description="Add an email address or domain above to let those people join without an invite."
               />

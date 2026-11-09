@@ -1,7 +1,8 @@
 import { hasPermission, Permission } from "@aulora/core";
 import { ConvexError, v } from "convex/values";
 import { internal } from "./_generated/api";
-import { internalMutation, mutation, query } from "./_generated/server";
+import type { Doc, Id } from "./_generated/dataModel";
+import { internalMutation, type MutationCtx, mutation, query } from "./_generated/server";
 import { requireAuth } from "./lib/auth";
 import { assertMayParticipate } from "./lib/bans";
 import {
@@ -9,6 +10,8 @@ import {
   assertClientId,
   CALL_RETENTION_MS,
   type CallSummary,
+  cancelAloneJob,
+  distinctParticipantCount,
   endCall,
   findLiveCall,
   findParticipant,
@@ -16,6 +19,7 @@ import {
   heldByOtherDevice,
   insertNewCall,
   insertParticipant,
+  loadCallSeats,
   loadVoicePolicy,
   MAX_SIGNAL_BATCH,
   MAX_SIGNAL_BYTES,
@@ -28,7 +32,10 @@ import {
   toCallSummary,
 } from "./lib/calls";
 import { isDmKind, requireChannelAccess } from "./lib/channels";
+import { getCallAloneTimeoutSeconds } from "./lib/env";
+import { loadEffectiveEnv } from "./lib/envOverrides";
 import { categoryOverridesFor, channelPermissions, loadPermissionContext } from "./lib/permissions";
+import { enforceRateLimit, userRateLimitKey } from "./lib/rateLimit";
 
 /**
  * Voice/video call state and WebRTC signalling.
@@ -48,6 +55,141 @@ export { CALL_RETENTION_MS, PARTICIPANT_STALE_MS, RING_TIMEOUT_MS, SIGNAL_STALE_
 
 /** Stale participant/signal rows processed per sweep run before rescheduling. */
 const SWEEP_BATCH = 500;
+
+/** Generous per-user budget for Stay presses: 12 per minute. */
+const STAY_RATE_LIMIT = 12;
+const STAY_RATE_WINDOW_MS = 60_000;
+/**
+ * A Stay that moves the deadline by less than this is a no-op, so a burst of
+ * presses (or a click immediately after the window was armed) cannot churn the
+ * scheduler.
+ */
+const MIN_STAY_EXTENSION_MS = 3_000;
+
+/**
+ * The workspace's effective solo-call timeout, in milliseconds. Read only when
+ * a timer is armed or reset, never from a subscribed query, so the five-minute
+ * default costs nothing on the hot roster path.
+ */
+async function aloneTimeoutMs(ctx: MutationCtx): Promise<number> {
+  const env = (await loadEffectiveEnv(ctx)).env;
+  return getCallAloneTimeoutSeconds(env) * 1000;
+}
+
+/**
+ * Schedules the single enforcement job for `deadline` and remembers its id.
+ * `deadline` is passed to the job so a job from an older window can recognize
+ * that it no longer owns the call and exit without rescheduling.
+ */
+async function scheduleAloneJob(
+  ctx: MutationCtx,
+  callId: Id<"calls">,
+  delayMs: number,
+  deadline: number,
+): Promise<void> {
+  const jobId = await ctx.scheduler.runAfter(delayMs, internal.calls.enforceAlone, {
+    callId,
+    deadline,
+  });
+  await ctx.db.patch(callId, { aloneJobId: jobId });
+}
+
+/** Arms (or re-arms) the solo-call deadline and replaces its enforcement job. */
+async function armAloneTimer(
+  ctx: MutationCtx,
+  call: Doc<"calls">,
+  now: number = Date.now(),
+  timeoutMs?: number,
+): Promise<void> {
+  const windowMs = timeoutMs ?? (await aloneTimeoutMs(ctx));
+  // Re-arming replaces the previous job, so repeated stays cannot accumulate a
+  // chain of pending enforcements.
+  await cancelAloneJob(ctx, call.aloneJobId);
+  const deadline = now + windowMs;
+  const jobId = await ctx.scheduler.runAfter(windowMs, internal.calls.enforceAlone, {
+    callId: call._id,
+    deadline,
+  });
+  await ctx.db.patch(call._id, {
+    aloneSince: now,
+    aloneDeadline: deadline,
+    aloneJobId: jobId,
+  });
+}
+
+async function clearAloneTimer(ctx: MutationCtx, call: Doc<"calls">): Promise<void> {
+  // An ended call keeps its window on purpose so the notice can name the
+  // configured duration. A late leave or a duplicate enforcement must not
+  // erase it.
+  if (call.status === "ended") {
+    return;
+  }
+  if (
+    call.aloneSince === undefined &&
+    call.aloneDeadline === undefined &&
+    call.aloneJobId === undefined
+  ) {
+    return;
+  }
+  await cancelAloneJob(ctx, call.aloneJobId);
+  await ctx.db.patch(call._id, {
+    aloneSince: undefined,
+    aloneDeadline: undefined,
+    aloneJobId: undefined,
+  });
+}
+
+/**
+ * Keeps the solo-call deadline in step with the roster: the first moment a
+ * call has exactly one distinct user arms a fresh solo window, and any second
+ * participant clears it so a later solo stretch starts over. A window that is
+ * already due ends the call (the scheduled job normally gets there first; this
+ * is the backstop when it was lost).
+ *
+ * "Alone" means one signed-in user, not one device: seats are per user, so two
+ * devices of the same person still count as one participant. Bots are not a
+ * separate participant kind in this product, so a bot that held a real seat
+ * would count like anyone else.
+ */
+async function syncAloneState(
+  ctx: MutationCtx,
+  call: Doc<"calls">,
+  distinct: number,
+  now: number = Date.now(),
+): Promise<void> {
+  // The window retained on an alone-ended call is reporting state, not a
+  // timer: a late leave or a duplicate enforcement must leave it untouched.
+  if (call.status === "ended") {
+    return;
+  }
+  if (call.status !== "active" || distinct !== 1) {
+    await clearAloneTimer(ctx, call);
+    return;
+  }
+  if (call.aloneSince === undefined || call.aloneDeadline === undefined) {
+    await armAloneTimer(ctx, call, now);
+    return;
+  }
+  if (call.aloneDeadline <= now) {
+    await endCall(ctx, call, { endedReason: "alone" });
+    return;
+  }
+  // A window restored from an older release (or one whose job was lost) gets
+  // its enforcement back without restarting the countdown.
+  if (call.aloneJobId === undefined) {
+    await scheduleAloneJob(ctx, call._id, call.aloneDeadline - now, call.aloneDeadline);
+  }
+}
+
+/** Re-reads a call's roster and applies {@link syncAloneState}. */
+async function syncAloneTimer(ctx: MutationCtx, callId: Id<"calls">): Promise<void> {
+  const call = await ctx.db.get(callId);
+  if (call === null) {
+    return;
+  }
+  const seats = await loadCallSeats(ctx, callId);
+  await syncAloneState(ctx, call, distinctParticipantCount(seats));
+}
 
 /**
  * Starts (or reuses) the call on a channel. A DM/group-DM call begins ringing;
@@ -74,20 +216,26 @@ export const start = mutation({
     }
 
     const live = await findLiveCall(ctx, args.channelId);
-    const seat = await prepareSeat(ctx, {
+    const { seat, leftCallIds } = await prepareSeat(ctx, {
       userId,
       clientId: args.clientId,
       takeover: args.takeover === true,
       call: live,
       maxParticipants: policy.maxParticipants,
     });
+    // Switching calls on one device can leave the previous call solo.
+    for (const leftCallId of leftCallIds) {
+      await syncAloneTimer(ctx, leftCallId);
+    }
 
     if (live !== null) {
       await reuseLiveCall(ctx, live, seat, userId, args.clientId);
+      await syncAloneTimer(ctx, live._id);
       return { callId: live._id, created: false };
     }
 
     const { callId, ringing } = await insertNewCall(ctx, args, channel, userId);
+    await syncAloneTimer(ctx, callId);
     if (ringing) {
       await ctx.scheduler.runAfter(0, internal.notifications.dispatchCallRinging, { callId });
       // Native mobile devices need their own wake path (web push targets web
@@ -118,13 +266,16 @@ export const join = mutation({
     if (call.kind === "video" && !policy.videoEnabled) {
       throw new ConvexError("Video calling is disabled in this workspace");
     }
-    const seat = await prepareSeat(ctx, {
+    const { seat, leftCallIds } = await prepareSeat(ctx, {
       userId,
       clientId: args.clientId,
       takeover: args.takeover === true,
       call,
       maxParticipants: policy.maxParticipants,
     });
+    for (const leftCallId of leftCallIds) {
+      await syncAloneTimer(ctx, leftCallId);
+    }
     if (seat === "absent") {
       await insertParticipant(ctx, call._id, call.channelId, userId, assertClientId(args.clientId));
     }
@@ -136,6 +287,9 @@ export const join = mutation({
         updatedAt: Date.now(),
       });
     }
+    // A ringing call that just became active with its initiator alone, or a
+    // seat added to an already-solo call, starts the solo window here.
+    await syncAloneTimer(ctx, call._id);
     return null;
   },
 });
@@ -161,6 +315,9 @@ export const leave = mutation({
       updatedAt: Date.now(),
     });
     await finishIfEmpty(ctx, call._id);
+    // The second-to-last person leaving starts the solo window; a call that
+    // just ended clears nothing.
+    await syncAloneTimer(ctx, call._id);
     return null;
   },
 });
@@ -185,6 +342,7 @@ export const decline = mutation({
       return null;
     }
     await ctx.db.patch(call._id, { ringingUserIds: nextRinging, updatedAt: Date.now() });
+    await syncAloneTimer(ctx, call._id);
     return null;
   },
 });
@@ -291,6 +449,122 @@ export const heartbeat = mutation({
         ? { clientId, session: participant.session ?? 1 }
         : {}),
     });
+    return null;
+  },
+});
+
+/**
+ * Resets the solo-call countdown for the caller. This is the one well-defined
+ * "I am still here" signal: ordinary mute, deafen, camera and screen changes
+ * deliberately do **not** reset it, so the rule stays predictable and a
+ * backgrounded client cannot keep an empty call alive by toggling media.
+ *
+ * Safe to call from a client that does not know the feature (the mutation is
+ * additive). It is a no-op when the call is not solo or the press would move
+ * the deadline by less than a few seconds, and it rejects a caller whose seat
+ * is held by another device.
+ */
+export const stay = mutation({
+  args: { callId: v.id("calls"), clientId: v.string() },
+  handler: async (ctx, args) => {
+    const { userId } = await requireAuth(ctx);
+    const call = await ctx.db.get(args.callId);
+    if (call === null || call.status !== "active") {
+      return null;
+    }
+    await requireChannelAccess(ctx, call.channelId, Permission.Connect);
+    const participant = await findParticipant(ctx, call._id, userId);
+    if (participant === null || heldByOtherDevice(participant, assertClientId(args.clientId))) {
+      throw new ConvexError("You are not in this call");
+    }
+    const seats = await loadCallSeats(ctx, call._id);
+    if (distinctParticipantCount(seats) !== 1) {
+      return null;
+    }
+    const now = Date.now();
+    const timeoutMs = await aloneTimeoutMs(ctx);
+    const deadline = now + timeoutMs;
+    // A press just after arming would move the deadline by milliseconds.
+    // Ignore it so a burst cannot churn the scheduler or burn the budget.
+    if (call.aloneDeadline !== undefined && deadline - call.aloneDeadline < MIN_STAY_EXTENSION_MS) {
+      return null;
+    }
+    await enforceRateLimit(ctx, {
+      key: userRateLimitKey("call-stay", userId),
+      limit: STAY_RATE_LIMIT,
+      windowMs: STAY_RATE_WINDOW_MS,
+    });
+    await armAloneTimer(ctx, call, now, timeoutMs);
+    return null;
+  },
+});
+
+/**
+ * The end of a solo-call window. Scheduled by `armAloneTimer` with the deadline
+ * it was armed for and re-validated here because the roster can change while
+ * it waits. A job whose deadline no longer matches the call's current
+ * `aloneDeadline` is stale: it exits immediately and does not reschedule, so
+ * repeated re-arms can never leave a chain of pending enforcements.
+ *
+ * Removing the last participant ends the call through `endCall`, which is what
+ * tells every client (including ones from before this feature) to tear down.
+ */
+export const enforceAlone = internalMutation({
+  // `deadline` is optional so a job scheduled by a previous release (which
+  // passed only `callId`) still runs safely against this handler.
+  args: { callId: v.id("calls"), deadline: v.optional(v.number()) },
+  handler: async (ctx, args) => {
+    const call = await ctx.db.get(args.callId);
+    if (call === null) {
+      return null;
+    }
+    if (args.deadline === undefined) {
+      // A deadline-less job was scheduled by a previous release and is not the
+      // tracked enforcement for the current window. Never clear or replace an
+      // existing `aloneJobId` and never schedule another job: the 30s sweep
+      // restores enforcement if it is missing. Just end a still-solo call whose
+      // current window is already overdue.
+      const seats = await loadCallSeats(ctx, args.callId);
+      if (
+        call.status === "active" &&
+        distinctParticipantCount(seats) === 1 &&
+        call.aloneSince !== undefined &&
+        call.aloneDeadline !== undefined &&
+        call.aloneDeadline <= Date.now()
+      ) {
+        await endCall(ctx, call, { endedReason: "alone" });
+      }
+      return null;
+    }
+    if (call.aloneDeadline !== args.deadline) {
+      // A newer window owns the call; this job is already canceled. Do not
+      // schedule another one for the old or the new deadline.
+      return null;
+    }
+    // This is the current job. Forget its id before any path below cancels
+    // "the pending job", which would be this running mutation itself.
+    const { aloneJobId: firedJobId, ...current } = call;
+    if (firedJobId !== undefined) {
+      await ctx.db.patch(call._id, { aloneJobId: undefined });
+    }
+    const seats = await loadCallSeats(ctx, args.callId);
+    const distinct = distinctParticipantCount(seats);
+    if (current.status !== "active" || distinct !== 1) {
+      await syncAloneState(ctx, current, distinct);
+      return null;
+    }
+    if (current.aloneSince === undefined || current.aloneDeadline === undefined) {
+      await armAloneTimer(ctx, current);
+      return null;
+    }
+    const now = Date.now();
+    if (now < current.aloneDeadline) {
+      // Same window, fired a hair early: wait out the remainder with the one
+      // tracked job instead of relying on the 30s sweep.
+      await scheduleAloneJob(ctx, current._id, current.aloneDeadline - now, current.aloneDeadline);
+      return null;
+    }
+    await endCall(ctx, current, { endedReason: "alone" });
     return null;
   },
 });
@@ -525,6 +799,10 @@ export const signals = query({
  * full, so cleanup scales with the number of stale rows instead of total call
  * volume. `endCall` still clears a call's participants and signalling, so an
  * ended call never leaves seats behind.
+ *
+ * It also re-validates the solo-call deadline: a scheduled `enforceAlone` is
+ * the primary trigger, and this pass arms a solo call whose hook was missed
+ * and ends one whose window already elapsed.
  */
 export const sweep = internalMutation({
   args: {},
@@ -555,17 +833,21 @@ export const sweep = internalMutation({
         .withIndex("by_status", (q) => q.eq("status", status))
         .collect();
       for (const call of calls) {
-        const members = await ctx.db
-          .query("callParticipants")
-          .withIndex("by_call", (q) => q.eq("callId", call._id))
-          .collect();
+        const members = await loadCallSeats(ctx, call._id);
         if (members.length === 0) {
           await endCall(ctx, call);
           continue;
         }
-        if (call.status === "ringing" && call.startedAt < now - RING_TIMEOUT_MS) {
-          await endCall(ctx, call);
+        if (call.status === "ringing") {
+          if (call.startedAt < now - RING_TIMEOUT_MS) {
+            await endCall(ctx, call);
+          }
+          continue;
         }
+        // Backstop for a lost scheduled job: arm a call that became solo
+        // without a hook (a migration, a deletion path) and finish one whose
+        // window has already passed. Bounded: the roster was just read.
+        await syncAloneState(ctx, call, distinctParticipantCount(members), now);
       }
     }
 

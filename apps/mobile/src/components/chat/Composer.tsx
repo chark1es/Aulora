@@ -35,6 +35,8 @@ export interface ComposerProps {
   readonly channels?: readonly { readonly id: string; readonly name: string }[];
   readonly canMentionEveryone?: boolean;
   readonly viewerName?: string;
+  /** A one-shot draft to place in the field and focus when `token` changes. */
+  readonly seed?: { readonly token: number; readonly text: string } | undefined;
   /** Announces that the viewer is typing; throttled to one ping per few seconds. */
   readonly onTyping: (channelId: string) => void;
   /** Retracts the typing indicator on send, blur and channel switch. */
@@ -84,6 +86,7 @@ export function Composer(props: ComposerProps) {
     channels = [],
     canMentionEveryone = false,
     viewerName = "You",
+    seed,
     onTyping,
     onClearTyping,
     onSend,
@@ -127,6 +130,16 @@ export function Composer(props: ComposerProps) {
       stopTyping(channelId);
     };
   }, [channelId, stopTyping]);
+
+  // A suggested first message (from the conversation opening) lands in the
+  // draft and takes focus, so the viewer can adjust it before sending.
+  const seedToken = seed?.token;
+  const seedText = seed?.text;
+  useEffect(() => {
+    if (seedToken === undefined) return;
+    setValue(seedText ?? "");
+    inputRef.current?.focus();
+  }, [seedToken, seedText]);
 
   const candidates = useMemo<MentionCandidate[]>(() => {
     const broadcast: MentionCandidate[] = canMentionEveryone

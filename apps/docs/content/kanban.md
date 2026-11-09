@@ -4,7 +4,7 @@ Kanban is an optional workspace addon for the web, desktop and mobile apps. It i
 
 ## Permissions
 
-Grant Kanban permissions in **Workspace settings → Roles**. Existing roles keep their permissions when the addon is installed. New workspaces include View, Edit and Comment in the default member role; board management still requires an explicit grant.
+Grant Kanban permissions in **Workspace settings → Roles**. Existing roles keep their permissions when the addon is installed. New workspaces include View and Comment in the default member role; editing cards and managing boards require an explicit grant. Upgrading a workspace whose `@everyone` role still has the old untouched default removes Edit Kanban from it once, tracked by a stored migration marker; roles an owner customised are left alone, and a later deliberate re-grant is not undone by the next deploy, so review their Edit Kanban grant if members should stay read-only.
 
 | Permission | Allows |
 | --- | --- |

@@ -68,6 +68,11 @@ const channelKind = v.union(
 
 const callKind = v.union(v.literal("voice"), v.literal("video"));
 const callStatus = v.union(v.literal("ringing"), v.literal("active"), v.literal("ended"));
+/**
+ * Why a call ended when the reason is not simply that its last participant
+ * left. `alone` is the solo-call auto-disconnect (see `calls.enforceAlone`).
+ */
+const callEndedReason = v.union(v.literal("alone"));
 const callSignalKind = v.union(
   v.literal("offer"),
   v.literal("answer"),
@@ -106,7 +111,19 @@ export default defineSchema({
   server: defineTable({
     name: v.string(),
     iconSeed: v.string(),
+    /**
+     * Legacy single-owner field. It always names an owner so older clients and
+     * backups that only understand one owner keep working. Multi-owner servers
+     * keep it in sync with the first entry of `ownerIds`.
+     */
     ownerId: v.string(),
+    /**
+     * Every workspace owner. Optional so workspaces created before multiple
+     * owners existed remain valid; readers use `ownerIdsOf` in
+     * `lib/owners.ts`, which falls back to `[ownerId]`. New writes maintain
+     * both fields, and `ownerId` always stays one of these ids.
+     */
+    ownerIds: v.optional(v.array(v.string())),
     settings: serverSettings,
     /**
      * Maintained number of `members` rows, kept on join/kick/ban/bot-create.
@@ -121,6 +138,32 @@ export default defineSchema({
      * full-scan fallback.
      */
     memberRolesBackfilled: v.optional(v.boolean()),
+    /**
+     * One-shot data migrations already completed for this workspace. The setup
+     * container checks a marker before re-running a value-based migration, so
+     * an owner's later intentional change is not undone on the next deploy.
+     * Optional: a workspace without it simply has not recorded any marker yet.
+     */
+    appliedMigrations: v.optional(v.array(v.string())),
+    /**
+     * Ownership transitions reserved while an owner deletes their account. A
+     * reservation is a short-lived pending-deletion marker, not an ownership
+     * change: the owner keeps their place until cleanup commits. Reservations
+     * count against the last-owner guard so two concurrent deletions cannot
+     * both pass it, and they expire so a failed deletion releases itself.
+     * Optional: older workspaces have no pending deletions.
+     */
+    ownerDeletionReservations: v.optional(
+      v.array(v.object({ userId: v.string(), reservedAt: v.number() })),
+    ),
+    /**
+     * Owner ids the recovery path has flagged as orphaned (an auth user is gone
+     * and no other live owner remains). Persisting the flagged state lets the
+     * hourly prune record one `owner.deletion.orphaned` audit transition instead
+     * of appending another row on every run. Cleared when the workspace heals.
+     * Optional: older workspaces have never flagged anyone.
+     */
+    ownerDeletionAlerts: v.optional(v.array(v.string())),
     licenseKey: v.optional(v.string()),
     licenseValidation: v.optional(
       v.object({
@@ -167,6 +210,68 @@ export default defineSchema({
     reportedUsers: v.optional(v.number()),
     finalReported: v.optional(v.boolean()),
   }).index("by_license_month", ["licenseId", "month"]),
+
+  /**
+   * One-time first-run claim proof. A fresh instance prints a random setup
+   * token in the setup container's logs and stores only its SHA-256 digest
+   * here; the row is deleted when the owner is claimed. `SETUP_TOKEN` in the
+   * deployment environment is an optional operator override and is never
+   * copied into this table. There is at most one row.
+   */
+  setupClaims: defineTable({
+    tokenHash: v.string(),
+    createdAt: v.number(),
+    expiresAt: v.number(),
+  }),
+
+  /**
+   * One-time OAuth handoff codes for native and desktop clients. `codeHash`
+   * is the SHA-256 hex digest of a random 256-bit code; the plaintext is never
+   * stored. `challenge` is the PKCE-style SHA-256 digest of the client-held
+   * verifier, so `native/exchange` can only consume a code from the client that
+   * started that sign-in. `sessionCiphertext` is the session token sealed with
+   * the server-side `aulora-sse-v1` envelope. A row is deleted when consumed or
+   * when the bounded expiry prune reaches it.
+   */
+  nativeAuthHandoffs: defineTable({
+    codeHash: v.string(),
+    challenge: v.string(),
+    sessionCiphertext: v.string(),
+    /** Workspace origin that minted the code, as returned to the client. */
+    server: v.string(),
+    createdAt: v.number(),
+    expiresAt: v.number(),
+  })
+    .index("by_code_hash", ["codeHash"])
+    // The prune reads only expired rows instead of scanning the table.
+    .index("by_expires", ["expiresAt"]),
+
+  /**
+   * One in-flight native/desktop OAuth start, created by `native/start` and
+   * consumed by `native/finish`. `txHash` is the SHA-256 digest of the
+   * client-generated transaction id that is also held in an HttpOnly cookie, so
+   * a finish URL replayed in another browser cannot redeem the session cookie
+   * that navigation carries. `returnTarget` is the exact `return` value the
+   * client asked for, and `challenge` the PKCE-style verifier digest. Rows live
+   * at most ten minutes and are swept through `by_expires`.
+   */
+  nativeAuthTransactions: defineTable({
+    txHash: v.string(),
+    challenge: v.string(),
+    returnTarget: v.string(),
+    createdAt: v.number(),
+    expiresAt: v.number(),
+    /**
+     * Finish attempts charged against this one live transaction in the current
+     * fixed window. Keeping the counter on the row isolates it by the actual
+     * transaction id instead of a shared hash bucket, so one caller cannot
+     * exhaust another flow's allowance. Additive: older rows have neither.
+     */
+    finishAttempts: v.optional(v.number()),
+    finishWindowStart: v.optional(v.number()),
+  })
+    .index("by_tx_hash", ["txHash"])
+    .index("by_expires", ["expiresAt"]),
 
   /**
    * Instance-level (operator) settings surfaced by the instance admin panel:
@@ -634,6 +739,22 @@ export default defineSchema({
     endedAt: v.optional(v.number()),
     /** Plaintext id of the participant currently sharing their screen. */
     screenShareUserId: v.optional(v.string()),
+    /**
+     * When the call became solo (exactly one distinct user), and the server
+     * clock time at which a still-solo call is disconnected. Both are cleared
+     * when a second participant joins, so a later solo stretch starts fresh.
+     * Absent on calls from before the solo timeout, which the sweep arms.
+     */
+    aloneSince: v.optional(v.number()),
+    aloneDeadline: v.optional(v.number()),
+    /**
+     * The single pending `enforceAlone` job for this window. Re-arming or
+     * clearing the window cancels it, so repeated Stay presses cannot pile up
+     * jobs and a call always has at most one enforcement in flight.
+     */
+    aloneJobId: v.optional(v.id("_scheduled_functions")),
+    /** Set when the call ended for a reason other than its last person leaving. */
+    endedReason: v.optional(callEndedReason),
     updatedAt: v.number(),
   })
     .index("by_channel", ["channelId"])

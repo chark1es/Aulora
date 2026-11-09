@@ -160,7 +160,34 @@ export interface CallView {
   readonly screenShareUserId: string | null;
   readonly startedAt: number;
   readonly participants: readonly CallParticipantView[];
+  /**
+   * Server clock time at which a still-solo call is disconnected, or `null`
+   * when more than one person is in it. Absent on older backends that do not
+   * run the solo-call timeout; clients then hide the warning.
+   */
+  readonly aloneDeadline?: number | null;
+  /**
+   * The configured solo-call window in seconds, when known. Present on a call
+   * that ended for being solo too, so the notice can name the real duration.
+   */
+  readonly aloneTimeoutSeconds?: number | null;
+  /**
+   * Why the call ended, when it was not simply the last participant leaving.
+   * `alone` is the solo-call timeout; older backends omit the field.
+   */
+  readonly endedReason?: string | null;
 }
+
+/**
+ * A notice shown after a call ends for a reason the person should know about.
+ * `alone-timeout` means the server disconnected them for being the only person
+ * in the call; `timeoutSeconds` is the workspace's configured window when the
+ * backend reported it.
+ */
+export type CallEndNotice = {
+  readonly kind: "alone-timeout";
+  readonly timeoutSeconds: number | null;
+};
 
 export interface CallSignalRow {
   readonly id: string;
@@ -225,6 +252,12 @@ export interface VoicePort {
   turnCredentials?(): Promise<TurnCredentials | null>;
   /** Keeps the participant row fresh so the server can sweep abandoned calls. */
   callHeartbeat(args: { readonly callId: string }): Promise<null>;
+  /**
+   * Restarts the solo-call countdown for this device. Optional because clients
+   * from before the feature never call it; a client talking to an older
+   * backend that lacks the mutation ignores the failure.
+   */
+  stayInCall?(args: { readonly callId: string }): Promise<null>;
   sendSignal(args: {
     readonly callId: string;
     readonly toUserId: string;

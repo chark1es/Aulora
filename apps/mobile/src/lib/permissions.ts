@@ -146,14 +146,14 @@ export function roleColorFor(member: MemberView | null, roles: readonly RoleView
 export function memberViewToEntry(
   member: MemberView,
   roles: readonly RoleView[],
-  ownerId: string | null,
+  ownerIds: readonly string[],
   fallback: string,
 ): MobileMemberEntry {
   return {
     userId: member.userId,
     displayName: memberDisplayName(member, fallback),
     roleIds: member.roleIds,
-    isOwner: member.userId === ownerId,
+    isOwner: ownerIds.includes(member.userId),
     roleColor: roleColorFor(member, roles),
   };
 }

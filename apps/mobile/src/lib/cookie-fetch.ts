@@ -15,6 +15,20 @@ export interface CookieStore {
 
 export const AUTH_COOKIE_KEY = "aulora.auth.cookie";
 
+/**
+ * The bearer token key for one workspace. OAuth on a phone finishes in a
+ * browser that has its own cookie jar, so the session comes back as a token
+ * instead of a cookie; the same key also receives `set-auth-token` refreshes
+ * from Better Auth's bearer plugin.
+ */
+export function authTokenKey(siteUrl: string): string {
+  try {
+    return `aulora.auth.token:${new URL(siteUrl).origin}`;
+  } catch {
+    return `aulora.auth.token:${siteUrl}`;
+  }
+}
+
 function parseCookies(header: string): Map<string, string> {
   const cookies = new Map<string, string>();
   for (const part of header.split(";")) {
@@ -95,9 +109,11 @@ export function readSetCookies(headers: Headers): string[] {
 export interface CookieFetchOptions {
   readonly store: CookieStore;
   readonly baseFetch?: typeof fetch;
+  /** Reads and refreshes the workspace's bearer token, when OAuth set one. */
+  readonly tokenKey?: string;
 }
 
-/** Wraps `fetch` so the Better Auth session cookie survives across requests. */
+/** Wraps `fetch` so the Better Auth session survives across requests. */
 export function createCookieFetch(options: CookieFetchOptions): typeof fetch {
   const baseFetch = options.baseFetch ?? globalThis.fetch;
   return async (input: RequestInfo | URL, init?: RequestInit): Promise<Response> => {
@@ -105,6 +121,12 @@ export function createCookieFetch(options: CookieFetchOptions): typeof fetch {
     const headers = new Headers(init?.headers);
     if (stored !== null && stored.length > 0 && !headers.has("cookie")) {
       headers.set("cookie", stored);
+    }
+    if (options.tokenKey !== undefined && !headers.has("authorization")) {
+      const token = await options.store.getItem(options.tokenKey);
+      if (token !== null && token.length > 0) {
+        headers.set("authorization", `Bearer ${token}`);
+      }
     }
     // `omit` keeps the platform cookie jar out of it. With `include`, iOS adds
     // its own copy of the session cookie next to this header and the server
@@ -119,26 +141,15 @@ export function createCookieFetch(options: CookieFetchOptions): typeof fetch {
         await options.store.removeItem(AUTH_COOKIE_KEY);
       }
     }
+    if (options.tokenKey !== undefined) {
+      const refreshed = response.headers.get("set-auth-token");
+      if (refreshed !== null && refreshed.length > 0) {
+        await options.store.setItem(options.tokenKey, refreshed);
+      }
+      if (String(input).includes("/sign-out")) {
+        await options.store.removeItem(options.tokenKey);
+      }
+    }
     return response;
   };
-}
-
-/** Stores the `cookie` query parameter Better Auth appends to a native redirect. */
-export async function storeRedirectCookie(store: CookieStore, url: string): Promise<boolean> {
-  let parsed: URL;
-  try {
-    parsed = new URL(url);
-  } catch {
-    return false;
-  }
-  const cookie = parsed.searchParams.get("cookie");
-  if (cookie === null || cookie.length === 0) {
-    return false;
-  }
-  const merged = mergeCookieHeader(await store.getItem(AUTH_COOKIE_KEY), [cookie]);
-  if (merged.length > 0) {
-    await store.setItem(AUTH_COOKIE_KEY, merged);
-    return true;
-  }
-  return false;
 }

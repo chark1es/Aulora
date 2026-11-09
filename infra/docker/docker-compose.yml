@@ -10,10 +10,10 @@
 #   - Everything else is pinned to an explicit release tag.
 #
 # First run:
-#   cp .env.example .env        # then edit owner + workspace values
+#   cp .env.example .env        # then edit workspace + origin values
 #   docker compose up -d --build
-#   docker compose run --rm setup
-#   open http://localhost:8080
+#   docker compose run --rm setup   # prints a one-time setup token
+#   open http://localhost:8080      # register the first owner in the app
 
 name: ${COMPOSE_PROJECT_NAME:-aulora}
 

@@ -110,7 +110,6 @@ export function AuditLogViewer({
       ) : rows.length === 0 ? (
         <EmptyState
           size="sm"
-          icon="file"
           title="Nothing recorded yet"
           description="Admin actions appear here as they happen."
         />

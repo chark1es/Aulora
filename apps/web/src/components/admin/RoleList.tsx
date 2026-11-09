@@ -23,16 +23,18 @@ export function RoleList(props: RoleListProps) {
         title="Roles"
         description="Higher roles sit above lower ones in the member list and hierarchy."
         trailing={
-          <Button
-            size="sm"
-            disabled={busy}
-            leading={<Icon name="plus" size={14} />}
-            onClick={() => {
-              onNavigate({ kind: "role-create" });
-            }}
-          >
-            New role
-          </Button>
+          sorted.length > 0 ? (
+            <Button
+              size="sm"
+              disabled={busy}
+              leading={<Icon name="plus" size={14} />}
+              onClick={() => {
+                onNavigate({ kind: "role-create" });
+              }}
+            >
+              New role
+            </Button>
+          ) : null
         }
       />
 
@@ -45,7 +47,6 @@ export function RoleList(props: RoleListProps) {
       {sorted.length === 0 ? (
         <EmptyState
           size="sm"
-          icon="shield"
           title="No roles yet"
           description="Create a role to group permissions for your members."
           action={

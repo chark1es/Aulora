@@ -216,7 +216,7 @@ function MemberProfileOverlay({ model }: { readonly model: ChatScreenModel }) {
       onModerate={
         model.canModerateMembers &&
         shownProfile !== model.ownUserId &&
-        shownProfile !== model.ownerUserId
+        !model.ownerIds.includes(shownProfile)
           ? () => {
               model.setProfileFor(null);
               model.setModerationError(null);

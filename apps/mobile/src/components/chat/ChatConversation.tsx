@@ -8,6 +8,7 @@ import {
   resolveMentions,
 } from "@aulora/core";
 import { Button, EmptyState, Icon, Text, usePalette } from "@aulora/ui-native";
+import { useState } from "react";
 import { Pressable, View } from "react-native";
 import { KeyboardAvoidingView } from "react-native-keyboard-controller";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
@@ -15,6 +16,7 @@ import { type PickedFile, uploadPickedFiles } from "../../lib/attachments";
 import { JoinedElsewhereScreen } from "../voice/JoinedElsewhereScreen";
 import { ChatPendingFailures } from "./ChatPendingFailures";
 import { Composer } from "./Composer";
+import { ConversationOpening } from "./ConversationOpening";
 import { RoundButton } from "./HubPane";
 import { MessageList } from "./MessageList";
 import { PresenceAvatar } from "./PresenceAvatar";
@@ -189,7 +191,7 @@ function ChatConversationBody({
 
 function ChatEmptyState({ model }: { readonly model: ChatScreenModel }) {
   return (
-    <EmptyState icon="message" title="Pick a conversation to start">
+    <EmptyState title="Pick a conversation to start">
       <Button
         variant="secondary"
         onPress={() => {
@@ -227,51 +229,74 @@ function ChatMessageArea({
   readonly palette: Palette;
 }) {
   const channel = model.channel;
+  const [composerSeed, setComposerSeed] = useState<{ token: number; text: string }>();
   if (channel === undefined) {
     return null;
   }
   return (
     <>
-      <MessageList
-        key={channel.id}
-        runtime={model.runtime}
-        channelId={channel.id}
-        messages={model.mergedMessages}
-        decrypted={model.mergedDecrypted}
-        attachments={model.attachmentsByMessage}
-        pendingIds={model.pendingIds}
-        ownUserId={model.ownUserId}
-        memberNames={model.memberNames}
-        memberColors={model.memberColors}
-        channelNames={model.mentionNames}
-        hasOlder={model.sessionState.hasOlder}
-        loadingOlder={model.sessionState.loadingOlder}
-        onLoadOlder={model.sessionState.loadOlder}
-        firstUnreadId={model.sessionState.unread.firstUnreadId}
-        permissions={model.channelPermissions}
-        jumpToMessageId={model.messageContext?.root.id ?? model.jumpToMessageId}
-        onQuote={model.setQuote}
-        onMemberPress={model.setProfileFor}
-        onReply={model.setThreadRoot}
-        onChannelPress={(name) => {
-          const target = model.mentionChannelTargets.find((entry) => entry.name === name);
-          if (target !== undefined) {
-            void model.openChannel(target.channelId);
+      {model.mergedMessages.length === 0 ? (
+        <ConversationOpening
+          channel={channel}
+          title={model.channelTitle}
+          ownUserId={model.ownUserId}
+          memberNames={model.memberNames}
+          partnerStatus={model.partnerPresence?.status}
+          canSend={
+            !channel.archived && hasPermission(model.channelPermissions, Permission.SendMessages)
           }
-        }}
-        onJumpToFirstUnread={() => {
-          if (model.sessionState.unread.firstUnreadId !== null) {
-            void model.runtime?.session.markRead(
-              channel.id,
-              model.sessionState.unread.firstUnreadId,
-            );
+          canStartCall={
+            model.voice.canConnect && hasPermission(model.channelPermissions, Permission.Connect)
           }
-        }}
-      />
+          onSayHi={(text) => {
+            setComposerSeed((current) => ({ token: (current?.token ?? 0) + 1, text }));
+          }}
+          onStartCall={() => {
+            void model.voice.startCall(channel.id, "voice");
+          }}
+        />
+      ) : (
+        <MessageList
+          key={channel.id}
+          runtime={model.runtime}
+          channelId={channel.id}
+          messages={model.mergedMessages}
+          decrypted={model.mergedDecrypted}
+          attachments={model.attachmentsByMessage}
+          pendingIds={model.pendingIds}
+          ownUserId={model.ownUserId}
+          memberNames={model.memberNames}
+          memberColors={model.memberColors}
+          channelNames={model.mentionNames}
+          hasOlder={model.sessionState.hasOlder}
+          loadingOlder={model.sessionState.loadingOlder}
+          onLoadOlder={model.sessionState.loadOlder}
+          firstUnreadId={model.sessionState.unread.firstUnreadId}
+          permissions={model.channelPermissions}
+          jumpToMessageId={model.messageContext?.root.id ?? model.jumpToMessageId}
+          onQuote={model.setQuote}
+          onMemberPress={model.setProfileFor}
+          onReply={model.setThreadRoot}
+          onChannelPress={(name) => {
+            const target = model.mentionChannelTargets.find((entry) => entry.name === name);
+            if (target !== undefined) {
+              void model.openChannel(target.channelId);
+            }
+          }}
+          onJumpToFirstUnread={() => {
+            if (model.sessionState.unread.firstUnreadId !== null) {
+              void model.runtime?.session.markRead(
+                channel.id,
+                model.sessionState.unread.firstUnreadId,
+              );
+            }
+          }}
+        />
+      )}
       <ChatTypingIndicator model={model} />
       <ChatPendingFailures model={model} />
       <ChatQuoteBar model={model} palette={palette} />
-      <ChatComposer model={model} channelId={channel.id} />
+      <ChatComposer model={model} channelId={channel.id} seed={composerSeed} />
     </>
   );
 }
@@ -328,9 +353,11 @@ function ChatQuoteBar({
 function ChatComposer({
   model,
   channelId,
+  seed,
 }: {
   readonly model: ChatScreenModel;
   readonly channelId: string;
+  readonly seed?: { readonly token: number; readonly text: string } | undefined;
 }) {
   const channel = model.channel;
   if (channel === undefined) {
@@ -342,6 +369,7 @@ function ChatComposer({
         channel.archived || !hasPermission(model.channelPermissions, Permission.SendMessages)
       }
       channelId={channelId}
+      {...(seed !== undefined ? { seed } : {})}
       placeholder={
         model.isDirect ? `Message ${model.channelTitle}` : `Message #${model.channelTitle}`
       }
