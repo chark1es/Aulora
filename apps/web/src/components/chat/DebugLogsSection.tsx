@@ -9,21 +9,7 @@ export function DebugLogsSection() {
   const [status, setStatus] = useState("");
   const download = () => {
     try {
-      const url = URL.createObjectURL(
-        new Blob([debugLog.report(`web/desktop ${CLIENT_VERSION}`, steps)], {
-          type: "application/json",
-        }),
-      );
-      const anchor = document.createElement("a");
-      anchor.href = url;
-      anchor.download = "aulora-debug-log.json";
-      document.body.appendChild(anchor);
-      try {
-        anchor.click();
-      } finally {
-        anchor.remove();
-      }
-      setTimeout(() => URL.revokeObjectURL(url), 10_000);
+      downloadDebugReport(steps);
       setStatus("Debug report downloaded.");
     } catch {
       setStatus("Could not download the report. Please try again.");
@@ -41,7 +27,9 @@ export function DebugLogsSection() {
         Steps to reproduce
         <textarea
           value={steps}
-          onChange={(event) => setSteps(event.target.value)}
+          onChange={(event) => {
+            setSteps(event.target.value);
+          }}
           maxLength={8000}
           rows={4}
           placeholder="What did you do, what happened, and what did you expect?"
@@ -79,4 +67,24 @@ export function DebugLogsSection() {
       </Text>
     </div>
   );
+}
+
+function downloadDebugReport(steps: string): void {
+  const url = URL.createObjectURL(
+    new Blob([debugLog.report(`web/desktop ${CLIENT_VERSION}`, steps)], {
+      type: "application/json",
+    }),
+  );
+  const anchor = document.createElement("a");
+  anchor.href = url;
+  anchor.download = "aulora-debug-log.json";
+  document.body.appendChild(anchor);
+  try {
+    anchor.click();
+  } finally {
+    anchor.remove();
+  }
+  setTimeout(() => {
+    URL.revokeObjectURL(url);
+  }, 10_000);
 }

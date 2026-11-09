@@ -121,13 +121,14 @@ let consoleInstalled = false;
 export function installDebugConsole(): void {
   if (consoleInstalled) return;
   consoleInstalled = true;
-  for (const level of ["error", "warn"] as const) {
-    const original = console[level];
-    console[level] = (...values: unknown[]) => {
-      debugLog.record(`console.${level}`, ...values);
+  const capture =
+    (source: string, original: typeof console.error) =>
+    (...values: unknown[]) => {
+      debugLog.record(source, ...values);
       original.apply(console, values);
     };
-  }
+  console.error = capture("console.error", console.error);
+  console.warn = capture("console.warn", console.warn);
 }
 
 export function generateDebugTestError(): void {

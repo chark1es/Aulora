@@ -11,7 +11,9 @@ const DebugLogsDialog = lazy(() => import("./DebugLogsDialog"));
 export function DebugLogsAccess() {
   const [open, setOpen] = useState(false);
   const openMenu = useContextMenu();
-  const showLogs = useCallback(() => setOpen(true), []);
+  const showLogs = useCallback(() => {
+    setOpen(true);
+  }, []);
   useEffect(() => {
     if (isDesktop()) return;
     const onContextMenu = (event: MouseEvent) => {
@@ -20,8 +22,8 @@ export function DebugLogsAccess() {
       const element = elementFromTarget(event.target);
       if (
         isEditableTarget(element) ||
-        element?.closest("a[href], [data-context-menu-media]") ||
-        window.getSelection()?.toString()
+        (element?.closest("a[href], [data-context-menu-media]") ?? null) !== null ||
+        (window.getSelection()?.toString().length ?? 0) > 0
       )
         return;
       event.preventDefault();
@@ -33,14 +35,20 @@ export function DebugLogsAccess() {
       });
     };
     window.addEventListener("contextmenu", onContextMenu);
-    return () => window.removeEventListener("contextmenu", onContextMenu);
+    return () => {
+      window.removeEventListener("contextmenu", onContextMenu);
+    };
   }, [openMenu, showLogs]);
   return (
     <>
       <DesktopContextMenu onOpenDebugLogs={showLogs} />
       {open && (
         <Suspense fallback={null}>
-          <DebugLogsDialog onClose={() => setOpen(false)} />
+          <DebugLogsDialog
+            onClose={() => {
+              setOpen(false);
+            }}
+          />
         </Suspense>
       )}
     </>

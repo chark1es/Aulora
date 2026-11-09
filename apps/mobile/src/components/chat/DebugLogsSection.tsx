@@ -1,7 +1,7 @@
 import { debugLog, generateDebugTestError } from "@aulora/core";
 import { Button, Text } from "@aulora/ui-native";
 import * as Clipboard from "expo-clipboard";
-import { useState, useSyncExternalStore } from "react";
+import { type Dispatch, type SetStateAction, useState, useSyncExternalStore } from "react";
 import { ScrollView, TextInput, View } from "react-native";
 import { MOBILE_CLIENT_VERSION } from "../../lib/client-version";
 
@@ -31,19 +31,7 @@ export function DebugLogsSection() {
         up to 256 KiB. Restarting the app clears them.
       </Text>
       <Text size="sm">{entries.length} entries recorded</Text>
-      <View className="gap-2">
-        <Text size="sm">Steps to reproduce</Text>
-        <TextInput
-          accessibilityLabel="Steps to reproduce"
-          multiline
-          value={steps}
-          onChangeText={setSteps}
-          maxLength={8000}
-          placeholder="What happened? What did you expect?"
-          className="min-h-24 rounded-input border border-border bg-surface-3 p-3 text-text"
-          textAlignVertical="top"
-        />
-      </View>
+      <ReproductionSteps steps={steps} setSteps={setSteps} />
       <Text size="sm" tone="muted">
         Reports include error messages and stacks. Common secrets are scrubbed, but review the
         copied text for private information before sharing it.
@@ -74,5 +62,29 @@ export function DebugLogsSection() {
         {status}
       </Text>
     </ScrollView>
+  );
+}
+
+function ReproductionSteps({
+  steps,
+  setSteps,
+}: {
+  readonly steps: string;
+  readonly setSteps: Dispatch<SetStateAction<string>>;
+}) {
+  return (
+    <View className="gap-2">
+      <Text size="sm">Steps to reproduce</Text>
+      <TextInput
+        accessibilityLabel="Steps to reproduce"
+        multiline
+        value={steps}
+        onChangeText={setSteps}
+        maxLength={8000}
+        placeholder="What happened? What did you expect?"
+        className="min-h-24 rounded-input border border-border bg-surface-3 p-3 text-text"
+        textAlignVertical="top"
+      />
+    </View>
   );
 }

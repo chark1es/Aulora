@@ -183,7 +183,9 @@ function SettingsMenu({ canChangeNickname, pushState, onOpen }: SettingsMenuProp
           title="Debug logs"
           subtitle="Export errors and reproduction steps"
           chevron
-          onPress={() => onOpen("debug")}
+          onPress={() => {
+            onOpen("debug");
+          }}
         />
         <ListRow
           icon="pencil"

@@ -392,7 +392,7 @@ function useConnect(
   function remove(id: string) {
     void store.remove(id).then(() => {
       debugLog.clear();
-      return refresh();
+      refresh();
     });
   }
 
