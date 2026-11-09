@@ -5,6 +5,7 @@ import { Heading, Icon, Text, usePalette } from "@aulora/ui-native";
 import { useMemo } from "react";
 import { Pressable, View } from "react-native";
 import { ScrollView } from "react-native-gesture-handler";
+import type { RowUnread } from "../../lib/conversation-row";
 import type { CategoryView, MobileMemberEntry } from "../../providers/ChatProvider";
 import { VoiceChannelSection } from "../voice/VoiceChannelSection";
 import { RoundButton, useDockClearance } from "./HubPane";
@@ -231,6 +232,7 @@ interface ChannelSectionProps {
   readonly rows: readonly ChannelView[];
   readonly titles: ReadonlyMap<string, string>;
   readonly activeChannelId: string | undefined;
+  readonly unreadByChannel: ReadonlyMap<string, RowUnread>;
   /** Present on the first section when the viewer may create channels. */
   readonly onCreateChannel?: (() => void) | undefined;
   readonly onOpenChannel: (channelId: string) => void;
@@ -239,7 +241,7 @@ interface ChannelSectionProps {
 
 /** One category of text channels. */
 function ChannelSection(props: ChannelSectionProps) {
-  const { title, rows, titles, activeChannelId, onCreateChannel } = props;
+  const { title, rows, titles, activeChannelId, unreadByChannel, onCreateChannel } = props;
   return (
     <View>
       <ListHeader
@@ -263,6 +265,9 @@ function ChannelSection(props: ChannelSectionProps) {
               title={titles.get(entry.id) ?? entry.name}
               subtitle={entry.topic ?? undefined}
               selected={entry.id === activeChannelId}
+              activeTick={entry.id === activeChannelId}
+              muted={entry.muted === true}
+              unread={unreadByChannel.get(entry.id)}
               trailing={<ChannelFlags channel={entry} />}
               onPress={() => {
                 props.onOpenChannel(entry.id);
@@ -361,6 +366,7 @@ export interface ChannelListProps {
   readonly categories: readonly CategoryView[];
   readonly titles: ReadonlyMap<string, string>;
   readonly activeChannelId: string | undefined;
+  readonly unreadByChannel: ReadonlyMap<string, RowUnread>;
   readonly ownUserId: string;
   readonly presence: readonly PresenceRow[];
   readonly members: readonly MobileMemberEntry[];
@@ -425,6 +431,7 @@ export function ChannelList(props: ChannelListProps) {
           rows={section.rows}
           titles={titles}
           activeChannelId={props.activeChannelId}
+          unreadByChannel={props.unreadByChannel}
           onCreateChannel={
             index === 0 && props.canManageChannels ? props.onCreateChannel : undefined
           }

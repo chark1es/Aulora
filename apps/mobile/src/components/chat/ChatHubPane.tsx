@@ -59,6 +59,7 @@ function ChatHubListTab({ model }: { readonly model: ChatScreenModel }) {
       categories={model.categories}
       titles={model.titles}
       activeChannelId={model.activeChannelId}
+      unreadByChannel={model.unreadByChannel}
       ownUserId={model.ownUserId}
       presence={model.presence}
       members={model.members}
@@ -100,6 +101,7 @@ function ChatHubDirectTab({ model }: { readonly model: ChatScreenModel }) {
       channels={model.visibleChannels}
       titles={model.titles}
       activeChannelId={model.activeChannelId}
+      unreadByChannel={model.unreadByChannel}
       ownUserId={model.ownUserId}
       presence={model.presence}
       onOpenChannel={(channelId) => void model.openChannel(channelId)}

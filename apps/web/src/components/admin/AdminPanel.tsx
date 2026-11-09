@@ -35,7 +35,9 @@ export interface AdminPanelViewer {
 
 export interface AdminPanelProps {
   readonly viewer: AdminPanelViewer;
-  readonly ownerId: string | null;
+  readonly ownerIds: readonly string[];
+  /** False against a backend that predates multiple-owner management. */
+  readonly ownerManagementAvailable?: boolean;
   readonly roles: readonly RoleView[];
   readonly members: readonly MemberView[];
   readonly categories: readonly CategoryView[];
@@ -115,7 +117,7 @@ function AdminPanelHeader({ onClose }: { readonly onClose: () => void }) {
  * still obeys the same permission checks as before.
  */
 export function AdminPanel(props: AdminPanelProps) {
-  const { viewer, ownerId, roles, members, categories, channels, channelNames, origin, onClose } =
+  const { viewer, ownerIds, roles, members, categories, channels, channelNames, origin, onClose } =
     props;
   const permission = (name: PermissionName): boolean =>
     hasPermission(viewer.permissions, PERMISSION_BITS.get(name) ?? 0n);
@@ -147,7 +149,7 @@ export function AdminPanel(props: AdminPanelProps) {
               hasSections={sections.length > 0}
               permission={permission}
               viewer={viewer}
-              ownerId={ownerId}
+              ownerIds={ownerIds}
               roles={roles}
               members={members}
               categories={categories}
@@ -173,7 +175,9 @@ interface AdminPanelBodyProps {
   readonly hasSections: boolean;
   readonly permission: Callback<[name: PermissionName], boolean>;
   readonly viewer: AdminPanelViewer;
-  readonly ownerId: string | null;
+  readonly ownerIds: readonly string[];
+  /** False against a backend that predates multiple-owner management. */
+  readonly ownerManagementAvailable?: boolean;
   readonly roles: readonly RoleView[];
   readonly members: readonly MemberView[];
   readonly categories: readonly CategoryView[];
@@ -208,7 +212,8 @@ function AdminPanelWorkspaceBody(props: AdminPanelBodyProps) {
     nav,
     permission,
     viewer,
-    ownerId,
+    ownerIds,
+    ownerManagementAvailable,
     roles,
     members,
     categories,
@@ -233,7 +238,8 @@ function AdminPanelWorkspaceBody(props: AdminPanelBodyProps) {
       {nav.tab === "members" && (
         <MemberManager
           viewer={viewer}
-          ownerId={ownerId}
+          ownerIds={ownerIds}
+          {...(ownerManagementAvailable !== undefined ? { ownerManagementAvailable } : {})}
           permissions={{
             manageRoles: permission("ManageRoles"),
             kick: permission("Kick"),

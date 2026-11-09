@@ -1,5 +1,5 @@
 import type { MediaDeviceInfo, VoiceDeviceSettings } from "@aulora/core";
-import { Button, cn, Icon, SegmentedControl, Select, Switch, Text } from "@aulora/ui-web";
+import { Button, cn, SegmentedControl, Select, Switch, Text } from "@aulora/ui-web";
 import { useCallback, useEffect, useRef, useState } from "react";
 import { acquireUserMedia, createLevelMeter, supportsOutputSelection } from "../../lib/voice/media";
 import { useVoice } from "../../providers/VoiceProvider";
@@ -63,14 +63,9 @@ export function DeviceSettingsSection() {
 
   return (
     <section className="flex flex-col gap-4" aria-label="Voice and video">
-      <div className="flex items-center gap-2">
-        <span className="flex h-8 w-8 items-center justify-center rounded-[8px] bg-accent-soft text-accent">
-          <Icon name="headphones" size={17} />
-        </span>
-        <div>
-          <h3 className="text-[14px] font-semibold text-text">Voice &amp; video</h3>
-          <p className="text-[12px] text-text-muted">Choose how you sound and look on calls.</p>
-        </div>
+      <div>
+        <h3 className="text-[14px] font-semibold text-text">Voice &amp; video</h3>
+        <p className="text-[12px] text-text-muted">Choose how you sound and look on calls.</p>
       </div>
 
       <Select

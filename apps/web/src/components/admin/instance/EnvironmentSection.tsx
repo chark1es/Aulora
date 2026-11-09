@@ -8,6 +8,7 @@ import {
   type EnvVariablesModel,
   envGroupSummaries,
   firstEnvGroup,
+  needsProviderSetup,
   selectEnvBlocks,
   useEnvOverrides,
 } from "../../../lib/instance-env";
@@ -90,6 +91,20 @@ export function EnvironmentSectionView({ model }: { readonly model: EnvironmentS
       />
       <EnvSecurityNote />
       <EnvWarnings data={data} />
+      {needsProviderSetup(data.variables) && !data.locked && data.encryptionConfigured && (
+        <EnvFirstRunPrompt
+          onSocial={() => {
+            view.setActiveGroup("auth-providers");
+            view.setQuery("");
+            view.setFilter("all");
+          }}
+          onOidc={() => {
+            view.setActiveGroup("oidc");
+            view.setQuery("");
+            view.setFilter("all");
+          }}
+        />
+      )}
       <div className="flex flex-col gap-4 lg:flex-row lg:gap-6">
         <EnvGroupNav
           groups={summaries}
@@ -157,6 +172,40 @@ function EnvSecurityNote() {
         Anyone with owner access can change them, and a later restore or database copy carries them
         with it. Prefer the deployment environment for credentials that never change.
       </Text>
+    </Card>
+  );
+}
+
+/**
+ * First-run guidance: local email/password sign-in works out of the box, so
+ * this is an invitation rather than a blocker. It disappears as soon as any
+ * OAuth or OIDC provider is fully configured.
+ */
+function EnvFirstRunPrompt({
+  onSocial,
+  onOidc,
+}: {
+  readonly onSocial: () => void;
+  readonly onOidc: () => void;
+}) {
+  return (
+    <Card className="flex flex-col gap-2" data-testid="env-first-run">
+      <Text size="sm" className="font-medium">
+        Add a sign-in provider
+      </Text>
+      <Text size="xs" tone="muted">
+        Email and password sign-in works now. To let people use GitHub, Google, Microsoft, Apple or
+        your own identity provider, save its client credentials here. No redeploy or restart is
+        needed, and nothing is shown again after you save a secret.
+      </Text>
+      <div className="flex flex-wrap gap-2">
+        <Button size="sm" variant="secondary" onClick={onSocial} data-testid="env-first-run-social">
+          Set up a social provider
+        </Button>
+        <Button size="sm" variant="secondary" onClick={onOidc} data-testid="env-first-run-oidc">
+          Add custom OIDC
+        </Button>
+      </div>
     </Card>
   );
 }

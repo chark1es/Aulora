@@ -27,6 +27,7 @@ export { Kbd, type KbdProps } from "./Kbd";
 export { Logo, type LogoProps } from "./Logo";
 export { Field, Modal, ModalFooter, type ModalProps } from "./Modal";
 export { MODAL_SHADOW } from "./ModalShell";
+export { ProviderIcon, type ProviderIconProps } from "./ProviderIcon";
 export { SearchInput, type SearchInputProps, type SearchInputSize } from "./SearchInput";
 export {
   Select,

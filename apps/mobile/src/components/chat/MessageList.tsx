@@ -127,20 +127,6 @@ function DaySeparator({ label }: { readonly label: string }) {
   );
 }
 
-function EmptyConversation() {
-  const palette = usePalette();
-  return (
-    <View pointerEvents="none" className="absolute inset-0 items-center justify-center gap-2 px-8">
-      <View className="h-14 w-14 items-center justify-center rounded-pill bg-surface-2">
-        <Icon name="message" size={24} color={palette["text-muted"]} />
-      </View>
-      <Text tone="muted" className="text-center">
-        Nothing here yet. Say something to get it started.
-      </Text>
-    </View>
-  );
-}
-
 function UnreadPill({ onPress }: { readonly onPress: () => void }) {
   const palette = usePalette();
   return (
@@ -463,7 +449,6 @@ export function MessageList(props: MessageListProps) {
         ListFooterComponent={hasOlder ? <OlderSpinner /> : undefined}
         renderItem={renderItem}
       />
-      {rows.length === 0 && <EmptyConversation />}
       {firstUnreadId !== null && indexOfMessage(rows, firstUnreadId) >= 0 && (
         <UnreadPill
           onPress={() => {

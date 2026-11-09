@@ -1,6 +1,7 @@
 export { Button, type ButtonProps } from "./Button";
 export { Card, type CardProps } from "./Card";
 export { Checkbox, type CheckboxProps } from "./Checkbox";
+export { CountBadge, type CountBadgeProps, type CountBadgeTone } from "./CountBadge";
 export { cn } from "./cn";
 export {
   ACCENT_OVERLAY,
@@ -16,6 +17,7 @@ export { Icon, type IconProps } from "./Icon";
 export { IconButton, type IconButtonProps } from "./IconButton";
 export { Input, type InputProps } from "./Input";
 export { Logo, type LogoProps } from "./Logo";
+export { ProviderIcon, type ProviderIconProps } from "./ProviderIcon";
 export {
   SegmentedControl,
   type SegmentedControlProps,
@@ -37,6 +39,7 @@ export {
   buttonClass,
   buttonLabelClass,
   buttonLabelText,
+  countBadgeTextStyle,
   type InputSize,
   iconButtonClass,
   inputClass,

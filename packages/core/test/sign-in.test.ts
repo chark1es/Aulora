@@ -1,21 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { providerInitial, resolveSignInMethods } from "../src";
-
-describe("providerInitial", () => {
-  it("upper-cases the first letter of the name", () => {
-    expect(providerInitial("github")).toBe("G");
-    expect(providerInitial("  Keycloak")).toBe("K");
-  });
-
-  it("falls back to a question mark for an empty name", () => {
-    expect(providerInitial("")).toBe("?");
-    expect(providerInitial("   ")).toBe("?");
-  });
-
-  it("keeps a whole code point", () => {
-    expect(providerInitial("😀 Team")).toBe("😀");
-  });
-});
+import { resolveSignInMethods } from "../src";
 
 describe("resolveSignInMethods", () => {
   const providers = [{ id: "github", displayName: "GitHub", type: "oauth" as const }];

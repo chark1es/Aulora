@@ -2,6 +2,7 @@
 import { convexClient } from "@convex-dev/better-auth/client/plugins";
 import { genericOAuthClient } from "better-auth/client/plugins";
 import { createAuthClient } from "better-auth/react";
+import { resetProviderToken } from "./provider-auth";
 import {
   clearSessionToken,
   isCrossOrigin,
@@ -113,6 +114,10 @@ export function authActionsFromClient(client: AuloraAuthClient): AuthActions {
       );
     },
     async signOut() {
+      // Clear the Convex token cache before the network call: the next token
+      // fetch may happen while the sign-out request is still in flight, and a
+      // transient failure then must not replay the account that is leaving.
+      resetProviderToken(client);
       return toResult(await client.signOut());
     },
   };

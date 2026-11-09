@@ -6,19 +6,40 @@ import { ActiveBar } from "./ActiveBar";
 import type { ChannelUnread } from "./channel-sidebar-model";
 import { GroupAvatar, PresenceAvatar, type PresenceStatus, presenceLabel } from "./PresenceAvatar";
 
-function UnreadBadge({ unread }: { readonly unread: ChannelUnread | undefined }) {
+/**
+ * The trailing unread marker. Mentions get a compact count pill; plain unread
+ * gets a dot centred in the same 16px slot so both sit on one vertical line.
+ */
+function UnreadBadge({
+  unread,
+  muted,
+}: {
+  readonly unread: ChannelUnread | undefined;
+  readonly muted: boolean;
+}) {
   const count = badgeCount(unread?.mentionCount ?? 0);
   if (count !== null) {
     return (
-      <span className="flex h-5 min-w-5 items-center justify-center rounded-full bg-accent px-1.5 text-[11px] font-bold text-on-accent">
+      <span
+        role="img"
+        aria-label={`${count} ${count === "1" ? "mention" : "mentions"}`}
+        className={cn(
+          "flex h-4 min-w-4 items-center justify-center rounded-full px-1 pt-px text-[11px] font-semibold leading-none tabular-nums",
+          // White on dark Ember is 3.7:1; the near-black background token
+          // clears 4.5:1 for the 11px count. Light theme keeps white.
+          muted ? "bg-surface-3 text-text-muted" : "bg-accent text-on-accent dark:text-bg",
+        )}
+      >
         {count}
       </span>
     );
   }
   if (unread?.unread === true) {
     return (
-      <span className="h-2 w-2 rounded-full bg-accent">
-        <span className="sr-only">Unread</span>
+      <span className="flex h-4 w-4 items-center justify-center">
+        <span className={cn("h-2 w-2 rounded-full", muted ? "bg-text-muted" : "bg-accent")}>
+          <span className="sr-only">Unread</span>
+        </span>
       </span>
     );
   }
@@ -65,11 +86,13 @@ export function ChannelRow({
   };
 }) {
   const isUnread = unread?.unread === true && !active;
+  const isMuted = channel.muted === true;
   const isPrivate = channel.isPrivate === true;
   return (
     <button
       type="button"
       data-testid={`channel-row-${channel.id}`}
+      title={title}
       onClick={() => {
         onSelect(channel.id);
       }}
@@ -90,13 +113,14 @@ export function ChannelRow({
         : {})}
       {...(drag !== undefined ? { onDragEnd: drag.onDragEnd } : {})}
       className={cn(
-        "relative flex h-8 w-full items-center gap-2.5 rounded-[8px] pl-3 pr-2 text-left text-[13px] transition",
+        "relative flex h-8 w-full items-center gap-2 rounded-[6px] px-2 text-left text-[13px] transition-colors duration-150 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-accent",
         active
-          ? "bg-surface-3 font-semibold text-text"
-          : isUnread
-            ? "font-semibold text-text hover:bg-surface-3"
-            : "text-text-muted hover:bg-surface-3 hover:text-text",
-        channel.muted === true && !active && !isUnread && "opacity-60",
+          ? "bg-accent-soft font-medium text-text"
+          : isMuted
+            ? "text-text-muted hover:bg-surface-2"
+            : isUnread
+              ? "font-medium text-text hover:bg-surface-2"
+              : "text-text-muted hover:bg-surface-2 hover:text-text",
         drag?.dragging === true && "opacity-40",
       )}
     >
@@ -104,13 +128,16 @@ export function ChannelRow({
       <Icon
         name={channel.kind === "announcement" ? "announce" : isPrivate ? "lock" : "hash"}
         size={16}
-        className={cn("shrink-0", active && "text-accent")}
+        className={cn("shrink-0 transition-colors", active ? "text-accent" : "text-text-muted")}
       />
       <span className="min-w-0 flex-1 truncate">{title}</span>
-      {channel.muted === true && (
-        <Icon name="bell-off" size={13} className="shrink-0 text-text-muted" />
+      {isMuted && (
+        <span className="flex shrink-0 items-center">
+          <Icon name="bell-off" size={14} className="text-text-muted" />
+          <span className="sr-only">Muted</span>
+        </span>
       )}
-      {!active && <UnreadBadge unread={unread} />}
+      {!active && <UnreadBadge unread={unread} muted={isMuted} />}
     </button>
   );
 }
@@ -140,6 +167,7 @@ export function DmRow({
   const others = (channel.memberIds ?? []).filter((id) => id !== viewer.ownUserId);
   const status = partner !== undefined ? viewer.presenceOf(partner) : undefined;
   const isUnread = unread?.unread === true && !active;
+  const isMuted = channel.muted === true;
   const subtitle =
     channel.kind === "group_dm"
       ? `${others.length + 1} members`
@@ -150,6 +178,7 @@ export function DmRow({
     <button
       type="button"
       data-testid={`channel-row-${channel.id}`}
+      title={title}
       onClick={() => {
         onSelect(channel.id);
       }}
@@ -159,41 +188,53 @@ export function DmRow({
       }}
       aria-current={active ? "page" : undefined}
       className={cn(
-        "relative flex w-full items-center gap-2.5 rounded-[8px] py-1.5 pl-3 pr-2 text-left transition",
-        active ? "bg-surface-3" : "hover:bg-surface-3",
+        "group relative flex h-12 w-full items-center gap-2 rounded-[6px] px-2 text-left transition-colors duration-150 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-accent",
+        active ? "bg-accent-soft" : "hover:bg-surface-2",
       )}
     >
       <ActiveBar active={active} />
       {channel.kind === "group_dm" ? (
-        <GroupAvatar userIds={others} size={32} />
+        <GroupAvatar
+          userIds={others}
+          size={32}
+          padClassName={active ? "bg-surface-2" : "bg-surface-1 group-hover:bg-surface-2"}
+        />
       ) : (
         <PresenceAvatar
           userId={partner ?? viewer.ownUserId}
           size={32}
           status={status}
-          ringClassName={active ? "ring-surface-3" : "ring-surface-1"}
+          ringClassName={active ? "ring-surface-2" : "ring-surface-1 group-hover:ring-surface-2"}
         />
       )}
       <span className="min-w-0 flex-1">
         <span
           className={cn(
-            "block truncate text-[13px]",
+            "block truncate text-[13px] leading-4",
             active
-              ? "font-semibold text-text"
-              : isUnread
-                ? "font-semibold text-text"
-                : "font-medium text-text",
+              ? "font-medium text-text"
+              : isMuted
+                ? "font-normal text-text-muted"
+                : isUnread
+                  ? "font-medium text-text"
+                  : "font-normal text-text-muted group-hover:text-text",
           )}
         >
           {title}
         </span>
-        <span className="mt-0.5 block truncate text-xs text-text-muted">{subtitle}</span>
+        <span className="mt-0.5 block truncate text-xs leading-4 text-text-muted">{subtitle}</span>
       </span>
       <span className="flex shrink-0 items-center gap-1.5">
+        {isMuted && (
+          <span className="flex items-center">
+            <Icon name="bell-off" size={14} className="text-text-muted" />
+            <span className="sr-only">Muted</span>
+          </span>
+        )}
         {channel.pinned === true && (
           <Icon name="pin" size={12} className="shrink-0 text-text-muted" />
         )}
-        {!active && <UnreadBadge unread={unread} />}
+        {!active && <UnreadBadge unread={unread} muted={isMuted} />}
       </span>
     </button>
   );

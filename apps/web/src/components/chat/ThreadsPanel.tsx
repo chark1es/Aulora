@@ -109,9 +109,7 @@ export function ThreadsPanel(props: ThreadsPanelProps) {
       className="pane chat-canvas flex h-full w-[352px] shrink-0 animate-slide-in-right flex-col border-l border-border"
     >
       <header className="material-chrome flex h-[52px] shrink-0 items-center gap-3 border-b border-border px-4">
-        <span className="flex h-7 w-7 items-center justify-center rounded-[7px] bg-accent-soft text-accent">
-          <Icon name="thread" size={16} />
-        </span>
+        <Icon name="thread" size={18} className="shrink-0 text-text-muted" />
         <div className="min-w-0 flex-1">
           <h2 className="text-[14px] font-semibold tracking-[-0.01em] text-text">Thread</h2>
           <p className="truncate text-[11px] text-text-muted">

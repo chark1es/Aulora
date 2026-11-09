@@ -169,7 +169,8 @@ export function PreviewRoute() {
             unreadByChannel={demo.unread}
             admin={{
               viewer,
-              ownerId: DEMO_OWN_ID,
+              ownerIds: [DEMO_OWN_ID],
+              ownerManagementAvailable: true,
               roleViews: [...DEMO_ROLES],
               categories: demo.categories,
             }}

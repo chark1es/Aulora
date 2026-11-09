@@ -42,6 +42,20 @@ Three things must be true at the public edge:
    them already; if your edge sends `/api/*` straight to `3210`, add a more
    specific route for `/api/webhooks/*` to `3211`, as for `/api/auth/*`.
 
+### Forwarded client address
+
+The unauthenticated `/api/auth/native/*` routes rate-limit by client address.
+They trust `X-Real-IP` first, then the **last** `X-Forwarded-For` hop — never the
+first, which the caller controls. The shipped `web` nginx template overwrites
+`X-Real-IP` with `$remote_addr` and appends to `X-Forwarded-For` with
+`$proxy_add_x_forwarded_for` on every proxied location. If you put another proxy
+in front, it must do the same (overwrite `X-Real-IP` or append its own hop);
+passing a caller-supplied value through lets a flood choose its own rate-limit
+bucket. The backend also hashes the address into a fixed bucket set and applies
+a global ceiling, so a spoofed or distributed flood cannot grow storage without
+bound, but a correct forwarded header is still what keeps separate clients in
+separate buckets.
+
 4. **`<web origin>/api/*` (the Convex client API + WebSocket) is forwarded to the
    Convex cloud origin (`convex-backend:3210`), on the same origin as the web
    app.**

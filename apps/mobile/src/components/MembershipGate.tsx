@@ -3,6 +3,7 @@ import { useQuery } from "convex/react";
 import type { ReactNode } from "react";
 import { View } from "react-native";
 import { api } from "../../../../packages/convex/convex/_generated/api";
+import { useLastDefined } from "../lib/last-defined";
 import { JoinGate } from "./JoinGate";
 
 export interface MembershipGateProps {
@@ -25,7 +26,7 @@ export function MembershipGate({
   onDeleteAccount,
   children,
 }: MembershipGateProps) {
-  const me = useQuery(api.members.me, {});
+  const me = useLastDefined(useQuery(api.members.me, {}));
   if (me === undefined) {
     return (
       <View className="flex-1 items-center justify-center">

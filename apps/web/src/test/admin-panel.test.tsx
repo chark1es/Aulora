@@ -62,7 +62,7 @@ function renderPanel(overrides: Partial<Parameters<typeof AdminPanel>[0]> = {}) 
   return render(
     <AdminPanel
       viewer={viewer()}
-      ownerId="u1"
+      ownerIds={["u1"]}
       roles={[moderator]}
       members={[]}
       categories={[]}
@@ -114,6 +114,33 @@ describe("AdminPanel layout", () => {
       "aria-current",
       "page",
     );
+  });
+
+  it("promotes a member to owner only after confirmation", async () => {
+    const user = userEvent.setup();
+    const member = {
+      id: "m2",
+      userId: "u2",
+      nickname: null,
+      accountName: "Ada",
+      isBot: false,
+      roleIds: [],
+      joinedAt: 1,
+      timeoutUntil: null,
+      avatarUrl: null,
+    };
+    state.values.set("members:list", [member]);
+    renderPanel({ ownerIds: ["u1"], ownerManagementAvailable: true });
+
+    await user.click(within(nav()).getByRole("button", { name: "Members" }));
+    await user.click(screen.getByTestId("member-row-u2"));
+    await user.click(screen.getByRole("button", { name: "Make owner" }));
+
+    const dialog = screen.getByRole("dialog", { name: "Make this member an owner?" });
+    expect(state.mutations.get("owners:promote")).not.toHaveBeenCalled();
+    await user.click(within(dialog).getByRole("button", { name: "Make owner" }));
+
+    expect(state.mutations.get("owners:promote")).toHaveBeenCalledWith({ userId: "u2" });
   });
 
   it("only lists sections the viewer can open", () => {

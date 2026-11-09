@@ -529,6 +529,16 @@ body.docs {
   color: var(--text);
 }
 
+.env-badge-bootstrap {
+  background: color-mix(in srgb, var(--accent) 24%, transparent);
+  color: var(--link);
+}
+
+.env-badge-deploy-time {
+  background: var(--surface-3);
+  color: var(--text-muted);
+}
+
 .env-badge-internal {
   background: var(--surface-3);
   color: var(--text-muted);

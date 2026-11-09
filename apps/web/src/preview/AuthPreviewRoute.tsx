@@ -74,6 +74,32 @@ const PRESETS = new Map<string, WellKnown>([
     },
   ],
   [
+    "one-provider",
+    {
+      ...WELL_KNOWN,
+      auth: {
+        ...WELL_KNOWN.auth,
+        providers: [{ id: "google", type: "oauth", displayName: "Google" }],
+      },
+    },
+  ],
+  [
+    "many-providers",
+    {
+      ...WELL_KNOWN,
+      auth: {
+        ...WELL_KNOWN.auth,
+        providers: [
+          { id: "google", type: "oauth", displayName: "Google" },
+          { id: "github", type: "oauth", displayName: "GitHub" },
+          { id: "microsoft", type: "oauth", displayName: "Microsoft" },
+          { id: "apple", type: "oauth", displayName: "Apple" },
+          ...WELL_KNOWN.auth.providers.filter((p) => p.id === "keycloak"),
+        ],
+      },
+    },
+  ],
+  [
     "no-methods",
     {
       ...WELL_KNOWN,
@@ -183,6 +209,11 @@ function SignInFixture({ params }: { readonly params: URLSearchParams }) {
     <SignInScreen
       profile={profile}
       actions={actions}
+      onStartProvider={(providerId, type) =>
+        type === "oidc"
+          ? actions.signInOAuth2({ providerId, callbackURL: "" })
+          : actions.signInSocial({ provider: providerId, callbackURL: "" })
+      }
       onSwitchServer={() => {
         globalThis.location.assign("/__preview/auth?screen=connect");
       }}

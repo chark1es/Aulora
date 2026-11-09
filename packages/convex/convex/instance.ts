@@ -25,6 +25,7 @@ import {
   validateStorageQuotaBytes,
 } from "./lib/instance";
 import { licenseStatus, maskLicenseKey } from "./lib/license";
+import { ownerIdsOf } from "./lib/owners";
 import { encryptionConfigured } from "./lib/sse";
 
 /**
@@ -77,6 +78,7 @@ export const settings = query({
     return {
       name: server.name,
       ownerId: server.ownerId,
+      ownerIds: ownerIdsOf(server),
       version: AULORA_VERSION,
       settings,
       // The relay token and backup token live only in the deployment env.
@@ -183,6 +185,7 @@ export const overview = query({
       version: AULORA_VERSION,
       apiVersion: API_VERSION,
       ownerId: server.ownerId,
+      ownerIds: ownerIdsOf(server),
       counts: {
         members: memberCount,
         channels: channelCount,

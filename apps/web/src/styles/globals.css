@@ -165,6 +165,26 @@
   }
 }
 
+/*
+ * Sign-in / create-account switch: the incoming fields fade in from the
+ * direction of travel. Only opacity and transform move, so the animation stays
+ * off the layout thread; the panel's height transition is separate.
+ */
+@keyframes auth-form-in {
+  from {
+    opacity: 0;
+    transform: translate3d(var(--auth-form-shift, 10px), 0, 0);
+  }
+  to {
+    opacity: 1;
+    transform: translate3d(0, 0, 0);
+  }
+}
+
+.animate-auth-form-in {
+  animation: auth-form-in 240ms cubic-bezier(0.22, 1, 0.36, 1) both;
+}
+
 @layer components {
   /* The conversation pane: a plain content surface. No dot grid, no ornament —
      the desktop shell reads as one window, not a canvas of floating cards. */

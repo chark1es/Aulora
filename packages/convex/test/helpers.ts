@@ -50,6 +50,8 @@ export interface MemberSeed {
 export interface SeedOptions {
   readonly everyonePermissions?: bigint;
   readonly ownerId?: string;
+  /** Multi-owner list; omitted keeps the legacy single-`ownerId` shape. */
+  readonly ownerIds?: readonly string[];
   readonly extraRoles?: readonly ExtraRole[];
   readonly members?: readonly MemberSeed[];
 }
@@ -78,10 +80,12 @@ export async function seedWorkspace(t: Test, options: SeedOptions = {}) {
         mentionable: false,
       });
     }
+    const ownerId = options.ownerId ?? "owner-1";
     const serverId = await ctx.db.insert("server", {
       name: "Acme",
       iconSeed: "seed",
-      ownerId: options.ownerId ?? "owner-1",
+      ownerId,
+      ...(options.ownerIds !== undefined ? { ownerIds: [...options.ownerIds] } : {}),
       settings: SERVER_SETTINGS,
     });
     for (const member of options.members ?? []) {

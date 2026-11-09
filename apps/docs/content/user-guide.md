@@ -91,6 +91,12 @@ Keep a call in view while you work in other apps.
 
 On Android an ongoing call also keeps your microphone and camera available while you use other apps, even without picture in picture, and an ongoing **Aulora call in progress** notification shows that it is still running. Android asks for that notification permission with the others; without it the call still runs while you are in the app.
 
+### Staying in a call alone
+
+If you are the only person in a voice channel or conversation call, the server ends the call after five minutes so a forgotten call cannot hold your microphone open. In the last minute the call shows a quiet warning with a countdown, such as *Leaving in 0:45 — nobody else is here*, and a **Stay** button. Choose **Stay** to restart the five minutes. Mute, deafen, camera and screen-share changes do not restart it, so the rule stays predictable.
+
+Being connected from more than one of your own devices still counts as one person, and sharing your screen does not count as company. A call with anyone else in it, including a connected bot that is a workspace member, never starts the timer. If the server does disconnect you, the app leaves the call cleanly, closes picture in picture and shows a notice explaining why; it does not rejoin on its own. The workspace owner can change the five-minute default with the **Solo call timeout** setting in **Instance admin → Environment**.
+
 ## Notifications
 
 Allow notifications when prompted and check channel mute and user notification settings. OS focus modes, battery restrictions, and denied permissions can suppress alerts.

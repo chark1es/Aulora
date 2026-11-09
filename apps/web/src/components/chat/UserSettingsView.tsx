@@ -387,14 +387,9 @@ export function UserSettingsView({
                   submit(false);
                 }}
               >
-                <div className="flex items-center gap-2">
-                  <span className="flex h-8 w-8 items-center justify-center rounded-[8px] bg-accent-soft text-accent">
-                    <Icon name="eye" size={17} />
-                  </span>
-                  <div>
-                    <h3 className="text-[14px] font-semibold text-text">Appearance</h3>
-                    <p className="text-[12px] text-text-muted">How conversations look to you.</p>
-                  </div>
+                <div>
+                  <h3 className="text-[14px] font-semibold text-text">Appearance</h3>
+                  <p className="text-[12px] text-text-muted">How conversations look to you.</p>
                 </div>
                 <Field label="Message alignment" hint="Which side your own messages sit on.">
                   <SegmentedControl

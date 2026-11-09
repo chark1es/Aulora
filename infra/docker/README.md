@@ -22,29 +22,45 @@ cd infra/docker
 
 # 1. Create your config and edit the CHANGE ME values.
 Copy-Item .env.example .env
-#    Set at least: INSTANCE_NAME, WORKSPACE_NAME, OWNER_EMAIL, OWNER_PASSWORD,
-#    SITE_URL and (for a public deploy) the CONVEX_*_ORIGIN values.
+#    Set at least: INSTANCE_NAME, WORKSPACE_NAME, SITE_URL and (for a public
+#    deploy) the CONVEX_*_ORIGIN values. Owner credentials are NOT set here.
 
 # 2. Build and start the stack. The one-shot `setup` service starts on its own
 #    once the backend is healthy; it is idempotent, so this is safe on every up.
 docker compose up -d --build
 
-# 3. Wait for first-run setup to finish before signing in.
+# 3. Wait for first-run setup to finish, then copy the one-time setup token
+#    from its logs. Re-run step 4 with SETUP_TOKEN_ROTATE=true if you lost it.
 docker compose wait setup
-docker compose logs --tail=100 setup
+docker compose logs --tail=100 setup | grep "setup token"
 
-# 4. Optional: re-run setup explicitly at any time (idempotent).
+# 4. Optional: re-run setup explicitly at any time (idempotent). Before the
+#    owner exists it reuses a live token; set SETUP_TOKEN_ROTATE=true to
+#    replace and print a new one.
 docker compose run --rm setup
 
-# 5. Open the web app and sign in as the owner.
+# 5. Open the web app (or the desktop app pointed at it) and choose
+#    "Set up your instance". Enter the token and create the owner account.
 #    http://localhost:8080   (host WEB_PORT; default 8080)
 ```
 
 `setup` mints the admin key, generates the missing secrets, deploys the Convex
-functions, creates the workspace + owner account, and writes the public
+functions, prints the one-time setup token, and writes the public
 `/.well-known/aulora.json`. It also persists generated secrets
 (`INSTANCE_SECRET`, `BETTER_AUTH_SECRET`, VAPID keys, the default encryption key
-`AULORA_ENCRYPTION_KEY`) back into `infra/docker/.env`.
+`AULORA_ENCRYPTION_KEY`) back into `infra/docker/.env`. The owner is created in
+the app, not from `.env`; the token is stored server-side only as a hash,
+expires after 24 hours, and is cleared once claimed. Existing deployments that
+already have an owner never see the setup screen.
+
+### Legacy environment-seeded owners
+
+Automation that cannot use the first-run screen can still seed the owner from
+the deployment environment: set both `OWNER_EMAIL` and `OWNER_PASSWORD` (and
+optionally `OWNER_NAME`) in `.env` before the first `setup` run, or set a
+`SETUP_TOKEN` override and complete the same claim from a script. These paths
+remain supported for existing deployments; new installs should leave them
+unset.
 
 ### Local URL map
 
@@ -74,8 +90,10 @@ digest we run, mints a key **without `docker exec`**, and uses it to deploy and
 configure the deployment. Everything it does is idempotent:
 
 - instance name/secret are resolved from the running backend;
-- secrets are generated only when absent (`BETTER_AUTH_SECRET`, a one-time
-  `SETUP_TOKEN`, and a VAPID P-256 key pair for Web Push);
+- secrets are generated only when absent (`BETTER_AUTH_SECRET` and a VAPID
+  P-256 key pair for Web Push);
+- a one-time first-run setup token is generated inside Convex, printed once in
+  these logs, and stored only as a SHA-256 hash; it is never written to `.env`;
 - the admin key is minted with the backend's own `/convex/generate_key`, so the
   deployment is configured without `docker exec`;
 - the deployment env is set with `convex env set` (overwrite-safe; built-in
@@ -360,8 +378,13 @@ credential group (OIDC, or a social provider's id and secret) drops the group's
 remaining deployment values, so a deployment secret is never sent to an endpoint
 the owner chose.
 
-The catalog lives in `packages/convex/convex/lib/envCatalog*.ts`. To fall back to
-`.env` alone, set `AULORA_ALLOW_UI_ENV_OVERRIDES=false` in `.env` and re-run
+The catalog lives in `packages/convex/convex/lib/envCatalog*.ts`; the
+[bootstrap/deploy-time/overridable classification](../../docs/environment.md)
+explains which values stay in `.env` and why. The shipped `.env.example`
+contains only bootstrap values, so a fresh install configures OAuth, OIDC and
+other overridable integrations in the panel. An environment value is still
+supported as the fallback. To fall back to `.env` alone, set
+`AULORA_ALLOW_UI_ENV_OVERRIDES=false` in `.env` and re-run
 `docker compose run --rm setup`: the Environment tab then reports that overrides
 are disabled by the deployment and every override mutation is refused. Overrides
 apply on the next request, so a change does not need a restart.
@@ -495,7 +518,13 @@ with instructions to use the hosting provider's redeploy controls.
 
 ## Troubleshooting
 
-- **`setup` says "OWNER_EMAIL is not set"** — edit `.env` and re-run.
+- **The app shows "Set up your instance" and asks for a token** — this is the
+  normal first run. Copy the token from `docker compose logs setup`. A plain
+  re-run reuses a live token; set `SETUP_TOKEN_ROTATE=true` on the re-run to
+  replace and print a new one.
+- **"Invalid setup token" / "The setup token has expired"** — the token is
+  one-time and expires after 24 hours. Re-run setup for a new one.
+- **You set `OWNER_EMAIL` without `OWNER_PASSWORD`** — set both or neither.
 - **Login redirects but the session does not stick** — the auth path is not
   same-origin. Check that `/api/auth/*` reaches `3211` and that cookies are not
   being stripped by your edge.

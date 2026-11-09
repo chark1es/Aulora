@@ -92,7 +92,9 @@ export interface MobileChatContextValue {
   /** Highest role position the viewer holds; owners sit at `Infinity`. */
   readonly viewerTopPosition: number;
   readonly isOwner: boolean;
-  /** The workspace owner's user id, used for moderation hierarchy guards. */
+  /** Every workspace owner's user id, used for moderation hierarchy guards. */
+  readonly ownerIds: readonly string[];
+  /** The first owner, kept for older surfaces that show one owner. */
   readonly ownerUserId: string | null;
   /** Owner or `ManageChannels`; gates the channel-edit surfaces. */
   readonly canManageChannels: boolean;
@@ -451,7 +453,8 @@ export function ChatProvider({ client, userId, children }: ChatProviderProps) {
   }, [memberViews]);
 
   const viewerUserId = meResult?.userId;
-  const ownerId = meResult?.ownerId ?? null;
+  const ownerIds = meResult?.ownerIds ?? (meResult?.ownerId ? [meResult.ownerId] : []);
+  const ownerId = ownerIds[0] ?? null;
   const isOwner = meResult?.isOwner ?? false;
   const viewerMember = meResult?.member ?? null;
 
@@ -486,11 +489,11 @@ export function ChatProvider({ client, userId, children }: ChatProviderProps) {
         memberViewToEntry(
           member,
           roleViews,
-          ownerId,
+          ownerIds,
           member.userId === viewerUserId ? "You" : "Member",
         ),
       ),
-    [memberViews, roleViews, ownerId, viewerUserId],
+    [memberViews, roleViews, ownerIds, viewerUserId],
   );
 
   const mentionRoles = useMemo<readonly RoleMentionTarget[]>(
@@ -570,6 +573,7 @@ export function ChatProvider({ client, userId, children }: ChatProviderProps) {
       viewerPermissions,
       viewerTopPosition,
       isOwner,
+      ownerIds,
       ownerUserId: ownerId,
       canManageChannels: canManageChannelsForViewer,
       canKick,
@@ -601,6 +605,7 @@ export function ChatProvider({ client, userId, children }: ChatProviderProps) {
       viewerPermissions,
       viewerTopPosition,
       isOwner,
+      ownerIds,
       ownerId,
       canManageChannelsForViewer,
       canKick,

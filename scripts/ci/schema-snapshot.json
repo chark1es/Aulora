@@ -30,9 +30,13 @@
         "name": "required",
         "iconSeed": "required",
         "ownerId": "required",
+        "ownerIds": "optional",
         "settings": "required",
         "memberCount": "optional",
         "memberRolesBackfilled": "optional",
+        "appliedMigrations": "optional",
+        "ownerDeletionReservations": "optional",
+        "ownerDeletionAlerts": "optional",
         "licenseKey": "optional",
         "licenseValidation": "optional",
         "description": "optional",
@@ -62,6 +66,34 @@
         "reportedAt": "optional",
         "reportedUsers": "optional",
         "finalReported": "optional"
+      }
+    },
+    "setupClaims": {
+      "fields": {
+        "tokenHash": "required",
+        "createdAt": "required",
+        "expiresAt": "required"
+      }
+    },
+    "nativeAuthHandoffs": {
+      "fields": {
+        "codeHash": "required",
+        "challenge": "required",
+        "sessionCiphertext": "required",
+        "server": "required",
+        "createdAt": "required",
+        "expiresAt": "required"
+      }
+    },
+    "nativeAuthTransactions": {
+      "fields": {
+        "txHash": "required",
+        "challenge": "required",
+        "returnTarget": "required",
+        "createdAt": "required",
+        "expiresAt": "required",
+        "finishAttempts": "optional",
+        "finishWindowStart": "optional"
       }
     },
     "instanceSettings": {
@@ -371,6 +403,10 @@
         "startedAt": "required",
         "endedAt": "optional",
         "screenShareUserId": "optional",
+        "aloneSince": "optional",
+        "aloneDeadline": "optional",
+        "aloneJobId": "optional",
+        "endedReason": "optional",
         "updatedAt": "required"
       }
     },
@@ -386,6 +422,7 @@
         "video": "required",
         "sharingScreen": "required",
         "sfu": "optional",
+        "sfuCall": "optional",
         "joinedAt": "required",
         "lastSeen": "required"
       }

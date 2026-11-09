@@ -1,8 +1,10 @@
 /* eslint-disable no-unused-vars -- the base rule reports parameter names in type signatures; Biome checks real unused code */
-import { providerInitial, type SignInMethods, type WellKnownProvider } from "@aulora/core";
-import { Button, Icon, IconButton, Text, usePalette } from "@aulora/ui-native";
-import { useState } from "react";
-import { Pressable, View } from "react-native";
+import type { SignInMethods, WellKnownProvider } from "@aulora/core";
+import { providerBrand, providerButtonLabel } from "@aulora/tokens";
+import { Button, Icon, IconButton, ProviderIcon, Text, usePalette } from "@aulora/ui-native";
+import { type ReactNode, useEffect, useLayoutEffect, useRef, useState } from "react";
+import { Animated, Easing, Pressable, View } from "react-native";
+import { useReduceMotion } from "../lib/use-entrance";
 import { AuthField } from "./AuthField";
 
 /**
@@ -36,40 +38,53 @@ export function fieldPatch(field: SignInField, value: string): Partial<SignInVal
   }
 }
 
-function ProviderBadge({ name }: { readonly name: string }) {
-  return (
-    <View className="h-6 w-6 items-center justify-center rounded-[7px] bg-surface-3">
-      <Text size="xs" className="font-semibold">
-        {providerInitial(name)}
-      </Text>
-    </View>
-  );
+function providerBadge(provider: WellKnownProvider, color: string) {
+  const brand = providerBrand(provider.id, provider.displayName);
+  return brand === null ? undefined : <ProviderIcon brand={brand} size={17} color={color} />;
 }
 
 export interface ProviderStackProps {
   readonly providers: readonly WellKnownProvider[];
   readonly pending: string | null;
-  readonly onPress: (providerId: string, type: ProviderKind) => void;
+  readonly onPress: (providerId: string, type: ProviderKind, displayName: string) => void;
 }
 
+/**
+ * One button per provider, with its real brand mark when it has one. Several
+ * providers share a compact two-column grid; a single provider keeps the full
+ * width. A provider without a mark is text only, never a generated initial.
+ */
 export function ProviderStack({ providers, pending, onPress }: ProviderStackProps) {
+  const palette = usePalette();
+  if (providers.length === 0) {
+    return null;
+  }
+  const compact = providers.length > 1;
   return (
-    <View className="gap-2.5">
+    <View className="flex-row flex-wrap gap-2.5">
       {providers.map((provider) => (
-        <Button
-          key={provider.id}
-          variant="secondary"
-          size="lg"
-          accessibilityLabel={`Continue with ${provider.displayName}`}
-          leading={<ProviderBadge name={provider.displayName} />}
-          loading={pending === provider.id}
-          disabled={pending !== null && pending !== provider.id}
-          onPress={() => {
-            onPress(provider.id, provider.type);
-          }}
-        >
-          {provider.displayName}
-        </Button>
+        <View key={provider.id} className={compact ? "basis-[47%] grow" : "w-full"}>
+          <Button
+            variant="secondary"
+            size={compact ? "md" : "lg"}
+            className={compact ? "!px-3" : ""}
+            accessibilityLabel={`Continue with ${provider.displayName}`}
+            leading={providerBadge(provider, palette.text)}
+            loading={pending === provider.id}
+            disabled={pending !== null && pending !== provider.id}
+            onPress={() => {
+              onPress(provider.id, provider.type, provider.displayName);
+            }}
+          >
+            {compact ? (
+              <Text size="sm" numberOfLines={1} className="shrink font-medium">
+                {providerButtonLabel(provider.id, provider.displayName)}
+              </Text>
+            ) : (
+              providerButtonLabel(provider.id, provider.displayName)
+            )}
+          </Button>
+        </View>
       ))}
     </View>
   );
@@ -101,7 +116,7 @@ const MODES: ReadonlyArray<{ readonly value: SignInMode; readonly label: string 
   { value: "sign-up", label: "Create an account" },
 ];
 
-/** Underlined local-auth mode tabs; the active one is not a button. */
+/** Underlined local-auth tabs with a sliding active indicator. */
 function ModeSwitch({
   mode,
   onToggle,
@@ -109,33 +124,132 @@ function ModeSwitch({
   readonly mode: SignInMode;
   readonly onToggle: () => void;
 }) {
+  const palette = usePalette();
+  const reduceMotion = useReduceMotion();
+  const [width, setWidth] = useState(0);
+  const progress = useRef(new Animated.Value(mode === "sign-up" ? 1 : 0)).current;
+
+  useEffect(() => {
+    if (reduceMotion === null) {
+      return undefined;
+    }
+    if (reduceMotion) {
+      progress.setValue(mode === "sign-up" ? 1 : 0);
+      return undefined;
+    }
+    const animation = Animated.timing(progress, {
+      toValue: mode === "sign-up" ? 1 : 0,
+      duration: 240,
+      easing: Easing.out(Easing.cubic),
+      useNativeDriver: true,
+    });
+    animation.start();
+    return () => {
+      animation.stop();
+    };
+  }, [mode, progress, reduceMotion]);
+
+  const translateX = progress.interpolate({
+    inputRange: [0, 1],
+    outputRange: [0, width / 2],
+  });
+
   return (
-    <View className="flex-row gap-6 border-b border-border">
-      {MODES.map((option) =>
-        option.value === mode ? (
-          <View
-            key={option.value}
-            className="-mb-px min-h-11 justify-center border-b-2 border-accent"
-          >
-            <Text size="sm" className="font-semibold">
-              {option.label}
-            </Text>
-          </View>
-        ) : (
-          <Pressable
-            key={option.value}
-            accessibilityRole="button"
-            accessibilityLabel={option.label}
-            onPress={onToggle}
-            className="min-h-11 justify-center active:opacity-80"
-          >
-            <Text size="sm" tone="muted" className="font-medium">
-              {option.label}
-            </Text>
-          </Pressable>
-        ),
-      )}
+    <View
+      className="border-b border-border"
+      onLayout={(event) => {
+        setWidth(event.nativeEvent.layout.width);
+      }}
+    >
+      <View className="flex-row">
+        {MODES.map((option) => {
+          const active = option.value === mode;
+          return (
+            <Pressable
+              key={option.value}
+              accessibilityRole="tab"
+              accessibilityLabel={option.label}
+              accessibilityState={{ selected: active }}
+              onPress={() => {
+                if (!active) {
+                  onToggle();
+                }
+              }}
+              className="min-h-11 flex-1 items-center justify-center active:opacity-80"
+            >
+              <Text
+                size="sm"
+                className={active ? "font-semibold" : "font-medium"}
+                style={{ color: active ? palette.text : palette["text-muted"] }}
+              >
+                {option.label}
+              </Text>
+            </Pressable>
+          );
+        })}
+      </View>
+      <Animated.View
+        style={{
+          position: "absolute",
+          bottom: -1,
+          left: 0,
+          height: 2,
+          width: width / 2,
+          borderRadius: 999,
+          backgroundColor: palette.accent,
+          transform: [{ translateX }],
+        }}
+      />
     </View>
+  );
+}
+
+/**
+ * Fades and slides the fields from the direction of travel whenever the mode
+ * changes. The first mount is shown immediately; reducing motion skips it.
+ */
+function AnimatedModeContent({
+  mode,
+  children,
+}: {
+  readonly mode: SignInMode;
+  readonly children: ReactNode;
+}) {
+  const reduceMotion = useReduceMotion();
+  const progress = useRef(new Animated.Value(1)).current;
+  const previousMode = useRef(mode);
+
+  useLayoutEffect(() => {
+    if (previousMode.current === mode) {
+      return undefined;
+    }
+    previousMode.current = mode;
+    if (reduceMotion !== false) {
+      progress.setValue(1);
+      return undefined;
+    }
+    progress.setValue(0);
+    const animation = Animated.timing(progress, {
+      toValue: 1,
+      duration: 220,
+      easing: Easing.out(Easing.cubic),
+      useNativeDriver: true,
+    });
+    animation.start();
+    return () => {
+      animation.stop();
+    };
+  }, [mode, progress, reduceMotion]);
+
+  const translateX = progress.interpolate({
+    inputRange: [0, 1],
+    outputRange: [mode === "sign-up" ? 10 : -10, 0],
+  });
+
+  return (
+    <Animated.View style={{ opacity: progress, transform: [{ translateX }] }}>
+      {children}
+    </Animated.View>
   );
 }
 
@@ -183,7 +297,7 @@ export interface SignInPanelProps {
   /** Whether the sign-up toggle is offered at all. */
   readonly signup: boolean;
   readonly onField: (field: SignInField, value: string) => void;
-  readonly onProvider: (providerId: string, type: ProviderKind) => void;
+  readonly onProvider: (providerId: string, type: ProviderKind, displayName: string) => void;
   readonly onSubmit: () => void;
   readonly onToggleMode: () => void;
 }
@@ -193,42 +307,46 @@ function LocalForm({ panel }: { readonly panel: SignInPanelProps }) {
   return (
     <View className="gap-6">
       {panel.signup && <ModeSwitch mode={panel.mode} onToggle={panel.onToggleMode} />}
-      {signUp && (
-        <AuthField
-          label="Name"
-          autoComplete="name"
-          value={panel.values.name}
-          onChangeText={(value) => {
-            panel.onField("name", value);
-          }}
-        />
-      )}
-      <AuthField
-        label="Email"
-        placeholder="name@company.com"
-        keyboardType="email-address"
-        autoCapitalize="none"
-        autoComplete="email"
-        value={panel.values.email}
-        onChangeText={(value) => {
-          panel.onField("email", value);
-        }}
-      />
-      <PasswordField
-        value={panel.values.password}
-        signUp={signUp}
-        onChange={(value) => {
-          panel.onField("password", value);
-        }}
-      />
-      <Button
-        size="lg"
-        loading={panel.pending === "local"}
-        disabled={panel.pending !== null}
-        onPress={panel.onSubmit}
-      >
-        {signUp ? "Create account" : "Sign in"}
-      </Button>
+      <AnimatedModeContent mode={panel.mode}>
+        <View className="gap-6">
+          {signUp && (
+            <AuthField
+              label="Name"
+              autoComplete="name"
+              value={panel.values.name}
+              onChangeText={(value) => {
+                panel.onField("name", value);
+              }}
+            />
+          )}
+          <AuthField
+            label="Email"
+            placeholder="name@company.com"
+            keyboardType="email-address"
+            autoCapitalize="none"
+            autoComplete="email"
+            value={panel.values.email}
+            onChangeText={(value) => {
+              panel.onField("email", value);
+            }}
+          />
+          <PasswordField
+            value={panel.values.password}
+            signUp={signUp}
+            onChange={(value) => {
+              panel.onField("password", value);
+            }}
+          />
+          <Button
+            size="lg"
+            loading={panel.pending === "local"}
+            disabled={panel.pending !== null}
+            onPress={panel.onSubmit}
+          >
+            {signUp ? "Create account" : "Sign in"}
+          </Button>
+        </View>
+      </AnimatedModeContent>
     </View>
   );
 }

@@ -211,10 +211,6 @@
       "reason": "Pre-existing collect() on \"callParticipants\"; replace it with a bounded index query."
     },
     {
-      "key": "lib/calls.ts#loadParticipants#collect",
-      "reason": "Pre-existing collect() on \"callParticipants\"; replace it with a bounded index query."
-    },
-    {
       "key": "lib/calls.ts#prepareSeat#collect",
       "reason": "Pre-existing collect() on \"callParticipants\"; replace it with a bounded index query."
     },

@@ -12,6 +12,7 @@ import {
 } from "./lib/env";
 import { loadEffectiveEnv } from "./lib/envOverrides";
 import { effectiveMaxUploadBytes } from "./lib/instance";
+import { ownerIdsOf } from "./lib/owners";
 import { requireWorkspacePermission } from "./lib/permissions";
 
 interface IceServerConfig {
@@ -117,6 +118,9 @@ async function buildPublicConfig(ctx: QueryCtx) {
   };
   return {
     name: server?.name ?? "Aulora",
+    // True until the first owner claims a fresh instance. Additive field: an
+    // older backend that lacks it reads as false on new clients.
+    setupRequired: server === null,
     iconSeed: server?.iconSeed ?? "aulora:server:default",
     description: server?.description ?? "",
     logoUrl,
@@ -188,6 +192,7 @@ export const settings = query({
       logoUrl:
         server.logoStorageId !== undefined ? await ctx.storage.getUrl(server.logoStorageId) : null,
       ownerId: server.ownerId,
+      ownerIds: ownerIdsOf(server),
       settings: server.settings,
     };
   },

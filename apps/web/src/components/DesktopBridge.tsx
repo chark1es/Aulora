@@ -1,6 +1,7 @@
 /* eslint-disable no-unused-vars -- the base rule reports parameter names in type signatures; Biome checks real unused code */
 import { useNavigate } from "@tanstack/react-router";
 import { useCallback, useEffect } from "react";
+import { notifyAuthChanged, notifyAuthError } from "../lib/auth-events";
 import {
   desktopPlatform,
   isDesktop,
@@ -9,6 +10,7 @@ import {
   takeDesktopDeepLinks,
 } from "../lib/desktop";
 import { useDesktopShortcuts } from "../lib/use-desktop-shortcuts";
+import { useProfiles } from "../providers/ProfileProvider";
 
 type RouteDeepLinks = (urls: readonly string[]) => void;
 
@@ -69,6 +71,7 @@ function useDesktopEvents(route: RouteDeepLinks): void {
  */
 export function DesktopBridge() {
   const navigate = useNavigate();
+  const { activeProfile } = useProfiles();
 
   const route = useCallback<RouteDeepLinks>(
     (urls) => {
@@ -79,12 +82,46 @@ export function DesktopBridge() {
         }
         if (target.kind === "connect") {
           void navigate({ to: "/connect", search: { server: target.server } });
+        } else if (target.kind === "auth") {
+          void (async () => {
+            // The OAuth exchange is only needed for a deep link that carries a
+            // finished sign-in, so it stays out of the entry chunk.
+            const { completeDesktopAuthDeepLink } = await import("../lib/oauth-start");
+            const signedIn = await completeDesktopAuthDeepLink(
+              target.code,
+              target.server,
+              target.tx,
+            );
+            if (signedIn) {
+              // The token is stored; let the mounted session gate refetch
+              // instead of reloading and discarding the current view.
+              notifyAuthChanged();
+            }
+          })();
+        } else if (target.kind === "auth-error") {
+          // Store the allowlisted error only when it names this tab's pending
+          // workspace and transaction; a stray link cannot cancel a real
+          // sign-in or paint a message into it. Notify an already-mounted form
+          // so it shows the message without waiting for a remount.
+          void (async () => {
+            const { completeDesktopAuthErrorDeepLink } = await import("../lib/oauth-start");
+            const shown = await completeDesktopAuthErrorDeepLink(
+              target.error,
+              target.server,
+              target.tx,
+              Date.now(),
+              activeProfile?.siteUrl,
+            );
+            if (shown) {
+              notifyAuthError();
+            }
+          })();
         } else {
           void navigate({ to: "/invite/$code", params: { code: target.code } });
         }
       }
     },
-    [navigate],
+    [navigate, activeProfile?.siteUrl],
   );
 
   // Ctrl+N on Windows/Linux takes the same route as the native menu item.

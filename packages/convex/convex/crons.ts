@@ -18,9 +18,38 @@ crons.interval("call sweep", { seconds: 30 }, internal.calls.sweep, {});
 // Bot events are a one-hour outbox: `poll` reads them, then they are dropped.
 crons.interval("bot events prune", { hours: 1 }, internal.botEvents.prune, {});
 
+// A failed account deletion can leave an ownership reservation behind. A
+// reservation keeps counting as a present owner until this prune has confirmed
+// the auth user is gone and released it, so an expired reservation fails
+// closed: if this cron stops running, account deletion stays blocked rather
+// than risking an ownerless workspace. The prune drops released rows.
+crons.interval(
+  "owner deletion reservation prune",
+  { hours: 1 },
+  internal.owners.pruneAccountDeletionReservations,
+  {},
+);
+
 // Expired fixed-window rate-limit counters are dropped hourly; the sweep only
 // touches counters far older than any window.
 crons.interval("rate limit prune", { hours: 1 }, internal.rateLimits.pruneRateLimits, {});
+
+// Native/desktop OAuth handoff codes live for two minutes. The prune only reads
+// rows past `expiresAt` through an index and drains a backlog in batches.
+crons.interval(
+  "native auth handoff prune",
+  { minutes: 5 },
+  internal.nativeAuthHandoff.pruneExpired,
+  {},
+);
+// Started transactions have the same short lifetime as the codes they later
+// mint; the sweep keeps abandoned browser flows from accumulating.
+crons.interval(
+  "native auth transaction prune",
+  { minutes: 5 },
+  internal.nativeAuthHandoff.pruneExpiredTransactions,
+  {},
+);
 
 // Six-month audit-log retention; drops only rows past the window.
 crons.cron("audit log prune", "0 4 * * *", internal.auditLog.pruneAuditLog, {});

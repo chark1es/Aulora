@@ -127,7 +127,6 @@ export function PermissionsPanel({
       {scopes.length === 0 ? (
         <EmptyState
           size="sm"
-          icon="lock"
           title="No channels to configure yet"
           description="Create a category or channel first, then come back to set its overrides."
         />

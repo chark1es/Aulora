@@ -58,7 +58,13 @@ function cloneProvider(provider: WellKnownProvider): WellKnownProvider {
 
 function cloneAuth(auth: WellKnownAuth): WellKnownAuth {
   return {
-    local: { enabled: auth.local.enabled, signup: auth.local.signup },
+    local: {
+      enabled: auth.local.enabled,
+      signup: auth.local.signup,
+      ...(auth.local.minPasswordLength !== undefined
+        ? { minPasswordLength: auth.local.minPasswordLength }
+        : {}),
+    },
     providers: auth.providers.map(cloneProvider),
   };
 }
@@ -184,10 +190,17 @@ function sanitizeStoredAuth(value: unknown): WellKnownAuth | null {
   const providers = value.providers
     .map(sanitizeProvider)
     .filter((p): p is WellKnownProvider => p !== null);
+  const minPasswordLength = value.local.minPasswordLength;
   return {
     local: {
       enabled: value.local.enabled === true,
       signup: value.local.signup === true,
+      ...(typeof minPasswordLength === "number" &&
+      Number.isInteger(minPasswordLength) &&
+      minPasswordLength >= 1 &&
+      minPasswordLength <= 128
+        ? { minPasswordLength }
+        : {}),
     },
     providers,
   };

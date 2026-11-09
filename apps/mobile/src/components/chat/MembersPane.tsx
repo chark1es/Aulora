@@ -4,7 +4,7 @@ import {
   type MembersGroupingRole,
   type PresenceRow,
 } from "@aulora/core";
-import { Icon, Text, usePalette } from "@aulora/ui-native";
+import { Heading, Icon, Text, usePalette } from "@aulora/ui-native";
 import { useMemo, useState } from "react";
 import { Pressable, TextInput, View } from "react-native";
 import { ScrollView } from "react-native-gesture-handler";
@@ -91,12 +91,16 @@ function MemberRow({ member, status, customStatus, own, onActions, onPress }: Me
 }
 
 function NoMembers({ query }: { readonly query: string }) {
-  const palette = usePalette();
+  const searching = query.length > 0;
   return (
-    <View className="items-center gap-2 px-6 py-12">
-      <Icon name="users" size={28} color={palette["text-muted"]} />
-      <Text tone="muted" className="text-center">
-        {query.length > 0 ? `Nobody matches “${query}”.` : "No members yet."}
+    <View className="gap-1 px-1 py-8">
+      <Heading level={3} accessibilityRole="header">
+        {searching ? "Nobody matches that name" : "No members yet"}
+      </Heading>
+      <Text size="sm" tone="muted">
+        {searching
+          ? `No member matches “${query}”. Try a shorter search.`
+          : "Members appear here once they join the workspace."}
       </Text>
     </View>
   );

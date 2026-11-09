@@ -12,6 +12,7 @@ export const DEPLOYMENT_ENV_VARS: readonly EnvVarDefinition[] = [
   {
     key: "BETTER_AUTH_SECRET",
     group: "deployment",
+    tier: "bootstrap",
     label: "Better Auth secret",
     description:
       "Signs sessions; changing it invalidates every session. Managed by the deployment.",
@@ -22,8 +23,10 @@ export const DEPLOYMENT_ENV_VARS: readonly EnvVarDefinition[] = [
   {
     key: "SETUP_TOKEN",
     group: "deployment",
+    tier: "bootstrap",
     label: "Setup token",
-    description: "One-time token for first-run setup. Managed by the deployment.",
+    description:
+      "Optional override for the one-time first-run setup token. Leave unset to use the token printed once by the setup container.",
     type: "string",
     secret: true,
     overridable: false,
@@ -31,6 +34,7 @@ export const DEPLOYMENT_ENV_VARS: readonly EnvVarDefinition[] = [
   {
     key: "INSTANCE_SECRET",
     group: "deployment",
+    tier: "bootstrap",
     label: "Instance secret",
     description: "Convex admin key / legacy local key fallback. Managed by the deployment.",
     type: "string",
@@ -38,8 +42,42 @@ export const DEPLOYMENT_ENV_VARS: readonly EnvVarDefinition[] = [
     overridable: false,
   },
   {
+    key: "BOT_JWT_PUBLIC_JWK",
+    group: "deployment",
+    tier: "deploy-time",
+    label: "Bot JWT public key",
+    description:
+      "ES256 public JWK that lets Convex trust bot tokens. Read by auth.config.ts at deploy time, so it stays in the deployment environment.",
+    type: "string",
+    secret: false,
+    overridable: false,
+  },
+  {
+    key: "BOT_JWT_PRIVATE_JWK",
+    group: "deployment",
+    tier: "deploy-time",
+    label: "Bot JWT private key",
+    description:
+      "ES256 private JWK used to mint bot tokens. Deployment credential; never returned to clients.",
+    type: "string",
+    secret: true,
+    overridable: false,
+  },
+  {
+    key: "BOT_RUNNER_TOKEN",
+    group: "deployment",
+    tier: "deploy-time",
+    label: "Bot runner token",
+    description:
+      "Shared secret between Convex and the bot-runner container. Deployment credential.",
+    type: "string",
+    secret: true,
+    overridable: false,
+  },
+  {
     key: "SITE_URL",
     group: "deployment",
+    tier: "bootstrap",
     label: "Site URL",
     description: "Public origin of the web app; changing it can lock clients out.",
     type: "url",
@@ -49,6 +87,7 @@ export const DEPLOYMENT_ENV_VARS: readonly EnvVarDefinition[] = [
   {
     key: "CONVEX_SITE_URL",
     group: "deployment",
+    tier: "bootstrap",
     label: "Convex site URL",
     description: "Origin of the Convex HTTP-actions surface. Managed by the deployment.",
     type: "url",
@@ -58,6 +97,7 @@ export const DEPLOYMENT_ENV_VARS: readonly EnvVarDefinition[] = [
   {
     key: "CONVEX_CLOUD_URL",
     group: "deployment",
+    tier: "bootstrap",
     label: "Convex cloud URL",
     description: "Origin clients use for the Convex API. Managed by the deployment.",
     type: "url",
@@ -67,6 +107,7 @@ export const DEPLOYMENT_ENV_VARS: readonly EnvVarDefinition[] = [
   {
     key: "TRUSTED_ORIGINS",
     group: "deployment",
+    tier: "bootstrap",
     label: "Trusted origins",
     description: "Extra origins Better Auth accepts; changing it can lock clients out.",
     type: "list",
@@ -74,8 +115,30 @@ export const DEPLOYMENT_ENV_VARS: readonly EnvVarDefinition[] = [
     overridable: false,
   },
   {
+    key: "AULORA_MIN_CLIENT_VERSION",
+    group: "deployment",
+    tier: "deploy-time",
+    label: "Minimum client version",
+    description:
+      "Oldest supported client version advertised through server.publicConfig; older clients see an update screen.",
+    type: "string",
+    secret: false,
+    overridable: false,
+  },
+  {
+    key: "AULORA_RECOMMENDED_CLIENT_VERSION",
+    group: "deployment",
+    tier: "deploy-time",
+    label: "Recommended client version",
+    description: "Newer client version advertised as a dismissible update recommendation.",
+    type: "string",
+    secret: false,
+    overridable: false,
+  },
+  {
     key: "BACKUP_TOKEN",
     group: "deployment",
+    tier: "deploy-time",
     label: "Backup runner token",
     description: "Shared secret the backup runner uses to report results. Deployment credential.",
     type: "string",
@@ -85,6 +148,7 @@ export const DEPLOYMENT_ENV_VARS: readonly EnvVarDefinition[] = [
   {
     key: "AULORA_ALLOW_UI_ENV_OVERRIDES",
     group: "deployment",
+    tier: "deploy-time",
     label: "Allow UI env overrides",
     description: 'Kill switch; only the exact value "false" disables the Environment section.',
     type: "boolean",
@@ -94,6 +158,7 @@ export const DEPLOYMENT_ENV_VARS: readonly EnvVarDefinition[] = [
   {
     key: "AULORA_ENCRYPTION_ENABLED",
     group: "deployment",
+    tier: "bootstrap",
     label: "Encryption enabled",
     description: 'Server-side encryption switch; only the exact value "false" disables it.',
     type: "boolean",
@@ -103,6 +168,7 @@ export const DEPLOYMENT_ENV_VARS: readonly EnvVarDefinition[] = [
   {
     key: "AULORA_EKM_PROVIDER",
     group: "deployment",
+    tier: "deploy-time",
     label: "Key manager provider",
     description: "Master-key custody: local, vault, aws-kms, gcp-kms or http.",
     type: "enum",
@@ -113,6 +179,7 @@ export const DEPLOYMENT_ENV_VARS: readonly EnvVarDefinition[] = [
   {
     key: "AULORA_EKM_KEY_ID",
     group: "deployment",
+    tier: "deploy-time",
     label: "Key manager key id",
     description: "Logical name of the master key (KEK). Managed by the deployment.",
     type: "string",
@@ -122,6 +189,7 @@ export const DEPLOYMENT_ENV_VARS: readonly EnvVarDefinition[] = [
   {
     key: "AULORA_ENCRYPTION_KEY_VERSION",
     group: "deployment",
+    tier: "deploy-time",
     label: "Encryption key version",
     description: "Master-key version sealed into new envelopes. Managed by the deployment.",
     type: "string",
@@ -131,6 +199,7 @@ export const DEPLOYMENT_ENV_VARS: readonly EnvVarDefinition[] = [
   {
     key: "AULORA_ENCRYPTION_KEY",
     group: "deployment",
+    tier: "bootstrap",
     label: "Encryption master key",
     description: "Base64 local master key: the root of data confidentiality. Never editable here.",
     type: "string",
@@ -140,6 +209,7 @@ export const DEPLOYMENT_ENV_VARS: readonly EnvVarDefinition[] = [
   {
     key: "AULORA_KEK_WRAPPED",
     group: "deployment",
+    tier: "bootstrap",
     label: "Wrapped master key",
     description: "Master key wrapped by the external key manager. Never editable here.",
     type: "string",
@@ -149,6 +219,7 @@ export const DEPLOYMENT_ENV_VARS: readonly EnvVarDefinition[] = [
   {
     key: "VAULT_ADDR",
     group: "deployment",
+    tier: "bootstrap",
     label: "Vault address",
     description: "Vault Transit endpoint for the external key manager.",
     type: "url",
@@ -158,6 +229,7 @@ export const DEPLOYMENT_ENV_VARS: readonly EnvVarDefinition[] = [
   {
     key: "VAULT_TOKEN",
     group: "deployment",
+    tier: "bootstrap",
     label: "Vault token",
     description: "Vault token that authorizes the key unwrap. Deployment credential.",
     type: "string",
@@ -167,6 +239,7 @@ export const DEPLOYMENT_ENV_VARS: readonly EnvVarDefinition[] = [
   {
     key: "VAULT_TRANSIT_MOUNT",
     group: "deployment",
+    tier: "deploy-time",
     label: "Vault transit mount",
     description: "Transit secrets-engine mount; defaults to transit.",
     type: "string",
@@ -176,6 +249,7 @@ export const DEPLOYMENT_ENV_VARS: readonly EnvVarDefinition[] = [
   {
     key: "VAULT_NAMESPACE",
     group: "deployment",
+    tier: "deploy-time",
     label: "Vault namespace",
     description: "Vault Enterprise namespace, when used.",
     type: "string",
@@ -185,6 +259,7 @@ export const DEPLOYMENT_ENV_VARS: readonly EnvVarDefinition[] = [
   {
     key: "AWS_KMS_KEY_ID",
     group: "deployment",
+    tier: "bootstrap",
     label: "AWS KMS key id",
     description: "KMS key id or ARN used to wrap the master key.",
     type: "string",
@@ -194,6 +269,7 @@ export const DEPLOYMENT_ENV_VARS: readonly EnvVarDefinition[] = [
   {
     key: "GCP_KMS_KEY_NAME",
     group: "deployment",
+    tier: "bootstrap",
     label: "GCP KMS key name",
     description: "Full resource name of the GCP KMS key wrapping the master key.",
     type: "string",
@@ -203,6 +279,7 @@ export const DEPLOYMENT_ENV_VARS: readonly EnvVarDefinition[] = [
   {
     key: "EKM_PROXY_URL",
     group: "deployment",
+    tier: "bootstrap",
     label: "EKM proxy URL",
     description: "HTTP unwrap proxy endpoint for the external key manager.",
     type: "url",
@@ -212,6 +289,7 @@ export const DEPLOYMENT_ENV_VARS: readonly EnvVarDefinition[] = [
   {
     key: "EKM_PROXY_TOKEN",
     group: "deployment",
+    tier: "bootstrap",
     label: "EKM proxy token",
     description: "Bearer token for the HTTP unwrap proxy. Deployment credential.",
     type: "string",
@@ -221,6 +299,7 @@ export const DEPLOYMENT_ENV_VARS: readonly EnvVarDefinition[] = [
   {
     key: "AULORA_AUTO_UPDATE",
     group: "updates",
+    tier: "deploy-time",
     label: "Auto update",
     description: "Download new releases automatically; installation still waits for a restart.",
     type: "boolean",
@@ -230,6 +309,7 @@ export const DEPLOYMENT_ENV_VARS: readonly EnvVarDefinition[] = [
   {
     key: "AULORA_UPDATE_CHANNEL",
     group: "updates",
+    tier: "deploy-time",
     label: "Update channel",
     description: "stable ignores prereleases; beta accepts them.",
     type: "enum",
@@ -240,6 +320,7 @@ export const DEPLOYMENT_ENV_VARS: readonly EnvVarDefinition[] = [
   {
     key: "AULORA_UPDATE_MANIFEST_URL",
     group: "updates",
+    tier: "deploy-time",
     label: "Update manifest URL",
     description: "Release manifest the updater reads. Managed by the deployment.",
     type: "url",
@@ -249,6 +330,7 @@ export const DEPLOYMENT_ENV_VARS: readonly EnvVarDefinition[] = [
   {
     key: "AULORA_UPDATE_GITHUB_REPO",
     group: "updates",
+    tier: "deploy-time",
     label: "Update repository",
     description: "GitHub repository releases are read from. Managed by the deployment.",
     type: "string",
@@ -258,6 +340,7 @@ export const DEPLOYMENT_ENV_VARS: readonly EnvVarDefinition[] = [
   {
     key: "AULORA_UPDATE_PROVIDER",
     group: "updates",
+    tier: "deploy-time",
     label: "Update provider",
     description: "Host update mechanism, for example coolify. Managed by the deployment.",
     type: "string",
@@ -267,6 +350,7 @@ export const DEPLOYMENT_ENV_VARS: readonly EnvVarDefinition[] = [
   {
     key: "AULORA_COOLIFY_URL",
     group: "updates",
+    tier: "deploy-time",
     label: "Coolify URL",
     description: "Coolify API endpoint used for updates. Managed by the deployment.",
     type: "url",
@@ -276,6 +360,7 @@ export const DEPLOYMENT_ENV_VARS: readonly EnvVarDefinition[] = [
   {
     key: "AULORA_COOLIFY_APPLICATION_UUID",
     group: "updates",
+    tier: "deploy-time",
     label: "Coolify application UUID",
     description: "Coolify application the updater redeploys. Managed by the deployment.",
     type: "string",
@@ -285,6 +370,7 @@ export const DEPLOYMENT_ENV_VARS: readonly EnvVarDefinition[] = [
   {
     key: "AULORA_COOLIFY_API_TOKEN",
     group: "updates",
+    tier: "deploy-time",
     label: "Coolify API token",
     description: "Coolify API token; a deployment credential.",
     type: "string",
@@ -294,6 +380,7 @@ export const DEPLOYMENT_ENV_VARS: readonly EnvVarDefinition[] = [
   {
     key: "AULORA_LICENSE_SERVER_URL",
     group: "licensing",
+    tier: "deploy-time",
     label: "License server URL",
     description: "Commercial license authority; the bundled service is the default.",
     type: "url",
@@ -303,6 +390,7 @@ export const DEPLOYMENT_ENV_VARS: readonly EnvVarDefinition[] = [
   {
     key: "AULORA_LICENSE_PUBLIC_KEY",
     group: "licensing",
+    tier: "deploy-time",
     label: "License public key",
     description: "PEM public key of the license authority. Managed by the deployment.",
     type: "string",
