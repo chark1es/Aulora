@@ -192,7 +192,10 @@ describe("SignInScreen", () => {
     await user.click(screen.getByText("Open in browser"));
     await user.click(screen.getByRole("button", { name: "Continue" }));
 
-    expect(beginOAuth).toHaveBeenCalledWith(expect.any(String), "external");
+    // The handoff is prepared asynchronously before the browser opens.
+    await waitFor(() => {
+      expect(beginOAuth).toHaveBeenCalledWith(expect.any(String), "external");
+    });
   });
 
   it("shows the sign-up toggle only when signup is enabled", async () => {
