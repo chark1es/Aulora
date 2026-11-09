@@ -34,6 +34,16 @@ export {
   compareClientVersions,
 } from "./client-version";
 export {
+  createDebugLog,
+  DEBUG_LOG_MAX_BYTES,
+  DEBUG_LOG_MAX_ENTRIES,
+  type DebugLogEntry,
+  debugLog,
+  generateDebugTestError,
+  installDebugConsole,
+  redactDebugText,
+} from "./debug-log";
+export {
   classifyError,
   type ErrorDisposition,
   isAuthenticationError,

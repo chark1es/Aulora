@@ -1,5 +1,5 @@
 /* eslint-disable no-unused-vars -- the base rule reports parameter names in type signatures; Biome checks real unused code */
-import { classifyError, type ErrorDisposition } from "@aulora/core";
+import { classifyError, debugLog, type ErrorDisposition } from "@aulora/core";
 import { Button, Spinner, Text } from "@aulora/ui-native";
 import type { ConvexReactClient } from "convex/react";
 import { Component, type ReactNode, useCallback, useEffect, useState } from "react";
@@ -109,6 +109,10 @@ class QueryBoundary extends Component<QueryBoundaryProps, QueryBoundaryState> {
 
   /** Automatic retries since the subtree last rendered cleanly. */
   private failedRetries = 0;
+
+  override componentDidCatch(error: Error, info: { componentStack?: string | null }): void {
+    debugLog.record("react.boundary", info.componentStack, error);
+  }
 
   static getDerivedStateFromError(error: unknown): Partial<QueryBoundaryState> {
     return { error };

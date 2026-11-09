@@ -177,6 +177,14 @@
     "assets/workletProcessor.js": {
       "raw": 72192,
       "gzip": 13568
+    },
+    "assets/DebugLogsDialog.js": {
+      "raw": 320,
+      "gzip": 256
+    },
+    "assets/DebugLogsSection.js": {
+      "raw": 2432,
+      "gzip": 1280
     }
   },
   "initial": {

@@ -1,6 +1,7 @@
 /* eslint-disable no-unused-vars -- the base rule reports parameter names in type signatures; Biome checks real unused code */
 import {
   createServerProfile,
+  debugLog,
   type ProfileStore,
   type ServerProfile,
   type WellKnown,
@@ -69,6 +70,7 @@ export function ProfileProvider({ store, children }: ProfileProviderProps) {
     async (baseUrl: string, wellKnown: WellKnown) => {
       const profile = createServerProfile(baseUrl, wellKnown);
       await profileStore.add(profile);
+      debugLog.clear();
       await profileStore.setActive(profile.id);
       await refresh();
       return profile;
@@ -78,6 +80,7 @@ export function ProfileProvider({ store, children }: ProfileProviderProps) {
 
   const setActive = useCallback(
     async (id: string) => {
+      debugLog.clear();
       await profileStore.setActive(id);
       setActiveId(id);
     },
@@ -86,6 +89,7 @@ export function ProfileProvider({ store, children }: ProfileProviderProps) {
 
   const remove = useCallback(
     async (id: string) => {
+      debugLog.clear();
       await profileStore.remove(id);
       await refresh();
     },

@@ -1,3 +1,4 @@
+import { debugLog } from "@aulora/core";
 /* eslint-disable no-unused-vars -- the base rule reports parameter names in type signatures; Biome checks real unused code */
 import { convexClient } from "@convex-dev/better-auth/client/plugins";
 import { genericOAuthClient } from "better-auth/client/plugins";
@@ -118,7 +119,9 @@ export function authActionsFromClient(client: AuloraAuthClient): AuthActions {
       // fetch may happen while the sign-out request is still in flight, and a
       // transient failure then must not replay the account that is leaving.
       resetProviderToken(client);
-      return toResult(await client.signOut());
+      const result = toResult(await client.signOut());
+      if (result.error === null) debugLog.clear();
+      return result;
     },
   };
 }

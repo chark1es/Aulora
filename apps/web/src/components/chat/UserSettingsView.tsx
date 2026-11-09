@@ -11,6 +11,7 @@ import {
   Text,
 } from "@aulora/ui-web";
 import { type ReactNode, useEffect, useRef, useState } from "react";
+import { DebugLogsSection } from "./DebugLogsSection";
 import { PresenceAvatar } from "./PresenceAvatar";
 
 export interface UserSettingsViewProps {
@@ -41,7 +42,7 @@ export interface UserSettingsViewProps {
   readonly updateAvailable?: boolean;
 }
 
-type Category = "account" | "notifications" | "voice" | "appearance" | "updates";
+type Category = "account" | "notifications" | "voice" | "appearance" | "updates" | "debug";
 
 const CATEGORIES: readonly {
   readonly id: Category;
@@ -52,6 +53,7 @@ const CATEGORIES: readonly {
   { id: "notifications", label: "Notifications & sounds", icon: "bell" },
   { id: "voice", label: "Voice & video", icon: "headphones" },
   { id: "appearance", label: "Appearance", icon: "eye" },
+  { id: "debug", label: "Debug logs", icon: "settings" },
   { id: "updates", label: "Updates", icon: "download" },
 ];
 
@@ -222,6 +224,7 @@ export function UserSettingsView({
 
         <div className="min-h-0 flex-1 overflow-y-auto">
           <div className="mx-auto flex w-full max-w-[760px] flex-col gap-6 p-6">
+            {category === "debug" && <DebugLogsSection />}
             {category === "updates" && updateSettings}
             {category === "account" && (
               <>

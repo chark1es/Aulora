@@ -1,3 +1,4 @@
+import "./lib/debug-log";
 import { webLocalStorageStore } from "@aulora/core";
 import { RouterProvider } from "@tanstack/react-router";
 import { StrictMode } from "react";

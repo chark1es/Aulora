@@ -2,6 +2,7 @@
 import { Avatar } from "@aulora/avatars";
 import {
   createServerProfile,
+  debugLog,
   fetchWellKnown,
   type ProfileStore,
   type ServerProfile,
@@ -367,6 +368,7 @@ function useConnect(
       const profile = createServerProfile(preview.baseUrl, preview.wellKnown);
       await store.add(profile);
       await store.setActive(profile.id);
+      debugLog.clear();
       onConnected?.(profile);
     } catch {
       setError("Could not save this server profile.");
@@ -379,6 +381,7 @@ function useConnect(
     void store
       .setActive(profile.id)
       .then(() => {
+        debugLog.clear();
         onConnected?.(profile);
       })
       .catch(() => {
@@ -387,7 +390,10 @@ function useConnect(
   }
 
   function remove(id: string) {
-    void store.remove(id).then(refresh);
+    void store.remove(id).then(() => {
+      debugLog.clear();
+      refresh();
+    });
   }
 
   const invalid = touched && host.trim().length > 0 && tryNormalizeServerUrl(host) === null;

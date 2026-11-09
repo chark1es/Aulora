@@ -5,16 +5,16 @@ import type { ConvexReactClient } from "convex/react";
 import { useQuery } from "convex/react";
 import { useRouter } from "expo-router";
 import { useEffect, useState } from "react";
-import { Alert, View } from "react-native";
+import { View } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
 import { api } from "../../../../packages/convex/convex/_generated/api";
 import type { AuloraAuthClient } from "../lib/auth-client";
-import { authActionsFromClient } from "../lib/auth-client";
 import { subscribeAuthChanged } from "../lib/auth-events";
 import { mobileVersionState } from "../lib/client-version";
 import type { CookieStore } from "../lib/cookie-fetch";
 import { bindPendingInvite } from "../lib/pending-invite";
-import { resetProviderToken, setProviderTokenIdentity } from "../lib/provider-auth";
+import { setProviderTokenIdentity } from "../lib/provider-auth";
+import { deleteAccountAction, signOutAction } from "../lib/session-account-actions";
 import { useStuckTimeout } from "../lib/stuck-timeout";
 import { ChatProvider } from "../providers/ChatProvider";
 import { useProfiles } from "../providers/ProfileProvider";
@@ -182,44 +182,6 @@ function SessionPending({
       )}
     </View>
   );
-}
-
-/**
- * Ends the session, reporting a failure in place.
- *
- * Callers hand this to buttons and boundaries that do not await it (`void
- * signOut()`, `<Button onPress={onSignOut}>`), so a rejection would surface as
- * an unhandled rejection on the recovery and join screens. The person gets the
- * same message either way.
- */
-function signOutAction(authClient: AuloraAuthClient) {
-  return async () => {
-    // Clear the Convex token cache before the request so a token refresh that
-    // races the sign-out cannot fall back to the account that is leaving.
-    resetProviderToken(authClient);
-    const result = await authClient.signOut().catch(() => null);
-    if (result === null || result.error) {
-      Alert.alert(
-        "Couldn't sign out",
-        result?.error?.message ?? "Check your connection and try again.",
-      );
-    }
-  };
-}
-
-/** Deletes the account on the server, reporting a failure in place. */
-function deleteAccountAction(authClient: AuloraAuthClient) {
-  return async () => {
-    const result = await authActionsFromClient(authClient)
-      .deleteAccount()
-      .catch(() => null);
-    if (result === null || result.error) {
-      Alert.alert(
-        "Couldn't delete account",
-        result?.error?.message ?? "Check your connection and try again.",
-      );
-    }
-  };
 }
 
 function SignedInChat({

@@ -89,3 +89,28 @@ Public GitHub release feeds require published assets and an accessible repositor
 ## Before opening an issue
 
 Include the version or commit, platform, deployment method, reproduction steps, expected behavior, actual behavior, and redacted logs. Distinguish browser, desktop, mobile, and server failures. Report security issues privately to [cnguyen@spwnd.dev](mailto:cnguyen@spwnd.dev).
+
+## Collect client debug logs
+
+Open **Your settings → Debug logs** on web or desktop, or **You → Debug logs**
+on mobile. Clear logs, repeat the failing action, then enter the steps and
+expected result. Download the JSON report on web/desktop or copy it on mobile.
+**Generate test error** adds an intentional error so you can verify collection.
+
+The buffer keeps the newest 200 errors and warnings, up to 256 KiB, and discards
+older entries. Logs stay in memory for the current session and are cleared on
+reload or restart, so export before restarting. Nothing is uploaded automatically.
+Reports contain timestamps, error stacks when available, client version, and your
+reproduction notes. Common secrets are scrubbed, but review the report for private
+information before sharing. Native crashes that terminate the app cannot be
+recovered from this session buffer.
+
+On web and desktop, right-click an empty area and choose **Debug logs**. This
+works on the connect and sign-in screens with no server session. Text fields
+keep their normal editing menus. Desktop link and media menus also include
+**Debug logs**; app-specific row menus keep their existing actions.
+
+Logs are cleared on successful sign-out, account deletion, and when changing or
+removing server profiles. In a browser, Shift+right-click opens the native
+browser menu; keyboard context-menu actions also keep the native menu. Mobile
+log export currently requires opening settings after sign-in.

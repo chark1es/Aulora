@@ -1,6 +1,6 @@
 import { ContextMenuProvider, useContextMenu } from "@aulora/ui-web";
 import { fireEvent, render, screen } from "@testing-library/react";
-import { afterEach, describe, expect, it } from "vitest";
+import { afterEach, describe, expect, it, vi } from "vitest";
 import { DesktopContextMenuPolicy } from "../components/DesktopContextMenuPolicy";
 
 interface TauriTestGlobal {
@@ -52,6 +52,20 @@ function renderShell() {
 }
 
 describe("DesktopContextMenu", () => {
+  it("includes debug access in desktop link menus", async () => {
+    installTauri();
+    const showLogs = vi.fn();
+    render(
+      <ContextMenuProvider>
+        <DesktopContextMenuPolicy onOpenDebugLogs={showLogs} />
+        <a href="https://example.test">linked page</a>
+      </ContextMenuProvider>,
+    );
+    fireEvent.contextMenu(screen.getByText("linked page"));
+    expect(await screen.findByText("Copy link address")).toBeInTheDocument();
+    fireEvent.click(screen.getByRole("menuitem", { name: "Debug logs" }));
+    expect(showLogs).toHaveBeenCalledOnce();
+  });
   it("suppresses the webview menu without pre-empting an app row's own menu", async () => {
     renderShell();
     const prevented = !fireEvent.contextMenu(screen.getByTestId("row"));

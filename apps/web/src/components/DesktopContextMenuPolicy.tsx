@@ -20,7 +20,11 @@ import { isDesktop, openExternal } from "../lib/desktop";
  * Loaded on demand by {@link ./DesktopContextMenu}; the policy and the menu
  * renderer it needs are not part of the entry chunk.
  */
-export function DesktopContextMenuPolicy() {
+export function DesktopContextMenuPolicy({
+  onOpenDebugLogs,
+}: {
+  readonly onOpenDebugLogs?: () => void;
+}) {
   const openMenu = useContextMenu();
 
   useEffect(() => {
@@ -28,11 +32,21 @@ export function DesktopContextMenuPolicy() {
       return undefined;
     }
     const onContextMenu = (event: MouseEvent) => {
-      handleContextMenuEvent(event, {
+      const debugItems = onOpenDebugLogs
+        ? [
+            {
+              id: "debug-logs",
+              label: "Debug logs",
+              onSelect: onOpenDebugLogs,
+              separatorBefore: true,
+            },
+          ]
+        : [];
+      const decision = handleContextMenuEvent(event, {
         dev: import.meta.env.DEV,
         selectionText: currentSelectionText,
         openMenu: (menu) => {
-          openMenu(menu);
+          openMenu({ ...menu, items: [...menu.items, ...debugItems] });
         },
         copyText: (text) => {
           void copyTextToClipboard(text);
@@ -41,6 +55,14 @@ export function DesktopContextMenuPolicy() {
         saveMedia: saveMediaFile,
         selectAll: selectAllText,
       });
+      if (decision.action === "suppress" && debugItems.length > 0) {
+        openMenu({
+          clientX: event.clientX,
+          clientY: event.clientY,
+          label: "Aulora",
+          items: debugItems,
+        });
+      }
     };
     // Capture phase: cancel the webview menu before it can open. Component
     // handlers still run for suppressed surfaces (we never stop propagation
@@ -49,7 +71,7 @@ export function DesktopContextMenuPolicy() {
     return () => {
       window.removeEventListener("contextmenu", onContextMenu, { capture: true });
     };
-  }, [openMenu]);
+  }, [openMenu, onOpenDebugLogs]);
 
   return null;
 }

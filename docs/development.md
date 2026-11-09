@@ -113,3 +113,6 @@ The browser E2E suite requires a running disposable stack. From `apps/web`, inst
 ## Project conventions
 
 [CONTRIBUTING.md](../CONTRIBUTING.md) covers pull requests, the CLA, and secret handling. Current guides take precedence over historical phase reports. Release version changes use the process in [releasing.md](releasing.md).
+
+For bounded local client diagnostics and a repeatable capture procedure, see
+[Client debug logs](client-debug-logs.md).
