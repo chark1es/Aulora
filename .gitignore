@@ -77,5 +77,6 @@ spikes/mls-demo/public/worker.js
 .DS_Store
 Thumbs.db
 
-# Local CI helper bytecode
-scripts/ci/__pycache__/
+# Python bytecode (scripts and the optional transcriber)
+__pycache__/
+*.pyc

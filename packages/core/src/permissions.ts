@@ -47,6 +47,20 @@ export const Permission = {
   DeleteInvites: 1n << 39n,
   ManageBots: 1n << 40n,
   ManageWebhooks: 1n << 41n,
+  /**
+   * Call addons. Every bit here is granted to no role by default: owners and
+   * administrators hold them implicitly (`Administrator` short-circuits
+   * `hasPermission`). `ViewScheduledCalls` is the one exception the setup
+   * migration grants to `@everyone` so the Scheduled tab can exist at all.
+   */
+  StartTranscription: 1n << 42n,
+  ViewTranscripts: 1n << 43n,
+  ManageTranscription: 1n << 44n,
+  CreateGuestLinks: 1n << 45n,
+  ManageGuestAccess: 1n << 46n,
+  ScheduleCalls: 1n << 47n,
+  ManageScheduledCalls: 1n << 48n,
+  ViewScheduledCalls: 1n << 49n,
 } as const satisfies Record<string, bigint>;
 
 export type PermissionName = keyof typeof Permission;

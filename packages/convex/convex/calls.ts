@@ -1,16 +1,23 @@
 import { hasPermission, Permission } from "@aulora/core";
 import { ConvexError, v } from "convex/values";
 import { internal } from "./_generated/api";
-import type { Doc, Id } from "./_generated/dataModel";
-import { internalMutation, type MutationCtx, mutation, query } from "./_generated/server";
+import type { Doc } from "./_generated/dataModel";
+import {
+  internalMutation,
+  type MutationCtx,
+  mutation,
+  type QueryCtx,
+  query,
+} from "./_generated/server";
 import { requireAuth } from "./lib/auth";
 import { assertMayParticipate } from "./lib/bans";
 import {
+  aloneTimeoutMs,
+  armAloneTimer,
   assertCallableKind,
   assertClientId,
   CALL_RETENTION_MS,
   type CallSummary,
-  cancelAloneJob,
   distinctParticipantCount,
   endCall,
   findLiveCall,
@@ -29,13 +36,24 @@ import {
   removeParticipant,
   reuseLiveCall,
   SIGNAL_STALE_MS,
+  scheduleAloneJob,
+  syncAloneState,
+  syncAloneTimerForCall as syncAloneTimer,
   toCallSummary,
 } from "./lib/calls";
-import { isDmKind, requireChannelAccess } from "./lib/channels";
-import { getCallAloneTimeoutSeconds } from "./lib/env";
-import { loadEffectiveEnv } from "./lib/envOverrides";
-import { categoryOverridesFor, channelPermissions, loadPermissionContext } from "./lib/permissions";
+import { isDmKind, requireChannelAccess, requireChannelAccessForUser } from "./lib/channels";
+import {
+  categoryOverridesFor,
+  channelPermissions,
+  loadPermissionContext,
+  workspacePermissions,
+} from "./lib/permissions";
 import { enforceRateLimit, userRateLimitKey } from "./lib/rateLimit";
+import {
+  assertScheduledCallOpen,
+  requireScheduledCallJoinable,
+  requireScheduledCallVisible,
+} from "./lib/scheduledCalls";
 
 /**
  * Voice/video call state and WebRTC signalling.
@@ -67,128 +85,62 @@ const STAY_RATE_WINDOW_MS = 60_000;
 const MIN_STAY_EXTENSION_MS = 3_000;
 
 /**
- * The workspace's effective solo-call timeout, in milliseconds. Read only when
- * a timer is armed or reset, never from a subscribed query, so the five-minute
- * default costs nothing on the hot roster path.
+ * Permission gate for a call's channel, or workspace-level `Connect` for a
+ * standalone scheduled room, whose authorization is the scheduled-call invite
+ * check performed by the caller.
  */
-async function aloneTimeoutMs(ctx: MutationCtx): Promise<number> {
-  const env = (await loadEffectiveEnv(ctx)).env;
-  return getCallAloneTimeoutSeconds(env) * 1000;
-}
-
-/**
- * Schedules the single enforcement job for `deadline` and remembers its id.
- * `deadline` is passed to the job so a job from an older window can recognize
- * that it no longer owns the call and exit without rescheduling.
- */
-async function scheduleAloneJob(
-  ctx: MutationCtx,
-  callId: Id<"calls">,
-  delayMs: number,
-  deadline: number,
-): Promise<void> {
-  const jobId = await ctx.scheduler.runAfter(delayMs, internal.calls.enforceAlone, {
-    callId,
-    deadline,
-  });
-  await ctx.db.patch(callId, { aloneJobId: jobId });
-}
-
-/** Arms (or re-arms) the solo-call deadline and replaces its enforcement job. */
-async function armAloneTimer(
+async function requireCallPermission(
   ctx: MutationCtx,
   call: Doc<"calls">,
-  now: number = Date.now(),
-  timeoutMs?: number,
-): Promise<void> {
-  const windowMs = timeoutMs ?? (await aloneTimeoutMs(ctx));
-  // Re-arming replaces the previous job, so repeated stays cannot accumulate a
-  // chain of pending enforcements.
-  await cancelAloneJob(ctx, call.aloneJobId);
-  const deadline = now + windowMs;
-  const jobId = await ctx.scheduler.runAfter(windowMs, internal.calls.enforceAlone, {
-    callId: call._id,
-    deadline,
-  });
-  await ctx.db.patch(call._id, {
-    aloneSince: now,
-    aloneDeadline: deadline,
-    aloneJobId: jobId,
-  });
+  flag: bigint,
+): Promise<{ readonly userId: string; readonly permissions: bigint }> {
+  const { userId } = await requireAuth(ctx);
+  return await requireCallPermissionForUser(ctx, userId, call, flag);
 }
 
-async function clearAloneTimer(ctx: MutationCtx, call: Doc<"calls">): Promise<void> {
-  // An ended call keeps its window on purpose so the notice can name the
-  // configured duration. A late leave or a duplicate enforcement must not
-  // erase it.
-  if (call.status === "ended") {
-    return;
-  }
-  if (
-    call.aloneSince === undefined &&
-    call.aloneDeadline === undefined &&
-    call.aloneJobId === undefined
-  ) {
-    return;
-  }
-  await cancelAloneJob(ctx, call.aloneJobId);
-  await ctx.db.patch(call._id, {
-    aloneSince: undefined,
-    aloneDeadline: undefined,
-    aloneJobId: undefined,
-  });
-}
-
-/**
- * Keeps the solo-call deadline in step with the roster: the first moment a
- * call has exactly one distinct user arms a fresh solo window, and any second
- * participant clears it so a later solo stretch starts over. A window that is
- * already due ends the call (the scheduled job normally gets there first; this
- * is the backstop when it was lost).
- *
- * "Alone" means one signed-in user, not one device: seats are per user, so two
- * devices of the same person still count as one participant. Bots are not a
- * separate participant kind in this product, so a bot that held a real seat
- * would count like anyone else.
- */
-async function syncAloneState(
+async function requireCallPermissionForUser(
   ctx: MutationCtx,
+  userId: string,
   call: Doc<"calls">,
-  distinct: number,
-  now: number = Date.now(),
-): Promise<void> {
-  // The window retained on an alone-ended call is reporting state, not a
-  // timer: a late leave or a duplicate enforcement must leave it untouched.
-  if (call.status === "ended") {
-    return;
+  flag: bigint,
+): Promise<{ readonly userId: string; readonly permissions: bigint }> {
+  if (call.channelId !== undefined) {
+    const result = await requireChannelAccessForUser(ctx, userId, call.channelId, flag);
+    return { userId, permissions: result.permissions };
   }
-  if (call.status !== "active" || distinct !== 1) {
-    await clearAloneTimer(ctx, call);
-    return;
+  const context = await loadPermissionContext(ctx, userId);
+  const permissions = workspacePermissions(context);
+  if (!hasPermission(permissions, flag)) {
+    throw new ConvexError("Missing permission");
   }
-  if (call.aloneSince === undefined || call.aloneDeadline === undefined) {
-    await armAloneTimer(ctx, call, now);
-    return;
-  }
-  if (call.aloneDeadline <= now) {
-    await endCall(ctx, call, { endedReason: "alone" });
-    return;
-  }
-  // A window restored from an older release (or one whose job was lost) gets
-  // its enforcement back without restarting the countdown.
-  if (call.aloneJobId === undefined) {
-    await scheduleAloneJob(ctx, call._id, call.aloneDeadline - now, call.aloneDeadline);
-  }
+  return { userId, permissions };
 }
 
-/** Re-reads a call's roster and applies {@link syncAloneState}. */
-async function syncAloneTimer(ctx: MutationCtx, callId: Id<"calls">): Promise<void> {
-  const call = await ctx.db.get(callId);
-  if (call === null) {
+/** Verifies a standalone room's scheduled-call visibility/join rules. */
+async function assertStandaloneCallAccess(
+  ctx: MutationCtx | QueryCtx,
+  call: Doc<"calls">,
+  userId: string,
+  joining: boolean,
+): Promise<void> {
+  if (call.scheduledCallId === undefined) {
     return;
   }
-  const seats = await loadCallSeats(ctx, callId);
-  await syncAloneState(ctx, call, distinctParticipantCount(seats));
+  const scheduled = await ctx.db.get(call.scheduledCallId);
+  if (scheduled === null) {
+    throw new ConvexError("This call has ended");
+  }
+  if (joining) {
+    assertScheduledCallOpen(scheduled);
+    await requireScheduledCallJoinable(ctx, userId, scheduled);
+    return;
+  }
+  // The engine attaches with `calls.get`; a caller who already holds a seat
+  // must not lose access because a role no longer grants ViewScheduledCalls.
+  if ((await findParticipant(ctx, call._id, userId)) !== null) {
+    return;
+  }
+  await requireScheduledCallVisible(ctx, userId, scheduled);
 }
 
 /**
@@ -252,12 +204,13 @@ export const start = mutation({
 export const join = mutation({
   args: { callId: v.id("calls"), clientId: v.string(), takeover: v.optional(v.boolean()) },
   handler: async (ctx, args) => {
-    const { userId } = await requireAuth(ctx);
     const call = await ctx.db.get(args.callId);
     if (call === null || call.status === "ended") {
       throw new ConvexError("This call has ended");
     }
-    await requireChannelAccess(ctx, call.channelId, Permission.Connect);
+    const { userId } = await requireAuth(ctx);
+    await requireCallPermission(ctx, call, Permission.Connect);
+    await assertStandaloneCallAccess(ctx, call, userId, true);
     await assertMayParticipate(ctx, userId);
     const policy = await loadVoicePolicy(ctx);
     if (!policy.enabled) {
@@ -356,7 +309,7 @@ export const end = mutation({
     if (call === null) {
       return null;
     }
-    const { permissions } = await requireChannelAccess(ctx, call.channelId, Permission.Connect);
+    const { permissions } = await requireCallPermission(ctx, call, Permission.Connect);
     const participant = await findParticipant(ctx, call._id, userId);
     const moderator =
       hasPermission(permissions, Permission.MuteMembers) ||
@@ -390,7 +343,7 @@ export const updateParticipant = mutation({
     if (call === null || call.status === "ended") {
       throw new ConvexError("This call has ended");
     }
-    const { permissions } = await requireChannelAccess(ctx, call.channelId, Permission.Connect);
+    const { permissions } = await requireCallPermission(ctx, call, Permission.Connect);
     const participant = await findParticipant(ctx, call._id, userId);
     if (participant === null || heldByOtherDevice(participant, assertClientId(args.clientId))) {
       throw new ConvexError("You are not in this call");
@@ -472,7 +425,7 @@ export const stay = mutation({
     if (call === null || call.status !== "active") {
       return null;
     }
-    await requireChannelAccess(ctx, call.channelId, Permission.Connect);
+    await requireCallPermission(ctx, call, Permission.Connect);
     const participant = await findParticipant(ctx, call._id, userId);
     if (participant === null || heldByOtherDevice(participant, assertClientId(args.clientId))) {
       throw new ConvexError("You are not in this call");
@@ -631,7 +584,7 @@ export const signal = mutation({
     for (const payload of payloads) {
       await ctx.db.insert("callSignals", {
         callId: call._id,
-        channelId: call.channelId,
+        ...(call.channelId !== undefined ? { channelId: call.channelId } : {}),
         fromUserId: userId,
         toUserId: args.toUserId,
         kind: args.kind,
@@ -693,7 +646,12 @@ export const get = query({
     if (call === null) {
       return null;
     }
-    const { userId } = await requireChannelAccess(ctx, call.channelId, Permission.ViewChannel);
+    const { userId } = await requireAuth(ctx);
+    if (call.channelId === undefined) {
+      await assertStandaloneCallAccess(ctx, call, userId, false);
+    } else {
+      await requireChannelAccess(ctx, call.channelId, Permission.ViewChannel);
+    }
     return await toCallSummary(ctx, call, userId);
   },
 });
@@ -739,6 +697,11 @@ export const activeCalls = query({
     const context = await loadPermissionContext(ctx, userId);
     const visible: CallSummary[] = [];
     for (const call of live) {
+      // A standalone scheduled room is not a channel sidebar entry; the
+      // scheduled tab and `calls.get` are its surfaces.
+      if (call.channelId === undefined) {
+        continue;
+      }
       const channel = await ctx.db.get(call.channelId);
       if (channel === null) {
         continue;
@@ -769,6 +732,14 @@ export const signals = query({
   args: { callId: v.id("calls") },
   handler: async (ctx, args) => {
     const { userId } = await requireAuth(ctx);
+    const call = await ctx.db.get(args.callId);
+    if (call === null) {
+      return [];
+    }
+    const participant = await findParticipant(ctx, call._id, userId);
+    if (participant === null) {
+      throw new ConvexError("You are not in this call");
+    }
     const rows = await ctx.db
       .query("callSignals")
       .withIndex("by_call_to", (q) => q.eq("callId", args.callId).eq("toUserId", userId))
@@ -814,7 +785,14 @@ export const sweep = internalMutation({
       .withIndex("by_lastSeen", (q) => q.lt("lastSeen", now - PARTICIPANT_STALE_MS))
       .take(SWEEP_BATCH);
     for (const participant of staleParticipants) {
-      await ctx.db.delete(participant._id);
+      const call = await ctx.db.get(participant.callId);
+      if (call === null) {
+        await ctx.db.delete(participant._id);
+        continue;
+      }
+      // The same seat-removal path as an explicit leave so a stale participant
+      // still gets the transcriber's bounded final drain.
+      await removeParticipant(ctx, call, participant.userId);
     }
 
     const staleSignals = await ctx.db

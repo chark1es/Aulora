@@ -82,6 +82,47 @@ export const ensureVoicePermissions = internalMutation({
 
 /** Marker recorded once, so a later intentional re-grant is not reverted. */
 const KANBAN_EDITING_MIGRATION = "restrict-kanban-editing";
+/** Marker for the one-time `@everyone` grant of `ViewScheduledCalls`. */
+const SCHEDULED_VIEW_MIGRATION = "grant-scheduled-calls-view";
+
+/**
+ * One-time upgrade: `ViewScheduledCalls` is the one call-addon permission the
+ * `@everyone` role receives, so the Scheduled tab exists for members without an
+ * explicit grant. The marker means a later intentional removal is not undone.
+ */
+export const grantScheduledCallsView = internalMutation({
+  args: {},
+  returns: v.boolean(),
+  handler: async (ctx) => {
+    const server = await ctx.db.query("server").first();
+    if (server?.appliedMigrations?.includes(SCHEDULED_VIEW_MIGRATION) === true) {
+      return false;
+    }
+    const everyone = await ctx.db
+      .query("roles")
+      .withIndex("by_position", (q) => q.eq("position", 0))
+      .first();
+    let changed = false;
+    if (
+      everyone?.key === EVERYONE_ROLE_ID &&
+      (everyone.permissions & Permission.ViewScheduledCalls) === 0n
+    ) {
+      await ctx.db.patch(everyone._id, {
+        permissions: everyone.permissions | Permission.ViewScheduledCalls,
+      });
+      changed = true;
+    }
+    if (server !== null) {
+      const applied = server.appliedMigrations ?? [];
+      if (!applied.includes(SCHEDULED_VIEW_MIGRATION)) {
+        await ctx.db.patch(server._id, {
+          appliedMigrations: [...applied, SCHEDULED_VIEW_MIGRATION],
+        });
+      }
+    }
+    return changed;
+  },
+});
 
 /**
  * One-time upgrade for workspaces created while `@everyone` could edit Kanban
@@ -494,7 +535,7 @@ export const finalize = internalMutation({
       key: EVERYONE_ROLE_ID,
       name: EVERYONE_ROLE_ID,
       position: 0,
-      permissions: EVERYONE_PERMISSIONS,
+      permissions: EVERYONE_PERMISSIONS | Permission.ViewScheduledCalls,
       hoisted: false,
       mentionable: true,
     });

@@ -18,6 +18,22 @@ crons.interval("call sweep", { seconds: 30 }, internal.calls.sweep, {});
 // Bot events are a one-hour outbox: `poll` reads them, then they are dropped.
 crons.interval("bot events prune", { hours: 1 }, internal.botEvents.prune, {});
 
+// Scheduled calls flip to `open` at their open time; the per-call job is the
+// primary trigger and this pass is the backstop (plus ends stale rooms).
+crons.interval("scheduled call sweep", { minutes: 1 }, internal.scheduledCalls.sweep, {});
+
+// Ended transcripts that still need a summary, and the daily retention purge.
+crons.interval(
+  "transcription summary queue",
+  { minutes: 5 },
+  internal.transcription.sessionsNeedingSummary,
+  {},
+);
+crons.cron("transcription retention", "15 4 * * *", internal.transcription.purgeExpired, {});
+
+// Expired guest sessions and lobby requests are dropped in bounded batches.
+crons.interval("guest session prune", { hours: 1 }, internal.guestCalls.pruneExpired, {});
+
 // A failed account deletion can leave an ownership reservation behind. A
 // reservation keeps counting as a present owner until this prune has confirmed
 // the auth user is gone and released it, so an expired reservation fails

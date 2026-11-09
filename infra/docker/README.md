@@ -80,6 +80,33 @@ Kanban and Notes are optional addons that ship in the web and setup images and u
 - **Kanban** — boards, cards, work timers, attachments and GitHub links. See [the Kanban guide](../../apps/docs/content/kanban.md).
 - **Notes** — Markdown notes with nested folders, tags, search and per-note history. See [the Notes guide](../../apps/docs/content/notes.md).
 
+## Transcription (optional)
+
+The `transcriber` container is behind the `transcription` compose profile and is
+off by default. Run `setup` (or set `TRANSCRIBER_TOKEN`) **before** starting it,
+because the same token authenticates model downloads, segment ingest and the
+heartbeat. The owner then downloads an allowlisted faster-whisper model into the
+`transcriber-models` volume from Workspace settings → Addons; no model is baked
+into the image. Restarting the container reloads the cached model from the
+Hugging Face cache layout.
+
+The default image runs on CPU int8. A GPU host can override `WHISPER_DEVICE` and
+`WHISPER_COMPUTE_TYPE` and must expose the GPU to the container. The service is
+non-root, read-only, and shares only the `transcription` network with Convex and
+the web gateway. Trust model: the transcriber sees call audio; the configured
+summary endpoint receives transcript text; audio is processed in memory and not
+stored. See [the transcription guide](../../apps/docs/content/transcription.md).
+
+The bundled web gateway caps concurrent `/transcribe/ws` connections per
+**immediate peer address**. Behind Coolify/Traefik, Caddy, a cloud load balancer
+or a NAT gateway that address is the proxy, not the participant, so the cap is
+sized to the hard seat ceiling (`MAX_CALL_SEATS`, 64) and kept only as a coarse
+backstop. The transcriber itself enforces the real limits: one live stream per
+identity (a reconnect replaces the old socket), a bounded number per session,
+and a separate cap for unauthenticated sockets. If you front the app with a
+proxy that rewrites or hides client addresses, do not lower the connection cap
+below the seat ceiling; tune the transcriber's limits instead.
+
 ## Why `setup` rather than manual steps
 
 The self-hosted Convex backend image ships `/convex/generate_key`. The admin key

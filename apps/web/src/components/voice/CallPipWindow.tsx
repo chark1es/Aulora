@@ -23,6 +23,7 @@ import {
 import { PersonAvatar } from "../chat/member-avatars";
 import { CallControls } from "./CallControls";
 import { useCallDuration } from "./hooks";
+import { TranscriptionIndicator } from "./TranscriptionIndicator";
 import { usePipMedia } from "./use-pip-media";
 
 /** The undecorated window's own edge handles: (direction, placement, cursor). */
@@ -132,6 +133,7 @@ export function CallPipWindow() {
         <span className="min-w-0 flex-1 truncate text-[12px] font-semibold">
           {state === null ? "Aulora" : callKindLabel(state.kind)}
         </span>
+        {state?.transcribing === true && <TranscriptionIndicator />}
         <span className="shrink-0 text-[11px] tabular-nums text-text-muted">{duration}</span>
         <button
           type="button"

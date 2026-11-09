@@ -87,8 +87,16 @@ describe("Permission bitfield", () => {
       "DeleteInvites",
       "ManageBots",
       "ManageWebhooks",
+      "StartTranscription",
+      "ViewTranscripts",
+      "ManageTranscription",
+      "CreateGuestLinks",
+      "ManageGuestAccess",
+      "ScheduleCalls",
+      "ManageScheduledCalls",
+      "ViewScheduledCalls",
     ]);
-    expect(PERMISSION_NAMES).toHaveLength(42);
+    expect(PERMISSION_NAMES).toHaveLength(50);
   });
 
   it("gives every flag exactly one independent bit", () => {

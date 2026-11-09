@@ -40,3 +40,11 @@ condition = "AND"
 paths = ['packages/convex/test/nativeAuth\.test\.ts$']
 regexTarget = "line"
 regexes = ['const SECRET = "test-secret-0123456789-0123456789-0123456789";']
+
+[[allowlists]]
+description = "Synthetic opaque member key in a web test fixture, not an authentication secret"
+targetRules = ["generic-api-key"]
+condition = "AND"
+paths = ['apps/web/src/test/guest-flow\.test\.tsx$']
+regexTarget = "line"
+regexes = ['const MEMBER_KEY = "gk_2f6c9a41d3e7b805";']

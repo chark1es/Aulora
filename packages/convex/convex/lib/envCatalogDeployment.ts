@@ -75,6 +75,28 @@ export const DEPLOYMENT_ENV_VARS: readonly EnvVarDefinition[] = [
     overridable: false,
   },
   {
+    key: "TRANSCRIBER_TOKEN",
+    group: "deployment",
+    tier: "deploy-time",
+    label: "Transcriber token",
+    description:
+      "Shared secret between Convex and the optional transcriber container. Also derives the audio-token HMAC key; never returned to clients.",
+    type: "string",
+    secret: true,
+    overridable: false,
+  },
+  {
+    key: "TRANSCRIBER_URL",
+    group: "deployment",
+    tier: "deploy-time",
+    label: "Transcriber URL",
+    description:
+      "Internal origin the Convex action calls to request a model download. Defaults to http://transcriber:8787.",
+    type: "url",
+    secret: false,
+    overridable: false,
+  },
+  {
     key: "SITE_URL",
     group: "deployment",
     tier: "bootstrap",

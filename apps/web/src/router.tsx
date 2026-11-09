@@ -15,6 +15,7 @@ import { DesktopUpdateNotice } from "./components/DesktopUpdateNotice";
 import { RouteError } from "./components/RouteError";
 import { DisplaySourcePickerGate } from "./components/voice/DisplaySourcePickerGate";
 import { WorkspaceMenu } from "./components/WorkspaceMenu";
+import { isGuestCallPath } from "./lib/guest/fragment";
 import { DesktopUpdateProvider } from "./providers/DesktopUpdateProvider";
 import { ProfileProvider, useProfiles } from "./providers/ProfileProvider";
 import { ConnectRoute } from "./routes/ConnectRoute";
@@ -44,8 +45,37 @@ const KanbanPreviewRoute = import.meta.env.DEV
     )
   : null;
 
+// The guest page is an unauthenticated visit outside the signed-in shell, so
+// it loads on demand and nothing of the app chrome wraps it.
+const GuestCallRoute = lazy(() =>
+  import("./routes/GuestCallRoute").then((module) => ({ default: module.GuestCallRoute })),
+);
+
+// Dev-only harness for the call addons (scheduled calls, transcripts, guest
+// lobby), over fixtures and a fake Convex client.
+const CallAddonsPreviewRoute = import.meta.env.DEV
+  ? lazy(() =>
+      import("./preview/CallAddonsPreviewRoute").then((module) => ({
+        default: module.CallAddonsPreviewRoute,
+      })),
+    )
+  : null;
+
 function RootLayout() {
   const pathname = useRouterState({ select: (state) => state.location.pathname });
+  if (isGuestCallPath(pathname)) {
+    return (
+      <div className="relative flex h-full flex-col bg-bg text-text">
+        <main className="flex min-h-0 min-w-0 flex-1 flex-col overflow-y-auto">
+          <Outlet />
+        </main>
+      </div>
+    );
+  }
+  return <AppRootLayout pathname={pathname} />;
+}
+
+function AppRootLayout({ pathname }: { readonly pathname: string }) {
   const previewing = import.meta.env.DEV && pathname.startsWith("/__preview");
   const [previewStore, setPreviewStore] = useState<ProfileStore>();
   useEffect(() => {
@@ -121,6 +151,16 @@ const redeemRoute = createRoute({
   component: RedeemRoute,
 });
 
+const guestCallRoute = createRoute({
+  getParentRoute: () => rootRoute,
+  path: "/call/guest",
+  component: () => (
+    <Suspense fallback={null}>
+      <GuestCallRoute />
+    </Suspense>
+  ),
+});
+
 const previewRoute = createRoute({
   getParentRoute: () => rootRoute,
   path: "/__preview",
@@ -154,10 +194,30 @@ const kanbanPreviewRoute = createRoute({
     ),
 });
 
+const callAddonsPreviewRoute = createRoute({
+  getParentRoute: () => rootRoute,
+  path: "/__preview/calls",
+  component: () =>
+    CallAddonsPreviewRoute === null ? null : (
+      <Suspense fallback={null}>
+        <CallAddonsPreviewRoute />
+      </Suspense>
+    ),
+});
+
 const routeTree = rootRoute.addChildren(
   import.meta.env.DEV
-    ? [indexRoute, connectRoute, redeemRoute, previewRoute, authPreviewRoute, kanbanPreviewRoute]
-    : [indexRoute, connectRoute, redeemRoute],
+    ? [
+        indexRoute,
+        connectRoute,
+        redeemRoute,
+        guestCallRoute,
+        previewRoute,
+        authPreviewRoute,
+        kanbanPreviewRoute,
+        callAddonsPreviewRoute,
+      ]
+    : [indexRoute, connectRoute, redeemRoute, guestCallRoute],
 );
 
 export const router = createRouter({ routeTree, defaultErrorComponent: RouteError });

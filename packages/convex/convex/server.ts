@@ -14,6 +14,7 @@ import { loadEffectiveEnv } from "./lib/envOverrides";
 import { effectiveMaxUploadBytes } from "./lib/instance";
 import { ownerIdsOf } from "./lib/owners";
 import { requireWorkspacePermission } from "./lib/permissions";
+import { scheduleStopAllActive } from "./lib/transcription";
 
 interface IceServerConfig {
   readonly urls: readonly string[];
@@ -156,6 +157,9 @@ async function buildPublicConfig(ctx: QueryCtx) {
     addons: {
       kanban: server?.settings.kanbanEnabled ?? false,
       notes: server?.settings.notesEnabled ?? false,
+      transcription: server?.settings.transcriptionEnabled === true,
+      guestCalls: server?.settings.guestCallsEnabled === true,
+      scheduledCalls: server?.settings.scheduledCallsEnabled === true,
     },
   };
 }
@@ -294,6 +298,9 @@ export const updateSettings = mutation({
     disableNewCallTransport: v.optional(v.boolean()),
     disablePipVideo: v.optional(v.boolean()),
     disableAutoDegrade: v.optional(v.boolean()),
+    transcriptionEnabled: v.optional(v.boolean()),
+    guestCallsEnabled: v.optional(v.boolean()),
+    scheduledCallsEnabled: v.optional(v.boolean()),
   },
   handler: async (ctx, args) => {
     const { userId } = await requireWorkspacePermission(ctx, Permission.ManageWorkspace);
@@ -330,8 +337,22 @@ export const updateSettings = mutation({
         ...(args.disableAutoDegrade !== undefined
           ? { disableAutoDegrade: args.disableAutoDegrade }
           : {}),
+        ...(args.transcriptionEnabled !== undefined
+          ? { transcriptionEnabled: args.transcriptionEnabled }
+          : {}),
+        ...(args.guestCallsEnabled !== undefined
+          ? { guestCallsEnabled: args.guestCallsEnabled }
+          : {}),
+        ...(args.scheduledCallsEnabled !== undefined
+          ? { scheduledCallsEnabled: args.scheduledCallsEnabled }
+          : {}),
       },
     });
+    if (args.transcriptionEnabled === false) {
+      // Same path as `addons.setEnabled`: an active session must stop now, and
+      // the disabled state means no summary is queued.
+      await scheduleStopAllActive(ctx);
+    }
     await writeAudit(ctx, {
       actorId: userId,
       action: "server.updateSettings",

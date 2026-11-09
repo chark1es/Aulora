@@ -17,6 +17,7 @@ import { useVoice } from "../../providers/VoiceProvider";
 import { MemberAvatar } from "../chat/MemberAvatar";
 import { CallControls } from "./CallControls";
 import { CallVideo } from "./CallVideo";
+import { GuestBadge, participantLabel } from "./VoiceChannelSection";
 
 export interface CallScreenProps {
   readonly channelName: string;
@@ -24,10 +25,6 @@ export interface CallScreenProps {
 }
 
 type Voice = ReturnType<typeof useVoice>;
-
-function displayName(userId: string, memberNames: ReadonlyMap<string, string>): string {
-  return memberNames.get(userId) ?? userId;
-}
 
 function AvatarFallback({ seed }: { readonly seed: string }) {
   return (
@@ -37,7 +34,7 @@ function AvatarFallback({ seed }: { readonly seed: string }) {
   );
 }
 
-function ParticipantOverlay({
+export function ParticipantOverlay({
   participant,
   name,
   overVideo,
@@ -69,6 +66,7 @@ function ParticipantOverlay({
       >
         {name}
       </Text>
+      {participant.isGuest === true && <GuestBadge />}
       {participant.muted && <Icon name="mic-off" size={13} color={iconColor} />}
       {participant.deafened && <Icon name="headphones-off" size={13} color={iconColor} />}
       {participant.connection === "failed" && (
@@ -151,7 +149,7 @@ function ParticipantGrid({
       {sharer !== undefined && (
         <ParticipantTile
           participant={sharer}
-          name={displayName(sharer.userId, memberNames)}
+          name={participantLabel(sharer, memberNames)}
           stream={voice.remoteStreams.get(sharer.userId) ?? null}
           level={voice.remoteLevels.get(sharer.userId)}
           prominent
@@ -165,7 +163,7 @@ function ParticipantGrid({
             <ParticipantTile
               key={participant.userId}
               participant={participant}
-              name={isSelf ? "You" : displayName(participant.userId, memberNames)}
+              name={isSelf ? "You" : participantLabel(participant, memberNames)}
               stream={isSelf ? localStream : (voice.remoteStreams.get(participant.userId) ?? null)}
               level={isSelf ? voice.micLevel : voice.remoteLevels.get(participant.userId)}
               mirror={isSelf}

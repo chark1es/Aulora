@@ -31,6 +31,16 @@ map $http_upgrade $connection_upgrade {
   ''      close;
 }
 
+# Abuse limits for the transcription audio WebSocket. Zones live in the http
+# context; the per-location directives below apply them. `limit_conn` is keyed
+# on the immediate peer, so behind a reverse proxy (Coolify/Traefik, Caddy, a
+# cloud LB) or NAT every participant shares one address; it is only a coarse
+# backstop. The transcriber enforces the real caps per identity, per session
+# and for unauthenticated sockets. Keep this at the hard seat ceiling so a
+# full call behind one proxy address is never refused.
+limit_req_zone $binary_remote_addr zone=transcribe_req:10m rate=20r/s;
+limit_conn_zone $binary_remote_addr zone=transcribe_conn:10m;
+
 server {
   listen 80;
   server_name _;
@@ -164,6 +174,53 @@ server {
     proxy_buffering off;
     proxy_read_timeout 3600s;
     proxy_send_timeout 3600s;
+  }
+
+  # Transcription audio WebSocket (compose profile `transcription`). Each
+  # participant streams its own microphone here as 16 kHz mono PCM16; the
+  # upstream path is `/ws`. The upstream is resolved per request so nginx still
+  # starts when the optional container is absent.
+  # Only the audio WebSocket is public. The transcriber's health, docs and
+  # admin routes stay on the internal network (Convex reaches them directly).
+  location = /transcribe/ws {
+    resolver 127.0.0.11 valid=10s ipv6=off;
+    # A client opens one audio socket; cap connection churn before the request
+    # reaches the transcriber. The connection cap is a backstop sized to the
+    # hard seat ceiling (MAX_CALL_SEATS); it is per peer address, which is the
+    # proxy or NAT address in most deployments, so the transcriber's
+    # per-identity, per-session and pre-auth caps are the real abuse controls.
+    limit_req zone=transcribe_req burst=40 nodelay;
+    limit_conn transcribe_conn 64;
+    set $transcriber_upstream http://transcriber:8787;
+    rewrite ^ /ws break;
+    proxy_pass $transcriber_upstream;
+    proxy_http_version 1.1;
+    proxy_set_header Upgrade $http_upgrade;
+    proxy_set_header Connection $connection_upgrade;
+    proxy_set_header Host $host;
+    proxy_set_header X-Real-IP $remote_addr;
+    proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+    proxy_set_header X-Forwarded-Proto $scheme;
+    proxy_buffering off;
+    proxy_read_timeout 3600s;
+    proxy_send_timeout 3600s;
+    # Each frame is tiny; the cap rejects an abusive client early.
+    client_max_body_size 64k;
+  }
+
+  # The guest call page is opened from a private link: it must not be indexed,
+  # must not send a Referer, and must not be cached. The link token itself
+  # lives in the URL fragment, which never reaches this server. `add_header` in
+  # a location replaces inheritance, so the baseline headers are repeated.
+  location = /call/guest {
+    try_files /index.html =404;
+    expires -1;
+    add_header Cache-Control "no-store" always;
+    add_header X-Robots-Tag "noindex, nofollow, noarchive" always;
+    add_header Referrer-Policy "no-referrer" always;
+    add_header X-Content-Type-Options "nosniff" always;
+    add_header X-Frame-Options "DENY" always;
+    add_header Permissions-Policy "camera=(self), microphone=(self), display-capture=(self), geolocation=()" always;
   }
 
   # SPA history fallback.

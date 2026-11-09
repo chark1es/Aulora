@@ -104,7 +104,21 @@ grant it from the role editor where it is wanted.
 
 ## Addons
 
-The Addons tab controls optional tools. Kanban and Notes are off by default and require Manage workspace to enable. Grant their separate role permissions before inviting members to use them. See [Kanban](kanban.md) for board permissions, timers, attachments and GitHub connections, and [Notes](notes.md) for folders, tags, search and history. Bots have their own tab, described in [Bots](bots.md); it needs the Manage bots permission. Webhooks, which let other tools post into a channel, have their own tab too: see [Webhooks](webhooks.md).
+The Addons tab controls optional tools. Kanban, Notes, Transcription, Guest calls and Scheduled calls are off by default and require Manage workspace to enable. Grant their separate role permissions before inviting members to use them. See [Kanban](kanban.md) for board permissions, timers, attachments and GitHub connections, [Notes](notes.md) for folders, tags, search and history, [Transcription](transcription.md) for the optional speech engine and summaries, [Guest calls](guest-calls.md) for links and the lobby, and [Scheduled calls](scheduled-calls.md) for the Scheduled tab. Bots have their own tab, described in [Bots](bots.md); it needs the Manage bots permission. Webhooks, which let other tools post into a channel, have their own tab too: see [Webhooks](webhooks.md).
+
+Call-addon permissions are granted to no role by default. Owners and
+administrators hold them implicitly.
+
+| Permission | Allows |
+| --- | --- |
+| Start transcription | Start and stop transcription in a call the member is in. |
+| View transcripts | Read transcripts and summaries, and request a re-summary. |
+| Manage transcription | Configure the addon, download models, set the LLM endpoint/key and retention, and delete transcripts. |
+| Create guest links | Create guest invite links for calls the member can join. |
+| Manage guest access | Admit, deny or remove guests in any call, and revoke any link. |
+| Schedule calls | Create, edit and cancel own scheduled calls. |
+| Manage scheduled calls | Edit and cancel anyone's scheduled calls. |
+| View scheduled calls | See the Scheduled tab, limited to calls the viewer is invited to or may join. Granted to `@everyone` once by the setup migration. |
 
 ## Instance admin
 

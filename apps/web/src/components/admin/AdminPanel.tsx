@@ -313,7 +313,10 @@ function AdminPanelSystemBody(props: AdminPanelBodyProps) {
         </div>
       )}
       {nav.tab === "addons" && (
-        <AddonsSettings canManageWorkspace={permission("ManageWorkspace")} />
+        <AddonsSettings
+          canManageWorkspace={permission("ManageWorkspace")}
+          canManageTranscription={permission("ManageTranscription")}
+        />
       )}
       {nav.tab === "bots" && <BotsSettings canManageBots={permission("ManageBots")} />}
       {nav.tab === "instance" && <InstanceAdminPanel canManage={viewer.isOwner} variant="inline" />}
