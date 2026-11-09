@@ -5,6 +5,7 @@ import { httpAction } from "./_generated/server";
 import { authComponent, createAuth } from "./auth";
 import { registerBotRoutes } from "./botHttp";
 import { registerNativeAuthRoutes } from "./nativeAuth";
+import { registerTranscriptionRoutes } from "./transcriptionHttp";
 import { registerWebhookRoutes } from "./webhookHttp";
 
 const http = httpRouter();
@@ -23,6 +24,9 @@ registerBotRoutes(http);
 
 // Incoming webhooks (see `webhookHttp.ts`).
 registerWebhookRoutes(http);
+
+// Transcriber segment/model ingest (see `transcriptionHttp.ts`).
+registerTranscriptionRoutes(http);
 
 // Discovery uses current workspace settings and does not depend on setup's
 // static document. Keep the response limited to the client discovery contract.

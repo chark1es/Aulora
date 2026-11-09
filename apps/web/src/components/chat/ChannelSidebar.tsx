@@ -208,7 +208,9 @@ export function ChannelSidebar(props: ChannelSidebarProps) {
 
       {(props.onOpenThreads !== undefined ||
         props.onOpenKanban !== undefined ||
-        props.onOpenNotes !== undefined) && (
+        props.onOpenNotes !== undefined ||
+        props.onOpenScheduled !== undefined ||
+        props.onOpenTranscripts !== undefined) && (
         <nav aria-label="Workspace" className="flex flex-col gap-0.5 px-2 pb-2">
           {props.onOpenThreads !== undefined && (
             <SidebarNavButton
@@ -236,6 +238,24 @@ export function ChannelSidebar(props: ChannelSidebarProps) {
               icon={<Icon name="note" size={16} />}
               active={props.mainView === "notes"}
               onClick={props.onOpenNotes}
+            />
+          )}
+          {props.onOpenScheduled !== undefined && (
+            <SidebarNavButton
+              label="Scheduled"
+              testId="sidebar-scheduled"
+              icon={<Icon name="calendar" size={16} />}
+              active={props.mainView === "scheduled"}
+              onClick={props.onOpenScheduled}
+            />
+          )}
+          {props.onOpenTranscripts !== undefined && (
+            <SidebarNavButton
+              label="Transcripts"
+              testId="sidebar-transcripts"
+              icon={<Icon name="message" size={16} />}
+              active={props.mainView === "transcripts"}
+              onClick={props.onOpenTranscripts}
             />
           )}
         </nav>

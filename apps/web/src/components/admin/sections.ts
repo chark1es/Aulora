@@ -54,7 +54,7 @@ const SECTION_DEFINITIONS: readonly SectionDefinition[] = [
     label: "Addons",
     group: "workspace",
     icon: "grid",
-    allowed: (permission) => permission("ManageWorkspace"),
+    allowed: (permission) => permission("ManageWorkspace") || permission("ManageTranscription"),
   },
   {
     id: "bots",

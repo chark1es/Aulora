@@ -345,7 +345,7 @@ export const resolveCallRecipients = internalQuery({
   args: { callId: v.id("calls") },
   handler: async (ctx, args) => {
     const call = await ctx.db.get(args.callId);
-    if (call === null || call.ringingUserIds.length === 0) {
+    if (call === null || call.ringingUserIds.length === 0 || call.channelId === undefined) {
       return [];
     }
     const now = Date.now();

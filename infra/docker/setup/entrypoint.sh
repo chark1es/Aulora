@@ -85,7 +85,8 @@ host_value() {
 for _persisted in \
   INSTANCE_SECRET BETTER_AUTH_SECRET VAPID_SUBJECT VAPID_PUBLIC_KEY \
   VAPID_PRIVATE_KEY AULORA_ENCRYPTION_KEY AULORA_KEK_WRAPPED \
-  BOT_JWT_PRIVATE_JWK_B64 BOT_JWT_PUBLIC_JWK_B64 BOT_RUNNER_TOKEN; do
+  BOT_JWT_PRIVATE_JWK_B64 BOT_JWT_PUBLIC_JWK_B64 BOT_RUNNER_TOKEN \
+  TRANSCRIBER_TOKEN; do
   restore_persisted_secret "$_persisted"
 done
 
@@ -199,6 +200,18 @@ if [ -z "$BOT_RUNNER_TOKEN_VALUE" ]; then
   log "generated BOT_RUNNER_TOKEN"
 fi
 
+# Optional transcription engine (compose profile `transcription`). The same
+# shared secret authenticates both directions: clients never see it, Convex
+# verifies transcriber posts and the transcriber verifies Convex-minted audio
+# tokens (deriving a separate HMAC key from it).
+TRANSCRIBER_TOKEN_VALUE="${TRANSCRIBER_TOKEN:-}"
+TRANSCRIBER_TOKEN_GENERATED=0
+if [ -z "$TRANSCRIBER_TOKEN_VALUE" ]; then
+  TRANSCRIBER_TOKEN_VALUE="$(random_b64url 48)"
+  TRANSCRIBER_TOKEN_GENERATED=1
+  log "generated TRANSCRIBER_TOKEN"
+fi
+
 # --- 3. server-side encryption: local master key (default) ------------------
 
 # The server seals all content with AES-256-GCM; the master key (the KEK) is the
@@ -308,6 +321,8 @@ set_env_if_present VAPID_PRIVATE_KEY "$VAPID_PRIVATE_KEY_VALUE" 1
 set_env_if_present BOT_JWT_PRIVATE_JWK "$BOT_JWT_PRIVATE_JWK_VALUE" 1
 set_env_if_present BOT_JWT_PUBLIC_JWK "$BOT_JWT_PUBLIC_JWK_VALUE"
 set_env_if_present BOT_RUNNER_TOKEN "$BOT_RUNNER_TOKEN_VALUE" 1
+set_env_if_present TRANSCRIBER_TOKEN "$TRANSCRIBER_TOKEN_VALUE" 1
+set_env_if_present TRANSCRIBER_URL "$(host_value TRANSCRIBER_URL)"
 
 # Optional WebRTC ICE servers (JSON array of RTCIceServer objects) so a
 # self-hosted deployment can point calls at its own STUN/TURN. Blank leaves
@@ -449,6 +464,13 @@ if convex run setupState:restrictKanbanEditing '{}' >/dev/null 2>&1; then
   log "Kanban editing on @everyone requires an explicit grant"
 else
   log "Kanban editing migration skipped"
+fi
+
+# The Scheduled tab is the one call-addon surface granted to @everyone once.
+if convex run setupState:grantScheduledCallsView '{}' >/dev/null 2>&1; then
+  log "scheduled-calls view permission is up to date"
+else
+  log "scheduled-calls view migration skipped"
 fi
 
 # Records the legacy single owner in `server.ownerIds`. Readers already fall
@@ -642,6 +664,9 @@ if [ -d "$HOST_ENV_DIR" ]; then
   fi
   if [ "$BOT_RUNNER_TOKEN_GENERATED" = "1" ]; then
     env_set BOT_RUNNER_TOKEN "$BOT_RUNNER_TOKEN_VALUE" "$HOST_ENV_FILE"
+  fi
+  if [ "$TRANSCRIBER_TOKEN_GENERATED" = "1" ]; then
+    env_set TRANSCRIBER_TOKEN "$TRANSCRIBER_TOKEN_VALUE" "$HOST_ENV_FILE"
   fi
   umask "$UMASK_PREV"
   log "persisted generated secrets to ${HOST_ENV_FILE}"

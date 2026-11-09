@@ -282,6 +282,19 @@ export const PERMISSION_GROUPS: readonly PermissionGroup[] = [
     label: "Notes",
     permissions: ["ViewNotes", "CreateNotes", "EditNotes", "DeleteNotes", "ManageNotes"],
   },
+  {
+    label: "Calls",
+    permissions: [
+      "StartTranscription",
+      "ViewTranscripts",
+      "ManageTranscription",
+      "CreateGuestLinks",
+      "ManageGuestAccess",
+      "ScheduleCalls",
+      "ManageScheduledCalls",
+      "ViewScheduledCalls",
+    ],
+  },
   { label: "Special", permissions: ["Administrator"] },
 ];
 
@@ -328,6 +341,14 @@ export const PERMISSION_LABELS: Record<PermissionName, string> = {
   EditNotes: "Edit notes, folders and tags",
   DeleteNotes: "Delete notes, folders and tags",
   ManageNotes: "Manage all notes and history",
+  StartTranscription: "Start transcription in a call",
+  ViewTranscripts: "Read transcripts and summaries",
+  ManageTranscription: "Configure transcription and delete transcripts",
+  CreateGuestLinks: "Create guest invite links",
+  ManageGuestAccess: "Admit, deny or remove guests",
+  ScheduleCalls: "Schedule calls",
+  ManageScheduledCalls: "Manage anyone's scheduled calls",
+  ViewScheduledCalls: "See the Scheduled tab",
   Administrator: "Administrator",
 };
 

@@ -26,6 +26,13 @@ const permissionOverwrite = v.object({
 const serverSettings = v.object({
   kanbanEnabled: v.optional(v.boolean()),
   notesEnabled: v.optional(v.boolean()),
+  /**
+   * Call addons. Optional and absent by default: a workspace that predates the
+   * addons reads every flag as disabled (`=== true`).
+   */
+  transcriptionEnabled: v.optional(v.boolean()),
+  scheduledCallsEnabled: v.optional(v.boolean()),
+  guestCallsEnabled: v.optional(v.boolean()),
   signupEnabled: v.boolean(),
   inviteOnly: v.boolean(),
   allowedEmailDomains: v.array(v.string()),
@@ -729,7 +736,14 @@ export default defineSchema({
    * DM/group-DM calls start `ringing` until someone answers.
    */
   calls: defineTable({
-    channelId: v.id("channels"),
+    /**
+     * The channel the call lives on. Optional: a standalone scheduled-call room
+     * has no channel and is identified by `scheduledCallId` instead. Existing
+     * rows always carry it, so readers treat an absent value as standalone.
+     */
+    channelId: v.optional(v.id("channels")),
+    /** The scheduled call this row was created for, when it is a room. */
+    scheduledCallId: v.optional(v.id("scheduledCalls")),
     kind: callKind,
     initiatorId: v.string(),
     status: callStatus,
@@ -755,22 +769,49 @@ export default defineSchema({
     aloneJobId: v.optional(v.id("_scheduled_functions")),
     /** Set when the call ended for a reason other than its last person leaving. */
     endedReason: v.optional(callEndedReason),
+    /**
+     * The one active transcription session, when transcription is running.
+     * Writing it on start/stop makes the "only one session per call" rule a
+     * single-document guarantee rather than a read-then-insert race.
+     */
+    transcriptionSessionId: v.optional(v.id("transcriptionSessions")),
     updatedAt: v.number(),
   })
     .index("by_channel", ["channelId"])
     .index("by_status", ["status"])
-    .index("by_channel_status", ["channelId", "status"]),
+    .index("by_channel_status", ["channelId", "status"])
+    .index("by_scheduled_call", ["scheduledCallId"]),
 
   /**
    * Who is currently in a call, and their live media flags. `lastSeen` is the
    * heartbeat the sweep uses to drop abandoned participants (a client crash).
    * A user has at most one row: `clientId` is the device that holds it, and
    * `session` bumps when a different device takes over.
+   *
+   * A guest row also carries `guestId` (its `callGuestSessions` id) and stores
+   * that id in `userId` so the existing per-user addressing, seat counting and
+   * signalling key keep working unchanged. `guestNameCiphertext` is the sealed
+   * display-name snapshot; members never have it.
    */
   callParticipants: defineTable({
     callId: v.id("calls"),
-    channelId: v.id("channels"),
+    /** Optional for a standalone scheduled room, which has no channel. */
+    channelId: v.optional(v.id("channels")),
+    /**
+     * Participant key: a member's account id, or a guest session id for a
+     * guest. Kept required so older readers and indexes keep working.
+     */
     userId: v.string(),
+    /** Set only for a guest participant. */
+    guestId: v.optional(v.id("callGuestSessions")),
+    /**
+     * Opaque per-call key a guest uses to address this participant in
+     * signalling. Members address each other and guests by their participant
+     * key; a guest never receives a member's account id.
+     */
+    guestKey: v.optional(v.string()),
+    /** Sealed guest display name; absent for members. */
+    guestNameCiphertext: v.optional(v.string()),
     /** Install id of the device in the call. Absent on rows from before device seats. */
     clientId: v.optional(v.string()),
     /** Increments when another device takes this seat, so peers renegotiate. */
@@ -792,6 +833,8 @@ export default defineSchema({
   })
     .index("by_call", ["callId"])
     .index("by_call_user", ["callId", "userId"])
+    .index("by_call_guest", ["callId", "guestId"])
+    .index("by_guest", ["guestId"])
     .index("by_user", ["userId"])
     .index("by_channel", ["channelId"])
     // The sweep drops abandoned seats past a heartbeat cutoff without scanning.
@@ -804,7 +847,8 @@ export default defineSchema({
    */
   callSignals: defineTable({
     callId: v.id("calls"),
-    channelId: v.id("channels"),
+    channelId: v.optional(v.id("channels")),
+    /** Sender/recipient participant keys: a member id or a guest session id. */
     fromUserId: v.string(),
     toUserId: v.string(),
     kind: callSignalKind,
@@ -943,6 +987,270 @@ export default defineSchema({
     .index("by_key", ["key"])
     // The TTL prune reads only counters whose window is long past.
     .index("by_window_start", ["windowStart"]),
+
+  /**
+   * Guest invite links. Only the SHA-256 hex digest of the 256-bit URL-safe
+   * token is stored; the plaintext is shown once at creation. A link targets a
+   * channel call or a scheduled call. Invalid, expired, revoked and exhausted
+   * links all return the same generic error so a link cannot be probed.
+   */
+  callGuestLinks: defineTable({
+    tokenHash: v.string(),
+    /** Channel call target; absent for a scheduled-call link. */
+    channelId: v.optional(v.id("channels")),
+    /** Scheduled call target; absent for a channel link. */
+    scheduledCallId: v.optional(v.id("scheduledCalls")),
+    createdBy: v.string(),
+    createdAt: v.number(),
+    expiresAt: v.number(),
+    maxUses: v.number(),
+    uses: v.number(),
+    revokedAt: v.optional(v.number()),
+    /** Operator-facing note, never shown to a guest. */
+    label: v.optional(v.string()),
+    /**
+     * SHA-256 digests of guest client ids an admitting member removed. A
+     * removed guest cannot ask to join through the same link again even though
+     * their session token is already dead.
+     */
+    blockedClientHashes: v.optional(v.array(v.string())),
+  })
+    .index("by_token_hash", ["tokenHash"])
+    .index("by_channel", ["channelId"])
+    .index("by_scheduled_call", ["scheduledCallId"])
+    .index("by_creator", ["createdBy"])
+    .index("by_expires", ["expiresAt"])
+    // Active-link caps count only unrevoked, unexpired rows instead of
+    // reading a fixed prefix that old inactive links can fill.
+    .index("by_channel_active", ["channelId", "revokedAt", "expiresAt"])
+    .index("by_scheduled_active", ["scheduledCallId", "revokedAt", "expiresAt"])
+    // Newest-first reads for the link list and the lobby-manager lookup.
+    .index("by_creator_created", ["createdBy", "createdAt"])
+    .index("by_channel_created", ["channelId", "createdAt"])
+    .index("by_scheduled_created", ["scheduledCallId", "createdAt"]),
+
+  /**
+   * A guest's lobby request and, once admitted, their call session. The
+   * plaintext session token is returned exactly once at `requestJoin`; only its
+   * SHA-256 digest is stored. Guests never get a Convex identity, a member row
+   * or a workspace membership.
+   */
+  callGuestSessions: defineTable({
+    linkId: v.id("callGuestLinks"),
+    tokenHash: v.string(),
+    /** Sealed guest-supplied display name. */
+    displayNameCiphertext: v.string(),
+    /** Sealed optional affiliation. */
+    affiliationCiphertext: v.optional(v.string()),
+    status: v.union(
+      v.literal("pending"),
+      v.literal("admitted"),
+      v.literal("denied"),
+      v.literal("removed"),
+      v.literal("left"),
+      v.literal("expired"),
+    ),
+    requestedAt: v.number(),
+    admittedAt: v.optional(v.number()),
+    admittedBy: v.optional(v.string()),
+    deniedAt: v.optional(v.number()),
+    removedAt: v.optional(v.number()),
+    /** The live call this guest was admitted to. */
+    callId: v.optional(v.id("calls")),
+    /** Install id the guest's browser sends for heartbeat/signalling. */
+    clientId: v.optional(v.string()),
+    lastSeen: v.optional(v.number()),
+    expiresAt: v.number(),
+  })
+    .index("by_token_hash", ["tokenHash"])
+    .index("by_link_status", ["linkId", "status"])
+    .index("by_call_status", ["callId", "status"])
+    .index("by_call", ["callId"])
+    .index("by_expires", ["expiresAt"]),
+
+  /**
+   * One transcription of one call. Text-bearing fields are server-sealed; the
+   * structural refs and timestamps stay plaintext so the retention cron and the
+   * summary action can page without the key.
+   */
+  transcriptionSessions: defineTable({
+    callId: v.id("calls"),
+    /** Optional because a standalone scheduled room has no channel. */
+    channelId: v.optional(v.id("channels")),
+    startedBy: v.string(),
+    startedAt: v.number(),
+    endedAt: v.optional(v.number()),
+    status: v.union(
+      v.literal("active"),
+      v.literal("ending"),
+      v.literal("ended"),
+      v.literal("failed"),
+    ),
+    /**
+     * Finalization deadline for an `ending` session. Ingest still accepts a
+     * bounded final window until this time; the scheduled finalizer then moves
+     * the session to `ended` and queues its summary.
+     */
+    endsAt: v.optional(v.number()),
+    summaryStatus: v.union(
+      v.literal("none"),
+      v.literal("pending"),
+      v.literal("ready"),
+      v.literal("error"),
+    ),
+    summaryCiphertext: v.optional(v.string()),
+    summaryModel: v.optional(v.string()),
+    summaryAt: v.optional(v.number()),
+    summaryError: v.optional(v.string()),
+    /**
+     * When the current `pending` summary was queued. The recovery cron only
+     * re-queues pending rows older than ten minutes, so a live action is not
+     * duplicated every five minutes.
+     */
+    summaryRequestedAt: v.optional(v.number()),
+    /**
+     * Identifies the current summary attempt. Completion, abort and the error
+     * transition no-op when a newer attempt has replaced this one.
+     */
+    summaryAttemptId: v.optional(v.string()),
+    retentionExpiresAt: v.optional(v.number()),
+    /**
+     * Maintained aggregate segment count and the last time it was refreshed.
+     * Ingest updates per-speaker state on every batch and refreshes this
+     * shared session row only periodically, so concurrent speakers do not
+     * contend on one hot document.
+     */
+    segmentCount: v.number(),
+    /** @deprecated Per-speaker replay state moved to `transcriptSpeakerState`. */
+    lastSeq: v.number(),
+    countUpdatedAt: v.optional(v.number()),
+  })
+    .index("by_call", ["callId"])
+    .index("by_call_status", ["callId", "status"])
+    .index("by_status", ["status"])
+    .index("by_summary_status", ["summaryStatus"])
+    .index("by_status_summary", ["status", "summaryStatus"])
+    .index("by_started", ["startedAt"])
+    .index("by_retention", ["retentionExpiresAt"]),
+
+  /**
+   * Per-speaker ingest state for one transcription session. Replay protection
+   * is scoped to the speaker, so two speakers (or a reconnect) may both start
+   * at sequence 1 without conflicting on the shared session document.
+   */
+  transcriptSpeakerState: defineTable({
+    sessionId: v.id("transcriptionSessions"),
+    speakerKey: v.string(),
+    lastSeq: v.number(),
+    lastStartMs: v.number(),
+    segmentCount: v.number(),
+    updatedAt: v.number(),
+    /** When this speaker left a still-running call; opens a short drain grace. */
+    leftAt: v.optional(v.number()),
+    /** A moderator removed this speaker; no departure grace applies. */
+    blocked: v.optional(v.boolean()),
+  }).index("by_session_speaker", ["sessionId", "speakerKey"]),
+
+  /**
+   * One speaker-labelled transcript segment. Display order is the session-
+   * relative `startMs`, with Convex's implicit `_creationTime` breaking ties.
+   */
+  transcriptSegments: defineTable({
+    sessionId: v.id("transcriptionSessions"),
+    seq: v.number(),
+    /** `user:<id>` or `guest:<id>`; never a client-supplied identity. */
+    speakerKey: v.string(),
+    /** Sealed display-name snapshot at the time the segment was spoken. */
+    speakerNameCiphertext: v.string(),
+    /** Sealed transcript text. */
+    textCiphertext: v.string(),
+    startMs: v.number(),
+    endMs: v.number(),
+    confidence: v.optional(v.number()),
+    language: v.optional(v.string()),
+  })
+    .index("by_session_seq", ["sessionId", "seq"])
+    // Transcript order: playback time first, then `_creationTime` tie-break.
+    .index("by_session_start", ["sessionId", "startMs"]),
+
+  /**
+   * Liveness for the optional transcriber container, written by its periodic
+   * hello. A single row keyed `service`; kept separate from the config so a
+   * heartbeat never contends with an owner editing settings.
+   */
+  transcriberStatus: defineTable({
+    key: v.string(),
+    serviceSeenAt: v.number(),
+    /** Runtime engine readiness reported by the latest hello, not the owner's selection. */
+    runtimeReady: v.optional(v.boolean()),
+    runtimeModelId: v.optional(v.string()),
+  }).index("by_key", ["key"]),
+
+  /**
+   * Single-document transcription configuration. `apiKeyCiphertext` is sealed
+   * and never returned by any query or action.
+   */
+  transcriptionConfig: defineTable({
+    modelId: v.string(),
+    modelStatus: v.union(
+      v.literal("not_installed"),
+      v.literal("downloading"),
+      v.literal("ready"),
+      v.literal("error"),
+    ),
+    modelProgress: v.optional(v.number()),
+    modelError: v.optional(v.string()),
+    modelUpdatedAt: v.optional(v.number()),
+    provider: v.union(v.literal("openrouter"), v.literal("openai_compatible")),
+    baseUrl: v.string(),
+    apiKeyCiphertext: v.optional(v.string()),
+    model: v.string(),
+    summaryLanguage: v.optional(v.string()),
+    summaryStyle: v.optional(v.string()),
+    retentionDays: v.number(),
+    /** Explicit opt-in for SSRF-sensitive private/loopback summary endpoints. */
+    allowPrivateEndpoint: v.boolean(),
+    updatedAt: v.number(),
+    updatedBy: v.string(),
+  }),
+
+  /**
+   * A scheduled call: channel-bound or a standalone room with invitees. Title
+   * and description are sealed; times are UTC epoch milliseconds and the viewer
+   * renders them in their own zone.
+   */
+  scheduledCalls: defineTable({
+    titleCiphertext: v.string(),
+    descriptionCiphertext: v.optional(v.string()),
+    startsAt: v.number(),
+    durationMinutes: v.optional(v.number()),
+    openLeadMinutes: v.number(),
+    /** Channel-bound target; absent for a standalone room. */
+    channelId: v.optional(v.id("channels")),
+    /** Standalone-room invitees. Empty for a channel call. */
+    inviteeUserIds: v.array(v.string()),
+    inviteeRoleIds: v.array(v.string()),
+    createdBy: v.string(),
+    status: v.union(
+      v.literal("scheduled"),
+      v.literal("open"),
+      v.literal("ended"),
+      v.literal("cancelled"),
+    ),
+    /** The live `calls` row once someone joins the window. */
+    callId: v.optional(v.id("calls")),
+    createdAt: v.number(),
+    updatedAt: v.number(),
+    cancelledAt: v.optional(v.number()),
+    endedAt: v.optional(v.number()),
+    /** Single pending open-time job; re-arming replaces it. */
+    openJobId: v.optional(v.id("_scheduled_functions")),
+  })
+    .index("by_starts", ["startsAt"])
+    .index("by_status_starts", ["status", "startsAt"])
+    .index("by_creator", ["createdBy"])
+    .index("by_channel", ["channelId"])
+    .index("by_call", ["callId"]),
 
   ...botTables,
   ...webhookTables,

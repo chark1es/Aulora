@@ -26,6 +26,7 @@ export {
 } from "./binary";
 export { blurhashDecode, blurhashEncode } from "./blurhash";
 export * from "./bots";
+export * from "./call-addons-access";
 export * from "./chat/index";
 export {
   type ClientVersionPolicy,
@@ -55,6 +56,7 @@ export {
   type FeatureFlags,
   resolveFeatureFlags,
 } from "./feature-flags";
+export * from "./guest-calls";
 export {
   allowlistAdmits,
   CUSTOM_INVITE_CODE_MAX_LENGTH,
@@ -135,6 +137,8 @@ export {
   type WebLocalStorageStoreOptions,
   webLocalStorageStore,
 } from "./profiles";
+export * from "./scheduled-calls";
+export * from "./scheduled-calls-view";
 export {
   ArchiveBackfill,
   type ArchiveSource,
@@ -174,6 +178,8 @@ export {
   saveSoundSettings,
   soundVolume,
 } from "./sounds";
+export * from "./transcript-view";
+export * from "./transcription";
 export {
   advanceCursor,
   countMentions,

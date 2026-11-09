@@ -114,7 +114,14 @@ export interface TurnCredentials {
 
 /** One participant of a live call, as rendered by every client. */
 export interface CallParticipantView {
+  /** Participant key: a member id, or the guest session id for a guest. */
   readonly userId: string;
+  /** The guest session id when this participant is a guest. */
+  readonly guestId?: string | null;
+  /** True for a guest; the client shows a Guest badge. */
+  readonly isGuest?: boolean;
+  /** The guest's display name; `null` for members (the member map owns it). */
+  readonly displayName?: string | null;
   readonly muted: boolean;
   readonly deafened: boolean;
   readonly video: boolean;
@@ -151,7 +158,8 @@ export interface CallParticipantView {
 
 export interface CallView {
   readonly id: string;
-  readonly channelId: string;
+  /** The channel the call lives on, or `null` for a standalone scheduled room. */
+  readonly channelId: string | null;
   readonly kind: CallKind;
   readonly status: CallStatus;
   readonly initiatorId: string;
@@ -160,6 +168,17 @@ export interface CallView {
   readonly screenShareUserId: string | null;
   readonly startedAt: number;
   readonly participants: readonly CallParticipantView[];
+  /**
+   * True while a transcription session is active. Every participant, including
+   * a guest, sees the indicator and the opt-out notice.
+   */
+  readonly transcribing?: boolean;
+  readonly transcriptionSessionId?: string | null;
+  /** Set when this call was created for a scheduled call. */
+  readonly scheduledCallId?: string | null;
+  /** True when the call has no channel (a standalone scheduled room). */
+  readonly standalone?: boolean;
+  readonly guestCount?: number;
   /**
    * Server clock time at which a still-solo call is disconnected, or `null`
    * when more than one person is in it. Absent on older backends that do not

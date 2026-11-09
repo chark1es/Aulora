@@ -7,6 +7,9 @@ import { CallMediaNotice } from "./CallMediaNotice";
 import { CallGrid } from "./CallParticipant";
 import { useCallDuration } from "./hooks";
 import type { CallIdentity } from "./identity";
+import { TranscriptionIndicator } from "./TranscriptionIndicator";
+import { TranscriptionNotice } from "./TranscriptionNotice";
+import { useCallAddonControls } from "./use-call-addons";
 
 export const DOCK_WIDTH = 340;
 export const DOCK_HEIGHT = 232;
@@ -48,6 +51,7 @@ export function CallCompactView({
           {title}
           <span className="sr-only"> ({callKindLabel(call.kind)})</span>
         </span>
+        {call.transcribing === true && <TranscriptionIndicator />}
         <span className="shrink-0 text-[11px] tabular-nums text-text-muted">{duration}</span>
         <CompactButtons identity={identity} floating={floating} onHide={onHide} />
       </div>
@@ -69,6 +73,7 @@ export function CallCompactView({
       </div>
 
       <CallMediaNotice compact />
+      <TranscriptionNotice compact />
       <CallAloneNotice compact />
 
       <div className="flex items-center justify-center pb-0.5">
@@ -80,6 +85,7 @@ export function CallCompactView({
 
 function CompactControls() {
   const voice = useVoice();
+  const addons = useCallAddonControls();
   return (
     <CallControls
       compact
@@ -97,6 +103,7 @@ function CompactControls() {
       onToggleCamera={() => void voice.setCamera(!voice.local.video)}
       onToggleScreen={() => void voice.setScreenSharing(!voice.local.sharingScreen)}
       onLeave={() => void voice.leave()}
+      {...addons}
     />
   );
 }

@@ -1,0 +1,12 @@
+{
+  "secret": "aulora-synthetic-transcriber-secret",
+  "claims": {
+    "sid": "session-fixture-1",
+    "cid": "call-fixture-1",
+    "sub": "user:member-fixture-1",
+    "start": 1700000000000,
+    "iat": 1700000060,
+    "exp": 1700000120
+  },
+  "token": "eyJzaWQiOiJzZXNzaW9uLWZpeHR1cmUtMSIsImNpZCI6ImNhbGwtZml4dHVyZS0xIiwic3ViIjoidXNlcjptZW1iZXItZml4dHVyZS0xIiwic3RhcnQiOjE3MDAwMDAwMDAwMDAsImlhdCI6MTcwMDAwMDA2MCwiZXhwIjoxNzAwMDAwMTIwfQ.B8KVZNZkZhraY6dKXQdGaMkG82ZY7IvdcUxR5PSOnRw"
+}

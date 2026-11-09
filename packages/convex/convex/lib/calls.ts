@@ -1,8 +1,23 @@
+import { GUEST_SIGNAL_ACK_MAX, transcriptionSpeakerKey } from "@aulora/core";
 import { ConvexError } from "convex/values";
+import { internal } from "../_generated/api";
 import type { Doc, Id } from "../_generated/dataModel";
 import type { MutationCtx } from "../_generated/server";
 import type { requireChannelAccess } from "./channels";
 import { isDmKind } from "./channels";
+import { randomToken } from "./crypto";
+import { getCallAloneTimeoutSeconds } from "./env";
+import { loadEffectiveEnv } from "./envOverrides";
+import {
+  endGuestSessionsForCall,
+  openGuestParticipantName,
+  sealGuestParticipantName,
+} from "./guestCalls";
+import {
+  activeSessionForCall,
+  endTranscriptionForCall,
+  markTranscriptionSpeakerLeft,
+} from "./transcription";
 import type { Nullable } from "./types";
 
 /** Client install ids are opaque tokens, not free-form strings. */
@@ -22,7 +37,7 @@ export const MAX_SIGNAL_BYTES = 65_536;
  * Hard cap on how many payloads one signal may carry. The client pools ICE
  * candidates for ~75 ms and flushes at 16, so this is a safety ceiling.
  */
-export const MAX_SIGNAL_BATCH = 32;
+export const MAX_SIGNAL_BATCH = GUEST_SIGNAL_ACK_MAX;
 /**
  * Bound on the participant rows read when counting a call's seats. Workspace
  * settings cap a call at 50, so a read at this size always sees every seat and
@@ -33,7 +48,16 @@ export const MAX_CALL_SEATS = 64;
 export type ReadCtx = Parameters<typeof requireChannelAccess>[0];
 
 export interface CallParticipantSummary {
+  /**
+   * Participant key: the member's account id, or the guest session id for a
+   * guest. Signalling and per-participant actions address this value.
+   */
   readonly userId: string;
+  /** The guest session id when this is a guest, else `null`. */
+  readonly guestId: Id<"callGuestSessions"> | null;
+  readonly isGuest: boolean;
+  /** The guest's sealed display name, opened for the roster; `null` for members. */
+  readonly displayName: string | null;
   readonly muted: boolean;
   readonly deafened: boolean;
   readonly video: boolean;
@@ -52,7 +76,12 @@ export interface CallParticipantSummary {
 
 export interface CallSummary {
   readonly id: Id<"calls">;
-  readonly channelId: Id<"channels">;
+  /**
+   * The channel a call lives on, or `null` for a standalone scheduled room.
+   * Additive widening: older clients that always receive a channel are
+   * unaffected, and the scheduled-call UI is the only consumer of `null`.
+   */
+  readonly channelId: Id<"channels"> | null;
   readonly kind: Doc<"calls">["kind"];
   readonly status: Doc<"calls">["status"];
   readonly initiatorId: string;
@@ -60,6 +89,17 @@ export interface CallSummary {
   readonly screenShareUserId: string | null;
   readonly startedAt: number;
   readonly participants: readonly CallParticipantSummary[];
+  /**
+   * True while a transcription session is active on this call. Every
+   * participant, including a guest, sees the indicator and the notice.
+   */
+  readonly transcribing: boolean;
+  readonly transcriptionSessionId: Id<"transcriptionSessions"> | null;
+  /** Set when this call was created for a scheduled call. */
+  readonly scheduledCallId: Id<"scheduledCalls"> | null;
+  /** True when the call has no channel (a standalone scheduled room). */
+  readonly standalone: boolean;
+  readonly guestCount: number;
   /**
    * Server clock time at which a still-solo call is disconnected, or `null`
    * when the call has more than one participant. Additive: older clients
@@ -96,30 +136,53 @@ export function distinctParticipantCount(rows: readonly Doc<"callParticipants">[
   return new Set(rows.map((row) => row.userId)).size;
 }
 
-/** Loads a call's participants as client views (media state is client-local). */
+/**
+ * The opaque signalling key a guest uses to address a member: the per-call
+ * `guestKey` (legacy member rows fall back to the account id, which every
+ * current row also already has). A guest row's key is its session id. This is
+ * not an offer-election key: election uses account ids and the guest roster's
+ * `shouldOffer` bit.
+ */
+export function participantSignalKey(row: Doc<"callParticipants">): string {
+  if (row.guestId !== undefined) {
+    return row.userId;
+  }
+  return row.guestKey ?? row.userId;
+}
+
+/**
+ * Loads a call's participants as client views (media state is client-local).
+ * A guest's display-name snapshot is opened here; members keep their profile
+ * name on the client's member map.
+ */
 export async function loadParticipants(
   ctx: ReadCtx,
   callId: Id<"calls">,
   viewerId: string,
 ): Promise<CallParticipantSummary[]> {
   const rows = await loadCallSeats(ctx, callId);
-  return rows
-    .sort((a, b) => a.joinedAt - b.joinedAt)
-    .map((row) => ({
-      userId: row.userId,
-      muted: row.muted,
-      deafened: row.deafened,
-      video: row.video,
-      sharingScreen: row.sharingScreen,
-      sfu: row.sfu ?? false,
-      sfuCall: row.sfuCall ?? false,
-      joinedAt: row.joinedAt,
-      clientId: row.userId === viewerId ? (row.clientId ?? null) : null,
-      session: row.session ?? 0,
-      speaking: false,
-      audioLevel: 0,
-      connection: "connected" as const,
-    }));
+  return await Promise.all(
+    rows
+      .sort((a, b) => a.joinedAt - b.joinedAt)
+      .map(async (row) => ({
+        userId: row.userId,
+        guestId: row.guestId ?? null,
+        isGuest: row.guestId !== undefined,
+        displayName: row.guestId === undefined ? null : await openGuestParticipantName(row),
+        muted: row.muted,
+        deafened: row.deafened,
+        video: row.video,
+        sharingScreen: row.sharingScreen,
+        sfu: row.sfu ?? false,
+        sfuCall: row.sfuCall ?? false,
+        joinedAt: row.joinedAt,
+        clientId: row.userId === viewerId ? (row.clientId ?? null) : null,
+        session: row.session ?? 0,
+        speaking: false,
+        audioLevel: 0,
+        connection: "connected" as const,
+      })),
+  );
 }
 
 export async function toCallSummary(
@@ -127,16 +190,25 @@ export async function toCallSummary(
   call: Doc<"calls">,
   viewerId: string,
 ): Promise<CallSummary> {
+  const [participants, activeSession] = await Promise.all([
+    loadParticipants(ctx, call._id, viewerId),
+    activeSessionForCall(ctx, call._id),
+  ]);
   return {
     id: call._id,
-    channelId: call.channelId,
+    channelId: call.channelId ?? null,
     kind: call.kind,
     status: call.status,
     initiatorId: call.initiatorId,
     ringingUserIds: call.ringingUserIds,
     screenShareUserId: call.screenShareUserId ?? null,
     startedAt: call.startedAt,
-    participants: await loadParticipants(ctx, call._id, viewerId),
+    participants,
+    transcribing: activeSession !== null,
+    transcriptionSessionId: activeSession?._id ?? null,
+    scheduledCallId: call.scheduledCallId ?? null,
+    standalone: call.channelId === undefined,
+    guestCount: participants.filter((participant) => participant.isGuest).length,
     aloneDeadline: call.aloneDeadline ?? null,
     aloneTimeoutSeconds:
       call.aloneSince !== undefined && call.aloneDeadline !== undefined
@@ -209,9 +281,17 @@ export async function removeParticipant(
   ctx: MutationCtx,
   call: Doc<"calls">,
   userId: string,
+  options: { readonly blocked?: boolean } = {},
 ): Promise<void> {
   const participant = await findParticipant(ctx, call._id, userId);
   if (participant !== null) {
+    // Record the departure on the live transcription session before the seat
+    // disappears, so the transcriber's final drain has a bounded grace.
+    const speakerKey =
+      participant.guestId !== undefined
+        ? transcriptionSpeakerKey("guest", participant.guestId)
+        : transcriptionSpeakerKey("user", participant.userId);
+    await markTranscriptionSpeakerLeft(ctx, call._id, speakerKey, options);
     await ctx.db.delete(participant._id);
   }
   await clearSignalsFor(ctx, call._id, userId);
@@ -239,6 +319,132 @@ export async function cancelAloneJob(
   }
 }
 
+/**
+ * The workspace's effective solo-call timeout, in milliseconds. Read only when
+ * a timer is armed or reset, never from a subscribed query, so the five-minute
+ * default costs nothing on the hot roster path.
+ */
+export async function aloneTimeoutMs(ctx: MutationCtx): Promise<number> {
+  const env = (await loadEffectiveEnv(ctx)).env;
+  return getCallAloneTimeoutSeconds(env) * 1000;
+}
+
+/**
+ * `deadline` is passed to the job so a job from an older window can recognize
+ * that it no longer owns the call and exit without rescheduling.
+ */
+export async function scheduleAloneJob(
+  ctx: MutationCtx,
+  callId: Id<"calls">,
+  delayMs: number,
+  deadline: number,
+): Promise<void> {
+  const jobId = await ctx.scheduler.runAfter(delayMs, internal.calls.enforceAlone, {
+    callId,
+    deadline,
+  });
+  await ctx.db.patch(callId, { aloneJobId: jobId });
+}
+
+/** Arms (or re-arms) the solo-call deadline and replaces its enforcement job. */
+export async function armAloneTimer(
+  ctx: MutationCtx,
+  call: Doc<"calls">,
+  now: number = Date.now(),
+  timeoutMs?: number,
+): Promise<void> {
+  const windowMs = timeoutMs ?? (await aloneTimeoutMs(ctx));
+  // Re-arming replaces the previous job, so repeated stays cannot accumulate a
+  // chain of pending enforcements.
+  await cancelAloneJob(ctx, call.aloneJobId);
+  const deadline = now + windowMs;
+  const jobId = await ctx.scheduler.runAfter(windowMs, internal.calls.enforceAlone, {
+    callId: call._id,
+    deadline,
+  });
+  await ctx.db.patch(call._id, {
+    aloneSince: now,
+    aloneDeadline: deadline,
+    aloneJobId: jobId,
+  });
+}
+
+async function clearAloneTimer(ctx: MutationCtx, call: Doc<"calls">): Promise<void> {
+  // An ended call keeps its window on purpose so the notice can name the
+  // configured duration. A late leave or a duplicate enforcement must not
+  // erase it.
+  if (call.status === "ended") {
+    return;
+  }
+  if (
+    call.aloneSince === undefined &&
+    call.aloneDeadline === undefined &&
+    call.aloneJobId === undefined
+  ) {
+    return;
+  }
+  await cancelAloneJob(ctx, call.aloneJobId);
+  await ctx.db.patch(call._id, {
+    aloneSince: undefined,
+    aloneDeadline: undefined,
+    aloneJobId: undefined,
+  });
+}
+
+/**
+ * Keeps the solo-call deadline in step with the roster: the first moment a
+ * call has exactly one distinct user arms a fresh solo window, and any second
+ * participant clears it so a later solo stretch starts over. A window that is
+ * already due ends the call (the scheduled job normally gets there first; this
+ * is the backstop when it was lost).
+ *
+ * "Alone" means one distinct participant, not one device: seats are per user,
+ * so two devices of the same person still count as one. A guest holds a seat
+ * under its guest session id and counts as a distinct participant, so a host
+ * with only a guest present is **not** alone. Bots are not a separate
+ * participant kind in this product, so a bot that held a real seat would count
+ * like anyone else.
+ */
+export async function syncAloneState(
+  ctx: MutationCtx,
+  call: Doc<"calls">,
+  distinct: number,
+  now: number = Date.now(),
+): Promise<void> {
+  // The window retained on an alone-ended call is reporting state, not a
+  // timer: a late leave or a duplicate enforcement must leave it untouched.
+  if (call.status === "ended") {
+    return;
+  }
+  if (call.status !== "active" || distinct !== 1) {
+    await clearAloneTimer(ctx, call);
+    return;
+  }
+  if (call.aloneSince === undefined || call.aloneDeadline === undefined) {
+    await armAloneTimer(ctx, call, now);
+    return;
+  }
+  if (call.aloneDeadline <= now) {
+    await endCall(ctx, call, { endedReason: "alone" });
+    return;
+  }
+  // A window restored from an older release (or one whose job was lost) gets
+  // its enforcement back without restarting the countdown.
+  if (call.aloneJobId === undefined) {
+    await scheduleAloneJob(ctx, call._id, call.aloneDeadline - now, call.aloneDeadline);
+  }
+}
+
+/** Re-reads a call's roster and applies {@link syncAloneState}. */
+export async function syncAloneTimerForCall(ctx: MutationCtx, callId: Id<"calls">): Promise<void> {
+  const call = await ctx.db.get(callId);
+  if (call === null) {
+    return;
+  }
+  const seats = await loadCallSeats(ctx, callId);
+  await syncAloneState(ctx, call, distinctParticipantCount(seats));
+}
+
 /** Ends a call: clears participants, signalling and ringing, marks it ended. */
 export async function endCall(
   ctx: MutationCtx,
@@ -246,6 +452,11 @@ export async function endCall(
   options: { readonly endedReason?: Doc<"calls">["endedReason"] } = {},
 ): Promise<void> {
   await cancelAloneJob(ctx, call.aloneJobId);
+  const now = Date.now();
+  // End the addon state first: the transcription session must stop accepting
+  // segments, and admitted guests must not keep a token for a dead call.
+  await endTranscriptionForCall(ctx, call._id, now);
+  await endGuestSessionsForCall(ctx, call._id, now);
   const participants = await ctx.db
     .query("callParticipants")
     .withIndex("by_call", (q) => q.eq("callId", call._id))
@@ -270,8 +481,8 @@ export async function endCall(
     aloneJobId: undefined,
     ...(options.endedReason === "alone" ? {} : { aloneSince: undefined, aloneDeadline: undefined }),
     ...(options.endedReason !== undefined ? { endedReason: options.endedReason } : {}),
-    endedAt: Date.now(),
-    updatedAt: Date.now(),
+    endedAt: now,
+    updatedAt: now,
   });
 }
 
@@ -292,15 +503,16 @@ export async function finishIfEmpty(ctx: MutationCtx, callId: Id<"calls">): Prom
 export async function insertParticipant(
   ctx: MutationCtx,
   callId: Id<"calls">,
-  channelId: Id<"channels">,
+  channelId: Id<"channels"> | undefined,
   userId: string,
   clientId: string,
 ): Promise<void> {
   const now = Date.now();
   await ctx.db.insert("callParticipants", {
     callId,
-    channelId,
+    ...(channelId !== undefined ? { channelId } : {}),
     userId,
+    guestKey: randomToken(16),
     clientId,
     session: 1,
     muted: false,
@@ -309,6 +521,41 @@ export async function insertParticipant(
     sharingScreen: false,
     joinedAt: now,
     lastSeen: now,
+  });
+}
+
+/**
+ * Seats an admitted guest. The row's `userId` is the guest session id so the
+ * existing per-user key, seat count and signalling routing work unchanged;
+ * `guestId` names the real guest session and the sealed name is the roster
+ * snapshot.
+ */
+export async function insertGuestParticipant(
+  ctx: MutationCtx,
+  call: Doc<"calls">,
+  guestId: Id<"callGuestSessions">,
+  displayName: string,
+  clientId: string,
+  options: { readonly muted?: boolean; readonly video?: boolean } = {},
+): Promise<void> {
+  const now = Date.now();
+  const id = await ctx.db.insert("callParticipants", {
+    callId: call._id,
+    ...(call.channelId !== undefined ? { channelId: call.channelId } : {}),
+    userId: guestId,
+    guestId,
+    guestKey: randomToken(16),
+    clientId,
+    session: 1,
+    muted: options.muted ?? false,
+    deafened: false,
+    video: options.video ?? false,
+    sharingScreen: false,
+    joinedAt: now,
+    lastSeen: now,
+  });
+  await ctx.db.patch(id, {
+    guestNameCiphertext: await sealGuestParticipantName(id, displayName),
   });
 }
 
@@ -381,18 +628,21 @@ export async function reuseLiveCall(
 export async function insertNewCall(
   ctx: MutationCtx,
   args: {
-    readonly channelId: Id<"channels">;
+    readonly channelId?: Id<"channels">;
+    readonly scheduledCallId?: Id<"scheduledCalls">;
     readonly kind: "voice" | "video";
     readonly clientId: string;
     readonly ringingUserIds?: readonly string[];
   },
-  channel: Doc<"channels">,
+  channel: Doc<"channels"> | null,
   userId: string,
 ): Promise<{ callId: Id<"calls">; ringing: boolean }> {
-  const ringingUserIds = await ringingTargets(ctx, channel, userId, args.ringingUserIds);
+  const ringingUserIds =
+    channel === null ? [] : await ringingTargets(ctx, channel, userId, args.ringingUserIds);
   const now = Date.now();
   const callId = await ctx.db.insert("calls", {
-    channelId: args.channelId,
+    ...(args.channelId !== undefined ? { channelId: args.channelId } : {}),
+    ...(args.scheduledCallId !== undefined ? { scheduledCallId: args.scheduledCallId } : {}),
     kind: args.kind,
     initiatorId: userId,
     status: ringingUserIds.length > 0 ? "ringing" : "active",

@@ -1,6 +1,8 @@
 import {
   type AttachmentDescriptor,
   type ChannelView,
+  canViewScheduledCalls,
+  canViewTranscripts,
   conversationTitle,
   createTypingThrottle,
   hasPermission,
@@ -94,6 +96,22 @@ const KanbanView = lazy(() =>
 );
 const NotesView = lazy(() =>
   import("../notes/NotesView").then((module) => ({ default: module.NotesView })),
+);
+const ScheduledCallsView = lazy(() =>
+  import("../scheduled/ScheduledCallsView").then((module) => ({
+    default: module.ScheduledCallsView,
+  })),
+);
+const TranscriptsView = lazy(() =>
+  import("../transcripts/TranscriptsView").then((module) => ({
+    default: module.TranscriptsView,
+  })),
+);
+const InviteGuestDialog = lazy(() =>
+  import("../voice/InviteGuestDialog").then((module) => ({ default: module.InviteGuestDialog })),
+);
+const GuestLobbyPrompt = lazy(() =>
+  import("../voice/GuestLobbyPrompt").then((module) => ({ default: module.GuestLobbyPrompt })),
 );
 const CallStage = lazy(() =>
   import("../voice/CallStage").then((module) => ({ default: module.CallStage })),
@@ -246,7 +264,9 @@ function ChatViewContent({
     () => readLocal(lastChannelKey) ?? undefined,
   );
   const [mobilePane, setMobilePane] = useState<"list" | "chat">("list");
-  const [mainView, setMainView] = useState<"chat" | "threads" | "kanban" | "notes">("chat");
+  const [mainView, setMainView] = useState<
+    "chat" | "threads" | "kanban" | "notes" | "scheduled" | "transcripts"
+  >("chat");
   const [adminOpen, setAdminOpen] = useState(false);
   const [newConversationOpen, setNewConversationOpen] = useState(false);
   const [createChannelOpen, setCreateChannelOpen] = useState(false);
@@ -396,7 +416,8 @@ function ChatViewContent({
     editChannelModal !== undefined ||
     adminOpen ||
     mainView === "kanban" ||
-    mainView === "notes";
+    mainView === "notes" ||
+    mainView === "scheduled";
   // Everyone, page by page: an admin must be able to reach every member.
   const rosterPages = useMemberPages(rosterOpen, MEMBER_ROSTER_PAGE, true);
   const rosterRows = rosterPages.rows;
@@ -609,11 +630,24 @@ function ChatViewContent({
     return map;
   }, [directory]);
 
+  // Guests are not in the member directory: their name rides on the roster row.
+  const guestNames = useMemo(() => {
+    const names = new Map<string, string>();
+    for (const call of [voice.call, ...voice.activeCalls]) {
+      for (const participant of call?.participants ?? []) {
+        if (participant.isGuest === true) {
+          names.set(participant.userId, participant.displayName ?? "Guest");
+        }
+      }
+    }
+    return names;
+  }, [voice.call, voice.activeCalls]);
   const callIdentity = useMemo<CallIdentity>(
     () => ({
-      nameOf: (id: string) => (id === ownUserId ? ownName : (memberNames.get(id) ?? "Member")),
+      nameOf: (id: string) =>
+        id === ownUserId ? ownName : (guestNames.get(id) ?? memberNames.get(id) ?? "Member"),
     }),
-    [ownUserId, ownName, memberNames],
+    [ownUserId, ownName, memberNames, guestNames],
   );
 
   const presenceByUser = useMemo(
@@ -1421,7 +1455,12 @@ function ChatViewContent({
   const rightPanel =
     threadRoot !== undefined && channel !== undefined ? "thread" : membersOpen ? "members" : null;
   const callTitle =
-    voice.call !== null ? (titles.get(voice.call.channelId) ?? channel?.name ?? "") : "";
+    voice.call !== null
+      ? ((voice.call.channelId !== null ? titles.get(voice.call.channelId) : undefined) ??
+        (voice.call.channelId === null ? voice.scheduledTitle?.title : undefined) ??
+        channel?.name ??
+        "")
+      : "";
   const incomingCall = voice.incoming[0];
   // Shareable links need the workspace origin, which `ProfileProvider` records
   // after mount. Until then the sharing actions are hidden rather than building
@@ -1512,6 +1551,28 @@ function ChatViewContent({
                 ? {
                     onOpenNotes: () => {
                       setMainView("notes");
+                      setMobilePane("chat");
+                      setThreadRoot(undefined);
+                      setAdminOpen(false);
+                      setUserSettingsOpen(false);
+                    },
+                  }
+                : {})}
+              {...(canViewScheduledCalls(permissions, voice.addons.scheduledCalls)
+                ? {
+                    onOpenScheduled: () => {
+                      setMainView("scheduled");
+                      setMobilePane("chat");
+                      setThreadRoot(undefined);
+                      setAdminOpen(false);
+                      setUserSettingsOpen(false);
+                    },
+                  }
+                : {})}
+              {...(canViewTranscripts(permissions, voice.addons.transcription)
+                ? {
+                    onOpenTranscripts: () => {
+                      setMainView("transcripts");
                       setMobilePane("chat");
                       setThreadRoot(undefined);
                       setAdminOpen(false);
@@ -1756,6 +1817,35 @@ function ChatViewContent({
               }}
             />
           </Suspense>
+        ) : mainView === "scheduled" &&
+          canViewScheduledCalls(permissions, voice.addons.scheduledCalls) ? (
+          <Suspense fallback={<SurfaceFallback />}>
+            <ScheduledCallsView
+              ownUserId={ownUserId}
+              permissions={permissions}
+              members={roster}
+              roles={admin.roleViews}
+              channels={channels}
+              titles={titles}
+              guestCallsEnabled={voice.addons.guestCalls}
+              onBack={() => {
+                setMainView("chat");
+                setMobilePane("list");
+              }}
+            />
+          </Suspense>
+        ) : mainView === "transcripts" &&
+          canViewTranscripts(permissions, voice.addons.transcription) ? (
+          <Suspense fallback={<SurfaceFallback />}>
+            <TranscriptsView
+              permissions={permissions}
+              titles={titles}
+              onBack={() => {
+                setMainView("chat");
+                setMobilePane("list");
+              }}
+            />
+          </Suspense>
         ) : (
           <section
             className={cn(
@@ -1860,6 +1950,8 @@ function ChatViewContent({
           !adminView &&
           mainView !== "kanban" &&
           mainView !== "notes" &&
+          mainView !== "scheduled" &&
+          mainView !== "transcripts" &&
           !userSettingsOpen &&
           mainView === "chat" && (
             <div className="fixed inset-y-2.5 right-2.5 z-30 flex lg:static lg:z-auto">
@@ -1977,7 +2069,10 @@ function ChatViewContent({
         {incomingCall !== undefined && (
           <IncomingCallModal
             call={incomingCall}
-            title={titles.get(incomingCall.channelId) ?? ""}
+            title={
+              (incomingCall.channelId !== null ? titles.get(incomingCall.channelId) : undefined) ??
+              ""
+            }
             identity={callIdentity}
           />
         )}
@@ -2013,6 +2108,16 @@ function ChatViewContent({
           </Suspense>
         )}
         <CallPictureInPicture title={callTitle} identity={callIdentity} />
+        {voice.call !== null && voice.addons.guestCalls && (
+          <Suspense fallback={null}>
+            <GuestLobbyPrompt />
+          </Suspense>
+        )}
+        {voice.inviteGuestOpen && voice.call !== null && (
+          <Suspense fallback={null}>
+            <InviteGuestDialog />
+          </Suspense>
+        )}
 
         {searchOpen && (
           <SearchPanel

@@ -1,3 +1,7 @@
+// First import on purpose: it lifts a guest link token out of the address bar
+// before the router (or anything else, including the debug log) can read, log
+// or store the fragment.
+import "./lib/guest/early-fragment";
 import "./lib/debug-log";
 import { webLocalStorageStore } from "@aulora/core";
 import { RouterProvider } from "@tanstack/react-router";

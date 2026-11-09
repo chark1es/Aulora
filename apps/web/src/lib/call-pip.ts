@@ -79,6 +79,11 @@ export interface PipCallState {
    * parses (as `null`).
    */
   readonly aloneDeadline: number | null;
+  /**
+   * The call is being transcribed, so the window shows the same indicator as
+   * the main one. Optional on the wire so an older main window still parses.
+   */
+  readonly transcribing?: boolean;
 }
 
 /** A control press the PiP window can send to the call. */
@@ -95,6 +100,7 @@ export interface PipStateInput {
     readonly kind: CallKind;
     readonly startedAt: number;
     readonly aloneDeadline?: number | null;
+    readonly transcribing?: boolean;
     readonly participants: readonly CallParticipantView[];
   } | null;
   readonly local: VoiceLocalState;
@@ -148,6 +154,7 @@ export function buildPipState(input: PipStateInput): PipCallState | null {
     mediaKind: input.mediaKind ?? "none",
     speakerName: input.speakerName ?? "",
     aloneDeadline: call.aloneDeadline ?? null,
+    ...(call.transcribing === true ? { transcribing: true } : {}),
   };
 }
 
@@ -222,6 +229,7 @@ export function parsePipState(value: unknown): PipCallState | null {
       typeof state.aloneDeadline === "number" && Number.isFinite(state.aloneDeadline)
         ? state.aloneDeadline
         : null,
+    ...(state.transcribing === true ? { transcribing: true } : {}),
   };
 }
 

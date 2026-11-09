@@ -2,13 +2,17 @@
   "version": 1,
   "tolerance": 0.1,
   "chunks": {
+    "assets/AddonBoundary.js": {
+      "raw": 1088,
+      "gzip": 640
+    },
     "assets/AdminPanel.css": {
       "raw": 1280,
       "gzip": 576
     },
     "assets/AdminPanel.js": {
-      "raw": 220544,
-      "gzip": 57728
+      "raw": 236288,
+      "gzip": 62144
     },
     "assets/api.js": {
       "raw": 128,
@@ -18,25 +22,25 @@
       "raw": 34496,
       "gzip": 13120
     },
+    "assets/call-addons-access.js": {
+      "raw": 896,
+      "gzip": 448
+    },
     "assets/CallAloneNotice.js": {
       "raw": 1600,
       "gzip": 896
     },
     "assets/CallDock.js": {
-      "raw": 2304,
+      "raw": 2368,
       "gzip": 1216
     },
-    "assets/CallParticipant.js": {
-      "raw": 107520,
-      "gzip": 33024
-    },
     "assets/CallPipWindow.js": {
-      "raw": 7872,
+      "raw": 7936,
       "gzip": 2944
     },
     "assets/CallStage.js": {
-      "raw": 3904,
-      "gzip": 1600
+      "raw": 4096,
+      "gzip": 1664
     },
     "assets/convex.js": {
       "raw": 83072,
@@ -47,35 +51,47 @@
       "gzip": 2496
     },
     "assets/display-picker.js": {
-      "raw": 10752,
-      "gzip": 4224
+      "raw": 8512,
+      "gzip": 3264
     },
     "assets/DisplaySourcePicker.js": {
-      "raw": 6336,
-      "gzip": 2240
+      "raw": 6400,
+      "gzip": 2304
     },
     "assets/dist.js": {
       "raw": 1536,
       "gzip": 576
     },
+    "assets/GuestCallRoute.js": {
+      "raw": 25216,
+      "gzip": 8704
+    },
+    "assets/GuestLobbyPrompt.js": {
+      "raw": 4096,
+      "gzip": 1664
+    },
     "assets/hooks.js": {
-      "raw": 11456,
-      "gzip": 4352
+      "raw": 6272,
+      "gzip": 2496
     },
     "assets/Icon.js": {
       "raw": 41600,
       "gzip": 13824
     },
     "assets/index.css": {
-      "raw": 99392,
-      "gzip": 17344
+      "raw": 100992,
+      "gzip": 17600
     },
     "assets/index.js": {
-      "raw": 108096,
-      "gzip": 35520
+      "raw": 109632,
+      "gzip": 36160
+    },
+    "assets/InviteGuestDialog.js": {
+      "raw": 6400,
+      "gzip": 2752
     },
     "assets/KanbanView.js": {
-      "raw": 94528,
+      "raw": 94592,
       "gzip": 25408
     },
     "assets/livekit-client.esm.js": {
@@ -83,32 +99,40 @@
       "gzip": 161408
     },
     "assets/Modal.js": {
-      "raw": 2688,
+      "raw": 2752,
       "gzip": 1280
     },
     "assets/NotesView.js": {
-      "raw": 62976,
-      "gzip": 16896
+      "raw": 63104,
+      "gzip": 16960
     },
     "assets/oauth-start.js": {
       "raw": 7808,
       "gzip": 3008
     },
+    "assets/pcm-capture.worklet.js": {
+      "raw": 2944,
+      "gzip": 1280
+    },
     "assets/permissions.js": {
-      "raw": 2624,
-      "gzip": 1088
+      "raw": 2816,
+      "gzip": 1216
     },
     "assets/PictureInPictureButton.js": {
       "raw": 704,
       "gzip": 512
+    },
+    "assets/pip-loopback.js": {
+      "raw": 7552,
+      "gzip": 2944
     },
     "assets/pip-ticker.worker.js": {
       "raw": 128,
       "gzip": 128
     },
     "assets/ProfileSession.js": {
-      "raw": 332992,
-      "gzip": 94208
+      "raw": 330112,
+      "gzip": 93440
     },
     "assets/react.js": {
       "raw": 240640,
@@ -134,6 +158,10 @@
       "raw": 832,
       "gzip": 512
     },
+    "assets/ScheduledCallsView.js": {
+      "raw": 18688,
+      "gzip": 6592
+    },
     "assets/SearchInput.js": {
       "raw": 1792,
       "gzip": 896
@@ -147,8 +175,12 @@
       "gzip": 2752
     },
     "assets/SignInScreen.js": {
-      "raw": 23104,
+      "raw": 23168,
       "gzip": 9280
+    },
+    "assets/Switch.js": {
+      "raw": 2304,
+      "gzip": 1088
     },
     "assets/tanstack.js": {
       "raw": 81600,
@@ -157,6 +189,38 @@
     "assets/Textarea.js": {
       "raw": 2944,
       "gzip": 1280
+    },
+    "assets/transcription.js": {
+      "raw": 512,
+      "gzip": 384
+    },
+    "assets/TranscriptionNoticeView.js": {
+      "raw": 107968,
+      "gzip": 33408
+    },
+    "assets/TranscriptionOrbCanvas.js": {
+      "raw": 28352,
+      "gzip": 11648
+    },
+    "assets/TranscriptsView.js": {
+      "raw": 15232,
+      "gzip": 4864
+    },
+    "assets/use-call-addons.js": {
+      "raw": 3008,
+      "gzip": 1472
+    },
+    "assets/use-now.js": {
+      "raw": 384,
+      "gzip": 256
+    },
+    "assets/useClipboardCopy.js": {
+      "raw": 384,
+      "gzip": 320
+    },
+    "assets/usePrefersReducedMotion.js": {
+      "raw": 576,
+      "gzip": 384
     },
     "assets/vision_bundle.js": {
       "raw": 169664,
@@ -171,8 +235,12 @@
       "gzip": 4354304
     },
     "assets/VoiceChannelView.js": {
-      "raw": 5888,
-      "gzip": 2112
+      "raw": 6080,
+      "gzip": 2240
+    },
+    "assets/VoiceProvider.js": {
+      "raw": 24576,
+      "gzip": 8704
     },
     "assets/workletProcessor.js": {
       "raw": 72192,
@@ -188,12 +256,12 @@
     }
   },
   "initial": {
-    "raw": 572800,
-    "gzip": 170176
+    "raw": 576512,
+    "gzip": 171456
   },
   "total": {
-    "raw": 18343552,
-    "gzip": 5630592
+    "raw": 18495104,
+    "gzip": 5686336
   },
   "lazyOnly": [
     {

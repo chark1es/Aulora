@@ -5,6 +5,7 @@ import { action, internalQuery } from "./_generated/server";
 import { requireAuth } from "./lib/auth";
 import { assertClientId, findParticipant, heldByOtherDevice, loadVoicePolicy } from "./lib/calls";
 import { requireChannelAccess } from "./lib/channels";
+import { requireWorkspaceContext } from "./lib/permissions";
 import {
   readSfuConfig,
   SFU_CALL_TOKEN_TTL_SECONDS,
@@ -27,7 +28,10 @@ export const grant = internalQuery({
     if (call === null || call.status === "ended") {
       throw new ConvexError("This call has ended");
     }
-    const { permissions } = await requireChannelAccess(ctx, call.channelId, Permission.Connect);
+    const { permissions } =
+      call.channelId === undefined
+        ? await requireWorkspaceContext(ctx, Permission.Connect)
+        : await requireChannelAccess(ctx, call.channelId, Permission.Connect);
     const participant = await findParticipant(ctx, call._id, userId);
     if (participant === null || heldByOtherDevice(participant, assertClientId(args.clientId))) {
       throw new ConvexError("You are not in this call");

@@ -176,6 +176,8 @@ write_env() {
   # Generate the bot runner token now so Compose has it when it first creates the
   # runner; `setup` keeps an existing value instead of generating its own.
   env_set BOT_RUNNER_TOKEN "$(random_token)" "$ENV_FILE"
+  # Optional transcription engine; Compose needs the token at first start.
+  env_set TRANSCRIBER_TOKEN "$(random_token)" "$ENV_FILE"
   env_set INSTANCE_NAME "$INSTANCE_NAME" "$ENV_FILE"
   env_set WORKSPACE_NAME "$WORKSPACE_NAME" "$ENV_FILE"
   env_set OWNER_EMAIL "$OWNER_EMAIL" "$ENV_FILE"

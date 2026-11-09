@@ -3,7 +3,7 @@ import { type CallParticipantView, sortParticipants, type VoiceDeviceSettings } 
 import { cn, Icon } from "@aulora/ui-web";
 import { useEffect, useMemo, useRef } from "react";
 import { PersonAvatar } from "../chat/member-avatars";
-import { type CallIdentity, shouldMirror } from "./identity";
+import { type CallIdentity, participantName, shouldMirror } from "./identity";
 
 /**
  * Renders a video track or stream. Muted so the hidden `RemoteAudio` elements
@@ -147,6 +147,7 @@ export function ParticipantTile(props: ParticipantTileProps) {
         isSelf={isSelf}
         name={name}
         isSpeaking={isSpeaking}
+        isGuest={participant.isGuest === true}
       />
 
       {/* Drawn inside the tile, above the media. An outer shadow is clipped by the
@@ -224,11 +225,13 @@ function ParticipantChrome({
   isSelf,
   name,
   isSpeaking,
+  isGuest,
 }: {
   readonly participant: CallParticipantView;
   readonly isSelf: boolean;
   readonly name: string;
   readonly isSpeaking: boolean;
+  readonly isGuest: boolean;
 }) {
   return (
     <div className="pointer-events-none absolute inset-x-0 bottom-0 flex items-center gap-1.5 bg-gradient-to-t from-black/65 via-black/25 to-transparent px-2.5 pb-1.5 pt-5">
@@ -250,6 +253,14 @@ function ParticipantChrome({
         {name}
         {isSelf ? " (you)" : ""}
       </span>
+      {isGuest && (
+        <span
+          title="Guest: joined from a link and was admitted to this call"
+          className="shrink-0 rounded-full bg-white/20 px-1.5 py-0.5 text-[10px] font-semibold text-white"
+        >
+          Guest
+        </span>
+      )}
       {isSelf && isSpeaking && !participant.muted && (
         <span className="shrink-0 rounded-full bg-secondary/90 px-1.5 py-0.5 text-[10px] font-semibold text-white">
           Speaking
@@ -401,7 +412,7 @@ function Tile({
     <ParticipantTile
       participant={participant}
       isSelf={participant.userId === context.localUserId}
-      name={context.identity.nameOf(participant.userId)}
+      name={participantName(participant, context.identity)}
       stream={streamFor(participant, context)}
       localVideoTrack={context.localVideoTrack}
       settings={context.settings}
