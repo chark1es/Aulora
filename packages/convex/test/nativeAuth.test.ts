@@ -329,7 +329,9 @@ async function finishWithJar(
   return response;
 }
 
-describe("native OAuth HTTP routes", () => {
+// The first route test cold-loads Better Auth and the Convex test harness, which
+// can exceed the 5 s default on a loaded CI runner.
+describe("native OAuth HTTP routes", { timeout: 30_000 }, () => {
   it("builds provider and finish URLs without duplicating /api/auth", async () => {
     vi.stubEnv("GITHUB_CLIENT_ID", "github-client");
     vi.stubEnv("GITHUB_CLIENT_SECRET", "github-secret");
@@ -910,7 +912,7 @@ describe("native OAuth HTTP routes", () => {
   });
 });
 
-describe("native auth rate limits", () => {
+describe("native auth rate limits", { timeout: 30_000 }, () => {
   it("keeps a bounded key space and applies a global unauthenticated ceiling", async () => {
     const t = newTestWithAccounts();
     for (let index = 0; index < 400; index += 1) {
