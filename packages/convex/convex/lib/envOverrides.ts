@@ -83,7 +83,10 @@ export function envVarSource(
   overrideKeys: ReadonlySet<string>,
   lookup: EnvLookup,
 ): EnvSource {
-  if (overrideKeys.has(key)) {
+  // A row for a key that is no longer overridable is ignored by
+  // `resolveEnvOverrides`, so reporting "ui" would claim a stale value is
+  // effective. Only an allowlisted key with a row is a UI override.
+  if (overrideKeys.has(key) && isOverridableEnvVar(key)) {
     return "ui";
   }
   return isEnvValueSet(lookup, key) ? "environment" : "unset";

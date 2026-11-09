@@ -147,7 +147,7 @@ describe("member view helpers", () => {
     const entry = memberViewToEntry(
       member({ userId: "u1", accountName: "Ada", roleIds: [EVERYONE_ROLE_ID, "Moderator"] }),
       roles,
-      "owner",
+      ["owner"],
       "Member",
     );
     expect(entry).toEqual({

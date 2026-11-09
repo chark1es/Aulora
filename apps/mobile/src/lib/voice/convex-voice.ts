@@ -78,6 +78,10 @@ export function convexVoicePort(client: ConvexReactClient, clientId: string): Vo
       await client.mutation(api.calls.heartbeat, { callId: args.callId as never, clientId });
       return null;
     },
+    async stayInCall(args) {
+      await client.mutation(api.calls.stay, { callId: args.callId as never, clientId });
+      return null;
+    },
     async sendSignal(args) {
       await client.mutation(api.calls.signal, {
         callId: args.callId as never,

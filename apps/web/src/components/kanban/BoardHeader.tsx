@@ -1,4 +1,4 @@
-import { Button, cn, Icon, IconButton } from "@aulora/ui-web";
+import { Button, cn, EmptyState, Icon, IconButton } from "@aulora/ui-web";
 import { below } from "./board-logic";
 import { openBoardMenu } from "./board-menus";
 import { AvatarStack, menuRow, popoverPanel, usePopover } from "./controls";
@@ -221,33 +221,33 @@ function emptyMessage(ctl: BoardController): string {
 /** Shown when there is no board to open. */
 export function BoardEmpty({ ctl }: Props) {
   return (
-    <div className="flex flex-1 flex-col items-center justify-center gap-3 px-5 text-center">
-      <span className="flex h-14 w-14 items-center justify-center rounded-[16px] bg-accent-soft text-accent">
-        <Icon name="kanban" size={28} />
-      </span>
-      <h2 className="text-lg font-semibold">
-        {ctl.archivedBoards ? "No archived boards" : "Plan your next project"}
-      </h2>
-      <p className="max-w-md text-sm text-text-muted">{emptyMessage(ctl)}</p>
-      {ctl.archivedBoards && (
-        <Button
-          variant="secondary"
-          onClick={() => {
-            ctl.setArchivedBoards(false);
-          }}
-        >
-          Back to active boards
-        </Button>
-      )}
-      {!ctl.archivedBoards && ctl.canManage && (
-        <Button
-          onClick={() => {
-            ctl.setNewBoard(true);
-          }}
-        >
-          Create your first board
-        </Button>
-      )}
-    </div>
+    <EmptyState
+      className="px-5"
+      title={ctl.archivedBoards ? "No archived boards" : "Plan your next project"}
+      description={emptyMessage(ctl)}
+      action={
+        <>
+          {ctl.archivedBoards && (
+            <Button
+              variant="secondary"
+              onClick={() => {
+                ctl.setArchivedBoards(false);
+              }}
+            >
+              Back to active boards
+            </Button>
+          )}
+          {!ctl.archivedBoards && ctl.canManage && (
+            <Button
+              onClick={() => {
+                ctl.setNewBoard(true);
+              }}
+            >
+              Create your first board
+            </Button>
+          )}
+        </>
+      }
+    />
   );
 }

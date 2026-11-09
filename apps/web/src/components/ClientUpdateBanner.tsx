@@ -1,5 +1,5 @@
 /* eslint-disable no-unused-vars -- the base rule reports parameter names in type signatures; Biome checks real unused code */
-import { Button, Card, Icon, Text } from "@aulora/ui-web";
+import { Button, Card, Text } from "@aulora/ui-web";
 import { useState } from "react";
 import { isDesktop } from "../lib/desktop";
 import { type UpdatePhase, useDesktopUpdates } from "../providers/DesktopUpdateProvider";
@@ -124,25 +124,20 @@ function UpdateBannerCard(props: {
 
 function BannerHeader(props: { readonly badge: string | null; readonly status: string }) {
   return (
-    <div className="flex items-start gap-2.5">
-      <span className="mt-0.5 flex h-7 w-7 shrink-0 items-center justify-center rounded-full bg-accent-soft text-accent">
-        <Icon name="download" size={16} />
-      </span>
-      <div className="flex min-w-0 flex-1 flex-col gap-0.5">
-        <span className="flex flex-wrap items-center gap-2">
-          <Text size="sm" className="font-medium text-text">
-            Aulora update
-          </Text>
-          {props.badge !== null && (
-            <span className="rounded-full bg-surface-3 px-1.5 py-0.5 font-mono text-[10px] text-text-muted">
-              {props.badge}
-            </span>
-          )}
-        </span>
-        <Text size="xs" tone="muted" role="status" aria-live="polite">
-          {props.status}
+    <div className="flex min-w-0 flex-1 flex-col gap-0.5">
+      <span className="flex flex-wrap items-center gap-2">
+        <Text size="sm" className="font-medium text-text">
+          Aulora update
         </Text>
-      </div>
+        {props.badge !== null && (
+          <span className="rounded-full bg-surface-3 px-1.5 py-0.5 font-mono text-[10px] text-text-muted">
+            {props.badge}
+          </span>
+        )}
+      </span>
+      <Text size="xs" tone="muted" role="status" aria-live="polite">
+        {props.status}
+      </Text>
     </div>
   );
 }

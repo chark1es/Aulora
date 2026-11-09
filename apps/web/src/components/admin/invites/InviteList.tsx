@@ -1,6 +1,5 @@
 /* eslint-disable no-unused-vars -- the base rule reports parameter names in type signatures; Biome checks real unused code */
 import type { InviteKind } from "@aulora/core";
-import type { IconName } from "@aulora/tokens";
 import {
   Badge,
   type BadgeTone,
@@ -42,12 +41,6 @@ export interface InviteRow {
   readonly createdAt: number;
   readonly redemptions: readonly InviteRedemption[];
 }
-
-const KIND_ICONS = new Map<InviteKind, IconName>([
-  ["link", "link"],
-  ["email", "mail"],
-  ["code", "key"],
-]);
 
 const STATUS_TONES = new Map<InviteStatus, BadgeTone>([
   ["active", "accent"],
@@ -92,7 +85,6 @@ function InviteListEmpty({ filter }: { readonly filter: Filter }) {
     <li className="px-4 py-2">
       <EmptyState
         size="sm"
-        icon="link"
         title={active ? "No active invites" : "Nothing here yet"}
         description={
           active
@@ -207,9 +199,6 @@ function InviteItem({ invite, canDelete, onRevoke, onDelete }: InviteItemProps) 
   const active = invite.status === "active";
   return (
     <li className="group flex items-start gap-3 px-4 py-3" data-testid="invite-row">
-      <span className="mt-0.5 flex h-8 w-8 shrink-0 items-center justify-center rounded-[9px] bg-surface-3 text-text-muted">
-        <Icon name={KIND_ICONS.get(invite.kind) ?? "link"} size={15} />
-      </span>
       <div className="flex min-w-0 flex-1 flex-col gap-1">
         <div className="flex items-center gap-2">
           <span className="truncate text-[13px] font-medium text-text">

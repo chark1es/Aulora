@@ -19,7 +19,7 @@ describe("signup policy", () => {
     expect(emailDomainAllowed("no-domain", ["example.com"])).toBe(false);
   });
 
-  it("blocks creation only when signup is disabled or the domain is disallowed", () => {
+  it("blocks creation when signup is disabled or the domain is disallowed", () => {
     expect(signupBlocked(DEFAULT_SIGNUP_POLICY, "a@example.com")).toBe(false);
     expect(signupBlocked({ ...DEFAULT_SIGNUP_POLICY, signupEnabled: false }, "a@example.com")).toBe(
       true,
@@ -30,6 +30,15 @@ describe("signup policy", () => {
         "a@other.com",
       ),
     ).toBe(true);
+  });
+
+  it("denies public signup before a server/owner exists", () => {
+    expect(
+      signupBlocked({ ...DEFAULT_SIGNUP_POLICY, serverInitialized: false }, "operator@example.com"),
+    ).toBe(true);
+    expect(
+      signupBlocked({ ...DEFAULT_SIGNUP_POLICY, serverInitialized: true }, "a@example.com"),
+    ).toBe(false);
   });
 
   it("auto-attaches roles only when the workspace is not invite-only", () => {

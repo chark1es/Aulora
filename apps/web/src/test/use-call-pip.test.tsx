@@ -109,6 +109,7 @@ function setup(overrides: Partial<CallPipOptions> = {}) {
     toggleDeafen: vi.fn(),
     toggleCamera: vi.fn(),
     toggleScreen: vi.fn(),
+    stay: vi.fn(),
     hangUp: vi.fn(),
   };
   const initial: CallPipOptions = {

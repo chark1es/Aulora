@@ -32,6 +32,37 @@ describe("parseDeepLink", () => {
     });
   });
 
+  it("parses an OAuth return deep link and requires code and workspace", () => {
+    expect(
+      parseDeepLink(
+        "aulora://auth/callback?code=abc&server=https%3A%2F%2Fchat.acme.com&tx=tx-abcdefghijklmnopqrstuvwxyz0123456789",
+      ),
+    ).toEqual({
+      kind: "auth",
+      code: "abc",
+      server: "https://chat.acme.com",
+      tx: "tx-abcdefghijklmnopqrstuvwxyz0123456789",
+    });
+    expect(
+      parseDeepLink("aulora://auth/callback?code=abc&server=https%3A%2F%2Fchat.acme.com"),
+    ).toEqual({ kind: "auth", code: "abc", server: "https://chat.acme.com", tx: undefined });
+    expect(parseDeepLink("aulora://auth/callback?code=abc")).toBeNull();
+  });
+
+  it("parses an OAuth error return deep link with its workspace and transaction", () => {
+    expect(
+      parseDeepLink(
+        "aulora://auth/callback?error=auth_cancelled&server=https%3A%2F%2Fchat.acme.com&tx=tx-abcdefghijklmnopqrstuvwxyz0123456789",
+      ),
+    ).toEqual({
+      kind: "auth-error",
+      error: "auth_cancelled",
+      server: "https://chat.acme.com",
+      tx: "tx-abcdefghijklmnopqrstuvwxyz0123456789",
+    });
+    expect(parseDeepLink("aulora://auth/callback?error=auth_cancelled")).toBeNull();
+  });
+
   it("opens the connect screen with an empty server when none is given", () => {
     expect(parseDeepLink("aulora://connect")).toEqual({ kind: "connect", server: "" });
   });

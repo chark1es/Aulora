@@ -76,4 +76,12 @@ export const scales = {
   lineHeights,
   typography,
 } as const;
+export {
+  type BrandIcon,
+  type BrandIconPath,
+  brandIcons,
+  type ProviderBrand,
+  providerBrand,
+  providerButtonLabel,
+} from "./brands";
 export { ICON_NAMES, type IconName, iconPaths } from "./icons";

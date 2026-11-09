@@ -1,17 +1,17 @@
 /* eslint-disable no-unused-vars -- the base rule reports parameter names in type signatures; Biome checks real unused code */
 import type { ChannelView, MentionTarget, MessagePayload, RoleMentionTarget } from "@aulora/core";
-import { hasPermission, Permission } from "@aulora/core";
+import { dmPartnerId, hasPermission, Permission } from "@aulora/core";
 import { Icon } from "@aulora/ui-web";
-import { useCallback, useMemo } from "react";
+import { useCallback, useMemo, useState } from "react";
 import type { ChatRuntime } from "../../lib/chat-runtime";
 import type { ChannelSessionState } from "../../lib/use-channel";
 import type { ChatContextValue } from "../../providers/ChatProvider";
 import type { VoiceContextValue } from "../../providers/VoiceProvider";
-import { Composer } from "./Composer";
+import { Composer, type ComposerSeed } from "./Composer";
 import { ConversationHeader } from "./ConversationHeader";
 import { MessageList } from "./MessageList";
 import { PinnedMessagesPanel } from "./PinnedMessagesPanel";
-import type { PresenceStatus } from "./PresenceAvatar";
+import { GroupAvatar, PresenceAvatar, type PresenceStatus, presenceLabel } from "./PresenceAvatar";
 
 export interface ChannelMentionEntry {
   readonly channelId: string;
@@ -26,24 +26,144 @@ export interface CategoryMentionEntry {
 export interface ConversationStartProps {
   readonly channel: ChannelView;
   readonly title: string;
+  readonly ownUserId: string;
+  readonly memberNames: ReadonlyMap<string, string>;
+  readonly presenceOf: (userId: string) => PresenceStatus;
+  /** Whether the viewer may post here. */
+  readonly canSend: boolean;
+  /** Whether the viewer may start a voice call here. */
+  readonly canStartCall: boolean;
+  /** Places a first-message suggestion in the composer. */
+  readonly onSayHi: (text: string) => void;
+  readonly onStartCall: () => void;
+}
+
+function firstNameOf(name: string): string {
+  return name.trim().split(/\s+/)[0] ?? name;
+}
+
+function ConversationAction({
+  icon,
+  onClick,
+  children,
+}: {
+  readonly icon: "message" | "phone";
+  readonly onClick: () => void;
+  readonly children: string;
+}) {
+  return (
+    <button
+      type="button"
+      onClick={onClick}
+      className="inline-flex h-8 select-none items-center gap-1.5 rounded-full border border-border bg-surface-2 px-3 text-[12.5px] font-medium text-text transition hover:bg-surface-3 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent focus-visible:ring-offset-2 focus-visible:ring-offset-chat"
+    >
+      <Icon name={icon} size={15} className="text-accent" />
+      {children}
+    </button>
+  );
+}
+
+/**
+ * The opening of a direct or group conversation: the people in it, how they
+ * relate to the viewer, and a first action — not a generic "empty" glyph.
+ */
+function ConversationOpening(props: ConversationStartProps) {
+  const { channel, title, ownUserId } = props;
+  const isGroup = channel.kind === "group_dm";
+  const others = (channel.memberIds ?? []).filter((id) => id !== ownUserId);
+  const partner = isGroup ? undefined : dmPartnerId(channel, ownUserId);
+  const isSelf = !isGroup && partner === undefined && (channel.memberIds ?? []).length > 0;
+  const partnerName = partner !== undefined ? props.memberNames.get(partner) : undefined;
+  const firstName =
+    partnerName !== undefined && partnerName.trim().length > 0
+      ? firstNameOf(partnerName)
+      : undefined;
+  const status = partner !== undefined && !isSelf ? props.presenceOf(partner) : undefined;
+
+  const meta = isGroup
+    ? `${others.length + 1} ${others.length === 0 ? "person" : "people"} in this conversation`
+    : isSelf
+      ? "Just you"
+      : `${presenceLabel(status ?? "offline")} · Direct message`;
+
+  const body = isSelf
+    ? "A place for notes, links, and reminders to yourself."
+    : isGroup
+      ? props.canSend
+        ? "The first message is yours. Everyone here will see it."
+        : "This is the beginning of your group conversation."
+      : props.canSend
+        ? "The first message is yours."
+        : `This is the beginning of your conversation${firstName !== undefined ? ` with ${firstName}` : ""}.`;
+
+  const sayHi = isGroup
+    ? "Hey everyone 👋"
+    : firstName !== undefined
+      ? `Hey ${firstName} 👋`
+      : "Hey 👋";
+
+  return (
+    <div className="flex flex-1 items-center py-10">
+      <section className="w-full max-w-[34rem] animate-slide-up motion-reduce:animate-none">
+        <div className="flex items-start gap-4">
+          {isGroup ? (
+            <GroupAvatar userIds={others} size={64} />
+          ) : (
+            <PresenceAvatar
+              userId={partner ?? ownUserId}
+              size={64}
+              {...(isSelf || status === undefined ? {} : { status })}
+              ringClassName="ring-chat"
+            />
+          )}
+          <div className="min-w-0 pt-1">
+            <h3 className="break-words text-[22px] font-semibold leading-[1.2] tracking-[-0.02em] text-text sm:text-[26px]">
+              {title}
+            </h3>
+            <p className="mt-1 text-[12.5px] text-text-muted">{meta}</p>
+          </div>
+        </div>
+        <p className="mt-5 max-w-[52ch] text-sm leading-6 text-text-muted">{body}</p>
+        {!isSelf && (props.canSend || props.canStartCall) && (
+          <div className="mt-5 flex flex-wrap items-center gap-2">
+            {props.canSend && (
+              <ConversationAction
+                icon="message"
+                onClick={() => {
+                  props.onSayHi(sayHi);
+                }}
+              >
+                Say hi
+              </ConversationAction>
+            )}
+            {props.canStartCall && (
+              <ConversationAction icon="phone" onClick={props.onStartCall}>
+                Start a call
+              </ConversationAction>
+            )}
+          </div>
+        )}
+      </section>
+    </div>
+  );
 }
 
 /** The empty-state shown at the start of a fresh conversation or channel. */
-export function ConversationStart({ channel, title }: ConversationStartProps) {
+export function ConversationStart(props: ConversationStartProps) {
+  const { channel, title } = props;
   const isChannel = channel.kind === "text" || channel.kind === "announcement";
-  const icon = isChannel ? (channel.kind === "announcement" ? "announce" : "hash") : "message";
+  if (!isChannel) {
+    return <ConversationOpening {...props} />;
+  }
+  const icon = channel.kind === "announcement" ? "announce" : "hash";
   return (
     <div className="flex flex-1 flex-col items-center justify-center gap-3 py-16 text-center">
       <span className="flex h-12 w-12 items-center justify-center rounded-[10px] bg-accent-soft text-accent">
         <Icon name={icon} size={24} />
       </span>
-      <h3 className="text-xl font-semibold tracking-tight text-text">
-        {isChannel ? `Welcome to #${title}` : title}
-      </h3>
+      <h3 className="text-xl font-semibold tracking-tight text-text">Welcome to #{title}</h3>
       <p className="max-w-sm text-sm text-text-muted">
-        {isChannel
-          ? "This is the very beginning of the channel. Say hello."
-          : "This is the start of your conversation."}
+        This is the very beginning of the channel. Say hello.
       </p>
     </div>
   );
@@ -157,7 +277,7 @@ function ChannelHeader(props: ChannelPaneProps) {
 }
 
 /** The scrollable message timeline for a channel. */
-function ChannelTimeline(props: ChannelPaneProps) {
+function ChannelTimeline(props: ChannelPaneProps & { readonly onSayHi: (text: string) => void }) {
   const { runtime, channel, chat } = props;
   // Stable callbacks and derived arrays so the memoized timeline rows can skip
   // re-rendering when only unrelated state (typing, presence, voice level) changes.
@@ -259,7 +379,24 @@ function ChannelTimeline(props: ChannelPaneProps) {
       onDelete={onDelete}
       onPinToggle={onPinToggle}
       onReact={onReact}
-      emptyState={<ConversationStart channel={channel} title={props.title} />}
+      emptyState={
+        <ConversationStart
+          channel={channel}
+          title={props.title}
+          ownUserId={props.ownUserId}
+          memberNames={props.memberNames}
+          presenceOf={props.presenceOf}
+          canSend={props.canSend}
+          canStartCall={
+            props.voice.canConnect && hasPermission(props.channelPermissions, Permission.Connect)
+          }
+          onSayHi={props.onSayHi}
+          onStartCall={() => {
+            props.onSetNewConversationOpen(false);
+            void props.voice.startCall(channel.id, "voice");
+          }}
+        />
+      }
     />
   );
 }
@@ -281,7 +418,9 @@ function replyPreviewOf(props: ChannelPaneProps): { authorName: string; preview:
 }
 
 /** The composer (or a read-only notice) beneath a channel timeline. */
-function ChannelComposer(props: ChannelPaneProps) {
+function ChannelComposer(
+  props: ChannelPaneProps & { readonly composerSeed: ComposerSeed | undefined },
+) {
   const { channel } = props;
   if (!props.canSend) {
     return (
@@ -294,6 +433,7 @@ function ChannelComposer(props: ChannelPaneProps) {
     <Composer
       channelId={channel.id}
       draftKey={channel.id}
+      {...(props.composerSeed !== undefined ? { seedText: props.composerSeed } : {})}
       members={props.mentionMembers}
       {...(props.searchMembers !== undefined ? { searchMembers: props.searchMembers } : {})}
       roles={props.roles}
@@ -324,10 +464,19 @@ function ChannelComposer(props: ChannelPaneProps) {
 
 /** Renders the header, timeline, optional pin panel and composer for a channel. */
 export function ChannelPane(props: ChannelPaneProps) {
+  const [composerSeed, setComposerSeed] = useState<ComposerSeed | undefined>(undefined);
+  const onSayHi = useCallback(
+    (text: string) => {
+      setComposerSeed((current) => ({ token: (current?.token ?? 0) + 1, text }));
+      props.onSetNewConversationOpen(false);
+    },
+    [props.onSetNewConversationOpen],
+  );
+
   return (
     <>
       <ChannelHeader {...props} />
-      <ChannelTimeline {...props} />
+      <ChannelTimeline {...props} onSayHi={onSayHi} />
       {props.sendError !== null && (
         <div
           role="alert"
@@ -345,7 +494,7 @@ export function ChannelPane(props: ChannelPaneProps) {
           </button>
         </div>
       )}
-      <ChannelComposer {...props} />
+      <ChannelComposer {...props} composerSeed={composerSeed} />
     </>
   );
 }

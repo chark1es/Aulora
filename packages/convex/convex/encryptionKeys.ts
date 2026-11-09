@@ -127,6 +127,31 @@ export const rotate = internalAction({
 });
 
 /**
+ * Idempotent setup/key-version repair: primes the master key (remote EKM only)
+ * and records the configured version as active. The setup action calls this
+ * after the owner claim, best effort, and the setup container retries it on
+ * every deploy so a transient key-manager failure does not leave the instance
+ * without an active key-version row.
+ */
+export const ensureRegistered = internalAction({
+  args: {},
+  handler: async (ctx) => {
+    const env = process.env;
+    const settings = getEkmSettings(env);
+    if (settings.provider !== "local") {
+      await primeMasterKey({ env });
+    }
+    await ctx.runMutation(internal.encryptionKeys.register, {
+      keyVersion: settings.keyVersion,
+      provider: settings.provider,
+      kekId: settings.kekId,
+      status: "active",
+    });
+    return null;
+  },
+});
+
+/**
  * Fetches the current master key for remote providers. Remote EKM unwraps need
  * a network round trip, so a cron keeps the key cached for queries/mutations.
  * The local provider derives its key on demand and is a no-op here.

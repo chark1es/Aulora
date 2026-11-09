@@ -31,10 +31,9 @@ function BotEditorPane({ model }: { readonly model: BotFilesModel }) {
     return (
       <EmptyState
         size="sm"
-        icon="file"
         title="No file selected"
         description="Pick a file on the left, or add one."
-        className="flex-1"
+        className="flex-1 px-4"
       />
     );
   }

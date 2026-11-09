@@ -3,7 +3,7 @@ import { Component, type ReactNode } from "react";
 import { BoardColumns } from "./BoardColumns";
 import { BoardDialogs } from "./BoardDialogs";
 import { BoardEmpty, BoardError, BoardHeader } from "./BoardHeader";
-import { ArchivedBanner, BoardToolbar } from "./BoardToolbar";
+import { ArchivedBanner, BoardToolbar, ReadOnlyBanner } from "./BoardToolbar";
 import { type BoardController, type KanbanProps, useBoard } from "./use-board";
 
 interface BoundaryProps {
@@ -59,6 +59,7 @@ function BoardBody({ ctl }: { ctl: BoardController }) {
   return (
     <>
       <BoardToolbar ctl={ctl} board={board} />
+      <ReadOnlyBanner ctl={ctl} board={board} />
       <ArchivedBanner ctl={ctl} board={board} />
       {ctl.cards === undefined ? (
         <Loading label="Loading cards" />

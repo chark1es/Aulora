@@ -1,6 +1,7 @@
 import { callKindLabel } from "@aulora/core";
 import { cn, Icon } from "@aulora/ui-web";
 import { useVoice } from "../../providers/VoiceProvider";
+import { CallAloneNotice } from "./CallAloneNotice";
 import { CallControls } from "./CallControls";
 import { CallMediaNotice } from "./CallMediaNotice";
 import { CallGrid } from "./CallParticipant";
@@ -38,9 +39,11 @@ export function CallCompactView({
   return (
     <div className="flex flex-col gap-2 p-2" style={{ height: floating ? "100%" : DOCK_HEIGHT }}>
       <div className="flex items-center gap-2 px-0.5">
-        <span className="flex h-6 w-6 shrink-0 items-center justify-center rounded-[6px] bg-accent-soft text-accent">
-          <Icon name={call.kind === "video" ? "video" : "volume"} size={14} />
-        </span>
+        <Icon
+          name={call.kind === "video" ? "video" : "volume"}
+          size={15}
+          className="shrink-0 text-text-muted"
+        />
         <span className="min-w-0 flex-1 truncate text-[12px] font-semibold text-text">
           {title}
           <span className="sr-only"> ({callKindLabel(call.kind)})</span>
@@ -66,6 +69,7 @@ export function CallCompactView({
       </div>
 
       <CallMediaNotice compact />
+      <CallAloneNotice compact />
 
       <div className="flex items-center justify-center pb-0.5">
         <CompactControls />

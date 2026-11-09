@@ -126,6 +126,23 @@ export function BoardToolbar({ ctl, board }: Props) {
   );
 }
 
+/** Explains that the viewer may read the board but not change it. */
+export function ReadOnlyBanner({ ctl, board }: Props) {
+  if (board.archived || ctl.canEdit) return null;
+  return (
+    <div
+      role="status"
+      className="flex shrink-0 animate-fade-in items-center gap-3 border-b border-border bg-surface-2 px-4 py-2 text-[13px] text-text-muted"
+    >
+      <Icon name="eye" size={14} />
+      <p className="flex-1">
+        You have view-only access to this board. Ask a workspace admin to grant you the Edit Kanban
+        permission to add, move or change cards.
+      </p>
+    </div>
+  );
+}
+
 /** Says why the board cannot be changed, with the way back. */
 export function ArchivedBanner({ ctl, board }: Props) {
   if (!board.archived && !ctl.archivedCards) return null;

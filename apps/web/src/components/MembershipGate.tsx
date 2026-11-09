@@ -2,6 +2,8 @@ import { Spinner } from "@aulora/ui-web";
 import { useQuery } from "convex/react";
 import type { ReactNode } from "react";
 import { api } from "../../../../packages/convex/convex/_generated/api";
+import { useRemountLog } from "../lib/remount-debug";
+import { useLastDefined } from "../lib/use-last-defined";
 import { JoinGate } from "./JoinGate";
 
 export interface MembershipGateProps {
@@ -23,7 +25,8 @@ export function MembershipGate({
   onSignOut,
   children,
 }: MembershipGateProps) {
-  const me = useQuery(api.members.me, {});
+  useRemountLog("MembershipGate");
+  const me = useLastDefined(useQuery(api.members.me, {}));
   if (me === undefined) {
     return (
       <div className="pane flex flex-1 flex-col items-center justify-center gap-3">

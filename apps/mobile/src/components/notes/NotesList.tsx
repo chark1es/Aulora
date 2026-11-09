@@ -353,7 +353,6 @@ function NotesEmpty({ ctl }: { readonly ctl: NotesController }) {
       : "Write your first note";
   return (
     <EmptyState
-      icon="note"
       title={heading}
       message={
         ctl.filters.archived

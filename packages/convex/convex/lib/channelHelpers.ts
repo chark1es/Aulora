@@ -12,6 +12,7 @@ import type { MutationCtx } from "../_generated/server";
 import type { requireChannelAccess } from "./channels";
 import { addChannelMember, computeDmKey } from "./channels";
 import { adjustInstanceCounters } from "./instance";
+import { ownerIdsOf } from "./owners";
 import { categoryOverridesFor } from "./permissions";
 import { openContentOptional } from "./sealed";
 import type { Nullable } from "./types";
@@ -277,7 +278,7 @@ export async function resolveVisibleMemberIds(
   channel: Doc<"channels">,
 ): Promise<string[]> {
   const server = await ctx.db.query("server").first();
-  const ownerId = server?.ownerId ?? null;
+  const ownerIds = new Set(ownerIdsOf(server));
   const members = await ctx.db.query("members").collect();
   const roles = (await ctx.db.query("roles").collect()).map((role) => {
     const id = role.key ?? role._id;
@@ -327,7 +328,7 @@ export async function resolveVisibleMemberIds(
     if (isBotUserId(member.userId)) {
       continue;
     }
-    const permissions = resolve(member.userId, member.roleIds, member.userId === ownerId);
+    const permissions = resolve(member.userId, member.roleIds, ownerIds.has(member.userId));
     if (hasPermission(permissions, Permission.ViewChannel)) {
       visible.push(member.userId);
     }

@@ -10,6 +10,7 @@ export const AUTH_ENV_VARS: readonly EnvVarDefinition[] = [
   {
     key: "GITHUB_CLIENT_ID",
     group: "auth-providers",
+    tier: "overridable",
     label: "GitHub client id",
     description: "OAuth client id from the GitHub app used for sign-in.",
     type: "string",
@@ -19,6 +20,7 @@ export const AUTH_ENV_VARS: readonly EnvVarDefinition[] = [
   {
     key: "GITHUB_CLIENT_SECRET",
     group: "auth-providers",
+    tier: "overridable",
     label: "GitHub client secret",
     description: "OAuth client secret for GitHub. Write-only: it is never shown again.",
     type: "string",
@@ -28,6 +30,7 @@ export const AUTH_ENV_VARS: readonly EnvVarDefinition[] = [
   {
     key: "GOOGLE_CLIENT_ID",
     group: "auth-providers",
+    tier: "overridable",
     label: "Google client id",
     description: "OAuth client id from the Google Cloud project used for sign-in.",
     type: "string",
@@ -37,6 +40,7 @@ export const AUTH_ENV_VARS: readonly EnvVarDefinition[] = [
   {
     key: "GOOGLE_CLIENT_SECRET",
     group: "auth-providers",
+    tier: "overridable",
     label: "Google client secret",
     description: "OAuth client secret for Google. Write-only: it is never shown again.",
     type: "string",
@@ -46,6 +50,7 @@ export const AUTH_ENV_VARS: readonly EnvVarDefinition[] = [
   {
     key: "MICROSOFT_CLIENT_ID",
     group: "auth-providers",
+    tier: "overridable",
     label: "Microsoft client id",
     description: "OAuth client id from the Microsoft Entra app used for sign-in.",
     type: "string",
@@ -55,6 +60,7 @@ export const AUTH_ENV_VARS: readonly EnvVarDefinition[] = [
   {
     key: "MICROSOFT_CLIENT_SECRET",
     group: "auth-providers",
+    tier: "overridable",
     label: "Microsoft client secret",
     description: "OAuth client secret for Microsoft. Write-only: it is never shown again.",
     type: "string",
@@ -64,6 +70,7 @@ export const AUTH_ENV_VARS: readonly EnvVarDefinition[] = [
   {
     key: "APPLE_CLIENT_ID",
     group: "auth-providers",
+    tier: "overridable",
     label: "Apple client id",
     description: "Service id from the Apple developer configuration used for sign-in.",
     type: "string",
@@ -73,6 +80,7 @@ export const AUTH_ENV_VARS: readonly EnvVarDefinition[] = [
   {
     key: "APPLE_CLIENT_SECRET",
     group: "auth-providers",
+    tier: "overridable",
     label: "Apple client secret",
     description: "Apple client secret (a signed JWT). Write-only: it is never shown again.",
     type: "string",
@@ -82,6 +90,7 @@ export const AUTH_ENV_VARS: readonly EnvVarDefinition[] = [
   {
     key: "OIDC_DISPLAY_NAME",
     group: "oidc",
+    tier: "overridable",
     label: "OIDC display name",
     description: "Label shown on the SSO sign-in button, for example Acme SSO.",
     type: "string",
@@ -91,6 +100,7 @@ export const AUTH_ENV_VARS: readonly EnvVarDefinition[] = [
   {
     key: "OIDC_ISSUER",
     group: "oidc",
+    tier: "overridable",
     label: "OIDC issuer",
     description: "Issuer identifier of the identity provider.",
     type: "url",
@@ -100,6 +110,7 @@ export const AUTH_ENV_VARS: readonly EnvVarDefinition[] = [
   {
     key: "OIDC_DISCOVERY_URL",
     group: "oidc",
+    tier: "overridable",
     label: "OIDC discovery URL",
     description:
       "OpenID Connect discovery document, for example https://idp.example.com/.well-known/openid-configuration.",
@@ -110,6 +121,7 @@ export const AUTH_ENV_VARS: readonly EnvVarDefinition[] = [
   {
     key: "OIDC_CLIENT_ID",
     group: "oidc",
+    tier: "overridable",
     label: "OIDC client id",
     description: "Client id registered with the identity provider.",
     type: "string",
@@ -119,6 +131,7 @@ export const AUTH_ENV_VARS: readonly EnvVarDefinition[] = [
   {
     key: "OIDC_CLIENT_SECRET",
     group: "oidc",
+    tier: "overridable",
     label: "OIDC client secret",
     description: "Client secret registered with the identity provider. Write-only.",
     type: "string",
@@ -128,6 +141,7 @@ export const AUTH_ENV_VARS: readonly EnvVarDefinition[] = [
   {
     key: "OIDC_SCOPES",
     group: "oidc",
+    tier: "overridable",
     label: "OIDC scopes",
     description: "Scopes requested at sign-in; defaults to openid profile email.",
     type: "list",
@@ -137,6 +151,7 @@ export const AUTH_ENV_VARS: readonly EnvVarDefinition[] = [
   {
     key: "OIDC_TRUST_EMAIL",
     group: "oidc",
+    tier: "overridable",
     label: "Trust OIDC email",
     description:
       "Link an OIDC sign-in to an existing account with the same email even when the IdP does not report it as verified. Only for an IdP that owns its addresses.",
@@ -147,6 +162,7 @@ export const AUTH_ENV_VARS: readonly EnvVarDefinition[] = [
   {
     key: "OIDC_GROUP_CLAIM",
     group: "oidc",
+    tier: "overridable",
     label: "OIDC group claim",
     description: "Claim carrying IdP group membership, for example groups.",
     type: "string",
@@ -156,6 +172,7 @@ export const AUTH_ENV_VARS: readonly EnvVarDefinition[] = [
   {
     key: "OIDC_GROUP_ROLE_MAP",
     group: "oidc",
+    tier: "overridable",
     label: "OIDC group role map",
     description: 'JSON map of IdP group to workspace role name(s), for example {"admins":"Admin"}.',
     type: "json",
@@ -166,6 +183,7 @@ export const AUTH_ENV_VARS: readonly EnvVarDefinition[] = [
   {
     key: "AUTH_LOCAL_ENABLED",
     group: "local-auth",
+    tier: "overridable",
     label: "Local sign-in enabled",
     description: "Offer email/password sign-in alongside any SSO providers.",
     type: "boolean",
@@ -175,6 +193,7 @@ export const AUTH_ENV_VARS: readonly EnvVarDefinition[] = [
   {
     key: "AUTH_LOCAL_SIGNUP",
     group: "local-auth",
+    tier: "overridable",
     label: "Local signup open",
     description: "Allow open self-signup; false makes the instance invite-only for local accounts.",
     type: "boolean",
@@ -184,6 +203,7 @@ export const AUTH_ENV_VARS: readonly EnvVarDefinition[] = [
   {
     key: "AUTH_MIN_PASSWORD_LENGTH",
     group: "local-auth",
+    tier: "overridable",
     label: "Minimum password length",
     description: "Minimum password length for local accounts; default 8.",
     type: "number",
@@ -195,6 +215,7 @@ export const AUTH_ENV_VARS: readonly EnvVarDefinition[] = [
   {
     key: "AUTH_RATE_LIMIT_MAX",
     group: "local-auth",
+    tier: "overridable",
     label: "Auth rate limit",
     description: "Better Auth requests allowed per minute per client; default 120.",
     type: "number",
@@ -206,6 +227,7 @@ export const AUTH_ENV_VARS: readonly EnvVarDefinition[] = [
   {
     key: "AULORA_EMAIL_PROVIDER",
     group: "email",
+    tier: "deploy-time",
     label: "Email provider",
     description: "Transport selection; inferred from the credentials when unset.",
     type: "enum",
@@ -217,6 +239,7 @@ export const AUTH_ENV_VARS: readonly EnvVarDefinition[] = [
   {
     key: "AULORA_EMAIL_FROM",
     group: "email",
+    tier: "deploy-time",
     label: "Email from address",
     description: "From header on outbound mail.",
     type: "string",
@@ -227,6 +250,7 @@ export const AUTH_ENV_VARS: readonly EnvVarDefinition[] = [
   {
     key: "RESEND_API_KEY",
     group: "email",
+    tier: "deploy-time",
     label: "Resend API key",
     description: "Resend API key; enter it in the Email section.",
     type: "string",
@@ -237,6 +261,7 @@ export const AUTH_ENV_VARS: readonly EnvVarDefinition[] = [
   {
     key: "SMTP_GATEWAY_URL",
     group: "email",
+    tier: "deploy-time",
     label: "SMTP bridge URL",
     description: "HTTP bridge that speaks SMTP for Convex; enter it in the Email section.",
     type: "url",
@@ -247,6 +272,7 @@ export const AUTH_ENV_VARS: readonly EnvVarDefinition[] = [
   {
     key: "SMTP_GATEWAY_TOKEN",
     group: "email",
+    tier: "deploy-time",
     label: "SMTP bridge token",
     description: "Bearer token for the SMTP bridge.",
     type: "string",
@@ -257,6 +283,7 @@ export const AUTH_ENV_VARS: readonly EnvVarDefinition[] = [
   {
     key: "SMTP_HOST",
     group: "email",
+    tier: "deploy-time",
     label: "SMTP host",
     description: "SMTP host announced to the bridge.",
     type: "string",
@@ -267,6 +294,7 @@ export const AUTH_ENV_VARS: readonly EnvVarDefinition[] = [
   {
     key: "PUSH_RELAY_URL",
     group: "push",
+    tier: "deploy-time",
     label: "Push relay URL",
     description: "Base URL of the mobile push relay; set it in the Push relay section.",
     type: "url",
@@ -277,6 +305,7 @@ export const AUTH_ENV_VARS: readonly EnvVarDefinition[] = [
   {
     key: "PUSH_RELAY_TOKEN",
     group: "push",
+    tier: "deploy-time",
     label: "Push relay token",
     description:
       "Shared bearer token for the relay: a deployment credential, managed by the deployment.",
@@ -287,6 +316,7 @@ export const AUTH_ENV_VARS: readonly EnvVarDefinition[] = [
   {
     key: "AULORA_SERVER_ID",
     group: "push",
+    tier: "deploy-time",
     label: "Push relay server id",
     description: "Opaque id echoed in wakeups; set it in the Push relay section.",
     type: "string",

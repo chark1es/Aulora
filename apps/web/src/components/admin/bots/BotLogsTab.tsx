@@ -30,7 +30,6 @@ export function BotLogsTab({ botId }: { readonly botId: string }) {
       <div data-testid="bot-logs">
         <EmptyState
           size="sm"
-          icon="message"
           title="No output yet"
           description="Log lines appear here while the bot runs."
         />

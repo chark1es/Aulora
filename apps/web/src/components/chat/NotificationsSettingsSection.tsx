@@ -45,16 +45,9 @@ export function NotificationsSettingsSection() {
 
   return (
     <section className="flex flex-col gap-4" aria-label="Notifications and sounds">
-      <div className="flex items-center gap-2">
-        <span className="flex h-8 w-8 items-center justify-center rounded-[8px] bg-accent-soft text-accent">
-          <Icon name="bell" size={17} />
-        </span>
-        <div>
-          <h3 className="text-[14px] font-semibold text-text">Notifications &amp; sounds</h3>
-          <p className="text-[12px] text-text-muted">
-            Subtle cues for messages, mentions and calls.
-          </p>
-        </div>
+      <div>
+        <h3 className="text-[14px] font-semibold text-text">Notifications &amp; sounds</h3>
+        <p className="text-[12px] text-text-muted">Subtle cues for messages, mentions and calls.</p>
       </div>
 
       <div className="border-y border-border/60 px-3.5">

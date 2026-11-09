@@ -209,7 +209,7 @@ export function ChannelSidebar(props: ChannelSidebarProps) {
       {(props.onOpenThreads !== undefined ||
         props.onOpenKanban !== undefined ||
         props.onOpenNotes !== undefined) && (
-        <nav aria-label="Workspace" className="flex flex-col gap-0.5 px-3 pb-2">
+        <nav aria-label="Workspace" className="flex flex-col gap-0.5 px-2 pb-2">
           {props.onOpenThreads !== undefined && (
             <SidebarNavButton
               label="Threads"
@@ -416,7 +416,7 @@ export function ChannelSidebar(props: ChannelSidebarProps) {
                   <button
                     type="button"
                     onClick={props.onNewConversation}
-                    className="w-full rounded-[8px] px-3 py-2 text-left text-xs text-text-muted hover:bg-surface-3 hover:text-text"
+                    className="w-full rounded-[6px] px-2 py-2 text-left text-xs text-text-muted transition-colors hover:bg-surface-2 hover:text-text"
                   >
                     Start a private conversation →
                   </button>
@@ -443,14 +443,15 @@ export function ChannelSidebar(props: ChannelSidebarProps) {
                     <button
                       type="button"
                       data-testid={`hidden-channel-row-${channel.id}`}
+                      title={props.titles.get(channel.id) ?? channel.name}
                       onClick={() => {
                         onSelect(channel.id);
                       }}
-                      className="flex h-8 min-w-0 flex-1 items-center gap-2.5 rounded-[8px] pl-3 pr-1 text-left text-[13px] text-text-muted transition hover:bg-surface-3 hover:text-text"
+                      className="flex h-8 min-w-0 flex-1 items-center gap-2 rounded-[6px] px-2 text-left text-[13px] text-text-muted transition-colors duration-150 hover:bg-surface-2 hover:text-text focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-accent"
                     >
                       <Icon
                         name={channel.kind === "voice" ? "volume" : "hash"}
-                        size={15}
+                        size={16}
                         className="text-text-muted"
                       />
                       <span className="min-w-0 flex-1 truncate">

@@ -39,34 +39,33 @@ The web player (`apps/web`) talks to the shell through `window.__TAURI__`
 ## Sign-in and OAuth
 
 Local email/password sign-in posts from the webview, so only the server origin is
-involved. Provider sign-in (OAuth/OIDC) is an in-webview round trip: the client
-passes the webview's own origin (`tauri://localhost` on macOS/Linux,
-`http://tauri.localhost` on Windows) as `callbackURL`, the server trusts those
-origins, and the provider redirects the webview back to the app. That origin is
-never rendered, copied or put in a shared link; `authCallbackUrl()` in
-`apps/web/src/lib/public-origin.ts` is the only place that names it.
+involved.
 
-The system-browser alternative (open the provider in the default browser and
-return through the `aulora://auth/callback` deep link) is **not implemented**,
-because the current server does not hand a session back to a custom-scheme
-redirect. The mobile client expects a `?cookie=` parameter on that redirect, but
-the installed Better Auth/generic-OAuth callback only sets a `Set-Cookie` header
-on the server origin and redirects to the callback URL as-is — a custom scheme
-has no cookie jar, so the desktop app would come back signed out.
+Provider sign-in (OAuth/OIDC) always starts on the workspace's own origin.
+Better Auth binds the callback to the browser context that started sign-in with
+a signed `state` cookie; starting the flow from the webview's cross-origin fetch
+stack dropped that cookie and failed with `state_mismatch`. The client opens
+`/api/auth/native/start` in the chosen browsing context, the provider redirects
+back to the workspace, and `/api/auth/native/finish` hands the finished session
+back to the app:
 
-Making it safe needs, in order:
+- **Sign in in app** keeps the round trip in the webview and returns to
+  `tauri://localhost` / `http://tauri.localhost` with a short-lived code.
+- **Open in browser** uses the system browser and returns through the
+  `aulora://auth/callback` deep link. `take_deep_links` buffers the URL and the
+  web client exchanges the code.
 
-1. A server-side handoff: after a successful OAuth callback for a trusted desktop
-   client, mint a single-use, short-lived code and redirect to
-   `aulora://auth/callback?code=<code>`.
-2. An exchange endpoint that trades the code for the same bearer session token
-   `set-auth-token` carries today (single use, bound to the code's lifetime, no
-   session cookie written).
-3. Desktop: `open_external` for the authorization URL, buffer the deep link
-   (`take_deep_links`), exchange the code, then persist it with
-   `writeSessionToken`.
-4. Tests for code reuse, expiry and the deep-link race before the in-webview
-   fallback is removed.
+Either way, `/api/auth/native/exchange` trades the short-lived code for the
+bearer session token the shell already stores. The code is opaque, stored only
+as a SHA-256 digest, single-use, and expires after two minutes. Starting sign-in
+also stores a random verifier in the webview's `sessionStorage`; only its
+SHA-256 challenge goes to the server, and the exchange presents the verifier.
+A callback with no pending transaction, for another workspace, or after the
+15-minute local TTL is rejected rather than signing the shell in.
+
+The webview origin is never rendered, copied or put in a shared link;
+`authCallbackUrl()` in `apps/web/src/lib/public-origin.ts` is the one place that
+names it. A deep link must never carry a session cookie.
 
 ## Requirements
 

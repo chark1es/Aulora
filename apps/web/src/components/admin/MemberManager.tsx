@@ -23,7 +23,9 @@ export interface MemberManagerViewer {
 
 export interface MemberManagerProps {
   readonly viewer: MemberManagerViewer;
-  readonly ownerId: string | null;
+  readonly ownerIds: readonly string[];
+  /** False against a backend that predates multiple-owner management. */
+  readonly ownerManagementAvailable?: boolean;
   readonly permissions: {
     readonly manageRoles: boolean;
     readonly kick: boolean;
@@ -45,7 +47,13 @@ const ANY_MANAGE = (p: MemberManagerProps["permissions"]): boolean =>
  * effective permissions + hierarchy; the server enforces the same rules and any
  * rejection shows inline.
  */
-export function MemberManager({ viewer, ownerId, permissions, onOpenInvites }: MemberManagerProps) {
+export function MemberManager({
+  viewer,
+  ownerIds,
+  ownerManagementAvailable = true,
+  permissions,
+  onOpenInvites,
+}: MemberManagerProps) {
   const members = useQuery(api.members.list, {});
   const roles = useQuery(api.roles.list, {});
   const bans = useQuery(api.members.listBans, permissions.ban ? {} : "skip");
@@ -58,12 +66,19 @@ export function MemberManager({ viewer, ownerId, permissions, onOpenInvites }: M
   const kick = useMutation(api.members.kick);
   const ban = useMutation(api.members.ban);
   const unban = useMutation(api.members.unban);
+  const promoteOwner = useMutation(api.owners.promote);
+  const demoteOwner = useMutation(api.owners.demote);
 
   const [error, setError] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
   const [selectedId, setSelectedId] = useState<string | null>(null);
   const [memberOpen, setMemberOpen] = useState(false);
   const [bansOpen, setBansOpen] = useState(false);
+  const [ownerConfirm, setOwnerConfirm] = useState<{
+    readonly kind: "promote" | "demote";
+    readonly userId: string;
+    readonly name: string;
+  } | null>(null);
 
   if (!ANY_MANAGE(permissions)) {
     return (
@@ -105,7 +120,7 @@ export function MemberManager({ viewer, ownerId, permissions, onOpenInvites }: M
       viewer: { userId: viewer.userId, isOwner: viewer.isOwner, roleIds: viewer.roleIds },
       target: {
         userId: target.userId,
-        isOwner: target.userId === ownerId,
+        isOwner: ownerIds.includes(target.userId),
         roleIds: target.roleIds,
       },
       roles: roleList,
@@ -179,7 +194,7 @@ export function MemberManager({ viewer, ownerId, permissions, onOpenInvites }: M
                         {displayName}
                       </Text>
                       <MemberBadges
-                        isOwner={member.userId === ownerId}
+                        isOwner={ownerIds.includes(member.userId)}
                         isBot={member.isBot === true}
                       />
                       {notedUserIds.has(member.userId) && (
@@ -248,11 +263,26 @@ export function MemberManager({ viewer, ownerId, permissions, onOpenInvites }: M
             member={selected}
             roles={roleList}
             viewer={viewer}
-            ownerId={ownerId}
+            ownerIds={ownerIds}
+            canManageOwners={viewer.isOwner && ownerManagementAvailable}
             permissions={permissions}
             moderatable={canModerate(selected)}
             busy={busy}
             error={error}
+            onPromoteOwner={() => {
+              setOwnerConfirm({
+                kind: "promote",
+                userId: selected.userId,
+                name: memberDisplayName(selected, selected.userId),
+              });
+            }}
+            onDemoteOwner={() => {
+              setOwnerConfirm({
+                kind: "demote",
+                userId: selected.userId,
+                name: memberDisplayName(selected, selected.userId),
+              });
+            }}
             onAssignRole={(roleId) => {
               void run(() => assignRole({ userId: selected.userId, roleId: roleId as never }));
             }}
@@ -293,6 +323,61 @@ export function MemberManager({ viewer, ownerId, permissions, onOpenInvites }: M
           />
         </Modal>
       )}
+
+      <Modal
+        open={ownerConfirm !== null}
+        onClose={() => {
+          setOwnerConfirm(null);
+        }}
+        size="sm"
+        label="Confirm owner change"
+        title={
+          ownerConfirm?.kind === "demote" ? "Remove owner access?" : "Make this member an owner?"
+        }
+        description={
+          ownerConfirm?.kind === "demote"
+            ? "They keep their membership and roles but lose owner-only control of the instance."
+            : "Owners are peers with full control of roles, members, instance settings and environment credentials."
+        }
+        tone={ownerConfirm?.kind === "demote" ? "danger" : "default"}
+        icon={<Icon name="shield" size={18} />}
+        footer={
+          <>
+            <Button
+              variant="ghost"
+              onClick={() => {
+                setOwnerConfirm(null);
+              }}
+            >
+              Cancel
+            </Button>
+            <Button
+              variant={ownerConfirm?.kind === "demote" ? "danger" : "primary"}
+              loading={busy}
+              onClick={() => {
+                if (ownerConfirm === null) {
+                  return;
+                }
+                const { kind, userId } = ownerConfirm;
+                setOwnerConfirm(null);
+                void run(() =>
+                  kind === "promote" ? promoteOwner({ userId }) : demoteOwner({ userId }),
+                );
+              }}
+            >
+              {ownerConfirm?.kind === "demote" ? "Remove owner" : "Make owner"}
+            </Button>
+          </>
+        }
+      >
+        <Text size="sm" tone="secondary" className="leading-relaxed">
+          {ownerConfirm === null
+            ? ""
+            : ownerConfirm.kind === "demote"
+              ? `${ownerConfirm.name} will no longer be an owner.`
+              : `${ownerConfirm.name} will gain owner access.`}
+        </Text>
+      </Modal>
 
       <Modal
         open={bansOpen}

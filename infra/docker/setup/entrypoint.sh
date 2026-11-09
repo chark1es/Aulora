@@ -142,12 +142,11 @@ log "instance name: ${INSTANCE_NAME_RESOLVED}"
 BETTER_AUTH_SECRET_VALUE="${BETTER_AUTH_SECRET:-}"
 [ -n "$BETTER_AUTH_SECRET_VALUE" ] || BETTER_AUTH_SECRET_VALUE="$(random_b64 48)"
 
+# Optional automation override only. A fresh interactive install does not put
+# an owner credential or a setup token in the deployment environment: the
+# first-run screen claims the instance with a token the setup container prints
+# once below (stored server-side only as a hash).
 SETUP_TOKEN_VALUE="${SETUP_TOKEN:-}"
-SETUP_TOKEN_GENERATED=0
-if [ -z "$SETUP_TOKEN_VALUE" ]; then
-  SETUP_TOKEN_VALUE="$(random_hex 24)"
-  SETUP_TOKEN_GENERATED=1
-fi
 
 VAPID_PUBLIC_KEY_VALUE="${VAPID_PUBLIC_KEY:-}"
 VAPID_PRIVATE_KEY_VALUE="${VAPID_PRIVATE_KEY:-}"
@@ -274,6 +273,25 @@ set_env_if_present OIDC_SCOPES "$(host_value OIDC_SCOPES)"
 set_env_if_present OIDC_TRUST_EMAIL "$(host_value OIDC_TRUST_EMAIL)"
 set_env_if_present OIDC_GROUP_CLAIM "$(host_value OIDC_GROUP_CLAIM)"
 set_env_if_present OIDC_GROUP_ROLE_MAP "$(host_value OIDC_GROUP_ROLE_MAP)"
+set_env_if_present AUTH_RATE_LIMIT_MAX "$(host_value AUTH_RATE_LIMIT_MAX)"
+
+# Deployment tuning read by Convex from the deployment environment. These are
+# never UI overrides; an operator can still set them in `.env` (or the compose
+# environment) and setup forwards them. Empty stays unset, so the built-in
+# default applies.
+for _tuning in \
+  UPLOAD_MAX_BYTES UPLOAD_RATE_LIMIT UPLOAD_RATE_WINDOW_MS \
+  SEND_RATE_LIMIT SEND_RATE_WINDOW_MS \
+  INVITE_RATE_LIMIT INVITE_RATE_WINDOW_MS INVITE_PENDING_LIMIT \
+  INVITE_REDEEM_RATE_LIMIT INVITE_REDEEM_RATE_WINDOW_MS \
+  AUDIT_LOG_RETENTION_DAYS DEVICE_RETENTION_DAYS \
+  AULORA_SERVER_ID PUSH_RELAY_URL AULORA_MIN_CLIENT_VERSION \
+  AULORA_RECOMMENDED_CLIENT_VERSION; do
+  set_env_if_present "$_tuning" "$(host_value "$_tuning")"
+done
+set_env_if_present PUSH_RELAY_TOKEN "$(host_value PUSH_RELAY_TOKEN)" 1
+set_env_if_present BACKUP_TOKEN "$(host_value BACKUP_TOKEN)" 1
+set_env_if_present SMTP_HOST "$(host_value SMTP_HOST)"
 
 # Kill switch for the owner-editable environment overrides in Instance admin ->
 # Environment. Only the exact value "false" disables them; blank keeps the
@@ -427,10 +445,50 @@ else
   log "voice permission migration skipped"
 fi
 
+if convex run setupState:restrictKanbanEditing '{}' >/dev/null 2>&1; then
+  log "Kanban editing on @everyone requires an explicit grant"
+else
+  log "Kanban editing migration skipped"
+fi
+
+# Records the legacy single owner in `server.ownerIds`. Readers already fall
+# back to `ownerId`, so a failure is not fatal; a later run retries it.
+if convex run setupState:ensureOwnerIds '{}' >/dev/null 2>&1; then
+  log "owner list migration applied"
+else
+  log "owner list migration skipped or already complete"
+fi
+
 # --- 7. one-time initialize -------------------------------------------------
 
 initialized() {
   run_function setup:status '{}' | grep -q '"initialized"[: ]*true'
+}
+
+# Prints the one-time token. Only its hash is stored in Convex; this is the
+# single place the plaintext is displayed. An operator-provided SETUP_TOKEN is
+# never printed.
+#
+# A redeploy must not invalidate a token the operator already printed, so the
+# default call never rotates: it reuses the stored token when one exists and
+# only issues a new one when there is no live row. Pass "1" to rotate
+# explicitly (the legacy OWNER_* seeding path, or SETUP_TOKEN_ROTATE=true).
+issue_setup_token() {
+  local force="${1:-0}" result status
+  if [ "$force" != "1" ]; then
+    result="$(convex run setupState:issueSetupToken '{}' 2>/dev/null)" || return 1
+    status="$(printf '%s' "$result" | node "$SETUP_DIR/setup-token.mjs" status)" || return 1
+    if [ "$status" = "existing" ]; then
+      # A live token exists but its plaintext cannot be recovered. Never
+      # silently rotate it here; the caller prints the explicit-rotation hint.
+      printf '%s' ""
+      return 0
+    fi
+    printf '%s' "$result" | node "$SETUP_DIR/setup-token.mjs" token
+    return 0
+  fi
+  result="$(convex run setupState:issueSetupToken '{"rotate":true}' 2>/dev/null)" || return 1
+  printf '%s' "$result" | node "$SETUP_DIR/setup-token.mjs" token
 }
 
 if initialized; then
@@ -441,39 +499,87 @@ else
   OWNER_PASSWORD_VALUE="${OWNER_PASSWORD:-}"
   OWNER_NAME_VALUE="${OWNER_NAME:-$WORKSPACE}"
 
-  [ -n "$OWNER_EMAIL_VALUE" ] || die "OWNER_EMAIL is not set in .env"
-  [ -n "$OWNER_PASSWORD_VALUE" ] || die "OWNER_PASSWORD is not set in .env"
-
-  log "initializing workspace '${WORKSPACE}' with owner ${OWNER_EMAIL_VALUE}"
-
-  RESPONSE_FILE="$(mktemp)"
-  # Pass the generated token/value explicitly; the deployment may have a
-  # user-supplied SETUP_TOKEN while the generated one lives only in this script.
-  CODE="$(
-    SETUP_TOKEN="$SETUP_TOKEN_VALUE" \
-    WORKSPACE_NAME="$WORKSPACE" \
-    OWNER_EMAIL="$OWNER_EMAIL_VALUE" \
-    OWNER_PASSWORD="$OWNER_PASSWORD_VALUE" \
-    OWNER_NAME="$OWNER_NAME_VALUE" \
-    node "$SETUP_DIR/initialize.mjs" "$RESPONSE_FILE"
-  )" || die "initialize.mjs could not run"
-
-  if [ "$CODE" = "200" ]; then
-    log "workspace initialized"
-  elif [ "$CODE" = "400" ] && grep -q 'SETUP_FAILED' "$RESPONSE_FILE" 2>/dev/null; then
-    # Likely already initialized (a concurrent or previous partial run).
-    if initialized; then
-      log "server already initialized; continuing"
-    else
-      rm -f "$RESPONSE_FILE"
-      die "setup/initialize failed and the server is not initialized"
-    fi
-  else
-    # Never print the response body: it could echo request data.
-    rm -f "$RESPONSE_FILE"
-    die "setup/initialize returned HTTP ${CODE}"
+  # Legacy automation path: deployments that still seed the owner from
+  # OWNER_EMAIL/OWNER_PASSWORD keep working. New installs leave both unset and
+  # register the owner in the app instead.
+  LEGACY_OWNER_SEED=0
+  if [ -n "$OWNER_EMAIL_VALUE" ] || [ -n "$OWNER_PASSWORD_VALUE" ]; then
+    [ -n "$OWNER_EMAIL_VALUE" ] || die "set both OWNER_EMAIL and OWNER_PASSWORD, or neither"
+    [ -n "$OWNER_PASSWORD_VALUE" ] || die "set both OWNER_EMAIL and OWNER_PASSWORD, or neither"
+    LEGACY_OWNER_SEED=1
   fi
-  rm -f "$RESPONSE_FILE"
+
+  if [ "$LEGACY_OWNER_SEED" = "1" ]; then
+    log "legacy OWNER_* credentials configured; seeding the owner from the environment"
+    if [ -z "$SETUP_TOKEN_VALUE" ]; then
+      # Legacy seeding needs the plaintext, so an explicit rotation is part of
+      # this operator-requested path.
+      SETUP_TOKEN_VALUE="$(issue_setup_token 1)" \
+        || die "could not issue a setup token for legacy owner initialization"
+      [ -n "$SETUP_TOKEN_VALUE" ] || die "the backend did not return a setup token"
+    fi
+
+    log "initializing workspace '${WORKSPACE}' with owner ${OWNER_EMAIL_VALUE}"
+
+    RESPONSE_FILE="$(mktemp)"
+    # Pass the token/value explicitly; it is never written to .env or the
+    # deployment environment on this path.
+    CODE="$(
+      SETUP_TOKEN="$SETUP_TOKEN_VALUE" \
+      WORKSPACE_NAME="$WORKSPACE" \
+      OWNER_EMAIL="$OWNER_EMAIL_VALUE" \
+      OWNER_PASSWORD="$OWNER_PASSWORD_VALUE" \
+      OWNER_NAME="$OWNER_NAME_VALUE" \
+      node "$SETUP_DIR/initialize.mjs" "$RESPONSE_FILE"
+    )" || die "initialize.mjs could not run"
+
+    if [ "$CODE" = "200" ]; then
+      log "workspace initialized"
+    elif [ "$CODE" = "400" ] && grep -q 'SETUP_FAILED' "$RESPONSE_FILE" 2>/dev/null; then
+      # Likely already initialized (a concurrent or previous partial run).
+      if initialized; then
+        log "server already initialized; continuing"
+      else
+        rm -f "$RESPONSE_FILE"
+        die "setup/initialize failed and the server is not initialized"
+      fi
+    else
+      # Never print the response body: it could echo request data.
+      rm -f "$RESPONSE_FILE"
+      die "setup/initialize returned HTTP ${CODE}"
+    fi
+    rm -f "$RESPONSE_FILE"
+  elif [ -n "$SETUP_TOKEN_VALUE" ]; then
+    log "SETUP_TOKEN override configured; use it on the first-run screen"
+  else
+    # Interactive first run: no owner credentials in the environment. Print a
+    # one-time claim token for the app's "Set up your instance" screen. A plain
+    # redeploy reuses an existing live token; rotation is explicit.
+    if [ "${SETUP_TOKEN_ROTATE:-}" = "true" ]; then
+      log "SETUP_TOKEN_ROTATE=true; replacing the existing first-run token"
+      SETUP_TOKEN_VALUE="$(issue_setup_token 1)" \
+        || die "could not rotate the first-run setup token"
+    else
+      SETUP_TOKEN_VALUE="$(issue_setup_token)" \
+        || die "could not issue the first-run setup token"
+    fi
+    if [ -n "$SETUP_TOKEN_VALUE" ]; then
+      log "first-run setup is waiting in the app: ${SITE_URL_VALUE:-open the web app}"
+      log "setup token (shown once, valid for 24 hours): ${SETUP_TOKEN_VALUE}"
+      log "if you missed it, run setup again with SETUP_TOKEN_ROTATE=true to print a new one"
+    else
+      log "a setup token was already issued; set SETUP_TOKEN_ROTATE=true and re-run setup to replace it"
+    fi
+  fi
+fi
+
+# Repairs the key-version registry after a transient key-manager failure during
+# the first-run claim. Idempotent and cheap for the local provider. Runs after
+# the initialize block so a failure in this run is retried immediately.
+if convex run encryptionKeys:ensureRegistered '{}' >/dev/null 2>&1; then
+  log "encryption key version registered"
+else
+  log "encryption key registration will be retried on the next setup run"
 fi
 
 # --- 8. well-known document -------------------------------------------------
@@ -543,10 +649,11 @@ else
   log "host .env directory not mounted; skipped persisting generated secrets"
 fi
 
-# The one-time setup token is not needed after a successful init.
-if [ "$SETUP_TOKEN_GENERATED" = "1" ] && initialized; then
+# A generated setup token is never stored in the deployment environment. Remove
+# one left behind by an older setup image, but keep an explicit operator
+# override where they put it.
+if [ -z "${SETUP_TOKEN:-}" ] && initialized; then
   convex env remove SETUP_TOKEN >/dev/null 2>&1 || true
-  log "removed one-time SETUP_TOKEN from the deployment"
 fi
 
 log "done"

@@ -6,36 +6,56 @@ import { useEffect } from "react";
 import { View } from "react-native";
 import { ThresholdAura } from "../../src/components/ThresholdAura";
 import { completeAuthCallback } from "../../src/lib/auth-callback";
+import { notifyAuthChanged, notifyAuthError } from "../../src/lib/auth-events";
+import { createMobileProfileStore } from "../../src/lib/profiles";
 
 /**
- * Deep-link target for `aulora://auth/callback`. Better Auth appends the
- * freshly minted session cookie to the redirect; persist it, then return home
- * so the session query picks it up.
+ * Deep-link target for `aulora://auth/callback`. The link may carry only a
+ * short-lived handoff code; the session is obtained by exchanging it with the
+ * verifier this install kept when sign-in started. A session cookie is never
+ * accepted from a deep link.
  *
- * The persist step never rejects, so a malformed cookie or an unreadable store
+ * The persist step never rejects, so a malformed code or an unreadable store
  * still lands the person back on the sign-in/chat surface instead of leaving
  * this spinner up for good.
  */
 export default function AuthCallbackRoute() {
-  const params = useLocalSearchParams<{ cookie?: string }>();
+  const params = useLocalSearchParams<{
+    code?: string;
+    server?: string;
+    tx?: string;
+    error?: string;
+  }>();
   const router = useRouter();
-  const cookie = typeof params.cookie === "string" ? params.cookie : undefined;
+  const code = typeof params.code === "string" ? params.code : undefined;
+  const server = typeof params.server === "string" ? params.server : undefined;
+  const tx = typeof params.tx === "string" ? params.tx : undefined;
+  const error = typeof params.error === "string" ? params.error : undefined;
 
   useEffect(() => {
     const state = { cancelled: false };
     void (async () => {
+      const active = await createMobileProfileStore(AsyncStorage)
+        .getActive()
+        .catch(() => undefined);
       await completeAuthCallback(AsyncStorage, {
-        cookie,
+        code,
+        server,
+        tx,
+        error,
+        currentServer: active?.siteUrl,
         initialUrl: () => Linking.getInitialURL(),
       });
       if (!state.cancelled) {
+        notifyAuthChanged();
+        notifyAuthError();
         router.replace("/");
       }
     })();
     return () => {
       state.cancelled = true;
     };
-  }, [cookie, router]);
+  }, [code, server, tx, error, router]);
 
   return (
     <View className="flex-1 items-center justify-center gap-4 bg-bg">

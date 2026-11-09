@@ -34,10 +34,14 @@ const harness = vi.hoisted(() => ({
   server: {
     /** No answer at all: a server that is down or still restarting. */
     down: false,
+    /** A failed background refetch while the stored session is still valid. */
+    sessionError: false,
     /** A stored token the server now rejects with 401. */
     rejectsStoredToken: false,
     /** Whether Convex accepted the session it was given. */
     convexAuthenticated: true,
+    /** True while Convex is fetching a replacement token. */
+    convexRefreshing: false,
   },
   tokens: new Map<string, string>(),
   clients: [] as { readonly url: string; closed: boolean }[],
@@ -63,7 +67,7 @@ vi.mock("convex/react", () => {
     useConvexAuth: () => ({
       isLoading: false,
       isAuthenticated: harness.server.convexAuthenticated,
-      isRefreshing: false,
+      isRefreshing: harness.server.convexRefreshing,
     }),
     // One answer for every query. `features` marks a current server; without it
     // the session gate would treat this one as older than the app.
@@ -102,6 +106,14 @@ vi.mock("../lib/auth-client", () => ({
         return {
           data: undefined,
           error: { status: 401, statusText: "Unauthorized", message: "Invalid session" },
+          isPending: false,
+          refetch: () => Promise.resolve(),
+        };
+      }
+      if (harness.server.sessionError) {
+        return {
+          data: { user: { id: "u1", name: "Ada", email: "ada@example.com" } },
+          error: new TypeError("Failed to fetch"),
           isPending: false,
           refetch: () => Promise.resolve(),
         };
@@ -145,8 +157,10 @@ vi.mock("../components/chat/ChatSessionShell", () => ({
 
 beforeEach(() => {
   harness.server.down = false;
+  harness.server.sessionError = false;
   harness.server.rejectsStoredToken = false;
   harness.server.convexAuthenticated = true;
+  harness.server.convexRefreshing = false;
   harness.tokens.clear();
   harness.clients.length = 0;
 });
@@ -214,5 +228,48 @@ describe("ProfileSession recovery", () => {
     render(<ProfileSession profile={PROFILE} />);
 
     expect(readSessionToken(PROFILE.siteUrl)).toBe("still-valid");
+  });
+
+  it("does not rebuild the clients for a failed background session refresh", () => {
+    vi.useFakeTimers();
+    harness.server.sessionError = true;
+    render(<ProfileSession profile={PROFILE} />);
+
+    // The stored session still rendered the shell; the failed refetch is not a
+    // reason to tear the app down.
+    expect(screen.getByText("Signed in")).toBeInTheDocument();
+    act(() => {
+      vi.advanceTimersByTime(STUCK_TIMEOUT_MS + FIRST_RECOVERY_DELAY_MS * 2);
+    });
+    expect(harness.clients).toHaveLength(1);
+    expect(harness.clients[0]?.closed).toBe(false);
+  });
+
+  it("waits for an explicit retry when the session lookup is unreachable", () => {
+    vi.useFakeTimers();
+    harness.server.down = true;
+    writeSessionToken(PROFILE.siteUrl, "kept-through-an-outage");
+    render(<ProfileSession profile={PROFILE} />);
+
+    expect(screen.getByText("Can't reach Acme")).toBeInTheDocument();
+    act(() => {
+      vi.advanceTimersByTime(STUCK_TIMEOUT_MS + FIRST_RECOVERY_DELAY_MS * 2);
+    });
+    // A slow or failed lookup recovers in place; rebuilding belongs to a
+    // session Convex actually rejected, not to a network wait.
+    expect(harness.clients).toHaveLength(1);
+  });
+
+  it("does not rebuild while Convex is fetching a replacement token", () => {
+    vi.useFakeTimers();
+    harness.server.convexAuthenticated = false;
+    harness.server.convexRefreshing = true;
+    render(<ProfileSession profile={PROFILE} />);
+
+    expect(screen.getByText("Signed in")).toBeInTheDocument();
+    act(() => {
+      vi.advanceTimersByTime(STUCK_TIMEOUT_MS + FIRST_RECOVERY_DELAY_MS * 2);
+    });
+    expect(harness.clients).toHaveLength(1);
   });
 });

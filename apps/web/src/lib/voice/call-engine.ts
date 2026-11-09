@@ -1,5 +1,6 @@
 /* eslint-disable no-unused-vars -- the base rule reports parameter names in type signatures; Biome checks real unused code */
 import {
+  type CallEndNotice,
   type CallKind,
   type CallSeatResult,
   type CallView,
@@ -157,6 +158,11 @@ export class VoiceEngine {
   /** Multiplier on the camera budget while the governor has stepped it down. */
   private cameraTrim = 1;
   private qualityNotice: string | null = null;
+  /**
+   * Why the server ended the last call, kept after teardown so the provider can
+   * show a notice. Cleared when a new call starts or the person dismisses it.
+   */
+  private endedNotice: CallEndNotice | null = null;
 
   constructor(options: VoiceEngineOptions) {
     this.port = options.port;
@@ -329,6 +335,7 @@ export class VoiceEngine {
       error: this.error,
       mediaError: this.mediaError,
       qualityNotice: this.qualityNotice,
+      endedNotice: this.endedNotice,
     };
   }
 
@@ -487,6 +494,8 @@ export class VoiceEngine {
       return;
     }
     this.enterTeardown();
+    // A fresh call replaces whatever notice the last one left.
+    this.endedNotice = null;
     // Leaving and rejoining the same call keeps its id, so only the epoch can
     // tell this entry from the one that was replaced.
     const epoch = this.callEpoch;
@@ -741,6 +750,32 @@ export class VoiceEngine {
     }
   }
 
+  /** Hides the "disconnected because you were alone" notice. */
+  dismissEndedNotice(): void {
+    if (this.endedNotice === null) {
+      return;
+    }
+    this.endedNotice = null;
+    this.emit();
+  }
+
+  /**
+   * Asks the server to restart the solo-call countdown. This is the explicit
+   * "Stay" action; a failure is not fatal because the scheduled enforcement is
+   * still the authority. A client from before the mutation existed (or an older
+   * backend) simply gets a rejected call, which is swallowed.
+   */
+  stayInCall(): Promise<void> {
+    const callId = this.callId;
+    if (callId === null || this.port.stayInCall === undefined) {
+      return Promise.resolve();
+    }
+    return this.port.stayInCall({ callId }).then(
+      () => undefined,
+      () => undefined,
+    );
+  }
+
   // ---- Media controls ------------------------------------------------------
 
   setMuted(muted: boolean): Promise<void> {
@@ -936,6 +971,14 @@ export class VoiceEngine {
 
   private onCallUpdate(call: CallView | null): void {
     if (call === null || call.status === "ended") {
+      // The server's solo-call timeout ends the call with a reason; keep it so
+      // the provider can explain why the person lost the call.
+      if (call?.endedReason === "alone") {
+        this.endedNotice = {
+          kind: "alone-timeout",
+          timeoutSeconds: call.aloneTimeoutSeconds ?? null,
+        };
+      }
       this.enterTeardown();
       return;
     }

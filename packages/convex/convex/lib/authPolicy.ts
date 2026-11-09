@@ -4,12 +4,20 @@
  */
 
 export interface SignupPolicy {
+  /**
+   * Whether the workspace singleton exists. Before the first owner claims a
+   * fresh instance, public account creation is denied so an outsider cannot
+   * pre-register the operator's address and block setup. The setup credential
+   * path bypasses this check explicitly in `auth.ts`.
+   */
+  readonly serverInitialized: boolean;
   readonly signupEnabled: boolean;
   readonly inviteOnly: boolean;
   readonly allowedEmailDomains: readonly string[];
 }
 
 export const DEFAULT_SIGNUP_POLICY: SignupPolicy = {
+  serverInitialized: true,
   signupEnabled: true,
   inviteOnly: true,
   allowedEmailDomains: [],
@@ -38,8 +46,16 @@ export function emailDomainAllowed(
  * Whether account creation should be rejected outright. Invite-only still
  * allows account creation (the invitation is redeemed afterwards); only a
  * disabled signup blocks it.
+ *
+ * A workspace with no server/owner yet has no signup policy to consult, so
+ * public creation is denied. The first-run claim uses its own auth instance
+ * (`createSetupAuth`) and bypasses this check, not by re-enabling signup for
+ * everyone.
  */
 export function signupBlocked(policy: SignupPolicy, email: string | null | undefined): boolean {
+  if (!policy.serverInitialized) {
+    return true;
+  }
   if (!policy.signupEnabled) {
     return true;
   }

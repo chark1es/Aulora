@@ -28,8 +28,8 @@ Useful flags and environment variables:
 | Flag | Environment | Meaning |
 | --- | --- | --- |
 | `--name` / `-Name` | `AULORA_WORKSPACE_NAME` | workspace name |
-| `--email` / `-Email` | `AULORA_OWNER_EMAIL` | owner account email |
-| `--password` / `-Password` | `AULORA_OWNER_PASSWORD` | owner password (16+ chars) |
+| `--email` / `-Email` | `AULORA_OWNER_EMAIL` | legacy: seed the owner from the environment |
+| `--password` / `-Password` | `AULORA_OWNER_PASSWORD` | legacy: seeded owner password (16+ chars) |
 | `--port` / `-Port` | `AULORA_WEB_PORT` | host web port (default 8080) |
 | `--site-url` / `-SiteUrl` | `AULORA_SITE_URL` | public origin for a real domain |
 | `--backups` / `-Backups` | — | also start the nightly backup runner |
@@ -43,7 +43,7 @@ no-op for data.
 
 ```sh
 cd infra/docker
-cp .env.example .env      # edit INSTANCE_NAME, WORKSPACE_NAME, OWNER_* and origins
+cp .env.example .env      # edit INSTANCE_NAME, WORKSPACE_NAME and origins
 docker compose up -d --build
 docker compose logs -f setup
 ```
@@ -51,8 +51,26 @@ docker compose logs -f setup
 `setup` mints the admin key with the Convex backend's own `generate_key`,
 generates the missing secrets (`INSTANCE_SECRET`, `BETTER_AUTH_SECRET`, VAPID
 keys, the default local master key `AULORA_ENCRYPTION_KEY`),
-deploys `packages/convex`, creates the workspace and owner, and writes
+deploys `packages/convex`, prints a one-time setup token, and writes
 `/.well-known/aulora.json`. It is safe to re-run.
+
+Open the web or desktop app and choose **Set up your instance**. Enter the setup
+token from the logs and create the owner account (name, email, password). The
+token is stored server-side only as a hash, expires after 24 hours, and is
+cleared once claimed. Re-running setup reuses a live token; it only replaces it
+when `SETUP_TOKEN_ROTATE=true` is set, so a routine redeploy never invalidates a
+token you already printed. Before an owner exists, public account creation is
+denied so nobody can pre-register the operator's address; the setup screen uses
+its own claim path. Claim attempts are limited per attempted token (eight per
+15 minutes) plus a high global ceiling, because the bundled proxy presents one
+peer address for every caller; wrong guesses at one token cannot lock out an
+operator holding another.
+
+The older environment-seeded path still works for automation: set both
+`OWNER_EMAIL` and `OWNER_PASSWORD` in `.env` before the first run. A
+`SETUP_TOKEN` override is also supported for deployments that cannot read the
+setup logs. Existing instances that already have an owner never see the setup
+screen.
 
 ## Local URL map
 
@@ -80,10 +98,19 @@ admin → Environment** instead of editing `.env`, including the OAuth/OIDC
 providers and a custom OIDC provider. Overrides live in the workspace database,
 sealed with the server encryption key, and win over the deployment environment.
 Deployment values are never shown, and secrets saved in the panel are
-write-only. Anyone with owner access can change them, and a database restore
-carries them with it, so keep credentials that should never change in `.env`.
-Bootstrap settings such as `BETTER_AUTH_SECRET`, the encryption keys and
-`SITE_URL` are read-only.
+write-only: the panel reports only source, set/not-set and last-updated time.
+Anyone with owner access can change them, and a database restore carries them
+with it, so keep credentials that should never change in `.env`. Bootstrap
+settings such as `BETTER_AUTH_SECRET`, the encryption keys and `SITE_URL` are
+read-only.
+
+The shipped `infra/docker/.env.example` therefore contains only the bootstrap
+values. OAuth/OIDC credentials, local-auth switches and client-side ICE/TURN
+settings are absent or commented; the panel is the default way to configure
+them, and a first-run prompt appears until an OAuth or OIDC provider is set up.
+An environment value is still fully supported as the fallback, and the
+[environment variables reference](environment-variables.md) marks every variable
+bootstrap, deploy-time or overridable.
 
 Overrides take effect on the next request, with no restart. The switch is read
 from the deployment environment, so set `AULORA_ALLOW_UI_ENV_OVERRIDES=false` in

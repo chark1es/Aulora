@@ -15,6 +15,7 @@ import {
   removeMemberRoleLink,
   syncMemberRoles,
 } from "./lib/memberRoles";
+import { ownerIdsOf } from "./lib/owners";
 import {
   requireCanGrant,
   requireMember,
@@ -445,14 +446,17 @@ export const me = query({
   handler: async (ctx) => {
     const { userId } = await requireAuth(ctx);
     const server = await ctx.db.query("server").first();
+    const ownerIds = ownerIdsOf(server);
     const member = await ctx.db
       .query("members")
       .withIndex("by_user", (q) => q.eq("userId", userId))
       .unique();
     return {
       userId,
+      // Legacy single-owner field for older clients; `ownerIds` is authoritative.
       ownerId: server?.ownerId ?? null,
-      isOwner: server !== null && server.ownerId === userId,
+      ownerIds,
+      isOwner: ownerIds.includes(userId),
       member:
         member === null
           ? null

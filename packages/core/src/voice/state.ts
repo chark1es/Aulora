@@ -38,6 +38,58 @@ export function isParticipant(call: CallView | null, userId: string): boolean {
   return selfParticipant(call, userId) !== undefined;
 }
 
+/**
+ * How long before a solo-call disconnect the in-call warning appears. The
+ * server owns the actual deadline; this only decides when to surface it.
+ */
+export const CALL_ALONE_HINT_MS = 60_000;
+
+/**
+ * Milliseconds left on a solo-call deadline, or `null` when the warning should
+ * stay hidden (no deadline, already passed, or more than a minute away).
+ * `deadline` is a server timestamp, so a reconnect keeps the same countdown.
+ */
+export function callAloneRemainingMs(
+  deadline: number | null | undefined,
+  now: number,
+): number | null {
+  if (deadline === null || deadline === undefined || !Number.isFinite(deadline)) {
+    return null;
+  }
+  const remaining = deadline - now;
+  return remaining > 0 && remaining <= CALL_ALONE_HINT_MS ? remaining : null;
+}
+
+/**
+ * The static sentence assistive technology hears when the solo-call warning
+ * appears. The live countdown stays hidden from it, so this does not include
+ * the ticking seconds.
+ */
+export const CALL_ALONE_HINT_MESSAGE =
+  "You will be disconnected soon because nobody else is in the call. Press Stay to remain.";
+
+/** A `m:ss` countdown label for {@link callAloneRemainingMs} (e.g. `0:45`). */
+export function formatAloneCountdown(remainingMs: number): string {
+  const seconds = Math.max(0, Math.ceil(remainingMs / 1000));
+  return `${Math.floor(seconds / 60)}:${String(seconds % 60).padStart(2, "0")}`;
+}
+
+/**
+ * Human duration for a solo-call notice, e.g. `5 minutes`. Falls back to a
+ * non-numeric phrase when an older backend does not report the configured
+ * window, so the UI never invents a timeout.
+ */
+export function callAloneTimeoutLabel(seconds: number | null | undefined): string {
+  if (seconds === null || seconds === undefined || !Number.isFinite(seconds) || seconds <= 0) {
+    return "a while";
+  }
+  const minutes = Math.round(seconds / 60);
+  if (minutes < 1) {
+    return `${Math.max(1, Math.round(seconds))} seconds`;
+  }
+  return minutes === 1 ? "1 minute" : `${minutes} minutes`;
+}
+
 /** The viewer's own row, if they are in the call. */
 export function selfParticipant(
   call: CallView | null,

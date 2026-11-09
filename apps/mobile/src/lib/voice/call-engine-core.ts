@@ -1,4 +1,5 @@
 import {
+  type CallEndNotice,
   type CallKind,
   type CallSeatResult,
   type CallSignalRow,
@@ -56,6 +57,8 @@ export interface MobileVoiceSnapshot {
   readonly micLevelAvailable: boolean;
   readonly pending: boolean;
   readonly error: string | null;
+  /** A notice to show after the server disconnected this device from a call. */
+  readonly endedNotice: CallEndNotice | null;
 }
 
 export interface MobileVoiceEngineOptions {
@@ -147,6 +150,8 @@ export abstract class CallEngineCore {
   protected levelUnsub: (() => void) | null = null;
   protected pending = false;
   protected error: string | null = null;
+  /** Why the server ended the last call, kept after teardown for the notice. */
+  protected endedNotice: CallEndNotice | null = null;
 
   protected readonly peers = new Map<string, Peer>();
   protected readonly remoteStreams = new Map<string, VoiceStream>();
@@ -201,6 +206,7 @@ export abstract class CallEngineCore {
       previous.localVideoTrack === localVideoTrack &&
       previous.pending === this.pending &&
       previous.error === this.error &&
+      previous.endedNotice === this.endedNotice &&
       previous.micLevelAvailable === this.micLevelAvailable &&
       previous.micLevel === this.micLevel &&
       sameLevels(previous.remoteLevels, remoteLevels) &&
@@ -220,6 +226,7 @@ export abstract class CallEngineCore {
       micLevelAvailable: this.micLevelAvailable,
       pending: this.pending,
       error: this.error,
+      endedNotice: this.endedNotice,
     };
     this.cachedSnapshot = snapshot;
     return snapshot;
@@ -319,6 +326,8 @@ export abstract class CallEngineCore {
       return;
     }
     this.enterTeardown();
+    // A fresh call replaces whatever notice the last one left.
+    this.endedNotice = null;
     this.callId = callId;
     this.processedSignals.clear();
     const watched = callId;
@@ -394,6 +403,34 @@ export abstract class CallEngineCore {
   clearError(): void {
     this.error = null;
     this.emit();
+  }
+
+  /** Hides the notice shown after a server-side solo-call disconnect. */
+  dismissEndedNotice(): void {
+    if (this.endedNotice === null) {
+      return;
+    }
+    this.endedNotice = null;
+    this.emit();
+  }
+
+  /**
+   * Restarts the solo-call countdown for this device. A backend from before the
+   * mutation existed rejects it; that is harmless because the server-side
+   * scheduled enforcement is still the authority. Clients that never call this
+   * are unaffected.
+   */
+  async stayInCall(): Promise<void> {
+    const callId = this.callId;
+    const stay = this.port.stayInCall;
+    if (callId === null || stay === undefined) {
+      return;
+    }
+    try {
+      await stay.call(this.port, { callId });
+    } catch {
+      // Older backend: the timer cannot be reset from this client.
+    }
   }
 
   dispose(): void {

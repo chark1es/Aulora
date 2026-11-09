@@ -71,18 +71,27 @@ describe("SearchInput", () => {
 });
 
 describe("EmptyState", () => {
-  it("renders a title, description and action", () => {
-    render(
+  it("leads with copy, details and the action instead of a glyph tile", () => {
+    const { container } = render(
       <EmptyState
-        icon="note"
         title="Write your first note"
         description="Nothing here yet."
+        details={<p>Notes are written in Markdown.</p>}
         action={<Button>New note</Button>}
       />,
     );
     expect(screen.getByRole("heading", { name: "Write your first note" })).toBeInTheDocument();
     expect(screen.getByText("Nothing here yet.")).toBeInTheDocument();
+    expect(screen.getByText("Notes are written in Markdown.")).toBeInTheDocument();
     expect(screen.getByRole("button", { name: "New note" })).toBeInTheDocument();
+    expect(container.querySelector("svg")).toBeNull();
+  });
+
+  it("keeps an optional icon small and monochrome", () => {
+    const { container } = render(<EmptyState icon="file" title="No file selected" />);
+    const icon = container.querySelector("svg");
+    expect(icon).not.toBeNull();
+    expect(icon?.getAttribute("width")).toBe("16");
   });
 });
 
