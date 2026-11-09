@@ -1,4 +1,5 @@
 import type { ServerProfile } from "@aulora/core";
+import { debugLog } from "@aulora/core";
 import { act, fireEvent, render, screen } from "@testing-library/react";
 import type { ReactNode } from "react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
@@ -215,9 +216,11 @@ describe("ProfileSession recovery", () => {
   it("drops a token the server rejects and signs in without it", () => {
     writeSessionToken(PROFILE.siteUrl, "stale-token");
     harness.server.rejectsStoredToken = true;
+    debugLog.record("previous-account", "sentinel-old-account");
     render(<ProfileSession profile={PROFILE} />);
 
     expect(readSessionToken(PROFILE.siteUrl)).toBeNull();
+    expect(debugLog.report("new-account", "")).not.toContain("sentinel-old-account");
     expect(screen.getByText("Signed in")).toBeInTheDocument();
     expect(harness.clients).toHaveLength(2);
   });

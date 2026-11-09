@@ -3,9 +3,9 @@ import { lazy, Suspense, useCallback, useEffect, useState } from "react";
 import { elementFromTarget, isEditableTarget } from "../lib/context-menu-target";
 import { isDesktop } from "../lib/desktop";
 
-const DebugLogsDialog = lazy(() => import("./DebugLogsDialog"));
-
 import { DesktopContextMenu } from "./DesktopContextMenu";
+
+const DebugLogsDialog = lazy(() => import("./DebugLogsDialog"));
 
 /** Local diagnostics must remain reachable on connect/sign-in screens. */
 export function DebugLogsAccess() {

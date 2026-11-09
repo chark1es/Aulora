@@ -1,5 +1,5 @@
 /* eslint-disable no-unused-vars -- the base rule reports parameter names in type signatures; Biome checks real unused code */
-import { clientVersionState, type ServerProfile } from "@aulora/core";
+import { clientVersionState, debugLog, type ServerProfile } from "@aulora/core";
 import { Spinner, Text } from "@aulora/ui-web";
 import type { ConvexReactClient } from "convex/react";
 import { useConvexAuth, useQuery } from "convex/react";
@@ -173,6 +173,7 @@ export function SessionGate({ profile, authClient, client, connection }: Session
       return;
     }
     droppedInvalidSession.current = true;
+    debugLog.clear();
     resetProviderToken(authClient);
     const storedToken = readSessionToken(profile.siteUrl) !== null;
     clearSessionToken(profile.siteUrl);

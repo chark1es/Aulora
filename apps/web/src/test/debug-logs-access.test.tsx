@@ -48,8 +48,10 @@ describe("signed-out debug logs", () => {
 
   it("preserves browser editing and link menus", () => {
     setup();
-    expect(fireEvent.contextMenu(screen.getByLabelText("Server address"))).toBe(true);
-    expect(fireEvent.contextMenu(screen.getByText("Example link"))).toBe(true);
+    expect(fireEvent.contextMenu(screen.getByLabelText("Server address"), { button: 2 })).toBe(
+      true,
+    );
+    expect(fireEvent.contextMenu(screen.getByText("Example link"), { button: 2 })).toBe(true);
     expect(screen.queryByRole("menu")).not.toBeInTheDocument();
   });
 });

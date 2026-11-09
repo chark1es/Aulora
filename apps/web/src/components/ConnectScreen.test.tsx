@@ -1,4 +1,4 @@
-import { webLocalStorageStore } from "@aulora/core";
+import { createServerProfile, debugLog, type WellKnown, webLocalStorageStore } from "@aulora/core";
 import { render, screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { afterEach, describe, expect, it, vi } from "vitest";
@@ -14,7 +14,7 @@ vi.mock("./BlobatarHero", () => ({
   },
 }));
 
-const wellKnown = {
+const wellKnown: WellKnown = {
   name: "Acme Chat",
   version: "0.1.0",
   apiVersion: 1,
@@ -36,9 +36,30 @@ function jsonResponse(body: unknown): Response {
 
 afterEach(() => {
   vi.unstubAllGlobals();
+  debugLog.clear();
 });
 
 describe("ConnectScreen", () => {
+  for (const action of ["switch", "remove"] as const) {
+    it(`clears previous account diagnostics when the connect screen performs ${action}`, async () => {
+      const store = webLocalStorageStore({ storage: memoryStorage() });
+      const profile = createServerProfile("https://chat.acme.com", wellKnown);
+      await store.add(profile);
+      render(<ConnectScreen store={store} />);
+      const user = userEvent.setup();
+      await screen.findByRole("button", { name: /Acme Chat.*chat.acme.com/ });
+      debugLog.record("previous-account", "sentinel-old-account");
+      await user.click(
+        screen.getByRole("button", {
+          name: action === "switch" ? /Acme Chat.*chat.acme.com/ : "Remove Acme Chat",
+        }),
+      );
+      await waitFor(() =>
+        expect(debugLog.report("new-account", "")).not.toContain("sentinel-old-account"),
+      );
+    });
+  }
+
   it("normalizes the host, fetches well-known, shows the name and saves the profile", async () => {
     const calls: string[] = [];
     const fetchMock = vi.fn((input: RequestInfo | URL) => {
@@ -58,7 +79,11 @@ describe("ConnectScreen", () => {
     expect(await screen.findByText("Acme Chat")).toBeInTheDocument();
     expect(calls[0]).toBe("https://chat.acme.com/.well-known/aulora.json");
 
+    debugLog.record("previous-account", "sentinel-old-account");
     await user.click(screen.getByRole("button", { name: "Continue" }));
+    await waitFor(() =>
+      expect(debugLog.report("new-account", "")).not.toContain("sentinel-old-account"),
+    );
     await waitFor(() => expect(onConnected).toHaveBeenCalledTimes(1));
     expect((await store.getActive())?.name).toBe("Acme Chat");
   });
