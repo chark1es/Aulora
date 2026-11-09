@@ -9,6 +9,13 @@ import {
   screenCapturePermission,
   systemAudioSupport,
 } from "./desktop-display";
+import {
+  getDisplayPickerState,
+  IDLE_DISPLAY_PICKER,
+  setDisplayPickerState,
+} from "./display-picker-store";
+
+export { getDisplayPickerState, subscribeDisplayPicker } from "./display-picker-store";
 
 /**
  * The in-app screen/window picker, as a request the UI answers.
@@ -56,16 +63,6 @@ export interface DisplayChoice {
   readonly audioRequested: boolean;
 }
 
-const IDLE: DisplayPickerState = {
-  status: "idle",
-  sources: [],
-  error: null,
-  selectedId: null,
-  audioRequested: false,
-  audio: null,
-  permission: null,
-};
-
 const NOTHING_TO_SHARE = "There is nothing to share right now.";
 /** Fallback reason when the shell reports a block without its own wording. */
 const NOT_ALLOWED =
@@ -86,8 +83,6 @@ export interface DisplayPickerOptions {
   readonly readAudio?: () => Promise<SystemAudioSupport>;
 }
 
-let state: DisplayPickerState = IDLE;
-const listeners = new Set<() => void>();
 let pending: { resolve(choice: DisplayChoice): void; reject(error: unknown): void } | null = null;
 let loadToken = 0;
 let readSources: () => Promise<DisplaySource[]> = listDisplaySources;
@@ -97,22 +92,7 @@ let openSettings: () => Promise<void> = openCapturePermissionSettings;
 let readAudio: () => Promise<SystemAudioSupport> = systemAudioSupport;
 
 function setState(next: DisplayPickerState): void {
-  state = next;
-  for (const listener of listeners) {
-    listener();
-  }
-}
-
-/** The current picker state; read it through `useSyncExternalStore`. */
-export function getDisplayPickerState(): DisplayPickerState {
-  return state;
-}
-
-export function subscribeDisplayPicker(listener: () => void): () => void {
-  listeners.add(listener);
-  return () => {
-    listeners.delete(listener);
-  };
+  setDisplayPickerState(next);
 }
 
 /** A picker state with every field at its idle value except what is given. */
@@ -245,6 +225,7 @@ export function requestDisplaySource(options: DisplayPickerOptions = {}): Promis
 
 /** Selects a tile; the next confirm shares it. */
 export function selectDisplaySource(sourceId: string): void {
+  const state = getDisplayPickerState();
   if (state.status !== "ready" || state.selectedId === sourceId) {
     return;
   }
@@ -256,6 +237,7 @@ export function selectDisplaySource(sourceId: string): void {
 
 /** Turns the share's system audio on or off; ignored where it is unsupported. */
 export function setDisplayAudioRequested(on: boolean): void {
+  const state = getDisplayPickerState();
   if (state.audio?.supported !== true || state.audioRequested === on) {
     return;
   }
@@ -264,6 +246,7 @@ export function setDisplayAudioRequested(on: boolean): void {
 
 /** Shares the selected tile and closes the picker. */
 export function confirmDisplayPicker(): void {
+  const state = getDisplayPickerState();
   const source = state.sources.find((entry) => entry.id === state.selectedId);
   if (state.status !== "ready" || source === undefined) {
     return;
@@ -272,15 +255,16 @@ export function confirmDisplayPicker(): void {
   pending = null;
   loadToken += 1;
   const choice: DisplayChoice = { source, audioRequested: state.audioRequested };
-  setState(IDLE);
+  setState(IDLE_DISPLAY_PICKER);
   request?.resolve(choice);
 }
 
 /** Closes the picker without sharing. */
 export function cancelDisplayPicker(): void {
+  const state = getDisplayPickerState();
   const blocking = state.status === "permission" ? state.permission : null;
   loadToken += 1;
-  setState(IDLE);
+  setState(IDLE_DISPLAY_PICKER);
   const request = pending;
   pending = null;
   if (blocking === null) {
@@ -297,7 +281,7 @@ export function retryDisplayPicker(): void {
   if (pending === null) {
     return;
   }
-  void load(state.audioRequested);
+  void load(getDisplayPickerState().audioRequested);
 }
 
 /**
@@ -305,6 +289,7 @@ export function retryDisplayPicker(): void {
  * is listed there. Continues straight to the tiles if access was just granted.
  */
 export async function openDisplayPermissionSettings(): Promise<void> {
+  const state = getDisplayPickerState();
   if (pending === null || state.permission?.canOpenSettings !== true) {
     return;
   }

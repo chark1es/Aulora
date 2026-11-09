@@ -1,8 +1,9 @@
 /* eslint-disable no-unused-vars -- the base rule reports parameter names in type signatures; Biome checks real unused code */
-import { Button, Card, cn, Text } from "@aulora/ui-web";
+import { Button, Card, Text } from "@aulora/ui-web";
 import { isDesktop } from "../lib/desktop";
 import { type UpdatePhase, useDesktopUpdates } from "../providers/DesktopUpdateProvider";
 import { ReleaseNotes } from "./ReleaseNotes";
+import { UpdateProgress } from "./UpdateProgress";
 import {
   downloadLabel,
   downloadPercent,
@@ -194,38 +195,6 @@ function UpdateStatus(props: {
       {props.showCheckedAt && (
         <Text size="xs" tone="muted">
           Last checked {props.checkedAt}
-        </Text>
-      )}
-    </div>
-  );
-}
-
-export function UpdateProgress(props: {
-  readonly percent: number | null;
-  readonly text: string | null;
-}) {
-  const { percent, text } = props;
-  return (
-    <div className="flex items-center gap-2.5" data-testid="update-progress">
-      <div
-        className="h-1.5 min-w-0 flex-1 overflow-hidden rounded-full bg-surface-3"
-        role="progressbar"
-        aria-label="Update download progress"
-        aria-valuemin={0}
-        aria-valuemax={100}
-        aria-valuenow={percent ?? undefined}
-      >
-        <div
-          className={cn(
-            "h-full rounded-full bg-accent transition-[width] duration-300",
-            percent === null && "w-1/3 animate-pulse",
-          )}
-          style={percent === null ? undefined : { width: `${percent}%` }}
-        />
-      </div>
-      {text !== null && (
-        <Text size="xs" tone="muted" className="tabular-nums">
-          {text}
         </Text>
       )}
     </div>

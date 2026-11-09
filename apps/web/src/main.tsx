@@ -2,9 +2,8 @@ import { webLocalStorageStore } from "@aulora/core";
 import { RouterProvider } from "@tanstack/react-router";
 import { StrictMode } from "react";
 import { createRoot } from "react-dom/client";
-import { CallPipWindow } from "./components/voice/CallPipWindow";
+import { hasAuthHandoffParams } from "./lib/auth-handoff-location";
 import { isPipWindowLocation } from "./lib/call-pip";
-import { completeAuthHandoffFromLocation } from "./lib/oauth-start";
 import { logBoot } from "./lib/remount-debug";
 import { applyTheme, readThemePreference } from "./lib/theme";
 import { router } from "./router";
@@ -20,7 +19,8 @@ const root = container;
 
 // The desktop shell opens its call picture-in-picture window on the same bundle
 // at the `#pip` entry (see `pip_window.rs`). That window has no workspace, no
-// connection and no router: it only draws what the main window sends it.
+// connection and no router: it only draws what the main window sends it, so its
+// view loads on demand instead of shipping in the entry chunk.
 const pip = isPipWindowLocation(window.location);
 
 // Opt-in (`aulora.debug.remount`): records the document boot, its navigation
@@ -28,21 +28,37 @@ const pip = isPipWindowLocation(window.location);
 // from a React remount logged by the session surfaces.
 logBoot(pip ? "pip" : "web");
 
-function render() {
+function renderApp() {
   createRoot(root).render(
-    <StrictMode>{pip ? <CallPipWindow /> : <RouterProvider router={router} />}</StrictMode>,
+    <StrictMode>
+      <RouterProvider router={router} />
+    </StrictMode>,
+  );
+}
+
+async function renderPip() {
+  const { CallPipWindow } = await import("./components/voice/CallPipWindow");
+  createRoot(root).render(
+    <StrictMode>
+      <CallPipWindow />
+    </StrictMode>,
   );
 }
 
 // An OAuth finish redirect stores the bearer token before the router mounts, so
-// the session query sees it on its first read instead of racing a reload.
+// the session query sees it on its first read instead of racing a reload. The
+// handoff module (exchange, verifier and deep-link completion) is only
+// downloaded when the address bar actually carries a finish redirect.
 if (pip) {
-  render();
+  void renderPip();
 } else {
   void (async () => {
     const active = await webLocalStorageStore()
       .getActive()
       .catch(() => undefined);
-    await completeAuthHandoffFromLocation(undefined, active?.siteUrl);
-  })().finally(render);
+    if (hasAuthHandoffParams(window.location.hash, window.location.search)) {
+      const { completeAuthHandoffFromLocation } = await import("./lib/oauth-start");
+      await completeAuthHandoffFromLocation(undefined, active?.siteUrl);
+    }
+  })().finally(renderApp);
 }

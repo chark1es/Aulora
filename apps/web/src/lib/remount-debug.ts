@@ -12,20 +12,49 @@
  * The flag is read on every log call (not cached at import time), so toggling
  * it in the console takes effect without a reload. Logs include a timestamp and
  * the surface; auth logs include the three `useConvexAuth()` fields.
+ *
+ * This module is the always-loaded half: the flag check and the log wrappers.
+ * The logging code itself ({@link ./remount-debug-log}) is only imported once
+ * the flag is on, so ordinary sessions never download diagnostics.
  */
 
 import type { ConvexReactClient } from "convex/react";
 import { useEffect } from "react";
 
 const DEBUG_FLAG = "aulora.debug.remount";
-const BOOT_KEY = "aulora.debug.boots";
-const PREFIX = "[aulora:remount]";
+
+/** The auth fields worth logging when the session gate re-evaluates. */
+export interface RemountAuthState {
+  readonly isAuthenticated: boolean;
+  readonly isLoading: boolean;
+  readonly isRefreshing: boolean;
+}
+
+type RemountLogModule = typeof import("./remount-debug-log");
+
+function loadLog(): Promise<RemountLogModule> {
+  return import("./remount-debug-log");
+}
 
 /** Logs mount and unmount of one session surface so remount cycles are visible. */
 export function useRemountLog(surface: string): void {
   useEffect(() => {
-    logRemountEvent(surface, "mount");
-    return () => logRemountEvent(surface, "unmount");
+    if (!remountDebugEnabled()) {
+      return undefined;
+    }
+    let log: ((event: string) => void) | undefined;
+    let active = true;
+    void loadLog().then((module) => {
+      if (!active) {
+        return;
+      }
+      module.logRemountEvent(surface, "mount");
+      log = (event) => module.logRemountEvent(surface, event);
+    });
+    return () => {
+      active = false;
+      log?.("unmount");
+    };
   }, [surface]);
 }
 
@@ -56,25 +85,7 @@ export function logBoot(surface: string): void {
   if (!remountDebugEnabled()) {
     return;
   }
-  let boots = 0;
-  try {
-    const previous = Number(globalThis.sessionStorage?.getItem(BOOT_KEY) ?? "0");
-    boots = (Number.isFinite(previous) ? previous : 0) + 1;
-    globalThis.sessionStorage?.setItem(BOOT_KEY, String(boots));
-  } catch {
-    // Session storage can be blocked; the navigation entry still helps.
-  }
-  const navigation = globalThis.performance?.getEntriesByType?.("navigation").at(0) as
-    | PerformanceNavigationTiming
-    | undefined;
-  // eslint-disable-next-line no-console -- opt-in diagnostics the owner asked for
-  console.warn(
-    `${PREFIX} ${new Date().toISOString()} ${surface} boot #${String(boots)} navigation=${
-      navigation?.type ?? "unknown"
-    } visibility=${globalThis.document?.visibilityState ?? "unknown"} href=${redactLocationHref(
-      globalThis.location?.href,
-    )}`,
-  );
+  void loadLog().then((module) => module.logBoot(surface));
 }
 
 /**
@@ -83,17 +94,23 @@ export function logBoot(surface: string): void {
  * cadence points at a websocket idle timeout in front of the backend.
  */
 export function useConvexConnectionLog(client: ConvexReactClient): void {
-  useEffect(
-    () =>
-      client.subscribeToConnectionState((state) => {
-        logRemountEvent("convex", "connection", {
-          connected: state.isWebSocketConnected,
-          connectionCount: state.connectionCount,
-          connectionRetries: state.connectionRetries,
-        });
-      }),
-    [client],
-  );
+  useEffect(() => {
+    if (!remountDebugEnabled()) {
+      return undefined;
+    }
+    let unsubscribe: (() => void) | undefined;
+    let active = true;
+    void loadLog().then((module) => {
+      if (!active) {
+        return;
+      }
+      unsubscribe = module.subscribeConnectionState(client);
+    });
+    return () => {
+      active = false;
+      unsubscribe?.();
+    };
+  }, [client]);
 }
 
 /** Whether the owner has enabled remount diagnostics in this browser. */
@@ -111,25 +128,13 @@ export function logRemountEvent(surface: string, event: string, detail?: unknown
   if (!remountDebugEnabled()) {
     return;
   }
-  const at = new Date().toISOString();
-  // eslint-disable-next-line no-console -- opt-in diagnostics the owner asked for
-  console.warn(`${PREFIX} ${at} ${surface} ${event}`, detail ?? "");
+  void loadLog().then((module) => module.logRemountEvent(surface, event, detail));
 }
 
 /** Logs a change of the Convex auth state, which decides whether the shell stays. */
-export function logAuthState(state: {
-  readonly isAuthenticated: boolean;
-  readonly isLoading: boolean;
-  readonly isRefreshing: boolean;
-}): void {
+export function logAuthState(state: RemountAuthState): void {
   if (!remountDebugEnabled()) {
     return;
   }
-  const at = new Date().toISOString();
-  // eslint-disable-next-line no-console -- opt-in diagnostics the owner asked for
-  console.warn(
-    `${PREFIX} ${at} convex.auth isAuthenticated=${String(state.isAuthenticated)} isLoading=${String(
-      state.isLoading,
-    )} isRefreshing=${String(state.isRefreshing)}`,
-  );
+  void loadLog().then((module) => module.logAuthState(state));
 }

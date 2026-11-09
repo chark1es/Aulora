@@ -32,3 +32,11 @@ condition = "AND"
 paths = ['packages/convex/test/envOverrides\.test\.ts$']
 regexTarget = "line"
 regexes = ['process\.env\.GITHUB_CLIENT_SECRET = "env-secret']
+
+[[allowlists]]
+description = "Native auth test HMAC secret fixture, not an authentication secret"
+targetRules = ["generic-api-key"]
+condition = "AND"
+paths = ['packages/convex/test/nativeAuth\.test\.ts$']
+regexTarget = "line"
+regexes = ['const SECRET = "test-secret-0123456789-0123456789-0123456789";']

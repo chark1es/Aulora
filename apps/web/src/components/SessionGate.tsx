@@ -3,7 +3,7 @@ import { clientVersionState, type ServerProfile } from "@aulora/core";
 import { Spinner, Text } from "@aulora/ui-web";
 import type { ConvexReactClient } from "convex/react";
 import { useConvexAuth, useQuery } from "convex/react";
-import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { lazy, Suspense, useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { api } from "../../../../packages/convex/convex/_generated/api";
 import { type AuloraAuthClient, type AuthActions, authActionsFromClient } from "../lib/auth-client";
 import { isInvalidSessionError } from "../lib/auth-errors";
@@ -30,8 +30,13 @@ import {
 import { ChatSessionShell, type ChatSessionShellRecovery } from "./chat/ChatSessionShell";
 import { MembershipGate } from "./MembershipGate";
 import { QueryErrorBoundary } from "./QueryErrorBoundary";
-import { SetupScreen } from "./SetupScreen";
 import { SignInScreen } from "./SignInScreen";
+
+// First-run claim only: a fresh instance sees it once, so keep it out of the
+// code every signed-in session downloads.
+const SetupScreen = lazy(() =>
+  import("./SetupScreen").then((module) => ({ default: module.SetupScreen })),
+);
 
 export interface SessionGateProps {
   readonly profile: ServerProfile;
@@ -217,7 +222,11 @@ export function SessionGate({ profile, authClient, client, connection }: Session
   // a missing config: while the answer is unknown a signed-in shell keeps
   // rendering, and signed-out callers wait for the answer instead.
   if (setupConfig?.setupRequired === true) {
-    return <SetupScreen profile={profile} actions={actions} onSwitchServer={switchServer} />;
+    return (
+      <Suspense fallback={<SessionPending stuck={false} recovery={recovery} />}>
+        <SetupScreen profile={profile} actions={actions} onSwitchServer={switchServer} />
+      </Suspense>
+    );
   }
 
   if (session.isPending) {

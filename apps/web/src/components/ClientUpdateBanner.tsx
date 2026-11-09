@@ -3,7 +3,7 @@ import { Button, Card, Text } from "@aulora/ui-web";
 import { useState } from "react";
 import { isDesktop } from "../lib/desktop";
 import { type UpdatePhase, useDesktopUpdates } from "../providers/DesktopUpdateProvider";
-import { UpdateProgress } from "./UpdateSettings";
+import { UpdateProgress } from "./UpdateProgress";
 import {
   downloadLabel,
   downloadPercent,

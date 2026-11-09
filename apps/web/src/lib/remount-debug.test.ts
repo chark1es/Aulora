@@ -25,7 +25,7 @@ describe("logBoot", () => {
     vi.restoreAllMocks();
   });
 
-  it("never copies handoff parameters into the log", () => {
+  it("never copies handoff parameters into the log", async () => {
     window.history.replaceState(
       null,
       "",
@@ -34,6 +34,10 @@ describe("logBoot", () => {
     const warn = vi.spyOn(console, "warn").mockImplementation(() => undefined);
 
     logBoot("web");
+    // The logging code is a lazy import so ordinary sessions never download it.
+    await vi.waitFor(() => {
+      expect(warn).toHaveBeenCalled();
+    });
 
     const line = String(warn.mock.calls[0]?.[0] ?? "");
     expect(line).toContain("/chat");

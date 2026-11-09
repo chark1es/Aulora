@@ -1,7 +1,7 @@
 import { ContextMenuProvider, useContextMenu } from "@aulora/ui-web";
 import { fireEvent, render, screen } from "@testing-library/react";
 import { afterEach, describe, expect, it } from "vitest";
-import { DesktopContextMenu } from "../components/DesktopContextMenu";
+import { DesktopContextMenuPolicy } from "../components/DesktopContextMenuPolicy";
 
 interface TauriTestGlobal {
   __TAURI__?: unknown;
@@ -44,7 +44,7 @@ function renderShell() {
   installTauri();
   render(
     <ContextMenuProvider>
-      <DesktopContextMenu />
+      <DesktopContextMenuPolicy />
       <AppRow />
       <textarea data-testid="composer" />
     </ContextMenuProvider>,

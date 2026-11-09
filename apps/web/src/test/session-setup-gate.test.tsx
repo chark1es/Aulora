@@ -180,12 +180,12 @@ describe("SessionGate setup gate", () => {
     expect(screen.queryByRole("button", { name: "Create account" })).not.toBeInTheDocument();
   });
 
-  it("still shows the claim screen when the server reports setup required", () => {
+  it("still shows the claim screen when the server reports setup required", async () => {
     harness.config = { ...CONFIG, setupRequired: true };
     harness.user = undefined;
     renderGate();
 
-    expect(screen.getByText("Set up your instance")).toBeInTheDocument();
+    expect(await screen.findByText("Set up your instance")).toBeInTheDocument();
   });
 
   it("drops back to sign-in only after the config says setup is complete", () => {
