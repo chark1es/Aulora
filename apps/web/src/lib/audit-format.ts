@@ -85,65 +85,43 @@ export function auditActorLabel(name: string | null | undefined, id: string): st
   return shortId(id);
 }
 
+/** The target kind for actions whose exact target has no display name. */
+const TARGET_KINDS: ReadonlyArray<readonly [readonly string[], string]> = [
+  [["role."], "Role"],
+  [["member.", "owner."], "Member"],
+  [["invite.", "allowlist."], "Invite"],
+  [["message."], "Message"],
+  [["category."], "Category"],
+  [["channel."], "Channel"],
+  [["webhook."], "Webhook"],
+  [["kanban."], "Kanban board"],
+  [["workspaceNotes."], "Workspace"],
+  [["transcription."], "Transcription"],
+  [["scheduledCall."], "Scheduled call"],
+  [["guestCall."], "Guest session"],
+  [["bot."], "Bot"],
+  [["server.", "instance.", "addons.", "setup.", "email.", "license."], "Workspace"],
+];
+
+const SPECIAL_TARGET_KINDS: Record<string, string> = {
+  "kanban.deleteCard": "Kanban card",
+  "workspaceNotes.deleteFolder": "Notes folder",
+  "workspaceNotes.deleteTag": "Note tag",
+  "workspaceNotes.deleteNote": "Note",
+  "guestCall.createLink": "Guest link",
+  "guestCall.revokeLink": "Guest link",
+};
+
 /** The kind of target an action usually affects, for actions whose name is gone. */
 export function auditTargetKind(action: string): string | null {
-  if (action.startsWith("role.")) {
-    return "Role";
+  const special = SPECIAL_TARGET_KINDS[action];
+  if (special !== undefined) {
+    return special;
   }
-  if (action.startsWith("member.") || action.startsWith("owner.")) {
-    return "Member";
-  }
-  if (action.startsWith("invite.") || action.startsWith("allowlist.")) {
-    return "Invite";
-  }
-  if (action.startsWith("message.")) {
-    return "Message";
-  }
-  if (action.startsWith("category.")) {
-    return "Category";
-  }
-  if (action.startsWith("channel.")) {
-    return "Channel";
-  }
-  if (action.startsWith("webhook.")) {
-    return "Webhook";
-  }
-  if (action.startsWith("kanban.")) {
-    return action === "kanban.deleteCard" ? "Kanban card" : "Kanban board";
-  }
-  if (action.startsWith("workspaceNotes.")) {
-    if (action.endsWith("deleteFolder")) {
-      return "Notes folder";
+  for (const [prefixes, kind] of TARGET_KINDS) {
+    if (prefixes.some((prefix) => action.startsWith(prefix))) {
+      return kind;
     }
-    if (action.endsWith("deleteTag")) {
-      return "Note tag";
-    }
-    if (action.endsWith("deleteNote")) {
-      return "Note";
-    }
-    return "Workspace";
-  }
-  if (action.startsWith("transcription.")) {
-    return "Transcription";
-  }
-  if (action.startsWith("scheduledCall.")) {
-    return "Scheduled call";
-  }
-  if (action.startsWith("guestCall.")) {
-    return action.endsWith("Link") ? "Guest link" : "Guest session";
-  }
-  if (action.startsWith("bot.")) {
-    return "Bot";
-  }
-  if (
-    action.startsWith("server.") ||
-    action.startsWith("instance.") ||
-    action.startsWith("addons.") ||
-    action.startsWith("setup.") ||
-    action.startsWith("email.") ||
-    action.startsWith("license.")
-  ) {
-    return "Workspace";
   }
   return null;
 }
@@ -543,6 +521,137 @@ function toggleSentence(
   return null;
 }
 
+function nameDetail(meta: Record<string, unknown>): string | null {
+  return nonEmpty(meta.name);
+}
+
+function boardNameDetail(meta: Record<string, unknown>): string | null {
+  return nonEmpty(meta.name) ?? nonEmpty(meta.title);
+}
+
+function privacyDetail(meta: Record<string, unknown>): string | null {
+  return typeof meta.private === "boolean" ? (meta.private ? "now private" : "now public") : null;
+}
+
+function countDetail(meta: Record<string, unknown>, suffix: string): string | null {
+  return typeof meta.count === "number" ? `${meta.count} ${suffix}` : null;
+}
+
+function overrideTargetDetail(meta: Record<string, unknown>, names: EventNames): string | null {
+  const target = lookupName(
+    meta.targetId,
+    meta.targetType === "role" ? names.roleNames : names.memberNames,
+  );
+  return target ?? nonEmpty(meta.targetType);
+}
+
+function roleDetail(meta: Record<string, unknown>, names: EventNames): string | null {
+  return lookupName(meta.roleId, names.roleNames);
+}
+
+function channelMemberDetail(meta: Record<string, unknown>, names: EventNames): string | null {
+  return lookupName(meta.userId, names.memberNames);
+}
+
+function timeoutDetail(meta: Record<string, unknown>): string | null {
+  return typeof meta.until === "number"
+    ? `until ${new Date(meta.until).toLocaleString()}`
+    : "cleared";
+}
+
+function deleteInviteDetail(meta: Record<string, unknown>): string | null {
+  return inviteKindLabel(meta.kind);
+}
+
+function envOverrideDetail(meta: Record<string, unknown>): string | null {
+  return nonEmpty(meta.key) ?? (Array.isArray(meta.keys) ? `${meta.keys.length} variables` : null);
+}
+
+function botCreateDetail(meta: Record<string, unknown>): string | null {
+  const parts = [nonEmpty(meta.name), nonEmpty(meta.language)].filter(
+    (part): part is string => part !== null,
+  );
+  return parts.length > 0 ? parts.join(", ") : null;
+}
+
+function logoDetail(meta: Record<string, unknown>): string | null {
+  return meta.set === true ? "new logo set" : "logo removed";
+}
+
+function ownersDetail(meta: Record<string, unknown>): string | null {
+  return typeof meta.ownerCount === "number" ? `${meta.ownerCount} owners` : null;
+}
+
+function channelCreateMetaDetail(meta: Record<string, unknown>): string | null {
+  return channelCreateDetail(meta, nonEmpty(meta.name));
+}
+
+type MetaDetailFormatter = (meta: Record<string, unknown>, names: EventNames) => string | null;
+
+const META_DETAIL_FORMATTERS: Record<string, MetaDetailFormatter> = {
+  "role.create": nameDetail,
+  "role.update": changedFields,
+  "role.delete": nameDetail,
+  "role.reorder": (meta) => countDetail(meta, "moved"),
+  "category.create": nameDetail,
+  "category.update": nameDetail,
+  "category.delete": nameDetail,
+  "category.reorder": (meta) => countDetail(meta, "moved"),
+  "category.setOverrides": (meta) => countDetail(meta, "overrides"),
+  "category.clearOverride": overrideTargetDetail,
+  "channel.create": channelCreateMetaDetail,
+  "channel.rename": nameDetail,
+  "channel.setTopic": nameDetail,
+  "channel.setPrivate": privacyDetail,
+  "channel.setBlocked": (meta) => countDetail(meta, "blocked"),
+  "channel.setOverrides": (meta) => countDetail(meta, "overrides"),
+  "channel.clearOverride": overrideTargetDetail,
+  "channel.reorder": (meta) => countDetail(meta, "moved"),
+  "channel.member.add": channelMemberDetail,
+  "channel.member.remove": channelMemberDetail,
+  "member.role.add": roleDetail,
+  "member.role.remove": roleDetail,
+  "member.nickname": nameDetail,
+  "member.ban": banDetail,
+  "member.timeout": timeoutDetail,
+  "invite.create": inviteDetail,
+  "invite.delete": deleteInviteDetail,
+  "allowlist.add": allowlistDetail,
+  "allowlist.remove": allowlistDetail,
+  "bot.create": botCreateDetail,
+  "bot.update": changedFields,
+  "bot.delete": nameDetail,
+  "bot.files": filesDetail,
+  "bot.env": botEnvDetail,
+  "webhook.update": changedFields,
+  "server.updateSettings": changedFields,
+  "server.updateBranding": changedFields,
+  "server.setLogo": logoDetail,
+  "instance.authProviders.update": authProviderDetail,
+  "instance.backups.update": enabledDetail,
+  "instance.env.override": envOverrideDetail,
+  "instance.env.reset": (meta) => nonEmpty(meta.key),
+  "kanban.setEnabled": enabledDetail,
+  "kanban.createBoard": boardNameDetail,
+  "kanban.updateBoard": boardNameDetail,
+  "kanban.archiveBoard": boardNameDetail,
+  "kanban.restoreBoard": boardNameDetail,
+  "kanban.deleteBoard": boardNameDetail,
+  "kanban.deleteCard": boardNameDetail,
+  "workspaceNotes.setEnabled": enabledDetail,
+  "workspaceNotes.deleteFolder": nameDetail,
+  "workspaceNotes.deleteNote": nameDetail,
+  "workspaceNotes.deleteTag": nameDetail,
+  "scheduledCall.create": scheduledCallDetail,
+  "scheduledCall.update": changedFields,
+  "guestCall.createLink": guestLinkDetail,
+  "transcription.updateConfig": transcriptionDetail,
+  "owner.promote": ownersDetail,
+  "owner.demote": ownersDetail,
+  "owner.deletion.reserved": ownersDetail,
+  "owner.deletion.orphaned": ownersDetail,
+};
+
 function metaDetail(
   action: string,
   meta: Record<string, unknown> | null,
@@ -551,115 +660,8 @@ function metaDetail(
   if (meta === null) {
     return null;
   }
-  const name = nonEmpty(meta.name);
-  const changed = changedList(meta);
-  switch (action) {
-    case "role.create":
-    case "role.delete":
-    case "category.create":
-    case "category.update":
-    case "category.delete":
-    case "channel.rename":
-    case "channel.setTopic":
-    case "member.nickname":
-    case "bot.delete":
-    case "workspaceNotes.deleteFolder":
-    case "workspaceNotes.deleteNote":
-    case "workspaceNotes.deleteTag":
-      return name;
-    case "kanban.createBoard":
-    case "kanban.updateBoard":
-    case "kanban.archiveBoard":
-    case "kanban.restoreBoard":
-    case "kanban.deleteBoard":
-    case "kanban.deleteCard":
-      return name ?? nonEmpty(meta.title);
-    case "role.update":
-    case "server.updateSettings":
-    case "server.updateBranding":
-    case "webhook.update":
-    case "scheduledCall.update":
-      return changed.length > 0 ? changed.map(humanizeField).join(", ") : null;
-    case "instance.authProviders.update":
-      return authProviderDetail(meta);
-    case "channel.create":
-      return channelCreateDetail(meta, name);
-    case "channel.setPrivate":
-      return typeof meta.private === "boolean"
-        ? meta.private
-          ? "now private"
-          : "now public"
-        : null;
-    case "channel.setBlocked":
-      return typeof meta.count === "number" ? `${meta.count} blocked` : null;
-    case "channel.setOverrides":
-    case "category.setOverrides":
-      return typeof meta.count === "number" ? `${meta.count} overrides` : null;
-    case "channel.clearOverride":
-    case "category.clearOverride": {
-      const target = lookupName(
-        meta.targetId,
-        meta.targetType === "role" ? names.roleNames : names.memberNames,
-      );
-      return target ?? nonEmpty(meta.targetType);
-    }
-    case "channel.reorder":
-    case "category.reorder":
-    case "role.reorder":
-      return typeof meta.count === "number" ? `${meta.count} moved` : null;
-    case "member.role.add":
-    case "member.role.remove":
-      return lookupName(meta.roleId, names.roleNames);
-    case "channel.member.add":
-    case "channel.member.remove":
-      return lookupName(meta.userId, names.memberNames);
-    case "member.ban":
-      return banDetail(meta);
-    case "member.timeout":
-      return typeof meta.until === "number"
-        ? `until ${new Date(meta.until).toLocaleString()}`
-        : "cleared";
-    case "invite.create":
-      return inviteDetail(meta);
-    case "invite.delete":
-      return inviteKindLabel(meta.kind);
-    case "allowlist.add":
-    case "allowlist.remove":
-      return allowlistDetail(meta);
-    case "instance.backups.update":
-    case "kanban.setEnabled":
-    case "workspaceNotes.setEnabled":
-      return enabledDetail(meta);
-    case "instance.env.override":
-      return (
-        nonEmpty(meta.key) ?? (Array.isArray(meta.keys) ? `${meta.keys.length} variables` : null)
-      );
-    case "instance.env.reset":
-      return nonEmpty(meta.key);
-    case "bot.create":
-      return [name, nonEmpty(meta.language)].filter((part) => part !== null).join(", ") || null;
-    case "bot.update":
-      return changed.length > 0 ? changed.map(humanizeField).join(", ") : null;
-    case "bot.files":
-      return filesDetail(meta);
-    case "bot.env":
-      return botEnvDetail(meta);
-    case "transcription.updateConfig":
-      return transcriptionDetail(meta);
-    case "scheduledCall.create":
-      return scheduledCallDetail(meta);
-    case "guestCall.createLink":
-      return guestLinkDetail(meta);
-    case "server.setLogo":
-      return meta.set === true ? "new logo set" : "logo removed";
-    case "owner.promote":
-    case "owner.demote":
-    case "owner.deletion.reserved":
-    case "owner.deletion.orphaned":
-      return typeof meta.ownerCount === "number" ? `${meta.ownerCount} owners` : null;
-    default:
-      return enabledDetail(meta);
-  }
+  const formatter = META_DETAIL_FORMATTERS[action];
+  return formatter !== undefined ? formatter(meta, names) : enabledDetail(meta);
 }
 
 /**
