@@ -211,18 +211,43 @@ it("renders the saved draft before its server subscription catches up", async ()
   expect(screen.getByRole("heading", { name: "A draft" })).toBeInTheDocument();
 });
 
-it.each(["openNote", "closeNote", "openFolder", "createNote"] as const)(
+const replacementNavigations: readonly (readonly [string, (notes: NotesHook) => void])[] = [
+  [
+    "openNote",
+    (notes) => {
+      notes.openNote("B" as never);
+    },
+  ],
+  [
+    "closeNote",
+    (notes) => {
+      notes.closeNote();
+    },
+  ],
+  [
+    "openFolder",
+    (notes) => {
+      notes.openFolder(undefined);
+    },
+  ],
+  [
+    "createNote",
+    (notes) => {
+      notes.createNote();
+    },
+  ],
+];
+
+it.each(replacementNavigations)(
   "clears the replacement hint after Keep my version then %s and reopening",
-  async (action) => {
+  async (_name, navigate) => {
     const { result, rerender } = setup();
     store.notes[0] = { ...required(store.notes[0]), revision: 2, title: "Remote title" };
     rerender();
     act(() => result.current.overwriteWithMyVersion());
     expect(result.current.replacingNewerVersion).toBe(true);
     act(() => {
-      if (action === "openNote") result.current.openNote("B" as never);
-      else if (action === "openFolder") result.current.openFolder(undefined);
-      else result.current[action]();
+      navigate(result.current);
     });
     await act(async () => {
       result.current.navigation.discard();

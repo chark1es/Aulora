@@ -1287,7 +1287,7 @@ function ChatViewContent({
 
   // A Threads-inbox row opens the existing thread panel for its root message.
   const openThreadFromInbox = useCallback(
-    (thread: ThreadInboxItem) =>
+    (thread: ThreadInboxItem) => {
       navigateFromSettings(() => {
         const root: MessagePayload = {
           id: thread.id,
@@ -1310,7 +1310,8 @@ function ChatViewContent({
         setAdminOpen(false);
         setUserSettingsOpen(false);
         setMobilePane("chat");
-      }),
+      });
+    },
     [navigateFromSettings],
   );
 
