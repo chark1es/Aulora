@@ -48,6 +48,43 @@ export function Sheet({
   );
 }
 
+function SheetHeader({
+  title,
+  dismiss,
+  onClose,
+}: {
+  readonly title: string;
+  readonly dismiss: "cancel" | "done";
+  readonly onClose: () => void;
+}) {
+  return (
+    <View className="flex-row items-center border-b border-border px-2 py-1">
+      {/* Action slots keep their label whole at large text; the title gives way. */}
+      <View className="max-w-[45%] shrink-0 items-start">
+        {dismiss === "cancel" && (
+          <Button variant="ghost" onPress={onClose}>
+            Cancel
+          </Button>
+        )}
+      </View>
+      {/* Centred by its slot, not text-align: Android clipped the first
+          glyph of a centred title that also ellipsized ("Vote · Jordan E…"). */}
+      <View className="min-w-0 flex-1 items-center">
+        <Heading level={3} numberOfLines={1} maxFontSizeMultiplier={1.6}>
+          {title}
+        </Heading>
+      </View>
+      <View className="max-w-[45%] shrink-0 items-end">
+        {dismiss === "done" && (
+          <Button variant="ghost" onPress={onClose}>
+            Done
+          </Button>
+        )}
+      </View>
+    </View>
+  );
+}
+
 function SheetContent({
   title,
   dismiss,
@@ -79,30 +116,7 @@ function SheetContent({
           },
         ]}
       >
-        <View className="flex-row items-center border-b border-border px-2 py-1">
-          {/* Action slots keep their label whole at large text; the title gives way. */}
-          <View className="max-w-[45%] shrink-0 items-start">
-            {dismiss === "cancel" && (
-              <Button variant="ghost" onPress={onClose}>
-                Cancel
-              </Button>
-            )}
-          </View>
-          {/* Centred by its slot, not text-align: Android clipped the first
-              glyph of a centred title that also ellipsized ("Vote · Jordan E…"). */}
-          <View className="min-w-0 flex-1 items-center">
-            <Heading level={3} numberOfLines={1} maxFontSizeMultiplier={1.6}>
-              {title}
-            </Heading>
-          </View>
-          <View className="max-w-[45%] shrink-0 items-end">
-            {dismiss === "done" && (
-              <Button variant="ghost" onPress={onClose}>
-                Done
-              </Button>
-            )}
-          </View>
-        </View>
+        <SheetHeader title={title} dismiss={dismiss} onClose={onClose} />
         {children}
         {footer}
       </View>

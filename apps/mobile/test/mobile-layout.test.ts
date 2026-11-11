@@ -56,7 +56,84 @@ const hosts: Record<string, string> = {
   "src/components/chat/ThreadModal.tsx": "src/components/chat/SlideOver.tsx",
   "src/components/voice/CallVideo.tsx": "src/components/voice/CallScreen.tsx",
 };
+// The composer is split across sibling files; guards read them together.
+const COMPOSER_FILES = [
+  "src/components/chat/Composer.tsx",
+  "src/components/chat/ComposerNotices.tsx",
+  "src/components/chat/ComposerSuggestions.tsx",
+  "src/components/chat/ComposerInputRow.tsx",
+];
+const composerSource = () => COMPOSER_FILES.map((path) => read(resolve(root, path))).join("\n");
 const safe = /ScreenContainer|useScreenInsets|<(?:Sheet|BottomSheet|SlideOver)\b/;
+
+const parseTsx = (path: string) =>
+  ts.createSourceFile(path, read(path), ts.ScriptTarget.Latest, true, ts.ScriptKind.TSX);
+
+/** Visits every node of a parsed file, depth first. */
+function walk(node: ts.Node, visit: (node: ts.Node) => void) {
+  visit(node);
+  ts.forEachChild(node, (child) => {
+    walk(child, visit);
+  });
+}
+
+const FILL_EDGES = [/top:\s*0/, /bottom:\s*0/, /left:\s*0/, /right:\s*0/];
+
+function absoluteOffsetFailures(path: string): string[] {
+  const ast = parseTsx(path);
+  const exempt = layoutExceptions[relative(path)] !== undefined;
+  const failures: string[] = [];
+  walk(ast, (node) => {
+    if (ts.isObjectLiteralExpression(node)) {
+      const text = node.getText(ast);
+      const placed =
+        /position:\s*["']absolute["']/.test(text) && /(?:top|bottom):\s*-?\d/.test(text);
+      const fill = FILL_EDGES.every((edge) => edge.test(text));
+      if (placed && !fill && !/insets\./.test(text) && !exempt) failures.push(relative(path));
+    }
+    if (ts.isJsxOpeningElement(node) || ts.isJsxSelfClosingElement(node)) {
+      const text = node.getText(ast);
+      if (/\babsolute\b/.test(text) && /\b(?:top|bottom)-\d/.test(text) && !exempt)
+        failures.push(relative(path));
+    }
+  });
+  return failures;
+}
+
+const ROW = /flex-row|flexDirection:\s*["']row/;
+const FIXED_HEIGHT = /(?<![\w-])h-(?:\d|\[)|\bheight:\s*\d/;
+const RN_TEXT_IMPORT = /import\s*\{[^}]*\bText\b[^}]*\}\s*from\s*["']react-native["']/;
+
+/** Row text must shrink or truncate, and its container must not fix a height. */
+function rowTextFailures(path: string): string[] {
+  const ast = parseTsx(path);
+  const source = read(path);
+  const failures: string[] = [];
+  walk(ast, (node) => {
+    if (
+      !ts.isJsxElement(node) ||
+      !/^(Text|Heading)$/.test(node.openingElement.tagName.getText(ast))
+    )
+      return;
+    let parent: ts.Node | undefined = node.parent;
+    while (parent && !ts.isJsxElement(parent)) parent = parent.parent;
+    if (!parent || !ts.isJsxElement(parent)) return;
+    const tag = parent.openingElement.getText(ast);
+    const text = node.openingElement.getText(ast);
+    const inRow = ROW.test(tag);
+    if (
+      inRow &&
+      RN_TEXT_IMPORT.test(source) &&
+      !/numberOfLines|flexShrink|shrink|min-w-0/.test(text)
+    )
+      failures.push(`${relative(path)}: raw row Text requires a shrink or line limit`);
+    if (inRow && /flexShrink:\s*0/.test(text) && !/numberOfLines/.test(text))
+      failures.push(`${relative(path)}: row Text disables shrinking`);
+    if (FIXED_HEIGHT.test(tag.replace(/shadowOffset:\s*\{[^}]*\}/g, "")))
+      failures.push(`${relative(path)}:${ast.getLineAndCharacterOfPosition(node.pos).line + 1}`);
+  });
+  return failures;
+}
 
 describe("mobile safe layout source guards", () => {
   it("requires an inset owner for every route, screen and native modal", () => {
@@ -79,105 +156,21 @@ describe("mobile safe layout source guards", () => {
   });
 
   it("rejects hard-coded absolute window offsets without an inset expression", () => {
-    const failures: string[] = [];
-    for (const path of sources) {
-      const source = read(path);
-      const ast = ts.createSourceFile(
-        path,
-        source,
-        ts.ScriptTarget.Latest,
-        true,
-        ts.ScriptKind.TSX,
-      );
-      function visit(node: ts.Node) {
-        if (ts.isObjectLiteralExpression(node)) {
-          const text = node.getText(ast);
-          if (/position:\s*["']absolute["']/.test(text) && /(?:top|bottom):\s*-?\d/.test(text)) {
-            const fill =
-              /top:\s*0/.test(text) &&
-              /bottom:\s*0/.test(text) &&
-              /left:\s*0/.test(text) &&
-              /right:\s*0/.test(text);
-            if (!fill && !/insets\./.test(text) && !layoutExceptions[relative(path)])
-              failures.push(relative(path));
-          }
-        }
-        if (ts.isJsxOpeningElement(node) || ts.isJsxSelfClosingElement(node)) {
-          const text = node.getText(ast);
-          if (
-            /\babsolute\b/.test(text) &&
-            /\b(?:top|bottom)-\d/.test(text) &&
-            !layoutExceptions[relative(path)]
-          )
-            failures.push(relative(path));
-        }
-        ts.forEachChild(node, visit);
-      }
-      visit(ast);
-    }
+    const failures = sources.flatMap((path) => absoluteOffsetFailures(path));
     expect(failures).toEqual([]);
   });
 
   it("keeps row text shrinkable and text-bearing containers free of fixed heights", () => {
-    const failures: string[] = [];
-    for (const path of sources) {
-      const ast = ts.createSourceFile(
-        path,
-        read(path),
-        ts.ScriptTarget.Latest,
-        true,
-        ts.ScriptKind.TSX,
-      );
-      function visit(node: ts.Node) {
-        if (
-          ts.isJsxElement(node) &&
-          /^(Text|Heading)$/.test(node.openingElement.tagName.getText(ast))
-        ) {
-          let parent: ts.Node | undefined = node.parent;
-          while (parent && !ts.isJsxElement(parent)) parent = parent.parent;
-          if (parent && ts.isJsxElement(parent)) {
-            const tag = parent.openingElement.getText(ast);
-            const text = node.openingElement.getText(ast);
-            const source = read(path);
-            if (
-              /flex-row|flexDirection:\s*["']row/.test(tag) &&
-              /import\s*\{[^}]*\bText\b[^}]*\}\s*from\s*["']react-native["']/.test(source) &&
-              !/numberOfLines|flexShrink|shrink|min-w-0/.test(text)
-            )
-              failures.push(`${relative(path)}: raw row Text requires a shrink or line limit`);
-            if (
-              /flex-row|flexDirection:\s*["']row/.test(tag) &&
-              /flexShrink:\s*0/.test(text) &&
-              !/numberOfLines/.test(text)
-            )
-              failures.push(`${relative(path)}: row Text disables shrinking`);
-            // Shared Text/Heading have flexShrink/minWidth defaults, asserted below.
-            if (
-              /flex-row|flexDirection:\s*["']row/.test(tag) &&
-              !/numberOfLines|shrink|min-w-0|flex-1/.test(text)
-            ) {
-              expect(read(resolve(root, "../../packages/ui-native/src/Text.tsx"))).toContain(
-                "flexShrink: 1",
-              );
-              expect(read(resolve(root, "../../packages/ui-native/src/Heading.tsx"))).toContain(
-                "flexShrink: 1",
-              );
-            }
-            if (
-              /(?<![\w-])h-(?:\d|\[)|\bheight:\s*\d/.test(
-                tag.replace(/shadowOffset:\s*\{[^}]*\}/g, ""),
-              )
-            )
-              failures.push(
-                `${relative(path)}:${ast.getLineAndCharacterOfPosition(node.pos).line + 1}`,
-              );
-          }
-        }
-        ts.forEachChild(node, visit);
-      }
-      visit(ast);
-    }
+    const failures = sources.flatMap((path) => rowTextFailures(path));
     expect(failures).toEqual([]);
+  });
+
+  // Shared Text/Heading carry flexShrink/minWidth defaults, so row text without its own limit still shrinks.
+  it("gives the shared Text and Heading a shrinking default", () => {
+    for (const file of ["Text", "Heading"])
+      expect(read(resolve(root, `../../packages/ui-native/src/${file}.tsx`))).toContain(
+        "flexShrink: 1",
+      );
   });
 
   it("centralizes safe-area reads and avoids a duplicate home-indicator inset above the IME", () => {
@@ -199,22 +192,27 @@ describe("mobile safe layout source guards", () => {
   // frame against its parent, so a pane below a banner or inset left the composer
   // under the keyboard. Every keyboard-avoiding pane goes through the shared one,
   // which measures its real window position.
-  it("routes keyboard-avoiding panes through the window-measured wrapper", () => {
+  it("keeps the window-measured keyboard-avoiding wrapper in the shared layout", () => {
     const layout = read(resolve(root, "src/components/layout/ScreenContainer.tsx"));
     expect(layout).toMatch(/export function KeyboardAvoidingPane/);
     expect(layout).toContain("measureInWindow");
     expect(layout).toContain("keyboardVerticalOffset={offset}");
     expect(layout).toContain('"keyboardWillShow"');
-    const direct: string[] = [];
-    for (const path of sources.filter((path) => !path.endsWith("/layout/ScreenContainer.tsx"))) {
-      if (
-        /import\s*\{[^}]*\bKeyboardAvoidingView\b[^}]*\}\s*from\s*["']react-native-keyboard-controller["']/.test(
-          read(path),
-        )
-      )
-        direct.push(relative(path));
-    }
+  });
+
+  it("never imports the raw keyboard-avoiding view outside the shared wrapper", () => {
+    const rawView = /import\s*\{[^}]*\bKeyboardAvoidingView\b[^}]*\}\s*from\s*["']([^"']+)["']/;
+    const direct = sources
+      .filter((path) => !path.endsWith("/layout/ScreenContainer.tsx"))
+      .filter((path) => {
+        const module = rawView.exec(read(path))?.[1];
+        return module === "react-native-keyboard-controller" || module === "react-native";
+      })
+      .map(relative);
     expect(direct).toEqual([]);
+  });
+
+  it("routes every pane and form sheet through the shared keyboard-avoiding pane", () => {
     for (const path of [
       "src/components/chat/ChatConversation.tsx",
       "src/components/chat/SlideOver.tsx",
@@ -226,12 +224,6 @@ describe("mobile safe layout source guards", () => {
       "src/components/kanban/sheets.tsx",
     ])
       expect(read(resolve(root, path)), path).toContain("<KeyboardAvoidingPane");
-    const core = sources.filter((path) =>
-      /import\s*\{[^}]*\bKeyboardAvoidingView\b[^}]*\}\s*from\s*["']react-native["']/.test(
-        read(path),
-      ),
-    );
-    expect(core).toEqual([]);
   });
 
   // Edge-to-edge Android no longer resizes the window for the keyboard, so the
@@ -258,18 +250,22 @@ describe("mobile safe layout source guards", () => {
   });
 
   it("keeps the composer input above the keyboard when suggestions or rows grow", () => {
-    const composer = read(resolve(root, "src/components/chat/Composer.tsx"));
     // Suggestions shrink and scroll instead of pushing the input down.
-    expect(composer).toMatch(
-      /<ScrollView[\s\S]{0,500}flexShrink: 1,[\s\S]{0,200}minHeight:\s*suggestionRowHeights\s*\.slice\(0, Math.min\(2, suggestions.length\)\)/,
+    const suggestions = read(resolve(root, "src/components/chat/ComposerSuggestions.tsx"));
+    expect(suggestions).toMatch(
+      /<ScrollView[\s\S]{0,500}flexShrink: 1,[\s\S]{0,200}minHeight:\s*rowHeights\s*\.slice\(0, Math.min\(MEASURED_ROWS, suggestions.length\)\)/,
     );
+    expect(suggestions).toContain("const MEASURED_ROWS = 2;");
+    const composer = read(resolve(root, "src/components/chat/Composer.tsx"));
     expect(composer).toMatch(
       /flexShrink: 1,\s*paddingBottom: Math\.max\(insets\.keyboardBottom, 8\),\s*justifyContent: "flex-end",\s*overflow: "hidden",/,
     );
-    // The empty length-limit row is not rendered (an empty line is ~30dp at 2x text).
-    expect(composer).toContain(
-      "(limitError !== null || textLength >= MESSAGE_MAX_LENGTH * 0.9) && (",
-    );
+  });
+
+  it("does not render the empty length-limit row (an empty line is ~30dp at 2x text)", () => {
+    const notices = read(resolve(root, "src/components/chat/ComposerNotices.tsx"));
+    expect(notices).toContain("const nearLimit = textLength >= MESSAGE_MAX_LENGTH * 0.9;");
+    expect(notices).toContain("if (limitError === null && !nearLimit) return null;");
   });
 
   it("never splits a short label mid-word in sheet headers or segment rows", () => {
@@ -293,7 +289,7 @@ describe("mobile safe layout source guards", () => {
       const source = read(path);
       for (const match of source.matchAll(/<(?:Pressable|TouchableOpacity)\b([\s\S]*?)>/g)) {
         const props = match[1] ?? "";
-        const size = /className=\{?[`"](?:[^`"]*?\s)?(?:min-)?h-(\d+)\b/.exec(props);
+        const size = /className=\{?[\x60"](?:[^\x60"]*?\s)?(?:min-)?h-(\d+)\b/.exec(props);
         if (!size) continue;
         const height = px[size[1] as string] ?? Number(size[1]) * 3.5;
         const slop = /hitSlop=\{(?:\{ top: )?(\d+)/.exec(props);
@@ -311,7 +307,7 @@ describe("mobile safe layout source guards", () => {
   it("keeps primary navigation and the demo banner readable at large text", () => {
     const hub = read(resolve(root, "src/components/chat/HubPane.tsx"));
     const tab = hub.slice(
-      hub.indexOf("function DockTab("),
+      hub.indexOf("const DOCK_TAB_BASE"),
       hub.indexOf("interface WorkspaceButtonProps"),
     );
     expect(tab).toContain("numberOfLines={dockLabelLines(label)}");
@@ -325,14 +321,17 @@ describe("mobile safe layout source guards", () => {
   });
 
   it("gives composer chips and dismiss controls whole 44dp targets", () => {
-    const composer = read(resolve(root, "src/components/chat/Composer.tsx"));
-    expect(composer).toMatch(
-      /accessibilityLabel=\{`Remove \$\{entry\.file\.name\}`\}\s*className="min-h-11 min-w-11 /,
+    const notices = read(resolve(root, "src/components/chat/ComposerNotices.tsx"));
+    expect(notices).toMatch(
+      /accessibilityLabel=\{\x60Remove \$\{entry\.file\.name\}\x60\}\s*className="min-h-11 min-w-11 /,
     );
-    expect(composer).toMatch(
+    expect(notices).toMatch(
       /accessibilityLabel="Dismiss message error"\s*className="[^"]*h-11 w-11/,
     );
-    // One announcement path for the mass-mention hint, and no reserved empty row.
+  });
+
+  it("keeps one announcement path for the mass-mention hint and no reserved empty row", () => {
+    const composer = composerSource();
     expect(composer).not.toContain("accessibilityLiveRegion");
     expect(composer).not.toContain("minHeight: 32");
   });
@@ -389,17 +388,20 @@ describe("mobile safe layout source guards", () => {
     expect(scaffold).toContain("event.nativeEvent.contentOffset.y > 2");
   });
 
-  it("requires device fixtures only inside the __DEV__ branch Metro folds away in release", () => {
+  it("imports device fixtures only inside the __DEV__ branch Metro folds away in release", () => {
     const route = read(resolve(root, "app/dev-sheets.tsx"));
     const gate = route.indexOf("if (__DEV__) {");
-    const required = route.indexOf('require("../src/dev/SheetFixtures")');
+    const imported = route.indexOf('import("../src/dev/SheetFixtures")');
     const fallback = route.indexOf('return <Redirect href="/" />;');
     expect(gate).toBeGreaterThan(-1);
-    // The require must sit inside the folded-away branch, before the release redirect.
-    expect(required).toBeGreaterThan(gate);
-    expect(fallback).toBeGreaterThan(required);
+    // The import must sit inside the folded-away branch, before the release redirect.
+    expect(imported).toBeGreaterThan(gate);
+    expect(fallback).toBeGreaterThan(imported);
     expect(route).not.toMatch(/^import .*SheetFixtures/m);
     expect(route).not.toContain("if (!__DEV__)");
+  });
+
+  it("keeps the device fixtures out of every other module", () => {
     for (const path of sources.filter((path) => !path.startsWith("app/dev-sheets")))
       expect(read(path), path).not.toContain("dev/SheetFixtures");
   });

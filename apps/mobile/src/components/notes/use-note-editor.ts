@@ -333,7 +333,7 @@ export function useNoteEditor(ctl: NotesController) {
       { text: "Discard changes", style: "destructive", onPress: discard },
     ]);
   };
-  const reloadLatest = () =>
+  const reloadLatest = () => {
     requestNoteDiscard(
       state.dirty,
       () => {
@@ -342,9 +342,13 @@ export function useNoteEditor(ctl: NotesController) {
       },
       confirmDiscard,
     );
-  const backToList = () => requestNoteDiscard(state.dirty, ctl.backToList, confirmDiscard);
-  const openHistory = (noteId: string) =>
+  };
+  const backToList = () => {
+    requestNoteDiscard(state.dirty, ctl.backToList, confirmDiscard);
+  };
+  const openHistory = (noteId: string) => {
     requestNoteDiscard(state.dirty, () => ctl.openHistory(noteId), confirmDiscard);
+  };
   const keepMyVersion = () => {
     state.keepMyVersion();
     ctl.setError(undefined);

@@ -200,9 +200,9 @@ export function MassMentionToggle({
       value={server?.suppressMassMentions === true}
       onValueChange={(value) => {
         selectionFeedback();
-        void setPref({ scope: "server", suppressMassMentions: value }).catch(() =>
-          Alert.alert("Couldn’t update notification settings", "Try again in a moment."),
-        );
+        void setPref({ scope: "server", suppressMassMentions: value }).catch(() => {
+          Alert.alert("Couldn’t update notification settings", "Try again in a moment.");
+        });
       }}
     />
   );

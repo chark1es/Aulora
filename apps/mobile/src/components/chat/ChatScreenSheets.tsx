@@ -137,7 +137,9 @@ function makeReplyHandler(model: ChatScreenModel, channelId: string, threadRootI
                 canUseMassMentions(model.channel, undefined, model.channelPermissions) &&
                 hasBroadcastToken(text, "here"),
             }),
-      (error) => Alert.alert("Channel copy failed", errorMessage(error)),
+      (error) => {
+        Alert.alert("Channel copy failed", errorMessage(error));
+      },
     );
   };
 }

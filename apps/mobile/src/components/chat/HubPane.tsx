@@ -130,6 +130,50 @@ export function dockLabelLines(label: string): 1 | 2 {
   return /\s/.test(label.trim()) ? 2 : 1;
 }
 
+const DOCK_TAB_BASE =
+  "min-h-[52px] min-w-0 flex-1 items-center justify-center gap-0.5 rounded-pill";
+
+/** The tab’s glyph with the mention count on its corner. */
+function DockTabGlyph({
+  badge,
+  children,
+}: {
+  readonly badge: number;
+  readonly children: ReactNode;
+}) {
+  return (
+    <View>
+      {children}
+      {badge > 0 && (
+        <View className="absolute -right-3 -top-1">
+          <CountBadge count={badge} max={9} size="md" />
+        </View>
+      )}
+    </View>
+  );
+}
+
+/**
+ * Primary navigation stays readable at large text: a label wraps to a second
+ * line at a word break, and a single word that still does not fit shrinks a
+ * little instead of splitting mid-word or truncating.
+ */
+function DockTabLabel({ label, active }: { readonly label: string; readonly active: boolean }) {
+  return (
+    <Text
+      style={{ fontSize: 11, lineHeight: 14, fontWeight: active ? "600" : "400" }}
+      tone={active ? "accent" : "muted"}
+      className="text-center"
+      numberOfLines={dockLabelLines(label)}
+      adjustsFontSizeToFit
+      minimumFontScale={0.7}
+      maxFontSizeMultiplier={DOCK_LABEL_MAX_SCALE}
+    >
+      {label}
+    </Text>
+  );
+}
+
 /** One labelled tab inside the dock’s tab bar. */
 function DockTab({ label, active, badge = 0, onPress, children }: DockTabProps) {
   return (
@@ -138,32 +182,10 @@ function DockTab({ label, active, badge = 0, onPress, children }: DockTabProps) 
       accessibilityLabel={badge > 0 ? `${label}, ${badge} thread mentions` : label}
       accessibilityState={{ selected: active }}
       onPress={onPress}
-      className={`min-h-[52px] min-w-0 flex-1 items-center justify-center gap-0.5 rounded-pill ${
-        active ? "bg-accent-soft" : ""
-      }`}
+      className={active ? `${DOCK_TAB_BASE} bg-accent-soft` : DOCK_TAB_BASE}
     >
-      <View>
-        {children}
-        {badge > 0 && (
-          <View className="absolute -right-3 -top-1">
-            <CountBadge count={badge} max={9} size="md" />
-          </View>
-        )}
-      </View>
-      {/* Primary navigation stays readable at large text: a label wraps to a
-          second line at a word break, and a single word that still does not
-          fit shrinks a little instead of splitting mid-word or truncating. */}
-      <Text
-        style={{ fontSize: 11, lineHeight: 14, fontWeight: active ? "600" : "400" }}
-        tone={active ? "accent" : "muted"}
-        className="text-center"
-        numberOfLines={dockLabelLines(label)}
-        adjustsFontSizeToFit
-        minimumFontScale={0.7}
-        maxFontSizeMultiplier={DOCK_LABEL_MAX_SCALE}
-      >
-        {label}
-      </Text>
+      <DockTabGlyph badge={badge}>{children}</DockTabGlyph>
+      <DockTabLabel label={label} active={active} />
     </Pressable>
   );
 }

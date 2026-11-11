@@ -177,7 +177,12 @@ export function ThreadModal(props: ThreadModalProps) {
           <Text tone="danger" accessibilityRole="alert">
             Couldn’t load replies.
           </Text>
-          <Pressable accessibilityRole="button" onPress={() => loadMore.current()}>
+          <Pressable
+            accessibilityRole="button"
+            onPress={() => {
+              loadMore.current();
+            }}
+          >
             <Text tone="accent">Retry</Text>
           </Pressable>
         </View>
@@ -185,7 +190,9 @@ export function ThreadModal(props: ThreadModalProps) {
         nextCursor !== null && (
           <Pressable
             accessibilityRole="button"
-            onPress={() => loadMore.current()}
+            onPress={() => {
+              loadMore.current();
+            }}
             className="px-4 py-3"
           >
             <Text tone="accent">Load more replies</Text>

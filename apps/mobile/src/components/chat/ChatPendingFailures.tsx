@@ -39,11 +39,11 @@ function ChatPendingFailure({
         size="sm"
         variant="ghost"
         accessibilityLabel={`Retry sending: ${preview.slice(0, 30)}`}
-        onPress={() =>
+        onPress={() => {
           void model.retrySend(item.id).catch((cause: unknown) => {
             Alert.alert("Couldn’t retry message", errorMessage(cause));
-          })
-        }
+          });
+        }}
       >
         Retry
       </Button>
@@ -51,7 +51,7 @@ function ChatPendingFailure({
         size="sm"
         variant="ghost"
         accessibilityLabel={`Discard unsent message: ${preview.slice(0, 30)}`}
-        onPress={() =>
+        onPress={() => {
           Alert.alert(
             "Discard failed message?",
             "This message was not sent. Discarding removes it from this conversation.",
@@ -67,8 +67,8 @@ function ChatPendingFailure({
                 },
               },
             ],
-          )
-        }
+          );
+        }}
       >
         Discard
       </Button>

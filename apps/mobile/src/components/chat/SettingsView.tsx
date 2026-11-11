@@ -181,6 +181,53 @@ interface SettingsMenuProps {
   readonly onOpenRoleColors: () => void;
 }
 
+function SettingsPageRows({
+  canChangeNickname,
+  pushState,
+  onOpen,
+}: Pick<SettingsMenuProps, "canChangeNickname" | "pushState" | "onOpen">) {
+  return (
+    <>
+      <ListRow
+        icon="settings"
+        title="Debug logs"
+        subtitle="Export errors and reproduction steps"
+        chevron
+        onPress={() => {
+          onOpen("debug");
+        }}
+      />
+      <ListRow
+        icon="pencil"
+        title="Profile"
+        subtitle={canChangeNickname ? "Nickname and about you" : "About you"}
+        chevron
+        onPress={() => {
+          onOpen("profile");
+        }}
+      />
+      <ListRow
+        icon="bell"
+        title="Notifications & sounds"
+        subtitle={PUSH_LABELS.get(pushState)}
+        chevron
+        onPress={() => {
+          onOpen("notifications");
+        }}
+      />
+      <ListRow
+        icon="headphones"
+        title="Voice & video"
+        subtitle="Microphone, camera and call quality"
+        chevron
+        onPress={() => {
+          onOpen("voice");
+        }}
+      />
+    </>
+  );
+}
+
 /** The rows that lead to each settings page. */
 function SettingsMenu({
   canChangeNickname,
@@ -202,47 +249,18 @@ function SettingsMenu({
             onPress={onOpenRoleColors}
           />
         )}
-        <ListRow
-          icon="settings"
-          title="Debug logs"
-          subtitle="Export errors and reproduction steps"
-          chevron
-          onPress={() => {
-            onOpen("debug");
-          }}
-        />
-        <ListRow
-          icon="pencil"
-          title="Profile"
-          subtitle={canChangeNickname ? "Nickname and about you" : "About you"}
-          chevron
-          onPress={() => {
-            onOpen("profile");
-          }}
-        />
-        <ListRow
-          icon="bell"
-          title="Notifications & sounds"
-          subtitle={PUSH_LABELS.get(pushState)}
-          chevron
-          onPress={() => {
-            onOpen("notifications");
-          }}
-        />
-        <ListRow
-          icon="headphones"
-          title="Voice & video"
-          subtitle="Microphone, camera and call quality"
-          chevron
-          onPress={() => {
-            onOpen("voice");
-          }}
+        <SettingsPageRows
+          canChangeNickname={canChangeNickname}
+          pushState={pushState}
+          onOpen={onOpen}
         />
         <ListRow
           icon="settings"
           title="System notification settings"
           subtitle="Open this app’s page in system settings"
-          onPress={() => void Linking.openSettings()}
+          onPress={() => {
+            void Linking.openSettings();
+          }}
         />
         <ListRow
           icon="moon"

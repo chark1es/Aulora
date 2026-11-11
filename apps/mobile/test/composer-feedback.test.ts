@@ -2,6 +2,7 @@ import { BROADCAST_FALLBACK_NOTE, reportBroadcastFallback } from "@aulora/core";
 import type { ReactElement } from "react";
 import { expect, it, vi } from "vitest";
 import { Composer } from "../src/components/chat/Composer";
+import type { Fn } from "../src/lib/function-type";
 
 const state = vi.hoisted(() => ({
   fontScale: 1,
@@ -72,12 +73,19 @@ vi.mock("../src/components/chat/List", () => ({ ListGroup: "ListGroup", ListRow:
 vi.mock("../src/components/chat/RichText", () => ({ RichText: "RichText" }));
 
 type Element = ReactElement<Record<string, unknown>>;
+const isElement = (child: unknown): child is Element =>
+  typeof child === "object" && child !== null && "props" in child;
+/**
+ * Every element the composer renders, depth first. Function components (the composer's own
+ * parts) are called with their props, as React would; host and mocked components are leaves
+ * that contribute their `children`.
+ */
 function descendants(element: Element): Element[] {
-  const children = [element.props.children]
-    .flat(Infinity)
-    .filter(
-      (child): child is Element => typeof child === "object" && child !== null && "props" in child,
-    );
+  const rendered =
+    typeof element.type === "function"
+      ? (element.type as Fn<[props: Record<string, unknown>], unknown>)(element.props)
+      : element.props.children;
+  const children = [rendered].flat(Infinity).filter(isElement);
   return [element, ...children.flatMap(descendants)];
 }
 

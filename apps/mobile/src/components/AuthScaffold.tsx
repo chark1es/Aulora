@@ -59,7 +59,7 @@ const scrollStyles = StyleSheet.create({
  */
 function ScrollEdgeFade({ surface }: { readonly surface: "bg" | "surface-1" }) {
   const palette = usePalette();
-  const color = palette[surface];
+  const color = surface === "bg" ? palette.bg : palette["surface-1"];
   return (
     <View pointerEvents="none" style={scrollStyles.edge}>
       <Svg width="100%" height="100%">

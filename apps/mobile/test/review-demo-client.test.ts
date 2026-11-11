@@ -20,9 +20,8 @@ describe("offline review demo client", () => {
     for (const source of Object.values(sources))
       for (const match of source.matchAll(/runtime\.client\.(\w+)\(/g))
         used.add(match[1] as string);
-    const missing = [...used].filter(
-      (method) => !new RegExp(`\\b${method}\\b`).test(stub?.[1] ?? ""),
-    );
+    const stubbed = new Set(stub?.[1]?.match(/\w+/g) ?? []);
+    const missing = [...used].filter((method) => !stubbed.has(method));
     expect(missing).toEqual([]);
   });
 });

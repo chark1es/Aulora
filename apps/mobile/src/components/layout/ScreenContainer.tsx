@@ -15,7 +15,6 @@ import {
   useKeyboardState,
 } from "react-native-keyboard-controller";
 import {
-  type EdgeInsets,
   SafeAreaInsetsContext,
   SafeAreaView,
   type SafeAreaViewProps,
@@ -31,6 +30,17 @@ export function useScreenInsets() {
     keyboardBottom: keyboardVisible ? 0 : insets.bottom,
     sheetBottom: keyboardVisible ? 12 : Math.max(insets.bottom, 12),
   };
+}
+
+/**
+ * Structural twin of the safe-area library's `EdgeInsets`, declared locally so
+ * unions and intersections below do not depend on a type from another package.
+ */
+export interface EdgeInsets {
+  readonly top: number;
+  readonly right: number;
+  readonly bottom: number;
+  readonly left: number;
 }
 
 /** The window's own insets, kept while a banner re-bases the safe area below it. */
@@ -105,8 +115,12 @@ export function KeyboardAvoidingPane({
   );
 }
 
+export interface ScreenContainerProps extends SafeAreaViewProps {
+  readonly scrollable?: boolean;
+}
+
 /** Full screens protect every edge by default, including landscape cutouts. */
-export function ScreenContainer(props: SafeAreaViewProps & { readonly scrollable?: boolean }) {
+export function ScreenContainer(props: ScreenContainerProps) {
   const keyboardVisible = useKeyboardState((state) => state.isVisible);
   const {
     scrollable = false,
