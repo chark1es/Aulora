@@ -10,6 +10,10 @@ Notable components include React, React Native, Expo, Convex, Better Auth, Tauri
 
 The Material Symbols icon paths are sourced from `@iconify-json/material-symbols`, whose metadata identifies the Apache-2.0 license. See `packages/tokens/scripts/generate-icons.mjs`. Material Symbols are by Google and distributed through [google/material-design-icons](https://github.com/google/material-design-icons). The upstream [Apache-2.0 license text](licenses/material-symbols-LICENSE.txt) ships in this repository and the legal release archive. Preserve its license and notices when redistributing the generated icon paths.
 
+## Fonts
+
+Every client, the documentation site and invite emails use [Inter](https://github.com/rsms/inter) for interface text and [JetBrains Mono](https://github.com/JetBrains/JetBrainsMono) for code. Both are licensed under the SIL Open Font License 1.1 and are self-hosted from `packages/tokens/fonts` (no font CDN is contacted). The web files are the Latin and Latin Extended variable subsets published as `@fontsource-variable/inter` and `@fontsource-variable/jetbrains-mono` 5.3.0; the mobile files are the static Google Fonts builds published as `@expo-google-fonts/inter` 0.4.2 and `@expo-google-fonts/jetbrains-mono` 0.4.1, subset to the same ranges. Provenance and checksums are in `packages/tokens/fonts/README.md`. The licence texts are in [`licenses/inter-OFL.txt`](licenses/inter-OFL.txt) and [`licenses/jetbrains-mono-OFL.txt`](licenses/jetbrains-mono-OFL.txt) and ship in the legal release archive. Keep the licence with the font files when redistributing them; the fonts may not be sold on their own.
+
 ## Calling: noise suppression, background effects and streaming
 
 These components ship in the web and desktop clients, or run as an optional service. All are permissively licensed (MIT, BSD, Apache-2.0) and compatible with Aulora's license; each keeps its own license and notices.

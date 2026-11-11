@@ -64,7 +64,8 @@ export interface DialogToggleRowProps {
  */
 export function DialogToggleRow(props: DialogToggleRowProps) {
   const { icon, title, description, checked, onChange, disabled = false, tone = "accent" } = props;
-  const on = tone === "danger" ? "bg-danger/[0.12] text-danger" : "bg-accent/[0.12] text-accent";
+  const on =
+    tone === "danger" ? "bg-danger/[0.12] text-danger-text" : "bg-accent/[0.12] text-accent-text";
   return (
     <div className="flex items-center gap-3">
       <span

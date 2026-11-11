@@ -20,6 +20,7 @@
     "react-dom": "^19.0.0"
   },
   "dependencies": {
+    "@aulora/core": "workspace:*",
     "@aulora/tokens": "workspace:*"
   },
   "devDependencies": {

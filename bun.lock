@@ -49,6 +49,7 @@
         "expo-device": "~58.0.5",
         "expo-document-picker": "~58.0.4",
         "expo-file-system": "~58.0.10",
+        "expo-font": "~58.0.9",
         "expo-haptics": "~58.0.7",
         "expo-image-manipulator": "~58.0.15",
         "expo-image-picker": "~58.0.10",
@@ -222,6 +223,7 @@
       "name": "@aulora/ui-native",
       "version": "1.4.1",
       "dependencies": {
+        "@aulora/core": "workspace:*",
         "@aulora/tokens": "workspace:*",
       },
       "devDependencies": {
@@ -245,6 +247,7 @@
       "name": "@aulora/ui-web",
       "version": "1.4.1",
       "dependencies": {
+        "@aulora/core": "workspace:*",
         "@aulora/tokens": "workspace:*",
       },
       "devDependencies": {

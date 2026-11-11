@@ -1,16 +1,12 @@
 /*
  * Shared chrome for the landing page and docs. Colors come from tokens.css,
- * generated from @aulora/tokens; type, radii and materials mirror the web
- * client (apps/web/src/styles/globals.css) so the site reads as the same app.
+ * generated from @aulora/tokens, as are the self-hosted Inter and JetBrains
+ * Mono faces behind --font-sans and --font-mono. Radii and materials mirror
+ * the web client (apps/web/src/styles/globals.css) so the site reads as the
+ * same app.
  */
 
 :root {
-  --font-sans:
-    -apple-system, BlinkMacSystemFont, "Segoe UI Variable Text", "Segoe UI", "Inter", "Geist",
-    system-ui, sans-serif;
-  --font-mono:
-    ui-monospace, "SF Mono", "Geist Mono", "JetBrains Mono", "Cascadia Code", SFMono-Regular, Menlo,
-    Consolas, monospace;
   --radius-card: 12px;
   --radius-input: 10px;
   --radius-sm: 6px;
@@ -22,10 +18,10 @@
 }
 
 /*
- * Ember is kept for things you can click. In dark mode the token accent is
- * 3.7:1 under white text and 3.8:1 as text on raised surfaces, below the 4.5:1
- * minimum, so filled buttons darken it (4.9:1) and links lighten it (4.8:1
- * on surface-2, 5.9:1 on bg). Light mode uses the token directly (5.2:1).
+ * Ember is kept for things you can click. The token accent is contrast-safe in
+ * both appearances: dark pairs the lighter accent with the dark on-accent, and
+ * light keeps the deeper accent with white. Links and filled buttons can use
+ * the token directly instead of mixing their own shades.
  */
 :root {
   --link: var(--accent);
@@ -35,9 +31,9 @@
 
 @media (prefers-color-scheme: dark) {
   :root {
-    --link: color-mix(in srgb, var(--accent) 80%, white);
-    --accent-fill: color-mix(in srgb, var(--accent) 85%, black);
-    --accent-fill-hover: color-mix(in srgb, var(--accent) 78%, black);
+    --link: var(--accent);
+    --accent-fill: var(--accent);
+    --accent-fill-hover: color-mix(in srgb, var(--accent) 88%, white);
     --shadow-card: 0 1px 2px rgba(0, 0, 0, 0.5), 0 14px 34px -20px rgba(0, 0, 0, 0.85);
   }
 }
@@ -417,6 +413,15 @@ pre {
 
 .button:hover {
   text-decoration: none;
+}
+
+/*
+ * Trim each label to Inter's cap band (cap height to baseline) so the
+ * button's centring centres the letters, not the line box. Static CSS:
+ * engines without text-box keep Inter's own near-centred line box.
+ */
+.button > .label {
+  text-box: trim-both cap alphabetic;
 }
 
 .button:active {

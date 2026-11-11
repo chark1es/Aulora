@@ -18,6 +18,10 @@ const config: Config = {
     extend: {
       colors: Object.fromEntries(COLOR_TOKENS.map((token) => [token, `var(--aulora-${token})`])),
       fontSize: { xs: "13px", sm: "15px", base: "17px", md: "17px", lg: "20px" },
+      // Touch-target sizes outside the shared 4px token scale. NativeWind's
+      // native rem is 14, so an unmapped `h-11`/`min-h-11` would be 38.5dp, not
+      // the 44dp minimum it is written for (measured on an Android emulator).
+      spacing: { 9: "36px", 11: "44px" },
       maxWidth: {
         // Caps the pre-session content column on tablet/regular widths so a
         // primary button never stretches edge to edge (HIG: layout).

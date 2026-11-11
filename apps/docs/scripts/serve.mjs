@@ -26,6 +26,7 @@ const TYPES = {
   ".js": "text/javascript; charset=utf-8",
   ".svg": "image/svg+xml",
   ".json": "application/json",
+  ".woff2": "font/woff2",
 };
 
 const server = createServer((request, response) => {

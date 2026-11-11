@@ -1,4 +1,10 @@
-import { COLOR_TOKENS, cssVariables, IDLE_COLOR, tailwindPresets } from "@aulora/tokens";
+import {
+  COLOR_TOKENS,
+  cssVariables,
+  fontFaceRules,
+  IDLE_COLOR,
+  tailwindPresets,
+} from "@aulora/tokens";
 import type { Config } from "tailwindcss";
 import plugin from "tailwindcss/plugin";
 
@@ -8,6 +14,9 @@ import plugin from "tailwindcss/plugin";
  * without duplicating hex values; the variables themselves come from
  * `@aulora/tokens` via `cssVariables`, emitted into the base layer here.
  */
+/** `packages/tokens/fonts/web`, relative to `src/styles/globals.css`. */
+export const FONT_DIR = "../../../../packages/tokens/fonts/web";
+
 const config: Config = {
   darkMode: "class",
   content: [
@@ -86,6 +95,12 @@ const config: Config = {
   plugins: [
     plugin(({ addBase }) => {
       addBase({ ":root": cssVariables("light"), ".dark": cssVariables("dark") });
+      // Self-hosted Inter and JetBrains Mono. The URLs are relative to
+      // src/styles/globals.css, where Tailwind emits the base layer, so Vite
+      // fingerprints the files into /assets with the rest of the build.
+      addBase(
+        fontFaceRules((file) => `${FONT_DIR}/${file}`).map((rule) => ({ "@font-face": rule })),
+      );
     }),
   ],
 };

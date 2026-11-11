@@ -22,6 +22,7 @@
     "react-native-svg": ">=15.0.0"
   },
   "dependencies": {
+    "@aulora/core": "workspace:*",
     "@aulora/tokens": "workspace:*"
   },
   "devDependencies": {

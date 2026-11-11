@@ -16,7 +16,7 @@ const TONE_CLASSES = new Map<TextTone, string>([
   ["muted", "text-text-muted"],
   ["accent", "text-accent"],
   ["secondary", "text-secondary"],
-  ["danger", "text-danger"],
+  ["danger", "text-danger-text"],
 ]);
 
 const SIZE_CLASSES = new Map<TextSize, string>([
