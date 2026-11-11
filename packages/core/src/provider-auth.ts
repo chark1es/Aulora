@@ -1,8 +1,12 @@
 import { createProviderTokenFetcher, type ProviderTokenFetcher } from "./auth-token";
+import type { Fn } from "./function-type";
 
 interface TokenClient {
   readonly convex: {
-    token(options: never): ReturnType<Parameters<typeof createProviderTokenFetcher>[0]>;
+    readonly token: Fn<
+      [options: never],
+      ReturnType<Parameters<typeof createProviderTokenFetcher>[0]>
+    >;
   };
 }
 
@@ -14,7 +18,7 @@ export interface ProviderAuth<T extends object> {
   /** Drops the cached token synchronously (explicit sign-out). */
   reset(): void;
   /** Binds the cache to the Better Auth session/user id. */
-  setIdentity(_identity: string | null): void;
+  readonly setIdentity: Fn<[identity: string | null], void>;
 }
 
 /**
@@ -62,8 +66,12 @@ export function createProviderAuth<T extends TokenClient>(client: T): ProviderAu
   }) as T;
   return {
     client: wrapped,
-    lastToken: fetchToken.lastToken,
-    reset: fetchToken.reset,
-    setIdentity: fetchToken.setIdentity,
+    lastToken: () => fetchToken.lastToken(),
+    reset: () => {
+      fetchToken.reset();
+    },
+    setIdentity: (identity) => {
+      fetchToken.setIdentity(identity);
+    },
   };
 }

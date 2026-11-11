@@ -335,6 +335,24 @@ it("removes deleted plaintext and parsed bodies from the session cache", async (
   session.dispose();
 });
 
+/** Collects what listeners are told about one row, in delivery order. */
+function recordRowNotifications(session: ReturnType<typeof makeSession>, rowId: string) {
+  const notifications: string[] = [];
+  const messageNotifications: string[] = [];
+  session.onDecrypted((rows) => {
+    for (const row of rows) {
+      if (row.id === rowId)
+        notifications.push(row.deletedAt === null ? session.decryptedText(row.id) : "deleted");
+    }
+  });
+  session.onMessages((rows) => {
+    for (const row of rows) {
+      if (row.id === rowId) messageNotifications.push(row.body);
+    }
+  });
+  return { notifications, messageNotifications };
+}
+
 it.each(["edit", "delete"])(
   "does not replay a delayed attachment snapshot after a newer %s",
   async (kind) => {
@@ -360,19 +378,7 @@ it.each(["edit", "delete"])(
       threadRootId: "root",
       attachmentIds: [fileId],
     });
-    const notifications: string[] = [];
-    const messageNotifications: string[] = [];
-    session.onDecrypted((rows) => {
-      for (const row of rows) {
-        if (row.id === "r")
-          notifications.push(row.deletedAt === null ? session.decryptedText(row.id) : "deleted");
-      }
-    });
-    session.onMessages((rows) => {
-      for (const row of rows) {
-        if (row.id === "r") messageNotifications.push(row.body);
-      }
-    });
+    const { notifications, messageNotifications } = recordRowNotifications(session, "r");
     const pending = session.receiveMessages(
       [
         original,
