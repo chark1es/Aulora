@@ -1,3 +1,4 @@
+import type { Fn } from "../function-type";
 import { callElsewhereFromUnknown } from "./seat";
 import type { CallSignalKind, VoicePort } from "./types";
 
@@ -11,7 +12,10 @@ import type { CallSignalKind, VoicePort } from "./types";
  * generated function references keeps this module free of a Convex dependency.
  */
 
-export type VoiceMutation = (reference: unknown, args: Record<string, unknown>) => Promise<unknown>;
+export type VoiceMutation = Fn<
+  [reference: unknown, args: Record<string, unknown>],
+  Promise<unknown>
+>;
 
 /** The generated `api.calls` mutation references the port needs. */
 export interface VoiceCallMutationRefs {

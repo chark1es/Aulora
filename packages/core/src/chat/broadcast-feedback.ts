@@ -1,11 +1,15 @@
+import type { Fn } from "../function-type";
+
 /** A successful legacy send can retain the text while losing its @here notification. */
 export const BROADCAST_FALLBACK_NOTE =
   "Message sent. This server does not support @here notifications, so @here was sent as plain text.";
-const listeners = new Set<(channelId: string) => void>();
+type BroadcastFallbackListener = Fn<[channelId: string], void>;
+
+const listeners = new Set<BroadcastFallbackListener>();
 export function reportBroadcastFallback(channelId: string): void {
   for (const listener of listeners) listener(channelId);
 }
-export function onBroadcastFallback(listener: (channelId: string) => void): () => void {
+export function onBroadcastFallback(listener: BroadcastFallbackListener): () => void {
   listeners.add(listener);
   return () => {
     listeners.delete(listener);

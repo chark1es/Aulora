@@ -9,11 +9,25 @@
  */
 
 /** Raw primitives by module: imported names that render text without a face. */
-const RAW_PRIMITIVES: Readonly<Record<string, readonly string[]>> = {
-  "react-native": ["Text", "TextInput"],
-  "react-native-gesture-handler": ["TextInput"],
-  "@gorhom/bottom-sheet": ["BottomSheetTextInput"],
-};
+const RAW_PRIMITIVES: ReadonlyMap<string, readonly string[]> = new Map([
+  ["react-native", ["Text", "TextInput"]],
+  ["react-native-gesture-handler", ["TextInput"]],
+  ["@gorhom/bottom-sheet", ["BottomSheetTextInput"]],
+]);
+
+/** A JSX opening tag's name, up to the whitespace, `>` or `/` that ends it. */
+const OPENING_TAG = /<([A-Za-z][\w.]*)(?=[\s>/])/g;
+const WORD_CHAR = /\w/;
+
+/** Whether `word` occurs in `text` delimited by non-word characters on both sides. */
+function hasWord(text: string, word: string): boolean {
+  for (let at = text.indexOf(word); at !== -1; at = text.indexOf(word, at + 1)) {
+    if (!WORD_CHAR.test(text.charAt(at - 1)) && !WORD_CHAR.test(text.charAt(at + word.length))) {
+      return true;
+    }
+  }
+  return false;
+}
 
 const IMPORT = /import\s+(?:type\s+)?\{([^}]*)\}\s*from\s*["']([^"']+)["']/g;
 
@@ -21,9 +35,9 @@ const IMPORT = /import\s+(?:type\s+)?\{([^}]*)\}\s*from\s*["']([^"']+)["']/g;
 function rawNames(source: string): string[] {
   const names = new Set<string>();
   for (const match of source.matchAll(IMPORT)) {
-    const allowed = RAW_PRIMITIVES[match[2] ?? ""];
+    const allowed = RAW_PRIMITIVES.get(match.at(2) ?? "");
     if (allowed === undefined) continue;
-    for (const specifier of (match[1] ?? "").split(",")) {
+    for (const specifier of (match.at(1) ?? "").split(",")) {
       const parts = specifier.trim().split(/\s+as\s+/);
       const imported = parts[0]?.trim() ?? "";
       if (imported.startsWith("type ") || !allowed.includes(imported)) continue;
@@ -66,18 +80,18 @@ export function scanTextFaces(sources: Readonly<Record<string, string>>): FontSc
     if (names.length === 0) continue;
     // `const font = nativeFontStyle(...)` lets the tag reference `font`.
     const faces = [...source.matchAll(/\bconst\s+(\w+)\s*(?::[^=]+)?=\s*nativeFontStyle\(/g)].map(
-      (match) => match[1] ?? "",
+      (match) => match.at(1) ?? "",
     );
     for (const name of names) {
-      const tag = new RegExp(`<${name.replace(".", "\\.")}(?=[\\s>/])`, "g");
-      for (const match of source.matchAll(tag)) {
+      for (const match of source.matchAll(OPENING_TAG)) {
+        if (match.at(1) !== name) continue;
         const text = openingTag(source, match.index);
         const label = `${path}:${source.slice(0, match.index).split("\n").length} <${name}>`;
         checked.push(label);
         const faced =
           text.includes("nativeFontStyle(") ||
           /\bfontFamily\s*:/.test(text) ||
-          faces.some((face) => new RegExp(`\\b${face}\\b`).test(text));
+          faces.some((face) => hasWord(text, face));
         if (!faced) bare.push(label);
       }
     }
@@ -102,7 +116,7 @@ export function scanMonoWeights(sources: Readonly<Record<string, string>>): {
   let checked = 0;
   const heavy: string[] = [];
   for (const [path, source] of Object.entries(sources)) {
-    for (const match of source.matchAll(/<([A-Za-z][\w.]*)(?=[\s>/])/g)) {
+    for (const match of source.matchAll(OPENING_TAG)) {
       const text = openingTag(source, match.index);
       if (!MONO.test(text)) continue;
       checked += 1;

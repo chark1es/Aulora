@@ -6,12 +6,17 @@ export function formatBytes(bytes: number): string {
   if (!Number.isFinite(bytes) || bytes < 0) {
     return "0 B";
   }
+  const [firstUnit, ...largerUnits] = BYTE_UNITS;
   let value = bytes;
-  let unit = 0;
-  while (value >= BYTE_FACTOR && unit < BYTE_UNITS.length - 1) {
+  let unit: (typeof BYTE_UNITS)[number] = firstUnit;
+  for (const larger of largerUnits) {
+    if (value < BYTE_FACTOR) {
+      break;
+    }
     value /= BYTE_FACTOR;
-    unit += 1;
+    unit = larger;
   }
-  const rounded = unit === 0 ? String(Math.round(value)) : value.toFixed(value >= 10 ? 0 : 1);
-  return `${rounded} ${BYTE_UNITS[unit]}`;
+  const rounded =
+    unit === firstUnit ? String(Math.round(value)) : value.toFixed(value >= 10 ? 0 : 1);
+  return `${rounded} ${unit}`;
 }

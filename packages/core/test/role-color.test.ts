@@ -26,6 +26,9 @@ import {
 // Hex literals mirror paletteFor("light"|"dark").chat from @aulora/tokens, which the
 // previews paint on. packages/ui-web/test/role-color-surfaces.test.ts asserts they
 // match and runs the sweeps against the real palette (core does not depend on tokens).
+/** These sweep hundreds of colors through a 10,000-step search; shared CI runners are far slower. */
+const HEAVY_TEST_TIMEOUT_MS = 30_000;
+
 const LIGHT = { theme: "light" as const, background: "#FFFFFF" };
 const DARK = { theme: "dark" as const, background: "#1C1C1E" };
 // Synthetic pair whose passing sets overlap, so one theme can pass while the other is
@@ -142,29 +145,33 @@ describe("suggestReadableRoleColor", () => {
     expect(suggestReadableRoleColor("#7C5CFF", [LIGHT, DARK])).toBeNull();
   });
 
-  it("never regresses a passing surface on the real-looking light/dark pair", () => {
-    const colors = [
-      ...ROLE_COLOR_PRESETS,
-      ...Array.from({ length: 128 }, (_, i) => hslToHex(i * 137.5, (i % 5) / 4, (i % 11) / 10)),
-    ];
-    for (const color of colors) {
-      for (const theme of ["light", "dark"] as const) {
-        const suggestion = suggestRoleColorForTheme(color, [LIGHT, DARK], theme);
-        if (suggestion === null) continue;
-        expect(
-          suggestion.checks.find((check) => check.theme === theme)?.ratio,
-        ).toBeGreaterThanOrEqual(4.5);
-        const before = roleColorChecks(color, [LIGHT, DARK]);
-        const after = roleColorChecks(suggestion.color, [LIGHT, DARK]);
-        before.forEach((check, i) => {
-          if (check.ratio >= 4.5) expect(after[i]?.ratio).toBeGreaterThanOrEqual(check.ratio);
-        });
+  it(
+    "never regresses a passing surface on the real-looking light/dark pair",
+    () => {
+      const colors = [
+        ...ROLE_COLOR_PRESETS,
+        ...Array.from({ length: 128 }, (_, i) => hslToHex(i * 137.5, (i % 5) / 4, (i % 11) / 10)),
+      ];
+      for (const color of colors) {
+        for (const theme of ["light", "dark"] as const) {
+          const suggestion = suggestRoleColorForTheme(color, [LIGHT, DARK], theme);
+          if (suggestion === null) continue;
+          expect(
+            suggestion.checks.find((check) => check.theme === theme)?.ratio,
+          ).toBeGreaterThanOrEqual(4.5);
+          const before = roleColorChecks(color, [LIGHT, DARK]);
+          const after = roleColorChecks(suggestion.color, [LIGHT, DARK]);
+          before.forEach((check, i) => {
+            if (check.ratio >= 4.5) expect(after[i]?.ratio).toBeGreaterThanOrEqual(check.ratio);
+          });
+        }
       }
-    }
-    expect(roleColorChecks("bad input", [LIGHT])[0]?.ratioLabel).toBe("—");
-    expect(formatContrastRatio(4.499)).toBe("4.4:1");
-    expect(roleColorCss("abc")).toBe("#AABBCC");
-  });
+      expect(roleColorChecks("bad input", [LIGHT])[0]?.ratioLabel).toBe("—");
+      expect(formatContrastRatio(4.499)).toBe("4.4:1");
+      expect(roleColorCss("abc")).toBe("#AABBCC");
+    },
+    HEAVY_TEST_TIMEOUT_MS,
+  );
 
   it("repairs the failing theme without regressing the passing one (overlapping surfaces)", () => {
     // Grays darker than ~L 0.18 pass on PAPER; those above ~L 0.058 fail on SLATE.
@@ -213,21 +220,25 @@ describe("roleColorRepairs and roleColorHeadline", () => {
     );
   });
 
-  it("never leaves a refused repair without the theme that blocks it", () => {
-    for (const color of [
-      ...ROLE_COLOR_PRESETS,
-      ...Array.from({ length: 96 }, (_, i) => hslToHex(i * 61, (i % 5) / 4, (i % 9) / 8)),
-    ]) {
-      for (const repair of roleColorRepairs(color, [LIGHT, DARK])) {
-        if (repair.suggestion === null) {
-          expect(repair.blockedBy, color).not.toBeNull();
-          expect(repair.blockedBy, color).not.toBe(repair.theme);
-        } else {
-          expect(repair.blockedBy, color).toBeNull();
+  it(
+    "never leaves a refused repair without the theme that blocks it",
+    () => {
+      for (const color of [
+        ...ROLE_COLOR_PRESETS,
+        ...Array.from({ length: 96 }, (_, i) => hslToHex(i * 61, (i % 5) / 4, (i % 9) / 8)),
+      ]) {
+        for (const repair of roleColorRepairs(color, [LIGHT, DARK])) {
+          if (repair.suggestion === null) {
+            expect(repair.blockedBy, color).not.toBeNull();
+            expect(repair.blockedBy, color).not.toBe(repair.theme);
+          } else {
+            expect(repair.blockedBy, color).toBeNull();
+          }
         }
       }
-    }
-  });
+    },
+    HEAVY_TEST_TIMEOUT_MS,
+  );
 
   it("carries the suggestion's contrast on every theme, not only the repaired one", () => {
     const [light, dark] = roleColorRepairs("#7C5CFF", [LIGHT, DARK]);

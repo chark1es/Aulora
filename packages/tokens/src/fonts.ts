@@ -1,4 +1,5 @@
 import fonts from "./font-data.json";
+import type { Fn } from "./function-type";
 
 /**
  * Aulora ships one typeface on every surface: Inter (SIL OFL 1.1) for UI text
@@ -33,8 +34,18 @@ function quote(name: string): string {
   return /^[a-z-]+$/.test(name) ? name : `"${name}"`;
 }
 
+/** The family record for a token (a switch, so no dynamic property lookup). */
+function familyOf(token: FontFamilyToken) {
+  switch (token) {
+    case "mono":
+      return fonts.families.mono;
+    case "sans":
+      return fonts.families.sans;
+  }
+}
+
 function webStack(token: FontFamilyToken): readonly string[] {
-  const family = fonts.families[token];
+  const family = familyOf(token);
   return [family.name, family.fallback.name, ...family.generic].map(quote);
 }
 
@@ -46,7 +57,7 @@ export const fontFamilies = {
 
 /** One `font-family` value, e.g. for a CSS custom property. */
 export function fontStack(token: FontFamilyToken): string {
-  return fontFamilies[token].join(", ");
+  return webStack(token).join(", ");
 }
 
 /**
@@ -54,7 +65,7 @@ export function fontStack(token: FontFamilyToken): string {
  * fallback face, so email leads with Inter and falls back to installed faces.
  */
 export function emailFontStack(token: FontFamilyToken): string {
-  const family = fonts.families[token];
+  const family = familyOf(token);
   return [family.name, ...family.email]
     .map((name) => (name.includes(" ") ? `'${name}'` : name))
     .join(",");
@@ -81,9 +92,9 @@ type FontFaceRule = Record<string, string>;
  * font-data.json) so the swap from fallback to
  * Inter/JetBrains Mono does not shift layout.
  */
-export function fontFaceRules(urlFor: (file: string) => string): FontFaceRule[] {
+export function fontFaceRules(urlFor: Fn<[file: string], string>): FontFaceRule[] {
   const faces = webFontFaces.map((face) => ({
-    fontFamily: quote(fonts.families[face.family].name),
+    fontFamily: quote(familyOf(face.family).name),
     fontStyle: face.style,
     fontWeight: face.weight,
     fontDisplay: "swap",
@@ -91,7 +102,7 @@ export function fontFaceRules(urlFor: (file: string) => string): FontFaceRule[] 
     unicodeRange: face.unicodeRange,
   }));
   const fallbacks = FAMILY_TOKENS.map((token) => {
-    const { fallback } = fonts.families[token];
+    const { fallback } = familyOf(token);
     return {
       fontFamily: quote(fallback.name),
       src: fallback.local.map((name) => `local("${name}")`).join(", "),
@@ -122,7 +133,10 @@ export const nativeFontFamilies = {
   mono: { 400: fonts.native.mono["400"] },
 } as const;
 
-const NAMED_WEIGHTS: Record<string, number> = { normal: 400, bold: 700 };
+const NAMED_WEIGHTS = new Map<string, number>([
+  ["normal", 400],
+  ["bold", 700],
+]);
 
 /** Nearest shipped native weight for any RN `fontWeight` value. */
 export function nativeFontWeight(weight: string | number | undefined): NativeFontWeight {
@@ -131,7 +145,7 @@ export function nativeFontWeight(weight: string | number | undefined): NativeFon
       ? weight
       : weight === undefined
         ? 400
-        : (NAMED_WEIGHTS[weight] ?? Number.parseInt(weight, 10));
+        : (NAMED_WEIGHTS.get(weight) ?? Number.parseInt(weight, 10));
   if (!Number.isFinite(numeric) || numeric < 450) return 400;
   if (numeric < 550) return 500;
   if (numeric < 650) return 600;
@@ -148,9 +162,14 @@ export function nativeFontFamily(
   token: FontFamilyToken = "sans",
   italic = false,
 ): string {
-  if (token === "mono") return nativeFontFamilies.mono[400];
-  if (italic) return nativeFontFamilies.sans.italic;
-  return nativeFontFamilies.sans[nativeFontWeight(weight)];
+  switch (token) {
+    case "mono":
+      return nativeFontFamilies.mono[400];
+    case "sans":
+      return italic
+        ? nativeFontFamilies.sans.italic
+        : nativeFontFamilies.sans[nativeFontWeight(weight)];
+  }
 }
 
 /**

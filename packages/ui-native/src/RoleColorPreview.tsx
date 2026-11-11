@@ -3,6 +3,7 @@ import {
   describeRoleColorRepairChange,
   type ReadableRoleColorSuggestion,
   type RoleColorCheck,
+  type RoleColorRepairOutcome,
   type RoleColorTheme,
   roleColorChecks,
   roleColorHeadline,
@@ -10,9 +11,10 @@ import {
   roleTextColor,
 } from "@aulora/core/role-color";
 import { paletteFor } from "@aulora/tokens";
-import { useMemo } from "react";
+import { type ReactNode, useMemo } from "react";
 import { Text as RNText, useWindowDimensions, View } from "react-native";
 import { Button } from "./Button";
+import type { Fn } from "./function-type";
 import { Icon } from "./Icon";
 import { Text } from "./Text";
 import { usePalette } from "./theme";
@@ -27,7 +29,7 @@ export interface RoleColorPreviewProps {
   readonly mentionable?: boolean;
   readonly disabled?: boolean;
   /** Applies the suggested shade; when omitted the suggestion is not offered. */
-  readonly onApplySuggestion?: (color: string) => void;
+  readonly onApplySuggestion?: Fn<[color: string], void>;
 }
 
 const FALLBACK_NAME = "Moderator";
@@ -73,66 +75,88 @@ export function RoleColorPreview({
       accessibilityLabel="Role color preview"
       testID="role-color-preview"
     >
-      <View className="flex-row flex-wrap items-baseline justify-between gap-x-3 gap-y-1">
-        <Text size="xs" className="font-semibold">
-          How the role name looks
-        </Text>
-        <Text size="xs" tone="muted">
-          {headline}
-        </Text>
-      </View>
+      <PreviewHeading headline={headline} />
 
-      <View className={stacked ? "gap-2" : "flex-row gap-2"}>
-        {SURFACES.map(({ theme, palette, background }, index) => (
-          <ThemeChip
-            key={theme}
-            theme={theme}
-            palette={palette}
-            background={background}
-            check={trimmed.length === 0 ? undefined : checks[index]}
-            name={sampleName}
-            color={trimmed}
-            mentionable={mentionable}
-            stacked={stacked}
-          />
-        ))}
-      </View>
+      <ThemeChips
+        checks={checks}
+        color={trimmed}
+        name={sampleName}
+        mentionable={mentionable}
+        stacked={stacked}
+      />
 
-      {trimmed.length === 0 ? (
+      <ColorNotes hasColor={trimmed.length > 0} />
+      <RepairNotes
+        repairs={repairs}
+        checks={checks}
+        currentColor={trimmed}
+        disabled={disabled}
+        onApplySuggestion={onApplySuggestion}
+      />
+    </View>
+  );
+}
+
+function PreviewHeading({ headline }: { readonly headline: string | null }) {
+  return (
+    <View className="flex-row flex-wrap items-baseline justify-between gap-x-3 gap-y-1">
+      <Text size="xs" className="font-semibold">
+        How the role name looks
+      </Text>
+      <Text size="xs" tone="muted">
+        {headline}
+      </Text>
+    </View>
+  );
+}
+
+function ColorNotes({ hasColor }: { readonly hasColor: boolean }) {
+  return (
+    <>
+      {hasColor ? null : (
         <Text size="xs" tone="muted" testID="role-color-preview-no-color">
           No color is set, so this role uses the normal text color in both themes.
         </Text>
-      ) : null}
-
-      {trimmed.length > 0 && (
+      )}
+      {hasColor && (
         <Text size="xs" tone="muted">
           One color can’t be readable on both light and dark; pick the theme most of your members
           use or accept the tradeoff. Suggestions preserve themes that already pass AA.
         </Text>
       )}
-      {repairs.map((repair) => {
-        if (repair.blockedBy !== null) {
-          return (
-            <BlockedRepairNote
-              key={repair.theme}
-              theme={repair.theme}
-              blockedBy={repair.blockedBy}
-            />
-          );
-        }
-        const { suggestion } = repair;
-        if (onApplySuggestion === undefined) return null;
+    </>
+  );
+}
+
+function ThemeChips({
+  checks,
+  color,
+  name,
+  mentionable,
+  stacked,
+}: {
+  readonly checks: readonly RoleColorCheck[];
+  readonly color: string;
+  readonly name: string;
+  readonly mentionable: boolean;
+  readonly stacked: boolean;
+}) {
+  return (
+    <View className={stacked ? "gap-2" : "flex-row gap-2"}>
+      {SURFACES.map(({ theme, palette, background }) => {
+        const check = color.length === 0 ? undefined : checks.find((item) => item.theme === theme);
         return (
-          <SuggestionRow
-            key={repair.theme}
-            theme={repair.theme}
-            suggestion={suggestion}
-            currentColor={trimmed}
-            changes={describeRoleColorRepairChange(checks, suggestion)}
-            disabled={disabled}
-            onApply={() => {
-              onApplySuggestion(suggestion.color);
-            }}
+          <ThemeChip
+            key={theme}
+            theme={theme}
+            palette={palette}
+            background={background}
+            badge={check === undefined ? null : <ContrastBadge check={check} palette={palette} />}
+            verdict={check === undefined ? "" : `${check.label}, ${check.ratioLabel} contrast.`}
+            name={name}
+            color={color}
+            mentionable={mentionable}
+            stacked={stacked}
           />
         );
       })}
@@ -140,27 +164,67 @@ export function RoleColorPreview({
   );
 }
 
+function RepairNotes({
+  repairs,
+  checks,
+  currentColor,
+  disabled,
+  onApplySuggestion,
+}: {
+  readonly repairs: readonly RoleColorRepairOutcome[];
+  readonly checks: readonly RoleColorCheck[];
+  readonly currentColor: string;
+  readonly disabled: boolean;
+  readonly onApplySuggestion: Fn<[color: string], void> | undefined;
+}) {
+  return repairs.map((repair) => {
+    if (repair.blockedBy !== null) {
+      return (
+        <BlockedRepairNote key={repair.theme} theme={repair.theme} blockedBy={repair.blockedBy} />
+      );
+    }
+    const { suggestion } = repair;
+    if (onApplySuggestion === undefined) return null;
+    return (
+      <SuggestionRow
+        key={repair.theme}
+        theme={repair.theme}
+        suggestion={suggestion}
+        currentColor={currentColor}
+        changes={describeRoleColorRepairChange(checks, suggestion)}
+        disabled={disabled}
+        onApply={() => {
+          onApplySuggestion(suggestion.color);
+        }}
+      />
+    );
+  });
+}
+
+type Palette = ReturnType<typeof paletteFor>;
+
 function ThemeChip({
   theme,
   palette,
   background,
-  check,
+  badge,
+  verdict,
   name,
   color,
   mentionable,
   stacked,
 }: {
   readonly theme: "light" | "dark";
-  readonly palette: ReturnType<typeof paletteFor>;
+  readonly palette: Palette;
   readonly background: string;
-  readonly check: RoleColorCheck | undefined;
+  readonly badge: ReactNode;
+  readonly verdict: string;
   readonly name: string;
   readonly color: string;
   readonly mentionable: boolean;
   readonly stacked: boolean;
 }) {
-  const roleName = roleTextColor(color, palette.text);
-  const verdict = check === undefined ? "" : `${check.label}, ${check.ratioLabel} contrast.`;
+  const themeLabel = theme === "light" ? "Light" : "Dark";
   return (
     <View
       className="min-w-0 rounded-card border p-3"
@@ -170,76 +234,120 @@ function ThemeChip({
         flex: stacked ? undefined : 1,
       }}
       accessible
-      accessibilityLabel={`${theme === "light" ? "Light" : "Dark"} theme preview: ${name}. ${verdict}`}
+      accessibilityLabel={`${themeLabel} theme preview: ${name}. ${verdict}`}
       testID={`role-color-preview-${theme}`}
     >
-      <View className="min-w-0 flex-row flex-wrap items-center justify-between gap-2">
-        <RNText
-          style={[
-            nativeFontStyle({ fontWeight: "600" }),
-            {
-              color: palette["text-muted"],
-              fontSize: 12,
-              fontWeight: "600",
-              letterSpacing: 0.6,
-              textTransform: "uppercase",
-            },
-          ]}
-        >
-          {theme === "light" ? "Light" : "Dark"}
-        </RNText>
-        {check !== undefined && <ContrastBadge check={check} palette={palette} />}
-      </View>
-      <View className="mt-2.5 min-w-0 flex-row items-center gap-2">
-        <View
-          style={{
-            width: 24,
-            height: 24,
-            borderRadius: 12,
-            backgroundColor: roleName,
-            borderWidth: 2,
-            borderColor: palette["surface-3"],
-          }}
-        />
+      <ThemeChipHeader label={themeLabel} palette={palette} badge={badge} />
+      <RoleNameRow theme={theme} palette={palette} roleName={roleTextColor(color, palette.text)}>
+        {name}
+      </RoleNameRow>
+      {mentionable && <MentionSample theme={theme} palette={palette} name={name} />}
+    </View>
+  );
+}
+
+function ThemeChipHeader({
+  label,
+  palette,
+  badge,
+}: {
+  readonly label: string;
+  readonly palette: Palette;
+  readonly badge: ReactNode;
+}) {
+  return (
+    <View className="min-w-0 flex-row flex-wrap items-center justify-between gap-2">
+      <RNText
+        style={[
+          nativeFontStyle({ fontWeight: "600" }),
+          {
+            color: palette["text-muted"],
+            fontSize: 12,
+            fontWeight: "600",
+            letterSpacing: 0.6,
+            textTransform: "uppercase",
+          },
+        ]}
+      >
+        {label}
+      </RNText>
+      {badge}
+    </View>
+  );
+}
+
+function RoleNameRow({
+  theme,
+  palette,
+  roleName,
+  children,
+}: {
+  readonly theme: "light" | "dark";
+  readonly palette: Palette;
+  readonly roleName: string;
+  readonly children: string;
+}) {
+  return (
+    <View className="mt-2.5 min-w-0 flex-row items-center gap-2">
+      <View
+        style={{
+          width: 24,
+          height: 24,
+          borderRadius: 12,
+          backgroundColor: roleName,
+          borderWidth: 2,
+          borderColor: palette["surface-3"],
+        }}
+      />
+      <RNText
+        numberOfLines={1}
+        style={[
+          nativeFontStyle({ fontWeight: "600" }),
+          { flexShrink: 1, minWidth: 0, color: roleName, fontSize: 13, fontWeight: "600" },
+        ]}
+        testID={`role-color-preview-name-${theme}`}
+      >
+        {children}
+      </RNText>
+    </View>
+  );
+}
+
+function MentionSample({
+  theme,
+  palette,
+  name,
+}: {
+  readonly theme: "light" | "dark";
+  readonly palette: Palette;
+  readonly name: string;
+}) {
+  return (
+    <View className="mt-2 min-w-0 flex-row items-center gap-1.5">
+      <View
+        style={{
+          minWidth: 0,
+          borderRadius: 5,
+          borderWidth: 1,
+          paddingHorizontal: 4,
+          backgroundColor: palette["accent-soft"],
+          borderColor: palette.accent,
+        }}
+        testID={`role-color-preview-mention-${theme}`}
+      >
         <RNText
           numberOfLines={1}
           style={[
             nativeFontStyle({ fontWeight: "600" }),
-            { flexShrink: 1, minWidth: 0, color: roleName, fontSize: 13, fontWeight: "600" },
+            { color: palette["accent-text"], fontSize: 12, fontWeight: "600" },
           ]}
-          testID={`role-color-preview-name-${theme}`}
         >
-          {name}
+          @{name}
         </RNText>
       </View>
-      {mentionable && (
-        <View className="mt-2 min-w-0 flex-row items-center gap-1.5">
-          <View
-            style={{
-              minWidth: 0,
-              borderRadius: 5,
-              borderWidth: 1,
-              paddingHorizontal: 4,
-              backgroundColor: palette["accent-soft"],
-              borderColor: palette.accent,
-            }}
-            testID={`role-color-preview-mention-${theme}`}
-          >
-            <RNText
-              numberOfLines={1}
-              style={[
-                nativeFontStyle({ fontWeight: "600" }),
-                { color: palette["accent-text"], fontSize: 12, fontWeight: "600" },
-              ]}
-            >
-              @{name}
-            </RNText>
-          </View>
-          <RNText style={[nativeFontStyle({}), { color: palette["text-muted"], fontSize: 12 }]}>
-            mention
-          </RNText>
-        </View>
-      )}
+      <RNText style={[nativeFontStyle({}), { color: palette["text-muted"], fontSize: 12 }]}>
+        mention
+      </RNText>
     </View>
   );
 }
@@ -249,7 +357,7 @@ function ContrastBadge({
   palette,
 }: {
   readonly check: RoleColorCheck;
-  readonly palette: ReturnType<typeof paletteFor>;
+  readonly palette: Palette;
 }) {
   const tone =
     check.level === "pass"
