@@ -24,8 +24,9 @@ chat.example.com {
 		# 'self'` is enough, plus 'wasm-unsafe-eval' so the call engine can
 		# compile WebAssembly (noise suppression, background blur); it does not
 		# allow JavaScript eval. The optional screen-streaming server is reached
-		# at <web origin>/livekit, so `'self'` already covers it.
-		Content-Security-Policy "default-src 'self'; base-uri 'self'; frame-ancestors 'none'; object-src 'none'; img-src 'self' data: blob:; media-src 'self' blob:; style-src 'self' 'unsafe-inline'; script-src 'self' 'wasm-unsafe-eval'; worker-src 'self'; connect-src 'self' https://convex.example.com wss://convex.example.com"
+		# at <web origin>/livekit, so `'self'` already covers it. Inter and
+		# JetBrains Mono are self-hosted under /assets, so `font-src 'self'`.
+		Content-Security-Policy "default-src 'self'; base-uri 'self'; frame-ancestors 'none'; object-src 'none'; img-src 'self' data: blob:; font-src 'self'; media-src 'self' blob:; style-src 'self' 'unsafe-inline'; script-src 'self' 'wasm-unsafe-eval'; worker-src 'self'; connect-src 'self' https://convex.example.com wss://convex.example.com"
 	}
 
 	# Better Auth must be same-origin as the web app so the session cookie is

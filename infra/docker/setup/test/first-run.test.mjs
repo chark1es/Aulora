@@ -19,9 +19,7 @@ function runTokenScript(mode, input) {
 test("first-run setup does not put owner credentials in the shipped env template", () => {
   const template = readFileSync(join(DOCKER_DIR, ".env.example"), "utf8");
   for (const key of ["OWNER_EMAIL", "OWNER_PASSWORD", "OWNER_NAME"]) {
-    const active = template
-      .split("\n")
-      .find((line) => line.startsWith(`${key}=`));
+    const active = template.split("\n").find((line) => line.startsWith(`${key}=`));
     assert.equal(active, undefined, `${key} must stay commented out by default`);
   }
 });

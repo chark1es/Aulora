@@ -1,5 +1,5 @@
 import assert from "node:assert/strict";
-import { readFileSync, readdirSync } from "node:fs";
+import { readdirSync, readFileSync } from "node:fs";
 import { dirname, join } from "node:path";
 import { test } from "node:test";
 import { fileURLToPath, pathToFileURL } from "node:url";
@@ -133,7 +133,7 @@ test("setup generates and forwards a transcriber token", () => {
 
 test("nginx serves the guest call page unindexed, uncached and without a Referer", () => {
   const nginx = readFileSync(join(dockerDir, "nginx", "default.conf.template"), "utf8");
-  const block = nginx.match(/location = \/call\/guest \{([\s\S]*?)\n  \}/);
+  const block = nginx.match(/location = \/call\/guest \{([\s\S]*?)\n {2}\}/);
   assert.ok(block, "the /call/guest location exists");
   const body = block[1];
   assert.match(body, /try_files \/index\.html =404;/);

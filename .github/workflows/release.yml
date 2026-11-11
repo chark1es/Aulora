@@ -62,6 +62,8 @@ jobs:
     needs: plan
     if: needs.plan.outputs.build == 'true'
     uses: ./.github/workflows/ci.yml
+    with:
+      native: false # Signed desktop/mobile builds below gate assembly and publication.
 
   desktop:
     needs: [plan, checks]
@@ -91,6 +93,7 @@ jobs:
         with:
           persist-credentials: false
       - uses: ./.github/actions/setup-js
+      # This fresh runner has no artifacts from checks; packaging needs its own build.
       - run: bun run build
       - run: bun run notices
       - name: Package web and docs

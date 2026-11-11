@@ -271,6 +271,8 @@ services:
       # The real per-instance well-known document is written here by `setup`.
       - web-well-known:/var/www/.well-known:ro
     depends_on:
+      setup:
+        condition: service_completed_successfully
       convex-backend:
         condition: service_healthy
     # nginx proxies the call-audio WebSocket (`/transcribe/`) to `transcriber`,

@@ -11,8 +11,8 @@
 #
 # First run:
 #   cp .env.example .env        # then edit workspace + origin values
-#   docker compose up -d --build
-#   docker compose run --rm setup   # prints a one-time setup token
+#   docker compose up -d --build    # also runs the one-shot setup service
+#   docker compose logs --tail=100 setup | grep "setup token"
 #   open http://localhost:8080      # register the first owner in the app
 
 name: ${COMPOSE_PROJECT_NAME:-aulora}
@@ -239,6 +239,8 @@ services:
       # The real per-instance well-known document is written here by `setup`.
       - web-well-known:/var/www/.well-known:ro
     depends_on:
+      setup:
+        condition: service_completed_successfully
       convex-backend:
         condition: service_healthy
     # nginx proxies the call-audio WebSocket (`/transcribe/`) to `transcriber`,
@@ -247,6 +249,12 @@ services:
     networks:
       - default
       - transcription
+    healthcheck:
+      test: ["CMD-SHELL", "wget -q -O /dev/null http://127.0.0.1/ || exit 1"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 10s
     logging: *logging
 
   # Private SMTP bridge. Only Convex actions can call it; no host port is exposed.

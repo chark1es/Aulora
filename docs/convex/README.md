@@ -170,9 +170,12 @@ Current gaps to account for when changing the updater:
   recreating the web container. A failed backend deploy leaves the previous web
   build serving, so the release schema must accept both that old frontend and
   the new one.
-- Those paths do not explicitly recreate the Convex engine. A release that
-  changes its pinned image needs a tested runtime-upgrade step, not just a new
-  setup image or function deploy. Review the Coolify path separately as well.
+- Those paths compare the target engine image ID with the existing container
+  and recreate it when changed, waiting up to 120 seconds for health before
+  setup. They also wait for engine and web health before writing the installed
+  stamp. These healthchecks do not verify application compatibility or storage
+  upgrade safety; run the live upgrade/recovery checks below. Review Coolify
+  engine upgrades separately as well.
 - The [setup script](../../infra/docker/setup/entrypoint.sh) currently treats
   the voice-permission migration as best effort. Value-detected migrations must
   record a marker in `server.appliedMigrations` (as `restrictKanbanEditing`

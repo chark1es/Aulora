@@ -49,11 +49,23 @@ function fixture(options = {}) {
       }
     }
     if (command === "docker") {
+      if (args[1] === "version") return options.composeVersion ?? "2.24.0";
       if (args[0] === "image") return imageId;
+      if (args[0] === "inspect") return options.engineChanged ? "sha256:old-engine" : imageId;
+      if (args[1] === "ps") return options.missingEngine ? "" : "engine-container";
+      if (
+        args.includes("--wait") &&
+        options.failHealth &&
+        (options.failHealth === "engine" || args.includes("web"))
+      ) {
+        throw new Error("Health timeout.");
+      }
+      if (args[1] === "config" && args.includes("--images")) return "engine:pinned";
       if (args[1] === "config")
         return JSON.stringify({
           name: "aulora",
           services: {
+            "convex-backend": { image: "engine:pinned" },
             web: { image: "web:local" },
             setup: { image: "setup:local" },
             "smtp-gateway": { image: "smtp:local" },
@@ -145,4 +157,68 @@ describe("staged workspace updates", () => {
     ).toMatchObject({ state: "ready", error: "Setup failed." });
     expect(existsSync(resolve(f.dockerDir, ".env"))).toBe(true);
   });
+  it("recreates a changed engine and waits before setup, but keeps a matching engine", async () => {
+    for (const engineChanged of [false, true]) {
+      const f = fixture({ engineChanged });
+      await f.updater.download();
+      await f.updater.restart();
+      const recreated = f.calls.findIndex(
+        ([, args]) => args.includes("--force-recreate") && args.includes("convex-backend"),
+      );
+      expect(recreated !== -1).toBe(engineChanged);
+      const wait = f.calls.findIndex(([, args]) => args.includes("--wait"));
+      const setup = f.calls.findIndex(([, args]) => args[1] === "run" && args.includes("setup"));
+      expect(wait).toBeGreaterThan(recreated);
+      expect(setup).toBeGreaterThan(wait);
+      expect(f.calls[wait][1]).toContain("120");
+    }
+  });
+  it("retains the ready marker and stamp on engine or final web health failure", async () => {
+    for (const failHealth of ["engine", "web"]) {
+      const f = fixture({ engineChanged: true, failHealth });
+      await f.updater.download();
+      await expect(f.updater.restart()).rejects.toThrow("Health timeout");
+      expect(f.updater.ready()).not.toBeNull();
+      expect(readFileSync(resolve(f.dockerDir, ".deployed-version"), "utf8")).toBe("0.1.0\n");
+      expect(
+        JSON.parse(readFileSync(resolve(f.dockerDir, ".update-status.json"), "utf8")),
+      ).toMatchObject({ state: "ready", error: "Health timeout." });
+      if (failHealth === "engine") {
+        expect(f.calls.some(([, args]) => args[1] === "run")).toBe(false);
+      }
+    }
+  });
+});
+
+it("starts dependencies before setup when the engine container is absent", async () => {
+  const f = fixture({ missingEngine: true });
+  await f.updater.download();
+  await f.updater.restart();
+  const start = f.calls.findIndex(
+    ([, args]) =>
+      args.join(" ") === "compose up -d --no-build --wait --wait-timeout 120 convex-backend",
+  );
+  const setup = f.calls.findIndex(([, args]) => args[1] === "run");
+  expect(start).toBeGreaterThan(-1);
+  expect(setup).toBeGreaterThan(start);
+  expect(
+    f.calls.some(
+      ([, args]) => args.includes("--force-recreate") && args.includes("convex-backend"),
+    ),
+  ).toBe(false);
+});
+
+it("rejects an old Compose plugin before building images", async () => {
+  const f = fixture({ composeVersion: "2.23.3" });
+  await expect(f.updater.download()).rejects.toThrow("Docker Compose >= 2.24 is required");
+  expect(f.calls.some(([command, args]) => command === "docker" && args[1] === "build")).toBe(
+    false,
+  );
+});
+
+it("probes the Compose version once per updater after a passing check", async () => {
+  const f = fixture();
+  await f.updater.download();
+  const probes = f.calls.filter(([command, args]) => command === "docker" && args[1] === "version");
+  expect(probes).toHaveLength(1);
 });

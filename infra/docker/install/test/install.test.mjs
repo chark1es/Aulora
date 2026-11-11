@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import { execFileSync, spawnSync } from "node:child_process";
-import { mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
+import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { test } from "node:test";
@@ -40,15 +40,31 @@ const skip =
       ? false
       : "bash is not available";
 
+// The installer requires Compose 2.24+; stubs answer the version probe.
+const VERSION_CASE = `if [ "$*" = "compose version --short" ]; then echo "\${COMPOSE_VERSION:-2.24.6}"; exit 0; fi`;
+function dockerStub() {
+  return `#!/usr/bin/env bash\n${VERSION_CASE}\nexit 0\n`;
+}
+
 function makeEnvDir() {
   return mkdtempSync(join(tmpdir(), "aulora-install-"));
 }
 
-function run(args, envDir) {
+// Every run gets the docker stub first on PATH, so no test needs Docker Compose
+// on the host (in WSL, `docker` is a Desktop shim that may not answer at all).
+function run(args, envDir, extraEnv = {}) {
+  const bin = join(envDir, "docker-stub");
+  mkdirSync(bin, { recursive: true });
+  writeFileSync(join(bin, "docker"), dockerStub(), { mode: 0o755 });
   return spawnSync("bash", [INSTALL, ...args], {
     encoding: "utf8",
     input: "",
-    env: { ...process.env, AULORA_ENV_FILE: join(envDir, ".env") },
+    env: {
+      ...process.env,
+      AULORA_ENV_FILE: join(envDir, ".env"),
+      PATH: `${bin}:${process.env.PATH}`,
+      ...extraEnv,
+    },
   });
 }
 
@@ -129,7 +145,7 @@ test("an existing configuration prints its actual URL and owner without evaluati
   try {
     const bin = join(dir, "bin");
     mkdirSync(bin);
-    writeFileSync(join(bin, "docker"), "#!/usr/bin/env bash\nexit 0\n", { mode: 0o755 });
+    writeFileSync(join(bin, "docker"), dockerStub(), { mode: 0o755 });
     const file = join(dir, ".env");
     const content =
       'SITE_URL="http://localhost:18080"\nWEB_PORT=18080\nOWNER_EMAIL=owner@example.test\nUNUSED=$(touch should-not-exist)\n';
@@ -187,7 +203,7 @@ test("a fresh install writes a bot runner token before the stack starts", { skip
   try {
     const bin = join(dir, "bin");
     mkdirSync(bin);
-    writeFileSync(join(bin, "docker"), "#!/usr/bin/env bash\nexit 0\n", { mode: 0o755 });
+    writeFileSync(join(bin, "docker"), dockerStub(), { mode: 0o755 });
     const result = spawnSync(
       "bash",
       [INSTALL, "--email", "owner@acme.test", "--password", "correct horse battery staple"],
@@ -225,6 +241,7 @@ test("installer waits for Compose setup instead of launching a conflicting secon
     writeFileSync(
       join(bin, "docker"),
       `#!/usr/bin/env bash
+${VERSION_CASE}
 printf '%s\\n' "$*" >> "$INSTALL_TEST_LOG"
 for arg in "$@"; do
   case "$arg" in
@@ -275,6 +292,7 @@ test("installer recreates the bot runner after setup so it reads the generated t
     writeFileSync(
       join(bin, "docker"),
       `#!/usr/bin/env bash
+${VERSION_CASE}
 printf '%s\\n' "$*" >> "$INSTALL_TEST_LOG"
 exit 0
 `,
@@ -337,14 +355,40 @@ test("--allow-any-branch and AULORA_ALLOW_ANY_BRANCH silence the branch warning"
       { args: baseArgs, env: { AULORA_ALLOW_ANY_BRANCH: "1" } },
     ];
     for (const attempt of attempts) {
-      const result = spawnSync("bash", [INSTALL, ...attempt.args], {
-        encoding: "utf8",
-        input: "",
-        env: { ...process.env, AULORA_ENV_FILE: join(dir, ".env"), ...attempt.env },
-      });
+      const result = run(attempt.args, dir, attempt.env);
       assert.equal(result.status, 0, result.stderr);
       assert.doesNotMatch(result.stderr, /release branch/);
     }
+  } finally {
+    rmSync(dir, { recursive: true, force: true });
+  }
+});
+
+test("installer rejects Docker Compose older than 2.24 before touching anything", { skip }, () => {
+  const dir = makeEnvDir();
+  try {
+    const bin = join(dir, "bin");
+    mkdirSync(bin);
+    writeFileSync(join(bin, "docker"), dockerStub(), { mode: 0o755 });
+    for (const version of ["2.23.3", "1.29.2", ""]) {
+      const result = spawnSync(
+        "bash",
+        [INSTALL, "--email", "owner@acme.test", "--password", "correct horse battery staple"],
+        {
+          encoding: "utf8",
+          input: "",
+          env: {
+            ...process.env,
+            AULORA_ENV_FILE: join(dir, ".env"),
+            PATH: `${bin}:${process.env.PATH}`,
+            COMPOSE_VERSION: version || "unknown",
+          },
+        },
+      );
+      assert.notEqual(result.status, 0);
+      assert.match(result.stderr, /Docker Compose 2\.24 or newer is required/);
+    }
+    assert.equal(existsSync(join(dir, ".env")), false);
   } finally {
     rmSync(dir, { recursive: true, force: true });
   }
