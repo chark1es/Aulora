@@ -334,9 +334,12 @@ function useChatScreenConversation(
   );
   useEffect(() => {
     if (messageContext !== undefined && messageContext !== null)
-      void runtime?.session.receiveMessages(messageContext.history);
+      void runtime?.session.receiveMessages(
+        messageContext.history,
+        `mobile:message-context:${jumpToMessageId}`,
+      );
     if (messageContext?.message.threadRootId != null) setThreadRoot(messageContext.root);
-  }, [messageContext, runtime, setThreadRoot]);
+  }, [messageContext, runtime, setThreadRoot, jumpToMessageId]);
 
   useChatScreenCallCues(voice, sound);
 

@@ -62,7 +62,7 @@ export function ThreadsPanel(props: ThreadsPanelProps) {
     }
     let cancelled = false;
     const off = runtime.watchThread(root.id, (incoming) => {
-      void runtime.session.receiveMessages(incoming).then(() => {
+      void runtime.session.receiveMessages(incoming, `thread:${root.id}`).then(() => {
         if (cancelled) {
           return;
         }

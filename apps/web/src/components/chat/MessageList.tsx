@@ -11,9 +11,9 @@ import {
   hasPermission,
   isBotUserId,
   isWebhookUserId,
+  messageMentionsUser,
   messageTime,
   Permission,
-  pingsViewer,
 } from "@aulora/core";
 import { MENTION_BACKGROUND, MENTION_COLOR } from "@aulora/tokens";
 import { Badge, Button, cn, Icon, Spinner, useContextMenu } from "@aulora/ui-web";
@@ -714,7 +714,7 @@ function MessageRowContent({
   const { runtime, ownUserId, ownName, permissions, memberNames, memberColors, mentionNames } =
     list;
   const own = message.authorId === ownUserId;
-  const pinged = pingsViewer(message, ownUserId);
+  const pinged = messageMentionsUser(message, ownUserId);
   const mirror = (list.ownSide ?? "left") === "right" && own;
   const pending = list.pendingIds.has(message.id);
   const failed = list.failedIds?.has(message.id) ?? false;
