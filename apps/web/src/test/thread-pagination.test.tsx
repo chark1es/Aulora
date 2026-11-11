@@ -14,122 +14,54 @@ vi.mock("../components/chat/MessageList", () => ({
     </div>
   ),
 }));
-it.each([1, 101, 2001])(
-  "follows the live reply tail with a bounded page window (%i replies)",
-  async (total) => {
-    const updates: ((messages: MessagePayload[]) => void)[] = [];
-    const off = vi.fn();
-    const pendingPages: (() => void)[] = [];
-    let failOnce = true;
-    const watchThread = vi.fn(
-      (
-        _id: string,
-        onChange: (messages: MessagePayload[]) => void,
-        options: { cursor: string | null; onPage: (page: unknown) => void; onError?: () => void },
-      ) => {
-        const offset = Number(options.cursor ?? 0);
-        const page = Array.from(
-          { length: Math.min(100, total - offset) },
-          (_, i) => ({ id: `reply-${offset + i}` }) as MessagePayload,
-        );
-        updates.push(onChange);
-        const deliver = () => {
-          if (offset === 2000 && failOnce) {
-            failOnce = false;
-            options.onError?.();
-            return;
-          }
-          onChange(page);
-          options.onPage({
-            page,
-            isDone: offset + page.length >= total,
-            continueCursor: String(offset + 100),
-          });
-        };
-        if (offset >= 2000) pendingPages.push(deliver);
-        else deliver();
-        return off;
-      },
-    );
-    const receiveMessages = vi.fn(
-      async (_messages: readonly MessagePayload[], _scopeId: string) => undefined,
-    );
-    const runtime = {
-      watchThread,
-      session: {
-        receiveMessages,
-        decryptedText: () => "",
-        attachmentsFor: () => [],
-      },
-    } as unknown as ChatRuntime;
-    render(
-      <ThreadsPanel
-        runtime={runtime}
-        channelId="c1"
-        channelTitle="general"
-        root={{ id: "root", replyCount: total } as MessagePayload}
-        rootText="root"
-        members={[]}
-        roles={[]}
-        memberIds={[]}
-        permissions={0n}
-        maxUploadBytes={1000}
-        ownUserId="me"
-        ownName="Me"
-        memberNames={new Map()}
-        memberColors={new Map()}
-        mentionNames={[]}
-        onClose={vi.fn()}
-        onTyping={vi.fn()}
-        onSendReply={vi.fn()}
-        onEdit={vi.fn()}
-        onDelete={vi.fn()}
-        onPinToggle={vi.fn()}
-        onReact={vi.fn()}
-      />,
-    );
-    expect(
-      screen.getByText(total === 1 ? /1 reply ·/ : new RegExp(`${total} replies`)),
-    ).toBeInTheDocument();
-    const expectedPages = Math.min(20, Math.ceil(total / 100));
-    await waitFor(() => expect(watchThread).toHaveBeenCalledTimes(expectedPages));
-    expect(off).not.toHaveBeenCalled();
-    if (total > 2000) {
-      expect(screen.queryByText("reply-2000")).toBeNull();
-      for (let offset = 2000; offset < total; offset += 100) {
-        fireEvent.click(screen.getByRole("button", { name: "Load more replies" }));
-        expect(screen.getByRole("button", { name: "Load more replies" })).toBeDisabled();
-        await act(async () => pendingPages.shift()?.());
-        if (offset === 2000) {
-          expect(screen.getByRole("alert")).toHaveTextContent("Replies couldn’t load");
-          expect(screen.getByRole("button", { name: "Load more replies" })).toBeEnabled();
-          fireEvent.click(screen.getByRole("button", { name: "Load more replies" }));
-          await act(async () => pendingPages.shift()?.());
-        }
-        await screen.findByText(`reply-${offset}`);
-      }
-    }
-    expect(await screen.findByText(`reply-${total - 1}`)).toBeInTheDocument();
-    expect(screen.queryByRole("button", { name: "Load more replies" })).toBeNull();
-    await act(async () => {
-      updates.at(-1)?.([{ id: "new-own-reply" } as MessagePayload]);
-    });
-    expect(await screen.findByText("new-own-reply")).toBeInTheDocument();
-    expect(receiveMessages.mock.calls.every((call) => call[1] === "thread:root")).toBe(true);
-    const lastSnapshot = receiveMessages.mock.lastCall?.[0] as MessagePayload[] | undefined;
-    expect(lastSnapshot?.some((message) => message.id === "new-own-reply")).toBe(true);
-    if (total > 100) expect(lastSnapshot?.some((message) => message.id === "reply-0")).toBe(true);
-    if (total <= 2000) expect(off).not.toHaveBeenCalled();
-  },
-);
+type WatchOptions = {
+  cursor: string | null;
+  onPage: (page: unknown) => void;
+  onError?: () => void;
+};
 
-function renderThread(runtime: ChatRuntime) {
+/** A paged `watchThread` stub: the first 2,000 replies arrive at once, later pages on demand. */
+function createPagedThreadWatch(total: number) {
+  const updates: ((messages: MessagePayload[]) => void)[] = [];
+  const off = vi.fn();
+  const pendingPages: (() => void)[] = [];
+  let failOnce = true;
+  const watchThread = vi.fn(
+    (_id: string, onChange: (messages: MessagePayload[]) => void, options: WatchOptions) => {
+      const offset = Number(options.cursor ?? 0);
+      const page = Array.from(
+        { length: Math.min(100, total - offset) },
+        (_, i) => ({ id: `reply-${offset + i}` }) as MessagePayload,
+      );
+      updates.push(onChange);
+      const deliver = () => {
+        if (offset === 2000 && failOnce) {
+          failOnce = false;
+          options.onError?.();
+          return;
+        }
+        onChange(page);
+        options.onPage({
+          page,
+          isDone: offset + page.length >= total,
+          continueCursor: String(offset + 100),
+        });
+      };
+      if (offset >= 2000) pendingPages.push(deliver);
+      else deliver();
+      return off;
+    },
+  );
+  return { updates, off, pendingPages, watchThread };
+}
+
+function renderThread(runtime: ChatRuntime, root = { id: "root" } as MessagePayload) {
   return render(
     <ThreadsPanel
       runtime={runtime}
       channelId="c1"
       channelTitle="general"
-      root={{ id: "root" } as MessagePayload}
+      root={root}
       rootText="root"
       members={[]}
       roles={[]}
@@ -151,6 +83,55 @@ function renderThread(runtime: ChatRuntime) {
     />,
   );
 }
+
+/** Loads the pages beyond the 2,000-reply window, retrying the first one that fails. */
+async function loadPagesBeyondWindow(total: number, pendingPages: (() => void)[]) {
+  expect(screen.queryByText("reply-2000")).toBeNull();
+  for (let offset = 2000; offset < total; offset += 100) {
+    fireEvent.click(screen.getByRole("button", { name: "Load more replies" }));
+    expect(screen.getByRole("button", { name: "Load more replies" })).toBeDisabled();
+    await act(async () => pendingPages.shift()?.());
+    if (offset === 2000) {
+      expect(screen.getByRole("alert")).toHaveTextContent("Replies couldn’t load");
+      expect(screen.getByRole("button", { name: "Load more replies" })).toBeEnabled();
+      fireEvent.click(screen.getByRole("button", { name: "Load more replies" }));
+      await act(async () => pendingPages.shift()?.());
+    }
+    await screen.findByText(`reply-${offset}`);
+  }
+}
+
+it.each([1, 101, 2001])(
+  "follows the live reply tail with a bounded page window (%i replies)",
+  async (total) => {
+    const watch = createPagedThreadWatch(total);
+    const receiveMessages = vi.fn(
+      async (_messages: readonly MessagePayload[], _scopeId: string) => undefined,
+    );
+    const runtime = {
+      watchThread: watch.watchThread,
+      session: { receiveMessages, decryptedText: () => "", attachmentsFor: () => [] },
+    } as unknown as ChatRuntime;
+    renderThread(runtime, { id: "root", replyCount: total } as MessagePayload);
+    const summary = total === 1 ? "1 reply ·" : `${total} replies`;
+    expect(screen.getByText((content) => content.includes(summary))).toBeInTheDocument();
+    const expectedPages = Math.min(20, Math.ceil(total / 100));
+    await waitFor(() => expect(watch.watchThread).toHaveBeenCalledTimes(expectedPages));
+    expect(watch.off).not.toHaveBeenCalled();
+    if (total > 2000) await loadPagesBeyondWindow(total, watch.pendingPages);
+    expect(await screen.findByText(`reply-${total - 1}`)).toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: "Load more replies" })).toBeNull();
+    await act(async () => {
+      watch.updates.at(-1)?.([{ id: "new-own-reply" } as MessagePayload]);
+    });
+    expect(await screen.findByText("new-own-reply")).toBeInTheDocument();
+    expect(receiveMessages.mock.calls.every((call) => call[1] === "thread:root")).toBe(true);
+    const lastSnapshot = receiveMessages.mock.lastCall?.[0] as MessagePayload[] | undefined;
+    expect(lastSnapshot?.some((message) => message.id === "new-own-reply")).toBe(true);
+    if (total > 100) expect(lastSnapshot?.some((message) => message.id === "reply-0")).toBe(true);
+    if (total <= 2000) expect(watch.off).not.toHaveBeenCalled();
+  },
+);
 
 it("keeps the latest snapshot when earlier attachment metadata resolves last", async () => {
   let onChange: (messages: MessagePayload[]) => void = () => undefined;

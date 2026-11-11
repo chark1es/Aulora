@@ -170,7 +170,7 @@ export function AttachmentView({ runtime, descriptor }: AttachmentViewProps) {
     void loadAttachmentUrl(runtime.port, descriptor)
       .then((url) => {
         if (cancelled) {
-          if (url !== undefined) URL.revokeObjectURL(url);
+          URL.revokeObjectURL(url);
           return;
         }
         objectUrl = url;

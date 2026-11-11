@@ -98,11 +98,22 @@ it("guards A to B navigation and seeds B without leaking A's draft into its save
   );
 });
 
-it.each(["closeNote", "openFolder", "onBack"] as const)("guards dirty %s navigation", (action) => {
+type NotesHook = ReturnType<typeof setup>["result"]["current"];
+const guardedNavigations: readonly (readonly [string, (notes: NotesHook) => void])[] = [
+  [
+    "closeNote",
+    (notes) => {
+      notes.closeNote();
+    },
+  ],
+  ["openFolder", (notes) => notes.openFolder(undefined)],
+  ["onBack", (notes) => notes.onBack()],
+];
+
+it.each(guardedNavigations)("guards dirty %s navigation", (_name, navigate) => {
   const { result } = setup();
   act(() => {
-    if (action === "openFolder") result.current.openFolder(undefined);
-    else result.current[action]();
+    navigate(result.current);
   });
   expect(result.current.navigation.pending).not.toBeNull();
   expect(result.current.noteId).toBe("A");

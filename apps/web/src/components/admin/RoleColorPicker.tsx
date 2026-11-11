@@ -124,13 +124,13 @@ export function RoleColorPicker({
                 max={label === "Hue" ? 360 : 100}
                 value={Math.round(label === "Hue" ? hue : saturation * 100)}
                 disabled={disabled}
-                onChange={(event) =>
+                onChange={(event) => {
                   apply(
                     label === "Hue" ? Number(event.currentTarget.value) : hue,
                     label === "Saturation" ? Number(event.currentTarget.value) / 100 : saturation,
                     lightness,
-                  )
-                }
+                  );
+                }}
               />
             </label>
           ))}

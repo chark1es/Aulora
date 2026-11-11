@@ -176,8 +176,8 @@ function fileReferenceKey(file: File): string {
  * them at rest. Enter sends, Shift+Enter adds a line.
  */
 export function Composer(props: ComposerProps) {
-  const key = scopedDraftKey(useContext(DraftScopeContext), props.draftKey);
-  const { draftKey: _draftKey, ...rest } = props;
+  const { draftKey, ...rest } = props;
+  const key = scopedDraftKey(useContext(DraftScopeContext), draftKey);
   return (
     <ScopedComposer
       key={key ?? props.channelId}
@@ -652,7 +652,9 @@ function ScopedComposer({
           setSendError(attachmentUploadErrorMessage(cause, messageSendError(cause)));
         }
       })
-      .finally(() => setSending(false));
+      .finally(() => {
+        setSending(false);
+      });
   }
 
   const lengthError =
@@ -786,7 +788,9 @@ function ScopedComposer({
           open={confirmMassPing}
           title={`This will notify about ${memberIds.length} people. Send?`}
           confirmLabel="Send"
-          onClose={() => setConfirmMassPing(false)}
+          onClose={() => {
+            setConfirmMassPing(false);
+          }}
           onConfirm={() => {
             setConfirmMassPing(false);
             send(true);
@@ -968,7 +972,9 @@ function ScopedComposer({
             aria-label="Send"
             aria-describedby={lengthError === null ? undefined : lengthErrorId}
             title={lengthError ?? undefined}
-            onClick={() => send()}
+            onClick={() => {
+              send();
+            }}
             disabled={!canSend}
             className={cn(
               "flex h-8 w-8 shrink-0 items-center justify-center rounded-[8px] transition",

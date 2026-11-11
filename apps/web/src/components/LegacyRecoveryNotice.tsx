@@ -7,6 +7,11 @@ import {
   purgeLegacyStorage,
 } from "../lib/legacy-storage";
 
+/** `navigator.clipboard` is absent in insecure contexts even though the DOM types say otherwise. */
+function availableClipboard(): Clipboard | undefined {
+  return navigator.clipboard;
+}
+
 export function LegacyRecoveryNotice({ scope }: { readonly scope: string }) {
   const previousFocus = useRef<HTMLElement | null>(null);
   const [loadedScope, setLoadedScope] = useState(scope);
@@ -58,17 +63,20 @@ export function LegacyRecoveryNotice({ scope }: { readonly scope: string }) {
             <Button
               size="sm"
               onClick={() => {
-                if (!navigator.clipboard?.writeText) {
+                const clipboard = availableClipboard();
+                if (clipboard === undefined) {
                   setCopyError(true);
                   return;
                 }
-                void navigator.clipboard
+                void clipboard
                   .writeText(text)
                   .then(() => {
                     setCopyError(false);
                     setCopied(index);
                   })
-                  .catch(() => setCopyError(true));
+                  .catch(() => {
+                    setCopyError(true);
+                  });
               }}
             >
               {copied === index ? "Copied" : "Copy"}

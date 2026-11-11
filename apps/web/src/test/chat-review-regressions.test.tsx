@@ -1,6 +1,7 @@
 import { act, fireEvent, render, screen, waitFor } from "@testing-library/react";
 import type { ConvexReactClient } from "convex/react";
 import { ConvexError } from "convex/values";
+import { createElement } from "react";
 import { expect, it, vi } from "vitest";
 import { Composer } from "../components/chat/Composer";
 import { AttachmentSizeError } from "../lib/attachments";
@@ -11,10 +12,10 @@ import { DraftScopeContext, draftScope, readDraft, scopedDraftKey } from "../lib
 const base = { channelId: "c1", members: [], roles: [], memberIds: [], onTyping: vi.fn() };
 const scope = draftScope("https://server.example/path", "alice");
 function composer(onSend: () => Promise<void>, account = scope, channelId = "c1") {
-  return (
-    <DraftScopeContext.Provider value={account}>
-      <Composer {...base} channelId={channelId} draftKey={channelId} onSend={onSend} />
-    </DraftScopeContext.Provider>
+  return createElement(
+    DraftScopeContext.Provider,
+    { value: account },
+    createElement(Composer, { ...base, channelId, draftKey: channelId, onSend }),
   );
 }
 it("flushes last keystrokes on switch and isolates drafts by account and origin", () => {

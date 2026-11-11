@@ -140,8 +140,9 @@ export function ThreadsPanel(props: ThreadsPanelProps) {
       offs.push(stop);
     };
     loadNext.current = () => {
-      const cursor = failed.size > 0 ? [...failed][0] : pendingCursor;
-      if (cursor === undefined || subscribed.has(cursor)) return;
+      const retry = failed.values().next();
+      const cursor = retry.done === true ? pendingCursor : retry.value;
+      if (subscribed.has(cursor)) return;
       if (failed.size === 0) pageLimit = Math.max(pageLimit, indexes.size + 1);
       setLoadingReplies(true);
       setRepliesError(false);
@@ -236,7 +237,9 @@ export function ThreadsPanel(props: ThreadsPanelProps) {
         <Button
           loading={loadingReplies}
           disabled={loadingReplies}
-          onClick={() => loadNext.current()}
+          onClick={() => {
+            loadNext.current();
+          }}
         >
           Load more replies
         </Button>

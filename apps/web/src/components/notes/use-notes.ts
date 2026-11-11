@@ -410,7 +410,9 @@ export function useNotes(props: NotesProps) {
     });
   };
 
-  const createNote = () => navigation.navigate(() => void createNoteNow());
+  const createNote = () => {
+    navigation.navigate(() => void createNoteNow());
+  };
 
   /** Opens a folder in the explorer, closing any note pane. */
   const openFolder = (folderId: FolderSelection) => {
@@ -425,7 +427,7 @@ export function useNotes(props: NotesProps) {
     });
   };
 
-  const closeNote = () =>
+  const closeNote = () => {
     navigation.navigate(() => {
       state.setNoteId(undefined);
       state.setEditing(false);
@@ -433,6 +435,7 @@ export function useNotes(props: NotesProps) {
       state.setSeed(undefined);
       state.setReplacementNoteId(undefined);
     });
+  };
 
   /** Opens the create-folder dialog inside whichever folder the explorer shows. */
   const newFolderInView = () => {
@@ -589,7 +592,9 @@ export function useNotes(props: NotesProps) {
     state.setReplacementNoteId(undefined);
     runner.setError(undefined);
   };
-  const reloadLatest = () => navigation.navigate(reloadLatestNow);
+  const reloadLatest = () => {
+    navigation.navigate(reloadLatestNow);
+  };
   const overwriteWithMyVersion = () => {
     if (data.detail === undefined || state.seed?.noteId !== data.detail.id) return;
     state.setReplacementNoteId(data.detail.id);
@@ -620,7 +625,9 @@ export function useNotes(props: NotesProps) {
     reloadLatest,
     overwriteWithMyVersion,
     draft: state.seed?.noteId === state.noteId ? state.draft : undefined,
-    onBack: () => navigation.navigate(props.onBack),
+    onBack: () => {
+      navigation.navigate(props.onBack);
+    },
     openNote,
     openFolder,
     closeNote,

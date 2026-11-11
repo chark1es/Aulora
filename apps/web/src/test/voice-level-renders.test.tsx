@@ -84,37 +84,90 @@ describe("mic level re-render isolation", () => {
     voice = null;
   });
 
+  function renderVoice() {
+    const client = {
+      url: "https://example.test",
+      watchQuery: () => ({
+        localQueryResult: () => undefined,
+        onUpdate: () => () => {},
+      }),
+      mutation: async () => null,
+      action: async () => null,
+    } as unknown as ConvexReactClient;
+
+    render(
+      <VoiceProvider
+        client={client}
+        userId="me"
+        permissions={0xffffn}
+        policy={{
+          enabled: true,
+          videoEnabled: true,
+          screenShareEnabled: true,
+          maxParticipants: 8,
+          iceServers: [],
+        }}
+      >
+        <Probe />
+        <PlainConsumer />
+        <MicMeter />
+      </VoiceProvider>,
+    );
+  }
+
+  function expectMeterIsolation() {
+    renders.plain = 0;
+    renders.meter = 0;
+    const meter = mock.meters[0] as (level: number) => void;
+
+    // Below the speaking threshold: only the meter re-renders.
+    act(() => {
+      meter(0.02);
+    });
+    expect(screen.getByTestId("meter")).toHaveTextContent("0.02");
+    expect(renders.meter).toBeGreaterThan(0);
+    expect(renders.plain).toBe(0);
+
+    act(() => {
+      meter(0.05);
+    });
+    expect(screen.getByTestId("meter")).toHaveTextContent("0.05");
+    expect(renders.plain).toBe(0);
+
+    // Crossing the speaking threshold is real state, so the context does change.
+    act(() => {
+      meter(0.5);
+    });
+    expect(renders.plain).toBeGreaterThan(0);
+  }
+
+  function expectPagehide(persisted: boolean) {
+    act(() => {
+      window.dispatchEvent(new PageTransitionEvent("pagehide", { persisted }));
+    });
+    if (persisted) {
+      expect(voice?.callId).toBe("call-1");
+      expect(mock.beacon).not.toHaveBeenCalled();
+      expect(mock.stop).not.toHaveBeenCalled();
+      return;
+    }
+    expect(voice?.callId).toBeNull();
+    expect(mock.stop).toHaveBeenCalledOnce();
+    expect(mock.beacon).toHaveBeenCalledWith(
+      expect.objectContaining({
+        convexUrl: "https://example.test",
+        callId: "call-1",
+        clientId: expect.any(String),
+      }),
+    );
+    act(() => window.dispatchEvent(new PageTransitionEvent("pagehide", { persisted: false })));
+    expect(mock.beacon).toHaveBeenCalledOnce();
+  }
+
   it.each([false, true])(
     "isolates mic renders and handles pagehide persisted:%s",
     async (persisted) => {
-      const client = {
-        url: "https://example.test",
-        watchQuery: () => ({
-          localQueryResult: () => undefined,
-          onUpdate: () => () => {},
-        }),
-        mutation: async () => null,
-        action: async () => null,
-      } as unknown as ConvexReactClient;
-
-      render(
-        <VoiceProvider
-          client={client}
-          userId="me"
-          permissions={0xffffn}
-          policy={{
-            enabled: true,
-            videoEnabled: true,
-            screenShareEnabled: true,
-            maxParticipants: 8,
-            iceServers: [],
-          }}
-        >
-          <Probe />
-          <PlainConsumer />
-          <MicMeter />
-        </VoiceProvider>,
-      );
+      renderVoice();
 
       await act(async () => {
         await voice?.joinCall("call-1");
@@ -133,50 +186,8 @@ describe("mic level re-render isolation", () => {
       expect(mock.beacon).not.toHaveBeenCalled();
       expect(mock.stop).not.toHaveBeenCalled();
 
-      renders.plain = 0;
-      renders.meter = 0;
-      const meter = mock.meters[0] as (level: number) => void;
-
-      // Below the speaking threshold: only the meter re-renders.
-      act(() => {
-        meter(0.02);
-      });
-      expect(screen.getByTestId("meter")).toHaveTextContent("0.02");
-      expect(renders.meter).toBeGreaterThan(0);
-      expect(renders.plain).toBe(0);
-
-      act(() => {
-        meter(0.05);
-      });
-      expect(screen.getByTestId("meter")).toHaveTextContent("0.05");
-      expect(renders.plain).toBe(0);
-
-      // Crossing the speaking threshold is real state, so the context does change.
-      act(() => {
-        meter(0.5);
-      });
-      expect(renders.plain).toBeGreaterThan(0);
-
-      act(() => {
-        window.dispatchEvent(new PageTransitionEvent("pagehide", { persisted }));
-      });
-      if (persisted) {
-        expect(voice?.callId).toBe("call-1");
-        expect(mock.beacon).not.toHaveBeenCalled();
-        expect(mock.stop).not.toHaveBeenCalled();
-      } else {
-        expect(voice?.callId).toBeNull();
-        expect(mock.stop).toHaveBeenCalledOnce();
-        expect(mock.beacon).toHaveBeenCalledWith(
-          expect.objectContaining({
-            convexUrl: "https://example.test",
-            callId: "call-1",
-            clientId: expect.any(String),
-          }),
-        );
-        act(() => window.dispatchEvent(new PageTransitionEvent("pagehide", { persisted: false })));
-        expect(mock.beacon).toHaveBeenCalledOnce();
-      }
+      expectMeterIsolation();
+      expectPagehide(persisted);
     },
   );
 });

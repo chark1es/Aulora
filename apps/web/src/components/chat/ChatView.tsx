@@ -1248,7 +1248,7 @@ function ChatViewContent({
   }, [runtime, activeChannelKey]);
 
   const openChannel = useCallback(
-    (channelId: string) =>
+    (channelId: string) => {
       navigateFromSettings(() => {
         setAdminOpen(false);
         setUserSettingsOpen(false);
@@ -1258,7 +1258,8 @@ function ChatViewContent({
         setReplyTarget(undefined);
         setMobilePane("chat");
         setSendError(null);
-      }),
+      });
+    },
     [navigateFromSettings],
   );
 
@@ -1880,7 +1881,9 @@ function ChatViewContent({
                         void setNotificationPref({
                           scope: "server",
                           suppressMassMentions: value,
-                        }).catch((error) => setSendError(errorMessage(error)));
+                        }).catch((error) => {
+                          setSendError(errorMessage(error));
+                        });
                       },
                     }
                   : {})}
@@ -2108,7 +2111,9 @@ function ChatViewContent({
                                 canMentionEveryone && hasBroadcastToken(input.text, "here"),
                             })
                         : undefined,
-                      (error) => setSendError(errorMessage(error)),
+                      (error) => {
+                        setSendError(errorMessage(error));
+                      },
                     );
                   }}
                   onEdit={(message, text) => {

@@ -115,7 +115,9 @@ export function UserSettingsView({
     }
   }, [savedBio, bioEdited]);
 
-  useEffect(() => setSavedBio(ownBio), [ownBio]);
+  useEffect(() => {
+    setSavedBio(ownBio);
+  }, [ownBio]);
 
   const isBusy = busy || submitting;
   const trimmedNickname = nickname.trim();

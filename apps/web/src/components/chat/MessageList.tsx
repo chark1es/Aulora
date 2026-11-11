@@ -485,7 +485,7 @@ export function MessageList(props: MessageListProps) {
           const rows = [
             ...event.currentTarget.querySelectorAll<HTMLElement>("[data-message-row][tabindex]"),
           ];
-          const index = rows.indexOf(event.target as HTMLElement);
+          const index = rows.findIndex((row) => Object.is(row, event.target));
           if (index < 0) return;
           event.preventDefault();
           rows[
@@ -1098,7 +1098,9 @@ function MessageRowContent({
                 <button
                   type="button"
                   aria-label="Discard unsent message"
-                  onClick={() => setConfirmDiscard(true)}
+                  onClick={() => {
+                    setConfirmDiscard(true);
+                  }}
                   className="rounded-[6px] px-1.5 py-0.5 font-medium text-text-muted transition hover:bg-surface-3 hover:text-text"
                 >
                   Discard

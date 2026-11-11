@@ -1,5 +1,6 @@
 import type { SoundEvent } from "@aulora/core";
 import { Icon, IconButton, Switch, Text } from "@aulora/ui-web";
+import type { Fn } from "../../function-type";
 import { playSound, useSoundSettings } from "../../lib/sounds";
 
 const EVENT_ROWS: readonly {
@@ -47,7 +48,7 @@ export function NotificationsSettingsSection({
 }: {
   readonly prefsLoaded?: boolean;
   readonly suppressMassMentions?: boolean;
-  readonly onSuppressMassMentions?: (value: boolean) => void;
+  readonly onSuppressMassMentions?: Fn<[value: boolean], void>;
 }) {
   const [settings, update, updateEvent] = useSoundSettings();
 

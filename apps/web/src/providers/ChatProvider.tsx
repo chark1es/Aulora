@@ -132,7 +132,7 @@ export function ChatProvider({
   children,
 }: ChatProviderProps) {
   const [runtime, setRuntime] = useState<ChatRuntime | undefined>(undefined);
-  const [queryError, setQueryError] = useState<unknown>(null);
+  const [queryError, setQueryError] = useState<Error | null>(null);
   const [ready, setReady] = useState(false);
   const [channelNames, setChannelNames] = useState<ReadonlyMap<string, string>>(new Map());
   const [presence, setPresence] = useState<readonly PresenceRow[]>([]);
@@ -156,6 +156,9 @@ export function ChatProvider({
   useEffect(() => {
     let cancelled = false;
     const isCancelled = () => cancelled;
+    const reportQueryError = (error: unknown) => {
+      setQueryError(error instanceof Error ? error : new Error(String(error)));
+    };
     const outboxStore = new Outbox({ store: webOutboxStore(client.url, userId) });
     // The index is scoped to this backend and account so a different instance
     // that happens to share the same browser origin can never surface its
@@ -180,7 +183,7 @@ export function ChatProvider({
         setOutbox(loaded);
       }
     });
-    void createChatRuntime({ client, userId, displayName, onError: setQueryError })
+    void createChatRuntime({ client, userId, displayName, onError: reportQueryError })
       .then((created) => {
         if (isCancelled()) {
           created.session.dispose();
@@ -200,7 +203,7 @@ export function ChatProvider({
         setReady(true);
       })
       .catch((error: unknown) => {
-        if (!cancelled) setQueryError(error);
+        if (!cancelled) reportQueryError(error);
       });
     return () => {
       cancelled = true;
