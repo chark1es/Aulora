@@ -1,4 +1,10 @@
-import type { ProfileStore, ServerProfile, WellKnownAuth, WellKnownProvider } from "@aulora/core";
+import {
+  type ProfileStore,
+  readProfileSnapshotSafely,
+  type ServerProfile,
+  type WellKnownAuth,
+  type WellKnownProvider,
+} from "@aulora/core";
 
 /**
  * Async key/value storage the mobile profile store is built on (AsyncStorage).
@@ -122,12 +128,8 @@ export async function loadProfilesSafely(store: ProfileStore): Promise<{
   readonly profiles: ServerProfile[];
   readonly activeId: string | undefined;
 }> {
-  try {
-    const [profiles, active] = await Promise.all([store.list(), store.getActive()]);
-    return { profiles, activeId: active?.id };
-  } catch {
-    return { profiles: [], activeId: undefined };
-  }
+  const snapshot = await readProfileSnapshotSafely(store);
+  return { profiles: snapshot.profiles, activeId: snapshot.activeId };
 }
 
 /** AsyncStorage-backed {@link ProfileStore} for iOS/Android. */

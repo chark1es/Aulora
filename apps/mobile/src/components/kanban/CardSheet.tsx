@@ -1,6 +1,6 @@
-import { Button, Icon, Text, usePalette } from "@aulora/ui-native";
+import { Button, Icon, Text, TextField, usePalette } from "@aulora/ui-native";
 import { useMutation, useQuery } from "convex/react";
-import { ScrollView, TextInput, View } from "react-native";
+import { ScrollView, View } from "react-native";
 import Animated, { FadeInDown } from "react-native-reanimated";
 import { api } from "../../../../../packages/convex/convex/_generated/api";
 import { Sheet } from "../chat/Sheet";
@@ -37,7 +37,7 @@ function CardBanners({ editor }: SectionProps) {
       {editor.card.archived && (
         <View className="flex-row items-center gap-2 rounded-input bg-surface-3 px-3 py-2.5">
           <Icon name="archive" size={16} color={palette["text-muted"]} />
-          <Text size="sm" tone="muted" className="flex-1">
+          <Text size="sm" tone="muted" className="flex-1 min-w-0">
             This card is archived. Restore it to make changes.
           </Text>
         </View>
@@ -47,7 +47,7 @@ function CardBanners({ editor }: SectionProps) {
           entering={FadeInDown.duration(200)}
           className="flex-row items-center gap-3 rounded-input border border-border bg-surface-2 px-3 py-2"
         >
-          <Text size="sm" className="flex-1">
+          <Text size="sm" className="flex-1 min-w-0">
             This card changed while you were editing.
           </Text>
           <Button size="sm" variant="secondary" onPress={reload}>
@@ -62,7 +62,7 @@ function CardBanners({ editor }: SectionProps) {
 function CardTitle({ editor }: SectionProps) {
   const palette = usePalette();
   return (
-    <TextInput
+    <TextField
       accessibilityLabel="Title"
       placeholder="Card title"
       placeholderTextColor={palette["text-muted"]}
@@ -152,7 +152,7 @@ function CardFooter({ editor }: SectionProps) {
       )}
       {showSave && (
         <View className="flex-row items-center gap-3">
-          <Text size="sm" tone="muted" className="flex-1">
+          <Text size="sm" tone="muted" className="flex-1 min-w-0">
             Unsaved changes
           </Text>
           <Button

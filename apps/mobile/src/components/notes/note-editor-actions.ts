@@ -22,7 +22,7 @@ function deleteEditorNote(ctl: NotesController) {
   );
 }
 
-function savedNoteActions(ctl: NotesController): SheetAction[] {
+function savedNoteActions(ctl: NotesController, editor: NoteEditorController): SheetAction[] {
   const note = ctl.detail;
   if (note === undefined) return [];
   const actions: SheetAction[] = [
@@ -32,7 +32,7 @@ function savedNoteActions(ctl: NotesController): SheetAction[] {
       icon: "history",
       section: true,
       onPress: () => {
-        ctl.openHistory(note.id);
+        editor.openHistory(note.id);
       },
     },
   ];
@@ -69,6 +69,6 @@ export function editorActions(ctl: NotesController, editor: NoteEditorController
       disabled: !hasNoteContent(editor.title, editor.body),
       onPress: editor.save,
     },
-    ...savedNoteActions(ctl),
+    ...savedNoteActions(ctl, editor),
   ];
 }

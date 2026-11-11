@@ -6,6 +6,7 @@ import {
   messageMentionsUser,
   messageTime,
   Permission,
+  roleColorCss,
 } from "@aulora/core";
 import { MENTION_BACKGROUND, MENTION_COLOR } from "@aulora/tokens";
 import { Icon, Text, usePalette } from "@aulora/ui-native";
@@ -47,7 +48,7 @@ export interface MessageRowContext {
 export interface MessageRowProps {
   readonly context: MessageRowContext;
   readonly message: MessagePayload;
-  /** Continues the previous message's author block: no avatar or name. */
+  /** Continues the previous message’s author block: no avatar or name. */
   readonly grouped: boolean;
   /** Briefly marked after being jumped to. */
   readonly highlighted: boolean;
@@ -58,7 +59,7 @@ export interface MessageRowProps {
   readonly authorName: string;
   readonly authorColor: string | undefined;
   /**
-   * Batched reaction groups for this message, from the timeline's single
+   * Batched reaction groups for this message, from the timeline’s single
    * subscription. `undefined` falls back to a per-row subscription (used by
    * adapters without `watchReactionsBatch`).
    */
@@ -88,7 +89,7 @@ function ReplyLine({ reply, onPress }: ReplyLineProps) {
       <Svg width={48} height={16} viewBox="0 0 48 16" fill="none">
         <Path
           d="M 18 16 L 18 13 Q 18 8 23 8 L 44 8"
-          stroke={reply.authorColor ?? palette["text-muted"]}
+          stroke={roleColorCss(reply.authorColor) ?? palette["text-muted"]}
           strokeWidth={1.5}
           strokeLinecap="round"
         />
@@ -103,7 +104,7 @@ function ReplyLine({ reply, onPress }: ReplyLineProps) {
             <Text
               size="xs"
               className="font-semibold"
-              style={{ color: reply.authorColor ?? palette.accent }}
+              style={{ color: roleColorCss(reply.authorColor) ?? palette.accent }}
             >
               {reply.authorName ?? "Member"}
             </Text>
@@ -127,9 +128,10 @@ interface AuthorLineProps {
 
 function AuthorLine({ name, color, time, pinned }: AuthorLineProps) {
   const palette = usePalette();
+  const tint = roleColorCss(color);
   return (
     <View className="flex-row flex-wrap items-baseline gap-x-2">
-      <Text size="sm" className="font-semibold" style={color !== undefined ? { color } : undefined}>
+      <Text size="sm" className="font-semibold" style={tint !== null ? { color: tint } : undefined}>
         {name}
       </Text>
       <Text size="xs" tone="muted">
@@ -166,18 +168,21 @@ function ThreadChip({ replies, onPress }: ThreadChipProps) {
 }
 
 interface MessageTextProps {
+  readonly message: MessagePayload;
   readonly text: string | undefined;
   readonly pending: boolean;
   readonly edited: boolean;
   readonly context: MessageRowContext;
 }
 
-/** The message's words, or why they are missing, and whether it was edited. */
-function MessageText({ text, pending, edited, context }: MessageTextProps) {
+/** The message’s words, or why they are missing, and whether it was edited. */
+function MessageText({ message, text, pending, edited, context }: MessageTextProps) {
   return (
     <>
       {text !== undefined && (
         <RichText
+          mentionEveryone={message.mentionEveryone}
+          mentionHere={message.mentionHere}
           text={text}
           mentionNames={context.mentionNames}
           channelNames={context.channelNames}
@@ -215,6 +220,7 @@ function MessageBody(props: MessageRowProps) {
         />
       )}
       <MessageText
+        message={message}
         text={text}
         pending={pending}
         edited={message.editedAt !== null}

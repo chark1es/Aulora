@@ -132,7 +132,7 @@ export function SectionTitle({
   return (
     <View className="min-h-9 flex-row items-center gap-2">
       <Icon name={icon} size={18} color={palette["text-muted"]} />
-      <Text className="flex-1 font-semibold" accessibilityRole="header">
+      <Text className="flex-1 font-semibold min-w-0" accessibilityRole="header">
         {title}
       </Text>
       {aside}

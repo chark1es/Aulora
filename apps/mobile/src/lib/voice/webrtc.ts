@@ -250,11 +250,6 @@ export function startIosPip(ref: { readonly current: unknown }): void {
   }
 }
 
-/** Whether this build can capture a screen (mobile often cannot). */
-export function supportsScreenShare(): boolean {
-  return nativeModule?.mediaDevices?.getDisplayMedia !== undefined;
-}
-
 export function createPeerConnection(config: VoicePeerConnectionConfig): VoicePeerConnection {
   const Ctor = peerConnectionConstructor();
   return new Ctor(config);

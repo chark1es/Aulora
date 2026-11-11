@@ -4,10 +4,12 @@ import type { ReactNode } from "react";
 import { Linking, View } from "react-native";
 
 export interface RichTextProps {
+  readonly mentionEveryone?: boolean | undefined;
+  readonly mentionHere?: boolean | undefined;
   readonly text: string;
   readonly mentionNames: readonly string[];
   readonly channelNames?: readonly string[];
-  /** The viewer's display name; mentions of them are highlighted. */
+  /** The viewer’s display name; mentions of them are highlighted. */
   readonly viewerName: string;
   readonly onAccent?: boolean;
   readonly onChannelPress?: (_name: string) => void;
@@ -21,13 +23,15 @@ export interface RichTextProps {
 export function RichText({
   text,
   mentionNames,
+  mentionEveryone = false,
+  mentionHere = false,
   channelNames = [],
   viewerName,
   onAccent = false,
   onChannelPress,
 }: RichTextProps) {
   const palette = usePalette();
-  const blocks = parseRichText(text, { mentionNames, channelNames });
+  const blocks = parseRichText(text, { mentionEveryone, mentionHere, mentionNames, channelNames });
   return (
     <View style={{ gap: 4 }}>
       {blocks.map((block) => {
@@ -130,6 +134,9 @@ function renderCodeSegment(
       key={key}
       mono
       style={{
+        // JetBrains Mono ships at 400 only; pin it so an enclosing **bold** neither
+        // synthesises a bold on Android nor leaves iOS and Android disagreeing.
+        fontWeight: "400",
         backgroundColor: onAccent ? ACCENT_OVERLAY : palette["surface-3"],
         color: onAccent ? palette["on-accent"] : palette.accent,
       }}

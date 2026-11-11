@@ -142,7 +142,7 @@ function seedOtherChannels(seed: SeedFn, ids: DemoIds, now: number, fileId: stri
     "group",
     ids.groupId,
     "jordan",
-    "Let's coordinate the launch in this group conversation.",
+    "Let’s coordinate the launch in this group conversation.",
     5,
   );
 }

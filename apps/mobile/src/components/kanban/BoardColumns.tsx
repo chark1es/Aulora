@@ -108,7 +108,7 @@ export function BoardColumns({
     },
     [interval],
   );
-  // Lets a card's "Move to" follow the card to its new column.
+  // Lets a card’s "Move to" follow the card to its new column.
   useEffect(() => {
     ctl.showColumn.current = show;
   }, [ctl.showColumn, show]);

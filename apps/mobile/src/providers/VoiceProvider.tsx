@@ -3,7 +3,7 @@ import { Icon, Text, usePalette } from "@aulora/ui-native";
 import type { ConvexReactClient } from "convex/react";
 import { type ReactNode, useEffect } from "react";
 import { Pressable, View } from "react-native";
-import { useSafeAreaInsets } from "react-native-safe-area-context";
+import { useScreenInsets } from "../components/layout/ScreenContainer";
 import { useChat } from "./ChatProvider";
 import { RemoteAudio, useVoiceValue } from "./voice-provider-controls";
 import { VoiceContext } from "./voice-provider-types";
@@ -33,7 +33,7 @@ function CallEndedBanner({
   readonly onDismiss: () => void;
 }) {
   const palette = usePalette();
-  const insets = useSafeAreaInsets();
+  const insets = useScreenInsets();
 
   useEffect(() => {
     if (notice === null) {
@@ -55,8 +55,8 @@ function CallEndedBanner({
       style={{
         position: "absolute",
         top: insets.top + 8,
-        left: 12,
-        right: 12,
+        left: insets.left + 12,
+        right: insets.right + 12,
         zIndex: 50,
       }}
       className="flex-row items-start gap-2 rounded-card border border-border bg-surface-1 px-3 py-2.5"
@@ -70,6 +70,7 @@ function CallEndedBanner({
         accessibilityRole="button"
         accessibilityLabel="Dismiss"
         hitSlop={8}
+        className="min-h-11 min-w-11 items-center justify-center"
         onPress={onDismiss}
       >
         <Icon name="x" size={14} color={palette["text-muted"]} />

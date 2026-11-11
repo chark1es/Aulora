@@ -290,7 +290,7 @@ function MoveFolderPicker({
   );
 }
 
-/** The add button's menu: create a note, a folder or a subfolder in view. */
+/** The add button’s menu: create a note, a folder or a subfolder in view. */
 function createActions(ctl: NotesController): SheetAction[] {
   const inFolder = ctl.filters.folderId !== undefined && ctl.filters.folderId !== null;
   const actions: SheetAction[] = [

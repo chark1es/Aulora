@@ -386,7 +386,7 @@ function useChatScreenSignOut(data: ChatScreenData) {
             .then(onSignOut)
             .catch(() => {
               Alert.alert(
-                "Couldn't sign out",
+                "Couldn’t sign out",
                 "Connect to your workspace and try again so notifications can be removed from this device.",
               );
             });
@@ -419,7 +419,7 @@ function useChatScreenDeleteAccount(data: ChatScreenData) {
               .then(onDeleteAccount)
               .catch((cause: unknown) => {
                 Alert.alert(
-                  "Couldn't delete account",
+                  "Couldn’t delete account",
                   `${errorMessage(cause)} If you signed in a while ago, sign out, sign back in, and try again.`,
                 );
               });

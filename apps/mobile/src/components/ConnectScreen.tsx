@@ -7,17 +7,7 @@ import { ConvexReactClient } from "convex/react";
 import * as Clipboard from "expo-clipboard";
 import { useRouter } from "expo-router";
 import { useRef, useState } from "react";
-import {
-  Animated,
-  Image,
-  KeyboardAvoidingView,
-  Platform,
-  Pressable,
-  ScrollView,
-  StyleSheet,
-  useWindowDimensions,
-  View,
-} from "react-native";
+import { Animated, Image, Pressable, useWindowDimensions, View } from "react-native";
 import { api } from "../../../../packages/convex/convex/_generated/api";
 import { SUPPORTED_API_VERSION } from "../lib/api-version";
 import { type Branding, fetchBranding } from "../lib/branding";
@@ -25,7 +15,7 @@ import { shouldOpenReviewDemo } from "../lib/review-demo";
 import { useEntrance, useReduceMotion } from "../lib/use-entrance";
 import { useProfiles } from "../providers/ProfileProvider";
 import { AuthField } from "./AuthField";
-import { AuthScaffold } from "./AuthScaffold";
+import { AuthScaffold, AuthScroll } from "./AuthScaffold";
 import { ThresholdAura } from "./ThresholdAura";
 
 interface Preview {
@@ -60,13 +50,13 @@ function messageForError(error: unknown): string {
   if (error instanceof WellKnownError) {
     switch (error.code) {
       case "HTTP_ERROR":
-        return "That server answered, but did not serve an Aulora well-known document.";
+        return "That workspace answered, but did not serve an Aulora well-known document.";
       case "SECRET_FIELD":
-        return "That server's well-known document contained a field Aulora refuses to use.";
+        return "That workspace’s well-known document contained a field Aulora refuses to use.";
       case "NETWORK_ERROR":
-        return "Could not reach that server. Check the address and your connection.";
+        return "Could not reach that workspace. Check the address and your connection.";
       default:
-        return "That server could not be used.";
+        return "That workspace could not be used.";
     }
   }
   return "Enter a valid server address, like chat.acme.com.";
@@ -80,7 +70,7 @@ async function discover(host: string): Promise<ConnectOutcome> {
       return {
         ok: false,
         preview: null,
-        message: `This server speaks Aulora API v${wellKnown.apiVersion}; this client supports v${SUPPORTED_API_VERSION}.`,
+        message: `This workspace speaks Aulora API v${wellKnown.apiVersion}; this client supports v${SUPPORTED_API_VERSION}.`,
       };
     }
     return { ok: true, preview: { baseUrl: host, wellKnown }, message: "" };
@@ -174,7 +164,7 @@ function useConnectModel(onConnected: () => void, initialHost: string | undefine
       await addProfile(preview.baseUrl, preview.wellKnown);
       onConnected();
     } catch {
-      setError("Could not save this server profile.");
+      setError("Could not save this workspace profile.");
     } finally {
       setBusy(false);
     }
@@ -277,7 +267,7 @@ function RecentList({ model }: { readonly model: ConnectModel }) {
   const palette = usePalette();
   return (
     <View className="gap-1">
-      <Text size="xs" tone="muted" className="font-semibold uppercase tracking-[0.09em]">
+      <Text size="xs" tone="muted" className="font-medium">
         Recent workspaces
       </Text>
       {model.profiles.map((profile) => (
@@ -288,10 +278,10 @@ function RecentList({ model }: { readonly model: ConnectModel }) {
             onPress={() => {
               model.switchTo(profile);
             }}
-            className="min-h-11 flex-1 flex-row items-center gap-3"
+            className="min-h-11 flex-1 flex-row items-center gap-3 min-w-0"
           >
             <NativeAvatar seed={profile.iconSeed} size={32} shape="squircle" />
-            <View className="flex-1">
+            <View className="flex-1 min-w-0">
               <Text size="base" numberOfLines={1}>
                 {profile.name}
               </Text>
@@ -320,56 +310,46 @@ function EntryStep({ model }: { readonly model: ConnectModel }) {
   const reduceMotion = useReduceMotion();
   const { animatedStyle } = useEntrance(reduceMotion);
   return (
-    <KeyboardAvoidingView
-      className="flex-1"
-      behavior={Platform.OS === "ios" ? "padding" : "height"}
-    >
-      <ScrollView
-        className="flex-1"
-        contentContainerStyle={styles.scrollContent}
-        keyboardShouldPersistTaps="handled"
-        showsVerticalScrollIndicator={false}
+    <AuthScroll>
+      <AuthScaffold
+        seed={hostSeed(model.host)}
+        reduceMotion={reduceMotion}
+        aura={<EntryAura seed={hostSeed(model.host)} reduceMotion={reduceMotion} />}
+        intro={
+          <Animated.View style={animatedStyle}>
+            <View className="gap-2">
+              <Heading level={1}>Connect to your workspace</Heading>
+              <Text size="base" tone="muted" className="leading-relaxed">
+                Enter the address your team gave you.
+              </Text>
+            </View>
+          </Animated.View>
+        }
       >
-        <AuthScaffold
-          seed={hostSeed(model.host)}
-          reduceMotion={reduceMotion}
-          aura={<EntryAura seed={hostSeed(model.host)} reduceMotion={reduceMotion} />}
-          intro={
-            <Animated.View style={animatedStyle}>
-              <View className="gap-2">
-                <Heading level={1}>Connect to your workspace</Heading>
-                <Text size="base" tone="muted" className="leading-relaxed">
-                  Enter the address your team gave you.
-                </Text>
-              </View>
-            </Animated.View>
+        <AuthField
+          label="Server address"
+          placeholder="chat.acme.com"
+          autoCapitalize="none"
+          autoCorrect={false}
+          keyboardType="url"
+          value={model.host}
+          onChangeText={model.setHost}
+          onSubmitEditing={model.connect}
+          returnKeyType="go"
+          leading={<Icon name="link" color={palette["text-muted"]} />}
+          trailing={
+            <Button size="sm" variant="ghost" onPress={model.paste}>
+              Paste
+            </Button>
           }
-        >
-          <AuthField
-            label="Server address"
-            placeholder="chat.acme.com"
-            autoCapitalize="none"
-            autoCorrect={false}
-            keyboardType="url"
-            value={model.host}
-            onChangeText={model.setHost}
-            onSubmitEditing={model.connect}
-            returnKeyType="go"
-            leading={<Icon name="link" color={palette["text-muted"]} />}
-            trailing={
-              <Button size="sm" variant="ghost" onPress={model.paste}>
-                Paste
-              </Button>
-            }
-            {...(model.error !== null ? { error: model.error } : {})}
-          />
-          <Button size="lg" loading={model.busy} onPress={model.connect}>
-            Continue
-          </Button>
-          {model.profiles.length > 0 && <RecentList model={model} />}
-        </AuthScaffold>
-      </ScrollView>
-    </KeyboardAvoidingView>
+          {...(model.error !== null ? { error: model.error } : {})}
+        />
+        <Button size="lg" loading={model.busy} onPress={model.connect}>
+          Continue
+        </Button>
+        {model.profiles.length > 0 && <RecentList model={model} />}
+      </AuthScaffold>
+    </AuthScroll>
   );
 }
 
@@ -383,58 +363,48 @@ function PreviewStep({ model }: { readonly model: ConnectModel }) {
   const { wellKnown } = preview;
   const description = model.branding?.description ?? "";
   return (
-    <KeyboardAvoidingView
-      className="flex-1"
-      behavior={Platform.OS === "ios" ? "padding" : "height"}
-    >
-      <ScrollView
-        className="flex-1"
-        contentContainerStyle={styles.scrollContent}
-        keyboardShouldPersistTaps="handled"
-        showsVerticalScrollIndicator={false}
-      >
-        <AuthScaffold
-          seed={wellKnown.iconSeed}
-          reduceMotion={reduceMotion}
-          aura={previewAura(preview, model.branding, model.compact ? 124 : 148, reduceMotion)}
-          intro={
-            <Animated.View style={animatedStyle}>
-              <View className="gap-1.5">
-                <Heading level={1}>{wellKnown.name}</Heading>
-                {description.length > 0 && (
-                  <Text size="base" tone="muted">
-                    {description}
-                  </Text>
-                )}
-                <Text size="sm" tone="muted" mono>
-                  {preview.baseUrl}
-                </Text>
+    <AuthScroll>
+      <AuthScaffold
+        seed={wellKnown.iconSeed}
+        reduceMotion={reduceMotion}
+        aura={previewAura(preview, model.branding, model.compact ? 124 : 148, reduceMotion)}
+        intro={
+          <Animated.View style={animatedStyle}>
+            <View className="gap-1.5">
+              <Heading level={1}>{wellKnown.name}</Heading>
+              {description.length > 0 && (
                 <Text size="base" tone="muted">
-                  Is this the workspace you’re looking for?
+                  {description}
                 </Text>
-              </View>
-            </Animated.View>
-          }
-        >
-          <View className="border-y border-border py-3">
-            <Text size="sm" tone="muted">
-              Aulora v{wellKnown.version} · API v{wellKnown.apiVersion}
-            </Text>
-          </View>
-          {model.error !== null && (
-            <Text size="sm" tone="danger" accessibilityRole="alert">
-              {model.error}
-            </Text>
-          )}
-          <Button size="lg" loading={model.busy} onPress={model.save}>
-            Continue
-          </Button>
-          <Button variant="ghost" className="self-start" disabled={model.busy} onPress={model.back}>
-            Use a different server
-          </Button>
-        </AuthScaffold>
-      </ScrollView>
-    </KeyboardAvoidingView>
+              )}
+              <Text size="sm" tone="muted" mono>
+                {preview.baseUrl}
+              </Text>
+              <Text size="base" tone="muted">
+                Is this the workspace you’re looking for?
+              </Text>
+            </View>
+          </Animated.View>
+        }
+      >
+        <View className="border-y border-border py-3">
+          <Text size="sm" tone="muted">
+            Aulora v{wellKnown.version} · API v{wellKnown.apiVersion}
+          </Text>
+        </View>
+        {model.error !== null && (
+          <Text size="sm" tone="danger" accessibilityRole="alert">
+            {model.error}
+          </Text>
+        )}
+        <Button size="lg" loading={model.busy} onPress={model.save}>
+          Continue
+        </Button>
+        <Button variant="ghost" className="self-start" disabled={model.busy} onPress={model.back}>
+          Use a different workspace
+        </Button>
+      </AuthScaffold>
+    </AuthScroll>
   );
 }
 
@@ -447,9 +417,3 @@ export function ConnectScreen({ onConnected, initialHost }: ConnectScreenProps) 
   const model = useConnectModel(onConnected, initialHost);
   return model.preview !== null ? <PreviewStep model={model} /> : <EntryStep model={model} />;
 }
-
-const styles = StyleSheet.create({
-  scrollContent: {
-    flexGrow: 1,
-  },
-});

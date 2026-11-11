@@ -4,6 +4,7 @@ import {
   type ChannelView,
   DEFAULT_VOICE_SETTINGS,
   type MessagePayload,
+  messageMentionsUser,
   type PresenceRow,
 } from "@aulora/core";
 import type { ConvexReactClient } from "convex/react";
@@ -66,6 +67,12 @@ const FALLBACK_DEMO = {
 const DEMO_CLIENT = {
   mutation: async () => "demo",
   query: async () => ({ body: null }),
+  // Live server subscriptions (e.g. notification preferences) stay empty offline.
+  watchQuery: () => ({
+    onUpdate: () => () => undefined,
+    localQueryResult: () => undefined,
+    journal: () => undefined,
+  }),
 } as unknown as ConvexReactClient;
 
 /** Avatar uploads are server-only; the settings sheet rejects them offline. */
@@ -191,7 +198,6 @@ function demoChatValue(
     canBan: false,
     canTimeout: false,
     canModerateMembers: false,
-    canMentionEveryone: true,
     sendMessage: makeSendMessage(demo),
     retrySend: async () => undefined,
     discardSend: async () => undefined,
@@ -220,7 +226,7 @@ function threadRowsFrom(
         participantIds: [],
         mentionedUserIds: message.mentionUserIds,
         viewerParticipated: true,
-        viewerMentioned: message.mentionUserIds.includes(REVIEW_USER_ID),
+        viewerMentioned: messageMentionsUser(message, REVIEW_USER_ID),
       });
     }
   }
@@ -249,6 +255,7 @@ function demoScreenFields(input: {
 }): Omit<ChatScreenSession, keyof MobileChatContextValue> {
   const threadRows = threadRowsFrom(input.byChannel);
   return {
+    mentionMarkers: false,
     workspaceName: DEMO_WORKSPACE,
     ownUserId: REVIEW_USER_ID,
     ownDisplayName: DEMO_MEMBER_NAMES.get(REVIEW_USER_ID) ?? "Alex Rivera",

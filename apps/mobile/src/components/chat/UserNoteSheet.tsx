@@ -78,7 +78,7 @@ function NoteActions({
 }) {
   const disabled = saving || loading || error !== null;
   return (
-    <View className="mt-3 flex-row justify-end gap-2">
+    <View className="flex-row justify-end gap-2 border-t border-border bg-surface-1 px-4 py-3">
       <Button size="sm" variant="secondary" onPress={onClear} disabled={disabled}>
         Clear
       </Button>
@@ -105,8 +105,27 @@ export function UserNoteSheet({
   );
 
   return (
-    <Sheet visible={visible} title={`Note · ${memberName}`} onClose={onClose}>
-      <View className="flex-1 gap-3 p-4">
+    <Sheet
+      visible={visible}
+      title={`Note · ${memberName}`}
+      onClose={onClose}
+      // Pinned above the keyboard; after the note field they were under it on a
+      // short phone at large text.
+      footer={
+        <NoteActions
+          saving={saving}
+          loading={loading}
+          error={error}
+          onClear={() => {
+            submit(true);
+          }}
+          onSave={() => {
+            submit(false);
+          }}
+        />
+      }
+    >
+      <View className="flex-1 gap-3 p-4 min-w-0">
         {error !== null && (
           <Text size="sm" tone="danger" accessibilityRole="alert">
             {error}
@@ -122,17 +141,6 @@ export function UserNoteSheet({
           placeholder={loading ? "Loading…" : "Add a private note…"}
           hint="Only you can see this note."
           className="max-h-40 min-h-32"
-        />
-        <NoteActions
-          saving={saving}
-          loading={loading}
-          error={error}
-          onClear={() => {
-            submit(true);
-          }}
-          onSave={() => {
-            submit(false);
-          }}
         />
       </View>
     </Sheet>

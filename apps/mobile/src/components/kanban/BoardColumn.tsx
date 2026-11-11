@@ -1,14 +1,15 @@
 /* eslint-disable no-unused-vars -- the base rule reports parameter names in type signatures; Biome checks real unused code */
-import { Button, countBadgeTextStyle, Icon, IconButton, Text, usePalette } from "@aulora/ui-native";
-import { useRef, useState } from "react";
 import {
-  Platform,
-  Pressable,
-  ScrollView,
-  type ScrollViewInstance,
-  TextInput,
-  View,
-} from "react-native";
+  Button,
+  countBadgeTextStyle,
+  Icon,
+  IconButton,
+  Text,
+  TextField,
+  usePalette,
+} from "@aulora/ui-native";
+import { useRef, useState } from "react";
+import { Platform, Pressable, ScrollView, type ScrollViewInstance, View } from "react-native";
 import Animated, { FadeIn, FadeInDown, LinearTransition } from "react-native-reanimated";
 import { impactFeedback } from "../../lib/haptics";
 import { type Board, type Card, type Column, cardsInColumn, isColumnFull } from "../../lib/kanban";
@@ -54,7 +55,7 @@ function ColumnHeader({ column, count, full, onAdd }: ColumnHeaderProps) {
           {limit}
         </Text>
       </View>
-      <View className="flex-1" />
+      <View className="flex-1 min-w-0" />
       {onAdd !== undefined && (
         <IconButton label={`Add card to ${column.name}`} size="sm" disabled={full} onPress={onAdd}>
           <Icon name="plus" size={20} color={palette["text-muted"]} />
@@ -199,7 +200,7 @@ function NewCard(props: NewCardProps) {
       entering={FadeInDown.duration(180)}
       className="mx-2 mb-2 gap-2 rounded-input border border-accent bg-surface-1 p-2.5"
     >
-      <TextInput
+      <TextField
         autoFocus
         accessibilityLabel={`New card in ${props.columnName}`}
         placeholder="What needs to be done?"

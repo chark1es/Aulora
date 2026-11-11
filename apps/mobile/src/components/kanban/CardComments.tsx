@@ -1,9 +1,9 @@
 /* eslint-disable no-unused-vars -- the base rule reports parameter names in type signatures; Biome checks real unused code */
-import { Button, Icon, Text, usePalette } from "@aulora/ui-native";
+import { Button, Icon, Text, TextField, usePalette } from "@aulora/ui-native";
 import { useMutation, usePaginatedQuery, useQuery } from "convex/react";
 import * as Clipboard from "expo-clipboard";
 import { useState } from "react";
-import { Pressable, TextInput, View } from "react-native";
+import { Pressable, View } from "react-native";
 import Animated, { FadeIn, FadeInDown, FadeOut, LinearTransition } from "react-native-reanimated";
 import { api } from "../../../../../packages/convex/convex/_generated/api";
 import { timeAgo } from "../../lib/kanban";
@@ -59,7 +59,7 @@ function Composer({ editor, onSubmit }: SectionProps & { readonly onSubmit: () =
     <View className="flex-row gap-2.5">
       <MemberAvatar userId={editor.ownUserId} size={32} />
       <View className="min-w-0 flex-1 gap-2">
-        <TextInput
+        <TextField
           accessibilityLabel={editing ? "Edit comment" : "New comment"}
           placeholder="Write a comment…"
           placeholderTextColor={palette["text-muted"]}
@@ -262,7 +262,7 @@ export function CardActivity({ editor }: SectionProps) {
         }}
       >
         <Icon name="history" size={18} color={palette["text-muted"]} />
-        <Text className="flex-1 font-semibold">Activity</Text>
+        <Text className="flex-1 font-semibold min-w-0">Activity</Text>
         <View style={{ transform: [{ rotate: shown ? "180deg" : "0deg" }] }}>
           <Icon name="chevron-down" size={16} color={palette["text-muted"]} />
         </View>

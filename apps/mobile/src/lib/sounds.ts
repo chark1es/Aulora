@@ -157,15 +157,3 @@ export function playSound(event: SoundEvent, settings: SoundSettings): boolean {
     return false;
   }
 }
-
-/** Releases cached players, e.g. on sign-out. */
-export function disposeSounds(): void {
-  for (const player of players.values()) {
-    try {
-      player.remove();
-    } catch {
-      // Best-effort.
-    }
-  }
-  players.clear();
-}

@@ -24,7 +24,7 @@ function contentOf(board: Board): KanbanBoardContent {
   };
 }
 
-/** The board's settings as edited, and whether they differ from what is saved. */
+/** The board’s settings as edited, and whether they differ from what is saved. */
 function useSettingsDraft(board: Board) {
   const [draft, setDraft] = useState<KanbanBoardContent>(() => contentOf(board));
   const [isPrivate, setPrivate] = useState(board.private);
@@ -64,7 +64,11 @@ function MembersRow({ memberIds, members, onChange }: MembersRowProps) {
         }}
       >
         <AvatarStack userIds={memberIds} members={members} max={5} ring="surface-2" />
-        <Text size="sm" className="flex-1" tone={memberIds.length > 0 ? "default" : "muted"}>
+        <Text
+          size="sm"
+          className="flex-1 min-w-0"
+          tone={memberIds.length > 0 ? "default" : "muted"}
+        >
           {membersLabel(memberIds.length)}
         </Text>
         <Text size="sm" tone="accent">

@@ -1,4 +1,9 @@
-import { type AttachmentDescriptor, bytesToBase64, downloadAttachment } from "@aulora/core";
+import {
+  type AttachmentDescriptor,
+  bytesToBase64,
+  downloadAttachment,
+  formatBytes,
+} from "@aulora/core";
 import { Button, Text } from "@aulora/ui-native";
 import { useAudioPlayer, useAudioPlayerStatus } from "expo-audio";
 import { Directory, File, Paths } from "expo-file-system";
@@ -14,7 +19,7 @@ export interface AttachmentViewProps {
   readonly descriptor: AttachmentDescriptor;
 }
 
-/** Downloads the decrypted bytes into the cache and returns the file's URI. */
+/** Downloads the decrypted bytes into the cache and returns the file’s URI. */
 async function cacheAttachmentFile(
   port: ChatSurfaceRuntime["port"],
   descriptor: AttachmentDescriptor,
@@ -108,7 +113,7 @@ function useAttachmentPreview(
     try {
       setFullUri(await cacheAttachmentFile(runtime.port, descriptor));
     } catch {
-      setError(`Couldn't load ${descriptor.name}. Try again.`);
+      setError(`Couldn’t load ${descriptor.name}. Try again.`);
     }
   }
 
@@ -124,7 +129,7 @@ function useAttachmentPreview(
         dialogTitle: descriptor.name,
       });
     } catch (cause) {
-      setError(cause instanceof Error ? cause.message : "Couldn't download this file. Try again.");
+      setError(cause instanceof Error ? cause.message : "Couldn’t download this file. Try again.");
     } finally {
       setBusy(false);
     }
@@ -137,7 +142,7 @@ function useAttachmentPreview(
     try {
       setMediaUri(await cacheAttachmentFile(runtime.port, descriptor));
     } catch {
-      setError(`Couldn't load ${descriptor.name}. Try again.`);
+      setError(`Couldn’t load ${descriptor.name}. Try again.`);
     } finally {
       setLoadingMedia(false);
     }
@@ -226,7 +231,7 @@ function AttachmentThumb({
       </Pressable>
     );
   }
-  return <Text>{failed ? `Couldn't load ${name}` : name}</Text>;
+  return <Text>{failed ? `Couldn’t load ${name}` : name}</Text>;
 }
 
 function AttachmentMedia({
@@ -400,10 +405,4 @@ function VideoPlayback({ uri, name }: { readonly uri: string; readonly name: str
 function formatTime(seconds: number): string {
   const total = Number.isFinite(seconds) ? Math.max(0, Math.floor(seconds)) : 0;
   return `${Math.floor(total / 60)}:${String(total % 60).padStart(2, "0")}`;
-}
-
-function formatBytes(bytes: number): string {
-  if (bytes < 1024) return `${bytes} B`;
-  if (bytes < 1024 * 1024) return `${(bytes / 1024).toFixed(1)} KB`;
-  return `${(bytes / (1024 * 1024)).toFixed(1)} MB`;
 }

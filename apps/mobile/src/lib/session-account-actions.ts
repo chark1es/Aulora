@@ -16,7 +16,7 @@ export function signOutAction(authClient: AuloraAuthClient) {
       .catch(() => null);
     if (result === null || result.error) {
       Alert.alert(
-        "Couldn't sign out",
+        "Couldn’t sign out",
         result?.error?.message ?? "Check your connection and try again.",
       );
     }
@@ -31,7 +31,7 @@ export function deleteAccountAction(authClient: AuloraAuthClient) {
       .catch(() => null);
     if (result === null || result.error) {
       Alert.alert(
-        "Couldn't delete account",
+        "Couldn’t delete account",
         result?.error?.message ?? "Check your connection and try again.",
       );
     }

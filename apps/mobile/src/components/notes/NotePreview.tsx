@@ -102,7 +102,7 @@ function ListBlock({
             <Text style={{ color: palette["text-muted"], minWidth: 18 }}>
               {block.ordered ? `${itemIndex + 1}.` : "•"}
             </Text>
-            <Text className="flex-1" style={{ color: palette.text, lineHeight: 22 }}>
+            <Text className="flex-1 min-w-0" style={{ color: palette.text, lineHeight: 22 }}>
               {renderInline(item, palette)}
             </Text>
           </View>

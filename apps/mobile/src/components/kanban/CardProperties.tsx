@@ -1,6 +1,6 @@
 import { kanbanDuration } from "@aulora/core";
-import { Button, Icon, Text, usePalette } from "@aulora/ui-native";
-import { TextInput, View } from "react-native";
+import { Button, Icon, Text, TextField, usePalette } from "@aulora/ui-native";
+import { View } from "react-native";
 import {
   type Card,
   dueLabel,
@@ -87,7 +87,7 @@ function EstimateRow({ editor }: SectionProps) {
   const { draft } = editor;
   return (
     <PropertyRow icon="timer" label="Estimate" last>
-      <TextInput
+      <TextField
         accessibilityLabel="Estimate in minutes"
         editable={editor.canEdit}
         keyboardType="number-pad"
@@ -107,7 +107,7 @@ function EstimateRow({ editor }: SectionProps) {
   );
 }
 
-/** The card's column, priority, people, labels and dates as one grouped list. */
+/** The card’s column, priority, people, labels and dates as one grouped list. */
 export function CardProperties({ editor }: SectionProps) {
   const { draft, board, card } = editor;
   const column = board.columns.find((entry) => entry.id === card.columnId);

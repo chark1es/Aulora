@@ -1,9 +1,10 @@
 import { Button, Heading, usePalette } from "@aulora/ui-native";
 import type { ReactNode } from "react";
-import { KeyboardAvoidingView, Modal, Platform, View } from "react-native";
-import { useSafeAreaInsets } from "react-native-safe-area-context";
+import { Modal, View } from "react-native";
+import { SafeAreaProvider } from "react-native-safe-area-context";
 import { useThemeVars } from "../../lib/theme";
 import { useReduceMotion } from "../../lib/use-entrance";
+import { KeyboardAvoidingPane, useScreenInsets } from "../layout/ScreenContainer";
 
 /**
  * A single task with native iOS swipe dismissal and an explicit way out. A form
@@ -29,9 +30,6 @@ export function Sheet({
   /** Turn off while there is unsaved work, so a stray swipe cannot drop it. */
   readonly swipeToClose?: boolean;
 }) {
-  const palette = usePalette();
-  const theme = useThemeVars();
-  const insets = useSafeAreaInsets();
   const reducedMotion = useReduceMotion();
   return (
     <Modal
@@ -41,49 +39,87 @@ export function Sheet({
       allowSwipeDismissal={swipeToClose}
       onRequestClose={onClose}
     >
-      <KeyboardAvoidingView
-        style={{ flex: 1, backgroundColor: palette["surface-1"] }}
-        behavior={Platform.OS === "ios" ? "padding" : "height"}
-      >
-        <View
-          accessibilityViewIsModal
-          className="flex-1 bg-surface-1"
-          style={[
-            theme,
-            {
-              paddingTop: Platform.OS === "ios" ? 12 : insets.top,
-              paddingBottom: insets.bottom,
-            },
-          ]}
-        >
-          <View className="flex-row items-center border-b border-border px-2 py-1">
-            <View className="w-24 items-start">
-              {dismiss === "cancel" && (
-                <Button variant="ghost" onPress={onClose}>
-                  Cancel
-                </Button>
-              )}
-            </View>
-            <Heading
-              level={3}
-              className="min-w-0 flex-1 text-center"
-              numberOfLines={1}
-              maxFontSizeMultiplier={1.6}
-            >
-              {title}
-            </Heading>
-            <View className="w-24 items-end">
-              {dismiss === "done" && (
-                <Button variant="ghost" onPress={onClose}>
-                  Done
-                </Button>
-              )}
-            </View>
-          </View>
+      <SafeAreaProvider>
+        <SheetContent title={title} dismiss={dismiss} onClose={onClose} footer={footer}>
           {children}
-          {footer}
-        </View>
-      </KeyboardAvoidingView>
+        </SheetContent>
+      </SafeAreaProvider>
     </Modal>
+  );
+}
+
+function SheetHeader({
+  title,
+  dismiss,
+  onClose,
+}: {
+  readonly title: string;
+  readonly dismiss: "cancel" | "done";
+  readonly onClose: () => void;
+}) {
+  return (
+    <View className="flex-row items-center border-b border-border px-2 py-1">
+      {/* Action slots keep their label whole at large text; the title gives way. */}
+      <View className="max-w-[45%] shrink-0 items-start">
+        {dismiss === "cancel" && (
+          <Button variant="ghost" onPress={onClose}>
+            Cancel
+          </Button>
+        )}
+      </View>
+      {/* Centred by its slot, not text-align: Android clipped the first
+          glyph of a centred title that also ellipsized ("Vote · Jordan E…"). */}
+      <View className="min-w-0 flex-1 items-center">
+        <Heading level={3} numberOfLines={1} maxFontSizeMultiplier={1.6}>
+          {title}
+        </Heading>
+      </View>
+      <View className="max-w-[45%] shrink-0 items-end">
+        {dismiss === "done" && (
+          <Button variant="ghost" onPress={onClose}>
+            Done
+          </Button>
+        )}
+      </View>
+    </View>
+  );
+}
+
+function SheetContent({
+  title,
+  dismiss,
+  onClose,
+  children,
+  footer,
+}: {
+  readonly title: string;
+  readonly dismiss: "cancel" | "done";
+  readonly onClose: () => void;
+  readonly children: ReactNode;
+  readonly footer: ReactNode;
+}) {
+  const palette = usePalette();
+  const theme = useThemeVars();
+  const insets = useScreenInsets();
+  return (
+    <KeyboardAvoidingPane style={{ flex: 1, backgroundColor: palette["surface-1"] }}>
+      <View
+        accessibilityViewIsModal
+        className="flex-1 bg-surface-1 min-w-0"
+        style={[
+          theme,
+          {
+            paddingTop: Math.max(insets.top, 12),
+            paddingBottom: insets.keyboardBottom,
+            paddingLeft: insets.left,
+            paddingRight: insets.right,
+          },
+        ]}
+      >
+        <SheetHeader title={title} dismiss={dismiss} onClose={onClose} />
+        {children}
+        {footer}
+      </View>
+    </KeyboardAvoidingPane>
   );
 }

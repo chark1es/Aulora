@@ -1,8 +1,8 @@
 import { debugLog, generateDebugTestError } from "@aulora/core";
-import { Button, Text } from "@aulora/ui-native";
+import { Button, Text, TextField } from "@aulora/ui-native";
 import * as Clipboard from "expo-clipboard";
 import { type Dispatch, type SetStateAction, useState, useSyncExternalStore } from "react";
-import { ScrollView, TextInput, View } from "react-native";
+import { ScrollView, View } from "react-native";
 import { MOBILE_CLIENT_VERSION } from "../../lib/client-version";
 
 export function DebugLogsSection() {
@@ -75,7 +75,7 @@ function ReproductionSteps({
   return (
     <View className="gap-2">
       <Text size="sm">Steps to reproduce</Text>
-      <TextInput
+      <TextField
         accessibilityLabel="Steps to reproduce"
         multiline
         value={steps}

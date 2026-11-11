@@ -28,7 +28,7 @@ export function NewConversationSheet({
   );
   return (
     <Sheet visible title="New message" onClose={onClose}>
-      <View className="flex-1 gap-3 p-4">
+      <View className="flex-1 gap-3 p-4 min-w-0">
         <Input
           label="Find people"
           value={query}
@@ -56,7 +56,7 @@ export function NewConversationSheet({
                 }}
               >
                 <MemberAvatar userId={member.userId} size={32} />
-                <Text className="flex-1">{member.displayName}</Text>
+                <Text className="flex-1 min-w-0">{member.displayName}</Text>
                 <Checkbox checked={checked} />
               </Pressable>
             );
@@ -80,7 +80,7 @@ export function NewConversationSheet({
                 setError(
                   cause instanceof Error
                     ? cause.message
-                    : "Couldn't start the conversation. Try again.",
+                    : "Couldn’t start the conversation. Try again.",
                 );
               })
               .finally(() => {

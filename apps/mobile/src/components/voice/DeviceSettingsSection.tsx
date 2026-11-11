@@ -4,7 +4,7 @@ import {
   Icon,
   SegmentedControl,
   SettingRow,
-  Switch,
+  SwitchRow,
   Text,
   usePalette,
 } from "@aulora/ui-native";
@@ -85,20 +85,15 @@ function ToggleRow({
   readonly disabled?: boolean;
 }) {
   return (
-    <SettingRow
+    <SwitchRow
       label={label}
       description={description}
-      control={
-        <Switch
-          accessibilityLabel={label}
-          value={value}
-          disabled={disabled}
-          onValueChange={(next) => {
-            selectionFeedback();
-            onChange(next);
-          }}
-        />
-      }
+      value={value}
+      disabled={disabled}
+      onValueChange={(next) => {
+        selectionFeedback();
+        onChange(next);
+      }}
     />
   );
 }
@@ -303,7 +298,7 @@ function JoinSection({
 /**
  * Voice and video device preferences: input/output/camera pickers, audio
  * processing switches, gains, video resolution and join defaults. Rendered
- * inside the members sheet's voice settings modal.
+ * inside the members sheet’s voice settings modal.
  */
 export function DeviceSettingsSection() {
   const { settings, devices, updateSettings, micLevelAvailable, callId } = useVoice();

@@ -184,6 +184,7 @@ function ColorSwatch({
       accessibilityRole="radio"
       accessibilityLabel={`Color ${color}`}
       accessibilityState={{ checked: selected }}
+      hitSlop={2}
       className="h-10 w-10 items-center justify-center rounded-pill active:opacity-70"
       style={{ backgroundColor: color }}
       onPress={onPick}
