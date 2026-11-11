@@ -341,9 +341,12 @@ describe("notifications.dispatchForMessage", () => {
     // timer. Drain it deterministically before measuring, otherwise that
     // background dispatch races the explicit one below and double-counts.
     await t.finishAllScheduledFunctions(() => {});
-    calls.length = 0;
-    const result = await t.action(internal.notifications.dispatchForMessage, { messageId });
-    expect(result).toEqual({ sent: 1 });
+    expect(calls).toEqual(["https://push.example.com/sub/device-2"]);
+    expect(await t.run((ctx) => ctx.db.query("notificationDeliveryClaims").collect())).toEqual([]);
+    expect(await t.action(api.notifications.dispatchNow, { messageId })).toEqual({
+      sent: 0,
+      skipped: "noop",
+    });
     expect(calls).toEqual(["https://push.example.com/sub/device-2"]);
   });
 });

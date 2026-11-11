@@ -1,3 +1,4 @@
+export { AttachmentSizeError, attachmentUploadErrorMessage } from "./attachment-errors";
 export {
   downloadAttachment,
   downloadThumbnail,
@@ -5,6 +6,7 @@ export {
   type UploadAttachmentInput,
   uploadAttachment,
 } from "./attachments";
+export * from "./auth-events";
 export {
   CONVEX_AUTH_CLIENT_OPTIONS,
   type ConvexTokenResponse,
@@ -27,13 +29,17 @@ export {
 export { blurhashDecode, blurhashEncode } from "./blurhash";
 export * from "./bots";
 export * from "./call-addons-access";
+export { summaryMentionIncreased } from "./chat/broadcast-feedback.js";
 export * from "./chat/index";
+export { orderMentionSuggestions } from "./chat/mention-suggestions.js";
+export { sendThreadReply } from "./chat/thread-send.js";
 export {
   type ClientVersionPolicy,
   type ClientVersionState,
   clientVersionState,
   compareClientVersions,
 } from "./client-version";
+export * from "./conversation-opening";
 export {
   createDebugLog,
   DEBUG_LOG_MAX_BYTES,
@@ -46,8 +52,11 @@ export {
 } from "./debug-log";
 export {
   classifyError,
+  DEFAULT_ERROR_MESSAGE,
   type ErrorDisposition,
   isAuthenticationError,
+  messageSendError,
+  userFacingError,
 } from "./errors/index";
 export {
   DEFAULT_FEATURE_FLAGS,
@@ -56,6 +65,7 @@ export {
   type FeatureFlags,
   resolveFeatureFlags,
 } from "./feature-flags";
+export * from "./format-bytes";
 export * from "./guest-calls";
 export {
   allowlistAdmits,
@@ -81,6 +91,7 @@ export {
   validateCustomInviteCode,
 } from "./invites";
 export * from "./kanban.js";
+export * from "./last-defined";
 export {
   groupMembersByHoistedRole,
   type MembersGroupingMember,
@@ -88,6 +99,7 @@ export {
   type MembersGroupingRole,
   type MembersGroupingRoleSection,
 } from "./members-grouping";
+export { MESSAGE_MAX_ATTACHMENTS, MESSAGE_MAX_LENGTH } from "./message-limits";
 export { NATIVE_AUTH_EXPIRED_ERROR, NATIVE_AUTH_TX_TTL_MS } from "./native-auth";
 export * from "./notes/index.js";
 export {
@@ -126,17 +138,30 @@ export {
   type Role,
   resolvePermissions,
 } from "./permissions";
+export * from "./presence-label";
+export * from "./presence-scope";
 export {
+  activateProfileInStore,
+  activeProfileOf,
+  addProfileToStore,
   createMemoryProfileStore,
   createServerProfile,
+  type ProfileSnapshot,
   type ProfileStore,
   profileId,
+  readProfileSnapshot,
+  readProfileSnapshotSafely,
+  removeProfileFromStore,
   type ServerProfile,
   type StorageLike,
   UnknownProfileError,
   type WebLocalStorageStoreOptions,
   webLocalStorageStore,
 } from "./profiles";
+export * from "./provider-auth";
+export * from "./relative-time";
+export * from "./role-color";
+export * from "./roles";
 export * from "./scheduled-calls";
 export * from "./scheduled-calls-view";
 export {
@@ -178,6 +203,7 @@ export {
   saveSoundSettings,
   soundVolume,
 } from "./sounds";
+export * from "./stuck-timeout";
 export * from "./transcript-view";
 export * from "./transcription";
 export {
@@ -215,6 +241,7 @@ export {
   type WorkspaceUpdatePlan,
 } from "./updates";
 export * from "./voice/index";
+export * from "./watch-local-query";
 export * from "./webhooks";
 export {
   containsSecretField,

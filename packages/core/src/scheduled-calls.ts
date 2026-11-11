@@ -49,15 +49,6 @@ export function scheduledCallOpensAt(startsAt: number, openLeadMinutes: number):
   return startsAt - Math.max(0, openLeadMinutes) * 60_000;
 }
 
-/** True when `now` is inside a call's join window. */
-export function scheduledCallIsOpen(
-  startsAt: number,
-  openLeadMinutes: number,
-  now: number = Date.now(),
-): boolean {
-  return now >= scheduledCallOpensAt(startsAt, openLeadMinutes);
-}
-
 /** The structured error payload for a join that is too early. */
 export function scheduledCallNotOpen(
   startsAt: number,
@@ -78,18 +69,4 @@ export function clampOpenLeadMinutes(value: number): number {
     return SCHEDULED_CALL_DEFAULT_OPEN_LEAD_MINUTES;
   }
   return Math.min(SCHEDULED_CALL_MAX_OPEN_LEAD_MINUTES, Math.max(0, Math.trunc(value)));
-}
-
-/** Human label for a status, used by the docs and fallback UI. */
-export function scheduledCallStatusLabel(status: ScheduledCallStatus): string {
-  switch (status) {
-    case "scheduled":
-      return "Scheduled";
-    case "open":
-      return "Open";
-    case "ended":
-      return "Ended";
-    case "cancelled":
-      return "Cancelled";
-  }
 }

@@ -115,6 +115,13 @@ export default defineSchema({
     checkedAt: v.number(),
     request: v.optional(v.union(v.literal("check"), v.literal("download"), v.literal("restart"))),
   }),
+  /** Internal migration bookkeeping; never read by publicConfig. */
+  migrationProgress: defineTable({
+    key: v.string(),
+    cursor: v.optional(v.string()),
+    processed: v.number(),
+    skippedReferences: v.number(),
+  }).index("by_key", ["key"]),
   server: defineTable({
     name: v.string(),
     iconSeed: v.string(),
@@ -145,6 +152,9 @@ export default defineSchema({
      * full-scan fallback.
      */
     memberRolesBackfilled: v.optional(v.boolean()),
+    memberRolesBackfillCursor: v.optional(v.string()),
+    attachmentScopesBackfilled: v.optional(v.boolean()),
+    attachmentScopesBackfillCursor: v.optional(v.string()),
     /**
      * One-shot data migrations already completed for this workspace. The setup
      * container checks a marker before re-running a value-based migration, so
@@ -196,7 +206,7 @@ export default defineSchema({
     ),
     description: v.optional(v.string()),
     logoStorageId: v.optional(v.id("_storage")),
-  }),
+  }).index("by_logo_storage", ["logoStorageId"]),
 
   licenseReportKeys: defineTable({
     licenseId: v.string(),
@@ -397,6 +407,7 @@ export default defineSchema({
     timeoutUntil: v.optional(v.number()),
   })
     .index("by_user", ["userId"])
+    .index("by_avatar_storage", ["avatarStorageId"])
     // Join order, so the member directory can paginate/search without a full
     // collect. Matches the ascending `joinedAt` order `members.list` sorts by.
     .index("by_joined", ["joinedAt"]),
@@ -486,6 +497,10 @@ export default defineSchema({
     replyToId: v.optional(v.id("messages")),
     attachmentIds: v.array(v.id("files")),
     mentionUserIds: v.array(v.string()),
+    mentionEveryone: v.optional(v.boolean()),
+    mentionHere: v.optional(v.boolean()),
+    /** Original explicit/role mentions when legacy broadcast ids share mentionUserIds. */
+    broadcastDirectUserIds: v.optional(v.array(v.string())),
     /** Plaintext ids of channels/categories mentioned as `#name`. */
     mentionChannelIds: v.optional(v.array(v.string())),
     /** Plaintext ids of categories mentioned; absent on legacy rows. */
@@ -522,9 +537,8 @@ export default defineSchema({
 
   /**
    * Per-user thread participation, maintained on reply/mention so the Threads
-   * inbox can later be read from a user index instead of scanning recent
-   * messages. Plaintext ids/timestamps only. The inbox read path is not switched
-   * over yet — this table is created and populated first.
+   * inbox and badge read bounded candidates from a user index instead of
+   * scanning recent messages. Plaintext ids/timestamps only.
    */
   threadParticipants: defineTable({
     userId: v.string(),
@@ -536,6 +550,7 @@ export default defineSchema({
     participated: v.optional(v.boolean()),
   })
     .index("by_user", ["userId", "lastReplyAt"])
+    .index("by_user_mentioned", ["userId", "mentioned", "lastReplyAt"])
     .index("by_thread_user", ["threadRootId", "userId"]),
 
   reactions: defineTable({
@@ -863,11 +878,33 @@ export default defineSchema({
     // The sweep expires orphaned envelopes by age instead of scanning.
     .index("by_created", ["createdAt"]),
 
+  /** Page leases and per-message/user receipts, created asynchronously except the initial page. */
+  notificationDeliveryClaims: defineTable({
+    messageId: v.id("messages"),
+    cursor: v.string(),
+    leaseUntil: v.optional(v.number()),
+    attempts: v.optional(v.number()),
+    retryAt: v.optional(v.number()),
+    leaseToken: v.optional(v.string()),
+    completed: v.optional(v.boolean()),
+    /** Original page to re-drive for a recipient receipt. */
+    recoveryCursor: v.optional(v.string()),
+  })
+    .index("by_message_cursor", ["messageId", "cursor"])
+    .index("by_lease", ["completed", "retryAt"]),
+
+  broadcastMentionJobs: defineTable({
+    messageId: v.id("messages"),
+    cursor: v.string(),
+    userIds: v.array(v.string()),
+  }),
+
   notificationPrefs: defineTable({
     userId: v.string(),
     scope: notificationScope,
     channelId: v.optional(v.id("channels")),
     level: notificationLevel,
+    suppressMassMentions: v.optional(v.boolean()),
     muteUntil: v.optional(v.number()),
     /** Hidden from the sidebar for this viewer (per-channel only). */
     hidden: v.optional(v.boolean()),

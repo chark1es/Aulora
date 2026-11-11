@@ -851,8 +851,7 @@ export const ingestSegments = internalMutation({
         : null;
     const leftRelative =
       departedAt !== undefined ? Math.max(0, departedAt - session.startedAt) : null;
-    for (let index = 0; index < args.segments.length; index += 1) {
-      const segment = args.segments[index]!;
+    for (const [index, segment] of args.segments.entries()) {
       const previous = args.segments[index - 1];
       if (
         !Number.isFinite(segment.seq) ||

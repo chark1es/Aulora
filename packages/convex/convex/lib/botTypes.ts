@@ -66,6 +66,9 @@ export interface BotEventMessage {
   readonly replyToId: Id<"messages"> | null;
   readonly attachmentIds: readonly Id<"files">[];
   readonly mentionUserIds: readonly string[];
+  readonly broadcastDirectUserIds?: readonly string[];
+  readonly mentionEveryone: boolean;
+  readonly mentionHere: boolean;
   readonly editedAt: number | null;
   readonly deletedAt: number | null;
   readonly createdAt: number;

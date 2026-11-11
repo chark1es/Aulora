@@ -25,6 +25,14 @@
         "request": "optional"
       }
     },
+    "migrationProgress": {
+      "fields": {
+        "key": "required",
+        "cursor": "optional",
+        "processed": "required",
+        "skippedReferences": "required"
+      }
+    },
     "server": {
       "fields": {
         "name": "required",
@@ -34,6 +42,9 @@
         "settings": "required",
         "memberCount": "optional",
         "memberRolesBackfilled": "optional",
+        "memberRolesBackfillCursor": "optional",
+        "attachmentScopesBackfilled": "optional",
+        "attachmentScopesBackfillCursor": "optional",
         "appliedMigrations": "optional",
         "ownerDeletionReservations": "optional",
         "ownerDeletionAlerts": "optional",
@@ -217,6 +228,9 @@
         "replyToId": "optional",
         "attachmentIds": "required",
         "mentionUserIds": "required",
+        "mentionEveryone": "optional",
+        "mentionHere": "optional",
+        "broadcastDirectUserIds": "optional",
         "mentionChannelIds": "optional",
         "mentionCategoryIds": "optional",
         "editedAt": "optional",
@@ -395,7 +409,8 @@
     },
     "calls": {
       "fields": {
-        "channelId": "required",
+        "channelId": "optional",
+        "scheduledCallId": "optional",
         "kind": "required",
         "initiatorId": "required",
         "status": "required",
@@ -407,14 +422,18 @@
         "aloneDeadline": "optional",
         "aloneJobId": "optional",
         "endedReason": "optional",
+        "transcriptionSessionId": "optional",
         "updatedAt": "required"
       }
     },
     "callParticipants": {
       "fields": {
         "callId": "required",
-        "channelId": "required",
+        "channelId": "optional",
         "userId": "required",
+        "guestId": "optional",
+        "guestKey": "optional",
+        "guestNameCiphertext": "optional",
         "clientId": "optional",
         "session": "optional",
         "muted": "required",
@@ -430,7 +449,7 @@
     "callSignals": {
       "fields": {
         "callId": "required",
-        "channelId": "required",
+        "channelId": "optional",
         "fromUserId": "required",
         "toUserId": "required",
         "kind": "required",
@@ -439,12 +458,32 @@
         "createdAt": "required"
       }
     },
+    "notificationDeliveryClaims": {
+      "fields": {
+        "messageId": "required",
+        "cursor": "required",
+        "leaseUntil": "optional",
+        "attempts": "optional",
+        "retryAt": "optional",
+        "leaseToken": "optional",
+        "completed": "optional",
+        "recoveryCursor": "optional"
+      }
+    },
+    "broadcastMentionJobs": {
+      "fields": {
+        "messageId": "required",
+        "cursor": "required",
+        "userIds": "required"
+      }
+    },
     "notificationPrefs": {
       "fields": {
         "userId": "required",
         "scope": "required",
         "channelId": "optional",
         "level": "required",
+        "suppressMassMentions": "optional",
         "muteUntil": "optional",
         "hidden": "optional",
         "pinned": "optional",
@@ -522,6 +561,133 @@
         "key": "required",
         "windowStart": "required",
         "count": "required"
+      }
+    },
+    "callGuestLinks": {
+      "fields": {
+        "tokenHash": "required",
+        "channelId": "optional",
+        "scheduledCallId": "optional",
+        "createdBy": "required",
+        "createdAt": "required",
+        "expiresAt": "required",
+        "maxUses": "required",
+        "uses": "required",
+        "revokedAt": "optional",
+        "label": "optional",
+        "blockedClientHashes": "optional"
+      }
+    },
+    "callGuestSessions": {
+      "fields": {
+        "linkId": "required",
+        "tokenHash": "required",
+        "displayNameCiphertext": "required",
+        "affiliationCiphertext": "optional",
+        "status": "required",
+        "requestedAt": "required",
+        "admittedAt": "optional",
+        "admittedBy": "optional",
+        "deniedAt": "optional",
+        "removedAt": "optional",
+        "callId": "optional",
+        "clientId": "optional",
+        "lastSeen": "optional",
+        "expiresAt": "required"
+      }
+    },
+    "transcriptionSessions": {
+      "fields": {
+        "callId": "required",
+        "channelId": "optional",
+        "startedBy": "required",
+        "startedAt": "required",
+        "endedAt": "optional",
+        "status": "required",
+        "endsAt": "optional",
+        "summaryStatus": "required",
+        "summaryCiphertext": "optional",
+        "summaryModel": "optional",
+        "summaryAt": "optional",
+        "summaryError": "optional",
+        "summaryRequestedAt": "optional",
+        "summaryAttemptId": "optional",
+        "retentionExpiresAt": "optional",
+        "segmentCount": "required",
+        "lastSeq": "required",
+        "countUpdatedAt": "optional"
+      }
+    },
+    "transcriptSpeakerState": {
+      "fields": {
+        "sessionId": "required",
+        "speakerKey": "required",
+        "lastSeq": "required",
+        "lastStartMs": "required",
+        "segmentCount": "required",
+        "updatedAt": "required",
+        "leftAt": "optional",
+        "blocked": "optional"
+      }
+    },
+    "transcriptSegments": {
+      "fields": {
+        "sessionId": "required",
+        "seq": "required",
+        "speakerKey": "required",
+        "speakerNameCiphertext": "required",
+        "textCiphertext": "required",
+        "startMs": "required",
+        "endMs": "required",
+        "confidence": "optional",
+        "language": "optional"
+      }
+    },
+    "transcriberStatus": {
+      "fields": {
+        "key": "required",
+        "serviceSeenAt": "required",
+        "runtimeReady": "optional",
+        "runtimeModelId": "optional"
+      }
+    },
+    "transcriptionConfig": {
+      "fields": {
+        "modelId": "required",
+        "modelStatus": "required",
+        "modelProgress": "optional",
+        "modelError": "optional",
+        "modelUpdatedAt": "optional",
+        "provider": "required",
+        "baseUrl": "required",
+        "apiKeyCiphertext": "optional",
+        "model": "required",
+        "summaryLanguage": "optional",
+        "summaryStyle": "optional",
+        "retentionDays": "required",
+        "allowPrivateEndpoint": "required",
+        "updatedAt": "required",
+        "updatedBy": "required"
+      }
+    },
+    "scheduledCalls": {
+      "fields": {
+        "titleCiphertext": "required",
+        "descriptionCiphertext": "optional",
+        "startsAt": "required",
+        "durationMinutes": "optional",
+        "openLeadMinutes": "required",
+        "channelId": "optional",
+        "inviteeUserIds": "required",
+        "inviteeRoleIds": "required",
+        "createdBy": "required",
+        "status": "required",
+        "callId": "optional",
+        "createdAt": "required",
+        "updatedAt": "required",
+        "cancelledAt": "optional",
+        "endedAt": "optional",
+        "openJobId": "optional"
       }
     }
   }

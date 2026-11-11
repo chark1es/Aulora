@@ -73,6 +73,36 @@ Bump `API_VERSION` only when the discovery/public-config contract itself must
 change incompatibly. Clients reject a mismatch outright, so this is a hard gate
 that strands any client that cannot update.
 
+## Message validation and pagination bounds
+
+The backend now enforces the composer limits in `messages.send`, including for
+older clients: at most 4000 characters and 10 attachments (mention lists are
+not capped). Whitespace-only messages without attachments are rejected;
+attachment-only messages remain valid. Edits
+validate the new body against the message's existing attachments: an empty
+body is valid when attachments remain, including for attachment-only messages.
+
+Attachments require the current `AttachFiles` permission and an existing file
+that is either unscoped and owned by the sender or already scoped to the target
+channel. Files from other channels or kanban boards are rejected. Sending an
+unscoped upload binds it to the channel so recipients can access it.
+
+Public paginated history queries clamp requested page sizes to 100;
+`members.page` directory queries cap them at 500. Clients must follow
+`continueCursor` until `isDone` rather than assuming a
+page contains the requested number of records.
+
+These are server-side validation and authorization changes: older clients may
+receive errors for formerly accepted oversized or empty sends or unavailable
+attachments, and may receive smaller pages. Existing function names, arguments,
+response shapes and stored records remain compatible; valid messages and
+cursor-based pagination continue to work. No required schema backfill, version
+bump, discovery `API_VERSION` change or minimum-client gate is required
+for these guards. Include these behavior changes in the GitHub Release notes;
+they do not require a breaking-change marker under the policy above. Before
+release, verify supported older clients handle validation errors and continue
+pagination; backend regression tests alone do not verify that client rollout.
+
 ## First-run owner and multiple owners
 
 A fresh instance no longer seeds the owner from Docker environment defaults. The
@@ -285,3 +315,206 @@ down.
 
 The broader publication process, deploy order, rollback limits and upgrade
 evidence are in [Preparing and publishing a release](releasing.md).
+
+## Upgrade behavior for chat data
+
+On the first signed-in shell mount after upgrade, the web client removes the old
+shared, un-namespaced outbox and v1 drafts. Their queued unsent message and draft
+text is preserved in a one-time recovery notice under the **first account that
+signs in on that browser**. The notice is scoped to that account, persists locally
+until dismissed, and is never shown to other accounts. These old records lack
+server/account identity, so they cannot safely be restored for automatic sending.
+
+`notifications.unreadSummary` now excludes thread replies from both unread and
+mention counts. This changes badge counts for older clients too; thread inbox
+participation continues to track replies separately.
+
+Deleting a message redacts it but does not revoke its attachment bytes. This is
+a known limitation: channel-authorized users can still access those files.
+
+A minute cron automatically backfills legacy attachment channel scopes and the
+member-role reverse index, up to 500 messages or 1000 members per tick. The
+additive `migrationProgress` table stores cursors and counts atomically with each
+page. No released server wrote the optional legacy server cursor fields, so an
+interrupted older run without persisted progress restarts safely from the
+beginning. A previously scheduled `backfillMemberRoles({cursor})` job may fail
+argument validation once because the mutation now accepts no arguments; the
+minute cron supersedes it. Intermediate ticks leave the public-config server
+row unchanged; its completion markers are written once and completed jobs read
+only that singleton.
+Until attachment backfill reaches a historical message, its unscoped uploads
+remain readable only by their uploader. Repair requires the file uploader to
+match the legacy message author; foreign-author references are skipped and
+counted, preserving private uploads. Role-expanded mentions are restricted
+to the target channel's audience; explicit user mentions retain their behavior.
+
+Finalize retries keep their original file scope: same-scope retries remain
+idempotent, while a different channel or board returns an explicit error.
+Until role backfill completes, expansion still scans legacy members and is
+subject to Convex transaction limits.
+
+## Broadcast mention markers
+
+Mention lists remain uncapped, and role mentions now expand to all matching members,
+including while the member-role reverse index is being backfilled. Large thread mention
+fan-out is processed in background chunks after the first 100 users, so those thread
+inbox entries may appear shortly after sending. The API changes are additive: sends
+accept optional `mentionEveryone` and `mentionHere` arguments, message views include
+those fields, and thread inbox rows add `viewerMentioned` and `mentionedUserIds`. Older
+clients need no update. Pagination bounds each read batch, not the total work in a send:
+very large lists can still hit Convex transaction, document or scheduler payload limits.
+
+`messages.send` accepts optional `mentionEveryone` and `mentionHere` booleans.
+`server.publicConfig.capabilities.mentionMarkers` is `true`; clients must omit these
+arguments when that capability is absent on an older server (Convex rejects unknown
+arguments). Message views always return both booleans, defaulting to `false` for old
+rows; stored fields are optional and require no backfill.
+
+The server honors a marker only with the channel-effective `MentionEveryone` permission
+and its matching whole token outside quotes and code (using the case-insensitive
+boundary regex documented below). Otherwise the message sends normally with no broadcast
+marker or ping. Legacy explicit `mentionUserIds` remain accepted unchanged, and
+mentionable roles still expand server-side with channel access checks.
+
+Broadcast recipients are resolved at dispatch time with current channel access,
+workspace membership, bans, preferences and presence. `@everyone` addresses the visible
+channel audience; private channels require channel membership. DMs, group DMs, and
+thread replies (`threadRootId` set) treat both marker tokens as plain text and never
+honor markers. Thread replies notify according to the channel's recipient rules;
+participation governs thread inbox discovery and badges. `@here` addresses online
+members only for push, excluding stale/offline sessions. DND excludes mass-only push for
+both `@everyone` and `@here`. Existing active-device suppression still applies. Both
+markers count as a mention for every viewer except the author in lazy badges, including
+offline viewers of `@here`. Optional `notificationPrefs.suppressMassMentions`, available
+via `notifications.setPref` and in web and mobile settings (and returned by `getPrefs`),
+suppresses broadcast push at server or channel scope; channel settings override the
+server default. It does not suppress badges.
+
+`LEGACY_BROADCAST_EXPANSION_LIMIT = 100` preserves old-client highlights: an honored
+marker additionally stores the visible audience in `mentionUserIds` when that audience
+has at most 100 members. Resolving a small audience in a large workspace can finish
+asynchronously. Message and bot-event views expose optional `broadcastDirectUserIds`
+only when a snapshot exists; use it instead of expanded `mentionUserIds` to distinguish
+direct mentions for suppression. `readStates.summary` adds `massMentionCount`, the
+mass-only subset of `mentionCount` in the same bounded scan (explicit/role mentions take
+priority). No extra reads are required. Larger audiences store just the marker (plus any
+explicit/role mentions). Old clients still receive server push/wakes, but lose the
+broadcast highlight in very large channels. No minimum-client or API-version change is
+required. Verify both client/server rollout directions before release; synthetic backend
+tests do not replace a live upgrade test.
+
+An edit cannot add a ping; an existing marker persists even if its token is deleted. Any
+recognized broadcast token consumes a separate per-author mass-ping rate limit of three
+sends per 60-second fixed window, across channels and both markers. This also applies to
+legacy pre-expanded sends without marker arguments, when the sender has
+`MentionEveryone` in a non-DM context, including thread replies (whose markers are
+ignored but still consume this budget); excess sends fail with "You're mentioning
+everyone too often. Try again in a minute." Ordinary sends retain their existing limit.
+Broadcast badges ignore messages older than the viewer's workspace join or
+private-channel join; history highlights may remain. Explicit user/role and accessible
+#channel/#category mention reasons are merged before mass-only suppression and @here
+presence filtering, with the ordinary candidate's preference channel preserved: source
+membership uses source preferences, otherwise the first mentioned channel governs;
+active-device, mute and notification-level checks still apply. Senders must be able to
+view mentioned channels and all channels in a mentioned category. Thread inbox/badge
+discovery is participation-based. The legacy array inbox examines at most 500
+participation candidates. The additive `messages.threadInboxPage` endpoint, advertised
+by `capabilities.threadInboxPaging`, pages 50 participation candidates at a time,
+mentioned first, without a total candidate cap. Current web and mobile clients expose
+Load more threads and use the legacy endpoint only against servers without that
+capability. Mentioned threads precede the remaining activity-ordered pages. The legacy
+inbox retains its 50-row display cap. The badge independently examines the newest 50
+unacknowledged mentioned participation rows through
+`threadParticipants.by_user_mentioned` (`userId`, `mentioned`, `lastReplyAt`),
+rechecking roots and channel access. It can undercount when inaccessible or stale roots
+occupy that bounded window. `messages.markThreadMentionsSeen({ lastReplyAt?: number })`
+clears at most 50 caller-owned mentioned rows, optionally through the supplied activity
+watermark, and returns `{ cleared: number, hasMore: boolean }`. Repeat while `hasMore`
+is true; a full batch conservatively reports true. New mentions rearm the badge.
+Acknowledgement also clears inbox `viewerMentioned`; historical root mention lists never
+restore an acknowledged badge. Older clients keep working but do not acknowledge
+mentions. Neither root nor reply broadcast markers scan channels to discover threads;
+ordinary explicit/role mentions retain participation behavior.
+
+Historical `@everyone`/`@here` rows render as plain text on new clients when their flags
+are false. There is intentionally no marker backfill: the database has no historical
+channel-effective permission snapshot for the author at send time. Current roles,
+membership and overrides cannot prove that permission. Inferring it would retroactively
+manufacture broadcasts and unread mentions. As with Discord messages sent before a
+permission change, those rows remain plain text. Marker fields are stored only when
+true; views retain false defaults.
+
+`notifications.setPref.level` is optional; omitted fields preserve existing
+preferences, allowing suppression toggles without overwriting notification level. New
+channel rows without an explicit level copy the server-level level at creation (default
+`all`); later workspace-level changes do not overwrite that channel level.
+`getPrefs.suppressMassMentions` is `boolean | null`: `null` means unset, so a channel
+row falls through to workspace suppression. Pin/hide/mute row creation leaves this flag
+unset. Pin/hide-created rows copy the workspace level and `muteUntil` at creation;
+explicit mute/unmute overrides these with its own level and deadline. Suppression
+continues to inherit dynamically. Suppression affects server push and local sound/OS
+notification cues; badges keep counting both broadcast markers. The exact
+case-insensitive token regex is `/(?<![\w@.-])@(everyone|here)(?![\w.-])/i`; email-like
+tokens do not ping. Before token recognition, split on CRLF/LF, blank lines whose first
+non-whitespace character is `>`, and blank fenced code (including delimiters). Fences
+open with at most three spaces followed by at least three backticks or tildes; close
+with the same character, at least the opening run length, and only trailing whitespace.
+Quoted lines cannot open/close a surrounding fence; an unclosed fence consumes the rest
+of the text. Join remaining lines with LF, then replace inline code spans with a space:
+an opening backtick run pairs with the next exactly equal-length run (even across
+lines); unmatched runs remain prose. Then mask bare URLs with a space before applying
+the regex. These rules apply to marker recognition and legacy-send budget accounting.
+
+Broadcast delivery now uses five-minute leases and a bounded minute recovery cron. The
+initial page job is persisted atomically with the send. Each page and each
+`(message,user)` recipient receipt has a transactional unique indexed key; completed
+receipts skip subsequent attempts, expired leases can be reclaimed, and stale workers
+cannot complete a newer worker's lease. Pre-upgrade claims without leases are
+recoverable. Recovery reads at most 100 expired and 100 legacy claims per tick.
+Completed receipts and leases are retained for the existing 24-hour replay window and
+pruned in bounded 500-row batches. Each page or recipient receipt has at most 12 lease
+claims (including the first attempt); legacy rows start counting on their next claim.
+Permanently failing endpoints that do not return `gone` are retried after five-minute
+leases expire, until that attempt cap or the 24-hour window is reached. Exhausted claims
+become terminal during recovery; a partial multi-device retry may repeat successes.
+
+**Remaining transport limitation:** delivery attempts are at least once within that
+replay window, but external wakes are not exactly once. A crash after a provider accepts
+a wake and before the receipt commits can repeat that wake; a partial multi-device
+failure can also retry a successful device. Neither empty Web Push nor the current
+mobile relay offers a durable message/user idempotency acknowledgement. End-to-end
+duplicate prevention requires that protocol/receiver change; a database claim alone
+cannot supply it. Do not advertise exactly-once push. Internal cursors retain the
+`aulora-broadcast-v1:` prefix. `notifications.dispatchNow` remains a compatibility no-op
+returning `{ sent: 0, skipped: "noop" }`.
+
+Large broadcasts are delivered in pages. A page schedules its continuation as soon
+as the page is first claimed, before its recipients are delivered, so a transport
+outage does not stop later pages from being created, and each page has its own 12
+attempts (about an hour of five-minute leases). The continuation is chained from
+that claim, not stored independently. If a continuation fails before it claims its
+page, it is rescheduled only while the previous page is still being retried. Once
+the previous page completes or exhausts its attempts, the remaining recipients are
+not reached and are dropped at the 24-hour replay horizon.
+
+Unread summaries expose the additive `massMentionCount` subset of `mentionCount`. Web
+and mobile projections retain it; the shared core summary helper subtracts only that
+subset for suppressed unopened-channel cues, preserving direct user and role cues. Older
+servers without the split retain conservative suppression. Both clients now use core's
+reply-first `sendThreadReply` for **Also send to #channel**. The reply owns uploads; the
+additional channel copy contains text and its own channel-eligible mentions. A copy
+failure is reported separately and never retries an accepted reply.
+
+Legacy highlight limitation: clients before the marker-aware 1.4.1 client still lose
+broadcast highlights when the visible audience exceeds 100. Version 1.4.1 and later
+derive highlights from the marker regardless of audience size. The server retains its
+bounded expansion for old clients: expanding arbitrarily large audiences into one
+`mentionUserIds` array would exceed Convex's document limit, even with chunked writes.
+This does not cap broadcast recipient delivery or lazy badges. No minimum-client gate is
+raised by this additive change.
+
+Autocomplete now shares a stable core ordering: `@here`, `@everyone`, roles, then users,
+before the suggestion display limit. Broadcast suggestions and channel-copy markers
+remain permission-gated and hidden in DMs. Deleted message views redact broadcast and
+direct-mention metadata along with text; edits never create new mention markers or
+delivery jobs.

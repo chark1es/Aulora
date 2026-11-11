@@ -79,8 +79,3 @@ export const NOTE_MAX_FOLDERS = 500;
 export const NOTE_MAX_NOTES = 2000;
 export const NOTE_MAX_TAGS = 200;
 export const NOTE_MAX_REVISIONS = 100;
-
-/** Text fed to the client-side search index for one note. */
-export function notePlainText(title: string, body: string): string {
-  return `${title}\n${body}`;
-}

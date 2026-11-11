@@ -7,6 +7,12 @@ export {
   VOICE_CLIENT_KEY,
 } from "./client";
 export {
+  createVoicePortBase,
+  translateCallElsewhere,
+  type VoiceCallMutationRefs,
+  type VoiceMutation,
+} from "./convex-port";
+export {
   CALL_ELSEWHERE,
   CallElsewhereError,
   type CallSeatResult,

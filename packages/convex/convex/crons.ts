@@ -8,6 +8,20 @@ import { getEkmSettings } from "./lib/ekm";
  */
 const crons = cronJobs();
 
+// Automatic upgrade recovery: one bounded page per tick, a singleton read after completion.
+crons.interval(
+  "member roles backfill",
+  { minutes: 1 },
+  internal.maintenance.backfillMemberRoles,
+  {},
+);
+crons.interval(
+  "attachment scopes backfill",
+  { minutes: 1 },
+  internal.maintenance.backfillAttachmentScopes,
+  {},
+);
+
 crons.interval("presence sweep", { seconds: 30 }, internal.presence.sweepStale, {});
 crons.interval("presence idle sweep", { seconds: 30 }, internal.presence.sweepIdle, {});
 crons.interval("typing purge", { seconds: 30 }, internal.typing.purgeExpired, {});
@@ -97,6 +111,20 @@ crons.interval(
   "commercial active-user reports",
   { hours: 1 },
   internal.licenseUsageActions.report,
+  {},
+);
+
+crons.interval(
+  "notification delivery claim retention",
+  { hours: 1 },
+  internal.notifications.pruneDeliveryClaims,
+  {},
+);
+
+crons.interval(
+  "notification delivery lease recovery",
+  { minutes: 1 },
+  internal.notifications.recoverDeliveryLeases,
   {},
 );
 

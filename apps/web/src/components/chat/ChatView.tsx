@@ -1194,7 +1194,7 @@ function ChatViewContent({
       if (activeSummary.name.length > 0) {
         chat.reportChannelNames([{ id: activeSummary.id, name: activeSummary.name }]);
       }
-      void runtime.session.receiveMessages(sessionState.messages);
+      void runtime.session.receiveMessages(sessionState.messages, `channel:${activeSummary.id}`);
     });
   }, [runtime, activeChannelKey]);
 

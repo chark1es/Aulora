@@ -7,7 +7,7 @@
 
 import type { DiffStats } from "./diff.js";
 import { lineDelta } from "./diff.js";
-import type { NoteRevisionAction, NoteSnapshot } from "./types.js";
+import type { NoteFolder, NoteRevisionAction, NoteSnapshot, NoteTag } from "./types.js";
 
 /** The part of a revision the summary needs, structurally satisfied by both clients. */
 export interface HistoryRevision {
@@ -271,4 +271,22 @@ export function groupHistory<T extends HistoryRevision>(
     index += 1;
   }
   return groups;
+}
+
+/**
+ * Builds the folder/tag name lookups a history row needs, so summaries read
+ * "moved to Work" instead of an id. Missing ids stay unresolved and the
+ * summary falls back to its generic wording.
+ */
+export function revisionSummaryOptions(
+  folders: readonly NoteFolder[],
+  tags: readonly NoteTag[],
+): RevisionSummaryOptions {
+  const byFolder = new Map<string, string>(folders.map((folder) => [folder.id, folder.name]));
+  const byTag = new Map<string, string>(tags.map((tag) => [tag.id, tag.name]));
+  return {
+    folderName: (folderId: string | null) =>
+      folderId === null ? "Unfiled" : byFolder.get(folderId),
+    tagName: (tagId: string) => byTag.get(tagId),
+  };
 }

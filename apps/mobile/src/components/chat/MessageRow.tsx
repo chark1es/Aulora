@@ -3,9 +3,9 @@ import {
   type AttachmentDescriptor,
   hasPermission,
   type MessagePayload,
+  messageMentionsUser,
   messageTime,
   Permission,
-  pingsViewer,
 } from "@aulora/core";
 import { MENTION_BACKGROUND, MENTION_COLOR } from "@aulora/tokens";
 import { Icon, Text, usePalette } from "@aulora/ui-native";
@@ -261,7 +261,7 @@ export const MessageRow = memo(function MessageRow(props: MessageRowProps) {
     context.onActions(message);
   };
   const { onMemberPress } = context;
-  const pinged = pingsViewer(message, context.ownUserId);
+  const pinged = messageMentionsUser(message, context.ownUserId);
   return (
     <Pressable
       accessibilityLabel={`${authorName}, ${messageTime(message.createdAt)}. ${props.text ?? ""}`}

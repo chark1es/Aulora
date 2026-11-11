@@ -104,7 +104,7 @@ export function ThreadModal(props: ThreadModalProps) {
 
   useEffect(() => {
     const off = runtime.watchThread(root.id, (incoming) => {
-      void runtime.session.receiveMessages(incoming).then(() => {
+      void runtime.session.receiveMessages(incoming, `thread:${root.id}`).then(() => {
         setReplies(incoming);
         setDecrypted((current) => {
           const next = new Map(current);

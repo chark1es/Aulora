@@ -14,6 +14,7 @@ import { loadEffectiveEnv } from "./lib/envOverrides";
 import { effectiveMaxUploadBytes } from "./lib/instance";
 import { ownerIdsOf } from "./lib/owners";
 import { requireWorkspacePermission } from "./lib/permissions";
+import { storageIsReferenced } from "./lib/storageReferences";
 import { scheduleStopAllActive } from "./lib/transcription";
 
 interface IceServerConfig {
@@ -122,6 +123,7 @@ async function buildPublicConfig(ctx: QueryCtx) {
     // True until the first owner claims a fresh instance. Additive field: an
     // older backend that lacks it reads as false on new clients.
     setupRequired: server === null,
+    capabilities: { mentionMarkers: true, threadInboxPaging: true },
     iconSeed: server?.iconSeed ?? "aulora:server:default",
     description: server?.description ?? "",
     logoUrl,
@@ -260,6 +262,9 @@ export const setLogo = mutation({
       throw new ConvexError("Workspace is not initialized");
     }
     if (args.storageId !== undefined) {
+      if (await storageIsReferenced(ctx, args.storageId, { serverId: server._id })) {
+        throw new ConvexError("Logo file is already in use");
+      }
       const url = await ctx.storage.getUrl(args.storageId);
       if (url === null) {
         throw new ConvexError("Logo file not found");

@@ -27,7 +27,6 @@ import type { Env } from "./env";
  * untrusted (new OIDC sign-ins create a separate user) unless the operator sets
  * `OIDC_TRUST_EMAIL=true` to trust the IdP's claim.
  */
-export const OIDC_TRUST_EMAIL_ENV = "OIDC_TRUST_EMAIL";
 
 /** True only for the exact value `true`, so `1`/`yes` cannot enable it by accident. */
 export function oidcEmailTrusted(env: Env): boolean {

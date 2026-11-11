@@ -9,9 +9,9 @@ import { upsertThreadParticipant } from "./lib/threadParticipants";
 /** Members processed per backfill page before rescheduling. */
 const MEMBER_BACKFILL_BATCH = 500;
 /** Members whose role links are synced per backfill page. */
-const MEMBER_ROLE_BACKFILL_BATCH = 200;
+const MEMBER_ROLE_BACKFILL_BATCH = 1000;
 /** Messages scanned per thread-participant backfill page. */
-const THREAD_PARTICIPANT_BACKFILL_BATCH = 200;
+const THREAD_PARTICIPANT_BACKFILL_BATCH = 1;
 /** Rows counted per instance-counter backfill page. */
 const INSTANCE_COUNTER_BATCH = 200;
 
@@ -84,49 +84,124 @@ export const backfillMemberCount = internalMutation({
   },
 });
 
-/**
- * Idempotent migration: seeds the `memberRoles` reverse index from
- * `members.roleIds`, which stays authoritative for reads. Safe to re-run; each
- * run rewrites the links for the members it pages over. Reschedules while more
- * members remain.
- */
+/** Progress is isolated from the public server-config subscription dependency. */
+async function backfillProgress(ctx: MutationCtx, key: string) {
+  return await ctx.db
+    .query("migrationProgress")
+    .withIndex("by_key", (q) => q.eq("key", key))
+    .unique();
+}
+
+/** The part of a progress row a save reads; the document itself is not needed. */
+type BackfillProgressRow = Pick<
+  Doc<"migrationProgress">,
+  "_id" | "processed" | "skippedReferences"
+>;
+
+async function saveBackfillProgress(
+  ctx: MutationCtx,
+  key: string,
+  previous: BackfillProgressRow | null,
+  page: { page: unknown[]; isDone: boolean; continueCursor: string },
+  skippedReferences: number,
+): Promise<void> {
+  const fields = {
+    key,
+    ...(page.isDone ? {} : { cursor: page.continueCursor }),
+    processed: (previous?.processed ?? 0) + page.page.length,
+    skippedReferences: (previous?.skippedReferences ?? 0) + skippedReferences,
+  };
+  if (previous === null) await ctx.db.insert("migrationProgress", fields);
+  else
+    await ctx.db.patch(previous._id, {
+      ...fields,
+      cursor: page.isDone ? undefined : page.continueCursor,
+    });
+}
+
+/** One persisted page per tick; retries cannot skip uncommitted work. */
 export const backfillMemberRoles = internalMutation({
-  args: { cursor: v.optional(v.union(v.string(), v.null())) },
-  handler: async (ctx, args) => {
-    const page = await ctx.db
-      .query("members")
-      .paginate({ numItems: MEMBER_ROLE_BACKFILL_BATCH, cursor: args.cursor ?? null });
+  args: {},
+  handler: async (ctx) => {
+    const server = await ctx.db.query("server").first();
+    if (server === null || server.memberRolesBackfilled === true) return null;
+    const progress = await backfillProgress(ctx, "memberRoles");
+    const page = await ctx.db.query("members").paginate({
+      numItems: MEMBER_ROLE_BACKFILL_BATCH,
+      cursor: progress?.cursor ?? server.memberRolesBackfillCursor ?? null,
+    });
     for (const member of page.page) {
       await syncMemberRoles(ctx, member.userId, member.roleIds, member.joinedAt);
     }
-    if (!page.isDone) {
-      await ctx.scheduler.runAfter(0, internal.maintenance.backfillMemberRoles, {
-        cursor: page.continueCursor,
+    await saveBackfillProgress(ctx, "memberRoles", progress, page, 0);
+    if (page.isDone)
+      await ctx.db.patch(server._id, {
+        memberRolesBackfilled: true,
+        memberRolesBackfillCursor: undefined,
       });
-      return null;
-    }
+    return null;
+  },
+});
+
+/** Repairs legacy uploads referenced by live messages, without changing board scopes. */
+export const backfillAttachmentScopes = internalMutation({
+  args: {},
+  handler: async (ctx) => {
     const server = await ctx.db.query("server").first();
-    if (server !== null) {
-      await ctx.db.patch(server._id, { memberRolesBackfilled: true });
+    if (server === null || server.attachmentScopesBackfilled === true) return null;
+    const progress = await backfillProgress(ctx, "attachmentScopes");
+    const page = await ctx.db.query("messages").paginate({
+      numItems: 500,
+      cursor: progress?.cursor ?? server.attachmentScopesBackfillCursor ?? null,
+    });
+    let skippedReferences = 0;
+    for (const message of page.page) {
+      if (message.deletedAt !== undefined) continue;
+      for (const fileId of message.attachmentIds) {
+        const file = await ctx.db.get(fileId);
+        if (file !== null && file.channelId === undefined && file.kanbanBoardId === undefined) {
+          // Legacy sends did not prove ownership: a reference is not consent.
+          if (file.uploaderId !== message.authorId) {
+            skippedReferences++;
+            continue;
+          }
+          await ctx.db.patch(fileId, { channelId: message.channelId });
+        }
+      }
     }
+    await saveBackfillProgress(ctx, "attachmentScopes", progress, page, skippedReferences);
+    if (page.isDone)
+      await ctx.db.patch(server._id, {
+        attachmentScopesBackfilled: true,
+        attachmentScopesBackfillCursor: undefined,
+      });
     return null;
   },
 });
 
 /** Seeds the participation rows implied by one message (reply or root). */
-async function seedThreadParticipants(ctx: MutationCtx, message: Doc<"messages">): Promise<void> {
+async function seedThreadParticipants(
+  ctx: MutationCtx,
+  message: Doc<"messages">,
+  offset: number,
+): Promise<boolean> {
   // A reply records its author and anyone it mentions against the root. The
   // root's `replyParticipantIds` is capped, so it cannot replace this.
   if (message.threadRootId !== undefined) {
-    await upsertThreadParticipant(ctx, {
-      userId: message.authorId,
-      threadRootId: message.threadRootId,
-      channelId: message.channelId,
-      at: message._creationTime,
-      mentioned: false,
-      participated: true,
-    });
-    for (const userId of message.mentionUserIds) {
+    if (offset === 0)
+      await upsertThreadParticipant(ctx, {
+        userId: message.authorId,
+        threadRootId: message.threadRootId,
+        channelId: message.channelId,
+        at: message._creationTime,
+        mentioned: false,
+        participated: true,
+      });
+    for (const userId of (message.broadcastDirectUserIds ?? message.mentionUserIds).slice(
+      offset,
+      offset + 100,
+    )) {
+      if (userId === message.authorId) continue;
       await upsertThreadParticipant(ctx, {
         userId,
         threadRootId: message.threadRootId,
@@ -136,14 +211,14 @@ async function seedThreadParticipants(ctx: MutationCtx, message: Doc<"messages">
         participated: false,
       });
     }
-    return;
+    return offset + 100 < (message.broadcastDirectUserIds ?? message.mentionUserIds).length;
   }
   // Only roots with replies are threads worth an inbox row.
   if ((message.replyCount ?? 0) === 0) {
-    return;
+    return false;
   }
   const at = message.lastReplyAt ?? message._creationTime;
-  for (const userId of message.replyParticipantIds ?? []) {
+  for (const userId of (message.replyParticipantIds ?? []).slice(offset, offset + 100)) {
     await upsertThreadParticipant(ctx, {
       userId,
       threadRootId: message._id,
@@ -153,7 +228,11 @@ async function seedThreadParticipants(ctx: MutationCtx, message: Doc<"messages">
       participated: true,
     });
   }
-  for (const userId of message.mentionUserIds) {
+  for (const userId of (message.broadcastDirectUserIds ?? message.mentionUserIds).slice(
+    offset,
+    offset + 100,
+  )) {
+    if (userId === message.authorId) continue;
     await upsertThreadParticipant(ctx, {
       userId,
       threadRootId: message._id,
@@ -163,23 +242,39 @@ async function seedThreadParticipants(ctx: MutationCtx, message: Doc<"messages">
       participated: false,
     });
   }
+  return (
+    offset + 100 <
+    Math.max(
+      (message.broadcastDirectUserIds ?? message.mentionUserIds).length,
+      message.replyParticipantIds?.length ?? 0,
+    )
+  );
 }
 
 /**
  * Idempotent migration: seeds `threadParticipants` from existing threads —
  * each reply's author and mentions, plus each root's recent repliers and own
- * mentions. Paged over `messages` and rescheduled while more remain, so it
- * never scans the whole table in one transaction. Safe to re-run: the upsert
- * only moves `lastReplyAt` forward and ORs `mentioned`.
+ * mentions. The documented manual operator entry point reads one message and
+ * writes up to 100 mentions plus 100 repliers per invocation, resuming fan-out
+ * by offset before advancing the message cursor. Replays are idempotent before
+ * acknowledgement; do not run legacy repair after users acknowledge mentions.
  */
 export const backfillThreadParticipants = internalMutation({
-  args: { cursor: v.optional(v.union(v.string(), v.null())) },
+  args: { cursor: v.optional(v.union(v.string(), v.null())), offset: v.optional(v.number()) },
   handler: async (ctx, args) => {
     const page = await ctx.db
       .query("messages")
       .paginate({ numItems: THREAD_PARTICIPANT_BACKFILL_BATCH, cursor: args.cursor ?? null });
     for (const message of page.page) {
-      await seedThreadParticipants(ctx, message);
+      const offset = args.offset ?? 0;
+      if (!Number.isSafeInteger(offset) || offset < 0) throw new Error("Invalid mention offset");
+      if (await seedThreadParticipants(ctx, message, offset)) {
+        await ctx.scheduler.runAfter(0, internal.maintenance.backfillThreadParticipants, {
+          cursor: args.cursor ?? null,
+          offset: offset + 100,
+        });
+        return null;
+      }
     }
     if (!page.isDone) {
       await ctx.scheduler.runAfter(0, internal.maintenance.backfillThreadParticipants, {

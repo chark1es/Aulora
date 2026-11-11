@@ -4,7 +4,6 @@ import {
   canCreateGuestLinks,
   canDeleteTranscripts,
   canEditScheduledCall,
-  canManageGuestAccess,
   canScheduleCalls,
   canStartTranscription,
   canViewScheduledCalls,
@@ -21,7 +20,6 @@ import {
   fromDateTimeLocalValue,
   groupByLocalDay,
   localDayKey,
-  nextCountdownTickMs,
   notOpenMessage,
   parseScheduledCallNotOpen,
   scheduledJoinState,
@@ -182,9 +180,6 @@ describe("join window", () => {
     expect(formatOpensIn(3 * 3_600_000 + 5 * 60_000)).toBe("in 3 h 5 min");
     expect(formatOpensIn(3 * 3_600_000)).toBe("in 3 h");
     expect(formatOpensIn(3 * 86_400_000)).toBe("in 3 days");
-    expect(nextCountdownTickMs(30_000)).toBe(1_000);
-    expect(nextCountdownTickMs(10 * 60_000)).toBeLessThanOrEqual(60_000);
-    expect(nextCountdownTickMs(10 * 60_000)).toBeGreaterThanOrEqual(1_000);
   });
 });
 
@@ -217,7 +212,7 @@ describe("ScheduledCallNotOpen error", () => {
 
   it("renders the open time in the viewer's zone", () => {
     const message = notOpenMessage({ startsAt: data.startsAt, opensAt: data.opensAt }, NY);
-    expect(message).toBe("This call hasn't started yet — opens at 2:55 PM EST");
+    expect(message).toBe("This call hasn’t started yet. It opens at 2:55 PM EST");
   });
 });
 
@@ -235,7 +230,6 @@ describe("addon permission gating", () => {
     expect(canViewTranscripts(none, true)).toBe(false);
     expect(canDeleteTranscripts(none)).toBe(false);
     expect(canCreateGuestLinks(none, true)).toBe(false);
-    expect(canManageGuestAccess(none, true)).toBe(false);
     expect(canScheduleCalls(none, true)).toBe(false);
     expect(canViewScheduledCalls(none, true)).toBe(false);
   });

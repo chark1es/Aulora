@@ -3,13 +3,13 @@ import { describe, expect, it } from "vitest";
 import { api } from "../convex/_generated/api";
 import { newTest, seedChannel, seedWorkspace } from "./helpers";
 
-async function setup() {
+async function setup(senderId = "user-1") {
   const t = newTest();
   await seedWorkspace(t, { members: [{ userId: "user-1" }, { userId: "user-2" }] });
   const channelId = await seedChannel(t);
   const asUser1 = t.withIdentity({ subject: "user-1" });
   const send = (mentionUserIds: string[] = []) =>
-    asUser1.mutation(api.messages.send, {
+    t.withIdentity({ subject: senderId }).mutation(api.messages.send, {
       channelId,
       body: "bXNn",
       mentionUserIds,
@@ -19,7 +19,7 @@ async function setup() {
 
 describe("readStates.set", () => {
   it("counts mentions strictly after the cursor", async () => {
-    const { channelId, asUser1, send } = await setup();
+    const { channelId, asUser1, send } = await setup("user-2");
     const m1 = await send();
     await send(["user-1"]);
     await send();
@@ -39,10 +39,10 @@ describe("readStates.set", () => {
   });
 
   it("ignores deleted messages when counting mentions", async () => {
-    const { channelId, asUser1, send } = await setup();
+    const { t, channelId, asUser1, send } = await setup("user-2");
     const m1 = await send();
     const m2 = await send(["user-1"]);
-    await asUser1.mutation(api.messages.remove, { messageId: m2 });
+    await t.withIdentity({ subject: "user-2" }).mutation(api.messages.remove, { messageId: m2 });
 
     const result = await asUser1.mutation(api.readStates.set, {
       channelId,
@@ -52,7 +52,7 @@ describe("readStates.set", () => {
   });
 
   it("does not count mentions for other users", async () => {
-    const { channelId, asUser1, send } = await setup();
+    const { channelId, asUser1, send } = await setup("user-2");
     const m1 = await send();
     await send(["user-2"]);
 
@@ -64,11 +64,11 @@ describe("readStates.set", () => {
   });
 
   it("saturates the mention count for a long unread tail", async () => {
-    const { t, channelId, asUser1 } = await setup();
+    const { t, channelId, asUser1 } = await setup("user-2");
     const cursor = await t.run(async (ctx) => {
       const cursorId = await ctx.db.insert("messages", {
         channelId,
-        authorId: "user-1",
+        authorId: "user-2",
         ciphertext: "bXNn",
         attachmentIds: [],
         mentionUserIds: [],
@@ -76,7 +76,7 @@ describe("readStates.set", () => {
       for (let i = 0; i < 250; i += 1) {
         await ctx.db.insert("messages", {
           channelId,
-          authorId: "user-1",
+          authorId: "user-2",
           ciphertext: "bXNn",
           attachmentIds: [],
           mentionUserIds: ["user-1"],
@@ -94,7 +94,7 @@ describe("readStates.set", () => {
   });
 
   it("returns null before a cursor is set and the state afterwards", async () => {
-    const { channelId, asUser1, send } = await setup();
+    const { channelId, asUser1, send } = await setup("user-2");
     expect(await asUser1.query(api.readStates.get, { channelId })).toBeNull();
     const m1 = await send(["user-1"]);
     await asUser1.mutation(api.readStates.set, { channelId, lastReadMessageId: m1 });
@@ -121,7 +121,7 @@ describe("readStates.set", () => {
 
 describe("readStates.set cursor", () => {
   it("never moves the read cursor backwards", async () => {
-    const { channelId, asUser1, send } = await setup();
+    const { channelId, asUser1, send } = await setup("user-2");
     const m1 = await send();
     const m2 = await send();
 

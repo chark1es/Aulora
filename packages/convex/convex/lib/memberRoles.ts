@@ -1,4 +1,4 @@
-import type { MutationCtx, QueryCtx } from "../_generated/server";
+import type { MutationCtx } from "../_generated/server";
 
 /** Member↔role links detached per mutation run before rescheduling. */
 export const MEMBER_ROLE_DETACH_BATCH = 200;
@@ -102,21 +102,4 @@ export async function detachRoleBatch(ctx: MutationCtx, roleId: string): Promise
     await ctx.db.delete(link._id);
   }
   return links.length === MEMBER_ROLE_DETACH_BATCH;
-}
-
-/**
- * The members holding `roleId`, read through the `by_role` reverse index. This
- * is what lets `@role` mentions be expanded on the server (once per send)
- * instead of every client holding the whole member table.
- */
-export async function memberIdsForRole(
-  ctx: QueryCtx | MutationCtx,
-  roleId: string,
-  limit: number,
-): Promise<string[]> {
-  const rows = await ctx.db
-    .query("memberRoles")
-    .withIndex("by_role", (q) => q.eq("roleId", roleId))
-    .take(limit);
-  return rows.map((row) => row.userId);
 }
