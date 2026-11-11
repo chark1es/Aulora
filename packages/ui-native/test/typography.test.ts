@@ -49,22 +49,17 @@ describe("primitives", () => {
   });
 });
 
-// The mobile app is scanned with the same helper from apps/mobile/test/fonts.test.ts.
-const textSources = import.meta.glob("../src/**/*.tsx", {
-  eager: true,
-  query: "?raw",
-  import: "default",
-});
 const appSources = import.meta.glob(
   ["../src/**/*.tsx", "../../../apps/mobile/src/**/*.tsx", "../../../apps/mobile/app/**/*.tsx"],
   { eager: true, query: "?raw", import: "default" },
 );
 
 describe("shipped face coverage", () => {
-  it("gives every raw text and input primitive in ui-native the Inter face", () => {
-    const { checked, bare } = scanTextFaces(textSources);
+  it("gives every raw text and input primitive in ui-native and mobile the Inter face", () => {
+    const { checked, bare } = scanTextFaces(appSources);
     // The scan must see the primitives it guards, or it proves nothing.
     expect(checked.some((tag) => tag.includes("RoleColorPreview.tsx"))).toBe(true);
+    expect(checked.some((tag) => tag.includes("<BottomSheetTextInput>"))).toBe(true);
     expect(checked.some((tag) => tag.includes("TextField.tsx"))).toBe(true);
     expect(bare).toEqual([]);
   });
