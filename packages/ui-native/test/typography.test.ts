@@ -55,6 +55,10 @@ const textSources = import.meta.glob("../src/**/*.tsx", {
   query: "?raw",
   import: "default",
 });
+const appSources = import.meta.glob(
+  ["../src/**/*.tsx", "../../../apps/mobile/src/**/*.tsx", "../../../apps/mobile/app/**/*.tsx"],
+  { eager: true, query: "?raw", import: "default" },
+);
 
 describe("shipped face coverage", () => {
   it("gives every raw text and input primitive in ui-native the Inter face", () => {
@@ -89,7 +93,7 @@ describe("shipped face coverage", () => {
 
 describe("mono weights", () => {
   it("never asks for a mono weight the single shipped JetBrains Mono file lacks", () => {
-    const { checked, heavy } = scanMonoWeights(textSources);
+    const { checked, heavy } = scanMonoWeights(appSources);
     // The scan must see mono nodes, or it proves nothing.
     expect(checked).toBeGreaterThan(5);
     expect(heavy).toEqual([]);
