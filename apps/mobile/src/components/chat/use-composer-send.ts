@@ -30,7 +30,7 @@ export interface ComposerSendInput {
   readonly stopTyping: Fn<[channelId: string], void>;
 }
 
-function sendFailure(cause: unknown, hasFiles: boolean): string {
+function sendFailure(cause: unknown, hasFiles: boolean) {
   return hasFiles
     ? attachmentUploadErrorMessage(cause, messageSendError(cause))
     : messageSendError(cause);

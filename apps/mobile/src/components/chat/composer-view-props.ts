@@ -39,7 +39,7 @@ const hasPreviewSyntax = (value: string) =>
   /https?:\/\//.test(value) ||
   value.includes("#");
 
-export function buildNotices(ctx: ComposerContext): ComposerNoticesProps {
+export const buildNotices = (ctx: ComposerContext): ComposerNoticesProps => {
   const { props, value, attach, layout } = ctx;
   const draft = value.trim();
   return {
@@ -73,9 +73,9 @@ export function buildNotices(ctx: ComposerContext): ComposerNoticesProps {
     limitError: ctx.limitError,
     textLength: draft.length,
   };
-}
+};
 
-export function buildInputRow(ctx: ComposerContext): ComposerInputRowProps {
+export const buildInputRow = (ctx: ComposerContext): ComposerInputRowProps => {
   const { props, attach, typing } = ctx;
   return {
     inputRef: ctx.inputRef,
@@ -97,9 +97,9 @@ export function buildInputRow(ctx: ComposerContext): ComposerInputRowProps {
     },
     onSend: ctx.send,
   };
-}
+};
 
-export function buildAttachMenu(ctx: ComposerContext): ComposerAttachMenuProps {
+export const buildAttachMenu = (ctx: ComposerContext): ComposerAttachMenuProps => {
   return {
     visible: ctx.menuOpen,
     onClose: () => {
@@ -110,7 +110,7 @@ export function buildAttachMenu(ctx: ComposerContext): ComposerAttachMenuProps {
       void ctx.attach.pick(option);
     },
   };
-}
+};
 
 /** The composer's hook results for one render. */
 export interface ComposerParts {

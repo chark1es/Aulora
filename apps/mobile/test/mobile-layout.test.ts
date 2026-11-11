@@ -79,7 +79,7 @@ function walk(node: ts.Node, visit: (node: ts.Node) => void) {
 
 const FILL_EDGES = [/top:\s*0/, /bottom:\s*0/, /left:\s*0/, /right:\s*0/];
 
-function absoluteOffsetFailures(path: string): string[] {
+const absoluteOffsetFailures = (path: string): string[] => {
   const ast = parseTsx(path);
   const exempt = layoutExceptions[relative(path)] !== undefined;
   const failures: string[] = [];
@@ -98,14 +98,14 @@ function absoluteOffsetFailures(path: string): string[] {
     }
   });
   return failures;
-}
+};
 
 const ROW = /flex-row|flexDirection:\s*["']row/;
 const FIXED_HEIGHT = /(?<![\w-])h-(?:\d|\[)|\bheight:\s*\d/;
 const RN_TEXT_IMPORT = /import\s*\{[^}]*\bText\b[^}]*\}\s*from\s*["']react-native["']/;
 
 /** Row text must shrink or truncate, and its container must not fix a height. */
-function rowTextFailures(path: string): string[] {
+const rowTextFailures = (path: string): string[] => {
   const ast = parseTsx(path);
   const source = read(path);
   const failures: string[] = [];
@@ -133,7 +133,7 @@ function rowTextFailures(path: string): string[] {
       failures.push(`${relative(path)}:${ast.getLineAndCharacterOfPosition(node.pos).line + 1}`);
   });
   return failures;
-}
+};
 
 describe("mobile safe layout source guards", () => {
   it("requires an inset owner for every route, screen and native modal", () => {
@@ -305,16 +305,13 @@ describe("mobile safe layout source guards", () => {
 
   // Found at 2x text on a 360dp phone: "Chann…" in the dock, a clipped demo banner.
   it("keeps primary navigation and the demo banner readable at large text", () => {
-    const hub = read(resolve(root, "src/components/chat/HubPane.tsx"));
-    const tab = hub.slice(
-      hub.indexOf("const DOCK_TAB_BASE"),
-      hub.indexOf("interface WorkspaceButtonProps"),
-    );
+    const dock = read(resolve(root, "src/components/chat/DockTab.tsx"));
+    const tab = dock.slice(dock.indexOf("const DOCK_TAB_BASE"));
     expect(tab).toContain("numberOfLines={dockLabelLines(label)}");
     expect(tab).toContain("adjustsFontSizeToFit");
     expect(tab).not.toContain("numberOfLines={1}");
     expect(tab).toMatch(/min-h-\[52px\]/);
-    expect(hub).toContain("return /\\s/.test(label.trim()) ? 2 : 1;");
+    expect(dock).toContain("return hasWhitespace ? 2 : 1;");
     const demo = read(resolve(root, "src/components/ReviewDemoScreen.tsx"));
     const notice = demo.slice(demo.indexOf("function DemoNotice("));
     expect(notice).not.toContain("numberOfLines={1}");

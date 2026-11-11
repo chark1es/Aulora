@@ -12,6 +12,8 @@ export const layoutExceptions: Record<string, string> = {
     "Participant labels are anchored inside video tiles; full-screen controls use window insets. PiP has only video/avatar, no text or controls.",
   "src/components/chat/HubPane.tsx":
     "Tab counters and workspace chevron are anchored to icons; the dock uses insets and matching clearance.",
+  "src/components/chat/DockTab.tsx":
+    "The tab's mention counter is anchored to its glyph, not the window.",
   "src/components/kanban/CardTile.tsx":
     "Card menu is anchored inside a tile; title reserves its trailing gutter.",
   "src/components/chat/MessageList.tsx":

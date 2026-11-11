@@ -50,7 +50,7 @@ const WindowInsetsContext = createContext<EdgeInsets | null>(null);
  * Insets of the whole window, for overlays that cover it (bottom sheets) even
  * when rendered inside a {@link RebasedInsets} region.
  */
-export function useWindowInsets(): EdgeInsets {
+export function useWindowInsets() {
   const local = useSafeAreaInsets();
   return useContext(WindowInsetsContext) ?? local;
 }

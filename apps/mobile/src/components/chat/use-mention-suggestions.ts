@@ -31,7 +31,7 @@ const BROADCAST_CANDIDATES: readonly MentionCandidate[] = [
 ];
 
 /** Every mention the viewer could insert, in the order the list shows them. */
-export function buildMentionCandidates(sources: MentionSources): MentionCandidate[] {
+export function buildMentionCandidates(sources: MentionSources) {
   const { canMentionEveryone, members, roles, channels } = sources;
   return orderMentionSuggestions([
     ...(canMentionEveryone ? BROADCAST_CANDIDATES : []),
@@ -59,10 +59,10 @@ export function buildMentionCandidates(sources: MentionSources): MentionCandidat
 }
 
 /** The candidates matching the trigger at the end of the draft, at most six. */
-export function matchMentionSuggestions(
+export const matchMentionSuggestions = (
   value: string,
   candidates: readonly MentionCandidate[],
-): MentionCandidate[] {
+): MentionCandidate[] => {
   const trigger = MENTION_TRIGGER.exec(value);
   if (trigger === null) return [];
   const [, , prefix = "", rawQuery = ""] = trigger;
@@ -71,10 +71,10 @@ export function matchMentionSuggestions(
     .filter((candidate) => candidate.insert.startsWith(prefix))
     .filter((candidate) => candidate.label.toLowerCase().includes(query))
     .slice(0, MAX_SUGGESTIONS);
-}
+};
 
 /** The draft with the trigger at its end replaced by the chosen mention. */
-export function insertMention(value: string, candidate: MentionCandidate): string {
+export function insertMention(value: string, candidate: MentionCandidate) {
   return value.replace(
     MENTION_TRIGGER,
     (_match, leading: string) => `${leading}${candidate.insert} `,

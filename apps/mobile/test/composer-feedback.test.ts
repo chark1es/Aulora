@@ -80,14 +80,14 @@ const isElement = (child: unknown): child is Element =>
  * parts) are called with their props, as React would; host and mocked components are leaves
  * that contribute their `children`.
  */
-function descendants(element: Element): Element[] {
+const descendants = (element: Element): Element[] => {
   const rendered =
     typeof element.type === "function"
       ? (element.type as Fn<[props: Record<string, unknown>], unknown>)(element.props)
       : element.props.children;
   const children = [rendered].flat(Infinity).filter(isElement);
   return [element, ...children.flatMap(descendants)];
-}
+};
 
 it("preserves an oversized paste, explains the limit, and disables Send without announcing the counter", () => {
   state.draft = "x".repeat(4001);
