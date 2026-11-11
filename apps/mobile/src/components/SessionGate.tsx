@@ -1,19 +1,16 @@
 /* eslint-disable no-unused-vars -- the base rule reports parameter names in type signatures; Biome checks real unused code */
 import type { ServerProfile } from "@aulora/core";
+import { setProviderTokenIdentity, subscribeAuthChanged } from "@aulora/core";
 import { Spinner, Text } from "@aulora/ui-native";
 import type { ConvexReactClient } from "convex/react";
 import { useQuery } from "convex/react";
 import { useRouter } from "expo-router";
 import { useEffect, useState } from "react";
-import { View } from "react-native";
-import { SafeAreaView } from "react-native-safe-area-context";
 import { api } from "../../../../packages/convex/convex/_generated/api";
 import type { AuloraAuthClient } from "../lib/auth-client";
-import { subscribeAuthChanged } from "../lib/auth-events";
 import { mobileVersionState } from "../lib/client-version";
 import type { CookieStore } from "../lib/cookie-fetch";
 import { bindPendingInvite } from "../lib/pending-invite";
-import { setProviderTokenIdentity } from "../lib/provider-auth";
 import { deleteAccountAction, signOutAction } from "../lib/session-account-actions";
 import { useStuckTimeout } from "../lib/stuck-timeout";
 import { ChatProvider } from "../providers/ChatProvider";
@@ -27,6 +24,7 @@ import {
 } from "./ConnectionRecoveryActions";
 import { ChatScreen } from "./chat/ChatScreen";
 import { WorkspaceSwitcherSheet } from "./chat/WorkspaceSwitcherSheet";
+import { ScreenContainer } from "./layout/ScreenContainer";
 import { MembershipGate } from "./MembershipGate";
 import { QueryErrorBoundary } from "./QueryErrorBoundary";
 import { SetupScreen } from "./SetupScreen";
@@ -61,7 +59,7 @@ export function SessionGate({ profile, authClient, cookieStore, client }: Sessio
 
   // Bind the Convex token cache to this Better Auth session. Sign-out resets it
   // synchronously below; this covers an account switch inside one client, where
-  // the next transient failure would otherwise serve the previous person's
+  // the next transient failure would otherwise serve the previous person’s
   // token. The session id is not part of the native session payload, so the
   // user id is the identity here.
   useEffect(() => {
@@ -71,7 +69,7 @@ export function SessionGate({ profile, authClient, cookieStore, client }: Sessio
   }, [authClient, identity]);
 
   // A native OAuth finish in the system browser persists a token outside this
-  // client's session atom; re-check once that route says the session changed.
+  // client’s session atom; re-check once that route says the session changed.
   useEffect(
     () =>
       subscribeAuthChanged(() => {
@@ -91,13 +89,13 @@ export function SessionGate({ profile, authClient, cookieStore, client }: Sessio
   // backend omits the field, so this stays false during a mixed rollout.
   if (config?.setupRequired === true) {
     return (
-      <SafeAreaView className="flex-1" edges={["top", "bottom"]}>
+      <ScreenContainer scrollable className="flex-1 min-w-0">
         <SetupScreen
           profile={profile}
           authClient={authClient}
           onConnectDifferentServer={backToConnect}
         />
-      </SafeAreaView>
+      </ScreenContainer>
     );
   }
 
@@ -139,7 +137,7 @@ export function SessionGate({ profile, authClient, cookieStore, client }: Sessio
 
   // The chat surface lays out its own safe areas; only sign-in needs the frame.
   return (
-    <SafeAreaView className="flex-1" edges={["top", "bottom"]}>
+    <ScreenContainer scrollable className="flex-1 min-w-0">
       <SignInScreen
         profile={profile}
         authClient={authClient}
@@ -155,7 +153,7 @@ export function SessionGate({ profile, authClient, cookieStore, client }: Sessio
           setSwitcherOpen(false);
         }}
       />
-    </SafeAreaView>
+    </ScreenContainer>
   );
 }
 
@@ -167,7 +165,7 @@ function SessionPending({
   readonly recovery: ConnectionRecoveryActionsProps;
 }) {
   return (
-    <View className="flex-1 items-center justify-center gap-3 px-6">
+    <ScreenContainer scrollable className="flex-1 items-center justify-center gap-3 px-6 min-w-0">
       <Spinner size={28} label="Checking your session" />
       <Text size="sm" tone="muted">
         Checking your session…
@@ -180,7 +178,7 @@ function SessionPending({
           <ConnectionRecoveryActions {...recovery} />
         </>
       )}
-    </View>
+    </ScreenContainer>
   );
 }
 

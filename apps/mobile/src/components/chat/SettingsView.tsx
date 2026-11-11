@@ -39,6 +39,9 @@ export interface SettingsViewProps {
   readonly ownUserId: string;
   readonly ownDisplayName: string;
   readonly canChangeNickname: boolean;
+  /** Owner or ManageRoles; shows the role-color editor row. */
+  readonly canManageRoles: boolean;
+  readonly onOpenRoleColors: () => void;
   readonly hasAvatar: boolean;
   readonly onChangeAvatar: () => void;
   readonly onClearAvatar: () => void;
@@ -75,25 +78,19 @@ function SettingsDetail({
 }: DetailProps) {
   const clearance = useDockClearance();
   return (
-    <View className="flex-1" style={{ paddingBottom: clearance }}>
+    <View className="flex-1 min-w-0" style={{ paddingBottom: clearance }}>
       <PaneHeader
         title={PAGE_TITLES.get(page) ?? ""}
         leading={<RoundButton icon="chevron-left" label="Back to You" onPress={onBack} />}
       />
-      <View className="flex-1 px-4">
+      <View className="flex-1 px-4 min-w-0">
         {page === "profile" && (
-          <KeyboardAwareScrollView
-            bottomOffset={24}
-            keyboardShouldPersistTaps="handled"
-            contentContainerStyle={{ paddingBottom: 24 }}
-          >
-            <ProfileEditor
-              userId={ownUserId}
-              canChangeNickname={canChangeNickname}
-              profile={profileData}
-              onSave={onSaveProfile}
-            />
-          </KeyboardAwareScrollView>
+          <ProfileEditor
+            userId={ownUserId}
+            canChangeNickname={canChangeNickname}
+            profile={profileData}
+            onSave={onSaveProfile}
+          />
         )}
         {page === "notifications" && <SoundSettingsSection />}
         {page === "debug" && <DebugLogsSection />}
@@ -136,11 +133,21 @@ function IdentityCard(props: IdentityCardProps) {
         </View>
       </View>
       <View className="flex-row gap-2">
-        <Button size="sm" variant="secondary" className="flex-1" onPress={props.onChangeAvatar}>
+        <Button
+          size="sm"
+          variant="secondary"
+          className="flex-1 min-w-0"
+          onPress={props.onChangeAvatar}
+        >
           Change picture
         </Button>
         {props.hasAvatar && (
-          <Button size="sm" variant="ghost" className="flex-1" onPress={props.onClearAvatar}>
+          <Button
+            size="sm"
+            variant="ghost"
+            className="flex-1 min-w-0"
+            onPress={props.onClearAvatar}
+          >
             Use generated avatar
           </Button>
         )}
@@ -168,16 +175,33 @@ function StatusCard({ status, customStatus, onSetStatus }: StatusCardProps) {
 
 interface SettingsMenuProps {
   readonly canChangeNickname: boolean;
+  readonly canManageRoles: boolean;
   readonly pushState: PushRegistrationState;
   readonly onOpen: (page: DetailPage) => void;
+  readonly onOpenRoleColors: () => void;
 }
 
 /** The rows that lead to each settings page. */
-function SettingsMenu({ canChangeNickname, pushState, onOpen }: SettingsMenuProps) {
+function SettingsMenu({
+  canChangeNickname,
+  canManageRoles,
+  pushState,
+  onOpen,
+  onOpenRoleColors,
+}: SettingsMenuProps) {
   return (
     <View>
       <ListHeader title="Settings" />
       <ListGroup>
+        {canManageRoles && (
+          <ListRow
+            icon="shield"
+            title="Role colors"
+            subtitle="Preview and fix role name colors in both themes"
+            chevron
+            onPress={onOpenRoleColors}
+          />
+        )}
         <ListRow
           icon="settings"
           title="Debug logs"
@@ -217,20 +241,20 @@ function SettingsMenu({ canChangeNickname, pushState, onOpen }: SettingsMenuProp
         <ListRow
           icon="settings"
           title="System notification settings"
-          subtitle="Open this app's page in system settings"
+          subtitle="Open this app’s page in system settings"
           onPress={() => void Linking.openSettings()}
         />
         <ListRow
           icon="moon"
           title="Appearance"
-          subtitle="Follows this device's light or dark mode"
+          subtitle="Follows this device’s light or dark mode"
         />
       </ListGroup>
     </View>
   );
 }
 
-/** The hub's "You" tab: who you are here, how you show up, and this device's settings. */
+/** The hub’s "You" tab: who you are here, how you show up, and this device’s settings. */
 export function SettingsView(props: SettingsViewProps) {
   const clearance = useDockClearance();
   const [page, setPage] = useState<DetailPage | null>(null);
@@ -275,8 +299,10 @@ export function SettingsView(props: SettingsViewProps) {
       />
       <SettingsMenu
         canChangeNickname={props.canChangeNickname}
+        canManageRoles={props.canManageRoles}
         pushState={props.pushState}
         onOpen={setPage}
+        onOpenRoleColors={props.onOpenRoleColors}
       />
       <ListGroup>
         <ListRow

@@ -1,6 +1,7 @@
-import { Button, Icon, Input, Text, usePalette } from "@aulora/ui-native";
+import { roleColorCss } from "@aulora/core";
+import { Button, Icon, Input, Text, TextField, usePalette } from "@aulora/ui-native";
 import { useEffect, useMemo, useState } from "react";
-import { Pressable, ScrollView, TextInput, View } from "react-native";
+import { Pressable, ScrollView, View } from "react-native";
 import type { ChannelRoleOption, OverrideView } from "../../lib/channel-role-overrides";
 import type { MobileMemberEntry } from "../../lib/permissions";
 import { ChannelRoleOverrides } from "./ChannelRoleOverrides";
@@ -150,9 +151,30 @@ export function EditChannelSheet(props: EditChannelSheetProps) {
   }
 
   return (
-    <Sheet visible={visible} title={"Edit channel"} onClose={onClose}>
-      <View className="flex-1 p-4">
-        <ScrollView contentContainerStyle={{ gap: 14, paddingVertical: 12 }}>
+    <Sheet
+      visible={visible}
+      title={"Edit channel"}
+      onClose={onClose}
+      // Pinned above the keyboard: at the end of the long form it was out of
+      // reach while editing the name or topic.
+      footer={
+        <View className="gap-2 border-t border-border bg-surface-1 px-4 py-3">
+          {error !== null && (
+            <Text size="sm" tone="danger" accessibilityRole="alert">
+              {error}
+            </Text>
+          )}
+          <Button onPress={submit} disabled={disabled} loading={busy || saving}>
+            {busy || saving ? "Saving…" : "Save changes"}
+          </Button>
+        </View>
+      }
+    >
+      <View className="flex-1 px-4 min-w-0">
+        <ScrollView
+          keyboardShouldPersistTaps="handled"
+          contentContainerStyle={{ gap: 14, paddingVertical: 12 }}
+        >
           <Input
             label="Name"
             placeholder="e.g. product-launch"
@@ -182,7 +204,7 @@ export function EditChannelSheet(props: EditChannelSheetProps) {
               size={17}
               color={privateChannel ? palette.accent : palette["text-muted"]}
             />
-            <View className="flex-1">
+            <View className="flex-1 min-w-0">
               <Text size="sm" className="font-medium">
                 Private channel
               </Text>
@@ -230,10 +252,10 @@ export function EditChannelSheet(props: EditChannelSheetProps) {
                       key={`member:${userId}`}
                       className="flex-row items-center gap-1 rounded-pill bg-accent-soft py-0.5 pl-2 pr-1"
                     >
-                      {member?.roleColor !== null && member?.roleColor !== undefined && (
+                      {roleColorCss(member?.roleColor) !== null && (
                         <View
                           className="h-1.5 w-1.5 rounded-pill"
-                          style={{ backgroundColor: member.roleColor }}
+                          style={{ backgroundColor: roleColorCss(member?.roleColor) ?? undefined }}
                         />
                       )}
                       <Text size="xs" tone="accent" numberOfLines={1}>
@@ -255,13 +277,13 @@ export function EditChannelSheet(props: EditChannelSheetProps) {
                     </View>
                   );
                 })}
-                <TextInput
+                <TextField
                   accessibilityLabel="Search members"
                   placeholder={selectedMembers.length === 0 ? "Add people" : ""}
                   placeholderTextColor={palette["text-muted"]}
                   value={memberQuery}
                   onChangeText={setMemberQuery}
-                  className="min-h-12 min-w-[8rem] flex-1 px-1 py-1 text-base text-text"
+                  className="min-h-12 min-w-[8rem] flex-1 px-1 py-1 text-base text-text min-w-0"
                 />
               </View>
 
@@ -355,13 +377,13 @@ export function EditChannelSheet(props: EditChannelSheetProps) {
 
             <View className="flex-row items-center gap-2 rounded-input border border-border bg-surface-3 px-2.5">
               <Icon name="search" size={14} color={palette["text-muted"]} />
-              <TextInput
+              <TextField
                 accessibilityLabel="Search people to block"
                 placeholder="Block a member…"
                 placeholderTextColor={palette["text-muted"]}
                 value={blockQuery}
                 onChangeText={setBlockQuery}
-                className="min-h-12 flex-1 px-1 py-2 text-base text-text"
+                className="min-h-12 flex-1 px-1 py-2 text-base text-text min-w-0"
               />
             </View>
 
@@ -419,16 +441,6 @@ export function EditChannelSheet(props: EditChannelSheetProps) {
               onChange={setRoleOverrides}
             />
           )}
-
-          {error !== null && (
-            <Text size="sm" tone="danger" accessibilityRole="alert">
-              {error}
-            </Text>
-          )}
-
-          <Button onPress={submit} disabled={disabled} loading={busy || saving}>
-            {busy || saving ? "Saving…" : "Save changes"}
-          </Button>
         </ScrollView>
       </View>
     </Sheet>

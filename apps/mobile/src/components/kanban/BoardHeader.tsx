@@ -11,7 +11,7 @@ import {
 import { Pressable, View } from "react-native";
 import type { BoardController } from "./use-board";
 
-/** The board's name, which opens the switcher, with search and the board menu. */
+/** The board’s name, which opens the switcher, with search and the board menu. */
 export function BoardHeader({ ctl }: { readonly ctl: BoardController }) {
   const palette = usePalette();
   const { board, searching, filters } = ctl;
@@ -79,7 +79,7 @@ export function BoardError({ ctl }: { readonly ctl: BoardController }) {
 
 export function BoardLoading({ label }: { readonly label: string }) {
   return (
-    <View className="flex-1 items-center justify-center">
+    <View className="flex-1 items-center justify-center min-w-0">
       <Spinner size={28} label={label} />
     </View>
   );
@@ -96,7 +96,13 @@ function emptyMessage(ctl: BoardController): string {
 export function BoardEmpty({ ctl }: { readonly ctl: BoardController }) {
   return (
     <EmptyState
-      title={ctl.archivedBoards ? "No archived boards" : "Plan your next project"}
+      title={
+        ctl.archivedBoards
+          ? "No archived boards"
+          : ctl.canManage
+            ? "No boards yet"
+            : "No boards you can see"
+      }
       message={emptyMessage(ctl)}
     >
       {ctl.archivedBoards && (

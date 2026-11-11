@@ -1,3 +1,5 @@
+import { userFacingError } from "@aulora/core";
+
 export interface ChatScreenProps {
   readonly workspaceName: string;
   readonly ownUserId: string;
@@ -10,7 +12,5 @@ export interface ChatScreenProps {
 export type Nullable<T> = T | null;
 
 export function errorMessage(error: unknown): string {
-  return error instanceof Error && error.message.length > 0
-    ? error.message
-    : "Something went wrong. Please try again.";
+  return userFacingError(error);
 }

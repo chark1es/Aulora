@@ -3,9 +3,10 @@ import { NativeAvatar } from "@aulora/avatars/native";
 import type { IconName } from "@aulora/tokens";
 import { CountBadge, Heading, Icon, Text, usePalette } from "@aulora/ui-native";
 import type { ReactNode } from "react";
-import { Pressable, View } from "react-native";
-import { useSafeAreaInsets } from "react-native-safe-area-context";
+import { Pressable, useWindowDimensions, View } from "react-native";
+import { useKeyboardState } from "react-native-keyboard-controller";
 import { selectionFeedback } from "../../lib/haptics";
+import { useScreenInsets } from "../layout/ScreenContainer";
 import { PresenceAvatar } from "./PresenceAvatar";
 
 /** `threads` is the full thread list, opened from the Channels tab rather than the dock. */
@@ -14,10 +15,18 @@ export type HubTab = "chats" | "dms" | "boards" | "notes" | "threads" | "search"
 /** Height of the floating dock, used to pad scrolling content clear of it. */
 export const DOCK_HEIGHT = 64;
 
+function useCompactDock() {
+  const { width, fontScale } = useWindowDimensions();
+  const insets = useScreenInsets();
+  return width - insets.left - insets.right < 480 || fontScale > 1.3;
+}
+
 /** Space a hub tab must leave at its bottom edge so nothing hides under the dock. */
 export function useDockClearance(): number {
-  const insets = useSafeAreaInsets();
-  return DOCK_HEIGHT + Math.max(insets.bottom, 12) + 16;
+  const insets = useScreenInsets();
+  const compact = useCompactDock();
+  const keyboardVisible = useKeyboardState((state) => state.isVisible);
+  return keyboardVisible ? 0 : DOCK_HEIGHT * (compact ? 2 : 1) + Math.max(insets.bottom, 12) + 28;
 }
 
 /** Large left-aligned title shared by every full-screen pane. */
@@ -89,10 +98,10 @@ const TABS: readonly TabEntry[] = [
   { key: "dms", label: "DMs", icon: "message" },
 ];
 
-/** Shown only where the workspace's Kanban addon is on and the viewer may see it. */
+/** Shown only where the workspace’s Kanban addon is on and the viewer may see it. */
 const BOARDS_TAB: TabEntry = { key: "boards", label: "Boards", icon: "kanban" };
 
-/** Shown only where the workspace's Notes addon is on and the viewer may see it. */
+/** Shown only where the workspace’s Notes addon is on and the viewer may see it. */
 const NOTES_TAB: TabEntry = { key: "notes", label: "Notes", icon: "note" };
 
 const FLOAT_SHADOW = {
@@ -109,11 +118,19 @@ interface DockTabProps {
   /** Mentions waiting behind this tab; shown as a count on the glyph. */
   readonly badge?: number;
   readonly onPress: () => void;
-  /** The tab's glyph: an icon, or the viewer's own avatar. */
+  /** The tab’s glyph: an icon, or the viewer’s own avatar. */
   readonly children: ReactNode;
 }
 
-/** One labelled tab inside the dock's tab bar. */
+/** Largest text scale for dock labels; they scale with the system setting up to this. */
+export const DOCK_LABEL_MAX_SCALE = 1.6;
+
+/** Multi-word labels may wrap to two lines; one word never splits across lines. */
+export function dockLabelLines(label: string): 1 | 2 {
+  return /\s/.test(label.trim()) ? 2 : 1;
+}
+
+/** One labelled tab inside the dock’s tab bar. */
 function DockTab({ label, active, badge = 0, onPress, children }: DockTabProps) {
   return (
     <Pressable
@@ -121,7 +138,7 @@ function DockTab({ label, active, badge = 0, onPress, children }: DockTabProps) 
       accessibilityLabel={badge > 0 ? `${label}, ${badge} thread mentions` : label}
       accessibilityState={{ selected: active }}
       onPress={onPress}
-      className={`h-[52px] flex-1 items-center justify-center gap-0.5 rounded-pill ${
+      className={`min-h-[52px] min-w-0 flex-1 items-center justify-center gap-0.5 rounded-pill ${
         active ? "bg-accent-soft" : ""
       }`}
     >
@@ -133,10 +150,17 @@ function DockTab({ label, active, badge = 0, onPress, children }: DockTabProps) 
           </View>
         )}
       </View>
+      {/* Primary navigation stays readable at large text: a label wraps to a
+          second line at a word break, and a single word that still does not
+          fit shrinks a little instead of splitting mid-word or truncating. */}
       <Text
         style={{ fontSize: 11, lineHeight: 14, fontWeight: active ? "600" : "400" }}
         tone={active ? "accent" : "muted"}
-        maxFontSizeMultiplier={1.3}
+        className="text-center"
+        numberOfLines={dockLabelLines(label)}
+        adjustsFontSizeToFit
+        minimumFontScale={0.7}
+        maxFontSizeMultiplier={DOCK_LABEL_MAX_SCALE}
       >
         {label}
       </Text>
@@ -213,33 +237,49 @@ export interface HubDockProps {
 }
 
 /**
- * The hub's floating controls, all at thumb height: the tab bar in the middle,
+ * The hub’s floating controls, all at thumb height: the tab bar in the middle,
  * the workspace switcher on its own at the leading end and search on its own
  * at the trailing end.
  */
 export function HubDock(props: HubDockProps) {
   const { tab, onTab } = props;
+  const compact = useCompactDock();
+  const keyboardVisible = useKeyboardState((state) => state.isVisible);
   const palette = usePalette();
-  const insets = useSafeAreaInsets();
+  const insets = useScreenInsets();
   function select(next: HubTab) {
     if (next !== tab) selectionFeedback();
     onTab(next);
   }
+  if (keyboardVisible) return null;
   return (
     <View
       pointerEvents="box-none"
       className="absolute inset-x-0 flex-row items-center justify-center gap-2.5 px-4"
-      style={{ bottom: Math.max(insets.bottom, 12) }}
+      style={{
+        bottom: Math.max(insets.bottom, 12),
+        left: insets.left,
+        right: insets.right,
+        flexWrap: compact ? "wrap" : "nowrap",
+      }}
     >
-      <WorkspaceButton
-        name={props.workspaceName}
-        seed={props.workspaceSeed}
-        onPress={props.onSwitchWorkspace}
-      />
+      {!compact && (
+        <WorkspaceButton
+          name={props.workspaceName}
+          seed={props.workspaceSeed}
+          onPress={props.onSwitchWorkspace}
+        />
+      )}
       <View
         accessibilityRole="tablist"
-        className="max-w-xs flex-1 flex-row items-center rounded-pill border border-border bg-surface-2 px-1.5"
-        style={[{ height: DOCK_HEIGHT }, FLOAT_SHADOW]}
+        className="max-w-xs flex-1 flex-row items-center rounded-pill border border-border bg-surface-2 px-1.5 min-w-0"
+        style={[
+          {
+            minHeight: DOCK_HEIGHT,
+            ...(compact ? { flexBasis: "100%", maxWidth: "100%" as const } : {}),
+          },
+          FLOAT_SHADOW,
+        ]}
       >
         {[
           ...TABS,
@@ -276,6 +316,13 @@ export function HubDock(props: HubDockProps) {
           <PresenceAvatar userId={props.ownUserId} status={props.ownStatus} size={22} />
         </DockTab>
       </View>
+      {compact && (
+        <WorkspaceButton
+          name={props.workspaceName}
+          seed={props.workspaceSeed}
+          onPress={props.onSwitchWorkspace}
+        />
+      )}
       <SearchButton
         active={tab === "search"}
         onPress={() => {

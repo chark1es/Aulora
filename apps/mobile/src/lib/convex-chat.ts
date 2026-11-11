@@ -8,12 +8,19 @@ import type {
   PresenceRow,
   ReactionRow,
   ReadStateRow,
-  StoredFileView,
   TypingRow,
+} from "@aulora/core";
+import {
+  normalizeChannelSummary,
+  normalizeMessagePayloads,
+  normalizeStoredFile,
+  PRESENCE_SCOPE_MAX,
+  reportBroadcastFallback,
+  resolveServerCapabilities,
+  watchLocalQuery,
 } from "@aulora/core";
 import type { ConvexReactClient } from "convex/react";
 import { api } from "../../../../packages/convex/convex/_generated/api";
-import { PRESENCE_SCOPE_MAX } from "./presence-scope";
 
 /**
  * Live Convex adapter for `@aulora/core`'s `ChatPort` + `ChatSubscriptions`,
@@ -49,72 +56,41 @@ function isUnknownArgument(cause: unknown): boolean {
   );
 }
 
-function toSummary(channel: {
-  id: string;
-  kind: ChannelSummary["kind"];
-  categoryId: string | null;
-  name: string | null;
-  topic: string | null;
-  archived: boolean;
-  isPrivate?: boolean;
-  overrides?: readonly {
-    targetId: string;
-    targetType: "role" | "member";
-    allow: bigint;
-    deny: bigint;
-  }[];
-  position?: number;
-  memberIds?: readonly string[];
-  hidden?: boolean;
-  muted?: boolean;
-  pinned?: boolean;
-  pinnedAt?: number | null;
-}): ChannelSummary {
-  return {
-    id: channel.id,
-    kind: channel.kind,
-    categoryId: channel.categoryId,
-    name: channel.name,
-    topic: channel.topic,
-    archived: channel.archived,
-    ...(channel.isPrivate !== undefined ? { isPrivate: channel.isPrivate } : {}),
-    ...(channel.overrides !== undefined ? { overrides: channel.overrides } : {}),
-    ...(channel.position !== undefined ? { position: channel.position } : {}),
-    ...(channel.memberIds !== undefined ? { memberIds: channel.memberIds } : {}),
-    ...(channel.hidden !== undefined ? { hidden: channel.hidden } : {}),
-    ...(channel.muted !== undefined ? { muted: channel.muted } : {}),
-    ...(channel.pinned !== undefined ? { pinned: channel.pinned } : {}),
-    ...(channel.pinnedAt !== undefined ? { pinnedAt: channel.pinnedAt } : {}),
-  };
-}
-
-/** Maps a Convex `files` view onto the framework-agnostic stored-file shape. */
-function toStoredFile(file: {
-  id: string;
-  uploaderId: string;
-  sizeBytes: number;
-  name: string | null;
-  mime: string | null;
-  dimensions: string | null;
-  blurhash: string | null;
-  url: string | null;
-  thumbnailUrl?: string | null;
-}): StoredFileView {
-  return {
-    id: file.id,
-    uploaderId: file.uploaderId,
-    sizeBytes: file.sizeBytes,
-    name: file.name,
-    mime: file.mime,
-    dimensions: file.dimensions,
-    blurhash: file.blurhash,
-    url: file.url,
-    thumbnailUrl: file.thumbnailUrl ?? null,
-  };
+const capabilityCache = new WeakMap<
+  ConvexReactClient,
+  {
+    connection: number;
+    pending: Promise<ReturnType<typeof resolveServerCapabilities>>;
+  }
+>();
+function serverCapabilities(client: ConvexReactClient) {
+  const connection = client.connectionState?.().connectionCount ?? 0;
+  const cached = capabilityCache.get(client);
+  if (cached?.connection === connection) return cached.pending;
+  let timer: ReturnType<typeof setTimeout>;
+  const pending = Promise.race([
+    Promise.resolve()
+      .then(() => client.query(api.server.publicConfig, {}))
+      .then(resolveServerCapabilities),
+    new Promise<never>((_, reject) => {
+      timer = setTimeout(
+        () => reject(new Error("Server capability check timed out. Try sending again.")),
+        2500,
+      );
+    }),
+  ])
+    .finally(() => clearTimeout(timer))
+    .catch(() => {
+      if (capabilityCache.get(client)?.pending === pending) capabilityCache.delete(client);
+      return { mentionMarkers: true };
+    });
+  capabilityCache.set(client, { connection, pending });
+  return pending;
 }
 
 /** Imperative side of the chat backend. */
 export function convexPort(client: ConvexReactClient): ChatPort {
+  capabilityCache.delete(client);
   return {
     async upsertDevice(args) {
       return await client.mutation(api.devices.upsert, {
@@ -322,13 +298,13 @@ export function convexPort(client: ConvexReactClient): ChatPort {
     },
     async getFile(args) {
       const view = await client.query(api.files.get, { fileId: args.fileId as never });
-      return view === null ? null : toStoredFile(view);
+      return view === null ? null : normalizeStoredFile(view);
     },
     async getFiles(args) {
       const views = await client.query(api.files.getMany, {
         fileIds: args.fileIds as never[],
       });
-      return views.map(toStoredFile);
+      return views.map(normalizeStoredFile);
     },
     async downloadFile(args) {
       const view = await client.query(api.files.get, { fileId: args.fileId as never });
@@ -342,20 +318,72 @@ export function convexPort(client: ConvexReactClient): ChatPort {
       return new Uint8Array(await response.arrayBuffer());
     },
     async sendMessage(args) {
-      return await client.mutation(api.messages.send, {
+      const capabilities =
+        !args.threadRootId && (args.mentionEveryone === true || args.mentionHere === true)
+          ? await serverCapabilities(client)
+          : { mentionMarkers: false };
+      const payload = {
         channelId: args.channelId as never,
         body: args.body,
+        ...(capabilities.mentionMarkers && args.mentionEveryone !== undefined
+          ? { mentionEveryone: args.mentionEveryone }
+          : {}),
+        ...(capabilities.mentionMarkers && args.mentionHere !== undefined
+          ? { mentionHere: args.mentionHere }
+          : {}),
         ...(args.threadRootId !== undefined ? { threadRootId: args.threadRootId as never } : {}),
         ...(args.replyToId !== undefined ? { replyToId: args.replyToId as never } : {}),
         ...(args.mentionUserIds !== undefined ? { mentionUserIds: [...args.mentionUserIds] } : {}),
         ...(args.mentionChannelIds !== undefined
           ? { mentionChannelIds: [...args.mentionChannelIds] }
           : {}),
+        ...(args.mentionCategoryIds !== undefined
+          ? { mentionCategoryIds: [...args.mentionCategoryIds] }
+          : {}),
         ...(args.mentionRoleIds !== undefined ? { mentionRoleIds: [...args.mentionRoleIds] } : {}),
         ...(args.attachmentIds !== undefined
           ? { attachmentIds: args.attachmentIds as never[] }
           : {}),
-      });
+      };
+      const legacyPayload = async () => {
+        const { mentionEveryone: _everyone, mentionHere: _here, ...legacy } = payload;
+        if (args.mentionEveryone === true && !args.threadRootId) {
+          const channel = await client.query(api.channels.get, {
+            channelId: args.channelId as never,
+          });
+          if (channel.kind !== "dm" && channel.kind !== "group_dm") {
+            const audience = await client.query(api.channels.visibleMemberIds, {
+              channelId: args.channelId as never,
+            });
+            legacy.mentionUserIds = [...new Set([...(args.mentionUserIds ?? []), ...audience])];
+          }
+        }
+        return legacy;
+      };
+      const sendLegacy = async () => {
+        const result = await client.mutation(api.messages.send, await legacyPayload());
+        if (args.mentionHere === true && !args.threadRootId)
+          reportBroadcastFallback(args.channelId);
+        return result;
+      };
+      if (!capabilities.mentionMarkers) return await sendLegacy();
+      try {
+        return await client.mutation(api.messages.send, payload);
+      } catch (error) {
+        // Unknown optional arguments after a server rollback: retry exactly once.
+        if (
+          (payload.mentionEveryone !== undefined || payload.mentionHere !== undefined) &&
+          ((error instanceof Error && error.name === "ArgumentValidationError") ||
+            /extra field `(?:mentionEveryone|mentionHere)`/.test(String(error)))
+        ) {
+          capabilityCache.set(client, {
+            connection: client.connectionState?.().connectionCount ?? 0,
+            pending: Promise.resolve({ mentionMarkers: false }),
+          });
+          return await sendLegacy();
+        }
+        throw error;
+      }
     },
     async editMessage(args) {
       await client.mutation(api.messages.edit, {
@@ -383,16 +411,20 @@ export function convexPort(client: ConvexReactClient): ChatPort {
       });
     },
     async listMessages(args) {
-      return await client.query(api.messages.list, {
-        channelId: args.channelId as never,
-        paginationOpts: { numItems: ARCHIVE_PAGE_NUM, cursor: args.cursor },
-      });
+      return normalizeMessagePayloads(
+        await client.query(api.messages.list, {
+          channelId: args.channelId as never,
+          paginationOpts: { numItems: ARCHIVE_PAGE_NUM, cursor: args.cursor },
+        }),
+      );
     },
     async listThreadMessages(args) {
-      return await client.query(api.messages.listThread, {
-        threadRootId: args.threadRootId as never,
-        paginationOpts: { numItems: ARCHIVE_PAGE_NUM, cursor: args.cursor },
-      });
+      return normalizeMessagePayloads(
+        await client.query(api.messages.listThread, {
+          threadRootId: args.threadRootId as never,
+          paginationOpts: { numItems: ARCHIVE_PAGE_NUM, cursor: args.cursor },
+        }),
+      );
     },
     async heartbeat(args) {
       return await client.mutation(api.presence.heartbeat, {
@@ -428,19 +460,9 @@ export function convexSubscriptions(client: ConvexReactClient): ChatSubscription
     args: Record<string, unknown>,
     onChange: (value: T) => void,
   ): () => void {
-    const handle = client.watchQuery(query as never, args as never);
-    const emit = () => {
-      const value = handle.localQueryResult();
-      if (value !== undefined) {
-        onChange(value as T);
-      }
-    };
-    const unsubscribe = handle.onUpdate(emit);
-    // A warm client can deliver before `onUpdate` is attached; read it once.
-    emit();
-    return () => {
-      unsubscribe();
-    };
+    return watchLocalQuery(client.watchQuery(query as never, args as never), (value) =>
+      onChange(normalizeMessagePayloads(value as T)),
+    );
   }
 
   return {
@@ -463,7 +485,7 @@ export function convexSubscriptions(client: ConvexReactClient): ChatSubscription
         api.channels.list,
         { paginationOpts: PAGE },
         (result) => {
-          regular = result.page.map(toSummary);
+          regular = result.page.map(normalizeChannelSummary);
           emit();
         },
       );
@@ -471,7 +493,7 @@ export function convexSubscriptions(client: ConvexReactClient): ChatSubscription
         api.channels.listDms,
         { paginationOpts: PAGE },
         (result) => {
-          dms = result.page.map(toSummary);
+          dms = result.page.map(normalizeChannelSummary);
           emit();
         },
       );

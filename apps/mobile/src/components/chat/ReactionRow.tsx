@@ -19,7 +19,7 @@ function ReactionChip({ group, disabled, onPress }: ReactionChipProps) {
       accessibilityLabel={`${group.emoji} ${group.count}`}
       accessibilityState={{ selected: group.mine }}
       hitSlop={{ top: 8, bottom: 8, left: 2, right: 2 }}
-      className={`h-8 flex-row items-center gap-1 rounded-pill border px-2.5 active:opacity-70 ${
+      className={`min-h-11 flex-row items-center gap-1 rounded-pill border px-2.5 active:opacity-70 ${
         group.mine ? "border-accent bg-accent-soft" : "border-transparent bg-surface-2"
       }`}
       onPress={onPress}
@@ -44,12 +44,12 @@ export interface ReactionRowProps {
   readonly channelId: string;
   readonly messageId: string;
   readonly ownUserId: string;
-  /** Opens the message's actions, where any emoji can be chosen. */
+  /** Opens the message’s actions, where any emoji can be chosen. */
   readonly onAdd: () => void;
   readonly pending: boolean;
   readonly canReact: boolean;
   /**
-   * Reaction groups supplied by the timeline's batched subscription. When
+   * Reaction groups supplied by the timeline’s batched subscription. When
    * omitted, this row opens its own live subscription (the fallback for
    * adapters with no batch support).
    */
@@ -83,7 +83,7 @@ export function ReactionRow(props: ReactionRowProps) {
   function toggle(emoji: string) {
     selectionFeedback();
     void runtime.session.toggleReaction(channelId, messageId, emoji).catch(() => {
-      Alert.alert("Couldn't update reaction", "Try again when you are connected.");
+      Alert.alert("Couldn’t update reaction", "Try again when you are connected.");
     });
   }
 
@@ -106,7 +106,7 @@ export function ReactionRow(props: ReactionRowProps) {
           accessibilityLabel="Add reaction"
           disabled={pending}
           hitSlop={8}
-          className="h-8 w-9 items-center justify-center rounded-pill bg-surface-2 active:opacity-70"
+          className="min-h-11 min-w-11 items-center justify-center rounded-pill bg-surface-2 active:opacity-70"
           onPress={props.onAdd}
         >
           <Icon name="smile" size={16} color={palette["text-muted"]} />

@@ -3,13 +3,14 @@ import {
   groupMembersByHoistedRole,
   type MembersGroupingRole,
   type PresenceRow,
+  roleColorCss,
 } from "@aulora/core";
-import { Heading, Icon, Text, usePalette } from "@aulora/ui-native";
+import { Heading, Icon, Text, TextField, usePalette } from "@aulora/ui-native";
 import { useMemo, useState } from "react";
-import { Pressable, TextInput, View } from "react-native";
+import { Pressable, View } from "react-native";
 import { ScrollView } from "react-native-gesture-handler";
-import { useSafeAreaInsets } from "react-native-safe-area-context";
 import type { MobileMemberEntry } from "../../providers/ChatProvider";
+import { useScreenInsets } from "../layout/ScreenContainer";
 import { PaneHeader, RoundButton } from "./HubPane";
 import { ListGroup, ListHeader, ListRow } from "./List";
 import { PresenceAvatar } from "./PresenceAvatar";
@@ -36,7 +37,7 @@ function MemberFilter({ value, onChange }: MemberFilterProps) {
   return (
     <View className="mx-3 mb-2 min-h-11 flex-row items-center gap-2 rounded-pill bg-surface-2 px-4">
       <Icon name="search" size={18} color={palette["text-muted"]} />
-      <TextInput
+      <TextField
         accessibilityLabel="Filter members"
         placeholder="Filter by name"
         placeholderTextColor={palette["text-muted"]}
@@ -46,7 +47,7 @@ function MemberFilter({ value, onChange }: MemberFilterProps) {
         autoCapitalize="none"
         clearButtonMode="while-editing"
         returnKeyType="search"
-        className="min-h-11 flex-1 py-0 text-[17px] text-text"
+        className="min-h-11 flex-1 py-0 text-[17px] text-text min-w-0"
       />
     </View>
   );
@@ -106,7 +107,7 @@ function NoMembers({ query }: { readonly query: string }) {
   );
 }
 
-/** A hoisted role's heading, tinted with the role color. */
+/** A hoisted role’s heading, tinted with the role color. */
 function RoleSectionHeader({
   title,
   color,
@@ -124,7 +125,7 @@ function RoleSectionHeader({
         className="font-semibold"
         accessibilityRole="header"
         maxFontSizeMultiplier={1.5}
-        style={{ color: color !== null && color.length > 0 ? color : palette["text-muted"] }}
+        style={{ color: roleColorCss(color) ?? palette["text-muted"] }}
       >
         {title} · {count}
       </Text>
@@ -148,7 +149,7 @@ interface MemberRowsProps {
   readonly onMemberActions: (userId: string) => void;
 }
 
-/** Renders a group's rows, wiring moderation state per member. */
+/** Renders a group’s rows, wiring moderation state per member. */
 function MemberRows(props: MemberRowsProps) {
   return (
     <>
@@ -190,7 +191,7 @@ export interface MembersPaneProps {
   readonly presence: readonly PresenceRow[];
   /**
    * Roles that opt into their own section via `hoisted`, matched by the ref
-   * stored in each member's `roleIds`. `@everyone` is always ignored.
+   * stored in each member’s `roleIds`. `@everyone` is always ignored.
    */
   readonly roles?: readonly MembersGroupingRole[] | undefined;
   readonly ownUserId: string;
@@ -235,7 +236,7 @@ function useMemberRows(props: MembersPaneProps, query: string) {
  * the whole workspace.
  */
 export function MembersPane(props: MembersPaneProps) {
-  const insets = useSafeAreaInsets();
+  const insets = useScreenInsets();
   const [query, setQuery] = useState("");
   const { rows, total } = useMemberRows(props, query.trim());
   const roles = props.roles ?? EMPTY_ROLES;
@@ -249,7 +250,10 @@ export function MembersPane(props: MembersPaneProps) {
   const scope = props.memberIds === undefined ? "Everyone in the workspace" : props.channelTitle;
 
   return (
-    <View className="flex-1 bg-bg" style={{ paddingTop: insets.top }}>
+    <View
+      className="flex-1 bg-bg min-w-0"
+      style={{ paddingTop: insets.top, paddingLeft: insets.left, paddingRight: insets.right }}
+    >
       <PaneHeader
         title="Members"
         subtitle={`${scope} · ${online} of ${total} online`}

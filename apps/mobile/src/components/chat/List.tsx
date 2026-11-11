@@ -79,7 +79,7 @@ export interface ListRowProps {
   readonly onLongPress?: (() => void) | undefined;
 }
 
-/** The row's leading slot: a custom element, a bare glyph, or nothing. */
+/** The row’s leading slot: a custom element, a bare glyph, or nothing. */
 function RowLeading({
   leading,
   icon,

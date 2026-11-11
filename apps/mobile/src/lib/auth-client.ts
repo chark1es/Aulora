@@ -1,4 +1,4 @@
-import { debugLog } from "@aulora/core";
+import { debugLog, resetProviderToken } from "@aulora/core";
 import { convexClient } from "@convex-dev/better-auth/client/plugins";
 import { genericOAuthClient } from "better-auth/client/plugins";
 import { createAuthClient } from "better-auth/react";
@@ -16,7 +16,6 @@ import {
   readAuthRedirectParams,
 } from "./auth-handoff";
 import { authTokenKey, type CookieStore, createCookieFetch } from "./cookie-fetch";
-import { resetProviderToken } from "./provider-auth";
 
 /**
  * Better Auth client for one server profile on iOS/Android.

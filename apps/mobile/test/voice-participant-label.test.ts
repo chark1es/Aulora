@@ -10,7 +10,16 @@ vi.mock("react-native", () => ({
   Modal: "Modal",
   AccessibilityInfo: {},
 }));
-vi.mock("react-native-safe-area-context", () => ({ useSafeAreaInsets: () => ({}) }));
+vi.mock("../src/components/layout/ScreenContainer", () => ({
+  useScreenInsets: () => ({
+    top: 0,
+    right: 0,
+    bottom: 0,
+    left: 0,
+    keyboardBottom: 0,
+    sheetBottom: 12,
+  }),
+}));
 vi.mock("@aulora/ui-native", () => ({
   Text: "Text",
   Heading: "Heading",

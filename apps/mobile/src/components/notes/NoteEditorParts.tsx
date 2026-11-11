@@ -1,5 +1,5 @@
-import { Icon, Text, usePalette } from "@aulora/ui-native";
-import { Pressable, TextInput, View } from "react-native";
+import { Icon, Text, TextField, usePalette } from "@aulora/ui-native";
+import { Pressable, View } from "react-native";
 import { tagsForIds } from "../../lib/notes";
 import { PickerSheet } from "../kanban/PickerSheet";
 import { PropertyRow } from "../kanban/parts";
@@ -26,6 +26,7 @@ function Segment({
     <Pressable
       accessibilityRole="tab"
       accessibilityState={{ selected: active }}
+      hitSlop={{ top: 4, bottom: 4 }}
       onPress={onPress}
       className={`min-h-9 flex-1 items-center justify-center rounded-[7px] ${
         active ? "bg-surface-3" : ""
@@ -46,7 +47,7 @@ export function NoteTitleInput({ editor }: { readonly editor: NoteEditorControll
   const palette = usePalette();
   const { title, setTitle } = editor;
   return (
-    <TextInput
+    <TextField
       accessibilityLabel="Note title"
       placeholder="Title"
       placeholderTextColor={palette["text-muted"]}
@@ -100,7 +101,7 @@ function ToolButton({
       accessibilityState={{ disabled }}
       disabled={disabled}
       onPress={onPress}
-      className={`h-10 w-10 items-center justify-center rounded-[9px] ${
+      className={`min-h-11 min-w-11 items-center justify-center rounded-[9px] ${
         disabled ? "opacity-40" : "active:bg-surface-3"
       }`}
     >
@@ -113,7 +114,7 @@ function ToolButton({
 function NoteFormatBar({ editor }: { readonly editor: NoteEditorController }) {
   const { canUndo, canRedo, format, undo, redo } = editor;
   return (
-    <View className="mx-4 mb-2 flex-row items-center rounded-input border border-border bg-surface-2 p-0.5">
+    <View className="mx-4 mb-2 flex-row flex-wrap items-center rounded-input border border-border bg-surface-2 p-0.5">
       <ToolButton label="Undo" icon="undo" disabled={!canUndo} onPress={undo} />
       <ToolButton label="Redo" icon="redo" disabled={!canRedo} onPress={redo} />
       <View className="mx-0.5 h-5 w-px bg-border" />
@@ -145,7 +146,7 @@ export function NoteBodyInput({ editor }: { readonly editor: NoteEditorControlle
       ) : (
         <>
           <NoteFormatBar editor={editor} />
-          <TextInput
+          <TextField
             accessibilityLabel="Note body"
             placeholder="Write in Markdown…"
             placeholderTextColor={palette["text-muted"]}
@@ -252,7 +253,7 @@ function EditorTagPicker({ ctl, editor }: EditorProps) {
     <PickerSheet
       multiple
       title="Tags"
-      emptyText="No tags yet. Create one from the list's More menu."
+      emptyText="No tags yet. Create one from the list’s More menu."
       options={ctl.tags.map((tag) => ({
         id: tag.id,
         label: tag.name,

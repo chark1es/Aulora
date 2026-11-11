@@ -1,5 +1,5 @@
 /* eslint-disable no-unused-vars -- the base rule reports parameter names in type signatures; Biome checks real unused code */
-import { Icon, SettingRow, Switch, Text, usePalette } from "@aulora/ui-native";
+import { Icon, SwitchRow, Text, usePalette } from "@aulora/ui-native";
 import type { ReactNode } from "react";
 import { Pressable, View } from "react-native";
 
@@ -16,11 +16,7 @@ interface ToggleProps {
 
 export function Toggle({ label, description, value, onChange }: ToggleProps) {
   return (
-    <SettingRow
-      label={label}
-      description={description}
-      control={<Switch accessibilityLabel={label} value={value} onValueChange={onChange} />}
-    />
+    <SwitchRow label={label} description={description} value={value} onValueChange={onChange} />
   );
 }
 

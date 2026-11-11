@@ -4,11 +4,13 @@ import {
   diffLines,
   diffStats,
   formatEditCount,
+  formatGroupTime,
   formatLineStats,
   groupHistory,
   type HistoryGroup,
   type RevisionSummary,
   type RevisionSummaryOptions,
+  revisionSummaryOptions,
   summarizeRevision,
 } from "@aulora/core";
 import { Icon, Text, usePalette } from "@aulora/ui-native";
@@ -20,7 +22,6 @@ import { noteTitle } from "../../lib/notes";
 import { useReduceMotion } from "../../lib/use-entrance";
 import { PaneHeader } from "../chat/HubPane";
 import { NoteBackButton, NotesError, NotesLoading } from "./NoteParts";
-import { formatGroupTime } from "./note-history-format";
 import type { NoteHistoryEntry, NotesController } from "./use-notes";
 
 function actorName(ctl: NotesController, actorId: string): string {
@@ -75,7 +76,7 @@ function DiffView({ lines }: { readonly lines: readonly DiffLine[] }) {
             >
               {line.type === "add" ? "+" : line.type === "del" ? "-" : " "}
             </Text>
-            <Text mono size="xs" className="flex-1" style={{ color: palette.text }}>
+            <Text mono size="xs" className="flex-1 min-w-0" style={{ color: palette.text }}>
               {line.text.length > 0 ? line.text : " "}
             </Text>
           </View>
@@ -252,7 +253,7 @@ function toggleInSet(current: ReadonlySet<string>, id: string): ReadonlySet<stri
   return next;
 }
 
-/** One group's row: a run of edits, or a lone revision rendered directly. */
+/** One group’s row: a run of edits, or a lone revision rendered directly. */
 interface HistoryGroupRowProps {
   readonly ctl: NotesController;
   readonly options: RevisionSummaryOptions;
@@ -301,15 +302,10 @@ function HistoryGroupRow(props: HistoryGroupRowProps) {
 function useSummaryOptions(ctl: NotesController): RevisionSummaryOptions {
   const folders = ctl.folders;
   const tags = ctl.tags;
-  return useMemo<RevisionSummaryOptions>(() => {
-    const byFolder = new Map<string, string>(folders.map((folder) => [folder.id, folder.name]));
-    const byTag = new Map<string, string>(tags.map((tag) => [tag.id, tag.name]));
-    return {
-      folderName: (folderId: string | null) =>
-        folderId === null ? "Unfiled" : byFolder.get(folderId),
-      tagName: (tagId: string) => byTag.get(tagId),
-    };
-  }, [folders, tags]);
+  return useMemo<RevisionSummaryOptions>(
+    () => revisionSummaryOptions(folders, tags),
+    [folders, tags],
+  );
 }
 
 /** Which rows are open, plus the grouped list and the expand-all control. */
@@ -337,7 +333,7 @@ function useHistoryState(ctl: NotesController) {
 function HistoryEmpty() {
   const palette = usePalette();
   return (
-    <View className="flex-1 items-center justify-center gap-2 px-8">
+    <View className="flex-1 items-center justify-center gap-2 px-8 min-w-0">
       <Icon name="history" size={28} color={palette["text-muted"]} />
       <Text size="sm" tone="muted" className="text-center">
         No history yet. Changes to this note will appear here.
@@ -373,13 +369,13 @@ function HistoryToolbar({ count, allOpen, onToggleAll }: HistoryToolbarProps) {
   );
 }
 
-/** The note's revisions, newest first, collapsed until tapped open. */
+/** The note’s revisions, newest first, collapsed until tapped open. */
 export function NoteHistoryScreen({ ctl }: { readonly ctl: NotesController }) {
   const state = useHistoryState(ctl);
   const now = Date.now();
   const title = ctl.detail === undefined ? "History" : noteTitle(ctl.detail);
   return (
-    <View className="flex-1">
+    <View className="flex-1 min-w-0">
       <PaneHeader
         title="History"
         subtitle={title}

@@ -160,7 +160,7 @@ function MessageHit({ hit, query, author, place, onOpen }: MessageHitProps) {
           <Text size="sm" className="shrink font-semibold" numberOfLines={1}>
             {author}
           </Text>
-          <Text size="xs" tone="muted" className="flex-1" numberOfLines={1}>
+          <Text size="xs" tone="muted" className="flex-1 min-w-0" numberOfLines={1}>
             {place}
           </Text>
           <Text size="xs" tone="muted">
@@ -278,7 +278,7 @@ export function SearchStatus({ query, state, nothing, showsMessages }: SearchSta
       onPress={state.retry}
     >
       <Text size="xs" tone="muted" className="text-center" accessibilityRole="alert">
-        Couldn't reach earlier messages, so these results only cover history already on this device.
+        Couldn’t reach earlier messages, so these results only cover history already on this device.
       </Text>
       <Text size="sm" tone="accent">
         Try again

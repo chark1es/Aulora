@@ -2,12 +2,14 @@ import { Button, Spinner, Text } from "@aulora/ui-native";
 import { ConvexProvider, ConvexReactClient } from "convex/react";
 import { useEffect, useMemo, useState } from "react";
 import { View } from "react-native";
+import { useKeyboardState } from "react-native-keyboard-controller";
 import { createReviewDemo, type ReviewDemo } from "../lib/review-demo";
 import { useReviewDemoSession } from "../lib/review-demo-session";
 import { SoundProvider } from "../providers/SoundProvider";
 import { VoiceContext } from "../providers/voice-provider-types";
 import { ChatScreenView } from "./chat/ChatScreen";
 import { ChatScreenSessionProvider } from "./chat/chat-screen-session";
+import { ScreenContainer } from "./layout/ScreenContainer";
 
 export interface ReviewDemoScreenProps {
   readonly onExit: () => void;
@@ -56,7 +58,7 @@ export function ReviewDemoScreen({
 
   if (demo === undefined || session === undefined) {
     return (
-      <View className="flex-1 items-center justify-center bg-bg px-6">
+      <ScreenContainer className="flex-1 items-center justify-center bg-bg px-6 min-w-0">
         {error === null ? (
           <Spinner label="Opening offline demo" />
         ) : (
@@ -64,7 +66,7 @@ export function ReviewDemoScreen({
             {error}
           </Text>
         )}
-      </View>
+      </ScreenContainer>
     );
   }
 
@@ -90,15 +92,22 @@ export function ReviewDemoScreen({
 
 /** The offline label and exit control, kept out of the shared chat surface. */
 function DemoNotice({ onExit }: { readonly onExit: () => void }) {
+  // While typing, only the label stays: at large text on a short phone the full
+  // notice left too little room above the keyboard for a thread's composer.
+  const keyboardVisible = useKeyboardState((state) => state.isVisible);
   return (
     <View className="flex-row items-center gap-3 border-b border-border bg-surface-2 px-4 py-2">
       <View className="min-w-0 flex-1">
-        <Text size="sm" maxFontSizeMultiplier={1.5} numberOfLines={1}>
+        {/* Wraps instead of truncating at large text; the label is the only
+            sign that nothing here reaches a server. */}
+        <Text size="sm" maxFontSizeMultiplier={1.5}>
           Offline App Review demo
         </Text>
-        <Text size="xs" tone="muted" maxFontSizeMultiplier={1.5} numberOfLines={1}>
-          No server connection. Changes reset when you exit.
-        </Text>
+        {!keyboardVisible && (
+          <Text size="xs" tone="muted" maxFontSizeMultiplier={1.5}>
+            No server connection. Changes reset when you exit.
+          </Text>
+        )}
       </View>
       <Button size="sm" variant="secondary" onPress={onExit}>
         Exit demo

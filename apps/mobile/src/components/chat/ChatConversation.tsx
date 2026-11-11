@@ -1,18 +1,15 @@
 import {
   type AttachmentDescriptor,
-  expandBroadcast,
   hasPermission,
   joinedElsewhere,
   Permission,
-  resolveChannelMentions,
-  resolveMentions,
 } from "@aulora/core";
 import { Button, EmptyState, Icon, Text, usePalette } from "@aulora/ui-native";
 import { useState } from "react";
-import { Pressable, View } from "react-native";
-import { KeyboardAvoidingView } from "react-native-keyboard-controller";
-import { useSafeAreaInsets } from "react-native-safe-area-context";
+import { Pressable, useWindowDimensions, View } from "react-native";
 import { type PickedFile, uploadPickedFiles } from "../../lib/attachments";
+import { resolveSendMentions } from "../../lib/chat-mentions";
+import { KeyboardAvoidingPane, useScreenInsets } from "../layout/ScreenContainer";
 import { JoinedElsewhereScreen } from "../voice/JoinedElsewhereScreen";
 import { ChatPendingFailures } from "./ChatPendingFailures";
 import { Composer } from "./Composer";
@@ -26,16 +23,20 @@ type Palette = ReturnType<typeof usePalette>;
 
 export function ChatConversation({ model }: { readonly model: ChatScreenModel }) {
   const palette = usePalette();
-  const insets = useSafeAreaInsets();
+  const insets = useScreenInsets();
   return (
-    <KeyboardAvoidingView
-      behavior="padding"
-      keyboardVerticalOffset={-insets.bottom}
-      style={{ flex: 1, backgroundColor: palette.bg, paddingTop: insets.top }}
+    <KeyboardAvoidingPane
+      style={{
+        flex: 1,
+        backgroundColor: palette.bg,
+        paddingTop: insets.top,
+        paddingLeft: insets.left,
+        paddingRight: insets.right,
+      }}
     >
       <ChatConversationHeader model={model} palette={palette} />
       <ChatConversationBody model={model} palette={palette} />
-    </KeyboardAvoidingView>
+    </KeyboardAvoidingPane>
   );
 }
 
@@ -46,8 +47,13 @@ function ChatConversationHeader({
   readonly model: ChatScreenModel;
   readonly palette: Palette;
 }) {
+  const { width, fontScale } = useWindowDimensions();
+  const compact = width < 380 || fontScale > 1.3;
   return (
-    <View className="flex-row items-center gap-3 border-b border-border px-3 pb-2 pt-1">
+    <View
+      className="flex-row flex-wrap items-center gap-3 border-b border-border px-3 pb-2 pt-1"
+      style={compact ? { rowGap: 4 } : undefined}
+    >
       <RoundButton
         icon="menu"
         label="Open conversations"
@@ -92,6 +98,7 @@ function ChatHeaderTitle({
       onPress={() => {
         model.goToPane(2);
       }}
+      style={{ minWidth: 120 }}
       className="min-h-11 min-w-0 flex-1 flex-row items-center gap-2.5 active:opacity-70"
     >
       <ChannelIdentityIcon model={model} palette={palette} />
@@ -365,6 +372,12 @@ function ChatComposer({
   }
   return (
     <Composer
+      massMentionHint={
+        channel.kind === "dm" || channel.kind === "group_dm"
+          ? "Notifying everyone isn't available in direct messages."
+          : undefined
+      }
+      key={channelId}
       disabled={
         channel.archived || !hasPermission(model.channelPermissions, Permission.SendMessages)
       }
@@ -376,7 +389,9 @@ function ChatComposer({
       members={model.mentionUserTargets}
       roles={model.roles}
       channels={model.mentionChannelOptions}
+      mentionMarkers={model.mentionMarkers ?? false}
       canMentionEveryone={model.canMentionEveryone}
+      audienceSize={model.mentionMemberIds.length}
       viewerName={model.ownDisplayName}
       onTyping={(typingChannelId) => {
         void model.runtime?.port.setTyping({ channelId: typingChannelId });
@@ -415,22 +430,17 @@ function sendOptions(
   text: string,
   attachments: readonly AttachmentDescriptor[] | undefined,
 ) {
-  const resolution = resolveMentions(text, model.mentionUserTargets, model.roles);
-  const mentionUserIds = expandBroadcast(resolution, model.mentionMemberIds);
-  const channelMentions = resolveChannelMentions(
-    text,
-    model.mentionChannelTargets,
-    model.mentionCategoryTargets,
-  );
   return {
     ...(model.quote !== null ? { replyToId: model.quote.id } : {}),
-    ...(mentionUserIds.length > 0 ? { mentionUserIds } : {}),
-    ...(channelMentions.channelIds.length > 0
-      ? { mentionChannelIds: channelMentions.channelIds }
-      : {}),
-    ...(channelMentions.categoryIds.length > 0
-      ? { mentionCategoryIds: channelMentions.categoryIds }
-      : {}),
+    ...resolveSendMentions(text, {
+      userTargets: model.mentionUserTargets,
+
+      canMentionEveryone: model.canMentionEveryone,
+      memberIds: model.mentionMemberIds,
+      roles: model.roles,
+      channelTargets: model.mentionChannelTargets,
+      categoryTargets: model.mentionCategoryTargets,
+    }),
     ...(attachments !== undefined && attachments.length > 0 ? { attachments } : {}),
   };
 }

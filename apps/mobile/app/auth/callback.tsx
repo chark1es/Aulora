@@ -1,12 +1,12 @@
+import { notifyAuthChanged, notifyAuthError } from "@aulora/core";
 import { Spinner, Text } from "@aulora/ui-native";
 import AsyncStorage from "@react-native-async-storage/async-storage";
 import * as Linking from "expo-linking";
 import { useLocalSearchParams, useRouter } from "expo-router";
 import { useEffect } from "react";
-import { View } from "react-native";
+import { ScreenContainer } from "../../src/components/layout/ScreenContainer";
 import { ThresholdAura } from "../../src/components/ThresholdAura";
 import { completeAuthCallback } from "../../src/lib/auth-callback";
-import { notifyAuthChanged, notifyAuthError } from "../../src/lib/auth-events";
 import { createMobileProfileStore } from "../../src/lib/profiles";
 
 /**
@@ -58,12 +58,12 @@ export default function AuthCallbackRoute() {
   }, [code, server, tx, error, router]);
 
   return (
-    <View className="flex-1 items-center justify-center gap-4 bg-bg">
+    <ScreenContainer className="flex-1 items-center justify-center gap-4 bg-bg">
       <ThresholdAura size={132} breathing />
       <Spinner size={28} label="Completing sign-in" />
       <Text size="base" tone="muted">
         Completing sign-in…
       </Text>
-    </View>
+    </ScreenContainer>
   );
 }

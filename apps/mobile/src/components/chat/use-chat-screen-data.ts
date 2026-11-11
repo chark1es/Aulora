@@ -1,21 +1,23 @@
 /* eslint-disable no-unused-vars -- the base rule reports parameter names in type signatures; Biome checks real unused code */
 import {
   type AttachmentDescriptor,
+  buildPresenceScope,
   type CallView,
   type ChannelView,
+  canUseMassMentions,
   conversationTitle,
   dmPartnerId,
   hasPermission,
   type MessagePayload,
   Permission,
+  resolveServerCapabilities,
 } from "@aulora/core";
-import { useMutation, useQuery } from "convex/react";
+import { useMutation, usePaginatedQuery, useQuery } from "convex/react";
 import { useCallback, useEffect, useMemo, useRef } from "react";
 import { Platform } from "react-native";
 import { api } from "../../../../../packages/convex/convex/_generated/api";
 import { useIncomingCallNotification, useLocalNotifications } from "../../lib/notifications";
 import { presenceLabel, typingLabel } from "../../lib/presence";
-import { buildPresenceScope } from "../../lib/presence-scope";
 import { recentSearchKey } from "../../lib/search-ui";
 import { useChannelSession } from "../../lib/use-channel";
 import { usePushRegistration } from "../../lib/use-push-registration";
@@ -50,11 +52,7 @@ export function useConvexChatScreenSession(
   const showNotes =
     publicConfig?.addons?.notes === true &&
     hasPermission(chat.viewerPermissions, Permission.ViewNotes);
-  const threadRows = useQuery(api.messages.threadInbox, {});
-  const threadMentionCount = useMemo(
-    () => (threadRows ?? []).filter((row) => row.viewerMentioned).length,
-    [threadRows],
-  );
+  const threadMentionCount = useQuery(api.messages.threadMentionCount, {}) ?? 0;
   // One bounded subscription serves every conversation row in the sidebar,
   // matching the web sidebar; the open channel keeps its own live read state.
   const channelIds = useMemo(() => chat.channels.map((channel) => channel.id), [chat.channels]);
@@ -63,18 +61,23 @@ export function useConvexChatScreenSession(
     channelIds.length > 0 ? { channelIds: channelIds as never[] } : "skip",
   );
   const unreadByChannel = useMemo(() => {
-    const map = new Map<string, { unread: boolean; unreadCount: number; mentionCount: number }>();
+    const map = new Map<
+      string,
+      { unread: boolean; unreadCount: number; mentionCount: number; massMentionCount: number }
+    >();
     for (const row of unreadRows ?? []) {
       map.set(row.channelId, {
         unread: row.unread,
         unreadCount: row.unreadCount,
         mentionCount: row.mentionCount,
+        massMentionCount: row.massMentionCount,
       });
     }
     return map;
   }, [unreadRows]);
   return {
     ...chat,
+    mentionMarkers: resolveServerCapabilities(publicConfig).mentionMarkers,
     workspaceName,
     ownUserId,
     ownDisplayName,
@@ -87,7 +90,6 @@ export function useConvexChatScreenSession(
     unregisterPush,
     showKanban,
     showNotes,
-    threadRows,
     threadMentionCount,
     unreadByChannel,
   };
@@ -323,6 +325,10 @@ function useChatScreenConversation(
 
   const channel = channels.find((entry) => entry.id === activeChannelId);
   const channelPermissions = channel === undefined ? viewerPermissions : permissionsFor(channel);
+  const visibleMentionIds = useQuery(
+    api.channels.visibleMemberIds,
+    activeChannelId === undefined ? "skip" : { channelId: activeChannelId as never },
+  );
   const sessionState = useChannelSession(
     runtime,
     hasPermission(channelPermissions, Permission.ReadHistory) ? activeChannelId : undefined,
@@ -357,6 +363,8 @@ function useChatScreenConversation(
   return {
     channel,
     channelPermissions,
+    canMentionEveryone: canUseMassMentions(channel, undefined, channelPermissions),
+    mentionMemberIds: visibleMentionIds ?? [],
     sessionState,
     messageContext,
     ...meta,
@@ -531,6 +539,8 @@ function useChatScreenMessages(
         attachmentIds: (item.attachments ?? []).map((file) => file.fileId),
         replyToId: item.replyToId ?? null,
         mentionUserIds: [...item.mentionUserIds],
+        mentionEveryone: item.mentionEveryone ?? false,
+        mentionHere: item.mentionHere ?? false,
         editedAt: null,
         deletedAt: null,
         pinnedAt: null,
@@ -581,6 +591,28 @@ function useChatScreenMessages(
 export function useChatScreenData({ onSignOut, onDeleteAccount }: ChatScreenProps) {
   const session = useChatScreenSessionValue();
   const ui = useChatScreenUiState();
+  const pagingConfig = useQuery(api.server.publicConfig, {});
+  const pagedThreads = pagingConfig?.capabilities?.threadInboxPaging === true;
+  const legacyThreadRows = useQuery(
+    api.messages.threadInbox,
+    session.runtime && ui.hubTab === "threads" && !pagedThreads ? { limit: 50 } : "skip",
+  );
+  const threadPages = usePaginatedQuery(
+    api.messages.threadInboxPage,
+    session.runtime && ui.hubTab === "threads" && pagedThreads ? {} : "skip",
+    { initialNumItems: 50 },
+  );
+  const threadRows = pagedThreads
+    ? threadPages.status === "LoadingFirstPage"
+      ? undefined
+      : threadPages.results
+    : legacyThreadRows;
+  useEffect(() => {
+    if (ui.hubTab === "threads")
+      void session.runtime?.client
+        .mutation(api.messages.markThreadMentionsSeen, {})
+        .catch(() => undefined);
+  }, [ui.hubTab, session.runtime]);
   const mentions = useChatScreenMentions(session);
   const list = useChatScreenChannelList(session, ui, mentions);
   const conversation = useChatScreenConversation(session, ui, mentions, list);
@@ -611,6 +643,11 @@ export function useChatScreenData({ onSignOut, onDeleteAccount }: ChatScreenProp
     onSignOut,
     onDeleteAccount,
     ...session,
+    threadRows: session.threadRows ?? threadRows,
+    loadMoreThreads:
+      pagedThreads && threadPages.status === "CanLoadMore"
+        ? () => threadPages.loadMore(50)
+        : undefined,
     ...ui,
     ...mentions,
     ...list,

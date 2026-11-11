@@ -1,15 +1,22 @@
 import type { MessagePayload, OutboxItem, RoleMentionTarget } from "@aulora/core";
-import { type AttachmentDescriptor, hasPermission, Permission } from "@aulora/core";
+import {
+  type AttachmentDescriptor,
+  canUseMassMentions,
+  hasPermission,
+  Permission,
+} from "@aulora/core";
 import { Icon, Text, usePalette } from "@aulora/ui-native";
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { Pressable, View } from "react-native";
 import type { PickedFile } from "../../lib/attachments";
 import type { ChatSurfaceRuntime } from "../../lib/chat-surface";
+import { watchThreadFeed } from "../../lib/thread-feed";
 import { Composer } from "./Composer";
 import { MessageList } from "./MessageList";
 import { SlideOver } from "./SlideOver";
 
 export interface ThreadModalProps {
+  readonly channelKind?: string;
   readonly runtime: ChatSurfaceRuntime;
   readonly channelId: string;
   readonly root: MessagePayload;
@@ -25,6 +32,7 @@ export interface ThreadModalProps {
   readonly onChannelPress?: (_name: string) => void;
   /** Where the thread lives, shown under the title. */
   readonly channelTitle?: string;
+  readonly audienceSize?: number;
   readonly permissions?: bigint;
   readonly onClose: () => void;
   readonly onSendReply: (_input: {
@@ -53,9 +61,15 @@ export function ThreadModal(props: ThreadModalProps) {
     onClose,
     onSendReply,
   } = props;
+  const loadMore = useRef<() => void>(() => undefined);
+  const [pageStatus, setPageStatus] = useState({ loading: true, error: false });
+  const [nextCursor, setNextCursor] = useState<string | null>(null);
   const [replies, setReplies] = useState<readonly MessagePayload[]>([]);
   const [decrypted, setDecrypted] = useState<ReadonlyMap<string, string>>(new Map());
   const palette = usePalette();
+  // The root carries the server’s true reply count; loaded replies are a
+  // fallback for older servers that do not send it.
+  const replyCount = root.replyCount ?? replies.length;
   const [alsoSend, setAlsoSend] = useState(false);
   const pending = useMemo(
     () => outbox.filter((item) => item.channelId === channelId && item.threadRootId === root.id),
@@ -74,6 +88,8 @@ export function ThreadModal(props: ThreadModalProps) {
         replyToId: item.replyToId ?? null,
         attachmentIds: (item.attachments ?? []).map((file) => file.fileId),
         mentionUserIds: [...item.mentionUserIds],
+        mentionEveryone: item.mentionEveryone ?? false,
+        mentionHere: item.mentionHere ?? false,
         createdAt: item.createdAt,
         editedAt: null,
         deletedAt: null,
@@ -103,21 +119,23 @@ export function ThreadModal(props: ThreadModalProps) {
   );
 
   useEffect(() => {
-    const off = runtime.watchThread(root.id, (incoming) => {
-      void runtime.session.receiveMessages(incoming, `thread:${root.id}`).then(() => {
+    setReplies([]);
+    setDecrypted(new Map());
+    setNextCursor(null);
+    const feed = watchThreadFeed(
+      runtime,
+      root.id,
+      (incoming) => {
         setReplies(incoming);
-        setDecrypted((current) => {
-          const next = new Map(current);
-          for (const reply of incoming) {
-            next.set(reply.id, runtime.session.decryptedText(reply.id));
-          }
-          return next;
-        });
-      });
-    });
-    return () => {
-      off();
-    };
+        setDecrypted(
+          new Map(incoming.map((reply) => [reply.id, runtime.session.decryptedText(reply.id)])),
+        );
+      },
+      setNextCursor,
+      setPageStatus,
+    );
+    loadMore.current = feed.loadMore;
+    return feed.stop;
   }, [runtime, root.id]);
 
   return (
@@ -126,7 +144,7 @@ export function ThreadModal(props: ThreadModalProps) {
       subtitle={
         channelTitle === undefined
           ? undefined
-          : `${channelTitle} · ${replies.length} ${replies.length === 1 ? "reply" : "replies"}`
+          : `${channelTitle} · ${replyCount} ${replyCount === 1 ? "reply" : "replies"}`
       }
       onClose={onClose}
     >
@@ -145,6 +163,35 @@ export function ThreadModal(props: ThreadModalProps) {
         firstUnreadId={null}
         onChannelPress={onChannelPress}
       />
+      {(nextCursor !== null || replies.length < replyCount) && (
+        <Text size="xs" tone="muted" className="px-4 pt-2" numberOfLines={1}>
+          Showing {replies.length} of {replyCount} replies
+        </Text>
+      )}
+      {pageStatus.loading ? (
+        <Text size="sm" tone="muted" accessibilityRole="progressbar" className="px-4 py-3">
+          Loading replies…
+        </Text>
+      ) : pageStatus.error ? (
+        <View className="gap-1 px-4 py-3">
+          <Text tone="danger" accessibilityRole="alert">
+            Couldn’t load replies.
+          </Text>
+          <Pressable accessibilityRole="button" onPress={() => loadMore.current()}>
+            <Text tone="accent">Retry</Text>
+          </Pressable>
+        </View>
+      ) : (
+        nextCursor !== null && (
+          <Pressable
+            accessibilityRole="button"
+            onPress={() => loadMore.current()}
+            className="px-4 py-3"
+          >
+            <Text tone="accent">Load more replies</Text>
+          </Pressable>
+        )
+      )}
       <Pressable
         accessibilityRole="checkbox"
         accessibilityState={{ checked: alsoSend }}
@@ -166,11 +213,23 @@ export function ThreadModal(props: ThreadModalProps) {
         </Text>
       </Pressable>
       <Composer
+        key={`${channelId}:${root.id}`}
         channelId={channelId}
         disabled={
           !hasPermission(permissions, Permission.SendMessages) ||
-          (!alsoSend && !hasPermission(permissions, Permission.SendInThreads))
+          !hasPermission(permissions, Permission.SendInThreads)
         }
+        canMentionEveryone={canUseMassMentions(
+          { kind: props.channelKind ?? "text" },
+          alsoSend ? undefined : root.id,
+          permissions,
+        )}
+        massMentionHint={
+          alsoSend
+            ? "Only members with permission can notify everyone in the channel copy."
+            : "Notifying everyone isn't available in thread replies."
+        }
+        audienceSize={props.audienceSize ?? 0}
         placeholder="Reply in thread"
         members={[...memberNames.entries()].map(([userId, displayName]) => ({
           userId,

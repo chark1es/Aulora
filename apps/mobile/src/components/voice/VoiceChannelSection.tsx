@@ -101,7 +101,7 @@ export function VoiceChannelSection(props: VoiceChannelSectionProps) {
                     color={call !== undefined ? palette.accent : palette["text-muted"]}
                   />
                 </View>
-                <Text className="flex-1" numberOfLines={1}>
+                <Text className="flex-1 min-w-0" numberOfLines={1}>
                   {channel.name}
                 </Text>
                 {selfConnected && (

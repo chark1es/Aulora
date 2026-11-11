@@ -3,7 +3,7 @@ import { NativeAvatar } from "@aulora/avatars/native";
 import { memo } from "react";
 import { useAvatarUrls } from "../../providers/AvatarProvider";
 
-/** A person, using this workspace's picture when they have set one. */
+/** A person, using this workspace’s picture when they have set one. */
 export const MemberAvatar = memo(function MemberAvatar({
   userId,
   size = 32,

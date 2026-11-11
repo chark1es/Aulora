@@ -31,7 +31,7 @@ function DirectAvatar({ channel, ownUserId, presence }: DirectAvatarProps) {
   return <GroupAvatar userIds={others} size={36} />;
 }
 
-/** Group size for a group, otherwise the other person's custom status when they set one. */
+/** Group size for a group, otherwise the other person’s custom status when they set one. */
 function directSubtitle(
   channel: ChannelView,
   ownUserId: string,
@@ -81,7 +81,7 @@ export interface DirectListProps {
   readonly onNewMessage: () => void;
 }
 
-/** The hub's DMs tab: one-to-one and group conversations, with who is around. */
+/** The hub’s DMs tab: one-to-one and group conversations, with who is around. */
 export function DirectList(props: DirectListProps) {
   const clearance = useDockClearance();
   const { titles, ownUserId, presence } = props;
@@ -90,7 +90,7 @@ export function DirectList(props: DirectListProps) {
 
   return (
     <ScrollView
-      className="flex-1"
+      className="flex-1 min-w-0"
       contentContainerStyle={{ paddingHorizontal: 16, paddingBottom: clearance, gap: 12 }}
     >
       <View className="-mx-4">

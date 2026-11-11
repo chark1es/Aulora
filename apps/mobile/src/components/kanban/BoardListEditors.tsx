@@ -6,10 +6,11 @@ import {
   LABEL_COLOR_SWATCHES,
   labelSwatchAt,
   Text,
+  TextField,
   usePalette,
 } from "@aulora/ui-native";
 import { useState } from "react";
-import { Pressable, TextInput, View } from "react-native";
+import { Pressable, View } from "react-native";
 import Animated, { FadeInDown, FadeOut, LinearTransition } from "react-native-reanimated";
 import { type Column, newItemId } from "../../lib/kanban";
 import { cell, Group, RowButton } from "./settings-parts";
@@ -59,7 +60,7 @@ function ColumnRow({ draft, onChange, column, index }: ColumnRowProps) {
       layout={LinearTransition.duration(220)}
       className="flex-row items-center gap-1.5"
     >
-      <TextInput
+      <TextField
         accessibilityLabel={`Column ${index + 1} name`}
         maxLength={80}
         value={column.name}
@@ -68,7 +69,7 @@ function ColumnRow({ draft, onChange, column, index }: ColumnRowProps) {
         }}
         className={`flex-1 ${cell}`}
       />
-      <TextInput
+      <TextField
         accessibilityLabel={`Limit for ${column.name}`}
         keyboardType="number-pad"
         placeholder="Limit"
@@ -107,7 +108,7 @@ function ColumnRow({ draft, onChange, column, index }: ColumnRowProps) {
   );
 }
 
-/** Rename, reorder, limit, add and remove the board's columns. */
+/** Rename, reorder, limit, add and remove the board’s columns. */
 export function ColumnsEditor({ draft, onChange }: EditorProps) {
   return (
     <Group title="Columns and limits">
@@ -165,7 +166,7 @@ function LabelRow({ draft, onChange, label, onPickColor }: LabelRowProps) {
       >
         <View className="h-5 w-5 rounded-pill" style={{ backgroundColor: label.color }} />
       </Pressable>
-      <TextInput
+      <TextField
         accessibilityLabel="Label name"
         maxLength={50}
         value={label.name}
@@ -190,7 +191,7 @@ function LabelRow({ draft, onChange, label, onPickColor }: LabelRowProps) {
   );
 }
 
-/** Rename, recolour, add and remove the board's labels. */
+/** Rename, recolour, add and remove the board’s labels. */
 export function LabelsEditor({ draft, onChange }: EditorProps) {
   const [coloring, setColoring] = useState<string | undefined>();
   const target = draft.labels.find((label) => label.id === coloring);

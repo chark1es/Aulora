@@ -120,10 +120,6 @@ export function useChannelSession(
             messages: page.page,
             nextCursor: page.isDone ? null : page.continueCursor,
           });
-          void runtime.session.receiveMessages(
-            page.page,
-            `mobile:channel:${channelId}:history:${cursor}`,
-          );
           setHasOlder(hasOlderNow());
           merge();
         })
@@ -167,6 +163,8 @@ export function useChannelSession(
           createdAt: message.createdAt,
           authorId: message.authorId,
           mentionedUserIds: message.mentionUserIds,
+          mentionEveryone: message.mentionEveryone ?? false,
+          mentionHere: message.mentionHere ?? false,
         })),
         {
           lastReadAt: null,

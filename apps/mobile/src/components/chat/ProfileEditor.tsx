@@ -1,9 +1,11 @@
 /* eslint-disable no-unused-vars -- the base rule reports parameter names in type signatures; Biome checks real unused code */
 import { Button, Input, Spinner, Text } from "@aulora/ui-native";
 import { useMutation, useQuery } from "convex/react";
-import { useEffect, useState } from "react";
+import { type ReactNode, useEffect, useState } from "react";
 import { View } from "react-native";
+import { KeyboardStickyView } from "react-native-keyboard-controller";
 import { api } from "../../../../../packages/convex/convex/_generated/api";
+import { FormScroll } from "../AuthScaffold";
 import type { ViewerProfileData } from "./use-chat-screen-data";
 
 function useProfileEditor(userId: string, canChangeNickname: boolean) {
@@ -40,7 +42,7 @@ function useProfileEditor(userId: string, canChangeNickname: boolean) {
       }
       setFeedback("Profile saved.");
     } catch (cause) {
-      setError(cause instanceof Error ? cause.message : "Couldn't save your profile. Try again.");
+      setError(cause instanceof Error ? cause.message : "Couldn’t save your profile. Try again.");
     } finally {
       setBusy(false);
     }
@@ -62,6 +64,43 @@ function useProfileEditor(userId: string, canChangeNickname: boolean) {
     bioChanged,
     save,
   };
+}
+
+/**
+ * Fields scroll; Save stays pinned under them and rides above the keyboard. On
+ * a short phone at large text the nickname field and Save cannot both fit
+ * above the keyboard inside one scroll.
+ */
+function ProfileFormLayout({
+  footer,
+  children,
+}: {
+  readonly footer: ReactNode;
+  readonly children: ReactNode;
+}) {
+  // The scroller lifts the focused field clear of the pinned footer (measured,
+  // so it is never more than the room there is) rather than of its hint too.
+  const [footerHeight, setFooterHeight] = useState(72);
+  return (
+    <View className="flex-1 min-w-0">
+      <FormScroll paddingBottom={16} bottomOffset={footerHeight + 12}>
+        <View className="gap-3">{children}</View>
+      </FormScroll>
+      {/* Rides on the keyboard; the scroller alone makes room for it, so the
+          two never both compensate for the keyboard. */}
+      <KeyboardStickyView>
+        <View
+          className="gap-2 border-t border-border bg-bg py-3"
+          onLayout={(event) => {
+            const height = Math.round(event.nativeEvent.layout.height);
+            setFooterHeight((current) => (current === height ? current : height));
+          }}
+        >
+          {footer}
+        </View>
+      </KeyboardStickyView>
+    </View>
+  );
 }
 
 export function ProfileEditor({
@@ -100,7 +139,27 @@ function RemoteProfileEditor({
     return <Text tone="muted">Your workspace profile is unavailable.</Text>;
   }
   return (
-    <View className="gap-3">
+    <ProfileFormLayout
+      footer={
+        <>
+          <Button
+            loading={editor.busy}
+            disabled={!editor.bioChanged && !(canChangeNickname && editor.nicknameChanged)}
+            onPress={editor.save}
+          >
+            Save profile
+          </Button>
+          {editor.error !== null && (
+            <Text tone="danger" accessibilityRole="alert">
+              {editor.error}
+            </Text>
+          )}
+          {editor.feedback !== null && (
+            <Text accessibilityLiveRegion="polite">{editor.feedback}</Text>
+          )}
+        </>
+      }
+    >
       {canChangeNickname && (
         <Input
           label="Workspace nickname"
@@ -118,24 +177,11 @@ function RemoteProfileEditor({
         multiline
         maxLength={500}
       />
-      <Button
-        loading={editor.busy}
-        disabled={!editor.bioChanged && !(canChangeNickname && editor.nicknameChanged)}
-        onPress={editor.save}
-      >
-        Save profile
-      </Button>
-      {editor.error !== null && (
-        <Text tone="danger" accessibilityRole="alert">
-          {editor.error}
-        </Text>
-      )}
-      {editor.feedback !== null && <Text accessibilityLiveRegion="polite">{editor.feedback}</Text>}
-    </View>
+    </ProfileFormLayout>
   );
 }
 
-/** The offline demo's profile: edits stay on the device and never reach a server. */
+/** The offline demo’s profile: edits stay on the device and never reach a server. */
 function LocalProfileEditor({
   canChangeNickname,
   initial,
@@ -152,7 +198,26 @@ function LocalProfileEditor({
   const nicknameChanged = canChangeNickname && nickname.trim() !== savedNickname;
   const bioChanged = bio.trim() !== initial.bio;
   return (
-    <View className="gap-3">
+    <ProfileFormLayout
+      footer={
+        <>
+          <Button
+            disabled={!bioChanged && !nicknameChanged}
+            onPress={() => {
+              const next: ViewerProfileData = {
+                nickname: nickname.trim().length > 0 ? nickname.trim() : null,
+                bio: bio.trim(),
+              };
+              onSave?.(next);
+              setFeedback("Saved in this offline demo only.");
+            }}
+          >
+            Save profile
+          </Button>
+          {feedback !== null && <Text accessibilityLiveRegion="polite">{feedback}</Text>}
+        </>
+      }
+    >
       {canChangeNickname && (
         <Input
           label="Workspace nickname"
@@ -176,20 +241,6 @@ function LocalProfileEditor({
         multiline
         maxLength={500}
       />
-      <Button
-        disabled={!bioChanged && !nicknameChanged}
-        onPress={() => {
-          const next: ViewerProfileData = {
-            nickname: nickname.trim().length > 0 ? nickname.trim() : null,
-            bio: bio.trim(),
-          };
-          onSave?.(next);
-          setFeedback("Saved in this offline demo only.");
-        }}
-      >
-        Save profile
-      </Button>
-      {feedback !== null && <Text accessibilityLiveRegion="polite">{feedback}</Text>}
-    </View>
+    </ProfileFormLayout>
   );
 }

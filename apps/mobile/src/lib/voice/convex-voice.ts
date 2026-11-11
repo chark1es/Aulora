@@ -1,102 +1,24 @@
 import {
-  type CallSignalKind,
   type CallSignalRow,
   type CallView,
-  callElsewhereFromUnknown,
+  createVoicePortBase,
   type VoicePort,
   type VoiceSubscriptions,
+  watchLocalQuery,
 } from "@aulora/core";
 import type { ConvexReactClient } from "convex/react";
 import { api } from "../../../../../packages/convex/convex/_generated/api";
 
-async function translate<T>(work: Promise<T>): Promise<T> {
-  try {
-    return await work;
-  } catch (error) {
-    const elsewhere = callElsewhereFromUnknown(error);
-    if (elsewhere !== null) {
-      throw elsewhere;
-    }
-    throw error;
-  }
-}
-
 /**
- * Live Convex adapter for `@aulora/core`'s `VoicePort` and `VoiceSubscriptions`,
- * mirroring the web adapter so `apps/mobile` reuses the exact same call state
- * and signalling contract. Media is peer-to-peer and never reaches the server.
+ * Live Convex adapter for `@aulora/core`'s `VoicePort` and `VoiceSubscriptions`.
+ * The call-state mutations and the subscription glue are shared with web in
+ * `@aulora/core`; mobile omits the streaming-server and TURN grants it does not
+ * use. Media is peer-to-peer and never reaches the server.
  */
 export function convexVoicePort(client: ConvexReactClient, clientId: string): VoicePort {
-  return {
-    async startCall(args) {
-      return await translate(
-        client.mutation(api.calls.start, {
-          channelId: args.channelId as never,
-          kind: args.kind,
-          clientId,
-          ...(args.takeover === true ? { takeover: true } : {}),
-          ...(args.ringingUserIds !== undefined
-            ? { ringingUserIds: [...args.ringingUserIds] }
-            : {}),
-        }),
-      );
-    },
-    async joinCall(args) {
-      await translate(
-        client.mutation(api.calls.join, {
-          callId: args.callId as never,
-          clientId,
-          ...(args.takeover === true ? { takeover: true } : {}),
-        }),
-      );
-      return null;
-    },
-    async leaveCall(args) {
-      await client.mutation(api.calls.leave, { callId: args.callId as never, clientId });
-      return null;
-    },
-    async endCall(args) {
-      await client.mutation(api.calls.end, { callId: args.callId as never });
-      return null;
-    },
-    async declineCall(args) {
-      await client.mutation(api.calls.decline, { callId: args.callId as never });
-      return null;
-    },
-    async updateParticipant(args) {
-      await client.mutation(api.calls.updateParticipant, {
-        callId: args.callId as never,
-        clientId,
-        ...(args.muted !== undefined ? { muted: args.muted } : {}),
-        ...(args.deafened !== undefined ? { deafened: args.deafened } : {}),
-        ...(args.video !== undefined ? { video: args.video } : {}),
-        ...(args.sharingScreen !== undefined ? { sharingScreen: args.sharingScreen } : {}),
-      });
-      return null;
-    },
-    async callHeartbeat(args) {
-      await client.mutation(api.calls.heartbeat, { callId: args.callId as never, clientId });
-      return null;
-    },
-    async stayInCall(args) {
-      await client.mutation(api.calls.stay, { callId: args.callId as never, clientId });
-      return null;
-    },
-    async sendSignal(args) {
-      await client.mutation(api.calls.signal, {
-        callId: args.callId as never,
-        clientId,
-        toUserId: args.toUserId,
-        kind: args.kind as CallSignalKind,
-        payload: args.payload,
-      });
-      return null;
-    },
-    async ackSignals(args) {
-      await client.mutation(api.calls.ack, { signalIds: args.signalIds as never[] });
-      return null;
-    },
-  };
+  return createVoicePortBase(clientId, api.calls, (reference, args) =>
+    client.mutation(reference as never, args as never),
+  );
 }
 
 export function convexVoiceSubscriptions(client: ConvexReactClient): VoiceSubscriptions {
@@ -105,19 +27,7 @@ export function convexVoiceSubscriptions(client: ConvexReactClient): VoiceSubscr
     args: Record<string, unknown>,
     onChange: (value: T) => void,
   ): () => void {
-    const handle = client.watchQuery(query as never, args as never);
-    const emit = () => {
-      const value = handle.localQueryResult();
-      if (value !== undefined) {
-        onChange(value as T);
-      }
-    };
-    const unsubscribe = handle.onUpdate(emit);
-    // A warm client can deliver before `onUpdate` is attached; read it once.
-    emit();
-    return () => {
-      unsubscribe();
-    };
+    return watchLocalQuery(client.watchQuery(query as never, args as never), onChange);
   }
 
   return {

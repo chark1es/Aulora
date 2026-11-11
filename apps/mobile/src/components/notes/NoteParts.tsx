@@ -6,7 +6,7 @@ import type { NotesController, NoteTagView } from "./use-notes";
 /** A centred spinner while a query is in flight. */
 export function NotesLoading({ label }: { readonly label: string }) {
   return (
-    <View className="flex-1 items-center justify-center">
+    <View className="flex-1 items-center justify-center min-w-0">
       <Spinner size={28} label={label} />
     </View>
   );

@@ -423,7 +423,7 @@ function NoteListBody({ ctl }: { readonly ctl: NotesController }) {
 export function NotesList({ ctl }: { readonly ctl: NotesController }) {
   if (ctl.overview === undefined) return <NotesLoading label="Loading notes" />;
   return (
-    <View className="flex-1">
+    <View className="flex-1 min-w-0">
       <NotesHeader ctl={ctl} />
       <NotesError ctl={ctl} />
       {ctl.searching && (

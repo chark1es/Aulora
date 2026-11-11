@@ -5,7 +5,7 @@ import { useProfiles } from "../../providers/ProfileProvider";
 import { BottomSheet } from "./BottomSheet";
 import { ListGroup, ListRow } from "./List";
 
-/** The host (with port) of a profile's base URL, for the quiet workspace caption. */
+/** The host (with port) of a profile’s base URL, for the quiet workspace caption. */
 function profileHost(baseUrl: string): string {
   try {
     return new URL(baseUrl).host;

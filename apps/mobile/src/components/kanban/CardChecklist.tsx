@@ -1,6 +1,6 @@
-import { Button, Icon, Text, usePalette } from "@aulora/ui-native";
+import { Button, Icon, Text, TextField, usePalette } from "@aulora/ui-native";
 import { useState } from "react";
-import { Pressable, TextInput, View } from "react-native";
+import { Pressable, View } from "react-native";
 import Animated, { FadeInDown, FadeOut, LinearTransition } from "react-native-reanimated";
 import { newItemId } from "../../lib/kanban";
 import { CheckBox, SectionTitle } from "./parts";
@@ -10,7 +10,7 @@ interface SectionProps {
   readonly editor: CardEditor;
 }
 
-/** The shared look of the sheet's text fields. */
+/** The shared look of the sheet’s text fields. */
 export const field =
   "rounded-input border border-border bg-surface-3 px-3 py-2.5 text-[16px] leading-[22px] text-text";
 
@@ -19,7 +19,7 @@ export function CardNotes({ editor }: SectionProps) {
   return (
     <View className="gap-2">
       <SectionTitle icon="note" title="Notes" />
-      <TextInput
+      <TextField
         accessibilityLabel="Notes"
         editable={editor.canEdit}
         multiline
@@ -62,7 +62,7 @@ function ItemRow({ editor, item }: ItemRowProps) {
         accessibilityState={{ checked: item.done, disabled: !editor.canEdit }}
         accessibilityLabel={item.text}
         disabled={!editor.canEdit}
-        className="min-h-11 flex-1 flex-row items-center gap-3 py-1.5 active:opacity-70"
+        className="min-h-11 flex-1 flex-row items-center gap-3 py-1.5 active:opacity-70 min-w-0"
         onPress={() => {
           setItems(
             draft.checklist.map((entry) =>
@@ -109,7 +109,7 @@ function AddItem({ editor }: SectionProps) {
   };
   return (
     <View className="flex-row gap-2">
-      <TextInput
+      <TextField
         accessibilityLabel="New checklist item"
         placeholder="Add an item"
         placeholderTextColor={palette["text-muted"]}
