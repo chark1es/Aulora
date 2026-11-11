@@ -255,9 +255,9 @@ function CallButton({
         tone === "danger-solid"
           ? "bg-danger text-on-accent hover:brightness-110"
           : tone === "danger"
-            ? "bg-danger/15 text-danger hover:bg-danger/25"
+            ? "bg-danger/15 text-danger-text hover:bg-danger/25"
             : tone === "accent"
-              ? "bg-accent/15 text-accent hover:bg-accent/25"
+              ? "bg-accent/15 text-accent-text hover:bg-accent/25"
               : "bg-surface-3 text-text hover:brightness-110",
       )}
     >

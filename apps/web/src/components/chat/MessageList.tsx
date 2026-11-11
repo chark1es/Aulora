@@ -14,9 +14,10 @@ import {
   messageMentionsUser,
   messageTime,
   Permission,
+  roleColorCss,
 } from "@aulora/core";
 import { MENTION_BACKGROUND, MENTION_COLOR } from "@aulora/tokens";
-import { Badge, Button, cn, Icon, Spinner, useContextMenu } from "@aulora/ui-web";
+import { Badge, Button, ConfirmDialog, cn, Icon, Spinner, useContextMenu } from "@aulora/ui-web";
 import {
   Fragment,
   memo,
@@ -28,6 +29,7 @@ import {
   useRef,
   useState,
 } from "react";
+import { createPortal } from "react-dom";
 import type { ChatRuntime } from "../../lib/chat-runtime";
 import { AttachmentView } from "./AttachmentView";
 import { EmojiPicker } from "./EmojiPicker";
@@ -47,6 +49,7 @@ export interface MessageListProps {
   readonly attachments: ReadonlyMap<string, readonly AttachmentDescriptor[]>;
   readonly pendingIds: ReadonlySet<string>;
   /** Optimistic ids (`pending:<outboxItemId>`) that permanently failed to send. */
+  readonly failureReasons?: ReadonlyMap<string, string> | undefined;
   readonly failedIds?: ReadonlySet<string>;
   /** Re-queues a failed optimistic send; receives the `pending:<id>` key. */
   readonly onRetrySend?: (pendingId: string) => void;
@@ -95,9 +98,15 @@ export interface MessageListProps {
   /** Quoted previews for inline replies, keyed by the target message id. */
   readonly replyPreviews?: ReadonlyMap<
     string,
-    { readonly authorName: string; readonly text: string; readonly authorId?: string }
+    {
+      readonly authorName: string;
+      readonly text: string;
+      readonly authorId?: string;
+      readonly mentionEveryone?: boolean;
+      readonly mentionHere?: boolean;
+    }
   >;
-  /** Which side the viewer's own messages render on. Defaults to "left". */
+  /** Which side the viewer’s own messages render on. Defaults to "left". */
   readonly ownSide?: "left" | "right";
 }
 
@@ -116,6 +125,7 @@ export interface MessageRowListProps {
   readonly mentionNames: readonly string[];
   readonly ownSide: "left" | "right" | undefined;
   readonly pendingIds: ReadonlySet<string>;
+  readonly failureReasons: ReadonlyMap<string, string> | undefined;
   readonly failedIds: ReadonlySet<string> | undefined;
   readonly decrypted: ReadonlyMap<string, string>;
   readonly attachments: ReadonlyMap<string, readonly AttachmentDescriptor[]>;
@@ -199,6 +209,15 @@ export function MessageList(props: MessageListProps) {
     onLoadOlder,
     memberNames,
   } = props;
+  const focusedRow = useRef<string | null>(null);
+  // biome-ignore lint/correctness/useExhaustiveDependencies: update DOM tab stops after message rows change
+  useEffect(() => {
+    const rows = [
+      ...(scrollRef.current?.querySelectorAll<HTMLElement>("[data-message-row][tabindex]") ?? []),
+    ];
+    const active = rows.find((row) => row.id === focusedRow.current) ?? rows.at(-1);
+    for (const row of rows) row.tabIndex = row === active ? 0 : -1;
+  }, [messages]);
   const historySeamId = props.historySeamId ?? null;
   const onResetHistory = props.onResetHistory;
   const scrollRef = useRef<HTMLDivElement | null>(null);
@@ -208,7 +227,7 @@ export function MessageList(props: MessageListProps) {
   const positionedChannelRef = useRef<string | null>(null);
   const [atBottom, setAtBottom] = useState(true);
 
-  // Reuse the previous render's item object when a message and its run flags
+  // Reuse the previous render’s item object when a message and its run flags
   // are unchanged. Appending one message must not hand every memoized row a new
   // `item` prop, or the whole timeline re-renders on each send.
   const itemCache = useRef(new Map<string, TimelineItem>());
@@ -316,7 +335,7 @@ export function MessageList(props: MessageListProps) {
     setAtBottom(true);
   }, [channelId]);
 
-  // After each render: restore the reader's place when older history was
+  // After each render: restore the reader’s place when older history was
   // prepended, open a fresh channel at the unread divider (or the bottom), and
   // otherwise follow the tail while pinned.
   useLayoutEffect(() => {
@@ -398,6 +417,7 @@ export function MessageList(props: MessageListProps) {
       mentionNames: props.mentionNames,
       ownSide: props.ownSide,
       pendingIds: props.pendingIds,
+      failureReasons: props.failureReasons,
       failedIds: props.failedIds,
       decrypted: props.decrypted,
       attachments: props.attachments,
@@ -424,6 +444,7 @@ export function MessageList(props: MessageListProps) {
       props.mentionNames,
       props.ownSide,
       props.pendingIds,
+      props.failureReasons,
       props.failedIds,
       props.decrypted,
       props.attachments,
@@ -444,9 +465,33 @@ export function MessageList(props: MessageListProps) {
 
   return (
     <div className="relative flex min-h-0 flex-1 flex-col">
+      {/* biome-ignore lint/a11y/noStaticElementInteractions: delegates arrow keys and focus from message articles */}
       <div
         ref={scrollRef}
         onScroll={onScroll}
+        onFocusCapture={(event) => {
+          const row = (event.target as HTMLElement).closest<HTMLElement>(
+            "[data-message-row][tabindex]",
+          );
+          if (row === null) return;
+          focusedRow.current = row.id;
+          for (const candidate of event.currentTarget.querySelectorAll<HTMLElement>(
+            "[data-message-row][tabindex]",
+          ))
+            candidate.tabIndex = candidate === row ? 0 : -1;
+        }}
+        onKeyDown={(event) => {
+          if (event.key !== "ArrowUp" && event.key !== "ArrowDown") return;
+          const rows = [
+            ...event.currentTarget.querySelectorAll<HTMLElement>("[data-message-row][tabindex]"),
+          ];
+          const index = rows.findIndex((row) => Object.is(row, event.target));
+          if (index < 0) return;
+          event.preventDefault();
+          rows[
+            Math.max(0, Math.min(rows.length - 1, index + (event.key === "ArrowUp" ? -1 : 1)))
+          ]?.focus();
+        }}
         className="min-h-0 flex-1 overflow-y-auto overscroll-contain"
         data-testid="message-list"
         data-channel={channelId}
@@ -538,7 +583,7 @@ const TimelineRow = memo(function TimelineRow({
     return (
       <div className="flex items-center gap-3 py-2" data-unread-divider>
         <span className="h-px flex-1 bg-accent/60" />
-        <span className="text-[11px] font-semibold uppercase tracking-wider text-accent">
+        <span className="text-[11px] font-semibold uppercase tracking-wider text-accent-text">
           New messages
         </span>
         <span className="h-px flex-1 bg-accent/60" />
@@ -563,6 +608,8 @@ const TimelineRow = memo(function TimelineRow({
  * and the live tail, so the timeline never silently jumps in time.
  */
 type ReplyPreview = {
+  readonly mentionEveryone?: boolean;
+  readonly mentionHere?: boolean;
   readonly authorName: string;
   readonly text: string;
   readonly authorId?: string;
@@ -627,7 +674,7 @@ function MessageEditForm({
   );
 }
 
-/** BOT or WEBHOOK next to an automated author's name; nothing for a person. */
+/** BOT or WEBHOOK next to an automated author’s name; nothing for a person. */
 function AuthorBadge({ authorId }: { readonly authorId: string }) {
   const label = isBotUserId(authorId) ? "BOT" : isWebhookUserId(authorId) ? "WEBHOOK" : null;
   if (label === null) {
@@ -676,7 +723,7 @@ function ReplyLine({
             <span
               className={cn(
                 "min-w-0 truncate font-semibold",
-                replyAuthorColor === undefined && "text-accent",
+                replyAuthorColor === undefined && "text-accent-text",
               )}
               style={replyAuthorColor !== undefined ? { color: replyAuthorColor } : undefined}
             >
@@ -686,6 +733,8 @@ function ReplyLine({
               <RichText
                 variant="inline"
                 text={replyPreview.text}
+                mentionEveryone={replyPreview.mentionEveryone}
+                mentionHere={replyPreview.mentionHere}
                 mentionNames={list.mentionNames}
                 {...(list.channelNames !== undefined ? { channelNames: list.channelNames } : {})}
                 viewerName={list.ownName}
@@ -722,7 +771,7 @@ function MessageRowContent({
   const text = list.decrypted.get(message.id) ?? message.body;
   const attachments = list.attachments.get(message.id) ?? [];
   const authorName = own ? "You" : (memberNames.get(message.authorId) ?? "Unknown member");
-  const authorColor = memberColors?.get(message.authorId);
+  const authorColor = roleColorCss(memberColors?.get(message.authorId));
   const replyToId = message.replyToId ?? null;
   const replyPreview = replyToId !== null ? list.replyPreviews?.get(replyToId) : undefined;
 
@@ -733,6 +782,7 @@ function MessageRowContent({
   const [editing, setEditing] = useState(false);
   const [draft, setDraft] = useState<string>();
   const [confirmDelete, setConfirmDelete] = useState(false);
+  const [confirmDiscard, setConfirmDiscard] = useState(false);
   const [pickerOpen, setPickerOpen] = useState(false);
 
   const canModerate = hasPermission(permissions, Permission.ManageMessages);
@@ -752,7 +802,13 @@ function MessageRowContent({
     }
     event.preventDefault();
     const items = messageMenuItems({
-      list,
+      list: {
+        ...list,
+        onDelete: () => {
+          document.getElementById(`message-${message.id}`)?.focus();
+          setConfirmDelete(true);
+        },
+      },
       message,
       text,
       can: { react: canReact, thread: canThread, edit: canEdit, pin: canPin, delete: canDelete },
@@ -773,18 +829,6 @@ function MessageRowContent({
       });
     }
   };
-
-  useEffect(() => {
-    if (!confirmDelete) {
-      return;
-    }
-    const timer = setTimeout(() => {
-      setConfirmDelete(false);
-    }, 4_000);
-    return () => {
-      clearTimeout(timer);
-    };
-  }, [confirmDelete]);
 
   const hasText = text.trim().length > 0;
   const time = messageTime(message.createdAt);
@@ -812,6 +856,8 @@ function MessageRowContent({
     >
       <RichText
         text={text}
+        mentionEveryone={message.mentionEveryone}
+        mentionHere={message.mentionHere}
         mentionNames={mentionNames}
         {...(list.channelNames !== undefined ? { channelNames: list.channelNames } : {})}
         {...(list.onChannelClick !== undefined ? { onChannelClick: list.onChannelClick } : {})}
@@ -904,31 +950,17 @@ function MessageRowContent({
           <Icon name={message.pinnedAt !== null ? "pin-off" : "pin"} size={18} />
         </ToolbarButton>
       )}
-      {canDelete &&
-        (confirmDelete ? (
-          <Button
-            type="button"
-            size="sm"
-            variant="danger"
-            aria-label="Confirm delete"
-            onClick={() => {
-              setConfirmDelete(false);
-              list.onDelete(message);
-            }}
-          >
-            Delete?
-          </Button>
-        ) : (
-          <ToolbarButton
-            label="Delete message"
-            danger
-            onClick={() => {
-              setConfirmDelete(true);
-            }}
-          >
-            <Icon name="trash" size={18} />
-          </ToolbarButton>
-        ))}
+      {canDelete && (
+        <ToolbarButton
+          label="Delete message"
+          danger
+          onClick={() => {
+            setConfirmDelete(true);
+          }}
+        >
+          <Icon name="trash" size={18} />
+        </ToolbarButton>
+      )}
     </div>
   );
 
@@ -937,9 +969,10 @@ function MessageRowContent({
       id={`message-${message.id}`}
       data-testid={`message-${message.id}`}
       data-message-row
+      tabIndex={unsent ? undefined : -1}
       onContextMenu={openContextMenu}
       className={cn(
-        "group/message relative -mx-1 w-full px-1 py-0.5 transition-colors",
+        "focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-accent group/message relative -mx-1 w-full px-1 py-0.5 transition-colors",
         startsGroup ? "mt-3" : "mt-0.5",
       )}
       data-pinged={pinged ? "true" : undefined}
@@ -990,7 +1023,7 @@ function MessageRowContent({
             !editing && (
               <time
                 className={cn(
-                  "pointer-events-none hidden whitespace-nowrap text-[10px] leading-5 text-text-muted group-hover/message:block",
+                  "pointer-events-none hidden whitespace-nowrap text-[12px] leading-5 text-text-muted group-hover/message:block",
                   mirror ? "text-left" : "text-right",
                 )}
                 dateTime={new Date(message.createdAt).toISOString()}
@@ -1010,7 +1043,7 @@ function MessageRowContent({
             >
               <span
                 className="min-w-0 truncate text-[13px] font-semibold text-text"
-                style={authorColor !== undefined ? { color: authorColor } : undefined}
+                style={authorColor !== null ? { color: authorColor } : undefined}
               >
                 {authorName}
               </span>
@@ -1026,7 +1059,7 @@ function MessageRowContent({
                   role="img"
                   aria-label="Pinned"
                   title="Pinned"
-                  className="inline-flex shrink-0 self-center text-accent"
+                  className="inline-flex shrink-0 self-center text-accent-text"
                 >
                   <Icon name="pin" size={12} block />
                 </span>
@@ -1048,12 +1081,13 @@ function MessageRowContent({
                 mirror && "flex-row-reverse",
               )}
             >
-              <span data-testid={`failed-${message.id}`} className="font-medium text-danger">
-                Not sent
+              <span data-testid={`failed-${message.id}`} className="font-medium text-danger-text">
+                {list.failureReasons?.get(message.id) ?? "Not sent"}
               </span>
               {list.onRetrySend !== undefined && (
                 <button
                   type="button"
+                  aria-label="Retry sending message"
                   onClick={() => list.onRetrySend?.(message.id)}
                   className="rounded-[6px] border border-border px-1.5 py-0.5 font-semibold text-text transition hover:bg-surface-3"
                 >
@@ -1063,7 +1097,10 @@ function MessageRowContent({
               {list.onDiscardSend !== undefined && (
                 <button
                   type="button"
-                  onClick={() => list.onDiscardSend?.(message.id)}
+                  aria-label="Discard unsent message"
+                  onClick={() => {
+                    setConfirmDiscard(true);
+                  }}
                   className="rounded-[6px] px-1.5 py-0.5 font-medium text-text-muted transition hover:bg-surface-3 hover:text-text"
                 >
                   Discard
@@ -1100,6 +1137,40 @@ function MessageRowContent({
           }}
         />
       )}
+
+      {createPortal(
+        <>
+          <ConfirmDialog
+            open={confirmDelete}
+            onClose={() => {
+              setConfirmDelete(false);
+            }}
+            title="Delete message?"
+            description="This message will be removed for everyone in the conversation."
+            confirmLabel="Delete message"
+            variant="danger"
+            onConfirm={() => {
+              setConfirmDelete(false);
+              list.onDelete(message);
+            }}
+          />
+          <ConfirmDialog
+            open={confirmDiscard}
+            onClose={() => {
+              setConfirmDiscard(false);
+            }}
+            title="Discard failed message?"
+            description="This message was not sent. Discarding removes it from this conversation."
+            confirmLabel="Discard message"
+            variant="danger"
+            onConfirm={() => {
+              setConfirmDiscard(false);
+              list.onDiscardSend?.(message.id);
+            }}
+          />
+        </>,
+        document.body,
+      )}
     </article>
   );
 }
@@ -1127,8 +1198,8 @@ function ToolbarButton({
       onClick={onClick}
       className={cn(
         "flex h-7 w-7 items-center justify-center rounded-[7px] text-text-muted transition focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent",
-        danger ? "hover:bg-danger/10 hover:text-danger" : "hover:bg-surface-3 hover:text-text",
-        active && "text-accent",
+        danger ? "hover:bg-danger/10 hover:text-danger-text" : "hover:bg-surface-3 hover:text-text",
+        active && "text-accent-text",
       )}
     >
       {children}
@@ -1155,17 +1226,18 @@ function TypingBubble({
         ? `${names[0]} and ${names[1]}`
         : `${names.length} people`;
   return (
-    <div className="mt-3 flex animate-fade-in gap-2.5" aria-live="polite">
-      <div className="w-8 shrink-0 pt-0.5">
+    <div className="mt-3 flex animate-fade-in gap-2.5">
+      <div aria-hidden="true" className="w-8 shrink-0 pt-0.5">
         <PresenceAvatar userId={first.userId} size={32} />
       </div>
       <div className="flex flex-col items-start">
-        <span className="mb-1 text-[13px] font-semibold text-text">{label}</span>
-        <span
-          className="flex h-6 items-center gap-1"
-          role="status"
-          aria-label={`${label} ${names.length === 1 ? "is" : "are"} typing`}
-        >
+        <span role="status" aria-live="polite" className="sr-only">
+          {`${label} ${names.length === 1 ? "is" : "are"} typing`}
+        </span>
+        <span aria-hidden="true" className="mb-1 text-[13px] font-semibold text-text">
+          {label}
+        </span>
+        <span aria-hidden="true" className="flex h-6 items-center gap-1">
           {[0, 1, 2].map((dot) => (
             <span
               key={dot}
@@ -1218,7 +1290,7 @@ function groupReactionsByMessage(
  * Marks the seam where the page cap dropped history between the retained window
  * and the live tail, so the timeline never silently jumps in time.
  *
- * Declared last because Lizard's JSX parser otherwise attributes the large row
+ * Declared last because Lizard’s JSX parser otherwise attributes the large row
  * component that follows to this function.
  */
 function HistorySeamRow() {

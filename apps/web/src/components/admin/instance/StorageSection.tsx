@@ -159,7 +159,7 @@ function ByteSizeField({
           label={`${label} unit`}
           variant="bare"
           className="w-[4.5rem] shrink-0 [&>label]:sr-only"
-          triggerClassName="w-full focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent-soft"
+          triggerClassName="w-full focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent"
           popupClassName="left-auto w-28"
           value={draft.unit}
           options={BYTE_UNIT_OPTIONS}

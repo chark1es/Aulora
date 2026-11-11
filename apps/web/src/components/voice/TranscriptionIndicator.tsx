@@ -20,7 +20,7 @@ function themeSnapshot(): "dark" | "light" {
     : "light";
 }
 
-/** The app's resolved theme, kept in step with the `dark` class on `<html>`. */
+/** The app’s resolved theme, kept in step with the `dark` class on `<html>`. */
 function useResolvedTheme(): "dark" | "light" {
   return useSyncExternalStore(subscribeTheme, themeSnapshot, () => "dark");
 }

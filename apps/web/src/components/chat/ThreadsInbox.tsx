@@ -1,5 +1,5 @@
 import { activityLabel } from "@aulora/core";
-import { EmptyState, Spinner } from "@aulora/ui-web";
+import { EmptyState } from "@aulora/ui-web";
 import { PersonAvatar } from "./member-avatars";
 
 /** One row of the Threads inbox, as returned by `api.messages.threadInbox`. */
@@ -18,6 +18,7 @@ export interface ThreadInboxItem {
 }
 
 export interface ThreadsInboxProps {
+  readonly onLoadMore?: () => void;
   readonly threads: readonly ThreadInboxItem[];
   readonly loading: boolean;
   /** Raw channel name per channel id; text channels only. */
@@ -45,21 +46,38 @@ export function ThreadsInbox({
   titles,
   ownUserId,
   onOpen,
+  onLoadMore,
 }: ThreadsInboxProps) {
   if (loading) {
     return (
       <div
         data-testid="threads-inbox"
         aria-busy="true"
-        className="flex flex-1 flex-col items-center justify-center gap-3 p-8"
+        className="min-h-0 flex-1 overflow-y-auto px-2 py-2"
       >
-        <Spinner size={26} label="Loading threads" />
-        <p className="text-sm text-text-muted">Loading threads…</p>
+        <p role="status" className="sr-only">
+          Loading threads…
+        </p>
+        <ul aria-hidden="true" className="flex flex-col gap-0.5">
+          {[0, 1, 2, 3, 4].map((row) => (
+            <li key={row} className="flex w-full items-start gap-3 rounded-[8px] px-2.5 py-2">
+              <span className="h-8 w-8 shrink-0 animate-pulse rounded-full bg-surface-3 motion-reduce:animate-none" />
+              <span className="min-w-0 flex-1">
+                <span className="flex items-baseline gap-2">
+                  <span className="h-3 w-24 animate-pulse rounded bg-surface-3 motion-reduce:animate-none" />
+                  <span className="h-3 w-16 animate-pulse rounded bg-surface-3 motion-reduce:animate-none" />
+                </span>
+                <span className="mt-1.5 block h-3.5 w-full animate-pulse rounded bg-surface-3 motion-reduce:animate-none" />
+                <span className="mt-1.5 block h-2.5 w-20 animate-pulse rounded bg-surface-3 motion-reduce:animate-none" />
+              </span>
+            </li>
+          ))}
+        </ul>
       </div>
     );
   }
 
-  if (threads.length === 0) {
+  if (threads.length === 0 && onLoadMore === undefined) {
     return (
       <div data-testid="threads-inbox" className="flex flex-1 flex-col">
         <EmptyState
@@ -101,7 +119,7 @@ export function ThreadsInbox({
                     <span className="truncate font-semibold text-text">{authorName}</span>
                     <span className="truncate text-text-muted">{channelLabel}</span>
                     {thread.viewerMentioned && (
-                      <span className="shrink-0 rounded-full bg-accent-soft px-2 py-0.5 text-[11px] font-medium text-accent">
+                      <span className="shrink-0 rounded-full bg-accent-soft px-2 py-0.5 text-[11px] font-medium text-accent-text">
                         Mentioned you
                       </span>
                     )}
@@ -119,6 +137,11 @@ export function ThreadsInbox({
           );
         })}
       </ul>
+      {onLoadMore && (
+        <button type="button" onClick={onLoadMore}>
+          Load more threads
+        </button>
+      )}
     </div>
   );
 }

@@ -1,20 +1,12 @@
+import { presenceLabel } from "@aulora/core";
+
+export { presenceLabel } from "@aulora/core";
+
 import type { PresenceRow } from "@aulora/core";
 import { cn } from "@aulora/ui-web";
 import { PersonAvatar } from "./member-avatars";
 
 export type PresenceStatus = PresenceRow["status"];
-
-const PRESENCE_LABELS = new Map<PresenceStatus, string>([
-  ["online", "Online"],
-  ["idle", "Idle"],
-  ["dnd", "Do not disturb"],
-  ["offline", "Offline"],
-]);
-
-/** Human-readable label for a presence status. */
-export function presenceLabel(status: PresenceStatus): string {
-  return PRESENCE_LABELS.get(status) ?? "Offline";
-}
 
 const DOT_CLASSES = new Map<PresenceStatus, string>([
   ["online", "bg-secondary"],
@@ -27,7 +19,7 @@ function dotClass(status: PresenceStatus): string {
   return DOT_CLASSES.get(status) ?? "bg-text-muted/60";
 }
 
-/** A person's avatar with an optional presence dot in the bottom-right corner. */
+/** A person’s avatar with an optional presence dot in the bottom-right corner. */
 export function PresenceAvatar({
   userId,
   size = 36,

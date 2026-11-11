@@ -2,7 +2,7 @@ import type { IconName } from "@aulora/tokens";
 import { Icon } from "@aulora/ui-web";
 import type { ReactNode } from "react";
 
-/** A calm, centred full-page message for every dead end of a guest's visit. */
+/** A calm, centred full-page message for every dead end of a guest’s visit. */
 export function GuestMessageScreen({
   icon,
   title,

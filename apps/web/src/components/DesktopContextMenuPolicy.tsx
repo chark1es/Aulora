@@ -14,7 +14,7 @@ import { isDesktop, openExternal } from "../lib/desktop";
  *
  * The browser build keeps its normal native menu, so this mounts a listener
  * only inside the Tauri shell. Surfaces with their own `useContextMenu` handler
- * are unaffected: the policy suppresses the webview's menu without stopping
+ * are unaffected: the policy suppresses the webview’s menu without stopping
  * propagation, and component handlers still open their menus.
  *
  * Loaded on demand by {@link ./DesktopContextMenu}; the policy and the menu

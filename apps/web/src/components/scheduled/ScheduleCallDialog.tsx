@@ -126,7 +126,7 @@ function errorText(error: unknown): string {
 
 /**
  * Create or edit a scheduled call. The date and time are entered, and echoed
- * back, in the viewer's own time zone; only the UTC instant is sent, so the
+ * back, in the viewer’s own time zone; only the UTC instant is sent, so the
  * server never stores local time and every invitee sees their own local start.
  */
 export function ScheduleCallDialog(props: ScheduleCallDialogProps) {

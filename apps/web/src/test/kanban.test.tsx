@@ -3,6 +3,7 @@ import { ContextMenuProvider } from "@aulora/ui-web";
 import { fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { getFunctionName } from "convex/server";
+import { ConvexError } from "convex/values";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import type { Id } from "../../../../packages/convex/convex/_generated/dataModel";
 import { AddonsSettings } from "../components/admin/AddonsSettings";
@@ -219,7 +220,7 @@ describe("Kanban UI", () => {
     const user = userEvent.setup();
     state.mutations.set(
       "kanban:createCard",
-      vi.fn().mockRejectedValue(new Error("WIP limit reached")),
+      vi.fn().mockRejectedValue(new ConvexError("WIP limit reached")),
     );
     render(
       <KanbanView

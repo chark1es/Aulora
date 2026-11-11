@@ -10,7 +10,7 @@ interface BotFileListProps {
   readonly onRename: (path: string) => void;
 }
 
-/** The bot's files: pick one to edit, or rename, delete and add alongside. */
+/** The bot’s files: pick one to edit, or rename, delete and add alongside. */
 export function BotFileList({ model, entry, onAdd, onRename }: BotFileListProps) {
   return (
     <section className="flex w-full shrink-0 flex-col gap-2 lg:w-[240px]" aria-label="Bot files">

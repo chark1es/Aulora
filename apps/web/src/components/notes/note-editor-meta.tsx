@@ -13,7 +13,7 @@ function folderAction(ctl: NotesController, folderId: string | null) {
   };
 }
 
-/** The folder picker and the note's tags, above the body. */
+/** The folder picker and the note’s tags, above the body. */
 export function EditorMeta({
   ctl,
   current,
@@ -101,7 +101,7 @@ function TagChip({
       className={cn(
         "inline-flex items-center gap-1.5 rounded-full px-2 py-0.5 text-[12px] transition disabled:opacity-60",
         active
-          ? "bg-accent-soft font-medium text-accent"
+          ? "bg-accent-soft font-medium text-accent-text"
           : "text-text-muted hover:bg-surface-3 hover:text-text",
       )}
     >

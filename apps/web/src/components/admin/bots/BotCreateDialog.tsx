@@ -20,7 +20,7 @@ import {
   validateBotName,
 } from "./bot-format";
 
-/** A language's mark in its tile: the file extension people already know it by. */
+/** A language’s mark in its tile: the file extension people already know it by. */
 function LanguageMark({ children }: { readonly children: string }) {
   return <span className="font-mono text-[11px] font-semibold">{children}</span>;
 }

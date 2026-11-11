@@ -227,9 +227,9 @@ const ACTION_LABELS: Record<string, string> = {
   // Bots
   "bot.create": "created a bot",
   "bot.update": "updated a bot",
-  "bot.permissions": "updated a bot's permissions",
-  "bot.files": "updated a bot's files",
-  "bot.env": "updated a bot's environment variables",
+  "bot.permissions": "updated a bot’s permissions",
+  "bot.files": "updated a bot’s files",
+  "bot.env": "updated a bot’s environment variables",
   "bot.token.rotate": "replaced a bot token",
   "bot.token.revoke": "revoked a bot token",
   "bot.delete": "deleted a bot",
@@ -703,16 +703,6 @@ export function formatAuditEvent(
     bits.push(detail);
   }
   return bits.join(" · ");
-}
-
-/**
- * Meta-only summary, retained for callers that have not resolved names yet.
- * `formatAuditEvent` is preferred wherever actor/target names are available.
- */
-export function describeAuditAction(action: string, meta: string | null): string {
-  const label = auditActionLabel(action);
-  const detail = metaDetail(action, parseMeta(meta), {});
-  return detail === null ? capitalize(label) : `${capitalize(label)}: ${detail}`;
 }
 
 const FIELD_LABELS: Record<string, string> = {

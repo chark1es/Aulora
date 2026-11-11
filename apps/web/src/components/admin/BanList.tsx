@@ -59,7 +59,7 @@ function BanRow(props: {
 }
 
 /**
- * People who cannot rejoin, each with their picture, name, the ban's term and
+ * People who cannot rejoin, each with their picture, name, the ban’s term and
  * reason, and an Unban action. Lives in the Banned members dialog.
  */
 export function BanList(props: {

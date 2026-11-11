@@ -31,7 +31,7 @@ export function GuestCallView({
   readonly engine: GuestEngine;
   readonly client: ConvexReactClient;
   readonly sessionToken: string;
-  /** This guest's own participant key (their guest session id). */
+  /** This guest’s own participant key (their guest session id). */
   readonly selfKey: string;
   readonly title: string;
   readonly onLeave: () => void;
@@ -79,7 +79,7 @@ export function GuestCallView({
         {snapshot.error !== null && (
           <p
             role="alert"
-            className="mx-3 mt-2 rounded-[8px] border border-danger/30 bg-danger/10 px-3 py-2 text-[12px] text-danger"
+            className="mx-3 mt-2 rounded-[8px] border border-danger/30 bg-danger/10 px-3 py-2 text-[12px] text-danger-text"
           >
             {snapshot.error}
           </p>

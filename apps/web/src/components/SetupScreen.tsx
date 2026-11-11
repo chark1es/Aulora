@@ -177,7 +177,7 @@ export function SetupScreen({ profile, actions, onSwitchServer }: SetupScreenPro
       if (result.error !== null) {
         setError(
           result.error.message === undefined
-            ? "The instance is ready. Sign in with the account you just created."
+            ? "The workspace is ready. Sign in with the account you just created."
             : describeAuthError(result.error.message),
         );
       }
@@ -198,13 +198,13 @@ export function SetupScreen({ profile, actions, onSwitchServer }: SetupScreenPro
       stage={
         <AuthStage
           hero={<BlobatarHero seed={profile.iconSeed} size={190} watch="pointer" />}
-          headline="This server is yours."
+          headline="This workspace is yours."
           caption={hostOf(profile.baseUrl)}
         />
       }
     >
       <AuthHeading
-        title="Set up your instance"
+        title="Set up your workspace"
         subtitle="Create the first owner account. You can invite everyone else once you’re in."
       />
       <form
@@ -222,7 +222,7 @@ export function SetupScreen({ profile, actions, onSwitchServer }: SetupScreenPro
         )}
         {done && error === null && (
           <Text tone="muted" size="sm" role="status">
-            Instance ready. Signing you in…
+            Workspace ready. Signing you in…
           </Text>
         )}
 
@@ -248,7 +248,7 @@ export function SetupScreen({ profile, actions, onSwitchServer }: SetupScreenPro
         </Text>
 
         <AuthField
-          label="Instance name"
+          label="Workspace name"
           placeholder="Acme"
           autoComplete="organization"
           value={values.workspaceName}
@@ -285,7 +285,7 @@ export function SetupScreen({ profile, actions, onSwitchServer }: SetupScreenPro
         />
 
         <AuthButton type="submit" loading={pending} disabled={!canSubmit}>
-          {pending ? "Creating your instance…" : "Create owner account"}
+          {pending ? "Creating your workspace…" : "Create owner account"}
         </AuthButton>
       </form>
       {onSwitchServer !== undefined && (

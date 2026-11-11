@@ -1,5 +1,6 @@
 import { render, screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
+import { ConvexError } from "convex/values";
 import { describe, expect, it, vi } from "vitest";
 import { InviteCreated } from "../components/admin/invites/InviteCreated";
 import { InviteCreateForm } from "../components/admin/invites/InviteCreateForm";
@@ -123,7 +124,7 @@ describe("InviteCreateForm custom code", () => {
 
   it("shows the server's duplicate-code refusal inline", async () => {
     convex.create.mockReset();
-    convex.create.mockRejectedValue(new Error("That code is already in use"));
+    convex.create.mockRejectedValue(new ConvexError("That code is already in use"));
     const user = userEvent.setup();
     render(<InviteCreateForm origin="https://x" />);
 

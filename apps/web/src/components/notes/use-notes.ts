@@ -3,6 +3,8 @@ import { hasPermission, Permission } from "@aulora/core";
 import { useMutation, useQuery } from "convex/react";
 import { useEffect, useMemo, useRef, useState } from "react";
 import { api } from "../../../../../packages/convex/convex/_generated/api";
+import { useBeforeUnload } from "../../lib/use-before-unload";
+import { useSettingsNavigation } from "../../lib/use-settings-navigation";
 import {
   childFolders,
   failure,
@@ -25,6 +27,7 @@ export interface NotesProps {
   permissions: bigint;
   members: readonly NoteMember[];
   onBack: () => void;
+  onDirtyChange?: (dirty: boolean) => void;
 }
 
 /** The unsaved editor contents for the open note. */
@@ -63,10 +66,14 @@ function useNotesState() {
   const [showAllNotes, setShowAllNotes] = useState(false);
   const [tab, setTab] = useState<"edit" | "history">("edit");
   const [draft, setDraft] = useState<NoteDraft | undefined>(undefined);
+  const [seed, setSeed] = useState<{ noteId: string; revision: number; snapshot: NoteDraft }>();
+  const [replacementNoteId, setReplacementNoteId] = useState<string>();
   const [confirm, setConfirm] = useState<Confirm | undefined>(undefined);
   const [folderDialog, setFolderDialog] = useState<FolderDialog | undefined>(undefined);
   const [tagDialog, setTagDialog] = useState<TagDialog | undefined>(undefined);
   return {
+    replacementNoteId,
+    setReplacementNoteId,
     folderId,
     setFolderId,
     tagId,
@@ -85,6 +92,8 @@ function useNotesState() {
     setTab,
     draft,
     setDraft,
+    seed,
+    setSeed,
     confirm,
     setConfirm,
     folderDialog,
@@ -316,38 +325,37 @@ function useNoteSelection(state: NotesState, data: ReturnType<typeof useNotesDat
   // Seed the editor from the server when a different note loads, and reload it
   // when the server revision changes — unless there are unsaved local edits.
   const detailKey =
-    data.detail === undefined ? undefined : `${data.detail.id}:${data.detail.revision}`;
-  const seeded = useRef<{ key: string; snapshot: NoteDraft } | null>(null);
+    data.detail === undefined
+      ? undefined
+      : `${state.noteId}:${data.detail.id}:${data.detail.revision}`;
   // biome-ignore lint/correctness/useExhaustiveDependencies: reload only when the server key changes
   useEffect(() => {
     const detail = data.detail;
-    if (detail === undefined || detailKey === undefined) return;
+    if (detail === undefined || detailKey === undefined || detail.id !== state.noteId) return;
     const snapshot: NoteDraft = {
       title: detail.title,
       body: detail.body,
       folderId: detail.folderId,
       tagIds: [...detail.tagIds],
     };
-    const previous = seeded.current;
+    const previous = state.seed;
     const hasLocalEdits =
-      previous !== null && state.draft !== undefined && !sameDraft(state.draft, previous.snapshot);
-    seeded.current = { key: detailKey, snapshot };
-    if (previous !== null && hasLocalEdits) return;
+      previous !== undefined &&
+      state.draft !== undefined &&
+      !sameDraft(state.draft, previous.snapshot);
+    if (previous?.noteId === detail.id && hasLocalEdits) return;
+    state.setSeed({ noteId: detail.id, revision: detail.revision, snapshot });
     state.setDraft(snapshot);
     state.setTab("edit");
   }, [detailKey]);
 }
 
-function isDraftDirty(state: NotesState, data: ReturnType<typeof useNotesData>): boolean {
+function isDraftDirty(state: NotesState): boolean {
   return (
+    state.noteId === state.seed?.noteId &&
     state.draft !== undefined &&
-    data.detail !== undefined &&
-    !sameDraft(state.draft, {
-      title: data.detail.title,
-      body: data.detail.body,
-      folderId: data.detail.folderId,
-      tagIds: [...data.detail.tagIds],
-    })
+    state.seed !== undefined &&
+    !sameDraft(state.draft, state.seed.snapshot)
   );
 }
 
@@ -357,15 +365,30 @@ export function useNotes(props: NotesProps) {
   const data = useNotesData(props, state);
   const runner = useRunner();
   const mutations = useNoteMutations();
+  const latest = useRef({ noteId: state.noteId, draft: state.draft });
+  latest.current = { noteId: state.noteId, draft: state.draft };
 
   useNoteSelection(state, data);
 
+  const dirty = isDraftDirty(state);
+  const navigation = useSettingsNavigation(true, dirty);
+  useBeforeUnload(dirty);
+  useEffect(() => {
+    props.onDirtyChange?.(dirty);
+  }, [dirty, props.onDirtyChange]);
+  useEffect(() => () => props.onDirtyChange?.(false), [props.onDirtyChange]);
   const openNote = (id: Id<"notePages">) => {
-    state.setNoteId(id);
-    state.setEditing(false);
+    if (id === state.noteId) return;
+    navigation.navigate(() => {
+      state.setDraft(undefined);
+      state.setSeed(undefined);
+      state.setReplacementNoteId(undefined);
+      state.setNoteId(id);
+      state.setEditing(false);
+    });
   };
 
-  const createNote = async (): Promise<void> => {
+  const createNoteNow = async (): Promise<void> => {
     if (!data.canCreate) return;
     const folderId =
       state.folderId !== undefined && state.folderId !== UNFILED && state.folderId !== ROOT
@@ -378,23 +401,40 @@ export function useNotes(props: NotesProps) {
         ...(folderId !== undefined ? { folderId } : {}),
         ...(state.tagId !== undefined ? { tagIds: [state.tagId] } : {}),
       });
+      state.setDraft(undefined);
+      state.setSeed(undefined);
+      state.setReplacementNoteId(undefined);
       state.setNoteId(id);
       state.setTab("edit");
       state.setEditing(true);
     });
   };
 
+  const createNote = () => {
+    navigation.navigate(() => void createNoteNow());
+  };
+
   /** Opens a folder in the explorer, closing any note pane. */
   const openFolder = (folderId: FolderSelection) => {
-    state.setFolderId(folderId);
-    state.setShowAllNotes(false);
-    state.setNoteId(undefined);
-    state.setEditing(false);
+    navigation.navigate(() => {
+      state.setFolderId(folderId);
+      state.setShowAllNotes(false);
+      state.setNoteId(undefined);
+      state.setEditing(false);
+      state.setDraft(undefined);
+      state.setSeed(undefined);
+      state.setReplacementNoteId(undefined);
+    });
   };
 
   const closeNote = () => {
-    state.setNoteId(undefined);
-    state.setEditing(false);
+    navigation.navigate(() => {
+      state.setNoteId(undefined);
+      state.setEditing(false);
+      state.setDraft(undefined);
+      state.setSeed(undefined);
+      state.setReplacementNoteId(undefined);
+    });
   };
 
   /** Opens the create-folder dialog inside whichever folder the explorer shows. */
@@ -408,19 +448,41 @@ export function useNotes(props: NotesProps) {
 
   const saveNote = async (): Promise<void> => {
     const detail = data.detail;
-    if (!data.canEdit || detail === undefined || state.draft === undefined) return;
-    const draft = state.draft;
+    if (
+      !data.canEdit ||
+      detail === undefined ||
+      state.draft === undefined ||
+      state.noteId !== detail.id ||
+      state.seed?.noteId !== detail.id
+    )
+      return;
+    const submitted = state.draft;
+    const draft = { ...submitted, title: submitted.title.trim() };
+    const baseRevision = state.seed.revision;
     const saved = await runner.run(async () => {
-      await mutations.updateNote({
+      const revision = await mutations.updateNote({
         noteId: detail.id,
-        revision: detail.revision,
+        revision: baseRevision,
         title: draft.title,
         body: draft.body,
         ...(draft.folderId !== null ? { folderId: draft.folderId } : {}),
         tagIds: draft.tagIds as Id<"noteTags">[],
       });
+      if (latest.current.noteId !== detail.id) return;
+      state.setReplacementNoteId(undefined);
+      state.setSeed({ noteId: detail.id, revision, snapshot: draft });
+      state.setDraft((current) =>
+        current !== undefined && sameDraft(current, submitted) ? draft : current,
+      );
     });
-    if (saved) state.setEditing(false);
+    if (
+      saved &&
+      latest.current.noteId === detail.id &&
+      latest.current.draft !== undefined &&
+      (sameDraft(latest.current.draft, submitted) || sameDraft(latest.current.draft, draft))
+    ) {
+      state.setEditing(false);
+    }
   };
 
   const archiveNote = async (note: NoteSummary, archived: boolean): Promise<void> => {
@@ -512,7 +574,42 @@ export function useNotes(props: NotesProps) {
     });
   };
 
-  const dirty = isDraftDirty(state, data);
+  const conflict =
+    state.seed?.noteId === data.detail?.id &&
+    state.seed !== undefined &&
+    data.detail !== undefined &&
+    state.seed.revision < data.detail.revision;
+  const reloadLatestNow = () => {
+    if (data.detail === undefined) return;
+    const snapshot: NoteDraft = {
+      title: data.detail.title,
+      body: data.detail.body,
+      folderId: data.detail.folderId,
+      tagIds: [...data.detail.tagIds],
+    };
+    state.setSeed({ noteId: data.detail.id, revision: data.detail.revision, snapshot });
+    state.setDraft(snapshot);
+    state.setReplacementNoteId(undefined);
+    runner.setError(undefined);
+  };
+  const reloadLatest = () => {
+    navigation.navigate(reloadLatestNow);
+  };
+  const overwriteWithMyVersion = () => {
+    if (data.detail === undefined || state.seed?.noteId !== data.detail.id) return;
+    state.setReplacementNoteId(data.detail.id);
+    state.setSeed({
+      noteId: data.detail.id,
+      revision: data.detail.revision,
+      snapshot: {
+        title: data.detail.title,
+        body: data.detail.body,
+        folderId: data.detail.folderId,
+        tagIds: [...data.detail.tagIds],
+      },
+    });
+    runner.setError(undefined);
+  };
 
   return {
     ...props,
@@ -521,6 +618,16 @@ export function useNotes(props: NotesProps) {
     ...runner,
     mutations,
     dirty,
+    navigation,
+    conflict,
+    replacingNewerVersion:
+      state.replacementNoteId !== undefined && state.replacementNoteId === state.noteId,
+    reloadLatest,
+    overwriteWithMyVersion,
+    draft: state.seed?.noteId === state.noteId ? state.draft : undefined,
+    onBack: () => {
+      navigation.navigate(props.onBack);
+    },
     openNote,
     openFolder,
     closeNote,

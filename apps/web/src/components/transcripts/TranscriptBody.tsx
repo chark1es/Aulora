@@ -7,7 +7,7 @@ import type { Id } from "../../../../../packages/convex/convex/_generated/dataMo
 
 /**
  * The speaker-labelled transcript, one bounded page at a time. Each page is its
- * own reactive query keyed by the previous page's opaque `nextCursor`, so a live
+ * own reactive query keyed by the previous page’s opaque `nextCursor`, so a live
  * session keeps filling in and a long one is never loaded in a single read.
  */
 export function TranscriptBody({ sessionId }: { readonly sessionId: string }) {
@@ -91,7 +91,7 @@ function TranscriptPage({
   if (turns.length === 0 && cursor === null) {
     return (
       <Text tone="muted" size="sm">
-        Nothing was said yet, or nobody's speech was transcribed.
+        Nothing was said yet, or nobody’s speech was transcribed.
       </Text>
     );
   }

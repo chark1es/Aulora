@@ -13,7 +13,7 @@ import { StorageSection } from "./StorageSection";
 
 export interface InstanceAdminPanelProps {
   readonly canManage: boolean;
-  /** Only used by the overlay variant's Close affordance. */
+  /** Only used by the overlay variant’s Close affordance. */
   readonly onClose?: () => void;
   /** `overlay` renders the fixed dialog; `inline` embeds in a settings page. */
   readonly variant?: "overlay" | "inline";

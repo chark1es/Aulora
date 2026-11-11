@@ -272,7 +272,7 @@ function OidcCredentialFields({
         label="Client secret"
         type="password"
         placeholder={
-          hasSavedSecret ? "Set — enter a new value to replace" : "Enter the client secret"
+          hasSavedSecret ? "Set. Enter a new value to replace" : "Enter the client secret"
         }
         autoComplete="new-password"
         value={values.clientSecret}

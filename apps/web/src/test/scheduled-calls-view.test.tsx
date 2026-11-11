@@ -100,7 +100,7 @@ describe("ScheduledCallsView", () => {
     const row = screen.getByTestId("scheduled-call-sc1");
     expect(within(row).getByRole("button", { name: "Join" })).toBeDisabled();
     const hint = within(row).getByTestId("scheduled-not-open");
-    expect(hint).toHaveTextContent("This call hasn't started yet — opens at");
+    expect(hint).toHaveTextContent("This call hasn’t started yet. It opens at");
     expect(hint).toHaveTextContent(/in 1 h|in 2 h/u);
     expect(within(row).getByRole("button", { name: "Join" })).toHaveAttribute(
       "aria-describedby",
@@ -124,7 +124,7 @@ describe("ScheduledCallsView", () => {
     const startsAt = Date.now() + 2 * 60_000;
     state.join.mockResolvedValue({
       ok: false,
-      message: "This call hasn't started yet — opens at 3:25 PM EST",
+      message: "This call hasn’t started yet. It opens at 3:25 PM EST",
       notOpen: { startsAt, opensAt: startsAt - 60_000 },
     });
     state.values.set("scheduledCalls:list", [call({ startsAt, opensAt: startsAt - 5 * 60_000 })]);
@@ -132,7 +132,7 @@ describe("ScheduledCallsView", () => {
     view();
     await user.click(screen.getByRole("button", { name: "Join" }));
     expect(await screen.findByRole("alert")).toHaveTextContent(
-      "This call hasn't started yet — opens at 3:25 PM EST",
+      "This call hasn’t started yet. It opens at 3:25 PM EST",
     );
   });
 

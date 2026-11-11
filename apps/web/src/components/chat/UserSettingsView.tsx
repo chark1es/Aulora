@@ -11,6 +11,7 @@ import {
   Text,
 } from "@aulora/ui-web";
 import { type ReactNode, useEffect, useRef, useState } from "react";
+import { useBeforeUnload } from "../../lib/use-before-unload";
 import { DebugLogsSection } from "./DebugLogsSection";
 import { PresenceAvatar } from "./PresenceAvatar";
 
@@ -28,9 +29,10 @@ export interface UserSettingsViewProps {
     readonly nickname?: string;
     readonly bio?: string;
   }) => void | Promise<void>;
+  readonly onDirtyChange?: (dirty: boolean) => void;
   readonly onBack: () => void;
   readonly onSignOut?: () => void;
-  /** This workspace's picture, when one is set. */
+  /** This workspace’s picture, when one is set. */
   readonly hasAvatar?: boolean;
   readonly onChangeAvatar?: (file: File) => Promise<void>;
   readonly onClearAvatar?: () => Promise<void>;
@@ -74,6 +76,7 @@ export function UserSettingsView({
   error = null,
   onSave,
   onBack,
+  onDirtyChange,
   onSignOut,
   hasAvatar = false,
   onChangeAvatar,
@@ -89,10 +92,13 @@ export function UserSettingsView({
   const [nextAlignment, setNextAlignment] = useState<"left" | "right">(alignment);
   const [nickname, setNickname] = useState("");
   const [bio, setBio] = useState(ownBio);
+  const [savedBio, setSavedBio] = useState(ownBio);
+  const [savedAlignment, setSavedAlignment] = useState(alignment);
   const [bioEdited, setBioEdited] = useState(false);
   const [saveError, setSaveError] = useState<string | null>(null);
   const [submitting, setSubmitting] = useState(false);
   const [confirmSignOut, setConfirmSignOut] = useState(false);
+  const [confirmDiscard, setConfirmDiscard] = useState(false);
   const [avatarError, setAvatarError] = useState<string | null>(null);
   const [avatarBusy, setAvatarBusy] = useState(false);
   const avatarInputRef = useRef<HTMLInputElement | null>(null);
@@ -100,17 +106,40 @@ export function UserSettingsView({
   // Track live alignment changes without clobbering the nickname field.
   useEffect(() => {
     setNextAlignment(alignment);
+    setSavedAlignment(alignment);
   }, [alignment]);
 
   useEffect(() => {
     if (!bioEdited) {
-      setBio(ownBio);
+      setBio(savedBio);
     }
-  }, [ownBio, bioEdited]);
+  }, [savedBio, bioEdited]);
+
+  useEffect(() => {
+    setSavedBio(ownBio);
+  }, [ownBio]);
 
   const isBusy = busy || submitting;
   const trimmedNickname = nickname.trim();
   const nicknameProvided = canEditNickname && trimmedNickname.length > 0;
+  const alignmentDirty = nextAlignment !== savedAlignment;
+  const dirty = alignmentDirty || nicknameProvided || bio.trim() !== savedBio.trim();
+
+  useBeforeUnload(dirty);
+  useEffect(() => {
+    onDirtyChange?.(dirty);
+  }, [dirty, onDirtyChange]);
+  useEffect(
+    () => () => {
+      onDirtyChange?.(false);
+    },
+    [onDirtyChange],
+  );
+
+  const goBack = () => {
+    if (dirty) setConfirmDiscard(true);
+    else onBack();
+  };
 
   const changeAvatar = (file: File) => {
     if (onChangeAvatar === undefined || avatarBusy) {
@@ -128,7 +157,7 @@ export function UserSettingsView({
     setAvatarError(null);
     void onChangeAvatar(file)
       .catch(() => {
-        setAvatarError("Couldn't update your profile picture.");
+        setAvatarError("Couldn’t update your profile picture.");
       })
       .finally(() => {
         setAvatarBusy(false);
@@ -143,7 +172,7 @@ export function UserSettingsView({
     setAvatarError(null);
     void onClearAvatar()
       .catch(() => {
-        setAvatarError("Couldn't remove your profile picture.");
+        setAvatarError("Couldn’t remove your profile picture.");
       })
       .finally(() => {
         setAvatarBusy(false);
@@ -164,8 +193,16 @@ export function UserSettingsView({
           ...(includeNickname ? { bio: bio.trim() } : {}),
         }),
       )
+      .then(() => {
+        if (includeNickname) {
+          setNickname("");
+          setBioEdited(false);
+          setSavedBio(bio.trim());
+        }
+        setSavedAlignment(nextAlignment);
+      })
       .catch(() => {
-        setSaveError("Couldn't save your settings. Please try again.");
+        setSaveError("Couldn’t save your settings. Please try again.");
       })
       .finally(() => {
         setSubmitting(false);
@@ -179,7 +216,7 @@ export function UserSettingsView({
       aria-label="Your settings"
     >
       <header className="material-chrome flex h-[52px] shrink-0 items-center gap-2 border-b border-border px-3">
-        <IconButton label="Back to chat" onClick={onBack}>
+        <IconButton label="Back to chat" onClick={goBack}>
           <Icon name="chevron-left" size={16} />
         </IconButton>
         <h2 className="min-w-0 flex-1 truncate text-[14px] font-semibold tracking-[-0.01em] text-text">
@@ -235,7 +272,7 @@ export function UserSettingsView({
                       {ownName}
                       {isOwner && (
                         <span
-                          className="rounded-full bg-accent-soft px-2 py-0.5 text-[10px] font-medium text-accent"
+                          className="rounded-full bg-accent-soft px-2 py-0.5 text-[12px] font-medium text-accent-text"
                           data-testid="user-settings-admin-badge"
                         >
                           Admin
@@ -353,10 +390,10 @@ export function UserSettingsView({
                         Sign out
                       </Button>
                     )}
-                    <Button type="button" variant="ghost" onClick={onBack}>
+                    <Button type="button" variant="ghost" onClick={goBack}>
                       Cancel
                     </Button>
-                    <Button type="submit" loading={isBusy} disabled={isBusy}>
+                    <Button type="submit" loading={isBusy} disabled={isBusy || !dirty}>
                       Save
                     </Button>
                   </div>
@@ -401,13 +438,15 @@ export function UserSettingsView({
                       { value: "left", label: "Left" },
                       { value: "right", label: "Right" },
                     ]}
-                    onChange={setNextAlignment}
+                    onChange={(value) => {
+                      setNextAlignment(value);
+                    }}
                     label="Message alignment"
                     className="w-full"
                   />
                 </Field>
-                <div className="flex justify-end">
-                  <Button type="submit" loading={isBusy} disabled={isBusy}>
+                <div className="flex items-center justify-end gap-3">
+                  <Button type="submit" loading={isBusy} disabled={isBusy || !alignmentDirty}>
                     Save
                   </Button>
                 </div>
@@ -418,11 +457,25 @@ export function UserSettingsView({
       </div>
 
       <ConfirmDialog
+        open={confirmDiscard}
+        onClose={() => {
+          setConfirmDiscard(false);
+        }}
+        title="Discard unsaved changes?"
+        confirmLabel="Discard changes"
+        cancelLabel="Keep editing"
+        onConfirm={() => {
+          setConfirmDiscard(false);
+          onBack();
+        }}
+      />
+
+      <ConfirmDialog
         open={confirmSignOut}
         onClose={() => {
           setConfirmSignOut(false);
         }}
-        title={`Sign out of ${ownName}'s workspace?`}
+        title={`Sign out of ${ownName}’s workspace?`}
         description="You can sign back in at any time."
         confirmLabel="Sign out"
         variant="danger"

@@ -23,13 +23,13 @@ function SwitcherButton({ ctl, open, onToggle }: Props & { open: boolean; onTogg
         open && "bg-surface-3",
       )}
     >
-      <Icon name="kanban" size={18} className="text-accent" />
+      <Icon name="kanban" size={18} className="text-accent-text" />
       <span className="min-w-0 truncate text-[15px] font-semibold">
         {board?.name ?? (ctl.archivedBoards ? "Archived boards" : "Kanban")}
       </span>
       {board?.private === true && <Icon name="lock" size={13} className="text-text-muted" />}
       {board?.archived === true && (
-        <span className="rounded-full bg-surface-3 px-1.5 py-0.5 text-[10px] font-medium uppercase tracking-wide text-text-muted">
+        <span className="rounded-full bg-surface-3 px-1.5 py-0.5 text-[12px] font-medium uppercase tracking-wide text-text-muted">
           Archived
         </span>
       )}
@@ -53,12 +53,12 @@ function BoardRow({ ctl, entry, onDone }: Props & { entry: Board; onDone: () => 
     >
       <Icon name={entry.private ? "lock" : "kanban"} size={14} className="text-text-muted" />
       <span className="min-w-0 flex-1 truncate">{entry.name}</span>
-      {current && <Icon name="check" size={14} className="text-accent" />}
+      {current && <Icon name="check" size={14} className="text-accent-text" />}
     </button>
   );
 }
 
-/** The board's name; pressing it lists the other boards, a new one and the archive. */
+/** The board’s name; pressing it lists the other boards, a new one and the archive. */
 function BoardSwitcher({ ctl }: Props) {
   const { open, setOpen, rootRef, onKeyDown } = usePopover();
   const close = () => {
@@ -194,13 +194,13 @@ export function BoardError({ ctl }: Props) {
   return (
     <div
       role="alert"
-      className="flex shrink-0 animate-fade-in items-center gap-2 border-b border-danger/20 bg-danger/10 px-4 py-2 text-[13px] text-danger"
+      className="flex shrink-0 animate-fade-in items-center gap-2 border-b border-danger/20 bg-danger/10 px-4 py-2 text-[13px] text-danger-text"
     >
       <p className="flex-1">{ctl.error}</p>
       <IconButton
         label="Dismiss error"
         size="sm"
-        className="text-danger hover:text-danger"
+        className="text-danger-text hover:text-danger-text"
         onClick={() => {
           ctl.setError(undefined);
         }}
@@ -223,7 +223,13 @@ export function BoardEmpty({ ctl }: Props) {
   return (
     <EmptyState
       className="px-5"
-      title={ctl.archivedBoards ? "No archived boards" : "Plan your next project"}
+      title={
+        ctl.archivedBoards
+          ? "No archived boards"
+          : ctl.canManage
+            ? "No boards yet"
+            : "No boards you can see"
+      }
       description={emptyMessage(ctl)}
       action={
         <>

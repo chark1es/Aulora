@@ -2,7 +2,7 @@ import { cn } from "@aulora/ui-web";
 
 /**
  * The small Ember tick that anchors the active conversation. It sits inside
- * the row's own padding rather than on its edge, so selection reads as a
+ * the row’s own padding rather than on its edge, so selection reads as a
  * quiet marker instead of a second container.
  */
 export function ActiveBar({ active }: { readonly active: boolean }) {

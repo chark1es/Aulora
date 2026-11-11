@@ -42,7 +42,7 @@ export interface EditChannelModalProps {
   readonly onSave: (patch: EditChannelPatch) => void | Promise<void>;
 }
 
-/** Adds or removes one id, never touching the viewer's own entry. */
+/** Adds or removes one id, never touching the viewer’s own entry. */
 function toggleIn(list: readonly string[], id: string): readonly string[] {
   return list.includes(id) ? list.filter((value) => value !== id) : [...list, id];
 }
@@ -66,7 +66,7 @@ function usePeopleOptions(
   );
 }
 
-/** The dialog's form state, reset from the channel each time it opens. */
+/** The dialog’s form state, reset from the channel each time it opens. */
 function useEditChannelForm(props: EditChannelModalProps) {
   const [name, setName] = useState(props.channelName);
   const [topic, setTopic] = useState(props.channelTopic);

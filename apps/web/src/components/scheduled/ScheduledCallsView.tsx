@@ -64,7 +64,7 @@ interface ScheduledCall {
   readonly canJoin: boolean;
 }
 
-/** The Scheduled tab: upcoming and past calls, in the viewer's own time zone. */
+/** The Scheduled tab: upcoming and past calls, in the viewer’s own time zone. */
 export function ScheduledCallsView(props: ScheduledCallsViewProps) {
   return (
     <AddonBoundary title="Scheduled calls" onBack={props.onBack}>
@@ -435,7 +435,7 @@ function CallRow({
       </div>
       {state.kind === "not-open" && (
         <p id={hintId} className="text-[12px] text-text-muted" data-testid="scheduled-not-open">
-          This call hasn't started yet — opens at {formatLocalTimeWithZone(state.opensAt)} (
+          This call hasn’t started yet. It opens at {formatLocalTimeWithZone(state.opensAt)} (
           {formatOpensIn(state.opensInMs)})
         </p>
       )}

@@ -14,7 +14,7 @@ import { buildProviders, type Env, read, readBoolean, readInt } from "./well-kno
  *   INSTANCE_NAME            workspace name                       (Aulora)
  *   SITE_URL                 public web origin                    (http://localhost:5173)
  *   CONVEX_URL               Convex API URL                      (http://127.0.0.1:3210)
- *   AULORA_VERSION           client/instance version             (0.1.0)
+ *   AULORA_VERSION           client/instance version             (1.4.1)
  *   API_VERSION              well-known shape version            (1)
  *   ICON_SEED                avatar seed for the workspace       (aulora:server:local)
  *   AUTH_LOCAL_ENABLED       local email/password                (true)
@@ -28,6 +28,7 @@ import { buildProviders, type Env, read, readBoolean, readInt } from "./well-kno
  * are never read into the output.
  */
 
+// Turbo hashes OAuth secrets: passthrough alone can cache stale provider availability; presence flags need a wrapper shared by every build entry point.
 export function buildWellKnown(env: Env): Record<string, unknown> {
   const providers = buildProviders(env);
   const localRequested = readBoolean(env, "AUTH_LOCAL_ENABLED", true);

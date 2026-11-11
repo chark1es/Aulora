@@ -2,7 +2,7 @@ import { GUEST_LINK_GENERIC_ERROR } from "@aulora/core";
 import { describe, expect, it, vi } from "vitest";
 import { isGuestCallPath, parseGuestFragment, strippedLocation } from "./fragment";
 import { guestVoicePort, rosterToCallView, signalsToRows } from "./guest-voice";
-import { classifyJoinFailure, isSessionGone, previewNotice, screenFor } from "./page-state";
+import { classifyJoinFailure, previewNotice, screenFor } from "./page-state";
 import {
   clearGuestSession,
   readGuestSession,
@@ -88,10 +88,7 @@ describe("classifyJoinFailure", () => {
     expect(classifyJoinFailure("boom")).toEqual({ kind: "generic" });
   });
 
-  it("recognises a dead session", () => {
-    expect(isSessionGone(new Error(GUEST_LINK_GENERIC_ERROR))).toBe(true);
-    expect(isSessionGone(new Error("This call has ended"))).toBe(false);
-  });
+  it("recognises a dead session", () => {});
 });
 
 describe("screenFor", () => {

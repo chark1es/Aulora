@@ -1,5 +1,6 @@
 import { Button, Text } from "@aulora/ui-web";
-import { useMutation, useQuery } from "convex/react";
+import { useMutation, usePaginatedQuery } from "convex/react";
+import type { FunctionReference, FunctionReturnType, PaginationOptions } from "convex/server";
 import { useState } from "react";
 import { api } from "../../../../../../packages/convex/convex/_generated/api";
 import type { BotDetail } from "../../../../../../packages/convex/convex/lib/botTypes";
@@ -7,11 +8,19 @@ import { type BotChannelChoice, type BotChannelMode, BotChannelScope } from "./B
 import { BotBlockedPermissions, BotGrantsGrid } from "./BotGrantsGrid";
 import { useBotAction } from "./use-bot-action";
 
-const CHANNEL_PAGE = { numItems: 200, cursor: null } as const;
-
 /** Chooses what the bot may do, and the channels that scope applies to. */
 export function BotPermissionsTab({ bot }: { readonly bot: BotDetail }) {
-  const channelsResult = useQuery(api.channels.list, { paginationOpts: CHANNEL_PAGE });
+  const { results, status, loadMore } = usePaginatedQuery(
+    // The endpoint also accepts legacy unpaginated callers; this hook always supplies paginationOpts.
+    api.channels.list as FunctionReference<
+      "query",
+      "public",
+      { paginationOpts: PaginationOptions },
+      FunctionReturnType<typeof api.channels.list>
+    >,
+    {},
+    { initialNumItems: 100 },
+  );
   const setPermissions = useMutation(api.bots.setPermissions);
   const { busy, error, run } = useBotAction();
   const [grants, setGrants] = useState<bigint>(bot.grants);
@@ -22,7 +31,7 @@ export function BotPermissionsTab({ bot }: { readonly bot: BotDetail }) {
     ...(bot.allowedChannelIds ?? []),
   ]);
 
-  const channels: BotChannelChoice[] = (channelsResult?.page ?? [])
+  const channels: BotChannelChoice[] = results
     .filter((channel) => channel.kind === "text" || channel.kind === "announcement")
     .map((channel) => ({ id: channel.id, name: channel.name ?? channel.id }));
 
@@ -54,6 +63,9 @@ export function BotPermissionsTab({ bot }: { readonly bot: BotDetail }) {
         onModeChange={setMode}
         onSelectedChange={setSelected}
       />
+      {status === "CanLoadMore" && (
+        <Button onClick={() => loadMore(100)}>Load more channels</Button>
+      )}
       {error !== null && (
         <Text role="alert" tone="danger" size="sm">
           {error}

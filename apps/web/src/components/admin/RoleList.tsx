@@ -1,3 +1,4 @@
+import { roleColorCss } from "@aulora/core";
 import { Badge, Button, EmptyState, Icon, IconButton, Text } from "@aulora/ui-web";
 import { canManageRoleUi, type RoleView } from "../../lib/workspace-admin";
 import { AdminPageHeader } from "./AdminPageHeader";
@@ -117,9 +118,11 @@ function RoleRow(props: RoleRowProps) {
       <span
         aria-hidden="true"
         className="flex h-6 w-6 shrink-0 items-center justify-center rounded-[7px] border border-border"
-        style={{ backgroundColor: role.color ?? "transparent" }}
+        style={{ backgroundColor: roleColorCss(role.color) ?? "transparent" }}
       >
-        {role.color === null && <Icon name="shield" size={12} className="text-text-muted" />}
+        {roleColorCss(role.color) === null && (
+          <Icon name="shield" size={12} className="text-text-muted" />
+        )}
       </span>
       <button
         type="button"

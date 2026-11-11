@@ -76,13 +76,13 @@ function RemoveConfirmation({
     <ConfirmDialog
       open={open}
       onClose={onClose}
-      title="Remove this server?"
+      title="Remove this workspace?"
       description={
         serverName !== undefined
           ? `Aulora will forget ${serverName} on this device. You can add it again later.`
-          : "Aulora will forget this server on this device. You can add it again later."
+          : "Aulora will forget this workspace on this device. You can add it again later."
       }
-      confirmLabel="Remove server"
+      confirmLabel="Remove workspace"
       variant="danger"
       onConfirm={onConfirm}
     />

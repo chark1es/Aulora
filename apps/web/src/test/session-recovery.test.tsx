@@ -176,7 +176,7 @@ describe("ProfileSession recovery", () => {
     writeSessionToken(PROFILE.siteUrl, "kept-through-an-outage");
     render(<ProfileSession profile={PROFILE} />);
 
-    expect(screen.getByText("Can't reach Acme")).toBeInTheDocument();
+    expect(screen.getByText("Can’t reach Acme")).toBeInTheDocument();
     expect(harness.clients).toHaveLength(1);
 
     harness.server.down = false;
@@ -254,7 +254,7 @@ describe("ProfileSession recovery", () => {
     writeSessionToken(PROFILE.siteUrl, "kept-through-an-outage");
     render(<ProfileSession profile={PROFILE} />);
 
-    expect(screen.getByText("Can't reach Acme")).toBeInTheDocument();
+    expect(screen.getByText("Can’t reach Acme")).toBeInTheDocument();
     act(() => {
       vi.advanceTimersByTime(STUCK_TIMEOUT_MS + FIRST_RECOVERY_DELAY_MS * 2);
     });

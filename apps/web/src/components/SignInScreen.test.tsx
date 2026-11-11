@@ -1,10 +1,10 @@
 import type { ServerProfile, WellKnownAuth } from "@aulora/core";
+import { notifyAuthError } from "@aulora/core";
 import { act, render, screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { useQuery } from "convex/react";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import type { AuthActions } from "../lib/auth-client";
-import { notifyAuthError } from "../lib/auth-events";
 import { beginOAuth, storeAuthHandoffError } from "../lib/oauth-start";
 import { SignInScreen } from "./SignInScreen";
 

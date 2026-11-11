@@ -8,7 +8,7 @@ import { SessionGate } from "./SessionGate";
 
 /**
  * Authenticated Convex session for one server profile. The Convex client and
- * Better Auth client are rebuilt when both should match the active profile's
+ * Better Auth client are rebuilt when both should match the active profile’s
  * `convexUrl` and `siteUrl` from its well-known document, and again whenever
  * recovery decides the current pair is dead (see `connection-recovery.ts`).
  *
@@ -20,7 +20,7 @@ import { SessionGate } from "./SessionGate";
 export function ProfileSession({ profile }: { readonly profile: ServerProfile }) {
   const [generation, setGeneration] = useState(0);
   useRemountLog("ProfileSession");
-  // biome-ignore lint/correctness/useExhaustiveDependencies: `generation` is the rebuild signal, and the clients only depend on the server's two URLs
+  // biome-ignore lint/correctness/useExhaustiveDependencies: `generation` is the rebuild signal, and the clients only depend on the server’s two URLs
   const clients = useMemo(
     () => createSessionClients(profile),
     [profile.convexUrl, profile.siteUrl, generation],
@@ -40,12 +40,12 @@ export function ProfileSession({ profile }: { readonly profile: ServerProfile })
 
   return (
     <ConvexBetterAuthProvider
-      // A new key discards the provider's own auth state (token cache, the
-      // server's last answer) instead of carrying it into the rebuilt client.
+      // A new key discards the provider’s own auth state (token cache, the
+      // server’s last answer) instead of carrying it into the rebuilt client.
       key={generation}
       client={clients.convex}
-      // The provider's `AuthClient` prop erases plugin generics (`useSession`
-      // collapses to `never`), which our concrete client doesn't match. Narrow
+      // The provider’s `AuthClient` prop erases plugin generics (`useSession`
+      // collapses to `never`), which our concrete client doesn’t match. Narrow
       // only for the prop; runtime is unchanged. `providerAuthClient` is the
       // same client with an outage-tolerant `convex.token`.
       authClient={clients.providerAuthClient as unknown as AuthClient}

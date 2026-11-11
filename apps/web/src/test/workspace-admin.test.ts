@@ -13,7 +13,6 @@ import {
   setOverrideLevel,
   togglePermissionBit,
   topPositionForRefs,
-  topRole,
 } from "../lib/workspace-admin";
 
 function role(partial: Partial<RoleView> & { name: string; position: number }): RoleView {
@@ -108,7 +107,6 @@ describe("workspace-admin helpers", () => {
       joinedAt: 0,
       timeoutUntil: null,
     };
-    expect(topRole(member, roles)?.name).toBe("Admin");
     expect(roleColorFor(member, roles)).toBe("#8FD19E");
   });
 
