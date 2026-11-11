@@ -3,6 +3,7 @@ import { spawnSync } from "node:child_process";
 import { copyFileSync, mkdtempSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { resolve } from "node:path";
+import { file as bunFile, write as bunWrite } from "bun";
 
 const directories = [];
 afterEach(() => {
@@ -17,14 +18,14 @@ async function scratchCheckout() {
   directories.push(root);
   const dockerDir = resolve(root, "infra/docker");
   // Bun.write creates missing parent directories, so no mkdir is needed.
-  await Bun.write(
+  await bunWrite(
     resolve(root, "packages/convex/convex/lib/env.ts"),
     'export const AULORA_VERSION = "0.2.0";\n',
   );
-  await Bun.write(resolve(dockerDir, ".deployed-version"), "0.1.0\n");
-  await Bun.write(
+  await bunWrite(resolve(dockerDir, ".deployed-version"), "0.1.0\n");
+  await bunWrite(
     resolve(dockerDir, "deploy.sh"),
-    Bun.file(new URL("../deploy.sh", import.meta.url)),
+    bunFile(new URL("../deploy.sh", import.meta.url)),
   );
   // No Docker daemon is used: the stubs record the command contract and inject failures.
   const bin = mkdtempSync(resolve(root, "bin-"));
@@ -58,12 +59,12 @@ async function deploy({
     },
     encoding: "utf8",
   });
-  const callsFileHandle = Bun.file(callsFile);
+  const callsFileHandle = bunFile(callsFile);
   const calls = ((await callsFileHandle.exists()) ? await callsFileHandle.text() : "").trim();
   return {
     result,
     calls: calls === "" ? [] : calls.split("\n"),
-    stamp: await Bun.file(resolve(dockerDir, ".deployed-version")).text(),
+    stamp: await bunFile(resolve(dockerDir, ".deployed-version")).text(),
   };
 }
 
