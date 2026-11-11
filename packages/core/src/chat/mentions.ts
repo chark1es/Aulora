@@ -162,7 +162,9 @@ function maskInlineCode(prose: string): string {
 
 /** Mask quoted/code text while preserving positions for token consumers. */
 export function broadcastMentionText(body: string): string {
-  return maskInlineCode(maskQuotesAndFences(body)).replace(URL_PATTERN, (url) => " ".repeat(url.length));
+  return maskInlineCode(maskQuotesAndFences(body)).replace(URL_PATTERN, (url) =>
+    " ".repeat(url.length),
+  );
 }
 
 const BROADCAST_TOKEN = /(?<![\w@.-])@(everyone|here)(?![\w.-])/gi;
