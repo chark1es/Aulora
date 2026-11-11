@@ -569,3 +569,25 @@ with instructions to use the hosting provider's redeploy controls.
 ## Public release operations
 
 The [public self-hosting guide](../../apps/docs/content/self-hosting.md) covers HTTPS, reachable URLs, and private administration ports. Default passwords are for local trials; replace database and MinIO credentials before a public deployment. The [updates guide](../../apps/docs/content/updates.md) distinguishes rebuilding source, updating from release tags, and Coolify redeploys.
+
+## Deployment verification
+
+`deploy.sh` and the host staged updater compare the existing Convex container's
+immutable image ID to the configured engine image. They recreate a changed (or
+missing) engine before setup and wait up to 120 seconds for engine health. The
+staged download pulls and records the engine image alongside its built images,
+so restart rejects substituted images. Matching engines are left in place.
+After setup and frontend recreation, both paths wait up to 120 seconds for web
+and engine health before writing `.deployed-version`. A failed staged restart
+retains `.update-ready.json` and the old stamp for retry; it does not undo any
+engine or backend changes already applied. A healthcheck is not a substitute
+for checking discovery, sign-in, history and supported older clients.
+
+Both Compose variants gate web startup on the one-shot setup service completing
+successfully. The explicit update/deploy paths run setup first and recreate web
+with `--no-deps`, so they do not launch a second setup through that dependency.
+The regular stack now has the same nginx healthcheck as the Coolify stack.
+
+Docker Compose **>= 2.24** is required by the deployment and staged updater
+for service-scoped `docker compose config --images convex-backend`. Both paths
+check the installed plugin version before Compose operations.

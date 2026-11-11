@@ -96,6 +96,53 @@ bun run --cwd apps/mobile android
 
 Enter a server URL reachable from the simulator or phone. A physical phone's `localhost` is not your computer. Use a valid HTTPS origin for realistic authentication, calls, and notification testing.
 
+### Android emulator testing on WSL
+
+WSL2 usually has no `/dev/kvm`, so run the emulator from the Windows Android SDK and build the APK in Linux. Paths below assume the default Windows SDK at `C:\Users\<you>\AppData\Local\Android\Sdk`, an API 36 AVD such as `Pixel_9_Pro_XL`, and `WIN=/mnt/c/Users/<you>`.
+
+```sh
+# One-time Linux toolchain (no root): Temurin JDK 17 and the SDK packages CI uses.
+mkdir -p ~/tools ~/Android/Sdk/cmdline-tools && cd ~/tools
+curl -fsSLo jdk17.tar.gz https://api.adoptium.net/v3/binary/latest/17/ga/linux/x64/jdk/hotspot/normal/eclipse && tar xzf jdk17.tar.gz
+curl -fsSLo cmdline.zip https://dl.google.com/android/repository/commandlinetools-linux-13114758_latest.zip
+unzip -q cmdline.zip -d ~/Android/Sdk/cmdline-tools && mv ~/Android/Sdk/cmdline-tools/cmdline-tools ~/Android/Sdk/cmdline-tools/latest
+export JAVA_HOME=$(echo ~/tools/jdk-17*) ANDROID_HOME=~/Android/Sdk PATH=$(echo ~/tools/jdk-17*)/bin:$PATH
+yes | sdkmanager --licenses >/dev/null
+sdkmanager "platform-tools" "platforms;android-37.0" "build-tools;37.0.0" "ndk;27.1.12297006" "cmake;3.22.1"
+
+# Start the Windows emulator (hardware accelerated through WHPX).
+powershell.exe -NoProfile -Command "Start-Process '$env:LOCALAPPDATA\Android\Sdk\emulator\emulator.exe' -ArgumentList '-avd','Pixel_9_Pro_XL','-no-snapshot-load'"
+ADB="$WIN/AppData/Local/Android/Sdk/platform-tools/adb.exe"
+
+# Debug APK for the emulator ABI only (about 6 minutes cold), installed from a Windows path.
+(cd apps/mobile/android && ./gradlew :app:assembleDebug -PreactNativeArchitectures=x86_64)
+mkdir -p "$WIN/aulora-android" && cp apps/mobile/android/app/build/outputs/apk/debug/app-debug.apk "$WIN/aulora-android/"
+"$ADB" install -r 'C:\Users\<you>\aulora-android\app-debug.apk'
+```
+
+Metro runs in WSL, but WSL forwards only IPv6 `localhost` to Windows, and the app defaults to `10.0.2.2`. Expose Metro on IPv4, reverse the device port to it, and point the debug build at `localhost`:
+
+```sh
+bun run --cwd apps/mobile start   # Metro on :8081
+node -e 'const n=require("net");n.createServer(c=>{const u=n.connect(8081,"::1");c.pipe(u).pipe(c);u.on("error",()=>c.destroy());c.on("error",()=>u.destroy())}).listen(8082,"0.0.0.0")' &
+"$ADB" reverse tcp:8081 tcp:8082
+"$ADB" shell "run-as dev.spwnd.aulora sh -c 'mkdir -p shared_prefs && echo \"<map><string name=\\\"debug_http_host\\\">localhost:8081</string></map>\" > shared_prefs/dev.spwnd.aulora_preferences.xml'"
+"$ADB" shell am start -n dev.spwnd.aulora/.MainActivity
+```
+
+Enter `demo.aulora.example` on Connect to open the [offline review demo](review-demo.md) for chat, threads, sheets and settings without a server. Capture with `"$ADB" exec-out screencap -p > shot.png`, find tap targets with `uiautomator dump` (set the three `settings put global *_animation_scale 0` values first, or it cannot reach an idle state), and cover the layout matrix:
+
+| Condition | Command |
+| --- | --- |
+| Small phone (360×640dp) | `wm size 720x1280` and `wm density 320` |
+| Typical phone (411dp) | `wm size 1080x2400` and `wm density 420` |
+| Landscape tablet, where Android 16 ignores the portrait lock | `wm size 2560x1600` and `wm density 320` |
+| Largest text | `settings put system font_scale 2.0` |
+| Dark mode | `cmd uimode night yes` |
+| 3-button or gesture navigation | `cmd overlay enable-exclusive --category com.android.internal.systemui.navbar.threebutton` (or `.gestural`) |
+
+Check each screen with the keyboard open, including with animations on and off. Restore defaults with `wm size reset`, `wm density reset` and `font_scale 1.0`. Stop the emulator with `"$ADB" emu kill` and Gradle with `./gradlew --stop`. Build output stays in the ignored `android/build` and `android/app/build` folders.
+
 ## Checks and focused commands
 
 ```sh

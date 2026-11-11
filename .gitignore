@@ -80,3 +80,5 @@ Thumbs.db
 # Python bytecode (scripts and the optional transcriber)
 __pycache__/
 *.pyc
+
+*.whl

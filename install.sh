@@ -129,6 +129,11 @@ command -v docker >/dev/null 2>&1 || die "Docker is not installed or not on PATH
 if ! docker compose version >/dev/null 2>&1; then
   die "Docker Compose v2 is required (docker compose)"
 fi
+compose_version="$(docker compose version --short 2>/dev/null || true)"
+if ! [[ "$compose_version" =~ ^v?([0-9]+)\.([0-9]+) ]] ||
+  (( BASH_REMATCH[1] < 2 || (BASH_REMATCH[1] == 2 && BASH_REMATCH[2] < 24) )); then
+  die "Docker Compose 2.24 or newer is required (found ${compose_version:-unknown}). Upgrade the Compose plugin."
+fi
 docker compose wait --help >/dev/null 2>&1 || die "update Docker Compose: the installer requires the wait command"
 
 [ -f "$ENV_EXAMPLE" ] || die "missing $ENV_EXAMPLE"
