@@ -170,7 +170,7 @@ describe("staged workspace updates", () => {
       const setup = f.calls.findIndex(([, args]) => args[1] === "run" && args.includes("setup"));
       expect(wait).toBeGreaterThan(recreated);
       expect(setup).toBeGreaterThan(wait);
-      expect(f.calls[wait][1]).toContain("120");
+      expect(f.calls.at(wait)?.[1]).toContain("120");
     }
   });
   it("retains the ready marker and stamp on engine or final web health failure", async () => {
