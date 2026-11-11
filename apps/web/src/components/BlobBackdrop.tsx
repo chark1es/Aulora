@@ -29,7 +29,7 @@ function blobStyle(blob: AvatarBlob, index: number): CSSProperties {
 }
 
 /**
- * One appearance's worth of the field. `isolate` keeps the blend inside this
+ * One appearance’s worth of the field. `isolate` keeps the blend inside this
  * layer so it can never tint the page chrome, and the blend itself is the whole
  * trick: `screen` adds light on a dark host, `multiply` subtracts it on a light
  * one, so the same palette stays luminous either way instead of washing out.
@@ -62,7 +62,7 @@ function FieldLayer({
 
 /**
  * The Aulora signature backdrop: three or four saturated blobs drawn from the
- * workspace's own blobatar palette, drifting slowly behind a screen, with a
+ * workspace’s own blobatar palette, drifting slowly behind a screen, with a
  * whisper of grain over the top. Because the palette comes from the seed, no
  * two workspaces look alike and every screen belonging to one workspace looks
  * like itself. Purely decorative and hidden from assistive technology; the

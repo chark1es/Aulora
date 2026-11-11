@@ -4,8 +4,8 @@ import type { ErrorComponentProps } from "@tanstack/react-router";
 import { useEffect } from "react";
 
 /**
- * Recoverable fallback for an error that escapes the session's own boundary.
- * TanStack Router's built-in error component is a dead end; this one always
+ * Recoverable fallback for an error that escapes the session’s own boundary.
+ * TanStack Router’s built-in error component is a dead end; this one always
  * offers a working reset, and treats a transient failure as reconnecting.
  */
 export function RouteError({ error, reset }: ErrorComponentProps) {

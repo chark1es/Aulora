@@ -47,7 +47,7 @@ function ColumnHeader({
         title={column.wipLimit ? `Limit of ${column.wipLimit} cards` : undefined}
         className={cn(
           "rounded-full px-1.5 py-0.5 text-[11px] font-medium tabular-nums transition-colors",
-          full ? "bg-danger/15 text-danger" : "bg-surface-3 text-text-muted",
+          full ? "bg-danger/15 text-danger-text" : "bg-surface-3 text-text-muted",
         )}
       >
         {count}
@@ -80,7 +80,7 @@ interface ListProps extends ColumnProps {
   cards: readonly Card[];
 }
 
-/** The column's cards in order, with the landing placeholder among them while dragging. */
+/** The column’s cards in order, with the landing placeholder among them while dragging. */
 function ColumnCards({ ctl, dnd, board, column, cards }: ListProps) {
   const { drag, landing } = dnd;
   const target = drag !== undefined && landing?.columnId === column.id ? landing : undefined;
@@ -146,13 +146,13 @@ function BoardColumn({ ctl, dnd, board, column }: ColumnProps) {
       {/*
         The list clips to its padding box. A flipping card is drawn at its old
         slot before it glides into place, so padding (not just px/pb) keeps the
-        clip edge clear of the card's border, focus ring and shadow.
+        clip edge clear of the card’s border, focus ring and shadow.
       */}
       <div className="flex min-h-0 flex-1 flex-col gap-2 overflow-y-auto p-2">
         {refused && (
           <p
             role="status"
-            className="shrink-0 animate-fade-in rounded-[10px] border border-dashed border-danger/50 bg-danger/10 px-2 py-2.5 text-center text-xs font-medium text-danger"
+            className="shrink-0 animate-fade-in rounded-[10px] border border-dashed border-danger/50 bg-danger/10 px-2 py-2.5 text-center text-xs font-medium text-danger-text"
           >
             Column limit reached
           </p>

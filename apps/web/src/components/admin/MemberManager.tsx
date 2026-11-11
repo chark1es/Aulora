@@ -1,4 +1,4 @@
-import { Badge, Button, EmptyState, Icon, Modal, Spinner, Text } from "@aulora/ui-web";
+import { Badge, Button, EmptyState, Icon, Modal, Text } from "@aulora/ui-web";
 import { useMutation, useQuery } from "convex/react";
 import { useState } from "react";
 import { api } from "../../../../../packages/convex/convex/_generated/api";
@@ -141,8 +141,22 @@ export function MemberManager({
       )}
 
       {members === undefined && (
-        <div className="flex justify-center py-8">
-          <Spinner size={22} label="Loading members" />
+        <div aria-busy="true" className="border-y border-border/60">
+          <p role="status" className="sr-only">
+            Loading members
+          </p>
+          <ul aria-hidden="true" className="divide-y divide-border/60">
+            {[0, 1, 2, 3, 4].map((row) => (
+              <li key={row} className="flex min-h-[52px] items-center gap-3 px-4 py-2">
+                <span className="h-7 w-7 shrink-0 animate-pulse rounded-full bg-surface-3 motion-reduce:animate-none" />
+                <span className="min-w-0 flex-1">
+                  <span className="block h-3.5 w-32 animate-pulse rounded bg-surface-3 motion-reduce:animate-none" />
+                  <span className="mt-1.5 block h-2.5 w-20 animate-pulse rounded bg-surface-3 motion-reduce:animate-none" />
+                </span>
+                <span className="h-3.5 w-3.5 animate-pulse rounded bg-surface-3 motion-reduce:animate-none" />
+              </li>
+            ))}
+          </ul>
         </div>
       )}
 
@@ -420,7 +434,7 @@ interface MemberBadgesProps {
   readonly isBot: boolean;
 }
 
-/** The Owner and BOT chips shown next to a member's name. */
+/** The Owner and BOT chips shown next to a member’s name. */
 function MemberBadges({ isOwner, isBot }: MemberBadgesProps) {
   return (
     <>

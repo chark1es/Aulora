@@ -115,7 +115,7 @@ describe("GuestJoinForm", () => {
     });
     form();
     expect(screen.getByTestId("guest-not-started")).toHaveTextContent(
-      "The call hasn't started yet",
+      "The call hasn’t started yet",
     );
     expect(screen.getByRole("button", { name: "Ask to join" })).toBeDisabled();
   });
@@ -153,7 +153,7 @@ describe("guest page shell", () => {
     render(
       <GuestErrorBoundary
         fallback={() => (
-          <GuestMessageScreen icon="link" title="This guest link isn't available">
+          <GuestMessageScreen icon="link" title="This guest link isn’t available">
             Ask for a new link.
           </GuestMessageScreen>
         )}
@@ -163,7 +163,7 @@ describe("guest page shell", () => {
     );
     quiet.mockRestore();
     expect(
-      screen.getByRole("heading", { name: "This guest link isn't available" }),
+      screen.getByRole("heading", { name: "This guest link isn’t available" }),
     ).toBeInTheDocument();
     expect(screen.queryByText(GUEST_LINK_GENERIC_ERROR)).toBeNull();
   });

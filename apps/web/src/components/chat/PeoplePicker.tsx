@@ -113,7 +113,7 @@ function PickerField(props: PeoplePickerProps) {
         aria-label={props.searchLabel}
         placeholder={picked.length === 0 ? props.placeholder : ""}
         value={query}
-        // biome-ignore lint/a11y/noAutofocus: the picker is the dialog's only task when asked to
+        // biome-ignore lint/a11y/noAutofocus: the picker is the dialog’s only task when asked to
         autoFocus={props.autoFocus === true}
         onChange={(event) => {
           onQueryChange(event.target.value);

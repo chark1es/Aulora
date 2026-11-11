@@ -9,10 +9,9 @@
  * replaced. See `connection-recovery.ts` for when that happens.
  */
 
-import { CONVEX_AUTH_CLIENT_OPTIONS, type ServerProfile } from "@aulora/core";
+import { CONVEX_AUTH_CLIENT_OPTIONS, createProviderAuth, type ServerProfile } from "@aulora/core";
 import { ConvexReactClient } from "convex/react";
 import { type AuloraAuthClient, createAuloraAuthClient } from "./auth-client";
-import { createProviderAuth } from "./provider-auth";
 
 export interface SessionClients {
   readonly convex: ConvexReactClient;

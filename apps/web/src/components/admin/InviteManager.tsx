@@ -46,7 +46,7 @@ export function InviteManager({ canCreateInvites, canDeleteInvites, origin }: In
     <div className="flex flex-col gap-8" data-testid="invite-manager">
       <AdminPageHeader
         title="Invites"
-        description="Bring people in with a link, an emailed one-time invitation or a short code — or pre-approve their address."
+        description="Bring people in with a link, an emailed one-time invitation or a short code, or pre-approve their address."
         trailing={
           <SegmentedControl
             label="Invite section"

@@ -1,176 +1,37 @@
-import type { Overwrite } from "@aulora/core";
 import {
   canManageRole,
   canModerateMember,
-  EVERYONE_ROLE_ID,
-  PERMISSION_NAMES,
+  type OverrideView,
   Permission,
   type PermissionName,
-  type Role,
-  resolvePermissions,
+  type RoleView,
+  roleColorFor,
+  roleNamesFor,
+  roleRef,
+  toCoreRoles,
 } from "@aulora/core";
 
+export type { MemberView, OverrideView, ResolveViewerInput, RoleView } from "@aulora/core";
+export {
+  heldRoleIds,
+  memberDisplayName,
+  resolveViewerPermissions,
+  toCoreRoles,
+} from "@aulora/core";
+export { roleColorFor, roleNamesFor, roleRef };
+
 /**
- * Pure view helpers for the Phase 3 admin surfaces. Nothing here talks to the
+ * Pure view helpers for the admin surfaces. Nothing here talks to the
  * server or holds secrets: it only reshapes role/member/override data already
  * returned by Convex and resolves the same bitfield the server enforces, so the
  * UI hides what the actor cannot do. The server remains the source of truth.
  */
-
-export interface RoleView {
-  readonly id: string;
-  readonly key: string | null;
-  readonly name: string;
-  readonly color: string | null;
-  readonly position: number;
-  readonly permissions: bigint;
-  readonly hoisted: boolean;
-  readonly mentionable: boolean;
-  readonly isEveryone: boolean;
-}
-
-export interface MemberView {
-  readonly id: string;
-  readonly userId: string;
-  readonly nickname: string | null;
-  /** The account's own name from the server (absent on older servers). */
-  readonly accountName?: string | null;
-  readonly roleIds: readonly string[];
-  readonly joinedAt: number;
-  readonly timeoutUntil: number | null;
-  /** This workspace's profile picture. Missing on older payloads. */
-  readonly avatarUrl?: string | null;
-  /** True for a bot member. Missing on older servers. */
-  readonly isBot?: boolean;
-}
-
-export type OverrideView = Overwrite;
 
 export interface CategoryView {
   readonly id: string;
   readonly name: string;
   readonly position: number;
   readonly overrides: readonly OverrideView[];
-}
-
-/** Stable reference a member stores for a role (`key` wins over `_id`). */
-export function roleRef(role: { readonly id: string; readonly key: string | null }): string {
-  return role.key ?? role.id;
-}
-
-/** Maps stored role views onto the framework-agnostic `@aulora/core` shape. */
-export function toCoreRoles(roles: readonly RoleView[]): Role[] {
-  return roles.map((role) => ({
-    id: roleRef(role),
-    position: role.position,
-    permissions: role.permissions,
-    isEveryone: role.isEveryone,
-  }));
-}
-
-/** The role ids a member holds, always including `@everyone`. */
-export function heldRoleIds(member: MemberView | null, roles: readonly RoleView[]): string[] {
-  const ids = new Set<string>(member?.roleIds ?? []);
-  for (const role of roles) {
-    if (role.isEveryone) {
-      ids.add(roleRef(role));
-    }
-  }
-  if (ids.size === 0) {
-    ids.add(EVERYONE_ROLE_ID);
-  }
-  return [...ids];
-}
-
-export interface ResolveViewerInput {
-  readonly viewer: { readonly userId: string; readonly isOwner: boolean };
-  readonly member: MemberView | null;
-  readonly roles: readonly RoleView[];
-  readonly categoryOverrides?: readonly OverrideView[];
-  readonly channelOverrides?: readonly OverrideView[];
-}
-
-/** Resolves the actor's effective permissions exactly as the server does. */
-export function resolveViewerPermissions(input: ResolveViewerInput): bigint {
-  return resolvePermissions({
-    actor: {
-      userId: input.viewer.userId,
-      roleIds: heldRoleIds(input.member, input.roles),
-      isOwner: input.viewer.isOwner,
-    },
-    roles: toCoreRoles(input.roles),
-    ...(input.categoryOverrides !== undefined
-      ? { categoryOverrides: input.categoryOverrides }
-      : {}),
-    ...(input.channelOverrides !== undefined ? { channelOverrides: input.channelOverrides } : {}),
-  });
-}
-
-/** Highest-position role a member holds, or `null` when only `@everyone`. */
-export function topRole(member: MemberView | null, roles: readonly RoleView[]): RoleView | null {
-  if (member === null) {
-    return null;
-  }
-  const held = new Set(member.roleIds);
-  let best: RoleView | null = null;
-  for (const role of roles) {
-    if (!held.has(roleRef(role))) {
-      continue;
-    }
-    if (best === null || role.position > best.position) {
-      best = role;
-    }
-  }
-  return best;
-}
-
-/**
- * The color that tints a member's avatar ring and username: the color of their
- * highest-position colored role.
- */
-export function roleColorFor(member: MemberView | null, roles: readonly RoleView[]): string | null {
-  if (member === null) {
-    return null;
-  }
-  const held = new Set(member.roleIds);
-  let best: RoleView | null = null;
-  for (const role of roles) {
-    if (role.color === null || role.color.length === 0 || !held.has(roleRef(role))) {
-      continue;
-    }
-    if (best === null || role.position > best.position) {
-      best = role;
-    }
-  }
-  return best?.color ?? null;
-}
-
-/**
- * The names of the roles a member holds, highest position first, skipping
- * `@everyone` (which every member has and which adds no signal).
- */
-export function roleNamesFor(member: MemberView | null, roles: readonly RoleView[]): string[] {
-  if (member === null) {
-    return [];
-  }
-  const held = new Set(member.roleIds);
-  return roles
-    .filter((role) => !role.isEveryone && held.has(roleRef(role)))
-    .sort((a, b) => b.position - a.position)
-    .map((role) => role.name);
-}
-
-/** Display name honoring a nickname override, falling back to the base name. */
-/** Nickname first, then the account's own name, then `fallback`. */
-export function memberDisplayName(member: MemberView | null, fallback: string): string {
-  const nickname = member?.nickname;
-  if (nickname !== undefined && nickname !== null && nickname.length > 0) {
-    return nickname;
-  }
-  const accountName = member?.accountName;
-  return accountName !== undefined && accountName !== null && accountName.length > 0
-    ? accountName
-    : fallback;
 }
 
 /** Whether the viewer may edit/assign/delete `role`. UI copy of the server. */
@@ -347,7 +208,7 @@ export const PERMISSION_LABELS: Record<PermissionName, string> = {
   CreateGuestLinks: "Create guest invite links",
   ManageGuestAccess: "Admit, deny or remove guests",
   ScheduleCalls: "Schedule calls",
-  ManageScheduledCalls: "Manage anyone's scheduled calls",
+  ManageScheduledCalls: "Manage anyone’s scheduled calls",
   ViewScheduledCalls: "See the Scheduled tab",
   Administrator: "Administrator",
 };
@@ -360,9 +221,6 @@ export function togglePermissionBit(
 ): bigint {
   return enabled ? current | Permission[name] : current & ~Permission[name];
 }
-
-/** Every defined flag, for select-all/clear-all controls. */
-export const ALL_PERMISSION_NAMES: readonly PermissionName[] = PERMISSION_NAMES;
 
 export type OverrideLevel = "inherit" | "allow" | "deny";
 
@@ -445,3 +303,6 @@ export interface OverrideTarget {
   readonly label: string;
   readonly color?: string | null;
 }
+
+export const PERMISSION_LABELS_BY_NAME = new Map<string, string>(Object.entries(PERMISSION_LABELS));
+export const PERMISSION_BITS = new Map<string, bigint>(Object.entries(Permission));

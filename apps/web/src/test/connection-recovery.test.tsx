@@ -185,7 +185,7 @@ describe("ConnectionRecoveryActions", () => {
     expect(onRemoveServer).not.toHaveBeenCalled();
     expect(screen.getByRole("dialog")).toBeInTheDocument();
 
-    fireEvent.click(screen.getByRole("button", { name: "Remove server" }));
+    fireEvent.click(screen.getByRole("button", { name: "Remove workspace" }));
     expect(onRemoveServer).toHaveBeenCalledTimes(1);
   });
 

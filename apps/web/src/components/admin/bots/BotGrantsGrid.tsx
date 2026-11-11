@@ -2,20 +2,18 @@
 import {
   BOT_BLOCKED_PERMISSIONS,
   BOT_GRANTABLE_PERMISSIONS,
-  Permission,
   type PermissionName,
   permissionNames,
 } from "@aulora/core";
 import { Checkbox, cn, Text } from "@aulora/ui-web";
 import {
+  PERMISSION_BITS,
   PERMISSION_GROUPS,
-  PERMISSION_LABELS,
+  PERMISSION_LABELS_BY_NAME,
   togglePermissionBit,
 } from "../../../lib/workspace-admin";
 import { BOT_BLOCKED_REASONS, BOT_CAUTION_PERMISSIONS } from "./bot-format";
 
-const PERMISSION_BITS = new Map<string, bigint>(Object.entries(Permission));
-const PERMISSION_LABELS_BY_NAME = new Map<string, string>(Object.entries(PERMISSION_LABELS));
 const GRANTABLE = new Set<PermissionName>(permissionNames(BOT_GRANTABLE_PERMISSIONS));
 const BLOCKED = permissionNames(BOT_BLOCKED_PERMISSIONS);
 
@@ -59,7 +57,7 @@ function BotGrantRow({ name, value, disabled, onChange }: BotGrantRowProps) {
       <span className="min-w-0 flex-1">
         <span className="block">{labelFor(name)}</span>
         {caution !== undefined && (
-          <span className="mt-0.5 block text-[10px] leading-snug text-danger">{caution}</span>
+          <span className="mt-0.5 block text-[12px] leading-snug text-danger-text">{caution}</span>
         )}
       </span>
     </label>
@@ -129,7 +127,7 @@ export function BotBlockedPermissions() {
             </span>
             <span className="min-w-0 flex-1">
               <span className="block text-[12px] text-text-muted">{labelFor(name)}</span>
-              <span className="mt-0.5 block text-[10px] leading-snug text-text-muted">
+              <span className="mt-0.5 block text-[12px] leading-snug text-text-muted">
                 {BOT_BLOCKED_REASONS.get(name) ?? "Bots can never have this permission."}
               </span>
             </span>

@@ -49,11 +49,6 @@ export function classifyJoinFailure(error: unknown): JoinFailure {
   return { kind: "generic" };
 }
 
-/** True when an error from a signed-by-token query means the session is gone for good. */
-export function isSessionGone(error: unknown): boolean {
-  return messageOf(error).includes(GUEST_LINK_GENERIC_ERROR);
-}
-
 export type LobbyStatus = "pending" | "admitted" | "denied" | "removed" | "left" | "expired";
 
 /** The screen for each stage of a guest's visit. */

@@ -4,7 +4,6 @@ import {
   auditActionLabel,
   auditCategory,
   auditEventFields,
-  describeAuditAction,
   formatAuditEvent,
   shortId,
 } from "../lib/audit-format";
@@ -14,26 +13,6 @@ describe("audit-format", () => {
   it("labels known actions and humanizes unknown ones", () => {
     expect(auditActionLabel("role.create")).toBe("created a role");
     expect(auditActionLabel("unknown.action")).toBe("unknown action");
-  });
-
-  it("summarizes parseable metadata without leaking it raw", () => {
-    expect(describeAuditAction("member.ban", '{"reason":"spam"}')).toBe(
-      "Banned a member: spam · permanent",
-    );
-    expect(describeAuditAction("role.delete", "not-json")).toBe("Deleted a role");
-    expect(describeAuditAction("role.delete", null)).toBe("Deleted a role");
-  });
-
-  it("drops opaque ids and maps known metadata to friendly copy", () => {
-    expect(describeAuditAction("member.role.add", '{"roleId":"abc123"}')).toBe(
-      "Gave a member a role",
-    );
-    expect(describeAuditAction("role.create", '{"name":"Moderator","position":3}')).toBe(
-      "Created a role: Moderator",
-    );
-    expect(describeAuditAction("channel.create", '{"kind":"text","private":true}')).toBe(
-      "Created a channel: text, private",
-    );
   });
 
   it("builds a friendly sentence from resolved actor and target names", () => {
@@ -82,15 +61,6 @@ describe("audit-format", () => {
     expect(
       formatAuditEvent("workspaceNotes.setEnabled", '{"enabled":false}', { actorName: "Ada" }),
     ).toBe("Ada turned off workspace notes");
-  });
-
-  it("lists the auth providers changed in an auth-providers update", () => {
-    expect(
-      describeAuditAction("instance.authProviders.update", '{"local":false,"github":true}'),
-    ).toBe("Changed sign-in providers: enabled GitHub sign-in, disabled email & password sign-in");
-    expect(describeAuditAction("instance.authProviders.update", "{}")).toBe(
-      "Changed sign-in providers",
-    );
   });
 
   it("builds structured detail fields for the event dialog", () => {

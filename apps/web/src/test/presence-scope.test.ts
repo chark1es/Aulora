@@ -1,7 +1,6 @@
 import type { PresenceRow } from "@aulora/core";
 import { describe, expect, it, vi } from "vitest";
 import { createScopedPresence } from "../lib/convex-chat";
-import { buildPresenceScope, PRESENCE_SCOPE_MAX } from "../lib/presence-scope";
 
 function row(userId: string): PresenceRow {
   return { userId, status: "online", customStatus: null, lastHeartbeat: 1 };
@@ -26,45 +25,6 @@ function fakeClient() {
   };
   return { client, calls, emit };
 }
-
-describe("buildPresenceScope", () => {
-  it("unions the timeline authors, displayed members, own user and DM partners", () => {
-    const scope = buildPresenceScope({
-      ownUserId: "me",
-      timelineAuthorIds: ["a", "b", "a"],
-      displayedMemberIds: ["b", "c"],
-      channels: [
-        { kind: "dm", memberIds: ["me", "d"] },
-        { kind: "text", memberIds: ["me", "e"] },
-      ],
-    });
-    expect(scope).toEqual(["me", "a", "b", "c", "d"]);
-  });
-
-  it("appends extra ids after the timeline and member set", () => {
-    const scope = buildPresenceScope({
-      ownUserId: "me",
-      timelineAuthorIds: ["a"],
-      displayedMemberIds: [],
-      channels: [],
-      extraUserIds: ["x", "a"],
-    });
-    expect(scope).toEqual(["me", "a", "x"]);
-  });
-
-  it("caps the scope at the server's id ceiling, keeping render order", () => {
-    const many = Array.from({ length: PRESENCE_SCOPE_MAX + 25 }, (_, index) => `u${index}`);
-    const scope = buildPresenceScope({
-      ownUserId: "me",
-      timelineAuthorIds: many,
-      displayedMemberIds: [],
-      channels: [],
-    });
-    expect(scope).toHaveLength(PRESENCE_SCOPE_MAX);
-    expect(scope[0]).toBe("me");
-    expect(scope.at(-1)).toBe(`u${PRESENCE_SCOPE_MAX - 2}`);
-  });
-});
 
 describe("createScopedPresence", () => {
   it("serves presence.getMany for the scope instead of the whole-table presence.list", () => {

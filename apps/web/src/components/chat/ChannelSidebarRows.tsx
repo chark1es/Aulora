@@ -1,7 +1,7 @@
 /* eslint-disable no-unused-vars -- the base rule reports parameter names in type signatures; Biome checks real unused code */
 import type { ChannelView } from "@aulora/core";
 import { badgeCount, dmPartnerId } from "@aulora/core";
-import { cn, Icon } from "@aulora/ui-web";
+import { CapText, cn, Icon } from "@aulora/ui-web";
 import { ActiveBar } from "./ActiveBar";
 import type { ChannelUnread } from "./channel-sidebar-model";
 import { GroupAvatar, PresenceAvatar, type PresenceStatus, presenceLabel } from "./PresenceAvatar";
@@ -24,13 +24,13 @@ function UnreadBadge({
         role="img"
         aria-label={`${count} ${count === "1" ? "mention" : "mentions"}`}
         className={cn(
-          "flex h-4 min-w-4 items-center justify-center rounded-full px-1 pt-px text-[11px] font-semibold leading-none tabular-nums",
+          "flex h-4 min-w-4 items-center justify-center rounded-full px-1 text-[11px] font-semibold leading-none tabular-nums",
           // White on dark Ember is 3.7:1; the near-black background token
           // clears 4.5:1 for the 11px count. Light theme keeps white.
           muted ? "bg-surface-3 text-text-muted" : "bg-accent text-on-accent dark:text-bg",
         )}
       >
-        {count}
+        <CapText>{count}</CapText>
       </span>
     );
   }
@@ -128,7 +128,10 @@ export function ChannelRow({
       <Icon
         name={channel.kind === "announcement" ? "announce" : isPrivate ? "lock" : "hash"}
         size={16}
-        className={cn("shrink-0 transition-colors", active ? "text-accent" : "text-text-muted")}
+        className={cn(
+          "shrink-0 transition-colors",
+          active ? "text-accent-text" : "text-text-muted",
+        )}
       />
       <span className="min-w-0 flex-1 truncate">{title}</span>
       {isMuted && (

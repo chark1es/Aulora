@@ -7,7 +7,7 @@ import {
   type OverrideView,
   overrideLevel,
   PERMISSION_GROUPS,
-  PERMISSION_LABELS,
+  PERMISSION_LABELS_BY_NAME,
   setOverrideLevel,
 } from "../../lib/workspace-admin";
 import { Combobox, type ComboboxOption } from "./Combobox";
@@ -16,7 +16,7 @@ import { OverrideTriState } from "./OverrideTriState";
 
 export interface OverridesEditorProps {
   readonly title: string;
-  /** Hide the editor's own heading when a page header already shows the title. */
+  /** Hide the editor’s own heading when a page header already shows the title. */
   readonly hideTitle?: boolean;
   readonly overrides: readonly OverrideView[];
   readonly targets: readonly OverrideTarget[];
@@ -37,8 +37,6 @@ interface FilteredGroup {
   readonly all: readonly PermissionName[];
   readonly permissions: readonly PermissionName[];
 }
-
-const PERMISSION_LABELS_BY_NAME = new Map<string, string>(Object.entries(PERMISSION_LABELS));
 
 function permissionLabel(name: PermissionName): string {
   return PERMISSION_LABELS_BY_NAME.get(name) ?? name;
@@ -545,7 +543,7 @@ function GroupHeader({
           onClick={() => {
             onSetGroup(group.all, "allow");
           }}
-          className="rounded-[6px] px-1.5 py-0.5 text-[11px] font-medium text-text-muted transition hover:bg-surface-3 hover:text-secondary disabled:pointer-events-none disabled:opacity-40"
+          className="rounded-[6px] px-1.5 py-0.5 text-[11px] font-medium text-text-muted transition hover:bg-surface-3 hover:text-secondary-text disabled:pointer-events-none disabled:opacity-40"
         >
           Allow all
         </button>
@@ -629,12 +627,12 @@ function OverrideSummarySection(props: OverrideSummarySectionProps) {
             {draft.length}
           </span>
           {totals.allow > 0 && (
-            <span className="rounded-full bg-secondary/15 px-1.5 py-0.5 text-[10px] font-medium text-secondary">
+            <span className="rounded-full bg-secondary/15 px-1.5 py-0.5 text-[10px] font-medium text-secondary-text">
               {totals.allow} allow
             </span>
           )}
           {totals.deny > 0 && (
-            <span className="rounded-full bg-danger/15 px-1.5 py-0.5 text-[10px] font-medium text-danger">
+            <span className="rounded-full bg-danger/15 px-1.5 py-0.5 text-[10px] font-medium text-danger-text">
               {totals.deny} deny
             </span>
           )}
@@ -711,7 +709,7 @@ function TargetHeader({ target }: { readonly target: OverrideTarget }) {
 function GroupPills({ counts }: { readonly counts: GroupCounts }) {
   if (counts.allow === 0 && counts.deny === 0) {
     return (
-      <span className="rounded-full bg-surface-3 px-1.5 py-0.5 text-[10px] text-text-muted">
+      <span className="rounded-full bg-surface-3 px-1.5 py-0.5 text-[12px] text-text-muted">
         inherit
       </span>
     );
@@ -719,12 +717,12 @@ function GroupPills({ counts }: { readonly counts: GroupCounts }) {
   return (
     <span className="flex items-center gap-1">
       {counts.allow > 0 && (
-        <span className="rounded-full bg-secondary/15 px-1.5 py-0.5 text-[10px] font-medium text-secondary">
+        <span className="rounded-full bg-secondary/15 px-1.5 py-0.5 text-[10px] font-medium text-secondary-text">
           {counts.allow} allow
         </span>
       )}
       {counts.deny > 0 && (
-        <span className="rounded-full bg-danger/15 px-1.5 py-0.5 text-[10px] font-medium text-danger">
+        <span className="rounded-full bg-danger/15 px-1.5 py-0.5 text-[10px] font-medium text-danger-text">
           {counts.deny} deny
         </span>
       )}
@@ -777,7 +775,7 @@ function OverrideSummaryRow({
           type="button"
           disabled={disabled}
           onClick={onClear}
-          className="shrink-0 rounded-[6px] px-1.5 py-0.5 text-[11px] font-medium text-text-muted transition hover:bg-surface-3 hover:text-danger disabled:pointer-events-none disabled:opacity-40"
+          className="shrink-0 rounded-[6px] px-1.5 py-0.5 text-[11px] font-medium text-text-muted transition hover:bg-surface-3 hover:text-danger-text disabled:pointer-events-none disabled:opacity-40"
         >
           Clear
         </button>
@@ -808,8 +806,8 @@ function FlagChip({
       className={cn(
         "inline-flex items-center gap-1 rounded-full border px-2 py-0.5 text-[11px] font-medium",
         state === "allow"
-          ? "border-secondary/30 bg-secondary/10 text-secondary"
-          : "border-danger/30 bg-danger/10 text-danger",
+          ? "border-secondary/30 bg-secondary/10 text-secondary-text"
+          : "border-danger/30 bg-danger/10 text-danger-text",
       )}
     >
       <Icon name={state === "allow" ? "check" : "x"} size={10} />

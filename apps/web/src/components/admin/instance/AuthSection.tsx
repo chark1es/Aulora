@@ -145,7 +145,7 @@ function AuthProviderToggle({
     ? {}
     : {
         description:
-          "Not configured — set credentials in the Environment section or the deployment environment.",
+          "Not configured. Set credentials in the Environment section or the deployment environment.",
       };
   return (
     <li className="rounded-input border border-border bg-surface-2 px-3 py-2">

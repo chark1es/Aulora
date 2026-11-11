@@ -59,7 +59,7 @@ function NotesHeader({ ctl }: { ctl: NotesController }) {
       <IconButton label="Back to chat" size="sm" onClick={ctl.onBack}>
         <Icon name="chevron-left" size={18} />
       </IconButton>
-      <Icon name="note" size={18} className="text-accent" />
+      <Icon name="note" size={18} className="text-accent-text" />
       <span className="min-w-0 truncate text-[15px] font-semibold">Notes</span>
       <span className="flex-1" />
       <span className="text-xs tabular-nums text-text-muted">
@@ -75,13 +75,13 @@ function NotesError({ ctl }: { ctl: NotesController }) {
   return (
     <div
       role="alert"
-      className="flex shrink-0 animate-fade-in items-center gap-2 border-b border-danger/20 bg-danger/10 px-4 py-2 text-[13px] text-danger"
+      className="flex shrink-0 animate-fade-in items-center gap-2 border-b border-danger/20 bg-danger/10 px-4 py-2 text-[13px] text-danger-text"
     >
       <p className="flex-1">{ctl.error}</p>
       <IconButton
         label="Dismiss error"
         size="sm"
-        className="text-danger hover:text-danger"
+        className="text-danger-text hover:text-danger-text"
         onClick={ctl.clearError}
       >
         <Icon name="x" size={14} />
@@ -147,7 +147,7 @@ function DetailMenu({ ctl }: { ctl: NotesController }) {
                 close();
                 ctl.requestDeleteNote(detail);
               }}
-              className="flex w-full items-center gap-2 rounded-[7px] px-2.5 py-1.5 text-left text-[13px] text-danger transition hover:bg-danger/10 disabled:opacity-50"
+              className="flex w-full items-center gap-2 rounded-[7px] px-2.5 py-1.5 text-left text-[13px] text-danger-text transition hover:bg-danger/10 disabled:opacity-50"
             >
               <Icon name="trash" size={15} />
               Delete
@@ -241,10 +241,55 @@ function DetailPane({ ctl }: { ctl: NotesController }) {
   return (
     <>
       <DetailTabs ctl={ctl} />
+      {ctl.conflict && (
+        <div role="alert" className="flex flex-wrap items-center gap-2 p-4 text-sm text-text">
+          <p>
+            This note changed while you were editing. Reload the latest version or keep your draft
+            and save again.
+          </p>
+          <Button size="sm" onClick={ctl.reloadLatest}>
+            Reload latest
+          </Button>
+          <Button size="sm" onClick={ctl.overwriteWithMyVersion}>
+            Keep my version
+          </Button>
+        </div>
+      )}
+      {ctl.replacingNewerVersion && (
+        <p role="status" className="px-4 pb-3 text-sm text-text">
+          Saving will replace the newer version
+        </p>
+      )}
       <div className="min-h-0 flex-1 overflow-y-auto">
         {ctl.tab === "edit" ? <NoteEditor ctl={ctl} /> : <NoteHistory ctl={ctl} />}
       </div>
     </>
+  );
+}
+
+/** Row skeletons for the notes library while its first page loads. */
+function NotesListSkeleton() {
+  return (
+    <div className="flex min-h-0 min-w-0 flex-1" aria-busy="true">
+      <p role="status" className="sr-only">
+        Loading notes
+      </p>
+      <aside aria-hidden="true" className="min-h-0 w-full shrink-0 border-border">
+        <div className="flex flex-col gap-2 border-b border-border px-3 py-2.5">
+          <span className="h-8 w-full animate-pulse rounded-input bg-surface-3 motion-reduce:animate-none" />
+          <span className="h-4 w-40 animate-pulse rounded bg-surface-3 motion-reduce:animate-none" />
+        </div>
+        <ul className="flex flex-col gap-0.5 p-2">
+          {[0, 1, 2, 3, 4, 5].map((row) => (
+            <li key={row} className="flex flex-col gap-1.5 rounded-[8px] px-2.5 py-2">
+              <span className="h-3.5 w-2/3 animate-pulse rounded bg-surface-3 motion-reduce:animate-none" />
+              <span className="h-2.5 w-full animate-pulse rounded bg-surface-3 motion-reduce:animate-none" />
+              <span className="h-2.5 w-24 animate-pulse rounded bg-surface-3 motion-reduce:animate-none" />
+            </li>
+          ))}
+        </ul>
+      </aside>
+    </div>
   );
 }
 
@@ -264,9 +309,7 @@ function NotesContent(props: NotesProps) {
       <NotesHeader ctl={ctl} />
       <NotesError ctl={ctl} />
       {ctl.overview === undefined ? (
-        <div className="flex flex-1 items-center justify-center">
-          <Spinner label="Loading notes" />
-        </div>
+        <NotesListSkeleton />
       ) : (
         <div className="flex min-h-0 min-w-0 flex-1">
           <NotesLibrary ctl={ctl} />

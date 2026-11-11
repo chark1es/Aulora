@@ -21,7 +21,7 @@ export function PictureInPictureButton({ identity }: { readonly identity: CallId
       className={cn(
         "flex h-8 w-8 items-center justify-center rounded-[8px] transition",
         pip.active
-          ? "bg-accent/15 text-accent"
+          ? "bg-accent/15 text-accent-text"
           : "text-text-muted hover:bg-surface-3 hover:text-text",
       )}
     >

@@ -83,7 +83,7 @@ function FileRow({ editor, files, file }: Props & { files: CardFiles; file: Stor
     onSelect: remove,
   };
   return (
-    // biome-ignore lint/a11y/noStaticElementInteractions: the right-click menu repeats the row's own controls
+    // biome-ignore lint/a11y/noStaticElementInteractions: the right-click menu repeats the row’s own controls
     <div
       className="group flex min-h-7 animate-message-in items-center gap-2"
       onContextMenu={(event) => {

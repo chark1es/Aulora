@@ -2,7 +2,6 @@ import { describe, expect, it } from "vitest";
 import {
   buildOidcEntries,
   discoveryUrlError,
-  EMPTY_OIDC_FORM,
   type EnvVariable,
   envFieldMeta,
   envGroupSummaries,
@@ -138,7 +137,16 @@ describe("discoveryUrlError", () => {
 describe("OIDC form helpers", () => {
   it("builds only non-empty entries", () => {
     const entries = buildOidcEntries({
-      ...EMPTY_OIDC_FORM,
+      ...{
+        displayName: "",
+        issuer: "",
+        discoveryUrl: "",
+        clientId: "",
+        clientSecret: "",
+        scopes: "openid profile email",
+        groupClaim: "",
+        groupRoleMap: "",
+      },
       issuer: "https://idp.example.com",
       discoveryUrl: "https://idp.example.com/.well-known/openid-configuration",
       clientId: "client",

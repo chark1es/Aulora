@@ -1,3 +1,4 @@
+import { userFacingError } from "@aulora/core";
 import type { FunctionReturnType } from "convex/server";
 import type { api } from "../../../../../packages/convex/convex/_generated/api";
 
@@ -78,7 +79,7 @@ export function childFolders(
 }
 
 export function failure(cause: unknown): string {
-  return cause instanceof Error ? cause.message : "Could not save. Try again.";
+  return userFacingError(cause);
 }
 
 /** Shared field styling for the note form controls. */
@@ -86,14 +87,7 @@ export const control =
   "w-full rounded-input border border-border bg-surface-3 px-3 py-2 text-[13px] text-text focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent disabled:opacity-50";
 
 /** A relative "time ago" label, mirroring the Kanban board. */
-export function relativeTime(at: number, now: number): string {
-  const minutes = Math.floor(Math.max(0, now - at) / 60000);
-  if (minutes < 1) return "just now";
-  if (minutes < 60) return `${minutes}m ago`;
-  if (minutes < 60 * 24) return `${Math.floor(minutes / 60)}h ago`;
-  if (minutes < 60 * 24 * 7) return `${Math.floor(minutes / (60 * 24))}d ago`;
-  return new Date(at).toLocaleDateString(undefined, { month: "short", day: "numeric" });
-}
+export { timeAgo as relativeTime } from "@aulora/core";
 
 /** Absolute date and time for history rows and note metadata. */
 export function formatTimestamp(at: number): string {

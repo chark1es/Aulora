@@ -1,5 +1,7 @@
 import type { MessagePayload } from "@aulora/core";
+import { messageMentionsUser, suppressesBroadcast } from "@aulora/core";
 import { useEffect, useRef } from "react";
+import { api } from "../../../../packages/convex/convex/_generated/api";
 import type { ChatRuntime } from "./chat-runtime";
 import { isDesktop, showDesktopNotification } from "./desktop";
 
@@ -50,6 +52,17 @@ export function useDesktopNotifications(
     if (runtime === undefined) {
       return;
     }
+    const prefWatch = runtime.client.watchQuery(api.notifications.getPrefs, {});
+    let prefs: ReturnType<typeof prefWatch.localQueryResult>;
+    const refreshPrefs = () => {
+      try {
+        prefs = prefWatch.localQueryResult();
+      } catch {
+        /* Older server: no preference value. */
+      }
+    };
+    const offPrefs = prefWatch.onUpdate(refreshPrefs);
+    refreshPrefs();
     const mountedAt = Date.now();
     const seen = new Set<string>();
     let seeded = false;
@@ -70,6 +83,7 @@ export function useDesktopNotifications(
         if (message.authorId === ownUserId || message.createdAt < mountedAt) {
           continue;
         }
+        if (suppressesBroadcast(message, ownUserId, prefs)) continue;
         const text = runtime.session.decryptedText(message.id);
         if (text.trim().length === 0) {
           continue;
@@ -80,18 +94,22 @@ export function useDesktopNotifications(
         }
         if (!document.hasFocus()) {
           const channelName = namesRef.current.get(message.channelId);
-          const mentioned = message.mentionUserIds.includes(ownUserId);
-          const title = mentioned
-            ? `Mentioned in ${channelName === undefined ? "a channel" : `#${channelName}`}`
-            : channelName === undefined
-              ? "New message"
-              : `#${channelName}`;
+          const mentioned = messageMentionsUser(message, ownUserId);
+          const title =
+            message.mentionEveryone === true || message.mentionHere === true
+              ? `@${message.mentionEveryone === true ? "everyone" : "here"} in #${channelName ?? "channel"}`
+              : mentioned
+                ? `Mentioned in ${channelName === undefined ? "a channel" : `#${channelName}`}`
+                : channelName === undefined
+                  ? "New message"
+                  : `#${channelName}`;
           showUnfocusedNotification(title, text.slice(0, NOTIFICATION_BODY_LIMIT));
         }
       }
     });
 
     return () => {
+      offPrefs();
       offDecrypted();
     };
   }, [runtime, ownUserId]);

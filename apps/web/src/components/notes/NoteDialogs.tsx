@@ -306,6 +306,14 @@ export function NoteDialogs({ ctl }: { ctl: NotesController }) {
       : `${ctl.tagDialog.mode}:${ctl.tagDialog.mode === "edit" ? ctl.tagDialog.tag.id : ""}`;
   return (
     <>
+      <ConfirmDialog
+        open={ctl.navigation.pending !== null}
+        title="Discard unsaved changes?"
+        confirmLabel="Discard changes"
+        cancelLabel="Keep editing"
+        onClose={ctl.navigation.cancel}
+        onConfirm={ctl.navigation.discard}
+      />
       <Confirmations ctl={ctl} />
       {ctl.folderDialog !== undefined && (
         <FolderDialogForm key={folderKey} ctl={ctl} dialog={ctl.folderDialog} />

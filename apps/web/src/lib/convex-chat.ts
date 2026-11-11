@@ -1,5 +1,5 @@
 import type {
-  ChannelSummary,
+  ChannelSummaryRow,
   ChatPort,
   ChatSubscriptions,
   MessagePayload,
@@ -8,12 +8,20 @@ import type {
   PresenceRow,
   ReactionRow,
   ReadStateRow,
-  StoredFileView,
   TypingRow,
 } from "@aulora/core";
+import {
+  normalizeChannelSummary,
+  normalizeMessagePayloads,
+  normalizeStoredFile,
+  PRESENCE_SCOPE_MAX,
+  reportBroadcastFallback,
+  resolveServerCapabilities,
+} from "@aulora/core";
 import type { ConvexReactClient } from "convex/react";
+import { getFunctionName } from "convex/server";
 import { api } from "../../../../packages/convex/convex/_generated/api";
-import { PRESENCE_SCOPE_MAX } from "./presence-scope";
+import { isClosedChannelError } from "./channel-query-error";
 
 /**
  * Live Convex adapter for `@aulora/core`'s `ChatPort` + `ChatSubscriptions`.
@@ -30,74 +38,43 @@ const PAGE = { numItems: 100, cursor: null } as const;
 /** Message ids per reactions batch; matches the server's `listForMessages` cap. */
 const REACTION_BATCH_SIZE = 100;
 
-interface ServerChannel {
-  readonly id: string;
-  readonly kind: ChannelSummary["kind"];
-  readonly categoryId: string | null;
-  readonly name: string | null;
-  readonly topic: string | null;
-  readonly archived: boolean;
-  readonly isPrivate?: boolean;
-  readonly overrides?: readonly {
-    targetId: string;
-    targetType: "role" | "member";
-    allow: bigint;
-    deny: bigint;
-  }[];
-  readonly position?: number;
-  readonly memberIds?: readonly string[];
-  readonly hidden?: boolean;
-  readonly muted?: boolean;
-  readonly pinned?: boolean;
-  readonly pinnedAt?: number | null;
-}
-
-function toSummary(channel: ServerChannel): ChannelSummary {
-  return {
-    id: channel.id,
-    kind: channel.kind,
-    categoryId: channel.categoryId,
-    name: channel.name,
-    topic: channel.topic,
-    archived: channel.archived,
-    ...(channel.isPrivate !== undefined ? { isPrivate: channel.isPrivate } : {}),
-    ...(channel.overrides !== undefined ? { overrides: channel.overrides } : {}),
-    ...(channel.position !== undefined ? { position: channel.position } : {}),
-    ...(channel.memberIds !== undefined ? { memberIds: channel.memberIds } : {}),
-    ...(channel.hidden !== undefined ? { hidden: channel.hidden } : {}),
-    ...(channel.muted !== undefined ? { muted: channel.muted } : {}),
-    ...(channel.pinned !== undefined ? { pinned: channel.pinned } : {}),
-    ...(channel.pinnedAt !== undefined ? { pinnedAt: channel.pinnedAt } : {}),
-  };
-}
-
-/** Maps a Convex `files` view onto the framework-agnostic stored-file shape. */
-function toStoredFile(file: {
-  id: string;
-  uploaderId: string;
-  sizeBytes: number;
-  name: string | null;
-  mime: string | null;
-  dimensions: string | null;
-  blurhash: string | null;
-  url: string | null;
-  thumbnailUrl?: string | null;
-}): StoredFileView {
-  return {
-    id: file.id,
-    uploaderId: file.uploaderId,
-    sizeBytes: file.sizeBytes,
-    name: file.name,
-    mime: file.mime,
-    dimensions: file.dimensions,
-    blurhash: file.blurhash,
-    url: file.url,
-    thumbnailUrl: file.thumbnailUrl ?? null,
-  };
+const capabilityCache = new WeakMap<
+  ConvexReactClient,
+  {
+    connection: number;
+    pending: Promise<ReturnType<typeof resolveServerCapabilities>>;
+  }
+>();
+function serverCapabilities(client: ConvexReactClient) {
+  const connection = client.connectionState?.().connectionCount ?? 0;
+  const cached = capabilityCache.get(client);
+  if (cached?.connection === connection) return cached.pending;
+  let timer: ReturnType<typeof setTimeout>;
+  const pending = Promise.race([
+    Promise.resolve()
+      .then(() => client.query(api.server.publicConfig, {}))
+      .then(resolveServerCapabilities),
+    new Promise<never>((_, reject) => {
+      timer = setTimeout(
+        () => reject(new Error("Server capability check timed out. Try sending again.")),
+        2500,
+      );
+    }),
+  ])
+    .finally(() => {
+      clearTimeout(timer);
+    })
+    .catch(() => {
+      if (capabilityCache.get(client)?.pending === pending) capabilityCache.delete(client);
+      return { mentionMarkers: true };
+    });
+  capabilityCache.set(client, { connection, pending });
+  return pending;
 }
 
 /** Imperative side of the chat backend. */
 export function convexPort(client: ConvexReactClient): ChatPort {
+  capabilityCache.delete(client);
   return {
     async upsertDevice(args) {
       return await client.mutation(api.devices.upsert, {
@@ -287,13 +264,13 @@ export function convexPort(client: ConvexReactClient): ChatPort {
     },
     async getFile(args) {
       const view = await client.query(api.files.get, { fileId: args.fileId as never });
-      return view === null ? null : toStoredFile(view);
+      return view === null ? null : normalizeStoredFile(view);
     },
     async getFiles(args) {
       const views = await client.query(api.files.getMany, {
         fileIds: args.fileIds as never[],
       });
-      return views.map(toStoredFile);
+      return views.map(normalizeStoredFile);
     },
     async downloadFile(args) {
       const view = await client.query(api.files.get, { fileId: args.fileId as never });
@@ -308,17 +285,72 @@ export function convexPort(client: ConvexReactClient): ChatPort {
       return new Uint8Array(await response.arrayBuffer());
     },
     async sendMessage(args) {
-      return await client.mutation(api.messages.send, {
+      const capabilities =
+        !args.threadRootId && (args.mentionEveryone === true || args.mentionHere === true)
+          ? await serverCapabilities(client)
+          : { mentionMarkers: false };
+      const payload = {
         channelId: args.channelId as never,
         body: args.body,
+        ...(capabilities.mentionMarkers && args.mentionEveryone !== undefined
+          ? { mentionEveryone: args.mentionEveryone }
+          : {}),
+        ...(capabilities.mentionMarkers && args.mentionHere !== undefined
+          ? { mentionHere: args.mentionHere }
+          : {}),
         ...(args.threadRootId !== undefined ? { threadRootId: args.threadRootId as never } : {}),
         ...(args.replyToId !== undefined ? { replyToId: args.replyToId as never } : {}),
         ...(args.mentionUserIds !== undefined ? { mentionUserIds: [...args.mentionUserIds] } : {}),
         ...(args.mentionRoleIds !== undefined ? { mentionRoleIds: [...args.mentionRoleIds] } : {}),
+        ...(args.mentionChannelIds !== undefined
+          ? { mentionChannelIds: [...args.mentionChannelIds] }
+          : {}),
+        ...(args.mentionCategoryIds !== undefined
+          ? { mentionCategoryIds: [...args.mentionCategoryIds] }
+          : {}),
         ...(args.attachmentIds !== undefined
           ? { attachmentIds: [...args.attachmentIds] as never[] }
           : {}),
-      });
+      };
+      const legacyPayload = async () => {
+        const { mentionEveryone: _everyone, mentionHere: _here, ...legacy } = payload;
+        if (args.mentionEveryone === true && !args.threadRootId) {
+          const channel = await client.query(api.channels.get, {
+            channelId: args.channelId as never,
+          });
+          if (channel.kind !== "dm" && channel.kind !== "group_dm") {
+            const audience = await client.query(api.channels.visibleMemberIds, {
+              channelId: args.channelId as never,
+            });
+            legacy.mentionUserIds = [...new Set([...(args.mentionUserIds ?? []), ...audience])];
+          }
+        }
+        return legacy;
+      };
+      const sendLegacy = async () => {
+        const result = await client.mutation(api.messages.send, await legacyPayload());
+        if (args.mentionHere === true && !args.threadRootId)
+          reportBroadcastFallback(args.channelId);
+        return result;
+      };
+      if (!capabilities.mentionMarkers) return await sendLegacy();
+      try {
+        return await client.mutation(api.messages.send, payload);
+      } catch (error) {
+        // Unknown optional arguments after a server rollback: retry exactly once.
+        if (
+          (payload.mentionEveryone !== undefined || payload.mentionHere !== undefined) &&
+          ((error instanceof Error && error.name === "ArgumentValidationError") ||
+            /extra field `(?:mentionEveryone|mentionHere)`/.test(String(error)))
+        ) {
+          capabilityCache.set(client, {
+            connection: client.connectionState?.().connectionCount ?? 0,
+            pending: Promise.resolve({ mentionMarkers: false }),
+          });
+          return await sendLegacy();
+        }
+        throw error;
+      }
     },
     async editMessage(args) {
       await client.mutation(api.messages.edit, {
@@ -346,16 +378,20 @@ export function convexPort(client: ConvexReactClient): ChatPort {
       });
     },
     async listMessages(args) {
-      return await client.query(api.messages.list, {
-        channelId: args.channelId as never,
-        paginationOpts: { numItems: PAGE.numItems, cursor: args.cursor },
-      });
+      return normalizeMessagePayloads(
+        await client.query(api.messages.list, {
+          channelId: args.channelId as never,
+          paginationOpts: { numItems: PAGE.numItems, cursor: args.cursor },
+        }),
+      );
     },
     async listThreadMessages(args) {
-      return await client.query(api.messages.listThread, {
-        threadRootId: args.threadRootId as never,
-        paginationOpts: { numItems: PAGE.numItems, cursor: args.cursor },
-      });
+      return normalizeMessagePayloads(
+        await client.query(api.messages.listThread, {
+          threadRootId: args.threadRootId as never,
+          paginationOpts: { numItems: PAGE.numItems, cursor: args.cursor },
+        }),
+      );
     },
     async heartbeat(args) {
       return await client.mutation(api.presence.heartbeat, {
@@ -385,7 +421,10 @@ export function convexPort(client: ConvexReactClient): ChatPort {
 }
 
 /** Live subscription side of the chat backend, built on Convex queries. */
-export function convexSubscriptions(client: ConvexReactClient): ChatSubscriptions {
+export function convexSubscriptions(
+  client: ConvexReactClient,
+  onError: (error: unknown) => void = () => undefined,
+): ChatSubscriptions {
   function watch<T>(
     query: Parameters<ConvexReactClient["watchQuery"]>[0],
     args: Record<string, unknown>,
@@ -393,9 +432,21 @@ export function convexSubscriptions(client: ConvexReactClient): ChatSubscription
   ): () => void {
     const watch = client.watchQuery(query as never, args as never);
     const emit = () => {
-      const value = watch.localQueryResult();
+      let value: ReturnType<typeof watch.localQueryResult>;
+      try {
+        value = watch.localQueryResult();
+      } catch (error) {
+        if (getFunctionName(query) === "messages:list" && isClosedChannelError(error)) {
+          onError(null);
+          onChange({ page: [], isDone: true, continueCursor: "" } as T);
+        } else if (["channels:list", "messages:list"].includes(getFunctionName(query)))
+          onError(error);
+        else console.warn("Secondary chat subscription failed");
+        return;
+      }
       if (value !== undefined) {
-        onChange(value as T);
+        if (["channels:list", "messages:list"].includes(getFunctionName(query))) onError(null);
+        onChange(normalizeMessagePayloads(value as T));
       }
     };
     const unsubscribe = watch.onUpdate(emit);
@@ -409,17 +460,21 @@ export function convexSubscriptions(client: ConvexReactClient): ChatSubscription
 
   return {
     watchChannels(onChange) {
-      return watch<Paginated<ServerChannel>>(
+      return watch<Paginated<ChannelSummaryRow>>(
         api.channels.list,
         { paginationOpts: PAGE },
-        (result) => onChange(result.page.map(toSummary)),
+        (result) => {
+          onChange(result.page.map(normalizeChannelSummary));
+        },
       );
     },
     watchMessages(channelId, onChange, options) {
       return watch<Paginated<MessagePayload>>(
         api.messages.list,
         { channelId, paginationOpts: { numItems: options?.limit ?? PAGE.numItems, cursor: null } },
-        (result) => onChange(result.page),
+        (result) => {
+          onChange(result.page);
+        },
       );
     },
     watchReactions(messageId, onChange) {
@@ -483,7 +538,10 @@ export interface ScopedPresence {
   setScope(userIds: readonly string[]): void;
 }
 
-export function createScopedPresence(client: ConvexReactClient): ScopedPresence {
+export function createScopedPresence(
+  client: ConvexReactClient,
+  onError: (error: unknown) => void = () => undefined,
+): ScopedPresence {
   const listeners = new Set<(rows: readonly PresenceRow[]) => void>();
   let latest: readonly PresenceRow[] = [];
   let scopeIds: readonly string[] = [];
@@ -514,7 +572,13 @@ export function createScopedPresence(client: ConvexReactClient): ScopedPresence 
     try {
       const watch = client.watchQuery(api.presence.getMany, { userIds: scopeIds as never[] });
       const update = () => {
-        const value = watch.localQueryResult();
+        let value: ReturnType<typeof watch.localQueryResult>;
+        try {
+          value = watch.localQueryResult();
+        } catch (error) {
+          onError(error);
+          return;
+        }
         if (value !== undefined) {
           latest = value as PresenceRow[];
           emit();
@@ -529,7 +593,13 @@ export function createScopedPresence(client: ConvexReactClient): ScopedPresence 
       const watch = client.watchQuery(api.presence.list, {});
       const scoped = new Set(scopeIds);
       const update = () => {
-        const value = watch.localQueryResult();
+        let value: ReturnType<typeof watch.localQueryResult>;
+        try {
+          value = watch.localQueryResult();
+        } catch (error) {
+          onError(error);
+          return;
+        }
         if (value !== undefined) {
           latest = (value as PresenceRow[]).filter((row) => scoped.has(row.userId));
           emit();

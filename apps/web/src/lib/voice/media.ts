@@ -279,15 +279,3 @@ export async function applySinkId(
     // A device may have vanished; fall back silently to the default output.
   }
 }
-
-/** Human label for a device kind, for the settings UI. */
-export function deviceKindLabel(kind: AuloraMediaDevice["kind"]): string {
-  switch (kind) {
-    case "audioinput":
-      return "Microphone";
-    case "audiooutput":
-      return "Speaker";
-    case "videoinput":
-      return "Camera";
-  }
-}

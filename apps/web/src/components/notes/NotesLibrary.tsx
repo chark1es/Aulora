@@ -12,7 +12,7 @@ import {
 } from "./types";
 import type { NotesController } from "./use-notes";
 
-/** The query terms highlighted inside a row's snippet. */
+/** The query terms highlighted inside a row’s snippet. */
 function HighlightedText({ text, query }: { text: string; query: string }) {
   const trimmed = query.trim();
   if (trimmed === "") return <>{text}</>;
@@ -21,7 +21,7 @@ function HighlightedText({ text, query }: { text: string; query: string }) {
       {highlightMatches(text, trimmed).map((segment, index) =>
         segment.match ? (
           // biome-ignore lint/suspicious/noArrayIndexKey: segments are positional text runs
-          <mark key={index} className="rounded-[3px] bg-accent-soft px-px text-accent">
+          <mark key={index} className="rounded-[3px] bg-accent-soft px-px text-accent-text">
             {segment.text}
           </mark>
         ) : (
@@ -85,7 +85,7 @@ function NoteRow({ ctl, note, now }: { ctl: NotesController; note: NoteSummary; 
           {tags.slice(0, 3).map((tag) => (
             <span
               key={tag.id}
-              className="inline-flex max-w-[110px] items-center gap-1 rounded-full bg-surface-3 px-1.5 py-0.5 text-[10px] font-medium text-text-muted"
+              className="inline-flex max-w-[110px] items-center gap-1 rounded-full bg-surface-3 px-1.5 py-0.5 text-[12px] font-medium text-text-muted"
             >
               <span
                 className="h-1.5 w-1.5 shrink-0 rounded-full"
@@ -132,7 +132,7 @@ function NewMenuItem({ icon, label, onSelect }: NewMenuItemProps) {
   );
 }
 
-/** What the split button's chevron offers: a note, a folder, a subfolder of the open one. */
+/** What the split button’s chevron offers: a note, a folder, a subfolder of the open one. */
 function NewNoteMenu({ ctl, onClose }: { ctl: NotesController; onClose: () => void }) {
   const folder = ctl.currentFolder;
   const then = (action: () => void) => () => {
@@ -314,7 +314,7 @@ function LibraryTags({ ctl }: { ctl: NotesController }) {
             className={cn(
               "inline-flex h-6 items-center gap-1.5 rounded-full border px-2 text-[11.5px] transition focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent",
               active
-                ? "border-accent/40 bg-accent-soft font-semibold text-accent"
+                ? "border-accent/40 bg-accent-soft font-semibold text-accent-text"
                 : "border-border text-text-muted hover:bg-surface-3 hover:text-text",
             )}
           >

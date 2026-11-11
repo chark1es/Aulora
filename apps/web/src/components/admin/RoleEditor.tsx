@@ -1,4 +1,5 @@
 import { ALL_PERMISSIONS } from "@aulora/core";
+import { roleColorCss } from "@aulora/core/role-color";
 import { Button, Input, Switch, Text } from "@aulora/ui-web";
 import { useMutation } from "convex/react";
 import { useEffect, useState } from "react";
@@ -190,7 +191,13 @@ export function RoleEditor({
               setError("Role name is required");
               return;
             }
-            const colorPatch = draft.color.trim();
+            // An empty colour clears it; anything else must be a valid hex, never silently dropped.
+            const trimmedColor = draft.color.trim();
+            const colorPatch = trimmedColor.length === 0 ? "" : roleColorCss(trimmedColor);
+            if (colorPatch === null) {
+              setError("Pick a valid hex color, such as #7C5CFF.");
+              return;
+            }
             if (mode === "create") {
               void run(async () => {
                 await createRole({
@@ -228,6 +235,8 @@ export function RoleEditor({
               />
               <RoleColorPicker
                 value={draft.color}
+                roleName={draft.name}
+                mentionable={draft.mentionable}
                 disabled={readOnly}
                 onChange={(color) => {
                   setDraft({ ...draft, color });
@@ -277,6 +286,12 @@ export function RoleEditor({
             grantable={grantable}
           />
 
+          {error !== null && (
+            <Text tone="danger" size="sm" role="alert" data-testid="role-form-error">
+              {error}
+            </Text>
+          )}
+
           <div className="flex items-center gap-2 border-t border-border/60 pt-4">
             {!readOnly &&
               mode === "edit" &&
@@ -285,7 +300,7 @@ export function RoleEditor({
                 <Button
                   type="button"
                   variant="ghost"
-                  className="mr-auto text-danger hover:bg-danger/10 hover:text-danger"
+                  className="mr-auto text-danger-text hover:bg-danger/10 hover:text-danger-text"
                   disabled={busy}
                   onClick={() => {
                     if (selected.isEveryone) {

@@ -1,6 +1,12 @@
 /* eslint-disable no-unused-vars -- the base rule reports parameter names in type signatures; Biome checks real unused code */
 import type { ChannelView, MentionTarget, MessagePayload, RoleMentionTarget } from "@aulora/core";
-import { dmPartnerId, hasPermission, Permission } from "@aulora/core";
+import {
+  channelOpening,
+  conversationOpening,
+  dmPartnerId,
+  hasPermission,
+  Permission,
+} from "@aulora/core";
 import { Icon } from "@aulora/ui-web";
 import { useCallback, useMemo, useState } from "react";
 import type { ChatRuntime } from "../../lib/chat-runtime";
@@ -11,7 +17,7 @@ import { Composer, type ComposerSeed } from "./Composer";
 import { ConversationHeader } from "./ConversationHeader";
 import { MessageList } from "./MessageList";
 import { PinnedMessagesPanel } from "./PinnedMessagesPanel";
-import { GroupAvatar, PresenceAvatar, type PresenceStatus, presenceLabel } from "./PresenceAvatar";
+import { GroupAvatar, PresenceAvatar, type PresenceStatus } from "./PresenceAvatar";
 
 export interface ChannelMentionEntry {
   readonly channelId: string;
@@ -38,10 +44,6 @@ export interface ConversationStartProps {
   readonly onStartCall: () => void;
 }
 
-function firstNameOf(name: string): string {
-  return name.trim().split(/\s+/)[0] ?? name;
-}
-
 function ConversationAction({
   icon,
   onClick,
@@ -57,7 +59,7 @@ function ConversationAction({
       onClick={onClick}
       className="inline-flex h-8 select-none items-center gap-1.5 rounded-full border border-border bg-surface-2 px-3 text-[12.5px] font-medium text-text transition hover:bg-surface-3 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent focus-visible:ring-offset-2 focus-visible:ring-offset-chat"
     >
-      <Icon name={icon} size={15} className="text-accent" />
+      <Icon name={icon} size={15} className="text-accent-text" />
       {children}
     </button>
   );
@@ -69,38 +71,10 @@ function ConversationAction({
  */
 function ConversationOpening(props: ConversationStartProps) {
   const { channel, title, ownUserId } = props;
-  const isGroup = channel.kind === "group_dm";
-  const others = (channel.memberIds ?? []).filter((id) => id !== ownUserId);
-  const partner = isGroup ? undefined : dmPartnerId(channel, ownUserId);
-  const isSelf = !isGroup && partner === undefined && (channel.memberIds ?? []).length > 0;
-  const partnerName = partner !== undefined ? props.memberNames.get(partner) : undefined;
-  const firstName =
-    partnerName !== undefined && partnerName.trim().length > 0
-      ? firstNameOf(partnerName)
-      : undefined;
-  const status = partner !== undefined && !isSelf ? props.presenceOf(partner) : undefined;
-
-  const meta = isGroup
-    ? `${others.length + 1} ${others.length === 0 ? "person" : "people"} in this conversation`
-    : isSelf
-      ? "Just you"
-      : `${presenceLabel(status ?? "offline")} · Direct message`;
-
-  const body = isSelf
-    ? "A place for notes, links, and reminders to yourself."
-    : isGroup
-      ? props.canSend
-        ? "The first message is yours. Everyone here will see it."
-        : "This is the beginning of your group conversation."
-      : props.canSend
-        ? "The first message is yours."
-        : `This is the beginning of your conversation${firstName !== undefined ? ` with ${firstName}` : ""}.`;
-
-  const sayHi = isGroup
-    ? "Hey everyone 👋"
-    : firstName !== undefined
-      ? `Hey ${firstName} 👋`
-      : "Hey 👋";
+  const partnerId = dmPartnerId(channel, ownUserId);
+  const status = partnerId === undefined ? undefined : props.presenceOf(partnerId);
+  const opening = conversationOpening({ ...props, partnerStatus: status });
+  const { isGroup, isSelf, partnerId: partner, otherIds: others, body, sayHi } = opening;
 
   return (
     <div className="flex flex-1 items-center py-10">
@@ -120,13 +94,12 @@ function ConversationOpening(props: ConversationStartProps) {
             <h3 className="break-words text-[22px] font-semibold leading-[1.2] tracking-[-0.02em] text-text sm:text-[26px]">
               {title}
             </h3>
-            <p className="mt-1 text-[12.5px] text-text-muted">{meta}</p>
           </div>
         </div>
         <p className="mt-5 max-w-[52ch] text-sm leading-6 text-text-muted">{body}</p>
-        {!isSelf && (props.canSend || props.canStartCall) && (
+        {opening.showActions && (
           <div className="mt-5 flex flex-wrap items-center gap-2">
-            {props.canSend && (
+            {sayHi !== null && (
               <ConversationAction
                 icon="message"
                 onClick={() => {
@@ -136,7 +109,7 @@ function ConversationOpening(props: ConversationStartProps) {
                 Say hi
               </ConversationAction>
             )}
-            {props.canStartCall && (
+            {sayHi === null && props.canStartCall && (
               <ConversationAction icon="phone" onClick={props.onStartCall}>
                 Start a call
               </ConversationAction>
@@ -156,15 +129,14 @@ export function ConversationStart(props: ConversationStartProps) {
     return <ConversationOpening {...props} />;
   }
   const icon = channel.kind === "announcement" ? "announce" : "hash";
+  const opening = channelOpening(channel.kind, title);
   return (
     <div className="flex flex-1 flex-col items-center justify-center gap-3 py-16 text-center">
-      <span className="flex h-12 w-12 items-center justify-center rounded-[10px] bg-accent-soft text-accent">
+      <span className="flex h-12 w-12 items-center justify-center rounded-[10px] bg-accent-soft text-accent-text">
         <Icon name={icon} size={24} />
       </span>
-      <h3 className="text-xl font-semibold tracking-tight text-text">Welcome to #{title}</h3>
-      <p className="max-w-sm text-sm text-text-muted">
-        This is the very beginning of the channel. Say hello.
-      </p>
+      <h3 className="text-xl font-semibold tracking-tight text-text">{opening.heading}</h3>
+      <p className="max-w-sm text-sm text-text-muted">{opening.body}</p>
     </div>
   );
 }
@@ -184,6 +156,7 @@ export interface ChannelPaneProps {
   readonly mergedDecrypted: ReadonlyMap<string, string>;
   readonly attachments: NonNullable<Parameters<typeof MessageList>[0]["attachments"]>;
   readonly pendingIds: ReadonlySet<string>;
+  readonly failureReasons?: ReadonlyMap<string, string>;
   readonly failedIds: ReadonlySet<string>;
   readonly replyPreviews: NonNullable<Parameters<typeof MessageList>[0]["replyPreviews"]>;
   readonly memberNames: ReadonlyMap<string, string>;
@@ -203,6 +176,7 @@ export interface ChannelPaneProps {
   readonly canSend: boolean;
   readonly canAttach: boolean;
   readonly canMentionEveryone: boolean;
+  readonly mentionMarkers?: boolean;
   /** Effective single-upload cap in bytes, forwarded to the composer. */
   readonly maxUploadBytes: number;
   readonly pinsOpen: boolean;
@@ -224,6 +198,8 @@ export interface ChannelPaneProps {
     input: {
       text: string;
       mentionUserIds: readonly string[];
+      mentionEveryone?: boolean;
+      mentionHere?: boolean;
       mentionChannelIds?: readonly string[];
       mentionCategoryIds?: readonly string[];
       mentionRoleIds?: readonly string[];
@@ -353,6 +329,7 @@ function ChannelTimeline(props: ChannelPaneProps & { readonly onSayHi: (text: st
       decrypted={props.mergedDecrypted}
       attachments={props.attachments}
       pendingIds={props.pendingIds}
+      failureReasons={props.failureReasons}
       failedIds={props.failedIds}
       onRetrySend={onRetrySend}
       onDiscardSend={onDiscardSend}
@@ -401,8 +378,10 @@ function ChannelTimeline(props: ChannelPaneProps & { readonly onSayHi: (text: st
   );
 }
 
-/** The reply banner's quoted preview, or null when not replying. */
-function replyPreviewOf(props: ChannelPaneProps): { authorName: string; preview: string } | null {
+/** The reply banner’s quoted preview, or null when not replying. */
+function replyPreviewOf(
+  props: ChannelPaneProps,
+): { authorName: string; preview: string; mentionEveryone: boolean; mentionHere: boolean } | null {
   const target = props.replyTarget;
   if (target === undefined) {
     return null;
@@ -414,6 +393,8 @@ function replyPreviewOf(props: ChannelPaneProps): { authorName: string; preview:
   return {
     authorName,
     preview: truncateReply(props.mergedDecrypted.get(target.id) ?? target.body),
+    mentionEveryone: target.mentionEveryone === true,
+    mentionHere: target.mentionHere === true,
   };
 }
 
@@ -431,6 +412,7 @@ function ChannelComposer(
   }
   return (
     <Composer
+      mentionMarkers={props.mentionMarkers ?? false}
       channelId={channel.id}
       draftKey={channel.id}
       {...(props.composerSeed !== undefined ? { seedText: props.composerSeed } : {})}
@@ -442,6 +424,11 @@ function ChannelComposer(
       categories={props.categoryMentions}
       canAttach={props.canAttach}
       canMentionEveryone={props.canMentionEveryone}
+      massMentionHint={
+        props.channel.kind === "dm" || props.channel.kind === "group_dm"
+          ? "Notifying everyone isn't available in direct messages."
+          : undefined
+      }
       maxUploadBytes={props.maxUploadBytes}
       ownName={props.ownName}
       placeholder={props.placeholder}
@@ -480,17 +467,18 @@ export function ChannelPane(props: ChannelPaneProps) {
       {props.sendError !== null && (
         <div
           role="alert"
-          className="mx-4 mb-1 flex items-center gap-2 rounded-[10px] border border-danger/30 bg-danger/10 px-3 py-2 text-[13px] text-danger"
+          className="mx-4 mb-1 flex items-center gap-2 rounded-[10px] border border-danger/30 bg-danger/10 px-3 py-2 text-[13px] text-danger-text"
         >
           <span className="flex-1">{props.sendError}</span>
           <button
             type="button"
-            aria-label="Dismiss"
+            aria-label="Dismiss send error"
+            className="flex h-7 w-7 shrink-0 items-center justify-center rounded-[7px] text-danger-text/80 transition hover:bg-danger/15 hover:text-danger-text focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-danger/50"
             onClick={() => {
               props.onSetSendError(null);
             }}
           >
-            <Icon name="x" size={16} />
+            <Icon name="x" size={15} />
           </button>
         </div>
       )}

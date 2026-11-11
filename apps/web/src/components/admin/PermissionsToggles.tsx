@@ -1,14 +1,11 @@
-import { Permission } from "@aulora/core";
 import { Checkbox, cn } from "@aulora/ui-web";
 import {
+  PERMISSION_BITS,
   PERMISSION_GROUPS,
-  PERMISSION_LABELS,
+  PERMISSION_LABELS_BY_NAME,
   togglePermissionBit,
 } from "../../lib/workspace-admin";
 import type { Callback } from "./callbacks";
-
-const PERMISSION_BITS = new Map<string, bigint>(Object.entries(Permission));
-const PERMISSION_LABELS_BY_NAME = new Map<string, string>(Object.entries(PERMISSION_LABELS));
 
 export interface PermissionsTogglesProps {
   readonly value: bigint;

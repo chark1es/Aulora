@@ -96,7 +96,7 @@ function HeroGlow({ seed, plate }: { readonly seed: string; readonly plate: Plat
 }
 
 /**
- * The one hero element of a pre-session screen: the workspace's own blobatar,
+ * The one hero element of a pre-session screen: the workspace’s own blobatar,
  * oversized, alive, and floating on a glow drawn from its own colour. It is
  * deliberately the loudest thing on the page — everything else is quiet type,
  * one field and one button.

@@ -16,8 +16,8 @@ export const DOCK_HEIGHT = 232;
 
 /**
  * The small call window: who is in the call, the controls, and a few buttons.
- * Used for the in-page dock and for the browser's own floating window. The
- * desktop shell's call window is a separate webview with its own view, so it is
+ * Used for the in-page dock and for the browser’s own floating window. The
+ * desktop shell’s call window is a separate webview with its own view, so it is
  * not drawn by this component.
  */
 export function CallCompactView({
@@ -120,8 +120,8 @@ function CompactButtons({
 }) {
   const voice = useVoice();
   const { pip } = voice;
-  // The browser's own floating window is already above everything, so only the
-  // in-page dock has anything to pin. The desktop shell's call window is always
+  // The browser’s own floating window is already above everything, so only the
+  // in-page dock has anything to pin. The desktop shell’s call window is always
   // on top by construction and lives in its own webview.
   const canPin = !floating;
   const pinLabel = voice.pipPinned ? "Unpin from top" : "Pin to top";
@@ -189,7 +189,9 @@ function IconButton({
       onClick={onClick}
       className={cn(
         "flex h-6 w-6 shrink-0 items-center justify-center rounded-[6px] transition focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent",
-        active ? "bg-accent/15 text-accent" : "text-text-muted hover:bg-surface-3 hover:text-text",
+        active
+          ? "bg-accent/15 text-accent-text"
+          : "text-text-muted hover:bg-surface-3 hover:text-text",
       )}
     >
       {children}

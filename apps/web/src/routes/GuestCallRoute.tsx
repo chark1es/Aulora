@@ -30,7 +30,7 @@ export function GuestCallRoute() {
     return (
       <GuestMessageScreen
         icon="signal"
-        title="Can't reach the server"
+        title="Can’t reach the server"
         action={
           <Button
             onClick={() => {

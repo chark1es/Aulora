@@ -34,7 +34,7 @@ export function useWebPush(runtime: ChatRuntime | undefined): void {
         if (cancelled) {
           return;
         }
-        await registerWebPushDevice(runtime.client, publicKey);
+        await registerWebPushDevice(runtime.client, publicKey, runtime.userId);
       } catch {
         // Web Push is best-effort; never surface a registration failure.
       }

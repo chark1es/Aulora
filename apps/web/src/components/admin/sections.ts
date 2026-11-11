@@ -119,17 +119,9 @@ const SECTION_DEFINITIONS: readonly SectionDefinition[] = [
   },
 ];
 
-const FALLBACK_LABELS = new Map<TabId, string>(
-  SECTION_DEFINITIONS.map((section) => [section.id, section.label]),
-);
-
 /** The sections this viewer may open, in sidebar order. */
 export function buildSections(permission: PermissionCheck, isOwner: boolean): AdminSection[] {
   return SECTION_DEFINITIONS.filter((section) => section.allowed(permission, isOwner)).map(
     ({ id, label, group, icon }) => ({ id, label, group, icon }),
   );
-}
-
-export function sectionLabel(id: TabId): string {
-  return FALLBACK_LABELS.get(id) ?? "Settings";
 }

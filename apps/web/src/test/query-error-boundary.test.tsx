@@ -62,7 +62,7 @@ describe("QueryErrorBoundary", () => {
         <Flaky />
       </QueryErrorBoundary>,
     );
-    expect(screen.queryByRole("button", { name: "Switch server" })).not.toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: "Switch workspace" })).not.toBeInTheDocument();
 
     // One act per tick: React batches updates made inside a single act.
     for (let tick = 0; tick < MAX_AUTO_RETRIES; tick += 1) {
@@ -70,7 +70,7 @@ describe("QueryErrorBoundary", () => {
         vi.advanceTimersByTime(RETRY_INTERVAL_MS);
       });
     }
-    expect(screen.getByText("Can’t reach the server")).toBeInTheDocument();
+    expect(screen.getByText("Can’t reach the workspace")).toBeInTheDocument();
     expect(screen.queryByText("Reconnecting…")).not.toBeInTheDocument();
 
     // Once spent, the timer no longer re-mounts the subtree on its own.
@@ -80,7 +80,7 @@ describe("QueryErrorBoundary", () => {
     });
     expect(screen.queryByText("Recovered")).not.toBeInTheDocument();
 
-    fireEvent.click(screen.getByRole("button", { name: "Switch server" }));
+    fireEvent.click(screen.getByRole("button", { name: "Switch workspace" }));
     expect(onSwitchServer).toHaveBeenCalledTimes(1);
 
     fireEvent.click(screen.getByRole("button", { name: "Try again" }));

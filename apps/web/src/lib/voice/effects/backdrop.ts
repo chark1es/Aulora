@@ -111,11 +111,6 @@ export function customBackdropUrl(): string | null {
   }
 }
 
-/** Whether the user has stored a picture of their own. */
-export function hasCustomBackdrop(): boolean {
-  return customBackdropUrl() !== null;
-}
-
 /** Draws the chosen backdrop at the output size, or `null` if it is gone. */
 export async function renderBackdrop(
   id: string,

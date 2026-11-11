@@ -6,7 +6,7 @@ import {
   type OverrideLevel,
   type OverrideView,
   overrideLevel,
-  PERMISSION_LABELS,
+  PERMISSION_LABELS_BY_NAME,
   setOverrideLevel,
 } from "../../lib/workspace-admin";
 import { OverrideTriState } from "../admin/OverrideTriState";
@@ -15,8 +15,6 @@ import {
   type ChannelPermissionGroup,
   type ChannelRoleOption,
 } from "./channel-role-overrides";
-
-const PERMISSION_LABELS_BY_NAME = new Map<string, string>(Object.entries(PERMISSION_LABELS));
 
 function permissionLabel(name: PermissionName): string {
   return PERMISSION_LABELS_BY_NAME.get(name) ?? name;
@@ -60,9 +58,9 @@ export interface ChannelRoleOverridesProps {
 }
 
 /**
- * The channel edit dialog's role permissions editor: pick a role, then set each
+ * The channel edit dialog’s role permissions editor: pick a role, then set each
  * channel-scoped permission to inherit, allow or deny. Only role-target
- * overrides are produced here; the caller merges them with the channel's
+ * overrides are produced here; the caller merges them with the channel’s
  * member overrides before saving.
  */
 export function ChannelRoleOverrides({
@@ -186,7 +184,7 @@ function RolePermissionRow(props: RolePermissionRowProps) {
         </span>
         <span className="min-w-0 flex-1 truncate text-[13px] text-text">{role.name}</span>
         {role.isEveryone === true && (
-          <span className="shrink-0 rounded-[5px] border border-border px-1 py-px text-[10px] uppercase tracking-wide text-text-muted">
+          <span className="shrink-0 rounded-[5px] border border-border px-1 py-px text-[12px] uppercase tracking-wide text-text-muted">
             Everyone
           </span>
         )}
@@ -268,7 +266,7 @@ function RolePermissionGroup(props: RolePermissionGroupProps) {
   const { group, overrides, target, disabled, roleId, onSetLevel } = props;
   return (
     <section className="overflow-clip rounded-[8px] border border-border bg-surface-1">
-      <h4 className="border-b border-border bg-surface-2/80 px-2.5 py-1 text-[10px] font-semibold uppercase tracking-[0.06em] text-text-muted">
+      <h4 className="border-b border-border bg-surface-2/80 px-2.5 py-1 text-[12px] font-semibold uppercase tracking-[0.06em] text-text-muted">
         {group.label}
       </h4>
       <div className="divide-y divide-border">
@@ -304,12 +302,12 @@ function RoleCountPills({ counts }: { readonly counts: RoleCounts }) {
   return (
     <span className="flex shrink-0 items-center gap-1">
       {counts.allow > 0 && (
-        <span className="rounded-full bg-secondary/15 px-1.5 py-0.5 text-[10px] font-medium text-secondary">
+        <span className="rounded-full bg-secondary/15 px-1.5 py-0.5 text-[10px] font-medium text-secondary-text">
           {counts.allow}
         </span>
       )}
       {counts.deny > 0 && (
-        <span className="rounded-full bg-danger/15 px-1.5 py-0.5 text-[10px] font-medium text-danger">
+        <span className="rounded-full bg-danger/15 px-1.5 py-0.5 text-[10px] font-medium text-danger-text">
           {counts.deny}
         </span>
       )}
