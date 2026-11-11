@@ -1,10 +1,10 @@
-import type { RefObject } from "react";
-import type { TextInputInstance } from "react-native";
 import type { Fn } from "../../lib/function-type";
+import { messageLimitError } from "../../lib/message-limits";
 import type { ComposerAttachMenuProps } from "./ComposerAttachMenu";
 import type { ComposerInputRowProps } from "./ComposerInputRow";
 import type { ComposerNoticesProps } from "./ComposerNotices";
 import type { useSuggestionLayout } from "./ComposerSuggestions";
+import type { ComposerInputRef } from "./composer-input-ref";
 import type { ComposerProps } from "./composer-props";
 import type { useComposerAttachments } from "./use-composer-attachments";
 import type { useComposerTyping } from "./use-composer-typing";
@@ -20,7 +20,7 @@ export interface ComposerContext {
   readonly limitError: string | null;
   readonly canSend: boolean;
   readonly suggestions: readonly MentionCandidate[];
-  readonly inputRef: RefObject<TextInputInstance | null>;
+  readonly inputRef: ComposerInputRef;
   readonly hint: ReturnType<typeof useMentionHint>;
   readonly typing: ReturnType<typeof useComposerTyping>;
   readonly attach: ReturnType<typeof useComposerAttachments>;
@@ -109,5 +109,48 @@ export function buildAttachMenu(ctx: ComposerContext): ComposerAttachMenuProps {
       ctx.setMenuOpen(false);
       void ctx.attach.pick(option);
     },
+  };
+}
+
+/** The composer's hook results for one render. */
+export interface ComposerParts {
+  readonly props: ComposerProps;
+  readonly value: string;
+  readonly setValue: Fn<[next: string], void>;
+  readonly error: string | null;
+  readonly setError: Fn<[message: string | null], void>;
+  readonly menuOpen: boolean;
+  readonly setMenuOpen: Fn<[open: boolean], void>;
+  readonly inputRef: ComposerInputRef;
+  readonly hint: ReturnType<typeof useMentionHint>;
+  readonly typing: ReturnType<typeof useComposerTyping>;
+  readonly attach: ReturnType<typeof useComposerAttachments>;
+  readonly suggestions: readonly MentionCandidate[];
+  readonly layout: ReturnType<typeof useSuggestionLayout>;
+  readonly sending: boolean;
+  readonly send: Fn<[confirmed?: boolean], void>;
+}
+
+/** Derives what the view needs from the hook results and splits it by view part. */
+export function composeViews(parts: ComposerParts) {
+  const { value, attach, sending, hint } = parts;
+  const limitError = messageLimitError(value.trim(), attach.files.length);
+  const hasContent = value.trim().length > 0 || attach.files.length > 0;
+  const context: ComposerContext = {
+    ...parts,
+    limitError,
+    canSend: limitError === null && parts.props.disabled !== true && !sending && hasContent,
+    send: () => {
+      parts.send();
+    },
+    edit: (next) => {
+      hint.easeHintFor(next);
+      parts.setValue(next);
+    },
+  };
+  return {
+    notices: buildNotices(context),
+    inputRow: buildInputRow(context),
+    attachMenu: buildAttachMenu(context),
   };
 }

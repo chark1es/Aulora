@@ -71,20 +71,8 @@ export function RebasedInsets({
   );
 }
 
-/**
- * Keyboard-avoiding pane for content that is not at the top of the window.
- *
- * The keyboard controller's view measures its frame relative to its parent, so
- * a pane below a banner, a status-bar inset or another pane is under-padded by
- * that distance and its composer ends up behind the keyboard (seen on Android
- * 16 edge-to-edge). This measures the pane's real window position on layout and
- * whenever the keyboard opens, and passes the difference as the vertical offset.
- */
-export function KeyboardAvoidingPane({
-  onLayout,
-  behavior = "padding",
-  ...props
-}: Omit<KeyboardAvoidingViewProps, "keyboardVerticalOffset" | "automaticOffset">) {
+/** The pane's vertical distance from the window top beyond its parent-relative layout. */
+function useWindowOffset() {
   const ref = useRef<ViewInstance>(null);
   const layoutY = useRef(0);
   const [offset, setOffset] = useState(0);
@@ -99,15 +87,36 @@ export function KeyboardAvoidingPane({
       subscription.remove();
     };
   }, [measure]);
+  const track = (event: LayoutChangeEvent) => {
+    // The library types its ref as the legacy View class; keep the host view.
+    ref.current = event.currentTarget as unknown as ViewInstance;
+    layoutY.current = event.nativeEvent.layout.y;
+  };
+  return { offset, track, measure };
+}
+
+/**
+ * Keyboard-avoiding pane for content that is not at the top of the window.
+ *
+ * The keyboard controller's view measures its frame relative to its parent, so
+ * a pane below a banner, a status-bar inset or another pane is under-padded by
+ * that distance and its composer ends up behind the keyboard (seen on Android
+ * 16 edge-to-edge). This measures the pane's real window position on layout and
+ * whenever the keyboard opens, and passes the difference as the vertical offset.
+ */
+export function KeyboardAvoidingPane({
+  onLayout,
+  behavior = "padding",
+  ...props
+}: Omit<KeyboardAvoidingViewProps, "keyboardVerticalOffset" | "automaticOffset">) {
+  const { offset, track, measure } = useWindowOffset();
   return (
     <KeyboardAvoidingView
       {...props}
       behavior={behavior}
       keyboardVerticalOffset={offset}
       onLayout={(event: LayoutChangeEvent) => {
-        // The library types its ref as the legacy View class; keep the host view.
-        ref.current = event.currentTarget as unknown as ViewInstance;
-        layoutY.current = event.nativeEvent.layout.y;
+        track(event);
         onLayout?.(event);
         measure();
       }}

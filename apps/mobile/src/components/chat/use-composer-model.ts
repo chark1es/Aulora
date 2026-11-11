@@ -1,15 +1,9 @@
-import { useEffect, useRef, useState } from "react";
-import type { TextInputInstance } from "react-native";
+import { useEffect, useState } from "react";
 import type { Fn } from "../../lib/function-type";
-import { messageLimitError } from "../../lib/message-limits";
 import { useSuggestionLayout } from "./ComposerSuggestions";
+import { type ComposerInputRef, useComposerInputRef } from "./composer-input-ref";
 import type { ComposerProps } from "./composer-props";
-import {
-  buildAttachMenu,
-  buildInputRow,
-  buildNotices,
-  type ComposerContext,
-} from "./composer-view-props";
+import { composeViews } from "./composer-view-props";
 import { useComposerAttachments } from "./use-composer-attachments";
 import { useComposerSend } from "./use-composer-send";
 import { useComposerTyping } from "./use-composer-typing";
@@ -22,7 +16,7 @@ interface DraftLifecycle {
   readonly setValue: Fn<[next: string], void>;
   readonly resetFiles: Fn<[], void>;
   readonly stopTyping: Fn<[channelId: string], void>;
-  readonly inputRef: { readonly current: TextInputInstance | null };
+  readonly inputRef: ComposerInputRef;
 }
 
 /** A new channel starts an empty draft; a suggested first message lands in it and takes focus. */
@@ -45,14 +39,14 @@ function useDraftLifecycle(input: DraftLifecycle) {
   }, [seedToken, seedText, setValue, inputRef]);
 }
 
-/** All composer state and handlers, grouped by the part of the view that uses them. */
-export function useComposerModel(props: ComposerProps) {
-  const { channelId, disabled = false, members = [], channels = [], roles = [] } = props;
+/** The composer's own state and the hooks that read it, before sending is wired. */
+function useComposerParts(props: ComposerProps) {
+  const { channelId, members = [], channels = [], roles = [] } = props;
   const canMentionEveryone = props.canMentionEveryone ?? false;
   const [value, setValue] = useState("");
   const [error, setError] = useState<string | null>(null);
   const [menuOpen, setMenuOpen] = useState(false);
-  const inputRef = useRef<TextInputInstance>(null);
+  const inputRef = useComposerInputRef();
   const hint = useMentionHint({
     value,
     channelId,
@@ -65,6 +59,28 @@ export function useComposerModel(props: ComposerProps) {
   const sources = { canMentionEveryone, members, roles, channels };
   const suggestions = useMentionSuggestions(value, sources);
   const layout = useSuggestionLayout();
+  return {
+    props,
+    value,
+    setValue,
+    error,
+    setError,
+    menuOpen,
+    setMenuOpen,
+    inputRef,
+    hint,
+    typing,
+    attach,
+    suggestions,
+    layout,
+  };
+}
+
+/** All composer state and handlers, grouped by the part of the view that uses them. */
+export function useComposerModel(props: ComposerProps) {
+  const parts = useComposerParts(props);
+  const { value, setValue, setError, attach, typing, inputRef } = parts;
+  const { channelId } = props;
   const { sending, send } = useComposerSend({
     channelId,
     value,
@@ -72,43 +88,13 @@ export function useComposerModel(props: ComposerProps) {
     files: attach.files,
     setFiles: attach.setFiles,
     setError,
-    canMentionEveryone,
+    canMentionEveryone: props.canMentionEveryone ?? false,
     audienceSize: props.audienceSize ?? 0,
     onSend: props.onSend,
     stopTyping: typing.stop,
   });
-  const stopTyping = typing.stop;
   const resetFiles = attach.resetFiles;
+  const stopTyping = typing.stop;
   useDraftLifecycle({ channelId, seed: props.seed, setValue, resetFiles, stopTyping, inputRef });
-
-  const limitError = messageLimitError(value.trim(), attach.files.length);
-  const hasContent = value.trim().length > 0 || attach.files.length > 0;
-  const context: ComposerContext = {
-    props,
-    value,
-    error,
-    menuOpen,
-    limitError,
-    canSend: limitError === null && !disabled && !sending && hasContent,
-    suggestions,
-    inputRef,
-    hint,
-    typing,
-    attach,
-    layout,
-    setError,
-    setMenuOpen,
-    send: () => {
-      send();
-    },
-    edit: (next) => {
-      hint.easeHintFor(next);
-      setValue(next);
-    },
-  };
-  return {
-    notices: buildNotices(context),
-    inputRow: buildInputRow(context),
-    attachMenu: buildAttachMenu(context),
-  };
+  return composeViews({ ...parts, sending, send });
 }

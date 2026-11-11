@@ -347,7 +347,13 @@ export function useNoteEditor(ctl: NotesController) {
     requestNoteDiscard(state.dirty, ctl.backToList, confirmDiscard);
   };
   const openHistory = (noteId: string) => {
-    requestNoteDiscard(state.dirty, () => ctl.openHistory(noteId), confirmDiscard);
+    requestNoteDiscard(
+      state.dirty,
+      () => {
+        ctl.openHistory(noteId);
+      },
+      confirmDiscard,
+    );
   };
   const keepMyVersion = () => {
     state.keepMyVersion();

@@ -1,10 +1,10 @@
 import { Icon, TextField, usePalette } from "@aulora/ui-native";
-import type { RefObject } from "react";
-import { Pressable, type TextInputInstance, View } from "react-native";
+import { Pressable, View } from "react-native";
 import type { Fn } from "../../lib/function-type";
+import type { ComposerInputRef } from "./composer-input-ref";
 
 export interface ComposerInputRowProps {
-  readonly inputRef: RefObject<TextInputInstance | null>;
+  readonly inputRef: ComposerInputRef;
   readonly placeholder: string;
   readonly disabled: boolean;
   readonly attachBusy: boolean;

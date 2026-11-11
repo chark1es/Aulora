@@ -2,6 +2,8 @@ import { createTypingThrottle } from "@aulora/core";
 import { useCallback, useRef } from "react";
 import type { Fn } from "../../lib/function-type";
 
+type TypingThrottle = ReturnType<typeof createTypingThrottle>;
+
 /** Typing pings throttled per channel, and the retraction that stops the indicator. */
 export function useComposerTyping(
   onTyping: Fn<[channelId: string], void>,
@@ -12,7 +14,7 @@ export function useComposerTyping(
   onTypingRef.current = onTyping;
   const onClearTypingRef = useRef(onClearTyping);
   onClearTypingRef.current = onClearTyping;
-  const throttleRef = useRef<ReturnType<typeof createTypingThrottle> | null>(null);
+  const throttleRef = useRef<TypingThrottle>(null);
   if (throttleRef.current === null) {
     throttleRef.current = createTypingThrottle((id) => {
       onTypingRef.current(id);

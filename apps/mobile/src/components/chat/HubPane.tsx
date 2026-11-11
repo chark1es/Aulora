@@ -130,6 +130,9 @@ export function dockLabelLines(label: string): 1 | 2 {
   return /\s/.test(label.trim()) ? 2 : 1;
 }
 
+const ACTIVE_LABEL_STYLE = { fontSize: 11, lineHeight: 14, fontWeight: "600" } as const;
+const IDLE_LABEL_STYLE = { fontSize: 11, lineHeight: 14, fontWeight: "400" } as const;
+
 const DOCK_TAB_BASE =
   "min-h-[52px] min-w-0 flex-1 items-center justify-center gap-0.5 rounded-pill";
 
@@ -161,7 +164,7 @@ function DockTabGlyph({
 function DockTabLabel({ label, active }: { readonly label: string; readonly active: boolean }) {
   return (
     <Text
-      style={{ fontSize: 11, lineHeight: 14, fontWeight: active ? "600" : "400" }}
+      style={active ? ACTIVE_LABEL_STYLE : IDLE_LABEL_STYLE}
       tone={active ? "accent" : "muted"}
       className="text-center"
       numberOfLines={dockLabelLines(label)}
