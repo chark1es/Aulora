@@ -1,6 +1,6 @@
 export interface SetupStep {
   readonly label: string;
-  /** One concrete sentence: what happens, in the product's own words. */
+  /** One concrete sentence: what happens, in the product’s own words. */
   readonly body: string;
 }
 

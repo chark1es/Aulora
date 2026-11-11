@@ -57,7 +57,7 @@ export function VoiceChannelRow({
           <Icon
             name="volume"
             size={16}
-            className={cn("transition-colors", active ? "text-accent" : "text-text-muted")}
+            className={cn("transition-colors", active ? "text-accent-text" : "text-text-muted")}
           />
         </span>
         <span className="min-w-0 flex-1 truncate">{title}</span>
@@ -106,10 +106,10 @@ export function VoiceChannelRow({
                 </span>
                 {participant.isGuest === true && <Badge size="sm">Guest</Badge>}
                 {participant.muted && (
-                  <Icon name="mic-off" size={12} className="shrink-0 text-danger" />
+                  <Icon name="mic-off" size={12} className="shrink-0 text-danger-text" />
                 )}
                 {participant.sharingScreen && (
-                  <Icon name="monitor" size={12} className="shrink-0 text-accent" />
+                  <Icon name="monitor" size={12} className="shrink-0 text-accent-text" />
                 )}
               </li>
             );

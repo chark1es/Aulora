@@ -1,6 +1,7 @@
 import type { ChannelView, MessagePayload } from "@aulora/core";
 import { activityLabel, ChatSession, Permission } from "@aulora/core";
-import { act, render, screen, waitFor, within } from "@testing-library/react";
+import { ContextMenuProvider } from "@aulora/ui-web";
+import { act, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { ConvexReactClient } from "convex/react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
@@ -15,7 +16,7 @@ import { MessageList, type MessageListProps } from "../components/chat/MessageLi
 import { NewConversationDialog } from "../components/chat/NewConversationDialog";
 import { RichText } from "../components/chat/RichText";
 import type { ChatRuntime } from "../lib/chat-runtime";
-import { readDraft, writeDraft } from "../lib/drafts";
+import { DraftScopeContext, readDraft, writeDraft } from "../lib/drafts";
 import { shortcutLabel } from "../lib/shortcuts";
 import { useChannelSession } from "../lib/use-channel";
 
@@ -247,8 +248,34 @@ describe("MessageList", () => {
     const own = screen.getByTestId("message-m3");
     await user.click(within(own).getByRole("button", { name: "Delete message" }));
     expect(onDelete).not.toHaveBeenCalled();
-    await user.click(within(own).getByRole("button", { name: "Confirm delete" }));
+    expect(screen.getByRole("dialog").closest("[data-message-row]")).toBeNull();
+    await user.click(within(screen.getByRole("dialog")).getByRole("button", { name: "Cancel" }));
+    expect(within(own).getByRole("button", { name: "Delete message" })).toHaveFocus();
+    await user.click(within(own).getByRole("button", { name: "Delete message" }));
+    await user.click(
+      within(screen.getByRole("dialog", { name: "Delete message?" })).getByRole("button", {
+        name: "Delete message",
+      }),
+    );
     expect(onDelete).toHaveBeenCalledWith(expect.objectContaining({ id: "m3" }));
+  });
+
+  it("confirms context-menu deletion and returns focus on cancel", async () => {
+    const user = userEvent.setup();
+    const onDelete = vi.fn();
+    render(
+      <ContextMenuProvider>
+        <MessageList {...listProps({ onDelete })} />
+      </ContextMenuProvider>,
+    );
+    const row = screen.getByTestId("message-m3");
+    fireEvent.contextMenu(row);
+    await user.click(screen.getByRole("menuitem", { name: "Delete message" }));
+    const dialog = screen.getByRole("dialog", { name: "Delete message?" });
+    expect(dialog.closest("[data-message-row]")).toBeNull();
+    expect(onDelete).not.toHaveBeenCalled();
+    await user.click(within(dialog).getByRole("button", { name: "Cancel" }));
+    expect(row).toHaveFocus();
   });
 
   it("does not render deleted messages", () => {
@@ -296,7 +323,7 @@ describe("MessageList", () => {
       />,
     );
     expect(screen.getByText("New messages")).toBeInTheDocument();
-    expect(screen.getByRole("status", { name: "Ada Lovelace is typing" })).toBeInTheDocument();
+    expect(screen.getByRole("status")).toHaveTextContent("Ada Lovelace is typing");
   });
 
   it("renders a message body when the decrypted cache has not caught up", () => {
@@ -611,7 +638,7 @@ describe("ConversationStart", () => {
     render(<ConversationStart {...startProps()} />);
 
     expect(screen.getByRole("heading", { name: "aiden" })).toBeInTheDocument();
-    expect(screen.getByText("Online · Direct message")).toBeInTheDocument();
+    expect(screen.queryByText("Online · Direct message")).not.toBeInTheDocument();
     expect(screen.getByText("The first message is yours.")).toBeInTheDocument();
     expect(screen.getByRole("img", { name: "Online" })).toBeInTheDocument();
   });
@@ -622,13 +649,15 @@ describe("ConversationStart", () => {
     render(<ConversationStart {...startProps({ onSayHi })} />);
 
     await user.click(screen.getByRole("button", { name: "Say hi" }));
-    expect(onSayHi).toHaveBeenCalledWith("Hey aiden 👋");
+    expect(onSayHi).toHaveBeenCalledWith("Hi aiden");
   });
 
   it("offers a call when the conversation supports one", async () => {
     const user = userEvent.setup();
     const onStartCall = vi.fn();
-    render(<ConversationStart {...startProps({ canStartCall: true, onStartCall })} />);
+    render(
+      <ConversationStart {...startProps({ canSend: false, canStartCall: true, onStartCall })} />,
+    );
 
     await user.click(screen.getByRole("button", { name: "Start a call" }));
     expect(onStartCall).toHaveBeenCalledTimes(1);
@@ -645,7 +674,7 @@ describe("ConversationStart", () => {
       />,
     );
 
-    expect(screen.getByText("Just you")).toBeInTheDocument();
+    expect(screen.getByRole("heading", { name: "Notes to self" })).toBeInTheDocument();
     expect(
       screen.getByText("A place for notes, links, and reminders to yourself."),
     ).toBeInTheDocument();
@@ -676,16 +705,14 @@ describe("ConversationStart", () => {
     );
 
     expect(screen.getByRole("heading", { name: "Ada Lovelace, Grace Hopper" })).toBeInTheDocument();
-    expect(screen.getByText("3 people in this conversation")).toBeInTheDocument();
-    expect(
-      screen.getByText("The first message is yours. Everyone here will see it."),
-    ).toBeInTheDocument();
+    expect(screen.getAllByRole("button")).toHaveLength(1);
+    expect(screen.getByText("Everyone here will see your message.")).toBeInTheDocument();
 
     await user.click(screen.getByRole("button", { name: "Say hi" }));
-    expect(onSayHi).toHaveBeenCalledWith("Hey everyone 👋");
+    expect(onSayHi).toHaveBeenCalledWith("Hi everyone");
   });
 
-  it("leaves channel onboarding unchanged", () => {
+  it("uses the shared channel opening", () => {
     render(
       <ConversationStart
         {...startProps({ channel: channel({ id: "general", kind: "text" }), title: "general" })}
@@ -693,9 +720,7 @@ describe("ConversationStart", () => {
     );
 
     expect(screen.getByRole("heading", { name: "Welcome to #general" })).toBeInTheDocument();
-    expect(
-      screen.getByText("This is the very beginning of the channel. Say hello."),
-    ).toBeInTheDocument();
+    expect(screen.getByText("Say hello to the channel.")).toBeInTheDocument();
   });
 });
 
@@ -715,7 +740,7 @@ describe("Composer", () => {
     const onSend = vi.fn();
     const user = userEvent.setup();
     render(<Composer {...base} onSend={onSend} />);
-    const input = screen.getByRole("textbox", { name: "Message" });
+    const input = screen.getByRole("combobox", { name: "Message" });
     await user.type(input, "hi @Ada");
     await user.keyboard("{Enter}");
     await user.type(input, "line one{Shift>}{Enter}{/Shift}line two");
@@ -723,6 +748,8 @@ describe("Composer", () => {
     await user.keyboard("{Enter}");
     expect(onSend).toHaveBeenCalledWith({
       text: "hi @Ada Lovelace line one\nline two",
+      mentionEveryone: false,
+      mentionHere: false,
       mentionUserIds: ["u-ada"],
       mentionChannelIds: [],
       mentionCategoryIds: [],
@@ -740,44 +767,50 @@ describe("Composer", () => {
   it("offers mentions without showing a duplicate message preview below the input", async () => {
     const user = userEvent.setup();
     render(<Composer {...base} onSend={vi.fn()} />);
-    const input = screen.getByRole("textbox", { name: "Message" });
+    const input = screen.getByRole("combobox", { name: "Message" });
 
     await user.type(input, "@Ada");
-    expect(screen.getByRole("list", { name: "Mention suggestions" })).toBeInTheDocument();
+    expect(screen.getByRole("listbox", { name: "Mention suggestions" })).toBeInTheDocument();
     expect(screen.queryByTestId("composer-preview")).not.toBeInTheDocument();
 
     await user.keyboard("{Tab}");
     expect(input).toHaveValue("@Ada Lovelace ");
-    expect(screen.queryByRole("list", { name: "Mention suggestions" })).not.toBeInTheDocument();
+    expect(screen.queryByRole("listbox", { name: "Mention suggestions" })).not.toBeInTheDocument();
     expect(screen.queryByTestId("composer-preview")).not.toBeInTheDocument();
   });
 
   it("keeps a separate draft per conversation", async () => {
     vi.useFakeTimers({ shouldAdvanceTime: true });
     const user = userEvent.setup({ advanceTimers: vi.advanceTimersByTime });
-    const { rerender } = render(<Composer {...base} draftKey="c1" onSend={vi.fn()} />);
-    await user.type(screen.getByRole("textbox", { name: "Message" }), "half-written");
+    const { rerender } = render(<Composer {...base} draftKey="c1" onSend={vi.fn()} />, {
+      wrapper: ({ children }) => (
+        <DraftScopeContext.Provider value="test-server:test-user">
+          {children}
+        </DraftScopeContext.Provider>
+      ),
+    });
+    await user.type(screen.getByRole("combobox", { name: "Message" }), "half-written");
     act(() => {
       vi.advanceTimersByTime(300);
     });
     rerender(<Composer {...base} channelId="c2" draftKey="c2" onSend={vi.fn()} />);
-    expect(screen.getByRole("textbox", { name: "Message" })).toHaveValue("");
+    expect(screen.getByRole("combobox", { name: "Message" })).toHaveValue("");
     rerender(<Composer {...base} draftKey="c1" onSend={vi.fn()} />);
-    expect(screen.getByRole("textbox", { name: "Message" })).toHaveValue("half-written");
+    expect(screen.getByRole("combobox", { name: "Message" })).toHaveValue("half-written");
   });
 
   it("prefills the input from a first-message suggestion", () => {
-    render(<Composer {...base} seedText={{ token: 1, text: "Hey aiden 👋" }} onSend={vi.fn()} />);
-    expect(screen.getByRole("textbox", { name: "Message" })).toHaveValue("Hey aiden 👋");
+    render(<Composer {...base} seedText={{ token: 1, text: "Hi aiden" }} onSend={vi.fn()} />);
+    expect(screen.getByRole("combobox", { name: "Message" })).toHaveValue("Hi aiden");
   });
 
   it("never clobbers a draft that already has text", async () => {
     const user = userEvent.setup();
     const { rerender } = render(<Composer {...base} onSend={vi.fn()} />);
-    const input = screen.getByRole("textbox", { name: "Message" });
+    const input = screen.getByRole("combobox", { name: "Message" });
     await user.type(input, "my own draft");
 
-    rerender(<Composer {...base} seedText={{ token: 1, text: "Hey aiden 👋" }} onSend={vi.fn()} />);
+    rerender(<Composer {...base} seedText={{ token: 1, text: "Hi aiden" }} onSend={vi.fn()} />);
     expect(input).toHaveValue("my own draft");
   });
 
@@ -785,7 +818,7 @@ describe("Composer", () => {
     const user = userEvent.setup();
     render(<Composer {...base} onSend={vi.fn()} />);
     await user.click(screen.getByRole("button", { name: "Code block" }));
-    expect(screen.getByRole("textbox", { name: "Message" })).toHaveValue("```\n\n```");
+    expect(screen.getByRole("combobox", { name: "Message" })).toHaveValue("```\n\n```");
   });
 });
 
@@ -835,6 +868,34 @@ describe("MembersPanel paging", () => {
       />
     );
   }
+
+  it("keeps offline labels readable while dimming only the avatar", () => {
+    render(
+      <MembersPanel
+        members={[
+          { ...members[0], userId: "u-ada", displayName: "Ada Lovelace", roleColor: "#eeeeee" },
+        ]}
+        presence={[]}
+        customStatuses={new Map([["u-ada", "Away until Monday"]])}
+        ownUserId="me"
+        onViewProfile={vi.fn()}
+        onMessage={vi.fn()}
+        onClose={vi.fn()}
+      />,
+    );
+    const row = screen.getByTestId("presence-row-u-ada");
+    expect(row.className).not.toMatch(/opacity-/);
+    const name = screen.getByText("Ada Lovelace");
+    const status = screen.getByText("Away until Monday");
+    expect(name).toHaveClass("text-text-muted");
+    expect(name.style.color).toBe("");
+    expect(status).toHaveClass("text-text-muted");
+    expect(row.querySelector(".opacity-60")).not.toContainElement(name);
+    expect(row.querySelector(".opacity-60")).not.toContainElement(status);
+    expect(row.querySelector(".opacity-60")).toContainElement(
+      screen.getByRole("img", { name: "Offline" }),
+    );
+  });
 
   it("offers the next page while the directory has more rows", async () => {
     const onLoadMore = vi.fn();
@@ -997,4 +1058,47 @@ describe("CreateCategoryModal", () => {
     await user.click(screen.getByRole("button", { name: "Create category" }));
     expect(onSubmit).toHaveBeenCalledWith("Product");
   });
+});
+
+it("shows a plain-text hint when broadcasts are not permitted", async () => {
+  const user = userEvent.setup();
+  render(
+    <Composer
+      channelId="denied-hint"
+      members={[]}
+      roles={[]}
+      memberIds={[]}
+      onTyping={vi.fn()}
+      onSend={vi.fn()}
+    />,
+  );
+  await user.type(screen.getByRole("combobox", { name: "Message" }), "@everyone");
+  expect(screen.getByRole("status")).toHaveTextContent(
+    "Only members with permission can notify everyone. This will send as plain text.",
+  );
+  expect(screen.queryByRole("option", { name: /everyone/ })).not.toBeInTheDocument();
+});
+it("confirms a large @everyone once at compose time", async () => {
+  const user = userEvent.setup();
+  const onSend = vi.fn().mockResolvedValue(undefined);
+  render(
+    <Composer
+      channelId="large-confirm"
+      members={[]}
+      roles={[]}
+      memberIds={Array.from({ length: 101 }, (_, i) => `u${i}`)}
+      canMentionEveryone
+      onTyping={vi.fn()}
+      onSend={onSend}
+    />,
+  );
+  await user.type(screen.getByRole("combobox", { name: "Message" }), "@everyone hello");
+  await user.click(screen.getByRole("button", { name: "Send" }));
+  const dialog = screen.getByRole("dialog", { name: "This will notify about 101 people. Send?" });
+  expect(onSend).not.toHaveBeenCalled();
+  await user.click(within(dialog).getByRole("button", { name: "Send" }));
+  expect(onSend).toHaveBeenCalledTimes(1);
+  expect(onSend).toHaveBeenCalledWith(
+    expect.objectContaining({ mentionEveryone: true, mentionUserIds: [] }),
+  );
 });

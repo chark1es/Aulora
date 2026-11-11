@@ -3,11 +3,13 @@ import {
   resolveSignInMethods,
   type ServerProfile,
   type SignInMethods,
+  subscribeAuthError,
   type WellKnownProvider,
 } from "@aulora/core";
 import { providerBrand, providerButtonLabel } from "@aulora/tokens";
 import {
   Button,
+  CapText,
   ChoiceList,
   type ChoiceOption,
   cn,
@@ -32,7 +34,6 @@ import {
 import { api } from "../../../../packages/convex/convex/_generated/api";
 import type { AuthActions } from "../lib/auth-client";
 import { describeAuthError, takeAuthErrorFromUrl } from "../lib/auth-errors";
-import { subscribeAuthError } from "../lib/auth-events";
 import { isDesktop } from "../lib/desktop";
 import {
   beginOAuth,
@@ -75,7 +76,7 @@ export interface SignInScreenProps {
   readonly onStartProvider?: (providerId: string, type: "oauth" | "oidc") => Promise<AuthResult>;
 }
 
-/** Where the hero's eyes are pointed: a focused field, the pointer, `"rest"`, or nothing. */
+/** Where the hero’s eyes are pointed: a focused field, the pointer, `"rest"`, or nothing. */
 type Watch = Element | "pointer" | "rest" | null;
 
 function hostOf(baseUrl: string): string {
@@ -158,7 +159,7 @@ function useSignInForm(actions: AuthActions, siteUrl: string) {
         clearStoredAuthHandoffError();
       }
     } catch {
-      patch({ error: "Could not reach the server. Try again." });
+      patch({ error: "Could not reach the workspace. Try again." });
     } finally {
       patch({ pending: null });
     }
@@ -287,7 +288,7 @@ function ModeSwitch({ mode, onToggle }: ModeSwitchProps) {
               active ? "font-semibold text-text" : "font-medium text-text-muted hover:text-text",
             )}
           >
-            {option.label}
+            <CapText>{option.label}</CapText>
           </button>
         );
       })}
@@ -542,7 +543,7 @@ function subtitleFor(methods: SignInMethods, signUp: boolean, description: strin
     return description;
   }
   if (!methods.hasAnyMethod) {
-    return "This server has no sign-in methods enabled yet.";
+    return "This workspace has no sign-in methods enabled yet.";
   }
   return signUp
     ? "Set up your details to join this workspace."
@@ -550,18 +551,18 @@ function subtitleFor(methods: SignInMethods, signUp: boolean, description: strin
 }
 
 /**
- * Sign-in driven entirely by the server's live `auth` block (the same shape as well-known): the local
+ * Sign-in driven entirely by the server’s live `auth` block (the same shape as well-known): the local
  * email/password form appears only when `auth.local.enabled`, a sign-up toggle
  * only when `auth.local.signup`, and exactly one button per `auth.providers`
  * entry. No provider is hardcoded here. When local sign-in is off, only the SSO
  * buttons are shown, with a short explanation.
  *
- * Provider sign-in always starts on the workspace's own origin: that is the
- * context that receives the callback, so Better Auth's state cookie is present.
+ * Provider sign-in always starts on the workspace’s own origin: that is the
+ * context that receives the callback, so Better Auth’s state cookie is present.
  * The desktop shell also offers a choice between its own window and the system
  * browser; both finish by deep link.
  *
- * The workspace's blobatar is the hero on its own colour panel, drawn from the
+ * The workspace’s blobatar is the hero on its own colour panel, drawn from the
  * same seed, so each workspace signs in on its own colours. The form sits
  * directly on the page beside it, with no card.
  */
@@ -574,7 +575,7 @@ export function SignInScreen({
   onStartProvider,
 }: SignInScreenProps) {
   const config = useQuery(api.server.publicConfig, {});
-  // The stored profile's `auth` is a snapshot from when the workspace was added,
+  // The stored profile’s `auth` is a snapshot from when the workspace was added,
   // so a provider enabled later would never get a button. The live public config
   // is authoritative once it loads; the snapshot only covers the first paint.
   const auth = config?.auth ?? profile.auth;

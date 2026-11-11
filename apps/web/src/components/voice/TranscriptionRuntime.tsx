@@ -14,7 +14,7 @@ export const NOTICE_GRACE_MS = 3_000;
 export interface TranscriptionRuntimeProps {
   /** The running transcription session of the call, or `null` when there is none. */
   readonly sessionId: string | null;
-  /** The call's processed microphone stream. */
+  /** The call’s processed microphone stream. */
   readonly micStream: MediaStream | null;
   /** The microphone is live (not muted, deafened or awaiting push-to-talk). */
   readonly transmitting: boolean;
@@ -25,9 +25,9 @@ export interface TranscriptionRuntimeProps {
 }
 
 /**
- * Streams this participant's microphone to the transcriber while their call is
+ * Streams this participant’s microphone to the transcriber while their call is
  * being transcribed. Renders nothing. It shows the notice first (a short grace),
- * honours the person's opt-out, and stops on mute, leave or the end of the
+ * honours the person’s opt-out, and stops on mute, leave or the end of the
  * session. Used for members (inside the voice provider) and for the guest page.
  */
 export function TranscriptionRuntime(props: TranscriptionRuntimeProps) {
@@ -89,7 +89,7 @@ export function TranscriptionRuntime(props: TranscriptionRuntimeProps) {
     };
   }, [sessionId]);
 
-  // Push the target to the streamer whenever any input, or the person's choice, changes.
+  // Push the target to the streamer whenever any input, or the person’s choice, changes.
   // biome-ignore lint/correctness/useExhaustiveDependencies: the session id is a trigger; the effect reads it through the store
   useEffect(() => {
     let seen = "";

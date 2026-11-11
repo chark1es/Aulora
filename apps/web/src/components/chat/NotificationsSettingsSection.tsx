@@ -40,7 +40,15 @@ const EVENT_ROWS: readonly {
  * per-event toggle for each cue. Cues are synthesized, so there is nothing to
  * download and previews play the real thing.
  */
-export function NotificationsSettingsSection() {
+export function NotificationsSettingsSection({
+  prefsLoaded = false,
+  suppressMassMentions,
+  onSuppressMassMentions,
+}: {
+  readonly prefsLoaded?: boolean;
+  readonly suppressMassMentions?: boolean;
+  readonly onSuppressMassMentions?: (value: boolean) => void;
+}) {
   const [settings, update, updateEvent] = useSoundSettings();
 
   return (
@@ -61,6 +69,15 @@ export function NotificationsSettingsSection() {
         />
       </div>
 
+      {onSuppressMassMentions !== undefined && (
+        <Switch
+          checked={suppressMassMentions === true}
+          onChange={onSuppressMassMentions}
+          disabled={!prefsLoaded}
+          label="Don't notify me for @everyone and @here"
+          description="Unread badges still count them."
+        />
+      )}
       <label className="flex flex-col gap-1.5">
         <span className="flex items-center justify-between text-[12px] font-medium text-text-muted">
           Volume

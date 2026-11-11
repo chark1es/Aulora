@@ -65,7 +65,7 @@ function TranscriptsBody({ permissions, titles, onBack }: TranscriptsViewProps) 
         >
           <Icon name="chevron-left" size={18} />
         </IconButton>
-        <Icon name="message" size={18} className="text-accent" />
+        <Icon name="message" size={18} className="text-accent-text" />
         <h1 className="min-w-0 truncate text-[15px] font-semibold">Transcripts</h1>
       </header>
 
@@ -197,7 +197,7 @@ function SessionDetail({
     );
   }
   const summary = parseTranscriptSummary(session.summary);
-  // Not returned by the server today; used when it is, else this view's own clock.
+  // Not returned by the server today; used when it is, else this view’s own clock.
   const extra = session as { summaryRequestedAt?: number | null };
   const requestedAt = extra.summaryRequestedAt ?? pendingSeenAt;
   const panel = summaryPanel({

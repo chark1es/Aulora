@@ -1,3 +1,4 @@
+import { keepLastDefined } from "@aulora/core";
 import { useRef } from "react";
 
 /**
@@ -15,5 +16,5 @@ export function useLastDefined<T>(value: T | undefined): T | undefined {
   if (value !== undefined) {
     last.current = value;
   }
-  return value ?? last.current;
+  return keepLastDefined(last.current, value);
 }

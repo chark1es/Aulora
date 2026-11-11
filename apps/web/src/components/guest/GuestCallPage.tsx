@@ -16,7 +16,7 @@ import { GuestSession } from "./GuestSession";
 
 function Unavailable() {
   return (
-    <GuestMessageScreen icon="link" title="This guest link isn't available">
+    <GuestMessageScreen icon="link" title="This guest link isn’t available">
       It may have expired, been replaced or used up. Ask the person who invited you for a new link.
     </GuestMessageScreen>
   );
@@ -38,7 +38,7 @@ export interface GuestCallPageProps {
 }
 
 /**
- * The guest's whole visit: the lobby form while there is only a link, then the
+ * The guest’s whole visit: the lobby form while there is only a link, then the
  * session once they have asked to join. Outside the signed-in shell, with no
  * account and no Convex identity: the link token and then the session token are
  * the only credentials, and every failure to use either reads as one message.

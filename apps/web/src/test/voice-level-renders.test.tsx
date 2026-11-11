@@ -15,7 +15,13 @@ const mock = vi.hoisted(() => {
     getAudioTracks: () => [track],
     getTracks: () => [track],
   };
-  return { track, stream, meters: [] as ((level: number) => void)[] };
+  return {
+    beacon: vi.fn(),
+    stop: vi.fn(),
+    track,
+    stream,
+    meters: [] as ((level: number) => void)[],
+  };
 });
 
 vi.mock("../lib/voice/mic-pipeline", () => ({
@@ -23,7 +29,7 @@ vi.mock("../lib/voice/mic-pipeline", () => ({
     stream: mock.stream,
     enhanced: false,
     setSettings: () => {},
-    stop: () => {},
+    stop: mock.stop,
   }),
   micProcessingKey: () => "processing",
 }));
@@ -40,7 +46,7 @@ vi.mock("../lib/voice/media", () => ({
 }));
 
 vi.mock("../lib/voice/leave-beacon", () => ({
-  sendLeaveBeacon: () => {},
+  sendLeaveBeacon: mock.beacon,
 }));
 
 const flush = async (turns = 6) => {
@@ -71,71 +77,106 @@ describe("mic level re-render isolation", () => {
 
   beforeEach(() => {
     mock.meters.length = 0;
+    mock.beacon.mockClear();
+    mock.stop.mockClear();
     renders.plain = 0;
     renders.meter = 0;
     voice = null;
   });
 
-  it("does not re-render a plain useVoice consumer on a meter tick", async () => {
-    const client = {
-      url: "https://example.test",
-      watchQuery: () => ({
-        localQueryResult: () => undefined,
-        onUpdate: () => () => {},
-      }),
-      mutation: async () => null,
-      action: async () => null,
-    } as unknown as ConvexReactClient;
+  it.each([false, true])(
+    "isolates mic renders and handles pagehide persisted:%s",
+    async (persisted) => {
+      const client = {
+        url: "https://example.test",
+        watchQuery: () => ({
+          localQueryResult: () => undefined,
+          onUpdate: () => () => {},
+        }),
+        mutation: async () => null,
+        action: async () => null,
+      } as unknown as ConvexReactClient;
 
-    render(
-      <VoiceProvider
-        client={client}
-        userId="me"
-        permissions={0xffffn}
-        policy={{
-          enabled: true,
-          videoEnabled: true,
-          screenShareEnabled: true,
-          maxParticipants: 8,
-          iceServers: [],
-        }}
-      >
-        <Probe />
-        <PlainConsumer />
-        <MicMeter />
-      </VoiceProvider>,
-    );
+      render(
+        <VoiceProvider
+          client={client}
+          userId="me"
+          permissions={0xffffn}
+          policy={{
+            enabled: true,
+            videoEnabled: true,
+            screenShareEnabled: true,
+            maxParticipants: 8,
+            iceServers: [],
+          }}
+        >
+          <Probe />
+          <PlainConsumer />
+          <MicMeter />
+        </VoiceProvider>,
+      );
 
-    await act(async () => {
-      await voice?.joinCall("call-1");
-      await flush();
-    });
-    expect(voice?.callId).toBe("call-1");
-    expect(screen.getByTestId("plain")).toHaveTextContent("call-1");
-    expect(mock.meters).toHaveLength(1);
+      await act(async () => {
+        await voice?.joinCall("call-1");
+        await flush();
+      });
+      expect(voice?.callId).toBe("call-1");
+      expect(screen.getByTestId("plain")).toHaveTextContent("call-1");
+      expect(mock.meters).toHaveLength(1);
 
-    renders.plain = 0;
-    renders.meter = 0;
-    const meter = mock.meters[0] as (level: number) => void;
+      // A dirty-form prompt may cancel this event. The call must survive Stay.
+      act(() => {
+        window.dispatchEvent(new Event("beforeunload", { cancelable: true }));
+      });
+      expect(voice?.callId).toBe("call-1");
+      expect(screen.getByTestId("plain")).toHaveTextContent("call-1");
+      expect(mock.beacon).not.toHaveBeenCalled();
+      expect(mock.stop).not.toHaveBeenCalled();
 
-    // Below the speaking threshold: only the meter re-renders.
-    act(() => {
-      meter(0.02);
-    });
-    expect(screen.getByTestId("meter")).toHaveTextContent("0.02");
-    expect(renders.meter).toBeGreaterThan(0);
-    expect(renders.plain).toBe(0);
+      renders.plain = 0;
+      renders.meter = 0;
+      const meter = mock.meters[0] as (level: number) => void;
 
-    act(() => {
-      meter(0.05);
-    });
-    expect(screen.getByTestId("meter")).toHaveTextContent("0.05");
-    expect(renders.plain).toBe(0);
+      // Below the speaking threshold: only the meter re-renders.
+      act(() => {
+        meter(0.02);
+      });
+      expect(screen.getByTestId("meter")).toHaveTextContent("0.02");
+      expect(renders.meter).toBeGreaterThan(0);
+      expect(renders.plain).toBe(0);
 
-    // Crossing the speaking threshold is real state, so the context does change.
-    act(() => {
-      meter(0.5);
-    });
-    expect(renders.plain).toBeGreaterThan(0);
-  });
+      act(() => {
+        meter(0.05);
+      });
+      expect(screen.getByTestId("meter")).toHaveTextContent("0.05");
+      expect(renders.plain).toBe(0);
+
+      // Crossing the speaking threshold is real state, so the context does change.
+      act(() => {
+        meter(0.5);
+      });
+      expect(renders.plain).toBeGreaterThan(0);
+
+      act(() => {
+        window.dispatchEvent(new PageTransitionEvent("pagehide", { persisted }));
+      });
+      if (persisted) {
+        expect(voice?.callId).toBe("call-1");
+        expect(mock.beacon).not.toHaveBeenCalled();
+        expect(mock.stop).not.toHaveBeenCalled();
+      } else {
+        expect(voice?.callId).toBeNull();
+        expect(mock.stop).toHaveBeenCalledOnce();
+        expect(mock.beacon).toHaveBeenCalledWith(
+          expect.objectContaining({
+            convexUrl: "https://example.test",
+            callId: "call-1",
+            clientId: expect.any(String),
+          }),
+        );
+        act(() => window.dispatchEvent(new PageTransitionEvent("pagehide", { persisted: false })));
+        expect(mock.beacon).toHaveBeenCalledOnce();
+      }
+    },
+  );
 });

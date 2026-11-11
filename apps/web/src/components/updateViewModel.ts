@@ -1,3 +1,7 @@
+import { formatBytes } from "@aulora/core";
+
+export { formatBytes } from "@aulora/core";
+
 /**
  * Pure view-model helpers for the desktop and workspace update surfaces. Kept
  * free of React so the state machine wording, progress math and action choice
@@ -63,21 +67,6 @@ export function downloadLabel(progress: UpdateProgressLike | null): string | nul
     return `${percent}% downloaded`;
   }
   return `${formatBytes(progress.downloaded)} downloaded`;
-}
-
-export function formatBytes(bytes: number): string {
-  if (!Number.isFinite(bytes) || bytes <= 0) {
-    return "0 KB";
-  }
-  const units = ["KB", "MB", "GB"] as const;
-  let value = bytes / 1024;
-  let unit = 0;
-  while (value >= 1024 && unit < units.length - 1) {
-    value /= 1024;
-    unit += 1;
-  }
-  const rounded = value >= 10 ? Math.round(value).toString() : value.toFixed(1);
-  return `${rounded} ${units.at(unit)}`;
 }
 
 /** Formats an ISO/date-like release timestamp, or null when it cannot be read. */

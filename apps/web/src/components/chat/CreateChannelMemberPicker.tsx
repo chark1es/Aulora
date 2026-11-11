@@ -28,7 +28,7 @@ interface PickerProps {
 
 const ROLE_PREFIX = "role:";
 
-/** A role's picture: its colour as a dot on a tile, or a shield when it has none. */
+/** A role’s picture: its colour as a dot on a tile, or a shield when it has none. */
 function RoleSwatch({ color, size }: { readonly color: string | null; readonly size: number }) {
   return (
     <span

@@ -16,6 +16,7 @@ function state(extra: Partial<ChannelUnreadState> = {}): ChannelUnreadState {
 }
 
 interface HookProps {
+  readonly suppressionPrefs?: import("../lib/use-unopened-channel-alerts").UnopenedChannelAlertsOptions["suppressionPrefs"];
   readonly unreadByChannel: ReadonlyMap<string, ChannelUnreadState>;
   readonly eagerChannelIds?: ReadonlySet<string>;
   readonly activeChannelId?: string;
@@ -89,4 +90,31 @@ describe("useUnopenedChannelAlerts", () => {
     });
     expect(mocks.playSound).not.toHaveBeenCalled();
   });
+});
+
+it("suppresses summary mention alerts and honors a channel override", () => {
+  mocks.playSound.mockClear();
+  const suppressionPrefs = [
+    { scope: "server", channelId: null, suppressMassMentions: true },
+    { scope: "channel", channelId: "allowed", suppressMassMentions: false },
+  ];
+  const { rerender } = renderAlerts({ unreadByChannel: new Map(), suppressionPrefs });
+  rerender({ unreadByChannel: new Map([["b", state({ mentionCount: 1 })]]), suppressionPrefs });
+  expect(mocks.playSound).not.toHaveBeenCalled();
+  rerender({
+    unreadByChannel: new Map([["allowed", state({ mentionCount: 1 })]]),
+    suppressionPrefs,
+  });
+  expect(mocks.playSound).toHaveBeenCalledWith("mention");
+});
+
+it("keeps direct mentions audible when mass mentions are suppressed", () => {
+  mocks.playSound.mockClear();
+  const suppressionPrefs = [{ scope: "server", channelId: null, suppressMassMentions: true }];
+  const { rerender } = renderAlerts({ unreadByChannel: new Map(), suppressionPrefs });
+  rerender({
+    unreadByChannel: new Map([["b", state({ mentionCount: 1, massMentionCount: 0 })]]),
+    suppressionPrefs,
+  });
+  expect(mocks.playSound).toHaveBeenCalledWith("mention");
 });

@@ -48,7 +48,7 @@ export function InviteCreated({ invite }: { readonly invite: CreatedInvite }) {
       data-testid="invite-created"
     >
       <div className="flex items-center gap-2">
-        <Icon name={emailed ? "mail" : "check"} size={15} className="text-accent" />
+        <Icon name={emailed ? "mail" : "check"} size={15} className="text-accent-text" />
         <span className="text-[13px] font-medium text-text">
           {emailed ? `Invitation on its way to ${invite.emailedTo}` : "Invite created"}
         </span>

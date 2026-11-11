@@ -22,9 +22,9 @@ export interface JoinSubmission {
 export function failureText(failure: JoinFailure): string {
   switch (failure.kind) {
     case "not-open":
-      return `This call hasn't started yet. It opens at ${formatLocalTimeWithZone(failure.opensAt)}.`;
+      return `This call hasn’t started yet. It opens at ${formatLocalTimeWithZone(failure.opensAt)}.`;
     case "not-started":
-      return "The call hasn't started yet. Try again in a moment.";
+      return "The call hasn’t started yet. Try again in a moment.";
     case "busy":
       return "Too many people are waiting to join this call. Try again in a few minutes.";
     case "rate-limited":
@@ -32,7 +32,7 @@ export function failureText(failure: JoinFailure): string {
     case "invalid-input":
       return failure.message;
     case "unavailable":
-      return "This guest link isn't available.";
+      return "This guest link isn’t available.";
     case "generic":
       return "Something went wrong. Try again.";
   }
@@ -40,7 +40,7 @@ export function failureText(failure: JoinFailure): string {
 
 /**
  * The guest lobby: who you are, how you look and sound, and one button. The
- * preview tells whether the call is open yet, in the guest's own time zone;
+ * preview tells whether the call is open yet, in the guest’s own time zone;
  * the server decides for real when they ask.
  */
 export function GuestJoinForm({
@@ -57,7 +57,7 @@ export function GuestJoinForm({
   readonly onChoices: (next: GuestMediaChoices) => void;
   readonly busy: boolean;
   readonly failure: JoinFailure | null;
-  /** Reports the call's title so the in-call header can show it. */
+  /** Reports the call’s title so the in-call header can show it. */
   readonly onTitle: (title: string) => void;
   readonly onSubmit: (submission: JoinSubmission) => void;
 }) {
@@ -121,7 +121,7 @@ export function GuestJoinForm({
               {preview.title}
             </h1>
             <p className="text-[14px] leading-relaxed text-text-muted">
-              You've been invited as a guest. Someone in the call will let you in.
+              You’ve been invited as a guest. Someone in the call will let you in.
             </p>
           </header>
 
@@ -131,7 +131,7 @@ export function GuestJoinForm({
               data-testid="guest-not-started"
               className="rounded-[10px] border border-border bg-surface-2 px-3.5 py-3 text-[13.5px] leading-relaxed"
             >
-              <strong className="font-semibold">The call hasn't started yet.</strong> It starts{" "}
+              <strong className="font-semibold">The call hasn’t started yet.</strong> It starts{" "}
               {formatLocalDateTime(notice.startsAt, now)} and opens for guests at{" "}
               {formatLocalTimeWithZone(notice.opensAt)}. You can leave this page open.
             </p>
@@ -142,7 +142,7 @@ export function GuestJoinForm({
               data-testid="guest-waiting-for-host"
               className="rounded-[10px] border border-border bg-surface-2 px-3.5 py-3 text-[13.5px] leading-relaxed"
             >
-              <strong className="font-semibold">The call hasn't started yet.</strong> This page
+              <strong className="font-semibold">The call hasn’t started yet.</strong> This page
               updates when the host starts it.
             </p>
           )}

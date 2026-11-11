@@ -208,7 +208,7 @@ describe("DisplaySourcePicker", () => {
       expect(screen.getByText(/This Wayland session/i)).toBeInTheDocument();
     });
     expect(
-      screen.getByRole("dialog", { name: "Screen sharing isn't available here" }),
+      screen.getByRole("dialog", { name: "Screen sharing isn’t available here" }),
     ).toBeInTheDocument();
     expect(screen.queryByRole("button", { name: "Open System Settings" })).not.toBeInTheDocument();
 

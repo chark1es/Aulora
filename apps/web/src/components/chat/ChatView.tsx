@@ -1,30 +1,34 @@
 import {
   type AttachmentDescriptor,
+  buildPresenceScope,
   type ChannelView,
+  canUseMassMentions,
   canViewScheduledCalls,
   canViewTranscripts,
   conversationTitle,
   createTypingThrottle,
+  hasBroadcastToken,
   hasPermission,
   type MembersGroupingRole,
   type MentionTarget,
   type MessagePayload,
+  messageMentionsUser,
   Permission,
+  PRESENCE_SCOPE_MAX,
   type RoleMentionTarget,
+  resolveServerCapabilities,
+  suppressesBroadcast,
+  userFacingError,
 } from "@aulora/core";
-import { cn, EmptyState, Icon, Spinner } from "@aulora/ui-web";
-import { useConvex, useMutation, useQuery } from "convex/react";
+import { ConfirmDialog, cn, EmptyState, Icon, Spinner } from "@aulora/ui-web";
+import { useConvex, useMutation, usePaginatedQuery, useQuery } from "convex/react";
 import { lazy, Suspense, useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { api } from "../../../../../packages/convex/convex/_generated/api";
-import {
-  attachmentUploadErrorMessage,
-  DEFAULT_MAX_UPLOAD_BYTES,
-  uploadFiles,
-} from "../../lib/attachments";
+import { DEFAULT_MAX_UPLOAD_BYTES, uploadFiles } from "../../lib/attachments";
 import { selectEagerChannelIds } from "../../lib/channel-priority";
 import { isDesktop } from "../../lib/desktop";
-import { buildPresenceScope, PRESENCE_SCOPE_MAX } from "../../lib/presence-scope";
 import { publicOriginOrNull, publicUrl } from "../../lib/public-origin";
+import { sendThreadReply } from "../../lib/send-thread-reply";
 import { playSound } from "../../lib/sounds";
 import { useChannelSession } from "../../lib/use-channel";
 import {
@@ -33,6 +37,7 @@ import {
 } from "../../lib/use-desktop-notifications";
 import { useUnreadBadge } from "../../lib/use-desktop-unread";
 import { useMemberPages } from "../../lib/use-member-pages";
+import { useSettingsNavigation } from "../../lib/use-settings-navigation";
 import { useUnopenedChannelAlerts } from "../../lib/use-unopened-channel-alerts";
 import { useWebPush } from "../../lib/use-web-push";
 import {
@@ -140,7 +145,7 @@ export interface ChatViewProps {
   readonly permissions: bigint;
   readonly kanbanEnabled?: boolean;
   readonly notesEnabled?: boolean;
-  /** The viewer's own workspace avatar, if they set one. */
+  /** The viewer’s own workspace avatar, if they set one. */
   readonly ownAvatarUrl: string | null;
   /**
    * Extra directory rows for a host that supplies its own people instead of a
@@ -162,7 +167,7 @@ export interface ChatViewProps {
   readonly onSignOut: () => void;
 }
 
-/** Ids one `members.brief` call resolves (matches the server's cap). */
+/** Ids one `members.brief` call resolves (matches the server’s cap). */
 const MEMBER_DIRECTORY_MAX = 300;
 /** Member panel page size, grown by one step per "Show more". */
 const MEMBER_PAGE_INITIAL = 100;
@@ -177,9 +182,7 @@ const LAST_CHANNEL_KEY = "aulora.lastChannel.v1:";
 const MEMBERS_OPEN_KEY = "aulora.membersOpen.v1";
 const MESSAGE_ALIGNMENT_KEY = "aulora.messageAlignment.v1";
 function errorMessage(error: unknown): string {
-  return error instanceof Error && error.message.length > 0
-    ? error.message
-    : "Something went wrong. Please try again.";
+  return userFacingError(error);
 }
 
 /** Whether two id lists hold the same distinct values, order-insensitive. */
@@ -289,6 +292,13 @@ function ChatViewContent({
   const [pinsOpen, setPinsOpen] = useState(false);
   const [replyTarget, setReplyTarget] = useState<MessagePayload>();
   const [userSettingsOpen, setUserSettingsOpen] = useState(false);
+  const [userSettingsDirty, setUserSettingsDirty] = useState(false);
+  const [notesDirty, setNotesDirty] = useState(false);
+  const settingsNavigation = useSettingsNavigation(
+    true,
+    (userSettingsOpen && userSettingsDirty) || notesDirty,
+  );
+  const navigateFromSettings = settingsNavigation.navigate;
   const [profileTarget, setProfileTarget] = useState<{
     userId: string;
     anchor: HTMLButtonElement;
@@ -322,7 +332,7 @@ function ChatViewContent({
   const reported = useRef(new Set<string>());
   const attentive = useAttentive();
 
-  // The open channel's live session. Declared before the member directory
+  // The open channel’s live session. Declared before the member directory
   // because the directory is scoped to the authors and mentions it displays.
   const sessionState = useChannelSession(runtime, activeChannelId, ownUserId);
 
@@ -407,7 +417,7 @@ function ChatViewContent({
   const panelHasMore = panelPages.hasMore;
   const loadMoreMembers = panelPages.loadMore;
 
-  // Pickers, the admin surface and the addons need more than the timeline's
+  // Pickers, the admin surface and the addons need more than the timeline’s
   // people. They load one bounded directory page, and only while open.
   const rosterOpen =
     newConversationOpen ||
@@ -435,7 +445,7 @@ function ChatViewContent({
   }, [directory, rosterRows, toEntry]);
 
   // Avatar URLs for everyone this view can render: the scoped directory, the
-  // member panel's page and any open picker's roster.
+  // member panel’s page and any open picker’s roster.
   const avatarRows = useMemo(() => {
     const merged = new Map<string, { userId: string; avatarUrl?: string | null }>();
     for (const list of [directoryRows ?? [], panelRows, rosterRows]) {
@@ -469,14 +479,30 @@ function ChatViewContent({
   // The Threads badge comes from a cheap participation-row count; the inbox
   // itself (root lookups plus opened bodies) is only subscribed while open.
   const threadMentionCount = useQuery(api.messages.threadMentionCount, {}) ?? 0;
-  const threadRows = useQuery(
-    api.messages.threadInbox,
-    mainView === "threads" ? { limit: THREAD_INBOX_PAGE } : "skip",
-  );
-  // The effective single-upload cap, so the composer can reject oversized picks
-  // before any bytes leave the browser. Falls back to the shared default while
-  // the query loads.
+  useEffect(() => {
+    if (mainView === "threads")
+      void runtime?.client.mutation(api.messages.markThreadMentionsSeen, {}).catch(() => undefined);
+  }, [mainView, runtime]);
   const publicConfig = useQuery(api.server.publicConfig, {});
+  const pagedThreads = publicConfig?.capabilities?.threadInboxPaging === true;
+  const legacyThreadRows = useQuery(
+    api.messages.threadInbox,
+    mainView === "threads" && !pagedThreads ? { limit: THREAD_INBOX_PAGE } : "skip",
+  );
+  const threadPages = usePaginatedQuery(
+    api.messages.threadInboxPage,
+    mainView === "threads" && pagedThreads ? {} : "skip",
+    { initialNumItems: 50 },
+  );
+  const threadRows = pagedThreads
+    ? threadPages.status === "LoadingFirstPage"
+      ? undefined
+      : threadPages.results
+    : legacyThreadRows;
+  const notificationPrefs = useQuery(api.notifications.getPrefs, {});
+  const notificationPrefsRef = useRef(notificationPrefs);
+  notificationPrefsRef.current = notificationPrefs;
+  const setNotificationPref = useMutation(api.notifications.setPref);
   const maxUploadBytes = publicConfig?.uploads?.maxBytes ?? DEFAULT_MAX_UPLOAD_BYTES;
 
   const mutedChannelIds = useMemo(
@@ -504,6 +530,7 @@ function ChatViewContent({
     [channels, unreadByChannel],
   );
   useUnopenedChannelAlerts({
+    suppressionPrefs: notificationPrefs,
     unreadByChannel,
     eagerChannelIds,
     activeChannelId,
@@ -541,7 +568,8 @@ function ChatViewContent({
         if (channels.some((entry) => entry.id === message.channelId && entry.muted === true)) {
           continue;
         }
-        playSound(message.mentionUserIds.includes(ownUserId) ? "mention" : "message");
+        if (suppressesBroadcast(message, ownUserId, notificationPrefsRef.current)) continue;
+        playSound(messageMentionsUser(message, ownUserId) ? "mention" : "message");
       }
     });
     return off;
@@ -767,7 +795,7 @@ function ChatViewContent({
     });
   }, [presence]);
 
-  // Seed the settings dialog's custom status from live presence when it opens.
+  // Seed the settings dialog’s custom status from live presence when it opens.
   // biome-ignore lint/correctness/useExhaustiveDependencies: seed once on open, not on every presence tick
   useEffect(() => {
     if (userSettingsOpen) {
@@ -872,7 +900,7 @@ function ChatViewContent({
   }, [membersOpen]);
 
   const channel = channels.find((entry) => entry.id === activeChannelId);
-  // The viewer's role refs come from the shell's resolved viewer, so channel
+  // The viewer’s role refs come from the shell’s resolved viewer, so channel
   // permission math no longer needs a member-roster subscription.
   const viewerMember: MemberView | null = {
     id: ownUserId,
@@ -914,9 +942,9 @@ function ChatViewContent({
     return entries.filter((member) => visible.has(member.userId));
   }, [panelRows, toEntry, visibleMemberIds]);
 
-  // Presence is fetched only for the people on screen: the open timeline's
-  // authors, the member panel/modal's displayed members, the sidebar's DM
-  // partners and any open picker. Bounded well under the server's 300-id cap
+  // Presence is fetched only for the people on screen: the open timeline’s
+  // authors, the member panel/modal’s displayed members, the sidebar’s DM
+  // partners and any open picker. Bounded well under the server’s 300-id cap
   // (see `buildPresenceScope`), so the client never reads the whole table.
   const presenceScope = useMemo(
     () =>
@@ -949,7 +977,7 @@ function ChatViewContent({
   }, [runtime, presenceScope]);
 
   // Roles the members panel can render as their own sections. Members store a
-  // role's stable key when it has one, so match on that ref.
+  // role’s stable key when it has one, so match on that ref.
   const memberRoleGroups = useMemo<readonly MembersGroupingRole[]>(
     () =>
       admin.roleViews.map((role) => ({
@@ -1030,7 +1058,7 @@ function ChatViewContent({
     channel.kind === "dm" ||
     channel.kind === "group_dm" ||
     hasPermission(channelPermissions, Permission.AttachFiles);
-  const canMentionEveryone = hasPermission(channelPermissions, Permission.MentionEveryone);
+  const canMentionEveryone = canUseMassMentions(channel, undefined, channelPermissions);
 
   const showAdmin = useMemo(
     () =>
@@ -1057,7 +1085,7 @@ function ChatViewContent({
     [directory],
   );
 
-  // `@here`/`@everyone` expand over the open channel's viewers rather than the
+  // `@here`/`@everyone` expand over the open channel’s viewers rather than the
   // whole workspace; the server still filters to actual recipients.
   const memberIds = useMemo(
     () =>
@@ -1106,6 +1134,8 @@ function ChatViewContent({
         threadRootId: item.threadRootId ?? null,
         attachmentIds: (item.attachments ?? []).map((attachment) => attachment.fileId),
         mentionUserIds: [...item.mentionUserIds],
+        mentionEveryone: item.mentionEveryone ?? false,
+        mentionHere: item.mentionHere ?? false,
         editedAt: null,
         deletedAt: null,
         pinnedAt: null,
@@ -1128,7 +1158,16 @@ function ChatViewContent({
   }, [sessionState.decrypted, optimisticItems]);
 
   const replyPreviews = useMemo(() => {
-    const map = new Map<string, { authorName: string; text: string; authorId: string }>();
+    const map = new Map<
+      string,
+      {
+        authorName: string;
+        text: string;
+        authorId: string;
+        mentionEveryone: boolean;
+        mentionHere: boolean;
+      }
+    >();
     for (const message of mergedMessages) {
       map.set(message.id, {
         authorName:
@@ -1136,6 +1175,8 @@ function ChatViewContent({
             ? ownName
             : (memberNames.get(message.authorId) ?? "Unknown member"),
         text: mergedDecrypted.get(message.id) ?? message.body,
+        mentionEveryone: message.mentionEveryone === true,
+        mentionHere: message.mentionHere === true,
         authorId: message.authorId,
       });
     }
@@ -1170,6 +1211,15 @@ function ChatViewContent({
     [optimisticItems],
   );
 
+  const failureReasons = useMemo(
+    () =>
+      new Map(
+        optimisticItems
+          .filter((item) => item.failureReason !== undefined)
+          .map((item) => [`pending:${item.id}`, item.failureReason ?? "Not sent"]),
+      ),
+    [optimisticItems],
+  );
   const failedIds = useMemo(
     () =>
       new Set(
@@ -1182,7 +1232,7 @@ function ChatViewContent({
 
   // Open whichever channel is active, however it became active (a click, the
   // restored last channel, a search hit or a new DM). `openChannel` is
-  // idempotent and subscribes the channel's live message stream.
+  // idempotent and subscribes the channel’s live message stream.
   const activeSummary = channel;
   const activeChannelKey = activeSummary?.id;
   // biome-ignore lint/correctness/useExhaustiveDependencies: keyed on the channel id, not the object identity
@@ -1194,63 +1244,74 @@ function ChatViewContent({
       if (activeSummary.name.length > 0) {
         chat.reportChannelNames([{ id: activeSummary.id, name: activeSummary.name }]);
       }
-      void runtime.session.receiveMessages(sessionState.messages, `channel:${activeSummary.id}`);
     });
   }, [runtime, activeChannelKey]);
 
-  const openChannel = useCallback((channelId: string) => {
-    setAdminOpen(false);
-    setUserSettingsOpen(false);
-    setMainView("chat");
-    setActiveChannelId(channelId);
-    setThreadRoot(undefined);
-    setReplyTarget(undefined);
-    setMobilePane("chat");
-    setSendError(null);
-  }, []);
+  const openChannel = useCallback(
+    (channelId: string) =>
+      navigateFromSettings(() => {
+        setAdminOpen(false);
+        setUserSettingsOpen(false);
+        setMainView("chat");
+        setActiveChannelId(channelId);
+        setThreadRoot(undefined);
+        setReplyTarget(undefined);
+        setMobilePane("chat");
+        setSendError(null);
+      }),
+    [navigateFromSettings],
+  );
 
   const startConversation = useCallback(
     async (userIds: readonly string[]) => {
       if (runtime === undefined || userIds.length === 0) {
         return;
       }
-      setNewConversationOpen(false);
-      setAdminOpen(false);
-      setUserSettingsOpen(false);
-      setMainView("chat");
-      const channelId = await createConversation(runtime, userIds);
-      setActiveChannelId(channelId);
-      setThreadRoot(undefined);
-      setReplyTarget(undefined);
-      setMobilePane("chat");
+      navigateFromSettings(() => {
+        void (async () => {
+          setNewConversationOpen(false);
+          setAdminOpen(false);
+          setUserSettingsOpen(false);
+          setMainView("chat");
+          const channelId = await createConversation(runtime, userIds);
+          setActiveChannelId(channelId);
+          setThreadRoot(undefined);
+          setReplyTarget(undefined);
+          setMobilePane("chat");
+        })();
+      });
     },
-    [runtime],
+    [runtime, navigateFromSettings],
   );
 
   // A Threads-inbox row opens the existing thread panel for its root message.
-  const openThreadFromInbox = useCallback((thread: ThreadInboxItem) => {
-    const root: MessagePayload = {
-      id: thread.id,
-      channelId: thread.channelId,
-      authorId: thread.authorId,
-      body: thread.body,
-      threadRootId: null,
-      attachmentIds: [],
-      mentionUserIds: [...thread.mentionedUserIds],
-      editedAt: null,
-      deletedAt: null,
-      pinnedAt: null,
-      replyCount: thread.replyCount,
-      lastReplyAt: thread.lastReplyAt,
-      createdAt: thread.createdAt,
-    };
-    setActiveChannelId(thread.channelId);
-    setThreadRoot(root);
-    setMainView("chat");
-    setAdminOpen(false);
-    setUserSettingsOpen(false);
-    setMobilePane("chat");
-  }, []);
+  const openThreadFromInbox = useCallback(
+    (thread: ThreadInboxItem) =>
+      navigateFromSettings(() => {
+        const root: MessagePayload = {
+          id: thread.id,
+          channelId: thread.channelId,
+          authorId: thread.authorId,
+          body: thread.body,
+          threadRootId: null,
+          attachmentIds: [],
+          mentionUserIds: [...thread.mentionedUserIds],
+          editedAt: null,
+          deletedAt: null,
+          pinnedAt: null,
+          replyCount: thread.replyCount,
+          lastReplyAt: thread.lastReplyAt,
+          createdAt: thread.createdAt,
+        };
+        setActiveChannelId(thread.channelId);
+        setThreadRoot(root);
+        setMainView("chat");
+        setAdminOpen(false);
+        setUserSettingsOpen(false);
+        setMobilePane("chat");
+      }),
+    [navigateFromSettings],
+  );
 
   const selectSearchHit = useCallback(
     (hit: ChatSearchHit) => {
@@ -1354,6 +1415,8 @@ function ChatViewContent({
     input: {
       text: string;
       mentionUserIds: readonly string[];
+      mentionEveryone?: boolean;
+      mentionHere?: boolean;
       mentionChannelIds?: readonly string[];
       mentionCategoryIds?: readonly string[];
       mentionRoleIds?: readonly string[];
@@ -1363,18 +1426,15 @@ function ChatViewContent({
   ): Promise<string | undefined> => {
     let attachments: readonly AttachmentDescriptor[] | undefined;
     if (input.files.length > 0) {
-      try {
-        attachments = await uploadFiles(runtime.port, input.files, { maxBytes: maxUploadBytes });
-      } catch (error) {
-        setSendError(attachmentUploadErrorMessage(error));
-        return undefined;
-      }
+      attachments = await uploadFiles(runtime.port, input.files, { maxBytes: maxUploadBytes });
     }
     setSendError(null);
     typing.reset(targetChannelId);
     void runtime.port.clearTyping({ channelId: targetChannelId }).catch(() => undefined);
     const result = await chat.sendMessage(targetChannelId, input.text, {
       mentionUserIds: input.mentionUserIds,
+      ...(input.mentionEveryone !== undefined ? { mentionEveryone: input.mentionEveryone } : {}),
+      ...(input.mentionHere !== undefined ? { mentionHere: input.mentionHere } : {}),
       ...(input.mentionChannelIds !== undefined
         ? { mentionChannelIds: input.mentionChannelIds }
         : {}),
@@ -1387,8 +1447,7 @@ function ChatViewContent({
       ...(attachments !== undefined && attachments.length > 0 ? { attachments } : {}),
     });
     if (result.error !== undefined) {
-      setSendError(result.error);
-      return undefined;
+      throw new Error(result.error);
     }
     return result.queued ? undefined : result.messageId;
   };
@@ -1515,6 +1574,18 @@ function ChatViewContent({
 
   return (
     <MemberAvatarProvider members={avatarRows}>
+      <ConfirmDialog
+        open={settingsNavigation.pending !== null}
+        title="Discard unsaved changes?"
+        confirmLabel="Discard changes"
+        cancelLabel="Keep editing"
+        onClose={settingsNavigation.cancel}
+        onConfirm={() => {
+          setUserSettingsDirty(false);
+          setNotesDirty(false);
+          settingsNavigation.discard();
+        }}
+      />
       <div className="relative flex min-h-0 min-w-0 flex-1">
         {!sidebarHidden && (
           <div className={cn("min-h-0 w-full md:flex md:w-auto", showList ? "flex" : "hidden")}>
@@ -1538,70 +1609,80 @@ function ChatViewContent({
               mainView={mainView}
               {...(kanbanEnabled && hasPermission(permissions, Permission.ViewKanban)
                 ? {
-                    onOpenKanban: () => {
-                      setMainView("kanban");
-                      setMobilePane("chat");
-                      setThreadRoot(undefined);
-                      setAdminOpen(false);
-                      setUserSettingsOpen(false);
-                    },
+                    onOpenKanban: () =>
+                      navigateFromSettings(() => {
+                        setMainView("kanban");
+                        setMobilePane("chat");
+                        setThreadRoot(undefined);
+                        setAdminOpen(false);
+                        setUserSettingsOpen(false);
+                      }),
                   }
                 : {})}
               {...(notesEnabled && hasPermission(permissions, Permission.ViewNotes)
                 ? {
-                    onOpenNotes: () => {
-                      setMainView("notes");
-                      setMobilePane("chat");
-                      setThreadRoot(undefined);
-                      setAdminOpen(false);
-                      setUserSettingsOpen(false);
-                    },
+                    onOpenNotes: () =>
+                      navigateFromSettings(() => {
+                        setMainView("notes");
+                        setMobilePane("chat");
+                        setThreadRoot(undefined);
+                        setAdminOpen(false);
+                        setUserSettingsOpen(false);
+                      }),
                   }
                 : {})}
               {...(canViewScheduledCalls(permissions, voice.addons.scheduledCalls)
                 ? {
-                    onOpenScheduled: () => {
-                      setMainView("scheduled");
-                      setMobilePane("chat");
-                      setThreadRoot(undefined);
-                      setAdminOpen(false);
-                      setUserSettingsOpen(false);
-                    },
+                    onOpenScheduled: () =>
+                      navigateFromSettings(() => {
+                        setMainView("scheduled");
+                        setMobilePane("chat");
+                        setThreadRoot(undefined);
+                        setAdminOpen(false);
+                        setUserSettingsOpen(false);
+                      }),
                   }
                 : {})}
               {...(canViewTranscripts(permissions, voice.addons.transcription)
                 ? {
-                    onOpenTranscripts: () => {
-                      setMainView("transcripts");
-                      setMobilePane("chat");
-                      setThreadRoot(undefined);
-                      setAdminOpen(false);
-                      setUserSettingsOpen(false);
-                    },
+                    onOpenTranscripts: () =>
+                      navigateFromSettings(() => {
+                        setMainView("transcripts");
+                        setMobilePane("chat");
+                        setThreadRoot(undefined);
+                        setAdminOpen(false);
+                        setUserSettingsOpen(false);
+                      }),
                   }
                 : {})}
               threadMentionCount={threadMentionCount}
-              onOpenThreads={() => {
-                setMainView("threads");
-                setThreadRoot(undefined);
-                setAdminOpen(false);
-                setUserSettingsOpen(false);
-              }}
+              onOpenThreads={() =>
+                navigateFromSettings(() => {
+                  setMainView("threads");
+                  setThreadRoot(undefined);
+                  setAdminOpen(false);
+                  setUserSettingsOpen(false);
+                })
+              }
               onCreateCategory={() => {
                 setCreateCategoryOpen(true);
               }}
               canManageCategories={canManageCategories}
               appUpdateAvailable={desktopUpdate.status?.updateAvailable ?? false}
               workspaceUpdateAvailable={workspaceUpdate.available}
-              onOpenUserSettings={() => {
-                setAdminOpen(false);
-                setUserSettingsOpen(true);
-              }}
+              onOpenUserSettings={() =>
+                navigateFromSettings(() => {
+                  setAdminOpen(false);
+                  setUserSettingsOpen(true);
+                })
+              }
               showAdmin={showAdmin}
-              onOpenAdmin={() => {
-                setUserSettingsOpen(false);
-                setAdminOpen(true);
-              }}
+              onOpenAdmin={() =>
+                navigateFromSettings(() => {
+                  setUserSettingsOpen(false);
+                  setAdminOpen(true);
+                })
+              }
               workspaceSwitcher={<WorkspaceMenu onlineCount={onlineCount} variant="header" />}
               onSelect={(channelId) => {
                 openChannel(channelId);
@@ -1769,6 +1850,7 @@ function ChatViewContent({
           <UserSettingsView
             ownUserId={ownUserId}
             ownName={ownName}
+            onDirtyChange={setUserSettingsDirty}
             ownBio={ownProfile?.bio ?? ""}
             busy={ownProfile === undefined}
             alignment={alignment}
@@ -1785,7 +1867,25 @@ function ChatViewContent({
             }}
             onSignOut={onSignOut}
             voiceSettings={<DeviceSettingsSection />}
-            soundSettings={<NotificationsSettingsSection />}
+            soundSettings={
+              <NotificationsSettingsSection
+                prefsLoaded={notificationPrefs !== undefined}
+                suppressMassMentions={
+                  notificationPrefs?.find((row) => row.scope === "server")?.suppressMassMentions ===
+                  true
+                }
+                {...(resolveServerCapabilities(publicConfig).mentionMarkers
+                  ? {
+                      onSuppressMassMentions: (value: boolean) => {
+                        void setNotificationPref({
+                          scope: "server",
+                          suppressMassMentions: value,
+                        }).catch((error) => setSendError(errorMessage(error)));
+                      },
+                    }
+                  : {})}
+              />
+            }
             {...(isDesktop() ? { updateSettings: <DesktopUpdateSettings /> } : {})}
             updateAvailable={updateAvailable}
           />
@@ -1808,6 +1908,7 @@ function ChatViewContent({
           hasPermission(permissions, Permission.ViewNotes) ? (
           <Suspense fallback={<SurfaceFallback />}>
             <NotesView
+              onDirtyChange={setNotesDirty}
               ownUserId={ownUserId}
               permissions={permissions}
               members={roster}
@@ -1858,6 +1959,9 @@ function ChatViewContent({
               <ThreadsInbox
                 threads={threadRows ?? []}
                 loading={threadRows === undefined}
+                {...(pagedThreads && threadPages.status === "CanLoadMore"
+                  ? { onLoadMore: () => threadPages.loadMore(50) }
+                  : {})}
                 channelNames={channelNames}
                 memberNames={memberNames}
                 titles={titles}
@@ -1868,13 +1972,13 @@ function ChatViewContent({
               <EmptyState
                 className="px-8"
                 title={channels.length === 0 ? "No conversations yet" : "Pick a conversation"}
-                description={
-                  channels.length === 0
-                    ? canCreateChannel
-                      ? "Create a channel from the sidebar, or start a direct message."
-                      : "Start a direct message, or ask an admin to add you to a channel."
-                    : "Choose a channel or direct message from the sidebar."
-                }
+                {...(channels.length === 0
+                  ? {
+                      description: canCreateChannel
+                        ? "Create a channel from the sidebar, or start a direct message."
+                        : "Start a direct message, or ask an admin to add you to a channel.",
+                    }
+                  : {})}
               />
             ) : channel.kind === "voice" ? (
               <Suspense fallback={<SurfaceFallback />}>
@@ -1882,6 +1986,7 @@ function ChatViewContent({
               </Suspense>
             ) : (
               <ChannelPane
+                mentionMarkers={resolveServerCapabilities(publicConfig).mentionMarkers}
                 runtime={runtime}
                 channel={channel}
                 title={title}
@@ -1895,6 +2000,7 @@ function ChatViewContent({
                 mergedDecrypted={mergedDecrypted}
                 attachments={attachmentsByMessage}
                 pendingIds={pendingIds}
+                failureReasons={failureReasons}
                 failedIds={failedIds}
                 replyPreviews={replyPreviews}
                 memberNames={memberNames}
@@ -1957,13 +2063,17 @@ function ChatViewContent({
             <div className="fixed inset-y-2.5 right-2.5 z-30 flex lg:static lg:z-auto">
               {rightPanel === "thread" && threadRoot !== undefined ? (
                 <ThreadsPanel
+                  channelKind={channel.kind}
+                  mentionMarkers={resolveServerCapabilities(publicConfig).mentionMarkers}
                   key={threadRoot.id}
                   runtime={runtime}
                   channelId={channel.id}
                   channelTitle={
                     channel.kind === "text" || channel.kind === "announcement" ? `#${title}` : title
                   }
-                  root={threadRoot}
+                  root={
+                    loadedMessages.find((message) => message.id === threadRoot.id) ?? threadRoot
+                  }
                   rootText={sessionState.decrypted.get(threadRoot.id)}
                   members={mentionMembers}
                   roles={roles}
@@ -1982,10 +2092,24 @@ function ChatViewContent({
                     typing.ping(channelId);
                   }}
                   onSendReply={async ({ alsoSendToChannel, ...input }) => {
-                    await sendWithFiles(channel.id, input, { threadRootId: threadRoot.id });
-                    if (alsoSendToChannel) {
-                      await sendWithFiles(channel.id, { ...input, files: [] });
-                    }
+                    await sendThreadReply(
+                      () =>
+                        sendWithFiles(channel.id, input, {
+                          threadRootId: threadRoot.id,
+                        }),
+                      alsoSendToChannel
+                        ? () =>
+                            sendWithFiles(channel.id, {
+                              ...input,
+                              files: [],
+                              mentionEveryone:
+                                canMentionEveryone && hasBroadcastToken(input.text, "everyone"),
+                              mentionHere:
+                                canMentionEveryone && hasBroadcastToken(input.text, "here"),
+                            })
+                        : undefined,
+                      (error) => setSendError(errorMessage(error)),
+                    );
                   }}
                   onEdit={(message, text) => {
                     void runtime.session.editMessage(channel.id, message.id, text);

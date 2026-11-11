@@ -2,7 +2,7 @@
 import { Avatar } from "@aulora/avatars";
 import type { ChannelView } from "@aulora/core";
 import { partitionPinnedDms } from "@aulora/core";
-import { Icon, useContextMenu } from "@aulora/ui-web";
+import { CAP_TEXT_CLASS, CapText, cn, Icon, useContextMenu } from "@aulora/ui-web";
 import { Fragment, useEffect, useMemo, useState } from "react";
 import { shortcutLabel } from "../../lib/shortcuts";
 import type { CategoryView } from "../../lib/workspace-admin";
@@ -203,9 +203,9 @@ export function ChannelSidebar(props: ChannelSidebarProps) {
           className="flex h-8 w-full items-center gap-2 rounded-[8px] bg-surface-3 px-2.5 text-[13px] text-text-muted transition hover:text-text focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent"
         >
           <Icon name="search" size={15} />
-          <span className="flex-1 text-left">Jump to or search…</span>
-          <kbd className="rounded-[5px] border border-border bg-surface-2 px-1.5 font-sans text-[10px] font-medium">
-            {SEARCH_SHORTCUT}
+          <span className={cn("flex-1 text-left", CAP_TEXT_CLASS)}>Jump to or search…</span>
+          <kbd className="inline-flex h-5 items-center justify-center rounded-[5px] border border-border bg-surface-2 px-1.5 font-sans text-[12px] font-medium">
+            <CapText>{SEARCH_SHORTCUT}</CapText>
           </kbd>
         </button>
       </div>
@@ -416,7 +416,7 @@ export function ChannelSidebar(props: ChannelSidebarProps) {
           {!collapsed.has("dms") && (
             <ul className="flex flex-col gap-px">
               {pinnedDms.length > 0 && (
-                <li className="px-3 pb-0.5 pt-1 text-[10px] font-semibold uppercase tracking-[0.06em] text-text-muted">
+                <li className="px-3 pb-0.5 pt-1 text-[12px] font-semibold uppercase tracking-[0.06em] text-text-muted">
                   Pinned
                 </li>
               )}
@@ -442,7 +442,7 @@ export function ChannelSidebar(props: ChannelSidebarProps) {
                     onClick={props.onNewConversation}
                     className="w-full rounded-[6px] px-2 py-2 text-left text-xs text-text-muted transition-colors hover:bg-surface-2 hover:text-text"
                   >
-                    Start a private conversation →
+                    Start a private conversation
                   </button>
                 </li>
               )}

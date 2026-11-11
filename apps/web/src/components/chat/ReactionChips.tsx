@@ -13,7 +13,7 @@ export interface ReactionChipsProps {
   readonly align?: "start" | "end";
 }
 
-/** Compact reaction pills under a bubble; the viewer's own reactions are accented. */
+/** Compact reaction pills under a bubble; the viewer’s own reactions are accented. */
 export function ReactionChips({ groups, onToggle, align = "start" }: ReactionChipsProps) {
   return (
     <div className={cn("mt-1 flex flex-wrap gap-1", align === "end" && "justify-end")}>
@@ -29,7 +29,7 @@ export function ReactionChips({ groups, onToggle, align = "start" }: ReactionChi
           className={cn(
             "inline-flex h-6 items-center gap-1 rounded-full border px-2 text-xs font-semibold transition",
             group.mine
-              ? "border-accent/50 bg-accent-soft text-accent"
+              ? "border-accent/50 bg-accent-soft text-accent-text"
               : "border-border bg-surface-2 text-text-muted hover:border-text-muted/40 hover:text-text",
           )}
         >

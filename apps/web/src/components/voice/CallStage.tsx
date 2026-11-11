@@ -138,7 +138,7 @@ function ShareButton({
       className={cn(
         "flex h-8 items-center gap-1.5 rounded-[8px] px-2.5 text-[12px] font-medium transition",
         sharingScreen
-          ? "bg-accent/15 text-accent"
+          ? "bg-accent/15 text-accent-text"
           : "text-text-muted hover:bg-surface-3 hover:text-text",
       )}
     >

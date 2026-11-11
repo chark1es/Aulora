@@ -8,6 +8,7 @@ import {
 } from "@aulora/core";
 import type { ConvexReactClient } from "convex/react";
 import { api } from "../../../../packages/convex/convex/_generated/api";
+import { isClosedChannelError } from "./channel-query-error";
 import { convexPort, convexSubscriptions, createScopedPresence } from "./convex-chat";
 import { isDesktop } from "./desktop";
 
@@ -20,6 +21,7 @@ import { isDesktop } from "./desktop";
  */
 export interface ChatRuntime {
   readonly session: ChatSession;
+  readonly userId?: string;
   readonly port: ChatPort;
   readonly subscriptions: Subscriptions;
   readonly client: ConvexReactClient;
@@ -33,6 +35,11 @@ export interface ChatRuntime {
   watchThread(
     threadRootId: string,
     onChange: (messages: readonly MessagePayload[]) => void,
+    pageOptions?: {
+      cursor: string | null;
+      onPage: (page: Paginated<MessagePayload>) => void;
+      onError?: () => void;
+    },
   ): () => void;
   /**
    * Live page of root messages, walking backwards from the newest when `cursor`
@@ -52,6 +59,7 @@ export interface CreateChatRuntimeOptions {
   readonly client: ConvexReactClient;
   readonly userId: string;
   readonly displayName: string;
+  readonly onError?: (error: unknown) => void;
 }
 
 /** Builds the session for one signed-in device. */
@@ -59,9 +67,11 @@ export async function createChatRuntime(options: CreateChatRuntimeOptions): Prom
   const port = convexPort(options.client);
   // Presence is scoped to what the UI renders; the session's aggregate
   // `watchPresence` and the provider's subscription share this one controller.
-  const presence = createScopedPresence(options.client);
+  const presence = createScopedPresence(options.client, () =>
+    console.warn("Presence subscription failed"),
+  );
   const subscriptions: Subscriptions = {
-    ...convexSubscriptions(options.client),
+    ...convexSubscriptions(options.client, options.onError),
     watchPresence: presence.watch,
   };
   const session = ChatSession.create({ port, subscriptions });
@@ -71,15 +81,28 @@ export async function createChatRuntime(options: CreateChatRuntimeOptions): Prom
   function watchThread(
     threadRootId: string,
     onChange: (messages: readonly MessagePayload[]) => void,
+    pageOptions?: {
+      cursor: string | null;
+      onPage: (page: Paginated<MessagePayload>) => void;
+      onError?: () => void;
+    },
   ): () => void {
     const watch = options.client.watchQuery(api.messages.listThread, {
       threadRootId: threadRootId as never,
-      paginationOpts: { numItems: 100, cursor: null },
+      paginationOpts: { numItems: 100, cursor: pageOptions?.cursor ?? null },
     });
     const emit = () => {
-      const value = watch.localQueryResult();
+      let value: ReturnType<typeof watch.localQueryResult>;
+      try {
+        value = watch.localQueryResult();
+      } catch {
+        console.warn("Thread subscription failed");
+        pageOptions?.onError?.();
+        return;
+      }
       if (value !== undefined) {
         onChange(value.page);
+        pageOptions?.onPage(value);
       }
     };
     const unsubscribe = watch.onUpdate(emit);
@@ -102,8 +125,18 @@ export async function createChatRuntime(options: CreateChatRuntimeOptions): Prom
       },
     });
     const emit = () => {
-      const value = watch.localQueryResult();
+      let value: ReturnType<typeof watch.localQueryResult>;
+      try {
+        value = watch.localQueryResult();
+      } catch (error) {
+        if (isClosedChannelError(error)) {
+          options.onError?.(null);
+          onChange({ page: [], isDone: true, continueCursor: "" });
+        } else options.onError?.(error);
+        return;
+      }
       if (value !== undefined) {
+        options.onError?.(null);
         onChange(value);
       }
     };
@@ -117,6 +150,7 @@ export async function createChatRuntime(options: CreateChatRuntimeOptions): Prom
 
   return {
     session,
+    userId: options.userId,
     port,
     subscriptions,
     client: options.client,

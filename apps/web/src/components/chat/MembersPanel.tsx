@@ -2,6 +2,7 @@ import {
   groupMembersByHoistedRole,
   type MembersGroupingRole,
   type PresenceRow,
+  roleColorCss,
 } from "@aulora/core";
 import { type ContextMenuItem, cn, Icon, useContextMenu } from "@aulora/ui-web";
 import { useMemo } from "react";
@@ -23,7 +24,7 @@ export interface MembersPanelProps {
   readonly presence: readonly PresenceRow[];
   /**
    * Roles that opt into their own section via `hoisted`, matched by the ref
-   * stored in each member's `roleIds`. `@everyone` is always ignored.
+   * stored in each member’s `roleIds`. `@everyone` is always ignored.
    */
   readonly roles?: readonly MembersGroupingRole[] | undefined;
   readonly customStatuses: ReadonlyMap<string, string>;
@@ -230,11 +231,12 @@ function MemberGroup({
   if (members.length === 0) {
     return null;
   }
+  const tint = roleColorCss(color);
   return (
     <section className="mb-4">
       <h3
         className="px-2 pb-1 text-[11px] font-semibold uppercase tracking-[0.06em] text-text-muted"
-        style={color !== null && color.length > 0 ? { color } : undefined}
+        style={tint !== null ? { color: tint } : undefined}
       >
         {title} — {members.length}
       </h3>
@@ -258,17 +260,25 @@ function MemberGroup({
                 aria-haspopup={self ? undefined : "dialog"}
                 className={cn(
                   "group flex w-full items-center gap-2.5 rounded-[8px] px-2 py-1.5 text-left transition enabled:hover:bg-surface-3",
-                  dim && "opacity-60 hover:opacity-100",
                 )}
               >
-                <PresenceAvatar userId={member.userId} size={30} status={statusOf(member.userId)} />
+                <span className={dim ? "opacity-60" : undefined}>
+                  <PresenceAvatar
+                    userId={member.userId}
+                    size={30}
+                    status={statusOf(member.userId)}
+                  />
+                </span>
                 <span className="min-w-0 flex-1">
                   <span className="flex items-center gap-1.5">
                     <span
-                      className="truncate text-[13px] font-medium text-text"
+                      className={cn(
+                        "truncate text-[13px] font-medium",
+                        dim ? "text-text-muted" : "text-text",
+                      )}
                       style={
-                        member.roleColor !== null && member.roleColor !== undefined
-                          ? { color: member.roleColor }
+                        !dim && member.roleColor !== null && member.roleColor !== undefined
+                          ? { color: roleColorCss(member.roleColor) ?? undefined }
                           : undefined
                       }
                     >
@@ -276,7 +286,7 @@ function MemberGroup({
                       {self ? " (you)" : ""}
                     </span>
                     {member.isOwner === true && (
-                      <span className="rounded-[5px] bg-accent-soft px-1 text-[10px] font-semibold uppercase text-accent">
+                      <span className="rounded-[5px] bg-accent-soft px-1 text-[12px] font-semibold uppercase text-accent-text">
                         Owner
                       </span>
                     )}
@@ -286,7 +296,7 @@ function MemberGroup({
                       {member.roleNames.slice(0, 2).map((roleName) => (
                         <span
                           key={roleName}
-                          className="rounded-[4px] border border-border bg-surface-2 px-1 text-[10px] font-medium text-text-muted"
+                          className="rounded-[4px] border border-border bg-surface-2 px-1 text-[12px] font-medium text-text-muted"
                         >
                           {roleName}
                         </span>

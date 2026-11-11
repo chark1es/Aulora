@@ -39,7 +39,7 @@ interface Preview {
 const EMPTY: Preview = { audio: null, video: null, audioError: null, videoError: null };
 
 /**
- * The lobby's device check: nothing is requested until the guest asks, then a
+ * The lobby’s device check: nothing is requested until the guest asks, then a
  * live camera picture, a microphone level and the device pickers. Every track
  * opened here is released as soon as the guest is let in or leaves, so the
  * call starts from a clean device.

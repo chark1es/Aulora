@@ -30,7 +30,7 @@ export function useMemberAvatarUrl(userId: string): string | null {
   return useContext(MemberAvatarContext).get(userId) ?? null;
 }
 
-/** A person, using this workspace's picture when they have set one. */
+/** A person, using this workspace’s picture when they have set one. */
 export function PersonAvatar({
   userId,
   size = 32,

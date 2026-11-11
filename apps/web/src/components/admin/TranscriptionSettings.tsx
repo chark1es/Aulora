@@ -39,7 +39,7 @@ function messageOf(error: unknown, fallback: string): string {
 }
 
 /**
- * The transcription addon's settings: speech model, summary endpoint, retention.
+ * The transcription addon’s settings: speech model, summary endpoint, retention.
  * Shown to `ManageTranscription` holders once the addon is on. The API key is
  * write-only: the server never sends it back, so this form only ever holds what
  * the person is typing right now.
@@ -72,7 +72,7 @@ function TranscriptionForm({ config }: { readonly config: Config }) {
   const dirty = draftIsDirty(draft, baseline);
   const problem = endpointProblem(draft);
 
-  // Follow the server after a save (or another admin's change) while nothing is being edited.
+  // Follow the server after a save (or another admin’s change) while nothing is being edited.
   // biome-ignore lint/correctness/useExhaustiveDependencies: only a new server version resets the draft
   useEffect(() => {
     if (!dirty) {
@@ -166,9 +166,9 @@ function TranscriptionForm({ config }: { readonly config: Config }) {
               data-testid="transcription-model-status"
               className={
                 modelStatus === "ready"
-                  ? "text-[12.5px] font-medium text-secondary"
+                  ? "text-[12.5px] font-medium text-secondary-text"
                   : modelStatus === "error"
-                    ? "text-[12.5px] font-medium text-danger"
+                    ? "text-[12.5px] font-medium text-danger-text"
                     : "text-[12.5px] font-medium text-text-muted"
               }
             >
@@ -270,7 +270,7 @@ function TranscriptionForm({ config }: { readonly config: Config }) {
             }}
             hint={
               draft.provider === "openrouter"
-                ? "OpenRouter's address is fixed."
+                ? "OpenRouter’s address is fixed."
                 : "Requests go to {base URL}/chat/completions. https is required unless you allow a private network endpoint below. localhost is never allowed."
             }
             {...(problem !== null ? { error: problem } : {})}
@@ -340,9 +340,11 @@ function TranscriptionForm({ config }: { readonly config: Config }) {
             role="note"
             className="flex gap-2.5 px-4 py-3 text-[12.5px] leading-relaxed text-text"
           >
-            <Icon name="shield" size={16} className="mt-0.5 shrink-0 text-danger" />
+            <Icon name="shield" size={16} className="mt-0.5 shrink-0 text-danger-text" />
             <p>
-              <strong className="font-semibold text-danger">Private network access is on.</strong>{" "}
+              <strong className="font-semibold text-danger-text">
+                Private network access is on.
+              </strong>{" "}
               Your server can now send transcripts and the API key to private addresses inside your
               network. Only point this at a service you run and trust. Loopback (localhost),
               link-local and cloud-metadata addresses are always refused, even with this on.
@@ -391,8 +393,8 @@ function TranscriptionForm({ config }: { readonly config: Config }) {
                 data-testid="transcription-test-result"
                 className={
                   testResult.ok
-                    ? "text-right text-[12.5px] text-secondary"
-                    : "text-right text-[12.5px] text-danger"
+                    ? "text-right text-[12.5px] text-secondary-text"
+                    : "text-right text-[12.5px] text-danger-text"
                 }
               >
                 {testResult.text}
@@ -494,7 +496,7 @@ function ApiKeyField({
             data-testid="transcription-key-saved"
             className="flex h-9 flex-1 items-center gap-2 rounded-[8px] border border-border bg-surface-3 px-2.5 text-[13px] text-text-muted"
           >
-            <Icon name="key" size={14} />A key is saved. It can't be shown again.
+            <Icon name="key" size={14} />A key is saved. It can’t be shown again.
           </span>
           <Button
             type="button"
@@ -525,7 +527,7 @@ function ApiKeyField({
       <div className="flex flex-col gap-1.5">
         <span className="text-[12.5px] font-medium text-text">API key</span>
         <div className="flex flex-wrap items-center gap-2">
-          <span className="flex h-9 flex-1 items-center rounded-[8px] border border-danger/30 bg-danger/10 px-2.5 text-[13px] text-danger">
+          <span className="flex h-9 flex-1 items-center rounded-[8px] border border-danger/30 bg-danger/10 px-2.5 text-[13px] text-danger-text">
             The saved key will be removed when you save.
           </span>
           <Button

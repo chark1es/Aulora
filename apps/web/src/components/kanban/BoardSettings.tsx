@@ -25,7 +25,7 @@ export function BoardSettings({
 }: {
   board: Board;
   members: readonly BoardMember[];
-  /** The board's cards, used to show how full each column is; optional while they load. */
+  /** The board’s cards, used to show how full each column is; optional while they load. */
   cards?: readonly Card[] | undefined;
   onClose: () => void;
 }) {

@@ -23,7 +23,14 @@ function makeController(
 ): NotesController {
   const base = {
     draft,
-    detail: { id: "note-1", revision: 1, folderId: draft.folderId, title: draft.title, tagIds: [] },
+    detail: {
+      id: "note-1",
+      revision: 1,
+      folderId: draft.folderId,
+      title: draft.title,
+      body: draft.body,
+      tagIds: [],
+    },
     editing: true,
     canEdit: true,
     canCreate: true,
@@ -273,6 +280,28 @@ describe("NoteEditor toolbar", () => {
 });
 
 describe("NoteEditor read-only preview", () => {
+  it("reads the saved draft while the server subscription catches up", () => {
+    renderEditor({
+      overrides: {
+        editing: false,
+        detail: {
+          id: "note-1" as NonNullable<NotesController["detail"]>["id"],
+          revision: 1,
+          title: "Older title",
+          body: "Older body",
+          creatorId: "me",
+          lastEditorId: "me",
+          createdAt: 1,
+          updatedAt: 1,
+          archived: false,
+          folderId: null,
+          tagIds: [],
+        },
+      },
+    });
+    expect(screen.getByRole("heading", { name: "Roadmap" })).toBeInTheDocument();
+    expect(screen.queryByText("Older body")).toBeNull();
+  });
   it("prints the title exactly once", () => {
     renderEditor({ overrides: { editing: false } });
     expect(screen.getAllByRole("heading", { name: "Roadmap" })).toHaveLength(1);

@@ -1,5 +1,6 @@
-import { render, screen, within } from "@testing-library/react";
+import { render, screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
+import { useState } from "react";
 import { describe, expect, it, vi } from "vitest";
 import { type ThreadInboxItem, ThreadsInbox } from "../components/chat/ThreadsInbox";
 import { UserSettingsView } from "../components/chat/UserSettingsView";
@@ -90,6 +91,8 @@ describe("UserSettingsView", () => {
     const user = userEvent.setup();
     render(<UserSettingsView {...viewProps} isOwner onSave={onSave} />);
     expect(screen.getByTestId("user-settings-admin-badge")).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "Save" })).toBeDisabled();
+    await user.type(screen.getByRole("textbox", { name: /^Bio/ }), "Updated bio");
     await user.click(screen.getByRole("button", { name: "Save" }));
     expect(onSave).toHaveBeenCalledWith(expect.objectContaining({ alignment: "left" }));
   });
@@ -102,4 +105,76 @@ describe("UserSettingsView", () => {
     await user.click(screen.getByRole("button", { name: "Back to chat" }));
     expect(onBack).toHaveBeenCalled();
   });
+});
+
+it("closes the settings host after save resolves", async () => {
+  const user = userEvent.setup();
+  function Host() {
+    const [open, setOpen] = useState(true);
+    return open ? (
+      <UserSettingsView
+        ownUserId="me"
+        ownName="Me"
+        alignment="left"
+        canEditNickname
+        isOwner={false}
+        onBack={() => setOpen(false)}
+        onSave={async () => {
+          setOpen(false);
+        }}
+      />
+    ) : (
+      <p>Chat</p>
+    );
+  }
+  render(<Host />);
+  expect(screen.getByRole("button", { name: "Save" })).toBeDisabled();
+  await user.type(screen.getByRole("textbox", { name: "Nickname" }), "New name");
+  await user.click(screen.getByRole("button", { name: "Save" }));
+  expect(await screen.findByText("Chat")).toBeInTheDocument();
+  expect(screen.queryByText("Saved")).not.toBeInTheDocument();
+});
+it("resets the saved baseline when the settings host stays open", async () => {
+  const user = userEvent.setup();
+  render(
+    <UserSettingsView
+      ownUserId="me"
+      ownName="Me"
+      alignment="left"
+      canEditNickname
+      isOwner={false}
+      onBack={vi.fn()}
+      onSave={vi.fn(async () => undefined)}
+    />,
+  );
+  await user.type(screen.getByRole("textbox", { name: "Nickname" }), "New name");
+  await user.type(screen.getByRole("textbox", { name: /^Bio/ }), "New bio");
+  await user.click(screen.getByRole("button", { name: "Save" }));
+  await waitFor(() => expect(screen.getByRole("button", { name: "Save" })).toBeDisabled());
+  expect(screen.getByRole("textbox", { name: /^Bio/ })).toHaveValue("New bio");
+  expect(screen.getByRole("textbox", { name: "Nickname" })).toHaveValue("");
+});
+it.each(["Back to chat", "Cancel"])("guards dirty settings from %s", async (label) => {
+  const onBack = vi.fn();
+  const user = userEvent.setup();
+  render(
+    <UserSettingsView
+      ownUserId="me"
+      ownName="Me"
+      alignment="left"
+      canEditNickname
+      isOwner={false}
+      onBack={onBack}
+      onSave={vi.fn()}
+    />,
+  );
+  await user.type(screen.getByRole("textbox", { name: "Nickname" }), "Unsaved");
+  await user.click(screen.getByRole("button", { name: label }));
+  expect(onBack).not.toHaveBeenCalled();
+  await user.click(
+    within(screen.getByRole("dialog", { name: "Discard unsaved changes?" })).getByRole("button", {
+      name: "Discard changes",
+    }),
+  );
+  expect(onBack).toHaveBeenCalledOnce();
 });

@@ -23,7 +23,7 @@ export interface GuestSessionProps {
 
 /**
  * Everything after the guest has asked to join: waiting, the call, and each way
- * it can end. The server's lobby status is the truth; this follows it live. A
+ * it can end. The server’s lobby status is the truth; this follows it live. A
  * failed read (the session is gone) is handled by the boundary above.
  */
 export function GuestSession(props: GuestSessionProps) {
@@ -38,10 +38,10 @@ export function GuestSession(props: GuestSessionProps) {
     wasAdmitted.current = true;
   }
   // The server reports a lapsed request as `expired` only when the query next runs,
-  // and nothing writes a waiting guest's session to make it run again. So the page
+  // and nothing writes a waiting guest’s session to make it run again. So the page
   // also ends the wait at `expiresAt` itself. The server stays authoritative: this
   // applies only to the value the timer fired for, and fires once per `expiresAt`,
-  // so a fresh answer (a clock running ahead of the server's) is shown as sent.
+  // so a fresh answer (a clock running ahead of the server’s) is shown as sent.
   const [lapsedFor, setLapsedFor] = useState<object | null>(null);
   const lapsedExpiry = useRef<number | null>(null);
   useEffect(() => {
@@ -109,7 +109,7 @@ export function GuestSession(props: GuestSessionProps) {
       return (
         <GuestMessageScreen
           icon="ban"
-          title="You weren't let in"
+          title="You weren’t let in"
           action={
             props.onAskAgain !== null ? (
               <Button variant="secondary" onClick={props.onAskAgain}>
@@ -118,7 +118,7 @@ export function GuestSession(props: GuestSessionProps) {
             ) : undefined
           }
         >
-          The people in the call didn't admit you. You can close this page.
+          The people in the call didn’t admit you. You can close this page.
         </GuestMessageScreen>
       );
     case "removed":
@@ -217,7 +217,7 @@ function InCall(
   );
 }
 
-/** The workspace's public STUN/relay overrides, read without an identity. */
+/** The workspace’s public STUN/relay overrides, read without an identity. */
 function usePublicIce(_client: ConvexReactClient): { readonly data: readonly RTCIceServer[] } {
   const config = useQuery(api.server.publicConfig, {});
   return { data: (config?.voice?.iceServers ?? []) as readonly RTCIceServer[] };

@@ -45,7 +45,7 @@ function GripDots() {
   );
 }
 
-/** The column's own colour: the pastel its blobatar wears, readable on either theme. */
+/** The column’s own colour: the pastel its blobatar wears, readable on either theme. */
 function ColumnDot({ seed }: { seed: string }) {
   return (
     <span
@@ -102,7 +102,7 @@ function GripHandle({
         "flex h-9 w-8 shrink-0 cursor-grab touch-none items-center justify-center rounded-[7px] text-text-muted motion-safe:transition",
         "hover:bg-surface-3 hover:text-text active:cursor-grabbing",
         "focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent focus-visible:ring-offset-1 focus-visible:ring-offset-surface-1",
-        grabbed && "cursor-grabbing bg-accent-soft text-accent ring-1 ring-accent/40",
+        grabbed && "cursor-grabbing bg-accent-soft text-accent-text ring-1 ring-accent/40",
       )}
     >
       <GripDots />
@@ -205,10 +205,10 @@ function ColumnRow(props: ColumnRowProps) {
 }
 
 export interface ColumnListProps {
-  /** Seeds each column's colour so it stays the same across reorders. */
+  /** Seeds each column’s colour so it stays the same across reorders. */
   boardId: string;
   columns: readonly Column[];
-  /** The board's cards, or `undefined` while they load. */
+  /** The board’s cards, or `undefined` while they load. */
   cards: readonly Card[] | undefined;
   onChange: (columns: Column[]) => void;
 }

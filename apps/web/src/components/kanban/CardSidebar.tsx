@@ -233,7 +233,7 @@ function TimerField({ editor }: Props) {
   );
 }
 
-/** The card's column, priority, people, labels, dates and timer. */
+/** The card’s column, priority, people, labels, dates and timer. */
 export function CardSidebar({ editor }: Props) {
   return (
     <aside className="flex shrink-0 flex-col gap-4 md:sticky md:top-0 md:w-[248px] md:border-l md:border-border md:pl-5">

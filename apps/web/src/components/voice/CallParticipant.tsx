@@ -151,7 +151,7 @@ export function ParticipantTile(props: ParticipantTileProps) {
       />
 
       {/* Drawn inside the tile, above the media. An outer shadow is clipped by the
-          filmstrip's scroll container and the video paints over an inset one. */}
+          filmstrip’s scroll container and the video paints over an inset one. */}
       {isSpeaking && !participant.muted && (
         <span
           aria-hidden="true"
@@ -190,13 +190,13 @@ function ParticipantMedia({
   // element on every state change.
   const bindVideo = useMemo(() => {
     // A screen share keeps its own relay path (`screens`), so only a camera
-    // tile is bound to the call's SFU subscriber.
+    // tile is bound to the call’s SFU subscriber.
     if (attachVideo === undefined || isSelf || participant.sharingScreen) {
       return undefined;
     }
     return (element: HTMLVideoElement | null) => attachVideo(participant.userId, element);
   }, [attachVideo, isSelf, participant.sharingScreen, participant.userId]);
-  // A share counts as video even with the camera off: the sharer's screen is
+  // A share counts as video even with the camera off: the sharer’s screen is
   // the thing to look at.
   const hasVideo =
     (participant.video || participant.sharingScreen) &&
@@ -307,7 +307,7 @@ interface TileContext {
 
 const NO_SCREENS: ReadonlyMap<string, MediaStream> = new Map();
 
-/** A sharer's relayed screen when there is one, otherwise whatever the mesh delivers. */
+/** A sharer’s relayed screen when there is one, otherwise whatever the mesh delivers. */
 function streamFor(participant: CallParticipantView, context: TileContext): MediaStream | null {
   const relayed = participant.sharingScreen ? context.screens.get(participant.userId) : undefined;
   return relayed ?? context.streams.get(participant.userId) ?? null;

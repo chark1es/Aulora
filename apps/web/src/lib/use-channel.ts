@@ -150,6 +150,8 @@ function summarizeForReader(
         createdAt: message.createdAt,
         authorId: message.authorId,
         mentionedUserIds: message.mentionUserIds,
+        mentionEveryone: message.mentionEveryone ?? false,
+        mentionHere: message.mentionHere ?? false,
       })),
     {
       lastReadAt: null,

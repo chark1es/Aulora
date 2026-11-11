@@ -365,12 +365,8 @@ export function VoiceProvider({
     };
   }, [callActive]);
 
-  // Closing the tab, navigating away or quitting the desktop app drops the
-  // caller out of the call right away. `beforeunload` covers the exits browsers
-  // report there; `pagehide` is the backstop for the ones they don't. A bfcache
-  // entry (`persisted`) keeps the seat. The mobile app backgrounds without ever
-  // reaching either event, so a sleeping phone stays in the call. Neither
-  // listener prompts on unload.
+  // Only a completed navigation leaves the call. beforeunload may be cancelled
+  // by a dirty-form prompt; bfcache entries keep their seat.
   useEffect(() => {
     let departed = false;
     const leaveNow = () => {
@@ -395,10 +391,8 @@ export function VoiceProvider({
         leaveNow();
       }
     };
-    window.addEventListener("beforeunload", leaveNow);
     window.addEventListener("pagehide", onPageHide);
     return () => {
-      window.removeEventListener("beforeunload", leaveNow);
       window.removeEventListener("pagehide", onPageHide);
     };
   }, [client, clientId]);

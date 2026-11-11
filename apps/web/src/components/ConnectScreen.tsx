@@ -42,17 +42,17 @@ function messageForError(error: unknown) {
   if (error instanceof WellKnownError) {
     switch (error.code) {
       case "HTTP_ERROR":
-        return "That address answered, but it isn’t an Aulora server.";
+        return "That address answered, but it isn’t an Aulora workspace.";
       case "INVALID_JSON":
-        return "That server returned a response this client could not read.";
+        return "That workspace returned a response this client could not read.";
       case "SECRET_FIELD":
-        return "That server’s configuration isn’t one this client can use.";
+        return "That workspace’s configuration isn’t one this client can use.";
       case "NETWORK_ERROR":
-        return "Could not reach that server. Check the address and your connection.";
+        return "Could not reach that workspace. Check the address and your connection.";
       case "INVALID_SHAPE":
-        return "That server’s configuration isn’t in a format this client understands.";
+        return "That workspace’s configuration isn’t in a format this client understands.";
       default:
-        return "That server could not be used.";
+        return "That workspace could not be used.";
     }
   }
   if (error instanceof ServerUrlError) {
@@ -74,7 +74,7 @@ function serverHost(baseUrl: string) {
  * The creature the person is currently conjuring, keyed off what they have
  * typed. Only the first label of the hostname feeds it, so the face settles as
  * soon as they name the server rather than squirming on every keystroke; an
- * empty field falls back to the connect screen's own seed.
+ * empty field falls back to the connect screen’s own seed.
  */
 function hostSeed(host: string) {
   const label = host
@@ -96,7 +96,7 @@ async function discoverServer(raw: string): Promise<DiscoverResult> {
     if (wellKnown.apiVersion !== SUPPORTED_API_VERSION) {
       return {
         ok: false,
-        message: `This server speaks Aulora API v${wellKnown.apiVersion}; this client supports v${SUPPORTED_API_VERSION}.`,
+        message: `This workspace speaks Aulora API v${wellKnown.apiVersion}; this client supports v${SUPPORTED_API_VERSION}.`,
       };
     }
     return { ok: true, preview: { baseUrl: normalized, wellKnown } };
@@ -226,9 +226,7 @@ function RecentList({ profiles, disabled, onSwitch, onRemove }: RecentListProps)
   }
   return (
     <div className="flex flex-col gap-2">
-      <p className="text-[11.5px] font-semibold uppercase tracking-[0.09em] text-text-muted">
-        Recent workspaces
-      </p>
+      <p className="text-[12px] font-medium text-text-muted">Recent workspaces</p>
       <ul className="-mx-2.5 flex flex-col">
         {profiles.map((profile) => (
           <li key={profile.id} className="flex items-center gap-1">
@@ -318,7 +316,7 @@ function PreviewView({ preview, busy, error, onContinue, onBack }: PreviewProps)
           Continue
         </AuthButton>
         <AuthLink onClick={onBack} disabled={busy}>
-          Use a different server
+          Use a different workspace
         </AuthLink>
       </div>
     </AuthFrame>
@@ -371,7 +369,7 @@ function useConnect(
       debugLog.clear();
       onConnected?.(profile);
     } catch {
-      setError("Could not save this server profile.");
+      setError("Could not save this workspace profile.");
     } finally {
       setBusy(false);
     }
@@ -459,7 +457,7 @@ export function ConnectScreen({ store, onConnected, initialHost }: ConnectScreen
       stage={
         <AuthStage
           hero={<BlobatarHero seed={seed} size={190} watch={model.watch} />}
-          headline="Your team, on your own server."
+          headline="Your team, on your own workspace."
         />
       }
     >

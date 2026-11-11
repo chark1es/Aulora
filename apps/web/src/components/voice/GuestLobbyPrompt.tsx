@@ -7,7 +7,7 @@ import { useVoice } from "../../providers/VoiceProvider";
 
 /**
  * The live "N waiting" prompt for people allowed to answer guests in this call:
- * holders of Manage guest access, and the creator of the call's link. Everyone
+ * holders of Manage guest access, and the creator of the call’s link. Everyone
  * else renders nothing and never subscribes to the lobby.
  */
 export function GuestLobbyPrompt() {
@@ -82,13 +82,8 @@ export function LobbyList({ callId }: { readonly callId: string }) {
     >
       {pending.length > 0 && (
         <section aria-labelledby="lobby-waiting" className="flex flex-col gap-2">
-          <h2
-            id="lobby-waiting"
-            role="status"
-            aria-live="polite"
-            className="text-[13px] font-semibold text-text"
-          >
-            {waitingLabel(pending.length)}
+          <h2 id="lobby-waiting" className="text-[13px] font-semibold text-text">
+            <span role="status">{waitingLabel(pending.length)}</span>
           </h2>
           <ul className="flex flex-col gap-2">
             {pending.map((guest) => (
@@ -151,7 +146,7 @@ export function LobbyList({ callId }: { readonly callId: string }) {
                   onClick={() => {
                     act(guest.guestSessionId, remove({ guestSessionId: guest.guestSessionId }));
                   }}
-                  className="flex h-6 w-6 shrink-0 items-center justify-center rounded-[6px] text-text-muted transition hover:bg-danger/10 hover:text-danger focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent disabled:opacity-50"
+                  className="flex h-6 w-6 shrink-0 items-center justify-center rounded-[6px] text-text-muted transition hover:bg-danger/10 hover:text-danger-text focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent disabled:opacity-50"
                 >
                   <Icon name="x" size={13} />
                 </button>
@@ -161,7 +156,7 @@ export function LobbyList({ callId }: { readonly callId: string }) {
         </section>
       )}
       {error !== null && (
-        <p role="alert" className="text-[12px] text-danger">
+        <p role="alert" className="text-[12px] text-danger-text">
           {error}
         </p>
       )}

@@ -1,11 +1,11 @@
 import type { ServerProfile } from "@aulora/core";
+import { notifyAuthChanged } from "@aulora/core";
 import { act, fireEvent, render, screen } from "@testing-library/react";
 import type { ConvexReactClient } from "convex/react";
 import { getFunctionName } from "convex/server";
 import type { ReactNode } from "react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { CONFIG_WAIT_TIMEOUT_MS, SessionGate } from "../components/SessionGate";
-import { notifyAuthChanged } from "../lib/auth-events";
 
 /**
  * A missing public-config answer is not "setup required". These cover the two
@@ -38,7 +38,8 @@ const providerAuthSpy = vi.hoisted(() => ({
   resets: 0,
 }));
 
-vi.mock("../lib/provider-auth", () => ({
+vi.mock("@aulora/core", async (importOriginal) => ({
+  ...(await importOriginal<typeof import("@aulora/core")>()),
   setProviderTokenIdentity: (_client: unknown, identity: string) => {
     providerAuthSpy.identities.push(identity);
   },
@@ -91,7 +92,7 @@ vi.mock("../lib/use-server-recovery", () => ({
 }));
 
 vi.mock("../components/SetupScreen", () => ({
-  SetupScreen: () => <div>Set up your instance</div>,
+  SetupScreen: () => <div>Set up your workspace</div>,
 }));
 
 vi.mock("../components/chat/ChatSessionShell", () => ({
@@ -168,7 +169,7 @@ describe("SessionGate setup gate", () => {
     );
 
     expect(screen.getByText("Signed in")).toBeInTheDocument();
-    expect(screen.queryByText("Set up your instance")).not.toBeInTheDocument();
+    expect(screen.queryByText("Set up your workspace")).not.toBeInTheDocument();
   });
 
   it("waits instead of showing sign-in when the config has not answered", () => {
@@ -185,7 +186,7 @@ describe("SessionGate setup gate", () => {
     harness.user = undefined;
     renderGate();
 
-    expect(await screen.findByText("Set up your instance")).toBeInTheDocument();
+    expect(await screen.findByText("Set up your workspace")).toBeInTheDocument();
   });
 
   it("drops back to sign-in only after the config says setup is complete", () => {
@@ -193,7 +194,7 @@ describe("SessionGate setup gate", () => {
     harness.user = undefined;
     renderGate();
 
-    expect(screen.queryByText("Set up your instance")).not.toBeInTheDocument();
+    expect(screen.queryByText("Set up your workspace")).not.toBeInTheDocument();
     expect(screen.getByText("Sign in to Acme")).toBeInTheDocument();
   });
 
@@ -229,7 +230,7 @@ describe("SessionGate setup gate", () => {
     renderGate();
 
     expect(screen.getByText("Checking your session…")).toBeInTheDocument();
-    expect(screen.queryByText("Set up your instance")).not.toBeInTheDocument();
+    expect(screen.queryByText("Set up your workspace")).not.toBeInTheDocument();
 
     await act(async () => {
       await vi.advanceTimersByTimeAsync(CONFIG_WAIT_TIMEOUT_MS);
@@ -237,9 +238,9 @@ describe("SessionGate setup gate", () => {
 
     // A missing answer still never means "setup required"; the form is usable
     // with a soft notice and a retry instead of blocking sign-in forever.
-    expect(screen.queryByText("Set up your instance")).not.toBeInTheDocument();
+    expect(screen.queryByText("Set up your workspace")).not.toBeInTheDocument();
     expect(screen.getByText("Sign in to Acme")).toBeInTheDocument();
-    expect(screen.getByText("Can't reach the server config — retrying")).toBeInTheDocument();
+    expect(screen.getByText("Can’t reach the workspace config. Retrying")).toBeInTheDocument();
     expect(CLIENT.query).toHaveBeenCalled();
 
     fireEvent.click(screen.getByRole("button", { name: "Try again" }));

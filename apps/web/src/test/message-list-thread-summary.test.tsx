@@ -1,6 +1,6 @@
 import type { MessagePayload } from "@aulora/core";
 import { Permission } from "@aulora/core";
-import { render, screen } from "@testing-library/react";
+import { fireEvent, render, screen } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { describe, expect, it, vi } from "vitest";
 import { MessageList, type MessageListProps } from "../components/chat/MessageList";
@@ -123,4 +123,20 @@ describe("MessageList thread summary", () => {
     await user.click(screen.getByRole("button", { name: /3 replies/ }));
     expect(onReply).toHaveBeenCalledWith(expect.objectContaining({ id: "m1" }));
   });
+});
+
+it("uses one row tab stop and moves it with arrow keys", () => {
+  const messages = [threadRoot({ id: "m1" }), threadRoot({ id: "m2" }), threadRoot({ id: "m3" })];
+  const view = render(<MessageList {...props({ messages })} />);
+  const rows = messages.map((m) => screen.getByTestId(`message-${m.id}`));
+  expect(rows.map((row) => row.tabIndex)).toEqual([-1, -1, 0]);
+  rows[2]?.focus();
+  fireEvent.keyDown(rows[2] as HTMLElement, { key: "ArrowUp" });
+  expect(rows[1]).toHaveFocus();
+  expect(rows.map((row) => row.tabIndex)).toEqual([-1, 0, -1]);
+  view.rerender(<MessageList {...props({ messages: [...messages, threadRoot({ id: "m4" })] })} />);
+  expect(rows[1]).toHaveAttribute("tabindex", "0");
+  fireEvent.keyDown(rows[1] as HTMLElement, { key: "ArrowDown" });
+  expect(rows[2]).toHaveFocus();
+  expect(rows[2]?.className).toContain("focus-visible:ring-2");
 });

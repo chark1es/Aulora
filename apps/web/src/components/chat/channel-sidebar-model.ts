@@ -10,6 +10,7 @@ export interface ChannelUnread {
   /** Unread root messages from other people, saturated server-side. */
   readonly unreadCount: number;
   readonly mentionCount: number;
+  readonly massMentionCount?: number;
   readonly lastActivityAt: number | null;
 }
 

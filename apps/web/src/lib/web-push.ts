@@ -1,6 +1,7 @@
 import type { ConvexReactClient } from "convex/react";
 import { api } from "../../../../packages/convex/convex/_generated/api";
 import { isDesktop } from "./desktop";
+import { storageScope } from "./storage-scope";
 
 /**
  * Browser Web Push registration.
@@ -99,34 +100,105 @@ export async function ensurePushSubscription(
   }
 }
 
-/**
- * Full registration flow: service worker, subscription, then device upsert.
- * Returns `true` when the subscription was stored. Never throws — Web Push is
- * an enhancement and must not break sign-in or chat.
- */
-export async function registerWebPushDevice(
+interface DeviceRegistration {
+  id?: string;
+  revoked: boolean;
+  pending?: Promise<boolean>;
+  revocation?: Promise<void>;
+}
+const registrations = new WeakMap<ConvexReactClient, DeviceRegistration>();
+
+function deviceKey(client: ConvexReactClient, userId: string | undefined): string | undefined {
+  if (userId === undefined) return undefined;
+  return `aulora.push.v1:${storageScope(client.url, userId)}`;
+}
+function savedDevice(key: string | undefined): string | undefined {
+  try {
+    return key === undefined ? undefined : (localStorage.getItem(key) ?? undefined);
+  } catch {
+    return undefined;
+  }
+}
+
+/** Revoke this browser's row before auth expires, including a pending upsert. */
+export function revokeWebPushDevice(client: ConvexReactClient, userId?: string): Promise<void> {
+  const key = deviceKey(client, userId);
+  const registration = registrations.get(client) ?? { revoked: false };
+  registrations.set(client, registration);
+  registration.revoked = true;
+  registration.revocation = (async () => {
+    await registration.pending;
+    // A failed sign-out may have restored this authenticated session meanwhile.
+    if (!registration.revoked) return;
+    const id = registration.id ?? savedDevice(key);
+    if (id === undefined) return;
+    await client.mutation(api.devices.revoke, { deviceId: id as never });
+    try {
+      if (key !== undefined) localStorage.removeItem(key);
+    } catch {
+      /* best effort */
+    }
+  })();
+  return registration.revocation;
+}
+
+/** Push is best effort; keep the full pending flow available to sign-out. */
+export function registerWebPushDevice(
   client: ConvexReactClient,
   publicKey: string,
+  userId?: string,
 ): Promise<boolean> {
-  const registration = await registerPushServiceWorker();
-  if (registration === null) {
-    return false;
+  const device: DeviceRegistration = { revoked: false };
+  registrations.set(client, device);
+  const key = deviceKey(client, userId);
+  device.pending = (async () => {
+    try {
+      const registration = await registerPushServiceWorker();
+      if (registration === null || device.revoked) return false;
+      const subscription = await ensurePushSubscription(registration, publicKey);
+      if (subscription === null || device.revoked) return false;
+      const serialized = serializeSubscription(subscription.toJSON());
+      if (serialized === null) return false;
+      const result = await client.mutation(api.devices.upsert, {
+        platform: "web",
+        pushToken: serialized,
+      });
+      device.id = result.deviceId;
+      try {
+        if (key !== undefined) localStorage.setItem(key, device.id);
+      } catch {
+        /* best effort */
+      }
+      if (device.revoked) {
+        await client.mutation(api.devices.revoke, { deviceId: device.id as never });
+        try {
+          if (key !== undefined) localStorage.removeItem(key);
+        } catch {
+          /* best effort */
+        }
+        delete device.id;
+        return false;
+      }
+      return true;
+    } catch {
+      return false;
+    }
+  })();
+  return device.pending;
+}
+
+/** Restore registration after a failed sign-out, once revocation has settled. */
+export async function restoreWebPushDevice(
+  client: ConvexReactClient,
+  userId?: string,
+): Promise<void> {
+  const registration = registrations.get(client);
+  if (registration !== undefined) {
+    registration.revoked = false;
+    // Finish any revoke already sent to the server before recreating the row.
+    await registration.revocation?.catch(() => undefined);
   }
-  const subscription = await ensurePushSubscription(registration, publicKey);
-  if (subscription === null) {
-    return false;
-  }
-  const serialized = serializeSubscription(subscription.toJSON());
-  if (serialized === null) {
-    return false;
-  }
-  try {
-    await client.mutation(api.devices.upsert, {
-      platform: "web",
-      pushToken: serialized,
-    });
-    return true;
-  } catch {
-    return false;
-  }
+  const config = await client.query(api.server.publicConfig, {});
+  const publicKey = config.webPush?.publicKey;
+  if (publicKey) await registerWebPushDevice(client, publicKey, userId);
 }

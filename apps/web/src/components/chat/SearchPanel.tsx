@@ -203,7 +203,7 @@ export function SearchPanel({
                       {titles.get(channel.id) ?? channel.name}
                     </span>
                     {active === index && (
-                      <Icon name="chevron-right" size={16} className="text-accent" />
+                      <Icon name="chevron-right" size={16} className="text-accent-text" />
                     )}
                   </button>
                 </li>
@@ -213,7 +213,7 @@ export function SearchPanel({
 
           {trimmed.length === 0 ? (
             <p className="flex items-center gap-2 px-3 pb-2 pt-3 text-xs text-text-muted">
-              <Icon name="lock" size={12} className="text-secondary" />
+              <Icon name="lock" size={12} className="text-secondary-text" />
               Search runs on this device over content the server decrypted for it. Nothing is sent
               to the server.
             </p>
@@ -278,7 +278,7 @@ export function SearchPanel({
               )}
               {archive === "failed" && (
                 <p role="alert" className="px-3 py-2 text-xs text-text-muted">
-                  Couldn't reach earlier messages. These results cover history already on this
+                  Couldn’t reach earlier messages. These results cover history already on this
                   device.
                 </p>
               )}

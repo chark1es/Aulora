@@ -50,7 +50,7 @@ function ChecklistMeta({ card }: { card: Card }) {
   );
 }
 
-/** The small facts under a card's title. */
+/** The small facts under a card’s title. */
 function CardMeta({ card, now }: { card: Card; now: number }) {
   const due = card.dueAt === undefined ? null : dueLabel(card.dueAt, now);
   const priority = priorityInfo(card.priority);
