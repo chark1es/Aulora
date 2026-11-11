@@ -61,7 +61,9 @@ function serverCapabilities(client: ConvexReactClient) {
       );
     }),
   ])
-    .finally(() => clearTimeout(timer))
+    .finally(() => {
+      clearTimeout(timer);
+    })
     .catch(() => {
       if (capabilityCache.get(client)?.pending === pending) capabilityCache.delete(client);
       return { mentionMarkers: true };
@@ -461,14 +463,18 @@ export function convexSubscriptions(
       return watch<Paginated<ChannelSummaryRow>>(
         api.channels.list,
         { paginationOpts: PAGE },
-        (result) => onChange(result.page.map(normalizeChannelSummary)),
+        (result) => {
+          onChange(result.page.map(normalizeChannelSummary));
+        },
       );
     },
     watchMessages(channelId, onChange, options) {
       return watch<Paginated<MessagePayload>>(
         api.messages.list,
         { channelId, paginationOpts: { numItems: options?.limit ?? PAGE.numItems, cursor: null } },
-        (result) => onChange(result.page),
+        (result) => {
+          onChange(result.page);
+        },
       );
     },
     watchReactions(messageId, onChange) {

@@ -1611,80 +1611,84 @@ function ChatViewContent({
               mainView={mainView}
               {...(kanbanEnabled && hasPermission(permissions, Permission.ViewKanban)
                 ? {
-                    onOpenKanban: () =>
+                    onOpenKanban: () => {
                       navigateFromSettings(() => {
                         setMainView("kanban");
                         setMobilePane("chat");
                         setThreadRoot(undefined);
                         setAdminOpen(false);
                         setUserSettingsOpen(false);
-                      }),
+                      });
+                    },
                   }
                 : {})}
               {...(notesEnabled && hasPermission(permissions, Permission.ViewNotes)
                 ? {
-                    onOpenNotes: () =>
+                    onOpenNotes: () => {
                       navigateFromSettings(() => {
                         setMainView("notes");
                         setMobilePane("chat");
                         setThreadRoot(undefined);
                         setAdminOpen(false);
                         setUserSettingsOpen(false);
-                      }),
+                      });
+                    },
                   }
                 : {})}
               {...(canViewScheduledCalls(permissions, voice.addons.scheduledCalls)
                 ? {
-                    onOpenScheduled: () =>
+                    onOpenScheduled: () => {
                       navigateFromSettings(() => {
                         setMainView("scheduled");
                         setMobilePane("chat");
                         setThreadRoot(undefined);
                         setAdminOpen(false);
                         setUserSettingsOpen(false);
-                      }),
+                      });
+                    },
                   }
                 : {})}
               {...(canViewTranscripts(permissions, voice.addons.transcription)
                 ? {
-                    onOpenTranscripts: () =>
+                    onOpenTranscripts: () => {
                       navigateFromSettings(() => {
                         setMainView("transcripts");
                         setMobilePane("chat");
                         setThreadRoot(undefined);
                         setAdminOpen(false);
                         setUserSettingsOpen(false);
-                      }),
+                      });
+                    },
                   }
                 : {})}
               threadMentionCount={threadMentionCount}
-              onOpenThreads={() =>
+              onOpenThreads={() => {
                 navigateFromSettings(() => {
                   setMainView("threads");
                   setThreadRoot(undefined);
                   setAdminOpen(false);
                   setUserSettingsOpen(false);
-                })
-              }
+                });
+              }}
               onCreateCategory={() => {
                 setCreateCategoryOpen(true);
               }}
               canManageCategories={canManageCategories}
               appUpdateAvailable={desktopUpdate.status?.updateAvailable ?? false}
               workspaceUpdateAvailable={workspaceUpdate.available}
-              onOpenUserSettings={() =>
+              onOpenUserSettings={() => {
                 navigateFromSettings(() => {
                   setAdminOpen(false);
                   setUserSettingsOpen(true);
-                })
-              }
+                });
+              }}
               showAdmin={showAdmin}
-              onOpenAdmin={() =>
+              onOpenAdmin={() => {
                 navigateFromSettings(() => {
                   setUserSettingsOpen(false);
                   setAdminOpen(true);
-                })
-              }
+                });
+              }}
               workspaceSwitcher={<WorkspaceMenu onlineCount={onlineCount} variant="header" />}
               onSelect={(channelId) => {
                 openChannel(channelId);

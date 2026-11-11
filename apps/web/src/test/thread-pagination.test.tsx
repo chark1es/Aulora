@@ -151,8 +151,12 @@ it("keeps the latest snapshot when earlier attachment metadata resolves last", a
     },
   } as unknown as ChatRuntime;
   renderThread(runtime);
-  act(() => onChange([{ id: "older" } as MessagePayload]));
-  act(() => onChange([{ id: "older" }, { id: "newest" }] as MessagePayload[]));
+  act(() => {
+    onChange([{ id: "older" } as MessagePayload]);
+  });
+  act(() => {
+    onChange([{ id: "older" }, { id: "newest" }] as MessagePayload[]);
+  });
   await act(async () => resolvers[1]?.());
   expect(screen.getByText("newest")).toBeInTheDocument();
   await act(async () => resolvers[0]?.());

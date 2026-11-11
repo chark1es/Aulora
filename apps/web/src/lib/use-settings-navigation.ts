@@ -13,7 +13,9 @@ export function useSettingsNavigation(open: boolean, dirty: boolean) {
   return {
     navigate,
     pending,
-    cancel: () => setPending(null),
+    cancel: () => {
+      setPending(null);
+    },
     discard: () => {
       setPending(null);
       pending?.();

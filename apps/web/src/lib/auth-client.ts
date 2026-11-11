@@ -136,7 +136,9 @@ export function authActionsFromClient(
           new Promise<void>((resolve) => {
             timer = setTimeout(resolve, 1000);
           }),
-        ]).finally(() => clearTimeout(timer));
+        ]).finally(() => {
+          clearTimeout(timer);
+        });
       }
       resetProviderToken(client);
       try {
