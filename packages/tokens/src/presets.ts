@@ -1,11 +1,17 @@
 import { type Palette, paletteFor, type ThemeName } from "./colors";
 import { fontFamilies, nativeFontFamilies, nativeFontFamily } from "./fonts";
+import type { Fn } from "./function-type";
 import { fontSizes, radii, spacing } from "./scales";
 
 /** The subset of Tailwind's plugin API the presets use (no tailwindcss dependency). */
-export type PresetPlugin = (api: {
-  addUtilities: (utilities: Record<string, Record<string, string>>) => void;
-}) => void;
+export type PresetPlugin = Fn<
+  [
+    api: {
+      addUtilities: Fn<[utilities: Record<string, Record<string, string>>], void>;
+    },
+  ],
+  void
+>;
 
 export interface AuloraPreset {
   theme: {

@@ -39,9 +39,16 @@ const familyNames = Object.values(fontData.families).flatMap((family) => [
   ...family.generic,
   ...family.email,
 ]);
-const FAMILY_NAMES = new RegExp(
-  familyNames.map((name) => name.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")).join("|"),
-);
+
+/** The family name that starts earliest in `text` (the first listed wins a tie). */
+function firstFamilyName(text: string): string | undefined {
+  let found: { readonly name: string; readonly index: number } | undefined;
+  for (const name of familyNames) {
+    const index = text.indexOf(name);
+    if (index !== -1 && (found === undefined || index < found.index)) found = { name, index };
+  }
+  return found?.name;
+}
 /**
  * A CSS `font-family` whose value is not a token variable (or a generated
  * `${…}`). `\s*` spans newlines, so a declaration wrapped onto the next line
@@ -91,8 +98,8 @@ function findStrays(path: string, rawSource: string): string[] {
   for (const match of text.matchAll(RN_FAMILY)) report(match.index, match[0]);
   for (const key of text.matchAll(FAMILY_KEY)) {
     const reach = text.slice(key.index, key.index + KEY_REACH).split(/[;}]/)[0] ?? "";
-    const named = FAMILY_NAMES.exec(reach);
-    if (named !== null) report(key.index, named[0]);
+    const named = firstFamilyName(reach);
+    if (named !== undefined) report(key.index, named);
   }
   return strays;
 }

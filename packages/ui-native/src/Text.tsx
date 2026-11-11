@@ -23,7 +23,7 @@ export function Text({ tone, size, mono, className, style, ...rest }: TextProps)
     ...(mono !== undefined ? { mono } : {}),
     className: className ?? "",
   });
-  const flat: TextStyle = StyleSheet.flatten(style) ?? {};
+  const flat: TextStyle = { ...StyleSheet.flatten(style) };
   const font = nativeFontStyle({
     className: classes,
     fontWeight: flat.fontWeight,

@@ -7,17 +7,17 @@ import { nativeFontFamily } from "@aulora/tokens";
  * for, so `Text`, `Heading`, inputs and badges all draw the shipped face.
  */
 
-const WEIGHT_CLASSES: Record<string, number> = {
-  thin: 100,
-  extralight: 200,
-  light: 300,
-  normal: 400,
-  medium: 500,
-  semibold: 600,
-  bold: 700,
-  extrabold: 800,
-  black: 900,
-};
+const WEIGHT_CLASSES = new Map<string, number>([
+  ["thin", 100],
+  ["extralight", 200],
+  ["light", 300],
+  ["normal", 400],
+  ["medium", 500],
+  ["semibold", 600],
+  ["bold", 700],
+  ["extrabold", 800],
+  ["black", 900],
+]);
 
 const WEIGHT_CLASS =
   /(?:^|\s)!?font-(thin|extralight|light|normal|medium|semibold|bold|extrabold|black)(?=\s|$)/g;
@@ -27,7 +27,7 @@ export function classFontWeight(className: string | undefined): number | undefin
   if (className === undefined) return undefined;
   let weight: number | undefined;
   for (const match of className.matchAll(WEIGHT_CLASS)) {
-    weight = WEIGHT_CLASSES[match[1] ?? ""];
+    weight = WEIGHT_CLASSES.get(match.at(1) ?? "");
   }
   return weight;
 }
