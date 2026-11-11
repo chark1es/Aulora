@@ -2,7 +2,6 @@ import {
   clampRetentionDays,
   hasPermission,
   Permission,
-  TRANSCRIPTION_MAX_SEGMENTS_PER_SESSION,
   TRANSCRIPTION_SERVICE_STALE_MS,
 } from "@aulora/core";
 import { ConvexError } from "convex/values";
@@ -355,9 +354,4 @@ export async function transcriberRuntimeReady(ctx: ReadCtx): Promise<boolean> {
     status.runtimeReady === true &&
     Date.now() - status.serviceSeenAt <= TRANSCRIPTION_SERVICE_STALE_MS
   );
-}
-
-/** True when a session has reached the hard segment cap. */
-export function segmentCapReached(session: Doc<"transcriptionSessions">): boolean {
-  return session.segmentCount >= TRANSCRIPTION_MAX_SEGMENTS_PER_SESSION;
 }

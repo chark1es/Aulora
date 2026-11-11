@@ -570,7 +570,7 @@ with instructions to use the hosting provider's redeploy controls.
 
 The [public self-hosting guide](../../apps/docs/content/self-hosting.md) covers HTTPS, reachable URLs, and private administration ports. Default passwords are for local trials; replace database and MinIO credentials before a public deployment. The [updates guide](../../apps/docs/content/updates.md) distinguishes rebuilding source, updating from release tags, and Coolify redeploys.
 
-## Deployment verification
+## Deployment verification and historical backfills
 
 `deploy.sh` and the host staged updater compare the existing Convex container's
 immutable image ID to the configured engine image. They recreate a changed (or
@@ -587,6 +587,27 @@ Both Compose variants gate web startup on the one-shot setup service completing
 successfully. The explicit update/deploy paths run setup first and recreate web
 with `--no-deps`, so they do not launch a second setup through that dependency.
 The regular stack now has the same nginx healthcheck as the Coolify stack.
+
+The minute crons automatically run `maintenance:backfillMemberRoles {}` and
+`maintenance:backfillAttachmentScopes {}`. Each tick processes up to 1000 members
+or 500 messages and commits a cursor and counts in `migrationProgress` alongside
+the page's writes. Interrupted runs resume the last committed cursor (including
+legacy server cursors on upgrade). No setup invocation is required. Completion
+sets `server.memberRolesBackfilled` or `server.attachmentScopesBackfilled` once;
+subsequent ticks skip completed work after one server-row read. Intermediate
+ticks do not patch the public-config singleton. Attachment repair requires the
+uploader to match the legacy message author; ambiguous foreign-author references
+remain private and are counted in `migrationProgress.skippedReferences`.
+See [backfill limits and read measurements](../../docs/convex/README.md#automatic-chat-compatibility-backfills).
+
+`maintenance:backfillThreadParticipants {}` remains a separate manually invoked
+migration: it pages 200 messages and schedules further pages. Its upserts are
+idempotent, but it has no durable completion marker, active-run guard or status
+endpoint. A successful CLI invocation confirms the first page, not completion.
+Before making that migration a setup prerequisite, add durable coordination and
+completion verification with a documented timeout and visible failure. Test
+interrupted retries, skipped-version upgrades, concurrent writes and a second
+setup run after completion.
 
 Docker Compose **>= 2.24** is required by the deployment and staged updater
 for service-scoped `docker compose config --images convex-backend`. Both paths

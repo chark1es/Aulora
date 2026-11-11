@@ -19,6 +19,7 @@ import {
 import { enforceRateLimit, ipRateLimitKey, requestIp, userRateLimitKey } from "./lib/rateLimit";
 import { openContentOptional } from "./lib/sealed";
 import { openBytes, sealBytes, sealString } from "./lib/sse";
+import { storageIsReferenced } from "./lib/storageReferences";
 
 function uploadLimit(): number {
   const configured = Number(process.env.UPLOAD_RATE_LIMIT);
@@ -42,6 +43,18 @@ const NAME_CONTEXT = { scope: "file.name" } as const;
 const MIME_CONTEXT = { scope: "file.mime" } as const;
 const DIMENSIONS_CONTEXT = { scope: "file.dimensions" } as const;
 const BLURHASH_CONTEXT = { scope: "file.blurhash" } as const;
+
+/** A response-loss retry cannot silently change the upload's audience. */
+function requireSameScope(
+  existing: Doc<"files">,
+  requested: { channelId?: Id<"channels">; kanbanBoardId?: Id<"kanbanBoards"> },
+): void {
+  if (
+    existing.channelId !== requested.channelId ||
+    existing.kanbanBoardId !== requested.kanbanBoardId
+  )
+    throw new ConvexError("Upload already finalized with a different channel or board scope");
+}
 
 /**
  * Creates a short-lived Convex storage upload URL. `AttachFiles` is required,
@@ -90,6 +103,7 @@ export const generateUploadUrl = mutation({
 export const authorizeUpload = internalMutation({
   args: {
     storageId: v.id("_storage"),
+    channelId: v.optional(v.id("channels")),
     kanbanBoardId: v.optional(v.id("kanbanBoards")),
     skipRateLimit: v.optional(v.boolean()),
   },
@@ -109,6 +123,17 @@ export const authorizeUpload = internalMutation({
       });
     }
     if (args.kanbanBoardId !== undefined) await writableBoard(ctx, args.kanbanBoardId);
+    const existing = await ctx.db
+      .query("files")
+      .withIndex("by_sealed_storage", (q) => q.eq("sealedStorageId", args.storageId))
+      .first();
+    if (existing?.uploaderId === userId) {
+      requireSameScope(existing, args);
+      return { userId, sizeBytes: existing.sizeBytes, fileId: existing._id };
+    }
+    if (await storageIsReferenced(ctx, args.storageId)) {
+      throw new ConvexError("Upload is already in use");
+    }
     const metadata = await ctx.db.system.get("_storage", args.storageId);
     if (metadata === null) {
       throw new ConvexError("Upload not found");
@@ -149,6 +174,17 @@ export const insertFinalized = internalMutation({
       if (access.board.archived) throw new ConvexError("Restore the board before uploading files");
       await assertMayParticipate(ctx, args.uploaderId);
     }
+    const existing = await ctx.db
+      .query("files")
+      .withIndex("by_sealed_storage", (q) => q.eq("sealedStorageId", args.sealedStorageId))
+      .first();
+    if (existing?.uploaderId === args.uploaderId) {
+      requireSameScope(existing, args);
+      return existing._id;
+    }
+    if (await storageIsReferenced(ctx, args.sealedStorageId)) {
+      throw new ConvexError("Upload is already in use");
+    }
     const fileId = await ctx.db.insert("files", {
       storageId: args.storageId,
       sealedStorageId: args.sealedStorageId,
@@ -175,33 +211,15 @@ export const insertFinalized = internalMutation({
 });
 
 /**
- * Atomically deletes an upload's plaintext source when no file row other than
- * `exceptFileId` references it. Runs as one mutation so a concurrent finalize
- * cannot insert a reference between the check and the delete; taking two rows
- * per index avoids the new row hiding a second reference.
+ * After successful finalization, atomically deletes a plaintext source only
+ * when no avatar, logo or file other than `exceptFileId` references it. Running
+ * the check and delete in one mutation prevents concurrent adoption; taking two
+ * rows per index avoids the new file hiding a second reference.
  */
 export const reclaimUploadSource = internalMutation({
-  args: { storageId: v.id("_storage"), exceptFileId: v.id("files") },
+  args: { storageId: v.id("_storage"), exceptFileId: v.optional(v.id("files")) },
   handler: async (ctx, args) => {
-    const byStorage = await ctx.db
-      .query("files")
-      .withIndex("by_storage", (q) => q.eq("storageId", args.storageId))
-      .take(2);
-    if (byStorage.some((row) => row._id !== args.exceptFileId)) {
-      return false;
-    }
-    const bySealed = await ctx.db
-      .query("files")
-      .withIndex("by_sealed_storage", (q) => q.eq("sealedStorageId", args.storageId))
-      .take(2);
-    if (bySealed.some((row) => row._id !== args.exceptFileId)) {
-      return false;
-    }
-    const byThumbnail = await ctx.db
-      .query("files")
-      .withIndex("by_thumbnail_storage", (q) => q.eq("thumbnailStorageId", args.storageId))
-      .take(2);
-    if (byThumbnail.some((row) => row._id !== args.exceptFileId)) {
+    if (await storageIsReferenced(ctx, args.storageId, { fileId: args.exceptFileId })) {
       return false;
     }
     await ctx.storage.delete(args.storageId);
@@ -236,10 +254,16 @@ export const finalize = action({
   handler: async (ctx, args): Promise<Id<"files">> => {
     if (args.kanbanBoardId !== undefined && args.channelId !== undefined)
       throw new ConvexError("Choose a channel or a board for this file");
-    const { userId, sizeBytes } = await ctx.runMutation(internal.files.authorizeUpload, {
+    const {
+      userId,
+      sizeBytes,
+      fileId: existingFileId,
+    } = await ctx.runMutation(internal.files.authorizeUpload, {
       storageId: args.storageId,
+      ...(args.channelId !== undefined ? { channelId: args.channelId } : {}),
       ...(args.kanbanBoardId !== undefined ? { kanbanBoardId: args.kanbanBoardId } : {}),
     });
+    if (existingFileId !== undefined) return existingFileId;
     if (args.thumbnailStorageId !== undefined) {
       // Authorize the variant through the same path as the original rather than
       // trusting a client-supplied storage id.
@@ -315,15 +339,22 @@ export const finalize = action({
       }
       throw error;
     }
-    await ctx.runMutation(internal.files.reclaimUploadSource, {
-      storageId: args.storageId,
-      exceptFileId: fileId,
-    });
-    if (args.thumbnailStorageId !== undefined) {
-      await ctx.runMutation(internal.files.reclaimUploadSource, {
-        storageId: args.thumbnailStorageId,
-        exceptFileId: fileId,
-      });
+    const finalized = await ctx.runQuery(internal.files.finalizedStorage, { fileId });
+    if (finalized !== sealedStorageId) {
+      await ctx.storage.delete(sealedStorageId);
+      if (stored.thumbnailId !== undefined) await ctx.storage.delete(stored.thumbnailId);
+    }
+    // Reclaim plaintext only after insertion succeeds; failed finalization must
+    // leave the source and thumbnail available for the client's retry.
+    for (const storageId of new Set([args.storageId, args.thumbnailStorageId])) {
+      if (storageId !== undefined) {
+        await ctx
+          .runMutation(internal.files.reclaimUploadSource, {
+            storageId,
+            exceptFileId: fileId,
+          })
+          .catch(() => undefined);
+      }
     }
     return fileId;
   },
@@ -549,4 +580,10 @@ export const getMany = query({
     }
     return views;
   },
+});
+
+/** Lets finalize discard its losing concurrent attempt's sealed bytes. */
+export const finalizedStorage = internalQuery({
+  args: { fileId: v.id("files") },
+  handler: async (ctx, { fileId }) => (await ctx.db.get(fileId))?.storageId,
 });

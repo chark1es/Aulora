@@ -5,7 +5,6 @@ import {
   highlightMatches,
   NoteSearchIndex,
   noteBlocksToPlainText,
-  notePlainText,
   parseNoteMarkdown,
 } from "../src/notes/index";
 
@@ -135,12 +134,6 @@ describe("NoteSearchIndex", () => {
     const index = new NoteSearchIndex();
     index.upsert({ id: "a", title: "Alpha", body: "", updatedAt: 1 });
     expect(index.query("   ")).toEqual([]);
-  });
-});
-
-describe("notePlainText", () => {
-  it("joins title and body for indexing", () => {
-    expect(notePlainText("Title", "Body")).toBe("Title\nBody");
   });
 });
 

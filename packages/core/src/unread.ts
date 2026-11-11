@@ -1,3 +1,4 @@
+import { messageMentionsUser } from "./chat/mentions.js";
 /** Minimal message metadata needed for unread math. Never contains plaintext. */
 export interface MessageMeta {
   readonly id: string;
@@ -5,6 +6,8 @@ export interface MessageMeta {
   readonly authorId?: string;
   /** Plaintext mention ids by design so the server can route notifications. */
   readonly mentionedUserIds?: readonly string[];
+  readonly mentionEveryone?: boolean;
+  readonly mentionHere?: boolean;
 }
 
 export interface ReadCursor {
@@ -66,7 +69,9 @@ export function countMentions(
     if (isMessageRead(cursor, message)) {
       continue;
     }
-    if (message.mentionedUserIds?.includes(userId) === true) {
+    if (
+      messageMentionsUser({ ...message, mentionUserIds: message.mentionedUserIds ?? [] }, userId)
+    ) {
       count += 1;
     }
   }

@@ -292,17 +292,6 @@ export function formatOpensIn(ms: number): string {
   return `in ${minutes} min`;
 }
 
-/**
- * The next instant the countdown text changes, so a ticking label can sleep
- * instead of re-rendering every second. Never below 1 second nor above 1 minute.
- */
-export function nextCountdownTickMs(opensInMs: number): number {
-  if (opensInMs <= MINUTE_MS) {
-    return 1_000;
-  }
-  return Math.min(MINUTE_MS, Math.max(1_000, opensInMs % MINUTE_MS || MINUTE_MS));
-}
-
 export interface ScheduledCallNotOpenInfo {
   readonly startsAt: number;
   readonly opensAt: number;
@@ -344,9 +333,9 @@ export function parseScheduledCallNotOpen(error: unknown): ScheduledCallNotOpenI
   return { startsAt, opensAt };
 }
 
-/** "This call hasn't started yet — opens at 3:25 PM PST". */
+/** "This call hasn’t started yet. It opens at 3:25 PM PST". */
 export function notOpenMessage(info: ScheduledCallNotOpenInfo, options?: LocalTimeOptions): string {
-  return `This call hasn't started yet — opens at ${formatLocalTimeWithZone(info.opensAt, options)}`;
+  return `This call hasn’t started yet. It opens at ${formatLocalTimeWithZone(info.opensAt, options)}`;
 }
 
 /** How long a scheduled call without a set length still counts as "now". */

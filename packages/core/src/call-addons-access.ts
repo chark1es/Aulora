@@ -58,11 +58,6 @@ export function canCreateGuestLinks(permissions: bigint, addonEnabled: boolean):
   return addonEnabled && hasPermission(permissions, Permission.CreateGuestLinks);
 }
 
-/** Whether the permission alone makes someone a lobby manager. */
-export function canManageGuestAccess(permissions: bigint, addonEnabled: boolean): boolean {
-  return addonEnabled && hasPermission(permissions, Permission.ManageGuestAccess);
-}
-
 /** The Scheduled tab needs the addon and `ViewScheduledCalls`. */
 export function canViewScheduledCalls(permissions: bigint, addonEnabled: boolean): boolean {
   return addonEnabled && hasPermission(permissions, Permission.ViewScheduledCalls);

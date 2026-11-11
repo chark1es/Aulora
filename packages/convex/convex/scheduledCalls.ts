@@ -765,26 +765,3 @@ export const sweep = internalMutation({
     return null;
   },
 });
-
-/** Internal watchdog used by tests; not part of the public surface. */
-export const endScheduled = internalMutation({
-  args: { scheduledCallId: v.id("scheduledCalls") },
-  handler: async (ctx, args) => {
-    const scheduled = await ctx.db.get(args.scheduledCallId);
-    if (scheduled === null) {
-      return null;
-    }
-    if (scheduled.callId !== undefined) {
-      const call = await ctx.db.get(scheduled.callId);
-      if (call !== null && call.status !== "ended") {
-        await endCall(ctx, call);
-      }
-    }
-    await ctx.db.patch(scheduled._id, {
-      status: "ended",
-      endedAt: Date.now(),
-      updatedAt: Date.now(),
-    });
-    return null;
-  },
-});

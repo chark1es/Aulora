@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { inlineToPlainText, mentionsViewer, parseInline, parseRichText } from "../src/index";
+import { inlineToPlainText, parseInline, parseRichText } from "../src/index";
 
 describe("parseRichText blocks", () => {
   it("returns one paragraph for plain text", () => {
@@ -77,7 +77,11 @@ describe("parseInline", () => {
 });
 
 describe("mentions", () => {
-  const options = { mentionNames: ["Ada", "Ada Lovelace", "design-team"] };
+  const options = {
+    mentionEveryone: true,
+    mentionHere: true,
+    mentionNames: ["Ada", "Ada Lovelace", "design-team"],
+  };
 
   it("matches the longest known name, including names with spaces", () => {
     const [block] = parseRichText("hi @Ada Lovelace!", options);
@@ -99,10 +103,10 @@ describe("mentions", () => {
     ]);
   });
 
-  it("detects when the viewer is mentioned", () => {
-    expect(mentionsViewer(parseRichText("hey @Ada", options), "ada")).toBe(true);
-    expect(mentionsViewer(parseRichText("**@everyone** look", options), "Bob")).toBe(true);
-    expect(mentionsViewer(parseRichText("hey @design-team", options), "Ada")).toBe(false);
+  it("keeps unhonored broadcasts plain", () => {
+    expect(parseRichText("@everyone @here", { mentionNames: ["everyone", "here"] })).toEqual([
+      { type: "paragraph", children: [{ type: "text", text: "@everyone @here" }] },
+    ]);
   });
 });
 
@@ -113,4 +117,20 @@ describe("inlineToPlainText", () => {
       "hi there x @here",
     );
   });
+});
+
+it("only renders broadcast pills in prose, including when other valid markers exist", () => {
+  const text = "> **@everyone**\n`@here` then !@here @everyone-suffix\n~~~\n@everyone\n~~~";
+  const blocks = parseRichText(text, { mentionEveryone: true, mentionHere: true });
+  const all = JSON.stringify(blocks);
+  expect(all.match(/"broadcast":true/g)).toHaveLength(1);
+  expect(
+    inlineToPlainText(blocks.flatMap((b) => (b.type === "paragraph" ? b.children : []))),
+  ).toContain("@everyone-suffix");
+});
+
+it("renders broadcast mentions after CRLF at the original position", () => {
+  expect(JSON.stringify(parseRichText("x\r\n@everyone", { mentionEveryone: true }))).toContain(
+    '"broadcast":true',
+  );
 });

@@ -294,7 +294,6 @@ export const lobby = query({
     if (session === null) {
       throw guestLinkError();
     }
-    await requireGuestAddon(ctx);
     const identity = await openGuestIdentity(session);
     // Do not wait for the hourly prune: an elapsed lobby request or 4-hour
     // session is already terminal for the guest page.

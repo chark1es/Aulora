@@ -119,6 +119,10 @@ export class ChatSession {
   private readonly channelNames = new Map<string, string>();
   private channelSummaries: readonly ChannelSummary[] = [];
 
+  private ingestionGeneration = 0;
+  private readonly messageGenerations = new Map<string, number>();
+  private readonly scopeGenerations = new Map<string, number>();
+  private disposed = false;
   private latestMessages: readonly MessagePayload[] = [];
   private readonly decrypted = new Map<string, string>();
   private readonly bodies = new Map<string, MessagePayloadBody>();
@@ -130,7 +134,7 @@ export class ChatSession {
    */
   private readonly fileDescriptors = new Map<string, AttachmentDescriptor | null>();
   private readonly messageAttachments = new Map<string, readonly AttachmentDescriptor[]>();
-  private readonly pendingFileIds = new Set<string>();
+  private readonly pendingFiles = new Map<string, Promise<void>>();
   private readonly messageListeners = new Set<(messages: readonly MessagePayload[]) => void>();
   private readonly decryptedListeners = new Set<(messages: readonly MessagePayload[]) => void>();
   private readonly reactionListeners = new Map<
@@ -185,7 +189,7 @@ export class ChatSession {
       this.openChannels.set(channel.id, state);
       state.unsubscribers.push(
         this.subscriptions.watchMessages(channel.id, (messages) => {
-          void this.receiveMessages(messages);
+          void this.receiveMessages(messages, `channel:${channel.id}`);
         }),
       );
     }
@@ -205,101 +209,95 @@ export class ChatSession {
   }
 
   /**
-   * Ingests a plaintext message list: caches each body, resolves attachments,
-   * and notifies subscribers. Deleted messages are skipped.
+   * Ingests a snapshot from one subscription scope. Pass a stable scope id for
+   * each channel tail, history page or thread (including empty snapshots).
+   *
+   * Listeners receive the accumulated latest committed rows, merged by id,
+   * exactly as replayed to newly registered listeners. Superseded snapshots
+   * never commit or notify. Overlapping scopes retain the newest row per id.
    */
-  async receiveMessages(messages: readonly MessagePayload[]): Promise<void> {
-    this.latestMessages = messages;
-    await this.hydrateAttachments(messages);
-    for (const message of messages) {
-      if (message.deletedAt !== null) {
-        continue;
-      }
-      const base: MessagePayloadBody = {
-        t: message.body,
-        ...(message.editedAt !== null ? { edited: true } : {}),
-        ...(message.threadRootId !== null ? { threadRootId: message.threadRootId } : {}),
-        ...(message.replyToId !== null && message.replyToId !== undefined
-          ? { replyToId: message.replyToId }
-          : {}),
-      };
-      const attachments = this.messageAttachments.get(message.id);
-      this.decrypted.set(message.id, message.body);
-      this.bodies.set(
-        message.id,
-        attachments !== undefined && attachments.length > 0 ? { ...base, attachments } : base,
-      );
-    }
-    for (const listener of this.messageListeners) {
-      listener(messages);
-    }
-    for (const listener of this.decryptedListeners) {
-      listener(messages);
-    }
-  }
-
-  /**
-   * Resolves the attachment descriptors for a page of messages in one batched
-   * file read, reusing anything already cached. Files that are gone are cached
-   * as `null` so a missing upload is not retried on every live tick.
-   */
-  private async hydrateAttachments(messages: readonly MessagePayload[]): Promise<void> {
-    const needed: string[] = [];
-    for (const message of messages) {
-      if (message.deletedAt !== null || message.attachmentIds.length === 0) {
-        continue;
-      }
-      for (const fileId of message.attachmentIds) {
-        if (!this.fileDescriptors.has(fileId) && !this.pendingFileIds.has(fileId)) {
-          needed.push(fileId);
-        }
-      }
-    }
-    await this.ensureFileDescriptors(needed);
-    for (const message of messages) {
-      if (message.deletedAt !== null || message.attachmentIds.length === 0) {
-        continue;
-      }
-      const list: AttachmentDescriptor[] = [];
-      for (const fileId of message.attachmentIds) {
-        const descriptor = this.fileDescriptors.get(fileId);
-        if (descriptor !== undefined && descriptor !== null) {
-          list.push(descriptor);
-        }
-      }
-      this.messageAttachments.set(message.id, list);
-    }
-  }
-
-  private async ensureFileDescriptors(fileIds: readonly string[]): Promise<void> {
-    const needed = new Set<string>();
-    for (const fileId of fileIds) {
-      if (!this.fileDescriptors.has(fileId) && !this.pendingFileIds.has(fileId)) {
-        needed.add(fileId);
-      }
-    }
-    if (needed.size === 0) {
-      return;
-    }
-    const ids = [...needed];
-    for (const id of ids) {
-      this.pendingFileIds.add(id);
-    }
+  async receiveMessages(messages: readonly MessagePayload[], scopeId: string): Promise<void> {
+    if (this.disposed) return;
+    const generation = ++this.ingestionGeneration;
+    this.scopeGenerations.set(scopeId, generation);
+    for (const message of messages) this.messageGenerations.set(message.id, generation);
     try {
-      const files = await this.port.getFiles({ fileIds: ids });
-      for (const file of files) {
-        this.fileDescriptors.set(file.id, descriptorFromStoredFile(file));
+      await this.ensureFileDescriptors(
+        messages
+          .filter((message) => message.deletedAt === null)
+          .flatMap((message) => message.attachmentIds),
+      );
+      if (this.disposed || this.scopeGenerations.get(scopeId) !== generation) return;
+      const committed = new Map(this.latestMessages.map((message) => [message.id, message]));
+      let changed = messages.length === 0;
+      for (const message of messages) {
+        if (this.messageGenerations.get(message.id) !== generation) continue;
+        changed = true;
+        committed.set(message.id, message);
+        if (message.deletedAt !== null) {
+          this.decrypted.delete(message.id);
+          this.bodies.delete(message.id);
+          this.messageAttachments.delete(message.id);
+          this.messageGenerations.delete(message.id);
+          continue;
+        }
+        const attachments = message.attachmentIds.flatMap((id) => {
+          const descriptor = this.fileDescriptors.get(id);
+          return descriptor ? [descriptor] : [];
+        });
+        this.messageAttachments.set(message.id, attachments);
+        this.decrypted.set(message.id, message.body);
+        this.bodies.set(message.id, {
+          t: message.body,
+          ...(message.editedAt !== null ? { edited: true } : {}),
+          ...(message.threadRootId !== null ? { threadRootId: message.threadRootId } : {}),
+          ...(message.replyToId != null ? { replyToId: message.replyToId } : {}),
+          ...(attachments.length > 0 ? { attachments } : {}),
+        });
       }
-      for (const id of ids) {
-        if (!this.fileDescriptors.has(id)) {
-          this.fileDescriptors.set(id, null);
+      if (!changed) return;
+      const snapshot = [...committed.values()];
+      this.latestMessages = snapshot;
+      for (const listener of this.messageListeners) listener(snapshot);
+      for (const listener of this.decryptedListeners) listener(snapshot);
+    } finally {
+      for (const message of messages) {
+        if (this.messageGenerations.get(message.id) === generation) {
+          this.messageGenerations.delete(message.id);
         }
       }
-    } finally {
-      for (const id of ids) {
-        this.pendingFileIds.delete(id);
+      if (this.scopeGenerations.get(scopeId) === generation) {
+        this.scopeGenerations.delete(scopeId);
       }
     }
+  }
+
+  /** Share each batched file read with every ingestion that needs its ids. */
+  private async ensureFileDescriptors(fileIds: readonly string[]): Promise<void> {
+    const needed = [...new Set(fileIds)].filter(
+      (id) => !this.fileDescriptors.has(id) && !this.pendingFiles.has(id),
+    );
+    if (needed.length > 0) {
+      // Defer invoking the port until all ids have their shared promise.
+      const pending = Promise.resolve().then(async () => {
+        try {
+          const files = await this.port.getFiles({ fileIds: needed });
+          if (this.disposed) return;
+          for (const file of files) {
+            this.fileDescriptors.set(file.id, descriptorFromStoredFile(file));
+          }
+          for (const id of needed) {
+            if (!this.fileDescriptors.has(id)) this.fileDescriptors.set(id, null);
+          }
+        } finally {
+          for (const id of needed) {
+            if (this.pendingFiles.get(id) === pending) this.pendingFiles.delete(id);
+          }
+        }
+      });
+      for (const id of needed) this.pendingFiles.set(id, pending);
+    }
+    await Promise.all(new Set(fileIds.map((id) => this.pendingFiles.get(id))));
   }
 
   onMessages(listener: (messages: readonly MessagePayload[]) => void): () => void {
@@ -358,6 +356,8 @@ export class ChatSession {
       readonly threadRootId?: string;
       readonly replyToId?: string;
       readonly mentionUserIds?: readonly string[];
+      readonly mentionEveryone?: boolean;
+      readonly mentionHere?: boolean;
       readonly mentionChannelIds?: readonly string[];
       readonly mentionCategoryIds?: readonly string[];
       readonly mentionRoleIds?: readonly string[];
@@ -370,6 +370,10 @@ export class ChatSession {
       body: text,
       ...(options.threadRootId !== undefined ? { threadRootId: options.threadRootId } : {}),
       ...(options.replyToId !== undefined ? { replyToId: options.replyToId } : {}),
+      ...(options.mentionEveryone !== undefined
+        ? { mentionEveryone: options.mentionEveryone }
+        : {}),
+      ...(options.mentionHere !== undefined ? { mentionHere: options.mentionHere } : {}),
       ...(options.mentionUserIds !== undefined ? { mentionUserIds: options.mentionUserIds } : {}),
       ...(options.mentionChannelIds !== undefined
         ? { mentionChannelIds: options.mentionChannelIds }
@@ -411,6 +415,7 @@ export class ChatSession {
   /** Soft-deletes a message and drops its local plaintext. */
   async deleteMessage(_channelId: string, messageId: string): Promise<void> {
     await this.port.deleteMessage({ messageId });
+    this.messageGenerations.delete(messageId);
     this.decrypted.delete(messageId);
     this.bodies.delete(messageId);
     this.messageAttachments.delete(messageId);
@@ -496,6 +501,10 @@ export class ChatSession {
 
   /** Releases every subscription (e.g. on sign-out). */
   dispose(): void {
+    this.disposed = true;
+    this.messageGenerations.clear();
+    this.scopeGenerations.clear();
+    this.pendingFiles.clear();
     for (const channelId of [...this.openChannels.keys()]) {
       this.closeChannel(channelId);
     }

@@ -4,6 +4,7 @@ import { v } from "convex/values";
 import { internal } from "./_generated/api";
 import { internalMutation, query } from "./_generated/server";
 import { accountNames } from "./lib/accountNames";
+import { clampPageSize } from "./lib/pagination";
 import { requireWorkspacePermission } from "./lib/permissions";
 
 /** Audit rows deleted per prune run before rescheduling. */
@@ -35,7 +36,10 @@ export const list = query({
       .query("auditLog")
       .withIndex("by_at")
       .order("desc")
-      .paginate(args.paginationOpts ?? { numItems: 50, cursor: null });
+      .paginate({
+        ...(args.paginationOpts ?? { cursor: null }),
+        numItems: clampPageSize(args.paginationOpts?.numItems ?? 50),
+      });
 
     const ids = new Set<string>();
     for (const row of result.page) {

@@ -6,7 +6,6 @@ import {
   isTranscriptionModelId,
   normalizeGuestText,
   parseTranscriptionSpeakerKey,
-  scheduledCallIsOpen,
   scheduledCallNotOpen,
   scheduledCallOpensAt,
   transcriptionSpeakerKey,
@@ -30,8 +29,6 @@ describe("scheduled call time helpers", () => {
   it("computes the open time and enforces the window", () => {
     const startsAt = 1_000_000;
     expect(scheduledCallOpensAt(startsAt, 5)).toBe(startsAt - 300_000);
-    expect(scheduledCallIsOpen(startsAt, 5, startsAt - 300_001)).toBe(false);
-    expect(scheduledCallIsOpen(startsAt, 5, startsAt - 300_000)).toBe(true);
   });
 
   it("returns the typed error payload with the open time", () => {
