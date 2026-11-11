@@ -1,4 +1,5 @@
 import { type ButtonHTMLAttributes, forwardRef, type ReactNode } from "react";
+import { CapText } from "./CapText";
 import { cn } from "./cn";
 import { Spinner } from "./Spinner";
 
@@ -37,10 +38,22 @@ const VARIANT_CLASSES = new Map<ButtonVariant, string>([
   ],
 ]);
 
+// text-centering-ok: size lookup only; the component wraps its label in <CapText>.
 const SIZE_CLASSES = new Map<ButtonSize, string>([
   ["sm", "h-7 gap-1.5 rounded-[7px] px-2.5 text-[13px]"],
   ["md", "h-9 gap-2 rounded-input px-3.5 text-[13px]"],
   ["lg", "h-11 gap-2 rounded-input px-5 text-[14px]"],
+]);
+
+/**
+ * Material Symbols leave about a sixth of their 24px grid blank on each side,
+ * so an icon + label group looks pushed right. Two pixels less start padding
+ * re-centres the visible group for the 13–20px icons buttons use.
+ */
+const LEADING_PADDING = new Map<ButtonSize, string>([
+  ["sm", "pl-2"],
+  ["md", "pl-3"],
+  ["lg", "pl-[18px]"],
 ]);
 
 /** Soft-cornered action button. Focus rings use the Ember accent. */
@@ -69,6 +82,7 @@ export const Button = forwardRef<HTMLButtonElement, ButtonProps>(function Button
         "disabled:pointer-events-none",
         VARIANT_CLASSES.get(variant),
         SIZE_CLASSES.get(size),
+        leading !== undefined && !loading && LEADING_PADDING.get(size),
         className,
       )}
       {...rest}
@@ -80,7 +94,7 @@ export const Button = forwardRef<HTMLButtonElement, ButtonProps>(function Button
       ) : (
         leading
       )}
-      {children}
+      <CapText>{children}</CapText>
     </button>
   );
 });

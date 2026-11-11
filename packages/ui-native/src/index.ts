@@ -18,6 +18,7 @@ export { IconButton, type IconButtonProps } from "./IconButton";
 export { Input, type InputProps } from "./Input";
 export { Logo, type LogoProps } from "./Logo";
 export { ProviderIcon, type ProviderIconProps } from "./ProviderIcon";
+export { RoleColorPreview, type RoleColorPreviewProps } from "./RoleColorPreview";
 export {
   SegmentedControl,
   type SegmentedControlProps,
@@ -26,13 +27,22 @@ export {
 export { SettingRow, type SettingRowProps } from "./SettingRow";
 export { Spinner, type SpinnerProps } from "./Spinner";
 export { Switch, type SwitchProps } from "./Switch";
+export { SwitchRow, type SwitchRowProps } from "./SwitchRow";
 export {
   DEFAULT_LABEL_COLOR,
   LABEL_COLOR_SWATCHES,
   labelSwatchAt,
 } from "./swatches";
 export { Text, type TextProps, type TextSize, type TextTone } from "./Text";
+export { TextField, type TextFieldProps } from "./TextField";
 export { usePalette } from "./theme";
+export {
+  classFontWeight,
+  classIsItalic,
+  classIsMono,
+  type NativeFontStyle,
+  nativeFontStyle,
+} from "./typography";
 export {
   type ButtonSize,
   type ButtonVariant,

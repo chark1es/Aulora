@@ -1,6 +1,7 @@
 import "../src/lib/debug-log";
 import { classifyError, debugLog } from "@aulora/core";
-import { type ErrorBoundaryProps, Stack } from "expo-router";
+import { useFonts } from "expo-font";
+import { type ErrorBoundaryProps, SplashScreen, Stack } from "expo-router";
 import { StatusBar } from "expo-status-bar";
 import { useEffect } from "react";
 import { View } from "react-native";
@@ -10,6 +11,7 @@ import { SafeAreaProvider } from "react-native-safe-area-context";
 import "../global.css";
 import { Button, Text, usePalette } from "@aulora/ui-native";
 import { BottomSheetModalProvider } from "@gorhom/bottom-sheet";
+import { FONT_ASSETS } from "../src/lib/fonts";
 import { configureNotificationHandler } from "../src/lib/push";
 import { useThemeVars } from "../src/lib/theme";
 import { ProfileProvider } from "../src/providers/ProfileProvider";
@@ -41,6 +43,10 @@ if (__DEV__) {
   };
 }
 
+// Keep the splash up until Inter is registered, so the first frame already uses
+// the shipped face and nothing reflows when it arrives.
+void SplashScreen.preventAutoHideAsync();
+
 function ThemedStack() {
   const theme = useThemeVars();
   const palette = usePalette();
@@ -55,9 +61,17 @@ function ThemedStack() {
 }
 
 export default function RootLayout() {
+  const [fontsLoaded, fontError] = useFonts(FONT_ASSETS);
+  const fontsReady = fontsLoaded || fontError !== null;
   useEffect(() => {
     configureNotificationHandler();
   }, []);
+  useEffect(() => {
+    if (fontError !== null) debugLog.record("fonts.error", fontError);
+    if (fontsReady) void SplashScreen.hideAsync();
+  }, [fontsReady, fontError]);
+  // A failed load falls back to the system face rather than blocking launch.
+  if (!fontsReady) return null;
 
   return (
     <GestureHandlerRootView style={{ flex: 1 }}>

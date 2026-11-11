@@ -26,6 +26,7 @@ export interface ModalProps {
   readonly footer?: ReactNode;
   readonly size?: "sm" | "md" | "lg";
   readonly className?: string;
+  readonly backdropClassName?: string;
   /** `danger` tints an icon tile and is used by destructive confirms. */
   readonly tone?: "default" | "danger";
   /** Hides the corner close button, for a fully custom action row. */
@@ -144,9 +145,14 @@ function useModalKeyDown(onClose: () => void, panelRef: RefObject<HTMLDivElement
       const first = focusable.at(0);
       const last = focusable.at(-1);
       if (first === undefined || last === undefined) {
+        event.preventDefault();
+        panel.focus();
         return;
       }
-      if (event.shiftKey && document.activeElement === first) {
+      if (
+        event.shiftKey &&
+        (document.activeElement === first || document.activeElement === panel)
+      ) {
         event.preventDefault();
         last.focus();
       } else if (!event.shiftKey && document.activeElement === last) {
@@ -171,7 +177,7 @@ export function Modal(props: ModalProps) {
   const descriptionId = useId();
   const panelRef = useRef<HTMLDivElement | null>(null);
   const { rendered, entered } = useModalPresence(open, reducedMotion);
-  useModalFocusTrap(open, panelRef, initialFocus);
+  useModalFocusTrap(open && rendered, panelRef, initialFocus);
   const onKeyDown = useModalKeyDown(onClose, panelRef);
 
   if (!rendered) {
@@ -210,7 +216,7 @@ export function Field({
       {children}
       {hint !== undefined && <span className="text-[12px] text-text-muted">{hint}</span>}
       {error !== undefined && (
-        <span role="alert" className="text-[12px] text-danger">
+        <span role="alert" className="text-[12px] text-danger-text">
           {error}
         </span>
       )}

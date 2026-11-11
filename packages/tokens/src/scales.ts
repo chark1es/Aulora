@@ -1,3 +1,5 @@
+import { fontFamilies } from "./fonts";
+
 export const radii = {
   card: "12px",
   input: "10px",
@@ -25,32 +27,6 @@ export const spacing = {
 } as const;
 
 export type SpacingToken = keyof typeof spacing;
-
-export const fontFamilies = {
-  // Native first: SF Pro on Apple platforms, Segoe UI Variable on Windows, then
-  // Inter/Geist where installed. Each OS renders its own system face.
-  sans: [
-    "-apple-system",
-    "BlinkMacSystemFont",
-    '"Segoe UI Variable Text"',
-    '"Segoe UI"',
-    '"Inter"',
-    '"Geist"',
-    "system-ui",
-    "sans-serif",
-  ],
-  mono: [
-    "ui-monospace",
-    '"SF Mono"',
-    '"Geist Mono"',
-    '"JetBrains Mono"',
-    '"Cascadia Code"',
-    "SFMono-Regular",
-    "monospace",
-  ],
-} as const;
-
-export type FontFamilyToken = keyof typeof fontFamilies;
 
 export const fontSizes = {
   xs: "12px",

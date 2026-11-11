@@ -4,7 +4,7 @@
  * React Native renderer.
  */
 
-import type { Palette } from "@aulora/tokens";
+import { fontFeatures, type Palette } from "@aulora/tokens";
 
 export type ButtonVariant = "primary" | "secondary" | "ghost" | "danger";
 export type ButtonSize = "sm" | "md" | "lg";
@@ -174,11 +174,13 @@ export function textClass(options: {
 }
 
 /**
- * The text inside a fixed-height numeric badge. RN centres text differently on
- * each platform: Android types honour `includeFontPadding`/`textAlignVertical`,
- * while iOS centres inside `lineHeight`. Both get the same effective line box,
- * and the iOS baseline keeps a single point of optical correction. Tabular
- * numerals keep a two-digit count from shifting the badge's neighbours.
+ * The text inside a fixed-height numeric badge. Inter's cap band sits exactly
+ * in the middle of its line box, and React Native centres that box inside
+ * `lineHeight` on both platforms (iOS baseline offset, Android half-leading),
+ * so one line box equal to the badge height centres the digits everywhere.
+ * `includeFontPadding: false` drops Android's legacy win-metric padding.
+ * Tabular numerals keep a two-digit count from shifting the badge's neighbours.
+ * `platform` is accepted for older callers and no longer changes the result.
  */
 export function countBadgeTextStyle(options: {
   readonly size: number;
@@ -195,17 +197,16 @@ export function countBadgeTextStyle(options: {
   readonly fontVariant: "tabular-nums"[];
   readonly paddingTop: number;
 } {
-  const ios = options.platform === "ios";
   const fontSize = options.fontSize ?? (options.size >= 18 ? 12 : 11);
   return {
     color: options.color,
     fontSize,
-    lineHeight: options.size - (ios ? 1 : 0),
+    lineHeight: options.size,
     includeFontPadding: false,
     textAlign: "center",
     textAlignVertical: "center",
-    fontVariant: ["tabular-nums"],
-    paddingTop: ios ? 1 : 0,
+    fontVariant: [fontFeatures.tabularNumbers],
+    paddingTop: 0,
   };
 }
 

@@ -11,8 +11,8 @@
       "gzip": 576
     },
     "assets/AdminPanel.js": {
-      "raw": 236288,
-      "gzip": 62144
+      "raw": 260544,
+      "gzip": 68608
     },
     "assets/api.js": {
       "raw": 128,
@@ -82,6 +82,22 @@
       "raw": 100992,
       "gzip": 17600
     },
+    "assets/inter-latin-ext-wght-italic.woff2": {
+      "raw": 101120,
+      "gzip": 100992
+    },
+    "assets/inter-latin-ext-wght-normal.woff2": {
+      "raw": 93632,
+      "gzip": 93632
+    },
+    "assets/inter-latin-wght-italic.woff2": {
+      "raw": 57024,
+      "gzip": 57024
+    },
+    "assets/inter-latin-wght-normal.woff2": {
+      "raw": 53120,
+      "gzip": 53120
+    },
     "assets/index.js": {
       "raw": 109632,
       "gzip": 36160
@@ -89,6 +105,14 @@
     "assets/InviteGuestDialog.js": {
       "raw": 6400,
       "gzip": 2752
+    },
+    "assets/jetbrains-mono-latin-ext-wght-normal.woff2": {
+      "raw": 16768,
+      "gzip": 16768
+    },
+    "assets/jetbrains-mono-latin-wght-normal.woff2": {
+      "raw": 44480,
+      "gzip": 44544
     },
     "assets/KanbanView.js": {
       "raw": 94592,
@@ -132,7 +156,7 @@
     },
     "assets/ProfileSession.js": {
       "raw": 330112,
-      "gzip": 93440
+      "gzip": 94720
     },
     "assets/react.js": {
       "raw": 240640,
@@ -163,8 +187,8 @@
       "gzip": 6592
     },
     "assets/SearchInput.js": {
-      "raw": 1792,
-      "gzip": 896
+      "raw": 1920,
+      "gzip": 1024
     },
     "assets/selfie_segmenter_landscape.tflite": {
       "raw": 275200,
@@ -256,8 +280,8 @@
     }
   },
   "initial": {
-    "raw": 576512,
-    "gzip": 171456
+    "raw": 592896,
+    "gzip": 219712
   },
   "total": {
     "raw": 18495104,

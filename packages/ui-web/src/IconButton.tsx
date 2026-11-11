@@ -14,10 +14,12 @@ const VARIANT_CLASSES = new Map<ButtonVariant, string>([
   ["primary", "bg-accent text-on-accent hover:brightness-110"],
   ["secondary", "border border-border bg-surface-2 text-text hover:bg-surface-3"],
   ["ghost", "bg-transparent text-text-muted hover:bg-surface-3 hover:text-text"],
-  ["danger", "bg-transparent text-text-muted hover:bg-danger/10 hover:text-danger"],
+  ["danger", "bg-transparent text-text-muted hover:bg-danger/10 hover:text-danger-text"],
   ["success", "bg-secondary text-on-accent hover:brightness-110"],
 ]);
 
+// text-centering-ok: square icon buttons hold a single glyph, not a label; the
+// flex box centres the icon itself, so there is no cap band to trim.
 const SIZE_CLASSES = new Map<ButtonSize, string>([
   ["sm", "h-7 w-7 rounded-[7px] text-[13px]"],
   ["md", "h-9 w-9 rounded-input text-[14px]"],

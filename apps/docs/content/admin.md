@@ -16,7 +16,13 @@ logic only hides UI.
 
 ### Roles and the member list
 
-The role editor sets a role's colour, position and permissions. A role can also
+The role editor sets a role's colour, position and permissions. As you pick a
+colour, it shows the role name on a light and a dark theme preview, with the
+contrast ratio and a readable, low or failing label for each. One colour often
+cannot be readable on both themes, so when a theme falls short the editor offers
+a **Make readable on light** or **Make readable on dark** button. It nudges the
+brightness and keeps the hue, and leaves a theme that already passes alone. The
+warnings never block saving. A role can also
 be set to **display its members separately**: its holders then get their own
 section at the top of the member list, above Online and Offline, titled in the
 role's colour. Following the existing presence split, only online members appear

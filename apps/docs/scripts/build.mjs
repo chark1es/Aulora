@@ -26,7 +26,14 @@ import { ENV_REFERENCE_PAGE, renderEnvReference } from "../lib/env-reference.mjs
 import { EXTRA_ENV_VARS, EXTRA_GROUPS } from "../lib/env-reference-extras.mjs";
 import { escapeHtml, renderMarkdown } from "../lib/markdown.mjs";
 import { buildSearchIndex } from "../lib/search-index.mjs";
-import { iconSvg, paletteCss, readIcons, readPalettes } from "../lib/theme.mjs";
+import {
+  fontCss,
+  iconSvg,
+  paletteCss,
+  preloadFonts,
+  readIcons,
+  readPalettes,
+} from "../lib/theme.mjs";
 
 const here = dirname(fileURLToPath(import.meta.url));
 const root = join(here, "..");
@@ -78,6 +85,8 @@ const PAGES = GROUPS.flatMap((group) => group.pages);
 
 const icons = readIcons(readFileSync(join(repo, "packages/tokens/src/icons.ts"), "utf8"));
 const palettes = readPalettes(readFileSync(join(repo, "packages/tokens/src/colors.ts"), "utf8"));
+const fonts = JSON.parse(readFileSync(join(repo, "packages/tokens/src/font-data.json"), "utf8"));
+const fontDir = join(repo, "packages/tokens/fonts/web");
 const envCatalog = readEnvCatalog(repo);
 const envExtras = { groups: EXTRA_GROUPS, variables: EXTRA_ENV_VARS };
 // `blobatar` is a dependency of the avatars package, not the docs app, so load
@@ -118,6 +127,12 @@ function head({ title, description, base, styles }) {
     <title>${escapeHtml(title)}</title>
     <meta name="description" content="${escapeHtml(description)}" />
     <link rel="icon" type="image/svg+xml" href="${base}favicon.svg" />
+${preloadFonts(fonts)
+  .map(
+    (file) =>
+      `    <link rel="preload" href="${base}fonts/${file}" as="font" type="font/woff2" crossorigin />`,
+  )
+  .join("\n")}
     <script type="module" src="${base}site.js"></script>
 ${["tokens.css", "site.css", ...styles].map((file) => `    <link rel="stylesheet" href="${base}${file}" />`).join("\n")}
   </head>`;
@@ -378,7 +393,16 @@ mkdirSync(docsOut, { recursive: true });
 
 cpSync(staticDir, outDir, { recursive: true });
 cpSync(join(repo, "apps/web/public/favicon.svg"), join(outDir, "favicon.svg"));
-writeFileSync(join(outDir, "tokens.css"), paletteCss(palettes), "utf8");
+// Self-hosted Inter and JetBrains Mono, the same files the app ships.
+mkdirSync(join(outDir, "fonts"), { recursive: true });
+for (const face of fonts.web) {
+  cpSync(join(fontDir, face.file), join(outDir, "fonts", face.file));
+}
+writeFileSync(
+  join(outDir, "tokens.css"),
+  `${paletteCss(palettes)}\n${fontCss(fonts, "fonts")}`,
+  "utf8",
+);
 for (const page of LANDING_PAGES) {
   LANDING_IO.get(page.file).write(renderLanding(page));
 }

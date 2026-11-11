@@ -248,3 +248,11 @@ test("a missing assets directory asks for a build", () => {
   fixtures.push(root);
   expect(() => evaluateBundle({ distDir: root, budget: { chunks: {} } })).toThrow("bun run build");
 });
+
+test("font preloads count toward the initial graph; deferred preloads do not", () => {
+  expect(
+    initialSeeds(
+      '<link rel="preload" as="font" href="/assets/inter.woff2"><link rel="preload" as="image" href="/image.png">',
+    ),
+  ).toEqual(["assets/inter.woff2"]);
+});

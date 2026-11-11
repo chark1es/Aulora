@@ -18,7 +18,7 @@ export function ErrorBanner({ message, onDismiss }: ErrorBannerProps) {
       className="flex-row items-center gap-2 border-b border-border px-4 py-2"
       style={{ backgroundColor: `${palette.danger}1F` }}
     >
-      <Text size="sm" tone="danger" className="flex-1">
+      <Text size="sm" tone="danger" className="flex-1 min-w-0">
         {message}
       </Text>
       {onDismiss !== undefined && (

@@ -8,6 +8,22 @@
   overflow-x: clip;
 }
 
+/*
+ * Demo participant colors. Light mode needs darker hues to clear 4.5:1 on the
+ * white chat surface; dark mode needs lighter ones on the near-black surface.
+ */
+:root {
+  --demo-violet: #6b4df0;
+  --demo-teal: #0b8577;
+}
+
+@media (prefers-color-scheme: dark) {
+  :root {
+    --demo-violet: #b3a0ff;
+    --demo-teal: #5dd9c7;
+  }
+}
+
 .landing h1,
 .landing h2 {
   margin: 0;
@@ -352,10 +368,13 @@
 
 .app-row span:first-of-type {
   flex: 1;
+  /* The mock channel list is fixed at 30px; trim the label to the cap band so
+     the row centres the letters (measured dy 0.75px -> 0.00). */
+  text-box: trim-both cap alphabetic;
 }
 
 .app-row.is-active {
-  background: var(--surface-3);
+  background: var(--accent-soft);
   color: var(--text);
   font-weight: 600;
 }
@@ -365,31 +384,22 @@
   opacity: 1;
 }
 
-.app-row.is-active::before {
-  content: "";
-  position: absolute;
-  top: 6px;
-  bottom: 6px;
-  left: 0;
-  width: 3px;
-  border-radius: 0 3px 3px 0;
-  background: var(--accent);
-}
-
 .app-row.is-unread {
   color: var(--text);
   font-weight: 600;
 }
 
+/* Trimmed to the cap band; the padding restores an 18px pill around it. */
 .badge {
-  display: grid;
-  place-items: center;
+  display: block;
   min-width: 18px;
-  height: 18px;
   border-radius: 5px;
   background: var(--accent);
+  padding: calc((18px - 1cap) / 2) 4px;
   color: var(--on-accent);
   font-size: 10.5px;
+  text-align: center;
+  text-box: trim-both cap alphabetic;
 }
 
 .unread-dot {
@@ -1526,10 +1536,12 @@
   display: none;
 }
 
+/* A flex item of its button, trimmed to the cap band; padding sets its height. */
 .beta {
   border-radius: 999px;
   background: var(--accent-soft);
-  padding: 1px 6px;
+  padding: 5px 6px;
+  text-box: trim-both cap alphabetic;
   color: var(--accent);
   font-size: 11px;
   font-weight: 700;

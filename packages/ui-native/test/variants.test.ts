@@ -107,9 +107,9 @@ describe("countBadgeTextStyle", () => {
     expect(android.textAlign).toBe("center");
     expect(android.fontVariant).toEqual(["tabular-nums"]);
 
+    // Inter centres identically on iOS, so there is no per-platform nudge.
     const ios = countBadgeTextStyle({ size: 16, color: "#ffffff", platform: "ios" });
-    expect(ios.lineHeight + ios.paddingTop).toBe(16);
-    expect(ios.paddingTop).toBe(1);
+    expect(ios).toEqual(android);
   });
 
   it("steps the numeral up with a larger badge", () => {
