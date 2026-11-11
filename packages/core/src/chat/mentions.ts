@@ -92,57 +92,89 @@ export interface MentionResolution {
   readonly everyone: boolean;
 }
 
-/** Mask quoted/code text while preserving positions for token consumers. */
-export function broadcastMentionText(body: string): string {
-  let fence: { char: string; length: number } | undefined;
-  const prose = body
+/** A bare URL, ending at whitespace, an angle bracket, a quote or a backtick (\x60). */
+const URL_PATTERN = /(?<![^\s([{])https?:\/\/[^\s<>"'\x60]+/gi;
+const FENCE_MARKER = /^ {0,3}(\x60{3,}|~{3,})(.*)$/;
+
+interface Fence {
+  readonly char: string;
+  readonly length: number;
+  /** Text after the marker; a closing fence has none. */
+  readonly rest: string;
+}
+
+function fenceMarker(line: string): Fence | undefined {
+  const match = FENCE_MARKER.exec(line);
+  if (match === null) return undefined;
+  const [, run = "", rest = ""] = match;
+  return { char: run.charAt(0), length: run.length, rest };
+}
+
+/** Blank quoted lines and fenced code, keeping every line and character position. */
+function maskQuotesAndFences(body: string): string {
+  let fence: Fence | undefined;
+  return body
     .split(/(\r?\n)/)
     .map((line) => {
       if (/^\r?\n$/.test(line)) return line;
       // Quoted lines cannot open or close a fence in the surrounding prose.
       if (/^\s*>/.test(line)) return line.replace(/[^\r\n]/g, " ");
-      const marker = /^ {0,3}(`{3,}|~{3,})(.*)$/.exec(line);
+      const marker = fenceMarker(line);
       if (fence !== undefined) {
         if (
-          marker &&
-          marker[1]?.[0] === fence.char &&
-          marker[1].length >= fence.length &&
-          marker[2]?.trim() === ""
+          marker !== undefined &&
+          marker.char === fence.char &&
+          marker.length >= fence.length &&
+          marker.rest.trim() === ""
         )
           fence = undefined;
         return line.replace(/[^\r\n]/g, " ");
       }
-      if (marker?.[1]) {
-        fence = { char: marker[1][0] ?? "`", length: marker[1].length };
+      if (marker !== undefined) {
+        fence = marker;
         return line.replace(/[^\r\n]/g, " ");
       }
       return line;
     })
     .join("");
-  // Only equal-length backtick runs delimit an inline span; unmatched runs are prose.
-  const runs = [...prose.matchAll(/`+/g)];
+}
+
+/** Blank inline code spans. Only equal-length backtick runs delimit a span; unmatched runs are prose. */
+function maskInlineCode(prose: string): string {
+  const runs = [...prose.matchAll(/\x60+/g)];
   let result = "";
   let start = 0;
-  for (let i = 0; i < runs.length; i++) {
-    const opener = runs[i];
-    if (!opener) continue;
+  // Runs before this index already belong to a masked span.
+  let spanEnd = 0;
+  for (const [i, opener] of runs.entries()) {
+    if (i < spanEnd) continue;
     const end = runs.findIndex((run, j) => j > i && run[0].length === opener[0].length);
-    const closer = runs[end];
-    if (!closer) continue;
+    if (end === -1) continue;
+    const closer = runs.at(end);
+    if (closer === undefined) continue;
     result +=
       prose.slice(start, opener.index) + " ".repeat(closer.index + closer[0].length - opener.index);
     start = closer.index + closer[0].length;
-    i = end;
+    spanEnd = end + 1;
   }
-  return (result + prose.slice(start)).replace(/(?<![^\s([{])https?:\/\/[^\s<>"'`]+/gi, (url) =>
+  return result + prose.slice(start);
+}
+
+/** Mask quoted/code text while preserving positions for token consumers. */
+export function broadcastMentionText(body: string): string {
+  return maskInlineCode(maskQuotesAndFences(body)).replace(URL_PATTERN, (url) =>
     " ".repeat(url.length),
   );
 }
 
+const BROADCAST_TOKEN = /(?<![\w@.-])@(everyone|here)(?![\w.-])/gi;
+
 export function hasBroadcastToken(text: string, name?: "everyone" | "here"): boolean {
-  return new RegExp(`(?<![\\w@.-])@${name ?? "(everyone|here)"}(?![\\w.-])`, "i").test(
-    broadcastMentionText(text),
-  );
+  for (const match of broadcastMentionText(text).matchAll(BROADCAST_TOKEN)) {
+    const [, token = ""] = match;
+    if (name === undefined || token.toLowerCase() === name) return true;
+  }
+  return false;
 }
 
 /**
@@ -357,7 +389,7 @@ export function suppressesBroadcast(
     | undefined,
 ): boolean {
   if ((message.broadcastDirectUserIds ?? message.mentionUserIds)?.includes(userId)) return false;
-  if (!(message.mentionEveryone || message.mentionHere)) return false;
+  if (message.mentionEveryone !== true && message.mentionHere !== true) return false;
   const pref =
     prefs?.find(
       (row) =>

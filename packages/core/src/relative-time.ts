@@ -6,12 +6,14 @@
  * so long lists never pay for `Intl` date formatting.
  */
 
+import type { Fn } from "./function-type";
+
 export interface RelativeTimeOptions {
   /**
    * Formats the absolute date for an item older than a week. Defaults to the
    * viewer's locale as a short month and day (e.g. `Nov 3`).
    */
-  readonly formatAbsolute?: (at: number, now: number) => string;
+  readonly formatAbsolute?: Fn<[at: number, now: number], string>;
 }
 
 const MINUTE_MS = 60_000;

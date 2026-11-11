@@ -14,57 +14,89 @@ export const BROADCAST_BATCH_SIZE = 200;
 export const MASS_PING_LIMIT = 3;
 export const MASS_PING_WINDOW_MS = 60_000;
 
-/** Strip quoted lines and fenced/inline code before recognizing broadcast tokens. */
-export function broadcastTokenText(body: string): string {
-  let fence: { char: string; length: number } | undefined;
-  const prose = body
+/** A bare URL, ending at whitespace, an angle bracket, a quote or a backtick (\x60). */
+const URL_PATTERN = /(?<![^\s([{])https?:\/\/[^\s<>"'\x60]+/gi;
+const FENCE_MARKER = /^ {0,3}(\x60{3,}|~{3,})(.*)$/;
+
+interface Fence {
+  readonly char: string;
+  readonly length: number;
+  /** Text after the marker; a closing fence has none. */
+  readonly rest: string;
+}
+
+function fenceMarker(line: string): Fence | undefined {
+  const match = FENCE_MARKER.exec(line);
+  if (match === null) return undefined;
+  const [, run = "", rest = ""] = match;
+  return { char: run.charAt(0), length: run.length, rest };
+}
+
+/** Drop quoted lines and fenced code; everything else is kept as prose. */
+function stripQuotesAndFences(body: string): string {
+  let fence: Fence | undefined;
+  return body
     .split(/\r?\n/)
     .map((line) => {
       // Quoted lines cannot open or close a fence in the surrounding prose.
       if (/^\s*>/.test(line)) return "";
-      const marker = /^ {0,3}(`{3,}|~{3,})(.*)$/.exec(line);
+      const marker = fenceMarker(line);
       if (fence !== undefined) {
         if (
-          marker &&
-          marker[1]?.[0] === fence.char &&
-          marker[1].length >= fence.length &&
-          marker[2]?.trim() === ""
+          marker !== undefined &&
+          marker.char === fence.char &&
+          marker.length >= fence.length &&
+          marker.rest.trim() === ""
         )
           fence = undefined;
         return "";
       }
-      if (marker?.[1]) {
-        fence = { char: marker[1][0] ?? "`", length: marker[1].length };
+      if (marker !== undefined) {
+        fence = marker;
         return "";
       }
       return line;
     })
     .join("\n");
-  // Only equal-length backtick runs delimit an inline span; unmatched runs are prose.
-  const runs = [...prose.matchAll(/`+/g)];
+}
+
+/** Replace inline code spans with a space. Only equal-length backtick runs delimit a span; unmatched runs are prose. */
+function stripInlineCode(prose: string): string {
+  const runs = [...prose.matchAll(/\x60+/g)];
   let result = "";
   let start = 0;
-  for (let i = 0; i < runs.length; i++) {
-    const opener = runs[i];
-    if (!opener) continue;
+  // Runs before this index already belong to a stripped span.
+  let spanEnd = 0;
+  for (const [i, opener] of runs.entries()) {
+    if (i < spanEnd) continue;
     const end = runs.findIndex((run, j) => j > i && run[0].length === opener[0].length);
-    const closer = runs[end];
-    if (!closer) continue;
+    if (end === -1) continue;
+    const closer = runs.at(end);
+    if (closer === undefined) continue;
     result += `${prose.slice(start, opener.index)} `;
     start = closer.index + closer[0].length;
-    i = end;
+    spanEnd = end + 1;
   }
+  return result + prose.slice(start);
+}
+
+/** Strip quoted lines and fenced/inline code before recognizing broadcast tokens. */
+export function broadcastTokenText(body: string): string {
   // URLs render as links, so a token inside one is never a visible mention; blank them
   // in place (same masking as packages/core) so server and client agree.
-  return (result + prose.slice(start)).replace(/(?<![^\s([{])https?:\/\/[^\s<>"'`]+/gi, (url) =>
+  return stripInlineCode(stripQuotesAndFences(body)).replace(URL_PATTERN, (url) =>
     " ".repeat(url.length),
   );
 }
 
-/** Token boundaries remain /(?<![\\w@.-])@(everyone|here)(?![\\w.-])/i. */
+const BROADCAST_TOKEN = /(?<![\w@.-])@(everyone|here)(?![\w.-])/gi;
+
 export function hasBroadcastToken(body: string, name: "everyone" | "here"): boolean {
-  const text = broadcastTokenText(body);
-  return new RegExp(`(?<![\\w@.-])@${name}(?![\\w.-])`, "i").test(text);
+  for (const match of broadcastTokenText(body).matchAll(BROADCAST_TOKEN)) {
+    const [, token = ""] = match;
+    if (token.toLowerCase() === name) return true;
+  }
+  return false;
 }
 
 export function mentionsViewer(
@@ -79,6 +111,21 @@ export function mentionsViewer(
   if (message.mentionEveryone === true || message.mentionHere === true)
     return message._creationTime >= joinedAt;
   return message.mentionUserIds.includes(userId);
+}
+
+/** One page of candidate rows: channel members for private/DM channels, workspace members otherwise. */
+async function audienceCandidates(
+  ctx: QueryCtx,
+  channel: Doc<"channels">,
+  cursor: string | null,
+  numItems: number,
+) {
+  if (isDmKind(channel.kind) || channel.private === true)
+    return await ctx.db
+      .query("channelMembers")
+      .withIndex("by_channel", (q) => q.eq("channelId", channel._id))
+      .paginate({ numItems, cursor });
+  return await ctx.db.query("members").withIndex("by_joined").paginate({ numItems, cursor });
 }
 
 /** A bounded page, rechecking current access and bans at delivery time. */
@@ -100,32 +147,17 @@ export async function broadcastAudiencePage(
     small ? LEGACY_BROADCAST_EXPANSION_LIMIT + 1 : BROADCAST_BATCH_SIZE,
     BROADCAST_BATCH_SIZE,
   );
-  if (
-    small &&
-    (server?.memberCount ?? 0) > LEGACY_BROADCAST_EXPANSION_LIMIT &&
+  const unrestrictedPublic =
     !channel.private &&
     !isDmKind(channel.kind) &&
     channel.overrides.length === 0 &&
-    overrides.length === 0
-  )
+    overrides.length === 0;
+  if (small && (server?.memberCount ?? 0) > LEGACY_BROADCAST_EXPANSION_LIMIT && unrestrictedPublic)
     return { userIds: [], cursor: null };
-  const page =
-    isDmKind(channel.kind) || channel.private === true
-      ? await ctx.db
-          .query("channelMembers")
-          .withIndex("by_channel", (q) => q.eq("channelId", channelId))
-          .paginate({ numItems, cursor })
-      : await ctx.db.query("members").withIndex("by_joined").paginate({ numItems, cursor });
+  const page = await audienceCandidates(ctx, channel, cursor, numItems);
   // For unrestricted public channels, >100 workspace members already proves
   // compatibility expansion is too large; do not pay per-candidate lookups.
-  if (
-    small &&
-    !channel.private &&
-    !isDmKind(channel.kind) &&
-    channel.overrides.length === 0 &&
-    overrides.length === 0 &&
-    page.page.length > LEGACY_BROADCAST_EXPANSION_LIMIT
-  )
+  if (small && unrestrictedPublic && page.page.length > LEGACY_BROADCAST_EXPANSION_LIMIT)
     return { userIds: [], cursor: null };
   const rows = new Map(page.page.map((row) => [row.userId, row]));
   // Owners need not have a workspace member row. Include them only once;

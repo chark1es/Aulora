@@ -1,4 +1,5 @@
 import { Pressable, View } from "react-native";
+import type { Fn } from "./function-type";
 import { Switch } from "./Switch";
 import { Text } from "./Text";
 import { settingRowClass } from "./variants";
@@ -8,7 +9,7 @@ export interface SwitchRowProps {
   /** One-line detail under the label; also read as the accessibility hint. */
   readonly description?: string | undefined;
   readonly value: boolean;
-  readonly onValueChange: (value: boolean) => void;
+  readonly onValueChange: Fn<[value: boolean], void>;
   readonly disabled?: boolean | undefined;
   /** Extra classes for the row, e.g. a border when it stands alone in a form. */
   readonly className?: string | undefined;

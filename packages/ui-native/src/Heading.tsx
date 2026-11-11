@@ -22,7 +22,7 @@ const LEVEL_CLASSES = new Map<HeadingLevel, string>([
 /** Section heading; `level` picks the type size. */
 export function Heading({ level = 2, className, style, ...rest }: HeadingProps) {
   const classes = cn("text-text", LEVEL_CLASSES.get(level), className ?? "");
-  const flat: TextStyle = StyleSheet.flatten(style) ?? {};
+  const flat: TextStyle = { ...StyleSheet.flatten(style) };
   const font = nativeFontStyle({
     className: classes,
     fontWeight: flat.fontWeight,

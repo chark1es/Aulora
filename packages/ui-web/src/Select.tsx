@@ -121,13 +121,20 @@ export function Select<T extends string>({
     if (!open) return;
     const onPointer = (event: PointerEvent) => {
       const target = event.target as Node;
-      if (rootRef.current?.contains(target) || listRef.current?.contains(target)) return;
+      if (
+        rootRef.current?.contains(target) === true ||
+        listRef.current?.contains(target) === true
+      ) {
+        return;
+      }
       swallowCleanup.current = swallowOutsideClick(event.target);
       restoreFocusRef.current = false;
       setOpen(false);
     };
     document.addEventListener("pointerdown", onPointer);
-    return () => document.removeEventListener("pointerdown", onPointer);
+    return () => {
+      document.removeEventListener("pointerdown", onPointer);
+    };
   }, [open]);
 
   const commitOption = (index: number): void => {

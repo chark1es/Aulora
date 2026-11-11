@@ -92,10 +92,16 @@ async function backfillProgress(ctx: MutationCtx, key: string) {
     .unique();
 }
 
+/** The part of a progress row a save reads; the document itself is not needed. */
+type BackfillProgressRow = Pick<
+  Doc<"migrationProgress">,
+  "_id" | "processed" | "skippedReferences"
+>;
+
 async function saveBackfillProgress(
   ctx: MutationCtx,
   key: string,
-  previous: Doc<"migrationProgress"> | null,
+  previous: BackfillProgressRow | null,
   page: { page: unknown[]; isDone: boolean; continueCursor: string },
   skippedReferences: number,
 ): Promise<void> {

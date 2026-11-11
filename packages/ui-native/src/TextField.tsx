@@ -20,7 +20,7 @@ export const TextField = forwardRef<TextInputInstance, TextFieldProps>(function 
   { className, style, ...rest },
   ref,
 ) {
-  const flat: TextStyle = StyleSheet.flatten(style) ?? {};
+  const flat: TextStyle = { ...StyleSheet.flatten(style) };
   const font = nativeFontStyle({
     className,
     fontWeight: flat.fontWeight,
