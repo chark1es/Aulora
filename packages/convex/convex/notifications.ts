@@ -681,10 +681,7 @@ export const dispatchForMessage = internalAction({
       return { sent: results.reduce((n, r) => n + (r.status === "fulfilled" ? r.value : 0), 0) };
     }
     const leaseToken = crypto.randomUUID();
-    if (
-      broadcast &&
-      !(await ctx.runMutation(internal.notifications.claimDelivery, { ...args, leaseToken }))
-    )
+    if (!(await ctx.runMutation(internal.notifications.claimDelivery, { ...args, leaseToken })))
       return { sent: 0 };
     // Schedule the continuation before delivery. A crash is recovered by the lease sweep.
     if (page.cursor !== null)
@@ -692,10 +689,9 @@ export const dispatchForMessage = internalAction({
         messageId: args.messageId,
         cursor: page.cursor,
       });
-    const results = await settleInChunks(page.recipients, 10, async (userId) => {
+    const results = await settleInChunks(page.recipients, 10, async (userId: string) => {
       const receipt = { messageId: args.messageId, cursor: `recipient:${userId}`, leaseToken };
       if (
-        broadcast &&
         !(await ctx.runMutation(internal.notifications.claimDelivery, {
           ...receipt,
           recoveryCursor: args.cursor ?? "",
@@ -734,11 +730,10 @@ export const dispatchForMessage = internalAction({
         sent += result.sent;
         if (result.failed) complete = false;
       }
-      if (broadcast && complete)
-        await ctx.runMutation(internal.notifications.completeDelivery, receipt);
+      if (complete) await ctx.runMutation(internal.notifications.completeDelivery, receipt);
       return { sent, complete };
     });
-    if (broadcast && results.every((r) => r.status === "fulfilled" && r.value.complete))
+    if (results.every((r) => r.status === "fulfilled" && r.value.complete))
       await ctx.runMutation(internal.notifications.completeDelivery, { ...args, leaseToken });
     return {
       sent: results.reduce((total, r) => total + (r.status === "fulfilled" ? r.value.sent : 0), 0),
@@ -751,7 +746,7 @@ export const dispatchForMessage = internalAction({
  */
 export const dispatchNow = action({
   args: { messageId: v.id("messages") },
-  handler: async (): Promise<DispatchResult> => ({ sent: 0, skipped: "noop" }),
+  handler: (): Promise<DispatchResult> => Promise.resolve({ sent: 0, skipped: "noop" }),
 });
 
 // "mobile" is accepted as a defensive alias for a client that mis-tags its

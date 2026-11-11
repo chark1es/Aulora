@@ -118,7 +118,7 @@ async function collectCandidates(
     async (id) => await channelExists(ctx, id as Id<"channels">),
   );
   // Merge in original order: the first candidate channel governs preferences.
-  const ids = mentionedChannels.filter((_, index) => existingChannels[index]);
+  const ids = mentionedChannels.filter((_, index) => existingChannels.at(index));
   const batches = await mapInChunks(ids, 50, async (id) => {
     const rows = new Map<string, CandidateInfo>();
     await addChannelMembers(ctx, rows, id as Id<"channels">, true);
@@ -274,107 +274,151 @@ export async function resolveMessageRecipients(
   return await filterRecipients(ctx, candidates, message.authorId, Date.now());
 }
 
+interface BroadcastCursorState {
+  phase: "broadcast" | "extra";
+  index: number;
+  cursor: string | null;
+}
+
+interface BroadcastPage {
+  readonly candidates: Map<string, CandidateInfo>;
+  readonly next: string | null;
+}
+
+function encodeBroadcastCursor(state: BroadcastCursorState): string {
+  return BROADCAST_CURSOR_PREFIX + JSON.stringify(state);
+}
+
+function parseBroadcastCursor(cursor: string | null): BroadcastCursorState {
+  // Already scheduled pre-upgrade jobs carry the raw Convex audience cursor.
+  if (cursor === null || !cursor.startsWith(BROADCAST_CURSOR_PREFIX))
+    return { phase: "broadcast", index: 0, cursor };
+  try {
+    const parsed = JSON.parse(cursor.slice(BROADCAST_CURSOR_PREFIX.length));
+    if (
+      (parsed.phase !== "broadcast" && parsed.phase !== "extra") ||
+      !Number.isSafeInteger(parsed.index) ||
+      parsed.index < 0 ||
+      (parsed.cursor !== null && typeof parsed.cursor !== "string")
+    )
+      throw new Error("invalid");
+    return parsed;
+  } catch {
+    throw new ConvexError("Invalid broadcast cursor");
+  }
+}
+
+/** The channels named by `#channel` and category mentions, each once, in mention order. */
+async function mentionedChannelIds(ctx: QueryCtx, message: Doc<"messages">) {
+  const targets = [...new Set(message.mentionChannelIds ?? [])] as Id<"channels">[];
+  for (const categoryId of new Set(message.mentionCategoryIds ?? [])) {
+    for (const channel of await categoryChannels(ctx, categoryId as Id<"categories">))
+      if (!targets.includes(channel._id)) targets.push(channel._id);
+  }
+  return targets;
+}
+
+async function belongsToChannel(ctx: QueryCtx, userId: string, channelId: Id<"channels">) {
+  return (
+    (await ctx.db
+      .query("channelMembers")
+      .withIndex("by_channel_user", (q) => q.eq("channelId", channelId).eq("userId", userId))
+      .unique()) !== null
+  );
+}
+
+async function canViewChannel(ctx: QueryCtx, userId: string, channelId: Id<"channels">) {
+  try {
+    await requireChannelAccessForUser(ctx, userId, channelId, Permission.ViewChannel);
+    return true;
+  } catch (error) {
+    if (error instanceof ConvexError) return false;
+    throw error;
+  }
+}
+
+/** Everyone who can see the source channel, one audience page at a time. */
+async function sourceAudiencePage(
+  ctx: QueryCtx,
+  message: Doc<"messages">,
+  state: BroadcastCursorState,
+  targets: readonly Id<"channels">[],
+): Promise<BroadcastPage> {
+  const direct = new Set(message.broadcastDirectUserIds ?? message.mentionUserIds);
+  const candidates = new Map<string, CandidateInfo>();
+  const page = await broadcastAudiencePage(ctx, message.channelId, state.cursor);
+  await mapInChunks(page.userIds, 25, async (userId) => {
+    let ordinary = direct.has(userId);
+    let prefChannelId = message.channelId;
+    const sourceMember =
+      targets.length === 0 || (await belongsToChannel(ctx, userId, message.channelId));
+    for (const target of targets)
+      if (await belongsToChannel(ctx, userId, target)) {
+        ordinary = true;
+        if (!sourceMember) prefChannelId = target;
+        break;
+      }
+    candidates.set(userId, {
+      channelId: prefChannelId,
+      mentioned: true,
+      massMention: !ordinary,
+      hereOnly: !ordinary && message.mentionHere === true && message.mentionEveryone !== true,
+    });
+  });
+  const next =
+    page.cursor !== null
+      ? encodeBroadcastCursor({ ...state, cursor: page.cursor })
+      : targets.length > 0
+        ? encodeBroadcastCursor({ phase: "extra", index: 0, cursor: null })
+        : null;
+  return { candidates, next };
+}
+
+/** Members of one mentioned channel who are not already reached by an earlier page. */
+async function mentionedChannelPage(
+  ctx: QueryCtx,
+  message: Doc<"messages">,
+  state: BroadcastCursorState,
+  targets: readonly Id<"channels">[],
+): Promise<BroadcastPage | null> {
+  const target = targets.at(state.index);
+  if (target === undefined) return null;
+  const candidates = new Map<string, CandidateInfo>();
+  const page = await ctx.db
+    .query("channelMembers")
+    .withIndex("by_channel", (q) => q.eq("channelId", target))
+    .paginate({ numItems: 200, cursor: state.cursor });
+  await mapInChunks(page.page, 25, async (row) => {
+    // Source viewers are delivered on broadcast pages. Remaining pages are
+    // disjoint by first-mentioned-channel membership, including across retries.
+    if (await canViewChannel(ctx, row.userId, message.channelId)) return;
+    for (const earlier of targets.slice(0, state.index))
+      if (await belongsToChannel(ctx, row.userId, earlier)) return;
+    candidates.set(row.userId, { channelId: target, mentioned: true });
+  });
+  const next = !page.isDone
+    ? encodeBroadcastCursor({ ...state, cursor: page.continueCursor })
+    : state.index + 1 < targets.length
+      ? encodeBroadcastCursor({ phase: "extra", index: state.index + 1, cursor: null })
+      : null;
+  return { candidates, next };
+}
+
 /** One bounded mass-mention page; no per-user notification/participation writes. */
 export async function resolveBroadcastRecipients(
   ctx: QueryCtx,
   message: Doc<"messages">,
   cursor: string | null,
 ) {
-  const targets = [...new Set(message.mentionChannelIds ?? [])] as Id<"channels">[];
-  for (const categoryId of new Set(message.mentionCategoryIds ?? [])) {
-    for (const channel of await categoryChannels(ctx, categoryId as Id<"categories">))
-      if (!targets.includes(channel._id)) targets.push(channel._id);
-  }
-  const direct = new Set(message.broadcastDirectUserIds ?? message.mentionUserIds);
-  async function belongs(userId: string, channelId: Id<"channels">) {
-    return (
-      (await ctx.db
-        .query("channelMembers")
-        .withIndex("by_channel_user", (q) => q.eq("channelId", channelId).eq("userId", userId))
-        .unique()) !== null
-    );
-  }
-  async function sourceVisible(userId: string) {
-    try {
-      await requireChannelAccessForUser(ctx, userId, message.channelId, Permission.ViewChannel);
-      return true;
-    } catch (error) {
-      if (error instanceof ConvexError) return false;
-      throw error;
-    }
-  }
-  let state: { phase: "broadcast" | "extra"; index: number; cursor: string | null } = {
-    phase: "broadcast",
-    index: 0,
-    cursor,
-  };
-  // Already scheduled pre-upgrade jobs carry the raw Convex audience cursor.
-  if (cursor?.startsWith(BROADCAST_CURSOR_PREFIX)) {
-    try {
-      const parsed = JSON.parse(cursor.slice(BROADCAST_CURSOR_PREFIX.length));
-      if (
-        (parsed.phase !== "broadcast" && parsed.phase !== "extra") ||
-        !Number.isSafeInteger(parsed.index) ||
-        parsed.index < 0 ||
-        (parsed.cursor !== null && typeof parsed.cursor !== "string")
-      )
-        throw new Error("invalid");
-      state = parsed;
-    } catch {
-      throw new ConvexError("Invalid broadcast cursor");
-    }
-  }
-  const candidates = new Map<string, CandidateInfo>();
-  let next: string | null;
-  if (state.phase === "broadcast") {
-    const page = await broadcastAudiencePage(ctx, message.channelId, state.cursor);
-    await mapInChunks(page.userIds, 25, async (userId) => {
-      let ordinary = direct.has(userId);
-      let prefChannelId = message.channelId;
-      const sourceMember = targets.length === 0 || (await belongs(userId, message.channelId));
-      for (const target of targets)
-        if (await belongs(userId, target)) {
-          ordinary = true;
-          if (!sourceMember) prefChannelId = target;
-          break;
-        }
-      candidates.set(userId, {
-        channelId: prefChannelId,
-        mentioned: true,
-        massMention: !ordinary,
-        hereOnly: !ordinary && message.mentionHere === true && message.mentionEveryone !== true,
-      });
-    });
-    next =
-      page.cursor !== null
-        ? BROADCAST_CURSOR_PREFIX + JSON.stringify({ ...state, cursor: page.cursor })
-        : targets.length > 0
-          ? BROADCAST_CURSOR_PREFIX + JSON.stringify({ phase: "extra", index: 0, cursor: null })
-          : null;
-  } else {
-    const target = targets[state.index];
-    if (target === undefined) return { recipients: [], cursor: null };
-    const page = await ctx.db
-      .query("channelMembers")
-      .withIndex("by_channel", (q) => q.eq("channelId", target))
-      .paginate({ numItems: 200, cursor: state.cursor });
-    await mapInChunks(page.page, 25, async (row) => {
-      // Source viewers are delivered on broadcast pages. Remaining pages are
-      // disjoint by first-mentioned-channel membership, including across retries.
-      if (await sourceVisible(row.userId)) return;
-      for (const earlier of targets.slice(0, state.index))
-        if (await belongs(row.userId, earlier)) return;
-      candidates.set(row.userId, { channelId: target, mentioned: true });
-    });
-    next = !page.isDone
-      ? BROADCAST_CURSOR_PREFIX + JSON.stringify({ ...state, cursor: page.continueCursor })
-      : state.index + 1 < targets.length
-        ? BROADCAST_CURSOR_PREFIX +
-          JSON.stringify({ phase: "extra", index: state.index + 1, cursor: null })
-        : null;
-  }
+  const targets = await mentionedChannelIds(ctx, message);
+  const state = parseBroadcastCursor(cursor);
+  const page =
+    state.phase === "broadcast"
+      ? await sourceAudiencePage(ctx, message, state, targets)
+      : await mentionedChannelPage(ctx, message, state, targets);
+  if (page === null) return { recipients: [], cursor: null };
   return {
-    recipients: await filterRecipients(ctx, candidates, message.authorId, Date.now()),
-    cursor: next,
+    recipients: await filterRecipients(ctx, page.candidates, message.authorId, Date.now()),
+    cursor: page.next,
   };
 }

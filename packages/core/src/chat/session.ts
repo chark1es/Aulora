@@ -227,39 +227,8 @@ export class ChatSession {
           .filter((message) => message.deletedAt === null)
           .flatMap((message) => message.attachmentIds),
       );
-      if (this.disposed || this.scopeGenerations.get(scopeId) !== generation) return;
-      const committed = new Map(this.latestMessages.map((message) => [message.id, message]));
-      let changed = messages.length === 0;
-      for (const message of messages) {
-        if (this.messageGenerations.get(message.id) !== generation) continue;
-        changed = true;
-        committed.set(message.id, message);
-        if (message.deletedAt !== null) {
-          this.decrypted.delete(message.id);
-          this.bodies.delete(message.id);
-          this.messageAttachments.delete(message.id);
-          this.messageGenerations.delete(message.id);
-          continue;
-        }
-        const attachments = message.attachmentIds.flatMap((id) => {
-          const descriptor = this.fileDescriptors.get(id);
-          return descriptor ? [descriptor] : [];
-        });
-        this.messageAttachments.set(message.id, attachments);
-        this.decrypted.set(message.id, message.body);
-        this.bodies.set(message.id, {
-          t: message.body,
-          ...(message.editedAt !== null ? { edited: true } : {}),
-          ...(message.threadRootId !== null ? { threadRootId: message.threadRootId } : {}),
-          ...(message.replyToId != null ? { replyToId: message.replyToId } : {}),
-          ...(attachments.length > 0 ? { attachments } : {}),
-        });
-      }
-      if (!changed) return;
-      const snapshot = [...committed.values()];
-      this.latestMessages = snapshot;
-      for (const listener of this.messageListeners) listener(snapshot);
-      for (const listener of this.decryptedListeners) listener(snapshot);
+      if (this.isSupersededIngestion(scopeId, generation)) return;
+      this.commitMessages(messages, generation);
     } finally {
       for (const message of messages) {
         if (this.messageGenerations.get(message.id) === generation) {
@@ -270,6 +239,47 @@ export class ChatSession {
         this.scopeGenerations.delete(scopeId);
       }
     }
+  }
+
+  /** Re-checked after each await: the session can be disposed or the scope replaced meanwhile. */
+  private isSupersededIngestion(scopeId: string, generation: number): boolean {
+    return this.disposed || this.scopeGenerations.get(scopeId) !== generation;
+  }
+
+  /** Merge a hydrated snapshot into the committed rows and notify listeners. */
+  private commitMessages(messages: readonly MessagePayload[], generation: number): void {
+    const committed = new Map(this.latestMessages.map((message) => [message.id, message]));
+    let changed = messages.length === 0;
+    for (const message of messages) {
+      if (this.messageGenerations.get(message.id) !== generation) continue;
+      changed = true;
+      committed.set(message.id, message);
+      if (message.deletedAt !== null) {
+        this.decrypted.delete(message.id);
+        this.bodies.delete(message.id);
+        this.messageAttachments.delete(message.id);
+        this.messageGenerations.delete(message.id);
+        continue;
+      }
+      const attachments = message.attachmentIds.flatMap((id) => {
+        const descriptor = this.fileDescriptors.get(id);
+        return descriptor ? [descriptor] : [];
+      });
+      this.messageAttachments.set(message.id, attachments);
+      this.decrypted.set(message.id, message.body);
+      this.bodies.set(message.id, {
+        t: message.body,
+        ...(message.editedAt !== null ? { edited: true } : {}),
+        ...(message.threadRootId !== null ? { threadRootId: message.threadRootId } : {}),
+        ...(message.replyToId != null ? { replyToId: message.replyToId } : {}),
+        ...(attachments.length > 0 ? { attachments } : {}),
+      });
+    }
+    if (!changed) return;
+    const snapshot = [...committed.values()];
+    this.latestMessages = snapshot;
+    for (const listener of this.messageListeners) listener(snapshot);
+    for (const listener of this.decryptedListeners) listener(snapshot);
   }
 
   /** Share each batched file read with every ingestion that needs its ids. */

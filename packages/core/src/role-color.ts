@@ -146,15 +146,16 @@ export function contrastLevel(ratio: number): RoleColorContrastLevel {
   return "fail";
 }
 
-const LEVEL_LABELS: Readonly<Record<RoleColorContrastLevel, string>> = {
-  pass: "Passes AA",
-  low: "Low contrast",
-  fail: "Hard to read",
-};
-
 /** Text for a contrast level; pair it with an icon, never color alone. */
 export function contrastLevelLabel(level: RoleColorContrastLevel): string {
-  return LEVEL_LABELS[level];
+  switch (level) {
+    case "pass":
+      return "Passes AA";
+    case "low":
+      return "Low contrast";
+    case "fail":
+      return "Hard to read";
+  }
 }
 
 /** `4.6:1` with one decimal. Invalid ratios read as `—`. */
@@ -253,11 +254,10 @@ export function suggestReadableRoleColor(
     const candidate = hslToHex(hsl.h, hsl.s, l);
     const checks = roleColorChecks(candidate, surfaces);
     if (
-      checks.every(
-        (check, index) =>
-          check.ratio >= target &&
-          ((initial[index]?.ratio ?? 0) < target || check.ratio >= (initial[index]?.ratio ?? 0)),
-      ) &&
+      checks.every((check, index) => {
+        const initialRatio = initial.at(index)?.ratio ?? 0;
+        return check.ratio >= target && (initialRatio < target || check.ratio >= initialRatio);
+      }) &&
       !sameRgb(candidate, color)
     ) {
       return { color: candidate, deltaLightness: l - hsl.l, passesTarget: true, checks };
@@ -306,7 +306,7 @@ function repairForTheme(
   const checks = roleColorChecks(alone.color, surfaces);
   const blocker = initial.find(
     (check, index) =>
-      check.ratio >= ROLE_COLOR_PASS_RATIO && (checks[index]?.ratio ?? 0) < check.ratio,
+      check.ratio >= ROLE_COLOR_PASS_RATIO && (checks.at(index)?.ratio ?? 0) < check.ratio,
   );
   return blocker === undefined
     ? { theme, suggestion: { ...alone, checks }, blockedBy: null }
@@ -352,7 +352,7 @@ export function describeRoleColorRepairChange(
 ): string[] {
   return suggestion.checks.map((after, index) => {
     const theme = after.theme === "light" ? "Light" : "Dark";
-    return `${theme} ${before[index]?.ratioLabel ?? "—"} → ${after.ratioLabel}`;
+    return `${theme} ${before.at(index)?.ratioLabel ?? "—"} → ${after.ratioLabel}`;
   });
 }
 

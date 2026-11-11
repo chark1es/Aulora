@@ -1,3 +1,5 @@
+import type { Fn } from "./function-type";
+
 /** How long a server-dependent wait runs before we offer recovery actions. */
 export const STUCK_TIMEOUT_MS = 10_000;
 
@@ -13,7 +15,7 @@ export interface StuckTimeout {
   start(): void;
   /** Ends the wait and clears the countdown. */
   stop(): void;
-  subscribe(listener: Listener): () => void;
+  readonly subscribe: Fn<[listener: Listener], () => void>;
 }
 
 export function createStuckTimeout(timeoutMs: number = STUCK_TIMEOUT_MS): StuckTimeout {
