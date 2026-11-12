@@ -109,13 +109,15 @@ function useSignInController(
   useEffect(() => {
     let active = true;
     const consume = () => {
+      const scope = scopeRef.current;
+      if (!scope.active) return;
       void takeStoredAuthHandoffError(cookieStore, siteUrl)
         .then((message) => {
           // The screen may have unmounted or switched accounts while the
           // stored handoff was being read; never copy that text into the next
           // account's diagnostics or state.
-          if (!active || message === null) return;
-          recordDebugFailure("auth.callback", message);
+          if (!active || !scope.active || message === null) return;
+          scope.record("auth.callback", message);
           setState((current) => ({ ...current, error: message }));
         })
         .catch(() => undefined);

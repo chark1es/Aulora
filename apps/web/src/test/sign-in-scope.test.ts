@@ -1,6 +1,11 @@
 import { readFileSync } from "node:fs";
 import { resolve } from "node:path";
-import { debugLog, recordDebugFailure } from "@aulora/core";
+import {
+  activateProfileInStore,
+  debugLog,
+  type ProfileStore,
+  recordDebugFailure,
+} from "@aulora/core";
 import ts from "typescript";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { createAccountScope } from "../lib/account-scope";
@@ -29,6 +34,10 @@ function controller(platform: "mobile" | "web") {
   const provider = vi.fn();
   const notify = vi.fn();
   const clear = vi.fn(async () => undefined);
+  const handoff = vi.fn(() =>
+    platform === "mobile" ? (Promise.resolve(null) as Promise<string | null>) : null,
+  );
+  let notifyCallback = () => {};
   const bindings = {
     useState(initial: unknown) {
       const index = slot++;
@@ -59,9 +68,12 @@ function controller(platform: "mobile" | "web") {
     authFailureDetail: (error: unknown) => (error instanceof Error ? error.message : String(error)),
     describeAuthError: (error: unknown) => String(error),
     takeAuthErrorFromUrl: () => null,
-    takeStoredAuthHandoffError: () => (platform === "mobile" ? Promise.resolve(null) : null),
+    takeStoredAuthHandoffError: handoff,
     clearStoredAuthHandoffError: clear,
-    subscribeAuthError: () => () => undefined,
+    subscribeAuthError: (callback: () => void) => {
+      notifyCallback = callback;
+      return () => {};
+    },
     startProviderSignIn: provider,
     chooseProviderDelivery: async () => "external",
     notifyAuthChanged: notify,
@@ -78,6 +90,8 @@ function controller(platform: "mobile" | "web") {
   const store = {};
   return {
     patches,
+    handoff,
+    callback: () => notifyCallback(),
     provider,
     notify,
     clear,
@@ -175,4 +189,48 @@ it.each(["reject", "result", "success"])("drops a late mobile provider %s", asyn
   expect(debugLog.report("B", "")).not.toContain("A-only provider sentinel");
   expect(boundary.patches).not.toHaveBeenCalled();
   expect(boundary.notify).not.toHaveBeenCalled();
+});
+
+it("drops a stored mobile callback completed during workspace persistence before teardown", async () => {
+  const boundary = controller("mobile");
+  const read = deferred<string | null>();
+  boundary.handoff.mockReturnValue(read.promise);
+  boundary.render({});
+  const write = deferred<void>();
+  const store = {
+    getActive: async () => ({ id: "A" }),
+    setActive: () => write.promise,
+  } as unknown as ProfileStore;
+  const activation = activateProfileInStore(store, "B");
+  await Promise.resolve();
+  boundary.patches.mockClear();
+  read.resolve("Sign-in timed out, please try again");
+  await Promise.resolve();
+  await Promise.resolve();
+  expect(debugLog.snapshot()).toEqual([]);
+  expect(boundary.patches).not.toHaveBeenCalled();
+  write.resolve();
+  await activation;
+  boundary.unmount();
+  expect(debugLog.report("B", "")).not.toContain("auth.callback");
+});
+
+it("records a stored callback for the current mobile account, including after a failed switch", async () => {
+  const boundary = controller("mobile");
+  boundary.render({});
+  await Promise.resolve();
+  const store = {
+    getActive: async () => ({ id: "A" }),
+    setActive: async () => {
+      throw new Error("storage failed");
+    },
+  } as unknown as ProfileStore;
+  await expect(activateProfileInStore(store, "B")).rejects.toThrow("storage failed");
+  debugLog.clear();
+  boundary.handoff.mockReturnValue(Promise.resolve("Sign-in timed out, please try again"));
+  boundary.callback();
+  await Promise.resolve();
+  expect(debugLog.report("A", "")).toContain("auth.callback");
+  expect(debugLog.report("A", "")).toContain("Sign-in timed out");
+  boundary.unmount();
 });

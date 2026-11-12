@@ -147,9 +147,11 @@ function useSignInForm(actions: AuthActions, siteUrl: string) {
   useEffect(
     () =>
       subscribeAuthError(() => {
+        const scope = scopeRef.current;
+        if (!scope.active) return;
         const stored = takeStoredAuthHandoffError(siteUrl);
         if (stored !== null) {
-          recordDebugFailure("auth.callback", stored);
+          scope.record("auth.callback", stored);
           setState((current) => ({ ...current, error: describeAuthError(stored) }));
         }
       }),
