@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import type { Fn } from "../../lib/function-type";
 import { useSuggestionLayout } from "./ComposerSuggestions";
 import { type ComposerInputRef, useComposerInputRef } from "./composer-input-ref";
@@ -47,6 +47,9 @@ function useComposerParts(props: ComposerProps) {
   const [error, setError] = useState<string | null>(null);
   const [menuOpen, setMenuOpen] = useState(false);
   const inputRef = useComposerInputRef();
+  // Shared between opening and cancelling the attach sheet: the sheet unmounts
+  // its handlers every render, so the intent has to live on a ref.
+  const menuFocus = useRef(false);
   const hint = useMentionHint({
     value,
     channelId,
@@ -68,6 +71,7 @@ function useComposerParts(props: ComposerProps) {
     menuOpen,
     setMenuOpen,
     inputRef,
+    menuFocus,
     hint,
     typing,
     attach,
