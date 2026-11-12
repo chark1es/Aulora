@@ -3,6 +3,7 @@ import { debugLog, recordDebugFailure, resetProviderToken } from "@aulora/core";
 import { convexClient } from "@convex-dev/better-auth/client/plugins";
 import { genericOAuthClient } from "better-auth/client/plugins";
 import { createAuthClient } from "better-auth/react";
+import { type AccountScope, createAccountScope } from "./account-scope";
 import {
   clearSessionToken,
   isCrossOrigin,
@@ -97,6 +98,7 @@ export function authActionsFromClient(
   client: AuloraAuthClient,
   beforeSignOut?: () => Promise<void>,
   onSignOutFailure?: () => Promise<void>,
+  scope: AccountScope = createAccountScope(recordDebugFailure),
 ): AuthActions {
   return {
     async signInEmail({ email, password }) {
@@ -118,6 +120,7 @@ export function authActionsFromClient(
       );
     },
     async signOut() {
+      if (!scope.active) return { error: null };
       // Clear the Convex token cache before the network call: the next token
       // fetch may happen while the sign-out request is still in flight, and a
       // transient failure then must not replay the account that is leaving.
@@ -140,20 +143,23 @@ export function authActionsFromClient(
           clearTimeout(timer);
         });
       }
+      if (!scope.active) return { error: null };
       resetProviderToken(client);
       try {
         const result = toResult(await client.signOut());
+        if (!scope.active) return result;
         if (result.error === null) debugLog.clear();
         else {
           // A handled sign-out failure never reaches the global handlers, so
           // record it here before the session token is reused by the next
           // attempt.
-          recordDebugFailure("auth.signout", result.error.message ?? "Sign out failed");
+          scope.record("auth.signout", result.error.message ?? "Sign out failed");
           recover();
         }
         return result;
       } catch (error) {
-        recordDebugFailure("auth.signout", error);
+        if (!scope.active) return { error: null };
+        scope.record("auth.signout", error);
         recover();
         throw error;
       }

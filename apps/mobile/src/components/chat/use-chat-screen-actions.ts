@@ -13,8 +13,8 @@ import {
 } from "../../lib/channel-role-overrides";
 import { selectionFeedback } from "../../lib/haptics";
 import { planChannelEdit } from "../../lib/permissions";
+import { useActionError } from "../../lib/use-action-error";
 import type { NewChannelKind } from "./CreateChannelSheet";
-import { errorMessage } from "./chat-screen-types";
 import type { PaneIndex } from "./SwipePanes";
 import type { ThreadInboxItem } from "./ThreadsInbox";
 import type { ChatScreenData } from "./use-chat-screen-data";
@@ -129,6 +129,7 @@ function useChatScreenCreation(
   data: ChatScreenData,
   openChannel: (channelId: string) => Promise<void>,
 ) {
+  const { format: errorMessage, scope: actionScope } = useActionError(data.ownUserId);
   const {
     runtime,
     setCreateBusy,
@@ -166,17 +167,26 @@ function useChatScreenCreation(
           ...(input.categoryId !== undefined ? { categoryId: input.categoryId } : {}),
           private: input.private,
         });
-        setCreateOpen(false);
+        if (actionScope.active) setCreateOpen(false);
         if (input.kind !== "voice") {
           await openChannel(newId);
         }
       } catch (error) {
+        if (!actionScope.active) return;
         setCreateError(errorMessage(error));
       } finally {
-        setCreateBusy(false);
+        if (actionScope.active) setCreateBusy(false);
       }
     },
-    [runtime, openChannel, setCreateBusy, setCreateError, setCreateOpen],
+    [
+      runtime,
+      openChannel,
+      setCreateBusy,
+      setCreateError,
+      setCreateOpen,
+      actionScope.active,
+      errorMessage,
+    ],
   );
 
   const createNewCategory = useCallback(
@@ -188,14 +198,15 @@ function useChatScreenCreation(
       setCreateError(null);
       try {
         await createCategory(runtime.client, name);
-        setCreateOpen(false);
+        if (actionScope.active) setCreateOpen(false);
       } catch (error) {
+        if (!actionScope.active) return;
         setCreateError(errorMessage(error));
       } finally {
-        setCreateBusy(false);
+        if (actionScope.active) setCreateBusy(false);
       }
     },
-    [runtime, setCreateBusy, setCreateError, setCreateOpen],
+    [runtime, setCreateBusy, setCreateError, setCreateOpen, actionScope.active, errorMessage],
   );
 
   const submitChannelEdit = useCallback(
@@ -261,11 +272,12 @@ function useChatScreenCreation(
             userIds: plan.blockedUserIds,
           });
         }
-        setEditChannelModal(null);
+        if (actionScope.active) setEditChannelModal(null);
       } catch (error) {
+        if (!actionScope.active) return;
         setEditChannelError(errorMessage(error));
       } finally {
-        setEditChannelBusy(false);
+        if (actionScope.active) setEditChannelBusy(false);
       }
     },
     [
@@ -279,6 +291,8 @@ function useChatScreenCreation(
       setEditChannelBusy,
       setEditChannelError,
       setEditChannelModal,
+      errorMessage,
+      actionScope.active,
     ],
   );
 
@@ -348,6 +362,7 @@ function useChatScreenChannelActions(data: ChatScreenData) {
 }
 
 function useChatScreenModeration(data: ChatScreenData) {
+  const { format: errorMessage, scope: actionScope } = useActionError(data.ownUserId);
   const { runtime, setModerationBusy, setModerationError, setMemberActionsFor } = data;
 
   const runModeration = useCallback(
@@ -359,14 +374,22 @@ function useChatScreenModeration(data: ChatScreenData) {
       setModerationError(null);
       try {
         await task(runtime.client);
-        setMemberActionsFor(null);
+        if (actionScope.active) setMemberActionsFor(null);
       } catch (error) {
+        if (!actionScope.active) return;
         setModerationError(errorMessage(error));
       } finally {
-        setModerationBusy(false);
+        if (actionScope.active) setModerationBusy(false);
       }
     },
-    [runtime, setModerationBusy, setModerationError, setMemberActionsFor],
+    [
+      runtime,
+      setModerationBusy,
+      setModerationError,
+      setMemberActionsFor,
+      errorMessage,
+      actionScope.active,
+    ],
   );
 
   return { runModeration };
@@ -403,6 +426,7 @@ function useChatScreenSignOut(data: ChatScreenData) {
  * profile, sessions, devices, and notification preferences are removed.
  */
 function useChatScreenDeleteAccount(data: ChatScreenData) {
+  const { format: errorMessage, scope: actionScope } = useActionError(data.ownUserId);
   const { onDeleteAccount, unregisterPush, recentKey } = data;
   const confirmDeleteAccount = useCallback(() => {
     Alert.alert(
@@ -418,6 +442,7 @@ function useChatScreenDeleteAccount(data: ChatScreenData) {
               .then(() => AsyncStorage.removeItem(recentKey).catch(() => undefined))
               .then(onDeleteAccount)
               .catch((cause: unknown) => {
+                if (!actionScope.active) return;
                 Alert.alert(
                   "Couldn’t delete account",
                   `${errorMessage(cause)} If you signed in a while ago, sign out, sign back in, and try again.`,
@@ -427,7 +452,7 @@ function useChatScreenDeleteAccount(data: ChatScreenData) {
         },
       ],
     );
-  }, [onDeleteAccount, unregisterPush, recentKey]);
+  }, [onDeleteAccount, unregisterPush, recentKey, errorMessage, actionScope.active]);
   return { confirmDeleteAccount };
 }
 

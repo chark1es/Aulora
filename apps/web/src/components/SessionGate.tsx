@@ -20,6 +20,7 @@ import type { ConnectionRecovery } from "../lib/connection-recovery";
 import { logAuthState, useRemountLog } from "../lib/remount-debug";
 import { clearSessionToken, readSessionToken } from "../lib/session-token";
 import { storageScope } from "../lib/storage-scope";
+import { useAccountScope } from "../lib/use-account-scope";
 import { useLastDefined } from "../lib/use-last-defined";
 import { useServerRecovery } from "../lib/use-server-recovery";
 import { useStuckTimeout } from "../lib/use-stuck-timeout";
@@ -74,6 +75,7 @@ export function SessionGate({ profile, authClient, client, connection }: Session
   const clientVersion = useClientVersionPolicy();
   const outdatedServer = useOutdatedServer();
   const session = authClient.useSession();
+  const accountScope = useAccountScope(`${profile.id}:${session.data?.user.id ?? "signed-out"}`);
   // Read setup state from the existing public-config subscription rather than
   // a new query, so a new client can still reach the sign-in form against a
   // slightly older backend that does not know `setup.state` yet. Keep the last
@@ -86,8 +88,9 @@ export function SessionGate({ profile, authClient, client, connection }: Session
         authClient,
         () => revokeWebPushDevice(client, session.data?.user.id),
         () => restoreWebPushDevice(client, session.data?.user.id),
+        accountScope,
       ),
-    [authClient, client, session.data?.user.id],
+    [authClient, client, session.data?.user.id, accountScope],
   );
   const {
     isAuthenticated: convexAuthenticated,

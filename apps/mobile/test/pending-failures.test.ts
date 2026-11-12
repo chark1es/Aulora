@@ -9,7 +9,9 @@ vi.mock("react-native", () => ({
   View: ({ children }: { children: ReactElement }) => children,
 }));
 vi.mock("@aulora/ui-native", () => ({ Text: "Text", Button: "Button" }));
-vi.mock("../src/components/chat/chat-screen-types", () => ({ errorMessage: () => "Try again." }));
+vi.mock("../src/lib/use-action-error", () => ({
+  useActionError: () => ({ show: (title: string) => state.alert(title, "Try again.") }),
+}));
 
 it("requires destructive confirmation before discarding a failed send", () => {
   const discardSend = vi.fn(async () => undefined);

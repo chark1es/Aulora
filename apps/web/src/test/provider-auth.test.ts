@@ -1,5 +1,11 @@
-import { createProviderAuth, debugLog, setProviderTokenIdentity } from "@aulora/core";
+import {
+  createProviderAuth,
+  debugLog,
+  recordDebugFailure,
+  setProviderTokenIdentity,
+} from "@aulora/core";
 import { describe, expect, it, vi } from "vitest";
+import { createAccountScope } from "../lib/account-scope";
 import type { AuloraAuthClient } from "../lib/auth-client";
 import { authActionsFromClient } from "../lib/auth-client";
 
@@ -318,3 +324,28 @@ describe("createProviderAuth", () => {
     await expect(provider.client.convex.token()).resolves.toEqual(TRANSIENT);
   });
 });
+
+it.each(["throw", "result", "success"])(
+  "scopes deferred signout %s to the originating account",
+  async (settles) => {
+    let resolve!: (value: unknown) => void;
+    let reject!: (error: unknown) => void;
+    const request = new Promise<unknown>((res, rej) => {
+      resolve = res;
+      reject = rej;
+    });
+    const client = { signOut: () => request } as unknown as AuloraAuthClient;
+    const scope = createAccountScope(recordDebugFailure);
+    const recover = vi.fn();
+    const pending = authActionsFromClient(client, undefined, recover, scope).signOut();
+    scope.close();
+    debugLog.clear();
+    debugLog.record("B", "current B");
+    if (settles === "throw") reject(new Error("A-only signout sentinel"));
+    else resolve({ error: settles === "success" ? null : { message: "A-only signout sentinel" } });
+    await pending;
+    expect(debugLog.report("B", "")).not.toContain("A-only signout sentinel");
+    expect(debugLog.report("B", "")).toContain("current B");
+    expect(recover).not.toHaveBeenCalled();
+  },
+);

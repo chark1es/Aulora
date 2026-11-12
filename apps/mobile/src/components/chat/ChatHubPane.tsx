@@ -2,11 +2,11 @@ import { hasPermission, Permission } from "@aulora/core";
 import { Alert, View } from "react-native";
 import { pickFromLibrary } from "../../lib/attachments";
 import { selectionFeedback } from "../../lib/haptics";
+import { useActionError } from "../../lib/use-action-error";
 import { KanbanScreen } from "../kanban/KanbanScreen";
 import { useScreenInsets } from "../layout/ScreenContainer";
 import { NotesScreen } from "../notes/NotesScreen";
 import { ChannelList } from "./ChannelList";
-import { errorMessage } from "./chat-screen-types";
 import { DirectList } from "./DirectList";
 import { HubDock, PaneHeader, RoundButton, useDockClearance } from "./HubPane";
 import { SearchView } from "./SearchView";
@@ -181,6 +181,7 @@ function ChatHubThreadsTab({ model }: { readonly model: ChatScreenModel }) {
 }
 
 function ChatHubSearchTab({ model }: { readonly model: ChatScreenModel }) {
+  const actionError = useActionError(model.ownUserId);
   return (
     <SearchView
       channels={model.channels}
@@ -200,7 +201,7 @@ function ChatHubSearchTab({ model }: { readonly model: ChatScreenModel }) {
             model.setJumpToMessageId(messageId ?? null);
           })
           .catch((cause: unknown) => {
-            Alert.alert("Couldn’t open conversation", errorMessage(cause));
+            actionError.show("Couldn’t open conversation", cause);
           });
       }}
     />

@@ -18,10 +18,9 @@ afterEach(() => {
 });
 
 describe("handled failures", () => {
-  it("records a caught action failure when it becomes a message", () => {
+  it("formats errors without globally recording account-owned failures", () => {
     expect(errorMessage(new Error("could not send the message"))).not.toBe("");
-    expect(debugLog.snapshot().map((entry) => entry.source)).toEqual(["ui.action"]);
-    expect(debugLog.snapshot()[0]?.detail).toContain("could not send the message");
+    expect(debugLog.snapshot()).toEqual([]);
   });
 });
 

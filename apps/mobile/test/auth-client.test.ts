@@ -1,5 +1,7 @@
-import { debugLog } from "@aulora/core";
+import { debugLog, recordDebugFailure } from "@aulora/core";
+import { Alert } from "react-native";
 import { beforeEach, describe, expect, it, vi } from "vitest";
+import { createAccountScope } from "../src/lib/account-scope";
 import type { AuloraAuthClient } from "../src/lib/auth-client";
 import { startProviderSignIn } from "../src/lib/auth-client";
 import { PENDING_HANDOFF_KEY, readPendingAuthHandoff } from "../src/lib/auth-handoff";
@@ -264,3 +266,35 @@ describe("account debug log isolation", () => {
     ).toContain("Delete is disabled");
   });
 });
+
+for (const action of ["signOut", "deleteAccount"] as const) {
+  for (const settles of ["throw", "result", "success"] as const) {
+    it(`drops late ${action} ${settles} diagnostics and alerts after switching accounts`, async () => {
+      let resolve!: (value: unknown) => void;
+      let reject!: (error: unknown) => void;
+      const request = new Promise<unknown>((res, rej) => {
+        resolve = res;
+        reject = rej;
+      });
+      const client = {
+        signOut: () => request,
+        deleteUser: () => request,
+      } as unknown as AuloraAuthClient;
+      const scope = createAccountScope(recordDebugFailure);
+      const pending = (
+        action === "signOut" ? signOutAction(client, scope) : deleteAccountAction(client, scope)
+      )();
+      scope.close();
+      debugLog.clear();
+      debugLog.record("B", "current B");
+      vi.mocked(Alert.alert).mockClear();
+      if (settles === "throw") reject(new Error("A-only account sentinel"));
+      else
+        resolve({ error: settles === "success" ? null : { message: "A-only account sentinel" } });
+      await pending;
+      expect(debugLog.report("B", "")).not.toContain("A-only account sentinel");
+      expect(debugLog.report("B", "")).toContain("current B");
+      expect(Alert.alert).not.toHaveBeenCalled();
+    });
+  }
+}
