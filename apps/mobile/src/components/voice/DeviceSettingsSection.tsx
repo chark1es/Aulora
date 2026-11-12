@@ -1,17 +1,19 @@
 import type { MediaDeviceInfo, VoiceDeviceSettings } from "@aulora/core";
-import {
-  Button,
-  Icon,
-  SegmentedControl,
-  SettingRow,
-  SwitchRow,
-  Text,
-  usePalette,
-} from "@aulora/ui-native";
+import { Button, SegmentedControl, SettingRow, SwitchRow, Text } from "@aulora/ui-native";
+import { useEffect, useState } from "react";
 import { ScrollView, View } from "react-native";
 import { selectionFeedback } from "../../lib/haptics";
+import {
+  deviceChoices,
+  looksLikeBluetooth,
+  reconcileDeviceId,
+  SYSTEM_DEFAULT_DEVICE,
+  selectedDeviceLabel,
+} from "../../lib/voice/media-device-choices";
+import { useBluetoothAudioName } from "../../lib/voice/use-bluetooth-audio";
 import { useVoice } from "../../providers/VoiceProvider";
 import { ListGroup, ListHeader, ListRow } from "../chat/List";
+import { PickerSheet } from "../kanban/PickerSheet";
 
 const RESOLUTIONS: readonly VoiceDeviceSettings["videoResolution"][] = ["360p", "720p", "1080p"];
 const RESOLUTION_OPTIONS = RESOLUTIONS.map((value) => ({ value, label: value }));
@@ -23,49 +25,65 @@ function DevicePicker({
   kind,
   devices,
   selected,
+  bluetoothName,
   onSelect,
+  onOpen,
 }: {
   readonly label: string;
   readonly kind: MediaDeviceInfo["kind"];
   readonly devices: readonly MediaDeviceInfo[];
   readonly selected: string | null;
+  readonly bluetoothName: string | undefined;
   readonly onSelect: (_deviceId: string | null) => void;
+  readonly onOpen: () => void;
 }) {
-  const palette = usePalette();
-  const options = devices.filter((device) => device.kind === kind);
-  const select = (deviceId: string | null) => {
-    selectionFeedback();
-    onSelect(deviceId);
-  };
-  const check = <Icon name="check" size={18} color={palette.accent} />;
+  const [open, setOpen] = useState(false);
+  const current = selectedDeviceLabel(devices, kind, selected);
+  const choices = deviceChoices(devices, kind, kind === "videoinput" ? undefined : bluetoothName);
+  const available = devices.some((device) => device.kind === kind);
+  const detail =
+    selected === null
+      ? kind === "videoinput"
+        ? undefined
+        : bluetoothName === undefined
+          ? "Follows this device's audio route"
+          : `Bluetooth · ${bluetoothName}`
+      : looksLikeBluetooth(current)
+        ? "Bluetooth"
+        : undefined;
   return (
     <View>
       <ListHeader title={label} />
       <ListGroup inset={16}>
         <ListRow
-          title="System default"
-          selected={selected === null}
-          trailing={selected === null ? check : undefined}
+          title={current}
+          subtitle={detail}
+          chevron
           onPress={() => {
-            select(null);
+            onOpen();
+            setOpen(true);
           }}
         />
-        {options.map((device) => (
-          <ListRow
-            key={device.deviceId}
-            title={device.label}
-            selected={selected === device.deviceId}
-            trailing={selected === device.deviceId ? check : undefined}
-            onPress={() => {
-              select(device.deviceId);
-            }}
-          />
-        ))}
       </ListGroup>
-      {options.length === 0 && (
+      {!available && (
         <Text size="xs" tone="muted" className="px-1 pt-1.5">
           No devices detected yet.
         </Text>
+      )}
+      {open && (
+        <PickerSheet
+          title={label}
+          options={choices}
+          selected={[selected ?? SYSTEM_DEFAULT_DEVICE]}
+          onChange={(next) => {
+            const id = next.at(0) ?? SYSTEM_DEFAULT_DEVICE;
+            selectionFeedback();
+            onSelect(id === SYSTEM_DEFAULT_DEVICE ? null : id);
+          }}
+          onClose={() => {
+            setOpen(false);
+          }}
+        />
       )}
     </View>
   );
@@ -301,10 +319,40 @@ function JoinSection({
  * inside the members sheet’s voice settings modal.
  */
 export function DeviceSettingsSection() {
-  const { settings, devices, updateSettings, micLevelAvailable, callId } = useVoice();
+  const { settings, devices, updateSettings, micLevelAvailable, callId, refreshDevices } =
+    useVoice();
+  const bluetooth = useBluetoothAudioName();
   const pushToTalkUnavailable = callId !== null && !micLevelAvailable;
   const update: UpdateSettings = (patch) => {
     void updateSettings(patch);
+  };
+
+  // A saved device can vanish between sessions (a Bluetooth headset is the
+  // common case). Clear it so the next call follows the system route instead of
+  // asking for an exact device id the platform cannot satisfy.
+  useEffect(() => {
+    if (devices.length === 0) return;
+    const inputDeviceId = reconcileDeviceId(devices, "audioinput", settings.inputDeviceId);
+    const outputDeviceId = reconcileDeviceId(devices, "audiooutput", settings.outputDeviceId);
+    const cameraDeviceId = reconcileDeviceId(devices, "videoinput", settings.cameraDeviceId);
+    if (
+      inputDeviceId !== settings.inputDeviceId ||
+      outputDeviceId !== settings.outputDeviceId ||
+      cameraDeviceId !== settings.cameraDeviceId
+    ) {
+      void updateSettings({ inputDeviceId, outputDeviceId, cameraDeviceId });
+    }
+  }, [
+    devices,
+    settings.inputDeviceId,
+    settings.outputDeviceId,
+    settings.cameraDeviceId,
+    updateSettings,
+  ]);
+
+  const refresh = () => {
+    void refreshDevices();
+    bluetooth.refresh();
   };
 
   return (
@@ -314,6 +362,8 @@ export function DeviceSettingsSection() {
         kind="audioinput"
         devices={devices}
         selected={settings.inputDeviceId}
+        bluetoothName={bluetooth.name}
+        onOpen={refresh}
         onSelect={(deviceId) => {
           update({ inputDeviceId: deviceId });
         }}
@@ -323,6 +373,8 @@ export function DeviceSettingsSection() {
         kind="videoinput"
         devices={devices}
         selected={settings.cameraDeviceId}
+        bluetoothName={undefined}
+        onOpen={refresh}
         onSelect={(deviceId) => {
           update({ cameraDeviceId: deviceId });
         }}
@@ -332,6 +384,8 @@ export function DeviceSettingsSection() {
         kind="audiooutput"
         devices={devices}
         selected={settings.outputDeviceId}
+        bluetoothName={bluetooth.name}
+        onOpen={refresh}
         onSelect={(deviceId) => {
           update({ outputDeviceId: deviceId });
         }}
