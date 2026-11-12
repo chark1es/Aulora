@@ -128,15 +128,50 @@ export interface CookieFetchOptions {
  * Only absolute http(s) URLs are eligible. `Origin` must be a bare origin, and
  * Better Auth compares it with the trusted list exactly.
  */
+function requestUrl(input: RequestInfo | URL): string | null {
+  return typeof input === "string"
+    ? input
+    : input instanceof URL
+      ? input.toString()
+      : typeof (input as { url?: unknown }).url === "string"
+        ? (input as { url: string }).url
+        : null;
+}
+
+function isRequestInput(input: RequestInfo | URL): input is Request {
+  if (typeof Request !== "undefined" && input instanceof Request) {
+    return true;
+  }
+  // React Native and test doubles can supply a Request-shaped object from
+  // another realm, where `instanceof` does not hold.
+  return (
+    typeof input === "object" &&
+    input !== null &&
+    typeof (input as { url?: unknown }).url === "string" &&
+    typeof (input as { headers?: unknown }).headers === "object" &&
+    (input as { headers: unknown }).headers !== null
+  );
+}
+
+/**
+ * The headers a Request-init pair actually carries. `fetch` treats
+ * `init.headers` as a replacement for the Request's own headers, so the wrapper
+ * must copy the same effective set before adding cookies and the Origin. Copying
+ * only `init.headers` silently dropped a Request input's Origin, content type and
+ * every other caller header whenever no `init` was supplied.
+ */
+function effectiveHeaders(input: RequestInfo | URL, init?: RequestInit): Headers {
+  if (init?.headers !== undefined) {
+    return new Headers(init.headers);
+  }
+  if (isRequestInput(input)) {
+    return new Headers(input.headers);
+  }
+  return new Headers();
+}
+
 export function requestOrigin(input: RequestInfo | URL): string | null {
-  const url =
-    typeof input === "string"
-      ? input
-      : input instanceof URL
-        ? input.toString()
-        : typeof (input as { url?: unknown }).url === "string"
-          ? (input as { url: string }).url
-          : null;
+  const url = requestUrl(input);
   if (url === null) {
     return null;
   }
@@ -156,7 +191,7 @@ export function createCookieFetch(options: CookieFetchOptions): typeof fetch {
   const baseFetch = options.baseFetch ?? globalThis.fetch;
   return async (input: RequestInfo | URL, init?: RequestInit): Promise<Response> => {
     const stored = await options.store.getItem(AUTH_COOKIE_KEY);
-    const headers = new Headers(init?.headers);
+    const headers = effectiveHeaders(input, init);
     if (stored !== null && stored.length > 0 && !headers.has("cookie")) {
       headers.set("cookie", stored);
     }
@@ -196,7 +231,7 @@ export function createCookieFetch(options: CookieFetchOptions): typeof fetch {
       if (refreshed !== null && refreshed.length > 0) {
         await options.store.setItem(options.tokenKey, refreshed);
       }
-      if (String(input).includes("/sign-out")) {
+      if (requestUrl(input)?.includes("/sign-out") === true) {
         await options.store.removeItem(options.tokenKey);
       }
     }
