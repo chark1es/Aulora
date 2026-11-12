@@ -135,7 +135,9 @@ function useSignInForm(actions: AuthActions, siteUrl: string) {
   useEffect(() => {
     const scope = createAccountScope(recordDebugFailure);
     scopeRef.current = scope;
-    return () => scope.close();
+    return () => {
+      scope.close();
+    };
   }, [actions, siteUrl]);
 
   const patch = (next: Partial<FormState>) => {
@@ -148,7 +150,7 @@ function useSignInForm(actions: AuthActions, siteUrl: string) {
     () =>
       subscribeAuthError(() => {
         const scope = scopeRef.current;
-        if (!scope.active) return;
+        if (!scope.isActive()) return;
         const stored = takeStoredAuthHandoffError(siteUrl);
         if (stored !== null) {
           scope.record("auth.callback", stored);
@@ -160,11 +162,11 @@ function useSignInForm(actions: AuthActions, siteUrl: string) {
 
   async function run(key: string, task: () => Promise<AuthResult>) {
     const scope = scopeRef.current;
-    if (!scope.active) return;
+    if (!scope.isActive()) return;
     patch({ error: null, pending: key });
     try {
       const result = await task();
-      if (!scope.active) return;
+      if (!scope.isActive()) return;
       if (result.error !== null) {
         scope.record("auth.signin", authFailureDetail(result.error));
         patch({
@@ -177,11 +179,11 @@ function useSignInForm(actions: AuthActions, siteUrl: string) {
         clearStoredAuthHandoffError();
       }
     } catch (error) {
-      if (!scope.active) return;
+      if (!scope.isActive()) return;
       scope.record("auth.signin", authFailureDetail(error));
       patch({ error: "Could not reach the workspace. Try again." });
     } finally {
-      if (scope.active) patch({ pending: null });
+      if (scope.isActive()) patch({ pending: null });
     }
   }
 
@@ -621,10 +623,12 @@ export function SignInScreen({
     const scope = scopeRef.current;
     void prepareOAuthStart(profile.siteUrl, returnUrl)
       .then(({ challenge, tx }) => {
-        if (!scope.active) return;
+        if (!scope.isActive()) return;
         beginOAuth(oauthStartUrl(profile.siteUrl, provider, returnUrl, challenge, tx), "in-app");
       })
-      .catch((error: unknown) => scope.record("auth.provider", authFailureDetail(error)));
+      .catch((error: unknown) => {
+        scope.record("auth.provider", authFailureDetail(error));
+      });
   };
 
   const confirmChoice = () => {
@@ -635,14 +639,16 @@ export function SignInScreen({
     const scope = scopeRef.current;
     void prepareOAuthStart(profile.siteUrl, returnUrl)
       .then(({ challenge, tx }) => {
-        if (!scope.active) return;
+        if (!scope.isActive()) return;
         beginOAuth(
           oauthStartUrl(profile.siteUrl, choice.provider, returnUrl, challenge, tx),
           delivery,
         );
         setChoice(null);
       })
-      .catch((error: unknown) => scope.record("auth.provider", authFailureDetail(error)));
+      .catch((error: unknown) => {
+        scope.record("auth.provider", authFailureDetail(error));
+      });
   };
 
   return (

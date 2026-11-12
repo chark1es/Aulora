@@ -96,6 +96,7 @@ function makeReplyHandler(
   model: ChatScreenModel,
   channelId: string,
   threadRootId: string,
+  // eslint-disable-next-line no-unused-vars -- names in a TypeScript callback signature, not unused runtime variables.
   showError: (title: string, error: unknown) => void,
 ) {
   return async ({

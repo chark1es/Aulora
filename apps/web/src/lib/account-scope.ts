@@ -10,6 +10,8 @@ import { captureDebugAccountOwnership } from "@aulora/core";
  */
 export interface AccountScope {
   readonly active: boolean;
+  /** Re-read mutable lifetime/ownership after an await without readonly narrowing. */
+  isActive: () => boolean;
   /** Records a failure only while this account's work is still current. */
   record: (_source: string, _error: unknown) => void;
   close: () => void;
@@ -22,6 +24,9 @@ export function createAccountScope(
   const ownsAccount = captureDebugAccountOwnership();
   return {
     get active() {
+      return active && ownsAccount();
+    },
+    isActive() {
       return active && ownsAccount();
     },
     record(source, error) {

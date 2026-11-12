@@ -290,6 +290,7 @@ export function ChatProvider({ client, userId, children }: ChatProviderProps) {
     const active = outboxRef.current;
     const chat = runtimeRef.current;
     const scope = scopeRef.current;
+    if (scope === undefined) return;
     if (active === undefined || chat === undefined || AppState.currentState !== "active") return;
     try {
       // Nothing is due once the queue is empty or every item has permanently
@@ -300,7 +301,7 @@ export function ChatProvider({ client, userId, children }: ChatProviderProps) {
     } catch (error) {
       // Listing or refreshing can fail after the account changed; the captured
       // scope keeps that failure out of the next account's report.
-      scope?.record("outbox.flush", error);
+      scope.record("outbox.flush", error);
     }
   }, [refreshOutbox]);
   useEffect(() => {

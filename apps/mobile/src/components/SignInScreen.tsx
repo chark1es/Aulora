@@ -96,7 +96,9 @@ function useSignInController(
   useEffect(() => {
     const scope = createAccountScope(recordDebugFailure);
     scopeRef.current = scope;
-    return () => scope.close();
+    return () => {
+      scope.close();
+    };
   }, [authClient, cookieStore, siteUrl]);
 
   const patch = (next: Partial<FormState>) => {
@@ -110,13 +112,13 @@ function useSignInController(
     let active = true;
     const consume = () => {
       const scope = scopeRef.current;
-      if (!scope.active) return;
+      if (!scope.isActive()) return;
       void takeStoredAuthHandoffError(cookieStore, siteUrl)
         .then((message) => {
           // The screen may have unmounted or switched accounts while the
           // stored handoff was being read; never copy that text into the next
           // account's diagnostics or state.
-          if (!active || !scope.active || message === null) return;
+          if (!active || !scope.isActive() || message === null) return;
           scope.record("auth.callback", message);
           setState((current) => ({ ...current, error: message }));
         })
@@ -132,11 +134,11 @@ function useSignInController(
 
   async function run(key: string, task: () => Promise<AuthResult>) {
     const scope = scopeRef.current;
-    if (!scope.active) return;
+    if (!scope.isActive()) return;
     patch({ error: null, pending: key });
     try {
       const result = await task();
-      if (!scope.active) return;
+      if (!scope.isActive()) return;
       if (result.error !== null) {
         scope.record("auth.signin", result.error.message ?? "Auth request failed");
         patch({
@@ -146,11 +148,11 @@ function useSignInController(
         await clearStoredAuthHandoffError(cookieStore).catch(() => undefined);
       }
     } catch (error) {
-      if (!scope.active) return;
+      if (!scope.isActive()) return;
       scope.record("auth.signin", error);
       patch({ error: "Could not reach the workspace. Try again." });
     } finally {
-      if (scope.active) patch({ pending: null });
+      if (scope.isActive()) patch({ pending: null });
     }
   }
 
@@ -166,9 +168,9 @@ function useSignInController(
 
   async function signInWithProvider(providerId: string, type: "oauth" | "oidc", name: string) {
     const scope = scopeRef.current;
-    if (!scope.active) return;
+    if (!scope.isActive()) return;
     const delivery = await chooseProviderDelivery(name);
-    if (!scope.active || delivery === null) {
+    if (!scope.isActive() || delivery === null) {
       return;
     }
     patch({ error: null, pending: providerId });
@@ -181,7 +183,7 @@ function useSignInController(
         type,
         delivery,
       );
-      if (!scope.active) return;
+      if (!scope.isActive()) return;
       if (result.status === "error") {
         scope.record("auth.provider", result.message);
         patch({ error: result.message });
@@ -189,11 +191,11 @@ function useSignInController(
         notifyAuthChanged();
       }
     } catch (error) {
-      if (!scope.active) return;
+      if (!scope.isActive()) return;
       scope.record("auth.provider", error);
       patch({ error: "Could not open the sign-in browser." });
     } finally {
-      if (scope.active) patch({ pending: null });
+      if (scope.isActive()) patch({ pending: null });
     }
   }
 

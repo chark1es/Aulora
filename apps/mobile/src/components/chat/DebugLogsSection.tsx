@@ -89,7 +89,7 @@ export function DebugLogEntries({ entries }: { readonly entries: readonly DebugL
             className="gap-1 border-b border-border pb-2 last:border-b-0 last:pb-0"
           >
             <View className="flex-row flex-wrap items-baseline justify-between gap-2">
-              <Text mono size="sm" className="font-medium text-text" selectable>
+              <Text mono size="sm" className="text-text" selectable>
                 {entry.source}
               </Text>
               <Text size="sm" tone="muted" selectable>

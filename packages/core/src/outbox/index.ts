@@ -151,6 +151,7 @@ export interface FlushOptions {
    * deliberately omits the message text, attachments and mentions so debug
    * capture cannot record queued plaintext or fire on every backoff retry.
    */
+  // eslint-disable-next-line no-unused-vars -- parameter name documents a callback type; TypeScript/Biome check runtime uses.
   readonly onFailure?: (_failure: OutboxFailure) => void;
 }
 
