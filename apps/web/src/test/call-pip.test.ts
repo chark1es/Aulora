@@ -285,3 +285,26 @@ describe("isPipWindowLocation", () => {
     expect(isPipWindowLocation({ hash: "#pip/extra" })).toBe(false);
   });
 });
+
+describe("transcription flag on the picture-in-picture state", () => {
+  const base = {
+    call: { kind: "voice" as const, startedAt: 1, participants: [] },
+    local: { muted: false, deafened: false, video: false, sharingScreen: false },
+    remoteSpeaking: new Set<string>(),
+    localSpeaking: false,
+    selfUserId: "me",
+    canSpeak: true,
+    canVideo: true,
+    canStream: true,
+    nameOf: () => "x",
+  };
+
+  it("carries the flag across the window boundary only when set", () => {
+    const on = buildPipState({ ...base, call: { ...base.call, transcribing: true } });
+    expect(on?.transcribing).toBe(true);
+    expect(parsePipState(JSON.parse(JSON.stringify(on)))?.transcribing).toBe(true);
+    const off = buildPipState(base);
+    expect(off).not.toHaveProperty("transcribing");
+    expect(parsePipState(JSON.parse(JSON.stringify(off)))).not.toHaveProperty("transcribing");
+  });
+});

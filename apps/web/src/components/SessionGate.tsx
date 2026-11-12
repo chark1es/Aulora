@@ -1,5 +1,12 @@
 /* eslint-disable no-unused-vars -- the base rule reports parameter names in type signatures; Biome checks real unused code */
-import { clientVersionState, type ServerProfile } from "@aulora/core";
+import {
+  clientVersionState,
+  debugLog,
+  resetProviderToken,
+  type ServerProfile,
+  setProviderTokenIdentity,
+  subscribeAuthChanged,
+} from "@aulora/core";
 import { Spinner, Text } from "@aulora/ui-web";
 import type { ConvexReactClient } from "convex/react";
 import { useConvexAuth, useQuery } from "convex/react";
@@ -7,15 +14,15 @@ import { lazy, Suspense, useCallback, useEffect, useMemo, useRef, useState } fro
 import { api } from "../../../../packages/convex/convex/_generated/api";
 import { type AuloraAuthClient, type AuthActions, authActionsFromClient } from "../lib/auth-client";
 import { isInvalidSessionError } from "../lib/auth-errors";
-import { subscribeAuthChanged } from "../lib/auth-events";
 import { CLIENT_VERSION } from "../lib/client-version";
 import type { ConnectionRecovery } from "../lib/connection-recovery";
-import { resetProviderToken, setProviderTokenIdentity } from "../lib/provider-auth";
 import { logAuthState, useRemountLog } from "../lib/remount-debug";
 import { clearSessionToken, readSessionToken } from "../lib/session-token";
+import { storageScope } from "../lib/storage-scope";
 import { useLastDefined } from "../lib/use-last-defined";
 import { useServerRecovery } from "../lib/use-server-recovery";
 import { useStuckTimeout } from "../lib/use-stuck-timeout";
+import { restoreWebPushDevice, revokeWebPushDevice } from "../lib/web-push";
 import {
   ClientVersionNotice,
   ClientVersionRequired,
@@ -28,6 +35,7 @@ import {
   type ConnectionRecoveryActionsProps,
 } from "./ConnectionRecoveryActions";
 import { ChatSessionShell, type ChatSessionShellRecovery } from "./chat/ChatSessionShell";
+import { LegacyRecoveryNotice } from "./LegacyRecoveryNotice";
 import { MembershipGate } from "./MembershipGate";
 import { QueryErrorBoundary } from "./QueryErrorBoundary";
 import { SignInScreen } from "./SignInScreen";
@@ -53,7 +61,7 @@ export interface SessionGateProps {
 
 /**
  * How long a signed-out gate waits for `server.publicConfig` before showing the
- * sign-in form with a retry notice. The form is usable from the profile's
+ * sign-in form with a retry notice. The form is usable from the profile’s
  * cached auth snapshot, so waiting forever only blocks people whose config
  * query is down.
  */
@@ -71,7 +79,15 @@ export function SessionGate({ profile, authClient, client, connection }: Session
   // answer across a reconnect so a momentarily missing config can never unmount
   // the signed-in tree or flash the setup screen.
   const setupConfig = useLastDefined(useQuery(api.server.publicConfig, {}));
-  const actions = useMemo(() => authActionsFromClient(authClient), [authClient]);
+  const actions = useMemo(
+    () =>
+      authActionsFromClient(
+        authClient,
+        () => revokeWebPushDevice(client, session.data?.user.id),
+        () => restoreWebPushDevice(client, session.data?.user.id),
+      ),
+    [authClient, client, session.data?.user.id],
+  );
   const {
     isAuthenticated: convexAuthenticated,
     isRefreshing: convexRefreshing,
@@ -83,7 +99,7 @@ export function SessionGate({ profile, authClient, client, connection }: Session
   const droppedInvalidSession = useRef(false);
   const refetchSession = session.refetch;
 
-  // An OAuth finish in an external browser stores a token outside this client's
+  // An OAuth finish in an external browser stores a token outside this client’s
   // session atom. Refetch instead of reloading the page.
   useEffect(
     () =>
@@ -111,7 +127,7 @@ export function SessionGate({ profile, authClient, client, connection }: Session
   // Bind the Convex token cache to this Better Auth session. Sign-out resets it
   // synchronously (see `authActionsFromClient`); this covers an account switch
   // inside one client, where the next transient failure would otherwise serve
-  // the previous person's token.
+  // the previous person’s token.
   const sessionId = session.data?.session?.id;
   const providerIdentity = user === undefined ? null : `${sessionId ?? ""}:${user.id}`;
   useEffect(() => {
@@ -173,6 +189,7 @@ export function SessionGate({ profile, authClient, client, connection }: Session
       return;
     }
     droppedInvalidSession.current = true;
+    debugLog.clear();
     resetProviderToken(authClient);
     const storedToken = readSessionToken(profile.siteUrl) !== null;
     clearSessionToken(profile.siteUrl);
@@ -258,7 +275,7 @@ export function SessionGate({ profile, authClient, client, connection }: Session
         profile={profile}
         actions={actions}
         onSwitchServer={switchServer}
-        notice={configMissing ? "Can't reach the server config — retrying" : undefined}
+        notice={configMissing ? "Can’t reach the workspace config. Retrying" : undefined}
         onRetryNotice={configMissing ? retryConfig : undefined}
       />
     );
@@ -346,6 +363,10 @@ function SignedInShell({
           signedInAs={signedInUser.email ?? signedInUser.name ?? null}
           onSignOut={signOut}
         >
+          <LegacyRecoveryNotice
+            key={storageScope(profile.baseUrl, user.id)}
+            scope={storageScope(profile.baseUrl, user.id)}
+          />
           <ChatSessionShell
             client={client}
             workspaceName={profile.name}
@@ -370,10 +391,10 @@ function SessionUnreachable({
   return (
     <div className="pane flex flex-1 flex-col items-center justify-center gap-3 px-6 text-center">
       <Text size="md" className="font-medium">
-        Can't reach {profileName}
+        Can’t reach {profileName}
       </Text>
       <Text tone="muted" size="sm">
-        You're still signed in. Check your connection and try again.
+        You’re still signed in. Check your connection and try again.
       </Text>
       <ConnectionRecoveryActions {...recovery} />
     </div>

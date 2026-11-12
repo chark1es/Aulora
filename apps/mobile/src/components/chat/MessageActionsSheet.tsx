@@ -1,9 +1,15 @@
-import { hasPermission, type MessagePayload, messageTime, Permission } from "@aulora/core";
-import { Button, Icon, Text, usePalette } from "@aulora/ui-native";
+import {
+  hasPermission,
+  type MessagePayload,
+  messageTime,
+  Permission,
+  userFacingError,
+} from "@aulora/core";
+import { Button, Icon, nativeFontStyle, Text, usePalette } from "@aulora/ui-native";
 import { BottomSheetTextInput } from "@gorhom/bottom-sheet";
 import * as Clipboard from "expo-clipboard";
 import { useEffect, useState } from "react";
-import { Alert, Pressable, View } from "react-native";
+import { Alert, Pressable, useWindowDimensions, View } from "react-native";
 import type { ChatSurfaceRuntime } from "../../lib/chat-surface";
 import { selectionFeedback } from "../../lib/haptics";
 import { BottomSheet } from "./BottomSheet";
@@ -60,9 +66,7 @@ export function MessageActionsSheet(props: {
     void task()
       .then(onClose)
       .catch((cause: unknown) => {
-        setError(
-          cause instanceof Error ? cause.message : "Couldn't update this message. Try again.",
-        );
+        setError(userFacingError(cause));
       })
       .finally(() => {
         setBusy(false);
@@ -73,6 +77,10 @@ export function MessageActionsSheet(props: {
     run(() => runtime.session.toggleReaction(message.channelId, message.id, value));
   }
 
+  // On a short phone at large text a 200dp field pushed Save under the keyboard;
+  // the field scrolls inside instead.
+  const { height: windowHeight } = useWindowDimensions();
+  const editMaxHeight = Math.round(Math.max(72, Math.min(200, windowHeight * 0.2)));
   const inputStyle = {
     color: palette.text,
     backgroundColor: palette["surface-2"],
@@ -98,12 +106,20 @@ export function MessageActionsSheet(props: {
             value={draft}
             onChangeText={setDraft}
             placeholderTextColor={palette["text-muted"]}
-            style={[inputStyle, { minHeight: 96, maxHeight: 200, textAlignVertical: "top" }]}
+            style={[
+              nativeFontStyle({}),
+              inputStyle,
+              {
+                minHeight: Math.min(96, editMaxHeight),
+                maxHeight: editMaxHeight,
+                textAlignVertical: "top",
+              },
+            ]}
           />
           <View className="flex-row gap-2">
             <Button
               variant="secondary"
-              className="flex-1"
+              className="flex-1 min-w-0"
               onPress={() => {
                 setMode("actions");
               }}
@@ -111,7 +127,7 @@ export function MessageActionsSheet(props: {
               Cancel
             </Button>
             <Button
-              className="flex-1"
+              className="flex-1 min-w-0"
               loading={busy}
               disabled={draft.trim().length === 0 || draft === text}
               onPress={() => {
@@ -132,12 +148,12 @@ export function MessageActionsSheet(props: {
             value={emoji}
             onChangeText={setEmoji}
             maxLength={16}
-            style={inputStyle}
+            style={[nativeFontStyle({}), inputStyle]}
           />
           <View className="flex-row gap-2">
             <Button
               variant="secondary"
-              className="flex-1"
+              className="flex-1 min-w-0"
               onPress={() => {
                 setMode("actions");
               }}
@@ -145,7 +161,7 @@ export function MessageActionsSheet(props: {
               Back
             </Button>
             <Button
-              className="flex-1"
+              className="flex-1 min-w-0"
               loading={busy}
               disabled={emoji.trim().length === 0}
               onPress={() => {
@@ -164,7 +180,7 @@ export function MessageActionsSheet(props: {
             </Text>
           )}
           {hasPermission(permissions, Permission.AddReactions) && (
-            <View className="flex-row justify-between">
+            <View className="flex-row flex-wrap justify-between gap-2">
               {QUICK_REACTIONS.map((reaction) => (
                 <Pressable
                   key={reaction}
@@ -174,7 +190,7 @@ export function MessageActionsSheet(props: {
                   onPress={() => {
                     react(reaction);
                   }}
-                  className="h-12 w-12 items-center justify-center rounded-pill bg-surface-2 active:bg-surface-3"
+                  className="min-h-12 min-w-12 items-center justify-center rounded-pill bg-surface-2 active:bg-surface-3"
                 >
                   <Text style={{ fontSize: 22, lineHeight: 28 }} maxFontSizeMultiplier={1.3}>
                     {reaction}
@@ -188,7 +204,7 @@ export function MessageActionsSheet(props: {
                 onPress={() => {
                   setMode("emoji");
                 }}
-                className="h-12 w-12 items-center justify-center rounded-pill bg-surface-2 active:bg-surface-3"
+                className="min-h-12 min-w-12 items-center justify-center rounded-pill bg-surface-2 active:bg-surface-3"
               >
                 <Icon name="plus" size={20} color={palette["text-muted"]} />
               </Pressable>

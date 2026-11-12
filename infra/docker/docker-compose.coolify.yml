@@ -234,6 +234,7 @@ services:
     networks:
       - default
       - bots
+      - transcription
 
   convex-dashboard:
     # Pinned by digest (the dashboard image has no stable version tag).
@@ -270,8 +271,16 @@ services:
       # The real per-instance well-known document is written here by `setup`.
       - web-well-known:/var/www/.well-known:ro
     depends_on:
+      setup:
+        condition: service_completed_successfully
       convex-backend:
         condition: service_healthy
+    # nginx proxies the call-audio WebSocket (`/transcribe/`) to `transcriber`,
+    # so `web` must share that network (the transcriber only exists when its
+    # compose profile is enabled).
+    networks:
+      - default
+      - transcription
     healthcheck:
       test: ["CMD-SHELL", "wget -q -O /dev/null http://127.0.0.1/ || exit 1"]
       interval: 10s
@@ -341,6 +350,10 @@ services:
       BOT_JWT_PUBLIC_JWK: ${BOT_JWT_PUBLIC_JWK:-}
       BOT_JWT_PRIVATE_JWK_B64: ${BOT_JWT_PRIVATE_JWK_B64:-}
       BOT_JWT_PUBLIC_JWK_B64: ${BOT_JWT_PUBLIC_JWK_B64:-}
+      # --- transcription (optional profile; setup generates the token) ---
+      # Same Coolify-generated value as the `transcriber` service below.
+      # nosemgrep: codacy.yaml.security.hard-coded-tokens
+      TRANSCRIBER_TOKEN: ${SERVICE_PASSWORD_64_TRANSCRIBER:-}
       # --- auth ---
       # Overridable keys have no default here: unset stays unset on the Convex
       # deployment so the owner's Environment override is never shadowed. Set
@@ -491,6 +504,50 @@ services:
       timeout: 5s
       retries: 3
       start_period: 20s
+    logging: *logging
+
+  # Optional transcription engine (profile `transcription`, OFF by default).
+  # Same boundary as the plain compose file: non-root, read-only, only the
+  # `transcription` network, models in a named volume, no baked model.
+  transcriber:
+    build:
+      context: ../..
+      dockerfile: infra/transcriber/Dockerfile
+    image: aulora-transcriber:local
+    profiles: ["transcription"]
+    restart: unless-stopped
+    environment:
+      # Same Coolify-generated value as `setup` above.
+      # nosemgrep: codacy.yaml.security.hard-coded-tokens
+      TRANSCRIBER_TOKEN: ${SERVICE_PASSWORD_64_TRANSCRIBER:-}
+      CONVEX_INGEST_URL: http://convex-backend:3211/transcription/ingest
+      CONVEX_MODEL_STATUS_URL: http://convex-backend:3211/transcription/model
+      CONVEX_HELLO_URL: http://convex-backend:3211/transcription/hello
+      TRANSCRIBER_PREAUTH_MAX_CONNECTIONS: ${TRANSCRIBER_PREAUTH_MAX_CONNECTIONS:-128}
+      MODELS_DIR: /models
+      WHISPER_DEVICE: ${WHISPER_DEVICE:-cpu}
+      WHISPER_COMPUTE_TYPE: ${WHISPER_COMPUTE_TYPE:-int8}
+      TRANSCRIBER_MAX_STREAMS: ${TRANSCRIBER_MAX_STREAMS:-32}
+    volumes:
+      - transcriber-models:/models
+    read_only: true
+    tmpfs:
+      - /tmp:size=64m,mode=1777
+      - /home/transcriber:size=8m,mode=755
+    cap_drop:
+      - ALL
+    security_opt:
+      - no-new-privileges:true
+    pids_limit: 512
+    mem_limit: ${TRANSCRIBER_MEMORY_LIMIT:-2g}
+    cpus: ${TRANSCRIBER_CPUS:-2}
+    networks:
+      - transcription
+    depends_on:
+      convex-backend:
+        condition: service_healthy
+      setup:
+        condition: service_completed_successfully
     logging: *logging
 
   # Optional project push relay for official store builds. Profile `push-relay`.
@@ -659,9 +716,12 @@ volumes:
   # Persists generated secrets across redeploys. Back this up (it holds the KEK
   # AULORA_ENCRYPTION_KEY); losing it makes existing ciphertext unreadable.
   setup-state:
+  transcriber-models:
 
-# Dedicated network for bot processes: only `bot-runner` and `convex-backend`
-# join it, so a bot has no route to postgres, minio or the web container.
+# Dedicated networks. `bots` is shared only by `bot-runner` and
+# `convex-backend`; `transcription` only by `transcriber` and `convex-backend`.
 networks:
   bots:
+    driver: bridge
+  transcription:
     driver: bridge

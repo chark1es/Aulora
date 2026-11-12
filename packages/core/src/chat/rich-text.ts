@@ -1,3 +1,4 @@
+import { broadcastMentionText } from "./mentions.js";
 /**
  * The message Markdown subset, parsed into plain data so each renderer (React
  * DOM, React Native) maps segments onto its own elements. Nothing here
@@ -23,6 +24,8 @@ export type RichBlock =
 
 export interface RichTextOptions {
   /** Display names (and mentionable role names) that `@name` may refer to. */
+  readonly mentionEveryone?: boolean;
+  readonly mentionHere?: boolean;
   readonly mentionNames?: readonly string[];
   /** Channel names that `#name` may refer to. */
   readonly channelNames?: readonly string[];
@@ -47,9 +50,12 @@ function nameMatcher(names: readonly string[]): NameMatcher | null {
   return unique.length === 0 ? null : { names: unique };
 }
 
-function mentionMatcher(names: readonly string[]): NameMatcher | null {
-  const base = nameMatcher(names);
-  return base === null ? null : { names: ["here", "everyone", ...base.names] };
+function mentionMatcher(names: readonly string[], options: RichTextOptions): NameMatcher | null {
+  return nameMatcher([
+    ...(options.mentionHere === true ? ["here"] : []),
+    ...(options.mentionEveryone === true ? ["everyone"] : []),
+    ...names.filter((name) => !["everyone", "here"].includes(name.toLowerCase())),
+  ]);
 }
 
 /** Matches `prefix + name` at the start of `rest`, longest name first. */
@@ -86,7 +92,7 @@ function matchNameAt(
 /** Splits text into fenced code blocks and inline-formatted paragraphs. */
 export function parseRichText(text: string, options: RichTextOptions = {}): RichBlock[] {
   const blocks: RichBlock[] = [];
-  const mentions = mentionMatcher(options.mentionNames ?? []);
+  const mentions = mentionMatcher(options.mentionNames ?? [], options);
   const channels = nameMatcher(options.channelNames ?? []);
   let lastIndex = 0;
   for (const match of text.matchAll(FENCE)) {
@@ -122,6 +128,7 @@ export function parseInline(
   text: string,
   mentions: InlineMatcher | null = null,
   channels: InlineMatcher | null = null,
+  broadcastText = broadcastMentionText(text),
 ): InlineSegment[] {
   const out: InlineSegment[] = [];
   let buffer = "";
@@ -165,7 +172,12 @@ export function parseInline(
         flush();
         out.push({
           type: "bold",
-          children: parseInline(text.slice(index + 2, end), mentions, channels),
+          children: parseInline(
+            text.slice(index + 2, end),
+            mentions,
+            channels,
+            broadcastText.slice(index + 2, end),
+          ),
         });
         index = end + 2;
         continue;
@@ -178,18 +190,37 @@ export function parseInline(
         flush();
         out.push({
           type: "italic",
-          children: parseInline(text.slice(index + 1, end), mentions, channels),
+          children: parseInline(
+            text.slice(index + 1, end),
+            mentions,
+            channels,
+            broadcastText.slice(index + 1, end),
+          ),
         });
         index = end + 1;
         continue;
       }
     }
 
-    if (char === "@" && atWordStart && mentions !== null) {
+    if (
+      char === "@" &&
+      (atWordStart || !/[\w@.-]/.test(text.charAt(index - 1))) &&
+      broadcastText.charAt(index) === "@" &&
+      mentions !== null
+    ) {
       const match = matchNameAt(rest, "@", mentions);
       if (match !== null) {
-        flush();
         const lower = match.name.toLowerCase();
+        if (
+          (lower === "here" || lower === "everyone") &&
+          (!broadcastText.slice(index).toLowerCase().startsWith(`@${lower}`) ||
+            /[\w.-]/.test(text.charAt(index + match.length)))
+        ) {
+          buffer += text.slice(index, index + match.length);
+          index += match.length;
+          continue;
+        }
+        flush();
         const broadcast = lower === "here" || lower === "everyone";
         out.push({
           type: "mention",
@@ -201,7 +232,7 @@ export function parseInline(
       }
     }
 
-    if (char === "#" && atWordStart && channels !== null) {
+    if (char === "#" && atWordStart && broadcastText.charAt(index) === "#" && channels !== null) {
       const match = matchNameAt(rest, "#", channels);
       if (match !== null) {
         flush();
@@ -253,20 +284,4 @@ export function inlineToPlainText(segments: readonly InlineSegment[]): string {
       }
     })
     .join("");
-}
-
-/** Whether the viewer is mentioned: by name, or by @here / @everyone. */
-export function mentionsViewer(blocks: readonly RichBlock[], viewerName: string): boolean {
-  const target = viewerName.toLowerCase();
-  const visit = (segments: readonly InlineSegment[]): boolean =>
-    segments.some((segment) => {
-      if (segment.type === "mention") {
-        return segment.broadcast || segment.name.toLowerCase() === target;
-      }
-      if (segment.type === "bold" || segment.type === "italic") {
-        return visit(segment.children);
-      }
-      return false;
-    });
-  return blocks.some((block) => block.type === "paragraph" && visit(block.children));
 }

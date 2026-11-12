@@ -1,5 +1,14 @@
+import { Permission } from "@aulora/core";
+import { ConvexError } from "convex/values";
 import type { Doc, Id } from "../_generated/dataModel";
 import type { QueryCtx } from "../_generated/server";
+import { PRESENCE_OFFLINE_MS } from "../presence";
+import { broadcastAudiencePage } from "./broadcastMentions";
+import { categoryChannels } from "./categoryChannels";
+import { requireChannelAccessForUser } from "./channels";
+import { mapInChunks } from "./concurrency";
+
+export const BROADCAST_CURSOR_PREFIX = "aulora-broadcast-v1:";
 
 export type NotificationLevel = "all" | "mentions" | "nothing";
 
@@ -37,6 +46,8 @@ export async function resolvePref(
 interface CandidateInfo {
   channelId: Id<"channels">;
   mentioned: boolean;
+  massMention?: boolean;
+  hereOnly?: boolean;
 }
 
 function addCandidate(
@@ -93,31 +104,43 @@ async function collectCandidates(
     .query("channelMembers")
     .withIndex("by_channel", (q) => q.eq("channelId", channelId))
     .collect();
+  const mentionedUsers = new Set(message.mentionUserIds);
   for (const member of members) {
-    addCandidate(
-      candidates,
-      member.userId,
-      channelId,
-      message.mentionUserIds.includes(member.userId),
-    );
+    addCandidate(candidates, member.userId, channelId, mentionedUsers.has(member.userId));
   }
 
   // `#channel` mentions notify that channel's members too, even when they are
   // not members of the message's own channel.
-  for (const mentioned of new Set(message.mentionChannelIds ?? [])) {
-    const mentionedChannelId = mentioned as Id<"channels">;
-    if (await channelExists(ctx, mentionedChannelId)) {
-      await addChannelMembers(ctx, candidates, mentionedChannelId, true);
-    }
+  const mentionedChannels = [...new Set(message.mentionChannelIds ?? [])];
+  const existingChannels = await mapInChunks(
+    mentionedChannels,
+    50,
+    async (id) => await channelExists(ctx, id as Id<"channels">),
+  );
+  // Merge in original order: the first candidate channel governs preferences.
+  const ids = mentionedChannels.filter((_, index) => existingChannels.at(index));
+  const batches = await mapInChunks(ids, 50, async (id) => {
+    const rows = new Map<string, CandidateInfo>();
+    await addChannelMembers(ctx, rows, id as Id<"channels">, true);
+    return rows;
+  });
+  for (const rows of batches) {
+    for (const [id, info] of rows) addCandidate(candidates, id, info.channelId, true);
   }
 
   // Category mentions notify members of every channel in those categories.
   const categoryIds = new Set(message.mentionCategoryIds ?? []);
   if (categoryIds.size > 0) {
-    for (const channel of await ctx.db.query("channels").collect()) {
-      if (channel.categoryId !== undefined && categoryIds.has(channel.categoryId)) {
-        await addChannelMembers(ctx, candidates, channel._id, true);
-      }
+    const channels = (await ctx.db.query("channels").collect()).filter(
+      (channel) => channel.categoryId !== undefined && categoryIds.has(channel.categoryId),
+    );
+    const batches = await mapInChunks(channels, 50, async (channel) => {
+      const rows = new Map<string, CandidateInfo>();
+      await addChannelMembers(ctx, rows, channel._id, true);
+      return rows;
+    });
+    for (const rows of batches) {
+      for (const [id, info] of rows) addCandidate(candidates, id, info.channelId, true);
     }
   }
   return candidates;
@@ -139,15 +162,17 @@ async function loadPrefsByUser(
   channelByUser: ReadonlyMap<string, Id<"channels">>,
 ): Promise<Map<string, UserPrefs>> {
   const prefs = new Map<string, UserPrefs>();
-  for (const [userId, channelId] of channelByUser) {
-    const server = await ctx.db
-      .query("notificationPrefs")
-      .withIndex("by_user_scope", (q) => q.eq("userId", userId).eq("scope", "server"))
-      .unique();
-    const channel = await ctx.db
-      .query("notificationPrefs")
-      .withIndex("by_user_channel", (q) => q.eq("userId", userId).eq("channelId", channelId))
-      .unique();
+  await mapInChunks([...channelByUser], 25, async ([userId, channelId]) => {
+    const [server, channel] = await Promise.all([
+      ctx.db
+        .query("notificationPrefs")
+        .withIndex("by_user_scope", (q) => q.eq("userId", userId).eq("scope", "server"))
+        .unique(),
+      ctx.db
+        .query("notificationPrefs")
+        .withIndex("by_user_channel", (q) => q.eq("userId", userId).eq("channelId", channelId))
+        .unique(),
+    ]);
     const channels = new Map<string, Doc<"notificationPrefs">>();
     if (channel !== null) {
       channels.set(channelId, channel);
@@ -156,7 +181,7 @@ async function loadPrefsByUser(
       server: server ?? undefined,
       channels,
     });
-  }
+  });
   return prefs;
 }
 
@@ -181,7 +206,7 @@ async function filterRecipients(
   // Presence is read only for candidate users (via `by_user`) instead of
   // collecting the whole `presence` table.
   const presenceByUser = new Map<string, Doc<"presence">>();
-  for (const userId of userIds) {
+  await mapInChunks([...userIds], 50, async (userId) => {
     const presence = await ctx.db
       .query("presence")
       .withIndex("by_user", (q) => q.eq("userId", userId))
@@ -189,14 +214,38 @@ async function filterRecipients(
     if (presence !== null) {
       presenceByUser.set(userId, presence);
     }
-  }
-  const channelByUser = new Map(targets.map(([userId, info]) => [userId, info.channelId] as const));
+  });
+  const eligible = targets.filter(([userId, info]) => {
+    const presence = presenceByUser.get(userId);
+    if (
+      presence !== undefined &&
+      presence.status !== "offline" &&
+      now - presence.lastHeartbeat < ACTIVE_PRESENCE_MS
+    )
+      return false;
+    if (info.massMention && presence?.status === "dnd") return false;
+    return (
+      !info.hereOnly ||
+      (presence !== undefined &&
+        presence.status !== "offline" &&
+        now - presence.lastHeartbeat < PRESENCE_OFFLINE_MS)
+    );
+  });
+  const channelByUser = new Map(
+    eligible.map(([userId, info]) => [userId, info.channelId] as const),
+  );
   const prefsByUser = await loadPrefsByUser(ctx, channelByUser);
 
   const recipients: string[] = [];
-  for (const [userId, info] of targets) {
+  for (const [userId, info] of eligible) {
     const chosen = chosenPref(prefsByUser.get(userId), info.channelId);
     const level = chosen?.level ?? "all";
+    if (
+      info.massMention &&
+      (chosen?.suppressMassMentions ?? prefsByUser.get(userId)?.server?.suppressMassMentions) ===
+        true
+    )
+      continue;
     if (level === "nothing") {
       continue;
     }
@@ -204,14 +253,6 @@ async function filterRecipients(
       continue;
     }
     if (level === "mentions" && !info.mentioned) {
-      continue;
-    }
-    const presence = presenceByUser.get(userId);
-    if (
-      presence !== undefined &&
-      presence.status !== "offline" &&
-      now - presence.lastHeartbeat < ACTIVE_PRESENCE_MS
-    ) {
       continue;
     }
     recipients.push(userId);
@@ -231,4 +272,153 @@ export async function resolveMessageRecipients(
 ): Promise<string[]> {
   const candidates = await collectCandidates(ctx, message);
   return await filterRecipients(ctx, candidates, message.authorId, Date.now());
+}
+
+interface BroadcastCursorState {
+  phase: "broadcast" | "extra";
+  index: number;
+  cursor: string | null;
+}
+
+interface BroadcastPage {
+  readonly candidates: Map<string, CandidateInfo>;
+  readonly next: string | null;
+}
+
+function encodeBroadcastCursor(state: BroadcastCursorState): string {
+  return BROADCAST_CURSOR_PREFIX + JSON.stringify(state);
+}
+
+function parseBroadcastCursor(cursor: string | null): BroadcastCursorState {
+  // Already scheduled pre-upgrade jobs carry the raw Convex audience cursor.
+  if (cursor === null || !cursor.startsWith(BROADCAST_CURSOR_PREFIX))
+    return { phase: "broadcast", index: 0, cursor };
+  try {
+    const parsed = JSON.parse(cursor.slice(BROADCAST_CURSOR_PREFIX.length));
+    if (
+      (parsed.phase !== "broadcast" && parsed.phase !== "extra") ||
+      !Number.isSafeInteger(parsed.index) ||
+      parsed.index < 0 ||
+      (parsed.cursor !== null && typeof parsed.cursor !== "string")
+    )
+      throw new Error("invalid");
+    return parsed;
+  } catch {
+    throw new ConvexError("Invalid broadcast cursor");
+  }
+}
+
+/** The channels named by `#channel` and category mentions, each once, in mention order. */
+async function mentionedChannelIds(ctx: QueryCtx, message: Doc<"messages">) {
+  const targets = [...new Set(message.mentionChannelIds ?? [])] as Id<"channels">[];
+  for (const categoryId of new Set(message.mentionCategoryIds ?? [])) {
+    for (const channel of await categoryChannels(ctx, categoryId as Id<"categories">))
+      if (!targets.includes(channel._id)) targets.push(channel._id);
+  }
+  return targets;
+}
+
+async function belongsToChannel(ctx: QueryCtx, userId: string, channelId: Id<"channels">) {
+  return (
+    (await ctx.db
+      .query("channelMembers")
+      .withIndex("by_channel_user", (q) => q.eq("channelId", channelId).eq("userId", userId))
+      .unique()) !== null
+  );
+}
+
+async function canViewChannel(ctx: QueryCtx, userId: string, channelId: Id<"channels">) {
+  try {
+    await requireChannelAccessForUser(ctx, userId, channelId, Permission.ViewChannel);
+    return true;
+  } catch (error) {
+    if (error instanceof ConvexError) return false;
+    throw error;
+  }
+}
+
+/** Everyone who can see the source channel, one audience page at a time. */
+async function sourceAudiencePage(
+  ctx: QueryCtx,
+  message: Doc<"messages">,
+  state: BroadcastCursorState,
+  targets: readonly Id<"channels">[],
+): Promise<BroadcastPage> {
+  const direct = new Set(message.broadcastDirectUserIds ?? message.mentionUserIds);
+  const candidates = new Map<string, CandidateInfo>();
+  const page = await broadcastAudiencePage(ctx, message.channelId, state.cursor);
+  await mapInChunks(page.userIds, 25, async (userId) => {
+    let ordinary = direct.has(userId);
+    let prefChannelId = message.channelId;
+    const sourceMember =
+      targets.length === 0 || (await belongsToChannel(ctx, userId, message.channelId));
+    for (const target of targets)
+      if (await belongsToChannel(ctx, userId, target)) {
+        ordinary = true;
+        if (!sourceMember) prefChannelId = target;
+        break;
+      }
+    candidates.set(userId, {
+      channelId: prefChannelId,
+      mentioned: true,
+      massMention: !ordinary,
+      hereOnly: !ordinary && message.mentionHere === true && message.mentionEveryone !== true,
+    });
+  });
+  const next =
+    page.cursor !== null
+      ? encodeBroadcastCursor({ ...state, cursor: page.cursor })
+      : targets.length > 0
+        ? encodeBroadcastCursor({ phase: "extra", index: 0, cursor: null })
+        : null;
+  return { candidates, next };
+}
+
+/** Members of one mentioned channel who are not already reached by an earlier page. */
+async function mentionedChannelPage(
+  ctx: QueryCtx,
+  message: Doc<"messages">,
+  state: BroadcastCursorState,
+  targets: readonly Id<"channels">[],
+): Promise<BroadcastPage | null> {
+  const target = targets.at(state.index);
+  if (target === undefined) return null;
+  const candidates = new Map<string, CandidateInfo>();
+  const page = await ctx.db
+    .query("channelMembers")
+    .withIndex("by_channel", (q) => q.eq("channelId", target))
+    .paginate({ numItems: 200, cursor: state.cursor });
+  await mapInChunks(page.page, 25, async (row) => {
+    // Source viewers are delivered on broadcast pages. Remaining pages are
+    // disjoint by first-mentioned-channel membership, including across retries.
+    if (await canViewChannel(ctx, row.userId, message.channelId)) return;
+    for (const earlier of targets.slice(0, state.index))
+      if (await belongsToChannel(ctx, row.userId, earlier)) return;
+    candidates.set(row.userId, { channelId: target, mentioned: true });
+  });
+  const next = !page.isDone
+    ? encodeBroadcastCursor({ ...state, cursor: page.continueCursor })
+    : state.index + 1 < targets.length
+      ? encodeBroadcastCursor({ phase: "extra", index: state.index + 1, cursor: null })
+      : null;
+  return { candidates, next };
+}
+
+/** One bounded mass-mention page; no per-user notification/participation writes. */
+export async function resolveBroadcastRecipients(
+  ctx: QueryCtx,
+  message: Doc<"messages">,
+  cursor: string | null,
+) {
+  const targets = await mentionedChannelIds(ctx, message);
+  const state = parseBroadcastCursor(cursor);
+  const page =
+    state.phase === "broadcast"
+      ? await sourceAudiencePage(ctx, message, state, targets)
+      : await mentionedChannelPage(ctx, message, state, targets);
+  if (page === null) return { recipients: [], cursor: null };
+  return {
+    recipients: await filterRecipients(ctx, page.candidates, message.authorId, Date.now()),
+    cursor: page.next,
+  };
 }

@@ -1,5 +1,10 @@
 /* eslint-disable no-unused-vars -- the base rule reports parameter names in type signatures; Biome checks real unused code */
-import { type ChannelSummary, type RoleMentionTarget, resolveFeatureFlags } from "@aulora/core";
+import {
+  addonFlagsOf,
+  type ChannelSummary,
+  type RoleMentionTarget,
+  resolveFeatureFlags,
+} from "@aulora/core";
 import { Spinner, Text } from "@aulora/ui-web";
 import type { ConvexReactClient } from "convex/react";
 import { useQuery } from "convex/react";
@@ -43,7 +48,7 @@ export interface ChatSessionShellProps {
 }
 
 /**
- * Loads the workspace's channels, roles, the caller's own membership and
+ * Loads the workspace’s channels, roles, the caller’s own membership and
  * permissions, then hands them to {@link ChatView}. Channel metadata arrives
  * as plaintext; the server seals it at rest. Admin controls are gated by the
  * resolved bitfield; the server re-checks.
@@ -84,6 +89,7 @@ export function ChatSessionShell({
   }, [publicConfig]);
 
   const voiceFlags = useMemo(() => resolveFeatureFlags(publicConfig?.features), [publicConfig]);
+  const addonFlags = useMemo(() => addonFlagsOf(publicConfig?.addons), [publicConfig]);
 
   const channels = useMemo<readonly ChannelSummary[]>(() => {
     const list: ChannelSummary[] = [];
@@ -108,6 +114,7 @@ export function ChatSessionShell({
         unread: row.unread,
         unreadCount: row.unreadCount,
         mentionCount: row.mentionCount,
+        massMentionCount: row.massMentionCount,
         lastActivityAt: row.lastActivityAt,
       });
     }
@@ -147,7 +154,7 @@ export function ChatSessionShell({
   const topPosition = isOwner ? Number.POSITIVE_INFINITY : topPositionForRefs(viewerRoleIds, roles);
 
   // The server expands `@role` mentions from the role id (see
-  // `messages.send`), so the shell no longer needs every member's roles here.
+  // `messages.send`), so the shell no longer needs every member’s roles here.
   const mentionRoles = useMemo<readonly RoleMentionTarget[]>(
     () =>
       roles.map((role) => ({
@@ -195,33 +202,36 @@ export function ChatSessionShell({
         permissions={permissions}
         policy={voicePolicy}
         featureFlags={voiceFlags}
+        addons={addonFlags}
       >
-        <ChatView
-          workspaceName={workspaceName}
-          workspaceIconSeed={workspaceIconSeed}
-          ownUserId={user.id}
-          ownName={ownName}
-          ownAvatarUrl={viewerMember?.avatarUrl ?? null}
-          unreadByChannel={unreadByChannel}
-          onSignOut={onSignOut}
-          permissions={permissions}
-          kanbanEnabled={publicConfig?.addons.kanban ?? false}
-          notesEnabled={publicConfig?.addons.notes ?? false}
-          roles={mentionRoles}
-          admin={{
-            viewer: {
-              userId: user.id,
-              isOwner,
-              roleIds: viewerRoleIds,
-              permissions,
-              topPosition,
-            },
-            ownerIds,
-            ownerManagementAvailable,
-            roleViews: roles,
-            categories,
-          }}
-        />
+        <main tabIndex={-1} className="flex min-h-0 min-w-0 flex-1">
+          <ChatView
+            workspaceName={workspaceName}
+            workspaceIconSeed={workspaceIconSeed}
+            ownUserId={user.id}
+            ownName={ownName}
+            ownAvatarUrl={viewerMember?.avatarUrl ?? null}
+            unreadByChannel={unreadByChannel}
+            onSignOut={onSignOut}
+            permissions={permissions}
+            kanbanEnabled={publicConfig?.addons.kanban ?? false}
+            notesEnabled={publicConfig?.addons.notes ?? false}
+            roles={mentionRoles}
+            admin={{
+              viewer: {
+                userId: user.id,
+                isOwner,
+                roleIds: viewerRoleIds,
+                permissions,
+                topPosition,
+              },
+              ownerIds,
+              ownerManagementAvailable,
+              roleViews: roles,
+              categories,
+            }}
+          />
+        </main>
       </VoiceProvider>
     </ChatProvider>
   );

@@ -60,6 +60,8 @@ Check that `SITE_URL` matches the browser origin, including scheme and port. Add
 
 Register the callback URL used by your configured provider exactly. The backend must be able to reach its configured HTTP-actions/JWKS origin. Check DNS, TLS, forwarded protocol headers, and WebSocket proxy support.
 
+If desktop sign-in gets stuck after Google returns, check both the preflight and POST response for `/api/auth/native/exchange`. Both must include `Access-Control-Allow-Origin` for the app's origin (on Windows, usually `http://tauri.localhost`). A POST can return 200 and consume its single-use code while the webview blocks access to the token because that header is missing. Restart sign-in after fixing the response; refreshing the old Google callback can produce `state_mismatch` because its state was already consumed.
+
 ## Uploads fail
 
 Check the per-file and total quotas in Instance admin and the reverse proxy's upload-body limit. Verify MinIO/object-storage health and bucket credentials. The bundled nginx limit is 25 MB; align it with application quotas if changing the maximum.
@@ -89,3 +91,28 @@ Public GitHub release feeds require published assets and an accessible repositor
 ## Before opening an issue
 
 Include the version or commit, platform, deployment method, reproduction steps, expected behavior, actual behavior, and redacted logs. Distinguish browser, desktop, mobile, and server failures. Report security issues privately to [cnguyen@spwnd.dev](mailto:cnguyen@spwnd.dev).
+
+## Collect client debug logs
+
+Open **Your settings → Debug logs** on web or desktop, or **You → Debug logs**
+on mobile. Clear logs, repeat the failing action, then enter the steps and
+expected result. Download the JSON report on web/desktop or copy it on mobile.
+**Generate test error** adds an intentional error so you can verify collection.
+
+The buffer keeps the newest 200 errors and warnings, up to 256 KiB, and discards
+older entries. Logs stay in memory for the current session and are cleared on
+reload or restart, so export before restarting. Nothing is uploaded automatically.
+Reports contain timestamps, error stacks when available, client version, and your
+reproduction notes. Common secrets are scrubbed, but review the report for private
+information before sharing. Native crashes that terminate the app cannot be
+recovered from this session buffer.
+
+On web and desktop, right-click an empty area and choose **Debug logs**. This
+works on the connect and sign-in screens with no server session. Text fields
+keep their normal editing menus. Desktop link and media menus also include
+**Debug logs**; app-specific row menus keep their existing actions.
+
+Logs are cleared on successful sign-out, account deletion, and when changing or
+removing server profiles. In a browser, Shift+right-click opens the native
+browser menu; keyboard context-menu actions also keep the native menu. Mobile
+log export currently requires opening settings after sign-in.

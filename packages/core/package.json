@@ -1,6 +1,6 @@
 {
   "name": "@aulora/core",
-  "version": "1.4.1",
+  "version": "1.5.0",
   "private": true,
   "description": "Aulora shared client logic: server profiles, well-known validation, permissions, unread math.",
   "type": "module",
@@ -14,6 +14,7 @@
     "./notes": "./src/notes/index.ts",
     "./outbox": "./src/outbox/index.ts",
     "./permissions": "./src/permissions.ts",
+    "./role-color": "./src/role-color.ts",
     "./search": "./src/search/index.ts",
     "./updates": "./src/updates.ts",
     "./voice": "./src/voice/index.ts"

@@ -48,7 +48,7 @@ describe("SetupScreen", () => {
     render(<SetupScreen profile={profile} actions={fakeActions()} />);
 
     expect(screen.getByLabelText("Setup token")).toBeInTheDocument();
-    expect(screen.getByLabelText("Instance name")).toHaveValue("Acme Chat");
+    expect(screen.getByLabelText("Workspace name")).toHaveValue("Acme Chat");
     expect(screen.getByLabelText("Your name")).toBeInTheDocument();
     expect(screen.getByLabelText("Email")).toBeInTheDocument();
 
@@ -57,7 +57,7 @@ describe("SetupScreen", () => {
     expect(screen.getByRole("button", { name: "Create owner account" })).toBeDisabled();
   });
 
-  it("validates against the deployment's advertised password minimum", async () => {
+  it("validates against the deployment’s advertised password minimum", async () => {
     const strongerProfile: ServerProfile = {
       ...profile,
       auth: { local: { enabled: true, signup: true, minPasswordLength: 12 }, providers: [] },
@@ -69,7 +69,7 @@ describe("SetupScreen", () => {
     expect(screen.getByRole("button", { name: "Create owner account" })).toBeDisabled();
   });
 
-  it("reads the live public config's password minimum over the stored profile", async () => {
+  it("reads the live public config’s password minimum over the stored profile", async () => {
     useQueryMock.mockReturnValue({ auth: { local: { minPasswordLength: 14 } } } as never);
     render(<SetupScreen profile={profile} actions={fakeActions()} />);
 
@@ -83,8 +83,8 @@ describe("SetupScreen", () => {
     render(<SetupScreen profile={profile} actions={actions} />);
 
     await userEvent.type(screen.getByLabelText("Setup token"), "  token-123  ");
-    await userEvent.clear(screen.getByLabelText("Instance name"));
-    await userEvent.type(screen.getByLabelText("Instance name"), "Acme HQ");
+    await userEvent.clear(screen.getByLabelText("Workspace name"));
+    await userEvent.type(screen.getByLabelText("Workspace name"), "Acme HQ");
     await userEvent.type(screen.getByLabelText("Your name"), "Ada Lovelace");
     await userEvent.type(screen.getByLabelText("Email"), "ada@acme.com");
     await userEvent.type(screen.getByLabelText("Password"), "Correct-Horse-Battery-9");
@@ -108,13 +108,13 @@ describe("SetupScreen", () => {
     });
   });
 
-  it("shows the server's rejection without losing the form", async () => {
+  it("shows the server’s rejection without losing the form", async () => {
     initialize.mockRejectedValueOnce(new Error("Invalid setup token"));
     render(<SetupScreen profile={profile} actions={fakeActions()} />);
 
     await userEvent.type(screen.getByLabelText("Setup token"), "wrong");
-    await userEvent.clear(screen.getByLabelText("Instance name"));
-    await userEvent.type(screen.getByLabelText("Instance name"), "Acme HQ");
+    await userEvent.clear(screen.getByLabelText("Workspace name"));
+    await userEvent.type(screen.getByLabelText("Workspace name"), "Acme HQ");
     await userEvent.type(screen.getByLabelText("Your name"), "Ada Lovelace");
     await userEvent.type(screen.getByLabelText("Email"), "ada@acme.com");
     await userEvent.type(screen.getByLabelText("Password"), "Correct-Horse-Battery-9");

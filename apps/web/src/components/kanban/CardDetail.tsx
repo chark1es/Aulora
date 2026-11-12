@@ -18,12 +18,12 @@ function FooterStatus({ editor }: Props) {
   return (
     <div className="w-full text-[13px]">
       {editor.notice !== undefined && (
-        <p role="status" className="animate-fade-in text-secondary">
+        <p role="status" className="animate-fade-in text-secondary-text">
           {editor.notice}
         </p>
       )}
       {editor.error !== undefined && (
-        <p role="alert" className="text-danger">
+        <p role="alert" className="text-danger-text">
           {editor.error}
         </p>
       )}
@@ -52,7 +52,7 @@ function LifecycleButtons({ editor }: Props) {
       {editor.canManage && (
         <Button
           variant="ghost"
-          className="hover:bg-danger/10 hover:text-danger"
+          className="hover:bg-danger/10 hover:text-danger-text"
           disabled={editor.busy}
           aria-label="Delete card"
           leading={<Icon name="trash" size={15} />}

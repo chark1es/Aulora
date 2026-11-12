@@ -3,11 +3,13 @@ import { cn } from "@aulora/ui-web";
 import { type ReactNode, useMemo } from "react";
 
 export interface RichTextProps {
+  readonly mentionEveryone?: boolean | undefined;
+  readonly mentionHere?: boolean | undefined;
   readonly text: string;
   readonly mentionNames: readonly string[];
   /** Channel and category names `#name` may refer to. */
   readonly channelNames?: readonly string[];
-  /** The viewer's display name; mentions of them are highlighted. */
+  /** The viewer’s display name; mentions of them are highlighted. */
   readonly viewerName: string;
   /** Rendering on the accent (own) bubble: invert link and code colors. */
   readonly onAccent?: boolean;
@@ -25,6 +27,8 @@ export interface RichTextProps {
 export function RichText({
   text,
   mentionNames,
+  mentionEveryone = false,
+  mentionHere = false,
   channelNames,
   viewerName,
   onAccent = false,
@@ -34,10 +38,12 @@ export function RichText({
   const blocks = useMemo(
     () =>
       parseRichText(text, {
+        mentionEveryone,
+        mentionHere,
         mentionNames,
         ...(channelNames !== undefined ? { channelNames } : {}),
       }),
-    [text, mentionNames, channelNames],
+    [text, mentionNames, channelNames, mentionEveryone, mentionHere],
   );
   const inline = variant === "inline";
   return (
@@ -97,7 +103,7 @@ function renderInline(
             key={key}
             className={cn(
               "rounded-[5px] px-1 py-px font-mono text-[0.88em]",
-              onAccent ? "bg-black/20" : "bg-surface-3 text-accent",
+              onAccent ? "bg-black/20" : "bg-surface-3 text-accent-text",
             )}
           >
             {segment.text}
@@ -124,7 +130,7 @@ function renderInline(
             rel="noopener noreferrer"
             className={cn(
               "underline decoration-1 underline-offset-2",
-              onAccent ? "text-on-accent" : "text-accent hover:brightness-110",
+              onAccent ? "text-on-accent" : "text-accent-text hover:brightness-110",
             )}
           >
             {segment.text}
@@ -141,7 +147,7 @@ function renderInline(
                 ? "bg-black/20 text-on-accent"
                 : self
                   ? "bg-accent text-on-accent ring-1 ring-accent/40"
-                  : "bg-accent/15 text-accent ring-1 ring-accent/25",
+                  : "bg-accent/15 text-accent-text dark:bg-accent/10 dark:text-accent-text ring-1 ring-accent/25",
             )}
           >
             @{segment.name}
@@ -161,7 +167,7 @@ function renderInline(
               "rounded-[5px] px-1 font-semibold",
               onAccent
                 ? "bg-black/20 text-on-accent"
-                : "bg-accent/15 text-accent ring-1 ring-accent/25 hover:bg-accent/25",
+                : "bg-accent/15 text-accent-text dark:bg-accent/10 dark:text-accent-text ring-1 ring-accent/25 hover:bg-accent/15 dark:hover:bg-accent/10",
             )}
           >
             #{segment.name}

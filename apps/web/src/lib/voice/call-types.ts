@@ -21,6 +21,12 @@ export interface VoiceSnapshot {
   readonly call: CallView | null;
   readonly local: VoiceLocalState;
   readonly micStream: MediaStream | null;
+  /**
+   * Whether the microphone is live right now: in a call, with a microphone,
+   * not muted or deafened and, in push-to-talk, the key held. Anything that
+   * taps the microphone beyond the call itself (transcription) follows this.
+   */
+  readonly transmitting: boolean;
   /** The track to show in the local tile: screen while sharing, else camera. */
   readonly localVideoTrack: MediaStreamTrack | null;
   readonly remoteStreams: ReadonlyMap<string, MediaStream>;

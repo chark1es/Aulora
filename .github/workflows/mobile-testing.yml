@@ -1,6 +1,21 @@
 name: Prepare mobile testing
 
 on:
+  workflow_call:
+    inputs:
+      tag:
+        required: true
+        type: string
+      upload-ios:
+        type: boolean
+        default: true
+    secrets:
+      APPLE_API_KEY:
+        required: false
+      APPLE_API_ISSUER:
+        required: false
+      APPLE_API_PRIVATE_KEY:
+        required: false
   workflow_dispatch:
     inputs:
       tag:

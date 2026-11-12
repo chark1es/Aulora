@@ -1,3 +1,4 @@
+import { debugLog, resetProviderToken } from "@aulora/core";
 import { convexClient } from "@convex-dev/better-auth/client/plugins";
 import { genericOAuthClient } from "better-auth/client/plugins";
 import { createAuthClient } from "better-auth/react";
@@ -15,7 +16,6 @@ import {
   readAuthRedirectParams,
 } from "./auth-handoff";
 import { authTokenKey, type CookieStore, createCookieFetch } from "./cookie-fetch";
-import { resetProviderToken } from "./provider-auth";
 
 /**
  * Better Auth client for one server profile on iOS/Android.
@@ -77,7 +77,9 @@ export function authActionsFromClient(client: AuloraAuthClient): AuthActions {
       // Drop the cached Convex token before the request: a token fetch that
       // races the sign-out must not fall back to the account that is leaving.
       resetProviderToken(client);
-      return toResult(await client.signOut());
+      const result = toResult(await client.signOut());
+      if (result.error === null) debugLog.clear();
+      return result;
     },
     async deleteAccount() {
       const result = await client.deleteUser({});
@@ -87,6 +89,7 @@ export function authActionsFromClient(client: AuloraAuthClient): AuthActions {
       // The server has deleted the account; make this device forget the now
       // invalid session instead of leaving a stale cookie behind.
       resetProviderToken(client);
+      debugLog.clear();
       await client.signOut().catch(() => undefined);
       return { error: null };
     },

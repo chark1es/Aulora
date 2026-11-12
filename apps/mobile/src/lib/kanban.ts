@@ -1,3 +1,4 @@
+import { timeAgo as sharedTimeAgo } from "@aulora/core";
 import type { ColorToken } from "@aulora/tokens";
 import type { FunctionReturnType } from "convex/server";
 import type { api } from "../../../../packages/convex/convex/_generated/api";
@@ -186,12 +187,10 @@ export function dueLabel(at: number, now: number): DueLabel {
 }
 
 export function timeAgo(at: number, now: number): string {
-  const minutes = Math.floor(Math.max(0, now - at) / 60000);
-  if (minutes < 1) return "just now";
-  if (minutes < 60) return `${minutes}m ago`;
-  if (minutes < 60 * 24) return `${Math.floor(minutes / 60)}h ago`;
-  if (minutes < 60 * 24 * 7) return `${Math.floor(minutes / (60 * 24))}d ago`;
-  return formatDay(localDay(at), new Date(now).getFullYear());
+  return sharedTimeAgo(at, now, {
+    // Hand-built like `formatDay` so long lists never pay for `Intl`.
+    formatAbsolute: (value, current) => formatDay(localDay(value), new Date(current).getFullYear()),
+  });
 }
 
 export function shortDuration(milliseconds: number): string {

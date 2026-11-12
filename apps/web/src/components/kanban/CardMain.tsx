@@ -138,7 +138,7 @@ function ItemRow({ editor, item }: Props & { item: Item }) {
   const { toggle, remove } = useItemActions(editor, item);
   const items = itemMenu(editor.canEdit, item, { toggle, remove });
   return (
-    // biome-ignore lint/a11y/noStaticElementInteractions: the right-click menu repeats the row's own controls
+    // biome-ignore lint/a11y/noStaticElementInteractions: the right-click menu repeats the row’s own controls
     <div
       className="group -mx-1.5 flex animate-message-in items-start gap-1 rounded-[7px] px-1.5 transition-colors hover:bg-surface-3"
       onContextMenu={(event) => {

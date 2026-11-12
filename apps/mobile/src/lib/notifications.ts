@@ -1,7 +1,9 @@
 import type { CallView, MessagePayload, SoundEvent } from "@aulora/core";
+import { messageMentionsUser, suppressesBroadcast } from "@aulora/core";
 import * as Notifications from "expo-notifications";
 import { useEffect, useRef } from "react";
 import { AppState, Platform } from "react-native";
+import { api } from "../../../../packages/convex/convex/_generated/api";
 import type { MobileChatRuntime } from "./chat-runtime";
 import { notificationContent, shouldNotify } from "./notifications-format";
 import { CALL_CHANNEL_ID } from "./push";
@@ -63,6 +65,17 @@ export function useLocalNotifications(
     if (runtime === undefined) {
       return;
     }
+    const prefWatch = runtime.client.watchQuery(api.notifications.getPrefs, {});
+    let prefs: ReturnType<typeof prefWatch.localQueryResult>;
+    const refreshPrefs = () => {
+      try {
+        prefs = prefWatch.localQueryResult();
+      } catch {
+        /* Older server: no preference value. */
+      }
+    };
+    const offPrefs = prefWatch.onUpdate(refreshPrefs);
+    refreshPrefs();
     const mountedAt = Date.now();
     const seen = new Set<string>();
     let seeded = false;
@@ -91,6 +104,7 @@ export function useLocalNotifications(
         ) {
           continue;
         }
+        if (suppressesBroadcast(message, ownUserId, prefs)) continue;
         const text = runtime.session.decryptedText(message.id);
         if (
           !shouldNotify(
@@ -109,7 +123,7 @@ export function useLocalNotifications(
         if (optionsRef.current.mutedChannelIds?.has(message.channelId) === true) {
           continue;
         }
-        const mentioned = message.mentionUserIds.includes(ownUserId);
+        const mentioned = messageMentionsUser(message, ownUserId);
         optionsRef.current.onCue?.(mentioned ? "mention" : "message");
         added += 1;
         const content = notificationContent(namesRef.current.get(message.channelId), text, {
@@ -134,6 +148,7 @@ export function useLocalNotifications(
     });
 
     return () => {
+      offPrefs();
       off();
       bestEffort(Notifications.setBadgeCountAsync(0));
     };

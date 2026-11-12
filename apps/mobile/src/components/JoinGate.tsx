@@ -8,15 +8,15 @@ import {
 import { Button, Heading, Input, Spinner, Text } from "@aulora/ui-native";
 import { useMutation, useQuery } from "convex/react";
 import { useState, useSyncExternalStore } from "react";
-import { Alert, KeyboardAvoidingView, Platform, ScrollView, View } from "react-native";
-import { SafeAreaView } from "react-native-safe-area-context";
+import { Alert, View } from "react-native";
 import { api } from "../../../../packages/convex/convex/_generated/api";
 import {
   clearPendingInvite,
   getPendingInvite,
   subscribePendingInvite,
 } from "../lib/pending-invite";
-import { AuthScaffold } from "./AuthScaffold";
+import { AuthScaffold, AuthScroll } from "./AuthScaffold";
+import { ScreenContainer } from "./layout/ScreenContainer";
 
 export interface JoinGateProps {
   readonly workspaceIconSeed: string;
@@ -44,9 +44,9 @@ export function JoinGate({
   const status = useQuery(api.joinAccess.status, {});
   if (status === undefined) {
     return (
-      <View className="flex-1 items-center justify-center">
+      <ScreenContainer className="flex-1 items-center justify-center min-w-0">
         <Spinner size={28} label="Checking your access" />
-      </View>
+      </ScreenContainer>
     );
   }
   const subtitle = status.banned
@@ -65,7 +65,7 @@ export function JoinGate({
           style: "destructive",
           onPress: () => {
             void Promise.resolve(onDeleteAccount()).catch((cause: unknown) => {
-              Alert.alert("Couldn't delete account", errorMessage(cause, "Try again in a moment."));
+              Alert.alert("Couldn’t delete account", errorMessage(cause, "Try again in a moment."));
             });
           },
         },
@@ -73,41 +73,29 @@ export function JoinGate({
     );
   };
   return (
-    <SafeAreaView className="flex-1" edges={["top", "bottom"]}>
-      <KeyboardAvoidingView
-        className="flex-1"
-        behavior={Platform.OS === "ios" ? "padding" : "height"}
-      >
-        <ScrollView
-          className="flex-1"
-          contentContainerStyle={{ flexGrow: 1 }}
-          keyboardShouldPersistTaps="handled"
-          showsVerticalScrollIndicator={false}
+    <ScreenContainer className="flex-1 min-w-0">
+      <AuthScroll>
+        <AuthScaffold
+          seed={workspaceIconSeed}
+          aura={<NativeBlobatar seed={workspaceIconSeed} size={96} title={status.workspaceName} />}
         >
-          <AuthScaffold
-            seed={workspaceIconSeed}
-            aura={
-              <NativeBlobatar seed={workspaceIconSeed} size={96} title={status.workspaceName} />
-            }
-          >
-            <JoinHeader
-              workspaceName={status.workspaceName}
-              subtitle={subtitle}
-              signedInAs={signedInAs}
-            />
-            {!status.banned && <JoinOptions status={status} />}
-            <View className="gap-2">
-              <Button variant="ghost" onPress={onSignOut}>
-                Sign out
-              </Button>
-              <Button variant="ghost" onPress={confirmDeleteAccount}>
-                Delete account
-              </Button>
-            </View>
-          </AuthScaffold>
-        </ScrollView>
-      </KeyboardAvoidingView>
-    </SafeAreaView>
+          <JoinHeader
+            workspaceName={status.workspaceName}
+            subtitle={subtitle}
+            signedInAs={signedInAs}
+          />
+          {!status.banned && <JoinOptions status={status} />}
+          <View className="gap-2">
+            <Button variant="ghost" onPress={onSignOut}>
+              Sign out
+            </Button>
+            <Button variant="ghost" onPress={confirmDeleteAccount}>
+              Delete account
+            </Button>
+          </View>
+        </AuthScaffold>
+      </AuthScroll>
+    </ScreenContainer>
   );
 }
 

@@ -15,8 +15,18 @@ const state = vi.hoisted(() => ({
   setView: vi.fn(),
 }));
 
+// The compact view's addon controls ask the server about transcription.
+vi.mock("convex/react", () => ({
+  useQuery: () => undefined,
+  useMutation: () => vi.fn().mockResolvedValue(undefined),
+}));
+
 vi.mock("../providers/VoiceProvider", () => ({
   useVoice: () => ({
+    addons: { transcription: false, guestCalls: false, scheduledCalls: false },
+    permissions: 0n,
+    reportError: vi.fn(),
+    setInviteGuestOpen: vi.fn(),
     call: { id: "c", kind: "voice", startedAt: 0, participants: [] },
     pip: { mode: state.mode, active: state.active, toggle: state.toggle },
     pipPinned: state.pinned,

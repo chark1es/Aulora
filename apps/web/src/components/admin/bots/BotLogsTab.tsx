@@ -10,7 +10,7 @@ const STREAM_TONES: Readonly<Record<BotLogLine["stream"], TextTone>> = {
   system: "muted",
 };
 
-/** The bot's recent output, newest last, refreshed reactively. */
+/** The bot’s recent output, newest last, refreshed reactively. */
 export function BotLogsTab({ botId }: { readonly botId: string }) {
   const lines = useQuery(api.bots.logs, {
     botId: botId as never,

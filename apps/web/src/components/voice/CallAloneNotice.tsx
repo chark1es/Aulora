@@ -42,7 +42,7 @@ export function CallAloneNotice({ compact = false }: { readonly compact?: boolea
         compact ? "px-2 py-1 text-[11px]" : "mx-3 mb-1 px-3 py-2 text-[12px]",
       )}
     >
-      <Icon name="timer" size={compact ? 12 : 14} className="shrink-0 text-accent" />
+      <Icon name="timer" size={compact ? 12 : 14} className="shrink-0 text-accent-text" />
       {/*
         A visible, polite live region: mounting it announces the static
         sentence once. The ticking countdown inside is aria-hidden so screen
@@ -57,15 +57,15 @@ export function CallAloneNotice({ compact = false }: { readonly compact?: boolea
         <span className="sr-only">{CALL_ALONE_HINT_MESSAGE}</span>
         <span aria-hidden="true">
           Leaving in{" "}
-          <span className="font-semibold tabular-nums text-accent">
+          <span className="font-semibold tabular-nums text-accent-text">
             {formatAloneCountdown(remaining)}
           </span>
-          {" — nobody else is here"}
+          {", nobody else is here"}
         </span>
       </span>
       <button
         type="button"
-        className="shrink-0 rounded-[6px] px-1.5 py-0.5 font-medium text-accent transition hover:bg-accent/15 focus-visible:outline focus-visible:outline-2 focus-visible:outline-accent"
+        className="shrink-0 rounded-[6px] px-1.5 py-0.5 font-medium text-accent-text transition hover:bg-accent/15 focus-visible:outline focus-visible:outline-2 focus-visible:outline-accent"
         onClick={() => {
           void voice.stayInCall();
         }}

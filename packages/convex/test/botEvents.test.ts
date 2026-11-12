@@ -98,6 +98,22 @@ describe("botEvents.poll", () => {
     expect(result.me).toEqual({ userId: botUserId, name: "listener" });
   });
 
+  it("exposes broadcast metadata and the direct snapshot to event consumers", async () => {
+    const { t, asBot, channelId } = await setup();
+    const cursor = await nowCursor(asBot);
+    await t.withIdentity({ subject: "owner-1" }).mutation(api.messages.send, {
+      channelId,
+      body: "@everyone",
+      mentionEveryone: true,
+    });
+    const result = await asBot.query(api.botEvents.poll, { cursor });
+    expect(result.events[0]?.message).toMatchObject({
+      mentionEveryone: true,
+      mentionHere: false,
+      broadcastDirectUserIds: [],
+    });
+  });
+
   it("emits created, updated and deleted with an empty deleted body", async () => {
     const { asBot, asUser, channelId } = await setup();
     const cursor = await nowCursor(asBot);
@@ -120,17 +136,33 @@ describe("botEvents.poll", () => {
   });
 
   it("never hands out the body of a message deleted after the event was queued", async () => {
-    const { asBot, asUser, channelId } = await setup();
+    const { t, asBot, asUser, channelId } = await setup();
     const cursor = await nowCursor(asBot);
     const messageId = await asUser.mutation(api.messages.send, { channelId, body: "c2VjcmV0" });
     await asUser.mutation(api.messages.remove, { messageId });
 
+    await t.run(async (ctx) => {
+      const storageId = await ctx.storage.store(new Blob(["secret"]));
+      const fileId = await ctx.db.insert("files", {
+        storageId,
+        sealedStorageId: storageId,
+        uploaderId: "user-1",
+        sizeBytes: 6,
+        keyVersion: "1",
+      });
+      // Deleted events must not even attempt to open a retained envelope.
+      await ctx.db.patch(messageId, {
+        ciphertext: "aulora-sse-v1:invalid",
+        attachmentIds: [fileId],
+      });
+    });
     const result = await asBot.query(api.botEvents.poll, { cursor });
     expect(result.events.map((event) => event.type)).toEqual([
       "message.created",
       "message.deleted",
     ]);
     expect(result.events.every((event) => event.message?.body === "")).toBe(true);
+    expect(result.events.every((event) => event.message?.attachmentIds.length === 0)).toBe(true);
   });
 
   it("emits reaction added and removed with the opened emoji", async () => {

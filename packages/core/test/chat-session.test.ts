@@ -1,4 +1,4 @@
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, vi } from "vitest";
 import type { ChannelSummary, ChatSubscriptions, MessagePayload } from "../src/chat/index.js";
 import { ChatSession } from "../src/chat/index.js";
 import { createMockPort, type MockPort } from "../src/chat/testing.js";
@@ -99,9 +99,10 @@ describe("ChatSession plaintext messages", () => {
       }
     });
 
-    const result = session.receiveMessages([
-      incoming({ id: "m1", channelId: "c1", body: "hi alice" }),
-    ]);
+    const result = session.receiveMessages(
+      [incoming({ id: "m1", channelId: "c1", body: "hi alice" })],
+      "test:stream",
+    );
     expect(typeof result.then).toBe("function");
     await result;
 
@@ -116,9 +117,10 @@ describe("ChatSession plaintext messages", () => {
     await session.start();
     await session.openChannel(channelFor("c1"));
 
-    await session.receiveMessages([
-      incoming({ id: "m1", channelId: "c1", body: "gone", deletedAt: 123 }),
-    ]);
+    await session.receiveMessages(
+      [incoming({ id: "m1", channelId: "c1", body: "gone", deletedAt: 123 })],
+      "test:stream",
+    );
     expect(session.decryptedText("m1")).toBe("");
     expect(session.decryptedBody("m1")).toBeUndefined();
   });
@@ -231,9 +233,10 @@ describe("ChatSession attachments", () => {
       mime: "application/pdf",
       bytes: new Uint8Array([9, 8, 7]),
     });
-    await session.receiveMessages([
-      incoming({ id: "m1", channelId: "c1", body: "see file", attachmentIds: [fileId] }),
-    ]);
+    await session.receiveMessages(
+      [incoming({ id: "m1", channelId: "c1", body: "see file", attachmentIds: [fileId] })],
+      "test:stream",
+    );
 
     expect(session.attachmentsFor("m1")[0]?.name).toBe("report.pdf");
   });
@@ -320,3 +323,88 @@ describe("ChatSubscriptions passthrough", () => {
     expect(typeof subscriptions.watchChannels).toBe("function");
   });
 });
+
+it("removes deleted plaintext and parsed bodies from the session cache", async () => {
+  const session = makeSession(createMockPort());
+  const message = incoming({ id: "deleted", channelId: "c1", body: "private text" });
+  await session.receiveMessages([message], "test:stream");
+  expect(session.decryptedText(message.id)).toBe("private text");
+  await session.receiveMessages([{ ...message, body: "", deletedAt: 2 }], "test:stream");
+  expect(session.decryptedText(message.id)).toBe("");
+  expect(session.decryptedBody(message.id)).toBeUndefined();
+  session.dispose();
+});
+
+/** Collects what listeners are told about one row, in delivery order. */
+function recordRowNotifications(session: ReturnType<typeof makeSession>, rowId: string) {
+  const notifications: string[] = [];
+  const messageNotifications: string[] = [];
+  session.onDecrypted((rows) => {
+    for (const row of rows) {
+      if (row.id === rowId)
+        notifications.push(row.deletedAt === null ? session.decryptedText(row.id) : "deleted");
+    }
+  });
+  session.onMessages((rows) => {
+    for (const row of rows) {
+      if (row.id === rowId) messageNotifications.push(row.body);
+    }
+  });
+  return { notifications, messageNotifications };
+}
+
+it.each(["edit", "delete"])(
+  "does not replay a delayed attachment snapshot after a newer %s",
+  async (kind) => {
+    const port = createMockPort();
+    const fileId = await port.uploadFile({
+      name: "old.txt",
+      mime: "text/plain",
+      bytes: new Uint8Array([1]),
+    });
+    const files = await port.getFiles({ fileIds: [fileId] });
+    let release!: (rows: typeof files) => void;
+    vi.spyOn(port, "getFiles").mockImplementation(
+      () =>
+        new Promise((resolve) => {
+          release = resolve;
+        }),
+    );
+    const session = makeSession(port);
+    const original = incoming({
+      id: "r",
+      channelId: "c",
+      body: "old body",
+      threadRootId: "root",
+      attachmentIds: [fileId],
+    });
+    const { notifications, messageNotifications } = recordRowNotifications(session, "r");
+    const pending = session.receiveMessages(
+      [
+        original,
+        incoming({
+          id: "unrelated",
+          channelId: "c",
+          body: "still current",
+          attachmentIds: [fileId],
+        }),
+      ],
+      "test:stream",
+    );
+    const newest =
+      kind === "edit"
+        ? { ...original, body: "edited body", attachmentIds: [], editedAt: 2 }
+        : { ...original, body: "", attachmentIds: [], deletedAt: 2 };
+    await session.receiveMessages([newest], "test:stream");
+    release(files);
+    await pending;
+    expect(session.decryptedText("r")).toBe(kind === "edit" ? "edited body" : "");
+    expect(session.decryptedBody("r")?.t).toBe(kind === "edit" ? "edited body" : undefined);
+    expect(session.attachmentsFor("r")).toEqual([]);
+    expect(notifications).toEqual([kind === "edit" ? "edited body" : "deleted"]);
+    expect(messageNotifications).toEqual([newest.body]);
+    // This row left the same snapshot scope before hydration completed.
+    expect(session.decryptedText("unrelated")).toBe("");
+    expect(session.attachmentsFor("unrelated")).toEqual([]);
+  },
+);

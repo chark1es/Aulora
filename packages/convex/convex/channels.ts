@@ -32,6 +32,7 @@ import {
 } from "./lib/channels";
 import { adjustInstanceCounters } from "./lib/instance";
 import { overwriteValidator, validateOverrides } from "./lib/overrides";
+import { clampPageSize } from "./lib/pagination";
 import {
   categoryOverridesById,
   channelPermissions,
@@ -153,7 +154,10 @@ export const list = query({
       .withIndex("by_dm_key", (q) => q.eq("dmKey", undefined))
       .filter((q) => q.and(q.neq(q.field("kind"), "dm"), q.neq(q.field("kind"), "group_dm")))
       .order("asc")
-      .paginate(args.paginationOpts ?? { numItems: 50, cursor: null });
+      .paginate({
+        ...(args.paginationOpts ?? { cursor: null }),
+        numItems: clampPageSize(args.paginationOpts?.numItems ?? 50),
+      });
 
     // Category overrides are read once for the whole page instead of one
     // `db.get` per channel; the category table is workspace configuration.
@@ -669,7 +673,10 @@ export const listDms = query({
       .query("channelMembers")
       .withIndex("by_user", (q) => q.eq("userId", userId))
       .order("desc")
-      .paginate(args.paginationOpts ?? { numItems: 50, cursor: null });
+      .paginate({
+        ...(args.paginationOpts ?? { cursor: null }),
+        numItems: clampPageSize(args.paginationOpts?.numItems ?? 50),
+      });
 
     const page: ChannelSummary[] = [];
     for (const membership of result.page) {

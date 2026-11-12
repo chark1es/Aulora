@@ -4,6 +4,7 @@ import { api } from "../../../../packages/convex/convex/_generated/api";
 import type { ChatSurfaceRuntime } from "./chat-surface";
 import { convexPort, convexSubscriptions, createScopedPresence } from "./convex-chat";
 import { devicePushPlatform } from "./push";
+import { watchAllThreadPages } from "./thread-pages";
 
 /**
  * Wires the chat session for one signed-in mobile device.
@@ -55,7 +56,14 @@ export async function createMobileChatRuntime(
         paginationOpts: { numItems: 100, cursor },
       });
       const emit = () => {
-        const value = watch.localQueryResult();
+        let value: ReturnType<typeof watch.localQueryResult>;
+        try {
+          value = watch.localQueryResult();
+        } catch {
+          // Access can be revoked while a page is live; leave the loader intact
+          // and let a later update try again.
+          return;
+        }
         if (value !== undefined)
           onChange({ messages: value.page, cursor: value.continueCursor, isDone: value.isDone });
       };
@@ -63,32 +71,17 @@ export async function createMobileChatRuntime(
       emit();
       return off;
     },
-    watchThread: (threadRootId, onChange) =>
-      watchConvexThread(options.client, threadRootId, onChange),
+    watchThread: (threadRootId, onChange, pageOptions) =>
+      watchAllThreadPages(
+        (cursor) =>
+          options.client.watchQuery(api.messages.listThread, {
+            threadRootId: threadRootId as never,
+            paginationOpts: { numItems: 100, cursor },
+          }),
+        onChange,
+        pageOptions,
+      ),
   };
 }
 
 export type { ChannelSummary, MessagePayload };
-
-/** Live replies for a thread root, oldest first. */
-function watchConvexThread(
-  client: ConvexReactClient,
-  threadRootId: string,
-  onChange: (messages: readonly MessagePayload[]) => void,
-): () => void {
-  const watch = client.watchQuery(api.messages.listThread, {
-    threadRootId: threadRootId as never,
-    paginationOpts: { numItems: 100, cursor: null },
-  });
-  const emit = () => {
-    const value = watch.localQueryResult();
-    if (value !== undefined) {
-      onChange(value.page);
-    }
-  };
-  const unsubscribe = watch.onUpdate(emit);
-  emit();
-  return () => {
-    unsubscribe();
-  };
-}

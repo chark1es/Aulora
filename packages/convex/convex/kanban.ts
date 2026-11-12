@@ -101,7 +101,12 @@ export const createBoard = mutation({
         }),
       ),
     });
-    await writeAudit(ctx, { actorId: userId, action: "kanban.createBoard", targetId: id });
+    await writeAudit(ctx, {
+      actorId: userId,
+      action: "kanban.createBoard",
+      targetId: id,
+      meta: JSON.stringify({ name: args.name.trim() }),
+    });
     return id;
   },
 });
@@ -183,7 +188,12 @@ export const updateBoard = mutation({
           await activity(ctx, card._id, userId, "Removed assignees after board membership changed");
         }
       }
-    await writeAudit(ctx, { actorId: userId, action: "kanban.updateBoard", targetId: board._id });
+    await writeAudit(ctx, {
+      actorId: userId,
+      action: "kanban.updateBoard",
+      targetId: board._id,
+      meta: JSON.stringify({ name: args.name.trim() }),
+    });
   },
 });
 export const archiveBoard = mutation({
@@ -198,11 +208,13 @@ export const archiveBoard = mutation({
         .collect();
       for (const card of cards) await stopTimer(ctx, card);
     }
+    const { name } = await boardContent(board);
     await ctx.db.patch(board._id, { archived: args.archived, updatedAt: Date.now() });
     await writeAudit(ctx, {
       actorId: userId,
       action: args.archived ? "kanban.archiveBoard" : "kanban.restoreBoard",
       targetId: board._id,
+      meta: JSON.stringify({ name }),
     });
   },
 });
@@ -444,6 +456,7 @@ export const deleteCard = mutation({
   handler: async (ctx, args) => {
     const card = await ctx.db.get(args.cardId);
     if (!card) throw new ConvexError("Card not found");
+    const { title } = await cardContent(card);
     const { userId } = await requireBoard(ctx, card.boardId, Permission.ManageKanban);
     await assertMayParticipate(ctx, userId);
     await ctx.db.delete(card._id);
@@ -452,7 +465,12 @@ export const deleteCard = mutation({
       boardId: card.boardId,
       fileIds: card.fileIds,
     });
-    await writeAudit(ctx, { actorId: userId, action: "kanban.deleteCard", targetId: card._id });
+    await writeAudit(ctx, {
+      actorId: userId,
+      action: "kanban.deleteCard",
+      targetId: card._id,
+      meta: JSON.stringify({ title }),
+    });
   },
 });
 export const deleteBoard = mutation({
@@ -460,8 +478,14 @@ export const deleteBoard = mutation({
   handler: async (ctx, args) => {
     const { board, userId } = await requireBoard(ctx, args.boardId, Permission.ManageKanban);
     await assertMayParticipate(ctx, userId);
+    const { name } = await boardContent(board);
     await ctx.db.patch(board._id, { deleted: true, archived: true });
     await ctx.scheduler.runAfter(0, internal.kanbanCleanup.cleanupBoard, { boardId: board._id });
-    await writeAudit(ctx, { actorId: userId, action: "kanban.deleteBoard", targetId: board._id });
+    await writeAudit(ctx, {
+      actorId: userId,
+      action: "kanban.deleteBoard",
+      targetId: board._id,
+      meta: JSON.stringify({ name }),
+    });
   },
 });

@@ -40,7 +40,7 @@ export const Textarea = forwardRef<HTMLTextAreaElement, TextareaProps>(function 
         aria-invalid={error !== undefined || undefined}
         aria-describedby={describedBy.length > 0 ? describedBy.join(" ") : undefined}
         className={cn(
-          "w-full resize-y rounded-input border bg-surface-3 px-3 py-2 text-[14px] leading-snug text-text placeholder:text-text-muted",
+          "w-full resize-y rounded-input border bg-surface-3 px-3 py-2 text-[14px] leading-5 text-text placeholder:text-text-muted",
           "transition focus-visible:border-accent focus-visible:bg-surface-2 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent-soft",
           "disabled:pointer-events-none disabled:opacity-50",
           error !== undefined ? "border-danger" : "border-border",
@@ -54,7 +54,7 @@ export const Textarea = forwardRef<HTMLTextAreaElement, TextareaProps>(function 
         </p>
       )}
       {error !== undefined && (
-        <p id={errorId} role="alert" className="text-xs text-danger">
+        <p id={errorId} role="alert" className="text-xs text-danger-text">
           {error}
         </p>
       )}

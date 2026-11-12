@@ -1,5 +1,5 @@
 /* eslint-disable no-unused-vars -- the base rule reports parameter names in type signatures; Biome checks real unused code */
-import { type InviteKind, validateCustomInviteCode } from "@aulora/core";
+import { type InviteKind, userFacingError, validateCustomInviteCode } from "@aulora/core";
 import { Button, Input, SegmentedControl, Select, Text } from "@aulora/ui-web";
 import { useMutation } from "convex/react";
 import { type FormEvent, useState } from "react";
@@ -205,7 +205,7 @@ export function InviteCreateForm({ origin }: InviteCreateFormProps) {
         setDraft((current) => ({ ...current, email: "", note: "", customCode: "" }));
       })
       .catch((cause: unknown) => {
-        setError(cause instanceof Error ? cause.message : "Could not create the invite.");
+        setError(userFacingError(cause));
       })
       .finally(() => {
         setBusy(false);

@@ -31,7 +31,7 @@ export function StatusEditor({ status, customStatus, onSetStatus }: StatusEditor
   const palette = usePalette();
   const [draft, setDraft] = useState(customStatus);
 
-  // Re-seed the draft whenever the viewer's live custom status changes.
+  // Re-seed the draft whenever the viewer’s live custom status changes.
   useEffect(() => {
     setDraft(customStatus);
   }, [customStatus]);
@@ -78,7 +78,7 @@ export function StatusEditor({ status, customStatus, onSetStatus }: StatusEditor
         })}
       </View>
       <View className="flex-row items-end gap-2">
-        <View className="flex-1">
+        <View className="flex-1 min-w-0">
           <Input
             label="Custom status"
             value={draft}

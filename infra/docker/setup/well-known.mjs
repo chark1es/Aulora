@@ -30,9 +30,7 @@ const encryption = {
   mode: "server",
   algorithm: read(configuredEncryption.algorithm) ?? "AES-256-GCM",
   keyVersion:
-    read(configuredEncryption.keyVersion) ??
-    read(env.get("AULORA_ENCRYPTION_KEY_VERSION")) ??
-    "1",
+    read(configuredEncryption.keyVersion) ?? read(env.get("AULORA_ENCRYPTION_KEY_VERSION")) ?? "1",
   provider: read(configuredEncryption.provider) ?? read(env.get("AULORA_EKM_PROVIDER")) ?? "local",
 };
 
@@ -74,7 +72,10 @@ function knownProvider(provider) {
         return undefined;
       }
     }
-    if (!Array.isArray(provider.scopes) || provider.scopes.some((scope) => typeof scope !== "string")) {
+    if (
+      !Array.isArray(provider.scopes) ||
+      provider.scopes.some((scope) => typeof scope !== "string")
+    ) {
       return undefined;
     }
     return pick(provider, OIDC_KEYS);
@@ -97,7 +98,7 @@ function discoveryAuth(auth) {
 
 const document = {
   name: read(env.get("NAME_VALUE")) ?? read(config.name) ?? "Aulora",
-  version: read(config.version) ?? "1.4.1",
+  version: read(config.version) ?? "1.5.0",
   apiVersion: typeof config.apiVersion === "number" ? config.apiVersion : 1,
   convexUrl: read(env.get("CONVEX_URL_VALUE")) ?? read(config.convexUrl) ?? "",
   siteUrl: read(env.get("SITE_URL_VALUE")) ?? read(config.siteUrl) ?? "",

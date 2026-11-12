@@ -10,11 +10,11 @@ import { ThemeToggle } from "./ThemeToggle";
 type Maybe<T> = T | undefined;
 
 export interface WorkspaceMenuProps {
-  /** Live member count for the header trigger's "N online" line. */
+  /** Live member count for the header trigger’s "N online" line. */
   readonly onlineCount?: number;
   /** `header` (identity trigger) or `compact` (name-only, pre-session). */
   readonly variant?: "header" | "compact";
-  /** Which edge the dropdown aligns to; defaults to the trigger's own edge. */
+  /** Which edge the dropdown aligns to; defaults to the trigger’s own edge. */
   readonly align?: "left" | "right";
 }
 

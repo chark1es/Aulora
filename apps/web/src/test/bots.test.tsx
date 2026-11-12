@@ -7,6 +7,7 @@ import { BotsSettings } from "../components/admin/bots/BotsSettings";
 
 const state = vi.hoisted(() => ({
   values: new Map<string, unknown>(),
+  loadMore: vi.fn(),
   mutations: new Map<string, ReturnType<typeof vi.fn>>(),
 }));
 
@@ -21,7 +22,16 @@ vi.mock("convex/react", () => ({
     }
     return state.mutations.get(name);
   },
-  usePaginatedQuery: () => ({ results: [], status: "Exhausted", loadMore: vi.fn() }),
+  usePaginatedQuery: (reference: Parameters<typeof getFunctionName>[0]) => {
+    const result = state.values.get(getFunctionName(reference)) as
+      | { page?: unknown[]; isDone?: boolean }
+      | undefined;
+    return {
+      results: result?.page ?? [],
+      status: result?.isDone === false ? "CanLoadMore" : "Exhausted",
+      loadMore: state.loadMore,
+    };
+  },
 }));
 
 function summary(overrides: Record<string, unknown> = {}) {
@@ -282,4 +292,30 @@ describe("Bot code tab", () => {
       files: [{ path: "lib/util.ts", content: "" }],
     });
   });
+});
+
+it("offers more channels beyond the first page in bot permissions", async () => {
+  const loadMore = vi.fn();
+  state.loadMore = loadMore;
+  state.values.set("channels:list", {
+    page: Array.from({ length: 100 }, (_, i) => ({
+      id: `c${i}`,
+      kind: "text",
+      name: `channel-${i}`,
+    })),
+    isDone: false,
+  });
+  const user = userEvent.setup();
+  const view = render(<BotsSettings canManageBots />);
+  await openDetail(user, "Permissions");
+  await user.click(screen.getByRole("button", { name: "Load more channels" }));
+  expect(loadMore).toHaveBeenCalledWith(100);
+  state.values.set("channels:list", {
+    page: [{ id: "c101", kind: "text", name: "channel-101" }],
+    isDone: true,
+  });
+  view.rerender(<BotsSettings canManageBots />);
+  await user.click(screen.getByRole("radio", { name: "Only selected channels" }));
+  await user.click(screen.getByRole("button", { name: "Add a channel" }));
+  expect(screen.getByText("channel-101")).toBeInTheDocument();
 });

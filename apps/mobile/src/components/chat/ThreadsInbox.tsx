@@ -20,6 +20,7 @@ export interface ThreadInboxItem {
 }
 
 export interface ThreadsInboxProps {
+  readonly onLoadMore?: () => void;
   readonly threads: readonly ThreadInboxItem[];
   readonly loading?: boolean;
   readonly channelNames: ReadonlyMap<string, string>;
@@ -43,16 +44,13 @@ export function ThreadsInbox(props: ThreadsInboxProps) {
   const { threads, loading = false, channelNames, memberNames, titles, ownUserId, onOpen } = props;
   if (loading) {
     return (
-      <View className="flex-1 items-center justify-center gap-3">
+      <View className="flex-1 items-center justify-center min-w-0">
         <Spinner size={26} label="Loading threads" />
-        <Text size="sm" tone="muted">
-          Loading threads…
-        </Text>
       </View>
     );
   }
 
-  if (threads.length === 0) {
+  if (threads.length === 0 && props.onLoadMore === undefined) {
     return (
       <EmptyState
         title="No threads yet"
@@ -62,7 +60,7 @@ export function ThreadsInbox(props: ThreadsInboxProps) {
   }
 
   return (
-    <ScrollView className="flex-1" contentContainerStyle={{ padding: 8, gap: 2 }}>
+    <ScrollView className="flex-1 min-w-0" contentContainerStyle={{ padding: 8, gap: 2 }}>
       {threads.map((thread) => {
         const channelName = channelNames.get(thread.channelId);
         const channelLabel =
@@ -89,7 +87,7 @@ export function ThreadsInbox(props: ThreadsInboxProps) {
                 <Text size="xs" className="font-semibold" numberOfLines={1}>
                   {authorName}
                 </Text>
-                <Text size="xs" tone="muted" numberOfLines={1} className="flex-1">
+                <Text size="xs" tone="muted" numberOfLines={1} className="flex-1 min-w-0">
                   {channelLabel}
                 </Text>
                 {thread.viewerMentioned && (
@@ -111,6 +109,11 @@ export function ThreadsInbox(props: ThreadsInboxProps) {
           </Pressable>
         );
       })}
+      {props.onLoadMore && (
+        <Pressable accessibilityRole="button" onPress={props.onLoadMore}>
+          <Text>Load more threads</Text>
+        </Pressable>
+      )}
     </ScrollView>
   );
 }

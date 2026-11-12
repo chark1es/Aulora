@@ -1,15 +1,11 @@
-import type { IconName } from "@aulora/tokens";
 import { Button, EmptyState, Icon, Spinner, Text } from "@aulora/ui-web";
 import { useQuery } from "convex/react";
 import { useState } from "react";
 import { api } from "../../../../../packages/convex/convex/_generated/api";
-import {
-  type AuditCategory,
-  auditCategory,
-  formatAuditEvent,
-  shortId,
-} from "../../lib/audit-format";
+import { auditActorLabel, auditCategory, formatAuditEvent } from "../../lib/audit-format";
 import { AdminPageHeader } from "./AdminPageHeader";
+import { AuditEventDialog, type AuditEventView } from "./AuditEventDialog";
+import { AUDIT_CATEGORY_ICON } from "./audit-icons";
 
 export interface AuditLogViewerProps {
   readonly canViewAuditLog: boolean;
@@ -20,15 +16,6 @@ export interface AuditLogViewerProps {
 }
 
 const PAGE_SIZE = 50;
-
-const CATEGORY_ICON = new Map<AuditCategory, IconName>([
-  ["role", "shield"],
-  ["member", "users"],
-  ["category", "sidebar"],
-  ["channel", "hash"],
-  ["server", "settings"],
-  ["other", "file"],
-]);
 
 /** A compact "2h ago"-style age for a timestamp. */
 function relativeTime(at: number, now: number): string {
@@ -51,7 +38,8 @@ function relativeTime(at: number, now: number): string {
 /**
  * Paginated, newest-first audit log rendered as a compact single-line feed.
  * Actors and targets are resolved to display names wherever a lookup is known;
- * opaque ids are shortened rather than spilled. Server-gated by `ViewAuditLog`.
+ * opening a row shows the full action and its metadata. Server-gated by
+ * `ViewAuditLog`.
  */
 export function AuditLogViewer({
   canViewAuditLog,
@@ -61,6 +49,7 @@ export function AuditLogViewer({
   categoryNames,
 }: AuditLogViewerProps) {
   const [cursor, setCursor] = useState<string | null>(null);
+  const [selected, setSelected] = useState<AuditEventView | null>(null);
   const result = useQuery(
     api.auditLog.list,
     canViewAuditLog ? { paginationOpts: { numItems: PAGE_SIZE, cursor } } : "skip",
@@ -100,7 +89,7 @@ export function AuditLogViewer({
     <div className="flex flex-col gap-8" data-testid="audit-log">
       <AdminPageHeader
         title="Audit log"
-        description="Recent admin activity across this workspace."
+        description="Recent admin activity across this workspace. Select an event to see what changed."
       />
 
       {result === undefined ? (
@@ -117,35 +106,49 @@ export function AuditLogViewer({
         <ul className="divide-y divide-border/60 border-y border-border/60">
           {rows.map((row) => {
             const category = auditCategory(row.action);
-            const actor = row.actorName || memberNames?.get(row.actorId) || shortId(row.actorId);
+            const actor = auditActorLabel(
+              row.actorName || memberNames?.get(row.actorId),
+              row.actorId,
+            );
             const target = row.targetName || resolveTarget(row.targetId) || null;
+            const summary = formatAuditEvent(row.action, row.meta, {
+              actorName: actor,
+              targetName: target,
+              ...(memberNames !== undefined ? { memberNames } : {}),
+              ...(roleNames !== undefined ? { roleNames } : {}),
+              ...(channelNames !== undefined ? { channelNames } : {}),
+            });
             return (
-              <li
-                key={row.id}
-                data-testid="audit-row"
-                className="flex min-h-[44px] items-center gap-2.5 px-4 py-2 transition hover:bg-surface-3/40"
-              >
-                <Icon
-                  name={CATEGORY_ICON.get(category) ?? "file"}
-                  size={14}
-                  className="shrink-0 text-text-muted"
-                />
-                <div className="min-w-0 flex-1">
-                  <Text size="sm" className="truncate">
-                    {formatAuditEvent(row.action, row.meta, {
-                      actorName: actor,
-                      targetName: target,
-                    })}
-                  </Text>
-                </div>
-                <Text
-                  size="xs"
-                  tone="muted"
-                  className="shrink-0 text-right tabular-nums"
-                  title={new Date(row.at).toLocaleString()}
+              <li key={row.id} data-testid="audit-row">
+                <button
+                  type="button"
+                  onClick={() => {
+                    setSelected(row);
+                  }}
+                  className="flex min-h-[44px] w-full items-center gap-2.5 px-4 py-2 text-left transition hover:bg-surface-3/40 focus-visible:bg-surface-3/40 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-accent"
+                  aria-label={`View details: ${summary}`}
                 >
-                  {relativeTime(row.at, now)}
-                </Text>
+                  <Icon
+                    name={AUDIT_CATEGORY_ICON.get(category) ?? "file"}
+                    size={14}
+                    className="shrink-0 text-text-muted"
+                  />
+                  <div className="min-w-0 flex-1">
+                    <Text as="span" size="sm" className="block truncate">
+                      {summary}
+                    </Text>
+                  </div>
+                  <Text
+                    as="span"
+                    size="xs"
+                    tone="muted"
+                    className="shrink-0 text-right tabular-nums"
+                    title={new Date(row.at).toLocaleString()}
+                  >
+                    {relativeTime(row.at, now)}
+                  </Text>
+                  <Icon name="chevron-right" size={14} className="shrink-0 text-text-muted/70" />
+                </button>
               </li>
             );
           })}
@@ -165,6 +168,16 @@ export function AuditLogViewer({
           </Button>
         </div>
       )}
+
+      <AuditEventDialog
+        event={selected}
+        {...(memberNames !== undefined ? { memberNames } : {})}
+        {...(roleNames !== undefined ? { roleNames } : {})}
+        {...(channelNames !== undefined ? { channelNames } : {})}
+        onClose={() => {
+          setSelected(null);
+        }}
+      />
     </div>
   );
 }

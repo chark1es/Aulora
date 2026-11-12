@@ -1,7 +1,7 @@
 import { isKanbanGithubLink } from "@aulora/core";
-import { Button, Icon, Text, usePalette } from "@aulora/ui-native";
+import { Button, Icon, Text, TextField, usePalette } from "@aulora/ui-native";
 import { useState } from "react";
-import { Linking, Pressable, TextInput, View } from "react-native";
+import { Linking, Pressable, View } from "react-native";
 import Animated, { FadeInDown, FadeOut } from "react-native-reanimated";
 import { field } from "./CardChecklist";
 import { SectionTitle } from "./parts";
@@ -50,7 +50,7 @@ function AddLink({ editor }: SectionProps) {
   };
   return (
     <View className="flex-row gap-2">
-      <TextInput
+      <TextField
         accessibilityLabel="GitHub link"
         placeholder="Paste a GitHub link"
         placeholderTextColor={palette["text-muted"]}
@@ -86,7 +86,7 @@ export function CardLinks({ editor }: SectionProps) {
         >
           <Pressable
             accessibilityRole="link"
-            className="min-h-11 flex-1 justify-center active:opacity-70"
+            className="min-h-11 flex-1 justify-center active:opacity-70 min-w-0"
             onPress={() => {
               void Linking.openURL(url);
             }}
@@ -138,7 +138,7 @@ function FileRow({ editor, file, files }: FileRowProps) {
         accessibilityRole="button"
         accessibilityLabel={`Download ${file.name ?? "attachment"}`}
         disabled={editor.busy}
-        className="min-h-11 flex-1 justify-center active:opacity-70"
+        className="min-h-11 flex-1 justify-center active:opacity-70 min-w-0"
         onPress={() => {
           files.share(file);
         }}

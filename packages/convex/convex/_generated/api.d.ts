@@ -9,6 +9,7 @@
  */
 
 import type * as accountDeletion from "../accountDeletion.js";
+import type * as addons from "../addons.js";
 import type * as auditLog from "../auditLog.js";
 import type * as auth from "../auth.js";
 import type * as authActions from "../authActions.js";
@@ -36,6 +37,7 @@ import type * as email from "../email.js";
 import type * as encryptionKeys from "../encryptionKeys.js";
 import type * as envOverrides from "../envOverrides.js";
 import type * as files from "../files.js";
+import type * as guestCalls from "../guestCalls.js";
 import type * as http from "../http.js";
 import type * as instance from "../instance.js";
 import type * as inviteAllowlist from "../inviteAllowlist.js";
@@ -63,6 +65,11 @@ import type * as lib_envCatalogAuth from "../lib/envCatalogAuth.js";
 import type * as lib_envCatalogDeployment from "../lib/envCatalogDeployment.js";
 import type * as lib_envCatalogInstance from "../lib/envCatalogInstance.js";
 import type * as lib_envOverrides from "../lib/envOverrides.js";
+import type * as lib_guestCalls from "../lib/guestCalls.js";
+import type * as lib_scheduledCalls from "../lib/scheduledCalls.js";
+import type * as lib_summaryEndpoint from "../lib/summaryEndpoint.js";
+import type * as lib_transcription from "../lib/transcription.js";
+import type * as lib_transcriptionToken from "../lib/transcriptionToken.js";
 import type * as lib_fileTokens from "../lib/fileTokens.js";
 import type * as lib_instance from "../lib/instance.js";
 import type * as lib_inviteAccess from "../lib/inviteAccess.js";
@@ -114,9 +121,14 @@ import type * as rateLimits from "../rateLimits.js";
 import type * as reactions from "../reactions.js";
 import type * as readStates from "../readStates.js";
 import type * as roles from "../roles.js";
+import type * as scheduledCalls from "../scheduledCalls.js";
 import type * as server from "../server.js";
 import type * as setup from "../setup.js";
 import type * as setupState from "../setupState.js";
+import type * as transcription from "../transcription.js";
+import type * as transcriptionActions from "../transcriptionActions.js";
+import type * as transcriptionCleanup from "../transcriptionCleanup.js";
+import type * as transcriptionHttp from "../transcriptionHttp.js";
 import type * as turn from "../turn.js";
 import type * as typing from "../typing.js";
 import type * as updates from "../updates.js";
@@ -252,6 +264,18 @@ declare const fullApi: ApiFromModules<{
   webhooks: typeof webhooks;
   workspaceNotes: typeof workspaceNotes;
   workspaceNotesCleanup: typeof workspaceNotesCleanup;
+  addons: typeof addons;
+  guestCalls: typeof guestCalls;
+  scheduledCalls: typeof scheduledCalls;
+  transcription: typeof transcription;
+  transcriptionActions: typeof transcriptionActions;
+  transcriptionCleanup: typeof transcriptionCleanup;
+  transcriptionHttp: typeof transcriptionHttp;
+  lib_guestCalls: typeof lib_guestCalls;
+  lib_scheduledCalls: typeof lib_scheduledCalls;
+  lib_summaryEndpoint: typeof lib_summaryEndpoint;
+  lib_transcription: typeof lib_transcription;
+  lib_transcriptionToken: typeof lib_transcriptionToken;
 }>;
 
 /**

@@ -56,7 +56,7 @@ function StrengthMeter({
         {["one", "two", "three", "four"].map((bar, index) => (
           <View
             key={bar}
-            className="h-1 flex-1 rounded-full"
+            className="h-1 flex-1 rounded-full min-w-0"
             style={{ backgroundColor: index < filled ? color : palette.border }}
           />
         ))}
@@ -121,7 +121,7 @@ export function SetupScreen({ profile, authClient, onConnectDifferentServer }: S
       if (result.error !== null) {
         setError(
           result.error.message ??
-            "The instance is ready. Sign in with the account you just created.",
+            "The workspace is ready. Sign in with the account you just created.",
         );
       }
     } catch (cause) {
@@ -142,7 +142,7 @@ export function SetupScreen({ profile, authClient, onConnectDifferentServer }: S
         aura={<NativeBlobatar seed={profile.iconSeed} size={104} title={profile.name} />}
         intro={
           <View className="gap-2">
-            <Heading level={1}>Set up your instance</Heading>
+            <Heading level={1}>Set up your workspace</Heading>
             <Text tone="muted" size="sm">
               Create the first owner account. You can invite everyone else once you’re in.
             </Text>
@@ -177,7 +177,7 @@ export function SetupScreen({ profile, authClient, onConnectDifferentServer }: S
           </Text>
 
           <AuthField
-            label="Instance name"
+            label="Workspace name"
             placeholder="Acme"
             value={values.workspaceName}
             onChangeText={(workspaceName) => {

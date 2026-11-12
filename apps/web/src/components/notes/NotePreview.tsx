@@ -1,7 +1,7 @@
 import { NoteMarkdown } from "./NoteMarkdown";
 
 /**
- * A read-only, richly rendered note. The heading is optional so the editor's
+ * A read-only, richly rendered note. The heading is optional so the editor’s
  * Preview mode can keep showing the title input without printing it twice.
  */
 export function NotePreview({ title, body }: { title?: string; body: string }) {

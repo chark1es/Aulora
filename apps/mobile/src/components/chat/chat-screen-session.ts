@@ -21,6 +21,7 @@ export interface ViewerProfileData {
  * spinner; every other screen reads the shared session unchanged.
  */
 export interface ChatScreenOfflineData {
+  readonly threadRows?: readonly import("./ThreadsInbox").ThreadInboxItem[];
   readonly pinsFor?: (_channelId: string) => readonly MessagePayload[];
   readonly profiles?: ReadonlyMap<string, MemberProfileData>;
   readonly viewerProfile?: ViewerProfileData | null;

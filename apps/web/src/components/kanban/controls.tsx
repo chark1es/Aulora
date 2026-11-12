@@ -1,5 +1,6 @@
 /* eslint-disable no-unused-vars -- the base rule reports parameter names in type signatures; Biome checks real unused code */
-import { Checkbox, cn, Icon, type IconProps, SearchInput } from "@aulora/ui-web";
+import { timeAgo } from "@aulora/core";
+import { CapText, Checkbox, cn, Icon, type IconProps, SearchInput } from "@aulora/ui-web";
 import { type ReactNode, useEffect, useId, useRef, useState } from "react";
 import { PersonAvatar } from "../chat/member-avatars";
 import type { BoardMember, Card } from "./types";
@@ -10,13 +11,13 @@ export interface PriorityInfo {
   /** Text color class for the flag and its label. */
   tone: string;
 }
-const NO_PRIORITY: PriorityInfo = { label: "No priority", tone: "text-text-muted/50" };
+const NO_PRIORITY: PriorityInfo = { label: "No priority", tone: "text-text-muted" };
 const PRIORITY_INFO = new Map<Card["priority"], PriorityInfo>([
   ["none", NO_PRIORITY],
   ["low", { label: "Low", tone: "text-text-muted" }],
   ["medium", { label: "Medium", tone: "text-idle" }],
-  ["high", { label: "High", tone: "text-accent" }],
-  ["urgent", { label: "Urgent", tone: "text-danger" }],
+  ["high", { label: "High", tone: "text-accent-text" }],
+  ["urgent", { label: "Urgent", tone: "text-danger-text" }],
 ]);
 
 /** How a priority is named and coloured. */
@@ -58,14 +59,7 @@ export function dueLabel(at: number, now: number): { text: string; overdue: bool
   return { text, overdue: days < 0 };
 }
 
-export function timeAgo(at: number, now: number): string {
-  const minutes = Math.floor(Math.max(0, now - at) / 60000);
-  if (minutes < 1) return "just now";
-  if (minutes < 60) return `${minutes}m ago`;
-  if (minutes < 60 * 24) return `${Math.floor(minutes / 60)}h ago`;
-  if (minutes < 60 * 24 * 7) return `${Math.floor(minutes / (60 * 24))}d ago`;
-  return new Date(at).toLocaleDateString(undefined, { month: "short", day: "numeric" });
-}
+export { timeAgo };
 
 export function LabelChip({ name, color }: { name: string; color: string }) {
   return (
@@ -294,10 +288,10 @@ export function FilterTrigger({
   return (
     <>
       <Icon name={icon} size={14} />
-      {label}
+      <CapText>{label}</CapText>
       {count > 0 && (
         <span className="flex h-4 min-w-4 animate-scale-in items-center justify-center rounded-full bg-accent px-1 text-[10px] font-semibold text-on-accent">
-          {count}
+          <CapText>{count}</CapText>
         </span>
       )}
       <Icon name="chevron-down" size={12} className="text-text-muted" />

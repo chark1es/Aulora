@@ -167,6 +167,15 @@ export class PeerMesh {
   /** Cumulative RTP counters per peer, so loss is measured per interval. */
   private readonly statBaselines = new Map<string, RtpCounters>();
   private readonly ice: IceSignalBuffer;
+  /**
+   * On the guest page only: the server's decision for each MEMBER seat, from the
+   * guest roster's `shouldOffer` bit (true = this guest creates the offer toward
+   * that member). A guest cannot compute it: it knows a member only by an opaque
+   * key, while mobile and every released client elect on account ids.
+   */
+  private readonly serverOffers = new Map<string, boolean>();
+  /** Whether this client is itself a guest (only ever true on the guest page). */
+  private selfIsGuest = false;
 
   /** False while a streaming server carries the call's audio. */
   private remoteAudioEnabled = true;
@@ -195,7 +204,21 @@ export class PeerMesh {
     this.ice.clear();
     this.remoteSpeaking.clear();
     this.processedSignals.clear();
+    this.serverOffers.clear();
+    this.selfIsGuest = false;
     this.remoteAudioEnabled = true;
+  }
+
+  /** Whether this client creates the offer for the pair with the peer at `remoteId`. */
+  private offersTo(remoteId: string): boolean {
+    // A guest takes the server's decision for a member seat, when it sent one.
+    const decided = this.selfIsGuest ? this.serverOffers.get(remoteId) : undefined;
+    if (decided !== undefined) {
+      return decided;
+    }
+    // Everyone else, and a guest toward another guest or an older server's member
+    // seat, uses the legacy comparator exactly as mobile and released clients do.
+    return shouldOffer(this.host.userId, remoteId);
   }
 
   /**
@@ -214,8 +237,24 @@ export class PeerMesh {
   }
 
   /** Opens/closes peers so they match the call's current participant list. */
-  reconcile(participants: readonly { userId: string; session: number }[]): void {
+  reconcile(
+    participants: readonly {
+      userId: string;
+      session: number;
+      isGuest?: boolean | undefined;
+      /** Guest page only: the server's election bit for a member seat. */
+      shouldOffer?: boolean | undefined;
+    }[],
+  ): void {
+    const self = participants.find((participant) => participant.userId === this.host.userId);
+    this.selfIsGuest = self?.isGuest === true;
     const remote = participants.filter((participant) => participant.userId !== this.host.userId);
+    this.serverOffers.clear();
+    for (const participant of remote) {
+      if (typeof participant.shouldOffer === "boolean") {
+        this.serverOffers.set(participant.userId, participant.shouldOffer);
+      }
+    }
     for (const [id, peer] of this.peers) {
       const participant = remote.find((entry) => entry.userId === id);
       if (participant === undefined || participant.session !== peer.session) {
@@ -223,10 +262,7 @@ export class PeerMesh {
       }
     }
     for (const participant of remote) {
-      if (
-        !this.peers.has(participant.userId) &&
-        shouldOffer(this.host.userId, participant.userId)
-      ) {
+      if (!this.peers.has(participant.userId) && this.offersTo(participant.userId)) {
         void this.createPeer(participant.userId, true, participant.session);
       }
     }
@@ -545,7 +581,7 @@ export class PeerMesh {
     }
     // Only the impolite side (offerer) initiates; the other side simply
     // applies a fresh offer, handled above.
-    if (shouldOffer(this.host.userId, signal.fromUserId)) {
+    if (this.offersTo(signal.fromUserId)) {
       const description = parsePayload<RTCSessionDescriptionInit>(signal.payload);
       if (description === null) {
         return;

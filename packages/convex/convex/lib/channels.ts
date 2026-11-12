@@ -13,8 +13,6 @@ import {
 
 export type ChannelKind = "text" | "announcement" | "voice" | "dm" | "group_dm";
 
-export const DM_CHANNEL_KINDS: readonly ChannelKind[] = ["dm", "group_dm"];
-
 export function isDmKind(kind: string): kind is "dm" | "group_dm" {
   return kind === "dm" || kind === "group_dm";
 }

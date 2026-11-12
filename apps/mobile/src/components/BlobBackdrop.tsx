@@ -137,7 +137,7 @@ function driftStyle(value: Animated.Value, travel: Travel) {
 
 /**
  * The Aulora signature backdrop on mobile: three or four saturated blobs drawn
- * from the workspace's own blobatar palette, drifting slowly behind a screen.
+ * from the workspace’s own blobatar palette, drifting slowly behind a screen.
  * Purely decorative and hidden from assistive technology; the drift is skipped
  * when Reduce Motion is on (or still unknown).
  */

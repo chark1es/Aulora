@@ -2,9 +2,7 @@ import { type NoteFolder, type NoteSummary, type NoteTag, Permission } from "@au
 import { describe, expect, it } from "vitest";
 import {
   archiveActionLabel,
-  bodyPreview,
   buildFolderTree,
-  diffSummary,
   filterCount,
   filterNotes,
   flattenFolders,
@@ -16,7 +14,6 @@ import {
   noteCountLabel,
   notePermissions,
   noteTitle,
-  revisionActionLabel,
   selectNotes,
   sortNotes,
   tagsForIds,
@@ -171,24 +168,13 @@ describe("previews and labels", () => {
     expect(noteTitle({ title: "  " })).toBe("Untitled note");
     expect(noteTitle({ title: " Plans " })).toBe("Plans");
   });
-  it("collapses Markdown into one preview line", () => {
-    const body = "# Heading\n\nSome **bold** text\n\n- one\n- two";
-    expect(bodyPreview(body)).toBe("Heading Some bold text one two");
-    expect(bodyPreview(body, 10)).toBe("Heading S…");
-  });
   it("knows when a draft has content", () => {
     expect(hasNoteContent("  ", "\n")).toBe(false);
     expect(hasNoteContent("", "hi")).toBe(true);
   });
   it("names revisions and archive states", () => {
-    expect(revisionActionLabel("renamed")).toBe("Renamed");
-    expect(revisionActionLabel("mystery")).toBe("Changed");
     expect(archiveActionLabel(true)).toBe("Restore note");
     expect(archiveActionLabel(false)).toBe("Archive note");
-  });
-  it("summarises a diff", () => {
-    expect(diffSummary({ added: 0, removed: 0 })).toBe("No changes");
-    expect(diffSummary({ added: 3, removed: 1 })).toBe("+3 -1");
   });
   it("counts notes for the list caption", () => {
     expect(noteCountLabel(2, 2, { archived: false, filtering: false })).toBe("2 notes");

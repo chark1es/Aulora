@@ -2,7 +2,7 @@
 import { Button, Input, Text } from "@aulora/ui-native";
 import { useMutation } from "convex/react";
 import { useState } from "react";
-import { View } from "react-native";
+import { ScrollView, View } from "react-native";
 import { api } from "../../../../../packages/convex/convex/_generated/api";
 import { impactFeedback } from "../../lib/haptics";
 import { failure } from "../../lib/kanban";
@@ -41,8 +41,29 @@ export function NewBoardSheet({
       });
   };
   return (
-    <Sheet visible title="New board" onClose={onClose}>
-      <View className="gap-5 p-4">
+    <Sheet
+      visible
+      title="New board"
+      onClose={onClose}
+      // Pinned above the keyboard: on a short phone at large text the button
+      // after the toggle's description was under it.
+      footer={
+        <View className="gap-2 border-t border-border bg-surface-1 px-4 py-3">
+          {error !== undefined && (
+            <Text size="sm" tone="danger" accessibilityRole="alert">
+              {error}
+            </Text>
+          )}
+          <Button loading={busy} disabled={!name.trim()} onPress={submit}>
+            Create board
+          </Button>
+        </View>
+      }
+    >
+      <ScrollView
+        keyboardShouldPersistTaps="handled"
+        contentContainerStyle={{ gap: 20, padding: 16 }}
+      >
         <Input
           label="Board name"
           placeholder="e.g. Website launch"
@@ -59,15 +80,7 @@ export function NewBoardSheet({
           value={isPrivate}
           onChange={setPrivate}
         />
-        {error !== undefined && (
-          <Text size="sm" tone="danger" accessibilityRole="alert">
-            {error}
-          </Text>
-        )}
-        <Button loading={busy} disabled={!name.trim()} onPress={submit}>
-          Create board
-        </Button>
-      </View>
+      </ScrollView>
     </Sheet>
   );
 }

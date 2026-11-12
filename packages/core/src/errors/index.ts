@@ -19,6 +19,25 @@ import { isConnectivityError } from "../outbox/index.js";
  */
 export type ErrorDisposition = "reconnecting" | "fatal";
 
+/** The one fallback every client uses when an error has no safe message. */
+export const DEFAULT_ERROR_MESSAGE = "Something went wrong. Try again.";
+
+/**
+ * A message safe to show a person. Convex carries an app-authored rejection
+ * (a server `ConvexError` with a string payload) through as `error.data`;
+ * anything else may be an internal transport or stack message, so it is
+ * replaced with `fallback`.
+ */
+export function userFacingError(error: unknown, fallback: string = DEFAULT_ERROR_MESSAGE): string {
+  if (error instanceof Error && error.name === "ConvexError") {
+    const data = (error as Error & { readonly data?: unknown }).data;
+    if (typeof data === "string" && data.trim().length > 0) {
+      return data;
+    }
+  }
+  return fallback;
+}
+
 /**
  * Substrings that mark an authentication failure. Convex surfaces a server
  * `requireAuth` rejection as `Uncaught ConvexError: Not authenticated`; the
@@ -52,4 +71,24 @@ export function classifyError(error: unknown): ErrorDisposition {
     return "reconnecting";
   }
   return "fatal";
+}
+
+/** Safe send failure detail shared by composers; unknown errors retain the draft fallback. */
+export function messageSendError(error: unknown): string {
+  const fallback = "Message not sent. Your text is still here.";
+  const message = messageOf(error);
+  if (
+    /\b(failed to fetch|network ?error|network request failed|load failed|offline|not connected|connection error|timed? ?out|econnrefused|econnreset)\b/i.test(
+      message,
+    )
+  ) {
+    return "Couldn’t reach the workspace. Check your connection and try again.";
+  }
+  if (/mentioning everyone too often/i.test(message)) {
+    return "You’re mentioning everyone too often. Try again in a minute.";
+  }
+  if (/permission denied|not allowed to send|do not have permission|forbidden/i.test(message)) {
+    return "You don’t have permission to send messages here.";
+  }
+  return userFacingError(error, fallback);
 }

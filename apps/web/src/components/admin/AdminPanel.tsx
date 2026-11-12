@@ -143,7 +143,11 @@ export function AdminPanel(props: AdminPanelProps) {
         <AdminNav sections={sections} active={nav.tab} onSelect={goToTab} />
 
         <div className="min-h-0 flex-1 overflow-y-auto">
-          <div className="flex w-full max-w-[784px] flex-col px-8 pb-20 pt-8 lg:px-12">
+          <div
+            className={`flex w-full flex-col px-8 pb-20 pt-8 lg:px-12 ${
+              nav.tab === "instance" ? "max-w-[1120px]" : "max-w-[784px]"
+            }`}
+          >
             <AdminPanelBody
               nav={nav}
               hasSections={sections.length > 0}
@@ -313,7 +317,10 @@ function AdminPanelSystemBody(props: AdminPanelBodyProps) {
         </div>
       )}
       {nav.tab === "addons" && (
-        <AddonsSettings canManageWorkspace={permission("ManageWorkspace")} />
+        <AddonsSettings
+          canManageWorkspace={permission("ManageWorkspace")}
+          canManageTranscription={permission("ManageTranscription")}
+        />
       )}
       {nav.tab === "bots" && <BotsSettings canManageBots={permission("ManageBots")} />}
       {nav.tab === "instance" && <InstanceAdminPanel canManage={viewer.isOwner} variant="inline" />}

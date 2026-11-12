@@ -1,7 +1,8 @@
 /* eslint-disable no-unused-vars -- the base rule reports parameter names in type signatures; Biome checks real unused code */
+
+import { notifyAuthChanged, notifyAuthError } from "@aulora/core";
 import { useNavigate } from "@tanstack/react-router";
 import { useCallback, useEffect } from "react";
-import { notifyAuthChanged, notifyAuthError } from "../lib/auth-events";
 import {
   desktopPlatform,
   isDesktop,
@@ -15,7 +16,7 @@ import { useProfiles } from "../providers/ProfileProvider";
 type RouteDeepLinks = (urls: readonly string[]) => void;
 
 /**
- * Wires the shell's deep links, quick switcher and sidebar events into the
+ * Wires the shell’s deep links, quick switcher and sidebar events into the
  * page. Only runs inside the Tauri shell; shared by the bridge below.
  */
 function useDesktopEvents(route: RouteDeepLinks): void {
@@ -99,7 +100,7 @@ export function DesktopBridge() {
             }
           })();
         } else if (target.kind === "auth-error") {
-          // Store the allowlisted error only when it names this tab's pending
+          // Store the allowlisted error only when it names this tab’s pending
           // workspace and transaction; a stray link cannot cancel a real
           // sign-in or paint a message into it. Notify an already-mounted form
           // so it shows the message without waiting for a remount.

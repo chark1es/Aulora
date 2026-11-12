@@ -1,3 +1,4 @@
+import { userFacingError } from "@aulora/core";
 import { Button, Icon, Input, SegmentedControl, Spinner, Switch, Text } from "@aulora/ui-web";
 import { useMutation, useQuery } from "convex/react";
 import { type Dispatch, type SetStateAction, useEffect, useState } from "react";
@@ -164,7 +165,7 @@ function useSettingsSaver(
         setSaved(true);
       })
       .catch((cause: unknown) => {
-        setError(cause instanceof Error ? cause.message : "Could not save settings.");
+        setError(userFacingError(cause));
       })
       .finally(() => {
         setBusy(false);
@@ -324,7 +325,7 @@ function JoiningSettings({
         />
         <SettingsGroupRow
           label="Allow account creation"
-          description="When off, no one can create an account here — existing members keep full access."
+          description="When off, no one can create an account here. Existing members keep full access."
         >
           <Switch
             bare
@@ -448,7 +449,7 @@ function DomainChips({
             onClick={() => {
               onRemoveDomain(domain);
             }}
-            className="flex h-4 w-4 items-center justify-center rounded-full transition hover:bg-danger/15 hover:text-danger focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent"
+            className="flex h-4 w-4 items-center justify-center rounded-full transition hover:bg-danger/15 hover:text-danger-text focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent"
           >
             <Icon name="x" size={10} />
           </button>

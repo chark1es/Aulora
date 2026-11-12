@@ -59,6 +59,9 @@ export interface MessagePayload {
   readonly replyToId?: string | null;
   readonly attachmentIds: readonly string[];
   readonly mentionUserIds: readonly string[];
+  readonly mentionEveryone?: boolean;
+  readonly mentionHere?: boolean;
+  readonly broadcastDirectUserIds?: readonly string[];
   /** Plaintext ids of channels/categories mentioned as `#name`. */
   readonly mentionChannelIds?: readonly string[];
   /** Plaintext ids of categories mentioned as `#name`. */
@@ -73,7 +76,7 @@ export interface MessagePayload {
   /** Thread roots: who replied most recently, newest first, capped (absent on older servers). */
   readonly replyParticipantIds?: readonly string[];
   /**
-   * A quiet system event in the timeline (e.g. a pin) instead of a normal
+   * A system event in the timeline (e.g. a pin) instead of a normal
    * message bubble. Absent on ordinary messages.
    */
   readonly systemKind?: "pin";
@@ -147,6 +150,7 @@ export interface ReadStateRow {
   readonly channelId: string;
   readonly lastReadMessageId: string | null;
   readonly mentionCount: number;
+  readonly massMentionCount?: number;
 }
 
 export interface DeviceRow {
@@ -260,6 +264,8 @@ export interface ChatPort {
     threadRootId?: string;
     replyToId?: string;
     mentionUserIds?: readonly string[];
+    readonly mentionEveryone?: boolean;
+    readonly mentionHere?: boolean;
     mentionChannelIds?: readonly string[];
     mentionCategoryIds?: readonly string[];
     /** Mentioned roles; servers that support it expand these server-side. */

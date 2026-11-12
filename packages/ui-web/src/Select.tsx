@@ -1,6 +1,8 @@
 import { useEffect, useId, useLayoutEffect, useRef, useState } from "react";
+import { createPortal } from "react-dom";
 import { cn } from "./cn";
 import { Icon } from "./Icon";
+import { swallowOutsideClick, useSelectPopup } from "./useSelectPopup";
 
 export interface SelectOption<T extends string> {
   readonly value: T;
@@ -78,25 +80,56 @@ export function Select<T extends string>({
   const [open, setOpen] = useState(false);
   const [active, setActive] = useState(0);
   const rootRef = useRef<HTMLDivElement | null>(null);
+  const triggerRef = useRef<HTMLButtonElement | null>(null);
+  const listRef = useRef<HTMLDivElement | null>(null);
+  const popupStyle = useSelectPopup(open, triggerRef, listRef);
+  // The listbox takes focus while open, so closing it (Enter, Escape or a
+  // selection) must hand focus back to the trigger rather than let it fall to
+  // <body>. A pointer click outside leaves focus where the person put it.
+  const restoreFocusRef = useRef(false);
+  const selectionRef = useRef({ options, value });
+  selectionRef.current = { options, value };
+  const swallowCleanup = useRef<(() => void) | undefined>(undefined);
+  useEffect(() => () => swallowCleanup.current?.(), []);
   const selected = options.find((option) => option.value === value);
   const rows = options.length + (action === undefined ? 0 : 1);
+
+  const closeListbox = (restoreFocus: boolean): void => {
+    restoreFocusRef.current = restoreFocus;
+    setOpen(false);
+  };
+
+  useEffect(() => {
+    if (open || !restoreFocusRef.current) {
+      return;
+    }
+    restoreFocusRef.current = false;
+    triggerRef.current?.focus();
+  }, [open]);
 
   useLayoutEffect(() => {
     if (!open) {
       return;
     }
+    swallowCleanup.current?.();
+    const { options, value } = selectionRef.current;
     const index = options.findIndex((option) => option.value === value);
     setActive(index >= 0 ? index : 0);
-  }, [open, options, value]);
+  }, [open]);
 
   useEffect(() => {
-    if (!open) {
-      return;
-    }
+    if (!open) return;
     const onPointer = (event: PointerEvent) => {
-      if (rootRef.current !== null && !rootRef.current.contains(event.target as Node)) {
-        setOpen(false);
+      const target = event.target as Node;
+      if (
+        rootRef.current?.contains(target) === true ||
+        listRef.current?.contains(target) === true
+      ) {
+        return;
       }
+      swallowCleanup.current = swallowOutsideClick(event.target);
+      restoreFocusRef.current = false;
+      setOpen(false);
     };
     document.addEventListener("pointerdown", onPointer);
     return () => {
@@ -109,33 +142,54 @@ export function Select<T extends string>({
     if (option !== undefined) {
       onChange(option.value);
     }
-    setOpen(false);
+    closeListbox(true);
   };
   const commitActive = (): void => {
     if (active >= options.length) {
       action?.onSelect();
-      setOpen(false);
+      closeListbox(true);
       return;
     }
     commitOption(active);
   };
 
   return (
-    <div ref={rootRef} className={cn("flex flex-col gap-1.5", className)}>
+    // biome-ignore lint/a11y/noStaticElementInteractions: observes focus leaving the composite control
+    <div
+      ref={rootRef}
+      className={cn("flex flex-col gap-1.5", className)}
+      onBlur={(event) => {
+        if (
+          !event.currentTarget.contains(event.relatedTarget) &&
+          !listRef.current?.contains(event.relatedTarget)
+        )
+          closeListbox(false);
+      }}
+    >
       {label !== undefined && (
-        <label htmlFor={buttonId} className="text-[12px] font-medium text-text-muted">
+        <label
+          htmlFor={buttonId}
+          id={`${buttonId}-label`}
+          className="text-[12px] font-medium text-text-muted"
+        >
           {label}
         </label>
       )}
       <div className="relative">
         <button
           id={buttonId}
+          ref={triggerRef}
           type="button"
+          aria-labelledby={label === undefined ? undefined : `${buttonId}-label ${buttonId}-value`}
           aria-haspopup="listbox"
           aria-expanded={open}
           aria-controls={open ? listId : undefined}
           onClick={() => {
-            setOpen((current) => !current);
+            if (open) {
+              closeListbox(true);
+            } else {
+              setOpen(true);
+            }
           }}
           onKeyDown={(event) => {
             if (event.key === "ArrowDown" || event.key === "ArrowUp") {
@@ -144,10 +198,12 @@ export function Select<T extends string>({
             }
           }}
           className={cn(
-            "flex items-center gap-2 rounded-[8px] text-left text-[13px] transition",
+            "flex items-center gap-2 rounded-[8px] text-left text-[13px] transition focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent",
             variant === "bare"
               ? "h-7 border border-transparent px-1.5 text-text-muted hover:bg-surface-3 hover:text-text"
               : cn(
+                  // text-centering-ok: truncate keeps a 16px leading-4 line box,
+                  // which is Inter's centred cap band for 13px text (measured 0.25).
                   "h-9 w-full border bg-surface-3 px-2.5 text-text",
                   open ? "border-accent" : "border-border hover:border-text-muted/40",
                 ),
@@ -160,8 +216,14 @@ export function Select<T extends string>({
             </span>
           )}
           <span
+            id={`${buttonId}-value`}
             title={selected?.title ?? selected?.label}
-            className={cn("min-w-0 flex-1 truncate", selected === undefined && "text-text-muted")}
+            // 16px is Inter's 13px line box: the label stays clip-safe for
+            // `truncate` and its baseline lands on a whole pixel, centred.
+            className={cn(
+              "min-w-0 flex-1 truncate leading-4",
+              selected === undefined && "text-text-muted",
+            )}
           >
             {selected?.label ?? placeholder ?? "Select"}
           </span>
@@ -172,71 +234,78 @@ export function Select<T extends string>({
           />
         </button>
 
-        {open && (
-          <div
-            id={listId}
-            role="listbox"
-            aria-labelledby={buttonId}
-            tabIndex={-1}
-            // biome-ignore lint/a11y/noAutofocus: the listbox takes focus to capture keys
-            autoFocus
-            onKeyDown={(event) => {
-              if (event.key === "Enter" || event.key === " ") {
-                event.preventDefault();
-                commitActive();
-                return;
-              }
-              if (event.key === "Escape") {
-                event.preventDefault();
-                setOpen(false);
-                return;
-              }
-              const next = arrowStep(event.key, active, rows);
-              if (next !== undefined) {
-                event.preventDefault();
-                setActive(next);
-              }
-            }}
-            className={cn(
-              "absolute left-0 right-0 top-[calc(100%+4px)] z-40 animate-pop-in overflow-hidden rounded-[10px] border border-border bg-surface-2 p-1 text-left shadow-2xl shadow-black/25",
-              popupClassName,
-            )}
-          >
-            {options.map((option, index) => (
-              <OptionRow
-                key={option.value}
-                option={option}
-                selected={option.value === value}
-                active={index === active}
-                onHover={() => {
-                  setActive(index);
-                }}
-                onChoose={() => {
-                  commitOption(index);
-                }}
-              />
-            ))}
-            {action !== undefined && (
-              <ActionRow
-                action={action}
-                active={active === options.length}
-                onHover={() => {
-                  setActive(options.length);
-                }}
-                onChoose={() => {
-                  action.onSelect();
-                  setOpen(false);
-                }}
-              />
-            )}
-          </div>
-        )}
+        {open &&
+          createPortal(
+            <div
+              ref={listRef}
+              style={popupStyle}
+              id={listId}
+              role="listbox"
+              aria-labelledby={buttonId}
+              aria-activedescendant={rows > 0 ? `${listId}-option-${active}` : undefined}
+              tabIndex={-1}
+              onKeyDown={(event) => {
+                if (event.key === "Enter" || event.key === " ") {
+                  event.preventDefault();
+                  commitActive();
+                  return;
+                }
+                if (event.key === "Escape" || event.key === "Tab") {
+                  event.preventDefault();
+                  event.stopPropagation();
+                  closeListbox(true);
+                  return;
+                }
+                const next = arrowStep(event.key, active, rows);
+                if (next !== undefined) {
+                  event.preventDefault();
+                  setActive(next);
+                }
+              }}
+              className={cn(
+                "fixed z-[100] focus:outline-none overflow-y-auto overscroll-contain rounded-[10px] border border-border bg-surface-2 p-1 text-left shadow-2xl shadow-black/25",
+                popupClassName,
+              )}
+            >
+              {options.map((option, index) => (
+                <OptionRow
+                  key={option.value}
+                  id={`${listId}-option-${index}`}
+                  option={option}
+                  selected={option.value === value}
+                  active={index === active}
+                  onHover={() => {
+                    setActive(index);
+                  }}
+                  onChoose={() => {
+                    commitOption(index);
+                  }}
+                />
+              ))}
+              {action !== undefined && (
+                <ActionRow
+                  id={`${listId}-option-${options.length}`}
+                  action={action}
+                  active={active === options.length}
+                  onHover={() => {
+                    setActive(options.length);
+                  }}
+                  onChoose={() => {
+                    action.onSelect();
+                    closeListbox(true);
+                  }}
+                />
+              )}
+            </div>,
+            document.body,
+          )}
       </div>
     </div>
   );
 }
 
 interface OptionRowProps<T extends string> {
+  readonly id: string;
   readonly option: SelectOption<T>;
   readonly selected: boolean;
   readonly active: boolean;
@@ -245,6 +314,7 @@ interface OptionRowProps<T extends string> {
 }
 
 function OptionRow<T extends string>({
+  id,
   option,
   selected,
   active,
@@ -254,6 +324,7 @@ function OptionRow<T extends string>({
   return (
     // biome-ignore lint/a11y/useKeyWithClickEvents: the listbox handles keys
     <div
+      id={id}
       role="option"
       tabIndex={-1}
       aria-selected={selected}
@@ -283,11 +354,13 @@ function OptionRow<T extends string>({
 }
 
 function ActionRow({
+  id,
   action,
   active,
   onHover,
   onChoose,
 }: {
+  readonly id: string;
   readonly action: SelectAction;
   readonly active: boolean;
   readonly onHover: () => void;
@@ -295,9 +368,10 @@ function ActionRow({
 }) {
   return (
     <>
-      <span className="my-1 block h-px bg-border" />
+      <span aria-hidden="true" className="my-1 block h-px bg-border" />
       {/* biome-ignore lint/a11y/useKeyWithClickEvents: the listbox handles keys */}
       <div
+        id={id}
         role="option"
         tabIndex={-1}
         aria-selected={false}

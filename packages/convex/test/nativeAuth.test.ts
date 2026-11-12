@@ -332,6 +332,56 @@ async function finishWithJar(
 // The first route test cold-loads Better Auth and the Convex test harness, which
 // can exceed the 5 s default on a loaded CI runner.
 describe("native OAuth HTTP routes", { timeout: 30_000 }, () => {
+  it.each([RETURN_URL, "http://tauri.localhost", "https://tauri.localhost"])(
+    "preserves Google OAuth state through the callback for %s",
+    async (returnUrl) => {
+      vi.stubEnv("GOOGLE_CLIENT_ID", "google-client");
+      vi.stubEnv("GOOGLE_CLIENT_SECRET", "google-secret");
+      const t = newTestWithAccounts();
+      await seedSignupWorkspace(t);
+      const jar = new Map<string, string>();
+      const challenge = await hexDigest("a".repeat(64));
+      const tx = txId("a");
+      const start = await t.fetch(
+        `/api/auth/native/start?provider=google&kind=oauth&return=${encodeURIComponent(returnUrl)}&${HANDOFF_CHALLENGE_PARAM}=${challenge}&${HANDOFF_TX_PARAM}=${tx}`,
+        { headers: { "x-forwarded-for": `198.51.100.${nextStartIp++}` } },
+      );
+      expect(start.status).toBe(302);
+      applyCookies(start, jar);
+      const state = new URL(start.headers.get("location") ?? "").searchParams.get("state");
+      expect(state).toBeTruthy();
+
+      // A callback from another cookie jar must fail without consuming the
+      // legitimate browser's state.
+      const unbound = await t.fetch(`/api/auth/callback/google?state=${state}&error=access_denied`);
+      const unboundLocation = new URL(unbound.headers.get("location") ?? "");
+      expect(unboundLocation.pathname).toBe("/api/auth/native/finish");
+      expect(unboundLocation.searchParams.get("error")).toBe("state_mismatch");
+
+      // Cancellation exercises real state verification without calling Google's
+      // token endpoint. A valid state must reach the per-flow finish URL.
+      const callback = await t.fetch(
+        `/api/auth/callback/google?state=${state}&error=access_denied`,
+        {
+          headers: { cookie: jarCookieHeader(jar) },
+        },
+      );
+      expect(callback.status).toBe(302);
+      const location = new URL(callback.headers.get("location") ?? "");
+      expect(location.pathname).toBe("/api/auth/native/finish");
+      expect(location.searchParams.get("error")).toBe("access_denied");
+      expect(location.searchParams.get("tx")).toBe(tx);
+
+      // The consumed state cannot be replayed even with the original cookie.
+      const replay = await t.fetch(`/api/auth/callback/google?state=${state}&error=access_denied`, {
+        headers: { cookie: jarCookieHeader(jar) },
+      });
+      const replayLocation = new URL(replay.headers.get("location") ?? "");
+      expect(replayLocation.pathname).toBe("/api/auth/error");
+      expect(replayLocation.searchParams.get("error")).toBe("state_mismatch");
+    },
+  );
+
   it("builds provider and finish URLs without duplicating /api/auth", async () => {
     vi.stubEnv("GITHUB_CLIENT_ID", "github-client");
     vi.stubEnv("GITHUB_CLIENT_SECRET", "github-secret");
@@ -392,36 +442,45 @@ describe("native OAuth HTTP routes", { timeout: 30_000 }, () => {
     expect(body.server).toBe(SITE);
   });
 
-  it("exchanges a code once with the verifier and rejects a replay", async () => {
-    const t = newTestWithAccounts();
-    await seedSignupWorkspace(t);
-    const cookie = await signUp(t);
-    const verifier = "b".repeat(64);
-    const challenge = await hexDigest(verifier);
-    const tx = txId("b");
-    await startTransaction(t, tx, challenge);
-    const finishLocation = await finish(t, cookie, challenge, tx);
-    const callback = new URL(finishLocation);
-    const code = callback.searchParams.get("code") ?? "";
+  it.each([SITE, "http://tauri.localhost", "https://tauri.localhost", "tauri://localhost", "null"])(
+    "exchanges a code once with readable CORS responses for %s",
+    async (origin) => {
+      const t = newTestWithAccounts();
+      await seedSignupWorkspace(t);
+      const cookie = await signUp(t);
+      const verifier = "b".repeat(64);
+      const challenge = await hexDigest(verifier);
+      const tx = txId("b");
+      await startTransaction(t, tx, challenge);
+      const finishLocation = await finish(t, cookie, challenge, tx);
+      const callback = new URL(finishLocation);
+      const code = callback.searchParams.get("code") ?? "";
 
-    const exchanged = await t.fetch("/api/auth/native/exchange", {
-      method: "POST",
-      headers: { "content-type": "application/json", origin: SITE },
-      body: JSON.stringify({ code, verifier }),
-    });
-    expect(exchanged.status).toBe(200);
-    const body = (await exchanged.json()) as { token?: string; server?: string };
-    expect(body.token?.length ?? 0).toBeGreaterThan(0);
-    expect(body.server).toBe(SITE);
+      const exchanged = await t.fetch("/api/auth/native/exchange", {
+        method: "POST",
+        headers: { "content-type": "application/json", origin },
+        body: JSON.stringify({ code, verifier }),
+      });
+      expect(exchanged.status).toBe(200);
+      expect(exchanged.headers.get("access-control-allow-origin")).toBe(origin);
+      expect(exchanged.headers.get("vary")).toBe("origin");
+      expect(exchanged.headers.get("cache-control")).toBe("no-store");
+      expect(exchanged.headers.get("content-type")).toBe("application/json");
+      const body = (await exchanged.json()) as { token?: string; server?: string };
+      expect(body.token?.length ?? 0).toBeGreaterThan(0);
+      expect(body.server).toBe(SITE);
 
-    const replay = await t.fetch("/api/auth/native/exchange", {
-      method: "POST",
-      headers: { "content-type": "application/json", origin: SITE },
-      body: JSON.stringify({ code, verifier }),
-    });
-    expect(replay.status).toBe(400);
-    expect(await replay.json()).toEqual({ error: "invalid_code" });
-  });
+      const replay = await t.fetch("/api/auth/native/exchange", {
+        method: "POST",
+        headers: { "content-type": "application/json", origin },
+        body: JSON.stringify({ code, verifier }),
+      });
+      expect(replay.status).toBe(400);
+      expect(replay.headers.get("access-control-allow-origin")).toBe(origin);
+      expect(replay.headers.get("vary")).toBe("origin");
+      expect(await replay.json()).toEqual({ error: "invalid_code" });
+    },
+  );
 
   it("authenticates a later request with the exchanged bearer token", async () => {
     const t = newTestWithAccounts();
@@ -586,6 +645,7 @@ describe("native OAuth HTTP routes", { timeout: 30_000 }, () => {
       body: JSON.stringify({ code: "x", verifier: "y" }),
     });
     expect(evil.status).toBe(403);
+    expect(evil.headers.get("access-control-allow-origin")).toBeNull();
     expect(await evil.json()).toEqual({ error: "origin_not_allowed" });
   });
 

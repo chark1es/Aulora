@@ -1,3 +1,4 @@
+import { summaryMentionIncreased, suppressesBroadcast } from "@aulora/core";
 import { useEffect, useRef } from "react";
 import type { ChannelUnreadState } from "./channel-priority";
 import { playSound } from "./sounds";
@@ -11,6 +12,7 @@ export interface UnopenedChannelAlertsOptions {
   /** The open conversation, served by `useChannelSession`. */
   readonly activeChannelId: string | undefined;
   readonly mutedChannelIds: ReadonlySet<string>;
+  readonly suppressionPrefs?: Parameters<typeof suppressesBroadcast>[2];
   readonly channelNames: ReadonlyMap<string, string>;
 }
 
@@ -46,7 +48,14 @@ export function useUnopenedChannelAlerts(options: UnopenedChannelAlertsOptions):
         continue;
       }
       const then = before.get(channelId);
-      const mentionUp = now.mentionCount > (then?.mentionCount ?? 0);
+      const suppressed = suppressesBroadcast(
+        { channelId, mentionEveryone: true },
+        "",
+        options.suppressionPrefs,
+      );
+      const mentionUp = summaryMentionIncreased(now, then, suppressed);
+      // A suppressed broadcast must not fall through to an ordinary message cue.
+      if (suppressed && now.mentionCount > (then?.mentionCount ?? 0) && !mentionUp) continue;
       const activityUp =
         now.lastActivityAt !== null && now.lastActivityAt > (then?.lastActivityAt ?? 0);
       if (!mentionUp && !(now.unread && activityUp)) {

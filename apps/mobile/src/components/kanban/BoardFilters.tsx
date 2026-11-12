@@ -151,7 +151,7 @@ export function ReadOnlyBanner({
       className="flex-row items-center gap-3 border-b border-border bg-surface-2 px-4 py-2"
     >
       <Icon name="eye" size={16} color={palette["text-muted"]} />
-      <Text size="sm" tone="muted" className="flex-1">
+      <Text size="sm" tone="muted" className="flex-1 min-w-0">
         You have view-only access to this board. Ask a workspace admin to grant you the Edit Kanban
         permission to add, move or change cards.
       </Text>
@@ -175,7 +175,7 @@ export function ArchivedBanner({
       className="flex-row items-center gap-3 border-b border-border bg-surface-2 px-4 py-2"
     >
       <Icon name="archive" size={16} color={palette["text-muted"]} />
-      <Text size="sm" tone="muted" className="flex-1">
+      <Text size="sm" tone="muted" className="flex-1 min-w-0">
         {board.archived
           ? "This board is archived. Restore it to make changes."
           : "Showing archived cards. Open or long-press a card to restore it."}

@@ -1,8 +1,8 @@
 /* eslint-disable no-unused-vars -- the base rule reports parameter names in type signatures; Biome checks real unused code */
 import type { ChannelView, PresenceRow, SearchHit } from "@aulora/core";
-import { Icon, Text, usePalette } from "@aulora/ui-native";
+import { Icon, Text, TextField, usePalette } from "@aulora/ui-native";
 import { useMemo, useRef, useState } from "react";
-import { Pressable, TextInput, type TextInputInstance, View } from "react-native";
+import { Pressable, type TextInputInstance, View } from "react-native";
 import { ScrollView } from "react-native-gesture-handler";
 import { useReanimatedKeyboardAnimation } from "react-native-keyboard-controller";
 import Animated, { useAnimatedStyle } from "react-native-reanimated";
@@ -124,7 +124,7 @@ function SearchField({ value, onChange, onSubmit }: SearchFieldProps) {
       className="min-h-12 flex-row items-center gap-2 rounded-pill border border-border bg-surface-2 px-4"
     >
       <Icon name="search" size={20} color={palette["text-muted"]} />
-      <TextInput
+      <TextField
         ref={inputRef}
         autoFocus
         accessibilityLabel="Search"
@@ -137,7 +137,7 @@ function SearchField({ value, onChange, onSubmit }: SearchFieldProps) {
         autoCorrect={false}
         returnKeyType="search"
         maxFontSizeMultiplier={1.6}
-        className="min-h-12 flex-1 py-0 text-[17px] text-text"
+        className="min-h-12 flex-1 py-0 text-[17px] text-text min-w-0"
       />
       {value.length > 0 && (
         <ClearButton
@@ -268,7 +268,7 @@ function SearchBody({ view, model, query, preview, onPickRecent }: SearchBodyPro
   );
 }
 
-/** The hub's search tab: messages, conversations and people, with the field at thumb height. */
+/** The hub’s search tab: messages, conversations and people, with the field at thumb height. */
 export function SearchView(props: SearchViewProps) {
   const clearance = useDockClearance();
   const keyboard = useReanimatedKeyboardAnimation();
@@ -285,7 +285,7 @@ export function SearchView(props: SearchViewProps) {
   return (
     <Animated.View style={lift}>
       <ScrollView
-        className="flex-1"
+        className="flex-1 min-w-0"
         keyboardShouldPersistTaps="handled"
         keyboardDismissMode="on-drag"
         contentContainerStyle={{ paddingHorizontal: 16, paddingBottom: 16, gap: 16 }}

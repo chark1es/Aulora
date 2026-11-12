@@ -1,14 +1,18 @@
+import { debugLog } from "@aulora/core";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import type { AuloraAuthClient } from "../src/lib/auth-client";
 import { startProviderSignIn } from "../src/lib/auth-client";
 import { PENDING_HANDOFF_KEY, readPendingAuthHandoff } from "../src/lib/auth-handoff";
 import { authTokenKey, type CookieStore } from "../src/lib/cookie-fetch";
+import { deleteAccountAction, signOutAction } from "../src/lib/session-account-actions";
 
 /**
  * The in-app browser branch is untrusted input too: a forged error page that
  * only names the workspace origin must not clear the pending transaction,
  * while the person closing the browser sheet explicitly may.
  */
+
+vi.mock("react-native", () => ({ Alert: { alert: vi.fn() } }));
 
 const { openAuthSession } = vi.hoisted(() => ({ openAuthSession: vi.fn() }));
 
@@ -205,4 +209,18 @@ describe("startProviderSignIn in-app callback", () => {
     expect(map.get(PENDING_HANDOFF_KEY)).toBeDefined();
     expect(map.get(authTokenKey(SERVER))).toBeUndefined();
   });
+});
+
+describe("account debug log isolation", () => {
+  for (const action of ["signOut", "deleteAccount"] as const) {
+    it(`clears the previous account logs on ${action}`, async () => {
+      const client = {
+        signOut: vi.fn(async () => ({ error: null })),
+        deleteUser: vi.fn(async () => ({ error: null })),
+      } as unknown as AuloraAuthClient;
+      debugLog.record("account-a", "previous private account error");
+      await (action === "signOut" ? signOutAction(client) : deleteAccountAction(client))();
+      expect(debugLog.report("account-b", "")).not.toContain("previous private account error");
+    });
+  }
 });

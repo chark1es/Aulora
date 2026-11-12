@@ -100,7 +100,7 @@ export function PreviewToggle({ preview, onToggle }: { preview: boolean; onToggl
       onClick={onToggle}
       className={`inline-flex h-8 shrink-0 items-center gap-1.5 rounded-[10px] border px-3 text-[12.5px] font-medium transition focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent ${
         preview
-          ? "border-accent/40 bg-accent-soft text-accent"
+          ? "border-accent/40 bg-accent-soft text-accent-text"
           : "border-border bg-surface-2 text-text-muted hover:text-text"
       }`}
     >
@@ -169,7 +169,7 @@ function NoteReader({
         <NotePreview title={current.title} body={current.body} />
       </div>
       {ctl.error !== undefined && (
-        <p role="alert" className="text-sm text-danger">
+        <p role="alert" className="text-sm text-danger-text">
           {ctl.error}
         </p>
       )}
@@ -298,7 +298,7 @@ export function NoteEditor({ ctl }: { ctl: NotesController }) {
       </div>
 
       {ctl.error !== undefined && (
-        <p role="alert" className="text-sm text-danger">
+        <p role="alert" className="text-sm text-danger-text">
           {ctl.error}
         </p>
       )}

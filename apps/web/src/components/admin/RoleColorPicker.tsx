@@ -1,120 +1,35 @@
 /* eslint-disable no-unused-vars -- the base rule reports parameter names in type signatures; Biome checks real unused code */
-import { cn } from "@aulora/ui-web";
+import { hslToHex, parseHexColor, ROLE_COLOR_PRESETS, rgbToHsl } from "@aulora/core";
+import { cn, RoleColorPreview } from "@aulora/ui-web";
 import { useRef } from "react";
-
-/** A compact palette that reads well on both themes and next to blobatars. */
-const PRESET_COLORS = [
-  "#C2410C",
-  "#E4571C",
-  "#0E9F8E",
-  "#248A3D",
-  "#7C5CFF",
-  "#B24592",
-  "#D70015",
-  "#8E8E93",
-] as const;
 
 const WHEEL_SIZE = 112;
 const DEFAULT_HUE = 16;
 const DEFAULT_SATURATION = 0.72;
 const DEFAULT_LIGHTNESS = 0.55;
 
-interface Rgb {
-  readonly r: number;
-  readonly g: number;
-  readonly b: number;
-}
-
-interface Hsl {
-  readonly h: number;
-  readonly s: number;
-  readonly l: number;
-}
-
-function hexToRgb(value: string): Rgb | null {
-  const match = /^#?([\da-f]{3}|[\da-f]{6})$/i.exec(value.trim());
-  if (match === null) {
-    return null;
-  }
-  const [, raw = ""] = match;
-  if (raw.length === 0) {
-    return null;
-  }
-  let hex = raw;
-  if (hex.length === 3) {
-    hex = hex
-      .split("")
-      .map((part) => part + part)
-      .join("");
-  }
-  const int = Number.parseInt(hex, 16);
-  return { r: (int >> 16) & 255, g: (int >> 8) & 255, b: int & 255 };
-}
-
-function rgbToHsl({ r, g, b }: Rgb): Hsl {
-  const red = r / 255;
-  const green = g / 255;
-  const blue = b / 255;
-  const max = Math.max(red, green, blue);
-  const min = Math.min(red, green, blue);
-  const l = (max + min) / 2;
-  if (max === min) {
-    return { h: 0, s: 0, l };
-  }
-  const delta = max - min;
-  const s = l > 0.5 ? delta / (2 - max - min) : delta / (max + min);
-  let h: number;
-  if (max === red) {
-    h = (green - blue) / delta + (green < blue ? 6 : 0);
-  } else if (max === green) {
-    h = (blue - red) / delta + 2;
-  } else {
-    h = (red - green) / delta + 4;
-  }
-  return { h: h * 60, s, l };
-}
-
-function hslToHex(hue: number, saturation: number, lightness: number): string {
-  const h = ((hue % 360) + 360) % 360;
-  const s = Math.min(1, Math.max(0, saturation));
-  const l = Math.min(1, Math.max(0, lightness));
-  const c = (1 - Math.abs(2 * l - 1)) * s;
-  const x = c * (1 - Math.abs(((h / 60) % 2) - 1));
-  const m = l - c / 2;
-  const [red, green, blue] =
-    h < 60
-      ? [c, x, 0]
-      : h < 120
-        ? [x, c, 0]
-        : h < 180
-          ? [0, c, x]
-          : h < 240
-            ? [0, x, c]
-            : h < 300
-              ? [x, 0, c]
-              : [c, 0, x];
-  const channel = (value: number) =>
-    Math.round((value + m) * 255)
-      .toString(16)
-      .padStart(2, "0");
-  return `#${channel(red)}${channel(green)}${channel(blue)}`.toUpperCase();
-}
-
 /**
  * A role colour: a hue/saturation wheel for any custom colour, a lightness
- * control for readable shades, the preset palette and a clear option.
+ * control for readable shades, the preset palette, a clear option and a live
+ * preview of how the role name reads in both themes.
  */
 export function RoleColorPicker({
   value,
   onChange,
+  roleName = "",
+  mentionable = false,
   disabled = false,
 }: {
   readonly value: string;
   readonly onChange: (color: string) => void;
+  /** The role name being edited; the preview falls back to “Moderator”. */
+  readonly roleName?: string;
+  /** Show the `@role` mention pill when the role can be mentioned. */
+  readonly mentionable?: boolean;
   readonly disabled?: boolean;
 }) {
   const wheelRef = useRef<HTMLDivElement | null>(null);
-  const rgb = hexToRgb(value);
+  const rgb = parseHexColor(value);
   const hsl = rgb === null ? null : rgbToHsl(rgb);
   const hue = hsl?.h ?? DEFAULT_HUE;
   const saturation = hsl?.s ?? DEFAULT_SATURATION;
@@ -134,31 +49,9 @@ export function RoleColorPicker({
     const dy = event.clientY - rect.top - rect.height / 2;
     const radius = rect.width / 2;
     const nextSaturation = Math.min(1, Math.hypot(dx, dy) / radius);
-    // The conic gradient starts at 12 o'clock; atan2 starts at 3 o'clock.
+    // The conic gradient starts at 12 o’clock; atan2 starts at 3 o’clock.
     const nextHue = (Math.atan2(dy, dx) * (180 / Math.PI) + 90 + 360) % 360;
     apply(nextHue, nextSaturation, lightness);
-  };
-
-  const onWheelKeyDown = (event: React.KeyboardEvent<HTMLDivElement>) => {
-    if (disabled) {
-      return;
-    }
-    const hueStep = event.shiftKey ? 12 : 4;
-    const saturationStep = event.shiftKey ? 0.12 : 0.04;
-    if (event.key === "ArrowLeft" || event.key === "ArrowRight") {
-      event.preventDefault();
-      apply(hue + (event.key === "ArrowRight" ? hueStep : -hueStep), saturation, lightness);
-    } else if (event.key === "ArrowUp" || event.key === "ArrowDown") {
-      event.preventDefault();
-      apply(
-        hue,
-        Math.min(
-          1,
-          Math.max(0, saturation + (event.key === "ArrowUp" ? saturationStep : -saturationStep)),
-        ),
-        lightness,
-      );
-    }
   };
 
   const markerRadius = (WHEEL_SIZE / 2 - 9) * saturation;
@@ -173,15 +66,8 @@ export function RoleColorPicker({
         <div className="relative shrink-0" style={{ width: WHEEL_SIZE, height: WHEEL_SIZE }}>
           <div
             ref={wheelRef}
-            role="slider"
-            tabIndex={disabled ? -1 : 0}
-            aria-label="Role color wheel"
-            aria-valuemin={0}
-            aria-valuemax={360}
-            aria-valuenow={Math.round(hue)}
-            aria-valuetext={value.length > 0 ? value : "No color"}
-            aria-disabled={disabled}
-            onKeyDown={onWheelKeyDown}
+            role="img"
+            aria-label="Role color wheel; use the hue and saturation sliders to adjust with a keyboard"
             onPointerDown={(event) => {
               if (disabled) {
                 return;
@@ -224,20 +110,39 @@ export function RoleColorPicker({
 
         <div className="flex min-w-[140px] flex-1 flex-col gap-2.5">
           <div className="flex items-center justify-between gap-2">
-            <span className="text-[11px] text-text-muted">Custom color</span>
-            <span className="font-mono text-[11px] uppercase text-text">
+            <span className="text-[12px] text-text-muted">Custom color</span>
+            <span className="font-mono text-[12px] uppercase text-text">
               {value.length > 0 ? value : "None"}
             </span>
           </div>
+          {(["Hue", "Saturation"] as const).map((label) => (
+            <label key={label} className="flex flex-col gap-1 text-[12px] text-text-muted">
+              {label}
+              <input
+                type="range"
+                min={0}
+                max={label === "Hue" ? 360 : 100}
+                value={Math.round(label === "Hue" ? hue : saturation * 100)}
+                disabled={disabled}
+                onChange={(event) => {
+                  apply(
+                    label === "Hue" ? Number(event.currentTarget.value) : hue,
+                    label === "Saturation" ? Number(event.currentTarget.value) / 100 : saturation,
+                    lightness,
+                  );
+                }}
+              />
+            </label>
+          ))}
           <label className="flex flex-col gap-1">
-            <span className="flex items-center justify-between text-[11px] text-text-muted">
+            <span className="flex items-center justify-between text-[12px] text-text-muted">
               Lightness
               <span className="tabular-nums">{Math.round(lightness * 100)}%</span>
             </span>
             <input
               type="range"
-              min={20}
-              max={80}
+              min={0}
+              max={100}
               step={1}
               value={Math.round(lightness * 100)}
               disabled={disabled}
@@ -253,7 +158,7 @@ export function RoleColorPicker({
             onClick={() => {
               onChange("");
             }}
-            className="w-fit rounded-full border border-border px-2.5 py-1 text-[11px] text-text-muted transition hover:text-text disabled:pointer-events-none"
+            className="w-fit rounded-full border border-border px-2.5 py-1 text-[12px] text-text-muted transition hover:text-text disabled:pointer-events-none"
           >
             Clear color
           </button>
@@ -261,11 +166,12 @@ export function RoleColorPicker({
       </div>
 
       <div className="flex flex-wrap items-center gap-2">
-        {PRESET_COLORS.map((color) => (
+        {ROLE_COLOR_PRESETS.map((color) => (
           <button
             key={color}
             type="button"
             aria-label={`Use color ${color}`}
+            aria-pressed={value.trim().toUpperCase() === color}
             disabled={disabled}
             onClick={() => {
               onChange(color);
@@ -280,12 +186,22 @@ export function RoleColorPicker({
           />
         ))}
         <span
-          className="ml-1 inline-flex items-center text-[11px] text-text-muted"
+          className="ml-1 inline-flex items-center text-[12px] text-text-muted"
           aria-hidden="true"
         >
           Drag the wheel for any color
         </span>
       </div>
+
+      <RoleColorPreview
+        name={roleName}
+        color={value}
+        mentionable={mentionable}
+        disabled={disabled}
+        onApplySuggestion={(color) => {
+          onChange(color);
+        }}
+      />
     </div>
   );
 }

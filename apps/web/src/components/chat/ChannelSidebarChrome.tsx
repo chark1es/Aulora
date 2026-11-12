@@ -1,5 +1,5 @@
 /* eslint-disable no-unused-vars -- the base rule reports parameter names in type signatures; Biome checks real unused code */
-import { ConfirmDialog, cn, Icon } from "@aulora/ui-web";
+import { CapText, ConfirmDialog, cn, Icon } from "@aulora/ui-web";
 import { forwardRef, type ReactNode, useEffect, useRef, useState } from "react";
 import { ActiveBar } from "./ActiveBar";
 import type { ChannelSidebarProps } from "./channel-sidebar-model";
@@ -127,7 +127,7 @@ export function SidebarNavButton({
       <span
         className={cn(
           "flex shrink-0 items-center transition-colors",
-          active ? "text-accent" : "text-text-muted",
+          active ? "text-accent-text" : "text-text-muted",
         )}
       >
         {icon}
@@ -137,9 +137,9 @@ export function SidebarNavButton({
         <span
           role="img"
           aria-label={`${badge > 9 ? "9+" : String(badge)} unread mentions`}
-          className="flex h-4 min-w-4 items-center justify-center rounded-full bg-accent px-1 pt-px text-[11px] font-semibold leading-none tabular-nums text-on-accent dark:text-bg"
+          className="flex h-4 min-w-4 items-center justify-center rounded-full bg-accent px-1 text-[11px] font-semibold leading-none tabular-nums text-on-accent dark:text-bg"
         >
-          {badge > 9 ? "9+" : String(badge)}
+          <CapText>{badge > 9 ? "9+" : String(badge)}</CapText>
         </span>
       )}
     </button>
@@ -228,7 +228,7 @@ export function AccountFooter(props: ChannelSidebarProps) {
               <StatusDot status={option.value} />
               <span className="flex-1">{option.label}</span>
               {props.ownStatus === option.value && (
-                <Icon name="check" size={14} className="text-accent" />
+                <Icon name="check" size={14} className="text-accent-text" />
               )}
             </button>
           ))}
@@ -274,7 +274,9 @@ export function AccountFooter(props: ChannelSidebarProps) {
               >
                 {hasCustomStatus ? customStatusText : "Set a custom status…"}
               </span>
-              {hasCustomStatus && <Icon name="check" size={14} className="shrink-0 text-accent" />}
+              {hasCustomStatus && (
+                <Icon name="check" size={14} className="shrink-0 text-accent-text" />
+              )}
             </button>
           )}
         </div>

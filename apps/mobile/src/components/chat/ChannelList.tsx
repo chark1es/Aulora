@@ -80,7 +80,7 @@ function HereNow({ members, presence, ownUserId, onMemberPress }: HereNowProps) 
       <Text size="sm" tone="muted" className="px-1">
         {members.length > 1
           ? "Nobody else is around right now."
-          : "You're the first one here. Invite your team from the web app."}
+          : "You’re the first one here. Invite your team from the web app."}
       </Text>
     );
   }
@@ -116,9 +116,9 @@ function HereNow({ members, presence, ownUserId, onMemberPress }: HereNowProps) 
 
 interface ThreadPreviewRowProps {
   readonly thread: ThreadInboxItem;
-  /** Display name of the thread's author, or "You". */
+  /** Display name of the thread’s author, or "You". */
   readonly author: string;
-  /** Where the thread lives, such as `#general` or a person's name. */
+  /** Where the thread lives, such as `#general` or a person’s name. */
   readonly place: string;
   readonly onOpen: () => void;
 }
@@ -141,7 +141,7 @@ function ThreadPreviewRow({ thread, author, place, onOpen }: ThreadPreviewRowPro
           <Text size="sm" className="shrink font-semibold" numberOfLines={1}>
             {author}
           </Text>
-          <Text size="xs" tone="muted" className="flex-1" numberOfLines={1}>
+          <Text size="xs" tone="muted" className="flex-1 min-w-0" numberOfLines={1}>
             {place}
           </Text>
           <Text size="xs" tone="muted">
@@ -333,11 +333,11 @@ function HiddenToggle({ hiddenCount, showHidden, onToggle }: HiddenToggleProps) 
 
 interface WorkspaceHeadingProps extends HereNowProps {
   readonly name: string;
-  /** The server's host, shown under the workspace name. */
+  /** The server’s host, shown under the workspace name. */
   readonly host: string;
 }
 
-/** The workspace's name and server, then who is around. */
+/** The workspace’s name and server, then who is around. */
 function WorkspaceHeading(props: WorkspaceHeadingProps) {
   const { name, host } = props;
   return (
@@ -370,7 +370,7 @@ export interface ChannelListProps {
   readonly ownUserId: string;
   readonly presence: readonly PresenceRow[];
   readonly members: readonly MobileMemberEntry[];
-  /** The server's host, shown under the workspace name. */
+  /** The server’s host, shown under the workspace name. */
   readonly workspaceHost: string;
   readonly hiddenCount: number;
   readonly showHidden: boolean;
@@ -392,7 +392,7 @@ export interface ChannelListProps {
   readonly onToggleHidden: () => void;
 }
 
-/** The hub's home tab: every channel in the workspace, grouped the way the team organised it. */
+/** The hub’s home tab: every channel in the workspace, grouped the way the team organised it. */
 export function ChannelList(props: ChannelListProps) {
   const clearance = useDockClearance();
   const { channels, titles, ownUserId, presence, members, memberNames, threads } = props;
@@ -400,7 +400,7 @@ export function ChannelList(props: ChannelListProps) {
 
   return (
     <ScrollView
-      className="flex-1"
+      className="flex-1 min-w-0"
       contentContainerStyle={{ paddingHorizontal: 16, paddingBottom: clearance, gap: 18 }}
     >
       <WorkspaceHeading

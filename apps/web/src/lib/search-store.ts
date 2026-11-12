@@ -1,11 +1,7 @@
 /* eslint-disable no-unused-vars -- the base rule reports parameter names in type signatures; Biome checks real unused code */
-import {
-  memorySearchStore,
-  type SearchDocument,
-  type SearchStore,
-  searchScopeKey,
-} from "@aulora/core";
+import { memorySearchStore, type SearchDocument, type SearchStore } from "@aulora/core";
 import { deleteDatabase, type KeyValueStore, openKeyValueStore } from "./indexeddb";
+import { storageScope } from "./storage-scope";
 
 /** The database the pre-scoping index used; superseded by per-instance names. */
 export const LEGACY_SEARCH_DATABASE = "aulora-search";
@@ -20,7 +16,7 @@ const PREFIX = `${LEGACY_SEARCH_DATABASE}:`;
  * on the same origin. Namespacing by scope keeps each instance's index private.
  */
 export function searchDatabaseName(serverUrl: string, userId: string): string {
-  return `${PREFIX}${searchScopeKey(serverUrl, userId)}`;
+  return `${PREFIX}${storageScope(serverUrl, userId)}`;
 }
 
 let legacyDiscard: Promise<void> | undefined;

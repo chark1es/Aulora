@@ -58,7 +58,7 @@ function EnvGroupNavItem({
       {group.overridden > 0 && (
         <span
           title={`${group.overridden} overridden`}
-          className="hidden min-w-5 shrink-0 rounded-pill bg-accent-soft px-1.5 py-0.5 text-center text-[10px] font-medium tabular-nums text-accent lg:inline"
+          className="hidden min-w-5 shrink-0 rounded-pill bg-accent-soft px-1.5 py-0.5 text-center text-[10px] font-medium tabular-nums text-accent-text lg:inline"
         >
           {group.overridden}
         </span>

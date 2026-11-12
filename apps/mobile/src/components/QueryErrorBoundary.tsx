@@ -1,9 +1,10 @@
 /* eslint-disable no-unused-vars -- the base rule reports parameter names in type signatures; Biome checks real unused code */
-import { classifyError, type ErrorDisposition } from "@aulora/core";
+import { classifyError, debugLog, type ErrorDisposition } from "@aulora/core";
 import { Button, Spinner, Text } from "@aulora/ui-native";
 import type { ConvexReactClient } from "convex/react";
 import { Component, type ReactNode, useCallback, useEffect, useState } from "react";
-import { AppState, View } from "react-native";
+import { AppState } from "react-native";
+import { ScreenContainer } from "./layout/ScreenContainer";
 
 /**
  * How often an errored subtree is re-mounted to retry in place. Convex keeps
@@ -110,6 +111,10 @@ class QueryBoundary extends Component<QueryBoundaryProps, QueryBoundaryState> {
   /** Automatic retries since the subtree last rendered cleanly. */
   private failedRetries = 0;
 
+  override componentDidCatch(error: Error, info: { componentStack?: string | null }): void {
+    debugLog.record("react.boundary", info.componentStack, error);
+  }
+
   static getDerivedStateFromError(error: unknown): Partial<QueryBoundaryState> {
     return { error };
   }
@@ -184,10 +189,10 @@ function ErrorRecovery({
   } else if (exhausted) {
     title = "Can’t reach the server";
     description =
-      "Reconnecting is taking too long. You’re still signed in; try again, switch servers, or sign out.";
+      "Reconnecting is taking too long. You’re still signed in; try again, switch workspaces, or sign out.";
   }
   return (
-    <View className="flex-1 items-center justify-center gap-3 px-6">
+    <ScreenContainer scrollable className="flex-1 items-center justify-center gap-3 px-6 min-w-0">
       {reconnecting && <Spinner size={28} label="Reconnecting" />}
       <Text size="md" className="text-center font-medium">
         {title}
@@ -198,12 +203,12 @@ function ErrorRecovery({
       <Button onPress={onRetry}>Try again</Button>
       {exhausted && onSwitchServer !== undefined && (
         <Button variant="secondary" onPress={onSwitchServer}>
-          Switch server
+          Switch workspace
         </Button>
       )}
       <Button variant="ghost" onPress={onSignOut}>
         Sign out
       </Button>
-    </View>
+    </ScreenContainer>
   );
 }

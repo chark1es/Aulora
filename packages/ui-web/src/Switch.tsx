@@ -1,4 +1,5 @@
 import { useId } from "react";
+import { CapText } from "./CapText";
 import { cn } from "./cn";
 
 export interface SwitchProps {
@@ -111,7 +112,7 @@ export function SegmentedControl<T extends string>({
           <label
             key={option.value}
             className={cn(
-              "flex cursor-pointer items-center justify-center gap-1.5 whitespace-nowrap rounded-[6px] px-2.5 py-1 text-[12px] font-medium transition",
+              "flex h-[26px] cursor-pointer items-center justify-center gap-1.5 whitespace-nowrap rounded-[6px] px-2.5 text-[12px] font-medium transition",
               active ? "bg-surface-2 text-text shadow-sm" : "text-text-muted hover:text-text",
             )}
           >
@@ -126,7 +127,7 @@ export function SegmentedControl<T extends string>({
               className="sr-only"
             />
             {option.icon}
-            {option.label}
+            <CapText>{option.label}</CapText>
           </label>
         );
       })}

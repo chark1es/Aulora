@@ -240,7 +240,7 @@ function BanMenu({
                   reason.trim().length > 0 ? reason.trim() : undefined,
                 );
               }}
-              className="flex w-full items-center rounded-[7px] px-2.5 py-1.5 text-left text-[12px] text-danger transition hover:bg-danger/10"
+              className="flex w-full items-center rounded-[7px] px-2.5 py-1.5 text-left text-[12px] text-danger-text transition hover:bg-danger/10"
             >
               {duration.label}
             </button>

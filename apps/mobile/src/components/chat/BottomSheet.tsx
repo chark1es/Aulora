@@ -7,9 +7,9 @@ import {
 } from "@gorhom/bottom-sheet";
 import { type ReactNode, useCallback, useEffect, useRef, useState } from "react";
 import { BackHandler, Pressable, useWindowDimensions, View } from "react-native";
-import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { useThemeVars } from "../../lib/theme";
 import { useReduceMotion } from "../../lib/use-entrance";
+import { useScreenInsets, useWindowInsets } from "../layout/ScreenContainer";
 
 /**
  * A menu or picker that rises from the bottom edge and sizes itself to its
@@ -34,7 +34,10 @@ export function BottomSheet({
 }) {
   const palette = usePalette();
   const theme = useThemeVars();
-  const insets = useSafeAreaInsets();
+  const insets = useScreenInsets();
+  // The sheet covers the window, so it keeps clear of the real status bar even
+  // when opened from panes whose safe area starts below a banner.
+  const windowTop = useWindowInsets().top;
   const { height } = useWindowDimensions();
   const reducedMotion = useReduceMotion();
   const ref = useRef<BottomSheetModal>(null);
@@ -76,7 +79,9 @@ export function BottomSheet({
     <BottomSheetModal
       ref={ref}
       enableDynamicSizing
-      maxDynamicContentSize={height - insets.top - 24}
+      maxDynamicContentSize={height - windowTop - 24}
+      // Lifted by the keyboard, the sheet stops below the status bar/cutout.
+      topInset={windowTop}
       enablePanDownToClose
       animateOnMount={reducedMotion !== true}
       backdropComponent={backdrop}
@@ -84,7 +89,11 @@ export function BottomSheet({
       handleIndicatorStyle={{ backgroundColor: palette["surface-3"], width: 40, height: 5 }}
       keyboardBehavior="interactive"
       keyboardBlurBehavior="restore"
-      android_keyboardInputMode="adjustResize"
+      // Edge-to-edge Android no longer resizes the window for the keyboard, and
+      // in "adjustResize" mode the sheet waits for that resize: an edit or emoji
+      // field opened with the whole sheet behind the keyboard. In "adjustPan"
+      // mode the sheet lifts itself by the keyboard height, as on iOS.
+      android_keyboardInputMode="adjustPan"
       // The sheet is a container, not one element: expose its rows individually.
       accessible={false}
       onDismiss={() => {
@@ -96,7 +105,11 @@ export function BottomSheet({
     >
       <BottomSheetScrollView
         keyboardShouldPersistTaps="handled"
-        contentContainerStyle={{ paddingBottom: insets.bottom + 16 }}
+        contentContainerStyle={{
+          paddingBottom: insets.sheetBottom,
+          paddingLeft: insets.left,
+          paddingRight: insets.right,
+        }}
       >
         <View style={theme} className="gap-3 px-4">
           <View className="flex-row items-center gap-3 pb-1 pl-1">

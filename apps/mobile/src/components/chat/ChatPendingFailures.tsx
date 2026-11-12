@@ -24,30 +24,51 @@ function ChatPendingFailure({
   readonly model: ChatScreenModel;
   readonly item: PendingItem;
 }) {
+  const preview = item.text.trim() || `Attachment only · ${item.attachments?.length ?? 0} files`;
   return (
     <View className="mx-3 mb-1.5 flex-row items-center gap-1 rounded-card bg-surface-2 py-1 pl-3 pr-1">
-      <Text size="sm" tone="danger" accessibilityRole="alert" className="flex-1">
-        Message couldn't be sent.
-      </Text>
+      <View className="flex-1 min-w-0">
+        <Text size="sm" tone="danger" accessibilityRole="alert">
+          {item.failureReason ?? "Message couldn’t be sent."}
+        </Text>
+        <Text size="xs" tone="muted" numberOfLines={1}>
+          {preview}
+        </Text>
+      </View>
       <Button
         size="sm"
         variant="ghost"
-        onPress={() =>
+        accessibilityLabel={`Retry sending: ${preview.slice(0, 30)}`}
+        onPress={() => {
           void model.retrySend(item.id).catch((cause: unknown) => {
-            Alert.alert("Couldn't retry message", errorMessage(cause));
-          })
-        }
+            Alert.alert("Couldn’t retry message", errorMessage(cause));
+          });
+        }}
       >
         Retry
       </Button>
       <Button
         size="sm"
         variant="ghost"
-        onPress={() =>
-          void model.discardSend(item.id).catch((cause: unknown) => {
-            Alert.alert("Couldn't discard message", errorMessage(cause));
-          })
-        }
+        accessibilityLabel={`Discard unsent message: ${preview.slice(0, 30)}`}
+        onPress={() => {
+          Alert.alert(
+            "Discard failed message?",
+            "This message was not sent. Discarding removes it from this conversation.",
+            [
+              { text: "Cancel", style: "cancel" },
+              {
+                text: "Discard message",
+                style: "destructive",
+                onPress: () => {
+                  void model.discardSend(item.id).catch((cause: unknown) => {
+                    Alert.alert("Couldn’t discard message", errorMessage(cause));
+                  });
+                },
+              },
+            ],
+          );
+        }}
       >
         Discard
       </Button>

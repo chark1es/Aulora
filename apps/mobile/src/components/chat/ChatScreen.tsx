@@ -3,11 +3,11 @@ import { BottomSheetModalProvider } from "@gorhom/bottom-sheet";
 import { useRouter } from "expo-router";
 import { type ReactNode, useMemo, useState } from "react";
 import { View } from "react-native";
-import { SafeAreaInsetsContext, useSafeAreaInsets } from "react-native-safe-area-context";
 import { selectionFeedback } from "../../lib/haptics";
 import { useStuckTimeout } from "../../lib/stuck-timeout";
 import { useProfiles } from "../../providers/ProfileProvider";
 import { ConnectionRecoveryActions } from "../ConnectionRecoveryActions";
+import { RebasedInsets, ScreenContainer, useScreenInsets } from "../layout/ScreenContainer";
 import { ChatConversation } from "./ChatConversation";
 import { ChatHubPane } from "./ChatHubPane";
 import { ChatScreenSheets } from "./ChatScreenSheets";
@@ -53,8 +53,11 @@ export interface ChatScreenViewProps extends ChatScreenProps {
  * interaction here stays identical to the signed-in app.
  */
 export function ChatScreenView({ notice, ...props }: ChatScreenViewProps) {
-  const insets = useSafeAreaInsets();
-  const noticeInsets = useMemo(() => ({ ...insets, top: 0 }), [insets]);
+  const insets = useScreenInsets();
+  const noticeInsets = useMemo(
+    () => ({ bottom: insets.bottom, left: insets.left, right: insets.right, top: 0 }),
+    [insets.bottom, insets.left, insets.right],
+  );
   const model = useChatScreenModel(props);
   const panes =
     !model.ready || model.startupError !== null ? (
@@ -62,25 +65,33 @@ export function ChatScreenView({ notice, ...props }: ChatScreenViewProps) {
     ) : (
       <ChatScreenPanes model={model} />
     );
+  // Sheets portal to this provider, so it spans the whole window: under the
+  // demo banner they were clipped to the panes and lifted only partly above
+  // the keyboard on a short phone.
   if (notice === undefined) {
-    return panes;
+    return <BottomSheetModalProvider>{panes}</BottomSheetModalProvider>;
   }
   return (
-    <View className="flex-1 bg-bg">
-      <View style={{ paddingTop: insets.top }}>{notice}</View>
-      <SafeAreaInsetsContext.Provider value={noticeInsets}>
-        <View className="flex-1">{panes}</View>
-      </SafeAreaInsetsContext.Provider>
-    </View>
+    <BottomSheetModalProvider>
+      <View className="flex-1 bg-bg min-w-0">
+        <View
+          style={{ paddingTop: insets.top, paddingLeft: insets.left, paddingRight: insets.right }}
+        >
+          {notice}
+        </View>
+        <RebasedInsets insets={noticeInsets}>
+          <View className="flex-1 min-w-0">{panes}</View>
+        </RebasedInsets>
+      </View>
+    </BottomSheetModalProvider>
   );
 }
 
 function ChatScreenStatus({ model }: { readonly model: ReturnType<typeof useChatScreenModel> }) {
-  const insets = useSafeAreaInsets();
   return (
-    <View
-      className="flex-1 items-center justify-center gap-4 bg-bg px-8"
-      style={{ paddingTop: insets.top, paddingBottom: insets.bottom }}
+    <ScreenContainer
+      scrollable
+      className="flex-1 items-center justify-center gap-4 bg-bg px-8 min-w-0"
     >
       {!model.ready ? (
         <>
@@ -112,7 +123,7 @@ function ChatScreenStatus({ model }: { readonly model: ReturnType<typeof useChat
           />
         </>
       )}
-    </View>
+    </ScreenContainer>
   );
 }
 
@@ -164,45 +175,43 @@ function ChatStartupRecovery({ model }: { readonly model: ReturnType<typeof useC
 
 function ChatScreenPanes({ model }: { readonly model: ReturnType<typeof useChatScreenModel> }) {
   return (
-    <BottomSheetModalProvider>
-      <View className="flex-1 bg-bg">
-        <SwipePanes
-          index={model.pane}
-          onIndexChange={(next) => {
-            selectionFeedback();
-            model.setPane(next);
-          }}
-          left={<ChatHubPane model={model} />}
-          center={<ChatConversation model={model} />}
-          right={
-            <MembersPane
-              memberIds={model.conversationMemberIds}
-              channelTitle={model.channelTitle}
-              members={model.members}
-              presence={model.presence}
-              roles={model.memberRoleGroups}
-              ownUserId={model.ownUserId}
-              canModerateMembers={model.canModerateMembers}
-              onBack={() => {
-                model.goToPane(1);
-              }}
-              onMemberPress={model.setProfileFor}
-              onMemberActions={(userId) => {
-                model.setModerationError(null);
-                model.setMemberActionsFor(userId);
-              }}
-              onOpenBans={
-                model.canBan
-                  ? () => {
-                      model.setBansOpen(true);
-                    }
-                  : undefined
-              }
-            />
-          }
-        />
-        <ChatScreenSheets model={model} />
-      </View>
-    </BottomSheetModalProvider>
+    <View className="flex-1 bg-bg min-w-0">
+      <SwipePanes
+        index={model.pane}
+        onIndexChange={(next) => {
+          selectionFeedback();
+          model.setPane(next);
+        }}
+        left={<ChatHubPane model={model} />}
+        center={<ChatConversation model={model} />}
+        right={
+          <MembersPane
+            memberIds={model.conversationMemberIds}
+            channelTitle={model.channelTitle}
+            members={model.members}
+            presence={model.presence}
+            roles={model.memberRoleGroups}
+            ownUserId={model.ownUserId}
+            canModerateMembers={model.canModerateMembers}
+            onBack={() => {
+              model.goToPane(1);
+            }}
+            onMemberPress={model.setProfileFor}
+            onMemberActions={(userId) => {
+              model.setModerationError(null);
+              model.setMemberActionsFor(userId);
+            }}
+            onOpenBans={
+              model.canBan
+                ? () => {
+                    model.setBansOpen(true);
+                  }
+                : undefined
+            }
+          />
+        }
+      />
+      <ChatScreenSheets model={model} />
+    </View>
   );
 }

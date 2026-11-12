@@ -19,9 +19,9 @@ import {
 } from "../../lib/voice/display-picker";
 
 /**
- * Aulora's own screen panes picker, used by the desktop shell.
+ * Aulora’s own screen panes picker, used by the desktop shell.
  *
- * The webview's `getDisplayMedia` picker is drawn by the engine (it even names
+ * The webview’s `getDisplayMedia` picker is drawn by the engine (it even names
  * the `tauri.localhost` origin), so the shell lists the sources instead and
  * this dialog chooses one. It renders nothing outside the desktop share flow.
  * The browser build keeps the engine picker and never opens this.
@@ -80,7 +80,7 @@ function modalTitle(status: DisplayPickerState["status"], permission: CapturePer
     return "Share your screen";
   }
   return permission?.status === "unsupported"
-    ? "Screen sharing isn't available here"
+    ? "Screen sharing isn’t available here"
     : "Allow screen recording";
 }
 
@@ -208,7 +208,7 @@ function PickerBody({ state }: { readonly state: DisplayPickerState }) {
   );
 }
 
-/** The share's audio switch, with the platform's own caveat underneath. */
+/** The share’s audio switch, with the platform’s own caveat underneath. */
 function AudioToggle({
   audio,
   requested,
@@ -229,7 +229,7 @@ function AudioToggle({
         {...(audio.detail !== null ? { description: audio.detail } : {})}
       />
       {!audio.supported && (
-        <p className="text-[12.5px] leading-relaxed text-text-muted/80">
+        <p className="text-[12.5px] leading-relaxed text-text-muted">
           Without it the share still works; it sends video only.
         </p>
       )}
@@ -245,9 +245,9 @@ function PermissionBody({ permission }: { readonly permission: CapturePermission
         {permission.detail ??
           "Aulora is missing a permission the system needs before it can read your screen."}
       </p>
-      <p className="text-[12.5px] leading-relaxed text-text-muted/80">
+      <p className="text-[12.5px] leading-relaxed text-text-muted">
         {permission.canOpenSettings
-          ? "Nothing is shared until this is allowed. Close this and share again whenever you're ready."
+          ? "Nothing is shared until this is allowed. Close this and share again whenever you’re ready."
           : "Nothing is shared in this session. Close this and try again from a session that allows it."}
       </p>
     </div>

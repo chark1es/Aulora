@@ -20,7 +20,7 @@ export interface EnvVariableRowProps {
   readonly onReset: () => Promise<unknown>;
 }
 
-/** Busy/error/status bookkeeping shared by a row's save and reset actions. */
+/** Busy/error/status bookkeeping shared by a row’s save and reset actions. */
 function useOverrideTask() {
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);

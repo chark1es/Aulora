@@ -59,7 +59,7 @@ function IncomingCallActions({
   readonly onDecline: () => void;
   readonly onAccept: () => void;
 }) {
-  // Centred under the caller, two equal targets, like a phone's call sheet.
+  // Centred under the caller, two equal targets, like a phone’s call sheet.
   return (
     <div className="flex w-full gap-3 [&>button]:flex-1">
       <Button

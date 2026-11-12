@@ -18,7 +18,7 @@ on:
       play-track:
         description: >-
           Google Play track for the signed AAB (alpha is closed testing,
-          internal, beta, production). Empty skips the upload.
+          internal, beta, production). Empty uses the PLAY_TRACK repository variable.
         type: string
         default: ''
       rollout:
@@ -62,6 +62,8 @@ jobs:
     needs: plan
     if: needs.plan.outputs.build == 'true'
     uses: ./.github/workflows/ci.yml
+    with:
+      native: false # Signed desktop/mobile builds below gate assembly and publication.
 
   desktop:
     needs: [plan, checks]
@@ -77,7 +79,7 @@ jobs:
     with:
       version: ${{ needs.plan.outputs.version }}
       build-number: ${{ format('{0}', github.run_number) }}
-      play-track: ${{ github.event_name == 'push' && vars.PLAY_TRACK || inputs.play-track }}
+      play-track: ${{ inputs.play-track || vars.PLAY_TRACK }}
       release-notes: ${{ inputs.notes }}
 
   web:
@@ -91,6 +93,7 @@ jobs:
         with:
           persist-credentials: false
       - uses: ./.github/actions/setup-js
+      # This fresh runner has no artifacts from checks; packaging needs its own build.
       - run: bun run build
       - run: bun run notices
       - name: Package web and docs
@@ -196,3 +199,14 @@ jobs:
     uses: ./.github/workflows/sync-release.yml
     with:
       tag: v${{ needs.plan.outputs.version }}
+
+  testflight:
+    name: Upload iOS build to TestFlight
+    needs: [plan, publish]
+    permissions:
+      contents: read
+    uses: ./.github/workflows/mobile-testing.yml
+    secrets: inherit
+    with:
+      tag: v${{ needs.plan.outputs.version }}
+      upload-ios: true

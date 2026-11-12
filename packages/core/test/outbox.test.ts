@@ -191,3 +191,23 @@ function ids(...values: string[]): () => string {
     return value;
   };
 }
+
+it.each(["Permission denied", "You're mentioning everyone too often. Try again in a minute."])(
+  "fails a non-retryable rejection immediately: %s",
+  async (reason) => {
+    const queue = new Outbox();
+    await queue.enqueue({ channelId: "c", text: "@everyone", mentionEveryone: true }, 0);
+    const result = await queue.flush(
+      async () => {
+        throw new Error(reason);
+      },
+      { now: () => 1 },
+    );
+    expect(result.failed).toHaveLength(1);
+    expect((await queue.list())[0]).toMatchObject({
+      status: "failed",
+      attempts: 1,
+      failureReason: expect.any(String),
+    });
+  },
+);

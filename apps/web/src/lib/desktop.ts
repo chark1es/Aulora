@@ -285,18 +285,6 @@ export async function snapDesktopPipWindow(): Promise<void> {
   }
 }
 
-/** Resizes the call window from the web client, clamped by the shell. */
-export async function setDesktopPipSize(width: number, height: number): Promise<void> {
-  if (!isDesktop()) {
-    return;
-  }
-  try {
-    await invokeDesktopCommand("set_pip_size", { width, height });
-  } catch {
-    // A refused resize leaves the window as it was.
-  }
-}
-
 /**
  * Starts an undecorated window resize from one of the call window's own edge
  * handles. Undecorated windows have no native border to grab on Windows and

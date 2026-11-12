@@ -102,7 +102,7 @@ function useJump(rows: readonly MessageListRow[], requestedId: string | null) {
 /** The message actions sheet and which message it is open on. */
 function useActionsSheet() {
   const [visible, setVisible] = useState(false);
-  // Kept after closing so the sheet's content stays put while it slides away.
+  // Kept after closing so the sheet’s content stays put while it slides away.
   const [message, setMessage] = useState<MessagePayload>();
   const show = useCallback((next: MessagePayload) => {
     impactFeedback();
@@ -118,11 +118,11 @@ function useActionsSheet() {
 function DaySeparator({ label }: { readonly label: string }) {
   return (
     <View className="flex-row items-center gap-3 px-4 py-3">
-      <View className="h-px flex-1 bg-border" />
+      <View className="h-px flex-1 bg-border min-w-0" />
       <Text size="xs" tone="muted" className="font-semibold" maxFontSizeMultiplier={1.4}>
         {label}
       </Text>
-      <View className="h-px flex-1 bg-border" />
+      <View className="h-px flex-1 bg-border min-w-0" />
     </View>
   );
 }
@@ -133,6 +133,7 @@ function UnreadPill({ onPress }: { readonly onPress: () => void }) {
     <View pointerEvents="box-none" className="absolute inset-x-0 top-2 items-center">
       <Pressable
         accessibilityRole="button"
+        hitSlop={4}
         onPress={onPress}
         className="min-h-9 flex-row items-center gap-1.5 rounded-pill bg-accent px-4 active:opacity-80"
         style={{
@@ -271,7 +272,7 @@ const RowItem = memo(function RowItem({ row, data, context, highlighted }: RowIt
   );
 });
 
-/** The part of a row's context that only depends on who is in the conversation. */
+/** The part of a row’s context that only depends on who is in the conversation. */
 function useNames(props: MessageListProps) {
   const { memberNames, channelNames, ownUserId } = props;
   const mentionNames = useMemo(() => [...memberNames.values()], [memberNames]);
@@ -429,14 +430,14 @@ export function MessageList(props: MessageListProps) {
   const keyExtractor = useCallback((row: MessageListRow) => row.key, []);
 
   return (
-    <View className="flex-1">
+    <View className="flex-1 min-w-0">
       <FlatList
         ref={listRef}
         inverted
         onScrollToIndexFailed={({ index, averageItemLength }) => {
           listRef.current?.scrollToOffset({ offset: index * averageItemLength, animated: false });
         }}
-        className="flex-1"
+        className="flex-1 min-w-0"
         data={rows}
         keyExtractor={keyExtractor}
         keyboardDismissMode="interactive"

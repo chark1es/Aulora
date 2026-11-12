@@ -1,4 +1,5 @@
-import { fireEvent, render, screen, within } from "@testing-library/react";
+import { MESSAGE_MAX_LENGTH } from "@aulora/core";
+import { act, fireEvent, render, screen, within } from "@testing-library/react";
 import { describe, expect, it, vi } from "vitest";
 import { Composer } from "../components/chat/Composer";
 import { AttachmentSizeError, attachmentUploadErrorMessage } from "../lib/attachments";
@@ -16,6 +17,39 @@ describe("Composer upload limit", () => {
   function dropFile(file: File): void {
     fireEvent.drop(window, { dataTransfer: { files: [file], types: ["Files"] } });
   }
+
+  it("sends a body at the trimmed limit even with trailing whitespace", async () => {
+    const onSend = vi.fn();
+    render(<Composer {...base} onSend={onSend} />);
+    fireEvent.change(screen.getByRole("combobox"), {
+      target: { value: `${"x".repeat(MESSAGE_MAX_LENGTH)}   ` },
+    });
+    expect(screen.queryByRole("alert")).toBeNull();
+    await act(async () => {
+      fireEvent.keyDown(screen.getByRole("combobox"), { key: "Enter" });
+    });
+    expect(onSend).toHaveBeenCalledWith(
+      expect.objectContaining({ text: "x".repeat(MESSAGE_MAX_LENGTH) }),
+    );
+  });
+
+  it("gives simultaneous composer errors unique description ids", () => {
+    render(
+      <>
+        <Composer {...base} channelId="channel-errors" />
+        <Composer {...base} channelId="thread-errors" />
+      </>,
+    );
+    for (const textbox of screen.getAllByRole("combobox")) {
+      fireEvent.change(textbox, { target: { value: "x".repeat(MESSAGE_MAX_LENGTH + 1) } });
+    }
+    const alerts = screen.getAllByRole("alert");
+    expect(alerts).toHaveLength(2);
+    expect(alerts[0]?.id).not.toBe(alerts[1]?.id);
+    for (const alert of alerts) {
+      expect(document.querySelector(`[aria-describedby="${alert.id}"]`)).not.toBeNull();
+    }
+  });
 
   it("rejects an over-limit file with a specific alert and does not attach it", () => {
     render(<Composer {...base} maxUploadBytes={1000} />);
@@ -42,6 +76,20 @@ describe("Composer upload limit", () => {
     expect(within(list).getByText("small.txt")).toBeInTheDocument();
     expect(screen.queryByRole("alert")).not.toBeInTheDocument();
   });
+  it("preserves pasted text and rejects an attachment batch exceeding 10 before sending", () => {
+    const onSend = vi.fn();
+    render(<Composer {...base} onSend={onSend} />);
+    expect(screen.getByRole("combobox")).not.toHaveAttribute("maxlength");
+    const files = Array.from({ length: 10 }, (_, i) => new File(["x"], `file-${i}.txt`));
+    fireEvent.drop(window, { dataTransfer: { files, types: ["Files"] } });
+    expect(within(screen.getByTestId("composer-attachments")).getAllByRole("button")).toHaveLength(
+      10,
+    );
+    dropFile(new File(["x"], "eleventh.txt"));
+    expect(screen.getByRole("alert")).toHaveTextContent("up to 10 files");
+    expect(screen.queryByText("eleventh.txt")).toBeNull();
+    expect(onSend).not.toHaveBeenCalled();
+  });
 });
 
 describe("attachmentUploadErrorMessage", () => {
@@ -67,9 +115,9 @@ describe("attachmentUploadErrorMessage", () => {
     expect(attachmentUploadErrorMessage(new TypeError("Failed to fetch"))).toMatch(/connection/i);
   });
 
-  it("includes the underlying error for anything else", () => {
+  it("hides unrecognized upload details", () => {
     expect(attachmentUploadErrorMessage(new Error("Upload failed (HTTP 500)"))).toBe(
-      "Couldn't upload that attachment: Upload failed (HTTP 500)",
+      "Couldn’t upload that attachment.",
     );
   });
 });

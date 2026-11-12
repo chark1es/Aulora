@@ -133,26 +133,6 @@ export function envLockReason(
   return null;
 }
 
-export function envValuePlaceholder(variable: EnvVariable): string {
-  if (variable.secret) {
-    return "Set — enter a new value to replace";
-  }
-  switch (variable.type) {
-    case "url":
-      return "https://example.com";
-    case "number":
-      return "e.g. 8";
-    case "list":
-      return "openid profile email";
-    case "json":
-      return variable.key === "AULORA_ICE_SERVERS"
-        ? '[{"urls":["stun:stun.example.com:3478"]}]'
-        : '{"admins":"Admin"}';
-    default:
-      return "Enter a value";
-  }
-}
-
 export interface OidcFormValues {
   readonly displayName: string;
   readonly issuer: string;
@@ -163,17 +143,6 @@ export interface OidcFormValues {
   readonly groupClaim: string;
   readonly groupRoleMap: string;
 }
-
-export const EMPTY_OIDC_FORM: OidcFormValues = {
-  displayName: "",
-  issuer: "",
-  discoveryUrl: "",
-  clientId: "",
-  clientSecret: "",
-  scopes: "openid profile email",
-  groupClaim: "",
-  groupRoleMap: "",
-};
 
 function isLocalHostname(hostname: string): boolean {
   return (

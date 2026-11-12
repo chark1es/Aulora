@@ -3,7 +3,7 @@ import { type CallParticipantView, sortParticipants, type VoiceDeviceSettings } 
 import { cn, Icon } from "@aulora/ui-web";
 import { useEffect, useMemo, useRef } from "react";
 import { PersonAvatar } from "../chat/member-avatars";
-import { type CallIdentity, shouldMirror } from "./identity";
+import { type CallIdentity, participantName, shouldMirror } from "./identity";
 
 /**
  * Renders a video track or stream. Muted so the hidden `RemoteAudio` elements
@@ -147,10 +147,11 @@ export function ParticipantTile(props: ParticipantTileProps) {
         isSelf={isSelf}
         name={name}
         isSpeaking={isSpeaking}
+        isGuest={participant.isGuest === true}
       />
 
       {/* Drawn inside the tile, above the media. An outer shadow is clipped by the
-          filmstrip's scroll container and the video paints over an inset one. */}
+          filmstrip’s scroll container and the video paints over an inset one. */}
       {isSpeaking && !participant.muted && (
         <span
           aria-hidden="true"
@@ -189,13 +190,13 @@ function ParticipantMedia({
   // element on every state change.
   const bindVideo = useMemo(() => {
     // A screen share keeps its own relay path (`screens`), so only a camera
-    // tile is bound to the call's SFU subscriber.
+    // tile is bound to the call’s SFU subscriber.
     if (attachVideo === undefined || isSelf || participant.sharingScreen) {
       return undefined;
     }
     return (element: HTMLVideoElement | null) => attachVideo(participant.userId, element);
   }, [attachVideo, isSelf, participant.sharingScreen, participant.userId]);
-  // A share counts as video even with the camera off: the sharer's screen is
+  // A share counts as video even with the camera off: the sharer’s screen is
   // the thing to look at.
   const hasVideo =
     (participant.video || participant.sharingScreen) &&
@@ -224,11 +225,13 @@ function ParticipantChrome({
   isSelf,
   name,
   isSpeaking,
+  isGuest,
 }: {
   readonly participant: CallParticipantView;
   readonly isSelf: boolean;
   readonly name: string;
   readonly isSpeaking: boolean;
+  readonly isGuest: boolean;
 }) {
   return (
     <div className="pointer-events-none absolute inset-x-0 bottom-0 flex items-center gap-1.5 bg-gradient-to-t from-black/65 via-black/25 to-transparent px-2.5 pb-1.5 pt-5">
@@ -250,6 +253,14 @@ function ParticipantChrome({
         {name}
         {isSelf ? " (you)" : ""}
       </span>
+      {isGuest && (
+        <span
+          title="Guest: joined from a link and was admitted to this call"
+          className="shrink-0 rounded-full bg-white/20 px-1.5 py-0.5 text-[10px] font-semibold text-white"
+        >
+          Guest
+        </span>
+      )}
       {isSelf && isSpeaking && !participant.muted && (
         <span className="shrink-0 rounded-full bg-secondary/90 px-1.5 py-0.5 text-[10px] font-semibold text-white">
           Speaking
@@ -296,7 +307,7 @@ interface TileContext {
 
 const NO_SCREENS: ReadonlyMap<string, MediaStream> = new Map();
 
-/** A sharer's relayed screen when there is one, otherwise whatever the mesh delivers. */
+/** A sharer’s relayed screen when there is one, otherwise whatever the mesh delivers. */
 function streamFor(participant: CallParticipantView, context: TileContext): MediaStream | null {
   const relayed = participant.sharingScreen ? context.screens.get(participant.userId) : undefined;
   return relayed ?? context.streams.get(participant.userId) ?? null;
@@ -401,7 +412,7 @@ function Tile({
     <ParticipantTile
       participant={participant}
       isSelf={participant.userId === context.localUserId}
-      name={context.identity.nameOf(participant.userId)}
+      name={participantName(participant, context.identity)}
       stream={streamFor(participant, context)}
       localVideoTrack={context.localVideoTrack}
       settings={context.settings}

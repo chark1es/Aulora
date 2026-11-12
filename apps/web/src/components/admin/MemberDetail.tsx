@@ -1,5 +1,5 @@
 /* eslint-disable no-unused-vars -- the base rule reports parameter names in type signatures; Biome checks real unused code */
-import { EVERYONE_ROLE_ID } from "@aulora/core";
+import { EVERYONE_ROLE_ID, roleColorCss } from "@aulora/core";
 import { Button, Icon, Text } from "@aulora/ui-web";
 import { useEffect, useState } from "react";
 import {
@@ -293,12 +293,12 @@ function MemberBadges({
   return (
     <div className="flex flex-wrap items-center gap-1.5">
       {isOwner && (
-        <span className="rounded-[5px] bg-accent-soft px-1.5 py-0.5 text-[10px] font-semibold uppercase text-accent">
+        <span className="rounded-[5px] bg-accent-soft px-1.5 py-0.5 text-[12px] font-semibold uppercase text-accent-text">
           Owner
         </span>
       )}
       {timedOut && (
-        <span className="rounded-[5px] bg-danger/10 px-1.5 py-0.5 text-[10px] font-semibold uppercase text-danger">
+        <span className="rounded-[5px] bg-danger/10 px-1.5 py-0.5 text-[12px] font-semibold uppercase text-danger-text">
           Timed out
         </span>
       )}
@@ -333,11 +333,11 @@ function MemberRolesSection(props: MemberRolesSectionProps) {
     label: role.name,
     keywords: roleRef(role),
     leading:
-      role.color !== null && role.color.length > 0 ? (
+      roleColorCss(role.color) !== null ? (
         <span
           aria-hidden="true"
           className="h-2.5 w-2.5 rounded-full border border-border"
-          style={{ backgroundColor: role.color }}
+          style={{ backgroundColor: roleColorCss(role.color) ?? undefined }}
         />
       ) : (
         <Icon name="shield" size={13} />
@@ -354,21 +354,18 @@ function MemberRolesSection(props: MemberRolesSectionProps) {
           const role = roles.find((entry) => roleRef(entry) === ref);
           const label = role?.name ?? ref;
           const isEveryone = ref === EVERYONE_ROLE_ID;
+          const tint = isEveryone ? null : roleColorCss(role?.color);
           return (
             <span
               key={ref}
               className="inline-flex items-center gap-1 rounded-full border border-border bg-surface-3 py-0.5 pl-2 pr-1 text-[11px] font-medium"
-              style={
-                !isEveryone && role?.color !== null && role?.color !== undefined
-                  ? { color: role.color }
-                  : undefined
-              }
+              style={tint !== null ? { color: tint } : undefined}
             >
-              {!isEveryone && role?.color !== null && role?.color !== undefined && (
+              {tint !== null && (
                 <span
                   aria-hidden="true"
                   className="h-2 w-2 rounded-full"
-                  style={{ backgroundColor: role.color }}
+                  style={{ backgroundColor: tint }}
                 />
               )}
               <span className={isEveryone ? "text-text-muted" : undefined}>{label}</span>
@@ -376,7 +373,7 @@ function MemberRolesSection(props: MemberRolesSectionProps) {
                 <button
                   type="button"
                   aria-label={`Remove role ${label}`}
-                  className="flex h-4 w-4 items-center justify-center rounded-full text-text-muted transition hover:bg-danger/15 hover:text-danger"
+                  className="flex h-4 w-4 items-center justify-center rounded-full text-text-muted transition hover:bg-danger/15 hover:text-danger-text"
                   disabled={busy}
                   onClick={() => {
                     onRemoveRole(role.id);

@@ -1,7 +1,8 @@
 import type { ReactNode } from "react";
-import { TextInput, type TextInputProps, View } from "react-native";
+import { type TextInputProps, View } from "react-native";
 import { cn } from "./cn";
 import { Text } from "./Text";
+import { TextField } from "./TextField";
 import { usePalette } from "./theme";
 import { type InputSize, inputClass } from "./variants";
 
@@ -42,7 +43,7 @@ export function Input(props: InputProps) {
             {leading}
           </View>
         )}
-        <TextInput
+        <TextField
           accessibilityLabel={label}
           placeholderTextColor={palette["text-muted"]}
           style={[insetStyle, style]}

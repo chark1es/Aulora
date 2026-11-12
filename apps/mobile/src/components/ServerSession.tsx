@@ -1,5 +1,5 @@
 import type { ServerProfile } from "@aulora/core";
-import { CONVEX_AUTH_CLIENT_OPTIONS } from "@aulora/core";
+import { CONVEX_AUTH_CLIENT_OPTIONS, createProviderAuth } from "@aulora/core";
 import { Button, Text } from "@aulora/ui-native";
 import { type AuthClient, ConvexBetterAuthProvider } from "@convex-dev/better-auth/react";
 import AsyncStorage from "@react-native-async-storage/async-storage";
@@ -7,15 +7,14 @@ import { ConvexReactClient } from "convex/react";
 import { useRouter } from "expo-router";
 import { useMemo } from "react";
 import { View } from "react-native";
-import { SafeAreaView } from "react-native-safe-area-context";
 import { createAuloraAuthClient } from "../lib/auth-client";
-import { createProviderAuth } from "../lib/provider-auth";
 import { type ProfileUrlField, profileUrlProblem } from "../lib/session-profile";
+import { ScreenContainer } from "./layout/ScreenContainer";
 import { SessionGate } from "./SessionGate";
 
 /**
  * Authenticated Convex session for one server profile. The Convex client and
- * Better Auth client are rebuilt when the active profile's `convexUrl` and
+ * Better Auth client are rebuilt when the active profile’s `convexUrl` and
  * `siteUrl` change, exactly as on web; sessions persist in AsyncStorage.
  */
 export function ServerSession({ profile }: { readonly profile: ServerProfile }) {
@@ -48,8 +47,8 @@ export function ServerSession({ profile }: { readonly profile: ServerProfile }) 
   return (
     <ConvexBetterAuthProvider
       client={convex}
-      // The provider's `AuthClient` prop erases plugin generics (`useSession`
-      // collapses to `never`), which our browser-cookie client doesn't match.
+      // The provider’s `AuthClient` prop erases plugin generics (`useSession`
+      // collapses to `never`), which our browser-cookie client doesn’t match.
       // The runtime contract is identical; narrow only for the prop.
       authClient={providerAuth.client as unknown as AuthClient}
     >
@@ -89,8 +88,8 @@ function ServerAddressProblem({
         ? profile.siteUrl
         : profile.baseUrl;
   return (
-    <SafeAreaView className="flex-1" edges={["top", "bottom"]}>
-      <View className="flex-1 items-center justify-center gap-3 px-6">
+    <ScreenContainer scrollable className="flex-1 min-w-0">
+      <View className="grow items-center justify-center gap-3 px-6 min-w-0">
         <Text size="md" className="text-center font-medium">
           {profile.name} cannot be opened
         </Text>
@@ -110,6 +109,6 @@ function ServerAddressProblem({
           Use a different workspace
         </Button>
       </View>
-    </SafeAreaView>
+    </ScreenContainer>
   );
 }

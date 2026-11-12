@@ -12,6 +12,22 @@ export {
   type ThemeName,
 } from "./colors";
 export {
+  emailFontStack,
+  type FontFamilyToken,
+  fontFaceRules,
+  fontFamilies,
+  fontFeatures,
+  fontMetrics,
+  fontStack,
+  type NativeFontWeight,
+  nativeFontFamilies,
+  nativeFontFamily,
+  nativeFontWeight,
+  preloadFontFiles,
+  type WebFontFace,
+  webFontFaces,
+} from "./fonts";
+export {
   type AuloraPreset,
   type AuloraPresets,
   createNativewindPreset,
@@ -20,13 +36,12 @@ export {
   cssVariables,
   nativewindPreset,
   nativewindPresets,
+  type PresetPlugin,
   tailwindPreset,
   tailwindPresets,
 } from "./presets";
 export {
-  type FontFamilyToken,
   type FontSizeToken,
-  fontFamilies,
   fontSizes,
   fontWeights,
   lineHeights,
@@ -38,15 +53,8 @@ export {
 } from "./scales";
 
 import { darkPalette, lightPalette, palettes } from "./colors";
-import {
-  fontFamilies,
-  fontSizes,
-  fontWeights,
-  lineHeights,
-  radii,
-  spacing,
-  typography,
-} from "./scales";
+import { fontFamilies } from "./fonts";
+import { fontSizes, fontWeights, lineHeights, radii, spacing, typography } from "./scales";
 
 /** One source of truth for every design token. */
 export const tokens = {

@@ -1,6 +1,7 @@
-import { Platform, Text as RNText, View } from "react-native";
+import { Text as RNText, View } from "react-native";
 import { cn } from "./cn";
 import { usePalette } from "./theme";
+import { nativeFontStyle } from "./typography";
 import { countBadgeTextStyle } from "./variants";
 
 export type CountBadgeTone = "accent" | "muted" | "danger";
@@ -25,9 +26,9 @@ const BACKGROUND: Record<CountBadgeTone, string> = {
 };
 
 /**
- * A compact numeric pill. It shares one measured line box on iOS and Android so
- * the digits sit optically centred at every size; the caller owns position and
- * any surrounding spacing.
+ * A compact numeric pill. Its digits use one Inter line box as tall as the
+ * pill, which centres them optically on iOS and Android at every size; the
+ * caller owns position and any surrounding spacing.
  */
 export function CountBadge({
   count,
@@ -56,11 +57,11 @@ export function CountBadge({
         BACKGROUND[tone],
         className ?? "",
       )}
-      style={{ minWidth: dimension, height: dimension }}
+      style={{ minWidth: dimension, minHeight: dimension }}
     >
       <RNText
         maxFontSizeMultiplier={1.2}
-        style={countBadgeTextStyle({ size: dimension, color, platform: Platform.OS })}
+        style={[nativeFontStyle({}), countBadgeTextStyle({ size: dimension, color })]}
       >
         {count > max ? `${max}+` : String(count)}
       </RNText>

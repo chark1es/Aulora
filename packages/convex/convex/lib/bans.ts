@@ -49,6 +49,38 @@ export async function assertNotBanned(ctx: MutationCtx, userId: string): Promise
 }
 
 /**
+ * Read-only version of the participation gate, safe inside a query. It never
+ * prunes expired bans, so it does not write from a query.
+ */
+export async function mayParticipate(
+  ctx: QueryCtx | MutationCtx,
+  userId: string,
+): Promise<boolean> {
+  if ((await listActiveBans(ctx, userId)).length > 0) {
+    return false;
+  }
+  const member = await ctx.db
+    .query("members")
+    .withIndex("by_user", (q) => q.eq("userId", userId))
+    .unique();
+  return !(
+    member !== null &&
+    member.timeoutUntil !== undefined &&
+    member.timeoutUntil > Date.now()
+  );
+}
+
+/** Query-safe gate: throws when a banned or timed-out member may not read. */
+export async function assertMayParticipateRead(
+  ctx: QueryCtx | MutationCtx,
+  userId: string,
+): Promise<void> {
+  if (!(await mayParticipate(ctx, userId))) {
+    throw new ConvexError("You cannot participate in this workspace");
+  }
+}
+
+/**
  * The single "may participate" gate for writes (send, react, type, upload,
  * call, join). Rejects an active ban and an unexpired `timeoutUntil`.
  *

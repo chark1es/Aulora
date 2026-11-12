@@ -1,7 +1,7 @@
 import type { ChannelSummary } from "@aulora/core";
+import { channelOpening, conversationOpening } from "@aulora/core";
 import { Heading, Icon, Text, usePalette } from "@aulora/ui-native";
 import { Animated, Pressable, View } from "react-native";
-import { conversationOpening } from "../../lib/conversation-opening";
 import { useEntrance, useReduceMotion } from "../../lib/use-entrance";
 import { GroupAvatar } from "./GroupAvatar";
 import { MemberAvatar } from "./MemberAvatar";
@@ -62,17 +62,15 @@ function ChannelOpening({
   const announcement = kind === "announcement";
   const voice = kind === "voice";
   const icon = voice ? "volume" : announcement ? "megaphone" : "hash";
-  const heading = voice || announcement ? `Welcome to ${title}` : `Welcome to #${title}`;
+  const opening = channelOpening(kind, title);
   return (
     <>
       <Icon name={icon} size={22} color={palette["text-muted"]} />
       <Heading level={2} className="mt-2" accessibilityRole="header">
-        {heading}
+        {opening.heading}
       </Heading>
       <Text size="sm" tone="muted" className="mt-1 leading-6">
-        {voice
-          ? "This is the beginning of the channel chat. Join the call when you are ready."
-          : "This is the very beginning of the channel. Say hello."}
+        {opening.body}
       </Text>
     </>
   );
@@ -138,9 +136,6 @@ function DirectOpening(props: ConversationOpeningProps) {
           >
             {props.title}
           </Heading>
-          <Text size="sm" tone="muted" className="mt-1" maxFontSizeMultiplier={1.4}>
-            {opening.meta}
-          </Text>
         </View>
       </View>
       <Text size="sm" tone="muted" className="mt-5 leading-6" maxFontSizeMultiplier={1.6}>
@@ -157,7 +152,7 @@ function DirectOpening(props: ConversationOpeningProps) {
               }}
             />
           )}
-          {props.canStartCall && (
+          {sayHi === null && props.canStartCall && (
             <OpeningAction icon="phone" label="Start a call" onPress={props.onStartCall} />
           )}
         </View>
@@ -176,7 +171,7 @@ export function ConversationOpening(props: ConversationOpeningProps) {
   const { animatedStyle } = useEntrance(reduceMotion);
   const isConversation = props.channel.kind === "dm" || props.channel.kind === "group_dm";
   return (
-    <View className="flex-1 justify-center px-6 py-10">
+    <View className="flex-1 justify-center px-6 py-10 min-w-0">
       <Animated.View style={animatedStyle}>
         <View className="w-full max-w-[520px]">
           {isConversation ? (

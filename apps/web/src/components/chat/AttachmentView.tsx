@@ -1,5 +1,6 @@
 import type { AttachmentDescriptor } from "@aulora/core";
-import { Button, cn, Icon, Text, usePrefersReducedMotion } from "@aulora/ui-web";
+import { formatBytes } from "@aulora/core";
+import { Button, cn, Icon, Modal, Text, usePrefersReducedMotion } from "@aulora/ui-web";
 import { useCallback, useEffect, useRef, useState } from "react";
 import { loadAttachmentUrl, loadThumbnailUrl } from "../../lib/attachments";
 import type { ChatRuntime } from "../../lib/chat-runtime";
@@ -8,16 +9,6 @@ import { blurhashToDataUrl } from "../../lib/image";
 export interface AttachmentViewProps {
   readonly runtime: ChatRuntime | undefined;
   readonly descriptor: AttachmentDescriptor;
-}
-
-function formatBytes(size: number): string {
-  if (size < 1024) {
-    return `${size} B`;
-  }
-  if (size < 1024 * 1024) {
-    return `${(size / 1024).toFixed(1)} KB`;
-  }
-  return `${(size / (1024 * 1024)).toFixed(1)} MB`;
 }
 
 /**
@@ -42,7 +33,7 @@ export function AttachmentView({ runtime, descriptor }: AttachmentViewProps) {
         : null;
   const [mediaUrl, setMediaUrl] = useState<string | undefined>(undefined);
   // Defer thumbnail download until the image is near the viewport, so a long
-  // channel does not fetch every image's bytes as soon as it loads.
+  // channel does not fetch every image’s bytes as soon as it loads.
   const [visible, setVisible] = useState(false);
   const buttonRef = useRef<HTMLButtonElement | null>(null);
   // The lightbox object URL, tracked so it can be revoked when the attachment
@@ -94,6 +85,10 @@ export function AttachmentView({ runtime, descriptor }: AttachmentViewProps) {
     let objectUrl: string | undefined;
     void loadThumbnailUrl(runtime.port, descriptor)
       .then((url) => {
+        if (cancelled) {
+          if (url !== undefined) URL.revokeObjectURL(url);
+          return;
+        }
         objectUrl = url;
         if (!cancelled && url !== undefined) {
           setThumbnailUrl(url);
@@ -174,6 +169,10 @@ export function AttachmentView({ runtime, descriptor }: AttachmentViewProps) {
     let objectUrl: string | undefined;
     void loadAttachmentUrl(runtime.port, descriptor)
       .then((url) => {
+        if (cancelled) {
+          URL.revokeObjectURL(url);
+          return;
+        }
         objectUrl = url;
         if (!cancelled) {
           setThumbnailUrl(url);
@@ -186,7 +185,7 @@ export function AttachmentView({ runtime, descriptor }: AttachmentViewProps) {
       });
     return () => {
       cancelled = true;
-      // Release the fallback preview's blob when it is no longer shown.
+      // Release the fallback preview’s blob when it is no longer shown.
       if (objectUrl !== undefined) {
         URL.revokeObjectURL(objectUrl);
       }
@@ -231,7 +230,7 @@ export function AttachmentView({ runtime, descriptor }: AttachmentViewProps) {
       });
   }, [runtime, descriptor]);
 
-  // The player's object URL lives until the attachment unmounts or changes.
+  // The player’s object URL lives until the attachment unmounts or changes.
   useEffect(() => {
     if (mediaUrl === undefined) {
       return;
@@ -416,33 +415,41 @@ function ImageLightbox({
 }) {
   const entered = useEntered();
   return (
-    // biome-ignore lint/a11y/noStaticElementInteractions: backdrop click closes the lightbox; Escape already handled
-    <div
-      data-testid="attachment-lightbox"
-      className={cn(
-        "fixed inset-0 z-50 flex items-center justify-center bg-black/85 p-6 backdrop-blur-[3px]",
-        "transition-opacity duration-[160ms] motion-reduce:transition-none",
-        entered ? "opacity-100" : "opacity-0",
-      )}
-      onClick={onClose}
-      role="presentation"
+    <Modal
+      open
+      onClose={onClose}
+      label={name}
+      backdropClassName="bg-black/85"
+      hideHeader
+      hideClose
+      className="!h-[95dvh] [&>div]:!overflow-hidden !max-h-[95dvh] !max-w-[95vw] !rounded-none !bg-transparent !shadow-none [&>div]:!p-0 [&>span]:hidden"
     >
-      <LightboxClose onClose={onClose} />
-      <img
-        src={url}
-        alt={name}
-        data-context-menu-media
-        data-testid={`fullimage-${fileId}`}
-        decoding="async"
-        className={cn(
-          "max-h-full max-w-full rounded-[12px]",
-          "shadow-[0_24px_70px_-20px_rgba(0,0,0,0.8)]",
-          "transition-[opacity,transform] motion-reduce:transition-none",
-          entered
-            ? "scale-100 opacity-100 duration-200 ease-[cubic-bezier(.2,.9,.3,1)]"
-            : "scale-[0.97] opacity-0 duration-[140ms] ease-in",
-        )}
-      />
-    </div>
+      {/* biome-ignore lint/a11y/noStaticElementInteractions: backdrop click dismisses; Modal handles Escape */}
+      {/* biome-ignore lint/a11y/useKeyWithClickEvents: Modal handles Escape */}
+      <div
+        data-testid="attachment-lightbox"
+        className="flex h-full w-full items-center justify-center"
+        onClick={(event) => {
+          if (event.target === event.currentTarget) onClose();
+        }}
+      >
+        <LightboxClose onClose={onClose} />
+        <img
+          src={url}
+          alt={name}
+          data-context-menu-media
+          data-testid={`fullimage-${fileId}`}
+          decoding="async"
+          className={cn(
+            "max-h-full max-w-full object-contain rounded-[12px]",
+            "shadow-[0_24px_70px_-20px_rgba(0,0,0,0.8)]",
+            "transition-[opacity,transform] motion-reduce:transition-none",
+            entered
+              ? "scale-100 opacity-100 duration-200 ease-[cubic-bezier(.2,.9,.3,1)]"
+              : "scale-[0.97] opacity-0 duration-[140ms] ease-in",
+          )}
+        />
+      </div>
+    </Modal>
   );
 }

@@ -1,11 +1,13 @@
 /* eslint-disable no-unused-vars -- the base rule reports parameter names in type signatures; Biome checks real unused code */
 import { NativeAvatar } from "@aulora/avatars/native";
 import type { IconName } from "@aulora/tokens";
-import { CountBadge, Heading, Icon, Text, usePalette } from "@aulora/ui-native";
+import { Heading, Icon, Text, usePalette } from "@aulora/ui-native";
 import type { ReactNode } from "react";
-import { Pressable, View } from "react-native";
-import { useSafeAreaInsets } from "react-native-safe-area-context";
+import { Pressable, useWindowDimensions, View } from "react-native";
+import { useKeyboardState } from "react-native-keyboard-controller";
 import { selectionFeedback } from "../../lib/haptics";
+import { useScreenInsets } from "../layout/ScreenContainer";
+import { DockTab } from "./DockTab";
 import { PresenceAvatar } from "./PresenceAvatar";
 
 /** `threads` is the full thread list, opened from the Channels tab rather than the dock. */
@@ -14,10 +16,18 @@ export type HubTab = "chats" | "dms" | "boards" | "notes" | "threads" | "search"
 /** Height of the floating dock, used to pad scrolling content clear of it. */
 export const DOCK_HEIGHT = 64;
 
+function useCompactDock() {
+  const { width, fontScale } = useWindowDimensions();
+  const insets = useScreenInsets();
+  return width - insets.left - insets.right < 480 || fontScale > 1.3;
+}
+
 /** Space a hub tab must leave at its bottom edge so nothing hides under the dock. */
 export function useDockClearance(): number {
-  const insets = useSafeAreaInsets();
-  return DOCK_HEIGHT + Math.max(insets.bottom, 12) + 16;
+  const insets = useScreenInsets();
+  const compact = useCompactDock();
+  const keyboardVisible = useKeyboardState((state) => state.isVisible);
+  return keyboardVisible ? 0 : DOCK_HEIGHT * (compact ? 2 : 1) + Math.max(insets.bottom, 12) + 28;
 }
 
 /** Large left-aligned title shared by every full-screen pane. */
@@ -89,10 +99,10 @@ const TABS: readonly TabEntry[] = [
   { key: "dms", label: "DMs", icon: "message" },
 ];
 
-/** Shown only where the workspace's Kanban addon is on and the viewer may see it. */
+/** Shown only where the workspace’s Kanban addon is on and the viewer may see it. */
 const BOARDS_TAB: TabEntry = { key: "boards", label: "Boards", icon: "kanban" };
 
-/** Shown only where the workspace's Notes addon is on and the viewer may see it. */
+/** Shown only where the workspace’s Notes addon is on and the viewer may see it. */
 const NOTES_TAB: TabEntry = { key: "notes", label: "Notes", icon: "note" };
 
 const FLOAT_SHADOW = {
@@ -103,46 +113,7 @@ const FLOAT_SHADOW = {
   elevation: 6,
 } as const;
 
-interface DockTabProps {
-  readonly label: string;
-  readonly active: boolean;
-  /** Mentions waiting behind this tab; shown as a count on the glyph. */
-  readonly badge?: number;
-  readonly onPress: () => void;
-  /** The tab's glyph: an icon, or the viewer's own avatar. */
-  readonly children: ReactNode;
-}
-
-/** One labelled tab inside the dock's tab bar. */
-function DockTab({ label, active, badge = 0, onPress, children }: DockTabProps) {
-  return (
-    <Pressable
-      accessibilityRole="tab"
-      accessibilityLabel={badge > 0 ? `${label}, ${badge} thread mentions` : label}
-      accessibilityState={{ selected: active }}
-      onPress={onPress}
-      className={`h-[52px] flex-1 items-center justify-center gap-0.5 rounded-pill ${
-        active ? "bg-accent-soft" : ""
-      }`}
-    >
-      <View>
-        {children}
-        {badge > 0 && (
-          <View className="absolute -right-3 -top-1">
-            <CountBadge count={badge} max={9} size="md" />
-          </View>
-        )}
-      </View>
-      <Text
-        style={{ fontSize: 11, lineHeight: 14, fontWeight: active ? "600" : "400" }}
-        tone={active ? "accent" : "muted"}
-        maxFontSizeMultiplier={1.3}
-      >
-        {label}
-      </Text>
-    </Pressable>
-  );
-}
+export { DOCK_LABEL_MAX_SCALE, dockLabelLines } from "./DockTab";
 
 interface WorkspaceButtonProps {
   readonly name: string;
@@ -213,33 +184,49 @@ export interface HubDockProps {
 }
 
 /**
- * The hub's floating controls, all at thumb height: the tab bar in the middle,
+ * The hub’s floating controls, all at thumb height: the tab bar in the middle,
  * the workspace switcher on its own at the leading end and search on its own
  * at the trailing end.
  */
 export function HubDock(props: HubDockProps) {
   const { tab, onTab } = props;
+  const compact = useCompactDock();
+  const keyboardVisible = useKeyboardState((state) => state.isVisible);
   const palette = usePalette();
-  const insets = useSafeAreaInsets();
+  const insets = useScreenInsets();
   function select(next: HubTab) {
     if (next !== tab) selectionFeedback();
     onTab(next);
   }
+  if (keyboardVisible) return null;
   return (
     <View
       pointerEvents="box-none"
       className="absolute inset-x-0 flex-row items-center justify-center gap-2.5 px-4"
-      style={{ bottom: Math.max(insets.bottom, 12) }}
+      style={{
+        bottom: Math.max(insets.bottom, 12),
+        left: insets.left,
+        right: insets.right,
+        flexWrap: compact ? "wrap" : "nowrap",
+      }}
     >
-      <WorkspaceButton
-        name={props.workspaceName}
-        seed={props.workspaceSeed}
-        onPress={props.onSwitchWorkspace}
-      />
+      {!compact && (
+        <WorkspaceButton
+          name={props.workspaceName}
+          seed={props.workspaceSeed}
+          onPress={props.onSwitchWorkspace}
+        />
+      )}
       <View
         accessibilityRole="tablist"
-        className="max-w-xs flex-1 flex-row items-center rounded-pill border border-border bg-surface-2 px-1.5"
-        style={[{ height: DOCK_HEIGHT }, FLOAT_SHADOW]}
+        className="max-w-xs flex-1 flex-row items-center rounded-pill border border-border bg-surface-2 px-1.5 min-w-0"
+        style={[
+          {
+            minHeight: DOCK_HEIGHT,
+            ...(compact ? { flexBasis: "100%", maxWidth: "100%" as const } : {}),
+          },
+          FLOAT_SHADOW,
+        ]}
       >
         {[
           ...TABS,
@@ -276,6 +263,13 @@ export function HubDock(props: HubDockProps) {
           <PresenceAvatar userId={props.ownUserId} status={props.ownStatus} size={22} />
         </DockTab>
       </View>
+      {compact && (
+        <WorkspaceButton
+          name={props.workspaceName}
+          seed={props.workspaceSeed}
+          onPress={props.onSwitchWorkspace}
+        />
+      )}
       <SearchButton
         active={tab === "search"}
         onPress={() => {

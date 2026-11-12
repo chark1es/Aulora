@@ -20,7 +20,7 @@ export function mediaMessage(error: unknown): string {
   if (error instanceof DOMException && error.name === "NotFoundError") {
     return "No microphone was found. Connect one and rejoin the call.";
   }
-  return "Couldn't start your microphone. Check your device and permissions.";
+  return "Couldn’t start your microphone. Check your device and permissions.";
 }
 
 export function isAbort(error: unknown): boolean {

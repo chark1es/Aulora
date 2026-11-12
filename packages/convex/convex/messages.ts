@@ -3,21 +3,46 @@ import { paginationOptsValidator } from "convex/server";
 import { ConvexError, v } from "convex/values";
 import { internal } from "./_generated/api";
 import type { Doc, Id } from "./_generated/dataModel";
-import { type MutationCtx, mutation, query } from "./_generated/server";
+import { internalMutation, type MutationCtx, mutation, query } from "./_generated/server";
 import { writeAudit } from "./lib/audit";
 import { requireAuth } from "./lib/auth";
 import { assertMayParticipate } from "./lib/bans";
 import { emitBotEvent } from "./lib/botEvents";
+import {
+  broadcastAudiencePage,
+  hasBroadcastToken,
+  LEGACY_BROADCAST_EXPANSION_LIMIT,
+  MASS_PING_LIMIT,
+  MASS_PING_WINDOW_MS,
+} from "./lib/broadcastMentions";
 import { requireChannelAccess } from "./lib/channels";
 import { recordLicenseActivity } from "./lib/licenseActivity";
 import { filterMentionIds, mentionUserIdsForRoles } from "./lib/mentionIds";
+import { clampPageSize } from "./lib/pagination";
 import { requireMember } from "./lib/permissions";
-import { enforceRateLimit, userRateLimitKey } from "./lib/rateLimit";
+import { consumeRateLimit, enforceRateLimit, userRateLimitKey } from "./lib/rateLimit";
 import { openContent } from "./lib/sealed";
 import { sealString } from "./lib/sse";
-import { countThreadMentions, loadThreadInbox, type ThreadInboxRow } from "./lib/threadInbox";
+import {
+  countThreadMentions,
+  loadThreadInbox,
+  loadThreadInboxPage,
+  type ThreadInboxRow,
+} from "./lib/threadInbox";
 import { upsertThreadParticipant } from "./lib/threadParticipants";
 import type { Nullable } from "./lib/types";
+
+/** Generous server limits also cover older clients without composer limits. */
+function validateMessageContent(
+  body: string,
+  attachments: readonly Id<"files">[],
+  editing = false,
+): void {
+  if (body.length > 4000) throw new ConvexError("Message exceeds 4000 characters");
+  if (!editing && attachments.length > 10) throw new ConvexError("Too many attachments");
+  if (body.trim().length === 0 && attachments.length === 0)
+    throw new ConvexError("Message is empty");
+}
 
 /** Per-user send budget: 30 messages per 10 seconds unless overridden. */
 function sendLimit(): number {
@@ -43,7 +68,10 @@ interface MessageView {
   readonly threadRootId: Nullable<Id<"messages">>;
   readonly replyToId: Nullable<Id<"messages">>;
   readonly attachmentIds: Id<"files">[];
+  readonly mentionEveryone: boolean;
+  readonly mentionHere: boolean;
   readonly mentionUserIds: string[];
+  readonly broadcastDirectUserIds?: string[];
   readonly mentionChannelIds: string[];
   readonly mentionCategoryIds: string[];
   readonly editedAt: number | null;
@@ -64,13 +92,24 @@ async function toMessage(message: Doc<"messages">): Promise<MessageView> {
     id: message._id,
     channelId: message.channelId,
     authorId: message.authorId,
-    body: await openContent(messageContext(message.channelId), message.ciphertext),
+    body:
+      message.deletedAt === undefined
+        ? await openContent(messageContext(message.channelId), message.ciphertext)
+        : "",
     threadRootId: message.threadRootId ?? null,
     replyToId: message.replyToId ?? null,
-    attachmentIds: message.attachmentIds,
-    mentionUserIds: message.mentionUserIds,
-    mentionChannelIds: message.mentionChannelIds ?? [],
-    mentionCategoryIds: message.mentionCategoryIds ?? [],
+    attachmentIds: message.deletedAt === undefined ? message.attachmentIds : [],
+    mentionEveryone: message.deletedAt === undefined && message.mentionEveryone === true,
+    mentionHere: message.deletedAt === undefined && message.mentionHere === true,
+    mentionUserIds: message.deletedAt === undefined ? message.mentionUserIds : [],
+    ...(message.broadcastDirectUserIds !== undefined
+      ? {
+          broadcastDirectUserIds:
+            message.deletedAt === undefined ? message.broadcastDirectUserIds : [],
+        }
+      : {}),
+    mentionChannelIds: message.deletedAt === undefined ? (message.mentionChannelIds ?? []) : [],
+    mentionCategoryIds: message.deletedAt === undefined ? (message.mentionCategoryIds ?? []) : [],
     editedAt: message.editedAt ?? null,
     deletedAt: message.deletedAt ?? null,
     pinnedAt: message.pinnedAt ?? null,
@@ -104,7 +143,11 @@ async function resolveThreadRoot(
     throw new ConvexError("Missing permission");
   }
   const threadRoot = await ctx.db.get(threadRootId);
-  if (threadRoot === null || threadRoot.channelId !== channelId) {
+  if (
+    threadRoot === null ||
+    threadRoot.deletedAt !== undefined ||
+    threadRoot.channelId !== channelId
+  ) {
     throw new ConvexError("Thread root not found in channel");
   }
   if (threadRoot.threadRootId !== undefined) {
@@ -148,10 +191,31 @@ export const send = mutation({
      * Older clients keep sending pre-expanded `mentionUserIds`.
      */
     mentionRoleIds: v.optional(v.array(v.string())),
+    mentionEveryone: v.optional(v.boolean()),
+    mentionHere: v.optional(v.boolean()),
   },
   handler: async (ctx, args) => {
     const access = await requireChannelAccess(ctx, args.channelId, Permission.SendMessages);
     await assertMayParticipate(ctx, access.userId);
+    validateMessageContent(args.body, args.attachmentIds ?? []);
+    if ((args.attachmentIds?.length ?? 0) > 0) {
+      if (!hasPermission(access.permissions, Permission.AttachFiles))
+        throw new ConvexError("Missing permission to attach files");
+      for (const id of args.attachmentIds ?? []) {
+        const file = await ctx.db.get(id);
+        if (
+          file === null ||
+          file.kanbanBoardId !== undefined ||
+          (file.channelId !== undefined && file.channelId !== args.channelId) ||
+          (file.uploaderId !== access.userId && file.channelId !== args.channelId)
+        ) {
+          throw new ConvexError("Attachment not available in this channel");
+        }
+        // Uploads start private to the uploader; scope them to the channel so
+        // its members (the recipients) can resolve and download the file.
+        if (file.channelId === undefined) await ctx.db.patch(id, { channelId: args.channelId });
+      }
+    }
     const threadRoot = await resolveThreadRoot(
       ctx,
       args.channelId,
@@ -164,25 +228,76 @@ export const send = mutation({
       limit: sendLimit(),
       windowMs: sendWindowMs(),
     });
-    const roleMentions = await mentionUserIdsForRoles(ctx, args.mentionRoleIds ?? []);
+    const canSpendMassPingBudget =
+      access.channel.kind !== "dm" &&
+      access.channel.kind !== "group_dm" &&
+      hasPermission(access.permissions, Permission.MentionEveryone);
+    const canBroadcast = threadRoot === null && canSpendMassPingBudget;
+    const mentionEveryone =
+      canBroadcast && args.mentionEveryone === true && hasBroadcastToken(args.body, "everyone");
+    const mentionHere =
+      canBroadcast && args.mentionHere === true && hasBroadcastToken(args.body, "here");
+    if (
+      canSpendMassPingBudget &&
+      (hasBroadcastToken(args.body, "everyone") || hasBroadcastToken(args.body, "here"))
+    ) {
+      const budget = await consumeRateLimit(ctx, {
+        key: userRateLimitKey("mass-ping", access.userId),
+        limit: MASS_PING_LIMIT,
+        windowMs: MASS_PING_WINDOW_MS,
+      });
+      if (!budget.allowed)
+        throw new ConvexError("You're mentioning everyone too often. Try again in a minute.");
+    }
+    const roleMentions = await mentionUserIdsForRoles(
+      ctx,
+      args.mentionRoleIds ?? [],
+      args.channelId,
+    );
     const mentions = await filterMentionIds(
       ctx,
       [...(args.mentionUserIds ?? []), ...roleMentions],
       args.mentionChannelIds ?? [],
       args.mentionCategoryIds ?? [],
+      access.userId,
     );
+    let legacyBroadcastIds: string[] = [];
+    let legacyContinuation: { cursor: string; userIds: string[] } | undefined;
+    if (mentionEveryone || mentionHere) {
+      const audience = await broadcastAudiencePage(ctx, args.channelId, null, true);
+      if (audience.cursor === null && audience.userIds.length <= LEGACY_BROADCAST_EXPANSION_LIMIT) {
+        legacyBroadcastIds = audience.userIds;
+      } else if (
+        audience.cursor !== null &&
+        audience.userIds.length <= LEGACY_BROADCAST_EXPANSION_LIMIT
+      ) {
+        legacyContinuation = { cursor: audience.cursor, userIds: audience.userIds };
+      }
+    }
     const ciphertext = await sealString(messageContext(args.channelId), args.body);
     const messageId = await ctx.db.insert("messages", {
       channelId: args.channelId,
       authorId: access.userId,
       ciphertext,
       attachmentIds: args.attachmentIds ?? [],
-      mentionUserIds: mentions.mentionUserIds,
+      mentionUserIds: [...new Set([...mentions.mentionUserIds, ...legacyBroadcastIds])],
+      ...(mentionEveryone ? { mentionEveryone: true } : {}),
+      ...(mentionHere ? { mentionHere: true } : {}),
+      ...(legacyBroadcastIds.length > 0 || legacyContinuation !== undefined
+        ? { broadcastDirectUserIds: mentions.mentionUserIds }
+        : {}),
       mentionChannelIds: mentions.mentionChannelIds,
       mentionCategoryIds: mentions.mentionCategoryIds,
       ...(args.threadRootId !== undefined ? { threadRootId: args.threadRootId } : {}),
       ...(args.replyToId !== undefined ? { replyToId: args.replyToId } : {}),
     });
+    if (legacyContinuation !== undefined) {
+      const jobId = await ctx.db.insert("broadcastMentionJobs", {
+        messageId,
+        ...legacyContinuation,
+      });
+      await ctx.scheduler.runAfter(0, internal.messages.continueLegacyBroadcast, { jobId });
+    }
     let replyAt = 0;
     if (threadRoot !== null) {
       const reply = await ctx.db.get(messageId);
@@ -206,29 +321,23 @@ export const send = mutation({
     // Thread participation rows only exist for actual threads: a top-level
     // message's mentions are notified, not added to the Threads inbox. When the
     // first reply arrives, seed the root's mentions so they still surface.
-    if (threadRoot !== null && (threadRoot.replyCount ?? 0) === 0) {
-      for (const mentioned of threadRoot.mentionUserIds) {
-        await upsertThreadParticipant(ctx, {
-          userId: mentioned,
-          threadRootId: threadRoot._id,
-          channelId: args.channelId,
-          at: replyAt,
-          mentioned: true,
-          participated: false,
-        });
-      }
-    }
-    if (threadRoot !== null && mentions.mentionUserIds.length > 0) {
-      for (const mentioned of mentions.mentionUserIds) {
-        await upsertThreadParticipant(ctx, {
-          userId: mentioned,
-          threadRootId: threadRoot._id,
-          channelId: args.channelId,
-          at: replyAt,
-          mentioned: true,
-          participated: false,
-        });
-      }
+    if (threadRoot !== null) {
+      const mentionedUsers = [
+        ...new Set([
+          ...((threadRoot.replyCount ?? 0) === 0
+            ? (threadRoot.broadcastDirectUserIds ?? threadRoot.mentionUserIds).filter(
+                (id) => id !== threadRoot.authorId,
+              )
+            : []),
+          ...mentions.mentionUserIds.filter((id) => id !== access.userId),
+        ]),
+      ];
+      await recordThreadMentions(ctx, {
+        threadRootId: threadRoot._id,
+        channelId: args.channelId,
+        at: replyAt,
+        userIds: mentionedUsers,
+      });
     }
     await emitBotEvent(ctx, {
       type: "message.created",
@@ -239,9 +348,90 @@ export const send = mutation({
     // mobile relay) from a single scheduled job, so a burst of messages no
     // longer resolves recipients twice per message. The action no-ops when
     // neither transport is configured.
+    if (mentionEveryone || mentionHere) {
+      // Persist the initial recovery job in the send transaction, before any action can crash.
+      await ctx.db.insert("notificationDeliveryClaims", {
+        messageId,
+        cursor: "",
+        leaseUntil: 1,
+        retryAt: 1,
+      });
+    }
     await ctx.scheduler.runAfter(0, internal.notifications.dispatchForMessage, { messageId });
     await recordLicenseActivity(ctx, access.userId);
     return messageId;
+  },
+});
+
+/** Resolve small visible audiences even when many workspace members cannot view. */
+export const continueLegacyBroadcast = internalMutation({
+  args: { jobId: v.id("broadcastMentionJobs") },
+  handler: async (ctx, { jobId }) => {
+    const job = await ctx.db.get(jobId);
+    if (job === null) return;
+    const message = await ctx.db.get(job.messageId);
+    if (message === null || message.deletedAt !== undefined) {
+      await ctx.db.delete(jobId);
+      return;
+    }
+    const page = await broadcastAudiencePage(ctx, message.channelId, job.cursor);
+    const userIds = [...new Set([...job.userIds, ...page.userIds])];
+    if (userIds.length > LEGACY_BROADCAST_EXPANSION_LIMIT) {
+      // Keep the original direct-mention snapshot on overflow.
+      await ctx.db.delete(jobId);
+    } else if (page.cursor === null) {
+      await ctx.db.patch(message._id, {
+        mentionUserIds: [...new Set([...message.mentionUserIds, ...userIds])],
+      });
+      await ctx.db.delete(jobId);
+    } else {
+      await ctx.db.patch(jobId, { cursor: page.cursor, userIds });
+      await ctx.scheduler.runAfter(0, internal.messages.continueLegacyBroadcast, { jobId });
+    }
+  },
+});
+
+/** Bound synchronous writes; the continuation carries the original mention snapshot. */
+const THREAD_MENTION_BATCH = 100;
+
+interface ThreadMentionBatch {
+  threadRootId: Id<"messages">;
+  channelId: Id<"channels">;
+  at: number;
+  userIds: string[];
+}
+
+async function recordThreadMentions(ctx: MutationCtx, args: ThreadMentionBatch): Promise<void> {
+  for (const userId of args.userIds.slice(0, THREAD_MENTION_BATCH)) {
+    await upsertThreadParticipant(ctx, {
+      userId,
+      threadRootId: args.threadRootId,
+      channelId: args.channelId,
+      at: args.at,
+      mentioned: true,
+      participated: false,
+    });
+  }
+  if (args.userIds.length > THREAD_MENTION_BATCH) {
+    await ctx.scheduler.runAfter(0, internal.messages.continueThreadMentions, {
+      ...args,
+      userIds: args.userIds.slice(THREAD_MENTION_BATCH),
+    });
+  }
+}
+
+/** Idempotent, atomic batch plus continuation; retries cannot lose progress. */
+export const continueThreadMentions = internalMutation({
+  args: {
+    threadRootId: v.id("messages"),
+    channelId: v.id("channels"),
+    at: v.number(),
+    userIds: v.array(v.string()),
+  },
+  handler: async (ctx, args) => {
+    const root = await ctx.db.get(args.threadRootId);
+    if (root === null || root.deletedAt !== undefined) return;
+    await recordThreadMentions(ctx, args);
   },
 });
 
@@ -264,7 +454,7 @@ export const list = query({
         q.eq("channelId", args.channelId).eq("threadRootId", undefined),
       )
       .order("desc")
-      .paginate(args.paginationOpts);
+      .paginate({ ...args.paginationOpts, numItems: clampPageSize(args.paginationOpts.numItems) });
     return { ...result, page: (await toMessages(result.page)).reverse() };
   },
 });
@@ -320,7 +510,7 @@ export const listThread = query({
       .query("messages")
       .withIndex("by_thread", (q) => q.eq("threadRootId", args.threadRootId))
       .order("asc")
-      .paginate(args.paginationOpts);
+      .paginate({ ...args.paginationOpts, numItems: clampPageSize(args.paginationOpts.numItems) });
     return { ...result, page: await toMessages(result.page) };
   },
 });
@@ -337,10 +527,13 @@ export const edit = mutation({
       throw new ConvexError("Message not found");
     }
     const access = await requireChannelAccess(ctx, message.channelId, Permission.ViewChannel);
+    await assertMayParticipate(ctx, access.userId);
     const isAuthor = message.authorId === access.userId;
     if (!isAuthor && !hasPermission(access.permissions, Permission.ManageMessages)) {
       throw new ConvexError("Missing permission");
     }
+    if (message.deletedAt !== undefined) throw new ConvexError("Cannot edit a deleted message");
+    validateMessageContent(args.body, message.attachmentIds, true);
     const ciphertext = await sealString(messageContext(message.channelId), args.body);
     await ctx.db.patch(args.messageId, { ciphertext, editedAt: Date.now() });
     await emitBotEvent(ctx, {
@@ -371,6 +564,7 @@ export const remove = mutation({
       throw new ConvexError("Message not found");
     }
     const access = await requireChannelAccess(ctx, message.channelId, Permission.ViewChannel);
+    await assertMayParticipate(ctx, access.userId);
     const isAuthor = message.authorId === access.userId;
     if (!isAuthor && !hasPermission(access.permissions, Permission.ManageMessages)) {
       throw new ConvexError("Missing permission");
@@ -463,7 +657,7 @@ export const listPins = query({
       .query("messages")
       .withIndex("by_channel_pinned", (q) => q.eq("channelId", args.channelId))
       .order("desc")
-      .paginate(args.paginationOpts);
+      .paginate({ ...args.paginationOpts, numItems: clampPageSize(args.paginationOpts.numItems) });
     // Deleted messages are hidden everywhere, so a deleted pin must not surface
     // here (or consume the page).
     const pinned = result.page.filter(
@@ -485,7 +679,7 @@ export type { ThreadInboxRow } from "./lib/threadInbox";
  * Reads the viewer's `threadParticipants` rows (bounded, newest first) rather
  * than scanning the newest `messages` globally; bodies are opened server-side so
  * the client always receives plaintext, never ciphertext. `limit` bounds the
- * page (default 50, max 50), so an always-on subscription stays cheap; the full
+ * page (default 50, max 50), but up to 500 candidate roots are read; the full
  * inbox should only be subscribed while it is open.
  */
 export const threadInbox = query({
@@ -497,11 +691,20 @@ export const threadInbox = query({
   },
 });
 
+/** Additive cursor API; the legacy array API keeps its original response shape. */
+export const threadInboxPage = query({
+  args: { paginationOpts: paginationOptsValidator },
+  handler: async (ctx, args) => {
+    const { userId } = await requireAuth(ctx);
+    await requireMember(ctx, userId);
+    return await loadThreadInboxPage(ctx, userId, args.paginationOpts.cursor);
+  },
+});
+
 /**
- * The Threads badge: how many threads the viewer was mentioned in and can still
- * view. Reads participation rows only — no root lookup, no reply scan, no
- * message body opened — so the sidebar can show it while the inbox itself is
- * closed.
+ * The Threads badge counts up to 50 unacknowledged mentioned participation rows.
+ * Reads bounded participation candidates and rechecks access without opening
+ * message bodies, so the sidebar can show it while the inbox is closed.
  */
 export const threadMentionCount = query({
   args: {},
@@ -509,5 +712,24 @@ export const threadMentionCount = query({
     const { userId } = await requireAuth(ctx);
     await requireMember(ctx, userId);
     return await countThreadMentions(ctx, userId);
+  },
+});
+
+/** Acknowledges at most 50 of the caller's thread mentions per invocation. */
+export const markThreadMentionsSeen = mutation({
+  args: { lastReplyAt: v.optional(v.number()) },
+  handler: async (ctx, args) => {
+    const { userId } = await requireAuth(ctx);
+    await requireMember(ctx, userId);
+    const rows = await ctx.db
+      .query("threadParticipants")
+      .withIndex("by_user_mentioned", (q) => {
+        const base = q.eq("userId", userId).eq("mentioned", true);
+        return args.lastReplyAt === undefined ? base : base.lte("lastReplyAt", args.lastReplyAt);
+      })
+      .order("desc")
+      .take(50);
+    for (const row of rows) await ctx.db.patch(row._id, { mentioned: false });
+    return { cleared: rows.length, hasMore: rows.length === 50 };
   },
 });

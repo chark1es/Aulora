@@ -1,4 +1,5 @@
 /* eslint-disable no-unused-vars -- the base rule reports parameter names in type signatures; Biome checks real unused code */
+import { roleColorCss } from "@aulora/core";
 import { cn, Icon, Text, usePalette } from "@aulora/ui-native";
 import { useMemo, useState } from "react";
 import { Pressable, View } from "react-native";
@@ -39,7 +40,7 @@ export interface ChannelRoleOverridesProps {
 /**
  * The mobile channel-edit role permissions editor: expand a role, then set each
  * channel-scoped permission to inherit, allow or deny. Only role-target
- * overrides are produced; the caller merges them with the channel's member
+ * overrides are produced; the caller merges them with the channel’s member
  * overrides before saving.
  */
 export function ChannelRoleOverrides(props: ChannelRoleOverridesProps) {
@@ -155,7 +156,8 @@ function RolePermissionRow(props: RolePermissionRowProps) {
   const { role, overrides, disabled, expanded, onToggle, onSetLevel, onClear } = props;
   const palette = usePalette();
   const target = roleTarget(role.id);
-  const hasColor = role.color !== null && role.color !== undefined && role.color.length > 0;
+  const tint = roleColorCss(role.color);
+  const hasColor = tint !== null;
 
   return (
     <View className="overflow-hidden rounded-input border border-border bg-surface-1">
@@ -167,8 +169,8 @@ function RolePermissionRow(props: RolePermissionRowProps) {
         onPress={onToggle}
       >
         <View
-          className="h-5 w-5 items-center justify-center rounded-pill border border-border"
-          style={hasColor ? { backgroundColor: role.color ?? undefined } : undefined}
+          className="min-h-5 min-w-5 items-center justify-center rounded-pill border border-border"
+          style={hasColor ? { backgroundColor: tint ?? undefined } : undefined}
         >
           {!hasColor && (
             <Text size="xs" tone="muted" className="font-semibold">
@@ -315,7 +317,7 @@ function RoleTriState({
             accessibilityState={{ selected: active }}
             accessibilityLabel={`${label} ${segment}`}
             disabled={disabled}
-            className="h-9 min-w-9 items-center justify-center rounded-input border"
+            className="min-h-11 min-w-11 items-center justify-center rounded-input border"
             style={{
               borderColor: active ? activeColor : palette.border,
               backgroundColor: active ? `${activeColor}26` : palette["surface-3"],

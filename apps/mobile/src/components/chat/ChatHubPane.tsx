@@ -1,9 +1,9 @@
 import { hasPermission, Permission } from "@aulora/core";
 import { Alert, View } from "react-native";
-import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { pickFromLibrary } from "../../lib/attachments";
 import { selectionFeedback } from "../../lib/haptics";
 import { KanbanScreen } from "../kanban/KanbanScreen";
+import { useScreenInsets } from "../layout/ScreenContainer";
 import { NotesScreen } from "../notes/NotesScreen";
 import { ChannelList } from "./ChannelList";
 import { errorMessage } from "./chat-screen-types";
@@ -15,9 +15,12 @@ import { ThreadsInbox } from "./ThreadsInbox";
 import type { ChatScreenModel } from "./use-chat-screen-model";
 
 export function ChatHubPane({ model }: { readonly model: ChatScreenModel }) {
-  const insets = useSafeAreaInsets();
+  const insets = useScreenInsets();
   return (
-    <View className="flex-1 bg-bg" style={{ paddingTop: insets.top }}>
+    <View
+      className="flex-1 bg-bg min-w-0"
+      style={{ paddingTop: insets.top, paddingLeft: insets.left, paddingRight: insets.right }}
+    >
       {model.hubTab === "chats" ? (
         <ChatHubListTab model={model} />
       ) : model.hubTab === "dms" ? (
@@ -119,7 +122,7 @@ function ChatHubDirectTab({ model }: { readonly model: ChatScreenModel }) {
 function ChatHubBoardsTab({ model }: { readonly model: ChatScreenModel }) {
   const dockClearance = useDockClearance();
   return (
-    <View className="flex-1" style={{ paddingBottom: dockClearance }}>
+    <View className="flex-1 min-w-0" style={{ paddingBottom: dockClearance }}>
       <KanbanScreen
         ownUserId={model.ownUserId}
         permissions={model.viewerPermissions}
@@ -134,7 +137,7 @@ function ChatHubBoardsTab({ model }: { readonly model: ChatScreenModel }) {
 function ChatHubNotesTab({ model }: { readonly model: ChatScreenModel }) {
   const dockClearance = useDockClearance();
   return (
-    <View className="flex-1" style={{ paddingBottom: dockClearance }}>
+    <View className="flex-1 min-w-0" style={{ paddingBottom: dockClearance }}>
       <NotesScreen
         ownUserId={model.ownUserId}
         permissions={model.viewerPermissions}
@@ -149,7 +152,7 @@ function ChatHubNotesTab({ model }: { readonly model: ChatScreenModel }) {
 function ChatHubThreadsTab({ model }: { readonly model: ChatScreenModel }) {
   const dockClearance = useDockClearance();
   return (
-    <View className="flex-1" style={{ paddingBottom: dockClearance }}>
+    <View className="flex-1 min-w-0" style={{ paddingBottom: dockClearance }}>
       <PaneHeader
         title="Threads"
         subtitle="Conversations you replied to or were mentioned in"
@@ -166,6 +169,7 @@ function ChatHubThreadsTab({ model }: { readonly model: ChatScreenModel }) {
       <ThreadsInbox
         threads={model.threadRows ?? []}
         loading={model.threadRows === undefined}
+        {...(model.loadMoreThreads ? { onLoadMore: model.loadMoreThreads } : {})}
         channelNames={model.textChannelNames}
         memberNames={model.memberNames}
         titles={model.titles}
@@ -196,7 +200,7 @@ function ChatHubSearchTab({ model }: { readonly model: ChatScreenModel }) {
             model.setJumpToMessageId(messageId ?? null);
           })
           .catch((cause: unknown) => {
-            Alert.alert("Couldn't open conversation", errorMessage(cause));
+            Alert.alert("Couldn’t open conversation", errorMessage(cause));
           });
       }}
     />
@@ -211,6 +215,12 @@ function ChatHubSettingsTab({ model }: { readonly model: ChatScreenModel }) {
       ownUserId={model.ownUserId}
       ownDisplayName={model.memberNames.get(model.ownUserId) ?? model.ownDisplayName}
       canChangeNickname={hasPermission(model.viewerPermissions, Permission.ChangeOwnNickname)}
+      canManageRoles={
+        model.isOwner || hasPermission(model.viewerPermissions, Permission.ManageRoles)
+      }
+      onOpenRoleColors={() => {
+        model.setRoleColorsOpen(true);
+      }}
       hasAvatar={model.avatarUrls.has(model.ownUserId)}
       onChangeAvatar={avatar.change}
       onClearAvatar={avatar.clear}
@@ -250,22 +260,22 @@ function profileAvatarActions(model: ChatScreenModel) {
         body: bytes,
       });
       if (!uploaded.ok) {
-        Alert.alert("Couldn't update your profile picture.");
+        Alert.alert("Couldn’t update your profile picture.");
         return;
       }
       const body = (await uploaded.json()) as { storageId?: unknown };
       if (typeof body.storageId !== "string") {
-        Alert.alert("Couldn't update your profile picture.");
+        Alert.alert("Couldn’t update your profile picture.");
         return;
       }
       await model.setAvatar({ storageId: body.storageId as never });
     })().catch(() => {
-      Alert.alert("Couldn't update your profile picture.");
+      Alert.alert("Couldn’t update your profile picture.");
     });
   };
   const onClearAvatar = () => {
     void model.setAvatar({}).catch(() => {
-      Alert.alert("Couldn't remove your profile picture.");
+      Alert.alert("Couldn’t remove your profile picture.");
     });
   };
   return { change: onChangeAvatar, clear: onClearAvatar };

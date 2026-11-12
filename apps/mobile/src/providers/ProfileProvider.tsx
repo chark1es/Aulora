@@ -1,6 +1,10 @@
 import {
-  createServerProfile,
+  activateProfileInStore,
+  activeProfileOf,
+  addProfileToStore,
   type ProfileStore,
+  readProfileSnapshotSafely,
+  removeProfileFromStore,
   type ServerProfile,
   type WellKnown,
 } from "@aulora/core";
@@ -14,7 +18,7 @@ import {
   useMemo,
   useState,
 } from "react";
-import { createMobileProfileStore, loadProfilesSafely } from "../lib/profiles";
+import { createMobileProfileStore } from "../lib/profiles";
 
 export interface ProfileContextValue {
   readonly store: ProfileStore;
@@ -43,20 +47,20 @@ export function ProfileProvider({ store, children }: ProfileProviderProps) {
   const [ready, setReady] = useState(false);
 
   const refresh = useCallback(async () => {
-    const { profiles: list, activeId: active } = await loadProfilesSafely(profileStore);
-    setProfiles(list);
-    setActiveId(active);
+    const snapshot = await readProfileSnapshotSafely(profileStore);
+    setProfiles(snapshot.profiles);
+    setActiveId(snapshot.activeId);
   }, [profileStore]);
 
   useEffect(() => {
     const controller = new AbortController();
     void (async () => {
-      const { profiles: list, activeId: active } = await loadProfilesSafely(profileStore);
+      const snapshot = await readProfileSnapshotSafely(profileStore);
       if (controller.signal.aborted) {
         return;
       }
-      setProfiles(list);
-      setActiveId(active);
+      setProfiles(snapshot.profiles);
+      setActiveId(snapshot.activeId);
       setReady(true);
     })();
     return () => {
@@ -66,9 +70,7 @@ export function ProfileProvider({ store, children }: ProfileProviderProps) {
 
   const addProfile = useCallback(
     async (baseUrl: string, wellKnown: WellKnown) => {
-      const profile = createServerProfile(baseUrl, wellKnown);
-      await profileStore.add(profile);
-      await profileStore.setActive(profile.id);
+      const profile = await addProfileToStore(profileStore, baseUrl, wellKnown);
       await refresh();
       return profile;
     },
@@ -77,7 +79,7 @@ export function ProfileProvider({ store, children }: ProfileProviderProps) {
 
   const setActive = useCallback(
     async (id: string) => {
-      await profileStore.setActive(id);
+      await activateProfileInStore(profileStore, id);
       setActiveId(id);
     },
     [profileStore],
@@ -85,16 +87,13 @@ export function ProfileProvider({ store, children }: ProfileProviderProps) {
 
   const remove = useCallback(
     async (id: string) => {
-      await profileStore.remove(id);
+      await removeProfileFromStore(profileStore, id);
       await refresh();
     },
     [profileStore, refresh],
   );
 
-  const activeProfile = useMemo(
-    () => profiles.find((profile) => profile.id === activeId),
-    [profiles, activeId],
-  );
+  const activeProfile = useMemo(() => activeProfileOf(profiles, activeId), [profiles, activeId]);
 
   const value = useMemo<ProfileContextValue>(
     () => ({

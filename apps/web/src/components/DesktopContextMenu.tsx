@@ -14,13 +14,13 @@ const DesktopContextMenuPolicy = lazy(() =>
  * renderer it imports) is fetched only inside the shell, so neither is part of
  * the entry chunk.
  */
-export function DesktopContextMenu() {
+export function DesktopContextMenu({ onOpenDebugLogs }: { readonly onOpenDebugLogs?: () => void }) {
   if (!isDesktop()) {
     return null;
   }
   return (
     <Suspense fallback={null}>
-      <DesktopContextMenuPolicy />
+      <DesktopContextMenuPolicy {...(onOpenDebugLogs ? { onOpenDebugLogs } : {})} />
     </Suspense>
   );
 }

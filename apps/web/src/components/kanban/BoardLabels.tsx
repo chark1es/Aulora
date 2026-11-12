@@ -53,7 +53,7 @@ function LabelRow(props: {
 }
 
 /**
- * The board's labels, edited in place: the same inset list as the columns
+ * The board’s labels, edited in place: the same inset list as the columns
  * above it, with a swatch per label instead of a separate colour field.
  */
 export function BoardLabels(props: {

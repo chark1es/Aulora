@@ -179,13 +179,15 @@ function authSecret(): string {
 }
 
 function json(body: unknown, status: number, headers?: HeadersInit): Response {
+  // Headers instances are iterable, not plain records. Spreading one drops
+  // the CORS headers, so a desktop exchange consumes its code but the webview
+  // cannot read the returned session token.
+  const responseHeaders = new Headers(headers);
+  responseHeaders.set("content-type", "application/json");
+  noStore(responseHeaders);
   return new Response(JSON.stringify(body), {
     status,
-    headers: {
-      "content-type": "application/json",
-      "cache-control": "no-store",
-      ...(headers ?? {}),
-    },
+    headers: responseHeaders,
   });
 }
 

@@ -7,14 +7,17 @@ import { CallMediaNotice } from "./CallMediaNotice";
 import { CallGrid } from "./CallParticipant";
 import { useCallDuration } from "./hooks";
 import type { CallIdentity } from "./identity";
+import { TranscriptionIndicator } from "./TranscriptionIndicator";
+import { TranscriptionNotice } from "./TranscriptionNotice";
+import { useCallAddonControls } from "./use-call-addons";
 
 export const DOCK_WIDTH = 340;
 export const DOCK_HEIGHT = 232;
 
 /**
  * The small call window: who is in the call, the controls, and a few buttons.
- * Used for the in-page dock and for the browser's own floating window. The
- * desktop shell's call window is a separate webview with its own view, so it is
+ * Used for the in-page dock and for the browser’s own floating window. The
+ * desktop shell’s call window is a separate webview with its own view, so it is
  * not drawn by this component.
  */
 export function CallCompactView({
@@ -48,6 +51,7 @@ export function CallCompactView({
           {title}
           <span className="sr-only"> ({callKindLabel(call.kind)})</span>
         </span>
+        {call.transcribing === true && <TranscriptionIndicator />}
         <span className="shrink-0 text-[11px] tabular-nums text-text-muted">{duration}</span>
         <CompactButtons identity={identity} floating={floating} onHide={onHide} />
       </div>
@@ -69,6 +73,7 @@ export function CallCompactView({
       </div>
 
       <CallMediaNotice compact />
+      <TranscriptionNotice compact />
       <CallAloneNotice compact />
 
       <div className="flex items-center justify-center pb-0.5">
@@ -80,6 +85,7 @@ export function CallCompactView({
 
 function CompactControls() {
   const voice = useVoice();
+  const addons = useCallAddonControls();
   return (
     <CallControls
       compact
@@ -97,6 +103,7 @@ function CompactControls() {
       onToggleCamera={() => void voice.setCamera(!voice.local.video)}
       onToggleScreen={() => void voice.setScreenSharing(!voice.local.sharingScreen)}
       onLeave={() => void voice.leave()}
+      {...addons}
     />
   );
 }
@@ -113,8 +120,8 @@ function CompactButtons({
 }) {
   const voice = useVoice();
   const { pip } = voice;
-  // The browser's own floating window is already above everything, so only the
-  // in-page dock has anything to pin. The desktop shell's call window is always
+  // The browser’s own floating window is already above everything, so only the
+  // in-page dock has anything to pin. The desktop shell’s call window is always
   // on top by construction and lives in its own webview.
   const canPin = !floating;
   const pinLabel = voice.pipPinned ? "Unpin from top" : "Pin to top";
@@ -182,7 +189,9 @@ function IconButton({
       onClick={onClick}
       className={cn(
         "flex h-6 w-6 shrink-0 items-center justify-center rounded-[6px] transition focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent",
-        active ? "bg-accent/15 text-accent" : "text-text-muted hover:bg-surface-3 hover:text-text",
+        active
+          ? "bg-accent/15 text-accent-text"
+          : "text-text-muted hover:bg-surface-3 hover:text-text",
       )}
     >
       {children}

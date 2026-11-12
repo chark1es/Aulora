@@ -168,7 +168,7 @@ describe("SegmentedControl", () => {
     expect(group.className).toContain("grid-flow-col");
     expect(group.className).toContain("auto-cols-fr");
     for (const label of ["Anyone", "Invite only"]) {
-      expect(screen.getByText(label).className).toContain("whitespace-nowrap");
+      expect(screen.getByText(label).closest("label")?.className).toContain("whitespace-nowrap");
     }
   });
 });
@@ -190,6 +190,47 @@ describe("Select", () => {
     fireEvent.click(screen.getByRole("button", { name: /Timeout/ }));
     fireEvent.click(screen.getByRole("option", { name: "5m" }));
     expect(onChange).toHaveBeenCalledWith("b");
+    // Choosing an item closes the listbox; focus belongs back on the trigger.
+    expect(screen.getByRole("button", { name: /Timeout/ })).toHaveFocus();
+  });
+
+  it("returns focus to the trigger when the listbox closes with Escape", () => {
+    render(
+      <Select
+        value="a"
+        onChange={() => undefined}
+        options={[
+          { value: "a", label: "60s" },
+          { value: "b", label: "5m" },
+        ]}
+      />,
+    );
+    const trigger = screen.getByRole("button", { name: /60s/ });
+    fireEvent.click(trigger);
+    const listbox = screen.getByRole("listbox");
+    fireEvent.keyDown(listbox, { key: "Escape" });
+    expect(screen.queryByRole("listbox")).not.toBeInTheDocument();
+    expect(trigger).toHaveFocus();
+  });
+
+  it("returns focus to the trigger after a keyboard selection", () => {
+    render(
+      <Select
+        value="a"
+        onChange={() => undefined}
+        options={[
+          { value: "a", label: "60s" },
+          { value: "b", label: "5m" },
+        ]}
+      />,
+    );
+    const trigger = screen.getByRole("button", { name: /60s/ });
+    fireEvent.click(trigger);
+    const listbox = screen.getByRole("listbox");
+    fireEvent.keyDown(listbox, { key: "ArrowDown" });
+    fireEvent.keyDown(listbox, { key: "Enter" });
+    expect(screen.queryByRole("listbox")).not.toBeInTheDocument();
+    expect(trigger).toHaveFocus();
   });
 
   it("indents nested options and exposes the full label as a title", () => {
@@ -288,6 +329,54 @@ describe("Modal", () => {
     );
     expect(screen.getByText("This cannot be undone.").className).toContain("text-[14px]");
     const tile = screen.getByRole("dialog").querySelector("header span");
-    expect(tile?.className).toContain("text-danger");
+    expect(tile?.className.split(" ")).toContain("text-danger-text");
   });
+});
+
+it("keeps the enclosing Modal open when Select handles Escape", () => {
+  const onClose = vi.fn();
+  render(
+    <Modal open onClose={onClose} label="Edit">
+      <Select
+        label="Timeout"
+        value="a"
+        options={[
+          { value: "a", label: "60s" },
+          { value: "b", label: "5m" },
+        ]}
+        onChange={vi.fn()}
+      />
+    </Modal>,
+  );
+  const trigger = screen.getByRole("button", { name: "Timeout 60s" });
+  expect(trigger.className).toContain("focus-visible:ring-accent");
+  fireEvent.click(trigger);
+  const listbox = screen.getByRole("listbox");
+  expect(listbox).toHaveAttribute(
+    "aria-activedescendant",
+    screen.getByRole("option", { name: "60s" }).id,
+  );
+  fireEvent.keyDown(listbox, { key: "ArrowDown" });
+  expect(listbox).toHaveAttribute(
+    "aria-activedescendant",
+    screen.getByRole("option", { name: "5m" }).id,
+  );
+  fireEvent.keyDown(listbox, { key: "Escape" });
+  expect(onClose).not.toHaveBeenCalled();
+  expect(screen.getByRole("dialog")).toBeInTheDocument();
+  expect(screen.queryByRole("listbox")).toBeNull();
+  expect(trigger).toHaveFocus();
+});
+it("closes Select when focus leaves its root", () => {
+  render(
+    <>
+      <Select value="a" options={[{ value: "a", label: "60s" }]} onChange={vi.fn()} />
+      <button type="button">Outside</button>
+    </>,
+  );
+  fireEvent.click(screen.getByRole("button", { name: "60s" }));
+  fireEvent.blur(screen.getByRole("listbox"), {
+    relatedTarget: screen.getByRole("button", { name: "Outside" }),
+  });
+  expect(screen.queryByRole("listbox")).toBeNull();
 });

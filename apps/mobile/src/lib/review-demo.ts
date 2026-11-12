@@ -142,7 +142,7 @@ function seedOtherChannels(seed: SeedFn, ids: DemoIds, now: number, fileId: stri
     "group",
     ids.groupId,
     "jordan",
-    "Let's coordinate the launch in this group conversation.",
+    "Let’s coordinate the launch in this group conversation.",
     5,
   );
 }
@@ -221,7 +221,7 @@ export async function createReviewDemo(): Promise<ReviewDemo> {
   port.state.reactions.set("design", [{ id: "reaction-design", emoji: "👍", userId: "sam" }]);
   seedPresence(port, now);
   for (const channel of port.state.channels.values()) await session.openChannel(channel);
-  await session.receiveMessages([...port.state.messages.values()]);
+  await session.receiveMessages([...port.state.messages.values()], "review-demo");
 
   return {
     runtime: buildRuntime(session, port),

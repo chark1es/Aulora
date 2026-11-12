@@ -1,6 +1,6 @@
-import { Text, usePalette } from "@aulora/ui-native";
+import { Text, TextField, usePalette } from "@aulora/ui-native";
 import { type ReactNode, useState } from "react";
-import { TextInput, type TextInputProps, View } from "react-native";
+import { type TextInputProps, View } from "react-native";
 
 export interface AuthFieldProps extends TextInputProps {
   /** Visible label, set in small caps above the text. */
@@ -32,11 +32,11 @@ export function AuthField(props: AuthFieldProps) {
         style={{ borderBottomWidth: 2, borderBottomColor: rule }}
       >
         {leading}
-        <TextInput
+        <TextField
           accessibilityLabel={label}
           placeholderTextColor={palette["text-muted"]}
           selectionColor={palette.accent}
-          className="min-h-12 flex-1 text-[19px] text-text"
+          className="min-h-12 flex-1 text-[19px] text-text min-w-0"
           style={style}
           onFocus={(event) => {
             setFocused(true);

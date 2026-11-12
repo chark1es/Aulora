@@ -12,7 +12,7 @@ function layout(heading: string, paragraphs: readonly string[], action?: string)
   const body = paragraphs
     .map((text) => `<p style="margin:0 0 14px;line-height:1.5">${text}</p>`)
     .join("");
-  return `<div style="font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;max-width:480px;margin:0 auto;padding:24px;color:#1b1b1f"><h1 style="font-size:20px;margin:0 0 16px">${escapeHtml(heading)}</h1>${body}${action ?? ""}</div>`;
+  return `<div style="font-family:Inter,-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,Helvetica,Arial,sans-serif;max-width:480px;margin:0 auto;padding:24px;color:#1b1b1f"><h1 style="font-size:20px;margin:0 0 16px">${escapeHtml(heading)}</h1>${body}${action ?? ""}</div>`;
 }
 
 function button(href: string, label: string): string {

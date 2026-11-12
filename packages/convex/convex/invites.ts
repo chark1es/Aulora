@@ -21,6 +21,7 @@ import { randomAccessCode, randomToken, sha256Hex } from "./lib/crypto";
 import { parseEmailConfig } from "./lib/email";
 import { type InviteStatus, inviteStatus, pickInviteByCode } from "./lib/inviteState";
 import { admitMember } from "./lib/membership";
+import { clampPageSize } from "./lib/pagination";
 import { requireWorkspaceContext, requireWorkspacePermission } from "./lib/permissions";
 import { enforceRateLimit, userRateLimitKey } from "./lib/rateLimit";
 
@@ -377,7 +378,10 @@ export const list = query({
     ) {
       throw new ConvexError("Missing permission");
     }
-    const result = await ctx.db.query("invites").order("desc").paginate(args.paginationOpts);
+    const result = await ctx.db
+      .query("invites")
+      .order("desc")
+      .paginate({ ...args.paginationOpts, numItems: clampPageSize(args.paginationOpts.numItems) });
     const redemptionRows = await Promise.all(
       result.page.map((invite) =>
         ctx.db

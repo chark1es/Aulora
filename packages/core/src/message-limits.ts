@@ -1,0 +1,2 @@
+export const MESSAGE_MAX_LENGTH = 4000;
+export const MESSAGE_MAX_ATTACHMENTS = 10;

@@ -117,7 +117,7 @@ function ChoiceRow(props: ChoiceRowProps) {
         className={cn(
           "flex h-8 w-8 shrink-0 items-center justify-center rounded-[9px] transition-colors",
           active
-            ? "bg-accent/15 text-accent"
+            ? "bg-accent/15 text-accent-text"
             : "bg-surface-3 text-text-muted group-hover:text-text",
         )}
       >

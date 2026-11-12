@@ -25,6 +25,8 @@ import {
 } from "react";
 import { type ChannelUnreadState, selectEagerChannelIds } from "../lib/channel-priority";
 import { type ChatRuntime, createChatRuntime } from "../lib/chat-runtime";
+import { DraftScopeContext, draftScope } from "../lib/drafts";
+import { sendOutboxItem } from "../lib/outbox-send";
 import { webOutboxStore } from "../lib/outbox-store";
 import { webSearchStore } from "../lib/search-store";
 import { usePresenceHeartbeat } from "../lib/use-presence-heartbeat";
@@ -42,6 +44,8 @@ export interface ChatSearchHit extends SearchHit {
 
 export interface ChatSendOptions {
   readonly mentionUserIds?: readonly string[];
+  readonly mentionEveryone?: boolean;
+  readonly mentionHere?: boolean;
   readonly mentionChannelIds?: readonly string[];
   readonly mentionCategoryIds?: readonly string[];
   readonly mentionRoleIds?: readonly string[];
@@ -128,6 +132,7 @@ export function ChatProvider({
   children,
 }: ChatProviderProps) {
   const [runtime, setRuntime] = useState<ChatRuntime | undefined>(undefined);
+  const [queryError, setQueryError] = useState<Error | null>(null);
   const [ready, setReady] = useState(false);
   const [channelNames, setChannelNames] = useState<ReadonlyMap<string, string>>(new Map());
   const [presence, setPresence] = useState<readonly PresenceRow[]>([]);
@@ -151,7 +156,10 @@ export function ChatProvider({
   useEffect(() => {
     let cancelled = false;
     const isCancelled = () => cancelled;
-    const outboxStore = new Outbox({ store: webOutboxStore() });
+    const reportQueryError = (error: unknown) => {
+      setQueryError(error instanceof Error ? error : new Error(String(error)));
+    };
+    const outboxStore = new Outbox({ store: webOutboxStore(client.url, userId) });
     // The index is scoped to this backend and account so a different instance
     // that happens to share the same browser origin can never surface its
     // messages here (see `search-store.ts`).
@@ -175,24 +183,28 @@ export function ChatProvider({
         setOutbox(loaded);
       }
     });
-    void createChatRuntime({ client, userId, displayName }).then((created) => {
-      if (isCancelled()) {
-        created.session.dispose();
-        return;
-      }
-      runtimeRef.current = created;
-      const chatPort = created.port;
-      const listMessages = chatPort.listMessages?.bind(chatPort);
-      const listThreadMessages = chatPort.listThreadMessages?.bind(chatPort);
-      if (listMessages !== undefined && listThreadMessages !== undefined) {
-        backfillRef.current = new ArchiveBackfill(searchIndex, {
-          listMessages,
-          listThreadMessages,
-        });
-      }
-      setRuntime(created);
-      setReady(true);
-    });
+    void createChatRuntime({ client, userId, displayName, onError: reportQueryError })
+      .then((created) => {
+        if (isCancelled()) {
+          created.session.dispose();
+          return;
+        }
+        runtimeRef.current = created;
+        const chatPort = created.port;
+        const listMessages = chatPort.listMessages?.bind(chatPort);
+        const listThreadMessages = chatPort.listThreadMessages?.bind(chatPort);
+        if (listMessages !== undefined && listThreadMessages !== undefined) {
+          backfillRef.current = new ArchiveBackfill(searchIndex, {
+            listMessages,
+            listThreadMessages,
+          });
+        }
+        setRuntime(created);
+        setReady(true);
+      })
+      .catch((error: unknown) => {
+        if (!cancelled) reportQueryError(error);
+      });
     return () => {
       cancelled = true;
       runtimeRef.current?.session.dispose();
@@ -214,6 +226,10 @@ export function ChatProvider({
         return;
       }
       for (const message of messages) {
+        if (message.deletedAt !== null) {
+          void index.remove(message.id);
+          continue;
+        }
         const text = runtime.session.decryptedText(message.id);
         if (text.length === 0) {
           continue;
@@ -248,23 +264,7 @@ export function ChatProvider({
       return;
     }
     try {
-      await active.flush(async (item) => {
-        await chat.session.sendMessage(item.channelId, item.text, {
-          mentionUserIds: item.mentionUserIds,
-          ...(item.mentionChannelIds !== undefined
-            ? { mentionChannelIds: item.mentionChannelIds }
-            : {}),
-          ...(item.mentionCategoryIds !== undefined
-            ? { mentionCategoryIds: item.mentionCategoryIds }
-            : {}),
-          ...(item.mentionRoleIds !== undefined ? { mentionRoleIds: item.mentionRoleIds } : {}),
-          ...(item.threadRootId !== undefined ? { threadRootId: item.threadRootId } : {}),
-          ...(item.replyToId !== undefined ? { replyToId: item.replyToId } : {}),
-          ...(item.attachments !== undefined && item.attachments.length > 0
-            ? { attachmentIds: item.attachments.map((attachment) => attachment.fileId) }
-            : {}),
-        });
-      });
+      await active.flush((item) => sendOutboxItem(chat.session, item));
     } catch {
       // Keep the queue intact; the ticker retries on the next tick.
     }
@@ -436,6 +436,10 @@ export function ChatProvider({
           {
             channelId,
             text,
+            ...(options.mentionEveryone !== undefined
+              ? { mentionEveryone: options.mentionEveryone }
+              : {}),
+            ...(options.mentionHere !== undefined ? { mentionHere: options.mentionHere } : {}),
             ...(options.mentionUserIds !== undefined
               ? { mentionUserIds: options.mentionUserIds }
               : {}),
@@ -449,6 +453,7 @@ export function ChatProvider({
               ? { mentionRoleIds: options.mentionRoleIds }
               : {}),
             ...(options.threadRootId !== undefined ? { threadRootId: options.threadRootId } : {}),
+            ...(options.replyToId !== undefined ? { replyToId: options.replyToId } : {}),
             ...(options.attachments !== undefined ? { attachments: options.attachments } : {}),
           },
           Date.now(),
@@ -469,6 +474,10 @@ export function ChatProvider({
           : {};
       try {
         const messageId = await chat.session.sendMessage(channelId, text, {
+          ...(options.mentionEveryone !== undefined
+            ? { mentionEveryone: options.mentionEveryone }
+            : {}),
+          ...(options.mentionHere !== undefined ? { mentionHere: options.mentionHere } : {}),
           ...(options.mentionUserIds !== undefined
             ? { mentionUserIds: options.mentionUserIds }
             : {}),
@@ -596,7 +605,12 @@ export function ChatProvider({
     ],
   );
 
-  return <ChatContext.Provider value={value}>{children}</ChatContext.Provider>;
+  if (queryError !== null) throw queryError;
+  return (
+    <DraftScopeContext.Provider value={draftScope(client.url, userId)}>
+      <ChatContext.Provider value={value}>{children}</ChatContext.Provider>
+    </DraftScopeContext.Provider>
+  );
 }
 
 /**

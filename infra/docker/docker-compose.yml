@@ -11,8 +11,8 @@
 #
 # First run:
 #   cp .env.example .env        # then edit workspace + origin values
-#   docker compose up -d --build
-#   docker compose run --rm setup   # prints a one-time setup token
+#   docker compose up -d --build    # also runs the one-shot setup service
+#   docker compose logs --tail=100 setup | grep "setup token"
 #   open http://localhost:8080      # register the first owner in the app
 
 name: ${COMPOSE_PROJECT_NAME:-aulora}
@@ -201,6 +201,7 @@ services:
     networks:
       - default
       - bots
+      - transcription
 
   convex-dashboard:
     # Pinned by digest (Convex dashboard image has no stable version tag).
@@ -238,8 +239,22 @@ services:
       # The real per-instance well-known document is written here by `setup`.
       - web-well-known:/var/www/.well-known:ro
     depends_on:
+      setup:
+        condition: service_completed_successfully
       convex-backend:
         condition: service_healthy
+    # nginx proxies the call-audio WebSocket (`/transcribe/`) to `transcriber`,
+    # so `web` must share that network (the transcriber only exists when its
+    # compose profile is enabled).
+    networks:
+      - default
+      - transcription
+    healthcheck:
+      test: ["CMD-SHELL", "wget -q -O /dev/null http://127.0.0.1/ || exit 1"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 10s
     logging: *logging
 
   # Private SMTP bridge. Only Convex actions can call it; no host port is exposed.
@@ -364,6 +379,58 @@ services:
       timeout: 5s
       retries: 3
       start_period: 20s
+    logging: *logging
+
+  # Optional transcription engine (compose profile `transcription`, OFF by
+  # default). It receives each participant's own microphone as 16 kHz PCM16 over
+  # `/transcribe/ws`, runs faster-whisper on CPU int8 with VAD, and posts
+  # speaker-labelled segments to Convex over the shared-secret ingest route.
+  # No model is baked into the image: the owner downloads one allowlisted model
+  # into the `transcriber-models` volume from Workspace settings. The container
+  # is non-root, read-only and joins only the `transcription` network shared with
+  # convex-backend and the web gateway (nginx proxies `/transcribe/` to it), so
+  # it cannot reach postgres, minio or the bot runner. Read README.md
+  # "Transcription" before enabling it.
+  transcriber:
+    build:
+      context: ../..
+      dockerfile: infra/transcriber/Dockerfile
+    image: aulora-transcriber:local
+    profiles: ["transcription"]
+    restart: unless-stopped
+    environment:
+      # Shared with Convex. `setup` generates and persists it like the other
+      # secrets; an interpolation, not a stored credential.
+      # nosemgrep: codacy.yaml.security.hard-coded-tokens
+      TRANSCRIBER_TOKEN: ${TRANSCRIBER_TOKEN:-}
+      CONVEX_INGEST_URL: http://convex-backend:3211/transcription/ingest
+      CONVEX_MODEL_STATUS_URL: http://convex-backend:3211/transcription/model
+      CONVEX_HELLO_URL: http://convex-backend:3211/transcription/hello
+      TRANSCRIBER_PREAUTH_MAX_CONNECTIONS: ${TRANSCRIBER_PREAUTH_MAX_CONNECTIONS:-128}
+      MODELS_DIR: /models
+      WHISPER_DEVICE: ${WHISPER_DEVICE:-cpu}
+      WHISPER_COMPUTE_TYPE: ${WHISPER_COMPUTE_TYPE:-int8}
+      TRANSCRIBER_MAX_STREAMS: ${TRANSCRIBER_MAX_STREAMS:-32}
+    volumes:
+      - transcriber-models:/models
+    read_only: true
+    tmpfs:
+      - /tmp:size=64m,mode=1777
+      - /home/transcriber:size=8m,mode=755
+    cap_drop:
+      - ALL
+    security_opt:
+      - no-new-privileges:true
+    pids_limit: 512
+    mem_limit: ${TRANSCRIBER_MEMORY_LIMIT:-2g}
+    cpus: ${TRANSCRIBER_CPUS:-2}
+    networks:
+      - transcription
+    depends_on:
+      convex-backend:
+        condition: service_healthy
+      setup:
+        condition: service_completed_successfully
     logging: *logging
 
   # Optional project push relay for official store builds. Holds APNs/FCM
@@ -575,9 +642,12 @@ volumes:
   web-well-known:
   livekit-keys:
   backup-data:
+  transcriber-models:
 
-# Dedicated network for bot processes: only `bot-runner` and `convex-backend`
-# join it, so a bot has no route to postgres, minio or the web container.
+# Dedicated networks. `bots` is shared only by `bot-runner` and
+# `convex-backend`; `transcription` only by `transcriber` and `convex-backend`.
 networks:
   bots:
+    driver: bridge
+  transcription:
     driver: bridge

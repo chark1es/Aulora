@@ -19,9 +19,13 @@ export interface SearchInputProps {
   readonly onKeyDown?: (event: React.KeyboardEvent<HTMLInputElement>) => void;
 }
 
+/**
+ * `md` takes 1px of bottom padding for the same whole-pixel baseline as Input.
+ * text-centering-ok: a native input centres its own value box (measured 0.00).
+ */
 const SIZE_CLASSES = new Map<SearchInputSize, string>([
   ["sm", "h-8 pl-8 pr-2.5 text-[13px]"],
-  ["md", "h-10 pl-9 pr-3 text-[14px]"],
+  ["md", "h-10 pb-px pl-9 pr-3 text-[14px]"],
 ]);
 
 function SearchGlyph({ size }: { readonly size: SearchInputSize }) {

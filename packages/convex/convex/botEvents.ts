@@ -56,11 +56,19 @@ async function botEventMessage(message: Doc<"messages">): Promise<BotEventMessag
     id: message._id,
     channelId: message.channelId,
     authorId: message.authorId,
-    body: await openContent(messageContext(message.channelId), message.ciphertext),
+    body:
+      message.deletedAt === undefined
+        ? await openContent(messageContext(message.channelId), message.ciphertext)
+        : "",
     threadRootId: message.threadRootId ?? null,
     replyToId: message.replyToId ?? null,
-    attachmentIds: message.attachmentIds,
+    attachmentIds: message.deletedAt === undefined ? message.attachmentIds : [],
+    mentionEveryone: message.mentionEveryone === true,
+    mentionHere: message.mentionHere === true,
     mentionUserIds: message.mentionUserIds,
+    ...(message.broadcastDirectUserIds !== undefined
+      ? { broadcastDirectUserIds: message.broadcastDirectUserIds }
+      : {}),
     editedAt: message.editedAt ?? null,
     deletedAt: message.deletedAt ?? null,
     createdAt: message._creationTime,

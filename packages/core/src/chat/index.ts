@@ -1,3 +1,9 @@
+export {
+  BROADCAST_FALLBACK_NOTE,
+  onBroadcastFallback,
+  reportBroadcastFallback,
+  summaryMentionIncreased,
+} from "./broadcast-feedback.js";
 export { type DmPinGroups, partitionPinnedDms } from "./dm-pins.js";
 export {
   type ChannelView,
@@ -6,18 +12,27 @@ export {
   toChannelViews,
   type UseChatSessionResult,
 } from "./hooks.js";
+export { orderMentionSuggestions } from "./mention-suggestions.js";
 export {
+  broadcastMentionText,
+  buildSendMentions,
   type CategoryMentionTarget,
   type ChannelMentionResolution,
   type ChannelMentionTarget,
+  canUseMassMentions,
   expandBroadcast,
+  hasBroadcastToken,
   type MentionResolution,
   type MentionTarget,
-  pingsViewer,
+  messageMentionsUser,
   type RoleMentionTarget,
   resolveChannelMentions,
   resolveMentions,
+  resolveServerCapabilities,
+  type ServerCapabilities,
+  suppressesBroadcast,
 } from "./mentions.js";
+export * from "./normalize.js";
 export type {
   AttachmentDescriptor,
   AttachmentDimensions,
@@ -40,7 +55,6 @@ export {
   type InlineMatcher,
   type InlineSegment,
   inlineToPlainText,
-  mentionsViewer,
   type NameMatcher,
   parseInline,
   parseRichText,
@@ -55,6 +69,7 @@ export {
   type SessionOptions,
   type SessionUser,
 } from "./session.js";
+export { sendThreadReply } from "./thread-send.js";
 export {
   activeTypers,
   activityLabel,

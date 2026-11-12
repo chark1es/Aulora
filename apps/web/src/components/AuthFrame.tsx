@@ -16,7 +16,7 @@ export interface AuthFrameProps {
    */
   readonly seed?: string;
   /**
-   * When set, the screen is a split layout: this content sits on the workspace's
+   * When set, the screen is a split layout: this content sits on the workspace’s
    * colour field in a full-height panel, and `children` is the form column on
    * the plain page. Without it the legacy single centred column is used.
    */
@@ -34,7 +34,7 @@ const FRAME_STYLE: CSSProperties = {
 
 /**
  * The frame for pre-session screens (connect, sign in, invites): one centred
- * column over the workspace's own colour field, with a quiet footer. The column
+ * column over the workspace’s own colour field, with a quiet footer. The column
  * is deliberately narrow — a pre-session screen has exactly one job.
  */
 export function AuthFrame({ children, seed, stage }: AuthFrameProps) {
@@ -72,7 +72,7 @@ interface SplitFrameProps {
 }
 
 /**
- * The split layout: the workspace's colour field and blobatar fill an inset,
+ * The split layout: the workspace’s colour field and blobatar fill an inset,
  * rounded panel on one side, and the form sits directly on the page on the
  * other, with no card around it. On a phone the panel collapses to a short band
  * above the form.
@@ -161,7 +161,7 @@ export interface AuthFieldProps extends Omit<InputHTMLAttributes<HTMLInputElemen
 }
 
 /**
- * A field with no box: a small caps label, large text, and a single rule
+ * A field with no box: a sentence-case label, large text, and a single rule
  * underneath that turns to the accent on focus. It reads as part of the page
  * rather than a form widget dropped onto it.
  */
@@ -172,10 +172,7 @@ export function AuthField(props: AuthFieldProps) {
   const errorId = `${inputId}-error`;
   return (
     <div className="flex flex-col gap-1.5">
-      <label
-        htmlFor={inputId}
-        className="text-[11.5px] font-semibold uppercase tracking-[0.09em] text-text-muted"
-      >
+      <label htmlFor={inputId} className="text-[12px] font-medium text-text-muted">
         {label}
       </label>
       <div
@@ -200,7 +197,7 @@ export function AuthField(props: AuthFieldProps) {
         {trailing}
       </div>
       {error !== undefined && (
-        <p id={errorId} role="alert" className="text-xs text-danger">
+        <p id={errorId} role="alert" className="text-xs text-danger-text">
           {error}
         </p>
       )}
@@ -314,7 +311,7 @@ export interface AuthButtonProps extends ButtonHTMLAttributes<HTMLButtonElement>
  * The single primary action of a pre-session screen. Bigger than the in-app
  * button and fully rounded, because it is the only target on the page.
  *
- * Its disabled state is deliberately *not* the app's flat grey: the point of
+ * Its disabled state is deliberately *not* the app’s flat grey: the point of
  * the state is "almost ready", so it keeps the Ember hue at a tint and gains a
  * hairline ring. It stays unmistakably clearer than the enabled state, which is
  * solid accent with a lit shadow. Busy is a third state and the brightest of the
@@ -324,7 +321,7 @@ const READY_CLASSES =
   "bg-accent text-on-accent shadow-[0_12px_28px_-12px_color-mix(in_srgb,var(--aulora-accent)_75%,transparent)] hover:brightness-110 active:brightness-95";
 const BUSY_CLASSES = "pointer-events-none bg-accent/25 text-text ring-1 ring-inset ring-accent/35";
 const WAITING_CLASSES =
-  "cursor-not-allowed bg-accent/[0.14] text-accent ring-1 ring-inset ring-accent/25";
+  "cursor-not-allowed bg-accent/[0.14] text-accent-text ring-1 ring-inset ring-accent/25";
 
 function stateClasses(loading: boolean, disabled: boolean): string {
   if (loading) {

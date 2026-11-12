@@ -1,9 +1,10 @@
 import { type ChannelView, joinedElsewhere } from "@aulora/core";
-import { cn, Icon } from "@aulora/ui-web";
+import { Badge, cn, Icon } from "@aulora/ui-web";
 import { useVoice } from "../../providers/VoiceProvider";
 import type { Callback } from "../admin/callbacks";
 import { ActiveBar } from "../chat/ActiveBar";
 import { PersonAvatar } from "../chat/member-avatars";
+import { participantName } from "./identity";
 
 /**
  * A voice channel in the sidebar: its name, how many people are connected, and
@@ -56,7 +57,7 @@ export function VoiceChannelRow({
           <Icon
             name="volume"
             size={16}
-            className={cn("transition-colors", active ? "text-accent" : "text-text-muted")}
+            className={cn("transition-colors", active ? "text-accent-text" : "text-text-muted")}
           />
         </span>
         <span className="min-w-0 flex-1 truncate">{title}</span>
@@ -100,14 +101,15 @@ export function VoiceChannelRow({
                     speaking ? "font-medium text-text" : "text-text-muted",
                   )}
                 >
-                  {nameOf(participant.userId)}
+                  {participantName(participant, { nameOf })}
                   {selfElsewhere ? " · other device" : ""}
                 </span>
+                {participant.isGuest === true && <Badge size="sm">Guest</Badge>}
                 {participant.muted && (
-                  <Icon name="mic-off" size={12} className="shrink-0 text-danger" />
+                  <Icon name="mic-off" size={12} className="shrink-0 text-danger-text" />
                 )}
                 {participant.sharingScreen && (
-                  <Icon name="monitor" size={12} className="shrink-0 text-accent" />
+                  <Icon name="monitor" size={12} className="shrink-0 text-accent-text" />
                 )}
               </li>
             );

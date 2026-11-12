@@ -33,13 +33,18 @@ function drawContained(context: CanvasRenderingContext2D, video: HTMLVideoElemen
   context.drawImage(video, (WIDTH - width) / 2, (HEIGHT - height) / 2, width, height);
 }
 
+/** The page's own Inter stack (set on `body` by the token preset), for canvas text. */
+function uiFont(): string {
+  return getComputedStyle(document.body).fontFamily;
+}
+
 function drawPlaceholder(context: CanvasRenderingContext2D, label: string): void {
   context.fillStyle = "#334155";
   context.beginPath();
   context.arc(WIDTH / 2, HEIGHT / 2 - 10, 56, 0, Math.PI * 2);
   context.fill();
   context.fillStyle = "#f8fafc";
-  context.font = "bold 56px system-ui, sans-serif";
+  context.font = `700 56px ${uiFont()}`;
   context.textAlign = "center";
   context.textBaseline = "middle";
   context.fillText((label.trim()[0] ?? "?").toUpperCase(), WIDTH / 2, HEIGHT / 2 - 8);
@@ -49,7 +54,7 @@ function drawCaption(context: CanvasRenderingContext2D, source: PipSource): void
   context.fillStyle = "rgba(0,0,0,0.55)";
   context.fillRect(0, HEIGHT - 44, WIDTH, 44);
   context.fillStyle = "#ffffff";
-  context.font = "600 22px system-ui, sans-serif";
+  context.font = `600 22px ${uiFont()}`;
   context.textAlign = "left";
   context.textBaseline = "middle";
   context.fillText(source.muted ? `${source.label} (muted)` : source.label, 16, HEIGHT - 22);

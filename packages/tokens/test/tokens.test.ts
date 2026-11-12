@@ -29,10 +29,13 @@ describe("color tokens", () => {
       "text",
       "text-muted",
       "accent",
+      "accent-text",
       "accent-soft",
       "on-accent",
       "secondary",
+      "secondary-text",
       "danger",
+      "danger-text",
       "rail",
       "rail-text",
       "chat",
@@ -60,8 +63,8 @@ describe("color tokens", () => {
       bg: "#1C1C1E",
       "surface-2": "#2C2C2E",
       text: "#F5F5F7",
-      accent: "#E4571C",
-      "on-accent": "#FFFFFF",
+      accent: "#FF9B68",
+      "on-accent": "#1C1C1E",
       rail: "#1B1B1D",
     });
     expect(lightPalette).toMatchObject({
@@ -86,7 +89,14 @@ describe("color tokens", () => {
         ).toBeGreaterThan(4.5);
       }
       // Outgoing bubbles and primary buttons: on-accent text over the accent.
-      expect(contrast(palette["on-accent"], palette.accent)).toBeGreaterThan(3.5);
+      expect(contrast(palette["on-accent"], palette.accent)).toBeGreaterThanOrEqual(4.5);
+      // Accent text and links on raised surfaces.
+      for (const surface of ["surface-1", "surface-2", "surface-3", "chat"] as const) {
+        expect(
+          contrast(palette.accent, palette[surface]),
+          `accent on ${surface}`,
+        ).toBeGreaterThanOrEqual(4.5);
+      }
       expect(contrast(palette["rail-text"], palette.rail)).toBeGreaterThan(4.5);
     }
   });
@@ -111,10 +121,8 @@ describe("shape and type scales", () => {
     expect(Object.keys(spacing).length).toBeGreaterThan(0);
     expect(tokens.typography.fontFamilies.sans.length).toBeGreaterThan(0);
     expect(tokens.typography.fontSizes.base).toBe("14px");
-    expect(tokens.typography.fontFamilies.sans.join(" ")).toContain("Geist");
-    expect(tokens.typography.fontFamilies.sans.join(" ")).toContain("Inter");
-    expect(tokens.typography.fontFamilies.sans[0]).toBe("-apple-system");
-    expect(tokens.typography.fontFamilies.mono.join(" ")).toContain("JetBrains Mono");
+    expect(tokens.typography.fontFamilies.sans[0]).toBe('"Inter"');
+    expect(tokens.typography.fontFamilies.mono[0]).toBe('"JetBrains Mono"');
   });
 });
 
@@ -134,9 +142,10 @@ describe("tailwind and nativewind presets", () => {
   it("carry the shared shape scale into both renderers", () => {
     expect(tailwindPreset.theme.extend.borderRadius.card).toBe("12px");
     expect(nativewindPreset.theme.extend.borderRadius.card).toBe("12px");
-    expect(tailwindPreset.theme.extend.fontFamily.sans).toEqual(
-      nativewindPreset.theme.extend.fontFamily.sans,
-    );
+    // One face, named per renderer: a CSS stack on the web, the registered
+    // static file on native.
+    expect(tailwindPreset.theme.extend.fontFamily.sans?.[0]).toBe('"Inter"');
+    expect(nativewindPreset.theme.extend.fontFamily.sans).toEqual(["Inter-Regular"]);
   });
 });
 
@@ -172,4 +181,20 @@ describe("icons", () => {
       }
     }
   });
+});
+
+it("keeps light success labels readable on settings and button surfaces", () => {
+  expect(contrast(lightPalette.secondary, lightPalette["surface-1"])).toBeGreaterThanOrEqual(4.5);
+  expect(contrast(lightPalette["on-accent"], lightPalette.secondary)).toBeGreaterThanOrEqual(4.5);
+  const hover = `#${[1, 3, 5]
+    .map((offset) =>
+      Math.min(
+        255,
+        Math.round(Number.parseInt(lightPalette.secondary.slice(offset, offset + 2), 16) * 1.1),
+      )
+        .toString(16)
+        .padStart(2, "0"),
+    )
+    .join("")}`;
+  expect(contrast(lightPalette["on-accent"], hover)).toBeGreaterThanOrEqual(4.5);
 });

@@ -1,7 +1,8 @@
-import { Button, Input, Switch, Text } from "@aulora/ui-native";
-import { useState } from "react";
-import { Pressable, ScrollView, View } from "react-native";
+import { Button, Input, SwitchRow, Text } from "@aulora/ui-native";
+import { type ReactNode, useState } from "react";
+import { Pressable, useWindowDimensions, View } from "react-native";
 import { impactFeedback } from "../../lib/haptics";
+import { FormScroll } from "../AuthScaffold";
 import { Sheet } from "./Sheet";
 
 export type NewChannelKind = "text" | "announcement" | "voice";
@@ -36,7 +37,9 @@ function KindPicker({
   readonly onChange: (_kind: NewChannelKind) => void;
 }) {
   return (
-    <View className="mt-3 flex-row gap-2">
+    // Segments size to their label and wrap as a row rather than splitting a
+    // word ("Announcement") across lines at large text sizes.
+    <View className="mt-3 flex-row flex-wrap gap-2">
       {KIND_OPTIONS.map((option) => {
         const active = option.value === kind;
         return (
@@ -49,8 +52,8 @@ function KindPicker({
             }}
             className={
               active
-                ? "flex-1 items-center rounded-input border border-accent bg-accent-soft px-2 py-2"
-                : "flex-1 items-center rounded-input border border-border bg-surface-3 px-2 py-2"
+                ? "min-h-11 min-w-[28%] grow items-center justify-center rounded-input border border-accent bg-accent-soft px-3 py-2"
+                : "min-h-11 min-w-[28%] grow items-center justify-center rounded-input border border-border bg-surface-3 px-3 py-2"
             }
           >
             <Text size="sm" tone={active ? "accent" : "muted"}>
@@ -165,10 +168,12 @@ function PrivateToggle({
   readonly onChange: (_value: boolean) => void;
 }) {
   return (
-    <View className="flex-row items-center justify-between rounded-input border border-border bg-surface-2 px-3 py-2">
-      <Text size="sm">Private channel</Text>
-      <Switch value={value} onValueChange={onChange} accessibilityLabel="Private channel" />
-    </View>
+    <SwitchRow
+      label="Private channel"
+      value={value}
+      onValueChange={onChange}
+      className="rounded-input border border-border bg-surface-2"
+    />
   );
 }
 
@@ -182,7 +187,6 @@ function ChannelFormActions(props: {
   readonly disabled: boolean;
   readonly error: string | null;
   readonly onCreateChannel: CreateChannelSheetProps["onCreateChannel"];
-  readonly onCreateCategory: CreateChannelSheetProps["onCreateCategory"];
   readonly onReset: () => void;
 }) {
   const {
@@ -195,11 +199,12 @@ function ChannelFormActions(props: {
     disabled,
     error,
     onCreateChannel,
-    onCreateCategory,
     onReset,
   } = props;
   return (
-    <>
+    // Pinned above the keyboard as the sheet footer: inline after the form,
+    // Create was under the keyboard on a short phone at large text.
+    <View className="gap-2 border-t border-border bg-surface-1 px-4 py-3">
       {error !== null && (
         <Text size="sm" tone="danger" accessibilityRole="alert">
           {error}
@@ -226,22 +231,36 @@ function ChannelFormActions(props: {
           Create
         </Button>
       </View>
+    </View>
+  );
+}
 
-      <View className="mt-2 border-t border-border pt-3">
-        <Text size="sm" tone="muted" className="pb-2">
-          Or use the name above for a new category
-        </Text>
-        <Button
-          variant="secondary"
-          disabled={disabled}
-          onPress={() => {
-            void Promise.resolve(onCreateCategory(trimmed)).then(onReset);
-          }}
-        >
-          {`Create category “${trimmed.length > 0 ? trimmed : "…"}”`}
-        </Button>
-      </View>
-    </>
+function CategoryAction({
+  trimmed,
+  disabled,
+  onCreateCategory,
+  onReset,
+}: {
+  readonly trimmed: string;
+  readonly disabled: boolean;
+  readonly onCreateCategory: CreateChannelSheetProps["onCreateCategory"];
+  readonly onReset: () => void;
+}) {
+  return (
+    <View className="mt-2 border-t border-border pt-3">
+      <Text size="sm" tone="muted" className="pb-2">
+        Or use the name above for a new category
+      </Text>
+      <Button
+        variant="secondary"
+        disabled={disabled}
+        onPress={() => {
+          void Promise.resolve(onCreateCategory(trimmed)).then(onReset);
+        }}
+      >
+        {`Create category “${trimmed.length > 0 ? trimmed : "…"}”`}
+      </Button>
+    </View>
   );
 }
 
@@ -249,48 +268,46 @@ function ChannelFormBody({
   form,
   categories,
   busy,
-  error,
-  onCreateChannel,
+  kindPicker,
   onCreateCategory,
 }: {
   readonly form: ReturnType<typeof useChannelForm>;
+  readonly kindPicker: ReactNode;
   readonly categories: readonly { readonly id: string; readonly name: string }[];
   readonly busy: boolean;
-  readonly error: string | null;
-  readonly onCreateChannel: CreateChannelSheetProps["onCreateChannel"];
   readonly onCreateCategory: CreateChannelSheetProps["onCreateCategory"];
 }) {
   const trimmed = form.name.trim();
   const disabled = trimmed.length === 0 || busy;
+  const { fontScale } = useWindowDimensions();
   return (
-    <ScrollView contentContainerStyle={{ gap: 12, paddingVertical: 12 }}>
-      <ChannelFields
-        kind={form.kind}
-        name={form.name}
-        onNameChange={form.setName}
-        topic={form.topic}
-        onTopicChange={form.setTopic}
-      />
-      <CategoryPicker
-        categories={categories}
-        categoryId={form.categoryId}
-        onChange={form.setCategoryId}
-      />
-      <PrivateToggle value={form.isPrivate} onChange={form.setIsPrivate} />
-      <ChannelFormActions
-        kind={form.kind}
-        trimmed={trimmed}
-        topic={form.topic}
-        categoryId={form.categoryId}
-        isPrivate={form.isPrivate}
-        busy={busy}
-        disabled={disabled}
-        error={error}
-        onCreateChannel={onCreateChannel}
-        onCreateCategory={onCreateCategory}
-        onReset={form.reset}
-      />
-    </ScrollView>
+    // Scrolls the focused field clear of the pinned Create footer, which sits
+    // between it and the keyboard; on a short phone at large text the kind
+    // picker and fields no longer fit above it.
+    <FormScroll bottomOffset={40 + 32 * fontScale} surface="surface-1">
+      <View style={{ gap: 12, paddingVertical: 12 }}>
+        {kindPicker}
+        <ChannelFields
+          kind={form.kind}
+          name={form.name}
+          onNameChange={form.setName}
+          topic={form.topic}
+          onTopicChange={form.setTopic}
+        />
+        <CategoryPicker
+          categories={categories}
+          categoryId={form.categoryId}
+          onChange={form.setCategoryId}
+        />
+        <PrivateToggle value={form.isPrivate} onChange={form.setIsPrivate} />
+        <CategoryAction
+          trimmed={trimmed}
+          disabled={disabled}
+          onCreateCategory={onCreateCategory}
+          onReset={form.reset}
+        />
+      </View>
+    </FormScroll>
   );
 }
 
@@ -333,6 +350,7 @@ export function CreateChannelSheet({
   onClose,
 }: CreateChannelSheetProps) {
   const form = useChannelForm();
+  const trimmed = form.name.trim();
 
   return (
     <Sheet
@@ -342,15 +360,27 @@ export function CreateChannelSheet({
         form.reset();
         onClose();
       }}
+      footer={
+        <ChannelFormActions
+          kind={form.kind}
+          trimmed={trimmed}
+          topic={form.topic}
+          categoryId={form.categoryId}
+          isPrivate={form.isPrivate}
+          busy={busy}
+          disabled={trimmed.length === 0 || busy}
+          error={error}
+          onCreateChannel={onCreateChannel}
+          onReset={form.reset}
+        />
+      }
     >
-      <View className="flex-1 p-4">
-        <KindPicker kind={form.kind} onChange={form.setKind} />
+      <View className="flex-1 px-4 min-w-0">
         <ChannelFormBody
           form={form}
           categories={categories}
           busy={busy}
-          error={error}
-          onCreateChannel={onCreateChannel}
+          kindPicker={<KindPicker kind={form.kind} onChange={form.setKind} />}
           onCreateCategory={onCreateCategory}
         />
       </View>

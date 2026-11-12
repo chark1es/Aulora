@@ -77,7 +77,7 @@ function DueMeta({ card, now }: { readonly card: Card; readonly now: number }) {
   );
 }
 
-/** The small facts under a card's title. */
+/** The small facts under a card’s title. */
 function CardMeta({ card, now }: { readonly card: Card; readonly now: number }) {
   const palette = usePalette();
   const muted = palette["text-muted"];

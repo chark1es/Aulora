@@ -1,3 +1,7 @@
+import { formatBytes } from "@aulora/core";
+
+export { formatBytes } from "@aulora/core";
+
 /* eslint-disable no-unused-vars -- the base rule reports parameter names in type signatures; Biome checks real unused code */
 import { BOT_LIMITS, type BotLanguage, type PermissionName } from "@aulora/core";
 import type { BotStatus } from "../../../../../../packages/convex/convex/lib/botTypes";
@@ -80,16 +84,6 @@ const UTF8 = new TextEncoder();
 /** UTF-8 byte length, the unit every bot size limit is measured in. */
 export function botFileBytes(content: string): number {
   return UTF8.encode(content).byteLength;
-}
-
-export function formatBytes(bytes: number): string {
-  if (bytes < 1024) {
-    return `${bytes} B`;
-  }
-  if (bytes < 1024 * 1024) {
-    return `${(bytes / 1024).toFixed(1)} KiB`;
-  }
-  return `${(bytes / (1024 * 1024)).toFixed(1)} MiB`;
 }
 
 export function validateBotName(name: string): string | null {
