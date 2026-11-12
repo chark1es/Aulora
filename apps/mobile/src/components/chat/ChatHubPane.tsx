@@ -1,5 +1,6 @@
 import { hasPermission, Permission } from "@aulora/core";
 import { Alert, View } from "react-native";
+import { addonChooserEntries, showAddonsDockTab } from "../../lib/addons";
 import { pickFromLibrary } from "../../lib/attachments";
 import { selectionFeedback } from "../../lib/haptics";
 import { useWorkspaceUnreadCounts } from "../../lib/use-workspace-notifications";
@@ -10,6 +11,7 @@ import { ChannelList } from "./ChannelList";
 import { errorMessage } from "./chat-screen-types";
 import { DirectList } from "./DirectList";
 import { HubDock, PaneHeader, RoundButton, useDockClearance } from "./HubPane";
+import { ListGroup, ListRow } from "./List";
 import { SearchView } from "./SearchView";
 import { SettingsView } from "./SettingsView";
 import { ThreadsInbox } from "./ThreadsInbox";
@@ -33,6 +35,8 @@ export function ChatHubPane({ model }: { readonly model: ChatScreenModel }) {
         <ChatHubListTab model={model} />
       ) : model.hubTab === "dms" ? (
         <ChatHubDirectTab model={model} />
+      ) : model.hubTab === "addons" ? (
+        <ChatHubAddonsTab model={model} />
       ) : model.hubTab === "boards" && model.showKanban ? (
         <ChatHubBoardsTab model={model} />
       ) : model.hubTab === "notes" && model.showNotes ? (
@@ -56,8 +60,9 @@ export function ChatHubPane({ model }: { readonly model: ChatScreenModel }) {
         ownStatus={model.ownStatus}
         threadBadge={model.threadMentionCount}
         workspaceUnread={workspaceUnread}
-        boards={model.showKanban}
-        notes={model.showNotes}
+        addons={showAddonsDockTab(
+          addonChooserEntries({ kanban: model.showKanban, notes: model.showNotes }),
+        )}
       />
     </View>
   );
@@ -125,6 +130,38 @@ function ChatHubDirectTab({ model }: { readonly model: ChatScreenModel }) {
         model.setNewMessageOpen(true);
       }}
     />
+  );
+}
+
+/**
+ * One place for every addon the workspace enables: the dock keeps a single
+ * Addons tab and this chooser names each tool instead of stacking one tab per
+ * addon.
+ */
+function ChatHubAddonsTab({ model }: { readonly model: ChatScreenModel }) {
+  const clearance = useDockClearance();
+  const entries = addonChooserEntries({ kanban: model.showKanban, notes: model.showNotes });
+  return (
+    <View className="flex-1 min-w-0" style={{ paddingBottom: clearance }}>
+      <PaneHeader title="Addons" subtitle="Tools enabled in this workspace" />
+      <View className="px-4">
+        <ListGroup>
+          {entries.map((entry) => (
+            <ListRow
+              key={entry.key}
+              icon={entry.icon}
+              title={entry.title}
+              subtitle={entry.subtitle}
+              chevron
+              onPress={() => {
+                selectionFeedback();
+                model.setHubTab(entry.key);
+              }}
+            />
+          ))}
+        </ListGroup>
+      </View>
+    </View>
   );
 }
 
