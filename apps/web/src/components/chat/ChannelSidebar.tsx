@@ -7,6 +7,7 @@ import { Fragment, useEffect, useMemo, useState } from "react";
 import { shortcutLabel } from "../../lib/shortcuts";
 import type { CategoryView } from "../../lib/workspace-admin";
 import { VoiceChannelRow } from "../voice/VoiceChannelRow";
+import { type AddonMenuItem, AddonsMenu } from "./AddonsMenu";
 import {
   AccountFooter,
   HeaderButton,
@@ -148,6 +149,55 @@ export function ChannelSidebar(props: ChannelSidebarProps) {
     });
   };
 
+  // Every workspace surface behind the one Addons row, in the order the
+  // workspace enables them. A surface missing its handler is not offered.
+  const addonItems: AddonMenuItem[] = [
+    ...(props.onOpenKanban === undefined
+      ? []
+      : [
+          {
+            key: "kanban",
+            label: "Kanban",
+            icon: <Icon name="kanban" size={15} />,
+            active: props.mainView === "kanban",
+            onSelect: props.onOpenKanban,
+          },
+        ]),
+    ...(props.onOpenNotes === undefined
+      ? []
+      : [
+          {
+            key: "notes",
+            label: "Notes",
+            icon: <Icon name="note" size={15} />,
+            active: props.mainView === "notes",
+            onSelect: props.onOpenNotes,
+          },
+        ]),
+    ...(props.onOpenScheduled === undefined
+      ? []
+      : [
+          {
+            key: "scheduled",
+            label: "Scheduled",
+            icon: <Icon name="calendar" size={15} />,
+            active: props.mainView === "scheduled",
+            onSelect: props.onOpenScheduled,
+          },
+        ]),
+    ...(props.onOpenTranscripts === undefined
+      ? []
+      : [
+          {
+            key: "transcripts",
+            label: "Transcripts",
+            icon: <Icon name="message" size={15} />,
+            active: props.mainView === "transcripts",
+            onSelect: props.onOpenTranscripts,
+          },
+        ]),
+  ];
+
   return (
     <aside
       className="pane flex h-full w-full flex-col border-r border-border md:w-[276px] md:shrink-0"
@@ -210,11 +260,7 @@ export function ChannelSidebar(props: ChannelSidebarProps) {
         </button>
       </div>
 
-      {(props.onOpenThreads !== undefined ||
-        props.onOpenKanban !== undefined ||
-        props.onOpenNotes !== undefined ||
-        props.onOpenScheduled !== undefined ||
-        props.onOpenTranscripts !== undefined) && (
+      {(props.onOpenThreads !== undefined || addonItems.length > 0) && (
         <nav aria-label="Workspace" className="flex flex-col gap-0.5 px-2 pb-2">
           {props.onOpenThreads !== undefined && (
             <SidebarNavButton
@@ -226,42 +272,7 @@ export function ChannelSidebar(props: ChannelSidebarProps) {
               badge={props.threadMentionCount ?? 0}
             />
           )}
-          {props.onOpenKanban !== undefined && (
-            <SidebarNavButton
-              label="Kanban"
-              testId="sidebar-kanban"
-              icon={<Icon name="kanban" size={16} />}
-              active={props.mainView === "kanban"}
-              onClick={props.onOpenKanban}
-            />
-          )}
-          {props.onOpenNotes !== undefined && (
-            <SidebarNavButton
-              label="Notes"
-              testId="sidebar-notes"
-              icon={<Icon name="note" size={16} />}
-              active={props.mainView === "notes"}
-              onClick={props.onOpenNotes}
-            />
-          )}
-          {props.onOpenScheduled !== undefined && (
-            <SidebarNavButton
-              label="Scheduled"
-              testId="sidebar-scheduled"
-              icon={<Icon name="calendar" size={16} />}
-              active={props.mainView === "scheduled"}
-              onClick={props.onOpenScheduled}
-            />
-          )}
-          {props.onOpenTranscripts !== undefined && (
-            <SidebarNavButton
-              label="Transcripts"
-              testId="sidebar-transcripts"
-              icon={<Icon name="message" size={16} />}
-              active={props.mainView === "transcripts"}
-              onClick={props.onOpenTranscripts}
-            />
-          )}
+          {addonItems.length > 0 && <AddonsMenu items={addonItems} />}
         </nav>
       )}
       <nav aria-label="Channels" className="min-h-0 flex-1 overflow-y-auto px-2 pb-3">
