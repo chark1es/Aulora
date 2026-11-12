@@ -9,7 +9,7 @@ import {
 } from "@aulora/core";
 import { Button, Heading, Icon, Text, usePalette } from "@aulora/ui-native";
 import { useQuery } from "convex/react";
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import {
   Alert,
   Animated,
@@ -20,6 +20,7 @@ import {
   View,
 } from "react-native";
 import { api } from "../../../../packages/convex/convex/_generated/api";
+import { createAccountScope } from "../lib/account-scope";
 import {
   type AuloraAuthClient,
   authActionsFromClient,
@@ -89,6 +90,15 @@ function useSignInController(
   siteUrl: string,
 ) {
   const [state, setState] = useState<FormState>(INITIAL);
+  // Each operation captures the screen/workspace lifetime it started in.
+  const scopeRef = useRef(createAccountScope(recordDebugFailure));
+  // biome-ignore lint/correctness/useExhaustiveDependencies: identity changes must close in-flight work even though the effect only creates its lifetime.
+  useEffect(() => {
+    const scope = createAccountScope(recordDebugFailure);
+    scopeRef.current = scope;
+    return () => scope.close();
+  }, [authClient, cookieStore, siteUrl]);
+
   const patch = (next: Partial<FormState>) => {
     setState((current) => ({ ...current, ...next }));
   };
@@ -119,11 +129,14 @@ function useSignInController(
   }, [cookieStore, siteUrl]);
 
   async function run(key: string, task: () => Promise<AuthResult>) {
+    const scope = scopeRef.current;
+    if (!scope.active) return;
     patch({ error: null, pending: key });
     try {
       const result = await task();
+      if (!scope.active) return;
       if (result.error !== null) {
-        recordDebugFailure("auth.signin", result.error.message ?? "Auth request failed");
+        scope.record("auth.signin", result.error.message ?? "Auth request failed");
         patch({
           error: result.error.message ?? "That did not work. Check your details and try again.",
         });
@@ -131,10 +144,11 @@ function useSignInController(
         await clearStoredAuthHandoffError(cookieStore).catch(() => undefined);
       }
     } catch (error) {
-      recordDebugFailure("auth.signin", error);
+      if (!scope.active) return;
+      scope.record("auth.signin", error);
       patch({ error: "Could not reach the workspace. Try again." });
     } finally {
-      patch({ pending: null });
+      if (scope.active) patch({ pending: null });
     }
   }
 
@@ -149,8 +163,10 @@ function useSignInController(
   }
 
   async function signInWithProvider(providerId: string, type: "oauth" | "oidc", name: string) {
+    const scope = scopeRef.current;
+    if (!scope.active) return;
     const delivery = await chooseProviderDelivery(name);
-    if (delivery === null) {
+    if (!scope.active || delivery === null) {
       return;
     }
     patch({ error: null, pending: providerId });
@@ -163,17 +179,19 @@ function useSignInController(
         type,
         delivery,
       );
+      if (!scope.active) return;
       if (result.status === "error") {
-        recordDebugFailure("auth.provider", result.message);
+        scope.record("auth.provider", result.message);
         patch({ error: result.message });
       } else if (result.status === "success") {
         notifyAuthChanged();
       }
     } catch (error) {
-      recordDebugFailure("auth.provider", error);
+      if (!scope.active) return;
+      scope.record("auth.provider", error);
       patch({ error: "Could not open the sign-in browser." });
     } finally {
-      patch({ pending: null });
+      if (scope.active) patch({ pending: null });
     }
   }
 
