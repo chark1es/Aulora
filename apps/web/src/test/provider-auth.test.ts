@@ -26,7 +26,11 @@ function jwt(sub: string): string {
 
 function fakeClient(token: (options?: unknown) => Promise<unknown>) {
   const session = vi.fn(() => ({ data: { session: { id: "s1" } }, isPending: false }));
-  const signOut = vi.fn(async () => ({ error: null }));
+  const signOut = vi.fn(
+    async (): Promise<{ error: { message?: string } | null }> => ({
+      error: null,
+    }),
+  );
   const client = {
     useSession: session,
     signOut,
@@ -271,6 +275,31 @@ describe("createProviderAuth", () => {
     expect(provider.lastToken()).toBeNull();
     await expect(provider.client.convex.token()).resolves.toEqual({ data: { token: tokenB } });
     expect(provider.lastToken()).toBe(tokenB);
+  });
+
+  it("records a handled sign-out failure and still recovers the token store", async () => {
+    const token = vi.fn(async () => TRANSIENT);
+    const fake = fakeClient(token);
+    fake.signOut.mockResolvedValue({ error: { message: "Session already lost" } });
+    debugLog.clear();
+
+    await authActionsFromClient(fake.client).signOut();
+
+    const entries = debugLog.snapshot();
+    expect(entries.map((entry) => entry.source)).toContain("auth.signout");
+    expect(entries.map((entry) => entry.detail).join(" ")).toContain("Session already lost");
+  });
+
+  it("records a thrown sign-out failure before rethrowing it", async () => {
+    const fake = fakeClient(vi.fn(async () => TRANSIENT));
+    fake.signOut.mockRejectedValue(new Error("Network unreachable"));
+    debugLog.clear();
+
+    await expect(authActionsFromClient(fake.client).signOut()).rejects.toThrow(
+      "Network unreachable",
+    );
+    const entries = debugLog.snapshot();
+    expect(entries.map((entry) => entry.source)).toContain("auth.signout");
   });
 
   it("drops the cache when the session identity changes without a sign-out", async () => {

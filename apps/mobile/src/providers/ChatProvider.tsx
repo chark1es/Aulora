@@ -31,6 +31,7 @@ import {
 } from "react";
 import { AppState } from "react-native";
 import { api } from "../../../../packages/convex/convex/_generated/api";
+import { createAccountScope } from "../lib/account-scope";
 import { createMobileChatRuntime, type MobileChatRuntime } from "../lib/chat-runtime";
 import { convexSubscriptions } from "../lib/convex-chat";
 import { sendOutboxItem } from "../lib/outbox-send";
@@ -159,7 +160,9 @@ export function ChatProvider({ client, userId, children }: ChatProviderProps) {
 
   // biome-ignore lint/correctness/useExhaustiveDependencies: an explicit retry restarts the connection even when the client and account are unchanged
   useEffect(() => {
-    let cancelled = false;
+    // Work started for this client/user must never record into the next
+    // account's debug report after a sign-out or workspace switch.
+    const scope = createAccountScope(recordDebugFailure);
     setReady(false);
     setRuntime(undefined);
     setStartupError(null);
@@ -171,16 +174,16 @@ export function ChatProvider({ client, userId, children }: ChatProviderProps) {
     void outboxStore
       .list()
       .then((items) => {
-        if (!cancelled) setOutbox(items);
+        if (scope.active) setOutbox(items);
       })
       .catch((error: unknown) => {
-        recordDebugFailure("outbox.load", error);
-        if (!cancelled)
-          setStartupError("Could not load your unsent messages. Try reopening the workspace.");
+        if (!scope.active) return;
+        scope.record("outbox.load", error);
+        setStartupError("Could not load your unsent messages. Try reopening the workspace.");
       });
     void createMobileChatRuntime({ client })
       .then((result) => {
-        if (cancelled) {
+        if (!scope.active) {
           result.session.dispose();
           return;
         }
@@ -196,10 +199,8 @@ export function ChatProvider({ client, userId, children }: ChatProviderProps) {
         setReady(true);
       })
       .catch((error: unknown) => {
-        recordDebugFailure("chat.start", error);
-        if (cancelled) {
-          return;
-        }
+        if (!scope.active) return;
+        scope.record("chat.start", error);
         // A failed session start must not leave the shell spinning forever.
         const message = error instanceof Error ? error.message : String(error);
         console.warn(`[aulora] chat runtime failed to start: ${message}`);
@@ -207,7 +208,7 @@ export function ChatProvider({ client, userId, children }: ChatProviderProps) {
         setReady(true);
       });
     return () => {
-      cancelled = true;
+      scope.close();
       runtimeRef.current?.session.dispose();
       runtimeRef.current = undefined;
       outboxRef.current = undefined;
@@ -286,7 +287,14 @@ export function ChatProvider({ client, userId, children }: ChatProviderProps) {
     // Nothing is due once the queue is empty or every item has permanently
     // failed; skip the flush and the refresh so an idle provider never churns.
     if ((await active.pendingCount()) === 0) return;
-    await active.flush((item) => sendOutboxItem(chat.session, item));
+    await active.flush((item) => sendOutboxItem(chat.session, item), {
+      onFailure: (failure) => {
+        recordDebugFailure(
+          "outbox.send",
+          new Error(`Queued send failed after ${failure.attempts} attempts: ${failure.reason}`),
+        );
+      },
+    });
     await refreshOutbox();
   }, [refreshOutbox]);
   useEffect(() => {

@@ -353,7 +353,10 @@ function SignedInShell({
   };
   const shellRecovery: ChatSessionShellRecovery = { ...recovery, onRetry };
   const signOut = () => {
-    void actions.signOut();
+    // A failed sign-out is recorded and recovered inside `auth-client`; the
+    // button cannot await it, so consume the rejection instead of leaving an
+    // unhandled one behind.
+    void actions.signOut().catch(() => undefined);
   };
   return (
     <>

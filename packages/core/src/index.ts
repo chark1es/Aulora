@@ -109,6 +109,7 @@ export {
   isConnectivityError,
   memoryOutboxStore,
   Outbox,
+  type OutboxFailure,
   type OutboxItem,
   type OutboxOptions,
   type OutboxStatus,

@@ -1,3 +1,4 @@
+import { recordDebugFailure } from "@aulora/core";
 import { Alert } from "react-native";
 import { type AuloraAuthClient, authActionsFromClient } from "./auth-client";
 
@@ -11,14 +12,20 @@ import { type AuloraAuthClient, authActionsFromClient } from "./auth-client";
  */
 export function signOutAction(authClient: AuloraAuthClient) {
   return async () => {
-    const result = await authActionsFromClient(authClient)
-      .signOut()
-      .catch(() => null);
-    if (result === null || result.error) {
-      Alert.alert(
-        "Couldn’t sign out",
-        result?.error?.message ?? "Check your connection and try again.",
-      );
+    try {
+      const result = await authActionsFromClient(authClient).signOut();
+      if (result.error) {
+        // The action result is a handled failure, so it never reaches the
+        // global handlers; record it explicitly for the report.
+        recordDebugFailure("auth.signout", result.error.message ?? "Sign out failed");
+        Alert.alert(
+          "Couldn’t sign out",
+          result.error.message ?? "Check your connection and try again.",
+        );
+      }
+    } catch (error) {
+      recordDebugFailure("auth.signout", error);
+      Alert.alert("Couldn’t sign out", "Check your connection and try again.");
     }
   };
 }
@@ -26,14 +33,18 @@ export function signOutAction(authClient: AuloraAuthClient) {
 /** Deletes the account on the server, reporting a failure in place. */
 export function deleteAccountAction(authClient: AuloraAuthClient) {
   return async () => {
-    const result = await authActionsFromClient(authClient)
-      .deleteAccount()
-      .catch(() => null);
-    if (result === null || result.error) {
-      Alert.alert(
-        "Couldn’t delete account",
-        result?.error?.message ?? "Check your connection and try again.",
-      );
+    try {
+      const result = await authActionsFromClient(authClient).deleteAccount();
+      if (result.error) {
+        recordDebugFailure("auth.deleteAccount", result.error.message ?? "Account deletion failed");
+        Alert.alert(
+          "Couldn’t delete account",
+          result.error.message ?? "Check your connection and try again.",
+        );
+      }
+    } catch (error) {
+      recordDebugFailure("auth.deleteAccount", error);
+      Alert.alert("Couldn’t delete account", "Check your connection and try again.");
     }
   };
 }

@@ -223,4 +223,44 @@ describe("account debug log isolation", () => {
       expect(debugLog.report("account-b", "")).not.toContain("previous private account error");
     });
   }
+
+  it("records a handled sign-out failure instead of leaving it silent", async () => {
+    const client = {
+      signOut: vi.fn(async () => ({ error: { message: "Session expired" } })),
+    } as unknown as AuloraAuthClient;
+    await signOutAction(client)();
+    const entries = debugLog.snapshot();
+    expect(entries.map((entry) => entry.source)).toContain("auth.signout");
+    expect(entries.map((entry) => entry.detail).join(" ")).toContain("Session expired");
+  });
+
+  it("records a thrown sign-out failure instead of dropping it", async () => {
+    const client = {
+      signOut: vi.fn(async () => {
+        throw new Error("Network unreachable");
+      }),
+    } as unknown as AuloraAuthClient;
+    await signOutAction(client)();
+    expect(debugLog.snapshot().map((entry) => entry.source)).toContain("auth.signout");
+    expect(
+      debugLog
+        .snapshot()
+        .map((entry) => entry.detail)
+        .join(" "),
+    ).toContain("Network unreachable");
+  });
+
+  it("records a handled account-deletion failure", async () => {
+    const client = {
+      deleteUser: vi.fn(async () => ({ error: { message: "Delete is disabled" } })),
+    } as unknown as AuloraAuthClient;
+    await deleteAccountAction(client)();
+    expect(debugLog.snapshot().map((entry) => entry.source)).toContain("auth.deleteAccount");
+    expect(
+      debugLog
+        .snapshot()
+        .map((entry) => entry.detail)
+        .join(" "),
+    ).toContain("Delete is disabled");
+  });
 });

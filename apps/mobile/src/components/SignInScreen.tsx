@@ -101,12 +101,12 @@ function useSignInController(
     const consume = () => {
       void takeStoredAuthHandoffError(cookieStore, siteUrl)
         .then((message) => {
-          if (message !== null) {
-            recordDebugFailure("auth.callback", message);
-          }
-          if (active && message !== null) {
-            setState((current) => ({ ...current, error: message }));
-          }
+          // The screen may have unmounted or switched accounts while the
+          // stored handoff was being read; never copy that text into the next
+          // account's diagnostics or state.
+          if (!active || message === null) return;
+          recordDebugFailure("auth.callback", message);
+          setState((current) => ({ ...current, error: message }));
         })
         .catch(() => undefined);
     };

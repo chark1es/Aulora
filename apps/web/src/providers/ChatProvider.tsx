@@ -268,7 +268,16 @@ export function ChatProvider({
       return;
     }
     try {
-      await active.flush((item) => sendOutboxItem(chat.session, item));
+      await active.flush((item) => sendOutboxItem(chat.session, item), {
+        // A per-send rejection is handled inside `flush`, so the outer catch
+        // never sees it. Record the permanently failed item without its text.
+        onFailure: (failure) => {
+          recordDebugFailure(
+            "outbox.send",
+            new Error(`Queued send failed after ${failure.attempts} attempts: ${failure.reason}`),
+          );
+        },
+      });
     } catch (error) {
       // Keep the queue intact; the ticker retries on the next tick.
       recordDebugFailure("outbox.flush", error);

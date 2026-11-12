@@ -84,6 +84,53 @@ describe("Outbox", () => {
     expect(await outbox.pendingCount()).toBe(0);
   });
 
+  it("reports a permanent send failure once and without the message text", async () => {
+    const outbox = new Outbox({ createId: ids("a") });
+    await outbox.enqueue({ channelId: "c1", text: "secret body", attachments: [] }, 0);
+    const failures: unknown[] = [];
+    const send = async () => {
+      throw new Error("forbidden: missing permission");
+    };
+
+    // A permanent rejection parks the item immediately, and the diagnostic
+    // payload is emitted exactly once for that item.
+    const first = await outbox.flush(send, {
+      now: () => 0,
+      onFailure: (failure) => failures.push(failure),
+    });
+    expect(first.failed).toEqual(["a"]);
+    expect(failures).toEqual([
+      {
+        itemId: "a",
+        channelId: "c1",
+        attempts: 1,
+        reason: expect.stringContaining("permission"),
+      },
+    ]);
+
+    // Every later flush sees the item as permanently failed, not due, so it
+    // never re-reports.
+    await outbox.flush(send, { now: () => 10_000, onFailure: (failure) => failures.push(failure) });
+    expect(failures).toHaveLength(1);
+
+    // The payload carries no queued plaintext: only identifiers and the reason.
+    expect(JSON.stringify(failures)).not.toContain("secret body");
+  });
+
+  it("does not report a transient failure that is still retrying", async () => {
+    const outbox = new Outbox({ createId: ids("a") });
+    await outbox.enqueue({ channelId: "c1", text: "retry me" }, 0);
+    const failures: unknown[] = [];
+    const result = await outbox.flush(
+      async () => {
+        throw new Error("network down");
+      },
+      { now: () => 0, baseDelayMs: 1, onFailure: (failure) => failures.push(failure) },
+    );
+    expect(result.retried).toEqual(["a"]);
+    expect(failures).toEqual([]);
+  });
+
   it("preserves attachment descriptors on the queued item", async () => {
     const outbox = new Outbox({ createId: ids("a") });
     const attachment = {

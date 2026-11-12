@@ -146,6 +146,20 @@ export interface FlushOptions {
   readonly baseDelayMs?: number;
   /** Backoff ceiling. Defaults to 60_000 ms. */
   readonly maxDelayMs?: number;
+  /**
+   * Called once when an item is parked as permanently failed. The payload
+   * deliberately omits the message text, attachments and mentions so debug
+   * capture cannot record queued plaintext or fire on every backoff retry.
+   */
+  readonly onFailure?: (_failure: OutboxFailure) => void;
+}
+
+/** A permanently failed queued send, safe to hand to diagnostic capture. */
+export interface OutboxFailure {
+  readonly itemId: string;
+  readonly channelId: string;
+  readonly attempts: number;
+  readonly reason: string;
 }
 
 export interface FlushResult {
@@ -287,14 +301,25 @@ export class Outbox {
             attempts >= maxAttempts ||
             /permission|not allowed|forbidden|mentioning everyone too often/i.test(String(error))
           ) {
+            const reason = messageSendError(error);
             await this.store.put({
               ...item,
               attempts,
               status: "failed",
-              failureReason: messageSendError(error),
+              failureReason: reason,
               lastAttemptAt: now,
             });
             failed.push(item.id);
+            try {
+              options.onFailure?.({
+                itemId: item.id,
+                channelId: item.channelId,
+                attempts,
+                reason,
+              });
+            } catch {
+              // Diagnostics must never break the queue or its flush.
+            }
           } else {
             const delay = Math.min(maxDelayMs, baseDelayMs * 2 ** (attempts - 1));
             await this.store.put({
