@@ -2,14 +2,22 @@ import { createServerProfile, type ServerProfile, type WellKnown } from "@aulora
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import {
   clearWorkspaceUnread,
+  configureWorkspaceNotificationStore,
+  ensureWorkspaceNotificationsLoaded,
   profileForServerId,
   readWorkspaceNotificationHint,
   recordWorkspaceUnread,
+  rememberAndPersistWorkspaceServerId,
+  rememberWorkspaceServerId,
   resetWorkspaceNotifications,
   setWorkspaceNotificationTarget,
   subscribeWorkspaceNotificationTargets,
   subscribeWorkspaceUnread,
   takeWorkspaceNotificationTarget,
+  workspaceNotificationWrites,
+  workspaceServerIdForProfile,
+  workspaceServerIdFromConfig,
+  workspaceServerIdIsAmbiguous,
   workspaceUnreadSnapshot,
 } from "../src/lib/workspace-notifications";
 
@@ -30,33 +38,92 @@ function profile(baseUrl: string, overrides: Partial<WellKnown> = {}): ServerPro
   return createServerProfile(baseUrl, wellKnown(overrides), 1000);
 }
 
+function memoryStore(initial: string | null = null) {
+  let value = initial;
+  return {
+    store: {
+      getItem: vi.fn(async () => value),
+      setItem: vi.fn(async (_key: string, next: string) => {
+        value = next;
+      }),
+    },
+    read: () => value,
+  };
+}
+
 beforeEach(() => {
+  configureWorkspaceNotificationStore(null);
   resetWorkspaceNotifications();
 });
 
 describe("readWorkspaceNotificationHint", () => {
-  it("reads the APNs custom root", () => {
+  it("reads the exact APNs payload the relay sends", () => {
+    // Mirrors `contentFreePayload` nested under APNs' custom root.
     expect(
       readWorkspaceNotificationHint({
-        aulora: { serverId: "https://chat.acme.com", channelId: "c1", messageId: "m1" },
+        aps: { alert: "New Aulora message", "mutable-content": 1 },
+        aulora: {
+          serverId: "6b1a0f8e-6a1f-4f4b-8c4d-2f6f6d2f5a11",
+          channelId: "jd7f2c9a1",
+          messageId: "k57ab30cd",
+          kind: "message",
+        },
       }),
-    ).toEqual({ serverId: "https://chat.acme.com", channelId: "c1", kind: "message" });
+    ).toEqual({
+      serverId: "6b1a0f8e-6a1f-4f4b-8c4d-2f6f6d2f5a11",
+      channelId: "jd7f2c9a1",
+      messageId: "k57ab30cd",
+      kind: "message",
+    });
   });
 
-  it("reads flattened FCM data and the call kind", () => {
+  it("reads flattened FCM data, preserving the message id and call kind", () => {
     expect(
       readWorkspaceNotificationHint({
         serverId: "https://chat.acme.com",
         channelId: "c1",
+        messageId: "m1",
         kind: "call",
       }),
-    ).toEqual({ serverId: "https://chat.acme.com", channelId: "c1", kind: "call" });
+    ).toEqual({
+      serverId: "https://chat.acme.com",
+      channelId: "c1",
+      messageId: "m1",
+      kind: "call",
+    });
+  });
+
+  it("keeps a missing message id explicit instead of inventing one", () => {
+    expect(readWorkspaceNotificationHint({ serverId: "s", channelId: "c" })).toEqual({
+      serverId: "s",
+      channelId: "c",
+      messageId: null,
+      kind: "message",
+    });
   });
 
   it("ignores local notifications and malformed data", () => {
     expect(readWorkspaceNotificationHint({ channelId: "c1" })).toBeNull();
     expect(readWorkspaceNotificationHint({ serverId: "", channelId: "c1" })).toBeNull();
     expect(readWorkspaceNotificationHint(null)).toBeNull();
+  });
+});
+
+describe("workspaceServerIdFromConfig", () => {
+  it("reads the configured opaque id and the literal fallback", () => {
+    expect(workspaceServerIdFromConfig({ pushRelay: { serverId: "aulora" } })).toBe("aulora");
+    expect(
+      workspaceServerIdFromConfig({
+        pushRelay: { serverId: "6b1a0f8e-6a1f-4f4b-8c4d-2f6f6d2f5a11" },
+      }),
+    ).toBe("6b1a0f8e-6a1f-4f4b-8c4d-2f6f6d2f5a11");
+  });
+
+  it("treats an older backend's missing field as unknown", () => {
+    expect(workspaceServerIdFromConfig({})).toBeNull();
+    expect(workspaceServerIdFromConfig({ pushRelay: { serverId: "" } })).toBeNull();
+    expect(workspaceServerIdFromConfig({ pushRelay: { serverId: 7 } })).toBeNull();
+    expect(workspaceServerIdFromConfig(null)).toBeNull();
   });
 });
 
@@ -79,8 +146,46 @@ describe("profileForServerId", () => {
     expect(profileForServerId([one, two], "https://acme.com")).toBeUndefined();
   });
 
-  it("ignores an unknown workspace", () => {
-    expect(profileForServerId([profile("chat.acme.com")], "https://other.example")).toBeUndefined();
+  it("uses a remembered opaque AULORA_SERVER_ID instead of the address", () => {
+    const acme = profile("chat.acme.com");
+    const globex = profile("https://chat.globex.com");
+    expect(profileForServerId([acme, globex], "6b1a0f8e-6a1f-4f4b-8c4d-2f6f6d2f5a11")).toBe(
+      undefined,
+    );
+    rememberWorkspaceServerId(globex.id, "6b1a0f8e-6a1f-4f4b-8c4d-2f6f6d2f5a11");
+    expect(profileForServerId([acme, globex], "6b1a0f8e-6a1f-4f4b-8c4d-2f6f6d2f5a11")).toBe(globex);
+  });
+
+  it("refuses an id advertised by two saved workspaces", () => {
+    const acme = profile("chat.acme.com");
+    const globex = profile("https://chat.globex.com");
+    rememberWorkspaceServerId(acme.id, "aulora");
+    rememberWorkspaceServerId(globex.id, "aulora");
+    expect(workspaceServerIdIsAmbiguous("aulora")).toBe(true);
+    expect(profileForServerId([acme, globex], "aulora")).toBeUndefined();
+    // A single saved workspace can still recover from the legacy id.
+    expect(profileForServerId([acme], "aulora")).toBe(acme);
+  });
+
+  it("resolves the historical literal id only when one workspace is saved", () => {
+    const acme = profile("chat.acme.com");
+    expect(profileForServerId([acme], "aulora")).toBe(acme);
+    expect(
+      profileForServerId([acme, profile("https://chat.globex.com")], "aulora"),
+    ).toBeUndefined();
+  });
+
+  it("resolves an unknown opaque id to the only saved workspace", () => {
+    // The device can only have registered for a workspace it saved; with one
+    // profile, an old id shape cannot mean anything else.
+    const acme = profile("chat.acme.com");
+    expect(profileForServerId([acme], "some-old-opaque-id")).toBe(acme);
+  });
+
+  it("ignores an unknown workspace when several are saved", () => {
+    expect(
+      profileForServerId([profile("chat.acme.com"), profile("https://chat.globex.com")], "unknown"),
+    ).toBeUndefined();
   });
 });
 
@@ -102,15 +207,90 @@ describe("workspace nav badge", () => {
     expect(listener).toHaveBeenCalledTimes(4);
     off();
   });
+
+  it("persists badges so a process restart does not forget them", async () => {
+    const { store, read } = memoryStore();
+    configureWorkspaceNotificationStore(store);
+    recordWorkspaceUnread("acme");
+    recordWorkspaceUnread("acme");
+    recordWorkspaceUnread("globex");
+    await workspaceNotificationWrites();
+    expect(JSON.parse(read() ?? "{}")).toMatchObject({
+      unread: { acme: 2, globex: 1 },
+    });
+
+    // A fresh process reads the same store.
+    resetWorkspaceNotifications();
+    configureWorkspaceNotificationStore(store);
+    await ensureWorkspaceNotificationsLoaded();
+    expect(workspaceUnreadSnapshot().get("acme")).toBe(2);
+    expect(workspaceUnreadSnapshot().get("globex")).toBe(1);
+  });
+
+  it("ignores corrupt persistence instead of throwing", async () => {
+    const { store } = memoryStore("not json");
+    configureWorkspaceNotificationStore(store);
+    await expect(ensureWorkspaceNotificationsLoaded()).resolves.toBeUndefined();
+    expect(workspaceUnreadSnapshot().size).toBe(0);
+  });
+});
+
+describe("workspace identity persistence", () => {
+  it("saves a learned server id and restores it after a restart", async () => {
+    const acme = profile("chat.acme.com");
+    const { store, read } = memoryStore();
+    configureWorkspaceNotificationStore(store);
+    rememberAndPersistWorkspaceServerId(acme.id, "6b1a0f8e-6a1f-4f4b-8c4d-2f6f6d2f5a11");
+    await workspaceNotificationWrites();
+    expect(JSON.parse(read() ?? "{}").serverIds[acme.id]).toBe(
+      "6b1a0f8e-6a1f-4f4b-8c4d-2f6f6d2f5a11",
+    );
+
+    resetWorkspaceNotifications();
+    expect(workspaceServerIdForProfile(acme.id)).toBeUndefined();
+    configureWorkspaceNotificationStore(store);
+    await ensureWorkspaceNotificationsLoaded();
+    expect(workspaceServerIdForProfile(acme.id)).toBe("6b1a0f8e-6a1f-4f4b-8c4d-2f6f6d2f5a11");
+    expect(profileForServerId([acme], "6b1a0f8e-6a1f-4f4b-8c4d-2f6f6d2f5a11")).toBe(acme);
+  });
+
+  it("loads an id written by an earlier launch before a launch response resolves", async () => {
+    const globex = profile("https://chat.globex.com");
+    const { store } = memoryStore(
+      JSON.stringify({
+        serverIds: { [globex.id]: "srv-globex" },
+        unread: { [globex.id]: 3 },
+      }),
+    );
+    configureWorkspaceNotificationStore(store);
+    await ensureWorkspaceNotificationsLoaded();
+    expect(profileForServerId([profile("chat.acme.com"), globex], "srv-globex")).toBe(globex);
+    expect(workspaceUnreadSnapshot().get(globex.id)).toBe(3);
+  });
 });
 
 describe("notification conversation target", () => {
-  it("hands the conversation only to the workspace it names", () => {
-    setWorkspaceNotificationTarget("acme", "c1");
+  it("carries the exact channel and message only to the workspace it names", () => {
+    setWorkspaceNotificationTarget("acme", "c1", "m1", "message");
     expect(takeWorkspaceNotificationTarget("globex")).toBeUndefined();
-    expect(takeWorkspaceNotificationTarget("acme")).toBe("c1");
+    expect(takeWorkspaceNotificationTarget("acme")).toEqual({
+      profileId: "acme",
+      channelId: "c1",
+      messageId: "m1",
+      kind: "message",
+    });
     // Consumed once: a second mount does not reopen it.
     expect(takeWorkspaceNotificationTarget("acme")).toBeUndefined();
+  });
+
+  it("keeps a call target but never a message jump", () => {
+    setWorkspaceNotificationTarget("acme", "c1", null, "call");
+    expect(takeWorkspaceNotificationTarget("acme")).toEqual({
+      profileId: "acme",
+      channelId: "c1",
+      messageId: null,
+      kind: "call",
+    });
   });
 
   it("notifies a mounted workspace when a target arrives", () => {

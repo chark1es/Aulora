@@ -14,6 +14,7 @@ import { loadEffectiveEnv } from "./lib/envOverrides";
 import { effectiveMaxUploadBytes } from "./lib/instance";
 import { ownerIdsOf } from "./lib/owners";
 import { requireWorkspacePermission } from "./lib/permissions";
+import { pushRelayServerIdFromEnv } from "./lib/pushRelay";
 import { storageIsReferenced } from "./lib/storageReferences";
 import { scheduleStopAllActive } from "./lib/transcription";
 
@@ -137,6 +138,9 @@ async function buildPublicConfig(ctx: QueryCtx) {
     features,
     convexUrl: env.CONVEX_CLOUD_URL ?? "",
     siteUrl: env.SITE_URL ?? env.CONVEX_SITE_URL ?? "",
+    // Stable id stamped on mobile wakes. Additive: an older backend omits it,
+    // and clients then fall back to matching a saved workspace address.
+    pushRelay: { serverId: pushRelayServerIdFromEnv(env) },
     auth: getPublicAuthConfig(env, signupEnabled, instance?.authProviders ?? undefined),
     // Non-secret encryption descriptor: mode, algorithm, key version and the
     // key-manager provider only. Key material never leaves the environment.

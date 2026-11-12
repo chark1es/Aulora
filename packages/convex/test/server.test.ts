@@ -26,6 +26,9 @@ const ENV_KEYS = [
   "AULORA_ENCRYPTION_KEY_VERSION",
   "AULORA_MIN_CLIENT_VERSION",
   "AULORA_RECOMMENDED_CLIENT_VERSION",
+  "AULORA_SERVER_ID",
+  "SITE_URL",
+  "CONVEX_SITE_URL",
 ] as const;
 
 function clearEnv(): void {
@@ -58,6 +61,23 @@ describe("server.publicConfig", () => {
       provider: "local",
     });
     expect(containsSecretField(config)).toBe(false);
+  });
+
+  it("advertises the exact id stamped on mobile wakes", async () => {
+    clearEnv();
+    process.env.AULORA_SERVER_ID = "6b1a0f8e-6a1f-4f4b-8c4d-2f6f6d2f5a11";
+    const t = convexTest(schema, modules);
+    const config = await t.query(api.server.publicConfig);
+    expect(config.pushRelay).toEqual({
+      serverId: "6b1a0f8e-6a1f-4f4b-8c4d-2f6f6d2f5a11",
+    });
+  });
+
+  it("advertises the literal fallback id when no address is configured", async () => {
+    clearEnv();
+    const t = convexTest(schema, modules);
+    const config = await t.query(api.server.publicConfig);
+    expect(config.pushRelay).toEqual({ serverId: "aulora" });
   });
 
   it("keeps the password minimum out of the strict discovery contract", async () => {

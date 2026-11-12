@@ -2,7 +2,7 @@ import { NativeAvatar } from "@aulora/avatars/native";
 import { CountBadge, Icon, usePalette } from "@aulora/ui-native";
 import { useRouter } from "expo-router";
 import { useWorkspaceUnreadCounts } from "../../lib/use-workspace-notifications";
-import { clearWorkspaceUnread } from "../../lib/workspace-notifications";
+import { clearWorkspaceUnread } from "../../lib/workspace-identity";
 import { useProfiles } from "../../providers/ProfileProvider";
 import { BottomSheet } from "./BottomSheet";
 import { ListGroup, ListRow } from "./List";

@@ -103,6 +103,8 @@ Allow notifications when prompted and check channel mute and user notification s
 
 The desktop process must remain running for local chat notifications. Closing its window can leave it in the tray; quitting stops that delivery path. Mobile background notifications require the server's relay and the publisher's APNs/FCM setup. The browser also needs permission for web push. Notifications are not evidence that messages are end-to-end encrypted.
 
+On mobile, a wake from another saved workspace marks that workspace in the switcher and moves to it so the named conversation and message are already open. The badge counts are saved on the device, so they survive an app restart until you open that workspace. Each workspace advertises the id its wake carries (`AULORA_SERVER_ID`, else its site address); the app remembers it when you connect, so renaming the address later does not misroute a notification. Web push wakes are content-free and do not name a workspace, so the browser cannot badge a different workspace from a push alone.
+
 ## Updates
 
 Desktop updates are in Your settings, Updates. Download the update, then restart to install it. AppImage supports the Linux updater; Debian packages require manual replacement. Mobile updates come through the distribution channel you installed from.

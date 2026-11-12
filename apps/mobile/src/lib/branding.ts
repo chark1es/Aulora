@@ -6,7 +6,14 @@
 export interface Branding {
   readonly description: string;
   readonly logoUrl: string | null;
+  /**
+   * The value the server stamps on mobile push wakes. Absent on an older
+   * backend; the caller then falls back to matching a saved address.
+   */
+  readonly serverId: string | null;
 }
+
+import { workspaceServerIdFromConfig } from "./workspace-notifications";
 
 /** The slice of a Convex client this module needs. */
 export interface BrandingClient {
@@ -16,7 +23,7 @@ export interface BrandingClient {
 
 export type BrandingClientFactory = (convexUrl: string) => BrandingClient;
 
-const NO_BRANDING: Branding = { description: "", logoUrl: null };
+const NO_BRANDING: Branding = { description: "", logoUrl: null, serverId: null };
 
 /**
  * Best-effort branding read from the server's public config.
@@ -49,6 +56,7 @@ export async function fetchBranding(
       description: typeof record.description === "string" ? record.description : "",
       logoUrl:
         typeof record.logoUrl === "string" && record.logoUrl.length > 0 ? record.logoUrl : null,
+      serverId: workspaceServerIdFromConfig(config),
     };
   } catch {
     return NO_BRANDING;

@@ -23,9 +23,11 @@ import { useChannelSession } from "../../lib/use-channel";
 import { usePushRegistration } from "../../lib/use-push-registration";
 import { useWebhookNames } from "../../lib/use-webhook-names";
 import {
+  rememberAndPersistWorkspaceServerId,
   subscribeWorkspaceNotificationTargets,
   takeWorkspaceNotificationTarget,
-} from "../../lib/workspace-notifications";
+  workspaceServerIdFromConfig,
+} from "../../lib/workspace-identity";
 import { useChat } from "../../providers/ChatProvider";
 import { useProfiles } from "../../providers/ProfileProvider";
 import { useSound } from "../../providers/SoundProvider";
@@ -50,6 +52,16 @@ export function useConvexChatScreenSession(
     Platform.OS === "ios" ? "ios" : "android",
   );
   const publicConfig = useQuery(api.server.publicConfig, {});
+  // Persist the id this workspace stamps on mobile wakes while it is open, so
+  // a later cold-launch notification can be routed even when the id is an
+  // operator-chosen opaque value rather than the workspace address.
+  const profileId = activeProfile?.id;
+  const serverId = workspaceServerIdFromConfig(publicConfig);
+  useEffect(() => {
+    if (profileId !== undefined && serverId !== null) {
+      rememberAndPersistWorkspaceServerId(profileId, serverId);
+    }
+  }, [profileId, serverId]);
   const showKanban =
     publicConfig?.addons?.kanban === true &&
     hasPermission(chat.viewerPermissions, Permission.ViewKanban);
@@ -218,7 +230,16 @@ function useChatScreenChannelList(
   mentions: ChatScreenMentions,
 ) {
   const { channels, runtime, ownUserId, sound, activeProfile } = session;
-  const { showHidden, activeChannelId, setActiveChannelId, setHubTab, setPane } = ui;
+  const {
+    showHidden,
+    activeChannelId,
+    setActiveChannelId,
+    setHubTab,
+    setPane,
+    setJumpToMessageId,
+    setQuote,
+    setThreadRoot,
+  } = ui;
   const { channelNames, memberNames } = mentions;
   const profileId = activeProfile?.id;
 
@@ -253,29 +274,48 @@ function useChatScreenChannelList(
     // readable text channel as before.
     const target = profileId === undefined ? undefined : takeWorkspaceNotificationTarget(profileId);
     const firstText = channels.find((entry) => entry.kind !== "voice" && entry.hidden !== true);
-    const next = target ?? firstText?.id;
+    const next = target?.channelId ?? firstText?.id;
     if (next !== undefined) {
       setActiveChannelId(next);
+      if (target?.kind === "message" && target.messageId !== null) {
+        setJumpToMessageId(target.messageId);
+      }
     }
-  }, [channels, activeChannelId, profileId, setActiveChannelId]);
+  }, [channels, activeChannelId, profileId, setActiveChannelId, setJumpToMessageId]);
 
-  // A notification tapped while this workspace is already open should move to
-  // its conversation without a workspace switch.
+  // A notification tapped (or a wake auto-switched) while this workspace is
+  // already open should move to its conversation without a workspace switch.
+  // Clear a previous thread/quote/jump first so an older selection cannot leak
+  // into the new message.
   useEffect(() => {
     if (profileId === undefined) {
       return;
     }
     const applyTarget = () => {
-      const channelId = takeWorkspaceNotificationTarget(profileId);
-      if (channelId === undefined) {
+      const target = takeWorkspaceNotificationTarget(profileId);
+      if (target === undefined) {
         return;
       }
-      setActiveChannelId(channelId);
+      setThreadRoot(null);
+      setQuote(null);
+      setJumpToMessageId(null);
+      setActiveChannelId(target.channelId);
       setHubTab("chats");
       setPane(1);
+      if (target.kind === "message" && target.messageId !== null) {
+        setJumpToMessageId(target.messageId);
+      }
     };
     return subscribeWorkspaceNotificationTargets(applyTarget);
-  }, [profileId, setActiveChannelId, setHubTab, setPane]);
+  }, [
+    profileId,
+    setActiveChannelId,
+    setHubTab,
+    setJumpToMessageId,
+    setPane,
+    setQuote,
+    setThreadRoot,
+  ]);
 
   const titles = useMemo(() => {
     const map = new Map<string, string>();
