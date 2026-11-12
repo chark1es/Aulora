@@ -184,8 +184,7 @@ export function profileForServerId(
     // the same opaque `aulora`/custom id. Wait for the resolver to establish
     // uniqueness instead of routing on the partial cache.
     const everyIdentityKnown =
-      profiles.length > 0 &&
-      profiles.every((profile) => serverIdByProfileId.has(profile.id));
+      profiles.length > 0 && profiles.every((profile) => serverIdByProfileId.has(profile.id));
     if (remembered !== undefined && everyIdentityKnown) {
       return remembered;
     }

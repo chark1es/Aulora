@@ -148,6 +148,51 @@ export function useWorkspaceNotifications(): void {
       scheduleRetry();
     };
 
+    // Both receipt and tap activation share retry, cancellation and completion.
+    const activateTarget = async (
+      notification: Notifications.Notification,
+      mode: WakeMode,
+      profileId: string,
+      processed: Set<string>,
+    ) => {
+      try {
+        await setActive(profileId);
+      } catch {
+        queuePending(notification, mode);
+        return;
+      }
+      if (cancelled) {
+        queuePending(notification, mode);
+        return;
+      }
+      clearWorkspaceUnread(profileId);
+      router.replace("/");
+      processed.add(notification.request.identifier);
+    };
+
+    const routeTarget = async (
+      notification: Notifications.Notification,
+      mode: WakeMode,
+      profileId: string,
+      hint: NonNullable<ReturnType<typeof readWorkspaceNotificationHint>>,
+      processed: Set<string>,
+    ) => {
+      const id = notification.request.identifier;
+      const alreadyActive = activeIdRef.current === profileId;
+      if (mode === "received" && alreadyActive) {
+        processed.add(id);
+        return;
+      }
+      if (mode === "received" && remember(counted, id)) recordWorkspaceUnread(profileId);
+      setWorkspaceNotificationTarget(profileId, hint.channelId, hint.messageId, hint.kind);
+      if (alreadyActive) {
+        clearWorkspaceUnread(profileId);
+        processed.add(id);
+        return;
+      }
+      await activateTarget(notification, mode, profileId, processed);
+    };
+
     const handle = async (notification: Notifications.Notification, mode: WakeMode) => {
       const request = notification.request;
       const id = request.identifier;
@@ -191,62 +236,7 @@ export function useWorkspaceNotifications(): void {
           return;
         }
 
-        const apply = () => {
-          setWorkspaceNotificationTarget(profile.id, hint.channelId, hint.messageId, hint.kind);
-        };
-
-        if (mode === "opened") {
-          apply();
-          if (activeIdRef.current === profile.id) {
-            clearWorkspaceUnread(profile.id);
-            processed.add(id);
-            return;
-          }
-          try {
-            await setActive(profile.id);
-          } catch {
-            // A refused write leaves the current workspace active. The target
-            // stays for the next successful switch; retry this wake later.
-            queuePending(notification, mode);
-            return;
-          }
-          if (cancelled) {
-            queuePending(notification, mode);
-            return;
-          }
-          clearWorkspaceUnread(profile.id);
-          router.replace("/");
-          processed.add(id);
-          return;
-        }
-
-        // A wake for a workspace that is not open: badge it, then move to it so
-        // the person lands on the new message rather than having to tap twice.
-        if (activeIdRef.current === profile.id) {
-          processed.add(id);
-          return;
-        }
-        if (remember(counted, id)) {
-          recordWorkspaceUnread(profile.id);
-        }
-        apply();
-        try {
-          await setActive(profile.id);
-        } catch {
-          // Keep the badge; the switcher still exposes the workspace. The
-          // activation write can fail transiently, so leave the wake
-          // unprocessed and retry it instead of consuming the id forever.
-          // `counted` already prevents a second badge increment on retry.
-          queuePending(notification, mode);
-          return;
-        }
-        if (cancelled) {
-          queuePending(notification, mode);
-          return;
-        }
-        clearWorkspaceUnread(profile.id);
-        router.replace("/");
-        processed.add(id);
+        await routeTarget(notification, mode, profile.id, hint, processed);
       } finally {
         inFlight.current.delete(flightKey);
       }
