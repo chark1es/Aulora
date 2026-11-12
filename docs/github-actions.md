@@ -124,7 +124,7 @@ The desktop-only candidate workflow remains available for testing desktop
 artifacts separately.
 
 Release notes use the manual `notes` input when supplied. Otherwise, v1 uses
-`docs/release-notes-v1.md`, a version listed in `CHECKED_IN_NOTES` uses its
+`docs/release-notes-v1.md`, a version handled by `checkedInNotes` uses its
 checked-in `docs/release-notes-vX.Y.Z.md` file, and other versions use GitHub's
 automatically generated notes for the built commit. Use the checked-in file when
 a release needs migration steps or known limitations that generated notes cannot

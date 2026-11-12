@@ -3,14 +3,19 @@ import { readFileSync, writeFileSync } from "node:fs";
 import { resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 
-const CHECKED_IN_NOTES = {
-  "1.5.0": () => readFileSync("docs/release-notes-v1.5.0.md", "utf8"),
-};
+function checkedInNotes(version) {
+  switch (version) {
+    case "1.5.0":
+      return readFileSync("docs/release-notes-v1.5.0.md", "utf8");
+    default:
+      return undefined;
+  }
+}
 
 export function releaseNotes({ version, repository, commit, notes = "" }, run = execFileSync) {
   if (notes.trim()) return notes;
   if (version === "1.0.0") return readFileSync("docs/release-notes-v1.md", "utf8");
-  const checkedIn = CHECKED_IN_NOTES[version]?.();
+  const checkedIn = checkedInNotes(version);
   if (checkedIn !== undefined) return checkedIn;
   const generated = run(
     "gh",

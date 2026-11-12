@@ -123,7 +123,7 @@ The desktop updater reads an optional top-level `rollout` percentage from the st
 
 ## Final artifacts and announcement
 
-- [ ] Review the release notes (GitHub Releases is the changelog). Later versions generate notes automatically; supply the manual Release workflow's `notes` input, or commit `docs/release-notes-vX.Y.Z.md` and add it to `CHECKED_IN_NOTES` before merging the version bump, to include known limitations and any migration steps.
+- [ ] Review the release notes (GitHub Releases is the changelog). Later versions generate notes automatically; supply the manual Release workflow's `notes` input, or commit `docs/release-notes-vX.Y.Z.md` and add a `checkedInNotes` case before merging the version bump, to include known limitations and any migration steps.
 - [ ] Download the candidate `complete-release` artifact and inspect every distributable.
 - [ ] Verify `latest.json` has all four desktop updater targets and valid signatures.
 - [ ] Verify `SHA256SUMS`, license/notice files, and the web/docs and legal ZIP contents.
