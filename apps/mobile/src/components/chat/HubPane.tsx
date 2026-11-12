@@ -11,7 +11,7 @@ import { DockTab } from "./DockTab";
 import { PresenceAvatar } from "./PresenceAvatar";
 
 /** `threads` is the full thread list, opened from the Channels tab rather than the dock. */
-export type HubTab = "chats" | "dms" | "boards" | "notes" | "threads" | "search" | "you";
+export type HubTab = "chats" | "dms" | "addons" | "boards" | "notes" | "threads" | "search" | "you";
 
 /** Height of the floating dock, used to pad scrolling content clear of it. */
 export const DOCK_HEIGHT = 64;
@@ -99,11 +99,14 @@ const TABS: readonly TabEntry[] = [
   { key: "dms", label: "DMs", icon: "message" },
 ];
 
-/** Shown only where the workspace’s Kanban addon is on and the viewer may see it. */
-const BOARDS_TAB: TabEntry = { key: "boards", label: "Boards", icon: "kanban" };
+/**
+ * One entry for every enabled addon: it opens a chooser instead of giving each
+ * addon its own dock tab, so the dock stays short as addons are added.
+ */
+const ADDONS_TAB: TabEntry = { key: "addons", label: "Addons", icon: "grid" };
 
-/** Shown only where the workspace’s Notes addon is on and the viewer may see it. */
-const NOTES_TAB: TabEntry = { key: "notes", label: "Notes", icon: "note" };
+/** Hub views reached through the single Addons dock entry. */
+const ADDON_HUB_TABS: ReadonlySet<HubTab> = new Set(["addons", "boards", "notes"]);
 
 const FLOAT_SHADOW = {
   shadowColor: "#000",
@@ -177,10 +180,8 @@ export interface HubDockProps {
   readonly ownUserId: string;
   readonly ownStatus: string;
   readonly threadBadge: number;
-  /** Adds the Boards tab. */
-  readonly boards?: boolean;
-  /** Adds the Notes tab. */
-  readonly notes?: boolean;
+  /** Shows the addon chooser when any addon is available. */
+  readonly addons?: boolean;
 }
 
 /**
@@ -228,13 +229,13 @@ export function HubDock(props: HubDockProps) {
           FLOAT_SHADOW,
         ]}
       >
-        {[
-          ...TABS,
-          ...(props.boards === true ? [BOARDS_TAB] : []),
-          ...(props.notes === true ? [NOTES_TAB] : []),
-        ].map((entry) => {
-          // The full thread list is reached from Channels, so it keeps that tab lit.
-          const active = entry.key === tab || (entry.key === "chats" && tab === "threads");
+        {[...TABS, ...(props.addons === true ? [ADDONS_TAB] : [])].map((entry) => {
+          // The full thread list is reached from Channels, so it keeps that tab
+          // lit; each addon keeps the chooser entry lit.
+          const active =
+            entry.key === tab ||
+            (entry.key === "chats" && tab === "threads") ||
+            (entry.key === "addons" && ADDON_HUB_TABS.has(tab));
           return (
             <DockTab
               key={entry.key}

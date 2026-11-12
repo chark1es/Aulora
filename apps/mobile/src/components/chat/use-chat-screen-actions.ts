@@ -102,6 +102,10 @@ function useChatScreenNavigation(data: ChatScreenData) {
         setPane(0);
         return true;
       }
+      if (hubTab === "boards" || hubTab === "notes") {
+        setHubTab("addons");
+        return true;
+      }
       if (hubTab !== "chats") {
         setHubTab("chats");
         return true;
