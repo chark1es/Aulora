@@ -63,6 +63,19 @@ export function roleColorDraftChanged(savedColor: string | null, draftColor: str
   return normalize(savedColor) !== normalize(draftColor);
 }
 
+/**
+ * Which back step owns a press. The editor only exists while its role is still
+ * in the manageable list: another client may delete it (or the viewer may lose
+ * the position to manage it), leaving the UI on the list. The raw
+ * `selectedId` would still look like the editor was open and trap Back.
+ */
+export function roleColorBackTarget(
+  state: RoleColorPageState,
+  rows: readonly RoleColorEditorRole[],
+): "editor" | "list" {
+  return rows.some((row) => row.role.id === state.selectedId) ? "editor" : "list";
+}
+
 /** The role-color page shows the role list or one role's editor. */
 export interface RoleColorPageState {
   readonly selectedId: string | null;

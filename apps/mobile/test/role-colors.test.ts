@@ -3,6 +3,7 @@ import type { RoleView } from "../src/lib/permissions";
 import {
   EMPTY_ROLE_COLOR_PAGE,
   manageableRoleColors,
+  roleColorBackTarget,
   roleColorDraftChanged,
   roleColorPageReducer,
   roleColorSavePatch,
@@ -43,6 +44,22 @@ describe("mobile role color editor", () => {
   it("locks every role without ManageRoles", () => {
     const rows = manageableRoleColors(roles, { isOwner: false, topPosition: 9 }, false);
     expect(rows.some((row) => row.editable)).toBe(false);
+  });
+
+  it("leaves the page when the open role was deleted or became unmanageable", () => {
+    const rows = manageableRoleColors(roles, { isOwner: true, topPosition: Infinity }, true);
+    const open = { selectedId: "mod", draftColor: "#E8A33B", error: null };
+    expect(roleColorBackTarget(open, rows)).toBe("editor");
+
+    // Another authorized client deletes the role: the page falls back to the
+    // list, but selectedId is still set. Back must leave the page, not call
+    // the editor step that returns immediately.
+    const deletedRows = manageableRoleColors(
+      roles.filter((entry) => entry.id !== "mod"),
+      { isOwner: true, topPosition: Infinity },
+      true,
+    );
+    expect(roleColorBackTarget(open, deletedRows)).toBe("list");
   });
 
   it("builds a trimmed save patch and refuses invalid colors", () => {

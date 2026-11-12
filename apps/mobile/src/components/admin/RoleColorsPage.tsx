@@ -4,6 +4,7 @@ import type { RoleView } from "../../lib/permissions";
 import {
   EMPTY_ROLE_COLOR_PAGE,
   manageableRoleColors,
+  roleColorBackTarget,
   roleColorDraftChanged,
   roleColorPageReducer,
 } from "../../lib/role-colors";
@@ -56,12 +57,14 @@ export function RoleColorsPage({
   }, [selected, state.draftColor]);
 
   const goBack = useCallback(() => {
-    if (state.selectedId !== null) {
+    // A deleted/unmanageable role leaves `selectedId` set while the list is
+    // rendered; Back must leave the page rather than call a no-op editor step.
+    if (roleColorBackTarget(state, rows) === "editor") {
       requestEditorBack();
       return;
     }
     onBack();
-  }, [state.selectedId, requestEditorBack, onBack]);
+  }, [state, rows, requestEditorBack, onBack]);
 
   // This page is pushed inside the You tab rather than presented as a modal,
   // so it owns the Android back step it used to get from the native sheet. It
