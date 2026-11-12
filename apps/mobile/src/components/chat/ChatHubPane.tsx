@@ -81,7 +81,9 @@ function ChatHubListTab({ model }: { readonly model: ChatScreenModel }) {
         selectionFeedback();
         model.setChannelAction(target);
       }}
-      onJoinVoice={model.joinVoiceChannel}
+      onOpenVoice={(channelId) => {
+        void model.openChannel(channelId);
+      }}
       threads={model.threadRows}
       onOpenThread={model.openThreadFromInbox}
       onOpenThreads={() => {

@@ -51,16 +51,15 @@ function useChatScreenNavigation(data: ChatScreenData) {
   );
 
   const joinVoiceChannel = useCallback(
-    (channelId: string) => {
-      void openChannel(channelId);
+    (channelId: string, kind: "voice" | "video" = "voice") => {
       const live = voice.activeCalls.find((entry) => entry.channelId === channelId);
       if (live !== undefined) {
         void voice.joinCall(live.id);
       } else {
-        void voice.startCall(channelId, "voice");
+        void voice.startCall(channelId, kind);
       }
     },
-    [openChannel, voice],
+    [voice],
   );
 
   const openThreadFromInbox = useCallback(

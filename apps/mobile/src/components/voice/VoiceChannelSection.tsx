@@ -48,13 +48,14 @@ export interface VoiceChannelSectionProps {
   readonly localCallId: string | null;
   /** Per-participant remote audio level, 0..1, when available. */
   readonly remoteLevels?: ReadonlyMap<string, number>;
-  readonly onJoin: (_channelId: string) => void;
+  readonly onOpen: (_channelId: string) => void;
 }
 
 /**
  * The voice-channel list in the drawer: one row per voice channel with the
- * users currently connected, joining on tap. Text/announcement channels are
- * rendered separately and unchanged.
+ * users currently connected. Opening a row shows the channel's pre-join screen
+ * so joining a call is always an explicit choice. Text/announcement channels
+ * are rendered separately and unchanged.
  */
 export function VoiceChannelSection(props: VoiceChannelSectionProps) {
   const {
@@ -65,7 +66,7 @@ export function VoiceChannelSection(props: VoiceChannelSectionProps) {
     clientId,
     localCallId,
     remoteLevels,
-    onJoin,
+    onOpen,
   } = props;
   const palette = usePalette();
   const voiceChannels = channels.filter((channel) => channel.kind === "voice");
@@ -86,10 +87,10 @@ export function VoiceChannelSection(props: VoiceChannelSectionProps) {
             <Pressable
               key={channel.id}
               accessibilityRole="button"
-              accessibilityLabel={`Join voice channel ${channel.name}`}
+              accessibilityLabel={`Open voice channel ${channel.name}`}
               android_ripple={{ color: palette["surface-3"] }}
               onPress={() => {
-                onJoin(channel.id);
+                onOpen(channel.id);
               }}
               className="min-h-[52px] justify-center gap-1.5 px-3 py-2 active:bg-surface-3"
             >
