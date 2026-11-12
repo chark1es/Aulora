@@ -161,8 +161,12 @@ export function createCookieFetch(options: CookieFetchOptions): typeof fetch {
       headers.set("cookie", stored);
     }
     // See `requestOrigin`: native auth POSTs otherwise look origin-less to
-    // Better Auth and its CSRF check rejects the sign-out request.
-    if (!headers.has("origin")) {
+    // Better Auth and its CSRF check rejects the sign-out request. A literal
+    // `Origin: null` (opaque browser origin) is just as unusable as a missing
+    // one, so replace it with the workspace origin too; the backend still
+    // validates that value against its trusted origins.
+    const suppliedOrigin = headers.get("origin");
+    if (suppliedOrigin === null || suppliedOrigin.trim().toLowerCase() === "null") {
       const origin = requestOrigin(input);
       if (origin !== null) {
         headers.set("origin", origin);

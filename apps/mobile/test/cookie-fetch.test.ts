@@ -87,6 +87,13 @@ describe("requestOrigin", () => {
     expect(requestOrigin("aulora://auth/callback")).toBeNull();
     expect(requestOrigin("not a url")).toBeNull();
   });
+
+  it("never returns the literal null origin an opaque URL serializes to", () => {
+    // Browsers send `Origin: null` for opaque origins, and Better Auth rejects
+    // that value; a native request must name a real origin instead.
+    expect(requestOrigin("file:///tmp/opaque")).toBeNull();
+    expect(requestOrigin("data:text/plain,opaque")).toBeNull();
+  });
 });
 
 describe("createCookieFetch", () => {
@@ -124,6 +131,25 @@ describe("createCookieFetch", () => {
       headers: { origin: "https://other.example.com" },
     });
     expect(seen).toEqual(["https://other.example.com"]);
+  });
+
+  it("replaces a literal null Origin header with the request origin", async () => {
+    const { store } = memoryCookieStore();
+    const seen: Array<string | null> = [];
+    const baseFetch = vi.fn(async (_input: RequestInfo | URL, init?: RequestInit) => {
+      seen.push(new Headers(init?.headers).get("origin"));
+      return new Response("{}", { status: 200 });
+    });
+    const cookieFetch = createCookieFetch({
+      store,
+      baseFetch: baseFetch as unknown as typeof fetch,
+    });
+
+    await cookieFetch("https://chat.acme.com/api/auth/sign-out", {
+      method: "POST",
+      headers: { origin: "null" },
+    });
+    expect(seen).toEqual(["https://chat.acme.com"]);
   });
 
   it("sends the stored cookie and persists set-cookie responses", async () => {
