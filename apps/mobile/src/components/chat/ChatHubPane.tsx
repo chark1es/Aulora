@@ -1,14 +1,17 @@
 import { hasPermission, Permission } from "@aulora/core";
+import { type ReactNode, useEffect, useState } from "react";
 import { Alert, View } from "react-native";
 import { pickFromLibrary } from "../../lib/attachments";
 import { selectionFeedback } from "../../lib/haptics";
+import { dismissKeyboard } from "../../lib/keyboard";
+import { visitTab } from "../../lib/visited-tabs";
 import { KanbanScreen } from "../kanban/KanbanScreen";
 import { useScreenInsets } from "../layout/ScreenContainer";
 import { NotesScreen } from "../notes/NotesScreen";
 import { ChannelList } from "./ChannelList";
 import { errorMessage } from "./chat-screen-types";
 import { DirectList } from "./DirectList";
-import { HubDock, PaneHeader, RoundButton, useDockClearance } from "./HubPane";
+import { HubDock, type HubTab, PaneHeader, RoundButton, useDockClearance } from "./HubPane";
 import { SearchView } from "./SearchView";
 import { SettingsView } from "./SettingsView";
 import { ThreadsInbox } from "./ThreadsInbox";
@@ -16,29 +19,44 @@ import type { ChatScreenModel } from "./use-chat-screen-model";
 
 export function ChatHubPane({ model }: { readonly model: ChatScreenModel }) {
   const insets = useScreenInsets();
+  const tabs: readonly HubTab[] = [
+    "chats",
+    "dms",
+    ...(model.showKanban ? (["boards"] as const) : []),
+    ...(model.showNotes ? (["notes"] as const) : []),
+    "threads",
+    "search",
+    "you",
+  ];
+  // A tab the addon no longer offers (permissions changed mid-session) falls
+  // back to settings, matching the old conditional render.
+  const active: HubTab = tabs.includes(model.hubTab) ? model.hubTab : "you";
+  // Once a tab has been opened it stays mounted behind the dock. Its queries,
+  // scroll position and open editors survive a switch, so coming back shows the
+  // already-loaded screen instead of a fresh "Loading…" spinner.
+  const [visited, setVisited] = useState<ReadonlySet<HubTab>>(() => new Set([active]));
+  useEffect(() => {
+    setVisited((current) => visitTab(current, active));
+  }, [active]);
+  const mounted = tabs.filter((tab) => tab === active || visited.has(tab));
   return (
     <View
       className="flex-1 bg-bg min-w-0"
       style={{ paddingTop: insets.top, paddingLeft: insets.left, paddingRight: insets.right }}
     >
-      {model.hubTab === "chats" ? (
-        <ChatHubListTab model={model} />
-      ) : model.hubTab === "dms" ? (
-        <ChatHubDirectTab model={model} />
-      ) : model.hubTab === "boards" && model.showKanban ? (
-        <ChatHubBoardsTab model={model} />
-      ) : model.hubTab === "notes" && model.showNotes ? (
-        <ChatHubNotesTab model={model} />
-      ) : model.hubTab === "threads" ? (
-        <ChatHubThreadsTab model={model} />
-      ) : model.hubTab === "search" ? (
-        <ChatHubSearchTab model={model} />
-      ) : (
-        <ChatHubSettingsTab model={model} />
-      )}
+      {mounted.map((tab) => (
+        <HubTabSlot key={tab} active={tab === active}>
+          {renderHubTab(model, tab)}
+        </HubTabSlot>
+      ))}
       <HubDock
         tab={model.hubTab}
-        onTab={model.setHubTab}
+        onTab={(tab) => {
+          // A hidden tab keeps its TextInput mounted now, so close the keyboard
+          // explicitly instead of leaving it tied to the screen just left.
+          dismissKeyboard();
+          model.setHubTab(tab);
+        }}
         workspaceName={model.workspaceName}
         workspaceSeed={model.activeProfile?.iconSeed ?? model.workspaceName}
         onSwitchWorkspace={() => {
@@ -52,6 +70,47 @@ export function ChatHubPane({ model }: { readonly model: ChatScreenModel }) {
       />
     </View>
   );
+}
+
+/**
+ * One hub tab's frame. Inactive tabs stay mounted but hidden, which is what
+ * keeps their Convex subscriptions alive across a switch.
+ */
+function HubTabSlot({
+  active,
+  children,
+}: {
+  readonly active: boolean;
+  readonly children: ReactNode;
+}) {
+  return (
+    <View
+      style={{ flex: 1, display: active ? "flex" : "none" }}
+      accessibilityElementsHidden={!active}
+      importantForAccessibility={active ? "auto" : "no-hide-descendants"}
+    >
+      {children}
+    </View>
+  );
+}
+
+function renderHubTab(model: ChatScreenModel, tab: HubTab): ReactNode {
+  switch (tab) {
+    case "chats":
+      return <ChatHubListTab model={model} />;
+    case "dms":
+      return <ChatHubDirectTab model={model} />;
+    case "boards":
+      return <ChatHubBoardsTab model={model} />;
+    case "notes":
+      return <ChatHubNotesTab model={model} />;
+    case "threads":
+      return <ChatHubThreadsTab model={model} />;
+    case "search":
+      return <ChatHubSearchTab model={model} />;
+    default:
+      return <ChatHubSettingsTab model={model} />;
+  }
 }
 
 function ChatHubListTab({ model }: { readonly model: ChatScreenModel }) {

@@ -13,7 +13,7 @@ import {
   resolveServerCapabilities,
 } from "@aulora/core";
 import { useMutation, usePaginatedQuery, useQuery } from "convex/react";
-import { useCallback, useEffect, useMemo, useRef } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { Platform } from "react-native";
 import { api } from "../../../../../packages/convex/convex/_generated/api";
 import { useIncomingCallNotification, useLocalNotifications } from "../../lib/notifications";
@@ -593,13 +593,24 @@ export function useChatScreenData({ onSignOut, onDeleteAccount }: ChatScreenProp
   const ui = useChatScreenUiState();
   const pagingConfig = useQuery(api.server.publicConfig, {});
   const pagedThreads = pagingConfig?.capabilities?.threadInboxPaging === true;
+  // Keep the inbox subscribed after it has been opened once, so returning to
+  // the Threads tab shows the page it already had instead of a loading spinner.
+  // The ChatScreen is keyed by profile, so a workspace switch still starts
+  // clean rather than carrying another account's rows over.
+  const [threadsVisited, setThreadsVisited] = useState(false);
+  useEffect(() => {
+    if (ui.hubTab === "threads") {
+      setThreadsVisited(true);
+    }
+  }, [ui.hubTab]);
+  const threadsOpen = threadsVisited || ui.hubTab === "threads";
   const legacyThreadRows = useQuery(
     api.messages.threadInbox,
-    session.runtime && ui.hubTab === "threads" && !pagedThreads ? { limit: 50 } : "skip",
+    session.runtime && threadsOpen && !pagedThreads ? { limit: 50 } : "skip",
   );
   const threadPages = usePaginatedQuery(
     api.messages.threadInboxPage,
-    session.runtime && ui.hubTab === "threads" && pagedThreads ? {} : "skip",
+    session.runtime && threadsOpen && pagedThreads ? {} : "skip",
     { initialNumItems: 50 },
   );
   const threadRows = pagedThreads
