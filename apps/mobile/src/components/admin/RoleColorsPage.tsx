@@ -4,6 +4,7 @@ import type { RoleView } from "../../lib/permissions";
 import {
   EMPTY_ROLE_COLOR_PAGE,
   manageableRoleColors,
+  type RoleColorEditorRole,
   roleColorBackTarget,
   roleColorDraftChanged,
   roleColorPageReducer,
@@ -21,6 +22,63 @@ export interface RoleColorsPageProps {
   /** False while the hub is swiped away, so chat back presses stay with the chat. */
   readonly active: boolean;
   readonly onBack: () => void;
+}
+
+interface RoleColorEditorViewProps {
+  readonly row: RoleColorEditorRole;
+  readonly draftColor: string;
+  readonly error: string | null;
+  readonly clearance: number;
+  readonly onDraftColor: (color: string) => void;
+  readonly onError: (message: string | null) => void;
+  readonly onSaved: () => void;
+  readonly onBack: () => void;
+}
+
+/** The editor for one role, including the header's guarded back control. */
+function RoleColorEditorView(props: RoleColorEditorViewProps) {
+  const { row, clearance, onBack } = props;
+  return (
+    <PageTransition key={row.role.id}>
+      <View className="flex-1 min-w-0" style={{ paddingBottom: clearance }}>
+        <PaneHeader
+          title={`Color for ${row.role.name}`}
+          leading={<RoundButton icon="chevron-left" label="Back to roles" onPress={onBack} />}
+        />
+        <RoleColorEditor
+          row={row}
+          draftColor={props.draftColor}
+          onDraftColor={props.onDraftColor}
+          error={props.error}
+          onError={props.onError}
+          onSaved={props.onSaved}
+          onBack={onBack}
+        />
+      </View>
+    </PageTransition>
+  );
+}
+
+interface RoleColorListViewProps {
+  readonly rows: readonly RoleColorEditorRole[];
+  readonly clearance: number;
+  readonly onOpen: (row: RoleColorEditorRole) => void;
+  readonly onBack: () => void;
+}
+
+/** The managed role list, with the same back control as the page around it. */
+function RoleColorListView({ rows, clearance, onOpen, onBack }: RoleColorListViewProps) {
+  return (
+    <PageTransition key="list">
+      <View className="flex-1 min-w-0" style={{ paddingBottom: clearance }}>
+        <PaneHeader
+          title="Role colors"
+          leading={<RoundButton icon="chevron-left" label="Back to You" onPress={onBack} />}
+        />
+        <RoleColorList rows={rows} onOpen={onOpen} />
+      </View>
+    </PageTransition>
+  );
 }
 
 /**
@@ -83,48 +141,33 @@ export function RoleColorsPage({
 
   if (selected !== null) {
     return (
-      <PageTransition key={selected.role.id}>
-        <View className="flex-1 min-w-0" style={{ paddingBottom: clearance }}>
-          <PaneHeader
-            title={`Color for ${selected.role.name}`}
-            leading={
-              <RoundButton icon="chevron-left" label="Back to roles" onPress={requestEditorBack} />
-            }
-          />
-          <RoleColorEditor
-            row={selected}
-            draftColor={state.draftColor}
-            onDraftColor={(color) => {
-              dispatch({ type: "draft", color });
-            }}
-            error={state.error}
-            onError={(message) => {
-              dispatch({ type: "error", message });
-            }}
-            onSaved={() => {
-              dispatch({ type: "back" });
-            }}
-            onBack={requestEditorBack}
-          />
-        </View>
-      </PageTransition>
+      <RoleColorEditorView
+        row={selected}
+        draftColor={state.draftColor}
+        error={state.error}
+        clearance={clearance}
+        onDraftColor={(color) => {
+          dispatch({ type: "draft", color });
+        }}
+        onError={(message) => {
+          dispatch({ type: "error", message });
+        }}
+        onSaved={() => {
+          dispatch({ type: "back" });
+        }}
+        onBack={requestEditorBack}
+      />
     );
   }
 
   return (
-    <PageTransition key="list">
-      <View className="flex-1 min-w-0" style={{ paddingBottom: clearance }}>
-        <PaneHeader
-          title="Role colors"
-          leading={<RoundButton icon="chevron-left" label="Back to You" onPress={onBack} />}
-        />
-        <RoleColorList
-          rows={rows}
-          onOpen={({ role }) => {
-            dispatch({ type: "open", role });
-          }}
-        />
-      </View>
-    </PageTransition>
+    <RoleColorListView
+      rows={rows}
+      clearance={clearance}
+      onOpen={({ role }) => {
+        dispatch({ type: "open", role });
+      }}
+      onBack={onBack}
+    />
   );
 }
