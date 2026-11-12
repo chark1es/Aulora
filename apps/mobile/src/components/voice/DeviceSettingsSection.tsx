@@ -1,3 +1,4 @@
+/* eslint-disable no-unused-vars -- the base rule reports parameter names in type signatures; Biome checks real unused code */
 import type { MediaDeviceInfo, VoiceDeviceSettings } from "@aulora/core";
 import { Button, SegmentedControl, SettingRow, SwitchRow, Text } from "@aulora/ui-native";
 import { useEffect, useRef, useState } from "react";

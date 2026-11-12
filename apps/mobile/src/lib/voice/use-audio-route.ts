@@ -13,12 +13,12 @@ import {
   type AudioRouteTarget,
   applySavedRoute,
   type CommunicationRoute,
-  confirmInputNow,
   readPlatformCurrentInput,
   routeInputFromCommunicationDevice,
   type SavedRouteResult,
+  selectAudioRoute,
 } from "./audio-route-platform";
-import { bluetoothInputName, inputForRoute, type NativeRouteList } from "./media-device-choices";
+import { bluetoothInputName, type NativeRouteList } from "./media-device-choices";
 
 export type {
   AudioRouteTarget,
@@ -168,72 +168,19 @@ export function useAudioRoute(): AudioRoute {
 
   const setRoute = useCallback(
     (target: AudioRouteTarget): string | undefined => {
-      const input =
-        target.uid !== undefined
-          ? inputsRef.current.find((entry) => entry.uid === target.uid)
-          : inputForRoute(inputsRef.current, target.route);
-      const android = Platform.OS === "android";
-      const bridge = platformCommunicationRoute;
-      // "System default" means release our pinned communication device and let
-      // Android choose. Other routes resolve to a concrete platform input.
-      if (android && bridge.available && target.route === "system" && target.uid === undefined) {
-        if (bridge.clear() !== true) {
-          const message = "The system rejected the audio route change.";
-          setError(message);
-          return message;
-        }
-        activeRef.current = undefined;
-        setActiveUid(undefined);
-        setError(undefined);
-        return undefined;
-      }
-      if (input === undefined) {
-        const message =
-          target.route === "system" && target.uid === undefined
-            ? undefined
-            : "This device cannot switch to that audio route.";
-        setError(message);
-        return message;
-      }
-      if (android && bridge.available) {
-        // The SDK's setInput discards AudioManager.setCommunicationDevice's
-        // Boolean result. Use the bridge, then read the system route back
-        // before telling the UI that this input is current.
-        if (bridge.set(input.uid) !== true) {
-          const message = "The system rejected the audio route switch.";
-          setError(message);
-          return message;
-        }
-        const confirmed = bridge.get();
-        if (confirmed?.uid !== input.uid) {
-          const message = "The system did not confirm the audio route switch.";
-          setError(message);
-          return message;
-        }
-        activeRef.current = input.uid;
-        setActiveUid(input.uid);
-        setError(undefined);
-        return undefined;
-      }
-      try {
-        recorder.setInput(input.uid);
-        if (android) {
-          // Legacy Android has no communication-device bridge; the switch was
-          // requested but the active call route is not verifiable here.
-          activeRef.current = undefined;
-          setActiveUid(undefined);
-        } else {
-          const confirmed = confirmInputNow(recorder);
-          activeRef.current = confirmed?.uid;
-          setActiveUid(confirmed?.uid);
-        }
-        setError(undefined);
-        return undefined;
-      } catch {
-        const message = "The system rejected the audio route switch.";
-        setError(message);
-        return message;
-      }
+      const message = selectAudioRoute(
+        target,
+        inputsRef.current,
+        Platform.OS,
+        platformCommunicationRoute,
+        recorder,
+        (uid) => {
+          activeRef.current = uid;
+          setActiveUid(uid);
+        },
+      );
+      setError(message);
+      return message;
     },
     [recorder],
   );

@@ -2,6 +2,7 @@ import type { RecordingInput } from "expo-audio";
 import { describe, expect, it, vi } from "vitest";
 
 import {
+  type AudioRouteSwitcher,
   applySavedRoute,
   type CommunicationRoute,
   type CurrentInputSource,
@@ -10,6 +11,7 @@ import {
   recordSavedRouteAttempt,
   routeInputFromCommunicationDevice,
   savedRouteSignature,
+  selectAudioRoute,
 } from "../src/lib/voice/audio-route-platform";
 
 const iosInput: RecordingInput = {
@@ -239,5 +241,139 @@ describe("call-entry route progress", () => {
     });
     expect(applied.progress.appliedSignature).toBe(signature);
     expect(applied.shouldReport).toBe(false);
+  });
+});
+
+describe("selectAudioRoute", () => {
+  function switcher(overrides: Partial<AudioRouteSwitcher> = {}): AudioRouteSwitcher {
+    return {
+      getCurrentInput: () => iosInput,
+      setInput: vi.fn(),
+      ...overrides,
+    };
+  }
+
+  it("sets and reads back an Android communication sink before marking it active", () => {
+    const sink = { uid: "42", name: "AirPods Pro", type: "Bluetooth" };
+    const set = vi.fn(() => true);
+    const setActiveUid = vi.fn();
+    const live = route({ list: () => [sink], get: () => sink, set });
+    const recorder = switcher();
+
+    expect(
+      selectAudioRoute(
+        { route: "bluetooth", uid: "42" },
+        [routeInputFromCommunicationDevice(sink)],
+        "android",
+        live,
+        recorder,
+        setActiveUid,
+      ),
+    ).toBeUndefined();
+    expect(set).toHaveBeenCalledWith("42");
+    expect(setActiveUid).toHaveBeenCalledWith("42");
+    // The recorder's source endpoint is a different domain.
+    expect(recorder.setInput).not.toHaveBeenCalled();
+  });
+
+  it("keeps the previous route when Android does not confirm the readback", () => {
+    const sink = { uid: "42", name: "AirPods Pro", type: "Bluetooth" };
+    const setActiveUid = vi.fn();
+
+    expect(
+      selectAudioRoute(
+        { route: "bluetooth", uid: "42" },
+        [routeInputFromCommunicationDevice(sink)],
+        "android",
+        route({ get: () => ({ uid: "3", name: "Built-in speaker", type: "Built-in speaker" }) }),
+        switcher(),
+        setActiveUid,
+      ),
+    ).toBe("The system did not confirm the audio route switch.");
+    expect(setActiveUid).not.toHaveBeenCalled();
+  });
+
+  it("clears the pinned device for Android system default and reports a refused clear", () => {
+    const setActiveUid = vi.fn();
+    expect(
+      selectAudioRoute({ route: "system" }, [], "android", route(), switcher(), setActiveUid),
+    ).toBeUndefined();
+    expect(setActiveUid).toHaveBeenCalledWith(undefined);
+
+    setActiveUid.mockClear();
+    expect(
+      selectAudioRoute(
+        { route: "system" },
+        [],
+        "android",
+        route({ clear: () => false }),
+        switcher(),
+        setActiveUid,
+      ),
+    ).toBe("The system rejected the audio route change.");
+    expect(setActiveUid).not.toHaveBeenCalled();
+  });
+
+  it("requests the recorder input on legacy Android without claiming a known route", () => {
+    const setInput = vi.fn();
+    const setActiveUid = vi.fn();
+    expect(
+      selectAudioRoute(
+        { route: "bluetooth" },
+        [headset],
+        "android",
+        route({ available: false }),
+        switcher({ setInput }),
+        setActiveUid,
+      ),
+    ).toBeUndefined();
+    expect(setInput).toHaveBeenCalledWith("2");
+    expect(setActiveUid).toHaveBeenCalledWith(undefined);
+  });
+
+  it("uses iOS's synchronous confirmation and leaves unknown routes unset", () => {
+    const setInput = vi.fn();
+    const setActiveUid = vi.fn();
+    expect(
+      selectAudioRoute(
+        { route: "bluetooth" },
+        [iosInput, headset],
+        "ios",
+        route({ available: false }),
+        switcher({ setInput, getCurrentInput: () => headset }),
+        setActiveUid,
+      ),
+    ).toBeUndefined();
+    expect(setInput).toHaveBeenCalledWith("2");
+    expect(setActiveUid).toHaveBeenCalledWith("2");
+
+    setActiveUid.mockClear();
+    expect(
+      selectAudioRoute(
+        { route: "bluetooth" },
+        [iosInput, headset],
+        "ios",
+        route({ available: false }),
+        switcher({ getCurrentInput: () => Promise.resolve(headset) }),
+        setActiveUid,
+      ),
+    ).toBeUndefined();
+    // A Promise cannot be read synchronously, so the route stays unknown.
+    expect(setActiveUid).toHaveBeenCalledWith(undefined);
+  });
+
+  it("rejects a target that is not enumerated without touching the active route", () => {
+    const setActiveUid = vi.fn();
+    expect(
+      selectAudioRoute(
+        { route: "bluetooth" },
+        [],
+        "ios",
+        route({ available: false }),
+        switcher(),
+        setActiveUid,
+      ),
+    ).toBe("This device cannot switch to that audio route.");
+    expect(setActiveUid).not.toHaveBeenCalled();
   });
 });

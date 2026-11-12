@@ -1,6 +1,6 @@
 import type { MediaDeviceInfo } from "@aulora/core";
 import type { RecordingInput } from "expo-audio";
-import { type MediaDeviceRoute, savedRouteTarget } from "./media-device-choices";
+import { inputForRoute, type MediaDeviceRoute, savedRouteTarget } from "./media-device-choices";
 
 export interface AudioRouteTarget {
   readonly route: MediaDeviceRoute;
@@ -105,6 +105,92 @@ export function confirmInputNow(recorder: CurrentInputSource): RecordingInput | 
   } catch {
     return null;
   }
+}
+
+/** A recorder that can both report and request its native input. */
+export interface AudioRouteSwitcher extends CurrentInputSource {
+  setInput(_uid: string): void;
+}
+
+/**
+ * Sets an Android communication sink, then verifies the system readback before
+ * the UI may call that input current.
+ */
+function selectAndroidCommunicationInput(
+  uid: string,
+  bridge: CommunicationRoute,
+  setActiveUid: (_uid: string | undefined) => void,
+): string | undefined {
+  if (bridge.set(uid) !== true) {
+    return "The system rejected the audio route switch.";
+  }
+  const confirmed = bridge.get();
+  if (confirmed?.uid !== uid) {
+    return "The system did not confirm the audio route switch.";
+  }
+  setActiveUid(uid);
+  return undefined;
+}
+
+function selectRecorderInput(
+  uid: string,
+  android: boolean,
+  recorder: AudioRouteSwitcher,
+  setActiveUid: (_uid: string | undefined) => void,
+): string | undefined {
+  try {
+    recorder.setInput(uid);
+    // Legacy Android cannot verify the call route; iOS confirms synchronously.
+    setActiveUid(android ? undefined : confirmInputNow(recorder)?.uid);
+    return undefined;
+  } catch {
+    return "The system rejected the audio route switch.";
+  }
+}
+
+/**
+ * Requests one route and reports the platform's active input, or the message
+ * to show when the switch failed.
+ *
+ * Android with the bridge routes in the communication-sink domain: `set()`
+ * discards the SDK's Boolean result, so the system route is read back before
+ * the UI may call this input current. Legacy Android has no bridge and cannot
+ * verify the call route, so it requests the recorder input and leaves the
+ * active route unknown. iOS reads its synchronous confirmation immediately.
+ * `setActiveUid` is only called when the active route is known or explicitly
+ * cleared; failures leave the previous value in place.
+ */
+export function selectAudioRoute(
+  target: AudioRouteTarget,
+  inputs: readonly RecordingInput[],
+  platform: string,
+  bridge: CommunicationRoute,
+  recorder: AudioRouteSwitcher,
+  setActiveUid: (_uid: string | undefined) => void,
+): string | undefined {
+  const input =
+    target.uid !== undefined
+      ? inputs.find((entry) => entry.uid === target.uid)
+      : inputForRoute(inputs, target.route);
+  const android = platform === "android";
+  const systemDefault = target.route === "system" && target.uid === undefined;
+  // "System default" means release our pinned communication device and let
+  // Android choose. Other routes resolve to a concrete platform input.
+  if (android && bridge.available && systemDefault) {
+    if (bridge.clear() !== true) {
+      return "The system rejected the audio route change.";
+    }
+    setActiveUid(undefined);
+    return undefined;
+  }
+  if (input === undefined) {
+    // An unset system default has nothing to pin, so it is not an error.
+    return systemDefault ? undefined : "This device cannot switch to that audio route.";
+  }
+  if (android && bridge.available) {
+    return selectAndroidCommunicationInput(input.uid, bridge, setActiveUid);
+  }
+  return selectRecorderInput(input.uid, android, recorder, setActiveUid);
 }
 
 /**
