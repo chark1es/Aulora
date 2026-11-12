@@ -12,6 +12,38 @@ export interface AddonMenuItem {
   readonly onSelect: () => void;
 }
 
+export interface AddonMenuPlacement {
+  readonly placement: "down" | "up";
+  readonly maxHeight: number;
+}
+
+const MENU_GAP = 8;
+const MENU_MIN_HEIGHT = 96;
+const MENU_MAX_HEIGHT = 320;
+
+/**
+ * Places the menu where a short window can still use it.
+ *
+ * The sidebar is a full-height pane with `overflow-hidden`, so a dropdown that
+ * runs past the bottom would be clipped. Open downward when there is room,
+ * otherwise upward, and cap the height so the rows scroll instead of spilling
+ * off-screen on a small laptop or a phone-sized browser window.
+ */
+export function addonMenuPlacement(
+  viewportHeight: number,
+  triggerTop: number,
+  triggerBottom: number,
+): AddonMenuPlacement {
+  const below = viewportHeight - triggerBottom - MENU_GAP;
+  const above = triggerTop - MENU_GAP;
+  const placement = below >= above ? "down" : "up";
+  const available = placement === "down" ? below : above;
+  return {
+    placement,
+    maxHeight: Math.max(MENU_MIN_HEIGHT, Math.min(available, MENU_MAX_HEIGHT)),
+  };
+}
+
 /** Moves the roving focus of the addons menu by one row, wrapping at the ends. */
 function focusTarget(key: string, current: number, last: number): number {
   switch (key) {
@@ -33,6 +65,10 @@ function focusTarget(key: string, current: number, last: number): number {
  */
 export function AddonsMenu({ items }: { readonly items: readonly AddonMenuItem[] }) {
   const [open, setOpen] = useState(false);
+  const [placement, setPlacement] = useState<AddonMenuPlacement>({
+    placement: "down",
+    maxHeight: MENU_MAX_HEIGHT,
+  });
   const containerRef = useRef<HTMLDivElement | null>(null);
   const triggerRef = useRef<HTMLButtonElement | null>(null);
   const menuRef = useRef<HTMLDivElement | null>(null);
@@ -67,6 +103,26 @@ export function AddonsMenu({ items }: { readonly items: readonly AddonMenuItem[]
       document.removeEventListener("keydown", onKey);
     };
   }, [open, close]);
+
+  const place = useCallback(() => {
+    const trigger = triggerRef.current;
+    if (trigger === null) return;
+    const rect = trigger.getBoundingClientRect();
+    setPlacement(addonMenuPlacement(window.innerHeight, rect.top, rect.bottom));
+  }, []);
+
+  // Re-measure while open so a resize or an on-screen keyboard keeps the rows
+  // inside the sidebar pane.
+  useEffect(() => {
+    if (!open) {
+      return;
+    }
+    place();
+    window.addEventListener("resize", place);
+    return () => {
+      window.removeEventListener("resize", place);
+    };
+  }, [open, place]);
 
   // The first item takes focus so the menu is immediately keyboard-drivable.
   useEffect(() => {
@@ -125,8 +181,18 @@ export function AddonsMenu({ items }: { readonly items: readonly AddonMenuItem[]
           role="menu"
           aria-label="Addons"
           onKeyDown={handleKeyDown}
+          onBlur={(event) => {
+            // Tabbing past the menu moves focus outside it. Close and let
+            // focus continue to the page's natural next stop.
+            const next = event.relatedTarget;
+            if (next === null || !menuRef.current?.contains(next as Node)) {
+              close(false);
+            }
+          }}
+          style={{ maxHeight: placement.maxHeight }}
           className={cn(
-            "absolute left-0 right-0 top-full z-20 mt-1 animate-pop-in rounded-[10px] bg-surface-2 p-1",
+            "absolute left-0 right-0 z-20 animate-pop-in overflow-y-auto overscroll-contain rounded-[10px] bg-surface-2 p-1",
+            placement.placement === "down" ? "top-full mt-1" : "bottom-full mb-1",
             MODAL_SHADOW,
           )}
         >

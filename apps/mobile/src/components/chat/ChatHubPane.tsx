@@ -1,5 +1,6 @@
 import { hasPermission, Permission } from "@aulora/core";
 import { Alert, View } from "react-native";
+import { addonChooserEntries, showAddonsDockTab } from "../../lib/addons";
 import { pickFromLibrary } from "../../lib/attachments";
 import { selectionFeedback } from "../../lib/haptics";
 import { KanbanScreen } from "../kanban/KanbanScreen";
@@ -50,7 +51,9 @@ export function ChatHubPane({ model }: { readonly model: ChatScreenModel }) {
         ownUserId={model.ownUserId}
         ownStatus={model.ownStatus}
         threadBadge={model.threadMentionCount}
-        addons={model.showKanban || model.showNotes}
+        addons={showAddonsDockTab(
+          addonChooserEntries({ kanban: model.showKanban, notes: model.showNotes }),
+        )}
       />
     </View>
   );
@@ -128,28 +131,7 @@ function ChatHubDirectTab({ model }: { readonly model: ChatScreenModel }) {
  */
 function ChatHubAddonsTab({ model }: { readonly model: ChatScreenModel }) {
   const clearance = useDockClearance();
-  const entries = [
-    ...(model.showKanban
-      ? [
-          {
-            key: "boards" as const,
-            icon: "kanban" as const,
-            title: "Kanban",
-            subtitle: "Boards, cards, checklists and comments",
-          },
-        ]
-      : []),
-    ...(model.showNotes
-      ? [
-          {
-            key: "notes" as const,
-            icon: "note" as const,
-            title: "Notes",
-            subtitle: "Shared notes, folders and history",
-          },
-        ]
-      : []),
-  ];
+  const entries = addonChooserEntries({ kanban: model.showKanban, notes: model.showNotes });
   return (
     <View className="flex-1 min-w-0" style={{ paddingBottom: clearance }}>
       <PaneHeader title="Addons" subtitle="Tools enabled in this workspace" />

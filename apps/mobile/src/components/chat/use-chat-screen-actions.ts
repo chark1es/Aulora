@@ -3,6 +3,7 @@ import AsyncStorage from "@react-native-async-storage/async-storage";
 import { useCallback, useEffect } from "react";
 import { Alert, BackHandler, Keyboard } from "react-native";
 import { api } from "../../../../../packages/convex/convex/_generated/api";
+import { addonBackTarget } from "../../lib/addons";
 import { createCategory } from "../../lib/backend-actions";
 import {
   manageableChannelRoles,
@@ -27,6 +28,8 @@ function useChatScreenNavigation(data: ChatScreenData) {
     pane,
     hubTab,
     threadRoot,
+    showKanban,
+    showNotes,
     setActiveChannelId,
     setPane,
     setThreadRoot,
@@ -102,8 +105,9 @@ function useChatScreenNavigation(data: ChatScreenData) {
         setPane(0);
         return true;
       }
-      if (hubTab === "boards" || hubTab === "notes") {
-        setHubTab("addons");
+      const addonTarget = addonBackTarget(hubTab, showKanban || showNotes);
+      if (addonTarget !== null) {
+        setHubTab(addonTarget);
         return true;
       }
       if (hubTab !== "chats") {
@@ -115,7 +119,7 @@ function useChatScreenNavigation(data: ChatScreenData) {
     return () => {
       subscription.remove();
     };
-  }, [pane, hubTab, threadRoot, setPane, setHubTab]);
+  }, [pane, hubTab, threadRoot, showKanban, showNotes, setPane, setHubTab]);
 
   const goToPane = useCallback(
     (next: PaneIndex) => {

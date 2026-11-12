@@ -6,6 +6,7 @@ import userEvent from "@testing-library/user-event";
 import { ConvexReactClient } from "convex/react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { createMockPort } from "../../../../packages/core/src/chat/testing";
+import { addonMenuPlacement } from "../components/chat/AddonsMenu";
 import { ConversationStart, type ConversationStartProps } from "../components/chat/ChannelPane";
 import { ChannelSidebar, type ChannelSidebarProps } from "../components/chat/ChannelSidebar";
 import { Composer } from "../components/chat/Composer";
@@ -580,6 +581,29 @@ describe("ChannelSidebar", () => {
     await user.keyboard("{Escape}");
     expect(screen.queryByRole("menu", { name: "Addons" })).not.toBeInTheDocument();
     expect(trigger).toHaveFocus();
+  });
+
+  it("moves the Addons menu inside a short viewport instead of clipping it", () => {
+    // The sidebar pane is overflow-hidden; the menu flips upward and scrolls
+    // when a small window leaves little room below the trigger.
+    expect(addonMenuPlacement(900, 120, 152)).toEqual({ placement: "down", maxHeight: 320 });
+    expect(addonMenuPlacement(360, 300, 332)).toEqual({ placement: "up", maxHeight: 292 });
+    expect(addonMenuPlacement(240, 190, 222)).toEqual({ placement: "up", maxHeight: 182 });
+  });
+
+  it("closes the Addons menu when Tab moves focus outside it", async () => {
+    const user = userEvent.setup();
+    render(<ChannelSidebar {...sidebarProps({ onOpenKanban: vi.fn(), onOpenNotes: vi.fn() })} />);
+    await user.click(screen.getByTestId("sidebar-addons"));
+    const kanban = screen.getByRole("menuitemradio", { name: "Kanban" });
+    const notes = screen.getByRole("menuitemradio", { name: "Notes" });
+    await waitFor(() => {
+      expect(kanban).toHaveFocus();
+    });
+    await user.tab();
+    expect(notes).toHaveFocus();
+    await user.tab();
+    expect(screen.queryByRole("menu", { name: "Addons" })).not.toBeInTheDocument();
   });
 
   it("opens the chosen addon and closes the menu", async () => {

@@ -5,6 +5,7 @@ import { Heading, Icon, Text, usePalette } from "@aulora/ui-native";
 import type { ReactNode } from "react";
 import { Pressable, useWindowDimensions, View } from "react-native";
 import { useKeyboardState } from "react-native-keyboard-controller";
+import { isAddonHubTab } from "../../lib/addons";
 import { selectionFeedback } from "../../lib/haptics";
 import { useScreenInsets } from "../layout/ScreenContainer";
 import { DockTab } from "./DockTab";
@@ -104,9 +105,6 @@ const TABS: readonly TabEntry[] = [
  * addon its own dock tab, so the dock stays short as addons are added.
  */
 const ADDONS_TAB: TabEntry = { key: "addons", label: "Addons", icon: "grid" };
-
-/** Hub views reached through the single Addons dock entry. */
-const ADDON_HUB_TABS: ReadonlySet<HubTab> = new Set(["addons", "boards", "notes"]);
 
 const FLOAT_SHADOW = {
   shadowColor: "#000",
@@ -235,7 +233,7 @@ export function HubDock(props: HubDockProps) {
           const active =
             entry.key === tab ||
             (entry.key === "chats" && tab === "threads") ||
-            (entry.key === "addons" && ADDON_HUB_TABS.has(tab));
+            (entry.key === "addons" && isAddonHubTab(tab));
           return (
             <DockTab
               key={entry.key}
