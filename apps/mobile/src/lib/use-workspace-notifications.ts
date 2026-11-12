@@ -233,9 +233,11 @@ export function useWorkspaceNotifications(): void {
         try {
           await setActive(profile.id);
         } catch {
-          // Keep the badge; the switcher still exposes the workspace. This is
-          // not a reason to count the same wake again on the next effect run.
-          processed.add(id);
+          // Keep the badge; the switcher still exposes the workspace. The
+          // activation write can fail transiently, so leave the wake
+          // unprocessed and retry it instead of consuming the id forever.
+          // `counted` already prevents a second badge increment on retry.
+          queuePending(notification, mode);
           return;
         }
         if (cancelled) {

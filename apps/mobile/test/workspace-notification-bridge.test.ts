@@ -230,3 +230,35 @@ it("counts a received wake once across retries and duplicate delivery", async ()
   await Promise.resolve();
   expect(state.record).toHaveBeenCalledTimes(1);
 });
+
+it("retries a received wake whose activation write fails, counting one badge", async () => {
+  const globex = { id: "B" };
+  state.resolve.mockResolvedValue(globex);
+  state.setActive
+    .mockRejectedValueOnce(new Error("profile store unavailable"))
+    .mockResolvedValue(undefined);
+  renderHook();
+
+  const wake = notification("received-activation-retry", "srv-b");
+  state.received.at(-1)?.(wake);
+  await vi.waitFor(() => expect(state.setActive).toHaveBeenCalledTimes(1));
+  expect(state.setActive).toHaveBeenCalledWith("B");
+  // The badge is recorded before the switch attempt, and a failed activation
+  // must not consume the wake or double-count it on retry.
+  expect(state.record).toHaveBeenCalledTimes(1);
+  expect(state.replace).not.toHaveBeenCalled();
+
+  // The queued wake is retried on the next effect run.
+  renderHook();
+  await vi.waitFor(() => expect(state.setActive).toHaveBeenCalledTimes(2));
+  expect(state.setActive).toHaveBeenLastCalledWith("B");
+  expect(state.record).toHaveBeenCalledTimes(1);
+  expect(state.clear).toHaveBeenCalledWith("B");
+  expect(state.replace).toHaveBeenCalledWith("/");
+
+  // A duplicate receipt after the successful retry is already processed.
+  state.received.at(-1)?.(wake);
+  await Promise.resolve();
+  expect(state.setActive).toHaveBeenCalledTimes(2);
+  expect(state.record).toHaveBeenCalledTimes(1);
+});
