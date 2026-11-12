@@ -22,6 +22,7 @@ import { recentSearchKey } from "../../lib/search-ui";
 import { useChannelSession } from "../../lib/use-channel";
 import { usePushRegistration } from "../../lib/use-push-registration";
 import { useWebhookNames } from "../../lib/use-webhook-names";
+import { threadsInboxVisible } from "../../lib/visited-tabs";
 import { useChat } from "../../providers/ChatProvider";
 import { useProfiles } from "../../providers/ProfileProvider";
 import { useSound } from "../../providers/SoundProvider";
@@ -619,11 +620,13 @@ export function useChatScreenData({ onSignOut, onDeleteAccount }: ChatScreenProp
       : threadPages.results
     : legacyThreadRows;
   useEffect(() => {
-    if (ui.hubTab === "threads")
+    // The hub keeps Threads selected while a conversation pane covers it, so
+    // acknowledge only while the inbox itself is the surface on screen.
+    if (threadsInboxVisible(ui.hubTab, ui.pane))
       void session.runtime?.client
         .mutation(api.messages.markThreadMentionsSeen, {})
         .catch(() => undefined);
-  }, [ui.hubTab, session.runtime]);
+  }, [ui.hubTab, ui.pane, session.runtime]);
   const mentions = useChatScreenMentions(session);
   const list = useChatScreenChannelList(session, ui, mentions);
   const conversation = useChatScreenConversation(session, ui, mentions, list);

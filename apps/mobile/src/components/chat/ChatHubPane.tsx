@@ -4,7 +4,7 @@ import { Alert, View } from "react-native";
 import { pickFromLibrary } from "../../lib/attachments";
 import { selectionFeedback } from "../../lib/haptics";
 import { dismissKeyboard } from "../../lib/keyboard";
-import { visitTab } from "../../lib/visited-tabs";
+import { mountedTabs, visitTab } from "../../lib/visited-tabs";
 import { KanbanScreen } from "../kanban/KanbanScreen";
 import { useScreenInsets } from "../layout/ScreenContainer";
 import { NotesScreen } from "../notes/NotesScreen";
@@ -38,7 +38,7 @@ export function ChatHubPane({ model }: { readonly model: ChatScreenModel }) {
   useEffect(() => {
     setVisited((current) => visitTab(current, active));
   }, [active]);
-  const mounted = tabs.filter((tab) => tab === active || visited.has(tab));
+  const mounted = mountedTabs(tabs, active, visited);
   return (
     <View
       className="flex-1 bg-bg min-w-0"

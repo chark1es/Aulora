@@ -26,6 +26,7 @@ import { lazy, Suspense, useCallback, useEffect, useMemo, useRef, useState } fro
 import { api } from "../../../../../packages/convex/convex/_generated/api";
 import { DEFAULT_MAX_UPLOAD_BYTES, uploadFiles } from "../../lib/attachments";
 import { selectEagerChannelIds } from "../../lib/channel-priority";
+import { isChatCanvasOnScreen, isThreadsInboxOnScreen } from "../../lib/chat-surface";
 import { isDesktop } from "../../lib/desktop";
 import { publicOriginOrNull, publicUrl } from "../../lib/public-origin";
 import { sendThreadReply } from "../../lib/send-thread-reply";
@@ -41,6 +42,7 @@ import { useSettingsNavigation } from "../../lib/use-settings-navigation";
 import { useUnopenedChannelAlerts } from "../../lib/use-unopened-channel-alerts";
 import { useVisitedViews } from "../../lib/use-visited-views";
 import { useWebPush } from "../../lib/use-web-push";
+import { useWideShell } from "../../lib/use-wide-shell";
 import {
   type CategoryView,
   type MemberView,
@@ -344,6 +346,13 @@ function ChatViewContent({
   const [sendError, setSendError] = useState<string | null>(null);
   const reported = useRef(new Set<string>());
   const attentive = useAttentive();
+  const wideShell = useWideShell();
+  const surfaceState = { mainView, adminOpen, userSettingsOpen, mobilePane, wideShell } as const;
+  // Kept panes stay mounted (see `KeepAlive`), so their effects keep running
+  // while another surface is on screen. Anything that acknowledges messages has
+  // to ask whether the reader can actually see them.
+  const chatCanvasOnScreen = isChatCanvasOnScreen(surfaceState);
+  const threadsInboxOnScreen = isThreadsInboxOnScreen(surfaceState);
 
   // The open channel’s live session. Declared before the member directory
   // because the directory is scoped to the authors and mentions it displays.
@@ -498,9 +507,9 @@ function ChatViewContent({
     }
   }, [threadsOpen]);
   useEffect(() => {
-    if (mainView === "threads")
+    if (threadsInboxOnScreen)
       void runtime?.client.mutation(api.messages.markThreadMentionsSeen, {}).catch(() => undefined);
-  }, [mainView, runtime]);
+  }, [threadsInboxOnScreen, runtime]);
   const publicConfig = useQuery(api.server.publicConfig, {});
   const pagedThreads = publicConfig?.capabilities?.threadInboxPaging === true;
   const legacyThreadRows = useQuery(
@@ -552,6 +561,7 @@ function ChatViewContent({
     unreadByChannel,
     eagerChannelIds,
     activeChannelId,
+    activeChannelVisible: chatCanvasOnScreen,
     mutedChannelIds,
     channelNames,
   });
@@ -1021,7 +1031,9 @@ function ChatViewContent({
     [roles],
   );
 
-  // Mark the newest message read while the reader can actually see it.
+  // Mark the newest message read while the reader can actually see it. The
+  // canvas is kept mounted when Notes, Kanban, Settings or an admin sheet takes
+  // the screen, and marking then would clear a badge for a message nobody read.
   const newest = sessionState.messages.at(-1);
   useEffect(() => {
     if (
@@ -1029,6 +1041,7 @@ function ChatViewContent({
       activeChannelId === undefined ||
       newest === undefined ||
       !attentive ||
+      !chatCanvasOnScreen ||
       !sessionState.readStateLoaded ||
       sessionState.readState?.lastReadMessageId === newest.id
     ) {
@@ -1040,6 +1053,7 @@ function ChatViewContent({
     activeChannelId,
     newest,
     attentive,
+    chatCanvasOnScreen,
     sessionState.readStateLoaded,
     sessionState.readState,
   ]);
