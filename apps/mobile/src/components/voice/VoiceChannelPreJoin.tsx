@@ -1,3 +1,4 @@
+/* eslint-disable no-unused-vars -- the base rule reports parameter names in type signatures; Biome checks real unused code */
 import type { CallParticipantView } from "@aulora/core";
 import { Button, Heading, Icon, Text, usePalette } from "@aulora/ui-native";
 import { View } from "react-native";
@@ -24,6 +25,144 @@ export interface VoiceChannelPreJoinProps {
   readonly onDismissError: () => void;
 }
 
+interface PreJoinHeadingProps {
+  readonly channelName: string;
+  readonly topic?: string | null | undefined;
+}
+
+function PreJoinHeading({ channelName, topic }: PreJoinHeadingProps) {
+  const palette = usePalette();
+  return (
+    <>
+      <Icon name="volume" size={26} color={palette.accent} />
+      <Heading level={2} className="mt-3 text-center" accessibilityRole="header">
+        {channelName}
+      </Heading>
+      <Text size="sm" tone="muted" className="mt-1 text-center leading-6">
+        {topic !== null && topic !== undefined && topic.length > 0
+          ? topic
+          : "A voice channel. Join to talk with everyone here."}
+      </Text>
+    </>
+  );
+}
+
+interface PreJoinParticipantListProps {
+  readonly participants: readonly CallParticipantView[];
+  readonly memberNames: ReadonlyMap<string, string>;
+}
+
+/** Everyone already in the call, or the invitation to start it. */
+function PreJoinParticipantList({ participants, memberNames }: PreJoinParticipantListProps) {
+  if (participants.length === 0) {
+    return (
+      <Text size="sm" tone="muted" className="mt-6 text-center">
+        No one is in the call yet. Join to start it.
+      </Text>
+    );
+  }
+  const names = participants.map((participant) => participantLabel(participant, memberNames));
+  return (
+    <View className="mt-6 items-center gap-2">
+      <View className="flex-row items-center justify-center gap-1">
+        {participants.slice(0, 5).map((participant) => (
+          <MemberAvatar key={participant.userId} userId={participant.userId} size={32} />
+        ))}
+      </View>
+      <Text size="sm" tone="muted" className="text-center">
+        {names.join(", ")}
+      </Text>
+      <View className="flex-row items-center gap-1.5">
+        <Text size="xs" tone="muted">
+          {participants.length} {participants.length === 1 ? "person" : "people"} in the call
+        </Text>
+        {participants.some((participant) => participant.isGuest === true) && <GuestBadge />}
+      </View>
+    </View>
+  );
+}
+
+interface PreJoinErrorNoticeProps {
+  readonly message: string | null;
+  readonly pending: boolean;
+  readonly onDismiss: () => void;
+}
+
+/** The last join failure, kept visible while the join controls stay available. */
+function PreJoinErrorNotice({ message, pending, onDismiss }: PreJoinErrorNoticeProps) {
+  if (message === null) return null;
+  return (
+    <View
+      accessibilityRole="alert"
+      className="mt-6 w-full rounded-card border border-border bg-surface-1 px-3 py-2.5"
+    >
+      <Text size="sm" className="text-center">
+        {message}
+      </Text>
+      <View className="mt-2 flex-row items-center justify-center gap-2">
+        <Button size="sm" variant="secondary" disabled={pending} onPress={onDismiss}>
+          Dismiss
+        </Button>
+      </View>
+    </View>
+  );
+}
+
+interface PreJoinActionsProps {
+  readonly mode: "join" | "joined" | "denied";
+  readonly canVideo: boolean;
+  readonly pending: boolean;
+  readonly onJoin: (_kind: "voice" | "video") => void;
+  readonly onRejoin: () => void;
+}
+
+function PreJoinActions({ mode, canVideo, pending, onJoin, onRejoin }: PreJoinActionsProps) {
+  if (mode === "joined") {
+    return (
+      <View className="mt-6 items-center gap-2">
+        <Text size="sm" tone="muted" className="text-center">
+          You are in this call.
+        </Text>
+        <Button variant="secondary" onPress={onRejoin}>
+          Return to call
+        </Button>
+      </View>
+    );
+  }
+  if (mode === "join") {
+    return (
+      <View className="mt-6 flex-row flex-wrap items-center justify-center gap-2">
+        <Button
+          loading={pending}
+          disabled={pending}
+          onPress={() => {
+            onJoin("voice");
+          }}
+        >
+          Join voice
+        </Button>
+        {canVideo && (
+          <Button
+            variant="secondary"
+            loading={pending}
+            disabled={pending}
+            onPress={() => {
+              onJoin("video");
+            }}
+          >
+            Join with video
+          </Button>
+        )}
+      </View>
+    );
+  }
+  return (
+    <Text size="sm" tone="muted" className="mt-6 text-center">
+      You do not have permission to join calls.
+    </Text>
+  );
+}
+
 /**
  * A voice channel before this device joins. It names everyone already in the
  * call and waits for an explicit join, matching the desktop channel view
@@ -43,99 +182,20 @@ export function VoiceChannelPreJoin({
   onRejoin,
   onDismissError,
 }: VoiceChannelPreJoinProps) {
-  const palette = usePalette();
   const view = preJoinCallView({ canConnect, joined, pending, error });
-  const names = participants.map((participant) => participantLabel(participant, memberNames));
   return (
     <View className="flex-1 items-center justify-center bg-bg px-6 py-10 min-w-0">
       <View className="w-full max-w-[520px] items-center">
-        <Icon name="volume" size={26} color={palette.accent} />
-        <Heading level={2} className="mt-3 text-center" accessibilityRole="header">
-          {channelName}
-        </Heading>
-        <Text size="sm" tone="muted" className="mt-1 text-center leading-6">
-          {topic !== null && topic !== undefined && topic.length > 0
-            ? topic
-            : "A voice channel. Join to talk with everyone here."}
-        </Text>
-
-        {participants.length > 0 ? (
-          <View className="mt-6 items-center gap-2">
-            <View className="flex-row items-center justify-center gap-1">
-              {participants.slice(0, 5).map((participant) => (
-                <MemberAvatar key={participant.userId} userId={participant.userId} size={32} />
-              ))}
-            </View>
-            <Text size="sm" tone="muted" className="text-center">
-              {names.join(", ")}
-            </Text>
-            <View className="flex-row items-center gap-1.5">
-              <Text size="xs" tone="muted">
-                {participants.length} {participants.length === 1 ? "person" : "people"} in the call
-              </Text>
-              {participants.some((participant) => participant.isGuest === true) && <GuestBadge />}
-            </View>
-          </View>
-        ) : (
-          <Text size="sm" tone="muted" className="mt-6 text-center">
-            No one is in the call yet. Join to start it.
-          </Text>
-        )}
-
-        {view.error !== null && (
-          <View
-            accessibilityRole="alert"
-            className="mt-6 w-full rounded-card border border-border bg-surface-1 px-3 py-2.5"
-          >
-            <Text size="sm" className="text-center">
-              {view.error}
-            </Text>
-            <View className="mt-2 flex-row items-center justify-center gap-2">
-              <Button size="sm" variant="secondary" disabled={pending} onPress={onDismissError}>
-                Dismiss
-              </Button>
-            </View>
-          </View>
-        )}
-
-        {view.mode === "joined" ? (
-          <View className="mt-6 items-center gap-2">
-            <Text size="sm" tone="muted" className="text-center">
-              You are in this call.
-            </Text>
-            <Button variant="secondary" onPress={onRejoin}>
-              Return to call
-            </Button>
-          </View>
-        ) : view.mode === "join" ? (
-          <View className="mt-6 flex-row flex-wrap items-center justify-center gap-2">
-            <Button
-              loading={pending}
-              disabled={pending}
-              onPress={() => {
-                onJoin("voice");
-              }}
-            >
-              Join voice
-            </Button>
-            {canVideo && (
-              <Button
-                variant="secondary"
-                loading={pending}
-                disabled={pending}
-                onPress={() => {
-                  onJoin("video");
-                }}
-              >
-                Join with video
-              </Button>
-            )}
-          </View>
-        ) : (
-          <Text size="sm" tone="muted" className="mt-6 text-center">
-            You do not have permission to join calls.
-          </Text>
-        )}
+        <PreJoinHeading channelName={channelName} topic={topic} />
+        <PreJoinParticipantList participants={participants} memberNames={memberNames} />
+        <PreJoinErrorNotice message={view.error} pending={pending} onDismiss={onDismissError} />
+        <PreJoinActions
+          mode={view.mode}
+          canVideo={canVideo}
+          pending={pending}
+          onJoin={onJoin}
+          onRejoin={onRejoin}
+        />
       </View>
     </View>
   );
