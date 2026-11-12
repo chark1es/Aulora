@@ -204,6 +204,9 @@ function ChatConversationBody({
         onJoin={(kind) => {
           model.joinVoiceChannel(channel.id, kind);
         }}
+        onRejoin={() => {
+          model.voice.setView("stage");
+        }}
       />
     );
   }

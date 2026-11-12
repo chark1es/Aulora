@@ -15,6 +15,8 @@ export interface VoiceChannelPreJoinProps {
   /** This device is already in the call behind a minimized call surface. */
   readonly joined: boolean;
   readonly onJoin: (_kind: "voice" | "video") => void;
+  /** Brings the minimized call surface back for a call this device is in. */
+  readonly onRejoin: () => void;
 }
 
 /**
@@ -32,6 +34,7 @@ export function VoiceChannelPreJoin({
   pending,
   joined,
   onJoin,
+  onRejoin,
 }: VoiceChannelPreJoinProps) {
   const palette = usePalette();
   const names = participants.map((participant) => participantLabel(participant, memberNames));
@@ -72,9 +75,14 @@ export function VoiceChannelPreJoin({
         )}
 
         {joined ? (
-          <Text size="sm" tone="muted" className="mt-6 text-center">
-            You are in this call.
-          </Text>
+          <View className="mt-6 items-center gap-2">
+            <Text size="sm" tone="muted" className="text-center">
+              You are in this call.
+            </Text>
+            <Button variant="secondary" onPress={onRejoin}>
+              Return to call
+            </Button>
+          </View>
         ) : canConnect ? (
           <View className="mt-6 flex-row flex-wrap items-center justify-center gap-2">
             <Button loading={pending} disabled={pending} onPress={() => onJoin("voice")}>

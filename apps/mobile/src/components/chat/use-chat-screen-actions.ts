@@ -13,6 +13,7 @@ import {
 } from "../../lib/channel-role-overrides";
 import { selectionFeedback } from "../../lib/haptics";
 import { planChannelEdit } from "../../lib/permissions";
+import { joinVoiceChannelWith } from "../../lib/voice/join-channel";
 import type { NewChannelKind } from "./CreateChannelSheet";
 import { errorMessage } from "./chat-screen-types";
 import type { PaneIndex } from "./SwipePanes";
@@ -52,12 +53,7 @@ function useChatScreenNavigation(data: ChatScreenData) {
 
   const joinVoiceChannel = useCallback(
     (channelId: string, kind: "voice" | "video" = "voice") => {
-      const live = voice.activeCalls.find((entry) => entry.channelId === channelId);
-      if (live !== undefined) {
-        void voice.joinCall(live.id);
-      } else {
-        void voice.startCall(channelId, kind);
-      }
+      joinVoiceChannelWith(voice, channelId, kind);
     },
     [voice],
   );

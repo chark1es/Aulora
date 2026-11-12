@@ -218,6 +218,7 @@ describe("voice channel pre-join", () => {
         pending: false,
         joined: false,
         onJoin: () => undefined,
+        onRejoin: () => undefined,
         ...overrides,
       }),
     );
@@ -252,10 +253,15 @@ describe("voice channel pre-join", () => {
     expect(labels(tree).join(" ")).toContain("do not have permission to join calls");
   });
 
-  it("shows the joined state without a second join action", () => {
-    const tree = preJoin({ joined: true });
-    expect(buttons(tree)).toEqual([]);
+  it("brings a minimized call back instead of offering a second join", () => {
+    const reopened = vi.fn();
+    const tree = preJoin({ joined: true, onRejoin: reopened });
+    expect(buttons(tree)).toEqual(["Return to call"]);
     expect(labels(tree).join(" ")).toContain("You are in this call");
+    const button = tree.find((node) => node.type === "Button");
+    expect(button).toBeDefined();
+    if (button !== undefined) (button.props.onPress as () => void)();
+    expect(reopened).toHaveBeenCalledTimes(1);
   });
 
   it("handles an empty call", () => {
