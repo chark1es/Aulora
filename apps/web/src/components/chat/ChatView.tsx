@@ -310,7 +310,9 @@ function ChatViewContent({
   // spinner. Only the addons the reader has actually opened are mounted, and a
   // hidden surface is released after `HIDDEN_VIEW_TTL_MS` unless an unsaved
   // Notes draft must survive.
-  const visitedViews = useVisitedViews(mainView, { hold: notesDirty });
+  const visitedViews = useVisitedViews(mainView, {
+    holdView: notesDirty ? "notes" : undefined,
+  });
   const settingsNavigation = useSettingsNavigation(
     true,
     (userSettingsOpen && userSettingsDirty) || notesDirty,

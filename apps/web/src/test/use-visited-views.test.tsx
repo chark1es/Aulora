@@ -74,19 +74,47 @@ describe("useVisitedViews", () => {
     expect([...result.current]).toEqual(["chat"]);
   });
 
-  it("holds a hidden surface while an unsaved draft must survive", () => {
+  it("expires a hidden heavy pane while the active Notes editor is dirty", () => {
     vi.useFakeTimers();
+    type View = "kanban" | "notes";
     const { result, rerender } = renderHook(
-      ({ view, hold }: { view: string; hold: boolean }) => useVisitedViews(view, { hold }),
-      { initialProps: { view: "notes", hold: true } },
+      ({ view, holdView }: { view: View; holdView: View | undefined }) =>
+        useVisitedViews(view, { holdView }),
+      { initialProps: { view: "notes" as View, holdView: "notes" as View | undefined } },
     );
-    rerender({ view: "chat", hold: true });
-    act(() => {
-      vi.advanceTimersByTime(HIDDEN_VIEW_TTL_MS * 2);
-    });
-    expect(result.current.has("notes")).toBe(true);
+    rerender({ view: "kanban", holdView: "notes" });
+    rerender({ view: "notes", holdView: "notes" });
+    expect([...result.current].sort()).toEqual(["kanban", "notes"]);
 
-    rerender({ view: "chat", hold: false });
+    // The active draft needs no exemption; it is retained because it is active.
+    // The hidden Boards pane must not inherit its protection.
+    act(() => {
+      vi.advanceTimersByTime(HIDDEN_VIEW_TTL_MS);
+    });
+    expect([...result.current]).toEqual(["notes"]);
+  });
+
+  it("holds only a hidden Notes draft, not a second hidden pane", () => {
+    vi.useFakeTimers();
+    type View = "chat" | "kanban" | "notes";
+    const { result, rerender } = renderHook(
+      ({ view, holdView }: { view: View; holdView: View | undefined }) =>
+        useVisitedViews(view, { limit: 3, holdView }),
+      { initialProps: { view: "notes" as View, holdView: "notes" as View | undefined } },
+    );
+    rerender({ view: "kanban", holdView: "notes" });
+    rerender({ view: "chat", holdView: "notes" });
+    expect([...result.current].sort()).toEqual(["chat", "kanban", "notes"]);
+
+    // The hidden draft survives, but the unrelated hidden Boards pane expires
+    // and releases its query after the lifetime.
+    act(() => {
+      vi.advanceTimersByTime(HIDDEN_VIEW_TTL_MS);
+    });
+    expect([...result.current].sort()).toEqual(["chat", "notes"]);
+
+    // Discarding the draft releases the Notes exception too.
+    rerender({ view: "chat", holdView: undefined });
     act(() => {
       vi.advanceTimersByTime(HIDDEN_VIEW_TTL_MS);
     });

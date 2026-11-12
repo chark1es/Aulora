@@ -614,7 +614,9 @@ export function useChatScreenData({ onSignOut, onDeleteAccount }: ChatScreenProp
     [session.showKanban, session.showNotes],
   );
   const activeHubTab: HubTab = hubTabs.includes(ui.hubTab) ? ui.hubTab : "you";
-  const retainedHubTabs = useRetainedTabs(hubTabs, activeHubTab, { hold: notesDirty });
+  const retainedHubTabs = useRetainedTabs(hubTabs, activeHubTab, {
+    holdTab: notesDirty ? "notes" : undefined,
+  });
   const threadsRetained = retainedHubTabs.includes("threads");
   const threadQuery = threadInboxQueryArgs(
     session.runtime !== null && session.runtime !== undefined,

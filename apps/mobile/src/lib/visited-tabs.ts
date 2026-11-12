@@ -47,12 +47,23 @@ export function visitTab<T extends string>(
   return next;
 }
 
-/** The retained tabs left after the hidden lifetime expires: only the visible one. */
+/**
+ * The retained tabs left after the hidden lifetime expires: the visible one
+ * plus an explicitly held hidden tab (a dirty Notes draft). Every unrelated
+ * hidden tab is released, so a draft cannot keep Boards/Threads subscriptions
+ * alive behind another surface.
+ */
 export function expireHiddenTabs<T extends string>(
   visited: ReadonlySet<T>,
   active: T,
+  holdTab?: T,
 ): ReadonlySet<T> {
-  return visited.has(active) ? new Set([active]) : visited;
+  if (!visited.has(active)) return visited;
+  const next = new Set<T>();
+  for (const tab of visited) {
+    if (tab === active || tab === holdTab) next.add(tab);
+  }
+  return next;
 }
 
 /**
@@ -68,13 +79,15 @@ export function mountedTabs<T extends string>(
   return tabs.filter((tab) => tab === active || visited.has(tab));
 }
 
-export interface RetainedTabOptions {
+export interface RetainedTabOptions<T extends string> {
   readonly limit?: number;
   /**
-   * Keep hidden tabs mounted even past the lifetime, for example while a
-   * retained Notes editor holds an unsaved draft that unmounting would delete.
+   * A *hidden* hub tab to keep mounted past the lifetime because unmounting
+   * would delete an unsaved draft, which today is only the Notes editor. Only
+   * that tab is exempt; unrelated hidden tabs still expire, and an active Notes
+   * tab needs no exemption because the active tab is never evicted.
    */
-  readonly hold?: boolean;
+  readonly holdTab?: T | undefined;
   readonly hiddenTtlMs?: number;
 }
 
@@ -85,11 +98,11 @@ export interface RetainedTabOptions {
 export function useRetainedTabs<T extends string>(
   tabs: readonly T[],
   active: T,
-  options: RetainedTabOptions = {},
+  options: RetainedTabOptions<T> = {},
 ): readonly T[] {
   const limit = options.limit ?? MAX_RETAINED_TABS;
   const hiddenTtlMs = options.hiddenTtlMs ?? HIDDEN_TAB_TTL_MS;
-  const hold = options.hold ?? false;
+  const holdTab = options.holdTab;
   const [visited, setVisited] = useState<ReadonlySet<T>>(() => new Set([active]));
 
   useEffect(() => {
@@ -97,16 +110,26 @@ export function useRetainedTabs<T extends string>(
   }, [active, limit]);
 
   useEffect(() => {
-    if (hold || ![...visited].some((tab) => tab !== active)) {
+    // Only a hidden tab can be protected by the draft exemption; when Notes is
+    // active, unrelated hidden tabs must still expire. Nothing to schedule when
+    // every hidden tab is the held one (or there are none).
+    let expirable = false;
+    for (const tab of visited) {
+      if (tab !== active && tab !== holdTab) {
+        expirable = true;
+        break;
+      }
+    }
+    if (!expirable) {
       return undefined;
     }
     const timer = setTimeout(() => {
-      setVisited((current) => expireHiddenTabs(current, active));
+      setVisited((current) => expireHiddenTabs(current, active, holdTab));
     }, hiddenTtlMs);
     return () => {
       clearTimeout(timer);
     };
-  }, [active, hiddenTtlMs, hold, visited]);
+  }, [active, hiddenTtlMs, holdTab, visited]);
 
   return useMemo(() => mountedTabs(tabs, active, visited), [tabs, active, visited]);
 }

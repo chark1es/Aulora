@@ -20,13 +20,16 @@ export const MAX_RETAINED_VIEWS = 2;
  */
 export const HIDDEN_VIEW_TTL_MS = 60_000;
 
-export interface VisitedViewOptions {
+export interface VisitedViewOptions<T extends string> {
   readonly limit?: number;
   /**
-   * Keep hidden views mounted even past the lifetime, for example while a
-   * retained Notes editor holds an unsaved draft that unmounting would delete.
+   * A *hidden* view to keep mounted past the lifetime because unmounting would
+   * delete an unsaved draft, which today is only the Notes editor. The
+   * exemption is deliberately per-view: every unrelated hidden surface still
+   * expires, and an active Notes editor needs no exemption because the active
+   * view is never evicted.
    */
-  readonly hold?: boolean;
+  readonly holdView?: T | undefined;
   readonly hiddenTtlMs?: number;
 }
 
@@ -48,12 +51,19 @@ export function retainView<T extends string>(
   return next.length > bounded ? next.slice(next.length - bounded) : next;
 }
 
-/** The retained views left after the hidden lifetime expires: only the one on screen. */
+/**
+ * The retained views left after the hidden lifetime expires: only the one on
+ * screen plus an explicitly held hidden view (a dirty Notes draft). Everything
+ * else hidden is released, so an unsaved Notes draft cannot keep unrelated
+ * Boards/Threads subscriptions alive.
+ */
 export function expireHiddenViews<T extends string>(
   current: readonly T[],
   active: T,
+  holdView?: T,
 ): readonly T[] {
-  return current.includes(active) ? [active] : current;
+  if (!current.includes(active)) return current;
+  return current.filter((view) => view === active || view === holdView);
 }
 
 /**
@@ -67,11 +77,11 @@ export function expireHiddenViews<T extends string>(
  */
 export function useVisitedViews<T extends string>(
   active: T,
-  options: VisitedViewOptions = {},
+  options: VisitedViewOptions<T> = {},
 ): ReadonlySet<T> {
   const limit = options.limit ?? MAX_RETAINED_VIEWS;
   const hiddenTtlMs = options.hiddenTtlMs ?? HIDDEN_VIEW_TTL_MS;
-  const hold = options.hold ?? false;
+  const holdView = options.holdView;
   const [retained, setRetained] = useState<readonly T[]>(() => [active]);
 
   useEffect(() => {
@@ -79,16 +89,21 @@ export function useVisitedViews<T extends string>(
   }, [active, limit]);
 
   useEffect(() => {
-    if (hold || !retained.some((view) => view !== active)) {
+    // Only a hidden view can be protected by the draft exemption; when Notes is
+    // the active surface the other hidden panes must still expire. If nothing
+    // hidden is expirable (only the active view, or just the held hidden view),
+    // there is nothing to schedule.
+    const expirable = retained.some((view) => view !== active && view !== holdView);
+    if (!expirable) {
       return undefined;
     }
     const timer = setTimeout(() => {
-      setRetained((current) => expireHiddenViews(current, active));
+      setRetained((current) => expireHiddenViews(current, active, holdView));
     }, hiddenTtlMs);
     return () => {
       clearTimeout(timer);
     };
-  }, [active, hiddenTtlMs, hold, retained]);
+  }, [active, hiddenTtlMs, holdView, retained]);
 
   return useMemo(() => new Set(retained), [retained]);
 }

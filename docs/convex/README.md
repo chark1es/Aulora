@@ -51,17 +51,20 @@ messages as evidence that the path scales.
 
 The web chat shell and the mobile hub keep recently used surfaces mounted so a
 revisit does not re-run its queries. Retention is MRU-bounded and also
-time-bounded: at most two surfaces on web (chat canvas and Threads are separate,
-visible-only subscriptions) and three hub tabs on mobile stay mounted, and a
-hidden surface is unmounted after 60 seconds without navigation. Unmounting
+time-bounded: at most two retained view surfaces on web (Notes, Boards,
+Scheduled calls and Transcripts) and three hub tabs on mobile stay mounted, and
+a hidden surface is unmounted after 60 seconds without navigation. Unmounting
 releases that surface's Convex subscriptions and any pages it had loaded.
 
-The retained set on web is Notes, Boards, Scheduled calls and Transcripts; the
-chat canvas and Threads inbox subscribe only while they are on screen. On mobile
-the retained set is the hub tabs, while the Threads inbox query follows the
-retained tab and therefore skips once Threads is evicted or expires. A hidden
-Notes tab is held past the lifetime while an unsaved editor draft would
-otherwise be deleted.
+The web chat canvas is outside that retained-view set: it remains mounted as the
+single open-conversation window even while settings or admin cover it, so its
+one channel subscription continues while hidden. The Threads inbox query is
+gated to the selected main view and skips when Threads is not on screen. On
+mobile the retained set is the hub tabs, while the Threads inbox query follows
+the retained tab and therefore skips once Threads is evicted or expires. A
+hidden Notes surface is held past the lifetime only while an unsaved editor
+draft would otherwise be deleted; unrelated hidden surfaces on both clients
+still expire, and an active Notes surface is retained because it is active.
 
 This records a source-visible subscription policy, not a measured result. No
 busy-channel or busy-workspace load, latency, CPU or subscription-update
