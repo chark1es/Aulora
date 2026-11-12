@@ -181,6 +181,71 @@ it("ignores a second save tap while the first write is still in flight", async (
   expect(ctl.mutations.updateNote).toHaveBeenCalledTimes(1);
 });
 
+it("keeps a newer body editable when a deferred save of the previous body succeeds", async () => {
+  const { ctl, render } = setup({ selectedId: "note" });
+  let finish: ((revision: number) => void) | undefined;
+  ctl.mutations.updateNote.mockImplementationOnce(
+    () =>
+      new Promise<number>((resolve) => {
+        finish = resolve;
+      }),
+  );
+  render().setEditing(true);
+  render().setBody("Body A submitted");
+  render().save();
+  // The request is in flight and the field stays editable.
+  render().setBody("Body B typed while saving");
+
+  finish?.(2);
+  await vi.waitFor(() => expect(render().saved).toBe(true));
+
+  // The reader must not present the newer, unsaved body as the stored note.
+  expect(render()).toMatchObject({
+    editing: true,
+    body: "Body B typed while saving",
+    dirty: true,
+  });
+
+  // The retained draft can still be saved, based on the revision just written.
+  render().save();
+  await vi.waitFor(() => expect(ctl.mutations.updateNote).toHaveBeenCalledTimes(2));
+  expect(ctl.mutations.updateNote).toHaveBeenLastCalledWith(
+    expect.objectContaining({ revision: 2, body: "Body B typed while saving" }),
+  );
+  await vi.waitFor(() => expect(render()).toMatchObject({ editing: false, dirty: false }));
+});
+
+it("keeps a newer title and property edit editable after a deferred save", async () => {
+  const { ctl, render } = setup({ selectedId: "note" });
+  let finish: ((revision: number) => void) | undefined;
+  ctl.mutations.updateNote.mockImplementationOnce(
+    () =>
+      new Promise<number>((resolve) => {
+        finish = resolve;
+      }),
+  );
+  render().setEditing(true);
+  render().setTitle("Submitted title");
+  render().setFolderId("folder-1");
+  render().setTagIds(["tag-1"]);
+  render().save();
+
+  render().setTitle("Newer title");
+  render().setFolderId("folder-2");
+  render().setTagIds(["tag-2"]);
+
+  finish?.(2);
+  await vi.waitFor(() => expect(render().saved).toBe(true));
+
+  expect(render()).toMatchObject({
+    editing: true,
+    title: "Newer title",
+    folderId: "folder-2",
+    tagIds: ["tag-2"],
+    dirty: true,
+  });
+});
+
 it("does not rebase a note the person switched to while a save was finishing", async () => {
   const { ctl, render } = setup({ selectedId: "note" });
   let finish: ((revision: number) => void) | undefined;

@@ -46,6 +46,13 @@ function useEditorState(note: NoteDetailView | undefined, startsEditing: boolean
   // advances on a clean seed or a successful save, so unsaved edits survive a
   // live subscription update.
   const seedRef = useRef<NoteDraftSeed | undefined>(undefined);
+  /**
+   * The fields as of the newest render. A save continuation closes over the
+   * values from the render that started it, so it compares against this ref to
+   * tell whether the person typed a newer draft while the write was in flight.
+   */
+  const latestDraftRef = useRef({ title, body, folderId, tagIds });
+  latestDraftRef.current = { title, body, folderId, tagIds };
   const dirty = noteDraftDirty({ seed: seedRef.current, title, body, folderId, tagIds });
   const dirtyRef = useRef(false);
   dirtyRef.current = dirty;
@@ -147,6 +154,7 @@ function useEditorState(note: NoteDetailView | undefined, startsEditing: boolean
     saved,
     reloadLatest,
     keepMyVersion,
+    latestDraftRef,
     dirty,
     showReloadPrompt,
     title,
@@ -297,6 +305,7 @@ function useNoteSave(ctl: NotesController, state: EditorState) {
     baseRevision,
     markSaved,
     showReloadPrompt,
+    latestDraftRef,
   } = state;
   /**
    * Guards the window between a tap and the next render: without it, a second
@@ -331,8 +340,15 @@ function useNoteSave(ctl: NotesController, state: EditorState) {
           return;
         }
         if (result.kind === "saved") {
+          const savedSnapshot = { title, body, folderId, tagIds };
           markSaved(result.seed);
-          state.setEditing(false);
+          // `markSaved` advances the clean seed without clobbering typing that
+          // landed mid-write. Only leave the editor when the draft is still the
+          // snapshot that was submitted; otherwise the newer text must stay in
+          // an editable, visibly dirty draft instead of being shown as saved.
+          if (sameDraft(latestDraftRef.current, savedSnapshot)) {
+            state.setEditing(false);
+          }
           ctl.setError(undefined);
           return;
         }
@@ -348,6 +364,29 @@ function useNoteSave(ctl: NotesController, state: EditorState) {
       });
   };
   return save;
+}
+
+function sameDraft(
+  a: {
+    readonly title: string;
+    readonly body: string;
+    readonly folderId: string | null;
+    readonly tagIds: readonly string[];
+  },
+  b: {
+    readonly title: string;
+    readonly body: string;
+    readonly folderId: string | null;
+    readonly tagIds: readonly string[];
+  },
+): boolean {
+  return (
+    a.title === b.title &&
+    a.body === b.body &&
+    a.folderId === b.folderId &&
+    a.tagIds.length === b.tagIds.length &&
+    a.tagIds.every((tagId, index) => tagId === b.tagIds[index])
+  );
 }
 
 export function useNoteEditor(ctl: NotesController) {
