@@ -119,20 +119,33 @@ interface WorkspaceButtonProps {
   readonly name: string;
   readonly seed: string;
   readonly onPress: () => void;
+  /** Wakes received for another saved workspace that has not been opened yet. */
+  readonly unread?: number;
 }
 
 /** Opens the workspace switcher. It opens a sheet, so it sits beside the tab bar, not in it. */
-function WorkspaceButton({ name, seed, onPress }: WorkspaceButtonProps) {
+function WorkspaceButton({ name, seed, onPress, unread = 0 }: WorkspaceButtonProps) {
   const palette = usePalette();
   return (
     <Pressable
       accessibilityRole="button"
-      accessibilityLabel={`Switch workspace, current ${name}`}
+      accessibilityLabel={
+        unread > 0
+          ? `Switch workspace, current ${name}, ${unread} new notification${unread === 1 ? "" : "s"} in another workspace`
+          : `Switch workspace, current ${name}`
+      }
       onPress={onPress}
       className="items-center justify-center rounded-[20px] border border-border bg-surface-2 active:opacity-70"
       style={[{ width: DOCK_HEIGHT, height: DOCK_HEIGHT }, FLOAT_SHADOW]}
     >
       <NativeAvatar seed={seed} size={38} shape="squircle" />
+      {unread > 0 && (
+        <View
+          className="absolute right-1.5 top-1.5 h-2.5 w-2.5 rounded-full border border-surface-2 bg-accent"
+          accessibilityElementsHidden
+          importantForAccessibility="no-hide-descendants"
+        />
+      )}
       <View
         className="absolute bottom-1 right-1 h-[18px] w-[18px] items-center justify-center rounded-pill bg-surface-3"
         accessibilityElementsHidden
@@ -177,6 +190,8 @@ export interface HubDockProps {
   readonly ownUserId: string;
   readonly ownStatus: string;
   readonly threadBadge: number;
+  /** Unopened wakes from other saved workspaces, shown on the switcher button. */
+  readonly workspaceUnread?: number;
   /** Adds the Boards tab. */
   readonly boards?: boolean;
   /** Adds the Notes tab. */
@@ -215,6 +230,7 @@ export function HubDock(props: HubDockProps) {
           name={props.workspaceName}
           seed={props.workspaceSeed}
           onPress={props.onSwitchWorkspace}
+          unread={props.workspaceUnread}
         />
       )}
       <View
@@ -268,6 +284,7 @@ export function HubDock(props: HubDockProps) {
           name={props.workspaceName}
           seed={props.workspaceSeed}
           onPress={props.onSwitchWorkspace}
+          unread={props.workspaceUnread}
         />
       )}
       <SearchButton

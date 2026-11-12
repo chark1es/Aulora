@@ -22,6 +22,10 @@ import { recentSearchKey } from "../../lib/search-ui";
 import { useChannelSession } from "../../lib/use-channel";
 import { usePushRegistration } from "../../lib/use-push-registration";
 import { useWebhookNames } from "../../lib/use-webhook-names";
+import {
+  subscribeWorkspaceNotificationTargets,
+  takeWorkspaceNotificationTarget,
+} from "../../lib/workspace-notifications";
 import { useChat } from "../../providers/ChatProvider";
 import { useProfiles } from "../../providers/ProfileProvider";
 import { useSound } from "../../providers/SoundProvider";
@@ -213,9 +217,10 @@ function useChatScreenChannelList(
   ui: ChatScreenUiState,
   mentions: ChatScreenMentions,
 ) {
-  const { channels, runtime, ownUserId, sound } = session;
-  const { showHidden, activeChannelId, setActiveChannelId } = ui;
+  const { channels, runtime, ownUserId, sound, activeProfile } = session;
+  const { showHidden, activeChannelId, setActiveChannelId, setHubTab, setPane } = ui;
   const { channelNames, memberNames } = mentions;
+  const profileId = activeProfile?.id;
 
   const visibleChannels = useMemo(() => {
     if (showHidden) {
@@ -241,13 +246,36 @@ function useChatScreenChannelList(
   });
 
   useEffect(() => {
-    if (activeChannelId === undefined) {
-      const firstText = channels.find((entry) => entry.kind !== "voice" && entry.hidden !== true);
-      if (firstText !== undefined) {
-        setActiveChannelId(firstText.id);
-      }
+    if (activeChannelId !== undefined) {
+      return;
     }
-  }, [channels, activeChannelId, setActiveChannelId]);
+    // A tapped notification names its conversation; otherwise open the first
+    // readable text channel as before.
+    const target = profileId === undefined ? undefined : takeWorkspaceNotificationTarget(profileId);
+    const firstText = channels.find((entry) => entry.kind !== "voice" && entry.hidden !== true);
+    const next = target ?? firstText?.id;
+    if (next !== undefined) {
+      setActiveChannelId(next);
+    }
+  }, [channels, activeChannelId, profileId, setActiveChannelId]);
+
+  // A notification tapped while this workspace is already open should move to
+  // its conversation without a workspace switch.
+  useEffect(() => {
+    if (profileId === undefined) {
+      return;
+    }
+    const applyTarget = () => {
+      const channelId = takeWorkspaceNotificationTarget(profileId);
+      if (channelId === undefined) {
+        return;
+      }
+      setActiveChannelId(channelId);
+      setHubTab("chats");
+      setPane(1);
+    };
+    return subscribeWorkspaceNotificationTargets(applyTarget);
+  }, [profileId, setActiveChannelId, setHubTab, setPane]);
 
   const titles = useMemo(() => {
     const map = new Map<string, string>();
