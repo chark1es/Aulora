@@ -4,6 +4,7 @@ const state = vi.hoisted(() => ({
   profiles: [] as Array<{ id: string }>,
   activeProfile: undefined as { id: string } | undefined,
   resolve: vi.fn(),
+  cachedProfile: vi.fn(() => undefined as { id: string } | undefined),
   setActive: vi.fn(async (_id: string) => undefined),
   replace: vi.fn(),
   record: vi.fn(),
@@ -37,7 +38,7 @@ vi.mock("../src/lib/workspace-identity", () => ({
   backfillWorkspaceServerId: async () => null,
   clearWorkspaceUnread: state.clear,
   ensureWorkspaceNotificationsLoaded: async () => undefined,
-  profileForServerId: () => undefined,
+  profileForServerId: () => state.cachedProfile(),
   readWorkspaceNotificationHint: (data: unknown) => data,
   recordWorkspaceUnread: state.record,
   resolveWorkspaceProfile: (...args: unknown[]) => state.resolve(...args),
@@ -133,6 +134,8 @@ beforeEach(() => {
   state.profiles = [{ id: "A" }, { id: "B" }];
   state.activeProfile = { id: "A" };
   state.resolve.mockReset();
+  state.cachedProfile.mockReset();
+  state.cachedProfile.mockReturnValue(undefined);
   state.setActive.mockClear();
   state.replace.mockClear();
   state.record.mockClear();
@@ -143,6 +146,19 @@ beforeEach(() => {
   hooks.cells = [];
   hooks.cleanups = [];
   hooks.changed = false;
+});
+
+it("does not route through a partially cached identity before the resolver is unique", async () => {
+  const cached = { id: "A" };
+  state.cachedProfile.mockReturnValue(cached);
+  state.resolve.mockResolvedValue(undefined);
+  renderHook();
+
+  state.opened.at(-1)?.({ notification: notification("opened-cached", "aulora") });
+  await vi.waitFor(() => expect(state.resolve).toHaveBeenCalledTimes(1));
+  expect(state.cachedProfile).not.toHaveBeenCalled();
+  expect(state.setActive).not.toHaveBeenCalled();
+  expect(state.target).not.toHaveBeenCalled();
 });
 
 it("retries an opened notification after transient identity resolution fails", async () => {

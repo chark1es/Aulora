@@ -29,6 +29,8 @@ vi.mock("convex/react", () => ({
 import { resolveWorkspaceProfile } from "../src/lib/workspace-identity";
 import {
   configureWorkspaceNotificationStore,
+  profileForServerId,
+  rememberWorkspaceServerId,
   resetWorkspaceNotifications,
   workspaceServerIdIsAmbiguous,
 } from "../src/lib/workspace-notifications";
@@ -107,5 +109,34 @@ describe("resolveWorkspaceProfile", () => {
     ]);
 
     await expect(resolveWorkspaceProfile([acme, globex], "srv-acme")).resolves.toBeUndefined();
+  });
+
+  it("does not trust a partially cached unique id while its peer is unknown", async () => {
+    const acme = profile("chat.acme.com", "convex.acme.com");
+    const globex = profile("chat.globex.com", "convex.globex.com");
+    rememberWorkspaceServerId(acme.id, "srv-acme");
+    fetchState.ids = new Map([
+      ["convex.acme.com", "srv-acme"],
+      ["convex.globex.com", null],
+    ]);
+
+    // The synchronous cached shortcut must refuse too, otherwise the bridge
+    // could route before the resolver ever runs.
+    expect(profileForServerId([acme, globex], "srv-acme")).toBeUndefined();
+    await expect(resolveWorkspaceProfile([acme, globex], "srv-acme")).resolves.toBeUndefined();
+  });
+
+  it("does not trust a partially cached id when the unknown peer shares it", async () => {
+    const acme = profile("chat.acme.com", "convex.acme.com");
+    const globex = profile("chat.globex.com", "convex.globex.com");
+    rememberWorkspaceServerId(acme.id, "aulora");
+    fetchState.ids = new Map([
+      ["convex.acme.com", "aulora"],
+      ["convex.globex.com", "aulora"],
+    ]);
+
+    expect(profileForServerId([acme, globex], "aulora")).toBeUndefined();
+    await expect(resolveWorkspaceProfile([acme, globex], "aulora")).resolves.toBeUndefined();
+    expect(workspaceServerIdIsAmbiguous("aulora")).toBe(true);
   });
 });

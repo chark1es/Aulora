@@ -171,13 +171,22 @@ export function profileForServerId(
   serverId: string,
 ): ServerProfile | undefined {
   const key = serverKey(serverId);
+  const trimmed = serverId.trim();
   const rememberedId =
-    serverId.trim().length > 0 && !workspaceServerIdIsAmbiguous(serverId)
-      ? profileIdByServerId.get(serverId.trim())
+    trimmed.length > 0 && !workspaceServerIdIsAmbiguous(trimmed)
+      ? profileIdByServerId.get(trimmed)
       : undefined;
   if (rememberedId !== undefined) {
     const remembered = profiles.find((profile) => profile.id === rememberedId);
-    if (remembered !== undefined) {
+    // A remembered id is only proof of ownership once every current saved
+    // workspace has advertised one. Otherwise the cached match may have been
+    // learned before a second workspace was read, and that peer could share
+    // the same opaque `aulora`/custom id. Wait for the resolver to establish
+    // uniqueness instead of routing on the partial cache.
+    const everyIdentityKnown =
+      profiles.length > 0 &&
+      profiles.every((profile) => serverIdByProfileId.has(profile.id));
+    if (remembered !== undefined && everyIdentityKnown) {
       return remembered;
     }
   }

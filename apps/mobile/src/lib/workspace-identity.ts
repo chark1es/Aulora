@@ -87,11 +87,23 @@ export async function resolveWorkspaceProfile(
   if (workspaceServerIdIsAmbiguous(serverId)) {
     return undefined;
   }
+  // This only returns a remembered id when every current saved workspace has a
+  // known identity (or the id is an unambiguous workspace address). A partial
+  // cache is deliberately not a routing answer: the unread peer might advertise
+  // the same opaque id.
   const direct = profileForServerId(profiles, serverId);
   if (direct !== undefined) {
     return direct;
   }
-  if (profiles.length > MAX_IDENTITY_CANDIDATES) {
+  if (profiles.length === 0 || profiles.length > MAX_IDENTITY_CANDIDATES) {
+    return undefined;
+  }
+  const unresolvedBeforeFetch = profiles.some(
+    (profile) => workspaceServerIdForProfile(profile.id) === undefined,
+  );
+  if (!unresolvedBeforeFetch) {
+    // Every identity is known and the complete lookup above found no unique
+    // owner, so another network round can only repeat that answer.
     return undefined;
   }
   const candidates: IdentityCandidate[] = await Promise.all(

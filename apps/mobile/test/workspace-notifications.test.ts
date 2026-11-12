@@ -146,13 +146,19 @@ describe("profileForServerId", () => {
     expect(profileForServerId([one, two], "https://acme.com")).toBeUndefined();
   });
 
-  it("uses a remembered opaque AULORA_SERVER_ID instead of the address", () => {
+  it("uses a remembered opaque AULORA_SERVER_ID once every saved identity is known", () => {
     const acme = profile("chat.acme.com");
     const globex = profile("https://chat.globex.com");
     expect(profileForServerId([acme, globex], "6b1a0f8e-6a1f-4f4b-8c4d-2f6f6d2f5a11")).toBe(
       undefined,
     );
     rememberWorkspaceServerId(globex.id, "6b1a0f8e-6a1f-4f4b-8c4d-2f6f6d2f5a11");
+    // A partially cached opaque id is not proof: the other saved workspace has
+    // not advertised anything yet and could share it.
+    expect(profileForServerId([acme, globex], "6b1a0f8e-6a1f-4f4b-8c4d-2f6f6d2f5a11")).toBe(
+      undefined,
+    );
+    rememberWorkspaceServerId(acme.id, "srv-acme");
     expect(profileForServerId([acme, globex], "6b1a0f8e-6a1f-4f4b-8c4d-2f6f6d2f5a11")).toBe(globex);
   });
 
@@ -270,15 +276,16 @@ describe("workspace identity persistence", () => {
 
   it("loads an id written by an earlier launch before a launch response resolves", async () => {
     const globex = profile("https://chat.globex.com");
+    const acme = profile("chat.acme.com");
     const { store } = memoryStore(
       JSON.stringify({
-        serverIds: { [globex.id]: "srv-globex" },
+        serverIds: { [acme.id]: "srv-acme", [globex.id]: "srv-globex" },
         unread: { [globex.id]: 3 },
       }),
     );
     configureWorkspaceNotificationStore(store);
     await ensureWorkspaceNotificationsLoaded();
-    expect(profileForServerId([profile("chat.acme.com"), globex], "srv-globex")).toBe(globex);
+    expect(profileForServerId([acme, globex], "srv-globex")).toBe(globex);
     expect(workspaceUnreadSnapshot().get(globex.id)).toBe(3);
   });
 });

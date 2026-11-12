@@ -6,7 +6,6 @@ import {
   backfillWorkspaceServerId,
   clearWorkspaceUnread,
   ensureWorkspaceNotificationsLoaded,
-  profileForServerId,
   readWorkspaceNotificationHint,
   recordWorkspaceUnread,
   resolveWorkspaceProfile,
@@ -173,9 +172,13 @@ export function useWorkspaceNotifications(): void {
           queuePending(notification, mode);
           return;
         }
-        const profile =
-          profileForServerId(profiles, hint.serverId) ??
-          (await resolveWorkspaceProfile(profiles, hint.serverId).catch(() => undefined));
+        // Resolution itself accepts an already-verified cached id. It refuses
+        // a partial cache, so the bridge must not take a separate synchronous
+        // shortcut: that path could route a shared opaque id to the first
+        // workspace whose identity happened to be learned.
+        const profile = await resolveWorkspaceProfile(profiles, hint.serverId).catch(
+          () => undefined,
+        );
         if (cancelled) {
           queuePending(notification, mode);
           return;
