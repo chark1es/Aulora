@@ -6,6 +6,7 @@ import { Pressable, View } from "react-native";
 import { FlatList } from "react-native-gesture-handler";
 import type { ChatSurfaceRuntime } from "../../lib/chat-surface";
 import { impactFeedback, selectionFeedback } from "../../lib/haptics";
+import { dismissKeyboard } from "../../lib/keyboard";
 import {
   buildMessageRows,
   groupReactionsByMessage,
@@ -105,6 +106,9 @@ function useActionsSheet() {
   // Kept after closing so the sheet’s content stays put while it slides away.
   const [message, setMessage] = useState<MessagePayload>();
   const show = useCallback((next: MessagePayload) => {
+    // Typing then long-pressing a message should not leave the keyboard over
+    // the actions sheet.
+    dismissKeyboard();
     impactFeedback();
     setMessage(next);
     setVisible(true);
