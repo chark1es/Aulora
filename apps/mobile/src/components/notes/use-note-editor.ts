@@ -23,7 +23,7 @@ export interface NoteSelection {
   readonly end: number;
 }
 
-function useEditorState(note: NoteDetailView | undefined, startsEditing: boolean) {
+function useEditorState(startsEditing: boolean, note?: NoteDetailView) {
   const [title, setTitle] = useState("");
   const [body, setBody] = useState("");
   const [folderId, setFolderId] = useState<string | null>(null);
@@ -385,12 +385,12 @@ function sameDraft(
     a.body === b.body &&
     a.folderId === b.folderId &&
     a.tagIds.length === b.tagIds.length &&
-    a.tagIds.every((tagId, index) => tagId === b.tagIds[index])
+    a.tagIds.every((tagId, index) => tagId === b.tagIds.at(index))
   );
 }
 
 export function useNoteEditor(ctl: NotesController) {
-  const state = useEditorState(ctl.detail, ctl.selectedId === null);
+  const state = useEditorState(ctl.selectedId === null, ctl.detail);
   const editing = useBodyEditing(state);
   const save = useNoteSave(ctl, state);
   const selectedId = ctl.selectedId;
