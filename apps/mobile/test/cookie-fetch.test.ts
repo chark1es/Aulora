@@ -6,6 +6,7 @@ import {
   createCookieFetch,
   mergeCookieHeader,
   readSetCookies,
+  requestOrigin,
 } from "../src/lib/cookie-fetch";
 
 function memoryCookieStore(): { store: CookieStore; map: Map<string, string> } {
@@ -73,7 +74,58 @@ describe("readSetCookies", () => {
   });
 });
 
+describe("requestOrigin", () => {
+  it("names the workspace origin for absolute http(s) requests", () => {
+    expect(requestOrigin("https://chat.acme.com/api/auth/sign-out")).toBe("https://chat.acme.com");
+    expect(requestOrigin(new URL("http://localhost:3211/api/auth/sign-out"))).toBe(
+      "http://localhost:3211",
+    );
+  });
+
+  it("declines a relative, custom-scheme or unparsable request", () => {
+    expect(requestOrigin("/api/auth/sign-out")).toBeNull();
+    expect(requestOrigin("aulora://auth/callback")).toBeNull();
+    expect(requestOrigin("not a url")).toBeNull();
+  });
+});
+
 describe("createCookieFetch", () => {
+  it("sends an Origin header so Better Auth accepts a native cookie POST", async () => {
+    const { store } = memoryCookieStore();
+    await store.setItem(AUTH_COOKIE_KEY, "better-auth.session_token=abc");
+    const seen: Array<string | null> = [];
+    const baseFetch = vi.fn(async (_input: RequestInfo | URL, init?: RequestInit) => {
+      seen.push(new Headers(init?.headers).get("origin"));
+      return new Response("{}", { status: 200 });
+    });
+    const cookieFetch = createCookieFetch({
+      store,
+      baseFetch: baseFetch as unknown as typeof fetch,
+    });
+
+    await cookieFetch("https://chat.acme.com/api/auth/sign-out", { method: "POST" });
+    expect(seen).toEqual(["https://chat.acme.com"]);
+  });
+
+  it("keeps an explicit Origin header the caller supplied", async () => {
+    const { store } = memoryCookieStore();
+    const seen: Array<string | null> = [];
+    const baseFetch = vi.fn(async (_input: RequestInfo | URL, init?: RequestInit) => {
+      seen.push(new Headers(init?.headers).get("origin"));
+      return new Response("{}", { status: 200 });
+    });
+    const cookieFetch = createCookieFetch({
+      store,
+      baseFetch: baseFetch as unknown as typeof fetch,
+    });
+
+    await cookieFetch("https://chat.acme.com/api/auth/sign-out", {
+      method: "POST",
+      headers: { origin: "https://other.example.com" },
+    });
+    expect(seen).toEqual(["https://other.example.com"]);
+  });
+
   it("sends the stored cookie and persists set-cookie responses", async () => {
     const { store, map } = memoryCookieStore();
     const seen: Array<string | null> = [];

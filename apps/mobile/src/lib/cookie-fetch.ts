@@ -113,6 +113,44 @@ export interface CookieFetchOptions {
   readonly tokenKey?: string;
 }
 
+/**
+ * The origin a native auth request is made from.
+ *
+ * React Native's `fetch` sends neither `Origin` nor `Referer`. Better Auth's
+ * CSRF check rejects a cookie-bearing non-GET request with
+ * "Missing or null Origin" (`MISSING_OR_NULL_ORIGIN`), which made sign-out fail
+ * on the phone even though the session cookie was valid. A native app is not a
+ * browser: it holds the cookie in its own storage, so there is no ambient
+ * browser credential to protect. Naming the workspace origin is truthful and
+ * the backend still checks it against `trustedOrigins`; this does not disable or
+ * weaken that check for browsers.
+ *
+ * Only absolute http(s) URLs are eligible. `Origin` must be a bare origin, and
+ * Better Auth compares it with the trusted list exactly.
+ */
+export function requestOrigin(input: RequestInfo | URL): string | null {
+  const url =
+    typeof input === "string"
+      ? input
+      : input instanceof URL
+        ? input.toString()
+        : typeof (input as { url?: unknown }).url === "string"
+          ? (input as { url: string }).url
+          : null;
+  if (url === null) {
+    return null;
+  }
+  try {
+    const parsed = new URL(url);
+    if (parsed.protocol !== "http:" && parsed.protocol !== "https:") {
+      return null;
+    }
+    return parsed.origin === "null" ? null : parsed.origin;
+  } catch {
+    return null;
+  }
+}
+
 /** Wraps `fetch` so the Better Auth session survives across requests. */
 export function createCookieFetch(options: CookieFetchOptions): typeof fetch {
   const baseFetch = options.baseFetch ?? globalThis.fetch;
@@ -121,6 +159,14 @@ export function createCookieFetch(options: CookieFetchOptions): typeof fetch {
     const headers = new Headers(init?.headers);
     if (stored !== null && stored.length > 0 && !headers.has("cookie")) {
       headers.set("cookie", stored);
+    }
+    // See `requestOrigin`: native auth POSTs otherwise look origin-less to
+    // Better Auth and its CSRF check rejects the sign-out request.
+    if (!headers.has("origin")) {
+      const origin = requestOrigin(input);
+      if (origin !== null) {
+        headers.set("origin", origin);
+      }
     }
     if (options.tokenKey !== undefined && !headers.has("authorization")) {
       const token = await options.store.getItem(options.tokenKey);
