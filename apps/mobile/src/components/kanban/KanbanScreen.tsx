@@ -1,6 +1,6 @@
-import { useEffect } from "react";
-import { BackHandler, View } from "react-native";
+import { View } from "react-native";
 import { KeyboardAvoidingPane } from "../layout/ScreenContainer";
+import { useBackPress } from "../navigation/BackPress";
 import { BoardColumns } from "./BoardColumns";
 import { ArchivedBanner, BoardFilters, ReadOnlyBanner } from "./BoardFilters";
 import { BoardEmpty, BoardError, BoardHeader, BoardLoading } from "./BoardHeader";
@@ -50,24 +50,17 @@ function OpenCard({ ctl }: { readonly ctl: BoardController }) {
  * The Kanban addon on a phone or tablet: one board at a time, with columns
  * that page sideways and cards that open in a sheet.
  */
-export function KanbanScreen(props: BoardProps) {
+export function KanbanScreen({ active = true, ...props }: BoardProps) {
   const ctl = useBoard(props);
-  const composing = ctl.composing;
-  const setComposing = ctl.setComposing;
 
   // An inline card composer is a nested state of the board: Android back
   // cancels it instead of leaving the Boards tab. Sheets and the card page
-  // are native modals and handle their own back.
-  useEffect(() => {
-    if (composing === undefined) return;
-    const subscription = BackHandler.addEventListener("hardwareBackPress", () => {
-      setComposing(undefined);
-      return true;
-    });
-    return () => {
-      subscription.remove();
-    };
-  }, [composing, setComposing]);
+  // are native modals and handle their own back. Off-screen hub panes must not
+  // claim the press.
+  useBackPress(active && ctl.composing !== undefined, () => {
+    ctl.setComposing(undefined);
+    return true;
+  });
 
   return (
     // Lifts the add-card composer clear of the keyboard.

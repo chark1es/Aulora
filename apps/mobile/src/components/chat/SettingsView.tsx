@@ -1,11 +1,12 @@
 /* eslint-disable no-unused-vars -- the base rule reports parameter names in type signatures; Biome checks real unused code */
 import type { PresenceRow } from "@aulora/core";
 import { Button, Text } from "@aulora/ui-native";
-import { useEffect, useState } from "react";
-import { BackHandler, Linking, View } from "react-native";
+import { useState } from "react";
+import { Linking, View } from "react-native";
 import { KeyboardAwareScrollView } from "react-native-keyboard-controller";
 import { presenceLabel } from "../../lib/presence";
 import type { PushRegistrationState } from "../../lib/use-push-registration";
+import { useBackPress } from "../navigation/BackPress";
 import { DeviceSettingsSection } from "../voice/DeviceSettingsSection";
 import { DebugLogsSection } from "./DebugLogsSection";
 import { PaneHeader, RoundButton, useDockClearance } from "./HubPane";
@@ -35,6 +36,8 @@ const PUSH_LABELS: ReadonlyMap<PushRegistrationState, string> = new Map([
 ]);
 
 export interface SettingsViewProps {
+  /** True while the hub pane is the visible surface. */
+  readonly active: boolean;
   readonly workspaceName: string;
   readonly ownUserId: string;
   readonly ownDisplayName: string;
@@ -278,17 +281,12 @@ export function SettingsView(props: SettingsViewProps) {
   const [page, setPage] = useState<DetailPage | null>(null);
 
   // A settings page is pushed over the You tab, so Android back returns to the
-  // tab it came from instead of unwinding the chat behind it.
-  useEffect(() => {
-    if (page === null) return;
-    const subscription = BackHandler.addEventListener("hardwareBackPress", () => {
-      setPage(null);
-      return true;
-    });
-    return () => {
-      subscription.remove();
-    };
-  }, [page]);
+  // tab it came from. Only the visible hub pane owns the press: the pane stays
+  // mounted while somebody swipes back to the conversation.
+  useBackPress(props.active && page !== null, () => {
+    setPage(null);
+    return true;
+  });
 
   if (page !== null) {
     return (

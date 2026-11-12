@@ -1,9 +1,8 @@
 import { type ChannelView, type MessagePayload, Permission } from "@aulora/core";
 import AsyncStorage from "@react-native-async-storage/async-storage";
-import { useCallback, useEffect } from "react";
-import { Alert, BackHandler, Keyboard } from "react-native";
+import { useCallback } from "react";
+import { Alert, Keyboard } from "react-native";
 import { api } from "../../../../../packages/convex/convex/_generated/api";
-import { chatBackTarget } from "../../lib/back-navigation";
 import { createCategory } from "../../lib/backend-actions";
 import {
   manageableChannelRoles,
@@ -25,15 +24,13 @@ function useChatScreenNavigation(data: ChatScreenData) {
     runtime,
     channels,
     voice,
-    pane,
-    hubTab,
     threadRoot,
     setActiveChannelId,
     setPane,
     setThreadRoot,
     setQuote,
     setJumpToMessageId,
-    setHubTab,
+    restorePreviousLocation,
   } = data;
 
   const openChannel = useCallback(
@@ -92,29 +89,18 @@ function useChatScreenNavigation(data: ChatScreenData) {
     [channels, runtime, setActiveChannelId, setThreadRoot, setPane],
   );
 
-  useEffect(() => {
-    const subscription = BackHandler.addEventListener("hardwareBackPress", () => {
-      switch (chatBackTarget({ threadOpen: threadRoot !== null, pane, hubTab })) {
-        case "thread":
-          setThreadRoot(null);
-          return true;
-        case "conversation":
-          setPane(1);
-          return true;
-        case "hub":
-          setPane(0);
-          return true;
-        case "channels":
-          setHubTab("chats");
-          return true;
-        case "exit":
-          return false;
-      }
-    });
-    return () => {
-      subscription.remove();
-    };
-  }, [pane, hubTab, threadRoot, setPane, setHubTab, setThreadRoot]);
+  /**
+   * Android back at the chat surface. A thread page is an overlay on the
+   * conversation, so it closes first; otherwise retrace the pane/tab history.
+   * Returning `false` lets Android leave the app from the chat's own root.
+   */
+  const handleBack = useCallback((): boolean => {
+    if (threadRoot !== null) {
+      setThreadRoot(null);
+      return true;
+    }
+    return restorePreviousLocation();
+  }, [threadRoot, setThreadRoot, restorePreviousLocation]);
 
   const goToPane = useCallback(
     (next: PaneIndex) => {
@@ -125,7 +111,7 @@ function useChatScreenNavigation(data: ChatScreenData) {
     [setPane],
   );
 
-  return { openChannel, joinVoiceChannel, openThreadFromInbox, goToPane };
+  return { openChannel, joinVoiceChannel, openThreadFromInbox, goToPane, handleBack };
 }
 
 function useChatScreenCreation(

@@ -12,7 +12,7 @@ import {
 } from "./NoteEditorParts";
 import { NoteBackButton, NotesError, NotesLoading } from "./NoteParts";
 import { editorActions } from "./note-editor-actions";
-import { useNoteEditor } from "./use-note-editor";
+import type { NoteEditorController } from "./use-note-editor";
 import type { NotesController } from "./use-notes";
 
 function NoteEditorHeader({
@@ -41,7 +41,7 @@ function NoteEditorHeader({
 }
 
 /** Offers a way out when the note changed under a draft; editing stays possible. */
-function NoteReloadBanner({ editor }: { readonly editor: ReturnType<typeof useNoteEditor> }) {
+function NoteReloadBanner({ editor }: { readonly editor: NoteEditorController }) {
   if (!editor.reloadPrompt && !editor.replacingNewerVersion) return null;
   if (!editor.reloadPrompt) {
     return (
@@ -69,8 +69,13 @@ function NoteReloadBanner({ editor }: { readonly editor: ReturnType<typeof useNo
 }
 
 /** Writes one note: a Markdown field with a preview, tags and a folder. */
-export function NoteEditorScreen({ ctl }: { readonly ctl: NotesController }) {
-  const editor = useNoteEditor(ctl);
+export function NoteEditorScreen({
+  ctl,
+  editor,
+}: {
+  readonly ctl: NotesController;
+  readonly editor: NoteEditorController;
+}) {
   const { title, body, busy, sheet, setSheet, save } = editor;
   const isNew = ctl.selectedId === null;
   const note = ctl.detail;

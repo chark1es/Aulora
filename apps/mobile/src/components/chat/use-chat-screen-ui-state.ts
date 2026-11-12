@@ -1,13 +1,14 @@
 import type { ChannelView, MessagePayload } from "@aulora/core";
-import { useState } from "react";
+import { useCallback, useRef, useState } from "react";
+import { type ChatLocation, popChatLocation, pushChatLocation } from "../../lib/back-navigation";
 import type { Nullable } from "./chat-screen-types";
 import type { HubTab } from "./HubPane";
 import type { PaneIndex } from "./SwipePanes";
 
 function useChatScreenViewState() {
   const [activeChannelId, setActiveChannelId] = useState<string | undefined>(undefined);
-  const [pane, setPane] = useState<PaneIndex>(1);
-  const [hubTab, setHubTab] = useState<HubTab>("chats");
+  const [pane, setPaneState] = useState<PaneIndex>(1);
+  const [hubTab, setHubTabState] = useState<HubTab>("chats");
   const [kanbanBoardId, setKanbanBoardId] = useState<string | null>(null);
   const [noteId, setNoteId] = useState<string | null>(null);
   const [newMessageOpen, setNewMessageOpen] = useState(false);
@@ -19,6 +20,37 @@ function useChatScreenViewState() {
   const [workspaceSwitcherOpen, setWorkspaceSwitcherOpen] = useState(false);
   const [bansOpen, setBansOpen] = useState(false);
   const [roleColorsOpen, setRoleColorsOpen] = useState(false);
+
+  // Remember the pane/tab somebody actually left. The refs keep the setters
+  // stable and let Back restore both values in one render without pushing the
+  // restored state back onto the stack.
+  const location = useRef<ChatLocation>({ pane: 1, hubTab: "chats" });
+  location.current = { pane, hubTab };
+  const history = useRef<ChatLocation[]>([]);
+
+  const setPane = useCallback((next: PaneIndex) => {
+    if (next === location.current.pane) return;
+    history.current = pushChatLocation(history.current, location.current);
+    setPaneState(next);
+  }, []);
+
+  const setHubTab = useCallback((next: HubTab) => {
+    if (next === location.current.hubTab) return;
+    history.current = pushChatLocation(history.current, location.current);
+    setHubTabState(next);
+  }, []);
+
+  /** Restores the previous pane/tab; `false` at the chat's own root. */
+  const restorePreviousLocation = useCallback((): boolean => {
+    const previous = popChatLocation(history.current);
+    if (previous === null) return false;
+    history.current = previous.history;
+    location.current = previous.location;
+    setPaneState(previous.location.pane);
+    setHubTabState(previous.location.hubTab);
+    return true;
+  }, []);
+
   return {
     activeChannelId,
     setActiveChannelId,
@@ -26,6 +58,7 @@ function useChatScreenViewState() {
     setPane,
     hubTab,
     setHubTab,
+    restorePreviousLocation,
     kanbanBoardId,
     setKanbanBoardId,
     noteId,
