@@ -85,6 +85,35 @@ function useEditorState(note?: NoteDetailView) {
     setTitle((current) => (current.trim() === saved.title ? saved.title : current));
   }, []);
 
+  /**
+   * Drops the local draft after a confirmed discard. The editor hook stays
+   * mounted while the list is showing, so merely changing the notes mode left
+   * the discarded title/body/tags in state and they reappeared when the same
+   * note was reopened. Reset to the subscribed revision (or to an empty new
+   * note when no detail is loaded yet); the seed effect then starts clean.
+   */
+  const discardDraft = useCallback(() => {
+    if (note !== undefined) {
+      applySeed({
+        noteId: note.id,
+        revision: note.revision,
+        title: note.title,
+        body: note.body,
+        folderId: note.folderId,
+        tagIds: [...note.tagIds],
+      });
+    } else {
+      seedRef.current = undefined;
+      setSaved(false);
+      setTitle("");
+      setBody("");
+      setFolderId(null);
+      setTagIds([]);
+    }
+    setDismissedRevision(undefined);
+    setSaveConflict(false);
+  }, [note, applySeed]);
+
   /** Replaces local edits with the latest subscribed revision. */
   const reloadLatest = useCallback(() => {
     if (note === undefined) return;
@@ -141,6 +170,7 @@ function useEditorState(note?: NoteDetailView) {
     replacingNewerVersion: dismissedRevision !== undefined,
     saved,
     reloadLatest,
+    discardDraft,
     keepMyVersion,
     dirty,
     showReloadPrompt,
@@ -344,12 +374,20 @@ export function useNoteEditor(ctl: NotesController) {
     );
   };
   const backToList = () => {
-    requestNoteDiscard(state.dirty, ctl.backToList, confirmDiscard);
+    requestNoteDiscard(
+      state.dirty,
+      () => {
+        state.discardDraft();
+        ctl.backToList();
+      },
+      confirmDiscard,
+    );
   };
   const openHistory = (noteId: string) => {
     requestNoteDiscard(
       state.dirty,
       () => {
+        state.discardDraft();
         ctl.openHistory(noteId);
       },
       confirmDiscard,

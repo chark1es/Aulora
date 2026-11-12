@@ -49,7 +49,22 @@ beforeEach(() => {
 });
 
 function setup() {
-  const ctl = {
+  const ctl: {
+    detail:
+      | {
+          id: string;
+          revision: number;
+          title: string;
+          body: string;
+          folderId: string | null;
+          tagIds: string[];
+        }
+      | undefined;
+    mutations: { updateNote: ReturnType<typeof vi.fn> };
+    setError: ReturnType<typeof vi.fn>;
+    backToList: ReturnType<typeof vi.fn>;
+    openHistory: ReturnType<typeof vi.fn>;
+  } = {
     detail: {
       id: "note",
       revision: 1,
@@ -61,6 +76,7 @@ function setup() {
     mutations: { updateNote: vi.fn(async () => 3) },
     setError: vi.fn(),
     backToList: vi.fn(),
+    openHistory: vi.fn(),
   };
   const render = () => {
     let editor: ReturnType<typeof useNoteEditor>;
@@ -81,6 +97,7 @@ it("keeps the replacement hint through failed saves and clears it with Saved onl
   const { ctl, render } = setup();
   expect(render().dirty).toBe(false);
   render().setBody("My version");
+  if (ctl.detail === undefined) throw new Error("expected a loaded note");
   ctl.detail = { ...ctl.detail, revision: 2, body: "Remote version" };
   expect(render().reloadPrompt).toBe(true);
   render().keepMyVersion();
@@ -116,4 +133,42 @@ it("uses shared discard wording and preserves edits when Keep editing is selecte
     { text: "Discard changes", style: "destructive", onPress: expect.any(Function) },
   ]);
   expect(render().body).toBe("Unsaved");
+});
+
+function confirmDiscard(): void {
+  const actions = hooks.alert.mock.calls[0]?.[2] as
+    | Array<{ text: string; onPress?: () => void }>
+    | undefined;
+  actions?.find((action) => action.text === "Discard changes")?.onPress?.();
+}
+
+it("drops a discarded draft so reopening the same note shows the saved text", () => {
+  const { ctl, render } = setup();
+  if (ctl.detail === undefined) throw new Error("expected a loaded note");
+  const saved = { ...ctl.detail };
+  render().setBody("Unsaved body");
+  render().backToList();
+  confirmDiscard();
+  expect(ctl.backToList).toHaveBeenCalledTimes(1);
+
+  // The retained editor hook outlives the editor screen. While the list shows,
+  // the detail query is skipped, then reopening the same revision loads it.
+  ctl.detail = undefined;
+  render();
+  ctl.detail = saved;
+  expect(render()).toMatchObject({ body: "Original", title: "Plan", dirty: false });
+});
+
+it("drops a discarded draft before opening history, so Back from history is clean", () => {
+  const { ctl, render } = setup();
+  if (ctl.detail === undefined) throw new Error("expected a loaded note");
+  const saved = { ...ctl.detail };
+  render().setBody("Unsaved body");
+  render().openHistory("note");
+  confirmDiscard();
+  expect(ctl.openHistory).toHaveBeenCalledWith("note");
+
+  // History -> Back returns to the retained editor without a new detail fetch.
+  ctl.detail = saved;
+  expect(render()).toMatchObject({ body: "Original", dirty: false });
 });

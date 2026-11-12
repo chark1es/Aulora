@@ -14,6 +14,9 @@ function useChatScreenViewState() {
   const [newMessageOpen, setNewMessageOpen] = useState(false);
   const [pinsOpen, setPinsOpen] = useState(false);
   const [profileFor, setProfileFor] = useState<string | null>(null);
+  // The conversation's nested selections live here rather than in the overlay
+  // hook so a history entry can capture them with the pane and channel.
+  const [threadRoot, setThreadRoot] = useState<Nullable<MessagePayload>>(null);
   const [quote, setQuote] = useState<Nullable<MessagePayload>>(null);
   const [jumpToMessageId, setJumpToMessageId] = useState<string | null>(null);
   const [showHidden, setShowHidden] = useState(false);
@@ -24,8 +27,22 @@ function useChatScreenViewState() {
   // Remember the pane/tab somebody actually left. The refs keep the setters
   // stable and let Back restore both values in one render without pushing the
   // restored state back onto the stack.
-  const location = useRef<ChatLocation>({ pane: 1, hubTab: "chats" });
-  location.current = { pane, hubTab };
+  const location = useRef<ChatLocation>({
+    pane: 1,
+    hubTab: "chats",
+    channelId: undefined,
+    threadRoot: null,
+    quote: null,
+    jumpToMessageId: null,
+  });
+  location.current = {
+    pane,
+    hubTab,
+    channelId: activeChannelId,
+    threadRoot,
+    quote,
+    jumpToMessageId,
+  };
   const history = useRef<ChatLocation[]>([]);
 
   const setPane = useCallback((next: PaneIndex) => {
@@ -40,15 +57,23 @@ function useChatScreenViewState() {
     setHubTabState(next);
   }, []);
 
-  /** Restores the previous pane/tab; `false` at the chat's own root. */
-  const restorePreviousLocation = useCallback((): boolean => {
+  /**
+   * Restores the whole place somebody left; `null` at the chat's own root.
+   * The returned location lets the caller reopen that conversation's session.
+   * Setters are the raw state setters so a restore never pushes a new entry.
+   */
+  const restorePreviousLocation = useCallback((): ChatLocation | null => {
     const previous = popChatLocation(history.current);
-    if (previous === null) return false;
+    if (previous === null) return null;
     history.current = previous.history;
     location.current = previous.location;
     setPaneState(previous.location.pane);
     setHubTabState(previous.location.hubTab);
-    return true;
+    setActiveChannelId(previous.location.channelId);
+    setThreadRoot(previous.location.threadRoot ?? null);
+    setQuote(previous.location.quote ?? null);
+    setJumpToMessageId(previous.location.jumpToMessageId ?? null);
+    return previous.location;
   }, []);
 
   return {
@@ -73,6 +98,8 @@ function useChatScreenViewState() {
     setQuote,
     jumpToMessageId,
     setJumpToMessageId,
+    threadRoot,
+    setThreadRoot,
     showHidden,
     setShowHidden,
     workspaceSwitcherOpen,
@@ -88,7 +115,6 @@ function useChatScreenOverlayState() {
   const [createOpen, setCreateOpen] = useState(false);
   const [createBusy, setCreateBusy] = useState(false);
   const [createError, setCreateError] = useState<string | null>(null);
-  const [threadRoot, setThreadRoot] = useState<Nullable<MessagePayload>>(null);
   const [channelAction, setChannelAction] = useState<Nullable<ChannelView>>(null);
   const [editChannelModal, setEditChannelModal] = useState<Nullable<ChannelView>>(null);
   const [editChannelBusy, setEditChannelBusy] = useState(false);
@@ -104,8 +130,6 @@ function useChatScreenOverlayState() {
     setCreateBusy,
     createError,
     setCreateError,
-    threadRoot,
-    setThreadRoot,
     channelAction,
     setChannelAction,
     editChannelModal,

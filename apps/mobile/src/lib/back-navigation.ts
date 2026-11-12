@@ -1,3 +1,4 @@
+import type { MessagePayload } from "@aulora/core";
 import type { HubTab } from "../components/chat/HubPane";
 import type { PaneIndex } from "../components/chat/SwipePanes";
 
@@ -9,10 +10,23 @@ import type { PaneIndex } from "../components/chat/SwipePanes";
  * earlier. Remembering the state they actually left is what makes Back feel
  * native; unwinding a hardcoded pane -> hub -> Channels order would send them
  * somewhere they had not been.
+ *
+ * The visible conversation and its nested selections travel with the entry.
+ * A->hub->B->Back->Back must show A again, not the pane it was left in with
+ * B's id still selected; a thread, quote or message jump is part of that place
+ * too.
  */
 export interface ChatLocation {
   readonly pane: PaneIndex;
   readonly hubTab: HubTab;
+  /** The conversation that was open, if any. */
+  readonly channelId?: string | undefined;
+  /** The thread overlay, if one was open over the conversation. */
+  readonly threadRoot?: MessagePayload | null;
+  /** The composer's quoted message. */
+  readonly quote?: MessagePayload | null;
+  /** The message the conversation was scrolled to. */
+  readonly jumpToMessageId?: string | null;
 }
 
 /** A bounded stack: enough to retrace a session without growing forever. */

@@ -19,12 +19,13 @@ import type { PaneIndex } from "./SwipePanes";
 import type { ThreadInboxItem } from "./ThreadsInbox";
 import type { ChatScreenData } from "./use-chat-screen-data";
 
-function useChatScreenNavigation(data: ChatScreenData) {
+export function useChatScreenNavigation(data: ChatScreenData) {
   const {
     runtime,
     channels,
     voice,
     threadRoot,
+    pane,
     setActiveChannelId,
     setPane,
     setThreadRoot,
@@ -95,12 +96,27 @@ function useChatScreenNavigation(data: ChatScreenData) {
    * Returning `false` lets Android leave the app from the chat's own root.
    */
   const handleBack = useCallback((): boolean => {
-    if (threadRoot !== null) {
+    // A thread is an overlay on the conversation. Only consume Back for it
+    // while that conversation is visible; from the hub the press belongs to the
+    // pane/tab history, even if a thread remains selected behind the hub.
+    if (threadRoot !== null && pane === 1) {
       setThreadRoot(null);
       return true;
     }
-    return restorePreviousLocation();
-  }, [threadRoot, setThreadRoot, restorePreviousLocation]);
+    const restored = restorePreviousLocation();
+    if (restored === null) return false;
+    // A restored conversation must be reopened in the chat session, not merely
+    // selected: otherwise Back shows the pane somebody left but the message
+    // session still belongs to the channel they opened from the hub. A hub
+    // entry carries no conversation to open.
+    if (restored.pane === 1 && restored.channelId !== undefined) {
+      const summary = channels.find((entry) => entry.id === restored.channelId);
+      if (runtime !== undefined && summary !== undefined) {
+        void runtime.session.openChannel(summary);
+      }
+    }
+    return true;
+  }, [threadRoot, pane, setThreadRoot, restorePreviousLocation, channels, runtime]);
 
   const goToPane = useCallback(
     (next: PaneIndex) => {
