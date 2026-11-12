@@ -96,7 +96,8 @@ Include the version or commit, platform, deployment method, reproduction steps, 
 
 Open **Your settings → Debug logs** on web or desktop, or **You → Debug logs**
 on mobile. Errors and warnings are recorded and listed automatically, newest
-first. Clear logs, repeat the failing action, then enter the steps and expected
+first, including failures the app caught and showed as an alert or inline
+message. Clear logs, repeat the failing action, then enter the steps and expected
 result. Download the JSON report on web/desktop or copy it on mobile.
 
 The buffer keeps the newest 200 errors and warnings, up to 256 KiB, and discards

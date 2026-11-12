@@ -16,6 +16,7 @@ import {
   Permission,
   PRESENCE_SCOPE_MAX,
   type RoleMentionTarget,
+  recordDebugFailure,
   resolveServerCapabilities,
   suppressesBroadcast,
   userFacingError,
@@ -182,6 +183,9 @@ const LAST_CHANNEL_KEY = "aulora.lastChannel.v1:";
 const MEMBERS_OPEN_KEY = "aulora.membersOpen.v1";
 const MESSAGE_ALIGNMENT_KEY = "aulora.messageAlignment.v1";
 function errorMessage(error: unknown): string {
+  // Every action failure shown to the person is also kept in the local report;
+  // otherwise a session that only displayed "couldn't send" leaves no trace.
+  recordDebugFailure("ui.action", error);
   return userFacingError(error);
 }
 

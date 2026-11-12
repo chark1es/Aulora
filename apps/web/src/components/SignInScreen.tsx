@@ -1,5 +1,6 @@
 /* eslint-disable no-unused-vars -- the base rule reports parameter names in type signatures; Biome checks real unused code */
 import {
+  recordDebugFailure,
   resolveSignInMethods,
   type ServerProfile,
   type SignInMethods,
@@ -33,7 +34,7 @@ import {
 } from "react";
 import { api } from "../../../../packages/convex/convex/_generated/api";
 import type { AuthActions } from "../lib/auth-client";
-import { describeAuthError, takeAuthErrorFromUrl } from "../lib/auth-errors";
+import { authFailureDetail, describeAuthError, takeAuthErrorFromUrl } from "../lib/auth-errors";
 import { isDesktop } from "../lib/desktop";
 import {
   beginOAuth,
@@ -138,6 +139,7 @@ function useSignInForm(actions: AuthActions, siteUrl: string) {
       subscribeAuthError(() => {
         const stored = takeStoredAuthHandoffError(siteUrl);
         if (stored !== null) {
+          recordDebugFailure("auth.callback", stored);
           setState((current) => ({ ...current, error: describeAuthError(stored) }));
         }
       }),
@@ -149,6 +151,7 @@ function useSignInForm(actions: AuthActions, siteUrl: string) {
     try {
       const result = await task();
       if (result.error !== null) {
+        recordDebugFailure("auth.signin", authFailureDetail(result.error));
         patch({
           error:
             result.error.message === undefined
@@ -158,7 +161,8 @@ function useSignInForm(actions: AuthActions, siteUrl: string) {
       } else {
         clearStoredAuthHandoffError();
       }
-    } catch {
+    } catch (error) {
+      recordDebugFailure("auth.signin", authFailureDetail(error));
       patch({ error: "Could not reach the workspace. Try again." });
     } finally {
       patch({ pending: null });

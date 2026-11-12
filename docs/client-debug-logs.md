@@ -6,11 +6,15 @@ before sign-in. No server configuration is needed and reports are never uploaded
 automatically.
 
 The local session buffer captures `console.error`, `console.warn`, uncaught
-JavaScript errors, unhandled promise rejections and errors caught by the query
-and route boundaries. Entries include an ISO timestamp, source, and error stack
-when available. Desktop uses the same web logger. Mobile also hooks React Native's
-global error handler and enables Hermes rejection tracking in release builds.
-Original console output and the native global error handler continue to run.
+JavaScript errors, unhandled promise rejections, errors caught by the query and
+route boundaries, and failures the app catches to show an alert or inline
+message. Entries include an ISO timestamp, source, and error stack when
+available. A handled failure is recorded by the shared helper that turns it into
+user-facing text, so a send that fails, a query that errors or a rejected sign-in
+appears even though nothing crashed. Desktop uses the same web logger. Mobile
+also hooks React Native's global error handler and enables Hermes rejection
+tracking in release builds. Original console output and the native global error
+handler continue to run.
 
 The buffer keeps at most **200 entries** and **256 KiB** (a conservative UTF-8
 size budget). Oldest entries are discarded first; reports include the number
@@ -46,16 +50,19 @@ paths, stacks, and reproduction notes may still contain private data. Clipboard
 reports remain on the system clipboard until replaced.
 
 Errors intentionally swallowed without logging cannot be intercepted. New
-handled failures should call `debugLog.record("feature.action", error)` from
-`@aulora/core` or use `console.error`. Avoid passing user content or credentials.
+handled failures should call
+`recordDebugFailure("feature.action", error)` from `@aulora/core` (or
+`debugLog.record`) at the catch site. Avoid passing user content or credentials.
 This logger does not capture native OS crashes, Rust shell logs, backend logs,
 errors before initialization, or another runtime's errors. Native fatal errors
 can terminate the process before an in-memory report can be exported.
 
 Verification: core tests cover eviction, size limits, truncation, redaction,
-serialization safety, console forwarding and clear/subscription behavior. Web
-and mobile tests cover the automatic newest-first entry list, the display cap,
-and report controls. A release build on iOS/Android should also exercise
+serialization safety, console forwarding, handled-failure capture, and
+clear/subscription behavior. Web and mobile tests cover the automatic
+newest-first entry list, the display cap, and report controls, and the web
+session tests check that a rejected session is recorded after the previous
+account's log is cleared. A release build on iOS/Android should also exercise
 rejection capture and clipboard export.
 
 On web and desktop, right-click an empty area and choose **Debug logs**. This

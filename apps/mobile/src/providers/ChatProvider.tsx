@@ -12,6 +12,7 @@ import {
   Permission,
   type PresenceRow,
   type RoleMentionTarget,
+  recordDebugFailure,
   type SearchHit,
   SearchIndex,
   searchDocumentFor,
@@ -172,7 +173,8 @@ export function ChatProvider({ client, userId, children }: ChatProviderProps) {
       .then((items) => {
         if (!cancelled) setOutbox(items);
       })
-      .catch(() => {
+      .catch((error: unknown) => {
+        recordDebugFailure("outbox.load", error);
         if (!cancelled)
           setStartupError("Could not load your unsent messages. Try reopening the workspace.");
       });
@@ -194,6 +196,7 @@ export function ChatProvider({ client, userId, children }: ChatProviderProps) {
         setReady(true);
       })
       .catch((error: unknown) => {
+        recordDebugFailure("chat.start", error);
         if (cancelled) {
           return;
         }
@@ -293,7 +296,7 @@ export function ChatProvider({ client, userId, children }: ChatProviderProps) {
       if (AppState.currentState !== "active") return;
       // The in-memory list answers "is anything queued?" without a store read.
       if (!outboxItemsRef.current.some((item) => item.status !== "failed")) return;
-      void flush().catch(() => undefined);
+      void flush().catch((error: unknown) => recordDebugFailure("outbox.flush", error));
     };
     const start = () => {
       if (timer === undefined) timer = setInterval(retry, 5000);

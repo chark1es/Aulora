@@ -1,6 +1,7 @@
 import { NativeBlobatar } from "@aulora/avatars/native";
 import {
   notifyAuthChanged,
+  recordDebugFailure,
   resolveSignInMethods,
   type ServerProfile,
   type SignInMethods,
@@ -100,6 +101,9 @@ function useSignInController(
     const consume = () => {
       void takeStoredAuthHandoffError(cookieStore, siteUrl)
         .then((message) => {
+          if (message !== null) {
+            recordDebugFailure("auth.callback", message);
+          }
           if (active && message !== null) {
             setState((current) => ({ ...current, error: message }));
           }
@@ -119,13 +123,15 @@ function useSignInController(
     try {
       const result = await task();
       if (result.error !== null) {
+        recordDebugFailure("auth.signin", result.error.message ?? "Auth request failed");
         patch({
           error: result.error.message ?? "That did not work. Check your details and try again.",
         });
       } else {
         await clearStoredAuthHandoffError(cookieStore).catch(() => undefined);
       }
-    } catch {
+    } catch (error) {
+      recordDebugFailure("auth.signin", error);
       patch({ error: "Could not reach the workspace. Try again." });
     } finally {
       patch({ pending: null });
@@ -158,11 +164,13 @@ function useSignInController(
         delivery,
       );
       if (result.status === "error") {
+        recordDebugFailure("auth.provider", result.message);
         patch({ error: result.message });
       } else if (result.status === "success") {
         notifyAuthChanged();
       }
-    } catch {
+    } catch (error) {
+      recordDebugFailure("auth.provider", error);
       patch({ error: "Could not open the sign-in browser." });
     } finally {
       patch({ pending: null });

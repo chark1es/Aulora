@@ -116,6 +116,22 @@ export function createDebugLog() {
 
 export const debugLog = createDebugLog();
 
+/**
+ * Records a failure an operation caught and is handling.
+ *
+ * Uncaught errors reach the runtime error hooks, and logged console output is
+ * captured on its own. A failure the UI catches so it can show an alert or an
+ * inline message never does, so a report would look identical to a session with
+ * no problem. Call this where the failure is caught or in the shared helper
+ * that turns it into user-facing text.
+ *
+ * Shared modules should import this instead of an app's `lib/debug-log`, which
+ * installs process-wide console and crash handlers as a side effect.
+ */
+export function recordDebugFailure(source: string, error: unknown): void {
+  debugLog.record(source, error);
+}
+
 /** Install once per JS runtime, preserving the existing console behavior. */
 let consoleInstalled = false;
 export function installDebugConsole(): void {

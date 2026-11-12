@@ -2,6 +2,7 @@
 import {
   clientVersionState,
   debugLog,
+  recordDebugFailure,
   resetProviderToken,
   type ServerProfile,
   setProviderTokenIdentity,
@@ -13,7 +14,7 @@ import { useConvexAuth, useQuery } from "convex/react";
 import { lazy, Suspense, useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { api } from "../../../../packages/convex/convex/_generated/api";
 import { type AuloraAuthClient, type AuthActions, authActionsFromClient } from "../lib/auth-client";
-import { isInvalidSessionError } from "../lib/auth-errors";
+import { authFailureDetail, isInvalidSessionError } from "../lib/auth-errors";
 import { CLIENT_VERSION } from "../lib/client-version";
 import type { ConnectionRecovery } from "../lib/connection-recovery";
 import { logAuthState, useRemountLog } from "../lib/remount-debug";
@@ -189,14 +190,19 @@ export function SessionGate({ profile, authClient, client, connection }: Session
       return;
     }
     droppedInvalidSession.current = true;
+    // Drop everything captured under the account that just left, then record
+    // *why* the session was rejected: that reason is worth keeping, and
+    // recording it before the clear would leak the previous account's log.
+    const rejection = authFailureDetail(session.error);
     debugLog.clear();
+    recordDebugFailure("auth.session", rejection);
     resetProviderToken(authClient);
     const storedToken = readSessionToken(profile.siteUrl) !== null;
     clearSessionToken(profile.siteUrl);
     if (storedToken) {
       connection.retry();
     }
-  }, [invalidSession, authClient, profile.siteUrl, connection]);
+  }, [invalidSession, session.error, authClient, profile.siteUrl, connection]);
 
   // Every wait a server restart can break: a session lookup that never answers
   // or fails, and — the case that used to stick forever — a signed-in session

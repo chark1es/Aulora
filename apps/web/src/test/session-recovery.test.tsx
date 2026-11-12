@@ -220,6 +220,10 @@ describe("ProfileSession recovery", () => {
     render(<ProfileSession profile={PROFILE} />);
 
     expect(readSessionToken(PROFILE.siteUrl)).toBeNull();
+    const report = JSON.parse(debugLog.report("new-account", ""));
+    expect(report.entries.map((entry: { source: string }) => entry.source)).toContain(
+      "auth.session",
+    );
     expect(debugLog.report("new-account", "")).not.toContain("sentinel-old-account");
     expect(screen.getByText("Signed in")).toBeInTheDocument();
     expect(harness.clients).toHaveLength(2);

@@ -8,6 +8,7 @@ import {
   Outbox,
   type OutboxItem,
   type PresenceRow,
+  recordDebugFailure,
   type SearchHit,
   SearchIndex,
   searchDocumentFor,
@@ -157,6 +158,9 @@ export function ChatProvider({
     let cancelled = false;
     const isCancelled = () => cancelled;
     const reportQueryError = (error: unknown) => {
+      // Live-query failures never throw into a handler; without this they are
+      // only ever a banner and never reach the debug report.
+      recordDebugFailure("query.error", error);
       setQueryError(error instanceof Error ? error : new Error(String(error)));
     };
     const outboxStore = new Outbox({ store: webOutboxStore(client.url, userId) });
@@ -265,8 +269,9 @@ export function ChatProvider({
     }
     try {
       await active.flush((item) => sendOutboxItem(chat.session, item));
-    } catch {
+    } catch (error) {
       // Keep the queue intact; the ticker retries on the next tick.
+      recordDebugFailure("outbox.flush", error);
     }
     await refreshOutbox();
   }, [refreshOutbox]);

@@ -1,4 +1,4 @@
-import { userFacingError } from "@aulora/core";
+import { recordDebugFailure, userFacingError } from "@aulora/core";
 
 export interface ChatScreenProps {
   readonly workspaceName: string;
@@ -12,5 +12,8 @@ export interface ChatScreenProps {
 export type Nullable<T> = T | null;
 
 export function errorMessage(error: unknown): string {
+  // A caught action failure that only becomes an alert would otherwise leave
+  // the debug report empty, exactly like a session with no problem.
+  recordDebugFailure("ui.action", error);
   return userFacingError(error);
 }

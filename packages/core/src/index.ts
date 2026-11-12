@@ -47,6 +47,7 @@ export {
   type DebugLogEntry,
   debugLog,
   installDebugConsole,
+  recordDebugFailure,
   redactDebugText,
 } from "./debug-log";
 export {
