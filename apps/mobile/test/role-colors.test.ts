@@ -3,6 +3,7 @@ import type { RoleView } from "../src/lib/permissions";
 import {
   EMPTY_ROLE_COLOR_PAGE,
   manageableRoleColors,
+  roleColorDraftChanged,
   roleColorPageReducer,
   roleColorSavePatch,
   roleColorSummary,
@@ -80,5 +81,17 @@ describe("mobile role color editor", () => {
       error: "Couldn’t save the color.",
     });
     expect(roleColorPageReducer(edited, { type: "back" })).toEqual(EMPTY_ROLE_COLOR_PAGE);
+  });
+
+  it("asks before discarding a changed color but not for an unchanged one", () => {
+    const moderator = roles[2];
+    if (moderator === undefined) return;
+    // Opening the editor seeds the draft from the saved color.
+    expect(roleColorDraftChanged(moderator.color, "#E8A33B")).toBe(false);
+    expect(roleColorDraftChanged(moderator.color, " #e8a33b ")).toBe(false);
+    expect(roleColorDraftChanged(moderator.color, "#123456")).toBe(true);
+    // Clearing a role that had no color is not a change either.
+    expect(roleColorDraftChanged(null, "")).toBe(false);
+    expect(roleColorDraftChanged(null, "#123456")).toBe(true);
   });
 });

@@ -57,6 +57,12 @@ export function roleColorSummary(color: string | null): string {
   return roleColorCss(color) ?? "No color";
 }
 
+/** Case- and whitespace-insensitive comparison of a saved and a draft color. */
+export function roleColorDraftChanged(savedColor: string | null, draftColor: string): boolean {
+  const normalize = (value: string | null) => (value ?? "").trim().toUpperCase();
+  return normalize(savedColor) !== normalize(draftColor);
+}
+
 /** The role-color page shows the role list or one role's editor. */
 export interface RoleColorPageState {
   readonly selectedId: string | null;

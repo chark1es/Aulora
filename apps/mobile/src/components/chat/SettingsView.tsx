@@ -1,8 +1,8 @@
 /* eslint-disable no-unused-vars -- the base rule reports parameter names in type signatures; Biome checks real unused code */
 import type { PresenceRow } from "@aulora/core";
 import { Button, Text } from "@aulora/ui-native";
-import { useState } from "react";
-import { Linking, View } from "react-native";
+import { useEffect, useState } from "react";
+import { BackHandler, Linking, View } from "react-native";
 import { KeyboardAwareScrollView } from "react-native-keyboard-controller";
 import type { RoleView } from "../../lib/permissions";
 import { presenceLabel } from "../../lib/presence";
@@ -12,6 +12,7 @@ import { DeviceSettingsSection } from "../voice/DeviceSettingsSection";
 import { DebugLogsSection } from "./DebugLogsSection";
 import { PaneHeader, RoundButton, useDockClearance } from "./HubPane";
 import { ListGroup, ListHeader, ListRow } from "./List";
+import { PageTransition } from "./PageTransition";
 import { PresenceAvatar } from "./PresenceAvatar";
 import { ProfileEditor } from "./ProfileEditor";
 import { SoundSettingsSection } from "./SoundSettingsSection";
@@ -103,25 +104,27 @@ function SettingsDetail({
     );
   }
   return (
-    <View className="flex-1 min-w-0" style={{ paddingBottom: clearance }}>
-      <PaneHeader
-        title={PAGE_TITLES.get(page) ?? ""}
-        leading={<RoundButton icon="chevron-left" label="Back to You" onPress={onBack} />}
-      />
-      <View className="flex-1 px-4 min-w-0">
-        {page === "profile" && (
-          <ProfileEditor
-            userId={ownUserId}
-            canChangeNickname={canChangeNickname}
-            profile={profileData}
-            onSave={onSaveProfile}
-          />
-        )}
-        {page === "notifications" && <SoundSettingsSection />}
-        {page === "debug" && <DebugLogsSection />}
-        {page === "voice" && <DeviceSettingsSection />}
+    <PageTransition key={page}>
+      <View className="flex-1 min-w-0" style={{ paddingBottom: clearance }}>
+        <PaneHeader
+          title={PAGE_TITLES.get(page) ?? ""}
+          leading={<RoundButton icon="chevron-left" label="Back to You" onPress={onBack} />}
+        />
+        <View className="flex-1 px-4 min-w-0">
+          {page === "profile" && (
+            <ProfileEditor
+              userId={ownUserId}
+              canChangeNickname={canChangeNickname}
+              profile={profileData}
+              onSave={onSaveProfile}
+            />
+          )}
+          {page === "notifications" && <SoundSettingsSection />}
+          {page === "debug" && <DebugLogsSection />}
+          {page === "voice" && <DeviceSettingsSection />}
+        </View>
       </View>
-    </View>
+    </PageTransition>
   );
 }
 
@@ -296,6 +299,22 @@ function SettingsMenu({ canChangeNickname, canManageRoles, pushState, onOpen }: 
 export function SettingsView(props: SettingsViewProps) {
   const clearance = useDockClearance();
   const [page, setPage] = useState<DetailPage | null>(null);
+
+  // Every settings detail is a page pushed over the You tab, so Android back
+  // returns to the menu before it leaves the tab. The role-color page registers
+  // its own handler because it has a nested list → editor step; registering one
+  // here too would make the later registration (this effect) run first and
+  // swallow that step.
+  useEffect(() => {
+    if (page === null || page === "roleColors" || !props.active) return;
+    const subscription = BackHandler.addEventListener("hardwareBackPress", () => {
+      setPage(null);
+      return true;
+    });
+    return () => {
+      subscription.remove();
+    };
+  }, [page, props.active]);
 
   if (page !== null) {
     return (
