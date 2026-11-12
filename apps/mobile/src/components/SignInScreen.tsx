@@ -1,5 +1,11 @@
 import { NativeBlobatar } from "@aulora/avatars/native";
-import { resolveSignInMethods, type ServerProfile, type SignInMethods } from "@aulora/core";
+import {
+  notifyAuthChanged,
+  resolveSignInMethods,
+  type ServerProfile,
+  type SignInMethods,
+  subscribeAuthError,
+} from "@aulora/core";
 import { Button, Heading, Icon, Text, usePalette } from "@aulora/ui-native";
 import { useQuery } from "convex/react";
 import { useEffect, useState } from "react";
@@ -8,9 +14,7 @@ import {
   Animated,
   Image,
   LayoutAnimation,
-  Platform,
   Pressable,
-  UIManager,
   useWindowDimensions,
   View,
 } from "react-native";
@@ -21,7 +25,6 @@ import {
   type ProviderDelivery,
   startProviderSignIn,
 } from "../lib/auth-client";
-import { notifyAuthChanged, subscribeAuthError } from "../lib/auth-events";
 import { clearStoredAuthHandoffError, takeStoredAuthHandoffError } from "../lib/auth-handoff";
 import type { CookieStore } from "../lib/cookie-fetch";
 import { useEntrance, useReduceMotion } from "../lib/use-entrance";
@@ -123,7 +126,7 @@ function useSignInController(
         await clearStoredAuthHandoffError(cookieStore).catch(() => undefined);
       }
     } catch {
-      patch({ error: "Could not reach the server. Try again." });
+      patch({ error: "Could not reach the workspace. Try again." });
     } finally {
       patch({ pending: null });
     }
@@ -208,10 +211,6 @@ function animateModeChange(reduceMotion: boolean | null): void {
   });
 }
 
-if (Platform.OS === "android" && UIManager.setLayoutAnimationEnabledExperimental !== undefined) {
-  UIManager.setLayoutAnimationEnabledExperimental(true);
-}
-
 interface WorkspaceMarkProps {
   readonly profile: ServerProfile;
   readonly logoUrl: string | null;
@@ -219,7 +218,7 @@ interface WorkspaceMarkProps {
   readonly reduceMotion: boolean | null;
 }
 
-/** The hero mark of the sign-in screen: the workspace's own logo or creature. */
+/** The hero mark of the sign-in screen: the workspace’s own logo or creature. */
 function WorkspaceMark({ profile, logoUrl, size, reduceMotion }: WorkspaceMarkProps) {
   if (logoUrl !== null) {
     const source = { uri: logoUrl };
@@ -276,14 +275,14 @@ function subtitleFor(methods: SignInMethods, description: string): string {
     return description;
   }
   if (!methods.hasAnyMethod) {
-    return "This server has no sign-in methods enabled yet.";
+    return "This workspace has no sign-in methods enabled yet.";
   }
   return "Welcome back. Sign in to continue.";
 }
 
 type SignInController = ReturnType<typeof useSignInController>;
 
-/** The sign-in panel's view of the form state and the controller's actions. */
+/** The sign-in panel’s view of the form state and the controller’s actions. */
 function panelFor(
   providers: SignInPanelProps["providers"],
   methods: SignInMethods,
@@ -319,18 +318,18 @@ function panelFor(
  * Sign-in driven entirely by the server’s well-known `auth` block: the local
  * form appears only when `auth.local.enabled`, a sign-up toggle only when
  * `auth.local.signup`, and one button per `auth.providers` entry. OAuth/OIDC
- * providers start on the workspace's own origin and finish either in the
+ * providers start on the workspace’s own origin and finish either in the
  * in-app browser or the system browser, returning through
  * `aulora://auth/callback`.
  *
- * The workspace's own blobatar is the hero, and the field behind it is drawn
+ * The workspace’s own blobatar is the hero, and the field behind it is drawn
  * from the same seed, so each workspace signs in on its own colours.
  */
 export function SignInScreen(props: SignInScreenProps) {
   const { profile, authClient, cookieStore, onOpenWorkspaces, onConnectDifferentServer } = props;
   const actions = authActionsFromClient(authClient);
   const config = useQuery(api.server.publicConfig, {});
-  // The stored profile's `auth` is a snapshot from when the workspace was added,
+  // The stored profile’s `auth` is a snapshot from when the workspace was added,
   // so a provider enabled later would never get a button. Prefer the live config.
   const auth = config?.auth ?? profile.auth;
   const methods = resolveSignInMethods(auth);

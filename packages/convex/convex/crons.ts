@@ -8,6 +8,20 @@ import { getEkmSettings } from "./lib/ekm";
  */
 const crons = cronJobs();
 
+// Automatic upgrade recovery: one bounded page per tick, a singleton read after completion.
+crons.interval(
+  "member roles backfill",
+  { minutes: 1 },
+  internal.maintenance.backfillMemberRoles,
+  {},
+);
+crons.interval(
+  "attachment scopes backfill",
+  { minutes: 1 },
+  internal.maintenance.backfillAttachmentScopes,
+  {},
+);
+
 crons.interval("presence sweep", { seconds: 30 }, internal.presence.sweepStale, {});
 crons.interval("presence idle sweep", { seconds: 30 }, internal.presence.sweepIdle, {});
 crons.interval("typing purge", { seconds: 30 }, internal.typing.purgeExpired, {});
@@ -17,6 +31,22 @@ crons.interval("call sweep", { seconds: 30 }, internal.calls.sweep, {});
 
 // Bot events are a one-hour outbox: `poll` reads them, then they are dropped.
 crons.interval("bot events prune", { hours: 1 }, internal.botEvents.prune, {});
+
+// Scheduled calls flip to `open` at their open time; the per-call job is the
+// primary trigger and this pass is the backstop (plus ends stale rooms).
+crons.interval("scheduled call sweep", { minutes: 1 }, internal.scheduledCalls.sweep, {});
+
+// Ended transcripts that still need a summary, and the daily retention purge.
+crons.interval(
+  "transcription summary queue",
+  { minutes: 5 },
+  internal.transcription.sessionsNeedingSummary,
+  {},
+);
+crons.cron("transcription retention", "15 4 * * *", internal.transcription.purgeExpired, {});
+
+// Expired guest sessions and lobby requests are dropped in bounded batches.
+crons.interval("guest session prune", { hours: 1 }, internal.guestCalls.pruneExpired, {});
 
 // A failed account deletion can leave an ownership reservation behind. A
 // reservation keeps counting as a present owner until this prune has confirmed
@@ -81,6 +111,20 @@ crons.interval(
   "commercial active-user reports",
   { hours: 1 },
   internal.licenseUsageActions.report,
+  {},
+);
+
+crons.interval(
+  "notification delivery claim retention",
+  { hours: 1 },
+  internal.notifications.pruneDeliveryClaims,
+  {},
+);
+
+crons.interval(
+  "notification delivery lease recovery",
+  { minutes: 1 },
+  internal.notifications.recoverDeliveryLeases,
   {},
 );
 

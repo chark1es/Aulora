@@ -1,6 +1,6 @@
 import type { MessagePayload } from "@aulora/core";
 import { Permission } from "@aulora/core";
-import { render, screen } from "@testing-library/react";
+import { render, screen, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { describe, expect, it, vi } from "vitest";
 import { MessageList, type MessageListProps } from "../components/chat/MessageList";
@@ -74,9 +74,15 @@ describe("MessageList unsent states", () => {
     expect(screen.getByTestId("failed-pending:o1")).toHaveTextContent("Not sent");
     expect(screen.queryByTestId("pending-pending:o1")).not.toBeInTheDocument();
 
-    await user.click(screen.getByRole("button", { name: "Retry" }));
+    await user.click(screen.getByRole("button", { name: "Retry sending message" }));
     expect(onRetrySend).toHaveBeenCalledWith("pending:o1");
-    await user.click(screen.getByRole("button", { name: "Discard" }));
+    await user.click(screen.getByRole("button", { name: "Discard unsent message" }));
+    expect(onDiscardSend).not.toHaveBeenCalled();
+    expect(screen.getByRole("dialog").closest("[data-message-row]")).toBeNull();
+    await user.click(within(screen.getByRole("dialog")).getByRole("button", { name: "Cancel" }));
+    expect(screen.getByRole("button", { name: "Discard unsent message" })).toHaveFocus();
+    await user.click(screen.getByRole("button", { name: "Discard unsent message" }));
+    await user.click(screen.getByRole("button", { name: "Discard message" }));
     expect(onDiscardSend).toHaveBeenCalledWith("pending:o1");
   });
 

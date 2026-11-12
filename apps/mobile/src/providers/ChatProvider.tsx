@@ -50,8 +50,11 @@ export type { MobileMemberEntry } from "../lib/permissions";
 
 export interface ChatSendOptions {
   readonly mentionUserIds?: readonly string[];
+  readonly mentionEveryone?: boolean;
+  readonly mentionHere?: boolean;
   readonly mentionChannelIds?: readonly string[];
   readonly mentionCategoryIds?: readonly string[];
+  readonly mentionRoleIds?: readonly string[];
   readonly threadRootId?: string;
   readonly replyToId?: string;
   readonly attachments?: readonly AttachmentDescriptor[];
@@ -103,7 +106,6 @@ export interface MobileChatContextValue {
   readonly canTimeout: boolean;
   readonly canModerateMembers: boolean;
   /** Owner or `MentionEveryone`; gates `@everyone`/`@here` suggestions. */
-  readonly canMentionEveryone: boolean;
   readonly sendMessage: (
     _channelId: string,
     _text: string,
@@ -354,11 +356,18 @@ export function ChatProvider({ client, userId, children }: ChatProviderProps) {
       const categoryMentions = options.mentionCategoryIds ?? [];
       try {
         const messageId = await chat.session.sendMessage(channelId, text, {
+          ...(options.mentionEveryone !== undefined
+            ? { mentionEveryone: options.mentionEveryone }
+            : {}),
+          ...(options.mentionHere !== undefined ? { mentionHere: options.mentionHere } : {}),
           ...(options.mentionUserIds !== undefined
             ? { mentionUserIds: options.mentionUserIds }
             : {}),
           ...(channelMentions.length > 0 ? { mentionChannelIds: channelMentions } : {}),
           ...(categoryMentions.length > 0 ? { mentionCategoryIds: categoryMentions } : {}),
+          ...(options.mentionRoleIds !== undefined
+            ? { mentionRoleIds: options.mentionRoleIds }
+            : {}),
           ...(options.threadRootId !== undefined ? { threadRootId: options.threadRootId } : {}),
           ...(options.replyToId !== undefined ? { replyToId: options.replyToId } : {}),
           ...(attachmentIds.length > 0 ? { attachmentIds } : {}),
@@ -370,6 +379,10 @@ export function ChatProvider({ client, userId, children }: ChatProviderProps) {
           {
             channelId,
             text,
+            ...(options.mentionEveryone !== undefined
+              ? { mentionEveryone: options.mentionEveryone }
+              : {}),
+            ...(options.mentionHere !== undefined ? { mentionHere: options.mentionHere } : {}),
             ...(options.mentionUserIds !== undefined
               ? { mentionUserIds: options.mentionUserIds }
               : {}),
@@ -378,6 +391,9 @@ export function ChatProvider({ client, userId, children }: ChatProviderProps) {
               : {}),
             ...(options.mentionCategoryIds !== undefined
               ? { mentionCategoryIds: options.mentionCategoryIds }
+              : {}),
+            ...(options.mentionRoleIds !== undefined
+              ? { mentionRoleIds: options.mentionRoleIds }
               : {}),
             ...(options.threadRootId !== undefined ? { threadRootId: options.threadRootId } : {}),
             ...(options.replyToId !== undefined ? { replyToId: options.replyToId } : {}),
@@ -543,8 +559,6 @@ export function ChatProvider({ client, userId, children }: ChatProviderProps) {
   const canBan = isOwner || hasPermission(viewerPermissions, Permission.Ban);
   const canTimeout = isOwner || hasPermission(viewerPermissions, Permission.Timeout);
   const canModerateMembers = canKick || canBan || canTimeout;
-  const canMentionEveryone =
-    isOwner || hasPermission(viewerPermissions, Permission.MentionEveryone);
 
   const views = useMemo<readonly ChannelView[]>(
     () =>
@@ -580,7 +594,6 @@ export function ChatProvider({ client, userId, children }: ChatProviderProps) {
       canBan,
       canTimeout,
       canModerateMembers,
-      canMentionEveryone,
       sendMessage,
       search,
       loadSearchHistory,
@@ -612,7 +625,6 @@ export function ChatProvider({ client, userId, children }: ChatProviderProps) {
       canBan,
       canTimeout,
       canModerateMembers,
-      canMentionEveryone,
       sendMessage,
       search,
       loadSearchHistory,
@@ -667,6 +679,14 @@ function sameOutbox(a: readonly OutboxItem[], b: readonly OutboxItem[]): boolean
     }
   }
   return true;
+}
+
+/**
+ * Reads the chat context, or `null` outside a {@link ChatProvider} (the offline
+ * review demo renders settings without one).
+ */
+export function useOptionalChat(): MobileChatContextValue | null {
+  return useContext(ChatContext);
 }
 
 /** Reads the chat context; throws outside a {@link ChatProvider}. */

@@ -1,7 +1,43 @@
-import { type CallView, type ChannelView, joinedElsewhere } from "@aulora/core";
+import {
+  type CallParticipantView,
+  type CallView,
+  type ChannelView,
+  joinedElsewhere,
+} from "@aulora/core";
 import { Icon, Text, usePalette } from "@aulora/ui-native";
 import { Pressable, View } from "react-native";
 import { ListGroup, ListHeader } from "../chat/List";
+
+/**
+ * What to call someone in a call. A guest has no workspace member entry, so the
+ * server sends their chosen `displayName`; without it a guest is shown as
+ * "Guest", never their raw session id. Members resolve through the member map.
+ */
+export function participantLabel(
+  participant: Pick<CallParticipantView, "userId" | "displayName" | "isGuest">,
+  memberNames: ReadonlyMap<string, string>,
+): string {
+  const sent = participant.displayName?.trim() ?? "";
+  if (sent.length > 0) {
+    return sent;
+  }
+  const member = memberNames.get(participant.userId);
+  if (member !== undefined && member.length > 0) {
+    return member;
+  }
+  return participant.isGuest === true ? "Guest" : participant.userId;
+}
+
+/** A small label that marks someone who joined from an invite link. */
+export function GuestBadge() {
+  return (
+    <View accessible accessibilityLabel="Guest" className="rounded-pill bg-surface-3 px-1.5 py-px">
+      <Text size="xs" tone="muted" className="font-semibold" importantForAccessibility="no">
+        Guest
+      </Text>
+    </View>
+  );
+}
 
 export interface VoiceChannelSectionProps {
   readonly channels: readonly ChannelView[];
@@ -65,7 +101,7 @@ export function VoiceChannelSection(props: VoiceChannelSectionProps) {
                     color={call !== undefined ? palette.accent : palette["text-muted"]}
                   />
                 </View>
-                <Text className="flex-1" numberOfLines={1}>
+                <Text className="flex-1 min-w-0" numberOfLines={1}>
                   {channel.name}
                 </Text>
                 {selfConnected && (
@@ -93,8 +129,9 @@ export function VoiceChannelSection(props: VoiceChannelSectionProps) {
                         }
                       />
                       <Text size="xs" tone="muted">
-                        {memberNames.get(participant.userId) ?? participant.userId}
+                        {participantLabel(participant, memberNames)}
                       </Text>
+                      {participant.isGuest === true && <GuestBadge />}
                     </View>
                   ))}
                 </View>

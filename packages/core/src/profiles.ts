@@ -1,3 +1,4 @@
+import { debugLog } from "./debug-log";
 import { normalizeServerUrl } from "./server-url";
 import type { WellKnown, WellKnownAuth, WellKnownProvider } from "./well-known";
 
@@ -383,4 +384,70 @@ export function webLocalStorageStore(options: WebLocalStorageStoreOptions = {}):
       return Promise.resolve(readProfiles().find((profile) => profile.id === id));
     },
   };
+}
+
+/** The saved profiles and the active one, as a provider renders them. */
+export interface ProfileSnapshot {
+  readonly profiles: ServerProfile[];
+  readonly activeId: string | undefined;
+  readonly activeProfile: ServerProfile | undefined;
+}
+
+/** The active profile in a list, matching ids exactly. */
+export function activeProfileOf(
+  profiles: readonly ServerProfile[],
+  activeId: string | undefined,
+): ServerProfile | undefined {
+  return profiles.find((profile) => profile.id === activeId);
+}
+
+function snapshotOf(profiles: ServerProfile[], activeId: string | undefined): ProfileSnapshot {
+  return { profiles, activeId, activeProfile: activeProfileOf(profiles, activeId) };
+}
+
+/** Reads the saved profiles and the active id together. */
+export async function readProfileSnapshot(store: ProfileStore): Promise<ProfileSnapshot> {
+  const [profiles, active] = await Promise.all([store.list(), store.getActive()]);
+  return snapshotOf(profiles, active?.id);
+}
+
+/**
+ * Reads the snapshot, treating a failed read as "no saved profiles".
+ *
+ * Storage can fail — a locked container, a corrupted migration — and a rejected
+ * read inside a provider would leave its ready flag false forever, so the
+ * connect screen would spin instead of letting the person add a server. Saving
+ * a new profile still reports its own error.
+ */
+export async function readProfileSnapshotSafely(store: ProfileStore): Promise<ProfileSnapshot> {
+  try {
+    return await readProfileSnapshot(store);
+  } catch {
+    return snapshotOf([], undefined);
+  }
+}
+
+/** Adds a validated profile, clears old diagnostics and makes it active. */
+export async function addProfileToStore(
+  store: ProfileStore,
+  baseUrl: string,
+  wellKnown: WellKnown,
+): Promise<ServerProfile> {
+  const profile = createServerProfile(baseUrl, wellKnown);
+  await store.add(profile);
+  debugLog.clear();
+  await store.setActive(profile.id);
+  return profile;
+}
+
+/** Makes an existing profile active, clearing diagnostics for the new server. */
+export async function activateProfileInStore(store: ProfileStore, id: string): Promise<void> {
+  debugLog.clear();
+  await store.setActive(id);
+}
+
+/** Removes a profile, clearing diagnostics for the workspace they were from. */
+export async function removeProfileFromStore(store: ProfileStore, id: string): Promise<void> {
+  debugLog.clear();
+  await store.remove(id);
 }

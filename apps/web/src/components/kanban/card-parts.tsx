@@ -8,7 +8,7 @@ interface SectionProps {
   children: ReactNode;
 }
 
-/** A titled block in the card's main column. */
+/** A titled block in the card’s main column. */
 export function Section({ icon, title, aside, children }: SectionProps) {
   return (
     <section className="flex flex-col gap-2" aria-label={title}>
@@ -22,7 +22,7 @@ export function Section({ icon, title, aside, children }: SectionProps) {
   );
 }
 
-/** A labelled value in the card's sidebar. */
+/** A labelled value in the card’s sidebar. */
 export function Property({ label, children }: { label: string; children: ReactNode }) {
   return (
     <div className="flex flex-col gap-1.5">

@@ -9,7 +9,6 @@ import { requireMember } from "./lib/permissions";
 import { openContentOptional } from "./lib/sealed";
 import { sealString } from "./lib/sse";
 
-export const PRESENCE_HEARTBEAT_MS = 30_000;
 /** Older than this marks an `online` session idle. */
 export const PRESENCE_IDLE_MS = 60_000;
 /** Older than this marks any session offline. */

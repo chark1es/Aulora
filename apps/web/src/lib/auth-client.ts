@@ -1,8 +1,8 @@
+import { debugLog, resetProviderToken } from "@aulora/core";
 /* eslint-disable no-unused-vars -- the base rule reports parameter names in type signatures; Biome checks real unused code */
 import { convexClient } from "@convex-dev/better-auth/client/plugins";
 import { genericOAuthClient } from "better-auth/client/plugins";
 import { createAuthClient } from "better-auth/react";
-import { resetProviderToken } from "./provider-auth";
 import {
   clearSessionToken,
   isCrossOrigin,
@@ -93,7 +93,11 @@ function toResult(result: { error?: unknown } | null | undefined): AuthActionRes
 }
 
 /** Adapts a live client to {@link AuthActions}. */
-export function authActionsFromClient(client: AuloraAuthClient): AuthActions {
+export function authActionsFromClient(
+  client: AuloraAuthClient,
+  beforeSignOut?: () => Promise<void>,
+  onSignOutFailure?: () => Promise<void>,
+): AuthActions {
   return {
     async signInEmail({ email, password }) {
       return toResult(await client.signIn.email({ email, password }));
@@ -117,8 +121,35 @@ export function authActionsFromClient(client: AuloraAuthClient): AuthActions {
       // Clear the Convex token cache before the network call: the next token
       // fetch may happen while the sign-out request is still in flight, and a
       // transient failure then must not replay the account that is leaving.
+      const revocation = Promise.resolve()
+        .then(beforeSignOut)
+        .catch(() => undefined);
+      const recover = () => {
+        void Promise.resolve()
+          .then(onSignOutFailure)
+          .catch(() => undefined);
+      };
+      if (beforeSignOut !== undefined) {
+        let timer: ReturnType<typeof setTimeout> | undefined;
+        await Promise.race([
+          revocation,
+          new Promise<void>((resolve) => {
+            timer = setTimeout(resolve, 1000);
+          }),
+        ]).finally(() => {
+          clearTimeout(timer);
+        });
+      }
       resetProviderToken(client);
-      return toResult(await client.signOut());
+      try {
+        const result = toResult(await client.signOut());
+        if (result.error === null) debugLog.clear();
+        else recover();
+        return result;
+      } catch (error) {
+        recover();
+        throw error;
+      }
     },
   };
 }

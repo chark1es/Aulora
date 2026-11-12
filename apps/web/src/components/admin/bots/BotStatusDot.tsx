@@ -2,7 +2,7 @@ import { cn, Text } from "@aulora/ui-web";
 import type { BotStatus } from "../../../../../../packages/convex/convex/lib/botTypes";
 import { botStatusMeta } from "./bot-format";
 
-/** A coloured dot plus its status label, with the runner's message when set. */
+/** A coloured dot plus its status label, with the runner’s message when set. */
 export function BotStatusDot({
   status,
   message,

@@ -17,7 +17,7 @@ export function JoinedElsewhereScreen({
   readonly onJoin: () => void;
 }) {
   return (
-    <View className="flex-1 bg-bg">
+    <View className="flex-1 bg-bg min-w-0">
       <EmptyState
         icon="volume"
         title={channelName}

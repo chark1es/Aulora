@@ -23,9 +23,10 @@ import {
 import { PersonAvatar } from "../chat/member-avatars";
 import { CallControls } from "./CallControls";
 import { useCallDuration } from "./hooks";
+import { TranscriptionIndicator } from "./TranscriptionIndicator";
 import { usePipMedia } from "./use-pip-media";
 
-/** The undecorated window's own edge handles: (direction, placement, cursor). */
+/** The undecorated window’s own edge handles: (direction, placement, cursor). */
 const RESIZE_HANDLES: ReadonlyArray<{
   readonly direction: PipResizeDirection;
   readonly className: string;
@@ -62,13 +63,13 @@ function useDeadlineTick(deadline: number | null): number {
 }
 
 /**
- * The shell's call picture-in-picture window.
+ * The shell’s call picture-in-picture window.
  *
  * A separate webview with its own entry (`#pip`), so it renders on its own: the
  * call itself — peer connections and media — stays in the main window, which
  * sends the picture over a loopback peer connection (or, where that cannot
  * work, as JPEG frames) and runs whatever is pressed here. Nothing in this
- * window plays audio and nothing asks for a device; the call's audio keeps
+ * window plays audio and nothing asks for a device; the call’s audio keeps
  * coming from the main window.
  *
  * The header is the drag region and the eight thin edges resize the window, so
@@ -132,11 +133,12 @@ export function CallPipWindow() {
         <span className="min-w-0 flex-1 truncate text-[12px] font-semibold">
           {state === null ? "Aulora" : callKindLabel(state.kind)}
         </span>
+        {state?.transcribing === true && <TranscriptionIndicator />}
         <span className="shrink-0 text-[11px] tabular-nums text-text-muted">{duration}</span>
         <button
           type="button"
           aria-label="Close the call window"
-          title="Close the call window — the call continues"
+          title="Close the call window. The call continues"
           onClick={() => {
             returnToApp();
           }}

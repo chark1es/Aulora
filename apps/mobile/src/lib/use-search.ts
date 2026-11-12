@@ -105,7 +105,7 @@ export function useMessageSearch(
           if (stopped()) return;
           setHits(results);
         } catch {
-          if (!stopped()) setError("Couldn't search messages. Try again.");
+          if (!stopped()) setError("Couldn’t search messages. Try again.");
           return;
         } finally {
           if (!stopped()) setBusy(false);

@@ -1,5 +1,6 @@
 export { Badge, type BadgeProps, type BadgeSize, type BadgeTone } from "./Badge";
 export { Button, type ButtonProps, type ButtonSize, type ButtonVariant } from "./Button";
+export { CAP_TEXT_CLASS, CapText } from "./CapText";
 export { Card, type CardProps } from "./Card";
 export { Checkbox, type CheckboxProps } from "./Checkbox";
 export { ChoiceList, type ChoiceListProps, type ChoiceOption } from "./ChoiceList";
@@ -28,6 +29,7 @@ export { Logo, type LogoProps } from "./Logo";
 export { Field, Modal, ModalFooter, type ModalProps } from "./Modal";
 export { MODAL_SHADOW } from "./ModalShell";
 export { ProviderIcon, type ProviderIconProps } from "./ProviderIcon";
+export { RoleColorPreview, type RoleColorPreviewProps } from "./RoleColorPreview";
 export { SearchInput, type SearchInputProps, type SearchInputSize } from "./SearchInput";
 export {
   Select,

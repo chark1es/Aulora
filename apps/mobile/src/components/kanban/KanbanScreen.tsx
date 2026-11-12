@@ -1,5 +1,5 @@
 import { View } from "react-native";
-import { KeyboardAvoidingView } from "react-native-keyboard-controller";
+import { KeyboardAvoidingPane } from "../layout/ScreenContainer";
 import { BoardColumns } from "./BoardColumns";
 import { ArchivedBanner, BoardFilters, ReadOnlyBanner } from "./BoardFilters";
 import { BoardEmpty, BoardError, BoardHeader, BoardLoading } from "./BoardHeader";
@@ -13,7 +13,7 @@ function BoardBody({ ctl }: { readonly ctl: BoardController }) {
   if (ctl.boards === undefined) return <BoardLoading label="Loading boards" />;
   if (board === undefined) return <BoardEmpty ctl={ctl} />;
   return (
-    <View className="flex-1">
+    <View className="flex-1 min-w-0">
       <BoardFilters ctl={ctl} board={board} />
       <ReadOnlyBanner ctl={ctl} board={board} />
       <ArchivedBanner ctl={ctl} board={board} />
@@ -53,12 +53,12 @@ export function KanbanScreen(props: BoardProps) {
   const ctl = useBoard(props);
   return (
     // Lifts the add-card composer clear of the keyboard.
-    <KeyboardAvoidingView behavior="padding" style={{ flex: 1 }}>
+    <KeyboardAvoidingPane style={{ flex: 1 }}>
       <BoardHeader ctl={ctl} />
       <BoardError ctl={ctl} />
       <BoardBody ctl={ctl} />
       <BoardSheets ctl={ctl} />
       <OpenCard ctl={ctl} />
-    </KeyboardAvoidingView>
+    </KeyboardAvoidingPane>
   );
 }

@@ -1,10 +1,10 @@
 import { Spinner } from "@aulora/ui-native";
 import { useQuery } from "convex/react";
 import type { ReactNode } from "react";
-import { View } from "react-native";
 import { api } from "../../../../packages/convex/convex/_generated/api";
 import { useLastDefined } from "../lib/last-defined";
 import { JoinGate } from "./JoinGate";
+import { ScreenContainer } from "./layout/ScreenContainer";
 
 export interface MembershipGateProps {
   readonly workspaceIconSeed: string;
@@ -29,9 +29,9 @@ export function MembershipGate({
   const me = useLastDefined(useQuery(api.members.me, {}));
   if (me === undefined) {
     return (
-      <View className="flex-1 items-center justify-center">
+      <ScreenContainer scrollable className="flex-1 items-center justify-center min-w-0">
         <Spinner size={28} label="Loading workspace" />
-      </View>
+      </ScreenContainer>
     );
   }
   if (me.member === null && !me.isOwner) {

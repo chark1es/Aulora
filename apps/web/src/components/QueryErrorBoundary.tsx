@@ -1,5 +1,5 @@
 /* eslint-disable no-unused-vars -- the base rule reports parameter names in type signatures; Biome checks real unused code */
-import { classifyError, type ErrorDisposition } from "@aulora/core";
+import { classifyError, debugLog, type ErrorDisposition } from "@aulora/core";
 import { Button, Spinner, Text } from "@aulora/ui-web";
 import type { ConvexReactClient } from "convex/react";
 import { Component, type ReactNode, useCallback, useEffect, useState } from "react";
@@ -99,6 +99,10 @@ class QueryBoundary extends Component<QueryBoundaryProps, QueryBoundaryState> {
   /** Automatic retries since the subtree last rendered cleanly. */
   private failedRetries = 0;
 
+  override componentDidCatch(error: Error, info: { componentStack?: string | null }): void {
+    debugLog.record("react.boundary", info.componentStack, error);
+  }
+
   static getDerivedStateFromError(error: unknown): Partial<QueryBoundaryState> {
     return { error };
   }
@@ -174,9 +178,9 @@ function ErrorRecovery({
     title = "Reconnecting…";
     description = "You’re still signed in. This view will pick up where it left off.";
   } else if (exhausted) {
-    title = "Can’t reach the server";
+    title = "Can’t reach the workspace";
     description =
-      "Reconnecting is taking too long. You’re still signed in; try again, switch servers, or sign out.";
+      "Reconnecting is taking too long. You’re still signed in; try again, switch workspaces, or sign out.";
   }
   return (
     <div className="pane flex flex-1 flex-col items-center justify-center gap-3 px-6 text-center">
@@ -193,7 +197,7 @@ function ErrorRecovery({
         </Button>
         {exhausted && onSwitchServer !== undefined && (
           <Button size="md" variant="secondary" onClick={onSwitchServer}>
-            Switch server
+            Switch workspace
           </Button>
         )}
         <Button size="md" variant="ghost" onClick={onSignOut}>

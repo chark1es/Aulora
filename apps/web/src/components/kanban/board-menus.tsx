@@ -150,7 +150,7 @@ function cardItems(ctl: BoardController, board: Board, card: Card, siblings: rea
   return items;
 }
 
-/** A card's right-click menu; `siblings` is its column in order. */
+/** A card’s right-click menu; `siblings` is its column in order. */
 export function openCardMenu(
   ctl: BoardController,
   anchor: Anchor,
@@ -178,7 +178,7 @@ function clearFiltersItem(ctl: BoardController): ContextMenuItem[] {
   ];
 }
 
-/** A column's right-click menu. */
+/** A column’s right-click menu. */
 export function openColumnMenu(ctl: BoardController, anchor: Anchor, column: Column) {
   const full = isColumnFull(column, ctl.cards ?? []);
   const items: ContextMenuItem[] = [];
@@ -283,7 +283,7 @@ function boardItems(ctl: BoardController, board: Board): ContextMenuItem[] {
   ];
 }
 
-/** The board's own menu, from its actions button or a right-click on the background. */
+/** The board’s own menu, from its actions button or a right-click on the background. */
 export function openBoardMenu(ctl: BoardController, anchor: Anchor) {
   if (ctl.board === undefined) return;
   ctl.openMenu({

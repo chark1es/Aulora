@@ -61,6 +61,55 @@ ${declarations(dark, "    ")}
 `;
 }
 
+function quoteFamily(name) {
+  return /^[a-z-]+$/.test(name) ? name : `"${name}"`;
+}
+
+/**
+ * `@font-face` rules and `--font-sans`/`--font-mono` from
+ * `packages/tokens/src/font-data.json`, the same data the app's Tailwind preset
+ * reads. `dir` is the font directory relative to the generated stylesheet.
+ */
+export function fontCss(fonts, dir) {
+  const faces = fonts.web.map(
+    (face) => `@font-face {
+  font-family: ${quoteFamily(fonts.families[face.family].name)};
+  font-style: ${face.style};
+  font-weight: ${face.weight};
+  font-display: swap;
+  src: url("${dir}/${face.file}") format("woff2");
+  unicode-range: ${face.unicodeRange};
+}`,
+  );
+  const fallbacks = Object.values(fonts.families).map(
+    ({ fallback }) => `@font-face {
+  font-family: ${quoteFamily(fallback.name)};
+  src: ${fallback.local.map((name) => `local("${name}")`).join(", ")};
+  size-adjust: ${fallback.sizeAdjust};
+  ascent-override: ${fallback.ascentOverride};
+  descent-override: ${fallback.descentOverride};
+  line-gap-override: ${fallback.lineGapOverride};
+}`,
+  );
+  const stack = (token) => {
+    const family = fonts.families[token];
+    return [family.name, family.fallback.name, ...family.generic].map(quoteFamily).join(", ");
+  };
+  return `/* Generated from packages/tokens/src/font-data.json by scripts/build.mjs. */
+${[...faces, ...fallbacks].join("\n\n")}
+
+:root {
+  --font-sans: ${stack("sans")};
+  --font-mono: ${stack("mono")};
+}
+`;
+}
+
+/** The font files a page should preload: the Latin UI face. */
+export function preloadFonts(fonts) {
+  return fonts.web.filter((face) => face.preload).map((face) => face.file);
+}
+
 /** Parses `icons.ts` into a map of icon name to SVG path data. */
 export function readIcons(source) {
   const icons = {};

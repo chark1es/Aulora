@@ -1,4 +1,5 @@
 import type { ServerProfile } from "@aulora/core";
+import { createProviderAuth } from "@aulora/core";
 import { type AuthClient, ConvexBetterAuthProvider } from "@convex-dev/better-auth/react";
 import { act, render, screen } from "@testing-library/react";
 import { useConvexAuth } from "convex/react";
@@ -8,7 +9,6 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { SessionGate } from "../components/SessionGate";
 import { createAuloraAuthClient } from "../lib/auth-client";
 import { type ConnectionRecovery, createConnectionRecovery } from "../lib/connection-recovery";
-import { createProviderAuth } from "../lib/provider-auth";
 import { STUCK_TIMEOUT_MS } from "../lib/use-stuck-timeout";
 
 /**

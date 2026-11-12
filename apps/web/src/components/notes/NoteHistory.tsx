@@ -9,6 +9,7 @@ import {
   type HistoryGroup,
   type RevisionSummary,
   type RevisionSummaryOptions,
+  revisionSummaryOptions,
   summarizeRevision,
 } from "@aulora/core";
 import { cn, Icon, Spinner } from "@aulora/ui-web";
@@ -23,8 +24,8 @@ function DiffRow({ line }: { line: DiffLine }) {
     <div
       className={cn(
         "whitespace-pre-wrap [overflow-wrap:anywhere]",
-        line.type === "add" && "bg-secondary/10 text-secondary",
-        line.type === "del" && "bg-danger/10 text-danger",
+        line.type === "add" && "bg-secondary/10 text-secondary-text",
+        line.type === "del" && "bg-danger/10 text-danger-text",
         line.type === "context" && "text-text-muted",
       )}
     >
@@ -45,8 +46,8 @@ function DiffView({ before, after }: { before: string; after: string }) {
   return (
     <div className="overflow-hidden rounded-[8px] border border-border">
       <div className="flex items-center gap-2 border-b border-border bg-surface-2 px-2.5 py-1 text-[11px] font-medium">
-        <span className="text-secondary">+{stats.added}</span>
-        <span className="text-danger">−{stats.removed}</span>
+        <span className="text-secondary-text">+{stats.added}</span>
+        <span className="text-danger-text">−{stats.removed}</span>
       </div>
       <pre className="max-h-72 overflow-auto bg-surface-3 px-3 py-2 font-mono text-[12px] leading-relaxed">
         {lines.map((line, index) => {
@@ -66,15 +67,7 @@ function actorName(ctl: NotesController, actorId: string): string {
 function useSummaryOptions(ctl: NotesController): RevisionSummaryOptions {
   const folders = ctl.folders;
   const tags = ctl.tags;
-  return useMemo(() => {
-    const byFolder = new Map<string, string>(folders.map((folder) => [folder.id, folder.name]));
-    const byTag = new Map<string, string>(tags.map((tag) => [tag.id, tag.name]));
-    return {
-      folderName: (folderId: string | null) =>
-        folderId === null ? "Unfiled" : byFolder.get(folderId),
-      tagName: (tagId: string) => byTag.get(tagId),
-    };
-  }, [folders, tags]);
+  return useMemo(() => revisionSummaryOptions(folders, tags), [folders, tags]);
 }
 
 /** The expanded body of one revision: its change list and the line diff. */
@@ -274,7 +267,7 @@ function HistoryList({
   );
 }
 
-/** One group's `<li>`: either its own editable row or the single revision. */
+/** One group’s `<li>`: either its own editable row or the single revision. */
 function HistoryGroupRow({
   ctl,
   options,

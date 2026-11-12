@@ -4,8 +4,10 @@ Every pull request runs `.github/workflows/ci.yml`. It checks lint, workspace ty
 tests, web/docs builds and links, release metadata, infrastructure tests, and workflow syntax.
 The native builds for Windows, macOS, Linux, Android, and the iOS simulator are
 opt-in because they are slow. They run when a PR has the `build-native` label, when
-you start CI manually from the Actions tab (`native` input), and on every release,
-which calls CI as a reusable workflow. They are skipped on plain PRs and on pushes to `main`.
+you start CI manually from the Actions tab (`native` input), or another workflow
+calls CI with `native: true`. Release automation calls CI with `native: false`: its
+signed desktop and mobile release builds already gate assembly and publication.
+Unsigned native CI builds are skipped on plain PRs and on pushes to `main`.
 These jobs do not receive release credentials. The final `Required checks` job
 fails if any other job fails or is cancelled, and treats only the native jobs as
 optional when skipped. There are no path filters on PR checks, so
@@ -17,6 +19,9 @@ block force pushes and branch deletion. Review approvals are a maintainer choice
 The same checks run after merges and for merge groups, without the native builds.
 
 The separate [CLA bot](cla-bot.md) records contributor acceptance and publishes the `CLA` commit status on pull requests. After enabling it, require that status alongside `Required checks`. Its privileged job runs default-branch code without executing the PR's code.
+
+The shared JavaScript setup caches Bun downloads by OS, architecture, runtime
+version and lockfile; every job still runs `bun install --frozen-lockfile`.
 
 ## Performance and regression guards
 
@@ -119,8 +124,11 @@ The desktop-only candidate workflow remains available for testing desktop
 artifacts separately.
 
 Release notes use the manual `notes` input when supplied. Otherwise, v1 uses
-`docs/release-notes-v1.md`, and later versions use GitHub's automatically
-generated notes for the built commit. The same text goes into the GitHub release,
+`docs/release-notes-v1.md`, a version handled by `checkedInNotes` uses its
+checked-in `docs/release-notes-vX.Y.Z.md` file, and other versions use GitHub's
+automatically generated notes for the built commit. Use the checked-in file when
+a release needs migration steps or known limitations that generated notes cannot
+carry. The same text goes into the GitHub release,
 the `RELEASE_NOTES.md` asset, and `latest.json` for desktop updates. Notes are
 prepared for candidates too, and refreshed when resuming an unpublished draft.
 GitHub Releases is the changelog. Review the generated notes and supply manual

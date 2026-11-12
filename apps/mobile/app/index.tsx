@@ -1,9 +1,9 @@
 import { Button, Spinner } from "@aulora/ui-native";
 import { useState } from "react";
 import { View } from "react-native";
-import { SafeAreaView } from "react-native-safe-area-context";
 import { ConnectScreen } from "../src/components/ConnectScreen";
 import { WorkspaceSwitcherSheet } from "../src/components/chat/WorkspaceSwitcherSheet";
+import { ScreenContainer } from "../src/components/layout/ScreenContainer";
 import { ServerSession } from "../src/components/ServerSession";
 import { useProfiles } from "../src/providers/ProfileProvider";
 
@@ -26,7 +26,7 @@ export default function IndexScreen() {
   return (
     <View className="flex-1 bg-bg">
       {activeProfile === undefined ? (
-        <SafeAreaView className="flex-1" edges={["top", "bottom"]}>
+        <ScreenContainer className="flex-1">
           {profiles.length > 0 && (
             <View className="items-end px-4 pt-2">
               <Button
@@ -41,7 +41,7 @@ export default function IndexScreen() {
             </View>
           )}
           <ConnectScreen onConnected={() => void refresh()} />
-        </SafeAreaView>
+        </ScreenContainer>
       ) : (
         <ServerSession key={activeProfile.id} profile={activeProfile} />
       )}

@@ -1,13 +1,9 @@
 import {
-  type DiffStats,
   hasPermission,
   type NoteFolder,
-  type NoteRevisionAction,
   type NoteSummary,
   type NoteTag,
-  noteBlocksToPlainText,
   Permission,
-  parseNoteMarkdown,
 } from "@aulora/core";
 
 /**
@@ -227,42 +223,9 @@ export function noteTitle(note: { readonly title: string }): string {
   return title.length > 0 ? title : "Untitled note";
 }
 
-const PREVIEW_MAX = 140;
-
-/** One collapsed line of a note body, for a list row. */
-export function bodyPreview(body: string, max = PREVIEW_MAX): string {
-  const text = noteBlocksToPlainText(parseNoteMarkdown(body)).replace(/\s+/g, " ").trim();
-  if (text.length <= max) return text;
-  return `${text.slice(0, Math.max(0, max - 1)).trimEnd()}…`;
-}
-
 /** Whether a draft has anything worth saving. */
 export function hasNoteContent(title: string, body: string): boolean {
   return title.trim().length > 0 || body.trim().length > 0;
-}
-
-const REVISION_LABELS: Record<NoteRevisionAction, string> = {
-  created: "Created",
-  updated: "Edited",
-  renamed: "Renamed",
-  moved: "Moved",
-  tagged: "Tags changed",
-  archived: "Archived",
-  restored: "Restored",
-  deleted: "Deleted",
-};
-
-/** A human label for a revision's action. */
-export function revisionActionLabel(action: string): string {
-  return REVISION_LABELS[action as NoteRevisionAction] ?? "Changed";
-}
-
-/** "No changes", or a compact "+3 -1" tally for a revision. */
-export function diffSummary(stats: DiffStats): string {
-  const parts: string[] = [];
-  if (stats.added > 0) parts.push(`+${stats.added}`);
-  if (stats.removed > 0) parts.push(`-${stats.removed}`);
-  return parts.length === 0 ? "No changes" : parts.join(" ");
 }
 
 export function archiveActionLabel(archived: boolean): string {

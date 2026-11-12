@@ -18,7 +18,7 @@ export interface EnvValueEditorProps {
 }
 
 /**
- * Render the control that matches the variable's catalog type instead of a
+ * Render the control that matches the variable’s catalog type instead of a
  * generic text box: switches for booleans, selects for enums, bounded numeric
  * inputs, tag lists for lists and a validated mono editor for JSON.
  */
@@ -141,9 +141,7 @@ function SecretField({ variable, value, onChange }: EnvValueEditorProps) {
           label={variable.label}
           type={visible ? "text" : "password"}
           value={value}
-          placeholder={
-            saved ? "•••••• — leave blank to keep the current value" : "Enter the secret"
-          }
+          placeholder={saved ? "••••••. Leave blank to keep the current value" : "Enter the secret"}
           {...hintProps}
           autoComplete="new-password"
           spellCheck={false}

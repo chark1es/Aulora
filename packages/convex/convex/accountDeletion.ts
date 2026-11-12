@@ -7,6 +7,7 @@ import { adjustMemberCount } from "./lib/memberCount";
 import { deleteMemberRolesForUser } from "./lib/memberRoles";
 import { liveOwnerIdsAmong } from "./lib/ownerLiveness";
 import { ownerIdsOf, withoutDeletionReservation } from "./lib/owners";
+import { storageIsReferenced } from "./lib/storageReferences";
 
 /**
  * Deletes every row in one collected batch. Small helper so the cleanup below
@@ -30,7 +31,10 @@ async function deleteMember(ctx: MutationCtx, userId: string): Promise<void> {
   if (member === null) {
     return;
   }
-  if (member.avatarStorageId !== undefined) {
+  if (
+    member.avatarStorageId !== undefined &&
+    !(await storageIsReferenced(ctx, member.avatarStorageId, { memberId: member._id }))
+  ) {
     await ctx.storage.delete(member.avatarStorageId);
   }
   await ctx.db.delete(member._id);

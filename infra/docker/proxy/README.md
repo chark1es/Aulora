@@ -166,12 +166,17 @@ Content-Security-Policy:
   frame-ancestors 'none';
   object-src 'none';
   img-src 'self' data: blob:;
+  font-src 'self';
   media-src 'self' blob:;
   style-src 'self' 'unsafe-inline';
   script-src 'self' 'wasm-unsafe-eval';
   connect-src 'self' https://convex.example.com wss://convex.example.com wss:
 ```
 
+`font-src 'self'` covers the app's typefaces: Inter and JetBrains Mono are
+bundled into `/assets` with content-hashed names (served as `font/woff2` with
+the same year-long `immutable` cache as the scripts), and no font is loaded
+from a third-party CDN.
 `style-src` needs `'unsafe-inline'` for the Tailwind runtime-injected theme
 variables; `script-src` is `'self'` plus `'wasm-unsafe-eval'`. The latter only
 lets the call engine compile its WebAssembly modules (RNNoise noise suppression

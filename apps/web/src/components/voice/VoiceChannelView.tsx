@@ -9,6 +9,9 @@ import { CallGrid } from "./CallParticipant";
 import { type CallIdentity, UNKNOWN_IDENTITY } from "./identity";
 import { JoinedElsewhere } from "./JoinedElsewhere";
 import { PictureInPictureButton } from "./PictureInPictureButton";
+import { TranscriptionBadge } from "./TranscriptionIndicator";
+import { TranscriptionNotice } from "./TranscriptionNotice";
+import { useCallAddonControls } from "./use-call-addons";
 
 /**
  * The main pane for a voice channel. Before joining it is a calm pre-join
@@ -77,6 +80,7 @@ function InCallVoiceView({
     <div className="flex min-h-0 flex-1 flex-col bg-surface-1">
       <InCallHeader call={call} title={title} voice={voice} identity={identity} />
       <CallMediaNotice />
+      <TranscriptionNotice />
       <div className="min-h-0 flex-1 p-3">
         <CallGrid
           participants={call.participants}
@@ -118,6 +122,7 @@ function InCallHeader({
           {voice.local.sharingScreen ? " · You are sharing your screen" : ""}
         </p>
       </div>
+      {call.transcribing === true && <TranscriptionBadge />}
       <PictureInPictureButton identity={identity} />
       <button
         type="button"
@@ -135,6 +140,7 @@ function InCallHeader({
 }
 
 function VoiceCallFooter({ voice }: { readonly voice: VoiceContextValue }) {
+  const addons = useCallAddonControls();
   return (
     <footer className="flex shrink-0 items-center justify-center border-t border-border px-4 py-3">
       <CallControls
@@ -152,6 +158,7 @@ function VoiceCallFooter({ voice }: { readonly voice: VoiceContextValue }) {
         onToggleCamera={() => void voice.setCamera(!voice.local.video)}
         onToggleScreen={() => void voice.setScreenSharing(!voice.local.sharingScreen)}
         onLeave={() => void voice.leave()}
+        {...addons}
       />
     </footer>
   );

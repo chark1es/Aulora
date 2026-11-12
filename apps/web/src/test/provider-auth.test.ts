@@ -1,7 +1,7 @@
+import { createProviderAuth, debugLog, setProviderTokenIdentity } from "@aulora/core";
 import { describe, expect, it, vi } from "vitest";
 import type { AuloraAuthClient } from "../lib/auth-client";
 import { authActionsFromClient } from "../lib/auth-client";
-import { createProviderAuth, setProviderTokenIdentity } from "../lib/provider-auth";
 
 /**
  * The provider must receive a client whose `convex.token` never turns a
@@ -87,7 +87,9 @@ describe("createProviderAuth", () => {
     provider.setIdentity("session-a:user-a");
     await provider.client.convex.token();
 
+    debugLog.record("account-a", "private previous account error");
     await authActionsFromClient(fake.client).signOut();
+    expect(debugLog.report("account-b", "")).not.toContain("private previous account error");
 
     expect(provider.lastToken()).toBeNull();
     expect(fake.signOut).toHaveBeenCalledTimes(1);

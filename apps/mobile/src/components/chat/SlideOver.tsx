@@ -2,16 +2,15 @@ import { Text, usePalette } from "@aulora/ui-native";
 import { type ReactNode, useCallback, useEffect } from "react";
 import { BackHandler, Keyboard, StyleSheet, useWindowDimensions, View } from "react-native";
 import { Gesture, GestureDetector } from "react-native-gesture-handler";
-import { KeyboardAvoidingView } from "react-native-keyboard-controller";
 import Animated, {
   Easing,
   useAnimatedStyle,
   useSharedValue,
   withTiming,
 } from "react-native-reanimated";
-import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { scheduleOnRN } from "react-native-worklets";
 import { dismissKeyboard } from "../../lib/keyboard";
+import { KeyboardAvoidingPane, useScreenInsets } from "../layout/ScreenContainer";
 import { RoundButton } from "./HubPane";
 
 const TIMING = { duration: 260, easing: Easing.out(Easing.cubic) } as const;
@@ -33,7 +32,7 @@ export function SlideOver({
   readonly children: ReactNode;
 }) {
   const { width } = useWindowDimensions();
-  const insets = useSafeAreaInsets();
+  const insets = useScreenInsets();
   const palette = usePalette();
   const offset = useSharedValue(width);
   const origin = useSharedValue(0);
@@ -85,10 +84,14 @@ export function SlideOver({
   return (
     <GestureDetector gesture={pan}>
       <Animated.View accessibilityViewIsModal style={[StyleSheet.absoluteFill, slide]}>
-        <KeyboardAvoidingView
-          behavior="padding"
-          keyboardVerticalOffset={-insets.bottom}
-          style={{ flex: 1, backgroundColor: palette.bg, paddingTop: insets.top }}
+        <KeyboardAvoidingPane
+          style={{
+            flex: 1,
+            backgroundColor: palette.bg,
+            paddingTop: insets.top,
+            paddingLeft: insets.left,
+            paddingRight: insets.right,
+          }}
         >
           <View className="flex-row items-center gap-3 border-b border-border px-3 pb-2 pt-1">
             <RoundButton icon="chevron-left" label="Back" onPress={close} />
@@ -109,7 +112,7 @@ export function SlideOver({
             </View>
           </View>
           {children}
-        </KeyboardAvoidingView>
+        </KeyboardAvoidingPane>
       </Animated.View>
     </GestureDetector>
   );

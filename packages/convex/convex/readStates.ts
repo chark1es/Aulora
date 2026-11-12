@@ -3,6 +3,7 @@ import { ConvexError, v } from "convex/values";
 import type { Id } from "./_generated/dataModel";
 import { mutation, query } from "./_generated/server";
 import { requireAuth } from "./lib/auth";
+import { broadcastJoinedAt, mentionsViewer } from "./lib/broadcastMentions";
 import { requireChannelAccess, requireChannelAccessFromContext } from "./lib/channels";
 import {
   categoryOverridesById,
@@ -24,6 +25,7 @@ async function countMentionsAfter(
   userId: string,
   lastReadMessageId: string | undefined,
 ): Promise<number> {
+  const joinedAt = await broadcastJoinedAt(ctx, userId, channelId);
   let cursorAt: number | null = null;
   if (lastReadMessageId !== undefined) {
     const cursor = await ctx.db.get(lastReadMessageId as Id<"messages">);
@@ -45,7 +47,10 @@ async function countMentionsAfter(
       })
       .take(MENTION_SCAN_LIMIT);
     mentions += messages.filter(
-      (message) => message.deletedAt === undefined && message.mentionUserIds.includes(userId),
+      (message) =>
+        message.deletedAt === undefined &&
+        message.threadRootId === undefined &&
+        mentionsViewer(message, userId, joinedAt),
     ).length;
     mentions = Math.min(mentions, MENTION_SCAN_LIMIT);
     const last = messages.at(-1);
@@ -171,6 +176,8 @@ interface ChannelUnreadSummary {
   /** Unread root messages from other people, saturated at {@link SUMMARY_UNREAD_CAP}. */
   unreadCount: number;
   mentionCount: number;
+  /** Mass-only subset of mentionCount; explicit/role mentions take priority. */
+  massMentionCount: number;
   lastActivityAt: number | null;
   lastAuthorId: string | null;
 }
@@ -195,12 +202,14 @@ async function summarizeChannel(
     .unique();
   const cursor =
     state?.lastReadMessageId !== undefined ? await ctx.db.get(state.lastReadMessageId) : null;
+  const joinedAt = await broadcastJoinedAt(ctx, userId, channelId);
   const cursorAt = cursor?._creationTime ?? null;
 
   let upper: number | null = null;
   let unread = false;
   let unreadCount = 0;
   let mentionCount = 0;
+  let massMentionCount = 0;
   for (let pageIndex = 0; pageIndex < SUMMARY_SCAN_PAGES; pageIndex += 1) {
     if (pageIndex > 0) {
       if (budget.extraPages <= 0) {
@@ -241,8 +250,13 @@ async function summarizeChannel(
       }
       unread = true;
       unreadCount = Math.min(unreadCount + 1, SUMMARY_UNREAD_CAP);
-      if (message.mentionUserIds.includes(userId)) {
+      if (mentionsViewer(message, userId, joinedAt)) {
         mentionCount = Math.min(mentionCount + 1, MENTION_SCAN_LIMIT);
+        if (
+          (message.mentionEveryone === true || message.mentionHere === true) &&
+          !(message.broadcastDirectUserIds ?? message.mentionUserIds).includes(userId)
+        )
+          massMentionCount = Math.min(massMentionCount + 1, MENTION_SCAN_LIMIT);
       }
     }
     const last = messages.at(-1);
@@ -263,6 +277,7 @@ async function summarizeChannel(
     unread,
     unreadCount,
     mentionCount,
+    massMentionCount,
     lastActivityAt: latest?._creationTime ?? null,
     lastAuthorId: latest?.authorId ?? null,
   };

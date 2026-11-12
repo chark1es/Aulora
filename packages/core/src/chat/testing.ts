@@ -56,6 +56,8 @@ export function createMockPort(options: { readonly now?: () => number } = {}): M
     threadRootId?: string;
     replyToId?: string;
     mentionUserIds?: readonly string[];
+    readonly mentionEveryone?: boolean;
+    readonly mentionHere?: boolean;
     mentionChannelIds?: readonly string[];
     mentionCategoryIds?: readonly string[];
     attachmentIds?: readonly string[];
@@ -73,6 +75,8 @@ export function createMockPort(options: { readonly now?: () => number } = {}): M
       ...(args.replyToId !== undefined ? { replyToId: args.replyToId } : {}),
       attachmentIds: [...(args.attachmentIds ?? [])],
       mentionUserIds: [...(args.mentionUserIds ?? [])],
+      mentionEveryone: args.mentionEveryone ?? false,
+      mentionHere: args.mentionHere ?? false,
       ...(args.mentionChannelIds !== undefined
         ? { mentionChannelIds: [...args.mentionChannelIds] }
         : {}),

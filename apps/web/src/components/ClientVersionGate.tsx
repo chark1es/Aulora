@@ -3,6 +3,7 @@ import {
   type ClientVersionPolicy,
   type ClientVersionState,
   clientVersionState,
+  userFacingError,
 } from "@aulora/core";
 import { Button, Card, Icon, Text } from "@aulora/ui-web";
 import { useQuery } from "convex/react";
@@ -23,7 +24,7 @@ import {
 
 const DISMISSED_KEY = "aulora:client-version-dismissed";
 
-/** The server's advertised compatibility policy, or `null` while it loads. */
+/** The server’s advertised compatibility policy, or `null` while it loads. */
 // eslint-disable-next-line @typescript-eslint/no-redundant-type-constituents -- `ClientVersionPolicy` comes from @aulora/core, which this linter cannot resolve
 export function useClientVersionPolicy(): ClientVersionPolicy | null {
   const config = useQuery(api.server.publicConfig, {});
@@ -39,7 +40,7 @@ export function useClientVersionPolicy(): ClientVersionPolicy | null {
 }
 
 /**
- * The connected server's version when it is older than this client can talk to,
+ * The connected server’s version when it is older than this client can talk to,
  * otherwise `null` (also while the config loads). Servers from before this
  * release never send `features`, and the shell relies on the queries that
  * arrived with it, so such a server would break the app instead of degrading.
@@ -54,7 +55,7 @@ export function useOutdatedServer(): { readonly version: string } | null {
   return { version: config.version };
 }
 
-/** Runs the platform's update path: the signed desktop updater or a reload. */
+/** Runs the platform’s update path: the signed desktop updater or a reload. */
 function useClientUpdateAction() {
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -78,7 +79,7 @@ function useClientUpdateAction() {
       await downloadDesktopUpdate();
       await installDesktopUpdate();
     } catch (cause) {
-      setError(cause instanceof Error ? cause.message : "Could not start the update.");
+      setError(userFacingError(cause));
     } finally {
       setBusy(false);
     }
@@ -97,7 +98,7 @@ const RUNNING_VERSION =
   CLIENT_VERSION === "0.0.0-dev" ? "a development build" : `v${CLIENT_VERSION}`;
 
 /**
- * Hard gate for a client older than the server's minimum supported version.
+ * Hard gate for a client older than the server’s minimum supported version.
  * The server still validates everything it is told; this screen only keeps an
  * outdated build from silently talking to an incompatible backend.
  */

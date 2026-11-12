@@ -1,5 +1,11 @@
-import { Text as RNText, type TextProps as RNTextProps } from "react-native";
+import {
+  Text as RNText,
+  type TextProps as RNTextProps,
+  StyleSheet,
+  type TextStyle,
+} from "react-native";
 import { cn } from "./cn";
+import { nativeFontStyle } from "./typography";
 
 export type HeadingLevel = 1 | 2 | 3;
 
@@ -14,8 +20,20 @@ const LEVEL_CLASSES = new Map<HeadingLevel, string>([
 ]);
 
 /** Section heading; `level` picks the type size. */
-export function Heading({ level = 2, className, ...rest }: HeadingProps) {
+export function Heading({ level = 2, className, style, ...rest }: HeadingProps) {
+  const classes = cn("text-text", LEVEL_CLASSES.get(level), className ?? "");
+  const flat: TextStyle = { ...StyleSheet.flatten(style) };
+  const font = nativeFontStyle({
+    className: classes,
+    fontWeight: flat.fontWeight,
+    fontStyle: flat.fontStyle,
+  });
   return (
-    <RNText className={cn("text-text", LEVEL_CLASSES.get(level), className ?? "")} {...rest} />
+    <RNText
+      ellipsizeMode="tail"
+      style={[{ flexShrink: 1, minWidth: 0 }, font, style]}
+      className={classes}
+      {...rest}
+    />
   );
 }

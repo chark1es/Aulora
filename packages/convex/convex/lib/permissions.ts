@@ -21,11 +21,9 @@ import { isOwner as isWorkspaceOwner } from "./owners";
 /** Synthetic role id a bot holds instead of `@everyone`. */
 export const BOT_ROLE_ID = "@bot";
 
-export type ServerDoc = Doc<"server">;
 export type MemberDoc = Doc<"members">;
 export type RoleDoc = Doc<"roles">;
 export type ChannelDoc = Doc<"channels">;
-export type CategoryDoc = Doc<"categories">;
 
 type ReadCtx = QueryCtx | MutationCtx;
 
@@ -69,13 +67,6 @@ async function memberRow(ctx: ReadCtx, userId: string): Promise<MemberDoc | null
 }
 
 /**
- * Membership gate for the whole authorization layer. An authenticated identity
- * is not a member until it has a `members` row (created by invite redemption or
- * the IdP role attach). The workspace owner is treated as a member even
- * without a stored row so owner/setup flows are never locked out; an empty
- * `@everyone` baseline must never make a non-member look privileged.
- */
-/**
  * Membership alone opens a handful of workspace-wide reads (member list, roles,
  * categories). A person gets those for free; a bot only with the workspace-level
  * `ViewChannel` grant, so a bot with no permissions really can do nothing.
@@ -90,6 +81,13 @@ async function requireBotMayBrowse(ctx: ReadCtx, userId: string): Promise<void> 
   }
 }
 
+/**
+ * Membership gate for the whole authorization layer. An authenticated identity
+ * is not a member until it has a `members` row (created by invite redemption or
+ * the IdP role attach). The workspace owner is treated as a member even
+ * without a stored row so owner/setup flows are never locked out; an empty
+ * `@everyone` baseline must never make a non-member look privileged.
+ */
 export async function requireMember(ctx: ReadCtx, userId: string): Promise<MemberDoc | null> {
   const member = await memberRow(ctx, userId);
   if (member !== null) {

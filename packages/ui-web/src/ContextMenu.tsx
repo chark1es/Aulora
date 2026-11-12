@@ -170,7 +170,7 @@ function ContextMenu({
             className={cn(
               "flex w-full items-center gap-2.5 rounded-[7px] px-2.5 py-1.5 text-left text-[13px] transition disabled:pointer-events-none disabled:opacity-40",
               item.danger === true
-                ? "text-danger hover:bg-danger/10"
+                ? "text-danger-text hover:bg-danger/10"
                 : "text-text hover:bg-surface-3",
             )}
           >

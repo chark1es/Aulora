@@ -19,6 +19,12 @@ test("v1 uses its checked-in release notes when the input is blank", () => {
   );
 });
 
+test("a checked-in version file supplies migration notes before generated notes", () => {
+  expect(releaseNotes({ ...release, version: "1.5.0", notes: " \n" }, unexpectedCall)).toBe(
+    readFileSync("docs/release-notes-v1.5.0.md", "utf8"),
+  );
+});
+
 test("later releases generate notes for the exact version and built commit", () => {
   const generated = "## What's Changed\n\n- Fix reconnects by @contributor\n";
   let calls = 0;

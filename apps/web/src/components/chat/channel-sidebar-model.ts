@@ -10,6 +10,7 @@ export interface ChannelUnread {
   /** Unread root messages from other people, saturated server-side. */
   readonly unreadCount: number;
   readonly mentionCount: number;
+  readonly massMentionCount?: number;
   readonly lastActivityAt: number | null;
 }
 
@@ -29,10 +30,14 @@ export interface ChannelSidebarProps {
   readonly unreadByChannel: ReadonlyMap<string, ChannelUnread>;
   readonly canCreateChannel: boolean;
   /** Which main pane is showing; drives the sidebar Threads row. */
-  readonly mainView?: "chat" | "threads" | "kanban" | "notes";
+  readonly mainView?: "chat" | "threads" | "kanban" | "notes" | "scheduled" | "transcripts";
   readonly onOpenKanban?: () => void;
   /** Opens the Notes addon from the sidebar row. */
   readonly onOpenNotes?: () => void;
+  /** Opens the Scheduled calls tab (addon on and `ViewScheduledCalls`). */
+  readonly onOpenScheduled?: () => void;
+  /** Opens the Transcripts surface (addon on and `ViewTranscripts`). */
+  readonly onOpenTranscripts?: () => void;
   /** Mentions across the viewer's threads; badges the Threads row. */
   readonly threadMentionCount?: number;
   /** Opens the Threads inbox from the sidebar row. */

@@ -1,4 +1,11 @@
-import { type AttachmentDescriptor, Permission } from "@aulora/core";
+import {
+  type AttachmentDescriptor,
+  canUseMassMentions,
+  hasBroadcastToken,
+  hasPermission,
+  Permission,
+  sendThreadReply,
+} from "@aulora/core";
 import { Alert } from "react-native";
 import { type PickedFile, uploadPickedFiles } from "../../lib/attachments";
 import {
@@ -9,6 +16,8 @@ import {
   timeoutMember,
 } from "../../lib/backend-actions";
 import { manageableChannelRoles, roleOverridesFor } from "../../lib/channel-role-overrides";
+import { resolveSendMentions } from "../../lib/chat-mentions";
+import { RoleColorsSheet } from "../admin/RoleColorsSheet";
 import { CallScreen } from "../voice/CallScreen";
 import { IncomingCallModal } from "../voice/IncomingCallModal";
 import { BannedMembersSheet } from "./BannedMembersSheet";
@@ -38,6 +47,7 @@ export function ChatScreenSheets({ model }: { readonly model: ChatScreenModel })
       <NewConversationOverlay model={model} />
       <EditChannelOverlay model={model} />
       <BannedMembersOverlay model={model} />
+      <RoleColorsOverlay model={model} />
       <CreateChannelOverlay model={model} />
       <UserNoteOverlay model={model} />
       <CallOverlays model={model} />
@@ -52,6 +62,9 @@ function ThreadSheet({ model }: { readonly model: ChatScreenModel }) {
   }
   return (
     <ThreadModal
+      channelKind={channel.kind}
+      audienceSize={model.mentionMemberIds.length}
+      key={model.threadRoot.id}
       runtime={runtime}
       permissions={model.channelPermissions}
       channelId={channel.id}
@@ -97,16 +110,37 @@ function makeReplyHandler(model: ChatScreenModel, channelId: string, threadRootI
     if (files.length > 0) {
       attachments = await uploadPickedFiles(runtime.port, files);
     }
-    if (replyInThread) {
-      await model.sendMessage(channelId, text, {
-        threadRootId,
-        ...(attachments !== undefined && attachments.length > 0 ? { attachments } : {}),
-      });
-    } else {
-      await model.sendMessage(channelId, text, {
-        ...(attachments !== undefined && attachments.length > 0 ? { attachments } : {}),
-      });
-    }
+    const options = {
+      ...resolveSendMentions(text, {
+        userTargets: model.mentionUserTargets,
+
+        canMentionEveryone: false,
+        memberIds: model.mentionMemberIds,
+        roles: model.roles,
+        channelTargets: model.mentionChannelTargets,
+        categoryTargets: model.mentionCategoryTargets,
+      }),
+      ...(attachments !== undefined && attachments.length > 0 ? { attachments } : {}),
+    };
+    await sendThreadReply(
+      () => model.sendMessage(channelId, text, { threadRootId, ...options }),
+      replyInThread
+        ? undefined
+        : () =>
+            model.sendMessage(channelId, text, {
+              ...options,
+              attachments: [],
+              mentionEveryone:
+                canUseMassMentions(model.channel, undefined, model.channelPermissions) &&
+                hasBroadcastToken(text, "everyone"),
+              mentionHere:
+                canUseMassMentions(model.channel, undefined, model.channelPermissions) &&
+                hasBroadcastToken(text, "here"),
+            }),
+      (error) => {
+        Alert.alert("Channel copy failed", errorMessage(error));
+      },
+    );
   };
 }
 
@@ -230,7 +264,7 @@ function MemberProfileOverlay({ model }: { readonly model: ChatScreenModel }) {
           .createDm({ otherUserId: shownProfile })
           .then((result) => model.openChannel(result.channelId))
           .catch((cause: unknown) => {
-            Alert.alert("Couldn't start message", errorMessage(cause));
+            Alert.alert("Couldn’t start message", errorMessage(cause));
           });
       }}
     />
@@ -375,6 +409,25 @@ function BannedMembersOverlay({ model }: { readonly model: ChatScreenModel }) {
       memberNames={model.memberNames}
       onClose={() => {
         model.setBansOpen(false);
+      }}
+    />
+  );
+}
+
+function RoleColorsOverlay({ model }: { readonly model: ChatScreenModel }) {
+  const canManageRoles =
+    model.isOwner || hasPermission(model.viewerPermissions, Permission.ManageRoles);
+  if (!canManageRoles) {
+    return null;
+  }
+  return (
+    <RoleColorsSheet
+      visible={model.roleColorsOpen}
+      roles={model.roleViews}
+      isOwner={model.isOwner}
+      topPosition={model.viewerTopPosition}
+      onClose={() => {
+        model.setRoleColorsOpen(false);
       }}
     />
   );

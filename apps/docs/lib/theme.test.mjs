@@ -1,11 +1,12 @@
 import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
 import { test } from "node:test";
-import { iconSvg, paletteCss, readIcons, readPalettes } from "./theme.mjs";
+import { fontCss, iconSvg, paletteCss, preloadFonts, readIcons, readPalettes } from "./theme.mjs";
 
 const tokens = new URL("../../../packages/tokens/src/", import.meta.url);
 const colorsSource = readFileSync(new URL("colors.ts", tokens), "utf8");
 const iconsSource = readFileSync(new URL("icons.ts", tokens), "utf8");
+const fonts = JSON.parse(readFileSync(new URL("font-data.json", tokens), "utf8"));
 
 test("readPalettes reads every token of both themes from @aulora/tokens", () => {
   const { dark, light, idle } = readPalettes(colorsSource);
@@ -37,4 +38,23 @@ test("iconSvg renders a decorative currentColor icon and rejects unknown names",
   assert.match(svg, /aria-hidden="true"/);
   assert.match(svg, /fill="currentColor" d="M0 0&quot;h1"/);
   assert.throws(() => iconSvg({}, "missing"), /unknown icon/);
+});
+
+test("fontCss self-hosts the app's faces with metric fallbacks and stacks", () => {
+  const css = fontCss(fonts, "fonts");
+  assert.match(
+    css,
+    /font-family: "Inter";\n {2}font-style: normal;\n {2}font-weight: 100 900;\n {2}font-display: swap;\n {2}src: url\("fonts\/inter-latin-wght-normal\.woff2"\)/,
+  );
+  assert.match(css, /font-family: "Inter Fallback";\n {2}src: local\("Arial"\)/);
+  assert.match(css, /size-adjust: 107\.34%;/);
+  assert.match(
+    css,
+    /--font-sans: "Inter", "Inter Fallback", ui-sans-serif, system-ui, sans-serif;/,
+  );
+  assert.match(
+    css,
+    /--font-mono: "JetBrains Mono", "JetBrains Mono Fallback", ui-monospace, monospace;/,
+  );
+  assert.deepEqual(preloadFonts(fonts), ["inter-latin-wght-normal.woff2"]);
 });

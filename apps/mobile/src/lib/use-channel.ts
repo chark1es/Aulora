@@ -61,7 +61,7 @@ export function useChannelSession(
     setLoadedChannelId(channelId);
     const receive = (incoming: readonly MessagePayload[]) => {
       setMessages(incoming);
-      void runtime.session.receiveMessages(incoming);
+      void runtime.session.receiveMessages(incoming, `mobile:channel:${channelId}`);
     };
     // The newest page stays live; older pages are fetched on demand as one-off
     // snapshots (not subscriptions) and prepended, so scrolling back N pages
@@ -120,7 +120,6 @@ export function useChannelSession(
             messages: page.page,
             nextCursor: page.isDone ? null : page.continueCursor,
           });
-          void runtime.session.receiveMessages(page.page);
           setHasOlder(hasOlderNow());
           merge();
         })
@@ -164,6 +163,8 @@ export function useChannelSession(
           createdAt: message.createdAt,
           authorId: message.authorId,
           mentionedUserIds: message.mentionUserIds,
+          mentionEveryone: message.mentionEveryone ?? false,
+          mentionHere: message.mentionHere ?? false,
         })),
         {
           lastReadAt: null,

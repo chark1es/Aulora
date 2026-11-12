@@ -1,6 +1,5 @@
-import { type NoteRevisionAction, summarizeRevision } from "@aulora/core";
+import { collapseTimeRange, type NoteRevisionAction, summarizeRevision } from "@aulora/core";
 import { describe, expect, it } from "vitest";
-import { collapseTimeRange } from "../src/components/notes/note-history-format";
 
 describe("collapseTimeRange", () => {
   it("shares the period when both ends agree", () => {

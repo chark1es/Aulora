@@ -1,7 +1,7 @@
 import { Spinner, Text } from "@aulora/ui-native";
 import { useLocalSearchParams, useRouter } from "expo-router";
 import { useEffect } from "react";
-import { View } from "react-native";
+import { ScreenContainer } from "../../src/components/layout/ScreenContainer";
 import { setPendingInvite } from "../../src/lib/pending-invite";
 
 /**
@@ -18,11 +18,11 @@ export default function InviteRoute() {
   }, [params.code, router]);
 
   return (
-    <View className="flex-1 items-center justify-center gap-4 bg-bg">
+    <ScreenContainer className="flex-1 items-center justify-center gap-4 bg-bg">
       <Spinner size={28} label="Opening invite" />
       <Text size="base" tone="muted">
         Opening invite…
       </Text>
-    </View>
+    </ScreenContainer>
   );
 }

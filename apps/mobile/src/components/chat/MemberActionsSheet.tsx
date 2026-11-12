@@ -1,4 +1,4 @@
-import { Text, usePalette } from "@aulora/ui-native";
+import { nativeFontStyle, Text, usePalette } from "@aulora/ui-native";
 import { BottomSheetTextInput } from "@gorhom/bottom-sheet";
 import { useEffect, useState } from "react";
 import { Alert } from "react-native";
@@ -247,7 +247,7 @@ export function MemberActionsSheet(props: MemberActionsSheetProps) {
     <BottomSheet
       visible={visible}
       title={panel === "ban" ? `Ban ${memberName}` : panel === "timeout" ? "Time out" : memberName}
-      subtitle={panel === "timeout" ? `${memberName} can't send messages until it ends` : undefined}
+      subtitle={panel === "timeout" ? `${memberName} can’t send messages until it ends` : undefined}
       onClose={onClose}
     >
       <MemberActionsBody
@@ -286,14 +286,17 @@ function BanPanel({
         maxLength={200}
         placeholder="Reason (optional)"
         placeholderTextColor={palette["text-muted"]}
-        style={{
-          color: palette.text,
-          backgroundColor: palette["surface-2"],
-          borderRadius: 12,
-          paddingHorizontal: 14,
-          paddingVertical: 12,
-          fontSize: 17,
-        }}
+        style={[
+          nativeFontStyle({}),
+          {
+            color: palette.text,
+            backgroundColor: palette["surface-2"],
+            borderRadius: 12,
+            paddingHorizontal: 14,
+            paddingVertical: 12,
+            fontSize: 17,
+          },
+        ]}
       />
       <ListHeader title="Ban for" />
       <ListGroup inset={12}>
@@ -308,8 +311,8 @@ function BanPanel({
               Alert.alert(
                 `Ban ${memberName}?`,
                 option.durationMs === undefined
-                  ? "They can't rejoin until someone lifts the ban."
-                  : `They can't rejoin for ${option.label}.`,
+                  ? "They can’t rejoin until someone lifts the ban."
+                  : `They can’t rejoin for ${option.label}.`,
                 [
                   { text: "Cancel", style: "cancel" },
                   {

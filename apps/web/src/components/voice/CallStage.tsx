@@ -8,6 +8,9 @@ import { CallGrid } from "./CallParticipant";
 import { useCallDuration } from "./hooks";
 import { type CallIdentity, UNKNOWN_IDENTITY } from "./identity";
 import { PictureInPictureButton } from "./PictureInPictureButton";
+import { TranscriptionBadge } from "./TranscriptionIndicator";
+import { TranscriptionNotice } from "./TranscriptionNotice";
+import { useCallAddonControls } from "./use-call-addons";
 
 /** The full call surface: a top bar, the participant grid, and controls below. */
 export function CallStage({
@@ -43,6 +46,7 @@ export function CallStage({
       />
 
       <CallMediaNotice />
+      <TranscriptionNotice />
       <CallAloneNotice />
 
       <div className="min-h-0 flex-1 p-3">
@@ -95,6 +99,7 @@ function CallStageHeader({
           {sharer !== null ? ` · ${sharer} is sharing` : ""}
         </p>
       </div>
+      {call.transcribing === true && <TranscriptionBadge />}
       {voice.canStream && (
         <ShareButton
           sharingScreen={voice.local.sharingScreen}
@@ -133,7 +138,7 @@ function ShareButton({
       className={cn(
         "flex h-8 items-center gap-1.5 rounded-[8px] px-2.5 text-[12px] font-medium transition",
         sharingScreen
-          ? "bg-accent/15 text-accent"
+          ? "bg-accent/15 text-accent-text"
           : "text-text-muted hover:bg-surface-3 hover:text-text",
       )}
     >
@@ -152,6 +157,7 @@ function CallStageFooter({
   readonly inCall: boolean;
   readonly voice: VoiceContextValue;
 }) {
+  const addons = useCallAddonControls();
   return (
     <footer className="flex shrink-0 items-center justify-center gap-3 border-t border-border px-4 py-3">
       {!inCall && (
@@ -180,6 +186,7 @@ function CallStageFooter({
         onToggleCamera={() => void voice.setCamera(!voice.local.video)}
         onToggleScreen={() => void voice.setScreenSharing(!voice.local.sharingScreen)}
         onLeave={() => void voice.leave()}
+        {...addons}
       />
     </footer>
   );

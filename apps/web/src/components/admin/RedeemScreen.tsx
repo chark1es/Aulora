@@ -1,5 +1,5 @@
 import type { ServerProfile } from "@aulora/core";
-import { CONVEX_AUTH_CLIENT_OPTIONS } from "@aulora/core";
+import { CONVEX_AUTH_CLIENT_OPTIONS, createProviderAuth } from "@aulora/core";
 import { Button, Card, Heading, Spinner, Text } from "@aulora/ui-web";
 import { type AuthClient, ConvexBetterAuthProvider } from "@convex-dev/better-auth/react";
 import { ConvexReactClient, useMutation, useQuery } from "convex/react";
@@ -11,7 +11,6 @@ import {
   createAuloraAuthClient,
 } from "../../lib/auth-client";
 import { redeemErrorMessage, redeemOutcomeMessage } from "../../lib/invites";
-import { createProviderAuth } from "../../lib/provider-auth";
 import { AuthFrame } from "../AuthFrame";
 import { SignInScreen } from "../SignInScreen";
 

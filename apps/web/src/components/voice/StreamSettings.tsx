@@ -39,7 +39,7 @@ export function StreamSettings() {
           checked={settings.streamAudio}
           onChange={(streamAudio) => void voice.updateSettings({ streamAudio })}
           label="Share sound from the screen"
-          description="Includes audio from the window, tab or screen you share, when your browser allows it. Needs the workspace's streaming server."
+          description="Includes audio from the window, tab or screen you share, when your browser allows it. Needs the workspace’s streaming server."
         />
       </div>
     </div>

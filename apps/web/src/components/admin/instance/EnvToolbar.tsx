@@ -87,7 +87,7 @@ function EnvFilterChip({
       className={cn(
         "rounded-pill border px-2.5 py-1 text-[12px] font-medium transition",
         active
-          ? "border-accent bg-accent-soft text-accent"
+          ? "border-accent bg-accent-soft text-accent-text"
           : "border-border text-text-muted hover:border-text-muted/40 hover:text-text",
       )}
     >

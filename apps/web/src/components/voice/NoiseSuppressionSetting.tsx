@@ -16,7 +16,7 @@ function describe(level: Level): string {
   }
 }
 
-/** Off, the browser's built-in suppression, or the on-device AI denoiser. */
+/** Off, the browser’s built-in suppression, or the on-device AI denoiser. */
 export function NoiseSuppressionSetting() {
   const voice = useVoice();
   const { settings } = voice;

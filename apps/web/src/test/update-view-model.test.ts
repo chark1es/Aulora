@@ -25,15 +25,15 @@ describe("update view model", () => {
     expect(downloadPercent(null)).toBeNull();
     expect(downloadLabel({ downloaded: 50, contentLength: 100 })).toBe("50% downloaded");
     expect(downloadLabel({ downloaded: 2 * 1024 * 1024, contentLength: null })).toBe(
-      "2.0 MB downloaded",
+      "2.0 MiB downloaded",
     );
   });
 
   it("formats byte counts", () => {
-    expect(formatBytes(0)).toBe("0 KB");
-    expect(formatBytes(512)).toBe("0.5 KB");
-    expect(formatBytes(1024 * 1024)).toBe("1.0 MB");
-    expect(formatBytes(15 * 1024 * 1024)).toBe("15 MB");
+    expect(formatBytes(0)).toBe("0 B");
+    expect(formatBytes(512)).toBe("512 B");
+    expect(formatBytes(1024 * 1024)).toBe("1.0 MiB");
+    expect(formatBytes(15 * 1024 * 1024)).toBe("15 MiB");
   });
 
   it("formats readable release and check times", () => {

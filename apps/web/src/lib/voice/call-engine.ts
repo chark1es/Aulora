@@ -325,6 +325,7 @@ export class VoiceEngine {
       call: this.call,
       local: this.local,
       micStream: this.micStream,
+      transmitting: this.isTransmitting(),
       localVideoTrack: this.screen.track ?? this.camera.track,
       remoteStreams: this.transport === "sfu" ? this.sfu.mediaStreams : this.mesh.remoteStreams,
       remoteScreens: this.currentRemoteScreens(),
@@ -341,6 +342,17 @@ export class VoiceEngine {
 
   isActive(): boolean {
     return this.callId !== null;
+  }
+
+  /** The microphone is live: unmuted and, with push-to-talk, the key is held. */
+  private isTransmitting(): boolean {
+    return (
+      this.callId !== null &&
+      this.micStream !== null &&
+      !this.local.muted &&
+      !this.local.deafened &&
+      (!this.pushToTalk || this.talking)
+    );
   }
 
   /**
@@ -442,6 +454,27 @@ export class VoiceEngine {
       }
       this.setError(messageOf(error));
       return { status: "failed" };
+    } finally {
+      this.pending = false;
+      this.emit();
+    }
+  }
+
+  /**
+   * Starts the call engine on a call this client already holds a seat in,
+   * because another mutation seated it (joining a scheduled room). The same
+   * setup as {@link joinCall}, without the `calls.join` round trip.
+   */
+  async attachToCall(callId: string): Promise<boolean> {
+    this.setError(null);
+    this.pending = true;
+    this.emit();
+    try {
+      await this.enter(callId);
+      return true;
+    } catch (error) {
+      this.setError(messageOf(error));
+      return false;
     } finally {
       this.pending = false;
       this.emit();
@@ -831,6 +864,8 @@ export class VoiceEngine {
     }
     this.talking = on;
     this.applyMicEnabled();
+    // The snapshot's `transmitting` follows the key, so tell observers.
+    this.emit();
   }
 
   setDeafened(deafened: boolean): void {

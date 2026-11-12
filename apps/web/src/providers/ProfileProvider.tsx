@@ -1,7 +1,11 @@
 /* eslint-disable no-unused-vars -- the base rule reports parameter names in type signatures; Biome checks real unused code */
 import {
-  createServerProfile,
+  activateProfileInStore,
+  activeProfileOf,
+  addProfileToStore,
   type ProfileStore,
+  readProfileSnapshot,
+  removeProfileFromStore,
   type ServerProfile,
   type WellKnown,
   webLocalStorageStore,
@@ -44,20 +48,20 @@ export function ProfileProvider({ store, children }: ProfileProviderProps) {
   const [ready, setReady] = useState(false);
 
   const refresh = useCallback(async () => {
-    const [list, active] = await Promise.all([profileStore.list(), profileStore.getActive()]);
-    setProfiles(list);
-    setActiveId(active?.id);
+    const snapshot = await readProfileSnapshot(profileStore);
+    setProfiles(snapshot.profiles);
+    setActiveId(snapshot.activeId);
   }, [profileStore]);
 
   useEffect(() => {
     const controller = new AbortController();
     void (async () => {
-      const [list, active] = await Promise.all([profileStore.list(), profileStore.getActive()]);
+      const snapshot = await readProfileSnapshot(profileStore);
       if (controller.signal.aborted) {
         return;
       }
-      setProfiles(list);
-      setActiveId(active?.id);
+      setProfiles(snapshot.profiles);
+      setActiveId(snapshot.activeId);
       setReady(true);
     })();
     return () => {
@@ -67,9 +71,7 @@ export function ProfileProvider({ store, children }: ProfileProviderProps) {
 
   const addProfile = useCallback(
     async (baseUrl: string, wellKnown: WellKnown) => {
-      const profile = createServerProfile(baseUrl, wellKnown);
-      await profileStore.add(profile);
-      await profileStore.setActive(profile.id);
+      const profile = await addProfileToStore(profileStore, baseUrl, wellKnown);
       await refresh();
       return profile;
     },
@@ -78,7 +80,7 @@ export function ProfileProvider({ store, children }: ProfileProviderProps) {
 
   const setActive = useCallback(
     async (id: string) => {
-      await profileStore.setActive(id);
+      await activateProfileInStore(profileStore, id);
       setActiveId(id);
     },
     [profileStore],
@@ -86,16 +88,13 @@ export function ProfileProvider({ store, children }: ProfileProviderProps) {
 
   const remove = useCallback(
     async (id: string) => {
-      await profileStore.remove(id);
+      await removeProfileFromStore(profileStore, id);
       await refresh();
     },
     [profileStore, refresh],
   );
 
-  const activeProfile = useMemo(
-    () => profiles.find((profile) => profile.id === activeId),
-    [profiles, activeId],
-  );
+  const activeProfile = useMemo(() => activeProfileOf(profiles, activeId), [profiles, activeId]);
 
   // Shared links must name the workspace, not the desktop shell's own origin.
   useEffect(() => {

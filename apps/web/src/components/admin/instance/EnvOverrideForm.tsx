@@ -13,7 +13,7 @@ export interface EnvOverrideFormProps {
 }
 
 /**
- * Inline editor for one override. The control matches the variable's type, the
+ * Inline editor for one override. The control matches the variable’s type, the
  * description and bounds sit above it, and a single footer puts Cancel (ghost)
  * left of the primary Save. Escape cancels; the control reports its own
  * validation error as the value changes.

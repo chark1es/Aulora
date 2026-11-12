@@ -112,7 +112,7 @@ export function MemberProfilePopover({
       await onMessage(member.userId);
       onClose();
     } catch {
-      setError("Couldn't open the direct message. Please try again.");
+      setError("Couldn’t open the direct message. Please try again.");
     } finally {
       setBusy(false);
     }

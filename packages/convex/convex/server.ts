@@ -14,6 +14,8 @@ import { loadEffectiveEnv } from "./lib/envOverrides";
 import { effectiveMaxUploadBytes } from "./lib/instance";
 import { ownerIdsOf } from "./lib/owners";
 import { requireWorkspacePermission } from "./lib/permissions";
+import { storageIsReferenced } from "./lib/storageReferences";
+import { scheduleStopAllActive } from "./lib/transcription";
 
 interface IceServerConfig {
   readonly urls: readonly string[];
@@ -121,6 +123,7 @@ async function buildPublicConfig(ctx: QueryCtx) {
     // True until the first owner claims a fresh instance. Additive field: an
     // older backend that lacks it reads as false on new clients.
     setupRequired: server === null,
+    capabilities: { mentionMarkers: true, threadInboxPaging: true },
     iconSeed: server?.iconSeed ?? "aulora:server:default",
     description: server?.description ?? "",
     logoUrl,
@@ -156,6 +159,9 @@ async function buildPublicConfig(ctx: QueryCtx) {
     addons: {
       kanban: server?.settings.kanbanEnabled ?? false,
       notes: server?.settings.notesEnabled ?? false,
+      transcription: server?.settings.transcriptionEnabled === true,
+      guestCalls: server?.settings.guestCallsEnabled === true,
+      scheduledCalls: server?.settings.scheduledCallsEnabled === true,
     },
   };
 }
@@ -256,6 +262,9 @@ export const setLogo = mutation({
       throw new ConvexError("Workspace is not initialized");
     }
     if (args.storageId !== undefined) {
+      if (await storageIsReferenced(ctx, args.storageId, { serverId: server._id })) {
+        throw new ConvexError("Logo file is already in use");
+      }
       const url = await ctx.storage.getUrl(args.storageId);
       if (url === null) {
         throw new ConvexError("Logo file not found");
@@ -294,6 +303,9 @@ export const updateSettings = mutation({
     disableNewCallTransport: v.optional(v.boolean()),
     disablePipVideo: v.optional(v.boolean()),
     disableAutoDegrade: v.optional(v.boolean()),
+    transcriptionEnabled: v.optional(v.boolean()),
+    guestCallsEnabled: v.optional(v.boolean()),
+    scheduledCallsEnabled: v.optional(v.boolean()),
   },
   handler: async (ctx, args) => {
     const { userId } = await requireWorkspacePermission(ctx, Permission.ManageWorkspace);
@@ -330,8 +342,22 @@ export const updateSettings = mutation({
         ...(args.disableAutoDegrade !== undefined
           ? { disableAutoDegrade: args.disableAutoDegrade }
           : {}),
+        ...(args.transcriptionEnabled !== undefined
+          ? { transcriptionEnabled: args.transcriptionEnabled }
+          : {}),
+        ...(args.guestCallsEnabled !== undefined
+          ? { guestCallsEnabled: args.guestCallsEnabled }
+          : {}),
+        ...(args.scheduledCallsEnabled !== undefined
+          ? { scheduledCallsEnabled: args.scheduledCallsEnabled }
+          : {}),
       },
     });
+    if (args.transcriptionEnabled === false) {
+      // Same path as `addons.setEnabled`: an active session must stop now, and
+      // the disabled state means no summary is queued.
+      await scheduleStopAllActive(ctx);
+    }
     await writeAudit(ctx, {
       actorId: userId,
       action: "server.updateSettings",

@@ -39,7 +39,11 @@ describe("mobile outbox", () => {
           replyToId: "original",
           threadRootId: "root",
           mentionUserIds: ["bob"],
+          mentionEveryone: true,
+          mentionHere: true,
           mentionChannelIds: ["other"],
+          mentionCategoryIds: ["news"],
+          mentionRoleIds: ["mods"],
         },
         100,
       ),
@@ -54,7 +58,11 @@ describe("mobile outbox", () => {
       replyToId: "original",
       threadRootId: "root",
       mentionUserIds: ["bob"],
+      mentionEveryone: true,
+      mentionHere: true,
       mentionChannelIds: ["other"],
+      mentionCategoryIds: ["news"],
+      mentionRoleIds: ["mods"],
     });
     session.dispose();
   });

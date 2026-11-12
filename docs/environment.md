@@ -56,6 +56,7 @@ public reference lists each one individually. Anything not listed as
 | Area | Variables | Why it cannot be a live UI override |
 | --- | --- | --- |
 | Bot JWT provider | `BOT_JWT_PUBLIC_JWK`, `BOT_JWT_PRIVATE_JWK`, `BOT_RUNNER_TOKEN` | `auth.config.ts` reads the public JWK when the deployment's auth config is built; the runner token is a container credential. |
+| Transcription engine | `TRANSCRIBER_TOKEN`, `TRANSCRIBER_URL`, `WHISPER_DEVICE`, `WHISPER_COMPUTE_TYPE`, `TRANSCRIBER_MAX_STREAMS`, `TRANSCRIBER_MEMORY_LIMIT`, `TRANSCRIBER_CPUS` | The optional `transcriber` container and the Convex action that asks it to download a model read these at start. The token is a shared secret; the model itself is chosen in the Addons card. |
 | EKM engine plumbing | `AULORA_EKM_PROVIDER`, `AULORA_EKM_KEY_ID`, `AULORA_ENCRYPTION_KEY_VERSION`, `VAULT_TRANSIT_MOUNT`, `VAULT_NAMESPACE` | `crons.ts` selects the key-unwrap cron from the provider at module load; the key version is part of every envelope header. Rotate with a redeploy. |
 | Updates | `AULORA_AUTO_UPDATE`, `AULORA_UPDATE_CHANNEL`, `AULORA_UPDATE_MANIFEST_URL`, `AULORA_UPDATE_GITHUB_REPO`, `AULORA_UPDATE_PROVIDER`, `AULORA_COOLIFY_*` | The host updater, not Convex, reads these. |
 | Backups | `BACKUP_TOKEN`, `BACKUP_HOUR_UTC`, `BACKUP_ENABLED`, `BACKUP_BUCKET`, `BACKUP_RETENTION` | The backup runner container reads them. |

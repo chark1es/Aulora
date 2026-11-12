@@ -170,9 +170,12 @@ Current gaps to account for when changing the updater:
   recreating the web container. A failed backend deploy leaves the previous web
   build serving, so the release schema must accept both that old frontend and
   the new one.
-- Those paths do not explicitly recreate the Convex engine. A release that
-  changes its pinned image needs a tested runtime-upgrade step, not just a new
-  setup image or function deploy. Review the Coolify path separately as well.
+- Those paths compare the target engine image ID with the existing container
+  and recreate it when changed, waiting up to 120 seconds for health before
+  setup. They also wait for engine and web health before writing the installed
+  stamp. These healthchecks do not verify application compatibility or storage
+  upgrade safety; run the live upgrade/recovery checks below. Review Coolify
+  engine upgrades separately as well.
 - The [setup script](../../infra/docker/setup/entrypoint.sh) currently treats
   the voice-permission migration as best effort. Value-detected migrations must
   record a marker in `server.appliedMigrations` (as `restrictKanbanEditing`
@@ -219,3 +222,163 @@ the release is verified. Operator steps belong in the public
 - [Realtime query dependencies](https://docs.convex.dev/realtime)
 - [Production deployment and client compatibility](https://docs.convex.dev/production/overview)
 - [Self-hosted backend](https://github.com/convex/convex-backend/tree/main/self-hosted)
+
+## Automatic chat compatibility backfills
+
+The minute crons `member roles backfill` and `attachment scopes backfill` invoke
+`maintenance.backfillMemberRoles` and `maintenance.backfillAttachmentScopes`.
+Each invocation processes one page (up to 1000 members or 500 messages) and
+atomically commits its cursor and counts in `migrationProgress`, indexed by
+migration key. Intermediate ticks never patch the `server` singleton read by
+`publicConfig`; only completion writes `server.memberRolesBackfilled` or
+`server.attachmentScopesBackfilled`, once. Completed ticks read only the server
+row. The optional server cursor fields remain accepted as a fallback, but no
+released server wrote them. An interrupted older run without `migrationProgress`
+restarts from the beginning; replaying processed rows is safe. A previously
+scheduled `backfillMemberRoles({cursor})` job may fail argument validation once
+because the mutation now accepts no arguments; the minute cron supersedes it.
+No deploy/setup invocation is needed. Retries of the current backfill resume the
+last committed page. Existing member writers maintain reverse
+links while the role backfill runs.
+
+Attachment repair skips deleted messages, missing files, board files, and already
+scoped files. An unscoped file is shared only when its uploader is the legacy
+message author; foreign-author references remain private and increment
+`migrationProgress.skippedReferences`. The first eligible live reference scopes
+the upload. New sends check ownership before binding unscoped files immediately.
+Monitor completion markers and progress when verifying an upgrade.
+
+The read-budget tests measure returned documents (including repeated point
+reads): a fresh 1000-member page with one role per member reads 1001 documents
+and writes 1000 reverse links plus progress; a 500-message page with ten file
+references per message reads 5501 documents. Existing reverse links add their
+row count to member-page reads, and an existing progress row adds one read.
+These fixtures are below Convex's 32,000-document read limit; byte size and
+unusually large per-member role or legacy attachment arrays can still constrain
+a page. These are synthetic DB-boundary measurements, not a live engine load or
+upgrade benchmark.
+
+Until the role completion marker is set, role-expanded sends still scan the
+entire members table to avoid silently losing legacy recipients. At 1000
+members per minute, completion takes roughly `ceil(memberCount / 1000)` ticks;
+large workspaces can still hit transaction document/byte limits on sends during
+this interval. After completion expansion uses the reverse role index, but large
+recipient sets still have transaction limits. Mention lists remain uncapped.
+
+## Broadcast mentions
+
+`mentionEveryone` and `mentionHere` are optional message metadata; all message
+views default missing values to false. Send checks the channel-effective
+permission and matching token. Broadcasts never create recipient rows or thread
+participants. Read-state and unread badges inspect the markers lazily in their
+existing bounded message windows. These windows can omit older mentions; they
+are not exhaustive history counts. Thread replies ignore broadcast markers and
+treat their tokens as plain text; thread inboxes use participation instead, while
+reply push follows channel recipient rules. Thread
+inbox reads examine at most 500 participation rows, deduplicate roots before
+fetching, and recheck channel access. The inbox selects mentioned threads first,
+then by activity, within its 50-row cap
+before opening bodies. Output limits do not reduce that candidate read cost.
+The always-subscribed badge separately takes 50 mentioned rows through
+`threadParticipants.by_user_mentioned` and rechecks roots and access, without
+opening bodies. It counts unacknowledged mentions, capped at 50; inaccessible
+or stale roots in that window can reduce the count. The populated regression
+fixture (500 participation rows, 50 mentioned roots, one public channel) asserts
+at most 110 returned documents, including repeated point reads. More distinct
+channels, roles, categories or private memberships add authorization reads.
+`messages.markThreadMentionsSeen({ lastReplyAt?: number })` clears at most 50
+caller-owned mentioned rows through an optional activity watermark; repeat while
+its `{ cleared, hasMore }` result reports `hasMore`. A full batch conservatively
+reports more. The root mention list cannot resurrect acknowledged rows.
+
+Broadcast dispatch reads at most 200 workspace members (or private/DM channel
+members) per scheduled continuation, shares role/category configuration within
+the page, and rechecks access, bans, presence and notification preferences per
+candidate. The scheduler carries only message IDs and cursors, never the audience
+list. Push remains subject to transport retry/duplicate-delivery behavior.
+
+For old clients only, `LEGACY_BROADCAST_EXPANSION_LIMIT = 100` bounds compatibility
+expansion. Send examines 101 candidates; if more scanning is necessary to decide
+whether the visible audience fits, `broadcastMentionJobs` holds a cursor and at
+most 100 candidate IDs, with one row per pending message. Scheduled mutations
+read 200 candidates, atomically advance or delete that job, and patch the message
+only when the final audience fits. Scheduler payloads contain only the job ID.
+No compatibility-expansion job is created for a known large audience; delivery
+leases and asynchronous recipient receipts are separate. No marker-specific
+message indexes are needed; lazy badges use channel history
+indexes and thread participation. Benchmark deployment and busy-channel
+subscription costs on representative data before release. No live
+engine load, deployment, skipped-version upgrade or restore test was run here.
+
+When compatibility expansion shares `mentionUserIds` with broadcast IDs, optional
+`messages.broadcastDirectUserIds` preserves the original explicit/role list.
+Message and bot-event views expose that snapshot only when present.
+`readStates.summary.massMentionCount` classifies the mass-only subset of its
+existing mention scan with no extra reads. Dispatch and first-reply participation use that snapshot, so suppressing mass
+mentions or an offline `@here` audience does not swallow an explicit mention.
+Marker-only large audiences use the original list directly without duplicating it.
+
+
+## Broadcast dispatch and thread marker read budgets
+
+Broadcast delivery uses 200-candidate pages with concurrency bounded to 25 for
+access/pref work and 50 for presence. Public audience pages reuse the member docs
+they enumerate. Active users and offline/stale @here users are removed before
+preference reads. The regression fixture compares the council's 1,003 query
+probes / 404 returned docs against fewer than 450 probes / 210 returned docs for
+an offline @here page; it is a synthetic DB-boundary measurement, not live load.
+Unrestricted public sends skip legacy expansion when the maintained member count
+already exceeds 100, or after a cheap 101-member page otherwise. Restricted
+small audiences can still finish compatibility expansion asynchronously.
+
+Thread queries do not scan channel directories or message marker indexes.
+Synthetic tests cover 500 unrelated markers and a mention behind 50 newer
+unmentioned threads. Only the legacy array endpoint retains the 500-participation
+candidate window. The capability-gated cursor endpoint pages through all
+participation rows in 50-candidate batches. The badge uses its separate
+50-mentioned-row window.
+The manually invoked `maintenance:backfillThreadParticipants {}` documented in
+the Docker guide now processes one message and at most 100 mention IDs plus
+up to 100 maintained recent repliers per invocation (at most 200 participation writes), resuming with an offset and cursor.
+Run it only for legacy repair before acknowledging inbox mentions: replaying it
+can rearm historical mentions. No automatic caller is added.
+No live populated-upgrade/index-build, busy-channel subscription, or
+restore benchmark was performed.
+
+Broadcast delivery uses expiring leases and durable recipient receipts, with a
+minute recovery cron as described below. Ordinary non-broadcast dispatch creates
+no delivery claim. A claim-then-crash is retried after expiry. External transports
+can still duplicate delivery after acceptance but before a receipt commits.
+Continuation cursors use the explicit `aulora-broadcast-v1:` prefix; raw Convex
+cursors remain opaque.
+
+The hourly `notification delivery claim retention` cron starts bounded 500-row
+batches of claims
+older than the 24-hour replay window using the built-in `by_creation_time` index.
+A full batch immediately schedules another bounded batch until fewer than 500
+rows are returned by a batch. Delivery rejects messages aged 24 hours or more,
+including after claims expire;
+a retention backlog therefore cannot make old jobs deliverable again.
+`notifications.dispatchNow` returns `{ sent: 0, skipped: "noop" }`.
+
+## Broadcast delivery recovery
+
+Broadcast sends persist one initial page job in `notificationDeliveryClaims` in
+the send transaction, independently of audience size. Dispatch resolves one
+bounded audience page, leases it for five minutes, and records per-message/user
+receipts during asynchronous delivery, never during send or badge computation.
+`notification delivery lease recovery` runs every minute with the
+`by_lease(completed, retryAt)` index, reading at most 100 expired and 100
+pre-upgrade lease-less claims. Completion removes a row from that pending index
+range. Recovery advances `retryAt` without renewing the delivery lease, so repeated
+failures cannot starve later pages and completed rows cannot block migration. Recovery and retention are automatic, with no setup command.
+The schema adds only optional lease/receipt fields and an index; deploy the
+backend first and verify index creation on populated installations.
+
+Tests cover stale-worker fencing, expired/legacy lease reclamation, replay
+receipts and cursor paging past 500 thread participation rows. No live upgrade,
+provider crash/recovery or hardware load test has been performed. External push
+is at least once, with a crash-after-acceptance duplicate window; see the exact
+limitation in [release compatibility](../releases.md#broadcast-mention-markers).
+The new capability-gated thread inbox pages 50 candidates per query and checks
+private membership by point lookup instead of a capped membership list.

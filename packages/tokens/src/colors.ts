@@ -10,10 +10,13 @@ export const COLOR_TOKENS = [
   "text",
   "text-muted",
   "accent",
+  "accent-text",
   "accent-soft",
   "on-accent",
   "secondary",
+  "secondary-text",
   "danger",
+  "danger-text",
   "rail",
   "rail-text",
   "chat",
@@ -36,8 +39,9 @@ export const MENTION_BACKGROUND = "rgba(232, 163, 59, 0.14)";
 
 /**
  * Dark theme ("Loam"): Apple-style system neutrals (near-black window, lighter
- * elevated surfaces) with Ember kept as a signal, not a wash. `accent` is dark
- * enough that white-on-accent stays above 3.5:1 for outgoing bubbles.
+ * elevated surfaces) with Ember kept as a signal, not a wash. `accent` is the
+ * lighter Ember used by the native clients so dark text on it clears 8:1, and
+ * `text-accent` stays above 4.5:1 on every raised surface.
  */
 export const darkPalette = {
   bg: "#1C1C1E",
@@ -48,11 +52,14 @@ export const darkPalette = {
   border: "#38383A",
   text: "#F5F5F7",
   "text-muted": "#A6A6AE",
-  accent: "#E4571C",
-  "accent-soft": "#E4571C24",
-  "on-accent": "#FFFFFF",
+  accent: "#FF9B68",
+  "accent-text": "#FFD0B8",
+  "accent-soft": "#FF9B6824",
+  "on-accent": "#1C1C1E",
   secondary: "#4CD964",
-  danger: "#FF6B6B",
+  "secondary-text": "#9DEDAA",
+  danger: "#FF8080",
+  "danger-text": "#FFBBBB",
   rail: "#1B1B1D",
   "rail-text": "#A6A6AE",
   chat: "#1C1C1E",
@@ -73,10 +80,13 @@ export const lightPalette = {
   text: "#1C1C1E",
   "text-muted": "#636366",
   accent: "#C2410C",
+  "accent-text": "#963007",
   "accent-soft": "#C2410C14",
   "on-accent": "#FFFFFF",
-  secondary: "#248A3D",
+  secondary: "#1F7A36",
+  "secondary-text": "#155A27",
   danger: "#D70015",
+  "danger-text": "#A0000D",
   rail: "#1C1C1E",
   "rail-text": "#A6A6AE",
   chat: "#FFFFFF",

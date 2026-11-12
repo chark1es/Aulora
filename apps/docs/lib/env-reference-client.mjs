@@ -10,7 +10,7 @@ export const CLIENT_ENV_VARS = [
     label: "Web version",
     description: "Version reported in the web client's well-known document.",
     type: "string",
-    default: "1.1.0",
+    default: "1.5.0",
   },
   {
     key: "API_VERSION",

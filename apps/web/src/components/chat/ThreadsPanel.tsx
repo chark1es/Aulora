@@ -5,13 +5,15 @@ import type {
   MessagePayload,
   RoleMentionTarget,
 } from "@aulora/core";
-import { Icon } from "@aulora/ui-web";
-import { useEffect, useMemo, useState } from "react";
+import { canUseMassMentions } from "@aulora/core";
+import { Button, Icon } from "@aulora/ui-web";
+import { useEffect, useMemo, useRef, useState } from "react";
 import type { ChatRuntime } from "../../lib/chat-runtime";
 import { Composer } from "./Composer";
 import { MessageList } from "./MessageList";
 
 export interface ThreadsPanelProps {
+  readonly channelKind?: string;
   readonly runtime: ChatRuntime | undefined;
   readonly channelId: string;
   readonly channelTitle: string;
@@ -23,6 +25,7 @@ export interface ThreadsPanelProps {
   readonly roles: readonly RoleMentionTarget[];
   readonly memberIds: readonly string[];
   readonly permissions: bigint;
+  readonly mentionMarkers?: boolean;
   /** Effective single-upload cap in bytes, forwarded to the reply composer. */
   readonly maxUploadBytes: number;
   readonly ownUserId: string;
@@ -35,6 +38,8 @@ export interface ThreadsPanelProps {
   readonly onSendReply: (input: {
     text: string;
     mentionUserIds: readonly string[];
+    mentionEveryone?: boolean;
+    mentionHere?: boolean;
     mentionChannelIds?: readonly string[];
     mentionCategoryIds?: readonly string[];
     mentionRoleIds?: readonly string[];
@@ -53,34 +58,102 @@ export function ThreadsPanel(props: ThreadsPanelProps) {
   const { runtime, channelId, root, rootText } = props;
   const [replies, setReplies] = useState<readonly MessagePayload[]>([]);
   const [decrypted, setDecrypted] = useState<ReadonlyMap<string, string>>(new Map());
+  const [nextCursor, setNextCursor] = useState<string | null>(null);
+  const [loadingReplies, setLoadingReplies] = useState(false);
+  const [repliesError, setRepliesError] = useState(false);
+  const loadNext = useRef<() => void>(() => undefined);
   const [alsoSend, setAlsoSend] = useState(false);
 
-  // biome-ignore lint/correctness/useExhaustiveDependencies: re-subscribe only when the root/runtime changes
   useEffect(() => {
-    if (runtime === undefined) {
-      return;
-    }
+    if (runtime === undefined) return;
     let cancelled = false;
-    const off = runtime.watchThread(root.id, (incoming) => {
-      void runtime.session.receiveMessages(incoming).then(() => {
-        if (cancelled) {
-          return;
-        }
-        setReplies(incoming);
-        setDecrypted((current) => {
-          const next = new Map(current);
-          for (const reply of incoming) {
-            next.set(reply.id, runtime.session.decryptedText(reply.id));
-          }
-          return next;
-        });
-      });
-    });
+    const pages = new Map<string | null, readonly MessagePayload[]>();
+    const indexes = new Map<string | null, number>();
+    const failed = new Set<string | null>();
+    let nextIndex = 0;
+    let sequence = 0;
+    const offs: (() => void)[] = [];
+    const subscribed = new Map<string | null, object>();
+    // listThread is oldest-first today. Lowering this window would hide the
+    // live tail for more existing threads; switch to three pages once the
+    // backend provides newest-first cursor pagination.
+    let pageLimit = 20;
+    setLoadingReplies(false);
+    setRepliesError(false);
+    setNextCursor(null);
+    let pendingCursor: string | null = null;
+    const subscribe = (cursor: string | null) => {
+      if (cancelled || subscribed.has(cursor)) return;
+      let index = indexes.get(cursor);
+      if (index === undefined) {
+        index = nextIndex++;
+        indexes.set(cursor, index);
+      }
+      const pageIndex = index;
+      const token = {};
+      subscribed.set(cursor, token);
+      let stop: (() => void) | undefined;
+      stop = runtime.watchThread(
+        root.id,
+        (incoming) => {
+          if (cancelled || subscribed.get(cursor) !== token) return;
+          pages.set(cursor, incoming);
+          const combined = [
+            ...new Map(
+              [...pages.entries()]
+                .sort(([a], [b]) => (indexes.get(a) ?? 0) - (indexes.get(b) ?? 0))
+                .flatMap(([, rows]) => rows)
+                .map((row) => [row.id, row]),
+            ).values(),
+          ];
+          const snapshot = ++sequence;
+          void runtime.session.receiveMessages(combined, `thread:${root.id}`).then(() => {
+            if (cancelled || snapshot !== sequence) return;
+            setReplies(combined);
+            setDecrypted(
+              new Map(combined.map((reply) => [reply.id, runtime.session.decryptedText(reply.id)])),
+            );
+          });
+        },
+        {
+          cursor,
+          onError: () => {
+            if (cancelled || subscribed.get(cursor) !== token) return;
+            failed.add(cursor);
+            setLoadingReplies(false);
+            setRepliesError(true);
+            subscribed.delete(cursor);
+            queueMicrotask(() => stop?.());
+          },
+          onPage: (page) => {
+            if (cancelled || subscribed.get(cursor) !== token) return;
+            failed.delete(cursor);
+            setLoadingReplies(false);
+            setRepliesError(failed.size > 0);
+            if (pageIndex !== nextIndex - 1) return;
+            pendingCursor = page.isDone ? null : page.continueCursor;
+            setNextCursor(pendingCursor);
+            if (pendingCursor !== null && indexes.size < pageLimit) subscribe(pendingCursor);
+          },
+        },
+      );
+      offs.push(stop);
+    };
+    loadNext.current = () => {
+      const retry = failed.values().next();
+      const cursor = retry.done === true ? pendingCursor : retry.value;
+      if (subscribed.has(cursor)) return;
+      if (failed.size === 0) pageLimit = Math.max(pageLimit, indexes.size + 1);
+      setLoadingReplies(true);
+      setRepliesError(false);
+      subscribe(cursor);
+    };
+    subscribe(null);
     return () => {
       cancelled = true;
-      off();
+      for (const off of offs) off();
     };
-  }, [runtime, channelId, root.id]);
+  }, [runtime, root.id]);
 
   const messages = useMemo(() => [root, ...replies], [root, replies]);
   const texts = useMemo(() => {
@@ -113,7 +186,9 @@ export function ThreadsPanel(props: ThreadsPanelProps) {
         <div className="min-w-0 flex-1">
           <h2 className="text-[14px] font-semibold tracking-[-0.01em] text-text">Thread</h2>
           <p className="truncate text-[11px] text-text-muted">
-            {replies.length === 1 ? "1 reply" : `${replies.length} replies`} · {props.channelTitle}
+            {Math.max(root.replyCount ?? 0, replies.length)}{" "}
+            {Math.max(root.replyCount ?? 0, replies.length) === 1 ? "reply" : "replies"} ·{" "}
+            {props.channelTitle}
           </p>
         </div>
         <button
@@ -153,7 +228,35 @@ export function ThreadsPanel(props: ThreadsPanelProps) {
         inThread
       />
 
+      {repliesError && (
+        <p role="alert" className="px-4 text-sm text-danger">
+          Replies couldn’t load. Try again.
+        </p>
+      )}
+      {(nextCursor !== null || repliesError) && (
+        <Button
+          loading={loadingReplies}
+          disabled={loadingReplies}
+          onClick={() => {
+            loadNext.current();
+          }}
+        >
+          Load more replies
+        </Button>
+      )}
+
       <Composer
+        mentionMarkers={props.mentionMarkers ?? false}
+        canMentionEveryone={canUseMassMentions(
+          { kind: props.channelKind ?? "text" },
+          alsoSend ? undefined : props.root.id,
+          props.permissions,
+        )}
+        massMentionHint={
+          alsoSend
+            ? "Only members with permission can notify everyone in the channel copy."
+            : "Notifying everyone isn't available in thread replies."
+        }
         channelId={channelId}
         draftKey={`thread:${root.id}`}
         members={props.members}
@@ -168,6 +271,10 @@ export function ThreadsPanel(props: ThreadsPanelProps) {
           props.onSendReply({
             text: input.text,
             mentionUserIds: input.mentionUserIds,
+            ...(input.mentionEveryone !== undefined
+              ? { mentionEveryone: input.mentionEveryone }
+              : {}),
+            ...(input.mentionHere !== undefined ? { mentionHere: input.mentionHere } : {}),
             mentionChannelIds: input.mentionChannelIds,
             mentionCategoryIds: input.mentionCategoryIds,
             mentionRoleIds: input.mentionRoleIds,

@@ -266,7 +266,10 @@ function destination(primary, os, asset) {
 
 function fillPrimary(anchor, { label, beta, href }) {
   anchor.href = href;
-  anchor.replaceChildren(document.createTextNode(label));
+  const text = document.createElement("span");
+  text.className = "label";
+  text.textContent = label;
+  anchor.replaceChildren(text);
   if (beta) {
     const mark = document.createElement("span");
     mark.className = "beta";

@@ -72,7 +72,7 @@ function useFloat(reduceMotion: boolean | null | undefined) {
 }
 
 /**
- * The hero mark of a pre-session screen: the workspace's blobatar sitting in its
+ * The hero mark of a pre-session screen: the workspace’s blobatar sitting in its
  * own coloured light, floating very slowly. The halo is built from three
  * concentric discs rather than a gradient, because native has no CSS gradients;
  * at these opacities the steps read as a soft glow.

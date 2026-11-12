@@ -4,9 +4,9 @@ import { CallCompactView } from "./CallCompactView";
 import type { CallIdentity } from "./identity";
 
 /**
- * Draws the call into the browser's Document Picture-in-Picture window.
+ * Draws the call into the browser’s Document Picture-in-Picture window.
  *
- * The desktop shell's call window is a separate webview with its own entry
+ * The desktop shell’s call window is a separate webview with its own entry
  * (`CallPipWindow`), not a portal, so only browsers reach this. Mounted next to
  * the dock so the window survives moving between views; renders nothing
  * otherwise (the floating-video fallback draws itself).

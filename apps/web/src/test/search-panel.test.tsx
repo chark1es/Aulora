@@ -36,7 +36,7 @@ describe("SearchPanel archive progress", () => {
 
   it("says results are partial when earlier history could not be read", () => {
     render(panel({ archive: "failed" }));
-    expect(screen.getByRole("alert").textContent).toContain("Couldn't reach earlier messages");
+    expect(screen.getByRole("alert").textContent).toContain("Couldn’t reach earlier messages");
   });
 
   it("shows no message results when the index has nothing for the query", () => {

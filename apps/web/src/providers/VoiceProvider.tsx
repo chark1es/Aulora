@@ -1,13 +1,19 @@
 import {
+  type AddonFlags,
   type MediaDeviceInfo as AuloraMediaDevice,
   type CallKind,
   type CallView,
+  callElsewhereFromUnknown,
   claimCallSeat,
   DEFAULT_FEATURE_FLAGS,
   type FeatureFlags,
   hasPermission,
   mergeVoiceSettings,
+  NO_ADDONS,
+  notOpenMessage,
   Permission,
+  parseScheduledCallNotOpen,
+  type ScheduledCallNotOpenInfo,
   type VoiceDeviceSettings,
 } from "@aulora/core";
 import type { ConvexReactClient } from "convex/react";
@@ -21,8 +27,11 @@ import {
   useRef,
   useState,
 } from "react";
+import { api } from "../../../../packages/convex/convex/_generated/api";
 import { CallEndedNotice } from "../components/voice/CallEndedNotice";
 import { SwitchDeviceCallModal } from "../components/voice/SwitchDeviceCallModal";
+import { TranscriptionRuntime } from "../components/voice/TranscriptionRuntime";
+import { publicOrigin } from "../lib/public-origin";
 import { VoiceEngine, type VoiceSnapshot } from "../lib/voice/call-engine";
 import { convexVoicePort, convexVoiceSubscriptions } from "../lib/voice/convex-voice";
 import {
@@ -55,8 +64,31 @@ export interface VoicePolicy {
 
 export type CallViewMode = "hidden" | "dock" | "stage";
 
+/** The outcome of joining a scheduled call, with a message the UI can show as is. */
+export type ScheduledJoinResult =
+  | { readonly ok: true }
+  | {
+      readonly ok: false;
+      readonly message: string;
+      /** Set when the server refused because the call is not open yet. */
+      readonly notOpen?: ScheduledCallNotOpenInfo;
+    };
+
 export interface VoiceContextValue extends VoiceSnapshot {
   readonly selfUserId: string;
+  /** The viewer's workspace permissions, for call-addon controls. */
+  readonly permissions: bigint;
+  /** Which call addons the workspace has switched on. */
+  readonly addons: AddonFlags;
+  /** The title of the scheduled call this device joined, for a room with no channel. */
+  readonly scheduledTitle: { readonly scheduledCallId: string; readonly title: string } | null;
+  /** Whether the invite-a-guest dialog is open. */
+  readonly inviteGuestOpen: boolean;
+  setInviteGuestOpen(_open: boolean): void;
+  /** Shows a message in the call error toast. */
+  reportError(_message: string): void;
+  /** Joins a scheduled call: the server seats this device, then the engine starts. */
+  joinScheduledCall(_scheduledCallId: string, _title: string): Promise<ScheduledJoinResult>;
   /** This install's id, used to tell a local seat from one on another device. */
   readonly clientId: string;
   readonly policy: VoicePolicy;
@@ -110,6 +142,7 @@ const EMPTY_SNAPSHOT: VoiceSnapshot = {
   call: null,
   local: { muted: false, deafened: false, video: false, sharingScreen: false },
   micStream: null,
+  transmitting: false,
   localVideoTrack: null,
   remoteStreams: new Map(),
   remoteScreens: new Map(),
@@ -130,6 +163,8 @@ export interface VoiceProviderProps {
   readonly policy: VoicePolicy;
   /** The operator's kill switches; absent means every feature is on. */
   readonly featureFlags?: FeatureFlags;
+  /** Which call addons are on; absent means all off (an older backend). */
+  readonly addons?: AddonFlags;
   readonly children: ReactNode;
 }
 
@@ -144,6 +179,7 @@ export function VoiceProvider({
   permissions,
   policy,
   featureFlags = DEFAULT_FEATURE_FLAGS,
+  addons = NO_ADDONS,
   children,
 }: VoiceProviderProps) {
   const [clientId] = useState(loadBrowserVoiceClientId);
@@ -156,6 +192,11 @@ export function VoiceProvider({
   const [devices, setDevices] = useState<readonly AuloraMediaDevice[]>([]);
   const [view, setView] = useState<CallViewMode>("hidden");
   const [pipPinned, setPipPinned] = useState(false);
+  const [inviteGuestOpen, setInviteGuestOpen] = useState(false);
+  const [scheduledTitle, setScheduledTitle] = useState<{
+    readonly scheduledCallId: string;
+    readonly title: string;
+  } | null>(null);
   const [switchPrompt, setSwitchPrompt] = useState<{
     resolve: (_accepted: boolean) => void;
   } | null>(null);
@@ -324,12 +365,8 @@ export function VoiceProvider({
     };
   }, [callActive]);
 
-  // Closing the tab, navigating away or quitting the desktop app drops the
-  // caller out of the call right away. `beforeunload` covers the exits browsers
-  // report there; `pagehide` is the backstop for the ones they don't. A bfcache
-  // entry (`persisted`) keeps the seat. The mobile app backgrounds without ever
-  // reaching either event, so a sleeping phone stays in the call. Neither
-  // listener prompts on unload.
+  // Only a completed navigation leaves the call. beforeunload may be cancelled
+  // by a dirty-form prompt; bfcache entries keep their seat.
   useEffect(() => {
     let departed = false;
     const leaveNow = () => {
@@ -354,10 +391,8 @@ export function VoiceProvider({
         leaveNow();
       }
     };
-    window.addEventListener("beforeunload", leaveNow);
     window.addEventListener("pagehide", onPageHide);
     return () => {
-      window.removeEventListener("beforeunload", leaveNow);
       window.removeEventListener("pagehide", onPageHide);
     };
   }, [client, clientId]);
@@ -439,6 +474,52 @@ export function VoiceProvider({
     },
     [clientId, confirmSwitch, userId],
   );
+
+  const joinScheduledCall = useCallback(
+    async (scheduledCallId: string, title: string): Promise<ScheduledJoinResult> => {
+      const engine = engineRef.current;
+      if (engine === null) {
+        return { ok: false, message: "Calls are not ready yet. Try again in a moment." };
+      }
+      try {
+        const joined = await client.mutation(api.scheduledCalls.join, {
+          scheduledCallId: scheduledCallId as never,
+          clientId,
+        });
+        setScheduledTitle({ scheduledCallId, title });
+        const attached = await engine.attachToCall(joined.callId);
+        if (!attached) {
+          return { ok: false, message: "Could not start the call. Try again." };
+        }
+        setView("dock");
+        return { ok: true };
+      } catch (error) {
+        // The server's refusal is the truth; the countdown on screen is cosmetic.
+        const notOpen = parseScheduledCallNotOpen(error);
+        if (notOpen !== null) {
+          return { ok: false, message: notOpenMessage(notOpen), notOpen };
+        }
+        if (callElsewhereFromUnknown(error) !== null) {
+          return {
+            ok: false,
+            message: "You are already in this call on another device. Leave it there first.",
+          };
+        }
+        return {
+          ok: false,
+          message:
+            error instanceof Error && error.message.length > 0
+              ? error.message
+              : "Could not join the call. Try again.",
+        };
+      }
+    },
+    [client, clientId],
+  );
+
+  const reportError = useCallback((message: string) => {
+    engineRef.current?.setError(message);
+  }, []);
 
   const acceptCall = useCallback(
     async (call: CallView) => {
@@ -541,6 +622,13 @@ export function VoiceProvider({
     () => ({
       ...snapshot,
       selfUserId: userId,
+      permissions,
+      addons,
+      scheduledTitle,
+      inviteGuestOpen,
+      setInviteGuestOpen,
+      reportError,
+      joinScheduledCall,
       clientId,
       policy,
       incoming,
@@ -578,6 +666,12 @@ export function VoiceProvider({
     [
       snapshot,
       userId,
+      permissions,
+      addons,
+      scheduledTitle,
+      inviteGuestOpen,
+      reportError,
+      joinScheduledCall,
       clientId,
       policy,
       incoming,
@@ -635,6 +729,24 @@ export function VoiceProvider({
           outputVolume={settings.outputVolume}
         />
         <CallEndedNotice />
+        {callActive && (
+          <TranscriptionRuntime
+            sessionId={
+              snapshot.call?.transcribing === true
+                ? (snapshot.call.transcriptionSessionId ?? null)
+                : null
+            }
+            micStream={snapshot.micStream}
+            transmitting={snapshot.transmitting}
+            origin={publicOrigin()}
+            mint={async (sessionId) => {
+              const minted = await client.mutation(api.transcription.mintAudioTokenForCall, {
+                sessionId: sessionId as never,
+              });
+              return { token: minted.token, wsPath: minted.wsPath };
+            }}
+          />
+        )}
       </VoiceLevelsProvider>
     </VoiceContext.Provider>
   );

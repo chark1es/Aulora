@@ -1,5 +1,17 @@
 import { type Palette, paletteFor, type ThemeName } from "./colors";
-import { fontFamilies, fontSizes, radii, spacing } from "./scales";
+import { fontFamilies, nativeFontFamilies, nativeFontFamily } from "./fonts";
+import type { Fn } from "./function-type";
+import { fontSizes, radii, spacing } from "./scales";
+
+/** The subset of Tailwind's plugin API the presets use (no tailwindcss dependency). */
+export type PresetPlugin = Fn<
+  [
+    api: {
+      addUtilities: Fn<[utilities: Record<string, Record<string, string>>], void>;
+    },
+  ],
+  void
+>;
 
 export interface AuloraPreset {
   theme: {
@@ -11,9 +23,46 @@ export interface AuloraPreset {
       fontSize: Record<string, string>;
     };
   };
+  plugins: PresetPlugin[];
 }
 
-export function createPreset(palette: Palette): AuloraPreset {
+type PresetTarget = "web" | "native";
+
+const NATIVE_WEIGHT_CLASSES = {
+  thin: 100,
+  extralight: 200,
+  light: 300,
+  normal: 400,
+  medium: 500,
+  semibold: 600,
+  bold: 700,
+  extrabold: 800,
+  black: 900,
+} as const;
+
+/**
+ * React Native selects a static face by family name, not by weight, so each
+ * weight utility also switches to the matching Inter file.
+ */
+const nativeWeightFamilies: PresetPlugin = ({ addUtilities }) => {
+  addUtilities(
+    Object.fromEntries(
+      Object.entries(NATIVE_WEIGHT_CLASSES).map(([name, weight]) => [
+        `.font-${name}`,
+        { "font-family": nativeFontFamily(weight) },
+      ]),
+    ),
+  );
+};
+
+function fontFamilyFor(target: PresetTarget): Record<string, string[]> {
+  if (target === "native") {
+    return { sans: [nativeFontFamilies.sans[400]], mono: [nativeFontFamilies.mono[400]] };
+  }
+  return { sans: [...fontFamilies.sans], mono: [...fontFamilies.mono] };
+}
+
+export function createPreset(palette: Palette, target: PresetTarget = "web"): AuloraPreset {
   return {
     theme: {
       extend: {
@@ -27,13 +76,11 @@ export function createPreset(palette: Palette): AuloraPreset {
           md: radii.md,
         },
         spacing: { ...spacing },
-        fontFamily: {
-          sans: [...fontFamilies.sans],
-          mono: [...fontFamilies.mono],
-        },
+        fontFamily: fontFamilyFor(target),
         fontSize: { ...fontSizes },
       },
     },
+    plugins: target === "native" ? [nativeWeightFamilies] : [],
   };
 }
 
@@ -43,21 +90,21 @@ export type AuloraPresets = {
 };
 
 export function createTailwindPreset(theme: ThemeName = "dark"): AuloraPreset {
-  return createPreset(paletteFor(theme));
+  return createPreset(paletteFor(theme), "web");
 }
 
 export function createNativewindPreset(theme: ThemeName = "dark"): AuloraPreset {
-  return createPreset(paletteFor(theme));
+  return createPreset(paletteFor(theme), "native");
 }
 
 export const tailwindPresets: AuloraPresets = {
-  dark: createPreset(paletteFor("dark")),
-  light: createPreset(paletteFor("light")),
+  dark: createTailwindPreset("dark"),
+  light: createTailwindPreset("light"),
 };
 
 export const nativewindPresets: AuloraPresets = {
-  dark: createPreset(paletteFor("dark")),
-  light: createPreset(paletteFor("light")),
+  dark: createNativewindPreset("dark"),
+  light: createNativewindPreset("light"),
 };
 
 /** Default presets use the dark theme. */

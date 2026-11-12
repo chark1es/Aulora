@@ -3,6 +3,7 @@ import { describe, expect, it, vi } from "vitest";
 import {
   Badge,
   Button,
+  CAP_TEXT_CLASS,
   Checkbox,
   EmptyState,
   Kbd,
@@ -43,7 +44,7 @@ describe("Checkbox", () => {
 describe("Badge", () => {
   it("applies the tone class", () => {
     render(<Badge tone="danger">Expired</Badge>);
-    expect(screen.getByText("Expired").className).toContain("text-danger");
+    expect(screen.getByText("Expired").parentElement?.className).toContain("text-danger");
   });
 });
 
@@ -96,9 +97,12 @@ describe("EmptyState", () => {
 });
 
 describe("Kbd", () => {
-  it("renders a key cap", () => {
+  it("renders a key cap with a cap-trimmed label", () => {
     render(<Kbd>⌘K</Kbd>);
-    expect(screen.getByText("⌘K").tagName).toBe("KBD");
+    const label = screen.getByText("⌘K");
+    expect(label.tagName).toBe("SPAN");
+    expect(label.className).toBe(CAP_TEXT_CLASS);
+    expect(label.closest("kbd")).not.toBeNull();
   });
 });
 

@@ -31,7 +31,7 @@ export { getDisplayPickerState, subscribeDisplayPicker } from "./display-picker-
  * then rejects with the reason, so the call says why nothing was shared.
  *
  * The same dialog carries the system-audio toggle: the shell reports whether
- * this platform can capture it at all, and the answer becomes the share's audio
+ * this platform can capture it at all, and the answer becomes the share’s audio
  * choice, so the person decides per share and an unsupported platform says why.
  */
 
@@ -49,7 +49,7 @@ export interface DisplayPickerState {
   readonly error: string | null;
   /** The tile the Share button acts on. */
   readonly selectedId: string | null;
-  /** Whether the share should carry the machine's audio. */
+  /** Whether the share should carry the machine’s audio. */
   readonly audioRequested: boolean;
   /** What this platform can do about system audio, once it is known. */
   readonly audio: SystemAudioSupport | null;
@@ -66,7 +66,7 @@ export interface DisplayChoice {
 const NOTHING_TO_SHARE = "There is nothing to share right now.";
 /** Fallback reason when the shell reports a block without its own wording. */
 const NOT_ALLOWED =
-  "Screen sharing needs permission Aulora doesn't have. Allow it in your system settings to share your screen.";
+  "Screen sharing needs permission Aulora doesn’t have. Allow it in your system settings to share your screen.";
 
 export interface DisplayPickerOptions {
   /** Whether the call wants system audio with the share. */
@@ -235,7 +235,7 @@ export function selectDisplaySource(sourceId: string): void {
   setState({ ...state, selectedId: sourceId });
 }
 
-/** Turns the share's system audio on or off; ignored where it is unsupported. */
+/** Turns the share’s system audio on or off; ignored where it is unsupported. */
 export function setDisplayAudioRequested(on: boolean): void {
   const state = getDisplayPickerState();
   if (state.audio?.supported !== true || state.audioRequested === on) {

@@ -24,8 +24,15 @@ export interface InputProps extends Omit<InputHTMLAttributes<HTMLInputElement>, 
   trailing?: ReactNode;
 }
 
+/**
+ * Single-line inputs centre Inter's 17px (14px text) or 20px (17px text) font
+ * box in the content box and ignore `line-height`. A 38px content box would
+ * centre the 17px box on a half pixel, so `md` gives 1px of bottom padding;
+ * the baseline then lands on a whole pixel with the cap band centred.
+ * text-centering-ok: a native input centres its own value box (measured 0.00).
+ */
 const SIZE_CLASSES = new Map<InputSize, string>([
-  ["md", "h-10 px-3 text-[14px]"],
+  ["md", "h-10 px-3 pb-px text-[14px]"],
   ["lg", "h-12 px-3.5 text-[17px]"],
 ]);
 
@@ -58,7 +65,7 @@ function FieldMessages(props: {
         </p>
       )}
       {props.error !== undefined && (
-        <p id={props.errorId} role="alert" className="text-xs text-danger">
+        <p id={props.errorId} role="alert" className="text-xs text-danger-text">
           {props.error}
         </p>
       )}

@@ -1,6 +1,6 @@
 /* eslint-disable no-unused-vars -- the base rule reports parameter names in type signatures; Biome checks real unused code */
 import type { IconName } from "@aulora/tokens";
-import { Heading, Icon, Text, usePalette } from "@aulora/ui-native";
+import { Heading, Icon, Text, TextField, usePalette } from "@aulora/ui-native";
 import {
   createContext,
   type ReactNode,
@@ -9,20 +9,10 @@ import {
   useLayoutEffect,
   useRef,
 } from "react";
-import {
-  Animated,
-  Easing,
-  KeyboardAvoidingView,
-  Modal,
-  Platform,
-  Pressable,
-  ScrollView,
-  TextInput,
-  View,
-} from "react-native";
-import { useSafeAreaInsets } from "react-native-safe-area-context";
+import { Animated, Easing, Modal, Pressable, ScrollView, View } from "react-native";
 import { useThemeVars } from "../../lib/theme";
 import { useReduceMotion } from "../../lib/use-entrance";
+import { KeyboardAvoidingPane, useScreenInsets } from "../layout/ScreenContainer";
 
 /** Closes the sheet with its exit animation, then runs the follow-up. */
 type Close = (then?: () => void) => void;
@@ -71,7 +61,7 @@ function useSheetMotion(onClose: () => void) {
 
 /**
  * A panel that slides up from the bottom edge over a dimmed screen. It is a
- * plain modal, so unlike the chat's bottom sheet it can open above a page
+ * plain modal, so unlike the chat’s bottom sheet it can open above a page
  * sheet. It closes on a backdrop tap or the Android back button.
  */
 export function BottomSheet({
@@ -86,7 +76,7 @@ export function BottomSheet({
   readonly footer?: ReactNode;
 }) {
   const theme = useThemeVars();
-  const insets = useSafeAreaInsets();
+  const insets = useScreenInsets();
   const { progress, close } = useSheetMotion(onClose);
   const translateY = progress.interpolate({ inputRange: [0, 1], outputRange: [420, 0] });
   const dismiss = () => {
@@ -94,9 +84,11 @@ export function BottomSheet({
   };
   return (
     <Modal visible transparent animationType="none" onRequestClose={dismiss}>
-      <KeyboardAvoidingView
-        style={[{ flex: 1 }, theme]}
-        behavior={Platform.OS === "ios" ? "padding" : "height"}
+      <KeyboardAvoidingPane
+        style={[
+          { flex: 1, paddingTop: insets.top, paddingLeft: insets.left, paddingRight: insets.right },
+          theme,
+        ]}
       >
         <Animated.View
           style={{ position: "absolute", top: 0, right: 0, bottom: 0, left: 0, opacity: progress }}
@@ -104,15 +96,15 @@ export function BottomSheet({
           <Pressable
             accessibilityRole="button"
             accessibilityLabel={`Close ${title}`}
-            className="flex-1 bg-black/50"
+            className="flex-1 bg-black/50 min-w-0"
             onPress={dismiss}
           />
         </Animated.View>
-        <View className="flex-1 justify-end" pointerEvents="box-none">
+        <View className="flex-1 justify-end min-w-0" pointerEvents="box-none">
           <Animated.View
             accessibilityViewIsModal
             className="max-h-[85%] rounded-t-card bg-surface-2"
-            style={{ paddingBottom: Math.max(insets.bottom, 12), transform: [{ translateY }] }}
+            style={{ paddingBottom: insets.sheetBottom, transform: [{ translateY }] }}
           >
             <View className="items-center pt-2">
               <View className="h-1 w-9 rounded-pill bg-surface-3" />
@@ -128,7 +120,7 @@ export function BottomSheet({
             </CloseContext.Provider>
           </Animated.View>
         </View>
-      </KeyboardAvoidingView>
+      </KeyboardAvoidingPane>
     </Modal>
   );
 }
@@ -229,7 +221,7 @@ export function SearchField({
   return (
     <View className="mx-4 mb-2 min-h-11 flex-row items-center gap-2 rounded-input border border-border bg-surface-3 px-3">
       <Icon name="search" size={18} color={palette["text-muted"]} />
-      <TextInput
+      <TextField
         accessibilityLabel={label}
         placeholder={label}
         placeholderTextColor={palette["text-muted"]}
@@ -239,7 +231,7 @@ export function SearchField({
         autoCorrect={false}
         clearButtonMode="while-editing"
         returnKeyType="search"
-        className="min-h-11 flex-1 text-[17px] text-text"
+        className="min-h-11 flex-1 text-[17px] text-text min-w-0"
       />
     </View>
   );

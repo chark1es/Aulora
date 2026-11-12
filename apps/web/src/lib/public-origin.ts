@@ -80,3 +80,15 @@ export function publicUrl(path: string): string | null {
 export function authCallbackUrl(): string {
   return typeof window === "undefined" ? "http://localhost" : window.location.origin;
 }
+
+/**
+ * The page's own origin, for the guest call page only.
+ *
+ * A guest always opens an invite link in a browser, and that page is served by
+ * the workspace itself, so here (and only here) the page origin IS the
+ * workspace. Inside the desktop shell this must never be used for a link: use
+ * {@link publicOrigin}.
+ */
+export function guestPageOrigin(): string {
+  return typeof window === "undefined" ? "" : window.location.origin;
+}

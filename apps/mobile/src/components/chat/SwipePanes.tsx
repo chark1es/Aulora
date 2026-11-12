@@ -173,7 +173,7 @@ export function HorizontalScroll({
 /**
  * Every pane is laid out over the whole container and only moved by a
  * transform. Android does not deliver touches to a view laid out beyond its
- * parent's bounds, so a wide sliding track would leave two panes untappable.
+ * parent’s bounds, so a wide sliding track would leave two panes untappable.
  */
 function Pane({
   slot,
@@ -187,7 +187,7 @@ function Pane({
   readonly children: ReactNode;
 }) {
   const style = useAnimatedStyle(() => ({
-    // A share of the pane's own width, so it can never disagree with its layout.
+    // A share of the pane’s own width, so it can never disagree with its layout.
     transform: [{ translateX: `${(slot - position.value) * 100}%` }],
   }));
   return (

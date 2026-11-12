@@ -1,6 +1,6 @@
 import { Spinner } from "@aulora/ui-native";
 import { Redirect, useRouter } from "expo-router";
-import { SafeAreaView } from "react-native-safe-area-context";
+import { ScreenContainer } from "../src/components/layout/ScreenContainer";
 import { ReviewDemoScreen } from "../src/components/ReviewDemoScreen";
 import { useProfiles } from "../src/providers/ProfileProvider";
 
@@ -11,9 +11,9 @@ export default function ReviewDemoRoute() {
   if (profiles.length > 0) return <Redirect href="/" />;
   if (!ready)
     return (
-      <SafeAreaView className="flex-1 items-center justify-center bg-bg">
+      <ScreenContainer className="flex-1 items-center justify-center bg-bg">
         <Spinner label="Loading servers" />
-      </SafeAreaView>
+      </ScreenContainer>
     );
   return (
     <ReviewDemoScreen

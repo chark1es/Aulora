@@ -50,8 +50,13 @@ export function Button({
         {label !== null ? (
           <Text
             size="base"
+            numberOfLines={2}
+            ellipsizeMode="tail"
             maxFontSizeMultiplier={2}
             style={{
+              flexShrink: 1,
+              minWidth: 0,
+              textAlign: "center",
               color: neutralDisabled
                 ? palette["text-muted"]
                 : variant === "primary"

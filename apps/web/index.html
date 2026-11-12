@@ -5,6 +5,15 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <meta name="color-scheme" content="dark light" />
     <link rel="icon" type="image/svg+xml" href="/favicon.svg" />
+    <!-- Inter (Latin) from packages/tokens/fonts; Vite fingerprints it to the
+         same /assets URL the @font-face rule in the Tailwind base layer uses. -->
+    <link
+      rel="preload"
+      href="../../packages/tokens/fonts/web/inter-latin-wght-normal.woff2"
+      as="font"
+      type="font/woff2"
+      crossorigin
+    />
     <title>Aulora</title>
     <!-- External so the desktop shell can enforce `script-src 'self'`. The
          palette variables themselves are injected by Vite from @aulora/tokens. -->

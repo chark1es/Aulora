@@ -4,6 +4,7 @@ import type { ChannelSummary } from "@aulora/core";
 export interface ChannelUnreadState {
   readonly unread: boolean;
   readonly mentionCount: number;
+  readonly massMentionCount?: number;
   readonly lastActivityAt: number | null;
 }
 

@@ -10,13 +10,14 @@ import {
 import { Heading, Icon, Text, usePalette } from "@aulora/ui-native";
 import { useEffect, useMemo, useState } from "react";
 import { AccessibilityInfo, Modal, Pressable, ScrollView, View } from "react-native";
-import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { type MainVideo, pickMainVideo } from "../../lib/voice/pip";
 import { tryCreateMediaStream, type VoiceStream } from "../../lib/voice/webrtc";
 import { useVoice } from "../../providers/VoiceProvider";
 import { MemberAvatar } from "../chat/MemberAvatar";
+import { useScreenInsets } from "../layout/ScreenContainer";
 import { CallControls } from "./CallControls";
 import { CallVideo } from "./CallVideo";
+import { GuestBadge, participantLabel } from "./VoiceChannelSection";
 
 export interface CallScreenProps {
   readonly channelName: string;
@@ -25,19 +26,15 @@ export interface CallScreenProps {
 
 type Voice = ReturnType<typeof useVoice>;
 
-function displayName(userId: string, memberNames: ReadonlyMap<string, string>): string {
-  return memberNames.get(userId) ?? userId;
-}
-
 function AvatarFallback({ seed }: { readonly seed: string }) {
   return (
-    <View className="flex-1 items-center justify-center">
+    <View className="flex-1 items-center justify-center min-w-0">
       <MemberAvatar userId={seed} size={56} />
     </View>
   );
 }
 
-function ParticipantOverlay({
+export function ParticipantOverlay({
   participant,
   name,
   overVideo,
@@ -69,6 +66,7 @@ function ParticipantOverlay({
       >
         {name}
       </Text>
+      {participant.isGuest === true && <GuestBadge />}
       {participant.muted && <Icon name="mic-off" size={13} color={iconColor} />}
       {participant.deafened && <Icon name="headphones-off" size={13} color={iconColor} />}
       {participant.connection === "failed" && (
@@ -147,11 +145,11 @@ function ParticipantGrid({
   const sharer = sharerId === null ? undefined : ordered.find((entry) => entry.userId === sharerId);
   const tiles = ordered.filter((entry) => entry.userId !== sharerId);
   return (
-    <ScrollView className="flex-1" contentContainerStyle={{ padding: 12, gap: 12 }}>
+    <ScrollView className="flex-1 min-w-0" contentContainerStyle={{ padding: 12, gap: 12 }}>
       {sharer !== undefined && (
         <ParticipantTile
           participant={sharer}
-          name={displayName(sharer.userId, memberNames)}
+          name={participantLabel(sharer, memberNames)}
           stream={voice.remoteStreams.get(sharer.userId) ?? null}
           level={voice.remoteLevels.get(sharer.userId)}
           prominent
@@ -165,7 +163,7 @@ function ParticipantGrid({
             <ParticipantTile
               key={participant.userId}
               participant={participant}
-              name={isSelf ? "You" : displayName(participant.userId, memberNames)}
+              name={isSelf ? "You" : participantLabel(participant, memberNames)}
               stream={isSelf ? localStream : (voice.remoteStreams.get(participant.userId) ?? null)}
               level={isSelf ? voice.micLevel : voice.remoteLevels.get(participant.userId)}
               mirror={isSelf}
@@ -279,7 +277,7 @@ function FloatingCall({ voice, main }: { readonly voice: Voice; readonly main: M
     voice.call?.participants.find((entry) => entry.userId !== voice.selfUserId)?.userId ??
     voice.selfUserId;
   return (
-    <View className="flex-1 bg-black">
+    <View className="flex-1 bg-black min-w-0">
       <CallVideo stream={main?.stream ?? null} fallback={<AvatarFallback seed={fallbackId} />} />
     </View>
   );
@@ -337,7 +335,7 @@ export function CallScreen({ channelName, memberNames }: CallScreenProps) {
   const { call } = voice;
   const startedAt = call?.startedAt ?? null;
   const now = useNow(startedAt);
-  const insets = useSafeAreaInsets();
+  const insets = useScreenInsets();
 
   const localStream = useMemo(
     () => (voice.localVideoTrack === null ? null : tryCreateMediaStream([voice.localVideoTrack])),
@@ -364,7 +362,7 @@ export function CallScreen({ channelName, memberNames }: CallScreenProps) {
   return (
     <Modal visible transparent animationType="slide" onRequestClose={() => void voice.leave()}>
       <View
-        className="flex-1 bg-bg"
+        className="flex-1 bg-bg min-w-0"
         style={{
           paddingTop: insets.top,
           paddingBottom: insets.bottom,

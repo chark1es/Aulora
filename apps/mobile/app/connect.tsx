@@ -1,7 +1,7 @@
 import { useLocalSearchParams, useRouter } from "expo-router";
 import { View } from "react-native";
-import { SafeAreaView } from "react-native-safe-area-context";
 import { ConnectScreen } from "../src/components/ConnectScreen";
+import { ScreenContainer } from "../src/components/layout/ScreenContainer";
 import { useProfiles } from "../src/providers/ProfileProvider";
 
 /** Add another server; returns home once the profile is saved. */
@@ -12,7 +12,7 @@ export default function ConnectRoute() {
   const initialHost = typeof params.server === "string" ? params.server : undefined;
 
   return (
-    <SafeAreaView className="flex-1 bg-bg" edges={["top", "bottom"]}>
+    <ScreenContainer className="flex-1 bg-bg">
       <View className="flex-1">
         <ConnectScreen
           {...(initialHost !== undefined ? { initialHost } : {})}
@@ -28,6 +28,6 @@ export default function ConnectRoute() {
           }}
         />
       </View>
-    </SafeAreaView>
+    </ScreenContainer>
   );
 }

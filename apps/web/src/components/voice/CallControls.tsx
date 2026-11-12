@@ -1,6 +1,7 @@
 import type { IconName } from "@aulora/tokens";
 import { cn, Icon } from "@aulora/ui-web";
 import type { ReactNode } from "react";
+import { TranscriptionIndicator } from "./TranscriptionIndicator";
 
 export interface CallControlsProps {
   readonly muted: boolean;
@@ -9,6 +10,8 @@ export interface CallControlsProps {
   readonly sharingScreen: boolean;
   /** Mic and deafen controls are only offered to members who may speak. */
   readonly canSpeak?: boolean;
+  /** Deafen is a member control; the guest call view turns it off. */
+  readonly canDeafen?: boolean;
   readonly canVideo: boolean;
   readonly canStream: boolean;
   readonly onToggleMute: () => void;
@@ -21,6 +24,14 @@ export interface CallControlsProps {
   readonly viewExpanded?: boolean;
   /** Pop the call into a real OS picture-in-picture window. */
   readonly onPopOut?: () => void;
+  /** Start/stop transcription; offered only to members who may. */
+  readonly transcription?: {
+    readonly active: boolean;
+    readonly busy: boolean;
+    readonly onToggle: () => void;
+  };
+  /** Opens the invite-a-guest dialog; offered only to members who may. */
+  readonly onInviteGuest?: () => void;
   readonly compact?: boolean;
 }
 
@@ -30,6 +41,9 @@ interface ControlSpec {
   readonly active: boolean;
   readonly tone: "neutral" | "accent" | "danger";
   readonly icon: IconName;
+  /** Replaces the icon (the live transcription orb). */
+  readonly node?: ReactNode;
+  readonly disabled?: boolean;
   readonly onClick: () => void;
 }
 
@@ -39,6 +53,7 @@ function controlSpecs(input: {
   readonly video: boolean;
   readonly sharingScreen: boolean;
   readonly canSpeak: boolean;
+  readonly canDeafen: boolean;
   readonly canVideo: boolean;
   readonly canStream: boolean;
   readonly onToggleMute: () => void;
@@ -48,6 +63,8 @@ function controlSpecs(input: {
   readonly onToggleView: (() => void) | undefined;
   readonly viewExpanded: boolean | undefined;
   readonly onPopOut: (() => void) | undefined;
+  readonly transcription: CallControlsProps["transcription"];
+  readonly onInviteGuest: (() => void) | undefined;
 }): ControlSpec[] {
   const specs: ControlSpec[] = [];
   if (input.canSpeak) {
@@ -59,6 +76,8 @@ function controlSpecs(input: {
       icon: input.muted ? "mic-off" : "mic",
       onClick: input.onToggleMute,
     });
+  }
+  if (input.canSpeak && input.canDeafen) {
     specs.push({
       key: "deafen",
       label: input.deafened ? "Undeafen" : "Deafen",
@@ -86,6 +105,29 @@ function controlSpecs(input: {
       tone: input.sharingScreen ? "accent" : "neutral",
       icon: input.sharingScreen ? "monitor-off" : "monitor",
       onClick: input.onToggleScreen,
+    });
+  }
+  if (input.transcription !== undefined) {
+    const { active, busy, onToggle } = input.transcription;
+    specs.push({
+      key: "transcribe",
+      label: active ? "Stop transcription" : "Start transcription",
+      active,
+      tone: active ? "accent" : "neutral",
+      icon: "note",
+      ...(active ? { node: <TranscriptionIndicator /> } : {}),
+      disabled: busy,
+      onClick: onToggle,
+    });
+  }
+  if (input.onInviteGuest !== undefined) {
+    specs.push({
+      key: "invite-guest",
+      label: "Invite a guest",
+      active: false,
+      tone: "neutral",
+      icon: "user-plus",
+      onClick: input.onInviteGuest,
     });
   }
   if (input.onToggleView !== undefined) {
@@ -123,6 +165,7 @@ export function CallControls(props: CallControlsProps) {
     video,
     sharingScreen,
     canSpeak = true,
+    canDeafen = true,
     canVideo,
     canStream,
     onToggleMute,
@@ -133,6 +176,8 @@ export function CallControls(props: CallControlsProps) {
     onToggleView,
     viewExpanded,
     onPopOut,
+    transcription,
+    onInviteGuest,
     compact = false,
   } = props;
   const size = compact ? "h-9 w-9" : "h-11 w-11";
@@ -143,6 +188,7 @@ export function CallControls(props: CallControlsProps) {
     video,
     sharingScreen,
     canSpeak,
+    canDeafen,
     canVideo,
     canStream,
     onToggleMute,
@@ -152,6 +198,8 @@ export function CallControls(props: CallControlsProps) {
     onToggleView,
     viewExpanded,
     onPopOut,
+    transcription,
+    onInviteGuest,
   });
   return (
     <div className={cn("flex items-center justify-center gap-1.5", compact ? "gap-1" : "gap-1.5")}>
@@ -162,9 +210,10 @@ export function CallControls(props: CallControlsProps) {
           active={control.active}
           tone={control.tone}
           size={size}
+          disabled={control.disabled === true}
           onClick={control.onClick}
         >
-          <Icon name={control.icon} size={icon} />
+          {control.node ?? <Icon name={control.icon} size={icon} />}
         </CallButton>
       ))}
 
@@ -182,8 +231,10 @@ function CallButton({
   active,
   tone,
   size,
+  disabled = false,
 }: {
   readonly label: string;
+  readonly disabled?: boolean;
   readonly onClick: () => void;
   readonly children: ReactNode;
   readonly active: boolean;
@@ -196,16 +247,17 @@ function CallButton({
       aria-label={label}
       title={label}
       aria-pressed={tone === "neutral" ? undefined : active}
+      disabled={disabled}
       onClick={onClick}
       className={cn(
-        "flex shrink-0 items-center justify-center rounded-full transition focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent active:scale-95",
+        "flex shrink-0 items-center justify-center rounded-full transition focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent active:scale-95 disabled:opacity-60",
         size,
         tone === "danger-solid"
           ? "bg-danger text-on-accent hover:brightness-110"
           : tone === "danger"
-            ? "bg-danger/15 text-danger hover:bg-danger/25"
+            ? "bg-danger/15 text-danger-text hover:bg-danger/25"
             : tone === "accent"
-              ? "bg-accent/15 text-accent hover:bg-accent/25"
+              ? "bg-accent/15 text-accent-text hover:bg-accent/25"
               : "bg-surface-3 text-text hover:brightness-110",
       )}
     >

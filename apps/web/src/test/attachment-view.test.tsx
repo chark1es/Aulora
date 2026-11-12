@@ -1,5 +1,5 @@
 import type { AttachmentDescriptor } from "@aulora/core";
-import { render, screen } from "@testing-library/react";
+import { fireEvent, render, screen } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { AttachmentView } from "../components/chat/AttachmentView";
@@ -75,4 +75,67 @@ describe("AttachmentView media playback", () => {
     // The full original is not fetched for the inline grid.
     expect(runtime.port.downloadFile).not.toHaveBeenCalled();
   });
+});
+
+it("revokes a thumbnail that resolves after unmount", async () => {
+  let resolve: ((bytes: Uint8Array) => void) | undefined;
+  const runtime = {
+    port: {
+      downloadFile: () =>
+        new Promise<Uint8Array>((done) => {
+          resolve = done;
+        }),
+    },
+  } as unknown as ChatRuntime;
+  URL.createObjectURL = vi.fn(() => "blob:late");
+  URL.revokeObjectURL = vi.fn();
+  const view = render(
+    <AttachmentView
+      runtime={runtime}
+      descriptor={{ ...descriptor("image/png", "late.png"), thumbnail: { fileId: "thumb" } }}
+    />,
+  );
+  view.unmount();
+  resolve?.(new Uint8Array([1]));
+  await vi.waitFor(() => expect(URL.revokeObjectURL).toHaveBeenCalledWith("blob:late"));
+});
+
+it("labels the lightbox dialog and restores focus to its trigger", async () => {
+  URL.createObjectURL = vi.fn(() => "blob:image");
+  URL.revokeObjectURL = vi.fn();
+  render(
+    <AttachmentView
+      runtime={runtimeWith(new Uint8Array([1]))}
+      descriptor={descriptor("image/png", "photo.png")}
+    />,
+  );
+  const trigger = screen.getByRole("button", { name: /photo.png/ });
+  await userEvent.click(trigger);
+  const dialog = await screen.findByRole("dialog", { name: "photo.png" });
+  expect(dialog).toHaveAttribute("aria-modal", "true");
+  await vi.waitFor(() => expect(dialog.contains(document.activeElement)).toBe(true));
+  await userEvent.keyboard("{Escape}");
+  expect(trigger).toHaveFocus();
+});
+
+it("fits the image against a dark backdrop and closes on wrapper clicks", async () => {
+  URL.createObjectURL = vi.fn(() => "blob:image");
+  URL.revokeObjectURL = vi.fn();
+  render(
+    <AttachmentView
+      runtime={runtimeWith(new Uint8Array([1]))}
+      descriptor={descriptor("image/png", "tall.png")}
+    />,
+  );
+  await userEvent.click(screen.getByRole("button", { name: /tall.png/ }));
+  const dialog = await screen.findByRole("dialog");
+  expect(dialog.parentElement?.className).toContain("bg-black/85");
+  const wrapper = screen.getByTestId("attachment-lightbox");
+  expect(wrapper.className).toContain("h-full w-full");
+  const image = screen.getByTestId("fullimage-f1");
+  expect(image.className).toContain("object-contain");
+  fireEvent.click(image);
+  expect(screen.getByRole("dialog")).toBeInTheDocument();
+  fireEvent.click(wrapper);
+  await vi.waitFor(() => expect(screen.queryByRole("dialog")).toBeNull());
 });

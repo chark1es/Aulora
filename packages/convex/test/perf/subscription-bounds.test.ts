@@ -150,7 +150,7 @@ it("keeps the thread inbox and its badge bounded by the requested limit", async 
   const clamped = await viewer.query(api.messages.threadInbox, { limit: 10_000 });
   expect(clamped.length).toBe(4);
 
-  // The badge reads participation rows only, so it stays cheap while the inbox
+  // The badge reads participation rows and accessible-channel threaded marker windows; the inbox
   // is closed, and agrees with the rows' mention flags.
   const badge = await viewer.query(api.messages.threadMentionCount, {});
   expect(badge).toBe(full.filter((row) => row.viewerMentioned).length);

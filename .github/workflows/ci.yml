@@ -19,8 +19,9 @@ on:
         type: boolean
         default: true
 
-# Native builds are slow and expensive. They run for releases, manual runs, and
-# pull requests labeled `build-native`.
+# Native builds default on for manual runs and workflow calls; pull requests
+# opt in with `build-native`. Releases pass native: false because their
+# signed native builds already gate publication.
 
 permissions:
   contents: read

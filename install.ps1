@@ -74,6 +74,10 @@ if (-not (Get-Command docker -ErrorAction SilentlyContinue)) {
 }
 docker compose version *> $null
 if ($LASTEXITCODE -ne 0) { Write-InstallError "Docker Compose v2 is required (docker compose)" }
+$ComposeVersion = (docker compose version --short 2>$null | Out-String).Trim()
+if ($ComposeVersion -notmatch '^v?(\d+)\.(\d+)' -or [int]$Matches[1] -lt 2 -or ([int]$Matches[1] -eq 2 -and [int]$Matches[2] -lt 24)) {
+  Write-InstallError "Docker Compose 2.24 or newer is required (found $(if ($ComposeVersion) { $ComposeVersion } else { 'unknown' })). Upgrade the Compose plugin."
+}
 docker compose wait --help *> $null
 if ($LASTEXITCODE -ne 0) { Write-InstallError "update Docker Compose: the installer requires the wait command" }
 if (-not (Test-Path -LiteralPath $EnvExample)) { Write-InstallError "missing $EnvExample" }

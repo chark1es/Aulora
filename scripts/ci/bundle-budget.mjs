@@ -141,7 +141,11 @@ export function initialSeeds(html) {
     const rel = (attributes.rel ?? "").toLowerCase().split(/\s+/);
     let reference;
     if (name.toLowerCase() === "script") reference = attributes.src;
-    else if (rel.includes("modulepreload") || rel.includes("stylesheet"))
+    else if (
+      rel.includes("modulepreload") ||
+      rel.includes("stylesheet") ||
+      (rel.includes("preload") && attributes.as?.toLowerCase() === "font")
+    )
       reference = attributes.href;
     if (!reference?.startsWith("/")) continue;
     seeds.push(reference.replace(/^\/+/, ""));

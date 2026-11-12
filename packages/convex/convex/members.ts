@@ -27,6 +27,7 @@ import {
 import { enforceRateLimit, userRateLimitKey } from "./lib/rateLimit";
 import { openContentOptional } from "./lib/sealed";
 import { sealString } from "./lib/sse";
+import { storageIsReferenced } from "./lib/storageReferences";
 import type { Nullable } from "./lib/types";
 
 type ReadCtx = Parameters<typeof requireAuth>[0];
@@ -146,6 +147,9 @@ export const setAvatar = mutation({
     const member = await requireMemberRow(ctx, userId);
     const previous = member.avatarStorageId;
     if (args.storageId !== undefined) {
+      if (await storageIsReferenced(ctx, args.storageId, { memberId: member._id })) {
+        throw new ConvexError("Avatar file is already in use");
+      }
       const url = await ctx.storage.getUrl(args.storageId);
       if (url === null) {
         throw new ConvexError("Avatar file not found");
@@ -158,7 +162,11 @@ export const setAvatar = mutation({
     } else {
       await ctx.db.patch(member._id, { avatarStorageId: undefined });
     }
-    if (previous !== undefined && previous !== args.storageId) {
+    if (
+      previous !== undefined &&
+      previous !== args.storageId &&
+      !(await storageIsReferenced(ctx, previous))
+    ) {
       await ctx.storage.delete(previous);
     }
     return null;

@@ -7,10 +7,6 @@
       "reason": "Pre-existing collect() on \"channelMembers\"; replace it with a bounded index query."
     },
     {
-      "key": "auditLog.ts#list#paginate-unbounded",
-      "reason": "Pre-existing paginate with args.paginationOpts ?? { numItems: 50, cursor: null }; clamp numItems or keep the window small."
-    },
-    {
       "key": "botRuntime.ts#bundle#collect",
       "reason": "Pre-existing collect() on \"botFiles\"; replace it with a bounded index query."
     },
@@ -71,14 +67,6 @@
       "reason": "Pre-existing collect() on \"categories\"; replace it with a bounded index query."
     },
     {
-      "key": "channels.ts#list#paginate-unbounded",
-      "reason": "Pre-existing paginate with args.paginationOpts ?? { numItems: 50, cursor: null }; clamp numItems or keep the window small."
-    },
-    {
-      "key": "channels.ts#listDms#paginate-unbounded",
-      "reason": "Pre-existing paginate with args.paginationOpts ?? { numItems: 50, cursor: null }; clamp numItems or keep the window small."
-    },
-    {
       "key": "channels.ts#requireOverrideAccess#collect",
       "reason": "Pre-existing collect() on \"roles\"; replace it with a bounded index query."
     },
@@ -121,10 +109,6 @@
     {
       "key": "invites.ts#findInviteByCode#collect",
       "reason": "Pre-existing collect() on \"invites\"; replace it with a bounded index query."
-    },
-    {
-      "key": "invites.ts#list#paginate-unbounded",
-      "reason": "Pre-existing paginate with args.paginationOpts; clamp numItems or keep the window small."
     },
     {
       "key": "invites.ts#remove#collect",
@@ -305,18 +289,6 @@
     {
       "key": "members.ts#unban#collect",
       "reason": "Pre-existing collect() on \"bans\"; replace it with a bounded index query."
-    },
-    {
-      "key": "messages.ts#list#paginate-unbounded",
-      "reason": "Pre-existing paginate with args.paginationOpts; clamp numItems or keep the window small."
-    },
-    {
-      "key": "messages.ts#listPins#paginate-unbounded",
-      "reason": "Pre-existing paginate with args.paginationOpts; clamp numItems or keep the window small."
-    },
-    {
-      "key": "messages.ts#listThread#paginate-unbounded",
-      "reason": "Pre-existing paginate with args.paginationOpts; clamp numItems or keep the window small."
     },
     {
       "key": "notes.ts#list#collect",

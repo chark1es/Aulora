@@ -11,7 +11,7 @@ const SHOWN_REPLIERS = 3;
 function ReplierStack({ userIds }: { readonly userIds: readonly string[] }) {
   if (userIds.length === 0) {
     return (
-      <span className="flex h-5 w-5 shrink-0 items-center justify-center rounded-full bg-accent-soft text-accent">
+      <span className="flex h-5 w-5 shrink-0 items-center justify-center rounded-full bg-accent-soft text-accent-text">
         <Icon name="thread" size={12} />
       </span>
     );
@@ -84,7 +84,9 @@ export function ThreadSummary({
         )}
       >
         <ReplierStack userIds={participantIds} />
-        <span className="shrink-0 text-[12px] font-semibold leading-4 text-accent">{label}</span>
+        <span className="shrink-0 text-[12px] font-semibold leading-4 text-accent-text">
+          {label}
+        </span>
         {note !== null && (
           <span className="min-w-0 truncate text-[11px] leading-4 text-text-muted">{note}</span>
         )}

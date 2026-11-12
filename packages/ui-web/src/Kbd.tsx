@@ -1,4 +1,5 @@
 import type { HTMLAttributes } from "react";
+import { CapText } from "./CapText";
 import { cn } from "./cn";
 
 export interface KbdProps extends HTMLAttributes<HTMLElement> {
@@ -17,7 +18,7 @@ export function Kbd({ size = "sm", className, children, ...rest }: KbdProps) {
       )}
       {...rest}
     >
-      {children}
+      <CapText>{children}</CapText>
     </kbd>
   );
 }

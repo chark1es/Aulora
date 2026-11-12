@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { expandBroadcast, pingsViewer, resolveMentions } from "../src/chat/index.js";
+import { expandBroadcast, messageMentionsUser, resolveMentions } from "../src/chat/index.js";
 
 const members = [
   { userId: "u-alice", displayName: "Alice" },
@@ -57,18 +57,29 @@ describe("resolveMentions", () => {
   });
 });
 
-describe("pingsViewer", () => {
+describe("messageMentionsUser", () => {
   const message = { authorId: "alice", mentionUserIds: ["alice", "bob"] };
 
   it("pings a mentioned viewer", () => {
-    expect(pingsViewer(message, "bob")).toBe(true);
+    expect(messageMentionsUser(message, "bob")).toBe(true);
   });
 
   it("does not ping the author, even when the broadcast expanded to include them", () => {
-    expect(pingsViewer(message, "alice")).toBe(false);
+    expect(messageMentionsUser(message, "alice")).toBe(false);
   });
 
   it("does not ping a viewer who was not mentioned", () => {
-    expect(pingsViewer(message, "carol")).toBe(false);
+    expect(messageMentionsUser(message, "carol")).toBe(false);
   });
+});
+
+it("resolves a large roster and many tokens within a loose performance budget", () => {
+  const members = Array.from({ length: 3000 }, (_, i) => ({
+    userId: `u${i}`,
+    displayName: `member${i}`,
+  }));
+  const text = Array.from({ length: 500 }, () => "@unknown").join(" ");
+  const start = performance.now();
+  expect(resolveMentions(text, members).userIds).toEqual([]);
+  expect(performance.now() - start).toBeLessThan(500);
 });

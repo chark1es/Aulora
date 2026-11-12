@@ -130,6 +130,33 @@ Kanban and Notes are optional addons that ship in the web and setup images and u
 - **Kanban** — boards, cards, work timers, attachments and GitHub links. See [the Kanban guide](../../apps/docs/content/kanban.md).
 - **Notes** — Markdown notes with nested folders, tags, search and per-note history. See [the Notes guide](../../apps/docs/content/notes.md).
 
+## Transcription (optional)
+
+The `transcriber` container is behind the `transcription` compose profile and is
+off by default. Run `setup` (or set `TRANSCRIBER_TOKEN`) **before** starting it,
+because the same token authenticates model downloads, segment ingest and the
+heartbeat. The owner then downloads an allowlisted faster-whisper model into the
+`transcriber-models` volume from Workspace settings → Addons; no model is baked
+into the image. Restarting the container reloads the cached model from the
+Hugging Face cache layout.
+
+The default image runs on CPU int8. A GPU host can override `WHISPER_DEVICE` and
+`WHISPER_COMPUTE_TYPE` and must expose the GPU to the container. The service is
+non-root, read-only, and shares only the `transcription` network with Convex and
+the web gateway. Trust model: the transcriber sees call audio; the configured
+summary endpoint receives transcript text; audio is processed in memory and not
+stored. See [the transcription guide](../../apps/docs/content/transcription.md).
+
+The bundled web gateway caps concurrent `/transcribe/ws` connections per
+**immediate peer address**. Behind Coolify/Traefik, Caddy, a cloud load balancer
+or a NAT gateway that address is the proxy, not the participant, so the cap is
+sized to the hard seat ceiling (`MAX_CALL_SEATS`, 64) and kept only as a coarse
+backstop. The transcriber itself enforces the real limits: one live stream per
+identity (a reconnect replaces the old socket), a bounded number per session,
+and a separate cap for unauthenticated sockets. If you front the app with a
+proxy that rewrites or hides client addresses, do not lower the connection cap
+below the seat ceiling; tune the transcriber's limits instead.
+
 ## Why `setup` rather than manual steps
 
 The self-hosted Convex backend image ships `/convex/generate_key`. The admin key
@@ -592,3 +619,46 @@ with instructions to use the hosting provider's redeploy controls.
 ## Public release operations
 
 The [public self-hosting guide](../../apps/docs/content/self-hosting.md) covers HTTPS, reachable URLs, and private administration ports. Default passwords are for local trials; replace database and MinIO credentials before a public deployment. The [updates guide](../../apps/docs/content/updates.md) distinguishes rebuilding source, updating from release tags, and Coolify redeploys.
+
+## Deployment verification and historical backfills
+
+`deploy.sh` and the host staged updater compare the existing Convex container's
+immutable image ID to the configured engine image. They recreate a changed (or
+missing) engine before setup and wait up to 120 seconds for engine health. The
+staged download pulls and records the engine image alongside its built images,
+so restart rejects substituted images. Matching engines are left in place.
+After setup and frontend recreation, both paths wait up to 120 seconds for web
+and engine health before writing `.deployed-version`. A failed staged restart
+retains `.update-ready.json` and the old stamp for retry; it does not undo any
+engine or backend changes already applied. A healthcheck is not a substitute
+for checking discovery, sign-in, history and supported older clients.
+
+Both Compose variants gate web startup on the one-shot setup service completing
+successfully. The explicit update/deploy paths run setup first and recreate web
+with `--no-deps`, so they do not launch a second setup through that dependency.
+The regular stack now has the same nginx healthcheck as the Coolify stack.
+
+The minute crons automatically run `maintenance:backfillMemberRoles {}` and
+`maintenance:backfillAttachmentScopes {}`. Each tick processes up to 1000 members
+or 500 messages and commits a cursor and counts in `migrationProgress` alongside
+the page's writes. Interrupted runs resume the last committed cursor (including
+legacy server cursors on upgrade). No setup invocation is required. Completion
+sets `server.memberRolesBackfilled` or `server.attachmentScopesBackfilled` once;
+subsequent ticks skip completed work after one server-row read. Intermediate
+ticks do not patch the public-config singleton. Attachment repair requires the
+uploader to match the legacy message author; ambiguous foreign-author references
+remain private and are counted in `migrationProgress.skippedReferences`.
+See [backfill limits and read measurements](../../docs/convex/README.md#automatic-chat-compatibility-backfills).
+
+`maintenance:backfillThreadParticipants {}` remains a separate manually invoked
+migration: it pages 200 messages and schedules further pages. Its upserts are
+idempotent, but it has no durable completion marker, active-run guard or status
+endpoint. A successful CLI invocation confirms the first page, not completion.
+Before making that migration a setup prerequisite, add durable coordination and
+completion verification with a documented timeout and visible failure. Test
+interrupted retries, skipped-version upgrades, concurrent writes and a second
+setup run after completion.
+
+Docker Compose **>= 2.24** is required by the deployment and staged updater
+for service-scoped `docker compose config --images convex-backend`. Both paths
+check the installed plugin version before Compose operations.

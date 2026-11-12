@@ -1,4 +1,5 @@
 import type { HTMLAttributes } from "react";
+import { CapText } from "./CapText";
 import { cn } from "./cn";
 
 export type BadgeTone = "neutral" | "accent" | "success" | "danger" | "outline";
@@ -12,15 +13,16 @@ export interface BadgeProps extends HTMLAttributes<HTMLSpanElement> {
 
 const TONE_CLASSES = new Map<BadgeTone, string>([
   ["neutral", "bg-surface-3 text-text-muted"],
-  ["accent", "bg-accent-soft text-accent"],
-  ["success", "bg-secondary/15 text-secondary"],
-  ["danger", "bg-danger/10 text-danger"],
+  ["accent", "bg-accent-soft text-accent-text"],
+  ["success", "bg-secondary/15 text-secondary-text"],
+  ["danger", "bg-danger/10 text-danger-text"],
   ["outline", "border border-border bg-transparent text-text-muted"],
 ]);
 
+// text-centering-ok: size lookup only; the component wraps its label in <CapText>.
 const SIZE_CLASSES = new Map<BadgeSize, string>([
-  ["sm", "px-1.5 py-0.5 text-[10px]"],
-  ["md", "px-2 py-0.5 text-[11px]"],
+  ["sm", "h-[18px] px-1.5 text-[10px]"],
+  ["md", "h-5 px-2 text-[11px]"],
 ]);
 
 /** A compact status pill for tables, lists and cards. */
@@ -35,7 +37,7 @@ export function Badge({ tone = "neutral", size = "md", className, children, ...r
       )}
       {...rest}
     >
-      {children}
+      <CapText>{children}</CapText>
     </span>
   );
 }

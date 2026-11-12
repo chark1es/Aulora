@@ -1,14 +1,18 @@
-import { classifyError } from "@aulora/core";
-import { type ErrorBoundaryProps, Stack } from "expo-router";
+import { ScreenContainer } from "../src/components/layout/ScreenContainer";
+import "../src/lib/debug-log";
+import { classifyError, debugLog } from "@aulora/core";
+import { useFonts } from "expo-font";
+import { type ErrorBoundaryProps, SplashScreen, Stack } from "expo-router";
 import { StatusBar } from "expo-status-bar";
 import { useEffect } from "react";
-import { View } from "react-native";
+import { LogBox, View } from "react-native";
 import { GestureHandlerRootView } from "react-native-gesture-handler";
 import { KeyboardProvider } from "react-native-keyboard-controller";
 import { SafeAreaProvider } from "react-native-safe-area-context";
 import "../global.css";
 import { Button, Text, usePalette } from "@aulora/ui-native";
 import { BottomSheetModalProvider } from "@gorhom/bottom-sheet";
+import { FONT_ASSETS } from "../src/lib/fonts";
 import { configureNotificationHandler } from "../src/lib/push";
 import { useThemeVars } from "../src/lib/theme";
 import { ProfileProvider } from "../src/providers/ProfileProvider";
@@ -38,7 +42,16 @@ if (__DEV__) {
     }
     originalConsoleError(...args);
   };
+  // react-native-keyboard-controller 1.22's KeyboardAvoidingView passes a
+  // dependency list to `useAnimatedStyle`, which Reanimated 4 ignores on native
+  // and warns about once per mount. The dev-only toast covered sheet footers
+  // and the composer on device; nothing in the app's own code triggers it.
+  LogBox.ignoreLogs(["[Reanimated] Dependencies should only be used on the web"]);
 }
+
+// Keep the splash up until Inter is registered, so the first frame already uses
+// the shipped face and nothing reflows when it arrives.
+void SplashScreen.preventAutoHideAsync();
 
 function ThemedStack() {
   const theme = useThemeVars();
@@ -54,9 +67,17 @@ function ThemedStack() {
 }
 
 export default function RootLayout() {
+  const [fontsLoaded, fontError] = useFonts(FONT_ASSETS);
+  const fontsReady = fontsLoaded || fontError !== null;
   useEffect(() => {
     configureNotificationHandler();
   }, []);
+  useEffect(() => {
+    if (fontError !== null) debugLog.record("fonts.error", fontError);
+    if (fontsReady) void SplashScreen.hideAsync();
+  }, [fontsReady, fontError]);
+  // A failed load falls back to the system face rather than blocking launch.
+  if (!fontsReady) return null;
 
   return (
     <GestureHandlerRootView style={{ flex: 1 }}>
@@ -79,18 +100,25 @@ export default function RootLayout() {
  * the route, and a transient failure is framed as reconnecting.
  */
 export function ErrorBoundary({ error, retry }: ErrorBoundaryProps) {
+  useEffect(() => {
+    debugLog.record("route.error", error);
+  }, [error]);
   const reconnecting = classifyError(error) === "reconnecting";
   return (
-    <View className="flex-1 items-center justify-center gap-3 bg-bg px-6">
-      <Text size="md" className="text-center font-medium">
-        {reconnecting ? "Reconnecting…" : "Something went wrong"}
-      </Text>
-      <Text size="sm" tone="muted" className="text-center">
-        {reconnecting
-          ? "Check your connection, then try again."
-          : "This view could not load. Try again to reload it."}
-      </Text>
-      <Button onPress={() => void retry()}>Try again</Button>
-    </View>
+    <SafeAreaProvider>
+      <KeyboardProvider>
+        <ScreenContainer scrollable className="flex-1 items-center justify-center gap-3 bg-bg px-6">
+          <Text size="md" className="text-center font-medium">
+            {reconnecting ? "Reconnecting…" : "Something went wrong"}
+          </Text>
+          <Text size="sm" tone="muted" className="text-center">
+            {reconnecting
+              ? "Check your connection, then try again."
+              : "This view could not load. Try again to reload it."}
+          </Text>
+          <Button onPress={() => void retry()}>Try again</Button>
+        </ScreenContainer>
+      </KeyboardProvider>
+    </SafeAreaProvider>
   );
 }

@@ -9,6 +9,7 @@
  */
 
 import type { AttachmentDescriptor } from "../chat/port.js";
+import { messageSendError } from "../errors/index.js";
 
 export type OutboxStatus = "pending" | "sending" | "failed";
 
@@ -75,6 +76,8 @@ export interface OutboxItem {
   readonly channelId: string;
   readonly text: string;
   readonly mentionUserIds: readonly string[];
+  readonly mentionEveryone?: boolean;
+  readonly mentionHere?: boolean;
   readonly mentionChannelIds?: readonly string[];
   readonly mentionCategoryIds?: readonly string[];
   /** Mentioned roles, expanded by servers that support server-side expansion. */
@@ -88,6 +91,7 @@ export interface OutboxItem {
   /** Earliest time (ms epoch) this item may be retried. */
   readonly nextAttemptAt: number;
   readonly status: OutboxStatus;
+  readonly failureReason?: string;
 }
 
 /** Durable storage for queued sends. */
@@ -122,6 +126,8 @@ export interface EnqueueInput {
   readonly channelId: string;
   readonly text: string;
   readonly mentionUserIds?: readonly string[];
+  readonly mentionEveryone?: boolean;
+  readonly mentionHere?: boolean;
   readonly mentionChannelIds?: readonly string[];
   readonly mentionCategoryIds?: readonly string[];
   /** Mentioned roles, expanded by servers that support server-side expansion. */
@@ -183,6 +189,8 @@ export class Outbox {
       channelId: input.channelId,
       text: input.text,
       mentionUserIds: [...(input.mentionUserIds ?? [])],
+      ...(input.mentionEveryone !== undefined ? { mentionEveryone: input.mentionEveryone } : {}),
+      ...(input.mentionHere !== undefined ? { mentionHere: input.mentionHere } : {}),
       ...(input.mentionChannelIds !== undefined
         ? { mentionChannelIds: [...input.mentionChannelIds] }
         : {}),
@@ -273,13 +281,17 @@ export class Outbox {
           await send(item);
           await this.store.delete(item.id);
           sent.push(item.id);
-        } catch {
+        } catch (error) {
           const attempts = item.attempts + 1;
-          if (attempts >= maxAttempts) {
+          if (
+            attempts >= maxAttempts ||
+            /permission|not allowed|forbidden|mentioning everyone too often/i.test(String(error))
+          ) {
             await this.store.put({
               ...item,
               attempts,
               status: "failed",
+              failureReason: messageSendError(error),
               lastAttemptAt: now,
             });
             failed.push(item.id);

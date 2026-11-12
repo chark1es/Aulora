@@ -1,6 +1,6 @@
 import { Button, Icon, Modal } from "@aulora/ui-web";
 
-/** Confirms that joining will disconnect the call on the user's other device. */
+/** Confirms that joining will disconnect the call on the user’s other device. */
 export function SwitchDeviceCallModal({
   open,
   onCancel,
@@ -16,7 +16,7 @@ export function SwitchDeviceCallModal({
       onClose={onCancel}
       label="Join on this device"
       title="Join on this device?"
-      description="You're already in a call on another device."
+      description="You’re already in a call on another device."
       icon={<Icon name="monitor" size={18} />}
       footer={
         <>

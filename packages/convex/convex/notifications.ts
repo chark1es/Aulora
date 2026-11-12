@@ -2,10 +2,23 @@ import { Permission } from "@aulora/core";
 import { ConvexError, v } from "convex/values";
 import { internal } from "./_generated/api";
 import type { Id } from "./_generated/dataModel";
-import { action, internalAction, internalQuery, mutation, query } from "./_generated/server";
+import {
+  action,
+  internalAction,
+  internalMutation,
+  internalQuery,
+  mutation,
+  query,
+} from "./_generated/server";
 import { requireAuth } from "./lib/auth";
+import { broadcastJoinedAt, mentionsViewer } from "./lib/broadcastMentions";
 import { requireChannelAccess } from "./lib/channels";
-import { resolveMessageRecipients, resolvePref } from "./lib/messageRecipients";
+import { settleInChunks } from "./lib/concurrency";
+import {
+  resolveBroadcastRecipients,
+  resolveMessageRecipients,
+  resolvePref,
+} from "./lib/messageRecipients";
 import { requireMember } from "./lib/permissions";
 import {
   type MobilePlatform,
@@ -50,6 +63,7 @@ export const getPrefs = query({
       channelId: row.channelId ?? null,
       level: row.level,
       hidden: row.hidden === true,
+      suppressMassMentions: row.suppressMassMentions ?? null,
       muted: row.level === "nothing" || (row.muteUntil !== undefined && row.muteUntil > now),
       muteUntil: row.muteUntil ?? null,
     }));
@@ -75,11 +89,16 @@ export const setChannelHidden = mutation({
     const { userId } = await requireChannelAccess(ctx, args.channelId, Permission.ViewChannel);
     const existing = await findChannelPref(ctx, userId, args.channelId);
     if (existing === null) {
+      const serverPref = await ctx.db
+        .query("notificationPrefs")
+        .withIndex("by_user_scope", (q) => q.eq("userId", userId).eq("scope", "server"))
+        .first();
       await ctx.db.insert("notificationPrefs", {
         userId,
         scope: "channel",
         channelId: args.channelId,
-        level: "all",
+        level: serverPref?.level ?? "all",
+        ...(serverPref?.muteUntil !== undefined ? { muteUntil: serverPref.muteUntil } : {}),
         hidden: args.hidden,
       });
     } else {
@@ -126,9 +145,10 @@ export const setPref = mutation({
   args: {
     scope: scopeValidator,
     channelId: v.optional(v.id("channels")),
-    level: levelValidator,
+    level: v.optional(levelValidator),
     muteUntil: v.optional(v.number()),
     hidden: v.optional(v.boolean()),
+    suppressMassMentions: v.optional(v.boolean()),
   },
   handler: async (ctx, args) => {
     const { userId } = await requireAuth(ctx);
@@ -152,18 +172,24 @@ export const setPref = mutation({
         : row.scope === "channel" && row.channelId === args.channelId,
     );
     const patch = {
-      level: args.level,
+      ...(args.level !== undefined ? { level: args.level } : {}),
       ...(args.muteUntil !== undefined ? { muteUntil: args.muteUntil } : {}),
       ...(args.hidden !== undefined ? { hidden: args.hidden } : {}),
+      ...(args.suppressMassMentions !== undefined
+        ? { suppressMassMentions: args.suppressMassMentions }
+        : {}),
     };
     if (existing === undefined) {
       await ctx.db.insert("notificationPrefs", {
         userId,
         scope: args.scope,
-        level: args.level,
+        level: args.level ?? rows.find((row) => row.scope === "server")?.level ?? "all",
         ...(args.channelId !== undefined ? { channelId: args.channelId } : {}),
         ...(args.muteUntil !== undefined ? { muteUntil: args.muteUntil } : {}),
         ...(args.hidden !== undefined ? { hidden: args.hidden } : {}),
+        ...(args.suppressMassMentions !== undefined
+          ? { suppressMassMentions: args.suppressMassMentions }
+          : {}),
       });
     } else {
       await ctx.db.patch(existing._id, patch);
@@ -239,6 +265,7 @@ export const unreadSummary = query({
       // Scan the tail in bounded pages until a message from someone else is
       // found. A run of the viewer's own messages at the cursor must not hide
       // older unread messages from other people.
+      const joinedAt = await broadcastJoinedAt(ctx, userId, membership.channelId);
       let lower = after;
       let channelUnread = 0;
       let channelMentions = 0;
@@ -259,13 +286,14 @@ export const unreadSummary = query({
         for (const message of messages) {
           if (
             message.deletedAt !== undefined ||
+            message.threadRootId !== undefined ||
             message.authorId === userId ||
             message.systemKind !== undefined
           ) {
             continue;
           }
           channelUnread = Math.min(channelUnread + 1, UNREAD_SCAN_LIMIT);
-          if (message.mentionUserIds.includes(userId)) {
+          if (mentionsViewer(message, userId, joinedAt)) {
             channelMentions = Math.min(channelMentions + 1, UNREAD_SCAN_LIMIT);
           }
         }
@@ -300,6 +328,27 @@ export const resolveRecipients = internalQuery({
       return [];
     }
     return await resolveMessageRecipients(ctx, message);
+  },
+});
+
+/** Cursor-only continuation: scheduler payload size is independent of audience size. */
+export const recipientPage = internalQuery({
+  args: { messageId: v.id("messages"), cursor: v.optional(v.string()) },
+  handler: async (ctx, args) => {
+    const message = await ctx.db.get(args.messageId);
+    if (
+      message === null ||
+      message.deletedAt !== undefined ||
+      Date.now() - message._creationTime >= DELIVERY_REPLAY_WINDOW_MS
+    )
+      return { recipients: [], cursor: null };
+    if (message.mentionEveryone || message.mentionHere) {
+      return {
+        ...(await resolveBroadcastRecipients(ctx, message, args.cursor ?? null)),
+        broadcast: true,
+      };
+    }
+    return { recipients: await resolveMessageRecipients(ctx, message), cursor: null };
   },
 });
 
@@ -345,7 +394,7 @@ export const resolveCallRecipients = internalQuery({
   args: { callId: v.id("calls") },
   handler: async (ctx, args) => {
     const call = await ctx.db.get(args.callId);
-    if (call === null || call.ringingUserIds.length === 0) {
+    if (call === null || call.ringingUserIds.length === 0 || call.channelId === undefined) {
       return [];
     }
     const now = Date.now();
@@ -366,7 +415,8 @@ export const resolveCallRecipients = internalQuery({
 
 export interface DispatchResult {
   readonly sent: number;
-  readonly skipped?: "unconfigured" | "no-message";
+  readonly failed?: boolean;
+  readonly skipped?: "unconfigured" | "no-message" | "noop";
 }
 
 /**
@@ -465,8 +515,139 @@ export const dispatchMobileCallRinging = internalAction({
  * message. Scheduled by `messages.send`; no-ops when neither transport is
  * configured, so a deployment without push never fails on send.
  */
+export const DELIVERY_REPLAY_WINDOW_MS = 24 * 60 * 60 * 1000;
+
+export const DELIVERY_MAX_ATTEMPTS = 12;
+
+export const DELIVERY_LEASE_MS = 5 * 60_000;
+
+export const claimDelivery = internalMutation({
+  args: {
+    messageId: v.id("messages"),
+    cursor: v.optional(v.string()),
+    leaseToken: v.optional(v.string()),
+    recoveryCursor: v.optional(v.string()),
+  },
+  handler: async (ctx, args) => {
+    const message = await ctx.db.get(args.messageId);
+    if (
+      message === null ||
+      message.deletedAt !== undefined ||
+      Date.now() - message._creationTime >= DELIVERY_REPLAY_WINDOW_MS
+    )
+      return false;
+    const cursor = args.cursor ?? "";
+    const existing = await ctx.db
+      .query("notificationDeliveryClaims")
+      .withIndex("by_message_cursor", (q) => q.eq("messageId", args.messageId).eq("cursor", cursor))
+      .unique();
+    if (
+      existing?.completed ||
+      (existing?.attempts ?? 0) >= DELIVERY_MAX_ATTEMPTS ||
+      (existing?.leaseUntil !== undefined && existing.leaseUntil > Date.now())
+    )
+      return false;
+    const lease = {
+      attempts: Math.min(DELIVERY_MAX_ATTEMPTS, (existing?.attempts ?? 0) + 1),
+      leaseUntil: Date.now() + DELIVERY_LEASE_MS,
+      retryAt: Date.now() + DELIVERY_LEASE_MS,
+      ...(args.leaseToken !== undefined ? { leaseToken: args.leaseToken } : {}),
+      ...(args.recoveryCursor !== undefined ? { recoveryCursor: args.recoveryCursor } : {}),
+    };
+    if (existing === null)
+      await ctx.db.insert("notificationDeliveryClaims", {
+        messageId: args.messageId,
+        cursor,
+        ...lease,
+      });
+    else await ctx.db.patch(existing._id, lease);
+    return true;
+  },
+});
+
+export const deliveryCompleted = internalQuery({
+  args: { messageId: v.id("messages"), cursor: v.string() },
+  handler: async (ctx, args) => {
+    const row = await ctx.db
+      .query("notificationDeliveryClaims")
+      .withIndex("by_message_cursor", (q) =>
+        q.eq("messageId", args.messageId).eq("cursor", args.cursor),
+      )
+      .unique();
+    return row?.completed === true;
+  },
+});
+
+export const completeDelivery = internalMutation({
+  args: { messageId: v.id("messages"), cursor: v.optional(v.string()), leaseToken: v.string() },
+  handler: async (ctx, args) => {
+    const row = await ctx.db
+      .query("notificationDeliveryClaims")
+      .withIndex("by_message_cursor", (q) =>
+        q.eq("messageId", args.messageId).eq("cursor", args.cursor ?? ""),
+      )
+      .unique();
+    if (row?.leaseToken !== args.leaseToken) return;
+    await ctx.db.patch(row._id, { completed: true, leaseUntil: undefined });
+  },
+});
+
+/** Legacy claims without a lease are recoverable too; each tick does bounded work. */
+export const recoverDeliveryLeases = internalMutation({
+  args: {},
+  handler: async (ctx) => {
+    const rows = await ctx.db
+      .query("notificationDeliveryClaims")
+      .withIndex("by_lease", (q) =>
+        q.eq("completed", undefined).gt("retryAt", 0).lte("retryAt", Date.now()),
+      )
+      .take(100);
+    const legacy = await ctx.db
+      .query("notificationDeliveryClaims")
+      .withIndex("by_lease", (q) => q.eq("completed", undefined).eq("retryAt", undefined))
+      .take(100);
+    for (const row of [...rows, ...legacy]) {
+      if (row.completed) continue;
+      const message = await ctx.db.get(row.messageId);
+      if (
+        (row.attempts ?? 0) >= DELIVERY_MAX_ATTEMPTS ||
+        message === null ||
+        message.deletedAt !== undefined ||
+        Date.now() - message._creationTime >= DELIVERY_REPLAY_WINDOW_MS
+      ) {
+        await ctx.db.patch(row._id, { completed: true, leaseUntil: undefined });
+        continue;
+      }
+      const cursor = row.recoveryCursor ?? row.cursor;
+      await ctx.scheduler.runAfter(0, internal.notifications.dispatchForMessage, {
+        messageId: row.messageId,
+        ...(cursor ? { cursor } : {}),
+      });
+      // Move legacy rows out of the undefined window without blocking recovery.
+      await ctx.db.patch(row._id, { retryAt: Date.now() + DELIVERY_LEASE_MS });
+    }
+  },
+});
+
+/** Bounded sweep; age rejection in claimDelivery prevents expired replay. */
+export const pruneDeliveryClaims = internalMutation({
+  args: {},
+  handler: async (ctx) => {
+    const expired = await ctx.db
+      .query("notificationDeliveryClaims")
+      .withIndex("by_creation_time", (q) =>
+        q.lt("_creationTime", Date.now() - DELIVERY_REPLAY_WINDOW_MS),
+      )
+      .take(500);
+    for (const row of expired) await ctx.db.delete(row._id);
+    if (expired.length === 500)
+      await ctx.scheduler.runAfter(0, internal.notifications.pruneDeliveryClaims, {});
+    return expired.length;
+  },
+});
+
 export const dispatchForMessage = internalAction({
-  args: { messageId: v.id("messages") },
+  args: { messageId: v.id("messages"), cursor: v.optional(v.string()) },
   handler: async (ctx, args): Promise<DispatchResult> => {
     const vapid: VapidConfig | null = vapidConfigFromEnv();
     const relay: PushRelayConfig | null = pushRelayConfigFromEnv();
@@ -474,62 +655,98 @@ export const dispatchForMessage = internalAction({
     if (vapid === null && relay === null) {
       return { sent: 0, skipped: "unconfigured" };
     }
-    const recipients = await ctx.runQuery(internal.notifications.resolveRecipients, {
-      messageId: args.messageId,
-    });
-    if (recipients.length === 0) {
-      return { sent: 0, skipped: "no-message" };
+    const page = await ctx.runQuery(internal.notifications.recipientPage, args);
+    const broadcast = "broadcast" in page && page.broadcast === true;
+    if (!broadcast) {
+      const web = async () => {
+        if (vapid === null) return 0;
+        const subscriptions = await ctx.runQuery(internal.notifications.deviceSubscriptions, {
+          userIds: page.recipients,
+        });
+        const results = await settleInChunks(subscriptions, 10, async ({ subscription }) =>
+          sendWebPush(subscription, vapid),
+        );
+        return results.filter((r) => r.status === "fulfilled" && r.value.ok).length;
+      };
+      const mobile = async () =>
+        relay === null
+          ? 0
+          : (
+              await ctx.runAction(internal.notifications.dispatchMobileForMessage, {
+                messageId: args.messageId,
+                recipients: page.recipients,
+              })
+            ).sent;
+      const results = await Promise.allSettled([web(), mobile()]);
+      return { sent: results.reduce((n, r) => n + (r.status === "fulfilled" ? r.value : 0), 0) };
     }
-    const web = (async () => {
-      if (vapid === null) {
-        return 0;
-      }
-      let webSent = 0;
-      const subscriptions = await ctx.runQuery(internal.notifications.deviceSubscriptions, {
-        userIds: recipients,
+    const leaseToken = crypto.randomUUID();
+    if (!(await ctx.runMutation(internal.notifications.claimDelivery, { ...args, leaseToken })))
+      return { sent: 0 };
+    // Schedule the continuation before delivery. A crash is recovered by the lease sweep.
+    if (page.cursor !== null)
+      await ctx.scheduler.runAfter(0, internal.notifications.dispatchForMessage, {
+        messageId: args.messageId,
+        cursor: page.cursor,
       });
-      for (const { subscription } of subscriptions) {
-        const result = await sendWebPush(subscription, vapid);
-        if (result.ok) {
-          webSent += 1;
+    const results = await settleInChunks(page.recipients, 10, async (userId: string) => {
+      const receipt = { messageId: args.messageId, cursor: `recipient:${userId}`, leaseToken };
+      if (
+        !(await ctx.runMutation(internal.notifications.claimDelivery, {
+          ...receipt,
+          recoveryCursor: args.cursor ?? "",
+        }))
+      ) {
+        // A completed receipt is safe to skip; an in-flight lease must leave the page retryable.
+        return {
+          sent: 0,
+          complete: await ctx.runQuery(internal.notifications.deliveryCompleted, {
+            messageId: receipt.messageId,
+            cursor: receipt.cursor,
+          }),
+        };
+      }
+      let sent = 0;
+      let complete = true;
+      if (vapid !== null) {
+        const subscriptions = await ctx.runQuery(internal.notifications.deviceSubscriptions, {
+          userIds: [userId],
+        });
+        for (const { subscription } of subscriptions) {
+          try {
+            const result = await sendWebPush(subscription, vapid);
+            if (result.ok) sent++;
+            else if (!result.gone) complete = false;
+          } catch {
+            complete = false;
+          }
         }
       }
-      return webSent;
-    })();
-    const mobile = (async () => {
-      if (relay === null) {
-        return 0;
+      if (relay !== null) {
+        const result = await ctx.runAction(internal.notifications.dispatchMobileForMessage, {
+          messageId: args.messageId,
+          recipients: [userId],
+        });
+        sent += result.sent;
+        if (result.failed) complete = false;
       }
-      // Hand off the already-resolved recipients so the mobile path never
-      // re-resolves them.
-      const result = await ctx.runAction(internal.notifications.dispatchMobileForMessage, {
-        messageId: args.messageId,
-        recipients,
-      });
-      return result.sent;
-    })();
-    // Independent paths: a slow or failing web-push loop must not starve the
-    // mobile wakeup (and vice versa).
-    const [webResult, mobileResult] = await Promise.allSettled([web, mobile]);
+      if (complete) await ctx.runMutation(internal.notifications.completeDelivery, receipt);
+      return { sent, complete };
+    });
+    if (results.every((r) => r.status === "fulfilled" && r.value.complete))
+      await ctx.runMutation(internal.notifications.completeDelivery, { ...args, leaseToken });
     return {
-      sent:
-        (webResult.status === "fulfilled" ? webResult.value : 0) +
-        (mobileResult.status === "fulfilled" ? mobileResult.value : 0),
+      sent: results.reduce((total, r) => total + (r.status === "fulfilled" ? r.value.sent : 0), 0),
     };
   },
 });
 
 /**
- * Manual trigger used by tests and operators: dispatches notifications for an
- * already-stored message without sending it again.
+ * Legacy no-op retained for old clients. Sends already schedule internal delivery.
  */
 export const dispatchNow = action({
   args: { messageId: v.id("messages") },
-  handler: async (ctx, args): Promise<DispatchResult> => {
-    return await ctx.runAction(internal.notifications.dispatchForMessage, {
-      messageId: args.messageId,
-    });
-  },
+  handler: (): Promise<DispatchResult> => Promise.resolve({ sent: 0, skipped: "noop" }),
 });
 
 // "mobile" is accepted as a defensive alias for a client that mis-tags its
@@ -615,23 +832,34 @@ export const dispatchMobileForMessage = internalAction({
     const targets = await ctx.runQuery(internal.notifications.mobilePushTargets, {
       userIds: recipients,
     });
-    let sent = 0;
-    for (const target of targets) {
-      const result = await sendWake(
-        {
-          kind: "message",
-          serverId: config.serverId,
-          channelId,
-          messageId: args.messageId,
-          platform: target.platform,
-          token: target.token,
-        },
-        config,
-      );
-      if (result.ok) {
-        sent += 1;
-      }
-    }
-    return { sent };
+    const results = await settleInChunks(
+      targets,
+      10,
+      async (target) =>
+        await sendWake(
+          {
+            kind: "message",
+            serverId: config.serverId,
+            channelId,
+            messageId: args.messageId,
+            platform: target.platform,
+            token: target.token,
+          },
+          config,
+        ),
+    );
+    const sent = results.filter(
+      (result) => result.status === "fulfilled" && result.value.ok,
+    ).length;
+    return {
+      sent,
+      ...(results.some(
+        (r) =>
+          r.status === "rejected" ||
+          (!r.value.ok && r.value.status !== 404 && r.value.status !== 410),
+      )
+        ? { failed: true }
+        : {}),
+    };
   },
 });

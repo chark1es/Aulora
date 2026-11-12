@@ -104,7 +104,7 @@ function subscribeToChannel(
       state.setTail(page.page);
       state.setTailNext(page.isDone ? null : page.continueCursor);
       state.setLoading(false);
-      void runtime.session.receiveMessages(page.page);
+      void runtime.session.receiveMessages(page.page, `web:channel:${channelId}:tail`);
     },
     { limit: MESSAGE_PAGE_SIZE },
   );
@@ -150,6 +150,8 @@ function summarizeForReader(
         createdAt: message.createdAt,
         authorId: message.authorId,
         mentionedUserIds: message.mentionUserIds,
+        mentionEveryone: message.mentionEveryone ?? false,
+        mentionHere: message.mentionHere ?? false,
       })),
     {
       lastReadAt: null,
@@ -301,7 +303,10 @@ export function useChannelSession(
           return next;
         });
         setLoadingOlder(false);
-        void runtime.session.receiveMessages(page.page);
+        void runtime.session.receiveMessages(
+          page.page,
+          `web:channel:${channelId}:history:${cursor}`,
+        );
       },
       { limit: MESSAGE_PAGE_SIZE, cursor },
     );

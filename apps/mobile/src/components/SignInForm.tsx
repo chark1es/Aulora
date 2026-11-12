@@ -8,7 +8,7 @@ import { useReduceMotion } from "../lib/use-entrance";
 import { AuthField } from "./AuthField";
 
 /**
- * The sign-in card's interior: provider buttons, the divider, and the local
+ * The sign-in card’s interior: provider buttons, the divider, and the local
  * email/password form. Split out of the screen so the screen keeps the state and
  * the layout, and this keeps the controls.
  */
@@ -102,11 +102,11 @@ export function ProviderOnlyNote() {
 export function OrDivider() {
   return (
     <View className="flex-row items-center gap-3">
-      <View className="h-px flex-1 bg-border" />
+      <View className="h-px flex-1 bg-border min-w-0" />
       <Text size="xs" tone="muted">
         or continue with
       </Text>
-      <View className="h-px flex-1 bg-border" />
+      <View className="h-px flex-1 bg-border min-w-0" />
     </View>
   );
 }
@@ -175,7 +175,7 @@ function ModeSwitch({
                   onToggle();
                 }
               }}
-              className="min-h-11 flex-1 items-center justify-center active:opacity-80"
+              className="min-h-11 flex-1 items-center justify-center active:opacity-80 min-w-0"
             >
               <Text
                 size="sm"

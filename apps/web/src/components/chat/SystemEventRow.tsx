@@ -15,7 +15,7 @@ function systemActorName(list: MessageRowListProps, actorId: string | undefined)
 
 /**
  * The quiet "<actor> pinned a message" line the timeline shows for a pin
- * system event. The word "message" jumps to the pinned row; the event's empty
+ * system event. The word "message" jumps to the pinned row; the event’s empty
  * body is never rendered.
  */
 export function SystemEventRow({

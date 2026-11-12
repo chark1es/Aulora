@@ -20,8 +20,8 @@ const INDICATOR = new Map<OverrideLevel, string>([
 
 const ACTIVE_TEXT = new Map<OverrideLevel, string>([
   ["inherit", "text-text"],
-  ["allow", "text-secondary"],
-  ["deny", "text-danger"],
+  ["allow", "text-secondary-text"],
+  ["deny", "text-danger-text"],
 ]);
 
 /**

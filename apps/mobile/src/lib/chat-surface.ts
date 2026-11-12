@@ -17,5 +17,10 @@ export interface ChatSurfaceRuntime {
   watchThread(
     threadRootId: string,
     onChange: (messages: readonly MessagePayload[]) => void,
+    options?: {
+      cursor: string | null;
+      onPage: (nextCursor: string | null) => void;
+      onError?: (cause: unknown) => void;
+    },
   ): () => void;
 }

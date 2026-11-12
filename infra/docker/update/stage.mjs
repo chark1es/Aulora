@@ -41,7 +41,19 @@ export function createStagedUpdater({
   const envFile = resolve(dockerDir, ".env");
   const stamp = resolve(dockerDir, ".deployed-version");
   const git = (...args) => execute("git", ["-C", repoRoot, ...args], repoRoot);
-  const compose = (cwd, ...args) => execute("docker", ["compose", ...args], cwd);
+  let composeChecked = false;
+  const compose = async (cwd, ...args) => {
+    if (!composeChecked) {
+      const version = await execute("docker", ["compose", "version", "--short"], cwd);
+      const match = /^v?(\d+)\.(\d+)/.exec(version);
+      if (!match || Number(match[1]) < 2 || (Number(match[1]) === 2 && Number(match[2]) < 24))
+        throw new Error(
+          `Docker Compose >= 2.24 is required (found ${version}). Upgrade the Compose plugin.`,
+        );
+      composeChecked = true; // Only a passing probe is cached; failures re-probe.
+    }
+    return execute("docker", ["compose", ...args], cwd);
+  };
   const recreate = (service) =>
     compose(dockerDir, "up", "-d", "--no-deps", "--no-build", "--force-recreate", service);
   const fingerprint = () => createHash("sha256").update(readFileSync(envFile)).digest("hex");
@@ -50,7 +62,7 @@ export function createStagedUpdater({
     writeFileSync(path, `${JSON.stringify(value, null, 2)}\n`, { mode: 0o600 });
   async function inspectImages(images) {
     const entries = [];
-    for (const service of ["web", "setup", "smtp-gateway", "bot-runner"]) {
+    for (const service of ["web", "setup", "smtp-gateway", "bot-runner", "convex-backend"]) {
       const serviceConfig = Object.getOwnPropertyDescriptor(images.services, service)?.value;
       const name = serviceConfig?.image ?? `${images.name}-${service}`;
       const id = await execute(
@@ -132,6 +144,7 @@ export function createStagedUpdater({
       // install has no previous image.
       await pinCurrentWebImage({ dockerDir, execute }).catch(() => null);
       await compose(stageDocker, "build", "web", "setup", "smtp-gateway", "bot-runner");
+      await compose(stageDocker, "pull", "convex-backend");
       const images = JSON.parse(await compose(stageDocker, "config", "--format", "json"));
       // Record immutable image IDs so a later rebuild cannot substitute another release.
       const imageIds = await inspectImages(images);
@@ -161,6 +174,44 @@ export function createStagedUpdater({
     status(prepared.plan, "applying");
     try {
       if (head !== prepared.commit) await git("merge", "--ff-only", prepared.commit);
+      // Compare immutable IDs, not tags: pulling/building never updates a container.
+      const target = (await compose(dockerDir, "config", "--images", "convex-backend")).trim();
+      if (!target || target.includes("\n")) throw new Error("Expected one engine image.");
+      const targetId = await execute(
+        "docker",
+        ["image", "inspect", "--format", "{{.Id}}", target],
+        dockerDir,
+      );
+      const container = await compose(dockerDir, "ps", "-a", "-q", "convex-backend");
+      const runningId = container
+        ? await execute("docker", ["inspect", "--format", "{{.Image}}", container], dockerDir)
+        : null;
+      if (!container) {
+        await compose(
+          dockerDir,
+          "up",
+          "-d",
+          "--no-build",
+          "--wait",
+          "--wait-timeout",
+          "120",
+          "convex-backend",
+        );
+      } else {
+        if (runningId !== targetId) await recreate("convex-backend");
+        await compose(
+          dockerDir,
+          "up",
+          "-d",
+          "--no-deps",
+          "--no-build",
+          "--no-recreate",
+          "--wait",
+          "--wait-timeout",
+          "120",
+          "convex-backend",
+        );
+      }
       // Backend first: a failed setup must leave the previous frontend serving,
       // and the new functions must accept that old bundle during the window.
       await compose(dockerDir, "run", "--rm", "setup");
@@ -169,6 +220,20 @@ export function createStagedUpdater({
       // The runner starts with the stack. Recreate it so it picks up a token
       // that `setup` just generated, and so existing installs get it at all.
       await recreate("bot-runner");
+      // Both services have healthchecks. Failure retains the ready marker and old stamp.
+      await compose(
+        dockerDir,
+        "up",
+        "-d",
+        "--no-deps",
+        "--no-build",
+        "--no-recreate",
+        "--wait",
+        "--wait-timeout",
+        "120",
+        "convex-backend",
+        "web",
+      );
       const version =
         prepared.plan.apply === "redeploy"
           ? prepared.plan.sourceVersion

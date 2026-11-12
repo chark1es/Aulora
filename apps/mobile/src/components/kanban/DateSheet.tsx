@@ -51,7 +51,7 @@ export function DateSheet({
         <MonthHeader shown={shown} onShow={setShown} />
         <View className="flex-row">
           {WEEKDAYS.map((day) => (
-            <Text key={day} size="xs" tone="muted" className="flex-1 text-center">
+            <Text key={day} size="xs" tone="muted" className="flex-1 text-center min-w-0">
               {day.slice(0, 1)}
             </Text>
           ))}
@@ -73,7 +73,7 @@ export function DateSheet({
   );
 }
 
-/** The month's name between buttons that step to the months around it. */
+/** The month’s name between buttons that step to the months around it. */
 function MonthHeader({
   shown,
   onShow,
@@ -96,7 +96,7 @@ function MonthHeader({
           step(-1);
         }}
       />
-      <Text className="flex-1 text-center font-semibold">
+      <Text className="flex-1 text-center font-semibold min-w-0">
         {monthName(month)} {year}
       </Text>
       <MonthStep
@@ -145,6 +145,7 @@ function DayShortcut({
   return (
     <Pressable
       accessibilityRole="button"
+      hitSlop={2}
       className="min-h-10 justify-center rounded-pill border border-border bg-surface-3 px-4 active:opacity-70"
       onPress={() => {
         close(() => {
@@ -179,14 +180,14 @@ const DayCell = memo(function DayCell({
       accessibilityRole="button"
       accessibilityLabel={formatDay(day)}
       accessibilityState={{ selected }}
-      className="h-11 w-[14.28%] items-center justify-center"
+      className="min-h-11 w-[14.28%] items-center justify-center"
       onPress={() => {
         close(() => {
           onPick(day);
         });
       }}
     >
-      <View className={`h-9 w-9 items-center justify-center rounded-pill ${ring}`}>
+      <View className={`min-h-11 min-w-0 w-full items-center justify-center rounded-pill ${ring}`}>
         <Text size="sm" style={{ color, opacity: outside && !selected ? 0.5 : 1 }}>
           {Number(day.slice(8))}
         </Text>

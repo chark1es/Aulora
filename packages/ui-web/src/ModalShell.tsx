@@ -60,7 +60,9 @@ function ModalIcon({
       <span
         className={cn(
           "flex h-9 w-9 shrink-0 items-center justify-center rounded-[10px]",
-          tone === "danger" ? "bg-danger/[0.12] text-danger" : "bg-accent/[0.12] text-accent",
+          tone === "danger"
+            ? "bg-danger/[0.12] text-danger-text"
+            : "bg-accent/[0.12] text-accent-text",
         )}
       >
         {icon}
@@ -248,9 +250,10 @@ function ModalSurface(props: ModalPanelProps) {
     // biome-ignore lint/a11y/noStaticElementInteractions: backdrop press dismisses the dialog
     // biome-ignore lint/a11y/useKeyWithClickEvents: Escape and Tab are handled on the panel
     <div
+      data-modal-backdrop=""
       className={cn(
         "fixed inset-0 z-50 flex items-end justify-center sm:items-center sm:px-4",
-        "bg-black/25 backdrop-blur-[3px] dark:bg-black/45",
+        props.backdropClassName ?? "bg-black/25 backdrop-blur-[3px] dark:bg-black/45",
         "transition-opacity duration-[160ms] motion-reduce:transition-none",
         entered ? "opacity-100" : "opacity-0",
       )}

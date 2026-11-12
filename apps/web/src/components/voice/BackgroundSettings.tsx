@@ -183,7 +183,7 @@ function Swatch({
         onChange={onSelect}
         className="sr-only"
       />
-      {selected && <span className="text-[14px] font-bold text-white drop-shadow">✓</span>}
+      {selected && <Icon name="check" size={16} className="text-white drop-shadow" />}
     </label>
   );
 }
