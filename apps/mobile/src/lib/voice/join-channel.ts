@@ -52,7 +52,19 @@ export function joinVoiceChannelWith(
 ): void {
   const live = voice.activeCalls.find((entry) => entry.channelId === channelId);
   if (live === undefined) {
-    void voice.startCall(channelId, kind);
+    void voice
+      .startCall(channelId, kind)
+      .then((callId) => {
+        // The engine only acquires the microphone, so the explicit video
+        // choice has to be applied after the call actually started. A null
+        // result means the start was refused or cancelled: leave the camera
+        // off in that case.
+        if (callId === null || kind !== "video") return undefined;
+        return voice.setCamera(true);
+      })
+      .catch((cause: unknown) => {
+        voice.reportError?.(errorMessage(cause));
+      });
     return;
   }
   void voice

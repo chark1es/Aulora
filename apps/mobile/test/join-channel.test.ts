@@ -16,11 +16,53 @@ function port(overrides: Partial<VoiceChannelJoinPort> = {}): VoiceChannelJoinPo
 }
 
 describe("voice channel pre-join action", () => {
-  it("starts a new call with the chosen media kind", () => {
+  it("starts a new call with the chosen media kind and enables its camera", async () => {
     const voice = port();
     joinVoiceChannelWith(voice, "channel", "video");
     expect(voice.startCall).toHaveBeenCalledWith("channel", "video");
     expect(voice.joinCall).not.toHaveBeenCalled();
+    await vi.waitFor(() => expect(voice.setCamera).toHaveBeenCalledWith(true));
+  });
+
+  it("starts a new voice call without enabling the camera", async () => {
+    const voice = port();
+    joinVoiceChannelWith(voice, "channel");
+    await vi.waitFor(() => expect(voice.startCall).toHaveBeenCalledWith("channel", "voice"));
+    await Promise.resolve();
+    expect(voice.setCamera).not.toHaveBeenCalled();
+  });
+
+  it("does not enable the camera when a new call was refused", async () => {
+    const voice = port({ startCall: vi.fn(async () => null) });
+    joinVoiceChannelWith(voice, "channel", "video");
+    await vi.waitFor(() => expect(voice.startCall).toHaveBeenCalled());
+    await Promise.resolve();
+    expect(voice.setCamera).not.toHaveBeenCalled();
+  });
+
+  it("surfaces a rejected new-call start without enabling the camera", async () => {
+    const reportError = vi.fn();
+    const voice = port({
+      startCall: vi.fn(async () => {
+        throw new Error("Call start refused");
+      }),
+      reportError,
+    });
+    joinVoiceChannelWith(voice, "channel", "video");
+    await vi.waitFor(() => expect(reportError).toHaveBeenCalledWith("Call start refused"));
+    expect(voice.setCamera).not.toHaveBeenCalled();
+  });
+
+  it("surfaces a camera failure after a successful new video call", async () => {
+    const reportError = vi.fn();
+    const voice = port({
+      setCamera: vi.fn(async () => {
+        throw new Error("Camera unavailable");
+      }),
+      reportError,
+    });
+    joinVoiceChannelWith(voice, "channel", "video");
+    await vi.waitFor(() => expect(reportError).toHaveBeenCalledWith("Camera unavailable"));
   });
 
   it("joins the live call and turns the camera on for a video join", async () => {
