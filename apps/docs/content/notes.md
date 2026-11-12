@@ -29,6 +29,8 @@ A folder must be empty before you delete it. Remove or move its child folders an
 
 Notes are written in Markdown. The editor pairs a text area with a formatting toolbar and a live preview, so you can write plain Markdown and toggle the preview to check the result. The toolbar inserts headings, bold, italic, code, lists, quotes, links and horizontal rules, and each formatting button toggles: choosing it again removes the formatting while keeping your selection. Undo and redo have their own buttons.
 
+On mobile, opening an existing note shows it read-only: its title, properties and rendered Markdown, without the edit fields or toolbar. Press the pencil in the header to start editing; a successful save returns to the read-only view. A new note opens directly in the editor. If the note changes elsewhere while you are reading it, a banner offers the latest revision; while editing, a reload banner appears only when a remote change would conflict with your unsaved draft.
+
 The common keybinds work in the editor. On macOS use `Cmd`; on Windows and Linux use `Ctrl`.
 
 | Keys | Action |

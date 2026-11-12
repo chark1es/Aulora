@@ -1,4 +1,5 @@
 import { beforeEach, expect, it, vi } from "vitest";
+import { editorActions } from "../src/components/notes/note-editor-actions";
 import { useNoteEditor } from "../src/components/notes/use-note-editor";
 import type { NotesController } from "../src/components/notes/use-notes";
 
@@ -12,6 +13,7 @@ const hooks = vi.hoisted(() => ({
   alert: vi.fn(),
 }));
 vi.mock("react-native", () => ({ Alert: { alert: hooks.alert } }));
+vi.mock("../src/components/kanban/board-menus", () => ({ confirm: vi.fn() }));
 vi.mock("react", () => {
   const memo = (factory: () => unknown, deps: readonly unknown[]) => {
     const slot = hooks.slot++;
@@ -72,6 +74,7 @@ function setup(options: { selectedId?: string | null; detail?: boolean } = {}) {
   const ctl = {
     detail,
     selectedId: options.selectedId,
+    permissions: { edit: true, remove: true },
     mutations: { updateNote: vi.fn(async () => 3) },
     setError: vi.fn(),
     backToList: vi.fn(),
@@ -155,4 +158,72 @@ it("opens an existing note read-only and returns to viewing after a save", async
 it("opens a new note straight into editing", () => {
   const { render } = setup({ selectedId: null, detail: false });
   expect(render().editing).toBe(true);
+});
+
+it("ignores a second save tap while the first write is still in flight", async () => {
+  const { ctl, render } = setup({ selectedId: "note" });
+  let finish: ((revision: number) => void) | undefined;
+  ctl.mutations.updateNote.mockImplementationOnce(
+    () =>
+      new Promise<number>((resolve) => {
+        finish = resolve;
+      }),
+  );
+  render().setEditing(true);
+  render().setBody("Edited");
+  const editor = render();
+  editor.save();
+  // A second tap before the busy state renders must not queue another write.
+  editor.save();
+  expect(ctl.mutations.updateNote).toHaveBeenCalledTimes(1);
+  finish?.(4);
+  await vi.waitFor(() => expect(render().saved).toBe(true));
+  expect(ctl.mutations.updateNote).toHaveBeenCalledTimes(1);
+});
+
+it("does not rebase a note the person switched to while a save was finishing", async () => {
+  const { ctl, render } = setup({ selectedId: "note" });
+  let finish: ((revision: number) => void) | undefined;
+  ctl.mutations.updateNote.mockImplementationOnce(
+    () =>
+      new Promise<number>((resolve) => {
+        finish = resolve;
+      }),
+  );
+  render().setEditing(true);
+  render().setBody("Edited on the first note");
+  render().save();
+
+  ctl.selectedId = "other";
+  ctl.detail = {
+    id: "other",
+    revision: 9,
+    title: "Other",
+    body: "Other body",
+    folderId: null,
+    tagIds: [],
+  };
+  expect(render()).toMatchObject({ title: "Other", body: "Other body", editing: false });
+
+  finish?.(4);
+  // Let the save's continuation run before checking it left the new note alone.
+  await Promise.resolve();
+  await Promise.resolve();
+  expect(render()).toMatchObject({
+    title: "Other",
+    body: "Other body",
+    editing: false,
+    saved: false,
+    dirty: false,
+  });
+  expect(ctl.setError).not.toHaveBeenCalled();
+});
+
+it("hides the save action while reading and restores it when editing", () => {
+  const { ctl, render } = setup({ selectedId: "note" });
+  ctl.permissions = { edit: true, remove: true };
+  const ids = (editable: boolean) =>
+    editorActions(ctl as unknown as NotesController, render(), editable).map((action) => action.id);
+  expect(ids(false)).toEqual(["history", "archive", "delete"]);
+  expect(ids(true)).toEqual(["save", "history", "archive", "delete"]);
 });

@@ -298,8 +298,20 @@ function useNoteSave(ctl: NotesController, state: EditorState) {
     markSaved,
     showReloadPrompt,
   } = state;
+  /**
+   * Guards the window between a tap and the next render: without it, a second
+   * tap (or the menu action) can start the same write twice from one `busy`
+   * snapshot and race two revisions of the same note.
+   */
+  const inFlight = useRef(false);
+  /** The note the person is looking at now, not the one this render closed over. */
+  const latestNoteId = useRef(ctl.selectedId);
+  latestNoteId.current = ctl.selectedId;
+
   const save = () => {
-    if (busy || !hasNoteContent(title, body)) return;
+    if (inFlight.current || busy || !hasNoteContent(title, body)) return;
+    const noteIdAtSave = ctl.selectedId;
+    inFlight.current = true;
     setBusy(true);
     void runNoteSave({
       note: note === undefined ? undefined : { id: note.id, revision: note.revision },
@@ -309,7 +321,11 @@ function useNoteSave(ctl: NotesController, state: EditorState) {
       update: (request) => ctl.mutations.updateNote(request as never),
     })
       .then((result) => {
+        inFlight.current = false;
         setBusy(false);
+        // A write that lands after the person moved to another note must not
+        // rebase, close or report on the note they are looking at now.
+        if (latestNoteId.current !== noteIdAtSave) return;
         if (result.kind === "created") {
           ctl.openNote(result.noteId);
           return;
@@ -324,8 +340,11 @@ function useNoteSave(ctl: NotesController, state: EditorState) {
         ctl.setError(result.message);
       })
       .catch((cause: unknown) => {
+        inFlight.current = false;
         setBusy(false);
-        ctl.setError(failure(cause));
+        if (latestNoteId.current === noteIdAtSave) {
+          ctl.setError(failure(cause));
+        }
       });
   };
   return save;

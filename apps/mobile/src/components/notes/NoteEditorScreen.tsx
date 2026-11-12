@@ -66,6 +66,23 @@ function NoteReloadBanner({ editor }: { readonly editor: ReturnType<typeof useNo
       </View>
     );
   }
+  // A clean reader has no local edits to discard, so it only offers the latest
+  // revision; an editor keeps both explicit choices.
+  if (!editor.dirty) {
+    return (
+      <View
+        accessibilityRole="alert"
+        className="flex-row items-center justify-between gap-2 border-b border-border bg-surface-2 px-4 py-3"
+      >
+        <Text size="sm" className="flex-1">
+          This note changed elsewhere.
+        </Text>
+        <Button size="sm" variant="secondary" onPress={editor.reloadLatest}>
+          Reload latest
+        </Button>
+      </View>
+    );
+  }
   return (
     <View accessibilityRole="alert" className="gap-2 border-b border-border bg-surface-2 px-4 py-3">
       <Text size="sm">
@@ -102,7 +119,7 @@ export function NoteEditorScreen({ ctl }: { readonly ctl: NotesController }) {
         }}
       />
       <NotesError ctl={ctl} />
-      {editor.editing && <NoteReloadBanner editor={editor} />}
+      <NoteReloadBanner editor={editor} />
       <ScrollView keyboardShouldPersistTaps="handled" contentContainerStyle={{ paddingBottom: 16 }}>
         {editor.editing ? (
           <>
