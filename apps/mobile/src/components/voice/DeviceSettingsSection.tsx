@@ -8,12 +8,13 @@ import {
   deviceChoices,
   type MediaDeviceRoute,
   NO_DEVICE_ABSENCE,
+  nativeRouteUid,
   planDeviceReconciliation,
   SYSTEM_DEFAULT_DEVICE,
   selectedDeviceLabel,
   selectedDeviceRoute,
 } from "../../lib/voice/media-device-choices";
-import { useAudioRoute } from "../../lib/voice/use-audio-route";
+import type { AudioRoute } from "../../lib/voice/use-audio-route";
 import { useVoice } from "../../providers/VoiceProvider";
 import { ListGroup, ListHeader, ListRow } from "../chat/List";
 import { PickerSheet } from "../kanban/PickerSheet";
@@ -29,6 +30,8 @@ function DevicePicker({
   devices,
   selected,
   bluetoothName,
+  audioRoute,
+  routeError,
   onSelect,
   onOpen,
 }: {
@@ -37,21 +40,38 @@ function DevicePicker({
   readonly devices: readonly MediaDeviceInfo[];
   readonly selected: string | null;
   readonly bluetoothName: string | undefined;
+  readonly audioRoute: AudioRoute;
+  readonly routeError: string | undefined;
   readonly onSelect: (_deviceId: string | null, _route: MediaDeviceRoute) => void;
   readonly onOpen: () => void;
 }) {
   const [open, setOpen] = useState(false);
-  const current = selectedDeviceLabel(devices, kind, selected);
-  const choices = deviceChoices(devices, kind, kind === "videoinput" ? undefined : bluetoothName);
+  const current = selectedDeviceLabel(
+    devices,
+    kind,
+    selected,
+    kind === "videoinput" ? [] : audioRoute.inputs,
+  );
+  // Native platform routes are real rows: on mobile a Bluetooth output is
+  // usually absent from the WebRTC list, so merging them is what makes the
+  // connected headset selectable at all instead of a subtitle.
+  const choices = deviceChoices(
+    devices,
+    kind,
+    kind === "videoinput" ? undefined : bluetoothName,
+    kind === "videoinput" ? undefined : audioRoute,
+  );
   const available = devices.some((device) => device.kind === kind);
-  const currentRoute = selectedDeviceRoute(devices, kind, selected);
+  const currentChoice = choices.find((choice) => choice.id === selected);
+  const currentRoute = currentChoice?.route ?? selectedDeviceRoute(devices, kind, selected);
+  const active = audioRoute.inputs.find((input) => input.uid === audioRoute.activeUid);
   const detail =
     selected === null
       ? kind === "videoinput"
         ? undefined
-        : bluetoothName === undefined
+        : active === undefined
           ? "Follows this device's audio route"
-          : `Bluetooth · ${bluetoothName}`
+          : `Current · ${active.name}`
       : currentRoute === "bluetooth"
         ? "Bluetooth"
         : undefined;
@@ -69,9 +89,14 @@ function DevicePicker({
           }}
         />
       </ListGroup>
-      {!available && (
+      {!available && !(kind !== "videoinput" && audioRoute.inputs.length > 0) && (
         <Text size="xs" tone="muted" className="px-1 pt-1.5">
           No devices detected yet.
+        </Text>
+      )}
+      {routeError !== undefined && (
+        <Text size="xs" tone="muted" className="px-1 pt-1.5">
+          {routeError}
         </Text>
       )}
       {open && (
@@ -324,9 +349,21 @@ function JoinSection({
  * inside the members sheet’s voice settings modal.
  */
 export function DeviceSettingsSection() {
-  const { settings, devices, updateSettings, micLevelAvailable, callId, refreshDevices } =
-    useVoice();
-  const audioRoute = useAudioRoute();
+  const {
+    settings,
+    devices,
+    updateSettings,
+    micLevelAvailable,
+    callId,
+    refreshDevices,
+    audioRoute,
+  } = useVoice();
+  const [inputRouteError, setInputRouteError] = useState<string | undefined>(undefined);
+  const watchAudioRoute = audioRoute.watch;
+  // Route availability changes while settings stay open (a headset connects or
+  // drops), so poll only for as long as this screen is mounted.
+  useEffect(() => watchAudioRoute(), [watchAudioRoute]);
+  const [outputRouteError, setOutputRouteError] = useState<string | undefined>(undefined);
   const pushToTalkUnavailable = callId !== null && !micLevelAvailable;
   const update: UpdateSettings = (patch) => {
     void updateSettings(patch);
@@ -381,12 +418,19 @@ export function DeviceSettingsSection() {
         devices={devices}
         selected={settings.inputDeviceId}
         bluetoothName={audioRoute.name}
+        audioRoute={audioRoute}
+        routeError={inputRouteError}
         onOpen={refresh}
         onSelect={(deviceId, route) => {
           update({ inputDeviceId: deviceId });
           // Route the platform too: a specific WebRTC id never reaches iOS's
-          // Bluetooth port, while the native route switch does.
-          audioRoute.apply(route);
+          // Bluetooth port, while the native route switch does. A native row
+          // carries its uid so the exact input is selected.
+          const error = audioRoute.apply({
+            route,
+            uid: nativeRouteUid(deviceId),
+          });
+          setInputRouteError(error);
         }}
       />
       <DevicePicker
@@ -395,6 +439,8 @@ export function DeviceSettingsSection() {
         devices={devices}
         selected={settings.cameraDeviceId}
         bluetoothName={undefined}
+        audioRoute={audioRoute}
+        routeError={undefined}
         onOpen={refresh}
         onSelect={(deviceId) => {
           update({ cameraDeviceId: deviceId });
@@ -406,13 +452,19 @@ export function DeviceSettingsSection() {
         devices={devices}
         selected={settings.outputDeviceId}
         bluetoothName={audioRoute.name}
+        audioRoute={audioRoute}
+        routeError={outputRouteError}
         onOpen={refresh}
         onSelect={(deviceId, route) => {
           update({ outputDeviceId: deviceId });
           // Output follows the platform route: Android moves the communication
           // device and iOS switches the preferred port, so remote audio plays
           // through the chosen headset instead of only being remembered.
-          audioRoute.apply(route);
+          const error = audioRoute.apply({
+            route,
+            uid: nativeRouteUid(deviceId),
+          });
+          setOutputRouteError(error);
         }}
       />
       <AudioProcessing settings={settings} update={update} />

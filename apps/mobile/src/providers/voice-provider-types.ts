@@ -6,6 +6,7 @@ import type {
 } from "@aulora/core";
 import { createContext } from "react";
 import type { MobileVoiceEngine, MobileVoiceSnapshot } from "../lib/voice/call-engine";
+import type { AudioRoute } from "../lib/voice/use-audio-route";
 
 /** The workspace's voice policy, mirrored from `server.publicConfig`. */
 export interface VoicePolicy {
@@ -37,6 +38,8 @@ export interface VoiceContextValue extends MobileVoiceSnapshot {
   readonly activeCalls: readonly CallView[];
   readonly settings: VoiceDeviceSettings;
   readonly devices: readonly AuloraMediaDevice[];
+  /** The platform audio route, shared by settings and call start. */
+  readonly audioRoute: AudioRoute;
   readonly canConnect: boolean;
   readonly canSpeak: boolean;
   readonly canStream: boolean;

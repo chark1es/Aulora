@@ -10,6 +10,7 @@ import {
   NO_DEVICE_ABSENCE,
   planDeviceReconciliation,
   SYSTEM_DEFAULT_DEVICE,
+  savedRouteTarget,
   selectedDeviceLabel,
   selectedDeviceRoute,
 } from "../src/lib/voice/media-device-choices";
@@ -62,7 +63,9 @@ describe("deviceChoices", () => {
   it("puts the system route first and only lists the requested kind", () => {
     const choices = deviceChoices(devices, "audioinput", "AirPods Pro");
     expect(choices.map((choice) => choice.id)).toEqual([SYSTEM_DEFAULT_DEVICE, "mic-1", "mic-2"]);
-    expect(choices[0]?.hint).toBe("Bluetooth · AirPods Pro");
+    // Availability is not the active route: the phone may still be using its
+    // own microphone while the headset is connected.
+    expect(choices[0]?.hint).toBe("Bluetooth available · AirPods Pro");
     expect(choices[2]?.hint).toBe("Bluetooth");
   });
 
@@ -83,10 +86,57 @@ describe("native route selection", () => {
   it("maps a Bluetooth route to the headset and a system route to the built-in mic", () => {
     expect(inputForRoute(recorderInputs, "bluetooth")?.uid).toBe("2");
     expect(inputForRoute(recorderInputs, "system")?.uid).toBe("1");
-    // A concrete WebRTC device id cannot be mapped onto the native route list;
-    // the call engine selects it at capture time instead.
-    expect(inputForRoute(recorderInputs, "device")).toBeUndefined();
+    // A concrete non-Bluetooth WebRTC device leaves the shared session on the
+    // wired/built-in route, which is also the "device" class.
+    expect(inputForRoute(recorderInputs, "device")?.uid).toBe("1");
     expect(inputForRoute([], "system")).toBeUndefined();
+  });
+});
+
+describe("native routes as selectable choices", () => {
+  const native = { inputs: recorderInputs, activeUid: "1" };
+
+  it("adds a Bluetooth route the WebRTC output list does not enumerate", () => {
+    // Mobile WebRTC often lists no audiooutput at all; the connected headset
+    // still has to be a real, selectable row and not merely a subtitle.
+    const outputs = [{ deviceId: "speaker-1", kind: "audiooutput" as const, label: "Speaker" }];
+    const choices = deviceChoices(outputs, "audiooutput", "AirPods Pro", native);
+    expect(choices.map((choice) => choice.id)).toEqual([
+      SYSTEM_DEFAULT_DEVICE,
+      "speaker-1",
+      "native:2",
+    ]);
+    const bluetooth = choices.find((choice) => choice.id === "native:2");
+    expect(bluetooth).toMatchObject({
+      label: "AirPods Pro",
+      hint: "Bluetooth",
+      route: "bluetooth",
+      nativeUid: "2",
+    });
+  });
+
+  it("labels the actual active route separately from an available headset", () => {
+    const choices = deviceChoices(devices, "audioinput", "AirPods Pro", native);
+    // The phone microphone is in use even though a headset is available.
+    expect(choices[0]?.hint).toBe("Current · iPhone Microphone");
+    // WebRTC already lists "AirPods Pro", so the native duplicate is not shown.
+    expect(choices.filter((choice) => choice.id.startsWith("native:"))).toEqual([]);
+  });
+
+  it("maps saved native and WebRTC choices onto concrete platform targets", () => {
+    expect(savedRouteTarget(recorderInputs, devices, "audiooutput", "native:2")).toEqual({
+      route: "bluetooth",
+      uid: "2",
+    });
+    expect(savedRouteTarget(recorderInputs, devices, "audioinput", "mic-2")).toEqual({
+      route: "bluetooth",
+    });
+    expect(savedRouteTarget(recorderInputs, devices, "audiooutput", "speaker-1")).toEqual({
+      route: "device",
+    });
+    expect(savedRouteTarget(recorderInputs, devices, "audioinput", null)).toBeUndefined();
+    // A native uid that vanished from the platform list cannot be applied.
+    expect(savedRouteTarget(recorderInputs, devices, "audioinput", "native:9")).toBeUndefined();
   });
 });
 
@@ -124,6 +174,16 @@ describe("planDeviceReconciliation", () => {
     expect(planDeviceReconciliation(withoutHeadset, settings, returned.absence).inputDeviceId).toBe(
       "mic-2",
     );
+  });
+
+  it("keeps a saved native route that WebRTC never enumerates", () => {
+    const nativeSettings = { ...settings, outputDeviceId: "native:2" };
+    let absence = NO_DEVICE_ABSENCE;
+    for (let pass = 0; pass < 3; pass++) {
+      const plan = planDeviceReconciliation(devices, nativeSettings, absence);
+      absence = plan.absence;
+      expect(plan.outputDeviceId).toBe("native:2");
+    }
   });
 
   it("does not clear a device kind the platform did not enumerate at all", () => {

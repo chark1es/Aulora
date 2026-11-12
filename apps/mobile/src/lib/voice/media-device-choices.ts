@@ -5,6 +5,24 @@ import type { RecordingInput } from "expo-audio";
 export const SYSTEM_DEFAULT_DEVICE = "__system_default__";
 
 /**
+ * Native routes are stored as `native:<uid>` instead of a WebRTC `deviceId`.
+ * They are the only portable way to address a Bluetooth headset on mobile:
+ * WebRTC often omits outputs entirely, while the platform recorder lists the
+ * headset and can switch the shared communication session to it.
+ */
+export const NATIVE_ROUTE_PREFIX = "native:";
+
+export function nativeRouteDeviceId(uid: string): string {
+  return `${NATIVE_ROUTE_PREFIX}${uid}`;
+}
+
+export function nativeRouteUid(id: string | null): string | undefined {
+  if (id === null || !id.startsWith(NATIVE_ROUTE_PREFIX)) return undefined;
+  const uid = id.slice(NATIVE_ROUTE_PREFIX.length);
+  return uid.length === 0 ? undefined : uid;
+}
+
+/**
  * How a choice reaches the person. `system` follows the OS route, `bluetooth`
  * is a headset the platform can switch to, and `device` is a specific
  * non-Bluetooth WebRTC device the call engine selects at capture time.
@@ -17,6 +35,14 @@ export interface MediaDeviceChoice {
   readonly label: string;
   readonly hint?: string;
   readonly route: MediaDeviceRoute;
+  /** The native recording input this row sets, when it is a platform route. */
+  readonly nativeUid?: string;
+}
+
+/** The platform's available inputs and the one it is currently using. */
+export interface NativeRouteList {
+  readonly inputs: readonly RecordingInput[];
+  readonly activeUid?: string | undefined;
 }
 
 /**
@@ -54,33 +80,105 @@ export function inputForRoute(
   inputs: readonly RecordingInput[],
   route: MediaDeviceRoute,
 ): RecordingInput | undefined {
-  if (route === "device") return undefined;
-  const usable = inputs.filter((input) => !isBluetoothInputType(input.type));
   if (route === "bluetooth") {
     return inputs.find((input) => isBluetoothInputType(input.type));
   }
+  // A specific non-Bluetooth WebRTC device and the system route both leave the
+  // platform session on a wired/built-in route.
+  const usable = inputs.filter((input) => !isBluetoothInputType(input.type));
   return usable.find((input) => /built.?in|internal/i.test(input.type)) ?? usable[0];
+}
+
+/** The platform target a saved device id stands for, if it selects one at all. */
+export interface SavedRouteTarget {
+  readonly route: MediaDeviceRoute;
+  readonly uid?: string;
+}
+
+export function savedRouteTarget(
+  inputs: readonly RecordingInput[],
+  devices: readonly MediaDeviceInfo[],
+  kind: MediaDeviceInfo["kind"],
+  selectedId: string | null,
+): SavedRouteTarget | undefined {
+  if (selectedId === null) return undefined;
+  const uid = nativeRouteUid(selectedId);
+  if (uid !== undefined) {
+    const input = inputs.find((entry) => entry.uid === uid);
+    return input === undefined
+      ? undefined
+      : { route: isBluetoothInputType(input.type) ? "bluetooth" : "device", uid };
+  }
+  return { route: selectedDeviceRoute(devices, kind, selectedId) };
+}
+
+/** The label for a native route id, using the platform's current input list. */
+export function nativeRouteLabel(
+  inputs: readonly RecordingInput[],
+  selectedId: string | null,
+): string | undefined {
+  const uid = nativeRouteUid(selectedId);
+  if (uid === undefined) return undefined;
+  return inputs.find((input) => input.uid === uid)?.name;
 }
 
 /**
  * The choices for one device kind. "System default" always comes first and
- * carries the detected Bluetooth route as its hint, so the current audio
- * source is visible without opening the picker.
+ * says which route the platform is actually using, so availability is not
+ * mistaken for the active source. `native` merges platform recording inputs
+ * that WebRTC did not enumerate as selectable rows of their own: without them
+ * a connected headset is only a hint and can never be chosen for output.
  */
 export function deviceChoices(
   devices: readonly MediaDeviceInfo[],
   kind: MediaDeviceInfo["kind"],
   bluetoothName?: string,
+  native?: NativeRouteList,
 ): MediaDeviceChoice[] {
   const options = devices.filter((device) => device.kind === kind);
+  const active = native?.inputs.find((input) => input.uid === native.activeUid);
+  const systemHint =
+    active !== undefined
+      ? `Current · ${active.name}`
+      : bluetoothName === undefined
+        ? "Follows this device's audio route"
+        : `Bluetooth available · ${bluetoothName}`;
+  const seenLabels = new Set(options.map((device) => device.label.trim().toLowerCase()));
+  const seenRoutes = new Set(options.map((device) => classifyRoute(device.label)));
+  const nativeOptions: MediaDeviceChoice[] =
+    kind === "videoinput" || native === undefined
+      ? []
+      : native.inputs
+          // WebRTC already lists most microphones; show its row instead of a
+          // duplicate. A native built-in is redundant when WebRTC already
+          // exposed a non-Bluetooth microphone, and an output row is only
+          // meaningful for a headset: the platform lists capture endpoints,
+          // and switching to a Bluetooth/loopback input moves playback too.
+          .filter((input) => {
+            if (seenLabels.has(input.name.trim().toLowerCase())) return false;
+            const bluetooth = isBluetoothInputType(input.type);
+            if (kind === "audiooutput") return bluetooth;
+            return !seenRoutes.has(bluetooth ? "bluetooth" : "device");
+          })
+          .map((input) => {
+            const bluetooth = isBluetoothInputType(input.type);
+            const current = input.uid === native.activeUid;
+            const hint = [bluetooth ? "Bluetooth" : undefined, current ? "Current" : undefined]
+              .filter((part): part is string => part !== undefined)
+              .join(" · ");
+            return {
+              id: nativeRouteDeviceId(input.uid),
+              label: input.name,
+              ...(hint.length > 0 ? { hint } : {}),
+              route: bluetooth ? "bluetooth" : "device",
+              nativeUid: input.uid,
+            } as const;
+          });
   return [
     {
       id: SYSTEM_DEFAULT_DEVICE,
       label: "System default",
-      hint:
-        bluetoothName === undefined
-          ? "Follows this device's audio route"
-          : `Bluetooth · ${bluetoothName}`,
+      hint: systemHint,
       route: "system",
     },
     ...options.map((device) => {
@@ -92,6 +190,7 @@ export function deviceChoices(
         route,
       };
     }),
+    ...nativeOptions,
   ];
 }
 
@@ -100,10 +199,12 @@ export function selectedDeviceLabel(
   devices: readonly MediaDeviceInfo[],
   kind: MediaDeviceInfo["kind"],
   selectedId: string | null,
+  nativeInputs: readonly RecordingInput[] = [],
 ): string {
   if (selectedId === null) return "System default";
   return (
     devices.find((device) => device.kind === kind && device.deviceId === selectedId)?.label ??
+    nativeRouteLabel(nativeInputs, selectedId) ??
     "System default"
   );
 }
@@ -156,6 +257,14 @@ function reconcileKind(
   absentPasses: number,
 ): { readonly id: string | null; readonly absentPasses: number } {
   if (selectedId === null) return { id: null, absentPasses: 0 };
+  // A native route id is validated against the platform input list, not the
+  // WebRTC list, so a WebRTC pass cannot prove it disappeared.
+  if (
+    (kind === "audioinput" || kind === "audiooutput") &&
+    nativeRouteUid(selectedId) !== undefined
+  ) {
+    return { id: selectedId, absentPasses: 0 };
+  }
   if (devices.some((device) => device.kind === kind && device.deviceId === selectedId)) {
     return { id: selectedId, absentPasses: 0 };
   }

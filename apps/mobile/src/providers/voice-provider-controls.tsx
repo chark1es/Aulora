@@ -19,6 +19,7 @@ import {
 } from "react";
 import { Alert } from "react-native";
 import type { MobileVoiceEngine, MobileVoiceSnapshot } from "../lib/voice/call-engine";
+import { useAudioRoute } from "../lib/voice/use-audio-route";
 import {
   useCallForegroundService,
   useVoiceClientId,
@@ -206,6 +207,7 @@ function useVoiceContextValue(input: {
   readonly activeCalls: readonly CallView[];
   readonly settings: VoiceDeviceSettings;
   readonly devices: readonly AuloraMediaDevice[];
+  readonly audioRoute: VoiceContextValue["audioRoute"];
   readonly flags: VoiceFlags;
   readonly view: CallViewMode;
   readonly pipPinned: boolean;
@@ -225,6 +227,7 @@ function useVoiceContextValue(input: {
     activeCalls,
     settings,
     devices,
+    audioRoute,
     flags,
     view,
     pipPinned,
@@ -245,6 +248,7 @@ function useVoiceContextValue(input: {
       activeCalls,
       settings,
       devices,
+      audioRoute,
       ...flags,
       view,
       pipPinned,
@@ -264,6 +268,7 @@ function useVoiceContextValue(input: {
       activeCalls,
       settings,
       devices,
+      audioRoute,
       flags,
       view,
       pipPinned,
@@ -294,6 +299,7 @@ export function useVoiceValue(input: {
   const engineRef = useRef<MobileVoiceEngine | null>(null);
   const { settings, settingsRef, updateSettings } = useVoiceSettings(engineRef);
   const { devices, refreshDevices } = useVoiceDevices();
+  const audioRoute = useAudioRoute();
   const { snapshot, incoming, activeCalls } = useVoiceEngine(
     client,
     clientId,
@@ -303,6 +309,19 @@ export function useVoiceValue(input: {
     engineRef,
   );
   useCallForegroundService(snapshot);
+  // Apply the saved platform route as soon as a call exists: WebRTC starts on
+  // the OS default, which may be the phone speaker even when the person chose
+  // a headset in settings. A route switch moves both capture and playback.
+  const appliedCallRef = useRef<string | null>(null);
+  useEffect(() => {
+    if (snapshot.callId === null) {
+      appliedCallRef.current = null;
+      return;
+    }
+    if (appliedCallRef.current === snapshot.callId) return;
+    appliedCallRef.current = snapshot.callId;
+    audioRoute.applySaved(settings.inputDeviceId, settings.outputDeviceId, devices);
+  }, [audioRoute, devices, settings.inputDeviceId, settings.outputDeviceId, snapshot.callId]);
   const ui = useVoiceUi(snapshot.callId !== null);
   const activeCallsRef = useRef(activeCalls);
   activeCallsRef.current = activeCalls;
@@ -318,6 +337,7 @@ export function useVoiceValue(input: {
     activeCalls,
     settings,
     devices,
+    audioRoute,
     flags,
     ...ui,
     pip,
