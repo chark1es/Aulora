@@ -1,4 +1,5 @@
 import { Button, Icon, IconButton, Text, usePalette } from "@aulora/ui-native";
+import { useEffect } from "react";
 import { ScrollView, View } from "react-native";
 import { impactFeedback } from "../../lib/haptics";
 import { hasNoteContent, noteTitle } from "../../lib/notes";
@@ -69,8 +70,22 @@ function NoteReloadBanner({ editor }: { readonly editor: ReturnType<typeof useNo
 }
 
 /** Writes one note: a Markdown field with a preview, tags and a folder. */
-export function NoteEditorScreen({ ctl }: { readonly ctl: NotesController }) {
+export function NoteEditorScreen({
+  ctl,
+  onDirtyChange,
+}: {
+  readonly ctl: NotesController;
+  readonly onDirtyChange?: ((dirty: boolean) => void) | undefined;
+}) {
   const editor = useNoteEditor(ctl);
+  useEffect(() => {
+    onDirtyChange?.(editor.dirty);
+    return () => {
+      // Leaving the editor discards its draft path; a still-dirty editor never
+      // reaches this while its hidden tab is retained.
+      onDirtyChange?.(false);
+    };
+  }, [editor.dirty, onDirtyChange]);
   const { title, body, busy, sheet, setSheet, save } = editor;
   const isNew = ctl.selectedId === null;
   const note = ctl.detail;

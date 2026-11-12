@@ -1,5 +1,7 @@
 import { describe, expect, it } from "vitest";
 import {
+  expireHiddenTabs,
+  HIDDEN_TAB_TTL_MS,
   MAX_RETAINED_TABS,
   mountedTabs,
   threadsInboxVisible,
@@ -12,26 +14,50 @@ describe("visitTab", () => {
     expect([...visited]).toEqual(["chats", "notes"]);
   });
 
-  it("returns the same set when the tab was already visited", () => {
+  it("moves an earlier tab to the most recent position", () => {
+    const visited: ReadonlySet<"chats" | "notes" | "dms"> = new Set(["chats", "notes", "dms"]);
+    expect([...visitTab(visited, "chats")]).toEqual(["notes", "dms", "chats"]);
+  });
+
+  it("returns the same set when the tab is already most recent", () => {
     const visited: ReadonlySet<"chats" | "notes"> = new Set(["chats", "notes"]);
     expect(visitTab(visited, "notes")).toBe(visited);
   });
 
-  it("evicts the oldest tab once the retained set is full", () => {
-    let visited = new Set<"chats" | "dms" | "notes" | "threads" | "you">(["chats"]);
+  it("evicts the least recently used tab once the retained set is full", () => {
+    type Tab = "chats" | "dms" | "notes" | "threads" | "you";
+    let visited: ReadonlySet<Tab> = new Set<Tab>(["chats"]);
     for (const tab of ["dms", "notes", "threads", "you"] as const) {
-      visited = new Set(visitTab(visited, tab) as Set<typeof tab>);
+      visited = visitTab(visited, tab);
     }
     expect(visited.size).toBe(MAX_RETAINED_TABS);
     expect(visited.has("chats")).toBe(false);
     expect(visited.has("dms")).toBe(false);
     expect([...visited]).toEqual(["notes", "threads", "you"]);
+
+    // Revisiting the oldest retained tab makes it the most recent, so the next
+    // new tab evicts `threads` instead of insertion-order `notes`.
+    visited = visitTab(visited, "notes");
+    visited = visitTab(visited, "chats");
+    expect([...visited]).toEqual(["you", "notes", "chats"]);
   });
 
   it("does not mutate the set it was given", () => {
     const original = new Set<"chats" | "notes">(["chats"]);
     visitTab(original, "notes");
     expect([...original]).toEqual(["chats"]);
+  });
+});
+
+describe("expireHiddenTabs", () => {
+  it("keeps only the visible tab when the hidden lifetime ends", () => {
+    expect([...expireHiddenTabs(new Set(["threads", "notes", "you"]), "you")]).toEqual(["you"]);
+    expect(HIDDEN_TAB_TTL_MS).toBe(60_000);
+  });
+
+  it("leaves the set alone when the visible tab is missing", () => {
+    const visited = new Set(["notes", "threads"]);
+    expect(expireHiddenTabs(visited, "you")).toBe(visited);
   });
 });
 

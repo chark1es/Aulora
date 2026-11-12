@@ -1,6 +1,10 @@
-import { renderHook } from "@testing-library/react";
-import { describe, expect, it } from "vitest";
-import { MAX_RETAINED_VIEWS, useVisitedViews } from "../lib/use-visited-views";
+import { act, renderHook } from "@testing-library/react";
+import { afterEach, describe, expect, it, vi } from "vitest";
+import { HIDDEN_VIEW_TTL_MS, MAX_RETAINED_VIEWS, useVisitedViews } from "../lib/use-visited-views";
+
+afterEach(() => {
+  vi.useRealTimers();
+});
 
 describe("useVisitedViews", () => {
   it("starts with the active view", () => {
@@ -47,5 +51,45 @@ describe("useVisitedViews", () => {
 
     rerender({ view: "chat" });
     expect(result.current).toBe(first);
+  });
+
+  it("releases a hidden surface after the hidden lifetime expires", () => {
+    vi.useFakeTimers();
+    const { result, rerender } = renderHook(({ view }: { view: string }) => useVisitedViews(view), {
+      initialProps: { view: "notes" },
+    });
+    rerender({ view: "chat" });
+    expect([...result.current].sort()).toEqual(["chat", "notes"]);
+
+    // Still retained while the reader may switch back quickly.
+    act(() => {
+      vi.advanceTimersByTime(HIDDEN_VIEW_TTL_MS - 1);
+    });
+    expect(result.current.has("notes")).toBe(true);
+
+    // At the lifetime the hidden view unmounts and its subscriptions release.
+    act(() => {
+      vi.advanceTimersByTime(1);
+    });
+    expect([...result.current]).toEqual(["chat"]);
+  });
+
+  it("holds a hidden surface while an unsaved draft must survive", () => {
+    vi.useFakeTimers();
+    const { result, rerender } = renderHook(
+      ({ view, hold }: { view: string; hold: boolean }) => useVisitedViews(view, { hold }),
+      { initialProps: { view: "notes", hold: true } },
+    );
+    rerender({ view: "chat", hold: true });
+    act(() => {
+      vi.advanceTimersByTime(HIDDEN_VIEW_TTL_MS * 2);
+    });
+    expect(result.current.has("notes")).toBe(true);
+
+    rerender({ view: "chat", hold: false });
+    act(() => {
+      vi.advanceTimersByTime(HIDDEN_VIEW_TTL_MS);
+    });
+    expect([...result.current]).toEqual(["chat"]);
   });
 });

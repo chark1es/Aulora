@@ -47,6 +47,26 @@ channel. Include the number and size of records read, subscription update
 volume, and any remaining limits in the PR. Avoid presenting a test with a few
 messages as evidence that the path scales.
 
+### Retained surface subscriptions
+
+The web chat shell and the mobile hub keep recently used surfaces mounted so a
+revisit does not re-run its queries. Retention is MRU-bounded and also
+time-bounded: at most two surfaces on web (chat canvas and Threads are separate,
+visible-only subscriptions) and three hub tabs on mobile stay mounted, and a
+hidden surface is unmounted after 60 seconds without navigation. Unmounting
+releases that surface's Convex subscriptions and any pages it had loaded.
+
+The retained set on web is Notes, Boards, Scheduled calls and Transcripts; the
+chat canvas and Threads inbox subscribe only while they are on screen. On mobile
+the retained set is the hub tabs, while the Threads inbox query follows the
+retained tab and therefore skips once Threads is evicted or expires. A hidden
+Notes tab is held past the lifetime while an unsaved editor draft would
+otherwise be deleted.
+
+This records a source-visible subscription policy, not a measured result. No
+busy-channel or busy-workspace load, latency, CPU or subscription-update
+measurement was run for these retained surfaces.
+
 ## Session and access-token lifecycle
 
 Convex authenticates every request with a short-lived JWT that the Better Auth

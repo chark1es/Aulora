@@ -1,10 +1,9 @@
 import { hasPermission, Permission } from "@aulora/core";
-import { type ReactNode, useEffect, useState } from "react";
+import type { ReactNode } from "react";
 import { Alert, View } from "react-native";
 import { pickFromLibrary } from "../../lib/attachments";
 import { selectionFeedback } from "../../lib/haptics";
 import { dismissKeyboard } from "../../lib/keyboard";
-import { mountedTabs, visitTab } from "../../lib/visited-tabs";
 import { KanbanScreen } from "../kanban/KanbanScreen";
 import { useScreenInsets } from "../layout/ScreenContainer";
 import { NotesScreen } from "../notes/NotesScreen";
@@ -19,26 +18,10 @@ import type { ChatScreenModel } from "./use-chat-screen-model";
 
 export function ChatHubPane({ model }: { readonly model: ChatScreenModel }) {
   const insets = useScreenInsets();
-  const tabs: readonly HubTab[] = [
-    "chats",
-    "dms",
-    ...(model.showKanban ? (["boards"] as const) : []),
-    ...(model.showNotes ? (["notes"] as const) : []),
-    "threads",
-    "search",
-    "you",
-  ];
-  // A tab the addon no longer offers (permissions changed mid-session) falls
-  // back to settings, matching the old conditional render.
-  const active: HubTab = tabs.includes(model.hubTab) ? model.hubTab : "you";
-  // Once a tab has been opened it stays mounted behind the dock. Its queries,
-  // scroll position and open editors survive a switch, so coming back shows the
-  // already-loaded screen instead of a fresh "Loading…" spinner.
-  const [visited, setVisited] = useState<ReadonlySet<HubTab>>(() => new Set([active]));
-  useEffect(() => {
-    setVisited((current) => visitTab(current, active));
-  }, [active]);
-  const mounted = mountedTabs(tabs, active, visited);
+  // The parent owns MRU retention so the Threads query can follow it; this
+  // renderer shows exactly the tabs that are still retained.
+  const active: HubTab = model.activeHubTab;
+  const mounted = model.retainedHubTabs;
   return (
     <View
       className="flex-1 bg-bg min-w-0"
@@ -203,6 +186,7 @@ function ChatHubNotesTab({ model }: { readonly model: ChatScreenModel }) {
         members={model.members}
         noteId={model.noteId}
         onNoteChange={model.setNoteId}
+        onDirtyChange={model.setNotesDirty}
       />
     </View>
   );

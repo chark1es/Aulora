@@ -274,10 +274,6 @@ function ChatViewContent({
   const [mainView, setMainView] = useState<
     "chat" | "threads" | "kanban" | "notes" | "scheduled" | "transcripts"
   >("chat");
-  // Surfaces stay mounted after their first visit (see `KeepAlive`), so coming
-  // back to Notes or the Kanban board does not re-run its queries behind a
-  // spinner. Only the addons the reader has actually opened are mounted.
-  const visitedViews = useVisitedViews(mainView);
   // Bounded retention applies to surfaces and to the Threads inbox: only the
   // view currently on screen stays subscribed. The badge stays cheap through
   // the participation-row count below, so leaving Threads does not need a
@@ -309,6 +305,12 @@ function ChatViewContent({
   const [notesDirty, setNotesDirty] = useState(false);
   /** Bumped on confirmed discard so the retained Notes editor resets its draft. */
   const [notesDiscardToken, setNotesDiscardToken] = useState(0);
+  // Surfaces stay mounted after their first visit (see `KeepAlive`), so coming
+  // back to Notes or the Kanban board does not re-run its queries behind a
+  // spinner. Only the addons the reader has actually opened are mounted, and a
+  // hidden surface is released after `HIDDEN_VIEW_TTL_MS` unless an unsaved
+  // Notes draft must survive.
+  const visitedViews = useVisitedViews(mainView, { hold: notesDirty });
   const settingsNavigation = useSettingsNavigation(
     true,
     (userSettingsOpen && userSettingsDirty) || notesDirty,

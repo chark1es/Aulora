@@ -15,7 +15,7 @@ export function NotesScreen(props: NotesProps) {
     // Lifts the editor’s composer clear of the keyboard.
     <KeyboardAvoidingPane style={{ flex: 1 }}>
       {ctl.mode === "editor" ? (
-        <NoteEditorScreen ctl={ctl} />
+        <NoteEditorScreen ctl={ctl} onDirtyChange={props.onDirtyChange} />
       ) : ctl.mode === "history" ? (
         <NoteHistoryScreen ctl={ctl} />
       ) : (
