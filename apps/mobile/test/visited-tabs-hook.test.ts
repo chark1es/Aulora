@@ -103,6 +103,21 @@ beforeEach(() => {
 });
 
 describe("useRetainedTabs with a dirty Notes draft", () => {
+  it("protects dirty Notes across count eviction while releasing unrelated Threads", () => {
+    go("notes", "notes");
+    go("threads", "notes");
+    go("chats", "notes");
+    go("you", "notes");
+    expect(retained).toContain("notes");
+    expect(retained).toContain("you");
+    expect(retained).toHaveLength(3);
+    expect(retained).not.toContain("threads");
+    expect(parentThreads(retained)).toEqual({ legacy: "skip", page: "skip" });
+    expect([...expire()].sort()).toEqual(["notes", "you"]);
+    go("you", undefined);
+    expect(expire()).toEqual(["you"]);
+  });
+
   it("expires a hidden heavy page while Notes is the active dirty surface", () => {
     go("threads", undefined);
     expect(retained).toContain("threads");

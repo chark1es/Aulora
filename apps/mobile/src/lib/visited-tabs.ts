@@ -31,18 +31,24 @@ export function visitTab<T extends string>(
   visited: ReadonlySet<T>,
   tab: T,
   limit: number = MAX_RETAINED_TABS,
+  holdTab?: T,
 ): ReadonlySet<T> {
   const current = [...visited];
-  if (current[current.length - 1] === tab) {
+  // A dirty editor and the active tab need distinct slots. The normal cap is
+  // three; even a caller requesting one slot must not silently discard a draft.
+  const bounded = Math.max(
+    holdTab !== undefined && holdTab !== tab && visited.has(holdTab) ? 2 : 1,
+    limit,
+  );
+  if (current[current.length - 1] === tab && current.length <= bounded) {
     return visited;
   }
-  const bounded = Math.max(1, limit);
   const next = new Set(current.filter((entry) => entry !== tab));
   next.add(tab);
   while (next.size > bounded) {
-    const oldest = next.values().next();
-    if (oldest.done === true) break;
-    next.delete(oldest.value);
+    const oldest = [...next].find((entry) => entry !== tab && entry !== holdTab);
+    if (oldest === undefined) break;
+    next.delete(oldest);
   }
   return next;
 }
@@ -106,8 +112,8 @@ export function useRetainedTabs<T extends string>(
   const [visited, setVisited] = useState<ReadonlySet<T>>(() => new Set([active]));
 
   useEffect(() => {
-    setVisited((current) => visitTab(current, active, limit));
-  }, [active, limit]);
+    setVisited((current) => visitTab(current, active, limit, holdTab));
+  }, [active, limit, holdTab]);
 
   useEffect(() => {
     // Only a hidden tab can be protected by the draft exemption; when Notes is
