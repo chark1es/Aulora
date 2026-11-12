@@ -98,6 +98,37 @@ it("guards A to B navigation and seeds B without leaking A's draft into its save
   );
 });
 
+it("resets a retained draft when the parent confirms discard", () => {
+  const onDirtyChange = vi.fn();
+  const hook = renderHook(
+    ({ token }: { token: number }) =>
+      useNotes({
+        ownUserId: "me",
+        permissions: Permission.ViewNotes | Permission.EditNotes | Permission.CreateNotes,
+        members: [],
+        onBack: vi.fn(),
+        onDirtyChange,
+        discardToken: token,
+      }),
+    { initialProps: { token: 0 } },
+  );
+  act(() => hook.result.current.openNote("A" as never));
+  act(() => {
+    hook.result.current.setEditing(true);
+    hook.result.current.setDraft({ ...required(hook.result.current.draft), title: "A discarded" });
+  });
+  expect(onDirtyChange).toHaveBeenLastCalledWith(true);
+
+  // The nested guard confirmed Discard; the retained Notes view must drop the
+  // discarded body instead of showing it as the saved note on revisit.
+  act(() => hook.rerender({ token: 1 }));
+
+  expect(hook.result.current.draft).toMatchObject({ title: "A", body: "A body" });
+  expect(hook.result.current.dirty).toBe(false);
+  expect(hook.result.current.editing).toBe(false);
+  expect(onDirtyChange).toHaveBeenLastCalledWith(false);
+});
+
 type NotesHook = ReturnType<typeof setup>["result"]["current"];
 const guardedNavigations: readonly (readonly [string, (notes: NotesHook) => void])[] = [
   [

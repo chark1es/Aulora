@@ -278,13 +278,11 @@ function ChatViewContent({
   // back to Notes or the Kanban board does not re-run its queries behind a
   // spinner. Only the addons the reader has actually opened are mounted.
   const visitedViews = useVisitedViews(mainView);
-  // The Threads inbox and the settings profile are subscribed the same way:
-  // once opened they keep their connection so reopening is instant, while a
-  // workspace switch still starts from a fresh, empty answer instead of the
-  // previous workspace's rows.
-  const [threadsVisited, setThreadsVisited] = useState(false);
-  const [settingsVisited, setSettingsVisited] = useState(false);
-  const threadsOpen = threadsVisited || mainView === "threads";
+  // Bounded retention applies to surfaces and to the Threads inbox: only the
+  // view currently on screen stays subscribed. The badge stays cheap through
+  // the participation-row count below, so leaving Threads does not need a
+  // long-lived inbox query.
+  const threadsOpen = mainView === "threads";
   const [adminOpen, setAdminOpen] = useState(false);
   const [newConversationOpen, setNewConversationOpen] = useState(false);
   const [createChannelOpen, setCreateChannelOpen] = useState(false);
@@ -309,6 +307,8 @@ function ChatViewContent({
   const [userSettingsOpen, setUserSettingsOpen] = useState(false);
   const [userSettingsDirty, setUserSettingsDirty] = useState(false);
   const [notesDirty, setNotesDirty] = useState(false);
+  /** Bumped on confirmed discard so the retained Notes editor resets its draft. */
+  const [notesDiscardToken, setNotesDiscardToken] = useState(0);
   const settingsNavigation = useSettingsNavigation(
     true,
     (userSettingsOpen && userSettingsDirty) || notesDirty,
@@ -492,7 +492,7 @@ function ChatViewContent({
   );
   const ownProfile = useQuery(
     api.members.profile,
-    settingsVisited ? { userId: ownUserId } : "skip",
+    userSettingsOpen ? { userId: ownUserId } : "skip",
   );
   const profileMember = directory.find((member) => member.userId === profileTarget?.userId);
   const kickMember = useMutation(api.members.kick);
@@ -501,11 +501,6 @@ function ChatViewContent({
   // The Threads badge comes from a cheap participation-row count; the inbox
   // itself (root lookups plus opened bodies) is only subscribed while open.
   const threadMentionCount = useQuery(api.messages.threadMentionCount, {}) ?? 0;
-  useEffect(() => {
-    if (threadsOpen) {
-      setThreadsVisited(true);
-    }
-  }, [threadsOpen]);
   useEffect(() => {
     if (threadsInboxOnScreen)
       void runtime?.client.mutation(api.messages.markThreadMentionsSeen, {}).catch(() => undefined);
@@ -831,13 +826,6 @@ function ChatViewContent({
     }
   }, [userSettingsOpen]);
 
-  // Keep the settings profile subscribed after the first visit so reopening
-  // settings does not flash a busy spinner while it refetches.
-  useEffect(() => {
-    if (userSettingsOpen) {
-      setSettingsVisited(true);
-    }
-  }, [userSettingsOpen]);
   useEffect(() => {
     const onKeyDown = (event: KeyboardEvent) => {
       if ((event.metaKey || event.ctrlKey) && event.key.toLowerCase() === "k") {
@@ -1636,7 +1624,10 @@ function ChatViewContent({
         onClose={settingsNavigation.cancel}
         onConfirm={() => {
           setUserSettingsDirty(false);
-          setNotesDirty(false);
+          // The retained Notes view owns its draft: reset it explicitly and let
+          // it report clean, rather than clearing this guard while the child
+          // still renders discarded text.
+          setNotesDiscardToken((token) => token + 1);
           settingsNavigation.discard();
         }}
       />
@@ -1906,6 +1897,7 @@ function ChatViewContent({
           <KeepAlive active={notesVisible}>
             <Suspense fallback={<SurfaceFallback />}>
               <NotesView
+                discardToken={notesDiscardToken}
                 onDirtyChange={setNotesDirty}
                 ownUserId={ownUserId}
                 permissions={permissions}
