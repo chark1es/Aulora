@@ -213,7 +213,7 @@ export function useNotes(props: NotesProps) {
     members: props.members,
     selectedId: props.noteId,
     onBack: props.onBack,
-    /** Opens a note in the editor and remembers it for the next visit. */
+    /** Opens a note read-only and remembers it for the next visit. */
     openNote: (noteId: string) => {
       props.onNoteChange(noteId);
       state.setMode("editor");

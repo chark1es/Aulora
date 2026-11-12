@@ -5,6 +5,7 @@ import type { NotesController } from "../src/components/notes/use-notes";
 // Stateful hook cells let the native editor run without loading a native renderer.
 const hooks = vi.hoisted(() => ({
   cells: [] as unknown[],
+  setters: [] as ((next: unknown) => void)[],
   slot: 0,
   changed: false,
   effects: [] as (() => void)[],
@@ -24,14 +25,12 @@ vi.mock("react", () => {
     useState: (initial: unknown) => {
       const slot = hooks.slot++;
       if (!(slot in hooks.cells)) hooks.cells[slot] = initial;
-      return [
-        hooks.cells[slot],
-        (next: unknown) => {
-          const value = typeof next === "function" ? next(hooks.cells[slot]) : next;
-          if (value !== hooks.cells[slot]) hooks.changed = true;
-          hooks.cells[slot] = value;
-        },
-      ];
+      hooks.setters[slot] ??= (next: unknown) => {
+        const value = typeof next === "function" ? next(hooks.cells[slot]) : next;
+        if (value !== hooks.cells[slot]) hooks.changed = true;
+        hooks.cells[slot] = value;
+      };
+      return [hooks.cells[slot], hooks.setters[slot]];
     },
     useMemo: memo,
     useCallback: (callback: unknown, deps: readonly unknown[]) => memo(() => callback, deps),
@@ -45,19 +44,34 @@ vi.mock("react", () => {
 
 beforeEach(() => {
   hooks.cells = [];
+  hooks.setters = [];
   hooks.alert.mockClear();
 });
 
-function setup() {
+function setup(options: { selectedId?: string | null; detail?: boolean } = {}) {
+  const detail:
+    | {
+        id: string;
+        revision: number;
+        title: string;
+        body: string;
+        folderId: null;
+        tagIds: never[];
+      }
+    | undefined =
+    options.detail === false
+      ? undefined
+      : {
+          id: "note",
+          revision: 1,
+          title: "Plan",
+          body: "Original",
+          folderId: null,
+          tagIds: [],
+        };
   const ctl = {
-    detail: {
-      id: "note",
-      revision: 1,
-      title: "Plan",
-      body: "Original",
-      folderId: null,
-      tagIds: [],
-    },
+    detail,
+    selectedId: options.selectedId,
     mutations: { updateNote: vi.fn(async () => 3) },
     setError: vi.fn(),
     backToList: vi.fn(),
@@ -81,7 +95,14 @@ it("keeps the replacement hint through failed saves and clears it with Saved onl
   const { ctl, render } = setup();
   expect(render().dirty).toBe(false);
   render().setBody("My version");
-  ctl.detail = { ...ctl.detail, revision: 2, body: "Remote version" };
+  ctl.detail = {
+    id: "note",
+    revision: 2,
+    title: "Plan",
+    body: "Remote version",
+    folderId: null,
+    tagIds: [],
+  };
   expect(render().reloadPrompt).toBe(true);
   render().keepMyVersion();
   expect(render()).toMatchObject({
@@ -116,4 +137,22 @@ it("uses shared discard wording and preserves edits when Keep editing is selecte
     { text: "Discard changes", style: "destructive", onPress: expect.any(Function) },
   ]);
   expect(render().body).toBe("Unsaved");
+});
+
+it("opens an existing note read-only and returns to viewing after a save", async () => {
+  const { render } = setup();
+  expect(render().editing).toBe(false);
+
+  render().setEditing(true);
+  expect(render().editing).toBe(true);
+
+  render().setBody("Edited");
+  render().save();
+  await vi.waitFor(() => expect(render().saved).toBe(true));
+  expect(render().editing).toBe(false);
+});
+
+it("opens a new note straight into editing", () => {
+  const { render } = setup({ selectedId: null, detail: false });
+  expect(render().editing).toBe(true);
 });

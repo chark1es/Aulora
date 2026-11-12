@@ -10,7 +10,12 @@ import type { NoteEditorController } from "./use-note-editor";
 import type { NotesController } from "./use-notes";
 
 const NO_FOLDER = "__unfiled__";
-type EditorProps = { readonly ctl: NotesController; readonly editor: NoteEditorController };
+type EditorProps = {
+  readonly ctl: NotesController;
+  readonly editor: NoteEditorController;
+  /** Reading an existing note hides the property pickers until Edit is pressed. */
+  readonly editable?: boolean;
+};
 
 function Segment({
   label,
@@ -167,9 +172,9 @@ export function NoteBodyInput({ editor }: { readonly editor: NoteEditorControlle
   );
 }
 
-function NoteTagProperty({ ctl, editor }: EditorProps) {
+function NoteTagProperty({ ctl, editor, editable = true }: EditorProps) {
   const { tagIds, setSheet } = editor;
-  const canEdit = ctl.permissions.edit;
+  const canEdit = ctl.permissions.edit && editable;
   const selectedTags = tagsForIds(ctl.tags, tagIds);
   return (
     <PropertyRow
@@ -195,9 +200,9 @@ function NoteTagProperty({ ctl, editor }: EditorProps) {
   );
 }
 
-export function NoteProperties({ ctl, editor }: EditorProps) {
+export function NoteProperties({ ctl, editor, editable = true }: EditorProps) {
   const { folderId, setSheet } = editor;
-  const canEdit = ctl.permissions.edit;
+  const canEdit = ctl.permissions.edit && editable;
   return (
     <View className="mx-4 mt-3 overflow-hidden rounded-input border border-border">
       <PropertyRow
@@ -217,8 +222,26 @@ export function NoteProperties({ ctl, editor }: EditorProps) {
             : (ctl.folders.find((f) => f.id === folderId)?.name ?? "Folder")}
         </Text>
       </PropertyRow>
-      <NoteTagProperty ctl={ctl} editor={editor} />
+      <NoteTagProperty ctl={ctl} editor={editor} editable={editable} />
     </View>
+  );
+}
+
+/** The read-only note: its title, properties and rendered Markdown. */
+export function NoteReader({ ctl, editor }: EditorProps) {
+  const title = editor.title.trim();
+  return (
+    <>
+      <View className="mx-4 mb-2">
+        <Text size="lg" className="font-semibold">
+          {title.length === 0 ? "Untitled note" : title}
+        </Text>
+      </View>
+      <NoteProperties ctl={ctl} editor={editor} editable={false} />
+      <View className="mx-4 mt-3 rounded-input border border-border bg-surface-1 p-3">
+        <NotePreview body={editor.body} />
+      </View>
+    </>
   );
 }
 

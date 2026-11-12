@@ -23,7 +23,7 @@ export interface NoteSelection {
   readonly end: number;
 }
 
-function useEditorState(note?: NoteDetailView) {
+function useEditorState(note: NoteDetailView | undefined, startsEditing: boolean) {
   const [title, setTitle] = useState("");
   const [body, setBody] = useState("");
   const [folderId, setFolderId] = useState<string | null>(null);
@@ -31,6 +31,11 @@ function useEditorState(note?: NoteDetailView) {
   const [preview, setPreview] = useState(false);
   const [sheet, setSheet] = useState<EditorSheet>(undefined);
   const [busy, setBusy] = useState(false);
+  /**
+   * Existing notes open read-only; a new note opens straight into the editor.
+   * An explicit tap on the header's edit control is the only way in.
+   */
+  const [editing, setEditing] = useState(startsEditing);
   /** The remote revision the viewer chose to replace on their next save. */
   const [dismissedRevision, setDismissedRevision] = useState<number | undefined>(undefined);
   /** Set when a save was rejected as stale, even before the subscription catches up. */
@@ -158,6 +163,8 @@ function useEditorState(note?: NoteDetailView) {
     setSheet,
     busy,
     setBusy,
+    editing,
+    setEditing,
   };
 }
 
@@ -309,6 +316,7 @@ function useNoteSave(ctl: NotesController, state: EditorState) {
         }
         if (result.kind === "saved") {
           markSaved(result.seed);
+          state.setEditing(false);
           ctl.setError(undefined);
           return;
         }
@@ -324,9 +332,15 @@ function useNoteSave(ctl: NotesController, state: EditorState) {
 }
 
 export function useNoteEditor(ctl: NotesController) {
-  const state = useEditorState(ctl.detail);
+  const state = useEditorState(ctl.detail, ctl.selectedId === null);
   const editing = useBodyEditing(state);
   const save = useNoteSave(ctl, state);
+  const selectedId = ctl.selectedId;
+  const setEditing = state.setEditing;
+  // A different note (or a freshly created one) always starts in viewing mode.
+  useEffect(() => {
+    setEditing(selectedId === null);
+  }, [selectedId, setEditing]);
   const confirmDiscard = (discard: () => void) => {
     Alert.alert("Discard unsaved changes?", "Your local changes will be lost.", [
       { text: "Keep editing", style: "cancel" },
