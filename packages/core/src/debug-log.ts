@@ -130,7 +130,3 @@ export function installDebugConsole(): void {
   console.error = capture("console.error", console.error);
   console.warn = capture("console.warn", console.warn);
 }
-
-export function generateDebugTestError(): void {
-  console.error(new Error("Aulora diagnostic test error (intentional)"));
-}

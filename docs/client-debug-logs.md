@@ -24,16 +24,16 @@ picture-in-picture window have separate buffers.
 
 1. Open Debug logs and choose **Clear logs** for a clean capture.
 2. Repeat the action that failed, without restarting the client.
-3. Return to Debug logs. Describe the exact steps, expected result, and actual
-   result in **Steps to reproduce**.
+3. Return to Debug logs. The recorded errors and warnings are listed
+   automatically, newest first. Describe the exact steps, expected result, and
+   actual result in **Steps to reproduce**.
 4. Choose **Download debug report** on web/desktop or **Copy debug report** on
    mobile. The JSON includes client version, export time, steps, limits, and logs.
 5. Review the report for private information before attaching it to a bug report.
 
-To verify collection without breaking the app, choose **Generate test error**.
-The count increases and an export contains
-`Aulora diagnostic test error (intentional)` with a stack. Clear logs afterward.
-Developers can additionally verify web runtime capture from the browser console:
+The in-app list shows up to the newest 50 entries so the export controls stay
+reachable; the downloaded or copied report always includes every buffered entry.
+To verify web runtime capture from the browser console:
 
 ```js
 setTimeout(() => { throw new Error("Aulora uncaught test"); }, 0);
@@ -54,8 +54,9 @@ can terminate the process before an in-memory report can be exported.
 
 Verification: core tests cover eviction, size limits, truncation, redaction,
 serialization safety, console forwarding and clear/subscription behavior. Web
-tests cover global events, the test-error action and report controls. A release
-build on iOS/Android should also exercise rejection capture and clipboard export.
+and mobile tests cover the automatic newest-first entry list, the display cap,
+and report controls. A release build on iOS/Android should also exercise
+rejection capture and clipboard export.
 
 On web and desktop, right-click an empty area and choose **Debug logs**. This
 works on the connect and sign-in screens with no server session. Text fields

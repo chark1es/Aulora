@@ -4,7 +4,6 @@ import {
   DEBUG_LOG_MAX_BYTES,
   DEBUG_LOG_MAX_ENTRIES,
   debugLog,
-  generateDebugTestError,
   installDebugConsole,
   redactDebugText,
 } from "../src/debug-log";
@@ -111,10 +110,11 @@ describe("debug logs", () => {
     const warn = vi.spyOn(console, "warn").mockImplementation(() => {});
     installDebugConsole();
     installDebugConsole();
-    generateDebugTestError();
+    console.error("failure");
     console.warn("warning");
     expect(debugLog.snapshot()).toHaveLength(2);
-    expect(debugLog.snapshot()[0]?.detail).toContain("Aulora diagnostic test error");
+    expect(debugLog.snapshot()[0]?.detail).toContain("failure");
+    expect(debugLog.snapshot()[1]?.detail).toContain("warning");
     expect(error).toHaveBeenCalledTimes(1);
     expect(warn).toHaveBeenCalledTimes(1);
     error.mockRestore();
