@@ -69,6 +69,7 @@ interface ChannelSummary {
 
 function setup() {
   const opened: string[] = [];
+  const availability = { boards: true, notes: true };
   const runtime = {
     session: {
       openChannel: async (channel: ChannelSummary) => {
@@ -77,7 +78,11 @@ function setup() {
     },
   };
   const channels: ChannelSummary[] = [{ id: "A" }, { id: "B" }];
-  const render = () => {
+  const render = (nextAvailability?: { boards: boolean; notes: boolean }) => {
+    if (nextAvailability !== undefined) {
+      availability.boards = nextAvailability.boards;
+      availability.notes = nextAvailability.notes;
+    }
     let ui: ReturnType<typeof useChatScreenUiState>;
     let navigation: ReturnType<typeof useChatScreenNavigation>;
     do {
@@ -85,7 +90,7 @@ function setup() {
       hooks.slot = 0;
       hooks.effects = [];
       // biome-ignore lint/correctness/useHookAtTopLevel: this loop simulates native renders with stable hook cells.
-      ui = useChatScreenUiState();
+      ui = useChatScreenUiState(availability);
       // biome-ignore lint/correctness/useHookAtTopLevel: this loop simulates native renders with stable hook cells.
       navigation = useChatScreenNavigation({
         ...ui,
@@ -123,6 +128,35 @@ it("restores A after A -> hub -> B -> Back -> Back and reopens A's session", () 
   expect(navigation.handleBack()).toBe(true);
   expect(render().ui).toMatchObject({ activeChannelId: "A", pane: 1 });
   expect(opened).toEqual(["A"]);
+});
+
+it("leaves a restored addon tab that was revoked mid-session", () => {
+  const { render } = setup();
+  let { ui, navigation } = render();
+  ui.setHubTab("boards");
+  ({ ui } = render());
+  expect(ui.hubTab).toBe("boards");
+
+  // Move on to chats, then the addon is revoked. Back still has the boards
+  // frame in history; restoring it must not leave the settings fallback
+  // rendered under a boards value the dock no longer offers.
+  ui.setHubTab("chats");
+  ({ ui, navigation } = render());
+  ({ ui, navigation } = render({ boards: false, notes: true }));
+  expect(navigation.handleBack()).toBe(true);
+  ({ ui } = render({ boards: false, notes: true }));
+  expect(ui.hubTab).toBe("chats");
+});
+
+it("normalizes a current addon tab when its permission disappears", () => {
+  const { render } = setup();
+  let { ui } = render();
+  ui.setHubTab("notes");
+  ({ ui } = render());
+  expect(ui.hubTab).toBe("notes");
+
+  ({ ui } = render({ boards: true, notes: false }));
+  expect(ui.hubTab).toBe("chats");
 });
 
 it("restores the thread, quote and message jump that belonged to the conversation", () => {

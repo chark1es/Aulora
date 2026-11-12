@@ -1,11 +1,19 @@
 import type { ChannelView, MessagePayload } from "@aulora/core";
-import { useCallback, useRef, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { type ChatLocation, popChatLocation, pushChatLocation } from "../../lib/back-navigation";
 import type { Nullable } from "./chat-screen-types";
 import type { HubTab } from "./HubPane";
 import type { PaneIndex } from "./SwipePanes";
 
-function useChatScreenViewState() {
+/** Which addon-backed hub tabs the dock and the rendered pane can offer. */
+export interface HubTabAvailability {
+  readonly boards: boolean;
+  readonly notes: boolean;
+}
+
+const ALL_HUB_TABS: HubTabAvailability = { boards: true, notes: true };
+
+function useChatScreenViewState(availability: HubTabAvailability = ALL_HUB_TABS) {
   const [activeChannelId, setActiveChannelId] = useState<string | undefined>(undefined);
   const [pane, setPaneState] = useState<PaneIndex>(1);
   const [hubTab, setHubTabState] = useState<HubTab>("chats");
@@ -44,6 +52,17 @@ function useChatScreenViewState() {
     jumpToMessageId,
   };
   const history = useRef<ChatLocation[]>([]);
+
+  // An addon can be revoked (or its permission removed) while its tab is on
+  // screen or sitting in Back history. Rendering the settings fallback under a
+  // stale `boards`/`notes` value looks like the addon is still current, so the
+  // unavailable tab falls back to the conversations list. This uses the raw
+  // setter and never pushes history: Back should keep retracing what the
+  // person actually visited.
+  useEffect(() => {
+    if (hubTab === "boards" && !availability.boards) setHubTabState("chats");
+    else if (hubTab === "notes" && !availability.notes) setHubTabState("chats");
+  }, [hubTab, availability.boards, availability.notes]);
 
   const setPane = useCallback((next: PaneIndex) => {
     if (next === location.current.pane) return;
@@ -149,8 +168,8 @@ function useChatScreenOverlayState() {
   };
 }
 
-export function useChatScreenUiState() {
-  const view = useChatScreenViewState();
+export function useChatScreenUiState(availability: HubTabAvailability = ALL_HUB_TABS) {
+  const view = useChatScreenViewState(availability);
   const overlays = useChatScreenOverlayState();
   return { ...view, ...overlays };
 }

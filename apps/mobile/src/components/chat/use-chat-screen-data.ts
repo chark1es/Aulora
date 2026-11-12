@@ -590,7 +590,10 @@ function useChatScreenMessages(
 
 export function useChatScreenData({ onSignOut, onDeleteAccount }: ChatScreenProps) {
   const session = useChatScreenSessionValue();
-  const ui = useChatScreenUiState();
+  const ui = useChatScreenUiState({
+    boards: session.showKanban,
+    notes: session.showNotes,
+  });
   const pagingConfig = useQuery(api.server.publicConfig, {});
   const pagedThreads = pagingConfig?.capabilities?.threadInboxPaging === true;
   const legacyThreadRows = useQuery(
