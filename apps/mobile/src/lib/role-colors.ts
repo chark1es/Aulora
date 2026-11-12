@@ -56,3 +56,43 @@ export function roleColorSavePatch(
 export function roleColorSummary(color: string | null): string {
   return roleColorCss(color) ?? "No color";
 }
+
+/** The role-color page shows the role list or one role's editor. */
+export interface RoleColorPageState {
+  readonly selectedId: string | null;
+  readonly draftColor: string;
+  readonly error: string | null;
+}
+
+export const EMPTY_ROLE_COLOR_PAGE: RoleColorPageState = {
+  selectedId: null,
+  draftColor: "",
+  error: null,
+};
+
+export type RoleColorPageAction =
+  | { readonly type: "open"; readonly role: RoleView }
+  | { readonly type: "draft"; readonly color: string }
+  | { readonly type: "error"; readonly message: string | null }
+  | { readonly type: "back" };
+
+/**
+ * Keeps the role editor and the role list from sharing stale state: going back
+ * clears the draft and the last error, and opening another role starts from
+ * that role's saved color.
+ */
+export function roleColorPageReducer(
+  state: RoleColorPageState,
+  action: RoleColorPageAction,
+): RoleColorPageState {
+  switch (action.type) {
+    case "open":
+      return { selectedId: action.role.id, draftColor: action.role.color ?? "", error: null };
+    case "draft":
+      return { ...state, draftColor: action.color };
+    case "error":
+      return { ...state, error: action.message };
+    case "back":
+      return EMPTY_ROLE_COLOR_PAGE;
+  }
+}

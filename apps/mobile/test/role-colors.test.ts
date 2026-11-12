@@ -1,6 +1,12 @@
 import { describe, expect, it } from "vitest";
 import type { RoleView } from "../src/lib/permissions";
-import { manageableRoleColors, roleColorSavePatch, roleColorSummary } from "../src/lib/role-colors";
+import {
+  EMPTY_ROLE_COLOR_PAGE,
+  manageableRoleColors,
+  roleColorPageReducer,
+  roleColorSavePatch,
+  roleColorSummary,
+} from "../src/lib/role-colors";
 
 function role(overrides: Partial<RoleView> & Pick<RoleView, "id" | "name" | "position">): RoleView {
   return {
@@ -56,5 +62,23 @@ describe("mobile role color editor", () => {
     expect(roleColorSummary("#7c5cff")).toBe("#7C5CFF");
     expect(roleColorSummary("abc")).toBe("#AABBCC");
     expect(roleColorSummary("not-hex")).toBe("No color");
+  });
+
+  it("opens the role editor from the saved color and clears stale edits on back", () => {
+    const moderator = roles[2];
+    expect(moderator).toBeDefined();
+    if (moderator === undefined) return;
+    const opened = roleColorPageReducer(EMPTY_ROLE_COLOR_PAGE, { type: "open", role: moderator });
+    expect(opened).toEqual({ selectedId: "mod", draftColor: "#E8A33B", error: null });
+    const edited = roleColorPageReducer(
+      roleColorPageReducer(opened, { type: "draft", color: "#123456" }),
+      { type: "error", message: "Couldn’t save the color." },
+    );
+    expect(edited).toEqual({
+      selectedId: "mod",
+      draftColor: "#123456",
+      error: "Couldn’t save the color.",
+    });
+    expect(roleColorPageReducer(edited, { type: "back" })).toEqual(EMPTY_ROLE_COLOR_PAGE);
   });
 });

@@ -18,7 +18,6 @@ function useChatScreenViewState() {
   const [showHidden, setShowHidden] = useState(false);
   const [workspaceSwitcherOpen, setWorkspaceSwitcherOpen] = useState(false);
   const [bansOpen, setBansOpen] = useState(false);
-  const [roleColorsOpen, setRoleColorsOpen] = useState(false);
   return {
     activeChannelId,
     setActiveChannelId,
@@ -46,8 +45,6 @@ function useChatScreenViewState() {
     setWorkspaceSwitcherOpen,
     bansOpen,
     setBansOpen,
-    roleColorsOpen,
-    setRoleColorsOpen,
   };
 }
 
