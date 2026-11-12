@@ -178,23 +178,34 @@ export function ChatProvider({
     const searchIndex = new SearchIndex(webSearchStore(client.url, userId));
     outboxRef.current = outboxStore;
     searchRef.current = searchIndex;
-    void searchIndex.load();
-    void outboxStore.list().then(async (items) => {
-      if (isCancelled()) {
-        return;
-      }
-      // Recover sends left mid-flight by a crash so they can be retried; a
-      // permanently failed item stays surfaced (not "Sending…") for the UI.
-      for (const item of items) {
-        if (item.status === "sending") {
-          await outboxStore.retry(item.id);
-        }
-      }
-      const loaded = await outboxStore.list();
-      if (!isCancelled()) {
-        setOutbox(loaded);
-      }
+    // Account-owned startup storage promises must never escape as unhandled
+    // rejections: the global `unhandledrejection` listener would copy A's error
+    // into B's report. Attach a handler that records through this account's
+    // captured scope, which drops the failure once the scope has closed.
+    void searchIndex.load().catch((error: unknown) => {
+      scope.record("search.load", error);
     });
+    void outboxStore
+      .list()
+      .then(async (items) => {
+        if (isCancelled()) {
+          return;
+        }
+        // Recover sends left mid-flight by a crash so they can be retried; a
+        // permanently failed item stays surfaced (not "Sending…") for the UI.
+        for (const item of items) {
+          if (item.status === "sending") {
+            await outboxStore.retry(item.id);
+          }
+        }
+        const loaded = await outboxStore.list();
+        if (!isCancelled()) {
+          setOutbox(loaded);
+        }
+      })
+      .catch((error: unknown) => {
+        scope.record("outbox.startup", error);
+      });
     void createChatRuntime({ client, userId, displayName, onError: reportQueryError })
       .then((created) => {
         if (isCancelled()) {
