@@ -124,7 +124,9 @@ async function buildPublicConfig(ctx: QueryCtx) {
     // True until the first owner claims a fresh instance. Additive field: an
     // older backend that lacks it reads as false on new clients.
     setupRequired: server === null,
-    capabilities: { mentionMarkers: true, threadInboxPaging: true },
+    // Additive capabilities only: older clients ignore unknown keys, and older
+    // servers omit them so new clients fall back to no cross-workspace work.
+    capabilities: { mentionMarkers: true, threadInboxPaging: true, workspaceUnread: true },
     iconSeed: server?.iconSeed ?? "aulora:server:default",
     description: server?.description ?? "",
     logoUrl,

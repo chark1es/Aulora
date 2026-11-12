@@ -58,10 +58,27 @@ export async function backfillWorkspaceServerId(profile: ServerProfile): Promise
   return serverId;
 }
 
+/** Bound identity probing for a wake that is not yet cached. */
+const MAX_IDENTITY_CANDIDATES = 8;
+
+interface IdentityCandidate {
+  readonly profile: ServerProfile;
+  /** The advertised id, or `null` when the server could not be read. */
+  readonly serverId: string | null;
+}
+
 /**
- * Resolves a wake to a saved workspace, asking each older profile for its
+ * Resolves a wake to a saved workspace, asking older profiles for their
  * advertised id when address matching is not enough. Profiles are few, and
  * this only runs when a notification names an id not yet remembered.
+ *
+ * Every candidate identity is learned before a match is accepted. Returning
+ * the first profile whose fetched id matched let two older deployments that
+ * both advertised the historical `aulora` fallback (or a duplicated custom id)
+ * route to whichever config was read first, before the other was known and
+ * marked ambiguous. An identity we could not read is treated the same way: it
+ * might advertise the same id, so the wake stays pending rather than choosing
+ * an arbitrary workspace.
  */
 export async function resolveWorkspaceProfile(
   profiles: readonly ServerProfile[],
@@ -74,13 +91,26 @@ export async function resolveWorkspaceProfile(
   if (direct !== undefined) {
     return direct;
   }
-  for (const profile of profiles) {
-    const known = await backfillWorkspaceServerId(profile);
-    if (known === serverId) {
-      return profile;
+  if (profiles.length > MAX_IDENTITY_CANDIDATES) {
+    return undefined;
+  }
+  const candidates: IdentityCandidate[] = await Promise.all(
+    profiles.map(async (profile) => ({
+      profile,
+      serverId: await backfillWorkspaceServerId(profile).catch(() => null),
+    })),
+  );
+  for (const candidate of candidates) {
+    if (candidate.serverId !== null) {
+      rememberAndPersistWorkspaceServerId(candidate.profile.id, candidate.serverId);
     }
   }
-  return undefined;
+  const matches = candidates.filter((candidate) => candidate.serverId === serverId);
+  const unresolved = candidates.some((candidate) => candidate.serverId === null);
+  if (matches.length !== 1 || unresolved) {
+    return undefined;
+  }
+  return matches[0]?.profile;
 }
 
 export type {

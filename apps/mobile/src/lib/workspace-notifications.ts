@@ -101,6 +101,32 @@ const serverIdByProfileId = new Map<string, string>();
 const ambiguousServerIds = new Set<string>();
 
 /**
+ * Re-derives one id's ownership after a profile is added or renamed. An id
+ * advertised by two profiles stays ambiguous, but renaming one of them must be
+ * able to make the remaining id unique again; otherwise a stale ambiguity would
+ * permanently block a wake from the workspace that kept the original id.
+ */
+function refreshServerIdOwnership(serverId: string): void {
+  const owners: string[] = [];
+  for (const [profileId, advertised] of serverIdByProfileId) {
+    if (advertised === serverId) {
+      owners.push(profileId);
+    }
+  }
+  if (owners.length === 1 && owners[0] !== undefined) {
+    profileIdByServerId.set(serverId, owners[0]);
+    ambiguousServerIds.delete(serverId);
+    return;
+  }
+  profileIdByServerId.delete(serverId);
+  if (owners.length > 1) {
+    ambiguousServerIds.add(serverId);
+  } else {
+    ambiguousServerIds.delete(serverId);
+  }
+}
+
+/**
  * Remembers which saved workspace a wake's server id belongs to. Returns true
  * when this changed anything, so a caller can persist without writing on every
  * public-config refresh. Existing profiles are backfilled when their config is
@@ -111,24 +137,15 @@ export function rememberWorkspaceServerId(profileId: string, serverId: string): 
   if (profileId.length === 0 || trimmed.length === 0) {
     return false;
   }
-  if (
-    profileIdByServerId.get(trimmed) === profileId &&
-    serverIdByProfileId.get(profileId) === trimmed
-  ) {
+  const previous = serverIdByProfileId.get(profileId);
+  if (previous === trimmed) {
     return false;
   }
-  const previous = serverIdByProfileId.get(profileId);
-  if (previous !== undefined && profileIdByServerId.get(previous) === profileId) {
-    profileIdByServerId.delete(previous);
-  }
-  const existing = profileIdByServerId.get(trimmed);
-  if (existing !== undefined && existing !== profileId) {
-    ambiguousServerIds.add(trimmed);
-  }
-  if (!ambiguousServerIds.has(trimmed)) {
-    profileIdByServerId.set(trimmed, profileId);
-  }
   serverIdByProfileId.set(profileId, trimmed);
+  if (previous !== undefined) {
+    refreshServerIdOwnership(previous);
+  }
+  refreshServerIdOwnership(trimmed);
   return true;
 }
 

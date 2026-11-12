@@ -167,6 +167,20 @@ describe("profileForServerId", () => {
     expect(profileForServerId([acme], "aulora")).toBe(acme);
   });
 
+  it("clears a stale ambiguity when one duplicate workspace advertises a new id", () => {
+    const acme = profile("chat.acme.com");
+    const globex = profile("https://chat.globex.com");
+    rememberWorkspaceServerId(acme.id, "aulora");
+    rememberWorkspaceServerId(globex.id, "aulora");
+    expect(workspaceServerIdIsAmbiguous("aulora")).toBe(true);
+
+    // The operator configures a unique AULORA_SERVER_ID on globex.
+    rememberAndPersistWorkspaceServerId(globex.id, "srv-globex");
+    expect(workspaceServerIdIsAmbiguous("aulora")).toBe(false);
+    expect(profileForServerId([acme, globex], "aulora")).toBe(acme);
+    expect(profileForServerId([acme, globex], "srv-globex")).toBe(globex);
+  });
+
   it("resolves the historical literal id only when one workspace is saved", () => {
     const acme = profile("chat.acme.com");
     expect(profileForServerId([acme], "aulora")).toBe(acme);

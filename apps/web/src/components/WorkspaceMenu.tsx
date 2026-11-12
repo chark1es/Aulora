@@ -1,8 +1,9 @@
 import { Avatar } from "@aulora/avatars";
 import type { ServerProfile } from "@aulora/core";
-import { cn, Icon } from "@aulora/ui-web";
+import { Badge, cn, Icon } from "@aulora/ui-web";
 import { useNavigate } from "@tanstack/react-router";
 import { useEffect, useRef, useState } from "react";
+import { useWorkspaceUnreadCounts } from "../lib/use-workspace-unread";
 import { useProfiles } from "../providers/ProfileProvider";
 import { ThemeToggle } from "./ThemeToggle";
 
@@ -26,6 +27,10 @@ export interface WorkspaceMenuProps {
  */
 export function WorkspaceMenu({ onlineCount, variant = "header", align }: WorkspaceMenuProps) {
   const { profiles, activeProfile, setActive } = useProfiles();
+  const unreadByProfile = useWorkspaceUnreadCounts({
+    profiles,
+    activeProfileId: activeProfile?.id,
+  });
   const navigate = useNavigate();
   const [open, setOpen] = useState(false);
   const ref = useRef<HTMLDivElement | null>(null);
@@ -86,6 +91,7 @@ export function WorkspaceMenu({ onlineCount, variant = "header", align }: Worksp
           activeProfile={activeProfile}
           multiple={multiple}
           align={resolvedAlign}
+          unreadByProfile={unreadByProfile}
           onPick={pick}
           onAddWorkspace={addWorkspace}
         />
@@ -177,6 +183,7 @@ function WorkspaceMenuPanel({
   activeProfile,
   multiple,
   align,
+  unreadByProfile,
   onPick,
   onAddWorkspace,
 }: {
@@ -184,6 +191,7 @@ function WorkspaceMenuPanel({
   readonly activeProfile: Maybe<ServerProfile>;
   readonly multiple: boolean;
   readonly align: "left" | "right";
+  readonly unreadByProfile: ReadonlyMap<string, number>;
   readonly onPick: (profileId: string) => void;
   readonly onAddWorkspace: () => void;
 }) {
@@ -204,6 +212,7 @@ function WorkspaceMenuPanel({
           key={profile.id}
           profile={profile}
           active={activeProfile?.id === profile.id}
+          unread={activeProfile?.id === profile.id ? 0 : (unreadByProfile.get(profile.id) ?? 0)}
           onPick={onPick}
         />
       ))}
@@ -218,10 +227,12 @@ function WorkspaceMenuPanel({
 function WorkspaceMenuItem({
   profile,
   active,
+  unread,
   onPick,
 }: {
   readonly profile: ServerProfile;
   readonly active: boolean;
+  readonly unread: number;
   readonly onPick: (profileId: string) => void;
 }) {
   return (
@@ -241,7 +252,17 @@ function WorkspaceMenuItem({
           {new URL(profile.baseUrl).host}
         </span>
       </span>
-      {active && <Icon name="check" size={14} className="text-accent" />}
+      {active ? (
+        <Icon name="check" size={14} className="text-accent" />
+      ) : unread > 0 ? (
+        <Badge
+          tone="accent"
+          size="sm"
+          aria-label={`${unread} new notification${unread === 1 ? "" : "s"}`}
+        >
+          {unread > 99 ? "99+" : unread}
+        </Badge>
+      ) : null}
     </button>
   );
 }
