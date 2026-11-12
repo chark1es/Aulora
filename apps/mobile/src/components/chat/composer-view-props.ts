@@ -1,4 +1,5 @@
 import type { Fn } from "../../lib/function-type";
+import { dismissKeyboard } from "../../lib/keyboard";
 import { messageLimitError } from "../../lib/message-limits";
 import type { ComposerAttachMenuProps } from "./ComposerAttachMenu";
 import type { ComposerInputRowProps } from "./ComposerInputRow";
@@ -93,6 +94,10 @@ export const buildInputRow = (ctx: ComposerContext): ComposerInputRowProps => {
       typing.stop(props.channelId);
     },
     onAttach: () => {
+      // Drop the keyboard before the sheet opens; otherwise the sheet's
+      // "restore" blur behavior brings it back after an attachment is picked
+      // and it covers the composer.
+      dismissKeyboard();
       ctx.setMenuOpen(true);
     },
     onSend: ctx.send,
@@ -106,6 +111,7 @@ export const buildAttachMenu = (ctx: ComposerContext): ComposerAttachMenuProps =
       ctx.setMenuOpen(false);
     },
     onPick: (option) => {
+      dismissKeyboard();
       ctx.setMenuOpen(false);
       void ctx.attach.pick(option);
     },
