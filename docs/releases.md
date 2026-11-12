@@ -505,8 +505,8 @@ reply-first `sendThreadReply` for **Also send to #channel**. The reply owns uplo
 additional channel copy contains text and its own channel-eligible mentions. A copy
 failure is reported separately and never retries an accepted reply.
 
-Legacy highlight limitation: clients before the marker-aware 1.4.1 client still lose
-broadcast highlights when the visible audience exceeds 100. Version 1.4.1 and later
+Legacy highlight limitation: clients before the marker-aware 1.5.0 client still lose
+broadcast highlights when the visible audience exceeds 100. Version 1.5.0 and later
 derive highlights from the marker regardless of audience size. The server retains its
 bounded expansion for old clients: expanding arbitrarily large audiences into one
 `mentionUserIds` array would exceed Convex's document limit, even with chunked writes.

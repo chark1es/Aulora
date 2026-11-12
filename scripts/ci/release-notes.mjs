@@ -1,11 +1,17 @@
 import { execFileSync } from "node:child_process";
-import { readFileSync, writeFileSync } from "node:fs";
+import { existsSync, readFileSync, writeFileSync } from "node:fs";
 import { resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 
-export function releaseNotes({ version, repository, commit, notes = "" }, run = execFileSync) {
+export function releaseNotes(
+  { version, repository, commit, notes = "" },
+  run = execFileSync,
+  { fileExists = existsSync, readFile = (path) => readFileSync(path, "utf8") } = {},
+) {
   if (notes.trim()) return notes;
-  if (version === "1.0.0") return readFileSync("docs/release-notes-v1.md", "utf8");
+  if (version === "1.0.0") return readFile("docs/release-notes-v1.md");
+  const checkedIn = `docs/release-notes-v${version}.md`;
+  if (fileExists(checkedIn)) return readFile(checkedIn);
   const generated = run(
     "gh",
     [

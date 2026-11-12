@@ -19,6 +19,18 @@ test("v1 uses its checked-in release notes when the input is blank", () => {
   );
 });
 
+test("a checked-in version file supplies migration notes before generated notes", () => {
+  const notes = "## Aulora 1.5.0\n\nUpgrade notes and known limitations.\n";
+  const checkedIn = releaseNotes({ ...release, version: "1.5.0", notes: " \n" }, unexpectedCall, {
+    fileExists: (path) => path === "docs/release-notes-v1.5.0.md",
+    readFile: (path) => {
+      expect(path).toBe("docs/release-notes-v1.5.0.md");
+      return notes;
+    },
+  });
+  expect(checkedIn).toBe(notes);
+});
+
 test("later releases generate notes for the exact version and built commit", () => {
   const generated = "## What's Changed\n\n- Fix reconnects by @contributor\n";
   let calls = 0;
