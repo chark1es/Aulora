@@ -619,7 +619,7 @@ export function useChatScreenData({ onSignOut, onDeleteAccount }: ChatScreenProp
   });
   const threadsRetained = retainedHubTabs.includes("threads");
   const threadQuery = threadInboxQueryArgs(
-    session.runtime !== null && session.runtime !== undefined,
+    session.runtime !== undefined,
     threadsRetained,
     pagedThreads,
   );

@@ -75,6 +75,7 @@ export function NoteEditorScreen({
   onDirtyChange,
 }: {
   readonly ctl: NotesController;
+  // eslint-disable-next-line no-unused-vars -- parameter name documents the callback signature, not a runtime variable.
   readonly onDirtyChange?: ((dirty: boolean) => void) | undefined;
 }) {
   const editor = useNoteEditor(ctl);

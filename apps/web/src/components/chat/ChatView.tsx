@@ -1618,6 +1618,74 @@ function ChatViewContent({
     }
   };
 
+  // Keep the conversation's props separate from surface visibility. Constructing
+  // this element does not mount it; the canvas still decides when to render it.
+  const conversationPane =
+    channel !== undefined && channel.kind !== "voice" ? (
+      <ChannelPane
+        mentionMarkers={resolveServerCapabilities(publicConfig).mentionMarkers}
+        runtime={runtime}
+        channel={channel}
+        title={title}
+        placeholder={placeholder}
+        ownUserId={ownUserId}
+        ownName={ownName}
+        alignment={alignment}
+        channelPermissions={channelPermissions}
+        sessionState={sessionState}
+        mergedMessages={mergedMessages}
+        mergedDecrypted={mergedDecrypted}
+        attachments={attachmentsByMessage}
+        pendingIds={pendingIds}
+        failureReasons={failureReasons}
+        failedIds={failedIds}
+        replyPreviews={replyPreviews}
+        memberNames={memberNames}
+        memberColors={memberColors}
+        mentionNames={mentionNames}
+        mentionMembers={mentionMembers}
+        searchMembers={searchMembers}
+        memberIds={memberIds}
+        roles={roles}
+        channelMentions={channelMentions}
+        categoryMentions={categoryMentions}
+        visibleMemberCount={visibleMembers.length}
+        presenceOf={presenceOf}
+        voice={voice}
+        chat={chat}
+        canSend={canSend}
+        canAttach={canAttach}
+        canMentionEveryone={canMentionEveryone}
+        maxUploadBytes={maxUploadBytes}
+        pinsOpen={pinsOpen}
+        membersOpen={rightPanel === "members"}
+        {...(replyTarget !== undefined ? { replyTarget } : {})}
+        sendError={sendError}
+        typingPing={(channelId) => {
+          typing.ping(channelId);
+        }}
+        onOpenChannel={openChannel}
+        onSetReplyTarget={setReplyTarget}
+        onSetThreadRoot={setThreadRoot}
+        onToggleMembers={() => {
+          setThreadRoot(undefined);
+          setMembersOpen((open) => (threadRoot !== undefined ? true : !open));
+        }}
+        onOpenSearch={() => {
+          setSearchOpen(true);
+        }}
+        onTogglePins={() => {
+          setPinsOpen((open) => !open);
+        }}
+        onBack={() => {
+          setMobilePane("list");
+        }}
+        onSetSendError={setSendError}
+        onSetNewConversationOpen={setNewConversationOpen}
+        sendWithFiles={sendWithFiles}
+      />
+    ) : null;
+
   return (
     <MemberAvatarProvider members={avatarRows}>
       <ConfirmDialog
@@ -1985,68 +2053,7 @@ function ChatViewContent({
                 <VoiceChannelView channel={channel} title={title} identity={callIdentity} />
               </Suspense>
             ) : (
-              <ChannelPane
-                mentionMarkers={resolveServerCapabilities(publicConfig).mentionMarkers}
-                runtime={runtime}
-                channel={channel}
-                title={title}
-                placeholder={placeholder}
-                ownUserId={ownUserId}
-                ownName={ownName}
-                alignment={alignment}
-                channelPermissions={channelPermissions}
-                sessionState={sessionState}
-                mergedMessages={mergedMessages}
-                mergedDecrypted={mergedDecrypted}
-                attachments={attachmentsByMessage}
-                pendingIds={pendingIds}
-                failureReasons={failureReasons}
-                failedIds={failedIds}
-                replyPreviews={replyPreviews}
-                memberNames={memberNames}
-                memberColors={memberColors}
-                mentionNames={mentionNames}
-                mentionMembers={mentionMembers}
-                searchMembers={searchMembers}
-                memberIds={memberIds}
-                roles={roles}
-                channelMentions={channelMentions}
-                categoryMentions={categoryMentions}
-                visibleMemberCount={visibleMembers.length}
-                presenceOf={presenceOf}
-                voice={voice}
-                chat={chat}
-                canSend={canSend}
-                canAttach={canAttach}
-                canMentionEveryone={canMentionEveryone}
-                maxUploadBytes={maxUploadBytes}
-                pinsOpen={pinsOpen}
-                membersOpen={rightPanel === "members"}
-                {...(replyTarget !== undefined ? { replyTarget } : {})}
-                sendError={sendError}
-                typingPing={(channelId) => {
-                  typing.ping(channelId);
-                }}
-                onOpenChannel={openChannel}
-                onSetReplyTarget={setReplyTarget}
-                onSetThreadRoot={setThreadRoot}
-                onToggleMembers={() => {
-                  setThreadRoot(undefined);
-                  setMembersOpen((open) => (threadRoot !== undefined ? true : !open));
-                }}
-                onOpenSearch={() => {
-                  setSearchOpen(true);
-                }}
-                onTogglePins={() => {
-                  setPinsOpen((open) => !open);
-                }}
-                onBack={() => {
-                  setMobilePane("list");
-                }}
-                onSetSendError={setSendError}
-                onSetNewConversationOpen={setNewConversationOpen}
-                sendWithFiles={sendWithFiles}
-              />
+              conversationPane
             )}
           </section>
         </KeepAlive>
