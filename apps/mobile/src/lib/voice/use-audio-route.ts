@@ -1,23 +1,31 @@
 import type { MediaDeviceInfo } from "@aulora/core";
 import { type RecordingInput, RecordingPresets, useAudioRecorder } from "expo-audio";
 import { useCallback, useEffect, useRef, useState } from "react";
-import { AppState } from "react-native";
+import { AppState, Platform } from "react-native";
 import {
-  bluetoothInputName,
-  inputForRoute,
-  type MediaDeviceRoute,
-  type NativeRouteList,
-  savedRouteTarget,
-} from "./media-device-choices";
+  clearCommunicationDevice,
+  communicationRouteAvailable,
+  getCommunicationDevice,
+  setCommunicationDevice,
+} from "../../../modules/aulora-audio-route";
+import {
+  type AudioRouteTarget,
+  applySavedRoute,
+  type CommunicationRoute,
+  confirmInputNow,
+  readPlatformCurrentInput,
+  type SavedRouteResult,
+} from "./audio-route-platform";
+import { bluetoothInputName, inputForRoute, type NativeRouteList } from "./media-device-choices";
+
+export type {
+  AudioRouteTarget,
+  SavedRouteResult,
+  SavedRouteStatus,
+} from "./audio-route-platform";
 
 /** How often the platform route list is re-read while a surface listens to it. */
 const ROUTE_POLL_MS = 2_000;
-
-export interface AudioRouteTarget {
-  readonly route: MediaDeviceRoute;
-  /** A `native:` row's uid, applied directly instead of by route class. */
-  readonly uid?: string | undefined;
-}
 
 export interface AudioRoute extends NativeRouteList {
   /** The connected Bluetooth input, if the platform lists one. */
@@ -29,27 +37,39 @@ export interface AudioRoute extends NativeRouteList {
   readonly watch: () => () => void;
   /**
    * Switches the platform's communication route. Returns an error message when
-   * this build or OS version cannot select an input (Android 9 and older, web,
-   * a missing native module); `undefined` means the switch was applied.
+   * this build or OS version cannot select or verify an input; `undefined`
+   * means the platform accepted the switch.
    */
   readonly apply: (_target: AudioRouteTarget) => string | undefined;
-  /** Re-applies the saved input/output choices, e.g. when a call starts. */
+  /**
+   * Re-applies the saved input/output choices, e.g. when a call starts. A
+   * `pending` result means the saved route is not enumerated yet and must be
+   * retried; `failed` carries the platform message.
+   */
   readonly applySaved: (
     _inputId: string | null,
     _outputId: string | null,
     _devices: readonly MediaDeviceInfo[],
-  ) => boolean;
+  ) => SavedRouteResult;
 }
+
+export const platformCommunicationRoute: CommunicationRoute = {
+  available: communicationRouteAvailable,
+  get: getCommunicationDevice,
+  set: setCommunicationDevice,
+  clear: clearCommunicationDevice,
+};
 
 /**
  * Reads and switches the native capture route.
  *
- * The recorder's route list is used rather than the WebRTC device list: iOS
- * does not enumerate Bluetooth outputs over WebRTC, and Android only reports
- * Bluetooth SCO inputs there after permission has been granted. Selecting a
- * route here is what actually moves call audio: iOS sets the preferred input
- * (the port carries both directions), and Android sets the communication
- * device, so a Bluetooth headset both records and plays through the headset.
+ * The platform's communication route is used rather than the WebRTC device
+ * list: iOS does not enumerate Bluetooth outputs over WebRTC, and Android only
+ * reports Bluetooth SCO inputs there after permission has been granted.
+ * Selecting a route here is what actually moves call audio: iOS sets the
+ * preferred input (the port carries both directions), and Android sets the
+ * communication device, so a Bluetooth headset both records and plays through
+ * the headset.
  *
  * The recorder is never prepared or started, so opening settings has no
  * capture side effect. expo-audio only exposes a snapshot list, not a route
@@ -66,26 +86,41 @@ export function useAudioRoute(): AudioRoute {
   inputsRef.current = inputs;
   const activeRef = useRef<string | undefined>(undefined);
   activeRef.current = activeUid;
+  const mounted = useRef(true);
+  useEffect(
+    () => () => {
+      mounted.current = false;
+    },
+    [],
+  );
 
   const refresh = useCallback(() => {
+    let next: readonly RecordingInput[] = [];
     try {
-      const next = recorder.getAvailableInputs();
-      inputsRef.current = next;
-      setInputs(next);
+      next = recorder.getAvailableInputs();
     } catch {
       // The native route list is unavailable on this build; devices still show
       // through the WebRTC picker.
-      inputsRef.current = [];
-      setInputs([]);
+      next = [];
     }
-    void recorder
-      .getCurrentInput()
+    inputsRef.current = next;
+    setInputs(next);
+    void readPlatformCurrentInput(recorder, Platform.OS, platformCommunicationRoute)
       .then((input) => {
-        activeRef.current = input.uid;
-        setActiveUid(input.uid);
+        if (!mounted.current) {
+          return;
+        }
+        // An unknown live route is left unset instead of reusing the recorder's
+        // built-in fallback as if it were the call's route.
+        activeRef.current = input?.uid;
+        setActiveUid(input?.uid);
       })
       .catch(() => {
-        // Availability is still useful even when the active route is unknown.
+        if (!mounted.current) {
+          return;
+        }
+        activeRef.current = undefined;
+        setActiveUid(undefined);
       });
   }, [recorder]);
 
@@ -126,6 +161,21 @@ export function useAudioRoute(): AudioRoute {
         target.uid !== undefined
           ? inputsRef.current.find((entry) => entry.uid === target.uid)
           : inputForRoute(inputsRef.current, target.route);
+      const android = Platform.OS === "android";
+      const bridge = platformCommunicationRoute;
+      // "System default" means release our pinned communication device and let
+      // Android choose. Other routes resolve to a concrete platform input.
+      if (android && bridge.available && target.route === "system" && target.uid === undefined) {
+        if (bridge.clear() !== true) {
+          const message = "The system rejected the audio route change.";
+          setError(message);
+          return message;
+        }
+        activeRef.current = undefined;
+        setActiveUid(undefined);
+        setError(undefined);
+        return undefined;
+      }
       if (input === undefined) {
         const message =
           target.route === "system" && target.uid === undefined
@@ -134,12 +184,38 @@ export function useAudioRoute(): AudioRoute {
         setError(message);
         return message;
       }
-      try {
-        recorder.setInput(input.uid);
-        // setInput is synchronous on the native bridge, so reflect the choice
-        // immediately instead of waiting for the next poll.
+      if (android && bridge.available) {
+        // The SDK's setInput discards AudioManager.setCommunicationDevice's
+        // Boolean result. Use the bridge, then read the system route back
+        // before telling the UI that this input is current.
+        if (bridge.set(input.uid) !== true) {
+          const message = "The system rejected the audio route switch.";
+          setError(message);
+          return message;
+        }
+        const confirmed = bridge.get();
+        if (confirmed?.uid !== input.uid) {
+          const message = "The system did not confirm the audio route switch.";
+          setError(message);
+          return message;
+        }
         activeRef.current = input.uid;
         setActiveUid(input.uid);
+        setError(undefined);
+        return undefined;
+      }
+      try {
+        recorder.setInput(input.uid);
+        if (android) {
+          // Legacy Android has no communication-device bridge; the switch was
+          // requested but the active call route is not verifiable here.
+          activeRef.current = undefined;
+          setActiveUid(undefined);
+        } else {
+          const confirmed = confirmInputNow(recorder);
+          activeRef.current = confirmed?.uid;
+          setActiveUid(confirmed?.uid);
+        }
         setError(undefined);
         return undefined;
       } catch {
@@ -154,15 +230,8 @@ export function useAudioRoute(): AudioRoute {
   const apply = useCallback((target: AudioRouteTarget) => setRoute(target), [setRoute]);
 
   const applySaved = useCallback(
-    (inputId: string | null, outputId: string | null, devices: readonly MediaDeviceInfo[]) => {
-      // The recorder's input switch moves the shared session for capture and
-      // playback. Prefer the output choice when one is saved (it is what the
-      // person hears), then fall back to the microphone choice.
-      const outputTarget = savedRouteTarget(inputsRef.current, devices, "audiooutput", outputId);
-      if (outputTarget !== undefined) return setRoute(outputTarget) === undefined;
-      const inputTarget = savedRouteTarget(inputsRef.current, devices, "audioinput", inputId);
-      return inputTarget === undefined || setRoute(inputTarget) === undefined;
-    },
+    (inputId: string | null, outputId: string | null, devices: readonly MediaDeviceInfo[]) =>
+      applySavedRoute(inputsRef.current, devices, inputId, outputId, setRoute),
     [setRoute],
   );
 

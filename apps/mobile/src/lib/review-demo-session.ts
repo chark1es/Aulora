@@ -111,7 +111,7 @@ function demoVoice(): VoiceContextValue {
       refresh: () => undefined,
       watch: () => () => undefined,
       apply: () => undefined,
-      applySaved: () => true,
+      applySaved: () => ({ status: "none" }),
     },
     canConnect: false,
     canSpeak: false,
