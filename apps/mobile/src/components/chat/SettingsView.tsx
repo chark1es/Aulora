@@ -1,8 +1,8 @@
 /* eslint-disable no-unused-vars -- the base rule reports parameter names in type signatures; Biome checks real unused code */
 import type { PresenceRow } from "@aulora/core";
 import { Button, Text } from "@aulora/ui-native";
-import { useState } from "react";
-import { Linking, View } from "react-native";
+import { useEffect, useState } from "react";
+import { BackHandler, Linking, View } from "react-native";
 import { KeyboardAwareScrollView } from "react-native-keyboard-controller";
 import { presenceLabel } from "../../lib/presence";
 import type { PushRegistrationState } from "../../lib/use-push-registration";
@@ -276,6 +276,19 @@ function SettingsMenu({
 export function SettingsView(props: SettingsViewProps) {
   const clearance = useDockClearance();
   const [page, setPage] = useState<DetailPage | null>(null);
+
+  // A settings page is pushed over the You tab, so Android back returns to the
+  // tab it came from instead of unwinding the chat behind it.
+  useEffect(() => {
+    if (page === null) return;
+    const subscription = BackHandler.addEventListener("hardwareBackPress", () => {
+      setPage(null);
+      return true;
+    });
+    return () => {
+      subscription.remove();
+    };
+  }, [page]);
 
   if (page !== null) {
     return (

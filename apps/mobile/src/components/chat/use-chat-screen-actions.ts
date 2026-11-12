@@ -3,6 +3,7 @@ import AsyncStorage from "@react-native-async-storage/async-storage";
 import { useCallback, useEffect } from "react";
 import { Alert, BackHandler, Keyboard } from "react-native";
 import { api } from "../../../../../packages/convex/convex/_generated/api";
+import { chatBackTarget } from "../../lib/back-navigation";
 import { createCategory } from "../../lib/backend-actions";
 import {
   manageableChannelRoles,
@@ -93,25 +94,27 @@ function useChatScreenNavigation(data: ChatScreenData) {
 
   useEffect(() => {
     const subscription = BackHandler.addEventListener("hardwareBackPress", () => {
-      if (threadRoot !== null) return false;
-      if (pane === 2) {
-        setPane(1);
-        return true;
+      switch (chatBackTarget({ threadOpen: threadRoot !== null, pane, hubTab })) {
+        case "thread":
+          setThreadRoot(null);
+          return true;
+        case "conversation":
+          setPane(1);
+          return true;
+        case "hub":
+          setPane(0);
+          return true;
+        case "channels":
+          setHubTab("chats");
+          return true;
+        case "exit":
+          return false;
       }
-      if (pane === 1) {
-        setPane(0);
-        return true;
-      }
-      if (hubTab !== "chats") {
-        setHubTab("chats");
-        return true;
-      }
-      return false;
     });
     return () => {
       subscription.remove();
     };
-  }, [pane, hubTab, threadRoot, setPane, setHubTab]);
+  }, [pane, hubTab, threadRoot, setPane, setHubTab, setThreadRoot]);
 
   const goToPane = useCallback(
     (next: PaneIndex) => {

@@ -1,4 +1,5 @@
-import { View } from "react-native";
+import { useEffect } from "react";
+import { BackHandler, View } from "react-native";
 import { KeyboardAvoidingPane } from "../layout/ScreenContainer";
 import { BoardColumns } from "./BoardColumns";
 import { ArchivedBanner, BoardFilters, ReadOnlyBanner } from "./BoardFilters";
@@ -51,6 +52,23 @@ function OpenCard({ ctl }: { readonly ctl: BoardController }) {
  */
 export function KanbanScreen(props: BoardProps) {
   const ctl = useBoard(props);
+  const composing = ctl.composing;
+  const setComposing = ctl.setComposing;
+
+  // An inline card composer is a nested state of the board: Android back
+  // cancels it instead of leaving the Boards tab. Sheets and the card page
+  // are native modals and handle their own back.
+  useEffect(() => {
+    if (composing === undefined) return;
+    const subscription = BackHandler.addEventListener("hardwareBackPress", () => {
+      setComposing(undefined);
+      return true;
+    });
+    return () => {
+      subscription.remove();
+    };
+  }, [composing, setComposing]);
+
   return (
     // Lifts the add-card composer clear of the keyboard.
     <KeyboardAvoidingPane style={{ flex: 1 }}>
