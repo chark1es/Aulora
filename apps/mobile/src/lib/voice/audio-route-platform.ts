@@ -17,9 +17,17 @@ export interface SavedRouteResult {
   readonly message?: string;
 }
 
-/** The seam the hook uses to read and change Android's real call route. */
+/**
+ * The seam the hook uses to read and change Android's real call route.
+ *
+ * Everything here is in the communication-*sink* domain: `list()` enumerates
+ * `AudioManager.getAvailableCommunicationDevices()` and `get()`/`set()` use the
+ * same ids. A recorder input id from `GET_DEVICES_INPUTS` is a different
+ * endpoint and must never be passed to `set()`.
+ */
 export interface CommunicationRoute {
   readonly available: boolean;
+  list(): readonly NativeCommunicationDevice[];
   get(): NativeCommunicationDevice | null;
   set(_uid: string): boolean | null;
   clear(): boolean | null;
@@ -60,6 +68,7 @@ export function routeInputFromCommunicationDevice(
  */
 const NO_COMMUNICATION_ROUTE: CommunicationRoute = {
   available: false,
+  list: () => [],
   get: () => null,
   set: () => null,
   clear: () => null,

@@ -32,6 +32,10 @@ const headset: RecordingInput = {
 function route(overrides: Partial<CommunicationRoute> = {}): CommunicationRoute {
   return {
     available: true,
+    list: () => [
+      { uid: "2", name: "AirPods Pro", type: "Bluetooth" },
+      { uid: "3", name: "Built-in speaker", type: "Built-in speaker" },
+    ],
     get: () => ({ uid: "2", name: "AirPods Pro", type: "BluetoothSCO" }),
     set: () => true,
     clear: () => true,
@@ -113,6 +117,55 @@ describe("readPlatformCurrentInput", () => {
         type: "BluetoothSCO",
       }),
     ).toEqual(headset);
+  });
+});
+
+describe("Android communication sink domain", () => {
+  it("keeps the recorder source id distinct from the communication sink id", async () => {
+    // One headset exposes a capture/source endpoint and a communication sink
+    // endpoint with different native ids. The bridge is authoritative and must
+    // be read and written in the sink domain; the recorder source id is not a
+    // selectable communication device.
+    const source: RecordingInput = { uid: "41", name: "AirPods Pro", type: "BluetoothSCO" };
+    const sink = { uid: "42", name: "AirPods Pro", type: "Bluetooth" };
+    const set = vi.fn((uid: string) => uid === "42");
+    const live = route({ list: () => [sink], get: () => sink, set });
+    const recorder: CurrentInputSource = { getCurrentInput: () => source };
+
+    await expect(readPlatformCurrentInput(recorder, "android", live)).resolves.toEqual({
+      uid: "42",
+      name: "AirPods Pro",
+      type: "Bluetooth",
+    });
+    expect(live.list()[0]?.uid).not.toBe(source.uid);
+
+    const sinks = [routeInputFromCommunicationDevice(sink)];
+    const apply = vi.fn(() => undefined);
+    expect(applySavedRoute(sinks, devices, "native:42", null, apply)).toEqual({
+      status: "applied",
+    });
+    expect(apply).toHaveBeenCalledWith({ route: "bluetooth", uid: "42" });
+
+    // The source id is not enumerated as a sink, so it stays pending instead
+    // of silently succeeding against the wrong endpoint.
+    const reject = vi.fn(() => undefined);
+    expect(applySavedRoute(sinks, devices, "native:41", null, reject)).toEqual({
+      status: "pending",
+    });
+    expect(reject).not.toHaveBeenCalled();
+  });
+
+  it("reports an unknown Android route when capability is absent, never a fake label", async () => {
+    const source: RecordingInput = {
+      uid: "41",
+      name: "Built-in microphone",
+      type: "MicrophoneBuiltIn",
+    };
+    const recorder: CurrentInputSource = { getCurrentInput: vi.fn(() => source) };
+    const legacy = route({ available: false, list: () => [], get: () => null });
+
+    await expect(readPlatformCurrentInput(recorder, "android", legacy)).resolves.toBeNull();
+    expect(recorder.getCurrentInput).not.toHaveBeenCalled();
   });
 });
 

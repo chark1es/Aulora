@@ -5,6 +5,7 @@ import { AppState, Platform } from "react-native";
 import {
   clearCommunicationDevice,
   communicationRouteAvailable,
+  getAvailableCommunicationDevices,
   getCommunicationDevice,
   setCommunicationDevice,
 } from "../../../modules/aulora-audio-route";
@@ -14,6 +15,7 @@ import {
   type CommunicationRoute,
   confirmInputNow,
   readPlatformCurrentInput,
+  routeInputFromCommunicationDevice,
   type SavedRouteResult,
 } from "./audio-route-platform";
 import { bluetoothInputName, inputForRoute, type NativeRouteList } from "./media-device-choices";
@@ -55,6 +57,7 @@ export interface AudioRoute extends NativeRouteList {
 
 export const platformCommunicationRoute: CommunicationRoute = {
   available: communicationRouteAvailable,
+  list: getAvailableCommunicationDevices,
   get: getCommunicationDevice,
   set: setCommunicationDevice,
   clear: clearCommunicationDevice,
@@ -97,7 +100,15 @@ export function useAudioRoute(): AudioRoute {
   const refresh = useCallback(() => {
     let next: readonly RecordingInput[] = [];
     try {
-      next = recorder.getAvailableInputs();
+      // Android's communication route is a *sink* list. Recorder inputs are a
+      // different endpoint domain (their ids cannot be passed to
+      // setCommunicationDevice), so enumerate the sinks the platform accepts
+      // whenever the capability exists. iOS and legacy Android keep the
+      // recorder inputs, which are their real selectable routes.
+      next =
+        Platform.OS === "android" && platformCommunicationRoute.available
+          ? platformCommunicationRoute.list().map(routeInputFromCommunicationDevice)
+          : recorder.getAvailableInputs();
     } catch {
       // The native route list is unavailable on this build; devices still show
       // through the WebRTC picker.
