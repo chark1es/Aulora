@@ -13,44 +13,81 @@ export interface HubTabAvailability {
 
 const ALL_HUB_TABS: HubTabAvailability = { boards: true, notes: true };
 
-function useChatScreenViewState(availability: HubTabAvailability = ALL_HUB_TABS) {
-  const [activeChannelId, setActiveChannelId] = useState<string | undefined>(undefined);
-  const [pane, setPaneState] = useState<PaneIndex>(1);
-  const [hubTab, setHubTabState] = useState<HubTab>("chats");
-  const [kanbanBoardId, setKanbanBoardId] = useState<string | null>(null);
-  const [noteId, setNoteId] = useState<string | null>(null);
-  const [newMessageOpen, setNewMessageOpen] = useState(false);
-  const [pinsOpen, setPinsOpen] = useState(false);
-  const [profileFor, setProfileFor] = useState<string | null>(null);
-  // The conversation's nested selections live here rather than in the overlay
-  // hook so a history entry can capture them with the pane and channel.
+function chatLocationFrom(
+  pane: PaneIndex,
+  hubTab: HubTab,
+  activeChannelId: string | undefined,
+  threadRoot: Nullable<MessagePayload>,
+  quote: Nullable<MessagePayload>,
+  jumpToMessageId: string | null,
+): ChatLocation {
+  return { pane, hubTab, channelId: activeChannelId, threadRoot, quote, jumpToMessageId };
+}
+
+/**
+ * The conversation's nested selections. They live outside the navigation hook
+ * so a history entry can capture them with the pane and channel.
+ */
+function useChatConversationSelectionState() {
   const [threadRoot, setThreadRoot] = useState<Nullable<MessagePayload>>(null);
   const [quote, setQuote] = useState<Nullable<MessagePayload>>(null);
   const [jumpToMessageId, setJumpToMessageId] = useState<string | null>(null);
+  return { threadRoot, setThreadRoot, quote, setQuote, jumpToMessageId, setJumpToMessageId };
+}
+
+function useChatHubSelectionState() {
+  const [kanbanBoardId, setKanbanBoardId] = useState<string | null>(null);
+  const [noteId, setNoteId] = useState<string | null>(null);
+  return { kanbanBoardId, setKanbanBoardId, noteId, setNoteId };
+}
+
+function useChatPanelState() {
+  const [newMessageOpen, setNewMessageOpen] = useState(false);
+  const [pinsOpen, setPinsOpen] = useState(false);
+  const [profileFor, setProfileFor] = useState<string | null>(null);
   const [showHidden, setShowHidden] = useState(false);
   const [workspaceSwitcherOpen, setWorkspaceSwitcherOpen] = useState(false);
   const [bansOpen, setBansOpen] = useState(false);
   const [roleColorsOpen, setRoleColorsOpen] = useState(false);
+  return {
+    newMessageOpen,
+    setNewMessageOpen,
+    pinsOpen,
+    setPinsOpen,
+    profileFor,
+    setProfileFor,
+    showHidden,
+    setShowHidden,
+    workspaceSwitcherOpen,
+    setWorkspaceSwitcherOpen,
+    bansOpen,
+    setBansOpen,
+    roleColorsOpen,
+    setRoleColorsOpen,
+  };
+}
+
+function useChatNavigationState(
+  availability: HubTabAvailability,
+  selection: ReturnType<typeof useChatConversationSelectionState>,
+) {
+  const [activeChannelId, setActiveChannelId] = useState<string | undefined>(undefined);
+  const [pane, setPaneState] = useState<PaneIndex>(1);
+  const [hubTab, setHubTabState] = useState<HubTab>("chats");
+  const { setThreadRoot, setQuote, setJumpToMessageId } = selection;
 
   // Remember the pane/tab somebody actually left. The refs keep the setters
   // stable and let Back restore both values in one render without pushing the
   // restored state back onto the stack.
-  const location = useRef<ChatLocation>({
-    pane: 1,
-    hubTab: "chats",
-    channelId: undefined,
-    threadRoot: null,
-    quote: null,
-    jumpToMessageId: null,
-  });
-  location.current = {
+  const location = useRef<ChatLocation>(chatLocationFrom(1, "chats", undefined, null, null, null));
+  location.current = chatLocationFrom(
     pane,
     hubTab,
-    channelId: activeChannelId,
-    threadRoot,
-    quote,
-    jumpToMessageId,
-  };
+    activeChannelId,
+    selection.threadRoot,
+    selection.quote,
+    selection.jumpToMessageId,
+  );
   const history = useRef<ChatLocation[]>([]);
 
   // An addon can be revoked (or its permission removed) while its tab is on
@@ -93,7 +130,7 @@ function useChatScreenViewState(availability: HubTabAvailability = ALL_HUB_TABS)
     setQuote(previous.location.quote ?? null);
     setJumpToMessageId(previous.location.jumpToMessageId ?? null);
     return previous.location;
-  }, []);
+  }, [setThreadRoot, setQuote, setJumpToMessageId]);
 
   return {
     activeChannelId,
@@ -103,31 +140,15 @@ function useChatScreenViewState(availability: HubTabAvailability = ALL_HUB_TABS)
     hubTab,
     setHubTab,
     restorePreviousLocation,
-    kanbanBoardId,
-    setKanbanBoardId,
-    noteId,
-    setNoteId,
-    newMessageOpen,
-    setNewMessageOpen,
-    pinsOpen,
-    setPinsOpen,
-    profileFor,
-    setProfileFor,
-    quote,
-    setQuote,
-    jumpToMessageId,
-    setJumpToMessageId,
-    threadRoot,
-    setThreadRoot,
-    showHidden,
-    setShowHidden,
-    workspaceSwitcherOpen,
-    setWorkspaceSwitcherOpen,
-    bansOpen,
-    setBansOpen,
-    roleColorsOpen,
-    setRoleColorsOpen,
   };
+}
+
+function useChatScreenViewState(availability: HubTabAvailability = ALL_HUB_TABS) {
+  const selection = useChatConversationSelectionState();
+  const navigation = useChatNavigationState(availability, selection);
+  const hubSelection = useChatHubSelectionState();
+  const panels = useChatPanelState();
+  return { ...navigation, ...selection, ...hubSelection, ...panels };
 }
 
 function useChatScreenOverlayState() {
