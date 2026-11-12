@@ -22,6 +22,8 @@ export interface ComposerContext {
   readonly canSend: boolean;
   readonly suggestions: readonly MentionCandidate[];
   readonly inputRef: ComposerInputRef;
+  /** Whether the input had focus when the attach menu opened. */
+  readonly menuFocus: { current: boolean };
   readonly hint: ReturnType<typeof useMentionHint>;
   readonly typing: ReturnType<typeof useComposerTyping>;
   readonly attach: ReturnType<typeof useComposerAttachments>;
@@ -96,7 +98,9 @@ export const buildInputRow = (ctx: ComposerContext): ComposerInputRowProps => {
     onAttach: () => {
       // Drop the keyboard before the sheet opens; otherwise the sheet's
       // "restore" blur behavior brings it back after an attachment is picked
-      // and it covers the composer.
+      // and it covers the composer. Remember whether the person was typing so
+      // cancelling the sheet can put the caret back.
+      ctx.menuFocus.current = ctx.inputRef.current?.isFocused() === true;
       dismissKeyboard();
       ctx.setMenuOpen(true);
     },
@@ -108,9 +112,18 @@ export const buildAttachMenu = (ctx: ComposerContext): ComposerAttachMenuProps =
   return {
     visible: ctx.menuOpen,
     onClose: () => {
+      const restoreFocus = ctx.menuFocus.current;
+      ctx.menuFocus.current = false;
       ctx.setMenuOpen(false);
+      // Cancelling the sheet returns the person to the message they were
+      // typing. A picked file deliberately leaves the keyboard down for the
+      // picker, so only a cancel restores it.
+      if (restoreFocus) ctx.inputRef.current?.focus();
     },
     onPick: (option) => {
+      // The picker takes over the screen; reopening the keyboard after it
+      // closes would cover the composer while the file uploads.
+      ctx.menuFocus.current = false;
       dismissKeyboard();
       ctx.setMenuOpen(false);
       void ctx.attach.pick(option);
@@ -128,6 +141,8 @@ export interface ComposerParts {
   readonly menuOpen: boolean;
   readonly setMenuOpen: Fn<[open: boolean], void>;
   readonly inputRef: ComposerInputRef;
+  /** Whether the input had focus when the attach menu opened. */
+  readonly menuFocus: { current: boolean };
   readonly hint: ReturnType<typeof useMentionHint>;
   readonly typing: ReturnType<typeof useComposerTyping>;
   readonly attach: ReturnType<typeof useComposerAttachments>;
