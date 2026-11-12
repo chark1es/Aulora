@@ -2,7 +2,6 @@
 import {
   clientVersionState,
   debugLog,
-  recordDebugFailure,
   resetProviderToken,
   type ServerProfile,
   setProviderTokenIdentity,
@@ -189,7 +188,7 @@ export function SessionGate({ profile, authClient, client, connection }: Session
   // cookie cannot be cleared here, and rebuilding would replay the same answer
   // forever, so the sign-in form is the honest end state.
   useEffect(() => {
-    if (!invalidSession || droppedInvalidSession.current) {
+    if (!accountScope.active || !invalidSession || droppedInvalidSession.current) {
       return;
     }
     droppedInvalidSession.current = true;
@@ -198,14 +197,14 @@ export function SessionGate({ profile, authClient, client, connection }: Session
     // recording it before the clear would leak the previous account's log.
     const rejection = authFailureDetail(session.error);
     debugLog.clear();
-    recordDebugFailure("auth.session", rejection);
+    accountScope.record("auth.session", rejection);
     resetProviderToken(authClient);
     const storedToken = readSessionToken(profile.siteUrl) !== null;
     clearSessionToken(profile.siteUrl);
     if (storedToken) {
       connection.retry();
     }
-  }, [invalidSession, session.error, authClient, profile.siteUrl, connection]);
+  }, [invalidSession, session.error, authClient, profile.siteUrl, connection, accountScope]);
 
   // Every wait a server restart can break: a session lookup that never answers
   // or fails, and — the case that used to stick forever — a signed-in session
