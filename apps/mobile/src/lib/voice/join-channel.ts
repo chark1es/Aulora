@@ -6,6 +6,35 @@ export interface VoiceChannelJoinPort {
   readonly joinCall: (_callId: string) => Promise<boolean>;
   readonly startCall: (_channelId: string, _kind: CallKind) => Promise<string | null>;
   readonly setCamera: (_on: boolean) => Promise<void>;
+  /** Surfaces a rejection that happened outside the engine's own error path. */
+  readonly reportError?: (_message: string) => void;
+}
+
+function errorMessage(cause: unknown): string {
+  return cause instanceof Error && cause.message.length > 0
+    ? cause.message
+    : "Could not join the call.";
+}
+
+/** What the pre-join surface should render for the current call state. */
+export interface PreJoinCallView {
+  readonly mode: "join" | "joined" | "denied";
+  /** The current call error, shown instead of silently vanishing. */
+  readonly error: string | null;
+}
+
+export function preJoinCallView(state: {
+  readonly canConnect: boolean;
+  readonly joined: boolean;
+  readonly pending: boolean;
+  readonly error: string | null;
+}): PreJoinCallView {
+  const error = state.error !== null && state.error.trim().length > 0 ? state.error : null;
+  // The join controls stay rendered after a failure, so pressing one again is
+  // the retry path; no separate retry action is needed.
+  if (state.joined) return { mode: "joined", error };
+  if (!state.canConnect) return { mode: "denied", error };
+  return { mode: "join", error };
 }
 
 /**
@@ -30,8 +59,14 @@ export function joinVoiceChannelWith(
     .joinCall(live.id)
     .then((joined) => {
       if (joined && kind === "video") {
-        void voice.setCamera(true);
+        void voice.setCamera(true).catch((cause: unknown) => {
+          voice.reportError?.(errorMessage(cause));
+        });
       }
     })
-    .catch(() => undefined);
+    .catch((cause: unknown) => {
+      // A rejected claim (permission changed, network loss, ...) must be
+      // visible on the pre-join screen, not swallowed while it stays open.
+      voice.reportError?.(errorMessage(cause));
+    });
 }

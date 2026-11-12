@@ -1,5 +1,9 @@
 import { describe, expect, it, vi } from "vitest";
-import { joinVoiceChannelWith, type VoiceChannelJoinPort } from "../src/lib/voice/join-channel";
+import {
+  joinVoiceChannelWith,
+  preJoinCallView,
+  type VoiceChannelJoinPort,
+} from "../src/lib/voice/join-channel";
 
 function port(overrides: Partial<VoiceChannelJoinPort> = {}): VoiceChannelJoinPort {
   return {
@@ -48,6 +52,67 @@ describe("voice channel pre-join action", () => {
     await vi.waitFor(() => expect(voice.joinCall).toHaveBeenCalled());
     await Promise.resolve();
     expect(voice.setCamera).not.toHaveBeenCalled();
+  });
+
+  it("surfaces a rejected claim instead of swallowing it", async () => {
+    const reportError = vi.fn();
+    const voice = port({
+      activeCalls: [{ id: "call", channelId: "channel" }],
+      joinCall: vi.fn(async () => {
+        throw new Error("Permission denied");
+      }),
+      reportError,
+    });
+    joinVoiceChannelWith(voice, "channel");
+    await vi.waitFor(() => expect(reportError).toHaveBeenCalledWith("Permission denied"));
+  });
+
+  it("surfaces a camera failure after a successful video join", async () => {
+    const reportError = vi.fn();
+    const voice = port({
+      activeCalls: [{ id: "call", channelId: "channel" }],
+      setCamera: vi.fn(async () => {
+        throw new Error("Camera unavailable");
+      }),
+      reportError,
+    });
+    joinVoiceChannelWith(voice, "channel", "video");
+    await vi.waitFor(() => expect(reportError).toHaveBeenCalledWith("Camera unavailable"));
+  });
+
+  it("renders the current failure with retry while keeping the join controls", () => {
+    expect(
+      preJoinCallView({
+        canConnect: true,
+        joined: false,
+        pending: false,
+        error: "Permission denied",
+      }),
+    ).toEqual({ mode: "join", error: "Permission denied" });
+    // Retry is unavailable while the retry attempt is already running.
+    expect(
+      preJoinCallView({
+        canConnect: true,
+        joined: false,
+        pending: true,
+        error: "Permission denied",
+      }),
+    ).toEqual({ mode: "join", error: "Permission denied" });
+    // Permission removal shows the denial branch but keeps the reason visible.
+    expect(
+      preJoinCallView({
+        canConnect: false,
+        joined: false,
+        pending: false,
+        error: "Permission denied",
+      }),
+    ).toEqual({ mode: "denied", error: "Permission denied" });
+    expect(
+      preJoinCallView({ canConnect: true, joined: true, pending: false, error: null }),
+    ).toEqual({ mode: "joined", error: null });
+    expect(
+      preJoinCallView({ canConnect: true, joined: false, pending: false, error: "   " }),
+    ).toEqual({ mode: "join", error: null });
   });
 
   it("ignores a live call in another channel", () => {

@@ -102,6 +102,7 @@ function demoVoice(): VoiceContextValue {
     activeCalls: [],
     settings: DEFAULT_VOICE_SETTINGS,
     devices: [],
+    reportError: () => undefined,
     canConnect: false,
     canSpeak: false,
     canStream: false,

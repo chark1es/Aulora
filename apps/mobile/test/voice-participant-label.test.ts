@@ -217,8 +217,10 @@ describe("voice channel pre-join", () => {
         canVideo: true,
         pending: false,
         joined: false,
+        error: null,
         onJoin: () => undefined,
         onRejoin: () => undefined,
+        onDismissError: () => undefined,
         ...overrides,
       }),
     );

@@ -201,11 +201,15 @@ function ChatConversationBody({
         canVideo={voice.canVideo}
         pending={voice.pending}
         joined={live !== null && voice.call?.id === live.id}
+        error={voice.error}
         onJoin={(kind) => {
           model.joinVoiceChannel(channel.id, kind);
         }}
         onRejoin={() => {
           model.voice.setView("stage");
+        }}
+        onDismissError={() => {
+          model.voice.clearError();
         }}
       />
     );

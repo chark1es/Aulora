@@ -1,6 +1,7 @@
 import type { CallParticipantView } from "@aulora/core";
 import { Button, Heading, Icon, Text, usePalette } from "@aulora/ui-native";
 import { View } from "react-native";
+import { preJoinCallView } from "../../lib/voice/join-channel";
 import { MemberAvatar } from "../chat/MemberAvatar";
 import { GuestBadge, participantLabel } from "./VoiceChannelSection";
 
@@ -14,9 +15,13 @@ export interface VoiceChannelPreJoinProps {
   readonly pending: boolean;
   /** This device is already in the call behind a minimized call surface. */
   readonly joined: boolean;
+  /** The call engine's current failure, if the last join attempt failed. */
+  readonly error: string | null;
   readonly onJoin: (_kind: "voice" | "video") => void;
   /** Brings the minimized call surface back for a call this device is in. */
   readonly onRejoin: () => void;
+  /** Clears a stale error without starting another attempt. */
+  readonly onDismissError: () => void;
 }
 
 /**
@@ -33,10 +38,13 @@ export function VoiceChannelPreJoin({
   canVideo,
   pending,
   joined,
+  error,
   onJoin,
   onRejoin,
+  onDismissError,
 }: VoiceChannelPreJoinProps) {
   const palette = usePalette();
+  const view = preJoinCallView({ canConnect, joined, pending, error });
   const names = participants.map((participant) => participantLabel(participant, memberNames));
   return (
     <View className="flex-1 items-center justify-center bg-bg px-6 py-10 min-w-0">
@@ -74,7 +82,23 @@ export function VoiceChannelPreJoin({
           </Text>
         )}
 
-        {joined ? (
+        {view.error !== null && (
+          <View
+            accessibilityRole="alert"
+            className="mt-6 w-full rounded-card border border-border bg-surface-1 px-3 py-2.5"
+          >
+            <Text size="sm" className="text-center">
+              {view.error}
+            </Text>
+            <View className="mt-2 flex-row items-center justify-center gap-2">
+              <Button size="sm" variant="secondary" disabled={pending} onPress={onDismissError}>
+                Dismiss
+              </Button>
+            </View>
+          </View>
+        )}
+
+        {view.mode === "joined" ? (
           <View className="mt-6 items-center gap-2">
             <Text size="sm" tone="muted" className="text-center">
               You are in this call.
@@ -83,9 +107,15 @@ export function VoiceChannelPreJoin({
               Return to call
             </Button>
           </View>
-        ) : canConnect ? (
+        ) : view.mode === "join" ? (
           <View className="mt-6 flex-row flex-wrap items-center justify-center gap-2">
-            <Button loading={pending} disabled={pending} onPress={() => onJoin("voice")}>
+            <Button
+              loading={pending}
+              disabled={pending}
+              onPress={() => {
+                onJoin("voice");
+              }}
+            >
               Join voice
             </Button>
             {canVideo && (
@@ -93,7 +123,9 @@ export function VoiceChannelPreJoin({
                 variant="secondary"
                 loading={pending}
                 disabled={pending}
-                onPress={() => onJoin("video")}
+                onPress={() => {
+                  onJoin("video");
+                }}
               >
                 Join with video
               </Button>
