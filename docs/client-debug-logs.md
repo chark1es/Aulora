@@ -74,3 +74,11 @@ Logs are cleared on successful sign-out, account deletion, and when changing or
 removing server profiles. In a browser, Shift+right-click opens the native
 browser menu; keyboard context-menu actions also keep the native menu. Mobile
 log export currently requires opening settings after sign-in.
+
+Handled asynchronous failures capture the originating account's diagnostic
+ownership. Profile switches invalidate that ownership before awaiting storage,
+so outgoing failures cannot refill the next workspace's cleared report. A failed
+switch restores the current account's ownership; scopes created during a switch
+never become active. Manual Clear logs only clears entries and does not disable
+current-account capture. Successful sign-out also invalidates pending diagnostic
+ownership.

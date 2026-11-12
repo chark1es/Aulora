@@ -41,6 +41,7 @@ export {
 } from "./client-version";
 export * from "./conversation-opening";
 export {
+  captureDebugAccountOwnership,
   createDebugLog,
   DEBUG_LOG_MAX_BYTES,
   DEBUG_LOG_MAX_ENTRIES,
@@ -49,6 +50,8 @@ export {
   installDebugConsole,
   recordDebugFailure,
   redactDebugText,
+  resetDebugAccount,
+  withDebugAccountTransition,
 } from "./debug-log";
 export {
   classifyError,

@@ -1,6 +1,6 @@
 import { readFileSync } from "node:fs";
 import { resolve } from "node:path";
-import { debugLog, userFacingError } from "@aulora/core";
+import { activateProfileInStore, debugLog, type ProfileStore, userFacingError } from "@aulora/core";
 import { act, renderHook } from "@testing-library/react";
 import { useCallback } from "react";
 import ts from "typescript";
@@ -9,6 +9,40 @@ import { useAccountScope as useMobileScope } from "../../../mobile/src/lib/use-a
 import { useAccountScope } from "../lib/use-account-scope";
 
 afterEach(() => debugLog.clear());
+
+it("invalidates outgoing actions before workspace persistence and teardown", async () => {
+  let rejectAction!: (error: unknown) => void;
+  let finishPersistence!: () => void;
+  const action = new Promise<void>((_resolve, reject) => {
+    rejectAction = reject;
+  });
+  const persistence = new Promise<void>((resolve) => {
+    finishPersistence = resolve;
+  });
+  const view = renderHook(() => useAccountScope("A"));
+  const pendingAction = category(view.result.current, () => action)("synthetic category");
+  const store = {
+    getActive: async () => ({ id: "A" }),
+    setActive: () => persistence,
+  } as unknown as ProfileStore;
+  const activation = activateProfileInStore(store, "B");
+  await Promise.resolve(); // finish the active-profile read before persistence begins
+  // A is still mounted while the real activation helper awaits the store.
+  expect(view.result.current.active).toBe(false);
+  rejectAction(new Error("A-only transition sentinel"));
+  await pendingAction;
+  expect(debugLog.snapshot()).toEqual([]);
+  finishPersistence();
+  await activation;
+  view.unmount();
+  const next = renderHook(() => useAccountScope("B"));
+  next.result.current.record("B", "current B");
+  debugLog.clear(); // manual Clear must not disable B's capture
+  next.result.current.record("B", "current failure after clear");
+  expect(debugLog.report("B", "")).not.toContain("A-only transition sentinel");
+  expect(debugLog.report("B", "")).toContain("current failure after clear");
+  next.unmount();
+});
 
 // Exercise the actual category mutation continuation with a real render-bound
 // account scope. A mutation is the only deferred network boundary.

@@ -1,4 +1,4 @@
-import { debugLog, recordDebugFailure, resetProviderToken } from "@aulora/core";
+import { recordDebugFailure, resetDebugAccount, resetProviderToken } from "@aulora/core";
 /* eslint-disable no-unused-vars -- the base rule reports parameter names in type signatures; Biome checks real unused code */
 import { convexClient } from "@convex-dev/better-auth/client/plugins";
 import { genericOAuthClient } from "better-auth/client/plugins";
@@ -148,7 +148,7 @@ export function authActionsFromClient(
       try {
         const result = toResult(await client.signOut());
         if (!scope.active) return result;
-        if (result.error === null) debugLog.clear();
+        if (result.error === null) resetDebugAccount();
         else {
           // A handled sign-out failure never reaches the global handlers, so
           // record it here before the session token is reused by the next

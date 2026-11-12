@@ -116,6 +116,55 @@ export function createDebugLog() {
 
 export const debugLog = createDebugLog();
 
+interface DebugAccountOwner {
+  readonly enabled: boolean;
+  replacement?: DebugAccountOwner;
+}
+
+let debugAccountOwner: DebugAccountOwner = { enabled: true };
+
+function resolvedDebugOwner(owner: DebugAccountOwner): DebugAccountOwner {
+  let resolved = owner;
+  while (resolved.replacement !== undefined) resolved = resolved.replacement;
+  if (owner !== resolved) owner.replacement = resolved;
+  return resolved;
+}
+
+/** Captures ownership before asynchronous work; manual Clear logs is independent. */
+export function captureDebugAccountOwnership(): () => boolean {
+  const owner = resolvedDebugOwner(debugAccountOwner);
+  return () => owner.enabled && resolvedDebugOwner(debugAccountOwner) === owner;
+}
+
+/** End an authenticated identity without letting its pending work refill the log. */
+export function resetDebugAccount(): void {
+  debugAccountOwner = { enabled: true };
+  debugLog.clear();
+}
+
+/**
+ * Close outgoing ownership before asynchronous profile persistence starts.
+ * Failed transitions restore the previous owner; successful ones issue a new
+ * owner. Replacement links also resolve correctly when concurrent transitions
+ * fail in either order. Scopes created during persistence never become active.
+ */
+export async function withDebugAccountTransition<T>(task: () => Promise<T>): Promise<T> {
+  const previous = resolvedDebugOwner(debugAccountOwner);
+  const transition: DebugAccountOwner = { enabled: false };
+  debugAccountOwner = transition;
+  debugLog.clear();
+  try {
+    const result = await task();
+    transition.replacement = { enabled: true };
+    return result;
+  } catch (error) {
+    transition.replacement = previous;
+    throw error;
+  } finally {
+    if (debugAccountOwner === transition) debugAccountOwner = resolvedDebugOwner(transition);
+  }
+}
+
 /**
  * Records a failure an operation caught and is handling.
  *

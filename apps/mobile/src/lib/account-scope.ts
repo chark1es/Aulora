@@ -1,3 +1,5 @@
+import { captureDebugAccountOwnership } from "@aulora/core";
+
 /**
  * Lifetime guard for work that can outlive an account transition.
  *
@@ -17,12 +19,13 @@ export function createAccountScope(
   recordFailure: (_source: string, _error: unknown) => void,
 ): AccountScope {
   let active = true;
+  const ownsAccount = captureDebugAccountOwnership();
   return {
     get active() {
-      return active;
+      return active && ownsAccount();
     },
     record(source, error) {
-      if (active) {
+      if (active && ownsAccount()) {
         recordFailure(source, error);
       }
     },
