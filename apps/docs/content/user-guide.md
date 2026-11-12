@@ -67,7 +67,7 @@ A browser needs HTTPS or localhost for media permissions. Screen sharing depends
 
 ### Sound and picture
 
-Open **Settings → Voice & video** to choose how you sound and look. Changes apply to the current call straight away.
+Open **Settings → Voice & video** to choose how you sound and look. Changes apply to the current call straight away. Microphone, speaker and camera are drop-downs; on mobile they show the active route, list only the devices the platform reports, and name a connected Bluetooth headset. Choosing the headset switches the platform's call route so both recording and playback use it, and a saved device that is no longer present is released after a second enumeration so the next call falls back to the system route instead of failing.
 
 If the connection to the other people stays poor, Aulora lowers your camera quality first and then turns the camera off so the voice call keeps working; the call shows a notice with an **Undo** button and a close button, and undoing it stops the automatic steps for that call.
 

@@ -1,16 +1,19 @@
 import type { MediaDeviceInfo, VoiceDeviceSettings } from "@aulora/core";
 import { Button, SegmentedControl, SettingRow, SwitchRow, Text } from "@aulora/ui-native";
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { ScrollView, View } from "react-native";
 import { selectionFeedback } from "../../lib/haptics";
 import {
+  type DeviceAbsence,
   deviceChoices,
-  looksLikeBluetooth,
-  reconcileDeviceId,
+  type MediaDeviceRoute,
+  NO_DEVICE_ABSENCE,
+  planDeviceReconciliation,
   SYSTEM_DEFAULT_DEVICE,
   selectedDeviceLabel,
+  selectedDeviceRoute,
 } from "../../lib/voice/media-device-choices";
-import { useBluetoothAudioName } from "../../lib/voice/use-bluetooth-audio";
+import { useAudioRoute } from "../../lib/voice/use-audio-route";
 import { useVoice } from "../../providers/VoiceProvider";
 import { ListGroup, ListHeader, ListRow } from "../chat/List";
 import { PickerSheet } from "../kanban/PickerSheet";
@@ -34,13 +37,14 @@ function DevicePicker({
   readonly devices: readonly MediaDeviceInfo[];
   readonly selected: string | null;
   readonly bluetoothName: string | undefined;
-  readonly onSelect: (_deviceId: string | null) => void;
+  readonly onSelect: (_deviceId: string | null, _route: MediaDeviceRoute) => void;
   readonly onOpen: () => void;
 }) {
   const [open, setOpen] = useState(false);
   const current = selectedDeviceLabel(devices, kind, selected);
   const choices = deviceChoices(devices, kind, kind === "videoinput" ? undefined : bluetoothName);
   const available = devices.some((device) => device.kind === kind);
+  const currentRoute = selectedDeviceRoute(devices, kind, selected);
   const detail =
     selected === null
       ? kind === "videoinput"
@@ -48,7 +52,7 @@ function DevicePicker({
         : bluetoothName === undefined
           ? "Follows this device's audio route"
           : `Bluetooth · ${bluetoothName}`
-      : looksLikeBluetooth(current)
+      : currentRoute === "bluetooth"
         ? "Bluetooth"
         : undefined;
   return (
@@ -77,8 +81,9 @@ function DevicePicker({
           selected={[selected ?? SYSTEM_DEFAULT_DEVICE]}
           onChange={(next) => {
             const id = next.at(0) ?? SYSTEM_DEFAULT_DEVICE;
+            const choice = choices.find((entry) => entry.id === id);
             selectionFeedback();
-            onSelect(id === SYSTEM_DEFAULT_DEVICE ? null : id);
+            onSelect(id === SYSTEM_DEFAULT_DEVICE ? null : id, choice?.route ?? "system");
           }}
           onClose={() => {
             setOpen(false);
@@ -321,26 +326,39 @@ function JoinSection({
 export function DeviceSettingsSection() {
   const { settings, devices, updateSettings, micLevelAvailable, callId, refreshDevices } =
     useVoice();
-  const bluetooth = useBluetoothAudioName();
+  const audioRoute = useAudioRoute();
   const pushToTalkUnavailable = callId !== null && !micLevelAvailable;
   const update: UpdateSettings = (patch) => {
     void updateSettings(patch);
   };
 
   // A saved device can vanish between sessions (a Bluetooth headset is the
-  // common case). Clear it so the next call follows the system route instead of
-  // asking for an exact device id the platform cannot satisfy.
+  // common case). Clear it after it has been missing from two informative
+  // enumerations: the first list after launch can be partial, so dropping a
+  // choice immediately would silently undo a deliberate selection.
+  const absence = useRef<DeviceAbsence>(NO_DEVICE_ABSENCE);
   useEffect(() => {
     if (devices.length === 0) return;
-    const inputDeviceId = reconcileDeviceId(devices, "audioinput", settings.inputDeviceId);
-    const outputDeviceId = reconcileDeviceId(devices, "audiooutput", settings.outputDeviceId);
-    const cameraDeviceId = reconcileDeviceId(devices, "videoinput", settings.cameraDeviceId);
+    const plan = planDeviceReconciliation(
+      devices,
+      {
+        inputDeviceId: settings.inputDeviceId,
+        outputDeviceId: settings.outputDeviceId,
+        cameraDeviceId: settings.cameraDeviceId,
+      },
+      absence.current,
+    );
+    absence.current = plan.absence;
     if (
-      inputDeviceId !== settings.inputDeviceId ||
-      outputDeviceId !== settings.outputDeviceId ||
-      cameraDeviceId !== settings.cameraDeviceId
+      plan.inputDeviceId !== settings.inputDeviceId ||
+      plan.outputDeviceId !== settings.outputDeviceId ||
+      plan.cameraDeviceId !== settings.cameraDeviceId
     ) {
-      void updateSettings({ inputDeviceId, outputDeviceId, cameraDeviceId });
+      void updateSettings({
+        inputDeviceId: plan.inputDeviceId,
+        outputDeviceId: plan.outputDeviceId,
+        cameraDeviceId: plan.cameraDeviceId,
+      });
     }
   }, [
     devices,
@@ -352,7 +370,7 @@ export function DeviceSettingsSection() {
 
   const refresh = () => {
     void refreshDevices();
-    bluetooth.refresh();
+    audioRoute.refresh();
   };
 
   return (
@@ -362,10 +380,13 @@ export function DeviceSettingsSection() {
         kind="audioinput"
         devices={devices}
         selected={settings.inputDeviceId}
-        bluetoothName={bluetooth.name}
+        bluetoothName={audioRoute.name}
         onOpen={refresh}
-        onSelect={(deviceId) => {
+        onSelect={(deviceId, route) => {
           update({ inputDeviceId: deviceId });
+          // Route the platform too: a specific WebRTC id never reaches iOS's
+          // Bluetooth port, while the native route switch does.
+          audioRoute.apply(route);
         }}
       />
       <DevicePicker
@@ -384,10 +405,14 @@ export function DeviceSettingsSection() {
         kind="audiooutput"
         devices={devices}
         selected={settings.outputDeviceId}
-        bluetoothName={bluetooth.name}
+        bluetoothName={audioRoute.name}
         onOpen={refresh}
-        onSelect={(deviceId) => {
+        onSelect={(deviceId, route) => {
           update({ outputDeviceId: deviceId });
+          // Output follows the platform route: Android moves the communication
+          // device and iOS switches the preferred port, so remote audio plays
+          // through the chosen headset instead of only being remembered.
+          audioRoute.apply(route);
         }}
       />
       <AudioProcessing settings={settings} update={update} />
