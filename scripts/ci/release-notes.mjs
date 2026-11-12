@@ -1,5 +1,5 @@
 import { execFileSync } from "node:child_process";
-import { existsSync, readFileSync, writeFileSync } from "node:fs";
+import { readFileSync, writeFileSync } from "node:fs";
 import { resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 import { validateVersion } from "../../apps/desktop/scripts/release-version.mjs";
@@ -9,9 +9,13 @@ export function releaseNotes({ version, repository, commit, notes = "" }, run = 
   if (version === "1.0.0") return readFileSync("docs/release-notes-v1.md", "utf8");
   validateVersion(version);
   const checkedIn = `docs/release-notes-v${version}.md`;
-  // The version above is stable SemVer, so this path stays inside docs/.
-  // nosemgrep: javascript_pathtraversal_rule-non-literal-fs-filename
-  if (existsSync(checkedIn)) return readFileSync(checkedIn, "utf8");
+  try {
+    // The version above is stable SemVer, so this path stays inside docs/.
+    // nosemgrep: javascript_pathtraversal_rule-non-literal-fs-filename
+    return readFileSync(checkedIn, "utf8");
+  } catch (error) {
+    if (error?.code !== "ENOENT") throw error;
+  }
   const generated = run(
     "gh",
     [
