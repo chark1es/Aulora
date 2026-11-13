@@ -1,5 +1,6 @@
 import { readFileSync } from "node:fs";
 import { resolve } from "node:path";
+import { Script } from "node:vm";
 import {
   activateProfileInStore,
   debugLog,
@@ -83,9 +84,14 @@ function controller(platform: "mobile" | "web") {
     submit?: () => Promise<void>;
     signInWithProvider?: (id: string, type: string, name: string) => Promise<void>;
   };
-  const hook = new Function(...Object.keys(bindings), `${code}; return ${name};`)(
-    ...Object.values(bindings),
-  ) as (...args: unknown[]) => Form;
+  // Only checked-in controller source is executed; dependencies are explicit.
+  const hook = new Script(
+    `${code}
+${name};`,
+    {
+      filename: `${platform}-sign-in-controller.test.js`,
+    },
+  ).runInNewContext(bindings) as (...args: unknown[]) => Form;
   const authClient = {};
   const store = {};
   return {
@@ -174,8 +180,7 @@ it.each(["reject", "result", "success"])("drops a late mobile provider %s", asyn
   boundary.provider.mockReturnValue(request.promise);
   const form = boundary.render({});
   const pending = form.signInWithProvider?.("example", "oauth", "Example");
-  await Promise.resolve(); // finish the delivery chooser and start auth
-  expect(boundary.provider).toHaveBeenCalledOnce();
+  await vi.waitFor(() => expect(boundary.provider).toHaveBeenCalledOnce());
   boundary.unmount();
   boundary.patches.mockClear();
   debugLog.clear();
