@@ -176,7 +176,7 @@ describe("SignInScreen", () => {
     ).toBeNull();
   });
 
-  it("asks a desktop app where to finish and honors the choice", async () => {
+  it("opens desktop sign-in directly in the system browser", async () => {
     desktop.value = true;
     const user = userEvent.setup();
     render(
@@ -187,14 +187,16 @@ describe("SignInScreen", () => {
     );
 
     await user.click(screen.getByRole("button", { name: "Continue with GitHub" }));
-    expect(screen.getByText("Continue with GitHub")).toBeInTheDocument();
-
-    await user.click(screen.getByText("Open in browser"));
-    await user.click(screen.getByRole("button", { name: "Continue" }));
+    expect(screen.queryByText("Sign in in app")).not.toBeInTheDocument();
+    expect(screen.queryByRole("dialog")).not.toBeInTheDocument();
 
     // The handoff is prepared asynchronously before the browser opens.
     await waitFor(() => {
       expect(beginOAuth).toHaveBeenCalledWith(expect.any(String), "external");
+      const url = new URL(vi.mocked(beginOAuth).mock.calls[0]?.[0] ?? "");
+      expect(url.searchParams.get("return")).toBe("aulora://auth/callback");
+      expect(url.searchParams.get("challenge")).toHaveLength(64);
+      expect(url.searchParams.get("tx")).toHaveLength(64);
     });
   });
 

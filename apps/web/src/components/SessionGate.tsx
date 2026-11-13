@@ -36,7 +36,6 @@ import {
   type ConnectionRecoveryActionsProps,
 } from "./ConnectionRecoveryActions";
 import { ChatSessionShell, type ChatSessionShellRecovery } from "./chat/ChatSessionShell";
-import { LegacyRecoveryNotice } from "./LegacyRecoveryNotice";
 import { MembershipGate } from "./MembershipGate";
 import { QueryErrorBoundary } from "./QueryErrorBoundary";
 import { SignInScreen } from "./SignInScreen";
@@ -45,6 +44,11 @@ import { SignInScreen } from "./SignInScreen";
 // code every signed-in session downloads.
 const SetupScreen = lazy(() =>
   import("./SetupScreen").then((module) => ({ default: module.SetupScreen })),
+);
+
+// Recovery of old local drafts is independent of the live chat session.
+const LegacyRecoveryNotice = lazy(() =>
+  import("./LegacyRecoveryNotice").then((module) => ({ default: module.LegacyRecoveryNotice })),
 );
 
 export interface SessionGateProps {
@@ -374,10 +378,12 @@ function SignedInShell({
           signedInAs={signedInUser.email ?? signedInUser.name ?? null}
           onSignOut={signOut}
         >
-          <LegacyRecoveryNotice
-            key={storageScope(profile.baseUrl, user.id)}
-            scope={storageScope(profile.baseUrl, user.id)}
-          />
+          <Suspense fallback={null}>
+            <LegacyRecoveryNotice
+              key={storageScope(profile.baseUrl, user.id)}
+              scope={storageScope(profile.baseUrl, user.id)}
+            />
+          </Suspense>
           <ChatSessionShell
             client={client}
             workspaceName={profile.name}

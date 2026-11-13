@@ -66,9 +66,9 @@ export function oauthStartUrl(
   return url.toString();
 }
 
-/** Starts OAuth in the chosen context. External is desktop-only. */
-export function beginOAuth(startUrl: string, delivery: OAuthDelivery): void {
-  if (delivery === "external" && isDesktop()) {
+/** Desktop sign-in always uses the system browser, even for legacy callers. */
+export function beginOAuth(startUrl: string, _delivery: OAuthDelivery): void {
+  if (isDesktop()) {
     openExternal(startUrl);
     return;
   }

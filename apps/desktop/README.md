@@ -45,17 +45,15 @@ Provider sign-in (OAuth/OIDC) always starts on the workspace's own origin.
 Better Auth binds the callback to the browser context that started sign-in with
 a signed `state` cookie; starting the flow from the webview's cross-origin fetch
 stack dropped that cookie and failed with `state_mismatch`. The client opens
-`/api/auth/native/start` in the chosen browsing context, the provider redirects
+`/api/auth/native/start` in the system browser, the provider redirects
 back to the workspace, and `/api/auth/native/finish` hands the finished session
 back to the app:
 
-- **Sign in in app** keeps the round trip in the webview and returns to
-  `tauri://localhost` / `http://tauri.localhost` with a short-lived code.
-- **Open in browser** uses the system browser and returns through the
-  `aulora://auth/callback` deep link. `take_deep_links` buffers the URL and the
-  web client exchanges the code.
+Provider sign-in opens the system browser and returns through the
+`aulora://auth/callback` deep link. `take_deep_links` buffers the URL and the
+web client exchanges the code. Sign-in inside the desktop webview is not offered.
 
-Either way, `/api/auth/native/exchange` trades the short-lived code for the
+`/api/auth/native/exchange` trades the short-lived code for the
 bearer session token the shell already stores. The code is opaque, stored only
 as a SHA-256 digest, single-use, and expires after two minutes. Starting sign-in
 also stores a random verifier in the webview's `sessionStorage`; only its

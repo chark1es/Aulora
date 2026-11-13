@@ -31,6 +31,12 @@ test("v1.6.0 includes its checked-in upgrade and validation notes", () => {
   );
 });
 
+test("v1.6.1 includes the sign-in fix and compatibility notes", () => {
+  expect(releaseNotes({ ...release, version: "1.6.1" }, unexpectedCall)).toBe(
+    readFileSync("docs/release-notes-v1.6.1.md", "utf8"),
+  );
+});
+
 test("later releases generate notes for the exact version and built commit", () => {
   const generated = "## What's Changed\n\n- Fix reconnects by @contributor\n";
   let calls = 0;

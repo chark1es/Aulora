@@ -11,12 +11,9 @@ import { providerBrand, providerButtonLabel } from "@aulora/tokens";
 import {
   Button,
   CapText,
-  ChoiceList,
-  type ChoiceOption,
   cn,
   Icon,
   IconButton,
-  Modal,
   ProviderIcon,
   Text,
   usePrefersReducedMotion,
@@ -41,7 +38,6 @@ import {
   beginOAuth,
   clearStoredAuthHandoffError,
   DESKTOP_AUTH_RETURN,
-  type OAuthDelivery,
   type OAuthProviderRef,
   oauthStartUrl,
   prepareOAuthStart,
@@ -538,28 +534,6 @@ function SignInPanel(props: SignInPanelProps) {
   );
 }
 
-type DeliveryOption = OAuthDelivery;
-
-const DELIVERY_OPTIONS: ReadonlyArray<ChoiceOption<DeliveryOption>> = [
-  {
-    value: "in-app",
-    title: "Sign in in app",
-    description: "Finish in the Aulora window without leaving the app.",
-    leading: <Icon name="desktop" size={16} />,
-  },
-  {
-    value: "external",
-    title: "Open in browser",
-    description: "Use your default browser, then return here automatically.",
-    leading: <Icon name="link" size={16} />,
-  },
-];
-
-interface ProviderChoice {
-  readonly provider: OAuthProviderRef;
-  readonly name: string;
-}
-
 function subtitleFor(methods: SignInMethods, signUp: boolean, description: string): string {
   if (description.length > 0) {
     return description;
@@ -581,8 +555,7 @@ function subtitleFor(methods: SignInMethods, signUp: boolean, description: strin
  *
  * Provider sign-in always starts on the workspace’s own origin: that is the
  * context that receives the callback, so Better Auth’s state cookie is present.
- * The desktop shell also offers a choice between its own window and the system
- * browser; both finish by deep link.
+ * The desktop shell opens the system browser and returns by deep link.
  *
  * The workspace’s blobatar is the hero on its own colour panel, drawn from the
  * same seed, so each workspace signs in on its own colours. The form sits
@@ -604,47 +577,21 @@ export function SignInScreen({
   const methods = resolveSignInMethods(auth);
   const { state, patch, submit, run, scopeRef } = useSignInForm(actions, profile.siteUrl);
   const [watch, setWatch] = useState<Watch>("pointer");
-  const [choice, setChoice] = useState<ProviderChoice | null>(null);
-  const [delivery, setDelivery] = useState<DeliveryOption>("in-app");
   const signUp = state.mode === "sign-up";
 
-  const startProvider = (provider: OAuthProviderRef, name: string) => {
+  const startProvider = (provider: OAuthProviderRef) => {
     patch({ error: null });
     if (onStartProvider !== undefined) {
       void run(provider.id, () => onStartProvider(provider.id, provider.type));
       return;
     }
-    if (isDesktop()) {
-      setDelivery("in-app");
-      setChoice({ provider, name });
-      return;
-    }
-    const returnUrl = webAuthReturnUrl();
+    const delivery = isDesktop() ? "external" : "in-app";
+    const returnUrl = isDesktop() ? DESKTOP_AUTH_RETURN : webAuthReturnUrl();
     const scope = scopeRef.current;
     void prepareOAuthStart(profile.siteUrl, returnUrl)
       .then(({ challenge, tx }) => {
         if (!scope.isActive()) return;
-        beginOAuth(oauthStartUrl(profile.siteUrl, provider, returnUrl, challenge, tx), "in-app");
-      })
-      .catch((error: unknown) => {
-        scope.record("auth.provider", authFailureDetail(error));
-      });
-  };
-
-  const confirmChoice = () => {
-    if (choice === null) {
-      return;
-    }
-    const returnUrl = delivery === "external" ? DESKTOP_AUTH_RETURN : webAuthReturnUrl();
-    const scope = scopeRef.current;
-    void prepareOAuthStart(profile.siteUrl, returnUrl)
-      .then(({ challenge, tx }) => {
-        if (!scope.isActive()) return;
-        beginOAuth(
-          oauthStartUrl(profile.siteUrl, choice.provider, returnUrl, challenge, tx),
-          delivery,
-        );
-        setChoice(null);
+        beginOAuth(oauthStartUrl(profile.siteUrl, provider, returnUrl, challenge, tx), delivery);
       })
       .catch((error: unknown) => {
         scope.record("auth.provider", authFailureDetail(error));
@@ -697,8 +644,7 @@ export function SignInScreen({
         onPatch={patch}
         onWatch={setWatch}
         onProvider={(providerId, type) => () => {
-          const provider = auth.providers.find((entry) => entry.id === providerId);
-          startProvider({ id: providerId, type }, provider?.displayName ?? providerId);
+          startProvider({ id: providerId, type });
         }}
         onSubmit={() => {
           void submit();
@@ -712,40 +658,6 @@ export function SignInScreen({
           Use a different workspace
         </AuthLink>
       )}
-      <Modal
-        open={choice !== null}
-        onClose={() => {
-          setChoice(null);
-        }}
-        size="sm"
-        label="Where to finish sign-in"
-        title={choice === null ? "Where to finish sign-in" : `Continue with ${choice.name}`}
-        description="Both options finish signing you in and return to Aulora."
-        icon={<Icon name="key" size={18} />}
-        footer={
-          <>
-            <Button
-              variant="ghost"
-              onClick={() => {
-                setChoice(null);
-              }}
-            >
-              Cancel
-            </Button>
-            <Button onClick={confirmChoice}>Continue</Button>
-          </>
-        }
-      >
-        <div className="flex flex-col gap-2">
-          <span className="text-[12.5px] font-medium text-text">Choose how to finish</span>
-          <ChoiceList
-            label="Where to finish sign-in"
-            value={delivery}
-            options={DELIVERY_OPTIONS}
-            onChange={setDelivery}
-          />
-        </div>
-      </Modal>
     </AuthFrame>
   );
 }
