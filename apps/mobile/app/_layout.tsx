@@ -15,6 +15,7 @@ import { BottomSheetModalProvider } from "@gorhom/bottom-sheet";
 import { FONT_ASSETS } from "../src/lib/fonts";
 import { configureNotificationHandler } from "../src/lib/push";
 import { useThemeVars } from "../src/lib/theme";
+import { useWorkspaceNotifications } from "../src/lib/use-workspace-notifications";
 import { ProfileProvider } from "../src/providers/ProfileProvider";
 
 // Dev-only, upstream race in expo-router@57: its forked NavigationContainer
@@ -56,6 +57,9 @@ void SplashScreen.preventAutoHideAsync();
 function ThemedStack() {
   const theme = useThemeVars();
   const palette = usePalette();
+  // Mounted inside ProfileProvider: wakes for another workspace become a nav
+  // badge, and opening one switches to that workspace.
+  useWorkspaceNotifications();
   return (
     <View className="flex-1 bg-bg" style={theme}>
       <Stack

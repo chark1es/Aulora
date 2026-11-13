@@ -11,6 +11,12 @@ export interface UnopenedChannelAlertsOptions {
   readonly eagerChannelIds: ReadonlySet<string>;
   /** The open conversation, served by `useChannelSession`. */
   readonly activeChannelId: string | undefined;
+  /**
+   * Whether that conversation's timeline is actually on screen. A kept pane can
+   * be mounted but hidden behind Notes, Kanban or the sidebar, and then its new
+   * messages are unopened for the reader.
+   */
+  readonly activeChannelVisible?: boolean;
   readonly mutedChannelIds: ReadonlySet<string>;
   readonly suppressionPrefs?: Parameters<typeof suppressesBroadcast>[2];
   readonly channelNames: ReadonlyMap<string, string>;
@@ -42,7 +48,7 @@ export function useUnopenedChannelAlerts(options: UnopenedChannelAlertsOptions):
     for (const [channelId, now] of current) {
       if (
         options.eagerChannelIds.has(channelId) ||
-        channelId === options.activeChannelId ||
+        (channelId === options.activeChannelId && options.activeChannelVisible !== false) ||
         options.mutedChannelIds.has(channelId)
       ) {
         continue;

@@ -4,8 +4,8 @@ import {
   DEBUG_LOG_MAX_BYTES,
   DEBUG_LOG_MAX_ENTRIES,
   debugLog,
-  generateDebugTestError,
   installDebugConsole,
+  recordDebugFailure,
   redactDebugText,
 } from "../src/debug-log";
 
@@ -106,15 +106,34 @@ describe("debug logs", () => {
     expect(listener).toHaveBeenCalledTimes(2);
   });
 
+  it("records handled failures with their source in the exported report", () => {
+    recordDebugFailure("ui.action", new Error("could not save note"));
+    const report = JSON.parse(debugLog.report("test", "steps"));
+    expect(report.entries).toHaveLength(1);
+    expect(report.entries[0].source).toBe("ui.action");
+    expect(report.entries[0].detail).toContain("could not save note");
+  });
+
+  it("keeps an auth failure after the previous account's entries are cleared", () => {
+    debugLog.record("previous-account", "sentinel-old-account");
+    debugLog.clear();
+    recordDebugFailure("auth.session", new Error("session was rejected"));
+    const entries = debugLog.snapshot();
+    expect(entries).toHaveLength(1);
+    expect(entries[0]?.detail).toContain("session was rejected");
+    expect(JSON.stringify(entries)).not.toContain("sentinel-old-account");
+  });
+
   it("captures console errors and warnings once while retaining original output", () => {
     const error = vi.spyOn(console, "error").mockImplementation(() => {});
     const warn = vi.spyOn(console, "warn").mockImplementation(() => {});
     installDebugConsole();
     installDebugConsole();
-    generateDebugTestError();
+    console.error("failure");
     console.warn("warning");
     expect(debugLog.snapshot()).toHaveLength(2);
-    expect(debugLog.snapshot()[0]?.detail).toContain("Aulora diagnostic test error");
+    expect(debugLog.snapshot()[0]?.detail).toContain("failure");
+    expect(debugLog.snapshot()[1]?.detail).toContain("warning");
     expect(error).toHaveBeenCalledTimes(1);
     expect(warn).toHaveBeenCalledTimes(1);
     error.mockRestore();

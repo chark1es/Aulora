@@ -13,12 +13,14 @@ export interface RoleColorEditorProps {
   readonly onDraftColor: Fn<[color: string], void>;
   readonly error: string | null;
   readonly onError: Fn<[message: string | null], void>;
-  /** Leaves the editor, optionally after a successful save. */
-  readonly onDone: Fn<[], void>;
+  /** Leaves the editor after a successful save. */
+  readonly onSaved: Fn<[], void>;
+  /** Leaves without saving; the page asks before discarding a changed draft. */
+  readonly onBack: Fn<[], void>;
 }
 
 /** Saves the draft colour; reports validation and network failures through `onError`. */
-function useSaveRoleColor({ row, draftColor, onError, onDone }: RoleColorEditorProps) {
+function useSaveRoleColor({ row, draftColor, onError, onSaved }: RoleColorEditorProps) {
   const updateRole = useMutation(api.roles.update);
   const [busy, setBusy] = useState(false);
   const save = () => {
@@ -31,7 +33,7 @@ function useSaveRoleColor({ row, draftColor, onError, onDone }: RoleColorEditorP
     onError(null);
     void Promise.resolve(updateRole({ roleId: patch.roleId as never, color: patch.color }))
       .then(() => {
-        onDone();
+        onSaved();
       })
       .catch(() => {
         onError("Couldn’t save the color. Try again when you are connected.");
@@ -76,7 +78,7 @@ export function RoleColorEditor(props: RoleColorEditorProps) {
         <Button loading={busy} disabled={busy || !row.editable} onPress={save}>
           Save color
         </Button>
-        <Button variant="secondary" disabled={busy} onPress={props.onDone}>
+        <Button variant="secondary" disabled={busy} onPress={props.onBack}>
           Back to roles
         </Button>
       </View>

@@ -14,6 +14,8 @@ import {
 import { useBoardMutations } from "./use-board-mutations";
 
 export interface BoardProps {
+  /** True while the hub pane is the visible surface. */
+  readonly active?: boolean;
   readonly ownUserId: string;
   readonly permissions: bigint;
   readonly members: readonly BoardMember[];

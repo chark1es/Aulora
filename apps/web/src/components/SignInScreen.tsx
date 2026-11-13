@@ -1,5 +1,6 @@
 /* eslint-disable no-unused-vars -- the base rule reports parameter names in type signatures; Biome checks real unused code */
 import {
+  recordDebugFailure,
   resolveSignInMethods,
   type ServerProfile,
   type SignInMethods,
@@ -32,8 +33,9 @@ import {
   useState,
 } from "react";
 import { api } from "../../../../packages/convex/convex/_generated/api";
+import { createAccountScope } from "../lib/account-scope";
 import type { AuthActions } from "../lib/auth-client";
-import { describeAuthError, takeAuthErrorFromUrl } from "../lib/auth-errors";
+import { authFailureDetail, describeAuthError, takeAuthErrorFromUrl } from "../lib/auth-errors";
 import { isDesktop } from "../lib/desktop";
 import {
   beginOAuth,
@@ -127,6 +129,17 @@ function useSignInForm(actions: AuthActions, siteUrl: string) {
         (storedHandoff === null ? null : describeAuthError(storedHandoff)),
     };
   });
+  // Each operation captures the screen/workspace lifetime it started in.
+  const scopeRef = useRef(createAccountScope(recordDebugFailure));
+  // biome-ignore lint/correctness/useExhaustiveDependencies: identity changes must close in-flight work even though the effect only creates its lifetime.
+  useEffect(() => {
+    const scope = createAccountScope(recordDebugFailure);
+    scopeRef.current = scope;
+    return () => {
+      scope.close();
+    };
+  }, [actions, siteUrl]);
+
   const patch = (next: Partial<FormState>) => {
     setState((current) => ({ ...current, ...next }));
   };
@@ -136,8 +149,11 @@ function useSignInForm(actions: AuthActions, siteUrl: string) {
   useEffect(
     () =>
       subscribeAuthError(() => {
+        const scope = scopeRef.current;
+        if (!scope.isActive()) return;
         const stored = takeStoredAuthHandoffError(siteUrl);
         if (stored !== null) {
+          scope.record("auth.callback", stored);
           setState((current) => ({ ...current, error: describeAuthError(stored) }));
         }
       }),
@@ -145,10 +161,14 @@ function useSignInForm(actions: AuthActions, siteUrl: string) {
   );
 
   async function run(key: string, task: () => Promise<AuthResult>) {
+    const scope = scopeRef.current;
+    if (!scope.isActive()) return;
     patch({ error: null, pending: key });
     try {
       const result = await task();
+      if (!scope.isActive()) return;
       if (result.error !== null) {
+        scope.record("auth.signin", authFailureDetail(result.error));
         patch({
           error:
             result.error.message === undefined
@@ -158,10 +178,12 @@ function useSignInForm(actions: AuthActions, siteUrl: string) {
       } else {
         clearStoredAuthHandoffError();
       }
-    } catch {
+    } catch (error) {
+      if (!scope.isActive()) return;
+      scope.record("auth.signin", authFailureDetail(error));
       patch({ error: "Could not reach the workspace. Try again." });
     } finally {
-      patch({ pending: null });
+      if (scope.isActive()) patch({ pending: null });
     }
   }
 
@@ -175,7 +197,7 @@ function useSignInForm(actions: AuthActions, siteUrl: string) {
     await run("local", () => actions.signInEmail({ email: state.email, password: state.password }));
   }
 
-  return { state, patch, submit, run };
+  return { state, patch, submit, run, scopeRef };
 }
 
 interface ProviderStackProps {
@@ -580,7 +602,7 @@ export function SignInScreen({
   // is authoritative once it loads; the snapshot only covers the first paint.
   const auth = config?.auth ?? profile.auth;
   const methods = resolveSignInMethods(auth);
-  const { state, patch, submit, run } = useSignInForm(actions, profile.siteUrl);
+  const { state, patch, submit, run, scopeRef } = useSignInForm(actions, profile.siteUrl);
   const [watch, setWatch] = useState<Watch>("pointer");
   const [choice, setChoice] = useState<ProviderChoice | null>(null);
   const [delivery, setDelivery] = useState<DeliveryOption>("in-app");
@@ -598,9 +620,15 @@ export function SignInScreen({
       return;
     }
     const returnUrl = webAuthReturnUrl();
-    void prepareOAuthStart(profile.siteUrl, returnUrl).then(({ challenge, tx }) => {
-      beginOAuth(oauthStartUrl(profile.siteUrl, provider, returnUrl, challenge, tx), "in-app");
-    });
+    const scope = scopeRef.current;
+    void prepareOAuthStart(profile.siteUrl, returnUrl)
+      .then(({ challenge, tx }) => {
+        if (!scope.isActive()) return;
+        beginOAuth(oauthStartUrl(profile.siteUrl, provider, returnUrl, challenge, tx), "in-app");
+      })
+      .catch((error: unknown) => {
+        scope.record("auth.provider", authFailureDetail(error));
+      });
   };
 
   const confirmChoice = () => {
@@ -608,13 +636,19 @@ export function SignInScreen({
       return;
     }
     const returnUrl = delivery === "external" ? DESKTOP_AUTH_RETURN : webAuthReturnUrl();
-    void prepareOAuthStart(profile.siteUrl, returnUrl).then(({ challenge, tx }) => {
-      beginOAuth(
-        oauthStartUrl(profile.siteUrl, choice.provider, returnUrl, challenge, tx),
-        delivery,
-      );
-      setChoice(null);
-    });
+    const scope = scopeRef.current;
+    void prepareOAuthStart(profile.siteUrl, returnUrl)
+      .then(({ challenge, tx }) => {
+        if (!scope.isActive()) return;
+        beginOAuth(
+          oauthStartUrl(profile.siteUrl, choice.provider, returnUrl, challenge, tx),
+          delivery,
+        );
+        setChoice(null);
+      })
+      .catch((error: unknown) => {
+        scope.record("auth.provider", authFailureDetail(error));
+      });
   };
 
   return (

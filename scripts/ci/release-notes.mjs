@@ -5,6 +5,8 @@ import { fileURLToPath } from "node:url";
 
 function checkedInNotes(version) {
   switch (version) {
+    case "1.6.0":
+      return readFileSync("docs/release-notes-v1.6.0.md", "utf8");
     case "1.5.0":
       return readFileSync("docs/release-notes-v1.5.0.md", "utf8");
     default:

@@ -26,10 +26,12 @@ import { lazy, Suspense, useCallback, useEffect, useMemo, useRef, useState } fro
 import { api } from "../../../../../packages/convex/convex/_generated/api";
 import { DEFAULT_MAX_UPLOAD_BYTES, uploadFiles } from "../../lib/attachments";
 import { selectEagerChannelIds } from "../../lib/channel-priority";
+import { isChatCanvasOnScreen, isThreadsInboxOnScreen } from "../../lib/chat-surface";
 import { isDesktop } from "../../lib/desktop";
 import { publicOriginOrNull, publicUrl } from "../../lib/public-origin";
 import { sendThreadReply } from "../../lib/send-thread-reply";
 import { playSound } from "../../lib/sounds";
+import { useAccountScope } from "../../lib/use-account-scope";
 import { useChannelSession } from "../../lib/use-channel";
 import {
   showUnfocusedNotification,
@@ -39,7 +41,9 @@ import { useUnreadBadge } from "../../lib/use-desktop-unread";
 import { useMemberPages } from "../../lib/use-member-pages";
 import { useSettingsNavigation } from "../../lib/use-settings-navigation";
 import { useUnopenedChannelAlerts } from "../../lib/use-unopened-channel-alerts";
+import { useVisitedViews } from "../../lib/use-visited-views";
 import { useWebPush } from "../../lib/use-web-push";
+import { useWideShell } from "../../lib/use-wide-shell";
 import {
   type CategoryView,
   type MemberView,
@@ -58,6 +62,7 @@ import {
   WorkspaceUpdateProvider,
 } from "../../providers/WorkspaceUpdateProvider";
 import type { AdminPanelViewer } from "../admin/AdminPanel";
+import { KeepAlive } from "../KeepAlive";
 import { DesktopUpdateSettings } from "../UpdateSettings";
 import { CallPictureInPicture } from "../voice/CallPictureInPicture";
 import { DeviceSettingsSection } from "../voice/DeviceSettingsSection";
@@ -89,7 +94,10 @@ import { type RestoreTracking, restoreMentionedChannels } from "./restore-channe
 import { type SearchArchiveState, SearchPanel } from "./SearchPanel";
 import { type ThreadInboxItem, ThreadsInbox } from "./ThreadsInbox";
 import { ThreadsPanel } from "./ThreadsPanel";
-import { UserSettingsView } from "./UserSettingsView";
+
+const UserSettingsView = lazy(() =>
+  import("./UserSettingsView").then((module) => ({ default: module.UserSettingsView })),
+);
 
 // Heavy surfaces only render conditionally (admin, board, notes, a call). Load
 // them on demand so the signed-in shell does not ship their code up front.
@@ -181,9 +189,6 @@ const EMPTY_MEMBERS: readonly MemberView[] = [];
 const LAST_CHANNEL_KEY = "aulora.lastChannel.v1:";
 const MEMBERS_OPEN_KEY = "aulora.membersOpen.v1";
 const MESSAGE_ALIGNMENT_KEY = "aulora.messageAlignment.v1";
-function errorMessage(error: unknown): string {
-  return userFacingError(error);
-}
 
 /** Whether two id lists hold the same distinct values, order-insensitive. */
 function readLocal(key: string): string | null {
@@ -256,6 +261,14 @@ function ChatViewContent({
   admin,
   onSignOut,
 }: ChatViewProps) {
+  const actionScope = useAccountScope(ownUserId);
+  const errorMessage = useCallback(
+    (error: unknown) => {
+      actionScope.record("ui.action", error);
+      return userFacingError(error);
+    },
+    [actionScope],
+  );
   const chat = useChat();
   const { runtime, channels, channelNames, presence, ready, outbox } = chat;
   const voice = useVoice();
@@ -270,6 +283,11 @@ function ChatViewContent({
   const [mainView, setMainView] = useState<
     "chat" | "threads" | "kanban" | "notes" | "scheduled" | "transcripts"
   >("chat");
+  // Bounded retention applies to surfaces and to the Threads inbox: only the
+  // view currently on screen stays subscribed. The badge stays cheap through
+  // the participation-row count below, so leaving Threads does not need a
+  // long-lived inbox query.
+  const threadsOpen = mainView === "threads";
   const [adminOpen, setAdminOpen] = useState(false);
   const [newConversationOpen, setNewConversationOpen] = useState(false);
   const [createChannelOpen, setCreateChannelOpen] = useState(false);
@@ -294,6 +312,16 @@ function ChatViewContent({
   const [userSettingsOpen, setUserSettingsOpen] = useState(false);
   const [userSettingsDirty, setUserSettingsDirty] = useState(false);
   const [notesDirty, setNotesDirty] = useState(false);
+  /** Bumped on confirmed discard so the retained Notes editor resets its draft. */
+  const [notesDiscardToken, setNotesDiscardToken] = useState(0);
+  // Surfaces stay mounted after their first visit (see `KeepAlive`), so coming
+  // back to Notes or the Kanban board does not re-run its queries behind a
+  // spinner. Only the addons the reader has actually opened are mounted, and a
+  // hidden surface is released after `HIDDEN_VIEW_TTL_MS` unless an unsaved
+  // Notes draft must survive.
+  const visitedViews = useVisitedViews(mainView, {
+    holdView: notesDirty ? "notes" : undefined,
+  });
   const settingsNavigation = useSettingsNavigation(
     true,
     (userSettingsOpen && userSettingsDirty) || notesDirty,
@@ -331,6 +359,13 @@ function ChatViewContent({
   const [sendError, setSendError] = useState<string | null>(null);
   const reported = useRef(new Set<string>());
   const attentive = useAttentive();
+  const wideShell = useWideShell();
+  const surfaceState = { mainView, adminOpen, userSettingsOpen, mobilePane, wideShell } as const;
+  // Kept panes stay mounted (see `KeepAlive`), so their effects keep running
+  // while another surface is on screen. Anything that acknowledges messages has
+  // to ask whether the reader can actually see them.
+  const chatCanvasOnScreen = isChatCanvasOnScreen(surfaceState);
+  const threadsInboxOnScreen = isThreadsInboxOnScreen(surfaceState);
 
   // The open channel’s live session. Declared before the member directory
   // because the directory is scoped to the authors and mentions it displays.
@@ -480,18 +515,18 @@ function ChatViewContent({
   // itself (root lookups plus opened bodies) is only subscribed while open.
   const threadMentionCount = useQuery(api.messages.threadMentionCount, {}) ?? 0;
   useEffect(() => {
-    if (mainView === "threads")
+    if (threadsInboxOnScreen)
       void runtime?.client.mutation(api.messages.markThreadMentionsSeen, {}).catch(() => undefined);
-  }, [mainView, runtime]);
+  }, [threadsInboxOnScreen, runtime]);
   const publicConfig = useQuery(api.server.publicConfig, {});
   const pagedThreads = publicConfig?.capabilities?.threadInboxPaging === true;
   const legacyThreadRows = useQuery(
     api.messages.threadInbox,
-    mainView === "threads" && !pagedThreads ? { limit: THREAD_INBOX_PAGE } : "skip",
+    threadsOpen && !pagedThreads ? { limit: THREAD_INBOX_PAGE } : "skip",
   );
   const threadPages = usePaginatedQuery(
     api.messages.threadInboxPage,
-    mainView === "threads" && pagedThreads ? {} : "skip",
+    threadsOpen && pagedThreads ? {} : "skip",
     { initialNumItems: 50 },
   );
   const threadRows = pagedThreads
@@ -534,6 +569,7 @@ function ChatViewContent({
     unreadByChannel,
     eagerChannelIds,
     activeChannelId,
+    activeChannelVisible: chatCanvasOnScreen,
     mutedChannelIds,
     channelNames,
   });
@@ -996,7 +1032,9 @@ function ChatViewContent({
     [roles],
   );
 
-  // Mark the newest message read while the reader can actually see it.
+  // Mark the newest message read while the reader can actually see it. The
+  // canvas is kept mounted when Notes, Kanban, Settings or an admin sheet takes
+  // the screen, and marking then would clear a badge for a message nobody read.
   const newest = sessionState.messages.at(-1);
   useEffect(() => {
     if (
@@ -1004,6 +1042,7 @@ function ChatViewContent({
       activeChannelId === undefined ||
       newest === undefined ||
       !attentive ||
+      !chatCanvasOnScreen ||
       !sessionState.readStateLoaded ||
       sessionState.readState?.lastReadMessageId === newest.id
     ) {
@@ -1015,6 +1054,7 @@ function ChatViewContent({
     activeChannelId,
     newest,
     attentive,
+    chatCanvasOnScreen,
     sessionState.readStateLoaded,
     sessionState.readState,
   ]);
@@ -1470,11 +1510,13 @@ function ChatViewContent({
       } else {
         await createCategory({ name });
       }
+      if (!actionScope.active) return;
       closeCategoryModal();
     } catch (error) {
+      if (!actionScope.active) return;
       setCategoryError(errorMessage(error));
     } finally {
-      setCategoryBusy(false);
+      if (actionScope.active) setCategoryBusy(false);
     }
   };
 
@@ -1513,6 +1555,19 @@ function ChatViewContent({
 
   const showList = mobilePane === "list" || (mainView === "chat" && channel === undefined);
   const adminView = adminOpen && showAdmin;
+  const kanbanAllowed = kanbanEnabled && hasPermission(permissions, Permission.ViewKanban);
+  const notesAllowed = notesEnabled && hasPermission(permissions, Permission.ViewNotes);
+  const scheduledAllowed = canViewScheduledCalls(permissions, voice.addons.scheduledCalls);
+  const transcriptsAllowed = canViewTranscripts(permissions, voice.addons.transcription);
+  // Every surface except the chat canvas stays mounted after its first visit
+  // (see `KeepAlive`); these flags decide which one is actually on screen.
+  const surfaceAvailable = !adminView && !userSettingsOpen;
+  const kanbanVisible = surfaceAvailable && mainView === "kanban" && kanbanAllowed;
+  const notesVisible = surfaceAvailable && mainView === "notes" && notesAllowed;
+  const scheduledVisible = surfaceAvailable && mainView === "scheduled" && scheduledAllowed;
+  const transcriptsVisible = surfaceAvailable && mainView === "transcripts" && transcriptsAllowed;
+  const chatVisible =
+    surfaceAvailable && !kanbanVisible && !notesVisible && !scheduledVisible && !transcriptsVisible;
   const rightPanel =
     threadRoot !== undefined && channel !== undefined ? "thread" : membersOpen ? "members" : null;
   const callTitle =
@@ -1568,11 +1623,80 @@ function ChatViewContent({
       });
       setEditChannelModal(undefined);
     } catch (error) {
+      if (!actionScope.active) return;
       setEditChannelError(errorMessage(error));
     } finally {
       setEditChannelBusy(false);
     }
   };
+
+  // Keep the conversation's props separate from surface visibility. Constructing
+  // this element does not mount it; the canvas still decides when to render it.
+  const conversationPane =
+    channel !== undefined && channel.kind !== "voice" ? (
+      <ChannelPane
+        mentionMarkers={resolveServerCapabilities(publicConfig).mentionMarkers}
+        runtime={runtime}
+        channel={channel}
+        title={title}
+        placeholder={placeholder}
+        ownUserId={ownUserId}
+        ownName={ownName}
+        alignment={alignment}
+        channelPermissions={channelPermissions}
+        sessionState={sessionState}
+        mergedMessages={mergedMessages}
+        mergedDecrypted={mergedDecrypted}
+        attachments={attachmentsByMessage}
+        pendingIds={pendingIds}
+        failureReasons={failureReasons}
+        failedIds={failedIds}
+        replyPreviews={replyPreviews}
+        memberNames={memberNames}
+        memberColors={memberColors}
+        mentionNames={mentionNames}
+        mentionMembers={mentionMembers}
+        searchMembers={searchMembers}
+        memberIds={memberIds}
+        roles={roles}
+        channelMentions={channelMentions}
+        categoryMentions={categoryMentions}
+        visibleMemberCount={visibleMembers.length}
+        presenceOf={presenceOf}
+        voice={voice}
+        chat={chat}
+        canSend={canSend}
+        canAttach={canAttach}
+        canMentionEveryone={canMentionEveryone}
+        maxUploadBytes={maxUploadBytes}
+        pinsOpen={pinsOpen}
+        membersOpen={rightPanel === "members"}
+        {...(replyTarget !== undefined ? { replyTarget } : {})}
+        sendError={sendError}
+        typingPing={(channelId) => {
+          typing.ping(channelId);
+        }}
+        onOpenChannel={openChannel}
+        onSetReplyTarget={setReplyTarget}
+        onSetThreadRoot={setThreadRoot}
+        onToggleMembers={() => {
+          setThreadRoot(undefined);
+          setMembersOpen((open) => (threadRoot !== undefined ? true : !open));
+        }}
+        onOpenSearch={() => {
+          setSearchOpen(true);
+        }}
+        onTogglePins={() => {
+          setPinsOpen((open) => !open);
+        }}
+        onBack={() => {
+          setMobilePane("list");
+        }}
+        onSetSendError={setSendError}
+        onSetNewConversationOpen={setNewConversationOpen}
+        sendWithFiles={sendWithFiles}
+      />
+    ) : null;
 
   return (
     <MemberAvatarProvider members={avatarRows}>
@@ -1584,7 +1708,10 @@ function ChatViewContent({
         onClose={settingsNavigation.cancel}
         onConfirm={() => {
           setUserSettingsDirty(false);
-          setNotesDirty(false);
+          // The retained Notes view owns its draft: reset it explicitly and let
+          // it report clean, rather than clearing this guard while the child
+          // still renders discarded text.
+          setNotesDiscardToken((token) => token + 1);
           settingsNavigation.discard();
         }}
       />
@@ -1835,127 +1962,72 @@ function ChatViewContent({
           </div>
         )}
 
-        {adminView ? (
-          <Suspense fallback={<SurfaceFallback />}>
-            <AdminPanel
-              viewer={admin.viewer}
-              ownerIds={admin.ownerIds}
-              ownerManagementAvailable={admin.ownerManagementAvailable}
-              roles={admin.roleViews}
-              members={rosterRows.length > 0 ? rosterRows : EMPTY_MEMBERS}
-              categories={admin.categories}
-              channels={channels}
-              channelNames={channelNames}
-              origin={shareableOrigin}
-              onClose={() => {
-                setAdminOpen(false);
-              }}
-            />
-          </Suspense>
-        ) : userSettingsOpen ? (
-          <UserSettingsView
-            ownUserId={ownUserId}
-            ownName={ownName}
-            onDirtyChange={setUserSettingsDirty}
-            ownBio={ownProfile?.bio ?? ""}
-            busy={ownProfile === undefined}
-            alignment={alignment}
-            canEditNickname={canEditNickname}
-            isOwner={admin.viewer.isOwner}
-            onSave={saveUserSettings}
-            hasAvatar={ownAvatarUrl !== null}
-            onChangeAvatar={changeAvatar}
-            onClearAvatar={async () => {
-              await setAvatar({});
-            }}
-            onBack={() => {
-              setUserSettingsOpen(false);
-            }}
-            onSignOut={onSignOut}
-            voiceSettings={<DeviceSettingsSection />}
-            soundSettings={
-              <NotificationsSettingsSection
-                prefsLoaded={notificationPrefs !== undefined}
-                suppressMassMentions={
-                  notificationPrefs?.find((row) => row.scope === "server")?.suppressMassMentions ===
-                  true
-                }
-                {...(resolveServerCapabilities(publicConfig).mentionMarkers
-                  ? {
-                      onSuppressMassMentions: (value: boolean) => {
-                        void setNotificationPref({
-                          scope: "server",
-                          suppressMassMentions: value,
-                        }).catch((error) => {
-                          setSendError(errorMessage(error));
-                        });
-                      },
-                    }
-                  : {})}
+        {(kanbanVisible || visitedViews.has("kanban")) && kanbanAllowed && (
+          <KeepAlive active={kanbanVisible}>
+            <Suspense fallback={<SurfaceFallback />}>
+              <KanbanView
+                ownUserId={ownUserId}
+                permissions={permissions}
+                members={roster}
+                onBack={() => {
+                  setMainView("chat");
+                  setMobilePane("list");
+                }}
               />
-            }
-            {...(isDesktop() ? { updateSettings: <DesktopUpdateSettings /> } : {})}
-            updateAvailable={updateAvailable}
-          />
-        ) : mainView === "kanban" &&
-          kanbanEnabled &&
-          hasPermission(permissions, Permission.ViewKanban) ? (
-          <Suspense fallback={<SurfaceFallback />}>
-            <KanbanView
-              ownUserId={ownUserId}
-              permissions={permissions}
-              members={roster}
-              onBack={() => {
-                setMainView("chat");
-                setMobilePane("list");
-              }}
-            />
-          </Suspense>
-        ) : mainView === "notes" &&
-          notesEnabled &&
-          hasPermission(permissions, Permission.ViewNotes) ? (
-          <Suspense fallback={<SurfaceFallback />}>
-            <NotesView
-              onDirtyChange={setNotesDirty}
-              ownUserId={ownUserId}
-              permissions={permissions}
-              members={roster}
-              onBack={() => {
-                setMainView("chat");
-                setMobilePane("list");
-              }}
-            />
-          </Suspense>
-        ) : mainView === "scheduled" &&
-          canViewScheduledCalls(permissions, voice.addons.scheduledCalls) ? (
-          <Suspense fallback={<SurfaceFallback />}>
-            <ScheduledCallsView
-              ownUserId={ownUserId}
-              permissions={permissions}
-              members={roster}
-              roles={admin.roleViews}
-              channels={channels}
-              titles={titles}
-              guestCallsEnabled={voice.addons.guestCalls}
-              onBack={() => {
-                setMainView("chat");
-                setMobilePane("list");
-              }}
-            />
-          </Suspense>
-        ) : mainView === "transcripts" &&
-          canViewTranscripts(permissions, voice.addons.transcription) ? (
-          <Suspense fallback={<SurfaceFallback />}>
-            <TranscriptsView
-              permissions={permissions}
-              titles={titles}
-              onBack={() => {
-                setMainView("chat");
-                setMobilePane("list");
-              }}
-            />
-          </Suspense>
-        ) : (
+            </Suspense>
+          </KeepAlive>
+        )}
+        {(notesVisible || visitedViews.has("notes")) && notesAllowed && (
+          <KeepAlive active={notesVisible}>
+            <Suspense fallback={<SurfaceFallback />}>
+              <NotesView
+                discardToken={notesDiscardToken}
+                onDirtyChange={setNotesDirty}
+                ownUserId={ownUserId}
+                permissions={permissions}
+                members={roster}
+                onBack={() => {
+                  setMainView("chat");
+                  setMobilePane("list");
+                }}
+              />
+            </Suspense>
+          </KeepAlive>
+        )}
+        {(scheduledVisible || visitedViews.has("scheduled")) && scheduledAllowed && (
+          <KeepAlive active={scheduledVisible}>
+            <Suspense fallback={<SurfaceFallback />}>
+              <ScheduledCallsView
+                ownUserId={ownUserId}
+                permissions={permissions}
+                members={roster}
+                roles={admin.roleViews}
+                channels={channels}
+                titles={titles}
+                guestCallsEnabled={voice.addons.guestCalls}
+                onBack={() => {
+                  setMainView("chat");
+                  setMobilePane("list");
+                }}
+              />
+            </Suspense>
+          </KeepAlive>
+        )}
+        {(transcriptsVisible || visitedViews.has("transcripts")) && transcriptsAllowed && (
+          <KeepAlive active={transcriptsVisible}>
+            <Suspense fallback={<SurfaceFallback />}>
+              <TranscriptsView
+                permissions={permissions}
+                titles={titles}
+                onBack={() => {
+                  setMainView("chat");
+                  setMobilePane("list");
+                }}
+              />
+            </Suspense>
+          </KeepAlive>
+        )}
+        <KeepAlive active={chatVisible}>
           <section
             className={cn(
               "pane chat-canvas relative min-h-0 min-w-0 flex-1 flex-col",
@@ -1993,70 +2065,75 @@ function ChatViewContent({
                 <VoiceChannelView channel={channel} title={title} identity={callIdentity} />
               </Suspense>
             ) : (
-              <ChannelPane
-                mentionMarkers={resolveServerCapabilities(publicConfig).mentionMarkers}
-                runtime={runtime}
-                channel={channel}
-                title={title}
-                placeholder={placeholder}
-                ownUserId={ownUserId}
-                ownName={ownName}
-                alignment={alignment}
-                channelPermissions={channelPermissions}
-                sessionState={sessionState}
-                mergedMessages={mergedMessages}
-                mergedDecrypted={mergedDecrypted}
-                attachments={attachmentsByMessage}
-                pendingIds={pendingIds}
-                failureReasons={failureReasons}
-                failedIds={failedIds}
-                replyPreviews={replyPreviews}
-                memberNames={memberNames}
-                memberColors={memberColors}
-                mentionNames={mentionNames}
-                mentionMembers={mentionMembers}
-                searchMembers={searchMembers}
-                memberIds={memberIds}
-                roles={roles}
-                channelMentions={channelMentions}
-                categoryMentions={categoryMentions}
-                visibleMemberCount={visibleMembers.length}
-                presenceOf={presenceOf}
-                voice={voice}
-                chat={chat}
-                canSend={canSend}
-                canAttach={canAttach}
-                canMentionEveryone={canMentionEveryone}
-                maxUploadBytes={maxUploadBytes}
-                pinsOpen={pinsOpen}
-                membersOpen={rightPanel === "members"}
-                {...(replyTarget !== undefined ? { replyTarget } : {})}
-                sendError={sendError}
-                typingPing={(channelId) => {
-                  typing.ping(channelId);
-                }}
-                onOpenChannel={openChannel}
-                onSetReplyTarget={setReplyTarget}
-                onSetThreadRoot={setThreadRoot}
-                onToggleMembers={() => {
-                  setThreadRoot(undefined);
-                  setMembersOpen((open) => (threadRoot !== undefined ? true : !open));
-                }}
-                onOpenSearch={() => {
-                  setSearchOpen(true);
-                }}
-                onTogglePins={() => {
-                  setPinsOpen((open) => !open);
-                }}
-                onBack={() => {
-                  setMobilePane("list");
-                }}
-                onSetSendError={setSendError}
-                onSetNewConversationOpen={setNewConversationOpen}
-                sendWithFiles={sendWithFiles}
-              />
+              conversationPane
             )}
           </section>
+        </KeepAlive>
+        {adminView && (
+          <Suspense fallback={<SurfaceFallback />}>
+            <AdminPanel
+              viewer={admin.viewer}
+              ownerIds={admin.ownerIds}
+              ownerManagementAvailable={admin.ownerManagementAvailable}
+              roles={admin.roleViews}
+              members={rosterRows.length > 0 ? rosterRows : EMPTY_MEMBERS}
+              categories={admin.categories}
+              channels={channels}
+              channelNames={channelNames}
+              origin={shareableOrigin}
+              onClose={() => {
+                setAdminOpen(false);
+              }}
+            />
+          </Suspense>
+        )}
+        {!adminView && userSettingsOpen && (
+          <Suspense fallback={<SurfaceFallback />}>
+            <UserSettingsView
+              ownUserId={ownUserId}
+              ownName={ownName}
+              onDirtyChange={setUserSettingsDirty}
+              ownBio={ownProfile?.bio ?? ""}
+              busy={ownProfile === undefined}
+              alignment={alignment}
+              canEditNickname={canEditNickname}
+              isOwner={admin.viewer.isOwner}
+              onSave={saveUserSettings}
+              hasAvatar={ownAvatarUrl !== null}
+              onChangeAvatar={changeAvatar}
+              onClearAvatar={async () => {
+                await setAvatar({});
+              }}
+              onBack={() => {
+                setUserSettingsOpen(false);
+              }}
+              onSignOut={onSignOut}
+              voiceSettings={<DeviceSettingsSection />}
+              soundSettings={
+                <NotificationsSettingsSection
+                  prefsLoaded={notificationPrefs !== undefined}
+                  suppressMassMentions={
+                    notificationPrefs?.find((row) => row.scope === "server")
+                      ?.suppressMassMentions === true
+                  }
+                  {...(resolveServerCapabilities(publicConfig).mentionMarkers
+                    ? {
+                        onSuppressMassMentions: (value: boolean) => {
+                          void setNotificationPref({
+                            scope: "server",
+                            suppressMassMentions: value,
+                          }).catch((error) => {
+                            setSendError(errorMessage(error));
+                          });
+                        },
+                      }
+                    : {})}
+                />
+              }
+              {...(isDesktop() ? { updateSettings: <DesktopUpdateSettings /> } : {})}
+              updateAvailable={updateAvailable}
+            />
+          </Suspense>
         )}
 
         {rightPanel !== null &&

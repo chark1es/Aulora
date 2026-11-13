@@ -20,6 +20,7 @@ interface HookProps {
   readonly unreadByChannel: ReadonlyMap<string, ChannelUnreadState>;
   readonly eagerChannelIds?: ReadonlySet<string>;
   readonly activeChannelId?: string;
+  readonly activeChannelVisible?: boolean;
   readonly mutedChannelIds?: ReadonlySet<string>;
 }
 
@@ -87,6 +88,34 @@ describe("useUnopenedChannelAlerts", () => {
       eagerChannelIds: new Set(["eager"]),
       activeChannelId: "active",
       mutedChannelIds: new Set(["muted"]),
+    });
+    expect(mocks.playSound).not.toHaveBeenCalled();
+  });
+
+  it("alerts for the open conversation when its canvas is hidden", () => {
+    const { rerender } = renderAlerts({
+      unreadByChannel: new Map([["b", state()]]),
+      activeChannelId: "b",
+      activeChannelVisible: true,
+    });
+    rerender({
+      unreadByChannel: new Map([["b", state({ lastActivityAt: 2 })]]),
+      activeChannelId: "b",
+      activeChannelVisible: false,
+    });
+    expect(mocks.playSound).toHaveBeenCalledWith("message");
+  });
+
+  it("stays quiet for the open conversation while its canvas is visible", () => {
+    const { rerender } = renderAlerts({
+      unreadByChannel: new Map([["b", state()]]),
+      activeChannelId: "b",
+      activeChannelVisible: false,
+    });
+    rerender({
+      unreadByChannel: new Map([["b", state({ lastActivityAt: 2 })]]),
+      activeChannelId: "b",
+      activeChannelVisible: true,
     });
     expect(mocks.playSound).not.toHaveBeenCalled();
   });

@@ -1,5 +1,11 @@
-import { createProviderAuth, debugLog, setProviderTokenIdentity } from "@aulora/core";
+import {
+  createProviderAuth,
+  debugLog,
+  recordDebugFailure,
+  setProviderTokenIdentity,
+} from "@aulora/core";
 import { describe, expect, it, vi } from "vitest";
+import { createAccountScope } from "../lib/account-scope";
 import type { AuloraAuthClient } from "../lib/auth-client";
 import { authActionsFromClient } from "../lib/auth-client";
 
@@ -26,7 +32,11 @@ function jwt(sub: string): string {
 
 function fakeClient(token: (options?: unknown) => Promise<unknown>) {
   const session = vi.fn(() => ({ data: { session: { id: "s1" } }, isPending: false }));
-  const signOut = vi.fn(async () => ({ error: null }));
+  const signOut = vi.fn(
+    async (): Promise<{ error: { message?: string } | null }> => ({
+      error: null,
+    }),
+  );
   const client = {
     useSession: session,
     signOut,
@@ -273,6 +283,31 @@ describe("createProviderAuth", () => {
     expect(provider.lastToken()).toBe(tokenB);
   });
 
+  it("records a handled sign-out failure and still recovers the token store", async () => {
+    const token = vi.fn(async () => TRANSIENT);
+    const fake = fakeClient(token);
+    fake.signOut.mockResolvedValue({ error: { message: "Session already lost" } });
+    debugLog.clear();
+
+    await authActionsFromClient(fake.client).signOut();
+
+    const entries = debugLog.snapshot();
+    expect(entries.map((entry) => entry.source)).toContain("auth.signout");
+    expect(entries.map((entry) => entry.detail).join(" ")).toContain("Session already lost");
+  });
+
+  it("records a thrown sign-out failure before rethrowing it", async () => {
+    const fake = fakeClient(vi.fn(async () => TRANSIENT));
+    fake.signOut.mockRejectedValue(new Error("Network unreachable"));
+    debugLog.clear();
+
+    await expect(authActionsFromClient(fake.client).signOut()).rejects.toThrow(
+      "Network unreachable",
+    );
+    const entries = debugLog.snapshot();
+    expect(entries.map((entry) => entry.source)).toContain("auth.signout");
+  });
+
   it("drops the cache when the session identity changes without a sign-out", async () => {
     const token = vi
       .fn<(options?: unknown) => Promise<unknown>>()
@@ -289,3 +324,28 @@ describe("createProviderAuth", () => {
     await expect(provider.client.convex.token()).resolves.toEqual(TRANSIENT);
   });
 });
+
+it.each(["throw", "result", "success"])(
+  "scopes deferred signout %s to the originating account",
+  async (settles) => {
+    let resolve!: (value: unknown) => void;
+    let reject!: (error: unknown) => void;
+    const request = new Promise<unknown>((res, rej) => {
+      resolve = res;
+      reject = rej;
+    });
+    const client = { signOut: () => request } as unknown as AuloraAuthClient;
+    const scope = createAccountScope(recordDebugFailure);
+    const recover = vi.fn();
+    const pending = authActionsFromClient(client, undefined, recover, scope).signOut();
+    scope.close();
+    debugLog.clear();
+    debugLog.record("B", "current B");
+    if (settles === "throw") reject(new Error("A-only signout sentinel"));
+    else resolve({ error: settles === "success" ? null : { message: "A-only signout sentinel" } });
+    await pending;
+    expect(debugLog.report("B", "")).not.toContain("A-only signout sentinel");
+    expect(debugLog.report("B", "")).toContain("current B");
+    expect(recover).not.toHaveBeenCalled();
+  },
+);
