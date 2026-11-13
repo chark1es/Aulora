@@ -277,6 +277,18 @@
     "assets/DebugLogsSection.js": {
       "raw": 2432,
       "gzip": 1280
+    },
+    "assets/client-version.js": {
+      "raw": 64,
+      "gzip": 128
+    },
+    "assets/use-before-unload.js": {
+      "raw": 384,
+      "gzip": 320
+    },
+    "assets/UserSettingsView.js": {
+      "raw": 9088,
+      "gzip": 3328
     }
   },
   "initial": {

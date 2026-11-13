@@ -190,3 +190,19 @@ it("restores the thread, quote and message jump that belonged to the conversatio
   });
   expect(opened).toEqual(["A"]);
 });
+
+it("returns from an addon to its chooser before the prior hub tab", () => {
+  const { render } = setup();
+  let { ui, navigation } = render();
+  ui.setPane(0);
+  ({ ui } = render());
+  ui.setHubTab("addons");
+  ({ ui } = render());
+  ui.setHubTab("notes");
+  ({ ui, navigation } = render());
+  expect(navigation.handleBack()).toBe(true);
+  ({ ui, navigation } = render());
+  expect(ui.hubTab).toBe("addons");
+  expect(navigation.handleBack()).toBe(true);
+  expect(render().ui.hubTab).toBe("chats");
+});

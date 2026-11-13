@@ -6,6 +6,7 @@ import {
   createCookieFetch,
   mergeCookieHeader,
   readSetCookies,
+  requestOrigin,
 } from "../src/lib/cookie-fetch";
 
 function memoryCookieStore(): { store: CookieStore; map: Map<string, string> } {
@@ -73,7 +74,171 @@ describe("readSetCookies", () => {
   });
 });
 
+describe("requestOrigin", () => {
+  it("names the workspace origin for absolute http(s) requests", () => {
+    expect(requestOrigin("https://chat.acme.com/api/auth/sign-out")).toBe("https://chat.acme.com");
+    expect(requestOrigin(new URL("http://localhost:3211/api/auth/sign-out"))).toBe(
+      "http://localhost:3211",
+    );
+  });
+
+  it("declines a relative, custom-scheme or unparsable request", () => {
+    expect(requestOrigin("/api/auth/sign-out")).toBeNull();
+    expect(requestOrigin("aulora://auth/callback")).toBeNull();
+    expect(requestOrigin("not a url")).toBeNull();
+  });
+
+  it("never returns the literal null origin an opaque URL serializes to", () => {
+    // Browsers send `Origin: null` for opaque origins, and Better Auth rejects
+    // that value; a native request must name a real origin instead.
+    expect(requestOrigin("file:///tmp/opaque")).toBeNull();
+    expect(requestOrigin("data:text/plain,opaque")).toBeNull();
+  });
+});
+
 describe("createCookieFetch", () => {
+  it("sends an Origin header so Better Auth accepts a native cookie POST", async () => {
+    const { store } = memoryCookieStore();
+    await store.setItem(AUTH_COOKIE_KEY, "better-auth.session_token=abc");
+    const seen: Array<string | null> = [];
+    const baseFetch = vi.fn(async (_input: RequestInfo | URL, init?: RequestInit) => {
+      seen.push(new Headers(init?.headers).get("origin"));
+      return new Response("{}", { status: 200 });
+    });
+    const cookieFetch = createCookieFetch({
+      store,
+      baseFetch: baseFetch as unknown as typeof fetch,
+    });
+
+    await cookieFetch("https://chat.acme.com/api/auth/sign-out", { method: "POST" });
+    expect(seen).toEqual(["https://chat.acme.com"]);
+  });
+
+  it("keeps an explicit Origin header the caller supplied", async () => {
+    const { store } = memoryCookieStore();
+    const seen: Array<string | null> = [];
+    const baseFetch = vi.fn(async (_input: RequestInfo | URL, init?: RequestInit) => {
+      seen.push(new Headers(init?.headers).get("origin"));
+      return new Response("{}", { status: 200 });
+    });
+    const cookieFetch = createCookieFetch({
+      store,
+      baseFetch: baseFetch as unknown as typeof fetch,
+    });
+
+    await cookieFetch("https://chat.acme.com/api/auth/sign-out", {
+      method: "POST",
+      headers: { origin: "https://other.example.com" },
+    });
+    expect(seen).toEqual(["https://other.example.com"]);
+  });
+
+  it("replaces a literal null Origin header with the request origin", async () => {
+    const { store } = memoryCookieStore();
+    const seen: Array<string | null> = [];
+    const baseFetch = vi.fn(async (_input: RequestInfo | URL, init?: RequestInit) => {
+      seen.push(new Headers(init?.headers).get("origin"));
+      return new Response("{}", { status: 200 });
+    });
+    const cookieFetch = createCookieFetch({
+      store,
+      baseFetch: baseFetch as unknown as typeof fetch,
+    });
+
+    await cookieFetch("https://chat.acme.com/api/auth/sign-out", {
+      method: "POST",
+      headers: { origin: "null" },
+    });
+    expect(seen).toEqual(["https://chat.acme.com"]);
+  });
+
+  it("preserves a Request input's untrusted Origin, content-type and body", async () => {
+    const { store } = memoryCookieStore();
+    const seen: Array<{ origin: string | null; contentType: string | null; body: string | null }> =
+      [];
+    const baseFetch = vi.fn(async (input: RequestInfo | URL, init?: RequestInit) => {
+      const headers = new Headers(init?.headers);
+      seen.push({
+        origin: headers.get("origin"),
+        contentType: headers.get("content-type"),
+        body: input instanceof Request ? await input.clone().text() : null,
+      });
+      return new Response("{}", { status: 200 });
+    });
+    const cookieFetch = createCookieFetch({
+      store,
+      baseFetch: baseFetch as unknown as typeof fetch,
+    });
+
+    const request = new Request("https://chat.acme.com/api/auth/sign-out", {
+      method: "POST",
+      headers: {
+        origin: "https://other.example.com",
+        "content-type": "application/json",
+        "x-request-id": "req-1",
+      },
+      body: JSON.stringify({ reason: "test" }),
+    });
+    await cookieFetch(request);
+    expect(seen).toEqual([
+      {
+        origin: "https://other.example.com",
+        contentType: "application/json",
+        body: JSON.stringify({ reason: "test" }),
+      },
+    ]);
+  });
+
+  it("normalizes only a Request input's literal null Origin", async () => {
+    const { store } = memoryCookieStore();
+    const seen: Array<{ origin: string | null; contentType: string | null }> = [];
+    const baseFetch = vi.fn(async (_input: RequestInfo | URL, init?: RequestInit) => {
+      const headers = new Headers(init?.headers);
+      seen.push({ origin: headers.get("origin"), contentType: headers.get("content-type") });
+      return new Response("{}", { status: 200 });
+    });
+    const cookieFetch = createCookieFetch({
+      store,
+      baseFetch: baseFetch as unknown as typeof fetch,
+    });
+
+    await cookieFetch(
+      new Request("https://chat.acme.com/api/auth/sign-out", {
+        method: "POST",
+        headers: { origin: "null", "content-type": "application/x-www-form-urlencoded" },
+        body: "a=1",
+      }),
+    );
+    expect(seen).toEqual([
+      {
+        origin: "https://chat.acme.com",
+        contentType: "application/x-www-form-urlencoded",
+      },
+    ]);
+  });
+
+  it("lets init headers replace Request headers, matching fetch semantics", async () => {
+    const { store } = memoryCookieStore();
+    const seen: Array<string | null> = [];
+    const baseFetch = vi.fn(async (_input: RequestInfo | URL, init?: RequestInit) => {
+      seen.push(new Headers(init?.headers).get("origin"));
+      return new Response("{}", { status: 200 });
+    });
+    const cookieFetch = createCookieFetch({
+      store,
+      baseFetch: baseFetch as unknown as typeof fetch,
+    });
+
+    await cookieFetch(
+      new Request("https://chat.acme.com/api/auth/sign-out", {
+        method: "POST",
+        headers: { origin: "https://request.example.com" },
+      }),
+      { headers: { origin: "https://init.example.com" } },
+    );
+    expect(seen).toEqual(["https://init.example.com"]);
+  });
+
   it("sends the stored cookie and persists set-cookie responses", async () => {
     const { store, map } = memoryCookieStore();
     const seen: Array<string | null> = [];
@@ -142,6 +307,21 @@ describe("createCookieFetch", () => {
     });
 
     await cookieFetch("https://chat.acme.com/api/auth/sign-out", { method: "POST" });
+    expect(map.get(tokenKey)).toBeUndefined();
+  });
+
+  it("clears the stored bearer token when sign-out arrives as a Request", async () => {
+    const { store, map } = memoryCookieStore();
+    const tokenKey = authTokenKey("https://chat.acme.com");
+    await store.setItem(tokenKey, "token-1");
+    const baseFetch = vi.fn(async () => new Response("{}", { status: 200 }));
+    const cookieFetch = createCookieFetch({
+      store,
+      baseFetch: baseFetch as unknown as typeof fetch,
+      tokenKey,
+    });
+
+    await cookieFetch(new Request("https://chat.acme.com/api/auth/sign-out", { method: "POST" }));
     expect(map.get(tokenKey)).toBeUndefined();
   });
 

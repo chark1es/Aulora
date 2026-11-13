@@ -57,7 +57,7 @@ If your administrator enables Kanban and grants you View Kanban permission, open
 
 ## Notes
 
-If your administrator enables Notes and grants you View Notes permission, open it from the sidebar. Write Markdown notes with a live preview, organize them in nested folders, label them with tags, search locally or on the server, and review each note's line-by-line history. See [Notes](notes.md) for the full workflow.
+If your administrator enables Notes and grants you View Notes permission, open it from the sidebar **Addons** menu. Write Markdown notes with a live preview, organize them in nested folders, label them with tags, search locally or on the server, and review each note's line-by-line history. See [Notes](notes.md) for the full workflow.
 
 ## Voice and video
 
