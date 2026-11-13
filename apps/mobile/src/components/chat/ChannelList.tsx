@@ -383,7 +383,7 @@ export interface ChannelListProps {
   readonly onOpenChannel: (channelId: string) => void;
   readonly onMemberPress: (userId: string) => void;
   readonly onChannelActions: (channel: ChannelView) => void;
-  readonly onJoinVoice: (channelId: string) => void;
+  readonly onOpenVoice: (channelId: string) => void;
   /** Threads the viewer is part of, most recently active first; `undefined` while loading. */
   readonly threads: readonly ThreadInboxItem[] | undefined;
   readonly onOpenThread: (thread: ThreadInboxItem) => void;
@@ -448,7 +448,7 @@ export function ChannelList(props: ChannelListProps) {
         clientId={props.clientId}
         localCallId={props.localCallId}
         {...(props.remoteLevels !== undefined ? { remoteLevels: props.remoteLevels } : {})}
-        onJoin={props.onJoinVoice}
+        onOpen={props.onOpenVoice}
       />
 
       {props.hiddenCount > 0 && (

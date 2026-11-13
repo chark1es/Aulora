@@ -59,7 +59,8 @@ Use a server reachable over HTTPS from the phone's network. Record the release v
 - Camera, photos, microphone, and notification permissions, including denial.
 - Local Network access when the server address is a LAN host: iOS asks on the first connect, and denying it blocks only that address (the app reports the server as unreachable). Plain `http://` is allowed for local servers on both platforms; public hosts must be HTTPS.
 - Voice/video between separate devices, reconnect, and a restrictive network using TURN.
-- Foreground, background, and locked-device notifications; taps must open the correct server and conversation.
+- Foreground, background, and locked-device notifications; taps must open the correct server, conversation and message. With two workspaces saved, a wake from the inactive one must badge it in the switcher and auto-switch; kill and relaunch the app and confirm the badge survives until that workspace is opened.
+- Two workspaces sharing the same `AULORA_SERVER_ID` (or both left on the `aulora` fallback) cannot be told apart; give each deployment a distinct id when testing multi-workspace routing.
 - Logout and workspace switching must stop delivery to the previous session.
 - Deep links and returning from authentication.
 

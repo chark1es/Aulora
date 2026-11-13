@@ -155,6 +155,12 @@ function useSessionControls(engineRef: EngineRef, setView: Dispatch<SetStateActi
   const clearError = useCallback(() => {
     engineRef.current?.clearError();
   }, [engineRef]);
+  const reportError = useCallback(
+    (message: string) => {
+      engineRef.current?.setError(message);
+    },
+    [engineRef],
+  );
   const stayInCall = useCallback(async () => {
     await engineRef.current?.stayInCall();
   }, [engineRef]);
@@ -172,6 +178,7 @@ function useSessionControls(engineRef: EngineRef, setView: Dispatch<SetStateActi
     stayInCall,
     dismissEndedNotice,
     clearError,
+    reportError,
   };
 }
 

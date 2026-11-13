@@ -113,6 +113,7 @@ function demoVoice(): VoiceContextValue {
       apply: () => undefined,
       applySaved: () => ({ status: "none" }),
     },
+    reportError: () => undefined,
     canConnect: false,
     canSpeak: false,
     canStream: false,
