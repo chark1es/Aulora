@@ -12,6 +12,7 @@ import {
   Permission,
   type PresenceRow,
   type RoleMentionTarget,
+  recordDebugFailure,
   type SearchHit,
   SearchIndex,
   searchDocumentFor,
@@ -30,8 +31,10 @@ import {
 } from "react";
 import { AppState } from "react-native";
 import { api } from "../../../../packages/convex/convex/_generated/api";
+import { type AccountScope, createAccountScope } from "../lib/account-scope";
 import { createMobileChatRuntime, type MobileChatRuntime } from "../lib/chat-runtime";
 import { convexSubscriptions } from "../lib/convex-chat";
+import { flushOutboxInScope } from "../lib/outbox-flush";
 import { sendOutboxItem } from "../lib/outbox-send";
 import { mobileOutboxStore } from "../lib/outbox-store";
 import {
@@ -149,6 +152,7 @@ export function ChatProvider({ client, userId, children }: ChatProviderProps) {
   outboxItemsRef.current = outbox;
   const runtimeRef = useRef<MobileChatRuntime | undefined>(undefined);
   const outboxRef = useRef<Outbox>(undefined);
+  const scopeRef = useRef<AccountScope | undefined>(undefined);
   const searchRef = useRef<SearchIndex>(undefined);
   const backfillRef = useRef<ArchiveBackfill>(undefined);
   const summariesRef = useRef(summaries);
@@ -158,7 +162,10 @@ export function ChatProvider({ client, userId, children }: ChatProviderProps) {
 
   // biome-ignore lint/correctness/useExhaustiveDependencies: an explicit retry restarts the connection even when the client and account are unchanged
   useEffect(() => {
-    let cancelled = false;
+    // Work started for this client/user must never record into the next
+    // account's debug report after a sign-out or workspace switch.
+    const scope = createAccountScope(recordDebugFailure);
+    scopeRef.current = scope;
     setReady(false);
     setRuntime(undefined);
     setStartupError(null);
@@ -170,15 +177,16 @@ export function ChatProvider({ client, userId, children }: ChatProviderProps) {
     void outboxStore
       .list()
       .then((items) => {
-        if (!cancelled) setOutbox(items);
+        if (scope.active) setOutbox(items);
       })
-      .catch(() => {
-        if (!cancelled)
-          setStartupError("Could not load your unsent messages. Try reopening the workspace.");
+      .catch((error: unknown) => {
+        if (!scope.active) return;
+        scope.record("outbox.load", error);
+        setStartupError("Could not load your unsent messages. Try reopening the workspace.");
       });
     void createMobileChatRuntime({ client })
       .then((result) => {
-        if (cancelled) {
+        if (!scope.active) {
           result.session.dispose();
           return;
         }
@@ -194,9 +202,8 @@ export function ChatProvider({ client, userId, children }: ChatProviderProps) {
         setReady(true);
       })
       .catch((error: unknown) => {
-        if (cancelled) {
-          return;
-        }
+        if (!scope.active) return;
+        scope.record("chat.start", error);
         // A failed session start must not leave the shell spinning forever.
         const message = error instanceof Error ? error.message : String(error);
         console.warn(`[aulora] chat runtime failed to start: ${message}`);
@@ -204,7 +211,10 @@ export function ChatProvider({ client, userId, children }: ChatProviderProps) {
         setReady(true);
       });
     return () => {
-      cancelled = true;
+      scope.close();
+      if (scopeRef.current === scope) {
+        scopeRef.current = undefined;
+      }
       runtimeRef.current?.session.dispose();
       runtimeRef.current = undefined;
       outboxRef.current = undefined;
@@ -279,12 +289,20 @@ export function ChatProvider({ client, userId, children }: ChatProviderProps) {
   const flush = useCallback(async () => {
     const active = outboxRef.current;
     const chat = runtimeRef.current;
+    const scope = scopeRef.current;
+    if (scope === undefined) return;
     if (active === undefined || chat === undefined || AppState.currentState !== "active") return;
-    // Nothing is due once the queue is empty or every item has permanently
-    // failed; skip the flush and the refresh so an idle provider never churns.
-    if ((await active.pendingCount()) === 0) return;
-    await active.flush((item) => sendOutboxItem(chat.session, item));
-    await refreshOutbox();
+    try {
+      // Nothing is due once the queue is empty or every item has permanently
+      // failed; skip the flush and the refresh so an idle provider never churns.
+      if ((await active.pendingCount()) === 0) return;
+      await flushOutboxInScope(active, (item) => sendOutboxItem(chat.session, item), scope);
+      await refreshOutbox();
+    } catch (error) {
+      // Listing or refreshing can fail after the account changed; the captured
+      // scope keeps that failure out of the next account's report.
+      scope.record("outbox.flush", error);
+    }
   }, [refreshOutbox]);
   useEffect(() => {
     if (runtime === undefined) return;
@@ -293,7 +311,7 @@ export function ChatProvider({ client, userId, children }: ChatProviderProps) {
       if (AppState.currentState !== "active") return;
       // The in-memory list answers "is anything queued?" without a store read.
       if (!outboxItemsRef.current.some((item) => item.status !== "failed")) return;
-      void flush().catch(() => undefined);
+      void flush();
     };
     const start = () => {
       if (timer === undefined) timer = setInterval(retry, 5000);

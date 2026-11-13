@@ -1,3 +1,4 @@
+/* eslint-disable no-unused-vars -- the base rule reports parameter names in type signatures; Biome checks real unused code */
 import type {
   MediaDeviceInfo as AuloraMediaDevice,
   CallKind,
@@ -6,6 +7,7 @@ import type {
 } from "@aulora/core";
 import { createContext } from "react";
 import type { MobileVoiceEngine, MobileVoiceSnapshot } from "../lib/voice/call-engine";
+import type { AudioRoute } from "../lib/voice/use-audio-route";
 
 /** The workspace's voice policy, mirrored from `server.publicConfig`. */
 export interface VoicePolicy {
@@ -37,6 +39,8 @@ export interface VoiceContextValue extends MobileVoiceSnapshot {
   readonly activeCalls: readonly CallView[];
   readonly settings: VoiceDeviceSettings;
   readonly devices: readonly AuloraMediaDevice[];
+  /** The platform audio route, shared by settings and call start. */
+  readonly audioRoute: AudioRoute;
   readonly canConnect: boolean;
   readonly canSpeak: boolean;
   readonly canStream: boolean;
@@ -67,6 +71,8 @@ export interface VoiceContextValue extends MobileVoiceSnapshot {
   readonly updateSettings: (_partial: Partial<VoiceDeviceSettings>) => Promise<void>;
   readonly refreshDevices: () => Promise<void>;
   readonly clearError: () => void;
+  /** Shows a call failure that did not originate inside the engine. */
+  readonly reportError: (_message: string) => void;
 }
 
 export const VoiceContext = createContext<VoiceContextValue | null>(null);
@@ -119,4 +125,5 @@ export interface VoiceControls {
   readonly stayInCall: VoiceContextValue["stayInCall"];
   readonly dismissEndedNotice: VoiceContextValue["dismissEndedNotice"];
   readonly clearError: VoiceContextValue["clearError"];
+  readonly reportError: VoiceContextValue["reportError"];
 }

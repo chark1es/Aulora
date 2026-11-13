@@ -91,30 +91,34 @@ export const HeaderButton = forwardRef<
 });
 
 /**
- * One row of the workspace nav above the channel list (Threads, Kanban,
- * Notes). The three share this row so they read as one tight list.
+ * One row of the workspace nav above the channel list (Threads, Addons). They
+ * share this row so they read as one tight list.
  */
-export function SidebarNavButton({
-  label,
-  icon,
-  testId,
-  active,
-  onClick,
-  badge,
-}: {
-  readonly label: string;
-  readonly icon: ReactNode;
-  readonly testId: string;
-  readonly active: boolean;
-  readonly onClick: () => void;
-  /** Unread mention count; omitted or zero renders no badge. */
-  readonly badge?: number;
-}) {
+export const SidebarNavButton = forwardRef<
+  HTMLButtonElement,
+  {
+    readonly label: string;
+    readonly icon: ReactNode;
+    readonly testId: string;
+    readonly active: boolean;
+    readonly onClick: () => void;
+    /** Unread mention count; omitted or zero renders no badge. */
+    readonly badge?: number;
+    readonly hasPopup?: React.AriaAttributes["aria-haspopup"];
+    readonly expanded?: boolean;
+  }
+>(function SidebarNavButton(
+  { label, icon, testId, active, onClick, badge, hasPopup, expanded },
+  ref,
+) {
   return (
     <button
+      ref={ref}
       type="button"
       data-testid={testId}
       aria-current={active ? "page" : undefined}
+      {...(hasPopup === undefined ? {} : { "aria-haspopup": hasPopup })}
+      {...(expanded === undefined ? {} : { "aria-expanded": expanded })}
       onClick={onClick}
       className={cn(
         "relative flex h-8 w-full items-center gap-2 rounded-[6px] px-2 text-left text-[13px] transition-colors duration-150 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-accent",
@@ -144,7 +148,7 @@ export function SidebarNavButton({
       )}
     </button>
   );
-}
+});
 
 export const STATUS_OPTIONS: readonly { value: PresenceStatus; label: string }[] = [
   { value: "online", label: "Online" },

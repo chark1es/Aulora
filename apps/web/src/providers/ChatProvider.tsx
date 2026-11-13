@@ -8,6 +8,7 @@ import {
   Outbox,
   type OutboxItem,
   type PresenceRow,
+  recordDebugFailure,
   type SearchHit,
   SearchIndex,
   searchDocumentFor,
@@ -23,9 +24,11 @@ import {
   useRef,
   useState,
 } from "react";
+import { type AccountScope, createAccountScope } from "../lib/account-scope";
 import { type ChannelUnreadState, selectEagerChannelIds } from "../lib/channel-priority";
 import { type ChatRuntime, createChatRuntime } from "../lib/chat-runtime";
 import { DraftScopeContext, draftScope } from "../lib/drafts";
+import { flushOutboxInScope } from "../lib/outbox-flush";
 import { sendOutboxItem } from "../lib/outbox-send";
 import { webOutboxStore } from "../lib/outbox-store";
 import { webSearchStore } from "../lib/search-store";
@@ -142,6 +145,7 @@ export function ChatProvider({
   const [outbox, setOutbox] = useState<readonly OutboxItem[]>([]);
   const runtimeRef = useRef<ChatRuntime | undefined>(undefined);
   const outboxRef = useRef<Maybe<Outbox>>(undefined);
+  const scopeRef = useRef<Maybe<AccountScope>>(undefined);
   // The last snapshot handed to the context, so an unchanged refresh can keep
   // the old array reference and leave the context value (and tree) untouched.
   const outboxItemsRef = useRef<readonly OutboxItem[]>([]);
@@ -156,7 +160,15 @@ export function ChatProvider({
   useEffect(() => {
     let cancelled = false;
     const isCancelled = () => cancelled;
+    const scope = createAccountScope(recordDebugFailure);
+    scopeRef.current = scope;
     const reportQueryError = (error: unknown) => {
+      if (!scope.active) {
+        return;
+      }
+      // Live-query failures never throw into a handler; without this they are
+      // only ever a banner and never reach the debug report.
+      scope.record("query.error", error);
       setQueryError(error instanceof Error ? error : new Error(String(error)));
     };
     const outboxStore = new Outbox({ store: webOutboxStore(client.url, userId) });
@@ -166,23 +178,34 @@ export function ChatProvider({
     const searchIndex = new SearchIndex(webSearchStore(client.url, userId));
     outboxRef.current = outboxStore;
     searchRef.current = searchIndex;
-    void searchIndex.load();
-    void outboxStore.list().then(async (items) => {
-      if (isCancelled()) {
-        return;
-      }
-      // Recover sends left mid-flight by a crash so they can be retried; a
-      // permanently failed item stays surfaced (not "Sending…") for the UI.
-      for (const item of items) {
-        if (item.status === "sending") {
-          await outboxStore.retry(item.id);
-        }
-      }
-      const loaded = await outboxStore.list();
-      if (!isCancelled()) {
-        setOutbox(loaded);
-      }
+    // Account-owned startup storage promises must never escape as unhandled
+    // rejections: the global `unhandledrejection` listener would copy A's error
+    // into B's report. Attach a handler that records through this account's
+    // captured scope, which drops the failure once the scope has closed.
+    void searchIndex.load().catch((error: unknown) => {
+      scope.record("search.load", error);
     });
+    void outboxStore
+      .list()
+      .then(async (items) => {
+        if (isCancelled()) {
+          return;
+        }
+        // Recover sends left mid-flight by a crash so they can be retried; a
+        // permanently failed item stays surfaced (not "Sending…") for the UI.
+        for (const item of items) {
+          if (item.status === "sending") {
+            await outboxStore.retry(item.id);
+          }
+        }
+        const loaded = await outboxStore.list();
+        if (!isCancelled()) {
+          setOutbox(loaded);
+        }
+      })
+      .catch((error: unknown) => {
+        scope.record("outbox.startup", error);
+      });
     void createChatRuntime({ client, userId, displayName, onError: reportQueryError })
       .then((created) => {
         if (isCancelled()) {
@@ -207,6 +230,10 @@ export function ChatProvider({
       });
     return () => {
       cancelled = true;
+      scope.close();
+      if (scopeRef.current === scope) {
+        scopeRef.current = undefined;
+      }
       runtimeRef.current?.session.dispose();
       runtimeRef.current = undefined;
       outboxRef.current = undefined;
@@ -260,15 +287,18 @@ export function ChatProvider({
   const flush = useCallback(async () => {
     const active = outboxRef.current;
     const chat = runtimeRef.current;
+    const scope = scopeRef.current;
     if (active === undefined || chat === undefined) {
       return;
     }
     try {
-      await active.flush((item) => sendOutboxItem(chat.session, item));
-    } catch {
-      // Keep the queue intact; the ticker retries on the next tick.
+      await flushOutboxInScope(active, (item) => sendOutboxItem(chat.session, item), scope);
+      await refreshOutbox();
+    } catch (error) {
+      // Keep the queue intact; the ticker retries on the next tick. A failure
+      // that settles after an account switch is dropped by the closed scope.
+      scope?.record("outbox.flush", error);
     }
-    await refreshOutbox();
   }, [refreshOutbox]);
 
   useEffect(() => {

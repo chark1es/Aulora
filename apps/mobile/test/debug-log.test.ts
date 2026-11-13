@@ -1,4 +1,6 @@
+import { debugLog } from "@aulora/core";
 import { afterEach, describe, expect, it, vi } from "vitest";
+import { errorMessage } from "../src/components/chat/chat-screen-types";
 
 const hooks = globalThis as typeof globalThis & {
   ErrorUtils?: unknown;
@@ -9,9 +11,17 @@ const originalHermes = hooks.HermesInternal;
 afterEach(() => {
   hooks.ErrorUtils = originalErrorUtils;
   hooks.HermesInternal = originalHermes;
+  debugLog.clear();
   vi.restoreAllMocks();
   vi.unstubAllGlobals();
   vi.resetModules();
+});
+
+describe("handled failures", () => {
+  it("formats errors without globally recording account-owned failures", () => {
+    expect(errorMessage(new Error("could not send the message"))).not.toBe("");
+    expect(debugLog.snapshot()).toEqual([]);
+  });
 });
 
 describe("native error capture", () => {

@@ -48,6 +48,38 @@ const SAFE_FORM_MESSAGES: readonly { readonly match: string; readonly message: s
   { match: "email is required", message: "Email is required" },
 ];
 
+/**
+ * A bounded diagnostic form of a failed auth result for the local debug log.
+ *
+ * The sign-in screen deliberately never echoes arbitrary server text, but the
+ * report may keep the message: it stays in memory until the person exports it,
+ * and `redactDebugText` scrubs URLs and credentials. Keeping the reason is what
+ * turns an otherwise empty "sign-in failed" report into something actionable.
+ */
+export function authFailureDetail(error: unknown): string {
+  const MAX = 500;
+  if (typeof error === "string") {
+    return error.slice(0, MAX);
+  }
+  if (error instanceof Error) {
+    return `${error.name}: ${error.message}`.slice(0, MAX);
+  }
+  if (typeof error === "object" && error !== null) {
+    const record = error as { readonly message?: unknown; readonly status?: unknown };
+    const parts: string[] = [];
+    if (typeof record.status === "number") {
+      parts.push(`status ${record.status}`);
+    }
+    if (typeof record.message === "string" && record.message.length > 0) {
+      parts.push(record.message);
+    }
+    if (parts.length > 0) {
+      return parts.join(": ").slice(0, MAX);
+    }
+  }
+  return "Auth request failed without a message";
+}
+
 export function describeAuthError(message: string): string {
   const normalized = message.toLowerCase().replaceAll("_", " ");
   if (normalized.includes("user already exists")) {

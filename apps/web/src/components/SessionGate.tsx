@@ -13,12 +13,13 @@ import { useConvexAuth, useQuery } from "convex/react";
 import { lazy, Suspense, useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { api } from "../../../../packages/convex/convex/_generated/api";
 import { type AuloraAuthClient, type AuthActions, authActionsFromClient } from "../lib/auth-client";
-import { isInvalidSessionError } from "../lib/auth-errors";
+import { authFailureDetail, isInvalidSessionError } from "../lib/auth-errors";
 import { CLIENT_VERSION } from "../lib/client-version";
 import type { ConnectionRecovery } from "../lib/connection-recovery";
 import { logAuthState, useRemountLog } from "../lib/remount-debug";
 import { clearSessionToken, readSessionToken } from "../lib/session-token";
 import { storageScope } from "../lib/storage-scope";
+import { useAccountScope } from "../lib/use-account-scope";
 import { useLastDefined } from "../lib/use-last-defined";
 import { useServerRecovery } from "../lib/use-server-recovery";
 import { useStuckTimeout } from "../lib/use-stuck-timeout";
@@ -73,6 +74,7 @@ export function SessionGate({ profile, authClient, client, connection }: Session
   const clientVersion = useClientVersionPolicy();
   const outdatedServer = useOutdatedServer();
   const session = authClient.useSession();
+  const accountScope = useAccountScope(`${profile.id}:${session.data?.user.id ?? "signed-out"}`);
   // Read setup state from the existing public-config subscription rather than
   // a new query, so a new client can still reach the sign-in form against a
   // slightly older backend that does not know `setup.state` yet. Keep the last
@@ -85,8 +87,9 @@ export function SessionGate({ profile, authClient, client, connection }: Session
         authClient,
         () => revokeWebPushDevice(client, session.data?.user.id),
         () => restoreWebPushDevice(client, session.data?.user.id),
+        accountScope,
       ),
-    [authClient, client, session.data?.user.id],
+    [authClient, client, session.data?.user.id, accountScope],
   );
   const {
     isAuthenticated: convexAuthenticated,
@@ -185,18 +188,23 @@ export function SessionGate({ profile, authClient, client, connection }: Session
   // cookie cannot be cleared here, and rebuilding would replay the same answer
   // forever, so the sign-in form is the honest end state.
   useEffect(() => {
-    if (!invalidSession || droppedInvalidSession.current) {
+    if (!accountScope.active || !invalidSession || droppedInvalidSession.current) {
       return;
     }
     droppedInvalidSession.current = true;
+    // Drop everything captured under the account that just left, then record
+    // *why* the session was rejected: that reason is worth keeping, and
+    // recording it before the clear would leak the previous account's log.
+    const rejection = authFailureDetail(session.error);
     debugLog.clear();
+    accountScope.record("auth.session", rejection);
     resetProviderToken(authClient);
     const storedToken = readSessionToken(profile.siteUrl) !== null;
     clearSessionToken(profile.siteUrl);
     if (storedToken) {
       connection.retry();
     }
-  }, [invalidSession, authClient, profile.siteUrl, connection]);
+  }, [invalidSession, session.error, authClient, profile.siteUrl, connection, accountScope]);
 
   // Every wait a server restart can break: a session lookup that never answers
   // or fails, and — the case that used to stick forever — a signed-in session
@@ -347,7 +355,10 @@ function SignedInShell({
   };
   const shellRecovery: ChatSessionShellRecovery = { ...recovery, onRetry };
   const signOut = () => {
-    void actions.signOut();
+    // A failed sign-out is recorded and recovered inside `auth-client`; the
+    // button cannot await it, so consume the rejection instead of leaving an
+    // unhandled one behind.
+    void actions.signOut().catch(() => undefined);
   };
   return (
     <>

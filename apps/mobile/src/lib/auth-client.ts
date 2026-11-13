@@ -1,10 +1,11 @@
-import { debugLog, resetProviderToken } from "@aulora/core";
+import { resetDebugAccount, resetProviderToken } from "@aulora/core";
 import { convexClient } from "@convex-dev/better-auth/client/plugins";
 import { genericOAuthClient } from "better-auth/client/plugins";
 import { createAuthClient } from "better-auth/react";
 import * as Crypto from "expo-crypto";
 import * as Linking from "expo-linking";
 import * as WebBrowser from "expo-web-browser";
+import type { AccountScope } from "./account-scope";
 import {
   authStartUrl,
   beginAuthHandoff,
@@ -65,7 +66,7 @@ export interface AuthActions {
   deleteAccount(): Promise<AuthActionResult>;
 }
 
-export function authActionsFromClient(client: AuloraAuthClient): AuthActions {
+export function authActionsFromClient(client: AuloraAuthClient, scope?: AccountScope): AuthActions {
   return {
     async signInEmail({ email, password }) {
       return toResult(await client.signIn.email({ email, password }));
@@ -78,7 +79,7 @@ export function authActionsFromClient(client: AuloraAuthClient): AuthActions {
       // races the sign-out must not fall back to the account that is leaving.
       resetProviderToken(client);
       const result = toResult(await client.signOut());
-      if (result.error === null) debugLog.clear();
+      if (result.error === null && (scope?.active ?? true)) resetDebugAccount();
       return result;
     },
     async deleteAccount() {
@@ -86,10 +87,11 @@ export function authActionsFromClient(client: AuloraAuthClient): AuthActions {
       if (result.error) {
         return toResult(result);
       }
+      if (scope !== undefined && !scope.active) return { error: null };
       // The server has deleted the account; make this device forget the now
       // invalid session instead of leaving a stale cookie behind.
       resetProviderToken(client);
-      debugLog.clear();
+      resetDebugAccount();
       await client.signOut().catch(() => undefined);
       return { error: null };
     },

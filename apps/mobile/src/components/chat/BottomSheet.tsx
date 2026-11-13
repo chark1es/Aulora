@@ -22,6 +22,7 @@ export function BottomSheet({
   subtitle,
   header,
   onClose,
+  onBack,
   children,
 }: {
   readonly visible: boolean;
@@ -30,6 +31,11 @@ export function BottomSheet({
   /** Replaces the plain title row, e.g. with an avatar and name. */
   readonly header?: ReactNode;
   readonly onClose: () => void;
+  /**
+   * Handles Android back inside a nested panel (for example a ban form) by
+   * returning to the sheet's own root instead of dismissing the whole sheet.
+   */
+  readonly onBack?: (() => void) | undefined;
   readonly children: ReactNode;
 }) {
   const palette = usePalette();
@@ -50,11 +56,21 @@ export function BottomSheet({
     else ref.current?.dismiss();
   }, [visible]);
 
-  // Android back closes the sheet rather than whatever is behind it.
+  // The callback is recreated on each render; read the latest one so the
+  // listener does not re-register while the person types in a nested form.
+  const back = useRef(onBack);
+  back.current = onBack;
+
+  // Android back closes the sheet rather than whatever is behind it, except
+  // inside a nested panel where it returns to the sheet's root first.
   useEffect(() => {
     if (!visible) return;
     const subscription = BackHandler.addEventListener("hardwareBackPress", () => {
-      ref.current?.dismiss();
+      if (back.current !== undefined) {
+        back.current();
+      } else {
+        ref.current?.dismiss();
+      }
       return true;
     });
     return () => {
