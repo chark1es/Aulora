@@ -8,19 +8,22 @@ import {
   NoteBodyInput,
   NoteEditorPickers,
   NoteProperties,
+  NoteReader,
   NoteTitleInput,
 } from "./NoteEditorParts";
 import { NoteBackButton, NotesError, NotesLoading } from "./NoteParts";
 import { editorActions } from "./note-editor-actions";
-import { useNoteEditor } from "./use-note-editor";
+import type { NoteEditorController } from "./use-note-editor";
 import type { NotesController } from "./use-notes";
 
 function NoteEditorHeader({
   ctl,
+  editor,
   onMenu,
   onBack,
 }: {
   readonly ctl: NotesController;
+  readonly editor: NoteEditorController;
   readonly onMenu: () => void;
   readonly onBack: () => void;
 }) {
@@ -32,21 +35,51 @@ function NoteEditorHeader({
       subtitle={note?.archived === true ? "Archived" : undefined}
       leading={<NoteBackButton onPress={onBack} />}
       trailing={
-        <IconButton label="Note actions" size="sm" onPress={onMenu}>
-          <Icon name="more-horizontal" size={20} color={palette.text} />
-        </IconButton>
+        <View className="flex-row items-center gap-1">
+          {!editor.editing && ctl.permissions.edit && (
+            <IconButton
+              label="Edit note"
+              size="sm"
+              onPress={() => {
+                editor.setEditing(true);
+              }}
+            >
+              <Icon name="pencil" size={18} color={palette.text} />
+            </IconButton>
+          )}
+          <IconButton label="Note actions" size="sm" onPress={onMenu}>
+            <Icon name="more-horizontal" size={20} color={palette.text} />
+          </IconButton>
+        </View>
       }
     />
   );
 }
 
 /** Offers a way out when the note changed under a draft; editing stays possible. */
-function NoteReloadBanner({ editor }: { readonly editor: ReturnType<typeof useNoteEditor> }) {
+function NoteReloadBanner({ editor }: { readonly editor: NoteEditorController }) {
   if (!editor.reloadPrompt && !editor.replacingNewerVersion) return null;
   if (!editor.reloadPrompt) {
     return (
       <View accessibilityRole="alert" className="border-b border-border bg-surface-2 px-4 py-3">
         <Text size="sm">Saving will replace the newer version</Text>
+      </View>
+    );
+  }
+  // A clean reader has no local edits to discard, so it only offers the latest
+  // revision; an editor keeps both explicit choices.
+  if (!editor.dirty) {
+    return (
+      <View
+        accessibilityRole="alert"
+        className="flex-row items-center justify-between gap-2 border-b border-border bg-surface-2 px-4 py-3"
+      >
+        <Text size="sm" className="flex-1">
+          This note changed elsewhere.
+        </Text>
+        <Button size="sm" variant="secondary" onPress={editor.reloadLatest}>
+          Reload latest
+        </Button>
       </View>
     );
   }
@@ -69,8 +102,13 @@ function NoteReloadBanner({ editor }: { readonly editor: ReturnType<typeof useNo
 }
 
 /** Writes one note: a Markdown field with a preview, tags and a folder. */
-export function NoteEditorScreen({ ctl }: { readonly ctl: NotesController }) {
-  const editor = useNoteEditor(ctl);
+export function NoteEditorScreen({
+  ctl,
+  editor,
+}: {
+  readonly ctl: NotesController;
+  readonly editor: NoteEditorController;
+}) {
   const { title, body, busy, sheet, setSheet, save } = editor;
   const isNew = ctl.selectedId === null;
   const note = ctl.detail;
@@ -79,6 +117,7 @@ export function NoteEditorScreen({ ctl }: { readonly ctl: NotesController }) {
     <View className="flex-1 min-w-0">
       <NoteEditorHeader
         ctl={ctl}
+        editor={editor}
         onBack={editor.backToList}
         onMenu={() => {
           setSheet("menu");
@@ -87,31 +126,39 @@ export function NoteEditorScreen({ ctl }: { readonly ctl: NotesController }) {
       <NotesError ctl={ctl} />
       <NoteReloadBanner editor={editor} />
       <ScrollView keyboardShouldPersistTaps="handled" contentContainerStyle={{ paddingBottom: 16 }}>
-        <NoteTitleInput editor={editor} />
-        <NoteBodyInput editor={editor} />
-        <NoteProperties ctl={ctl} editor={editor} />
-      </ScrollView>
-      <View className="gap-2 border-t border-border px-4 py-3">
-        {!editor.dirty && (
-          <Text size="xs" tone="muted">
-            {editor.saved ? "Saved · No changes" : "No changes"}
-          </Text>
+        {editor.editing ? (
+          <>
+            <NoteTitleInput editor={editor} />
+            <NoteBodyInput editor={editor} />
+            <NoteProperties ctl={ctl} editor={editor} />
+          </>
+        ) : (
+          <NoteReader ctl={ctl} editor={editor} />
         )}
-        <Button
-          loading={busy}
-          disabled={!editor.dirty || !hasNoteContent(title, body)}
-          onPress={() => {
-            impactFeedback();
-            save();
-          }}
-        >
-          {isNew ? "Create note" : "Save note"}
-        </Button>
-      </View>
+      </ScrollView>
+      {editor.editing && (
+        <View className="gap-2 border-t border-border px-4 py-3">
+          {!editor.dirty && (
+            <Text size="xs" tone="muted">
+              {editor.saved ? "Saved · No changes" : "No changes"}
+            </Text>
+          )}
+          <Button
+            loading={busy}
+            disabled={!editor.dirty || !hasNoteContent(title, body)}
+            onPress={() => {
+              impactFeedback();
+              save();
+            }}
+          >
+            {isNew ? "Create note" : "Save note"}
+          </Button>
+        </View>
+      )}
       {sheet === "menu" && (
         <ActionSheet
           title={note === undefined ? "New note" : noteTitle(note)}
-          actions={editorActions(ctl, editor)}
+          actions={editorActions(ctl, editor, editor.editing)}
           onClose={() => {
             setSheet(undefined);
           }}

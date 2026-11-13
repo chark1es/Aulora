@@ -14,6 +14,7 @@ import { loadEffectiveEnv } from "./lib/envOverrides";
 import { effectiveMaxUploadBytes } from "./lib/instance";
 import { ownerIdsOf } from "./lib/owners";
 import { requireWorkspacePermission } from "./lib/permissions";
+import { pushRelayServerIdFromEnv } from "./lib/pushRelay";
 import { storageIsReferenced } from "./lib/storageReferences";
 import { scheduleStopAllActive } from "./lib/transcription";
 
@@ -123,7 +124,9 @@ async function buildPublicConfig(ctx: QueryCtx) {
     // True until the first owner claims a fresh instance. Additive field: an
     // older backend that lacks it reads as false on new clients.
     setupRequired: server === null,
-    capabilities: { mentionMarkers: true, threadInboxPaging: true },
+    // Additive capabilities only: older clients ignore unknown keys, and older
+    // servers omit them so new clients fall back to no cross-workspace work.
+    capabilities: { mentionMarkers: true, threadInboxPaging: true, workspaceUnread: true },
     iconSeed: server?.iconSeed ?? "aulora:server:default",
     description: server?.description ?? "",
     logoUrl,
@@ -137,6 +140,9 @@ async function buildPublicConfig(ctx: QueryCtx) {
     features,
     convexUrl: env.CONVEX_CLOUD_URL ?? "",
     siteUrl: env.SITE_URL ?? env.CONVEX_SITE_URL ?? "",
+    // Stable id stamped on mobile wakes. Additive: an older backend omits it,
+    // and clients then fall back to matching a saved workspace address.
+    pushRelay: { serverId: pushRelayServerIdFromEnv(env) },
     auth: getPublicAuthConfig(env, signupEnabled, instance?.authProviders ?? undefined),
     // Non-secret encryption descriptor: mode, algorithm, key version and the
     // key-manager provider only. Key material never leaves the environment.

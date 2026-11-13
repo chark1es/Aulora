@@ -249,6 +249,13 @@ export function MemberActionsSheet(props: MemberActionsSheetProps) {
       title={panel === "ban" ? `Ban ${memberName}` : panel === "timeout" ? "Time out" : memberName}
       subtitle={panel === "timeout" ? `${memberName} can’t send messages until it ends` : undefined}
       onClose={onClose}
+      onBack={
+        panel === "actions"
+          ? undefined
+          : () => {
+              setPanel("actions");
+            }
+      }
     >
       <MemberActionsBody
         props={props}

@@ -1,7 +1,9 @@
 import { hasPermission, Permission } from "@aulora/core";
 import { Alert, View } from "react-native";
+import { addonChooserEntries, showAddonsDockTab } from "../../lib/addons";
 import { pickFromLibrary } from "../../lib/attachments";
 import { selectionFeedback } from "../../lib/haptics";
+import { useWorkspaceUnreadCounts } from "../../lib/use-workspace-notifications";
 import { KanbanScreen } from "../kanban/KanbanScreen";
 import { useScreenInsets } from "../layout/ScreenContainer";
 import { NotesScreen } from "../notes/NotesScreen";
@@ -9,6 +11,7 @@ import { ChannelList } from "./ChannelList";
 import { errorMessage } from "./chat-screen-types";
 import { DirectList } from "./DirectList";
 import { HubDock, PaneHeader, RoundButton, useDockClearance } from "./HubPane";
+import { ListGroup, ListRow } from "./List";
 import { SearchView } from "./SearchView";
 import { SettingsView } from "./SettingsView";
 import { ThreadsInbox } from "./ThreadsInbox";
@@ -16,6 +19,13 @@ import type { ChatScreenModel } from "./use-chat-screen-model";
 
 export function ChatHubPane({ model }: { readonly model: ChatScreenModel }) {
   const insets = useScreenInsets();
+  const unreadByWorkspace = useWorkspaceUnreadCounts();
+  let workspaceUnread = 0;
+  for (const [profileId, count] of unreadByWorkspace) {
+    if (profileId !== model.activeProfile?.id) {
+      workspaceUnread += count;
+    }
+  }
   return (
     <View
       className="flex-1 bg-bg min-w-0"
@@ -25,6 +35,8 @@ export function ChatHubPane({ model }: { readonly model: ChatScreenModel }) {
         <ChatHubListTab model={model} />
       ) : model.hubTab === "dms" ? (
         <ChatHubDirectTab model={model} />
+      ) : model.hubTab === "addons" ? (
+        <ChatHubAddonsTab model={model} />
       ) : model.hubTab === "boards" && model.showKanban ? (
         <ChatHubBoardsTab model={model} />
       ) : model.hubTab === "notes" && model.showNotes ? (
@@ -47,8 +59,10 @@ export function ChatHubPane({ model }: { readonly model: ChatScreenModel }) {
         ownUserId={model.ownUserId}
         ownStatus={model.ownStatus}
         threadBadge={model.threadMentionCount}
-        boards={model.showKanban}
-        notes={model.showNotes}
+        workspaceUnread={workspaceUnread}
+        addons={showAddonsDockTab(
+          addonChooserEntries({ kanban: model.showKanban, notes: model.showNotes }),
+        )}
       />
     </View>
   );
@@ -119,11 +133,44 @@ function ChatHubDirectTab({ model }: { readonly model: ChatScreenModel }) {
   );
 }
 
+/**
+ * One place for every addon the workspace enables: the dock keeps a single
+ * Addons tab and this chooser names each tool instead of stacking one tab per
+ * addon.
+ */
+function ChatHubAddonsTab({ model }: { readonly model: ChatScreenModel }) {
+  const clearance = useDockClearance();
+  const entries = addonChooserEntries({ kanban: model.showKanban, notes: model.showNotes });
+  return (
+    <View className="flex-1 min-w-0" style={{ paddingBottom: clearance }}>
+      <PaneHeader title="Addons" subtitle="Tools enabled in this workspace" />
+      <View className="px-4">
+        <ListGroup>
+          {entries.map((entry) => (
+            <ListRow
+              key={entry.key}
+              icon={entry.icon}
+              title={entry.title}
+              subtitle={entry.subtitle}
+              chevron
+              onPress={() => {
+                selectionFeedback();
+                model.setHubTab(entry.key);
+              }}
+            />
+          ))}
+        </ListGroup>
+      </View>
+    </View>
+  );
+}
+
 function ChatHubBoardsTab({ model }: { readonly model: ChatScreenModel }) {
   const dockClearance = useDockClearance();
   return (
     <View className="flex-1 min-w-0" style={{ paddingBottom: dockClearance }}>
       <KanbanScreen
+        active={model.pane === 0}
         ownUserId={model.ownUserId}
         permissions={model.viewerPermissions}
         members={model.members}
@@ -139,6 +186,7 @@ function ChatHubNotesTab({ model }: { readonly model: ChatScreenModel }) {
   return (
     <View className="flex-1 min-w-0" style={{ paddingBottom: dockClearance }}>
       <NotesScreen
+        active={model.pane === 0}
         ownUserId={model.ownUserId}
         permissions={model.viewerPermissions}
         members={model.members}
@@ -211,6 +259,7 @@ function ChatHubSettingsTab({ model }: { readonly model: ChatScreenModel }) {
   const avatar = profileAvatarActions(model);
   return (
     <SettingsView
+      active={model.pane === 0}
       workspaceName={model.workspaceName}
       ownUserId={model.ownUserId}
       ownDisplayName={model.memberNames.get(model.ownUserId) ?? model.ownDisplayName}
@@ -221,7 +270,6 @@ function ChatHubSettingsTab({ model }: { readonly model: ChatScreenModel }) {
       roles={model.roleViews}
       isOwner={model.isOwner}
       topPosition={model.viewerTopPosition}
-      active={model.pane === 0}
       hasAvatar={model.avatarUrls.has(model.ownUserId)}
       onChangeAvatar={avatar.change}
       onClearAvatar={avatar.clear}

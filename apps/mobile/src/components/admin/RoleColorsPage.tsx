@@ -1,5 +1,5 @@
-import { useCallback, useEffect, useMemo, useReducer } from "react";
-import { BackHandler, View } from "react-native";
+import { useCallback, useMemo, useReducer } from "react";
+import { View } from "react-native";
 import type { RoleView } from "../../lib/permissions";
 import {
   EMPTY_ROLE_COLOR_PAGE,
@@ -12,6 +12,7 @@ import {
 import { PaneHeader, RoundButton, useDockClearance } from "../chat/HubPane";
 import { PageTransition } from "../chat/PageTransition";
 import { confirm } from "../kanban/board-menus";
+import { useBackPress } from "../navigation/BackPress";
 import { RoleColorEditor } from "./RoleColorEditor";
 import { RoleColorList } from "./RoleColorList";
 
@@ -128,16 +129,10 @@ export function RoleColorsPage({
   // so it owns the Android back step it used to get from the native sheet. It
   // registers no sibling handler, so the editor's step always runs before the
   // list's step back to the You tab.
-  useEffect(() => {
-    if (!active) return;
-    const subscription = BackHandler.addEventListener("hardwareBackPress", () => {
-      goBack();
-      return true;
-    });
-    return () => {
-      subscription.remove();
-    };
-  }, [active, goBack]);
+  useBackPress(active, () => {
+    goBack();
+    return true;
+  });
 
   if (selected !== null) {
     return (

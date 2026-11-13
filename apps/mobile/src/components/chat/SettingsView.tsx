@@ -1,13 +1,14 @@
 /* eslint-disable no-unused-vars -- the base rule reports parameter names in type signatures; Biome checks real unused code */
 import type { PresenceRow } from "@aulora/core";
 import { Button, Text } from "@aulora/ui-native";
-import { useEffect, useState } from "react";
-import { BackHandler, Linking, View } from "react-native";
+import { useState } from "react";
+import { Linking, View } from "react-native";
 import { KeyboardAwareScrollView } from "react-native-keyboard-controller";
 import type { RoleView } from "../../lib/permissions";
 import { presenceLabel } from "../../lib/presence";
 import type { PushRegistrationState } from "../../lib/use-push-registration";
 import { RoleColorsPage } from "../admin/RoleColorsPage";
+import { useBackPress } from "../navigation/BackPress";
 import { DeviceSettingsSection } from "../voice/DeviceSettingsSection";
 import { DebugLogsSection } from "./DebugLogsSection";
 import { PaneHeader, RoundButton, useDockClearance } from "./HubPane";
@@ -38,6 +39,8 @@ const PUSH_LABELS: ReadonlyMap<PushRegistrationState, string> = new Map([
 ]);
 
 export interface SettingsViewProps {
+  /** True while the hub pane is the visible surface. */
+  readonly active: boolean;
   readonly workspaceName: string;
   readonly ownUserId: string;
   readonly ownDisplayName: string;
@@ -47,8 +50,6 @@ export interface SettingsViewProps {
   readonly roles: readonly RoleView[];
   readonly isOwner: boolean;
   readonly topPosition: number;
-  /** False while another pane covers the hub; settings must not consume chat back presses there. */
-  readonly active: boolean;
   readonly hasAvatar: boolean;
   readonly onChangeAvatar: () => void;
   readonly onClearAvatar: () => void;
@@ -300,21 +301,12 @@ export function SettingsView(props: SettingsViewProps) {
   const clearance = useDockClearance();
   const [page, setPage] = useState<DetailPage | null>(null);
 
-  // Every settings detail is a page pushed over the You tab, so Android back
-  // returns to the menu before it leaves the tab. The role-color page registers
-  // its own handler because it has a nested list → editor step; registering one
-  // here too would make the later registration (this effect) run first and
-  // swallow that step.
-  useEffect(() => {
-    if (page === null || page === "roleColors" || !props.active) return;
-    const subscription = BackHandler.addEventListener("hardwareBackPress", () => {
-      setPage(null);
-      return true;
-    });
-    return () => {
-      subscription.remove();
-    };
-  }, [page, props.active]);
+  // Role colors owns its nested list/editor Back step. Other details return
+  // to You before the shared chat router restores the previous hub location.
+  useBackPress(props.active && page !== null && page !== "roleColors", () => {
+    setPage(null);
+    return true;
+  });
 
   if (page !== null) {
     return (

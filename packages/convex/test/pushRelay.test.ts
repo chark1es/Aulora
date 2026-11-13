@@ -1,6 +1,10 @@
 import { afterEach, describe, expect, it } from "vitest";
 import { api, internal } from "../convex/_generated/api";
-import { pushRelayConfigFromEnv, sendWake } from "../convex/lib/pushRelay";
+import {
+  pushRelayConfigFromEnv,
+  pushRelayServerIdFromEnv,
+  sendWake,
+} from "../convex/lib/pushRelay";
 import { newTest, seedChannel, seedWorkspace } from "./helpers";
 
 const ORIGINAL_FETCH = globalThis.fetch;
@@ -26,6 +30,42 @@ describe("pushRelay config", () => {
       token: "secret",
       serverId: "srv-1",
     });
+  });
+});
+
+describe("push relay server identity", () => {
+  it("prefers an operator-chosen opaque id over every address", () => {
+    expect(
+      pushRelayServerIdFromEnv({
+        AULORA_SERVER_ID: " 6b1a0f8e-6a1f-4f4b-8c4d-2f6f6d2f5a11 ",
+        SITE_URL: "https://chat.acme.com",
+        CONVEX_SITE_URL: "https://acme.convex.site",
+      }),
+    ).toBe("6b1a0f8e-6a1f-4f4b-8c4d-2f6f6d2f5a11");
+  });
+
+  it("falls back to the site address, then the convex site, then the literal", () => {
+    expect(pushRelayServerIdFromEnv({ SITE_URL: "https://chat.acme.com" })).toBe(
+      "https://chat.acme.com",
+    );
+    expect(
+      pushRelayServerIdFromEnv({
+        CONVEX_SITE_URL: "https://acme.convex.site",
+      }),
+    ).toBe("https://acme.convex.site");
+    // A deployment with neither address still produces a usable relay id; the
+    // mobile client treats it as an opaque value, not a URL.
+    expect(pushRelayServerIdFromEnv({})).toBe("aulora");
+    expect(pushRelayServerIdFromEnv({ AULORA_SERVER_ID: "  ", SITE_URL: " " })).toBe("aulora");
+  });
+
+  it("stamps the same id on the relay configuration", () => {
+    const env = {
+      PUSH_RELAY_URL: "https://relay.example.com",
+      PUSH_RELAY_TOKEN: "secret",
+      AULORA_SERVER_ID: "srv-opaque",
+    };
+    expect(pushRelayConfigFromEnv(env)?.serverId).toBe(pushRelayServerIdFromEnv(env));
   });
 });
 
