@@ -267,9 +267,9 @@ function ChatHubSettingsTab({ model }: { readonly model: ChatScreenModel }) {
       canManageRoles={
         model.isOwner || hasPermission(model.viewerPermissions, Permission.ManageRoles)
       }
-      onOpenRoleColors={() => {
-        model.setRoleColorsOpen(true);
-      }}
+      roles={model.roleViews}
+      isOwner={model.isOwner}
+      topPosition={model.viewerTopPosition}
       hasAvatar={model.avatarUrls.has(model.ownUserId)}
       onChangeAvatar={avatar.change}
       onClearAvatar={avatar.clear}

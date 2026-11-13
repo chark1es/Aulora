@@ -4,20 +4,23 @@ import { Button, Text } from "@aulora/ui-native";
 import { useState } from "react";
 import { Linking, View } from "react-native";
 import { KeyboardAwareScrollView } from "react-native-keyboard-controller";
+import type { RoleView } from "../../lib/permissions";
 import { presenceLabel } from "../../lib/presence";
 import type { PushRegistrationState } from "../../lib/use-push-registration";
+import { RoleColorsPage } from "../admin/RoleColorsPage";
 import { useBackPress } from "../navigation/BackPress";
 import { DeviceSettingsSection } from "../voice/DeviceSettingsSection";
 import { DebugLogsSection } from "./DebugLogsSection";
 import { PaneHeader, RoundButton, useDockClearance } from "./HubPane";
 import { ListGroup, ListHeader, ListRow } from "./List";
+import { PageTransition } from "./PageTransition";
 import { PresenceAvatar } from "./PresenceAvatar";
 import { ProfileEditor } from "./ProfileEditor";
 import { SoundSettingsSection } from "./SoundSettingsSection";
 import { StatusEditor } from "./StatusEditor";
 import type { ViewerProfileData } from "./use-chat-screen-data";
 
-type DetailPage = "profile" | "notifications" | "voice" | "debug";
+type DetailPage = "profile" | "notifications" | "voice" | "debug" | "roleColors";
 type PresenceStatus = PresenceRow["status"];
 
 const PAGE_TITLES: ReadonlyMap<DetailPage, string> = new Map([
@@ -44,7 +47,9 @@ export interface SettingsViewProps {
   readonly canChangeNickname: boolean;
   /** Owner or ManageRoles; shows the role-color editor row. */
   readonly canManageRoles: boolean;
-  readonly onOpenRoleColors: () => void;
+  readonly roles: readonly RoleView[];
+  readonly isOwner: boolean;
+  readonly topPosition: number;
   readonly hasAvatar: boolean;
   readonly onChangeAvatar: () => void;
   readonly onClearAvatar: () => void;
@@ -65,6 +70,10 @@ interface DetailProps {
   readonly page: DetailPage;
   readonly ownUserId: string;
   readonly canChangeNickname: boolean;
+  readonly roles: readonly RoleView[];
+  readonly isOwner: boolean;
+  readonly topPosition: number;
+  readonly active: boolean;
   readonly profileData?: ViewerProfileData | null | undefined;
   readonly onSaveProfile?: ((next: ViewerProfileData) => void) | undefined;
   readonly onBack: () => void;
@@ -75,31 +84,48 @@ function SettingsDetail({
   page,
   ownUserId,
   canChangeNickname,
+  roles,
+  isOwner,
+  topPosition,
+  active,
   profileData,
   onSaveProfile,
   onBack,
 }: DetailProps) {
   const clearance = useDockClearance();
-  return (
-    <View className="flex-1 min-w-0" style={{ paddingBottom: clearance }}>
-      <PaneHeader
-        title={PAGE_TITLES.get(page) ?? ""}
-        leading={<RoundButton icon="chevron-left" label="Back to You" onPress={onBack} />}
+  if (page === "roleColors") {
+    return (
+      <RoleColorsPage
+        roles={roles}
+        isOwner={isOwner}
+        topPosition={topPosition}
+        active={active}
+        onBack={onBack}
       />
-      <View className="flex-1 px-4 min-w-0">
-        {page === "profile" && (
-          <ProfileEditor
-            userId={ownUserId}
-            canChangeNickname={canChangeNickname}
-            profile={profileData}
-            onSave={onSaveProfile}
-          />
-        )}
-        {page === "notifications" && <SoundSettingsSection />}
-        {page === "debug" && <DebugLogsSection />}
-        {page === "voice" && <DeviceSettingsSection />}
+    );
+  }
+  return (
+    <PageTransition key={page}>
+      <View className="flex-1 min-w-0" style={{ paddingBottom: clearance }}>
+        <PaneHeader
+          title={PAGE_TITLES.get(page) ?? ""}
+          leading={<RoundButton icon="chevron-left" label="Back to You" onPress={onBack} />}
+        />
+        <View className="flex-1 px-4 min-w-0">
+          {page === "profile" && (
+            <ProfileEditor
+              userId={ownUserId}
+              canChangeNickname={canChangeNickname}
+              profile={profileData}
+              onSave={onSaveProfile}
+            />
+          )}
+          {page === "notifications" && <SoundSettingsSection />}
+          {page === "debug" && <DebugLogsSection />}
+          {page === "voice" && <DeviceSettingsSection />}
+        </View>
       </View>
-    </View>
+    </PageTransition>
   );
 }
 
@@ -181,7 +207,6 @@ interface SettingsMenuProps {
   readonly canManageRoles: boolean;
   readonly pushState: PushRegistrationState;
   readonly onOpen: (page: DetailPage) => void;
-  readonly onOpenRoleColors: () => void;
 }
 
 function SettingsPageRows({
@@ -232,13 +257,7 @@ function SettingsPageRows({
 }
 
 /** The rows that lead to each settings page. */
-function SettingsMenu({
-  canChangeNickname,
-  canManageRoles,
-  pushState,
-  onOpen,
-  onOpenRoleColors,
-}: SettingsMenuProps) {
+function SettingsMenu({ canChangeNickname, canManageRoles, pushState, onOpen }: SettingsMenuProps) {
   return (
     <View>
       <ListHeader title="Settings" />
@@ -249,7 +268,9 @@ function SettingsMenu({
             title="Role colors"
             subtitle="Preview and fix role name colors in both themes"
             chevron
-            onPress={onOpenRoleColors}
+            onPress={() => {
+              onOpen("roleColors");
+            }}
           />
         )}
         <SettingsPageRows
@@ -280,10 +301,9 @@ export function SettingsView(props: SettingsViewProps) {
   const clearance = useDockClearance();
   const [page, setPage] = useState<DetailPage | null>(null);
 
-  // A settings page is pushed over the You tab, so Android back returns to the
-  // tab it came from. Only the visible hub pane owns the press: the pane stays
-  // mounted while somebody swipes back to the conversation.
-  useBackPress(props.active && page !== null, () => {
+  // Role colors owns its nested list/editor Back step. Other details return
+  // to You before the shared chat router restores the previous hub location.
+  useBackPress(props.active && page !== null && page !== "roleColors", () => {
     setPage(null);
     return true;
   });
@@ -294,6 +314,10 @@ export function SettingsView(props: SettingsViewProps) {
         page={page}
         ownUserId={props.ownUserId}
         canChangeNickname={props.canChangeNickname}
+        roles={props.roles}
+        isOwner={props.isOwner}
+        topPosition={props.topPosition}
+        active={props.active}
         profileData={props.profileData}
         onSaveProfile={props.onSaveProfile}
         onBack={() => {
@@ -331,7 +355,6 @@ export function SettingsView(props: SettingsViewProps) {
         canManageRoles={props.canManageRoles}
         pushState={props.pushState}
         onOpen={setPage}
-        onOpenRoleColors={props.onOpenRoleColors}
       />
       <ListGroup>
         <ListRow

@@ -48,7 +48,6 @@ function useChatPanelState() {
   const [showHidden, setShowHidden] = useState(false);
   const [workspaceSwitcherOpen, setWorkspaceSwitcherOpen] = useState(false);
   const [bansOpen, setBansOpen] = useState(false);
-  const [roleColorsOpen, setRoleColorsOpen] = useState(false);
   return {
     newMessageOpen,
     setNewMessageOpen,
@@ -62,8 +61,6 @@ function useChatPanelState() {
     setWorkspaceSwitcherOpen,
     bansOpen,
     setBansOpen,
-    roleColorsOpen,
-    setRoleColorsOpen,
   };
 }
 
