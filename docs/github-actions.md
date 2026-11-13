@@ -109,11 +109,19 @@ another workflow. Its `release: published` trigger also handles manual publicati
 To retry a failed promotion, run Sync release branch on `main` with the published
 `tag`; this does not rebuild or republish artifacts.
 
-Enable **Allow auto-merge** in repository settings and **Allow GitHub Actions to
-create and approve pull requests** in Actions settings. No additional token or
-branch protection bypass is needed. The workflow dispatches CI explicitly on the
-promotion branch because pushes made with `GITHUB_TOKEN` do not start CI. It uses
-`native=false` because the release pipeline already built the native apps.
+Enable **Allow auto-merge** in repository settings. Configure the repository
+secret `RELEASE_AUTOMATION_TOKEN` with a fine-grained personal access token limited
+to this repository, with **Contents**, **Pull requests** and **Workflows** read/write
+permissions. Workflows permission allows promotion commits containing workflow
+updates. Keep an expiry and rotate the secret before it expires.
+
+Promotion uses this credential for checkout/push and PR creation so ordinary
+`pull_request` CI runs without manual workflow approval. GitHub requires approval
+for PR runs created with `GITHUB_TOKEN`; there is no repository toggle to remove
+that bot-specific gate. See [GitHub token event behavior](https://docs.github.com/en/actions/concepts/security/github_token#when-github_token-triggers-workflow-runs).
+No branch protection bypass is used. The workflow fails with setup instructions
+if the credential is missing and does not dispatch duplicate CI. PR native builds
+remain opt-in because the release pipeline already built the native apps.
 
 For a candidate or retry, open [Actions → Release](https://github.com/chark1es/Aulora/actions/workflows/release.yml),
 select `main`, and leave `publish` off. It builds the current checked-in version
