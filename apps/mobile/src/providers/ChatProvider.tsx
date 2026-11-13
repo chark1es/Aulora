@@ -152,7 +152,7 @@ export function ChatProvider({ client, userId, children }: ChatProviderProps) {
   outboxItemsRef.current = outbox;
   const runtimeRef = useRef<MobileChatRuntime | undefined>(undefined);
   const outboxRef = useRef<Outbox>(undefined);
-  const scopeRef = useRef<AccountScope>(undefined);
+  const scopeRef = useRef<AccountScope | undefined>(undefined);
   const searchRef = useRef<SearchIndex>(undefined);
   const backfillRef = useRef<ArchiveBackfill>(undefined);
   const summariesRef = useRef(summaries);
