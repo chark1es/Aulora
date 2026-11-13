@@ -13,6 +13,7 @@ import { SUPPORTED_API_VERSION } from "../lib/api-version";
 import { type Branding, fetchBranding } from "../lib/branding";
 import { shouldOpenReviewDemo } from "../lib/review-demo";
 import { useEntrance, useReduceMotion } from "../lib/use-entrance";
+import { rememberAndPersistWorkspaceServerId } from "../lib/workspace-identity";
 import { useProfiles } from "../providers/ProfileProvider";
 import { AuthField } from "./AuthField";
 import { AuthScaffold, AuthScroll } from "./AuthScaffold";
@@ -161,7 +162,13 @@ function useConnectModel(onConnected: () => void, initialHost: string | undefine
     }
     setBusy(true);
     try {
-      await addProfile(preview.baseUrl, preview.wellKnown);
+      const saved = await addProfile(preview.baseUrl, preview.wellKnown);
+      // Remember the id this workspace stamps on mobile wakes before the user
+      // can leave the screen; a later cold-launch wake then routes here even
+      // when the operator chose an opaque AULORA_SERVER_ID.
+      if (branding?.serverId != null) {
+        rememberAndPersistWorkspaceServerId(saved.id, branding.serverId);
+      }
       onConnected();
     } catch {
       setError("Could not save this workspace profile.");
