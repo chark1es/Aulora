@@ -2,10 +2,24 @@ import { Avatar } from "@aulora/avatars";
 import type { ServerProfile } from "@aulora/core";
 import { Badge, cn, Icon } from "@aulora/ui-web";
 import { useNavigate } from "@tanstack/react-router";
-import { useEffect, useRef, useState } from "react";
-import { useWorkspaceUnreadCounts } from "../lib/use-workspace-unread";
+import {
+  type Dispatch,
+  lazy,
+  type RefObject,
+  type SetStateAction,
+  Suspense,
+  useEffect,
+  useRef,
+  useState,
+} from "react";
 import { useProfiles } from "../providers/ProfileProvider";
 import { ThemeToggle } from "./ThemeToggle";
+
+const WorkspaceUnreadObserver = lazy(() =>
+  import("../lib/WorkspaceUnreadObserver").then((module) => ({
+    default: module.WorkspaceUnreadObserver,
+  })),
+);
 
 /** A value that may be unset, without spelling out a union at each use. */
 type Maybe<T> = T | undefined;
@@ -19,22 +33,12 @@ export interface WorkspaceMenuProps {
   readonly align?: "left" | "right";
 }
 
-/**
- * The workspace switcher: the workspace name itself is the trigger, opening a
- * menu of every joined server with the active one checked, an "Add a workspace"
- * action, and the appearance control. Rendered in the sidebar header
- * (`variant="header"`) and on the pre-session screens (`variant="compact"`).
- */
-export function WorkspaceMenu({ onlineCount, variant = "header", align }: WorkspaceMenuProps) {
-  const { profiles, activeProfile, setActive } = useProfiles();
-  const unreadByProfile = useWorkspaceUnreadCounts({
-    profiles,
-    activeProfileId: activeProfile?.id,
-  });
-  const navigate = useNavigate();
-  const [open, setOpen] = useState(false);
-  const ref = useRef<HTMLDivElement | null>(null);
-
+/** Closes the switcher when a pointer leaves its root. */
+function useWorkspaceMenuDismiss(
+  open: boolean,
+  ref: RefObject<HTMLDivElement | null>,
+  setOpen: Dispatch<SetStateAction<boolean>>,
+) {
   useEffect(() => {
     if (!open) {
       return;
@@ -48,7 +52,25 @@ export function WorkspaceMenu({ onlineCount, variant = "header", align }: Worksp
     return () => {
       document.removeEventListener("pointerdown", onPointer);
     };
-  }, [open]);
+  }, [open, ref, setOpen]);
+}
+
+/**
+ * The workspace switcher: the workspace name itself is the trigger, opening a
+ * menu of every joined server with the active one checked, an "Add a workspace"
+ * action, and the appearance control. Rendered in the sidebar header
+ * (`variant="header"`) and on the pre-session screens (`variant="compact"`).
+ */
+export function WorkspaceMenu({ onlineCount, variant = "header", align }: WorkspaceMenuProps) {
+  const { profiles, activeProfile, setActive } = useProfiles();
+  const [unreadByProfile, setUnreadByProfile] = useState<ReadonlyMap<string, number>>(
+    () => new Map(),
+  );
+  const navigate = useNavigate();
+  const [open, setOpen] = useState(false);
+  const ref = useRef<HTMLDivElement | null>(null);
+
+  useWorkspaceMenuDismiss(open, ref, setOpen);
 
   const resolvedAlign = align ?? (variant === "header" ? "left" : "right");
   const multiple = profiles.length > 1;
@@ -61,6 +83,7 @@ export function WorkspaceMenu({ onlineCount, variant = "header", align }: Worksp
     void setActive(profileId);
     void navigate({ to: "/" });
   };
+  const trigger = { activeProfile, name, open, onToggle: toggle };
   const addWorkspace = () => {
     setOpen(false);
     void navigate({ to: "/connect" });
@@ -68,21 +91,17 @@ export function WorkspaceMenu({ onlineCount, variant = "header", align }: Worksp
 
   return (
     <div ref={ref} className="relative min-w-0">
+      <Suspense fallback={null}>
+        <WorkspaceUnreadObserver
+          profiles={profiles}
+          activeProfileId={activeProfile?.id}
+          onChange={setUnreadByProfile}
+        />
+      </Suspense>
       {variant === "header" ? (
-        <WorkspaceHeaderTrigger
-          activeProfile={activeProfile}
-          name={name}
-          onlineCount={onlineCount}
-          open={open}
-          onToggle={toggle}
-        />
+        <WorkspaceHeaderTrigger {...trigger} onlineCount={onlineCount} />
       ) : (
-        <WorkspaceCompactTrigger
-          activeProfile={activeProfile}
-          name={name}
-          open={open}
-          onToggle={toggle}
-        />
+        <WorkspaceCompactTrigger {...trigger} />
       )}
 
       {open && (
