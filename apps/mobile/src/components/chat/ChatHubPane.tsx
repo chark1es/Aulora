@@ -3,6 +3,7 @@ import { Alert, View } from "react-native";
 import { addonChooserEntries, showAddonsDockTab } from "../../lib/addons";
 import { pickFromLibrary } from "../../lib/attachments";
 import { selectionFeedback } from "../../lib/haptics";
+import { useWorkspaceUnreadCounts } from "../../lib/use-workspace-notifications";
 import { KanbanScreen } from "../kanban/KanbanScreen";
 import { useScreenInsets } from "../layout/ScreenContainer";
 import { NotesScreen } from "../notes/NotesScreen";
@@ -18,6 +19,13 @@ import type { ChatScreenModel } from "./use-chat-screen-model";
 
 export function ChatHubPane({ model }: { readonly model: ChatScreenModel }) {
   const insets = useScreenInsets();
+  const unreadByWorkspace = useWorkspaceUnreadCounts();
+  let workspaceUnread = 0;
+  for (const [profileId, count] of unreadByWorkspace) {
+    if (profileId !== model.activeProfile?.id) {
+      workspaceUnread += count;
+    }
+  }
   return (
     <View
       className="flex-1 bg-bg min-w-0"
@@ -51,6 +59,7 @@ export function ChatHubPane({ model }: { readonly model: ChatScreenModel }) {
         ownUserId={model.ownUserId}
         ownStatus={model.ownStatus}
         threadBadge={model.threadMentionCount}
+        workspaceUnread={workspaceUnread}
         addons={showAddonsDockTab(
           addonChooserEntries({ kanban: model.showKanban, notes: model.showNotes }),
         )}
