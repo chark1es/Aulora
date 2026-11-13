@@ -1,3 +1,4 @@
+/* eslint-disable no-unused-vars -- the base rule reports parameter names in type signatures; Biome checks real unused code */
 import type {
   MediaDeviceInfo as AuloraMediaDevice,
   CallKind,
@@ -67,6 +68,8 @@ export interface VoiceContextValue extends MobileVoiceSnapshot {
   readonly updateSettings: (_partial: Partial<VoiceDeviceSettings>) => Promise<void>;
   readonly refreshDevices: () => Promise<void>;
   readonly clearError: () => void;
+  /** Shows a call failure that did not originate inside the engine. */
+  readonly reportError: (_message: string) => void;
 }
 
 export const VoiceContext = createContext<VoiceContextValue | null>(null);
@@ -119,4 +122,5 @@ export interface VoiceControls {
   readonly stayInCall: VoiceContextValue["stayInCall"];
   readonly dismissEndedNotice: VoiceContextValue["dismissEndedNotice"];
   readonly clearError: VoiceContextValue["clearError"];
+  readonly reportError: VoiceContextValue["reportError"];
 }
