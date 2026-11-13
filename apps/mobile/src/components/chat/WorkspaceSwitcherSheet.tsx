@@ -1,6 +1,8 @@
 import { NativeAvatar } from "@aulora/avatars/native";
-import { Icon, usePalette } from "@aulora/ui-native";
+import { CountBadge, Icon, usePalette } from "@aulora/ui-native";
 import { useRouter } from "expo-router";
+import { useWorkspaceUnreadCounts } from "../../lib/use-workspace-notifications";
+import { clearWorkspaceUnread } from "../../lib/workspace-identity";
 import { useProfiles } from "../../providers/ProfileProvider";
 import { BottomSheet } from "./BottomSheet";
 import { ListGroup, ListRow } from "./List";
@@ -22,6 +24,7 @@ export interface WorkspaceSwitcherSheetProps {
 /** Bottom sheet that switches between saved workspaces and adds a new one. */
 export function WorkspaceSwitcherSheet({ visible, onClose }: WorkspaceSwitcherSheetProps) {
   const { profiles, activeProfile, setActive } = useProfiles();
+  const unreadByWorkspace = useWorkspaceUnreadCounts();
   const router = useRouter();
   const palette = usePalette();
 
@@ -36,19 +39,32 @@ export function WorkspaceSwitcherSheet({ visible, onClose }: WorkspaceSwitcherSh
         <ListGroup>
           {profiles.map((profile) => {
             const active = activeProfile?.id === profile.id;
+            const unread = unreadByWorkspace.get(profile.id) ?? 0;
             return (
               <ListRow
                 key={profile.id}
-                accessibilityLabel={`Switch to ${profile.name}`}
+                accessibilityLabel={
+                  unread > 0
+                    ? `Switch to ${profile.name}, ${unread} new notification${unread === 1 ? "" : "s"}`
+                    : `Switch to ${profile.name}`
+                }
                 title={profile.name}
                 subtitle={profileHost(profile.baseUrl)}
                 selected={active}
                 leading={<NativeAvatar seed={profile.iconSeed} size={36} shape="squircle" />}
                 trailing={
-                  active ? <Icon name="check" size={18} color={palette.accent} /> : undefined
+                  active ? (
+                    <Icon name="check" size={18} color={palette.accent} />
+                  ) : unread > 0 ? (
+                    <CountBadge
+                      count={unread}
+                      label={`${unread} new notification${unread === 1 ? "" : "s"}`}
+                    />
+                  ) : undefined
                 }
                 onPress={() => {
                   onClose();
+                  clearWorkspaceUnread(profile.id);
                   if (!active) {
                     // A refused write leaves the current workspace active; the
                     // sheet is already closed, so there is nothing to correct.

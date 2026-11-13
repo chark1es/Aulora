@@ -46,6 +46,23 @@ export interface WakeResult {
 
 export const WAKE_PATH = "/v1/wake";
 
+/**
+ * The stable id this deployment stamps on every mobile wake.
+ *
+ * `AULORA_SERVER_ID` lets an operator choose an opaque id (a UUID, for
+ * example) that is independent of how the workspace is reached. Without it the
+ * public site/convex URL is used, and a deployment with neither falls back to
+ * the historical literal `aulora`. Clients must compare against the value the
+ * server advertises, not assume it looks like a URL.
+ */
+export function pushRelayServerIdFromEnv(
+  env: Record<string, string | undefined> = process.env,
+): string {
+  return (
+    env.AULORA_SERVER_ID?.trim() || env.SITE_URL?.trim() || env.CONVEX_SITE_URL?.trim() || "aulora"
+  );
+}
+
 /** Reads relay configuration from the deployment environment, or `null`. */
 export function pushRelayConfigFromEnv(
   env: Record<string, string | undefined> = process.env,
@@ -55,9 +72,11 @@ export function pushRelayConfigFromEnv(
   if (url === undefined || token === undefined || url.length === 0 || token.length === 0) {
     return null;
   }
-  const serverId =
-    env.AULORA_SERVER_ID?.trim() || env.SITE_URL?.trim() || env.CONVEX_SITE_URL?.trim() || "aulora";
-  return { url: url.replace(/\/+$/, ""), token, serverId };
+  return {
+    url: url.replace(/\/+$/, ""),
+    token,
+    serverId: pushRelayServerIdFromEnv(env),
+  };
 }
 
 export interface SendWakeDeps {

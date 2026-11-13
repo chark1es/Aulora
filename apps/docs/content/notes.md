@@ -29,6 +29,8 @@ A folder must be empty before you delete it. Remove or move its child folders an
 
 Notes are written in Markdown. The editor pairs a text area with a formatting toolbar and a live preview, so you can write plain Markdown and toggle the preview to check the result. The toolbar inserts headings, bold, italic, code, lists, quotes, links and horizontal rules, and each formatting button toggles: choosing it again removes the formatting while keeping your selection. Undo and redo have their own buttons.
 
+On mobile, opening an existing note shows it read-only: its title, properties and rendered Markdown, without the edit fields or toolbar. Press the pencil in the header to start editing; a successful save returns to the read-only view. A new note opens directly in the editor. If the note changes elsewhere while you are reading it, a banner offers the latest revision; while editing, a reload banner appears only when a remote change would conflict with your unsaved draft.
+
 The common keybinds work in the editor. On macOS use `Cmd`; on Windows and Linux use `Ctrl`.
 
 | Keys | Action |
@@ -83,4 +85,4 @@ Enabling the addon is a workspace setting, not a Docker environment variable. A 
 
 ## On iOS and Android
 
-Notes opens from the **Notes** tab, which appears once the addon is on and you have View Notes permission. The hub shows the folder tree and the note list; tap a note to open the editor, which has the Markdown text area and a preview toggle. Tags are picked from the note's tag field, and **History** opens the same per-note revisions with line diffs. Creating, editing and deleting follow the same permissions as the web and desktop apps.
+On mobile, Notes opens from **Addons → Notes** in the hub; on the web and desktop it opens from the sidebar **Addons** menu. The entry appears once the addon is on and you have View Notes permission. Android Back returns to the Addons chooser. The hub shows the folder tree and the note list; tap a note to open the editor, which has the Markdown text area and a preview toggle. Tags are picked from the note's tag field, and **History** opens the same per-note revisions with line diffs. Creating, editing and deleting follow the same permissions as the web and desktop apps.

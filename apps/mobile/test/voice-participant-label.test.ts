@@ -21,6 +21,7 @@ vi.mock("../src/components/layout/ScreenContainer", () => ({
   }),
 }));
 vi.mock("@aulora/ui-native", () => ({
+  Button: "Button",
   Text: "Text",
   Heading: "Heading",
   Icon: "Icon",
@@ -38,6 +39,7 @@ vi.mock("../src/lib/voice/webrtc", () => ({ tryCreateMediaStream: () => null }))
 vi.mock("../src/providers/VoiceProvider", () => ({ useVoice: () => ({}) }));
 
 import { ParticipantOverlay } from "../src/components/voice/CallScreen";
+import { VoiceChannelPreJoin } from "../src/components/voice/VoiceChannelPreJoin";
 import {
   GuestBadge,
   participantLabel,
@@ -173,7 +175,7 @@ describe("voice channel list", () => {
         selfUserId: "me",
         clientId: null,
         localCallId: null,
-        onJoin: () => undefined,
+        onOpen: () => undefined,
       }),
     );
   }
@@ -200,6 +202,74 @@ describe("voice channel list", () => {
     expect(joined).toContain("Guest");
     expect(joined).not.toContain("undefined");
     expect(joined).not.toContain(GUEST_SESSION_ID);
+  });
+});
+
+describe("voice channel pre-join", () => {
+  function preJoin(overrides: Partial<Parameters<typeof VoiceChannelPreJoin>[0]> = {}): Node[] {
+    return elements(
+      VoiceChannelPreJoin({
+        channelName: "Lounge",
+        topic: "Talk here",
+        participants: [seat({ userId: "u1" })],
+        memberNames: members,
+        canConnect: true,
+        canVideo: true,
+        pending: false,
+        joined: false,
+        error: null,
+        onJoin: () => undefined,
+        onRejoin: () => undefined,
+        onDismissError: () => undefined,
+        ...overrides,
+      }),
+    );
+  }
+
+  const buttons = (tree: Node[]) =>
+    tree.filter((node) => node.type === "Button").map((node) => textOf(node.props.children));
+
+  it("names everyone in the call and waits for an explicit join", () => {
+    const tree = preJoin();
+    expect(labels(tree).join(" ")).toContain("Sam Rivera");
+    expect(labels(tree).join(" ")).toContain("1 person in the call");
+    expect(buttons(tree)).toEqual(["Join voice", "Join with video"]);
+  });
+
+  it("passes the chosen media kind to the join action", () => {
+    const joined: string[] = [];
+    const tree = preJoin({ onJoin: (kind) => joined.push(kind) });
+    for (const button of tree.filter((node) => node.type === "Button")) {
+      (button.props.onPress as () => void)();
+    }
+    expect(joined).toEqual(["voice", "video"]);
+  });
+
+  it("hides the video choice when video is unavailable", () => {
+    expect(buttons(preJoin({ canVideo: false }))).toEqual(["Join voice"]);
+  });
+
+  it("explains a missing call permission instead of offering a join", () => {
+    const tree = preJoin({ canConnect: false });
+    expect(buttons(tree)).toEqual([]);
+    expect(labels(tree).join(" ")).toContain("do not have permission to join calls");
+  });
+
+  it("brings a minimized call back instead of offering a second join", () => {
+    const reopened = vi.fn();
+    const tree = preJoin({ joined: true, onRejoin: reopened });
+    expect(buttons(tree)).toEqual(["Return to call"]);
+    expect(labels(tree).join(" ")).toContain("You are in this call");
+    const button = tree.find((node) => node.type === "Button");
+    expect(button).toBeDefined();
+    if (button !== undefined) (button.props.onPress as () => void)();
+    expect(reopened).toHaveBeenCalledTimes(1);
+  });
+
+  it("handles an empty call", () => {
+    const tree = preJoin({ participants: [] });
+    expect(labels(tree).join(" ")).toContain("No one is in the call yet");
+    expect(buttons(tree)).toEqual(["Join voice", "Join with video"]);
   });
 });
 
