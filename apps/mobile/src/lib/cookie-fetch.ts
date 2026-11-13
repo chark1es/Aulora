@@ -113,14 +113,99 @@ export interface CookieFetchOptions {
   readonly tokenKey?: string;
 }
 
+/**
+ * The origin a native auth request is made from.
+ *
+ * React Native's `fetch` sends neither `Origin` nor `Referer`. Better Auth's
+ * CSRF check rejects a cookie-bearing non-GET request with
+ * "Missing or null Origin" (`MISSING_OR_NULL_ORIGIN`), which made sign-out fail
+ * on the phone even though the session cookie was valid. A native app is not a
+ * browser: it holds the cookie in its own storage, so there is no ambient
+ * browser credential to protect. Naming the workspace origin is truthful and
+ * the backend still checks it against `trustedOrigins`; this does not disable or
+ * weaken that check for browsers.
+ *
+ * Only absolute http(s) URLs are eligible. `Origin` must be a bare origin, and
+ * Better Auth compares it with the trusted list exactly.
+ */
+function requestUrl(input: RequestInfo | URL): string | null {
+  return typeof input === "string"
+    ? input
+    : input instanceof URL
+      ? input.toString()
+      : typeof (input as { url?: unknown }).url === "string"
+        ? (input as { url: string }).url
+        : null;
+}
+
+function isRequestInput(input: RequestInfo | URL): input is Request {
+  if (typeof Request !== "undefined" && input instanceof Request) {
+    return true;
+  }
+  // React Native and test doubles can supply a Request-shaped object from
+  // another realm, where `instanceof` does not hold.
+  return (
+    typeof input === "object" &&
+    input !== null &&
+    typeof (input as { url?: unknown }).url === "string" &&
+    typeof (input as { headers?: unknown }).headers === "object" &&
+    (input as { headers: unknown }).headers !== null
+  );
+}
+
+/**
+ * The headers a Request-init pair actually carries. `fetch` treats
+ * `init.headers` as a replacement for the Request's own headers, so the wrapper
+ * must copy the same effective set before adding cookies and the Origin. Copying
+ * only `init.headers` silently dropped a Request input's Origin, content type and
+ * every other caller header whenever no `init` was supplied.
+ */
+function effectiveHeaders(input: RequestInfo | URL, init?: RequestInit): Headers {
+  if (init?.headers !== undefined) {
+    return new Headers(init.headers);
+  }
+  if (isRequestInput(input)) {
+    return new Headers(input.headers);
+  }
+  return new Headers();
+}
+
+export function requestOrigin(input: RequestInfo | URL): string | null {
+  const url = requestUrl(input);
+  if (url === null) {
+    return null;
+  }
+  try {
+    const parsed = new URL(url);
+    if (parsed.protocol !== "http:" && parsed.protocol !== "https:") {
+      return null;
+    }
+    return parsed.origin === "null" ? null : parsed.origin;
+  } catch {
+    return null;
+  }
+}
+
 /** Wraps `fetch` so the Better Auth session survives across requests. */
 export function createCookieFetch(options: CookieFetchOptions): typeof fetch {
   const baseFetch = options.baseFetch ?? globalThis.fetch;
   return async (input: RequestInfo | URL, init?: RequestInit): Promise<Response> => {
     const stored = await options.store.getItem(AUTH_COOKIE_KEY);
-    const headers = new Headers(init?.headers);
+    const headers = effectiveHeaders(input, init);
     if (stored !== null && stored.length > 0 && !headers.has("cookie")) {
       headers.set("cookie", stored);
+    }
+    // See `requestOrigin`: native auth POSTs otherwise look origin-less to
+    // Better Auth and its CSRF check rejects the sign-out request. A literal
+    // `Origin: null` (opaque browser origin) is just as unusable as a missing
+    // one, so replace it with the workspace origin too; the backend still
+    // validates that value against its trusted origins.
+    const suppliedOrigin = headers.get("origin");
+    if (suppliedOrigin === null || suppliedOrigin.trim().toLowerCase() === "null") {
+      const origin = requestOrigin(input);
+      if (origin !== null) {
+        headers.set("origin", origin);
+      }
     }
     if (options.tokenKey !== undefined && !headers.has("authorization")) {
       const token = await options.store.getItem(options.tokenKey);
@@ -146,7 +231,7 @@ export function createCookieFetch(options: CookieFetchOptions): typeof fetch {
       if (refreshed !== null && refreshed.length > 0) {
         await options.store.setItem(options.tokenKey, refreshed);
       }
-      if (String(input).includes("/sign-out")) {
+      if (requestUrl(input)?.includes("/sign-out") === true) {
         await options.store.removeItem(options.tokenKey);
       }
     }

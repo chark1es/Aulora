@@ -78,6 +78,7 @@ function setup(options: { selectedId?: string | null; detail?: boolean } = {}) {
     mutations: { updateNote: vi.fn(async () => 3) },
     setError: vi.fn(),
     backToList: vi.fn(),
+    openHistory: vi.fn(),
   };
   const render = () => {
     let editor: ReturnType<typeof useNoteEditor>;
@@ -291,4 +292,42 @@ it("hides the save action while reading and restores it when editing", () => {
     editorActions(ctl as unknown as NotesController, render(), editable).map((action) => action.id);
   expect(ids(false)).toEqual(["history", "archive", "delete"]);
   expect(ids(true)).toEqual(["save", "history", "archive", "delete"]);
+});
+
+function confirmDiscard(): void {
+  const actions = hooks.alert.mock.calls[0]?.[2] as
+    | Array<{ text: string; onPress?: () => void }>
+    | undefined;
+  actions?.find((action) => action.text === "Discard changes")?.onPress?.();
+}
+
+it("drops a discarded draft so reopening the same note shows the saved text", () => {
+  const { ctl, render } = setup();
+  if (ctl.detail === undefined) throw new Error("expected a loaded note");
+  const saved = { ...ctl.detail };
+  render().setBody("Unsaved body");
+  render().backToList();
+  confirmDiscard();
+  expect(ctl.backToList).toHaveBeenCalledTimes(1);
+
+  // The retained editor hook outlives the editor screen. While the list shows,
+  // the detail query is skipped, then reopening the same revision loads it.
+  ctl.detail = undefined;
+  render();
+  ctl.detail = saved;
+  expect(render()).toMatchObject({ body: "Original", title: "Plan", dirty: false });
+});
+
+it("drops a discarded draft before opening history, so Back from history is clean", () => {
+  const { ctl, render } = setup();
+  if (ctl.detail === undefined) throw new Error("expected a loaded note");
+  const saved = { ...ctl.detail };
+  render().setBody("Unsaved body");
+  render().openHistory("note");
+  confirmDiscard();
+  expect(ctl.openHistory).toHaveBeenCalledWith("note");
+
+  // History -> Back returns to the retained editor without a new detail fetch.
+  ctl.detail = saved;
+  expect(render()).toMatchObject({ body: "Original", dirty: false });
 });

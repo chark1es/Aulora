@@ -85,4 +85,4 @@ Enabling the addon is a workspace setting, not a Docker environment variable. A 
 
 ## On iOS and Android
 
-Notes opens from the **Notes** tab, which appears once the addon is on and you have View Notes permission. The hub shows the folder tree and the note list; tap a note to open the editor, which has the Markdown text area and a preview toggle. Tags are picked from the note's tag field, and **History** opens the same per-note revisions with line diffs. Creating, editing and deleting follow the same permissions as the web and desktop apps.
+On mobile, Notes opens from **Addons → Notes** in the hub; on the web and desktop it opens from the sidebar **Addons** menu. The entry appears once the addon is on and you have View Notes permission. Android Back returns to the Addons chooser. The hub shows the folder tree and the note list; tap a note to open the editor, which has the Markdown text area and a preview toggle. Tags are picked from the note's tag field, and **History** opens the same per-note revisions with line diffs. Creating, editing and deleting follow the same permissions as the web and desktop apps.
