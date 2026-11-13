@@ -193,9 +193,7 @@ describe("useWorkspaceUnreadCounts", () => {
     await expect(client?.fetchToken?.({ forceRefreshToken: false })).resolves.toBe(
       "convex-jwt-one",
     );
-    await expect(client?.fetchToken?.({ forceRefreshToken: true })).resolves.toBe(
-      "convex-jwt-two",
-    );
+    await expect(client?.fetchToken?.({ forceRefreshToken: true })).resolves.toBe("convex-jwt-two");
     await waitFor(() => expect(result.current.get(globex.id)).toBe(3));
 
     await expect(client?.fetchToken?.({ forceRefreshToken: true })).resolves.toBeNull();
