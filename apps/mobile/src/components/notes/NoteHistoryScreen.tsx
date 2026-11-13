@@ -379,7 +379,7 @@ export function NoteHistoryScreen({ ctl }: { readonly ctl: NotesController }) {
       <PaneHeader
         title="History"
         subtitle={title}
-        leading={<NoteBackButton onPress={ctl.backToList} />}
+        leading={<NoteBackButton onPress={ctl.backFromView} />}
       />
       <NotesError ctl={ctl} />
       {ctl.history === undefined ? (

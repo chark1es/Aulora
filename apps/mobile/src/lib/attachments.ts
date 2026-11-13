@@ -8,6 +8,7 @@ import * as Clipboard from "expo-clipboard";
 import * as DocumentPicker from "expo-document-picker";
 import { ImageManipulator, SaveFormat } from "expo-image-manipulator";
 import * as ImagePicker from "expo-image-picker";
+import { dismissKeyboard } from "./keyboard";
 
 /**
  * Mobile uploads: camera, photo library, document picker and clipboard paste.
@@ -83,6 +84,7 @@ async function processImage(asset: ImagePicker.ImagePickerAsset): Promise<Picked
 }
 
 export async function pickFromLibrary(): Promise<readonly PickedFile[]> {
+  dismissKeyboard();
   const result = await ImagePicker.launchImageLibraryAsync({
     mediaTypes: ["images"],
     quality: 1,
@@ -96,6 +98,7 @@ export async function pickFromLibrary(): Promise<readonly PickedFile[]> {
 }
 
 export async function pickFromCamera(): Promise<PickedFile | null> {
+  dismissKeyboard();
   const permission = await ImagePicker.requestCameraPermissionsAsync();
   if (!permission.granted) {
     return null;
@@ -108,6 +111,7 @@ export async function pickFromCamera(): Promise<PickedFile | null> {
 }
 
 export async function pickDocuments(): Promise<readonly PickedFile[]> {
+  dismissKeyboard();
   const result = await DocumentPicker.getDocumentAsync({
     copyToCacheDirectory: true,
     multiple: true,
@@ -124,6 +128,7 @@ export async function pickDocuments(): Promise<readonly PickedFile[]> {
 
 /** Reads an image (not text) from the clipboard, if present. */
 export async function pickFromClipboard(): Promise<PickedFile | null> {
+  dismissKeyboard();
   const image = await Clipboard.getImageAsync({ format: "png" });
   if (image === null) {
     return null;

@@ -6,6 +6,7 @@ import userEvent from "@testing-library/user-event";
 import { ConvexReactClient } from "convex/react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { createMockPort } from "../../../../packages/core/src/chat/testing";
+import { addonMenuPlacement } from "../components/chat/AddonsMenu";
 import { ConversationStart, type ConversationStartProps } from "../components/chat/ChannelPane";
 import { ChannelSidebar, type ChannelSidebarProps } from "../components/chat/ChannelSidebar";
 import { Composer } from "../components/chat/Composer";
@@ -494,7 +495,8 @@ describe("ChannelSidebar", () => {
     expect(screen.queryByRole("button", { name: "Create channel" })).not.toBeInTheDocument();
   });
 
-  it("stacks Threads, Kanban and Notes in one workspace nav", () => {
+  it("groups every addon under one Addons menu in the workspace nav", async () => {
+    const user = userEvent.setup();
     render(
       <ChannelSidebar
         {...sidebarProps({
@@ -507,13 +509,115 @@ describe("ChannelSidebar", () => {
       />,
     );
     const nav = screen.getByRole("navigation", { name: "Workspace" });
-    const rows = within(nav).getAllByRole("button");
-    expect(rows.map((row) => row.textContent)).toEqual(["Threads9+", "Kanban", "Notes"]);
-    expect(within(nav).getByTestId("sidebar-kanban")).toHaveAttribute("aria-current", "page");
+    expect(
+      within(nav)
+        .getAllByRole("button")
+        .map((row) => row.textContent),
+    ).toEqual(["Threads9+", "Addons"]);
+    const trigger = within(nav).getByTestId("sidebar-addons");
+    expect(trigger).toHaveAttribute("aria-current", "page");
+    expect(trigger).toHaveAttribute("aria-haspopup", "menu");
+    expect(trigger).toHaveAttribute("aria-expanded", "false");
     expect(within(nav).getByTestId("sidebar-threads")).not.toHaveAttribute("aria-current");
+
+    await user.click(trigger);
+    expect(trigger).toHaveAttribute("aria-expanded", "true");
+    const menu = screen.getByRole("menu", { name: "Addons" });
+    expect(
+      within(menu)
+        .getAllByRole("menuitemradio")
+        .map((row) => row.textContent),
+    ).toEqual(["Kanban", "Notes"]);
+    expect(within(menu).getByRole("menuitemradio", { name: "Kanban" })).toHaveAttribute(
+      "aria-checked",
+      "true",
+    );
+    expect(within(menu).getByRole("menuitemradio", { name: "Notes" })).toHaveAttribute(
+      "aria-checked",
+      "false",
+    );
   });
 
-  it("highlights only the open workspace view, not the last channel", () => {
+  it("lists every enabled addon behind the shared Addons row", async () => {
+    const user = userEvent.setup();
+    render(
+      <ChannelSidebar
+        {...sidebarProps({
+          onOpenKanban: vi.fn(),
+          onOpenNotes: vi.fn(),
+          onOpenScheduled: vi.fn(),
+          onOpenTranscripts: vi.fn(),
+          mainView: "transcripts",
+        })}
+      />,
+    );
+    await user.click(screen.getByTestId("sidebar-addons"));
+    expect(screen.getAllByRole("menuitemradio").map((row) => row.textContent)).toEqual([
+      "Kanban",
+      "Notes",
+      "Scheduled",
+      "Transcripts",
+    ]);
+    expect(screen.getByRole("menuitemradio", { name: "Transcripts" })).toHaveAttribute(
+      "aria-checked",
+      "true",
+    );
+  });
+
+  it("drives the Addons menu from the keyboard and restores focus", async () => {
+    const user = userEvent.setup();
+    render(<ChannelSidebar {...sidebarProps({ onOpenKanban: vi.fn(), onOpenNotes: vi.fn() })} />);
+    const trigger = screen.getByTestId("sidebar-addons");
+    await user.click(trigger);
+    const kanban = screen.getByRole("menuitemradio", { name: "Kanban" });
+    const notes = screen.getByRole("menuitemradio", { name: "Notes" });
+    await waitFor(() => {
+      expect(kanban).toHaveFocus();
+    });
+    await user.keyboard("{ArrowDown}");
+    expect(notes).toHaveFocus();
+    await user.keyboard("{ArrowDown}");
+    expect(kanban).toHaveFocus();
+    await user.keyboard("{Escape}");
+    expect(screen.queryByRole("menu", { name: "Addons" })).not.toBeInTheDocument();
+    expect(trigger).toHaveFocus();
+  });
+
+  it("moves the Addons menu inside a short viewport instead of clipping it", () => {
+    // The sidebar pane is overflow-hidden; the menu flips upward and scrolls
+    // when a small window leaves little room below the trigger.
+    expect(addonMenuPlacement(900, 120, 152)).toEqual({ placement: "down", maxHeight: 320 });
+    expect(addonMenuPlacement(360, 300, 332)).toEqual({ placement: "up", maxHeight: 292 });
+    expect(addonMenuPlacement(240, 190, 222)).toEqual({ placement: "up", maxHeight: 182 });
+  });
+
+  it("closes the Addons menu when Tab moves focus outside it", async () => {
+    const user = userEvent.setup();
+    render(<ChannelSidebar {...sidebarProps({ onOpenKanban: vi.fn(), onOpenNotes: vi.fn() })} />);
+    await user.click(screen.getByTestId("sidebar-addons"));
+    const kanban = screen.getByRole("menuitemradio", { name: "Kanban" });
+    const notes = screen.getByRole("menuitemradio", { name: "Notes" });
+    await waitFor(() => {
+      expect(kanban).toHaveFocus();
+    });
+    await user.tab();
+    expect(notes).toHaveFocus();
+    await user.tab();
+    expect(screen.queryByRole("menu", { name: "Addons" })).not.toBeInTheDocument();
+  });
+
+  it("opens the chosen addon and closes the menu", async () => {
+    const user = userEvent.setup();
+    const onOpenNotes = vi.fn();
+    render(<ChannelSidebar {...sidebarProps({ onOpenKanban: vi.fn(), onOpenNotes })} />);
+    await user.click(screen.getByTestId("sidebar-addons"));
+    await user.click(screen.getByRole("menuitemradio", { name: "Notes" }));
+    expect(onOpenNotes).toHaveBeenCalledTimes(1);
+    expect(screen.queryByRole("menu", { name: "Addons" })).not.toBeInTheDocument();
+  });
+
+  it("highlights only the open workspace view, not the last channel", async () => {
+    const user = userEvent.setup();
     render(
       <ChannelSidebar
         {...sidebarProps({
@@ -524,7 +628,12 @@ describe("ChannelSidebar", () => {
         })}
       />,
     );
-    expect(screen.getByTestId("sidebar-notes")).toHaveAttribute("aria-current", "page");
+    expect(screen.getByTestId("sidebar-addons")).toHaveAttribute("aria-current", "page");
+    await user.click(screen.getByTestId("sidebar-addons"));
+    expect(screen.getByRole("menuitemradio", { name: "Notes" })).toHaveAttribute(
+      "aria-checked",
+      "true",
+    );
     expect(screen.getByTestId("channel-row-general")).not.toHaveAttribute("aria-current");
     expect(screen.getByTestId("channel-row-dm-ada")).not.toHaveAttribute("aria-current");
   });
