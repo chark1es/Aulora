@@ -16,6 +16,7 @@ import {
   useRef,
   useState,
 } from "react";
+import { AppState } from "react-native";
 import { api } from "../../../../packages/convex/convex/_generated/api";
 import { syncCallService } from "../../modules/aulora-call-service";
 import { MobileVoiceEngine, type MobileVoiceSnapshot } from "../lib/voice/call-engine";
@@ -93,10 +94,21 @@ export function useVoiceSettings(engineRef: EngineRef) {
 export function useVoiceDevices() {
   const [devices, setDevices] = useState<readonly AuloraMediaDevice[]>([]);
   useEffect(() => {
-    void listMediaDevices().then(setDevices);
-    return onDeviceChange(() => {
+    const load = () => {
       void listMediaDevices().then(setDevices);
+    };
+    load();
+    const unsubscribe = onDeviceChange(load);
+    // A Bluetooth headset can connect while the app is in the background and
+    // some platforms do not deliver `devicechange`; re-read the route list when
+    // the app comes back so the pickers never show a stale headset.
+    const appState = AppState.addEventListener("change", (state) => {
+      if (state === "active") load();
     });
+    return () => {
+      unsubscribe();
+      appState.remove();
+    };
   }, []);
   const refreshDevices = useCallback(async () => {
     setDevices(await listMediaDevices());

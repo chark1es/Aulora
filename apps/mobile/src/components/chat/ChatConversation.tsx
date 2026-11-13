@@ -11,6 +11,7 @@ import { type PickedFile, uploadPickedFiles } from "../../lib/attachments";
 import { resolveSendMentions } from "../../lib/chat-mentions";
 import { KeyboardAvoidingPane, useScreenInsets } from "../layout/ScreenContainer";
 import { JoinedElsewhereScreen } from "../voice/JoinedElsewhereScreen";
+import { VoiceChannelPreJoin } from "../voice/VoiceChannelPreJoin";
 import { ChatPendingFailures } from "./ChatPendingFailures";
 import { Composer } from "./Composer";
 import { ConversationOpening } from "./ConversationOpening";
@@ -184,14 +185,34 @@ function ChatConversationBody({
   if (channel === undefined) {
     return <ChatEmptyState model={model} />;
   }
-  const elsewhere = joinedElsewhere(
-    voice.activeCalls.find((entry) => entry.channelId === channel.id) ?? null,
-    ownUserId,
-    voice.clientId,
-    voice.callId,
-  );
-  if (channel.kind === "voice" && elsewhere) {
-    return <ChatJoinedElsewhere model={model} />;
+  const live = voice.activeCalls.find((entry) => entry.channelId === channel.id) ?? null;
+  const elsewhere = joinedElsewhere(live, ownUserId, voice.clientId, voice.callId);
+  if (channel.kind === "voice") {
+    if (elsewhere) {
+      return <ChatJoinedElsewhere model={model} />;
+    }
+    return (
+      <VoiceChannelPreJoin
+        channelName={channel.name}
+        topic={channel.topic}
+        participants={live?.participants ?? []}
+        memberNames={model.memberNames}
+        canConnect={voice.canConnect}
+        canVideo={voice.canVideo}
+        pending={voice.pending}
+        joined={live !== null && voice.call?.id === live.id}
+        error={voice.error}
+        onJoin={(kind) => {
+          model.joinVoiceChannel(channel.id, kind);
+        }}
+        onRejoin={() => {
+          model.voice.setView("stage");
+        }}
+        onDismissError={() => {
+          model.voice.clearError();
+        }}
+      />
+    );
   }
   return <ChatMessageArea model={model} palette={palette} />;
 }

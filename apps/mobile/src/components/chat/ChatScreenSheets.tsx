@@ -2,7 +2,6 @@ import {
   type AttachmentDescriptor,
   canUseMassMentions,
   hasBroadcastToken,
-  hasPermission,
   Permission,
   sendThreadReply,
 } from "@aulora/core";
@@ -17,7 +16,6 @@ import {
 } from "../../lib/backend-actions";
 import { manageableChannelRoles, roleOverridesFor } from "../../lib/channel-role-overrides";
 import { resolveSendMentions } from "../../lib/chat-mentions";
-import { RoleColorsSheet } from "../admin/RoleColorsSheet";
 import { CallScreen } from "../voice/CallScreen";
 import { IncomingCallModal } from "../voice/IncomingCallModal";
 import { BannedMembersSheet } from "./BannedMembersSheet";
@@ -47,7 +45,6 @@ export function ChatScreenSheets({ model }: { readonly model: ChatScreenModel })
       <NewConversationOverlay model={model} />
       <EditChannelOverlay model={model} />
       <BannedMembersOverlay model={model} />
-      <RoleColorsOverlay model={model} />
       <CreateChannelOverlay model={model} />
       <UserNoteOverlay model={model} />
       <CallOverlays model={model} />
@@ -409,25 +406,6 @@ function BannedMembersOverlay({ model }: { readonly model: ChatScreenModel }) {
       memberNames={model.memberNames}
       onClose={() => {
         model.setBansOpen(false);
-      }}
-    />
-  );
-}
-
-function RoleColorsOverlay({ model }: { readonly model: ChatScreenModel }) {
-  const canManageRoles =
-    model.isOwner || hasPermission(model.viewerPermissions, Permission.ManageRoles);
-  if (!canManageRoles) {
-    return null;
-  }
-  return (
-    <RoleColorsSheet
-      visible={model.roleColorsOpen}
-      roles={model.roleViews}
-      isOwner={model.isOwner}
-      topPosition={model.viewerTopPosition}
-      onClose={() => {
-        model.setRoleColorsOpen(false);
       }}
     />
   );

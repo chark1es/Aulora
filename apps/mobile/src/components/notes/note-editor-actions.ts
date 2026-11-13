@@ -60,7 +60,14 @@ function savedNoteActions(ctl: NotesController, editor: NoteEditorController): S
   return actions;
 }
 
-export function editorActions(ctl: NotesController, editor: NoteEditorController): SheetAction[] {
+export function editorActions(
+  ctl: NotesController,
+  editor: NoteEditorController,
+  /** Reading a note hides the save action until the viewer starts editing. */
+  editable = true,
+): SheetAction[] {
+  const saved = savedNoteActions(ctl, editor);
+  if (!editable) return saved;
   return [
     {
       id: "save",
@@ -69,6 +76,6 @@ export function editorActions(ctl: NotesController, editor: NoteEditorController
       disabled: !hasNoteContent(editor.title, editor.body),
       onPress: editor.save,
     },
-    ...savedNoteActions(ctl, editor),
+    ...saved,
   ];
 }

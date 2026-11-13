@@ -1,7 +1,7 @@
 /* eslint-disable no-unused-vars -- the base rule reports parameter names in type signatures; Biome checks real unused code */
 import { useMutation, useQuery } from "convex/react";
 import type { FunctionReturnType } from "convex/server";
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { api } from "../../../../../packages/convex/convex/_generated/api";
 import { failure } from "../../lib/kanban";
 import {
@@ -66,16 +66,57 @@ export type NotesSheet =
 
 /** What the viewer has switched on: filters, sort and what is open. */
 function useNotesState() {
-  const [mode, setMode] = useState<NotesMode>("list");
+  const [mode, setModeState] = useState<NotesMode>("list");
+  // The note editor, its history page and the list are a stack of their own.
+  // Back from history returns to the note it came from; back from the editor
+  // returns to the list. Folders keep a separate stack so a drilled-in folder
+  // also returns to the exact view it was opened from.
+  const modeHistory = useRef<NotesMode[]>([]);
+  const folderHistory = useRef<Array<NoteFilters["folderId"]>>([]);
   const [filters, setFilters] = useState<NoteFilters>(NO_NOTE_FILTERS);
   const [order, setOrder] = useState<NoteOrder>("updated");
   const [searching, setSearching] = useState(false);
   const [open, setOpen] = useState<NotesSheet | undefined>();
+
+  /** A primary navigation: open the note, list or history page afresh. */
+  const setMode = useCallback((next: NotesMode) => {
+    modeHistory.current = [];
+    setModeState(next);
+  }, []);
+
+  /** Push one nested page (history comes over the editor). */
+  const pushMode = useCallback(
+    (next: NotesMode) => {
+      modeHistory.current.push(mode);
+      setModeState(next);
+    },
+    [mode],
+  );
+
+  /** Pop one nested page; the list is the floor. */
+  const backMode = useCallback(() => {
+    setModeState(modeHistory.current.pop() ?? "list");
+  }, []);
+
+  const pushFolder = useCallback((folderId: NoteFilters["folderId"]) => {
+    folderHistory.current.push(folderId);
+  }, []);
+
+  /** Returns the previous folder, or `null` when nothing was drilled into. */
+  const popFolder = useCallback((): { readonly folderId: NoteFilters["folderId"] } | null => {
+    if (folderHistory.current.length === 0) return null;
+    return { folderId: folderHistory.current.pop() };
+  }, []);
+
   return {
     mode,
     setMode,
+    pushMode,
+    backMode,
     filters,
     setFilters,
+    pushFolder,
+    popFolder,
     order,
     setOrder,
     searching,
@@ -219,7 +260,7 @@ export function useNotes(props: NotesProps) {
     members: props.members,
     selectedId: props.noteId,
     onBack: props.onBack,
-    /** Opens a note in the editor and remembers it for the next visit. */
+    /** Opens a note read-only and remembers it for the next visit. */
     openNote: (noteId: string) => {
       props.onNoteChange(noteId);
       state.setMode("editor");
@@ -231,19 +272,29 @@ export function useNotes(props: NotesProps) {
     },
     openHistory: (noteId: string) => {
       props.onNoteChange(noteId);
-      state.setMode("history");
+      state.pushMode("history");
     },
     backToList: () => {
       state.setMode("list");
+    },
+    /** Closes the history page and returns to the view it was opened from. */
+    backFromView: () => {
+      state.backMode();
     },
     /** Drills into a folder (or `null`/undefined for Unfiled/home) from the list. */
     openFolder: (folderId: string | null | undefined) => {
       props.onNoteChange(null);
       state.setMode("list");
+      state.pushFolder(state.filters.folderId);
       state.setFilters({ ...state.filters, query: "", folderId });
     },
-    /** Returns from a folder to its parent, or to the home view at the root. */
+    /** Returns from a folder to the exact view it was opened from. */
     goUpFolder: () => {
+      const previous = state.popFolder();
+      if (previous !== null) {
+        state.setFilters({ ...state.filters, query: "", folderId: previous.folderId });
+        return;
+      }
       const current = state.filters.folderId;
       if (current === undefined || current === null) return;
       const folder = data.folders.find((entry) => entry.id === current);

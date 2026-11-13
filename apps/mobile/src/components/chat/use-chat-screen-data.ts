@@ -24,6 +24,12 @@ import { useChannelSession } from "../../lib/use-channel";
 import { usePushRegistration } from "../../lib/use-push-registration";
 import { useWebhookNames } from "../../lib/use-webhook-names";
 import { threadsInboxVisible, useRetainedTabs } from "../../lib/visited-tabs";
+import {
+  rememberAndPersistWorkspaceServerId,
+  subscribeWorkspaceNotificationTargets,
+  takeWorkspaceNotificationTarget,
+  workspaceServerIdFromConfig,
+} from "../../lib/workspace-identity";
 import { useChat } from "../../providers/ChatProvider";
 import { useProfiles } from "../../providers/ProfileProvider";
 import { useSound } from "../../providers/SoundProvider";
@@ -49,6 +55,16 @@ export function useConvexChatScreenSession(
     Platform.OS === "ios" ? "ios" : "android",
   );
   const publicConfig = useQuery(api.server.publicConfig, {});
+  // Persist the id this workspace stamps on mobile wakes while it is open, so
+  // a later cold-launch notification can be routed even when the id is an
+  // operator-chosen opaque value rather than the workspace address.
+  const profileId = activeProfile?.id;
+  const serverId = workspaceServerIdFromConfig(publicConfig);
+  useEffect(() => {
+    if (profileId !== undefined && serverId !== null) {
+      rememberAndPersistWorkspaceServerId(profileId, serverId);
+    }
+  }, [profileId, serverId]);
   const showKanban =
     publicConfig?.addons?.kanban === true &&
     hasPermission(chat.viewerPermissions, Permission.ViewKanban);
@@ -216,9 +232,19 @@ function useChatScreenChannelList(
   ui: ChatScreenUiState,
   mentions: ChatScreenMentions,
 ) {
-  const { channels, runtime, ownUserId, sound } = session;
-  const { showHidden, activeChannelId, setActiveChannelId } = ui;
+  const { channels, runtime, ownUserId, sound, activeProfile } = session;
+  const {
+    showHidden,
+    activeChannelId,
+    setActiveChannelId,
+    setHubTab,
+    setPane,
+    setJumpToMessageId,
+    setQuote,
+    setThreadRoot,
+  } = ui;
   const { channelNames, memberNames } = mentions;
+  const profileId = activeProfile?.id;
 
   const visibleChannels = useMemo(() => {
     if (showHidden) {
@@ -244,13 +270,55 @@ function useChatScreenChannelList(
   });
 
   useEffect(() => {
-    if (activeChannelId === undefined) {
-      const firstText = channels.find((entry) => entry.kind !== "voice" && entry.hidden !== true);
-      if (firstText !== undefined) {
-        setActiveChannelId(firstText.id);
+    if (activeChannelId !== undefined) {
+      return;
+    }
+    // A tapped notification names its conversation; otherwise open the first
+    // readable text channel as before.
+    const target = profileId === undefined ? undefined : takeWorkspaceNotificationTarget(profileId);
+    const firstText = channels.find((entry) => entry.kind !== "voice" && entry.hidden !== true);
+    const next = target?.channelId ?? firstText?.id;
+    if (next !== undefined) {
+      setActiveChannelId(next);
+      if (target?.kind === "message" && target.messageId !== null) {
+        setJumpToMessageId(target.messageId);
       }
     }
-  }, [channels, activeChannelId, setActiveChannelId]);
+  }, [channels, activeChannelId, profileId, setActiveChannelId, setJumpToMessageId]);
+
+  // A notification tapped (or a wake auto-switched) while this workspace is
+  // already open should move to its conversation without a workspace switch.
+  // Clear a previous thread/quote/jump first so an older selection cannot leak
+  // into the new message.
+  useEffect(() => {
+    if (profileId === undefined) {
+      return;
+    }
+    const applyTarget = () => {
+      const target = takeWorkspaceNotificationTarget(profileId);
+      if (target === undefined) {
+        return;
+      }
+      setThreadRoot(null);
+      setQuote(null);
+      setJumpToMessageId(null);
+      setActiveChannelId(target.channelId);
+      setHubTab("chats");
+      setPane(1);
+      if (target.kind === "message" && target.messageId !== null) {
+        setJumpToMessageId(target.messageId);
+      }
+    };
+    return subscribeWorkspaceNotificationTargets(applyTarget);
+  }, [
+    profileId,
+    setActiveChannelId,
+    setHubTab,
+    setJumpToMessageId,
+    setPane,
+    setQuote,
+    setThreadRoot,
+  ]);
 
   const titles = useMemo(() => {
     const map = new Map<string, string>();
@@ -593,7 +661,10 @@ function useChatScreenMessages(
 
 export function useChatScreenData({ onSignOut, onDeleteAccount }: ChatScreenProps) {
   const session = useChatScreenSessionValue();
-  const ui = useChatScreenUiState();
+  const ui = useChatScreenUiState({
+    boards: session.showKanban,
+    notes: session.showNotes,
+  });
   const pagingConfig = useQuery(api.server.publicConfig, {});
   const pagedThreads = pagingConfig?.capabilities?.threadInboxPaging === true;
   const [notesDirty, setNotesDirty] = useState(false);
@@ -605,6 +676,7 @@ export function useChatScreenData({ onSignOut, onDeleteAccount }: ChatScreenProp
     () => [
       "chats",
       "dms",
+      ...(session.showKanban || session.showNotes ? (["addons"] as const) : []),
       ...(session.showKanban ? (["boards"] as const) : []),
       ...(session.showNotes ? (["notes"] as const) : []),
       "threads",

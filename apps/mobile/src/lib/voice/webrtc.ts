@@ -5,6 +5,7 @@ import {
   type VoiceDeviceSettings,
 } from "@aulora/core";
 import type { ComponentType, Ref } from "react";
+import { nativeRouteUid } from "./media-device-choices";
 
 /**
  * Compile-safe indirection over `react-native-webrtc`.
@@ -286,11 +287,20 @@ export function createIceCandidate(init: VoiceIceCandidateInit): VoiceIceCandida
 // ---- Media capture ---------------------------------------------------------
 
 function audioConstraints(settings: VoiceDeviceSettings): Record<string, unknown> {
+  // A `native:<uid>` choice addresses the platform communication route, not a
+  // WebRTC device. Its uid is an AudioManager/AVAudioSession identifier, so
+  // passing it as an exact getUserMedia deviceId makes WebRTC look for a device
+  // that does not exist. The native route has already moved the capture session;
+  // leave WebRTC on its normal microphone selection.
+  const webRtcInputId =
+    settings.inputDeviceId !== null && nativeRouteUid(settings.inputDeviceId) === undefined
+      ? settings.inputDeviceId
+      : null;
   return {
     echoCancellation: settings.echoCancellation,
     noiseSuppression: settings.noiseSuppression,
     autoGainControl: settings.autoGainControl,
-    ...(settings.inputDeviceId !== null ? { deviceId: { exact: settings.inputDeviceId } } : {}),
+    ...(webRtcInputId !== null ? { deviceId: { exact: webRtcInputId } } : {}),
   };
 }
 
@@ -302,15 +312,26 @@ function videoConstraints(settings: VoiceDeviceSettings): Record<string, unknown
   };
 }
 
+/** Requests capture through a supplied native devices object (test seam). */
+export async function acquireUserMediaFrom(
+  devices: VoiceMediaDevices,
+  options: {
+    readonly settings: VoiceDeviceSettings;
+    readonly withVideo: boolean;
+  },
+): Promise<VoiceStream> {
+  return devices.getUserMedia({
+    audio: audioConstraints(options.settings),
+    video: options.withVideo ? videoConstraints(options.settings) : false,
+  });
+}
+
 /** Requests the microphone, and the camera when `withVideo`, with the stored settings. */
 export async function acquireUserMedia(options: {
   readonly settings: VoiceDeviceSettings;
   readonly withVideo: boolean;
 }): Promise<VoiceStream> {
-  return mediaDevices().getUserMedia({
-    audio: audioConstraints(options.settings),
-    video: options.withVideo ? videoConstraints(options.settings) : false,
-  });
+  return acquireUserMediaFrom(mediaDevices(), options);
 }
 
 /** Requests a camera track with the stored settings. */

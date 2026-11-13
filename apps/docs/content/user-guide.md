@@ -57,7 +57,7 @@ If your administrator enables Kanban and grants you View Kanban permission, open
 
 ## Notes
 
-If your administrator enables Notes and grants you View Notes permission, open it from the sidebar. Write Markdown notes with a live preview, organize them in nested folders, label them with tags, search locally or on the server, and review each note's line-by-line history. See [Notes](notes.md) for the full workflow.
+If your administrator enables Notes and grants you View Notes permission, open it from the sidebar **Addons** menu. Write Markdown notes with a live preview, organize them in nested folders, label them with tags, search locally or on the server, and review each note's line-by-line history. See [Notes](notes.md) for the full workflow.
 
 ## Voice and video
 
@@ -67,7 +67,7 @@ A browser needs HTTPS or localhost for media permissions. Screen sharing depends
 
 ### Sound and picture
 
-Open **Settings → Voice & video** to choose how you sound and look. Changes apply to the current call straight away.
+Open **Settings → Voice & video** to choose how you sound and look. Changes apply to the current call straight away. Microphone, speaker and camera are drop-downs; on mobile they show the active route, list only the devices the platform reports, and name a connected Bluetooth headset. Choosing the headset switches the platform's call route so both recording and playback use it, and a saved device that is no longer present is released after a second enumeration so the next call falls back to the system route instead of failing.
 
 If the connection to the other people stays poor, Aulora lowers your camera quality first and then turns the camera off so the voice call keeps working; the call shows a notice with an **Undo** button and a close button, and undoing it stops the automatic steps for that call.
 
@@ -102,6 +102,8 @@ Being connected from more than one of your own devices still counts as one perso
 Allow notifications when prompted and check channel mute and user notification settings. OS focus modes, battery restrictions, and denied permissions can suppress alerts.
 
 The desktop process must remain running for local chat notifications. Closing its window can leave it in the tray; quitting stops that delivery path. Mobile background notifications require the server's relay and the publisher's APNs/FCM setup. The browser also needs permission for web push. Notifications are not evidence that messages are end-to-end encrypted.
+
+On mobile, a wake from another saved workspace marks that workspace in the switcher and moves to it so the named conversation and message are already open. The badge counts are saved on the device, so they survive an app restart until you open that workspace. Each workspace advertises the id its wake carries (`AULORA_SERVER_ID`, else its site address); the app remembers it when you connect, so renaming the address later does not misroute a notification. Web push wakes are content-free and do not name a workspace, so the browser cannot badge a different workspace from a push alone.
 
 ## Updates
 

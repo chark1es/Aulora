@@ -35,6 +35,13 @@ that contract is a breaking change for every supported client.
   release disable a new code path without shipping a client. They are product
   guards, not authorization.
 
+- `server.publicConfig.pushRelay.serverId` is an additive, public identifier
+  (`AULORA_SERVER_ID`, else `SITE_URL`, else `CONVEX_SITE_URL`, else the literal
+  `aulora`) that mobile wakes carry. It is never a credential. Older backends
+  omit it, so clients fall back to matching a saved workspace address; older
+  clients ignore the new field. The strict `/.well-known/aulora.json` document
+  does not include it.
+
 There is no separate changelog file. GitHub Releases are the changelog:
 automatic releases use GitHub-generated notes from merged pull request titles,
 and a manual run can supply full notes. Conventional Commit titles are therefore

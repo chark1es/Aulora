@@ -1,19 +1,24 @@
 import { describe, expect, it, vi } from "vitest";
 import { fetchBranding } from "../src/lib/branding";
 
-const NO_BRANDING = { description: "", logoUrl: null };
+const NO_BRANDING = { description: "", logoUrl: null, serverId: null };
 
 describe("fetchBranding", () => {
-  it("reads the description and logo", async () => {
+  it("reads the description, logo and mobile wake identity", async () => {
     const close = vi.fn();
     const query = vi.fn(async () => ({
       description: "Acme chat",
       logoUrl: "https://a.test/l.png",
+      pushRelay: { serverId: "6b1a0f8e-6a1f-4f4b-8c4d-2f6f6d2f5a11" },
     }));
 
     await expect(
       fetchBranding("https://convex.acme.test", () => ({ query, close }), "publicConfig"),
-    ).resolves.toEqual({ description: "Acme chat", logoUrl: "https://a.test/l.png" });
+    ).resolves.toEqual({
+      description: "Acme chat",
+      logoUrl: "https://a.test/l.png",
+      serverId: "6b1a0f8e-6a1f-4f4b-8c4d-2f6f6d2f5a11",
+    });
     expect(query).toHaveBeenCalledWith("publicConfig", {});
     expect(close).toHaveBeenCalledTimes(1);
   });
@@ -60,6 +65,6 @@ describe("fetchBranding", () => {
 
     await expect(
       fetchBranding("https://convex.acme.test", () => ({ query, close }), "publicConfig"),
-    ).resolves.toEqual({ description: "Acme", logoUrl: null });
+    ).resolves.toEqual({ description: "Acme", logoUrl: null, serverId: null });
   });
 });

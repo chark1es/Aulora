@@ -102,6 +102,18 @@ function demoVoice(): VoiceContextValue {
     activeCalls: [],
     settings: DEFAULT_VOICE_SETTINGS,
     devices: [],
+    // Calls are unavailable in the demo, so no platform route is ever touched.
+    audioRoute: {
+      inputs: [],
+      activeUid: undefined,
+      name: undefined,
+      error: undefined,
+      refresh: () => undefined,
+      watch: () => () => undefined,
+      apply: () => undefined,
+      applySaved: () => ({ status: "none" }),
+    },
+    reportError: () => undefined,
     canConnect: false,
     canSpeak: false,
     canStream: false,

@@ -277,6 +277,30 @@
     "assets/DebugLogsSection.js": {
       "raw": 2432,
       "gzip": 1280
+    },
+    "assets/client-version.js": {
+      "raw": 64,
+      "gzip": 128
+    },
+    "assets/use-before-unload.js": {
+      "raw": 384,
+      "gzip": 320
+    },
+    "assets/UserSettingsView.js": {
+      "raw": 9088,
+      "gzip": 3328
+    },
+    "assets/auth-client.js": {
+      "raw": 4160,
+      "gzip": 1792
+    },
+    "assets/session-token.js": {
+      "raw": 640,
+      "gzip": 320
+    },
+    "assets/WorkspaceUnreadObserver.js": {
+      "raw": 2368,
+      "gzip": 1152
     }
   },
   "initial": {

@@ -8,6 +8,7 @@ import { useStuckTimeout } from "../../lib/stuck-timeout";
 import { useProfiles } from "../../providers/ProfileProvider";
 import { ConnectionRecoveryActions } from "../ConnectionRecoveryActions";
 import { RebasedInsets, ScreenContainer, useScreenInsets } from "../layout/ScreenContainer";
+import { BackPressProvider } from "../navigation/BackPress";
 import { ChatConversation } from "./ChatConversation";
 import { ChatHubPane } from "./ChatHubPane";
 import { ChatScreenSheets } from "./ChatScreenSheets";
@@ -175,43 +176,45 @@ function ChatStartupRecovery({ model }: { readonly model: ReturnType<typeof useC
 
 function ChatScreenPanes({ model }: { readonly model: ReturnType<typeof useChatScreenModel> }) {
   return (
-    <View className="flex-1 bg-bg min-w-0">
-      <SwipePanes
-        index={model.pane}
-        onIndexChange={(next) => {
-          selectionFeedback();
-          model.setPane(next);
-        }}
-        left={<ChatHubPane model={model} />}
-        center={<ChatConversation model={model} />}
-        right={
-          <MembersPane
-            memberIds={model.conversationMemberIds}
-            channelTitle={model.channelTitle}
-            members={model.members}
-            presence={model.presence}
-            roles={model.memberRoleGroups}
-            ownUserId={model.ownUserId}
-            canModerateMembers={model.canModerateMembers}
-            onBack={() => {
-              model.goToPane(1);
-            }}
-            onMemberPress={model.setProfileFor}
-            onMemberActions={(userId) => {
-              model.setModerationError(null);
-              model.setMemberActionsFor(userId);
-            }}
-            onOpenBans={
-              model.canBan
-                ? () => {
-                    model.setBansOpen(true);
-                  }
-                : undefined
-            }
-          />
-        }
-      />
-      <ChatScreenSheets model={model} />
-    </View>
+    <BackPressProvider onBack={model.handleBack}>
+      <View className="flex-1 bg-bg min-w-0">
+        <SwipePanes
+          index={model.pane}
+          onIndexChange={(next) => {
+            selectionFeedback();
+            model.setPane(next);
+          }}
+          left={<ChatHubPane model={model} />}
+          center={<ChatConversation model={model} />}
+          right={
+            <MembersPane
+              memberIds={model.conversationMemberIds}
+              channelTitle={model.channelTitle}
+              members={model.members}
+              presence={model.presence}
+              roles={model.memberRoleGroups}
+              ownUserId={model.ownUserId}
+              canModerateMembers={model.canModerateMembers}
+              onBack={() => {
+                model.goToPane(1);
+              }}
+              onMemberPress={model.setProfileFor}
+              onMemberActions={(userId) => {
+                model.setModerationError(null);
+                model.setMemberActionsFor(userId);
+              }}
+              onOpenBans={
+                model.canBan
+                  ? () => {
+                      model.setBansOpen(true);
+                    }
+                  : undefined
+              }
+            />
+          }
+        />
+        <ChatScreenSheets model={model} />
+      </View>
+    </BackPressProvider>
   );
 }

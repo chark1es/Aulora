@@ -1,10 +1,25 @@
 import { Avatar } from "@aulora/avatars";
 import type { ServerProfile } from "@aulora/core";
-import { cn, Icon } from "@aulora/ui-web";
+import { Badge, cn, Icon } from "@aulora/ui-web";
 import { useNavigate } from "@tanstack/react-router";
-import { useEffect, useRef, useState } from "react";
+import {
+  type Dispatch,
+  lazy,
+  type RefObject,
+  type SetStateAction,
+  Suspense,
+  useEffect,
+  useRef,
+  useState,
+} from "react";
 import { useProfiles } from "../providers/ProfileProvider";
 import { ThemeToggle } from "./ThemeToggle";
+
+const WorkspaceUnreadObserver = lazy(() =>
+  import("../lib/WorkspaceUnreadObserver").then((module) => ({
+    default: module.WorkspaceUnreadObserver,
+  })),
+);
 
 /** A value that may be unset, without spelling out a union at each use. */
 type Maybe<T> = T | undefined;
@@ -18,18 +33,12 @@ export interface WorkspaceMenuProps {
   readonly align?: "left" | "right";
 }
 
-/**
- * The workspace switcher: the workspace name itself is the trigger, opening a
- * menu of every joined server with the active one checked, an "Add a workspace"
- * action, and the appearance control. Rendered in the sidebar header
- * (`variant="header"`) and on the pre-session screens (`variant="compact"`).
- */
-export function WorkspaceMenu({ onlineCount, variant = "header", align }: WorkspaceMenuProps) {
-  const { profiles, activeProfile, setActive } = useProfiles();
-  const navigate = useNavigate();
-  const [open, setOpen] = useState(false);
-  const ref = useRef<HTMLDivElement | null>(null);
-
+/** Closes the switcher when a pointer leaves its root. */
+function useWorkspaceMenuDismiss(
+  open: boolean,
+  ref: RefObject<HTMLDivElement | null>,
+  setOpen: Dispatch<SetStateAction<boolean>>,
+) {
   useEffect(() => {
     if (!open) {
       return;
@@ -43,7 +52,25 @@ export function WorkspaceMenu({ onlineCount, variant = "header", align }: Worksp
     return () => {
       document.removeEventListener("pointerdown", onPointer);
     };
-  }, [open]);
+  }, [open, ref, setOpen]);
+}
+
+/**
+ * The workspace switcher: the workspace name itself is the trigger, opening a
+ * menu of every joined server with the active one checked, an "Add a workspace"
+ * action, and the appearance control. Rendered in the sidebar header
+ * (`variant="header"`) and on the pre-session screens (`variant="compact"`).
+ */
+export function WorkspaceMenu({ onlineCount, variant = "header", align }: WorkspaceMenuProps) {
+  const { profiles, activeProfile, setActive } = useProfiles();
+  const [unreadByProfile, setUnreadByProfile] = useState<ReadonlyMap<string, number>>(
+    () => new Map(),
+  );
+  const navigate = useNavigate();
+  const [open, setOpen] = useState(false);
+  const ref = useRef<HTMLDivElement | null>(null);
+
+  useWorkspaceMenuDismiss(open, ref, setOpen);
 
   const resolvedAlign = align ?? (variant === "header" ? "left" : "right");
   const multiple = profiles.length > 1;
@@ -56,6 +83,7 @@ export function WorkspaceMenu({ onlineCount, variant = "header", align }: Worksp
     void setActive(profileId);
     void navigate({ to: "/" });
   };
+  const trigger = { activeProfile, name, open, onToggle: toggle };
   const addWorkspace = () => {
     setOpen(false);
     void navigate({ to: "/connect" });
@@ -63,21 +91,17 @@ export function WorkspaceMenu({ onlineCount, variant = "header", align }: Worksp
 
   return (
     <div ref={ref} className="relative min-w-0">
+      <Suspense fallback={null}>
+        <WorkspaceUnreadObserver
+          profiles={profiles}
+          activeProfileId={activeProfile?.id}
+          onChange={setUnreadByProfile}
+        />
+      </Suspense>
       {variant === "header" ? (
-        <WorkspaceHeaderTrigger
-          activeProfile={activeProfile}
-          name={name}
-          onlineCount={onlineCount}
-          open={open}
-          onToggle={toggle}
-        />
+        <WorkspaceHeaderTrigger {...trigger} onlineCount={onlineCount} />
       ) : (
-        <WorkspaceCompactTrigger
-          activeProfile={activeProfile}
-          name={name}
-          open={open}
-          onToggle={toggle}
-        />
+        <WorkspaceCompactTrigger {...trigger} />
       )}
 
       {open && (
@@ -86,6 +110,7 @@ export function WorkspaceMenu({ onlineCount, variant = "header", align }: Worksp
           activeProfile={activeProfile}
           multiple={multiple}
           align={resolvedAlign}
+          unreadByProfile={unreadByProfile}
           onPick={pick}
           onAddWorkspace={addWorkspace}
         />
@@ -177,6 +202,7 @@ function WorkspaceMenuPanel({
   activeProfile,
   multiple,
   align,
+  unreadByProfile,
   onPick,
   onAddWorkspace,
 }: {
@@ -184,6 +210,7 @@ function WorkspaceMenuPanel({
   readonly activeProfile: Maybe<ServerProfile>;
   readonly multiple: boolean;
   readonly align: "left" | "right";
+  readonly unreadByProfile: ReadonlyMap<string, number>;
   readonly onPick: (profileId: string) => void;
   readonly onAddWorkspace: () => void;
 }) {
@@ -204,6 +231,7 @@ function WorkspaceMenuPanel({
           key={profile.id}
           profile={profile}
           active={activeProfile?.id === profile.id}
+          unread={activeProfile?.id === profile.id ? 0 : (unreadByProfile.get(profile.id) ?? 0)}
           onPick={onPick}
         />
       ))}
@@ -218,10 +246,12 @@ function WorkspaceMenuPanel({
 function WorkspaceMenuItem({
   profile,
   active,
+  unread,
   onPick,
 }: {
   readonly profile: ServerProfile;
   readonly active: boolean;
+  readonly unread: number;
   readonly onPick: (profileId: string) => void;
 }) {
   return (
@@ -241,7 +271,17 @@ function WorkspaceMenuItem({
           {new URL(profile.baseUrl).host}
         </span>
       </span>
-      {active && <Icon name="check" size={14} className="text-accent" />}
+      {active ? (
+        <Icon name="check" size={14} className="text-accent" />
+      ) : unread > 0 ? (
+        <Badge
+          tone="accent"
+          size="sm"
+          aria-label={`${unread} new notification${unread === 1 ? "" : "s"}`}
+        >
+          {unread > 99 ? "99+" : unread}
+        </Badge>
+      ) : null}
     </button>
   );
 }

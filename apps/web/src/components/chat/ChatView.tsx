@@ -93,7 +93,10 @@ import { type RestoreTracking, restoreMentionedChannels } from "./restore-channe
 import { type SearchArchiveState, SearchPanel } from "./SearchPanel";
 import { type ThreadInboxItem, ThreadsInbox } from "./ThreadsInbox";
 import { ThreadsPanel } from "./ThreadsPanel";
-import { UserSettingsView } from "./UserSettingsView";
+
+const UserSettingsView = lazy(() =>
+  import("./UserSettingsView").then((module) => ({ default: module.UserSettingsView })),
+);
 
 // Heavy surfaces only render conditionally (admin, board, notes, a call). Load
 // them on demand so the signed-in shell does not ship their code up front.
@@ -2076,50 +2079,52 @@ function ChatViewContent({
           </Suspense>
         )}
         {!adminView && userSettingsOpen && (
-          <UserSettingsView
-            ownUserId={ownUserId}
-            ownName={ownName}
-            onDirtyChange={setUserSettingsDirty}
-            ownBio={ownProfile?.bio ?? ""}
-            busy={ownProfile === undefined}
-            alignment={alignment}
-            canEditNickname={canEditNickname}
-            isOwner={admin.viewer.isOwner}
-            onSave={saveUserSettings}
-            hasAvatar={ownAvatarUrl !== null}
-            onChangeAvatar={changeAvatar}
-            onClearAvatar={async () => {
-              await setAvatar({});
-            }}
-            onBack={() => {
-              setUserSettingsOpen(false);
-            }}
-            onSignOut={onSignOut}
-            voiceSettings={<DeviceSettingsSection />}
-            soundSettings={
-              <NotificationsSettingsSection
-                prefsLoaded={notificationPrefs !== undefined}
-                suppressMassMentions={
-                  notificationPrefs?.find((row) => row.scope === "server")?.suppressMassMentions ===
-                  true
-                }
-                {...(resolveServerCapabilities(publicConfig).mentionMarkers
-                  ? {
-                      onSuppressMassMentions: (value: boolean) => {
-                        void setNotificationPref({
-                          scope: "server",
-                          suppressMassMentions: value,
-                        }).catch((error) => {
-                          setSendError(errorMessage(error));
-                        });
-                      },
-                    }
-                  : {})}
-              />
-            }
-            {...(isDesktop() ? { updateSettings: <DesktopUpdateSettings /> } : {})}
-            updateAvailable={updateAvailable}
-          />
+          <Suspense fallback={<SurfaceFallback />}>
+            <UserSettingsView
+              ownUserId={ownUserId}
+              ownName={ownName}
+              onDirtyChange={setUserSettingsDirty}
+              ownBio={ownProfile?.bio ?? ""}
+              busy={ownProfile === undefined}
+              alignment={alignment}
+              canEditNickname={canEditNickname}
+              isOwner={admin.viewer.isOwner}
+              onSave={saveUserSettings}
+              hasAvatar={ownAvatarUrl !== null}
+              onChangeAvatar={changeAvatar}
+              onClearAvatar={async () => {
+                await setAvatar({});
+              }}
+              onBack={() => {
+                setUserSettingsOpen(false);
+              }}
+              onSignOut={onSignOut}
+              voiceSettings={<DeviceSettingsSection />}
+              soundSettings={
+                <NotificationsSettingsSection
+                  prefsLoaded={notificationPrefs !== undefined}
+                  suppressMassMentions={
+                    notificationPrefs?.find((row) => row.scope === "server")
+                      ?.suppressMassMentions === true
+                  }
+                  {...(resolveServerCapabilities(publicConfig).mentionMarkers
+                    ? {
+                        onSuppressMassMentions: (value: boolean) => {
+                          void setNotificationPref({
+                            scope: "server",
+                            suppressMassMentions: value,
+                          }).catch((error) => {
+                            setSendError(errorMessage(error));
+                          });
+                        },
+                      }
+                    : {})}
+                />
+              }
+              {...(isDesktop() ? { updateSettings: <DesktopUpdateSettings /> } : {})}
+              updateAvailable={updateAvailable}
+            />
+          </Suspense>
         )}
 
         {rightPanel !== null &&
