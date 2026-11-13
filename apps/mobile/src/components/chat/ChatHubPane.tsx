@@ -170,6 +170,7 @@ function ChatHubBoardsTab({ model }: { readonly model: ChatScreenModel }) {
   return (
     <View className="flex-1 min-w-0" style={{ paddingBottom: dockClearance }}>
       <KanbanScreen
+        active={model.pane === 0}
         ownUserId={model.ownUserId}
         permissions={model.viewerPermissions}
         members={model.members}
@@ -185,6 +186,7 @@ function ChatHubNotesTab({ model }: { readonly model: ChatScreenModel }) {
   return (
     <View className="flex-1 min-w-0" style={{ paddingBottom: dockClearance }}>
       <NotesScreen
+        active={model.pane === 0}
         ownUserId={model.ownUserId}
         permissions={model.viewerPermissions}
         members={model.members}
@@ -257,6 +259,7 @@ function ChatHubSettingsTab({ model }: { readonly model: ChatScreenModel }) {
   const avatar = profileAvatarActions(model);
   return (
     <SettingsView
+      active={model.pane === 0}
       workspaceName={model.workspaceName}
       ownUserId={model.ownUserId}
       ownDisplayName={model.memberNames.get(model.ownUserId) ?? model.ownDisplayName}

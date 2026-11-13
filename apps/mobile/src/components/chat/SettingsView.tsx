@@ -6,6 +6,7 @@ import { Linking, View } from "react-native";
 import { KeyboardAwareScrollView } from "react-native-keyboard-controller";
 import { presenceLabel } from "../../lib/presence";
 import type { PushRegistrationState } from "../../lib/use-push-registration";
+import { useBackPress } from "../navigation/BackPress";
 import { DeviceSettingsSection } from "../voice/DeviceSettingsSection";
 import { DebugLogsSection } from "./DebugLogsSection";
 import { PaneHeader, RoundButton, useDockClearance } from "./HubPane";
@@ -35,6 +36,8 @@ const PUSH_LABELS: ReadonlyMap<PushRegistrationState, string> = new Map([
 ]);
 
 export interface SettingsViewProps {
+  /** True while the hub pane is the visible surface. */
+  readonly active: boolean;
   readonly workspaceName: string;
   readonly ownUserId: string;
   readonly ownDisplayName: string;
@@ -276,6 +279,14 @@ function SettingsMenu({
 export function SettingsView(props: SettingsViewProps) {
   const clearance = useDockClearance();
   const [page, setPage] = useState<DetailPage | null>(null);
+
+  // A settings page is pushed over the You tab, so Android back returns to the
+  // tab it came from. Only the visible hub pane owns the press: the pane stays
+  // mounted while somebody swipes back to the conversation.
+  useBackPress(props.active && page !== null, () => {
+    setPage(null);
+    return true;
+  });
 
   if (page !== null) {
     return (
