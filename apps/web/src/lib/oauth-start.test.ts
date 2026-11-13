@@ -1,6 +1,7 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import {
   AuthExchangeTimeoutError,
+  beginOAuth,
   clearAuthHandoff,
   clearPendingHandoff,
   completeAuthHandoffFromLocation,
@@ -20,6 +21,23 @@ import {
   takeStoredAuthHandoffError,
 } from "../lib/oauth-start";
 import { readSessionToken } from "../lib/session-token";
+
+const browser = vi.hoisted(() => ({ desktop: false, open: vi.fn() }));
+vi.mock("./desktop", () => ({
+  isDesktop: () => browser.desktop,
+  openExternal: browser.open,
+}));
+
+beforeEach(() => {
+  browser.desktop = false;
+  browser.open.mockClear();
+});
+
+it("always opens the system browser on desktop, including legacy in-app requests", () => {
+  browser.desktop = true;
+  beginOAuth("https://chat.example.com/api/auth/native/start", "in-app");
+  expect(browser.open).toHaveBeenCalledWith("https://chat.example.com/api/auth/native/start");
+});
 
 const SERVER = "https://chat.example.com";
 const CHALLENGE = "a".repeat(64);

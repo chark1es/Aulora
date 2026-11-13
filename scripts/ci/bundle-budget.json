@@ -301,6 +301,14 @@
     "assets/WorkspaceUnreadObserver.js": {
       "raw": 2368,
       "gzip": 1152
+    },
+    "assets/cn.js": {
+      "raw": 128,
+      "gzip": 128
+    },
+    "assets/LegacyRecoveryNotice.js": {
+      "raw": 5632,
+      "gzip": 2432
     }
   },
   "initial": {

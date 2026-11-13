@@ -6,6 +6,8 @@ Your administrator supplies the server's web URL, such as `https://chat.example.
 
 The server advertises its available sign-in methods. Use email/password, a configured OAuth provider, or your organization's SSO. An invitation may be required. If sign-in is unavailable, contact the administrator of that server.
 
+In the desktop app, provider sign-in opens your default browser. Finish signing in there, then allow the browser to return to Aulora.
+
 Accounts belong to each server. Joining another server can require another account. Use the workspace switcher to move between connected servers.
 
 If a server does not answer, the app stops waiting silently. After about ten seconds it offers **Try again**, **Use a different server**, and, for a saved server, **Remove this server**. Removal asks for confirmation and only forgets the server on this device, so you can add it again later.

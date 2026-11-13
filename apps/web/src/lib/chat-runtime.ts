@@ -59,6 +59,7 @@ export interface CreateChatRuntimeOptions {
   readonly client: ConvexReactClient;
   readonly userId: string;
   readonly displayName: string;
+  /** Primary query failures; null clears a previous failure after a successful result. */
   readonly onError?: (error: unknown) => void;
 }
 
