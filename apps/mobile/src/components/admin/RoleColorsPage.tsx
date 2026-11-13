@@ -1,3 +1,4 @@
+/* eslint-disable no-unused-vars -- the base rule reports parameter names in type signatures; Biome checks real unused code */
 import { useCallback, useMemo, useReducer } from "react";
 import { View } from "react-native";
 import type { RoleView } from "../../lib/permissions";
