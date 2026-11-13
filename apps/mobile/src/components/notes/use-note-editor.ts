@@ -23,7 +23,7 @@ export interface NoteSelection {
   readonly end: number;
 }
 
-function useEditorState(note?: NoteDetailView) {
+function useEditorState(startsEditing: boolean, note?: NoteDetailView) {
   const [title, setTitle] = useState("");
   const [body, setBody] = useState("");
   const [folderId, setFolderId] = useState<string | null>(null);
@@ -31,6 +31,11 @@ function useEditorState(note?: NoteDetailView) {
   const [preview, setPreview] = useState(false);
   const [sheet, setSheet] = useState<EditorSheet>(undefined);
   const [busy, setBusy] = useState(false);
+  /**
+   * Existing notes open read-only; a new note opens straight into the editor.
+   * An explicit tap on the header's edit control is the only way in.
+   */
+  const [editing, setEditing] = useState(startsEditing);
   /** The remote revision the viewer chose to replace on their next save. */
   const [dismissedRevision, setDismissedRevision] = useState<number | undefined>(undefined);
   /** Set when a save was rejected as stale, even before the subscription catches up. */
@@ -41,6 +46,13 @@ function useEditorState(note?: NoteDetailView) {
   // advances on a clean seed or a successful save, so unsaved edits survive a
   // live subscription update.
   const seedRef = useRef<NoteDraftSeed | undefined>(undefined);
+  /**
+   * The fields as of the newest render. A save continuation closes over the
+   * values from the render that started it, so it compares against this ref to
+   * tell whether the person typed a newer draft while the write was in flight.
+   */
+  const latestDraftRef = useRef({ title, body, folderId, tagIds });
+  latestDraftRef.current = { title, body, folderId, tagIds };
   const dirty = noteDraftDirty({ seed: seedRef.current, title, body, folderId, tagIds });
   const dirtyRef = useRef(false);
   dirtyRef.current = dirty;
@@ -172,6 +184,7 @@ function useEditorState(note?: NoteDetailView) {
     reloadLatest,
     discardDraft,
     keepMyVersion,
+    latestDraftRef,
     dirty,
     showReloadPrompt,
     title,
@@ -188,6 +201,8 @@ function useEditorState(note?: NoteDetailView) {
     setSheet,
     busy,
     setBusy,
+    editing,
+    setEditing,
   };
 }
 
@@ -320,9 +335,22 @@ function useNoteSave(ctl: NotesController, state: EditorState) {
     baseRevision,
     markSaved,
     showReloadPrompt,
+    latestDraftRef,
   } = state;
+  /**
+   * Guards the window between a tap and the next render: without it, a second
+   * tap (or the menu action) can start the same write twice from one `busy`
+   * snapshot and race two revisions of the same note.
+   */
+  const inFlight = useRef(false);
+  /** The note the person is looking at now, not the one this render closed over. */
+  const latestNoteId = useRef(ctl.selectedId);
+  latestNoteId.current = ctl.selectedId;
+
   const save = () => {
-    if (busy || !hasNoteContent(title, body)) return;
+    if (inFlight.current || busy || !hasNoteContent(title, body)) return;
+    const noteIdAtSave = ctl.selectedId;
+    inFlight.current = true;
     setBusy(true);
     void runNoteSave({
       note: note === undefined ? undefined : { id: note.id, revision: note.revision },
@@ -332,13 +360,25 @@ function useNoteSave(ctl: NotesController, state: EditorState) {
       update: (request) => ctl.mutations.updateNote(request as never),
     })
       .then((result) => {
+        inFlight.current = false;
         setBusy(false);
+        // A write that lands after the person moved to another note must not
+        // rebase, close or report on the note they are looking at now.
+        if (latestNoteId.current !== noteIdAtSave) return;
         if (result.kind === "created") {
           ctl.openNote(result.noteId);
           return;
         }
         if (result.kind === "saved") {
+          const savedSnapshot = { title, body, folderId, tagIds };
           markSaved(result.seed);
+          // `markSaved` advances the clean seed without clobbering typing that
+          // landed mid-write. Only leave the editor when the draft is still the
+          // snapshot that was submitted; otherwise the newer text must stay in
+          // an editable, visibly dirty draft instead of being shown as saved.
+          if (sameDraft(latestDraftRef.current, savedSnapshot)) {
+            state.setEditing(false);
+          }
           ctl.setError(undefined);
           return;
         }
@@ -346,17 +386,49 @@ function useNoteSave(ctl: NotesController, state: EditorState) {
         ctl.setError(result.message);
       })
       .catch((cause: unknown) => {
+        inFlight.current = false;
         setBusy(false);
-        ctl.setError(failure(cause));
+        if (latestNoteId.current === noteIdAtSave) {
+          ctl.setError(failure(cause));
+        }
       });
   };
   return save;
 }
 
+function sameDraft(
+  a: {
+    readonly title: string;
+    readonly body: string;
+    readonly folderId: string | null;
+    readonly tagIds: readonly string[];
+  },
+  b: {
+    readonly title: string;
+    readonly body: string;
+    readonly folderId: string | null;
+    readonly tagIds: readonly string[];
+  },
+): boolean {
+  return (
+    a.title === b.title &&
+    a.body === b.body &&
+    a.folderId === b.folderId &&
+    a.tagIds.length === b.tagIds.length &&
+    a.tagIds.every((tagId, index) => tagId === b.tagIds.at(index))
+  );
+}
+
 export function useNoteEditor(ctl: NotesController) {
-  const state = useEditorState(ctl.detail);
+  const state = useEditorState(ctl.selectedId === null, ctl.detail);
   const editing = useBodyEditing(state);
   const save = useNoteSave(ctl, state);
+  const selectedId = ctl.selectedId;
+  const setEditing = state.setEditing;
+  // A different note (or a freshly created one) always starts in viewing mode.
+  useEffect(() => {
+    setEditing(selectedId === null);
+  }, [selectedId, setEditing]);
   const confirmDiscard = (discard: () => void) => {
     Alert.alert("Discard unsaved changes?", "Your local changes will be lost.", [
       { text: "Keep editing", style: "cancel" },
