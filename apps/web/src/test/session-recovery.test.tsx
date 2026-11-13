@@ -1,5 +1,5 @@
 import type { ServerProfile } from "@aulora/core";
-import { debugLog } from "@aulora/core";
+import { activateProfileInStore, debugLog, type ProfileStore } from "@aulora/core";
 import { act, fireEvent, render, screen } from "@testing-library/react";
 import type { ReactNode } from "react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
@@ -213,6 +213,32 @@ describe("ProfileSession recovery", () => {
     expect(harness.clients[0]?.closed).toBe(true);
   });
 
+  it("does not clear or record A's rejected session during B's profile persistence", async () => {
+    const view = render(<ProfileSession profile={PROFILE} />);
+    let finish!: () => void;
+    const persistence = new Promise<void>((resolve) => {
+      finish = resolve;
+    });
+    const store = {
+      getActive: async () => ({ id: PROFILE.id }),
+      setActive: () => persistence,
+    } as unknown as ProfileStore;
+    const activation = activateProfileInStore(store, "https://b.example");
+    await act(async () => {
+      await Promise.resolve();
+    });
+    debugLog.record("transition", "keep current transition diagnostic");
+    writeSessionToken(PROFILE.siteUrl, "A-session-token");
+    harness.server.rejectsStoredToken = true;
+    view.rerender(<ProfileSession profile={PROFILE} />);
+    expect(debugLog.report("B", "")).not.toContain("auth.session");
+    expect(debugLog.report("B", "")).toContain("keep current transition diagnostic");
+    view.unmount();
+    finish();
+    await activation;
+    expect(debugLog.report("B", "")).not.toContain("auth.session");
+  });
+
   it("drops a token the server rejects and signs in without it", () => {
     writeSessionToken(PROFILE.siteUrl, "stale-token");
     harness.server.rejectsStoredToken = true;
@@ -220,6 +246,10 @@ describe("ProfileSession recovery", () => {
     render(<ProfileSession profile={PROFILE} />);
 
     expect(readSessionToken(PROFILE.siteUrl)).toBeNull();
+    const report = JSON.parse(debugLog.report("new-account", ""));
+    expect(report.entries.map((entry: { source: string }) => entry.source)).toContain(
+      "auth.session",
+    );
     expect(debugLog.report("new-account", "")).not.toContain("sentinel-old-account");
     expect(screen.getByText("Signed in")).toBeInTheDocument();
     expect(harness.clients).toHaveLength(2);

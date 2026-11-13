@@ -1,6 +1,7 @@
 import { NativeBlobatar } from "@aulora/avatars/native";
 import {
   notifyAuthChanged,
+  recordDebugFailure,
   resolveSignInMethods,
   type ServerProfile,
   type SignInMethods,
@@ -8,7 +9,7 @@ import {
 } from "@aulora/core";
 import { Button, Heading, Icon, Text, usePalette } from "@aulora/ui-native";
 import { useQuery } from "convex/react";
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import {
   Alert,
   Animated,
@@ -19,6 +20,7 @@ import {
   View,
 } from "react-native";
 import { api } from "../../../../packages/convex/convex/_generated/api";
+import { createAccountScope } from "../lib/account-scope";
 import {
   type AuloraAuthClient,
   authActionsFromClient,
@@ -88,6 +90,17 @@ function useSignInController(
   siteUrl: string,
 ) {
   const [state, setState] = useState<FormState>(INITIAL);
+  // Each operation captures the screen/workspace lifetime it started in.
+  const scopeRef = useRef(createAccountScope(recordDebugFailure));
+  // biome-ignore lint/correctness/useExhaustiveDependencies: identity changes must close in-flight work even though the effect only creates its lifetime.
+  useEffect(() => {
+    const scope = createAccountScope(recordDebugFailure);
+    scopeRef.current = scope;
+    return () => {
+      scope.close();
+    };
+  }, [authClient, cookieStore, siteUrl]);
+
   const patch = (next: Partial<FormState>) => {
     setState((current) => ({ ...current, ...next }));
   };
@@ -98,11 +111,16 @@ function useSignInController(
   useEffect(() => {
     let active = true;
     const consume = () => {
+      const scope = scopeRef.current;
+      if (!scope.isActive()) return;
       void takeStoredAuthHandoffError(cookieStore, siteUrl)
         .then((message) => {
-          if (active && message !== null) {
-            setState((current) => ({ ...current, error: message }));
-          }
+          // The screen may have unmounted or switched accounts while the
+          // stored handoff was being read; never copy that text into the next
+          // account's diagnostics or state.
+          if (!active || !scope.isActive() || message === null) return;
+          scope.record("auth.callback", message);
+          setState((current) => ({ ...current, error: message }));
         })
         .catch(() => undefined);
     };
@@ -115,20 +133,26 @@ function useSignInController(
   }, [cookieStore, siteUrl]);
 
   async function run(key: string, task: () => Promise<AuthResult>) {
+    const scope = scopeRef.current;
+    if (!scope.isActive()) return;
     patch({ error: null, pending: key });
     try {
       const result = await task();
+      if (!scope.isActive()) return;
       if (result.error !== null) {
+        scope.record("auth.signin", result.error.message ?? "Auth request failed");
         patch({
           error: result.error.message ?? "That did not work. Check your details and try again.",
         });
       } else {
         await clearStoredAuthHandoffError(cookieStore).catch(() => undefined);
       }
-    } catch {
+    } catch (error) {
+      if (!scope.isActive()) return;
+      scope.record("auth.signin", error);
       patch({ error: "Could not reach the workspace. Try again." });
     } finally {
-      patch({ pending: null });
+      if (scope.isActive()) patch({ pending: null });
     }
   }
 
@@ -143,8 +167,10 @@ function useSignInController(
   }
 
   async function signInWithProvider(providerId: string, type: "oauth" | "oidc", name: string) {
+    const scope = scopeRef.current;
+    if (!scope.isActive()) return;
     const delivery = await chooseProviderDelivery(name);
-    if (delivery === null) {
+    if (!scope.isActive() || delivery === null) {
       return;
     }
     patch({ error: null, pending: providerId });
@@ -157,15 +183,19 @@ function useSignInController(
         type,
         delivery,
       );
+      if (!scope.isActive()) return;
       if (result.status === "error") {
+        scope.record("auth.provider", result.message);
         patch({ error: result.message });
       } else if (result.status === "success") {
         notifyAuthChanged();
       }
-    } catch {
+    } catch (error) {
+      if (!scope.isActive()) return;
+      scope.record("auth.provider", error);
       patch({ error: "Could not open the sign-in browser." });
     } finally {
-      patch({ pending: null });
+      if (scope.isActive()) patch({ pending: null });
     }
   }
 

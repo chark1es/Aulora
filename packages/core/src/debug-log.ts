@@ -116,6 +116,71 @@ export function createDebugLog() {
 
 export const debugLog = createDebugLog();
 
+interface DebugAccountOwner {
+  readonly enabled: boolean;
+  replacement?: DebugAccountOwner;
+}
+
+let debugAccountOwner: DebugAccountOwner = { enabled: true };
+
+function resolvedDebugOwner(owner: DebugAccountOwner): DebugAccountOwner {
+  let resolved = owner;
+  while (resolved.replacement !== undefined) resolved = resolved.replacement;
+  if (owner !== resolved) owner.replacement = resolved;
+  return resolved;
+}
+
+/** Captures ownership before asynchronous work; manual Clear logs is independent. */
+export function captureDebugAccountOwnership(): () => boolean {
+  const owner = resolvedDebugOwner(debugAccountOwner);
+  return () => owner.enabled && resolvedDebugOwner(debugAccountOwner) === owner;
+}
+
+/** End an authenticated identity without letting its pending work refill the log. */
+export function resetDebugAccount(): void {
+  debugAccountOwner = { enabled: true };
+  debugLog.clear();
+}
+
+/**
+ * Close outgoing ownership before asynchronous profile persistence starts.
+ * Failed transitions restore the previous owner; successful ones issue a new
+ * owner. Replacement links also resolve correctly when concurrent transitions
+ * fail in either order. Scopes created during persistence never become active.
+ */
+export async function withDebugAccountTransition<T>(task: () => Promise<T>): Promise<T> {
+  const previous = resolvedDebugOwner(debugAccountOwner);
+  const transition: DebugAccountOwner = { enabled: false };
+  debugAccountOwner = transition;
+  debugLog.clear();
+  try {
+    const result = await task();
+    transition.replacement = { enabled: true };
+    return result;
+  } catch (error) {
+    transition.replacement = previous;
+    throw error;
+  } finally {
+    if (debugAccountOwner === transition) debugAccountOwner = resolvedDebugOwner(transition);
+  }
+}
+
+/**
+ * Records a failure an operation caught and is handling.
+ *
+ * Uncaught errors reach the runtime error hooks, and logged console output is
+ * captured on its own. A failure the UI catches so it can show an alert or an
+ * inline message never does, so a report would look identical to a session with
+ * no problem. Call this where the failure is caught or in the shared helper
+ * that turns it into user-facing text.
+ *
+ * Shared modules should import this instead of an app's `lib/debug-log`, which
+ * installs process-wide console and crash handlers as a side effect.
+ */
+export function recordDebugFailure(source: string, error: unknown): void {
+  debugLog.record(source, error);
+}
+
 /** Install once per JS runtime, preserving the existing console behavior. */
 let consoleInstalled = false;
 export function installDebugConsole(): void {
@@ -129,8 +194,4 @@ export function installDebugConsole(): void {
     };
   console.error = capture("console.error", console.error);
   console.warn = capture("console.warn", console.warn);
-}
-
-export function generateDebugTestError(): void {
-  console.error(new Error("Aulora diagnostic test error (intentional)"));
 }

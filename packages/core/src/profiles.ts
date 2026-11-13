@@ -1,4 +1,4 @@
-import { debugLog } from "./debug-log";
+import { withDebugAccountTransition } from "./debug-log";
 import { normalizeServerUrl } from "./server-url";
 import type { WellKnown, WellKnownAuth, WellKnownProvider } from "./well-known";
 
@@ -434,20 +434,23 @@ export async function addProfileToStore(
   wellKnown: WellKnown,
 ): Promise<ServerProfile> {
   const profile = createServerProfile(baseUrl, wellKnown);
-  await store.add(profile);
-  debugLog.clear();
-  await store.setActive(profile.id);
+  await withDebugAccountTransition(async () => {
+    await store.add(profile);
+    await store.setActive(profile.id);
+  });
   return profile;
 }
 
 /** Makes an existing profile active, clearing diagnostics for the new server. */
 export async function activateProfileInStore(store: ProfileStore, id: string): Promise<void> {
-  debugLog.clear();
-  await store.setActive(id);
+  // Selecting the current workspace does not replace its diagnostic owner.
+  if ((await store.getActive())?.id === id) return;
+  await withDebugAccountTransition(() => store.setActive(id));
 }
 
 /** Removes a profile, clearing diagnostics for the workspace they were from. */
 export async function removeProfileFromStore(store: ProfileStore, id: string): Promise<void> {
-  debugLog.clear();
-  await store.remove(id);
+  const active = await store.getActive();
+  if (active?.id === id) await withDebugAccountTransition(() => store.remove(id));
+  else await store.remove(id);
 }

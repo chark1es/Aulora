@@ -275,8 +275,8 @@
       "gzip": 256
     },
     "assets/DebugLogsSection.js": {
-      "raw": 2432,
-      "gzip": 1280
+      "raw": 3712,
+      "gzip": 1664
     },
     "assets/client-version.js": {
       "raw": 64,

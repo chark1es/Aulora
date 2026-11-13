@@ -5,7 +5,6 @@ import {
   Permission,
   sendThreadReply,
 } from "@aulora/core";
-import { Alert } from "react-native";
 import { type PickedFile, uploadPickedFiles } from "../../lib/attachments";
 import {
   banMember,
@@ -16,12 +15,12 @@ import {
 } from "../../lib/backend-actions";
 import { manageableChannelRoles, roleOverridesFor } from "../../lib/channel-role-overrides";
 import { resolveSendMentions } from "../../lib/chat-mentions";
+import { useActionError } from "../../lib/use-action-error";
 import { CallScreen } from "../voice/CallScreen";
 import { IncomingCallModal } from "../voice/IncomingCallModal";
 import { BannedMembersSheet } from "./BannedMembersSheet";
 import { BottomSheet, useLingering } from "./BottomSheet";
 import { CreateChannelSheet } from "./CreateChannelSheet";
-import { errorMessage } from "./chat-screen-types";
 import { EditChannelSheet } from "./EditChannelSheet";
 import { ListGroup, ListRow } from "./List";
 import { MemberActionsSheet } from "./MemberActionsSheet";
@@ -53,6 +52,7 @@ export function ChatScreenSheets({ model }: { readonly model: ChatScreenModel })
 }
 
 function ThreadSheet({ model }: { readonly model: ChatScreenModel }) {
+  const actionError = useActionError(model.ownUserId);
   const { channel, runtime } = model;
   if (model.threadRoot === null || channel === undefined || runtime === undefined) {
     return null;
@@ -84,12 +84,18 @@ function ThreadSheet({ model }: { readonly model: ChatScreenModel }) {
       onClose={() => {
         model.setThreadRoot(null);
       }}
-      onSendReply={makeReplyHandler(model, channel.id, model.threadRoot.id)}
+      onSendReply={makeReplyHandler(model, channel.id, model.threadRoot.id, actionError.show)}
     />
   );
 }
 
-function makeReplyHandler(model: ChatScreenModel, channelId: string, threadRootId: string) {
+function makeReplyHandler(
+  model: ChatScreenModel,
+  channelId: string,
+  threadRootId: string,
+  // eslint-disable-next-line no-unused-vars -- names in a TypeScript callback signature, not unused runtime variables.
+  showError: (title: string, error: unknown) => void,
+) {
   return async ({
     text,
     files,
@@ -135,7 +141,7 @@ function makeReplyHandler(model: ChatScreenModel, channelId: string, threadRootI
                 hasBroadcastToken(text, "here"),
             }),
       (error) => {
-        Alert.alert("Channel copy failed", errorMessage(error));
+        showError("Channel copy failed", error);
       },
     );
   };
@@ -223,6 +229,7 @@ function PinnedMessagesOverlay({ model }: { readonly model: ChatScreenModel }) {
 }
 
 function MemberProfileOverlay({ model }: { readonly model: ChatScreenModel }) {
+  const actionError = useActionError(model.ownUserId);
   const shownProfile = useLingering(model.profileFor);
   if (shownProfile === null) {
     return null;
@@ -261,7 +268,7 @@ function MemberProfileOverlay({ model }: { readonly model: ChatScreenModel }) {
           .createDm({ otherUserId: shownProfile })
           .then((result) => model.openChannel(result.channelId))
           .catch((cause: unknown) => {
-            Alert.alert("Couldn’t start message", errorMessage(cause));
+            actionError.show("Couldn’t start message", cause);
           });
       }}
     />

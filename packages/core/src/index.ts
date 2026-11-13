@@ -41,14 +41,17 @@ export {
 } from "./client-version";
 export * from "./conversation-opening";
 export {
+  captureDebugAccountOwnership,
   createDebugLog,
   DEBUG_LOG_MAX_BYTES,
   DEBUG_LOG_MAX_ENTRIES,
   type DebugLogEntry,
   debugLog,
-  generateDebugTestError,
   installDebugConsole,
+  recordDebugFailure,
   redactDebugText,
+  resetDebugAccount,
+  withDebugAccountTransition,
 } from "./debug-log";
 export {
   classifyError,
@@ -109,6 +112,7 @@ export {
   isConnectivityError,
   memoryOutboxStore,
   Outbox,
+  type OutboxFailure,
   type OutboxItem,
   type OutboxOptions,
   type OutboxStatus,

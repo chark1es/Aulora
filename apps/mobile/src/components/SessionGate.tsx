@@ -13,6 +13,7 @@ import type { CookieStore } from "../lib/cookie-fetch";
 import { bindPendingInvite } from "../lib/pending-invite";
 import { deleteAccountAction, signOutAction } from "../lib/session-account-actions";
 import { useStuckTimeout } from "../lib/stuck-timeout";
+import { useAccountScope } from "../lib/use-account-scope";
 import { ChatProvider } from "../providers/ChatProvider";
 import { useProfiles } from "../providers/ProfileProvider";
 import { SoundProvider } from "../providers/SoundProvider";
@@ -199,8 +200,9 @@ function SignedInChat({
     readonly email?: string | null;
   };
 }) {
-  const signOut = signOutAction(authClient);
-  const deleteAccount = deleteAccountAction(authClient);
+  const accountScope = useAccountScope(user.id);
+  const signOut = signOutAction(authClient, accountScope);
+  const deleteAccount = deleteAccountAction(authClient, accountScope);
   return (
     <QueryErrorBoundary
       client={client}

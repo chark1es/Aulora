@@ -31,6 +31,7 @@ import { isDesktop } from "../../lib/desktop";
 import { publicOriginOrNull, publicUrl } from "../../lib/public-origin";
 import { sendThreadReply } from "../../lib/send-thread-reply";
 import { playSound } from "../../lib/sounds";
+import { useAccountScope } from "../../lib/use-account-scope";
 import { useChannelSession } from "../../lib/use-channel";
 import {
   showUnfocusedNotification,
@@ -188,9 +189,6 @@ const EMPTY_MEMBERS: readonly MemberView[] = [];
 const LAST_CHANNEL_KEY = "aulora.lastChannel.v1:";
 const MEMBERS_OPEN_KEY = "aulora.membersOpen.v1";
 const MESSAGE_ALIGNMENT_KEY = "aulora.messageAlignment.v1";
-function errorMessage(error: unknown): string {
-  return userFacingError(error);
-}
 
 /** Whether two id lists hold the same distinct values, order-insensitive. */
 function readLocal(key: string): string | null {
@@ -263,6 +261,14 @@ function ChatViewContent({
   admin,
   onSignOut,
 }: ChatViewProps) {
+  const actionScope = useAccountScope(ownUserId);
+  const errorMessage = useCallback(
+    (error: unknown) => {
+      actionScope.record("ui.action", error);
+      return userFacingError(error);
+    },
+    [actionScope],
+  );
   const chat = useChat();
   const { runtime, channels, channelNames, presence, ready, outbox } = chat;
   const voice = useVoice();
@@ -1504,11 +1510,13 @@ function ChatViewContent({
       } else {
         await createCategory({ name });
       }
+      if (!actionScope.active) return;
       closeCategoryModal();
     } catch (error) {
+      if (!actionScope.active) return;
       setCategoryError(errorMessage(error));
     } finally {
-      setCategoryBusy(false);
+      if (actionScope.active) setCategoryBusy(false);
     }
   };
 
@@ -1615,6 +1623,7 @@ function ChatViewContent({
       });
       setEditChannelModal(undefined);
     } catch (error) {
+      if (!actionScope.active) return;
       setEditChannelError(errorMessage(error));
     } finally {
       setEditChannelBusy(false);

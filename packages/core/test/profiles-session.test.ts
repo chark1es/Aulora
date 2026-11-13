@@ -1,5 +1,7 @@
 import { describe, expect, it } from "vitest";
+import { captureDebugAccountOwnership, debugLog } from "../src/debug-log";
 import {
+  activateProfileInStore,
   activeProfileOf,
   addProfileToStore,
   createMemoryProfileStore,
@@ -63,4 +65,18 @@ describe("profile session helpers", () => {
       activeProfile: undefined,
     });
   });
+});
+
+it("selecting the active workspace and removing an inactive workspace preserve its diagnostics", async () => {
+  const store = createMemoryProfileStore();
+  const a = await addProfileToStore(store, "chat.acme.com", wellKnown);
+  const b = await addProfileToStore(store, "other.example.com", wellKnown);
+  await activateProfileInStore(store, a.id);
+  const ownsA = captureDebugAccountOwnership();
+  debugLog.record("A", "current A");
+  await activateProfileInStore(store, a.id);
+  expect(ownsA()).toBe(true);
+  await removeProfileFromStore(store, b.id);
+  expect(ownsA()).toBe(true);
+  expect(debugLog.report("A", "")).toContain("current A");
 });
