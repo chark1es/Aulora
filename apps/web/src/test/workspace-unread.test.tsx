@@ -274,6 +274,11 @@ describe("useWorkspaceUnreadCounts", () => {
     expect(state.watchCalls).not.toContain(profiles[5]?.convexUrl);
 
     const first = state.clients.get(profiles[1]?.convexUrl ?? "");
+    // Keep the new capability probes pending: old counts must be dropped
+    // before fresh subscriptions can supply another workspace's badge.
+    for (const item of profiles) {
+      state.configs.set(item.convexUrl, new Promise(() => undefined));
+    }
     rerender({ activeProfileId: profiles[1]?.id ?? "" });
     await waitFor(() => expect(first?.close).toHaveBeenCalled());
     expect(result.current.has(profiles[1]?.id ?? "")).toBe(false);

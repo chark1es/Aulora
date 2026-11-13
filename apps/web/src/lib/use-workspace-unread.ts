@@ -5,7 +5,7 @@ import {
   type ServerProfile,
 } from "@aulora/core";
 import { ConvexReactClient } from "convex/react";
-import { useEffect, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { api } from "../../../../packages/convex/convex/_generated/api";
 import { createAuloraAuthClient } from "./auth-client";
 import { clearSessionToken, readSessionToken } from "./session-token";
@@ -117,7 +117,7 @@ export function useWorkspaceUnreadCounts({
 
   useEffect(() => {
     if (!visible) {
-      setCounts(new Map());
+      setCounts((current) => (current.size === 0 ? current : new Map()));
       return;
     }
     const candidates = profiles
@@ -204,7 +204,7 @@ export function useWorkspaceUnreadCounts({
     }
 
     if (clients.length === 0) {
-      setCounts(new Map());
+      setCounts((current) => (current.size === 0 ? current : new Map()));
     }
     return () => {
       cancelled = true;
@@ -217,5 +217,13 @@ export function useWorkspaceUnreadCounts({
     };
   }, [profiles, activeProfileId, visible]);
 
-  return counts;
+  // A new active workspace must stop showing its old badge immediately,
+  // even while the next lifetime's capability probes are still pending.
+  return useMemo(() => {
+    if (!visible) return new Map<string, number>();
+    if (activeProfileId === undefined || !counts.has(activeProfileId)) return counts;
+    const otherCounts = new Map(counts);
+    otherCounts.delete(activeProfileId);
+    return otherCounts;
+  }, [counts, activeProfileId, visible]);
 }

@@ -18,7 +18,13 @@ import {
   useRef,
 } from "react";
 import { Alert } from "react-native";
+import {
+  NO_SAVED_ROUTE_PROGRESS,
+  recordSavedRouteAttempt,
+  savedRouteSignature,
+} from "../lib/voice/audio-route-platform";
 import type { MobileVoiceEngine, MobileVoiceSnapshot } from "../lib/voice/call-engine";
+import { useAudioRoute } from "../lib/voice/use-audio-route";
 import {
   useCallForegroundService,
   useVoiceClientId,
@@ -213,6 +219,7 @@ function useVoiceContextValue(input: {
   readonly activeCalls: readonly CallView[];
   readonly settings: VoiceDeviceSettings;
   readonly devices: readonly AuloraMediaDevice[];
+  readonly audioRoute: VoiceContextValue["audioRoute"];
   readonly flags: VoiceFlags;
   readonly view: CallViewMode;
   readonly pipPinned: boolean;
@@ -232,6 +239,7 @@ function useVoiceContextValue(input: {
     activeCalls,
     settings,
     devices,
+    audioRoute,
     flags,
     view,
     pipPinned,
@@ -252,6 +260,7 @@ function useVoiceContextValue(input: {
       activeCalls,
       settings,
       devices,
+      audioRoute,
       ...flags,
       view,
       pipPinned,
@@ -271,6 +280,7 @@ function useVoiceContextValue(input: {
       activeCalls,
       settings,
       devices,
+      audioRoute,
       flags,
       view,
       pipPinned,
@@ -301,6 +311,7 @@ export function useVoiceValue(input: {
   const engineRef = useRef<MobileVoiceEngine | null>(null);
   const { settings, settingsRef, updateSettings } = useVoiceSettings(engineRef);
   const { devices, refreshDevices } = useVoiceDevices();
+  const audioRoute = useAudioRoute();
   const { snapshot, incoming, activeCalls } = useVoiceEngine(
     client,
     clientId,
@@ -310,6 +321,52 @@ export function useVoiceValue(input: {
     engineRef,
   );
   useCallForegroundService(snapshot);
+  // Apply the saved platform route as soon as a call exists: WebRTC starts on
+  // the OS default, which may be the phone speaker even when the person chose
+  // a headset in settings. A route switch moves both capture and playback.
+  //
+  // Only a *successful* application is latched. A saved headset may not be in
+  // the first route list after joining (or may be reconnecting), so a pending
+  // or rejected attempt stays unlatched and is retried when the route poll or a
+  // settings change re-renders this effect. The active call keeps a watcher so
+  // that delayed route enumeration is actually polled; the settings screen is
+  // not the only consumer during a call.
+  const routeProgressRef = useRef(NO_SAVED_ROUTE_PROGRESS);
+  const watchAudioRoute = audioRoute.watch;
+  useEffect(() => {
+    if (snapshot.callId === null) {
+      routeProgressRef.current = NO_SAVED_ROUTE_PROGRESS;
+      return;
+    }
+    return watchAudioRoute();
+  }, [snapshot.callId, watchAudioRoute]);
+  useEffect(() => {
+    if (snapshot.callId === null) {
+      routeProgressRef.current = NO_SAVED_ROUTE_PROGRESS;
+      return;
+    }
+    const signature = savedRouteSignature(
+      snapshot.callId,
+      settings.inputDeviceId,
+      settings.outputDeviceId,
+    );
+    if (routeProgressRef.current.appliedSignature === signature) return;
+    const result = audioRoute.applySaved(settings.inputDeviceId, settings.outputDeviceId, devices);
+    const attempt = recordSavedRouteAttempt(routeProgressRef.current, signature, result);
+    routeProgressRef.current = attempt.progress;
+    if (attempt.shouldReport) {
+      // Surface once per call/route; the watcher keeps retrying quietly while
+      // the headset reconnects.
+      Alert.alert("Audio route", result.message ?? "The saved audio route could not be applied.");
+    }
+  }, [
+    audioRoute,
+    audioRoute.applySaved,
+    devices,
+    settings.inputDeviceId,
+    settings.outputDeviceId,
+    snapshot.callId,
+  ]);
   const ui = useVoiceUi(snapshot.callId !== null);
   const activeCallsRef = useRef(activeCalls);
   activeCallsRef.current = activeCalls;
@@ -325,6 +382,7 @@ export function useVoiceValue(input: {
     activeCalls,
     settings,
     devices,
+    audioRoute,
     flags,
     ...ui,
     pip,
