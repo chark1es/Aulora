@@ -450,6 +450,7 @@ export function useNoteEditor(ctl: NotesController) {
       state.dirty,
       () => {
         state.discardDraft();
+        state.setEditing(false);
         ctl.backToList();
       },
       confirmDiscard,
@@ -460,6 +461,7 @@ export function useNoteEditor(ctl: NotesController) {
       state.dirty,
       () => {
         state.discardDraft();
+        state.setEditing(false);
         ctl.openHistory(noteId);
       },
       confirmDiscard,

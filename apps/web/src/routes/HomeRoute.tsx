@@ -40,7 +40,10 @@ export function HomeRoute() {
         </div>
       }
     >
-      <ProfileSession profile={activeProfile} />
+      {/* A workspace switch starts the shell from scratch, so kept panes,
+          visited tabs and their subscriptions never show the previous
+          workspace's rows. Mobile keys `ServerSession` the same way. */}
+      <ProfileSession key={activeProfile.id} profile={activeProfile} />
     </Suspense>
   );
 }

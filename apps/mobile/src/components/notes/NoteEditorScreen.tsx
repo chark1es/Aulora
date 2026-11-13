@@ -1,4 +1,5 @@
 import { Button, Icon, IconButton, Text, usePalette } from "@aulora/ui-native";
+import { useEffect } from "react";
 import { ScrollView, View } from "react-native";
 import { impactFeedback } from "../../lib/haptics";
 import { hasNoteContent, noteTitle } from "../../lib/notes";
@@ -105,10 +106,21 @@ function NoteReloadBanner({ editor }: { readonly editor: NoteEditorController })
 export function NoteEditorScreen({
   ctl,
   editor,
+  onDirtyChange,
 }: {
   readonly ctl: NotesController;
   readonly editor: NoteEditorController;
+  // eslint-disable-next-line no-unused-vars -- parameter name documents the callback signature, not a runtime variable.
+  readonly onDirtyChange?: ((dirty: boolean) => void) | undefined;
 }) {
+  useEffect(() => {
+    onDirtyChange?.(editor.dirty);
+    return () => {
+      // Leaving the editor discards its draft path; a still-dirty editor never
+      // reaches this while its hidden tab is retained.
+      onDirtyChange?.(false);
+    };
+  }, [editor.dirty, onDirtyChange]);
   const { title, body, busy, sheet, setSheet, save } = editor;
   const isNew = ctl.selectedId === null;
   const note = ctl.detail;

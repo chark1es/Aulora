@@ -305,6 +305,7 @@ it("drops a discarded draft so reopening the same note shows the saved text", ()
   const { ctl, render } = setup();
   if (ctl.detail === undefined) throw new Error("expected a loaded note");
   const saved = { ...ctl.detail };
+  render().setEditing(true);
   render().setBody("Unsaved body");
   render().backToList();
   confirmDiscard();
@@ -315,13 +316,14 @@ it("drops a discarded draft so reopening the same note shows the saved text", ()
   ctl.detail = undefined;
   render();
   ctl.detail = saved;
-  expect(render()).toMatchObject({ body: "Original", title: "Plan", dirty: false });
+  expect(render()).toMatchObject({ body: "Original", title: "Plan", dirty: false, editing: false });
 });
 
 it("drops a discarded draft before opening history, so Back from history is clean", () => {
   const { ctl, render } = setup();
   if (ctl.detail === undefined) throw new Error("expected a loaded note");
   const saved = { ...ctl.detail };
+  render().setEditing(true);
   render().setBody("Unsaved body");
   render().openHistory("note");
   confirmDiscard();
@@ -329,5 +331,5 @@ it("drops a discarded draft before opening history, so Back from history is clea
 
   // History -> Back returns to the retained editor without a new detail fetch.
   ctl.detail = saved;
-  expect(render()).toMatchObject({ body: "Original", dirty: false });
+  expect(render()).toMatchObject({ body: "Original", dirty: false, editing: false });
 });

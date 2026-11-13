@@ -28,6 +28,12 @@ export interface NotesProps {
   members: readonly NoteMember[];
   onBack: () => void;
   onDirtyChange?: (dirty: boolean) => void;
+  /**
+   * Increments when the parent confirmed Discard for a navigation away from a
+   * retained Notes view. The draft resets to the saved snapshot instead of
+   * reappearing as unsaved text when the reader comes back.
+   */
+  discardToken?: number;
 }
 
 /** The unsaved editor contents for the open note. */
@@ -369,6 +375,24 @@ export function useNotes(props: NotesProps) {
   latest.current = { noteId: state.noteId, draft: state.draft };
 
   useNoteSelection(state, data);
+
+  // Confirmed discard from the parent's guard. The retained view keeps its
+  // hook state, so clearing the parent's `dirty` flag alone would leave the
+  // discarded text on screen and on the next save.
+  const discardToken = props.discardToken;
+  const seenDiscard = useRef(discardToken);
+  useEffect(() => {
+    if (discardToken === undefined) {
+      seenDiscard.current = undefined;
+      return;
+    }
+    if (seenDiscard.current === discardToken) return;
+    seenDiscard.current = discardToken;
+    const seed = state.seed;
+    if (seed === undefined) return;
+    state.setDraft({ ...seed.snapshot, tagIds: [...seed.snapshot.tagIds] });
+    state.setEditing(false);
+  }, [discardToken, state.seed, state.setDraft, state.setEditing]);
 
   const dirty = isDraftDirty(state);
   const navigation = useSettingsNavigation(true, dirty);

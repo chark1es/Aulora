@@ -13,15 +13,17 @@ import {
   resolveServerCapabilities,
 } from "@aulora/core";
 import { useMutation, usePaginatedQuery, useQuery } from "convex/react";
-import { useCallback, useEffect, useMemo, useRef } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { Platform } from "react-native";
 import { api } from "../../../../../packages/convex/convex/_generated/api";
 import { useIncomingCallNotification, useLocalNotifications } from "../../lib/notifications";
 import { presenceLabel, typingLabel } from "../../lib/presence";
 import { recentSearchKey } from "../../lib/search-ui";
+import { threadInboxQueryArgs } from "../../lib/thread-inbox-query";
 import { useChannelSession } from "../../lib/use-channel";
 import { usePushRegistration } from "../../lib/use-push-registration";
 import { useWebhookNames } from "../../lib/use-webhook-names";
+import { threadsInboxVisible, useRetainedTabs } from "../../lib/visited-tabs";
 import {
   rememberAndPersistWorkspaceServerId,
   subscribeWorkspaceNotificationTargets,
@@ -34,6 +36,7 @@ import { useSound } from "../../providers/SoundProvider";
 import { useVoice } from "../../providers/VoiceProvider";
 import { type ChatScreenSession, useChatScreenSessionValue } from "./chat-screen-session";
 import type { ChatScreenProps } from "./chat-screen-types";
+import type { HubTab } from "./HubPane";
 import { type ChatScreenUiState, useChatScreenUiState } from "./use-chat-screen-ui-state";
 
 export function useConvexChatScreenSession(
@@ -664,26 +667,51 @@ export function useChatScreenData({ onSignOut, onDeleteAccount }: ChatScreenProp
   });
   const pagingConfig = useQuery(api.server.publicConfig, {});
   const pagedThreads = pagingConfig?.capabilities?.threadInboxPaging === true;
-  const legacyThreadRows = useQuery(
-    api.messages.threadInbox,
-    session.runtime && ui.hubTab === "threads" && !pagedThreads ? { limit: 50 } : "skip",
+  const [notesDirty, setNotesDirty] = useState(false);
+  // The hub renderer and this parent share one MRU retention set. Threads is
+  // only subscribed while its tab is retained; eviction or the hidden lifetime
+  // unmounts it here too, so the query releases its pages instead of keeping
+  // them loaded behind another tab.
+  const hubTabs = useMemo<readonly HubTab[]>(
+    () => [
+      "chats",
+      "dms",
+      ...(session.showKanban || session.showNotes ? (["addons"] as const) : []),
+      ...(session.showKanban ? (["boards"] as const) : []),
+      ...(session.showNotes ? (["notes"] as const) : []),
+      "threads",
+      "search",
+      "you",
+    ],
+    [session.showKanban, session.showNotes],
   );
-  const threadPages = usePaginatedQuery(
-    api.messages.threadInboxPage,
-    session.runtime && ui.hubTab === "threads" && pagedThreads ? {} : "skip",
-    { initialNumItems: 50 },
+  const activeHubTab: HubTab = hubTabs.includes(ui.hubTab) ? ui.hubTab : "you";
+  const retainedHubTabs = useRetainedTabs(hubTabs, activeHubTab, {
+    holdTab: notesDirty ? "notes" : undefined,
+  });
+  const threadsRetained = retainedHubTabs.includes("threads");
+  const threadQuery = threadInboxQueryArgs(
+    session.runtime !== undefined,
+    threadsRetained,
+    pagedThreads,
   );
+  const legacyThreadRows = useQuery(api.messages.threadInbox, threadQuery.legacy);
+  const threadPages = usePaginatedQuery(api.messages.threadInboxPage, threadQuery.page, {
+    initialNumItems: 50,
+  });
   const threadRows = pagedThreads
     ? threadPages.status === "LoadingFirstPage"
       ? undefined
       : threadPages.results
     : legacyThreadRows;
   useEffect(() => {
-    if (ui.hubTab === "threads")
+    // The hub keeps Threads selected while a conversation pane covers it, so
+    // acknowledge only while the inbox itself is the surface on screen.
+    if (threadsInboxVisible(ui.hubTab, ui.pane))
       void session.runtime?.client
         .mutation(api.messages.markThreadMentionsSeen, {})
         .catch(() => undefined);
-  }, [ui.hubTab, session.runtime]);
+  }, [ui.hubTab, ui.pane, session.runtime]);
   const mentions = useChatScreenMentions(session);
   const list = useChatScreenChannelList(session, ui, mentions);
   const conversation = useChatScreenConversation(session, ui, mentions, list);
@@ -714,6 +742,11 @@ export function useChatScreenData({ onSignOut, onDeleteAccount }: ChatScreenProp
     onSignOut,
     onDeleteAccount,
     ...session,
+    hubTabs,
+    activeHubTab,
+    retainedHubTabs,
+    notesDirty,
+    setNotesDirty,
     threadRows: session.threadRows ?? threadRows,
     loadMoreThreads:
       pagedThreads && threadPages.status === "CanLoadMore"

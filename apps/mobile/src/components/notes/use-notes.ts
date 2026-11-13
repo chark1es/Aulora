@@ -36,6 +36,12 @@ export interface NotesProps {
   /** The note the viewer last had open, kept by the parent across tab visits. */
   readonly noteId: string | null;
   readonly onNoteChange: (noteId: string | null) => void;
+  /**
+   * Reports whether the open editor has unsaved changes. The hub uses it to
+   * keep a hidden Notes tab mounted rather than deleting the draft when the
+   * hidden-tab lifetime expires.
+   */
+  readonly onDirtyChange?: ((dirty: boolean) => void) | undefined;
   /** Present when the list was opened from somewhere with a way back. */
   readonly onBack?: (() => void) | undefined;
 }
