@@ -166,6 +166,13 @@ export function ChatProvider({
       if (!scope.active) {
         return;
       }
+      // The subscription adapter uses null to report a successful query or
+      // recovery. Treating that signal as a failure produced `Error: null` as
+      // soon as the initial channel list arrived after sign-in.
+      if (error === null) {
+        setQueryError(null);
+        return;
+      }
       // Live-query failures never throw into a handler; without this they are
       // only ever a banner and never reach the debug report.
       scope.record("query.error", error);
