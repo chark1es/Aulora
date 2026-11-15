@@ -1,11 +1,12 @@
 # Transcriber (optional)
 
-Speech-to-text for the optional transcription addon. It is **not started by
-default**; use the compose profile:
+Speech-to-text for the optional transcription addon. The container starts with
+the stack; models are downloaded only when requested in Workspace settings.
+To start it separately after updating an existing installation:
 
 ```sh
 cd infra/docker
-docker compose --profile transcription up -d --build transcriber
+docker compose up -d --build transcriber
 ```
 
 It receives each participant's own microphone as 16 kHz mono PCM16 over

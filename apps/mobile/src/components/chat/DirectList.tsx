@@ -116,7 +116,6 @@ export function DirectList(props: DirectListProps) {
               title={titles.get(entry.id) ?? entry.name}
               subtitle={directSubtitle(entry, ownUserId, presence)}
               selected={entry.id === props.activeChannelId}
-              activeTick={entry.id === props.activeChannelId}
               muted={entry.muted === true}
               unread={props.unreadByChannel.get(entry.id)}
               trailing={<DirectTrailing channel={entry} />}

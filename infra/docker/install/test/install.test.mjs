@@ -318,6 +318,12 @@ exit 0
     );
     assert.ok(setup !== -1, commands.join(" | "));
     assert.ok(runner > setup, `bot runner should start after setup: ${commands.join(" | ")}`);
+    const transcriber = commands.findIndex(
+      (line) =>
+        line.includes("up -d --no-deps --force-recreate transcriber") &&
+        line.includes("--env-file"),
+    );
+    assert.ok(transcriber > setup, `transcriber should start after setup: ${commands.join(" | ")}`);
   } finally {
     rmSync(dir, { recursive: true, force: true });
   }

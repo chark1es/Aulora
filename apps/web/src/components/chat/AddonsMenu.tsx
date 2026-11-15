@@ -202,6 +202,12 @@ export function AddonsMenu({ items }: { readonly items: readonly AddonMenuItem[]
               type="button"
               role="menuitemradio"
               aria-checked={item.active}
+              onMouseDown={(event) => {
+                // WebKit does not focus buttons on mouse down. Keep the menu's
+                // current focus until click selects the item; otherwise blur
+                // removes the menu before macOS can dispatch that click.
+                event.preventDefault();
+              }}
               onClick={() => {
                 close(true);
                 item.onSelect();

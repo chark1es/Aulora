@@ -200,7 +200,7 @@ if [ -z "$BOT_RUNNER_TOKEN_VALUE" ]; then
   log "generated BOT_RUNNER_TOKEN"
 fi
 
-# Optional transcription engine (compose profile `transcription`). The same
+# Transcription service (starts by default, models download on demand). The same
 # shared secret authenticates both directions: clients never see it, Convex
 # verifies transcriber posts and the transcriber verifies Convex-minted audio
 # tokens (deriving a separate HMAC key from it).

@@ -2,7 +2,6 @@ import { type ChannelView, joinedElsewhere } from "@aulora/core";
 import { Badge, cn, Icon } from "@aulora/ui-web";
 import { useVoice } from "../../providers/VoiceProvider";
 import type { Callback } from "../admin/callbacks";
-import { ActiveBar } from "../chat/ActiveBar";
 import { PersonAvatar } from "../chat/member-avatars";
 import { participantName } from "./identity";
 
@@ -52,7 +51,6 @@ export function VoiceChannelRow({
               : "text-text-muted hover:bg-surface-2 hover:text-text",
         )}
       >
-        <ActiveBar active={active} />
         <span className="flex h-4 w-4 shrink-0 items-center justify-center">
           <Icon
             name="volume"

@@ -187,6 +187,7 @@ jobs:
       contents: write
       pull-requests: write
     uses: ./.github/workflows/sync-release.yml
+    secrets: inherit
     with:
       tag: v${{ needs.plan.outputs.version }}
 

@@ -616,6 +616,36 @@ describe("ChannelSidebar", () => {
     expect(screen.queryByRole("menu", { name: "Addons" })).not.toBeInTheDocument();
   });
 
+  it.each(["Kanban", "Notes", "Scheduled", "Transcripts"])(
+    "opens %s when WebKit would blur the focused menu item on mouse down",
+    async (label) => {
+      const user = userEvent.setup();
+      const onSelect = vi.fn();
+      render(
+        <ChannelSidebar
+          {...sidebarProps({
+            onOpenKanban: onSelect,
+            onOpenNotes: onSelect,
+            onOpenScheduled: onSelect,
+            onOpenTranscripts: onSelect,
+          })}
+        />,
+      );
+      await user.click(screen.getByTestId("sidebar-addons"));
+      const first = screen.getByRole("menuitemradio", { name: "Kanban" });
+      await waitFor(() => expect(first).toHaveFocus());
+      const target = screen.getByRole("menuitemradio", { name: label });
+      // macOS WebKit blurs the current button without focusing the clicked one.
+      // A cancelled mouse-down keeps it mounted until its click is dispatched.
+      if (fireEvent.mouseDown(target)) act(() => first.blur());
+      fireEvent.mouseUp(target);
+      fireEvent.click(target);
+      expect(onSelect).toHaveBeenCalledTimes(1);
+      expect(screen.queryByRole("menu", { name: "Addons" })).not.toBeInTheDocument();
+      expect(screen.getByTestId("sidebar-addons")).toHaveFocus();
+    },
+  );
+
   it("highlights only the open workspace view, not the last channel", async () => {
     const user = userEvent.setup();
     render(

@@ -166,14 +166,18 @@ function SessionPending({
   readonly recovery: ConnectionRecoveryActionsProps;
 }) {
   return (
-    <ScreenContainer scrollable className="flex-1 items-center justify-center gap-3 px-6 min-w-0">
+    <ScreenContainer
+      scrollable
+      className="flex-1 px-6 min-w-0"
+      contentContainerStyle={{ alignItems: "center" }}
+    >
       <Spinner size={28} label="Checking your session" />
-      <Text size="sm" tone="muted">
+      <Text size="sm" tone="muted" className="text-center">
         Checking your session…
       </Text>
       {stuck && (
         <>
-          <Text size="sm" tone="muted">
+          <Text size="sm" tone="muted" className="text-center">
             This is taking longer than usual.
           </Text>
           <ConnectionRecoveryActions {...recovery} />

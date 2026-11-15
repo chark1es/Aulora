@@ -44,11 +44,13 @@ call they attended.
 
 ## Enable it
 
-1. Start the optional container on the server:
+1. The `transcriber` container starts with the stack. It stays model-free until
+   you choose **Download** in Workspace settings. To start it on an existing
+   installation after updating the Compose files:
 
    ```sh
    cd infra/docker
-   docker compose --profile transcription up -d --build transcriber
+   docker compose up -d --build transcriber
    ```
 
    `setup` generates `TRANSCRIBER_TOKEN` and persists it in `.env`. The
@@ -66,13 +68,13 @@ call they attended.
 5. Grant **Start transcription** to the roles that should be able to start it,
    and **View transcripts** to the roles that should read it.
 
-If the profile is not running, the addon reports **Transcription service not
+If the service is not running, the addon reports **Transcription service not
 installed** and stays unusable. Nothing else is affected. The installer always
 generates `TRANSCRIBER_TOKEN`, so the status reflects a live service, not just
 that secret: the container reports in at startup and about once a minute, and
 the addon shows installed only while those reports are recent. On a fresh
 server, run `setup` (or otherwise set `TRANSCRIBER_TOKEN`) before starting the
-`transcription` profile, or the container cannot authenticate its calls.
+transcriber, or the container cannot authenticate its calls.
 
 A dropped audio connection reconnects on its own; a quick reconnect replaces
 the previous socket for that participant instead of being refused as a second
@@ -172,8 +174,8 @@ see and change that card.
    the current model stays ready, a quiet notice says so and nothing else changes. If the container restarts
    mid-download, the card clears the stuck progress and reports **The download
    was interrupted**, with **Try again** enabled. If the card says **Transcription service
-   not installed**, the optional `transcriber` container is not running: start it
-   with the `transcription` compose profile first. Download stays disabled until
+   not installed**, the `transcriber` container is not running: start it
+   with `docker compose up -d --build transcriber` first. Download stays disabled until
    then.
 2. **Summaries.** Choose **OpenRouter** or **OpenAI-compatible**, set the base
    URL, the API key and the model. The key field is write-only: once saved, the

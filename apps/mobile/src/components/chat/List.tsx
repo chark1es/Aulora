@@ -66,8 +66,6 @@ export interface ListRowProps {
   readonly trailing?: ReactNode;
   readonly tone?: "default" | "danger" | "accent";
   readonly selected?: boolean;
-  /** Draws the small inset accent tick used by conversation rows. */
-  readonly activeTick?: boolean;
   /** Unread state; mentions become a count pill, plain unread a dot. */
   readonly unread?: RowUnread | undefined;
   /** Muted rows keep legible text instead of losing contrast. */
@@ -125,27 +123,6 @@ function RowLabel({
         </Text>
       )}
     </View>
-  );
-}
-
-/** The quiet inset tick that anchors the selected conversation. */
-function ActiveTick() {
-  const palette = usePalette();
-  return (
-    <View
-      accessibilityElementsHidden
-      importantForAccessibility="no-hide-descendants"
-      style={{
-        position: "absolute",
-        left: 4,
-        top: "50%",
-        marginTop: -6,
-        width: 2,
-        height: 12,
-        borderRadius: 1,
-        backgroundColor: palette.accent,
-      }}
-    />
   );
 }
 
@@ -207,7 +184,6 @@ export function ListRow(props: ListRowProps) {
         selected ? "bg-accent-soft active:bg-accent-soft" : "active:bg-surface-3"
       } ${disabled ? "opacity-50" : ""}`}
     >
-      {props.activeTick === true && <ActiveTick />}
       <RowLeading leading={props.leading} icon={props.icon} color={tint ?? palette["text-muted"]} />
       <RowLabel
         title={title}

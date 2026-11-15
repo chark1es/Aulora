@@ -62,7 +62,14 @@ export function createStagedUpdater({
     writeFileSync(path, `${JSON.stringify(value, null, 2)}\n`, { mode: 0o600 });
   async function inspectImages(images) {
     const entries = [];
-    for (const service of ["web", "setup", "smtp-gateway", "bot-runner", "convex-backend"]) {
+    for (const service of [
+      "web",
+      "setup",
+      "smtp-gateway",
+      "bot-runner",
+      "transcriber",
+      "convex-backend",
+    ]) {
       const serviceConfig = Object.getOwnPropertyDescriptor(images.services, service)?.value;
       const name = serviceConfig?.image ?? `${images.name}-${service}`;
       const id = await execute(
@@ -143,7 +150,15 @@ export function createStagedUpdater({
       // serving web image before it is overwritten. Best effort: a first
       // install has no previous image.
       await pinCurrentWebImage({ dockerDir, execute }).catch(() => null);
-      await compose(stageDocker, "build", "web", "setup", "smtp-gateway", "bot-runner");
+      await compose(
+        stageDocker,
+        "build",
+        "web",
+        "setup",
+        "smtp-gateway",
+        "bot-runner",
+        "transcriber",
+      );
       await compose(stageDocker, "pull", "convex-backend");
       const images = JSON.parse(await compose(stageDocker, "config", "--format", "json"));
       // Record immutable image IDs so a later rebuild cannot substitute another release.
@@ -220,6 +235,9 @@ export function createStagedUpdater({
       // The runner starts with the stack. Recreate it so it picks up a token
       // that `setup` just generated, and so existing installs get it at all.
       await recreate("bot-runner");
+      // Always start the transcription service with the current shared token.
+      // The service only restores cached models; downloads need an owner request.
+      await recreate("transcriber");
       // Both services have healthchecks. Failure retains the ready marker and old stamp.
       await compose(
         dockerDir,

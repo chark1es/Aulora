@@ -58,7 +58,7 @@ export function RoleColorEditor(props: RoleColorEditorProps) {
     >
       <Text size="sm" tone="muted">
         {role.mentionable
-          ? `This role can be mentioned as @${role.name}. Check both previews before saving.`
+          ? `This role can be mentioned as @${role.name.replace(/^@+/, "")}. Check both previews before saving.`
           : "Check both previews before saving. The warning never blocks saving."}
       </Text>
       <RoleColorPreview

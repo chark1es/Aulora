@@ -5,7 +5,7 @@
 # Why this exists: `docker compose run setup` reuses whatever `aulora-setup`
 # image already exists, so a code change can silently deploy an old API. This
 # script always rebuilds the images that embed repository source (`web`,
-# `setup`, `smtp-gateway` and `bot-runner`), deploys the backend first, and
+# `setup`, `smtp-gateway`, `bot-runner` and `transcriber`), deploys the backend first, and
 # only then recreates the web container. It is idempotent and safe to run after
 # every update. The bot runner is recreated after `setup` so it picks up a
 # newly generated BOT_RUNNER_TOKEN from `.env`.
@@ -90,8 +90,8 @@ else
   echo "warning: bun not found; web rollback marker was not updated" >&2
 fi
 
-echo "==> Rebuilding local images (web, setup, smtp-gateway, bot-runner)"
-"${compose[@]}" build web setup smtp-gateway bot-runner
+echo "==> Rebuilding local images (web, setup, smtp-gateway, bot-runner, transcriber)"
+"${compose[@]}" build web setup smtp-gateway bot-runner transcriber
 
 # Compare immutable engine image IDs before setup; matching engines are kept.
 echo "==> Checking the Convex engine image"
@@ -135,6 +135,10 @@ echo "==> Recreating the web container after the backend is current"
 # reads the current `.env` value; without a token it idles instead of exiting.
 echo "==> Starting the bot runner"
 "${compose[@]}" up -d --no-deps --force-recreate bot-runner
+
+# Start the service with the token setup persisted; no model downloads at startup.
+echo "==> Starting the transcriber"
+"${compose[@]}" up -d --no-deps --force-recreate transcriber
 
 # Never advertise a completed deployment until both healthchecks pass.
 "${compose[@]}" up -d --no-deps --no-build --no-recreate --wait --wait-timeout 120 convex-backend web

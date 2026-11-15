@@ -80,6 +80,10 @@ it("deploy keeps matching engines and waits for a changed engine before setup", 
     const wait = f.calls.findIndex((call) => call.includes("--wait-timeout 120 convex-backend"));
     expect(wait).toBeGreaterThan(-1);
     expect(setup).toBeGreaterThan(wait);
+    expect(f.calls).toContain("compose build web setup smtp-gateway bot-runner transcriber");
+    expect(f.calls.indexOf("compose up -d --no-deps --force-recreate transcriber")).toBeGreaterThan(
+      setup,
+    );
     expect(f.calls.at(-1)).toContain("--wait-timeout 120 convex-backend web");
   }
 });
