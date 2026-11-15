@@ -128,7 +128,7 @@ jobs:
             cocoapods-${{ runner.os }}-${{ runner.arch }}-
       - name: Install CocoaPods dependencies
         working-directory: apps/mobile/ios
-        run: pod install --deployment
+        run: pod install
       - name: Compile unsigned simulator app
         working-directory: apps/mobile/ios
         run: |

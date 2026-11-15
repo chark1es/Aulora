@@ -35,11 +35,15 @@ jobs:
     env:
       RELEASE_VERSION: ${{ inputs.version }}
       BUILD_NUMBER: ${{ inputs.build-number }}
+      EAS_PROJECT_ID: ${{ vars.EAS_PROJECT_ID }}
     steps:
       - uses: actions/checkout@v7
         with:
           persist-credentials: false
       - uses: ./.github/actions/setup-js
+      - name: Configure native OTA updates
+        working-directory: apps/mobile
+        run: bunx expo-updates configuration:syncnative --platform android --workflow generic
       - name: Prepare bundled license notices
         run: node scripts/legal-notices.mjs --mobile
       - uses: actions/setup-java@v6
@@ -103,6 +107,8 @@ jobs:
           mkdir -p dist/release-android
           cp apps/mobile/android/app/build/outputs/apk/release/app-release.apk "dist/release-android/Aulora_${RELEASE_VERSION}_android.apk"
           cp apps/mobile/android/app/build/outputs/bundle/release/app-release.aab "dist/release-android/Aulora_${RELEASE_VERSION}_android.aab"
+      - name: Record native OTA runtime
+        run: node scripts/ci/mobile-ota-manifest.mjs dist/release-android/mobile-ota.json
       - uses: actions/upload-artifact@v7
         with:
           name: release-mobile-android
@@ -132,12 +138,16 @@ jobs:
     env:
       RELEASE_VERSION: ${{ inputs.version }}
       BUILD_NUMBER: ${{ inputs.build-number }}
+      EAS_PROJECT_ID: ${{ vars.EAS_PROJECT_ID }}
       APPLE_TEAM_ID: ${{ secrets.APPLE_TEAM_ID }}
     steps:
       - uses: actions/checkout@v7
         with:
           persist-credentials: false
       - uses: ./.github/actions/setup-js
+      - name: Configure native OTA updates
+        working-directory: apps/mobile
+        run: bunx expo-updates configuration:syncnative --platform ios --workflow generic
       - name: Prepare bundled license notices
         run: node scripts/legal-notices.mjs --mobile
       - name: Cache CocoaPods
@@ -149,7 +159,7 @@ jobs:
             cocoapods-${{ runner.os }}-${{ runner.arch }}-
       - name: Install CocoaPods dependencies
         working-directory: apps/mobile/ios
-        run: pod install --deployment
+        run: pod install
       - uses: ./.github/actions/apple-signing
         with:
           platform: ios

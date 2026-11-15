@@ -1,0 +1,62 @@
+name: Mobile OTA update
+
+on:
+  workflow_dispatch:
+    inputs:
+      base-tag:
+        description: Full release installed by devices (vX.Y.Z); native inputs must match
+        required: true
+        type: string
+      message:
+        description: Description of this JavaScript/assets update
+        required: true
+        type: string
+
+permissions:
+  contents: read
+
+concurrency:
+  group: mobile-ota-production
+  cancel-in-progress: false
+
+jobs:
+  checks:
+    if: github.ref == 'refs/heads/main'
+    uses: ./.github/workflows/ci.yml
+    with:
+      native: false
+
+  publish:
+    name: Publish compatible mobile bundles
+    needs: checks
+    runs-on: ubuntu-22.04
+    environment: release-signing
+    timeout-minutes: 30
+    env:
+      EAS_PROJECT_ID: ${{ vars.EAS_PROJECT_ID }}
+      OTA_BASE_TAG: ${{ inputs.base-tag }}
+      OTA_MESSAGE: ${{ inputs.message }}
+      GH_TOKEN: ${{ github.token }}
+      GH_REPO: ${{ github.repository }}
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          fetch-depth: 0
+          persist-credentials: false
+      - uses: ./.github/actions/setup-js
+      - name: Verify native compatibility and installed update configuration
+        run: |
+          node scripts/ci/mobile-ota.cjs check
+          test "$(gh release view "$OTA_BASE_TAG" --json isDraft --jq .isDraft)" = false
+          gh release download "$OTA_BASE_TAG" --pattern mobile-ota.json --dir "$RUNNER_TEMP/ota-base"
+          node scripts/ci/mobile-ota-manifest.mjs check "$RUNNER_TEMP/ota-base/mobile-ota.json"
+      - name: Prepare bundled license notices
+        run: node scripts/legal-notices.mjs --mobile
+      - name: Publish JavaScript and assets (no native build)
+        working-directory: apps/mobile
+        env:
+          EXPO_TOKEN: ${{ secrets.EXPO_TOKEN }}
+          NODE_ENV: production
+        run: |
+          test -n "$EXPO_TOKEN"
+          npx --yes eas-cli@27.9.0 update --channel production --platform all --environment production --message "$OTA_MESSAGE" --non-interactive

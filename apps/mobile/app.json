@@ -54,10 +54,19 @@
       "expo-audio"
     ],
     "extra": {
-      "privacyPolicyUrl": "https://aulora.chark1es.dev/docs/privacy"
+      "privacyPolicyUrl": "https://aulora.chark1es.dev/docs/privacy",
+      "router": {
+        "asyncRoutes": {
+          "web": true
+        }
+      },
+      "eas": {
+        "projectId": "a8395b0c-1052-4c7c-a753-2bff72d92ed1"
+      }
     },
     "experiments": {
       "typedRoutes": false
-    }
+    },
+    "owner": "chark1es"
   }
 }
