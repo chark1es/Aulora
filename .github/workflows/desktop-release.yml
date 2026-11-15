@@ -17,7 +17,27 @@ permissions:
   contents: read
 
 jobs:
+  frontend:
+    name: Build shared desktop frontend
+    runs-on: ubuntu-22.04
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          persist-credentials: false
+      - name: Require main
+        run: test "$GITHUB_REF" = refs/heads/main
+      - uses: ./.github/actions/setup-js
+      - run: bun run --filter @aulora/web build
+      - run: bun run --filter @aulora/desktop prepare:frontend
+      - uses: actions/upload-artifact@v7
+        with:
+          name: desktop-frontend
+          path: apps/web/dist-desktop/
+          if-no-files-found: error
+          retention-days: 1
+
   build:
+    needs: frontend
     name: Signed desktop (${{ matrix.name }})
     runs-on: ${{ matrix.os }}
     environment: release-signing
@@ -50,6 +70,10 @@ jobs:
       - name: Require main
         run: test "$GITHUB_REF" = refs/heads/main
       - uses: ./.github/actions/setup-js
+      - uses: actions/download-artifact@v8
+        with:
+          name: desktop-frontend
+          path: apps/web/dist-desktop
       - name: Install Linux dependencies
         if: runner.os == 'Linux'
         run: |
@@ -62,6 +86,8 @@ jobs:
       - uses: swatinem/rust-cache@6323deb102c322ba6fcbdcafc7e3dddab59af2b6 # v2.9.2
         with:
           workspaces: apps/desktop/src-tauri -> target
+          shared-key: release-${{ matrix.target }}
+          cache-all-crates: true
       - uses: ./.github/actions/apple-signing
         if: runner.os == 'macOS'
         with:
@@ -94,7 +120,7 @@ jobs:
           bun run test:release-manifest
           bun run icons
           bun run release-version --version "$RELEASE_VERSION" --output "$RUNNER_TEMP/version.json"
-          node -e 'const fs=require("node:fs"); const bundle={createUpdaterArtifacts:true}; if(process.env.RELEASE_TARGET.includes("linux")) bundle.targets=["appimage","deb"]; fs.writeFileSync(process.env.RUNNER_TEMP+"/updater.json",JSON.stringify({bundle}));'
+          node -e 'const fs=require("node:fs"); const bundle={createUpdaterArtifacts:true}; if(process.env.RELEASE_TARGET.includes("linux")) bundle.targets=["appimage","deb"]; fs.writeFileSync(process.env.RUNNER_TEMP+"/updater.json",JSON.stringify({bundle,build:{beforeBuildCommand:""}}));'
       - name: Build release artifacts
         working-directory: apps/desktop
         env:

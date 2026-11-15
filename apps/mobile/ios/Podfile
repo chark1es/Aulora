@@ -28,6 +28,8 @@ platform :ios, podfile_properties['ios.deploymentTarget'] || '16.4'
 prepare_react_native_project!
 
 target 'Aulora' do
+  # expo-updates uses ReachabilitySwift; pin native code for repeatable OTA runtimes.
+  pod 'ReachabilitySwift', '5.2.4'
   use_expo_modules!
   Pod::Sandbox.prepend(AuloraPodspecChecksums)
 

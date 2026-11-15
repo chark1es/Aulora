@@ -47,7 +47,7 @@ export async function assembleRelease(version, repository, notes = "", rollout =
   // Every signed/distributable file, for the docs download buttons to read from
   // a static manifest instead of the rate-limited GitHub API. Manifests, the
   // checksum file, notes and detached signatures are not downloads.
-  const NOT_ASSETS = new Set(["latest.json", "SHA256SUMS", "RELEASE_NOTES.md"]);
+  const NOT_ASSETS = new Set(["latest.json", "SHA256SUMS", "RELEASE_NOTES.md", "mobile-ota.json"]);
   const assets = files
     .filter((file) => !NOT_ASSETS.has(file) && !file.endsWith(".sig"))
     .sort()

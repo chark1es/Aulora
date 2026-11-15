@@ -226,3 +226,60 @@ Keep the local originals and updater key backed up. `.secrets/`, private keys,
 keystores, provisioning profiles, and Firebase configuration files are ignored
 by Git. Certificate export passwords are kept locally in the ignored credentials
 folder, separately from the encrypted PKCS12 files.
+
+## Faster desktop and mobile updates
+
+Desktop continues to use signed, platform-specific packages and the existing
+`latest.json` updater feed. The desktop release workflow builds and checks the
+web frontend once on Linux, then passes that same artifact to all four native
+builds. The Tauri build hook is disabled only for those artifact-consuming jobs.
+Rust caches include the application crate and use a separate key for each target;
+signing and notarization still run on each release.
+
+Mobile has a separate **Mobile OTA update** workflow for JavaScript and assets.
+It runs the ordinary quality checks with native compilation disabled, then
+publishes both platform bundles through Expo Update. Full releases still build
+APK, AAB and IPA files. Native module, permission, configuration, icon or dependency
+changes require another full release.
+
+To activate mobile OTA:
+
+1. Create/link the Aulora Expo project and set the repository variable
+   `EAS_PROJECT_ID` to its UUID. Set the `EXPO_TOKEN` secret in the
+   `release-signing` environment to an Expo token with update publishing access.
+2. Create the `production` channel and its branch in that Expo project. Configure
+   the Expo `production` environment with the same `EAS_PROJECT_ID`; SDK 58's
+   update command uses that environment when exporting. Keep build-affecting
+   environment settings consistent with the native release jobs.
+3. Publish and install a new full release. Its native builds synchronize the
+   update URL, channel and runtime into AndroidManifest.xml and Expo.plist.
+   Without `EAS_PROJECT_ID`, releases keep remote updates disabled and local
+   development needs no Expo account.
+4. After merging a JavaScript/assets change to `main`, dispatch **Mobile OTA
+   update** on `main`, supplying the installed full release's `vX.Y.Z` tag and
+   an update description. No Gradle or Xcode compilation runs in that workflow.
+
+The runtime is a SHA-256 hash of committed native inputs, including both native
+projects, Expo config, plugins, app icon, mobile manifest, and the workspace
+lockfile. The check compares the current runtime with the supplied tag and with
+`mobile-ota.json` downloaded from that published release. A missing marker,
+disabled OTA, different Expo project or changed runtime fails before publishing.
+This deliberately rejects even unrelated lockfile changes; ship a full release
+rather than bypassing the guard. Keep the app version unchanged for OTA fixes:
+changing the mobile manifest creates a new runtime, and OTA does not replace the
+store version or satisfy a higher server minimum-client requirement.
+
+Updates download in the background at launch and apply on a subsequent launch,
+without reloading an active call. Startup can use the embedded bundle offline.
+Use Expo's update dashboard or `eas update:rollback` from an authenticated checkout
+to select a previous compatible update or the embedded bundle during an incident.
+See [Expo rollback guidance](https://docs.expo.dev/eas-update/rollbacks/).
+Older apps that shipped without `expo-updates` need a store/full-package update
+first. Validate download, subsequent launch, offline startup and rollback on both
+platforms before treating the new update path as production verified.
+
+The added native Expo modules require CocoaPods dependency resolution, so iOS
+jobs use `pod install` with the existing lockfile rather than deployment mode.
+Regenerate and review `apps/mobile/ios/Podfile.lock` on macOS when changing native
+dependencies. ReachabilitySwift, the additional non-JavaScript pod, is pinned in
+the Podfile; Expo module versions are resolved by `bun.lock`.

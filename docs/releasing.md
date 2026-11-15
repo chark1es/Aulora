@@ -139,3 +139,17 @@ Windows installers are unsigned in the initial distribution. iOS IPA downloads a
 A failed build must not publish a partial release. Inspect the failing job, fix it, and rerun a candidate. An unpublished draft for the same commit can be resumed; a published version cannot be overwritten. Increase the patch version for a corrected public release.
 
 Do not remove an updater signing key without a migration plan for installed clients. Do not assume an application rollback reverses backend schema changes. Keep a compatible data backup, encryption key, deployment settings, and the previous source revision available.
+
+## Mobile OTA releases
+
+For a JavaScript/assets fix targeting an already-installed native runtime, use
+**Mobile OTA update** on `main` instead of bumping the release version. Configure
+Expo credentials and install a full OTA-enabled release first; follow the
+[activation and rollback procedure](github-actions.md#faster-desktop-and-mobile-updates).
+The workflow rejects native changes and does not publish a GitHub/store release
+or deploy server functions. Keep backend changes compatible with installed
+clients and deploy any required compatible backend before publishing bundles.
+Before rollout, verify the oldest supported server and the new backend, startup
+without network access, next-launch activation and rollback on Android and iOS.
+Desktop fixes continue through the signed package release pipeline, which shares
+one frontend build across platforms and caches Rust compilation.
