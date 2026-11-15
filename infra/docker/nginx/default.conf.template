@@ -176,7 +176,7 @@ server {
     proxy_send_timeout 3600s;
   }
 
-  # Transcription audio WebSocket (compose profile `transcription`). Each
+  # Transcription audio WebSocket (models download on demand). Each
   # participant streams its own microphone here as 16 kHz mono PCM16; the
   # upstream path is `/ws`. The upstream is resolved per request so nginx still
   # starts when the optional container is absent.

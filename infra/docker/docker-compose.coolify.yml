@@ -276,8 +276,7 @@ services:
       convex-backend:
         condition: service_healthy
     # nginx proxies the call-audio WebSocket (`/transcribe/`) to `transcriber`,
-    # so `web` must share that network (the transcriber only exists when its
-    # compose profile is enabled).
+    # so `web` shares that dedicated network with the transcriber.
     networks:
       - default
       - transcription
@@ -350,7 +349,7 @@ services:
       BOT_JWT_PUBLIC_JWK: ${BOT_JWT_PUBLIC_JWK:-}
       BOT_JWT_PRIVATE_JWK_B64: ${BOT_JWT_PRIVATE_JWK_B64:-}
       BOT_JWT_PUBLIC_JWK_B64: ${BOT_JWT_PUBLIC_JWK_B64:-}
-      # --- transcription (optional profile; setup generates the token) ---
+      # --- transcription (models on demand; setup generates the token) ---
       # Same Coolify-generated value as the `transcriber` service below.
       # nosemgrep: codacy.yaml.security.hard-coded-tokens
       TRANSCRIBER_TOKEN: ${SERVICE_PASSWORD_64_TRANSCRIBER:-}
@@ -506,7 +505,7 @@ services:
       start_period: 20s
     logging: *logging
 
-  # Optional transcription engine (profile `transcription`, OFF by default).
+  # Transcription service starts with the stack; models download only on request.
   # Same boundary as the plain compose file: non-root, read-only, only the
   # `transcription` network, models in a named volume, no baked model.
   transcriber:
@@ -514,7 +513,6 @@ services:
       context: ../..
       dockerfile: infra/transcriber/Dockerfile
     image: aulora-transcriber:local
-    profiles: ["transcription"]
     restart: unless-stopped
     environment:
       # Same Coolify-generated value as `setup` above.

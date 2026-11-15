@@ -29,7 +29,11 @@ export function MembershipGate({
   const me = useLastDefined(useQuery(api.members.me, {}));
   if (me === undefined) {
     return (
-      <ScreenContainer scrollable className="flex-1 items-center justify-center min-w-0">
+      <ScreenContainer
+        scrollable
+        className="flex-1 min-w-0"
+        contentContainerStyle={{ alignItems: "center" }}
+      >
         <Spinner size={28} label="Loading workspace" />
       </ScreenContainer>
     );

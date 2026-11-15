@@ -273,7 +273,7 @@ async def load_existing_model() -> None:
         restore_loaded_model,
         loaded,
         MODELS_DIR,
-        lambda candidate, directory: load_engine(candidate, directory),
+        lambda candidate, directory: load_engine(candidate, directory, allow_download=False),
     )
     if model_id is not None:
         report_model_status(model_id, "ready", progress=100)

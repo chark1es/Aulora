@@ -247,6 +247,10 @@ fi
 log "starting the bot runner…"
 compose up -d --no-deps --force-recreate bot-runner
 
+# Setup may have generated the shared token after Compose resolved the env file.
+log "starting the transcriber (models download only on request)…"
+compose up -d --no-deps --force-recreate transcriber
+
 if [ "$WITH_BACKUPS" = "1" ]; then
   log "starting the nightly backup runner…"
   compose --profile backups up -d --build

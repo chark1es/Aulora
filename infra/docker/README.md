@@ -82,8 +82,8 @@ Kanban and Notes are optional addons that ship in the web and setup images and u
 
 ## Transcription (optional)
 
-The `transcriber` container is behind the `transcription` compose profile and is
-off by default. Run `setup` (or set `TRANSCRIBER_TOKEN`) **before** starting it,
+The `transcriber` container starts with the stack, without downloading any model.
+Run `setup` (or set `TRANSCRIBER_TOKEN`) **before** starting it,
 because the same token authenticates model downloads, segment ingest and the
 heartbeat. The owner then downloads an allowlisted faster-whisper model into the
 `transcriber-models` volume from Workspace settings → Addons; no model is baked

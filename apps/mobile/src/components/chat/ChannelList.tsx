@@ -265,7 +265,6 @@ function ChannelSection(props: ChannelSectionProps) {
               title={titles.get(entry.id) ?? entry.name}
               subtitle={entry.topic ?? undefined}
               selected={entry.id === activeChannelId}
-              activeTick={entry.id === activeChannelId}
               muted={entry.muted === true}
               unread={unreadByChannel.get(entry.id)}
               trailing={<ChannelFlags channel={entry} />}

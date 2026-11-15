@@ -1,6 +1,6 @@
 # syntax=docker/dockerfile:1.7
 #
-# Optional transcription engine (compose profile `transcription`).
+# Transcription service (starts by default, models download on demand).
 #
 # It receives 16 kHz mono PCM16 frames over a WebSocket from each participant's
 # own client, runs faster-whisper on CPU with int8 and its built-in VAD, and

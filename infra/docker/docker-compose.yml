@@ -244,8 +244,7 @@ services:
       convex-backend:
         condition: service_healthy
     # nginx proxies the call-audio WebSocket (`/transcribe/`) to `transcriber`,
-    # so `web` must share that network (the transcriber only exists when its
-    # compose profile is enabled).
+    # so `web` shares that dedicated network with the transcriber.
     networks:
       - default
       - transcription
@@ -381,8 +380,8 @@ services:
       start_period: 20s
     logging: *logging
 
-  # Optional transcription engine (compose profile `transcription`, OFF by
-  # default). It receives each participant's own microphone as 16 kHz PCM16 over
+  # Transcription service starts with the stack; models download only on request.
+  # It receives each participant's own microphone as 16 kHz PCM16 over
   # `/transcribe/ws`, runs faster-whisper on CPU int8 with VAD, and posts
   # speaker-labelled segments to Convex over the shared-secret ingest route.
   # No model is baked into the image: the owner downloads one allowlisted model
@@ -390,13 +389,12 @@ services:
   # is non-root, read-only and joins only the `transcription` network shared with
   # convex-backend and the web gateway (nginx proxies `/transcribe/` to it), so
   # it cannot reach postgres, minio or the bot runner. Read README.md
-  # "Transcription" before enabling it.
+  # "Transcription" before downloading a model.
   transcriber:
     build:
       context: ../..
       dockerfile: infra/transcriber/Dockerfile
     image: aulora-transcriber:local
-    profiles: ["transcription"]
     restart: unless-stopped
     environment:
       # Shared with Convex. `setup` generates and persists it like the other

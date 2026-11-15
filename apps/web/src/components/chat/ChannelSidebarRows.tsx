@@ -2,7 +2,6 @@
 import type { ChannelView } from "@aulora/core";
 import { badgeCount, dmPartnerId } from "@aulora/core";
 import { CapText, cn, Icon } from "@aulora/ui-web";
-import { ActiveBar } from "./ActiveBar";
 import type { ChannelUnread } from "./channel-sidebar-model";
 import { GroupAvatar, PresenceAvatar, type PresenceStatus, presenceLabel } from "./PresenceAvatar";
 
@@ -124,7 +123,6 @@ export function ChannelRow({
         drag?.dragging === true && "opacity-40",
       )}
     >
-      <ActiveBar active={active} />
       <Icon
         name={channel.kind === "announcement" ? "announce" : isPrivate ? "lock" : "hash"}
         size={16}
@@ -195,7 +193,6 @@ export function DmRow({
         active ? "bg-accent-soft" : "hover:bg-surface-2",
       )}
     >
-      <ActiveBar active={active} />
       {channel.kind === "group_dm" ? (
         <GroupAvatar
           userIds={others}

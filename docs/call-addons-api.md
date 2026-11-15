@@ -1010,8 +1010,7 @@ never silently replaces the owner's configured model with another ready model,
 and a failed download of B cannot downgrade a ready A: the next hello reports A
 as ready with `loadedError`. The transcriber restores `.selected` from the models
 volume (written only after a model reaches ready); with no selection it tries
-allowlisted models smallest-first, never largest-first. A fresh `docker compose
---profile transcription up` must have run `setup` first (or otherwise have
+allowlisted models smallest-first, never largest-first. A separately started transcriber must have run `setup` first (or otherwise have
 `TRANSCRIBER_TOKEN` set) or the container cannot authenticate its ingest, hello
 or admin calls.
 

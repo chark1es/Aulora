@@ -70,6 +70,7 @@ function fixture(options = {}) {
             setup: { image: "setup:local" },
             "smtp-gateway": { image: "smtp:local" },
             "bot-runner": { image: "bot-runner:local" },
+            transcriber: { image: "transcriber:local" },
           },
         });
       if (args[1] === "run" && failSetup) throw new Error("Setup failed.");
@@ -121,6 +122,16 @@ describe("staged workspace updates", () => {
     );
     expect(setupIndex).toBeGreaterThan(-1);
     expect(webIndex).toBeGreaterThan(setupIndex);
+    const transcriberIndex = f.calls.findIndex(
+      ([command, args]) => command === "docker" && args[1] === "up" && args.includes("transcriber"),
+    );
+    expect(transcriberIndex).toBeGreaterThan(setupIndex);
+    expect(
+      f.calls.some(
+        ([command, args]) =>
+          command === "docker" && args[1] === "build" && args.includes("transcriber"),
+      ),
+    ).toBe(true);
   });
   it("requires a prepared release and refuses dirty or diverged checkouts", async () => {
     await expect(fixture().updater.restart()).rejects.toThrow("Download the update");

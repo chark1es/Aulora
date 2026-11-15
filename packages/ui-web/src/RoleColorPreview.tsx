@@ -292,7 +292,7 @@ function MentionSample({
         }}
         data-testid={`role-color-preview-mention-${theme}`}
       >
-        @{name}
+        @{name.replace(/^@+/, "")}
       </span>
       <span className="truncate">mention</span>
     </div>

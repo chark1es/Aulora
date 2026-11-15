@@ -6,6 +6,15 @@ import { describe, expect, it, vi } from "vitest";
 import { RoleColorPicker } from "../components/admin/RoleColorPicker";
 
 describe("RoleColorPicker", () => {
+  it.each(["everyone", "@everyone", "@@everyone"])(
+    "shows one mention prefix for role %s",
+    (name) => {
+      render(<RoleColorPicker value="#7C5CFF" roleName={name} mentionable onChange={vi.fn()} />);
+      expect(screen.getByTestId("role-color-preview-mention-light").textContent).toBe("@everyone");
+      expect(screen.getByTestId("role-color-preview-mention-dark").textContent).toBe("@everyone");
+    },
+  );
+
   it("renders a colour wheel and the preset palette", () => {
     render(<RoleColorPicker value="#7C5CFF" onChange={vi.fn()} />);
     expect(screen.getByRole("slider", { name: "Hue" })).toBeInTheDocument();

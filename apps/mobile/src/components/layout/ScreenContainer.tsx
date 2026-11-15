@@ -7,7 +7,12 @@ import {
   useRef,
   useState,
 } from "react";
-import { type LayoutChangeEvent, ScrollView, type ViewInstance } from "react-native";
+import {
+  type LayoutChangeEvent,
+  ScrollView,
+  type ScrollViewProps,
+  type ViewInstance,
+} from "react-native";
 import {
   KeyboardAvoidingView,
   type KeyboardAvoidingViewProps,
@@ -126,6 +131,8 @@ export function KeyboardAvoidingPane({
 
 export interface ScreenContainerProps extends SafeAreaViewProps {
   readonly scrollable?: boolean;
+  /** Layout of the scroll content, distinct from the outer safe-area frame. */
+  readonly contentContainerStyle?: ScrollViewProps["contentContainerStyle"];
 }
 
 /** Full screens protect every edge by default, including landscape cutouts. */
@@ -133,6 +140,7 @@ export function ScreenContainer(props: ScreenContainerProps) {
   const keyboardVisible = useKeyboardState((state) => state.isVisible);
   const {
     scrollable = false,
+    contentContainerStyle,
     children,
     edges = ["top", "right", "bottom", "left"],
     ...rest
@@ -145,12 +153,15 @@ export function ScreenContainer(props: ScreenContainerProps) {
       {scrollable ? (
         <ScrollView
           style={{ flex: 1, alignSelf: "stretch" }}
-          contentContainerStyle={{
-            flexGrow: 1,
-            justifyContent: "center",
-            gap: 12,
-            paddingVertical: 16,
-          }}
+          contentContainerStyle={[
+            {
+              flexGrow: 1,
+              justifyContent: "center",
+              gap: 12,
+              paddingVertical: 16,
+            },
+            contentContainerStyle,
+          ]}
           keyboardShouldPersistTaps="handled"
         >
           {children}

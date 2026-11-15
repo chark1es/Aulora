@@ -342,7 +342,7 @@ function MentionSample({
             { color: palette["accent-text"], fontSize: 12, fontWeight: "600" },
           ]}
         >
-          @{name}
+          @{name.replace(/^@+/, "")}
         </RNText>
       </View>
       <RNText style={[nativeFontStyle({}), { color: palette["text-muted"], fontSize: 12 }]}>

@@ -4,7 +4,7 @@ import { dirname, join } from "node:path";
 import { test } from "node:test";
 import { fileURLToPath, pathToFileURL } from "node:url";
 
-// Guards the optional transcription engine's deployment boundary: it is off by
+// Guards the transcription service's deployment boundary: it starts by
 // default, non-root, read-only, isolated on its own network, and its WebSocket
 // route is the only public surface.
 
@@ -42,9 +42,9 @@ function serviceBlock(file, name) {
 }
 
 for (const file of ["docker-compose.yml", "docker-compose.coolify.yml"]) {
-  test(`transcriber is an optional, hardened service in ${file}`, () => {
+  test(`transcriber starts by default as a hardened service in ${file}`, () => {
     const block = serviceBlock(file, "transcriber");
-    assert.match(block, /^\s+profiles: \["transcription"\]$/m);
+    assert.doesNotMatch(block, /^\s+profiles:/m);
     assert.match(block, /^ {4}restart: unless-stopped$/m);
     assert.match(block, /^ {4}read_only: true$/m);
     assert.match(block, /^ {6}- ALL$/m);
