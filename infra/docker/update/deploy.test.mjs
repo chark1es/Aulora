@@ -41,9 +41,20 @@ async function deploy({
   composeVersion = "",
   engineImages = "",
   noCompose = false,
+  failPull = false,
+  releaseTag = false,
   args = [],
 } = {}) {
   const { root, dockerDir, bin } = await scratchCheckout();
+  if (releaseTag) {
+    // HEAD exactly at v<AULORA_VERSION> makes this a release checkout.
+    const git = (...gitArgs) =>
+      spawnSync("git", ["-C", root, "-c", "user.name=t", "-c", "user.email=t@t.test", ...gitArgs]);
+    git("init", "-q");
+    git("add", "packages");
+    git("commit", "-q", "-m", "release");
+    git("tag", "v0.2.0");
+  }
   const callsFile = resolve(root, "calls");
   const result = spawnSync("bash", [resolve(dockerDir, "deploy.sh"), ...args], {
     env: {
@@ -54,6 +65,7 @@ async function deploy({
       FAIL_HEALTH: fail,
       MISSING_ENGINE: String(missing),
       NO_COMPOSE: String(noCompose),
+      FAIL_PULL: String(failPull),
       ...(engineImages ? { ENGINE_IMAGES: engineImages } : {}),
       ...(composeVersion ? { COMPOSE_VERSION: composeVersion } : {}),
     },
@@ -61,8 +73,11 @@ async function deploy({
   });
   const callsFileHandle = bunFile(callsFile);
   const calls = ((await callsFileHandle.exists()) ? await callsFileHandle.text() : "").trim();
+  const tagsHandle = bunFile(`${callsFile}.tags`);
+  const tags = ((await tagsHandle.exists()) ? await tagsHandle.text() : "").trim().split("\n");
   return {
     result,
+    tags,
     calls: calls === "" ? [] : calls.split("\n"),
     stamp: await bunFile(resolve(dockerDir, ".deployed-version")).text(),
   };
@@ -144,4 +159,50 @@ it("keeps the previous web and stamp when setup fails after starting a missing e
   expect(f.calls).toContain("compose up -d --no-build --wait --wait-timeout 120 convex-backend");
   expect(f.calls).toContain("compose run --rm setup");
   expect(f.calls.some((call) => call.includes("up ") && call.endsWith(" web"))).toBe(false);
+});
+
+const IMAGE_SERVICES = "web setup smtp-gateway bot-runner transcriber";
+
+it("a development checkout builds locally with the local image tag", async () => {
+  const f = await deploy();
+  expect(f.result.status).toBe(0);
+  expect(f.calls.some((call) => call.startsWith("compose pull web"))).toBe(false);
+  expect(f.tags).toContain(`compose build ${IMAGE_SERVICES} | local`);
+  // Every Aulora-image call resolves the local tag, never a stale release.
+  expect(
+    f.tags.filter((line) => line.startsWith("compose up")).every((l) => l.endsWith("| local")),
+  ).toBe(true);
+});
+
+it("a checkout at the release tag pulls the published images and does not build", async () => {
+  const f = await deploy({ releaseTag: true });
+  expect(f.result.status).toBe(0);
+  expect(f.calls).toContain(`compose pull ${IMAGE_SERVICES}`);
+  expect(f.calls.some((call) => call.includes(" build "))).toBe(false);
+  expect(f.tags.every((line) => line.endsWith("| unset"))).toBe(true);
+  expect(f.calls.indexOf(`compose pull ${IMAGE_SERVICES}`)).toBeLessThan(
+    f.calls.indexOf("compose run --rm setup"),
+  );
+});
+
+it("--build forces a local build on a release checkout", async () => {
+  const f = await deploy({ releaseTag: true, args: ["--build"] });
+  expect(f.result.status).toBe(0);
+  expect(f.calls.some((call) => call.startsWith("compose pull web"))).toBe(false);
+  expect(f.tags).toContain(`compose build ${IMAGE_SERVICES} | local`);
+});
+
+it("--pull-images pulls on a development checkout", async () => {
+  const f = await deploy({ args: ["--pull-images"] });
+  expect(f.result.status).toBe(0);
+  expect(f.calls).toContain(`compose pull ${IMAGE_SERVICES}`);
+  expect(f.calls.some((call) => call.includes(" build "))).toBe(false);
+});
+
+it("falls back to a local build with a warning when the pull fails", async () => {
+  const f = await deploy({ releaseTag: true, failPull: true });
+  expect(f.result.status).toBe(0);
+  expect(f.result.stderr).toContain("could not pull the published images");
+  expect(f.tags).toContain(`compose build ${IMAGE_SERVICES} | local`);
+  expect(f.stamp).toBe("0.2.0\n");
 });

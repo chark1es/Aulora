@@ -12,12 +12,12 @@ Ask the person who runs it for the web URL, and an invitation if signup is close
 
 ## Install a workspace
 
-Install Git and Docker with Compose v2.24 or newer. Start Docker first. On Windows use PowerShell 7 and Docker Desktop in Linux-container mode. Install from the stable `release` branch; `main` is for development.
+Install Git and Docker with Compose v2.24 or newer. Start Docker first. On Windows use PowerShell 7 and Docker Desktop in Linux-container mode. Installs follow [GitHub Releases](https://github.com/chark1es/Aulora/releases): the installer moves a clean clone to the newest release tag and pulls that release's published images from `ghcr.io/chark1es`. `main` is for development. To pin a version, clone it with `git clone --branch vX.Y.Z`.
 
 On macOS, Linux, or WSL:
 
 ```sh
-git clone --branch release https://github.com/chark1es/Aulora.git
+git clone https://github.com/chark1es/Aulora.git
 cd Aulora
 ./install.sh
 ```
@@ -25,12 +25,12 @@ cd Aulora
 On Windows:
 
 ```powershell
-git clone --branch release https://github.com/chark1es/Aulora.git
+git clone https://github.com/chark1es/Aulora.git
 Set-Location Aulora
 pwsh ./install.ps1
 ```
 
-The installer asks for an owner email and password of at least 16 characters. It creates `infra/docker/.env`, builds the stack, and provisions the workspace. The first build can take several minutes.
+The installer asks for an owner email and password of at least 16 characters. It creates `infra/docker/.env`, pulls the images, starts the stack, and provisions the workspace. The first download can take several minutes.
 
 Open the printed URL, normally `http://localhost:8080`, and sign in with the owner account. The installer creates that account, so you do not need to register it again.
 

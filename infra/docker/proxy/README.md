@@ -106,7 +106,7 @@ services so they do not fail Coolify's health check. The full operator guide is
 in [Deploy on Coolify](../../../apps/docs/content/coolify.md).
 
 1. Create a **Docker Compose** resource pointing at this repository on the
-   stable **`release`** branch (`main` is for development), with Base Directory
+   a **release tag** such as `v1.6.2` as its Branch (`main` is for development), with Base Directory
    `infra/docker` and Compose Location `docker-compose.coolify.yml`. Turn on
    **Preserve Repository During Deployment**, which the repo-relative bind mounts
    require.

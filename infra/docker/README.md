@@ -7,7 +7,7 @@ the web SPA, and a one-shot `setup` container for first-run provisioning.
 There is **no TLS terminator here** on purpose. Put the stack behind your own
 edge proxy (Coolify, Traefik, Caddy, nginx, a cloud LB) — see `proxy/`.
 
-For [Coolify](https://coolify.io), deploy the stable `release` branch using
+For [Coolify](https://coolify.io), deploy a release tag (for example `v1.6.2`) using
 `docker-compose.coolify.yml` instead of `docker-compose.yml`, and follow [the Coolify guide](../../apps/docs/content/coolify.md). It
 publishes no host ports, marks the one-shot services for Coolify's health
 check, and keeps generated secrets in the `setup-state` named volume so a
@@ -15,7 +15,7 @@ redeploy never regenerates the encryption master key.
 
 ## First run
 
-Clone the stable `release` branch (`git clone --branch release https://github.com/chark1es/Aulora.git`) and run these steps from its `infra/docker` directory. `main` is for development.
+Clone Aulora and use a release tag (`git clone https://github.com/chark1es/Aulora.git`, then `git checkout vX.Y.Z`, or clone one directly with `git clone --branch vX.Y.Z`) and run these steps from its `infra/docker` directory. `./install.sh` does the checkout for you. `main` is for development: its images are built locally, tagged `local`.
 
 ```powershell
 cd infra/docker
@@ -25,9 +25,14 @@ Copy-Item .env.example .env
 #    Set at least: INSTANCE_NAME, WORKSPACE_NAME, SITE_URL and (for a public
 #    deploy) the CONVEX_*_ORIGIN values. Owner credentials are NOT set here.
 
-# 2. Build and start the stack. The one-shot `setup` service starts on its own
-#    once the backend is healthy; it is idempotent, so this is safe on every up.
-docker compose up -d --build
+# 2. Pull and start the stack. The release's images come from
+#    ghcr.io/chark1es (AULORA_IMAGE_TAG defaults to this checkout's version).
+#    The one-shot `setup` service starts on its own once the backend is healthy;
+#    it is idempotent, so this is safe on every up.
+#    On a development checkout build instead:
+#    $env:AULORA_IMAGE_TAG = "local"; docker compose up -d --build
+docker compose pull
+docker compose up -d --no-build
 
 # 3. Wait for first-run setup to finish, then copy the one-time setup token
 #    from its logs. Re-run step 4 with SETUP_TOKEN_ROTATE=true if you lost it.
@@ -134,6 +139,7 @@ Reproducibility matters more than freshness here, so every image is pinned:
 
 | Image | Pin | Why |
 | --- | --- | --- |
+| `ghcr.io/chark1es/aulora-web`, `-setup`, `-smtp-gateway`, `-bot-runner`, `-transcriber`, `-backup`, `-push-relay` | release tag `${AULORA_IMAGE_TAG}`, default this checkout's version | published for every release (amd64 and arm64); `build:` is kept for local builds |
 | `ghcr.io/convex/convex-backend` | **digest** `sha256:b756b066…` | Convex publishes only `latest` + commit tags; the digest corresponds to revision `0cf49cbf` |
 | `ghcr.io/convex/convex-dashboard` | **digest** `sha256:4ebaebfd…` | same |
 | `postgres` | `postgres:17` | explicit major |
@@ -143,6 +149,28 @@ Reproducibility matters more than freshness here, so every image is pinned:
 | `pgsty/mc` | digest `sha256:cfc831…` | MinIO client used for bucket init |
 | `hashicorp/vault` | `1.21.4` | optional EKM for the `ekm` profile (see below) |
 | `livekit/livekit-server` | `v1.13.10` | optional screen-streaming server for the `streaming` profile (Apache-2.0; see below) |
+
+### Pull or build
+
+Every Aulora service in both Compose files names its published image,
+`${AULORA_IMAGE_REGISTRY:-ghcr.io/chark1es}/aulora-<service>:${AULORA_IMAGE_TAG:-<version>}`,
+and keeps its `build:` section. The default tag is the release in the checkout;
+`bun run release:version` keeps it in step and `release:check` verifies it.
+
+`./deploy.sh` (and the staged updater behind `update.sh`) choose the source:
+
+- HEAD is exactly the tag `v<version>`, or `--pull-images`: pull the published
+  images and build nothing. If the pull fails, it warns and builds locally.
+- Anything else, or `--build`: build from source and tag the images `local`
+  (`AULORA_IMAGE_TAG=local`), so a checkout of `main` never silently runs an
+  older published release.
+
+`--rollback` restores the previous web image under the reference it ran with.
+A plain `docker compose up -d` outside these scripts resolves the release tag in
+your checkout, so on a development checkout run it with `AULORA_IMAGE_TAG=local`.
+Self-hosters on a mirror set `AULORA_IMAGE_REGISTRY` in `.env`. The images are
+public once the maintainer makes the GHCR packages public; see
+[GitHub Actions](../../docs/github-actions.md#container-images).
 
 To bump the Convex digest:
 
@@ -539,7 +567,7 @@ rechecks workspace-owner authority for each request. No shell commands, release
 URLs, or deployment keys are accepted from the browser. If the watcher is offline,
 settings still show the version and can check releases, with installation disabled.
 
-Coolify should redeploy the `release` branch from Coolify; do not point `update.sh` at
+Coolify should redeploy a newer release tag from Coolify; do not point `update.sh` at
 Coolify's source checkout. Its settings show the version and available releases,
 with instructions to use the hosting provider's redeploy controls.
 

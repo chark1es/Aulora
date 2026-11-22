@@ -53,6 +53,7 @@ describe("web image rollback", () => {
     });
     expect(state).toEqual({
       imageId: "sha256:old",
+      imageName: WEB_IMAGE,
       version: "1.2.3",
       pinnedAt: "2026-01-02T03:04:05.000Z",
     });
@@ -110,6 +111,25 @@ describe("web image rollback", () => {
     ]);
     expect(readFileSync(resolve(f.dockerDir, ".deployed-version"), "utf8")).toBe("1.2.3\n");
     expect(logs.at(-1)).toContain("1.2.3");
+  });
+
+  it("restores a published image under the reference the old container ran", async () => {
+    const old = "ghcr.io/chark1es/aulora-web:1.2.3";
+    const f = fixture({ [old]: "sha256:old" });
+    const envs = [];
+    const execute = async (command, args, cwd, env) => {
+      envs.push(env);
+      if (args[1] === "ps") return "container-1";
+      if (args[0] === "inspect") return args[2] === "{{.Image}}" ? "sha256:old" : old;
+      return f.execute(command, args, cwd);
+    };
+    const state = await pinCurrentWebImage({ dockerDir: f.dockerDir, execute });
+    expect(state?.imageName).toBe(old);
+    f.images[PREVIOUS_WEB_IMAGE] = "sha256:old";
+    f.images[old] = "sha256:new";
+    await rollbackWeb({ dockerDir: f.dockerDir, execute });
+    expect(f.calls).toContainEqual(["docker", ["tag", PREVIOUS_WEB_IMAGE, old], f.dockerDir]);
+    expect(envs.at(-1)).toEqual({ AULORA_IMAGE_TAG: "1.2.3" });
   });
 
   it("refuses rollback without a pin, with a changed pin, or when already rolled back", async () => {

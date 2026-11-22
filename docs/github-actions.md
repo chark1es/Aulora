@@ -1,22 +1,40 @@
 # GitHub Actions builds and releases
 
-Every pull request runs `.github/workflows/ci.yml`. It checks lint, workspace types,
-tests, web/docs builds and links, release metadata, infrastructure tests, and workflow syntax.
-The native builds for Windows, macOS, Linux, Android, and the iOS simulator are
-opt-in because they are slow. They run when a PR has the `build-native` label, when
-you start CI manually from the Actions tab (`native` input), or another workflow
-calls CI with `native: true`. Release automation calls CI with `native: false`: its
-signed desktop and mobile release builds already gate assembly and publication.
-Unsigned native CI builds are skipped on plain PRs and on pushes to `main`.
-These jobs do not receive release credentials. The final `Required checks` job
-fails if any other job fails or is cancelled, and treats only the native jobs as
-optional when skipped. There are no path filters on PR checks, so
-documentation-only PRs also produce the required result.
+Every pull request runs `.github/workflows/ci.yml`, but only the checks that the
+changed paths can affect. A `changes` job detects the paths first, and the other
+jobs are skipped when nothing they cover changed:
 
-Configure `main` and the stable `release` branch to require that check from the GitHub Actions app, an up-to-date PR branch,
+| Job | Runs when the PR touches | Checks |
+| --- | --- | --- |
+| Tests and types | `apps/web`, `apps/mobile`, `apps/desktop`, docs generators, `packages`, `scripts`, root configs, lockfile | lint, types, tests, workspace build, bundle and embed budgets (Turbo cache restored between runs) |
+| Documentation | the above, plus `apps/docs`, `docs`, any Markdown | `docs:check` and the docs generator tests |
+| Release metadata and scripts | `scripts`, desktop release config, Compose files, legal files, or anything in Tests and types | `release:check`, `test:release` |
+| Infrastructure tests | `infra`, `install.sh`, `install.ps1`, `packages/core` | `test:infra` |
+| Workflow validation | `.github` | actionlint (pinned Docker image) with shellcheck |
+| Image build | `infra`, `.dockerignore`, `bun.lock`, `package.json` | each image builds for amd64, without pushing |
+| Desktop, Android, iOS | their native project paths, the `build-native` label | native compile |
+| Secret scan | always | gitleaks over the PR's commits only |
+
+Pushes to `main`, merge groups, manual runs and workflow calls (releases, mobile
+OTA) ignore the filters and run every check except the image build, so `main` and
+every release commit are fully verified. The native builds for Windows, macOS,
+Linux, Android and the iOS simulator are slow, so they run on a PR only when it
+has the `build-native` label or touches the matching native paths, when you start
+CI manually from the Actions tab (`native` input), or when another workflow calls
+CI with `native: true`. Release automation calls CI with `native: false`: its
+signed desktop and mobile release builds already gate assembly and publication.
+These jobs do not receive release credentials. The final `Required checks` job is
+the single required status. It fails if any job failed or was cancelled, or if
+path detection or the secret scan did not succeed, and it accepts a skipped job
+because a filter excluded it. Documentation-only PRs therefore still produce the
+required result.
+
+Configure `main` to require that check from the GitHub Actions app, an up-to-date PR branch,
 and resolved review conversations. Apply the rule to administrators and
 block force pushes and branch deletion. Review approvals are a maintainer choice.
 The same checks run after merges and for merge groups, without the native builds.
+There is no `release` branch to protect: releases are tags, and the repository
+should not keep a branch of that name.
 
 The separate [CLA bot](cla-bot.md) records contributor acceptance and publishes the `CLA` commit status on pull requests. After enabling it, require that status alongside `Required checks`. Its privileged job runs default-branch code without executing the PR's code.
 
@@ -99,33 +117,15 @@ and creates `v1.0.0` at the exact commit it compiled only after every build
 succeeds. Files upload to a draft first; it becomes the latest release only after the upload completes. A rerun can resume an unpublished draft for the same source commit. Changing other settings without increasing the version does not
 publish a release. Existing published versions cannot be overwritten.
 
-After publication, [Sync release branch](../.github/workflows/sync-release.yml)
-merges the current `main` into a promotion branch, opens a PR into `release`, and
-enables auto-merge after required checks pass. It preserves commits already on
-`release`, reuses an open promotion PR on retries, and fails on conflicts. Drafts and prereleases are
-skipped, and the published tag must be an ancestor of `main`. The Release pipeline
-calls it directly because releases published with `GITHUB_TOKEN` do not trigger
-another workflow. Its `release: published` trigger also handles manual publication.
-To retry a failed promotion, run Sync release branch on `main` with the published
-`tag`; this does not rebuild or republish artifacts.
-
-Enable **Allow auto-merge** in repository settings. Configure the repository
-secret `RELEASE_AUTOMATION_TOKEN` with a fine-grained personal access token limited
-to this repository, with **Contents**, **Pull requests** and **Workflows** read/write
-permissions. Workflows permission allows promotion commits containing workflow
-updates. Keep an expiry and rotate the secret before it expires.
-
-Promotion uses this credential for checkout/push and PR creation so ordinary
-`pull_request` CI runs without manual workflow approval. GitHub requires approval
-for PR runs created with `GITHUB_TOKEN`; there is no repository toggle to remove
-that bot-specific gate. See [GitHub token event behavior](https://docs.github.com/en/actions/concepts/security/github_token#when-github_token-triggers-workflow-runs).
-No branch protection bypass is used. The workflow fails with setup instructions
-if the credential is missing and does not dispatch duplicate CI. PR native builds
-remain opt-in because the release pipeline already built the native apps.
+Before the GitHub release exists, the pipeline publishes the container images
+(see [Container images](#container-images)). There is no promotion branch or
+extra credential: a published release is the tag `v1.0.0` plus its GitHub Release
+assets, and self-hosters install or upgrade to that tag.
 
 For a candidate or retry, open [Actions → Release](https://github.com/chark1es/Aulora/actions/workflows/release.yml),
 select `main`, and leave `publish` off. It builds the current checked-in version
-and uploads the complete release as an Actions artifact. Turning `publish` on
+and uploads the complete release as an Actions artifact. It also pushes the
+container images tagged `sha-<commit>` only, never a version tag. Turning `publish` on
 creates the GitHub release after successful builds. Set the optional
 `play-track` input to also upload the signed Android AAB to a Google Play track.
 The desktop-only candidate workflow remains available for testing desktop
@@ -152,6 +152,52 @@ higher build number.
 The repository remains private until you make it public for v1. GitHub release
 downloads require repository access while it is private; public downloads and
 updater URLs become accessible once the repository is public.
+
+## Container images
+
+Every release publishes seven multi-architecture images (linux/amd64 and
+linux/arm64) to GitHub Container Registry, under the repository owner's
+lowercased name:
+
+`ghcr.io/chark1es/aulora-web`, `aulora-setup`, `aulora-smtp-gateway`,
+`aulora-bot-runner`, `aulora-transcriber`, `aulora-backup` and
+`aulora-push-relay`.
+
+[`.github/workflows/docker.yml`](../.github/workflows/docker.yml) builds them.
+Each image and architecture builds in parallel on a native runner (`ubuntu-24.04`
+and `ubuntu-24.04-arm`, no emulation) and pushes by digest. A manifest job then
+combines the two digests into one tag, `sha-<commit>`. Builds use the GitHub
+Actions cache, one scope per image and architecture, and carry OCI labels
+(source repository, version, revision, license) so the package links to the
+repository. Only the pushing jobs get `packages: write`.
+
+The Release workflow calls it twice. The `images` job builds in parallel with the
+desktop, mobile and web builds. The `tag-images` job runs after everything is
+assembled and before the GitHub Release is published. It adds the tags `X.Y.Z`,
+`X.Y`, `X` and `latest` to the existing `sha-<commit>` manifests, so a published
+release never lacks its images, and a failed release leaves no version tag.
+The floating tags only move forward: re-publishing an older release does not move
+`latest`. Candidate runs (`publish` off) keep only the `sha-<commit>` tag.
+
+To retry or repair the tags of an existing release, run
+[Docker images](https://github.com/chark1es/Aulora/actions/workflows/docker.yml)
+from `main` with `ref` set to its tag (for example `v1.6.2`), `version` `1.6.2`,
+`push` and `release-tags` on. It rebuilds from that tag and refuses a `ref` that
+is not the release's tag commit. Pushing is limited to runs on `main`; without
+`push` the workflow only builds.
+
+The Compose files name these images (`image:` with a `build:` fallback). A
+checkout of a release tag pulls them. A development checkout builds locally with
+`AULORA_IMAGE_TAG=local`. The pull-or-build rule is in
+[`infra/docker/README.md`](../infra/docker/README.md).
+
+Packages created from a user account start private. After the first release
+publishes them, open each package's settings at
+`https://github.com/users/chark1es/packages/container/<name>/settings` (or the
+organization's packages page), grant the Aulora repository access under
+**Manage Actions access** so the workflow can keep pushing, and set **Change
+visibility** to **Public**. Until you do, self-hosters cannot pull anonymously and
+`docker compose pull` fails with a denied error.
 
 ## Release files
 

@@ -13,11 +13,19 @@ guided deploy on [Coolify](https://coolify.io) see
 
 ## The installer
 
-Install from a checkout of the stable `release` branch. `main` tracks
-development, and the installer warns when it runs from another branch.
+Installs and upgrades follow [GitHub Releases](https://github.com/chark1es/Aulora/releases).
+Every release publishes the Aulora images (`aulora-web`, `aulora-setup`,
+`aulora-smtp-gateway`, `aulora-bot-runner`, `aulora-transcriber`,
+`aulora-backup` and `aulora-push-relay`, for amd64 and arm64) to
+`ghcr.io/chark1es`, tagged with the version (`1.6.2`, `1.6`, `1`, `latest`).
+Run the installer from a checkout of a release tag. On any other ref with a
+clean tree it checks out the newest release first, then pulls that release's
+images. `main` tracks development and is not an install target; pass
+`--allow-any-branch` to install it as is, which builds the images locally. To
+pin a version, clone it directly with `git clone --branch vX.Y.Z`.
 
 ```sh
-git clone --branch release https://github.com/chark1es/Aulora.git
+git clone https://github.com/chark1es/Aulora.git
 cd Aulora
 ./install.sh            # macOS / Linux
 pwsh ./install.ps1      # Windows
@@ -35,6 +43,7 @@ Useful flags and environment variables:
 | `--backups` / `-Backups` | — | also start the nightly backup runner |
 | `--no-start` / `-NoStart` | — | write `.env` and stop before `docker compose` |
 | `--dry-run` / `-DryRun` | — | print the plan without changing anything |
+| `--allow-any-branch` / `-AllowAnyBranch` | `AULORA_ALLOW_ANY_BRANCH` | install this checkout as is instead of the newest release; images are built locally |
 
 The installer is idempotent: re-running it reuses the existing `.env` and is a
 no-op for data.
@@ -44,7 +53,8 @@ no-op for data.
 ```sh
 cd infra/docker
 cp .env.example .env      # edit INSTANCE_NAME, WORKSPACE_NAME and origins
-docker compose up -d --build
+docker compose pull       # a release checkout; on `main` use AULORA_IMAGE_TAG=local ... up -d --build
+docker compose up -d --no-build
 docker compose logs -f setup
 ```
 
@@ -233,14 +243,20 @@ Rollback is web-only. It does not reverse a function, schema, engine, or
 migration change; restore a compatible backup when the backend change is
 irreversible.
 
-A checkout that is not a git clone, including Coolify, still updates by
-redeploying the stable `release` branch:
+A checkout that is not a git clone, such as a downloaded release archive, updates
+by replacing it with the newer release's source and pulling that release's
+images, then restarting. Coolify instead redeploys a newer release tag; see
+[Deploy on Coolify](coolify.md#upgrade).
 
 ```sh
+cd infra/docker
 docker compose pull
-docker compose up -d --build
+docker compose up -d --no-build
 docker compose run --rm setup
 ```
+
+Compose reads the image tag from `AULORA_IMAGE_TAG`, which defaults to the
+release in the checkout. Set `AULORA_IMAGE_REGISTRY` to pull from a mirror.
 
 `docker compose down` stops the stack but keeps the named volumes
 (`pgdata`, `convex-data`, `minio-data`, `web-well-known`, `backup-data`).

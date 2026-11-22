@@ -10,7 +10,7 @@ Linux AppImage supports the updater. Debian packages require manual installation
 
 ## Docker server from a Git clone
 
-Run the updater from a checkout of the stable `release` branch. It checks the release feed, refuses dirty checkouts, and redeploys a published release while keeping `.env` and volumes:
+Run the updater from a git clone. It checks the release feed, refuses dirty checkouts, and moves the checkout to the published release tag (a detached HEAD at `vX.Y.Z`, which is expected). It then pulls that release's images from `ghcr.io/chark1es`, redeploys, and keeps `.env` and volumes. A checkout that is not exactly at its release tag builds the images locally instead, so `main` never runs an older published image:
 
 ```sh
 cd infra/docker
@@ -31,7 +31,7 @@ Restart the watcher and re-run setup after changing its environment settings. Wi
 
 Configure the Coolify API integration described in [Deploy on Coolify](coolify.md#upgrade) to enable **Install update** in the instance settings. Coolify builds and deploys the release in one step, so there is no separate Download button and no host watcher. The owner starts installation explicitly; automatic host updates do not trigger Coolify deployments.
 
-You can also deploy the stable `release` branch, or a chosen release tag or commit, through Coolify manually. Preserve the existing named volumes, especially `setup-state`, which holds generated secrets. Do not switch to fresh volumes or regenerate the master key during an upgrade.
+You can also deploy a chosen release tag, or a commit, through Coolify manually by setting the resource's Branch field. Preserve the existing named volumes, especially `setup-state`, which holds generated secrets. Do not switch to fresh volumes or regenerate the master key during an upgrade.
 
 ## Updating a checkout manually
 

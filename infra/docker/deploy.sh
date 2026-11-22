@@ -1,17 +1,27 @@
 #!/usr/bin/env bash
 #
-# Rebuild and redeploy the Aulora stack from the current source tree.
+# Redeploy the Aulora stack from the current checkout.
 #
 # Why this exists: `docker compose run setup` reuses whatever `aulora-setup`
 # image already exists, so a code change can silently deploy an old API. This
-# script always rebuilds the images that embed repository source (`web`,
-# `setup`, `smtp-gateway`, `bot-runner` and `transcriber`), deploys the backend first, and
-# only then recreates the web container. It is idempotent and safe to run after
-# every update. The bot runner is recreated after `setup` so it picks up a
-# newly generated BOT_RUNNER_TOKEN from `.env`.
+# script always refreshes the images that embed repository source (`web`,
+# `setup`, `smtp-gateway`, `bot-runner` and `transcriber`), deploys the backend
+# first, and only then recreates the web container. It is idempotent and safe
+# to run after every update. The bot runner is recreated after `setup` so it
+# picks up a newly generated BOT_RUNNER_TOKEN from `.env`.
+#
+# Where the images come from:
+#   - HEAD is exactly the tag v<AULORA_VERSION> (a release checkout), or
+#     --pull-images: pull ghcr.io/chark1es/aulora-*:<AULORA_VERSION>. If the
+#     pull fails, warn and build locally instead.
+#   - Anything else (a development checkout, or --build): build from source and
+#     tag the images `local` (AULORA_IMAGE_TAG=local), so a checkout of `main`
+#     never silently runs an older published release.
 #
 # Usage:
-#   ./deploy.sh                     # rebuild + redeploy backend, then web
+#   ./deploy.sh                     # pull (release checkout) or build, then redeploy
+#   ./deploy.sh --build             # always build from source
+#   ./deploy.sh --pull-images       # always pull the published images
 #   ./deploy.sh --pull              # also refresh pinned upstream images
 #   ./deploy.sh --profile backups   # enable an optional compose profile
 #   ./deploy.sh --rollback          # restore the web image pinned by the last deploy
@@ -24,6 +34,7 @@ cd "$(dirname "$self")"
 compose=(docker compose)
 pull=0
 rollback=0
+image_source=auto
 while [ $# -gt 0 ]; do
   case "$1" in
     --rollback)
@@ -31,6 +42,12 @@ while [ $# -gt 0 ]; do
       ;;
     --pull)
       pull=1
+      ;;
+    --build)
+      image_source=build
+      ;;
+    --pull-images)
+      image_source=pull
       ;;
     --profile)
       shift
@@ -41,7 +58,7 @@ while [ $# -gt 0 ]; do
       compose+=(--profile "${1#*=}")
       ;;
     -h | --help)
-      sed -n '2,18p' "$self"
+      sed -n '2,29p' "$self" | sed 's/^# \{0,1\}//'
       exit 0
       ;;
     *)
@@ -80,6 +97,26 @@ if [ "${pull}" = 1 ]; then
   "${compose[@]}" pull --ignore-buildable
 fi
 
+version="$(sed -n 's/^export const AULORA_VERSION = "\([^"]*\)";.*/\1/p' ../../packages/convex/convex/lib/env.ts)"
+services=(web setup smtp-gateway bot-runner transcriber)
+
+# Decide the image source before anything else so every later Compose call
+# (including the rollback pin) resolves the same image names.
+at_release_tag() {
+  [ -n "$version" ] || return 1
+  command -v git >/dev/null 2>&1 || return 1
+  git -C ../.. describe --tags --exact-match --match "v${version}" HEAD >/dev/null 2>&1
+}
+use_registry=0
+case "$image_source" in
+  pull) use_registry=1 ;;
+  build) use_registry=0 ;;
+  *) if at_release_tag; then use_registry=1; fi ;;
+esac
+if [ "${use_registry}" = 0 ]; then
+  export AULORA_IMAGE_TAG=local
+fi
+
 # Keep the build that is currently serving web traffic so `--rollback` can
 # restore it. Best effort: a first install has no image, and a missing bun must
 # not block a plain deployment.
@@ -90,8 +127,18 @@ else
   echo "warning: bun not found; web rollback marker was not updated" >&2
 fi
 
-echo "==> Rebuilding local images (web, setup, smtp-gateway, bot-runner, transcriber)"
-"${compose[@]}" build web setup smtp-gateway bot-runner transcriber
+if [ "${use_registry}" = 1 ]; then
+  echo "==> Pulling Aulora images for release ${version}"
+  if ! "${compose[@]}" pull "${services[@]}"; then
+    echo "warning: could not pull the published images; building locally instead" >&2
+    use_registry=0
+    export AULORA_IMAGE_TAG=local
+  fi
+fi
+if [ "${use_registry}" = 0 ]; then
+  echo "==> Rebuilding local images (web, setup, smtp-gateway, bot-runner, transcriber)"
+  "${compose[@]}" build "${services[@]}"
+fi
 
 # Compare immutable engine image IDs before setup; matching engines are kept.
 echo "==> Checking the Convex engine image"
@@ -143,7 +190,6 @@ echo "==> Starting the transcriber"
 # Never advertise a completed deployment until both healthchecks pass.
 "${compose[@]}" up -d --no-deps --no-build --no-recreate --wait --wait-timeout 120 convex-backend web
 
-version="$(sed -n 's/^export const AULORA_VERSION = "\([^"]*\)";.*/\1/p' ../../packages/convex/convex/lib/env.ts)"
 [ -n "$version" ] && printf '%s\n' "$version" > .deployed-version
 
 echo "==> Done. Open http://localhost:${WEB_PORT:-8080}"

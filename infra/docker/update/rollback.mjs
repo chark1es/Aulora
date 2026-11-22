@@ -1,10 +1,12 @@
 /* eslint-disable security/detect-non-literal-fs-filename -- Paths are the repository checkout, build output or a temp fixture, joined from fixed names or this script's own arguments, never request data. */
 // Pin and restore the previous web image for a deployment.
 //
-// `deploy.sh` runs `pin` before rebuilding, which tags the currently running
-// web image as `aulora-web:previous` and records its identity and deployed
-// version. `rollback` verifies that tag still points at the recorded image,
-// retags it as the live `aulora-web:local`, and recreates only the web service.
+// `deploy.sh` runs `pin` before pulling or rebuilding, which tags the currently
+// running web image as `aulora-web:previous` and records its identity, the image
+// reference it ran under (for example `ghcr.io/chark1es/aulora-web:1.6.2` or
+// `...:local`) and deployed version. `rollback` verifies that tag still points
+// at the recorded image, retags it under the recorded reference, and recreates
+// only the web service with AULORA_IMAGE_TAG set to that reference's tag.
 // Backend functions are not rolled back: they must stay compatible with the
 // previous web build for this path to be safe.
 import { spawn } from "node:child_process";
@@ -12,6 +14,7 @@ import { existsSync, readFileSync, writeFileSync } from "node:fs";
 import { dirname, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 
+// Fallback reference when Compose cannot name the web image.
 export const WEB_IMAGE = "aulora-web:local";
 export const PREVIOUS_WEB_IMAGE = "aulora-web:previous";
 export const FAILED_WEB_IMAGE = "aulora-web:failed";
@@ -19,11 +22,11 @@ export const STATE_FILE = ".deployed-web-image.json";
 
 const defaultDockerDir = resolve(dirname(fileURLToPath(import.meta.url)), "..");
 
-export function run(command, args, cwd) {
+export function run(command, args, cwd, env = {}) {
   return new Promise((resolveResult, reject) => {
     const child = spawn(command, args, {
       cwd,
-      env: { ...process.env, GIT_TERMINAL_PROMPT: "0" },
+      env: { ...process.env, GIT_TERMINAL_PROMPT: "0", ...env },
       stdio: ["ignore", "pipe", "inherit"],
     });
     let output = "";
@@ -41,6 +44,21 @@ export function run(command, args, cwd) {
 
 function imageId(execute, dockerDir, name) {
   return execute("docker", ["image", "inspect", "--format", "{{.Id}}", name], dockerDir);
+}
+
+// The image reference Compose resolves for `web` under the current environment.
+async function composeWebImage(execute, dockerDir) {
+  try {
+    const name = await execute("docker", ["compose", "config", "--images", "web"], dockerDir);
+    return name.split("\n")[0].trim() || WEB_IMAGE;
+  } catch {
+    return WEB_IMAGE;
+  }
+}
+
+function imageTag(reference) {
+  const index = reference.lastIndexOf(":");
+  return index > reference.lastIndexOf("/") ? reference.slice(index + 1) : "local";
 }
 
 function readVersionStamp(dockerDir) {
@@ -65,6 +83,7 @@ export async function pinCurrentWebImage({
   now = () => new Date(),
 } = {}) {
   let current = null;
+  let imageName = null;
   try {
     // Prefer the image the running container actually uses: a failed earlier
     // deploy can leave the local tag pointing at a build that never served.
@@ -75,13 +94,21 @@ export async function pinCurrentWebImage({
         ["inspect", "--format", "{{.Image}}", container],
         dockerDir,
       );
+      const reference = await execute(
+        "docker",
+        ["inspect", "--format", "{{.Config.Image}}", container],
+        dockerDir,
+      );
+      // A container created from a bare image ID has no reference to restore.
+      if (reference.includes(":") && !reference.startsWith("sha256:")) imageName = reference;
     }
   } catch {
-    // Fall back to the local tag below.
+    // Fall back to the compose image name below.
   }
+  imageName ??= await composeWebImage(execute, dockerDir);
   if (current === null || current === "") {
     try {
-      current = await imageId(execute, dockerDir, WEB_IMAGE);
+      current = await imageId(execute, dockerDir, imageName);
     } catch {
       // A first install has no web image yet; there is nothing to roll back to.
       return null;
@@ -90,6 +117,7 @@ export async function pinCurrentWebImage({
   await execute("docker", ["tag", current, PREVIOUS_WEB_IMAGE], dockerDir);
   const state = {
     imageId: current,
+    imageName,
     version: readVersionStamp(dockerDir),
     pinnedAt: now().toISOString(),
   };
@@ -114,9 +142,11 @@ export async function rollbackWeb({
       "The pinned previous web image changed. Refusing to roll back to an unidentified build.",
     );
   }
+  // States written before images were published name no reference.
+  const webImage = state.imageName ?? (await composeWebImage(execute, dockerDir));
   let current = null;
   try {
-    current = await imageId(execute, dockerDir, WEB_IMAGE);
+    current = await imageId(execute, dockerDir, webImage);
   } catch {
     // Missing local tag: rollback can still restore the pinned image.
   }
@@ -125,13 +155,14 @@ export async function rollbackWeb({
   }
   if (current !== null) {
     // Keep the failed build available for inspection instead of deleting it.
-    await execute("docker", ["tag", WEB_IMAGE, FAILED_WEB_IMAGE], dockerDir);
+    await execute("docker", ["tag", webImage, FAILED_WEB_IMAGE], dockerDir);
   }
-  await execute("docker", ["tag", PREVIOUS_WEB_IMAGE, WEB_IMAGE], dockerDir);
+  await execute("docker", ["tag", PREVIOUS_WEB_IMAGE, webImage], dockerDir);
   await execute(
     "docker",
     ["compose", "up", "-d", "--no-deps", "--no-build", "--force-recreate", "web"],
     dockerDir,
+    { AULORA_IMAGE_TAG: imageTag(webImage) },
   );
   if (state.version !== null) {
     writeFileSync(resolve(dockerDir, ".deployed-version"), `${state.version}\n`);

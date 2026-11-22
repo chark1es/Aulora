@@ -1,4 +1,8 @@
 // Prepare images in a separate checkout. Running containers change only on restart.
+//
+// A staged release tag pulls its published ghcr.io images; any other commit (or
+// a failed pull) builds locally tagged `local`. The choice is recorded in the
+// ready marker (`imageTag`) so the later restart resolves the same image names.
 import { spawn } from "node:child_process";
 import { createHash } from "node:crypto";
 import { existsSync, readFileSync, rmSync, writeFileSync } from "node:fs";
@@ -8,11 +12,11 @@ import { isReleaseTag, readDeclaredVersion } from "../../../packages/core/src/up
 import { checkWorkspace } from "./cli.mjs";
 import { pinCurrentWebImage } from "./rollback.mjs";
 
-export function run(command, args, cwd) {
+export function run(command, args, cwd, env = {}) {
   return new Promise((resolveResult, reject) => {
     const child = spawn(command, args, {
       cwd,
-      env: { ...process.env, GIT_TERMINAL_PROMPT: "0" },
+      env: { ...process.env, GIT_TERMINAL_PROMPT: "0", ...env },
       stdio: ["ignore", "pipe", "inherit"],
     });
     let output = "";
@@ -42,6 +46,8 @@ export function createStagedUpdater({
   const stamp = resolve(dockerDir, ".deployed-version");
   const git = (...args) => execute("git", ["-C", repoRoot, ...args], repoRoot);
   let composeChecked = false;
+  // Environment that selects the prepared images; empty means the release default.
+  let imageEnv = {};
   const compose = async (cwd, ...args) => {
     if (!composeChecked) {
       const version = await execute("docker", ["compose", "version", "--short"], cwd);
@@ -52,8 +58,9 @@ export function createStagedUpdater({
         );
       composeChecked = true; // Only a passing probe is cached; failures re-probe.
     }
-    return execute("docker", ["compose", ...args], cwd);
+    return execute("docker", ["compose", ...args], cwd, imageEnv);
   };
+  const buildable = ["web", "setup", "smtp-gateway", "bot-runner", "transcriber"];
   const recreate = (service) =>
     compose(dockerDir, "up", "-d", "--no-deps", "--no-build", "--force-recreate", service);
   const fingerprint = () => createHash("sha256").update(readFileSync(envFile)).digest("hex");
@@ -62,14 +69,7 @@ export function createStagedUpdater({
     writeFileSync(path, `${JSON.stringify(value, null, 2)}\n`, { mode: 0o600 });
   async function inspectImages(images) {
     const entries = [];
-    for (const service of [
-      "web",
-      "setup",
-      "smtp-gateway",
-      "bot-runner",
-      "transcriber",
-      "convex-backend",
-    ]) {
+    for (const service of [...buildable, "convex-backend"]) {
       const serviceConfig = Object.getOwnPropertyDescriptor(images.services, service)?.value;
       const name = serviceConfig?.image ?? `${images.name}-${service}`;
       const id = await execute(
@@ -106,6 +106,7 @@ export function createStagedUpdater({
   function ready() {
     if (!existsSync(readyFile)) return null;
     const prepared = read(readyFile);
+    imageEnv = prepared.imageTag ? { AULORA_IMAGE_TAG: prepared.imageTag } : {};
     // A marker survives watcher restarts. Missing images are caught by compose
     // up --no-build on installation, without silently rebuilding the release.
     return prepared;
@@ -124,6 +125,7 @@ export function createStagedUpdater({
     }
     status(plan, "downloading");
     let preparedCheckout = false;
+    imageEnv = {};
     try {
       const baseCommit = await git("rev-parse", "HEAD");
       let commit = baseCommit;
@@ -146,24 +148,40 @@ export function createStagedUpdater({
       const envHash = fingerprint();
       const stageDocker = resolve(stage, "infra/docker");
       writeFileSync(resolve(stageDocker, ".env"), readFileSync(envFile), { mode: 0o600 });
-      // The staged build reuses the live image tags, so capture the currently
+      // A local build reuses the `local` image tags, so capture the currently
       // serving web image before it is overwritten. Best effort: a first
       // install has no previous image.
       await pinCurrentWebImage({ dockerDir, execute }).catch(() => null);
-      await compose(
-        stageDocker,
-        "build",
-        "web",
-        "setup",
-        "smtp-gateway",
-        "bot-runner",
-        "transcriber",
-      );
+      // Pull the published images only for a checkout of the release tag itself.
+      let pulled = false;
+      const tag = await execute(
+        "git",
+        ["-C", stage, "describe", "--tags", "--exact-match", "--match", `v${version}`, "HEAD"],
+        stage,
+      ).catch(() => "");
+      if (tag === `v${version}`) {
+        imageEnv = {};
+        pulled = await compose(stageDocker, "pull", ...buildable).then(
+          () => true,
+          () => false,
+        );
+      }
+      if (!pulled) {
+        imageEnv = { AULORA_IMAGE_TAG: "local" };
+        await compose(stageDocker, "build", ...buildable);
+      }
       await compose(stageDocker, "pull", "convex-backend");
       const images = JSON.parse(await compose(stageDocker, "config", "--format", "json"));
       // Record immutable image IDs so a later rebuild cannot substitute another release.
       const imageIds = await inspectImages(images);
-      const prepared = { plan, baseCommit, commit, envHash, imageIds };
+      const prepared = {
+        plan,
+        baseCommit,
+        commit,
+        envHash,
+        imageIds,
+        imageTag: imageEnv.AULORA_IMAGE_TAG ?? null,
+      };
       write(readyFile, prepared);
       status(plan, "ready");
       return prepared;

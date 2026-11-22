@@ -18,7 +18,7 @@ bun run check
 
 Only stable `major.minor.patch` versions are supported by the release automation. API discovery's `apiVersion` is separate and remains 1 unless that contract changes.
 
-`main` is the development branch. The long-lived `release` branch is the stable install and Coolify deploy target. After a stable release is published, the Sync release branch workflow opens a promotion PR into `release` and enables auto-merge after required checks. Enable the repository automation settings described in [GitHub Actions builds and releases](github-actions.md#start-a-release).
+`main` is the development branch. There is no long-lived release branch: a GitHub Release `vX.Y.Z` and the container images `ghcr.io/chark1es/aulora-*:X.Y.Z` are the distribution. Self-hosters install from the release tag, and Coolify deploys it by tag. The release workflow pushes the images and tags them (`X.Y.Z`, `X.Y`, `X`, `latest`) before it publishes the GitHub release. See [GitHub Actions builds and releases](github-actions.md#start-a-release).
 
 For a candidate, run [Actions, Release](https://github.com/chark1es/Aulora/actions/workflows/release.yml) on `main` with `publish=false`. It builds the current version and uploads a `complete-release` artifact without publishing. For v1, finish preparation at the current version, build a candidate, then merge the v1 version bump once ready. To test v1 installers separately, use the desktop candidate workflow with `version=1.0.0`; mobile candidates use the main Release workflow's current version.
 
@@ -106,7 +106,7 @@ The desktop updater reads an optional top-level `rollout` percentage from the st
 
 `infra/docker/deploy.sh` and the staged updater now deploy the backend (`setup`) before recreating the web container. The release schema and functions must accept both the old and new frontend during that window. A failed `setup` leaves the previous web container serving.
 
-`deploy.sh` pins the serving web image as `aulora-web:previous` and records its id plus the deployed version in `infra/docker/.deployed-web-image.json` before rebuilding. `./deploy.sh --rollback` verifies that pin, restores it as `aulora-web:local`, and recreates only the web service. Backend functions and schemas are **not** rolled back; use a compatible backup/restore when a migration is irreversible. See [Convex recovery](convex/README.md#deploy-a-release-in-a-safe-order).
+`deploy.sh` pins the serving web image as `aulora-web:previous` and records its id plus the deployed version in `infra/docker/.deployed-web-image.json` before pulling or rebuilding, with the image reference it ran under (`ghcr.io/chark1es/aulora-web:X.Y.Z` or a local `:local` build). `./deploy.sh --rollback` verifies that pin, restores it under that reference, and recreates only the web service. Backend functions and schemas are **not** rolled back; use a compatible backup/restore when a migration is irreversible. See [Convex recovery](convex/README.md#deploy-a-release-in-a-safe-order).
 
 ## Signed applications and services
 
@@ -129,7 +129,7 @@ The desktop updater reads an optional top-level `rollout` percentage from the st
 - [ ] Verify `SHA256SUMS`, license/notice files, and the web/docs and legal ZIP contents.
 - [ ] Host the docs site and privacy policy at stable public URLs and test navigation on desktop and mobile.
 - [ ] Merge the version bump to publish, or manually dispatch Release on `main` with `publish=true` for an unpublished current version.
-- [ ] Confirm the promotion PR created by Sync release branch passed its checks and merged, then confirm a fresh `git clone --branch release` reports the expected version. It promotes the current `main`, which may have advanced beyond the built commit. If promotion fails, resolve merge conflicts or workflow permissions and retry the sync workflow with the published tag.
+- [ ] Confirm the release workflow's `images` and `tag-images` jobs passed and the packages show the new `X.Y.Z` and `latest` tags at `ghcr.io/chark1es`. Then confirm `docker pull ghcr.io/chark1es/aulora-web:X.Y.Z` works without logging in (the packages must be public, see [GitHub Actions](github-actions.md#container-images)), and that a fresh `git clone --branch vX.Y.Z` installs and reports the expected version. To re-publish the tags of an existing release, run [Docker images](https://github.com/chark1es/Aulora/actions/workflows/docker.yml) with `ref` set to the tag.
 - [ ] Verify the release tag points to the built commit, assets are publicly downloadable, and updater/discovery URLs work.
 
 Windows installers are unsigned in the initial distribution. iOS IPA downloads are App Store submissions, and mobile store availability depends on approval. State these limitations in release notes.
