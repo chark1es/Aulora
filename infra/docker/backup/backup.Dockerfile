@@ -29,7 +29,7 @@ FROM oven/bun:1.4.4
 
 RUN apt-get update \
   && apt-get install -y --no-install-recommends \
-    postgresql-client=17+278 \
+    postgresql-client=17+278+deb13u1 \
     ca-certificates=20250419+deb13u1 \
     curl=8.14.1-2+deb13u7 \
   && rm -rf /var/lib/apt/lists/*
