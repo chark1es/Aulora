@@ -32,7 +32,7 @@ repo-relative paths (`./initdb`, and `./vault` if you enable the optional `ekm`
 profile) and Coolify otherwise deletes the checkout after deploying. With the
 toggle on, those files exist when the containers start.
 
-Set **Branch** to a release tag such as `v1.6.2`, not `main`. Coolify clones
+Set **Branch** to a release tag such as `v1.7.0`, not `main`. Coolify clones
 with `--branch`, which accepts tags. Every published release has a tag; see
 [GitHub Releases](https://github.com/chark1es/Aulora/releases) for the newest.
 The Compose file names the matching `ghcr.io/chark1es/aulora-*` images, and
