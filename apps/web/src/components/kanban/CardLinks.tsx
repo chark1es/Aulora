@@ -131,7 +131,7 @@ function AddAttachment({ editor, files }: Props & { files: CardFiles }) {
     <label
       className={cn(
         addButton,
-        "w-fit cursor-pointer focus-within:ring-2 focus-within:ring-accent",
+        "relative w-fit cursor-pointer focus-within:ring-2 focus-within:ring-accent",
         blocked && "pointer-events-none opacity-50",
       )}
     >
