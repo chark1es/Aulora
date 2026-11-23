@@ -25,7 +25,7 @@ export function groupEditableTurns(lines: readonly EditableLine[]): EditableTurn
     const nextKey = turns[index + 1]?.key;
     const members: EditableLine[] = [];
     while (cursor < nonBlank.length) {
-      const line = nonBlank[cursor];
+      const line = nonBlank.at(cursor);
       if (line === undefined || (members.length > 0 && line.id === nextKey)) {
         break;
       }

@@ -168,14 +168,15 @@ function TurnEditor({
   readonly onDone: () => void;
 }) {
   const updateSegment = useMutation(api.transcription.updateSegment);
-  const [drafts, setDrafts] = useState<Record<string, string>>(() =>
-    Object.fromEntries(turn.lines.map((line) => [line.id, line.text.trim()])),
+  const [drafts, setDrafts] = useState<ReadonlyMap<string, string>>(
+    () => new Map(turn.lines.map((line) => [line.id, line.text.trim()])),
   );
+  const draftOf = (id: string): string => drafts.get(id) ?? "";
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
-  const changed = turn.lines.filter((line) => (drafts[line.id] ?? "").trim() !== line.text.trim());
+  const changed = turn.lines.filter((line) => draftOf(line.id).trim() !== line.text.trim());
   const invalid = changed.some((line) => {
-    const length = (drafts[line.id] ?? "").trim().length;
+    const length = draftOf(line.id).trim().length;
     return length === 0 || length > TRANSCRIPTION_MAX_SEGMENT_CHARS;
   });
 
@@ -186,7 +187,7 @@ function TurnEditor({
       for (const line of changed) {
         await updateSegment({
           segmentId: line.id as Id<"transcriptSegments">,
-          text: (drafts[line.id] ?? "").trim(),
+          text: draftOf(line.id).trim(),
         });
       }
       onDone();
@@ -227,10 +228,10 @@ function TurnEditor({
           hideLabel={turn.lines.length === 1}
           rows={2}
           autoFocus={index === 0}
-          value={drafts[line.id] ?? ""}
+          value={draftOf(line.id)}
           disabled={saving}
           onChange={(event) => {
-            setDrafts((current) => ({ ...current, [line.id]: event.target.value }));
+            setDrafts((current) => new Map(current).set(line.id, event.target.value));
           }}
         />
       ))}
