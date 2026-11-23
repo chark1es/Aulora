@@ -136,9 +136,10 @@ function TranscriptionForm({ config }: { readonly config: Config }) {
           <div className="min-w-0">
             <p className="font-medium">Transcription service not installed</p>
             <p className="mt-0.5 text-[12.5px] leading-relaxed text-text-muted">
-              Models are downloaded by the optional <code>transcriber</code> container. Start it
-              with the <code>transcription</code> compose profile, then come back to download a
-              model. Until then nobody can start transcription.
+              The <code>transcriber</code> container has not reported in. It starts with the stack;
+              make sure it is running and redeploy (or run <code>setup</code> again) so it shares{" "}
+              <code>TRANSCRIBER_TOKEN</code> with the server, then come back to download a model.
+              Until then nobody can start transcription.
             </p>
           </div>
         </div>

@@ -232,7 +232,7 @@ services:
         INSTANCE_NAME: ${INSTANCE_NAME:-Aulora}
         SITE_URL: ${SITE_URL:-http://localhost:8080}
         CONVEX_URL: ${CONVEX_CLOUD_ORIGIN:-http://localhost:3210}
-    image: ${AULORA_IMAGE_REGISTRY:-ghcr.io/chark1es}/aulora-web:${AULORA_IMAGE_TAG:-1.7.0}
+    image: ${AULORA_IMAGE_REGISTRY:-ghcr.io/chark1es}/aulora-web:${AULORA_IMAGE_TAG:-1.7.1}
     restart: unless-stopped
     environment:
       # nginx request-body cap for uploads proxied through this origin. Keep it
@@ -267,7 +267,7 @@ services:
     build:
       context: ../..
       dockerfile: infra/docker/smtp-gateway/Dockerfile
-    image: ${AULORA_IMAGE_REGISTRY:-ghcr.io/chark1es}/aulora-smtp-gateway:${AULORA_IMAGE_TAG:-1.7.0}
+    image: ${AULORA_IMAGE_REGISTRY:-ghcr.io/chark1es}/aulora-smtp-gateway:${AULORA_IMAGE_TAG:-1.7.1}
     restart: unless-stopped
     environment:
       SMTP_GATEWAY_TOKEN: ${INSTANCE_SECRET}
@@ -278,7 +278,7 @@ services:
     build:
       context: ../..
       dockerfile: infra/docker/setup.Dockerfile
-    image: ${AULORA_IMAGE_REGISTRY:-ghcr.io/chark1es}/aulora-setup:${AULORA_IMAGE_TAG:-1.7.0}
+    image: ${AULORA_IMAGE_REGISTRY:-ghcr.io/chark1es}/aulora-setup:${AULORA_IMAGE_TAG:-1.7.1}
     # The bootstrap prepares mount ownership, then drops to aulora without
     # capabilities before deployment or workspace initialization.
     user: "0:0"
@@ -330,7 +330,7 @@ services:
     build:
       context: ../..
       dockerfile: infra/docker/bot-runner.Dockerfile
-    image: ${AULORA_IMAGE_REGISTRY:-ghcr.io/chark1es}/aulora-bot-runner:${AULORA_IMAGE_TAG:-1.7.0}
+    image: ${AULORA_IMAGE_REGISTRY:-ghcr.io/chark1es}/aulora-bot-runner:${AULORA_IMAGE_TAG:-1.7.1}
     restart: unless-stopped
     # Give the supervisor time to SIGTERM/SIGKILL every bot on stop.
     stop_grace_period: 20s
@@ -400,7 +400,7 @@ services:
     build:
       context: ../..
       dockerfile: infra/transcriber/Dockerfile
-    image: ${AULORA_IMAGE_REGISTRY:-ghcr.io/chark1es}/aulora-transcriber:${AULORA_IMAGE_TAG:-1.7.0}
+    image: ${AULORA_IMAGE_REGISTRY:-ghcr.io/chark1es}/aulora-transcriber:${AULORA_IMAGE_TAG:-1.7.1}
     restart: unless-stopped
     environment:
       # Shared with Convex. `setup` generates and persists it like the other
@@ -444,7 +444,7 @@ services:
     build:
       context: ../push-relay
       dockerfile: Dockerfile
-    image: ${AULORA_IMAGE_REGISTRY:-ghcr.io/chark1es}/aulora-push-relay:${AULORA_IMAGE_TAG:-1.7.0}
+    image: ${AULORA_IMAGE_REGISTRY:-ghcr.io/chark1es}/aulora-push-relay:${AULORA_IMAGE_TAG:-1.7.1}
     profiles: ["push-relay"]
     restart: unless-stopped
     env_file:
@@ -463,7 +463,7 @@ services:
     build:
       context: ../..
       dockerfile: infra/docker/backup/backup.Dockerfile
-    image: ${AULORA_IMAGE_REGISTRY:-ghcr.io/chark1es}/aulora-backup:${AULORA_IMAGE_TAG:-1.7.0}
+    image: ${AULORA_IMAGE_REGISTRY:-ghcr.io/chark1es}/aulora-backup:${AULORA_IMAGE_TAG:-1.7.1}
     profiles: ["backups"]
     restart: unless-stopped
     env_file:

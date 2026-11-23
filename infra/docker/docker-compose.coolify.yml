@@ -66,7 +66,7 @@
 # tagged with this checkout's release version) and keep a `build:` section.
 # Coolify builds them from the release tag you deploy; the tag also selects the
 # matching source. Set the resource's Branch field to a release tag such as
-# v1.7.0 (not `main`).
+# v1.7.1 (not `main`).
 
 # No top-level `name:` on purpose: Coolify sets the Compose project name, and
 # that name also prefix-names the `setup-state` volume. Removing the pin here
@@ -262,7 +262,7 @@ services:
         INSTANCE_NAME: ${INSTANCE_NAME:-Aulora}
         SITE_URL: ${SITE_URL:-http://localhost:8080}
         CONVEX_URL: ${CONVEX_CLOUD_ORIGIN:-http://localhost:3210}
-    image: ${AULORA_IMAGE_REGISTRY:-ghcr.io/chark1es}/aulora-web:${AULORA_IMAGE_TAG:-1.7.0}
+    image: ${AULORA_IMAGE_REGISTRY:-ghcr.io/chark1es}/aulora-web:${AULORA_IMAGE_TAG:-1.7.1}
     restart: unless-stopped
     environment:
       # nginx request-body cap for uploads proxied through this origin. Keep it
@@ -299,7 +299,7 @@ services:
     build:
       context: ../..
       dockerfile: infra/docker/setup.Dockerfile
-    image: ${AULORA_IMAGE_REGISTRY:-ghcr.io/chark1es}/aulora-setup:${AULORA_IMAGE_TAG:-1.7.0}
+    image: ${AULORA_IMAGE_REGISTRY:-ghcr.io/chark1es}/aulora-setup:${AULORA_IMAGE_TAG:-1.7.1}
     # The bootstrap prepares mount ownership, then drops to aulora without
     # capabilities before deployment or workspace initialization.
     user: "0:0"
@@ -455,7 +455,7 @@ services:
     build:
       context: ../..
       dockerfile: infra/docker/bot-runner.Dockerfile
-    image: ${AULORA_IMAGE_REGISTRY:-ghcr.io/chark1es}/aulora-bot-runner:${AULORA_IMAGE_TAG:-1.7.0}
+    image: ${AULORA_IMAGE_REGISTRY:-ghcr.io/chark1es}/aulora-bot-runner:${AULORA_IMAGE_TAG:-1.7.1}
     restart: unless-stopped
     stop_grace_period: 20s
     # No env_file and no host mounts on purpose: every bot shares this container
@@ -517,7 +517,7 @@ services:
     build:
       context: ../..
       dockerfile: infra/transcriber/Dockerfile
-    image: ${AULORA_IMAGE_REGISTRY:-ghcr.io/chark1es}/aulora-transcriber:${AULORA_IMAGE_TAG:-1.7.0}
+    image: ${AULORA_IMAGE_REGISTRY:-ghcr.io/chark1es}/aulora-transcriber:${AULORA_IMAGE_TAG:-1.7.1}
     restart: unless-stopped
     environment:
       # Same Coolify-generated value as `setup` above.
@@ -558,7 +558,7 @@ services:
     build:
       context: ../push-relay
       dockerfile: Dockerfile
-    image: ${AULORA_IMAGE_REGISTRY:-ghcr.io/chark1es}/aulora-push-relay:${AULORA_IMAGE_TAG:-1.7.0}
+    image: ${AULORA_IMAGE_REGISTRY:-ghcr.io/chark1es}/aulora-push-relay:${AULORA_IMAGE_TAG:-1.7.1}
     profiles: ["push-relay"]
     restart: unless-stopped
     env_file:
@@ -587,7 +587,7 @@ services:
     build:
       context: ../..
       dockerfile: infra/docker/backup/backup.Dockerfile
-    image: ${AULORA_IMAGE_REGISTRY:-ghcr.io/chark1es}/aulora-backup:${AULORA_IMAGE_TAG:-1.7.0}
+    image: ${AULORA_IMAGE_REGISTRY:-ghcr.io/chark1es}/aulora-backup:${AULORA_IMAGE_TAG:-1.7.1}
     profiles: ["backups"]
     restart: unless-stopped
     env_file:

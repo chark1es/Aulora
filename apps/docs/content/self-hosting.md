@@ -17,7 +17,7 @@ Installs and upgrades follow [GitHub Releases](https://github.com/chark1es/Aulor
 Every release publishes the Aulora images (`aulora-web`, `aulora-setup`,
 `aulora-smtp-gateway`, `aulora-bot-runner`, `aulora-transcriber`,
 `aulora-backup` and `aulora-push-relay`, for amd64 and arm64) to
-`ghcr.io/chark1es`, tagged with the version (`1.7.0`, `1.7`, `1`, `latest`).
+`ghcr.io/chark1es`, tagged with the version (`1.7.1`, `1.7`, `1`, `latest`).
 Run the installer from a checkout of a release tag. On any other ref with a
 clean tree it checks out the newest release first, then pulls that release's
 images. `main` tracks development and is not an install target; pass
