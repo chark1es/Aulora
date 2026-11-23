@@ -54,7 +54,7 @@ export function ThemeToggle({ variant = "rail" }: { readonly variant?: "rail" | 
               aria-label={option.label}
               title={option.label}
               className={cn(
-                "flex h-6 w-7 cursor-pointer items-center justify-center rounded-[5px] transition",
+                "relative flex h-6 w-7 cursor-pointer items-center justify-center rounded-[5px] transition",
                 active ? "bg-surface-2 text-text shadow-sm" : "text-text-muted hover:text-text",
               )}
             >

@@ -112,7 +112,7 @@ export function SegmentedControl<T extends string>({
           <label
             key={option.value}
             className={cn(
-              "flex h-[26px] cursor-pointer items-center justify-center gap-1.5 whitespace-nowrap rounded-[6px] px-2.5 text-[12px] font-medium transition",
+              "relative flex h-[26px] cursor-pointer items-center justify-center gap-1.5 whitespace-nowrap rounded-[6px] px-2.5 text-[12px] font-medium transition",
               active ? "bg-surface-2 text-text shadow-sm" : "text-text-muted hover:text-text",
             )}
           >

@@ -99,7 +99,7 @@ function ChoiceRow(props: ChoiceRowProps) {
   return (
     <label
       className={cn(
-        "group flex w-full cursor-pointer select-none items-center gap-3 rounded-[10px] px-2.5 py-2 text-left transition focus-within:ring-2 focus-within:ring-accent",
+        "group relative flex w-full cursor-pointer select-none items-center gap-3 rounded-[10px] px-2.5 py-2 text-left transition focus-within:ring-2 focus-within:ring-accent",
         active ? "bg-accent/10 ring-1 ring-inset ring-accent/40" : "hover:bg-surface-3",
       )}
     >
