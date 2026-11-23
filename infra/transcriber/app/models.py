@@ -1,17 +1,11 @@
-"""Allowlisted Whisper model ids and the in-memory install state."""
+"""Allowlisted transcription model ids and the in-memory install state."""
 
 from __future__ import annotations
 
 from dataclasses import dataclass, field
 
 # Only these ids may be downloaded. A URL never reaches the downloader.
-ALLOWED_MODELS: tuple[str, ...] = (
-    "tiny",
-    "base",
-    "small",
-    "medium",
-    "large-v3-turbo",
-)
+ALLOWED_MODELS: tuple[str, ...] = ("parakeet-tdt-0.6b-v3",)
 
 MAX_MODEL_ID_LENGTH = 40
 

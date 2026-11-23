@@ -388,14 +388,15 @@ services:
 
   # Transcription service starts with the stack; models download only on request.
   # It receives each participant's own microphone as 16 kHz PCM16 over
-  # `/transcribe/ws`, runs faster-whisper on CPU int8 with VAD, and posts
-  # speaker-labelled segments to Convex over the shared-secret ingest route.
+  # `/transcribe/ws`, runs NVIDIA Parakeet TDT 0.6B v3 (ONNX, CPU int8) on
+  # utterance-aware windows, and posts speaker-labelled segments to Convex over the shared-secret ingest route.
   # No model is baked into the image: the owner downloads one allowlisted model
   # into the `transcriber-models` volume from Workspace settings. The container
   # is non-root, read-only and joins only the `transcription` network shared with
   # convex-backend and the web gateway (nginx proxies `/transcribe/` to it), so
   # it cannot reach postgres, minio or the bot runner. Read README.md
-  # "Transcription" before downloading a model.
+  # "Transcription" before downloading a model (about 650 MB on disk and
+  # 1-1.5 GB of RAM once loaded, so keep TRANSCRIBER_MEMORY_LIMIT at 2g or more).
   transcriber:
     build:
       context: ../..
@@ -412,8 +413,7 @@ services:
       CONVEX_HELLO_URL: http://convex-backend:3211/transcription/hello
       TRANSCRIBER_PREAUTH_MAX_CONNECTIONS: ${TRANSCRIBER_PREAUTH_MAX_CONNECTIONS:-128}
       MODELS_DIR: /models
-      WHISPER_DEVICE: ${WHISPER_DEVICE:-cpu}
-      WHISPER_COMPUTE_TYPE: ${WHISPER_COMPUTE_TYPE:-int8}
+      TRANSCRIBER_THREADS: ${TRANSCRIBER_THREADS:-}
       TRANSCRIBER_MAX_STREAMS: ${TRANSCRIBER_MAX_STREAMS:-32}
     volumes:
       - transcriber-models:/models

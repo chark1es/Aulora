@@ -28,7 +28,7 @@ vi.mock("convex/react", () => ({
 
 function config(overrides: Record<string, unknown> = {}) {
   return {
-    modelId: "base",
+    modelId: "parakeet-tdt-0.6b-v3",
     modelStatus: "not_installed",
     modelProgress: null,
     modelError: null,
@@ -41,7 +41,7 @@ function config(overrides: Record<string, unknown> = {}) {
     retentionDays: 30,
     allowPrivateEndpoint: false,
     updatedAt: 1,
-    availableModels: ["tiny", "base", "small", "medium", "large-v3-turbo"],
+    availableModels: ["parakeet-tdt-0.6b-v3"],
     serviceInstalled: true,
     ...overrides,
   };
@@ -74,7 +74,7 @@ describe("TranscriptionSettings", () => {
     expect(screen.getByTestId("transcription-model-status")).toHaveTextContent("Not downloaded");
     await user.click(screen.getByRole("button", { name: /Download/u }));
     expect(state.mutations.get("transcription:downloadModel")).toHaveBeenCalledWith({
-      modelId: "base",
+      modelId: "parakeet-tdt-0.6b-v3",
     });
   });
 

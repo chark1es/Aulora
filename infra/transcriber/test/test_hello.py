@@ -27,16 +27,16 @@ class HelloPayloadTests(unittest.TestCase):
     def test_ready_model_names_the_loaded_model(self):
         loaded = LoadedModel()
         loaded.engine = FakeEngine()
-        loaded.model_id = "small"
-        loaded.state.ready("small")
+        loaded.model_id = "parakeet-tdt-0.6b-v3"
+        loaded.state.ready("parakeet-tdt-0.6b-v3")
         payload = build_hello_payload(loaded)
         self.assertEqual(payload["loadedStatus"], "ready")
-        self.assertEqual(payload["loadedModelId"], "small")
+        self.assertEqual(payload["loadedModelId"], "parakeet-tdt-0.6b-v3")
         self.assertNotIn("downloadActive", payload)
 
     def test_downloading_hello_marks_the_download_active(self):
         loaded = LoadedModel()
-        loaded.state.start("medium")
+        loaded.state.start("parakeet-tdt-0.6b-v3")
         payload = build_hello_payload(loaded)
         self.assertEqual(payload["loadedStatus"], "not_installed")
         self.assertTrue(payload["downloadActive"])
@@ -46,12 +46,12 @@ class HelloPayloadTests(unittest.TestCase):
     def test_download_failure_reports_an_error_without_nulls(self):
         loaded = LoadedModel()
         loaded.engine = FakeEngine()
-        loaded.model_id = "base"
-        loaded.state.ready("base")
-        loaded.state.error = "large-v3-turbo failed to download"
+        loaded.model_id = "parakeet-tdt-0.6b-v3"
+        loaded.state.ready("parakeet-tdt-0.6b-v3")
+        loaded.state.error = "parakeet-tdt-0.6b-v3 failed to download"
         payload = build_hello_payload(loaded)
-        self.assertEqual(payload["loadedModelId"], "base")
-        self.assertEqual(payload["loadedError"], "large-v3-turbo failed to download")
+        self.assertEqual(payload["loadedModelId"], "parakeet-tdt-0.6b-v3")
+        self.assertEqual(payload["loadedError"], "parakeet-tdt-0.6b-v3 failed to download")
         self.assertNotIn(None, payload.values())
 
 

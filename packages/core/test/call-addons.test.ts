@@ -48,7 +48,9 @@ describe("scheduled call time helpers", () => {
 
 describe("transcription helpers", () => {
   it("accepts only allowlisted models", () => {
-    expect(isTranscriptionModelId("large-v3-turbo")).toBe(true);
+    expect(isTranscriptionModelId("parakeet-tdt-0.6b-v3")).toBe(true);
+    expect(isTranscriptionModelId("large-v3-turbo")).toBe(false);
+    expect(isTranscriptionModelId("base")).toBe(false);
     expect(isTranscriptionModelId("https://evil.example/model")).toBe(false);
     expect(isTranscriptionModelId("large-v3")).toBe(false);
   });

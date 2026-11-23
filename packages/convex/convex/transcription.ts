@@ -1,5 +1,6 @@
 import {
   clampRetentionDays,
+  DEFAULT_TRANSCRIPTION_MODEL_ID,
   hasPermission,
   isTranscriptionModelId,
   OPENROUTER_BASE_URL,
@@ -11,6 +12,7 @@ import {
   TRANSCRIPTION_MAX_SEGMENTS_PER_SESSION,
   TRANSCRIPTION_MODEL_IDS,
   TRANSCRIPTION_SERVICE_STALE_MS,
+  TRANSCRIPTION_SUMMARY_MAX_OUTPUT_CHARS,
   type TranscriptionProvider,
   transcriptionSpeakerKey,
 } from "@aulora/core";
@@ -41,21 +43,32 @@ import { enforceRateLimit, userRateLimitKey } from "./lib/rateLimit";
 import { openContent } from "./lib/sealed";
 import { sealString } from "./lib/sse";
 import {
+  cleanTitleText,
+  MAX_TITLE_CHARS,
+  sanitizeTitle,
+  validateEditedSummary,
+} from "./lib/summaryEndpoint";
+import {
   activeSessionForCall,
   authorizeTranscriptionSpeaker,
   beginTranscriptionFinalize,
+  canEditTranscriptSession,
   configView,
+  effectiveModelState,
   loadTranscriptionConfig,
   requireTranscriptionAddon,
   requireTranscriptionUser,
   retentionExpiry,
   sealSegment,
+  sealSegmentText,
   sealSummary,
+  sealTitle,
   segmentContent,
   summaryContent,
   TRANSCRIPTION_DOWNLOAD_STALE_MS,
   TRANSCRIPTION_FINALIZE_TOLERANCE_MS,
   TRANSCRIPTION_SPEAKER_LEFT_GRACE_MS,
+  titleContent,
   transcriberRuntimeReady,
   transcriptionEnabled,
   userHasTranscriptFlag,
@@ -101,12 +114,13 @@ export const status = query({
     const server = await ctx.db.query("server").first();
     const config = await loadTranscriptionConfig(ctx);
     await loadPermissionContext(ctx, userId);
+    const model = effectiveModelState(config);
     return {
       enabled: server?.settings.transcriptionEnabled === true,
-      modelId: config?.modelId ?? null,
-      modelStatus: config?.modelStatus ?? "not_installed",
-      modelProgress: config?.modelProgress ?? null,
-      ready: config?.modelStatus === "ready",
+      modelId: config === null ? null : model.modelId,
+      modelStatus: model.modelStatus,
+      modelProgress: model.modelProgress,
+      ready: model.modelStatus === "ready",
       // Whether the running container actually has an engine loaded, separate
       // from the owner's selected/downloaded model.
       runtimeReady: await transcriberRuntimeReady(ctx),
@@ -176,7 +190,7 @@ export const updateConfig = mutation({
           : args.apiKey.trim();
     if (existing === null) {
       const id = await ctx.db.insert("transcriptionConfig", {
-        modelId: "base",
+        modelId: DEFAULT_TRANSCRIPTION_MODEL_ID,
         modelStatus: "not_installed",
         provider,
         baseUrl,
@@ -300,7 +314,7 @@ export const start = mutation({
     }
     await requireCallSeat(ctx, call, userId);
     const config = await loadTranscriptionConfig(ctx);
-    if (config?.modelStatus !== "ready") {
+    if (effectiveModelState(config).modelStatus !== "ready") {
       throw new ConvexError("Download a speech model before starting transcription");
     }
     if (!(await transcriberServiceInstalled(ctx))) {
@@ -531,19 +545,23 @@ export const listSessions = query({
       .withIndex("by_started")
       .order("desc")
       .take(limit);
-    return rows.map((row) => ({
-      id: row._id,
-      callId: row.callId,
-      channelId: row.channelId ?? null,
-      startedBy: row.startedBy,
-      startedAt: row.startedAt,
-      endedAt: row.endedAt ?? null,
-      status: row.status,
-      summaryStatus: row.summaryStatus,
-      summaryConfigured: summaryConfigured(config),
-      segmentCount: row.segmentCount,
-      retentionExpiresAt: row.retentionExpiresAt ?? null,
-    }));
+    // One decrypt per row (at most TRANSCRIPTION_MAX_LIST_SESSIONS) for the title.
+    return await Promise.all(
+      rows.map(async (row) => ({
+        id: row._id,
+        callId: row.callId,
+        channelId: row.channelId ?? null,
+        startedBy: row.startedBy,
+        startedAt: row.startedAt,
+        endedAt: row.endedAt ?? null,
+        status: row.status,
+        summaryStatus: row.summaryStatus,
+        summaryConfigured: summaryConfigured(config),
+        segmentCount: row.segmentCount,
+        retentionExpiresAt: row.retentionExpiresAt ?? null,
+        title: await titleContent(row),
+      })),
+    );
   },
 });
 
@@ -552,7 +570,7 @@ export const getSession = query({
   args: { sessionId: v.id("transcriptionSessions") },
   handler: async (ctx, args) => {
     const { userId } = await requireAuth(ctx);
-    await requireTranscriptionUser(ctx, userId, Permission.ViewTranscripts);
+    const { permissions } = await requireTranscriptionUser(ctx, userId, Permission.ViewTranscripts);
     const session = await ctx.db.get(args.sessionId);
     if (session === null) {
       throw new ConvexError("Transcription session not found");
@@ -574,6 +592,10 @@ export const getSession = query({
       summaryError: session.summaryError ?? null,
       segmentCount: session.segmentCount,
       retentionExpiresAt: session.retentionExpiresAt ?? null,
+      title: await titleContent(session),
+      titleSource: session.titleSource ?? null,
+      summaryEditedAt: session.summaryEditedAt ?? null,
+      canEdit: canEditTranscriptSession(permissions, session, userId),
     };
   },
 });
@@ -615,12 +637,204 @@ export const listSegments = query({
         endMs: row.endMs,
         confidence: row.confidence ?? null,
         language: row.language ?? null,
+        edited: row.editedAt !== undefined,
       });
     }
     return {
       page,
       nextCursor: result.isDone ? null : result.continueCursor,
     };
+  },
+});
+
+/** Default and maximum number of rows `liveSegments` returns. */
+const LIVE_SEGMENTS_DEFAULT = 40;
+const LIVE_SEGMENTS_MAX = 80;
+
+/**
+ * The most recent segments of one session in chronological order, for the live
+ * in-call transcript. Bounded by a descending `take`, never a full read.
+ * Returns `null` when the session no longer exists.
+ */
+export const liveSegments = query({
+  args: { sessionId: v.id("transcriptionSessions"), limit: v.optional(v.number()) },
+  handler: async (ctx, args) => {
+    const { userId } = await requireAuth(ctx);
+    await requireTranscriptionUser(ctx, userId, Permission.ViewTranscripts);
+    const session = await ctx.db.get(args.sessionId);
+    if (session === null) {
+      return null;
+    }
+    const limit = Math.min(
+      Math.max(Math.floor(args.limit ?? LIVE_SEGMENTS_DEFAULT), 1),
+      LIVE_SEGMENTS_MAX,
+    );
+    const rows = await ctx.db
+      .query("transcriptSegments")
+      .withIndex("by_session_start", (q) => q.eq("sessionId", args.sessionId))
+      .order("desc")
+      .take(limit);
+    rows.reverse();
+    const segments = [];
+    for (const row of rows) {
+      const content = await segmentContent(row);
+      segments.push({
+        id: row._id,
+        seq: row.seq,
+        speakerKey: row.speakerKey,
+        speakerName: content.speakerName,
+        text: content.text,
+        startMs: row.startMs,
+        endMs: row.endMs,
+        edited: row.editedAt !== undefined,
+      });
+    }
+    return { status: session.status, segments };
+  },
+});
+
+/** Edits are cheap but not free (re-seal plus audit row); one user cannot spam them. */
+const EDIT_LIMIT = 60;
+const EDIT_WINDOW_MS = 60_000;
+
+/** Shared gate for every transcript edit; returns the caller and the session. */
+async function requireTranscriptEditor(
+  ctx: MutationCtx,
+  sessionId: Id<"transcriptionSessions">,
+): Promise<{ userId: string; session: Doc<"transcriptionSessions"> }> {
+  const { userId } = await requireAuth(ctx);
+  const { permissions } = await requireTranscriptionUser(ctx, userId, Permission.ViewTranscripts);
+  await assertMayParticipate(ctx, userId);
+  const session = await ctx.db.get(sessionId);
+  if (session === null) {
+    throw new ConvexError("Transcription session not found");
+  }
+  if (!canEditTranscriptSession(permissions, session, userId)) {
+    throw new ConvexError("Missing transcript permission");
+  }
+  await enforceRateLimit(ctx, {
+    key: userRateLimitKey("transcription-edit", userId),
+    limit: EDIT_LIMIT,
+    windowMs: EDIT_WINDOW_MS,
+  });
+  return { userId, session };
+}
+
+/** Renames a session. An empty title clears it so the next AI summary may set one. */
+export const renameSession = mutation({
+  args: { sessionId: v.id("transcriptionSessions"), title: v.string() },
+  handler: async (ctx, args) => {
+    const { userId, session } = await requireTranscriptEditor(ctx, args.sessionId);
+    if (args.title.length > 1_000) {
+      throw new ConvexError("The title is too long");
+    }
+    const title = cleanTitleText(args.title);
+    if (title.length > MAX_TITLE_CHARS) {
+      throw new ConvexError(`A title can have at most ${MAX_TITLE_CHARS} characters`);
+    }
+    if (title.length === 0) {
+      await ctx.db.patch(session._id, { titleCiphertext: undefined, titleSource: undefined });
+    } else {
+      await ctx.db.patch(session._id, {
+        titleCiphertext: await sealTitle(session._id, title),
+        titleSource: "user",
+      });
+    }
+    await writeAudit(ctx, {
+      actorId: userId,
+      action: "transcription.rename",
+      targetId: session._id,
+    });
+    return null;
+  },
+});
+
+const summaryEditShape = v.object({
+  overview: v.string(),
+  keyPoints: v.array(v.string()),
+  decisions: v.array(v.string()),
+  actionItems: v.array(v.object({ text: v.string(), owner: v.union(v.string(), v.null()) })),
+  speakerHighlights: v.array(v.object({ speaker: v.string(), text: v.string() })),
+});
+
+/** Replaces a summary with a hand-edited one, keeping its stored title and language. */
+export const updateSummary = mutation({
+  args: { sessionId: v.id("transcriptionSessions"), summary: summaryEditShape },
+  handler: async (ctx, args) => {
+    const { userId, session } = await requireTranscriptEditor(ctx, args.sessionId);
+    if (session.status === "active" || session.status === "ending") {
+      throw new ConvexError("The call is still being transcribed");
+    }
+    if (session.summaryStatus === "pending") {
+      throw new ConvexError("A summary is being written; try again when it finishes");
+    }
+    const checked = validateEditedSummary(args.summary);
+    if (!checked.ok) {
+      throw new ConvexError(checked.error);
+    }
+    let language: string | null = null;
+    let title = "";
+    const existing = await summaryContent(session);
+    if (existing !== null) {
+      try {
+        const parsed: unknown = JSON.parse(existing);
+        if (typeof parsed === "object" && parsed !== null) {
+          const record = parsed as Record<string, unknown>;
+          language = typeof record.language === "string" ? record.language : null;
+          title = typeof record.title === "string" ? record.title : "";
+        }
+      } catch {
+        // An unreadable stored summary has nothing to preserve.
+      }
+    }
+    const json = JSON.stringify({ title, ...checked.value, language });
+    if (json.length > TRANSCRIPTION_SUMMARY_MAX_OUTPUT_CHARS) {
+      throw new ConvexError("The summary is too long");
+    }
+    const now = Date.now();
+    await ctx.db.patch(session._id, {
+      summaryCiphertext: await sealSummary(session._id, json),
+      summaryStatus: "ready",
+      summaryError: undefined,
+      summaryEditedAt: now,
+      summaryEditedBy: userId,
+    });
+    await writeAudit(ctx, {
+      actorId: userId,
+      action: "transcription.editSummary",
+      targetId: session._id,
+    });
+    return null;
+  },
+});
+
+/** Corrects one transcript line's text. Allowed in any session status. */
+export const updateSegment = mutation({
+  args: { segmentId: v.id("transcriptSegments"), text: v.string() },
+  handler: async (ctx, args) => {
+    const segment = await ctx.db.get(args.segmentId);
+    if (segment === null) {
+      throw new ConvexError("Transcript line not found");
+    }
+    const { userId } = await requireTranscriptEditor(ctx, segment.sessionId);
+    const text = args.text.trim();
+    if (text.length === 0 || text.length > TRANSCRIPTION_MAX_SEGMENT_CHARS) {
+      throw new ConvexError(
+        `A line must be between 1 and ${TRANSCRIPTION_MAX_SEGMENT_CHARS} characters`,
+      );
+    }
+    await ctx.db.patch(segment._id, {
+      textCiphertext: await sealSegmentText(segment._id, text),
+      editedAt: Date.now(),
+      editedBy: userId,
+    });
+    await writeAudit(ctx, {
+      actorId: userId,
+      action: "transcription.editSegment",
+      targetId: segment._id,
+      meta: JSON.stringify({ sessionId: segment.sessionId }),
+    });
+    return null;
   },
 });
 
@@ -1155,12 +1369,13 @@ export const recordServiceHello = internalMutation({
     // Once the download has clearly stopped, release the Download button. A
     // hello that proves the configured model is actually loaded skips this and
     // reaches the ready re-sync below.
+    const model = effectiveModelState(config);
     const loadedMatchesConfig =
-      args.loadedStatus === "ready" && args.loadedModelId === config.modelId;
+      args.loadedStatus === "ready" && args.loadedModelId === model.modelId;
     if (
       !loadedMatchesConfig &&
       args.downloadActive !== true &&
-      config.modelStatus === "downloading" &&
+      model.modelStatus === "downloading" &&
       (config.modelUpdatedAt === undefined ||
         now - config.modelUpdatedAt >= TRANSCRIPTION_DOWNLOAD_STALE_MS)
     ) {
@@ -1182,15 +1397,17 @@ export const recordServiceHello = internalMutation({
     // Never silently replace the owner's model. A fresh `not_installed` config
     // may adopt the restored model; otherwise only the same model may have its
     // status/error repaired.
-    const isSameModel = config.modelId === args.loadedModelId;
-    if (config.modelStatus !== "not_installed" && !isSameModel) {
+    // A legacy (non-allowlisted) stored id reads as not installed, so a loaded
+    // allowlisted model is adopted over it.
+    const isSameModel = model.modelId === args.loadedModelId;
+    if (model.modelStatus !== "not_installed" && !isSameModel) {
       return null;
     }
     const nextError = args.loadedError?.slice(0, 300);
     if (
-      config.modelId === args.loadedModelId &&
-      config.modelStatus === "ready" &&
-      config.modelError === nextError
+      isSameModel &&
+      model.modelStatus === "ready" &&
+      (model.modelError ?? undefined) === nextError
     ) {
       return null;
     }
@@ -1383,6 +1600,19 @@ export const summaryInput = internalQuery({
   },
 });
 
+/** The sanitized title inside stored summary JSON, or "" when there is none. */
+function titleFromSummaryJson(json: string): string {
+  try {
+    const parsed: unknown = JSON.parse(json);
+    if (typeof parsed === "object" && parsed !== null) {
+      return sanitizeTitle((parsed as Record<string, unknown>).title);
+    }
+  } catch {
+    // Not JSON: no title.
+  }
+  return "";
+}
+
 /** Marks a summary ready or failed. Internal, called by the action. */
 export const finishSummary = internalMutation({
   args: {
@@ -1402,11 +1632,22 @@ export const finishSummary = internalMutation({
     }
     const config = await loadTranscriptionConfig(ctx);
     const now = Date.now();
+    // A fresh AI summary supplies the title unless a member renamed the call.
+    const summaryTitle =
+      args.status === "ready" && args.json !== undefined ? titleFromSummaryJson(args.json) : "";
+    const setTitle = summaryTitle.length > 0 && session.titleSource !== "user";
     await ctx.db.patch(session._id, {
       summaryStatus: args.status,
       summaryAttemptId: undefined,
       ...(args.json !== undefined
-        ? { summaryCiphertext: await sealSummary(session._id, args.json) }
+        ? {
+            summaryCiphertext: await sealSummary(session._id, args.json),
+            summaryEditedAt: undefined,
+            summaryEditedBy: undefined,
+          }
+        : {}),
+      ...(setTitle
+        ? { titleCiphertext: await sealTitle(session._id, summaryTitle), titleSource: "summary" }
         : {}),
       ...(args.model !== undefined ? { summaryModel: args.model } : {}),
       summaryAt: now,

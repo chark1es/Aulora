@@ -22,7 +22,16 @@ import {
 } from "@aulora/core";
 import { ConfirmDialog, cn, EmptyState, Icon, Spinner } from "@aulora/ui-web";
 import { useConvex, useMutation, usePaginatedQuery, useQuery } from "convex/react";
-import { lazy, Suspense, useCallback, useEffect, useMemo, useRef, useState } from "react";
+import {
+  lazy,
+  Suspense,
+  useCallback,
+  useEffect,
+  useMemo,
+  useRef,
+  useState,
+  useSyncExternalStore,
+} from "react";
 import { api } from "../../../../../packages/convex/convex/_generated/api";
 import { DEFAULT_MAX_UPLOAD_BYTES, uploadFiles } from "../../lib/attachments";
 import { selectEagerChannelIds } from "../../lib/channel-priority";
@@ -31,6 +40,11 @@ import { isDesktop } from "../../lib/desktop";
 import { publicOriginOrNull, publicUrl } from "../../lib/public-origin";
 import { sendThreadReply } from "../../lib/send-thread-reply";
 import { playSound } from "../../lib/sounds";
+import {
+  consumeTranscriptRequest,
+  getTranscriptNavigationSnapshot,
+  subscribeTranscriptNavigation,
+} from "../../lib/transcription/transcript-navigation";
 import { useAccountScope } from "../../lib/use-account-scope";
 import { useChannelSession } from "../../lib/use-channel";
 import {
@@ -1434,6 +1448,32 @@ function ChatViewContent({
     historySeamId,
     resetHistoryWindow,
   ]);
+
+  // "Open this transcript" requests (the call-ended toast, the live panel):
+  // switch to the Transcripts surface the same way the sidebar entry does. The
+  // surface itself selects the session and consumes the request.
+  const transcriptRequest = useSyncExternalStore(
+    subscribeTranscriptNavigation,
+    getTranscriptNavigationSnapshot,
+    () => null,
+  );
+  const transcriptsReachable = canViewTranscripts(permissions, voice.addons.transcription);
+  useEffect(() => {
+    if (transcriptRequest === null) {
+      return;
+    }
+    if (!transcriptsReachable) {
+      consumeTranscriptRequest(transcriptRequest);
+      return;
+    }
+    navigateFromSettings(() => {
+      setMainView("transcripts");
+      setMobilePane("chat");
+      setThreadRoot(undefined);
+      setAdminOpen(false);
+      setUserSettingsOpen(false);
+    });
+  }, [transcriptRequest, transcriptsReachable, navigateFromSettings]);
 
   if (!ready || runtime === undefined) {
     return (

@@ -7,6 +7,7 @@ import { CallMediaNotice } from "./CallMediaNotice";
 import { CallGrid } from "./CallParticipant";
 import { useCallDuration } from "./hooks";
 import { type CallIdentity, UNKNOWN_IDENTITY } from "./identity";
+import { CallBodyWithTranscript, LiveTranscriptToggle } from "./LiveTranscriptPanel";
 import { PictureInPictureButton } from "./PictureInPictureButton";
 import { TranscriptionBadge } from "./TranscriptionIndicator";
 import { TranscriptionNotice } from "./TranscriptionNotice";
@@ -49,7 +50,11 @@ export function CallStage({
       <TranscriptionNotice />
       <CallAloneNotice />
 
-      <div className="min-h-0 flex-1 p-3">
+      <CallBodyWithTranscript
+        onOpenFull={() => {
+          voice.setView("dock");
+        }}
+      >
         <CallGrid
           participants={call.participants}
           streams={voice.remoteStreams}
@@ -63,7 +68,7 @@ export function CallStage({
           attachVideo={voice.attachRemoteVideo}
           className="h-full"
         />
-      </div>
+      </CallBodyWithTranscript>
 
       <CallStageFooter call={call} inCall={inCall} voice={voice} />
     </div>
@@ -100,6 +105,7 @@ function CallStageHeader({
         </p>
       </div>
       {call.transcribing === true && <TranscriptionBadge />}
+      <LiveTranscriptToggle />
       {voice.canStream && (
         <ShareButton
           sharingScreen={voice.local.sharingScreen}

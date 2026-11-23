@@ -1,6 +1,8 @@
 import {
   clampRetentionDays,
+  DEFAULT_TRANSCRIPTION_MODEL_ID,
   hasPermission,
+  isTranscriptionModelId,
   Permission,
   TRANSCRIPTION_SERVICE_STALE_MS,
 } from "@aulora/core";
@@ -95,13 +97,51 @@ export async function userHasTranscriptFlag(
   return hasPermission(workspacePermissions(context), flag);
 }
 
+/** The model state every reader should use for a stored config row. */
+export interface EffectiveModelState {
+  readonly modelId: string;
+  readonly modelStatus: Doc<"transcriptionConfig">["modelStatus"];
+  readonly modelProgress: number | null;
+  readonly modelError: string | null;
+}
+
+/**
+ * Normalises the stored model fields. A config whose `modelId` is not an
+ * allowlisted id (for example a legacy faster-whisper id from before the
+ * Parakeet transcriber) has no usable model, whatever status it recorded, so it
+ * reads as the default model, not installed. The row itself is repaired the next
+ * time the transcriber reports or the owner downloads.
+ */
+export function effectiveModelState(
+  config: Pick<
+    Doc<"transcriptionConfig">,
+    "modelId" | "modelStatus" | "modelProgress" | "modelError"
+  > | null,
+): EffectiveModelState {
+  if (config === null || !isTranscriptionModelId(config.modelId)) {
+    return {
+      modelId: DEFAULT_TRANSCRIPTION_MODEL_ID,
+      modelStatus: "not_installed",
+      modelProgress: null,
+      modelError: null,
+    };
+  }
+  return {
+    modelId: config.modelId,
+    modelStatus: config.modelStatus,
+    modelProgress: config.modelProgress ?? null,
+    modelError: config.modelError ?? null,
+  };
+}
+
 /** Owner-facing config view. Never includes the API key. */
 export function configView(config: Doc<"transcriptionConfig"> | null): TranscriptionConfigView {
+  const model = effectiveModelState(config);
   return {
-    modelId: config?.modelId ?? "base",
-    modelStatus: config?.modelStatus ?? "not_installed",
-    modelProgress: config?.modelProgress ?? null,
-    modelError: config?.modelError ?? null,
+    modelId: model.modelId,
+    modelStatus: model.modelStatus,
+    modelProgress: model.modelProgress,
+    modelError: model.modelError,
     provider: config?.provider ?? "openrouter",
     baseUrl: config?.baseUrl ?? "https://openrouter.ai/api/v1",
     model: config?.model ?? "",
@@ -150,6 +190,49 @@ export async function sealSegment(
     speakerNameCiphertext: await sealString(context, speakerName),
     textCiphertext: await sealString(context, text),
   };
+}
+
+/** Opens a session's sealed title, or `null` when there is none. */
+export async function titleContent(session: Doc<"transcriptionSessions">): Promise<string | null> {
+  if (session.titleCiphertext === undefined) {
+    return null;
+  }
+  return await openContent(
+    { scope: "transcription.title", recordId: session._id },
+    session.titleCiphertext,
+  );
+}
+
+/** Seals a session title for storage. */
+export async function sealTitle(
+  sessionId: Id<"transcriptionSessions">,
+  title: string,
+): Promise<string> {
+  return await sealString({ scope: "transcription.title", recordId: sessionId }, title);
+}
+
+/** Re-seals only a segment's text (the speaker snapshot is left untouched). */
+export async function sealSegmentText(
+  segmentId: Id<"transcriptSegments">,
+  text: string,
+): Promise<string> {
+  return await sealString({ scope: "transcription.segment", recordId: segmentId }, text);
+}
+
+/**
+ * Who may edit a session's title, summary and segment text: a viewer who also
+ * manages transcription or started this session. Callers still need
+ * `assertMayParticipate` for writes.
+ */
+export function canEditTranscriptSession(
+  permissions: bigint,
+  session: Pick<Doc<"transcriptionSessions">, "startedBy">,
+  userId: string,
+): boolean {
+  return (
+    hasPermission(permissions, Permission.ViewTranscripts) &&
+    (hasPermission(permissions, Permission.ManageTranscription) || session.startedBy === userId)
+  );
 }
 
 /** Seals a summary for storage. */

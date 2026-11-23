@@ -1136,6 +1136,13 @@ export default defineSchema({
       v.literal("error"),
     ),
     summaryCiphertext: v.optional(v.string()),
+    /** Sealed call title (scope `transcription.title`). */
+    titleCiphertext: v.optional(v.string()),
+    /** Who set the title: the AI summary, or a user rename (which AI never overwrites). */
+    titleSource: v.optional(v.union(v.literal("summary"), v.literal("user"))),
+    /** Set when a member hand-edits the summary; cleared when a fresh AI summary lands. */
+    summaryEditedAt: v.optional(v.number()),
+    summaryEditedBy: v.optional(v.string()),
     summaryModel: v.optional(v.string()),
     summaryAt: v.optional(v.number()),
     summaryError: v.optional(v.string()),
@@ -1205,6 +1212,9 @@ export default defineSchema({
     endMs: v.number(),
     confidence: v.optional(v.number()),
     language: v.optional(v.string()),
+    /** Set when a member corrected the transcribed text. */
+    editedAt: v.optional(v.number()),
+    editedBy: v.optional(v.string()),
   })
     .index("by_session_seq", ["sessionId", "seq"])
     // Transcript order: playback time first, then `_creationTime` tie-break.

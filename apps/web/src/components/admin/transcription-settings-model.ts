@@ -32,11 +32,10 @@ export interface ConfigSnapshot {
 }
 
 export const MODEL_DESCRIPTIONS: ReadonlyMap<string, string> = new Map([
-  ["tiny", "Fastest and lightest. Fine for clear speech, misses more."],
-  ["base", "A good default for most servers. Quick on a CPU."],
-  ["small", "Noticeably more accurate. Uses more memory and time."],
-  ["medium", "Accurate for accents and noise. Needs a capable server."],
-  ["large-v3-turbo", "Best accuracy. Wants a lot of memory, ideally a GPU."],
+  [
+    "parakeet-tdt-0.6b-v3",
+    "Parakeet TDT 0.6B v3 — accurate multilingual speech recognition with punctuation (25 European languages). Runs on CPU; needs about 1.5 GB of memory and a ~650 MB download.",
+  ],
 ]);
 
 export function draftFromConfig(config: ConfigSnapshot): TranscriptionDraft {

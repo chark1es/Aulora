@@ -50,7 +50,7 @@ async function patchSettings(t: Test, settings: Record<string, unknown>) {
 async function readyConfig(t: Test) {
   await t.run(async (ctx) => {
     await ctx.db.insert("transcriptionConfig", {
-      modelId: "base",
+      modelId: "parakeet-tdt-0.6b-v3",
       modelStatus: "ready",
       provider: "openrouter",
       baseUrl: "https://openrouter.ai/api/v1",
@@ -64,7 +64,7 @@ async function readyConfig(t: Test) {
       key: "service",
       serviceSeenAt: Date.now(),
       runtimeReady: true,
-      runtimeModelId: "base",
+      runtimeModelId: "parakeet-tdt-0.6b-v3",
     });
   });
 }
@@ -127,7 +127,7 @@ describe("transcriber HTTP null tolerance", () => {
     await seedWorkspace(t, { members: [{ userId: "user-1" }] });
     await t.run(async (ctx) => {
       await ctx.db.insert("transcriptionConfig", {
-        modelId: "base",
+        modelId: "parakeet-tdt-0.6b-v3",
         modelStatus: "ready",
         modelProgress: 100,
         provider: "openrouter",
@@ -140,7 +140,7 @@ describe("transcriber HTTP null tolerance", () => {
       });
     });
     const response = await postTranscriber(t, "/transcription/model", {
-      modelId: "small",
+      modelId: "parakeet-tdt-0.6b-v3",
       status: "downloading",
       progress: null,
       error: null,
@@ -210,7 +210,7 @@ describe("transcriber HTTP null tolerance", () => {
     await seedWorkspace(t, { members: [{ userId: "user-1" }] });
     await t.run(async (ctx) => {
       await ctx.db.insert("transcriptionConfig", {
-        modelId: "small",
+        modelId: "parakeet-tdt-0.6b-v3",
         modelStatus: "downloading",
         modelProgress: undefined,
         modelUpdatedAt: Date.now() - 2 * 60_000,

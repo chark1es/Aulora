@@ -6,6 +6,7 @@ import { requireAuth } from "./lib/auth";
 import { assertMayParticipate } from "./lib/bans";
 import { requireWorkspacePermission } from "./lib/permissions";
 import {
+  effectiveModelState,
   loadTranscriptionConfig,
   scheduleStopAllActive,
   transcriberRuntimeReady,
@@ -25,14 +26,15 @@ export const status = query({
     await requireAuth(ctx);
     const server = await ctx.db.query("server").first();
     const config = await loadTranscriptionConfig(ctx);
+    const model = effectiveModelState(config);
     return {
       transcription: server?.settings.transcriptionEnabled === true,
       guestCalls: server?.settings.guestCallsEnabled === true,
       scheduledCalls: server?.settings.scheduledCallsEnabled === true,
       transcriptionModel: {
-        id: config?.modelId ?? null,
-        status: config?.modelStatus ?? "not_installed",
-        progress: config?.modelProgress ?? null,
+        id: config === null ? null : model.modelId,
+        status: model.modelStatus,
+        progress: model.modelProgress,
         // True only while the running container actually has an engine.
         runtimeReady: await transcriberRuntimeReady(ctx),
       },

@@ -3,10 +3,12 @@
 # Transcription service (starts by default, models download on demand).
 #
 # It receives 16 kHz mono PCM16 frames over a WebSocket from each participant's
-# own client, runs faster-whisper on CPU with int8 and its built-in VAD, and
-# posts finished speaker-labelled segments to Convex over the shared-secret
-# ingest route. The image holds no model: the owner downloads one allowlisted
-# model into the `transcriber-models` volume from Workspace settings.
+# own client, runs NVIDIA Parakeet TDT 0.6B v3 (ONNX int8, via onnx-asr) on CPU
+# over utterance-aware windows, and posts finished speaker-labelled segments to
+# Convex over the shared-secret ingest route. The image holds no model: the
+# owner downloads the allowlisted model (about 650 MB, 1-1.5 GB RAM when
+# loaded) into the `transcriber-models` volume from Workspace settings. At run
+# time the service writes only to that volume (model files, `.selected`).
 FROM python:3.12-slim
 
 
@@ -15,16 +17,10 @@ ENV PYTHONUNBUFFERED=1 \
     PIP_NO_CACHE_DIR=1 \
     MODELS_DIR=/models \
     HF_HOME=/models/hf-cache \
-    XDG_CACHE_HOME=/models/hf-cache \
-    WHISPER_DEVICE=cpu \
-    WHISPER_COMPUTE_TYPE=int8
+    XDG_CACHE_HOME=/models/hf-cache
 
-# ctranslate2 (faster-whisper's backend) needs the GNU OpenMP runtime, which
-# python:3.12-slim does not ship.
-RUN apt-get update \
-  && apt-get install -y --no-install-recommends libgomp1 \
-  && rm -rf /var/lib/apt/lists/*
-
+# No system packages are needed: the onnxruntime CPU wheel brings its own
+# thread pool (it does not link libgomp), and numpy wheels are self-contained.
 RUN groupadd --system --gid 10002 transcriber \
   && useradd --system --uid 10002 --gid transcriber \
     --home-dir /home/transcriber --create-home transcriber \
@@ -36,7 +32,7 @@ COPY infra/transcriber/requirements.txt ./requirements.txt
 # Fail the build, not the first model download, when the model-loading stack
 # cannot import (for example a dependency dropped by an upstream release).
 RUN pip install --no-cache-dir -r requirements.txt \
-  && python -c "import faster_whisper, huggingface_hub, requests"
+  && python -c "import onnx_asr, huggingface_hub, numpy"
 
 COPY --chown=transcriber:transcriber infra/transcriber/app ./app
 

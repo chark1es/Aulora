@@ -7,14 +7,15 @@
  * with Convex, never with a client.
  */
 
-/** Whisper model ids the transcriber is allowed to download. */
-export const TRANSCRIPTION_MODEL_IDS = [
-  "tiny",
-  "base",
-  "small",
-  "medium",
-  "large-v3-turbo",
-] as const;
+/**
+ * Speech model ids the transcriber is allowed to download. The transcriber runs
+ * NVIDIA Parakeet TDT 0.6B v3; installs that stored an older faster-whisper id
+ * ("tiny", "base", ...) are treated as having no model installed.
+ */
+export const TRANSCRIPTION_MODEL_IDS = ["parakeet-tdt-0.6b-v3"] as const;
+
+/** The model a new or upgraded install uses. */
+export const DEFAULT_TRANSCRIPTION_MODEL_ID = "parakeet-tdt-0.6b-v3";
 
 export type TranscriptionModelId = (typeof TRANSCRIPTION_MODEL_IDS)[number];
 
@@ -76,6 +77,8 @@ export const TRANSCRIPTION_TEST_TIMEOUT_MS = 15_000;
 
 /** Structured summary contract returned to clients (all fields sanitized). */
 export interface TranscriptSummary {
+  /** Short AI-written call title; empty when none was produced. */
+  readonly title: string;
   readonly overview: string;
   readonly keyPoints: readonly string[];
   readonly decisions: readonly string[];
@@ -92,6 +95,7 @@ export interface TranscriptSummary {
 
 /** Empty summary used when the model returns nothing usable. */
 export const EMPTY_TRANSCRIPT_SUMMARY: TranscriptSummary = {
+  title: "",
   overview: "",
   keyPoints: [],
   decisions: [],

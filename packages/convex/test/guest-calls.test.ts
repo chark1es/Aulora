@@ -412,7 +412,7 @@ describe("guest lobby and isolation", () => {
       await patchSettings(t, { transcriptionEnabled: true });
       await t.run(async (ctx) => {
         await ctx.db.insert("transcriptionConfig", {
-          modelId: "base",
+          modelId: "parakeet-tdt-0.6b-v3",
           modelStatus: "ready",
           provider: "openrouter",
           baseUrl: "https://openrouter.ai/api/v1",

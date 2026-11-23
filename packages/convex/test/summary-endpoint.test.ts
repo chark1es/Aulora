@@ -184,6 +184,23 @@ describe("summary prompt and parsing", () => {
     expect(long.overview.length).toBeLessThan(3_000);
   });
 
+  it("sanitizes the title to a single bounded line and tolerates a missing one", () => {
+    const titled = parseSummary(
+      JSON.stringify({ title: `  Launch\n  plan\u0007 ${"x".repeat(200)}` }),
+    );
+    expect(titled.title.startsWith("Launch plan ")).toBe(true);
+    expect(titled.title.length).toBeLessThanOrEqual(120);
+    expect(titled.title).toBe(titled.title.replace(/\s+/g, " "));
+    expect(titled.title.includes("\u0007")).toBe(false);
+    expect(parseSummary(JSON.stringify({ overview: "x" })).title).toBe("");
+    expect(parseSummary(JSON.stringify({ title: 5 })).title).toBe("");
+  });
+
+  it("asks the model for a title in the summary prompt", () => {
+    const [system] = buildSummaryMessages({ transcript: "hi", language: null, style: null });
+    expect(system?.content).toContain('"title":string');
+  });
+
   it("falls back to sanitized text when the model returns non-JSON", () => {
     const summary = parseSummary("  not json at all  ");
     expect(summary.overview).toBe("not json at all");

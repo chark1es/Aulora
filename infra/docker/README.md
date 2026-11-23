@@ -90,13 +90,17 @@ Kanban and Notes are optional addons that ship in the web and setup images and u
 The `transcriber` container starts with the stack, without downloading any model.
 Run `setup` (or set `TRANSCRIBER_TOKEN`) **before** starting it,
 because the same token authenticates model downloads, segment ingest and the
-heartbeat. The owner then downloads an allowlisted faster-whisper model into the
-`transcriber-models` volume from Workspace settings → Addons; no model is baked
-into the image. Restarting the container reloads the cached model from the
-Hugging Face cache layout.
+heartbeat. The owner then downloads the allowlisted NVIDIA Parakeet TDT 0.6B v3 model
+(`parakeet-tdt-0.6b-v3`, 25 European languages, with punctuation and
+capitalization) into the `transcriber-models` volume from Workspace settings →
+Addons; no model is baked into the image. The int8 download is about 650 MB and
+the loaded model needs roughly 1-1.5 GB of RAM, so keep
+`TRANSCRIBER_MEMORY_LIMIT` at 2g or more. Restarting the container reloads the
+downloaded model from the volume, and removes the faster-whisper weights left by
+earlier releases.
 
-The default image runs on CPU int8. A GPU host can override `WHISPER_DEVICE` and
-`WHISPER_COMPUTE_TYPE` and must expose the GPU to the container. The service is
+The image runs on CPU only (ONNX Runtime int8); `TRANSCRIBER_THREADS` optionally
+caps its threads. The service is
 non-root, read-only, and shares only the `transcription` network with Convex and
 the web gateway. Trust model: the transcriber sees call audio; the configured
 summary endpoint receives transcript text; audio is processed in memory and not

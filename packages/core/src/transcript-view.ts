@@ -99,6 +99,7 @@ export function parseTranscriptSummary(raw: string | null | undefined): Transcri
     : [];
   const language = cleanText(parsed.language, 20);
   const summary: TranscriptSummary = {
+    title: cleanText(parsed.title, 120).replace(/\s+/g, " "),
     overview: cleanText(parsed.overview, TRANSCRIPTION_SUMMARY_MAX_OUTPUT_CHARS),
     keyPoints: stringList(parsed.keyPoints),
     decisions: stringList(parsed.decisions),

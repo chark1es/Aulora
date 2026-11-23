@@ -37,7 +37,12 @@ from .protocol import (
     CLOSE_REPLACED,
     CLOSE_TOO_MANY_STREAMS,
 )
-from .restore import record_download_failure, restore_loaded_model, write_selected_model
+from .restore import (
+    record_download_failure,
+    remove_legacy_whisper_cache,
+    restore_loaded_model,
+    write_selected_model,
+)
 from .segments import SegmentStream
 from .session import serve_stream
 from .streams import (
@@ -273,8 +278,9 @@ async def transcribe(websocket: WebSocket) -> None:
 
 @app.on_event("startup")
 async def load_existing_model() -> None:
-    """Pick up a model already in the Hugging Face cache after a restart."""
+    """Pick up a model already in the models volume after a restart."""
     asyncio.create_task(heartbeat_loop())
+    await asyncio.to_thread(remove_legacy_whisper_cache, MODELS_DIR)
     model_id = await asyncio.to_thread(
         restore_loaded_model,
         loaded,
