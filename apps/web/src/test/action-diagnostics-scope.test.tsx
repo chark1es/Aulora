@@ -1,5 +1,6 @@
 import { readFileSync } from "node:fs";
 import { resolve } from "node:path";
+import { Script } from "node:vm";
 import { activateProfileInStore, debugLog, type ProfileStore, userFacingError } from "@aulora/core";
 import { act, renderHook } from "@testing-library/react";
 import { useCallback } from "react";
@@ -69,9 +70,14 @@ function category(scope: ReturnType<typeof useAccountScope>, mutate: () => Promi
     setCategoryError: vi.fn(),
     setCategoryBusy: vi.fn(),
   };
-  return new Function(...Object.keys(bindings), `${code}; return submitCategory;`)(
-    ...Object.values(bindings),
-  ) as (name: string) => Promise<void>;
+  // Only checked-in controller source is executed; dependencies are explicit.
+  return new Script(
+    `${code}
+submitCategory;`,
+    {
+      filename: "category-controller.test.js",
+    },
+  ).runInNewContext(bindings) as (name: string) => Promise<void>;
 }
 
 it("drops an old category failure after the shell unmounts", async () => {

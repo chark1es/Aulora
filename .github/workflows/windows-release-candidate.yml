@@ -19,12 +19,10 @@ jobs:
       RELEASE_VERSION: ${{ inputs.version }}
     steps:
       - uses: actions/checkout@v7
-      - uses: oven-sh/setup-bun@0c5077e51419868618aeaa5fe8019c62421857d6 # v2.2.0
         with:
-          bun-version: 1.4.4
-      - uses: actions/setup-node@v7
-        with:
-          node-version: 22.23.4
+          persist-credentials: false
+      # Pinned Bun and Node, cached downloads, and `bun install --frozen-lockfile`.
+      - uses: ./.github/actions/setup-js
       - uses: dtolnay/rust-toolchain@89b12181fb390509a0842a86cc55eeb8eb928c1d # stable
         with:
           toolchain: stable
@@ -32,7 +30,6 @@ jobs:
       - uses: swatinem/rust-cache@6323deb102c322ba6fcbdcafc7e3dddab59af2b6 # v2.9.2
         with:
           workspaces: "apps/desktop/src-tauri -> target"
-      - run: bun install --frozen-lockfile
       - name: Check configuration and release version
         working-directory: apps/desktop
         run: |

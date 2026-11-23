@@ -3,9 +3,10 @@
 # Check for and apply an Aulora workspace update.
 #
 # Runs on the host, in a git checkout. It does not touch .env or named volumes.
-# A newer release is applied by fast-forwarding to its tag and running deploy.sh.
-# If the checkout already contains that release but the containers were not
-# rebuilt, it only redeploys.
+# A newer release is applied by fast-forwarding to its tag (a detached HEAD at
+# the tag is fine) and running deploy.sh, which pulls that release's images from
+# ghcr.io. If the checkout already contains that release but the containers were
+# not updated, it only redeploys.
 #
 #   ./update.sh                 # check; apply when AULORA_AUTO_UPDATE=true
 #   ./update.sh --check         # print the plan and change nothing
@@ -110,7 +111,7 @@ apply_plan() {
   fi
   bun "$CLI" mark --file "$STATUS" --state applying
   publish_status "$STATUS"
-  log "rebuilding and redeploying"
+  log "deploying the release"
   if ! "$DOCKER_DIR/deploy.sh"; then
     bun "$CLI" mark --file "$STATUS" --state failed --error "deploy.sh failed"
     publish_status "$STATUS"

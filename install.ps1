@@ -2,10 +2,12 @@
 #
 #   pwsh ./install.ps1 [options]
 #
-# Run it from a checkout of the stable "release" branch. It checks Docker,
-# writes infra/docker/.env (reusing an existing one), builds and starts the
-# Compose stack, runs first-run setup, and prints the URL. It is idempotent:
-# re-running reuses .env and is a no-op for data.
+# Run it from a checkout of a release tag (vX.Y.Z). On any other ref with a
+# clean tree it first checks out the newest published release and re-runs
+# itself. It checks Docker, writes infra/docker/.env (reusing an existing one),
+# pulls the release images from ghcr.io (a development checkout builds them
+# instead), starts the Compose stack, runs first-run setup, and prints the URL.
+# It is idempotent: re-running reuses .env and is a no-op for data.
 #
 # Options (or the matching AULORA_* environment variable):
 #   -Name <name>        workspace name            (AULORA_WORKSPACE_NAME)
@@ -17,7 +19,8 @@
 #   -Backups            also start the nightly backup runner
 #   -NoStart            write .env and stop before docker compose
 #   -DryRun             print the plan; change nothing
-#   -AllowAnyBranch     install from a non-release branch (AULORA_ALLOW_ANY_BRANCH)
+#   -AllowAnyBranch     install this checkout as is, even if it is not a release
+#                       tag; builds images locally (AULORA_ALLOW_ANY_BRANCH)
 #   -Help
 
 [CmdletBinding()]
@@ -37,6 +40,7 @@ param(
 )
 
 $ErrorActionPreference = "Stop"
+$ScriptParameters = $PSBoundParameters
 
 $AllowAny = $AllowAnyBranch -or ($env:AULORA_ALLOW_ANY_BRANCH -match '^(1|true|yes|on)$')
 
@@ -45,19 +49,71 @@ function Write-InstallError([string]$Message) { Write-Error "[install] $Message"
 function Get-Slug([string]$Value) {
   return ($Value.ToLower() -replace "[^a-z0-9]+", "-").Trim("-")
 }
-function Test-InstallBranch {
+$StableTagPattern = '^v(0|[1-9]\d*)\.(0|[1-9]\d*)\.(0|[1-9]\d*)$'
+function Get-HeadStableTag {
+  $tags = @(& git -C $Root tag --points-at HEAD 2>$null | Where-Object { $_ -match $StableTagPattern })
+  if ($tags.Count -eq 0) { return $null }
+  return ($tags | Sort-Object { [version]($_.Substring(1)) } | Select-Object -Last 1)
+}
+# Installs come from a GitHub release: a checkout whose HEAD is exactly a stable
+# vX.Y.Z tag. On any other ref a clean checkout moves to the newest stable tag
+# (detached) and the installer runs again from there. A dirty tree, a failed
+# fetch, or -AllowAnyBranch leaves the checkout alone.
+function Initialize-ReleaseCheckout {
   if ($AllowAny) { return }
   if (-not (Get-Command git -ErrorAction SilentlyContinue)) { return }
-  $branch = (& git -C $Root rev-parse --abbrev-ref HEAD 2>$null)
-  if ($LASTEXITCODE -ne 0 -or -not $branch) { return }
-  if ($branch -eq "release") { return }
-  $remote = (& git -C $Root remote get-url origin 2>$null)
-  if (-not $remote) { $remote = "https://github.com/chark1es/Aulora.git" }
-  Write-Warning "[install] this checkout is on '$branch', not the stable 'release' branch. Install from the release branch: git clone --branch release $remote (development installs can use -AllowAnyBranch)."
+  & git -C $Root rev-parse --is-inside-work-tree *> $null
+  if ($LASTEXITCODE -ne 0) { return }
+  if (Get-HeadStableTag) { return }
+  $ref = (& git -C $Root rev-parse --abbrev-ref HEAD 2>$null)
+  if (-not $ref) { $ref = "HEAD" }
+  if (& git -C $Root status --porcelain 2>$null) {
+    Write-Warning "[install] this checkout is on '$ref' with local changes, so it cannot switch to a release. Commit or discard them, or clone a release: git clone https://github.com/chark1es/Aulora.git (-AllowAnyBranch installs this checkout as is; images are built locally)."
+    return
+  }
+  $env:GIT_TERMINAL_PROMPT = "0"
+  & git -C $Root fetch --tags --force --quiet origin *> $null
+  if ($LASTEXITCODE -ne 0) {
+    Write-Warning "[install] could not fetch release tags from origin; installing '$ref' as is (images are built locally)."
+    return
+  }
+  $latest = @(& git -C $Root tag --list 'v*' 2>$null | Where-Object { $_ -match $StableTagPattern } |
+    Sort-Object { [version]($_.Substring(1)) } | Select-Object -Last 1)[0]
+  if (-not $latest) {
+    Write-Warning "[install] no stable release tag found; installing '$ref' as is (images are built locally)."
+    return
+  }
+  if ($DryRun) {
+    Write-Log "DRY RUN: would check out release $latest (currently on '$ref') and re-run the installer"
+    return
+  }
+  if ($env:AULORA_INSTALL_REEXEC) { Write-InstallError "still not on a release tag after checkout" }
+  Write-Log "checking out release $latest (was on '$ref')"
+  & git -C $Root -c advice.detachedHead=false checkout --quiet --detach "refs/tags/$latest"
+  if ($LASTEXITCODE -ne 0) { Write-InstallError "could not check out $latest" }
+  # The checkout replaced this script; run the release's installer instead.
+  $forward = foreach ($entry in $ScriptParameters.GetEnumerator()) {
+    "-$($entry.Key)"
+    if ($entry.Value -isnot [System.Management.Automation.SwitchParameter]) { [string]$entry.Value }
+  }
+  $env:AULORA_INSTALL_REEXEC = "1"
+  & (Get-Process -Id $PID).Path -NoProfile -File (Join-Path $Root "install.ps1") @forward
+  exit $LASTEXITCODE
+}
+# Release images exist only for the release this checkout is exactly at.
+# Anything else builds locally (AULORA_IMAGE_TAG=local) so it never runs a stale one.
+function Test-AtReleaseTag {
+  $envTs = Join-Path $Root "packages/convex/convex/lib/env.ts"
+  if (-not (Test-Path -LiteralPath $envTs)) { return $false }
+  $m = Select-String -LiteralPath $envTs -Pattern '^export const AULORA_VERSION = "([^"]*)";' | Select-Object -First 1
+  if (-not $m) { return $false }
+  if (-not (Get-Command git -ErrorAction SilentlyContinue)) { return $false }
+  & git -C $Root describe --tags --exact-match --match "v$($m.Matches[0].Groups[1].Value)" HEAD *> $null
+  return ($LASTEXITCODE -eq 0)
 }
 
 if ($Help) {
-  Get-Content -LiteralPath $MyInvocation.MyCommand.Path | Select-Object -Skip 1 -First 20 |
+  Get-Content -LiteralPath $MyInvocation.MyCommand.Path | Select-Object -Skip 1 -First 24 |
     ForEach-Object { $_ -replace "^# ?", "" }
   exit 0
 }
@@ -67,7 +123,7 @@ $DockerDir = Join-Path $Root "infra\docker"
 $EnvFile = if ($env:AULORA_ENV_FILE) { $env:AULORA_ENV_FILE } else { Join-Path $DockerDir ".env" }
 $EnvExample = Join-Path $DockerDir ".env.example"
 
-Test-InstallBranch
+Initialize-ReleaseCheckout
 
 if (-not (Get-Command docker -ErrorAction SilentlyContinue)) {
   Write-InstallError "Docker is not installed or not on PATH"
@@ -135,9 +191,14 @@ if ($DryRun) {
   } else {
     Write-Log "DRY RUN: would write $EnvFile (workspace=$Name, instance=$Instance, site=$SiteUrl, port=$Port)"
   }
-  Write-Log "DRY RUN: docker compose up -d --build"
+  if (Test-AtReleaseTag) {
+    Write-Log "DRY RUN: docker compose pull (release images from ghcr.io)"
+    Write-Log "DRY RUN: docker compose up -d --no-build"
+  } else {
+    Write-Log "DRY RUN: docker compose up -d --build (local images; this checkout is not a release tag)"
+  }
   Write-Log "DRY RUN: docker compose wait setup"
-  if ($Backups) { Write-Log "DRY RUN: docker compose --profile backups up -d --build" }
+  if ($Backups) { Write-Log "DRY RUN: docker compose --profile backups up -d" }
   Write-Log "DRY RUN: done; no changes made"
   exit 0
 }
@@ -166,8 +227,24 @@ if ($NoStart) {
   exit 0
 }
 
-Write-Log "building and starting the stack (this can take a few minutes)..."
-Invoke-Compose @("up", "-d", "--build")
+# A release checkout pulls the published images. Anything else (or a failed
+# pull) builds from source, tagged `local` so it never reuses a release image.
+$UpFlag = "--no-build"
+if (Test-AtReleaseTag) {
+  Write-Log "pulling the release images (this can take a few minutes)..."
+  Push-Location $DockerDir
+  try { & docker compose --env-file $EnvFile pull web setup smtp-gateway bot-runner transcriber } finally { Pop-Location }
+  if ($LASTEXITCODE -ne 0) {
+    Write-Log "WARNING: could not pull the published images; building locally instead"
+    $env:AULORA_IMAGE_TAG = "local"
+    $UpFlag = "--build"
+  }
+} else {
+  $env:AULORA_IMAGE_TAG = "local"
+  $UpFlag = "--build"
+}
+Write-Log "starting the stack..."
+Invoke-Compose @("up", "-d", $UpFlag)
 Write-Log "waiting for first-run setup (idempotent)..."
 Invoke-Compose @("wait", "setup")
 # A fresh install already has BOT_RUNNER_TOKEN in the env file. An older env file
@@ -178,7 +255,8 @@ Write-Log "starting the bot runner..."
 Invoke-Compose @("up", "-d", "--no-deps", "--force-recreate", "bot-runner")
 if ($Backups) {
   Write-Log "starting the nightly backup runner..."
-  Invoke-Compose @("--profile", "backups", "up", "-d", "--build")
+  if ($UpFlag -eq "--no-build") { Invoke-Compose @("--profile", "backups", "pull", "backup") }
+  Invoke-Compose @("--profile", "backups", "up", "-d", $UpFlag)
 }
 
 Write-Log "ready. Open $SiteUrl and sign in as $Email."

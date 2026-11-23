@@ -33,6 +33,7 @@ RUN bun run --cwd packages/bot-sdk build
 
 FROM node:24.22.1-bookworm-slim
 
+
 # python3 + venv for Python bots and their `pip install --target` step;
 # util-linux provides `prlimit` for per-bot resource limits.
 # Pinning exact Debian package versions would break the build whenever the
@@ -76,3 +77,14 @@ ENV NODE_ENV=production
 # grants SETUID/SETGID/CHOWN/KILL and drops every other capability.
 # nosemgrep: dockerfile.security.missing-user-entrypoint.missing-user-entrypoint
 ENTRYPOINT ["node", "/app/src/main.mjs"]
+
+# OCI metadata. The release workflow passes the version and commit; local
+# builds keep the defaults. Declared last so a new commit
+# does not invalidate the cached layers above.
+ARG VERSION=dev
+ARG REVISION=unknown
+LABEL org.opencontainers.image.title="aulora-bot-runner" \
+      org.opencontainers.image.source="https://github.com/chark1es/Aulora" \
+      org.opencontainers.image.version="${VERSION}" \
+      org.opencontainers.image.revision="${REVISION}" \
+      org.opencontainers.image.licenses="PolyForm-Noncommercial-1.0.0"

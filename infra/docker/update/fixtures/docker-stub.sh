@@ -1,5 +1,8 @@
 #!/bin/bash
 printf '%s\n' "$*" >> "$CALLS"
+# Which image tag Compose would resolve for each call (unset means the release default).
+printf '%s | %s\n' "$*" "${AULORA_IMAGE_TAG:-unset}" >> "$CALLS.tags"
+if [[ "$*" == 'compose pull web '* && "$FAIL_PULL" == true ]]; then exit 1; fi
 case "$*" in
   'compose version --short')
     if [ "$NO_COMPOSE" = true ]; then echo "docker: 'compose' is not a docker command." >&2; exit 1; fi

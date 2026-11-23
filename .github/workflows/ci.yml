@@ -19,9 +19,15 @@ on:
         type: boolean
         default: true
 
-# Native builds default on for manual runs and workflow calls; pull requests
-# opt in with `build-native`. Releases pass native: false because their
-# signed native builds already gate publication.
+# Only pull requests are filtered by the paths they touch. Pushes to main, merge
+# groups, manual runs and release calls run every check, so main and the release
+# commit are always fully verified. The `required` job is the single required
+# status: it passes when every job succeeded or was skipped by its path filter.
+#
+# Native builds default on for manual runs and workflow calls. Pull requests run
+# them when `build-native` is labeled or the native project paths changed.
+# Releases pass native: false because their signed native builds already gate
+# publication.
 
 permissions:
   contents: read
@@ -31,8 +37,116 @@ concurrency:
   cancel-in-progress: true
 
 jobs:
+  changes:
+    name: Detect changed paths
+    runs-on: ubuntu-24.04
+    timeout-minutes: 5
+    permissions:
+      contents: read
+      pull-requests: read
+    outputs:
+      code: ${{ github.event_name != 'pull_request' || steps.filter.outputs.code == 'true' }}
+      docs: ${{ github.event_name != 'pull_request' || steps.filter.outputs.docs == 'true' }}
+      infra: ${{ github.event_name != 'pull_request' || steps.filter.outputs.infra == 'true' }}
+      release-scripts: ${{ github.event_name != 'pull_request' || steps.filter.outputs.release-scripts == 'true' }}
+      workflows: ${{ github.event_name != 'pull_request' || steps.filter.outputs.workflows == 'true' }}
+      docker: ${{ github.event_name != 'pull_request' || steps.filter.outputs.docker == 'true' }}
+      desktop: ${{ github.event_name != 'pull_request' || steps.filter.outputs.desktop == 'true' }}
+      android: ${{ github.event_name != 'pull_request' || steps.filter.outputs.android == 'true' }}
+      ios: ${{ github.event_name != 'pull_request' || steps.filter.outputs.ios == 'true' }}
+      docker-matrix: ${{ steps.matrix.outputs.matrix }}
+    steps:
+      # Only the matrix generator, so this job stays a few seconds long.
+      - uses: actions/checkout@v7
+        with:
+          sparse-checkout: |
+            scripts/ci/docker.mjs
+            apps/desktop/scripts/release-version.mjs
+          sparse-checkout-cone-mode: false
+          persist-credentials: false
+      - name: Image build matrix for pull requests
+        id: matrix
+        run: echo "matrix=$(node scripts/ci/docker.mjs matrix --platforms linux/amd64)" >> "$GITHUB_OUTPUT"
+      - uses: dorny/paths-filter@ceb8a2b8f2d89434be7ff52d3de7ec3738c5cc9d # v4.0.3
+        id: filter
+        if: github.event_name == 'pull_request'
+        with:
+          filters: |
+            code:
+              - 'apps/web/**'
+              - 'apps/mobile/**'
+              - 'apps/desktop/**'
+              - 'apps/docs/lib/**'
+              - 'apps/docs/scripts/**'
+              - 'apps/docs/static/**'
+              - 'apps/docs/landing/**'
+              - 'apps/docs/package.json'
+              - 'apps/docs/biome.json'
+              - 'packages/**'
+              - 'scripts/**'
+              - 'package.json'
+              - 'bun.lock'
+              - 'turbo.json'
+              - 'tsconfig*.json'
+              - 'biome.json*'
+              - '.github/actions/setup-js/**'
+              - '.github/workflows/ci.yml'
+            docs:
+              - 'apps/docs/**'
+              - 'docs/**'
+              - '**/*.md'
+              - 'scripts/check-docs.mjs'
+            infra:
+              - 'infra/**'
+              - 'install.sh'
+              - 'install.ps1'
+              - 'packages/core/**'
+              - 'package.json'
+              - '.github/workflows/ci.yml'
+            release-scripts:
+              - 'scripts/**'
+              - 'apps/desktop/scripts/**'
+              - 'apps/desktop/src-tauri/**'
+              - 'infra/docker/docker-compose*.yml'
+              - 'infra/docker/backup/backup.sh'
+              - '.dockerignore'
+              - 'LICENSE'
+              - 'NOTICE'
+              - 'COMMERCIAL.md'
+              - 'CLA.md'
+              - 'SECURITY.md'
+              - 'THIRD_PARTY_NOTICES.md'
+              - 'package.json'
+              - '.github/workflows/ci.yml'
+            workflows:
+              - '.github/**'
+            docker:
+              - 'infra/**'
+              - '.dockerignore'
+              - 'package.json'
+              - 'bun.lock'
+              - 'scripts/ci/docker.mjs'
+              - '.github/workflows/ci.yml'
+              - '.github/actions/docker-image/**'
+              - '.github/workflows/docker.yml'
+            desktop:
+              - 'apps/desktop/**'
+              - '.github/workflows/desktop.yml'
+            android:
+              - 'apps/mobile/android/**'
+              - 'apps/mobile/app.json'
+              - 'apps/mobile/app.config.*'
+              - 'apps/mobile/package.json'
+            ios:
+              - 'apps/mobile/ios/**'
+              - 'apps/mobile/app.json'
+              - 'apps/mobile/app.config.*'
+              - 'apps/mobile/package.json'
+
   quality:
     name: Tests and types
+    needs: changes
+    if: needs.changes.outputs.code == 'true'
     runs-on: ubuntu-22.04
     timeout-minutes: 20
     steps:
@@ -40,6 +154,14 @@ jobs:
         with:
           persist-credentials: false
       - uses: ./.github/actions/setup-js
+      # Turbo replays unchanged lint, typecheck, test and build tasks from here.
+      - uses: actions/cache@v6
+        with:
+          path: .turbo/cache
+          key: turbo-${{ runner.os }}-${{ hashFiles('bun.lock') }}-${{ github.sha }}
+          restore-keys: |
+            turbo-${{ runner.os }}-${{ hashFiles('bun.lock') }}-
+            turbo-${{ runner.os }}-
       - run: bun run lint
       - run: bun run typecheck
       - run: bun run test
@@ -48,36 +170,98 @@ jobs:
         run: bun run perf:bundle
       - name: Desktop embed budget
         run: bun run perf:embed
-      - run: bun run docs:check
-      - run: bun run release:check
-      - name: Release automation tests
-        run: bun run test:release
-      - name: Infrastructure tests
-        run: bun run test:infra
 
-  workflows:
-    name: Workflow validation
+  docs:
+    name: Documentation
+    needs: changes
+    if: needs.changes.outputs.docs == 'true' || needs.changes.outputs.code == 'true'
     runs-on: ubuntu-22.04
+    timeout-minutes: 10
     steps:
       - uses: actions/checkout@v7
         with:
           persist-credentials: false
-      - uses: actions/setup-go@v7
+      - uses: ./.github/actions/setup-js
+      # Builds only the docs site; the workspace build runs in `quality`.
+      - run: bun run docs:check
+      - name: Documentation generator tests
+        run: bun run --cwd apps/docs test
+
+  release-tests:
+    name: Release metadata and scripts
+    needs: changes
+    if: needs.changes.outputs.release-scripts == 'true' || needs.changes.outputs.code == 'true'
+    runs-on: ubuntu-22.04
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v7
         with:
-          go-version: '1.26.10'
-          cache: false
+          persist-credentials: false
+      - uses: ./.github/actions/setup-js
+      - run: bun run release:check
+      - name: Release automation tests
+        run: bun run test:release
+
+  infra-tests:
+    name: Infrastructure tests
+    needs: changes
+    if: needs.changes.outputs.infra == 'true'
+    runs-on: ubuntu-22.04
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          persist-credentials: false
+      - uses: ./.github/actions/setup-js
+      - run: bun run test:infra
+
+  workflows:
+    name: Workflow validation
+    needs: changes
+    if: needs.changes.outputs.workflows == 'true'
+    runs-on: ubuntu-22.04
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          persist-credentials: false
+      # The image bundles shellcheck and pyflakes for `run:` scripts.
       - name: Check workflow syntax and shell scripts
-        run: |
-          go install github.com/rhysd/actionlint/cmd/actionlint@v1.7.7
-          actionlint
+        run: docker run --rm -v "$PWD:/repo" -w /repo rhysd/actionlint:1.7.7 -color
+
+  docker:
+    name: Image build (${{ matrix.image }})
+    needs: changes
+    # Builds without pushing and with read-only permissions. Pushing lives in docker.yml.
+    if: github.event_name == 'pull_request' && needs.changes.outputs.docker == 'true'
+    runs-on: ${{ matrix.runner }}
+    timeout-minutes: 30
+    strategy:
+      fail-fast: false
+      matrix: ${{ fromJSON(needs.changes.outputs.docker-matrix) }}
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          persist-credentials: false
+      - uses: ./.github/actions/docker-image
+        with:
+          image: ${{ matrix.image }}
+          dockerfile: ${{ matrix.dockerfile }}
+          context: ${{ matrix.context }}
+          platform: ${{ matrix.platform }}
+          namespace: ghcr.io/${{ github.repository_owner }}
+          version: pr-${{ github.event.pull_request.number }}
+          revision: ${{ github.sha }}
 
   desktop:
-    if: ${{ inputs.native || (github.event_name == 'pull_request' && contains(github.event.pull_request.labels.*.name, 'build-native')) }}
+    needs: changes
+    if: ${{ inputs.native || (github.event_name == 'pull_request' && (contains(github.event.pull_request.labels.*.name, 'build-native') || needs.changes.outputs.desktop == 'true')) }}
     uses: ./.github/workflows/desktop.yml
 
   android:
     name: Android compile
-    if: ${{ inputs.native || (github.event_name == 'pull_request' && contains(github.event.pull_request.labels.*.name, 'build-native')) }}
+    needs: changes
+    if: ${{ inputs.native || (github.event_name == 'pull_request' && (contains(github.event.pull_request.labels.*.name, 'build-native') || needs.changes.outputs.android == 'true')) }}
     runs-on: ubuntu-22.04
     timeout-minutes: 60
     env:
@@ -107,7 +291,8 @@ jobs:
 
   ios:
     name: iOS compile
-    if: ${{ inputs.native || (github.event_name == 'pull_request' && contains(github.event.pull_request.labels.*.name, 'build-native')) }}
+    needs: changes
+    if: ${{ inputs.native || (github.event_name == 'pull_request' && (contains(github.event.pull_request.labels.*.name, 'build-native') || needs.changes.outputs.ios == 'true')) }}
     runs-on: macos-latest
     timeout-minutes: 60
     env:
@@ -138,18 +323,32 @@ jobs:
     name: Secret history scan
     runs-on: ubuntu-22.04
     timeout-minutes: 10
+    env:
+      PR_COMMITS: ${{ github.event_name == 'pull_request' && github.event.pull_request.commits || 0 }}
     steps:
       - uses: actions/checkout@v7
         with:
-          fetch-depth: 0
+          # A pull request checks out its merge commit: scan only what the PR
+          # adds (HEAD^1..HEAD^2) and fetch just that much history. Every other
+          # event scans the full history.
+          fetch-depth: ${{ github.event_name == 'pull_request' && 2 || 0 }}
           persist-credentials: false
-      - name: Scan all Git history with reviewed fixture exceptions
-        run: docker run --rm -v "$PWD:/repo:ro" ghcr.io/gitleaks/gitleaks:v8.30.1 git /repo --config /repo/.gitleaks.toml --redact=100
+      - name: Fetch the pull request's commits
+        if: github.event_name == 'pull_request'
+        run: git fetch --no-tags --deepen="$PR_COMMITS" origin
+      - name: Scan Git history with reviewed fixture exceptions
+        run: |
+          set -euo pipefail
+          range=()
+          if [ "$PR_COMMITS" != 0 ]; then
+            range=(--log-opts="HEAD^1..HEAD^2")
+          fi
+          docker run --rm -v "$PWD:/repo:ro" ghcr.io/gitleaks/gitleaks:v8.30.1 git /repo --config /repo/.gitleaks.toml --redact=100 "${range[@]}"
 
   required:
     name: Required checks
     if: always()
-    needs: [quality, workflows, desktop, android, ios, secrets]
+    needs: [changes, quality, docs, release-tests, infra-tests, workflows, docker, desktop, android, ios, secrets]
     runs-on: ubuntu-22.04
     steps:
       - name: Require every check to pass
@@ -158,8 +357,10 @@ jobs:
         run: |
           python3 - <<'PY'
           import json, os, sys
-          optional = {'desktop', 'android', 'ios'}
-          allowed = lambda name, job: job['result'] == 'success' or (name in optional and job['result'] == 'skipped')
+          # Path detection and the secret scan always run. Every other job may be
+          # skipped: by a path filter, or by the native-build opt-in.
+          always_run = {'changes', 'secrets'}
+          allowed = lambda name, job: job['result'] == 'success' or (name not in always_run and job['result'] == 'skipped')
           failures = [name for name, job in json.loads(os.environ['RESULTS']).items() if not allowed(name, job)]
           if failures:
               print('Required checks failed: ' + ', '.join(failures))

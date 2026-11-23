@@ -61,6 +61,9 @@ jobs:
   checks:
     needs: plan
     if: needs.plan.outputs.build == 'true'
+    permissions:
+      contents: read
+      pull-requests: read # The called CI workflow's path detection job requests it.
     uses: ./.github/workflows/ci.yml
     with:
       native: false # Signed desktop/mobile builds below gate assembly and publication.
@@ -81,6 +84,17 @@ jobs:
       build-number: ${{ format('{0}', github.run_number) }}
       play-track: ${{ inputs.play-track || vars.PLAY_TRACK }}
       release-notes: ${{ inputs.notes }}
+
+  images:
+    name: Build container images
+    needs: [plan, checks]
+    permissions:
+      contents: read
+      packages: write
+    uses: ./.github/workflows/docker.yml
+    with:
+      version: ${{ needs.plan.outputs.version }}
+      push: true # Pushes sha-<commit> only; version tags wait for tag-images.
 
   web:
     name: Web and documentation release
@@ -151,9 +165,26 @@ jobs:
           if-no-files-found: error
           retention-days: 30
 
+  # Version tags (X.Y.Z, X.Y, X, latest) go on the images only after every other
+  # artifact built, and before the GitHub release exists, so a published release
+  # never lacks its images. Candidate runs keep only the sha-<commit> tag.
+  tag-images:
+    name: Tag container images
+    needs: [plan, assemble, images]
+    if: needs.plan.outputs.publish == 'true'
+    permissions:
+      contents: read
+      packages: write
+    uses: ./.github/workflows/docker.yml
+    with:
+      version: ${{ needs.plan.outputs.version }}
+      build: false
+      push: true
+      release-tags: true
+
   publish:
     name: Publish versioned GitHub release
-    needs: [plan, assemble]
+    needs: [plan, assemble, tag-images]
     if: needs.plan.outputs.publish == 'true'
     runs-on: ubuntu-22.04
     permissions:
@@ -178,18 +209,6 @@ jobs:
             gh release create "$tag" --draft --target "$GITHUB_SHA" --title "Aulora ${RELEASE_VERSION}" --notes-file dist/release/RELEASE_NOTES.md dist/release/*
           fi
           gh release edit "$tag" --notes-file dist/release/RELEASE_NOTES.md --draft=false --latest
-
-  sync-release:
-    name: Promote main to release
-    needs: [plan, publish]
-    permissions:
-      actions: write
-      contents: write
-      pull-requests: write
-    uses: ./.github/workflows/sync-release.yml
-    secrets: inherit
-    with:
-      tag: v${{ needs.plan.outputs.version }}
 
   testflight:
     name: Upload iOS build to TestFlight

@@ -3,10 +3,12 @@
 #
 #   ./install.sh [options]
 #
-# Run it from a checkout of the stable "release" branch. It checks Docker,
-# writes infra/docker/.env (reusing an existing one), builds and starts the
-# Compose stack, runs first-run setup, and prints the URL. It is idempotent:
-# re-running reuses .env and is a no-op for data.
+# Run it from a checkout of a release tag (vX.Y.Z). On any other ref with a
+# clean tree it first checks out the newest published release and re-runs
+# itself. It checks Docker, writes infra/docker/.env (reusing an existing one),
+# pulls the release images from ghcr.io (a development checkout builds them
+# instead), starts the Compose stack, runs first-run setup, and prints the URL.
+# It is idempotent: re-running reuses .env and is a no-op for data.
 #
 # Options (or the matching AULORA_* environment variable):
 #   --name <name>        workspace name            (AULORA_WORKSPACE_NAME)
@@ -19,7 +21,8 @@
 #   --auto-update        allow infra/docker/update.sh to apply releases
 #   --no-start           write .env and stop before docker compose
 #   --dry-run            print the plan; change nothing
-#   --allow-any-branch   install from a non-release branch (AULORA_ALLOW_ANY_BRANCH)
+#   --allow-any-branch   install this checkout as is, even if it is not a release
+#                        tag; builds images locally (AULORA_ALLOW_ANY_BRANCH)
 #   -h, --help           show this help
 
 set -euo pipefail
@@ -33,7 +36,7 @@ log() { printf '[install] %s\n' "$*"; }
 die() { printf '[install] ERROR: %s\n' "$*" >&2; exit 1; }
 
 usage() {
-  sed -n '2,23p' "${BASH_SOURCE[0]}" | sed 's/^# \{0,1\}//'
+  sed -n '2,26p' "${BASH_SOURCE[0]}" | sed 's/^# \{0,1\}//'
 }
 
 WORKSPACE_NAME="${AULORA_WORKSPACE_NAME:-}"
@@ -48,6 +51,7 @@ AUTO_UPDATE=0
 NO_START=0
 DRY_RUN=0
 ALLOW_ANY_BRANCH="${AULORA_ALLOW_ANY_BRANCH:-0}"
+ORIGINAL_ARGS=("$@")
 
 while [ "$#" -gt 0 ]; do
   case "$1" in
@@ -99,31 +103,70 @@ env_get() {
   printf '%s' "$value"
 }
 
-# --- branch check -----------------------------------------------------------
+# --- release checkout -------------------------------------------------------
 
-# Installations come from the stable "release" branch. Warn (without failing)
-# when this checkout is on another branch, so development installs still work.
-warn_install_branch() {
+# Installs come from a GitHub release: a checkout whose HEAD is exactly a stable
+# vX.Y.Z tag. On any other ref the installer moves a clean checkout to the newest
+# stable tag (detached) and runs itself again from there. A dirty tree, a failed
+# fetch, or --allow-any-branch leaves the checkout alone.
+STABLE_TAG_RE='^v(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)$'
+
+head_stable_tag() {
+  git -C "$ROOT" tag --points-at HEAD 2>/dev/null | grep -E "$STABLE_TAG_RE" | sort -V | tail -n 1 || true
+}
+
+ensure_release_checkout() {
   case "$ALLOW_ANY_BRANCH" in
     1|true|TRUE|yes|YES|on|ON) return 0 ;;
   esac
   command -v git >/dev/null 2>&1 || return 0
   git -C "$ROOT" rev-parse --is-inside-work-tree >/dev/null 2>&1 || return 0
-  local branch remote
-  branch="$(git -C "$ROOT" rev-parse --abbrev-ref HEAD 2>/dev/null || true)"
-  if [ "$branch" = "release" ]; then
+  if [ -n "$(head_stable_tag)" ]; then
     return 0
   fi
-  remote="$(git -C "$ROOT" remote get-url origin 2>/dev/null || true)"
-  [ -n "$remote" ] || remote="https://github.com/chark1es/Aulora.git"
-  printf '[install] WARNING: this checkout is on "%s", not the stable "release" branch.\n' "${branch:-HEAD}" >&2
-  printf '[install]          Install from the release branch: git clone --branch release %s\n' "$remote" >&2
-  printf '[install]          Development installs can pass --allow-any-branch (or AULORA_ALLOW_ANY_BRANCH=1).\n' >&2
+  local ref latest
+  ref="$(git -C "$ROOT" rev-parse --abbrev-ref HEAD 2>/dev/null || true)"
+  ref="${ref:-HEAD}"
+  if [ -n "$(git -C "$ROOT" status --porcelain 2>/dev/null)" ]; then
+    printf '[install] WARNING: this checkout is on "%s" with local changes, so it cannot switch to a release.\n' "$ref" >&2
+    printf '[install]          Commit or discard them, or clone a release: git clone https://github.com/chark1es/Aulora.git\n' >&2
+    printf '[install]          Use --allow-any-branch (or AULORA_ALLOW_ANY_BRANCH=1) to install this checkout as is; images are built locally.\n' >&2
+    return 0
+  fi
+  if ! GIT_TERMINAL_PROMPT=0 git -C "$ROOT" fetch --tags --force --quiet origin >/dev/null 2>&1; then
+    printf '[install] WARNING: could not fetch release tags from origin; installing "%s" as is (images are built locally).\n' "$ref" >&2
+    return 0
+  fi
+  latest="$(git -C "$ROOT" tag --list 'v*' 2>/dev/null | grep -E "$STABLE_TAG_RE" | sort -V | tail -n 1 || true)"
+  if [ -z "$latest" ]; then
+    printf '[install] WARNING: no stable release tag found; installing "%s" as is (images are built locally).\n' "$ref" >&2
+    return 0
+  fi
+  if [ "$DRY_RUN" = "1" ]; then
+    log "DRY RUN: would check out release $latest (currently on \"$ref\") and re-run the installer"
+    return 0
+  fi
+  [ -z "${AULORA_INSTALL_REEXEC:-}" ] || die "still not on a release tag after checkout"
+  log "checking out release $latest (was on \"$ref\")"
+  git -C "$ROOT" -c advice.detachedHead=false checkout --quiet --detach "refs/tags/$latest" ||
+    die "could not check out $latest"
+  # The checkout replaced this script; run the release's installer instead.
+  AULORA_INSTALL_REEXEC=1 exec bash "$ROOT/install.sh" ${ORIGINAL_ARGS[@]+"${ORIGINAL_ARGS[@]}"}
+}
+
+# Release images exist only for the release this checkout is exactly at.
+# Anything else builds locally (AULORA_IMAGE_TAG=local) so it never runs a stale one.
+at_release_tag() {
+  local version
+  version="$(sed -n 's/^export const AULORA_VERSION = "\([^"]*\)";.*/\1/p' "$ROOT/packages/convex/convex/lib/env.ts" 2>/dev/null || true)"
+  [ -n "$version" ] || return 1
+  command -v git >/dev/null 2>&1 || return 1
+  git -C "$ROOT" describe --tags --exact-match --match "v${version}" HEAD >/dev/null 2>&1
 }
 
 # --- validate inputs (before touching anything) -----------------------------
 
-warn_install_branch
+ensure_release_checkout
 
 command -v docker >/dev/null 2>&1 || die "Docker is not installed or not on PATH"
 if ! docker compose version >/dev/null 2>&1; then
@@ -200,10 +243,15 @@ if [ "$DRY_RUN" = "1" ]; then
   else
     log "DRY RUN: would write $ENV_FILE (workspace=${WORKSPACE_NAME}, instance=${INSTANCE_NAME}, site=${SITE_URL}, port=${WEB_PORT})"
   fi
-  log "DRY RUN: docker compose up -d --build"
+  if at_release_tag; then
+    log "DRY RUN: docker compose pull (release images from ghcr.io)"
+    log "DRY RUN: docker compose up -d --no-build"
+  else
+    log "DRY RUN: docker compose up -d --build (local images; this checkout is not a release tag)"
+  fi
   log "DRY RUN: docker compose wait setup"
   if [ "$WITH_BACKUPS" = "1" ]; then
-    log "DRY RUN: docker compose --profile backups up -d --build"
+    log "DRY RUN: docker compose --profile backups up -d"
   fi
   if [ "$AUTO_UPDATE" = "1" ]; then
     log "DRY RUN: would set AULORA_AUTO_UPDATE=true"
@@ -231,8 +279,22 @@ if [ "$NO_START" = "1" ]; then
   exit 0
 fi
 
-log "building and starting the stack (this can take a few minutes)…"
-compose up -d --build
+# A release checkout pulls the published images. Anything else (or a failed
+# pull) builds from source, tagged `local` so it never reuses a release image.
+BUILD_FLAG=(--no-build)
+if at_release_tag; then
+  log "pulling the release images (this can take a few minutes)…"
+  if ! compose pull web setup smtp-gateway bot-runner transcriber; then
+    log "WARNING: could not pull the published images; building locally instead"
+    export AULORA_IMAGE_TAG=local
+    BUILD_FLAG=(--build)
+  fi
+else
+  export AULORA_IMAGE_TAG=local
+  BUILD_FLAG=(--build)
+fi
+log "starting the stack…"
+compose up -d "${BUILD_FLAG[@]}"
 
 log "waiting for first-run setup (idempotent)…"
 if ! compose wait setup; then
@@ -253,7 +315,10 @@ compose up -d --no-deps --force-recreate transcriber
 
 if [ "$WITH_BACKUPS" = "1" ]; then
   log "starting the nightly backup runner…"
-  compose --profile backups up -d --build
+  if [ "${BUILD_FLAG[0]}" = "--no-build" ]; then
+    compose --profile backups pull backup
+  fi
+  compose --profile backups up -d "${BUILD_FLAG[@]}"
 fi
 
 log "enable update controls in settings with: infra/docker/update.sh --watch"

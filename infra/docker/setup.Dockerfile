@@ -26,6 +26,7 @@ RUN find packages -type f ! -name package.json -delete \
 # fine on this newer Debian base; the reverse is not guaranteed.
 FROM oven/bun:1.4.4 AS setup
 
+
 # Compose grants root only to the bootstrap, which prepares output ownership
 # and drops all privileges before running setup. Direct image use is non-root.
 #
@@ -56,3 +57,14 @@ COPY --chown=aulora:aulora --chmod=0755 infra/docker/setup /app/setup
 
 ENTRYPOINT ["/app/setup/bootstrap.sh"]
 CMD ["/app/setup/entrypoint.sh"]
+
+# OCI metadata. The release workflow passes the version and commit; local
+# builds keep the defaults. Declared last so a new commit
+# does not invalidate the cached layers above.
+ARG VERSION=dev
+ARG REVISION=unknown
+LABEL org.opencontainers.image.title="aulora-setup" \
+      org.opencontainers.image.source="https://github.com/chark1es/Aulora" \
+      org.opencontainers.image.version="${VERSION}" \
+      org.opencontainers.image.revision="${REVISION}" \
+      org.opencontainers.image.licenses="PolyForm-Noncommercial-1.0.0"

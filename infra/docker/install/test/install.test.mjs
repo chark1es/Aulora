@@ -1,6 +1,14 @@
 import assert from "node:assert/strict";
-import { execFileSync, spawnSync } from "node:child_process";
-import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
+import { spawnSync } from "node:child_process";
+import {
+  cpSync,
+  existsSync,
+  mkdirSync,
+  mkdtempSync,
+  readFileSync,
+  rmSync,
+  writeFileSync,
+} from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { test } from "node:test";
@@ -13,17 +21,10 @@ import { fileURLToPath } from "node:url";
 const INSTALL = fileURLToPath(new URL("../../../../install.sh", import.meta.url));
 const REPO_ROOT = fileURLToPath(new URL("../../../../", import.meta.url));
 
-// The branch warning depends on the checkout the tests run from, so one test is
-// skipped when that checkout already is the release branch.
-function currentBranch() {
-  try {
-    return execFileSync("git", ["-C", REPO_ROOT, "rev-parse", "--abbrev-ref", "HEAD"], {
-      encoding: "utf8",
-    }).trim();
-  } catch {
-    return "";
-  }
-}
+// The installer moves a clean checkout onto the newest release tag unless it is
+// told not to. Tests run from whatever checkout CI gives them (often detached,
+// without tags), so every run opts out unless it uses its own scratch repository.
+process.env.AULORA_ALLOW_ANY_BRANCH = "1";
 
 function hasBash() {
   const probe = spawnSync("bash", ["--version"], { encoding: "utf8" });
@@ -98,7 +99,7 @@ test("--dry-run plans the stack without changing anything", { skip }, () => {
       dir,
     );
     assert.equal(result.status, 0, result.stderr);
-    assert.match(result.stdout, /docker compose up -d --build/);
+    assert.match(result.stdout, /docker compose up -d --(no-)?build/);
     assert.match(result.stdout, /docker compose wait setup/);
     assert.match(result.stdout, /no changes made/);
   } finally {
@@ -121,7 +122,7 @@ test("--dry-run with --backups plans the backup profile", { skip }, () => {
       dir,
     );
     assert.equal(result.status, 0, result.stderr);
-    assert.match(result.stdout, /--profile backups up -d --build/);
+    assert.match(result.stdout, /--profile backups up -d/);
   } finally {
     rmSync(dir, { recursive: true, force: true });
   }
@@ -329,44 +330,174 @@ exit 0
   }
 });
 
-const releaseBranchSkip =
-  currentBranch() === "release" ? "the checkout is already on the release branch" : false;
-
-test("a non-release checkout prints a branch warning", { skip: skip || releaseBranchSkip }, () => {
+// A scratch clone of a repository that publishes v1.0.0 and v1.1.0 (plus a
+// pre-release tag the installer must ignore). The clone sits on an older commit
+// so the installer has to move it.
+function releaseFixture() {
   const dir = makeEnvDir();
-  try {
-    const result = run(
-      ["--dry-run", "--email", "owner@acme.test", "--password", "correct-horse-battery-staple"],
-      dir,
+  const git = (cwd, ...args) => {
+    const result = spawnSync(
+      "git",
+      [
+        "-c",
+        "user.name=t",
+        "-c",
+        "user.email=t@t.test",
+        "-c",
+        "protocol.file.allow=always",
+        ...args,
+      ],
+      { cwd, encoding: "utf8" },
     );
     assert.equal(result.status, 0, result.stderr);
-    assert.match(result.stderr, /not the stable "release" branch/);
+    return result.stdout.trim();
+  };
+  const upstream = join(dir, "upstream");
+  mkdirSync(upstream, { recursive: true });
+  git(upstream, "init", "-q", "-b", "main");
+  cpSync(INSTALL, join(upstream, "install.sh"));
+  mkdirSync(join(upstream, "infra/docker"), { recursive: true });
+  cpSync(join(REPO_ROOT, "infra/docker/.env.example"), join(upstream, "infra/docker/.env.example"));
+  const commit = (message) => {
+    writeFileSync(join(upstream, "marker.txt"), message);
+    git(upstream, "add", ".");
+    git(upstream, "commit", "-q", "-m", message);
+  };
+  commit("one");
+  git(upstream, "tag", "v1.0.0");
+  commit("two");
+  git(upstream, "tag", "v1.1.0");
+  git(upstream, "tag", "v1.2.0-beta.1");
+  commit("three");
+  const clone = join(dir, "clone");
+  git(dir, "clone", "-q", upstream, clone);
+  return { dir, clone, git, head: () => git(clone, "rev-parse", "HEAD") };
+}
+
+function runFrom(clone, dir, args, extraEnv = {}) {
+  const bin = join(dir, "docker-stub");
+  mkdirSync(bin, { recursive: true });
+  writeFileSync(join(bin, "docker"), dockerStub(), { mode: 0o755 });
+  const env = {
+    ...process.env,
+    AULORA_ENV_FILE: join(dir, ".env"),
+    PATH: `${bin}:${process.env.PATH}`,
+  };
+  env.AULORA_ALLOW_ANY_BRANCH = "";
+  return spawnSync("bash", [join(clone, "install.sh"), ...args], {
+    encoding: "utf8",
+    input: "",
+    env: { ...env, ...extraEnv },
+  });
+}
+const OWNER = ["--email", "owner@acme.test", "--password", "correct-horse-battery-staple"];
+
+test("a checkout off a release tag moves to the newest stable release and re-runs", {
+  skip,
+}, () => {
+  const f = releaseFixture();
+  try {
+    const result = runFrom(f.clone, f.dir, [...OWNER, "--no-start"]);
+    assert.equal(result.status, 0, result.stderr);
+    assert.match(result.stdout, /checking out release v1\.1\.0/);
+    assert.equal(f.head(), f.git(f.clone, "rev-list", "-n", "1", "v1.1.0"));
+    assert.equal(f.git(f.clone, "rev-parse", "--abbrev-ref", "HEAD"), "HEAD");
+    // The re-run reached the end of the installer.
+    assert.match(result.stdout, /config ready/);
+    assert.ok(existsSync(join(f.dir, ".env")));
   } finally {
-    rmSync(dir, { recursive: true, force: true });
+    rmSync(f.dir, { recursive: true, force: true });
   }
 });
 
-test("--allow-any-branch and AULORA_ALLOW_ANY_BRANCH silence the branch warning", { skip }, () => {
-  const dir = makeEnvDir();
-  const baseArgs = [
-    "--dry-run",
-    "--email",
-    "owner@acme.test",
-    "--password",
-    "correct-horse-battery-staple",
-  ];
+test("a checkout already at a stable release tag is left alone", { skip }, () => {
+  const f = releaseFixture();
   try {
+    f.git(f.clone, "checkout", "-q", "--detach", "v1.0.0");
+    const result = runFrom(f.clone, f.dir, [...OWNER, "--no-start"]);
+    assert.equal(result.status, 0, result.stderr);
+    assert.doesNotMatch(result.stdout, /checking out release/);
+    assert.equal(f.head(), f.git(f.clone, "rev-list", "-n", "1", "v1.0.0"));
+  } finally {
+    rmSync(f.dir, { recursive: true, force: true });
+  }
+});
+
+test("--dry-run reports the release it would use without switching", { skip }, () => {
+  const f = releaseFixture();
+  try {
+    const before = f.head();
+    const result = runFrom(f.clone, f.dir, [...OWNER, "--dry-run"]);
+    assert.equal(result.status, 0, result.stderr);
+    assert.match(result.stdout, /would check out release v1\.1\.0/);
+    assert.equal(f.head(), before);
+  } finally {
+    rmSync(f.dir, { recursive: true, force: true });
+  }
+});
+
+test("a dirty checkout is not switched and warns", { skip }, () => {
+  const f = releaseFixture();
+  try {
+    const before = f.head();
+    writeFileSync(join(f.clone, "marker.txt"), "local edit");
+    const result = runFrom(f.clone, f.dir, [...OWNER, "--no-start"]);
+    assert.equal(result.status, 0, result.stderr);
+    assert.match(result.stderr, /local changes/);
+    assert.equal(f.head(), before);
+  } finally {
+    rmSync(f.dir, { recursive: true, force: true });
+  }
+});
+
+test("--allow-any-branch and AULORA_ALLOW_ANY_BRANCH keep a non-release checkout", { skip }, () => {
+  const f = releaseFixture();
+  try {
+    const before = f.head();
     const attempts = [
-      { args: [...baseArgs, "--allow-any-branch"], env: {} },
-      { args: baseArgs, env: { AULORA_ALLOW_ANY_BRANCH: "1" } },
+      { args: [...OWNER, "--no-start", "--allow-any-branch"], env: {} },
+      { args: [...OWNER, "--no-start"], env: { AULORA_ALLOW_ANY_BRANCH: "1" } },
     ];
     for (const attempt of attempts) {
-      const result = run(attempt.args, dir, attempt.env);
+      const result = runFrom(f.clone, f.dir, attempt.args, attempt.env);
       assert.equal(result.status, 0, result.stderr);
-      assert.doesNotMatch(result.stderr, /release branch/);
+      assert.doesNotMatch(result.stdout, /checking out release/);
+      assert.equal(f.head(), before);
+      rmSync(join(f.dir, ".env"), { force: true });
     }
   } finally {
-    rmSync(dir, { recursive: true, force: true });
+    rmSync(f.dir, { recursive: true, force: true });
+  }
+});
+
+test("a release checkout pulls images; a development checkout builds them", { skip }, () => {
+  const f = releaseFixture();
+  try {
+    // The scratch repository has no packages/convex, so tag a checkout whose
+    // env.ts declares the version the tag names.
+    const writeVersion = (version) => {
+      mkdirSync(join(f.clone, "packages/convex/convex/lib"), { recursive: true });
+      writeFileSync(
+        join(f.clone, "packages/convex/convex/lib/env.ts"),
+        `export const AULORA_VERSION = "${version}";\n`,
+      );
+    };
+    f.git(f.clone, "checkout", "-q", "--detach", "v1.0.0");
+    writeVersion("1.0.0");
+    f.git(f.clone, "add", ".");
+    f.git(f.clone, "commit", "-q", "-m", "version");
+    f.git(f.clone, "tag", "v1.0.1");
+    writeVersion("1.0.1");
+    const release = runFrom(f.clone, f.dir, [...OWNER, "--dry-run"]);
+    assert.match(release.stdout, /docker compose pull/);
+    assert.match(release.stdout, /up -d --no-build/);
+    writeVersion("9.9.9");
+    f.git(f.clone, "checkout", "-q", "--", ".");
+    const development = runFrom(f.clone, f.dir, [...OWNER, "--dry-run", "--allow-any-branch"]);
+    assert.match(development.stdout, /up -d --build/);
+    assert.doesNotMatch(development.stdout, /docker compose pull/);
+  } finally {
+    rmSync(f.dir, { recursive: true, force: true });
   }
 });
 

@@ -61,3 +61,14 @@ ENV NGINX_CLIENT_MAX_BODY_SIZE=100m
 COPY infra/docker/nginx/default.conf.template /etc/nginx/templates/default.conf.template
 COPY --from=build /app/apps/web/dist /usr/share/nginx/html
 EXPOSE 80
+
+# OCI metadata. The release workflow passes the version and commit; local
+# builds keep the defaults. Declared last so a new commit
+# does not invalidate the cached layers above.
+ARG VERSION=dev
+ARG REVISION=unknown
+LABEL org.opencontainers.image.title="aulora-web" \
+      org.opencontainers.image.source="https://github.com/chark1es/Aulora" \
+      org.opencontainers.image.version="${VERSION}" \
+      org.opencontainers.image.revision="${REVISION}" \
+      org.opencontainers.image.licenses="PolyForm-Noncommercial-1.0.0"

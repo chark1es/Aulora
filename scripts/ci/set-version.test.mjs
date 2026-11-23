@@ -28,6 +28,8 @@ const files = [
   "apps/mobile/ios/Aulora/Info.plist",
   "apps/mobile/ios/Aulora.xcodeproj/project.pbxproj",
   "apps/mobile/android/app/build.gradle",
+  "infra/docker/docker-compose.yml",
+  "infra/docker/docker-compose.coolify.yml",
   "apps/web/.env.example",
   "apps/web/scripts/write-well-known.ts",
   "infra/docker/setup/well-known.mjs",
@@ -69,6 +71,11 @@ test("version preparation rejects prereleases without edits and synchronizes eve
       "versionName (System.getenv('RELEASE_VERSION') ?: \"1.2.3\")",
     );
     expect(read("apps/web/.env.example")).toContain("AULORA_VERSION=1.2.3");
+    for (const file of ["docker-compose.yml", "docker-compose.coolify.yml"]) {
+      const tags = [...read(`infra/docker/${file}`).matchAll(/\$\{AULORA_IMAGE_TAG:-([^}]*)\}/g)];
+      expect(tags.length).toBeGreaterThan(0);
+      expect(tags.every((match) => match[1] === "1.2.3")).toBe(true);
+    }
     expect(read("packages/bot-sdk-python/pyproject.toml")).toContain('version = "1.2.3"');
     const split = (lock) => lock.slice(lock.indexOf('  "packages":'));
     expect(split(read("bun.lock"))).toBe(split(before));

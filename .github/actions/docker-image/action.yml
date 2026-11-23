@@ -1,0 +1,77 @@
+name: Build a Docker image
+description: >-
+  Build one Aulora image for one platform on the current (native) runner. With
+  push enabled it pushes by digest only, with no tag, and writes the digest for
+  the manifest job; otherwise it builds and fills the GitHub Actions cache.
+inputs:
+  image:
+    description: Image name without registry, for example aulora-web
+    required: true
+  dockerfile:
+    description: Dockerfile path relative to the repository root
+    required: true
+  context:
+    description: Build context relative to the repository root
+    required: true
+  platform:
+    description: Build platform, for example linux/amd64
+    required: true
+  namespace:
+    description: Lowercase registry namespace, for example ghcr.io/chark1es
+    required: true
+  version:
+    description: Aulora version written to the image labels
+    required: true
+  revision:
+    description: Commit SHA written to the image labels
+    required: true
+  push:
+    description: Push the image by digest (needs a login token)
+    default: "false"
+  token:
+    description: Registry token; only read when push is true
+    default: ""
+outputs:
+  digest:
+    description: Pushed image digest (empty when not pushing)
+    value: ${{ steps.build.outputs.digest }}
+runs:
+  using: composite
+  steps:
+    - uses: docker/setup-buildx-action@f87e5991a6d7451dcb8d9637bfbc97413f497069 # v4.4.1
+    - name: Log in to GitHub Container Registry
+      if: inputs.push == 'true'
+      uses: docker/login-action@8aa5831fb8d48d8f76594c7ddde61ae58019f550 # v4.8.0
+      with:
+        registry: ghcr.io
+        username: ${{ github.actor }}
+        password: ${{ inputs.token }}
+    - name: Build image
+      id: build
+      uses: docker/build-push-action@c3c9e263c25d99ce0380d002d59b67737d91b0dc # v7.4.0
+      with:
+        context: ${{ inputs.context }}
+        file: ${{ inputs.dockerfile }}
+        platforms: ${{ inputs.platform }}
+        # Digest-only push: tags are applied later by one manifest per image.
+        outputs: ${{ inputs.push == 'true' && format('type=image,name={0}/{1},push-by-digest=true,name-canonical=true,push=true', inputs.namespace, inputs.image) || '' }}
+        build-args: |
+          VERSION=${{ inputs.version }}
+          REVISION=${{ inputs.revision }}
+        labels: |
+          org.opencontainers.image.title=${{ inputs.image }}
+          org.opencontainers.image.source=${{ github.server_url }}/${{ github.repository }}
+          org.opencontainers.image.version=${{ inputs.version }}
+          org.opencontainers.image.revision=${{ inputs.revision }}
+          org.opencontainers.image.licenses=PolyForm-Noncommercial-1.0.0
+        cache-from: type=gha,scope=${{ inputs.image }}-${{ inputs.platform == 'linux/arm64' && 'arm64' || 'amd64' }}
+        cache-to: type=gha,mode=max,scope=${{ inputs.image }}-${{ inputs.platform == 'linux/arm64' && 'arm64' || 'amd64' }}
+        provenance: false
+    - name: Record digest
+      if: inputs.push == 'true'
+      shell: bash
+      env:
+        DIGEST: ${{ steps.build.outputs.digest }}
+      run: |
+        mkdir -p "$RUNNER_TEMP/digests"
+        touch "$RUNNER_TEMP/digests/${DIGEST#sha256:}"

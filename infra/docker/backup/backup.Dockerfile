@@ -26,9 +26,10 @@ RUN find packages -type f ! -name package.json -delete \
 
 FROM oven/bun:1.4.4
 
+
 RUN apt-get update \
   && apt-get install -y --no-install-recommends \
-    postgresql-client=17+278 \
+    postgresql-client=17+278+deb13u1 \
     ca-certificates=20250419+deb13u1 \
     curl=8.14.1-2+deb13u7 \
   && rm -rf /var/lib/apt/lists/*
@@ -63,3 +64,14 @@ COPY --chown=aulora:aulora --chmod=0755 infra/docker/backup /app/backup
 USER aulora
 
 ENTRYPOINT ["/app/backup/entrypoint.sh"]
+
+# OCI metadata. The release workflow passes the version and commit; local
+# builds keep the defaults. Declared last so a new commit
+# does not invalidate the cached layers above.
+ARG VERSION=dev
+ARG REVISION=unknown
+LABEL org.opencontainers.image.title="aulora-backup" \
+      org.opencontainers.image.source="https://github.com/chark1es/Aulora" \
+      org.opencontainers.image.version="${VERSION}" \
+      org.opencontainers.image.revision="${REVISION}" \
+      org.opencontainers.image.licenses="PolyForm-Noncommercial-1.0.0"

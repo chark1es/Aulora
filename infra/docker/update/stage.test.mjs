@@ -31,10 +31,12 @@ function fixture(options = {}) {
     autoUpdate: false,
     checkedAt: new Date().toISOString(),
   };
-  const execute = async (command, args, cwd) => {
-    calls.push([command, args, cwd]);
+  const execute = async (command, args, cwd, env) => {
+    calls.push([command, args, cwd, env]);
     if (command === "git") {
       const operation = args[2];
+      if (operation === "describe")
+        return options.releaseTag ? `v${options.sourceVersion ?? "0.2.0"}` : "";
       if (operation === "status") return options.dirty ? " M source.ts" : "";
       if (operation === "rev-parse") return args[3] === "HEAD" ? "basecommit" : "releasecommit";
       if (operation === "merge-base" && options.diverged) throw new Error("Not a fast-forward.");
@@ -73,6 +75,8 @@ function fixture(options = {}) {
             transcriber: { image: "transcriber:local" },
           },
         });
+      if (args[1] === "pull" && args.includes("web") && options.failPull)
+        throw new Error("Pull failed.");
       if (args[1] === "run" && failSetup) throw new Error("Setup failed.");
     }
     return "";
@@ -232,4 +236,47 @@ it("probes the Compose version once per updater after a passing check", async ()
   await f.updater.download();
   const probes = f.calls.filter(([command, args]) => command === "docker" && args[1] === "version");
   expect(probes).toHaveLength(1);
+});
+
+describe("published images", () => {
+  const compose = (f, operation) =>
+    f.calls.filter(([command, args]) => command === "docker" && args[1] === operation);
+
+  it("pulls the release images for a staged release tag and never builds", async () => {
+    const f = fixture({ releaseTag: true });
+    await f.updater.download();
+    expect(compose(f, "build")).toHaveLength(0);
+    const pulls = compose(f, "pull").filter(([, args]) => args.includes("web"));
+    expect(pulls).toHaveLength(1);
+    expect(pulls[0][1]).toEqual([
+      "compose",
+      "pull",
+      "web",
+      "setup",
+      "smtp-gateway",
+      "bot-runner",
+      "transcriber",
+    ]);
+    expect(Object.keys(pulls[0][3])).not.toContain("AULORA_IMAGE_TAG");
+    expect(f.updater.ready()?.imageTag).toBeNull();
+    await f.updater.restart();
+    for (const [, , , env] of compose(f, "up")) expect(env).toEqual({});
+  });
+
+  it("builds locally and restarts with the local tag for a non-release commit", async () => {
+    const f = fixture();
+    await f.updater.download();
+    expect(compose(f, "pull").some(([, args]) => args.includes("web"))).toBe(false);
+    expect(compose(f, "build")[0][3]).toEqual({ AULORA_IMAGE_TAG: "local" });
+    expect(f.updater.ready()?.imageTag).toBe("local");
+    await f.updater.restart();
+    for (const [, , , env] of compose(f, "up")) expect(env).toEqual({ AULORA_IMAGE_TAG: "local" });
+  });
+
+  it("falls back to a local build when the pull fails", async () => {
+    const f = fixture({ releaseTag: true, failPull: true });
+    await f.updater.download();
+    expect(compose(f, "build")[0][3]).toEqual({ AULORA_IMAGE_TAG: "local" });
+    expect(f.updater.ready()?.imageTag).toBe("local");
+  });
 });

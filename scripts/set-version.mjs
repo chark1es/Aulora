@@ -69,6 +69,10 @@ replace(
   /(versionName \(System.getenv\('RELEASE_VERSION'\) \?: ")[^"]+/,
   `$1${version}`,
 );
+// Published image tag default in both Compose files (one occurrence per Aulora image).
+for (const file of ["docker-compose.yml", "docker-compose.coolify.yml"]) {
+  replace(`infra/docker/${file}`, /(\$\{AULORA_IMAGE_TAG:-)[^}]+\}/g, `$1${version}}`);
+}
 replace("apps/web/.env.example", /^AULORA_VERSION=.+$/m, `AULORA_VERSION=${version}`);
 replace(
   "apps/web/scripts/write-well-known.ts",

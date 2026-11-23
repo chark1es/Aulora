@@ -110,6 +110,16 @@ if (Number(version.split(".")[0]) >= 1) {
       `AULORA_VERSION=${version}`,
     ),
   );
+  // Compose defaults to the published image for this exact release.
+  for (const file of ["docker-compose.yml", "docker-compose.coolify.yml"]) {
+    const compose = readFileSync(resolve(root, "infra/docker", file), "utf8");
+    const tags = [...compose.matchAll(/\$\{AULORA_IMAGE_TAG:-([^}]*)\}/g)].map((m) => m[1]);
+    check(`${file}: no Aulora image uses AULORA_IMAGE_TAG`, tags.length > 0);
+    check(
+      `${file}: default image tag differs from ${version}`,
+      tags.every((tag) => tag === version),
+    );
+  }
 }
 for (const path of [
   "LICENSE",
