@@ -19,6 +19,7 @@ from __future__ import annotations
 import asyncio
 import hmac
 import json
+import logging
 import os
 import time
 
@@ -47,6 +48,8 @@ from .streams import (
     post_json,
 )
 from .tokens import verify_token
+
+log = logging.getLogger("transcriber")
 
 MODELS_DIR = os.environ.get("MODELS_DIR", "/models")
 SECRET = os.environ.get("TRANSCRIBER_TOKEN", "")
@@ -133,6 +136,9 @@ def download_model(model_id: str) -> None:
     try:
         engine = load_engine(model_id, MODELS_DIR, allow_download=True)
     except Exception:  # noqa: BLE001 - never surface an upstream body
+        # The cause stays in the container log for operators; Convex and the UI
+        # only get the generic message.
+        log.exception("Model %s could not be downloaded or loaded", model_id)
         record_download_failure(loaded, model_id, "Could not download or load the model")
         if previously_loaded and loaded.model_id is not None:
             # Keep serving A; report B's failure as a UI-visible last error.

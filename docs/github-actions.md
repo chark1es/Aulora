@@ -181,7 +181,7 @@ The floating tags only move forward: re-publishing an older release does not mov
 
 To retry or repair the tags of an existing release, run
 [Docker images](https://github.com/chark1es/Aulora/actions/workflows/docker.yml)
-from `main` with `ref` set to its tag (for example `v1.7.0`), `version` `1.7.0`,
+from `main` with `ref` set to its tag (for example `v1.7.1`), `version` `1.7.1`,
 `push` and `release-tags` on. It rebuilds from that tag and refuses a `ref` that
 is not the release's tag commit. Pushing is limited to runs on `main`; without
 `push` the workflow only builds.

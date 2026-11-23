@@ -33,7 +33,10 @@ RUN groupadd --system --gid 10002 transcriber \
 
 WORKDIR /app
 COPY infra/transcriber/requirements.txt ./requirements.txt
-RUN pip install --no-cache-dir -r requirements.txt
+# Fail the build, not the first model download, when the model-loading stack
+# cannot import (for example a dependency dropped by an upstream release).
+RUN pip install --no-cache-dir -r requirements.txt \
+  && python -c "import faster_whisper, huggingface_hub, requests"
 
 COPY --chown=transcriber:transcriber infra/transcriber/app ./app
 
