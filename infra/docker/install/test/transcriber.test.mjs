@@ -90,9 +90,10 @@ test("the transcriber image runs as a non-root user", () => {
   assert.match(dockerfile, /--home-dir \/home\/transcriber/);
   assert.match(dockerfile, /HF_HOME=\/models\/hf-cache/);
   assert.match(dockerfile, /HEALTHCHECK/);
-  // ctranslate2 needs libgomp1, which python:3.12-slim omits.
-  assert.match(dockerfile, /apt-get install -y --no-install-recommends libgomp1/);
-  assert.match(dockerfile, /rm -rf \/var\/lib\/apt\/lists\/\*/);
+  // The onnxruntime/numpy wheels link nothing beyond the slim base (no libgomp),
+  // and the build fails early if the model-loading stack cannot import.
+  assert.doesNotMatch(dockerfile, /apt-get install/);
+  assert.match(dockerfile, /python -c "import onnx_asr, huggingface_hub, numpy"/);
 });
 
 test("nginx exposes only the audio WebSocket at /transcribe/ws", () => {

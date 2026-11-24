@@ -1,4 +1,5 @@
 import asyncio
+import struct
 import threading
 import unittest
 import urllib.error
@@ -199,6 +200,10 @@ class WindowTimelineTests(unittest.TestCase):
         self.assertEqual(timeline.take_offset(), 6_500)
 
 
+def loud(size: int) -> bytes:
+    return struct.pack("<h", 3000) * (size // 2)
+
+
 class FakeSegment:
     start_ms = 0
     end_ms = 1000
@@ -228,9 +233,9 @@ class SegmentStreamTests(unittest.IsolatedAsyncioTestCase):
         )
         one_second = 32_000
         # 1 s of audio, then a 30 s mute, then 1 s more.
-        self.assertEqual(stream.feed(b"\x00" * one_second), [])
+        self.assertEqual(stream.feed(loud(one_second)), [])
         now[0] = float(31_000)
-        batches = stream.feed(b"\x00" * one_second)
+        batches = stream.feed(loud(one_second))
         self.assertEqual(len(batches), 1)
         self.assertEqual(batches[0]["startMs"], 0)
         rest = await stream.flush()

@@ -8,6 +8,7 @@ import { CallMediaNotice } from "./CallMediaNotice";
 import { CallGrid } from "./CallParticipant";
 import { type CallIdentity, UNKNOWN_IDENTITY } from "./identity";
 import { JoinedElsewhere } from "./JoinedElsewhere";
+import { CallBodyWithTranscript, LiveTranscriptToggle } from "./LiveTranscriptPanel";
 import { PictureInPictureButton } from "./PictureInPictureButton";
 import { TranscriptionBadge } from "./TranscriptionIndicator";
 import { TranscriptionNotice } from "./TranscriptionNotice";
@@ -81,7 +82,7 @@ function InCallVoiceView({
       <InCallHeader call={call} title={title} voice={voice} identity={identity} />
       <CallMediaNotice />
       <TranscriptionNotice />
-      <div className="min-h-0 flex-1 p-3">
+      <CallBodyWithTranscript>
         <CallGrid
           participants={call.participants}
           streams={voice.remoteStreams}
@@ -95,7 +96,7 @@ function InCallVoiceView({
           attachVideo={voice.attachRemoteVideo}
           className="h-full"
         />
-      </div>
+      </CallBodyWithTranscript>
       <VoiceCallFooter voice={voice} />
     </div>
   );
@@ -123,6 +124,7 @@ function InCallHeader({
         </p>
       </div>
       {call.transcribing === true && <TranscriptionBadge />}
+      <LiveTranscriptToggle />
       <PictureInPictureButton identity={identity} />
       <button
         type="button"

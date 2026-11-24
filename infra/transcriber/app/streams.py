@@ -212,6 +212,17 @@ class WindowTimeline:
         self.window_started_offset_ms = None
         return offset
 
+    def split_offset(self, consumed_ms: int) -> int:
+        """Takes the window offset but keeps the unconsumed remainder timed.
+
+        Used when a window is cut part-way through the buffer: the audio after
+        the cut starts ``consumed_ms`` later on the same timeline, so the next
+        window keeps a correct offset without waiting for a new first frame.
+        """
+        offset = self.take_offset()
+        self.window_started_offset_ms = offset + max(0, int(consumed_ms))
+        return offset
+
 
 def post_json(
     url: str,

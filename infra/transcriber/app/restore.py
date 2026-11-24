@@ -1,21 +1,35 @@
-"""Restore a model already present in the Hugging Face cache after a restart.
+"""Restore a model already present in the models volume after a restart.
 
-faster-whisper stores downloaded weights under its own cache layout, not at
-``/models/<id>``. A directory check therefore missed every restart. The one
-``.selected`` file records the last model that actually reached ``ready`` so a
-restart loads the owner's choice, not merely the largest cached one.
+The one ``.selected`` file records the last model that actually reached
+``ready`` so a restart loads the owner's choice. A value that is no longer
+allowlisted (such as a legacy Whisper id) is ignored.
+
+Startup also removes the faster-whisper caches that earlier releases left in the
+volume; see :func:`remove_legacy_whisper_cache`.
 """
 
 from __future__ import annotations
 
+import fnmatch
+import logging
 import os
+import shutil
 from typing import Any, Callable
 
 from .models import ALLOWED_MODELS, LoadedModel
 
+logger = logging.getLogger("aulora.transcriber")
+
+# Exact Hugging Face cache directory names used by the removed Whisper models:
+# Systran/faster-whisper-{tiny,base,small,medium} and
+# mobiuslabsgmbh/faster-whisper-large-v3-turbo.
+LEGACY_WHISPER_PATTERNS: tuple[str, ...] = (
+    "models--Systran--faster-whisper-*",
+    "models--mobiuslabsgmbh--faster-whisper-*",
+)
+
 SELECTED_FILE = ".selected"
-# Smallest first when there is no explicit selection: a small host must not OOM
-# trying the largest cached model.
+# First cached model wins when there is no explicit selection.
 RESTORE_ORDER: tuple[str, ...] = ALLOWED_MODELS
 
 
@@ -56,7 +70,7 @@ def restore_loaded_model(
 ) -> str | None:
     """Loads the selected (or first cached) allowlisted model.
 
-    The loader is injected so tests can fake faster-whisper. A missing model
+    The loader is injected so tests can fake the engine. A missing model
     leaves the state at ``not_installed``.
     """
     candidates = order if order is not None else _candidates(models_dir)
@@ -89,3 +103,40 @@ def record_download_failure(loaded: LoadedModel, failed_model_id: str, error: st
         loaded.state.error = last_error[:300]
         return
     loaded.state.fail(failed_model_id, error)
+
+
+def _legacy_cache_roots(models_dir: str) -> list[str]:
+    # `WhisperModel(download_root=models_dir)` wrote `<models_dir>/models--*`;
+    # the default Hugging Face hub cache (`HF_HOME=<models_dir>/hf-cache`) wrote
+    # `<models_dir>/hf-cache/hub/models--*`. `.locks` sits next to each.
+    bases = [models_dir, os.path.join(models_dir, "hf-cache", "hub")]
+    return [*bases, *(os.path.join(base, ".locks") for base in bases)]
+
+
+def remove_legacy_whisper_cache(models_dir: str) -> list[str]:
+    """Best-effort removal of faster-whisper weights from earlier releases.
+
+    Deletes only real directories whose name matches ``LEGACY_WHISPER_PATTERNS``
+    directly inside the known cache roots. Symlinks and everything else are
+    left alone; failures are logged and skipped.
+    """
+    removed: list[str] = []
+    for root in _legacy_cache_roots(models_dir):
+        try:
+            names = os.listdir(root)
+        except OSError:
+            continue
+        for name in names:
+            if not any(fnmatch.fnmatchcase(name, pattern) for pattern in LEGACY_WHISPER_PATTERNS):
+                continue
+            path = os.path.join(root, name)
+            try:
+                if os.path.islink(path) or not os.path.isdir(path):
+                    continue
+                shutil.rmtree(path)
+                removed.append(path)
+            except OSError:
+                logger.warning("could not remove legacy model cache %s", path)
+    if removed:
+        logger.info("removed %d legacy faster-whisper cache directories", len(removed))
+    return removed

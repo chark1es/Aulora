@@ -328,6 +328,18 @@ describe("transcript summary parsing", () => {
     expect(summary?.language).toBe("en");
   });
 
+  it("reads the title, tolerating stored summaries from before titles existed", () => {
+    expect(
+      parseTranscriptSummary(JSON.stringify({ title: "  Launch\n plan ", overview: "x" }))?.title,
+    ).toBe("Launch plan");
+    expect(parseTranscriptSummary(JSON.stringify({ overview: "x" }))?.title).toBe("");
+    expect(parseTranscriptSummary(JSON.stringify({ title: 3, overview: "x" }))?.title).toBe("");
+    expect(
+      parseTranscriptSummary(JSON.stringify({ title: "y".repeat(500), overview: "x" }))?.title
+        .length,
+    ).toBe(120);
+  });
+
   it("keeps markup as inert text and strips control and bidi characters", () => {
     const summary = parseTranscriptSummary(
       JSON.stringify({ overview: "<img src=x onerror=alert(1)>‮\u0007 hi" }),

@@ -213,6 +213,9 @@ const ACTION_LABELS: Record<string, string> = {
   "transcription.stop": "stopped a transcription",
   "transcription.requestSummary": "requested a call summary",
   "transcription.delete": "deleted a transcription",
+  "transcription.rename": "renamed a transcription",
+  "transcription.editSummary": "edited a transcription summary",
+  "transcription.editSegment": "edited a transcript line",
   // Scheduled and guest calls
   "scheduledCall.create": "scheduled a call",
   "scheduledCall.update": "updated a scheduled call",

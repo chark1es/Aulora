@@ -117,7 +117,7 @@ Requires `ManageTranscription`.
   retentionDays: number;
   allowPrivateEndpoint: boolean;
   updatedAt: number;
-  availableModels: readonly string[]; // ["tiny","base","small","medium","large-v3-turbo"]
+  availableModels: readonly string[]; // ["parakeet-tdt-0.6b-v3"]
   serviceInstalled: boolean;
 }
 ```
@@ -1010,7 +1010,8 @@ never silently replaces the owner's configured model with another ready model,
 and a failed download of B cannot downgrade a ready A: the next hello reports A
 as ready with `loadedError`. The transcriber restores `.selected` from the models
 volume (written only after a model reaches ready); with no selection it tries
-allowlisted models smallest-first, never largest-first. A separately started transcriber must have run `setup` first (or otherwise have
+the allowlisted models in order (currently only `parakeet-tdt-0.6b-v3`); a
+legacy Whisper id in `.selected` is ignored. A separately started transcriber must have run `setup` first (or otherwise have
 `TRANSCRIBER_TOKEN` set) or the container cannot authenticate its ingest, hello
 or admin calls.
 
@@ -1277,7 +1278,8 @@ cap is a batch dropped and logged.
 34. **The transcriber never writes to the read-only root.** The container user's
     home is `/home/transcriber` and `HF_HOME`/`XDG_CACHE_HOME` point under the
     writable `/models` volume (`/models/hf-cache`), so downloads and caches
-    never target the read-only root filesystem.
+    never target the read-only root filesystem. The Parakeet model files live in
+    `/models/parakeet-tdt-0.6b-v3`.
 35. **Hello is presence-first and null-tolerant.** The Python builder omits
     absent optional fields instead of sending `null`. Convex records
     `serviceSeenAt` before and independently of model handling, normalises

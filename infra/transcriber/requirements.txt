@@ -1,13 +1,12 @@
 fastapi==0.115.6
 uvicorn[standard]==0.34.0
-faster-whisper==1.1.1
-# faster-whisper imports `requests` but does not declare it; it relied on
-# huggingface_hub 0.x pulling it in. huggingface_hub 1.x/2.x dropped requests
-# (and changed APIs faster-whisper uses), which broke every model download.
-# Pin the model-loading stack so a new upstream release cannot change it.
+# Speech engine: NVIDIA Parakeet TDT 0.6B v3 through onnx-asr (ONNX Runtime, no
+# NeMo or PyTorch). onnx-asr needs numpy and onnxruntime at import time.
+onnx-asr==0.12.0
+numpy==2.5.4
+onnxruntime==1.32.0
+# Model download (`snapshot_download`) uses huggingface_hub 0.x, which pulls in
+# `requests`. huggingface_hub 1.x/2.x dropped requests and changed APIs, so
+# pin the model-loading stack to keep a new upstream release from changing it.
 huggingface_hub==0.36.2
 requests==2.34.2
-ctranslate2==4.9.1
-tokenizers==0.23.3
-onnxruntime==1.32.0
-av==19.0.2

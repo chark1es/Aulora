@@ -83,6 +83,7 @@ const FIXTURES: Record<string, unknown> = {
       summaryConfigured: true,
       segmentCount: 4,
       retentionExpiresAt: NOW + 20 * 24 * HOUR,
+      title: "Guest lobby launch plan",
     },
     {
       id: "s2",
@@ -96,6 +97,7 @@ const FIXTURES: Record<string, unknown> = {
       summaryConfigured: true,
       segmentCount: 2,
       retentionExpiresAt: null,
+      title: null,
     },
   ],
   "transcription:getSession": {
@@ -126,6 +128,10 @@ const FIXTURES: Record<string, unknown> = {
     summaryModel: "openai/gpt-4o-mini",
     summaryAt: NOW - HOUR,
     summaryError: null,
+    title: "Guest lobby launch plan",
+    titleSource: "summary",
+    summaryEditedAt: null,
+    canEdit: true,
     segmentCount: 4,
     retentionExpiresAt: NOW + 20 * 24 * HOUR,
   },
@@ -141,6 +147,7 @@ const FIXTURES: Record<string, unknown> = {
         endMs: 4_000,
         confidence: 0.9,
         language: "en",
+        edited: false,
       },
       {
         id: "g2",
@@ -152,6 +159,7 @@ const FIXTURES: Record<string, unknown> = {
         endMs: 7_000,
         confidence: 0.9,
         language: "en",
+        edited: false,
       },
       {
         id: "g3",
@@ -163,6 +171,7 @@ const FIXTURES: Record<string, unknown> = {
         endMs: 10_000,
         confidence: 0.9,
         language: "en",
+        edited: false,
       },
       {
         id: "g4",
@@ -174,13 +183,14 @@ const FIXTURES: Record<string, unknown> = {
         endMs: 13_000,
         confidence: 0.9,
         language: "en",
+        edited: false,
       },
     ],
     nextCursor: null,
   },
   "transcription:status": {
     enabled: true,
-    modelId: "base",
+    modelId: "parakeet-tdt-0.6b-v3",
     modelStatus: "ready",
     modelProgress: null,
     ready: true,
@@ -189,7 +199,7 @@ const FIXTURES: Record<string, unknown> = {
     serviceInstalled: true,
   },
   "transcription:getConfig": {
-    modelId: "base",
+    modelId: "parakeet-tdt-0.6b-v3",
     modelStatus: "downloading",
     // The server reports null (indeterminate) while a download runs, not a fake 0.
     modelProgress: null,
@@ -203,7 +213,7 @@ const FIXTURES: Record<string, unknown> = {
     retentionDays: 30,
     allowPrivateEndpoint: false,
     updatedAt: 1,
-    availableModels: ["tiny", "base", "small", "medium", "large-v3-turbo"],
+    availableModels: ["parakeet-tdt-0.6b-v3"],
     serviceInstalled: true,
   },
   "guestCalls:preview": { title: "Design review", open: true, startsAt: null, opensAt: null },

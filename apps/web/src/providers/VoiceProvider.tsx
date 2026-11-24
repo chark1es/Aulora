@@ -30,6 +30,7 @@ import {
 import { api } from "../../../../packages/convex/convex/_generated/api";
 import { CallEndedNotice } from "../components/voice/CallEndedNotice";
 import { SwitchDeviceCallModal } from "../components/voice/SwitchDeviceCallModal";
+import { TranscriptionEndedNotice } from "../components/voice/TranscriptionEndedNotice";
 import { TranscriptionRuntime } from "../components/voice/TranscriptionRuntime";
 import { publicOrigin } from "../lib/public-origin";
 import { VoiceEngine, type VoiceSnapshot } from "../lib/voice/call-engine";
@@ -729,6 +730,7 @@ export function VoiceProvider({
           outputVolume={settings.outputVolume}
         />
         <CallEndedNotice />
+        <TranscriptionEndedNotice />
         {callActive && (
           <TranscriptionRuntime
             sessionId={

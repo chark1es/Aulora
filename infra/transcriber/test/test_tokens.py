@@ -78,24 +78,24 @@ class TokenTests(unittest.TestCase):
 
 class ModelTests(unittest.TestCase):
     def test_only_allowlisted_ids_are_downloadable(self):
-        self.assertTrue(is_allowed_model("large-v3-turbo"))
+        self.assertTrue(is_allowed_model("parakeet-tdt-0.6b-v3"))
         for model in ALLOWED_MODELS:
             self.assertTrue(is_allowed_model(model))
         self.assertFalse(is_allowed_model("https://example.com/model"))
-        self.assertFalse(is_allowed_model("large-v3"))
+        self.assertFalse(is_allowed_model("tiny"))
         self.assertFalse(is_allowed_model(""))
 
     def test_state_transitions(self):
         state = ModelState()
         self.assertEqual(state.snapshot()["status"], "not_installed")
-        state.start("base")
+        state.start("parakeet-tdt-0.6b-v3")
         self.assertEqual(state.snapshot()["status"], "downloading")
         self.assertIsNone(state.snapshot()["progress"])
-        state.ready("base")
+        state.ready("parakeet-tdt-0.6b-v3")
         snapshot = state.snapshot()
         self.assertEqual(snapshot["status"], "ready")
         self.assertEqual(snapshot["progress"], 100)
-        state.fail("base", "x" * 1000)
+        state.fail("parakeet-tdt-0.6b-v3", "x" * 1000)
         self.assertEqual(state.snapshot()["status"], "error")
         self.assertLessEqual(len(state.snapshot()["error"]), 300)
 

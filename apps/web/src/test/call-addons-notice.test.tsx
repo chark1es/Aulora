@@ -172,6 +172,7 @@ describe("SummaryView", () => {
     const { container } = render(
       <SummaryView
         summary={{
+          title: "",
           overview: '<img src=x onerror="alert(1)"><script>alert(2)</script>',
           keyPoints: ["**bold** [link](javascript:alert(3))"],
           decisions: [],
@@ -191,6 +192,7 @@ describe("SummaryView", () => {
     render(
       <SummaryView
         summary={{
+          title: "",
           overview: "",
           keyPoints: ["Same", "Same"],
           decisions: [],

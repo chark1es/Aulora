@@ -18,11 +18,19 @@ import {
   Text,
 } from "@aulora/ui-web";
 import { useMutation, useQuery } from "convex/react";
-import { useEffect, useState } from "react";
+import { useEffect, useState, useSyncExternalStore } from "react";
 import { api } from "../../../../../packages/convex/convex/_generated/api";
+import {
+  consumeTranscriptRequest,
+  getTranscriptNavigationSnapshot,
+  subscribeTranscriptNavigation,
+} from "../../lib/transcription/transcript-navigation";
 import { AddonBoundary } from "../addons/AddonBoundary";
+import { SessionTitle } from "./SessionTitle";
+import { SummaryEditor } from "./SummaryEditor";
 import { SummaryView } from "./SummaryView";
 import { formatSessionLength, sessionTitle } from "./session-labels";
+import { type SummaryEdit, summaryToEdit } from "./summary-edit";
 import { summaryPanel } from "./summary-state";
 import { TranscriptBody } from "./TranscriptBody";
 
@@ -46,7 +54,23 @@ function TranscriptsBody({ permissions, titles, onBack }: TranscriptsViewProps) 
     limit: TRANSCRIPTION_MAX_LIST_SESSIONS,
   });
   const [openId, setOpenId] = useState<string | null>(null);
-  const open = sessions?.find((session) => session.id === openId) ?? null;
+  // The detail loads the session on its own, so a request for one older than the
+  // listed window (the newest TRANSCRIPTION_MAX_LIST_SESSIONS) still opens.
+  const open = sessions === undefined || openId === null ? null : { id: openId };
+
+  // A request from elsewhere in the app (the call-ended toast, the live panel)
+  // to show one session. Works whether this surface was just mounted or kept.
+  const request = useSyncExternalStore(
+    subscribeTranscriptNavigation,
+    getTranscriptNavigationSnapshot,
+    () => null,
+  );
+  useEffect(() => {
+    if (request !== null) {
+      setOpenId(request);
+      consumeTranscriptRequest(request);
+    }
+  }, [request]);
 
   return (
     <section className="pane flex min-h-0 min-w-0 flex-1 flex-col" aria-label="Transcripts">
@@ -73,7 +97,7 @@ function TranscriptsBody({ permissions, titles, onBack }: TranscriptsViewProps) 
         <div className="flex flex-1 items-center justify-center">
           <Spinner label="Loading transcripts" />
         </div>
-      ) : sessions.length === 0 ? (
+      ) : sessions.length === 0 && open === null ? (
         <div className="flex flex-1 items-center justify-center p-6">
           <EmptyState
             icon="message"
@@ -107,12 +131,17 @@ function TranscriptsBody({ permissions, titles, onBack }: TranscriptsViewProps) 
                   >
                     <span className="flex items-center gap-2">
                       <span className="min-w-0 flex-1 truncate text-[13.5px] font-medium text-text">
-                        {sessionTitle(session.channelId, titles)}
+                        {session.title ?? sessionTitle(session.channelId, titles)}
                       </span>
                       {session.status === "active" && <Badge tone="success">Live</Badge>}
                       {session.status === "ending" && <Badge>Finishing</Badge>}
                       {session.status === "failed" && <Badge tone="danger">Failed</Badge>}
                     </span>
+                    {session.title != null && (
+                      <span className="truncate text-[12px] text-text-muted">
+                        {sessionTitle(session.channelId, titles)}
+                      </span>
+                    )}
                     <span className="text-[12px] tabular-nums text-text-muted">
                       {formatLocalDateTime(session.startedAt)}
                     </span>
@@ -136,7 +165,7 @@ function TranscriptsBody({ permissions, titles, onBack }: TranscriptsViewProps) 
               <SessionDetail
                 key={open.id}
                 sessionId={open.id}
-                title={sessionTitle(open.channelId, titles)}
+                titles={titles}
                 canDelete={canDeleteTranscripts(permissions)}
                 canManage={hasPermission(permissions, Permission.ManageTranscription)}
                 onDeleted={() => {
@@ -153,13 +182,13 @@ function TranscriptsBody({ permissions, titles, onBack }: TranscriptsViewProps) 
 
 function SessionDetail({
   sessionId,
-  title,
+  titles,
   canDelete,
   canManage,
   onDeleted,
 }: {
   readonly sessionId: string;
-  readonly title: string;
+  readonly titles: ReadonlyMap<string, string>;
   readonly canDelete: boolean;
   readonly canManage: boolean;
   readonly onDeleted: () => void;
@@ -167,6 +196,14 @@ function SessionDetail({
   const session = useQuery(api.transcription.getSession, { sessionId: sessionId as never });
   const requestSummary = useMutation(api.transcription.requestSummary);
   const deleteSession = useMutation(api.transcription.deleteSession);
+  const renameSession = useMutation(api.transcription.renameSession);
+  const updateSummary = useMutation(api.transcription.updateSummary);
+  const [renaming, setRenaming] = useState(false);
+  const [editingTitle, setEditingTitle] = useState(false);
+  const [editingSummary, setEditingSummary] = useState(false);
+  const [savingSummary, setSavingSummary] = useState(false);
+  const [summaryError, setSummaryError] = useState<string | null>(null);
+  const [confirmRegenerate, setConfirmRegenerate] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [confirmDelete, setConfirmDelete] = useState(false);
   const [requesting, setRequesting] = useState(false);
@@ -211,15 +248,75 @@ function SessionDetail({
   const fail = (cause: unknown, fallback: string) => {
     setError(cause instanceof Error && cause.message.length > 0 ? cause.message : fallback);
   };
+  const canEdit = session.canEdit === true;
+  const channelTitle = sessionTitle(session.channelId, titles);
+  const title = session.title ?? channelTitle;
+  const editedAt = session.summaryEditedAt ?? null;
+  const runRequestSummary = () => {
+    setRequesting(true);
+    setError(null);
+    void requestSummary({ sessionId: sessionId as never })
+      .catch((cause: unknown) => {
+        fail(cause, "Could not request a summary. Try again.");
+      })
+      .finally(() => {
+        setRequesting(false);
+      });
+  };
+  const saveSummary = (edit: SummaryEdit) => {
+    setSavingSummary(true);
+    setSummaryError(null);
+    void updateSummary({ sessionId: sessionId as never, summary: edit })
+      .then(() => {
+        setEditingSummary(false);
+      })
+      .catch((cause: unknown) => {
+        setSummaryError(
+          cause instanceof Error && cause.message.length > 0
+            ? cause.message
+            : "Could not save the summary. Try again.",
+        );
+      })
+      .finally(() => {
+        setSavingSummary(false);
+      });
+  };
+  const rename = (next: string) => {
+    setRenaming(true);
+    setError(null);
+    void renameSession({ sessionId: sessionId as never, title: next })
+      .then(() => {
+        setEditingTitle(false);
+      })
+      .catch((cause: unknown) => {
+        fail(cause, "Could not rename the transcript. Try again.");
+      })
+      .finally(() => {
+        setRenaming(false);
+      });
+  };
 
   return (
     <div className="h-full overflow-y-auto">
       <div className="mx-auto flex w-full max-w-[760px] flex-col gap-7 px-5 py-6">
         <header className="flex flex-wrap items-start gap-3">
           <div className="min-w-0 flex-1">
-            <h2 className="truncate text-[18px] font-semibold tracking-[-0.01em] text-text">
-              {title}
-            </h2>
+            <SessionTitle
+              title={title}
+              editValue={session.title ?? ""}
+              subtitle={session.title != null ? channelTitle : null}
+              canEdit={canEdit}
+              editing={editingTitle}
+              isUserTitle={session.titleSource === "user"}
+              saving={renaming}
+              onEdit={() => {
+                setEditingTitle(true);
+              }}
+              onCancel={() => {
+                setEditingTitle(false);
+              }}
+              onRename={rename}
+            />
             <p className="mt-0.5 text-[12.5px] tabular-nums text-text-muted">
               {formatLocalDateTime(session.startedAt)} ·{" "}
               {formatSessionLength(session.startedAt, session.endedAt)}
@@ -261,22 +358,35 @@ function SessionDetail({
               Summary
             </h3>
             <span className="flex-1" />
-            {panel.action !== null && (
+            {canEdit &&
+              panel.kind === "ready" &&
+              summary !== null &&
+              !editingSummary &&
+              session.status === "ended" && (
+                <Button
+                  variant="ghost"
+                  size="sm"
+                  leading={<Icon name="pencil" size={14} />}
+                  onClick={() => {
+                    setSummaryError(null);
+                    setEditingSummary(true);
+                  }}
+                >
+                  Edit
+                </Button>
+              )}
+            {panel.action !== null && !editingSummary && (
               <Button
                 variant="secondary"
                 size="sm"
                 loading={requesting}
                 disabled={requesting}
                 onClick={() => {
-                  setRequesting(true);
-                  setError(null);
-                  void requestSummary({ sessionId: sessionId as never })
-                    .catch((cause: unknown) => {
-                      fail(cause, "Could not request a summary. Try again.");
-                    })
-                    .finally(() => {
-                      setRequesting(false);
-                    });
+                  if (editedAt !== null) {
+                    setConfirmRegenerate(true);
+                  } else {
+                    runRequestSummary();
+                  }
                 }}
               >
                 {panel.action === "generate" ? "Generate summary" : "Regenerate"}
@@ -291,15 +401,29 @@ function SessionDetail({
                 : "Writing the summary…"}
             </p>
           ) : panel.kind === "ready" && summary !== null ? (
-            <>
-              <SummaryView summary={summary} />
-              {session.summaryModel !== null && session.summaryAt !== null && (
-                <p className="text-[11.5px] text-text-muted">
-                  Written by {session.summaryModel} on {formatLocalDateTime(session.summaryAt)}.
-                  Summaries are generated by a language model and can be wrong.
-                </p>
-              )}
-            </>
+            editingSummary ? (
+              <SummaryEditor
+                initial={summaryToEdit(summary)}
+                saving={savingSummary}
+                error={summaryError}
+                onSave={saveSummary}
+                onCancel={() => {
+                  setEditingSummary(false);
+                }}
+              />
+            ) : (
+              <>
+                <SummaryView summary={summary} />
+                {session.summaryModel !== null && session.summaryAt !== null && (
+                  <p className="text-[11.5px] text-text-muted">
+                    Written by {session.summaryModel} on {formatLocalDateTime(session.summaryAt)}
+                    {editedAt !== null ? ` · Edited ${formatLocalDateTime(editedAt)}` : ""}.
+                    Summaries are generated by a language model and can be wrong.
+                    {canEdit ? " Regenerating replaces manual edits." : ""}
+                  </p>
+                )}
+              </>
+            )
           ) : panel.kind === "error" ? (
             <Text tone="danger" size="sm" role="alert">
               {session.summaryError ?? "The summary could not be written."} Check the summary
@@ -329,9 +453,23 @@ function SessionDetail({
           <h3 id="transcript-heading" className="text-[14px] font-semibold text-text">
             Transcript
           </h3>
-          <TranscriptBody sessionId={sessionId} />
+          <TranscriptBody sessionId={sessionId} canEdit={canEdit} />
         </section>
       </div>
+
+      <ConfirmDialog
+        open={confirmRegenerate}
+        onClose={() => {
+          setConfirmRegenerate(false);
+        }}
+        title="Replace your edits?"
+        description="Regenerating writes a new summary and replaces the edits made to this one."
+        confirmLabel="Regenerate"
+        onConfirm={() => {
+          setConfirmRegenerate(false);
+          runRequestSummary();
+        }}
+      />
 
       <ConfirmDialog
         open={confirmDelete}

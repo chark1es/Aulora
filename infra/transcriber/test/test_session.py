@@ -9,6 +9,7 @@ from __future__ import annotations
 
 import asyncio
 import json
+import struct
 import threading
 import time
 import unittest
@@ -18,6 +19,16 @@ from app.protocol import CLOSE_SESSION_ENDED
 from app.segments import SegmentStream
 from app.session import serve_stream
 from app.streams import DeliveryGate, PermanentPostError, StreamRegistry, WindowTimeline
+
+
+def loud(size: int) -> bytes:
+    """Non-silent PCM16 (constant 3000), so the stream does not skip it."""
+    return struct.pack("<h", 3000) * (size // 2)
+
+
+def hush(size: int) -> bytes:
+    """Quiet-but-nonzero PCM16: a pause after speech."""
+    return struct.pack("<h", 5) * (size // 2)
 
 
 class FakeSegment:
@@ -146,7 +157,7 @@ class TeardownDrainTests(unittest.IsolatedAsyncioTestCase):
 
     async def test_disconnect_drains_one_second_of_audio(self):
         stream = make_stream()
-        ws = ScriptedWebSocket([{"bytes": b"\x00" * 16_000}, {"bytes": b"\x00" * 16_000}])
+        ws = ScriptedWebSocket([{"bytes": loud(16_000)}, {"bytes": loud(16_000)}])
         posted, released = await self.run_stream(ws, stream)
         self.assertEqual(len(posted), 1)
         self.assertEqual(posted[0][0]["seq"], 1)
@@ -157,8 +168,8 @@ class TeardownDrainTests(unittest.IsolatedAsyncioTestCase):
         stream = make_stream()
         ws = ScriptedWebSocket(
             [
-                {"bytes": b"\x00" * 16_000},
-                {"bytes": b"\x00" * 16_000},
+                {"bytes": loud(16_000)},
+                {"bytes": loud(16_000)},
                 {"text": json.dumps({"type": "end"})},
             ]
         )
@@ -169,7 +180,7 @@ class TeardownDrainTests(unittest.IsolatedAsyncioTestCase):
     async def test_idle_timeout_drains_one_second_of_audio(self):
         stream = make_stream()
         ws = ScriptedWebSocket(
-            [{"bytes": b"\x00" * 16_000}, {"bytes": b"\x00" * 16_000}], idle=True
+            [{"bytes": loud(16_000)}, {"bytes": loud(16_000)}], idle=True
         )
         posted, _ = await self.run_stream(ws, stream, idle_timeout=0.01)
         self.assertEqual(len(posted), 1)
@@ -187,7 +198,7 @@ class TeardownDrainTests(unittest.IsolatedAsyncioTestCase):
             timeline=WindowTimeline(base_offset_ms=0, opened_at_ms=0, clock=lambda: 0.0),
         )
         ws = ScriptedWebSocket(
-            [{"bytes": b"\x00" * 16_000}, {"bytes": b"\x00" * 16_000}]
+            [{"bytes": loud(16_000)}, {"bytes": loud(16_000)}]
         )
         released: list[str] = []
 
@@ -223,7 +234,7 @@ class TeardownDrainTests(unittest.IsolatedAsyncioTestCase):
         self.assertIsNone(previous)
         gate = await registry.delivery_for(sid, sub)
         old_stream = make_stream()
-        old_stream.feed(b"\x00" * 32_000)
+        old_stream.feed(loud(32_000))
         posted: list[list[dict[str, object]]] = []
 
         def post(_sid: str, _speaker: str, batch: list[dict[str, object]]) -> bool:
@@ -248,10 +259,11 @@ class TeardownDrainTests(unittest.IsolatedAsyncioTestCase):
 
         new_ws = ScriptedWebSocket(
             [
-                {"bytes": b"\x00" * 16_000},
-                {"bytes": b"\x00" * 16_000},
-                {"bytes": b"\x00" * 16_000},
-                {"bytes": b"\x00" * 16_000},
+                {"bytes": loud(16_000)},
+                {"bytes": loud(16_000)},
+                {"bytes": loud(16_000)},
+                {"bytes": loud(16_000)},
+                {"bytes": hush(16_000)},
                 {"text": json.dumps({"type": "end"})},
             ]
         )
@@ -310,7 +322,7 @@ class DeliveryOrderingTests(unittest.IsolatedAsyncioTestCase):
         self.assertTrue(acquired)
         self.assertIsNone(previous)
         old_stream = make_stream(TextEngine("old drain"))
-        old_stream.feed(b"\x00" * 32_000)
+        old_stream.feed(loud(32_000))
         old_task = asyncio.create_task(
             serve_stream(
                 old_ws,
@@ -332,8 +344,8 @@ class DeliveryOrderingTests(unittest.IsolatedAsyncioTestCase):
 
         new_ws = ScriptedWebSocket(
             [
-                {"bytes": b"\x00" * 16_000},
-                {"bytes": b"\x00" * 16_000},
+                {"bytes": loud(16_000)},
+                {"bytes": loud(16_000)},
                 {"text": json.dumps({"type": "end"})},
             ]
         )
@@ -371,9 +383,11 @@ class PermanentRejectionTests(unittest.IsolatedAsyncioTestCase):
             attempts.append(1)
             raise PermanentPostError(400)
 
-        # Four 16 KiB frames fill one 2 s window, so the POST happens in the
-        # main loop rather than in a teardown drain.
-        ws = ScriptedWebSocket([{"bytes": b"\x00" * 16_000} for _ in range(4)])
+        # Two seconds of speech then a pause end one window, so the POST happens
+        # in the main loop rather than in a teardown drain.
+        ws = ScriptedWebSocket(
+            [*({"bytes": loud(16_000)} for _ in range(4)), {"bytes": hush(16_000)}]
+        )
         with self.assertLogs("aulora.transcriber", level="WARNING"):
             await serve_stream(
                 ws,
@@ -410,7 +424,7 @@ class HandlerTeardownTests(unittest.IsolatedAsyncioTestCase):
         secret = "handler-test-secret"
         main.SECRET = secret
         main.loaded.engine = FakeEngine()
-        main.loaded.state.ready("base")
+        main.loaded.state.ready("parakeet-tdt-0.6b-v3")
         main.registry = StreamRegistry()
         posted: list[list[dict[str, object]]] = []
 
@@ -431,8 +445,8 @@ class HandlerTeardownTests(unittest.IsolatedAsyncioTestCase):
             )
             ws = ScriptedWebSocket(
                 [
-                    {"bytes": b"\x00" * 16_000},
-                    {"bytes": b"\x00" * 16_000},
+                    {"bytes": loud(16_000)},
+                    {"bytes": loud(16_000)},
                     {"type": "websocket.disconnect"},
                 ]
             )
@@ -454,7 +468,7 @@ class HandlerTeardownTests(unittest.IsolatedAsyncioTestCase):
         secret = "handler-test-secret"
         main.SECRET = secret
         main.loaded.engine = FakeEngine()
-        main.loaded.state.ready("base")
+        main.loaded.state.ready("parakeet-tdt-0.6b-v3")
         main.registry = StreamRegistry()
         posted: list[list[dict[str, object]]] = []
 
@@ -487,8 +501,8 @@ class HandlerTeardownTests(unittest.IsolatedAsyncioTestCase):
 
             second = ScriptedWebSocket(
                 [
-                    {"bytes": b"\x00" * 16_000},
-                    {"bytes": b"\x00" * 16_000},
+                    {"bytes": loud(16_000)},
+                    {"bytes": loud(16_000)},
                     {"type": "websocket.disconnect"},
                 ]
             )

@@ -34,7 +34,7 @@ async function readyConfig(t: Test) {
   process.env.TRANSCRIBER_TOKEN = "test-transcriber-token";
   await t.run(async (ctx) => {
     await ctx.db.insert("transcriptionConfig", {
-      modelId: "base",
+      modelId: "parakeet-tdt-0.6b-v3",
       modelStatus: "ready",
       provider: "openrouter",
       baseUrl: "https://openrouter.ai/api/v1",
@@ -50,7 +50,7 @@ async function readyConfig(t: Test) {
         key: "service",
         serviceSeenAt: Date.now(),
         runtimeReady: true,
-        runtimeModelId: "base",
+        runtimeModelId: "parakeet-tdt-0.6b-v3",
       });
     }
   });
@@ -236,7 +236,7 @@ describe("transcription service availability", () => {
       t.withIdentity({ subject: "user-1" }).mutation(api.transcription.start, { callId }),
     ).rejects.toThrow(/service is not running/);
     await t.mutation(internal.transcription.recordServiceHello, {
-      loadedModelId: "base",
+      loadedModelId: "parakeet-tdt-0.6b-v3",
       loadedStatus: "ready",
     });
     const started = await t
@@ -270,7 +270,7 @@ describe("transcription service availability", () => {
     expect(addons.transcriptionModel.runtimeReady).toBe(false);
 
     await t.mutation(internal.transcription.recordServiceHello, {
-      loadedModelId: "base",
+      loadedModelId: "parakeet-tdt-0.6b-v3",
       loadedStatus: "ready",
     });
     const started = await t
@@ -281,54 +281,80 @@ describe("transcription service availability", () => {
     expect(ready.runtimeReady).toBe(true);
   });
 
-  it("re-syncs only a fresh config or the same loaded model", async () => {
+  it("re-syncs a fresh or legacy config and repairs the loaded model's error", async () => {
     const t = newTest();
     await seedWorkspace(t, { members: [{ userId: "user-1" }] });
     await patchSettings(t, { transcriptionEnabled: true });
     await readyConfig(t);
-    await t.mutation(internal.transcription.recordServiceHello, {
-      loadedModelId: "small",
-      loadedStatus: "ready",
-    });
-    let config = await t.run(async (ctx) => await ctx.db.query("transcriptionConfig").first());
-    // A ready config for another model is the owner's choice; never replace it.
-    expect(config?.modelId).toBe("base");
-    expect(config?.modelStatus).toBe("ready");
-
+    const readConfig = async () =>
+      await t.run(async (ctx) => await ctx.db.query("transcriptionConfig").first());
+    // A fresh not_installed config adopts the loaded model.
     await t.run(async (ctx) => {
-      if (config !== null) {
-        await ctx.db.patch(config._id, {
-          modelId: "base",
-          modelStatus: "not_installed",
-          modelProgress: undefined,
-        });
+      const row = await ctx.db.query("transcriptionConfig").first();
+      if (row !== null) {
+        await ctx.db.patch(row._id, { modelStatus: "not_installed", modelProgress: undefined });
       }
     });
     await t.mutation(internal.transcription.recordServiceHello, {
-      loadedModelId: "small",
+      loadedModelId: "parakeet-tdt-0.6b-v3",
       loadedStatus: "ready",
     });
-    config = await t.run(async (ctx) => await ctx.db.query("transcriptionConfig").first());
-    expect(config?.modelId).toBe("small");
+    let config = await readConfig();
+    expect(config?.modelId).toBe("parakeet-tdt-0.6b-v3");
     expect(config?.modelStatus).toBe("ready");
 
     await t.mutation(internal.transcription.recordServiceHello, {
-      loadedModelId: "small",
+      loadedModelId: "parakeet-tdt-0.6b-v3",
       loadedStatus: "ready",
-      loadedError: "large-v3-turbo failed to download",
+      loadedError: "download failed earlier",
     });
-    config = await t.run(async (ctx) => await ctx.db.query("transcriptionConfig").first());
-    expect(config?.modelId).toBe("small");
+    config = await readConfig();
     expect(config?.modelStatus).toBe("ready");
-    expect(config?.modelError).toContain("failed to download");
+    expect(config?.modelError).toContain("failed earlier");
 
     // A later healthy heartbeat clears the stale download failure.
     await t.mutation(internal.transcription.recordServiceHello, {
-      loadedModelId: "small",
+      loadedModelId: "parakeet-tdt-0.6b-v3",
       loadedStatus: "ready",
     });
-    config = await t.run(async (ctx) => await ctx.db.query("transcriptionConfig").first());
+    config = await readConfig();
     expect(config?.modelError).toBeUndefined();
+  });
+
+  it("treats a legacy whisper model id as not installed and adopts a loaded parakeet", async () => {
+    const t = newTest();
+    await seedWorkspace(t, {
+      members: [{ userId: "user-1", roleIds: ["voice-host"] }],
+      extraRoles: [{ key: "voice-host", permissions: TRANSCRIBER_PERMISSION, position: 2 }],
+    });
+    await patchSettings(t, { transcriptionEnabled: true });
+    await readyConfig(t);
+    const { callId } = await seedCall(t);
+    await t.run(async (ctx) => {
+      const row = await ctx.db.query("transcriptionConfig").first();
+      if (row !== null) {
+        await ctx.db.patch(row._id, { modelId: "large-v3-turbo", modelStatus: "ready" });
+      }
+    });
+    const asUser = t.withIdentity({ subject: "user-1" });
+    const status = await asUser.query(api.transcription.status, {});
+    expect(status.ready).toBe(false);
+    expect(status.modelStatus).toBe("not_installed");
+    expect(status.modelId).toBe("parakeet-tdt-0.6b-v3");
+    const addons = await asUser.query(api.addons.status, {});
+    expect(addons.transcriptionModel.status).toBe("not_installed");
+    await expect(asUser.mutation(api.transcription.start, { callId })).rejects.toThrow(
+      /Download a speech model/,
+    );
+
+    await t.mutation(internal.transcription.recordServiceHello, {
+      loadedModelId: "parakeet-tdt-0.6b-v3",
+      loadedStatus: "ready",
+    });
+    const config = await t.run(async (ctx) => await ctx.db.query("transcriptionConfig").first());
+    expect(config?.modelId).toBe("parakeet-tdt-0.6b-v3");
+    expect(config?.modelStatus).toBe("ready");
+    expect((await asUser.query(api.transcription.status, {})).ready).toBe(true);
   });
 
   it("reports whether the transcriber is installed to members and managers", async () => {
@@ -1672,7 +1698,7 @@ describe("transcription configuration", () => {
       .query(api.transcription.getConfig, {});
     expect(view.hasApiKey).toBe(true);
     expect(JSON.stringify(view)).not.toContain("sk-synthetic-test-key");
-    expect(view.availableModels).toContain("large-v3-turbo");
+    expect(view.availableModels).toContain("parakeet-tdt-0.6b-v3");
 
     await expect(
       t.withIdentity({ subject: "user-1" }).query(api.transcription.getConfig, {}),
@@ -1744,7 +1770,7 @@ describe("transcription configuration", () => {
       });
       await t
         .withIdentity({ subject: "owner-1" })
-        .mutation(api.transcription.downloadModel, { modelId: "small" });
+        .mutation(api.transcription.downloadModel, { modelId: "parakeet-tdt-0.6b-v3" });
       const status = await t
         .withIdentity({ subject: "user-1" })
         .query(api.transcription.status, {});
@@ -1756,7 +1782,7 @@ describe("transcription configuration", () => {
       // A later status report without a percentage stays indeterminate and
       // does not resurrect the previous model's 100.
       await t.mutation(internal.transcription.recordModelStatus, {
-        modelId: "small",
+        modelId: "parakeet-tdt-0.6b-v3",
         status: "downloading",
       });
       const config = await t.run(async (ctx) => await ctx.db.query("transcriptionConfig").first());
@@ -1827,5 +1853,263 @@ describe("transcription configuration", () => {
       sessionId,
     });
     expect(await t.run(async (ctx) => await ctx.db.get(sessionId))).toBeNull();
+  });
+});
+
+const EDITED_SUMMARY = {
+  overview: "Edited overview",
+  keyPoints: ["Point"],
+  decisions: [] as string[],
+  actionItems: [{ text: "Do it", owner: null as string | null }],
+  speakerHighlights: [{ speaker: "Sam", text: "Said it" }],
+};
+
+describe("transcript titles and editing", () => {
+  async function endedSession(t: Test, options: { readonly segments?: number } = {}) {
+    await seedWorkspace(t, {
+      members: [
+        { userId: "user-1", roleIds: ["host"] },
+        { userId: "viewer", roleIds: ["reader"] },
+        { userId: "outsider" },
+      ],
+      extraRoles: [
+        { key: "host", permissions: TRANSCRIBER_PERMISSION | VIEW, position: 2 },
+        { key: "reader", permissions: VIEW, position: 1 },
+      ],
+    });
+    await patchSettings(t, { transcriptionEnabled: true });
+    await readyConfig(t);
+    const { callId } = await seedCall(t);
+    const { sessionId } = await t
+      .withIdentity({ subject: "user-1" })
+      .mutation(api.transcription.start, { callId });
+    const count = options.segments ?? 3;
+    for (let start = 0; start < count; start += 50) {
+      const size = Math.min(50, count - start);
+      await t.mutation(internal.transcription.ingestSegments, {
+        sessionId,
+        speakerKey: "user:user-1",
+        segments: Array.from({ length: size }, (_, index) => ({
+          seq: start + index + 1,
+          startMs: (start + index) * 1000,
+          endMs: (start + index) * 1000 + 900,
+          text: `line ${start + index + 1}`,
+        })),
+      });
+    }
+    await t.run(async (ctx) => {
+      await ctx.db.patch(sessionId, {
+        status: "ended",
+        endedAt: Date.now(),
+        summaryStatus: "none",
+      });
+    });
+    return { sessionId };
+  }
+
+  const summaryJson = (title: string) =>
+    JSON.stringify({
+      title,
+      overview: "We met.",
+      keyPoints: ["a"],
+      decisions: [],
+      actionItems: [],
+      speakerHighlights: [],
+      language: "en",
+    });
+
+  async function finish(t: Test, sessionId: Id<"transcriptionSessions">, title: string) {
+    await t.run(async (ctx) => {
+      await ctx.db.patch(sessionId, { summaryStatus: "pending", summaryAttemptId: "a1" });
+    });
+    await t.mutation(internal.transcription.finishSummary, {
+      sessionId,
+      attemptId: "a1",
+      status: "ready",
+      json: summaryJson(title),
+      model: "m",
+    });
+  }
+
+  it("sets the AI title from a finished summary unless the call was renamed", async () => {
+    const t = newTest();
+    const { sessionId } = await endedSession(t);
+    const asStarter = t.withIdentity({ subject: "user-1" });
+    await finish(t, sessionId, "Launch planning");
+    let session = await asStarter.query(api.transcription.getSession, { sessionId });
+    expect(session.title).toBe("Launch planning");
+    expect(session.titleSource).toBe("summary");
+    const rows = await asStarter.query(api.transcription.listSessions, {});
+    expect(rows[0]?.title).toBe("Launch planning");
+
+    await asStarter.mutation(api.transcription.renameSession, { sessionId, title: "My name" });
+    await finish(t, sessionId, "Another AI title");
+    session = await asStarter.query(api.transcription.getSession, { sessionId });
+    expect(session.title).toBe("My name");
+    expect(session.titleSource).toBe("user");
+
+    // Clearing the title lets the next summary set it again.
+    await asStarter.mutation(api.transcription.renameSession, { sessionId, title: "   " });
+    session = await asStarter.query(api.transcription.getSession, { sessionId });
+    expect(session.title).toBeNull();
+    expect(session.titleSource).toBeNull();
+    await finish(t, sessionId, "Another AI title");
+    session = await asStarter.query(api.transcription.getSession, { sessionId });
+    expect(session.title).toBe("Another AI title");
+  });
+
+  it("renames with a sanitized title and enforces the edit permission", async () => {
+    const t = newTest();
+    const { sessionId } = await endedSession(t);
+    const asStarter = t.withIdentity({ subject: "user-1" });
+    await asStarter.mutation(api.transcription.renameSession, {
+      sessionId,
+      title: "  Weekly \n\t sync\u0007  ",
+    });
+    expect((await asStarter.query(api.transcription.getSession, { sessionId })).title).toBe(
+      "Weekly sync",
+    );
+    await expect(
+      asStarter.mutation(api.transcription.renameSession, {
+        sessionId,
+        title: "x".repeat(121),
+      }),
+    ).rejects.toThrow(/at most 120/);
+
+    const asViewer = t.withIdentity({ subject: "viewer" });
+    expect((await asViewer.query(api.transcription.getSession, { sessionId })).canEdit).toBe(false);
+    await expect(
+      asViewer.mutation(api.transcription.renameSession, { sessionId, title: "Nope" }),
+    ).rejects.toThrow(/Missing transcript permission/);
+    await expect(
+      t
+        .withIdentity({ subject: "outsider" })
+        .mutation(api.transcription.renameSession, { sessionId, title: "Nope" }),
+    ).rejects.toThrow();
+
+    const asOwner = t.withIdentity({ subject: "owner-1" });
+    expect((await asOwner.query(api.transcription.getSession, { sessionId })).canEdit).toBe(true);
+    await asOwner.mutation(api.transcription.renameSession, { sessionId, title: "Owner title" });
+    expect((await asStarter.query(api.transcription.getSession, { sessionId })).canEdit).toBe(true);
+    const audit = await t.run(async (ctx) => await ctx.db.query("auditLog").take(100));
+    expect(audit.filter((row) => row.action === "transcription.rename")).toHaveLength(2);
+  });
+
+  it("edits a summary and preserves title and language", async () => {
+    const t = newTest();
+    const { sessionId } = await endedSession(t);
+    const asStarter = t.withIdentity({ subject: "user-1" });
+    await finish(t, sessionId, "Launch planning");
+    await asStarter.mutation(api.transcription.updateSummary, {
+      sessionId,
+      summary: { ...EDITED_SUMMARY, overview: "  Edited overview " },
+    });
+    const session = await asStarter.query(api.transcription.getSession, { sessionId });
+    const stored = JSON.parse(session.summary ?? "{}");
+    expect(stored.overview).toBe("Edited overview");
+    expect(stored.title).toBe("Launch planning");
+    expect(stored.language).toBe("en");
+    expect(session.summaryStatus).toBe("ready");
+    expect(session.summaryEditedAt).not.toBeNull();
+    expect(session.title).toBe("Launch planning");
+
+    // A fresh AI summary replaces the edit and clears the marker.
+    await finish(t, sessionId, "Second");
+    const refreshed = await asStarter.query(api.transcription.getSession, { sessionId });
+    expect(refreshed.summaryEditedAt).toBeNull();
+  });
+
+  it("rejects summary edits that are too long, unpermitted or untimely", async () => {
+    const t = newTest();
+    const { sessionId } = await endedSession(t);
+    await finish(t, sessionId, "Launch planning");
+    const edit = (summary: typeof EDITED_SUMMARY, subject = "user-1") =>
+      t.withIdentity({ subject }).mutation(api.transcription.updateSummary, { sessionId, summary });
+
+    await expect(
+      edit({ ...EDITED_SUMMARY, keyPoints: Array.from({ length: 31 }, () => "x") }),
+    ).rejects.toThrow(/at most 30/);
+    await expect(edit({ ...EDITED_SUMMARY, decisions: ["x".repeat(601)] })).rejects.toThrow(
+      /at most 600/,
+    );
+    await expect(edit(EDITED_SUMMARY, "viewer")).rejects.toThrow(/Missing transcript permission/);
+
+    await t.run(async (ctx) => {
+      await ctx.db.patch(sessionId, { summaryStatus: "pending" });
+    });
+    await expect(edit(EDITED_SUMMARY)).rejects.toThrow(/being written/);
+    await t.run(async (ctx) => {
+      await ctx.db.patch(sessionId, { summaryStatus: "ready", status: "active" });
+    });
+    await expect(edit(EDITED_SUMMARY)).rejects.toThrow(/still being transcribed/);
+  });
+
+  it("edits a segment, flags it as edited and keeps the speaker", async () => {
+    const t = newTest();
+    const { sessionId } = await endedSession(t);
+    const asStarter = t.withIdentity({ subject: "user-1" });
+    const before = await asStarter.query(api.transcription.listSegments, { sessionId });
+    expect(before.page.every((row) => !row.edited)).toBe(true);
+    const target = before.page[1];
+    if (target === undefined) throw new Error("missing segment");
+
+    await asStarter.mutation(api.transcription.updateSegment, {
+      segmentId: target.id as Id<"transcriptSegments">,
+      text: "  corrected text ",
+    });
+    const after = await asStarter.query(api.transcription.listSegments, { sessionId });
+    expect(after.page.map((row) => row.edited)).toEqual([false, true, false]);
+    expect(after.page[1]?.text).toBe("corrected text");
+    expect(after.page[1]?.speakerName).toBe(target.speakerName);
+
+    for (const text of ["   ", "x".repeat(4_001)]) {
+      await expect(
+        asStarter.mutation(api.transcription.updateSegment, {
+          segmentId: target.id as Id<"transcriptSegments">,
+          text,
+        }),
+      ).rejects.toThrow(/between 1 and/);
+    }
+    await expect(
+      t.withIdentity({ subject: "viewer" }).mutation(api.transcription.updateSegment, {
+        segmentId: target.id as Id<"transcriptSegments">,
+        text: "nope",
+      }),
+    ).rejects.toThrow(/Missing transcript permission/);
+  });
+
+  it("returns the latest segments in order, bounded, and null for a missing session", async () => {
+    const t = newTest();
+    const { sessionId } = await endedSession(t, { segments: 100 });
+    const asViewer = t.withIdentity({ subject: "viewer" });
+    const live = await asViewer.query(api.transcription.liveSegments, { sessionId });
+    expect(live?.status).toBe("ended");
+    expect(live?.segments).toHaveLength(40);
+    expect(live?.segments[0]?.text).toBe("line 61");
+    expect(live?.segments.at(-1)?.text).toBe("line 100");
+    expect(live?.segments[0]?.edited).toBe(false);
+
+    const small = await asViewer.query(api.transcription.liveSegments, { sessionId, limit: 3 });
+    expect(small?.segments.map((row) => row.text)).toEqual(["line 98", "line 99", "line 100"]);
+    const clampedLow = await asViewer.query(api.transcription.liveSegments, {
+      sessionId,
+      limit: 0,
+    });
+    expect(clampedLow?.segments).toHaveLength(1);
+    const clampedHigh = await asViewer.query(api.transcription.liveSegments, {
+      sessionId,
+      limit: 5_000,
+    });
+    expect(clampedHigh?.segments).toHaveLength(80);
+
+    await expect(t.query(api.transcription.liveSegments, { sessionId })).rejects.toThrow();
+    await expect(
+      t.withIdentity({ subject: "outsider" }).query(api.transcription.liveSegments, { sessionId }),
+    ).rejects.toThrow(/Missing transcript permission/);
+
+    await t.run(async (ctx) => {
+      await ctx.db.delete(sessionId);
+    });
+    expect(await asViewer.query(api.transcription.liveSegments, { sessionId })).toBeNull();
   });
 });
