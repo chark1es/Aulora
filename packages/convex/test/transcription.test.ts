@@ -1856,6 +1856,14 @@ describe("transcription configuration", () => {
   });
 });
 
+const EDITED_SUMMARY = {
+  overview: "Edited overview",
+  keyPoints: ["Point"],
+  decisions: [] as string[],
+  actionItems: [{ text: "Do it", owner: null as string | null }],
+  speakerHighlights: [{ speaker: "Sam", text: "Said it" }],
+};
+
 describe("transcript titles and editing", () => {
   async function endedSession(t: Test, options: { readonly segments?: number } = {}) {
     await seedWorkspace(t, {
@@ -1987,19 +1995,15 @@ describe("transcript titles and editing", () => {
     expect(audit.filter((row) => row.action === "transcription.rename")).toHaveLength(2);
   });
 
-  it("edits a summary, validates it and preserves title and language", async () => {
+  it("edits a summary and preserves title and language", async () => {
     const t = newTest();
     const { sessionId } = await endedSession(t);
     const asStarter = t.withIdentity({ subject: "user-1" });
-    const edited = {
-      overview: "  Edited overview ",
-      keyPoints: ["Point"],
-      decisions: [],
-      actionItems: [{ text: "Do it", owner: null }],
-      speakerHighlights: [{ speaker: "Sam", text: "Said it" }],
-    };
     await finish(t, sessionId, "Launch planning");
-    await asStarter.mutation(api.transcription.updateSummary, { sessionId, summary: edited });
+    await asStarter.mutation(api.transcription.updateSummary, {
+      sessionId,
+      summary: { ...EDITED_SUMMARY, overview: "  Edited overview " },
+    });
     const session = await asStarter.query(api.transcription.getSession, { sessionId });
     const stored = JSON.parse(session.summary ?? "{}");
     expect(stored.overview).toBe("Edited overview");
@@ -2009,42 +2013,35 @@ describe("transcript titles and editing", () => {
     expect(session.summaryEditedAt).not.toBeNull();
     expect(session.title).toBe("Launch planning");
 
-    await expect(
-      asStarter.mutation(api.transcription.updateSummary, {
-        sessionId,
-        summary: { ...edited, keyPoints: Array.from({ length: 31 }, () => "x") },
-      }),
-    ).rejects.toThrow(/at most 30/);
-    await expect(
-      asStarter.mutation(api.transcription.updateSummary, {
-        sessionId,
-        summary: { ...edited, decisions: ["x".repeat(601)] },
-      }),
-    ).rejects.toThrow(/at most 600/);
-    await expect(
-      t.withIdentity({ subject: "viewer" }).mutation(api.transcription.updateSummary, {
-        sessionId,
-        summary: edited,
-      }),
-    ).rejects.toThrow(/Missing transcript permission/);
-
     // A fresh AI summary replaces the edit and clears the marker.
     await finish(t, sessionId, "Second");
     const refreshed = await asStarter.query(api.transcription.getSession, { sessionId });
     expect(refreshed.summaryEditedAt).toBeNull();
+  });
+
+  it("rejects summary edits that are too long, unpermitted or untimely", async () => {
+    const t = newTest();
+    const { sessionId } = await endedSession(t);
+    await finish(t, sessionId, "Launch planning");
+    const edit = (summary: typeof EDITED_SUMMARY, subject = "user-1") =>
+      t.withIdentity({ subject }).mutation(api.transcription.updateSummary, { sessionId, summary });
+
+    await expect(
+      edit({ ...EDITED_SUMMARY, keyPoints: Array.from({ length: 31 }, () => "x") }),
+    ).rejects.toThrow(/at most 30/);
+    await expect(edit({ ...EDITED_SUMMARY, decisions: ["x".repeat(601)] })).rejects.toThrow(
+      /at most 600/,
+    );
+    await expect(edit(EDITED_SUMMARY, "viewer")).rejects.toThrow(/Missing transcript permission/);
 
     await t.run(async (ctx) => {
       await ctx.db.patch(sessionId, { summaryStatus: "pending" });
     });
-    await expect(
-      asStarter.mutation(api.transcription.updateSummary, { sessionId, summary: edited }),
-    ).rejects.toThrow(/being written/);
+    await expect(edit(EDITED_SUMMARY)).rejects.toThrow(/being written/);
     await t.run(async (ctx) => {
       await ctx.db.patch(sessionId, { summaryStatus: "ready", status: "active" });
     });
-    await expect(
-      asStarter.mutation(api.transcription.updateSummary, { sessionId, summary: edited }),
-    ).rejects.toThrow(/still being transcribed/);
+    await expect(edit(EDITED_SUMMARY)).rejects.toThrow(/still being transcribed/);
   });
 
   it("edits a segment, flags it as edited and keeps the speaker", async () => {

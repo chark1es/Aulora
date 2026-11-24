@@ -107,7 +107,7 @@
       "gzip": 18752
     },
     "assets/index.js": {
-      "raw": 117952,
+      "raw": 118016,
       "gzip": 39104
     },
     "assets/inter-latin-ext-wght-italic.woff2": {
@@ -151,8 +151,8 @@
       "gzip": 161408
     },
     "assets/LiveTranscriptSheet.js": {
-      "raw": 4544,
-      "gzip": 1984
+      "raw": 5248,
+      "gzip": 2176
     },
     "assets/Modal.js": {
       "raw": 2816,
@@ -216,7 +216,7 @@
     },
     "assets/ScheduledCallsView.js": {
       "raw": 18752,
-      "gzip": 6656
+      "gzip": 6592
     },
     "assets/SearchInput.js": {
       "raw": 2112,
@@ -239,7 +239,7 @@
       "gzip": 7104
     },
     "assets/Switch.js": {
-      "raw": 2368,
+      "raw": 2432,
       "gzip": 1088
     },
     "assets/tanstack.js": {
@@ -271,8 +271,8 @@
       "gzip": 11648
     },
     "assets/TranscriptsView.js": {
-      "raw": 26880,
-      "gzip": 7616
+      "raw": 27200,
+      "gzip": 7744
     },
     "assets/use-before-unload.js": {
       "raw": 384,
@@ -332,8 +332,8 @@
     "gzip": 228608
   },
   "total": {
-    "raw": 18992576,
-    "gzip": 6094464
+    "raw": 18993600,
+    "gzip": 6094848
   },
   "lazyOnly": [
     {

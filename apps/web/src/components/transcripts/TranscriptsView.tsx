@@ -199,6 +199,7 @@ function SessionDetail({
   const renameSession = useMutation(api.transcription.renameSession);
   const updateSummary = useMutation(api.transcription.updateSummary);
   const [renaming, setRenaming] = useState(false);
+  const [editingTitle, setEditingTitle] = useState(false);
   const [editingSummary, setEditingSummary] = useState(false);
   const [savingSummary, setSavingSummary] = useState(false);
   const [summaryError, setSummaryError] = useState<string | null>(null);
@@ -280,18 +281,19 @@ function SessionDetail({
         setSavingSummary(false);
       });
   };
-  const rename = async (next: string): Promise<boolean> => {
+  const rename = (next: string) => {
     setRenaming(true);
     setError(null);
-    try {
-      await renameSession({ sessionId: sessionId as never, title: next });
-      return true;
-    } catch (cause) {
-      fail(cause, "Could not rename the transcript. Try again.");
-      return false;
-    } finally {
-      setRenaming(false);
-    }
+    void renameSession({ sessionId: sessionId as never, title: next })
+      .then(() => {
+        setEditingTitle(false);
+      })
+      .catch((cause: unknown) => {
+        fail(cause, "Could not rename the transcript. Try again.");
+      })
+      .finally(() => {
+        setRenaming(false);
+      });
   };
 
   return (
@@ -304,8 +306,15 @@ function SessionDetail({
               editValue={session.title ?? ""}
               subtitle={session.title != null ? channelTitle : null}
               canEdit={canEdit}
+              editing={editingTitle}
               isUserTitle={session.titleSource === "user"}
               saving={renaming}
+              onEdit={() => {
+                setEditingTitle(true);
+              }}
+              onCancel={() => {
+                setEditingTitle(false);
+              }}
               onRename={rename}
             />
             <p className="mt-0.5 text-[12.5px] tabular-nums text-text-muted">
