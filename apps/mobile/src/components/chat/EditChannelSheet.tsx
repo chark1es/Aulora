@@ -1,4 +1,4 @@
-import { roleColorCss } from "@aulora/core";
+import { roleColorCss, withoutBots } from "@aulora/core";
 import { Button, Icon, Input, Text, TextField, usePalette } from "@aulora/ui-native";
 import { useEffect, useMemo, useState } from "react";
 import { Pressable, ScrollView, View } from "react-native";
@@ -101,13 +101,21 @@ export function EditChannelSheet(props: EditChannelSheetProps) {
   );
   const memberNeedle = memberQuery.trim().toLowerCase();
   const blockNeedle = blockQuery.trim().toLowerCase();
+  // Bot accounts are never offered; a bot already in a list stays listed there
+  // so it can be removed.
   const filteredMembers = useMemo(
-    () => sortedMembers.filter((member) => member.displayName.toLowerCase().includes(memberNeedle)),
-    [sortedMembers, memberNeedle],
+    () =>
+      withoutBots(sortedMembers, selectedMembers).filter((member) =>
+        member.displayName.toLowerCase().includes(memberNeedle),
+      ),
+    [sortedMembers, selectedMembers, memberNeedle],
   );
   const filteredBlockMembers = useMemo(
-    () => sortedMembers.filter((member) => member.displayName.toLowerCase().includes(blockNeedle)),
-    [sortedMembers, blockNeedle],
+    () =>
+      withoutBots(sortedMembers, blockedUserIds).filter((member) =>
+        member.displayName.toLowerCase().includes(blockNeedle),
+      ),
+    [sortedMembers, blockedUserIds, blockNeedle],
   );
 
   function toggleMember(userId: string) {

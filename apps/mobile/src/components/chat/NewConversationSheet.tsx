@@ -1,3 +1,4 @@
+import { isBotUserId } from "@aulora/core";
 import { Button, Checkbox, Input, Text } from "@aulora/ui-native";
 import { useState } from "react";
 import { Pressable, ScrollView, View } from "react-native";
@@ -24,6 +25,7 @@ export function NewConversationSheet({
   const choices = members.filter(
     (member) =>
       member.userId !== ownUserId &&
+      !isBotUserId(member.userId) &&
       member.displayName.toLocaleLowerCase().includes(query.trim().toLocaleLowerCase()),
   );
   return (

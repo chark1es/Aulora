@@ -1,6 +1,7 @@
 import {
   clampOpenLeadMinutes,
   hasPermission,
+  isBotUserId,
   Permission,
   SCHEDULED_CALL_DESCRIPTION_MAX,
   SCHEDULED_CALL_LIST_LIMIT,
@@ -354,6 +355,10 @@ async function validateInvitees(
   roleIds: readonly string[],
 ): Promise<void> {
   for (const invitee of [...new Set(userIds)]) {
+    // Bots hold a member row but are not people a call can invite.
+    if (isBotUserId(invitee)) {
+      throw new ConvexError("Bots cannot be invited to a call");
+    }
     const member = await ctx.db
       .query("members")
       .withIndex("by_user", (q) => q.eq("userId", invitee))

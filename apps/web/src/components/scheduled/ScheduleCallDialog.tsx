@@ -4,6 +4,7 @@ import {
   formatLocalDateTime,
   formatZoneName,
   fromDateTimeLocalValue,
+  isBotUserId,
   SCHEDULED_CALL_DEFAULT_OPEN_LEAD_MINUTES,
   SCHEDULED_CALL_DESCRIPTION_MAX,
   SCHEDULED_CALL_TITLE_MAX,
@@ -101,7 +102,8 @@ function initialDraft(editing: EditableScheduledCall | null, now: number): Sched
       openLeadMinutes: editing.openLeadMinutes,
       target: editing.channelId === null ? "standalone" : "channel",
       channelId: editing.channelId ?? "",
-      inviteeUserIds: editing.inviteeUserIds,
+      // A bot invited before bots were excluded is dropped, so saving works.
+      inviteeUserIds: editing.inviteeUserIds.filter((id) => !isBotUserId(id)),
       inviteeRoleIds: editing.inviteeRoleIds,
     };
   }

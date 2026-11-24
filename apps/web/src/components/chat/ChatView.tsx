@@ -19,6 +19,7 @@ import {
   resolveServerCapabilities,
   suppressesBroadcast,
   userFacingError,
+  withoutBots,
 } from "@aulora/core";
 import { ConfirmDialog, cn, EmptyState, Icon, Spinner } from "@aulora/ui-web";
 import { useConvex, useMutation, usePaginatedQuery, useQuery } from "convex/react";
@@ -492,6 +493,9 @@ function ChatViewContent({
     }
     return [...merged.values()];
   }, [directory, rosterRows, toEntry]);
+  // The roster as people to invite, message or add: bot accounts are members
+  // so they can post, but they are never offered by these pickers.
+  const people = useMemo(() => withoutBots(roster), [roster]);
 
   // Avatar URLs for everyone this view can render: the scoped directory, the
   // member panel’s page and any open picker’s roster.
@@ -1004,8 +1008,8 @@ function ChatViewContent({
         displayedMemberIds: [
           ...(membersOpen ? visibleMembers.map((member) => member.userId) : []),
           ...(membersModalChannel?.memberIds ?? []),
-          ...(newConversationOpen && roster.length <= PRESENCE_SCOPE_MAX
-            ? roster.map((member) => member.userId)
+          ...(newConversationOpen && people.length <= PRESENCE_SCOPE_MAX
+            ? people.map((member) => member.userId)
             : []),
         ],
         channels,
@@ -1017,7 +1021,7 @@ function ChatViewContent({
       visibleMembers,
       membersModalChannel,
       newConversationOpen,
-      roster,
+      people,
       channels,
     ],
   );
@@ -2040,7 +2044,7 @@ function ChatViewContent({
               <ScheduledCallsView
                 ownUserId={ownUserId}
                 permissions={permissions}
-                members={roster}
+                members={people}
                 roles={admin.roleViews}
                 channels={channels}
                 titles={titles}
@@ -2394,7 +2398,7 @@ function ChatViewContent({
 
         {newConversationOpen && (
           <NewConversationDialog
-            members={roster}
+            members={people}
             ownUserId={ownUserId}
             presenceOf={presenceOf}
             onStart={(userIds) => void startConversation(userIds)}
@@ -2410,7 +2414,7 @@ function ChatViewContent({
             ? { initialCategoryId: createChannelCategoryId }
             : {})}
           {...(createChannelKind !== undefined ? { initialKind: createChannelKind } : {})}
-          members={roster}
+          members={people}
           roles={channelRoleOptions}
           onClose={() => {
             setCreateChannelOpen(false);
@@ -2463,7 +2467,7 @@ function ChatViewContent({
             open
             channelName={titles.get(membersModalChannel.id) ?? membersModalChannel.name}
             isPrivate={membersModalChannel.isPrivate === true}
-            members={roster}
+            members={withoutBots(roster, membersModalChannel.memberIds)}
             {...(membersModalChannel.memberIds !== undefined
               ? { memberIds: membersModalChannel.memberIds }
               : {})}

@@ -1,4 +1,5 @@
 /* eslint-disable no-unused-vars -- the base rule reports parameter names in type signatures; Biome checks real unused code */
+import { withoutBots } from "@aulora/core";
 import { Button, DialogSection, DialogToggleRow, Icon, Input, Modal } from "@aulora/ui-web";
 import { useEffect, useMemo, useState } from "react";
 import type { OverrideView } from "../../lib/workspace-admin";
@@ -257,7 +258,18 @@ function EditChannelFooter(props: EditChannelFooterProps) {
 export function EditChannelModal(props: EditChannelModalProps) {
   const { open, ownUserId, busy = false, error = null, onClose, onSave } = props;
   const form = useEditChannelForm(props);
-  const people = usePeopleOptions(props.members, ownUserId);
+  // Bot accounts are never offered; a bot already in a list stays listed there
+  // so it can be removed.
+  const accessMembers = useMemo(
+    () => withoutBots(props.members, form.selectedMembers),
+    [props.members, form.selectedMembers],
+  );
+  const blockMembers = useMemo(
+    () => withoutBots(props.members, form.blockedUserIds),
+    [props.members, form.blockedUserIds],
+  );
+  const accessPeople = usePeopleOptions(accessMembers, ownUserId);
+  const blockPeople = usePeopleOptions(blockMembers, ownUserId);
   const trimmedName = form.name.trim();
   const disabled = trimmedName.length === 0 || busy || form.saving;
 
@@ -306,8 +318,8 @@ export function EditChannelModal(props: EditChannelModalProps) {
         }}
       >
         <DetailsSection form={form} />
-        <AccessSection form={form} people={people} ownUserId={ownUserId} />
-        <BlockedSection form={form} people={people} ownUserId={ownUserId} />
+        <AccessSection form={form} people={accessPeople} ownUserId={ownUserId} />
+        <BlockedSection form={form} people={blockPeople} ownUserId={ownUserId} />
         {props.canManageRoleOverrides === true && (
           <ChannelRoleOverrides
             roles={props.roles ?? []}

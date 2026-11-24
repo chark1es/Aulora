@@ -1,5 +1,5 @@
 /* eslint-disable no-unused-vars -- the base rule reports parameter names in type signatures; Biome checks real unused code */
-import { timeAgo } from "@aulora/core";
+import { timeAgo, withoutBots } from "@aulora/core";
 import { CapText, Checkbox, cn, Icon, type IconProps, SearchInput } from "@aulora/ui-web";
 import { type ReactNode, useEffect, useId, useRef, useState } from "react";
 import { PersonAvatar } from "../chat/member-avatars";
@@ -304,11 +304,14 @@ export function personOptions(
   /** Selected ids without a listed member stay removable. */
   selected: readonly string[],
 ): ChecklistOption[] {
+  // Bot accounts are never offered, but one already selected stays listed by
+  // name so it can still be removed.
+  const people = withoutBots(members, selected);
   return [
     ...selected
       .filter((id) => !members.some((m) => m.userId === id))
       .map((id) => ({ id, label: "Former member" })),
-    ...members.map((m) => ({ id: m.userId, label: m.displayName })),
+    ...people.map((m) => ({ id: m.userId, label: m.displayName })),
   ].map((o) => ({ ...o, leading: <PersonAvatar userId={o.id} size={20} /> }));
 }
 

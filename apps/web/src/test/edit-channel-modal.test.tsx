@@ -57,6 +57,25 @@ describe("EditChannelModal", () => {
     });
   });
 
+  it("offers no bot accounts, but keeps a bot member listed where it already is", () => {
+    const withBot = [...members, { userId: "bot_helper", displayName: "Helper Bot" }];
+    const { unmount } = render(<EditChannelModal {...baseProps()} isPrivate members={withBot} />);
+    expect(screen.queryByTestId("member-option-bot_helper")).toBeNull();
+    expect(screen.queryByTestId("blocked-option-bot_helper")).toBeNull();
+    unmount();
+
+    render(
+      <EditChannelModal
+        {...baseProps()}
+        isPrivate
+        members={withBot}
+        initialMemberIds={["me", "bot_helper"]}
+      />,
+    );
+    expect(screen.getByTestId("member-option-bot_helper")).toBeInTheDocument();
+    expect(screen.queryByTestId("blocked-option-bot_helper")).toBeNull();
+  });
+
   it("adds and removes blocked users through the chips and list", async () => {
     const user = userEvent.setup();
     const onSave = vi.fn();
