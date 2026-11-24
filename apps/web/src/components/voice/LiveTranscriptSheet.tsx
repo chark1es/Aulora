@@ -10,21 +10,26 @@ import {
   usePrefersReducedMotion,
 } from "@aulora/ui-web";
 import { useQuery } from "convex/react";
-import type { FunctionReturnType } from "convex/server";
 import { type ReactNode, type UIEventHandler, useEffect, useMemo, useRef, useState } from "react";
 import { api } from "../../../../../packages/convex/convex/_generated/api";
 import type { Id } from "../../../../../packages/convex/convex/_generated/dataModel";
 import { requestOpenTranscript } from "../../lib/transcription/transcript-navigation";
-import { groupEditableTurns } from "../transcripts/transcript-turns";
+import {
+  type EditableLine,
+  type EditableTurn,
+  groupEditableTurns,
+} from "../transcripts/transcript-turns";
 
 /** How many of the newest lines the panel follows. The server clamps to 80. */
 const LIVE_LINES = 50;
 /** Distance from the bottom that still counts as "following the newest line". */
 const STICK_PX = 32;
 
-type LiveSegments = FunctionReturnType<typeof api.transcription.liveSegments>;
-type LiveSegment = NonNullable<LiveSegments>["segments"][number];
-type LiveTurns = ReturnType<typeof groupEditableTurns>;
+/** What the panel reads from `liveSegments`: the session state and its newest lines. */
+interface LiveTranscript {
+  readonly status: string;
+  readonly segments: readonly EditableLine[];
+}
 
 const PANEL_CLASS = cn(
   "flex min-h-0 flex-col bg-surface-1",
@@ -45,7 +50,7 @@ export function LiveTranscriptPanel({
   readonly onClose: () => void;
 }) {
   // "skip" releases the subscription whenever the panel is closed.
-  const live = useQuery(
+  const live: LiveTranscript | null | undefined = useQuery(
     api.transcription.liveSegments,
     open && sessionId !== null
       ? { sessionId: sessionId as Id<"transcriptionSessions">, limit: LIVE_LINES }
@@ -78,30 +83,15 @@ export function LiveTranscriptPanel({
 
 export default LiveTranscriptPanel;
 
-function useLiveTurns(segments: readonly LiveSegment[] | undefined): LiveTurns {
-  return useMemo(
-    () =>
-      groupEditableTurns(
-        (segments ?? []).map((segment) => ({
-          id: segment.id,
-          seq: segment.seq,
-          speakerKey: segment.speakerKey,
-          speakerName: segment.speakerName,
-          text: segment.text,
-          startMs: segment.startMs,
-          endMs: segment.endMs,
-          edited: segment.edited,
-        })),
-      ),
-    [segments],
-  );
+function useLiveTurns(segments: readonly EditableLine[] | undefined): readonly EditableTurn[] {
+  return useMemo(() => groupEditableTurns(segments ?? []), [segments]);
 }
 
 /**
  * Keeps the list pinned to the newest line until the reader scrolls up, then
  * offers a way back down.
  */
-function useFollowNewest(newest: LiveSegment | undefined) {
+function useFollowNewest(newest: EditableLine | undefined) {
   const reducedMotion = usePrefersReducedMotion();
   const scroller = useRef<HTMLDivElement>(null);
   const [following, setFollowing] = useState(true);
@@ -140,7 +130,7 @@ function FollowingScroller({
   newest,
   children,
 }: {
-  readonly newest: LiveSegment | undefined;
+  readonly newest: EditableLine | undefined;
   readonly children: ReactNode;
 }) {
   const follow = useFollowNewest(newest);
@@ -183,8 +173,8 @@ function LiveLines({
   live,
   turns,
 }: {
-  readonly live: LiveSegments | undefined;
-  readonly turns: LiveTurns;
+  readonly live: LiveTranscript | null | undefined;
+  readonly turns: readonly EditableTurn[];
 }) {
   const ended =
     live != null && live.status !== "active" ? (
@@ -222,7 +212,7 @@ function LiveLines({
   );
 }
 
-function TurnList({ turns }: { readonly turns: LiveTurns }) {
+function TurnList({ turns }: { readonly turns: readonly EditableTurn[] }) {
   return (
     <ol className="flex flex-col gap-2.5" aria-label="Transcript lines">
       {turns.map((turn) => (

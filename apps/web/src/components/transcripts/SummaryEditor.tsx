@@ -50,6 +50,21 @@ export function SummaryEditor({
         }
       }}
     >
+      <SummaryFields draft={draft} />
+      <EditorFooter
+        message={problem ?? error}
+        saving={saving}
+        invalid={problem !== null}
+        onCancel={onCancel}
+      />
+    </form>
+  );
+}
+
+/** The overview and the four lists, bound to the draft. */
+function SummaryFields({ draft }: { readonly draft: SummaryDraft }) {
+  return (
+    <>
       <Textarea
         label="Overview"
         rows={4}
@@ -73,13 +88,7 @@ export function SummaryEditor({
       />
       <ActionItemList rows={draft.actions} nextId={draft.nextId} />
       <HighlightList rows={draft.highlights} nextId={draft.nextId} />
-      <EditorFooter
-        message={problem ?? error}
-        saving={saving}
-        invalid={problem !== null}
-        onCancel={onCancel}
-      />
-    </form>
+    </>
   );
 }
 
@@ -116,6 +125,8 @@ function EditorFooter({
     </>
   );
 }
+
+type SummaryDraft = ReturnType<typeof useSummaryDraft>;
 
 /** The form's state: one list per section, each row with a stable key. */
 function useSummaryDraft(initial: SummaryEdit) {
