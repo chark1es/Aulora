@@ -75,6 +75,23 @@ describe("scheduled calls permissions", () => {
     expect(view.channelId).toBeNull();
     expect(view.opensAt).toBe(startsAt - 5 * MINUTE);
   });
+
+  it("refuses a bot account as an invitee", async () => {
+    const t = newTest();
+    await seedScheduled(t);
+    // Bots hold a members row, so the member check alone would accept one.
+    await t.run(async (ctx) => {
+      await ctx.db.insert("members", { userId: "bot_helper", roleIds: [], joinedAt: Date.now() });
+    });
+    await expect(
+      t.withIdentity({ subject: "user-2" }).mutation(api.scheduledCalls.create, {
+        title: "Standup",
+        startsAt: Date.now() + 10 * MINUTE,
+        openLeadMinutes: 5,
+        inviteeUserIds: ["user-1", "bot_helper"],
+      }),
+    ).rejects.toThrow(/Bots cannot be invited to a call/);
+  });
 });
 
 describe("scheduled call creator cap", () => {

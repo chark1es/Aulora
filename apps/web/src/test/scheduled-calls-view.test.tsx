@@ -148,6 +148,21 @@ describe("ScheduledCallsView", () => {
     expect(screen.queryByRole("button", { name: "Cancel Theirs" })).toBeNull();
   });
 
+  it("drops a bot invitee from an existing call when it is saved", async () => {
+    state.values.set("scheduledCalls:list", [
+      call({ id: "mine", title: "Mine", canManage: true, inviteeUserIds: ["u2", "bot_helper"] }),
+    ]);
+    const user = userEvent.setup();
+    view(Permission.ViewScheduledCalls | Permission.ScheduleCalls);
+    await user.click(screen.getByRole("button", { name: "Edit Mine" }));
+    await user.click(screen.getByRole("button", { name: "Save changes" }));
+    await waitFor(() => {
+      expect(state.mutations.get("scheduledCalls:update")).toHaveBeenCalledWith(
+        expect.objectContaining({ inviteeUserIds: ["u2"] }),
+      );
+    });
+  });
+
   it("cancels only after confirmation", async () => {
     state.values.set("scheduledCalls:list", [call({ canManage: true })]);
     const user = userEvent.setup();

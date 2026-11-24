@@ -1,3 +1,4 @@
+import { isBotUserId } from "@aulora/core";
 import { View } from "react-native";
 import { pickDocuments, pickFromLibrary } from "../../lib/attachments";
 import { type Card, isColumnFull, PRIORITIES, priorityInfo } from "../../lib/kanban";
@@ -64,7 +65,10 @@ function PriorityPicker({ editor, onClose }: PickerProps) {
 function AssigneePicker({ editor, onClose }: PickerProps) {
   const { board, draft } = editor;
   const people = editor.members.filter(
-    (member) => !board.private || board.memberIds.includes(member.userId),
+    (member) =>
+      (!board.private || board.memberIds.includes(member.userId)) &&
+      // Bots are never offered; one already assigned stays removable.
+      (!isBotUserId(member.userId) || draft.assigneeIds.includes(member.userId)),
   );
   // Someone who left stays listed so they can still be unassigned.
   const former = draft.assigneeIds

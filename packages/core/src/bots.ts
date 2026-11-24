@@ -18,6 +18,19 @@ export function isBotUserId(userId: string): boolean {
 }
 
 /**
+ * The people in a member list, without bot accounts. Bots hold a `members` row
+ * so they can post and be mentioned, but they are not people to invite to a
+ * call, start a conversation with or add to a channel or board. A bot listed in
+ * `keep` (one already selected) stays, so it can still be removed.
+ */
+export function withoutBots<T extends { readonly userId: string }>(
+  members: readonly T[],
+  keep: readonly string[] = [],
+): T[] {
+  return members.filter((member) => !isBotUserId(member.userId) || keep.includes(member.userId));
+}
+
+/**
  * Permissions that can never be granted to a bot. Anything that edits roles,
  * the workspace, invites, bots themselves or the audit log would let a bot (or
  * whoever controls its code) escalate beyond what the workspace owner reviewed.

@@ -1,5 +1,5 @@
 /* eslint-disable no-unused-vars -- the base rule reports parameter names in type signatures; Biome checks real unused code */
-import type { KanbanBoardContent } from "@aulora/core";
+import { isBotUserId, type KanbanBoardContent } from "@aulora/core";
 import { Button, Input, Text } from "@aulora/ui-native";
 import { useMutation } from "convex/react";
 import { useState } from "react";
@@ -80,7 +80,13 @@ function MembersRow({ memberIds, members, onChange }: MembersRowProps) {
           multiple
           title="Board members"
           searchPlaceholder="Find a person"
-          options={[...former, ...members].map((member) => ({
+          options={[
+            ...former,
+            // Bots are never offered; one already on the board stays removable.
+            ...members.filter(
+              (member) => !isBotUserId(member.userId) || memberIds.includes(member.userId),
+            ),
+          ].map((member) => ({
             id: member.userId,
             label: member.displayName,
             leading: <MemberAvatar userId={member.userId} size={28} />,

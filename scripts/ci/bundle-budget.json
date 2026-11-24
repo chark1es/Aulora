@@ -158,6 +158,10 @@
       "raw": 2816,
       "gzip": 1280
     },
+    "assets/NoteMarkdown.js": {
+      "raw": 12288,
+      "gzip": 4544
+    },
     "assets/NotesView.js": {
       "raw": 67392,
       "gzip": 17920
