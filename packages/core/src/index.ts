@@ -27,6 +27,7 @@ export {
   utf8Encode,
 } from "./binary";
 export { blurhashDecode, blurhashEncode } from "./blurhash";
+export * from "./botMcp";
 export * from "./bots";
 export * from "./call-addons-access";
 export { summaryMentionIncreased } from "./chat/broadcast-feedback.js";

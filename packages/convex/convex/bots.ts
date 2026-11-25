@@ -7,119 +7,33 @@
  * returned, source and env values are sealed at rest, and audit rows carry
  * names/ids only.
  */
-import {
-  BOT_LIMITS,
-  BOT_USER_ID_PREFIX,
-  type BotLanguage,
-  isValidBotGrant,
-  Permission,
-} from "@aulora/core";
+import { isValidBotGrant, Permission } from "@aulora/core";
 import { ConvexError, v } from "convex/values";
-import type { Id } from "./_generated/dataModel";
-import type { MutationCtx } from "./_generated/server";
 import { mutation, query } from "./_generated/server";
 import { writeAudit } from "./lib/audit";
 import { botTokenLast4, generateBotToken, hashBotToken } from "./lib/botAuth";
-import { botLogContext, openBotEnv, validateBotEnvName, validateBotEnvValue } from "./lib/botFiles";
 import {
-  applyFileChanges,
-  assertNameFree,
-  type BotDoc,
-  clampLogLimit,
   deleteRowsForBot,
   deleteRowsForUser,
-  RUNNER_ONLINE_MS,
   requireBot,
   requireCanControlBot,
-  sealEnvChanges,
-  seedStarterFiles,
   toDetail,
   toSummary,
-  validateDescription,
-  validateName,
 } from "./lib/botManagement";
-import type { BotDetail, BotLogLine, BotRunnerStatus, BotStatus, BotSummary } from "./lib/botTypes";
-import { adjustMemberCount } from "./lib/memberCount";
+import {
+  createBotAs,
+  readBotLogs,
+  readRunnerStatus,
+  restartBotAs,
+  saveBotFilesAs,
+  setBotEnvAs,
+  updateBotAs,
+} from "./lib/botOperations";
+import type { BotDetail, BotLogLine, BotRunnerStatus, BotSummary } from "./lib/botTypes";
 import { requireCanGrant, requireWorkspaceContext } from "./lib/permissions";
-import { openContent } from "./lib/sealed";
 
 const language = v.union(v.literal("typescript"), v.literal("python"));
 const template = v.union(v.literal("hello"), v.literal("blank"));
-
-/**
- * Fields `update` may patch. Optional entries carry `| undefined` because a
- * patch with `undefined` clears the column (`exactOptionalPropertyTypes`).
- */
-interface BotPatch {
-  name?: string;
-  description?: string | undefined;
-  language?: BotLanguage;
-  enabled?: boolean;
-  revision?: number;
-  status?: BotStatus;
-  statusAt?: number;
-  statusMessage?: string | undefined;
-  hostedTokenHash?: string | undefined;
-  restartNonce?: number;
-  grants?: bigint;
-  allowedChannelIds?: Id<"channels">[] | undefined;
-  envCiphertext?: string | undefined;
-  tokenHash?: string | undefined;
-  tokenLast4?: string | undefined;
-}
-
-/** The `update` arguments, widened so `exactOptionalPropertyTypes` is satisfied. */
-interface UpdateInput {
-  name: string | undefined;
-  description: string | null | undefined;
-  /** Validated by the `update` args to be one of the bot languages. */
-  language: string | undefined;
-  enabled: boolean | undefined;
-}
-
-/** Builds the patch for `update`; returns the changed field names for the audit. */
-async function planUpdate(
-  ctx: MutationCtx,
-  bot: BotDoc,
-  input: UpdateInput,
-): Promise<{ patch: BotPatch; changed: string[] }> {
-  const patch: BotPatch = {};
-  const changed: string[] = [];
-  if (input.name !== undefined) {
-    const name = validateName(input.name);
-    if (name !== bot.name) {
-      await assertNameFree(ctx, name, bot._id);
-      patch.name = name;
-      changed.push("name");
-    }
-  }
-  if (input.description !== undefined) {
-    const description =
-      input.description === null ? undefined : validateDescription(input.description);
-    if (description !== bot.description) {
-      patch.description = description;
-      changed.push("description");
-    }
-  }
-  if (input.language !== undefined && input.language !== bot.language) {
-    patch.language = input.language as BotLanguage;
-    patch.revision = bot.revision + 1;
-    changed.push("language");
-  }
-  if (input.enabled !== undefined && input.enabled !== bot.enabled) {
-    patch.enabled = input.enabled;
-    patch.revision = bot.revision + 1;
-    changed.push("enabled");
-    if (!input.enabled) {
-      // A disabled bot must lose the runner-injected credential immediately.
-      patch.status = "stopped";
-      patch.statusAt = Date.now();
-      patch.statusMessage = undefined;
-      patch.hostedTokenHash = undefined;
-    }
-  }
-  return { patch, changed };
-}
 
 export const list = query({
   args: {},
@@ -147,47 +61,17 @@ export const create = mutation({
     template: v.optional(template),
   },
   handler: async (ctx, args): Promise<{ botId: string }> => {
-    const { userId } = await requireWorkspaceContext(ctx, Permission.ManageBots);
-    const name = validateName(args.name);
-    await assertNameFree(ctx, name);
-    if ((await ctx.db.query("bots").collect()).length >= BOT_LIMITS.maxBots) {
-      throw new ConvexError(`This workspace may have at most ${BOT_LIMITS.maxBots} bots`);
-    }
-    const description =
-      args.description === undefined ? undefined : validateDescription(args.description);
-    const now = Date.now();
-    const botId = await ctx.db.insert("bots", {
-      // Patched to `bot_<id>` right after insert; the id is not known before.
-      userId: `${BOT_USER_ID_PREFIX}pending`,
-      name,
-      ...(description !== undefined ? { description } : {}),
-      language: args.language,
-      enabled: false,
-      grants: 0n,
-      createdBy: userId,
-      createdAt: now,
-      revision: 1,
-      restartNonce: 0,
-      status: "stopped",
-      statusAt: now,
-    });
-    const botUserId = `${BOT_USER_ID_PREFIX}${botId}`;
-    await ctx.db.patch(botId, { userId: botUserId });
-    await ctx.db.insert("members", {
-      userId: botUserId,
-      nickname: name,
-      roleIds: [],
-      joinedAt: now,
-    });
-    await adjustMemberCount(ctx, 1);
-    await seedStarterFiles(ctx, botId, args.language, args.template ?? "hello");
-    await writeAudit(ctx, {
-      actorId: userId,
-      action: "bot.create",
-      targetId: botId,
-      meta: JSON.stringify({ name, language: args.language }),
-    });
-    return { botId };
+    const { userId, context } = await requireWorkspaceContext(ctx, Permission.ManageBots);
+    return await createBotAs(
+      ctx,
+      { userId, context },
+      {
+        name: args.name,
+        description: args.description,
+        language: args.language,
+        template: args.template,
+      },
+    );
   },
 });
 
@@ -200,32 +84,13 @@ export const update = mutation({
     enabled: v.optional(v.boolean()),
   },
   handler: async (ctx, args): Promise<null> => {
-    const { userId } = await requireWorkspaceContext(ctx, Permission.ManageBots);
+    const { userId, context } = await requireWorkspaceContext(ctx, Permission.ManageBots);
     const bot = await requireBot(ctx, args.botId);
-    const { patch, changed } = await planUpdate(ctx, bot, {
+    await updateBotAs(ctx, { userId, context }, bot, {
       name: args.name,
       description: args.description,
       language: args.language,
       enabled: args.enabled,
-    });
-    if (changed.length === 0) {
-      return null;
-    }
-    await ctx.db.patch(bot._id, patch);
-    if (patch.name !== undefined) {
-      const member = await ctx.db
-        .query("members")
-        .withIndex("by_user", (q) => q.eq("userId", bot.userId))
-        .unique();
-      if (member !== null) {
-        await ctx.db.patch(member._id, { nickname: patch.name });
-      }
-    }
-    await writeAudit(ctx, {
-      actorId: userId,
-      action: "bot.update",
-      targetId: bot._id,
-      meta: JSON.stringify({ changed }),
     });
     return null;
   },
@@ -278,16 +143,7 @@ export const saveFiles = mutation({
   },
   handler: async (ctx, args): Promise<null> => {
     const { userId, context } = await requireWorkspaceContext(ctx, Permission.ManageBots);
-    const bot = await requireBot(ctx, args.botId);
-    requireCanControlBot(context, bot);
-    const plan = await applyFileChanges(ctx, bot._id, args.files, args.deletePaths ?? []);
-    await ctx.db.patch(bot._id, { revision: bot.revision + 1 });
-    await writeAudit(ctx, {
-      actorId: userId,
-      action: "bot.files",
-      targetId: bot._id,
-      meta: JSON.stringify({ saved: plan.saved, deleted: plan.deleted }),
-    });
+    await saveBotFilesAs(ctx, { userId, context }, args.botId, args.files, args.deletePaths ?? []);
     return null;
   },
 });
@@ -301,37 +157,7 @@ export const setEnv = mutation({
   },
   handler: async (ctx, args): Promise<null> => {
     const { userId, context } = await requireWorkspaceContext(ctx, Permission.ManageBots);
-    const bot = await requireBot(ctx, args.botId);
-    requireCanControlBot(context, bot);
-    const values = await openBotEnv(bot._id, bot.envCiphertext);
-    const removed: string[] = [];
-    for (const raw of args.remove) {
-      const name = validateBotEnvName(raw);
-      if (values.delete(name)) {
-        removed.push(name);
-      }
-    }
-    const set: string[] = [];
-    for (const entry of args.set) {
-      const name = validateBotEnvName(entry.name);
-      values.set(name, validateBotEnvValue(entry.value));
-      set.push(name);
-    }
-    if (values.size > BOT_LIMITS.maxEnvVars) {
-      throw new ConvexError(
-        `A bot may have at most ${BOT_LIMITS.maxEnvVars} environment variables`,
-      );
-    }
-    await ctx.db.patch(bot._id, {
-      envCiphertext: await sealEnvChanges(bot._id, values),
-      revision: bot.revision + 1,
-    });
-    await writeAudit(ctx, {
-      actorId: userId,
-      action: "bot.env",
-      targetId: bot._id,
-      meta: JSON.stringify({ set, removed }),
-    });
+    await setBotEnvAs(ctx, { userId, context }, args.botId, args.set, args.remove);
     return null;
   },
 });
@@ -376,9 +202,9 @@ export const revokeToken = mutation({
 export const restart = mutation({
   args: { botId: v.id("bots") },
   handler: async (ctx, args): Promise<null> => {
-    await requireWorkspaceContext(ctx, Permission.ManageBots);
+    const { userId, context } = await requireWorkspaceContext(ctx, Permission.ManageBots);
     const bot = await requireBot(ctx, args.botId);
-    await ctx.db.patch(bot._id, { restartNonce: bot.restartNonce + 1 });
+    await restartBotAs(ctx, { userId, context }, bot);
     return null;
   },
 });
@@ -409,20 +235,7 @@ export const logs = query({
     if (bot === null) {
       return [];
     }
-    const rows = await ctx.db
-      .query("botLogs")
-      .withIndex("by_bot", (q) => q.eq("botId", args.botId))
-      .collect();
-    rows.sort((left, right) => left.at - right.at);
-    const lines: BotLogLine[] = [];
-    for (const row of rows.slice(-clampLogLimit(args.limit))) {
-      lines.push({
-        stream: row.stream,
-        text: await openContent(botLogContext(args.botId), row.textCiphertext),
-        at: row.at,
-      });
-    }
-    return lines;
+    return await readBotLogs(ctx, args.botId, args.limit);
   },
 });
 
@@ -430,11 +243,6 @@ export const runnerStatus = query({
   args: {},
   handler: async (ctx): Promise<BotRunnerStatus> => {
     await requireWorkspaceContext(ctx, Permission.ManageBots);
-    const runner = await ctx.db.query("botRunner").first();
-    const lastSeenAt = runner?.lastSeenAt ?? null;
-    return {
-      online: lastSeenAt !== null && Date.now() - lastSeenAt < RUNNER_ONLINE_MS,
-      lastSeenAt,
-    };
+    return await readRunnerStatus(ctx);
   },
 });

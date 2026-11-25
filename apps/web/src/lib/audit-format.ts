@@ -236,6 +236,9 @@ const ACTION_LABELS: Record<string, string> = {
   "bot.token.rotate": "replaced a bot token",
   "bot.token.revoke": "revoked a bot token",
   "bot.delete": "deleted a bot",
+  "bot.restart": "restarted a bot",
+  "bot.mcp.token.create": "created an MCP access token",
+  "bot.mcp.token.revoke": "revoked an MCP access token",
   // Owners and setup
   "owner.promote": "made someone an owner",
   "owner.demote": "removed an owner",
