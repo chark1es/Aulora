@@ -580,6 +580,29 @@ function notOpenHint(
   return `This call hasn’t started yet. It opens at ${at} (${inTime})`;
 }
 
+/** The viewer's own waiting-room status line, when they are waiting or were declined. */
+function WaitingStatus({ mode }: { readonly mode: RowMode }) {
+  if (mode.kind === "declined") {
+    return (
+      <p role="status" className="text-[12px] text-danger" data-testid="scheduled-waiting-status">
+        A host declined your request
+      </p>
+    );
+  }
+  if (mode.kind !== "waiting") {
+    return null;
+  }
+  const text =
+    mode.waitingKind === "knock"
+      ? "Waiting for a host to let you in"
+      : `You’ll join automatically when it opens at ${formatLocalTimeWithZone(mode.opensAt)}`;
+  return (
+    <p role="status" className="text-[12px] text-text-muted" data-testid="scheduled-waiting-status">
+      {text}
+    </p>
+  );
+}
+
 /** Status lines under a row: waiting, declined, not-open hints and join errors. */
 function RowNotices({
   mode,
@@ -596,22 +619,7 @@ function RowNotices({
 }) {
   return (
     <>
-      {mode.kind === "waiting" && (
-        <p
-          role="status"
-          className="text-[12px] text-text-muted"
-          data-testid="scheduled-waiting-status"
-        >
-          {mode.waitingKind === "knock"
-            ? "Waiting for a host to let you in"
-            : `You’ll join automatically when it opens at ${formatLocalTimeWithZone(mode.opensAt)}`}
-        </p>
-      )}
-      {mode.kind === "declined" && (
-        <p role="status" className="text-[12px] text-danger" data-testid="scheduled-waiting-status">
-          A host declined your request
-        </p>
-      )}
+      <WaitingStatus mode={mode} />
       {state.kind === "not-open" && mode.kind !== "waiting" && (
         <p id={hintId} className="text-[12px] text-text-muted" data-testid="scheduled-not-open">
           {notOpenHint(mode, state)}
